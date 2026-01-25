@@ -183,8 +183,8 @@ set_permissions() {
     chmod -R 755 storage bootstrap/cache
     chmod -R 775 storage/logs
 
-    if [ -d "public/build" ]; then
-        chmod -R 755 public/build
+    if [ -d "public_html/build" ]; then
+        chmod -R 755 public_html/build
     fi
 
     log_success "Permissions set!"

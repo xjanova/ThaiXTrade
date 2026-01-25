@@ -1,0 +1,17 @@
+# ThaiXTrade - Robots.txt
+# Developed by Xman Studio
+
+User-agent: *
+Allow: /
+
+# Disallow admin and API routes
+Disallow: /admin/
+Disallow: /api/
+
+# Allow search engines to crawl public pages
+Allow: /trade
+Allow: /swap
+Allow: /markets
+
+# Sitemap location
+Sitemap: https://thaixtrade.com/sitemap.xml
