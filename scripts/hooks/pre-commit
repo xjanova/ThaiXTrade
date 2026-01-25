@@ -1,0 +1,46 @@
+#!/bin/bash
+
+#############################################
+#  ThaiXTrade - Pre-commit Hook
+#  Developed by Xman Studio
+#
+#  Runs before each commit:
+#  - Code formatting (Laravel Pint)
+#  - Auto increment build number
+#############################################
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+echo -e "${YELLOW}Running pre-commit hooks...${NC}"
+
+# Run Laravel Pint if available
+if [ -f "vendor/bin/pint" ]; then
+    echo -e "Running Laravel Pint..."
+    ./vendor/bin/pint --dirty
+    git add -A
+fi
+
+# Run ESLint if available
+if [ -f "node_modules/.bin/eslint" ]; then
+    echo -e "Running ESLint..."
+    npm run lint --silent 2>/dev/null || true
+fi
+
+# Auto increment build number
+if [ -f "version.json" ]; then
+    # Check if jq is available
+    if command -v jq &> /dev/null; then
+        CURRENT_BUILD=$(jq -r '.build' version.json)
+        NEW_BUILD=$((CURRENT_BUILD + 1))
+        jq --arg b "$NEW_BUILD" '.build = ($b | tonumber)' version.json > version.json.tmp && mv version.json.tmp version.json
+        git add version.json
+        echo -e "${GREEN}Build number incremented: $NEW_BUILD${NC}"
+    fi
+fi
+
+echo -e "${GREEN}Pre-commit hooks completed!${NC}"
+exit 0
