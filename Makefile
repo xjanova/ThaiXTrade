@@ -54,7 +54,19 @@ build:
 	@npm run build
 
 test:
-	@php artisan test
+	@./scripts/test.sh all
+
+test-php:
+	@./scripts/test.sh php
+
+test-js:
+	@./scripts/test.sh js
+
+test-watch:
+	@npm run test
+
+test-coverage:
+	@./scripts/test.sh coverage
 
 lint:
 	@./vendor/bin/pint

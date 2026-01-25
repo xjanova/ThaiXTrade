@@ -39,57 +39,30 @@ jobs:
         run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Copy environment file
-        run: |
-          if [ -f ".env.example" ]; then
-            cp .env.example .env
-          else
-            echo "No .env.example file found, skipping"
-          fi
+        run: cp .env.example .env
 
       - name: Generate application key
-        run: |
-          if [ -f "artisan" ]; then
-            php artisan key:generate
-          else
-            echo "No artisan file found, skipping"
-          fi
-        continue-on-error: true
+        run: php artisan key:generate
 
       - name: Create database
         run: |
-          if [ -f "artisan" ]; then
-            mkdir -p database
-            touch database/database.sqlite
-          else
-            echo "No artisan file found, skipping database setup"
-          fi
-        continue-on-error: true
+          mkdir -p database
+          touch database/database.sqlite
 
       - name: Run migrations
-        run: |
-          if [ -f "artisan" ]; then
-            php artisan migrate --force
-          else
-            echo "No artisan file found, skipping migrations"
-          fi
-        continue-on-error: true
+        run: php artisan migrate --force
 
       - name: Run PHP tests
-        run: |
-          if [ -f "phpunit.xml" ] || [ -f "phpunit.xml.dist" ]; then
-            vendor/bin/phpunit --colors=always
-          else
-            echo "PHPUnit config not found, skipping tests"
-          fi
-        continue-on-error: true
+        run: vendor/bin/phpunit --colors=always
 
       - name: Upload coverage to Codecov
-        if: matrix.php == '8.3' && hashFiles('coverage.xml') != ''
+        if: matrix.php == '8.3' && success()
         uses: codecov/codecov-action@v3
         with:
           files: ./coverage.xml
           flags: php
           name: php-coverage
+        continue-on-error: true
 
   # JavaScript Tests
   js-tests:
@@ -110,21 +83,16 @@ jobs:
         run: npm ci
 
       - name: Run JavaScript tests
-        run: |
-          if grep -q '"test:run"' package.json; then
-            npm run test:run
-          else
-            echo "No test:run script found in package.json, skipping tests"
-          fi
-        continue-on-error: true
+        run: npm run test:run
 
       - name: Upload coverage to Codecov
-        if: hashFiles('coverage-js/coverage-final.json') != ''
+        if: success()
         uses: codecov/codecov-action@v3
         with:
           files: ./coverage-js/coverage-final.json
           flags: javascript
           name: js-coverage
+        continue-on-error: true
 
   # Code Quality
   code-quality:
@@ -145,7 +113,6 @@ jobs:
 
       - name: Run Laravel Pint
         run: vendor/bin/pint --test
-        continue-on-error: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -178,6 +145,7 @@ jobs:
 
       - name: Run Composer audit
         run: composer audit
+        continue-on-error: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
