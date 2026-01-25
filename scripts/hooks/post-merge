@@ -1,0 +1,52 @@
+#!/bin/bash
+
+#############################################
+#  ThaiXTrade - Post-merge Hook
+#  Developed by Xman Studio
+#
+#  Runs after git pull/merge:
+#  - Check for dependency changes
+#  - Auto install if needed
+#############################################
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+echo -e "${BLUE}Running post-merge hooks...${NC}"
+
+# Check if composer.lock changed
+COMPOSER_CHANGED=$(git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep "composer.lock")
+
+if [ -n "$COMPOSER_CHANGED" ]; then
+    echo -e "${YELLOW}composer.lock changed. Running composer install...${NC}"
+    composer install --no-interaction --prefer-dist --optimize-autoloader
+    echo -e "${GREEN}Composer dependencies updated!${NC}"
+fi
+
+# Check if package-lock.json changed
+NPM_CHANGED=$(git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep "package-lock.json")
+
+if [ -n "$NPM_CHANGED" ]; then
+    echo -e "${YELLOW}package-lock.json changed. Running npm install...${NC}"
+    npm ci
+    echo -e "${GREEN}NPM dependencies updated!${NC}"
+fi
+
+# Check if migrations changed
+MIGRATIONS_CHANGED=$(git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep "database/migrations")
+
+if [ -n "$MIGRATIONS_CHANGED" ]; then
+    echo -e "${YELLOW}Migrations changed. Remember to run: php artisan migrate${NC}"
+fi
+
+# Clear caches after merge
+echo -e "${BLUE}Clearing caches...${NC}"
+php artisan config:clear 2>/dev/null || true
+php artisan cache:clear 2>/dev/null || true
+php artisan view:clear 2>/dev/null || true
+
+echo -e "${GREEN}Post-merge hooks completed!${NC}"
