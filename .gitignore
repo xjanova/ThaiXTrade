@@ -31,6 +31,7 @@ Thumbs.db
 
 # Build artifacts
 /public/build
+/public_html/build
 /public/js
 /public/css
 /public/mix-manifest.json

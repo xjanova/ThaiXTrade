@@ -97,12 +97,12 @@
 
     .btn-success {
         @apply btn bg-trading-green text-white hover:bg-trading-green-dark;
-        @apply shadow-green-glow/50 hover:shadow-green-glow;
+        @apply hover:shadow-green-glow;
     }
 
     .btn-danger {
         @apply btn bg-trading-red text-white hover:bg-trading-red-dark;
-        @apply shadow-red-glow/50 hover:shadow-red-glow;
+        @apply hover:shadow-red-glow;
     }
 
     .btn-ghost {
