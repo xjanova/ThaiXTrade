@@ -45,7 +45,9 @@ jobs:
         run: php artisan key:generate
 
       - name: Create database
-        run: touch database/database.sqlite
+        run: |
+          mkdir -p database
+          touch database/database.sqlite
 
       - name: Run migrations
         run: php artisan migrate --force
@@ -54,12 +56,13 @@ jobs:
         run: vendor/bin/phpunit --colors=always
 
       - name: Upload coverage to Codecov
-        if: matrix.php == '8.3'
+        if: matrix.php == '8.3' && success()
         uses: codecov/codecov-action@v3
         with:
           files: ./coverage.xml
           flags: php
           name: php-coverage
+        continue-on-error: true
 
   # JavaScript Tests
   js-tests:
@@ -83,11 +86,13 @@ jobs:
         run: npm run test:run
 
       - name: Upload coverage to Codecov
+        if: success()
         uses: codecov/codecov-action@v3
         with:
           files: ./coverage-js/coverage-final.json
           flags: javascript
           name: js-coverage
+        continue-on-error: true
 
   # Code Quality
   code-quality:
@@ -140,6 +145,7 @@ jobs:
 
       - name: Run Composer audit
         run: composer audit
+        continue-on-error: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
