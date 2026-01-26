@@ -44,16 +44,17 @@ jobs:
       - name: Generate application key
         run: php artisan key:generate
 
-      - name: Check environment
-        run: |
-          php -v
-          php -m | grep -i sqlite
-          cat .env | grep APP_KEY
-          php -r "var_dump(extension_loaded('pdo_sqlite'));"
-          php -r "new PDO('sqlite::memory:');"
+      - name: Setup Node.js for asset building
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
 
-      - name: List all tests
-        run: vendor/bin/phpunit --list-tests
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build assets
+        run: npm run build
 
       - name: Run PHP tests
         run: vendor/bin/phpunit --colors=always --display-warnings --display-deprecations
