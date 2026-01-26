@@ -31,12 +31,13 @@ class HomePageTest extends TestCase
     }
 
     /**
-     * Test home page has trading link.
+     * Test home page renders Inertia app.
      */
-    public function test_home_page_has_trade_link(): void
+    public function test_home_page_renders_inertia_app(): void
     {
         $response = $this->get('/');
 
-        $response->assertSee('/trade');
+        $response->assertSee('id="app"', false);
+        $response->assertSee('data-page', false);
     }
 }
