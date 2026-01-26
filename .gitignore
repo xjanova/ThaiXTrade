@@ -55,3 +55,8 @@ Thumbs.db
 /coverage-js
 /.phpunit.cache
 /deploy.tar.gz
+
+# Database
+/database/*.sqlite
+/database/*.sqlite-journal
+!/database/.gitkeep
