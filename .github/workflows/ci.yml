@@ -56,17 +56,6 @@ jobs:
       - name: Build assets
         run: npm run build
 
-      - name: Check environment
-        run: |
-          php -v
-          php -m | grep -i sqlite
-          cat .env | grep APP_KEY
-          php -r "var_dump(extension_loaded('pdo_sqlite'));"
-          php -r "new PDO('sqlite::memory:');"
-
-      - name: List all tests
-        run: vendor/bin/phpunit --list-tests
-
       - name: Run PHP tests
         run: vendor/bin/phpunit --colors=always --display-warnings --display-deprecations
 
