@@ -44,6 +44,12 @@ jobs:
       - name: Generate application key
         run: php artisan key:generate
 
+      - name: Check environment
+        run: |
+          php -v
+          php -m | grep -i sqlite
+          cat .env | grep APP_KEY
+
       - name: Run PHP tests
         run: vendor/bin/phpunit --colors=always
 
