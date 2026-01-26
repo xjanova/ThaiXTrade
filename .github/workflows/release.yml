@@ -1,0 +1,156 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
+          coverage: none
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress --no-dev --optimize-autoloader
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build production assets
+        run: npm run build
+
+      - name: Copy environment file
+        run: cp .env.example .env.production.example
+
+      - name: Create deployment package
+        run: |
+          mkdir -p releases
+          tar -czf releases/ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='node_modules' \
+            --exclude='tests' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='storage/*.key' \
+            --exclude='*.log' \
+            --exclude='.phpunit.cache' \
+            .
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREVIOUS_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1) 2>/dev/null || echo "")
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Read version.json
+        id: version_info
+        run: |
+          VERSION_NUMBER=$(cat version.json | jq -r '.version')
+          BUILD_NUMBER=$(cat version.json | jq -r '.build')
+          echo "VERSION_NUMBER=$VERSION_NUMBER" >> $GITHUB_OUTPUT
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ThaiXTrade v${{ steps.version.outputs.VERSION }}
+          body: |
+            # ThaiXTrade v${{ steps.version.outputs.VERSION }}
+
+            **Build**: #${{ steps.version_info.outputs.BUILD_NUMBER }}
+            **Date**: ${{ github.event.head_commit.timestamp }}
+
+            ## 📦 Installation
+
+            ```bash
+            # Download and extract
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz
+            tar -xzf ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz
+
+            # Setup environment
+            cp .env.production.example .env
+            php artisan key:generate
+
+            # Run migrations
+            php artisan migrate --force
+
+            # Setup permissions
+            chmod -R 775 storage bootstrap/cache
+            ```
+
+            ## 📝 Changelog
+
+            ${{ steps.changelog.outputs.CHANGELOG }}
+
+            ## ⚡ Features
+
+            - Decentralized Trading on BSC & Ethereum
+            - Real-time Price Charts & Order Books
+            - Web3 Wallet Integration (MetaMask, WalletConnect)
+            - AI-Powered Trading Insights
+            - Glass Morphism Dark Theme
+
+            ## 📋 Requirements
+
+            - PHP >= 8.2
+            - Composer
+            - MySQL/PostgreSQL/SQLite
+            - Node.js >= 18
+
+            ## 🔗 Links
+
+            - [Documentation](https://github.com/${{ github.repository }}/wiki)
+            - [Issues](https://github.com/${{ github.repository }}/issues)
+            - [Xman Studio](https://xmanstudio.com)
+
+            ---
+
+            **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.changelog.outputs.PREVIOUS_TAG || 'HEAD' }}...v${{ steps.version.outputs.VERSION }}
+          files: |
+            releases/ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deployment notification
+        run: |
+          echo "✅ Release v${{ steps.version.outputs.VERSION }} created successfully!"
+          echo "📦 Package: ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz"
+          echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.VERSION }}"
