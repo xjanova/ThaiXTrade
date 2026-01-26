@@ -54,3 +54,4 @@ Thumbs.db
 /coverage
 /coverage-js
 /.phpunit.cache
+/deploy.tar.gz
