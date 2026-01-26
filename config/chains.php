@@ -2,13 +2,12 @@
 
 /**
  * ThaiXTrade - Blockchain Chains Configuration
- * Developed by Xman Studio
+ * Developed by Xman Studio.
  *
  * Add new chains easily by adding to this configuration
  */
 
 return [
-
     /*
     |--------------------------------------------------------------------------
     | Default Chain
@@ -24,7 +23,6 @@ return [
     */
 
     'chains' => [
-
         // Ethereum Mainnet
         1 => [
             'name' => 'Ethereum',
@@ -221,7 +219,6 @@ return [
             'color' => '#8C8DFC',
             'enabled' => true,
         ],
-
     ],
 
     /*
@@ -231,7 +228,6 @@ return [
     */
 
     'testnets' => [
-
         // Sepolia (Ethereum Testnet)
         11155111 => [
             'name' => 'Sepolia',
@@ -261,7 +257,5 @@ return [
             ],
             'enabled' => env('APP_ENV') !== 'production',
         ],
-
     ],
-
 ];

@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * ThaiXTrade - Version Tests
- * Developed by Xman Studio
+ * Developed by Xman Studio.
  */
 class VersionTest extends TestCase
 {
@@ -15,7 +15,7 @@ class VersionTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->versionFile = dirname(__DIR__, 2) . '/version.json';
+        $this->versionFile = dirname(__DIR__, 2).'/version.json';
     }
 
     /**

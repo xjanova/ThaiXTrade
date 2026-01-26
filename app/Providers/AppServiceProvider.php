@@ -2,12 +2,12 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\ServiceProvider;
 
 /**
  * ThaiXTrade - Application Service Provider
- * Developed by Xman Studio
+ * Developed by Xman Studio.
  */
 class AppServiceProvider extends ServiceProvider
 {

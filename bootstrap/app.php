@@ -2,7 +2,7 @@
 
 /**
  * ThaiXTrade - Application Bootstrap
- * Developed by Xman Studio
+ * Developed by Xman Studio.
  */
 
 use Illuminate\Foundation\Application;

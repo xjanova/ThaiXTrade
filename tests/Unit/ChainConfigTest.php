@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * ThaiXTrade - Chain Configuration Tests
- * Developed by Xman Studio
+ * Developed by Xman Studio.
  */
 class ChainConfigTest extends TestCase
 {
@@ -15,7 +15,7 @@ class ChainConfigTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $configFile = dirname(__DIR__, 2) . '/config/chains.php';
+        $configFile = dirname(__DIR__, 2).'/config/chains.php';
         $this->chains = require $configFile;
     }
 
@@ -24,7 +24,7 @@ class ChainConfigTest extends TestCase
      */
     public function test_chains_config_exists(): void
     {
-        $configFile = dirname(__DIR__, 2) . '/config/chains.php';
+        $configFile = dirname(__DIR__, 2).'/config/chains.php';
         $this->assertFileExists($configFile);
     }
 
