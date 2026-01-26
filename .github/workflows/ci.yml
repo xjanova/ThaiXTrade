@@ -25,7 +25,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
-          coverage: xdebug
+          coverage: none
 
       - name: Cache Composer packages
         uses: actions/cache@v3
@@ -47,15 +47,6 @@ jobs:
       - name: Run PHP tests
         run: vendor/bin/phpunit --colors=always
 
-      - name: Upload coverage to Codecov
-        if: matrix.php == '8.3' && success()
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./coverage.xml
-          flags: php
-          name: php-coverage
-        continue-on-error: true
-
   # JavaScript Tests
   js-tests:
     name: JavaScript Tests
@@ -76,15 +67,6 @@ jobs:
 
       - name: Run JavaScript tests
         run: npm run test:run
-
-      - name: Upload coverage to Codecov
-        if: success()
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./coverage-js/coverage-final.json
-          flags: javascript
-          name: js-coverage
-        continue-on-error: true
 
   # Code Quality
   code-quality:
