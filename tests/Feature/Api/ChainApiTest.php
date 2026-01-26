@@ -3,11 +3,10 @@
 namespace Tests\Feature\Api;
 
 use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
 /**
  * ThaiXTrade - Chain API Tests
- * Developed by Xman Studio
+ * Developed by Xman Studio.
  */
 class ChainApiTest extends TestCase
 {
@@ -19,17 +18,17 @@ class ChainApiTest extends TestCase
         $response = $this->getJson('/api/v1/chains');
 
         $response->assertStatus(200)
-                 ->assertJsonStructure([
-                     'success',
-                     'data' => [
-                         '*' => [
-                             'chainId',
-                             'name',
-                             'shortName',
-                             'nativeCurrency',
-                         ]
-                     ]
-                 ]);
+            ->assertJsonStructure([
+                'success',
+                'data' => [
+                    '*' => [
+                        'chainId',
+                        'name',
+                        'shortName',
+                        'nativeCurrency',
+                    ],
+                ],
+            ]);
     }
 
     /**
@@ -40,8 +39,8 @@ class ChainApiTest extends TestCase
         $response = $this->getJson('/api/v1/chains/56'); // BSC
 
         $response->assertStatus(200)
-                 ->assertJsonPath('data.chainId', 56)
-                 ->assertJsonPath('data.shortName', 'BSC');
+            ->assertJsonPath('data.chainId', 56)
+            ->assertJsonPath('data.shortName', 'BSC');
     }
 
     /**

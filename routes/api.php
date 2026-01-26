@@ -2,14 +2,14 @@
 
 /**
  * ThaiXTrade - API Routes
- * Developed by Xman Studio
+ * Developed by Xman Studio.
  */
 
-use App\Http\Controllers\Api\TradingController;
-use App\Http\Controllers\Api\MarketController;
-use App\Http\Controllers\Api\WalletController;
-use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\AIController;
+use App\Http\Controllers\Api\ChainController;
+use App\Http\Controllers\Api\MarketController;
+use App\Http\Controllers\Api\TradingController;
+use App\Http\Controllers\Api\WalletController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -31,7 +31,6 @@ Route::get('/', function () {
 
 // Public Routes (No Auth Required)
 Route::prefix('v1')->group(function () {
-
     // Market Data
     Route::prefix('market')->group(function () {
         Route::get('/tickers', [MarketController::class, 'tickers']);
@@ -55,12 +54,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/{address}', [MarketController::class, 'tokenInfo']);
         Route::get('/{address}/price', [MarketController::class, 'tokenPrice']);
     });
-
 });
 
 // Protected Routes (Wallet Signature Required)
 Route::prefix('v1')->middleware(['throttle:trading'])->group(function () {
-
     // Trading Operations
     Route::prefix('trading')->group(function () {
         Route::post('/order', [TradingController::class, 'createOrder']);
@@ -93,7 +90,6 @@ Route::prefix('v1')->middleware(['throttle:trading'])->group(function () {
         Route::post('/suggest', [AIController::class, 'suggest']);
         Route::get('/insights/{symbol}', [AIController::class, 'insights']);
     });
-
 });
 
 // WebSocket Authentication

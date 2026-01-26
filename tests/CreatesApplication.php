@@ -7,7 +7,7 @@ use Illuminate\Foundation\Application;
 
 /**
  * ThaiXTrade - Creates Application Trait
- * Developed by Xman Studio
+ * Developed by Xman Studio.
  */
 trait CreatesApplication
 {

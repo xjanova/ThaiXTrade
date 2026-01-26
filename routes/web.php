@@ -2,15 +2,9 @@
 
 /**
  * ThaiXTrade - Web Routes
- * Developed by Xman Studio
+ * Developed by Xman Studio.
  */
 
-use App\Http\Controllers\Web\HomeController;
-use App\Http\Controllers\Web\TradeController;
-use App\Http\Controllers\Web\PortfolioController;
-use App\Http\Controllers\Web\MarketsController;
-use App\Http\Controllers\Web\SwapController;
-use App\Http\Controllers\Web\AIAssistantController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 

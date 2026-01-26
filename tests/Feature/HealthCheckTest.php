@@ -6,7 +6,7 @@ use Tests\TestCase;
 
 /**
  * ThaiXTrade - Health Check Tests
- * Developed by Xman Studio
+ * Developed by Xman Studio.
  */
 class HealthCheckTest extends TestCase
 {

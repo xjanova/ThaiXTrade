@@ -2,7 +2,7 @@
 
 /**
  * ThaiXTrade - Laravel Application Entry Point
- * Developed by Xman Studio
+ * Developed by Xman Studio.
  *
  * This file serves as the entry point for all HTTP requests.
  * It loads the Composer autoloader and bootstraps the Laravel application.
