@@ -12,6 +12,7 @@ on:
           - fix-build-and-env
           - fix-public-html
           - fix-webserver
+          - diagnose-web
           - check-status
           - remove-workflow
 
@@ -319,6 +320,63 @@ jobs:
                 echo "=============================="
                 echo "WEBSERVER FIX COMPLETE"
                 echo "=============================="
+                ;;
+
+              diagnose-web)
+                cd "$DEPLOY_PATH" || { echo "Path not found: $DEPLOY_PATH"; exit 1; }
+
+                echo "=== DEPLOY_PATH ==="
+                pwd
+                echo "Real path: $(realpath .)"
+                echo ""
+
+                echo "=== Create test.php ==="
+                echo '<?php echo "PHP_WORKS_OK"; phpinfo(INFO_GENERAL);' > public_html/test.php
+                echo ""
+
+                echo "=== Test direct file access ==="
+                curl -s "https://tpix.online/test.php" 2>/dev/null | head -10
+                echo ""
+                echo "---"
+                curl -s "https://tpix.online/index.php" 2>/dev/null | head -5
+                echo ""
+                echo "---"
+                curl -s "https://tpix.online/health" 2>/dev/null
+                echo ""
+                echo "---"
+                curl -s "https://tpix.online/favicon.svg" 2>/dev/null | head -3
+                echo ""
+
+                echo "=== Check Apache error log ==="
+                tail -20 /var/log/httpd/domains/tpix.online.error.log 2>/dev/null || echo "No error log"
+                echo ""
+
+                echo "=== Check Apache access log ==="
+                tail -10 /var/log/httpd/domains/tpix.online.log 2>/dev/null || echo "No access log"
+                echo ""
+
+                echo "=== Check PHP-FPM ==="
+                ls -la /usr/local/php83/sockets/ 2>/dev/null
+                ps aux | grep php-fpm | grep -v grep | head -5
+                echo ""
+
+                echo "=== DirectoryIndex setting ==="
+                grep -ri "DirectoryIndex" /etc/httpd/conf/ 2>/dev/null | head -5
+                grep -ri "DirectoryIndex" /usr/local/directadmin/ 2>/dev/null | head -5
+                echo ""
+
+                echo "=== Is there a reverse proxy (nginx)? ==="
+                ps aux | grep -E "nginx|lshttpd|litespeed" | grep -v grep | head -5
+                netstat -tlnp 2>/dev/null | grep -E ":80|:443" | head -5
+                echo ""
+
+                echo "=== Full tpix.online httpd config ==="
+                grep -A 50 "tpix.online" /usr/local/directadmin/data/users/admin/httpd.conf 2>/dev/null | head -80
+                echo ""
+
+                echo "=== Cleanup ==="
+                rm -f public_html/test.php
+                echo "DIAGNOSE COMPLETE"
                 ;;
 
               check-status)
