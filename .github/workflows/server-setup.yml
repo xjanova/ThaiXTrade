@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - clone-and-setup
+          - fix-build-and-env
           - check-status
           - remove-workflow
 
@@ -108,6 +109,78 @@ jobs:
                 echo ""
                 echo "=============================="
                 echo "SETUP COMPLETE"
+                echo "=============================="
+                ;;
+
+              fix-build-and-env)
+                cd "$DEPLOY_PATH" || { echo "Path not found: $DEPLOY_PATH"; exit 1; }
+
+                echo "=== Step 1: Configure .env for production ==="
+                # Update .env for production
+                sed -i 's/^APP_ENV=.*/APP_ENV=production/' .env
+                sed -i 's/^APP_DEBUG=.*/APP_DEBUG=false/' .env
+                sed -i 's|^APP_URL=.*|APP_URL=https://tpix.online|' .env
+
+                echo "Current .env settings:"
+                grep -E "^APP_ENV|^APP_DEBUG|^APP_URL|^DB_|^APP_KEY" .env
+
+                echo ""
+                echo "=== Step 2: Check Node.js ==="
+                node --version
+                npm --version
+                echo "node_modules/.bin contents:"
+                ls node_modules/.bin/vite 2>/dev/null && echo "vite binary found" || echo "vite binary NOT found"
+
+                echo ""
+                echo "=== Step 3: Reinstall NPM with devDependencies ==="
+                npm install 2>&1
+                echo "After install - vite check:"
+                ls -la node_modules/.bin/vite 2>/dev/null || echo "Still no vite!"
+
+                echo ""
+                echo "=== Step 4: Build frontend assets ==="
+                export PATH="$DEPLOY_PATH/node_modules/.bin:$PATH"
+                npx vite build 2>&1
+
+                echo ""
+                echo "=== Step 5: Verify build output ==="
+                ls -la public_html/build/ 2>/dev/null || echo "No build directory!"
+                ls -la public_html/build/assets/ 2>/dev/null | head -10 || echo "No assets!"
+
+                echo ""
+                echo "=== Step 6: Re-cache Laravel ==="
+                php artisan config:clear
+                php artisan config:cache
+                php artisan route:cache
+                php artisan view:cache
+
+                echo ""
+                echo "=== Step 7: Fix permissions ==="
+                chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+                chmod -R 775 public_html/build 2>/dev/null || true
+
+                echo ""
+                echo "=== Step 8: Test site ==="
+                php artisan --version
+                curl -s -o /dev/null -w "HTTP Status: %{http_code}" http://localhost 2>/dev/null || echo "Local curl not available"
+
+                echo ""
+                echo "=== Step 9: Check web server config ==="
+                ls -la /home/admin/domains/tpix.online/ 2>/dev/null | head -10
+                cat /home/admin/domains/tpix.online/nginx.conf 2>/dev/null | head -30 || echo "No nginx.conf in domain dir"
+                ls /etc/nginx/sites-enabled/ 2>/dev/null || echo "No nginx sites-enabled"
+                ls /etc/apache2/sites-enabled/ 2>/dev/null || echo "No apache sites-enabled"
+                cat /usr/local/directadmin/data/users/admin/domains/tpix.online.conf 2>/dev/null | head -20 || echo "No DA domain config"
+
+                echo ""
+                echo "=== Step 10: Check DirectAdmin setup ==="
+                ls -la /home/admin/domains/ 2>/dev/null | head -10
+                ls -la /home/admin/domains/tpix.online/ 2>/dev/null
+                cat /home/admin/domains/tpix.online/public_html/.htaccess 2>/dev/null | head -20 || echo "No .htaccess in public_html"
+
+                echo ""
+                echo "=============================="
+                echo "BUILD & ENV FIX COMPLETE"
                 echo "=============================="
                 ;;
 
