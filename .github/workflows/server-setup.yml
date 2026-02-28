@@ -45,26 +45,20 @@ jobs:
                   git reset --hard origin/main
                 else
                   echo "Cloning fresh repo..."
-                  mkdir -p "$(dirname $DEPLOY_PATH)"
+                  echo "Checking what exists..."
+                  ls -la "$(dirname $DEPLOY_PATH)/" 2>/dev/null || echo "Parent dir not found"
+                  ls -la "$DEPLOY_PATH/" 2>/dev/null || echo "Deploy path not found"
 
-                  if [ -d "$DEPLOY_PATH/public_html" ] && [ ! -d "$DEPLOY_PATH/.git" ]; then
-                    echo "Directory exists but no git. Backing up public_html..."
-                    mv "$DEPLOY_PATH/public_html" "$DEPLOY_PATH/public_html.bak.$(date +%s)" 2>/dev/null || true
-                  fi
-
-                  # Clone into temp then move
-                  TEMP_DIR="/tmp/thaixtrade_clone_$$"
-                  git clone https://github.com/xjanova/ThaiXTrade.git "$TEMP_DIR"
-
-                  # Move files into deploy path
-                  if [ ! -d "$DEPLOY_PATH" ]; then
-                    mv "$TEMP_DIR" "$DEPLOY_PATH"
-                  else
-                    cp -a "$TEMP_DIR/." "$DEPLOY_PATH/"
-                    rm -rf "$TEMP_DIR"
-                  fi
+                  # Direct clone into deploy path
+                  mkdir -p "$DEPLOY_PATH"
+                  git clone https://github.com/xjanova/ThaiXTrade.git "$DEPLOY_PATH/repo_tmp"
+                  # Move git content into deploy path
+                  mv "$DEPLOY_PATH/repo_tmp/"* "$DEPLOY_PATH/repo_tmp/".[!.]* "$DEPLOY_PATH/" 2>/dev/null || true
+                  rm -rf "$DEPLOY_PATH/repo_tmp"
 
                   cd "$DEPLOY_PATH"
+                  echo "Cloned successfully. Files:"
+                  ls -la | head -15
                 fi
 
                 echo "=== Step 2: Install Composer ==="
