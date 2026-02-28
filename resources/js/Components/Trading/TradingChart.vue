@@ -311,7 +311,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="chart-container h-full flex flex-col overflow-hidden">
+    <div class="chart-container flex flex-col overflow-hidden" style="height: 100%; max-height: 100%;">
         <!-- Chart Header -->
         <div class="chart-toolbar flex-shrink-0">
             <div class="flex items-center gap-4">
@@ -400,7 +400,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Timeframe Selector -->
-        <div class="flex items-center gap-1 px-4 py-2 border-b border-white/5">
+        <div class="flex items-center gap-1 px-4 py-2 border-b border-white/5 flex-shrink-0">
             <button
                 v-for="tf in timeframes"
                 :key="tf"
@@ -416,6 +416,6 @@ onUnmounted(() => {
         </div>
 
         <!-- TradingView Chart Area -->
-        <div ref="chartContainer" class="flex-1 relative overflow-hidden"></div>
+        <div ref="chartContainer" class="flex-1 relative overflow-hidden" style="min-height: 0;"></div>
     </div>
 </template>
