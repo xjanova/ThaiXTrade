@@ -6,10 +6,9 @@ use App\Models\FeeConfig;
 use App\Models\SiteSetting;
 use App\Models\TradingPair;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 
 /**
- * FeeCalculationService
+ * FeeCalculationService.
  *
  * Handles fee calculations for swap and trade operations on the platform.
  * Implements a fee hierarchy: TradingPair override -> Chain-specific -> Global default.

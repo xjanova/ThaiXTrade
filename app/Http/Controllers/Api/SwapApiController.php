@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 /**
- * SwapApiController
+ * SwapApiController.
  *
  * Handles swap-related API endpoints including quotes, execution,
  * and route discovery for the TPIX TRADE DEX platform.
