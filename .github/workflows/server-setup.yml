@@ -11,6 +11,7 @@ on:
           - clone-and-setup
           - fix-build-and-env
           - fix-public-html
+          - fix-webserver
           - check-status
           - remove-workflow
 
@@ -266,6 +267,57 @@ jobs:
 
                 echo "=============================="
                 echo "PUBLIC_HTML FIX COMPLETE"
+                echo "=============================="
+                ;;
+
+              fix-webserver)
+                cd "$DEPLOY_PATH" || { echo "Path not found: $DEPLOY_PATH"; exit 1; }
+
+                echo "=== Step 1: Remove DA default index.html ==="
+                ls -la public_html/index.html 2>/dev/null && {
+                  echo "Found DA default index.html - removing..."
+                  rm -f public_html/index.html
+                  echo "Removed."
+                } || echo "No index.html found (good)"
+
+                echo ""
+                echo "=== Step 2: Check all files in public_html ==="
+                find public_html/ -maxdepth 1 -type f -name "index*" 2>/dev/null
+                ls -la public_html/ | head -20
+                echo ""
+
+                echo "=== Step 3: Check DA httpd config for tpix.online ==="
+                grep -A 20 "tpix.online" /usr/local/directadmin/data/users/admin/httpd.conf 2>/dev/null | head -40
+                echo "---"
+                # Also check domain-specific configs
+                cat /home/admin/domains/tpix.online/public_html/.htaccess 2>/dev/null | head -5 || echo "No .htaccess"
+                echo ""
+
+                echo "=== Step 4: Verify index.php works via PHP ==="
+                cd public_html/
+                php index.php 2>&1 | head -20
+                cd ..
+                echo ""
+
+                echo "=== Step 5: Test with curl ==="
+                curl -s -o /dev/null -w "HTTP %{http_code}" "http://tpix.online" 2>/dev/null || echo "curl to tpix.online failed"
+                echo ""
+                curl -s "https://tpix.online" 2>/dev/null | head -5
+                echo ""
+
+                echo "=== Step 6: Restart web server ==="
+                sudo systemctl restart httpd 2>/dev/null || echo "Cannot restart httpd"
+                sleep 2
+                echo ""
+
+                echo "=== Step 7: Test again after restart ==="
+                curl -s "https://tpix.online" 2>/dev/null | head -10
+                echo ""
+                curl -s -o /dev/null -w "HTTP %{http_code}" "https://tpix.online" 2>/dev/null
+                echo ""
+
+                echo "=============================="
+                echo "WEBSERVER FIX COMPLETE"
                 echo "=============================="
                 ;;
 
