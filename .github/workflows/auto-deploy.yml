@@ -112,21 +112,9 @@ jobs:
 
             # Fix permissions
             chmod -R 775 storage bootstrap/cache 2>/dev/null || true
-            chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
 
             # Restart queue workers if running
             php artisan queue:restart 2>/dev/null || true
-
-            # Restart Octane if running
-            if pgrep -f "artisan octane:start" > /dev/null 2>&1; then
-              php artisan octane:reload 2>/dev/null || true
-            fi
-
-            # Restart PHP-FPM if available
-            sudo systemctl restart php8.3-fpm 2>/dev/null || \
-            sudo systemctl restart php8.2-fpm 2>/dev/null || \
-            sudo systemctl restart php-fpm 2>/dev/null || \
-            echo "⚠️ Could not restart PHP-FPM"
 
             echo "✅ Deployment completed successfully!"
 

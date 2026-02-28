@@ -803,100 +803,6 @@ restart_queue() {
     print_success "Queue workers will restart on next job"
 }
 
-# Restart Octane (TPIX TRADE supports Octane)
-restart_octane() {
-    if pgrep -f "artisan octane:start" > /dev/null 2>&1; then
-        print_step "Restarting Octane Server"
-        php artisan octane:reload
-        print_success "Octane server restarted"
-    fi
-}
-
-# Restart web server/PHP-FPM
-restart_web_server() {
-    print_step "Restarting Web Server"
-
-    if ! grep -q "APP_ENV=production" .env; then
-        print_info "Skipping web server restart (not in production)"
-        return 0
-    fi
-
-    local RESTARTED=0
-
-    # Check if DirectAdmin is installed
-    if [ -d "/usr/local/directadmin" ] || [ -f "/usr/local/directadmin/directadmin" ]; then
-        print_info "DirectAdmin detected"
-
-        if [ -f "public_html/.htaccess" ]; then
-            touch public_html/restart.txt 2>/dev/null || true
-            sleep 1
-            rm -f public_html/restart.txt 2>/dev/null || true
-            print_success "Triggered PHP restart via restart.txt"
-            RESTARTED=1
-        fi
-
-        # Clear OPcache via web request
-        print_info "Clearing OPcache via web request..."
-        set +e
-        OPCACHE_CLEAR_FILE="public_html/opcache-clear-$(date +%s).php"
-        cat > "$OPCACHE_CLEAR_FILE" 2>/dev/null <<'OPCACHE_EOF'
-<?php
-if (function_exists('opcache_reset')) {
-    opcache_reset();
-    echo "OPcache cleared successfully\n";
-} else {
-    echo "OPcache not available\n";
-}
-OPCACHE_EOF
-
-        APP_URL=$(grep "^APP_URL=" .env 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d '\r\n' | xargs || echo "")
-        if [ -n "$APP_URL" ] && command -v curl >/dev/null 2>&1; then
-            curl -s "${APP_URL}/opcache-clear-$(date +%s).php" >/dev/null 2>&1 || true
-        fi
-
-        rm -f "$OPCACHE_CLEAR_FILE" 2>/dev/null || true
-        set -e
-
-        print_success "DirectAdmin-compatible restart completed"
-        return 0
-    fi
-
-    # Standard VPS with systemctl
-    if command -v systemctl >/dev/null 2>&1; then
-        PHP_VERSION=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;")
-
-        for SERVICE in "php${PHP_VERSION}-fpm" "php-fpm" "php${PHP_VERSION:0:1}${PHP_VERSION:2:1}-fpm"; do
-            if systemctl list-units --full -all 2>/dev/null | grep -q "$SERVICE.service"; then
-                print_info "Restarting $SERVICE..."
-                set +e
-                sudo systemctl reload $SERVICE 2>&1 || sudo systemctl restart $SERVICE 2>&1
-                if [ $? -eq 0 ]; then
-                    print_success "$SERVICE restarted"
-                    RESTARTED=1
-                    break
-                fi
-                set -e
-            fi
-        done
-
-        if systemctl list-units --full -all 2>/dev/null | grep -q "nginx.service"; then
-            print_info "Reloading Nginx..."
-            set +e
-            sudo systemctl reload nginx 2>&1
-            if [ $? -eq 0 ]; then
-                print_success "Nginx reloaded"
-                RESTARTED=1
-            fi
-            set -e
-        fi
-    fi
-
-    if [ $RESTARTED -eq 0 ]; then
-        print_warning "Could not restart web server automatically"
-        print_info "Manual restart: sudo systemctl restart php-fpm nginx"
-    fi
-}
-
 # Verify production security settings
 verify_production_security() {
     print_step "Verifying Production Security"
@@ -1124,8 +1030,6 @@ main() {
     optimize_application
     fix_permissions
     restart_queue
-    restart_octane
-    restart_web_server
     post_deployment
     disable_maintenance
     health_check
@@ -1227,11 +1131,9 @@ if [ $DRY_RUN -eq 1 ]; then
     echo "  12. Optimize application (cache, config, OPcache)"
     echo "  13. Fix permissions"
     echo "  14. Restart queue workers"
-    echo "  15. Restart Octane (if running)"
-    echo "  16. Restart web server (PHP-FPM, Nginx)"
-    echo "  17. Post-deployment tasks"
-    echo "  18. Disable maintenance mode"
-    echo "  19. Health check"
+    echo "  15. Post-deployment tasks"
+    echo "  16. Disable maintenance mode"
+    echo "  17. Health check"
     echo ""
     exit 0
 fi
