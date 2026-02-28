@@ -24,8 +24,7 @@ class SwapApiController extends Controller
 {
     public function __construct(
         private FeeCalculationService $feeCalculationService,
-    ) {
-    }
+    ) {}
 
     // =========================================================================
     // Endpoints

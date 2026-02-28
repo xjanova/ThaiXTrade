@@ -115,14 +115,8 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
 
-      - name: Run Laravel Pint (Code Style) - Show diff on failure
-        run: |
-          if ! ./vendor/bin/pint --test; then
-            echo "=== Pint found issues. Showing the diff of what needs to change: ==="
-            ./vendor/bin/pint
-            git diff
-            exit 1
-          fi
+      - name: Run Laravel Pint (Code Style)
+        run: ./vendor/bin/pint --test
 
       - name: Check for security vulnerabilities
         run: |
