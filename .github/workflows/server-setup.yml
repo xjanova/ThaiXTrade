@@ -323,71 +323,84 @@ jobs:
                 ;;
 
               diagnose-web)
+                DOMAIN_ROOT="/home/admin/domains/tpix.online"
                 cd "$DEPLOY_PATH" || { echo "Path not found: $DEPLOY_PATH"; exit 1; }
 
-                echo "=== 1. Path verification ==="
-                echo "DEPLOY_PATH resolved to: $(pwd)"
-                echo "Real path: $(realpath .)"
-                echo "DocumentRoot should be: $(pwd)/public_html"
-                ls -la public_html/index.php
+                echo "=== 1. Compare paths ==="
+                echo "DEPLOY_PATH pwd: $(pwd)"
+                echo "DOMAIN_ROOT: $DOMAIN_ROOT"
+                echo "Are they the same? $([ "$(pwd)" = "$DOMAIN_ROOT" ] && echo YES || echo NO)"
                 echo ""
 
-                echo "=== 2. DNS resolution ==="
-                host tpix.online 2>/dev/null || nslookup tpix.online 2>/dev/null || dig tpix.online +short 2>/dev/null
-                echo "Server IP:"
-                hostname -I 2>/dev/null
+                echo "=== 2. Check DA public_html ==="
+                echo "--- DA public_html ---"
+                ls -la "$DOMAIN_ROOT/public_html/" 2>/dev/null | head -15
+                echo ""
+                echo "--- DEPLOY_PATH public_html ---"
+                ls -la "$DEPLOY_PATH/public_html/" 2>/dev/null | head -15
                 echo ""
 
-                echo "=== 3. Test PHP via FPM ==="
-                echo '<?php echo "TEST_OK";' > public_html/test.php
-                chmod 644 public_html/test.php
-                # Test via curl to localhost with Host header
-                curl -s -H "Host: tpix.online" "http://127.0.0.1/test.php" 2>/dev/null | head -5
-                echo ""
-                curl -s -H "Host: tpix.online" "http://127.0.0.1/" 2>/dev/null | head -5
+                echo "=== 3. Remove DA default index.html ==="
+                rm -f "$DOMAIN_ROOT/public_html/index.html"
+                echo "Removed DA index.html"
                 echo ""
 
-                echo "=== 4. Apache status ==="
-                sudo httpd -t 2>&1 || echo "httpd config test failed"
-                sudo systemctl status httpd 2>&1 | head -10
+                echo "=== 4. Copy project public_html to DA public_html ==="
+                if [ "$(pwd)" != "$DOMAIN_ROOT" ]; then
+                  echo "Paths DIFFER! Copying project files to DA domain..."
+                  cp -rf "$DEPLOY_PATH/public_html/"* "$DOMAIN_ROOT/public_html/" 2>/dev/null || true
+                  cp -f "$DEPLOY_PATH/public_html/.htaccess" "$DOMAIN_ROOT/public_html/" 2>/dev/null || true
+                  echo "Copied."
+                  echo "DA public_html after copy:"
+                  ls -la "$DOMAIN_ROOT/public_html/" | head -15
+                else
+                  echo "Paths are the same, no copy needed"
+                fi
                 echo ""
 
-                echo "=== 5. Apache loaded vhosts ==="
-                sudo httpd -S 2>&1 | grep -i tpix | head -10
+                echo "=== 5. Verify index.php in DA path ==="
+                head -3 "$DOMAIN_ROOT/public_html/index.php" 2>/dev/null || echo "STILL NO index.php!"
                 echo ""
 
-                echo "=== 6. Permission check ==="
-                namei -l /home/admin/domains/tpix.online/public_html/index.php 2>/dev/null || echo "namei not available"
+                echo "=== 6. Fix index.php bootstrap path ==="
+                # The index.php needs to find the Laravel bootstrap
+                echo "Current index.php references:"
+                grep "require" "$DOMAIN_ROOT/public_html/index.php" 2>/dev/null
+                echo ""
+                # If paths differ, index.php needs to point to DEPLOY_PATH
+                if [ "$(pwd)" != "$DOMAIN_ROOT" ]; then
+                  echo "Creating symlinks for Laravel..."
+                  # Symlink bootstrap, vendor, artisan to domain root
+                  for dir in bootstrap vendor artisan storage app config database routes; do
+                    if [ -e "$DEPLOY_PATH/$dir" ] && [ ! -e "$DOMAIN_ROOT/$dir" ]; then
+                      ln -sf "$DEPLOY_PATH/$dir" "$DOMAIN_ROOT/$dir"
+                      echo "Linked: $dir"
+                    fi
+                  done
+                  # Also need .env
+                  [ -f "$DEPLOY_PATH/.env" ] && [ ! -f "$DOMAIN_ROOT/.env" ] && ln -sf "$DEPLOY_PATH/.env" "$DOMAIN_ROOT/.env" && echo "Linked: .env"
+                fi
                 echo ""
 
-                echo "=== 7. Apache error logs ==="
-                ls -la /var/log/httpd/domains/tpix* 2>/dev/null || echo "No tpix log files"
-                sudo tail -20 /var/log/httpd/error_log 2>/dev/null | grep -i tpix | head -10 || echo "No tpix errors in main log"
-                sudo tail -20 /var/log/httpd/error_log 2>/dev/null | tail -5
-                echo ""
-
-                echo "=== 8. Rebuild httpd config ==="
-                echo "action=rewrite&value=httpd" | sudo tee -a /usr/local/directadmin/data/task.queue 2>/dev/null
-                sleep 3
-                sudo systemctl reload httpd 2>/dev/null || sudo systemctl restart httpd 2>/dev/null
-                sleep 2
-                echo ""
-
-                echo "=== 9. Test after rebuild ==="
-                curl -s -H "Host: tpix.online" "http://127.0.0.1/test.php" 2>/dev/null | head -5
-                echo ""
+                echo "=== 7. Test via localhost ==="
                 curl -s -H "Host: tpix.online" "http://127.0.0.1/" 2>/dev/null | head -10
                 echo ""
-                curl -sv "https://tpix.online/test.php" 2>&1 | head -30
+
+                echo "=== 8. Permissions ==="
+                chmod -R 755 "$DOMAIN_ROOT/public_html/" 2>/dev/null || true
                 echo ""
 
-                echo "=== 10. Check for index.html elsewhere ==="
-                find /home/admin/ -name "index.html" -path "*/tpix*" 2>/dev/null
-                find /var/www/ -name "index.html" 2>/dev/null | head -5
+                echo "=== 9. PHP-FPM config check ==="
+                grep -r "chroot\|doc_root\|open_basedir" /usr/local/php83/etc/php-fpm.d/ 2>/dev/null | head -5
+                grep "open_basedir" /usr/local/php83/lib/php.ini 2>/dev/null | head -3
                 echo ""
 
-                echo "=== Cleanup ==="
-                rm -f public_html/test.php
+                echo "=== 10. Final test ==="
+                echo '<?php echo "WORKS";' > "$DOMAIN_ROOT/public_html/test.php"
+                curl -s -H "Host: tpix.online" "http://127.0.0.1/test.php" 2>/dev/null
+                echo ""
+                rm -f "$DOMAIN_ROOT/public_html/test.php"
+
                 echo "DIAGNOSE COMPLETE"
                 ;;
 
