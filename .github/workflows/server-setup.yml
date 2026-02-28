@@ -394,8 +394,28 @@ jobs:
                 chmod -R 755 public_html/ 2>/dev/null || true
                 echo ""
 
-                echo "=== 10. Test ==="
+                echo "=== 10. PHP-FPM pool config ==="
+                cat /usr/local/php83/etc/php-fpm.d/admin.conf 2>/dev/null | head -30 || echo "No admin.conf"
+                echo "---"
+                ls /usr/local/php83/etc/php-fpm.d/ 2>/dev/null
+                echo "---"
+                grep -r "doc_root\|open_basedir\|chroot" /usr/local/php83/etc/php-fpm.d/*.conf 2>/dev/null | head -10
+                echo "---"
+                grep "doc_root" /usr/local/php83/lib/php.ini 2>/dev/null | head -3
+                echo ""
+
+                echo "=== 11. Restart PHP-FPM ==="
+                sudo systemctl restart php83-fpm 2>/dev/null || \
+                sudo /usr/local/php83/sbin/php-fpm --fpm-config /usr/local/php83/etc/php-fpm.conf 2>/dev/null || \
+                sudo kill -USR2 $(cat /usr/local/php83/var/run/php-fpm.pid 2>/dev/null) 2>/dev/null || \
+                sudo systemctl restart php-fpm 2>/dev/null || \
+                echo "Could not restart PHP-FPM"
+                sleep 2
+                echo ""
+
+                echo "=== 12. Test ==="
                 echo '<?php echo "PHP_OK";' > public_html/test.php
+                chmod 644 public_html/test.php
                 curl -s -H "Host: tpix.online" "http://127.0.0.1/test.php" 2>/dev/null
                 echo ""
                 curl -s -H "Host: tpix.online" "http://127.0.0.1/" 2>/dev/null | head -5
