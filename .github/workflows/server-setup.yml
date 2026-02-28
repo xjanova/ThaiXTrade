@@ -1,0 +1,141 @@
+name: Server Initial Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Setup task to run'
+        required: true
+        type: choice
+        options:
+          - clone-and-setup
+          - check-status
+          - remove-workflow
+
+jobs:
+  setup:
+    name: Server Setup
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run setup via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          command_timeout: 10m
+          script: |
+            TASK="${{ inputs.task }}"
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            DEPLOY_PATH="${DEPLOY_PATH:-/home/admin/domains/tpix.online}"
+
+            echo "Task: $TASK"
+            echo "Path: $DEPLOY_PATH"
+            echo "User: $(whoami)"
+
+            case "$TASK" in
+              clone-and-setup)
+                echo "=== Step 1: Prepare directory ==="
+                if [ -d "$DEPLOY_PATH/.git" ]; then
+                  echo "Git repo already exists, pulling latest..."
+                  cd "$DEPLOY_PATH"
+                  git fetch origin main
+                  git reset --hard origin/main
+                else
+                  echo "Cloning fresh repo..."
+                  mkdir -p "$(dirname $DEPLOY_PATH)"
+
+                  if [ -d "$DEPLOY_PATH/public_html" ] && [ ! -d "$DEPLOY_PATH/.git" ]; then
+                    echo "Directory exists but no git. Backing up public_html..."
+                    mv "$DEPLOY_PATH/public_html" "$DEPLOY_PATH/public_html.bak.$(date +%s)" 2>/dev/null || true
+                  fi
+
+                  # Clone into temp then move
+                  TEMP_DIR="/tmp/thaixtrade_clone_$$"
+                  git clone https://github.com/xjanova/ThaiXTrade.git "$TEMP_DIR"
+
+                  # Move files into deploy path
+                  if [ ! -d "$DEPLOY_PATH" ]; then
+                    mv "$TEMP_DIR" "$DEPLOY_PATH"
+                  else
+                    cp -a "$TEMP_DIR/." "$DEPLOY_PATH/"
+                    rm -rf "$TEMP_DIR"
+                  fi
+
+                  cd "$DEPLOY_PATH"
+                fi
+
+                echo "=== Step 2: Install Composer ==="
+                composer install --no-dev --optimize-autoloader --no-interaction 2>&1 || {
+                  echo "Trying with --no-scripts..."
+                  composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+                  composer dump-autoload --optimize
+                }
+
+                echo "=== Step 3: Setup .env ==="
+                if [ ! -f ".env" ]; then
+                  cp .env.example .env
+                  php artisan key:generate --force
+                  echo "Created new .env with fresh APP_KEY"
+                else
+                  echo ".env already exists, keeping it"
+                fi
+
+                echo "=== Step 4: NPM Install & Build ==="
+                npm ci --prefer-offline 2>&1 || npm install 2>&1
+                npm run build
+
+                echo "=== Step 5: Database ==="
+                php artisan migrate --force 2>&1 || echo "Migration warnings (non-fatal)"
+
+                echo "=== Step 6: Permissions ==="
+                chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+                chmod +x deploy.sh 2>/dev/null || true
+
+                echo "=== Step 7: Optimize ==="
+                php artisan config:clear
+                php artisan route:clear
+                php artisan view:clear
+                php artisan config:cache
+                php artisan route:cache
+                php artisan view:cache
+
+                echo "=== Step 8: Storage link ==="
+                if [ ! -L "public_html/storage" ]; then
+                  php artisan storage:link 2>/dev/null || true
+                fi
+
+                echo "=== Verify ==="
+                php artisan --version
+                ls -la public_html/build/ 2>/dev/null | head -5 || echo "No build dir yet"
+
+                echo ""
+                echo "=============================="
+                echo "SETUP COMPLETE"
+                echo "=============================="
+                ;;
+
+              check-status)
+                cd "$DEPLOY_PATH" 2>/dev/null || { echo "Path not found: $DEPLOY_PATH"; exit 1; }
+                echo "=== Git Status ==="
+                git log --oneline -3
+                echo ""
+                echo "=== PHP ==="
+                php artisan --version
+                echo ""
+                echo "=== Build ==="
+                ls -la public_html/build/ 2>/dev/null | head -5
+                echo ""
+                echo "=== .env ==="
+                grep -E "^APP_ENV|^APP_DEBUG|^APP_URL|^DB_" .env 2>/dev/null | head -10
+                echo ""
+                echo "=== Disk ==="
+                du -sh . 2>/dev/null
+                ;;
+
+              remove-workflow)
+                echo "This workflow can be safely deleted from the repo after initial setup"
+                ;;
+            esac
