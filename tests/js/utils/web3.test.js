@@ -1,5 +1,5 @@
 /**
- * ThaiXTrade - Web3 Utilities Tests
+ * TPIX TRADE - Web3 Utilities Tests
  * Developed by Xman Studio
  */
 

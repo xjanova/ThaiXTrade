@@ -6,7 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 /**
- * ThaiXTrade - Base Test Case
+ * TPIX TRADE - Base Test Case
  * Developed by Xman Studio.
  */
 abstract class TestCase extends BaseTestCase

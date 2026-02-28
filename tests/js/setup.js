@@ -1,5 +1,5 @@
 /**
- * ThaiXTrade - Vitest Setup
+ * TPIX TRADE - Vitest Setup
  * Developed by Xman Studio
  */
 

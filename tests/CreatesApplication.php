@@ -6,7 +6,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Application;
 
 /**
- * ThaiXTrade - Creates Application Trait
+ * TPIX TRADE - Creates Application Trait
  * Developed by Xman Studio.
  */
 trait CreatesApplication

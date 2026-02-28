@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use Tests\TestCase;
 
 /**
- * ThaiXTrade - Health Check Tests
+ * TPIX TRADE - Health Check Tests
  * Developed by Xman Studio.
  */
 class HealthCheckTest extends TestCase

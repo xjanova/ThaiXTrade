@@ -5,7 +5,7 @@ namespace Tests\Feature\Api;
 use Tests\TestCase;
 
 /**
- * ThaiXTrade - Chain API Tests
+ * TPIX TRADE - Chain API Tests
  * Developed by Xman Studio.
  */
 class ChainApiTest extends TestCase

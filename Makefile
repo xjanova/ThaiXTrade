@@ -1,5 +1,5 @@
 #############################################
-#  ThaiXTrade - Makefile
+#  TPIX TRADE - Makefile
 #  Developed by Xman Studio
 #
 #  Common commands for development
@@ -9,7 +9,7 @@
 
 # Default target
 help:
-	@echo "ThaiXTrade - Available Commands"
+	@echo "TPIX TRADE - Available Commands"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make install      Install all dependencies"

@@ -1,5 +1,5 @@
 /**
- * ThaiXTrade - TradeForm Component Tests
+ * TPIX TRADE - TradeForm Component Tests
  * Developed by Xman Studio
  */
 

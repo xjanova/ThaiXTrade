@@ -1,5 +1,5 @@
 /**
- * ThaiXTrade - Formatter Utilities Tests
+ * TPIX TRADE - Formatter Utilities Tests
  * Developed by Xman Studio
  */
 

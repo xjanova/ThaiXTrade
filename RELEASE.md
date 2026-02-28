@@ -71,7 +71,7 @@ https://github.com/YOUR_USERNAME/ThaiXTrade/actions
 - Links ไปยัง documentation
 
 ### 2. Deployment Package
-ไฟล์: `ThaiXTrade-v1.0.1.tar.gz`
+ไฟล์: `TPIX-TRADE-v1.0.1.tar.gz`
 
 **ประกอบด้วย:**
 - Production-ready code
@@ -96,10 +96,10 @@ https://github.com/YOUR_USERNAME/ThaiXTrade/actions
 
 ```bash
 # 1. Download release
-wget https://github.com/YOUR_USERNAME/ThaiXTrade/releases/download/v1.0.1/ThaiXTrade-v1.0.1.tar.gz
+wget https://github.com/YOUR_USERNAME/ThaiXTrade/releases/download/v1.0.1/TPIX-TRADE-v1.0.1.tar.gz
 
 # 2. Extract
-tar -xzf ThaiXTrade-v1.0.1.tar.gz
+tar -xzf TPIX-TRADE-v1.0.1.tar.gz
 cd ThaiXTrade
 
 # 3. Setup environment

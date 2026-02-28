@@ -1,5 +1,5 @@
 /**
- * ThaiXTrade - OrderBook Component Tests
+ * TPIX TRADE - OrderBook Component Tests
  * Developed by Xman Studio
  */
 

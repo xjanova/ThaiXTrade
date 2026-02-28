@@ -1,5 +1,5 @@
 /**
- * ThaiXTrade - ESLint Configuration
+ * TPIX TRADE - ESLint Configuration
  * Developed by Xman Studio
  */
 

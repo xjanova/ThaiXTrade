@@ -5,7 +5,7 @@ namespace Tests\Unit;
 use PHPUnit\Framework\TestCase;
 
 /**
- * ThaiXTrade - Chain Configuration Tests
+ * TPIX TRADE - Chain Configuration Tests
  * Developed by Xman Studio.
  */
 class ChainConfigTest extends TestCase
