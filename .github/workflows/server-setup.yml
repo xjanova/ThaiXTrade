@@ -10,6 +10,7 @@ on:
         options:
           - clone-and-setup
           - fix-build-and-env
+          - fix-public-html
           - check-status
           - remove-workflow
 
@@ -196,6 +197,75 @@ jobs:
                 echo ""
                 echo "=============================="
                 echo "BUILD & ENV FIX COMPLETE"
+                echo "=============================="
+                ;;
+
+              fix-public-html)
+                cd "$DEPLOY_PATH" || { echo "Path not found: $DEPLOY_PATH"; exit 1; }
+
+                echo "=== Step 1: Check current public_html ==="
+                echo "--- Before fix ---"
+                ls -la public_html/ 2>/dev/null
+                echo ""
+
+                echo "=== Step 2: Restore public_html from git ==="
+                git checkout HEAD -- public_html/ 2>&1
+                echo ""
+
+                echo "=== Step 3: Verify public_html ==="
+                echo "--- After fix ---"
+                ls -la public_html/ 2>/dev/null
+                echo ""
+                echo "--- index.php ---"
+                head -10 public_html/index.php 2>/dev/null || echo "STILL NO index.php!"
+                echo ""
+                echo "--- .htaccess ---"
+                cat public_html/.htaccess 2>/dev/null || echo "No .htaccess"
+                echo ""
+
+                echo "=== Step 4: Rebuild vite assets ==="
+                node ./node_modules/vite/bin/vite.js build 2>&1
+                echo ""
+
+                echo "=== Step 5: Storage link ==="
+                php artisan storage:link 2>/dev/null || echo "Storage link exists or failed"
+                ls -la public_html/storage 2>/dev/null || echo "No storage link"
+                echo ""
+
+                echo "=== Step 6: Re-cache ==="
+                php artisan config:clear
+                php artisan config:cache
+                php artisan route:cache
+                php artisan view:cache
+                echo ""
+
+                echo "=== Step 7: Permissions ==="
+                chmod -R 775 storage bootstrap/cache public_html/build 2>/dev/null || true
+                echo ""
+
+                echo "=== Step 8: Check web server ==="
+                # Find the actual web server
+                ps aux | grep -E "httpd|nginx|litespeed|lshttpd|apache" | grep -v grep | head -5
+                echo "---"
+                # Check if there's a custom httpd config
+                find /etc/ -name "*.conf" -path "*tpix*" 2>/dev/null | head -5
+                find /usr/local/ -name "*.conf" -path "*tpix*" 2>/dev/null | head -5
+                # Check for openlitespeed or directadmin httpd
+                ls /etc/openlitespeed/ 2>/dev/null && echo "OLS found at /etc/openlitespeed"
+                ls /etc/httpd/ 2>/dev/null && echo "httpd found at /etc/httpd"
+                which httpd 2>/dev/null || echo "httpd not in PATH"
+                # DirectAdmin configs
+                cat /usr/local/directadmin/data/users/admin/httpd.conf 2>/dev/null | head -30 || echo "No DA httpd.conf"
+                echo ""
+
+                echo "=== Step 9: Test HTTP ==="
+                curl -s -o /dev/null -w "HTTP: %{http_code}\n" http://localhost 2>/dev/null
+                curl -s -o /dev/null -w "HTTPS tpix.online: %{http_code}\n" https://tpix.online 2>/dev/null || echo "HTTPS not reachable from server"
+                curl -s http://localhost 2>/dev/null | head -20
+                echo ""
+
+                echo "=============================="
+                echo "PUBLIC_HTML FIX COMPLETE"
                 echo "=============================="
                 ;;
 
