@@ -1,23 +1,23 @@
 {
-    "name": "ThaiXTrade",
-    "version": "1.0.0",
-    "build": 1,
-    "releaseDate": "2024-01-25",
-    "channel": "stable",
-    "developer": "Xman Studio",
-    "website": "https://xmanstudio.com",
-    "changelog": {
-        "1.0.0": {
-            "date": "2024-01-25",
-            "changes": [
-                "Initial release",
-                "Trading Dashboard with Glass Morphism UI",
-                "Multi-chain support (50+ blockchains)",
-                "Wallet connection (MetaMask, WalletConnect, Trust Wallet)",
-                "Real-time charts and order book",
-                "AI-powered trading assistant",
-                "Multi-language support via Google Translate"
-            ]
-        }
+  "name": "ThaiXTrade",
+  "version": "1.0.1",
+  "build": 2,
+  "releaseDate": "2026-02-28",
+  "channel": "stable",
+  "developer": "Xman Studio",
+  "website": "https://xmanstudio.com",
+  "changelog": {
+    "1.0.0": {
+      "date": "2024-01-25",
+      "changes": [
+        "Initial release",
+        "Trading Dashboard with Glass Morphism UI",
+        "Multi-chain support (50+ blockchains)",
+        "Wallet connection (MetaMask, WalletConnect, Trust Wallet)",
+        "Real-time charts and order book",
+        "AI-powered trading assistant",
+        "Multi-language support via Google Translate"
+      ]
     }
+  }
 }
