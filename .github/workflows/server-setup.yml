@@ -139,8 +139,11 @@ jobs:
 
                 echo ""
                 echo "=== Step 4: Build frontend assets ==="
-                export PATH="$DEPLOY_PATH/node_modules/.bin:$PATH"
-                npx vite build 2>&1
+                echo "Using direct node path to vite..."
+                node ./node_modules/vite/bin/vite.js build 2>&1 || {
+                  echo "Direct vite failed, trying with full path..."
+                  NODE_PATH="$DEPLOY_PATH/node_modules" node "$DEPLOY_PATH/node_modules/vite/bin/vite.js" build 2>&1
+                }
 
                 echo ""
                 echo "=== Step 5: Verify build output ==="
@@ -173,10 +176,22 @@ jobs:
                 cat /usr/local/directadmin/data/users/admin/domains/tpix.online.conf 2>/dev/null | head -20 || echo "No DA domain config"
 
                 echo ""
-                echo "=== Step 10: Check DirectAdmin setup ==="
-                ls -la /home/admin/domains/ 2>/dev/null | head -10
-                ls -la /home/admin/domains/tpix.online/ 2>/dev/null
-                cat /home/admin/domains/tpix.online/public_html/.htaccess 2>/dev/null | head -20 || echo "No .htaccess in public_html"
+                echo "=== Step 10: Check DirectAdmin & public_html ==="
+                echo "--- Domain root ---"
+                ls -la "$DEPLOY_PATH/" 2>/dev/null | head -20
+                echo "--- public_html contents ---"
+                ls -la "$DEPLOY_PATH/public_html/" 2>/dev/null | head -20
+                echo "--- index.php exists? ---"
+                head -5 "$DEPLOY_PATH/public_html/index.php" 2>/dev/null || echo "NO index.php in public_html!"
+                echo "--- .htaccess ---"
+                cat "$DEPLOY_PATH/public_html/.htaccess" 2>/dev/null | head -25 || echo "No .htaccess"
+                echo "--- Web server type ---"
+                ls /usr/local/lsws/ 2>/dev/null && echo "OpenLiteSpeed detected" || echo "No OLS"
+                nginx -v 2>&1 || echo "No nginx"
+                apache2 -v 2>&1 || httpd -v 2>&1 || echo "No apache/httpd"
+                echo "--- PHP handler ---"
+                ls /usr/local/lsws/lsphp*/bin/lsphp 2>/dev/null || echo "No LSPHP"
+                php -v 2>/dev/null | head -1
 
                 echo ""
                 echo "=============================="
