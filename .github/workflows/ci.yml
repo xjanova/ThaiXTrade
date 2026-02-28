@@ -1,75 +1,93 @@
-name: CI
+name: CI - Tests & Quality Checks
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
+      - 'claude/**'
   pull_request:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
 
 jobs:
-  # PHP Tests
-  php-tests:
-    name: PHP Tests
+  tests:
+    name: Tests (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         php: ['8.2', '8.3']
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
-          coverage: none
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
+          coverage: xdebug
 
-      - name: Cache Composer packages
-        uses: actions/cache@v3
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
         with:
-          path: vendor
-          key: ${{ runner.os }}-php-${{ matrix.php }}-${{ hashFiles('**/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-php-${{ matrix.php }}-
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
 
-      - name: Install dependencies
+      - name: Install Composer dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
 
-      - name: Copy environment file
-        run: cp .env.example .env
-
-      - name: Generate application key
-        run: php artisan key:generate
-
-      - name: Setup Node.js for asset building
-        uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install Node dependencies
+      - name: Install NPM dependencies
         run: npm ci
 
       - name: Build assets
         run: npm run build
 
-      - name: Run PHP tests
-        run: vendor/bin/phpunit --colors=always --display-warnings --display-deprecations
+      - name: Prepare Laravel application
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          php artisan config:clear
+          php artisan cache:clear
 
-  # JavaScript Tests
+      - name: Run database migrations
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: database/database.sqlite
+        run: php artisan migrate --force
+
+      - name: Run PHP tests
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: database/database.sqlite
+        run: php artisan test
+
   js-tests:
     name: JavaScript Tests
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -80,68 +98,172 @@ jobs:
       - name: Run JavaScript tests
         run: npm run test:run
 
-  # Code Quality
   code-quality:
-    name: Code Quality
+    name: Code Quality Checks
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
 
-      - name: Install PHP dependencies
+      - name: Install Composer dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
 
-      - name: Run Laravel Pint
-        run: vendor/bin/pint --test
+      - name: Run Laravel Pint (Code Style)
+        run: ./vendor/bin/pint --test
+
+      - name: Check for security vulnerabilities
+        run: |
+          for i in 1 2 3 4; do
+            if composer audit; then
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in $((i * 2)) seconds..."
+            sleep $((i * 2))
+          done
+          echo "Security check failed after 4 attempts"
+          exit 1
+
+  build-check:
+    name: Build Assets Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install Node dependencies
+      - name: Install NPM dependencies
         run: npm ci
 
-      - name: Build assets
+      - name: Build production assets
         run: npm run build
 
-  # Security Audit
-  security:
-    name: Security Audit
+      - name: Check build output
+        run: |
+          if [ ! -f public_html/build/manifest.json ] && [ ! -f public_html/build/.vite/manifest.json ]; then
+            echo "Build manifest not found!"
+            exit 1
+          fi
+          echo "✓ Build completed successfully"
+
+  auto-release:
+    name: Auto Release
     runs-on: ubuntu-latest
+    needs: [tests, js-tests, code-quality, build-check]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    concurrency:
+      group: auto-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: actions/checkout@v6
         with:
-          php-version: '8.3'
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install PHP dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
-
-      - name: Run Composer audit
-        run: composer audit
-        continue-on-error: true
+      - name: Check if release needed
+        id: check
+        run: |
+          LAST_AUTHOR=$(git log -1 --format='%an')
+          if [[ "$LAST_AUTHOR" == "github-actions[bot]" ]]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Skipping: last commit from bot"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - name: Install Node dependencies
-        run: npm ci
+      - name: Install semver
+        if: steps.check.outputs.skip != 'true'
+        run: npm install -g semver
 
-      - name: Run NPM audit
-        run: npm audit --audit-level=high
-        continue-on-error: true
+      - name: Bump version and commit
+        id: release
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          if [ -f version.json ]; then
+            CURRENT=$(node -e "console.log(require('./version.json').version)")
+          elif [ -f VERSION ]; then
+            CURRENT=$(cat VERSION | tr -d '[:space:]')
+          else
+            CURRENT="1.0.0"
+          fi
+
+          NEW=$(semver -i patch "$CURRENT")
+          echo "new=$NEW" >> $GITHUB_OUTPUT
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # Update version.json if it exists
+          if [ -f version.json ]; then
+            node -e "
+              const fs = require('fs');
+              const v = JSON.parse(fs.readFileSync('version.json', 'utf8'));
+              v.version = '$NEW';
+              v.build = (v.build || 0) + 1;
+              v.releaseDate = new Date().toISOString().split('T')[0];
+              fs.writeFileSync('version.json', JSON.stringify(v, null, 2) + '\n');
+            "
+            git add version.json
+          fi
+
+          # Update package.json
+          if [ -f package.json ]; then
+            node -e "
+              const fs = require('fs');
+              const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              p.version = '$NEW';
+              fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+            "
+            git add package.json
+          fi
+
+          echo "$NEW" > VERSION
+          git add VERSION
+
+          git commit -m "chore: release v$NEW"
+          git pull --rebase origin main
+          git push origin main
+
+          echo "Released v$NEW (from $CURRENT)"
+
+      - name: Create and push tag
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          VERSION="v${{ steps.release.outputs.new }}"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.release.outputs.new }}
+          generate_release_notes: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

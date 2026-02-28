@@ -1,6 +1,16 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+          - major
+          - minor
   push:
     tags:
       - 'v*.*.*'
@@ -12,29 +22,86 @@ jobs:
   build-and-release:
     name: Build and Release
     runs-on: ubuntu-latest
+    concurrency:
+      group: release
+      cancel-in-progress: false
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
-          coverage: none
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Get version from tag
+      - name: Determine version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            npm install -g semver
+            if [ -f version.json ]; then
+              CURRENT=$(node -e "console.log(require('./version.json').version)")
+            elif [ -f VERSION ]; then
+              CURRENT=$(cat VERSION | tr -d '[:space:]')
+            else
+              CURRENT="1.0.0"
+            fi
+            NEW=$(semver -i ${{ inputs.version_bump }} "$CURRENT")
+            echo "VERSION=$NEW" >> $GITHUB_OUTPUT
+            echo "NEEDS_BUMP=true" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+            echo "NEEDS_BUMP=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump version files
+        if: steps.version.outputs.NEEDS_BUMP == 'true'
+        run: |
+          NEW="${{ steps.version.outputs.VERSION }}"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          if [ -f version.json ]; then
+            node -e "
+              const fs = require('fs');
+              const v = JSON.parse(fs.readFileSync('version.json', 'utf8'));
+              v.version = '$NEW';
+              v.build = (v.build || 0) + 1;
+              v.releaseDate = new Date().toISOString().split('T')[0];
+              fs.writeFileSync('version.json', JSON.stringify(v, null, 2) + '\n');
+            "
+            git add version.json
+          fi
+
+          if [ -f package.json ]; then
+            node -e "
+              const fs = require('fs');
+              const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              p.version = '$NEW';
+              fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+            "
+            git add package.json
+          fi
+
+          echo "$NEW" > VERSION
+          git add VERSION
+
+          git commit -m "chore: release v$NEW [skip ci]"
+          git push origin main
+
+          git tag -a "v$NEW" -m "Release v$NEW"
+          git push origin "v$NEW"
 
       - name: Install Composer dependencies
         run: composer install --prefer-dist --no-interaction --no-progress --no-dev --optimize-autoloader
@@ -44,9 +111,6 @@ jobs:
 
       - name: Build production assets
         run: npm run build
-
-      - name: Copy environment file
-        run: cp .env.example .env.production.example
 
       - name: Create deployment package
         run: |
@@ -69,7 +133,7 @@ jobs:
           PREVIOUS_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1) 2>/dev/null || echo "")
 
           if [ -z "$PREVIOUS_TAG" ]; then
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges | head -50)
           else
             CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
           fi
@@ -81,14 +145,17 @@ jobs:
       - name: Read version.json
         id: version_info
         run: |
-          VERSION_NUMBER=$(cat version.json | jq -r '.version')
-          BUILD_NUMBER=$(cat version.json | jq -r '.build')
-          echo "VERSION_NUMBER=$VERSION_NUMBER" >> $GITHUB_OUTPUT
+          if [ -f version.json ]; then
+            BUILD_NUMBER=$(cat version.json | jq -r '.build')
+          else
+            BUILD_NUMBER="N/A"
+          fi
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_OUTPUT
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
           name: ThaiXTrade v${{ steps.version.outputs.VERSION }}
           body: |
             # ThaiXTrade v${{ steps.version.outputs.VERSION }}
@@ -96,52 +163,31 @@ jobs:
             **Build**: #${{ steps.version_info.outputs.BUILD_NUMBER }}
             **Date**: ${{ github.event.head_commit.timestamp }}
 
-            ## 📦 Installation
+            ## Installation
 
             ```bash
-            # Download and extract
             wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz
             tar -xzf ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz
-
-            # Setup environment
-            cp .env.production.example .env
+            cp .env.example .env
             php artisan key:generate
-
-            # Run migrations
             php artisan migrate --force
-
-            # Setup permissions
             chmod -R 775 storage bootstrap/cache
             ```
 
-            ## 📝 Changelog
+            ## Changelog
 
             ${{ steps.changelog.outputs.CHANGELOG }}
 
-            ## ⚡ Features
-
-            - Decentralized Trading on BSC & Ethereum
-            - Real-time Price Charts & Order Books
-            - Web3 Wallet Integration (MetaMask, WalletConnect)
-            - AI-Powered Trading Insights
-            - Glass Morphism Dark Theme
-
-            ## 📋 Requirements
+            ## Requirements
 
             - PHP >= 8.2
             - Composer
             - MySQL/PostgreSQL/SQLite
             - Node.js >= 18
 
-            ## 🔗 Links
-
-            - [Documentation](https://github.com/${{ github.repository }}/wiki)
-            - [Issues](https://github.com/${{ github.repository }}/issues)
-            - [Xman Studio](https://xmanstudio.com)
-
             ---
 
-            **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.changelog.outputs.PREVIOUS_TAG || 'HEAD' }}...v${{ steps.version.outputs.VERSION }}
+            **Full Changelog**: https://github.com/${{ github.repository }}/compare/...v${{ steps.version.outputs.VERSION }}
           files: |
             releases/ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz
           draft: false
@@ -151,6 +197,7 @@ jobs:
 
       - name: Deployment notification
         run: |
-          echo "✅ Release v${{ steps.version.outputs.VERSION }} created successfully!"
-          echo "📦 Package: ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz"
-          echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.VERSION }}"
+          echo "## Release Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** v${{ steps.version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz" >> $GITHUB_STEP_SUMMARY

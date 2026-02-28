@@ -1,0 +1,107 @@
+name: Server Logs
+
+on:
+  workflow_dispatch:
+    inputs:
+      log_command:
+        description: 'Log command to run'
+        required: true
+        default: 'last-500'
+        type: choice
+        options:
+          - last-500
+          - custom
+          - tinker
+      custom_grep:
+        description: 'Custom grep pattern or tinker PHP code'
+        required: false
+        default: ''
+      lines:
+        description: 'Number of lines to search'
+        required: false
+        default: '500'
+
+jobs:
+  read-logs:
+    name: Read Server Logs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Read logs via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_DIR: ${{ secrets.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          command_timeout: 2m
+          envs: DEPLOY_DIR
+          script: |
+            DEPLOY_DIR="${DEPLOY_DIR:-/var/www/thaixtrade}"
+            cd "$DEPLOY_DIR" || exit 1
+
+            # Find correct log file (supports daily logs)
+            if [ -f "storage/logs/laravel.log" ] && [ -s "storage/logs/laravel.log" ]; then
+              LOG_FILE="storage/logs/laravel.log"
+            else
+              DAILY_LOG=$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)
+              if [ -n "$DAILY_LOG" ]; then
+                LOG_FILE="$DAILY_LOG"
+              else
+                LOG_FILE="storage/logs/laravel.log"
+              fi
+            fi
+            LINES=${{ inputs.lines }}
+            COMMAND="${{ inputs.log_command }}"
+
+            echo "============================================"
+            echo "📋 Server Logs — $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "📁 Log file: $LOG_FILE"
+            echo "📏 Log file size: $(du -sh "$LOG_FILE" 2>/dev/null | cut -f1 || echo 'N/A')"
+            echo "📂 All log files:"
+            ls -lhrt storage/logs/laravel*.log 2>/dev/null | tail -5
+            echo "🔍 Command: $COMMAND"
+            echo "📊 Lines to search: $LINES"
+            echo "============================================"
+            echo ""
+
+            case "$COMMAND" in
+              last-500)
+                echo "📜 Last 500 lines of laravel.log"
+                echo "---"
+                tail -500 "$LOG_FILE"
+                ;;
+              custom)
+                PATTERN="${{ inputs.custom_grep }}"
+                if [ -z "$PATTERN" ]; then
+                  echo "❌ No custom grep pattern provided"
+                  exit 1
+                fi
+                echo "🔍 Custom grep: $PATTERN"
+                echo "---"
+                tail -$LINES "$LOG_FILE" | grep -E "$PATTERN" | tail -60
+                ;;
+              tinker)
+                PHP_CODE="${{ inputs.custom_grep }}"
+                if [ -z "$PHP_CODE" ]; then
+                  echo "❌ No PHP code provided in custom_grep field"
+                  exit 1
+                fi
+                echo "🔧 Running artisan tinker..."
+                echo "---"
+                PHP_BIN=$(which php8.3 2>/dev/null || which php83 2>/dev/null || which php 2>/dev/null)
+                echo "PHP: $PHP_BIN"
+                $PHP_BIN artisan tinker --execute="$PHP_CODE" 2>&1
+                ;;
+              *)
+                echo "❌ Unknown command: $COMMAND"
+                exit 1
+                ;;
+            esac
+
+            echo ""
+            echo "============================================"
+            echo "✅ Log read complete — $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "============================================"

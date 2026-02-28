@@ -1,101 +1,147 @@
-name: Deploy
+name: Deploy to Production
 
 on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
   push:
-    branches: [main]
     tags:
       - 'v*'
 
 jobs:
   deploy:
-    name: Deploy to Production
+    name: Deploy to ${{ github.event.inputs.environment || 'production' }}
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
 
     steps:
+      - name: Check required secrets
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::error::Required deployment secrets are not configured."
+            echo "Please set: SSH_HOST, SSH_USER, SSH_PRIVATE_KEY"
+            echo "Optional: SSH_PORT, DEPLOY_PATH, APP_URL"
+            exit 1
+          fi
+          echo "All required secrets are configured."
+
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-dev --optimize-autoloader
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install PHP dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress --no-dev --optimize-autoloader
-
-      - name: Install Node dependencies
+      - name: Install NPM dependencies
         run: npm ci
 
-      - name: Build assets
+      - name: Build production assets
         run: npm run build
 
-      - name: Create deployment artifact
+      - name: Create deployment package
         run: |
-          tar -czf /tmp/deploy.tar.gz \
+          tar -czf deployment.tar.gz \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='tests' \
             --exclude='.github' \
-            --exclude='coverage*' \
-            --exclude='.phpunit*' \
-            --exclude='*.md' \
-            . && mv /tmp/deploy.tar.gz deploy.tar.gz
+            --exclude='storage/logs/*' \
+            --exclude='storage/framework/cache/*' \
+            --exclude='storage/framework/sessions/*' \
+            --exclude='storage/framework/views/*' \
+            .
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Deploy via SSH
+        uses: appleboy/scp-action@v1
         with:
-          name: deploy-${{ github.sha }}
-          path: deploy.tar.gz
-          retention-days: 7
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: "deployment.tar.gz,deploy.sh"
+          target: "/tmp/thaixtrade-deploy"
 
-      # Uncomment and configure for your deployment target
-      # - name: Deploy to server via SSH
-      #   uses: appleboy/ssh-action@v1.0.0
-      #   with:
-      #     host: ${{ secrets.SERVER_HOST }}
-      #     username: ${{ secrets.SERVER_USER }}
-      #     key: ${{ secrets.SERVER_SSH_KEY }}
-      #     script: |
-      #       cd /var/www/thaixtrade
-      #       ./deploy.sh
-
-  release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: deploy
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Extract version
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          # Extract latest changelog entry
-          CHANGELOG=$(sed -n '/^## \[${{ steps.version.outputs.VERSION }}\]/,/^## \[/p' CHANGELOG.md | head -n -1)
-          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+      - name: Execute deployment script
+        uses: appleboy/ssh-action@v1
         with:
-          name: ThaiXTrade v${{ steps.version.outputs.VERSION }}
-          body: ${{ steps.changelog.outputs.CHANGELOG }}
-          draft: false
-          prerelease: false
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            DEPLOY_PATH="${DEPLOY_PATH:-/var/www/thaixtrade}"
+            BACKUP_DIR="${DEPLOY_PATH}/storage/backups"
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+            echo "Starting deployment to ${DEPLOY_PATH}"
+
+            mkdir -p ${BACKUP_DIR}
+            if [ -f ${DEPLOY_PATH}/.env ]; then
+              cp ${DEPLOY_PATH}/.env ${BACKUP_DIR}/env_${TIMESTAMP}
+            fi
+
+            echo "Extracting new version..."
+            cd ${DEPLOY_PATH}
+            tar -xzf /tmp/thaixtrade-deploy/deployment.tar.gz
+
+            echo "Running deployment script..."
+            chmod +x deploy.sh
+            ./deploy.sh ${{ github.ref_name }} --skip-backup
+
+            rm -rf /tmp/thaixtrade-deploy
+
+            echo "Deployment completed successfully!"
+
+      - name: Health check
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          URL="${APP_URL:-https://thaixtrade.com}"
+          sleep 10
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 302 ]; then
+            echo "Application is healthy (HTTP $HTTP_CODE)"
+          else
+            echo "Application health check returned HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+      - name: Notify deployment status
+        if: always()
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "## Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ github.event.inputs.environment || 'production' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** ${APP_URL:-https://thaixtrade.com}" >> $GITHUB_STEP_SUMMARY
