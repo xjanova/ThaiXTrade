@@ -1,7 +1,7 @@
 <?php
 
 /**
- * ThaiXTrade - Application Bootstrap
+ * TPIX TRADE - Application Bootstrap
  * Developed by Xman Studio.
  */
 

@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Trading Dashboard Page
+ * TPIX TRADE - Trading Dashboard Page
  * Main trading interface
  * Developed by Xman Studio
  */

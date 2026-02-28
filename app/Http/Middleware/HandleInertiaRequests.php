@@ -37,7 +37,7 @@ class HandleInertiaRequests extends Middleware
     {
         return array_merge(parent::share($request), [
             'app' => [
-                'name' => config('app.name', 'ThaiXTrade'),
+                'name' => config('app.name', 'TPIX TRADE'),
                 'url' => config('app.url'),
             ],
             'flash' => [

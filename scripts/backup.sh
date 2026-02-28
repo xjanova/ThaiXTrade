@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Backup Script
+#  TPIX TRADE - Backup Script
 #  Developed by Xman Studio
 #
 #  Create full or partial backups
@@ -181,7 +181,7 @@ list_backups() {
 # Quick backup (db + env)
 quick_backup() {
     echo -e "${CYAN}╔════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║              ThaiXTrade Quick Backup                           ║${NC}"
+    echo -e "${CYAN}║              TPIX TRADE Quick Backup                            ║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
@@ -197,7 +197,7 @@ quick_backup() {
 # Full backup
 full_backup() {
     echo -e "${CYAN}╔════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║              ThaiXTrade Full Backup                            ║${NC}"
+    echo -e "${CYAN}║              TPIX TRADE Full Backup                             ║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
@@ -216,7 +216,7 @@ full_backup() {
 
 # Show help
 show_help() {
-    echo "ThaiXTrade Backup Script"
+    echo "TPIX TRADE Backup Script"
     echo ""
     echo "Usage: $0 [command]"
     echo ""

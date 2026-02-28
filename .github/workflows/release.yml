@@ -115,7 +115,7 @@ jobs:
       - name: Create deployment package
         run: |
           mkdir -p releases
-          tar -czf releases/ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz \
+          tar -czf releases/TPIX-TRADE-v${{ steps.version.outputs.VERSION }}.tar.gz \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='node_modules' \
@@ -156,9 +156,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.VERSION }}
-          name: ThaiXTrade v${{ steps.version.outputs.VERSION }}
+          name: TPIX TRADE v${{ steps.version.outputs.VERSION }}
           body: |
-            # ThaiXTrade v${{ steps.version.outputs.VERSION }}
+            # TPIX TRADE v${{ steps.version.outputs.VERSION }}
 
             **Build**: #${{ steps.version_info.outputs.BUILD_NUMBER }}
             **Date**: ${{ github.event.head_commit.timestamp }}
@@ -166,8 +166,8 @@ jobs:
             ## Installation
 
             ```bash
-            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz
-            tar -xzf ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/TPIX-TRADE-v${{ steps.version.outputs.VERSION }}.tar.gz
+            tar -xzf TPIX-TRADE-v${{ steps.version.outputs.VERSION }}.tar.gz
             cp .env.example .env
             php artisan key:generate
             php artisan migrate --force
@@ -189,7 +189,7 @@ jobs:
 
             **Full Changelog**: https://github.com/${{ github.repository }}/compare/...v${{ steps.version.outputs.VERSION }}
           files: |
-            releases/ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz
+            releases/TPIX-TRADE-v${{ steps.version.outputs.VERSION }}.tar.gz
           draft: false
           prerelease: false
         env:
@@ -200,4 +200,4 @@ jobs:
           echo "## Release Created" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** v${{ steps.version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Package:** ThaiXTrade-v${{ steps.version.outputs.VERSION }}.tar.gz" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** TPIX-TRADE-v${{ steps.version.outputs.VERSION }}.tar.gz" >> $GITHUB_STEP_SUMMARY

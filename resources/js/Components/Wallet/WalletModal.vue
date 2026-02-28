@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Wallet Connection Modal
+ * TPIX TRADE - Wallet Connection Modal
  * Connect crypto wallets via Web3
  * Developed by Xman Studio
  */
@@ -184,7 +184,7 @@ const connectWallet = async (wallet) => {
                     <div>
                         <p class="text-sm font-medium text-primary-400">Non-Custodial & Secure</p>
                         <p class="text-xs text-dark-400 mt-1">
-                            ThaiXTrade never stores your private keys. All transactions are signed locally on your device.
+                            TPIX TRADE never stores your private keys. All transactions are signed locally on your device.
                         </p>
                     </div>
                 </div>

@@ -1,6 +1,6 @@
 # API Reference
 
-ThaiXTrade REST API documentation.
+TPIX TRADE REST API documentation.
 
 ---
 
@@ -26,7 +26,7 @@ ThaiXTrade REST API documentation.
 
 ## Overview
 
-The ThaiXTrade API is a RESTful JSON API that provides access to market data, trading operations, wallet management, and AI-powered insights. All endpoints return data in a consistent envelope format.
+The TPIX TRADE API is a RESTful JSON API that provides access to market data, trading operations, wallet management, and AI-powered insights. All endpoints return data in a consistent envelope format.
 
 ### API Root
 
@@ -37,7 +37,7 @@ GET /api/
 **Response:**
 ```json
 {
-    "name": "ThaiXTrade API",
+    "name": "TPIX TRADE API",
     "version": "1.0.0",
     "status": "operational",
     "developer": "Xman Studio"
@@ -1015,7 +1015,7 @@ Requests a message to be signed by the connected wallet for authentication purpo
 {
     "success": true,
     "data": {
-        "nonce": "ThaiXTrade Authentication\nNonce: abc123\nTimestamp: 2024-01-25T12:00:00Z",
+        "nonce": "TPIX TRADE Authentication\nNonce: abc123\nTimestamp: 2024-01-25T12:00:00Z",
         "expiresAt": "2024-01-25T12:05:00Z"
     }
 }
@@ -1158,7 +1158,7 @@ GET /api/v1/ai/insights/{symbol}
 
 ## WebSocket Events
 
-ThaiXTrade uses Laravel Reverb for real-time updates.
+TPIX TRADE uses Laravel Reverb for real-time updates.
 
 ### Connection
 
@@ -1228,7 +1228,7 @@ No authentication required.
 ```json
 {
     "status": "healthy",
-    "app": "ThaiXTrade",
+    "app": "TPIX TRADE",
     "version": "1.0.0",
     "timestamp": "2024-01-25T12:00:00+07:00"
 }
@@ -1268,5 +1268,5 @@ A static PHP health check file that can be used by load balancers and monitoring
 ---
 
 <p align="center">
-  <strong><a href="https://xmanstudio.com">Xman Studio</a></strong> -- ThaiXTrade API Reference
+  <strong><a href="https://xmanstudio.com">Xman Studio</a></strong> -- TPIX TRADE API Reference
 </p>

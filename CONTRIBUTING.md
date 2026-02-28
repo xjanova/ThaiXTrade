@@ -1,6 +1,6 @@
-# Contributing to ThaiXTrade
+# Contributing to TPIX TRADE
 
-ขอบคุณที่สนใจร่วมพัฒนา ThaiXTrade! เอกสารนี้จะช่วยให้คุณเริ่มต้นได้อย่างรวดเร็ว
+ขอบคุณที่สนใจร่วมพัฒนา TPIX TRADE! เอกสารนี้จะช่วยให้คุณเริ่มต้นได้อย่างรวดเร็ว
 
 ## Table of Contents
 
@@ -408,6 +408,6 @@ By contributing, you agree that your contributions will be licensed under the sa
 
 ---
 
-**Thank you for contributing to ThaiXTrade!** 🙏
+**Thank you for contributing to TPIX TRADE!** 🙏
 
 *Developed by Xman Studio*

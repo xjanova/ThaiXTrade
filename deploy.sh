@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #########################################################
-# ThaiXTrade - Smart Automated Deployment Script
+# TPIX TRADE - Smart Automated Deployment Script
 # Developed by Xman Studio (https://xmanstudio.com)
 # Features:
 #   - Smart migration handling (skip existing tables)
@@ -61,7 +61,7 @@ log_error_detail() {
 # Functions
 print_header() {
     echo -e "\n${CYAN}╔════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║   🚀 ThaiXTrade Deployment Script 🚀          ║${NC}"
+    echo -e "${CYAN}║   🚀 TPIX TRADE Deployment Script 🚀           ║${NC}"
     echo -e "${CYAN}║     Smart Migration & Seeding Support          ║${NC}"
     echo -e "${CYAN}║     Developed by Xman Studio                   ║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════╝${NC}\n"
@@ -788,7 +788,7 @@ fix_permissions() {
     chmod -R 775 storage bootstrap/cache 2>&1
     chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
 
-    # ThaiXTrade uses public_html/ instead of public/
+    # TPIX TRADE uses public_html/ instead of public/
     if [ -d "public_html/build" ]; then
         chmod -R 755 public_html/build
     fi
@@ -803,7 +803,7 @@ restart_queue() {
     print_success "Queue workers will restart on next job"
 }
 
-# Restart Octane (ThaiXTrade supports Octane)
+# Restart Octane (TPIX TRADE supports Octane)
 restart_octane() {
     if pgrep -f "artisan octane:start" > /dev/null 2>&1; then
         print_step "Restarting Octane Server"
@@ -947,7 +947,7 @@ post_deployment() {
     php artisan auth:clear-resets 2>/dev/null || true
     print_success "Cleared expired tokens"
 
-    # ThaiXTrade uses public_html/
+    # TPIX TRADE uses public_html/
     if [ ! -L "public_html/storage" ]; then
         php artisan storage:link 2>/dev/null || true
         print_success "Storage linked"
@@ -1131,7 +1131,7 @@ main() {
     health_check
 
     echo -e "\n${GREEN}╔════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║   ✓ ThaiXTrade Deployment Completed!          ║${NC}"
+    echo -e "${GREEN}║   ✓ TPIX TRADE Deployment Completed!           ║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════════════╝${NC}\n"
 
     print_info "Deployment finished at $(date)"

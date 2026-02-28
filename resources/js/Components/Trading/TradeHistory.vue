@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Trade History Component
+ * TPIX TRADE - Trade History Component
  * Display completed trades
  * Developed by Xman Studio
  */

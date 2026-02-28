@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Test Runner Script
+#  TPIX TRADE - Test Runner Script
 #  Developed by Xman Studio
 #############################################
 
@@ -20,7 +20,7 @@ log_success() { echo -e "${GREEN}[PASS]${NC} $1"; }
 log_error() { echo -e "${RED}[FAIL]${NC} $1"; }
 
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║              ThaiXTrade Test Runner                            ║${NC}"
+echo -e "${CYAN}║              TPIX TRADE Test Runner                             ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -112,7 +112,7 @@ generate_coverage() {
 
 # Show help
 show_help() {
-    echo "ThaiXTrade Test Runner"
+    echo "TPIX TRADE Test Runner"
     echo ""
     echo "Usage: $0 [command]"
     echo ""

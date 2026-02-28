@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Home Page
+ * TPIX TRADE - Home Page
  * Landing page with market overview
  * Developed by Xman Studio
  */
@@ -78,7 +78,7 @@ const stats = ref([
                 </h1>
 
                 <p class="text-xl text-dark-400 max-w-2xl mx-auto mb-10">
-                    ThaiXTrade is the most secure and fastest decentralized exchange.
+                    TPIX TRADE is the most secure and fastest decentralized exchange.
                     Trade directly from your wallet with zero custody risk.
                 </p>
 
@@ -180,7 +180,7 @@ const stats = ref([
             <div class="max-w-6xl mx-auto">
                 <div class="text-center mb-12">
                     <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
-                        Why Trade with ThaiXTrade?
+                        Why Trade with TPIX TRADE?
                     </h2>
                     <p class="text-dark-400 max-w-2xl mx-auto">
                         Built by traders, for traders. Experience the future of decentralized trading.
@@ -243,7 +243,7 @@ const stats = ref([
                             <span class="text-white font-bold text-lg">TX</span>
                         </div>
                         <div>
-                            <p class="font-bold text-white">ThaiXTrade</p>
+                            <p class="font-bold text-white">TPIX TRADE</p>
                             <p class="text-xs text-dark-400">by Xman Studio</p>
                         </div>
                     </div>

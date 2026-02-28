@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Version Bump Script
+#  TPIX TRADE - Version Bump Script
 #  Developed by Xman Studio
 #
 #  Usage: ./scripts/bump-version.sh [major|minor|patch|build]
@@ -195,7 +195,7 @@ bump_version() {
     local new_build=$((current_build + 1))
 
     echo -e "${CYAN}╔════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║      ThaiXTrade Version Bump           ║${NC}"
+    echo -e "${CYAN}║      TPIX TRADE Version Bump            ║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "Current version: ${YELLOW}$current_version${NC} (build $current_build)"
@@ -249,12 +249,12 @@ bump_version() {
 show_version() {
     local version=$(get_current_version)
     local build=$(get_current_build)
-    echo -e "${CYAN}ThaiXTrade${NC} v${GREEN}$version${NC} (build ${YELLOW}$build${NC})"
+    echo -e "${CYAN}TPIX TRADE${NC} v${GREEN}$version${NC} (build ${YELLOW}$build${NC})"
 }
 
 # Show help
 show_help() {
-    echo "ThaiXTrade Version Bump Script"
+    echo "TPIX TRADE Version Bump Script"
     echo ""
     echo "Usage: $0 [command]"
     echo ""

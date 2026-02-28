@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Navigation Bar Component
+ * TPIX TRADE - Navigation Bar Component
  * Developed by Xman Studio
  */
 

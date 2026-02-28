@@ -1,7 +1,7 @@
 <?php
 
 /**
- * ThaiXTrade - Blockchain Chains Configuration
+ * TPIX TRADE - Blockchain Chains Configuration
  * Developed by Xman Studio.
  *
  * Add new chains easily by adding to this configuration

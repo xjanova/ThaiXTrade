@@ -1,7 +1,7 @@
 <?php
 
 /**
- * ThaiXTrade - Health Check Endpoint
+ * TPIX TRADE - Health Check Endpoint
  * Developed by Xman Studio.
  *
  * Simple health check without bootstrapping Laravel
@@ -16,7 +16,7 @@ header('X-Robots-Tag: noindex');
 $health = [
     'status' => 'healthy',
     'timestamp' => date('c'),
-    'app' => 'ThaiXTrade',
+    'app' => 'TPIX TRADE',
     'checks' => [],
 ];
 

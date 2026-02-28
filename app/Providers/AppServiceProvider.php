@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 /**
- * ThaiXTrade - Application Service Provider
+ * TPIX TRADE - Application Service Provider
  * Developed by Xman Studio.
  */
 class AppServiceProvider extends ServiceProvider

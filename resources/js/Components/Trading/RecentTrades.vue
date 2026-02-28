@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Recent Trades Component
+ * TPIX TRADE - Recent Trades Component
  * Real-time trade history
  * Developed by Xman Studio
  */

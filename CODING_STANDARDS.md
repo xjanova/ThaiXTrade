@@ -1,6 +1,6 @@
 # Coding Standards
 
-ThaiXTrade coding conventions and best practices. All contributors must follow these standards to maintain consistency across the codebase.
+TPIX TRADE coding conventions and best practices. All contributors must follow these standards to maintain consistency across the codebase.
 
 ---
 
@@ -22,7 +22,7 @@ ThaiXTrade coding conventions and best practices. All contributors must follow t
 
 ### Style Guide
 
-ThaiXTrade follows **PSR-12** coding style, enforced by [Laravel Pint](https://laravel.com/docs/pint).
+TPIX TRADE follows **PSR-12** coding style, enforced by [Laravel Pint](https://laravel.com/docs/pint).
 
 Run the formatter:
 ```bash
@@ -386,7 +386,7 @@ export function useWebSocket(channel) {
 
 ### Design System
 
-ThaiXTrade uses a **Glass Morphism Dark** theme. Always use the design system classes defined in `resources/css/app.css`:
+TPIX TRADE uses a **Glass Morphism Dark** theme. Always use the design system classes defined in `resources/css/app.css`:
 
 | Class | Purpose |
 |-------|---------|
@@ -936,5 +936,5 @@ tests/
 ---
 
 <p align="center">
-  <strong><a href="https://xmanstudio.com">Xman Studio</a></strong> -- ThaiXTrade Coding Standards
+  <strong><a href="https://xmanstudio.com">Xman Studio</a></strong> -- TPIX TRADE Coding Standards
 </p>

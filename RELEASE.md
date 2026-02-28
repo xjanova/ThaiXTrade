@@ -1,6 +1,6 @@
-# Release Guide - ThaiXTrade
+# Release Guide - TPIX TRADE
 
-คู่มือการสร้าง Release อัตโนมัติสำหรับ ThaiXTrade
+คู่มือการสร้าง Release อัตโนมัติสำหรับ TPIX TRADE
 
 ## 📋 ภาพรวม
 
@@ -307,6 +307,6 @@ v1.0.0 (Initial Release)
 
 ## 📜 License
 
-ThaiXTrade - Developed by Xman Studio
+TPIX TRADE - Developed by Xman Studio
 
 © 2026 Xman Studio. All rights reserved.

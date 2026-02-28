@@ -1,4 +1,4 @@
-# ThaiXTrade - Robots.txt
+# TPIX TRADE - Robots.txt
 # Developed by Xman Studio
 
 User-agent: *
@@ -14,4 +14,4 @@ Allow: /swap
 Allow: /markets
 
 # Sitemap location
-Sitemap: https://thaixtrade.com/sitemap.xml
+Sitemap: https://tpix.online/sitemap.xml

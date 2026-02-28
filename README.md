@@ -1,6 +1,6 @@
-# ThaiXTrade
+# TPIX TRADE
 
-**Thai Decentralized Exchange Platform**
+**Decentralized Exchange Platform**
 
 ![Laravel](https://img.shields.io/badge/Laravel-11-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)
 ![Vue.js](https://img.shields.io/badge/Vue.js-3-4FC08D?style=for-the-badge&logo=vuedotjs&logoColor=white)
@@ -11,7 +11,7 @@
 ![PHP](https://img.shields.io/badge/PHP-8.2+-777BB4?style=for-the-badge&logo=php&logoColor=white)
 ![License](https://img.shields.io/badge/License-Proprietary-blue?style=for-the-badge)
 
-ThaiXTrade is a non-custodial decentralized exchange (DEX) platform that enables users to trade cryptocurrencies directly from their wallets across multiple blockchain networks. Built with a modern Glass Morphism dark theme, it provides a professional trading experience with real-time charts, order book depth visualization, AI-powered insights, and multi-chain support for over 50 blockchains.
+TPIX TRADE is a non-custodial decentralized exchange (DEX) platform that enables users to trade cryptocurrencies directly from their wallets across multiple blockchain networks. Built with a modern Glass Morphism dark theme, it provides a professional trading experience with real-time charts, order book depth visualization, AI-powered insights, and multi-chain support for over 50 blockchains.
 
 ---
 
@@ -128,7 +128,7 @@ For detailed setup instructions, see [QUICKSTART.md](QUICKSTART.md).
 ## Project Structure
 
 ```
-ThaiXTrade/
+TPIX TRADE/
 ├── app/
 │   ├── Http/Controllers/
 │   │   ├── Api/
@@ -247,7 +247,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for test writing guidelines.
 
 ## API Overview
 
-ThaiXTrade exposes a RESTful JSON API under `/api/v1/`. All responses follow a consistent envelope format:
+TPIX TRADE exposes a RESTful JSON API under `/api/v1/`. All responses follow a consistent envelope format:
 
 ```json
 {

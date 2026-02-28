@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Clear Cache Script
+#  TPIX TRADE - Clear Cache Script
 #  Developed by Xman Studio
 #############################################
 
@@ -19,7 +19,7 @@ log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║              ThaiXTrade Clear Cache                            ║${NC}"
+echo -e "${CYAN}║              TPIX TRADE Clear Cache                             ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 

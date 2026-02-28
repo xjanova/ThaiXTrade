@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Sidebar Component
+ * TPIX TRADE - Sidebar Component
  * Developed by Xman Studio
  */
 

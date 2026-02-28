@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Open Orders Component
+ * TPIX TRADE - Open Orders Component
  * Display active orders
  * Developed by Xman Studio
  */

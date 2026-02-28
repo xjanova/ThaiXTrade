@@ -81,7 +81,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           source: "deployment.tar.gz,deploy.sh"
-          target: "/tmp/thaixtrade-deploy"
+          target: "/tmp/tpixtrade-deploy"
 
       - name: Execute deployment script
         uses: appleboy/ssh-action@v1
@@ -107,13 +107,13 @@ jobs:
 
             echo "Extracting new version..."
             cd ${DEPLOY_PATH}
-            tar -xzf /tmp/thaixtrade-deploy/deployment.tar.gz
+            tar -xzf /tmp/tpixtrade-deploy/deployment.tar.gz
 
             echo "Running deployment script..."
             chmod +x deploy.sh
             ./deploy.sh ${{ github.ref_name }} --skip-backup
 
-            rm -rf /tmp/thaixtrade-deploy
+            rm -rf /tmp/tpixtrade-deploy
 
             echo "Deployment completed successfully!"
 

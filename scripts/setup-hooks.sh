@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Setup Git Hooks
+#  TPIX TRADE - Setup Git Hooks
 #  Developed by Xman Studio
 #############################################
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Installation Script
+#  TPIX TRADE - Installation Script
 #  Developed by Xman Studio
 #  https://xmanstudio.com
 #############################################
@@ -231,7 +231,7 @@ print_completion() {
     echo ""
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║                                                               ║${NC}"
-    echo -e "${GREEN}║          ThaiXTrade Installation Complete!                    ║${NC}"
+    echo -e "${GREEN}║          TPIX TRADE Installation Complete!                    ║${NC}"
     echo -e "${GREEN}║                                                               ║${NC}"
     echo -e "${GREEN}╠═══════════════════════════════════════════════════════════════╣${NC}"
     echo -e "${GREEN}║                                                               ║${NC}"
@@ -255,7 +255,7 @@ main() {
     print_banner
 
     echo ""
-    log_info "Starting ThaiXTrade installation..."
+    log_info "Starting TPIX TRADE installation..."
     echo ""
 
     check_requirements

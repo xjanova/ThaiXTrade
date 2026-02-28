@@ -1,4 +1,4 @@
-# ThaiXTrade - How to Deploy
+# TPIX TRADE - How to Deploy
 
 ## 3 Ways to Deploy
 

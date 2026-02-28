@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Ticker Strip Component
+ * TPIX TRADE - Ticker Strip Component
  * Real-time price ticker
  * Developed by Xman Studio
  */

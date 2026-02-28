@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get ThaiXTrade running on your local machine in 5 minutes.
+Get TPIX TRADE running on your local machine in 5 minutes.
 
 ---
 
@@ -176,7 +176,7 @@ Once the servers are running:
 
 ### Database
 
-ThaiXTrade defaults to SQLite for simplicity. To switch to MySQL or PostgreSQL:
+TPIX TRADE defaults to SQLite for simplicity. To switch to MySQL or PostgreSQL:
 
 **MySQL:**
 ```env
@@ -241,9 +241,9 @@ Laravel Reverb handles WebSocket connections:
 
 ```env
 BROADCAST_CONNECTION=reverb
-REVERB_APP_ID=thaixtrade
-REVERB_APP_KEY=thaixtrade-key
-REVERB_APP_SECRET=thaixtrade-secret
+REVERB_APP_ID=tpixtrade
+REVERB_APP_KEY=tpixtrade-key
+REVERB_APP_SECRET=tpixtrade-secret
 REVERB_HOST=localhost
 REVERB_PORT=8080
 REVERB_SCHEME=http
@@ -396,5 +396,5 @@ php artisan key:generate
 ---
 
 <p align="center">
-  <strong><a href="https://xmanstudio.com">Xman Studio</a></strong> -- ThaiXTrade Quick Start Guide
+  <strong><a href="https://xmanstudio.com">Xman Studio</a></strong> -- TPIX TRADE Quick Start Guide
 </p>

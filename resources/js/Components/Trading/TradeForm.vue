@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Trade Form Component
+ * TPIX TRADE - Trade Form Component
  * Buy/Sell order form
  * Developed by Xman Studio
  */

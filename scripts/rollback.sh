@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Rollback Script
+#  TPIX TRADE - Rollback Script
 #  Developed by Xman Studio
 #
 #  Rollback to previous deployment
@@ -136,7 +136,7 @@ rollback_git() {
 
 # Show help
 show_help() {
-    echo "ThaiXTrade Rollback Script"
+    echo "TPIX TRADE Rollback Script"
     echo ""
     echo "Usage: $0 [command] [options]"
     echo ""

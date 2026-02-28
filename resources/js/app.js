@@ -1,5 +1,5 @@
 /**
- * ThaiXTrade - Main Application Entry
+ * TPIX TRADE - Main Application Entry
  * Developed by Xman Studio
  */
 
@@ -14,7 +14,7 @@ import '../css/app.css';
 const pinia = createPinia();
 
 // App name
-const appName = import.meta.env.VITE_APP_NAME || 'ThaiXTrade';
+const appName = import.meta.env.VITE_APP_NAME || 'TPIX TRADE';
 
 createInertiaApp({
     title: (title) => title ? `${title} - ${appName}` : appName,

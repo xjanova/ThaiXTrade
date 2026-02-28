@@ -1,7 +1,7 @@
 <?php
 
 /**
- * ThaiXTrade - API Routes
+ * TPIX TRADE - API Routes
  * Developed by Xman Studio.
  */
 
@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Route;
 // API Version
 Route::get('/', function () {
     return response()->json([
-        'name' => 'ThaiXTrade API',
+        'name' => 'TPIX TRADE API',
         'version' => '1.0.0',
         'status' => 'operational',
         'developer' => 'Xman Studio',

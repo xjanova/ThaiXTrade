@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Release Script
+#  TPIX TRADE - Release Script
 #  Developed by Xman Studio
 #
 #  Creates a new release with version bump,
@@ -26,7 +26,7 @@ BUMP_TYPE="${1:-patch}"
 VERSION_FILE="version.json"
 
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║              ThaiXTrade Release Manager                        ║${NC}"
+echo -e "${CYAN}║              TPIX TRADE Release Manager                         ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -131,7 +131,7 @@ TEMP_CHANGELOG=$(mktemp)
 cat > "$TEMP_CHANGELOG" << EOF
 # Changelog
 
-All notable changes to ThaiXTrade will be documented in this file.
+All notable changes to TPIX TRADE will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -193,7 +193,7 @@ echo ""
 log_info "Step 6/6: Creating git tag..."
 git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION
 
-ThaiXTrade v$NEW_VERSION
+TPIX TRADE v$NEW_VERSION
 Released: $DATE_NOW
 
 See CHANGELOG.md for details."

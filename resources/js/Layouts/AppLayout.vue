@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Main App Layout
+ * TPIX TRADE - Main App Layout
  * Developed by Xman Studio
  */
 

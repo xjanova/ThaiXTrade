@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Security Audit Script
+#  TPIX TRADE - Security Audit Script
 #  Developed by Xman Studio
 #
 #  Performs security checks on the application
@@ -26,7 +26,7 @@ ISSUES=0
 WARNINGS=0
 
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║              ThaiXTrade Security Audit                         ║${NC}"
+echo -e "${CYAN}║              TPIX TRADE Security Audit                          ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 

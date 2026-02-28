@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to ThaiXTrade will be documented in this file.
+All notable changes to TPIX TRADE will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2024-01-25
 
 ### Added
-- Initial release of ThaiXTrade DEX Platform
+- Initial release of TPIX TRADE DEX Platform
 - Trading Dashboard with Glass Morphism dark theme UI
 - Multi-chain support (50+ blockchains including Ethereum, BSC, Polygon, Arbitrum, etc.)
 - Wallet connection support (MetaMask, WalletConnect, Trust Wallet, Coinbase Wallet)

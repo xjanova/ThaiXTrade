@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Pre-commit Hook
+#  TPIX TRADE - Pre-commit Hook
 #  Developed by Xman Studio
 #
 #  Runs before each commit:

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-ThaiXTrade system architecture and technical design documentation.
+TPIX TRADE system architecture and technical design documentation.
 
 ---
 
@@ -294,7 +294,7 @@ Adding a new chain requires only adding an entry to this configuration file.
 
 ### Supported Databases
 
-ThaiXTrade supports multiple database backends:
+TPIX TRADE supports multiple database backends:
 
 | Database | Use Case |
 |----------|----------|
@@ -433,7 +433,7 @@ Full API reference: [API.md](API.md)
 
 ### Key Design Decisions
 
-1. **Non-Custodial**: ThaiXTrade never stores private keys. All signing happens in the user's wallet (browser extension or WalletConnect).
+1. **Non-Custodial**: TPIX TRADE never stores private keys. All signing happens in the user's wallet (browser extension or WalletConnect).
 2. **Server-Side Verification**: The Laravel backend verifies wallet signatures to authenticate users without passwords.
 3. **Multi-Provider RPC**: Each chain has multiple RPC endpoints for failover.
 4. **Client-Side Signing**: Transaction creation and signing use Ethers.js in the browser, then broadcast to the blockchain.
@@ -476,7 +476,7 @@ Full API reference: [API.md](API.md)
 
 ### Laravel Reverb WebSocket
 
-ThaiXTrade uses Laravel Reverb for real-time event broadcasting:
+TPIX TRADE uses Laravel Reverb for real-time event broadcasting:
 
 ```
 +------------------+         +------------------+         +----------------+
@@ -499,9 +499,9 @@ ThaiXTrade uses Laravel Reverb for real-time event broadcasting:
 
 ```env
 BROADCAST_CONNECTION=reverb
-REVERB_APP_ID=thaixtrade
-REVERB_APP_KEY=thaixtrade-key
-REVERB_APP_SECRET=thaixtrade-secret
+REVERB_APP_ID=tpixtrade
+REVERB_APP_KEY=tpixtrade-key
+REVERB_APP_SECRET=tpixtrade-secret
 REVERB_HOST=localhost
 REVERB_PORT=8080
 REVERB_SCHEME=http
@@ -668,10 +668,10 @@ make rollback
 
 ### Document Root
 
-ThaiXTrade uses `public_html/` as the document root instead of the Laravel default `public/`. This accommodates shared hosting environments. The entry point is `public_html/index.php`.
+TPIX TRADE uses `public_html/` as the document root instead of the Laravel default `public/`. This accommodates shared hosting environments. The entry point is `public_html/index.php`.
 
 ---
 
 <p align="center">
-  <strong><a href="https://xmanstudio.com">Xman Studio</a></strong> -- ThaiXTrade Architecture Document
+  <strong><a href="https://xmanstudio.com">Xman Studio</a></strong> -- TPIX TRADE Architecture Document
 </p>

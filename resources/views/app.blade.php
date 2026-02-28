@@ -5,24 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title inertia>{{ config('app.name', 'ThaiXTrade') }}</title>
+    <title inertia>{{ config('app.name', 'TPIX TRADE') }}</title>
 
     <!-- Meta Tags -->
-    <meta name="description" content="ThaiXTrade - Decentralized Exchange Platform by Xman Studio. Trade securely from your own wallet.">
-    <meta name="keywords" content="DEX, decentralized exchange, crypto trading, web3, blockchain, ThaiXTrade">
+    <meta name="description" content="TPIX TRADE - Decentralized Exchange Platform by Xman Studio. Trade securely from your own wallet.">
+    <meta name="keywords" content="DEX, decentralized exchange, crypto trading, web3, blockchain, TPIX TRADE">
     <meta name="author" content="Xman Studio">
 
     <!-- Open Graph -->
-    <meta property="og:title" content="{{ config('app.name', 'ThaiXTrade') }}">
-    <meta property="og:description" content="ThaiXTrade - Decentralized Exchange Platform. Trade securely from your own wallet.">
+    <meta property="og:title" content="{{ config('app.name', 'TPIX TRADE') }}">
+    <meta property="og:description" content="TPIX TRADE - Decentralized Exchange Platform. Trade securely from your own wallet.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="{{ config('app.url') }}">
     <meta property="og:image" content="{{ asset('images/og-image.png') }}">
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="{{ config('app.name', 'ThaiXTrade') }}">
-    <meta name="twitter:description" content="ThaiXTrade - Decentralized Exchange Platform. Trade securely from your own wallet.">
+    <meta name="twitter:title" content="{{ config('app.name', 'TPIX TRADE') }}">
+    <meta name="twitter:description" content="TPIX TRADE - Decentralized Exchange Platform. Trade securely from your own wallet.">
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
@@ -40,11 +40,10 @@
     <!-- PWA -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="application-name" content="ThaiXTrade">
-    <meta name="apple-mobile-web-app-title" content="ThaiXTrade">
+    <meta name="application-name" content="TPIX TRADE">
+    <meta name="apple-mobile-web-app-title" content="TPIX TRADE">
 
     <!-- Scripts -->
-    @routes
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @inertiaHead
 
@@ -107,7 +106,7 @@
     <noscript>
         <div style="padding: 20px; text-align: center; background: #020617; color: #fff;">
             <h1>JavaScript Required</h1>
-            <p>ThaiXTrade requires JavaScript to run. Please enable JavaScript in your browser settings.</p>
+            <p>TPIX TRADE requires JavaScript to run. Please enable JavaScript in your browser settings.</p>
         </div>
     </noscript>
 </body>

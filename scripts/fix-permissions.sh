@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Fix Permissions Script
+#  TPIX TRADE - Fix Permissions Script
 #  Developed by Xman Studio
 #############################################
 
@@ -38,7 +38,7 @@ WEB_USER=$(detect_web_user)
 CURRENT_USER=$(whoami)
 
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║              ThaiXTrade Fix Permissions                        ║${NC}"
+echo -e "${CYAN}║              TPIX TRADE Fix Permissions                         ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "Current user: ${GREEN}$CURRENT_USER${NC}"

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * ThaiXTrade - Laravel Application Entry Point
+ * TPIX TRADE - Laravel Application Entry Point
  * Developed by Xman Studio.
  *
  * This file serves as the entry point for all HTTP requests.

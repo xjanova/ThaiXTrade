@@ -1,4 +1,4 @@
-# ThaiXTrade - Deployment Guide
+# TPIX TRADE - Deployment Guide
 
 ## Quick Start
 
@@ -143,14 +143,14 @@ server {
 }
 ```
 
-**Important**: ThaiXTrade uses `public_html/` as the document root (not `public/`).
+**Important**: TPIX TRADE uses `public_html/` as the document root (not `public/`).
 
 ---
 
 ## Supervisor Configuration (Queue Worker)
 
 ```ini
-[program:thaixtrade-worker]
+[program:tpixtrade-worker]
 process_name=%(program_name)s_%(process_num)02d
 command=php /home/admin/domains/tpix.online/artisan queue:work --sleep=3 --tries=3 --max-time=3600
 autostart=true

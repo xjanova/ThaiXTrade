@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #############################################
-#  ThaiXTrade - Production Optimization
+#  TPIX TRADE - Production Optimization
 #  Developed by Xman Studio
 #############################################
 
@@ -20,7 +20,7 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║         ThaiXTrade Production Optimization                     ║${NC}"
+echo -e "${CYAN}║         TPIX TRADE Production Optimization                      ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 

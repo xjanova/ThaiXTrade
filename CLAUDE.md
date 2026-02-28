@@ -1,11 +1,11 @@
 # CLAUDE.md - AI Development Guidelines
 
-คำแนะนำสำหรับ Claude AI ในการพัฒนา ThaiXTrade
+คำแนะนำสำหรับ Claude AI ในการพัฒนา TPIX TRADE
 
 ## Project Overview
 
 ```
-Name:       ThaiXTrade
+Name:       TPIX TRADE
 Type:       Decentralized Exchange (DEX)
 Developer:  Xman Studio
 Stack:      Laravel 11 + Vue 3 + Inertia.js + TailwindCSS
@@ -17,7 +17,7 @@ Theme:      Glass Morphism Dark
 ## Directory Structure
 
 ```
-ThaiXTrade/
+TPIX TRADE/
 ├── app/                    # Laravel application code
 │   ├── Http/Controllers/   # Controllers (Web & API)
 │   ├── Models/             # Eloquent models
@@ -383,7 +383,7 @@ it('emits order on submit', async () => {
 
 ## Contact
 
-- **Project**: ThaiXTrade
+- **Project**: TPIX TRADE
 - **Developer**: Xman Studio
 - **Website**: https://xmanstudio.com
 

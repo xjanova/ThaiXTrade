@@ -1,7 +1,7 @@
 {
-  "name": "thaixtrade",
+  "name": "tpix-trade",
   "version": "1.0.12",
-  "description": "ThaiXTrade - Decentralized Exchange Platform",
+  "description": "TPIX TRADE - Decentralized Exchange Platform",
   "private": true,
   "type": "module",
   "scripts": {

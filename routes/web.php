@@ -1,7 +1,7 @@
 <?php
 
 /**
- * ThaiXTrade - Web Routes
+ * TPIX TRADE - Web Routes
  * Developed by Xman Studio.
  */
 

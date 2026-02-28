@@ -5,7 +5,7 @@ namespace Tests\Unit;
 use PHPUnit\Framework\TestCase;
 
 /**
- * ThaiXTrade - Version Tests
+ * TPIX TRADE - Version Tests
  * Developed by Xman Studio.
  */
 class VersionTest extends TestCase
@@ -80,13 +80,13 @@ class VersionTest extends TestCase
     }
 
     /**
-     * Test app name is ThaiXTrade.
+     * Test app name is TPIX TRADE.
      */
     public function test_app_name_is_correct(): void
     {
         $content = file_get_contents($this->versionFile);
         $json = json_decode($content, true);
 
-        $this->assertEquals('ThaiXTrade', $json['name']);
+        $this->assertEquals('TPIX TRADE', $json['name']);
     }
 }

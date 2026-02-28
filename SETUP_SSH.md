@@ -1,4 +1,4 @@
-# ThaiXTrade - SSH Key Setup for GitHub Actions
+# TPIX TRADE - SSH Key Setup for GitHub Actions
 
 This guide walks you through setting up SSH key authentication for automated deployments via GitHub Actions.
 

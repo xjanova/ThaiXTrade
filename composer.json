@@ -1,7 +1,7 @@
 {
-    "name": "xmanstudio/thaixtrade",
+    "name": "xmanstudio/tpix-trade",
     "type": "project",
-    "description": "ThaiXTrade - Decentralized Exchange Platform by Xman Studio",
+    "description": "TPIX TRADE - Decentralized Exchange Platform by Xman Studio",
     "keywords": ["laravel", "dex", "trading", "web3", "blockchain", "decentralized"],
     "license": "proprietary",
     "authors": [

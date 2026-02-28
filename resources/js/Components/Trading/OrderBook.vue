@@ -1,6 +1,6 @@
 <script setup>
 /**
- * ThaiXTrade - Order Book Component
+ * TPIX TRADE - Order Book Component
  * Real-time order book display
  * Developed by Xman Studio
  */

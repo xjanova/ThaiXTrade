@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use Tests\TestCase;
 
 /**
- * ThaiXTrade - Trading Page Tests
+ * TPIX TRADE - Trading Page Tests
  * Developed by Xman Studio.
  */
 class TradingPageTest extends TestCase
@@ -37,6 +37,6 @@ class TradingPageTest extends TestCase
     {
         $response = $this->get('/trade');
 
-        $response->assertSee('ThaiXTrade');
+        $response->assertSee('TPIX TRADE');
     }
 }
