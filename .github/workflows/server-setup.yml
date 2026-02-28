@@ -325,53 +325,65 @@ jobs:
               diagnose-web)
                 cd "$DEPLOY_PATH" || { echo "Path not found: $DEPLOY_PATH"; exit 1; }
 
-                echo "=== DEPLOY_PATH ==="
-                pwd
+                echo "=== 1. Path verification ==="
+                echo "DEPLOY_PATH resolved to: $(pwd)"
                 echo "Real path: $(realpath .)"
+                echo "DocumentRoot should be: $(pwd)/public_html"
+                ls -la public_html/index.php
                 echo ""
 
-                echo "=== Create test.php ==="
-                echo '<?php echo "PHP_WORKS_OK"; phpinfo(INFO_GENERAL);' > public_html/test.php
+                echo "=== 2. DNS resolution ==="
+                host tpix.online 2>/dev/null || nslookup tpix.online 2>/dev/null || dig tpix.online +short 2>/dev/null
+                echo "Server IP:"
+                hostname -I 2>/dev/null
                 echo ""
 
-                echo "=== Test direct file access ==="
-                curl -s "https://tpix.online/test.php" 2>/dev/null | head -10
+                echo "=== 3. Test PHP via FPM ==="
+                echo '<?php echo "TEST_OK";' > public_html/test.php
+                chmod 644 public_html/test.php
+                # Test via curl to localhost with Host header
+                curl -s -H "Host: tpix.online" "http://127.0.0.1/test.php" 2>/dev/null | head -5
                 echo ""
-                echo "---"
-                curl -s "https://tpix.online/index.php" 2>/dev/null | head -5
-                echo ""
-                echo "---"
-                curl -s "https://tpix.online/health" 2>/dev/null
-                echo ""
-                echo "---"
-                curl -s "https://tpix.online/favicon.svg" 2>/dev/null | head -3
+                curl -s -H "Host: tpix.online" "http://127.0.0.1/" 2>/dev/null | head -5
                 echo ""
 
-                echo "=== Check Apache error log ==="
-                tail -20 /var/log/httpd/domains/tpix.online.error.log 2>/dev/null || echo "No error log"
+                echo "=== 4. Apache status ==="
+                sudo httpd -t 2>&1 || echo "httpd config test failed"
+                sudo systemctl status httpd 2>&1 | head -10
                 echo ""
 
-                echo "=== Check Apache access log ==="
-                tail -10 /var/log/httpd/domains/tpix.online.log 2>/dev/null || echo "No access log"
+                echo "=== 5. Apache loaded vhosts ==="
+                sudo httpd -S 2>&1 | grep -i tpix | head -10
                 echo ""
 
-                echo "=== Check PHP-FPM ==="
-                ls -la /usr/local/php83/sockets/ 2>/dev/null
-                ps aux | grep php-fpm | grep -v grep | head -5
+                echo "=== 6. Permission check ==="
+                namei -l /home/admin/domains/tpix.online/public_html/index.php 2>/dev/null || echo "namei not available"
                 echo ""
 
-                echo "=== DirectoryIndex setting ==="
-                grep -ri "DirectoryIndex" /etc/httpd/conf/ 2>/dev/null | head -5
-                grep -ri "DirectoryIndex" /usr/local/directadmin/ 2>/dev/null | head -5
+                echo "=== 7. Apache error logs ==="
+                ls -la /var/log/httpd/domains/tpix* 2>/dev/null || echo "No tpix log files"
+                sudo tail -20 /var/log/httpd/error_log 2>/dev/null | grep -i tpix | head -10 || echo "No tpix errors in main log"
+                sudo tail -20 /var/log/httpd/error_log 2>/dev/null | tail -5
                 echo ""
 
-                echo "=== Is there a reverse proxy (nginx)? ==="
-                ps aux | grep -E "nginx|lshttpd|litespeed" | grep -v grep | head -5
-                netstat -tlnp 2>/dev/null | grep -E ":80|:443" | head -5
+                echo "=== 8. Rebuild httpd config ==="
+                echo "action=rewrite&value=httpd" | sudo tee -a /usr/local/directadmin/data/task.queue 2>/dev/null
+                sleep 3
+                sudo systemctl reload httpd 2>/dev/null || sudo systemctl restart httpd 2>/dev/null
+                sleep 2
                 echo ""
 
-                echo "=== Full tpix.online httpd config ==="
-                grep -A 50 "tpix.online" /usr/local/directadmin/data/users/admin/httpd.conf 2>/dev/null | head -80
+                echo "=== 9. Test after rebuild ==="
+                curl -s -H "Host: tpix.online" "http://127.0.0.1/test.php" 2>/dev/null | head -5
+                echo ""
+                curl -s -H "Host: tpix.online" "http://127.0.0.1/" 2>/dev/null | head -10
+                echo ""
+                curl -sv "https://tpix.online/test.php" 2>&1 | head -30
+                echo ""
+
+                echo "=== 10. Check for index.html elsewhere ==="
+                find /home/admin/ -name "index.html" -path "*/tpix*" 2>/dev/null
+                find /var/www/ -name "index.html" 2>/dev/null | head -5
                 echo ""
 
                 echo "=== Cleanup ==="
