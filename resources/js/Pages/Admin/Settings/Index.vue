@@ -32,7 +32,7 @@ const generalForm = useForm({
     site_description: props.settings.site_description || '',
     logo: null,
     favicon: null,
-    primary_color: props.settings.primary_color || '#0ea5e9',
+    primary_color: props.settings.primary_color || '#06b6d4',
 });
 
 const logoPreview = ref(props.settings.logo_url || null);
@@ -89,6 +89,9 @@ const saveSeo = () => {
 const tradingForm = useForm({
     default_slippage: props.settings.default_slippage || 0.5,
     max_slippage: props.settings.max_slippage || 50,
+    fee_collector_wallet: props.settings.fee_collector_wallet || '',
+    default_fee_rate: props.settings.default_fee_rate || 0.3,
+    max_fee_rate: props.settings.max_fee_rate || 5.0,
 });
 
 const saveTrading = () => {
@@ -251,6 +254,38 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
         <div v-show="activeTab === 'trading'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <h3 class="text-lg font-semibold text-white mb-6">Trading Settings</h3>
             <form @submit.prevent="saveTrading" class="space-y-6 max-w-2xl">
+                <!-- Fee Collection Section -->
+                <div class="p-4 rounded-xl bg-gradient-to-br from-accent-500/5 via-primary-500/5 to-warm-500/5 border border-primary-500/10">
+                    <h4 class="text-sm font-semibold text-primary-400 mb-4 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                        </svg>
+                        Fee Collection (DEX Revenue)
+                    </h4>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label :class="labelClass">Fee Collector Wallet Address</label>
+                            <input v-model="tradingForm.fee_collector_wallet" type="text" :class="inputClass" placeholder="0x..." />
+                            <p class="mt-1 text-xs text-dark-500">EVM wallet address that receives all platform swap fees</p>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label :class="labelClass">Default Fee Rate (%)</label>
+                                <input v-model.number="tradingForm.default_fee_rate" type="number" step="0.01" min="0" max="5" :class="inputClass" placeholder="0.3" />
+                                <p class="mt-1 text-xs text-dark-500">Default: 0.3% per swap</p>
+                            </div>
+                            <div>
+                                <label :class="labelClass">Max Fee Rate (%)</label>
+                                <input v-model.number="tradingForm.max_fee_rate" type="number" step="0.1" min="0" max="10" :class="inputClass" placeholder="5.0" />
+                                <p class="mt-1 text-xs text-dark-500">Maximum allowed fee cap</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Slippage Section -->
                 <div>
                     <label :class="labelClass">Default Slippage (%)</label>
                     <input v-model.number="tradingForm.default_slippage" type="number" step="0.1" min="0" :class="inputClass" placeholder="0.5" />

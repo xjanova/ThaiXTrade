@@ -45,19 +45,18 @@ const submit = () => {
     <Head title="Admin Login" />
 
     <div class="min-h-screen bg-dark-950 flex items-center justify-center p-4">
-        <!-- Background Effects -->
+        <!-- Background Effects (brand gradient glow) -->
         <div class="fixed inset-0 pointer-events-none">
-            <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-primary-500/10 rounded-full blur-3xl"></div>
-            <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary-600/5 rounded-full blur-3xl"></div>
+            <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-accent-500/8 rounded-full blur-3xl"></div>
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-primary-500/10 rounded-full blur-3xl"></div>
+            <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-warm-500/5 rounded-full blur-3xl"></div>
         </div>
 
         <div class="relative w-full max-w-md">
             <!-- Logo -->
             <div class="text-center mb-8">
-                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-400 to-primary-600 mb-4 shadow-glow">
-                    <span class="text-white font-bold text-2xl">TX</span>
-                </div>
-                <h1 class="text-2xl font-bold text-white">TPIX TRADE</h1>
+                <img src="/logo.png" alt="TPIX TRADE" class="w-20 h-20 rounded-2xl mx-auto mb-4 shadow-glow-brand object-cover" />
+                <h1 class="text-2xl font-bold text-white">TPIX <span class="text-gradient">TRADE</span></h1>
                 <p class="text-dark-400 text-sm mt-1">Admin Panel</p>
             </div>
 

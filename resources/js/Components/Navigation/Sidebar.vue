@@ -111,7 +111,7 @@ const recentTrades = ref([
 
         <!-- Quick Actions -->
         <div class="mt-auto">
-            <div class="p-4 rounded-xl bg-gradient-to-br from-primary-500/20 to-primary-600/10 border border-primary-500/20">
+            <div class="p-4 rounded-xl bg-gradient-to-br from-accent-500/15 via-primary-500/15 to-warm-500/10 border border-primary-500/20">
                 <div class="flex items-center gap-3 mb-3">
                     <div class="w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center">
                         <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

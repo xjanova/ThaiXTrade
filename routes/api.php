@@ -8,6 +8,7 @@
 use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\MarketController;
+use App\Http\Controllers\Api\SwapApiController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
 use Illuminate\Http\Request;
@@ -53,6 +54,13 @@ Route::prefix('v1')->group(function () {
     Route::prefix('tokens')->group(function () {
         Route::get('/{address}', [MarketController::class, 'tokenInfo']);
         Route::get('/{address}/price', [MarketController::class, 'tokenPrice']);
+    });
+
+    // Swap API
+    Route::prefix('swap')->group(function () {
+        Route::get('quote', [SwapApiController::class, 'quote']);
+        Route::get('routes', [SwapApiController::class, 'routes']);
+        Route::post('execute', [SwapApiController::class, 'execute']);
     });
 });
 

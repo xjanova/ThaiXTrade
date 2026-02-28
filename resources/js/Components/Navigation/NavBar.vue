@@ -42,11 +42,9 @@ const menuOpen = ref(false);
 
                     <!-- Logo -->
                     <Link href="/" class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-glow-sm">
-                            <span class="text-white font-bold text-lg">TX</span>
-                        </div>
+                        <img src="/logo.png" alt="TPIX TRADE" class="w-10 h-10 rounded-xl object-cover shadow-glow-sm" />
                         <div class="hidden sm:block">
-                            <h1 class="text-xl font-bold text-white">ThaiX<span class="text-primary-400">Trade</span></h1>
+                            <h1 class="text-xl font-bold text-white">TPIX <span class="text-gradient">TRADE</span></h1>
                             <p class="text-xs text-dark-400">by Xman Studio</p>
                         </div>
                     </Link>

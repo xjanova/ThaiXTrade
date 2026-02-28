@@ -6,12 +6,15 @@
 
 /* ============================================
    TPIX TRADE - Glass Morphism Dark Theme
+   Brand Palette: Cyan + Purple + Orange
    Developed by Xman Studio
    ============================================ */
 
 @layer base {
     :root {
-        --color-primary: 14 165 233;
+        --color-primary: 6 182 212;
+        --color-accent: 139 92 246;
+        --color-warm: 249 115 22;
         --color-trading-green: 0 200 83;
         --color-trading-red: 255 23 68;
         --glass-blur: 20px;
@@ -25,7 +28,7 @@
     body {
         @apply bg-dark-950 text-white antialiased;
         font-family: 'Inter', 'Noto Sans Thai', sans-serif;
-        background: linear-gradient(135deg, #020617 0%, #0f172a 50%, #020617 100%);
+        background: linear-gradient(135deg, #020617 0%, #0c1222 40%, #0f172a 60%, #0a0f1f 100%);
         min-height: 100vh;
     }
 
@@ -39,7 +42,11 @@
     }
 
     ::-webkit-scrollbar-thumb {
-        @apply bg-dark-600 rounded-full hover:bg-dark-500;
+        @apply bg-dark-600 rounded-full;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        @apply bg-primary-600;
     }
 
     /* Selection */
@@ -76,6 +83,27 @@
         box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
     }
 
+    /* Brand glass with subtle gradient border */
+    .glass-brand {
+        @apply bg-white/5 backdrop-blur-xl rounded-2xl;
+        border: 1px solid transparent;
+        background-clip: padding-box;
+        position: relative;
+    }
+
+    .glass-brand::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(6, 182, 212, 0.3), rgba(249, 115, 22, 0.2));
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
+    }
+
     /* ============================================
        Button Components
        ============================================ */
@@ -87,8 +115,27 @@
     }
 
     .btn-primary {
-        @apply btn bg-primary-500 text-white hover:bg-primary-600 focus:ring-primary-500;
-        @apply shadow-glow-sm hover:shadow-glow;
+        @apply btn text-white focus:ring-primary-500;
+        background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+        box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
+    }
+
+    .btn-primary:hover {
+        background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%);
+        box-shadow: 0 0 20px rgba(6, 182, 212, 0.5);
+    }
+
+    /* Brand gradient button (purple → cyan → orange) */
+    .btn-brand {
+        @apply btn text-white font-semibold;
+        background: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 50%, #f97316 100%);
+        background-size: 200% 200%;
+        box-shadow: 0 0 15px rgba(6, 182, 212, 0.3), 0 0 30px rgba(139, 92, 246, 0.1);
+    }
+
+    .btn-brand:hover {
+        background-size: 100% 100%;
+        box-shadow: 0 0 25px rgba(6, 182, 212, 0.5), 0 0 50px rgba(139, 92, 246, 0.2);
     }
 
     .btn-secondary {
@@ -336,6 +383,10 @@
         @apply badge bg-primary-500/20 text-primary-400;
     }
 
+    .badge-accent {
+        @apply badge bg-accent-500/20 text-accent-400;
+    }
+
     /* ============================================
        Chain Selector
        ============================================ */
@@ -395,7 +446,15 @@
        ============================================ */
 
     .glow-primary {
-        box-shadow: 0 0 20px rgba(14, 165, 233, 0.4);
+        box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
+    }
+
+    .glow-accent {
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+    }
+
+    .glow-warm {
+        box-shadow: 0 0 20px rgba(249, 115, 22, 0.4);
     }
 
     .glow-success {
@@ -404,6 +463,12 @@
 
     .glow-danger {
         box-shadow: 0 0 20px rgba(255, 23, 68, 0.4);
+    }
+
+    .glow-brand {
+        box-shadow: 0 0 20px rgba(6, 182, 212, 0.3),
+                    0 0 40px rgba(139, 92, 246, 0.15),
+                    0 0 60px rgba(249, 115, 22, 0.05);
     }
 
     /* ============================================
@@ -426,16 +491,34 @@
 }
 
 @layer utilities {
+    /* Brand gradient text (purple → cyan → orange) matching logo */
     .text-gradient {
-        @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-primary-600;
+        @apply bg-clip-text text-transparent;
+        background-image: linear-gradient(135deg, #a78bfa 0%, #22d3ee 50%, #06b6d4 100%);
+    }
+
+    .text-gradient-brand {
+        @apply bg-clip-text text-transparent;
+        background-image: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 40%, #f97316 100%);
     }
 
     .text-gradient-gold {
         @apply bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500;
     }
 
+    .text-gradient-warm {
+        @apply bg-clip-text text-transparent;
+        background-image: linear-gradient(135deg, #06b6d4 0%, #f97316 100%);
+    }
+
     .border-gradient {
-        border-image: linear-gradient(135deg, rgba(14, 165, 233, 0.5), rgba(14, 165, 233, 0.1)) 1;
+        border-image: linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(6, 182, 212, 0.4), rgba(249, 115, 22, 0.3)) 1;
+    }
+
+    .border-gradient-brand {
+        border: 1px solid transparent;
+        background-clip: padding-box;
+        background-image: linear-gradient(var(--tw-gradient-stops));
     }
 
     .no-scrollbar::-webkit-scrollbar {

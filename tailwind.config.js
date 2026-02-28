@@ -20,19 +20,47 @@ export default {
                 mono: ['JetBrains Mono', 'Fira Code', ...defaultTheme.fontFamily.mono],
             },
             colors: {
-                // Brand Colors
+                // Brand Colors - Cyan (matches logo primary glow)
                 primary: {
-                    50: '#f0f9ff',
-                    100: '#e0f2fe',
-                    200: '#bae6fd',
-                    300: '#7dd3fc',
-                    400: '#38bdf8',
-                    500: '#0ea5e9',
-                    600: '#0284c7',
-                    700: '#0369a1',
-                    800: '#075985',
-                    900: '#0c4a6e',
-                    950: '#082f49',
+                    50: '#ecfeff',
+                    100: '#cffafe',
+                    200: '#a5f3fc',
+                    300: '#67e8f9',
+                    400: '#22d3ee',
+                    500: '#06b6d4',
+                    600: '#0891b2',
+                    700: '#0e7490',
+                    800: '#155e75',
+                    900: '#164e63',
+                    950: '#083344',
+                },
+                // Accent Colors - Purple/Violet (logo left gradient)
+                accent: {
+                    50: '#f5f3ff',
+                    100: '#ede9fe',
+                    200: '#ddd6fe',
+                    300: '#c4b5fd',
+                    400: '#a78bfa',
+                    500: '#8b5cf6',
+                    600: '#7c3aed',
+                    700: '#6d28d9',
+                    800: '#5b21b6',
+                    900: '#4c1d95',
+                    950: '#2e1065',
+                },
+                // Warm Colors - Orange/Coral (logo right gradient)
+                warm: {
+                    50: '#fff7ed',
+                    100: '#ffedd5',
+                    200: '#fed7aa',
+                    300: '#fdba74',
+                    400: '#fb923c',
+                    500: '#f97316',
+                    600: '#ea580c',
+                    700: '#c2410c',
+                    800: '#9a3412',
+                    900: '#7c2d12',
+                    950: '#431407',
                 },
                 // Trading Colors
                 trading: {
@@ -52,7 +80,7 @@ export default {
                     border: 'rgba(255, 255, 255, 0.18)',
                     'border-dark': 'rgba(255, 255, 255, 0.08)',
                 },
-                // Dark Theme Base
+                // Dark Theme Base (slightly more blue-purple tint to match logo bg)
                 dark: {
                     50: '#f8fafc',
                     100: '#f1f5f9',
@@ -72,16 +100,22 @@ export default {
                 'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
                 'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
                 'glass-gradient': 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-                'dark-gradient': 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
-                'glow-gradient': 'radial-gradient(ellipse at center, rgba(14, 165, 233, 0.15) 0%, transparent 70%)',
+                'dark-gradient': 'linear-gradient(135deg, #020617 0%, #0f172a 50%, #020617 100%)',
+                'glow-gradient': 'radial-gradient(ellipse at center, rgba(6, 182, 212, 0.15) 0%, transparent 70%)',
+                // Brand gradient matching logo: purple → cyan → orange
+                'brand-gradient': 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 50%, #f97316 100%)',
+                'brand-gradient-subtle': 'linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(6,182,212,0.15) 50%, rgba(249,115,22,0.08) 100%)',
             },
             boxShadow: {
                 'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
                 'glass-sm': '0 4px 16px 0 rgba(0, 0, 0, 0.25)',
                 'glass-lg': '0 16px 48px 0 rgba(0, 0, 0, 0.45)',
-                'glow': '0 0 20px rgba(14, 165, 233, 0.5)',
-                'glow-sm': '0 0 10px rgba(14, 165, 233, 0.3)',
-                'glow-lg': '0 0 40px rgba(14, 165, 233, 0.6)',
+                'glow': '0 0 20px rgba(6, 182, 212, 0.5)',
+                'glow-sm': '0 0 10px rgba(6, 182, 212, 0.3)',
+                'glow-lg': '0 0 40px rgba(6, 182, 212, 0.6)',
+                'glow-purple': '0 0 20px rgba(139, 92, 246, 0.5)',
+                'glow-warm': '0 0 20px rgba(249, 115, 22, 0.5)',
+                'glow-brand': '0 0 30px rgba(6, 182, 212, 0.3), 0 0 60px rgba(139, 92, 246, 0.15)',
                 'green-glow': '0 0 20px rgba(0, 200, 83, 0.5)',
                 'red-glow': '0 0 20px rgba(255, 23, 68, 0.5)',
             },
@@ -91,17 +125,24 @@ export default {
             animation: {
                 'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                 'glow': 'glow 2s ease-in-out infinite alternate',
+                'glow-brand': 'glowBrand 3s ease-in-out infinite alternate',
                 'float': 'float 6s ease-in-out infinite',
                 'slide-up': 'slideUp 0.3s ease-out',
                 'slide-down': 'slideDown 0.3s ease-out',
                 'fade-in': 'fadeIn 0.3s ease-out',
                 'scale-in': 'scaleIn 0.2s ease-out',
                 'ticker': 'ticker 20s linear infinite',
+                'gradient-shift': 'gradientShift 6s ease infinite',
             },
             keyframes: {
                 glow: {
-                    '0%': { boxShadow: '0 0 20px rgba(14, 165, 233, 0.3)' },
-                    '100%': { boxShadow: '0 0 30px rgba(14, 165, 233, 0.6)' },
+                    '0%': { boxShadow: '0 0 20px rgba(6, 182, 212, 0.3)' },
+                    '100%': { boxShadow: '0 0 30px rgba(6, 182, 212, 0.6)' },
+                },
+                glowBrand: {
+                    '0%': { boxShadow: '0 0 20px rgba(139, 92, 246, 0.3), 0 0 40px rgba(6, 182, 212, 0.1)' },
+                    '50%': { boxShadow: '0 0 25px rgba(6, 182, 212, 0.4), 0 0 50px rgba(139, 92, 246, 0.15)' },
+                    '100%': { boxShadow: '0 0 20px rgba(249, 115, 22, 0.3), 0 0 40px rgba(6, 182, 212, 0.1)' },
                 },
                 float: {
                     '0%, 100%': { transform: 'translateY(0)' },
@@ -126,6 +167,10 @@ export default {
                 ticker: {
                     '0%': { transform: 'translateX(0)' },
                     '100%': { transform: 'translateX(-50%)' },
+                },
+                gradientShift: {
+                    '0%, 100%': { backgroundPosition: '0% 50%' },
+                    '50%': { backgroundPosition: '100% 50%' },
                 },
             },
             borderRadius: {

@@ -110,11 +110,9 @@ const handleLogout = () => {
         >
             <!-- Logo -->
             <div class="flex items-center gap-3 px-5 py-5 border-b border-white/5">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0">
-                    <span class="text-white font-bold text-lg">TX</span>
-                </div>
+                <img src="/logo.png" alt="TPIX TRADE" class="w-10 h-10 rounded-xl flex-shrink-0 object-cover" />
                 <div v-if="sidebarOpen" class="overflow-hidden">
-                    <p class="font-bold text-white text-sm whitespace-nowrap">TPIX TRADE</p>
+                    <p class="font-bold text-white text-sm whitespace-nowrap">TPIX <span class="text-gradient">TRADE</span></p>
                     <p class="text-xs text-dark-400 whitespace-nowrap">Admin Panel</p>
                 </div>
             </div>
@@ -248,7 +246,7 @@ const handleLogout = () => {
                             </div>
 
                             <!-- Avatar -->
-                            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center">
+                            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-accent-500 via-primary-500 to-warm-500 flex items-center justify-center">
                                 <span class="text-white font-semibold text-sm">
                                     {{ (admin?.name || 'A').charAt(0).toUpperCase() }}
                                 </span>

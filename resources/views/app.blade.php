@@ -95,7 +95,7 @@
         }
 
         .goog-te-gadget-simple .goog-te-menu-value span {
-            color: #0ea5e9 !important;
+            color: #06b6d4 !important;
         }
     </style>
 </head>
