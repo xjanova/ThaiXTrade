@@ -324,84 +324,89 @@ jobs:
 
               diagnose-web)
                 DOMAIN_ROOT="/home/admin/domains/tpix.online"
-                cd "$DEPLOY_PATH" || { echo "Path not found: $DEPLOY_PATH"; exit 1; }
+                cd "$DOMAIN_ROOT" || { echo "Domain root not found!"; exit 1; }
 
-                echo "=== 1. Compare paths ==="
-                echo "DEPLOY_PATH pwd: $(pwd)"
-                echo "DOMAIN_ROOT: $DOMAIN_ROOT"
-                echo "Are they the same? $([ "$(pwd)" = "$DOMAIN_ROOT" ] && echo YES || echo NO)"
+                echo "=== 1. Current state ==="
+                echo "Domain root: $(pwd)"
+                echo "Has .git? $([ -d .git ] && echo YES || echo NO)"
+                ls -la | head -20
                 echo ""
 
-                echo "=== 2. Check DA public_html ==="
-                echo "--- DA public_html ---"
-                ls -la "$DOMAIN_ROOT/public_html/" 2>/dev/null | head -15
-                echo ""
-                echo "--- DEPLOY_PATH public_html ---"
-                ls -la "$DEPLOY_PATH/public_html/" 2>/dev/null | head -15
-                echo ""
-
-                echo "=== 3. Remove DA default index.html ==="
-                rm -f "$DOMAIN_ROOT/public_html/index.html"
-                echo "Removed DA index.html"
-                echo ""
-
-                echo "=== 4. Copy project public_html to DA public_html ==="
-                if [ "$(pwd)" != "$DOMAIN_ROOT" ]; then
-                  echo "Paths DIFFER! Copying project files to DA domain..."
-                  cp -rf "$DEPLOY_PATH/public_html/"* "$DOMAIN_ROOT/public_html/" 2>/dev/null || true
-                  cp -f "$DEPLOY_PATH/public_html/.htaccess" "$DOMAIN_ROOT/public_html/" 2>/dev/null || true
-                  echo "Copied."
-                  echo "DA public_html after copy:"
-                  ls -la "$DOMAIN_ROOT/public_html/" | head -15
+                echo "=== 2. Clone project here if needed ==="
+                if [ ! -d ".git" ]; then
+                  echo "No git repo here. Cloning..."
+                  git clone https://github.com/xjanova/ThaiXTrade.git repo_tmp 2>&1
+                  # Move ALL project files (including hidden) into domain root
+                  shopt -s dotglob 2>/dev/null || true
+                  cp -rf repo_tmp/* . 2>/dev/null || true
+                  cp -rf repo_tmp/.* . 2>/dev/null || true
+                  rm -rf repo_tmp
+                  echo "Cloned. Files:"
+                  ls -la | head -20
                 else
-                  echo "Paths are the same, no copy needed"
+                  echo "Git repo exists. Pulling latest..."
+                  git fetch origin main
+                  git reset --hard origin/main
                 fi
                 echo ""
 
-                echo "=== 5. Verify index.php in DA path ==="
-                head -3 "$DOMAIN_ROOT/public_html/index.php" 2>/dev/null || echo "STILL NO index.php!"
+                echo "=== 3. Remove DA default files ==="
+                rm -f public_html/index.html
+                rm -rf public_html/cgi-bin
+                echo "Removed DA defaults"
                 echo ""
 
-                echo "=== 6. Fix index.php bootstrap path ==="
-                # The index.php needs to find the Laravel bootstrap
-                echo "Current index.php references:"
-                grep "require" "$DOMAIN_ROOT/public_html/index.php" 2>/dev/null
+                echo "=== 4. Check public_html ==="
+                ls -la public_html/ | head -15
                 echo ""
-                # If paths differ, index.php needs to point to DEPLOY_PATH
-                if [ "$(pwd)" != "$DOMAIN_ROOT" ]; then
-                  echo "Creating symlinks for Laravel..."
-                  # Symlink bootstrap, vendor, artisan to domain root
-                  for dir in bootstrap vendor artisan storage app config database routes; do
-                    if [ -e "$DEPLOY_PATH/$dir" ] && [ ! -e "$DOMAIN_ROOT/$dir" ]; then
-                      ln -sf "$DEPLOY_PATH/$dir" "$DOMAIN_ROOT/$dir"
-                      echo "Linked: $dir"
-                    fi
-                  done
-                  # Also need .env
-                  [ -f "$DEPLOY_PATH/.env" ] && [ ! -f "$DOMAIN_ROOT/.env" ] && ln -sf "$DEPLOY_PATH/.env" "$DOMAIN_ROOT/.env" && echo "Linked: .env"
+
+                echo "=== 5. Composer install ==="
+                composer install --no-dev --optimize-autoloader --no-interaction 2>&1 | tail -5
+                echo ""
+
+                echo "=== 6. Setup .env ==="
+                if [ ! -f ".env" ]; then
+                  cp .env.example .env
+                  php artisan key:generate --force
                 fi
+                sed -i 's/^APP_ENV=.*/APP_ENV=production/' .env
+                sed -i 's/^APP_DEBUG=.*/APP_DEBUG=false/' .env
+                sed -i 's|^APP_URL=.*|APP_URL=https://tpix.online|' .env
+                grep -E "^APP_ENV|^APP_DEBUG|^APP_URL|^APP_KEY" .env
                 echo ""
 
-                echo "=== 7. Test via localhost ==="
-                curl -s -H "Host: tpix.online" "http://127.0.0.1/" 2>/dev/null | head -10
+                echo "=== 7. NPM install & build ==="
+                npm install 2>&1 | tail -3
+                node ./node_modules/vite/bin/vite.js build 2>&1 | tail -15
                 echo ""
 
-                echo "=== 8. Permissions ==="
-                chmod -R 755 "$DOMAIN_ROOT/public_html/" 2>/dev/null || true
+                echo "=== 8. Laravel optimize ==="
+                php artisan migrate --force 2>&1 | tail -3
+                php artisan config:clear
+                php artisan config:cache
+                php artisan route:cache
+                php artisan view:cache
+                php artisan storage:link 2>/dev/null || true
                 echo ""
 
-                echo "=== 9. PHP-FPM config check ==="
-                grep -r "chroot\|doc_root\|open_basedir" /usr/local/php83/etc/php-fpm.d/ 2>/dev/null | head -5
-                grep "open_basedir" /usr/local/php83/lib/php.ini 2>/dev/null | head -3
+                echo "=== 9. Permissions ==="
+                chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+                chmod -R 755 public_html/ 2>/dev/null || true
                 echo ""
 
-                echo "=== 10. Final test ==="
-                echo '<?php echo "WORKS";' > "$DOMAIN_ROOT/public_html/test.php"
+                echo "=== 10. Test ==="
+                echo '<?php echo "PHP_OK";' > public_html/test.php
                 curl -s -H "Host: tpix.online" "http://127.0.0.1/test.php" 2>/dev/null
                 echo ""
-                rm -f "$DOMAIN_ROOT/public_html/test.php"
+                curl -s -H "Host: tpix.online" "http://127.0.0.1/" 2>/dev/null | head -5
+                echo ""
+                rm -f public_html/test.php
+                php artisan --version
+                echo ""
 
-                echo "DIAGNOSE COMPLETE"
+                echo "=============================="
+                echo "FULL SETUP COMPLETE"
+                echo "=============================="
                 ;;
 
               check-status)
