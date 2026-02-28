@@ -8,6 +8,7 @@
 import { ref } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { getCoinLogo } from '@/utils/cryptoLogos';
 
 const topGainers = ref([
     { symbol: 'PEPE', name: 'Pepe', price: '0.00001234', change: '+45.67%', volume: '2.5B' },
@@ -125,8 +126,9 @@ const stats = ref([
                                 class="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
                             >
                                 <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold">
-                                        {{ coin.symbol.charAt(0) }}
+                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-dark-800 flex items-center justify-center">
+                                        <img v-if="getCoinLogo(coin.symbol)" :src="getCoinLogo(coin.symbol)" :alt="coin.symbol" class="w-8 h-8" />
+                                        <span v-else class="text-white font-bold">{{ coin.symbol.charAt(0) }}</span>
                                     </div>
                                     <div>
                                         <p class="font-semibold text-white">{{ coin.symbol }}</p>
@@ -154,8 +156,9 @@ const stats = ref([
                                 class="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
                             >
                                 <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white font-bold">
-                                        {{ coin.symbol.charAt(0) }}
+                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-dark-800 flex items-center justify-center">
+                                        <img v-if="getCoinLogo(coin.symbol)" :src="getCoinLogo(coin.symbol)" :alt="coin.symbol" class="w-8 h-8" />
+                                        <span v-else class="text-white font-bold">{{ coin.symbol.charAt(0) }}</span>
                                     </div>
                                     <div>
                                         <p class="font-semibold text-white">{{ coin.symbol }}</p>

@@ -6,6 +6,7 @@
  */
 
 import { ref, onMounted, onUnmounted } from 'vue';
+import { getCoinLogo } from '@/utils/cryptoLogos';
 
 const tickers = ref([
     { symbol: 'BTC', name: 'Bitcoin', price: '67,234.50', change: '+2.45', isUp: true },
@@ -33,7 +34,8 @@ const duplicatedTickers = ref([...tickers.value, ...tickers.value]);
                 class="ticker-item px-6 flex-shrink-0"
             >
                 <div class="flex items-center gap-3">
-                    <!-- Symbol -->
+                    <!-- Coin Logo + Symbol -->
+                    <img v-if="getCoinLogo(ticker.symbol)" :src="getCoinLogo(ticker.symbol, 'thumb')" :alt="ticker.symbol" class="w-4 h-4 rounded-full" />
                     <span class="ticker-symbol">{{ ticker.symbol }}</span>
 
                     <!-- Price -->

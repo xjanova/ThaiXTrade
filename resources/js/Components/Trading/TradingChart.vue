@@ -7,6 +7,7 @@
 
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { createChart, ColorType, CrosshairMode } from 'lightweight-charts';
+import { getPairLogo, getBaseSymbol } from '@/utils/cryptoLogos';
 
 const props = defineProps({
     symbol: {
@@ -317,8 +318,9 @@ onUnmounted(() => {
             <div class="flex items-center gap-4">
                 <!-- Symbol Info -->
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center">
-                        <span class="text-white font-bold text-sm">BTC</span>
+                    <div class="w-10 h-10 rounded-xl overflow-hidden bg-dark-800 flex items-center justify-center">
+                        <img v-if="getPairLogo(symbol)" :src="getPairLogo(symbol)" :alt="getBaseSymbol(symbol)" class="w-8 h-8" />
+                        <span v-else class="text-white font-bold text-sm">{{ getBaseSymbol(symbol).charAt(0) }}</span>
                     </div>
                     <div>
                         <h2 class="text-lg font-bold text-white">{{ symbol }}</h2>
