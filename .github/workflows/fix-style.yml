@@ -15,7 +15,7 @@ jobs:
           coverage: none
 
       - name: Install dependencies
-        run: composer install --no-dev --no-interaction --prefer-dist
+        run: composer install --no-interaction --prefer-dist
         env:
           COMPOSER_NO_AUDIT: 1
 
