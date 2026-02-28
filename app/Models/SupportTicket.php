@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * SupportTicket Model
+ * SupportTicket Model.
  *
  * Represents a customer support ticket submitted by a wallet user.
  * Auto-generates a unique ticket number in TIX-YYYYMMDD-XXXX format.
@@ -26,7 +26,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property \Illuminate\Support\Carbon|null $deleted_at
- *
  * @property-read \Illuminate\Database\Eloquent\Collection<int, TicketMessage> $messages
  * @property-read AdminUser|null $assignedAdmin
  */
@@ -64,7 +63,7 @@ class SupportTicket extends Model
     /**
      * The "booted" method of the model.
      * Auto-generates a ticket number when creating a new support ticket.
-     * Format: TIX-YYYYMMDD-XXXX (e.g., TIX-20260228-0001)
+     * Format: TIX-YYYYMMDD-XXXX (e.g., TIX-20260228-0001).
      */
     protected static function booted(): void
     {
@@ -77,8 +76,6 @@ class SupportTicket extends Model
 
     /**
      * Generate a unique ticket number.
-     *
-     * @return string
      */
     protected static function generateTicketNumber(): string
     {
@@ -97,7 +94,7 @@ class SupportTicket extends Model
             $nextNumber = 1;
         }
 
-        return $prefix . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+        return $prefix.str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
     }
 
     // =========================================================================
@@ -127,7 +124,7 @@ class SupportTicket extends Model
     /**
      * Scope a query to only include open tickets (not closed or resolved).
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeOpen($query)
@@ -138,8 +135,7 @@ class SupportTicket extends Model
     /**
      * Scope a query to filter by ticket status.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $status
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeByStatus($query, string $status)
@@ -150,8 +146,7 @@ class SupportTicket extends Model
     /**
      * Scope a query to filter by ticket priority.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $priority
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeByPriority($query, string $priority)

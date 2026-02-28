@@ -11,7 +11,7 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * DashboardController
+ * DashboardController.
  *
  * Serves the admin dashboard with aggregated platform statistics
  * including transaction volumes, active chains/pairs, and open tickets.

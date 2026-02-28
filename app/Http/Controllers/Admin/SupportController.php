@@ -12,7 +12,7 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * SupportController
+ * SupportController.
  *
  * Manages customer support tickets in the admin panel.
  * Supports replying, status changes, and assignment to admin staff.

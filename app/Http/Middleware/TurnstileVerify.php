@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * TurnstileVerify Middleware
+ * TurnstileVerify Middleware.
  *
  * Validates Cloudflare Turnstile CAPTCHA tokens when the feature is enabled.
  * Skips verification for already-authenticated admin sessions.
@@ -21,8 +21,6 @@ class TurnstileVerify
 {
     /**
      * The Cloudflare Turnstile verification endpoint.
-     *
-     * @var string
      */
     protected string $verifyUrl = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * Language Model
+ * Language Model.
  *
  * Represents a supported language in the platform.
  * Provides static helpers for retrieving default and active languages.
@@ -22,7 +22,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $sort_order
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- *
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Translation> $translations
  */
 class Language extends Model
@@ -83,7 +82,7 @@ class Language extends Model
     /**
      * Scope a query to only include active languages.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeActive($query)
@@ -97,8 +96,6 @@ class Language extends Model
 
     /**
      * Get the default language.
-     *
-     * @return static|null
      */
     public static function getDefault(): ?static
     {
@@ -107,8 +104,6 @@ class Language extends Model
 
     /**
      * Get all active languages, ordered by sort_order.
-     *
-     * @return \Illuminate\Database\Eloquent\Collection
      */
     public static function getActive(): \Illuminate\Database\Eloquent\Collection
     {

@@ -12,7 +12,7 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * AuthController
+ * AuthController.
  *
  * Handles admin authentication: login form display, credential
  * validation with rate limiting, and session logout.
@@ -85,7 +85,7 @@ class AuthController extends Controller
             'cf-turnstile-response' => ['nullable', 'string'],
         ]);
 
-        $throttleKey = 'admin-login:' . $validated['email'] . '|' . $request->ip();
+        $throttleKey = 'admin-login:'.$validated['email'].'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
             $seconds = RateLimiter::availableIn($throttleKey);

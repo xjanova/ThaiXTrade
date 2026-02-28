@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * AuditLog Model
+ * AuditLog Model.
  *
  * Records administrative actions for accountability and auditing.
  * Automatically captures admin ID, IP address, and user agent from the request.
@@ -23,7 +23,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $user_agent
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- *
  * @property-read AdminUser|null $admin
  */
 class AuditLog extends Model
@@ -88,11 +87,10 @@ class AuditLog extends Model
      * Automatically captures the authenticated admin's ID,
      * the client IP address, and user agent from the current request.
      *
-     * @param string $action Description of the action performed
-     * @param \Illuminate\Database\Eloquent\Model|null $model The model that was acted upon
-     * @param array|null $oldValues The original values before the change
-     * @param array|null $newValues The new values after the change
-     * @return static
+     * @param  string  $action  Description of the action performed
+     * @param  \Illuminate\Database\Eloquent\Model|null  $model  The model that was acted upon
+     * @param  array|null  $oldValues  The original values before the change
+     * @param  array|null  $newValues  The new values after the change
      */
     public static function log(
         string $action,

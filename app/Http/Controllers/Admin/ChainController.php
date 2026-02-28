@@ -9,7 +9,7 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * ChainController
+ * ChainController.
  *
  * Manages blockchain network configurations in the admin panel.
  * Supports CRUD operations, activation toggling, and soft-deletes.

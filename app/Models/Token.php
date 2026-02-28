@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * Token Model
+ * Token Model.
  *
  * Represents a token/cryptocurrency deployed on a specific blockchain.
  * Stores contract details, metadata, and relationships to trading pairs.
@@ -25,7 +25,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $sort_order
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- *
  * @property-read Chain $chain
  * @property-read \Illuminate\Database\Eloquent\Collection<int, TradingPair> $basePairs
  * @property-read \Illuminate\Database\Eloquent\Collection<int, TradingPair> $quotePairs
@@ -105,7 +104,7 @@ class Token extends Model
     /**
      * Scope a query to only include active tokens.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeActive($query)

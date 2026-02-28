@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * AdminRole Middleware
+ * AdminRole Middleware.
  *
  * Verifies the authenticated admin user has one of the required roles.
  * Accepts a comma-separated list of role names as the parameter.

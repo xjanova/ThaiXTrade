@@ -9,7 +9,7 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * FeeController
+ * FeeController.
  *
  * CRUD operations for platform fee configurations.
  * Supports maker/taker fee models with per-chain overrides.

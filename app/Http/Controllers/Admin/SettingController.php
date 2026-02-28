@@ -11,7 +11,7 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * SettingController
+ * SettingController.
  *
  * Manages platform-wide configuration stored in the site_settings table.
  * Supports grouped settings, file uploads for images, and cache invalidation.

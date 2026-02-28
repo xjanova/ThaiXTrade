@@ -10,7 +10,7 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * TokenController
+ * TokenController.
  *
  * Manages token/cryptocurrency configurations per blockchain chain.
  * Tokens are nested under their parent chain for organizational clarity.

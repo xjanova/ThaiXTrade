@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * SiteSetting Model
+ * SiteSetting Model.
  *
  * Stores key-value configuration settings organized by group.
  * Provides static helper methods with caching for efficient retrieval.
@@ -45,15 +45,11 @@ class SiteSetting extends Model
 
     /**
      * The cache TTL in seconds (1 hour).
-     *
-     * @var int
      */
     protected static int $cacheTtl = 3600;
 
     /**
      * The cache key prefix.
-     *
-     * @var string
      */
     protected static string $cachePrefix = 'site_settings';
 
@@ -63,15 +59,10 @@ class SiteSetting extends Model
 
     /**
      * Get a single setting value by group and key.
-     *
-     * @param string $group
-     * @param string $key
-     * @param mixed $default
-     * @return mixed
      */
     public static function get(string $group, string $key, mixed $default = null): mixed
     {
-        $cacheKey = static::$cachePrefix . ".{$group}.{$key}";
+        $cacheKey = static::$cachePrefix.".{$group}.{$key}";
 
         return Cache::remember($cacheKey, static::$cacheTtl, function () use ($group, $key, $default) {
             $setting = static::where('group', $group)
@@ -89,12 +80,6 @@ class SiteSetting extends Model
     /**
      * Set a setting value by group and key.
      * Creates the setting if it doesn't exist, updates if it does.
-     *
-     * @param string $group
-     * @param string $key
-     * @param mixed $value
-     * @param string $type
-     * @return static
      */
     public static function set(string $group, string $key, mixed $value, string $type = 'string'): static
     {
@@ -104,23 +89,20 @@ class SiteSetting extends Model
         );
 
         // Clear individual cache
-        Cache::forget(static::$cachePrefix . ".{$group}.{$key}");
+        Cache::forget(static::$cachePrefix.".{$group}.{$key}");
 
         // Clear group cache
-        Cache::forget(static::$cachePrefix . ".group.{$group}");
+        Cache::forget(static::$cachePrefix.".group.{$group}");
 
         return $setting;
     }
 
     /**
      * Get all settings for a specific group.
-     *
-     * @param string $group
-     * @return \Illuminate\Support\Collection
      */
     public static function getGroup(string $group): \Illuminate\Support\Collection
     {
-        $cacheKey = static::$cachePrefix . ".group.{$group}";
+        $cacheKey = static::$cachePrefix.".group.{$group}";
 
         return Cache::remember($cacheKey, static::$cacheTtl, function () use ($group) {
             return static::where('group', $group)
@@ -139,12 +121,12 @@ class SiteSetting extends Model
         $settings = static::all();
 
         foreach ($settings as $setting) {
-            Cache::forget(static::$cachePrefix . ".{$setting->group}.{$setting->key}");
+            Cache::forget(static::$cachePrefix.".{$setting->group}.{$setting->key}");
         }
 
         $groups = $settings->pluck('group')->unique();
         foreach ($groups as $group) {
-            Cache::forget(static::$cachePrefix . ".group.{$group}");
+            Cache::forget(static::$cachePrefix.".group.{$group}");
         }
     }
 
@@ -154,10 +136,6 @@ class SiteSetting extends Model
 
     /**
      * Cast a setting value to its proper type.
-     *
-     * @param string|null $value
-     * @param string $type
-     * @return mixed
      */
     protected static function castValue(?string $value, string $type): mixed
     {

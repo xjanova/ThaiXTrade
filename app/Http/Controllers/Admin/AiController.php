@@ -93,7 +93,7 @@ class AiController extends Controller
             'processing_time_ms' => $result['processing_time_ms'],
         ]);
 
-        return back()->with('error', 'Analysis failed: ' . $result['error']);
+        return back()->with('error', 'Analysis failed: '.$result['error']);
     }
 
     /**
@@ -145,7 +145,7 @@ class AiController extends Controller
         );
 
         if (! $result['success']) {
-            return back()->with('error', 'News generation failed: ' . $result['error']);
+            return back()->with('error', 'News generation failed: '.$result['error']);
         }
 
         // Attempt to parse JSON response from AI

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * Chain Model
+ * Chain Model.
  *
  * Represents a blockchain network (e.g., Ethereum, BSC, Polygon).
  * Stores chain-specific configuration including RPC endpoints and explorer URLs.
@@ -30,7 +30,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property \Illuminate\Support\Carbon|null $deleted_at
- *
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Token> $tokens
  * @property-read \Illuminate\Database\Eloquent\Collection<int, TradingPair> $tradingPairs
  * @property-read \Illuminate\Database\Eloquent\Collection<int, SwapConfig> $swapConfigs
@@ -124,7 +123,7 @@ class Chain extends Model
     /**
      * Scope a query to only include active chains.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeActive($query)
@@ -135,7 +134,7 @@ class Chain extends Model
     /**
      * Scope a query to only include mainnet chains (exclude testnets).
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeMainnet($query)
@@ -146,8 +145,7 @@ class Chain extends Model
     /**
      * Scope a query to order chains by their sort order.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $direction
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeOrdered($query, string $direction = 'asc')

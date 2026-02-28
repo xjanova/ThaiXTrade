@@ -10,7 +10,7 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * SwapController
+ * SwapController.
  *
  * Manages DEX swap router configurations per blockchain.
  * Each config ties a swap protocol (UniswapV2, PancakeSwap, etc.) to a chain.

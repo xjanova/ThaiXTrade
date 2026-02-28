@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * TicketMessage Model
+ * TicketMessage Model.
  *
  * Represents a message within a support ticket conversation.
  * Supports both user and admin messages, with optional internal notes.
@@ -21,7 +21,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property bool $is_internal
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- *
  * @property-read SupportTicket $ticket
  * @property-read AdminUser|null $admin
  */

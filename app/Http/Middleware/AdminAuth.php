@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * AdminAuth Middleware
+ * AdminAuth Middleware.
  *
  * Ensures the current user is authenticated via the 'admin' guard.
  * Additionally verifies that the authenticated admin account is active.

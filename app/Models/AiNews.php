@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
 /**
- * AiNews Model
+ * AiNews Model.
  *
  * Represents an AI-generated news article for the TPIX TRADE platform.
  * Supports multi-language content, publishing workflow, and soft deletion.
@@ -32,7 +32,6 @@ use Illuminate\Support\Str;
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property \Illuminate\Support\Carbon|null $deleted_at
- *
  * @property-read AdminUser|null $creator
  */
 class AiNews extends Model
@@ -101,9 +100,6 @@ class AiNews extends Model
 
     /**
      * Generate a unique slug from the given title.
-     *
-     * @param string $title
-     * @return string
      */
     protected static function generateUniqueSlug(string $title): string
     {
@@ -111,7 +107,7 @@ class AiNews extends Model
 
         // If slug is empty (e.g. Thai-only title), use a timestamp-based slug
         if (empty($slug)) {
-            $slug = 'news-' . now()->format('Ymd-His');
+            $slug = 'news-'.now()->format('Ymd-His');
         }
 
         $originalSlug = $slug;
@@ -144,7 +140,7 @@ class AiNews extends Model
     /**
      * Scope a query to only include published articles.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopePublished($query)
@@ -155,8 +151,7 @@ class AiNews extends Model
     /**
      * Scope a query to filter by category.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $category
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeByCategory($query, string $category)
@@ -167,8 +162,7 @@ class AiNews extends Model
     /**
      * Scope a query to filter by language code.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $languageCode
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeByLanguage($query, string $languageCode)

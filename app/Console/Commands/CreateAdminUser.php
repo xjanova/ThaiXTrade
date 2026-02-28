@@ -4,12 +4,11 @@ namespace App\Console\Commands;
 
 use App\Models\AdminUser;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
 /**
  * TPIX TRADE - Create Admin User Command
- * Usage: php artisan admin:create
+ * Usage: php artisan admin:create.
  */
 class CreateAdminUser extends Command
 {
@@ -52,6 +51,7 @@ class CreateAdminUser extends Command
             foreach ($validator->errors()->all() as $error) {
                 $this->error("  ✗ {$error}");
             }
+
             return Command::FAILURE;
         }
 
@@ -65,13 +65,13 @@ class CreateAdminUser extends Command
         ]);
 
         $this->info('');
-        $this->info("  ✓ Admin user created successfully!");
-        $this->info("  ┌─────────────────────────────────");
+        $this->info('  ✓ Admin user created successfully!');
+        $this->info('  ┌─────────────────────────────────');
         $this->info("  │ Name:  {$admin->name}");
         $this->info("  │ Email: {$admin->email}");
         $this->info("  │ Role:  {$admin->role}");
-        $this->info("  │ URL:   " . config('app.url') . "/admin/login");
-        $this->info("  └─────────────────────────────────");
+        $this->info('  │ URL:   '.config('app.url').'/admin/login');
+        $this->info('  └─────────────────────────────────');
         $this->info('');
 
         return Command::SUCCESS;

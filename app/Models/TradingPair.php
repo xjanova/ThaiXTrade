@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * TradingPair Model
+ * TradingPair Model.
  *
  * Represents a trading pair (e.g., ETH/USDT) on a specific chain.
  * Supports fee overrides per pair that take precedence over global FeeConfig.
@@ -27,7 +27,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $sort_order
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- *
  * @property-read Token $baseToken
  * @property-read Token $quoteToken
  * @property-read Chain $chain
@@ -114,7 +113,7 @@ class TradingPair extends Model
     /**
      * Scope a query to only include active trading pairs.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeActive($query)

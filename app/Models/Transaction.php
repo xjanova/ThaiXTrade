@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
 /**
- * Transaction Model
+ * Transaction Model.
  *
  * Records blockchain transactions including swaps, trades, and transfers.
  * Auto-generates UUID on creation for external reference.
@@ -35,7 +35,6 @@ use Illuminate\Support\Str;
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property \Illuminate\Support\Carbon|null $deleted_at
- *
  * @property-read Chain $chain
  */
 class Transaction extends Model
@@ -126,8 +125,7 @@ class Transaction extends Model
     /**
      * Scope a query to filter by transaction status.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $status
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeByStatus($query, string $status)
@@ -138,8 +136,7 @@ class Transaction extends Model
     /**
      * Scope a query to filter by transaction type.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $type
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeByType($query, string $type)
@@ -150,8 +147,7 @@ class Transaction extends Model
     /**
      * Scope a query to filter by wallet address.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $walletAddress
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeByWallet($query, string $walletAddress)
@@ -162,8 +158,7 @@ class Transaction extends Model
     /**
      * Scope a query to get recent transactions, ordered by newest first.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param int $limit
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeRecent($query, int $limit = 50)

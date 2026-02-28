@@ -1,7 +1,7 @@
 <?php
 
 /**
- * TPIX TRADE - Database Configuration
+ * TPIX TRADE - Database Configuration.
  */
 
 return [
@@ -46,7 +46,7 @@ return [
         'client' => env('REDIS_CLIENT', 'phpredis'),
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix' => env('REDIS_PREFIX', env('APP_NAME', 'tpixtrade') . '_database_'),
+            'prefix' => env('REDIS_PREFIX', env('APP_NAME', 'tpixtrade').'_database_'),
         ],
         'default' => [
             'url' => env('REDIS_URL'),

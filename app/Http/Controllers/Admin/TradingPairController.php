@@ -11,7 +11,7 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * TradingPairController
+ * TradingPairController.
  *
  * Manages trading pair configurations (e.g., ETH/USDT).
  * Provides chain and token lookups for pair creation forms.

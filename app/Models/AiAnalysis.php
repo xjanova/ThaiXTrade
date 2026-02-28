@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * AiAnalysis Model
+ * AiAnalysis Model.
  *
  * Represents an AI-powered market analysis performed via Groq API.
  * Stores analysis results including prompts, responses, and performance metrics.
@@ -27,7 +27,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $created_by
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- *
  * @property-read AdminUser|null $creator
  */
 class AiAnalysis extends Model
@@ -94,8 +93,7 @@ class AiAnalysis extends Model
     /**
      * Scope a query to filter by analysis type.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $type
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeByType($query, string $type)
@@ -106,7 +104,7 @@ class AiAnalysis extends Model
     /**
      * Scope a query to only include completed analyses.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeCompleted($query)
@@ -117,8 +115,7 @@ class AiAnalysis extends Model
     /**
      * Scope a query to get recent analyses (last N days).
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param int $days
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeRecent($query, int $days = 7)

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * SwapConfig Model
+ * SwapConfig Model.
  *
  * Stores DEX swap router configurations per chain.
  * Supports multiple protocols (e.g., Uniswap V2, V3, PancakeSwap).
@@ -23,7 +23,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property array|null $metadata
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- *
  * @property-read Chain $chain
  */
 class SwapConfig extends Model
@@ -86,7 +85,7 @@ class SwapConfig extends Model
     /**
      * Scope a query to only include active swap configurations.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeActive($query)

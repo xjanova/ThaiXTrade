@@ -10,7 +10,7 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * AuditLogController
+ * AuditLogController.
  *
  * Read-only view of admin audit logs.
  * Restricted to super_admin role via route middleware.
@@ -46,7 +46,7 @@ class AuditLogController extends Controller
         }
 
         if (! empty($validated['date_to'])) {
-            $query->where('created_at', '<=', $validated['date_to'] . ' 23:59:59');
+            $query->where('created_at', '<=', $validated['date_to'].' 23:59:59');
         }
 
         $perPage = $validated['per_page'] ?? 20;

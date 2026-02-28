@@ -8,7 +8,9 @@ use Illuminate\Support\Facades\Log;
 class GroqService
 {
     protected string $apiKey;
+
     protected string $baseUrl = 'https://api.groq.com/openai/v1';
+
     protected string $defaultModel = 'llama-3.3-70b-versatile';
 
     public function __construct()
@@ -17,7 +19,7 @@ class GroqService
     }
 
     /**
-     * Send a chat completion request to Groq
+     * Send a chat completion request to Groq.
      */
     public function chat(string $message, string $systemPrompt = '', array $options = []): array
     {
@@ -43,13 +45,14 @@ class GroqService
                     'max_tokens' => $maxTokens,
                 ]);
 
-            $processingTime = (int)((microtime(true) - $startTime) * 1000);
+            $processingTime = (int) ((microtime(true) - $startTime) * 1000);
 
             if ($response->failed()) {
                 Log::error('Groq API error', [
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
+
                 return [
                     'success' => false,
                     'error' => $response->json('error.message', 'API request failed'),
@@ -58,6 +61,7 @@ class GroqService
             }
 
             $data = $response->json();
+
             return [
                 'success' => true,
                 'content' => $data['choices'][0]['message']['content'] ?? '',
@@ -67,22 +71,23 @@ class GroqService
             ];
         } catch (\Exception $e) {
             Log::error('Groq API exception', ['message' => $e->getMessage()]);
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
-                'processing_time_ms' => (int)((microtime(true) - $startTime) * 1000),
+                'processing_time_ms' => (int) ((microtime(true) - $startTime) * 1000),
             ];
         }
     }
 
     /**
-     * Analyze market data
+     * Analyze market data.
      */
     public function analyzeMarket(string $symbol, string $type = 'technical', array $marketData = []): array
     {
-        $systemPrompt = "You are an expert cryptocurrency market analyst for TPIX TRADE exchange. Provide professional, data-driven analysis. Always include risk warnings. Format output with clear sections. Respond in the language specified by the user.";
+        $systemPrompt = 'You are an expert cryptocurrency market analyst for TPIX TRADE exchange. Provide professional, data-driven analysis. Always include risk warnings. Format output with clear sections. Respond in the language specified by the user.';
 
-        $dataContext = !empty($marketData) ? "\n\nMarket Data:\n" . json_encode($marketData, JSON_PRETTY_PRINT) : '';
+        $dataContext = ! empty($marketData) ? "\n\nMarket Data:\n".json_encode($marketData, JSON_PRETTY_PRINT) : '';
 
         $prompts = [
             'technical' => "Perform a detailed technical analysis for {$symbol}. Include support/resistance levels, trend analysis, key indicators (RSI, MACD, Moving Averages), and trading signals. {$dataContext}",
@@ -100,7 +105,7 @@ class GroqService
     }
 
     /**
-     * Generate news article
+     * Generate news article.
      */
     public function generateNews(string $topic, string $category = 'market_update', string $language = 'th'): array
     {
@@ -117,7 +122,7 @@ class GroqService
     }
 
     /**
-     * Get available models
+     * Get available models.
      */
     public function getModels(): array
     {

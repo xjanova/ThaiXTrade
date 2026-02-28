@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Translation Model
+ * Translation Model.
  *
  * Stores key-value translation strings organized by language and group.
  * Provides a static helper with caching for efficient retrieval.
@@ -20,7 +20,6 @@ use Illuminate\Support\Facades\Cache;
  * @property string $value
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- *
  * @property-read Language $language
  */
 class Translation extends Model
@@ -48,8 +47,6 @@ class Translation extends Model
 
     /**
      * The cache TTL in seconds (1 hour).
-     *
-     * @var int
      */
     protected static int $cacheTtl = 3600;
 
@@ -71,12 +68,6 @@ class Translation extends Model
 
     /**
      * Get a translation value by language code, group, and key.
-     *
-     * @param string $languageCode
-     * @param string $group
-     * @param string $key
-     * @param string|null $default
-     * @return string|null
      */
     public static function get(string $languageCode, string $group, string $key, ?string $default = null): ?string
     {

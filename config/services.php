@@ -1,7 +1,7 @@
 <?php
 
 /**
- * TPIX TRADE - Third-party Services Configuration
+ * TPIX TRADE - Third-party Services Configuration.
  */
 
 return [

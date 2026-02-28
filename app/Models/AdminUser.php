@@ -9,7 +9,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 /**
- * AdminUser Model
+ * AdminUser Model.
  *
  * Represents an administrator user in the TPIX TRADE admin panel.
  * Extends Authenticatable for authentication support.
@@ -30,7 +30,6 @@ use Illuminate\Notifications\Notifiable;
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property \Illuminate\Support\Carbon|null $deleted_at
- *
  * @property-read \Illuminate\Database\Eloquent\Collection<int, SupportTicket> $assignedTickets
  * @property-read \Illuminate\Database\Eloquent\Collection<int, AuditLog> $auditLogs
  */
@@ -118,7 +117,7 @@ class AdminUser extends Authenticatable
     /**
      * Scope a query to only include active admin users.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeActive($query)
@@ -129,8 +128,7 @@ class AdminUser extends Authenticatable
     /**
      * Scope a query to filter by role.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $role
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeByRole($query, string $role)

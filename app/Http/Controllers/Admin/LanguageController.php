@@ -12,7 +12,7 @@ use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * LanguageController
+ * LanguageController.
  *
  * Manages platform languages and their translation strings.
  * Supports CRUD for languages, default language selection,

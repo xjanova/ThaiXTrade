@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * FeeConfig Model
+ * FeeConfig Model.
  *
  * Defines fee structures for different transaction types on the platform.
  * Supports per-chain configuration with maker/taker fee model.
@@ -23,7 +23,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property bool $is_active
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- *
  * @property-read Chain|null $chain
  */
 class FeeConfig extends Model
@@ -88,7 +87,7 @@ class FeeConfig extends Model
     /**
      * Scope a query to only include active fee configs.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeActive($query)
@@ -99,8 +98,7 @@ class FeeConfig extends Model
     /**
      * Scope a query to filter by fee type (e.g., 'swap', 'trade', 'withdrawal').
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $type
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
     public function scopeByType($query, string $type)

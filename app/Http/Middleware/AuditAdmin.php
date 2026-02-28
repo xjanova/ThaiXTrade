@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * AuditAdmin Middleware
+ * AuditAdmin Middleware.
  *
  * Logs all mutating admin requests (POST, PUT, PATCH, DELETE) to the audit_logs table.
  * Captures the admin user, route action, IP address, and user agent.
