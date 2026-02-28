@@ -1,99 +1,378 @@
-# TPIX TRADE
+<p align="center">
+  <img src="logo.png" alt="TPIX TRADE" width="120" height="120" style="border-radius: 24px;">
+</p>
 
-**Decentralized Exchange Platform**
+<h1 align="center">TPIX TRADE</h1>
 
-![Laravel](https://img.shields.io/badge/Laravel-11-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)
-![Vue.js](https://img.shields.io/badge/Vue.js-3-4FC08D?style=for-the-badge&logo=vuedotjs&logoColor=white)
-![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
-![Inertia.js](https://img.shields.io/badge/Inertia.js-1.0-9553E9?style=for-the-badge)
-![Web3](https://img.shields.io/badge/Web3-Ethers.js-3C3C3D?style=for-the-badge&logo=ethereum&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=for-the-badge&logo=vite&logoColor=white)
-![PHP](https://img.shields.io/badge/PHP-8.2+-777BB4?style=for-the-badge&logo=php&logoColor=white)
-![License](https://img.shields.io/badge/License-Proprietary-blue?style=for-the-badge)
+<p align="center">
+  <strong>Non-Custodial Decentralized Exchange Platform</strong><br>
+  <em>Trade directly from your wallet across 50+ blockchains with AI-powered insights</em>
+</p>
 
-TPIX TRADE is a non-custodial decentralized exchange (DEX) platform that enables users to trade cryptocurrencies directly from their wallets across multiple blockchain networks. Built with a modern Glass Morphism dark theme, it provides a professional trading experience with real-time charts, order book depth visualization, AI-powered insights, and multi-chain support for over 50 blockchains.
+<p align="center">
+  <img src="https://img.shields.io/badge/Version-1.0.19-06b6d4?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/Laravel-11-FF2D20?style=for-the-badge&logo=laravel&logoColor=white" alt="Laravel">
+  <img src="https://img.shields.io/badge/Vue.js-3.4-4FC08D?style=for-the-badge&logo=vuedotjs&logoColor=white" alt="Vue.js">
+  <img src="https://img.shields.io/badge/Solidity-0.8.20-363636?style=for-the-badge&logo=solidity&logoColor=white" alt="Solidity">
+  <img src="https://img.shields.io/badge/PHP-8.2+-777BB4?style=for-the-badge&logo=php&logoColor=white" alt="PHP">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/TailwindCSS-3.4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="TailwindCSS">
+  <img src="https://img.shields.io/badge/Inertia.js-1.0-9553E9?style=flat-square" alt="Inertia.js">
+  <img src="https://img.shields.io/badge/Ethers.js-6.11-3C3C3D?style=flat-square&logo=ethereum&logoColor=white" alt="Ethers.js">
+  <img src="https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite">
+  <img src="https://img.shields.io/badge/Pinia-2.1-ffd859?style=flat-square" alt="Pinia">
+  <img src="https://img.shields.io/badge/License-Proprietary-8b5cf6?style=flat-square" alt="License">
+</p>
 
 ---
 
-## Features
+## Overview
 
-### Trading
+TPIX TRADE is a production-grade decentralized exchange (DEX) platform that enables users to trade cryptocurrencies directly from their wallets. Built with a distinctive **Purple / Cyan / Orange** gradient brand identity, it delivers a professional trading experience with real-time charts, order book visualization, AI-powered market insights, and an on-chain fee collection system via the **TPIX Router** smart contract.
+
+> **Live**: [tpix.online](https://tpix.online)
+
+---
+
+## Key Features
+
+### Trading Engine
 - Real-time candlestick charts with TradingView-style interface (Lightweight Charts)
 - Order book with bid/ask depth visualization
 - Limit, market, and stop-limit order types
-- Token swap with optimized routing
-- Recent trades feed with live updates
-- Open orders management and trade history with export
+- Recent trades feed with live WebSocket updates
+- Open orders management and trade history with CSV export
+
+### Token Swap & Fee Collection
+- One-click token swap with optimized DEX routing
+- **TPIX Router** smart contract wrapping Uniswap V2-compatible routers
+- Configurable platform fee (default 0.3%) collected on-chain
+- Fee hierarchy: Trading Pair override > Chain-specific > Global default
+- Transparent fee breakdown shown before every swap
+- Admin-configurable fee collector wallet address
 
 ### Multi-Chain Support
-- 9+ mainnet blockchains out of the box: Ethereum, BNB Smart Chain, Polygon, Arbitrum, Optimism, Avalanche, Fantom, Base, zkSync Era
+- **50+ blockchains** preconfigured: Ethereum, BNB Smart Chain, Polygon, Arbitrum, Optimism, Avalanche, Fantom, Base, zkSync Era, **Bitkub Chain**, and more
 - Testnet support (Sepolia, BSC Testnet) for development
-- Easy chain addition via configuration file
-- Per-chain RPC fallback endpoints
+- Per-chain RPC endpoints with automatic fallback
+- Easy chain addition via `config/chains.php`
 
 ### Wallet Integration
-- MetaMask
-- WalletConnect v2
-- Trust Wallet
-- Coinbase Wallet
+- MetaMask, WalletConnect v2, Trust Wallet, Coinbase Wallet
 - Non-custodial architecture -- users always control their keys
+- QR code generation for wallet addresses
 
 ### AI-Powered Insights
-- Market analysis and trend detection
+- Market analysis and trend detection via Groq LLM
 - Price prediction models
-- Trade suggestions
-- Per-symbol insights dashboard
+- Trade suggestions per symbol
+- AI news aggregation and admin management
 
 ### Real-Time Data
-- WebSocket-based live updates via Laravel Reverb
-- Live ticker strip across all pairs
-- Real-time order book and trade feed
+- WebSocket broadcasting via Laravel Reverb
+- Live ticker strip across all trading pairs
+- Real-time order book and trade feed updates
+
+### Admin Panel (18 pages)
+- Dashboard with volume, transactions, chains, pairs, and ticket stats
+- Chain, token, and trading pair CRUD management
+- Fee configuration with maker/taker models and per-chain overrides
+- Swap configuration per chain (router address, slippage, factory)
+- Trading settings with fee collector wallet, default/max fee rates
+- AI analysis & news management
+- Multi-language translations (Thai/English + Google Translate)
+- Support ticket system with threaded messages
+- Audit log with full admin action tracking
+- Site settings (General, SEO, Trading, Security, Social)
 
 ### Platform
-- Glass Morphism dark theme UI
+- Glass Morphism dark theme with triple-gradient brand identity
 - Responsive design (mobile-first)
-- PWA support for app-like experience
-- Multi-language support via Google Translate integration
-- Social authentication (Google, Twitter, Discord, Telegram)
-- Two-factor authentication (2FA)
+- Multi-language support (Thai primary, English fallback)
+- Cloudflare Turnstile bot protection
+- Two-factor authentication (2FA) support
 
 ---
 
-## Screenshots
+## Tech Stack
 
-> Screenshots will be added here. Place images in `docs/screenshots/`.
+| Layer | Technology | Version | Purpose |
+|-------|-----------|---------|---------|
+| **Backend** | Laravel | 11.x | API, routing, business logic, Inertia SSR |
+| **Frontend** | Vue.js 3 | 3.4 | Composition API, reactive UI components |
+| **Bridge** | Inertia.js | 1.0 | SPA without a separate API layer |
+| **Styling** | TailwindCSS | 3.4 | Utility-first CSS, Glass Morphism theme |
+| **Build** | Vite | 5.x | Fast HMR and optimized production builds |
+| **State** | Pinia | 2.1 | Centralized Vue state management |
+| **Charts** | Lightweight Charts | 4.1 | TradingView-style candlestick charts |
+| **Charts** | ApexCharts + Chart.js | 3.46 / 4.4 | Dashboard analytics and stats |
+| **Web3** | Ethers.js 6 + Web3.js 4 | 6.11 / 4.5 | Blockchain interaction and signing |
+| **Wallet** | WalletConnect v2 | 1.8 | Multi-wallet connection protocol |
+| **WebSocket** | Laravel Reverb | 1.0 | Real-time event broadcasting |
+| **AI** | Groq API | - | LLM-powered market analysis |
+| **Smart Contract** | Solidity | 0.8.20 | TPIX Router fee collection |
+| **Testing** | PHPUnit + Vitest | 11 / 1.2 | Backend and frontend testing |
+| **Linting** | Laravel Pint + ESLint | 1.13 | Code style enforcement |
+| **Icons** | Heroicons + Headless UI | 2.1 / 1.7 | Accessible UI primitives |
+| **i18n** | Vue I18n | 9.9 | Internationalization framework |
+| **Notifications** | Vue Toastification | 2.0 | Toast notification system |
 
-| Dashboard | Trading View | Swap |
-|-----------|-------------|------|
-| _Coming soon_ | _Coming soon_ | _Coming soon_ |
+---
+
+## Architecture
+
+```
+                                    TPIX TRADE Architecture
+
+    +------------------+     +------------------+     +-------------------+
+    |   Vue.js 3 SPA   |     |   Inertia.js     |     |   Laravel 11      |
+    |                   |<--->|   (Bridge)       |<--->|   Backend         |
+    |  - Pages (21)     |     |                  |     |  - Controllers    |
+    |  - Components     |     |  Props & Router  |     |  - Services       |
+    |  - Pinia Stores   |     |                  |     |  - Models (15)    |
+    +--------+----------+     +------------------+     +--------+----------+
+             |                                                  |
+             v                                                  v
+    +------------------+                              +-------------------+
+    |   Ethers.js /    |                              |   MySQL / SQLite  |
+    |   Web3.js        |                              |   Database        |
+    |                  |                              |                   |
+    |  Wallet Connect  |                              |  18 Migrations    |
+    +--------+---------+                              +-------------------+
+             |
+             v
+    +---------------------------------------------+
+    |           Blockchain Networks                |
+    |                                             |
+    |  +----------+  +---------+  +----------+   |
+    |  | Ethereum |  |   BSC   |  | Polygon  |   |
+    |  +----------+  +---------+  +----------+   |
+    |  +----------+  +---------+  +----------+   |
+    |  | Arbitrum |  |  Base   |  | Bitkub   |   |
+    |  +----------+  +---------+  +----------+   |
+    |              ... 50+ chains                  |
+    +---------------------+------------------------+
+                          |
+                          v
+              +-----------------------+
+              |   TPIX Router         |
+              |   Smart Contract      |
+              |                       |
+              |  Fee: 0.3% (default)  |
+              |  Max:  5.0%           |
+              |  Pausable + Emergency |
+              +-----------------------+
+```
+
+---
+
+## Smart Contract: TPIX Router
+
+The `TPIXRouter.sol` is a production-grade Solidity smart contract that wraps Uniswap V2-compatible routers (PancakeSwap, SushiSwap, etc.) to collect platform fees on-chain.
+
+| Feature | Description |
+|---------|-------------|
+| **Fee Model** | Basis-point fee deducted from input token before routing to DEX |
+| **Default Fee** | 30 basis points (0.3%) |
+| **Max Fee Cap** | 500 basis points (5%) -- enforced in contract |
+| **Swap Types** | ERC20-to-ERC20, Native-to-ERC20, ERC20-to-Native |
+| **Security** | `ReentrancyGuard`, `Ownable`, `Pausable`, `SafeERC20` |
+| **USDT Safe** | Uses `forceApprove` for non-standard ERC20 tokens |
+| **Emergency** | Owner can withdraw stuck tokens/native currency |
+| **Events** | `SwapExecuted`, `FeeCollected`, `FeeRateUpdated`, `FeeCollectorUpdated` |
+
+```
+contracts/
+  TPIXRouter.sol                 # Main fee-collecting router
+  interfaces/
+    IUniswapV2Router02.sol       # Uniswap V2 Router interface
+```
+
+---
+
+## Project Structure
+
+```
+ThaiXTrade/
+├── app/
+│   ├── Console/Commands/           # Artisan CLI commands
+│   │   └── CreateAdminUser.php     # Create admin accounts
+│   ├── Http/
+│   │   ├── Controllers/
+│   │   │   ├── Admin/              # 13 admin panel controllers
+│   │   │   │   ├── DashboardController.php
+│   │   │   │   ├── ChainController.php
+│   │   │   │   ├── TokenController.php
+│   │   │   │   ├── FeeController.php
+│   │   │   │   ├── SettingController.php
+│   │   │   │   └── ...
+│   │   │   └── Api/                # 6 REST API controllers
+│   │   │       ├── MarketController.php
+│   │   │       ├── TradingController.php
+│   │   │       ├── SwapApiController.php
+│   │   │       ├── WalletController.php
+│   │   │       ├── ChainController.php
+│   │   │       └── AIController.php
+│   │   └── Middleware/             # 6 middleware classes
+│   ├── Models/                     # 15 Eloquent models
+│   │   ├── Chain.php
+│   │   ├── Token.php
+│   │   ├── TradingPair.php
+│   │   ├── FeeConfig.php
+│   │   ├── SwapConfig.php
+│   │   ├── Transaction.php
+│   │   ├── SiteSetting.php
+│   │   └── ...
+│   ├── Services/
+│   │   ├── FeeCalculationService.php   # Fee hierarchy logic
+│   │   └── GroqService.php             # AI LLM integration
+│   └── Providers/
+├── contracts/                      # Solidity smart contracts
+│   ├── TPIXRouter.sol
+│   └── interfaces/
+│       └── IUniswapV2Router02.sol
+├── config/
+│   └── chains.php                  # 50+ blockchain configurations
+├── database/
+│   └── migrations/                 # 18 migration files
+├── resources/
+│   ├── css/app.css                 # TailwindCSS + brand design system
+│   └── js/
+│       ├── app.js                  # Application entry point
+│       ├── Components/
+│       │   ├── Admin/              # DataTable, Modal, StatCard, etc.
+│       │   ├── Navigation/         # NavBar, Sidebar
+│       │   ├── Trading/            # Chart, OrderBook, TradeForm, etc.
+│       │   └── Wallet/             # WalletModal
+│       ├── Layouts/
+│       │   ├── AppLayout.vue       # Main app layout
+│       │   └── AdminLayout.vue     # Admin panel layout
+│       ├── Pages/
+│       │   ├── Home.vue            # Landing page
+│       │   ├── Trade.vue           # Trading interface
+│       │   ├── Swap.vue            # Token swap with fee display
+│       │   └── Admin/              # 18 admin pages
+│       └── utils/                  # Utility functions
+├── routes/
+│   ├── api.php                     # REST API routes
+│   └── web.php                     # Inertia web routes
+├── tests/
+│   ├── Feature/                    # Integration tests
+│   ├── Unit/                       # Unit tests
+│   └── js/                         # Vue/JS tests (Vitest)
+├── scripts/                        # DevOps automation
+├── public_html/                    # Document root
+│   ├── build/                      # Vite production output
+│   ├── logo.png                    # Brand logo
+│   └── favicon.svg                 # Brand favicon
+├── tailwind.config.js              # Theme configuration
+├── vite.config.js                  # Build configuration
+├── pint.json                       # PHP code style rules
+├── Makefile                        # Development commands
+├── package.json                    # NPM dependencies
+├── composer.json                   # PHP dependencies
+└── version.json                    # Version tracking
+```
+
+---
+
+## API Reference
+
+All API endpoints live under `/api/v1/` and return a consistent JSON envelope:
+
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+### Public Endpoints (No Auth)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/v1/market/tickers` | All trading pair tickers |
+| `GET` | `/v1/market/ticker/{symbol}` | Single pair ticker |
+| `GET` | `/v1/market/orderbook/{symbol}` | Order book depth |
+| `GET` | `/v1/market/trades/{symbol}` | Recent trades |
+| `GET` | `/v1/market/klines/{symbol}` | Candlestick data |
+| `GET` | `/v1/market/pairs` | All trading pairs |
+| `GET` | `/v1/chains` | Supported blockchains |
+| `GET` | `/v1/chains/{id}/tokens` | Tokens on a chain |
+| `GET` | `/v1/chains/{id}/gas` | Gas price estimates |
+| `GET` | `/v1/tokens/{address}` | Token information |
+| `GET` | `/v1/tokens/{address}/price` | Token price |
+| `GET` | `/v1/swap/quote` | Swap quote with fee breakdown |
+| `GET` | `/v1/swap/routes` | Available swap routes |
+
+### Protected Endpoints (Wallet Signature Required)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/v1/trading/order` | Create new order |
+| `DELETE` | `/v1/trading/order/{id}` | Cancel order |
+| `GET` | `/v1/trading/orders` | User's open orders |
+| `GET` | `/v1/trading/history` | Trade history |
+| `POST` | `/v1/wallet/connect` | Connect wallet |
+| `GET` | `/v1/wallet/balances` | Wallet balances |
+| `GET` | `/v1/wallet/transactions` | Wallet transactions |
+| `POST` | `/v1/swap/execute` | Execute swap transaction |
+| `POST` | `/v1/ai/analyze` | AI market analysis |
+| `POST` | `/v1/ai/predict` | Price prediction |
+| `GET` | `/v1/ai/insights/{symbol}` | Symbol insights |
+
+For complete API documentation, see [API.md](API.md).
 
 ---
 
 ## Quick Start
+
+### Prerequisites
+
+- PHP 8.2+
+- Node.js 20+
+- Composer 2.x
+- MySQL 8+ or SQLite
+
+### Installation
 
 ```bash
 # Clone the repository
 git clone https://github.com/xjanova/ThaiXTrade.git
 cd ThaiXTrade
 
-# Automated installation
+# Automated setup (recommended)
 ./install.sh
 
-# Or manual setup
+# -- OR manual setup --
 composer install
 npm install
 cp .env.example .env
 php artisan key:generate
-php artisan migrate
+php artisan migrate --seed
 npm run build
+```
 
-# Start development servers
+### Development
+
+```bash
+# Start Laravel + Vite dev servers
 make dev
+
+# Or individually
+php artisan serve &
+npm run dev
 ```
 
 The application will be available at:
-- **Backend**: http://localhost:8000
-- **Vite Dev Server**: http://localhost:5173
+
+| Service | URL |
+|---------|-----|
+| **Application** | http://localhost:8000 |
+| **Vite HMR** | http://localhost:5173 |
+| **Admin Panel** | http://localhost:8000/admin |
 
 For detailed setup instructions, see [QUICKSTART.md](QUICKSTART.md).
 
@@ -112,162 +391,113 @@ For detailed setup instructions, see [QUICKSTART.md](QUICKSTART.md).
 | `make lint` | Run code linting (Pint + ESLint) |
 | `make clean` | Clear all caches |
 | `make audit` | Run security audit |
-| `make version` | Show current version |
-| `make bump-patch` | Bump patch version (1.0.0 -> 1.0.1) |
-| `make bump-minor` | Bump minor version (1.0.0 -> 1.1.0) |
-| `make bump-major` | Bump major version (1.0.0 -> 2.0.0) |
 | `make deploy` | Deploy to production |
 | `make backup` | Create backup |
 | `make rollback` | Rollback to previous version |
 | `make migrate` | Run database migrations |
 | `make migrate-fresh` | Fresh migrate with seeders |
-| `make tinker` | Open Laravel Tinker REPL |
-
----
-
-## Project Structure
-
-```
-TPIX TRADE/
-├── app/
-│   ├── Http/Controllers/
-│   │   ├── Api/
-│   │   │   ├── AIController.php        # AI analysis endpoints
-│   │   │   ├── ChainController.php     # Blockchain chain data
-│   │   │   ├── MarketController.php    # Market data & tickers
-│   │   │   ├── TradingController.php   # Orders & swap operations
-│   │   │   └── WalletController.php    # Wallet connection & balances
-│   │   └── Controller.php
-│   ├── Models/                         # Eloquent models
-│   ├── Services/                       # Business logic layer
-│   └── Providers/                      # Service providers
-├── config/
-│   └── chains.php                      # Blockchain network configuration
-├── database/
-│   └── migrations/                     # Database schema
-├── public_html/                        # Document root (NOT public/)
-├── resources/
-│   ├── css/app.css                     # TailwindCSS + design system
-│   ├── js/
-│   │   ├── app.js                      # Application entry point
-│   │   ├── Components/
-│   │   │   ├── Navigation/
-│   │   │   │   ├── NavBar.vue          # Top navigation bar
-│   │   │   │   └── Sidebar.vue         # Side navigation
-│   │   │   ├── Trading/
-│   │   │   │   ├── TradingChart.vue    # Candlestick chart
-│   │   │   │   ├── OrderBook.vue       # Bid/ask order book
-│   │   │   │   ├── TradeForm.vue       # Buy/sell form
-│   │   │   │   ├── RecentTrades.vue    # Live trade feed
-│   │   │   │   ├── OpenOrders.vue      # Active orders
-│   │   │   │   ├── TradeHistory.vue    # Historical trades
-│   │   │   │   └── TickerStrip.vue     # Price ticker bar
-│   │   │   └── Wallet/
-│   │   │       └── WalletModal.vue     # Wallet connection modal
-│   │   ├── Composables/                # Vue composable functions
-│   │   ├── Layouts/
-│   │   │   └── AppLayout.vue           # Main application layout
-│   │   ├── Pages/
-│   │   │   ├── Home.vue                # Landing / dashboard page
-│   │   │   └── Trade.vue               # Trading interface page
-│   │   └── Stores/                     # Pinia state stores
-│   └── views/                          # Blade templates
-├── routes/
-│   ├── api.php                         # API route definitions
-│   └── web.php                         # Web (Inertia) route definitions
-├── scripts/                            # DevOps & automation scripts
-│   ├── bump-version.sh                 # Semantic version management
-│   ├── test.sh                         # Test runner
-│   ├── backup.sh                       # Backup utility
-│   ├── security-audit.sh              # Security checks
-│   └── ...
-├── tests/
-│   ├── Feature/                        # HTTP / integration tests
-│   ├── Unit/                           # Unit tests
-│   └── js/                             # JavaScript / Vue tests (Vitest)
-├── CLAUDE.md                           # AI development guidelines
-├── CONTRIBUTING.md                     # Contribution guide
-├── CHANGELOG.md                        # Version changelog
-├── Makefile                            # Development commands
-├── version.json                        # Version tracking
-├── package.json                        # NPM dependencies
-├── composer.json                       # PHP dependencies
-├── vite.config.js                      # Vite build configuration
-└── tailwind.config.js                  # TailwindCSS configuration
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| **Backend** | Laravel 11 / PHP 8.2+ | API, routing, business logic |
-| **Frontend** | Vue.js 3 (Composition API) | Reactive UI components |
-| **Bridge** | Inertia.js | SPA without building an API layer |
-| **Styling** | TailwindCSS 3 | Utility-first CSS with Glass Morphism theme |
-| **Build** | Vite 5 | Fast HMR and optimized production builds |
-| **State** | Pinia | Vue state management |
-| **Charts** | Lightweight Charts + ApexCharts | TradingView-style candlestick charts |
-| **Web3** | Ethers.js 6 + Web3.js 4 | Blockchain interaction |
-| **Wallet** | WalletConnect | Multi-wallet connection protocol |
-| **WebSocket** | Laravel Reverb | Real-time event broadcasting |
-| **Testing** | PHPUnit + Vitest | Backend and frontend testing |
-| **Linting** | Laravel Pint + ESLint | Code style enforcement |
-| **Icons** | Heroicons + Headless UI | Accessible UI primitives |
+| `make version` | Show current version |
+| `make bump-patch` | Bump patch version |
 
 ---
 
 ## Testing
 
 ```bash
-# Run the full test suite
+# Full test suite
 make test
 
-# PHP tests only
+# PHP tests
 php artisan test
-# or
-./vendor/bin/phpunit
 
-# JavaScript tests only
+# JavaScript tests
 npm run test:run
 
-# Watch mode for JS tests
+# Watch mode
 npm run test
 
 # Coverage report
-make test-coverage
-# or
 npm run test:coverage
-```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for test writing guidelines.
+# Visual test UI
+npm run test:ui
+```
 
 ---
 
-## API Overview
+## Environment Configuration
 
-TPIX TRADE exposes a RESTful JSON API under `/api/v1/`. All responses follow a consistent envelope format:
+Copy `.env.example` to `.env` and configure:
 
-```json
-{
-    "success": true,
-    "data": { ... }
-}
+| Group | Variables | Description |
+|-------|-----------|-------------|
+| **App** | `APP_NAME`, `APP_URL`, `APP_TIMEZONE` | Application identity (default: Asia/Bangkok) |
+| **Database** | `DB_CONNECTION`, `DB_HOST`, `DB_DATABASE` | MySQL, PostgreSQL, or SQLite |
+| **Web3** | `DEFAULT_CHAIN_ID`, `WEB3_RPC_*` | Blockchain RPC endpoints |
+| **Wallet** | `WALLETCONNECT_PROJECT_ID` | WalletConnect v2 integration |
+| **Trading** | `TRADING_FEE_PERCENTAGE`, `TRADING_FEE_WALLET` | Fee configuration |
+| **AI** | `GROQ_API_KEY`, `GROQ_MODEL` | Groq LLM integration |
+| **WebSocket** | `REVERB_APP_KEY`, `REVERB_HOST` | Real-time event broadcasting |
+| **Security** | `CLOUDFLARE_TURNSTILE_*` | Bot protection |
+
+See `.env.example` for the full list with documentation.
+
+---
+
+## CI/CD Pipeline
+
+The project uses GitHub Actions for continuous integration and deployment:
+
+```
+Push to main
+    |
+    v
++----------------------------+
+|  CI - Tests & Quality      |
+|                            |
+|  - PHP Tests (8.2 + 8.3)  |
+|  - JavaScript Tests        |
+|  - Laravel Pint (Style)    |
+|  - Build Assets Check      |
+|  - Security Audit          |
++-------------+--------------+
+              |
+              v (all pass)
++----------------------------+
+|  Auto Release              |
+|                            |
+|  - Semantic version bump   |
+|  - Git tag + GitHub Release|
++-------------+--------------+
+              |
+              v
++----------------------------+
+|  Auto Deploy to Production |
+|                            |
+|  - SSH deploy to server    |
+|  - Composer install        |
+|  - npm build               |
+|  - Migrate database        |
+|  - Clear caches            |
++----------------------------+
 ```
 
-### Key Endpoint Groups
+---
 
-| Group | Prefix | Auth | Description |
-|-------|--------|------|-------------|
-| Market | `/api/v1/market` | No | Tickers, order books, klines, pairs |
-| Chains | `/api/v1/chains` | No | Supported blockchains, tokens, gas |
-| Tokens | `/api/v1/tokens` | No | Token info and pricing |
-| Trading | `/api/v1/trading` | Yes | Orders, history, swaps |
-| Wallet | `/api/v1/wallet` | Yes | Connect, balances, transactions |
-| AI | `/api/v1/ai` | Yes | Analysis, predictions, insights |
+## Brand Identity
 
-For complete API documentation, see [API.md](API.md).
+TPIX TRADE uses a distinctive triple-gradient color palette derived from the logo:
+
+| Color | Hex | Usage |
+|-------|-----|-------|
+| **Cyan** (Primary) | `#06b6d4` | Primary actions, links, active states |
+| **Purple** (Accent) | `#8b5cf6` | Highlights, badges, gradient starts |
+| **Orange** (Warm) | `#f97316` | CTAs, warnings, gradient ends |
+| **Dark** | `#020617` - `#0f172a` | Backgrounds, cards |
+| **Green** | `#00C853` | Positive price changes |
+| **Red** | `#FF1744` | Negative price changes |
+
+The Glass Morphism design system includes backdrop blur, translucent borders, and multi-color glow effects that create a premium trading experience.
 
 ---
 
@@ -275,69 +505,52 @@ For complete API documentation, see [API.md](API.md).
 
 | Document | Description |
 |----------|-------------|
-| [README.md](README.md) | This file -- project overview |
+| [README.md](README.md) | Project overview (this file) |
 | [QUICKSTART.md](QUICKSTART.md) | 5-minute setup guide |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture and design |
-| [API.md](API.md) | Complete API reference |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture and design decisions |
+| [API.md](API.md) | Complete REST API reference |
 | [CODING_STANDARDS.md](CODING_STANDARDS.md) | Code style and conventions |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
-| [CHANGELOG.md](CHANGELOG.md) | Version history |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Production deployment guide |
+| [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
 | [CLAUDE.md](CLAUDE.md) | AI development guidelines |
-
----
-
-## Environment Variables
-
-Key configuration is managed through `.env`. Copy `.env.example` to get started:
-
-```bash
-cp .env.example .env
-```
-
-Important configuration groups:
-- **App**: `APP_NAME`, `APP_ENV`, `APP_URL`, `APP_TIMEZONE` (Asia/Bangkok)
-- **Database**: `DB_CONNECTION` (sqlite, mysql, pgsql)
-- **Web3**: `DEFAULT_CHAIN_ID`, `INFURA_PROJECT_ID`, `ALCHEMY_API_KEY`, `WALLETCONNECT_PROJECT_ID`
-- **WebSocket**: `REVERB_APP_KEY`, `REVERB_HOST`, `REVERB_PORT`
-- **AI**: `AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`
-- **Trading**: `TRADING_FEE_PERCENTAGE`, `MAX_ORDER_SIZE_USD`, `DEFAULT_SLIPPAGE_TOLERANCE`
-- **Security**: `RATE_LIMIT_PER_MINUTE`, `TWO_FACTOR_ENABLED`, `ENCRYPTION_KEY`
-
-See `.env.example` for the full list with documentation.
-
----
-
-## Contributing
-
-We welcome contributions. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for:
-- Code of conduct
-- Development workflow and branch naming
-- Coding standards
-- Testing requirements
-- Pull request process
 
 ---
 
 ## Security
 
-If you discover a security vulnerability, **do not** open a public issue. Instead, email **security@xmanstudio.com** with a description, steps to reproduce, and potential impact.
+- Non-custodial architecture: users control their own private keys at all times
+- AES-256 encryption for sensitive data at rest
+- HMAC-SHA256 request signing for API authentication
+- Rate limiting on all endpoints
+- Content Security Policy (CSP) headers
+- Cloudflare Turnstile for bot protection
+- Admin audit logging with full action trail
+
+If you discover a security vulnerability, **do not** open a public issue. Email **security@xmanstudio.com** with a description, reproduction steps, and potential impact.
+
+---
+
+## Contributing
+
+We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
+
+- Development workflow and branch naming
+- Coding standards (Laravel Pint + ESLint)
+- Testing requirements
+- Pull request process
 
 ---
 
 ## License
 
-This project is proprietary software developed by Xman Studio. All rights reserved.
-
----
-
-## Version
-
-Current version: **1.0.0** (Build 1) -- Stable Channel
-
-See [CHANGELOG.md](CHANGELOG.md) for release history.
+This project is proprietary software developed by **Xman Studio**. All rights reserved.
 
 ---
 
 <p align="center">
-  Developed with dedication by <strong><a href="https://xmanstudio.com">Xman Studio</a></strong>
+  <img src="logo.png" alt="TPIX TRADE" width="48" height="48" style="border-radius: 12px;">
+  <br><br>
+  <strong>TPIX TRADE</strong> v1.0.19<br>
+  <em>Developed with dedication by <a href="https://xmanstudio.com">Xman Studio</a></em>
 </p>
