@@ -33,7 +33,6 @@ let lineSeries = null;
 let volumeSeries = null;
 let maSeries = null;
 let emaSeries = null;
-let resizeObserver = null;
 
 const currentPrice = ref('67,234.50');
 const priceChange = ref('+2.45%');
@@ -140,12 +139,8 @@ function initChart() {
         chart = null;
     }
 
-    const containerWidth = chartContainer.value.clientWidth;
-    const containerHeight = chartContainer.value.clientHeight;
-
     chart = createChart(chartContainer.value, {
-        width: containerWidth,
-        height: containerHeight,
+        autoSize: true,
         layout: {
             background: { type: ColorType.Solid, color: 'transparent' },
             textColor: '#64748b',
@@ -231,16 +226,6 @@ function initChart() {
     // Fit content
     chart.timeScale().fitContent();
 
-    // Resize observer
-    if (resizeObserver) resizeObserver.disconnect();
-    resizeObserver = new ResizeObserver(entries => {
-        if (chart && entries[0]) {
-            const { width, height } = entries[0].contentRect;
-            chart.applyOptions({ width, height });
-        }
-    });
-    resizeObserver.observe(chartContainer.value);
-
     // Simulate realtime updates
     startRealtimeUpdates(candleData);
 }
@@ -318,7 +303,6 @@ onMounted(() => {
 
 onUnmounted(() => {
     if (realtimeInterval) clearInterval(realtimeInterval);
-    if (resizeObserver) resizeObserver.disconnect();
     if (chart) {
         chart.remove();
         chart = null;
@@ -327,7 +311,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="chart-container h-full flex flex-col">
+    <div class="chart-container h-full flex flex-col overflow-hidden">
         <!-- Chart Header -->
         <div class="chart-toolbar flex-shrink-0">
             <div class="flex items-center gap-4">
@@ -432,6 +416,6 @@ onUnmounted(() => {
         </div>
 
         <!-- TradingView Chart Area -->
-        <div ref="chartContainer" class="flex-1 relative min-h-[400px]"></div>
+        <div ref="chartContainer" class="flex-1 relative overflow-hidden"></div>
     </div>
 </template>
