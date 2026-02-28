@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminUser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -20,10 +21,53 @@ class AuthController extends Controller
 {
     /**
      * Display the admin login page.
+     * If no admin users exist, show the initial setup page.
      */
     public function showLogin(): InertiaResponse
     {
+        // First-time setup: no admin users exist yet
+        if (AdminUser::count() === 0) {
+            return Inertia::render('Admin/Auth/Setup');
+        }
+
         return Inertia::render('Admin/Auth/Login');
+    }
+
+    /**
+     * Create the first admin user (first-time setup only).
+     */
+    public function setup(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        // Only allow if no admin users exist
+        if (AdminUser::count() > 0) {
+            return redirect()->route('admin.login')
+                ->with('error', 'Setup already completed.');
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $admin = AdminUser::create([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => $validated['password'],
+            'role' => 'super_admin',
+            'is_active' => true,
+        ]);
+
+        // Auto-login the new admin
+        Auth::guard('admin')->login($admin);
+        $request->session()->regenerate();
+
+        $admin->update([
+            'last_login_at' => now(),
+            'last_login_ip' => $request->ip(),
+        ]);
+
+        return redirect()->route('admin.dashboard');
     }
 
     /**
