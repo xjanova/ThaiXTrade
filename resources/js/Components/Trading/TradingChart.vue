@@ -311,7 +311,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="chart-container flex flex-col overflow-hidden" style="height: 100%; max-height: 100%;">
+    <div class="chart-container flex flex-col overflow-hidden">
         <!-- Chart Header -->
         <div class="chart-toolbar flex-shrink-0">
             <div class="flex items-center gap-4">
