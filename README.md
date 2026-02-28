@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="TPIX TRADE" width="120" height="120" style="border-radius: 24px;">
+  <img src="https://raw.githubusercontent.com/xjanova/ThaiXTrade/main/logo.png" alt="TPIX TRADE" width="120" height="120" style="border-radius: 24px;">
 </p>
 
 <h1 align="center">TPIX TRADE</h1>
@@ -549,7 +549,7 @@ This project is proprietary software developed by **Xman Studio**. All rights re
 ---
 
 <p align="center">
-  <img src="logo.png" alt="TPIX TRADE" width="48" height="48" style="border-radius: 12px;">
+  <img src="https://raw.githubusercontent.com/xjanova/ThaiXTrade/main/logo.png" alt="TPIX TRADE" width="48" height="48" style="border-radius: 12px;">
   <br><br>
   <strong>TPIX TRADE</strong> v1.0.19<br>
   <em>Developed with dedication by <a href="https://xmanstudio.com">Xman Studio</a></em>
