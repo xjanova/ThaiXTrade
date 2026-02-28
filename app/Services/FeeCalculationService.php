@@ -44,9 +44,6 @@ class FeeCalculationService
      *   2. Chain-specific FeeConfig for 'swap' type
      *   3. Global default fee rate from SiteSetting
      *
-     * @param  float  $amount       The swap amount (before fees)
-     * @param  int    $chainId      The blockchain chain ID
-     * @param  int|null  $tradingPairId  Optional trading pair for pair-specific overrides
      * @return array{fee_amount: float, net_amount: float, fee_rate: float, fee_type: string}
      */
     public function calculateSwapFee(float $amount, int $chainId, ?int $tradingPairId = null): array
@@ -75,41 +72,41 @@ class FeeCalculationService
      *   1. Chain-specific FeeConfig (if chainId provided)
      *   2. Global FeeConfig (chain_id IS NULL)
      *   3. Default from SiteSetting
-     *
-     * @param  string  $type     The fee type (e.g., 'swap', 'trade', 'withdrawal')
-     * @param  int|null  $chainId  Optional chain ID for chain-specific rates
-     * @return float  The effective fee rate as a percentage
      */
     public function getEffectiveFeeRate(string $type, ?int $chainId = null): float
     {
         $cacheKey = self::CACHE_PREFIX.".effective.{$type}.".($chainId ?? 'global');
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($type, $chainId) {
-            // 1. Try chain-specific config
-            if ($chainId) {
-                $chainConfig = FeeConfig::active()
+        return Cache::remember(
+            $cacheKey,
+            self::CACHE_TTL,
+            function () use ($type, $chainId) {
+                // 1. Try chain-specific config
+                if ($chainId) {
+                    $chainConfig = FeeConfig::active()
+                        ->byType($type)
+                        ->where('chain_id', $chainId)
+                        ->first();
+
+                    if ($chainConfig) {
+                        return (float) $chainConfig->taker_fee;
+                    }
+                }
+
+                // 2. Try global config (no chain)
+                $globalConfig = FeeConfig::active()
                     ->byType($type)
-                    ->where('chain_id', $chainId)
+                    ->whereNull('chain_id')
                     ->first();
 
-                if ($chainConfig) {
-                    return (float) $chainConfig->taker_fee;
+                if ($globalConfig) {
+                    return (float) $globalConfig->taker_fee;
                 }
+
+                // 3. Fall back to site setting default
+                return (float) SiteSetting::get('trading', 'default_fee_rate', 0.3);
             }
-
-            // 2. Try global config (no chain)
-            $globalConfig = FeeConfig::active()
-                ->byType($type)
-                ->whereNull('chain_id')
-                ->first();
-
-            if ($globalConfig) {
-                return (float) $globalConfig->taker_fee;
-            }
-
-            // 3. Fall back to site setting default
-            return (float) SiteSetting::get('trading', 'default_fee_rate', 0.3);
-        });
+        );
     }
 
     /**
@@ -118,10 +115,6 @@ class FeeCalculationService
      * Returns comprehensive quote data including fee calculations,
      * price impact estimation, and minimum received amounts.
      *
-     * @param  float   $fromAmount  The input token amount
-     * @param  string  $fromToken   The source token contract address
-     * @param  string  $toToken     The destination token contract address
-     * @param  int     $chainId     The blockchain chain ID
      * @return array{
      *     from_amount: float,
      *     to_amount_estimate: float,
@@ -169,10 +162,6 @@ class FeeCalculationService
 
     /**
      * Resolve the swap fee rate using the fee hierarchy.
-     *
-     * @param  int       $chainId
-     * @param  int|null  $tradingPairId
-     * @return float
      */
     private function resolveSwapFeeRate(int $chainId, ?int $tradingPairId = null): float
     {
@@ -191,70 +180,71 @@ class FeeCalculationService
 
     /**
      * Get a cached TradingPair by ID.
-     *
-     * @param  int  $tradingPairId
-     * @return TradingPair|null
      */
     private function getCachedTradingPair(int $tradingPairId): ?TradingPair
     {
         $cacheKey = self::CACHE_PREFIX.".trading_pair.{$tradingPairId}";
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($tradingPairId) {
-            return TradingPair::find($tradingPairId);
-        });
+        return Cache::remember(
+            $cacheKey,
+            self::CACHE_TTL,
+            function () use ($tradingPairId) {
+                return TradingPair::find($tradingPairId);
+            }
+        );
     }
 
     /**
      * Find the trading pair ID for given tokens on a chain.
      *
      * Looks up by token contract addresses as base/quote in both directions.
-     *
-     * @param  string  $fromToken
-     * @param  string  $toToken
-     * @param  int     $chainId
-     * @return int|null
      */
     private function findTradingPairId(string $fromToken, string $toToken, int $chainId): ?int
     {
         $cacheKey = self::CACHE_PREFIX.".pair_lookup.{$chainId}.".md5($fromToken.$toToken);
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($fromToken, $toToken, $chainId) {
-            $pair = TradingPair::active()
-                ->where('chain_id', $chainId)
-                ->where(function ($query) use ($fromToken, $toToken) {
-                    $query->where(function ($q) use ($fromToken, $toToken) {
-                        $q->whereHas('baseToken', fn ($t) => $t->where('contract_address', $fromToken))
-                          ->whereHas('quoteToken', fn ($t) => $t->where('contract_address', $toToken));
-                    })->orWhere(function ($q) use ($fromToken, $toToken) {
-                        $q->whereHas('baseToken', fn ($t) => $t->where('contract_address', $toToken))
-                          ->whereHas('quoteToken', fn ($t) => $t->where('contract_address', $fromToken));
-                    });
-                })
-                ->first();
+        return Cache::remember(
+            $cacheKey,
+            self::CACHE_TTL,
+            function () use ($fromToken, $toToken, $chainId) {
+                $pair = TradingPair::active()
+                    ->where('chain_id', $chainId)
+                    ->where(function ($query) use ($fromToken, $toToken) {
+                        $query->where(function ($q) use ($fromToken, $toToken) {
+                            $q->whereHas('baseToken', fn ($t) => $t->where('contract_address', $fromToken))
+                                ->whereHas('quoteToken', fn ($t) => $t->where('contract_address', $toToken));
+                        })->orWhere(function ($q) use ($fromToken, $toToken) {
+                            $q->whereHas('baseToken', fn ($t) => $t->where('contract_address', $toToken))
+                                ->whereHas('quoteToken', fn ($t) => $t->where('contract_address', $fromToken));
+                        });
+                    })
+                    ->first();
 
-            return $pair?->id;
-        });
+                return $pair?->id;
+            }
+        );
     }
 
     /**
      * Get the default slippage tolerance for a chain.
      *
      * Reads from SwapConfig if available, otherwise uses class constant.
-     *
-     * @param  int  $chainId
-     * @return float
      */
     private function getDefaultSlippage(int $chainId): float
     {
         $cacheKey = self::CACHE_PREFIX.".slippage.{$chainId}";
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($chainId) {
-            $swapConfig = \App\Models\SwapConfig::active()
-                ->where('chain_id', $chainId)
-                ->first();
+        return Cache::remember(
+            $cacheKey,
+            self::CACHE_TTL,
+            function () use ($chainId) {
+                $swapConfig = \App\Models\SwapConfig::active()
+                    ->where('chain_id', $chainId)
+                    ->first();
 
-            return $swapConfig ? (float) $swapConfig->slippage_tolerance : self::DEFAULT_SLIPPAGE;
-        });
+                return $swapConfig ? (float) $swapConfig->slippage_tolerance : self::DEFAULT_SLIPPAGE;
+            }
+        );
     }
 
     /**
@@ -262,10 +252,6 @@ class FeeCalculationService
      *
      * Uses the FeeConfig min/max amount thresholds as reference points.
      * Larger amounts relative to the max threshold indicate higher price impact.
-     *
-     * @param  float  $amount
-     * @param  int    $chainId
-     * @return float  Estimated price impact as a percentage
      */
     private function estimatePriceImpact(float $amount, int $chainId): float
     {

@@ -24,7 +24,8 @@ class SwapApiController extends Controller
 {
     public function __construct(
         private FeeCalculationService $feeCalculationService,
-    ) {}
+    ) {
+    }
 
     // =========================================================================
     // Endpoints
@@ -34,9 +35,6 @@ class SwapApiController extends Controller
      * Get a swap quote with fee breakdown and estimated output.
      *
      * GET /api/v1/swap/quote
-     *
-     * @param  Request  $request
-     * @return JsonResponse
      */
     public function quote(Request $request): JsonResponse
     {
@@ -159,9 +157,6 @@ class SwapApiController extends Controller
      * Record a completed swap transaction.
      *
      * POST /api/v1/swap/execute
-     *
-     * @param  Request  $request
-     * @return JsonResponse
      */
     public function execute(Request $request): JsonResponse
     {
@@ -273,9 +268,6 @@ class SwapApiController extends Controller
      * Get available swap routes with router addresses.
      *
      * GET /api/v1/swap/routes
-     *
-     * @param  Request  $request
-     * @return JsonResponse
      */
     public function routes(Request $request): JsonResponse
     {
