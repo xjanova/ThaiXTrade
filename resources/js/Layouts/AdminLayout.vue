@@ -20,6 +20,9 @@ const admin = computed(() => page.props.auth?.admin || page.props.auth?.user);
 const currentUrl = computed(() => page.url);
 
 const isActive = (path) => {
+    if (path === '/admin') {
+        return currentUrl.value === '/admin' || currentUrl.value === '/admin/';
+    }
     return currentUrl.value.startsWith(path);
 };
 
@@ -31,7 +34,7 @@ const navigationSections = [
     {
         title: null,
         items: [
-            { name: 'Dashboard', href: '/admin/dashboard', icon: 'dashboard' },
+            { name: 'Dashboard', href: '/admin', icon: 'dashboard' },
         ],
     },
     {

@@ -38,6 +38,7 @@ const COIN_MAP = {
     SUI: [28453, 'sui'],
     FTM: [4001, 'fantom'],
     ALGO: [4030, 'algorand'],
+    KUB: [15185, 'bitkub-coin'],
 
     // Meme coins
     PEPE: [29850, 'pepe-token'],

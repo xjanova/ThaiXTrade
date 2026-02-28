@@ -41,12 +41,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Fees
         Route::resource('fees', FeeController::class)->except(['create', 'show', 'edit']);
+        Route::patch('fees/{fee}/toggle', [FeeController::class, 'toggleActive'])->name('fees.toggle');
 
         // Chains
         Route::resource('chains', ChainController::class)->except(['create', 'show', 'edit']);
         Route::patch('chains/{chain}/toggle', [ChainController::class, 'toggleActive'])->name('chains.toggle');
 
-        // Tokens (nested under chains for listing, flat for mutations)
+        // Tokens (flat listing + nested under chains)
+        Route::get('tokens', [TokenController::class, 'all'])->name('tokens.all');
         Route::get('chains/{chain}/tokens', [TokenController::class, 'index'])->name('tokens.index');
         Route::post('tokens', [TokenController::class, 'store'])->name('tokens.store');
         Route::put('tokens/{token}', [TokenController::class, 'update'])->name('tokens.update');

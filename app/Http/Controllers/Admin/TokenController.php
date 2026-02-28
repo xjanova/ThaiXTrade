@@ -18,6 +18,24 @@ use Inertia\Response as InertiaResponse;
 class TokenController extends Controller
 {
     /**
+     * Display all tokens across all chains.
+     */
+    public function all(): InertiaResponse
+    {
+        $tokens = Token::with('chain')
+            ->orderBy('chain_id')
+            ->orderBy('sort_order')
+            ->get();
+
+        $chains = Chain::ordered()->get();
+
+        return Inertia::render('Admin/Tokens/Index', [
+            'tokens' => $tokens,
+            'chains' => $chains,
+        ]);
+    }
+
+    /**
      * Display tokens for a specific chain.
      */
     public function index(Chain $chain): InertiaResponse
@@ -26,9 +44,12 @@ class TokenController extends Controller
             ->orderBy('sort_order')
             ->get();
 
+        $chains = Chain::ordered()->get();
+
         return Inertia::render('Admin/Tokens/Index', [
             'chain' => $chain,
             'tokens' => $tokens,
+            'chains' => $chains,
         ]);
     }
 

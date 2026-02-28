@@ -36,13 +36,13 @@ class DashboardController extends Controller
 
         return Inertia::render('Admin/Dashboard', [
             'stats' => [
-                'total_transactions' => $totalTransactions,
-                'total_volume' => $totalVolume,
-                'active_chains' => $activeChains,
-                'active_pairs' => $activePairs,
-                'open_tickets' => $openTickets,
+                'totalTransactions' => $totalTransactions,
+                'totalVolume' => '$'.number_format((float) $totalVolume, 2),
+                'activeChains' => $activeChains,
+                'activePairs' => $activePairs,
+                'openTickets' => $openTickets,
             ],
-            'recent_transactions' => $recentTransactions,
+            'recentTransactions' => $recentTransactions,
         ]);
     }
 }

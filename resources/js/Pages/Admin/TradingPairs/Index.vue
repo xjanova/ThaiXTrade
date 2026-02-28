@@ -123,7 +123,7 @@ const deletePair = () => {
 };
 
 const toggleActive = (pair) => {
-    router.put(`/admin/trading-pairs/${pair.id}/toggle`, {}, { preserveScroll: true });
+    router.patch(`/admin/trading-pairs/${pair.id}/toggle`, {}, { preserveScroll: true });
 };
 
 const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200';

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Chain;
 use App\Models\FeeConfig;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -26,8 +27,11 @@ class FeeController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
+        $chains = Chain::ordered()->get();
+
         return Inertia::render('Admin/Fees/Index', [
             'fees' => $fees,
+            'chains' => $chains,
         ]);
     }
 
@@ -71,6 +75,20 @@ class FeeController extends Controller
         $fee->update($validated);
 
         return back()->with('success', 'Fee configuration updated successfully.');
+    }
+
+    /**
+     * Toggle the active status of a fee configuration.
+     */
+    public function toggleActive(FeeConfig $fee): \Illuminate\Http\RedirectResponse
+    {
+        $fee->update([
+            'is_active' => ! $fee->is_active,
+        ]);
+
+        $status = $fee->is_active ? 'activated' : 'deactivated';
+
+        return back()->with('success', "Fee configuration {$status} successfully.");
     }
 
     /**

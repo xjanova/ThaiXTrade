@@ -27,7 +27,7 @@ const deletingChain = ref(null);
 const form = useForm({
     name: '',
     symbol: '',
-    chain_id: '',
+    chain_id_hex: '',
     rpc_url: '',
     explorer_url: '',
     logo: null,
@@ -61,7 +61,7 @@ const openEditModal = (chain) => {
     editingChain.value = chain;
     form.name = chain.name;
     form.symbol = chain.symbol;
-    form.chain_id = chain.chain_id;
+    form.chain_id_hex = chain.chain_id_hex;
     form.rpc_url = chain.rpc_url;
     form.explorer_url = chain.explorer_url || '';
     form.is_active = chain.is_active;
@@ -78,7 +78,7 @@ const openEditModal = (chain) => {
 
 const saveChain = () => {
     if (editingChain.value) {
-        form.post(`/admin/chains/${editingChain.value.id}`, {
+        form.put(`/admin/chains/${editingChain.value.id}`, {
             preserveScroll: true,
             forceFormData: true,
             onSuccess: () => { showModal.value = false; },
@@ -105,7 +105,7 @@ const deleteChain = () => {
 };
 
 const toggleActive = (chain) => {
-    router.put(`/admin/chains/${chain.id}/toggle`, {}, { preserveScroll: true });
+    router.patch(`/admin/chains/${chain.id}/toggle`, {}, { preserveScroll: true });
 };
 
 const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200';
@@ -161,7 +161,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                 <div class="space-y-2 text-sm mb-4">
                     <div class="flex justify-between">
                         <span class="text-dark-400">Chain ID</span>
-                        <span class="font-mono text-white">{{ chain.chain_id }}</span>
+                        <span class="font-mono text-white">{{ chain.chain_id_hex }}</span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-dark-400">RPC URL</span>
@@ -171,7 +171,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
 
                 <div class="flex items-center gap-2 pt-3 border-t border-white/5">
                     <Link
-                        :href="`/admin/tokens?chain_id=${chain.id}`"
+                        :href="`/admin/chains/${chain.id}/tokens`"
                         class="flex-1 text-center px-3 py-2 rounded-lg text-xs font-medium text-primary-400 hover:bg-primary-500/10 transition-colors"
                     >
                         View Tokens
@@ -218,9 +218,9 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-2">Chain ID</label>
-                    <input v-model="form.chain_id" type="number" :class="inputClass" placeholder="1" />
-                    <p v-if="form.errors.chain_id" class="mt-1 text-sm text-red-400">{{ form.errors.chain_id }}</p>
+                    <label class="block text-sm font-medium text-dark-300 mb-2">Chain ID (Hex)</label>
+                    <input v-model="form.chain_id_hex" type="text" :class="inputClass" placeholder="0x1" />
+                    <p v-if="form.errors.chain_id_hex" class="mt-1 text-sm text-red-400">{{ form.errors.chain_id_hex }}</p>
                 </div>
 
                 <div>
