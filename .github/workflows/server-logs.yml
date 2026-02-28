@@ -39,7 +39,7 @@ jobs:
           command_timeout: 2m
           envs: DEPLOY_DIR
           script: |
-            DEPLOY_DIR="${DEPLOY_DIR:-/var/www/thaixtrade}"
+            DEPLOY_DIR="${DEPLOY_DIR:-/home/admin/domains/tpix.online}"
             cd "$DEPLOY_DIR" || exit 1
 
             # Find correct log file (supports daily logs)

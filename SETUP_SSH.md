@@ -49,7 +49,7 @@ Add these repository secrets:
 | `SSH_USER` | SSH username | Yes |
 | `SSH_PRIVATE_KEY` | Contents of `thaixtrade_deploy` (private key) | Yes |
 | `SSH_PORT` | SSH port (default: 22) | Optional |
-| `DEPLOY_PATH` | Application path (default: /var/www/thaixtrade) | Optional |
+| `DEPLOY_PATH` | Application path (default: /home/admin/domains/tpix.online) | Optional |
 | `APP_URL` | Application URL for health checks | Optional |
 
 ### How to copy the private key:
@@ -114,7 +114,7 @@ Add this to GitHub Actions step:
 
 ```bash
 # On server, ensure the deploy user owns the project directory
-sudo chown -R deploy:deploy /var/www/thaixtrade
+sudo chown -R deploy:deploy /home/admin/domains/tpix.online
 ```
 
 ---

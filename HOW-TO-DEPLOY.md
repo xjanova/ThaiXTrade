@@ -6,7 +6,7 @@
 
 ```bash
 ssh user@your-server
-cd /var/www/thaixtrade
+cd /home/admin/domains/tpix.online
 ./deploy.sh
 ```
 
@@ -80,7 +80,7 @@ See `DEPLOYMENT.md` for Nginx/Apache configuration.
 
 ```bash
 # Cron
-echo "* * * * * cd /var/www/thaixtrade && php artisan schedule:run >> /dev/null 2>&1" | crontab -
+echo "* * * * * cd /home/admin/domains/tpix.online && php artisan schedule:run >> /dev/null 2>&1" | crontab -
 
 # Queue worker (via supervisor)
 sudo supervisorctl reread

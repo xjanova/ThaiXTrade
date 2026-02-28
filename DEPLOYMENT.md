@@ -9,7 +9,7 @@
 ssh user@your-server
 
 # Navigate to project
-cd /var/www/thaixtrade
+cd /home/admin/domains/tpix.online
 
 # Run deployment
 ./deploy.sh
@@ -19,8 +19,8 @@ cd /var/www/thaixtrade
 
 ```bash
 # Clone the repository
-git clone https://github.com/xjanova/ThaiXTrade.git /var/www/thaixtrade
-cd /var/www/thaixtrade
+git clone https://github.com/xjanova/ThaiXTrade.git /home/admin/domains/tpix.online
+cd /home/admin/domains/tpix.online
 
 # Run installation
 ./install.sh
@@ -113,8 +113,8 @@ bcmath, soap, intl, gd, exif, iconv, openssl, tokenizer, xml, ctype, json
 ```nginx
 server {
     listen 80;
-    server_name thaixtrade.com;
-    root /var/www/thaixtrade/public_html;
+    server_name tpix.online;
+    root /home/admin/domains/tpix.online/public_html;
 
     add_header X-Frame-Options "SAMEORIGIN";
     add_header X-Content-Type-Options "nosniff";
@@ -152,7 +152,7 @@ server {
 ```ini
 [program:thaixtrade-worker]
 process_name=%(program_name)s_%(process_num)02d
-command=php /var/www/thaixtrade/artisan queue:work --sleep=3 --tries=3 --max-time=3600
+command=php /home/admin/domains/tpix.online/artisan queue:work --sleep=3 --tries=3 --max-time=3600
 autostart=true
 autorestart=true
 stopasgroup=true
@@ -160,7 +160,7 @@ killasgroup=true
 user=www-data
 numprocs=2
 redirect_stderr=true
-stdout_logfile=/var/www/thaixtrade/storage/logs/worker.log
+stdout_logfile=/home/admin/domains/tpix.online/storage/logs/worker.log
 stopwaitsecs=3600
 ```
 
@@ -169,7 +169,7 @@ stopwaitsecs=3600
 ## Cron Job (Laravel Scheduler)
 
 ```bash
-* * * * * cd /var/www/thaixtrade && php artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /home/admin/domains/tpix.online && php artisan schedule:run >> /dev/null 2>&1
 ```
 
 ---
@@ -237,7 +237,7 @@ Key production settings:
 ```env
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://thaixtrade.com
+APP_URL=https://tpix.online
 APP_TIMEZONE=Asia/Bangkok
 
 DB_CONNECTION=mysql

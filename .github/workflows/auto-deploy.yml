@@ -71,7 +71,7 @@ jobs:
             set -e
 
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-            DEPLOY_PATH="${DEPLOY_PATH:-/var/www/thaixtrade}"
+            DEPLOY_PATH="${DEPLOY_PATH:-/home/admin/domains/tpix.online}"
 
             echo "🚀 Starting deployment to ${DEPLOY_PATH}"
             cd "${DEPLOY_PATH}"
@@ -134,7 +134,7 @@ jobs:
         env:
           APP_URL: ${{ secrets.APP_URL }}
         run: |
-          URL="${APP_URL:-https://thaixtrade.com}"
+          URL="${APP_URL:-https://tpix.online}"
           echo "🔍 Checking health at: ${URL}"
           sleep 5
           HTTP_CODE=$(curl -s -o /tmp/health_response.txt -w "%{http_code}" "${URL}" || echo "000")

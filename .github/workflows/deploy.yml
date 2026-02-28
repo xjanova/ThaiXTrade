@@ -94,7 +94,7 @@ jobs:
             set -e
 
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-            DEPLOY_PATH="${DEPLOY_PATH:-/var/www/thaixtrade}"
+            DEPLOY_PATH="${DEPLOY_PATH:-/home/admin/domains/tpix.online}"
             BACKUP_DIR="${DEPLOY_PATH}/storage/backups"
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -121,7 +121,7 @@ jobs:
         env:
           APP_URL: ${{ secrets.APP_URL }}
         run: |
-          URL="${APP_URL:-https://thaixtrade.com}"
+          URL="${APP_URL:-https://tpix.online}"
           sleep 10
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
           if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 302 ]; then
@@ -144,4 +144,4 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** ${{ github.event.inputs.environment || 'production' }}" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** ${APP_URL:-https://thaixtrade.com}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** ${APP_URL:-https://tpix.online}" >> $GITHUB_STEP_SUMMARY
