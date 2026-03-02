@@ -1,75 +1,68 @@
 /**
  * TPIX TRADE - Crypto Logo Helper
- * Real coin logos from CoinGecko CDN (trusted source)
+ * Uses CoinCap CDN (reliable, no auth required, allows hotlinking)
+ * With fallback to Trust Wallet Assets for BSC tokens
  * Developed by Xman Studio
  */
 
-const COINGECKO_CDN = 'https://assets.coingecko.com/coins/images';
+/**
+ * Primary: CoinCap CDN - uses lowercase symbol
+ * Format: https://assets.coincap.io/assets/icons/{symbol}@2x.png
+ */
+const COINCAP_CDN = 'https://assets.coincap.io/assets/icons';
 
 /**
- * Map of coin symbols to their CoinGecko image paths
- * Format: { symbol: [coingecko_id, filename] }
+ * Fallback: Trust Wallet Assets on GitHub
+ * For BSC-specific tokens using contract address
  */
-const COIN_MAP = {
-    // Major coins
-    BTC: [1, 'bitcoin'],
-    ETH: [279, 'ethereum'],
-    BNB: [825, 'bnb-icon2_2x'],
-    SOL: [4128, 'solana'],
-    XRP: [44, 'xrp-symbol-white-128'],
-    ADA: [975, 'cardano'],
-    DOGE: [5, 'dogecoin'],
-    DOT: [12171, 'polkadot'],
-    MATIC: [4713, 'polygon'],
-    AVAX: [12559, 'Avalanche_Circle_RedWhite_Trans'],
-    USDT: [325, 'Tether'],
-    USDC: [6319, 'usdc'],
-    DAI: [9956, 'dai-multi-collateral'],
-    LINK: [877, 'chainlink-new-logo'],
-    UNI: [12504, 'uniswap-logo'],
-    AAVE: [12645, 'aave-token'],
-    LTC: [2, 'litecoin'],
-    TRX: [1094, 'tron-logo'],
-    ATOM: [1481, 'cosmos_hub'],
-    NEAR: [10365, 'near'],
-    ARB: [16547, 'photo_2023-03-29_21.33.25'],
-    OP: [25244, 'Optimism'],
-    APT: [26455, 'aptos'],
-    SUI: [28453, 'sui'],
-    FTM: [4001, 'fantom'],
-    ALGO: [4030, 'algorand'],
-    KUB: [15185, 'bitkub-coin'],
+const TW_ASSETS = 'https://raw.githubusercontent.com/trustwallet/assets/master';
 
-    // Meme coins
-    PEPE: [29850, 'pepe-token'],
-    BONK: [28600, 'bonk'],
-    WIF: [33566, 'dogwifhat'],
-    FLOKI: [16746, 'PNG_image'],
-    SHIB: [11939, 'shiba'],
+/**
+ * BSC token addresses for Trust Wallet fallback
+ */
+const BSC_TOKEN_ADDRESSES = {
+    USDT: '0x55d398326f99059fF775485246999027B3197955',
+    USDC: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+    ETH:  '0x2170Ed0880ac9A755fd29B2688956BD959F933F8',
+    BTC:  '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c',
+    CAKE: '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82',
+    DOGE: '0xbA2aE424d960c26247Dd6c32edC70B295c744C43',
+    SOL:  '0x570A5D26f7765Ecb712C0924E4De545B89fD43dF',
+    DAI:  '0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3',
+    LINK: '0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD',
+    UNI:  '0xBf5140A22578168FD562DCcF235E5D43A02ce9B1',
+    AAVE: '0xfb6115445Bff7b52FeB98650C87f44907E58f802',
+};
 
-    // DeFi tokens
-    CRV: [12124, 'curve-dao-token'],
-    MKR: [1364, 'maker'],
-    COMP: [12124, 'compound-governance-token'],
-    SUSHI: [12271, 'sushi'],
-    CAKE: [7186, 'pancakeswap-token'],
-    '1INCH': [8104, '1inch'],
+/**
+ * Special symbol mappings for CoinCap CDN
+ * Some symbols differ from standard ticker names
+ */
+const SYMBOL_MAP = {
+    'MATIC': 'matic',
+    '1INCH': '1inch',
 };
 
 /**
  * Get the logo URL for a given coin symbol
  * @param {string} symbol - Coin symbol (e.g. 'BTC', 'ETH')
- * @param {'small'|'thumb'|'standard'} size - Image size
  * @returns {string} Logo URL or empty string
  */
-export function getCoinLogo(symbol, size = 'small') {
-    const upper = symbol?.toUpperCase()?.replace(/\/.*$/, '') || '';
-    const coin = COIN_MAP[upper];
+export function getCoinLogo(symbol) {
+    if (!symbol) return '';
+    const upper = symbol.toUpperCase().replace(/\/.*$/, '');
+    const lower = (SYMBOL_MAP[upper] || upper).toLowerCase();
+    return `${COINCAP_CDN}/${lower}@2x.png`;
+}
 
-    if (!coin) return '';
-
-    const [id, filename] = coin;
-    return `${COINGECKO_CDN}/${id}/${size}/${filename}.png`;
+/**
+ * Get BSC token logo from Trust Wallet Assets
+ * @param {string} contractAddress - BSC token contract address
+ * @returns {string} Logo URL
+ */
+export function getBSCTokenLogo(contractAddress) {
+    if (!contractAddress) return '';
+    return `${TW_ASSETS}/blockchains/smartchain/assets/${contractAddress}/logo.png`;
 }
 
 /**
@@ -84,12 +77,12 @@ export function getCoinLogoOrNull(symbol) {
 
 /**
  * Check if we have a real logo for this symbol
+ * CoinCap covers most major tokens, so we return true for known ones
  * @param {string} symbol
  * @returns {boolean}
  */
 export function hasCoinLogo(symbol) {
-    const upper = symbol?.toUpperCase()?.replace(/\/.*$/, '') || '';
-    return !!COIN_MAP[upper];
+    return !!symbol && symbol.length > 0;
 }
 
 /**
@@ -106,16 +99,16 @@ export function getBaseSymbol(pair) {
 /**
  * Get logo for a trading pair (returns base coin logo)
  * @param {string} pair - e.g. 'BTC/USDT'
- * @param {'small'|'thumb'|'standard'} size
  * @returns {string}
  */
-export function getPairLogo(pair, size = 'small') {
-    return getCoinLogo(getBaseSymbol(pair), size);
+export function getPairLogo(pair) {
+    return getCoinLogo(getBaseSymbol(pair));
 }
 
 export default {
     getCoinLogo,
     getCoinLogoOrNull,
+    getBSCTokenLogo,
     hasCoinLogo,
     getBaseSymbol,
     getPairLogo,
