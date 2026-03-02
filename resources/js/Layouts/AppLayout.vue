@@ -56,7 +56,7 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="min-h-screen flex flex-col bg-dark-950">
+    <div class="flex-1 flex flex-col bg-dark-950">
         <!-- Background Gradient Effects (brand colors: purple, cyan, orange) -->
         <div class="fixed inset-0 pointer-events-none">
             <div class="absolute top-0 left-1/4 w-96 h-96 bg-accent-500/8 rounded-full blur-3xl"></div>

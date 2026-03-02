@@ -23,12 +23,20 @@
 
     html {
         @apply scroll-smooth;
+        height: 100%;
     }
 
     body {
         @apply bg-dark-950 text-white antialiased;
         font-family: 'Inter', 'Noto Sans Thai', sans-serif;
         background: linear-gradient(135deg, #020617 0%, #0c1222 40%, #0f172a 60%, #0a0f1f 100%);
+        min-height: 100%;
+        margin: 0;
+    }
+
+    #app {
+        display: flex;
+        flex-direction: column;
         min-height: 100vh;
     }
 
