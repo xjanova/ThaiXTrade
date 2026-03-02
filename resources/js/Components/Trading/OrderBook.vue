@@ -50,7 +50,7 @@ const priceIsUp = computed(() => {
 </script>
 
 <template>
-    <div class="glass-dark rounded-2xl h-full flex flex-col">
+    <div class="glass-dark rounded-2xl flex flex-col overflow-hidden">
         <!-- Header -->
         <div class="flex items-center justify-between p-3 border-b border-white/5">
             <h3 class="font-semibold text-white text-sm">Order Book</h3>

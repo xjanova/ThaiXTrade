@@ -27,7 +27,7 @@ const formatAmount = (amount) => {
 </script>
 
 <template>
-    <div class="glass-dark rounded-2xl p-3 h-full flex flex-col">
+    <div class="glass-dark rounded-2xl p-3 flex flex-col overflow-hidden">
         <!-- Header -->
         <div class="flex items-center justify-between mb-3">
             <h3 class="font-semibold text-white text-sm">Recent Trades</h3>
