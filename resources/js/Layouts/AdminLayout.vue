@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
 
 defineProps({
@@ -19,15 +19,38 @@ const mobileSidebarOpen = ref(false);
 const admin = computed(() => page.props.auth?.admin || page.props.auth?.user);
 const currentUrl = computed(() => page.url);
 
+// Notification bell
+const unreadCount = ref(0);
+let pollInterval = null;
+
+const fetchUnreadCount = async () => {
+    try {
+        const res = await fetch('/admin/notifications/unread-count', {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (res.ok) {
+            const data = await res.json();
+            unreadCount.value = data.count || 0;
+        }
+    } catch {
+        // Silently fail - bell just won't update
+    }
+};
+
+onMounted(() => {
+    fetchUnreadCount();
+    pollInterval = setInterval(fetchUnreadCount, 30000);
+});
+
+onUnmounted(() => {
+    if (pollInterval) clearInterval(pollInterval);
+});
+
 const isActive = (path) => {
     if (path === '/admin') {
         return currentUrl.value === '/admin' || currentUrl.value === '/admin/';
     }
     return currentUrl.value.startsWith(path);
-};
-
-const isExactActive = (path) => {
-    return currentUrl.value === path;
 };
 
 const navigationSections = [
@@ -65,6 +88,13 @@ const navigationSections = [
         items: [
             { name: 'Tickets', href: '/admin/support', icon: 'ticket' },
             { name: 'Audit Logs', href: '/admin/audit-logs', icon: 'audit' },
+        ],
+    },
+    {
+        title: 'System',
+        items: [
+            { name: 'Users', href: '/admin/users', icon: 'users' },
+            { name: 'Notifications', href: '/admin/notifications', icon: 'notification' },
         ],
     },
 ];
@@ -183,6 +213,14 @@ const handleLogout = () => {
                             <svg v-else-if="item.icon === 'audit'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                             </svg>
+                            <!-- Users -->
+                            <svg v-else-if="item.icon === 'users'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                            </svg>
+                            <!-- Notification -->
+                            <svg v-else-if="item.icon === 'notification'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                            </svg>
 
                             <span v-if="sidebarOpen" class="whitespace-nowrap">{{ item.name }}</span>
                         </Link>
@@ -238,6 +276,24 @@ const handleLogout = () => {
                             View Site
                         </a>
 
+                        <!-- Notification Bell -->
+                        <Link
+                            href="/admin/notifications"
+                            class="relative p-2 rounded-xl text-dark-400 hover:text-white hover:bg-white/5 transition-colors"
+                            title="Notifications"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                            </svg>
+                            <!-- Unread Badge -->
+                            <span
+                                v-if="unreadCount > 0"
+                                class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center px-1 rounded-full text-[10px] font-bold text-white bg-red-500 border-2 border-dark-900"
+                            >
+                                {{ unreadCount > 99 ? '99+' : unreadCount }}
+                            </span>
+                        </Link>
+
                         <!-- Admin Info -->
                         <div class="flex items-center gap-3">
                             <div class="text-right hidden sm:block">
@@ -245,12 +301,16 @@ const handleLogout = () => {
                                 <p class="text-xs text-dark-400">{{ admin?.role || 'Administrator' }}</p>
                             </div>
 
-                            <!-- Avatar -->
-                            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-accent-500 via-primary-500 to-warm-500 flex items-center justify-center">
+                            <!-- Avatar (links to profile) -->
+                            <Link
+                                href="/admin/profile"
+                                class="w-9 h-9 rounded-full bg-gradient-to-br from-accent-500 via-primary-500 to-warm-500 flex items-center justify-center hover:ring-2 hover:ring-primary-500/50 transition-all"
+                                title="Edit Profile"
+                            >
                                 <span class="text-white font-semibold text-sm">
                                     {{ (admin?.name || 'A').charAt(0).toUpperCase() }}
                                 </span>
-                            </div>
+                            </Link>
 
                             <!-- Role Badge -->
                             <span class="hidden md:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20">

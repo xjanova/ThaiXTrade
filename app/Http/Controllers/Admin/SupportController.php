@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AdminUser;
 use App\Models\SupportTicket;
 use App\Models\TicketMessage;
+use App\Services\AdminNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -19,6 +20,9 @@ use Inertia\Response as InertiaResponse;
  */
 class SupportController extends Controller
 {
+    public function __construct(
+        private readonly AdminNotificationService $notificationService,
+    ) {}
     /**
      * Display a paginated listing of support tickets with filters.
      */
@@ -110,6 +114,18 @@ class SupportController extends Controller
             $ticket->update(['status' => 'waiting_reply']);
         }
 
+        // Notify assigned admin if reply is from a different admin
+        $currentAdminId = Auth::guard('admin')->id();
+        if ($ticket->assigned_to && $ticket->assigned_to !== $currentAdminId) {
+            $this->notificationService->notify(
+                $ticket->assigned_to,
+                'ticket_reply',
+                'Admin Reply on Ticket',
+                "An admin replied to ticket #{$ticket->ticket_number}: {$ticket->subject}",
+                ['ticket_id' => $ticket->id, 'url' => "/admin/support/{$ticket->id}"]
+            );
+        }
+
         return back()->with('success', 'Reply sent successfully.');
     }
 
@@ -157,6 +173,9 @@ class SupportController extends Controller
             'message' => "Ticket assigned to {$assignedAdmin->name}.",
             'is_internal' => true,
         ]);
+
+        // Notify the assigned admin
+        $this->notificationService->ticketAssigned($ticket, $assignedAdmin);
 
         return back()->with('success', 'Ticket assigned successfully.');
     }

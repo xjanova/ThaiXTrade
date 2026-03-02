@@ -8,6 +8,7 @@
  * Authentication is handled via the 'admin' guard with session-based auth.
  */
 
+use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AiController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\AuthController;
@@ -15,6 +16,8 @@ use App\Http\Controllers\Admin\ChainController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FeeController;
 use App\Http\Controllers\Admin\LanguageController;
+use App\Http\Controllers\Admin\NotificationController;
+use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\SupportController;
 use App\Http\Controllers\Admin\SwapController;
@@ -90,6 +93,25 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::patch('/news/{news}/publish', [AiController::class, 'newsPublish'])->name('news.publish');
             Route::delete('/news/{news}', [AiController::class, 'newsDestroy'])->name('news.destroy');
         });
+
+        // Notifications
+        Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+        Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
+        Route::patch('notifications/{notification}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
+        Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead'])->name('notifications.mark-all');
+
+        // Admin Profile
+        Route::get('profile', [ProfileController::class, 'edit'])->name('profile.edit');
+        Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
+        Route::put('profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
+
+        // Admin User Management (super_admin only)
+        Route::resource('users', AdminUserController::class)
+            ->except(['create', 'show', 'edit'])
+            ->middleware('admin.role:super_admin');
+        Route::patch('users/{user}/reset-password', [AdminUserController::class, 'resetPassword'])
+            ->name('users.reset-password')
+            ->middleware('admin.role:super_admin');
 
         // Audit Logs (super_admin only)
         Route::get('audit-logs', [AuditLogController::class, 'index'])

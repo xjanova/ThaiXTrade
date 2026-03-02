@@ -110,6 +110,14 @@ class AdminUser extends Authenticatable
         return $this->hasMany(AuditLog::class, 'admin_id');
     }
 
+    /**
+     * Get the notifications for this admin.
+     */
+    public function adminNotifications(): HasMany
+    {
+        return $this->hasMany(AdminNotification::class, 'admin_user_id');
+    }
+
     // =========================================================================
     // Scopes
     // =========================================================================

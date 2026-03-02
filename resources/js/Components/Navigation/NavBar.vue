@@ -86,12 +86,28 @@ const handleDisconnect = () => {
                 <!-- Right: Wallet & User -->
                 <div class="flex items-center gap-3">
                     <!-- Chain Selector -->
-                    <button class="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl glass-sm hover:bg-white/10 transition-all">
-                        <img src="https://cryptologos.cc/logos/bnb-bnb-logo.svg" alt="BSC" class="w-5 h-5">
-                        <span class="text-sm font-medium text-white">BSC</span>
-                        <svg class="w-4 h-4 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    <button
+                        class="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl glass-sm hover:bg-white/10 transition-all"
+                        :class="{ 'border border-yellow-500/30': isWalletConnected && !walletStore.isBSC }"
+                        @click="isWalletConnected && !walletStore.isBSC ? walletStore.switchChain() : null"
+                    >
+                        <!-- BNB Logo (inline SVG) -->
+                        <svg class="w-5 h-5" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="16" cy="16" r="16" fill="#F3BA2F"/>
+                            <path d="M16 6L12.34 9.66L16 13.32L19.66 9.66L16 6Z" fill="white"/>
+                            <path d="M9.66 12.34L6 16L9.66 19.66L13.32 16L9.66 12.34Z" fill="white"/>
+                            <path d="M16 18.68L12.34 22.34L16 26L19.66 22.34L16 18.68Z" fill="white"/>
+                            <path d="M22.34 12.34L18.68 16L22.34 19.66L26 16L22.34 12.34Z" fill="white"/>
+                            <path d="M16 14.2L13.54 16L16 17.8L18.46 16L16 14.2Z" fill="white" fill-opacity="0.8"/>
                         </svg>
+                        <!-- Chain status indicator -->
+                        <div
+                            class="w-2 h-2 rounded-full"
+                            :class="!isWalletConnected ? 'bg-dark-500' : walletStore.isBSC ? 'bg-trading-green animate-pulse' : 'bg-yellow-500 animate-pulse'"
+                        ></div>
+                        <span class="text-sm font-medium" :class="isWalletConnected && !walletStore.isBSC ? 'text-yellow-400' : 'text-white'">
+                            {{ isWalletConnected && !walletStore.isBSC ? 'Wrong Network' : 'BSC' }}
+                        </span>
                     </button>
 
                     <!-- Connect Wallet Button -->

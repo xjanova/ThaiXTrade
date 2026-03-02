@@ -259,6 +259,8 @@ export const useWalletStore = defineStore('wallet', () => {
                 ethProvider.getSigner().then(s => {
                     provider.value = ethProvider;
                     signer.value = s;
+                }).catch(err => {
+                    console.warn('Failed to refresh signer after account change:', err.message);
                 });
             }
         }
@@ -272,6 +274,8 @@ export const useWalletStore = defineStore('wallet', () => {
             ethProvider.getSigner().then(s => {
                 provider.value = ethProvider;
                 signer.value = s;
+            }).catch(err => {
+                console.warn('Failed to refresh signer after chain change:', err.message);
             });
         }
     }
