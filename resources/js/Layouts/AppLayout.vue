@@ -13,8 +13,9 @@ import TickerStrip from '@/Components/Trading/TickerStrip.vue';
 import WalletModal from '@/Components/Wallet/WalletModal.vue';
 import versionData from '../../../version.json';
 
-defineProps({
+const props = defineProps({
     title: String,
+    hideSidebar: Boolean,
 });
 
 const page = usePage();
@@ -78,7 +79,7 @@ onMounted(async () => {
         <div class="flex relative">
             <!-- Sidebar -->
             <Sidebar
-                v-if="showSidebar"
+                v-if="showSidebar && !props.hideSidebar"
                 class="hidden lg:block"
             />
 

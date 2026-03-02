@@ -51,7 +51,7 @@ const handleSubmitOrder = (order) => {
             <!-- Trading Layout -->
             <div class="grid grid-cols-12 gap-4">
                 <!-- Left Column: Chart & Orders -->
-                <div class="col-span-12 xl:col-span-8 space-y-4">
+                <div class="col-span-12 lg:col-span-8 space-y-4">
                     <!-- Chart -->
                     <TradingChart :symbol="currentPair" class="h-[500px]" />
 
@@ -96,7 +96,7 @@ const handleSubmitOrder = (order) => {
                 </div>
 
                 <!-- Right Column: Order Book, Trade Form, Recent Trades -->
-                <div class="col-span-12 xl:col-span-4 space-y-4">
+                <div class="col-span-12 lg:col-span-4 space-y-4">
                     <!-- Order Book -->
                     <OrderBook :symbol="currentPair" class="h-[380px]" />
 

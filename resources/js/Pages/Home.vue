@@ -59,7 +59,7 @@ const stats = ref([
 <template>
     <Head title="Decentralized Trading Platform" />
 
-    <AppLayout>
+    <AppLayout :hide-sidebar="true">
         <!-- Hero Section -->
         <section class="relative py-20 overflow-hidden">
             <!-- Background Effects (brand multi-color glow) -->
