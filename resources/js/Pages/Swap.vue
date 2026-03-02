@@ -1,16 +1,23 @@
 <script setup>
 /**
  * TPIX TRADE - Swap Page
- * DEX token swap with fee transparency
+ * DEX token swap with real Web3 integration
  * Developed by Xman Studio
  */
 
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { getCoinLogo } from '@/utils/cryptoLogos';
+import { useWalletStore } from '@/Stores/walletStore';
+import { useSwap } from '@/Composables/useSwap';
+import { getTxUrl, BSC_CHAIN_CONFIG } from '@/utils/web3';
+import WalletModal from '@/Components/Wallet/WalletModal.vue';
 
-// Token lists
+const walletStore = useWalletStore();
+const swap = useSwap();
+
+// Token lists (BSC mainnet addresses)
 const popularTokens = ref([
     { symbol: 'BNB', name: 'BNB', address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', decimals: 18, balance: '0.00' },
     { symbol: 'USDT', name: 'Tether', address: '0x55d398326f99059fF775485246999027B3197955', decimals: 18, balance: '0.00' },
@@ -30,65 +37,90 @@ const toAmount = ref('');
 const slippage = ref(0.5);
 const showSlippageSettings = ref(false);
 const showTokenSelector = ref(false);
-const tokenSelectorMode = ref('from'); // 'from' or 'to'
+const tokenSelectorMode = ref('from');
 const isLoading = ref(false);
-const isWalletConnected = ref(false);
+const showWalletModal = ref(false);
 
-// Fee info
-const feeRate = ref(0.3);
+// Quote data
+const currentQuote = ref(null);
+
+// Computed
+const isWalletConnected = computed(() => walletStore.isConnected);
+const isOnBSC = computed(() => walletStore.isBSC);
+
+const feeRate = computed(() => currentQuote.value?.feeRate ?? 0.3);
 const feeAmount = computed(() => {
+    if (currentQuote.value) return currentQuote.value.feeAmount.toFixed(6);
     const amount = parseFloat(fromAmount.value) || 0;
     return (amount * feeRate.value / 100).toFixed(6);
 });
-const netAmount = computed(() => {
-    const amount = parseFloat(fromAmount.value) || 0;
-    const fee = parseFloat(feeAmount.value) || 0;
-    return (amount - fee).toFixed(6);
-});
-
-// Price info
-const exchangeRate = ref(null);
-const priceImpact = ref(0);
+const exchangeRate = computed(() => currentQuote.value?.exchangeRate ?? null);
+const priceImpact = computed(() => currentQuote.value?.priceImpact?.toFixed(2) ?? '0');
 const minimumReceived = computed(() => {
+    if (currentQuote.value) return currentQuote.value.minimumReceived.toFixed(6);
     const amount = parseFloat(toAmount.value) || 0;
     return (amount * (1 - slippage.value / 100)).toFixed(6);
 });
 
-// Watch fromAmount to simulate quote
+const needsApproval = ref(false);
+
+// Watch fromAmount to get real quote
 let quoteTimeout = null;
 watch(fromAmount, (val) => {
     if (quoteTimeout) clearTimeout(quoteTimeout);
     if (!val || parseFloat(val) <= 0) {
         toAmount.value = '';
-        exchangeRate.value = null;
-        priceImpact.value = 0;
+        currentQuote.value = null;
+        needsApproval.value = false;
         return;
     }
+
     isLoading.value = true;
-    quoteTimeout = setTimeout(() => {
-        // Simulate API quote (in production: call /api/v1/swap/quote)
-        const mockRate = getMockRate();
-        const net = parseFloat(val) * (1 - feeRate.value / 100);
-        toAmount.value = (net * mockRate).toFixed(6);
-        exchangeRate.value = mockRate;
-        priceImpact.value = Math.min(parseFloat(val) * 0.001, 5).toFixed(2);
-        isLoading.value = false;
-    }, 500);
+    quoteTimeout = setTimeout(async () => {
+        try {
+            const quote = await swap.getQuote(fromToken.value, toToken.value, parseFloat(val));
+            if (quote) {
+                currentQuote.value = quote;
+                toAmount.value = quote.netOutput.toFixed(6);
+
+                // Check if approval is needed
+                if (isWalletConnected.value) {
+                    needsApproval.value = !(await swap.checkAllowance(
+                        fromToken.value.address,
+                        val,
+                        fromToken.value.decimals,
+                    ));
+                }
+            } else {
+                toAmount.value = '';
+                currentQuote.value = null;
+            }
+        } catch (err) {
+            console.warn('Quote error:', err.message);
+            toAmount.value = '';
+            currentQuote.value = null;
+        } finally {
+            isLoading.value = false;
+        }
+    }, 600);
 });
 
-const getMockRate = () => {
-    const rates = {
-        'BNB-USDT': 567.89,
-        'USDT-BNB': 1 / 567.89,
-        'BNB-USDC': 567.50,
-        'BNB-ETH': 0.1645,
-        'ETH-USDT': 3456.78,
-        'BTC-USDT': 67234.50,
-        'SOL-USDT': 178.90,
-    };
-    const key = `${fromToken.value.symbol}-${toToken.value.symbol}`;
-    return rates[key] || 1.0;
-};
+// Watch wallet connection to refresh balances
+watch(() => walletStore.isConnected, async (connected) => {
+    if (connected) {
+        await refreshBalances();
+    } else {
+        popularTokens.value.forEach(t => t.balance = '0.00');
+    }
+});
+
+// Watch token changes to refresh quote
+watch([fromToken, toToken], () => {
+    fromAmount.value = '';
+    toAmount.value = '';
+    currentQuote.value = null;
+    needsApproval.value = false;
+});
 
 const swapTokens = () => {
     const temp = fromToken.value;
@@ -96,6 +128,8 @@ const swapTokens = () => {
     toToken.value = temp;
     fromAmount.value = '';
     toAmount.value = '';
+    currentQuote.value = null;
+    needsApproval.value = false;
 };
 
 const openTokenSelector = (mode) => {
@@ -114,15 +148,79 @@ const selectToken = (token) => {
     showTokenSelector.value = false;
     fromAmount.value = '';
     toAmount.value = '';
+    currentQuote.value = null;
 };
 
 const slippageOptions = [0.1, 0.5, 1.0, 3.0];
 
-const executeSwap = () => {
-    if (!fromAmount.value || !toAmount.value) return;
-    // In production: trigger wallet transaction via ethers.js
-    alert('Swap feature coming soon! Connect your wallet to start trading.');
-};
+// Fetch real token balances
+async function refreshBalances() {
+    if (!walletStore.isConnected) return;
+    for (const token of popularTokens.value) {
+        try {
+            const balance = await swap.getBalance(token.address);
+            token.balance = parseFloat(balance).toFixed(4);
+        } catch {
+            token.balance = '0.00';
+        }
+    }
+}
+
+// Handle approval
+async function handleApprove() {
+    try {
+        await swap.approveToken(fromToken.value.address);
+        needsApproval.value = false;
+    } catch (err) {
+        // Error is already set in swap composable
+    }
+}
+
+// Execute the swap
+async function executeSwap() {
+    if (!fromAmount.value || !toAmount.value || !currentQuote.value) return;
+
+    if (!isWalletConnected.value) {
+        // Open wallet modal from parent via emit — use the AppLayout's wallet modal
+        showWalletModal.value = true;
+        return;
+    }
+
+    if (!isOnBSC.value) {
+        try {
+            await walletStore.switchChain();
+        } catch {
+            return;
+        }
+    }
+
+    try {
+        const result = await swap.executeSwap(
+            fromToken.value,
+            toToken.value,
+            parseFloat(fromAmount.value),
+            currentQuote.value,
+            slippage.value,
+        );
+
+        // Refresh balances after swap
+        await refreshBalances();
+
+        // Reset form
+        fromAmount.value = '';
+        toAmount.value = '';
+        currentQuote.value = null;
+    } catch (err) {
+        // Error is already set in swap composable
+    }
+}
+
+// Load balances on mount if wallet is connected
+onMounted(async () => {
+    if (walletStore.isConnected) {
+        await refreshBalances();
+    }
+});
 </script>
 
 <template>
@@ -134,6 +232,17 @@ const executeSwap = () => {
             <div class="text-center mb-8">
                 <h1 class="text-3xl font-bold text-white mb-2">Swap</h1>
                 <p class="text-dark-400">Trade tokens instantly with the best rates</p>
+            </div>
+
+            <!-- Network Warning -->
+            <div v-if="isWalletConnected && !isOnBSC" class="mb-4 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm flex items-center gap-3">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                </svg>
+                <span>Please switch to BSC network.</span>
+                <button @click="walletStore.switchChain()" class="ml-auto px-3 py-1 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-medium transition-colors">
+                    Switch to BSC
+                </button>
             </div>
 
             <!-- Swap Card -->
@@ -229,8 +338,8 @@ const executeSwap = () => {
                         <span class="text-xs text-dark-500">Balance: {{ toToken.balance }}</span>
                     </div>
                     <div class="flex items-center gap-3">
-                        <div class="flex-1 text-2xl font-semibold" :class="isLoading ? 'text-dark-500 animate-pulse' : toAmount ? 'text-white' : 'text-dark-600'">
-                            {{ isLoading ? 'Loading...' : (toAmount || '0.0') }}
+                        <div class="flex-1 text-2xl font-semibold" :class="isLoading || swap.isLoadingQuote.value ? 'text-dark-500 animate-pulse' : toAmount ? 'text-white' : 'text-dark-600'">
+                            {{ (isLoading || swap.isLoadingQuote.value) ? 'Loading...' : (toAmount || '0.0') }}
                         </div>
                         <button
                             @click="openTokenSelector('to')"
@@ -248,8 +357,26 @@ const executeSwap = () => {
                     </div>
                 </div>
 
+                <!-- Swap Error -->
+                <div v-if="swap.error.value" class="mt-3 p-3 rounded-xl bg-trading-red/10 border border-trading-red/30 text-trading-red text-sm">
+                    {{ swap.error.value }}
+                </div>
+
+                <!-- Transaction Success -->
+                <div v-if="swap.txHash.value && swap.txStatus.value === 'confirmed'" class="mt-3 p-3 rounded-xl bg-trading-green/10 border border-trading-green/30 text-trading-green text-sm">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span>Swap confirmed!</span>
+                    </div>
+                    <a :href="getTxUrl(swap.txHash.value)" target="_blank" rel="noopener" class="text-xs underline mt-1 block text-trading-green/80 hover:text-trading-green">
+                        View on BscScan
+                    </a>
+                </div>
+
                 <!-- Fee Breakdown -->
-                <div v-if="fromAmount && parseFloat(fromAmount) > 0" class="mt-4 p-4 rounded-xl bg-dark-800/30 border border-white/5 space-y-2">
+                <div v-if="fromAmount && parseFloat(fromAmount) > 0 && currentQuote" class="mt-4 p-4 rounded-xl bg-dark-800/30 border border-white/5 space-y-2">
                     <div class="flex items-center justify-between text-sm">
                         <span class="text-dark-400">Exchange Rate</span>
                         <span class="text-white font-mono">
@@ -281,24 +408,37 @@ const executeSwap = () => {
                     </div>
                 </div>
 
-                <!-- Swap / Connect Button -->
+                <!-- Action Buttons -->
+                <!-- Not connected: Connect Wallet -->
                 <button
                     v-if="!isWalletConnected"
                     class="w-full mt-4 btn-brand py-4 text-lg"
-                    @click="executeSwap"
+                    @click="showWalletModal = true"
                 >
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
                     </svg>
                     Connect Wallet to Swap
                 </button>
+
+                <!-- Needs approval -->
+                <button
+                    v-else-if="needsApproval && fromAmount && currentQuote"
+                    :disabled="swap.isApproving.value"
+                    class="w-full mt-4 btn-primary py-4 text-lg disabled:opacity-40"
+                    @click="handleApprove"
+                >
+                    {{ swap.isApproving.value ? 'Approving...' : `Approve ${fromToken.symbol}` }}
+                </button>
+
+                <!-- Execute swap -->
                 <button
                     v-else
-                    :disabled="!fromAmount || !toAmount || isLoading"
+                    :disabled="!fromAmount || !toAmount || isLoading || swap.isExecuting.value || swap.isLoadingQuote.value"
                     class="w-full mt-4 btn-primary py-4 text-lg disabled:opacity-40"
                     @click="executeSwap"
                 >
-                    {{ isLoading ? 'Fetching Quote...' : 'Swap' }}
+                    {{ swap.isExecuting.value ? 'Swapping...' : (isLoading || swap.isLoadingQuote.value) ? 'Fetching Quote...' : 'Swap' }}
                 </button>
 
                 <!-- Powered by badge -->
@@ -306,7 +446,7 @@ const executeSwap = () => {
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                     </svg>
-                    Secured by TPIX Router Smart Contract
+                    Powered by PancakeSwap V2 on BSC
                 </div>
             </div>
 
@@ -327,7 +467,7 @@ const executeSwap = () => {
                     </div>
                     <div class="flex-1 border-t border-dashed border-dark-600 relative">
                         <div class="absolute inset-x-0 -top-2.5 flex justify-center">
-                            <span class="px-2 bg-dark-900 text-xs text-accent-400">TPIX Router</span>
+                            <span class="px-2 bg-dark-900 text-xs text-accent-400">PancakeSwap V2</span>
                         </div>
                     </div>
                     <div class="flex items-center gap-1.5">
@@ -339,8 +479,8 @@ const executeSwap = () => {
                 </div>
                 <div class="mt-3 flex items-center gap-4 text-xs text-dark-500">
                     <span class="flex items-center gap-1">
-                        <span class="w-1.5 h-1.5 rounded-full bg-trading-green"></span>
-                        PancakeSwap V2
+                        <span class="w-1.5 h-1.5 rounded-full" :class="isWalletConnected ? 'bg-trading-green' : 'bg-dark-600'"></span>
+                        {{ isWalletConnected ? 'Connected' : 'Not connected' }}
                     </span>
                     <span>BSC Network</span>
                     <span>~{{ feeRate }}% platform fee</span>
@@ -358,8 +498,8 @@ const executeSwap = () => {
                     <div>
                         <h4 class="text-sm font-semibold text-white mb-1">Fee Transparency</h4>
                         <p class="text-xs text-dark-400 leading-relaxed">
-                            TPIX TRADE charges a {{ feeRate }}% platform fee on each swap, deducted from the input token before routing through the DEX.
-                            All fees are collected on-chain via our audited TPIX Router smart contract for full transparency.
+                            TPIX TRADE charges a {{ feeRate }}% platform fee on each swap, deducted from the input token before routing through PancakeSwap V2.
+                            All swaps execute directly on the BSC blockchain for full transparency.
                         </p>
                     </div>
                 </div>
@@ -417,6 +557,22 @@ const executeSwap = () => {
                     </div>
                 </div>
             </div>
+        </Transition>
+
+        <!-- Inline Wallet Modal (for Swap page connect button) -->
+        <Transition
+            enter-active-class="transition ease-out duration-200"
+            enter-from-class="opacity-0"
+            enter-to-class="opacity-100"
+            leave-active-class="transition ease-in duration-150"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+        >
+            <WalletModal
+                v-if="showWalletModal && !isWalletConnected"
+                @close="showWalletModal = false"
+                @connected="showWalletModal = false"
+            />
         </Transition>
     </AppLayout>
 </template>

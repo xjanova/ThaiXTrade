@@ -1,13 +1,15 @@
 <script setup>
 /**
  * TPIX TRADE - Wallet Connection Modal
- * Connect crypto wallets via Web3
+ * Real Web3 wallet connection via ethers.js
  * Developed by Xman Studio
  */
 
 import { ref } from 'vue';
+import { useWalletStore } from '@/Stores/walletStore';
 
 const emit = defineEmits(['close', 'connected']);
+const walletStore = useWalletStore();
 
 const selectedWallet = ref(null);
 const isConnecting = ref(false);
@@ -19,66 +21,85 @@ const wallets = [
         name: 'MetaMask',
         icon: 'https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg',
         description: 'Connect using browser extension',
-        popular: true
-    },
-    {
-        id: 'walletconnect',
-        name: 'WalletConnect',
-        icon: 'https://avatars.githubusercontent.com/u/37784886?s=200&v=4',
-        description: 'Scan with mobile wallet',
-        popular: true
+        popular: true,
+        supported: true
     },
     {
         id: 'trustwallet',
         name: 'Trust Wallet',
         icon: 'https://trustwallet.com/assets/images/media/assets/trust_platform.svg',
         description: 'Connect Trust Wallet',
-        popular: true
+        popular: true,
+        supported: true
     },
     {
         id: 'coinbase',
         name: 'Coinbase Wallet',
         icon: 'https://avatars.githubusercontent.com/u/18060234?s=200&v=4',
         description: 'Connect Coinbase Wallet',
-        popular: false
+        popular: true,
+        supported: true
+    },
+    {
+        id: 'walletconnect',
+        name: 'WalletConnect',
+        icon: 'https://avatars.githubusercontent.com/u/37784886?s=200&v=4',
+        description: 'Scan with mobile wallet',
+        popular: false,
+        supported: false
     },
     {
         id: 'phantom',
         name: 'Phantom',
         icon: 'https://phantom.app/img/phantom-logo.svg',
         description: 'Solana & Multi-chain',
-        popular: false
+        popular: false,
+        supported: false
     },
     {
         id: 'okx',
         name: 'OKX Wallet',
         icon: 'https://static.okx.com/cdn/assets/imgs/221/C5E6E1F698D06F8D.png',
         description: 'Connect OKX Wallet',
-        popular: false
+        popular: false,
+        supported: true
     },
 ];
 
 const connectWallet = async (wallet) => {
+    if (!wallet.supported) {
+        error.value = `${wallet.name} support coming soon. Please use MetaMask or another injected wallet.`;
+        return;
+    }
+
+    // Check if browser has an injected wallet
+    if (!window.ethereum) {
+        error.value = wallet.id === 'metamask'
+            ? 'MetaMask not detected. Please install MetaMask extension and reload the page.'
+            : 'No Web3 wallet detected. Please install MetaMask or a compatible wallet.';
+        return;
+    }
+
     selectedWallet.value = wallet.id;
     isConnecting.value = true;
     error.value = null;
 
     try {
-        // Simulate connection delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // Mock successful connection
-        const mockAddress = '0x742d35Cc6634C0532925a3b844Bc9e7595f8fEd' + Math.floor(Math.random() * 10);
+        const address = await walletStore.connect(wallet.id);
 
         emit('connected', {
-            address: mockAddress,
+            address,
             wallet: wallet.id,
-            chain: 'bsc'
+            chainId: walletStore.chainId,
         });
 
         emit('close');
     } catch (err) {
-        error.value = 'Failed to connect. Please try again.';
+        if (err.code === 4001) {
+            error.value = 'Connection rejected. Please try again.';
+        } else {
+            error.value = walletStore.error || err.message || 'Failed to connect. Please try again.';
+        }
     } finally {
         isConnecting.value = false;
     }
@@ -149,27 +170,35 @@ const connectWallet = async (wallet) => {
                         :key="wallet.id"
                         @click="connectWallet(wallet)"
                         :disabled="isConnecting"
-                        class="flex flex-col items-center gap-2 p-4 rounded-xl bg-dark-800/50 border border-white/5 hover:bg-white/5 hover:border-white/10 transition-all"
+                        :class="[
+                            'flex flex-col items-center gap-2 p-4 rounded-xl border transition-all',
+                            wallet.supported
+                                ? 'bg-dark-800/50 border-white/5 hover:bg-white/5 hover:border-white/10'
+                                : 'bg-dark-800/30 border-white/5 opacity-50'
+                        ]"
                     >
                         <img :src="wallet.icon" :alt="wallet.name" class="w-8 h-8 rounded-lg">
                         <span class="text-xs text-dark-300">{{ wallet.name }}</span>
+                        <span v-if="!wallet.supported" class="text-[10px] text-dark-500">Soon</span>
                     </button>
                 </div>
             </div>
 
-            <!-- QR Code Section -->
+            <!-- No Wallet Installed Info -->
             <div class="mt-6 pt-6 border-t border-white/5">
                 <div class="flex items-center gap-4">
-                    <div class="w-20 h-20 bg-white rounded-xl p-2">
-                        <!-- QR Code Placeholder -->
-                        <div class="w-full h-full bg-dark-900 rounded grid grid-cols-5 gap-0.5 p-1">
-                            <div v-for="i in 25" :key="i" :class="['rounded-sm', Math.random() > 0.5 ? 'bg-white' : 'bg-dark-900']"></div>
-                        </div>
+                    <div class="w-14 h-14 bg-gradient-to-br from-accent-500/20 to-primary-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <svg class="w-7 h-7 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                        </svg>
                     </div>
                     <div class="flex-1">
-                        <p class="font-medium text-white mb-1">Scan to connect</p>
+                        <p class="font-medium text-white mb-1">Don't have a wallet?</p>
                         <p class="text-sm text-dark-400">
-                            Open your mobile wallet and scan this QR code to connect
+                            <a href="https://metamask.io/download/" target="_blank" rel="noopener" class="text-primary-400 hover:text-primary-300 underline">
+                                Install MetaMask
+                            </a>
+                            to get started with DeFi trading on BSC.
                         </p>
                     </div>
                 </div>

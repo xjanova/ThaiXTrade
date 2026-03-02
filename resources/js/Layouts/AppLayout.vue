@@ -4,8 +4,9 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
+import { useWalletStore } from '@/Stores/walletStore';
 import NavBar from '@/Components/Navigation/NavBar.vue';
 import Sidebar from '@/Components/Navigation/Sidebar.vue';
 import TickerStrip from '@/Components/Trading/TickerStrip.vue';
@@ -16,11 +17,23 @@ defineProps({
 });
 
 const page = usePage();
+const walletStore = useWalletStore();
 const showSidebar = ref(true);
 const showWalletModal = ref(false);
 
 const user = computed(() => page.props.auth?.user);
-const wallet = computed(() => page.props.wallet);
+
+// Wallet state from Pinia store (reactive)
+const wallet = computed(() => {
+    if (walletStore.isConnected) {
+        return {
+            address: walletStore.address,
+            chainId: walletStore.chainId,
+            type: walletStore.walletType,
+        };
+    }
+    return null;
+});
 
 const toggleSidebar = () => {
     showSidebar.value = !showSidebar.value;
@@ -33,6 +46,11 @@ const openWalletModal = () => {
 const closeWalletModal = () => {
     showWalletModal.value = false;
 };
+
+// Auto-reconnect wallet on page load
+onMounted(async () => {
+    await walletStore.tryReconnect();
+});
 </script>
 
 <template>
