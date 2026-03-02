@@ -20,7 +20,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.12",
         "laravel/tinker": "^2.9",
-        "predis/predis": "^2.2",
+        "predis/predis": "^3.4",
         "web3p/web3.php": "^0.1.6"
     },
     "require-dev": {
