@@ -23,6 +23,7 @@ class SupportController extends Controller
     public function __construct(
         private readonly AdminNotificationService $notificationService,
     ) {}
+
     /**
      * Display a paginated listing of support tickets with filters.
      */
