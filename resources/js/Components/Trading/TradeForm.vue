@@ -6,17 +6,16 @@
  */
 
 import { ref, computed, watch } from 'vue';
-import { useWalletStore } from '@/Stores/walletStore';
 
 const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
     tickerPrice: { type: Number, default: 0 },
+    isWalletConnected: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['submit-order', 'connect-wallet']);
 
-const walletStore = useWalletStore();
-const isConnected = computed(() => walletStore.isConnected);
+const isConnected = computed(() => props.isWalletConnected);
 
 const activeTab = ref('buy');
 const orderType = ref('limit');

@@ -15,6 +15,7 @@ import RecentTrades from '@/Components/Trading/RecentTrades.vue';
 import OpenOrders from '@/Components/Trading/OpenOrders.vue';
 import TradeHistory from '@/Components/Trading/TradeHistory.vue';
 import { useBinanceData } from '@/Composables/useBinanceData';
+import { useWalletStore } from '@/Stores/walletStore';
 
 const props = defineProps({
     pair: {
@@ -37,6 +38,7 @@ const {
     connectWebSocket,
 } = useBinanceData(() => binanceSymbol.value);
 
+const walletStore = useWalletStore();
 const activeTab = ref('openOrders');
 const showWalletModal = ref(false);
 
@@ -132,6 +134,7 @@ onMounted(async () => {
                     <TradeForm
                         :symbol="currentPair"
                         :ticker-price="ticker.price"
+                        :is-wallet-connected="walletStore.isConnected"
                         @submit-order="handleSubmitOrder"
                         @connect-wallet="handleConnectWallet"
                     />
