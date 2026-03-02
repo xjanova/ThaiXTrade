@@ -47,60 +47,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @inertiaHead
 
-    <!-- Google Translate Widget (Free, No API Required) -->
-    <script type="text/javascript">
-        function googleTranslateElementInit() {
-            new google.translate.TranslateElement({
-                pageLanguage: 'th',
-                includedLanguages: 'en,th,zh-CN,zh-TW,ja,ko,vi,id,ms,hi,ar,ru,es,fr,de,pt,it',
-                layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
-                autoDisplay: false
-            }, 'google_translate_element');
-        }
-    </script>
-    <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
-
-    <style>
-        /* Hide Google Translate top banner only (not the widget itself) */
-        .goog-te-banner-frame { display: none !important; }
-        body { top: 0 !important; }
-        body > .skiptranslate { display: none !important; }
-
-        /* Hide widget container when empty/broken */
-        #google_translate_element:empty { display: none !important; }
-
-        /* Style the translate widget */
-        #google_translate_element {
-            background: rgba(15, 23, 42, 0.9);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 8px 12px;
-        }
-
-        .goog-te-gadget {
-            font-family: 'Inter', sans-serif !important;
-            font-size: 12px !important;
-            color: #94a3b8 !important;
-        }
-
-        .goog-te-gadget-simple {
-            background: transparent !important;
-            border: none !important;
-        }
-
-        .goog-te-gadget-simple img {
-            display: none !important;
-        }
-
-        .goog-te-gadget-simple .goog-te-menu-value {
-            color: #e2e8f0 !important;
-        }
-
-        .goog-te-gadget-simple .goog-te-menu-value span {
-            color: #06b6d4 !important;
-        }
-    </style>
+    <!-- Google Translate removed: caused visual glitches (empty floating box) -->
 </head>
 <body class="font-sans antialiased bg-dark-950 text-white">
     @inertia

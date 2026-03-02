@@ -96,15 +96,12 @@ onMounted(async () => {
         />
 
         <!-- Footer -->
-        <footer class="relative border-t border-white/5 py-4 px-6">
-            <div class="max-w-[1920px] mx-auto flex items-center justify-between text-xs text-dark-500">
+        <footer class="relative border-t border-white/10 py-3 px-6">
+            <div class="max-w-[1920px] mx-auto flex items-center justify-between text-xs text-dark-400">
                 <span>&copy; {{ new Date().getFullYear() }} Xman Studio. All rights reserved.</span>
-                <span>TPIX TRADE v{{ versionData.version }}</span>
+                <span class="text-dark-500">TPIX TRADE v{{ versionData.version }}</span>
             </div>
         </footer>
-
-        <!-- Google Translate Widget (Free, No API) -->
-        <div id="google_translate_element" class="fixed bottom-4 right-4 z-50"></div>
     </div>
 </template>
 
