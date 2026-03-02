@@ -9,6 +9,7 @@ import { ref } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { getCoinLogo } from '@/utils/cryptoLogos';
+import versionData from '../../../version.json';
 
 const topGainers = ref([
     { symbol: 'PEPE', name: 'Pepe', price: '0.00001234', change: '+45.67%', volume: '2.5B' },
@@ -257,7 +258,7 @@ const stats = ref([
                         <a href="#" class="hover:text-white transition-colors">Twitter</a>
                     </div>
                     <p class="text-sm text-dark-500">
-                        © 2026 Xman Studio. All rights reserved.
+                        &copy; {{ new Date().getFullYear() }} Xman Studio. All rights reserved. &middot; v{{ versionData.version }}
                     </p>
                 </div>
             </div>

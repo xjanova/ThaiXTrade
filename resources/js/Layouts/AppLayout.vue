@@ -11,6 +11,7 @@ import NavBar from '@/Components/Navigation/NavBar.vue';
 import Sidebar from '@/Components/Navigation/Sidebar.vue';
 import TickerStrip from '@/Components/Trading/TickerStrip.vue';
 import WalletModal from '@/Components/Wallet/WalletModal.vue';
+import versionData from '../../../version.json';
 
 defineProps({
     title: String,
@@ -92,6 +93,14 @@ onMounted(async () => {
             v-if="showWalletModal"
             @close="closeWalletModal"
         />
+
+        <!-- Footer -->
+        <footer class="relative border-t border-white/5 py-4 px-6">
+            <div class="max-w-[1920px] mx-auto flex items-center justify-between text-xs text-dark-500">
+                <span>&copy; {{ new Date().getFullYear() }} Xman Studio. All rights reserved.</span>
+                <span>TPIX TRADE v{{ versionData.version }}</span>
+            </div>
+        </footer>
 
         <!-- Google Translate Widget (Free, No API) -->
         <div id="google_translate_element" class="fixed bottom-4 right-4 z-50"></div>
