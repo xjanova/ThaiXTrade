@@ -10,10 +10,8 @@ import TradeForm from '@/Components/Trading/TradeForm.vue';
 describe('TradeForm Component', () => {
     const defaultProps = {
         symbol: 'BTC/USDT',
-        balance: {
-            base: { symbol: 'BTC', amount: '0.5678' },
-            quote: { symbol: 'USDT', amount: '15,234.50' },
-        },
+        tickerPrice: 67234.50,
+        isWalletConnected: false,
     };
 
     it('renders correctly', () => {
@@ -43,17 +41,23 @@ describe('TradeForm Component', () => {
 
         await sellButton?.trigger('click');
 
-        // After clicking sell, the sell button should be active
         expect(wrapper.html()).toContain('Sell');
     });
 
-    it('displays correct balance for buy mode', () => {
+    it('shows Connect Wallet when not connected', () => {
         const wrapper = mount(TradeForm, {
-            props: defaultProps,
+            props: { ...defaultProps, isWalletConnected: false },
         });
 
-        expect(wrapper.text()).toContain('15,234.50');
-        expect(wrapper.text()).toContain('USDT');
+        expect(wrapper.text()).toContain('Connect Wallet');
+    });
+
+    it('shows Buy BTC when wallet is connected', () => {
+        const wrapper = mount(TradeForm, {
+            props: { ...defaultProps, isWalletConnected: true },
+        });
+
+        expect(wrapper.text()).toContain('Buy BTC');
     });
 
     it('has price input field', () => {
@@ -61,8 +65,8 @@ describe('TradeForm Component', () => {
             props: defaultProps,
         });
 
-        const priceInput = wrapper.find('input[placeholder="0.00"]');
-        expect(priceInput.exists()).toBe(true);
+        const inputs = wrapper.findAll('input[type="text"]');
+        expect(inputs.length).toBeGreaterThan(0);
     });
 
     it('has percentage buttons', () => {
@@ -76,15 +80,15 @@ describe('TradeForm Component', () => {
         expect(wrapper.text()).toContain('100%');
     });
 
-    it('emits submit-order event on button click', async () => {
+    it('emits connect-wallet when not connected and submit clicked', async () => {
         const wrapper = mount(TradeForm, {
-            props: defaultProps,
+            props: { ...defaultProps, isWalletConnected: false },
         });
 
-        const submitButton = wrapper.find('button.btn-success, button.btn-danger');
-        if (submitButton.exists()) {
+        const submitButton = wrapper.findAll('button').find(btn => btn.text().includes('Connect Wallet'));
+        if (submitButton) {
             await submitButton.trigger('click');
-            expect(wrapper.emitted('submit-order')).toBeTruthy();
+            expect(wrapper.emitted('connect-wallet')).toBeTruthy();
         }
     });
 
@@ -95,5 +99,13 @@ describe('TradeForm Component', () => {
 
         expect(wrapper.text()).toContain('Limit');
         expect(wrapper.text()).toContain('Market');
+    });
+
+    it('displays USDT as quote symbol', () => {
+        const wrapper = mount(TradeForm, {
+            props: defaultProps,
+        });
+
+        expect(wrapper.text()).toContain('USDT');
     });
 });
