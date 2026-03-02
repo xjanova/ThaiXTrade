@@ -6,7 +6,7 @@
  */
 
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { createChart, ColorType, CrosshairMode } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
 import { getPairLogo, getBaseSymbol } from '@/utils/cryptoLogos';
 
 const props = defineProps({
@@ -181,8 +181,8 @@ function initChart() {
 
     const candleData = generateCandleData(200);
 
-    // Candlestick series
-    candleSeries = chart.addCandlestickSeries({
+    // Candlestick series (v5 API)
+    candleSeries = chart.addSeries(CandlestickSeries, {
         upColor: '#00C853',
         downColor: '#FF1744',
         borderUpColor: '#00C853',
@@ -192,16 +192,16 @@ function initChart() {
     });
     candleSeries.setData(candleData);
 
-    // Line series (hidden initially)
-    lineSeries = chart.addLineSeries({
+    // Line series (hidden initially, v5 API)
+    lineSeries = chart.addSeries(LineSeries, {
         color: '#0ea5e9',
         lineWidth: 2,
         visible: chartType.value === 'line',
     });
     lineSeries.setData(candleData.map(d => ({ time: d.time, value: d.close })));
 
-    // Volume series
-    volumeSeries = chart.addHistogramSeries({
+    // Volume series (v5 API)
+    volumeSeries = chart.addSeries(HistogramSeries, {
         color: '#0ea5e9',
         priceFormat: { type: 'volume' },
         priceScaleId: 'volume',
@@ -261,10 +261,10 @@ function updateIndicators(data) {
     if (!chart) return;
     const candleData = data || generateCandleData(200);
 
-    // MA
+    // MA (v5 API)
     if (maSeries) { chart.removeSeries(maSeries); maSeries = null; }
     if (activeIndicators.value.includes('MA')) {
-        maSeries = chart.addLineSeries({
+        maSeries = chart.addSeries(LineSeries, {
             color: '#f59e0b',
             lineWidth: 1,
             title: 'MA 20',
@@ -272,10 +272,10 @@ function updateIndicators(data) {
         maSeries.setData(calculateMA(candleData, 20));
     }
 
-    // EMA
+    // EMA (v5 API)
     if (emaSeries) { chart.removeSeries(emaSeries); emaSeries = null; }
     if (activeIndicators.value.includes('EMA')) {
-        emaSeries = chart.addLineSeries({
+        emaSeries = chart.addSeries(LineSeries, {
             color: '#a855f7',
             lineWidth: 1,
             title: 'EMA 12',
