@@ -61,10 +61,13 @@
     <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 
     <style>
-        /* Hide Google Translate banner */
+        /* Hide Google Translate top banner only (not the widget itself) */
         .goog-te-banner-frame { display: none !important; }
         body { top: 0 !important; }
-        .skiptranslate { display: none !important; }
+        body > .skiptranslate { display: none !important; }
+
+        /* Hide widget container when empty/broken */
+        #google_translate_element:empty { display: none !important; }
 
         /* Style the translate widget */
         #google_translate_element {
