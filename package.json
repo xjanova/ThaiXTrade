@@ -23,7 +23,7 @@
     "@vitest/ui": "^4.0.18",
     "@vue/test-utils": "^2.4.4",
     "autoprefixer": "^10.4.17",
-    "axios": "^1.6.7",
+    "axios": "^1.13.6",
     "jsdom": "^28.1.0",
     "laravel-vite-plugin": "^2.1.0",
     "postcss": "^8.4.35",
