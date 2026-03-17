@@ -30,7 +30,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('login', [AuthController::class, 'login'])->name('login.submit')->middleware('turnstile');
-    Route::post('setup', [AuthController::class, 'setup'])->name('setup');
+    Route::post('setup', [AuthController::class, 'setup'])->name('setup')->middleware('throttle:5,60');
 
     // Protected admin routes
     Route::middleware(['admin.auth', 'admin.audit'])->group(function () {

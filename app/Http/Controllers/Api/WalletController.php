@@ -4,18 +4,24 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
+use App\Services\Web3BalanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 
 /**
  * WalletController.
  *
- * Handles wallet connection, balance queries, and transaction history
- * for the TPIX TRADE DEX platform.
+ * Handles wallet connection, real balance queries from blockchain RPC,
+ * and transaction history for the TPIX TRADE DEX platform.
  */
 class WalletController extends Controller
 {
+    public function __construct(
+        private Web3BalanceService $balanceService,
+    ) {}
+
     /**
      * Record a wallet connection event.
      *
@@ -35,7 +41,6 @@ class WalletController extends Controller
                 'error' => [
                     'code' => 'VALIDATION_ERROR',
                     'message' => 'Invalid wallet address format.',
-                    'details' => $validator->errors(),
                 ],
             ], 422);
         }
@@ -68,7 +73,7 @@ class WalletController extends Controller
     }
 
     /**
-     * Get token balances for a wallet address.
+     * Get real token balances for a wallet address from blockchain RPC.
      *
      * GET /api/v1/wallet/balances?wallet_address=0x...&chain_id=56
      */
@@ -85,20 +90,22 @@ class WalletController extends Controller
                 'error' => [
                     'code' => 'VALIDATION_ERROR',
                     'message' => 'Invalid parameters.',
-                    'details' => $validator->errors(),
                 ],
             ], 422);
         }
 
-        // Token balances are fetched on-chain by the frontend via ethers.js.
-        // This endpoint serves as a placeholder for cached/indexed balance data.
+        $walletAddress = $request->input('wallet_address');
+        $chainId = $request->integer('chain_id', 56);
+
+        $balances = $this->balanceService->getWalletBalances($walletAddress, $chainId);
+
         return response()->json([
             'success' => true,
             'data' => [
-                'wallet_address' => $request->input('wallet_address'),
-                'chain_id' => $request->input('chain_id', 56),
-                'balances' => [],
-                'note' => 'Real-time balances are fetched directly from the blockchain via ethers.js.',
+                'wallet_address' => $walletAddress,
+                'chain_id' => $chainId,
+                'balances' => $balances,
+                'fetched_at' => now()->toIso8601String(),
             ],
         ]);
     }
@@ -121,7 +128,6 @@ class WalletController extends Controller
                 'error' => [
                     'code' => 'VALIDATION_ERROR',
                     'message' => 'Invalid parameters.',
-                    'details' => $validator->errors(),
                 ],
             ], 422);
         }
@@ -156,6 +162,7 @@ class WalletController extends Controller
 
     /**
      * Generate a signature request message for wallet verification.
+     * Stores nonce in cache for validation against replay attacks.
      *
      * POST /api/v1/wallet/sign
      */
@@ -171,13 +178,17 @@ class WalletController extends Controller
                 'error' => [
                     'code' => 'VALIDATION_ERROR',
                     'message' => 'Invalid wallet address.',
-                    'details' => $validator->errors(),
                 ],
             ], 422);
         }
 
+        $walletAddress = $request->input('wallet_address');
         $nonce = bin2hex(random_bytes(16));
-        $message = "TPIX TRADE: Sign this message to verify your wallet.\n\nNonce: {$nonce}\nTimestamp: ".now()->toIso8601String();
+        $timestamp = now()->toIso8601String();
+        $message = "TPIX TRADE: Sign this message to verify your wallet.\n\nNonce: {$nonce}\nTimestamp: {$timestamp}";
+
+        // Store nonce in cache for 5 minutes for later verification
+        Cache::put("wallet_nonce:{$walletAddress}:{$nonce}", $timestamp, 300);
 
         return response()->json([
             'success' => true,

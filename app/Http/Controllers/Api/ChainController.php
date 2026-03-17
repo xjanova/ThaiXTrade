@@ -3,10 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Web3BalanceService;
 use Illuminate\Http\JsonResponse;
 
 class ChainController extends Controller
 {
+    public function __construct(
+        private Web3BalanceService $balanceService,
+    ) {}
+
     /**
      * Get list of all supported chains.
      */
@@ -69,7 +74,7 @@ class ChainController extends Controller
     }
 
     /**
-     * Get current gas price for a chain.
+     * Get real-time gas price from chain RPC.
      */
     public function gasPrice(int $chainId): JsonResponse
     {
@@ -85,12 +90,13 @@ class ChainController extends Controller
             ], 404);
         }
 
-        // In production, this would fetch real-time gas prices from the blockchain
+        $gasPrice = $this->balanceService->getGasPrice($chainId);
+
         return response()->json([
             'success' => true,
             'data' => [
                 'chainId' => $chainId,
-                'gasPrice' => '20000000000', // 20 Gwei
+                'gasPrice' => $gasPrice,
                 'timestamp' => now()->toIso8601String(),
             ],
         ]);

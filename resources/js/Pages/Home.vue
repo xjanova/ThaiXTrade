@@ -1,29 +1,18 @@
 <script setup>
 /**
  * TPIX TRADE - Home Page
- * Landing page with market overview
+ * Landing page with real market data from Binance API
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { getCoinLogo } from '@/utils/cryptoLogos';
+import { useMarketData } from '@/Composables/useMarketData';
 import versionData from '../../../version.json';
 
-const topGainers = ref([
-    { symbol: 'PEPE', name: 'Pepe', price: '0.00001234', change: '+45.67%', volume: '2.5B' },
-    { symbol: 'BONK', name: 'Bonk', price: '0.00002345', change: '+32.45%', volume: '1.8B' },
-    { symbol: 'WIF', name: 'dogwifhat', price: '2.34', change: '+28.90%', volume: '890M' },
-    { symbol: 'FLOKI', name: 'Floki', price: '0.000234', change: '+23.45%', volume: '567M' },
-]);
-
-const topVolume = ref([
-    { symbol: 'BTC', name: 'Bitcoin', price: '67,234.50', change: '+2.45%', volume: '45.6B' },
-    { symbol: 'ETH', name: 'Ethereum', price: '3,456.78', change: '+1.23%', volume: '23.4B' },
-    { symbol: 'SOL', name: 'Solana', price: '178.90', change: '+5.67%', volume: '8.9B' },
-    { symbol: 'BNB', name: 'BNB', price: '567.89', change: '-0.56%', volume: '4.5B' },
-]);
+const { topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
 
 const features = [
     {
@@ -48,12 +37,17 @@ const features = [
     },
 ];
 
-const stats = ref([
-    { label: 'Total Volume', value: '$12.5B+', suffix: '' },
-    { label: 'Total Trades', value: '45M+', suffix: '' },
-    { label: 'Supported Chains', value: '50+', suffix: '' },
-    { label: 'Active Traders', value: '250K+', suffix: '' },
+const stats = computed(() => [
+    { label: 'Supported Chains', value: '9' },
+    { label: 'Trading Pairs', value: '100+' },
+    { label: 'DEX Protocol', value: 'PancakeSwap' },
+    { label: 'Network', value: 'BSC' },
 ]);
+
+onMounted(async () => {
+    await fetchTickers();
+    startAutoRefresh();
+});
 </script>
 
 <template>
@@ -72,7 +66,7 @@ const stats = ref([
             <div class="relative max-w-6xl mx-auto text-center">
                 <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-sm text-sm mb-8">
                     <span class="w-2 h-2 rounded-full bg-trading-green animate-pulse"></span>
-                    <span class="text-dark-300">Live on 50+ Blockchains</span>
+                    <span class="text-dark-300">Live on BNB Smart Chain</span>
                 </div>
 
                 <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">
@@ -122,7 +116,10 @@ const stats = ref([
                             <h3 class="text-lg font-semibold text-white">Top Gainers</h3>
                             <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">View All</Link>
                         </div>
-                        <div class="space-y-4">
+                        <div v-if="isLoading" class="py-8 text-center text-dark-400">
+                            <div class="animate-pulse">Loading live data...</div>
+                        </div>
+                        <div v-else class="space-y-4">
                             <div
                                 v-for="coin in topGainers"
                                 :key="coin.symbol"
@@ -152,7 +149,10 @@ const stats = ref([
                             <h3 class="text-lg font-semibold text-white">Top Volume</h3>
                             <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">View All</Link>
                         </div>
-                        <div class="space-y-4">
+                        <div v-if="isLoading" class="py-8 text-center text-dark-400">
+                            <div class="animate-pulse">Loading live data...</div>
+                        </div>
+                        <div v-else class="space-y-4">
                             <div
                                 v-for="coin in topVolume"
                                 :key="coin.symbol"
@@ -170,7 +170,7 @@ const stats = ref([
                                 </div>
                                 <div class="text-right">
                                     <p class="font-mono text-white">${{ coin.price }}</p>
-                                    <p :class="['text-sm font-medium', coin.change.startsWith('+') ? 'text-trading-green' : 'text-trading-red']">
+                                    <p :class="['text-sm font-medium', coin.isUp ? 'text-trading-green' : 'text-trading-red']">
                                         {{ coin.change }}
                                     </p>
                                 </div>
@@ -196,19 +196,15 @@ const stats = ref([
                 <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <div v-for="feature in features" :key="feature.title" class="glass-card group">
                         <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-500/10 via-primary-500/15 to-warm-500/10 flex items-center justify-center mb-4 group-hover:from-accent-500/20 group-hover:via-primary-500/25 group-hover:to-warm-500/15 transition-colors">
-                            <!-- Shield Icon -->
                             <svg v-if="feature.icon === 'shield'" class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                             </svg>
-                            <!-- Globe Icon -->
                             <svg v-else-if="feature.icon === 'globe'" class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
-                            <!-- Lightning Icon -->
                             <svg v-else-if="feature.icon === 'lightning'" class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                             </svg>
-                            <!-- Robot Icon -->
                             <svg v-else class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                             </svg>

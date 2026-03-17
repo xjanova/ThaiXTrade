@@ -1,13 +1,15 @@
 <script setup>
 /**
  * TPIX TRADE - Markets Overview Page
+ * Real-time market data from Binance API
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { getCoinLogo } from '@/utils/cryptoLogos';
+import { useMarketData } from '@/Composables/useMarketData';
 
 const activeTab = ref('spot');
 
@@ -17,16 +19,67 @@ const tabs = [
     { id: 'nft', label: 'NFT', route: '/markets/nft' },
 ];
 
-const trendingTokens = ref([
-    { symbol: 'BTC', name: 'Bitcoin', price: '67,234.50', change: '+2.45%', isUp: true, volume: '45.6B', marketCap: '1.32T' },
-    { symbol: 'ETH', name: 'Ethereum', price: '3,456.78', change: '+1.23%', isUp: true, volume: '23.4B', marketCap: '415B' },
-    { symbol: 'BNB', name: 'BNB', price: '567.89', change: '-0.56%', isUp: false, volume: '4.5B', marketCap: '87B' },
-    { symbol: 'SOL', name: 'Solana', price: '178.90', change: '+5.67%', isUp: true, volume: '8.9B', marketCap: '78B' },
-    { symbol: 'ADA', name: 'Cardano', price: '0.6234', change: '+3.21%', isUp: true, volume: '1.2B', marketCap: '22B' },
-    { symbol: 'AVAX', name: 'Avalanche', price: '42.56', change: '-1.23%', isUp: false, volume: '890M', marketCap: '16B' },
-    { symbol: 'DOGE', name: 'Dogecoin', price: '0.1234', change: '+8.90%', isUp: true, volume: '3.4B', marketCap: '18B' },
-    { symbol: 'DOT', name: 'Polkadot', price: '8.67', change: '+1.89%', isUp: true, volume: '567M', marketCap: '11B' },
-]);
+const searchQuery = ref('');
+const { tickers, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
+
+const filteredTokens = ref([]);
+
+function updateFiltered() {
+    const q = searchQuery.value.toLowerCase();
+    filteredTokens.value = tickers.value
+        .filter(t => {
+            if (!q) return true;
+            return t.baseAsset?.toLowerCase().includes(q) ||
+                   getTokenName(t.baseAsset)?.toLowerCase().includes(q);
+        })
+        .map(t => ({
+            symbol: t.baseAsset,
+            name: getTokenName(t.baseAsset),
+            price: formatPrice(parseFloat(t.price)),
+            change: formatChange(parseFloat(t.priceChangePercent)),
+            isUp: parseFloat(t.priceChangePercent) >= 0,
+            volume: formatVolume(parseFloat(t.quoteVolume)),
+            marketCap: '-',
+        }));
+}
+
+function formatPrice(price) {
+    if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (price >= 1) return price.toFixed(2);
+    if (price >= 0.01) return price.toFixed(4);
+    return price.toFixed(8);
+}
+
+function formatChange(change) {
+    return (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+}
+
+function formatVolume(vol) {
+    if (vol >= 1e12) return (vol / 1e12).toFixed(1) + 'T';
+    if (vol >= 1e9) return (vol / 1e9).toFixed(1) + 'B';
+    if (vol >= 1e6) return (vol / 1e6).toFixed(1) + 'M';
+    return (vol / 1e3).toFixed(1) + 'K';
+}
+
+function getTokenName(symbol) {
+    const names = {
+        BTC: 'Bitcoin', ETH: 'Ethereum', BNB: 'BNB', SOL: 'Solana',
+        XRP: 'XRP', ADA: 'Cardano', DOGE: 'Dogecoin', DOT: 'Polkadot',
+        AVAX: 'Avalanche', MATIC: 'Polygon', LINK: 'Chainlink', UNI: 'Uniswap',
+        ATOM: 'Cosmos', LTC: 'Litecoin', NEAR: 'NEAR Protocol', ARB: 'Arbitrum',
+        PEPE: 'Pepe', SHIB: 'Shiba Inu', TRX: 'TRON', TON: 'Toncoin',
+    };
+    return names[symbol] || symbol;
+}
+
+onMounted(async () => {
+    await fetchTickers();
+    updateFiltered();
+    startAutoRefresh();
+
+    // Watch tickers for updates
+    setInterval(updateFiltered, 1000);
+});
 </script>
 
 <template>
@@ -47,6 +100,8 @@ const trendingTokens = ref([
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
                     <input
+                        v-model="searchQuery"
+                        @input="updateFiltered"
                         type="text"
                         placeholder="Search tokens..."
                         class="w-full md:w-80 pl-10 pr-4 py-3 rounded-xl glass-sm border border-white/10 bg-transparent text-white placeholder-dark-400 focus:outline-none focus:border-primary-500/50"
@@ -73,7 +128,10 @@ const trendingTokens = ref([
 
             <!-- Markets Table -->
             <div class="glass-dark rounded-2xl overflow-hidden">
-                <div class="overflow-x-auto">
+                <div v-if="isLoading" class="py-12 text-center text-dark-400">
+                    <div class="animate-pulse">Loading live market data...</div>
+                </div>
+                <div v-else class="overflow-x-auto">
                     <table class="w-full">
                         <thead>
                             <tr class="border-b border-white/5 text-dark-400 text-sm">
@@ -82,13 +140,12 @@ const trendingTokens = ref([
                                 <th class="text-right p-4">Price</th>
                                 <th class="text-right p-4">24h Change</th>
                                 <th class="text-right p-4">Volume (24h)</th>
-                                <th class="text-right p-4">Market Cap</th>
                                 <th class="text-right p-4">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr
-                                v-for="(token, index) in trendingTokens"
+                                v-for="(token, index) in filteredTokens"
                                 :key="token.symbol"
                                 class="border-b border-white/5 hover:bg-white/5 transition-colors"
                             >
@@ -112,7 +169,6 @@ const trendingTokens = ref([
                                     </span>
                                 </td>
                                 <td class="p-4 text-right text-dark-300 font-mono">${{ token.volume }}</td>
-                                <td class="p-4 text-right text-dark-300 font-mono">${{ token.marketCap }}</td>
                                 <td class="p-4 text-right">
                                     <Link :href="`/trade/${token.symbol}-USDT`" class="text-primary-400 hover:text-primary-300 text-sm font-medium">
                                         Trade
@@ -124,7 +180,7 @@ const trendingTokens = ref([
                 </div>
 
                 <div class="p-4 text-center text-dark-500 text-sm border-t border-white/5">
-                    Live market data integration coming soon. Showing sample data.
+                    Real-time data from Binance. Prices update every 15 seconds.
                 </div>
             </div>
         </div>

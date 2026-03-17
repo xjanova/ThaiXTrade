@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\SwapApiController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -100,7 +101,5 @@ Route::prefix('v1')->middleware(['throttle:trading'])->group(function () {
     });
 });
 
-// WebSocket Authentication
-Route::post('/broadcasting/auth', function (Request $request) {
-    return true; // Implement proper auth for private channels
-})->middleware('web');
+// WebSocket Authentication - use Laravel's built-in broadcasting auth
+Broadcast::routes(['middleware' => ['web']]);

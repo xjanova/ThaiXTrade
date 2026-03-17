@@ -1,28 +1,60 @@
 <script setup>
 /**
  * TPIX TRADE - Spot Markets Page
+ * Real-time spot market data from Binance API
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { getCoinLogo } from '@/utils/cryptoLogos';
+import { useMarketData } from '@/Composables/useMarketData';
 
 const searchQuery = ref('');
+const { tickers, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
 
-const spotPairs = ref([
-    { base: 'BTC', quote: 'USDT', price: '67,234.50', change: '+2.45%', isUp: true, high: '68,100.00', low: '65,890.00', volume: '45.6B' },
-    { base: 'ETH', quote: 'USDT', price: '3,456.78', change: '+1.23%', isUp: true, high: '3,520.00', low: '3,390.00', volume: '23.4B' },
-    { base: 'BNB', quote: 'USDT', price: '567.89', change: '-0.56%', isUp: false, high: '575.00', low: '560.00', volume: '4.5B' },
-    { base: 'SOL', quote: 'USDT', price: '178.90', change: '+5.67%', isUp: true, high: '182.00', low: '168.00', volume: '8.9B' },
-    { base: 'ADA', quote: 'USDT', price: '0.6234', change: '+3.21%', isUp: true, high: '0.6400', low: '0.6000', volume: '1.2B' },
-    { base: 'XRP', quote: 'USDT', price: '0.5678', change: '-0.89%', isUp: false, high: '0.5800', low: '0.5600', volume: '2.1B' },
-    { base: 'DOGE', quote: 'USDT', price: '0.1234', change: '+8.90%', isUp: true, high: '0.1290', low: '0.1120', volume: '3.4B' },
-    { base: 'AVAX', quote: 'USDT', price: '42.56', change: '-1.23%', isUp: false, high: '43.80', low: '41.90', volume: '890M' },
-    { base: 'DOT', quote: 'USDT', price: '8.67', change: '+1.89%', isUp: true, high: '8.90', low: '8.45', volume: '567M' },
-    { base: 'MATIC', quote: 'USDT', price: '0.9876', change: '+4.56%', isUp: true, high: '1.0100', low: '0.9400', volume: '1.5B' },
-]);
+const spotPairs = computed(() => {
+    const q = searchQuery.value.toLowerCase();
+    return tickers.value
+        .filter(t => {
+            if (!q) return true;
+            return t.baseAsset?.toLowerCase().includes(q);
+        })
+        .map(t => {
+            const price = parseFloat(t.price);
+            const change = parseFloat(t.priceChangePercent);
+            return {
+                base: t.baseAsset,
+                quote: 'USDT',
+                price: formatPrice(price),
+                change: (change >= 0 ? '+' : '') + change.toFixed(2) + '%',
+                isUp: change >= 0,
+                high: formatPrice(parseFloat(t.high)),
+                low: formatPrice(parseFloat(t.low)),
+                volume: formatVolume(parseFloat(t.quoteVolume)),
+            };
+        });
+});
+
+function formatPrice(price) {
+    if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (price >= 1) return price.toFixed(2);
+    if (price >= 0.01) return price.toFixed(4);
+    return price.toFixed(8);
+}
+
+function formatVolume(vol) {
+    if (vol >= 1e12) return (vol / 1e12).toFixed(1) + 'T';
+    if (vol >= 1e9) return (vol / 1e9).toFixed(1) + 'B';
+    if (vol >= 1e6) return (vol / 1e6).toFixed(1) + 'M';
+    return (vol / 1e3).toFixed(1) + 'K';
+}
+
+onMounted(async () => {
+    await fetchTickers();
+    startAutoRefresh();
+});
 </script>
 
 <template>
@@ -60,7 +92,10 @@ const spotPairs = ref([
 
             <!-- Pairs Table -->
             <div class="glass-dark rounded-2xl overflow-hidden">
-                <div class="overflow-x-auto">
+                <div v-if="isLoading" class="py-12 text-center text-dark-400">
+                    <div class="animate-pulse">Loading live market data...</div>
+                </div>
+                <div v-else class="overflow-x-auto">
                     <table class="w-full">
                         <thead>
                             <tr class="border-b border-white/5 text-dark-400 text-sm">
@@ -108,7 +143,7 @@ const spotPairs = ref([
                 </div>
 
                 <div class="p-4 text-center text-dark-500 text-sm border-t border-white/5">
-                    Live market data integration coming soon. Showing sample data.
+                    Real-time data from Binance. Prices update every 15 seconds.
                 </div>
             </div>
         </div>

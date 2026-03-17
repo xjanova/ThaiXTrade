@@ -2,6 +2,7 @@
 /**
  * TPIX TRADE - Trading Dashboard Page
  * Main trading interface with real-time Binance data
+ * and real order submission via PancakeSwap
  * Developed by Xman Studio
  */
 
@@ -15,7 +16,10 @@ import RecentTrades from '@/Components/Trading/RecentTrades.vue';
 import OpenOrders from '@/Components/Trading/OpenOrders.vue';
 import TradeHistory from '@/Components/Trading/TradeHistory.vue';
 import { useBinanceData } from '@/Composables/useBinanceData';
+import { useSwap } from '@/Composables/useSwap';
 import { useWalletStore } from '@/Stores/walletStore';
+import { useWalletBalance } from '@/Composables/useWalletBalance';
+import axios from 'axios';
 
 const props = defineProps({
     pair: {
@@ -39,8 +43,13 @@ const {
 } = useBinanceData(() => binanceSymbol.value);
 
 const walletStore = useWalletStore();
+const { balances, fetchBalances } = useWalletBalance();
+const { error: swapError } = useSwap();
+
 const activeTab = ref('openOrders');
 const showWalletModal = ref(false);
+const orderStatus = ref(null); // 'submitting', 'success', 'error'
+const orderMessage = ref('');
 
 const tabs = [
     { id: 'openOrders', label: 'Open Orders', count: 0 },
@@ -48,19 +57,55 @@ const tabs = [
     { id: 'funds', label: 'Funds', count: null },
 ];
 
-const handleSubmitOrder = (order) => {
-    console.log('Order submitted:', order);
-    // TODO: Execute via PancakeSwap using useSwap composable
+const handleSubmitOrder = async (order) => {
+    if (!walletStore.isConnected || !walletStore.address) {
+        handleConnectWallet();
+        return;
+    }
+
+    orderStatus.value = 'submitting';
+    orderMessage.value = '';
+
+    try {
+        const { data } = await axios.post('/api/v1/trading/order', {
+            wallet_address: walletStore.address,
+            pair: currentPair.value,
+            side: order.side,
+            type: order.type,
+            price: parseFloat(String(order.price).replace(/,/g, '')) || 0,
+            amount: parseFloat(order.amount) || 0,
+            chain_id: walletStore.chainId || 56,
+        });
+
+        if (data.success) {
+            orderStatus.value = 'success';
+            orderMessage.value = `${order.side.toUpperCase()} order placed successfully!`;
+            // Refresh balances and orders
+            fetchBalances();
+        }
+    } catch (err) {
+        orderStatus.value = 'error';
+        orderMessage.value = err.response?.data?.error?.message || 'Failed to place order.';
+    }
+
+    // Auto-clear status after 3 seconds
+    setTimeout(() => {
+        orderStatus.value = null;
+        orderMessage.value = '';
+    }, 3000);
 };
 
 const handleConnectWallet = () => {
-    // Trigger the wallet modal in AppLayout
     showWalletModal.value = true;
 };
 
 onMounted(async () => {
     await fetchInitialData();
     connectWebSocket();
+
+    if (walletStore.isConnected) {
+        fetchBalances();
+    }
 });
 </script>
 
@@ -69,6 +114,19 @@ onMounted(async () => {
 
     <AppLayout :hide-sidebar="true">
         <div class="max-w-[1920px] mx-auto">
+            <!-- Order Status Toast -->
+            <div
+                v-if="orderStatus"
+                :class="[
+                    'fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all',
+                    orderStatus === 'success' ? 'bg-trading-green/90 text-white' :
+                    orderStatus === 'error' ? 'bg-trading-red/90 text-white' :
+                    'bg-primary-500/90 text-white'
+                ]"
+            >
+                {{ orderStatus === 'submitting' ? 'Placing order...' : orderMessage }}
+            </div>
+
             <!-- Trading Layout: 3 columns -->
             <div class="grid grid-cols-12 gap-3">
 
@@ -112,7 +170,13 @@ onMounted(async () => {
                             <OpenOrders v-if="activeTab === 'openOrders'" />
                             <TradeHistory v-else-if="activeTab === 'history'" />
                             <div v-else class="py-6 text-center text-dark-400 text-sm">
-                                <p>Connect wallet to view funds</p>
+                                <div v-if="walletStore.isConnected && balances.length > 0">
+                                    <div v-for="bal in balances" :key="bal.token_address" class="flex items-center justify-between py-2 border-b border-white/5">
+                                        <span class="text-white font-medium">{{ bal.symbol }}</span>
+                                        <span class="font-mono text-white">{{ parseFloat(bal.balance).toFixed(6) }}</span>
+                                    </div>
+                                </div>
+                                <p v-else>Connect wallet to view funds</p>
                             </div>
                         </div>
                     </div>
@@ -135,6 +199,7 @@ onMounted(async () => {
                         :symbol="currentPair"
                         :ticker-price="ticker.price"
                         :is-wallet-connected="walletStore.isConnected"
+                        :balances="balances"
                         @submit-order="handleSubmitOrder"
                         @connect-wallet="handleConnectWallet"
                     />

@@ -1,7 +1,7 @@
 <script setup>
 /**
  * TPIX TRADE - Trade Form Component
- * Buy/Sell order form with real wallet integration
+ * Buy/Sell order form with real wallet balance integration
  * Developed by Xman Studio
  */
 
@@ -11,6 +11,7 @@ const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
     tickerPrice: { type: Number, default: 0 },
     isWalletConnected: { type: Boolean, default: false },
+    balances: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['submit-order', 'connect-wallet']);
@@ -35,6 +36,26 @@ const sliderPercentages = [0, 25, 50, 75, 100];
 const baseSymbol = computed(() => props.symbol.split('/')[0] || 'BTC');
 const quoteSymbol = computed(() => props.symbol.split('/')[1] || 'USDT');
 
+// Get available balance for the relevant token
+const availableBalance = computed(() => {
+    if (!props.balances || props.balances.length === 0) return '0';
+
+    // When buying, we need quote token (USDT) balance
+    // When selling, we need base token balance
+    const tokenSymbol = activeTab.value === 'buy' ? quoteSymbol.value : baseSymbol.value;
+
+    const found = props.balances.find(b =>
+        b.symbol?.toUpperCase() === tokenSymbol.toUpperCase()
+    );
+    return found ? parseFloat(found.balance).toFixed(6) : '0';
+});
+
+// Calculate fee
+const feeAmount = computed(() => {
+    const totalNum = parseFloat(String(total.value).replace(/,/g, '')) || 0;
+    return (totalNum * 0.001).toFixed(2); // 0.1% fee
+});
+
 // Update price field when ticker changes (only if user hasn't typed yet)
 watch(() => props.tickerPrice, (newPrice) => {
     if (newPrice > 0 && !price.value) {
@@ -55,11 +76,28 @@ const calculateTotal = () => {
 
 const setSliderValue = (percent) => {
     sliderValue.value = percent;
-    // Placeholder: in production, calculate based on actual wallet balance
+
     if (percent === 0) {
         amount.value = '';
         total.value = '';
+        return;
     }
+
+    const balance = parseFloat(availableBalance.value) || 0;
+    if (balance <= 0) return;
+
+    const priceNum = parseFloat(String(price.value).replace(/,/g, '')) || 0;
+    if (priceNum <= 0) return;
+
+    if (activeTab.value === 'buy') {
+        // Calculate how much base token we can buy with percent of quote balance
+        const spendAmount = balance * (percent / 100);
+        amount.value = (spendAmount / priceNum).toFixed(6);
+    } else {
+        // Calculate how much base token to sell
+        amount.value = (balance * (percent / 100)).toFixed(6);
+    }
+
     calculateTotal();
 };
 
@@ -113,6 +151,14 @@ const submitOrder = () => {
             >
                 Sell
             </button>
+        </div>
+
+        <!-- Available Balance -->
+        <div v-if="isConnected" class="flex items-center justify-between mb-2 text-xs text-dark-400">
+            <span>Available</span>
+            <span class="font-mono">
+                {{ availableBalance }} {{ activeTab === 'buy' ? quoteSymbol : baseSymbol }}
+            </span>
         </div>
 
         <!-- Order Type -->
@@ -208,7 +254,7 @@ const submitOrder = () => {
         <!-- Fee Info -->
         <div class="flex items-center justify-between mb-3 text-xs text-dark-400">
             <span>Fee (0.1%)</span>
-            <span class="font-mono">~$0.00</span>
+            <span class="font-mono">~${{ feeAmount }}</span>
         </div>
 
         <!-- Submit Button -->
