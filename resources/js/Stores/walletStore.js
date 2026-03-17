@@ -1,14 +1,22 @@
 /**
  * TPIX TRADE - Wallet Store (Pinia)
- * Centralized Web3 wallet state management
- * Supports MetaMask, Trust Wallet, Coinbase, OKX
+ * ระบบจัดการ Wallet แบบรวมศูนย์ รองรับหลาย chain
+ * รองรับ MetaMask, Trust Wallet, Coinbase, OKX
+ * สลับ chain อัตโนมัติไปยัง chain หลัก (BSC) เมื่อเชื่อมต่อ
  * Developed by Xman Studio
  */
 
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { BrowserProvider } from 'ethers';
-import { BSC_CHAIN_CONFIG, switchToBSC, formatAddress } from '@/utils/web3';
+import {
+    BSC_CHAIN_CONFIG,
+    DEFAULT_CHAIN_ID,
+    switchToChain,
+    fetchSupportedChains,
+    getAddressUrl,
+    formatAddress,
+} from '@/utils/web3';
 
 const STORAGE_KEY = 'tpix_wallet';
 
@@ -50,7 +58,7 @@ function _getProvider(walletType) {
 }
 
 export const useWalletStore = defineStore('wallet', () => {
-    // State
+    // === State ===
     const address = ref(null);
     const chainId = ref(null);
     const provider = ref(null);
@@ -59,15 +67,54 @@ export const useWalletStore = defineStore('wallet', () => {
     const error = ref(null);
     const walletType = ref(null); // 'metamask', 'trustwallet', 'coinbase', 'okx'
 
-    // Raw injected provider (for event listeners)
+    // รายการ chain ที่รองรับ (ดึงจาก backend API)
+    const supportedChains = ref([]);
+
+    // Raw injected provider (สำหรับ event listeners)
     let _rawProvider = null;
 
-    // Computed
+    // === Computed ===
     const isConnected = computed(() => !!address.value);
     const shortAddress = computed(() => formatAddress(address.value));
-    const isBSC = computed(() => chainId.value === BSC_CHAIN_CONFIG.chainIdNum);
 
-    // Actions
+    // ตรวจสอบว่าอยู่บน chain หลัก (BSC) หรือไม่
+    const isBSC = computed(() => chainId.value === DEFAULT_CHAIN_ID);
+
+    // ตรวจสอบว่าอยู่บน chain ที่รองรับหรือไม่
+    const isOnSupportedChain = computed(() => {
+        if (!chainId.value || supportedChains.value.length === 0) return false;
+        return supportedChains.value.some(c => c.chainId === chainId.value);
+    });
+
+    // ข้อมูล chain ปัจจุบัน
+    const currentChain = computed(() => {
+        if (!chainId.value) return null;
+        return supportedChains.value.find(c => c.chainId === chainId.value) || null;
+    });
+
+    // URL สำหรับดูที่อยู่บน block explorer
+    const explorerAddressUrl = computed(() => {
+        if (!address.value) return '#';
+        return getAddressUrl(address.value, chainId.value);
+    });
+
+    // === Actions ===
+
+    /**
+     * โหลดรายการ chain ที่รองรับจาก backend
+     * เรียกครั้งเดียวแล้ว cache ไว้ใน store
+     */
+    async function loadSupportedChains() {
+        if (supportedChains.value.length > 0) return supportedChains.value;
+        const chains = await fetchSupportedChains();
+        supportedChains.value = chains;
+        return chains;
+    }
+
+    /**
+     * เชื่อมต่อ wallet แล้วสลับไป chain หลักอัตโนมัติ
+     * ถ้าผู้ใช้อยู่บน chain อื่นที่ไม่ใช่ BSC จะ prompt ให้สลับ
+     */
     async function connect(type = 'metamask') {
         const injected = _getProvider(type);
 
@@ -87,50 +134,47 @@ export const useWalletStore = defineStore('wallet', () => {
         _rawProvider = injected;
 
         try {
-            // Request account access
-            const accounts = await injected.request({
-                method: 'eth_requestAccounts',
-            });
+            // โหลดรายการ chain ที่รองรับ (ขนานกับ request accounts)
+            const [accounts] = await Promise.all([
+                injected.request({ method: 'eth_requestAccounts' }),
+                loadSupportedChains(),
+            ]);
 
             if (!accounts || accounts.length === 0) {
                 throw new Error('No accounts returned from wallet.');
             }
 
-            // Create ethers provider and signer
+            // สร้าง ethers provider และ signer
             const ethProvider = new BrowserProvider(injected);
             const ethSigner = await ethProvider.getSigner();
             const network = await ethProvider.getNetwork();
 
-            // Update state
+            // อัปเดต state
             address.value = accounts[0];
             chainId.value = Number(network.chainId);
             provider.value = ethProvider;
             signer.value = ethSigner;
             walletType.value = type;
 
-            // Persist to localStorage
+            // บันทึกลง localStorage เพื่อ auto-reconnect
             localStorage.setItem(STORAGE_KEY, JSON.stringify({
                 address: accounts[0],
                 walletType: type,
             }));
 
-            // Switch to BSC if not already on it
-            if (chainId.value !== BSC_CHAIN_CONFIG.chainIdNum) {
+            // สลับไป chain หลัก (BSC) อัตโนมัติถ้าไม่ได้อยู่บน chain ที่รองรับ
+            // หรือถ้าอยู่บน chain อื่นที่ไม่ใช่ chain หลัก
+            if (chainId.value !== DEFAULT_CHAIN_ID) {
                 try {
-                    await _switchChainOnProvider(injected);
-                    // Re-create provider after chain switch
-                    const newProvider = new BrowserProvider(injected);
-                    const newSigner = await newProvider.getSigner();
-                    const newNetwork = await newProvider.getNetwork();
-                    provider.value = newProvider;
-                    signer.value = newSigner;
-                    chainId.value = Number(newNetwork.chainId);
+                    await switchToChain(injected, DEFAULT_CHAIN_ID);
+                    // สร้าง provider ใหม่หลังสลับ chain สำเร็จ
+                    await _refreshProviderState(injected);
                 } catch (switchErr) {
-                    console.warn('Could not auto-switch to BSC:', switchErr.message);
+                    console.warn('[TPIX] ไม่สามารถสลับไป chain หลักอัตโนมัติ:', switchErr.message);
                 }
             }
 
-            // Set up event listeners
+            // ตั้งค่า event listeners สำหรับ chain/account changes
             _setupListeners();
 
             return address.value;
@@ -158,6 +202,10 @@ export const useWalletStore = defineStore('wallet', () => {
         _rawProvider = null;
     }
 
+    /**
+     * เชื่อมต่อกลับอัตโนมัติจาก localStorage (ไม่มี popup)
+     * ใช้ eth_accounts แทน eth_requestAccounts เพื่อไม่รบกวนผู้ใช้
+     */
     async function tryReconnect() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (!saved) return false;
@@ -171,10 +219,11 @@ export const useWalletStore = defineStore('wallet', () => {
 
             _rawProvider = injected;
 
-            // Check if wallet is still connected (passive - no popup)
-            const accounts = await injected.request({
-                method: 'eth_accounts',
-            });
+            // โหลด chain list ขนานกับ check accounts
+            const [accounts] = await Promise.all([
+                injected.request({ method: 'eth_accounts' }),
+                loadSupportedChains(),
+            ]);
 
             if (accounts && accounts.length > 0) {
                 const ethProvider = new BrowserProvider(injected);
@@ -191,55 +240,42 @@ export const useWalletStore = defineStore('wallet', () => {
                 return true;
             }
         } catch (err) {
-            console.warn('Auto-reconnect failed:', err.message);
+            console.warn('[TPIX] Auto-reconnect ล้มเหลว:', err.message);
             localStorage.removeItem(STORAGE_KEY);
         }
 
         return false;
     }
 
-    async function switchChain(targetChainId = BSC_CHAIN_CONFIG.chainIdNum) {
+    /**
+     * สลับไปยัง chain ที่ระบุ (รองรับทุก chain ในระบบ)
+     * ถ้าไม่ระบุ targetChainId จะสลับไป chain หลัก (BSC)
+     * @param {number} targetChainId - Chain ID เป้าหมาย
+     */
+    async function switchChain(targetChainId = DEFAULT_CHAIN_ID) {
         const injected = _rawProvider || _getProvider(walletType.value || 'metamask');
         if (!injected) return;
 
         try {
-            await _switchChainOnProvider(injected);
-            const ethProvider = new BrowserProvider(injected);
-            const ethSigner = await ethProvider.getSigner();
-            const newNetwork = await ethProvider.getNetwork();
-            provider.value = ethProvider;
-            signer.value = ethSigner;
-            chainId.value = Number(newNetwork.chainId);
+            await switchToChain(injected, targetChainId);
+            await _refreshProviderState(injected);
         } catch (err) {
-            error.value = 'Failed to switch network.';
+            error.value = 'ไม่สามารถสลับ network ได้';
             throw err;
         }
     }
 
-    // Switch to BSC on a specific provider
-    async function _switchChainOnProvider(injected) {
-        try {
-            await injected.request({
-                method: 'wallet_switchEthereumChain',
-                params: [{ chainId: BSC_CHAIN_CONFIG.chainId }],
-            });
-        } catch (switchError) {
-            // Chain not added - add it
-            if (switchError.code === 4902) {
-                await injected.request({
-                    method: 'wallet_addEthereumChain',
-                    params: [{
-                        chainId: BSC_CHAIN_CONFIG.chainId,
-                        chainName: BSC_CHAIN_CONFIG.chainName,
-                        nativeCurrency: BSC_CHAIN_CONFIG.nativeCurrency,
-                        rpcUrls: BSC_CHAIN_CONFIG.rpcUrls,
-                        blockExplorerUrls: BSC_CHAIN_CONFIG.blockExplorerUrls,
-                    }],
-                });
-            } else {
-                throw switchError;
-            }
-        }
+    /**
+     * รีเฟรช provider, signer, chainId หลังจากสลับ chain
+     * ใช้ภายในหลัง switchToChain สำเร็จ
+     */
+    async function _refreshProviderState(injected) {
+        const ethProvider = new BrowserProvider(injected);
+        const ethSigner = await ethProvider.getSigner();
+        const newNetwork = await ethProvider.getNetwork();
+        provider.value = ethProvider;
+        signer.value = ethSigner;
+        chainId.value = Number(newNetwork.chainId);
     }
 
     // Private: event listeners
@@ -303,14 +339,19 @@ export const useWalletStore = defineStore('wallet', () => {
         isConnecting,
         error,
         walletType,
+        supportedChains,
         // Computed
         isConnected,
         shortAddress,
         isBSC,
+        isOnSupportedChain,
+        currentChain,
+        explorerAddressUrl,
         // Actions
         connect,
         disconnect,
         tryReconnect,
         switchChain,
+        loadSupportedChains,
     };
 });

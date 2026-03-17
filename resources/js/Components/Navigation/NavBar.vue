@@ -7,6 +7,7 @@
 import { ref, computed } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import { useWalletStore } from '@/Stores/walletStore';
+import ChainSelector from '@/Components/Navigation/ChainSelector.vue';
 
 const props = defineProps({
     user: Object,
@@ -85,30 +86,8 @@ const handleDisconnect = () => {
 
                 <!-- Right: Wallet & User -->
                 <div class="flex items-center gap-3">
-                    <!-- Chain Selector -->
-                    <button
-                        class="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl glass-sm hover:bg-white/10 transition-all"
-                        :class="{ 'border border-yellow-500/30': isWalletConnected && !walletStore.isBSC }"
-                        @click="isWalletConnected && !walletStore.isBSC ? walletStore.switchChain() : null"
-                    >
-                        <!-- BNB Logo (inline SVG) -->
-                        <svg class="w-5 h-5" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <circle cx="16" cy="16" r="16" fill="#F3BA2F"/>
-                            <path d="M16 6L12.34 9.66L16 13.32L19.66 9.66L16 6Z" fill="white"/>
-                            <path d="M9.66 12.34L6 16L9.66 19.66L13.32 16L9.66 12.34Z" fill="white"/>
-                            <path d="M16 18.68L12.34 22.34L16 26L19.66 22.34L16 18.68Z" fill="white"/>
-                            <path d="M22.34 12.34L18.68 16L22.34 19.66L26 16L22.34 12.34Z" fill="white"/>
-                            <path d="M16 14.2L13.54 16L16 17.8L18.46 16L16 14.2Z" fill="white" fill-opacity="0.8"/>
-                        </svg>
-                        <!-- Chain status indicator -->
-                        <div
-                            class="w-2 h-2 rounded-full"
-                            :class="!isWalletConnected ? 'bg-dark-500' : walletStore.isBSC ? 'bg-trading-green animate-pulse' : 'bg-yellow-500 animate-pulse'"
-                        ></div>
-                        <span class="text-sm font-medium" :class="isWalletConnected && !walletStore.isBSC ? 'text-yellow-400' : 'text-white'">
-                            {{ isWalletConnected && !walletStore.isBSC ? 'Wrong Network' : 'BSC' }}
-                        </span>
-                    </button>
+                    <!-- ตัวเลือก Chain - รองรับหลาย chain พร้อม auto-switch -->
+                    <ChainSelector class="hidden sm:block" />
 
                     <!-- Connect Wallet Button -->
                     <button
@@ -154,8 +133,9 @@ const handleDisconnect = () => {
                                     <p class="text-sm text-white font-mono truncate">{{ walletStore.address }}</p>
                                     <p class="text-xs text-dark-500 mt-1">Chain ID: {{ walletStore.chainId }}</p>
                                 </div>
+                                <!-- ลิงก์ดูที่อยู่บน block explorer (รองรับหลาย chain) -->
                                 <a
-                                    :href="`https://bscscan.com/address/${walletStore.address}`"
+                                    :href="walletStore.explorerAddressUrl"
                                     target="_blank"
                                     rel="noopener"
                                     class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5 transition-colors"
@@ -164,7 +144,7 @@ const handleDisconnect = () => {
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                                     </svg>
-                                    View on BscScan
+                                    View on Explorer
                                 </a>
                                 <button
                                     @click="handleDisconnect"

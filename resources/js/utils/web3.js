@@ -1,15 +1,24 @@
 /**
  * TPIX TRADE - Web3 Utilities
- * BSC chain config, contract ABIs, and helper functions
+ * Multi-chain config, contract ABIs, and helper functions
  * Developed by Xman Studio
  */
 
 import { Contract, formatUnits, parseUnits, MaxUint256 } from 'ethers';
+import axios from 'axios';
 
 // =============================================================================
-// BSC Chain Configuration
+// Chain Configuration Registry
 // =============================================================================
 
+/**
+ * Default chain ID (BSC). Must match config/chains.php 'default'.
+ */
+export const DEFAULT_CHAIN_ID = 56;
+
+/**
+ * BSC config (kept for backward compatibility).
+ */
 export const BSC_CHAIN_CONFIG = {
     chainId: '0x38', // 56 in hex
     chainIdNum: 56,
@@ -22,6 +31,74 @@ export const BSC_CHAIN_CONFIG = {
     rpcUrls: ['https://bsc-dataseed1.binance.org', 'https://bsc-dataseed2.binance.org'],
     blockExplorerUrls: ['https://bscscan.com'],
 };
+
+/**
+ * Cached chain configs fetched from backend.
+ */
+let _chainCache = null;
+let _chainCachePromise = null;
+
+/**
+ * Fetch all supported chains from backend API.
+ * Results are cached for the session lifetime.
+ */
+export async function fetchSupportedChains() {
+    if (_chainCache) return _chainCache;
+    if (_chainCachePromise) return _chainCachePromise;
+
+    _chainCachePromise = axios.get('/api/v1/chains')
+        .then(({ data }) => {
+            if (data.success && Array.isArray(data.data)) {
+                _chainCache = data.data;
+            } else {
+                _chainCache = [];
+            }
+            return _chainCache;
+        })
+        .catch(() => {
+            // Fallback: at least provide BSC
+            _chainCache = [{
+                chainId: 56,
+                name: 'BNB Smart Chain',
+                shortName: 'BSC',
+                nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+                rpc: ['https://bsc-dataseed1.binance.org'],
+                explorer: 'https://bscscan.com',
+                color: '#F3BA2F',
+                enabled: true,
+            }];
+            return _chainCache;
+        })
+        .finally(() => {
+            _chainCachePromise = null;
+        });
+
+    return _chainCachePromise;
+}
+
+/**
+ * Get chain config by chain ID. Returns null if not found.
+ */
+export async function getChainConfig(chainId) {
+    const chains = await fetchSupportedChains();
+    return chains.find(c => c.chainId === chainId) || null;
+}
+
+/**
+ * Build EIP-3085 params for wallet_addEthereumChain from a backend chain config.
+ */
+export function buildAddChainParams(chain) {
+    const rpcUrls = Array.isArray(chain.rpc) ? chain.rpc : [chain.rpc];
+    const explorerUrls = chain.explorer ? [chain.explorer] : [];
+
+    return {
+        chainId: '0x' + chain.chainId.toString(16),
+        chainName: chain.name,
+        nativeCurrency: chain.nativeCurrency || { name: 'ETH', symbol: 'ETH', decimals: 18 },
+        rpcUrls,
+        blockExplorerUrls: explorerUrls,
+    };
+}
 
 // Native BNB placeholder address (used by DEX frontends)
 export const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
@@ -63,33 +140,49 @@ export const PANCAKE_ROUTER_ABI = [
 // =============================================================================
 
 /**
- * Prompt MetaMask to switch to BSC, adding the chain if not configured.
+ * Switch wallet to a specific chain by chainId.
+ * Adds the chain if not configured in the wallet (EIP-3085).
+ * @param {object} injectedProvider - The raw wallet provider (window.ethereum etc.)
+ * @param {number} targetChainId - Target chain ID (e.g. 56 for BSC)
+ * @param {object|null} chainConfig - Optional pre-fetched chain config; fetched from API if null
  */
-export async function switchToBSC() {
-    if (!window.ethereum) throw new Error('No wallet detected');
+export async function switchToChain(injectedProvider, targetChainId, chainConfig = null) {
+    if (!injectedProvider) throw new Error('No wallet detected');
+
+    const hexChainId = '0x' + targetChainId.toString(16);
 
     try {
-        await window.ethereum.request({
+        await injectedProvider.request({
             method: 'wallet_switchEthereumChain',
-            params: [{ chainId: BSC_CHAIN_CONFIG.chainId }],
+            params: [{ chainId: hexChainId }],
         });
     } catch (switchError) {
         // Chain not added yet (error code 4902)
         if (switchError.code === 4902) {
-            await window.ethereum.request({
+            // Fetch chain config if not provided
+            if (!chainConfig) {
+                chainConfig = await getChainConfig(targetChainId);
+            }
+            if (!chainConfig) {
+                throw new Error(`Chain ${targetChainId} is not supported.`);
+            }
+
+            await injectedProvider.request({
                 method: 'wallet_addEthereumChain',
-                params: [{
-                    chainId: BSC_CHAIN_CONFIG.chainId,
-                    chainName: BSC_CHAIN_CONFIG.chainName,
-                    nativeCurrency: BSC_CHAIN_CONFIG.nativeCurrency,
-                    rpcUrls: BSC_CHAIN_CONFIG.rpcUrls,
-                    blockExplorerUrls: BSC_CHAIN_CONFIG.blockExplorerUrls,
-                }],
+                params: [buildAddChainParams(chainConfig)],
             });
         } else {
             throw switchError;
         }
     }
+}
+
+/**
+ * @deprecated Use switchToChain() instead. Kept for backward compatibility.
+ */
+export async function switchToBSC() {
+    if (!window.ethereum) throw new Error('No wallet detected');
+    await switchToChain(window.ethereum, DEFAULT_CHAIN_ID, BSC_CHAIN_CONFIG);
 }
 
 /**
@@ -166,10 +259,35 @@ export async function getAmountsOut(amountIn, path, provider) {
 }
 
 /**
- * Build BscScan transaction URL.
+ * Build block explorer transaction URL for any chain.
+ * Falls back to BscScan if chain config not found.
+ * @param {string} txHash - Transaction hash
+ * @param {number|null} chainId - Chain ID (defaults to BSC)
  */
-export function getTxUrl(txHash) {
+export function getTxUrl(txHash, chainId = null) {
+    // Synchronous lookup from cache; if no cache yet, fall back to BSC
+    if (chainId && _chainCache) {
+        const chain = _chainCache.find(c => c.chainId === chainId);
+        if (chain?.explorer) {
+            return `${chain.explorer}/tx/${txHash}`;
+        }
+    }
     return `${BSC_CHAIN_CONFIG.blockExplorerUrls[0]}/tx/${txHash}`;
+}
+
+/**
+ * Build block explorer address URL for any chain.
+ * @param {string} address - Wallet address
+ * @param {number|null} chainId - Chain ID (defaults to BSC)
+ */
+export function getAddressUrl(address, chainId = null) {
+    if (chainId && _chainCache) {
+        const chain = _chainCache.find(c => c.chainId === chainId);
+        if (chain?.explorer) {
+            return `${chain.explorer}/address/${address}`;
+        }
+    }
+    return `${BSC_CHAIN_CONFIG.blockExplorerUrls[0]}/address/${address}`;
 }
 
 /**
