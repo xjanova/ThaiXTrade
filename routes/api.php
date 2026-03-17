@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\SwapApiController;
+use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Middleware\VerifyWalletOwnership;
@@ -63,6 +64,15 @@ Route::prefix('v1')->group(function () {
         Route::get('routes', [SwapApiController::class, 'routes']);
         Route::post('execute', [SwapApiController::class, 'execute']);
     });
+
+    // Token Sale — ระบบขายเหรียญ TPIX (public endpoints)
+    Route::prefix('token-sale')->group(function () {
+        Route::get('/', [TokenSaleApiController::class, 'index']);
+        Route::get('/stats', [TokenSaleApiController::class, 'stats']);
+        Route::post('/preview', [TokenSaleApiController::class, 'preview']);
+        Route::get('/purchases/{walletAddress}', [TokenSaleApiController::class, 'purchases']);
+        Route::get('/vesting/{walletAddress}', [TokenSaleApiController::class, 'vesting']);
+    });
 });
 
 // Protected Routes (Wallet Ownership Verified)
@@ -91,6 +101,9 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::post('/execute', [TradingController::class, 'executeSwap']);
         Route::get('/routes', [TradingController::class, 'getSwapRoutes']);
     });
+
+    // Token Sale Purchase — ซื้อเหรียญ (ต้อง verify wallet)
+    Route::post('/token-sale/purchase', [TokenSaleApiController::class, 'purchase']);
 
     // AI Assistant (stricter rate limit: 10 requests per minute)
     Route::prefix('ai')->middleware(['throttle:10,1'])->group(function () {

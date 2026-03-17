@@ -76,12 +76,38 @@ const handleDisconnect = () => {
                         </svg>
                         <span>Portfolio</span>
                     </Link>
-                    <Link href="/ai-assistant" class="nav-link">
+                    <Link href="/token-sale" class="nav-link">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
-                        <span>AI Assistant</span>
+                        <span>Token Sale</span>
                     </Link>
+                    <!-- More dropdown เพื่อไม่ให้ nav ยาวเกินไป -->
+                    <div class="relative group">
+                        <button class="nav-link">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/>
+                            </svg>
+                            <span>More</span>
+                        </button>
+                        <div class="absolute top-full left-0 mt-1 w-48 rounded-xl glass border border-white/10 shadow-xl py-2 z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all">
+                            <Link href="/ai-assistant" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
+                                AI Assistant
+                            </Link>
+                            <Link href="/explorer" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
+                                Explorer
+                            </Link>
+                            <Link href="/whitepaper" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
+                                Whitepaper
+                            </Link>
+                            <Link href="/bridge" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
+                                Bridge <span class="text-xs text-gray-500 ml-auto">Soon</span>
+                            </Link>
+                            <Link href="/staking" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
+                                Staking <span class="text-xs text-gray-500 ml-auto">Soon</span>
+                            </Link>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Right: Wallet & User -->

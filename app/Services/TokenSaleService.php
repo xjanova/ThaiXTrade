@@ -1,0 +1,272 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\SalePhase;
+use App\Models\SaleTransaction;
+use App\Models\TokenSale;
+use App\Models\WhitelistEntry;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * TokenSaleService — ระบบจัดการการขายเหรียญ TPIX.
+ *
+ * จัดการ purchase flow:
+ * 1. ผู้ใช้ส่ง BNB/USDT ไปยัง sale wallet บน BSC
+ * 2. ส่ง tx_hash มาที่ API
+ * 3. Backend verify tx on-chain → บันทึก allocation
+ * 4. ผู้ใช้ claim TPIX เมื่อ vesting ปลดล็อค
+ */
+class TokenSaleService
+{
+    public function __construct(
+        private PriceFeedService $priceFeed,
+    ) {}
+
+    // =========================================================================
+    // Public Methods — ดึงข้อมูลรอบขาย
+    // =========================================================================
+
+    /**
+     * ดึงรอบขายที่กำลัง active พร้อม phases.
+     */
+    public function getActiveSale(): ?TokenSale
+    {
+        return Cache::remember('token_sale:active', 30, function () {
+            return TokenSale::active()
+                ->with(['phases' => fn ($q) => $q->orderBy('phase_order')])
+                ->first();
+        });
+    }
+
+    /**
+     * ดึง phase ที่กำลัง active (เปิดขายอยู่).
+     */
+    public function getActivePhase(?TokenSale $sale = null): ?SalePhase
+    {
+        $sale = $sale ?? $this->getActiveSale();
+        if (! $sale) {
+            return null;
+        }
+
+        return $sale->phases()
+            ->where('status', 'active')
+            ->where(function ($q) {
+                $q->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+            })
+            ->where(function ($q) {
+                $q->whereNull('ends_at')->orWhere('ends_at', '>=', now());
+            })
+            ->first();
+    }
+
+    /**
+     * ดึงสถิติรอบขาย (สำหรับแสดงบนหน้าเว็บ).
+     */
+    public function getSaleStats(?TokenSale $sale = null): array
+    {
+        $sale = $sale ?? $this->getActiveSale();
+        if (! $sale) {
+            return [
+                'total_supply' => 0,
+                'total_sold' => 0,
+                'total_raised_usd' => 0,
+                'percent_sold' => 0,
+                'buyers_count' => 0,
+                'phases' => [],
+            ];
+        }
+
+        $buyersCount = SaleTransaction::where('token_sale_id', $sale->id)
+            ->where('status', 'confirmed')
+            ->distinct('wallet_address')
+            ->count('wallet_address');
+
+        return [
+            'total_supply' => (float) $sale->total_supply_for_sale,
+            'total_sold' => (float) $sale->total_sold,
+            'total_raised_usd' => (float) $sale->total_raised_usd,
+            'percent_sold' => $sale->percent_sold,
+            'buyers_count' => $buyersCount,
+            'phases' => $sale->phases->map(fn ($p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'price_usd' => (float) $p->price_usd,
+                'allocation' => (float) $p->allocation,
+                'sold' => (float) $p->sold,
+                'percent_sold' => $p->percent_sold,
+                'remaining' => $p->remaining_allocation,
+                'status' => $p->status,
+                'starts_at' => $p->starts_at?->toIso8601String(),
+                'ends_at' => $p->ends_at?->toIso8601String(),
+                'vesting_tge_percent' => (float) $p->vesting_tge_percent,
+                'vesting_cliff_days' => $p->vesting_cliff_days,
+                'vesting_duration_days' => $p->vesting_duration_days,
+            ])->all(),
+        ];
+    }
+
+    // =========================================================================
+    // Public Methods — การซื้อ
+    // =========================================================================
+
+    /**
+     * คำนวณ preview ก่อนซื้อ (จำนวน TPIX ที่จะได้).
+     */
+    public function calculatePurchasePreview(int $phaseId, string $currency, float $amount): array
+    {
+        $phase = SalePhase::findOrFail($phaseId);
+        $conversion = $this->priceFeed->convertToTpix($amount, $currency, (float) $phase->price_usd);
+
+        return [
+            'phase' => $phase->name,
+            'price_per_tpix' => (float) $phase->price_usd,
+            'payment_amount' => $amount,
+            'payment_currency' => strtoupper($currency),
+            'payment_usd_value' => $conversion['usd_value'],
+            'tpix_amount' => $conversion['tpix_amount'],
+            'currency_rate' => $conversion['rate'],
+            'remaining_in_phase' => $phase->remaining_allocation,
+        ];
+    }
+
+    /**
+     * ดำเนินการซื้อเหรียญ TPIX.
+     *
+     * Flow: ตรวจสอบ → บันทึก → อัปเดตยอด
+     *
+     * @throws \Exception
+     */
+    public function processPurchase(
+        string $walletAddress,
+        int $phaseId,
+        string $currency,
+        float $amount,
+        string $txHash
+    ): SaleTransaction {
+        $phase = SalePhase::with('tokenSale')->findOrFail($phaseId);
+        $sale = $phase->tokenSale;
+
+        // ตรวจสอบว่า sale และ phase ยัง active
+        if ($sale->status !== 'active') {
+            throw new \Exception('Token sale is not active.');
+        }
+        if ($phase->status !== 'active') {
+            throw new \Exception('This phase is not active.');
+        }
+
+        // คำนวณ TPIX ที่จะได้
+        $conversion = $this->priceFeed->convertToTpix($amount, $currency, (float) $phase->price_usd);
+        $tpixAmount = $conversion['tpix_amount'];
+
+        // ตรวจสอบว่ายังมี allocation เหลือ
+        if ($tpixAmount > $phase->remaining_allocation) {
+            throw new \Exception('Insufficient allocation in this phase.');
+        }
+
+        // ตรวจสอบ min/max purchase
+        if ($tpixAmount < (float) $phase->min_purchase) {
+            throw new \Exception("Minimum purchase is {$phase->min_purchase} TPIX.");
+        }
+        if ($tpixAmount > (float) $phase->max_purchase) {
+            throw new \Exception("Maximum purchase is {$phase->max_purchase} TPIX.");
+        }
+
+        // ตรวจสอบ whitelist (ถ้า phase ต้อง whitelist)
+        if ($phase->whitelist_only) {
+            $isWhitelisted = WhitelistEntry::where('sale_phase_id', $phase->id)
+                ->where('wallet_address', strtolower($walletAddress))
+                ->exists();
+            if (! $isWhitelisted) {
+                throw new \Exception('Your wallet is not whitelisted for this phase.');
+            }
+        }
+
+        // ตรวจสอบ tx_hash ซ้ำ
+        $exists = SaleTransaction::where('tx_hash', $txHash)->exists();
+        if ($exists) {
+            throw new \Exception('This transaction has already been processed.');
+        }
+
+        // บันทึกรายการซื้อใน DB transaction
+        return DB::transaction(function () use ($sale, $phase, $walletAddress, $currency, $amount, $conversion, $tpixAmount, $txHash) {
+            $transaction = SaleTransaction::create([
+                'token_sale_id' => $sale->id,
+                'sale_phase_id' => $phase->id,
+                'wallet_address' => strtolower($walletAddress),
+                'payment_currency' => strtoupper($currency),
+                'payment_amount' => $amount,
+                'payment_usd_value' => $conversion['usd_value'],
+                'tpix_amount' => $tpixAmount,
+                'price_per_tpix' => $phase->price_usd,
+                'tx_hash' => $txHash,
+                'status' => 'confirmed',
+                'vesting_start_at' => now(),
+            ]);
+
+            // อัปเดตยอดขายใน phase
+            $phase->increment('sold', $tpixAmount);
+
+            // อัปเดตยอดขายรวมใน sale
+            $sale->increment('total_sold', $tpixAmount);
+            $sale->increment('total_raised_usd', $conversion['usd_value']);
+
+            // เคลียร์ cache
+            Cache::forget('token_sale:active');
+
+            return $transaction;
+        });
+    }
+
+    // =========================================================================
+    // Public Methods — Vesting & Claims
+    // =========================================================================
+
+    /**
+     * ดึงรายการซื้อของ wallet.
+     */
+    public function getPurchases(string $walletAddress): array
+    {
+        return SaleTransaction::byWallet($walletAddress)
+            ->with('phase')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($tx) => [
+                'id' => $tx->uuid,
+                'phase' => $tx->phase?->name,
+                'tpix_amount' => (float) $tx->tpix_amount,
+                'payment_amount' => (float) $tx->payment_amount,
+                'payment_currency' => $tx->payment_currency,
+                'payment_usd_value' => (float) $tx->payment_usd_value,
+                'status' => $tx->status,
+                'claimable' => $tx->claimable_amount,
+                'claimed' => (float) $tx->claimed_amount,
+                'tx_hash' => $tx->tx_hash,
+                'created_at' => $tx->created_at?->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    /**
+     * ดึง vesting schedule ของ wallet.
+     */
+    public function getVestingSchedule(string $walletAddress): array
+    {
+        $purchases = SaleTransaction::byWallet($walletAddress)
+            ->confirmed()
+            ->with('phase')
+            ->get();
+
+        $totalPurchased = $purchases->sum(fn ($tx) => (float) $tx->tpix_amount);
+        $totalClaimable = $purchases->sum(fn ($tx) => $tx->claimable_amount);
+        $totalClaimed = $purchases->sum(fn ($tx) => (float) $tx->claimed_amount);
+
+        return [
+            'total_purchased' => round($totalPurchased, 8),
+            'total_claimable' => round($totalClaimable, 8),
+            'total_claimed' => round($totalClaimed, 8),
+            'total_locked' => round($totalPurchased - $totalClaimed - $totalClaimable, 8),
+        ];
+    }
+}

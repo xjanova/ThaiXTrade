@@ -219,6 +219,29 @@ return [
             'color' => '#8C8DFC',
             'enabled' => true,
         ],
+
+        // TPIX Chain Mainnet — Polygon Edge, IBFT PoA, gasless
+        7000 => [
+            'name' => 'TPIX Chain',
+            'shortName' => 'TPIX',
+            'chainId' => 7000,
+            'networkId' => 7000,
+            'rpc' => [
+                env('WEB3_RPC_TPIX', 'https://rpc.tpixchain.com'),
+            ],
+            'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpixchain.com'),
+            'nativeCurrency' => [
+                'name' => 'TPIX',
+                'symbol' => 'TPIX',
+                'decimals' => 18,
+            ],
+            'icon' => '/logo.png',
+            'color' => '#06B6D4',
+            'enabled' => true,
+            'gasless' => true,
+            'blockTime' => 2,
+            'consensus' => 'IBFT',
+        ],
     ],
 
     /*
@@ -256,6 +279,24 @@ return [
                 'decimals' => 18,
             ],
             'enabled' => env('APP_ENV') !== 'production',
+        ],
+
+        // TPIX Chain Testnet — สำหรับทดสอบก่อน deploy mainnet
+        7001 => [
+            'name' => 'TPIX Testnet',
+            'shortName' => 'tTPIX',
+            'chainId' => 7001,
+            'rpc' => [env('WEB3_RPC_TPIX_TESTNET', 'https://testnet-rpc.tpixchain.com')],
+            'explorer' => 'https://testnet-explorer.tpixchain.com',
+            'nativeCurrency' => [
+                'name' => 'tTPIX',
+                'symbol' => 'tTPIX',
+                'decimals' => 18,
+            ],
+            'icon' => '/logo.png',
+            'color' => '#06B6D4',
+            'enabled' => env('APP_ENV') !== 'production',
+            'gasless' => true,
         ],
     ],
 ];
