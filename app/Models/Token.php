@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * Token Model.
@@ -23,11 +26,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $coingecko_id
  * @property bool $is_active
  * @property int $sort_order
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Chain $chain
- * @property-read \Illuminate\Database\Eloquent\Collection<int, TradingPair> $basePairs
- * @property-read \Illuminate\Database\Eloquent\Collection<int, TradingPair> $quotePairs
+ * @property-read Collection<int, TradingPair> $basePairs
+ * @property-read Collection<int, TradingPair> $quotePairs
  */
 class Token extends Model
 {
@@ -104,8 +107,8 @@ class Token extends Model
     /**
      * Scope a query to only include active tokens.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeActive($query)
     {

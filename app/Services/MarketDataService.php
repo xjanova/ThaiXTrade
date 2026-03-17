@@ -273,7 +273,7 @@ class MarketDataService
 
     /**
      * Convert our symbol format to Binance format.
-     * e.g. BTC-USDT or BTC/USDT -> BTCUSDT
+     * e.g. BTC-USDT or BTC/USDT -> BTCUSDT.
      */
     private function toBinanceSymbol(string $symbol): string
     {

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Token;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -122,7 +123,7 @@ class Web3BalanceService
         }
 
         // ERC20 token balances from database
-        $tokens = \App\Models\Token::active()
+        $tokens = Token::active()
             ->where('chain_id', $chainId)
             ->orderBy('sort_order')
             ->get();

@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
@@ -32,9 +34,9 @@ use Illuminate\Support\Str;
  * @property string|null $gas_price
  * @property array|null $metadata
  * @property string|null $error_message
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Chain $chain
  */
 class Transaction extends Model
@@ -125,8 +127,8 @@ class Transaction extends Model
     /**
      * Scope a query to filter by transaction status.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeByStatus($query, string $status)
     {
@@ -136,8 +138,8 @@ class Transaction extends Model
     /**
      * Scope a query to filter by transaction type.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeByType($query, string $type)
     {
@@ -147,8 +149,8 @@ class Transaction extends Model
     /**
      * Scope a query to filter by wallet address.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeByWallet($query, string $walletAddress)
     {
@@ -158,8 +160,8 @@ class Transaction extends Model
     /**
      * Scope a query to get recent transactions, ordered by newest first.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeRecent($query, int $limit = 50)
     {

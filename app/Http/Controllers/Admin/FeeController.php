@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Chain;
 use App\Models\FeeConfig;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -38,7 +39,7 @@ class FeeController extends Controller
     /**
      * Store a newly created fee configuration.
      */
-    public function store(Request $request): \Illuminate\Http\RedirectResponse
+    public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -59,7 +60,7 @@ class FeeController extends Controller
     /**
      * Update the specified fee configuration.
      */
-    public function update(Request $request, FeeConfig $fee): \Illuminate\Http\RedirectResponse
+    public function update(Request $request, FeeConfig $fee): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -80,7 +81,7 @@ class FeeController extends Controller
     /**
      * Toggle the active status of a fee configuration.
      */
-    public function toggleActive(FeeConfig $fee): \Illuminate\Http\RedirectResponse
+    public function toggleActive(FeeConfig $fee): RedirectResponse
     {
         $fee->update([
             'is_active' => ! $fee->is_active,
@@ -94,7 +95,7 @@ class FeeController extends Controller
     /**
      * Remove the specified fee configuration.
      */
-    public function destroy(FeeConfig $fee): \Illuminate\Http\RedirectResponse
+    public function destroy(FeeConfig $fee): RedirectResponse
     {
         $fee->delete();
 

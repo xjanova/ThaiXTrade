@@ -11,7 +11,6 @@ use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\SwapApiController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 

@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * SupportTicket Model.
@@ -23,10 +26,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $priority
  * @property string $status
  * @property int|null $assigned_to
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, TicketMessage> $messages
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
+ * @property-read Collection<int, TicketMessage> $messages
  * @property-read AdminUser|null $assignedAdmin
  */
 class SupportTicket extends Model
@@ -124,8 +127,8 @@ class SupportTicket extends Model
     /**
      * Scope a query to only include open tickets (not closed or resolved).
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeOpen($query)
     {
@@ -135,8 +138,8 @@ class SupportTicket extends Model
     /**
      * Scope a query to filter by ticket status.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeByStatus($query, string $status)
     {
@@ -146,8 +149,8 @@ class SupportTicket extends Model
     /**
      * Scope a query to filter by ticket priority.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeByPriority($query, string $priority)
     {

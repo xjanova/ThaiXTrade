@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Language;
 use App\Models\Translation;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -37,7 +38,7 @@ class LanguageController extends Controller
     /**
      * Store a newly created language.
      */
-    public function store(Request $request): \Illuminate\Http\RedirectResponse
+    public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'code' => ['required', 'string', 'max:10', 'unique:languages,code'],
@@ -56,7 +57,7 @@ class LanguageController extends Controller
     /**
      * Update the specified language.
      */
-    public function update(Request $request, Language $language): \Illuminate\Http\RedirectResponse
+    public function update(Request $request, Language $language): RedirectResponse
     {
         $validated = $request->validate([
             'code' => ['required', 'string', 'max:10', "unique:languages,code,{$language->id}"],
@@ -77,7 +78,7 @@ class LanguageController extends Controller
      *
      * Unsets the current default first, then applies the new one.
      */
-    public function setDefault(Language $language): \Illuminate\Http\RedirectResponse
+    public function setDefault(Language $language): RedirectResponse
     {
         DB::transaction(function () use ($language) {
             // Remove current default
@@ -120,7 +121,7 @@ class LanguageController extends Controller
      *
      * Expects a nested array of translations keyed by "group.key".
      */
-    public function updateTranslations(Request $request, Language $language): \Illuminate\Http\RedirectResponse
+    public function updateTranslations(Request $request, Language $language): RedirectResponse
     {
         $validated = $request->validate([
             'translations' => ['required', 'array'],
@@ -159,7 +160,7 @@ class LanguageController extends Controller
      *
      * Prevents deletion of the default language.
      */
-    public function destroy(Language $language): \Illuminate\Http\RedirectResponse
+    public function destroy(Language $language): RedirectResponse
     {
         if ($language->is_default) {
             return back()->with('error', 'Cannot delete the default language. Please set another language as default first.');

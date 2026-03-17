@@ -2,9 +2,12 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * Language Model.
@@ -20,9 +23,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $is_active
  * @property bool $is_default
  * @property int $sort_order
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Translation> $translations
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read Collection<int, Translation> $translations
  */
 class Language extends Model
 {
@@ -82,8 +85,8 @@ class Language extends Model
     /**
      * Scope a query to only include active languages.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeActive($query)
     {
@@ -105,7 +108,7 @@ class Language extends Model
     /**
      * Get all active languages, ordered by sort_order.
      */
-    public static function getActive(): \Illuminate\Database\Eloquent\Collection
+    public static function getActive(): Collection
     {
         return static::active()->orderBy('sort_order')->get();
     }

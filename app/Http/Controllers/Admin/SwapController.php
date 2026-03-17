@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Chain;
 use App\Models\SwapConfig;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -38,7 +39,7 @@ class SwapController extends Controller
     /**
      * Store a newly created swap configuration.
      */
-    public function store(Request $request): \Illuminate\Http\RedirectResponse
+    public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'chain_id' => ['required', 'integer', 'exists:chains,id'],
@@ -59,7 +60,7 @@ class SwapController extends Controller
     /**
      * Update the specified swap configuration.
      */
-    public function update(Request $request, SwapConfig $swap): \Illuminate\Http\RedirectResponse
+    public function update(Request $request, SwapConfig $swap): RedirectResponse
     {
         $validated = $request->validate([
             'chain_id' => ['required', 'integer', 'exists:chains,id'],
@@ -80,7 +81,7 @@ class SwapController extends Controller
     /**
      * Toggle the active status of a swap configuration.
      */
-    public function toggleActive(SwapConfig $swap): \Illuminate\Http\RedirectResponse
+    public function toggleActive(SwapConfig $swap): RedirectResponse
     {
         $swap->update([
             'is_active' => ! $swap->is_active,
@@ -94,7 +95,7 @@ class SwapController extends Controller
     /**
      * Remove the specified swap configuration.
      */
-    public function destroy(SwapConfig $swap): \Illuminate\Http\RedirectResponse
+    public function destroy(SwapConfig $swap): RedirectResponse
     {
         $swap->delete();
 

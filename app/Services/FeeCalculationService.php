@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\FeeConfig;
 use App\Models\SiteSetting;
+use App\Models\SwapConfig;
 use App\Models\TradingPair;
 use Illuminate\Support\Facades\Cache;
 
@@ -237,7 +238,7 @@ class FeeCalculationService
             $cacheKey,
             self::CACHE_TTL,
             function () use ($chainId) {
-                $swapConfig = \App\Models\SwapConfig::active()
+                $swapConfig = SwapConfig::active()
                     ->where('chain_id', $chainId)
                     ->first();
 

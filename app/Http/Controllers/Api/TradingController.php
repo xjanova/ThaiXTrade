@@ -39,7 +39,7 @@ class TradingController extends Controller
 
         // Record the order as a transaction
         $transaction = Transaction::create([
-            'type' => 'order_' . $validated['side'],
+            'type' => 'order_'.$validated['side'],
             'wallet_address' => $validated['wallet_address'],
             'chain_id' => $validated['chain_id'],
             'from_token' => $validated['pair'],
@@ -178,7 +178,7 @@ class TradingController extends Controller
             ->map(fn ($tx) => [
                 'id' => $tx->uuid,
                 'type' => $tx->type,
-                'pair' => $tx->metadata['pair'] ?? ($tx->from_token . '/' . $tx->to_token),
+                'pair' => $tx->metadata['pair'] ?? ($tx->from_token.'/'.$tx->to_token),
                 'side' => $tx->metadata['side'] ?? $tx->type,
                 'price' => $tx->metadata['price'] ?? '0',
                 'amount' => $tx->from_amount,
@@ -197,7 +197,7 @@ class TradingController extends Controller
      */
     public function getSwapQuote(Request $request): JsonResponse
     {
-        return app(\App\Http\Controllers\Api\SwapApiController::class)->quote($request);
+        return app(SwapApiController::class)->quote($request);
     }
 
     /**
@@ -205,7 +205,7 @@ class TradingController extends Controller
      */
     public function executeSwap(Request $request): JsonResponse
     {
-        return app(\App\Http\Controllers\Api\SwapApiController::class)->execute($request);
+        return app(SwapApiController::class)->execute($request);
     }
 
     /**
@@ -213,6 +213,6 @@ class TradingController extends Controller
      */
     public function getSwapRoutes(): JsonResponse
     {
-        return app(\App\Http\Controllers\Api\SwapApiController::class)->routes(request());
+        return app(SwapApiController::class)->routes(request());
     }
 }

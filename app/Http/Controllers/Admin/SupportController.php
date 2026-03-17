@@ -7,6 +7,7 @@ use App\Models\AdminUser;
 use App\Models\SupportTicket;
 use App\Models\TicketMessage;
 use App\Services\AdminNotificationService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -95,7 +96,7 @@ class SupportController extends Controller
     /**
      * Add an admin reply to a support ticket.
      */
-    public function reply(Request $request, SupportTicket $ticket): \Illuminate\Http\RedirectResponse
+    public function reply(Request $request, SupportTicket $ticket): RedirectResponse
     {
         $validated = $request->validate([
             'message' => ['required', 'string', 'max:10000'],
@@ -133,7 +134,7 @@ class SupportController extends Controller
     /**
      * Update the status of a support ticket.
      */
-    public function updateStatus(Request $request, SupportTicket $ticket): \Illuminate\Http\RedirectResponse
+    public function updateStatus(Request $request, SupportTicket $ticket): RedirectResponse
     {
         $validated = $request->validate([
             'status' => ['required', 'string', 'in:open,in_progress,waiting_reply,resolved,closed'],
@@ -156,7 +157,7 @@ class SupportController extends Controller
     /**
      * Assign a support ticket to an admin user.
      */
-    public function assign(Request $request, SupportTicket $ticket): \Illuminate\Http\RedirectResponse
+    public function assign(Request $request, SupportTicket $ticket): RedirectResponse
     {
         $validated = $request->validate([
             'assigned_to' => ['required', 'integer', 'exists:admin_users,id'],

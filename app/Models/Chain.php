@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * Chain Model.
@@ -27,13 +30,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property int $native_currency_decimals
  * @property int $block_confirmations
  * @property int $sort_order
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Token> $tokens
- * @property-read \Illuminate\Database\Eloquent\Collection<int, TradingPair> $tradingPairs
- * @property-read \Illuminate\Database\Eloquent\Collection<int, SwapConfig> $swapConfigs
- * @property-read \Illuminate\Database\Eloquent\Collection<int, FeeConfig> $feeConfigs
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
+ * @property-read Collection<int, Token> $tokens
+ * @property-read Collection<int, TradingPair> $tradingPairs
+ * @property-read Collection<int, SwapConfig> $swapConfigs
+ * @property-read Collection<int, FeeConfig> $feeConfigs
  */
 class Chain extends Model
 {
@@ -123,8 +126,8 @@ class Chain extends Model
     /**
      * Scope a query to only include active chains.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeActive($query)
     {
@@ -134,8 +137,8 @@ class Chain extends Model
     /**
      * Scope a query to only include mainnet chains (exclude testnets).
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeMainnet($query)
     {
@@ -145,8 +148,8 @@ class Chain extends Model
     /**
      * Scope a query to order chains by their sort order.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeOrdered($query, string $direction = 'asc')
     {

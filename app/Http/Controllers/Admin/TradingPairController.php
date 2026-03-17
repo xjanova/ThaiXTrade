@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Chain;
 use App\Models\Token;
 use App\Models\TradingPair;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -43,7 +44,7 @@ class TradingPairController extends Controller
     /**
      * Store a newly created trading pair.
      */
-    public function store(Request $request): \Illuminate\Http\RedirectResponse
+    public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'base_token_id' => ['required', 'integer', 'exists:tokens,id'],
@@ -68,7 +69,7 @@ class TradingPairController extends Controller
     /**
      * Update the specified trading pair.
      */
-    public function update(Request $request, TradingPair $tradingPair): \Illuminate\Http\RedirectResponse
+    public function update(Request $request, TradingPair $tradingPair): RedirectResponse
     {
         $validated = $request->validate([
             'base_token_id' => ['required', 'integer', 'exists:tokens,id'],
@@ -93,7 +94,7 @@ class TradingPairController extends Controller
     /**
      * Toggle the active status of a trading pair.
      */
-    public function toggleActive(TradingPair $tradingPair): \Illuminate\Http\RedirectResponse
+    public function toggleActive(TradingPair $tradingPair): RedirectResponse
     {
         $tradingPair->update([
             'is_active' => ! $tradingPair->is_active,
@@ -107,7 +108,7 @@ class TradingPairController extends Controller
     /**
      * Remove the specified trading pair.
      */
-    public function destroy(TradingPair $tradingPair): \Illuminate\Http\RedirectResponse
+    public function destroy(TradingPair $tradingPair): RedirectResponse
     {
         $tradingPair->delete();
 

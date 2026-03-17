@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * FeeConfig Model.
@@ -21,8 +23,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property float $max_amount
  * @property int|null $chain_id
  * @property bool $is_active
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Chain|null $chain
  */
 class FeeConfig extends Model
@@ -87,8 +89,8 @@ class FeeConfig extends Model
     /**
      * Scope a query to only include active fee configs.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeActive($query)
     {
@@ -98,8 +100,8 @@ class FeeConfig extends Model
     /**
      * Scope a query to filter by fee type (e.g., 'swap', 'trade', 'withdrawal').
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeByType($query, string $type)
     {

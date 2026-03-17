@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Chain;
 use App\Models\Token;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -56,7 +57,7 @@ class TokenController extends Controller
     /**
      * Store a newly created token.
      */
-    public function store(Request $request): \Illuminate\Http\RedirectResponse
+    public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'chain_id' => ['required', 'integer', 'exists:chains,id'],
@@ -78,7 +79,7 @@ class TokenController extends Controller
     /**
      * Update the specified token.
      */
-    public function update(Request $request, Token $token): \Illuminate\Http\RedirectResponse
+    public function update(Request $request, Token $token): RedirectResponse
     {
         $validated = $request->validate([
             'chain_id' => ['required', 'integer', 'exists:chains,id'],
@@ -100,7 +101,7 @@ class TokenController extends Controller
     /**
      * Remove the specified token.
      */
-    public function destroy(Token $token): \Illuminate\Http\RedirectResponse
+    public function destroy(Token $token): RedirectResponse
     {
         $token->delete();
 

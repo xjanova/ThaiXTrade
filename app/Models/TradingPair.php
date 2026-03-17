@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * TradingPair Model.
@@ -25,8 +27,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property float|null $maker_fee_override
  * @property float|null $taker_fee_override
  * @property int $sort_order
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Token $baseToken
  * @property-read Token $quoteToken
  * @property-read Chain $chain
@@ -113,8 +115,8 @@ class TradingPair extends Model
     /**
      * Scope a query to only include active trading pairs.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeActive($query)
     {

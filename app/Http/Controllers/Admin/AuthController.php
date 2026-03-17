@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdminUser;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -36,7 +38,7 @@ class AuthController extends Controller
     /**
      * Create the first admin user (first-time setup only).
      */
-    public function setup(Request $request): \Illuminate\Http\RedirectResponse
+    public function setup(Request $request): RedirectResponse
     {
         // Only allow if no admin users exist
         if (AdminUser::count() > 0) {
@@ -47,7 +49,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255'],
-            'password' => ['required', 'string', 'min:12', 'confirmed', \Illuminate\Validation\Rules\Password::min(12)->mixedCase()->numbers()->symbols()],
+            'password' => ['required', 'string', 'min:12', 'confirmed', Password::min(12)->mixedCase()->numbers()->symbols()],
         ]);
 
         $admin = AdminUser::create([
@@ -75,9 +77,9 @@ class AuthController extends Controller
      *
      * Rate limited to 5 attempts per 15 minutes per email + IP combination.
      *
-     * @throws \Illuminate\Validation\ValidationException
+     * @throws ValidationException
      */
-    public function login(Request $request): \Illuminate\Http\RedirectResponse
+    public function login(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'email' => ['required', 'string', 'email', 'max:255'],
@@ -137,7 +139,7 @@ class AuthController extends Controller
     /**
      * Log the admin user out of the application.
      */
-    public function logout(Request $request): \Illuminate\Http\RedirectResponse
+    public function logout(Request $request): RedirectResponse
     {
         Auth::guard('admin')->logout();
 

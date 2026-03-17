@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -17,8 +19,8 @@ use Illuminate\Support\Facades\Cache;
  * @property string $key
  * @property string|null $value
  * @property string $type
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 class SiteSetting extends Model
 {
@@ -100,7 +102,7 @@ class SiteSetting extends Model
     /**
      * Get all settings for a specific group.
      */
-    public static function getGroup(string $group): \Illuminate\Support\Collection
+    public static function getGroup(string $group): Collection
     {
         $cacheKey = static::$cachePrefix.".group.{$group}";
 

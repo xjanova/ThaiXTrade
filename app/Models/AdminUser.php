@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 
 /**
  * AdminUser Model.
@@ -22,16 +25,16 @@ use Illuminate\Notifications\Notifiable;
  * @property string $role
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes
- * @property \Illuminate\Support\Carbon|null $two_factor_confirmed_at
+ * @property Carbon|null $two_factor_confirmed_at
  * @property bool $is_active
- * @property \Illuminate\Support\Carbon|null $last_login_at
+ * @property Carbon|null $last_login_at
  * @property string|null $last_login_ip
  * @property string|null $remember_token
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, SupportTicket> $assignedTickets
- * @property-read \Illuminate\Database\Eloquent\Collection<int, AuditLog> $auditLogs
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
+ * @property-read Collection<int, SupportTicket> $assignedTickets
+ * @property-read Collection<int, AuditLog> $auditLogs
  */
 class AdminUser extends Authenticatable
 {
@@ -125,8 +128,8 @@ class AdminUser extends Authenticatable
     /**
      * Scope a query to only include active admin users.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeActive($query)
     {
@@ -136,8 +139,8 @@ class AdminUser extends Authenticatable
     /**
      * Scope a query to filter by role.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeByRole($query, string $role)
     {

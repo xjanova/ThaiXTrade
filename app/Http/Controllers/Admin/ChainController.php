@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Chain;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -33,7 +34,7 @@ class ChainController extends Controller
     /**
      * Store a newly created chain.
      */
-    public function store(Request $request): \Illuminate\Http\RedirectResponse
+    public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -59,7 +60,7 @@ class ChainController extends Controller
     /**
      * Update the specified chain.
      */
-    public function update(Request $request, Chain $chain): \Illuminate\Http\RedirectResponse
+    public function update(Request $request, Chain $chain): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -85,7 +86,7 @@ class ChainController extends Controller
     /**
      * Toggle the active status of a chain.
      */
-    public function toggleActive(Chain $chain): \Illuminate\Http\RedirectResponse
+    public function toggleActive(Chain $chain): RedirectResponse
     {
         $chain->update([
             'is_active' => ! $chain->is_active,
@@ -99,7 +100,7 @@ class ChainController extends Controller
     /**
      * Soft delete the specified chain.
      */
-    public function destroy(Chain $chain): \Illuminate\Http\RedirectResponse
+    public function destroy(Chain $chain): RedirectResponse
     {
         $chain->delete();
 

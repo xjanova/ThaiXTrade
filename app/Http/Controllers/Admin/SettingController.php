@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\SiteSetting;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -43,7 +44,7 @@ class SettingController extends Controller
      * Accepts a flat array of settings keyed by "group.key" format,
      * or a nested array keyed by group with key-value pairs.
      */
-    public function update(Request $request): \Illuminate\Http\RedirectResponse
+    public function update(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'settings' => ['required', 'array'],
@@ -88,7 +89,7 @@ class SettingController extends Controller
     /**
      * Handle logo file upload.
      */
-    public function updateLogo(Request $request): \Illuminate\Http\RedirectResponse
+    public function updateLogo(Request $request): RedirectResponse
     {
         $request->validate([
             'logo' => ['required', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:2048'],

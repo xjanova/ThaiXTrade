@@ -5,10 +5,18 @@
  * Developed by Xman Studio.
  */
 
+use App\Http\Middleware\AdminAuth;
+use App\Http\Middleware\AdminRole;
+use App\Http\Middleware\AuditAdmin;
+use App\Http\Middleware\EnsureEmailIsVerified;
+use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\TurnstileVerify;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Support\Facades\Route;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -24,20 +32,20 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->web(append: [
-            \App\Http\Middleware\HandleInertiaRequests::class,
-            \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+            HandleInertiaRequests::class,
+            AddLinkHeadersForPreloadedAssets::class,
         ]);
 
         $middleware->api(prepend: [
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+            EnsureFrontendRequestsAreStateful::class,
         ]);
 
         $middleware->alias([
-            'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
-            'admin.auth' => \App\Http\Middleware\AdminAuth::class,
-            'admin.role' => \App\Http\Middleware\AdminRole::class,
-            'admin.audit' => \App\Http\Middleware\AuditAdmin::class,
-            'turnstile' => \App\Http\Middleware\TurnstileVerify::class,
+            'verified' => EnsureEmailIsVerified::class,
+            'admin.auth' => AdminAuth::class,
+            'admin.role' => AdminRole::class,
+            'admin.audit' => AuditAdmin::class,
+            'turnstile' => TurnstileVerify::class,
         ]);
 
         // Rate limiting for trading endpoints

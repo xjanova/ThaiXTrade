@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * AuditLog Model.
@@ -21,8 +22,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property array|null $new_values
  * @property string|null $ip_address
  * @property string|null $user_agent
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read AdminUser|null $admin
  */
 class AuditLog extends Model
@@ -88,7 +89,7 @@ class AuditLog extends Model
      * the client IP address, and user agent from the current request.
      *
      * @param  string  $action  Description of the action performed
-     * @param  \Illuminate\Database\Eloquent\Model|null  $model  The model that was acted upon
+     * @param  Model|null  $model  The model that was acted upon
      * @param  array|null  $oldValues  The original values before the change
      * @param  array|null  $newValues  The new values after the change
      */

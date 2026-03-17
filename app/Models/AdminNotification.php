@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * AdminNotification Model.
@@ -16,9 +17,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $title
  * @property string $message
  * @property array|null $data
- * @property \Illuminate\Support\Carbon|null $read_at
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $read_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 class AdminNotification extends Model
 {

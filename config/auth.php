@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\AdminUser;
+
 /**
  * TPIX TRADE - Authentication Configuration.
  */
@@ -24,11 +26,11 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', App\Models\AdminUser::class),
+            'model' => env('AUTH_MODEL', AdminUser::class),
         ],
         'admin_users' => [
             'driver' => 'eloquent',
-            'model' => App\Models\AdminUser::class,
+            'model' => AdminUser::class,
         ],
     ],
 

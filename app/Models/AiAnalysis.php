@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * AiAnalysis Model.
@@ -25,8 +27,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property array|null $metadata
  * @property string|null $error_message
  * @property int|null $created_by
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read AdminUser|null $creator
  */
 class AiAnalysis extends Model
@@ -93,8 +95,8 @@ class AiAnalysis extends Model
     /**
      * Scope a query to filter by analysis type.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeByType($query, string $type)
     {
@@ -104,8 +106,8 @@ class AiAnalysis extends Model
     /**
      * Scope a query to only include completed analyses.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeCompleted($query)
     {
@@ -115,8 +117,8 @@ class AiAnalysis extends Model
     /**
      * Scope a query to get recent analyses (last N days).
      *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  Builder  $query
+     * @return Builder
      */
     public function scopeRecent($query, int $days = 7)
     {

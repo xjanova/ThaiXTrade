@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * TicketMessage Model.
@@ -19,8 +20,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $message
  * @property array|null $attachments
  * @property bool $is_internal
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read SupportTicket $ticket
  * @property-read AdminUser|null $admin
  */
