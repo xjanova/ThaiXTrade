@@ -74,11 +74,19 @@ class TradingController extends Controller
     /**
      * Cancel a pending order.
      */
-    public function cancelOrder(string $orderId): JsonResponse
+    public function cancelOrder(string $orderId, Request $request): JsonResponse
     {
-        $transaction = Transaction::where('uuid', $orderId)
-            ->where('status', 'pending')
-            ->first();
+        $walletAddress = $request->input('wallet_address');
+
+        $query = Transaction::where('uuid', $orderId)
+            ->where('status', 'pending');
+
+        // Ensure the requester owns this order
+        if ($walletAddress) {
+            $query->where('wallet_address', $walletAddress);
+        }
+
+        $transaction = $query->first();
 
         if (! $transaction) {
             return response()->json([

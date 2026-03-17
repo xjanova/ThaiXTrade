@@ -54,12 +54,13 @@ class FeeCalculationService
         $maxFeeRate = (float) SiteSetting::get('trading', 'max_fee_rate', 5.0);
         $feeRate = min($feeRate, $maxFeeRate);
 
-        $feeAmount = $amount * ($feeRate / 100);
-        $netAmount = $amount - $feeAmount;
+        // Use bcmath for precise fee calculation
+        $feeAmount = (float) bcmul((string) $amount, bcdiv((string) $feeRate, '100', 12), 8);
+        $netAmount = (float) bcsub((string) $amount, (string) $feeAmount, 8);
 
         return [
-            'fee_amount' => round($feeAmount, 8),
-            'net_amount' => round(max($netAmount, 0), 8),
+            'fee_amount' => $feeAmount,
+            'net_amount' => max($netAmount, 0.0),
             'fee_rate' => round($feeRate, 4),
             'fee_type' => 'swap',
         ];
@@ -201,7 +202,10 @@ class FeeCalculationService
      */
     private function findTradingPairId(string $fromToken, string $toToken, int $chainId): ?int
     {
-        $cacheKey = self::CACHE_PREFIX.".pair_lookup.{$chainId}.".md5($fromToken.$toToken);
+        // Sort tokens to ensure consistent cache key regardless of swap direction
+        $tokens = [$fromToken, $toToken];
+        sort($tokens);
+        $cacheKey = self::CACHE_PREFIX.".pair_lookup.{$chainId}.".md5(implode(':', $tokens));
 
         return Cache::remember(
             $cacheKey,
@@ -255,13 +259,17 @@ class FeeCalculationService
      */
     private function estimatePriceImpact(float $amount, int $chainId): float
     {
+        if ($amount <= 0) {
+            return 0.0;
+        }
+
         $config = FeeConfig::active()
             ->byType('swap')
             ->where('chain_id', $chainId)
             ->first();
 
-        if (! $config || ! $config->max_amount || $config->max_amount == 0) {
-            // Default: minimal impact for small amounts
+        if (! $config || ! $config->max_amount || (float) $config->max_amount <= 0) {
+            // Default: minimal impact for small amounts, capped at 5%
             return min($amount * 0.001, 5.0);
         }
 

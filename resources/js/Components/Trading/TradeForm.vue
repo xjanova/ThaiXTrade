@@ -5,7 +5,8 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
+import axios from 'axios';
 
 const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
@@ -50,10 +51,21 @@ const availableBalance = computed(() => {
     return found ? parseFloat(found.balance).toFixed(6) : '0';
 });
 
-// Calculate fee
+// Fee rate from backend (default 0.1%, fetched on mount)
+const feeRate = ref(0.1);
+
 const feeAmount = computed(() => {
     const totalNum = parseFloat(String(total.value).replace(/,/g, '')) || 0;
-    return (totalNum * 0.001).toFixed(2); // 0.1% fee
+    return (totalNum * (feeRate.value / 100)).toFixed(2);
+});
+
+onMounted(async () => {
+    try {
+        const { data } = await axios.get('/api/v1/swap/routes');
+        if (data.success && data.data?.length > 0) {
+            feeRate.value = data.data[0].fee_rate ?? 0.1;
+        }
+    } catch { /* keep default */ }
 });
 
 // Update price field when ticker changes (only if user hasn't typed yet)
@@ -253,7 +265,7 @@ const submitOrder = () => {
 
         <!-- Fee Info -->
         <div class="flex items-center justify-between mb-3 text-xs text-dark-400">
-            <span>Fee (0.1%)</span>
+            <span>Fee ({{ feeRate }}%)</span>
             <span class="font-mono">~${{ feeAmount }}</span>
         </div>
 

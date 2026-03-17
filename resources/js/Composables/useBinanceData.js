@@ -167,15 +167,21 @@ export function useBinanceData(getBinanceSymbol) {
                     };
                     trades.value = [trade, ...trades.value.slice(0, 19)];
                 }
-            } catch { /* ignore parse errors */ }
+            } catch (parseErr) {
+                console.warn('[TPIX] WebSocket parse error:', parseErr.message);
+            }
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
+            if (event.code !== 1000) {
+                console.warn(`[TPIX] WebSocket closed (code: ${event.code}), reconnecting...`);
+            }
             reconnectTimer = setTimeout(connectWebSocket, 5000);
         };
 
-        ws.onerror = () => {
-            try { ws?.close(); } catch { /* */ }
+        ws.onerror = (event) => {
+            console.warn('[TPIX] WebSocket error, closing connection');
+            try { ws?.close(); } catch { /* already closing */ }
         };
     }
 

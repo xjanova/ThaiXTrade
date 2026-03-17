@@ -38,8 +38,8 @@ class SwapApiController extends Controller
     public function quote(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'from_token' => 'required|string',
-            'to_token' => 'required|string',
+            'from_token' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'to_token' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'amount' => 'required|numeric|gt:0',
             'chain_id' => 'required|integer|exists:chains,id',
             'slippage' => 'nullable|numeric|min:0.01|max:50',
@@ -51,7 +51,6 @@ class SwapApiController extends Controller
                 'error' => [
                     'code' => 'VALIDATION_ERROR',
                     'message' => 'Invalid request parameters.',
-                    'details' => $validator->errors(),
                 ],
             ], 422);
         }
@@ -110,9 +109,6 @@ class SwapApiController extends Controller
                 );
             }
 
-            // Get fee collector wallet address
-            $feeCollectorWallet = SiteSetting::get('trading', 'fee_collector_wallet', '');
-
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -133,7 +129,6 @@ class SwapApiController extends Controller
                         'id' => $chain->id,
                         'name' => $chain->name,
                     ],
-                    'fee_collector' => $feeCollectorWallet,
                 ],
             ]);
         } catch (\Exception $e) {
@@ -160,14 +155,14 @@ class SwapApiController extends Controller
     public function execute(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'from_token' => 'required|string',
-            'to_token' => 'required|string',
+            'from_token' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'to_token' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'from_amount' => 'required|numeric|gt:0',
             'to_amount' => 'required|numeric|gte:0',
             'fee_amount' => 'required|numeric|gte:0',
-            'tx_hash' => 'required|string|unique:transactions,tx_hash',
+            'tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/', 'unique:transactions,tx_hash'],
             'chain_id' => 'required|integer|exists:chains,id',
-            'wallet_address' => 'required|string|regex:/^0x[a-fA-F0-9]{40}$/',
+            'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
         ]);
 
         if ($validator->fails()) {
@@ -176,7 +171,6 @@ class SwapApiController extends Controller
                 'error' => [
                     'code' => 'VALIDATION_ERROR',
                     'message' => 'Invalid request parameters.',
-                    'details' => $validator->errors(),
                 ],
             ], 422);
         }
@@ -205,14 +199,22 @@ class SwapApiController extends Controller
             $submittedFee = (float) $validated['fee_amount'];
             $expectedFeeAmount = $expectedFee['fee_amount'];
 
-            // Allow 1% tolerance for rounding differences
-            if ($expectedFeeAmount > 0 && abs($submittedFee - $expectedFeeAmount) / $expectedFeeAmount > 0.01) {
-                Log::warning('Swap fee mismatch', [
+            // Reject if fee mismatch exceeds 5% tolerance (accounts for rounding)
+            if ($expectedFeeAmount > 0 && abs($submittedFee - $expectedFeeAmount) / $expectedFeeAmount > 0.05) {
+                Log::warning('Swap fee mismatch - rejected', [
                     'submitted_fee' => $submittedFee,
                     'expected_fee' => $expectedFeeAmount,
                     'wallet' => $validated['wallet_address'],
                     'tx_hash' => $validated['tx_hash'],
                 ]);
+
+                return response()->json([
+                    'success' => false,
+                    'error' => [
+                        'code' => 'FEE_MISMATCH',
+                        'message' => 'Fee amount does not match expected fee. Please refresh and try again.',
+                    ],
+                ], 422);
             }
 
             // Record the transaction
@@ -280,7 +282,6 @@ class SwapApiController extends Controller
                 'error' => [
                     'code' => 'VALIDATION_ERROR',
                     'message' => 'Invalid request parameters.',
-                    'details' => $validator->errors(),
                 ],
             ], 422);
         }

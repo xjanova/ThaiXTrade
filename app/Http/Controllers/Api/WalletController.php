@@ -187,7 +187,12 @@ class WalletController extends Controller
         $timestamp = now()->toIso8601String();
         $message = "TPIX TRADE: Sign this message to verify your wallet.\n\nNonce: {$nonce}\nTimestamp: {$timestamp}";
 
-        // Store nonce in cache for 5 minutes for later verification
+        // Invalidate any previous nonce for this wallet, then store new one
+        $previousNonce = Cache::get("wallet_active_nonce:{$walletAddress}");
+        if ($previousNonce) {
+            Cache::forget("wallet_nonce:{$walletAddress}:{$previousNonce}");
+        }
+        Cache::put("wallet_active_nonce:{$walletAddress}", $nonce, 300);
         Cache::put("wallet_nonce:{$walletAddress}:{$nonce}", $timestamp, 300);
 
         return response()->json([

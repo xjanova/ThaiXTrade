@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\SwapApiController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
+use App\Http\Middleware\VerifyWalletOwnership;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
@@ -64,8 +65,8 @@ Route::prefix('v1')->group(function () {
     });
 });
 
-// Protected Routes (Wallet Signature Required)
-Route::prefix('v1')->middleware(['throttle:trading'])->group(function () {
+// Protected Routes (Wallet Ownership Verified)
+Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::class])->group(function () {
     // Trading Operations
     Route::prefix('trading')->group(function () {
         Route::post('/order', [TradingController::class, 'createOrder']);
@@ -91,8 +92,8 @@ Route::prefix('v1')->middleware(['throttle:trading'])->group(function () {
         Route::get('/routes', [TradingController::class, 'getSwapRoutes']);
     });
 
-    // AI Assistant
-    Route::prefix('ai')->group(function () {
+    // AI Assistant (stricter rate limit: 10 requests per minute)
+    Route::prefix('ai')->middleware(['throttle:10,1'])->group(function () {
         Route::post('/analyze', [AIController::class, 'analyze']);
         Route::post('/predict', [AIController::class, 'predict']);
         Route::post('/suggest', [AIController::class, 'suggest']);
