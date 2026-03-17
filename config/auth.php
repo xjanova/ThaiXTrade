@@ -2,9 +2,7 @@
 
 use App\Models\AdminUser;
 
-/**
- * TPIX TRADE - Authentication Configuration.
- */
+// TPIX TRADE - Authentication Configuration.
 
 return [
     'defaults' => [
