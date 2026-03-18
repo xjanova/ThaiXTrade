@@ -133,6 +133,33 @@ jobs:
                 networks:
                   - tpix
 
+              blockscout-frontend:
+                image: ghcr.io/blockscout/frontend:v1.38.0
+                container_name: blockscout-frontend
+                restart: unless-stopped
+                depends_on:
+                  - blockscout-backend
+                environment:
+                  NEXT_PUBLIC_API_HOST: blockscout-backend
+                  NEXT_PUBLIC_API_PORT: "4000"
+                  NEXT_PUBLIC_API_PROTOCOL: http
+                  NEXT_PUBLIC_API_WEBSOCKET_PROTOCOL: ws
+                  NEXT_PUBLIC_NETWORK_NAME: "TPIX Chain"
+                  NEXT_PUBLIC_NETWORK_SHORT_NAME: "TPIX"
+                  NEXT_PUBLIC_NETWORK_ID: "7000"
+                  NEXT_PUBLIC_NETWORK_CURRENCY_NAME: "TPIX"
+                  NEXT_PUBLIC_NETWORK_CURRENCY_SYMBOL: "TPIX"
+                  NEXT_PUBLIC_NETWORK_CURRENCY_DECIMALS: "18"
+                  NEXT_PUBLIC_HOMEPAGE_CHARTS: "['daily_txs']"
+                  NEXT_PUBLIC_IS_TESTNET: "false"
+                  NEXT_PUBLIC_NETWORK_LOGO: "https://tpix.online/logo.png"
+                  NEXT_PUBLIC_NETWORK_ICON: "https://tpix.online/logo.png"
+                  NEXT_PUBLIC_API_BASE_PATH: "/"
+                ports:
+                  - "127.0.0.1:3100:3000"
+                networks:
+                  - tpix
+
               blockscout-backend:
                 image: blockscout/blockscout:6.10.1
                 container_name: blockscout-backend
@@ -233,8 +260,11 @@ jobs:
 
             cat > "$EXPLORER/public_html/index.php" << 'PROXY'
             <?php
-            $target = 'http://127.0.0.1:4000';
             $path = $_SERVER['REQUEST_URI'] ?? '/';
+            // API requests go to Blockscout backend (port 4000)
+            // Frontend requests go to Blockscout frontend (port 3100)
+            $isApi = (strpos($path, '/api') === 0 || strpos($path, '/socket') === 0);
+            $target = $isApi ? 'http://127.0.0.1:4000' : 'http://127.0.0.1:3100';
             $url = $target . $path;
             $ch = curl_init($url);
             $reqHeaders = [];
@@ -318,8 +348,10 @@ jobs:
             # Wait more for Blockscout to fully start
             echo "Waiting 60s for Blockscout indexing..."
             sleep 60
-            BS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000 2>/dev/null)
-            echo "Blockscout direct: HTTP $BS_STATUS"
+            BS_BACK=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/api/v2/stats 2>/dev/null)
+            echo "Blockscout backend API: HTTP $BS_BACK"
+            BS_FRONT=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3100 2>/dev/null)
+            echo "Blockscout frontend: HTTP $BS_FRONT"
             EXPLORER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://explorer.tpix.online/ 2>/dev/null)
             echo "Explorer proxy: HTTP $EXPLORER_STATUS"
             BS_API=$(curl -s "http://127.0.0.1:4000/api?module=block&action=eth_block_number" 2>/dev/null | head -200)
