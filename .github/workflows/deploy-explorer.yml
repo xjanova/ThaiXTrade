@@ -26,15 +26,11 @@ jobs:
 
             mkdir -p "$CHAIN" "$BSCOUT"
 
-            # === Step 1: Stop + FULL RESET ===
-            echo "[1] Stopping containers + full clean..."
-            docker compose -f "$INFRA/docker-compose.yml" down -v 2>/dev/null || true
-            docker compose -f "$CHAIN/docker-compose.yml" down -v 2>/dev/null || true
-            docker compose -f "$BSCOUT/docker-compose.yml" down -v 2>/dev/null || true
-            docker rm -f blockscout-backend blockscout-db blockscout-frontend tpix-chain-node 2>/dev/null || true
-            # ลบ data ด้วย Docker (เพราะ root permission)
-            docker run --rm -v "$CHAIN:/chain" alpine sh -c "rm -rf /chain/data /chain/genesis.json" 2>/dev/null || true
-            echo "All cleaned. Fresh start with chain ID 4289."
+            # === Step 1: Stop containers (keep data!) ===
+            echo "[1] Stopping containers..."
+            docker compose -f "$INFRA/docker-compose.yml" down 2>/dev/null || true
+            docker compose -f "$CHAIN/docker-compose.yml" down 2>/dev/null || true
+            docker compose -f "$BSCOUT/docker-compose.yml" down 2>/dev/null || true
 
             # === Step 2: Generate keys + genesis ===
             # สำคัญ: ไม่ลบ data เดิม! สร้างครั้งเดียวแล้วเก็บถาวร
@@ -158,6 +154,9 @@ jobs:
                   NEXT_PUBLIC_IS_TESTNET: "false"
                   NEXT_PUBLIC_NETWORK_LOGO: "https://tpix.online/logo.png"
                   NEXT_PUBLIC_NETWORK_ICON: "https://tpix.online/logo.png"
+                  NEXT_PUBLIC_APP_HOST: explorer.tpix.online
+                  NEXT_PUBLIC_APP_PROTOCOL: https
+                  NEXT_PUBLIC_APP_PORT: "443"
                 ports:
                   - "127.0.0.1:3100:3000"
                 networks:
