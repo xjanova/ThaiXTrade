@@ -175,8 +175,8 @@ jobs:
                   DATABASE_URL: postgresql://blockscout:tpix_explorer_db_2026@blockscout-db:5432/blockscout
                   ETHEREUM_JSONRPC_VARIANT: geth
                   ETHEREUM_JSONRPC_HTTP_URL: http://tpix-node:8545
-                  ETHEREUM_JSONRPC_WS_URL: ws://tpix-node:8545
                   ETHEREUM_JSONRPC_TRACE_URL: http://tpix-node:8545
+                  ETHEREUM_JSONRPC_HTTP_TIMEOUT: "30"
                   CHAIN_ID: "7000"
                   NETWORK: "TPIX Chain"
                   SUBNETWORK: "Mainnet"
@@ -201,6 +201,8 @@ jobs:
                   INDEXER_CATCHUP_BLOCKS_BATCH_SIZE: "50"
                   INDEXER_CATCHUP_BLOCKS_CONCURRENCY: "5"
                   INDEXER_EMPTY_BLOCKS_SANITIZER_BATCH_SIZE: "50"
+                  INDEXER_REALTIME_FETCHER_MAX_GAP: "1000"
+                  INDEXER_BLOCK_INTERVAL: "2"
                   PORT: "4000"
                 ports:
                   - "127.0.0.1:4000:4000"
