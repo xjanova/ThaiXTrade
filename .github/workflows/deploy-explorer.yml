@@ -15,7 +15,6 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 15m
           script: |
-            set -e
             echo "=========================================="
             echo "  TPIX Chain + Blockscout Explorer Deploy"
             echo "=========================================="
@@ -77,41 +76,31 @@ jobs:
               # ลบ Docker volume เก่า
               $D volume rm tpix-chain_tpix-chain-data 2>/dev/null || true
 
-              # สร้าง validator keys
-              if [ ! -d "$INFRA_DIR/tpix-chain/data/consensus" ]; then
-                $D run --rm -v "$INFRA_DIR/tpix-chain/data:/data" 0xpolygon/polygon-edge:1.3.3 \
-                  secrets init --data-dir /data --insecure
-              fi
+              # สร้าง validator keys + genesis ทั้งหมดในครั้งเดียว
+              mkdir -p "$INFRA_DIR/tpix-chain/data"
 
-              # ดึง public key จาก secrets
-              VALIDATOR_OUTPUT=$($D run --rm -v "$INFRA_DIR/tpix-chain/data:/data" 0xpolygon/polygon-edge:1.3.3 \
-                secrets output --data-dir /data --insecure 2>&1)
-              echo "$VALIDATOR_OUTPUT"
+              echo "Step A: Generate validator secrets..."
+              $D run --rm -v "$INFRA_DIR/tpix-chain/data:/data" 0xpolygon/polygon-edge:1.3.3 \
+                secrets init --data-dir /data --insecure 2>&1 || true
 
-              NODE_ID=$(echo "$VALIDATOR_OUTPUT" | grep "Node ID" | awk '{print $NF}')
-              PUBLIC_KEY=$(echo "$VALIDATOR_OUTPUT" | grep "Public key (address)" | awk '{print $NF}')
-              BLS_KEY=$(echo "$VALIDATOR_OUTPUT" | grep "BLS Public key" | awk '{print $NF}')
+              echo "Step B: Check what was created..."
+              ls -la "$INFRA_DIR/tpix-chain/data/" 2>&1 || true
+              ls -la "$INFRA_DIR/tpix-chain/data/consensus/" 2>&1 || true
 
-              echo "Node ID: $NODE_ID"
-              echo "Validator Address: $PUBLIC_KEY"
-
-              # สร้าง genesis ด้วย CLI (ถูกต้อง 100%)
-              # ดึง address ของ validator
-              ADDR=$(echo "$VALIDATOR_OUTPUT" | grep "Public key (address)" | awk '{print $NF}' | tr -d '[:space:]')
-              echo "Validator address: $ADDR"
-
-              # ลบ genesis เก่าถ้ามี
-              rm -f "$INFRA_DIR/tpix-chain/genesis.json"
-
+              echo "Step C: Generate genesis..."
               $D run --rm -v "$INFRA_DIR/tpix-chain:/chain" 0xpolygon/polygon-edge:1.3.3 \
                 genesis \
                 --consensus ibft \
-                --ibft-validator "/chain/data" \
+                --ibft-validators-prefix-path /chain/data \
                 --chain-id 7000 \
                 --block-gas-limit 20000000 \
                 --epoch-size 100000 \
-                --premine "${ADDR}:7000000000000000000000000000" \
-                --dir /chain/genesis.json
+                --premine "0x0000000000000000000000000000000000001010:7000000000000000000000000000" \
+                --dir /chain/genesis.json 2>&1
+
+              echo "Step D: Verify genesis..."
+              ls -la "$INFRA_DIR/tpix-chain/genesis.json" 2>&1 || true
+              head -5 "$INFRA_DIR/tpix-chain/genesis.json" 2>&1 || true
 
               touch "$INFRA_DIR/tpix-chain/genesis-ready"
               echo "✅ Genesis created successfully!"
