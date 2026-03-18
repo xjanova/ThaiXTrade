@@ -28,11 +28,6 @@ class StripePaymentService
     /**
      * สร้าง Stripe Checkout Session สำหรับซื้อ TPIX.
      *
-     * @param float  $amountUsd
-     * @param string $walletAddress
-     * @param int    $phaseId
-     *
-     * @return array
      */
     public function createCheckoutSession(float $amountUsd, string $walletAddress, int $phaseId): array
     {
