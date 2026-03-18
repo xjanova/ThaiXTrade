@@ -229,8 +229,8 @@
         <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
         <tbody>
             <tr><td>Chain Name</td><td>TPIX Chain</td></tr>
-            <tr><td>Chain ID (Mainnet)</td><td>7000</td></tr>
-            <tr><td>Chain ID (Testnet)</td><td>7001</td></tr>
+            <tr><td>Chain ID (Mainnet)</td><td>4289</td></tr>
+            <tr><td>Chain ID (Testnet)</td><td>4290</td></tr>
             <tr><td>Consensus</td><td>IBFT (Proof of Authority)</td></tr>
             <tr><td>Block Time</td><td>2 seconds</td></tr>
             <tr><td>Gas Price</td><td>0 (Free transactions)</td></tr>

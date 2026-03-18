@@ -33,12 +33,12 @@ export const BSC_CHAIN_CONFIG = {
 };
 
 /**
- * TPIX Chain config — Polygon Edge, IBFT PoA, Chain ID 7000, gasless.
+ * TPIX Chain config — Polygon Edge, IBFT PoA, Chain ID 4289, gasless.
  * ใช้สำหรับ add chain เข้า wallet โดยตรง (ไม่ต้องรอ backend)
  */
 export const TPIX_CHAIN_CONFIG = {
-    chainId: '0x1B58', // 7000 in hex
-    chainIdNum: 7000,
+    chainId: '0x10C1', // 4289 in hex
+    chainIdNum: 4289,
     chainName: 'TPIX Chain',
     nativeCurrency: {
         name: 'TPIX',

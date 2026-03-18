@@ -123,7 +123,7 @@ class TokenSaleController extends Controller
                 'address' => 'Not configured',
                 'balance' => '0',
                 'balance_formatted' => '0 TPIX',
-                'chain_id' => 7000,
+                'chain_id' => 4289,
                 'rpc_url' => $rpcUrl,
                 'status' => 'not_configured',
             ];
@@ -146,7 +146,7 @@ class TokenSaleController extends Controller
                 'address' => $address,
                 'balance' => number_format($balanceTpix, 4, '.', ''),
                 'balance_formatted' => number_format($balanceTpix, 2).' TPIX',
-                'chain_id' => 7000,
+                'chain_id' => 4289,
                 'rpc_url' => $rpcUrl,
                 'status' => 'connected',
             ];
@@ -155,7 +155,7 @@ class TokenSaleController extends Controller
                 'address' => $address,
                 'balance' => '0',
                 'balance_formatted' => 'RPC Error',
-                'chain_id' => 7000,
+                'chain_id' => 4289,
                 'rpc_url' => $rpcUrl,
                 'status' => 'rpc_error',
                 'error' => $e->getMessage(),

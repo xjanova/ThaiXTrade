@@ -42,7 +42,7 @@ return [
     // TPIX Chain — blockchain config
     'tpix_chain' => [
         'rpc_url' => env('TPIX_RPC_URL', 'https://rpc.tpix.online'),
-        'chain_id' => env('TPIX_CHAIN_ID', 7000),
+        'chain_id' => env('TPIX_CHAIN_ID', 4289),
         'master_wallet' => env('TPIX_MASTER_WALLET', ''),
     ],
 ];

@@ -164,8 +164,8 @@ const content = {
         ],
         chainSpecs: [
             ['Chain Name', 'TPIX Chain'],
-            ['Chain ID (Mainnet)', '7000'],
-            ['Chain ID (Testnet)', '7001'],
+            ['Chain ID (Mainnet)', '4289'],
+            ['Chain ID (Testnet)', '4290'],
             ['Consensus', 'IBFT (Istanbul Byzantine Fault Tolerant)'],
             ['Block Time', '2 seconds'],
             ['Finality', '~10 seconds (5 blocks)'],
@@ -346,8 +346,8 @@ const content = {
         ],
         chainSpecs: [
             ['ชื่อเชน', 'TPIX Chain'],
-            ['Chain ID (Mainnet)', '7000'],
-            ['Chain ID (Testnet)', '7001'],
+            ['Chain ID (Mainnet)', '4289'],
+            ['Chain ID (Testnet)', '4290'],
             ['Consensus', 'IBFT (Istanbul Byzantine Fault Tolerant)'],
             ['เวลาสร้างบล็อก', '2 วินาที'],
             ['Finality', '~10 วินาที (5 บล็อก)'],
@@ -825,7 +825,7 @@ const content = {
                                 {{ lang === 'en' ? 'TPIX Ecosystem Map' : 'แผนผังระบบนิเวศ TPIX' }}
                             </h4>
                             <div class="flex flex-col items-center gap-2">
-                                <div class="px-6 py-3 rounded-xl bg-primary-500/20 border border-primary-500/30 text-primary-300 font-bold text-sm">TPIX Chain (ID: 7000)</div>
+                                <div class="px-6 py-3 rounded-xl bg-primary-500/20 border border-primary-500/30 text-primary-300 font-bold text-sm">TPIX Chain (ID: 4289)</div>
                                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full max-w-2xl">
                                     <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
                                         <span class="block text-lg mb-1">🏦</span>DEX

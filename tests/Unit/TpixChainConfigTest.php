@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * TPIX TRADE - TPIX Chain Configuration Tests
- * ทดสอบ config TPIX Chain (Chain ID 7000) ในระบบ
+ * ทดสอบ config TPIX Chain (Chain ID 4289) ในระบบ
  * Developed by Xman Studio.
  */
 class TpixChainConfigTest extends TestCase
@@ -21,16 +21,16 @@ class TpixChainConfigTest extends TestCase
     }
 
     /**
-     * ทดสอบว่า TPIX Chain (7000) ถูก config ไว้แล้ว.
+     * ทดสอบว่า TPIX Chain (4289) ถูก config ไว้แล้ว.
      */
     public function test_tpix_chain_is_configured(): void
     {
-        $this->assertArrayHasKey(7000, $this->chains['chains']);
+        $this->assertArrayHasKey(4289, $this->chains['chains']);
 
-        $tpix = $this->chains['chains'][7000];
+        $tpix = $this->chains['chains'][4289];
         $this->assertEquals('TPIX Chain', $tpix['name']);
         $this->assertEquals('TPIX', $tpix['shortName']);
-        $this->assertEquals(7000, $tpix['chainId']);
+        $this->assertEquals(4289, $tpix['chainId']);
     }
 
     /**
@@ -38,7 +38,7 @@ class TpixChainConfigTest extends TestCase
      */
     public function test_tpix_native_currency(): void
     {
-        $tpix = $this->chains['chains'][7000];
+        $tpix = $this->chains['chains'][4289];
 
         $this->assertEquals('TPIX', $tpix['nativeCurrency']['name']);
         $this->assertEquals('TPIX', $tpix['nativeCurrency']['symbol']);
@@ -50,7 +50,7 @@ class TpixChainConfigTest extends TestCase
      */
     public function test_tpix_chain_has_rpc(): void
     {
-        $tpix = $this->chains['chains'][7000];
+        $tpix = $this->chains['chains'][4289];
 
         $this->assertIsArray($tpix['rpc']);
         $this->assertNotEmpty($tpix['rpc']);
@@ -61,23 +61,23 @@ class TpixChainConfigTest extends TestCase
      */
     public function test_tpix_chain_has_explorer(): void
     {
-        $tpix = $this->chains['chains'][7000];
+        $tpix = $this->chains['chains'][4289];
 
         $this->assertArrayHasKey('explorer', $tpix);
         $this->assertNotEmpty($tpix['explorer']);
     }
 
     /**
-     * ทดสอบ TPIX Testnet (7001) ถ้ามี.
+     * ทดสอบ TPIX Testnet (4290) ถ้ามี.
      */
     public function test_tpix_testnet_if_exists(): void
     {
-        if (! isset($this->chains['chains'][7001])) {
-            $this->markTestSkipped('TPIX Testnet (7001) not configured.');
+        if (! isset($this->chains['testnets'][4290])) {
+            $this->markTestSkipped('TPIX Testnet (4290) not configured.');
         }
 
-        $testnet = $this->chains['chains'][7001];
-        $this->assertEquals(7001, $testnet['chainId']);
+        $testnet = $this->chains['testnets'][4290];
+        $this->assertEquals(4290, $testnet['chainId']);
         $this->assertStringContainsString('Testnet', $testnet['name']);
     }
 }

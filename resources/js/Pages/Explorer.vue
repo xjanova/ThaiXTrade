@@ -22,7 +22,7 @@ const features = [
 ];
 
 const chainStats = [
-    { label: 'Chain ID', value: '7000' },
+    { label: 'Chain ID', value: '4289' },
     { label: 'Consensus', value: 'IBFT PoA' },
     { label: 'Block Time', value: '~2 seconds' },
     { label: 'Gas Price', value: '0 (Free)' },
