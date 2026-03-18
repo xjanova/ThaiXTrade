@@ -71,7 +71,13 @@ jobs:
             if [ ! -f "$INFRA_DIR/tpix-chain/genesis-ready" ]; then
               echo "Generating secrets and genesis with polygon-edge CLI..."
 
-              # สร้าง validator keys ถ้ายังไม่มี
+              # ลบข้อมูลเก่าที่อาจผิด format
+              rm -rf "$INFRA_DIR/tpix-chain/data"
+              rm -f "$INFRA_DIR/tpix-chain/genesis.json"
+              # ลบ Docker volume เก่า
+              $D volume rm tpix-chain_tpix-chain-data 2>/dev/null || true
+
+              # สร้าง validator keys
               if [ ! -d "$INFRA_DIR/tpix-chain/data/consensus" ]; then
                 $D run --rm -v "$INFRA_DIR/tpix-chain/data:/data" 0xpolygon/polygon-edge:1.3.3 \
                   secrets init --data-dir /data --insecure
