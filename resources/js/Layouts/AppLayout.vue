@@ -119,6 +119,8 @@ onMounted(async () => {
                         <h4 class="text-sm font-semibold text-white mb-3">TPIX Ecosystem</h4>
                         <ul class="space-y-2">
                             <li><Link href="/token-sale" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Token Sale</Link></li>
+                            <li><Link href="/token-factory" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Token Factory</Link></li>
+                            <li><Link href="/carbon-credits" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Carbon Credits</Link></li>
                             <li><Link href="/whitepaper" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Whitepaper</Link></li>
                             <li><Link href="/explorer" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Explorer</Link></li>
                             <li><Link href="/staking" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Staking</Link></li>

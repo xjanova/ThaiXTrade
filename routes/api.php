@@ -7,10 +7,12 @@
 
 use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\BannerController as ApiBannerController;
+use App\Http\Controllers\Api\CarbonCreditApiController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\SwapApiController;
+use App\Http\Controllers\Api\TokenFactoryApiController;
 use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
@@ -103,6 +105,19 @@ Route::prefix('v1')->group(function () {
         Route::get('/stripe/status/{sessionId}', [TokenSaleApiController::class, 'stripeStatus']);
     });
 
+    // Token Factory — ระบบสร้างเหรียญ (public endpoints)
+    Route::prefix('token-factory')->group(function () {
+        Route::get('/', [TokenFactoryApiController::class, 'index']);
+        Route::get('/{id}', [TokenFactoryApiController::class, 'show']);
+    });
+
+    // Carbon Credits — ระบบ Carbon Credit (public endpoints)
+    Route::prefix('carbon-credits')->group(function () {
+        Route::get('/projects', [CarbonCreditApiController::class, 'projects']);
+        Route::get('/projects/{slug}', [CarbonCreditApiController::class, 'project']);
+        Route::get('/stats', [CarbonCreditApiController::class, 'stats']);
+    });
+
     // Stripe Webhook — รับ event จาก Stripe (ไม่ต้อง auth)
     Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])
         ->withoutMiddleware([VerifyCsrfToken::class]);
@@ -137,6 +152,20 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
 
     // Token Sale Purchase — ซื้อเหรียญ (ต้อง verify wallet)
     Route::post('/token-sale/purchase', [TokenSaleApiController::class, 'purchase']);
+
+    // Token Factory — สร้างเหรียญ (ต้อง verify wallet)
+    Route::prefix('token-factory')->group(function () {
+        Route::get('/my-tokens', [TokenFactoryApiController::class, 'myTokens']);
+        Route::post('/create', [TokenFactoryApiController::class, 'store']);
+    });
+
+    // Carbon Credits — ซื้อ/retire (ต้อง verify wallet)
+    Route::prefix('carbon-credits')->group(function () {
+        Route::post('/purchase', [CarbonCreditApiController::class, 'purchase']);
+        Route::post('/retire', [CarbonCreditApiController::class, 'retire']);
+        Route::get('/my-credits/{walletAddress}', [CarbonCreditApiController::class, 'myCredits']);
+        Route::get('/my-retirements/{walletAddress}', [CarbonCreditApiController::class, 'myRetirements']);
+    });
 
     // AI Assistant (stricter rate limit: 10 requests per minute)
     Route::prefix('ai')->middleware(['throttle:10,1'])->group(function () {

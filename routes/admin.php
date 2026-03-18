@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\AiController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BannerController;
+use App\Http\Controllers\Admin\CarbonCreditController as AdminCarbonCreditController;
 use App\Http\Controllers\Admin\ChainController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FeeController;
@@ -24,6 +25,7 @@ use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\SupportController;
 use App\Http\Controllers\Admin\SwapController;
 use App\Http\Controllers\Admin\TokenController;
+use App\Http\Controllers\Admin\TokenFactoryController;
 use App\Http\Controllers\Admin\TokenSaleController;
 use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
@@ -130,6 +132,22 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/', [TokenSaleController::class, 'index'])->name('index');
             Route::post('/', [TokenSaleController::class, 'store'])->name('store');
             Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
+        });
+
+        // Token Factory — จัดการ Token ที่สร้างจาก Factory
+        Route::prefix('token-factory')->name('token-factory.')->group(function () {
+            Route::get('/', [TokenFactoryController::class, 'index'])->name('index');
+            Route::post('/{id}/approve', [TokenFactoryController::class, 'approve'])->name('approve');
+            Route::post('/{id}/reject', [TokenFactoryController::class, 'reject'])->name('reject');
+            Route::patch('/{id}/verify', [TokenFactoryController::class, 'toggleVerified'])->name('verify');
+        });
+
+        // Carbon Credits — จัดการระบบ Carbon Credit
+        Route::prefix('carbon-credits')->name('carbon-credits.')->group(function () {
+            Route::get('/', [AdminCarbonCreditController::class, 'index'])->name('index');
+            Route::post('/', [AdminCarbonCreditController::class, 'store'])->name('store');
+            Route::put('/{id}', [AdminCarbonCreditController::class, 'update'])->name('update');
+            Route::delete('/{id}', [AdminCarbonCreditController::class, 'destroy'])->name('destroy');
         });
 
         // Wallets — ภาพรวม wallet ทั้งระบบ
