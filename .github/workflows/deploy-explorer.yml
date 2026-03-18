@@ -36,17 +36,16 @@ jobs:
               rm -rf "$CHAIN/genesis.json"
             fi
 
-            # --- Force clean regeneration ---
+            # --- Force clean regeneration (docker files owned by root) ---
             echo "Force regenerating genesis..."
-            rm -rf "$CHAIN/data" "$CHAIN/genesis.json"
+            docker run --rm -v "$CHAIN:/chain" alpine sh -c "rm -rf /chain/data /chain/genesis.json" 2>/dev/null || true
 
             if true; then
               echo "[2] Generating validator secrets..."
-              rm -rf "$CHAIN/data"
               docker run --rm -v "$CHAIN/data:/data" $IMG secrets init --data-dir /data --insecure
 
               # ดึง Node ID สำหรับ bootnode (parse จาก libp2p key)
-              SECRETS_OUT=$(docker run --rm -v "$CHAIN/data:/data" $IMG secrets output --data-dir /data --insecure 2>&1)
+              SECRETS_OUT=$(docker run --rm -v "$CHAIN/data:/data" $IMG secrets output --data-dir /data 2>&1)
               echo "Secrets output:"
               echo "$SECRETS_OUT"
               NODE_ID=$(echo "$SECRETS_OUT" | grep -oP 'Node ID\s*=\s*\K\S+' || echo "")
