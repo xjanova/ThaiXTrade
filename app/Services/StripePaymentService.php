@@ -28,10 +28,11 @@ class StripePaymentService
     /**
      * สร้าง Stripe Checkout Session สำหรับซื้อ TPIX.
      *
-     * @param  float  $amountUsd     จำนวนเงิน USD ที่ต้องการจ่าย
-     * @param  string $walletAddress wallet address ของผู้ซื้อ
-     * @param  int    $phaseId       ID ของ sale phase
-     * @return array  ['session_id' => string, 'url' => string]
+     * @param float  $amountUsd
+     * @param string $walletAddress
+     * @param int    $phaseId
+     *
+     * @return array
      */
     public function createCheckoutSession(float $amountUsd, string $walletAddress, int $phaseId): array
     {
