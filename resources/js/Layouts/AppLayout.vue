@@ -11,6 +11,7 @@ import NavBar from '@/Components/Navigation/NavBar.vue';
 import Sidebar from '@/Components/Navigation/Sidebar.vue';
 import TickerStrip from '@/Components/Trading/TickerStrip.vue';
 import WalletModal from '@/Components/Wallet/WalletModal.vue';
+import BannerAd from '@/Components/BannerAd.vue';
 import versionData from '../../../version.json';
 
 const props = defineProps({
@@ -66,6 +67,9 @@ onMounted(async () => {
 
         <!-- Ticker Strip -->
         <TickerStrip />
+
+        <!-- ป้ายโฆษณาด้านบนทุกหน้า (จัดการจาก Admin) -->
+        <BannerAd placement="all_pages_top" class="px-4 py-2" />
 
         <!-- Navigation Bar -->
         <NavBar

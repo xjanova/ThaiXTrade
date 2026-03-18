@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\SupportController;
+use App\Http\Controllers\Admin\BannerController;
 use App\Http\Controllers\Admin\SwapController;
 use App\Http\Controllers\Admin\TokenController;
 use App\Http\Controllers\Admin\TokenSaleController;
@@ -120,6 +121,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/', [TokenSaleController::class, 'store'])->name('store');
             Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
         });
+
+        // Banners — จัดการป้ายโฆษณา (Image, Google AdSense, HTML)
+        Route::resource('banners', BannerController::class)->except(['create', 'show', 'edit']);
+        Route::patch('banners/{banner}/toggle', [BannerController::class, 'toggleActive'])->name('banners.toggle');
 
         // Audit Logs (super_admin only)
         Route::get('audit-logs', [AuditLogController::class, 'index'])

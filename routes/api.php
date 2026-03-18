@@ -8,6 +8,7 @@
 use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\MarketController;
+use App\Http\Controllers\Api\BannerController as ApiBannerController;
 use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\SwapApiController;
 use App\Http\Controllers\Api\TokenSaleApiController;
@@ -45,6 +46,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/klines/{symbol}', [MarketController::class, 'klines']);
         Route::get('/pairs', [MarketController::class, 'pairs']);
     });
+
+    // Banners — ป้ายโฆษณา (public, cached)
+    Route::get('/banners', [ApiBannerController::class, 'index']);
+    Route::post('/banners/{banner}/click', [ApiBannerController::class, 'click']);
 
     // Chain Configuration
     Route::prefix('chains')->group(function () {

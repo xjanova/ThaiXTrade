@@ -10,6 +10,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { getCoinLogo } from '@/utils/cryptoLogos';
 import { useMarketData } from '@/Composables/useMarketData';
+import BannerAd from '@/Components/BannerAd.vue';
 import versionData from '../../../version.json';
 
 const { topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
@@ -333,6 +334,9 @@ onMounted(async () => {
                 </div>
             </div>
         </section>
+
+        <!-- ป้ายโฆษณาด้านล่าง Home -->
+        <BannerAd placement="home_bottom" class="py-4 max-w-6xl mx-auto" />
 
         <!-- CTA Section -->
         <section class="py-16">
