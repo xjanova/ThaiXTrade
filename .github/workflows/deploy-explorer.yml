@@ -42,10 +42,15 @@ jobs:
               rm -rf "$CHAIN/data"
               docker run --rm -v "$CHAIN/data:/data" $IMG secrets init --data-dir /data --insecure
 
+              # ดึง Node ID สำหรับ bootnode
+              NODE_ID=$(docker run --rm -v "$CHAIN/data:/data" $IMG secrets output --data-dir /data --insecure 2>&1 | grep "Node ID" | awk '{print $NF}')
+              echo "Node ID: $NODE_ID"
+
               echo "[3] Generating genesis.json..."
               docker run --rm -v "$CHAIN:/chain" $IMG genesis \
                 --consensus ibft \
                 --ibft-validators-prefix-path /chain \
+                --bootnode "/ip4/127.0.0.1/tcp/10001/p2p/$NODE_ID" \
                 --chain-id 7000 \
                 --block-gas-limit 20000000 \
                 --epoch-size 100000 \
