@@ -85,6 +85,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Languages & Translations
         Route::resource('languages', LanguageController::class)->except(['create', 'show', 'edit']);
+        Route::patch('languages/{language}/toggle', [LanguageController::class, 'toggleActive'])->name('languages.toggle');
         Route::patch('languages/{language}/default', [LanguageController::class, 'setDefault'])->name('languages.default');
         Route::get('languages/{language}/translations', [LanguageController::class, 'translations'])->name('languages.translations');
         Route::put('languages/{language}/translations', [LanguageController::class, 'updateTranslations'])->name('languages.translations.update');

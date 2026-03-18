@@ -74,6 +74,16 @@ class LanguageController extends Controller
     }
 
     /**
+     * Toggle language active/inactive.
+     */
+    public function toggleActive(Language $language): RedirectResponse
+    {
+        $language->update(['is_active' => ! $language->is_active]);
+
+        return back()->with('success', ($language->is_active ? 'เปิด' : 'ปิด') . "ภาษา {$language->name} สำเร็จ");
+    }
+
+    /**
      * Set a language as the default.
      *
      * Unsets the current default first, then applies the new one.
