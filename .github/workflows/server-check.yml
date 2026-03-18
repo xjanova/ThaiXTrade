@@ -6,7 +6,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Clean old chain data for fresh start
+      - name: Full chain diagnostics
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -15,17 +15,23 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 5m
           script: |
-            echo "=== Cleaning old chain data for fresh genesis ==="
-            CHAIN="$HOME/tpix-infrastructure/tpix-chain"
-
-            # Stop chain
-            docker compose -f "$CHAIN/docker-compose.yml" down 2>/dev/null || true
-            docker compose -f "$HOME/tpix-infrastructure/blockscout/docker-compose.yml" down 2>/dev/null || true
-
-            # Remove old data (docker creates as root)
-            docker run --rm -v "$CHAIN:/chain" alpine sh -c "rm -rf /chain/data /chain/genesis.json /chain/genesis-ready" 2>/dev/null || true
-
-            # Remove blockscout DB too
-            docker volume rm blockscout_blockscout-db-data 2>/dev/null || true
-
-            echo "✅ Old data cleaned. Run deploy-explorer workflow now."
+            echo "=== Containers ==="
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "tpix|blockscout|NAMES"
+            echo ""
+            echo "=== Block Number ==="
+            curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+            echo ""
+            echo "=== Validator Balance ==="
+            curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_getBalance","params":["0xF1CD82550E1145664a86f238AcC8AC67D0d68B4f","latest"],"id":1}'
+            echo ""
+            echo "=== Chain Node Logs ==="
+            docker logs tpix-chain-node --tail 10 2>&1
+            echo ""
+            echo "=== Blockscout Logs ==="
+            docker logs blockscout-backend --tail 20 2>&1
+            echo ""
+            echo "=== Blockscout API test ==="
+            curl -s "http://127.0.0.1:4000/api?module=block&action=eth_block_number" 2>/dev/null
+            echo ""
+            echo "=== Explorer HTTP ==="
+            curl -s -o /dev/null -w "HTTP %{http_code}" http://127.0.0.1:4000/blocks
