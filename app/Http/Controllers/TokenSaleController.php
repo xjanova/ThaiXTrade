@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\TokenSaleService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -57,13 +58,18 @@ class TokenSaleController extends Controller
      */
     public function downloadWhitepaper()
     {
-        // ลำดับที่ 1: ใช้ static PDF ถ้ามี
+        // ลำดับที่ 1: ใช้ static PDF ถ้ามี (เร็วที่สุด)
         $staticPath = public_path('whitepaper/TPIX-Whitepaper.pdf');
         if (file_exists($staticPath)) {
             return response()->download($staticPath, 'TPIX-Chain-Whitepaper.pdf');
         }
 
-        // ลำดับที่ 2: render Blade HTML → ผู้ใช้กด Ctrl+P เพื่อ Save as PDF
-        return view('whitepaper.pdf');
+        // ลำดับที่ 2: generate PDF ด้วย DomPDF จาก Blade template
+        $pdf = Pdf::loadView('whitepaper.pdf')
+            ->setPaper('a4')
+            ->setOption('isRemoteEnabled', true)
+            ->setOption('defaultFont', 'sans-serif');
+
+        return $pdf->download('TPIX-Chain-Whitepaper-v2.0.pdf');
     }
 }
