@@ -80,7 +80,7 @@ class LanguageController extends Controller
     {
         $language->update(['is_active' => ! $language->is_active]);
 
-        return back()->with('success', ($language->is_active ? 'เปิด' : 'ปิด') . "ภาษา {$language->name} สำเร็จ");
+        return back()->with('success', ($language->is_active ? 'เปิด' : 'ปิด')."ภาษา {$language->name} สำเร็จ");
     }
 
     /**

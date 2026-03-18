@@ -15,9 +15,11 @@ use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Middleware\VerifyWalletOwnership;
+use App\Models\SiteSetting;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 
 /*
 |--------------------------------------------------------------------------
@@ -39,9 +41,9 @@ Route::get('/', function () {
 Route::prefix('v1')->group(function () {
     // Site — logo จาก admin settings (ใช้ใน Explorer + ที่อื่น)
     Route::get('/site/logo', function () {
-        $logo = \App\Models\SiteSetting::get('general', 'logo');
-        if ($logo && \Illuminate\Support\Facades\Storage::disk('public')->exists($logo)) {
-            return response()->file(storage_path('app/public/' . $logo));
+        $logo = SiteSetting::get('general', 'logo');
+        if ($logo && Storage::disk('public')->exists($logo)) {
+            return response()->file(storage_path('app/public/'.$logo));
         }
 
         // Fallback: ใช้ logo.png ที่อยู่ใน public_html
