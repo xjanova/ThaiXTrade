@@ -1,0 +1,60 @@
+name: Server Check (Temporary)
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check server environment
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            echo "=== OS ==="
+            cat /etc/os-release | head -4
+            echo ""
+            echo "=== RAM ==="
+            free -h
+            echo ""
+            echo "=== CPU ==="
+            nproc
+            echo ""
+            echo "=== Disk ==="
+            df -h / /home 2>/dev/null | head -5
+            echo ""
+            echo "=== Docker ==="
+            docker --version 2>&1 || echo "Docker NOT installed"
+            docker compose version 2>&1 || docker-compose --version 2>&1 || echo "Docker Compose NOT installed"
+            echo ""
+            echo "=== Running Containers ==="
+            docker ps 2>&1 || echo "No docker access"
+            echo ""
+            echo "=== Ports in use (4000,5432,8545) ==="
+            ss -tlnp 2>/dev/null | grep -E '4000|5432|8545' || netstat -tlnp 2>/dev/null | grep -E '4000|5432|8545' || echo "No relevant ports in use"
+            echo ""
+            echo "=== Explorer Domain Path ==="
+            ls -la /domains/explorer.tpix.online/ 2>/dev/null || ls -la /home/admin/domains/explorer.tpix.online/ 2>/dev/null || echo "Path not found at expected locations"
+            echo ""
+            echo "=== All Domain Folders ==="
+            ls /home/admin/domains/ 2>/dev/null || ls /domains/ 2>/dev/null || echo "No domains dir found"
+            echo ""
+            echo "=== Web Server ==="
+            nginx -v 2>&1 || echo "No nginx"
+            apache2 -v 2>&1 || httpd -v 2>&1 || echo "No apache"
+            echo ""
+            echo "=== PHP ==="
+            php -v 2>&1 | head -1
+            echo ""
+            echo "=== Supervisor ==="
+            supervisorctl status 2>&1 || echo "No supervisor"
+            echo ""
+            echo "=== User & Groups ==="
+            whoami
+            id
+            echo ""
+            echo "=== systemctl available ==="
+            systemctl --version 2>&1 | head -1 || echo "No systemd"
