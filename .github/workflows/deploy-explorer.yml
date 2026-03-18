@@ -36,21 +36,42 @@ jobs:
               rm -rf "$CHAIN/genesis.json"
             fi
 
+            # --- Fix broken bootnode from previous run ---
+            if grep -q 'p2p/"' "$CHAIN/genesis.json" 2>/dev/null; then
+              echo "Broken bootnode detected, regenerating..."
+              rm -f "$CHAIN/genesis.json"
+              rm -rf "$CHAIN/data"
+            fi
+
             # --- Generate secrets + genesis if needed ---
             if [ ! -f "$CHAIN/genesis.json" ]; then
               echo "[2] Generating validator secrets..."
               rm -rf "$CHAIN/data"
               docker run --rm -v "$CHAIN/data:/data" $IMG secrets init --data-dir /data --insecure
 
-              # ดึง Node ID สำหรับ bootnode
-              NODE_ID=$(docker run --rm -v "$CHAIN/data:/data" $IMG secrets output --data-dir /data --insecure 2>&1 | grep "Node ID" | awk '{print $NF}')
-              echo "Node ID: $NODE_ID"
+              # ดึง Node ID สำหรับ bootnode (parse จาก libp2p key)
+              SECRETS_OUT=$(docker run --rm -v "$CHAIN/data:/data" $IMG secrets output --data-dir /data --insecure 2>&1)
+              echo "Secrets output:"
+              echo "$SECRETS_OUT"
+              NODE_ID=$(echo "$SECRETS_OUT" | grep -oP 'Node ID\s*=\s*\K\S+' || echo "")
+              if [ -z "$NODE_ID" ]; then
+                # ลอง format อื่น
+                NODE_ID=$(echo "$SECRETS_OUT" | grep "Node ID" | sed 's/.*= *//' | tr -d '[:space:]')
+              fi
+              echo "Parsed Node ID: [$NODE_ID]"
+              if [ -z "$NODE_ID" ]; then
+                echo "ERROR: Could not parse Node ID from secrets output!"
+                echo "Trying without bootnode..."
+                BOOTNODE_FLAG=""
+              else
+                BOOTNODE_FLAG="--bootnode /ip4/127.0.0.1/tcp/10001/p2p/$NODE_ID"
+              fi
 
               echo "[3] Generating genesis.json..."
               docker run --rm -v "$CHAIN:/chain" $IMG genesis \
                 --consensus ibft \
                 --ibft-validators-prefix-path /chain \
-                --bootnode "/ip4/127.0.0.1/tcp/10001/p2p/$NODE_ID" \
+                $BOOTNODE_FLAG \
                 --chain-id 7000 \
                 --block-gas-limit 20000000 \
                 --epoch-size 100000 \
