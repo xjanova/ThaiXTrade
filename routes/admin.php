@@ -40,10 +40,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('logout', [AuthController::class, 'logout'])->name('logout');
         Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
-        // Settings
+        // Settings — ทุก tab (general, seo, trading, security, social)
         Route::get('settings', [SettingController::class, 'index'])->name('settings.index');
         Route::put('settings', [SettingController::class, 'update'])->name('settings.update');
         Route::post('settings/logo', [SettingController::class, 'updateLogo'])->name('settings.logo');
+        Route::post('settings/general', [SettingController::class, 'updateGeneral'])->name('settings.general');
+        Route::post('settings/seo', [SettingController::class, 'updateSeo'])->name('settings.seo');
+        Route::put('settings/trading', [SettingController::class, 'updateTab'])->name('settings.trading');
+        Route::put('settings/security', [SettingController::class, 'updateTab'])->name('settings.security');
+        Route::put('settings/social', [SettingController::class, 'updateTab'])->name('settings.social');
 
         // Fees
         Route::resource('fees', FeeController::class)->except(['create', 'show', 'edit']);
