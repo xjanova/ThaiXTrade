@@ -145,7 +145,7 @@ class TokenSaleController extends Controller
             return [
                 'address' => $address,
                 'balance' => number_format($balanceTpix, 4, '.', ''),
-                'balance_formatted' => number_format($balanceTpix, 2) . ' TPIX',
+                'balance_formatted' => number_format($balanceTpix, 2).' TPIX',
                 'chain_id' => 7000,
                 'rpc_url' => $rpcUrl,
                 'status' => 'connected',

@@ -13,7 +13,6 @@ use App\Http\Controllers\Admin\AiController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\ChainController;
-use App\Http\Controllers\Admin\TokenSaleController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FeeController;
 use App\Http\Controllers\Admin\LanguageController;
@@ -23,10 +22,10 @@ use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\SupportController;
 use App\Http\Controllers\Admin\SwapController;
 use App\Http\Controllers\Admin\TokenController;
+use App\Http\Controllers\Admin\TokenSaleController;
 use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
 use Illuminate\Support\Facades\Route;
-
 
 // Admin Auth (public - no auth required)
 Route::prefix('admin')->name('admin.')->group(function () {

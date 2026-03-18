@@ -8,12 +8,13 @@
 use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\MarketController;
-use App\Http\Controllers\Api\SwapApiController;
 use App\Http\Controllers\Api\StripeWebhookController;
+use App\Http\Controllers\Api\SwapApiController;
 use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Middleware\VerifyWalletOwnership;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
@@ -81,7 +82,7 @@ Route::prefix('v1')->group(function () {
 
     // Stripe Webhook — รับ event จาก Stripe (ไม่ต้อง auth)
     Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])
-        ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
+        ->withoutMiddleware([VerifyCsrfToken::class]);
 });
 
 // Protected Routes (Wallet Ownership Verified)

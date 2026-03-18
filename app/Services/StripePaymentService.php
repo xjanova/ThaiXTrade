@@ -6,6 +6,7 @@ use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Stripe\Checkout\Session;
 use Stripe\Stripe;
 use Stripe\Webhook;
@@ -27,10 +28,10 @@ class StripePaymentService
     /**
      * สร้าง Stripe Checkout Session สำหรับซื้อ TPIX.
      *
-     * @param  float   $amountUsd     จำนวนเงิน USD ที่ต้องการจ่าย
-     * @param  string  $walletAddress wallet address ของผู้ซื้อ
-     * @param  int     $phaseId       ID ของ sale phase
-     * @return array   ['session_id' => string, 'url' => string]
+     * @param  float  $amountUsd     จำนวนเงิน USD ที่ต้องการจ่าย
+     * @param  string $walletAddress wallet address ของผู้ซื้อ
+     * @param  int    $phaseId       ID ของ sale phase
+     * @return array  ['session_id' => string, 'url' => string]
      */
     public function createCheckoutSession(float $amountUsd, string $walletAddress, int $phaseId): array
     {
@@ -43,15 +44,15 @@ class StripePaymentService
         // ตรวจสอบ allocation เหลือพอ
         $remaining = $phase->allocation - $phase->sold;
         if ($tpixAmount > $remaining) {
-            throw new \RuntimeException('Insufficient allocation remaining in this phase.');
+            throw new RuntimeException('Insufficient allocation remaining in this phase.');
         }
 
         // ตรวจสอบ min/max purchase
         if ($tpixAmount < $phase->min_purchase) {
-            throw new \RuntimeException("Minimum purchase is {$phase->min_purchase} TPIX.");
+            throw new RuntimeException("Minimum purchase is {$phase->min_purchase} TPIX.");
         }
         if ($phase->max_purchase > 0 && $tpixAmount > $phase->max_purchase) {
-            throw new \RuntimeException("Maximum purchase is {$phase->max_purchase} TPIX.");
+            throw new RuntimeException("Maximum purchase is {$phase->max_purchase} TPIX.");
         }
 
         // สร้าง Stripe Checkout Session
@@ -62,7 +63,7 @@ class StripePaymentService
                     'currency' => 'usd',
                     'product_data' => [
                         'name' => "TPIX Token - {$phase->name}",
-                        'description' => number_format($tpixAmount, 2) . ' TPIX @ $' . $phase->price_usd . '/token',
+                        'description' => number_format($tpixAmount, 2).' TPIX @ $'.$phase->price_usd.'/token',
                     ],
                     'unit_amount' => (int) round($amountUsd * 100), // Stripe ใช้ cents
                 ],
@@ -107,7 +108,7 @@ class StripePaymentService
             $amountPaid = $session->amount_total / 100; // cents → USD
 
             // ตรวจซ้ำ — ถ้า session ID นี้มีอยู่แล้ว ข้าม
-            $existing = SaleTransaction::where('tx_hash', 'stripe_' . $session->id)->first();
+            $existing = SaleTransaction::where('tx_hash', 'stripe_'.$session->id)->first();
             if ($existing) {
                 return ['status' => 'duplicate', 'transaction_id' => $existing->uuid];
             }
@@ -122,7 +123,7 @@ class StripePaymentService
                 'payment_usd_value' => $amountPaid,
                 'tpix_amount' => $tpixAmount,
                 'price_per_tpix' => $pricePerTpix,
-                'tx_hash' => 'stripe_' . $session->id,
+                'tx_hash' => 'stripe_'.$session->id,
                 'status' => 'confirmed',
                 'vesting_start_at' => now(),
             ]);

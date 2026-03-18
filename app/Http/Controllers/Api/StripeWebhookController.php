@@ -7,6 +7,7 @@ use App\Services\StripePaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Stripe\Exception\SignatureVerificationException;
 
 /**
  * StripeWebhookController — รับ Stripe webhook events.
@@ -33,7 +34,7 @@ class StripeWebhookController extends Controller
             $result = $this->stripe->handleWebhook($payload, $signature);
 
             return response()->json(['success' => true, 'data' => $result]);
-        } catch (\Stripe\Exception\SignatureVerificationException $e) {
+        } catch (SignatureVerificationException $e) {
             Log::warning('Stripe webhook signature verification failed', [
                 'error' => $e->getMessage(),
             ]);
@@ -42,7 +43,7 @@ class StripeWebhookController extends Controller
                 'success' => false,
                 'error' => ['code' => 'INVALID_SIGNATURE', 'message' => 'Webhook signature verification failed'],
             ], 400);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Stripe webhook processing error', [
                 'error' => $e->getMessage(),
             ]);
