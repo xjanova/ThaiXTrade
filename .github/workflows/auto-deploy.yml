@@ -123,8 +123,9 @@ jobs:
             # สร้างโฟลเดอร์ upload
             mkdir -p storage/app/public/logos storage/app/public/favicons storage/app/public/seo 2>/dev/null || true
 
-            # รัน seeders (สร้าง tokens + trading pairs ถ้ายังไม่มี)
-            php artisan db:seed --class=Database\\Seeders\\BaseTokensSeeder --force 2>&1 || echo "⚠️ BaseTokens seeder warning"
+            # รัน seeders ตามลำดับ: chains → tokens → trading pairs
+            php artisan db:seed --class=Database\\Seeders\\AllChainsSeeder --force 2>&1 || echo "⚠️ Chains seeder warning"
+            php artisan db:seed --class=Database\\Seeders\\BaseTokensSeeder --force 2>&1 || echo "⚠️ Tokens seeder warning"
             php artisan db:seed --class=Database\\Seeders\\TpixTradingPairSeeder --force 2>&1 || echo "⚠️ TpixPair seeder warning"
 
             # Fix permissions
