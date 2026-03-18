@@ -15,31 +15,16 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 5m
           script: |
-            echo "=== Server Resources ==="
-            echo "CPU: $(nproc) cores"
-            grep MemTotal /proc/meminfo
-            grep MemAvailable /proc/meminfo
-            uptime
-            df -h / | tail -1
+            echo "=== Apache modules ==="
+            apache2ctl -M 2>/dev/null | grep -i proxy || httpd -M 2>/dev/null | grep -i proxy || echo "Cannot check apache modules"
             echo ""
-            echo "=== Docker Memory Usage ==="
-            docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}" 2>/dev/null
+            echo "=== Explorer error log ==="
+            tail -10 ~/domains/explorer.tpix.online/logs/error.log 2>/dev/null || echo "No error log"
             echo ""
-            echo "=== Containers ==="
-            docker ps --format "table {{.Names}}\t{{.Status}}"
+            echo "=== Explorer .htaccess ==="
+            cat ~/domains/explorer.tpix.online/public_html/.htaccess 2>/dev/null
             echo ""
-            echo "=== Chain RPC ==="
-            curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
-            echo ""
-            echo "=== Blockscout Stats ==="
-            curl -s http://127.0.0.1:4000/api/v2/stats 2>/dev/null | python3 -m json.tool 2>/dev/null || curl -s http://127.0.0.1:4000/api/v2/stats
-            echo ""
-            echo "=== Explorer Response Time ==="
-            curl -s -o /dev/null -w "HTTP %{http_code} - Time: %{time_total}s" https://explorer.tpix.online/ 2>/dev/null
-            echo ""
-            echo "=== PHP proxy response time ==="
-            curl -s -o /dev/null -w "Direct backend: %{time_total}s" http://127.0.0.1:4000/ 2>/dev/null
-            echo ""
-            curl -s -o /dev/null -w "Direct frontend: %{time_total}s" http://127.0.0.1:3100/ 2>/dev/null
-            echo ""
-            curl -s -o /dev/null -w "Via PHP proxy: %{time_total}s" https://explorer.tpix.online/ 2>/dev/null
+            echo "=== Speed test ==="
+            curl -s -o /dev/null -w "Explorer HTTPS: %{time_total}s (HTTP %{http_code})\n" https://explorer.tpix.online/ 2>/dev/null
+            curl -s -o /dev/null -w "Direct frontend: %{time_total}s (HTTP %{http_code})\n" http://127.0.0.1:3100/ 2>/dev/null
+            curl -s -o /dev/null -w "Direct backend API: %{time_total}s (HTTP %{http_code})\n" http://127.0.0.1:4000/api/v2/stats 2>/dev/null
