@@ -28,6 +28,8 @@ jobs:
 
             # === Step 1: Stop running containers ===
             echo "[1] Stopping containers..."
+            docker compose -f "$INFRA/docker-compose.yml" down 2>/dev/null || true
+            # Legacy cleanup
             docker compose -f "$CHAIN/docker-compose.yml" down 2>/dev/null || true
             docker compose -f "$BSCOUT/docker-compose.yml" down 2>/dev/null || true
 
@@ -94,7 +96,8 @@ jobs:
 
             # === Step 4: Write docker-compose files ===
             echo "[4] Writing docker-compose..."
-            cat > "$CHAIN/docker-compose.yml" << 'DC1'
+            # ทุกอย่างรันใน network เดียวกัน เพื่อ container เข้าถึงกันได้
+            cat > "$INFRA/docker-compose.yml" << 'DCALL'
             services:
               tpix-node:
                 image: 0xpolygon/polygon-edge:0.9.0
@@ -105,14 +108,13 @@ jobs:
                   - "127.0.0.1:10000:10000"
                   - "127.0.0.1:10001:10001"
                 volumes:
-                  - ./data:/data
-                  - ./genesis.json:/genesis.json:ro
+                  - ./tpix-chain/data:/data
+                  - ./tpix-chain/genesis.json:/genesis.json:ro
                 command: server --data-dir /data --chain /genesis.json --grpc-address 0.0.0.0:10000 --libp2p 0.0.0.0:10001 --jsonrpc 0.0.0.0:8545 --seal --max-slots 4096 --block-gas-target 20000000 --price-limit 0
-            DC1
+                networks:
+                  - tpix
 
-            cat > "$BSCOUT/docker-compose.yml" << 'DC2'
-            services:
-              db:
+              blockscout-db:
                 image: postgres:16-alpine
                 container_name: blockscout-db
                 restart: unless-stopped
@@ -127,23 +129,26 @@ jobs:
                   interval: 10s
                   timeout: 5s
                   retries: 5
-              backend:
+                networks:
+                  - tpix
+
+              blockscout-backend:
                 image: blockscout/blockscout:5.4.0
                 container_name: blockscout-backend
                 restart: unless-stopped
                 depends_on:
-                  db:
+                  blockscout-db:
                     condition: service_healthy
-                extra_hosts:
-                  - "host.docker.internal:host-gateway"
+                  tpix-node:
+                    condition: service_started
                 command: sh -c "bin/blockscout eval 'Elixir.Explorer.ReleaseTasks.create_and_migrate()' && bin/blockscout start"
                 environment:
                   MIX_ENV: prod
-                  DATABASE_URL: postgresql://blockscout:tpix_explorer_db_2026@db:5432/blockscout
+                  DATABASE_URL: postgresql://blockscout:tpix_explorer_db_2026@blockscout-db:5432/blockscout
                   ETHEREUM_JSONRPC_VARIANT: geth
-                  ETHEREUM_JSONRPC_HTTP_URL: http://host.docker.internal:8545
-                  ETHEREUM_JSONRPC_WS_URL: ws://host.docker.internal:8545
-                  ETHEREUM_JSONRPC_TRACE_URL: http://host.docker.internal:8545
+                  ETHEREUM_JSONRPC_HTTP_URL: http://tpix-node:8545
+                  ETHEREUM_JSONRPC_WS_URL: ws://tpix-node:8545
+                  ETHEREUM_JSONRPC_TRACE_URL: http://tpix-node:8545
                   CHAIN_ID: "7000"
                   NETWORK: "TPIX Chain"
                   SUBNETWORK: "Mainnet"
@@ -161,22 +166,29 @@ jobs:
                   ACCOUNT_ENABLED: "false"
                   MICROSERVICE_SC_VERIFIER_ENABLED: "false"
                   MICROSERVICE_SC_VERIFIER_URL: ""
-                  INDEXER_MEMORY_LIMIT: "1g"
                   FETCH_REWARDS_WAY: "manual"
                   PORT: "4000"
                 ports:
                   - "4000:4000"
+                networks:
+                  - tpix
+
             volumes:
               blockscout-db-data:
-            DC2
+
+            networks:
+              tpix:
+                driver: bridge
+            DCALL
 
             # === Step 5: Clean blockscout DB for fresh index ===
             echo "[5] Resetting Blockscout DB..."
+            docker volume rm tpix-infrastructure_blockscout-db-data 2>/dev/null || true
             docker volume rm blockscout_blockscout-db-data 2>/dev/null || true
 
-            # === Step 6: Start chain ===
-            echo "[6] Starting TPIX Chain..."
-            cd "$CHAIN"
+            # === Step 6: Start ALL services (single compose) ===
+            echo "[6] Starting TPIX Chain + Blockscout..."
+            cd "$INFRA"
             docker compose up -d
             echo "Waiting 20s for chain to start sealing..."
             sleep 20
@@ -196,12 +208,9 @@ jobs:
             BAL=$(curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"${VALIDATOR_ADDR}\",\"latest\"],\"id\":1}" 2>/dev/null)
             echo "Validator balance: $BAL"
 
-            # === Step 7: Start Blockscout ===
-            echo "[7] Starting Blockscout..."
-            cd "$BSCOUT"
-            docker compose up -d
-            echo "Waiting 30s..."
-            sleep 30
+            # Wait for Blockscout to start indexing
+            echo "[7] Waiting 40s for Blockscout to index..."
+            sleep 40
 
             # === Step 8: Setup proxies ===
             echo "[8] Setting up proxies..."
