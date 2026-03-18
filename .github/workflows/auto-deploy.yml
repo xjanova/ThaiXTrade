@@ -111,7 +111,20 @@ jobs:
             php artisan event:cache 2>/dev/null || true
 
             # Storage symlink สำหรับ file uploads (logo, banners, etc.)
-            php artisan storage:link 2>/dev/null || true
+            # Laravel ใช้ public_html (ไม่ใช่ public) — สร้าง symlink ถูกที่
+            if [ ! -L "public_html/storage" ]; then
+              rm -rf public_html/storage 2>/dev/null || true
+              ln -sf "$(pwd)/storage/app/public" "$(pwd)/public_html/storage"
+              echo "✅ Created storage symlink: public_html/storage → storage/app/public"
+            else
+              echo "✅ Storage symlink exists"
+            fi
+
+            # สร้างโฟลเดอร์ upload
+            mkdir -p storage/app/public/logos storage/app/public/favicons storage/app/public/seo 2>/dev/null || true
+
+            # รัน TPIX/USDT seeder (ถ้ายังไม่มี)
+            php artisan db:seed --class=Database\\Seeders\\TpixTradingPairSeeder --force 2>&1 || echo "⚠️ Seeder warning"
 
             # Fix permissions
             chmod -R 775 storage bootstrap/cache 2>/dev/null || true
