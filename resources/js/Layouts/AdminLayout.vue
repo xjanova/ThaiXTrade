@@ -57,59 +57,60 @@ const navigationSections = [
     {
         title: null,
         items: [
-            { name: 'Dashboard', href: '/admin', icon: 'dashboard' },
+            { name: 'แดชบอร์ด', href: '/admin', icon: 'dashboard' },
         ],
     },
     {
-        title: 'Members',
+        title: 'สมาชิก',
         items: [
-            { name: 'Members', href: '/admin/members', icon: 'members' },
+            { name: 'จัดการสมาชิก', href: '/admin/members', icon: 'members' },
+            { name: 'จัดการ Wallet', href: '/admin/wallets', icon: 'wallet' },
         ],
     },
     {
-        title: 'Trading',
+        title: 'การเทรด',
         items: [
             { name: 'Chains', href: '/admin/chains', icon: 'chain' },
             { name: 'Tokens', href: '/admin/tokens', icon: 'token' },
-            { name: 'Trading Pairs', href: '/admin/trading-pairs', icon: 'pair' },
+            { name: 'คู่เทรด', href: '/admin/trading-pairs', icon: 'pair' },
         ],
     },
     {
-        title: 'Finance',
+        title: 'การเงิน',
         items: [
-            { name: 'Fees', href: '/admin/fees', icon: 'fee' },
-            { name: 'Transactions', href: '/admin/transactions', icon: 'transaction' },
+            { name: 'ค่าธรรมเนียม', href: '/admin/fees', icon: 'fee' },
+            { name: 'ธุรกรรม', href: '/admin/transactions', icon: 'transaction' },
             { name: 'Swap', href: '/admin/swap', icon: 'swap' },
         ],
     },
     {
         title: 'TPIX Ecosystem',
         items: [
-            { name: 'Token Sales', href: '/admin/token-sales', icon: 'tokensale' },
+            { name: 'ขายเหรียญ (ICO)', href: '/admin/token-sales', icon: 'tokensale' },
             { name: 'Whitepaper', href: '/whitepaper', icon: 'whitepaper', external: true },
             { name: 'Explorer', href: '/explorer', icon: 'explorer', external: true },
         ],
     },
     {
-        title: 'Content',
+        title: 'เนื้อหา',
         items: [
-            { name: 'Settings', href: '/admin/settings', icon: 'settings' },
-            { name: 'Languages', href: '/admin/languages', icon: 'language' },
-            { name: 'Banners', href: '/admin/banners', icon: 'banner' },
+            { name: 'ตั้งค่าเว็บ', href: '/admin/settings', icon: 'settings' },
+            { name: 'ภาษา', href: '/admin/languages', icon: 'language' },
+            { name: 'แบนเนอร์', href: '/admin/banners', icon: 'banner' },
         ],
     },
     {
-        title: 'Support',
+        title: 'ซัพพอร์ต',
         items: [
-            { name: 'Tickets', href: '/admin/support', icon: 'ticket' },
+            { name: 'ตั๋วแจ้งปัญหา', href: '/admin/support', icon: 'ticket' },
             { name: 'Audit Logs', href: '/admin/audit-logs', icon: 'audit' },
         ],
     },
     {
-        title: 'System',
+        title: 'ระบบ',
         items: [
-            { name: 'Users', href: '/admin/users', icon: 'users' },
-            { name: 'Notifications', href: '/admin/notifications', icon: 'notification' },
+            { name: 'ผู้ดูแลระบบ', href: '/admin/users', icon: 'users' },
+            { name: 'การแจ้งเตือน', href: '/admin/notifications', icon: 'notification' },
         ],
     },
 ];
@@ -193,6 +194,10 @@ const handleLogout = () => {
                             <!-- Members -->
                             <svg v-else-if="item.icon === 'members'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                            </svg>
+                            <!-- Wallet -->
+                            <svg v-else-if="item.icon === 'wallet'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                             </svg>
                             <!-- Chain -->
                             <svg v-else-if="item.icon === 'chain'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -110,6 +110,9 @@ jobs:
             php artisan view:cache
             php artisan event:cache 2>/dev/null || true
 
+            # Storage symlink สำหรับ file uploads (logo, banners, etc.)
+            php artisan storage:link 2>/dev/null || true
+
             # Fix permissions
             chmod -R 775 storage bootstrap/cache 2>/dev/null || true
 

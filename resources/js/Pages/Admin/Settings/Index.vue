@@ -6,8 +6,11 @@
  */
 
 import { ref, computed } from 'vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+
+// Flash message จาก backend
+const flash = computed(() => usePage().props.flash || {});
 
 const props = defineProps({
     settings: {
@@ -54,10 +57,15 @@ const handleFaviconChange = (e) => {
     }
 };
 
+const showSuccess = ref(false);
 const saveGeneral = () => {
     generalForm.post('/admin/settings/general', {
         preserveScroll: true,
         forceFormData: true,
+        onSuccess: () => {
+            showSuccess.value = true;
+            setTimeout(() => showSuccess.value = false, 3000);
+        },
     });
 };
 
@@ -146,6 +154,10 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
         <!-- General Tab -->
         <div v-show="activeTab === 'general'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+            <!-- Success notification -->
+            <div v-if="showSuccess" class="mb-4 p-3 rounded-xl bg-trading-green/10 border border-trading-green/30 text-trading-green text-sm">
+                บันทึกสำเร็จ!
+            </div>
             <h3 class="text-lg font-semibold text-white mb-6">General Settings</h3>
             <form @submit.prevent="saveGeneral" class="space-y-6 max-w-2xl">
                 <div>

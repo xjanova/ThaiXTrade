@@ -128,6 +128,18 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
         });
 
+        // Wallets — ภาพรวม wallet ทั้งระบบ
+        Route::get('wallets', function () {
+            $service = app(\App\Services\UserWalletService::class);
+            $stats = $service->getStats();
+            $recent = \App\Models\WalletConnection::orderByDesc('connected_at')->limit(20)->get();
+
+            return \Inertia\Inertia::render('Admin/Wallets/Index', [
+                'stats' => $stats,
+                'recentConnections' => $recent,
+            ]);
+        })->name('wallets.index');
+
         // Members — จัดการสมาชิก (Traders)
         Route::prefix('members')->name('members.')->group(function () {
             Route::get('/', [MemberController::class, 'index'])->name('index');
