@@ -1,0 +1,37 @@
+name: Server Check
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug chain and explorer
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 5m
+          script: |
+            echo "=== Containers ==="
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            echo ""
+            echo "=== Chain logs (last 30) ==="
+            docker logs tpix-chain-node --tail 30 2>&1
+            echo ""
+            echo "=== RPC eth_blockNumber ==="
+            curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+            echo ""
+            echo "=== RPC net_peerCount ==="
+            curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}'
+            echo ""
+            echo "=== RPC eth_getBalance (validator) ==="
+            curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_getBalance","params":["0xf9fF7E78D032377F395E0fa5007E701f13D05e9e","latest"],"id":1}'
+            echo ""
+            echo "=== Genesis check ==="
+            cat ~/tpix-infrastructure/tpix-chain/genesis.json | python3 -c "import sys,json; g=json.load(sys.stdin); print('chainID:',g.get('params',{}).get('chainID')); print('validators:',len(g.get('genesis',{}).get('validators',g.get('validators',[])))); print('alloc keys:', list(g.get('genesis',{}).get('alloc',g.get('alloc',{})).keys())[:3])" 2>&1 || echo "parse error"
+            echo ""
+            echo "=== Blockscout logs (last 15) ==="
+            docker logs blockscout-backend --tail 15 2>&1
