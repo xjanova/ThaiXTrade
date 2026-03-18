@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\TokenController;
 use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 // Admin Auth (public - no auth required)
 Route::prefix('admin')->name('admin.')->group(function () {
@@ -115,7 +116,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Token Sales — จัดการรอบขายเหรียญ TPIX (ICO/IDO)
         Route::get('token-sales', function () {
-            return \Inertia\Inertia::render('Admin/TokenSales/Index');
+            return Inertia::render('Admin/TokenSales/Index');
         })->name('token-sales.index');
 
         // Audit Logs (super_admin only)
