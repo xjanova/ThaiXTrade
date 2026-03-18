@@ -188,61 +188,138 @@ jobs:
             # --- Proxy setup ---
             echo "[7] Setting up proxy..."
             mkdir -p "$EXPLORER/public_html"
-            # ลองตั้ง Apache proxy — ถ้า mod_proxy ไม่มี จะ fallback เป็น PHP proxy
+            # === Explorer: PHP reverse proxy (Apache ไม่มี mod_proxy) ===
             cat > "$EXPLORER/public_html/.htaccess" << 'HA'
             RewriteEngine On
-            # ถ้า mod_proxy มี — proxy ไปที่ Blockscout
-            <IfModule mod_proxy.c>
-              RewriteCond %{HTTP:Upgrade} websocket [NC]
-              RewriteRule /(.*) ws://127.0.0.1:4000/$1 [P,L]
-              RewriteRule ^(.*)$ http://127.0.0.1:4000/$1 [P,L]
-            </IfModule>
-            # ถ้า mod_proxy ไม่มี — ส่ง request ไปที่ PHP proxy
-            <IfModule !mod_proxy.c>
-              RewriteCond %{REQUEST_FILENAME} !-f
-              RewriteRule ^(.*)$ proxy.php [L,QSA]
-            </IfModule>
+            RewriteCond %{REQUEST_FILENAME} !-f
+            RewriteCond %{REQUEST_FILENAME} !-d
+            RewriteRule ^(.*)$ index.php [L,QSA]
             HA
 
-            # PHP-based proxy fallback (กรณี Apache ไม่มี mod_proxy)
-            cat > "$EXPLORER/public_html/proxy.php" << 'PHP'
+            cat > "$EXPLORER/public_html/index.php" << 'PROXY'
             <?php
-            $url = 'http://127.0.0.1:4000' . $_SERVER['REQUEST_URI'];
+            // TPIX Chain Explorer — PHP Reverse Proxy to Blockscout
+            // เนื่องจาก Apache ไม่มี mod_proxy จึงใช้ PHP proxy แทน
+            $target = 'http://127.0.0.1:4000';
+            $path = $_SERVER['REQUEST_URI'] ?? '/';
+            $url = $target . $path;
+
             $ch = curl_init($url);
-            $headers = [];
+            $reqHeaders = [];
             foreach (getallheaders() as $k => $v) {
-                if (strtolower($k) !== 'host') $headers[] = "$k: $v";
+                $lower = strtolower($k);
+                if ($lower !== 'host' && $lower !== 'connection') {
+                    $reqHeaders[] = "$k: $v";
+                }
             }
+            $reqHeaders[] = 'Host: 127.0.0.1:4000';
+
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_HEADER => true,
-                CURLOPT_HTTPHEADER => $headers,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_TIMEOUT => 30,
+                CURLOPT_HEADER         => true,
+                CURLOPT_HTTPHEADER     => $reqHeaders,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_TIMEOUT        => 30,
+                CURLOPT_ENCODING       => '',
             ]);
-            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+            $method = $_SERVER['REQUEST_METHOD'];
+            if ($method === 'POST') {
                 curl_setopt($ch, CURLOPT_POST, true);
                 curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents('php://input'));
+            } elseif ($method !== 'GET') {
+                curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+                if (in_array($method, ['PUT', 'PATCH'])) {
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents('php://input'));
+                }
             }
+
             $response = curl_exec($ch);
+            if ($response === false) {
+                http_response_code(502);
+                echo '<h1>TPIX Explorer - Service Starting</h1><p>Blockscout is initializing... Please refresh in a moment.</p>';
+                exit;
+            }
+
             $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $respHeaders = substr($response, 0, $headerSize);
-            $body = substr($response, $headerSize);
+            $httpCode   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $headers    = substr($response, 0, $headerSize);
+            $body       = substr($response, $headerSize);
             curl_close($ch);
+
             http_response_code($httpCode);
-            foreach (explode("\r\n", $respHeaders) as $h) {
-                if (stripos($h, 'content-type:') === 0 || stripos($h, 'content-length:') === 0) {
-                    header($h);
+            foreach (explode("\r\n", $headers) as $line) {
+                $lower = strtolower($line);
+                if (strpos($lower, 'content-type:') === 0 ||
+                    strpos($lower, 'cache-control:') === 0 ||
+                    strpos($lower, 'etag:') === 0 ||
+                    strpos($lower, 'location:') === 0 ||
+                    strpos($lower, 'set-cookie:') === 0 ||
+                    strpos($lower, 'x-request-id:') === 0) {
+                    header($line);
                 }
             }
             echo $body;
-            PHP
+            PROXY
 
-            # Fallback landing page
-            cat > "$EXPLORER/public_html/index.html" << 'HTML'
-            <!DOCTYPE html><html><head><meta charset="UTF-8"><title>TPIX Explorer</title><meta http-equiv="refresh" content="3;url=/proxy.php"><style>body{font-family:sans-serif;background:#1a1a2e;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.c{text-align:center}.s{width:50px;height:50px;border:4px solid rgba(255,255,255,.1);border-top:4px solid #06b6d4;border-radius:50%;animation:r 1s linear infinite;margin:0 auto 20px}@keyframes r{to{transform:rotate(360deg)}}</style></head><body><div class="c"><div class="s"></div><h2>TPIX Chain Explorer</h2><p>Loading Blockscout...</p></div></body></html>
-            HTML
+            # === RPC Proxy: สร้างที่ rpc.tpix.online ===
+            RPC_DIR="$HOME/domains/rpc.tpix.online"
+            if [ -d "$RPC_DIR" ]; then
+              echo "[7b] Setting up RPC proxy at rpc.tpix.online..."
+              mkdir -p "$RPC_DIR/public_html"
+
+              cat > "$RPC_DIR/public_html/.htaccess" << 'HA2'
+            RewriteEngine On
+            RewriteCond %{REQUEST_FILENAME} !-f
+            RewriteRule ^(.*)$ index.php [L,QSA]
+            HA2
+
+              cat > "$RPC_DIR/public_html/index.php" << 'RPCPROXY'
+            <?php
+            // TPIX Chain RPC — PHP Reverse Proxy to Polygon Edge JSON-RPC
+            header('Access-Control-Allow-Origin: *');
+            header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+            header('Access-Control-Allow-Headers: Content-Type');
+
+            if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+                http_response_code(204);
+                exit;
+            }
+
+            $target = 'http://127.0.0.1:8545';
+            $ch = curl_init($target);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 30,
+                CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+            ]);
+
+            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                $input = file_get_contents('php://input');
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $input);
+            }
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($response === false) {
+                http_response_code(502);
+                header('Content-Type: application/json');
+                echo json_encode(['jsonrpc' => '2.0', 'error' => ['code' => -32000, 'message' => 'RPC node unavailable'], 'id' => null]);
+                exit;
+            }
+
+            http_response_code($httpCode);
+            header('Content-Type: application/json');
+            echo $response;
+            RPCPROXY
+
+              echo "✅ RPC proxy ready at rpc.tpix.online"
+            else
+              echo "⚠️ rpc.tpix.online domain dir not found — skip RPC proxy setup"
+            fi
 
             # --- Status ---
             echo ""
