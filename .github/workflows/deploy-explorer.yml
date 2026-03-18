@@ -1,0 +1,301 @@
+name: Deploy TPIX Chain + Explorer
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy TPIX Chain & Blockscout Explorer
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 15m
+          script: |
+            set -e
+            echo "=========================================="
+            echo "  TPIX Chain + Blockscout Explorer Deploy"
+            echo "=========================================="
+
+            # === Step 1: Fix Docker permissions ===
+            echo "[1/7] Fixing Docker permissions..."
+            if ! docker ps > /dev/null 2>&1; then
+              echo "Adding user to docker group..."
+              sudo usermod -aG docker $(whoami)
+              # Use sg to run remaining commands with docker group
+              echo "Docker group added. Using sg for this session."
+            fi
+
+            # Run everything in docker group context
+            sg docker -c '
+            set -e
+
+            INFRA_DIR="/home/admin/tpix-infrastructure"
+            EXPLORER_DOMAIN_DIR="/home/admin/domains/explorer.tpix.online"
+
+            # === Step 2: Create infrastructure directory ===
+            echo "[2/7] Setting up infrastructure directory..."
+            mkdir -p "$INFRA_DIR/tpix-chain"
+            mkdir -p "$INFRA_DIR/blockscout"
+
+            # === Step 3: Create TPIX Chain genesis.json ===
+            echo "[3/7] Creating TPIX Chain genesis config..."
+            cat > "$INFRA_DIR/tpix-chain/genesis.json" << '\''GENESIS'\''
+            {
+              "name": "tpix-chain",
+              "genesis": {
+                "nonce": "0x0000000000000000",
+                "timestamp": "0x0",
+                "gasLimit": "0x1312D00",
+                "difficulty": "0x1",
+                "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                "coinbase": "0x0000000000000000000000000000000000000000"
+              },
+              "params": {
+                "chainID": 7000,
+                "engine": {
+                  "ibft": {
+                    "epochSize": 100000,
+                    "blockTime": 2
+                  }
+                },
+                "forks": {
+                  "homestead": 0,
+                  "byzantium": 0,
+                  "constantinople": 0,
+                  "petersburg": 0,
+                  "istanbul": 0,
+                  "EIP150": 0,
+                  "EIP158": 0,
+                  "EIP155": 0
+                },
+                "blockGasTarget": 20000000
+              },
+              "bootnodes": []
+            }
+            GENESIS
+
+            # === Step 4: Create TPIX Chain docker-compose ===
+            echo "[4/7] Creating TPIX Chain docker-compose..."
+            cat > "$INFRA_DIR/tpix-chain/docker-compose.yml" << '\''CHAINDC'\''
+            services:
+              tpix-node:
+                image: 0xpolygon/polygon-edge:1.3.3
+                container_name: tpix-chain-node
+                restart: unless-stopped
+                ports:
+                  - "127.0.0.1:8545:8545"
+                  - "127.0.0.1:8546:8546"
+                  - "127.0.0.1:10000:10000"
+                  - "127.0.0.1:10001:10001"
+                volumes:
+                  - tpix-chain-data:/data
+                  - ./genesis.json:/genesis.json:ro
+                command: >
+                  server
+                  --data-dir /data
+                  --chain /genesis.json
+                  --grpc-address 0.0.0.0:10000
+                  --libp2p 0.0.0.0:10001
+                  --jsonrpc 0.0.0.0:8545
+                  --seal
+                  --max-slots 4096
+                  --block-gas-target 20000000
+                  --price-limit 0
+                networks:
+                  - tpix-network
+
+            volumes:
+              tpix-chain-data:
+
+            networks:
+              tpix-network:
+                driver: bridge
+            CHAINDC
+
+            # === Step 5: Create Blockscout docker-compose ===
+            echo "[5/7] Creating Blockscout docker-compose..."
+            cat > "$INFRA_DIR/blockscout/docker-compose.yml" << '\''BSCOUTDC'\''
+            services:
+              db:
+                image: postgres:16-alpine
+                container_name: blockscout-db
+                restart: unless-stopped
+                environment:
+                  POSTGRES_DB: blockscout
+                  POSTGRES_USER: blockscout
+                  POSTGRES_PASSWORD: tpix_explorer_db_2026
+                volumes:
+                  - blockscout-db-data:/var/lib/postgresql/data
+                ports:
+                  - "127.0.0.1:5432:5432"
+                networks:
+                  - blockscout-network
+                healthcheck:
+                  test: ["CMD-SHELL", "pg_isready -U blockscout"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 5
+
+              backend:
+                image: blockscout/blockscout:latest
+                container_name: blockscout-backend
+                restart: unless-stopped
+                depends_on:
+                  db:
+                    condition: service_healthy
+                extra_hosts:
+                  - "host.docker.internal:host-gateway"
+                environment:
+                  DATABASE_URL: postgresql://blockscout:tpix_explorer_db_2026@db:5432/blockscout
+                  ETHEREUM_JSONRPC_VARIANT: geth
+                  ETHEREUM_JSONRPC_HTTP_URL: http://host.docker.internal:8545
+                  ETHEREUM_JSONRPC_WS_URL: ws://host.docker.internal:8545
+                  ETHEREUM_JSONRPC_TRACE_URL: http://host.docker.internal:8545
+                  CHAIN_ID: "7000"
+                  NETWORK: "TPIX Chain"
+                  SUBNETWORK: "Mainnet"
+                  COIN: "TPIX"
+                  COIN_NAME: "Thaiprompt Index"
+                  LOGO: /images/tpix-logo.png
+                  LOGO_FOOTER: /images/tpix-logo.png
+                  SUPPORTED_CHAINS: "[]"
+                  BLOCK_TRANSFORMER: base
+                  INDEXER_DISABLE_INTERNAL_TRANSACTIONS_FETCHER: "true"
+                  INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: "true"
+                  ECTO_USE_SSL: "false"
+                  SECRET_KEY_BASE: "p3s6rELz5Kv5xN7mF9dGq8bJwY2cT4hA0uW1iO3nP6vS8eR2tY4"
+                  API_V2_ENABLED: "true"
+                  API_RATE_LIMIT: "50"
+                  DISABLE_EXCHANGE_RATES: "true"
+                  SHOW_TXS_CHART: "true"
+                  APPS_MENU: "true"
+                  EXTERNAL_APPS: "[]"
+                  ENABLE_TXS_STATS: "true"
+                  SHOW_PRICE_CHART: "false"
+                  GAS_PRICE_ORACLE_NUM_OF_BLOCKS: "200"
+                  GAS_PRICE_ORACLE_SAFELOW_PERCENTILE: "35"
+                  GAS_PRICE_ORACLE_AVERAGE_PERCENTILE: "60"
+                  GAS_PRICE_ORACLE_FAST_PERCENTILE: "90"
+                  POOL_SIZE: "40"
+                  POOL_SIZE_API: "10"
+                  ACCOUNT_ENABLED: "false"
+                  FETCH_REWARDS_WAY: "manual"
+                  MICROSERVICE_SC_VERIFIER_ENABLED: "false"
+                  PORT: "4000"
+                ports:
+                  - "127.0.0.1:4000:4000"
+                networks:
+                  - blockscout-network
+
+            volumes:
+              blockscout-db-data:
+
+            networks:
+              blockscout-network:
+                driver: bridge
+            BSCOUTDC
+
+            # === Step 6: Start services ===
+            echo "[6/7] Starting TPIX Chain..."
+            cd "$INFRA_DIR/tpix-chain"
+            docker compose down 2>/dev/null || true
+            docker compose up -d
+
+            echo "Waiting 10s for chain to initialize..."
+            sleep 10
+
+            # Verify chain is running
+            if curl -s -X POST http://127.0.0.1:8545 \
+              -H "Content-Type: application/json" \
+              -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}" | grep -q "0x1b58"; then
+              echo "✅ TPIX Chain is running! Chain ID: 7000 (0x1b58)"
+            else
+              echo "⚠️ Chain RPC not responding yet (may need more time to init)"
+              echo "RPC Response:"
+              curl -s -X POST http://127.0.0.1:8545 \
+                -H "Content-Type: application/json" \
+                -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}" || echo "No response"
+            fi
+
+            echo ""
+            echo "Starting Blockscout Explorer..."
+            cd "$INFRA_DIR/blockscout"
+            docker compose down 2>/dev/null || true
+            docker compose up -d
+
+            echo "Waiting 15s for Blockscout to start..."
+            sleep 15
+
+            # === Step 7: Configure Apache reverse proxy ===
+            echo "[7/7] Configuring reverse proxy..."
+
+            # Create .htaccess for reverse proxy
+            cat > "$EXPLORER_DOMAIN_DIR/public_html/.htaccess" << '\''HTACCESS'\''
+            RewriteEngine On
+            RewriteCond %{HTTP:Upgrade} websocket [NC]
+            RewriteRule /(.*) ws://127.0.0.1:4000/$1 [P,L]
+            RewriteRule ^(.*)$ http://127.0.0.1:4000/$1 [P,L]
+            HTACCESS
+
+            # Create a simple index.html fallback
+            cat > "$EXPLORER_DOMAIN_DIR/public_html/index.html" << '\''HTML'\''
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <title>TPIX Chain Explorer</title>
+              <meta http-equiv="refresh" content="5">
+              <style>
+                body { font-family: sans-serif; background: #1a1a2e; color: white; display: flex;
+                       justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                .loader { text-align: center; }
+                .spinner { width: 50px; height: 50px; border: 4px solid rgba(255,255,255,0.1);
+                           border-top: 4px solid #06b6d4; border-radius: 50%;
+                           animation: spin 1s linear infinite; margin: 0 auto 20px; }
+                @keyframes spin { to { transform: rotate(360deg); } }
+              </style>
+            </head>
+            <body>
+              <div class="loader">
+                <div class="spinner"></div>
+                <h2>TPIX Chain Explorer</h2>
+                <p>Starting up... This page will refresh automatically.</p>
+                <p style="color:#9ca3af;font-size:14px;">If this page persists, Blockscout may still be initializing.</p>
+              </div>
+            </body>
+            </html>
+            HTML
+
+            echo ""
+            echo "=========================================="
+            echo "  Checking service status..."
+            echo "=========================================="
+            echo ""
+            echo "--- Docker Containers ---"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            echo ""
+
+            # Check Blockscout health
+            echo "--- Blockscout Health ---"
+            BSTATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000 2>/dev/null || echo "000")
+            echo "Blockscout HTTP status: $BSTATUS"
+            if [ "$BSTATUS" = "200" ] || [ "$BSTATUS" = "302" ]; then
+              echo "✅ Blockscout is UP!"
+            else
+              echo "⏳ Blockscout is still starting (this is normal, takes 1-3 minutes)"
+            fi
+
+            echo ""
+            echo "=========================================="
+            echo "  DEPLOYMENT SUMMARY"
+            echo "=========================================="
+            echo "  TPIX Chain RPC:  http://127.0.0.1:8545"
+            echo "  Blockscout:      http://127.0.0.1:4000"
+            echo "  Explorer URL:    https://explorer.tpix.online"
+            echo "  Infrastructure:  $INFRA_DIR"
+            echo "=========================================="
+            '
