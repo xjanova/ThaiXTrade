@@ -213,6 +213,13 @@ jobs:
             // เนื่องจาก Apache ไม่มี mod_proxy จึงใช้ PHP proxy แทน
             $target = 'http://127.0.0.1:4000';
             $path = $_SERVER['REQUEST_URI'] ?? '/';
+
+            // Root path → redirect ไปที่ /blocks (Blockscout v5 ไม่มี homepage)
+            if ($path === '/' || $path === '' || $path === '/index.php') {
+                header('Location: /blocks');
+                exit;
+            }
+
             $url = $target . $path;
 
             $ch = curl_init($url);
