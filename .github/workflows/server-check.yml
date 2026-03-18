@@ -6,7 +6,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Diagnose storage + logo
+      - name: Diagnose DB + storage
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -17,29 +17,30 @@ jobs:
           script: |
             cd ~/domains/tpix.online
 
-            echo "=== Storage symlink ==="
-            ls -la public_html/storage 2>/dev/null || echo "NO SYMLINK"
+            echo "=== Chains in DB ==="
+            php artisan tinker --execute="
+              \$chains = App\Models\Chain::all();
+              echo 'Total: ' . \$chains->count() . ' chains\n';
+              foreach(\$chains as \$c) echo \$c->id . ' | ' . \$c->name . ' | ' . \$c->symbol . ' | ' . \$c->chain_id_hex . ' | active=' . \$c->is_active . '\n';
+            " 2>/dev/null || echo "Cannot check chains"
 
             echo ""
-            echo "=== Storage dirs ==="
-            ls -la storage/app/public/ 2>/dev/null || echo "NO storage/app/public"
+            echo "=== Tokens in DB ==="
+            php artisan tinker --execute="
+              \$tokens = App\Models\Token::with('chain')->get();
+              echo 'Total: ' . \$tokens->count() . ' tokens\n';
+              foreach(\$tokens as \$t) echo \$t->id . ' | ' . \$t->symbol . ' | ' . \$t->name . ' | chain=' . (\$t->chain?->name ?? 'N/A') . ' | active=' . \$t->is_active . '\n';
+            " 2>/dev/null || echo "Cannot check tokens"
 
             echo ""
-            echo "=== Logo files ==="
-            ls -la storage/app/public/logos/ 2>/dev/null || echo "NO logos dir"
+            echo "=== Trading Pairs ==="
+            php artisan tinker --execute="
+              \$pairs = App\Models\TradingPair::with(['baseToken','quoteToken','chain'])->get();
+              echo 'Total: ' . \$pairs->count() . ' pairs\n';
+              foreach(\$pairs as \$p) echo \$p->symbol . ' | ' . (\$p->baseToken?->symbol ?? '?') . '/' . (\$p->quoteToken?->symbol ?? '?') . ' | chain=' . (\$p->chain?->name ?? '?') . '\n';
+            " 2>/dev/null || echo "Cannot check"
 
             echo ""
-            echo "=== site_settings logo ==="
-            php artisan tinker --execute="echo App\Models\SiteSetting::where('key','logo')->first()?->value ?? 'NULL';" 2>/dev/null || echo "Cannot run tinker"
-
-            echo ""
-            echo "=== PHP writable test ==="
-            php -r "echo is_writable('storage/app/public') ? 'WRITABLE' : 'NOT WRITABLE';"
-
-            echo ""
-            echo "=== Seeder test ==="
-            php artisan db:seed --class=Database\\Seeders\\TpixTradingPairSeeder --force 2>&1 || echo "Seeder failed"
-
-            echo ""
-            echo "=== Trading pairs ==="
-            php artisan tinker --execute="echo App\Models\TradingPair::count() . ' pairs; TPIX: ' . (App\Models\TradingPair::where('symbol','TPIX-USDT')->exists() ? 'YES' : 'NO');" 2>/dev/null || echo "Cannot check"
+            echo "=== Storage ==="
+            ls -la public_html/storage 2>/dev/null | head -3
+            ls storage/app/public/logos/ 2>/dev/null || echo "No logos"
