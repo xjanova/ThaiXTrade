@@ -140,10 +140,11 @@ jobs:
                 depends_on:
                   - blockscout-backend
                 environment:
-                  NEXT_PUBLIC_API_HOST: blockscout-backend
-                  NEXT_PUBLIC_API_PORT: "4000"
-                  NEXT_PUBLIC_API_PROTOCOL: http
-                  NEXT_PUBLIC_API_WEBSOCKET_PROTOCOL: ws
+                  NEXT_PUBLIC_API_HOST: explorer.tpix.online
+                  NEXT_PUBLIC_API_PORT: "443"
+                  NEXT_PUBLIC_API_PROTOCOL: https
+                  NEXT_PUBLIC_API_WEBSOCKET_PROTOCOL: wss
+                  NEXT_PUBLIC_API_BASE_PATH: /
                   NEXT_PUBLIC_NETWORK_NAME: "TPIX Chain"
                   NEXT_PUBLIC_NETWORK_SHORT_NAME: "TPIX"
                   NEXT_PUBLIC_NETWORK_ID: "4289"
@@ -154,7 +155,6 @@ jobs:
                   NEXT_PUBLIC_IS_TESTNET: "false"
                   NEXT_PUBLIC_NETWORK_LOGO: "https://tpix.online/logo.png"
                   NEXT_PUBLIC_NETWORK_ICON: "https://tpix.online/logo.png"
-                  NEXT_PUBLIC_API_BASE_PATH: "/"
                 ports:
                   - "127.0.0.1:3100:3000"
                 networks:
@@ -175,8 +175,11 @@ jobs:
                   DATABASE_URL: postgresql://blockscout:tpix_explorer_db_2026@blockscout-db:5432/blockscout
                   ETHEREUM_JSONRPC_VARIANT: geth
                   ETHEREUM_JSONRPC_HTTP_URL: http://tpix-node:8545
+                  ETHEREUM_JSONRPC_WS_URL: ws://tpix-node:8545/ws
                   ETHEREUM_JSONRPC_TRACE_URL: http://tpix-node:8545
                   ETHEREUM_JSONRPC_HTTP_TIMEOUT: "30"
+                  ETHEREUM_JSONRPC_FALLBACK_HTTP_URL: http://tpix-node:8545
+                  ETHEREUM_JSONRPC_FALLBACK_TRACE_URL: http://tpix-node:8545
                   CHAIN_ID: "4289"
                   NETWORK: "TPIX Chain"
                   SUBNETWORK: "Mainnet"
@@ -217,10 +220,13 @@ jobs:
                 driver: bridge
             DCALL
 
-            # === Step 5: Reset Blockscout DB for fresh index ===
-            echo "[5] Resetting Blockscout DB..."
-            docker rm -f blockscout-backend blockscout-db 2>/dev/null || true
-            docker volume rm tpix-infrastructure_blockscout-db-data blockscout_blockscout-db-data 2>/dev/null || true
+            # === Step 5: FULL RESET — ลบทุกอย่างเพื่อ clean start ===
+            echo "[5] Full reset: removing all containers, volumes, data..."
+            docker rm -f blockscout-backend blockscout-db blockscout-frontend tpix-chain-node 2>/dev/null || true
+            docker volume rm tpix-infrastructure_blockscout-db-data 2>/dev/null || true
+            # ลบ chain data + genesis เพื่อสร้างใหม่ด้วย chain ID 4289
+            rm -rf "$CHAIN/data" "$CHAIN/genesis.json"
+            echo "Cleaned all data for fresh start with chain ID 4289"
 
             # === Step 6: Start TPIX Chain ===
             echo "[6] Starting TPIX Chain..."
@@ -265,8 +271,11 @@ jobs:
             $path = $_SERVER['REQUEST_URI'] ?? '/';
             // API requests go to Blockscout backend (port 4000)
             // Frontend requests go to Blockscout frontend (port 3100)
-            $isApi = (strpos($path, '/api') === 0 || strpos($path, '/socket') === 0);
+            // API + socket → backend:4000, everything else → frontend:3100
+            $isApi = (strpos($path, '/api') === 0 || strpos($path, '/socket') === 0 || strpos($path, '/csv-export') === 0);
             $target = $isApi ? 'http://127.0.0.1:4000' : 'http://127.0.0.1:3100';
+            // _next → frontend assets
+            if (strpos($path, '/_next') === 0) $target = 'http://127.0.0.1:3100';
             $url = $target . $path;
             $ch = curl_init($url);
             $reqHeaders = [];
