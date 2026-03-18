@@ -15,16 +15,17 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 5m
           script: |
-            echo "=== Apache modules ==="
-            apache2ctl -M 2>/dev/null | grep -i proxy || httpd -M 2>/dev/null | grep -i proxy || echo "Cannot check apache modules"
+            echo "=== Containers ==="
+            docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep -E "tpix|blockscout|NAMES"
             echo ""
-            echo "=== Explorer error log ==="
-            tail -10 ~/domains/explorer.tpix.online/logs/error.log 2>/dev/null || echo "No error log"
+            echo "=== Frontend logs (last 20) ==="
+            docker logs blockscout-frontend --tail 20 2>&1
             echo ""
-            echo "=== Explorer .htaccess ==="
-            cat ~/domains/explorer.tpix.online/public_html/.htaccess 2>/dev/null
+            echo "=== Frontend restart count ==="
+            docker inspect blockscout-frontend --format '{{.RestartCount}}' 2>/dev/null
             echo ""
-            echo "=== Speed test ==="
-            curl -s -o /dev/null -w "Explorer HTTPS: %{time_total}s (HTTP %{http_code})\n" https://explorer.tpix.online/ 2>/dev/null
-            curl -s -o /dev/null -w "Direct frontend: %{time_total}s (HTTP %{http_code})\n" http://127.0.0.1:3100/ 2>/dev/null
-            curl -s -o /dev/null -w "Direct backend API: %{time_total}s (HTTP %{http_code})\n" http://127.0.0.1:4000/api/v2/stats 2>/dev/null
+            echo "=== Direct test ==="
+            curl -s -o /dev/null -w "Chain: %{http_code}\n" http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null
+            curl -s -o /dev/null -w "Backend: %{http_code}\n" http://127.0.0.1:4000/api/v2/stats 2>/dev/null
+            curl -s -o /dev/null -w "Frontend: %{http_code}\n" http://127.0.0.1:3100/ 2>/dev/null
+            curl -s -o /dev/null -w "Explorer: %{http_code}\n" https://explorer.tpix.online/ 2>/dev/null
