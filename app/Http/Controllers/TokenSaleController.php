@@ -9,13 +9,15 @@ use Inertia\Response;
 /**
  * TokenSaleController — หน้าเว็บสำหรับขายเหรียญ TPIX และ Whitepaper.
  *
- * render หน้า Inertia ให้ frontend (Vue)
+ * Render หน้า Inertia ให้ frontend (Vue).
  */
 class TokenSaleController extends Controller
 {
     public function __construct(
         private TokenSaleService $saleService,
-    ) {}
+    ) {
+        //
+    }
 
     /**
      * หน้าขายเหรียญ (ICO/IDO) — แสดง phase, ราคา, progress, buy form.
@@ -49,9 +51,9 @@ class TokenSaleController extends Controller
 
     /**
      * ดาวน์โหลด/ดู Whitepaper PDF.
-     * 1. ถ้ามีไฟล์ static PDF ก็ให้ดาวน์โหลดเลย (เร็วที่สุด)
-     * 2. Fallback: render Blade template เป็น HTML สำหรับ print-to-PDF
-     *    (DomPDF ไม่รองรับฟอนต์ไทย ดังนั้นให้ browser print แทน)
+     *
+     * 1. ถ้ามีไฟล์ static PDF ก็ให้ดาวน์โหลดเลย (เร็วที่สุด).
+     * 2. Fallback: render Blade template เป็น HTML สำหรับ print-to-PDF.
      */
     public function downloadWhitepaper()
     {
