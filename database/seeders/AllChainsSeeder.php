@@ -34,6 +34,6 @@ class AllChainsSeeder extends Seeder
             );
         }
 
-        $this->command?->info('Chains ทั้งหมด: ' . Chain::count());
+        $this->command?->info('Chains ทั้งหมด: '.Chain::count());
     }
 }
