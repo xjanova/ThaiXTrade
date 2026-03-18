@@ -121,7 +121,7 @@ jobs:
                   timeout: 5s
                   retries: 5
               backend:
-                image: blockscout/blockscout:6.10.1
+                image: blockscout/blockscout:5.4.0
                 container_name: blockscout-backend
                 restart: unless-stopped
                 depends_on:
@@ -159,7 +159,7 @@ jobs:
                   FETCH_REWARDS_WAY: "manual"
                   PORT: "4000"
                 ports:
-                  - "127.0.0.1:4000:4000"
+                  - "4000:4000"
             volumes:
               blockscout-db-data:
             DC2
@@ -188,15 +188,60 @@ jobs:
             # --- Proxy setup ---
             echo "[7] Setting up proxy..."
             mkdir -p "$EXPLORER/public_html"
+            # ลองตั้ง Apache proxy — ถ้า mod_proxy ไม่มี จะ fallback เป็น PHP proxy
             cat > "$EXPLORER/public_html/.htaccess" << 'HA'
             RewriteEngine On
-            RewriteCond %{HTTP:Upgrade} websocket [NC]
-            RewriteRule /(.*) ws://127.0.0.1:4000/$1 [P,L]
-            RewriteRule ^(.*)$ http://127.0.0.1:4000/$1 [P,L]
+            # ถ้า mod_proxy มี — proxy ไปที่ Blockscout
+            <IfModule mod_proxy.c>
+              RewriteCond %{HTTP:Upgrade} websocket [NC]
+              RewriteRule /(.*) ws://127.0.0.1:4000/$1 [P,L]
+              RewriteRule ^(.*)$ http://127.0.0.1:4000/$1 [P,L]
+            </IfModule>
+            # ถ้า mod_proxy ไม่มี — ส่ง request ไปที่ PHP proxy
+            <IfModule !mod_proxy.c>
+              RewriteCond %{REQUEST_FILENAME} !-f
+              RewriteRule ^(.*)$ proxy.php [L,QSA]
+            </IfModule>
             HA
 
+            # PHP-based proxy fallback (กรณี Apache ไม่มี mod_proxy)
+            cat > "$EXPLORER/public_html/proxy.php" << 'PHP'
+            <?php
+            $url = 'http://127.0.0.1:4000' . $_SERVER['REQUEST_URI'];
+            $ch = curl_init($url);
+            $headers = [];
+            foreach (getallheaders() as $k => $v) {
+                if (strtolower($k) !== 'host') $headers[] = "$k: $v";
+            }
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HEADER => true,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_TIMEOUT => 30,
+            ]);
+            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents('php://input'));
+            }
+            $response = curl_exec($ch);
+            $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $respHeaders = substr($response, 0, $headerSize);
+            $body = substr($response, $headerSize);
+            curl_close($ch);
+            http_response_code($httpCode);
+            foreach (explode("\r\n", $respHeaders) as $h) {
+                if (stripos($h, 'content-type:') === 0 || stripos($h, 'content-length:') === 0) {
+                    header($h);
+                }
+            }
+            echo $body;
+            PHP
+
+            # Fallback landing page
             cat > "$EXPLORER/public_html/index.html" << 'HTML'
-            <!DOCTYPE html><html><head><meta charset="UTF-8"><title>TPIX Explorer</title><meta http-equiv="refresh" content="5"><style>body{font-family:sans-serif;background:#1a1a2e;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.c{text-align:center}.s{width:50px;height:50px;border:4px solid rgba(255,255,255,.1);border-top:4px solid #06b6d4;border-radius:50%;animation:r 1s linear infinite;margin:0 auto 20px}@keyframes r{to{transform:rotate(360deg)}}</style></head><body><div class="c"><div class="s"></div><h2>TPIX Chain Explorer</h2><p>Starting up...</p></div></body></html>
+            <!DOCTYPE html><html><head><meta charset="UTF-8"><title>TPIX Explorer</title><meta http-equiv="refresh" content="3;url=/proxy.php"><style>body{font-family:sans-serif;background:#1a1a2e;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.c{text-align:center}.s{width:50px;height:50px;border:4px solid rgba(255,255,255,.1);border-top:4px solid #06b6d4;border-radius:50%;animation:r 1s linear infinite;margin:0 auto 20px}@keyframes r{to{transform:rotate(360deg)}}</style></head><body><div class="c"><div class="s"></div><h2>TPIX Chain Explorer</h2><p>Loading Blockscout...</p></div></body></html>
             HTML
 
             # --- Status ---
