@@ -27,7 +27,10 @@ use App\Http\Controllers\Admin\TokenController;
 use App\Http\Controllers\Admin\TokenSaleController;
 use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
+use App\Models\WalletConnection;
+use App\Services\UserWalletService;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 // Admin Auth (public - no auth required)
 Route::prefix('admin')->name('admin.')->group(function () {
@@ -130,11 +133,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Wallets — ภาพรวม wallet ทั้งระบบ
         Route::get('wallets', function () {
-            $service = app(\App\Services\UserWalletService::class);
+            $service = app(UserWalletService::class);
             $stats = $service->getStats();
-            $recent = \App\Models\WalletConnection::orderByDesc('connected_at')->limit(20)->get();
+            $recent = WalletConnection::orderByDesc('connected_at')->limit(20)->get();
 
-            return \Inertia\Inertia::render('Admin/Wallets/Index', [
+            return Inertia::render('Admin/Wallets/Index', [
                 'stats' => $stats,
                 'recentConnections' => $recent,
             ]);
