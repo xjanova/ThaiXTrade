@@ -115,13 +115,81 @@ jobs:
                   - tpix
 
 
+              blockscout-db:
+                image: postgres:16-alpine
+                container_name: blockscout-db
+                restart: unless-stopped
+                environment:
+                  POSTGRES_DB: blockscout
+                  POSTGRES_USER: blockscout
+                  POSTGRES_PASSWORD: tpix_explorer_db_2026
+                volumes:
+                  - blockscout-db-data:/var/lib/postgresql/data
+                healthcheck:
+                  test: ["CMD-SHELL", "pg_isready -U blockscout"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 5
+                networks:
+                  - tpix
+
+              blockscout-backend:
+                image: blockscout/blockscout:6.10.1
+                container_name: blockscout-backend
+                restart: unless-stopped
+                depends_on:
+                  blockscout-db:
+                    condition: service_healthy
+                  tpix-node:
+                    condition: service_started
+                command: sh -c "bin/blockscout eval 'Elixir.Explorer.ReleaseTasks.create_and_migrate()' && bin/blockscout start"
+                environment:
+                  MIX_ENV: prod
+                  DATABASE_URL: postgresql://blockscout:tpix_explorer_db_2026@blockscout-db:5432/blockscout
+                  ETHEREUM_JSONRPC_VARIANT: geth
+                  ETHEREUM_JSONRPC_HTTP_URL: http://tpix-node:8545
+                  ETHEREUM_JSONRPC_WS_URL: ws://tpix-node:8545
+                  ETHEREUM_JSONRPC_TRACE_URL: http://tpix-node:8545
+                  CHAIN_ID: "7000"
+                  NETWORK: "TPIX Chain"
+                  SUBNETWORK: "Mainnet"
+                  COIN: "TPIX"
+                  COIN_NAME: "Thaiprompt Index"
+                  BLOCK_TRANSFORMER: base
+                  INDEXER_DISABLE_INTERNAL_TRANSACTIONS_FETCHER: "true"
+                  INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: "true"
+                  ECTO_USE_SSL: "false"
+                  SECRET_KEY_BASE: "56OgMJny00smDFHkKNv27A7eBZmqaJPkWTp9HOYcR6M/Rij24bLey3qrB3PJFH3N"
+                  API_V2_ENABLED: "true"
+                  DISABLE_EXCHANGE_RATES: "true"
+                  POOL_SIZE: "40"
+                  POOL_SIZE_API: "10"
+                  ACCOUNT_ENABLED: "false"
+                  MICROSERVICE_SC_VERIFIER_ENABLED: "false"
+                  MICROSERVICE_SC_VERIFIER_URL: ""
+                  MICROSERVICE_VISUALIZE_SOL2UML_ENABLED: "false"
+                  MICROSERVICE_SIG_PROVIDER_ENABLED: "false"
+                  INDEXER_MEMORY_LIMIT: "2g"
+                  FETCH_REWARDS_WAY: "manual"
+                  INDEXER_CATCHUP_BLOCKS_BATCH_SIZE: "50"
+                  INDEXER_CATCHUP_BLOCKS_CONCURRENCY: "5"
+                  INDEXER_EMPTY_BLOCKS_SANITIZER_BATCH_SIZE: "50"
+                  PORT: "4000"
+                ports:
+                  - "127.0.0.1:4000:4000"
+                networks:
+                  - tpix
+
+            volumes:
+              blockscout-db-data:
+
             networks:
               tpix:
                 driver: bridge
             DCALL
 
-            # === Step 5: Cleanup old blockscout ===
-            echo "[5] Cleanup old blockscout..."
+            # === Step 5: Reset Blockscout DB for fresh index ===
+            echo "[5] Resetting Blockscout DB..."
             docker rm -f blockscout-backend blockscout-db 2>/dev/null || true
             docker volume rm tpix-infrastructure_blockscout-db-data blockscout_blockscout-db-data 2>/dev/null || true
 
@@ -147,181 +215,73 @@ jobs:
             BAL=$(curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"${VALIDATOR_ADDR}\",\"latest\"],\"id\":1}" 2>/dev/null)
             echo "Validator balance: $BAL"
 
-            echo "[7] Chain running, setting up explorer..."
+            echo "[7] Chain running, waiting 30s for Blockscout to start..."
+            sleep 30
 
-            # === Step 8: Setup proxies ===
-            echo "[8] Setting up proxies..."
+            # === Step 8: Setup Blockscout reverse proxy ===
+            echo "[8] Setting up Blockscout proxy..."
             mkdir -p "$EXPLORER/public_html"
-            rm -f "$EXPLORER/public_html/proxy.php" "$EXPLORER/public_html/index.html"
+            rm -f "$EXPLORER/public_html/api.php" "$EXPLORER/public_html/index.html"
 
-            # Explorer: RPC-based API endpoint (สำหรับ frontend ดึงข้อมูล)
+            # Proxy ทุก request ไปที่ Blockscout (port 4000)
             cat > "$EXPLORER/public_html/.htaccess" << 'HA'
             RewriteEngine On
             RewriteCond %{REQUEST_FILENAME} !-f
-            RewriteRule ^api/(.*)$ api.php [L,QSA]
+            RewriteCond %{REQUEST_FILENAME} !-d
+            RewriteRule ^(.*)$ index.php [L,QSA]
             HA
 
-            # API endpoint สำหรับ explorer frontend
-            cat > "$EXPLORER/public_html/api.php" << 'API'
+            cat > "$EXPLORER/public_html/index.php" << 'PROXY'
             <?php
-            header('Access-Control-Allow-Origin: *');
-            header('Access-Control-Allow-Headers: Content-Type');
-            header('Content-Type: application/json');
-            if($_SERVER['REQUEST_METHOD']==='OPTIONS'){http_response_code(204);exit;}
-            $rpc='http://127.0.0.1:8545';
-            function rpc($method,$params=[]){
-              global $rpc;
-              $ch=curl_init($rpc);
-              curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>10,
-                CURLOPT_HTTPHEADER=>['Content-Type: application/json'],
-                CURLOPT_POSTFIELDS=>json_encode(['jsonrpc'=>'2.0','method'=>$method,'params'=>$params,'id'=>1])]);
-              $r=curl_exec($ch);curl_close($ch);
-              return $r?json_decode($r,true):null;
+            $target = 'http://127.0.0.1:4000';
+            $path = $_SERVER['REQUEST_URI'] ?? '/';
+            $url = $target . $path;
+            $ch = curl_init($url);
+            $reqHeaders = [];
+            foreach (getallheaders() as $k => $v) {
+                $lower = strtolower($k);
+                if ($lower !== 'host' && $lower !== 'connection') $reqHeaders[] = "$k: $v";
             }
-            $action=$_GET['action']??'status';
-            switch($action){
-              case 'status':
-                $bn=rpc('eth_blockNumber');
-                $cid=rpc('eth_chainId');
-                echo json_encode(['block_number'=>hexdec($bn['result']??'0x0'),'chain_id'=>hexdec($cid['result']??'0x0'),'name'=>'TPIX Chain','coin'=>'TPIX','version'=>'v0.9.0']);
-                break;
-              case 'block':
-                $num=$_GET['number']??'latest';
-                $hex=is_numeric($num)?'0x'.dechex((int)$num):$num;
-                $b=rpc('eth_getBlockByNumber',[$hex,true]);
-                echo json_encode($b['result']??null);
-                break;
-              case 'blocks':
-                $bn=rpc('eth_blockNumber');
-                $latest=hexdec($bn['result']??'0x0');
-                $count=min((int)($_GET['count']??10),50);
-                $blocks=[];
-                for($i=$latest;$i>max(0,$latest-$count);$i--){
-                  $b=rpc('eth_getBlockByNumber',['0x'.dechex($i),false]);
-                  if($b&&isset($b['result']))$blocks[]=$b['result'];
-                }
-                echo json_encode($blocks);
-                break;
-              case 'balance':
-                $addr=$_GET['address']??'';
-                if(!preg_match('/^0x[a-fA-F0-9]{40}$/',$addr)){echo '{"error":"invalid address"}';break;}
-                $b=rpc('eth_getBalance',[$addr,'latest']);
-                $wei=$b['result']??'0x0';
-                echo json_encode(['address'=>$addr,'balance_wei'=>$wei,'balance'=>bcdiv(hexdec($wei),'1000000000000000000',4)]);
-                break;
-              case 'tx':
-                $hash=$_GET['hash']??'';
-                $tx=rpc('eth_getTransactionByHash',[$hash]);
-                echo json_encode($tx['result']??null);
-                break;
-              default:
-                echo '{"error":"unknown action","actions":["status","block","blocks","balance","tx"]}';
+            $reqHeaders[] = 'Host: 127.0.0.1:4000';
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HEADER => true,
+                CURLOPT_HTTPHEADER => $reqHeaders,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_ENCODING => '',
+            ]);
+            $method = $_SERVER['REQUEST_METHOD'];
+            if ($method === 'POST') {
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents('php://input'));
+            } elseif ($method !== 'GET') {
+                curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
             }
-            API
-
-            # Explorer: สวยงาม HTML frontend ดึงข้อมูลจาก API
-            cat > "$EXPLORER/public_html/index.html" << 'HTML'
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-            <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-            <title>TPIX Chain Explorer</title>
-            <style>
-            *{margin:0;padding:0;box-sizing:border-box}
-            body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
-            .header{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);padding:20px 0;border-bottom:1px solid rgba(255,255,255,0.1)}
-            .container{max-width:1200px;margin:0 auto;padding:0 20px}
-            .logo{display:flex;align-items:center;gap:12px}
-            .logo h1{font-size:24px;font-weight:700}.logo h1 span{color:#06b6d4}
-            .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:24px 0}
-            .stat{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;text-align:center}
-            .stat .value{font-size:28px;font-weight:700;color:#06b6d4}
-            .stat .label{font-size:12px;color:#94a3b8;margin-top:4px;text-transform:uppercase;letter-spacing:1px}
-            .section{margin:24px 0}
-            .section h2{font-size:18px;margin-bottom:16px;color:#e2e8f0}
-            .table{width:100%;border-collapse:collapse;background:rgba(255,255,255,0.03);border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.08)}
-            .table th{text-align:left;padding:12px 16px;background:rgba(255,255,255,0.05);color:#94a3b8;font-size:12px;text-transform:uppercase;letter-spacing:1px}
-            .table td{padding:12px 16px;border-top:1px solid rgba(255,255,255,0.05);font-size:14px}
-            .table tr:hover td{background:rgba(6,182,212,0.05)}
-            .mono{font-family:'Courier New',monospace;font-size:13px}
-            .cyan{color:#06b6d4}.green{color:#10b981}.yellow{color:#f59e0b}
-            .search{display:flex;gap:8px;margin:20px 0}
-            .search input{flex:1;padding:12px 16px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#e2e8f0;font-size:14px;outline:none}
-            .search input:focus{border-color:#06b6d4}
-            .search button{padding:12px 24px;background:#06b6d4;color:#0f1117;border:none;border-radius:8px;font-weight:600;cursor:pointer}
-            .footer{text-align:center;padding:40px;color:#475569;font-size:13px;border-top:1px solid rgba(255,255,255,0.05);margin-top:40px}
-            .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
-            .loading{text-align:center;padding:40px;color:#475569}
-            @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}.loading{animation:pulse 2s infinite}
-            a{color:#06b6d4;text-decoration:none}a:hover{text-decoration:underline}
-            </style>
-            </head>
-            <body>
-            <div class="header"><div class="container">
-              <div class="logo"><div><h1>TPIX <span>Chain Explorer</span></h1><p style="color:#94a3b8;font-size:13px">Blockchain Explorer for TPIX Network (Chain ID: 7000)</p></div></div>
-              <div class="search"><input id="searchInput" placeholder="Search by address (0x...) or block number..." onkeypress="if(event.key==='Enter')doSearch()"><button onclick="doSearch()">Search</button></div>
-            </div></div>
-            <div class="container">
-              <div class="stats">
-                <div class="stat"><div class="value" id="blockNum">...</div><div class="label">Latest Block</div></div>
-                <div class="stat"><div class="value cyan">7000</div><div class="label">Chain ID</div></div>
-                <div class="stat"><div class="value green">TPIX</div><div class="label">Native Coin</div></div>
-                <div class="stat"><div class="value yellow">2s</div><div class="label">Block Time</div></div>
-              </div>
-              <div id="searchResults"></div>
-              <div class="section"><h2>Latest Blocks</h2><div id="blocksTable" class="loading">Loading blocks...</div></div>
-            </div>
-            <div class="footer">
-              <p>TPIX Chain Explorer &middot; Powered by <a href="https://tpix.online" target="_blank">TPIX TRADE</a> &middot; <a href="https://rpc.tpix.online" target="_blank">RPC</a></p>
-              <p style="margin-top:8px">Developed by <a href="https://xmanstudio.com" target="_blank">Xman Studio</a></p>
-            </div>
-            <script>
-            const API='/api.php';
-            async function fetchAPI(action,params={}){
-              const qs=new URLSearchParams({action,...params}).toString();
-              const r=await fetch(API+'?'+qs);return r.json();
+            $response = curl_exec($ch);
+            if ($response === false) {
+                http_response_code(502);
+                echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>TPIX Explorer</title>';
+                echo '<style>body{background:#0f1117;color:#e2e8f0;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}';
+                echo '.box{text-align:center;padding:40px;border:1px solid rgba(255,255,255,0.1);border-radius:16px;background:rgba(255,255,255,0.05)}';
+                echo 'h1{color:#06b6d4;margin-bottom:12px}p{color:#94a3b8}</style></head>';
+                echo '<body><div class="box"><h1>TPIX Chain Explorer</h1><p>Explorer is starting up... Please refresh in 30 seconds.</p>';
+                echo '<p style="margin-top:20px;font-size:12px;color:#475569">Chain ID: 7000 | Powered by Blockscout</p></div></body></html>';
+                exit;
             }
-            function shortAddr(a){return a?a.slice(0,10)+'...'+a.slice(-6):'-'}
-            function hexToNum(h){return parseInt(h,16)||0}
-            function weiToTPIX(w){return(hexToNum(w)/1e18).toFixed(4)}
-            function timeAgo(ts){const s=Math.floor(Date.now()/1000)-hexToNum(ts);if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';return Math.floor(s/3600)+'h ago'}
-
-            async function loadStatus(){
-              const s=await fetchAPI('status');
-              document.getElementById('blockNum').textContent=s.block_number?.toLocaleString()||'0';
+            $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $headers = substr($response, 0, $headerSize);
+            $body = substr($response, $headerSize);
+            curl_close($ch);
+            http_response_code($httpCode);
+            foreach (explode("\r\n", $headers) as $line) {
+                $l = strtolower($line);
+                if (strpos($l,'content-type:')===0||strpos($l,'cache-control:')===0||strpos($l,'location:')===0||strpos($l,'set-cookie:')===0)
+                    header($line);
             }
-
-            async function loadBlocks(){
-              const blocks=await fetchAPI('blocks',{count:15});
-              if(!blocks||!blocks.length){document.getElementById('blocksTable').innerHTML='<p>No blocks yet</p>';return}
-              let html='<table class="table"><thead><tr><th>Block</th><th>Time</th><th>Txns</th><th>Miner</th><th>Gas Used</th></tr></thead><tbody>';
-              blocks.forEach(b=>{
-                html+='<tr><td class="cyan mono">#'+hexToNum(b.number)+'</td><td>'+timeAgo(b.timestamp)+'</td><td>'+(b.transactions?.length||0)+'</td><td class="mono">'+shortAddr(b.miner)+'</td><td>'+hexToNum(b.gasUsed).toLocaleString()+'</td></tr>';
-              });
-              html+='</tbody></table>';
-              document.getElementById('blocksTable').innerHTML=html;
-            }
-
-            async function doSearch(){
-              const q=document.getElementById('searchInput').value.trim();
-              const el=document.getElementById('searchResults');
-              if(!q){el.innerHTML='';return}
-              if(q.startsWith('0x')&&q.length===42){
-                const b=await fetchAPI('balance',{address:q});
-                el.innerHTML='<div class="section"><h2>Address: <span class="cyan mono">'+q+'</span></h2><div class="stat" style="display:inline-block"><div class="value">'+b.balance+' TPIX</div><div class="label">Balance</div></div></div>';
-              }else if(!isNaN(q)){
-                const b=await fetchAPI('block',{number:q});
-                if(b){el.innerHTML='<div class="section"><h2>Block #'+hexToNum(b.number)+'</h2><p>Hash: <span class="mono cyan">'+b.hash+'</span></p><p>Txns: '+b.transactions?.length+' | Gas: '+hexToNum(b.gasUsed)+' | Miner: <span class="mono">'+shortAddr(b.miner)+'</span></p></div>';}
-                else{el.innerHTML='<p>Block not found</p>';}
-              }else{el.innerHTML='<p>Enter address (0x...) or block number</p>';}
-            }
-
-            loadStatus();loadBlocks();
-            setInterval(()=>{loadStatus();loadBlocks()},5000);
-            </script>
-            </body>
-            </html>
-            HTML
+            echo $body;
+            PROXY
 
             # RPC proxy
             if [ -d "$RPC_DIR" ]; then
@@ -355,10 +315,18 @@ jobs:
             echo "Block: $FINAL_BLOCK"
             FINAL_BAL=$(curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"${VALIDATOR_ADDR}\",\"latest\"],\"id\":1}" 2>/dev/null)
             echo "Balance: $FINAL_BAL"
+            # Wait more for Blockscout to fully start
+            echo "Waiting 60s for Blockscout indexing..."
+            sleep 60
+            BS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000 2>/dev/null)
+            echo "Blockscout direct: HTTP $BS_STATUS"
             EXPLORER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://explorer.tpix.online/ 2>/dev/null)
-            echo "Explorer: HTTP $EXPLORER_STATUS"
-            API_STATUS=$(curl -s "https://explorer.tpix.online/api.php?action=status" 2>/dev/null)
-            echo "Explorer API: $API_STATUS"
+            echo "Explorer proxy: HTTP $EXPLORER_STATUS"
+            BS_API=$(curl -s "http://127.0.0.1:4000/api?module=block&action=eth_block_number" 2>/dev/null | head -200)
+            echo "Blockscout API: $BS_API"
+            echo ""
+            echo "=== Blockscout logs (last 10) ==="
+            docker logs blockscout-backend --tail 10 2>&1
             echo ""
             echo "Validator: $VALIDATOR_ADDR"
             echo "Explorer: https://explorer.tpix.online"
