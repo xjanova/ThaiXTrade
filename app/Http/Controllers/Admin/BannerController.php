@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Banner;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Inertia\Response;
 
 /**
  * TPIX TRADE — Admin Banner Controller
@@ -16,9 +18,9 @@ use Inertia\Inertia;
 class BannerController extends Controller
 {
     /**
-     * แสดงรายการ banners ทั้งหมด
+     * แสดงรายการ banners ทั้งหมด.
      */
-    public function index(): \Inertia\Response
+    public function index(): Response
     {
         $banners = Banner::orderBy('sort_order')
             ->orderByDesc('id')
@@ -41,9 +43,9 @@ class BannerController extends Controller
     }
 
     /**
-     * สร้าง banner ใหม่
+     * สร้าง banner ใหม่.
      */
-    public function store(Request $request): \Illuminate\Http\RedirectResponse
+    public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'title' => 'required|string|max:255',
@@ -52,7 +54,7 @@ class BannerController extends Controller
             'link_url' => 'nullable|url|max:500',
             'target' => 'required|in:_blank,_self',
             'ad_code' => 'nullable|string|max:5000',
-            'placement' => 'required|in:' . implode(',', array_keys(Banner::PLACEMENTS)),
+            'placement' => 'required|in:'.implode(',', array_keys(Banner::PLACEMENTS)),
             'is_active' => 'boolean',
             'sort_order' => 'integer|min:0',
             'start_at' => 'nullable|date',
@@ -65,9 +67,9 @@ class BannerController extends Controller
     }
 
     /**
-     * อัปเดต banner
+     * อัปเดต banner.
      */
-    public function update(Request $request, Banner $banner): \Illuminate\Http\RedirectResponse
+    public function update(Request $request, Banner $banner): RedirectResponse
     {
         $validated = $request->validate([
             'title' => 'required|string|max:255',
@@ -76,7 +78,7 @@ class BannerController extends Controller
             'link_url' => 'nullable|url|max:500',
             'target' => 'required|in:_blank,_self',
             'ad_code' => 'nullable|string|max:5000',
-            'placement' => 'required|in:' . implode(',', array_keys(Banner::PLACEMENTS)),
+            'placement' => 'required|in:'.implode(',', array_keys(Banner::PLACEMENTS)),
             'is_active' => 'boolean',
             'sort_order' => 'integer|min:0',
             'start_at' => 'nullable|date',
@@ -89,9 +91,9 @@ class BannerController extends Controller
     }
 
     /**
-     * ลบ banner (soft delete)
+     * ลบ banner (soft delete).
      */
-    public function destroy(Banner $banner): \Illuminate\Http\RedirectResponse
+    public function destroy(Banner $banner): RedirectResponse
     {
         $banner->delete();
 
@@ -99,12 +101,12 @@ class BannerController extends Controller
     }
 
     /**
-     * เปิด/ปิด banner
+     * เปิด/ปิด banner.
      */
-    public function toggleActive(Banner $banner): \Illuminate\Http\RedirectResponse
+    public function toggleActive(Banner $banner): RedirectResponse
     {
         $banner->update(['is_active' => ! $banner->is_active]);
 
-        return back()->with('success', ($banner->is_active ? 'เปิด' : 'ปิด') . ' banner สำเร็จ');
+        return back()->with('success', ($banner->is_active ? 'เปิด' : 'ปิด').' banner สำเร็จ');
     }
 }

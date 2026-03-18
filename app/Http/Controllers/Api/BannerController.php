@@ -17,7 +17,7 @@ class BannerController extends Controller
 {
     /**
      * GET /api/v1/banners?placement=trade_top
-     * ดึง banners ที่ active สำหรับ placement ที่ระบุ (cached 5 นาที)
+     * ดึง banners ที่ active สำหรับ placement ที่ระบุ (cached 5 นาที).
      */
     public function index(Request $request): JsonResponse
     {
@@ -40,7 +40,7 @@ class BannerController extends Controller
 
     /**
      * POST /api/v1/banners/{id}/click
-     * นับ click สำหรับ banner
+     * นับ click สำหรับ banner.
      */
     public function click(Banner $banner): JsonResponse
     {

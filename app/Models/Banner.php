@@ -64,7 +64,7 @@ class Banner extends Model
     ];
 
     /**
-     * Scope: เฉพาะ banner ที่ active
+     * Scope: เฉพาะ banner ที่ active.
      */
     public function scopeActive($query)
     {
@@ -72,7 +72,7 @@ class Banner extends Model
     }
 
     /**
-     * Scope: เฉพาะ banner สำหรับ placement ที่ระบุ
+     * Scope: เฉพาะ banner สำหรับ placement ที่ระบุ.
      */
     public function scopeForPlacement($query, string $placement)
     {
@@ -80,7 +80,7 @@ class Banner extends Model
     }
 
     /**
-     * Scope: เฉพาะ banner ที่อยู่ในช่วงเวลาแสดง
+     * Scope: เฉพาะ banner ที่อยู่ในช่วงเวลาแสดง.
      */
     public function scopeScheduled($query)
     {
@@ -94,7 +94,7 @@ class Banner extends Model
     }
 
     /**
-     * Scope: เรียงตาม sort_order
+     * Scope: เรียงตาม sort_order.
      */
     public function scopeOrdered($query)
     {
@@ -102,7 +102,7 @@ class Banner extends Model
     }
 
     /**
-     * เพิ่มจำนวน views
+     * เพิ่มจำนวน views.
      */
     public function incrementViews(): void
     {
@@ -110,7 +110,7 @@ class Banner extends Model
     }
 
     /**
-     * เพิ่มจำนวน clicks
+     * เพิ่มจำนวน clicks.
      */
     public function incrementClicks(): void
     {
@@ -118,7 +118,7 @@ class Banner extends Model
     }
 
     /**
-     * ตรวจสอบว่า banner กำลังแสดงอยู่หรือไม่
+     * ตรวจสอบว่า banner กำลังแสดงอยู่หรือไม่.
      */
     public function getIsVisibleAttribute(): bool
     {

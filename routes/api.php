@@ -6,9 +6,9 @@
  */
 
 use App\Http\Controllers\Api\AIController;
+use App\Http\Controllers\Api\BannerController as ApiBannerController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\MarketController;
-use App\Http\Controllers\Api\BannerController as ApiBannerController;
 use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\SwapApiController;
 use App\Http\Controllers\Api\TokenSaleApiController;
