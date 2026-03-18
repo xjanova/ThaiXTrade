@@ -113,6 +113,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->name('users.reset-password')
             ->middleware('admin.role:super_admin');
 
+        // Token Sales — จัดการรอบขายเหรียญ TPIX (ICO/IDO)
+        Route::get('token-sales', function () {
+            return \Inertia\Inertia::render('Admin/TokenSales/Index');
+        })->name('token-sales.index');
+
         // Audit Logs (super_admin only)
         Route::get('audit-logs', [AuditLogController::class, 'index'])
             ->name('audit-logs.index')

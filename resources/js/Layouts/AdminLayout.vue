@@ -80,8 +80,8 @@ const navigationSections = [
         title: 'TPIX Ecosystem',
         items: [
             { name: 'Token Sales', href: '/admin/token-sales', icon: 'tokensale' },
-            { name: 'Whitepaper', href: '/whitepaper', icon: 'whitepaper' },
-            { name: 'Explorer', href: '/explorer', icon: 'explorer' },
+            { name: 'Whitepaper', href: '/whitepaper', icon: 'whitepaper', external: true },
+            { name: 'Explorer', href: '/explorer', icon: 'explorer', external: true },
         ],
     },
     {
@@ -164,10 +164,13 @@ const handleLogout = () => {
                     <div v-else-if="section.title && !sidebarOpen" class="border-t border-white/5 mb-3 mx-2"></div>
 
                     <div class="space-y-1">
-                        <Link
+                        <component
+                            :is="item.external ? 'a' : Link"
                             v-for="item in section.items"
                             :key="item.href"
                             :href="item.href"
+                            :target="item.external ? '_blank' : undefined"
+                            :rel="item.external ? 'noopener' : undefined"
                             class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
                             :class="[
                                 isActive(item.href)
@@ -243,7 +246,7 @@ const handleLogout = () => {
                             </svg>
 
                             <span v-if="sidebarOpen" class="whitespace-nowrap">{{ item.name }}</span>
-                        </Link>
+                        </component>
                     </div>
                 </div>
             </nav>

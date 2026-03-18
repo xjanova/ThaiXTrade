@@ -135,8 +135,7 @@ onMounted(async () => {
                         <h4 class="text-sm font-semibold text-white mb-3">About</h4>
                         <ul class="space-y-2">
                             <li><a href="https://xmanstudio.com" target="_blank" rel="noopener" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Xman Studio</a></li>
-                            <li><Link href="/admin/token-sales" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Admin Panel</Link></li>
-                            <li><span class="text-xs text-dark-500">Chain ID: 7000</span></li>
+                            <li><span class="text-xs text-dark-500">TPIX Chain ID: 7000</span></li>
                         </ul>
                     </div>
                 </div>

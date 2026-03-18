@@ -28,7 +28,7 @@ Route::prefix('trade')->group(function () {
 
     Route::get('/{pair}', function ($pair) {
         return Inertia::render('Trade', ['pair' => $pair]);
-    })->name('trade.pair');
+    })->where('pair', '[A-Za-z0-9]+-[A-Za-z0-9]+')->name('trade.pair');
 });
 
 // Swap
@@ -91,11 +91,6 @@ Route::get('/bridge', function () {
 Route::get('/staking', function () {
     return Inertia::render('Staking');
 })->name('staking');
-
-// Admin — Token Sales Management (จัดการรอบขายเหรียญ)
-Route::get('/admin/token-sales', function () {
-    return Inertia::render('Admin/TokenSales/Index');
-})->name('admin.token-sales');
 
 // Health Check
 Route::get('/health', function () {

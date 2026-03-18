@@ -354,28 +354,6 @@ onMounted(async () => {
             </div>
         </section>
 
-        <!-- Footer -->
-        <footer class="border-t border-white/5 py-12">
-            <div class="max-w-6xl mx-auto">
-                <div class="flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div class="flex items-center gap-3">
-                        <img src="/logo.png" alt="TPIX TRADE" class="w-10 h-10 rounded-xl object-cover" />
-                        <div>
-                            <p class="font-bold text-white">TPIX <span class="text-gradient">TRADE</span></p>
-                            <p class="text-xs text-dark-400">by Xman Studio</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-6 text-dark-400">
-                        <Link href="/whitepaper" class="hover:text-white transition-colors">Whitepaper</Link>
-                        <Link href="/token-sale" class="hover:text-white transition-colors">Token Sale</Link>
-                        <Link href="/explorer" class="hover:text-white transition-colors">Explorer</Link>
-                        <Link href="/staking" class="hover:text-white transition-colors">Staking</Link>
-                    </div>
-                    <p class="text-sm text-dark-500">
-                        &copy; {{ new Date().getFullYear() }} Xman Studio. All rights reserved. &middot; v{{ versionData.version }}
-                    </p>
-                </div>
-            </div>
-        </footer>
+        <!-- Footer ใช้จาก AppLayout — ไม่ต้องซ้ำที่นี่ -->
     </AppLayout>
 </template>
