@@ -199,6 +199,8 @@ jobs:
             # --- Proxy setup ---
             echo "[7] Setting up proxy..."
             mkdir -p "$EXPLORER/public_html"
+            # ลบไฟล์เก่า
+            rm -f "$EXPLORER/public_html/proxy.php" "$EXPLORER/public_html/index.html"
             # === Explorer: PHP reverse proxy (Apache ไม่มี mod_proxy) ===
             cat > "$EXPLORER/public_html/.htaccess" << 'HA'
             RewriteEngine On
@@ -215,8 +217,9 @@ jobs:
             $path = $_SERVER['REQUEST_URI'] ?? '/';
 
             // Root path → redirect ไปที่ /blocks (Blockscout v5 ไม่มี homepage)
-            if ($path === '/' || $path === '' || $path === '/index.php') {
-                header('Location: /blocks');
+            $cleanPath = parse_url($path, PHP_URL_PATH);
+            if ($cleanPath === '/' || $cleanPath === '' || $cleanPath === '/index.php' || $cleanPath === '/proxy.php') {
+                header('Location: /blocks', true, 302);
                 exit;
             }
 
