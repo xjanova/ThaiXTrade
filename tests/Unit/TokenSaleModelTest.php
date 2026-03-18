@@ -85,7 +85,7 @@ class TokenSaleModelTest extends TestCase
             'total_sold' => '0',
             'total_raised_usd' => '0',
             'accept_chain_id' => 56,
-            'status' => 'ended',
+            'status' => 'completed',
         ]);
 
         $activeSales = TokenSale::active()->get();

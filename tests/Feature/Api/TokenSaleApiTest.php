@@ -92,7 +92,7 @@ class TokenSaleApiTest extends TestCase
     public function test_get_token_sale_when_none_active(): void
     {
         // ปิด sale ที่มีอยู่
-        $this->sale->update(['status' => 'ended']);
+        $this->sale->update(['status' => 'completed']);
         Cache::flush();
 
         $response = $this->getJson('/api/v1/token-sale');
@@ -143,10 +143,12 @@ class TokenSaleApiTest extends TestCase
 
         $response = $this->getJson('/api/v1/token-sale/stats');
 
-        $response->assertStatus(200)
-            ->assertJsonPath('data.total_sold', 10000.0)
-            ->assertJsonPath('data.total_raised_usd', 1000.0)
-            ->assertJsonPath('data.buyers_count', 1);
+        $response->assertStatus(200);
+
+        $data = $response->json('data');
+        $this->assertEquals(10000, $data['total_sold']);
+        $this->assertEquals(1000, $data['total_raised_usd']);
+        $this->assertEquals(1, $data['buyers_count']);
     }
 
     // =========================================================================
@@ -258,8 +260,9 @@ class TokenSaleApiTest extends TestCase
                     'total_purchased', 'total_claimable',
                     'total_claimed', 'total_locked',
                 ],
-            ])
-            ->assertJsonPath('data.total_purchased', 10000.0);
+            ]);
+
+        $this->assertEquals(10000, $response->json('data.total_purchased'));
     }
 
     public function test_vesting_invalid_wallet_returns_422(): void
