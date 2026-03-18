@@ -18,26 +18,17 @@ jobs:
             echo "=== Containers ==="
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
             echo ""
-            echo "=== Chain RPC from host ==="
+            echo "=== Chain RPC ==="
             curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
             echo ""
-            echo "=== Blockscout RPC connectivity test ==="
-            docker exec blockscout-backend sh -c 'curl -s http://tpix-node:8545 -X POST -H "Content-Type: application/json" -d '"'"'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'"'"' 2>&1' || echo "FAILED: blockscout cannot reach tpix-node"
+            echo "=== Blockscout Backend ==="
+            curl -s http://127.0.0.1:4000/api/v2/stats 2>/dev/null | head -200
             echo ""
-            echo "=== Blockscout ENV check ==="
-            docker exec blockscout-backend sh -c 'echo "RPC=$ETHEREUM_JSONRPC_HTTP_URL"' 2>&1
+            echo "=== Blockscout Frontend Logs (crash reason) ==="
+            docker logs blockscout-frontend --tail 20 2>&1
             echo ""
-            echo "=== Docker networks ==="
-            docker network ls | grep -E "tpix|blockscout|NETWORK"
-            echo ""
-            echo "=== Network inspect ==="
-            docker network inspect tpix-infrastructure_tpix 2>/dev/null | grep -A2 '"Name"' | head -20
-            echo ""
-            echo "=== explorer.tpix.online test ==="
+            echo "=== Explorer HTTP ==="
             curl -s -o /dev/null -w "HTTP %{http_code}" https://explorer.tpix.online/ 2>/dev/null
             echo ""
-            echo "=== Explorer API test ==="
-            curl -s "https://explorer.tpix.online/api.php?action=status" 2>/dev/null
-            echo ""
             echo "=== Explorer dir ==="
-            ls -la /domains/explorer.tpix.online/public_html/ 2>/dev/null | head -10
+            ls -la ~/domains/explorer.tpix.online/public_html/ 2>/dev/null
