@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\SwapApiController;
+use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
@@ -72,7 +73,15 @@ Route::prefix('v1')->group(function () {
         Route::post('/preview', [TokenSaleApiController::class, 'preview']);
         Route::get('/purchases/{walletAddress}', [TokenSaleApiController::class, 'purchases']);
         Route::get('/vesting/{walletAddress}', [TokenSaleApiController::class, 'vesting']);
+
+        // Stripe Checkout — สร้าง session สำหรับซื้อด้วยบัตรเครดิต/เดบิต
+        Route::post('/stripe/checkout', [TokenSaleApiController::class, 'stripeCheckout']);
+        Route::get('/stripe/status/{sessionId}', [TokenSaleApiController::class, 'stripeStatus']);
     });
+
+    // Stripe Webhook — รับ event จาก Stripe (ไม่ต้อง auth)
+    Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])
+        ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
 });
 
 // Protected Routes (Wallet Ownership Verified)

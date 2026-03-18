@@ -54,6 +54,17 @@ jobs:
                 NODE_ID=$(echo "$SECRETS_OUT" | grep "Node ID" | sed 's/.*= *//' | tr -d '[:space:]')
               fi
               echo "Parsed Node ID: [$NODE_ID]"
+
+              # ดึง Validator Address สำหรับ premine
+              VALIDATOR_ADDR=$(echo "$SECRETS_OUT" | grep -oP 'Public key \(address\)\s*=\s*\K\S+' || echo "")
+              if [ -z "$VALIDATOR_ADDR" ]; then
+                VALIDATOR_ADDR=$(echo "$SECRETS_OUT" | grep "Public key" | grep "address" | sed 's/.*= *//' | tr -d '[:space:]')
+              fi
+              echo "Validator Address: [$VALIDATOR_ADDR]"
+              if [ -z "$VALIDATOR_ADDR" ]; then
+                VALIDATOR_ADDR="0xf9fF7E78D032377F395E0fa5007E701f13D05e9e"
+                echo "Using fallback validator address"
+              fi
               if [ -z "$NODE_ID" ]; then
                 echo "ERROR: Could not parse Node ID from secrets output!"
                 echo "Trying without bootnode..."
@@ -70,7 +81,7 @@ jobs:
                 --chain-id 7000 \
                 --block-gas-limit 20000000 \
                 --epoch-size 100000 \
-                --premine "0x0000000000000000000000000000000000001010:7000000000000000000000000000" \
+                --premine "${VALIDATOR_ADDR}:7000000000000000000000000000" \
                 --dir /chain/genesis.json
 
               echo "Genesis created:"

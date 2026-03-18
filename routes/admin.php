@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\AiController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\ChainController;
+use App\Http\Controllers\Admin\TokenSaleController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FeeController;
 use App\Http\Controllers\Admin\LanguageController;
@@ -25,7 +26,7 @@ use App\Http\Controllers\Admin\TokenController;
 use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
+
 
 // Admin Auth (public - no auth required)
 Route::prefix('admin')->name('admin.')->group(function () {
@@ -114,10 +115,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->name('users.reset-password')
             ->middleware('admin.role:super_admin');
 
-        // Token Sales — จัดการรอบขายเหรียญ TPIX (ICO/IDO)
-        Route::get('token-sales', function () {
-            return Inertia::render('Admin/TokenSales/Index');
-        })->name('token-sales.index');
+        // Token Sales — จัดการรอบขายเหรียญ TPIX (ICO/IDO) + Token Control
+        Route::prefix('token-sales')->name('token-sales.')->group(function () {
+            Route::get('/', [TokenSaleController::class, 'index'])->name('index');
+            Route::post('/', [TokenSaleController::class, 'store'])->name('store');
+            Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
+        });
 
         // Audit Logs (super_admin only)
         Route::get('audit-logs', [AuditLogController::class, 'index'])

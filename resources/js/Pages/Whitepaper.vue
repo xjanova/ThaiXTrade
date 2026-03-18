@@ -175,7 +175,7 @@ const content = {
             ['Native Coin', 'TPIX (18 decimals)'],
             ['Total Supply', '7,000,000,000 TPIX (pre-mined in genesis)'],
             ['Validators', '4 IBFT nodes (BFT tolerates ⌊(n-1)/3⌋ = 1 faulty)'],
-            ['RPC URL', 'https://rpc.tpixchain.com'],
+            ['RPC URL', 'https://rpc.tpix.online'],
             ['Explorer', 'https://explorer.tpix.online'],
         ],
         useCases: [
@@ -357,7 +357,7 @@ const content = {
             ['Native Coin', 'TPIX (18 ทศนิยม)'],
             ['จำนวนทั้งหมด', '7,000,000,000 TPIX (pre-mined ใน genesis)'],
             ['Validator', '4 โหนด IBFT (BFT ทนได้ ⌊(n-1)/3⌋ = 1 โหนดที่มีปัญหา)'],
-            ['RPC URL', 'https://rpc.tpixchain.com'],
+            ['RPC URL', 'https://rpc.tpix.online'],
             ['Explorer', 'https://explorer.tpix.online'],
         ],
         useCases: [

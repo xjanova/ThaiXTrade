@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\PriceFeedService;
+use App\Services\StripePaymentService;
 use App\Services\TokenSaleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,7 +26,10 @@ class TokenSaleApiController extends Controller
     public function __construct(
         private TokenSaleService $saleService,
         private PriceFeedService $priceFeed,
-    ) {}
+        private StripePaymentService $stripe,
+    ) {
+        //
+    }
 
     /**
      * ดึงข้อมูลรอบขายที่ active พร้อม phases.
@@ -191,6 +195,59 @@ class TokenSaleApiController extends Controller
             'success' => true,
             'data' => $this->saleService->getPurchases($walletAddress),
         ]);
+    }
+
+    /**
+     * สร้าง Stripe Checkout Session — ซื้อ TPIX ด้วยบัตรเครดิต/เดบิต.
+     */
+    public function stripeCheckout(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'phase_id' => ['required', 'integer', 'exists:sale_phases,id'],
+            'amount_usd' => ['required', 'numeric', 'min:5', 'max:50000'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'VALIDATION_ERROR', 'message' => $validator->errors()->first()],
+            ], 422);
+        }
+
+        $data = $validator->validated();
+
+        try {
+            $result = $this->stripe->createCheckoutSession(
+                (float) $data['amount_usd'],
+                $data['wallet_address'],
+                (int) $data['phase_id']
+            );
+
+            return response()->json(['success' => true, 'data' => $result]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'STRIPE_ERROR', 'message' => $e->getMessage()],
+            ], 400);
+        }
+    }
+
+    /**
+     * ตรวจสถานะ Stripe payment.
+     */
+    public function stripeStatus(string $sessionId): JsonResponse
+    {
+        try {
+            $result = $this->stripe->getPaymentStatus($sessionId);
+
+            return response()->json(['success' => true, 'data' => $result]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'STATUS_ERROR', 'message' => $e->getMessage()],
+            ], 400);
+        }
     }
 
     /**

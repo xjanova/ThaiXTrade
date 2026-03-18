@@ -31,4 +31,18 @@ return [
         'site_key' => env('TURNSTILE_SITE_KEY', ''),
         'secret_key' => env('TURNSTILE_SECRET_KEY', ''),
     ],
+
+    // Stripe — ระบบชำระเงินสำหรับ ICO Token Sale
+    'stripe' => [
+        'key' => env('STRIPE_KEY', ''),
+        'secret' => env('STRIPE_SECRET', ''),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET', ''),
+    ],
+
+    // TPIX Chain — blockchain config
+    'tpix_chain' => [
+        'rpc_url' => env('TPIX_RPC_URL', 'https://rpc.tpix.online'),
+        'chain_id' => env('TPIX_CHAIN_ID', 7000),
+        'master_wallet' => env('TPIX_MASTER_WALLET', ''),
+    ],
 ];
