@@ -12,11 +12,21 @@ import axios from 'axios';
 const tickers = ref([]);
 let refreshTimer = null;
 
+// TPIX ticker — แสดงเป็นตัวแรกเสมอ (ราคาจาก token sale / DEX)
+const tpixTicker = {
+    symbol: 'TPIX',
+    name: 'TPIX',
+    price: '0.10',
+    change: '0.00',
+    isUp: true,
+    isTpix: true,
+};
+
 async function fetchTickers() {
     try {
         const { data } = await axios.get('/api/v1/market/tickers');
-        if (data.success && data.data.length > 0) {
-            tickers.value = data.data.slice(0, 15).map(t => {
+        const binanceTickers = (data.success && data.data.length > 0)
+            ? data.data.slice(0, 14).map(t => {
                 const price = parseFloat(t.price);
                 const change = parseFloat(t.priceChangePercent);
                 return {
@@ -26,10 +36,13 @@ async function fetchTickers() {
                     change: change.toFixed(2),
                     isUp: change >= 0,
                 };
-            });
-        }
+            })
+            : [];
+        // TPIX อยู่แรกเสมอ ตามด้วย Binance tickers
+        tickers.value = [tpixTicker, ...binanceTickers];
     } catch (err) {
-        // Silent fail for ticker strip
+        // แม้ Binance fail ก็ยังแสดง TPIX
+        tickers.value = [tpixTicker];
     }
 }
 
@@ -63,8 +76,9 @@ onUnmounted(() => {
             >
                 <div class="flex items-center gap-3">
                     <!-- Coin Logo + Symbol -->
-                    <img v-if="getCoinLogo(ticker.symbol)" :src="getCoinLogo(ticker.symbol, 'thumb')" :alt="ticker.symbol" class="w-4 h-4 rounded-full" />
-                    <span class="ticker-symbol">{{ ticker.symbol }}</span>
+                    <img v-if="ticker.isTpix" src="/logo.png" :alt="ticker.symbol" class="w-4 h-4 rounded-full" />
+                    <img v-else-if="getCoinLogo(ticker.symbol)" :src="getCoinLogo(ticker.symbol, 'thumb')" :alt="ticker.symbol" class="w-4 h-4 rounded-full" />
+                    <span class="ticker-symbol" :class="{ 'text-primary-400 font-semibold': ticker.isTpix }">{{ ticker.symbol }}</span>
 
                     <!-- Price -->
                     <span :class="['ticker-price font-mono', ticker.isUp ? 'text-trading-green' : 'text-trading-red']">
