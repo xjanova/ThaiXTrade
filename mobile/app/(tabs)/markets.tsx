@@ -7,12 +7,28 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { colors, spacing, typography } from '@/theme';
 import SearchBar from '@/components/common/SearchBar';
 import MarketRow from '@/components/markets/MarketRow';
 import { useMarketStore, MarketPair } from '@/stores/marketStore';
+
+type IoniconsName = ComponentProps<typeof Ionicons>['name'];
+
+// Extracted separator component (avoids re-creating on each render)
+// คอมโพเนนต์ separator แยกออกมา (ไม่สร้างใหม่ทุกรอบ render)
+function ListSeparator() {
+  return <View style={separatorStyles.separator} />;
+}
+const separatorStyles = StyleSheet.create({
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    marginHorizontal: spacing.xl,
+  },
+});
 
 type SortBy = 'volume' | 'change' | 'price' | 'name';
 type FilterTab = 'all' | 'favorites' | 'gainers' | 'losers';
@@ -64,7 +80,7 @@ export default function MarketsScreen() {
       }
     });
 
-  const filterTabs: { key: FilterTab; label: string; icon?: string }[] = [
+  const filterTabs: { key: FilterTab; label: string; icon?: IoniconsName }[] = [
     { key: 'all', label: 'All' },
     { key: 'favorites', label: 'Favorites', icon: 'star' },
     { key: 'gainers', label: 'Gainers', icon: 'trending-up' },
@@ -122,7 +138,7 @@ export default function MarketsScreen() {
           >
             {tab.icon && (
               <Ionicons
-                name={tab.icon as any}
+                name={tab.icon}
                 size={14}
                 color={
                   activeFilter === tab.key
@@ -157,7 +173,7 @@ export default function MarketsScreen() {
         keyExtractor={(item) => item.symbol}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ItemSeparatorComponent={ListSeparator}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="search-outline" size={48} color={colors.text.tertiary} />
@@ -254,11 +270,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 100,
   },
-  separator: {
-    height: 1,
-    backgroundColor: colors.divider,
-    marginHorizontal: spacing.xl,
-  },
+  // Separator styles moved to ListSeparator component / ย้ายไปที่คอมโพเนนต์ ListSeparator
   empty: {
     alignItems: 'center',
     justifyContent: 'center',

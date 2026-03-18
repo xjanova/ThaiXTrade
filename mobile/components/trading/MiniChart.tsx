@@ -57,6 +57,9 @@ function buildFillPath(linePath: string, width: number, height: number): string 
   return `${linePath} L ${width},${height} L 0,${height} Z`;
 }
 
+// Counter for deterministic gradient IDs / ตัวนับสำหรับ ID ที่ไม่สุ่ม
+let gradientCounter = 0;
+
 export function MiniChart({
   data,
   color = colors.brand.cyan,
@@ -64,7 +67,8 @@ export function MiniChart({
   height = 40,
 }: MiniChartProps) {
   const { linePath, fillPath, gradientId } = useMemo(() => {
-    const id = `gradient_${Math.random().toString(36).substring(2, 9)}`;
+    // Deterministic ID based on counter / ใช้ตัวนับแทนการสุ่ม
+    const id = `gradient_mc_${++gradientCounter}`;
     const line = buildLinePath(data, width, height);
     const fill = buildFillPath(line, width, height);
     return { linePath: line, fillPath: fill, gradientId: id };

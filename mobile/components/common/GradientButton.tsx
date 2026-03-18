@@ -9,12 +9,13 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
+import {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
 import { colors, spacing, radius, typography } from '@/theme';
+import { AnimatedPressable, BUTTON_SPRING_CONFIG } from '@/utils/animation';
 
 type ButtonVariant = 'brand' | 'buy' | 'sell' | 'outline';
 type ButtonSize = 'sm' | 'md' | 'lg';
@@ -29,14 +30,6 @@ interface GradientButtonProps {
   fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
 }
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-const SPRING_CONFIG = {
-  damping: 15,
-  stiffness: 350,
-  mass: 0.7,
-};
 
 const gradientMap: Record<Exclude<ButtonVariant, 'outline'>, readonly [string, string, ...string[]]> = {
   brand: colors.gradient.brand,
@@ -90,7 +83,7 @@ export function GradientButton({
 
   const handlePressIn = () => {
     if (!disabled && !loading) {
-      scale.value = withSpring(0.96, SPRING_CONFIG);
+      scale.value = withSpring(0.96, BUTTON_SPRING_CONFIG);
     }
   };
 

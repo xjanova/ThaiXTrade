@@ -5,10 +5,11 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { colors, spacing, typography } from '@/theme';
@@ -17,18 +18,13 @@ import PriceChange from '@/components/common/PriceChange';
 import MiniChart from '@/components/trading/MiniChart';
 import { useMarketStore } from '@/stores/marketStore';
 import { usePortfolioStore } from '@/stores/portfolioStore';
+import { formatCurrency } from '@/utils/formatters';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-function formatCurrency(value: number): string {
-  if (value >= 1000) {
-    return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-  return '$' + value.toFixed(value < 1 ? 4 : 2);
-}
+type IoniconsName = ComponentProps<typeof Ionicons>['name'];
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const { pairs, favorites, loadMockData: loadMarket } = useMarketStore();
   const { totalValue, totalChangePercent, loadMockData: loadPortfolio } = usePortfolioStore();
 
@@ -42,7 +38,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
+      {/* Header / ส่วนหัว */}
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Welcome back</Text>
@@ -62,7 +58,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Portfolio Card */}
+        {/* Portfolio Card / การ์ดพอร์ตโฟลิโอ */}
         <GlassCard variant="brand" style={styles.portfolioCard}>
           <View style={styles.portfolioHeader}>
             <Text style={styles.portfolioLabel}>Total Portfolio Value</Text>
@@ -76,18 +72,18 @@ export default function HomeScreen() {
             <Text style={styles.portfolioChangeLabel}> 24h Change</Text>
           </View>
 
-          {/* Quick Actions */}
+          {/* Quick Actions / ปุ่มลัด */}
           <View style={styles.quickActions}>
-            {[
-              { icon: 'arrow-down-outline', label: 'Deposit', color: colors.trading.green },
-              { icon: 'arrow-up-outline', label: 'Withdraw', color: colors.trading.red },
-              { icon: 'swap-horizontal-outline', label: 'Swap', color: colors.brand.cyan },
-              { icon: 'card-outline', label: 'Buy', color: colors.brand.purple },
-            ].map((action) => (
+            {([
+              { icon: 'arrow-down-outline' as IoniconsName, label: 'Deposit', color: colors.trading.green },
+              { icon: 'arrow-up-outline' as IoniconsName, label: 'Withdraw', color: colors.trading.red },
+              { icon: 'swap-horizontal-outline' as IoniconsName, label: 'Swap', color: colors.brand.cyan },
+              { icon: 'card-outline' as IoniconsName, label: 'Buy', color: colors.brand.purple },
+            ]).map((action) => (
               <Pressable key={action.label} style={styles.quickAction}>
                 <View style={[styles.quickActionIcon, { backgroundColor: action.color + '20' }]}>
                   <Ionicons
-                    name={action.icon as any}
+                    name={action.icon}
                     size={20}
                     color={action.color}
                   />
@@ -98,7 +94,7 @@ export default function HomeScreen() {
           </View>
         </GlassCard>
 
-        {/* Favorites */}
+        {/* Favorites / รายการโปรด */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Favorites</Text>
           <Pressable onPress={() => router.push('/markets')}>
@@ -114,7 +110,7 @@ export default function HomeScreen() {
           {favoritePairs.map((pair) => (
             <GlassCard
               key={pair.symbol}
-              style={styles.favoriteCard}
+              style={[styles.favoriteCard, { width: screenWidth * 0.42 }]}
               onPress={() => router.push('/trade')}
             >
               <View style={styles.favoriteHeader}>
@@ -131,7 +127,7 @@ export default function HomeScreen() {
               <MiniChart
                 data={pair.chartData}
                 color={pair.change24h >= 0 ? colors.trading.green : colors.trading.red}
-                width={SCREEN_WIDTH * 0.35}
+                width={screenWidth * 0.35}
                 height={40}
               />
               <View style={styles.favoriteFooter}>
@@ -142,7 +138,7 @@ export default function HomeScreen() {
           ))}
         </ScrollView>
 
-        {/* Top Gainers */}
+        {/* Top Gainers / เหรียญที่ขึ้นมากที่สุด */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Top Gainers</Text>
           <Pressable onPress={() => router.push('/markets')}>
@@ -180,7 +176,7 @@ export default function HomeScreen() {
           ))}
         </GlassCard>
 
-        {/* Market Overview Banner */}
+        {/* Market Overview Banner / แบนเนอร์ภาพรวมตลาด */}
         <LinearGradient
           colors={['rgba(6, 182, 212, 0.15)', 'rgba(139, 92, 246, 0.15)']}
           start={{ x: 0, y: 0 }}
@@ -243,7 +239,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.xl,
   },
-  // Portfolio Card
+  // Portfolio Card / การ์ดพอร์ตโฟลิโอ
   portfolioCard: {
     padding: spacing.xl,
     marginBottom: spacing['2xl'],
@@ -295,7 +291,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     fontSize: 11,
   },
-  // Section
+  // Section / ส่วน
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -310,13 +306,12 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.brand.cyan,
   },
-  // Favorites
+  // Favorites / รายการโปรด
   favoritesScroll: {
     gap: spacing.md,
     paddingBottom: spacing['2xl'],
   },
   favoriteCard: {
-    width: SCREEN_WIDTH * 0.42,
     padding: spacing.lg,
   },
   favoriteHeader: {
@@ -364,7 +359,7 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     fontSize: 13,
   },
-  // Gainers
+  // Gainers / เหรียญขึ้น
   gainersCard: {
     padding: spacing.lg,
     marginBottom: spacing['2xl'],
@@ -407,7 +402,7 @@ const styles = StyleSheet.create({
     ...typography.monoSmall,
     color: colors.text.primary,
   },
-  // Banner
+  // Banner / แบนเนอร์
   banner: {
     borderRadius: 16,
     borderWidth: 1,

@@ -5,27 +5,23 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Circle } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 import { colors, spacing, typography } from '@/theme';
 import GlassCard from '@/components/common/GlassCard';
 import PriceChange from '@/components/common/PriceChange';
 import AssetRow from '@/components/portfolio/AssetRow';
 import { usePortfolioStore } from '@/stores/portfolioStore';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CHART_SIZE = SCREEN_WIDTH * 0.45;
-
-// Donut chart for allocation
-function AllocationChart({ assets }: { assets: { symbol: string; allocation: number; color: string }[] }) {
-  const radius = CHART_SIZE / 2 - 10;
-  const cx = CHART_SIZE / 2;
-  const cy = CHART_SIZE / 2;
-  const circumference = 2 * Math.PI * radius;
+// Donut chart for allocation / กราฟโดนัทแสดงสัดส่วนการลงทุน
+function AllocationChart({ assets, chartSize }: { assets: { symbol: string; allocation: number; color: string }[]; chartSize: number }) {
+  const radius = chartSize / 2 - 10;
+  const cx = chartSize / 2;
+  const cy = chartSize / 2;
 
   let currentAngle = -90;
   const segments = assets.map((asset) => {
@@ -49,7 +45,7 @@ function AllocationChart({ assets }: { assets: { symbol: string; allocation: num
   });
 
   return (
-    <Svg width={CHART_SIZE} height={CHART_SIZE}>
+    <Svg width={chartSize} height={chartSize}>
       {segments.map((seg, i) => (
         <Path key={i} d={seg.d} fill={seg.color} opacity={0.85} />
       ))}
@@ -71,6 +67,8 @@ type TabType = 'assets' | 'history';
 
 export default function PortfolioScreen() {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const chartSize = screenWidth * 0.45;
   const { assets, totalValue, totalChange24h, totalChangePercent, loadMockData } = usePortfolioStore();
   const [activeTab, setActiveTab] = useState<TabType>('assets');
 
@@ -97,7 +95,7 @@ export default function PortfolioScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Total Value Card */}
+        {/* Total Value Card / การ์ดมูลค่ารวม */}
         <GlassCard variant="brand" style={styles.valueCard}>
           <Text style={styles.valueLabel}>Total Balance</Text>
           <Text style={styles.totalValue}>
@@ -111,11 +109,11 @@ export default function PortfolioScreen() {
           </View>
         </GlassCard>
 
-        {/* Allocation Chart */}
+        {/* Allocation Chart / กราฟสัดส่วน */}
         <GlassCard style={styles.allocationCard}>
           <Text style={styles.allocationTitle}>Allocation</Text>
           <View style={styles.allocationContent}>
-            <AllocationChart assets={allocationData} />
+            <AllocationChart assets={allocationData} chartSize={chartSize} />
             <View style={styles.allocationLegend}>
               {allocationData.map((a) => (
                 <View key={a.symbol} style={styles.legendItem}>
@@ -128,7 +126,7 @@ export default function PortfolioScreen() {
           </View>
         </GlassCard>
 
-        {/* Tab Switcher */}
+        {/* Tab Switcher / แถบสลับ */}
         <View style={styles.tabBar}>
           <Pressable
             style={[styles.tab, activeTab === 'assets' && styles.tabActive]}
@@ -148,7 +146,7 @@ export default function PortfolioScreen() {
           </Pressable>
         </View>
 
-        {/* Asset List */}
+        {/* Asset List / รายการสินทรัพย์ */}
         {activeTab === 'assets' && (
           <View style={styles.assetList}>
             {assets.map((asset) => (
@@ -164,7 +162,7 @@ export default function PortfolioScreen() {
           </View>
         )}
 
-        {/* Transaction History */}
+        {/* Transaction History / ประวัติการทำรายการ */}
         {activeTab === 'history' && (
           <GlassCard style={styles.historyCard}>
             {[
@@ -259,7 +257,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.xl,
   },
-  // Value Card
+  // Value Card / การ์ดมูลค่า
   valueCard: {
     padding: spacing.xl,
     marginBottom: spacing.xl,
@@ -286,7 +284,7 @@ const styles = StyleSheet.create({
     color: colors.trading.green,
     fontWeight: '600',
   },
-  // Allocation
+  // Allocation / สัดส่วน
   allocationCard: {
     padding: spacing.lg,
     marginBottom: spacing.xl,
@@ -324,7 +322,7 @@ const styles = StyleSheet.create({
     ...typography.monoSmall,
     color: colors.text.tertiary,
   },
-  // Tabs
+  // Tabs / แถบ
   tabBar: {
     flexDirection: 'row',
     gap: spacing.xs,
@@ -351,12 +349,12 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: colors.brand.cyan,
   },
-  // Assets
+  // Assets / สินทรัพย์
   assetList: {
     gap: spacing.sm,
     marginBottom: spacing.xl,
   },
-  // History
+  // History / ประวัติ
   historyCard: {
     padding: spacing.lg,
     marginBottom: spacing.xl,

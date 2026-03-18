@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, spacing, radius, typography } from '@/theme';
+import { formatPrice, formatAmount } from '@/utils/formatters';
 
 interface OrderBookEntry {
   price: number;
@@ -17,33 +18,14 @@ interface OrderBookMobileProps {
 
 const VISIBLE_ROWS = 8;
 
-function formatPrice(price: number): string {
-  return price.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function formatAmount(amount: number): string {
-  if (amount >= 1) {
-    return amount.toLocaleString('en-US', {
-      minimumFractionDigits: 4,
-      maximumFractionDigits: 4,
-    });
-  }
-  return amount.toLocaleString('en-US', {
-    minimumFractionDigits: 6,
-    maximumFractionDigits: 6,
-  });
-}
-
 function generateMockOrderBook(): {
   asks: OrderBookEntry[];
   bids: OrderBookEntry[];
   spread: number;
   spreadPercent: number;
 } {
-  const midPrice = 67_432.50;
+  // Use consistent BTC price / ใช้ราคา BTC ที่สอดคล้องกันทั้งแอป
+  const midPrice = 98_432.50;
   const asks: OrderBookEntry[] = [];
   const bids: OrderBookEntry[] = [];
 
