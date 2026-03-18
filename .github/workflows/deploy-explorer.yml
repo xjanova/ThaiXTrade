@@ -121,7 +121,7 @@ jobs:
                   timeout: 5s
                   retries: 5
               backend:
-                image: blockscout/blockscout:latest
+                image: blockscout/blockscout:6.10.1
                 container_name: blockscout-backend
                 restart: unless-stopped
                 depends_on:
@@ -129,11 +129,14 @@ jobs:
                     condition: service_healthy
                 extra_hosts:
                   - "host.docker.internal:host-gateway"
+                command: sh -c "bin/blockscout eval 'Elixir.Explorer.ReleaseTasks.create_and_migrate()' && bin/blockscout start"
                 environment:
+                  MIX_ENV: prod
                   DATABASE_URL: postgresql://blockscout:tpix_explorer_db_2026@db:5432/blockscout
                   ETHEREUM_JSONRPC_VARIANT: geth
                   ETHEREUM_JSONRPC_HTTP_URL: http://host.docker.internal:8545
                   ETHEREUM_JSONRPC_WS_URL: ws://host.docker.internal:8545
+                  ETHEREUM_JSONRPC_TRACE_URL: http://host.docker.internal:8545
                   CHAIN_ID: "7000"
                   NETWORK: "TPIX Chain"
                   SUBNETWORK: "Mainnet"
@@ -143,19 +146,27 @@ jobs:
                   INDEXER_DISABLE_INTERNAL_TRANSACTIONS_FETCHER: "true"
                   INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: "true"
                   ECTO_USE_SSL: "false"
-                  SECRET_KEY_BASE: "p3s6rELz5Kv5xN7mF9dGq8bJwY2cT4hA0uW1iO3nP6vS8eR2tY4xK7bM9jQ2w"
+                  SECRET_KEY_BASE: "56OgMJny00smDFHkKNv27A7eBZmqaJPkWTp9HOYcR6M/Rij24bLey3qrB3PJFH3N"
                   API_V2_ENABLED: "true"
                   DISABLE_EXCHANGE_RATES: "true"
-                  POOL_SIZE: "40"
+                  SHOW_TXS_CHART: "true"
+                  POOL_SIZE: "30"
                   POOL_SIZE_API: "10"
                   ACCOUNT_ENABLED: "false"
                   MICROSERVICE_SC_VERIFIER_ENABLED: "false"
+                  MICROSERVICE_SC_VERIFIER_URL: ""
+                  INDEXER_MEMORY_LIMIT: "1g"
+                  FETCH_REWARDS_WAY: "manual"
                   PORT: "4000"
                 ports:
                   - "127.0.0.1:4000:4000"
             volumes:
               blockscout-db-data:
             DC2
+
+            # --- Clean blockscout DB (may have wrong schema from latest) ---
+            echo "[4b] Cleaning old blockscout data..."
+            docker volume rm blockscout_blockscout-db-data 2>/dev/null || true
 
             # --- Start chain ---
             echo "[5] Starting TPIX Chain..."
