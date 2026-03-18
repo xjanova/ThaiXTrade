@@ -77,6 +77,14 @@ const navigationSections = [
         ],
     },
     {
+        title: 'TPIX Ecosystem',
+        items: [
+            { name: 'Token Sales', href: '/admin/token-sales', icon: 'tokensale' },
+            { name: 'Whitepaper', href: '/whitepaper', icon: 'whitepaper' },
+            { name: 'Explorer', href: '/explorer', icon: 'explorer' },
+        ],
+    },
+    {
         title: 'Content',
         items: [
             { name: 'Settings', href: '/admin/settings', icon: 'settings' },
@@ -216,6 +224,18 @@ const handleLogout = () => {
                             <!-- Users -->
                             <svg v-else-if="item.icon === 'users'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                            </svg>
+                            <!-- Token Sale -->
+                            <svg v-else-if="item.icon === 'tokensale'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                            <!-- Whitepaper -->
+                            <svg v-else-if="item.icon === 'whitepaper'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <!-- Explorer -->
+                            <svg v-else-if="item.icon === 'explorer'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
                             <!-- Notification -->
                             <svg v-else-if="item.icon === 'notification'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

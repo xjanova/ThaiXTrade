@@ -92,6 +92,11 @@ Route::get('/staking', function () {
     return Inertia::render('Staking');
 })->name('staking');
 
+// Admin — Token Sales Management (จัดการรอบขายเหรียญ)
+Route::get('/admin/token-sales', function () {
+    return Inertia::render('Admin/TokenSales/Index');
+})->name('admin.token-sales');
+
 // Health Check
 Route::get('/health', function () {
     return response()->json([
