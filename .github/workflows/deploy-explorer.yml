@@ -26,14 +26,17 @@ jobs:
 
             mkdir -p "$CHAIN" "$BSCOUT"
 
-            # === Step 1: Stop running containers ===
-            echo "[1] Stopping containers..."
-            docker compose -f "$INFRA/docker-compose.yml" down 2>/dev/null || true
-            # Legacy cleanup
-            docker compose -f "$CHAIN/docker-compose.yml" down 2>/dev/null || true
-            docker compose -f "$BSCOUT/docker-compose.yml" down 2>/dev/null || true
+            # === Step 1: Stop + FULL RESET ===
+            echo "[1] Stopping containers + full clean..."
+            docker compose -f "$INFRA/docker-compose.yml" down -v 2>/dev/null || true
+            docker compose -f "$CHAIN/docker-compose.yml" down -v 2>/dev/null || true
+            docker compose -f "$BSCOUT/docker-compose.yml" down -v 2>/dev/null || true
+            docker rm -f blockscout-backend blockscout-db blockscout-frontend tpix-chain-node 2>/dev/null || true
+            # ลบ data ด้วย Docker (เพราะ root permission)
+            docker run --rm -v "$CHAIN:/chain" alpine sh -c "rm -rf /chain/data /chain/genesis.json" 2>/dev/null || true
+            echo "All cleaned. Fresh start with chain ID 4289."
 
-            # === Step 2: Generate keys + genesis ONLY if not exists ===
+            # === Step 2: Generate keys + genesis ===
             # สำคัญ: ไม่ลบ data เดิม! สร้างครั้งเดียวแล้วเก็บถาวร
             if [ ! -f "$CHAIN/data/consensus/validator.key" ]; then
               echo "[2] First time: Generating validator secrets..."
@@ -220,16 +223,8 @@ jobs:
                 driver: bridge
             DCALL
 
-            # === Step 5: FULL RESET — ลบทุกอย่างเพื่อ clean start ===
-            echo "[5] Full reset: removing all containers, volumes, data..."
-            docker rm -f blockscout-backend blockscout-db blockscout-frontend tpix-chain-node 2>/dev/null || true
-            docker volume rm tpix-infrastructure_blockscout-db-data 2>/dev/null || true
-            # ลบ chain data + genesis เพื่อสร้างใหม่ด้วย chain ID 4289
-            rm -rf "$CHAIN/data" "$CHAIN/genesis.json"
-            echo "Cleaned all data for fresh start with chain ID 4289"
-
-            # === Step 6: Start TPIX Chain ===
-            echo "[6] Starting TPIX Chain..."
+            # === Step 5: Start ALL services ===
+            echo "[5] Starting TPIX Chain + Blockscout..."
             cd "$INFRA"
             docker compose up -d
             echo "Waiting 20s for chain to start sealing..."
