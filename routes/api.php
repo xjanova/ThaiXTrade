@@ -37,6 +37,22 @@ Route::get('/', function () {
 
 // Public Routes (No Auth Required)
 Route::prefix('v1')->group(function () {
+    // Site — logo จาก admin settings (ใช้ใน Explorer + ที่อื่น)
+    Route::get('/site/logo', function () {
+        $logo = \App\Models\SiteSetting::get('general', 'logo');
+        if ($logo && \Illuminate\Support\Facades\Storage::disk('public')->exists($logo)) {
+            return response()->file(storage_path('app/public/' . $logo));
+        }
+
+        // Fallback: ใช้ logo.png ที่อยู่ใน public_html
+        $fallback = public_path('logo.png');
+        if (file_exists($fallback)) {
+            return response()->file($fallback);
+        }
+
+        abort(404);
+    });
+
     // Market Data
     Route::prefix('market')->group(function () {
         Route::get('/tickers', [MarketController::class, 'tickers']);
