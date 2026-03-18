@@ -66,9 +66,20 @@ jobs:
                 BOOTNODE_FLAG="--bootnode /ip4/127.0.0.1/tcp/10001/p2p/$NODE_ID"
               fi
 
+              # ดึง BLS public key ด้วย
+              BLS_KEY=$(echo "$SECRETS_OUT" | grep "BLS Public key" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+              echo "BLS Key: $BLS_KEY"
+
+              # สร้าง validator string: address:bls_key
+              if [ -n "$BLS_KEY" ]; then
+                VALIDATOR_STR="${VALIDATOR_ADDR}:${BLS_KEY}"
+              else
+                VALIDATOR_STR="${VALIDATOR_ADDR}"
+              fi
+
               docker run --rm -v "$CHAIN:/chain" $IMG genesis \
                 --consensus ibft \
-                --ibft-validators-prefix-path /chain \
+                --ibft-validator "$VALIDATOR_STR" \
                 $BOOTNODE_FLAG \
                 --chain-id 7000 \
                 --block-gas-limit 20000000 \
