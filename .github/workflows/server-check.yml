@@ -6,55 +6,35 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Check server environment
+      - name: Check server status
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          command_timeout: 5m
           script: |
-            echo "=== OS ==="
-            cat /etc/os-release | head -4
+            echo "=== Docker Containers ==="
+            docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
             echo ""
-            echo "=== RAM ==="
-            free -h
+            echo "=== TPIX Chain Node Logs (last 30) ==="
+            docker logs tpix-chain-node --tail 30 2>&1 || echo "No container"
             echo ""
-            echo "=== CPU ==="
-            nproc
+            echo "=== Blockscout Backend Logs (last 30) ==="
+            docker logs blockscout-backend --tail 30 2>&1 || echo "No container"
             echo ""
-            echo "=== Disk ==="
-            df -h / /home 2>/dev/null | head -5
+            echo "=== Blockscout DB Logs (last 10) ==="
+            docker logs blockscout-db --tail 10 2>&1 || echo "No container"
             echo ""
-            echo "=== Docker ==="
-            docker --version 2>&1 || echo "Docker NOT installed"
-            docker compose version 2>&1 || docker-compose --version 2>&1 || echo "Docker Compose NOT installed"
+            echo "=== Chain RPC Test ==="
+            curl -s -X POST http://127.0.0.1:8545 -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' 2>/dev/null || echo "No response"
             echo ""
-            echo "=== Running Containers ==="
-            docker ps 2>&1 || echo "No docker access"
+            echo "=== Blockscout HTTP Test ==="
+            curl -s -o /dev/null -w "HTTP %{http_code}" http://127.0.0.1:4000 2>/dev/null || echo "No response"
             echo ""
-            echo "=== Ports in use (4000,5432,8545) ==="
-            ss -tlnp 2>/dev/null | grep -E '4000|5432|8545' || netstat -tlnp 2>/dev/null | grep -E '4000|5432|8545' || echo "No relevant ports in use"
+            echo "=== Genesis file ==="
+            cat ~/tpix-infrastructure/tpix-chain/genesis.json 2>/dev/null | head -5
             echo ""
-            echo "=== Explorer Domain Path ==="
-            ls -la /domains/explorer.tpix.online/ 2>/dev/null || ls -la /home/admin/domains/explorer.tpix.online/ 2>/dev/null || echo "Path not found at expected locations"
-            echo ""
-            echo "=== All Domain Folders ==="
-            ls /home/admin/domains/ 2>/dev/null || ls /domains/ 2>/dev/null || echo "No domains dir found"
-            echo ""
-            echo "=== Web Server ==="
-            nginx -v 2>&1 || echo "No nginx"
-            apache2 -v 2>&1 || httpd -v 2>&1 || echo "No apache"
-            echo ""
-            echo "=== PHP ==="
-            php -v 2>&1 | head -1
-            echo ""
-            echo "=== Supervisor ==="
-            supervisorctl status 2>&1 || echo "No supervisor"
-            echo ""
-            echo "=== User & Groups ==="
-            whoami
-            id
-            echo ""
-            echo "=== systemctl available ==="
-            systemctl --version 2>&1 | head -1 || echo "No systemd"
+            echo "=== Disk space ==="
+            df -h / | tail -1
