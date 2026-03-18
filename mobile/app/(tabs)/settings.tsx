@@ -1,13 +1,20 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, Switch } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState } from 'react';
+import Constants from 'expo-constants';
 import { colors, spacing, typography } from '@/theme';
 import GlassCard from '@/components/common/GlassCard';
 
+type IoniconsName = ComponentProps<typeof Ionicons>['name'];
+
+// Get version from Expo config / ดึงเวอร์ชันจาก Expo config
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+
 interface SettingItemProps {
-  icon: string;
+  icon: IoniconsName;
   iconColor?: string;
   title: string;
   subtitle?: string;
@@ -28,7 +35,7 @@ function SettingItem({
   return (
     <Pressable style={styles.settingItem} onPress={onPress}>
       <View style={[styles.settingIcon, { backgroundColor: iconColor + '20' }]}>
-        <Ionicons name={icon as any} size={18} color={iconColor} />
+        <Ionicons name={icon} size={18} color={iconColor} />
       </View>
       <View style={styles.settingContent}>
         <Text style={styles.settingTitle}>{title}</Text>
@@ -59,7 +66,7 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Profile Card */}
+        {/* Profile Card / การ์ดโปรไฟล์ */}
         <GlassCard variant="brand" style={styles.profileCard}>
           <LinearGradient
             colors={colors.gradient.brand}
@@ -79,7 +86,7 @@ export default function SettingsScreen() {
           </View>
         </GlassCard>
 
-        {/* Account */}
+        {/* Account / บัญชี */}
         <Text style={styles.sectionLabel}>ACCOUNT</Text>
         <GlassCard style={styles.settingGroup}>
           <SettingItem
@@ -111,7 +118,7 @@ export default function SettingsScreen() {
           />
         </GlassCard>
 
-        {/* Trading */}
+        {/* Trading / การเทรด */}
         <Text style={styles.sectionLabel}>TRADING</Text>
         <GlassCard style={styles.settingGroup}>
           <SettingItem
@@ -135,7 +142,7 @@ export default function SettingsScreen() {
           />
         </GlassCard>
 
-        {/* Notifications */}
+        {/* Notifications / การแจ้งเตือน */}
         <Text style={styles.sectionLabel}>NOTIFICATIONS</Text>
         <GlassCard style={styles.settingGroup}>
           <SettingItem
@@ -168,7 +175,7 @@ export default function SettingsScreen() {
           />
         </GlassCard>
 
-        {/* General */}
+        {/* General / ทั่วไป */}
         <Text style={styles.sectionLabel}>GENERAL</Text>
         <GlassCard style={styles.settingGroup}>
           <SettingItem
@@ -202,10 +209,10 @@ export default function SettingsScreen() {
           />
         </GlassCard>
 
-        {/* App Info */}
+        {/* App Info / ข้อมูลแอป */}
         <View style={styles.appInfo}>
           <Text style={styles.appInfoName}>TPIX TRADE</Text>
-          <Text style={styles.appInfoVersion}>Version 1.0.0</Text>
+          <Text style={styles.appInfoVersion}>Version {APP_VERSION}</Text>
           <Text style={styles.appInfoDev}>by Xman Studio</Text>
         </View>
 
@@ -231,7 +238,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.xl,
   },
-  // Profile
+  // Profile / โปรไฟล์
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -277,14 +284,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
-  // Section
+  // Section / ส่วน
   sectionLabel: {
     ...typography.caption,
     color: colors.text.tertiary,
     marginBottom: spacing.sm,
     marginLeft: spacing.xs,
   },
-  // Setting Group
+  // Setting Group / กลุ่มการตั้งค่า
   settingGroup: {
     padding: spacing.xs,
     marginBottom: spacing.xl,
@@ -322,7 +329,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.divider,
     marginLeft: 60,
   },
-  // App Info
+  // App Info / ข้อมูลแอป
   appInfo: {
     alignItems: 'center',
     paddingVertical: spacing['3xl'],

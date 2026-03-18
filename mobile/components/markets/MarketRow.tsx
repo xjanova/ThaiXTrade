@@ -1,6 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View, Pressable } from 'react-native';
-import Animated, {
+import { StyleSheet, Text, View } from 'react-native';
+import {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
@@ -8,6 +8,8 @@ import Animated, {
 import { colors, spacing, radius, typography } from '@/theme';
 import { MiniChart } from '../trading/MiniChart';
 import { PriceChange } from '../common/PriceChange';
+import { AnimatedPressable, SPRING_CONFIG } from '@/utils/animation';
+import { formatPrice } from '@/utils/formatters';
 
 interface MarketRowProps {
   symbol: string;
@@ -17,33 +19,6 @@ interface MarketRowProps {
   volume: string;
   chartData: number[];
   onPress?: () => void;
-}
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-const SPRING_CONFIG = {
-  damping: 15,
-  stiffness: 300,
-  mass: 0.8,
-};
-
-function formatPrice(price: number): string {
-  if (price >= 1_000) {
-    return price.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-  if (price >= 1) {
-    return price.toLocaleString('en-US', {
-      minimumFractionDigits: 4,
-      maximumFractionDigits: 4,
-    });
-  }
-  return price.toLocaleString('en-US', {
-    minimumFractionDigits: 6,
-    maximumFractionDigits: 6,
-  });
 }
 
 function CoinIcon({ symbol }: { symbol: string }) {

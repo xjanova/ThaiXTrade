@@ -1,6 +1,26 @@
 import { TextStyle } from 'react-native';
 
-export const typography: Record<string, TextStyle> = {
+/**
+ * Typography scale for TPIX TRADE
+ * ระบบตัวอักษรสำหรับ TPIX TRADE
+ *
+ * Uses typed keys for autocomplete and compile-time safety.
+ * ใช้ typed keys สำหรับ autocomplete และความปลอดภัยตอน compile
+ */
+
+type TypographyKeys =
+  | 'h1'
+  | 'h2'
+  | 'h3'
+  | 'h4'
+  | 'body'
+  | 'bodySmall'
+  | 'caption'
+  | 'mono'
+  | 'monoLarge'
+  | 'monoSmall';
+
+export const typography: Record<TypographyKeys, TextStyle> = {
   h1: {
     fontSize: 32,
     fontWeight: '700',

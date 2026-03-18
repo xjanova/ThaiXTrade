@@ -86,7 +86,12 @@ export const usePortfolioStore = create<PortfolioState>((set) => ({
 
   loadMockData: () => {
     const totalValue = MOCK_ASSETS.reduce((sum, a) => sum + a.value, 0);
-    const totalChange24h = 1842.35;
+    // Compute actual 24h change from individual assets
+    // คำนวณการเปลี่ยนแปลง 24h จากสินทรัพย์แต่ละตัว
+    const totalChange24h = MOCK_ASSETS.reduce((sum, a) => {
+      const prevValue = a.value / (1 + a.change24h / 100);
+      return sum + (a.value - prevValue);
+    }, 0);
     const totalChangePercent = (totalChange24h / (totalValue - totalChange24h)) * 100;
 
     set({

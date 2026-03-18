@@ -1,6 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View, Pressable } from 'react-native';
-import Animated, {
+import { StyleSheet, Text, View } from 'react-native';
+import {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
@@ -8,6 +8,8 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, radius, typography } from '@/theme';
 import { PriceChange } from '../common/PriceChange';
+import { AnimatedPressable, SPRING_CONFIG } from '@/utils/animation';
+import { formatBalance, formatUsdValue } from '@/utils/formatters';
 
 interface AssetRowProps {
   symbol: string;
@@ -17,40 +19,6 @@ interface AssetRowProps {
   change24h: number;
   icon?: string;
   onPress?: () => void;
-}
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-const SPRING_CONFIG = {
-  damping: 15,
-  stiffness: 300,
-  mass: 0.8,
-};
-
-function formatBalance(balance: number): string {
-  if (balance >= 1_000) {
-    return balance.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-  if (balance >= 1) {
-    return balance.toLocaleString('en-US', {
-      minimumFractionDigits: 4,
-      maximumFractionDigits: 4,
-    });
-  }
-  return balance.toLocaleString('en-US', {
-    minimumFractionDigits: 6,
-    maximumFractionDigits: 6,
-  });
-}
-
-function formatUsdValue(value: number): string {
-  return `$${value.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
 }
 
 function CoinIcon({ symbol, icon }: { symbol: string; icon?: string }) {

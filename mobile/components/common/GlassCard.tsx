@@ -7,12 +7,13 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
+import {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
 import { colors, spacing, radius } from '@/theme';
+import { AnimatedPressable, SPRING_CONFIG } from '@/utils/animation';
 
 type GlassCardVariant = 'default' | 'elevated' | 'brand';
 
@@ -22,14 +23,6 @@ interface GlassCardProps {
   onPress?: () => void;
   variant?: GlassCardVariant;
 }
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-const SPRING_CONFIG = {
-  damping: 15,
-  stiffness: 300,
-  mass: 0.8,
-};
 
 const variantStyles: Record<GlassCardVariant, {
   background: readonly [string, string, ...string[]];

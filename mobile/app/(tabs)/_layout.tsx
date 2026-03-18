@@ -120,7 +120,9 @@ const styles = StyleSheet.create({
     borderTopColor: colors.bg.cardBorder,
     backgroundColor: 'transparent',
     elevation: 0,
-    height: 85,
+    // Use platform-adaptive height / ใช้ความสูงที่ปรับตาม platform
+    height: 80,
+    paddingBottom: 4,
     paddingTop: 8,
   },
   tabBarBg: {

@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { colors, spacing, radius, typography } from '@/theme';
 import { GradientButton } from '../common/GradientButton';
+import { formatNumber, parseInputNumber } from '@/utils/formatters';
 
 type TradeSide = 'buy' | 'sell';
 type OrderType = 'limit' | 'market';
@@ -26,28 +27,16 @@ interface TradeFormMobileProps {
 
 const PERCENT_BUTTONS = [25, 50, 75, 100] as const;
 
-// Mock balance data
+// Mock balance data / ข้อมูลยอดคงเหลือจำลอง
 const MOCK_BALANCE = {
   base: { symbol: 'BTC', available: 0.5432 },
   quote: { symbol: 'USDT', available: 12_480.55 },
 };
 
-function formatNumber(value: number, decimals: number = 2): string {
-  return value.toLocaleString('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
-}
-
-function parseInputNumber(text: string): number {
-  const cleaned = text.replace(/,/g, '');
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? 0 : num;
-}
-
 export function TradeFormMobile({
   symbol = 'BTC/USDT',
-  currentPrice = 67_432.50,
+  // Use consistent BTC price / ใช้ราคา BTC ที่สอดคล้องกัน
+  currentPrice = 98_432.50,
   onSubmitOrder,
 }: TradeFormMobileProps) {
   const [side, setSide] = useState<TradeSide>('buy');

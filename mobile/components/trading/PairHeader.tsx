@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, radius, typography } from '@/theme';
 import { PriceChange } from '../common/PriceChange';
+import { formatPrice } from '@/utils/formatters';
 
 interface PairHeaderProps {
   symbol: string;
@@ -11,13 +12,6 @@ interface PairHeaderProps {
   high: number;
   low: number;
   volume: string;
-}
-
-function formatPrice(price: number): string {
-  return price.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 
 function StatItem({ label, value }: { label: string; value: string }) {
