@@ -36,15 +36,11 @@ jobs:
               rm -rf "$CHAIN/genesis.json"
             fi
 
-            # --- Fix broken bootnode from previous run ---
-            if grep -q 'p2p/"' "$CHAIN/genesis.json" 2>/dev/null; then
-              echo "Broken bootnode detected, regenerating..."
-              rm -f "$CHAIN/genesis.json"
-              rm -rf "$CHAIN/data"
-            fi
+            # --- Force clean regeneration ---
+            echo "Force regenerating genesis..."
+            rm -rf "$CHAIN/data" "$CHAIN/genesis.json"
 
-            # --- Generate secrets + genesis if needed ---
-            if [ ! -f "$CHAIN/genesis.json" ]; then
+            if true; then
               echo "[2] Generating validator secrets..."
               rm -rf "$CHAIN/data"
               docker run --rm -v "$CHAIN/data:/data" $IMG secrets init --data-dir /data --insecure
