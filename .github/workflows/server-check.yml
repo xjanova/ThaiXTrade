@@ -15,20 +15,31 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 5m
           script: |
+            echo "=== Server Resources ==="
+            echo "CPU: $(nproc) cores"
+            grep MemTotal /proc/meminfo
+            grep MemAvailable /proc/meminfo
+            uptime
+            df -h / | tail -1
+            echo ""
+            echo "=== Docker Memory Usage ==="
+            docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}" 2>/dev/null
+            echo ""
             echo "=== Containers ==="
-            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            docker ps --format "table {{.Names}}\t{{.Status}}"
             echo ""
             echo "=== Chain RPC ==="
             curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
             echo ""
-            echo "=== Blockscout Backend ==="
-            curl -s http://127.0.0.1:4000/api/v2/stats 2>/dev/null | head -200
+            echo "=== Blockscout Stats ==="
+            curl -s http://127.0.0.1:4000/api/v2/stats 2>/dev/null | python3 -m json.tool 2>/dev/null || curl -s http://127.0.0.1:4000/api/v2/stats
             echo ""
-            echo "=== Blockscout Frontend Logs (crash reason) ==="
-            docker logs blockscout-frontend --tail 20 2>&1
+            echo "=== Explorer Response Time ==="
+            curl -s -o /dev/null -w "HTTP %{http_code} - Time: %{time_total}s" https://explorer.tpix.online/ 2>/dev/null
             echo ""
-            echo "=== Explorer HTTP ==="
-            curl -s -o /dev/null -w "HTTP %{http_code}" https://explorer.tpix.online/ 2>/dev/null
+            echo "=== PHP proxy response time ==="
+            curl -s -o /dev/null -w "Direct backend: %{time_total}s" http://127.0.0.1:4000/ 2>/dev/null
             echo ""
-            echo "=== Explorer dir ==="
-            ls -la ~/domains/explorer.tpix.online/public_html/ 2>/dev/null
+            curl -s -o /dev/null -w "Direct frontend: %{time_total}s" http://127.0.0.1:3100/ 2>/dev/null
+            echo ""
+            curl -s -o /dev/null -w "Via PHP proxy: %{time_total}s" https://explorer.tpix.online/ 2>/dev/null
