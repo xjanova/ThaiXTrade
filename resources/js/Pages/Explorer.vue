@@ -10,7 +10,7 @@ import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 // URL ของ Blockscout explorer (ดึงจาก env หรือ hardcode)
-const explorerUrl = ref(import.meta.env.VITE_TPIX_EXPLORER_URL || 'https://explorer.tpixchain.com');
+const explorerUrl = ref(import.meta.env.VITE_TPIX_EXPLORER_URL || 'https://explorer.tpix.online');
 
 const features = [
     { title: 'Transactions', description: 'View all transactions on TPIX Chain in real-time', icon: '⟐', link: '/txs' },

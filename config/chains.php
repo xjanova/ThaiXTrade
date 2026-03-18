@@ -229,7 +229,7 @@ return [
             'rpc' => [
                 env('WEB3_RPC_TPIX', 'https://rpc.tpixchain.com'),
             ],
-            'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpixchain.com'),
+            'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpix.online'),
             'nativeCurrency' => [
                 'name' => 'TPIX',
                 'symbol' => 'TPIX',
@@ -287,7 +287,7 @@ return [
             'shortName' => 'tTPIX',
             'chainId' => 7001,
             'rpc' => [env('WEB3_RPC_TPIX_TESTNET', 'https://testnet-rpc.tpixchain.com')],
-            'explorer' => 'https://testnet-explorer.tpixchain.com',
+            'explorer' => 'https://testnet-explorer.tpix.online',
             'nativeCurrency' => [
                 'name' => 'tTPIX',
                 'symbol' => 'tTPIX',

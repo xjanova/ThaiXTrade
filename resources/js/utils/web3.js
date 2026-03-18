@@ -46,7 +46,7 @@ export const TPIX_CHAIN_CONFIG = {
         decimals: 18,
     },
     rpcUrls: ['https://rpc.tpixchain.com'],
-    blockExplorerUrls: ['https://explorer.tpixchain.com'],
+    blockExplorerUrls: ['https://explorer.tpix.online'],
 };
 
 /**
