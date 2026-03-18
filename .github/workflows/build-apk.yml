@@ -1,0 +1,89 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: ['main', 'develop', 'claude/*']
+    paths:
+      - 'mobile/**'
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Build APK (Release)
+        run: |
+          cd android
+          ./gradlew assembleRelease \
+            -PversionName="1.0.0" \
+            -PversionCode=1
+
+      - name: Find APK file
+        id: find-apk
+        run: |
+          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "Found APK at: $APK_PATH"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TPIX-TRADE-v1.0.0
+          path: mobile/${{ steps.find-apk.outputs.apk_path }}
+          retention-days: 90
+
+      - name: Create Release (on main branch)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mobile-v1.0.0
+          name: 'TPIX TRADE Mobile v1.0.0'
+          body: |
+            ## TPIX TRADE Mobile App v1.0.0
+
+            ### Features
+            - Dashboard with portfolio overview
+            - Real-time market data
+            - Trading interface with order book
+            - Portfolio management
+            - Glass morphism dark theme
+
+            ### Download
+            Download the APK below and install on your Android device.
+            You may need to enable "Install from unknown sources" in your device settings.
+          files: mobile/${{ steps.find-apk.outputs.apk_path }}
+          draft: false
+          prerelease: false
