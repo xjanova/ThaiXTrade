@@ -15,102 +15,58 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 15m
           script: |
-            echo "=========================================="
-            echo "  TPIX Chain + Blockscout Explorer Deploy"
-            echo "=========================================="
+            echo "=== TPIX Chain + Blockscout Deploy ==="
 
-            INFRA_DIR="$HOME/tpix-infrastructure"
-            EXPLORER_DIR="$HOME/domains/explorer.tpix.online"
+            INFRA="$HOME/tpix-infrastructure"
+            CHAIN="$INFRA/tpix-chain"
+            BSCOUT="$INFRA/blockscout"
+            EXPLORER="$HOME/domains/explorer.tpix.online"
+            IMG="0xpolygon/polygon-edge:0.9.0"
 
-            # === ตรวจสอบ Docker access ===
-            echo "[0] Checking Docker access..."
-            if docker ps > /dev/null 2>&1; then
-              D="docker"
-              DC="docker compose"
-            elif sudo -n docker ps > /dev/null 2>&1; then
-              D="sudo docker"
-              DC="sudo docker compose"
-            else
-              # ลองเพิ่ม user เข้า docker group ด้วย sudo NOPASSWD ที่อาจตั้งไว้สำหรับ usermod
-              echo "Trying to add user to docker group..."
-              # ใช้ workaround: เช็คว่า docker socket readable ไหม
-              DOCKER_SOCK="/var/run/docker.sock"
-              if [ -e "$DOCKER_SOCK" ]; then
-                SOCK_GROUP=$(stat -c '%G' "$DOCKER_SOCK" 2>/dev/null || echo "unknown")
-                echo "Docker socket group: $SOCK_GROUP"
-                echo "Current groups: $(groups)"
-                # ถ้า socket group คือ docker แต่ user ไม่อยู่ใน group
-                # ลองใช้ sg
-                if sg docker -c "docker ps" > /dev/null 2>&1; then
-                  echo "sg docker works!"
-                  D="docker"
-                  DC="docker compose"
-                  # Wrap remaining in sg docker
-                  exec sg docker "$0"
-                fi
-              fi
-              echo "ERROR: Cannot access Docker. Please run on server as root:"
-              echo "  usermod -aG docker $(whoami)"
-              echo "Then re-run this workflow."
-              exit 1
+            mkdir -p "$CHAIN" "$BSCOUT"
+
+            # --- Stop old containers ---
+            echo "[1] Stopping old containers..."
+            docker compose -f "$CHAIN/docker-compose.yml" down 2>/dev/null || true
+            docker compose -f "$BSCOUT/docker-compose.yml" down 2>/dev/null || true
+
+            # --- Clean broken genesis (was directory not file) ---
+            if [ -d "$CHAIN/genesis.json" ]; then
+              echo "Removing broken genesis.json directory..."
+              rm -rf "$CHAIN/genesis.json"
             fi
 
-            echo "Using: $D"
+            # --- Generate secrets + genesis if needed ---
+            if [ ! -f "$CHAIN/genesis.json" ]; then
+              echo "[2] Generating validator secrets..."
+              rm -rf "$CHAIN/data"
+              docker run --rm -v "$CHAIN/data:/data" $IMG secrets init --data-dir /data --insecure
 
-            # === Step 1: Create directories ===
-            echo "[1/7] Setting up directories..."
-            mkdir -p "$INFRA_DIR/tpix-chain"
-            mkdir -p "$INFRA_DIR/blockscout"
-
-            # === Step 2: Genesis ===
-            echo "[2/7] Initializing Polygon Edge data..."
-            cd "$INFRA_DIR/tpix-chain"
-
-            # ถ้ายังไม่มี genesis สร้างด้วย polygon-edge CLI
-            if [ ! -f "$INFRA_DIR/tpix-chain/genesis-ready" ]; then
-              echo "Generating secrets and genesis with polygon-edge CLI..."
-
-              # ลบข้อมูลเก่าทั้งหมด (รวม genesis.json ที่อาจเป็น directory)
-              rm -rf "$INFRA_DIR/tpix-chain/data"
-              rm -rf "$INFRA_DIR/tpix-chain/genesis.json"
-              # ลบ Docker volume เก่า
-              $D volume rm tpix-chain_tpix-chain-data 2>/dev/null || true
-
-              # สร้าง validator keys + genesis ทั้งหมดในครั้งเดียว
-              mkdir -p "$INFRA_DIR/tpix-chain/data"
-
-              echo "Step A: Generate validator secrets..."
-              $D run --rm -v "$INFRA_DIR/tpix-chain/data:/data" 0xpolygon/polygon-edge:0.9.0 \
-                secrets init --data-dir /data --insecure 2>&1 || true
-
-              echo "Step B: Check what was created..."
-              ls -la "$INFRA_DIR/tpix-chain/data/" 2>&1 || true
-              ls -la "$INFRA_DIR/tpix-chain/data/consensus/" 2>&1 || true
-
-              echo "Step C: Generate genesis..."
-              $D run --rm -v "$INFRA_DIR/tpix-chain:/chain" 0xpolygon/polygon-edge:0.9.0 \
-                genesis \
+              echo "[3] Generating genesis.json..."
+              docker run --rm -v "$CHAIN:/chain" $IMG genesis \
                 --consensus ibft \
                 --ibft-validators-prefix-path /chain \
                 --chain-id 7000 \
                 --block-gas-limit 20000000 \
                 --epoch-size 100000 \
                 --premine "0x0000000000000000000000000000000000001010:7000000000000000000000000000" \
-                --dir /chain/genesis.json 2>&1
+                --dir /chain/genesis.json
 
-              echo "Step D: Verify genesis..."
-              ls -la "$INFRA_DIR/tpix-chain/genesis.json" 2>&1 || true
-              head -5 "$INFRA_DIR/tpix-chain/genesis.json" 2>&1 || true
-
-              touch "$INFRA_DIR/tpix-chain/genesis-ready"
-              echo "✅ Genesis created successfully!"
+              echo "Genesis created:"
+              cat "$CHAIN/genesis.json" | head -20
             else
-              echo "Genesis already exists, skipping..."
+              echo "[2-3] Genesis exists, skipping..."
             fi
 
-            # === Step 3: Chain compose ===
-            echo "[3/7] Writing TPIX Chain compose..."
-            cat > "$INFRA_DIR/tpix-chain/docker-compose.yml" << 'EOF'
+            # --- Verify genesis is a file ---
+            if [ ! -f "$CHAIN/genesis.json" ]; then
+              echo "ERROR: genesis.json not created!"
+              exit 1
+            fi
+
+            # --- Chain docker-compose ---
+            echo "[4] Writing docker-compose files..."
+            cat > "$CHAIN/docker-compose.yml" << 'DC1'
             services:
               tpix-node:
                 image: 0xpolygon/polygon-edge:0.9.0
@@ -124,11 +80,9 @@ jobs:
                   - ./data:/data
                   - ./genesis.json:/genesis.json:ro
                 command: server --data-dir /data --chain /genesis.json --grpc-address 0.0.0.0:10000 --libp2p 0.0.0.0:10001 --jsonrpc 0.0.0.0:8545 --seal --max-slots 4096 --block-gas-target 20000000 --price-limit 0
-            EOF
+            DC1
 
-            # === Step 4: Blockscout compose ===
-            echo "[4/7] Writing Blockscout compose..."
-            cat > "$INFRA_DIR/blockscout/docker-compose.yml" << 'EOF'
+            cat > "$BSCOUT/docker-compose.yml" << 'DC2'
             services:
               db:
                 image: postgres:16-alpine
@@ -180,48 +134,48 @@ jobs:
                   - "127.0.0.1:4000:4000"
             volumes:
               blockscout-db-data:
-            EOF
+            DC2
 
-            # === Step 5: Start Chain ===
-            echo "[5/7] Starting TPIX Chain..."
-            cd "$INFRA_DIR/tpix-chain"
-            $DC down 2>/dev/null || true
-            $DC pull 2>&1 | tail -2
-            $DC up -d
-            echo "Waiting 15s..."
-            sleep 15
+            # --- Start chain ---
+            echo "[5] Starting TPIX Chain..."
+            cd "$CHAIN"
+            docker compose up -d
+            echo "Waiting 20s..."
+            sleep 20
+
             RPC=$(curl -s -X POST http://127.0.0.1:8545 -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' 2>/dev/null || echo "no response")
             echo "Chain RPC: $RPC"
 
-            # === Step 6: Start Blockscout ===
-            echo "[6/7] Starting Blockscout..."
-            cd "$INFRA_DIR/blockscout"
-            $DC down 2>/dev/null || true
-            $DC pull 2>&1 | tail -2
-            $DC up -d
-            echo "Waiting 25s..."
-            sleep 25
+            # --- Start blockscout ---
+            echo "[6] Starting Blockscout..."
+            cd "$BSCOUT"
+            docker compose up -d
+            echo "Waiting 30s..."
+            sleep 30
 
-            # === Step 7: Reverse proxy ===
-            echo "[7/7] Setting up proxy..."
-            mkdir -p "$EXPLORER_DIR/public_html"
-            cat > "$EXPLORER_DIR/public_html/.htaccess" << 'HA'
+            # --- Proxy setup ---
+            echo "[7] Setting up proxy..."
+            mkdir -p "$EXPLORER/public_html"
+            cat > "$EXPLORER/public_html/.htaccess" << 'HA'
             RewriteEngine On
             RewriteCond %{HTTP:Upgrade} websocket [NC]
             RewriteRule /(.*) ws://127.0.0.1:4000/$1 [P,L]
             RewriteRule ^(.*)$ http://127.0.0.1:4000/$1 [P,L]
             HA
 
-            cat > "$EXPLORER_DIR/public_html/index.html" << 'HTML'
-            <!DOCTYPE html><html><head><meta charset="UTF-8"><title>TPIX Explorer</title><meta http-equiv="refresh" content="5"><style>body{font-family:sans-serif;background:#1a1a2e;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.c{text-align:center}.s{width:50px;height:50px;border:4px solid rgba(255,255,255,.1);border-top:4px solid #06b6d4;border-radius:50%;animation:r 1s linear infinite;margin:0 auto 20px}@keyframes r{to{transform:rotate(360deg)}}</style></head><body><div class="c"><div class="s"></div><h2>TPIX Chain Explorer</h2><p>Blockscout is starting...</p></div></body></html>
+            cat > "$EXPLORER/public_html/index.html" << 'HTML'
+            <!DOCTYPE html><html><head><meta charset="UTF-8"><title>TPIX Explorer</title><meta http-equiv="refresh" content="5"><style>body{font-family:sans-serif;background:#1a1a2e;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.c{text-align:center}.s{width:50px;height:50px;border:4px solid rgba(255,255,255,.1);border-top:4px solid #06b6d4;border-radius:50%;animation:r 1s linear infinite;margin:0 auto 20px}@keyframes r{to{transform:rotate(360deg)}}</style></head><body><div class="c"><div class="s"></div><h2>TPIX Chain Explorer</h2><p>Starting up...</p></div></body></html>
             HTML
 
+            # --- Status ---
             echo ""
-            echo "=== Containers ==="
-            $D ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            echo "=== Status ==="
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            echo ""
+            echo "Chain node logs (last 5):"
+            docker logs tpix-chain-node --tail 5 2>&1
             echo ""
             BS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000 2>/dev/null || echo "000")
             echo "Blockscout HTTP: $BS"
             echo ""
-            echo "=== DEPLOY DONE ==="
-            echo "Explorer: https://explorer.tpix.online"
+            echo "=== DONE: https://explorer.tpix.online ==="
