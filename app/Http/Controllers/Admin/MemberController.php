@@ -4,10 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Models\WalletConnection;
 use App\Services\UserWalletService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Inertia\Response;
 
 /**
  * TPIX TRADE — Admin Member Management
@@ -21,9 +22,9 @@ class MemberController extends Controller
     ) {}
 
     /**
-     * รายการสมาชิกทั้งหมด + search/filter
+     * รายการสมาชิกทั้งหมด + search/filter.
      */
-    public function index(Request $request): \Inertia\Response
+    public function index(Request $request): Response
     {
         $query = User::query()
             ->withCount('walletConnections')
@@ -60,9 +61,9 @@ class MemberController extends Controller
     }
 
     /**
-     * รายละเอียดสมาชิก + wallet history
+     * รายละเอียดสมาชิก + wallet history.
      */
-    public function show(User $member): \Inertia\Response
+    public function show(User $member): Response
     {
         $member->load('walletConnections', 'referrer', 'referrals');
 
@@ -79,7 +80,7 @@ class MemberController extends Controller
     /**
      * แบนสมาชิก
      */
-    public function ban(Request $request, User $member): \Illuminate\Http\RedirectResponse
+    public function ban(Request $request, User $member): RedirectResponse
     {
         $request->validate(['reason' => 'nullable|string|max:255']);
         $member->ban($request->reason ?? 'Banned by admin');
@@ -88,9 +89,9 @@ class MemberController extends Controller
     }
 
     /**
-     * ปลดแบน
+     * ปลดแบน.
      */
-    public function unban(User $member): \Illuminate\Http\RedirectResponse
+    public function unban(User $member): RedirectResponse
     {
         $member->unban();
 
@@ -98,9 +99,9 @@ class MemberController extends Controller
     }
 
     /**
-     * อัปเดต KYC status
+     * อัปเดต KYC status.
      */
-    public function updateKyc(Request $request, User $member): \Illuminate\Http\RedirectResponse
+    public function updateKyc(Request $request, User $member): RedirectResponse
     {
         $request->validate(['kyc_status' => 'required|in:none,pending,approved,rejected']);
         $member->update(['kyc_status' => $request->kyc_status]);

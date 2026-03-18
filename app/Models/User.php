@@ -46,7 +46,7 @@ class User extends Model
     }
 
     /**
-     * Auto-generate referral code เมื่อสร้าง user
+     * Auto-generate referral code เมื่อสร้าง user.
      */
     protected static function booted(): void
     {
@@ -107,7 +107,7 @@ class User extends Model
     // === Methods ===
 
     /**
-     * แบนผู้ใช้
+     * แบนผู้ใช้.
      */
     public function ban(string $reason = ''): void
     {
@@ -118,7 +118,7 @@ class User extends Model
     }
 
     /**
-     * ปลดแบน
+     * ปลดแบน.
      */
     public function unban(): void
     {
@@ -129,7 +129,7 @@ class User extends Model
     }
 
     /**
-     * อัปเดต last active
+     * อัปเดต last active.
      */
     public function touchActivity(?string $ip = null): void
     {

@@ -20,7 +20,7 @@ use Inertia\Response as InertiaResponse;
 class SettingController extends Controller
 {
     /**
-     * แสดงหน้า Settings — แปลง settings เป็น flat format สำหรับ Vue
+     * แสดงหน้า Settings — แปลง settings เป็น flat format สำหรับ Vue.
      */
     public function index(): InertiaResponse
     {
@@ -32,8 +32,8 @@ class SettingController extends Controller
 
             // แปลง image path เป็น URL ที่เข้าถึงได้
             if ($setting->type === 'image' && $setting->value) {
-                $flat[$setting->key . '_url'] = Storage::disk('public')->exists($setting->value)
-                    ? '/storage/' . $setting->value
+                $flat[$setting->key.'_url'] = Storage::disk('public')->exists($setting->value)
+                    ? '/storage/'.$setting->value
                     : null;
             }
         }
@@ -92,7 +92,7 @@ class SettingController extends Controller
     }
 
     /**
-     * บันทึก General tab (รวม logo upload)
+     * บันทึก General tab (รวม logo upload).
      */
     public function updateGeneral(Request $request): RedirectResponse
     {
@@ -138,7 +138,7 @@ class SettingController extends Controller
     }
 
     /**
-     * บันทึก SEO tab (รวม OG image upload)
+     * บันทึก SEO tab (รวม OG image upload).
      */
     public function updateSeo(Request $request): RedirectResponse
     {
@@ -170,7 +170,7 @@ class SettingController extends Controller
     }
 
     /**
-     * บันทึก tab ทั่วไป (trading, security, social) — ไม่มี file upload
+     * บันทึก tab ทั่วไป (trading, security, social) — ไม่มี file upload.
      */
     public function updateTab(Request $request): RedirectResponse
     {
@@ -187,7 +187,7 @@ class SettingController extends Controller
     }
 
     /**
-     * Handle logo file upload (standalone endpoint)
+     * Handle logo file upload (standalone endpoint).
      */
     public function updateLogo(Request $request): RedirectResponse
     {

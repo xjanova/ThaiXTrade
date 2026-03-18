@@ -14,7 +14,7 @@ class UserWalletService
 {
     /**
      * หาผู้ใช้จาก wallet address หรือสร้างใหม่อัตโนมัติ
-     * เรียกทุกครั้งที่ wallet connect สำเร็จ
+     * เรียกทุกครั้งที่ wallet connect สำเร็จ.
      */
     public function findOrCreateByWallet(
         string $address,
@@ -53,7 +53,7 @@ class UserWalletService
     }
 
     /**
-     * บันทึก disconnect
+     * บันทึก disconnect.
      */
     public function recordDisconnect(string $address): void
     {
@@ -63,7 +63,7 @@ class UserWalletService
     }
 
     /**
-     * อัปเดต profile (email, name)
+     * อัปเดต profile (email, name).
      */
     public function updateProfile(User $user, array $data): User
     {
@@ -76,7 +76,7 @@ class UserWalletService
     }
 
     /**
-     * สถิติรวมสำหรับ admin dashboard
+     * สถิติรวมสำหรับ admin dashboard.
      */
     public function getStats(): array
     {
