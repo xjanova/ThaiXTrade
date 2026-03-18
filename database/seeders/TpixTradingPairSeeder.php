@@ -16,8 +16,10 @@ class TpixTradingPairSeeder extends Seeder
 {
     public function run(): void
     {
-        // หา chain TPIX (4289) — ถ้าไม่มีใช้ chain แรก
-        $chain = Chain::where('chain_id', 4289)->first()
+        // หา chain TPIX — ค้นหาจาก symbol หรือ hex (0x10C1 = 4289)
+        $chain = Chain::where('symbol', 'TPIX')->first()
+            ?? Chain::where('chain_id_hex', '0x10C1')->first()
+            ?? Chain::where('name', 'like', '%TPIX%')->first()
             ?? Chain::first();
 
         if (! $chain) {
@@ -26,28 +28,28 @@ class TpixTradingPairSeeder extends Seeder
             return;
         }
 
-        // สร้าง TPIX token (native coin)
+        // สร้าง TPIX token (native coin — address 0x0)
         $tpix = Token::firstOrCreate(
             ['symbol' => 'TPIX', 'chain_id' => $chain->id],
             [
                 'name' => 'Thaiprompt Index',
                 'contract_address' => '0x0000000000000000000000000000000000000000',
                 'decimals' => 18,
-                'is_native' => true,
                 'is_active' => true,
-                'logo_url' => '/logo.png',
+                'logo' => '/logo.png',
+                'sort_order' => 1,
             ]
         );
 
-        // สร้าง USDT token
+        // สร้าง USDT token (placeholder contract)
         $usdt = Token::firstOrCreate(
             ['symbol' => 'USDT', 'chain_id' => $chain->id],
             [
                 'name' => 'Tether USD',
                 'contract_address' => '0x0000000000000000000000000000000000000001',
                 'decimals' => 18,
-                'is_native' => false,
                 'is_active' => true,
+                'sort_order' => 2,
             ]
         );
 
