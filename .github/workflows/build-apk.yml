@@ -47,6 +47,13 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: mobile/node_modules
+          key: ${{ runner.os }}-mobile-node-${{ hashFiles('mobile/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-mobile-node-
+
       - name: Get version info
         id: version
         run: |
@@ -62,7 +69,7 @@ jobs:
           echo "Version: $VERSION, Build: $BUILD"
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
