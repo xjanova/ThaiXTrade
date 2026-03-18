@@ -61,6 +61,12 @@ const navigationSections = [
         ],
     },
     {
+        title: 'Members',
+        items: [
+            { name: 'Members', href: '/admin/members', icon: 'members' },
+        ],
+    },
+    {
         title: 'Trading',
         items: [
             { name: 'Chains', href: '/admin/chains', icon: 'chain' },
@@ -183,6 +189,10 @@ const handleLogout = () => {
                             <!-- Dashboard -->
                             <svg v-if="item.icon === 'dashboard'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                            </svg>
+                            <!-- Members -->
+                            <svg v-else-if="item.icon === 'members'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                             </svg>
                             <!-- Chain -->
                             <svg v-else-if="item.icon === 'chain'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

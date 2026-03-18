@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BannerController;
 use App\Http\Controllers\Admin\ChainController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\MemberController;
 use App\Http\Controllers\Admin\FeeController;
 use App\Http\Controllers\Admin\LanguageController;
 use App\Http\Controllers\Admin\NotificationController;
@@ -120,6 +121,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/', [TokenSaleController::class, 'index'])->name('index');
             Route::post('/', [TokenSaleController::class, 'store'])->name('store');
             Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
+        });
+
+        // Members — จัดการสมาชิก (Traders)
+        Route::prefix('members')->name('members.')->group(function () {
+            Route::get('/', [MemberController::class, 'index'])->name('index');
+            Route::get('/{member}', [MemberController::class, 'show'])->name('show');
+            Route::patch('/{member}/ban', [MemberController::class, 'ban'])->name('ban');
+            Route::patch('/{member}/unban', [MemberController::class, 'unban'])->name('unban');
+            Route::patch('/{member}/kyc', [MemberController::class, 'updateKyc'])->name('kyc');
         });
 
         // Banners — จัดการป้ายโฆษณา (Image, Google AdSense, HTML)

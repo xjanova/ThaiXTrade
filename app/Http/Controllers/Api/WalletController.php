@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
+use App\Services\UserWalletService;
 use App\Services\Web3BalanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,6 +21,7 @@ class WalletController extends Controller
 {
     public function __construct(
         private Web3BalanceService $balanceService,
+        private UserWalletService $userWalletService,
     ) {}
 
     /**
@@ -32,7 +34,7 @@ class WalletController extends Controller
         $validator = Validator::make($request->all(), [
             'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'chain_id' => ['required', 'integer'],
-            'wallet_type' => ['nullable', 'string', 'in:metamask,trustwallet,coinbase,walletconnect,okx'],
+            'wallet_type' => ['nullable', 'string', 'in:metamask,trustwallet,coinbase,walletconnect,okx,tpix_wallet'],
         ]);
 
         if ($validator->fails()) {
@@ -47,12 +49,23 @@ class WalletController extends Controller
 
         $validated = $validator->validated();
 
+        // สมัครสมาชิกอัตโนมัติ (หรือหา user ที่มีอยู่)
+        $user = $this->userWalletService->findOrCreateByWallet(
+            $validated['wallet_address'],
+            $validated['chain_id'],
+            $validated['wallet_type'] ?? 'metamask',
+            $request->ip()
+        );
+
         return response()->json([
             'success' => true,
             'data' => [
                 'wallet_address' => $validated['wallet_address'],
                 'chain_id' => $validated['chain_id'],
                 'connected_at' => now()->toIso8601String(),
+                'user_id' => $user->id,
+                'is_new' => $user->wasRecentlyCreated,
+                'referral_code' => $user->referral_code,
             ],
         ]);
     }
