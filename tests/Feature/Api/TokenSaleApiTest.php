@@ -5,7 +5,6 @@ namespace Tests\Feature\Api;
 use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\TokenSale;
-use App\Models\WhitelistEntry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -134,7 +133,7 @@ class TokenSaleApiTest extends TestCase
             'payment_usd_value' => '1000.00',
             'tpix_amount' => '10000',
             'price_per_tpix' => '0.10',
-            'tx_hash' => '0x' . str_repeat('ab', 32),
+            'tx_hash' => '0x'.str_repeat('ab', 32),
             'status' => 'confirmed',
             'vesting_start_at' => now(),
         ]);
@@ -206,7 +205,7 @@ class TokenSaleApiTest extends TestCase
             'payment_usd_value' => '500.00',
             'tpix_amount' => '5000',
             'price_per_tpix' => '0.10',
-            'tx_hash' => '0x' . str_repeat('cd', 32),
+            'tx_hash' => '0x'.str_repeat('cd', 32),
             'status' => 'confirmed',
             'vesting_start_at' => now(),
         ]);
@@ -244,7 +243,7 @@ class TokenSaleApiTest extends TestCase
             'payment_usd_value' => '1000.00',
             'tpix_amount' => '10000',
             'price_per_tpix' => '0.10',
-            'tx_hash' => '0x' . str_repeat('ef', 32),
+            'tx_hash' => '0x'.str_repeat('ef', 32),
             'status' => 'confirmed',
             'vesting_start_at' => now(),
         ]);

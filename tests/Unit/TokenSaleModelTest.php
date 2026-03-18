@@ -207,7 +207,7 @@ class TokenSaleModelTest extends TestCase
             'payment_usd_value' => '100.00',
             'tpix_amount' => '1000',
             'price_per_tpix' => '0.10',
-            'tx_hash' => '0x' . str_repeat('aa', 32),
+            'tx_hash' => '0x'.str_repeat('aa', 32),
             'status' => 'confirmed',
             'vesting_start_at' => now(),
         ]);
@@ -258,7 +258,7 @@ class TokenSaleModelTest extends TestCase
             'payment_usd_value' => '500.00',
             'tpix_amount' => '5000',
             'price_per_tpix' => '0.10',
-            'tx_hash' => '0x' . str_repeat('bb', 32),
+            'tx_hash' => '0x'.str_repeat('bb', 32),
             'status' => 'confirmed',
             'vesting_start_at' => now(),
         ]);
@@ -306,7 +306,7 @@ class TokenSaleModelTest extends TestCase
             'payment_usd_value' => '1000.00',
             'tpix_amount' => '10000',
             'price_per_tpix' => '0.10',
-            'tx_hash' => '0x' . str_repeat('cc', 32),
+            'tx_hash' => '0x'.str_repeat('cc', 32),
             'status' => 'confirmed',
             'vesting_start_at' => now(),
         ]);
@@ -355,7 +355,7 @@ class TokenSaleModelTest extends TestCase
             'payment_usd_value' => '100.00',
             'tpix_amount' => '1000',
             'price_per_tpix' => '0.10',
-            'tx_hash' => '0x' . str_repeat('dd', 32),
+            'tx_hash' => '0x'.str_repeat('dd', 32),
             'status' => 'confirmed',
         ]);
 
@@ -368,7 +368,7 @@ class TokenSaleModelTest extends TestCase
             'payment_usd_value' => '600.00',
             'tpix_amount' => '6000',
             'price_per_tpix' => '0.10',
-            'tx_hash' => '0x' . str_repeat('ee', 32),
+            'tx_hash' => '0x'.str_repeat('ee', 32),
             'status' => 'confirmed',
         ]);
 

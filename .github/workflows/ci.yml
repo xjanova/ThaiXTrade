@@ -53,7 +53,7 @@ jobs:
           cache: 'npm'
 
       - name: Install NPM dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build assets
         run: npm run build
@@ -93,7 +93,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Run JavaScript tests
         run: npm run test:run
@@ -138,7 +138,7 @@ jobs:
           cache: 'npm'
 
       - name: Install NPM dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build production assets
         run: npm run build

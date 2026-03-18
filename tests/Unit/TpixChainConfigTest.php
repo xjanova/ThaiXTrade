@@ -16,7 +16,7 @@ class TpixChainConfigTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $configFile = dirname(__DIR__, 2) . '/config/chains.php';
+        $configFile = dirname(__DIR__, 2).'/config/chains.php';
         $this->chains = require $configFile;
     }
 

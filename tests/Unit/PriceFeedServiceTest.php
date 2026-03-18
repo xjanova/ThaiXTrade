@@ -20,7 +20,7 @@ class PriceFeedServiceTest extends TestCase
     {
         parent::setUp();
         Cache::flush();
-        $this->service = new PriceFeedService;
+        $this->service = new PriceFeedService();
     }
 
     // =========================================================================
