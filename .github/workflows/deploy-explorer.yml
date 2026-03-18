@@ -70,9 +70,9 @@ jobs:
             if [ ! -f "$INFRA_DIR/tpix-chain/genesis-ready" ]; then
               echo "Generating secrets and genesis with polygon-edge CLI..."
 
-              # ลบข้อมูลเก่าที่อาจผิด format
+              # ลบข้อมูลเก่าทั้งหมด (รวม genesis.json ที่อาจเป็น directory)
               rm -rf "$INFRA_DIR/tpix-chain/data"
-              rm -f "$INFRA_DIR/tpix-chain/genesis.json"
+              rm -rf "$INFRA_DIR/tpix-chain/genesis.json"
               # ลบ Docker volume เก่า
               $D volume rm tpix-chain_tpix-chain-data 2>/dev/null || true
 
@@ -80,7 +80,7 @@ jobs:
               mkdir -p "$INFRA_DIR/tpix-chain/data"
 
               echo "Step A: Generate validator secrets..."
-              $D run --rm -v "$INFRA_DIR/tpix-chain/data:/data" 0xpolygon/polygon-edge:1.3.3 \
+              $D run --rm -v "$INFRA_DIR/tpix-chain/data:/data" 0xpolygon/polygon-edge:0.9.0 \
                 secrets init --data-dir /data --insecure 2>&1 || true
 
               echo "Step B: Check what was created..."
@@ -88,10 +88,10 @@ jobs:
               ls -la "$INFRA_DIR/tpix-chain/data/consensus/" 2>&1 || true
 
               echo "Step C: Generate genesis..."
-              $D run --rm -v "$INFRA_DIR/tpix-chain:/chain" 0xpolygon/polygon-edge:1.3.3 \
+              $D run --rm -v "$INFRA_DIR/tpix-chain:/chain" 0xpolygon/polygon-edge:0.9.0 \
                 genesis \
                 --consensus ibft \
-                --ibft-validators-prefix-path /chain/data \
+                --ibft-validators-prefix-path /chain \
                 --chain-id 7000 \
                 --block-gas-limit 20000000 \
                 --epoch-size 100000 \
@@ -113,7 +113,7 @@ jobs:
             cat > "$INFRA_DIR/tpix-chain/docker-compose.yml" << 'EOF'
             services:
               tpix-node:
-                image: 0xpolygon/polygon-edge:1.3.3
+                image: 0xpolygon/polygon-edge:0.9.0
                 container_name: tpix-chain-node
                 restart: unless-stopped
                 ports:
