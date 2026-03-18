@@ -15,65 +15,57 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 15m
           script: |
-            echo "=== TPIX Chain + Blockscout Deploy ==="
+            echo "=== TPIX Chain + Explorer Deploy ==="
 
             INFRA="$HOME/tpix-infrastructure"
             CHAIN="$INFRA/tpix-chain"
             BSCOUT="$INFRA/blockscout"
             EXPLORER="$HOME/domains/explorer.tpix.online"
+            RPC_DIR="$HOME/domains/rpc.tpix.online"
             IMG="0xpolygon/polygon-edge:0.9.0"
 
             mkdir -p "$CHAIN" "$BSCOUT"
 
-            # --- Stop old containers ---
-            echo "[1] Stopping old containers..."
+            # === Step 1: Stop running containers ===
+            echo "[1] Stopping containers..."
             docker compose -f "$CHAIN/docker-compose.yml" down 2>/dev/null || true
             docker compose -f "$BSCOUT/docker-compose.yml" down 2>/dev/null || true
 
-            # --- Clean broken genesis (was directory not file) ---
-            if [ -d "$CHAIN/genesis.json" ]; then
-              echo "Removing broken genesis.json directory..."
-              rm -rf "$CHAIN/genesis.json"
+            # === Step 2: Generate keys + genesis ONLY if not exists ===
+            # สำคัญ: ไม่ลบ data เดิม! สร้างครั้งเดียวแล้วเก็บถาวร
+            if [ ! -f "$CHAIN/data/consensus/validator.key" ]; then
+              echo "[2] First time: Generating validator secrets..."
+              docker run --rm -v "$CHAIN:/chain" alpine sh -c "rm -rf /chain/data /chain/genesis.json" 2>/dev/null || true
+              docker run --rm -v "$CHAIN/data:/data" $IMG secrets init --data-dir /data --insecure
+            else
+              echo "[2] Validator keys exist, keeping..."
             fi
 
-            # --- Force clean regeneration (docker files owned by root) ---
-            echo "Force regenerating genesis..."
-            docker run --rm -v "$CHAIN:/chain" alpine sh -c "rm -rf /chain/data /chain/genesis.json" 2>/dev/null || true
+            # Get validator info
+            SECRETS_OUT=$(docker run --rm -v "$CHAIN/data:/data" $IMG secrets output --data-dir /data 2>&1)
+            echo "$SECRETS_OUT"
 
-            if true; then
-              echo "[2] Generating validator secrets..."
-              docker run --rm -v "$CHAIN/data:/data" $IMG secrets init --data-dir /data --insecure
+            # Parse Node ID
+            NODE_ID=$(echo "$SECRETS_OUT" | grep "Node ID" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+            # Parse Validator Address
+            VALIDATOR_ADDR=$(echo "$SECRETS_OUT" | grep "Public key (address)" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
 
-              # ดึง Node ID สำหรับ bootnode (parse จาก libp2p key)
-              SECRETS_OUT=$(docker run --rm -v "$CHAIN/data:/data" $IMG secrets output --data-dir /data 2>&1)
-              echo "Secrets output:"
-              echo "$SECRETS_OUT"
-              NODE_ID=$(echo "$SECRETS_OUT" | grep -oP 'Node ID\s*=\s*\K\S+' || echo "")
-              if [ -z "$NODE_ID" ]; then
-                # ลอง format อื่น
-                NODE_ID=$(echo "$SECRETS_OUT" | grep "Node ID" | sed 's/.*= *//' | tr -d '[:space:]')
-              fi
-              echo "Parsed Node ID: [$NODE_ID]"
+            echo "Node ID: $NODE_ID"
+            echo "Validator: $VALIDATOR_ADDR"
 
-              # ดึง Validator Address สำหรับ premine
-              VALIDATOR_ADDR=$(echo "$SECRETS_OUT" | grep -oP 'Public key \(address\)\s*=\s*\K\S+' || echo "")
-              if [ -z "$VALIDATOR_ADDR" ]; then
-                VALIDATOR_ADDR=$(echo "$SECRETS_OUT" | grep "Public key" | grep "address" | sed 's/.*= *//' | tr -d '[:space:]')
-              fi
-              echo "Validator Address: [$VALIDATOR_ADDR]"
-              if [ -z "$VALIDATOR_ADDR" ]; then
-                VALIDATOR_ADDR="0xf9fF7E78D032377F395E0fa5007E701f13D05e9e"
-                echo "Using fallback validator address"
-              fi
-              if [ -z "$NODE_ID" ]; then
-                echo "ERROR: Could not parse Node ID from secrets output!"
-                echo "Trying without bootnode..."
-                BOOTNODE_FLAG=""
-              else
+            if [ -z "$VALIDATOR_ADDR" ]; then
+              echo "ERROR: Cannot get validator address!"
+              exit 1
+            fi
+
+            # Generate genesis ONLY if not exists
+            if [ ! -f "$CHAIN/genesis.json" ]; then
+              echo "[3] Generating genesis.json..."
+              BOOTNODE_FLAG=""
+              if [ -n "$NODE_ID" ]; then
                 BOOTNODE_FLAG="--bootnode /ip4/127.0.0.1/tcp/10001/p2p/$NODE_ID"
               fi
 
-              echo "[3] Generating genesis.json..."
               docker run --rm -v "$CHAIN:/chain" $IMG genesis \
                 --consensus ibft \
                 --ibft-validators-prefix-path /chain \
@@ -84,20 +76,13 @@ jobs:
                 --premine "${VALIDATOR_ADDR}:7000000000000000000000000000" \
                 --dir /chain/genesis.json
 
-              echo "Genesis created:"
-              cat "$CHAIN/genesis.json" | head -20
+              echo "Genesis created! Validator $VALIDATOR_ADDR premined with 7B TPIX"
             else
-              echo "[2-3] Genesis exists, skipping..."
+              echo "[3] Genesis exists, keeping..."
             fi
 
-            # --- Verify genesis is a file ---
-            if [ ! -f "$CHAIN/genesis.json" ]; then
-              echo "ERROR: genesis.json not created!"
-              exit 1
-            fi
-
-            # --- Chain docker-compose ---
-            echo "[4] Writing docker-compose files..."
+            # === Step 4: Write docker-compose files ===
+            echo "[4] Writing docker-compose..."
             cat > "$CHAIN/docker-compose.yml" << 'DC1'
             services:
               tpix-node:
@@ -160,7 +145,6 @@ jobs:
                   SECRET_KEY_BASE: "56OgMJny00smDFHkKNv27A7eBZmqaJPkWTp9HOYcR6M/Rij24bLey3qrB3PJFH3N"
                   API_V2_ENABLED: "true"
                   DISABLE_EXCHANGE_RATES: "true"
-                  SHOW_TXS_CHART: "true"
                   POOL_SIZE: "30"
                   POOL_SIZE_API: "10"
                   ACCOUNT_ENABLED: "false"
@@ -175,33 +159,44 @@ jobs:
               blockscout-db-data:
             DC2
 
-            # --- Clean blockscout DB (may have wrong schema from latest) ---
-            echo "[4b] Cleaning old blockscout data..."
+            # === Step 5: Clean blockscout DB for fresh index ===
+            echo "[5] Resetting Blockscout DB..."
             docker volume rm blockscout_blockscout-db-data 2>/dev/null || true
 
-            # --- Start chain ---
-            echo "[5] Starting TPIX Chain..."
+            # === Step 6: Start chain ===
+            echo "[6] Starting TPIX Chain..."
             cd "$CHAIN"
             docker compose up -d
-            echo "Waiting 20s..."
+            echo "Waiting 20s for chain to start sealing..."
             sleep 20
 
-            RPC=$(curl -s -X POST http://127.0.0.1:8545 -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' 2>/dev/null || echo "no response")
-            echo "Chain RPC: $RPC"
+            # Check if blocks are being produced
+            for i in 1 2 3 4 5; do
+              BLOCK=$(curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null | grep -o '"result":"[^"]*"' | cut -d'"' -f4)
+              echo "Block number check $i: $BLOCK"
+              if [ "$BLOCK" != "0x0" ] && [ -n "$BLOCK" ]; then
+                echo "✅ Chain is producing blocks!"
+                break
+              fi
+              sleep 5
+            done
 
-            # --- Start blockscout ---
-            echo "[6] Starting Blockscout..."
+            # Check balance
+            BAL=$(curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"${VALIDATOR_ADDR}\",\"latest\"],\"id\":1}" 2>/dev/null)
+            echo "Validator balance: $BAL"
+
+            # === Step 7: Start Blockscout ===
+            echo "[7] Starting Blockscout..."
             cd "$BSCOUT"
             docker compose up -d
             echo "Waiting 30s..."
             sleep 30
 
-            # --- Proxy setup ---
-            echo "[7] Setting up proxy..."
+            # === Step 8: Setup proxies ===
+            echo "[8] Setting up proxies..."
             mkdir -p "$EXPLORER/public_html"
-            # ลบไฟล์เก่า
             rm -f "$EXPLORER/public_html/proxy.php" "$EXPLORER/public_html/index.html"
-            # === Explorer: PHP reverse proxy (Apache ไม่มี mod_proxy) ===
+
             cat > "$EXPLORER/public_html/.htaccess" << 'HA'
             RewriteEngine On
             RewriteCond %{REQUEST_FILENAME} !-f
@@ -211,146 +206,92 @@ jobs:
 
             cat > "$EXPLORER/public_html/index.php" << 'PROXY'
             <?php
-            // TPIX Chain Explorer — PHP Reverse Proxy to Blockscout
-            // เนื่องจาก Apache ไม่มี mod_proxy จึงใช้ PHP proxy แทน
             $target = 'http://127.0.0.1:4000';
             $path = $_SERVER['REQUEST_URI'] ?? '/';
-
-            // Root path → redirect ไปที่ /blocks (Blockscout v5 ไม่มี homepage)
             $cleanPath = parse_url($path, PHP_URL_PATH);
-            if ($cleanPath === '/' || $cleanPath === '' || $cleanPath === '/index.php' || $cleanPath === '/proxy.php') {
+            if ($cleanPath === '/' || $cleanPath === '' || $cleanPath === '/index.php') {
                 header('Location: /blocks', true, 302);
                 exit;
             }
-
-            $url = $target . $path;
-
+            $url = $target.$path;
             $ch = curl_init($url);
             $reqHeaders = [];
             foreach (getallheaders() as $k => $v) {
                 $lower = strtolower($k);
-                if ($lower !== 'host' && $lower !== 'connection') {
-                    $reqHeaders[] = "$k: $v";
-                }
+                if ($lower !== 'host' && $lower !== 'connection') $reqHeaders[] = "$k: $v";
             }
             $reqHeaders[] = 'Host: 127.0.0.1:4000';
-
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_HEADER         => true,
-                CURLOPT_HTTPHEADER     => $reqHeaders,
+                CURLOPT_HEADER => true,
+                CURLOPT_HTTPHEADER => $reqHeaders,
                 CURLOPT_FOLLOWLOCATION => false,
-                CURLOPT_TIMEOUT        => 30,
-                CURLOPT_ENCODING       => '',
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_ENCODING => '',
             ]);
-
             $method = $_SERVER['REQUEST_METHOD'];
             if ($method === 'POST') {
                 curl_setopt($ch, CURLOPT_POST, true);
                 curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents('php://input'));
             } elseif ($method !== 'GET') {
                 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-                if (in_array($method, ['PUT', 'PATCH'])) {
-                    curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents('php://input'));
-                }
             }
-
             $response = curl_exec($ch);
             if ($response === false) {
                 http_response_code(502);
-                echo '<h1>TPIX Explorer - Service Starting</h1><p>Blockscout is initializing... Please refresh in a moment.</p>';
+                echo '<h1>Explorer starting...</h1><p>Please refresh.</p>';
                 exit;
             }
-
             $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-            $httpCode   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $headers    = substr($response, 0, $headerSize);
-            $body       = substr($response, $headerSize);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $headers = substr($response, 0, $headerSize);
+            $body = substr($response, $headerSize);
             curl_close($ch);
-
             http_response_code($httpCode);
             foreach (explode("\r\n", $headers) as $line) {
-                $lower = strtolower($line);
-                if (strpos($lower, 'content-type:') === 0 ||
-                    strpos($lower, 'cache-control:') === 0 ||
-                    strpos($lower, 'etag:') === 0 ||
-                    strpos($lower, 'location:') === 0 ||
-                    strpos($lower, 'set-cookie:') === 0 ||
-                    strpos($lower, 'x-request-id:') === 0) {
+                $l = strtolower($line);
+                if (strpos($l,'content-type:')===0||strpos($l,'cache-control:')===0||strpos($l,'location:')===0||strpos($l,'set-cookie:')===0)
                     header($line);
-                }
             }
             echo $body;
             PROXY
 
-            # === RPC Proxy: สร้างที่ rpc.tpix.online ===
-            RPC_DIR="$HOME/domains/rpc.tpix.online"
+            # RPC proxy
             if [ -d "$RPC_DIR" ]; then
-              echo "[7b] Setting up RPC proxy at rpc.tpix.online..."
               mkdir -p "$RPC_DIR/public_html"
-
               cat > "$RPC_DIR/public_html/.htaccess" << 'HA2'
             RewriteEngine On
             RewriteCond %{REQUEST_FILENAME} !-f
             RewriteRule ^(.*)$ index.php [L,QSA]
             HA2
-
-              cat > "$RPC_DIR/public_html/index.php" << 'RPCPROXY'
+              cat > "$RPC_DIR/public_html/index.php" << 'RPC'
             <?php
-            // TPIX Chain RPC — PHP Reverse Proxy to Polygon Edge JSON-RPC
             header('Access-Control-Allow-Origin: *');
             header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
             header('Access-Control-Allow-Headers: Content-Type');
-
-            if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-                http_response_code(204);
-                exit;
-            }
-
-            $target = 'http://127.0.0.1:8545';
-            $ch = curl_init($target);
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => 30,
-                CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-            ]);
-
-            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-                $input = file_get_contents('php://input');
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $input);
-            }
-
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($response === false) {
-                http_response_code(502);
-                header('Content-Type: application/json');
-                echo json_encode(['jsonrpc' => '2.0', 'error' => ['code' => -32000, 'message' => 'RPC node unavailable'], 'id' => null]);
-                exit;
-            }
-
-            http_response_code($httpCode);
-            header('Content-Type: application/json');
-            echo $response;
-            RPCPROXY
-
-              echo "✅ RPC proxy ready at rpc.tpix.online"
-            else
-              echo "⚠️ rpc.tpix.online domain dir not found — skip RPC proxy setup"
+            if ($_SERVER['REQUEST_METHOD']==='OPTIONS'){http_response_code(204);exit;}
+            $ch = curl_init('http://127.0.0.1:8545');
+            curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>30,CURLOPT_HTTPHEADER=>['Content-Type: application/json']]);
+            if ($_SERVER['REQUEST_METHOD']==='POST'){curl_setopt($ch,CURLOPT_POST,true);curl_setopt($ch,CURLOPT_POSTFIELDS,file_get_contents('php://input'));}
+            $r=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
+            if($r===false){http_response_code(502);header('Content-Type: application/json');echo '{"jsonrpc":"2.0","error":{"code":-32000,"message":"RPC unavailable"},"id":null}';exit;}
+            http_response_code($code);header('Content-Type: application/json');echo $r;
+            RPC
             fi
 
-            # --- Status ---
+            # === Final status ===
             echo ""
-            echo "=== Status ==="
+            echo "=== STATUS ==="
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
             echo ""
-            echo "Chain node logs (last 5):"
-            docker logs tpix-chain-node --tail 5 2>&1
+            FINAL_BLOCK=$(curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null)
+            echo "Block: $FINAL_BLOCK"
+            FINAL_BAL=$(curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"${VALIDATOR_ADDR}\",\"latest\"],\"id\":1}" 2>/dev/null)
+            echo "Balance: $FINAL_BAL"
+            BS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/blocks 2>/dev/null)
+            echo "Blockscout: HTTP $BS"
             echo ""
-            BS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000 2>/dev/null || echo "000")
-            echo "Blockscout HTTP: $BS"
-            echo ""
-            echo "=== DONE: https://explorer.tpix.online ==="
+            echo "Validator: $VALIDATOR_ADDR"
+            echo "Explorer: https://explorer.tpix.online"
+            echo "RPC: https://rpc.tpix.online"
+            echo "=== DONE ==="
