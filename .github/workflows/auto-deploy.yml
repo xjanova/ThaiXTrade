@@ -96,9 +96,11 @@ jobs:
             npm install 2>&1
             node ./node_modules/vite/bin/vite.js build 2>&1
 
-            # Run migrations
+            # Run migrations + seeders
             echo "🗃️ Running migrations..."
             php artisan migrate --force 2>&1 || echo "⚠️ Migration warnings (non-fatal)"
+            echo "🌱 Running ecosystem seeder..."
+            php artisan db:seed --class=TpixEcosystemSeeder --force 2>&1 || echo "⚠️ Seeder warnings (non-fatal)"
 
             # Clear and rebuild caches
             echo "⚡ Optimizing application..."
