@@ -6,7 +6,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Diagnose logo + storage + languages
+      - name: Seed translations + check
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -17,56 +17,26 @@ jobs:
           script: |
             cd ~/domains/tpix.online
 
-            echo "=== Storage symlink ==="
-            ls -la public_html/storage 2>/dev/null || echo "NO SYMLINK!"
+            echo "=== Run TranslationSeeder ==="
+            php artisan db:seed --class=TranslationSeeder --force 2>&1
 
             echo ""
-            echo "=== Storage logos dir ==="
-            ls -la storage/app/public/logos/ 2>/dev/null || echo "No logos dir"
-
-            echo ""
-            echo "=== Site settings (logo) ==="
+            echo "=== Verify translations ==="
             php artisan tinker --execute="
-              \$logo = App\Models\SiteSetting::where('group','general')->where('key','logo')->first();
-              echo 'Logo setting: ' . (\$logo ? \$logo->value : 'NULL') . \"\n\";
-              echo 'Type: ' . (\$logo ? \$logo->type : 'NULL') . \"\n\";
-              if(\$logo && \$logo->value) {
-                echo 'File exists: ' . (Storage::disk('public')->exists(\$logo->value) ? 'YES' : 'NO') . \"\n\";
-                echo 'Full path: ' . storage_path('app/public/' . \$logo->value) . \"\n\";
-              }
-            " 2>/dev/null
-
-            echo ""
-            echo "=== Languages in DB ==="
-            php artisan tinker --execute="
+              \$count = DB::table('translations')->count();
+              echo \"Total translation keys: \$count\n\";
+              \$groups = DB::table('translations')->select('group')->distinct()->pluck('group');
+              echo 'Groups: ' . \$groups->implode(', ') . \"\n\";
               \$langs = App\Models\Language::all();
-              foreach(\$langs as \$l) echo \$l->code . ' | ' . \$l->name . ' | active=' . \$l->is_active . ' | default=' . \$l->is_default . \"\n\";
-              if(\$langs->isEmpty()) echo \"No languages in DB\n\";
-            " 2>/dev/null
-
-            echo ""
-            echo "=== Fix storage symlink ==="
-            if [ ! -L "public_html/storage" ]; then
-              rm -rf public_html/storage 2>/dev/null || true
-              ln -sf "$(pwd)/storage/app/public" "$(pwd)/public_html/storage"
-              echo "CREATED symlink"
-            else
-              echo "Symlink OK"
-            fi
-
-            echo ""
-            echo "=== Seed default languages if empty ==="
-            php artisan tinker --execute="
-              if(App\Models\Language::count() === 0) {
-                App\Models\Language::create(['code'=>'th','name'=>'Thai','native_name'=>'ไทย','flag_emoji'=>'🇹🇭','is_active'=>true,'is_default'=>true,'sort_order'=>1]);
-                App\Models\Language::create(['code'=>'en','name'=>'English','native_name'=>'English','flag_emoji'=>'🇺🇸','is_active'=>true,'is_default'=>false,'sort_order'=>2]);
-                echo \"Created TH + EN languages\n\";
-              } else {
-                echo \"Languages already exist\n\";
+              foreach(\$langs as \$l) {
+                \$c = DB::table('translations')->where('language_id', \$l->id)->count();
+                echo \$l->code . ': ' . \$c . \" keys\n\";
               }
             " 2>/dev/null
 
             echo ""
-            echo "=== Verify ==="
-            ls -la public_html/storage 2>/dev/null
-            php artisan tinker --execute="echo 'Languages: ' . App\Models\Language::count() . \"\n\";" 2>/dev/null
+            echo "=== Default locale ==="
+            php artisan tinker --execute="
+              \$def = App\Models\Language::where('is_default', true)->first();
+              echo 'Default: ' . (\$def ? \$def->code . ' (' . \$def->name . ')' : 'NONE') . \"\n\";
+            " 2>/dev/null
