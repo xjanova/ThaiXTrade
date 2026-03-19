@@ -100,6 +100,13 @@ const handleDisconnect = () => {
                             <Link href="/whitepaper" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
                                 Whitepaper
                             </Link>
+                            <Link href="/token-factory" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
+                                Token Factory
+                            </Link>
+                            <Link href="/carbon-credits" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
+                                Carbon Credits
+                            </Link>
+                            <div class="border-t border-white/5 my-1"></div>
                             <Link href="/bridge" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
                                 Bridge <span class="text-xs text-gray-500 ml-auto">Soon</span>
                             </Link>
