@@ -58,7 +58,9 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiBaseUrl": "https://tpixtrade.com/api/v1"
+      "apiBaseUrl": "https://tpixtrade.com/api/v1",
+      "githubOwner": "xjanova",
+      "githubRepo": "ThaiXTrade"
     }
   }
 }

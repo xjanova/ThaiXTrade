@@ -15,8 +15,18 @@ on:
       create_release:
         description: 'Create a GitHub Release with APK'
         required: false
-        default: 'false'
+        default: 'true'
         type: boolean
+      bump_version:
+        description: 'Bump version (patch/minor/major/none)'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - none
 
 permissions:
   contents: write
@@ -30,9 +40,10 @@ jobs:
         working-directory: mobile
 
     steps:
-      # Use verified action versions / ใช้เวอร์ชัน action ที่ยืนยันแล้ว
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -55,28 +66,88 @@ jobs:
           key: ${{ runner.os }}-mobile-node-${{ hashFiles('mobile/package-lock.json') }}
           restore-keys: ${{ runner.os }}-mobile-node-
 
-      - name: Get version info
+      # Auto-bump version on main branch or manual trigger
+      # เพิ่มเวอร์ชันอัตโนมัติบน main branch หรือ trigger แบบ manual
+      - name: Bump version
+        id: bump
+        if: github.ref == 'refs/heads/main' || github.event.inputs.bump_version != 'none'
+        working-directory: .
+        run: |
+          BUMP_TYPE="${{ github.event.inputs.bump_version || 'patch' }}"
+
+          # Read current version from version.json
+          CURRENT=$(node -e "console.log(require('./version.json').version)")
+          BUILD=$(node -e "console.log(require('./version.json').build || 1)")
+
+          # Calculate new version
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "$BUMP_TYPE" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          NEW_BUILD=$((BUILD + 1))
+
+          echo "Bumping version: $CURRENT -> $NEW_VERSION (build $NEW_BUILD)"
+
+          # Update version.json
+          node -e "
+            const fs = require('fs');
+            const v = JSON.parse(fs.readFileSync('./version.json', 'utf8'));
+            v.version = '$NEW_VERSION';
+            v.build = $NEW_BUILD;
+            v.releaseDate = new Date().toISOString().split('T')[0];
+            fs.writeFileSync('./version.json', JSON.stringify(v, null, 2) + '\n');
+          "
+
+          # Update mobile/app.json version
+          node -e "
+            const fs = require('fs');
+            const app = JSON.parse(fs.readFileSync('./mobile/app.json', 'utf8'));
+            app.expo.version = '$NEW_VERSION';
+            app.expo.android.versionCode = $NEW_BUILD;
+            app.expo.ios.buildNumber = '$NEW_BUILD';
+            fs.writeFileSync('./mobile/app.json', JSON.stringify(app, null, 2) + '\n');
+          "
+
+          # Update mobile/package.json version
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('./mobile/package.json', 'utf8'));
+            pkg.version = '$NEW_VERSION';
+            fs.writeFileSync('./mobile/package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "build=$NEW_BUILD" >> $GITHUB_OUTPUT
+          echo "bumped=true" >> $GITHUB_OUTPUT
+
+      - name: Get version info (no bump)
         id: version
         run: |
-          if [ -f ../version.json ]; then
-            VERSION=$(node -e "console.log(require('../version.json').version)")
-            BUILD=$(node -e "console.log(require('../version.json').build || 1)")
+          if [ "${{ steps.bump.outputs.bumped }}" = "true" ]; then
+            echo "version=${{ steps.bump.outputs.version }}" >> $GITHUB_OUTPUT
+            echo "build=${{ steps.bump.outputs.build }}" >> $GITHUB_OUTPUT
           else
-            VERSION="1.0.0"
-            BUILD="1"
+            if [ -f ../version.json ]; then
+              VERSION=$(node -e "console.log(require('../version.json').version)")
+              BUILD=$(node -e "console.log(require('../version.json').build || 1)")
+            else
+              VERSION="1.0.0"
+              BUILD="1"
+            fi
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "build=$BUILD" >> $GITHUB_OUTPUT
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "build=$BUILD" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION, Build: $BUILD"
+          echo "Version: $(cat $GITHUB_OUTPUT | grep version | head -1)"
 
       - name: Install dependencies
         run: npm ci
 
       # Run lint and type check before build
-      # รัน lint และ type check ก่อน build
       - name: Lint & type check
-        run: |
-          npx tsc --noEmit || echo "TypeScript check completed"
+        run: npx tsc --noEmit || echo "TypeScript check completed"
 
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
@@ -85,7 +156,6 @@ jobs:
         run: chmod +x android/gradlew
 
       # Decode signing keystore if available
-      # ถอดรหัส keystore สำหรับ signing ถ้ามี
       - name: Setup release signing
         if: env.KEYSTORE_BASE64 != ''
         env:
@@ -126,14 +196,27 @@ jobs:
           path: mobile/${{ steps.find-apk.outputs.apk_path }}
           retention-days: 90
 
+      # Commit version bump back to repo
+      # Commit การเพิ่มเวอร์ชันกลับไปที่ repo
+      - name: Commit version bump
+        if: steps.bump.outputs.bumped == 'true'
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json mobile/app.json mobile/package.json
+          git diff --staged --quiet || git commit -m "chore: bump version to v${{ steps.version.outputs.version }} (build ${{ steps.version.outputs.build }})"
+          git push || echo "Push failed - may need permissions"
+
+      # Create GitHub Release with APK (on main or manual)
       - name: Create Release with APK
         if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event.inputs.create_release == 'true')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: mobile-v${{ steps.version.outputs.version }}-build${{ steps.version.outputs.build }}-${{ github.run_number }}
+          tag_name: mobile-v${{ steps.version.outputs.version }}
           name: 'TPIX TRADE Mobile v${{ steps.version.outputs.version }}'
           body: |
-            ## TPIX TRADE Mobile App v${{ steps.version.outputs.version }}
+            ## TPIX TRADE Mobile v${{ steps.version.outputs.version }}
 
             **Build:** #${{ steps.version.outputs.build }}
             **Platform:** Android
@@ -144,18 +227,17 @@ jobs:
             2. Enable "Install from unknown sources" / เปิด "ติดตั้งจากแหล่งที่ไม่รู้จัก"
             3. Open the downloaded APK to install / เปิดไฟล์ APK ที่ดาวน์โหลดเพื่อติดตั้ง
 
-            ### Features
-            - Dashboard with portfolio overview
-            - Real-time market data & price tracking
-            - Trading interface with order book
-            - Portfolio management
-            - Glass morphism dark theme
-            - Multi-chain support
+            ### What's New / มีอะไรใหม่
+            - Performance & code quality improvements
+            - Web platform support
+            - In-app update checker
+            - Fixed export/import consistency
+            - Responsive layout for all screen sizes
 
             ### Tech Stack
-            - React Native (Expo)
-            - TypeScript
+            - React Native (Expo) + TypeScript
             - Zustand state management
+            - Glass morphism dark theme
           files: mobile/${{ steps.find-apk.outputs.apk_path }}
           draft: false
           prerelease: false
@@ -172,7 +254,7 @@ jobs:
           if [ -f "${{ steps.find-apk.outputs.apk_path }}" ]; then
             SIZE=$(du -h "${{ steps.find-apk.outputs.apk_path }}" | cut -f1)
             echo "**APK Size:** $SIZE" >> $GITHUB_STEP_SUMMARY
-            echo "**Status:** Success" >> $GITHUB_STEP_SUMMARY
+            echo "**Status:** ✅ Success" >> $GITHUB_STEP_SUMMARY
           else
-            echo "**Status:** Failed" >> $GITHUB_STEP_SUMMARY
+            echo "**Status:** ❌ Failed" >> $GITHUB_STEP_SUMMARY
           fi
