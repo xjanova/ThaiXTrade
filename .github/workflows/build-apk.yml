@@ -190,19 +190,23 @@ jobs:
             echo "=== Build attempt $i ==="
             if ./gradlew assembleRelease \
               -PversionName="${{ steps.version.outputs.version }}" \
-              -PversionCode=${{ steps.version.outputs.build }}; then
+              -PversionCode=${{ steps.version.outputs.build }} \
+              --build-cache; then
               BUILD_SUCCESS=true
               break
             fi
-            echo "Build attempt $i failed, retrying in 15s..."
-            sleep 15
+            echo "Build attempt $i failed, retrying in 30s..."
+            # Clean Gradle caches before retry to avoid stale state
+            rm -rf ~/.gradle/caches/modules-2/files-2.1/org.gradle.toolchains 2>/dev/null || true
+            sleep 30
           done
           if [ "$BUILD_SUCCESS" != "true" ]; then
             echo "All build attempts failed!"
             exit 1
           fi
           # Verify APK was created
-          find . -name "*.apk" -type f || echo "WARNING: No APK files found after build"
+          echo "=== APK files found ==="
+          find . -name "*.apk" -type f -ls || echo "WARNING: No APK files found"
 
       - name: Find and rename APK
         id: find-apk
