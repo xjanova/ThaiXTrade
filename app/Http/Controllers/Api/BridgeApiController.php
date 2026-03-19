@@ -23,9 +23,12 @@ class BridgeApiController extends Controller
      */
     public function info(): JsonResponse
     {
+        $info = $this->bridgeService->getInfo();
+        $info['enabled'] = $this->bridgeService->isEnabled();
+
         return response()->json([
             'success' => true,
-            'data' => $this->bridgeService->getInfo(),
+            'data' => $info,
         ]);
     }
 

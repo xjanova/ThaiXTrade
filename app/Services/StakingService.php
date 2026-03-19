@@ -16,6 +16,16 @@ use Illuminate\Support\Facades\DB;
 class StakingService
 {
     /**
+     * เช็คว่า admin เปิดใช้ staking หรือไม่.
+     */
+    public function isEnabled(): bool
+    {
+        $val = \App\Models\SiteSetting::get('trading', 'staking_enabled');
+
+        return $val === null || $val === true || $val === '1' || $val === 'true';
+    }
+
+    /**
      * ดึง pools ที่ active (cached 60s).
      */
     public function getActivePools(): Collection

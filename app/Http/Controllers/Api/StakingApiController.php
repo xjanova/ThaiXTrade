@@ -22,6 +22,10 @@ class StakingApiController extends Controller
      */
     public function pools(): JsonResponse
     {
+        if (! $this->stakingService->isEnabled()) {
+            return response()->json(['success' => false, 'error' => ['code' => 'DISABLED', 'message' => 'Staking is currently disabled']], 503);
+        }
+
         $pools = $this->stakingService->getActivePools();
 
         return response()->json([

@@ -13,6 +13,16 @@ use Illuminate\Support\Facades\Cache;
  */
 class BridgeService
 {
+    /**
+     * เช็คว่า admin เปิดใช้ bridge หรือไม่.
+     */
+    public function isEnabled(): bool
+    {
+        $val = \App\Models\SiteSetting::get('trading', 'bridge_enabled');
+
+        return $val === null || $val === true || $val === '1' || $val === 'true';
+    }
+
     private const FEE_PERCENT = 0.001; // 0.1%
 
     private const MIN_FEE = 1; // 1 TPIX minimum

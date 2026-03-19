@@ -102,6 +102,8 @@ const tradingForm = useForm({
     fee_collector_wallet: props.settings.fee_collector_wallet || '',
     default_fee_rate: props.settings.default_fee_rate || 0.3,
     max_fee_rate: props.settings.max_fee_rate || 5.0,
+    staking_enabled: props.settings.staking_enabled ?? true,
+    bridge_enabled: props.settings.bridge_enabled ?? true,
 });
 
 const saveTrading = () => {
@@ -292,6 +294,29 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
         <div v-show="activeTab === 'trading'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <h3 class="text-lg font-semibold text-white mb-6">Trading Settings</h3>
             <form @submit.prevent="saveTrading" class="space-y-6 max-w-2xl">
+                <!-- Feature Toggles -->
+                <div class="p-4 rounded-xl bg-dark-800/50 border border-white/10">
+                    <h4 class="text-sm font-semibold text-white mb-4">Feature Toggles</h4>
+                    <div class="flex flex-wrap gap-6">
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-dark-300">🏦 Staking</label>
+                            <button type="button" @click="tradingForm.staking_enabled = !tradingForm.staking_enabled"
+                                :class="['w-12 h-6 rounded-full transition-colors', tradingForm.staking_enabled ? 'bg-trading-green' : 'bg-dark-600']">
+                                <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', tradingForm.staking_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                            </button>
+                            <span :class="['text-xs', tradingForm.staking_enabled ? 'text-trading-green' : 'text-dark-500']">{{ tradingForm.staking_enabled ? 'ON' : 'OFF' }}</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-dark-300">🌉 Bridge</label>
+                            <button type="button" @click="tradingForm.bridge_enabled = !tradingForm.bridge_enabled"
+                                :class="['w-12 h-6 rounded-full transition-colors', tradingForm.bridge_enabled ? 'bg-trading-green' : 'bg-dark-600']">
+                                <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', tradingForm.bridge_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                            </button>
+                            <span :class="['text-xs', tradingForm.bridge_enabled ? 'text-trading-green' : 'text-dark-500']">{{ tradingForm.bridge_enabled ? 'ON' : 'OFF' }}</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Fee Collection Section -->
                 <div class="p-4 rounded-xl bg-gradient-to-br from-accent-500/5 via-primary-500/5 to-warm-500/5 border border-primary-500/10">
                     <h4 class="text-sm font-semibold text-primary-400 mb-4 flex items-center gap-2">
