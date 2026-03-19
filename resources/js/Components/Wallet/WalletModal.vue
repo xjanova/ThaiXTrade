@@ -2,12 +2,26 @@
 /**
  * TPIX TRADE - Wallet Connection Modal
  * Real Web3 wallet connection via ethers.js
- * Supports MetaMask, Trust Wallet, Coinbase, OKX
+ * รองรับ Mobile deep link + In-app browser detection (LINE, Facebook, etc.)
+ * Supports MetaMask, Trust Wallet, Coinbase, OKX, TokenPocket
  * Developed by Xman Studio
  */
 
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
+import {
+    isMobile,
+    getMobileOS,
+    detectInAppBrowser,
+    detectWalletBrowser,
+    detectWallets,
+    openWalletApp,
+    openTpixApp,
+    downloadTpixApp,
+    getExternalBrowserUrl,
+    WALLET_PROVIDERS,
+    TPIX_APP,
+} from '@/utils/mobileWallet';
 
 const emit = defineEmits(['close', 'connected']);
 const walletStore = useWalletStore();
@@ -16,76 +30,108 @@ const selectedWallet = ref(null);
 const isConnecting = ref(false);
 const error = ref(null);
 
-// Detect which wallets are available
+// === Platform Detection ===
+const mobile = computed(() => isMobile());
+const mobileOS = computed(() => getMobileOS());
+const inAppBrowser = computed(() => detectInAppBrowser());
+const walletBrowser = computed(() => detectWalletBrowser());
+const isInWalletBrowser = computed(() => !!walletBrowser.value);
+
+// === Wallet Detection ===
+const detection = ref(null);
+
+onMounted(() => {
+    detection.value = detectWallets();
+});
+
+// Detect which wallets are available (injected providers - desktop)
 const hasMetaMask = computed(() => !!window.ethereum?.isMetaMask || window.ethereum?.providers?.some(p => p.isMetaMask));
 const hasTrust = computed(() => !!window.trustwallet || !!window.ethereum?.isTrust || window.ethereum?.providers?.some(p => p.isTrust));
 const hasCoinbase = computed(() => !!window.coinbaseWalletExtension || !!window.ethereum?.isCoinbaseWallet || window.ethereum?.providers?.some(p => p.isCoinbaseWallet));
 const hasOKX = computed(() => !!window.okxwallet);
 const hasAnyWallet = computed(() => !!window.ethereum || !!window.trustwallet || !!window.okxwallet);
 
-const wallets = [
-    {
-        id: 'metamask',
-        name: 'MetaMask',
-        description: 'Browser extension',
-        popular: true,
-        color: '#E2761B',
-    },
-    {
-        id: 'trustwallet',
-        name: 'Trust Wallet',
-        description: 'Mobile & Extension',
-        popular: true,
-        color: '#3375BB',
-    },
-    {
-        id: 'coinbase',
-        name: 'Coinbase Wallet',
-        description: 'Browser & Mobile',
-        popular: true,
-        color: '#0052FF',
-    },
-    {
-        id: 'okx',
-        name: 'OKX Wallet',
-        description: 'Browser extension',
-        popular: false,
-        color: '#000000',
-    },
-    {
-        id: 'walletconnect',
-        name: 'WalletConnect',
-        description: 'Coming soon',
-        popular: false,
-        color: '#3B99FC',
-        supported: false,
-    },
-];
+// รายการ wallet ที่แสดงใน modal
+const wallets = computed(() => {
+    // ถ้าอยู่ใน wallet browser → แสดงแค่ wallet นั้นตัวเดียว
+    if (isInWalletBrowser.value) {
+        const provider = WALLET_PROVIDERS.find(p => p.id === walletBrowser.value);
+        if (provider) {
+            return [{
+                id: provider.id,
+                name: provider.name,
+                description: 'Connected Browser',
+                popular: true,
+                color: provider.color,
+                detected: true,
+            }];
+        }
+    }
+
+    const baseWallets = [
+        { id: 'metamask', name: 'MetaMask', description: mobile.value ? 'Open in MetaMask' : 'Browser extension', popular: true, color: '#E2761B' },
+        { id: 'trustwallet', name: 'Trust Wallet', description: mobile.value ? 'Open in Trust Wallet' : 'Mobile & Extension', popular: true, color: '#3375BB' },
+        { id: 'coinbase', name: 'Coinbase Wallet', description: mobile.value ? 'Open in Coinbase' : 'Browser & Mobile', popular: true, color: '#0052FF' },
+        { id: 'okx', name: 'OKX Wallet', description: mobile.value ? 'Open in OKX' : 'Browser extension', popular: false, color: '#000000' },
+        { id: 'tokenpocket', name: 'TokenPocket', description: mobile.value ? 'Open in TokenPocket' : 'Browser extension', popular: false, color: '#2980FE' },
+    ];
+
+    // Desktop: เพิ่ม WalletConnect (coming soon)
+    if (!mobile.value) {
+        baseWallets.push({
+            id: 'walletconnect', name: 'WalletConnect', description: 'Coming soon',
+            popular: false, color: '#3B99FC', supported: false,
+        });
+    }
+
+    return baseWallets;
+});
 
 function isWalletDetected(walletId) {
+    // ใน wallet browser → wallet นั้น detected เสมอ
+    if (walletBrowser.value === walletId) return true;
+
     switch (walletId) {
         case 'metamask': return hasMetaMask.value;
         case 'trustwallet': return hasTrust.value;
         case 'coinbase': return hasCoinbase.value;
         case 'okx': return hasOKX.value;
+        case 'tokenpocket': return !!window.ethereum?.isTokenPocket;
         default: return hasAnyWallet.value;
     }
 }
 
+/**
+ * เชื่อมต่อ wallet
+ * - Desktop: ใช้ injected provider (window.ethereum)
+ * - Mobile + wallet detected: ใช้ injected provider
+ * - Mobile + no wallet: เปิดแอป wallet ผ่าน deep link
+ */
 const connectWallet = async (wallet) => {
     if (wallet.supported === false) {
         error.value = `${wallet.name} support coming soon.`;
         return;
     }
 
+    selectedWallet.value = wallet.id;
+    error.value = null;
+
+    // === Mobile: ถ้าไม่มี injected provider → เปิดแอปผ่าน deep link ===
+    if (mobile.value && !isWalletDetected(wallet.id)) {
+        const provider = WALLET_PROVIDERS.find(p => p.id === wallet.id);
+        if (provider) {
+            openWalletApp(provider, window.location.href);
+            return;
+        }
+    }
+
+    // === Desktop หรือ อยู่ใน wallet browser: ใช้ injected provider ===
     if (!hasAnyWallet.value) {
-        error.value = 'No wallet detected. Please install MetaMask or Trust Wallet.';
+        error.value = 'No wallet detected. Please install a wallet extension.';
         return;
     }
 
-    selectedWallet.value = wallet.id;
     isConnecting.value = true;
-    error.value = null;
 
     try {
         const address = await walletStore.connect(wallet.id);
@@ -107,6 +153,44 @@ const connectWallet = async (wallet) => {
         isConnecting.value = false;
     }
 };
+
+/**
+ * เปิด URL ใน external browser (หนีออกจาก in-app browser)
+ */
+const openInExternalBrowser = () => {
+    const url = getExternalBrowserUrl();
+    window.location.href = url;
+};
+
+/**
+ * เปิดแอป TPIX TRADE
+ */
+const handleOpenTpixApp = () => {
+    openTpixApp();
+};
+
+/**
+ * ดาวน์โหลดแอป TPIX TRADE
+ */
+const handleDownloadTpixApp = () => {
+    downloadTpixApp();
+};
+
+// ชื่อ in-app browser ที่อ่านง่าย
+const inAppBrowserDisplayName = computed(() => {
+    const names = {
+        line: 'LINE',
+        facebook: 'Facebook',
+        instagram: 'Instagram',
+        twitter: 'X (Twitter)',
+        telegram: 'Telegram',
+        wechat: 'WeChat',
+        tiktok: 'TikTok',
+        kakaotalk: 'KakaoTalk',
+        snapchat: 'Snapchat',
+    };
+    return names[inAppBrowser.value] || inAppBrowser.value;
+});
 </script>
 
 <template>
@@ -125,8 +209,43 @@ const connectWallet = async (wallet) => {
                 </button>
             </div>
 
-            <p class="text-dark-400 text-sm mb-5">
-                Connect your wallet to start trading on BSC. Your keys, your crypto.
+            <!-- In-App Browser Warning (LINE, Facebook, etc.) -->
+            <div v-if="mobile && inAppBrowser && !isInWalletBrowser" class="mb-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                <div class="flex items-start gap-3">
+                    <svg class="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                    </svg>
+                    <div class="flex-1">
+                        <p class="text-amber-300 text-sm font-medium mb-1">
+                            Opened in {{ inAppBrowserDisplayName }}
+                        </p>
+                        <p class="text-amber-400/70 text-xs mb-3">
+                            For the best experience, open in an external browser or use a wallet app directly.
+                        </p>
+                        <button
+                            @click="openInExternalBrowser"
+                            class="w-full py-2 px-3 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-sm font-medium hover:bg-amber-500/30 transition-all"
+                        >
+                            Open in Browser
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wallet Browser: Direct Connect -->
+            <div v-if="isInWalletBrowser" class="mb-4 p-3 rounded-xl bg-trading-green/10 border border-trading-green/30">
+                <p class="text-trading-green text-sm">
+                    Wallet detected! Tap below to connect.
+                </p>
+            </div>
+
+            <p v-if="!isInWalletBrowser" class="text-dark-400 text-sm mb-5">
+                <template v-if="mobile">
+                    Select a wallet app to connect. It will open automatically.
+                </template>
+                <template v-else>
+                    Connect your wallet to start trading on BSC. Your keys, your crypto.
+                </template>
             </p>
 
             <!-- Error Message -->
@@ -134,7 +253,7 @@ const connectWallet = async (wallet) => {
                 {{ error }}
             </div>
 
-            <!-- Wallet List -->
+            <!-- Wallet List (Popular) -->
             <div class="space-y-2 mb-5">
                 <button
                     v-for="wallet in wallets.filter(w => w.popular)"
@@ -182,6 +301,8 @@ const connectWallet = async (wallet) => {
                     <!-- Status -->
                     <div v-if="selectedWallet === wallet.id && isConnecting" class="spinner"></div>
                     <span v-else-if="isWalletDetected(wallet.id)" class="text-[10px] text-trading-green px-2 py-0.5 rounded-full bg-trading-green/10">Detected</span>
+                    <!-- Mobile: แสดง "Open" แทน arrow -->
+                    <span v-else-if="mobile" class="text-[10px] text-primary-400 px-2 py-0.5 rounded-full bg-primary-500/10">Open</span>
                     <svg v-else class="w-5 h-5 text-dark-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                     </svg>
@@ -218,6 +339,12 @@ const connectWallet = async (wallet) => {
                             <path d="M12.5 16.5C16.6 12.5 23.4 12.5 27.5 16.5L28 17C28.2 17.2 28.2 17.5 28 17.7L26.5 19.1C26.4 19.2 26.2 19.2 26.1 19.1L25.4 18.5C22.5 15.7 17.5 15.7 14.6 18.5L13.8 19.2C13.7 19.3 13.5 19.3 13.4 19.2L11.9 17.8C11.7 17.6 11.7 17.3 11.9 17.1L12.5 16.5Z" fill="white"/>
                             <path d="M30 19L31.4 20.3C31.6 20.5 31.6 20.8 31.4 21L25.4 26.8C25.2 27 24.8 27 24.6 26.8L20.5 22.8C20.45 22.75 20.35 22.75 20.3 22.8L16.2 26.8C16 27 15.6 27 15.4 26.8L9.4 21C9.2 20.8 9.2 20.5 9.4 20.3L10.8 19C11 18.8 11.4 18.8 11.6 19L15.7 23C15.75 23.05 15.85 23.05 15.9 23L20 19C20.2 18.8 20.6 18.8 20.8 19L24.9 23C24.95 23.05 25.05 23.05 25.1 23L29.2 19C29.4 18.8 29.8 18.8 30 19Z" fill="white"/>
                         </svg>
+                        <!-- TokenPocket -->
+                        <svg v-else-if="wallet.id === 'tokenpocket'" class="w-5 h-5" viewBox="0 0 40 40">
+                            <circle cx="20" cy="20" r="18" fill="#2980FE"/>
+                            <rect x="12" y="10" width="7" height="20" rx="2" fill="white"/>
+                            <rect x="22" y="14" width="7" height="12" rx="2" fill="white" opacity="0.7"/>
+                        </svg>
                         <svg v-else class="w-5 h-5 text-dark-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
                         </svg>
@@ -229,8 +356,37 @@ const connectWallet = async (wallet) => {
                 </button>
             </div>
 
-            <!-- No Wallet Installed -->
-            <div class="pt-4 border-t border-white/5">
+            <!-- TPIX TRADE App (Mobile Only) -->
+            <div v-if="mobile" class="mb-5 p-4 rounded-xl bg-gradient-to-r from-primary-500/10 to-accent-500/10 border border-primary-500/20">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-accent-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1">
+                        <p class="font-semibold text-white text-sm">TPIX TRADE App</p>
+                        <p class="text-xs text-dark-400">Trade faster with our native app</p>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button
+                        @click="handleOpenTpixApp"
+                        class="flex-1 py-2 px-3 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-300 text-sm font-medium hover:bg-primary-500/30 transition-all"
+                    >
+                        Open App
+                    </button>
+                    <button
+                        @click="handleDownloadTpixApp"
+                        class="flex-1 py-2 px-3 rounded-lg bg-accent-500/20 border border-accent-500/30 text-accent-300 text-sm font-medium hover:bg-accent-500/30 transition-all"
+                    >
+                        Download
+                    </button>
+                </div>
+            </div>
+
+            <!-- No Wallet (Desktop) -->
+            <div v-if="!mobile" class="pt-4 border-t border-white/5">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-gradient-to-br from-accent-500/20 to-primary-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
                         <svg class="w-5 h-5 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
