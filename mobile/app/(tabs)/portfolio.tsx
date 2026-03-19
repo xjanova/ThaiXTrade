@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +15,7 @@ import GlassCard from '@/components/common/GlassCard';
 import PriceChange from '@/components/common/PriceChange';
 import AssetRow from '@/components/portfolio/AssetRow';
 import { usePortfolioStore } from '@/stores/portfolioStore';
+import { useResponsiveLayout } from '@/utils/responsive';
 
 // Donut chart for allocation / กราฟโดนัทแสดงสัดส่วนการลงทุน
 function AllocationChart({ assets, chartSize }: { assets: { symbol: string; allocation: number; color: string }[]; chartSize: number }) {
@@ -67,8 +67,8 @@ type TabType = 'assets' | 'history';
 
 export default function PortfolioScreen() {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
-  const chartSize = screenWidth * 0.45;
+  const { allocationChartSize } = useResponsiveLayout();
+  const chartSize = allocationChartSize;
   const { assets, totalValue, totalChange24h, totalChangePercent, loadMockData } = usePortfolioStore();
   const [activeTab, setActiveTab] = useState<TabType>('assets');
 

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
@@ -17,6 +16,7 @@ import OrderBookMobile from '@/components/trading/OrderBookMobile';
 import TradeFormMobile from '@/components/trading/TradeFormMobile';
 import PairHeader from '@/components/trading/PairHeader';
 import { formatPrice } from '@/utils/formatters';
+import { useResponsiveLayout } from '@/utils/responsive';
 
 const CHART_HEIGHT = 220;
 
@@ -99,8 +99,7 @@ const timeframes = ['1m', '5m', '15m', '1H', '4H', '1D', '1W'];
 
 export default function TradeScreen() {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
-  const chartWidth = screenWidth - 40;
+  const { chartWidth } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState<TabType>('chart');
   const [activeTimeframe, setActiveTimeframe] = useState('1H');
   const [priceData] = useState(() => generatePriceData(60));

@@ -7,7 +7,7 @@ import {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, radius, typography } from '@/theme';
-import { PriceChange } from '../common/PriceChange';
+import PriceChange from '../common/PriceChange';
 import { AnimatedPressable, SPRING_CONFIG } from '@/utils/animation';
 import { formatBalance, formatUsdValue } from '@/utils/formatters';
 
@@ -36,7 +36,7 @@ function CoinIcon({ symbol, icon }: { symbol: string; icon?: string }) {
   );
 }
 
-export function AssetRow({
+export default function AssetRow({
   symbol,
   name,
   balance,

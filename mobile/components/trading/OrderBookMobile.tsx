@@ -97,7 +97,7 @@ function OrderRow({
   );
 }
 
-export function OrderBookMobile({
+export default function OrderBookMobile({
   asks: asksProp,
   bids: bidsProp,
   spread: spreadProp,

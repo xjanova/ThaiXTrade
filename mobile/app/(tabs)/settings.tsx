@@ -1,17 +1,15 @@
-import { View, Text, StyleSheet, ScrollView, Pressable, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Switch, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState } from 'react';
-import Constants from 'expo-constants';
-import { colors, spacing, typography } from '@/theme';
+import { colors, spacing, radius, typography } from '@/theme';
 import GlassCard from '@/components/common/GlassCard';
+import { useUpdateStore } from '@/stores/updateStore';
+import { CURRENT_VERSION } from '@/services/updateService';
 
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
-
-// Get version from Expo config / ดึงเวอร์ชันจาก Expo config
-const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
 interface SettingItemProps {
   icon: IoniconsName;
@@ -56,6 +54,15 @@ export default function SettingsScreen() {
   const [notifications, setNotifications] = useState(true);
   const [priceAlerts, setPriceAlerts] = useState(false);
 
+  // Update state / สถานะอัปเดต
+  const { updateInfo, isChecking, forceCheck, openModal } = useUpdateStore();
+  const hasUpdate = updateInfo?.available ?? false;
+
+  const handleCheckUpdate = async () => {
+    // Force re-check (ignore throttle) / บังคับตรวจใหม่ (ไม่สน throttle)
+    await forceCheck();
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -66,6 +73,30 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
+        {/* Update Banner - show when update available */}
+        {/* แบนเนอร์อัปเดต - แสดงเมื่อมีเวอร์ชันใหม่ */}
+        {hasUpdate && (
+          <Pressable onPress={openModal}>
+            <LinearGradient
+              colors={['rgba(6, 182, 212, 0.15)', 'rgba(139, 92, 246, 0.15)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.updateBanner}
+            >
+              <View style={styles.updateDot} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.updateBannerTitle}>
+                  New version available / มีเวอร์ชันใหม่
+                </Text>
+                <Text style={styles.updateBannerVersion}>
+                  v{updateInfo?.latestVersion} → Tap to update / แตะเพื่ออัปเดต
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.brand.cyan} />
+            </LinearGradient>
+          </Pressable>
+        )}
+
         {/* Profile Card / การ์ดโปรไฟล์ */}
         <GlassCard variant="brand" style={styles.profileCard}>
           <LinearGradient
@@ -209,11 +240,38 @@ export default function SettingsScreen() {
           />
         </GlassCard>
 
-        {/* App Info / ข้อมูลแอป */}
+        {/* App Info with Update Check / ข้อมูลแอปพร้อมตรวจสอบอัปเดต */}
         <View style={styles.appInfo}>
           <Text style={styles.appInfoName}>TPIX TRADE</Text>
-          <Text style={styles.appInfoVersion}>Version {APP_VERSION}</Text>
+          <Text style={styles.appInfoVersion}>Version {CURRENT_VERSION}</Text>
           <Text style={styles.appInfoDev}>by Xman Studio</Text>
+
+          {/* Check for Updates Button / ปุ่มตรวจสอบอัปเดต */}
+          <Pressable
+            style={styles.checkUpdateBtn}
+            onPress={handleCheckUpdate}
+            disabled={isChecking}
+          >
+            {isChecking ? (
+              <ActivityIndicator size="small" color={colors.brand.cyan} />
+            ) : (
+              <>
+                <Ionicons
+                  name={hasUpdate ? 'arrow-up-circle' : 'refresh-outline'}
+                  size={16}
+                  color={hasUpdate ? colors.trading.green : colors.brand.cyan}
+                />
+                <Text style={[
+                  styles.checkUpdateText,
+                  hasUpdate && { color: colors.trading.green },
+                ]}>
+                  {hasUpdate
+                    ? `Update to v${updateInfo?.latestVersion} / อัปเดตเป็น v${updateInfo?.latestVersion}`
+                    : 'Check for Updates / ตรวจสอบอัปเดต'}
+                </Text>
+              </>
+            )}
+          </Pressable>
         </View>
 
         <View style={{ height: 120 }} />
@@ -237,6 +295,34 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: spacing.xl,
+  },
+  // Update Banner / แบนเนอร์อัปเดต
+  updateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.brand.cyan + '30',
+    marginBottom: spacing.xl,
+  },
+  updateDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.brand.cyan,
+  },
+  updateBannerTitle: {
+    ...typography.bodySmall,
+    color: colors.text.primary,
+    fontWeight: '600',
+  },
+  updateBannerVersion: {
+    ...typography.bodySmall,
+    color: colors.brand.cyan,
+    fontSize: 11,
+    marginTop: 1,
   },
   // Profile / โปรไฟล์
   profileCard: {
@@ -348,5 +434,22 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.text.disabled,
     fontSize: 11,
+  },
+  checkUpdateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.bg.cardBorder,
+    backgroundColor: colors.bg.card,
+  },
+  checkUpdateText: {
+    ...typography.bodySmall,
+    color: colors.brand.cyan,
+    fontWeight: '600',
   },
 });

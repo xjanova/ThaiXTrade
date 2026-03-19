@@ -92,7 +92,11 @@ export const usePortfolioStore = create<PortfolioState>((set) => ({
       const prevValue = a.value / (1 + a.change24h / 100);
       return sum + (a.value - prevValue);
     }, 0);
-    const totalChangePercent = (totalChange24h / (totalValue - totalChange24h)) * 100;
+    // Guard against division by zero / ป้องกันหารด้วยศูนย์
+    const prevTotalValue = totalValue - totalChange24h;
+    const totalChangePercent = prevTotalValue > 0
+      ? (totalChange24h / prevTotalValue) * 100
+      : 0;
 
     set({
       assets: MOCK_ASSETS,

@@ -7,7 +7,7 @@ import {
   Pressable,
 } from 'react-native';
 import { colors, spacing, radius, typography } from '@/theme';
-import { GradientButton } from '../common/GradientButton';
+import GradientButton from '../common/GradientButton';
 import { formatNumber, parseInputNumber } from '@/utils/formatters';
 
 type TradeSide = 'buy' | 'sell';
@@ -33,7 +33,7 @@ const MOCK_BALANCE = {
   quote: { symbol: 'USDT', available: 12_480.55 },
 };
 
-export function TradeFormMobile({
+export default function TradeFormMobile({
   symbol = 'BTC/USDT',
   // Use consistent BTC price / ใช้ราคา BTC ที่สอดคล้องกัน
   currentPrice = 98_432.50,

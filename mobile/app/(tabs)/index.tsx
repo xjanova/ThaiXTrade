@@ -5,7 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,12 +19,13 @@ import MiniChart from '@/components/trading/MiniChart';
 import { useMarketStore } from '@/stores/marketStore';
 import { usePortfolioStore } from '@/stores/portfolioStore';
 import { formatCurrency } from '@/utils/formatters';
+import { useResponsiveLayout } from '@/utils/responsive';
 
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
+  const { contentWidth, favoriteCardWidth, isWeb } = useResponsiveLayout();
   const { pairs, favorites, loadMockData: loadMarket } = useMarketStore();
   const { totalValue, totalChangePercent, loadMockData: loadPortfolio } = usePortfolioStore();
 
@@ -110,7 +111,7 @@ export default function HomeScreen() {
           {favoritePairs.map((pair) => (
             <GlassCard
               key={pair.symbol}
-              style={[styles.favoriteCard, { width: screenWidth * 0.42 }]}
+              style={[styles.favoriteCard, { width: favoriteCardWidth }]}
               onPress={() => router.push('/trade')}
             >
               <View style={styles.favoriteHeader}>
@@ -127,7 +128,7 @@ export default function HomeScreen() {
               <MiniChart
                 data={pair.chartData}
                 color={pair.change24h >= 0 ? colors.trading.green : colors.trading.red}
-                width={screenWidth * 0.35}
+                width={Math.min(favoriteCardWidth * 0.83, 180)}
                 height={40}
               />
               <View style={styles.favoriteFooter}>
