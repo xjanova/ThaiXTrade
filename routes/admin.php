@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BannerController;
 use App\Http\Controllers\Admin\CarbonCreditController as AdminCarbonCreditController;
 use App\Http\Controllers\Admin\ChainController;
+use App\Http\Controllers\Admin\ContentController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FeeController;
 use App\Http\Controllers\Admin\LanguageController;
@@ -169,6 +170,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::patch('/{member}/ban', [MemberController::class, 'ban'])->name('ban');
             Route::patch('/{member}/unban', [MemberController::class, 'unban'])->name('unban');
             Route::patch('/{member}/kyc', [MemberController::class, 'updateKyc'])->name('kyc');
+        });
+
+        // Content — ระบบบทความ AI + Blog
+        Route::prefix('content')->name('content.')->group(function () {
+            Route::get('/', [ContentController::class, 'index'])->name('index');
+            Route::post('/generate', [ContentController::class, 'generate'])->name('generate');
+            Route::put('/{id}', [ContentController::class, 'update'])->name('update');
+            Route::delete('/{id}', [ContentController::class, 'destroy'])->name('destroy');
+            Route::post('/generate-image', [ContentController::class, 'generateImage'])->name('generate-image');
         });
 
         // Banners — จัดการป้ายโฆษณา (Image, Google AdSense, HTML)

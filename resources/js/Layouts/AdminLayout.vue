@@ -96,6 +96,7 @@ const navigationSections = [
     {
         title: 'เนื้อหา',
         items: [
+            { name: 'บทความ AI', href: '/admin/content', icon: 'content' },
             { name: 'ตั้งค่าเว็บ', href: '/admin/settings', icon: 'settings' },
             { name: 'ภาษา', href: '/admin/languages', icon: 'language' },
             { name: 'แบนเนอร์', href: '/admin/banners', icon: 'banner' },
@@ -233,6 +234,10 @@ const handleLogout = () => {
                             <!-- Language -->
                             <svg v-else-if="item.icon === 'language'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                            </svg>
+                            <!-- Content/Article icon -->
+                            <svg v-else-if="item.icon === 'content'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
                             </svg>
                             <!-- Banner/Ad icon -->
                             <svg v-else-if="item.icon === 'banner'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

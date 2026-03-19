@@ -67,6 +67,14 @@ Route::get('/ai-assistant', function () {
     return Inertia::render('AIAssistant');
 })->name('ai-assistant');
 
+// Blog — บทความ AI-generated + content marketing
+Route::get('/blog', function () {
+    return Inertia::render('Blog/Index');
+})->name('blog');
+Route::get('/blog/{slug}', function ($slug) {
+    return Inertia::render('Blog/Show', ['slug' => $slug]);
+})->where('slug', '[a-z0-9\-]+')->name('blog.show');
+
 // Settings
 Route::get('/settings', function () {
     return Inertia::render('Settings');

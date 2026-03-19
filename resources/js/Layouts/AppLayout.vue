@@ -12,6 +12,7 @@ import Sidebar from '@/Components/Navigation/Sidebar.vue';
 import TickerStrip from '@/Components/Trading/TickerStrip.vue';
 import WalletModal from '@/Components/Wallet/WalletModal.vue';
 import BannerAd from '@/Components/BannerAd.vue';
+import AIChatbot from '@/Components/AIChatbot.vue';
 import versionData from '../../../version.json';
 
 const props = defineProps({
@@ -155,6 +156,9 @@ onMounted(async () => {
                 </div>
             </div>
         </footer>
+
+        <!-- AI Chatbot — ลอยทุกหน้า -->
+        <AIChatbot />
     </div>
 </template>
 

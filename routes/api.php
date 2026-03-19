@@ -12,6 +12,8 @@ use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\SwapApiController;
+use App\Http\Controllers\Api\ArticleController;
+use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\TokenFactoryApiController;
 use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TradingController;
@@ -117,6 +119,16 @@ Route::prefix('v1')->group(function () {
         Route::get('/projects/{slug}', [CarbonCreditApiController::class, 'project']);
         Route::get('/stats', [CarbonCreditApiController::class, 'stats']);
     });
+
+    // Articles / Blog — บทความ (public)
+    Route::prefix('articles')->group(function () {
+        Route::get('/', [ArticleController::class, 'index']);
+        Route::get('/{slug}', [ArticleController::class, 'show']);
+    });
+
+    // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)
+    Route::post('/chatbot', [ChatbotController::class, 'chat'])
+        ->middleware('throttle:30,1');
 
     // Stripe Webhook — รับ event จาก Stripe (ไม่ต้อง auth)
     Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])
