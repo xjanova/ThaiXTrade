@@ -198,7 +198,13 @@ jobs:
       - name: Find and rename APK
         id: find-apk
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          echo "=== Searching for APK files ==="
+          find android -name "*.apk" -type f 2>/dev/null || true
+          APK_PATH=$(find android -name "*.apk" -type f | head -1)
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: No APK file found!"
+            exit 1
+          fi
           APK_NAME="TPIX-TRADE-v${{ steps.version.outputs.version }}.apk"
           cp "$APK_PATH" "$APK_NAME"
           echo "apk_path=$APK_NAME" >> $GITHUB_OUTPUT
