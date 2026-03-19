@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
 
 defineProps({
@@ -118,6 +118,19 @@ const navigationSections = [
     },
 ];
 
+// Section พับ/กาง — เปิดเฉพาะ section ที่มี active link
+const collapsedSections = ref({});
+
+function isSectionOpen(idx) {
+    if (collapsedSections.value[idx] !== undefined) return collapsedSections.value[idx];
+    // เปิดอัตโนมัติถ้ามี active item
+    return navigationSections[idx]?.items?.some(i => isActive(i.href)) ?? true;
+}
+
+function toggleSection(idx) {
+    collapsedSections.value[idx] = !isSectionOpen(idx);
+}
+
 const toggleSidebar = () => {
     sidebarOpen.value = !sidebarOpen.value;
 };
@@ -129,6 +142,14 @@ const toggleMobileSidebar = () => {
 const handleLogout = () => {
     router.post('/admin/logout');
 };
+
+// Auto-scroll sidebar ไปหยุดตรงเมนูที่ active
+onMounted(() => {
+    nextTick(() => {
+        const activeEl = document.querySelector('nav .text-primary-400.bg-primary-500\\/10');
+        if (activeEl) activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+});
 </script>
 
 <template>
@@ -167,14 +188,27 @@ const handleLogout = () => {
             </div>
 
             <!-- Navigation -->
-            <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-6">
-                <div v-for="(section, sIdx) in navigationSections" :key="sIdx">
-                    <p v-if="section.title && sidebarOpen" class="px-3 mb-2 text-xs font-semibold text-dark-500 uppercase tracking-wider">
-                        {{ section.title }}
-                    </p>
-                    <div v-else-if="section.title && !sidebarOpen" class="border-t border-white/5 mb-3 mx-2"></div>
+            <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1 scrollbar-thin">
+                <div v-for="(section, sIdx) in navigationSections" :key="sIdx" class="mb-1">
+                    <!-- Section header — กดพับ/กางได้ -->
+                    <button v-if="section.title && sidebarOpen" @click="toggleSection(sIdx)"
+                        class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-dark-500 uppercase tracking-wider hover:text-dark-300 transition-colors">
+                        <span>{{ section.title }}</span>
+                        <svg :class="['w-3 h-3 transition-transform', isSectionOpen(sIdx) ? 'rotate-0' : '-rotate-90']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div v-else-if="section.title && !sidebarOpen" class="border-t border-white/5 mb-2 mx-2"></div>
 
-                    <div class="space-y-1">
+                    <Transition
+                        enter-active-class="transition-all duration-200 ease-out"
+                        enter-from-class="max-h-0 opacity-0"
+                        enter-to-class="max-h-96 opacity-100"
+                        leave-active-class="transition-all duration-150 ease-in"
+                        leave-from-class="max-h-96 opacity-100"
+                        leave-to-class="max-h-0 opacity-0"
+                    >
+                    <div v-show="!sidebarOpen || isSectionOpen(sIdx)" class="space-y-0.5 overflow-hidden">
                         <component
                             :is="item.external ? 'a' : Link"
                             v-for="item in section.items"
@@ -283,6 +317,7 @@ const handleLogout = () => {
                             <span v-if="sidebarOpen" class="whitespace-nowrap">{{ item.name }}</span>
                         </component>
                     </div>
+                    </Transition>
                 </div>
             </nav>
 
