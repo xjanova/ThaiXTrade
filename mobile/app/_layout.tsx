@@ -1,8 +1,8 @@
-import { useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Platform } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { colors } from '@/theme';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
@@ -20,13 +20,23 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <GestureHandlerRootView style={styles.container} onLayout={onLayoutRootView}>
+      <GestureHandlerRootView
+        style={[
+          styles.container,
+          // Web: add min-height for proper scrolling
+          // เว็บ: เพิ่ม minHeight เพื่อให้ scroll ถูกต้อง
+          Platform.OS === 'web' && styles.webContainer,
+        ]}
+        onLayout={onLayoutRootView}
+      >
         <StatusBar style="light" backgroundColor={colors.bg.primary} />
         <Stack
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: colors.bg.primary },
-            animation: 'slide_from_right',
+            // Disable slide animation on web for better UX
+            // ปิดแอนิเมชัน slide บนเว็บเพื่อ UX ที่ดีขึ้น
+            animation: Platform.OS === 'web' ? 'none' : 'slide_from_right',
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -40,5 +50,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg.primary,
+  },
+  webContainer: {
+    // @ts-ignore - web-only / เฉพาะเว็บ
+    minHeight: '100vh',
+    // @ts-ignore - web-only: smooth scrolling / เว็บ: scroll แบบ smooth
+    overflow: 'auto',
   },
 });

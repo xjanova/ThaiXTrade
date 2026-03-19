@@ -16,6 +16,7 @@ import {
 } from 'react-native-reanimated';
 import { colors, spacing, radius, typography } from '@/theme';
 import { AnimatedPressable, BUTTON_SPRING_CONFIG } from '@/utils/animation';
+import { webCursor } from '@/utils/web';
 
 type ButtonVariant = 'brand' | 'buy' | 'sell' | 'outline';
 type ButtonSize = 'sm' | 'md' | 'lg';
@@ -88,7 +89,7 @@ export function GradientButton({
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, SPRING_CONFIG);
+    scale.value = withSpring(1, BUTTON_SPRING_CONFIG);
   };
 
   const sizeConfig = sizeMap[size];
@@ -99,6 +100,8 @@ export function GradientButton({
     borderRadius: radius.md,
     opacity: disabled ? 0.4 : 1,
     alignSelf: fullWidth ? 'stretch' : 'auto',
+    // Web cursor / cursor สำหรับเว็บ
+    ...(!disabled && webCursor),
   };
 
   const textStyle: TextStyle = {

@@ -14,6 +14,7 @@ import {
 } from 'react-native-reanimated';
 import { colors, spacing, radius } from '@/theme';
 import { AnimatedPressable, SPRING_CONFIG } from '@/utils/animation';
+import { webCursor } from '@/utils/web';
 
 type GlassCardVariant = 'default' | 'elevated' | 'brand';
 
@@ -96,7 +97,7 @@ export function GlassCard({
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={!onPress}
-        style={[animatedStyle, style]}
+        style={[animatedStyle, onPress && webCursor, style]}
       >
         <LinearGradient
           colors={colors.gradient.brand}

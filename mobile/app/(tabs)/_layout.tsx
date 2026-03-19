@@ -1,9 +1,9 @@
 import { Tabs } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { colors } from '@/theme';
+import { TabBarBackground } from '@/components/common/TabBarBackground';
 
 function TabBarIcon({
   name,
@@ -40,12 +40,8 @@ export default function TabLayout() {
         tabBarInactiveTintColor: colors.text.tertiary,
         tabBarStyle: styles.tabBar,
         tabBarLabelStyle: styles.tabBarLabel,
-        tabBarBackground: () => (
-          <View style={StyleSheet.absoluteFill}>
-            <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-            <View style={styles.tabBarBg} />
-          </View>
-        ),
+        // Use platform-aware blur background / ใช้ blur background ที่รองรับทุก platform
+        tabBarBackground: () => <TabBarBackground />,
       }}
     >
       <Tabs.Screen
@@ -121,9 +117,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     elevation: 0,
     // Use platform-adaptive height / ใช้ความสูงที่ปรับตาม platform
-    height: 80,
-    paddingBottom: 4,
+    height: Platform.OS === 'web' ? 64 : 80,
+    paddingBottom: Platform.OS === 'web' ? 8 : 4,
     paddingTop: 8,
+    // Web cursor styles / สไตล์ cursor สำหรับเว็บ
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' as const } : {}),
   },
   tabBarBg: {
     ...StyleSheet.absoluteFillObject,

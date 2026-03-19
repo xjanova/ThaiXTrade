@@ -33,7 +33,13 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "TPIX TRADE - Decentralized Exchange",
+      "shortName": "TPIX TRADE",
+      "description": "Trade crypto with zero fees on TPIX TRADE DEX - Decentralized Exchange by Xman Studio",
+      "lang": "en",
+      "themeColor": "#0a0e1a",
+      "backgroundColor": "#0a0e1a"
     },
     "plugins": [
       "expo-router",
@@ -50,6 +56,9 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "apiBaseUrl": "https://tpixtrade.com/api/v1"
     }
   }
 }
