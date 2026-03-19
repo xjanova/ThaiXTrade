@@ -8,9 +8,11 @@
 use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\BannerController as ApiBannerController;
+use App\Http\Controllers\Api\BridgeApiController;
 use App\Http\Controllers\Api\CarbonCreditApiController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\ChatbotController;
+use App\Http\Controllers\Api\StakingApiController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\SwapApiController;
@@ -118,6 +120,24 @@ Route::prefix('v1')->group(function () {
         Route::get('/projects', [CarbonCreditApiController::class, 'projects']);
         Route::get('/projects/{slug}', [CarbonCreditApiController::class, 'project']);
         Route::get('/stats', [CarbonCreditApiController::class, 'stats']);
+    });
+
+    // Bridge — cross-chain TPIX Chain ↔ BSC (public endpoints)
+    Route::prefix('bridge')->group(function () {
+        Route::get('/info', [BridgeApiController::class, 'info']);
+        Route::post('/initiate', [BridgeApiController::class, 'initiate']);
+        Route::get('/history/{wallet}', [BridgeApiController::class, 'history']);
+        Route::get('/status/{id}', [BridgeApiController::class, 'status']);
+    });
+
+    // Staking — stake TPIX บน TPIX Chain (public endpoints)
+    Route::prefix('staking')->group(function () {
+        Route::get('/pools', [StakingApiController::class, 'pools']);
+        Route::get('/stats', [StakingApiController::class, 'stats']);
+        Route::get('/positions/{wallet}', [StakingApiController::class, 'positions']);
+        Route::post('/stake', [StakingApiController::class, 'stake']);
+        Route::post('/claim/{id}', [StakingApiController::class, 'claim']);
+        Route::post('/unstake/{id}', [StakingApiController::class, 'unstake']);
     });
 
     // Articles / Blog — บทความ (public)
