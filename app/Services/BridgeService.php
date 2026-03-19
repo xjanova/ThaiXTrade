@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BridgeTransaction;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -56,11 +57,11 @@ class BridgeService
     {
         // ตรวจ amount
         if (bccomp($amount, (string) self::MIN_AMOUNT, 18) < 0) {
-            throw new \InvalidArgumentException("Minimum bridge amount is ".self::MIN_AMOUNT." TPIX");
+            throw new \InvalidArgumentException('Minimum bridge amount is '.self::MIN_AMOUNT.' TPIX');
         }
 
         if (bccomp($amount, (string) self::MAX_AMOUNT, 18) > 0) {
-            throw new \InvalidArgumentException("Maximum bridge amount is ".number_format(self::MAX_AMOUNT)." TPIX");
+            throw new \InvalidArgumentException('Maximum bridge amount is '.number_format(self::MAX_AMOUNT).' TPIX');
         }
 
         $fee = $this->calculateFee($amount);
@@ -83,7 +84,7 @@ class BridgeService
     /**
      * ประวัติ bridge ของ wallet.
      */
-    public function getHistory(string $wallet, int $limit = 20): \Illuminate\Database\Eloquent\Collection
+    public function getHistory(string $wallet, int $limit = 20): Collection
     {
         return BridgeTransaction::byWallet($wallet)
             ->latest()

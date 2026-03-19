@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BridgeTransaction;
 use App\Services\BridgeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -80,7 +81,7 @@ class BridgeApiController extends Controller
      */
     public function status(int $id): JsonResponse
     {
-        $tx = \App\Models\BridgeTransaction::findOrFail($id);
+        $tx = BridgeTransaction::findOrFail($id);
 
         return response()->json([
             'success' => true,

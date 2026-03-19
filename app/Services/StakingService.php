@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\StakingPool;
 use App\Models\StakingPosition;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -17,7 +18,7 @@ class StakingService
     /**
      * ดึง pools ที่ active (cached 60s).
      */
-    public function getActivePools(): \Illuminate\Database\Eloquent\Collection
+    public function getActivePools(): Collection
     {
         return Cache::remember('staking:pools', 60, function () {
             return StakingPool::active()->orderBy('lock_days')->get();
@@ -37,7 +38,7 @@ class StakingService
         }
 
         if (bccomp($amount, $pool->max_stake, 18) > 0) {
-            throw new \InvalidArgumentException("Maximum stake is ".number_format((float) $pool->max_stake)." TPIX");
+            throw new \InvalidArgumentException('Maximum stake is '.number_format((float) $pool->max_stake).' TPIX');
         }
 
         // ตรวจ capacity
@@ -144,7 +145,7 @@ class StakingService
     /**
      * ดึง positions ของ wallet.
      */
-    public function getPositions(string $wallet): \Illuminate\Database\Eloquent\Collection
+    public function getPositions(string $wallet): Collection
     {
         return StakingPosition::byWallet($wallet)
             ->with('pool')

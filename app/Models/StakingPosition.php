@@ -47,7 +47,7 @@ class StakingPosition extends Model
 
     /**
      * คำนวณ pending reward ตาม APY + วันที่ผ่านมา.
-     * formula: amount * (apy / 100) / 365 * elapsed_days
+     * formula: amount * (apy / 100) / 365 * elapsed_days.
      */
     public function getPendingRewardAttribute(): string
     {
