@@ -94,6 +94,39 @@ export async function fetchSupportedChains() {
 }
 
 /**
+ * เพิ่ม TPIX Chain เข้ากระเป๋าอัตโนมัติ (MetaMask, Trust Wallet, etc.)
+ * ใช้ EIP-3085 wallet_addEthereumChain — ถ้า chain มีอยู่แล้วจะข้าม (ไม่ error)
+ * เรียกอัตโนมัติหลัง connect wallet สำเร็จ
+ */
+export async function addTPIXChainToWallet(providerOrWindow = null) {
+    const p = providerOrWindow || (typeof window !== 'undefined' ? window.ethereum : null);
+    if (!p?.request) return false;
+
+    try {
+        await p.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+                chainId: TPIX_CHAIN_CONFIG.chainId,
+                chainName: TPIX_CHAIN_CONFIG.chainName,
+                nativeCurrency: TPIX_CHAIN_CONFIG.nativeCurrency,
+                rpcUrls: TPIX_CHAIN_CONFIG.rpcUrls,
+                blockExplorerUrls: TPIX_CHAIN_CONFIG.blockExplorerUrls,
+            }],
+        });
+        console.log('[TPIX] ✅ TPIX Chain (4289) added to wallet');
+        return true;
+    } catch (err) {
+        // 4902 = chain ถูกเพิ่มแล้ว (ปกติ), 4001 = user ปฏิเสธ
+        if (err.code === 4001) {
+            console.warn('[TPIX] User declined to add TPIX Chain');
+        } else {
+            console.warn('[TPIX] Could not add TPIX Chain:', err.message);
+        }
+        return false;
+    }
+}
+
+/**
  * Get chain config by chain ID. Returns null if not found.
  */
 export async function getChainConfig(chainId) {

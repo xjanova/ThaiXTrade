@@ -18,6 +18,7 @@ import {
     fetchSupportedChains,
     getAddressUrl,
     formatAddress,
+    addTPIXChainToWallet,
 } from '@/utils/web3';
 import {
     generateWallet,
@@ -180,16 +181,18 @@ export const useWalletStore = defineStore('wallet', () => {
             }));
 
             // สลับไป chain หลัก (BSC) อัตโนมัติถ้าไม่ได้อยู่บน chain ที่รองรับ
-            // หรือถ้าอยู่บน chain อื่นที่ไม่ใช่ chain หลัก
             if (chainId.value !== DEFAULT_CHAIN_ID) {
                 try {
                     await switchToChain(injected, DEFAULT_CHAIN_ID);
-                    // สร้าง provider ใหม่หลังสลับ chain สำเร็จ
                     await _refreshProviderState(injected);
                 } catch (switchErr) {
                     console.warn('[TPIX] ไม่สามารถสลับไป chain หลักอัตโนมัติ:', switchErr.message);
                 }
             }
+
+            // เพิ่ม TPIX Chain (4289) เข้ากระเป๋าอัตโนมัติ — ให้ user เห็น TPIX Chain
+            // ใน MetaMask/Trust Wallet ทันทีหลังเชื่อมต่อ (ไม่ต้อง add เอง)
+            addTPIXChainToWallet(injected).catch(() => {});
 
             // ตั้งค่า event listeners สำหรับ chain/account changes
             _setupListeners();
