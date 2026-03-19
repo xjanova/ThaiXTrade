@@ -100,7 +100,7 @@ class SettingController extends Controller
             'site_name' => ['nullable', 'string', 'max:100'],
             'site_description' => ['nullable', 'string', 'max:500'],
             'primary_color' => ['nullable', 'string', 'max:20'],
-            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:5120'],
+            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:10240'],
             'favicon' => ['nullable', 'image', 'mimes:png,ico,svg', 'max:1024'],
         ]);
 
@@ -192,7 +192,7 @@ class SettingController extends Controller
     public function updateLogo(Request $request): RedirectResponse
     {
         $request->validate([
-            'logo' => ['required', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:2048'],
+            'logo' => ['required', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:10240'],
         ]);
 
         // Delete old logo if exists
