@@ -185,15 +185,24 @@ jobs:
         run: |
           cd android
           # Retry Gradle build up to 3 times (transient CDN/network failures)
+          BUILD_SUCCESS=false
           for i in 1 2 3; do
             echo "=== Build attempt $i ==="
-            ./gradlew assembleRelease \
+            if ./gradlew assembleRelease \
               -PversionName="${{ steps.version.outputs.version }}" \
-              -PversionCode=${{ steps.version.outputs.build }} \
-              --no-daemon && break
+              -PversionCode=${{ steps.version.outputs.build }}; then
+              BUILD_SUCCESS=true
+              break
+            fi
             echo "Build attempt $i failed, retrying in 15s..."
             sleep 15
           done
+          if [ "$BUILD_SUCCESS" != "true" ]; then
+            echo "All build attempts failed!"
+            exit 1
+          fi
+          # Verify APK was created
+          find . -name "*.apk" -type f || echo "WARNING: No APK files found after build"
 
       - name: Find and rename APK
         id: find-apk
