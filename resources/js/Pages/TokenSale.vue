@@ -17,6 +17,9 @@ import PhaseCard from '@/Components/TokenSale/PhaseCard.vue';
 import BuyForm from '@/Components/TokenSale/BuyForm.vue';
 import TokenomicsChart from '@/Components/TokenSale/TokenomicsChart.vue';
 import VestingSchedule from '@/Components/TokenSale/VestingSchedule.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 // Props จาก backend (Inertia)
 const props = defineProps({
@@ -118,7 +121,7 @@ function handlePurchaseComplete() {
                 <img src="/logo.png" alt="TPIX" class="w-20 h-20 mx-auto mb-6 rounded-full" />
 
                 <h1 class="text-4xl sm:text-5xl font-bold text-white mb-3">
-                    TPIX Token Sale
+                    {{ t('tokenSale.title') }}
                 </h1>
                 <p class="text-lg text-gray-400 mb-8 max-w-2xl mx-auto">
                     Be part of the TPIX Chain ecosystem. Purchase TPIX tokens at the best price
@@ -145,7 +148,7 @@ function handlePurchaseComplete() {
 
         <!-- ===== SALE PHASES ===== -->
         <section class="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-            <h2 class="text-2xl font-bold text-white mb-2">Sale Phases</h2>
+            <h2 class="text-2xl font-bold text-white mb-2">{{ t('tokenSale.phase') }}</h2>
             <p class="text-gray-400 mb-8">Select a phase to purchase TPIX tokens.</p>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -172,7 +175,7 @@ function handlePurchaseComplete() {
 
                 <!-- How to Buy -->
                 <div class="glass-dark p-6 rounded-xl border border-white/10">
-                    <h3 class="text-xl font-bold text-white mb-6">How to Buy</h3>
+                    <h3 class="text-xl font-bold text-white mb-6">{{ t('tokenSale.howToBuy') }}</h3>
 
                     <div class="space-y-6">
                         <div

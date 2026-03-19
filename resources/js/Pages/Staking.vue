@@ -10,7 +10,9 @@ import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import axios from 'axios';
+import { useTranslation } from '@/Composables/useTranslation';
 
+const { t } = useTranslation();
 const walletStore = useWalletStore();
 const pools = ref([]);
 const positions = ref([]);
@@ -93,8 +95,8 @@ onMounted(async () => {
         <div class="max-w-6xl mx-auto space-y-6">
             <!-- Header -->
             <div class="text-center mb-8">
-                <h1 class="text-3xl font-bold text-white mb-2">🏦 TPIX Staking</h1>
-                <p class="text-dark-400">Stake TPIX เพื่อรับผลตอบแทนสูงสุด 200% APY</p>
+                <h1 class="text-3xl font-bold text-white mb-2">🏦 {{ t('staking.title') }}</h1>
+                <p class="text-dark-400">{{ t('staking.subtitle') }}</p>
             </div>
 
             <div v-if="message" :class="['px-4 py-3 rounded-xl text-sm', message.type === 'success' ? 'bg-trading-green/20 text-trading-green' : 'bg-trading-red/20 text-trading-red']">{{ message.text }}</div>
@@ -103,19 +105,19 @@ onMounted(async () => {
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="glass-card text-center py-4">
                     <p class="text-2xl font-bold text-primary-400">{{ formatNum(stats?.tvl) }}</p>
-                    <p class="text-dark-400 text-xs">Total Value Locked (TPIX)</p>
+                    <p class="text-dark-400 text-xs">{{ t('staking.tvl') }}</p>
                 </div>
                 <div class="glass-card text-center py-4">
                     <p class="text-2xl font-bold text-white">{{ stats?.total_stakers || 0 }}</p>
-                    <p class="text-dark-400 text-xs">Stakers</p>
+                    <p class="text-dark-400 text-xs">{{ t('staking.stakers') }}</p>
                 </div>
                 <div class="glass-card text-center py-4">
                     <p class="text-2xl font-bold text-trading-green">{{ formatNum(myTotalStaked) }}</p>
-                    <p class="text-dark-400 text-xs">My Staked</p>
+                    <p class="text-dark-400 text-xs">{{ t('staking.myStaked') }}</p>
                 </div>
                 <div class="glass-card text-center py-4">
                     <p class="text-2xl font-bold text-yellow-400">{{ formatNum(myTotalRewards) }}</p>
-                    <p class="text-dark-400 text-xs">My Rewards</p>
+                    <p class="text-dark-400 text-xs">{{ t('staking.myRewards') }}</p>
                 </div>
             </div>
 
@@ -158,11 +160,11 @@ onMounted(async () => {
                         </div>
                         <button @click="doStake" :disabled="isStaking || !stakeAmount"
                             class="w-full py-3 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-bold hover:shadow-lg disabled:opacity-50 transition-all">
-                            {{ isStaking ? '🔄 กำลัง Stake...' : '🏦 Stake TPIX' }}
+                            {{ isStaking ? '🔄 กำลัง Stake...' : '🏦 ' + t('staking.stakeTpix') }}
                         </button>
                     </div>
                     <div class="bg-dark-700/50 rounded-xl p-4 space-y-3">
-                        <h4 class="text-sm text-dark-400 font-semibold">Estimated Rewards</h4>
+                        <h4 class="text-sm text-dark-400 font-semibold">{{ t('staking.estimatedRewards') }}</h4>
                         <div class="flex justify-between"><span class="text-dark-300 text-sm">ต่อวัน</span><span class="text-trading-green font-mono">{{ estimatedDaily }} TPIX</span></div>
                         <div class="flex justify-between"><span class="text-dark-300 text-sm">ต่อเดือน</span><span class="text-trading-green font-mono">{{ estimatedMonthly }} TPIX</span></div>
                         <div class="flex justify-between"><span class="text-dark-300 text-sm">ต่อปี</span><span class="text-trading-green font-mono text-lg font-bold">{{ estimatedYearly }} TPIX</span></div>
@@ -177,7 +179,7 @@ onMounted(async () => {
 
             <!-- My Positions -->
             <div v-if="activePositions.length" class="glass-card">
-                <h3 class="text-lg font-semibold text-white mb-4">My Staking Positions</h3>
+                <h3 class="text-lg font-semibold text-white mb-4">{{ t('staking.myPositions') }}</h3>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead>
@@ -201,8 +203,8 @@ onMounted(async () => {
                                     <span v-else class="text-dark-400 text-xs">🔒 {{ pos.days_remaining }}d</span>
                                 </td>
                                 <td class="p-3 text-right space-x-2">
-                                    <button @click="claimRewards(pos.id)" class="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-lg text-xs hover:bg-yellow-500/30">Claim</button>
-                                    <button v-if="pos.is_unlocked" @click="unstake(pos.id)" class="px-3 py-1 bg-trading-red/20 text-trading-red rounded-lg text-xs hover:bg-trading-red/30">Unstake</button>
+                                    <button @click="claimRewards(pos.id)" class="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-lg text-xs hover:bg-yellow-500/30">{{ t('staking.claim') }}</button>
+                                    <button v-if="pos.is_unlocked" @click="unstake(pos.id)" class="px-3 py-1 bg-trading-red/20 text-trading-red rounded-lg text-xs hover:bg-trading-red/30">{{ t('staking.unstake') }}</button>
                                 </td>
                             </tr>
                         </tbody>
@@ -212,7 +214,7 @@ onMounted(async () => {
 
             <!-- Info -->
             <div class="glass-card">
-                <h3 class="text-lg font-semibold text-white mb-3">วิธีการ Stake</h3>
+                <h3 class="text-lg font-semibold text-white mb-3">{{ t('staking.howToStake') }}</h3>
                 <div class="grid md:grid-cols-4 gap-4 text-center">
                     <div v-for="(s, i) in ['เชื่อมต่อ Wallet', 'เลือก Pool + จำนวน', 'Confirm Transaction', 'รับ Rewards']" :key="i">
                         <div class="w-10 h-10 rounded-full bg-primary-500/20 flex items-center justify-center mx-auto mb-2">

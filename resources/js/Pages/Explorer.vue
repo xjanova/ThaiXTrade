@@ -8,6 +8,9 @@
 import { ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 // URL ของ Blockscout explorer (ดึงจาก env หรือ hardcode)
 const explorerUrl = ref(import.meta.env.VITE_TPIX_EXPLORER_URL || 'https://explorer.tpix.online');
@@ -41,7 +44,7 @@ const chainStats = [
 
             <div class="relative max-w-4xl mx-auto px-4 text-center">
                 <img src="/logo.png" alt="TPIX" class="w-20 h-20 mx-auto mb-6 rounded-full" />
-                <h1 class="text-4xl sm:text-5xl font-bold text-white mb-3">TPIX Chain Explorer</h1>
+                <h1 class="text-4xl sm:text-5xl font-bold text-white mb-3">{{ t('explorer.title') }}</h1>
                 <p class="text-lg text-gray-400 mb-8">
                     Powered by Blockscout — explore transactions, blocks, tokens, and contracts on TPIX Chain.
                 </p>

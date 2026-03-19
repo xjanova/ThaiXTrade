@@ -10,7 +10,9 @@ import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useCarbonCreditStore } from '@/Stores/carbonCreditStore';
+import { useTranslation } from '@/Composables/useTranslation';
 
+const { t } = useTranslation();
 const walletStore = useWalletStore();
 const carbonStore = useCarbonCreditStore();
 
@@ -128,10 +130,9 @@ function formatNumber(val) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 </div>
-                <h1 class="text-3xl sm:text-4xl font-bold text-white mb-3">Carbon Credits</h1>
+                <h1 class="text-3xl sm:text-4xl font-bold text-white mb-3">{{ t('carbonCredit.title') }}</h1>
                 <p class="text-gray-400 max-w-2xl mx-auto">
-                    Offset your carbon footprint through verified carbon credit projects.
-                    Purchase, hold, and retire credits on the blockchain.
+                    {{ t('carbonCredit.subtitle') }}
                 </p>
             </div>
         </section>

@@ -7,6 +7,9 @@
 import { ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const features = [
     {
@@ -39,7 +42,7 @@ const features = [
         <div class="max-w-6xl mx-auto">
             <!-- Page Header -->
             <div class="mb-8">
-                <h1 class="text-3xl font-bold text-white mb-2">AI Trading Assistant</h1>
+                <h1 class="text-3xl font-bold text-white mb-2">{{ t('aiAssistant.title') }}</h1>
                 <p class="text-dark-400">Intelligent tools to enhance your trading decisions.</p>
             </div>
 
@@ -50,10 +53,9 @@ const features = [
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                     </svg>
                 </div>
-                <h2 class="text-2xl font-bold text-white mb-3">Coming Soon</h2>
+                <h2 class="text-2xl font-bold text-white mb-3">{{ t('aiAssistant.comingSoon') }}</h2>
                 <p class="text-dark-400 max-w-lg mx-auto mb-6">
-                    Our AI-powered trading assistant is under development. It will provide intelligent market analysis,
-                    trading signals, and risk management tools to help you make better trading decisions.
+                    {{ t('aiAssistant.comingSoonDesc') }}
                 </p>
                 <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-sm text-sm text-dark-300">
                     <span class="w-2 h-2 rounded-full bg-warm-500 animate-pulse"></span>

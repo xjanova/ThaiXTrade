@@ -10,7 +10,9 @@ import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenFactoryStore } from '@/Stores/tokenFactoryStore';
+import { useTranslation } from '@/Composables/useTranslation';
 
+const { t } = useTranslation();
 const walletStore = useWalletStore();
 const factoryStore = useTokenFactoryStore();
 
@@ -116,10 +118,9 @@ function formatSupply(val) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
                 </div>
-                <h1 class="text-3xl sm:text-4xl font-bold text-white mb-3">Token Factory</h1>
+                <h1 class="text-3xl sm:text-4xl font-bold text-white mb-3">{{ t('tokenFactory.title') }}</h1>
                 <p class="text-gray-400 max-w-2xl mx-auto">
-                    Create your own ERC-20 token on TPIX Chain with zero gas fees.
-                    Deploy in minutes — no coding required.
+                    {{ t('tokenFactory.subtitle') }}
                 </p>
             </div>
         </section>
@@ -188,7 +189,7 @@ function formatSupply(val) {
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <!-- Form -->
                     <div class="glass-dark p-6 rounded-xl border border-white/10">
-                        <h3 class="text-xl font-bold text-white mb-6">Create New Token</h3>
+                        <h3 class="text-xl font-bold text-white mb-6">{{ t('tokenFactory.createToken') }}</h3>
 
                         <div v-if="!walletStore.isConnected" class="text-center py-8">
                             <p class="text-gray-400 mb-4">Connect your wallet to create a token.</p>

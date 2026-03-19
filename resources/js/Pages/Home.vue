@@ -12,37 +12,40 @@ import { getCoinLogo } from '@/utils/cryptoLogos';
 import { useMarketData } from '@/Composables/useMarketData';
 import BannerAd from '@/Components/BannerAd.vue';
 import versionData from '../../../version.json';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const { topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
 
-const features = [
+const features = computed(() => [
     {
         icon: 'shield',
-        title: 'Non-Custodial',
-        description: 'Your keys, your crypto. We never have access to your funds.'
+        title: t('home.feature3'),
+        description: t('home.feature3Desc'),
     },
     {
         icon: 'globe',
-        title: 'Multi-Chain',
-        description: 'Trade across all major blockchains from one interface.'
+        title: t('home.feature4'),
+        description: t('home.feature4Desc'),
     },
     {
         icon: 'lightning',
-        title: 'Lightning Fast',
-        description: 'Execute trades in milliseconds with our optimized engine.'
+        title: t('home.feature2'),
+        description: t('home.feature2Desc'),
     },
     {
         icon: 'robot',
-        title: 'AI-Powered',
-        description: 'Get smart insights and trading suggestions from our AI.'
+        title: t('home.feature1'),
+        description: t('home.feature1Desc'),
     },
-];
+]);
 
 const stats = computed(() => [
     { label: 'Supported Chains', value: '9' },
     { label: 'Trading Pairs', value: '100+' },
     { label: 'DEX Protocol', value: 'PancakeSwap' },
-    { label: 'Network', value: 'BSC' },
+    { label: 'Network', value: 'TPIX Chain + BSC' },
 ]);
 
 onMounted(async () => {
@@ -86,7 +89,7 @@ onMounted(async () => {
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
                         </svg>
-                        Start Trading
+                        {{ t('home.startTrading') }}
                     </Link>
                     <button class="btn-secondary px-8 py-4 text-lg">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -115,7 +118,7 @@ onMounted(async () => {
                     <div class="glass-dark rounded-2xl p-6">
                         <div class="flex items-center justify-between mb-6">
                             <h3 class="text-lg font-semibold text-white">Top Gainers</h3>
-                            <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">View All</Link>
+                            <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">{{ t('home.viewAll') }}</Link>
                         </div>
                         <div v-if="isLoading" class="py-8 text-center text-dark-400">
                             <div class="animate-pulse">Loading live data...</div>
@@ -148,7 +151,7 @@ onMounted(async () => {
                     <div class="glass-dark rounded-2xl p-6">
                         <div class="flex items-center justify-between mb-6">
                             <h3 class="text-lg font-semibold text-white">Top Volume</h3>
-                            <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">View All</Link>
+                            <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">{{ t('home.viewAll') }}</Link>
                         </div>
                         <div v-if="isLoading" class="py-8 text-center text-dark-400">
                             <div class="animate-pulse">Loading live data...</div>
@@ -195,7 +198,7 @@ onMounted(async () => {
                         <div class="flex-1 text-center lg:text-left">
                             <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-trading-green/10 border border-trading-green/20 text-trading-green text-xs font-semibold mb-4">
                                 <span class="w-2 h-2 rounded-full bg-trading-green animate-pulse"></span>
-                                Token Sale Live
+                                {{ t('tokenSale.title') }}
                             </div>
                             <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
                                 Buy <span class="text-gradient">TPIX</span> Token
@@ -343,7 +346,7 @@ onMounted(async () => {
             <div class="max-w-4xl mx-auto">
                 <div class="glass-card text-center bg-brand-gradient-subtle border-primary-500/20">
                     <h2 class="text-3xl font-bold text-white mb-4">
-                        Ready to Start Trading?
+                        Ready to {{ t('home.startTrading') }}?
                     </h2>
                     <p class="text-dark-400 mb-8 max-w-xl mx-auto">
                         Connect your wallet and start trading in seconds. No registration required.

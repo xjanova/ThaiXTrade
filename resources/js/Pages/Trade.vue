@@ -21,7 +21,9 @@ import { useSwap } from '@/Composables/useSwap';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useWalletBalance } from '@/Composables/useWalletBalance';
 import axios from 'axios';
+import { useTranslation } from '@/Composables/useTranslation';
 
+const { t } = useTranslation();
 const props = defineProps({
     pair: {
         type: String,
@@ -138,23 +140,23 @@ onMounted(async () => {
                         <PairSelector :currentPair="currentPair" />
                         <div v-if="ticker" class="flex items-center gap-6 text-sm">
                             <div>
-                                <span class="text-dark-400 text-xs">ราคา</span>
+                                <span class="text-dark-400 text-xs">{{ t('trade.price') }}</span>
                                 <p :class="['font-mono font-bold text-lg', ticker.priceChange >= 0 ? 'text-trading-green' : 'text-trading-red']">
                                     ${{ ticker.lastPrice ? parseFloat(ticker.lastPrice).toLocaleString('en-US', {minimumFractionDigits: 2}) : '—' }}
                                 </p>
                             </div>
                             <div>
-                                <span class="text-dark-400 text-xs">24h เปลี่ยน</span>
+                                <span class="text-dark-400 text-xs">{{ t('trade.change24h') }}</span>
                                 <p :class="[ticker.priceChangePercent >= 0 ? 'text-trading-green' : 'text-trading-red']">
                                     {{ ticker.priceChangePercent >= 0 ? '+' : '' }}{{ parseFloat(ticker.priceChangePercent || 0).toFixed(2) }}%
                                 </p>
                             </div>
                             <div>
-                                <span class="text-dark-400 text-xs">24h สูงสุด</span>
+                                <span class="text-dark-400 text-xs">{{ t('trade.high24h') }}</span>
                                 <p class="text-white font-mono">${{ parseFloat(ticker.highPrice || 0).toLocaleString() }}</p>
                             </div>
                             <div>
-                                <span class="text-dark-400 text-xs">24h ต่ำสุด</span>
+                                <span class="text-dark-400 text-xs">{{ t('trade.low24h') }}</span>
                                 <p class="text-white font-mono">${{ parseFloat(ticker.lowPrice || 0).toLocaleString() }}</p>
                             </div>
                         </div>

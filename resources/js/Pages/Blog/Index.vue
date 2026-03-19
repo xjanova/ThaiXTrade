@@ -8,7 +8,9 @@ import { ref, computed, onMounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import axios from 'axios';
+import { useTranslation } from '@/Composables/useTranslation';
 
+const { t } = useTranslation();
 const articles = ref([]);
 const isLoading = ref(true);
 const currentPage = ref(1);
@@ -57,8 +59,8 @@ onMounted(fetchArticles);
         <div class="max-w-6xl mx-auto">
             <!-- Header -->
             <div class="mb-8">
-                <h1 class="text-3xl font-bold text-white mb-2">TPIX Blog</h1>
-                <p class="text-dark-400">บทความ ข่าวสาร และวิเคราะห์จาก TPIX TRADE</p>
+                <h1 class="text-3xl font-bold text-white mb-2">{{ t('blog.title') }}</h1>
+                <p class="text-dark-400">{{ t('blog.subtitle') }}</p>
             </div>
 
             <!-- Categories -->
@@ -108,7 +110,7 @@ onMounted(fetchArticles);
             <!-- Empty State -->
             <div v-else class="text-center py-20 glass-card">
                 <span class="text-6xl mb-4 block">📝</span>
-                <h3 class="text-xl font-semibold text-white mb-2">ยังไม่มีบทความ</h3>
+                <h3 class="text-xl font-semibold text-white mb-2">{{ t('blog.noArticles') }}</h3>
                 <p class="text-dark-400">บทความจะถูกสร้างโดย AI โปรดรอสักครู่</p>
             </div>
 

@@ -10,7 +10,9 @@ import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import axios from 'axios';
+import { useTranslation } from '@/Composables/useTranslation';
 
+const { t } = useTranslation();
 const walletStore = useWalletStore();
 const bridgeInfo = ref(null);
 const direction = ref('bsc_to_tpix');
@@ -69,8 +71,8 @@ onMounted(() => { fetchInfo(); fetchHistory(); });
     <AppLayout>
         <div class="max-w-2xl mx-auto space-y-6">
             <div class="text-center mb-8">
-                <h1 class="text-3xl font-bold text-white mb-2">🌉 Cross-Chain Bridge</h1>
-                <p class="text-dark-400">สะพานเชื่อม TPIX Chain ↔ BSC — โอนเหรียญข้าม chain</p>
+                <h1 class="text-3xl font-bold text-white mb-2">🌉 {{ t('bridge.title') }}</h1>
+                <p class="text-dark-400">{{ t('bridge.subtitle') }}</p>
             </div>
 
             <div v-if="message" :class="['px-4 py-3 rounded-xl text-sm', message.type === 'success' ? 'bg-trading-green/20 text-trading-green' : 'bg-trading-red/20 text-trading-red']">{{ message.text }}</div>
@@ -79,7 +81,7 @@ onMounted(() => { fetchInfo(); fetchHistory(); });
             <div class="glass-card space-y-6">
                 <!-- From -->
                 <div>
-                    <label class="text-sm text-dark-400 mb-2 block">จาก (From)</label>
+                    <label class="text-sm text-dark-400 mb-2 block">{{ t('bridge.from') }}</label>
                     <div class="bg-dark-700 rounded-xl p-4 flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 rounded-full flex items-center justify-center" :style="{ background: chains.from.color + '20' }">
@@ -100,7 +102,7 @@ onMounted(() => { fetchInfo(); fetchHistory(); });
 
                 <!-- To -->
                 <div>
-                    <label class="text-sm text-dark-400 mb-2 block">ไป (To)</label>
+                    <label class="text-sm text-dark-400 mb-2 block">{{ t('bridge.to') }}</label>
                     <div class="bg-dark-700 rounded-xl p-4 flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 rounded-full flex items-center justify-center" :style="{ background: chains.to.color + '20' }">
@@ -128,13 +130,13 @@ onMounted(() => { fetchInfo(); fetchHistory(); });
                 <!-- Bridge Button -->
                 <button @click="initiateBridge" :disabled="isBridging || !amount"
                     class="w-full py-4 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-bold text-lg hover:shadow-lg hover:shadow-primary-500/20 disabled:opacity-50 transition-all">
-                    {{ isBridging ? '🔄 กำลังดำเนินการ...' : walletStore.isConnected ? '🌉 Bridge' : '🔗 เชื่อมต่อ Wallet ก่อน' }}
+                    {{ isBridging ? '🔄 กำลังดำเนินการ...' : walletStore.isConnected ? '🌉 ' + t('bridge.bridgeNow') : '🔗 ' + t('bridge.connectFirst') }}
                 </button>
             </div>
 
             <!-- Steps -->
             <div class="glass-card">
-                <h3 class="text-lg font-semibold text-white mb-4">ขั้นตอนการ Bridge</h3>
+                <h3 class="text-lg font-semibold text-white mb-4">{{ t('bridge.steps') }}</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div v-for="(step, i) in ['Approve Token', 'ส่ง Transaction', 'รอยืนยัน', 'รับเหรียญ']" :key="i" class="text-center">
                         <div class="w-10 h-10 rounded-full bg-primary-500/20 flex items-center justify-center mx-auto mb-2">
@@ -147,7 +149,7 @@ onMounted(() => { fetchInfo(); fetchHistory(); });
 
             <!-- History -->
             <div v-if="history.length" class="glass-card">
-                <h3 class="text-lg font-semibold text-white mb-4">ประวัติ Bridge</h3>
+                <h3 class="text-lg font-semibold text-white mb-4">{{ t('bridge.history') }}</h3>
                 <div class="space-y-3">
                     <div v-for="tx in history" :key="tx.id" class="bg-dark-700/50 rounded-xl p-3 flex items-center justify-between">
                         <div>

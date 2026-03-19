@@ -8,7 +8,9 @@ import { ref, onMounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import axios from 'axios';
+import { useTranslation } from '@/Composables/useTranslation';
 
+const { t } = useTranslation();
 const props = defineProps({ slug: String });
 const article = ref(null);
 const isLoading = ref(true);
@@ -84,15 +86,15 @@ onMounted(fetchArticle);
 
                 <!-- Back -->
                 <div class="pt-8 border-t border-white/10">
-                    <Link href="/blog" class="text-primary-400 hover:text-primary-300 transition-colors">← กลับไปหน้า Blog</Link>
+                    <Link href="/blog" class="text-primary-400 hover:text-primary-300 transition-colors">{{ t('blog.backToBlog') }}</Link>
                 </div>
             </article>
 
             <!-- Not Found -->
             <div v-else class="text-center py-20">
                 <span class="text-6xl mb-4 block">🔍</span>
-                <h3 class="text-xl font-semibold text-white mb-2">ไม่พบบทความ</h3>
-                <Link href="/blog" class="text-primary-400">← กลับไปหน้า Blog</Link>
+                <h3 class="text-xl font-semibold text-white mb-2">{{ t('blog.noArticles') }}</h3>
+                <Link href="/blog" class="text-primary-400">{{ t('blog.backToBlog') }}</Link>
             </div>
         </div>
     </AppLayout>

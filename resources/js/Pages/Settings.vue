@@ -8,7 +8,9 @@ import { ref, computed } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
+import { useTranslation } from '@/Composables/useTranslation';
 
+const { t } = useTranslation();
 const walletStore = useWalletStore();
 const isConnected = computed(() => walletStore.isConnected);
 
@@ -31,7 +33,7 @@ const gasOptions = [
         <div class="max-w-3xl mx-auto">
             <!-- Page Header -->
             <div class="mb-8">
-                <h1 class="text-3xl font-bold text-white mb-2">Settings</h1>
+                <h1 class="text-3xl font-bold text-white mb-2">{{ t('settings.title') }}</h1>
                 <p class="text-dark-400">Customize your trading experience.</p>
             </div>
 
