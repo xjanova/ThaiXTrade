@@ -6,7 +6,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Seed translations + check
+      - name: Fix translations + AI assistant
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -17,26 +17,32 @@ jobs:
           script: |
             cd ~/domains/tpix.online
 
+            echo "=== Git pull latest ==="
+            git pull origin main 2>&1 | tail -3
+
+            echo ""
+            echo "=== Check JSON files ==="
+            ls -la resources/js/i18n/ 2>/dev/null || echo "NO i18n dir!"
+            wc -l resources/js/i18n/*.json 2>/dev/null || echo "No JSON files"
+
+            echo ""
             echo "=== Run TranslationSeeder ==="
             php artisan db:seed --class=TranslationSeeder --force 2>&1
 
             echo ""
-            echo "=== Verify translations ==="
+            echo "=== Verify ==="
             php artisan tinker --execute="
               \$count = DB::table('translations')->count();
-              echo \"Total translation keys: \$count\n\";
-              \$groups = DB::table('translations')->select('group')->distinct()->pluck('group');
-              echo 'Groups: ' . \$groups->implode(', ') . \"\n\";
-              \$langs = App\Models\Language::all();
-              foreach(\$langs as \$l) {
+              echo \"Total: \$count keys\n\";
+              foreach(App\Models\Language::all() as \$l) {
                 \$c = DB::table('translations')->where('language_id', \$l->id)->count();
                 echo \$l->code . ': ' . \$c . \" keys\n\";
               }
             " 2>/dev/null
 
             echo ""
-            echo "=== Default locale ==="
+            echo "=== GROQ API key check ==="
             php artisan tinker --execute="
-              \$def = App\Models\Language::where('is_default', true)->first();
-              echo 'Default: ' . (\$def ? \$def->code . ' (' . \$def->name . ')' : 'NONE') . \"\n\";
+              \$key = config('services.groq.api_key');
+              echo 'Groq key: ' . (\$key ? substr(\$key, 0, 8) . '...' : 'NOT SET') . \"\n\";
             " 2>/dev/null
