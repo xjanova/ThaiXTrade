@@ -7,6 +7,10 @@
 
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
+import { useTranslation } from '@/Composables/useTranslation';
+import LanguageSwitcher from '@/Components/Navigation/LanguageSwitcher.vue';
+
+const { t } = useTranslation();
 
 defineProps({
     title: String,
@@ -53,70 +57,71 @@ const isActive = (path) => {
     return currentUrl.value.startsWith(path);
 };
 
-const navigationSections = [
+// เมนู admin — reactive ตามภาษา
+const navigationSections = computed(() => [
     {
         title: null,
         items: [
-            { name: 'แดชบอร์ด', href: '/admin', icon: 'dashboard' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'แดชบอร์ด' : 'Dashboard', href: '/admin', icon: 'dashboard' },
         ],
     },
     {
-        title: 'สมาชิก',
+        title: t('common.all') === 'ทั้งหมด' ? 'สมาชิก' : 'Members',
         items: [
-            { name: 'จัดการสมาชิก', href: '/admin/members', icon: 'members' },
-            { name: 'จัดการ Wallet', href: '/admin/wallets', icon: 'wallet' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'จัดการสมาชิก' : 'Members', href: '/admin/members', icon: 'members' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'จัดการ Wallet' : 'Wallets', href: '/admin/wallets', icon: 'wallet' },
         ],
     },
     {
-        title: 'การเทรด',
+        title: t('common.all') === 'ทั้งหมด' ? 'การเทรด' : 'Trading',
         items: [
             { name: 'Chains', href: '/admin/chains', icon: 'chain' },
             { name: 'Tokens', href: '/admin/tokens', icon: 'token' },
-            { name: 'คู่เทรด', href: '/admin/trading-pairs', icon: 'pair' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'คู่เทรด' : 'Trading Pairs', href: '/admin/trading-pairs', icon: 'pair' },
         ],
     },
     {
-        title: 'การเงิน',
+        title: t('common.all') === 'ทั้งหมด' ? 'การเงิน' : 'Finance',
         items: [
-            { name: 'ค่าธรรมเนียม', href: '/admin/fees', icon: 'fee' },
-            { name: 'ธุรกรรม', href: '/admin/transactions', icon: 'transaction' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ค่าธรรมเนียม' : 'Fees', href: '/admin/fees', icon: 'fee' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ธุรกรรม' : 'Transactions', href: '/admin/transactions', icon: 'transaction' },
             { name: 'Swap', href: '/admin/swap', icon: 'swap' },
         ],
     },
     {
-        title: 'TPIX Ecosystem',
+        title: t('home.ecosystem'),
         items: [
-            { name: 'ขายเหรียญ (ICO)', href: '/admin/token-sales', icon: 'tokensale' },
-            { name: 'Token Factory', href: '/admin/token-factory', icon: 'factory' },
-            { name: 'Carbon Credits', href: '/admin/carbon-credits', icon: 'carbon' },
-            { name: 'Whitepaper', href: '/whitepaper', icon: 'whitepaper', external: true },
-            { name: 'Explorer', href: '/explorer', icon: 'explorer', external: true },
+            { name: t('nav.tokenSale'), href: '/admin/token-sales', icon: 'tokensale' },
+            { name: t('nav.tokenFactory'), href: '/admin/token-factory', icon: 'factory' },
+            { name: t('nav.carbonCredit'), href: '/admin/carbon-credits', icon: 'carbon' },
+            { name: t('nav.whitepaper'), href: '/whitepaper', icon: 'whitepaper', external: true },
+            { name: t('nav.explorer'), href: '/explorer', icon: 'explorer', external: true },
         ],
     },
     {
-        title: 'เนื้อหา',
+        title: t('common.all') === 'ทั้งหมด' ? 'เนื้อหา' : 'Content',
         items: [
-            { name: 'บทความ AI', href: '/admin/content', icon: 'content' },
-            { name: 'ตั้งค่าเว็บ', href: '/admin/settings', icon: 'settings' },
-            { name: 'ภาษา', href: '/admin/languages', icon: 'language' },
-            { name: 'แบนเนอร์', href: '/admin/banners', icon: 'banner' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'บทความ AI' : 'AI Articles', href: '/admin/content', icon: 'content' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ตั้งค่าเว็บ' : 'Settings', href: '/admin/settings', icon: 'settings' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ภาษา' : 'Languages', href: '/admin/languages', icon: 'language' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'แบนเนอร์' : 'Banners', href: '/admin/banners', icon: 'banner' },
         ],
     },
     {
-        title: 'ซัพพอร์ต',
+        title: t('common.all') === 'ทั้งหมด' ? 'ซัพพอร์ต' : 'Support',
         items: [
-            { name: 'ตั๋วแจ้งปัญหา', href: '/admin/support', icon: 'ticket' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ตั๋วแจ้งปัญหา' : 'Support Tickets', href: '/admin/support', icon: 'ticket' },
             { name: 'Audit Logs', href: '/admin/audit-logs', icon: 'audit' },
         ],
     },
     {
-        title: 'ระบบ',
+        title: t('common.all') === 'ทั้งหมด' ? 'ระบบ' : 'System',
         items: [
-            { name: 'ผู้ดูแลระบบ', href: '/admin/users', icon: 'users' },
-            { name: 'การแจ้งเตือน', href: '/admin/notifications', icon: 'notification' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ผู้ดูแลระบบ' : 'Admins', href: '/admin/users', icon: 'users' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'การแจ้งเตือน' : 'Notifications', href: '/admin/notifications', icon: 'notification' },
         ],
     },
-];
+]);
 
 // Section พับ/กาง — เปิดเฉพาะ section ที่มี active link
 const collapsedSections = ref({});
@@ -386,6 +391,9 @@ onMounted(() => {
                                 {{ unreadCount > 99 ? '99+' : unreadCount }}
                             </span>
                         </Link>
+
+                        <!-- Language Switcher -->
+                        <LanguageSwitcher />
 
                         <!-- Admin Info -->
                         <div class="flex items-center gap-3">

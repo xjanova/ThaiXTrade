@@ -311,7 +311,7 @@ function onEmbeddedDone() {
                     </div>
                     <div class="text-left">
                         <span class="text-sm text-dark-300">{{ wallet.name }}</span>
-                        <span v-if="wallet.supported === false" class="text-[10px] text-dark-500 block">Soon</span>
+                        
                     </div>
                 </button>
             </div>
