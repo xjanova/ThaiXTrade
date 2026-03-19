@@ -6,43 +6,60 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Fix translations + AI assistant
+      - name: Test Groq + generate first articles
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: 5m
+          command_timeout: 10m
           script: |
             cd ~/domains/tpix.online
 
-            echo "=== Git pull latest ==="
-            git pull origin main 2>&1 | tail -3
-
-            echo ""
-            echo "=== Check JSON files ==="
-            ls -la resources/js/i18n/ 2>/dev/null || echo "NO i18n dir!"
-            wc -l resources/js/i18n/*.json 2>/dev/null || echo "No JSON files"
-
-            echo ""
-            echo "=== Run TranslationSeeder ==="
-            php artisan db:seed --class=TranslationSeeder --force 2>&1
-
-            echo ""
-            echo "=== Verify ==="
+            echo "=== Groq API key ==="
             php artisan tinker --execute="
-              \$count = DB::table('translations')->count();
-              echo \"Total: \$count keys\n\";
-              foreach(App\Models\Language::all() as \$l) {
-                \$c = DB::table('translations')->where('language_id', \$l->id)->count();
-                echo \$l->code . ': ' . \$c . \" keys\n\";
+              \$key = config('services.groq.api_key');
+              echo 'Key: ' . (\$key ? substr(\$key, 0, 10) . '...' : 'NOT SET') . \"\n\";
+            " 2>/dev/null
+
+            echo ""
+            echo "=== Test Groq chat ==="
+            php artisan tinker --execute="
+              \$groq = app(App\Services\GroqService::class);
+              \$result = \$groq->chat('Say hello in 5 words', 'You are a helpful assistant', ['max_tokens' => 50]);
+              echo 'Success: ' . (\$result['success'] ? 'YES' : 'NO') . \"\n\";
+              echo 'Response: ' . substr(\$result['content'] ?? \$result['error'] ?? 'none', 0, 100) . \"\n\";
+            " 2>/dev/null
+
+            echo ""
+            echo "=== Generate articles if empty ==="
+            php artisan tinker --execute="
+              \$count = App\Models\Article::count();
+              echo \"Articles: \$count\n\";
+              if(\$count < 3) {
+                echo \"Generating 3 articles...\n\";
+                \$svc = app(App\Services\ContentService::class);
+                try {
+                  \$a1 = \$svc->generateArticle('TPIX Chain คืออะไร — Blockchain ไร้ค่าแก๊สสำหรับคนไทย', 'tpix_chain', 'th');
+                  echo 'TH: ' . \$a1->title . \"\n\";
+                  \$a1->update(['status' => 'published', 'published_at' => now()]);
+                } catch(\Exception \$e) { echo 'TH Error: ' . \$e->getMessage() . \"\n\"; }
+                try {
+                  \$a2 = \$svc->generateArticle('What is TPIX Chain — Zero-Gas EVM Blockchain', 'tpix_chain', 'en');
+                  echo 'EN: ' . \$a2->title . \"\n\";
+                  \$a2->update(['status' => 'published', 'published_at' => now()]);
+                } catch(\Exception \$e) { echo 'EN Error: ' . \$e->getMessage() . \"\n\"; }
+                try {
+                  \$a3 = \$svc->generateArticle('วิธี Stake TPIX เพื่อรับ APY สูงสุด 200%', 'tutorial', 'th');
+                  echo 'TH2: ' . \$a3->title . \"\n\";
+                  \$a3->update(['status' => 'published', 'published_at' => now()]);
+                } catch(\Exception \$e) { echo 'TH2 Error: ' . \$e->getMessage() . \"\n\"; }
+              } else {
+                echo \"Already have \$count articles\n\";
               }
             " 2>/dev/null
 
             echo ""
-            echo "=== GROQ API key check ==="
-            php artisan tinker --execute="
-              \$key = config('services.groq.api_key');
-              echo 'Groq key: ' . (\$key ? substr(\$key, 0, 8) . '...' : 'NOT SET') . \"\n\";
-            " 2>/dev/null
+            echo "=== Final count ==="
+            php artisan tinker --execute="echo 'Published: ' . App\Models\Article::where('status','published')->count() . \"\n\";" 2>/dev/null
