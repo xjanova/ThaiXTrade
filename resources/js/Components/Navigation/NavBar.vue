@@ -8,6 +8,10 @@ import { ref, computed } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import { useWalletStore } from '@/Stores/walletStore';
 import ChainSelector from '@/Components/Navigation/ChainSelector.vue';
+import LanguageSwitcher from '@/Components/Navigation/LanguageSwitcher.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     user: Object,
@@ -122,6 +126,9 @@ const handleDisconnect = () => {
                     <!-- ตัวเลือก Chain - รองรับหลาย chain พร้อม auto-switch -->
                     <ChainSelector class="hidden sm:block" />
 
+                    <!-- Language Switcher -->
+                    <LanguageSwitcher />
+
                     <!-- Connect Wallet Button -->
                     <button
                         v-if="!isWalletConnected"
@@ -131,7 +138,7 @@ const handleDisconnect = () => {
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
                         </svg>
-                        <span class="hidden sm:inline">Connect Wallet</span>
+                        <span class="hidden sm:inline">{{ t('wallet.connect') }}</span>
                     </button>
 
                     <!-- Connected Wallet -->
@@ -177,7 +184,7 @@ const handleDisconnect = () => {
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                                     </svg>
-                                    View on Explorer
+                                    {{ t('nav.viewOnExplorer') }}
                                 </a>
                                 <button
                                     @click="handleDisconnect"
@@ -186,7 +193,7 @@ const handleDisconnect = () => {
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                                     </svg>
-                                    Disconnect
+                                    {{ t('nav.disconnect') }}
                                 </button>
                             </div>
                         </Transition>

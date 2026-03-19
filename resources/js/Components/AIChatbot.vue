@@ -8,12 +8,15 @@
 import { ref, nextTick, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import axios from 'axios';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const isOpen = ref(false);
 const message = ref('');
 const isLoading = ref(false);
 const chatHistory = ref([
-    { role: 'bot', text: 'สวัสดีครับ! ผม TPIX AI Assistant 🤖 ถามอะไรเกี่ยวกับ TPIX Chain, การเทรด, Token Sale หรือฟีเจอร์ต่างๆ ได้เลยครับ' },
+    { role: 'bot', text: t('chatbot.greeting') },
 ]);
 const chatContainer = ref(null);
 
@@ -40,7 +43,7 @@ async function sendMessage() {
     try {
         const { data } = await axios.post('/api/v1/chatbot', {
             message: msg,
-            language: 'th',
+            language: locale.value,
         });
 
         if (data.success) {
@@ -59,10 +62,10 @@ async function sendMessage() {
                 }, 500);
             }
         } else {
-            chatHistory.value.push({ role: 'bot', text: 'ขออภัย เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้งครับ' });
+            chatHistory.value.push({ role: 'bot', text: t('chatbot.error') });
         }
     } catch {
-        chatHistory.value.push({ role: 'bot', text: 'ขออภัย ไม่สามารถเชื่อมต่อได้ กรุณาลองใหม่ครับ' });
+        chatHistory.value.push({ role: 'bot', text: t('chatbot.error') });
     }
     isLoading.value = false;
 }
@@ -74,10 +77,10 @@ function navigateTo(url) {
 
 // Quick actions
 const quickActions = [
-    { label: '🔥 TPIX Chain คืออะไร', msg: 'TPIX Chain คืออะไร' },
-    { label: '💰 ซื้อเหรียญ TPIX', msg: 'ซื้อเหรียญ TPIX ได้อย่างไร' },
-    { label: '📊 วิธีเทรด', msg: 'สอนวิธีเทรดบน TPIX TRADE' },
-    { label: '🌱 Carbon Credit', msg: 'ระบบ Carbon Credit ทำงานอย่างไร' },
+    { label: t('chatbot.q1'), msg: locale.value === 'th' ? 'TPIX Chain คืออะไร' : 'What is TPIX Chain' },
+    { label: t('chatbot.q2'), msg: locale.value === 'th' ? 'ซื้อเหรียญ TPIX ได้อย่างไร' : 'How to buy TPIX tokens' },
+    { label: t('chatbot.q3'), msg: locale.value === 'th' ? 'สอนวิธีเทรดบน TPIX TRADE' : 'How to trade on TPIX TRADE' },
+    { label: t('chatbot.q4'), msg: locale.value === 'th' ? 'ระบบ Carbon Credit ทำงานอย่างไร' : 'How does Carbon Credit work' },
 ];
 
 function sendQuick(msg) {
@@ -131,7 +134,7 @@ function sendQuick(msg) {
                     <p class="whitespace-pre-wrap">{{ msg.text }}</p>
                     <button v-if="msg.isNav" @click="navigateTo(msg.navUrl)"
                         class="mt-2 px-3 py-1 bg-primary-500/30 text-primary-300 rounded-lg text-xs hover:bg-primary-500/50 transition-colors">
-                        ไปหน้านั้น →
+                        {{ t('chatbot.goToPage') }}
                     </button>
                 </div>
             </div>
@@ -139,13 +142,13 @@ function sendQuick(msg) {
             <!-- Loading -->
             <div v-if="isLoading" class="flex justify-start">
                 <div class="bg-white/5 px-4 py-2 rounded-xl text-sm text-dark-400">
-                    <span class="animate-pulse">กำลังคิด...</span>
+                    <span class="animate-pulse">{{ t('chatbot.thinking') }}</span>
                 </div>
             </div>
 
             <!-- Quick Actions (แสดงเมื่อไม่มี history มาก) -->
             <div v-if="chatHistory.length <= 1" class="space-y-2 mt-4">
-                <p class="text-dark-500 text-xs">ลองถามเรื่องนี้:</p>
+                <p class="text-dark-500 text-xs">{{ t('chatbot.trySuggestion') }}</p>
                 <div class="flex flex-wrap gap-2">
                     <button v-for="q in quickActions" :key="q.label" @click="sendQuick(q.msg)"
                         class="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-dark-300 hover:bg-primary-500/10 hover:border-primary-500/30 transition-all">
@@ -158,7 +161,7 @@ function sendQuick(msg) {
         <!-- Input -->
         <div class="p-3 border-t border-white/10">
             <form @submit.prevent="sendMessage" class="flex gap-2">
-                <input v-model="message" type="text" placeholder="พิมพ์คำถามของคุณ..."
+                <input v-model="message" type="text" :placeholder="t('chatbot.placeholder')"
                     class="flex-1 bg-dark-700 border border-dark-600 rounded-xl px-4 py-2.5 text-white text-sm placeholder-dark-500 focus:border-primary-500 outline-none"
                     :disabled="isLoading" />
                 <button type="submit" :disabled="isLoading || !message.trim()"
