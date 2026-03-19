@@ -1,6 +1,6 @@
 {
   "name": "tpix-trade",
-  "version": "1.0.127",
+  "version": "1.0.128",
   "description": "TPIX TRADE - Decentralized Exchange Platform",
   "private": true,
   "type": "module",
