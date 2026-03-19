@@ -6,7 +6,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Diagnose DB + storage
+      - name: Diagnose DB + run seeders
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -17,30 +17,42 @@ jobs:
           script: |
             cd ~/domains/tpix.online
 
-            echo "=== Chains in DB ==="
-            php artisan tinker --execute="
-              \$chains = App\Models\Chain::all();
-              echo 'Total: ' . \$chains->count() . ' chains\n';
-              foreach(\$chains as \$c) echo \$c->id . ' | ' . \$c->name . ' | ' . \$c->symbol . ' | ' . \$c->chain_id_hex . ' | active=' . \$c->is_active . '\n';
-            " 2>/dev/null || echo "Cannot check chains"
+            echo "=== Run ecosystem seeder ==="
+            php artisan db:seed --class=TpixEcosystemSeeder --force 2>&1
 
             echo ""
-            echo "=== Tokens in DB ==="
+            echo "=== Token Sale ==="
             php artisan tinker --execute="
-              \$tokens = App\Models\Token::with('chain')->get();
-              echo 'Total: ' . \$tokens->count() . ' tokens\n';
-              foreach(\$tokens as \$t) echo \$t->id . ' | ' . \$t->symbol . ' | ' . \$t->name . ' | chain=' . (\$t->chain?->name ?? 'N/A') . ' | active=' . \$t->is_active . '\n';
-            " 2>/dev/null || echo "Cannot check tokens"
+              \$sale = App\Models\TokenSale::with('phases')->first();
+              if(\$sale) {
+                echo 'Sale: ' . \$sale->name . ' | status=' . \$sale->status . ' | phases=' . \$sale->phases->count() . \"\n\";
+                foreach(\$sale->phases as \$p) echo '  Phase: ' . \$p->name . ' | \$' . \$p->price_usd . ' | status=' . \$p->status . \"\n\";
+              } else echo 'No sale found\n';
+            " 2>/dev/null
+
+            echo ""
+            echo "=== Carbon Projects ==="
+            php artisan tinker --execute="
+              \$projects = App\Models\CarbonProject::all();
+              echo 'Total: ' . \$projects->count() . \" projects\n\";
+              foreach(\$projects as \$p) echo \$p->name . ' | ' . \$p->status . ' | credits=' . \$p->available_credits . \"\n\";
+            " 2>/dev/null
+
+            echo ""
+            echo "=== Chains ==="
+            php artisan tinker --execute="
+              echo 'Chains: ' . App\Models\Chain::count() . \"\n\";
+              foreach(App\Models\Chain::all() as \$c) echo \$c->chain_id_hex . ' ' . \$c->name . ' active=' . \$c->is_active . \"\n\";
+            " 2>/dev/null
 
             echo ""
             echo "=== Trading Pairs ==="
             php artisan tinker --execute="
-              \$pairs = App\Models\TradingPair::with(['baseToken','quoteToken','chain'])->get();
-              echo 'Total: ' . \$pairs->count() . ' pairs\n';
-              foreach(\$pairs as \$p) echo \$p->symbol . ' | ' . (\$p->baseToken?->symbol ?? '?') . '/' . (\$p->quoteToken?->symbol ?? '?') . ' | chain=' . (\$p->chain?->name ?? '?') . '\n';
-            " 2>/dev/null || echo "Cannot check"
+              echo 'Pairs: ' . App\Models\TradingPair::count() . \"\n\";
+              foreach(App\Models\TradingPair::all() as \$p) echo \$p->symbol . \"\n\";
+            " 2>/dev/null
 
             echo ""
-            echo "=== Storage ==="
+            echo "=== Storage check ==="
             ls -la public_html/storage 2>/dev/null | head -3
-            ls storage/app/public/logos/ 2>/dev/null || echo "No logos"
+            ls storage/app/public/logos/ 2>/dev/null || echo "No logos dir"
