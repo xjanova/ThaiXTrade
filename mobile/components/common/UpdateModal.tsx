@@ -1,11 +1,9 @@
 /**
- * Update Modal Component
- * คอมโพเนนต์ Modal แจ้งเตือนอัปเดต
+ * Update Modal with Download Progress
+ * Modal อัปเดตพร้อมแถบความคืบหน้าดาวน์โหลด
  *
- * Shows when a new version is available with download/dismiss options.
- * Mandatory updates cannot be dismissed.
- * แสดงเมื่อมีเวอร์ชันใหม่ พร้อมปุ่มดาวน์โหลด/ปิด
- * อัปเดตบังคับไม่สามารถปิดได้
+ * Flow: Check → Show Modal → Download APK (progress bar) → Install
+ * ขั้นตอน: ตรวจสอบ → แสดง Modal → ดาวน์โหลด APK (progress bar) → ติดตั้ง
  */
 
 import React from 'react';
@@ -15,32 +13,50 @@ import {
   View,
   Modal,
   Pressable,
-  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography } from '@/theme';
 import { useUpdateStore } from '@/stores/updateStore';
-import { downloadUpdate, openReleasesPage } from '@/services/updateService';
+import { formatFileSize, openReleasesPage } from '@/services/updateService';
 
 export default function UpdateModal() {
-  const { updateInfo, showModal, dismissModal } = useUpdateStore();
+  const {
+    updateInfo,
+    showModal,
+    dismissModal,
+    downloadStatus,
+    downloadPercent,
+    downloadedBytes,
+    totalBytes,
+    error,
+    startDownload,
+    startInstall,
+    resetDownload,
+  } = useUpdateStore();
 
   if (!showModal || !updateInfo?.available) return null;
 
-  const handleDownload = async () => {
-    if (updateInfo.downloadUrl) {
-      await downloadUpdate(updateInfo.downloadUrl);
-    } else {
-      await openReleasesPage();
+  const canDismiss = !updateInfo.mandatory && downloadStatus !== 'downloading';
+  const isDownloading = downloadStatus === 'downloading';
+  const isCompleted = downloadStatus === 'completed';
+  const isInstalling = downloadStatus === 'installing';
+  const isError = downloadStatus === 'error';
+  const isIdle = downloadStatus === 'idle';
+
+  const handleMainAction = () => {
+    if (isIdle || isError) {
+      startDownload();
+    } else if (isCompleted) {
+      startInstall();
     }
   };
 
-  const handleViewRelease = async () => {
-    await openReleasesPage();
+  const handleRetry = () => {
+    resetDownload();
+    startDownload();
   };
-
-  const canDismiss = !updateInfo.mandatory;
 
   return (
     <Modal
@@ -52,7 +68,7 @@ export default function UpdateModal() {
     >
       <View style={styles.overlay}>
         <View style={styles.card}>
-          {/* Header gradient bar / แถบ gradient ด้านบน */}
+          {/* Header gradient bar */}
           <LinearGradient
             colors={colors.gradient.brand}
             start={{ x: 0, y: 0 }}
@@ -60,7 +76,7 @@ export default function UpdateModal() {
             style={styles.headerBar}
           />
 
-          {/* Icon / ไอคอน */}
+          {/* Icon */}
           <View style={styles.iconContainer}>
             <LinearGradient
               colors={colors.gradient.brand}
@@ -68,13 +84,33 @@ export default function UpdateModal() {
               end={{ x: 1, y: 1 }}
               style={styles.iconGradient}
             >
-              <Ionicons name="rocket-outline" size={28} color={colors.white} />
+              <Ionicons
+                name={isCompleted ? 'checkmark-circle-outline' : 'rocket-outline'}
+                size={28}
+                color={colors.white}
+              />
             </LinearGradient>
           </View>
 
           {/* Title / หัวข้อ */}
-          <Text style={styles.title}>Update Available</Text>
-          <Text style={styles.titleTh}>มีเวอร์ชันใหม่</Text>
+          <Text style={styles.title}>
+            {isCompleted
+              ? 'Download Complete'
+              : isDownloading
+              ? 'Downloading...'
+              : isInstalling
+              ? 'Installing...'
+              : 'Update Available'}
+          </Text>
+          <Text style={styles.titleTh}>
+            {isCompleted
+              ? 'ดาวน์โหลดเสร็จสิ้น'
+              : isDownloading
+              ? 'กำลังดาวน์โหลด...'
+              : isInstalling
+              ? 'กำลังติดตั้ง...'
+              : 'มีเวอร์ชันใหม่'}
+          </Text>
 
           {/* Version info / ข้อมูลเวอร์ชัน */}
           <View style={styles.versionRow}>
@@ -91,15 +127,58 @@ export default function UpdateModal() {
             </View>
           </View>
 
-          {/* Release name / ชื่อ release */}
-          {updateInfo.releaseName ? (
-            <Text style={styles.releaseName} numberOfLines={2}>
-              {updateInfo.releaseName}
+          {/* ============ PROGRESS BAR SECTION ============ */}
+          {(isDownloading || isCompleted || isInstalling) && (
+            <View style={styles.progressSection}>
+              {/* Progress bar background / พื้นหลัง progress bar */}
+              <View style={styles.progressBarBg}>
+                <LinearGradient
+                  colors={isCompleted ? colors.gradient.green : colors.gradient.brand}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.progressBarFill, { width: `${downloadPercent}%` }]}
+                />
+              </View>
+
+              {/* Percent text / ข้อความเปอร์เซ็นต์ */}
+              <View style={styles.progressInfo}>
+                <Text style={styles.progressPercent}>{downloadPercent}%</Text>
+                <Text style={styles.progressSize}>
+                  {formatFileSize(downloadedBytes)} / {formatFileSize(totalBytes)}
+                </Text>
+              </View>
+
+              {/* Status text / ข้อความสถานะ */}
+              {isInstalling && (
+                <View style={styles.installingRow}>
+                  <ActivityIndicator size="small" color={colors.brand.cyan} />
+                  <Text style={styles.installingText}>
+                    Opening installer... / กำลังเปิดตัวติดตั้ง...
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Error section / ส่วนแสดง error */}
+          {isError && (
+            <View style={styles.errorSection}>
+              <Ionicons name="alert-circle" size={18} color={colors.trading.red} />
+              <Text style={styles.errorText}>
+                {error || 'Download failed / ดาวน์โหลดล้มเหลว'}
+              </Text>
+            </View>
+          )}
+
+          {/* File size info (idle state) / ข้อมูลขนาดไฟล์ */}
+          {isIdle && updateInfo.fileSize > 0 && (
+            <Text style={styles.fileSizeText}>
+              APK size: {formatFileSize(updateInfo.fileSize)}
             </Text>
-          ) : null}
+          )}
 
           {/* Mandatory badge / ป้ายบังคับอัปเดต */}
-          {updateInfo.mandatory && (
+          {updateInfo.mandatory && isIdle && (
             <View style={styles.mandatoryBadge}>
               <Ionicons name="alert-circle" size={14} color={colors.trading.yellow} />
               <Text style={styles.mandatoryText}>
@@ -110,28 +189,60 @@ export default function UpdateModal() {
 
           {/* Buttons / ปุ่ม */}
           <View style={styles.buttonRow}>
-            {canDismiss && (
+            {/* Later / Dismiss button */}
+            {canDismiss && !isCompleted && !isInstalling && (
               <Pressable style={styles.laterBtn} onPress={dismissModal}>
                 <Text style={styles.laterText}>Later / ภายหลัง</Text>
               </Pressable>
             )}
-            <Pressable style={styles.downloadBtn} onPress={handleDownload}>
-              <LinearGradient
-                colors={colors.gradient.brand}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.downloadGradient}
+
+            {/* Main action button */}
+            {!isDownloading && !isInstalling && (
+              <Pressable
+                style={[styles.downloadBtn, isError && { flex: 1 }]}
+                onPress={isError ? handleRetry : handleMainAction}
               >
-                <Ionicons name="download-outline" size={18} color={colors.white} />
-                <Text style={styles.downloadText}>
-                  {Platform.OS === 'android' ? 'Download APK' : 'View Release'}
+                <LinearGradient
+                  colors={isCompleted ? colors.gradient.green : colors.gradient.brand}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.downloadGradient}
+                >
+                  <Ionicons
+                    name={
+                      isCompleted
+                        ? 'install-outline' as any
+                        : isError
+                        ? 'refresh-outline'
+                        : 'download-outline'
+                    }
+                    size={18}
+                    color={colors.white}
+                  />
+                  <Text style={styles.downloadText}>
+                    {isCompleted
+                      ? 'Install Now / ติดตั้งเลย'
+                      : isError
+                      ? 'Retry / ลองใหม่'
+                      : 'Update Now / อัปเดตเลย'}
+                  </Text>
+                </LinearGradient>
+              </Pressable>
+            )}
+
+            {/* Downloading - show cancel option */}
+            {isDownloading && (
+              <View style={styles.downloadingRow}>
+                <ActivityIndicator size="small" color={colors.brand.cyan} />
+                <Text style={styles.downloadingText}>
+                  Downloading... / กำลังดาวน์โหลด...
                 </Text>
-              </LinearGradient>
-            </Pressable>
+              </View>
+            )}
           </View>
 
-          {/* View on GitHub link / ลิงก์ดูบน GitHub */}
-          <Pressable style={styles.githubLink} onPress={handleViewRelease}>
+          {/* GitHub link */}
+          <Pressable style={styles.githubLink} onPress={openReleasesPage}>
             <Ionicons name="logo-github" size={14} color={colors.text.tertiary} />
             <Text style={styles.githubText}>View on GitHub</Text>
           </Pressable>
@@ -215,13 +326,78 @@ const styles = StyleSheet.create({
   versionNew: {
     color: colors.brand.cyan,
   },
-  releaseName: {
-    ...typography.bodySmall,
-    color: colors.text.secondary,
-    textAlign: 'center',
+
+  // Progress bar / แถบความคืบหน้า
+  progressSection: {
+    width: '100%',
     paddingHorizontal: spacing.xl,
     marginBottom: spacing.lg,
   },
+  progressBarBg: {
+    width: '100%',
+    height: 8,
+    backgroundColor: colors.bg.tertiary,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 4,
+    minWidth: 8,
+  },
+  progressInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+  },
+  progressPercent: {
+    ...typography.mono,
+    color: colors.brand.cyan,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  progressSize: {
+    ...typography.monoSmall,
+    color: colors.text.tertiary,
+  },
+  installingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    justifyContent: 'center',
+  },
+  installingText: {
+    ...typography.bodySmall,
+    color: colors.brand.cyan,
+  },
+
+  // Error / ข้อผิดพลาด
+  errorSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.trading.redBg,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.trading.red,
+    flex: 1,
+  },
+
+  // File size / ขนาดไฟล์
+  fileSizeText: {
+    ...typography.bodySmall,
+    color: colors.text.tertiary,
+    marginBottom: spacing.lg,
+  },
+
+  // Mandatory / บังคับ
   mandatoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -238,11 +414,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 11,
   },
+
+  // Buttons / ปุ่ม
   buttonRow: {
     flexDirection: 'row',
     gap: spacing.md,
     paddingHorizontal: spacing.xl,
     width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
   },
   laterBtn: {
     flex: 1,
@@ -257,6 +437,7 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text.tertiary,
     fontWeight: '600',
+    fontSize: 13,
   },
   downloadBtn: {
     flex: 2,
@@ -275,7 +456,23 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.white,
     fontWeight: '700',
+    fontSize: 14,
   },
+  downloadingRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  downloadingText: {
+    ...typography.bodySmall,
+    color: colors.brand.cyan,
+    fontWeight: '600',
+  },
+
+  // GitHub link
   githubLink: {
     flexDirection: 'row',
     alignItems: 'center',

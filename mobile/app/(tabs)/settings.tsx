@@ -55,16 +55,12 @@ export default function SettingsScreen() {
   const [priceAlerts, setPriceAlerts] = useState(false);
 
   // Update state / สถานะอัปเดต
-  const { updateInfo, isChecking, checkUpdate, openModal } = useUpdateStore();
+  const { updateInfo, isChecking, forceCheck, openModal } = useUpdateStore();
   const hasUpdate = updateInfo?.available ?? false;
 
   const handleCheckUpdate = async () => {
-    // Force re-check by clearing throttle / บังคับตรวจใหม่
-    await checkUpdate();
-    if (!hasUpdate) {
-      // No update available - could show a toast in production
-      // ไม่มีอัปเดต - ในระบบจริงอาจแสดง toast
-    }
+    // Force re-check (ignore throttle) / บังคับตรวจใหม่ (ไม่สน throttle)
+    await forceCheck();
   };
 
   return (

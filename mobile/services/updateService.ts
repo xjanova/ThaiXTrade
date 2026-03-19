@@ -2,14 +2,17 @@
  * App Update Service
  * ระบบตรวจสอบและอัปเดตแอป
  *
- * Checks GitHub Releases for new APK versions and provides
- * download URLs for in-app update prompts.
- * ตรวจสอบ GitHub Releases สำหรับ APK เวอร์ชันใหม่
- * และให้ URL ดาวน์โหลดสำหรับแจ้งเตือนอัปเดตในแอป
+ * Checks GitHub Releases for new APK versions, downloads APK
+ * with progress tracking, and triggers installation.
+ * ตรวจสอบ GitHub Releases สำหรับ APK เวอร์ชันใหม่, ดาวน์โหลด APK
+ * พร้อมติดตามความคืบหน้า, และเริ่มการติดตั้ง
  */
 
 import Constants from 'expo-constants';
 import { Platform, Linking } from 'react-native';
+// Platform-split: .web.ts stub on web, native impl on Android/iOS
+// แยกตาม platform: .web.ts stub บนเว็บ, native impl บน Android/iOS
+import { downloadApkNative, installApkNative } from './nativeFileOps';
 
 // GitHub repository info / ข้อมูล repository
 const GITHUB_OWNER = 'xjanova';
@@ -21,36 +24,27 @@ export const CURRENT_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 export const CURRENT_BUILD = Constants.expoConfig?.android?.versionCode ?? 1;
 
 export interface UpdateInfo {
-  /** Whether an update is available / มีอัปเดตหรือไม่ */
   available: boolean;
-  /** Latest version string / เวอร์ชันล่าสุด */
   latestVersion: string;
-  /** Current version string / เวอร์ชันปัจจุบัน */
   currentVersion: string;
-  /** Release name/title / ชื่อ release */
   releaseName: string;
-  /** Release notes/body / รายละเอียด release */
   releaseNotes: string;
-  /** APK download URL / URL ดาวน์โหลด APK */
   downloadUrl: string | null;
-  /** Release page URL / URL หน้า release */
   releaseUrl: string;
-  /** Published date / วันที่เผยแพร่ */
   publishedAt: string;
-  /** Whether this is mandatory / บังคับอัปเดตหรือไม่ */
   mandatory: boolean;
+  fileSize: number;
 }
 
-/**
- * Compare two semver version strings
- * เปรียบเทียบเวอร์ชัน semver สองตัว
- *
- * Returns: 1 if a > b, -1 if a < b, 0 if equal
- */
+export type DownloadProgressCallback = (progress: {
+  totalBytesWritten: number;
+  totalBytesExpectedToWrite: number;
+  percent: number;
+}) => void;
+
 export function compareVersions(a: string, b: string): number {
   const partsA = a.replace(/^v/, '').split('.').map(Number);
   const partsB = b.replace(/^v/, '').split('.').map(Number);
-
   for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
     const numA = partsA[i] ?? 0;
     const numB = partsB[i] ?? 0;
@@ -60,25 +54,11 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/**
- * Extract version number from GitHub release tag
- * ดึงเลขเวอร์ชันจาก tag ของ GitHub release
- *
- * Handles formats like: "mobile-v1.0.1-build42-123", "v1.0.1", "1.0.1"
- */
 function extractVersion(tag: string): string | null {
   const match = tag.match(/v?(\d+\.\d+\.\d+)/);
   return match ? match[1] : null;
 }
 
-/**
- * Check for updates from GitHub Releases
- * ตรวจสอบอัปเดตจาก GitHub Releases
- *
- * Fetches the latest release that has a mobile APK asset
- * and compares against current app version.
- * ดึง release ล่าสุดที่มีไฟล์ APK และเปรียบเทียบกับเวอร์ชันปัจจุบัน
- */
 export async function checkForUpdate(): Promise<UpdateInfo> {
   const noUpdate: UpdateInfo = {
     available: false,
@@ -90,12 +70,10 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
     releaseUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`,
     publishedAt: '',
     mandatory: false,
+    fileSize: 0,
   };
 
-  // Skip update check on web / ข้ามการตรวจสอบบนเว็บ
-  if (Platform.OS === 'web') {
-    return noUpdate;
-  }
+  if (Platform.OS === 'web') return noUpdate;
 
   try {
     const controller = new AbortController();
@@ -108,13 +86,8 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
       },
       signal: controller.signal,
     });
-
     clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.warn('[UpdateService] GitHub API error:', response.status);
-      return noUpdate;
-    }
+    if (!response.ok) return noUpdate;
 
     const releases: Array<{
       tag_name: string;
@@ -124,43 +97,22 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
       published_at: string;
       draft: boolean;
       prerelease: boolean;
-      assets: Array<{
-        name: string;
-        browser_download_url: string;
-        size: number;
-      }>;
+      assets: Array<{ name: string; browser_download_url: string; size: number }>;
     }> = await response.json();
 
-    // Find the latest non-draft, non-prerelease mobile release with an APK
-    // หา release ล่าสุดที่ไม่ใช่ draft/prerelease และมีไฟล์ APK
-    const mobileRelease = releases.find((release) => {
-      if (release.draft || release.prerelease) return false;
-      const isMobileTag = release.tag_name.includes('mobile');
-      const hasApk = release.assets.some((a) =>
-        a.name.toLowerCase().endsWith('.apk'),
-      );
-      return isMobileTag && hasApk;
+    const mobileRelease = releases.find((r) => {
+      if (r.draft || r.prerelease) return false;
+      return r.tag_name.includes('mobile') && r.assets.some((a) => a.name.toLowerCase().endsWith('.apk'));
     });
-
-    if (!mobileRelease) {
-      return noUpdate;
-    }
+    if (!mobileRelease) return noUpdate;
 
     const latestVersion = extractVersion(mobileRelease.tag_name);
-    if (!latestVersion) {
-      return noUpdate;
-    }
+    if (!latestVersion) return noUpdate;
 
     const isNewer = compareVersions(latestVersion, CURRENT_VERSION) > 0;
-    const apkAsset = mobileRelease.assets.find((a) =>
-      a.name.toLowerCase().endsWith('.apk'),
-    );
-
-    // Check if major version changed (mandatory update)
-    // ตรวจว่า major version เปลี่ยนหรือไม่ (บังคับอัปเดต)
+    const apkAsset = mobileRelease.assets.find((a) => a.name.toLowerCase().endsWith('.apk'));
     const currentMajor = parseInt(CURRENT_VERSION.split('.')[0], 10);
     const latestMajor = parseInt(latestVersion.split('.')[0], 10);
-    const mandatory = latestMajor > currentMajor;
 
     return {
       available: isNewer,
@@ -171,34 +123,46 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
       downloadUrl: apkAsset?.browser_download_url ?? null,
       releaseUrl: mobileRelease.html_url,
       publishedAt: mobileRelease.published_at,
-      mandatory,
+      mandatory: latestMajor > currentMajor,
+      fileSize: apkAsset?.size ?? 0,
     };
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      console.warn('[UpdateService] Update check timed out');
-    } else {
-      console.warn('[UpdateService] Update check failed:', error);
-    }
+  } catch {
     return noUpdate;
   }
 }
 
 /**
- * Open the APK download URL in the browser
- * เปิด URL ดาวน์โหลด APK ในเบราว์เซอร์
+ * Download APK with progress / ดาวน์โหลด APK พร้อมแถบความคืบหน้า
  */
-export async function downloadUpdate(url: string): Promise<void> {
-  const canOpen = await Linking.canOpenURL(url);
-  if (canOpen) {
+export async function downloadApk(
+  url: string,
+  onProgress: DownloadProgressCallback,
+): Promise<string> {
+  if (Platform.OS === 'web') {
     await Linking.openURL(url);
+    throw new Error('Web download not supported');
   }
+  return downloadApkNative(url, onProgress);
 }
 
 /**
- * Open the releases page on GitHub
- * เปิดหน้า releases บน GitHub
+ * Install APK from local file / ติดตั้ง APK จากไฟล์ในเครื่อง
  */
+export async function installApk(fileUri: string): Promise<void> {
+  if (Platform.OS !== 'android') {
+    await Linking.openURL(fileUri);
+    return;
+  }
+  return installApkNative(fileUri);
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+}
+
 export async function openReleasesPage(): Promise<void> {
-  const url = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
-  await Linking.openURL(url);
+  await Linking.openURL(`https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`);
 }
