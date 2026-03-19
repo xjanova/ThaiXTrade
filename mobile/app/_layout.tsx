@@ -2,12 +2,13 @@ import { useCallback, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet, Platform } from 'react-native';
+import { StyleSheet, Platform, Linking } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { colors } from '@/theme';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import UpdateModal from '@/components/common/UpdateModal';
 import { useUpdateStore } from '@/stores/updateStore';
+import { handleWalletCallback } from '@/stores/walletStore';
 
 // Prevent splash screen from hiding until we're ready
 // ป้องกันไม่ให้ splash screen หายไปจนกว่าจะพร้อม
@@ -29,6 +30,26 @@ export default function RootLayout() {
       checkUpdate();
     }, 2000);
     return () => clearTimeout(timer);
+  }, []);
+
+  // Listen for wallet deep link callbacks / ฟัง deep link callback จากกระเป๋า
+  useEffect(() => {
+    const handleUrl = ({ url }: { url: string }) => {
+      if (url.startsWith('tpixtrade://wallet/')) {
+        handleWalletCallback(url);
+      }
+    };
+
+    // Check if app was opened via deep link / ตรวจสอบว่าแอปถูกเปิดผ่าน deep link หรือไม่
+    Linking.getInitialURL().then((url) => {
+      if (url?.startsWith('tpixtrade://wallet/')) {
+        handleWalletCallback(url);
+      }
+    });
+
+    // Listen for future deep links / ฟัง deep link ในอนาคต
+    const subscription = Linking.addEventListener('url', handleUrl);
+    return () => subscription.remove();
   }, []);
 
   return (

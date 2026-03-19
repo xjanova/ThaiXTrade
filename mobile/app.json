@@ -28,7 +28,7 @@
       "permissions": [
         "INTERNET",
         "VIBRATE"
-      ]
+      ],
     },
     "web": {
       "bundler": "metro",
@@ -44,6 +44,7 @@
     "plugins": [
       "expo-router",
       "expo-font",
+      "./plugins/withWalletQueries",
       [
         "expo-splash-screen",
         {
