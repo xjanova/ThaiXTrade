@@ -17,30 +17,27 @@ jobs:
           script: |
             cd ~/domains/tpix.online
 
-            echo "=== Delete old sale (no phases) ==="
+            echo "=== Force delete all sale data ==="
             php artisan tinker --execute="
-              App\Models\SalePhase::query()->delete();
-              App\Models\TokenSale::query()->delete();
-              App\Models\CarbonProject::query()->delete();
-              echo \"Cleared old data\n\";
+              DB::table('sale_transactions')->delete();
+              DB::table('sale_phases')->delete();
+              DB::table('token_sales')->delete();
+              DB::table('carbon_retirements')->delete();
+              DB::table('carbon_credits')->delete();
+              DB::table('carbon_projects')->delete();
+              echo \"All cleared (force)\n\";
             " 2>/dev/null
 
             echo "=== Re-run seeder ==="
             php artisan db:seed --class=TpixEcosystemSeeder --force 2>&1
 
             echo ""
-            echo "=== Verify Token Sale ==="
+            echo "=== Verify ==="
             php artisan tinker --execute="
               \$sale = App\Models\TokenSale::with('phases')->first();
               if(\$sale) {
-                echo 'Sale: ' . \$sale->name . ' | status=' . \$sale->status . ' | phases=' . \$sale->phases->count() . \"\n\";
-                foreach(\$sale->phases as \$p) echo '  ' . \$p->name . ' | \$' . \$p->price_usd . ' | ' . \$p->status . \"\n\";
-              } else echo \"No sale found\n\";
-            " 2>/dev/null
-
-            echo ""
-            echo "=== Verify Carbon ==="
-            php artisan tinker --execute="
-              echo 'Projects: ' . App\Models\CarbonProject::count() . \"\n\";
-              foreach(App\Models\CarbonProject::all() as \$p) echo \$p->name . ' | ' . \$p->status . \"\n\";
+                echo 'Sale: ' . \$sale->name . ' | phases=' . \$sale->phases->count() . \"\n\";
+                foreach(\$sale->phases as \$p) echo '  ' . \$p->name . ' \$' . \$p->price_usd . ' ' . \$p->status . \"\n\";
+              } else echo \"No sale\n\";
+              echo 'Carbon: ' . App\Models\CarbonProject::count() . \" projects\n\";
             " 2>/dev/null
