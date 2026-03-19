@@ -181,6 +181,20 @@ jobs:
           RELEASE_KEY_PASSWORD=$KEY_PASSWORD
           EOF
 
+      # Workaround: foojay-resolver plugin download fails intermittently (403 from CDN)
+      # Since Java is already provided by setup-java action, we don't need auto-download
+      - name: Disable Gradle toolchain auto-download
+        run: |
+          # Patch @react-native/gradle-plugin to skip foojay-resolver
+          SETTINGS_KTS=$(find node_modules/@react-native/gradle-plugin -name "settings.gradle.kts" | head -1)
+          if [ -n "$SETTINGS_KTS" ]; then
+            echo "Patching $SETTINGS_KTS to disable foojay-resolver..."
+            sed -i 's/plugins { id("org.gradle.toolchains.foojay-resolver-convention").*/\/\/ foojay disabled - Java provided by setup-java action/' "$SETTINGS_KTS"
+            cat "$SETTINGS_KTS"
+          fi
+          # Also disable auto-download in gradle.properties
+          echo "org.gradle.java.installations.auto-download=false" >> android/gradle.properties
+
       - name: Build APK (Release)
         run: |
           cd android
