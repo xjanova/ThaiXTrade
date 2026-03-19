@@ -6,60 +6,42 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Test Groq + generate first articles
+      - name: Check image settings + fix
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: 10m
+          command_timeout: 5m
           script: |
             cd ~/domains/tpix.online
 
-            echo "=== Groq API key ==="
+            echo "=== All image type settings ==="
             php artisan tinker --execute="
-              \$key = config('services.groq.api_key');
-              echo 'Key: ' . (\$key ? substr(\$key, 0, 10) . '...' : 'NOT SET') . \"\n\";
+              \$all = App\Models\SiteSetting::where('type', 'image')->get();
+              foreach(\$all as \$s) echo \$s->group . '.' . \$s->key . ' = ' . \$s->value . \" (type=\" . \$s->type . \")\n\";
+              if(\$all->isEmpty()) echo \"No image settings\n\";
             " 2>/dev/null
 
             echo ""
-            echo "=== Test Groq chat ==="
+            echo "=== All AI/payment settings ==="
             php artisan tinker --execute="
-              \$groq = app(App\Services\GroqService::class);
-              \$result = \$groq->chat('Say hello in 5 words', 'You are a helpful assistant', ['max_tokens' => 50]);
-              echo 'Success: ' . (\$result['success'] ? 'YES' : 'NO') . \"\n\";
-              echo 'Response: ' . substr(\$result['content'] ?? \$result['error'] ?? 'none', 0, 100) . \"\n\";
+              \$ai = App\Models\SiteSetting::where('group', 'ai')->get();
+              foreach(\$ai as \$s) echo 'ai.' . \$s->key . ' = ' . (\$s->key === 'groq_api_key' ? substr(\$s->value, 0, 10) . '...' : \$s->value) . \"\n\";
+              \$pay = App\Models\SiteSetting::where('group', 'payment')->get();
+              foreach(\$pay as \$s) echo 'payment.' . \$s->key . ' = ' . (str_contains(\$s->key, 'key') ? substr(\$s->value, 0, 10) . '...' : \$s->value) . \"\n\";
             " 2>/dev/null
 
             echo ""
-            echo "=== Generate articles if empty ==="
-            php artisan tinker --execute="
-              \$count = App\Models\Article::count();
-              echo \"Articles: \$count\n\";
-              if(\$count < 3) {
-                echo \"Generating 3 articles...\n\";
-                \$svc = app(App\Services\ContentService::class);
-                try {
-                  \$a1 = \$svc->generateArticle('TPIX Chain คืออะไร — Blockchain ไร้ค่าแก๊สสำหรับคนไทย', 'tpix_chain', 'th');
-                  echo 'TH: ' . \$a1->title . \"\n\";
-                  \$a1->update(['status' => 'published', 'published_at' => now()]);
-                } catch(\Exception \$e) { echo 'TH Error: ' . \$e->getMessage() . \"\n\"; }
-                try {
-                  \$a2 = \$svc->generateArticle('What is TPIX Chain — Zero-Gas EVM Blockchain', 'tpix_chain', 'en');
-                  echo 'EN: ' . \$a2->title . \"\n\";
-                  \$a2->update(['status' => 'published', 'published_at' => now()]);
-                } catch(\Exception \$e) { echo 'EN Error: ' . \$e->getMessage() . \"\n\"; }
-                try {
-                  \$a3 = \$svc->generateArticle('วิธี Stake TPIX เพื่อรับ APY สูงสุด 200%', 'tutorial', 'th');
-                  echo 'TH2: ' . \$a3->title . \"\n\";
-                  \$a3->update(['status' => 'published', 'published_at' => now()]);
-                } catch(\Exception \$e) { echo 'TH2 Error: ' . \$e->getMessage() . \"\n\"; }
-              } else {
-                echo \"Already have \$count articles\n\";
-              }
-            " 2>/dev/null
+            echo "=== Storage files ==="
+            find storage/app/public -type f 2>/dev/null | head -20 || echo "No files"
 
             echo ""
-            echo "=== Final count ==="
-            php artisan tinker --execute="echo 'Published: ' . App\Models\Article::where('status','published')->count() . \"\n\";" 2>/dev/null
+            echo "=== Groq test ==="
+            php artisan tinker --execute="
+              \$svc = app(App\Services\GroqService::class);
+              \$r = \$svc->chat('Say OK', '', ['max_tokens'=>10]);
+              echo \$r['success'] ? 'Groq: OK' : 'Groq: FAIL - ' . (\$r['error'] ?? 'unknown');
+              echo \"\n\";
+            " 2>/dev/null

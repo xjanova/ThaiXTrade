@@ -145,7 +145,7 @@ class SettingController extends Controller
         $request->validate([
             'meta_title' => ['nullable', 'string', 'max:200'],
             'meta_description' => ['nullable', 'string', 'max:500'],
-            'og_image' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
+            'og_image' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:10240'],
         ]);
 
         foreach (['meta_title', 'meta_description'] as $key) {
