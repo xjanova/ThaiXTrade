@@ -186,11 +186,19 @@ jobs:
       - name: Disable Gradle toolchain auto-download
         run: |
           # Patch @react-native/gradle-plugin to skip foojay-resolver
-          SETTINGS_KTS=$(find node_modules/@react-native/gradle-plugin -name "settings.gradle.kts" | head -1)
-          if [ -n "$SETTINGS_KTS" ]; then
-            echo "Patching $SETTINGS_KTS to disable foojay-resolver..."
-            sed -i 's/plugins { id("org.gradle.toolchains.foojay-resolver-convention").*/\/\/ foojay disabled - Java provided by setup-java action/' "$SETTINGS_KTS"
+          SETTINGS_KTS="node_modules/@react-native/gradle-plugin/settings.gradle.kts"
+          if [ -f "$SETTINGS_KTS" ]; then
+            echo "=== Before patch ==="
+            grep -n foojay "$SETTINGS_KTS" || true
+            # Comment out the entire plugins block containing foojay
+            sed -i '/foojay/s/^/\/\/ /' "$SETTINGS_KTS"
+            echo "=== After patch ==="
+            grep -n foojay "$SETTINGS_KTS" || true
+            echo "=== Full file ==="
             cat "$SETTINGS_KTS"
+          else
+            echo "WARNING: $SETTINGS_KTS not found!"
+            find node_modules/@react-native -name "settings.gradle*" 2>/dev/null || true
           fi
           # Also disable auto-download in gradle.properties
           echo "org.gradle.java.installations.auto-download=false" >> android/gradle.properties
