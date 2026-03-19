@@ -6,8 +6,8 @@ import {
   withSpring,
 } from 'react-native-reanimated';
 import { colors, spacing, radius, typography } from '@/theme';
-import { MiniChart } from '../trading/MiniChart';
-import { PriceChange } from '../common/PriceChange';
+import MiniChart from '../trading/MiniChart';
+import PriceChange from '../common/PriceChange';
 import { AnimatedPressable, SPRING_CONFIG } from '@/utils/animation';
 import { formatPrice } from '@/utils/formatters';
 
@@ -31,7 +31,7 @@ function CoinIcon({ symbol }: { symbol: string }) {
   );
 }
 
-export function MarketRow({
+export default function MarketRow({
   symbol,
   name,
   price,

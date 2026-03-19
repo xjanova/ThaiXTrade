@@ -5,6 +5,7 @@ import {
   Pressable,
   ActivityIndicator,
   ViewStyle,
+  TextStyle,
   StyleProp,
   View,
 } from 'react-native';
@@ -64,9 +65,7 @@ const sizeMap: Record<ButtonSize, {
   },
 };
 
-import { TextStyle } from 'react-native';
-
-export function GradientButton({
+export default function GradientButton({
   title,
   onPress,
   variant = 'brand',

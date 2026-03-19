@@ -47,7 +47,7 @@ const variantStyles: Record<GlassCardVariant, {
   },
 };
 
-export function GlassCard({
+export default function GlassCard({
   children,
   style,
   onPress,

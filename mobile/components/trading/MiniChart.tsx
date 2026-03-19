@@ -60,7 +60,7 @@ function buildFillPath(linePath: string, width: number, height: number): string 
 // Counter for deterministic gradient IDs / ตัวนับสำหรับ ID ที่ไม่สุ่ม
 let gradientCounter = 0;
 
-export function MiniChart({
+export default function MiniChart({
   data,
   color = colors.brand.cyan,
   width = 100,

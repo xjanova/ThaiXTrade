@@ -42,7 +42,7 @@ const sizeConfig: Record<PriceChangeSize, {
   },
 };
 
-export function PriceChange({
+export default function PriceChange({
   value,
   prefix,
   showIcon = true,

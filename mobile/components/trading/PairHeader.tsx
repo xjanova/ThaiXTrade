@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, radius, typography } from '@/theme';
-import { PriceChange } from '../common/PriceChange';
+import PriceChange from '../common/PriceChange';
 import { formatPrice } from '@/utils/formatters';
 
 interface PairHeaderProps {
@@ -23,7 +23,7 @@ function StatItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function PairHeader({
+export default function PairHeader({
   symbol,
   price,
   change24h,
