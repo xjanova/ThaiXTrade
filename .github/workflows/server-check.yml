@@ -6,7 +6,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Fix seed data
+      - name: Diagnose logo + storage + languages
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -17,27 +17,56 @@ jobs:
           script: |
             cd ~/domains/tpix.online
 
-            echo "=== Force delete all sale data ==="
+            echo "=== Storage symlink ==="
+            ls -la public_html/storage 2>/dev/null || echo "NO SYMLINK!"
+
+            echo ""
+            echo "=== Storage logos dir ==="
+            ls -la storage/app/public/logos/ 2>/dev/null || echo "No logos dir"
+
+            echo ""
+            echo "=== Site settings (logo) ==="
             php artisan tinker --execute="
-              DB::table('sale_transactions')->delete();
-              DB::table('sale_phases')->delete();
-              DB::table('token_sales')->delete();
-              DB::table('carbon_retirements')->delete();
-              DB::table('carbon_credits')->delete();
-              DB::table('carbon_projects')->delete();
-              echo \"All cleared (force)\n\";
+              \$logo = App\Models\SiteSetting::where('group','general')->where('key','logo')->first();
+              echo 'Logo setting: ' . (\$logo ? \$logo->value : 'NULL') . \"\n\";
+              echo 'Type: ' . (\$logo ? \$logo->type : 'NULL') . \"\n\";
+              if(\$logo && \$logo->value) {
+                echo 'File exists: ' . (Storage::disk('public')->exists(\$logo->value) ? 'YES' : 'NO') . \"\n\";
+                echo 'Full path: ' . storage_path('app/public/' . \$logo->value) . \"\n\";
+              }
             " 2>/dev/null
 
-            echo "=== Re-run seeder ==="
-            php artisan db:seed --class=TpixEcosystemSeeder --force 2>&1
+            echo ""
+            echo "=== Languages in DB ==="
+            php artisan tinker --execute="
+              \$langs = App\Models\Language::all();
+              foreach(\$langs as \$l) echo \$l->code . ' | ' . \$l->name . ' | active=' . \$l->is_active . ' | default=' . \$l->is_default . \"\n\";
+              if(\$langs->isEmpty()) echo \"No languages in DB\n\";
+            " 2>/dev/null
+
+            echo ""
+            echo "=== Fix storage symlink ==="
+            if [ ! -L "public_html/storage" ]; then
+              rm -rf public_html/storage 2>/dev/null || true
+              ln -sf "$(pwd)/storage/app/public" "$(pwd)/public_html/storage"
+              echo "CREATED symlink"
+            else
+              echo "Symlink OK"
+            fi
+
+            echo ""
+            echo "=== Seed default languages if empty ==="
+            php artisan tinker --execute="
+              if(App\Models\Language::count() === 0) {
+                App\Models\Language::create(['code'=>'th','name'=>'Thai','native_name'=>'ไทย','flag_emoji'=>'🇹🇭','is_active'=>true,'is_default'=>true,'sort_order'=>1]);
+                App\Models\Language::create(['code'=>'en','name'=>'English','native_name'=>'English','flag_emoji'=>'🇺🇸','is_active'=>true,'is_default'=>false,'sort_order'=>2]);
+                echo \"Created TH + EN languages\n\";
+              } else {
+                echo \"Languages already exist\n\";
+              }
+            " 2>/dev/null
 
             echo ""
             echo "=== Verify ==="
-            php artisan tinker --execute="
-              \$sale = App\Models\TokenSale::with('phases')->first();
-              if(\$sale) {
-                echo 'Sale: ' . \$sale->name . ' | phases=' . \$sale->phases->count() . \"\n\";
-                foreach(\$sale->phases as \$p) echo '  ' . \$p->name . ' \$' . \$p->price_usd . ' ' . \$p->status . \"\n\";
-              } else echo \"No sale\n\";
-              echo 'Carbon: ' . App\Models\CarbonProject::count() . \" projects\n\";
-            " 2>/dev/null
+            ls -la public_html/storage 2>/dev/null
+            php artisan tinker --execute="echo 'Languages: ' . App\Models\Language::count() . \"\n\";" 2>/dev/null
