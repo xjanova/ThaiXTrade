@@ -6,7 +6,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Diagnose DB + run seeders
+      - name: Fix seed data
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -17,42 +17,30 @@ jobs:
           script: |
             cd ~/domains/tpix.online
 
-            echo "=== Run ecosystem seeder ==="
+            echo "=== Delete old sale (no phases) ==="
+            php artisan tinker --execute="
+              App\Models\SalePhase::query()->delete();
+              App\Models\TokenSale::query()->delete();
+              App\Models\CarbonProject::query()->delete();
+              echo \"Cleared old data\n\";
+            " 2>/dev/null
+
+            echo "=== Re-run seeder ==="
             php artisan db:seed --class=TpixEcosystemSeeder --force 2>&1
 
             echo ""
-            echo "=== Token Sale ==="
+            echo "=== Verify Token Sale ==="
             php artisan tinker --execute="
               \$sale = App\Models\TokenSale::with('phases')->first();
               if(\$sale) {
                 echo 'Sale: ' . \$sale->name . ' | status=' . \$sale->status . ' | phases=' . \$sale->phases->count() . \"\n\";
-                foreach(\$sale->phases as \$p) echo '  Phase: ' . \$p->name . ' | \$' . \$p->price_usd . ' | status=' . \$p->status . \"\n\";
-              } else echo 'No sale found\n';
+                foreach(\$sale->phases as \$p) echo '  ' . \$p->name . ' | \$' . \$p->price_usd . ' | ' . \$p->status . \"\n\";
+              } else echo \"No sale found\n\";
             " 2>/dev/null
 
             echo ""
-            echo "=== Carbon Projects ==="
+            echo "=== Verify Carbon ==="
             php artisan tinker --execute="
-              \$projects = App\Models\CarbonProject::all();
-              echo 'Total: ' . \$projects->count() . \" projects\n\";
-              foreach(\$projects as \$p) echo \$p->name . ' | ' . \$p->status . ' | credits=' . \$p->available_credits . \"\n\";
+              echo 'Projects: ' . App\Models\CarbonProject::count() . \"\n\";
+              foreach(App\Models\CarbonProject::all() as \$p) echo \$p->name . ' | ' . \$p->status . \"\n\";
             " 2>/dev/null
-
-            echo ""
-            echo "=== Chains ==="
-            php artisan tinker --execute="
-              echo 'Chains: ' . App\Models\Chain::count() . \"\n\";
-              foreach(App\Models\Chain::all() as \$c) echo \$c->chain_id_hex . ' ' . \$c->name . ' active=' . \$c->is_active . \"\n\";
-            " 2>/dev/null
-
-            echo ""
-            echo "=== Trading Pairs ==="
-            php artisan tinker --execute="
-              echo 'Pairs: ' . App\Models\TradingPair::count() . \"\n\";
-              foreach(App\Models\TradingPair::all() as \$p) echo \$p->symbol . \"\n\";
-            " 2>/dev/null
-
-            echo ""
-            echo "=== Storage check ==="
-            ls -la public_html/storage 2>/dev/null | head -3
-            ls storage/app/public/logos/ 2>/dev/null || echo "No logos dir"
