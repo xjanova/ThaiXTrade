@@ -46,10 +46,11 @@ class TpixEcosystemSeeder extends Seeder
             'ends_at' => now()->addMonths(6),
         ]);
 
-        // Phase 1: Private Sale
+        // Phase 1: Private Sale — กำลังขายอยู่
         SalePhase::create([
             'token_sale_id' => $sale->id,
             'name' => 'Private Sale',
+            'slug' => 'private-sale',
             'phase_order' => 1,
             'price_usd' => 0.05,
             'allocation' => 200000000,
@@ -65,10 +66,11 @@ class TpixEcosystemSeeder extends Seeder
             'ends_at' => now()->addMonths(2),
         ]);
 
-        // Phase 2: Pre-Sale
+        // Phase 2: Pre-Sale — ยังไม่เริ่ม
         SalePhase::create([
             'token_sale_id' => $sale->id,
             'name' => 'Pre-Sale',
+            'slug' => 'pre-sale',
             'phase_order' => 2,
             'price_usd' => 0.08,
             'allocation' => 300000000,
@@ -84,10 +86,11 @@ class TpixEcosystemSeeder extends Seeder
             'ends_at' => now()->addMonths(4),
         ]);
 
-        // Phase 3: Public Sale
+        // Phase 3: Public Sale — ยังไม่เริ่ม
         SalePhase::create([
             'token_sale_id' => $sale->id,
             'name' => 'Public Sale',
+            'slug' => 'public-sale',
             'phase_order' => 3,
             'price_usd' => 0.10,
             'allocation' => 200000000,
@@ -123,7 +126,7 @@ class TpixEcosystemSeeder extends Seeder
                 'slug' => 'thailand-northern-reforestation',
                 'description' => 'โครงการปลูกป่าภาคเหนือ ครอบคลุม 5,000 ไร่ ในเชียงใหม่ เชียงราย ลำพูน',
                 'location' => 'Chiang Mai, Chiang Rai, Lamphun',
-                'country' => 'Thailand',
+                'country' => 'TH',
                 'project_type' => 'reforestation',
                 'standard' => 'VCS',
                 'total_credits' => 50000,
@@ -139,7 +142,7 @@ class TpixEcosystemSeeder extends Seeder
                 'slug' => 'asean-solar-energy',
                 'description' => 'โครงการพลังงานแสงอาทิตย์ในภูมิภาคอาเซียน ลดการปล่อย CO2 จากโรงไฟฟ้าถ่านหิน',
                 'location' => 'Bangkok, Ho Chi Minh City, Jakarta',
-                'country' => 'ASEAN',
+                'country' => 'TH',
                 'project_type' => 'renewable_energy',
                 'standard' => 'Gold Standard',
                 'total_credits' => 100000,
@@ -155,8 +158,8 @@ class TpixEcosystemSeeder extends Seeder
                 'slug' => 'smart-farm-carbon-offset',
                 'description' => 'ฟาร์มอัจฉริยะที่ใช้ IoT ลดการปล่อยก๊าซเรือนกระจกจากภาคเกษตร',
                 'location' => 'Nakhon Ratchasima, Khon Kaen',
-                'country' => 'Thailand',
-                'project_type' => 'agriculture',
+                'country' => 'TH',
+                'project_type' => 'other',
                 'standard' => 'VCS',
                 'total_credits' => 25000,
                 'available_credits' => 25000,
