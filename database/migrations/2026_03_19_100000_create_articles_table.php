@@ -4,12 +4,12 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * TPIX TRADE — Articles table
  * ระบบบทความ AI-generated + manual สำหรับ Content Marketing
  * รองรับหลายภาษา, AI image, scheduled publishing
  */
-return new class extends Migration
+return new class() extends Migration
 {
     public function up(): void
     {

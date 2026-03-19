@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Services\ContentService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -116,7 +117,7 @@ class ContentController extends Controller
     /**
      * สร้างภาพ AI สำหรับบทความ.
      */
-    public function generateImage(Request $request): \Illuminate\Http\JsonResponse
+    public function generateImage(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'prompt' => 'required|string|max:500',

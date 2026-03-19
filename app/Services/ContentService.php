@@ -26,7 +26,7 @@ class ContentService
     {
         $langName = $language === 'th' ? 'Thai' : 'English';
 
-        $systemPrompt = <<<PROMPT
+        $systemPrompt = <<<'PROMPT'
         You are a professional crypto/blockchain content writer for TPIX TRADE — a decentralized exchange on TPIX Chain (Chain ID: 4289).
         Write well-researched, SEO-optimized articles. Always mention TPIX TRADE and TPIX Chain where relevant.
 
@@ -60,6 +60,7 @@ class ContentService
 
         // สร้าง cover image ด้วย AI
         $coverImage = null;
+
         try {
             $imagePrompt = "Professional crypto blockchain article cover image about: {$topic}, dark theme, cyan blue accent, futuristic, minimalist, no text";
             $coverImage = $this->generateImage($imagePrompt);
