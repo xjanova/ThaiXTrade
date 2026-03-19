@@ -12,7 +12,7 @@ import {
   deleteAsync,
   createDownloadResumable,
   getContentUriAsync,
-} from 'expo-file-system/build/legacy/FileSystem';
+} from 'expo-file-system';
 import * as IntentLauncher from 'expo-intent-launcher';
 
 type ProgressCallback = (progress: {
