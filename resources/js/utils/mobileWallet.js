@@ -52,10 +52,10 @@ export function detectInAppBrowser() {
  * ตรวจจับว่าอยู่ใน wallet in-app browser หรือไม่
  */
 export function detectWalletBrowser() {
-    if (typeof navigator === 'undefined') return null;
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return null;
     const ua = navigator.userAgent.toLowerCase();
 
-    // ตรวจจาก user agent
+    // ตรวจจาก user agent + injected provider
     if (ua.includes('metamask') || window.ethereum?.isMetaMask) return 'metamask';
     if (ua.includes('trust') || window.ethereum?.isTrust || window.trustwallet) return 'trustwallet';
     if (ua.includes('coinbasebrowser') || window.ethereum?.isCoinbaseWallet) return 'coinbase';
@@ -226,22 +226,21 @@ export const TPIX_APP = {
  */
 export function tryDeepLink(deepLink, fallbackUrl, timeout = 1500) {
     return new Promise((resolve) => {
-        let didOpen = false;
+        let settled = false;
+
+        const settle = (opened) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(opened);
+        };
 
         // ฟัง visibility change - ถ้าหน้าถูกซ่อน แปลว่าแอปเปิดได้
         const onVisibilityChange = () => {
-            if (document.hidden) {
-                didOpen = true;
-                cleanup();
-                resolve(true);
-            }
+            if (document.hidden) settle(true);
         };
 
-        const onBlur = () => {
-            didOpen = true;
-            cleanup();
-            resolve(true);
-        };
+        const onBlur = () => settle(true);
 
         const cleanup = () => {
             document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -256,12 +255,11 @@ export function tryDeepLink(deepLink, fallbackUrl, timeout = 1500) {
 
         // Timeout: ถ้าแอปไม่เปิด → ไป fallback
         setTimeout(() => {
-            cleanup();
-            if (!didOpen) {
+            if (!settled) {
                 if (fallbackUrl) {
                     window.location.href = fallbackUrl;
                 }
-                resolve(false);
+                settle(false);
             }
         }, timeout);
     });
@@ -326,58 +324,37 @@ export function downloadTpixApp() {
 // =============================================================================
 
 /**
- * ตรวจจับ wallet ที่ใช้ได้บนเว็บ
- * - ถ้าอยู่ใน wallet browser → return wallet นั้นเป็นตัวหลัก (detected)
- * - ถ้าอยู่ใน desktop → ตรวจ window.ethereum extensions
- * - ถ้าอยู่ใน mobile browser → return ทุก wallet พร้อม deep link
+ * ตรวจจับว่า wallet ID นี้มี injected provider อยู่หรือไม่
+ * ใช้ WALLET_PROVIDERS.detect() + wallet browser detection + multi-provider check
  */
-export function detectWallets() {
-    const results = [];
-    const walletBrowser = detectWalletBrowser();
-    const inAppBrowser = detectInAppBrowser();
-    const mobile = isMobile();
+export function isWalletDetected(walletId) {
+    if (typeof window === 'undefined') return false;
 
-    for (const provider of WALLET_PROVIDERS) {
-        const result = {
-            provider,
-            detected: false,
-            method: null, // 'injected' | 'user_agent' | 'deep_link'
-        };
+    // ถ้าอยู่ใน wallet browser ของ wallet นี้ → detected เสมอ
+    if (detectWalletBrowser() === walletId) return true;
 
-        // 1. อยู่ใน wallet browser ของ wallet นี้
-        if (walletBrowser === provider.id) {
-            result.detected = true;
-            result.method = 'user_agent';
-        }
-        // 2. Desktop: ตรวจ injected provider
-        else if (!mobile && provider.detect()) {
-            result.detected = true;
-            result.method = 'injected';
-        }
-        // 3. Mobile: ทุก wallet สามารถเปิดผ่าน deep link ได้
-        else if (mobile) {
-            result.detected = false;
-            result.method = 'deep_link';
-        }
+    // ตรวจจาก provider.detect()
+    const provider = WALLET_PROVIDERS.find(p => p.id === walletId);
+    if (provider?.detect()) return true;
 
-        results.push(result);
+    // ตรวจ multi-provider array (EIP-5749)
+    if (window.ethereum?.providers?.length) {
+        switch (walletId) {
+            case 'metamask': return window.ethereum.providers.some(p => p.isMetaMask);
+            case 'trustwallet': return window.ethereum.providers.some(p => p.isTrust);
+            case 'coinbase': return window.ethereum.providers.some(p => p.isCoinbaseWallet);
+        }
     }
 
-    // เรียง: detected ก่อน
-    results.sort((a, b) => {
-        if (a.detected !== b.detected) return a.detected ? -1 : 1;
-        return 0;
-    });
+    return false;
+}
 
-    return {
-        wallets: results,
-        isInWalletBrowser: !!walletBrowser,
-        walletBrowserId: walletBrowser,
-        isInAppBrowser: !!inAppBrowser,
-        inAppBrowserName: inAppBrowser,
-        isMobile: mobile,
-        os: getMobileOS(),
-    };
+/**
+ * ตรวจจับว่ามี wallet provider ใดๆ ติดตั้งอยู่หรือไม่
+ */
+export function hasAnyWallet() {
+    if (typeof window === 'undefined') return false;
+    return !!window.ethereum || !!window.trustwallet || !!window.okxwallet;
 }
 
 /**

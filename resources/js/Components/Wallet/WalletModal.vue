@@ -7,20 +7,19 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import {
     isMobile,
-    getMobileOS,
     detectInAppBrowser,
     detectWalletBrowser,
-    detectWallets,
+    isWalletDetected as checkWalletDetected,
+    hasAnyWallet as checkAnyWallet,
     openWalletApp,
     openTpixApp,
     downloadTpixApp,
     getExternalBrowserUrl,
     WALLET_PROVIDERS,
-    TPIX_APP,
 } from '@/utils/mobileWallet';
 
 const emit = defineEmits(['close', 'connected']);
@@ -30,32 +29,17 @@ const selectedWallet = ref(null);
 const isConnecting = ref(false);
 const error = ref(null);
 
-// === Platform Detection ===
-const mobile = computed(() => isMobile());
-const mobileOS = computed(() => getMobileOS());
-const inAppBrowser = computed(() => detectInAppBrowser());
-const walletBrowser = computed(() => detectWalletBrowser());
-const isInWalletBrowser = computed(() => !!walletBrowser.value);
+// === Platform Detection (ค่าคงที่ ไม่เปลี่ยนระหว่าง session) ===
+const mobile = isMobile();
+const inAppBrowser = detectInAppBrowser();
+const walletBrowser = detectWalletBrowser();
+const isInWalletBrowser = !!walletBrowser;
 
-// === Wallet Detection ===
-const detection = ref(null);
-
-onMounted(() => {
-    detection.value = detectWallets();
-});
-
-// Detect which wallets are available (injected providers - desktop)
-const hasMetaMask = computed(() => !!window.ethereum?.isMetaMask || window.ethereum?.providers?.some(p => p.isMetaMask));
-const hasTrust = computed(() => !!window.trustwallet || !!window.ethereum?.isTrust || window.ethereum?.providers?.some(p => p.isTrust));
-const hasCoinbase = computed(() => !!window.coinbaseWalletExtension || !!window.ethereum?.isCoinbaseWallet || window.ethereum?.providers?.some(p => p.isCoinbaseWallet));
-const hasOKX = computed(() => !!window.okxwallet);
-const hasAnyWallet = computed(() => !!window.ethereum || !!window.trustwallet || !!window.okxwallet);
-
-// รายการ wallet ที่แสดงใน modal
-const wallets = computed(() => {
+// รายการ wallet (สร้างครั้งเดียว เพราะ mobile ไม่เปลี่ยน)
+const allWallets = (() => {
     // ถ้าอยู่ใน wallet browser → แสดงแค่ wallet นั้นตัวเดียว
-    if (isInWalletBrowser.value) {
-        const provider = WALLET_PROVIDERS.find(p => p.id === walletBrowser.value);
+    if (isInWalletBrowser) {
+        const provider = WALLET_PROVIDERS.find(p => p.id === walletBrowser);
         if (provider) {
             return [{
                 id: provider.id,
@@ -69,15 +53,15 @@ const wallets = computed(() => {
     }
 
     const baseWallets = [
-        { id: 'metamask', name: 'MetaMask', description: mobile.value ? 'Open in MetaMask' : 'Browser extension', popular: true, color: '#E2761B' },
-        { id: 'trustwallet', name: 'Trust Wallet', description: mobile.value ? 'Open in Trust Wallet' : 'Mobile & Extension', popular: true, color: '#3375BB' },
-        { id: 'coinbase', name: 'Coinbase Wallet', description: mobile.value ? 'Open in Coinbase' : 'Browser & Mobile', popular: true, color: '#0052FF' },
-        { id: 'okx', name: 'OKX Wallet', description: mobile.value ? 'Open in OKX' : 'Browser extension', popular: false, color: '#000000' },
-        { id: 'tokenpocket', name: 'TokenPocket', description: mobile.value ? 'Open in TokenPocket' : 'Browser extension', popular: false, color: '#2980FE' },
+        { id: 'metamask', name: 'MetaMask', description: mobile ? 'Open in MetaMask' : 'Browser extension', popular: true, color: '#E2761B' },
+        { id: 'trustwallet', name: 'Trust Wallet', description: mobile ? 'Open in Trust Wallet' : 'Mobile & Extension', popular: true, color: '#3375BB' },
+        { id: 'coinbase', name: 'Coinbase Wallet', description: mobile ? 'Open in Coinbase' : 'Browser & Mobile', popular: true, color: '#0052FF' },
+        { id: 'okx', name: 'OKX Wallet', description: mobile ? 'Open in OKX' : 'Browser extension', popular: false, color: '#000000' },
+        { id: 'tokenpocket', name: 'TokenPocket', description: mobile ? 'Open in TokenPocket' : 'Browser extension', popular: false, color: '#2980FE' },
     ];
 
     // Desktop: เพิ่ม WalletConnect (coming soon)
-    if (!mobile.value) {
+    if (!mobile) {
         baseWallets.push({
             id: 'walletconnect', name: 'WalletConnect', description: 'Coming soon',
             popular: false, color: '#3B99FC', supported: false,
@@ -85,28 +69,17 @@ const wallets = computed(() => {
     }
 
     return baseWallets;
-});
+})();
 
+// Pre-filter เพื่อไม่ต้อง filter ทุก render
+const popularWallets = allWallets.filter(w => w.popular);
+const otherWallets = allWallets.filter(w => !w.popular);
+
+// ใช้ consolidated detection จาก mobileWallet.js
 function isWalletDetected(walletId) {
-    // ใน wallet browser → wallet นั้น detected เสมอ
-    if (walletBrowser.value === walletId) return true;
-
-    switch (walletId) {
-        case 'metamask': return hasMetaMask.value;
-        case 'trustwallet': return hasTrust.value;
-        case 'coinbase': return hasCoinbase.value;
-        case 'okx': return hasOKX.value;
-        case 'tokenpocket': return !!window.ethereum?.isTokenPocket;
-        default: return hasAnyWallet.value;
-    }
+    return checkWalletDetected(walletId);
 }
 
-/**
- * เชื่อมต่อ wallet
- * - Desktop: ใช้ injected provider (window.ethereum)
- * - Mobile + wallet detected: ใช้ injected provider
- * - Mobile + no wallet: เปิดแอป wallet ผ่าน deep link
- */
 const connectWallet = async (wallet) => {
     if (wallet.supported === false) {
         error.value = `${wallet.name} support coming soon.`;
@@ -117,7 +90,7 @@ const connectWallet = async (wallet) => {
     error.value = null;
 
     // === Mobile: ถ้าไม่มี injected provider → เปิดแอปผ่าน deep link ===
-    if (mobile.value && !isWalletDetected(wallet.id)) {
+    if (mobile && !isWalletDetected(wallet.id)) {
         const provider = WALLET_PROVIDERS.find(p => p.id === wallet.id);
         if (provider) {
             openWalletApp(provider, window.location.href);
@@ -126,7 +99,7 @@ const connectWallet = async (wallet) => {
     }
 
     // === Desktop หรือ อยู่ใน wallet browser: ใช้ injected provider ===
-    if (!hasAnyWallet.value) {
+    if (!checkAnyWallet()) {
         error.value = 'No wallet detected. Please install a wallet extension.';
         return;
     }
@@ -162,35 +135,13 @@ const openInExternalBrowser = () => {
     window.location.href = url;
 };
 
-/**
- * เปิดแอป TPIX TRADE
- */
-const handleOpenTpixApp = () => {
-    openTpixApp();
+// ชื่อ in-app browser ที่อ่านง่าย (ค่าคงที่)
+const IN_APP_DISPLAY_NAMES = {
+    line: 'LINE', facebook: 'Facebook', instagram: 'Instagram',
+    twitter: 'X (Twitter)', telegram: 'Telegram', wechat: 'WeChat',
+    tiktok: 'TikTok', kakaotalk: 'KakaoTalk', snapchat: 'Snapchat',
 };
-
-/**
- * ดาวน์โหลดแอป TPIX TRADE
- */
-const handleDownloadTpixApp = () => {
-    downloadTpixApp();
-};
-
-// ชื่อ in-app browser ที่อ่านง่าย
-const inAppBrowserDisplayName = computed(() => {
-    const names = {
-        line: 'LINE',
-        facebook: 'Facebook',
-        instagram: 'Instagram',
-        twitter: 'X (Twitter)',
-        telegram: 'Telegram',
-        wechat: 'WeChat',
-        tiktok: 'TikTok',
-        kakaotalk: 'KakaoTalk',
-        snapchat: 'Snapchat',
-    };
-    return names[inAppBrowser.value] || inAppBrowser.value;
-});
+const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrowser;
 </script>
 
 <template>
@@ -256,7 +207,7 @@ const inAppBrowserDisplayName = computed(() => {
             <!-- Wallet List (Popular) -->
             <div class="space-y-2 mb-5">
                 <button
-                    v-for="wallet in wallets.filter(w => w.popular)"
+                    v-for="wallet in popularWallets"
                     :key="wallet.id"
                     @click="connectWallet(wallet)"
                     :disabled="isConnecting"
@@ -312,7 +263,7 @@ const inAppBrowserDisplayName = computed(() => {
             <!-- More Wallets -->
             <div class="grid grid-cols-2 gap-2 mb-5">
                 <button
-                    v-for="wallet in wallets.filter(w => !w.popular)"
+                    v-for="wallet in otherWallets"
                     :key="wallet.id"
                     @click="connectWallet(wallet)"
                     :disabled="isConnecting"
@@ -371,13 +322,13 @@ const inAppBrowserDisplayName = computed(() => {
                 </div>
                 <div class="flex gap-2">
                     <button
-                        @click="handleOpenTpixApp"
+                        @click="openTpixApp"
                         class="flex-1 py-2 px-3 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-300 text-sm font-medium hover:bg-primary-500/30 transition-all"
                     >
                         Open App
                     </button>
                     <button
-                        @click="handleDownloadTpixApp"
+                        @click="downloadTpixApp"
                         class="flex-1 py-2 px-3 rounded-lg bg-accent-500/20 border border-accent-500/30 text-accent-300 text-sm font-medium hover:bg-accent-500/30 transition-all"
                     >
                         Download
