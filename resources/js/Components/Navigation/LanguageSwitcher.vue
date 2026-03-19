@@ -15,8 +15,7 @@ const currentFlag = () => availableLocales.find(l => l.code === locale.value)?.f
 function select(code) {
     setLocale(code);
     isOpen.value = false;
-    // Reload เพื่อ re-render ทั้งหน้า
-    window.location.reload();
+    // ไม่ต้อง reload — reactive ทันที
 }
 
 function handleClickOutside(e) {

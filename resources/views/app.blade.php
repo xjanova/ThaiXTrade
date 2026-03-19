@@ -43,6 +43,9 @@
     <meta name="application-name" content="TPIX TRADE">
     <meta name="apple-mobile-web-app-title" content="TPIX TRADE">
 
+    <!-- Default Locale จาก admin settings — frontend ใช้เป็น fallback ถ้า user ยังไม่เลือก -->
+    <meta name="default-locale" content="{{ \App\Models\Language::where('is_default', true)->value('code') ?? 'th' }}">
+
     <!-- Scripts -->
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @inertiaHead
