@@ -10,6 +10,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { BrowserProvider, JsonRpcProvider, parseEther } from 'ethers';
+import axios from 'axios';
 import {
     BSC_CHAIN_CONFIG,
     DEFAULT_CHAIN_ID,
@@ -190,9 +191,12 @@ export const useWalletStore = defineStore('wallet', () => {
                 }
             }
 
-            // เพิ่ม TPIX Chain (4289) เข้ากระเป๋าอัตโนมัติ — ให้ user เห็น TPIX Chain
-            // ใน MetaMask/Trust Wallet ทันทีหลังเชื่อมต่อ (ไม่ต้อง add เอง)
+            // เพิ่ม TPIX Chain (4289) เข้ากระเป๋าอัตโนมัติ
             addTPIXChainToWallet(injected).catch(() => {});
+
+            // แจ้ง backend ว่า wallet connect สำเร็จ — สร้าง user อัตโนมัติ
+            // ให้ admin เห็นในหน้า Members + Wallets
+            _registerWalletToBackend(address.value, chainId.value, type);
 
             // ตั้งค่า event listeners สำหรับ chain/account changes
             _setupListeners();
@@ -354,8 +358,13 @@ export const useWalletStore = defineStore('wallet', () => {
     }
 
     function disconnect() {
+        // แจ้ง backend ว่า disconnect
+        if (address.value) {
+            axios.post('/api/v1/wallet/disconnect', {
+                wallet_address: address.value,
+            }).catch(() => {});
+        }
         // ถ้าเป็น embedded wallet — ไม่ลบ encrypted key (แค่ lock)
-        // ผู้ใช้ยังสามารถ unlock กลับมาได้
         address.value = null;
         chainId.value = null;
         provider.value = null;
@@ -440,6 +449,24 @@ export const useWalletStore = defineStore('wallet', () => {
             error.value = 'ไม่สามารถสลับ network ได้';
             throw err;
         }
+    }
+
+    /**
+     * แจ้ง backend เมื่อ wallet connect — สร้าง user อัตโนมัติ + บันทึก connection
+     * ไม่ block flow — fire and forget
+     */
+    function _registerWalletToBackend(walletAddress, walletChainId, walletType) {
+        axios.post('/api/v1/wallet/connect', {
+            wallet_address: walletAddress,
+            chain_id: walletChainId || 56,
+            wallet_type: walletType || 'metamask',
+        }).then((res) => {
+            if (res.data?.success) {
+                console.log('[TPIX] ✅ Wallet registered to backend:', walletAddress);
+            }
+        }).catch((err) => {
+            console.warn('[TPIX] Wallet registration failed:', err.message);
+        });
     }
 
     /**
