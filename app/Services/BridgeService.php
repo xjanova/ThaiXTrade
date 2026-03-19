@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BridgeTransaction;
+use App\Models\SiteSetting;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 
@@ -18,7 +19,7 @@ class BridgeService
      */
     public function isEnabled(): bool
     {
-        $val = \App\Models\SiteSetting::get('trading', 'bridge_enabled');
+        $val = SiteSetting::get('trading', 'bridge_enabled');
 
         return $val === null || $val === true || $val === '1' || $val === 'true';
     }

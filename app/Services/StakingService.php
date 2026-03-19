@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\SiteSetting;
 use App\Models\StakingPool;
 use App\Models\StakingPosition;
 use Illuminate\Database\Eloquent\Collection;
@@ -20,7 +21,7 @@ class StakingService
      */
     public function isEnabled(): bool
     {
-        $val = \App\Models\SiteSetting::get('trading', 'staking_enabled');
+        $val = SiteSetting::get('trading', 'staking_enabled');
 
         return $val === null || $val === true || $val === '1' || $val === 'true';
     }
