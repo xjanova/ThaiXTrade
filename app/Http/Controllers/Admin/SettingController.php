@@ -101,7 +101,7 @@ class SettingController extends Controller
             'site_description' => ['nullable', 'string', 'max:500'],
             'primary_color' => ['nullable', 'string', 'max:20'],
             'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:10240'],
-            'favicon' => ['nullable', 'image', 'mimes:png,ico,svg', 'max:1024'],
+            'favicon' => ['nullable', 'file', 'mimes:png,ico,svg,jpg,jpeg,webp', 'max:5120'],
         ]);
 
         // บันทึก text settings
