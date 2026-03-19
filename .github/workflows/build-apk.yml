@@ -66,6 +66,15 @@ jobs:
           key: ${{ runner.os }}-mobile-node-${{ hashFiles('mobile/package-lock.json') }}
           restore-keys: ${{ runner.os }}-mobile-node-
 
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('mobile/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
       # Auto-bump version on main branch or manual trigger
       # เพิ่มเวอร์ชันอัตโนมัติบน main branch หรือ trigger แบบ manual
       - name: Bump version
@@ -175,9 +184,16 @@ jobs:
       - name: Build APK (Release)
         run: |
           cd android
-          ./gradlew assembleRelease \
-            -PversionName="${{ steps.version.outputs.version }}" \
-            -PversionCode=${{ steps.version.outputs.build }}
+          # Retry Gradle build up to 3 times (transient CDN/network failures)
+          for i in 1 2 3; do
+            echo "=== Build attempt $i ==="
+            ./gradlew assembleRelease \
+              -PversionName="${{ steps.version.outputs.version }}" \
+              -PversionCode=${{ steps.version.outputs.build }} \
+              --no-daemon && break
+            echo "Build attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
 
       - name: Find and rename APK
         id: find-apk
