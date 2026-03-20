@@ -114,8 +114,8 @@ class SettingController extends Controller
             'site_name' => ['nullable', 'string', 'max:100'],
             'site_description' => ['nullable', 'string', 'max:500'],
             'primary_color' => ['nullable', 'string', 'max:20'],
-            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:10240'],
-            'favicon' => ['nullable', 'file', 'mimes:png,ico,svg,jpg,jpeg,webp', 'max:5120'],
+            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:10240'],
+            'favicon' => ['nullable', 'file', 'mimes:png,ico,jpg,jpeg,webp', 'max:5120'],
         ]);
 
         // บันทึก text settings
@@ -233,7 +233,7 @@ class SettingController extends Controller
     public function updateLogo(Request $request): RedirectResponse
     {
         $request->validate([
-            'logo' => ['required', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:10240'],
+            'logo' => ['required', 'image', 'mimes:png,jpg,jpeg,webp', 'max:10240'],
         ]);
 
         // Delete old logo if exists

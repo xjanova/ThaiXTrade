@@ -12,7 +12,7 @@ services:
     environment:
       POSTGRES_DB: blockscout
       POSTGRES_USER: blockscout
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-tpix_explorer_secret}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-CHANGE_ME_GENERATE_STRONG_PASSWORD}
     volumes:
       - explorer-db-data:/var/lib/postgresql/data
     ports:
@@ -28,7 +28,7 @@ services:
     command: sh -c "bin/blockscout eval 'Elixir.Explorer.ReleaseTasks.create_and_migrate()' && bin/blockscout start"
     environment:
       # Database
-      DATABASE_URL: postgresql://blockscout:${DB_PASSWORD:-tpix_explorer_secret}@db:5432/blockscout
+      DATABASE_URL: postgresql://blockscout:${DB_PASSWORD:-CHANGE_ME_GENERATE_STRONG_PASSWORD}@db:5432/blockscout
 
       # Chain RPC — เชื่อมต่อกับ TPIX Chain validator node
       ETHEREUM_JSONRPC_VARIANT: geth
