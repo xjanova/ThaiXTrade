@@ -117,7 +117,6 @@ class Web3DeploymentService
             }
 
             return $decoded;
-
         } catch (\Exception $e) {
             Log::error('Token deployment exception', [
                 'error' => $e->getMessage(),
@@ -130,7 +129,6 @@ class Web3DeploymentService
 
     /**
      * Convert human-readable amount to wei (smallest unit).
-     * e.g., toWei("1000000", 18) = "1000000000000000000000000"
      */
     private function toWei(string $amount, int $decimals): string
     {

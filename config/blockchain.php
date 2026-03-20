@@ -56,5 +56,4 @@ return [
         'burnable' => 2,
         'mintable_burnable' => 3,
     ],
-
 ];
