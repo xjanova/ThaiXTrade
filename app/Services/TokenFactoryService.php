@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Jobs\DeployTokenJob;
 use App\Models\FactoryToken;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
 
 class TokenFactoryService
 {
@@ -64,17 +66,17 @@ class TokenFactoryService
     }
 
     /**
-     * Admin: อนุมัติ token (จำลอง deploy).
+     * Admin: อนุมัติ token → dispatch job เพื่อ deploy จริงบน TPIX Chain.
      */
     public function approveToken(FactoryToken $token): FactoryToken
     {
-        $contractAddress = '0x'.bin2hex(random_bytes(20));
+        $token->update(['status' => 'deploying']);
 
-        $token->update([
-            'status' => 'deployed',
-            'contract_address' => $contractAddress,
-            'tx_hash' => '0x'.bin2hex(random_bytes(32)),
-            'is_listed' => true,
+        DeployTokenJob::dispatch($token);
+
+        Log::info("Token {$token->symbol} approved, deployment job dispatched", [
+            'token_id' => $token->id,
+            'creator' => $token->creator_address,
         ]);
 
         return $token->fresh();

@@ -34,7 +34,7 @@ class TokenFactoryController extends Controller
         $token = FactoryToken::findOrFail($id);
         $this->tokenFactoryService->approveToken($token);
 
-        return back()->with('success', "Token {$token->symbol} approved and deployed.");
+        return back()->with('success', "Token {$token->symbol} approved. Deployment in progress...");
     }
 
     public function reject(Request $request, int $id): RedirectResponse
