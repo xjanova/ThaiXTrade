@@ -7,6 +7,8 @@ import { useState } from 'react';
 import { colors, spacing, radius, typography } from '@/theme';
 import GlassCard from '@/components/common/GlassCard';
 import { useUpdateStore } from '@/stores/updateStore';
+import { useWalletStore } from '@/stores/walletStore';
+import WalletConnectModal from '@/components/wallet/WalletConnectModal';
 import { CURRENT_VERSION } from '@/services/updateService';
 
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
@@ -54,6 +56,9 @@ export default function SettingsScreen() {
   const [notifications, setNotifications] = useState(true);
   const [priceAlerts, setPriceAlerts] = useState(false);
 
+  // Wallet state / สถานะกระเป๋าเงิน
+  const { wallet, showModal: showWalletModal } = useWalletStore();
+
   // Update state / สถานะอัปเดต
   const { updateInfo, isChecking, forceCheck, openModal } = useUpdateStore();
   const hasUpdate = updateInfo?.available ?? false;
@@ -98,23 +103,40 @@ export default function SettingsScreen() {
         )}
 
         {/* Profile Card / การ์ดโปรไฟล์ */}
-        <GlassCard variant="brand" style={styles.profileCard}>
+        <GlassCard variant="brand" style={styles.profileCard} onPress={wallet ? undefined : showWalletModal}>
           <LinearGradient
-            colors={colors.gradient.brand}
+            colors={wallet ? colors.gradient.brand : colors.gradient.card}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.avatar}
           >
-            <Ionicons name="person" size={28} color={colors.white} />
+            <Ionicons
+              name={wallet ? 'wallet' : 'wallet-outline'}
+              size={28}
+              color={wallet ? colors.white : colors.text.tertiary}
+            />
           </LinearGradient>
           <View style={{ flex: 1 }}>
-            <Text style={styles.profileName}>Connected Wallet</Text>
-            <Text style={styles.profileAddress}>0x1234...5678</Text>
+            {wallet ? (
+              <>
+                <Text style={styles.profileName}>{wallet.providerName}</Text>
+                <Text style={styles.profileAddress}>{wallet.shortAddress}</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.profileName}>Connect Wallet</Text>
+                <Text style={styles.profileAddress}>Tap to connect / แตะเพื่อเชื่อมต่อ</Text>
+              </>
+            )}
           </View>
-          <View style={styles.networkBadge}>
-            <View style={styles.networkDot} />
-            <Text style={styles.networkText}>BSC</Text>
-          </View>
+          {wallet ? (
+            <View style={styles.networkBadge}>
+              <View style={styles.networkDot} />
+              <Text style={styles.networkText}>{wallet.chain}</Text>
+            </View>
+          ) : (
+            <Ionicons name="add-circle-outline" size={24} color={colors.brand.cyan} />
+          )}
         </GlassCard>
 
         {/* Account / บัญชี */}
@@ -123,7 +145,8 @@ export default function SettingsScreen() {
           <SettingItem
             icon="wallet-outline"
             title="Wallet Management"
-            subtitle="Connected wallets & networks"
+            subtitle={wallet ? `${wallet.providerName} · ${wallet.chain}` : 'Connect a wallet / เชื่อมต่อกระเป๋า'}
+            onPress={showWalletModal}
           />
           <View style={styles.settingDivider} />
           <SettingItem
@@ -276,6 +299,9 @@ export default function SettingsScreen() {
 
         <View style={{ height: 120 }} />
       </ScrollView>
+
+      {/* Wallet Connect Modal / Modal เชื่อมต่อกระเป๋า */}
+      <WalletConnectModal />
     </View>
   );
 }
