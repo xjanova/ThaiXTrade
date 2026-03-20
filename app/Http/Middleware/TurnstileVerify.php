@@ -37,7 +37,11 @@ class TurnstileVerify
         }
 
         // Check if Turnstile is enabled in site settings
-        $turnstileEnabled = SiteSetting::get('security', 'turnstile_enabled', false);
+        // ใช้ filter_var เพื่อรองรับทั้ง boolean และ string ('false', '0', '') จาก DB
+        $turnstileEnabled = filter_var(
+            SiteSetting::get('security', 'turnstile_enabled', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
 
         if (! $turnstileEnabled) {
             return $next($request);

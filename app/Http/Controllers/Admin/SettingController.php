@@ -185,6 +185,11 @@ class SettingController extends Controller
 
             $type = $existing?->type ?? 'string';
 
+            // แก้ type ที่ถูก corrupt: key ลงท้ายด้วย _enabled ควรเป็น boolean เสมอ
+            if (str_ends_with($key, '_enabled') && ! in_array($type, ['boolean', 'bool'])) {
+                $type = 'boolean';
+            }
+
             // แปลง boolean values ให้ถูกต้องก่อนบันทึก
             if ($type === 'boolean' || $type === 'bool') {
                 $value = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
