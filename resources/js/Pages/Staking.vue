@@ -5,7 +5,7 @@
  * Rewards pool: 1.4B TPIX over 5 years
  * Developed by Xman Studio
  */
-import { ref, computed, onMounted, inject } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
@@ -14,7 +14,6 @@ import { useTranslation } from '@/Composables/useTranslation';
 
 const { t } = useTranslation();
 const walletStore = useWalletStore();
-const openWalletModal = inject('openWalletModal', () => {});
 const pools = ref([]);
 const positions = ref([]);
 const stats = ref(null);
@@ -131,7 +130,7 @@ onMounted(async () => {
                 </div>
                 <h3 class="text-lg font-semibold text-white mb-2">เชื่อมต่อ Wallet เพื่อเริ่ม Staking</h3>
                 <p class="text-dark-400 text-sm mb-4">เชื่อมต่อกระเป๋าเงินของคุณเพื่อ Stake TPIX และรับ Rewards</p>
-                <button @click="openWalletModal" class="px-6 py-3 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-primary-500/20 transition-all">
+                <button @click="walletStore.openConnectModal()" class="px-6 py-3 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-primary-500/20 transition-all">
                     Connect Wallet
                 </button>
             </div>

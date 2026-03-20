@@ -5,13 +5,12 @@
  * ส่ง transaction บน BSC แล้ว submit tx_hash ไป backend
  * Developed by Xman Studio
  */
-import { ref, watch, inject } from 'vue';
+import { ref, watch } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenSale } from '@/Composables/useTokenSale';
 import { isMobile, downloadTpixApp } from '@/utils/mobileWallet';
 
 const walletStore = useWalletStore();
-const openWalletModal = inject('openWalletModal', () => {});
 const mobile = isMobile();
 const {
     selectedCurrency,
@@ -127,7 +126,7 @@ function formatNumber(n) {
 
             <!-- ปุ่ม Connect Wallet (เปิด WalletModal ซึ่งมี TPIX Wallet ให้สร้างได้) -->
             <button
-                @click="openWalletModal"
+                @click="walletStore.openConnectModal()"
                 class="w-full py-3 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-primary-500/20 transition-all"
             >
                 Connect Wallet / สร้างกระเป๋า

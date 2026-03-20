@@ -534,6 +534,11 @@ export const useWalletStore = defineStore('wallet', () => {
         injected.removeListener('chainChanged', _onChainChanged);
     }
 
+    // Wallet modal state (ให้ทุก component เรียกเปิดได้)
+    const showConnectModal = ref(false);
+    function openConnectModal() { showConnectModal.value = true; }
+    function closeConnectModal() { showConnectModal.value = false; }
+
     return {
         // State
         address,
@@ -544,6 +549,7 @@ export const useWalletStore = defineStore('wallet', () => {
         error,
         walletType,
         supportedChains,
+        showConnectModal,
         // Computed
         isConnected,
         shortAddress,
@@ -566,5 +572,8 @@ export const useWalletStore = defineStore('wallet', () => {
         hasStoredEmbeddedWallet,
         tpixBalance,
         isEmbedded,
+        // Modal control
+        openConnectModal,
+        closeConnectModal,
     };
 });
