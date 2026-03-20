@@ -181,4 +181,3 @@ function formatDate(iso) {
         </div>
     </AppLayout>
 </template>
-</script>
