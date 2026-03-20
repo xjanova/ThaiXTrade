@@ -90,8 +90,11 @@ class TurnstileVerify
                 'message' => $e->getMessage(),
             ]);
 
-            // Fail open: allow request if Turnstile service is unreachable
-            return $next($request);
+            // Fail closed: block request if Turnstile service is unreachable
+            // ป้องกัน attacker DDoS Cloudflare เพื่อ bypass bot protection
+            return back()->withErrors([
+                'turnstile' => 'Security service unavailable. Please try again later.',
+            ]);
         }
 
         return $next($request);

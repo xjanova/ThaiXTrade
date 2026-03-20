@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -64,7 +65,7 @@ class ProfileController extends Controller
 
         $validated = $request->validate([
             'current_password' => ['required', 'string'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => ['required', 'string', 'min:12', 'confirmed', Password::min(12)->mixedCase()->numbers()->symbols()],
         ]);
 
         if (! Hash::check($validated['current_password'], $admin->password)) {

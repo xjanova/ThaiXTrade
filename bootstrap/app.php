@@ -10,6 +10,7 @@ use App\Http\Middleware\AdminRole;
 use App\Http\Middleware\AuditAdmin;
 use App\Http\Middleware\EnsureEmailIsVerified;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\TurnstileVerify;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -31,6 +32,10 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->web(prepend: [
+            SecurityHeaders::class,
+        ]);
+
         $middleware->web(append: [
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,

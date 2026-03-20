@@ -49,8 +49,9 @@ class AuthController extends Controller
      */
     public function setup(Request $request): RedirectResponse
     {
-        // Only allow if no admin users exist
-        if (AdminUser::count() > 0) {
+        // Only allow if no admin users exist — use DB lock to prevent race condition
+        $adminCount = AdminUser::lockForUpdate()->count();
+        if ($adminCount > 0) {
             return redirect()->route('admin.login')
                 ->with('error', 'Setup already completed.');
         }

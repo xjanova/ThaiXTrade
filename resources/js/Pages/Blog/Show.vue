@@ -9,6 +9,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import axios from 'axios';
 import { useTranslation } from '@/Composables/useTranslation';
+import { sanitizeHtml } from '@/utils/sanitize';
 
 const { t } = useTranslation();
 const props = defineProps({ slug: String });
@@ -81,7 +82,7 @@ onMounted(fetchArticle);
                 <div class="prose prose-invert prose-lg max-w-none
                     prose-headings:text-white prose-p:text-dark-200 prose-a:text-primary-400
                     prose-strong:text-white prose-li:text-dark-200"
-                    v-html="article.content">
+                    v-html="sanitizeHtml(article.content)">
                 </div>
 
                 <!-- Back -->

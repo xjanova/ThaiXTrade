@@ -173,7 +173,7 @@ onUnmounted(() => {
         >
             <div
                 v-if="showDropdown"
-                class="absolute right-0 top-full mt-2 w-64 rounded-xl glass border border-white/10 shadow-xl py-2 z-50"
+                class="absolute right-0 top-full mt-2 w-64 rounded-xl bg-dark-900/90 backdrop-blur-2xl border border-white/10 shadow-2xl py-2 z-50"
             >
                 <!-- Header -->
                 <div class="px-4 py-2 border-b border-white/5">

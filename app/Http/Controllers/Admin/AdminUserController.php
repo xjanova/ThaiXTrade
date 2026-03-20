@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -59,7 +60,7 @@ class AdminUserController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:admin_users,email'],
-            'password' => ['required', 'string', 'min:8'],
+            'password' => ['required', 'string', 'min:12', Password::min(12)->mixedCase()->numbers()->symbols()],
             'role' => ['required', 'string', 'in:super_admin,admin,moderator,support'],
             'is_active' => ['boolean'],
         ]);
@@ -120,7 +121,7 @@ class AdminUserController extends Controller
     public function resetPassword(Request $request, AdminUser $user): RedirectResponse
     {
         $validated = $request->validate([
-            'password' => ['required', 'string', 'min:8'],
+            'password' => ['required', 'string', 'min:12', Password::min(12)->mixedCase()->numbers()->symbols()],
         ]);
 
         $user->update(['password' => Hash::make($validated['password'])]);

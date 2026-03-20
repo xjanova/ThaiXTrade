@@ -24,12 +24,25 @@ class SettingController extends Controller
      */
     public function index(): InertiaResponse
     {
+        // Keys ที่ต้อง mask — ไม่ส่งค่าจริงไป frontend (ป้องกัน secret leak)
+        $secretKeys = [
+            'turnstile_secret_key',
+            'stripe_secret_key',
+            'stripe_webhook_secret',
+            'groq_api_key',
+        ];
+
         // ดึง settings ทั้งหมดแล้วแปลงเป็น flat key-value (cast ตาม type)
         $allSettings = SiteSetting::all();
         $flat = [];
         foreach ($allSettings as $setting) {
-            // cast ค่าตาม type เพื่อให้ Vue ได้ค่าที่ถูกต้อง (boolean, int, etc.)
-            $flat[$setting->key] = SiteSetting::castValuePublic($setting->value, $setting->type);
+            // Mask secret keys — แสดงแค่ 4 ตัวสุดท้าย
+            if (in_array($setting->key, $secretKeys) && $setting->value) {
+                $flat[$setting->key] = str_repeat('*', 20).substr($setting->value, -4);
+            } else {
+                // cast ค่าตาม type เพื่อให้ Vue ได้ค่าที่ถูกต้อง (boolean, int, etc.)
+                $flat[$setting->key] = SiteSetting::castValuePublic($setting->value, $setting->type);
+            }
 
             // แปลง image path เป็น URL ที่เข้าถึงได้
             if ($setting->type === 'image' && $setting->value) {
@@ -101,8 +114,8 @@ class SettingController extends Controller
             'site_name' => ['nullable', 'string', 'max:100'],
             'site_description' => ['nullable', 'string', 'max:500'],
             'primary_color' => ['nullable', 'string', 'max:20'],
-            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:10240'],
-            'favicon' => ['nullable', 'file', 'mimes:png,ico,svg,jpg,jpeg,webp', 'max:5120'],
+            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:10240'],
+            'favicon' => ['nullable', 'file', 'mimes:png,ico,jpg,jpeg,webp', 'max:5120'],
         ]);
 
         // บันทึก text settings
@@ -200,6 +213,11 @@ class SettingController extends Controller
                 $value = trim($value);
             }
 
+            // ข้าม masked values — ถ้า admin ไม่ได้เปลี่ยน secret key จะส่งค่า masked กลับมา
+            if (is_string($value) && str_starts_with($value, '********************')) {
+                continue;
+            }
+
             SiteSetting::set($tab, $key, $value, $type);
         }
 
@@ -215,7 +233,7 @@ class SettingController extends Controller
     public function updateLogo(Request $request): RedirectResponse
     {
         $request->validate([
-            'logo' => ['required', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:10240'],
+            'logo' => ['required', 'image', 'mimes:png,jpg,jpeg,webp', 'max:10240'],
         ]);
 
         // Delete old logo if exists

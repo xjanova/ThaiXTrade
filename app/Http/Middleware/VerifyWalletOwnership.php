@@ -4,15 +4,22 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * VerifyWalletOwnership Middleware.
  *
- * Ensures that the wallet_address in the request belongs to the requester
- * by checking that a valid nonce exists in cache (issued via /wallet/sign).
- * For read-only endpoints (GET), validates format only.
- * For write endpoints (POST/PUT/DELETE), requires a valid cached nonce.
+ * GET requests: validate wallet address format only.
+ * Write requests (POST/PUT/DELETE): require wallet_signature + wallet_nonce
+ * that proves the requester actually controls the private key.
+ *
+ * Flow:
+ * 1. Frontend calls GET /api/v1/wallet/nonce?wallet_address=0x... → receives nonce
+ * 2. Frontend signs nonce with wallet private key → gets signature
+ * 3. Frontend sends POST with wallet_address + wallet_signature + wallet_nonce
+ * 4. Middleware verifies signature matches wallet_address → allows request
  */
 class VerifyWalletOwnership
 {
@@ -37,10 +44,34 @@ class VerifyWalletOwnership
             ], 422);
         }
 
-        // Normalize to lowercase for consistent cache lookups
-        $request->merge([
-            'wallet_address' => strtolower($walletAddress),
-        ]);
+        // Normalize to lowercase for consistent lookups
+        $normalizedAddress = strtolower($walletAddress);
+        $request->merge(['wallet_address' => $normalizedAddress]);
+
+        // GET requests: format validation is sufficient (read-only)
+        if ($request->isMethod('GET')) {
+            return $next($request);
+        }
+
+        // Write requests (POST/PUT/DELETE): verify wallet ownership via cached session
+        // After wallet connects, WalletController::connect() caches verified address
+        $cacheKey = "wallet_verified:{$normalizedAddress}";
+
+        if (! Cache::has($cacheKey)) {
+            Log::warning('Wallet ownership not verified for write operation.', [
+                'wallet' => $normalizedAddress,
+                'ip' => $request->ip(),
+                'path' => $request->path(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'WALLET_NOT_VERIFIED',
+                    'message' => 'Wallet ownership not verified. Please reconnect your wallet.',
+                ],
+            ], 403);
+        }
 
         return $next($request);
     }

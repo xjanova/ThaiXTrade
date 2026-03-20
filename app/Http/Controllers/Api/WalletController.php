@@ -57,6 +57,15 @@ class WalletController extends Controller
             $request->ip()
         );
 
+        // Cache wallet as verified for write operations (4 hours)
+        // VerifyWalletOwnership middleware จะตรวจ cache นี้สำหรับ POST/PUT/DELETE
+        $normalizedAddress = strtolower($validated['wallet_address']);
+        Cache::put("wallet_verified:{$normalizedAddress}", [
+            'chain_id' => $validated['chain_id'],
+            'ip' => $request->ip(),
+            'verified_at' => now()->toIso8601String(),
+        ], 14400);
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -77,6 +86,12 @@ class WalletController extends Controller
      */
     public function disconnect(Request $request): JsonResponse
     {
+        // Clear verified wallet cache on disconnect
+        $walletAddress = $request->input('wallet_address');
+        if ($walletAddress && preg_match('/^0x[a-fA-F0-9]{40}$/', $walletAddress)) {
+            Cache::forget('wallet_verified:'.strtolower($walletAddress));
+        }
+
         return response()->json([
             'success' => true,
             'data' => [

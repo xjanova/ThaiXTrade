@@ -41,6 +41,14 @@ export default defineConfig({
                 },
             },
         },
+        // Production: strip console.log/warn เพื่อป้องกัน information leak
+        minify: 'terser',
+        terserOptions: {
+            compress: {
+                drop_console: true,
+                drop_debugger: true,
+            },
+        },
     },
     server: {
         hmr: {

@@ -133,7 +133,7 @@ class SwapApiController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Swap quote error', [
-                'error' => $e->getMessage(),
+                'error' => 'Operation failed. Please try again.',
                 'params' => $validated,
             ]);
 
@@ -251,7 +251,7 @@ class SwapApiController extends Controller
             ], 201);
         } catch (\Exception $e) {
             Log::error('Swap execution error', [
-                'error' => $e->getMessage(),
+                'error' => 'Operation failed. Please try again.',
                 'params' => $validated,
             ]);
 
@@ -324,7 +324,7 @@ class SwapApiController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Swap routes error', [
-                'error' => $e->getMessage(),
+                'error' => 'Operation failed. Please try again.',
                 'chain_id' => $request->input('chain_id'),
             ]);
 

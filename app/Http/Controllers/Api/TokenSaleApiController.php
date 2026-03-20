@@ -123,7 +123,7 @@ class TokenSaleApiController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'PREVIEW_ERROR', 'message' => $e->getMessage()],
+                'error' => ['code' => 'PREVIEW_ERROR', 'message' => 'Operation failed. Please try again.'],
             ], 400);
         }
     }
@@ -174,7 +174,7 @@ class TokenSaleApiController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'PURCHASE_ERROR', 'message' => $e->getMessage()],
+                'error' => ['code' => 'PURCHASE_ERROR', 'message' => 'Operation failed. Please try again.'],
             ], 400);
         }
     }
@@ -228,7 +228,7 @@ class TokenSaleApiController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'STRIPE_ERROR', 'message' => $e->getMessage()],
+                'error' => ['code' => 'STRIPE_ERROR', 'message' => 'Operation failed. Please try again.'],
             ], 400);
         }
     }
@@ -245,7 +245,7 @@ class TokenSaleApiController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'STATUS_ERROR', 'message' => $e->getMessage()],
+                'error' => ['code' => 'STATUS_ERROR', 'message' => 'Operation failed. Please try again.'],
             ], 400);
         }
     }
