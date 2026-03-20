@@ -263,4 +263,74 @@ class FoodPassportApiController extends Controller
 
         return response()->json(['success' => true, 'data' => $devices]);
     }
+
+    /**
+     * ทดสอบ connection ของ device
+     */
+    public function testDevice(string $deviceId): JsonResponse
+    {
+        $result = $this->ioTService->testConnection($deviceId);
+
+        return response()->json([
+            'success' => $result['success'],
+            'data' => $result,
+        ], $result['success'] ? 200 : 404);
+    }
+
+    /**
+     * Generate config สำหรับ device (API endpoint, payload template)
+     */
+    public function deviceConfig(string $deviceId): JsonResponse
+    {
+        $device = \App\Models\IoTDevice::where('device_id', $deviceId)->first();
+
+        if (! $device) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NOT_FOUND', 'message' => 'Device not found'],
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->ioTService->generateConfig($device),
+        ]);
+    }
+
+    /**
+     * FDP Token info — ข้อมูลเหรียญ FoodPassport Token
+     */
+    public function fdpTokenInfo(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'name' => 'FoodPassport Token',
+                'symbol' => 'FDP',
+                'total_supply' => '100,000,000',
+                'chain' => 'TPIX Chain (ID: 4289)',
+                'decimals' => 18,
+                'rewards' => [
+                    'per_certificate' => 100,
+                    'per_trace' => 1,
+                    'budget' => '40,000,000 FDP (40%)',
+                ],
+                'use_cases' => [
+                    'reward' => 'เกษตรกรได้ FDP เมื่อผ่านการรับรอง',
+                    'payment' => 'จ่าย FDP เป็นค่าตรวจสอบคุณภาพ',
+                    'staking' => 'ล็อค FDP เพื่อเพิ่ม Trust Score',
+                    'governance' => 'โหวตเรื่อง food safety standards',
+                    'trade' => 'เทรดบน TPIX TRADE DEX (FDP/TPIX)',
+                ],
+                'tokenomics' => [
+                    ['label' => 'Farmer Rewards', 'percent' => 40, 'amount' => '40,000,000'],
+                    ['label' => 'Ecosystem Dev', 'percent' => 20, 'amount' => '20,000,000'],
+                    ['label' => 'Liquidity', 'percent' => 15, 'amount' => '15,000,000'],
+                    ['label' => 'Team & Advisors', 'percent' => 10, 'amount' => '10,000,000'],
+                    ['label' => 'Community', 'percent' => 10, 'amount' => '10,000,000'],
+                    ['label' => 'Reserve', 'percent' => 5, 'amount' => '5,000,000'],
+                ],
+            ],
+        ]);
+    }
 }

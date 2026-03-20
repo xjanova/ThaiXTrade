@@ -154,12 +154,15 @@ Route::prefix('v1')->group(function () {
         Route::get('/stats', [FoodPassportApiController::class, 'stats']);
         Route::get('/certificates', [FoodPassportApiController::class, 'certificates']);
         Route::get('/sensor-data/{productId}', [FoodPassportApiController::class, 'sensorData']);
+        Route::get('/fdp-token', [FoodPassportApiController::class, 'fdpTokenInfo']);
 
-        // IoT Ingestion — อุปกรณ์ IoT ส่งข้อมูลเข้าระบบ (rate limited)
+        // IoT — Ingestion + test + config
         Route::post('/iot/ingest', [FoodPassportApiController::class, 'iotIngest'])
             ->middleware('throttle:120,1');
         Route::post('/iot/batch-ingest', [FoodPassportApiController::class, 'iotBatchIngest'])
             ->middleware('throttle:30,1');
+        Route::get('/iot/test/{deviceId}', [FoodPassportApiController::class, 'testDevice']);
+        Route::get('/iot/config/{deviceId}', [FoodPassportApiController::class, 'deviceConfig']);
     });
 
     // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)
