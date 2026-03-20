@@ -152,7 +152,7 @@ jobs:
           echo "Version: $(cat $GITHUB_OUTPUT | grep version | head -1)"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       # Run lint and type check before build
       - name: Lint & type check
