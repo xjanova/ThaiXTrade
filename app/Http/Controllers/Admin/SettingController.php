@@ -24,11 +24,12 @@ class SettingController extends Controller
      */
     public function index(): InertiaResponse
     {
-        // ดึง settings ทั้งหมดแล้วแปลงเป็น flat key-value
+        // ดึง settings ทั้งหมดแล้วแปลงเป็น flat key-value (cast ตาม type)
         $allSettings = SiteSetting::all();
         $flat = [];
         foreach ($allSettings as $setting) {
-            $flat[$setting->key] = $setting->value;
+            // cast ค่าตาม type เพื่อให้ Vue ได้ค่าที่ถูกต้อง (boolean, int, etc.)
+            $flat[$setting->key] = SiteSetting::castValuePublic($setting->value, $setting->type);
 
             // แปลง image path เป็น URL ที่เข้าถึงได้
             if ($setting->type === 'image' && $setting->value) {
@@ -177,7 +178,19 @@ class SettingController extends Controller
         $tab = last(explode('/', $request->path())); // trading, security, social
 
         foreach ($request->except('_method') as $key => $value) {
-            SiteSetting::set($tab, $key, $value);
+            // ดึง type เดิมจาก DB เพื่อไม่ให้ boolean ถูก overwrite เป็น string
+            $existing = SiteSetting::where('group', $tab)
+                ->where('key', $key)
+                ->first();
+
+            $type = $existing?->type ?? 'string';
+
+            // แปลง boolean values ให้ถูกต้องก่อนบันทึก
+            if ($type === 'boolean' || $type === 'bool') {
+                $value = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
+            }
+
+            SiteSetting::set($tab, $key, $value, $type);
         }
 
         SiteSetting::clearCache();

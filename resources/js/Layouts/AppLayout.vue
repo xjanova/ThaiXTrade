@@ -4,7 +4,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, provide } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { useWalletStore } from '@/Stores/walletStore';
 import NavBar from '@/Components/Navigation/NavBar.vue';
@@ -46,6 +46,9 @@ const toggleSidebar = () => {
 const openWalletModal = () => {
     showWalletModal.value = true;
 };
+
+// ให้ child pages เรียก openWalletModal ได้ผ่าน inject
+provide('openWalletModal', openWalletModal);
 
 const closeWalletModal = () => {
     showWalletModal.value = false;

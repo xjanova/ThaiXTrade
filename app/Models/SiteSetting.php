@@ -137,6 +137,14 @@ class SiteSetting extends Model
     // =========================================================================
 
     /**
+     * Cast a setting value to its proper type (public accessor for controllers).
+     */
+    public static function castValuePublic(?string $value, string $type): mixed
+    {
+        return static::castValue($value, $type);
+    }
+
+    /**
      * Cast a setting value to its proper type.
      */
     protected static function castValue(?string $value, string $type): mixed

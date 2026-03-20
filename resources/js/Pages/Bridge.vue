@@ -5,7 +5,7 @@
  * lock/mint mechanism — fee 0.1% (min 1 TPIX)
  * Developed by Xman Studio
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, inject } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
@@ -14,6 +14,7 @@ import { useTranslation } from '@/Composables/useTranslation';
 
 const { t } = useTranslation();
 const walletStore = useWalletStore();
+const openWalletModal = inject('openWalletModal', () => {});
 const bridgeInfo = ref(null);
 const direction = ref('bsc_to_tpix');
 const amount = ref('');
@@ -128,9 +129,11 @@ onMounted(() => { fetchInfo(); fetchHistory(); });
                 </div>
 
                 <!-- Bridge Button -->
-                <button @click="initiateBridge" :disabled="isBridging || !amount"
+                <button
+                    @click="walletStore.isConnected ? initiateBridge() : openWalletModal()"
+                    :disabled="isBridging || (walletStore.isConnected && !amount)"
                     class="w-full py-4 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-bold text-lg hover:shadow-lg hover:shadow-primary-500/20 disabled:opacity-50 transition-all">
-                    {{ isBridging ? '🔄 กำลังดำเนินการ...' : walletStore.isConnected ? '🌉 ' + t('bridge.bridgeNow') : '🔗 ' + t('bridge.connectFirst') }}
+                    {{ isBridging ? '🔄 กำลังดำเนินการ...' : walletStore.isConnected ? '🌉 ' + t('bridge.bridgeNow') : '🔗 Connect Wallet' }}
                 </button>
             </div>
 
