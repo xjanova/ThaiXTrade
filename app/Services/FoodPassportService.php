@@ -110,6 +110,19 @@ class FoodPassportService
             'status' => 'certified',
         ]);
 
+        // เพิ่ม FDP reward info ใน certificate data
+        $certificate->update([
+            'certificate_data' => array_merge($certificateData, [
+                'fdp_reward' => [
+                    'farmer_reward' => 100,        // 100 FDP per certificate
+                    'trace_rewards' => $traceCount, // 1 FDP per trace
+                    'total_fdp_earned' => 100 + $traceCount,
+                    'token_symbol' => 'FDP',
+                    'chain' => 'TPIX Chain (ID: 4289)',
+                ],
+            ]),
+        ]);
+
         return $certificate;
     }
 

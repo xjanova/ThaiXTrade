@@ -18,6 +18,7 @@ import IoTDashboard from '@/Components/FoodPassport/IoTDashboard.vue';
 import MintCertificate from '@/Components/FoodPassport/MintCertificate.vue';
 import ProductExplorer from '@/Components/FoodPassport/ProductExplorer.vue';
 import TokenGuide from '@/Components/FoodPassport/TokenGuide.vue';
+import FDPTokenPanel from '@/Components/FoodPassport/FDPTokenPanel.vue';
 
 const props = defineProps({
     stats: { type: Object, default: () => ({}) },
@@ -40,7 +41,8 @@ const tabs = [
     { id: 'register', label: 'ลงทะเบียน', icon: 'plus' },
     { id: 'my-products', label: 'สินค้าของฉัน', icon: 'box' },
     { id: 'iot', label: 'IoT Devices', icon: 'cpu' },
-    { id: 'token-guide', label: 'สร้างเหรียญ', icon: 'coin' },
+    { id: 'fdp-token', label: 'FDP Token', icon: 'coin' },
+    { id: 'token-guide', label: 'สร้างเหรียญ', icon: 'factory' },
     { id: 'explore', label: 'สำรวจ', icon: 'search' },
 ];
 
@@ -286,6 +288,11 @@ onMounted(() => {
                         :is-connected="walletStore.isConnected"
                         @device-registered="(d) => iotDevices.unshift(d)"
                     />
+                </template>
+
+                <!-- FDP Token -->
+                <template v-if="activeTab === 'fdp-token'">
+                    <FDPTokenPanel />
                 </template>
 
                 <!-- Token Guide -->

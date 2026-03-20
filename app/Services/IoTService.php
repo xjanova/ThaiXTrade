@@ -224,6 +224,61 @@ class IoTService
     }
 
     // ═══════════════════════════════════════════
+    //  TEST CONNECTION
+    // ═══════════════════════════════════════════
+
+    /**
+     * ทดสอบ connection ของ device — ส่ง ping เพื่อเช็คว่า device ยังทำงาน
+     */
+    public function testConnection(string $deviceId): array
+    {
+        $device = IoTDevice::where('device_id', $deviceId)->first();
+
+        if (! $device) {
+            return ['success' => false, 'error' => 'Device not found'];
+        }
+
+        // อัปเดต last_ping เป็นเวลาปัจจุบัน
+        $device->update(['last_ping_at' => now()]);
+
+        return [
+            'success' => true,
+            'device_id' => $device->device_id,
+            'status' => $device->status,
+            'last_ping' => now()->toIso8601String(),
+            'total_traces' => $device->traces()->count(),
+        ];
+    }
+
+    /**
+     * Generate config สำหรับ device (API endpoint, device_id, etc.)
+     */
+    public function generateConfig(IoTDevice $device): array
+    {
+        $protocol = $device->config['protocol'] ?? 'http';
+        $interval = $device->config['interval_minutes'] ?? 15;
+
+        return [
+            'device_id' => $device->device_id,
+            'protocol' => $protocol,
+            'interval_minutes' => $interval,
+            'api_endpoint' => url('/api/v1/food-passport/iot/ingest'),
+            'batch_endpoint' => url('/api/v1/food-passport/iot/batch-ingest'),
+            'headers' => [
+                'Content-Type' => 'application/json',
+            ],
+            'payload_template' => [
+                'device_id' => $device->device_id,
+                'product_id' => '<<YOUR_PRODUCT_ID>>',
+                'stage' => 'farm',
+                'temperature' => 0.0,
+                'humidity' => 0.0,
+                'location' => $device->location ?? '0,0',
+            ],
+        ];
+    }
+
+    // ═══════════════════════════════════════════
     //  HELPERS
     // ═══════════════════════════════════════════
 
