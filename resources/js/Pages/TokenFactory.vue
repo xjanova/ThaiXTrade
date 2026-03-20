@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted, watch, inject } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
@@ -14,7 +14,6 @@ import { useTranslation } from '@/Composables/useTranslation';
 
 const { t } = useTranslation();
 const walletStore = useWalletStore();
-const openWalletModal = inject('openWalletModal', () => {});
 const factoryStore = useTokenFactoryStore();
 
 const activeTab = ref('create');
@@ -199,7 +198,7 @@ function formatSupply(val) {
                                 </svg>
                             </div>
                             <p class="text-gray-400 mb-4">Connect your wallet to create a token.</p>
-                            <button @click="openWalletModal" class="btn-primary px-6 py-2.5">Connect Wallet</button>
+                            <button @click="walletStore.openConnectModal()" class="btn-primary px-6 py-2.5">Connect Wallet</button>
                         </div>
 
                         <form v-else @submit.prevent="handleCreate" class="space-y-5">
@@ -312,7 +311,7 @@ function formatSupply(val) {
             <div v-if="activeTab === 'my-tokens'" class="pb-16">
                 <div v-if="!walletStore.isConnected" class="text-center py-16">
                     <p class="text-gray-400 mb-4">Connect your wallet to view your tokens.</p>
-                    <button @click="openWalletModal" class="btn-primary px-6 py-2.5">Connect Wallet</button>
+                    <button @click="walletStore.openConnectModal()" class="btn-primary px-6 py-2.5">Connect Wallet</button>
                 </div>
 
                 <div v-else-if="factoryStore.myTokens.length === 0" class="text-center py-16">

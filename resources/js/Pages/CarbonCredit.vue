@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted, watch, inject } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
@@ -14,7 +14,6 @@ import { useTranslation } from '@/Composables/useTranslation';
 
 const { t } = useTranslation();
 const walletStore = useWalletStore();
-const openWalletModal = inject('openWalletModal', () => {});
 const carbonStore = useCarbonCreditStore();
 
 const activeTab = ref('marketplace');
@@ -234,7 +233,7 @@ function formatNumber(val) {
                                     <p class="text-lg font-bold text-green-400">${{ project.price_per_credit_usd }}</p>
                                 </div>
                                 <button
-                                    @click="walletStore.isConnected ? openBuyModal(project) : openWalletModal()"
+                                    @click="walletStore.isConnected ? openBuyModal(project) : walletStore.openConnectModal()"
                                     :disabled="project.available_credits <= 0"
                                     class="btn-primary px-4 py-2 text-sm disabled:opacity-50"
                                 >
@@ -255,7 +254,7 @@ function formatNumber(val) {
             <div v-if="activeTab === 'my-credits'" class="pb-16">
                 <div v-if="!walletStore.isConnected" class="text-center py-16">
                     <p class="text-gray-400 mb-4">Connect your wallet to view your carbon credits.</p>
-                    <button @click="openWalletModal" class="btn-primary px-6 py-2.5">Connect Wallet</button>
+                    <button @click="walletStore.openConnectModal()" class="btn-primary px-6 py-2.5">Connect Wallet</button>
                 </div>
 
                 <div v-else-if="carbonStore.myCredits.length === 0" class="text-center py-16">
@@ -305,7 +304,7 @@ function formatNumber(val) {
             <div v-if="activeTab === 'retirements'" class="pb-16">
                 <div v-if="!walletStore.isConnected" class="text-center py-16">
                     <p class="text-gray-400 mb-4">Connect your wallet to view your retirements.</p>
-                    <button @click="openWalletModal" class="btn-primary px-6 py-2.5">Connect Wallet</button>
+                    <button @click="walletStore.openConnectModal()" class="btn-primary px-6 py-2.5">Connect Wallet</button>
                 </div>
 
                 <div v-else-if="carbonStore.myRetirements.length === 0" class="text-center py-16">

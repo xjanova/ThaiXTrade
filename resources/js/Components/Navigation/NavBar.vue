@@ -94,7 +94,7 @@ const handleDisconnect = () => {
                             </svg>
                             <span>{{ t('common.viewAll') }}</span>
                         </button>
-                        <div class="absolute top-full left-0 mt-1 w-48 rounded-xl glass border border-white/10 shadow-xl py-2 z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all">
+                        <div class="absolute top-full left-0 mt-1 w-48 rounded-xl bg-dark-900/90 backdrop-blur-2xl border border-white/10 shadow-2xl py-2 z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all">
                             <Link href="/ai-assistant" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
                                 AI Assistant
                             </Link>
@@ -168,7 +168,7 @@ const handleDisconnect = () => {
                         >
                             <div
                                 v-if="showWalletMenu"
-                                class="absolute right-0 top-full mt-2 w-56 rounded-xl glass border border-white/10 shadow-xl py-2 z-50"
+                                class="absolute right-0 top-full mt-2 w-56 rounded-xl bg-dark-900/90 backdrop-blur-2xl border border-white/10 shadow-2xl py-2 z-50"
                                 @click.stop
                             >
                                 <div class="px-4 py-2 border-b border-white/5">

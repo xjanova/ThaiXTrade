@@ -4,7 +4,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted, provide } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { useWalletStore } from '@/Stores/walletStore';
 import NavBar from '@/Components/Navigation/NavBar.vue';
@@ -23,6 +23,7 @@ const props = defineProps({
 const page = usePage();
 const walletStore = useWalletStore();
 const showSidebar = ref(true);
+const showMobileMenu = ref(false);
 const showWalletModal = ref(false);
 
 const user = computed(() => page.props.auth?.user);
@@ -40,15 +41,25 @@ const wallet = computed(() => {
 });
 
 const toggleSidebar = () => {
-    showSidebar.value = !showSidebar.value;
+    // Desktop: toggle sidebar, Mobile: toggle mobile menu
+    if (window.innerWidth >= 1024) {
+        showSidebar.value = !showSidebar.value;
+    } else {
+        showMobileMenu.value = !showMobileMenu.value;
+    }
 };
 
 const openWalletModal = () => {
     showWalletModal.value = true;
 };
 
-// ให้ child pages เรียก openWalletModal ได้ผ่าน inject
-provide('openWalletModal', openWalletModal);
+// watch store เพื่อให้ child pages เรียกเปิด modal ผ่าน walletStore.openConnectModal()
+watch(() => walletStore.showConnectModal, (val) => {
+    if (val) {
+        showWalletModal.value = true;
+        walletStore.showConnectModal = false;
+    }
+});
 
 const closeWalletModal = () => {
     showWalletModal.value = false;
@@ -83,9 +94,37 @@ onMounted(async () => {
             @connect-wallet="openWalletModal"
         />
 
+        <!-- Mobile Menu Overlay -->
+        <Teleport to="body">
+            <Transition
+                enter-active-class="transition ease-out duration-200"
+                enter-from-class="opacity-0"
+                enter-to-class="opacity-100"
+                leave-active-class="transition ease-in duration-150"
+                leave-from-class="opacity-100"
+                leave-to-class="opacity-0"
+            >
+                <div v-if="showMobileMenu" class="fixed inset-0 z-50 lg:hidden">
+                    <div class="absolute inset-0 bg-dark-950/80 backdrop-blur-sm" @click="showMobileMenu = false"></div>
+                    <Transition
+                        enter-active-class="transition ease-out duration-200"
+                        enter-from-class="-translate-x-full"
+                        enter-to-class="translate-x-0"
+                        leave-active-class="transition ease-in duration-150"
+                        leave-from-class="translate-x-0"
+                        leave-to-class="-translate-x-full"
+                    >
+                        <div v-if="showMobileMenu" class="relative w-72 h-full overflow-y-auto" @click.stop>
+                            <Sidebar />
+                        </div>
+                    </Transition>
+                </div>
+            </Transition>
+        </Teleport>
+
         <!-- Main Layout -->
         <div class="flex relative flex-1">
-            <!-- Sidebar -->
+            <!-- Sidebar (desktop only) -->
             <Sidebar
                 v-if="showSidebar && !props.hideSidebar"
                 class="hidden lg:block"

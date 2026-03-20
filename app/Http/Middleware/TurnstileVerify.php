@@ -43,20 +43,22 @@ class TurnstileVerify
             return $next($request);
         }
 
+        // Skip if keys are not configured (Turnstile enabled but not set up yet)
+        $secretKey = SiteSetting::get('security', 'turnstile_secret_key', '');
+        $siteKey = SiteSetting::get('security', 'turnstile_site_key', '');
+
+        if (empty($secretKey) || empty($siteKey)) {
+            Log::warning('Turnstile enabled but keys not configured. Skipping verification.');
+
+            return $next($request);
+        }
+
         $token = $request->input('cf-turnstile-response');
 
         if (empty($token)) {
             return back()->withErrors([
                 'turnstile' => 'Please complete the security verification.',
             ]);
-        }
-
-        $secretKey = SiteSetting::get('security', 'turnstile_secret_key', '');
-
-        if (empty($secretKey)) {
-            Log::error('Turnstile secret key is not configured in site settings.');
-
-            return $next($request);
         }
 
         try {
