@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { Head, useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -33,9 +33,19 @@ const form = useForm({
 });
 
 const turnstileReady = ref(false);
+const turnstileLoadFailed = ref(false);
+
+// Turnstile ควร block ปุ่มเฉพาะเมื่อ configured ถูกต้องและยังไม่ verify
+const turnstileRequired = computed(() => {
+    return props.turnstileEnabled && props.turnstileSiteKey && !turnstileLoadFailed.value;
+});
 
 const loadTurnstile = () => {
-    if (!props.turnstileEnabled || !props.turnstileSiteKey) return;
+    if (!props.turnstileEnabled || !props.turnstileSiteKey) {
+        // ถ้า enabled แต่ไม่มี site key → ไม่ block login (backend จะ handle)
+        turnstileLoadFailed.value = true;
+        return;
+    }
 
     // Load Turnstile script if not already loaded
     if (document.querySelector('script[src*="turnstile"]')) {
@@ -49,6 +59,11 @@ const loadTurnstile = () => {
 
     window.onTurnstileLoad = () => {
         renderTurnstile();
+    };
+
+    script.onerror = () => {
+        // Script โหลดไม่ได้ → ไม่ block login (backend จะ handle)
+        turnstileLoadFailed.value = true;
     };
 
     document.head.appendChild(script);
@@ -218,7 +233,7 @@ const submit = () => {
                     <!-- Submit -->
                     <button
                         type="submit"
-                        :disabled="form.processing || (turnstileEnabled && !turnstileReady)"
+                        :disabled="form.processing || (turnstileRequired && !turnstileReady)"
                         class="w-full bg-primary-500 text-white py-3 rounded-xl font-medium hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-dark-900 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-glow-sm hover:shadow-glow"
                     >
                         <svg v-if="form.processing" class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">

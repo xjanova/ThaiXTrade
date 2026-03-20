@@ -5,11 +5,14 @@
  * ส่ง transaction บน BSC แล้ว submit tx_hash ไป backend
  * Developed by Xman Studio
  */
-import { ref, watch } from 'vue';
+import { ref, watch, inject } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenSale } from '@/Composables/useTokenSale';
+import { isMobile, downloadTpixApp } from '@/utils/mobileWallet';
 
 const walletStore = useWalletStore();
+const openWalletModal = inject('openWalletModal', () => {});
+const mobile = isMobile();
 const {
     selectedCurrency,
     paymentAmount,
@@ -110,14 +113,34 @@ function formatNumber(n) {
         </p>
 
         <!-- ถ้ายังไม่เชื่อมต่อ wallet -->
-        <div v-if="!walletStore.isConnected" class="text-center py-8">
-            <div class="text-gray-400 mb-4">
-                <svg class="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+        <div v-if="!walletStore.isConnected" class="text-center py-6 space-y-4">
+            <div class="w-14 h-14 rounded-2xl bg-primary-500/20 flex items-center justify-center mx-auto">
+                <svg class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
                 </svg>
-                Please connect your wallet to buy TPIX
             </div>
+            <div>
+                <p class="text-white font-semibold mb-1">เชื่อมต่อ Wallet เพื่อซื้อ TPIX</p>
+                <p class="text-gray-400 text-xs">ยังไม่มีแอปกระเป๋า? สร้าง TPIX Wallet ได้เลย ไม่ต้องติดตั้ง</p>
+            </div>
+
+            <!-- ปุ่ม Connect Wallet (เปิด WalletModal ซึ่งมี TPIX Wallet ให้สร้างได้) -->
+            <button
+                @click="openWalletModal"
+                class="w-full py-3 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-primary-500/20 transition-all"
+            >
+                Connect Wallet / สร้างกระเป๋า
+            </button>
+
+            <!-- Mobile: ปุ่มดาวน์โหลดแอป TPIX -->
+            <button
+                v-if="mobile"
+                @click="downloadTpixApp"
+                class="w-full py-2.5 rounded-xl font-medium text-sm bg-accent-500/10 border border-accent-500/20 text-accent-300 hover:bg-accent-500/20 transition-all"
+            >
+                Download TPIX App
+            </button>
         </div>
 
         <!-- ถ้าไม่ได้อยู่บน BSC -->
