@@ -8,7 +8,7 @@ use App\Models\FoodTrace;
 use Illuminate\Pagination\LengthAwarePaginator;
 
 /**
- * FoodPassportService — Business logic สำหรับระบบตรวจสอบที่มาอาหาร
+ * FoodPassportService — Business logic สำหรับระบบตรวจสอบที่มาอาหาร.
  *
  * Flow เหมือนกดตู้น้ำ:
  * 1. registerProduct() → ลงทะเบียนสินค้า → ได้ Product ID

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FoodProduct;
+use App\Models\IoTDevice;
 use App\Services\FoodPassportService;
 use App\Services\IoTService;
 use Illuminate\Http\JsonResponse;
@@ -21,7 +22,7 @@ class FoodPassportApiController extends Controller
     // ═══════════════════════════════════════════
 
     /**
-     * ดูรายการสินค้าทั้งหมด
+     * ดูรายการสินค้าทั้งหมด.
      */
     public function products(Request $request): JsonResponse
     {
@@ -35,7 +36,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * ดูรายละเอียดสินค้า + trace ทั้งหมด (สแกน QR)
+     * ดูรายละเอียดสินค้า + trace ทั้งหมด (สแกน QR).
      */
     public function verify(int $productId): JsonResponse
     {
@@ -52,7 +53,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * สถิติ FoodPassport
+     * สถิติ FoodPassport.
      */
     public function stats(): JsonResponse
     {
@@ -63,7 +64,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * ดูใบรับรอง NFT ทั้งหมด
+     * ดูใบรับรอง NFT ทั้งหมด.
      */
     public function certificates(Request $request): JsonResponse
     {
@@ -75,7 +76,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * ดู IoT sensor data ล่าสุดของสินค้า
+     * ดู IoT sensor data ล่าสุดของสินค้า.
      */
     public function sensorData(int $productId): JsonResponse
     {
@@ -90,7 +91,7 @@ class FoodPassportApiController extends Controller
     // ═══════════════════════════════════════════
 
     /**
-     * ลงทะเบียนสินค้าใหม่
+     * ลงทะเบียนสินค้าใหม่.
      */
     public function register(Request $request): JsonResponse
     {
@@ -112,7 +113,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * เพิ่ม trace record (manual)
+     * เพิ่ม trace record (manual).
      */
     public function addTrace(Request $request, int $productId): JsonResponse
     {
@@ -134,7 +135,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * Mint ใบรับรอง NFT
+     * Mint ใบรับรอง NFT.
      */
     public function mint(Request $request, int $productId): JsonResponse
     {
@@ -160,7 +161,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * ดูสินค้าของฉัน (producer)
+     * ดูสินค้าของฉัน (producer).
      */
     public function myProducts(Request $request): JsonResponse
     {
@@ -182,7 +183,7 @@ class FoodPassportApiController extends Controller
     // ═══════════════════════════════════════════
 
     /**
-     * IoT device ส่งข้อมูลเข้าระบบ
+     * IoT device ส่งข้อมูลเข้าระบบ.
      */
     public function iotIngest(Request $request): JsonResponse
     {
@@ -212,7 +213,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * IoT batch ingest — หลาย records พร้อมกัน
+     * IoT batch ingest — หลาย records พร้อมกัน.
      */
     public function iotBatchIngest(Request $request): JsonResponse
     {
@@ -229,7 +230,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * ลงทะเบียน IoT device ใหม่
+     * ลงทะเบียน IoT device ใหม่.
      */
     public function registerDevice(Request $request): JsonResponse
     {
@@ -247,7 +248,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * ดูอุปกรณ์ IoT ของฉัน
+     * ดูอุปกรณ์ IoT ของฉัน.
      */
     public function myDevices(Request $request): JsonResponse
     {
@@ -265,7 +266,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * ทดสอบ connection ของ device
+     * ทดสอบ connection ของ device.
      */
     public function testDevice(string $deviceId): JsonResponse
     {
@@ -278,11 +279,11 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * Generate config สำหรับ device (API endpoint, payload template)
+     * Generate config สำหรับ device (API endpoint, payload template).
      */
     public function deviceConfig(string $deviceId): JsonResponse
     {
-        $device = \App\Models\IoTDevice::where('device_id', $deviceId)->first();
+        $device = IoTDevice::where('device_id', $deviceId)->first();
 
         if (! $device) {
             return response()->json([
@@ -298,7 +299,7 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * FDP Token info — ข้อมูลเหรียญ FoodPassport Token
+     * FDP Token info — ข้อมูลเหรียญ FoodPassport Token.
      */
     public function fdpTokenInfo(): JsonResponse
     {

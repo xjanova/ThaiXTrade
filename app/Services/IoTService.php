@@ -8,7 +8,7 @@ use App\Models\IoTDevice;
 use Illuminate\Pagination\LengthAwarePaginator;
 
 /**
- * IoTService — จัดการอุปกรณ์ IoT ที่ส่งข้อมูลเข้าระบบ FoodPassport
+ * IoTService — จัดการอุปกรณ์ IoT ที่ส่งข้อมูลเข้าระบบ FoodPassport.
  *
  * IoT Device Flow:
  * 1. registerDevice()    → ลงทะเบียนอุปกรณ์ (ได้ device_id + wallet)
@@ -69,7 +69,7 @@ class IoTService
     // ═══════════════════════════════════════════
 
     /**
-     * รับข้อมูลจาก IoT device และบันทึกเป็น FoodTrace
+     * รับข้อมูลจาก IoT device และบันทึกเป็น FoodTrace.
      *
      * IoT device ส่ง HTTP POST มาที่ API:
      * POST /api/v1/food-passport/iot/ingest
@@ -120,7 +120,7 @@ class IoTService
 
     /**
      * Batch ingest — รับข้อมูลหลาย records พร้อมกัน
-     * สำหรับ device ที่ cache ข้อมูลไว้แล้วส่งทีเดียว
+     * สำหรับ device ที่ cache ข้อมูลไว้แล้วส่งทีเดียว.
      */
     public function batchIngest(array $records): array
     {
@@ -149,7 +149,7 @@ class IoTService
     // ═══════════════════════════════════════════
 
     /**
-     * ดูข้อมูล sensor ล่าสุดของ product
+     * ดูข้อมูล sensor ล่าสุดของ product.
      */
     public function getLatestSensorData(int $productId): array
     {
@@ -189,7 +189,7 @@ class IoTService
     }
 
     /**
-     * Alert: ตรวจสอบอุณหภูมิผิดปกติ (cold chain)
+     * Alert: ตรวจสอบอุณหภูมิผิดปกติ (cold chain).
      */
     public function checkTemperatureAlerts(int $productId, float $minTemp, float $maxTemp): array
     {
@@ -197,7 +197,7 @@ class IoTService
             ->whereNotNull('temperature')
             ->where(function ($q) use ($minTemp, $maxTemp) {
                 $q->where('temperature', '<', $minTemp)
-                  ->orWhere('temperature', '>', $maxTemp);
+                    ->orWhere('temperature', '>', $maxTemp);
             })
             ->orderByDesc('recorded_at')
             ->get();
@@ -228,7 +228,7 @@ class IoTService
     // ═══════════════════════════════════════════
 
     /**
-     * ทดสอบ connection ของ device — ส่ง ping เพื่อเช็คว่า device ยังทำงาน
+     * ทดสอบ connection ของ device — ส่ง ping เพื่อเช็คว่า device ยังทำงาน.
      */
     public function testConnection(string $deviceId): array
     {
@@ -251,7 +251,7 @@ class IoTService
     }
 
     /**
-     * Generate config สำหรับ device (API endpoint, device_id, etc.)
+     * Generate config สำหรับ device (API endpoint, device_id, etc.).
      */
     public function generateConfig(IoTDevice $device): array
     {

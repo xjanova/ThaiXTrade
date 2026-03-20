@@ -12,7 +12,7 @@ class FoodPassportController extends Controller
     ) {}
 
     /**
-     * หน้าหลัก FoodPassport — แสดง dashboard + tutorial
+     * หน้าหลัก FoodPassport — แสดง dashboard + tutorial.
      */
     public function index()
     {
@@ -28,7 +28,7 @@ class FoodPassportController extends Controller
     }
 
     /**
-     * หน้า verify สินค้า — ผู้บริโภคสแกน QR มาที่นี่
+     * หน้า verify สินค้า — ผู้บริโภคสแกน QR มาที่นี่.
      */
     public function verify(int $productId)
     {
