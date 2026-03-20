@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { Head, useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -34,6 +34,10 @@ const form = useForm({
 
 const turnstileReady = ref(false);
 const turnstileLoadFailed = ref(false);
+const turnstileError = ref('');
+
+// BUG FIX: เก็บ widgetId ที่ได้จาก turnstile.render() — จำเป็นสำหรับ reset()/remove()
+let turnstileWidgetId = null;
 
 // Turnstile ควร block ปุ่มเฉพาะเมื่อ configured ถูกต้องและยังไม่ verify
 const turnstileRequired = computed(() => {
@@ -49,7 +53,17 @@ const loadTurnstile = () => {
 
     // Load Turnstile script if not already loaded
     if (document.querySelector('script[src*="turnstile"]')) {
-        renderTurnstile();
+        // Script tag มีแล้ว — รอจน window.turnstile พร้อม
+        if (window.turnstile) {
+            renderTurnstile();
+        } else {
+            // Script กำลังโหลดอยู่ — hook เข้า onTurnstileLoad
+            const prevOnLoad = window.onTurnstileLoad;
+            window.onTurnstileLoad = () => {
+                prevOnLoad?.();
+                renderTurnstile();
+            };
+        }
         return;
     }
 
@@ -64,6 +78,7 @@ const loadTurnstile = () => {
     script.onerror = () => {
         // Script โหลดไม่ได้ → ไม่ block login (backend จะ handle)
         turnstileLoadFailed.value = true;
+        turnstileError.value = 'ไม่สามารถโหลด Turnstile ได้ — ลองรีเฟรชหน้า';
     };
 
     document.head.appendChild(script);
@@ -74,36 +89,64 @@ const renderTurnstile = () => {
         const container = document.getElementById('cf-turnstile');
         if (!container || !window.turnstile) return;
 
-        container.innerHTML = '';
-        window.turnstile.render(container, {
+        // ลบ widget เก่าก่อน (ถ้ามี) — ป้องกัน render ซ้ำ
+        if (turnstileWidgetId !== null) {
+            try { window.turnstile.remove(turnstileWidgetId); } catch {}
+        }
+
+        turnstileError.value = '';
+
+        // BUG FIX: เก็บ widgetId ที่ return จาก render()
+        turnstileWidgetId = window.turnstile.render(container, {
             sitekey: props.turnstileSiteKey,
             theme: 'dark',
             callback: (token) => {
                 form['cf-turnstile-response'] = token;
                 turnstileReady.value = true;
+                turnstileError.value = '';
             },
             'expired-callback': () => {
                 form['cf-turnstile-response'] = '';
                 turnstileReady.value = false;
             },
+            // BUG FIX: เพิ่ม error-callback — ถ้า widget error ไม่ block login
+            'error-callback': (errorCode) => {
+                turnstileLoadFailed.value = true;
+                turnstileError.value = `Turnstile error (${errorCode}) — ข้าม verification`;
+                form['cf-turnstile-response'] = '';
+            },
         });
     });
+};
+
+// BUG FIX: reset ด้วย widgetId ที่ถูกต้อง
+const resetTurnstile = () => {
+    if (!window.turnstile || turnstileWidgetId === null) return;
+    try {
+        window.turnstile.reset(turnstileWidgetId);
+    } catch {}
+    form['cf-turnstile-response'] = '';
+    turnstileReady.value = false;
 };
 
 onMounted(() => {
     loadTurnstile();
 });
 
+// Cleanup widget เมื่อ component unmount (Inertia navigation)
+onBeforeUnmount(() => {
+    if (window.turnstile && turnstileWidgetId !== null) {
+        try { window.turnstile.remove(turnstileWidgetId); } catch {}
+        turnstileWidgetId = null;
+    }
+});
+
 const submit = () => {
     form.post('/admin/login', {
-        onFinish: () => {
+        // BUG FIX: ใช้ onError แทน onFinish — reset turnstile เฉพาะตอน login fail
+        onError: () => {
             form.reset('password');
-            // Reset turnstile after failed attempt
-            if (props.turnstileEnabled && window.turnstile) {
-                window.turnstile.reset();
-                form['cf-turnstile-response'] = '';
-                turnstileReady.value = false;
-            }
+            resetTurnstile();
         },
     });
 };
@@ -226,8 +269,11 @@ const submit = () => {
                     </div>
 
                     <!-- Turnstile -->
-                    <div v-if="turnstileEnabled" id="cf-turnstile" class="flex justify-center">
-                        <!-- Cloudflare Turnstile widget rendered via JS -->
+                    <div v-if="turnstileEnabled" class="space-y-2">
+                        <div id="cf-turnstile" class="flex justify-center">
+                            <!-- Cloudflare Turnstile widget rendered via JS -->
+                        </div>
+                        <p v-if="turnstileError" class="text-center text-xs text-amber-400">{{ turnstileError }}</p>
                     </div>
 
                     <!-- Submit -->

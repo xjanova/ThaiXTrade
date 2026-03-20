@@ -195,6 +195,11 @@ class SettingController extends Controller
                 $value = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
             }
 
+            // trim string values เพื่อป้องกัน whitespace จากการ copy-paste (เช่น API keys)
+            if (is_string($value) && $type === 'string') {
+                $value = trim($value);
+            }
+
             SiteSetting::set($tab, $key, $value, $type);
         }
 

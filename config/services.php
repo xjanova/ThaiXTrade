@@ -27,10 +27,7 @@ return [
         'default_model' => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
     ],
 
-    'turnstile' => [
-        'site_key' => env('TURNSTILE_SITE_KEY', ''),
-        'secret_key' => env('TURNSTILE_SECRET_KEY', ''),
-    ],
+    // Turnstile config จัดการผ่าน SiteSetting (DB) ไม่ใช้ .env แล้ว
 
     // Stripe — ระบบชำระเงินสำหรับ ICO Token Sale
     'stripe' => [

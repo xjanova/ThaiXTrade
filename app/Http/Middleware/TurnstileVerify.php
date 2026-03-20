@@ -48,8 +48,9 @@ class TurnstileVerify
         }
 
         // Skip if keys are not configured (Turnstile enabled but not set up yet)
-        $secretKey = SiteSetting::get('security', 'turnstile_secret_key', '');
-        $siteKey = SiteSetting::get('security', 'turnstile_site_key', '');
+        // trim เพื่อป้องกัน whitespace ที่ copy มาแล้ว Cloudflare reject
+        $secretKey = trim((string) SiteSetting::get('security', 'turnstile_secret_key', ''));
+        $siteKey = trim((string) SiteSetting::get('security', 'turnstile_site_key', ''));
 
         if (empty($secretKey) || empty($siteKey)) {
             Log::warning('Turnstile enabled but keys not configured. Skipping verification.');
