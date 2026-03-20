@@ -12,28 +12,19 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * DeployTokenJob
+ * DeployTokenJob.
  *
  * Async job ที่ deploy ERC-20 token จริงบน TPIX Chain
- * ผ่าน TPIXTokenFactory contract
+ * ผ่าน TPIXTokenFactory contract.
  */
 class DeployTokenJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /**
-     * Retry up to 3 times.
-     */
     public int $tries = 3;
 
-    /**
-     * Wait 15 seconds between retries.
-     */
     public int $backoff = 15;
 
-    /**
-     * Timeout for the job (2 minutes).
-     */
     public int $timeout = 120;
 
     public function __construct(

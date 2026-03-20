@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
 /**
- * Web3DeploymentService
+ * Web3DeploymentService.
  *
  * Deploys ERC-20 tokens via TPIXTokenFactory contract on TPIX Chain.
  * Calls Node.js script (scripts/blockchain/create-token.js) which
