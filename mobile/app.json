@@ -28,7 +28,7 @@
       "permissions": [
         "INTERNET",
         "VIBRATE"
-      ],
+      ]
     },
     "web": {
       "bundler": "metro",
