@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\BannerController as ApiBannerController;
 use App\Http\Controllers\Api\BridgeApiController;
 use App\Http\Controllers\Api\CarbonCreditApiController;
 use App\Http\Controllers\Api\ChainController;
+use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\StakingApiController;
@@ -146,6 +147,21 @@ Route::prefix('v1')->group(function () {
         Route::get('/{slug}', [ArticleController::class, 'show']);
     });
 
+    // FoodPassport — ระบบตรวจสอบที่มาอาหาร (public endpoints)
+    Route::prefix('food-passport')->group(function () {
+        Route::get('/products', [FoodPassportApiController::class, 'products']);
+        Route::get('/verify/{productId}', [FoodPassportApiController::class, 'verify']);
+        Route::get('/stats', [FoodPassportApiController::class, 'stats']);
+        Route::get('/certificates', [FoodPassportApiController::class, 'certificates']);
+        Route::get('/sensor-data/{productId}', [FoodPassportApiController::class, 'sensorData']);
+
+        // IoT Ingestion — อุปกรณ์ IoT ส่งข้อมูลเข้าระบบ (rate limited)
+        Route::post('/iot/ingest', [FoodPassportApiController::class, 'iotIngest'])
+            ->middleware('throttle:120,1');
+        Route::post('/iot/batch-ingest', [FoodPassportApiController::class, 'iotBatchIngest'])
+            ->middleware('throttle:30,1');
+    });
+
     // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)
     Route::post('/chatbot', [ChatbotController::class, 'chat'])
         ->middleware('throttle:30,1');
@@ -189,6 +205,16 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     Route::prefix('token-factory')->group(function () {
         Route::get('/my-tokens', [TokenFactoryApiController::class, 'myTokens']);
         Route::post('/create', [TokenFactoryApiController::class, 'store']);
+    });
+
+    // FoodPassport — จัดการสินค้า/IoT (ต้อง verify wallet)
+    Route::prefix('food-passport')->group(function () {
+        Route::post('/register', [FoodPassportApiController::class, 'register']);
+        Route::post('/trace/{productId}', [FoodPassportApiController::class, 'addTrace']);
+        Route::post('/mint/{productId}', [FoodPassportApiController::class, 'mint']);
+        Route::get('/my-products', [FoodPassportApiController::class, 'myProducts']);
+        Route::post('/iot/register-device', [FoodPassportApiController::class, 'registerDevice']);
+        Route::get('/iot/my-devices', [FoodPassportApiController::class, 'myDevices']);
     });
 
     // Carbon Credits — ซื้อ/retire (ต้อง verify wallet)

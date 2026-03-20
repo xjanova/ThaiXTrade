@@ -6,6 +6,7 @@
  */
 
 use App\Http\Controllers\CarbonCreditController;
+use App\Http\Controllers\FoodPassportController;
 use App\Http\Controllers\TokenFactoryController;
 use App\Http\Controllers\TokenSaleController;
 use Illuminate\Support\Facades\Route;
@@ -88,6 +89,11 @@ Route::get('/token-factory', [TokenFactoryController::class, 'index'])->name('to
 
 // Carbon Credits — ระบบ Carbon Credit
 Route::get('/carbon-credits', [CarbonCreditController::class, 'index'])->name('carbon-credits');
+
+// FoodPassport — ระบบตรวจสอบที่มาอาหารบน Blockchain + IoT
+Route::get('/food-passport', [FoodPassportController::class, 'index'])->name('food-passport');
+Route::get('/food-passport/verify/{productId}', [FoodPassportController::class, 'verify'])
+    ->where('productId', '[0-9]+')->name('food-passport.verify');
 
 // Whitepaper — เอกสาร whitepaper แบบ interactive
 Route::get('/whitepaper', [TokenSaleController::class, 'whitepaper'])->name('whitepaper');
