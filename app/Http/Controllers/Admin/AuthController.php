@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdminUser;
+use App\Models\SiteSetting;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -32,7 +33,15 @@ class AuthController extends Controller
             return Inertia::render('Admin/Auth/Setup');
         }
 
-        return Inertia::render('Admin/Auth/Login');
+        $turnstileEnabled = (bool) SiteSetting::get('security', 'turnstile_enabled', false);
+        $turnstileSiteKey = $turnstileEnabled
+            ? (string) SiteSetting::get('security', 'turnstile_site_key', '')
+            : '';
+
+        return Inertia::render('Admin/Auth/Login', [
+            'turnstileEnabled' => $turnstileEnabled,
+            'turnstileSiteKey' => $turnstileSiteKey,
+        ]);
     }
 
     /**

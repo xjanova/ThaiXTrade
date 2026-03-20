@@ -99,6 +99,12 @@ function isWalletDetected(walletId) {
     return checkWalletDetected(walletId);
 }
 
+// ตรวจว่าผู้ใช้มี wallet ภายนอกหรือไม่ (ถ้าไม่มี → แนะนำ TPIX Wallet)
+const hasExternalWallet = computed(() => {
+    if (isInWalletBrowser) return true;
+    return checkAnyWallet();
+});
+
 const connectWallet = async (wallet) => {
     // TPIX Wallet — embedded wallet flow
     if (wallet.embedded) {
@@ -291,6 +297,21 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                 {{ error }}
             </div>
 
+            <!-- No Wallet Detected Banner -->
+            <div v-if="!hasExternalWallet && !hasStoredWallet" class="mb-4 p-4 rounded-xl bg-gradient-to-r from-primary-500/15 to-accent-500/15 border border-primary-500/30">
+                <div class="flex items-start gap-3">
+                    <div class="w-10 h-10 bg-primary-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-white text-sm font-medium mb-1">ไม่พบกระเป๋าเงินคริปโต</p>
+                        <p class="text-dark-400 text-xs">สร้าง <span class="text-primary-400 font-semibold">TPIX Wallet</span> ได้เลย ไม่ต้องติดตั้งแอปเพิ่ม ปลอดภัย เก็บ Private Key ในเบราว์เซอร์ของคุณเท่านั้น</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Wallet List (Popular) -->
             <div class="space-y-2 mb-5">
                 <button
@@ -302,7 +323,9 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                         'w-full flex items-center gap-4 p-4 rounded-xl border transition-all',
                         selectedWallet === wallet.id && isConnecting
                             ? 'bg-primary-500/10 border-primary-500/50'
-                            : 'bg-dark-800/50 border-white/5 hover:bg-white/5 hover:border-white/10'
+                            : wallet.embedded && !hasExternalWallet
+                                ? 'bg-primary-500/10 border-primary-500/40 hover:bg-primary-500/15 hover:border-primary-500/60 ring-1 ring-primary-500/20'
+                                : 'bg-dark-800/50 border-white/5 hover:bg-white/5 hover:border-white/10'
                     ]"
                 >
                     <!-- Wallet Icon -->
@@ -340,6 +363,8 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
 
                     <!-- Status -->
                     <div v-if="selectedWallet === wallet.id && isConnecting" class="spinner"></div>
+                    <span v-else-if="wallet.embedded && !hasExternalWallet" class="text-[10px] text-primary-300 px-2 py-0.5 rounded-full bg-primary-500/20 font-semibold">แนะนำ</span>
+                    <span v-else-if="wallet.embedded && hasStoredWallet" class="text-[10px] text-trading-green px-2 py-0.5 rounded-full bg-trading-green/10">มี Wallet</span>
                     <span v-else-if="isWalletDetected(wallet.id)" class="text-[10px] text-trading-green px-2 py-0.5 rounded-full bg-trading-green/10">Detected</span>
                     <!-- Mobile: แสดง "Open" แทน arrow (ไม่แสดงสำหรับ embedded wallet) -->
                     <span v-else-if="mobile && !wallet.embedded" class="text-[10px] text-primary-400 px-2 py-0.5 rounded-full bg-primary-500/10">Open</span>
