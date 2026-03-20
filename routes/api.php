@@ -123,22 +123,18 @@ Route::prefix('v1')->group(function () {
         Route::get('/stats', [CarbonCreditApiController::class, 'stats']);
     });
 
-    // Bridge — cross-chain TPIX Chain ↔ BSC (public endpoints)
+    // Bridge — cross-chain TPIX Chain ↔ BSC (read-only public)
     Route::prefix('bridge')->group(function () {
         Route::get('/info', [BridgeApiController::class, 'info']);
-        Route::post('/initiate', [BridgeApiController::class, 'initiate']);
         Route::get('/history/{wallet}', [BridgeApiController::class, 'history']);
         Route::get('/status/{id}', [BridgeApiController::class, 'status']);
     });
 
-    // Staking — stake TPIX บน TPIX Chain (public endpoints)
+    // Staking — read-only public endpoints
     Route::prefix('staking')->group(function () {
         Route::get('/pools', [StakingApiController::class, 'pools']);
         Route::get('/stats', [StakingApiController::class, 'stats']);
         Route::get('/positions/{wallet}', [StakingApiController::class, 'positions']);
-        Route::post('/stake', [StakingApiController::class, 'stake']);
-        Route::post('/claim/{id}', [StakingApiController::class, 'claim']);
-        Route::post('/unstake/{id}', [StakingApiController::class, 'unstake']);
     });
 
     // Articles / Blog — บทความ (public)
@@ -226,6 +222,16 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::post('/retire', [CarbonCreditApiController::class, 'retire']);
         Route::get('/my-credits/{walletAddress}', [CarbonCreditApiController::class, 'myCredits']);
         Route::get('/my-retirements/{walletAddress}', [CarbonCreditApiController::class, 'myRetirements']);
+    });
+
+    // Bridge — write operations (ต้อง verify wallet)
+    Route::post('/bridge/initiate', [BridgeApiController::class, 'initiate']);
+
+    // Staking — write operations (ต้อง verify wallet)
+    Route::prefix('staking')->group(function () {
+        Route::post('/stake', [StakingApiController::class, 'stake']);
+        Route::post('/claim/{id}', [StakingApiController::class, 'claim']);
+        Route::post('/unstake/{id}', [StakingApiController::class, 'unstake']);
     });
 
     // AI Assistant (stricter rate limit: 10 requests per minute)

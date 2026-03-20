@@ -7,6 +7,7 @@
 
 import { ref, computed } from 'vue';
 import { useForm, usePage, router } from '@inertiajs/vue3';
+import { sanitizeHtml } from '@/utils/sanitize';
 
 const props = defineProps({
     news: {
@@ -700,7 +701,7 @@ function decodeLabel(html) {
                                     {{ previewArticle.summary }}
                                 </div>
 
-                                <div class="prose prose-invert prose-sm max-w-none" v-html="previewArticle.content"></div>
+                                <div class="prose prose-invert prose-sm max-w-none" v-html="sanitizeHtml(previewArticle.content)"></div>
 
                                 <!-- Tags -->
                                 <div v-if="previewArticle.tags && previewArticle.tags.length > 0" class="mt-6 pt-4 border-t border-white/5">

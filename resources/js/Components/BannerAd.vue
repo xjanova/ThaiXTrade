@@ -7,6 +7,7 @@
  */
 import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import axios from 'axios';
+import { sanitizeAdCode } from '@/utils/sanitize';
 
 const props = defineProps({
     placement: { type: String, required: true },
@@ -90,15 +91,15 @@ onUnmounted(() => {
                         loading="lazy" />
                 </a>
 
-                <!-- Type: Google AdSense -->
+                <!-- Type: Google AdSense (sanitized) -->
                 <div v-else-if="banner.type === 'google_adsense' && banner.ad_code"
-                    v-html="banner.ad_code"
+                    v-html="sanitizeAdCode(banner.ad_code)"
                     class="adsense-container">
                 </div>
 
-                <!-- Type: Custom HTML -->
+                <!-- Type: Custom HTML (sanitized — strip scripts/iframes) -->
                 <div v-else-if="banner.type === 'html' && banner.ad_code"
-                    v-html="banner.ad_code"
+                    v-html="sanitizeAdCode(banner.ad_code)"
                     class="custom-html-banner">
                 </div>
             </div>
