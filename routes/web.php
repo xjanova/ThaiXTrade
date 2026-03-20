@@ -114,6 +114,11 @@ Route::get('/staking', function () {
     return Inertia::render('Staking');
 })->name('staking');
 
+// Download — ดาวน์โหลดแอป TPIX TRADE (APK จาก GitHub Releases)
+Route::get('/download', function () {
+    return Inertia::render('Download');
+})->name('download');
+
 // Health Check
 Route::get('/health', function () {
     return response()->json([

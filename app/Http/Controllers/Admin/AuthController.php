@@ -35,7 +35,7 @@ class AuthController extends Controller
 
         $turnstileEnabled = filter_var(SiteSetting::get('security', 'turnstile_enabled', false), FILTER_VALIDATE_BOOLEAN);
         $turnstileSiteKey = $turnstileEnabled
-            ? (string) SiteSetting::get('security', 'turnstile_site_key', '')
+            ? trim((string) SiteSetting::get('security', 'turnstile_site_key', ''))
             : '';
 
         return Inertia::render('Admin/Auth/Login', [
