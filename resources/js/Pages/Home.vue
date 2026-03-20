@@ -10,38 +10,42 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { getCoinLogo } from '@/utils/cryptoLogos';
 import { useMarketData } from '@/Composables/useMarketData';
+import BannerAd from '@/Components/BannerAd.vue';
 import versionData from '../../../version.json';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const { topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
 
-const features = [
+const features = computed(() => [
     {
         icon: 'shield',
-        title: 'Non-Custodial',
-        description: 'Your keys, your crypto. We never have access to your funds.'
+        title: t('home.feature3'),
+        description: t('home.feature3Desc'),
     },
     {
         icon: 'globe',
-        title: 'Multi-Chain',
-        description: 'Trade across all major blockchains from one interface.'
+        title: t('home.feature4'),
+        description: t('home.feature4Desc'),
     },
     {
         icon: 'lightning',
-        title: 'Lightning Fast',
-        description: 'Execute trades in milliseconds with our optimized engine.'
+        title: t('home.feature2'),
+        description: t('home.feature2Desc'),
     },
     {
         icon: 'robot',
-        title: 'AI-Powered',
-        description: 'Get smart insights and trading suggestions from our AI.'
+        title: t('home.feature1'),
+        description: t('home.feature1Desc'),
     },
-];
+]);
 
 const stats = computed(() => [
     { label: 'Supported Chains', value: '9' },
     { label: 'Trading Pairs', value: '100+' },
     { label: 'DEX Protocol', value: 'PancakeSwap' },
-    { label: 'Network', value: 'BSC' },
+    { label: 'Network', value: 'TPIX Chain + BSC' },
 ]);
 
 onMounted(async () => {
@@ -85,7 +89,7 @@ onMounted(async () => {
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
                         </svg>
-                        Start Trading
+                        {{ t('home.startTrading') }}
                     </Link>
                     <button class="btn-secondary px-8 py-4 text-lg">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -114,7 +118,7 @@ onMounted(async () => {
                     <div class="glass-dark rounded-2xl p-6">
                         <div class="flex items-center justify-between mb-6">
                             <h3 class="text-lg font-semibold text-white">Top Gainers</h3>
-                            <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">View All</Link>
+                            <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">{{ t('home.viewAll') }}</Link>
                         </div>
                         <div v-if="isLoading" class="py-8 text-center text-dark-400">
                             <div class="animate-pulse">Loading live data...</div>
@@ -147,7 +151,7 @@ onMounted(async () => {
                     <div class="glass-dark rounded-2xl p-6">
                         <div class="flex items-center justify-between mb-6">
                             <h3 class="text-lg font-semibold text-white">Top Volume</h3>
-                            <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">View All</Link>
+                            <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">{{ t('home.viewAll') }}</Link>
                         </div>
                         <div v-if="isLoading" class="py-8 text-center text-dark-400">
                             <div class="animate-pulse">Loading live data...</div>
@@ -177,6 +181,124 @@ onMounted(async () => {
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TPIX Token Sale Banner — โฆษณาการขายเหรียญ -->
+        <section class="py-16">
+            <div class="max-w-6xl mx-auto">
+                <div class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-accent-500/20 via-primary-500/15 to-warm-500/20 border border-primary-500/20 p-8 md:p-12">
+                    <!-- Glow Effect -->
+                    <div class="absolute top-0 right-0 w-80 h-80 bg-primary-500/10 rounded-full blur-3xl"></div>
+                    <div class="absolute bottom-0 left-0 w-60 h-60 bg-accent-500/10 rounded-full blur-3xl"></div>
+
+                    <div class="relative flex flex-col lg:flex-row items-center gap-8">
+                        <!-- Left: Text -->
+                        <div class="flex-1 text-center lg:text-left">
+                            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-trading-green/10 border border-trading-green/20 text-trading-green text-xs font-semibold mb-4">
+                                <span class="w-2 h-2 rounded-full bg-trading-green animate-pulse"></span>
+                                {{ t('tokenSale.title') }}
+                            </div>
+                            <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
+                                Buy <span class="text-gradient">TPIX</span> Token
+                            </h2>
+                            <p class="text-dark-300 mb-6 max-w-lg">
+                                Join the TPIX ecosystem. Buy TPIX tokens at the best price during our ICO.
+                                Pay with BNB or USDT on BSC Network.
+                            </p>
+                            <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3">
+                                <Link href="/token-sale" class="btn-primary px-6 py-3">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    Buy TPIX Now
+                                </Link>
+                                <Link href="/whitepaper" class="btn-secondary px-6 py-3">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                    </svg>
+                                    Read Whitepaper
+                                </Link>
+                            </div>
+                        </div>
+
+                        <!-- Right: Price Cards -->
+                        <div class="flex-shrink-0 grid grid-cols-3 gap-3">
+                            <div class="glass-card text-center px-4 py-5 min-w-[100px]">
+                                <p class="text-xs text-dark-400 mb-1">Private</p>
+                                <p class="text-lg font-bold text-white">$0.05</p>
+                            </div>
+                            <div class="glass-card text-center px-4 py-5 min-w-[100px] border-primary-500/30">
+                                <p class="text-xs text-primary-400 mb-1">Pre-Sale</p>
+                                <p class="text-lg font-bold text-white">$0.08</p>
+                            </div>
+                            <div class="glass-card text-center px-4 py-5 min-w-[100px]">
+                                <p class="text-xs text-dark-400 mb-1">Public</p>
+                                <p class="text-lg font-bold text-white">$0.10</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TPIX Ecosystem — ลิงก์เข้าถึงทุกส่วนของระบบ -->
+        <section class="py-16">
+            <div class="max-w-6xl mx-auto">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
+                        TPIX <span class="text-gradient">Ecosystem</span>
+                    </h2>
+                    <p class="text-dark-400 max-w-2xl mx-auto">
+                        Explore the complete TPIX ecosystem. From token sale to staking, everything in one place.
+                    </p>
+                </div>
+
+                <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <!-- Token Sale -->
+                    <Link href="/token-sale" class="glass-card group hover:border-primary-500/30 transition-all">
+                        <div class="w-12 h-12 rounded-xl bg-primary-500/10 flex items-center justify-center mb-4 group-hover:bg-primary-500/20 transition-colors">
+                            <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white mb-2">Token Sale</h3>
+                        <p class="text-dark-400 text-sm">Buy TPIX at ICO price. Pay with BNB or USDT.</p>
+                    </Link>
+
+                    <!-- Whitepaper -->
+                    <Link href="/whitepaper" class="glass-card group hover:border-accent-500/30 transition-all">
+                        <div class="w-12 h-12 rounded-xl bg-accent-500/10 flex items-center justify-center mb-4 group-hover:bg-accent-500/20 transition-colors">
+                            <svg class="w-6 h-6 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white mb-2">Whitepaper</h3>
+                        <p class="text-dark-400 text-sm">Learn about TPIX vision, tokenomics, and roadmap.</p>
+                    </Link>
+
+                    <!-- Explorer -->
+                    <Link href="/explorer" class="glass-card group hover:border-trading-green/30 transition-all">
+                        <div class="w-12 h-12 rounded-xl bg-trading-green/10 flex items-center justify-center mb-4 group-hover:bg-trading-green/20 transition-colors">
+                            <svg class="w-6 h-6 text-trading-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white mb-2">Explorer</h3>
+                        <p class="text-dark-400 text-sm">Browse TPIX Chain blocks, transactions, and addresses.</p>
+                    </Link>
+
+                    <!-- Staking -->
+                    <Link href="/staking" class="glass-card group hover:border-warm-500/30 transition-all">
+                        <div class="w-12 h-12 rounded-xl bg-warm-500/10 flex items-center justify-center mb-4 group-hover:bg-warm-500/20 transition-colors">
+                            <svg class="w-6 h-6 text-warm-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white mb-2">Staking</h3>
+                        <p class="text-dark-400 text-sm">Stake TPIX and earn up to 200% APY rewards.</p>
+                    </Link>
                 </div>
             </div>
         </section>
@@ -216,12 +338,15 @@ onMounted(async () => {
             </div>
         </section>
 
+        <!-- ป้ายโฆษณาด้านล่าง Home -->
+        <BannerAd placement="home_bottom" class="py-4 max-w-6xl mx-auto" />
+
         <!-- CTA Section -->
         <section class="py-16">
             <div class="max-w-4xl mx-auto">
                 <div class="glass-card text-center bg-brand-gradient-subtle border-primary-500/20">
                     <h2 class="text-3xl font-bold text-white mb-4">
-                        Ready to Start Trading?
+                        Ready to {{ t('home.startTrading') }}?
                     </h2>
                     <p class="text-dark-400 mb-8 max-w-xl mx-auto">
                         Connect your wallet and start trading in seconds. No registration required.
@@ -236,28 +361,6 @@ onMounted(async () => {
             </div>
         </section>
 
-        <!-- Footer -->
-        <footer class="border-t border-white/5 py-12">
-            <div class="max-w-6xl mx-auto">
-                <div class="flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div class="flex items-center gap-3">
-                        <img src="/logo.png" alt="TPIX TRADE" class="w-10 h-10 rounded-xl object-cover" />
-                        <div>
-                            <p class="font-bold text-white">TPIX <span class="text-gradient">TRADE</span></p>
-                            <p class="text-xs text-dark-400">by Xman Studio</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-6 text-dark-400">
-                        <a href="#" class="hover:text-white transition-colors">Docs</a>
-                        <a href="#" class="hover:text-white transition-colors">GitHub</a>
-                        <a href="#" class="hover:text-white transition-colors">Discord</a>
-                        <a href="#" class="hover:text-white transition-colors">Twitter</a>
-                    </div>
-                    <p class="text-sm text-dark-500">
-                        &copy; {{ new Date().getFullYear() }} Xman Studio. All rights reserved. &middot; v{{ versionData.version }}
-                    </p>
-                </div>
-            </div>
-        </footer>
+        <!-- Footer ใช้จาก AppLayout — ไม่ต้องซ้ำที่นี่ -->
     </AppLayout>
 </template>

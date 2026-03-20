@@ -11,7 +11,9 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useWalletBalance } from '@/Composables/useWalletBalance';
 import { getCoinLogo } from '@/utils/cryptoLogos';
+import { useTranslation } from '@/Composables/useTranslation';
 
+const { t } = useTranslation();
 const walletStore = useWalletStore();
 const { balances, isLoading, fetchBalances } = useWalletBalance();
 
@@ -50,7 +52,7 @@ watch(isConnected, (connected) => {
         <div class="max-w-6xl mx-auto">
             <!-- Page Header -->
             <div class="mb-8">
-                <h1 class="text-3xl font-bold text-white mb-2">Portfolio</h1>
+                <h1 class="text-3xl font-bold text-white mb-2">{{ t('portfolio.title') }}</h1>
                 <p class="text-dark-400">Track your assets and performance across all chains.</p>
             </div>
 
@@ -61,9 +63,9 @@ watch(isConnected, (connected) => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
                     </svg>
                 </div>
-                <h2 class="text-2xl font-bold text-white mb-3">Connect Your Wallet</h2>
+                <h2 class="text-2xl font-bold text-white mb-3">{{ t('wallet.connect') }}</h2>
                 <p class="text-dark-400 text-center max-w-md mb-6">
-                    Connect your wallet to view your portfolio, track balances, and monitor your trading performance.
+                    {{ t('portfolio.connectToView') }}
                 </p>
                 <p class="text-sm text-dark-500">
                     Use the "Connect Wallet" button in the navigation bar to get started.
@@ -101,7 +103,7 @@ watch(isConnected, (connected) => {
                 <!-- Holdings Table -->
                 <div v-else class="glass-dark rounded-2xl overflow-hidden">
                     <div class="p-4 border-b border-white/5">
-                        <h3 class="text-lg font-semibold text-white">Holdings</h3>
+                        <h3 class="text-lg font-semibold text-white">{{ t('portfolio.assets') }}</h3>
                     </div>
 
                     <div v-if="hasHoldings" class="overflow-x-auto">

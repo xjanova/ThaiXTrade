@@ -17,6 +17,9 @@ import PhaseCard from '@/Components/TokenSale/PhaseCard.vue';
 import BuyForm from '@/Components/TokenSale/BuyForm.vue';
 import TokenomicsChart from '@/Components/TokenSale/TokenomicsChart.vue';
 import VestingSchedule from '@/Components/TokenSale/VestingSchedule.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 // Props จาก backend (Inertia)
 const props = defineProps({
@@ -118,7 +121,7 @@ function handlePurchaseComplete() {
                 <img src="/logo.png" alt="TPIX" class="w-20 h-20 mx-auto mb-6 rounded-full" />
 
                 <h1 class="text-4xl sm:text-5xl font-bold text-white mb-3">
-                    TPIX Token Sale
+                    {{ t('tokenSale.title') }}
                 </h1>
                 <p class="text-lg text-gray-400 mb-8 max-w-2xl mx-auto">
                     Be part of the TPIX Chain ecosystem. Purchase TPIX tokens at the best price
@@ -145,7 +148,7 @@ function handlePurchaseComplete() {
 
         <!-- ===== SALE PHASES ===== -->
         <section class="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-            <h2 class="text-2xl font-bold text-white mb-2">Sale Phases</h2>
+            <h2 class="text-2xl font-bold text-white mb-2">{{ t('tokenSale.phase') }}</h2>
             <p class="text-gray-400 mb-8">Select a phase to purchase TPIX tokens.</p>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -172,7 +175,7 @@ function handlePurchaseComplete() {
 
                 <!-- How to Buy -->
                 <div class="glass-dark p-6 rounded-xl border border-white/10">
-                    <h3 class="text-xl font-bold text-white mb-6">How to Buy</h3>
+                    <h3 class="text-xl font-bold text-white mb-6">{{ t('tokenSale.howToBuy') }}</h3>
 
                     <div class="space-y-6">
                         <div
@@ -237,6 +240,61 @@ function handlePurchaseComplete() {
 
         <!-- ===== MY PURCHASES / VESTING (ถ้า wallet เชื่อมต่ออยู่) ===== -->
         <section v-if="walletStore.isConnected" class="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+            <!-- Purchase Summary Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div class="glass-dark p-4 rounded-xl border border-white/10 text-center">
+                    <p class="text-xs text-gray-400 mb-1">My Total TPIX</p>
+                    <p class="text-xl font-bold text-primary-400">{{ Number(tokenSaleStore.totalPurchased || 0).toLocaleString() }}</p>
+                </div>
+                <div class="glass-dark p-4 rounded-xl border border-white/10 text-center">
+                    <p class="text-xs text-gray-400 mb-1">Claimable Now</p>
+                    <p class="text-xl font-bold text-trading-green">{{ Number(tokenSaleStore.totalClaimable || 0).toLocaleString() }}</p>
+                </div>
+                <div class="glass-dark p-4 rounded-xl border border-white/10 text-center">
+                    <p class="text-xs text-gray-400 mb-1">Total Purchases</p>
+                    <p class="text-xl font-bold text-white">{{ tokenSaleStore.purchases?.length || 0 }}</p>
+                </div>
+            </div>
+
+            <!-- Purchase History -->
+            <div v-if="tokenSaleStore.purchases?.length > 0" class="glass-dark p-6 rounded-xl border border-white/10 mb-6">
+                <h3 class="text-lg font-bold text-white mb-4">Purchase History</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-white/10">
+                                <th class="text-left pb-3 text-gray-400 font-medium">Date</th>
+                                <th class="text-left pb-3 text-gray-400 font-medium">Amount</th>
+                                <th class="text-left pb-3 text-gray-400 font-medium">Paid</th>
+                                <th class="text-left pb-3 text-gray-400 font-medium">Status</th>
+                                <th class="text-left pb-3 text-gray-400 font-medium">Tx</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="p in tokenSaleStore.purchases" :key="p.id" class="border-b border-white/5">
+                                <td class="py-3 text-gray-300">{{ new Date(p.created_at).toLocaleDateString() }}</td>
+                                <td class="py-3 text-white font-medium">{{ Number(p.tpix_amount).toLocaleString() }} TPIX</td>
+                                <td class="py-3 text-gray-300">{{ p.payment_amount }} {{ p.payment_currency }}</td>
+                                <td class="py-3">
+                                    <span :class="[
+                                        'text-xs px-2 py-0.5 rounded-full',
+                                        p.status === 'confirmed' ? 'bg-green-500/10 text-green-400' :
+                                        p.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' :
+                                        'bg-gray-500/10 text-gray-400'
+                                    ]">{{ p.status }}</span>
+                                </td>
+                                <td class="py-3">
+                                    <a v-if="p.tx_hash" :href="`https://bscscan.com/tx/${p.tx_hash}`" target="_blank" rel="noopener" class="text-primary-400 text-xs font-mono hover:underline">
+                                        {{ p.tx_hash?.slice(0, 8) }}...
+                                    </a>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Vesting Schedule -->
             <div class="glass-dark p-6 rounded-xl border border-white/10">
                 <VestingSchedule
                     :entries="tokenSaleStore.vestingSchedule"

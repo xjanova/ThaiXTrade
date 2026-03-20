@@ -1,30 +1,45 @@
 <script setup>
 /**
- * TPIX TRADE - Whitepaper Page
- * เอกสาร Whitepaper แบบ interactive บนเว็บ
- * รองรับ smooth scroll, table of contents, download PDF
+ * TPIX TRADE - Whitepaper Page (Premium Edition)
+ * เอกสาร Whitepaper แบบ interactive พร้อม:
+ * - สลับภาษาไทย/อังกฤษ
+ * - แผนภูมิ Tokenomics (SVG Donut Chart)
+ * - Architecture Diagram
+ * - Use Cases จาก ThaiPrompt Ecosystem
+ * - Roadmap Timeline 8 Phases
+ * - PDF Download
  * Developed by Xman Studio
  */
 
-import { ref, onMounted } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { ref, computed, onMounted } from 'vue';
+import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
-// Table of Contents — สารบัญ
-const sections = [
-    { id: 'executive-summary', title: '1. Executive Summary' },
-    { id: 'problem-solution', title: '2. Problem & Solution' },
-    { id: 'tpix-chain', title: '3. TPIX Chain Architecture' },
-    { id: 'tokenomics', title: '4. Tokenomics' },
-    { id: 'dex-protocol', title: '5. DEX Protocol' },
-    { id: 'token-sale', title: '6. Token Sale Details' },
-    { id: 'staking', title: '7. Staking & Rewards' },
-    { id: 'ecosystem', title: '8. Ecosystem & Affiliate' },
-    { id: 'roadmap', title: '9. Roadmap' },
-    { id: 'team', title: '10. Team & Partners' },
-    { id: 'security', title: '11. Security & Audits' },
-    { id: 'legal', title: '12. Legal Disclaimer' },
-];
+// ภาษาปัจจุบัน — เริ่มต้นภาษาอังกฤษ
+const lang = ref('en');
+const toggleLang = () => { lang.value = lang.value === 'en' ? 'th' : 'en'; };
+
+// ข้อมูลสองภาษา
+const t = computed(() => content[lang.value]);
+
+// สารบัญ — Table of Contents
+const sections = computed(() => [
+    { id: 'executive-summary', title: t.value.toc[0] },
+    { id: 'problem-solution', title: t.value.toc[1] },
+    { id: 'tpix-chain', title: t.value.toc[2] },
+    { id: 'tokenomics', title: t.value.toc[3] },
+    { id: 'use-cases', title: t.value.toc[4] },
+    { id: 'dex-protocol', title: t.value.toc[5] },
+    { id: 'token-sale', title: t.value.toc[6] },
+    { id: 'staking', title: t.value.toc[7] },
+    { id: 'ecosystem', title: t.value.toc[8] },
+    { id: 'integrations', title: t.value.toc[9] },
+    { id: 'roadmap', title: t.value.toc[10] },
+    { id: 'tech-stack', title: t.value.toc[11] },
+    { id: 'team', title: t.value.toc[12] },
+    { id: 'security', title: t.value.toc[13] },
+    { id: 'legal', title: t.value.toc[14] },
+]);
 
 // Section ที่กำลังดูอยู่
 const activeSection = ref('executive-summary');
@@ -45,21 +60,431 @@ onMounted(() => {
                 }
             });
         },
-        { threshold: 0.3, rootMargin: '-80px 0px -50% 0px' }
+        { threshold: 0.2, rootMargin: '-80px 0px -50% 0px' }
     );
 
-    sections.forEach((s) => {
-        const el = document.getElementById(s.id);
+    // observe ทั้ง 15 sections
+    const ids = ['executive-summary','problem-solution','tpix-chain','tokenomics','use-cases',
+        'dex-protocol','token-sale','staking','ecosystem','integrations','roadmap',
+        'tech-stack','team','security','legal'];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
         if (el) observer.observe(el);
     });
 });
+
+// Tokenomics Donut Chart — ข้อมูล allocation
+const tokenAllocation = [
+    { label: 'Ecosystem Development', labelTh: 'พัฒนา Ecosystem', pct: 30, color: '#3B82F6', amount: '2.1B' },
+    { label: 'Affiliate Rewards', labelTh: 'รางวัล Affiliate', pct: 25, color: '#8B5CF6', amount: '1.75B' },
+    { label: 'Staking Rewards', labelTh: 'รางวัล Staking', pct: 20, color: '#10B981', amount: '1.4B' },
+    { label: 'Team & Advisors', labelTh: 'ทีมและที่ปรึกษา', pct: 15, color: '#F59E0B', amount: '1.05B' },
+    { label: 'Marketing', labelTh: 'การตลาด', pct: 10, color: '#EF4444', amount: '700M' },
+];
+
+// คำนวณ SVG donut chart paths
+function donutPath(startAngle, endAngle, outerR = 90, innerR = 55) {
+    const rad = (a) => (a - 90) * Math.PI / 180;
+    const cx = 100, cy = 100;
+    const x1 = cx + outerR * Math.cos(rad(startAngle));
+    const y1 = cy + outerR * Math.sin(rad(startAngle));
+    const x2 = cx + outerR * Math.cos(rad(endAngle));
+    const y2 = cy + outerR * Math.sin(rad(endAngle));
+    const x3 = cx + innerR * Math.cos(rad(endAngle));
+    const y3 = cy + innerR * Math.sin(rad(endAngle));
+    const x4 = cx + innerR * Math.cos(rad(startAngle));
+    const y4 = cy + innerR * Math.sin(rad(startAngle));
+    const large = endAngle - startAngle > 180 ? 1 : 0;
+    return `M${x1},${y1} A${outerR},${outerR} 0 ${large},1 ${x2},${y2} L${x3},${y3} A${innerR},${innerR} 0 ${large},0 ${x4},${y4} Z`;
+}
+
+// สร้าง donut segments
+const donutSegments = computed(() => {
+    let angle = 0;
+    return tokenAllocation.map(item => {
+        const start = angle;
+        const sweep = (item.pct / 100) * 360;
+        angle += sweep;
+        return { ...item, path: donutPath(start, start + sweep - 0.5) };
+    });
+});
+
+// ==========================================
+// เนื้อหาสองภาษา — Content i18n
+// ==========================================
+const content = {
+    en: {
+        pageTitle: 'TPIX Chain Whitepaper',
+        subtitle: 'A Next-Generation EVM Blockchain for the ASEAN Digital Economy',
+        version: 'Version 2.0 — March 2026',
+        downloadPdf: 'Download PDF',
+        readInThai: '🇹🇭 อ่านเป็นภาษาไทย',
+        readInEn: '🇬🇧 Read in English',
+        toc: [
+            '1. Executive Summary',
+            '2. Problem & Solution',
+            '3. TPIX Chain Architecture',
+            '4. Tokenomics',
+            '5. Use Cases & Applications',
+            '6. DEX Protocol',
+            '7. Token Sale Details',
+            '8. Staking & Rewards',
+            '9. Ecosystem & Affiliate',
+            '10. Platform Integrations',
+            '11. Roadmap',
+            '12. Technology Stack',
+            '13. Team & Partners',
+            '14. Security & Audits',
+            '15. Legal Disclaimer',
+        ],
+        execSummary: {
+            p1: 'TPIX Chain is a next-generation EVM-compatible blockchain built on Polygon Edge technology, designed specifically for the Thai and Southeast Asian digital economy. With gasless transactions, 2-second block times, and IBFT Proof-of-Authority consensus, TPIX Chain provides an unmatched platform for decentralized applications, DeFi, and real-world asset tokenization.',
+            p2: 'The native TPIX coin (7 billion fixed supply, 18 decimals) powers the entire ecosystem including: a built-in Uniswap V2 DEX, multi-tier staking pools, a token factory for custom ERC-20 creation, cross-chain bridge to BSC, an affiliate referral program, and integration with the Thaiprompt Affiliate enterprise platform serving 500,000+ users.',
+            p3: 'TPIX is not just a cryptocurrency — it is the backbone of a complete digital economy spanning food supply chain traceability, IoT smart farming, delivery services, e-commerce, AI bot marketplace, hotel booking, carbon credit trading, and enterprise affiliate marketing.',
+            stats: [
+                { value: '7B', label: 'Total Supply' },
+                { value: '0 Gas', label: 'Transaction Fee' },
+                { value: '2s', label: 'Block Time' },
+                { value: '~1,500', label: 'TPS Capacity' },
+                { value: 'IBFT', label: 'Consensus' },
+                { value: '~10s', label: 'Finality' },
+            ],
+        },
+        problems: [
+            { title: 'High Gas Fees', desc: 'Ethereum gas fees ($5-50+) and BSC fees ($0.10-1.00) make micro-transactions and daily DeFi usage impractical for average users in developing economies.' },
+            { title: 'Complexity Barrier', desc: 'Existing DEXes and DeFi protocols require deep technical knowledge. The onboarding experience is intimidating for the 95% of people who have never used cryptocurrency.' },
+            { title: 'No ASEAN Focus', desc: 'Major blockchain ecosystems are built for Western markets. There is no localized DeFi ecosystem with Thai/ASEAN language support and culturally relevant use cases.' },
+            { title: 'Fragmented Utility', desc: 'Most tokens lack real-world utility beyond speculation. There is no integrated ecosystem connecting DeFi with real businesses like agriculture, food supply chain, and services.' },
+        ],
+        solutions: [
+            { title: 'Zero Gas Fees', desc: 'All TPIX Chain transactions are completely free. Gas price is hardcoded to 0 in the genesis block, removing the cost barrier permanently.' },
+            { title: 'Intuitive UX', desc: 'Clean, modern interface with Thai language support. Connect wallet, swap tokens, and stake — all in 3 clicks.' },
+            { title: 'ASEAN-First Design', desc: 'Built from the ground up for Thai and Southeast Asian users with full Thai localization, local payment integrations, and culturally relevant use cases.' },
+            { title: 'Real-World Integration', desc: 'TPIX connects DeFi with real businesses: food traceability (FoodPassport), smart farming (IoT), delivery services, e-commerce, and hotel booking.' },
+        ],
+        chainSpecs: [
+            ['Chain Name', 'TPIX Chain'],
+            ['Chain ID (Mainnet)', '4289'],
+            ['Chain ID (Testnet)', '4290'],
+            ['Consensus', 'IBFT (Istanbul Byzantine Fault Tolerant)'],
+            ['Block Time', '2 seconds'],
+            ['Finality', '~10 seconds (5 blocks)'],
+            ['Gas Price', '0 (Free — hardcoded in genesis)'],
+            ['TPS Capacity', '~1,500 transactions/second'],
+            ['VM', 'EVM (Ethereum Virtual Machine) — full Solidity support'],
+            ['Native Coin', 'TPIX (18 decimals)'],
+            ['Total Supply', '7,000,000,000 TPIX (pre-mined in genesis)'],
+            ['Validators', '4 IBFT nodes (BFT tolerates ⌊(n-1)/3⌋ = 1 faulty)'],
+            ['RPC URL', 'https://rpc.tpix.online'],
+            ['Explorer', 'https://explorer.tpix.online'],
+        ],
+        useCases: [
+            {
+                icon: '🏦',
+                title: 'Decentralized Exchange (DEX)',
+                desc: 'Trade tokens using automated market making (AMM) with 0.3% swap fee. Provide liquidity and earn trading fees. Uniswap V2 fork optimized for TPIX Chain.',
+                features: ['Token swaps via constant product formula (x·y=k)', 'Liquidity provision with LP token rewards', 'Farming & yield optimization', 'Zero gas costs for all trades'],
+            },
+            {
+                icon: '🍲',
+                title: 'FoodPassport — Food Supply Chain Traceability',
+                desc: 'Blockchain-based food safety and traceability system. Track food from farm to consumer with immutable records.',
+                features: ['Farm-to-table traceability via blockchain records', 'Quality verification with AI image recognition', 'Certificate management as NFTs on TPIX Chain', 'Smart contract auto-payment upon inspection pass', 'Consumer QR scanning for full product history'],
+            },
+            {
+                icon: '🌾',
+                title: 'IoT Smart Farm System',
+                desc: 'Intelligent farming system using IoT sensors and AI, integrated with blockchain for data integrity and automated operations.',
+                features: ['Real-time sensor monitoring (temperature, humidity, light, soil)', 'Automated irrigation, fertilization, and lighting control', 'Agricultural data marketplace — sell farm data for TPIX', 'Predictive analytics for crop yield optimization', 'Carbon credit generation and trading on-chain'],
+            },
+            {
+                icon: '🚚',
+                title: 'Multi-Service Delivery Platform',
+                desc: 'Full-stack delivery platform for food, groceries, courier services, and home services. TPIX as the payment backbone.',
+                features: ['Food, grocery, and courier delivery', 'Service marketplace (cleaning, repair, etc.)', '3% TPIX cashback on every order', 'Rider earnings paid in TPIX', 'Real-time order tracking on-chain'],
+            },
+            {
+                icon: '🤖',
+                title: 'AI Bot Marketplace',
+                desc: 'Buy, sell, and subscribe to AI-powered bots for trading, customer service, and business automation.',
+                features: ['LINE Official Account AI chatbots', 'Trading bots with sentiment analysis', 'Auto-response with NLP capabilities', 'Monthly subscription payments in TPIX', 'Creator revenue sharing program'],
+            },
+            {
+                icon: '🏨',
+                title: 'Hotel & Travel Booking',
+                desc: 'Decentralized hotel booking system with TPIX payment, cashback rewards, and loyalty program.',
+                features: ['Direct hotel booking with TPIX payment', '3% cashback rewards on every booking', 'Loyalty program with TPIX accumulation', 'Instant settlement to hotel operators'],
+            },
+            {
+                icon: '🛒',
+                title: 'E-Commerce & Marketplace',
+                desc: 'Multi-vendor marketplace platform supporting TPIX payments with 5% cashback and affiliate commission tracking.',
+                features: ['Multi-vendor marketplace with TPIX payments', '5% cashback in TPIX on all purchases', 'POS integration for physical stores', 'Affiliate commission tracking and auto-payout'],
+            },
+            {
+                icon: '🏭',
+                title: 'Token Factory',
+                desc: 'Create custom ERC-20 tokens on TPIX Chain for loyalty programs, vouchers, memberships, and business tokens.',
+                features: ['Create ERC-20 tokens for 100 TPIX', 'Point tokens, voucher tokens, membership NFTs', 'All subsequent transactions are gas-free', 'Perfect for loyalty programs and business tokens'],
+            },
+            {
+                icon: '🌱',
+                title: 'Carbon Credit Trading',
+                desc: 'Blockchain-based carbon credit marketplace integrated with IoT Smart Farm for verified emission reduction.',
+                features: ['Carbon credit tokenization as NFTs', 'Transparent on-chain trading', 'Smart farm integration for automated verification', 'Compliance with international carbon standards'],
+            },
+            {
+                icon: '🧠',
+                title: 'AI Autonomous Ecosystem',
+                desc: 'Self-improving AI system that builds and manages AI agents autonomously, operating 24/7 without human intervention.',
+                features: ['AI-building-AI: self-improving agent creation', 'Autonomous system management 24/7', 'Predictive analytics and automated decision-making', 'TPIX payment for AI compute resources'],
+            },
+        ],
+        dex: {
+            desc: 'TPIX DEX is a Uniswap V2 fork deployed natively on TPIX Chain. It provides automated market making (AMM) with constant product formula (x·y=k) and a 0.3% swap fee (0.25% to LPs, 0.05% to protocol treasury).',
+            contracts: [
+                ['TPIXDEXFactory', 'Creates and manages trading pair contracts'],
+                ['TPIXDEXRouter02', 'Handles multi-hop swaps and liquidity operations'],
+                ['TPIXDEXPair', 'Individual liquidity pool with ERC-20 LP tokens'],
+                ['WTPIX', 'Wrapped TPIX for ERC-20 compatibility within the DEX'],
+            ],
+        },
+        salePhases: [
+            { phase: 'Private Sale', price: '$0.05', alloc: '100M TPIX', tge: '10%', vesting: '30d cliff, 180d linear', color: 'text-purple-400' },
+            { phase: 'Pre-Sale', price: '$0.08', alloc: '200M TPIX', tge: '15%', vesting: '14d cliff, 120d linear', color: 'text-blue-400' },
+            { phase: 'Public Sale', price: '$0.10', alloc: '400M TPIX', tge: '25%', vesting: 'No cliff, 90d linear', color: 'text-green-400' },
+        ],
+        stakingTiers: [
+            { period: 'Flexible', apy: '5%', unlock: 'Anytime' },
+            { period: '30 Days', apy: '25%', unlock: 'After 30 days' },
+            { period: '90 Days', apy: '60%', unlock: 'After 90 days' },
+            { period: '180 Days', apy: '100%', unlock: 'After 180 days' },
+            { period: '365 Days', apy: '200%', unlock: 'After 365 days' },
+        ],
+        integrations: [
+            { name: 'Thaiprompt Affiliate', desc: 'Enterprise MLM platform with 500,000+ users', items: ['Auto TPIX wallet on signup', 'Commission payout in TPIX', 'Rank bonuses', 'Activity rewards (100 TPIX signup, 50 TPIX referral)'] },
+            { name: 'FoodPassport', desc: 'Blockchain food traceability system', items: ['Pay for quality verification', 'Certificate NFTs on TPIX Chain', 'Farmer rewards', 'Supply chain data access'] },
+            { name: 'Delivery Platform', desc: 'Multi-service delivery ecosystem', items: ['TPIX payment for orders', '3% cashback per order', 'Rider TPIX earnings', 'Merchant instant settlement'] },
+            { name: 'IoT Smart Farm', desc: 'AI-powered agriculture system', items: ['Sensor data marketplace', 'Equipment rental with TPIX', 'Carbon credit trading', 'Yield prediction services'] },
+        ],
+        roadmap: [
+            { q: 'Q1-Q2 2023', title: 'Concept & Foundation', status: 'done', items: ['Whitepaper & tokenomics design', 'Technical architecture planning', 'Team formation', 'Initial funding & partnerships'] },
+            { q: 'Q3-Q4 2023', title: 'Blockchain Development', status: 'done', items: ['Polygon Edge core implementation', 'TPIX native coin (7B fixed supply)', 'IBFT consensus & EVM integration', 'Testnet deployment'] },
+            { q: 'Q1-Q2 2024', title: 'Platform Integration', status: 'done', items: ['Laravel service integration', 'REST API (500+ endpoints)', 'Block explorer (Blockscout)', 'Docker deployment & monitoring'] },
+            { q: 'Q3-Q4 2024', title: 'Ecosystem Expansion', status: 'progress', items: ['DEX development (Uniswap V2 fork)', 'Staking pools live', 'Faucet service', 'SDK development (PHP, JS, Python)'] },
+            { q: 'Q1-Q2 2025', title: 'Real-World Applications', status: 'progress', items: ['FoodPassport integration', 'Multi-service delivery platform', 'IoT smart farm system', 'AI bot marketplace launch'] },
+            { q: 'Q3-Q4 2025', title: 'Mainnet & Scaling', status: 'planned', items: ['Mainnet launch', 'Mobile wallet app', 'BSC bridge (wTPIX ↔ TPIX)', 'Governance system (DAO)'] },
+            { q: 'Q1-Q2 2026', title: 'Global Expansion', status: 'current', items: ['International exchange listings', 'Multi-language support', 'Enterprise partnership network', 'Token Sale (ICO)'] },
+            { q: 'Q3-Q4 2026', title: 'Advanced Features', status: 'planned', items: ['Layer 2 scaling (Lightning Network)', 'Cross-chain interoperability', 'AI-powered trading tools', 'Decentralized identity (DID)'] },
+        ],
+        techStack: {
+            blockchain: [['Polygon Edge', 'Modular blockchain framework (Go)'], ['IBFT Consensus', 'Byzantine fault tolerant PoA'], ['EVM', 'Full Solidity smart contract support'], ['LevelDB', 'High-performance storage layer']],
+            smartContracts: [['Solidity ^0.8.20', 'Smart contract language'], ['Hardhat', 'Development & testing framework'], ['OpenZeppelin', 'Audited security libraries'], ['ethers.js', 'Web3 interaction library']],
+            backend: [['Laravel 11', 'Enterprise PHP framework'], ['PHP 8.2+', 'Server-side language'], ['MySQL 8.0+', 'Relational database'], ['Redis', 'Caching & queue management']],
+            frontend: [['Vue.js 3', 'Reactive frontend framework'], ['Inertia.js', 'SPA without API'], ['TailwindCSS', 'Utility-first styling'], ['Chart.js', 'Data visualization']],
+            infra: [['Docker', 'Container orchestration'], ['Blockscout', 'Open-source block explorer'], ['Prometheus + Grafana', 'Metrics & monitoring'], ['GitHub Actions', 'CI/CD pipeline']],
+        },
+        teamDesc: 'TPIX Chain is developed by Xman Studio, an experienced blockchain development team specializing in DeFi, Web3, and enterprise applications for the Southeast Asian market. The team brings deep expertise in Solidity smart contracts, EVM chain deployment, full-stack Web3 development, and integration with real-world business systems.',
+        teamHighlights: ['500,000+ platform users on Thaiprompt Affiliate', '389 Eloquent models, 294 controllers, 500,000+ lines of production code', '20+ integrated business modules (MLM, e-commerce, AI, IoT, hotel booking)', 'Live blockchain infrastructure with Blockscout explorer'],
+        securityItems: [
+            { title: 'Smart Contract Audits', desc: 'All contracts undergo third-party security audits before mainnet deployment. OpenZeppelin libraries used for battle-tested implementations.' },
+            { title: 'IBFT Consensus', desc: 'Byzantine fault tolerance ensures network security. The network can tolerate up to ⌊(n-1)/3⌋ faulty validators while maintaining consensus.' },
+            { title: 'Rate Limiting', desc: 'RPC-level rate limiting (5-50 req/hr per endpoint) prevents spam attacks on the gasless chain.' },
+            { title: 'Multi-Sig Treasury', desc: 'Protocol funds managed by multi-signature wallets requiring 3-of-5 signatures for fund movements.' },
+            { title: 'Bug Bounty Program', desc: 'Ongoing bug bounty program with rewards up to 10,000 TPIX for critical vulnerability disclosure.' },
+            { title: 'Infrastructure Security', desc: 'Docker containerization, encrypted RPC connections (TLS), firewall-protected validator nodes, and automated backup systems.' },
+        ],
+    },
+    th: {
+        pageTitle: 'TPIX Chain ไวท์เปเปอร์',
+        subtitle: 'บล็อกเชน EVM ยุคใหม่ สำหรับเศรษฐกิจดิจิทัลอาเซียน',
+        version: 'เวอร์ชัน 2.0 — มีนาคม 2569',
+        downloadPdf: 'ดาวน์โหลด PDF',
+        readInThai: '🇹🇭 อ่านเป็นภาษาไทย',
+        readInEn: '🇬🇧 Read in English',
+        toc: [
+            '1. บทสรุปผู้บริหาร',
+            '2. ปัญหาและทางออก',
+            '3. สถาปัตยกรรม TPIX Chain',
+            '4. โทเคโนมิกส์',
+            '5. กรณีการใช้งานและแอปพลิเคชัน',
+            '6. โปรโตคอล DEX',
+            '7. รายละเอียดการขายโทเคน',
+            '8. การ Staking และรางวัล',
+            '9. ระบบนิเวศและ Affiliate',
+            '10. การเชื่อมต่อแพลตฟอร์ม',
+            '11. แผนงาน (Roadmap)',
+            '12. เทคโนโลยีที่ใช้',
+            '13. ทีมงานและพาร์ทเนอร์',
+            '14. ความปลอดภัยและการตรวจสอบ',
+            '15. ข้อจำกัดความรับผิดชอบ',
+        ],
+        execSummary: {
+            p1: 'TPIX Chain เป็นบล็อกเชนที่รองรับ EVM สร้างบนเทคโนโลยี Polygon Edge ออกแบบมาโดยเฉพาะสำหรับเศรษฐกิจดิจิทัลไทยและอาเซียน ด้วยการทำธุรกรรมไม่เสียค่า Gas, เวลาสร้างบล็อก 2 วินาที และ IBFT Proof-of-Authority consensus ทำให้ TPIX Chain เป็นแพลตฟอร์มที่เหนือกว่าสำหรับแอปพลิเคชันกระจายอำนาจ, DeFi และการโทเคไนซ์สินทรัพย์ในโลกจริง',
+            p2: 'เหรียญ TPIX (จำนวนคงที่ 7 พันล้าน, 18 ทศนิยม) เป็นพลังขับเคลื่อนระบบนิเวศทั้งหมด ได้แก่: DEX ในตัว (Uniswap V2), สระ Staking หลายระดับ, โรงงานสร้างโทเคน ERC-20, สะพานข้ามเชนไป BSC, โปรแกรม Affiliate และการเชื่อมต่อกับแพลตฟอร์ม Thaiprompt Affiliate ที่มีผู้ใช้กว่า 500,000 คน',
+            p3: 'TPIX ไม่ใช่แค่สกุลเงินดิจิทัล — แต่เป็นกระดูกสันหลังของเศรษฐกิจดิจิทัลครบวงจร ครอบคลุมระบบตรวจสอบย้อนกลับห่วงโซ่อาหาร, ฟาร์มอัจฉริยะ IoT, บริการส่งสินค้า, อีคอมเมิร์ซ, ตลาด AI Bot, จองโรงแรม, ซื้อขายคาร์บอนเครดิต และการตลาดแบบ Affiliate ระดับองค์กร',
+            stats: [
+                { value: '7B', label: 'จำนวนทั้งหมด' },
+                { value: '0 Gas', label: 'ค่าธรรมเนียม' },
+                { value: '2 วิ', label: 'เวลาสร้างบล็อก' },
+                { value: '~1,500', label: 'TPS' },
+                { value: 'IBFT', label: 'Consensus' },
+                { value: '~10 วิ', label: 'Finality' },
+            ],
+        },
+        problems: [
+            { title: 'ค่า Gas สูง', desc: 'ค่า Gas ของ Ethereum ($5-50+) และ BSC ($0.10-1.00) ทำให้ธุรกรรมขนาดเล็กและการใช้ DeFi ประจำวันไม่คุ้มค่าสำหรับผู้ใช้ทั่วไปในประเทศกำลังพัฒนา' },
+            { title: 'ความซับซ้อนสูง', desc: 'DEX และโปรโตคอล DeFi ที่มีอยู่ต้องการความรู้ทางเทคนิคอย่างลึกซึ้ง ประสบการณ์การใช้งานน่ากลัวสำหรับ 95% ของคนที่ไม่เคยใช้คริปโตเคอร์เรนซี' },
+            { title: 'ไม่เน้นอาเซียน', desc: 'ระบบนิเวศบล็อกเชนหลักๆ สร้างขึ้นสำหรับตลาดตะวันตก ยังไม่มีระบบ DeFi ที่แปลเป็นภาษาไทย/อาเซียน และมี use case ที่เกี่ยวข้องกับวัฒนธรรมท้องถิ่น' },
+            { title: 'ประโยชน์กระจัดกระจาย', desc: 'โทเคนส่วนใหญ่ไม่มีประโยชน์ในโลกจริงนอกเหนือจากการเก็งกำไร ไม่มีระบบนิเวศแบบบูรณาการที่เชื่อมต่อ DeFi กับธุรกิจจริง เช่น เกษตรกรรม ห่วงโซ่อาหาร และบริการ' },
+        ],
+        solutions: [
+            { title: 'ค่า Gas เป็นศูนย์', desc: 'ธุรกรรมทั้งหมดบน TPIX Chain ฟรีทั้งหมด Gas price ถูกกำหนดเป็น 0 ใน genesis block อย่างถาวร' },
+            { title: 'ใช้ง่ายมาก', desc: 'อินเทอร์เฟซสะอาด ทันสมัย รองรับภาษาไทย เชื่อมต่อ wallet, สลับโทเคน, Stake — ทำได้ใน 3 คลิก' },
+            { title: 'ออกแบบเพื่ออาเซียน', desc: 'สร้างตั้งแต่แรกเพื่อผู้ใช้ไทยและเอเชียตะวันออกเฉียงใต้ แปลภาษาไทยครบ เชื่อมต่อการชำระเงินท้องถิ่น' },
+            { title: 'เชื่อมต่อธุรกิจจริง', desc: 'TPIX เชื่อม DeFi กับธุรกิจจริง: ตรวจสอบอาหาร (FoodPassport), ฟาร์มอัจฉริยะ (IoT), บริการส่งของ, อีคอมเมิร์ซ, จองโรงแรม' },
+        ],
+        chainSpecs: [
+            ['ชื่อเชน', 'TPIX Chain'],
+            ['Chain ID (Mainnet)', '4289'],
+            ['Chain ID (Testnet)', '4290'],
+            ['Consensus', 'IBFT (Istanbul Byzantine Fault Tolerant)'],
+            ['เวลาสร้างบล็อก', '2 วินาที'],
+            ['Finality', '~10 วินาที (5 บล็อก)'],
+            ['ค่า Gas', '0 (ฟรี — กำหนดใน genesis)'],
+            ['ความจุ TPS', '~1,500 ธุรกรรม/วินาที'],
+            ['VM', 'EVM (Ethereum Virtual Machine) — รองรับ Solidity เต็มรูปแบบ'],
+            ['Native Coin', 'TPIX (18 ทศนิยม)'],
+            ['จำนวนทั้งหมด', '7,000,000,000 TPIX (pre-mined ใน genesis)'],
+            ['Validator', '4 โหนด IBFT (BFT ทนได้ ⌊(n-1)/3⌋ = 1 โหนดที่มีปัญหา)'],
+            ['RPC URL', 'https://rpc.tpix.online'],
+            ['Explorer', 'https://explorer.tpix.online'],
+        ],
+        useCases: [
+            {
+                icon: '🏦',
+                title: 'กระดานแลกเปลี่ยนกระจายอำนาจ (DEX)',
+                desc: 'ซื้อขายโทเคนด้วย AMM ค่าธรรมเนียม 0.3% เพิ่มสภาพคล่องเพื่อรับค่าธรรมเนียม',
+                features: ['สลับโทเคนด้วยสูตร x·y=k', 'เพิ่มสภาพคล่อง รับ LP Token', 'Farming & yield optimization', 'ค่า Gas เป็น 0 สำหรับทุกการซื้อขาย'],
+            },
+            {
+                icon: '🍲',
+                title: 'FoodPassport — ระบบตรวจสอบย้อนกลับห่วงโซ่อาหาร',
+                desc: 'ระบบตรวจสอบความปลอดภัยอาหารบนบล็อกเชน ติดตามอาหารจากฟาร์มถึงผู้บริโภค',
+                features: ['ตรวจสอบย้อนกลับจากฟาร์มถึงโต๊ะอาหาร', 'ตรวจสอบคุณภาพด้วย AI Image Recognition', 'จัดการใบรับรองเป็น NFT บน TPIX Chain', 'ชำระเงินอัตโนมัติผ่าน Smart Contract', 'ผู้บริโภคสแกน QR ดูประวัติสินค้า'],
+            },
+            {
+                icon: '🌾',
+                title: 'ระบบฟาร์มอัจฉริยะ IoT',
+                desc: 'ระบบฟาร์มอัจฉริยะด้วยเซ็นเซอร์ IoT และ AI เชื่อมต่อกับบล็อกเชน',
+                features: ['ติดตามเซ็นเซอร์แบบเรียลไทม์ (อุณหภูมิ, ความชื้น, แสง, ดิน)', 'ควบคุมระบบน้ำ ปุ๋ย แสงอัตโนมัติ', 'ตลาดข้อมูลเกษตร — ขายข้อมูลเป็น TPIX', 'วิเคราะห์และทำนายผลผลิต', 'สร้างและซื้อขายคาร์บอนเครดิตบนเชน'],
+            },
+            {
+                icon: '🚚',
+                title: 'แพลตฟอร์มส่งสินค้าครบวงจร',
+                desc: 'แพลตฟอร์มส่งอาหาร ของชำ พัสดุ และบริการ ใช้ TPIX เป็นระบบชำระเงิน',
+                features: ['ส่งอาหาร ของชำ และพัสดุ', 'ตลาดบริการ (ทำความสะอาด ซ่อมแซม)', 'คืนเงิน 3% เป็น TPIX ทุกออเดอร์', 'ผู้ขนส่งรับค่าจ้างเป็น TPIX', 'ติดตามออเดอร์แบบเรียลไทม์บนเชน'],
+            },
+            {
+                icon: '🤖',
+                title: 'ตลาด AI Bot',
+                desc: 'ซื้อ ขาย และสมัครสมาชิก AI Bot สำหรับการเทรด บริการลูกค้า และอัตโนมัติธุรกิจ',
+                features: ['LINE Official Account AI chatbot', 'บอทเทรดพร้อม sentiment analysis', 'ตอบกลับอัตโนมัติด้วย NLP', 'จ่ายค่าสมาชิกรายเดือนด้วย TPIX', 'โปรแกรมแบ่งรายได้ผู้สร้าง'],
+            },
+            {
+                icon: '🏨',
+                title: 'ระบบจองโรงแรมและท่องเที่ยว',
+                desc: 'จองโรงแรมแบบกระจายอำนาจ ชำระด้วย TPIX พร้อมรางวัล cashback',
+                features: ['จองโรงแรมโดยตรงด้วย TPIX', 'คืนเงิน 3% ทุกการจอง', 'โปรแกรมสะสม TPIX', 'โอนเงินให้โรงแรมทันที'],
+            },
+            {
+                icon: '🛒',
+                title: 'อีคอมเมิร์ซและตลาด',
+                desc: 'ตลาดออนไลน์หลายร้านค้ารองรับ TPIX คืนเงิน 5% และติดตามคอมมิชชั่น Affiliate',
+                features: ['ตลาดหลายร้านค้าชำระด้วย TPIX', 'คืนเงิน 5% เป็น TPIX', 'POS สำหรับร้านค้าจริง', 'ติดตามคอมมิชชั่น Affiliate อัตโนมัติ'],
+            },
+            {
+                icon: '🏭',
+                title: 'โรงงานสร้างโทเคน',
+                desc: 'สร้างโทเคน ERC-20 บน TPIX Chain สำหรับ loyalty program, voucher, membership',
+                features: ['สร้างโทเคน ERC-20 ด้วย 100 TPIX', 'โทเคนสะสมแต้ม, บัตรกำนัล, NFT สมาชิก', 'ธุรกรรมต่อมาทั้งหมดฟรี', 'เหมาะสำหรับ loyalty program และโทเคนธุรกิจ'],
+            },
+            {
+                icon: '🌱',
+                title: 'ตลาดซื้อขายคาร์บอนเครดิต',
+                desc: 'ตลาดคาร์บอนเครดิตบนบล็อกเชน เชื่อมกับ IoT Smart Farm',
+                features: ['โทเคไนซ์คาร์บอนเครดิตเป็น NFT', 'ซื้อขายโปร่งใสบนเชน', 'เชื่อมกับ Smart Farm ตรวจสอบอัตโนมัติ', 'รองรับมาตรฐานคาร์บอนสากล'],
+            },
+            {
+                icon: '🧠',
+                title: 'ระบบ AI อัตโนมัติ',
+                desc: 'ระบบ AI ที่พัฒนาตัวเอง สร้างและจัดการ AI agent อัตโนมัติ ทำงาน 24/7',
+                features: ['AI สร้าง AI อัตโนมัติ (Self-improving)', 'จัดการระบบอัตโนมัติ 24/7', 'วิเคราะห์และตัดสินใจอัตโนมัติ', 'ชำระค่า AI compute ด้วย TPIX'],
+            },
+        ],
+        dex: {
+            desc: 'TPIX DEX เป็น Uniswap V2 fork ที่ deploy บน TPIX Chain โดยตรง ใช้ AMM สูตร x·y=k ค่าธรรมเนียม 0.3% (0.25% ให้ LP, 0.05% ให้คลัง protocol)',
+            contracts: [
+                ['TPIXDEXFactory', 'สร้างและจัดการ trading pair contracts'],
+                ['TPIXDEXRouter02', 'จัดการ multi-hop swaps และสภาพคล่อง'],
+                ['TPIXDEXPair', 'สระสภาพคล่อง พร้อม ERC-20 LP tokens'],
+                ['WTPIX', 'Wrapped TPIX สำหรับใช้ใน DEX'],
+            ],
+        },
+        salePhases: [
+            { phase: 'Private Sale', price: '$0.05', alloc: '100M TPIX', tge: '10%', vesting: '30 วัน cliff, 180 วัน linear', color: 'text-purple-400' },
+            { phase: 'Pre-Sale', price: '$0.08', alloc: '200M TPIX', tge: '15%', vesting: '14 วัน cliff, 120 วัน linear', color: 'text-blue-400' },
+            { phase: 'Public Sale', price: '$0.10', alloc: '400M TPIX', tge: '25%', vesting: 'ไม่มี cliff, 90 วัน linear', color: 'text-green-400' },
+        ],
+        stakingTiers: [
+            { period: 'ยืดหยุ่น', apy: '5%', unlock: 'ถอนได้ทุกเมื่อ' },
+            { period: '30 วัน', apy: '25%', unlock: 'หลัง 30 วัน' },
+            { period: '90 วัน', apy: '60%', unlock: 'หลัง 90 วัน' },
+            { period: '180 วัน', apy: '100%', unlock: 'หลัง 180 วัน' },
+            { period: '365 วัน', apy: '200%', unlock: 'หลัง 365 วัน' },
+        ],
+        integrations: [
+            { name: 'Thaiprompt Affiliate', desc: 'แพลตฟอร์ม MLM ระดับองค์กร ผู้ใช้ 500,000+ คน', items: ['สร้าง TPIX wallet อัตโนมัติเมื่อสมัคร', 'จ่ายคอมมิชชั่นเป็น TPIX', 'โบนัสจากการเลื่อนระดับ', 'รางวัลกิจกรรม (100 TPIX สมัคร, 50 TPIX แนะนำ)'] },
+            { name: 'FoodPassport', desc: 'ระบบตรวจสอบอาหารบนบล็อกเชน', items: ['ชำระค่าตรวจสอบคุณภาพ', 'ใบรับรอง NFT บน TPIX Chain', 'รางวัลเกษตรกร', 'เข้าถึงข้อมูล Supply Chain'] },
+            { name: 'Delivery Platform', desc: 'ระบบส่งสินค้าครบวงจร', items: ['ชำระด้วย TPIX', 'คืนเงิน 3% ต่อออเดอร์', 'ค่าจ้างผู้ส่งเป็น TPIX', 'โอนเงินร้านค้าทันที'] },
+            { name: 'IoT Smart Farm', desc: 'ระบบเกษตรอัจฉริยะด้วย AI', items: ['ตลาดข้อมูลเซ็นเซอร์', 'เช่าอุปกรณ์ด้วย TPIX', 'ซื้อขายคาร์บอนเครดิต', 'บริการทำนายผลผลิต'] },
+        ],
+        roadmap: [
+            { q: 'Q1-Q2 2566', title: 'แนวคิดและรากฐาน', status: 'done', items: ['ออกแบบ Whitepaper & tokenomics', 'วางแผนสถาปัตยกรรมเทคนิค', 'จัดตั้งทีม', 'ระดมทุนและจับมือพาร์ทเนอร์'] },
+            { q: 'Q3-Q4 2566', title: 'พัฒนาบล็อกเชน', status: 'done', items: ['สร้าง Polygon Edge core', 'เหรียญ TPIX (7B fixed supply)', 'IBFT consensus & EVM', 'Deploy Testnet'] },
+            { q: 'Q1-Q2 2567', title: 'เชื่อมต่อแพลตฟอร์ม', status: 'done', items: ['เชื่อมต่อ Laravel service', 'REST API (500+ endpoints)', 'Block Explorer (Blockscout)', 'Docker deployment & monitoring'] },
+            { q: 'Q3-Q4 2567', title: 'ขยายระบบนิเวศ', status: 'progress', items: ['พัฒนา DEX (Uniswap V2 fork)', 'เปิด Staking pools', 'Faucet service', 'พัฒนา SDK (PHP, JS, Python)'] },
+            { q: 'Q1-Q2 2568', title: 'แอปพลิเคชันโลกจริง', status: 'progress', items: ['เชื่อมต่อ FoodPassport', 'แพลตฟอร์มส่งสินค้าครบวงจร', 'ระบบฟาร์มอัจฉริยะ IoT', 'เปิดตลาด AI Bot'] },
+            { q: 'Q3-Q4 2568', title: 'Mainnet และ Scaling', status: 'planned', items: ['เปิด Mainnet', 'แอป Mobile Wallet', 'Bridge BSC (wTPIX ↔ TPIX)', 'ระบบ DAO Governance'] },
+            { q: 'Q1-Q2 2569', title: 'ขยายสู่ระดับสากล', status: 'current', items: ['ลิสต์ Exchange นานาชาติ', 'รองรับหลายภาษา', 'เครือข่ายพาร์ทเนอร์ Enterprise', 'Token Sale (ICO)'] },
+            { q: 'Q3-Q4 2569', title: 'ฟีเจอร์ขั้นสูง', status: 'planned', items: ['Layer 2 scaling', 'Cross-chain interoperability', 'เครื่องมือเทรดด้วย AI', 'Decentralized Identity (DID)'] },
+        ],
+        techStack: {
+            blockchain: [['Polygon Edge', 'เฟรมเวิร์กบล็อกเชน (Go)'], ['IBFT Consensus', 'Byzantine fault tolerant PoA'], ['EVM', 'รองรับ Solidity smart contract'], ['LevelDB', 'ชั้น storage ประสิทธิภาพสูง']],
+            smartContracts: [['Solidity ^0.8.20', 'ภาษา smart contract'], ['Hardhat', 'เฟรมเวิร์กพัฒนาและทดสอบ'], ['OpenZeppelin', 'ไลบรารีความปลอดภัย'], ['ethers.js', 'ไลบรารี Web3']],
+            backend: [['Laravel 11', 'เฟรมเวิร์ก PHP ระดับ Enterprise'], ['PHP 8.2+', 'ภาษาฝั่งเซิร์ฟเวอร์'], ['MySQL 8.0+', 'ฐานข้อมูลเชิงสัมพันธ์'], ['Redis', 'แคชและจัดการคิว']],
+            frontend: [['Vue.js 3', 'เฟรมเวิร์ก frontend แบบ reactive'], ['Inertia.js', 'SPA ไม่ต้องสร้าง API'], ['TailwindCSS', 'Utility-first styling'], ['Chart.js', 'แสดงข้อมูลเชิงภาพ']],
+            infra: [['Docker', 'จัดการ container'], ['Blockscout', 'Block explorer โอเพนซอร์ส'], ['Prometheus + Grafana', 'ตรวจสอบและแดชบอร์ด'], ['GitHub Actions', 'CI/CD pipeline']],
+        },
+        teamDesc: 'TPIX Chain พัฒนาโดย Xman Studio ทีมพัฒนาบล็อกเชนที่มีประสบการณ์ เชี่ยวชาญด้าน DeFi, Web3 และแอปพลิเคชันระดับองค์กรสำหรับตลาดเอเชียตะวันออกเฉียงใต้ ทีมมีความเชี่ยวชาญลึกซึ้งในด้าน Solidity smart contracts, การ deploy เชน EVM, การพัฒนา Web3 full-stack และการเชื่อมต่อกับระบบธุรกิจในโลกจริง',
+        teamHighlights: ['ผู้ใช้แพลตฟอร์ม 500,000+ คนบน Thaiprompt Affiliate', '389 Eloquent models, 294 controllers, โค้ด 500,000+ บรรทัด', '20+ โมดูลธุรกิจ (MLM, อีคอมเมิร์ซ, AI, IoT, จองโรงแรม)', 'โครงสร้างบล็อกเชนพร้อม Blockscout explorer'],
+        securityItems: [
+            { title: 'ตรวจสอบ Smart Contract', desc: 'ทุก contract ผ่านการตรวจสอบความปลอดภัยจากบุคคลที่สามก่อน deploy ใช้ไลบรารี OpenZeppelin ที่ผ่านการทดสอบแล้ว' },
+            { title: 'IBFT Consensus', desc: 'Byzantine fault tolerance รับประกันความปลอดภัยของเครือข่าย ทนได้ถึง ⌊(n-1)/3⌋ validator ที่มีปัญหา' },
+            { title: 'Rate Limiting', desc: 'จำกัดอัตราการเรียกใช้ RPC (5-50 req/hr) ป้องกัน spam บนเชนที่ไม่เสียค่า Gas' },
+            { title: 'กระเป๋า Multi-Sig', desc: 'กองทุน protocol จัดการด้วย multi-signature wallet ต้องใช้ 3 จาก 5 ลายเซ็น' },
+            { title: 'โปรแกรม Bug Bounty', desc: 'โปรแกรมรางวัลสูงสุด 10,000 TPIX สำหรับการเปิดเผยช่องโหว่ร้ายแรง' },
+            { title: 'ความปลอดภัยโครงสร้าง', desc: 'Docker containerization, RPC เข้ารหัส (TLS), validator มี firewall, ระบบ backup อัตโนมัติ' },
+        ],
+    },
+};
 </script>
 
 <template>
-    <Head title="TPIX Chain Whitepaper" />
+    <Head :title="t.pageTitle" />
 
     <AppLayout :hide-sidebar="true">
-        <!-- Hero -->
+        <!-- Hero — หัวหน้าเอกสาร -->
         <section class="relative py-16 overflow-hidden">
             <div class="absolute inset-0 pointer-events-none">
                 <div class="absolute top-0 left-1/4 w-96 h-96 rounded-full bg-primary-500/10 blur-[120px]" />
@@ -67,385 +492,505 @@ onMounted(() => {
             </div>
 
             <div class="relative max-w-4xl mx-auto px-4 text-center">
-                <img src="/logo.png" alt="TPIX" class="w-24 h-24 mx-auto mb-6 rounded-full" />
-                <h1 class="text-4xl sm:text-5xl font-bold text-white mb-3">TPIX Chain Whitepaper</h1>
-                <p class="text-lg text-gray-400 mb-6">Version 1.0 — March 2026</p>
+                <img src="/logo.png" alt="TPIX" class="w-28 h-28 mx-auto mb-6 rounded-2xl shadow-lg shadow-primary-500/20" />
+                <h1 class="text-4xl sm:text-5xl font-bold text-white mb-2">{{ t.pageTitle }}</h1>
+                <p class="text-lg text-primary-400 font-medium mb-1">{{ t.subtitle }}</p>
+                <p class="text-sm text-gray-500 mb-6">{{ t.version }}</p>
 
-                <a href="/whitepaper/download" class="btn-primary px-8 py-3 inline-flex items-center gap-2 font-semibold">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Download PDF
-                </a>
+                <div class="flex flex-wrap items-center justify-center gap-3">
+                    <a href="/whitepaper/download" class="btn-primary px-8 py-3 inline-flex items-center gap-2 font-semibold">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        {{ t.downloadPdf }}
+                    </a>
+                    <button @click="toggleLang" class="btn-secondary px-6 py-3 font-semibold">
+                        {{ lang === 'en' ? t.readInThai : t.readInEn }}
+                    </button>
+                </div>
             </div>
         </section>
 
         <!-- Content: TOC + Sections -->
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 pb-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
             <div class="flex gap-8">
                 <!-- Sidebar: Table of Contents (sticky) -->
-                <aside class="hidden lg:block w-64 flex-shrink-0">
+                <aside class="hidden xl:block w-64 flex-shrink-0">
                     <div class="sticky top-24">
-                        <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Contents</h3>
-                        <nav class="space-y-1">
+                        <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">
+                            {{ lang === 'en' ? 'Contents' : 'สารบัญ' }}
+                        </h3>
+                        <nav class="space-y-0.5 max-h-[70vh] overflow-y-auto pr-2">
                             <button
-                                v-for="s in sections"
-                                :key="s.id"
-                                class="block w-full text-left px-3 py-1.5 rounded-lg text-sm transition-colors"
+                                v-for="s in sections" :key="s.id"
+                                class="block w-full text-left px-3 py-1.5 rounded-lg text-xs transition-colors"
                                 :class="activeSection === s.id
-                                    ? 'text-primary-400 bg-primary-500/10'
-                                    : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                                    ? 'text-primary-400 bg-primary-500/10 font-medium'
+                                    : 'text-gray-500 hover:text-white hover:bg-white/5'"
                                 @click="scrollTo(s.id)"
-                            >
-                                {{ s.title }}
-                            </button>
+                            >{{ s.title }}</button>
                         </nav>
                     </div>
                 </aside>
 
                 <!-- Main Content -->
                 <main class="flex-1 min-w-0">
+
                     <!-- 1. Executive Summary -->
                     <section id="executive-summary" class="wp-section">
-                        <h2 class="wp-heading">1. Executive Summary</h2>
-                        <p class="wp-text">
-                            TPIX Chain is a next-generation EVM-compatible blockchain built on Polygon Edge technology,
-                            designed for the Thai and Southeast Asian markets. With zero gas fees, 2-second block times,
-                            and IBFT Proof-of-Authority consensus, TPIX Chain provides a fast, free, and scalable
-                            platform for decentralized applications.
-                        </p>
-                        <p class="wp-text">
-                            The TPIX token (7 billion total supply) serves as the native coin of the chain, powering
-                            staking rewards, governance, the built-in DEX, token factory, cross-chain bridge, and
-                            an affiliate referral program.
-                        </p>
+                        <h2 class="wp-heading">{{ t.toc[0] }}</h2>
+                        <p class="wp-text">{{ t.execSummary.p1 }}</p>
+                        <p class="wp-text">{{ t.execSummary.p2 }}</p>
+                        <p class="wp-text font-medium text-white/90">{{ t.execSummary.p3 }}</p>
+
+                        <!-- สถิติสำคัญ — Key Stats -->
                         <div class="wp-highlight">
-                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-                                <div><p class="text-2xl font-bold text-primary-400">7B</p><p class="text-xs text-gray-400">Total Supply</p></div>
-                                <div><p class="text-2xl font-bold text-trading-green">0 Gas</p><p class="text-xs text-gray-400">Transaction Fee</p></div>
-                                <div><p class="text-2xl font-bold text-accent-400">2s</p><p class="text-xs text-gray-400">Block Time</p></div>
-                                <div><p class="text-2xl font-bold text-warm-400">IBFT</p><p class="text-xs text-gray-400">Consensus</p></div>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-center">
+                                <div v-for="s in t.execSummary.stats" :key="s.label">
+                                    <p class="text-2xl font-bold text-primary-400">{{ s.value }}</p>
+                                    <p class="text-xs text-gray-400 mt-1">{{ s.label }}</p>
+                                </div>
                             </div>
                         </div>
                     </section>
 
                     <!-- 2. Problem & Solution -->
                     <section id="problem-solution" class="wp-section">
-                        <h2 class="wp-heading">2. Problem & Solution</h2>
-                        <h3 class="wp-subheading">The Problem</h3>
-                        <ul class="wp-list">
-                            <li>High gas fees on Ethereum and BSC make micro-transactions impractical</li>
-                            <li>Existing DEXes are complex and intimidating for new users</li>
-                            <li>Limited blockchain infrastructure for Southeast Asian markets</li>
-                            <li>No localized DeFi ecosystem with Thai language support</li>
-                        </ul>
+                        <h2 class="wp-heading">{{ t.toc[1] }}</h2>
 
-                        <h3 class="wp-subheading">Our Solution</h3>
-                        <ul class="wp-list">
-                            <li><strong class="text-white">Zero Gas Fees</strong> — All transactions on TPIX Chain are completely free</li>
-                            <li><strong class="text-white">User-Friendly DEX</strong> — Intuitive trading interface with AI-powered insights</li>
-                            <li><strong class="text-white">Local Focus</strong> — Built for Thai and ASEAN users with localized support</li>
-                            <li><strong class="text-white">Cross-Chain Bridge</strong> — Seamless asset transfer between TPIX Chain and BSC</li>
-                        </ul>
+                        <h3 class="wp-subheading text-trading-red">{{ lang === 'en' ? '⚠️ The Problems' : '⚠️ ปัญหา' }}</h3>
+                        <div class="grid sm:grid-cols-2 gap-4 mb-8">
+                            <div v-for="p in t.problems" :key="p.title" class="p-4 rounded-xl bg-red-500/5 border border-red-500/10">
+                                <h4 class="font-semibold text-white mb-2">{{ p.title }}</h4>
+                                <p class="text-sm text-gray-400">{{ p.desc }}</p>
+                            </div>
+                        </div>
+
+                        <h3 class="wp-subheading text-trading-green">{{ lang === 'en' ? '✅ Our Solutions' : '✅ ทางออกของเรา' }}</h3>
+                        <div class="grid sm:grid-cols-2 gap-4">
+                            <div v-for="s in t.solutions" :key="s.title" class="p-4 rounded-xl bg-green-500/5 border border-green-500/10">
+                                <h4 class="font-semibold text-white mb-2">{{ s.title }}</h4>
+                                <p class="text-sm text-gray-400">{{ s.desc }}</p>
+                            </div>
+                        </div>
                     </section>
 
                     <!-- 3. TPIX Chain Architecture -->
                     <section id="tpix-chain" class="wp-section">
-                        <h2 class="wp-heading">3. TPIX Chain Architecture</h2>
-                        <p class="wp-text">
-                            TPIX Chain is built on Polygon Edge, an open-source framework for building Ethereum-compatible
-                            blockchain networks. It uses Istanbul Byzantine Fault Tolerant (IBFT) consensus with
-                            4 validator nodes, providing immediate transaction finality.
-                        </p>
+                        <h2 class="wp-heading">{{ t.toc[2] }}</h2>
 
+                        <!-- Architecture Diagram — แผนภูมิสถาปัตยกรรม -->
+                        <div class="wp-highlight mb-6">
+                            <h4 class="text-center text-sm font-bold text-gray-400 mb-4 uppercase tracking-wider">
+                                {{ lang === 'en' ? 'Network Architecture' : 'สถาปัตยกรรมเครือข่าย' }}
+                            </h4>
+                            <div class="flex flex-col items-center gap-3">
+                                <!-- DApps Layer -->
+                                <div class="flex flex-wrap justify-center gap-2">
+                                    <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">DEX</span>
+                                    <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">Staking</span>
+                                    <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">Token Factory</span>
+                                    <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">FoodPassport</span>
+                                    <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">IoT Farm</span>
+                                    <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">NFT</span>
+                                </div>
+                                <div class="text-gray-600">▼</div>
+                                <!-- Smart Contract Layer -->
+                                <div class="w-full max-w-lg p-3 rounded-xl bg-accent-500/10 border border-accent-500/20 text-center">
+                                    <p class="text-xs font-bold text-accent-400 mb-1">{{ lang === 'en' ? 'Smart Contract Layer (EVM / Solidity)' : 'ชั้น Smart Contract (EVM / Solidity)' }}</p>
+                                    <div class="flex flex-wrap justify-center gap-1.5 text-xs text-gray-400">
+                                        <span>TPIXDEXFactory</span><span>·</span>
+                                        <span>TPIXDEXRouter02</span><span>·</span>
+                                        <span>StakingPool</span><span>·</span>
+                                        <span>TokenFactory</span>
+                                    </div>
+                                </div>
+                                <div class="text-gray-600">▼</div>
+                                <!-- Consensus Layer -->
+                                <div class="w-full max-w-lg p-3 rounded-xl bg-green-500/10 border border-green-500/20 text-center">
+                                    <p class="text-xs font-bold text-green-400 mb-1">IBFT Consensus (4 Validators)</p>
+                                    <div class="flex justify-center gap-3">
+                                        <span v-for="i in 4" :key="i" class="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center text-green-400 text-xs font-bold">V{{ i }}</span>
+                                    </div>
+                                </div>
+                                <div class="text-gray-600">▼</div>
+                                <!-- Storage Layer -->
+                                <div class="w-full max-w-lg p-3 rounded-xl bg-warm-500/10 border border-warm-500/20 text-center">
+                                    <p class="text-xs font-bold text-warm-400">{{ lang === 'en' ? 'Storage (LevelDB) + Networking (libp2p)' : 'Storage (LevelDB) + เครือข่าย (libp2p)' }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chain Specifications Table -->
                         <div class="wp-table">
                             <table class="w-full text-sm">
                                 <thead><tr class="border-b border-white/10">
-                                    <th class="text-left py-2 px-3 text-gray-400">Parameter</th>
-                                    <th class="text-left py-2 px-3 text-gray-400">Value</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Parameter' : 'พารามิเตอร์' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Value' : 'ค่า' }}</th>
                                 </tr></thead>
                                 <tbody>
-                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-gray-300">Chain Name</td><td class="py-2 px-3 text-white font-medium">TPIX Chain</td></tr>
-                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-gray-300">Chain ID (Mainnet)</td><td class="py-2 px-3 text-white font-medium">7000</td></tr>
-                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-gray-300">Chain ID (Testnet)</td><td class="py-2 px-3 text-white font-medium">7001</td></tr>
-                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-gray-300">Consensus</td><td class="py-2 px-3 text-white font-medium">IBFT (PoA)</td></tr>
-                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-gray-300">Block Time</td><td class="py-2 px-3 text-white font-medium">2 seconds</td></tr>
-                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-gray-300">Gas Price</td><td class="py-2 px-3 text-trading-green font-medium">0 (Free)</td></tr>
-                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-gray-300">EVM Compatible</td><td class="py-2 px-3 text-white font-medium">Yes (Solidity)</td></tr>
-                                    <tr><td class="py-2 px-3 text-gray-300">Validators</td><td class="py-2 px-3 text-white font-medium">4 nodes</td></tr>
+                                    <tr v-for="(row, i) in t.chainSpecs" :key="i" :class="i < t.chainSpecs.length - 1 ? 'border-b border-white/5' : ''">
+                                        <td class="py-2 px-3 text-gray-300">{{ row[0] }}</td>
+                                        <td class="py-2 px-3 text-white font-medium">{{ row[1] }}</td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
                     </section>
 
-                    <!-- 4. Tokenomics -->
+                    <!-- 4. Tokenomics — โทเคโนมิกส์ -->
                     <section id="tokenomics" class="wp-section">
-                        <h2 class="wp-heading">4. Tokenomics</h2>
-                        <p class="wp-text">
-                            TPIX has a fixed supply of 7,000,000,000 (7 billion) tokens with 18 decimals.
-                            There is no inflation or minting mechanism — the total supply is pre-mined in the genesis block.
-                        </p>
+                        <h2 class="wp-heading">{{ t.toc[3] }}</h2>
 
-                        <h3 class="wp-subheading">Token Allocation</h3>
-                        <div class="wp-table">
-                            <table class="w-full text-sm">
-                                <thead><tr class="border-b border-white/10">
-                                    <th class="text-left py-2 px-3 text-gray-400">Allocation</th>
-                                    <th class="text-right py-2 px-3 text-gray-400">%</th>
-                                    <th class="text-right py-2 px-3 text-gray-400">TPIX Amount</th>
-                                    <th class="text-left py-2 px-3 text-gray-400">Vesting</th>
-                                </tr></thead>
-                                <tbody>
-                                    <tr class="border-b border-white/5">
-                                        <td class="py-2 px-3 text-white">Public Sale (ICO)</td>
-                                        <td class="py-2 px-3 text-right text-primary-400 font-medium">10%</td>
-                                        <td class="py-2 px-3 text-right text-gray-300">700,000,000</td>
-                                        <td class="py-2 px-3 text-gray-400">10-25% TGE, 6-12m vesting</td>
-                                    </tr>
-                                    <tr class="border-b border-white/5">
-                                        <td class="py-2 px-3 text-white">Liquidity Pool</td>
-                                        <td class="py-2 px-3 text-right text-accent-400 font-medium">30%</td>
-                                        <td class="py-2 px-3 text-right text-gray-300">2,100,000,000</td>
-                                        <td class="py-2 px-3 text-gray-400">Locked in DEX pools</td>
-                                    </tr>
-                                    <tr class="border-b border-white/5">
-                                        <td class="py-2 px-3 text-white">Staking Rewards</td>
-                                        <td class="py-2 px-3 text-right text-trading-green font-medium">20%</td>
-                                        <td class="py-2 px-3 text-right text-gray-300">1,400,000,000</td>
-                                        <td class="py-2 px-3 text-gray-400">Distributed over 5 years</td>
-                                    </tr>
-                                    <tr class="border-b border-white/5">
-                                        <td class="py-2 px-3 text-white">Team & Advisors</td>
-                                        <td class="py-2 px-3 text-right text-warm-400 font-medium">20%</td>
-                                        <td class="py-2 px-3 text-right text-gray-300">1,400,000,000</td>
-                                        <td class="py-2 px-3 text-gray-400">1yr cliff, 3yr linear</td>
-                                    </tr>
-                                    <tr class="border-b border-white/5">
-                                        <td class="py-2 px-3 text-white">Ecosystem Fund</td>
-                                        <td class="py-2 px-3 text-right text-blue-400 font-medium">10%</td>
-                                        <td class="py-2 px-3 text-right text-gray-300">700,000,000</td>
-                                        <td class="py-2 px-3 text-gray-400">DAO governed</td>
-                                    </tr>
-                                    <tr>
-                                        <td class="py-2 px-3 text-white">Development</td>
-                                        <td class="py-2 px-3 text-right text-pink-400 font-medium">10%</td>
-                                        <td class="py-2 px-3 text-right text-gray-300">700,000,000</td>
-                                        <td class="py-2 px-3 text-gray-400">2yr linear</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div class="grid lg:grid-cols-2 gap-8 items-start">
+                            <!-- Donut Chart — แผนภูมิโดนัท -->
+                            <div class="flex flex-col items-center">
+                                <svg viewBox="0 0 200 200" class="w-64 h-64">
+                                    <path v-for="seg in donutSegments" :key="seg.label" :d="seg.path" :fill="seg.color" class="opacity-90 hover:opacity-100 transition-opacity cursor-pointer" />
+                                    <text x="100" y="95" text-anchor="middle" fill="white" font-size="14" font-weight="bold">7B</text>
+                                    <text x="100" y="112" text-anchor="middle" fill="#9CA3AF" font-size="8">TPIX</text>
+                                </svg>
+                                <!-- Legend -->
+                                <div class="grid grid-cols-1 gap-2 mt-4 w-full max-w-xs">
+                                    <div v-for="item in tokenAllocation" :key="item.label" class="flex items-center gap-2">
+                                        <span class="w-3 h-3 rounded-full flex-shrink-0" :style="{ backgroundColor: item.color }"></span>
+                                        <span class="text-sm text-gray-300 flex-1">{{ lang === 'en' ? item.label : item.labelTh }}</span>
+                                        <span class="text-sm font-bold text-white">{{ item.pct }}%</span>
+                                        <span class="text-xs text-gray-500">{{ item.amount }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Details Table -->
+                            <div>
+                                <div class="wp-table">
+                                    <table class="w-full text-sm">
+                                        <thead><tr class="border-b border-white/10">
+                                            <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Allocation' : 'การจัดสรร' }}</th>
+                                            <th class="text-right py-2 px-3 text-gray-400">%</th>
+                                            <th class="text-right py-2 px-3 text-gray-400">TPIX</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            <tr v-for="(item, i) in tokenAllocation" :key="item.label" :class="i < tokenAllocation.length - 1 ? 'border-b border-white/5' : ''">
+                                                <td class="py-2 px-3 text-white flex items-center gap-2">
+                                                    <span class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: item.color }"></span>
+                                                    {{ lang === 'en' ? item.label : item.labelTh }}
+                                                </td>
+                                                <td class="py-2 px-3 text-right font-medium" :style="{ color: item.color }">{{ item.pct }}%</td>
+                                                <td class="py-2 px-3 text-right text-gray-300">{{ item.amount }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="mt-4 p-4 rounded-xl bg-white/5 border border-white/10">
+                                    <p class="text-sm text-gray-400">
+                                        {{ lang === 'en'
+                                            ? '✦ Fixed supply of 7,000,000,000 TPIX with 18 decimals. No inflation or minting mechanism — total supply is pre-mined in the genesis block.'
+                                            : '✦ จำนวนคงที่ 7,000,000,000 TPIX (18 ทศนิยม) ไม่มีเงินเฟ้อหรือกลไก mint — จำนวนทั้งหมด pre-mined ใน genesis block'
+                                        }}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </section>
 
-                    <!-- 5. DEX Protocol -->
+                    <!-- 5. Use Cases — กรณีการใช้งาน -->
+                    <section id="use-cases" class="wp-section">
+                        <h2 class="wp-heading">{{ t.toc[4] }}</h2>
+                        <p class="wp-text">
+                            {{ lang === 'en'
+                                ? 'TPIX is the backbone of a comprehensive digital economy with 10+ real-world applications spanning agriculture, food safety, logistics, AI, e-commerce, and hospitality.'
+                                : 'TPIX เป็นกระดูกสันหลังของเศรษฐกิจดิจิทัลครบวงจร มีแอปพลิเคชันในโลกจริง 10+ ด้าน ครอบคลุมเกษตรกรรม ความปลอดภัยอาหาร โลจิสติกส์ AI อีคอมเมิร์ซ และโรงแรม'
+                            }}
+                        </p>
+
+                        <div class="grid sm:grid-cols-2 gap-4">
+                            <div v-for="uc in t.useCases" :key="uc.title" class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-primary-500/30 transition-colors">
+                                <div class="flex items-start gap-3 mb-3">
+                                    <span class="text-2xl">{{ uc.icon }}</span>
+                                    <h4 class="font-semibold text-white">{{ uc.title }}</h4>
+                                </div>
+                                <p class="text-sm text-gray-400 mb-3">{{ uc.desc }}</p>
+                                <ul class="space-y-1">
+                                    <li v-for="f in uc.features" :key="f" class="text-xs text-gray-500 flex items-start gap-1.5">
+                                        <span class="text-primary-400 mt-0.5">▸</span>
+                                        <span>{{ f }}</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 6. DEX Protocol -->
                     <section id="dex-protocol" class="wp-section">
-                        <h2 class="wp-heading">5. DEX Protocol</h2>
-                        <p class="wp-text">
-                            TPIX DEX is a Uniswap V2 fork deployed natively on TPIX Chain. It provides automated
-                            market making (AMM) with constant product formula (x * y = k) and a 0.3% swap fee
-                            (0.25% to LPs, 0.05% to protocol treasury).
-                        </p>
+                        <h2 class="wp-heading">{{ t.toc[5] }}</h2>
+                        <p class="wp-text">{{ t.dex.desc }}</p>
 
-                        <h3 class="wp-subheading">Key Contracts</h3>
-                        <ul class="wp-list">
-                            <li><strong class="text-white">TPIXDEXFactory</strong> — Creates trading pair contracts</li>
-                            <li><strong class="text-white">TPIXDEXRouter02</strong> — Handles multi-hop swaps and liquidity operations</li>
-                            <li><strong class="text-white">TPIXDEXPair</strong> — Individual liquidity pool (ERC-20 LP tokens)</li>
-                            <li><strong class="text-white">WTPIX</strong> — Wrapped TPIX for ERC-20 compatibility within the DEX</li>
-                        </ul>
+                        <!-- DEX Flow Diagram -->
+                        <div class="wp-highlight mb-6">
+                            <h4 class="text-center text-sm font-bold text-gray-400 mb-4 uppercase tracking-wider">
+                                {{ lang === 'en' ? 'AMM Swap Flow' : 'ขั้นตอนการ Swap ผ่าน AMM' }}
+                            </h4>
+                            <div class="flex flex-wrap items-center justify-center gap-2 text-xs">
+                                <span class="px-3 py-2 rounded-lg bg-blue-500/20 text-blue-300 font-medium">{{ lang === 'en' ? 'User' : 'ผู้ใช้' }}</span>
+                                <span class="text-gray-500">→</span>
+                                <span class="px-3 py-2 rounded-lg bg-purple-500/20 text-purple-300 font-medium">Router02</span>
+                                <span class="text-gray-500">→</span>
+                                <span class="px-3 py-2 rounded-lg bg-green-500/20 text-green-300 font-medium">Pair (x·y=k)</span>
+                                <span class="text-gray-500">→</span>
+                                <span class="px-3 py-2 rounded-lg bg-yellow-500/20 text-yellow-300 font-medium">{{ lang === 'en' ? '0.3% Fee Split' : 'แบ่งค่าธรรมเนียม 0.3%' }}</span>
+                                <span class="text-gray-500">→</span>
+                                <span class="px-3 py-2 rounded-lg bg-blue-500/20 text-blue-300 font-medium">{{ lang === 'en' ? 'Tokens Out' : 'ได้โทเคน' }}</span>
+                            </div>
+                        </div>
+
+                        <div class="wp-table">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b border-white/10">
+                                    <th class="text-left py-2 px-3 text-gray-400">Contract</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Description' : 'คำอธิบาย' }}</th>
+                                </tr></thead>
+                                <tbody>
+                                    <tr v-for="(c, i) in t.dex.contracts" :key="c[0]" :class="i < t.dex.contracts.length - 1 ? 'border-b border-white/5' : ''">
+                                        <td class="py-2 px-3 text-primary-400 font-mono font-medium">{{ c[0] }}</td>
+                                        <td class="py-2 px-3 text-gray-300">{{ c[1] }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </section>
 
-                    <!-- 6. Token Sale Details -->
+                    <!-- 7. Token Sale Details -->
                     <section id="token-sale" class="wp-section">
-                        <h2 class="wp-heading">6. Token Sale Details</h2>
+                        <h2 class="wp-heading">{{ t.toc[6] }}</h2>
                         <p class="wp-text">
-                            The TPIX token sale is conducted in 3 phases, accepting BNB and USDT on BSC.
-                            Purchased tokens are allocated with a vesting schedule and can be claimed as
-                            wTPIX (BEP-20) or native TPIX once the bridge is live.
+                            {{ lang === 'en'
+                                ? 'The TPIX token sale is conducted in 3 phases, accepting BNB and USDT on BSC. Purchased tokens are allocated with a vesting schedule and can be claimed as wTPIX (BEP-20) or native TPIX once the bridge is live.'
+                                : 'การขายเหรียญ TPIX แบ่งเป็น 3 รอบ รับ BNB และ USDT บน BSC เหรียญที่ซื้อจะมีตาราง vesting สามารถเคลมเป็น wTPIX (BEP-20) หรือ TPIX native เมื่อ bridge พร้อม'
+                            }}
                         </p>
 
-                        <div class="wp-table">
-                            <table class="w-full text-sm">
-                                <thead><tr class="border-b border-white/10">
-                                    <th class="text-left py-2 px-3 text-gray-400">Phase</th>
-                                    <th class="text-right py-2 px-3 text-gray-400">Price</th>
-                                    <th class="text-right py-2 px-3 text-gray-400">Allocation</th>
-                                    <th class="text-left py-2 px-3 text-gray-400">TGE</th>
-                                    <th class="text-left py-2 px-3 text-gray-400">Vesting</th>
-                                </tr></thead>
-                                <tbody>
-                                    <tr class="border-b border-white/5">
-                                        <td class="py-2 px-3 text-white font-medium">Private Sale</td>
-                                        <td class="py-2 px-3 text-right text-primary-400">$0.05</td>
-                                        <td class="py-2 px-3 text-right text-gray-300">100M</td>
-                                        <td class="py-2 px-3 text-gray-300">10%</td>
-                                        <td class="py-2 px-3 text-gray-400">30d cliff, 180d linear</td>
-                                    </tr>
-                                    <tr class="border-b border-white/5">
-                                        <td class="py-2 px-3 text-white font-medium">Pre-Sale</td>
-                                        <td class="py-2 px-3 text-right text-primary-400">$0.08</td>
-                                        <td class="py-2 px-3 text-right text-gray-300">200M</td>
-                                        <td class="py-2 px-3 text-gray-300">15%</td>
-                                        <td class="py-2 px-3 text-gray-400">14d cliff, 120d linear</td>
-                                    </tr>
-                                    <tr>
-                                        <td class="py-2 px-3 text-white font-medium">Public Sale</td>
-                                        <td class="py-2 px-3 text-right text-primary-400">$0.10</td>
-                                        <td class="py-2 px-3 text-right text-gray-300">400M</td>
-                                        <td class="py-2 px-3 text-gray-300">25%</td>
-                                        <td class="py-2 px-3 text-gray-400">No cliff, 90d linear</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div class="grid sm:grid-cols-3 gap-4 mb-6">
+                            <div v-for="p in t.salePhases" :key="p.phase" class="p-5 rounded-xl bg-white/5 border border-white/10 text-center">
+                                <h4 class="font-semibold text-white mb-2">{{ p.phase }}</h4>
+                                <p class="text-3xl font-bold" :class="p.color">{{ p.price }}</p>
+                                <p class="text-sm text-gray-400 mt-1">{{ p.alloc }}</p>
+                                <div class="mt-3 pt-3 border-t border-white/10 text-xs text-gray-500">
+                                    <p>TGE: {{ p.tge }}</p>
+                                    <p>{{ p.vesting }}</p>
+                                </div>
+                            </div>
                         </div>
                     </section>
 
-                    <!-- 7. Staking & Rewards -->
+                    <!-- 8. Staking & Rewards -->
                     <section id="staking" class="wp-section">
-                        <h2 class="wp-heading">7. Staking & Rewards</h2>
+                        <h2 class="wp-heading">{{ t.toc[7] }}</h2>
                         <p class="wp-text">
-                            TPIX holders can stake their tokens to earn rewards. APY varies based on lock period,
-                            with longer locks offering higher returns. Staking rewards come from the 20% allocation
-                            (1.4B TPIX) distributed over 5 years.
+                            {{ lang === 'en'
+                                ? 'TPIX holders can stake their tokens to earn rewards. APY varies based on lock period. Staking rewards come from the 20% allocation (1.4B TPIX) distributed over 5 years.'
+                                : 'ผู้ถือ TPIX สามารถ stake เพื่อรับรางวัล APY ขึ้นอยู่กับระยะเวลาล็อค รางวัล staking มาจากการจัดสรร 20% (1.4B TPIX) กระจายตลอด 5 ปี'
+                            }}
                         </p>
-
                         <div class="wp-table">
                             <table class="w-full text-sm">
                                 <thead><tr class="border-b border-white/10">
-                                    <th class="text-left py-2 px-3 text-gray-400">Lock Period</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Lock Period' : 'ระยะล็อค' }}</th>
                                     <th class="text-right py-2 px-3 text-gray-400">APY</th>
-                                    <th class="text-left py-2 px-3 text-gray-400">Unlock</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Unlock' : 'ปลดล็อค' }}</th>
                                 </tr></thead>
                                 <tbody>
-                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-white">Flexible</td><td class="py-2 px-3 text-right text-trading-green">5%</td><td class="py-2 px-3 text-gray-400">Anytime</td></tr>
-                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-white">30 Days</td><td class="py-2 px-3 text-right text-trading-green">25%</td><td class="py-2 px-3 text-gray-400">After 30 days</td></tr>
-                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-white">90 Days</td><td class="py-2 px-3 text-right text-trading-green">60%</td><td class="py-2 px-3 text-gray-400">After 90 days</td></tr>
-                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-white">180 Days</td><td class="py-2 px-3 text-right text-trading-green">100%</td><td class="py-2 px-3 text-gray-400">After 180 days</td></tr>
-                                    <tr><td class="py-2 px-3 text-white">365 Days</td><td class="py-2 px-3 text-right text-trading-green">200%</td><td class="py-2 px-3 text-gray-400">After 365 days</td></tr>
+                                    <tr v-for="(s, i) in t.stakingTiers" :key="s.period" :class="i < t.stakingTiers.length - 1 ? 'border-b border-white/5' : ''">
+                                        <td class="py-2 px-3 text-white">{{ s.period }}</td>
+                                        <td class="py-2 px-3 text-right text-trading-green font-bold">{{ s.apy }}</td>
+                                        <td class="py-2 px-3 text-gray-400">{{ s.unlock }}</td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
                     </section>
 
-                    <!-- 8. Ecosystem & Affiliate -->
+                    <!-- 9. Ecosystem & Affiliate -->
                     <section id="ecosystem" class="wp-section">
-                        <h2 class="wp-heading">8. Ecosystem & Affiliate</h2>
+                        <h2 class="wp-heading">{{ t.toc[8] }}</h2>
                         <p class="wp-text">
-                            The TPIX ecosystem includes a comprehensive affiliate/referral program and a token factory
-                            allowing anyone to create ERC-20 tokens on TPIX Chain.
+                            {{ lang === 'en'
+                                ? 'The TPIX ecosystem includes a comprehensive affiliate/referral program and a token factory allowing anyone to create ERC-20 tokens on TPIX Chain.'
+                                : 'ระบบนิเวศ TPIX ประกอบด้วยโปรแกรม Affiliate/แนะนำครบวงจร และโรงงานสร้างโทเคนให้ทุกคนสร้าง ERC-20 บน TPIX Chain'
+                            }}
                         </p>
 
-                        <h3 class="wp-subheading">Affiliate Program</h3>
-                        <ul class="wp-list">
-                            <li><strong class="text-white">Referrer Reward:</strong> 5% of referee's first purchase</li>
-                            <li><strong class="text-white">Referee Bonus:</strong> 2% extra tokens on first purchase</li>
-                            <li><strong class="text-white">Max per Referral:</strong> 1,000 TPIX</li>
-                        </ul>
+                        <!-- Ecosystem Map Diagram -->
+                        <div class="wp-highlight mb-6">
+                            <h4 class="text-center text-sm font-bold text-gray-400 mb-4 uppercase tracking-wider">
+                                {{ lang === 'en' ? 'TPIX Ecosystem Map' : 'แผนผังระบบนิเวศ TPIX' }}
+                            </h4>
+                            <div class="flex flex-col items-center gap-2">
+                                <div class="px-6 py-3 rounded-xl bg-primary-500/20 border border-primary-500/30 text-primary-300 font-bold text-sm">TPIX Chain (ID: 4289)</div>
+                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full max-w-2xl">
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">🏦</span>DEX
+                                    </div>
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">💰</span>Staking
+                                    </div>
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">🏭</span>Token Factory
+                                    </div>
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">🌉</span>BSC Bridge
+                                    </div>
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">🍲</span>FoodPassport
+                                    </div>
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">🌾</span>IoT Farm
+                                    </div>
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">🚚</span>Delivery
+                                    </div>
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">🤖</span>AI Bots
+                                    </div>
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">🏨</span>{{ lang === 'en' ? 'Hotels' : 'โรงแรม' }}
+                                    </div>
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">🛒</span>E-Commerce
+                                    </div>
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">🌱</span>Carbon Credit
+                                    </div>
+                                    <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
+                                        <span class="block text-lg mb-1">🧠</span>AI Ecosystem
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-                        <h3 class="wp-subheading">Token Factory</h3>
-                        <p class="wp-text">
-                            Users can create custom ERC-20 tokens on TPIX Chain for a fee of 100 TPIX per token.
-                            This enables projects to launch their own tokens with zero gas costs for all subsequent
-                            transactions.
-                        </p>
+                        <h3 class="wp-subheading">{{ lang === 'en' ? 'Affiliate Program' : 'โปรแกรม Affiliate' }}</h3>
+                        <div class="grid sm:grid-cols-3 gap-4 mb-6">
+                            <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+                                <p class="text-2xl font-bold text-primary-400">5%</p>
+                                <p class="text-sm text-gray-400">{{ lang === 'en' ? 'Referrer Reward' : 'รางวัลผู้แนะนำ' }}</p>
+                            </div>
+                            <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+                                <p class="text-2xl font-bold text-accent-400">2%</p>
+                                <p class="text-sm text-gray-400">{{ lang === 'en' ? 'Referee Bonus' : 'โบนัสผู้ถูกแนะนำ' }}</p>
+                            </div>
+                            <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+                                <p class="text-2xl font-bold text-warm-400">1,000</p>
+                                <p class="text-sm text-gray-400">{{ lang === 'en' ? 'Max TPIX/Referral' : 'TPIX สูงสุด/การแนะนำ' }}</p>
+                            </div>
+                        </div>
                     </section>
 
-                    <!-- 9. Roadmap -->
-                    <section id="roadmap" class="wp-section">
-                        <h2 class="wp-heading">9. Roadmap</h2>
+                    <!-- 10. Platform Integrations -->
+                    <section id="integrations" class="wp-section">
+                        <h2 class="wp-heading">{{ t.toc[9] }}</h2>
+                        <div class="grid sm:grid-cols-2 gap-4">
+                            <div v-for="int in t.integrations" :key="int.name" class="p-5 rounded-xl bg-white/5 border border-white/10">
+                                <h4 class="font-semibold text-white mb-1">{{ int.name }}</h4>
+                                <p class="text-xs text-gray-500 mb-3">{{ int.desc }}</p>
+                                <ul class="space-y-1">
+                                    <li v-for="item in int.items" :key="item" class="text-sm text-gray-400 flex items-start gap-1.5">
+                                        <span class="text-primary-400 mt-0.5">•</span>
+                                        <span>{{ item }}</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
 
-                        <div class="space-y-6">
-                            <div class="flex gap-4">
-                                <div class="flex-shrink-0 w-24 text-sm font-bold text-primary-400">Q1 2026</div>
-                                <div>
-                                    <h4 class="text-white font-semibold">Foundation</h4>
-                                    <ul class="wp-list mt-1">
-                                        <li>TPIX Chain mainnet launch (4 IBFT validators)</li>
-                                        <li>Blockscout explorer deployment</li>
-                                        <li>Token Sale (3 phases)</li>
-                                        <li>Whitepaper publication</li>
-                                    </ul>
+                    <!-- 11. Roadmap -->
+                    <section id="roadmap" class="wp-section">
+                        <h2 class="wp-heading">{{ t.toc[10] }}</h2>
+                        <div class="space-y-4">
+                            <div v-for="r in t.roadmap" :key="r.q" class="flex gap-4">
+                                <div class="flex-shrink-0 w-28">
+                                    <span class="text-sm font-bold" :class="{
+                                        'text-trading-green': r.status === 'done',
+                                        'text-yellow-400': r.status === 'progress',
+                                        'text-primary-400': r.status === 'current',
+                                        'text-gray-500': r.status === 'planned',
+                                    }">{{ r.q }}</span>
+                                    <span class="block text-xs mt-0.5" :class="{
+                                        'text-trading-green': r.status === 'done',
+                                        'text-yellow-400': r.status === 'progress',
+                                        'text-primary-400': r.status === 'current',
+                                        'text-gray-600': r.status === 'planned',
+                                    }">
+                                        {{ r.status === 'done' ? '✅' : r.status === 'progress' ? '🚧' : r.status === 'current' ? '🔵' : '📅' }}
+                                    </span>
                                 </div>
-                            </div>
-                            <div class="flex gap-4">
-                                <div class="flex-shrink-0 w-24 text-sm font-bold text-accent-400">Q2 2026</div>
-                                <div>
-                                    <h4 class="text-white font-semibold">DeFi Launch</h4>
-                                    <ul class="wp-list mt-1">
-                                        <li>TPIX DEX launch (Uniswap V2 fork)</li>
-                                        <li>BSC Bridge (wTPIX ↔ TPIX)</li>
-                                        <li>Staking platform</li>
-                                        <li>Mobile wallet app</li>
-                                    </ul>
-                                </div>
-                            </div>
-                            <div class="flex gap-4">
-                                <div class="flex-shrink-0 w-24 text-sm font-bold text-trading-green">Q3 2026</div>
-                                <div>
-                                    <h4 class="text-white font-semibold">Ecosystem Growth</h4>
-                                    <ul class="wp-list mt-1">
-                                        <li>Token Factory launch</li>
-                                        <li>Affiliate/Referral program</li>
-                                        <li>NFT marketplace</li>
-                                        <li>CEX listings</li>
-                                    </ul>
-                                </div>
-                            </div>
-                            <div class="flex gap-4">
-                                <div class="flex-shrink-0 w-24 text-sm font-bold text-warm-400">Q4 2026</div>
-                                <div>
-                                    <h4 class="text-white font-semibold">Scale & Govern</h4>
-                                    <ul class="wp-list mt-1">
-                                        <li>DAO governance launch</li>
-                                        <li>Multi-chain bridge expansion</li>
-                                        <li>Enterprise partnerships</li>
-                                        <li>Validator decentralization</li>
+                                <div class="flex-1 pb-4" :class="r.q !== t.roadmap[t.roadmap.length - 1].q ? 'border-b border-white/5' : ''">
+                                    <h4 class="text-white font-semibold mb-2">{{ r.title }}</h4>
+                                    <ul class="space-y-1">
+                                        <li v-for="item in r.items" :key="item" class="text-sm text-gray-400">▸ {{ item }}</li>
                                     </ul>
                                 </div>
                             </div>
                         </div>
                     </section>
 
-                    <!-- 10. Team & Partners -->
+                    <!-- 12. Technology Stack -->
+                    <section id="tech-stack" class="wp-section">
+                        <h2 class="wp-heading">{{ t.toc[11] }}</h2>
+                        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div v-for="(items, category) in t.techStack" :key="category" class="p-4 rounded-xl bg-white/5 border border-white/10">
+                                <h4 class="font-semibold text-white mb-3 capitalize">{{ category === 'smartContracts' ? 'Smart Contracts' : category }}</h4>
+                                <div v-for="item in items" :key="item[0]" class="flex justify-between text-sm py-1 border-b border-white/5 last:border-0">
+                                    <span class="text-primary-400 font-medium">{{ item[0] }}</span>
+                                    <span class="text-gray-500 text-xs text-right">{{ item[1] }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 13. Team & Partners -->
                     <section id="team" class="wp-section">
-                        <h2 class="wp-heading">10. Team & Partners</h2>
-                        <p class="wp-text">
-                            TPIX Chain is developed by <strong class="text-white">Xman Studio</strong>, a blockchain
-                            development team specializing in DeFi and Web3 applications for the Southeast Asian market.
-                        </p>
-                        <p class="wp-text">
-                            The team has extensive experience in Solidity smart contract development, EVM chain deployment,
-                            and full-stack Web3 application development.
-                        </p>
+                        <h2 class="wp-heading">{{ t.toc[12] }}</h2>
+                        <p class="wp-text">{{ t.teamDesc }}</p>
+                        <div class="wp-highlight">
+                            <h4 class="font-semibold text-white mb-3">{{ lang === 'en' ? 'Key Highlights' : 'จุดเด่น' }}</h4>
+                            <ul class="space-y-2">
+                                <li v-for="h in t.teamHighlights" :key="h" class="text-sm text-gray-300 flex items-start gap-2">
+                                    <span class="text-primary-400">✦</span>
+                                    <span>{{ h }}</span>
+                                </li>
+                            </ul>
+                        </div>
                     </section>
 
-                    <!-- 11. Security & Audits -->
+                    <!-- 14. Security & Audits -->
                     <section id="security" class="wp-section">
-                        <h2 class="wp-heading">11. Security & Audits</h2>
-                        <ul class="wp-list">
-                            <li><strong class="text-white">Smart Contract Audits</strong> — All contracts undergo third-party security audits before mainnet deployment</li>
-                            <li><strong class="text-white">IBFT Consensus</strong> — Byzantine fault tolerance ensures network security with up to 1/3 faulty validators</li>
-                            <li><strong class="text-white">Rate Limiting</strong> — RPC-level rate limiting prevents spam on the gasless chain</li>
-                            <li><strong class="text-white">Multi-sig Treasury</strong> — Protocol funds managed by multi-signature wallets</li>
-                            <li><strong class="text-white">Bug Bounty</strong> — Ongoing bug bounty program for responsible disclosure</li>
-                        </ul>
+                        <h2 class="wp-heading">{{ t.toc[13] }}</h2>
+                        <div class="grid sm:grid-cols-2 gap-4">
+                            <div v-for="item in t.securityItems" :key="item.title" class="p-4 rounded-xl bg-white/5 border border-white/10">
+                                <h4 class="font-semibold text-white mb-2">🔒 {{ item.title }}</h4>
+                                <p class="text-sm text-gray-400">{{ item.desc }}</p>
+                            </div>
+                        </div>
                     </section>
 
-                    <!-- 12. Legal Disclaimer -->
+                    <!-- 15. Legal Disclaimer -->
                     <section id="legal" class="wp-section">
-                        <h2 class="wp-heading">12. Legal Disclaimer</h2>
-                        <p class="wp-text text-gray-500 text-sm">
-                            This whitepaper is for informational purposes only and does not constitute investment advice,
-                            financial advice, trading advice, or any other sort of advice. TPIX tokens are utility tokens
-                            and are not intended to be securities. The purchase of TPIX tokens involves significant risk.
-                            Please conduct your own due diligence before participating in the token sale.
-                        </p>
-                        <p class="wp-text text-gray-500 text-sm">
-                            The information in this whitepaper may be updated from time to time. The team reserves the
-                            right to make changes to this document without prior notice. Nothing in this whitepaper
-                            shall be deemed to constitute a prospectus of any sort or a solicitation for investment.
-                        </p>
+                        <h2 class="wp-heading">{{ t.toc[14] }}</h2>
+                        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+                            <p class="text-sm text-gray-500 mb-3">
+                                {{ lang === 'en'
+                                    ? 'This whitepaper is for informational purposes only and does not constitute investment advice, financial advice, trading advice, or any other sort of advice. TPIX tokens are utility tokens and are not intended to be securities. The purchase of TPIX tokens involves significant risk. Please conduct your own due diligence before participating in the token sale.'
+                                    : 'ไวท์เปเปอร์นี้มีวัตถุประสงค์เพื่อให้ข้อมูลเท่านั้น ไม่ถือเป็นคำแนะนำด้านการลงทุน การเงิน การซื้อขาย หรือคำแนะนำอื่นใด TPIX tokens เป็น utility tokens และไม่ได้มีเจตนาเป็นหลักทรัพย์ การซื้อ TPIX tokens มีความเสี่ยงสูง กรุณาศึกษาข้อมูลด้วยตนเองก่อนเข้าร่วมการขายโทเคน'
+                                }}
+                            </p>
+                            <p class="text-sm text-gray-500">
+                                {{ lang === 'en'
+                                    ? 'The information in this whitepaper may be updated from time to time. The team reserves the right to make changes without prior notice. Nothing in this whitepaper shall be deemed to constitute a prospectus or solicitation for investment.'
+                                    : 'ข้อมูลในไวท์เปเปอร์นี้อาจมีการปรับปรุงเป็นครั้งคราว ทีมงานขอสงวนสิทธิ์ในการเปลี่ยนแปลงโดยไม่ต้องแจ้งล่วงหน้า ไม่มีข้อมูลใดในไวท์เปเปอร์นี้ที่ถือเป็นหนังสือชี้ชวนหรือการเชื้อเชิญเพื่อการลงทุน'
+                                }}
+                            </p>
+                        </div>
                     </section>
+
                 </main>
             </div>
         </div>
@@ -453,25 +998,12 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.wp-section {
-    @apply mb-16 scroll-mt-24;
-}
-.wp-heading {
-    @apply text-2xl sm:text-3xl font-bold text-white mb-4 pb-3 border-b border-white/10;
-}
-.wp-subheading {
-    @apply text-lg font-semibold text-white mt-6 mb-3;
-}
-.wp-text {
-    @apply text-gray-300 leading-relaxed mb-4;
-}
-.wp-list {
-    @apply list-disc list-inside space-y-2 text-gray-300 mb-4;
-}
-.wp-highlight {
-    @apply p-6 rounded-xl bg-white/5 border border-white/10 my-6;
-}
-.wp-table {
-    @apply rounded-xl bg-white/5 border border-white/10 overflow-hidden my-6;
-}
+/* สไตล์ whitepaper — ใช้ design system ของโปรเจค */
+.wp-section { @apply mb-16 scroll-mt-24; }
+.wp-heading { @apply text-2xl sm:text-3xl font-bold text-white mb-4 pb-3 border-b border-white/10; }
+.wp-subheading { @apply text-lg font-semibold text-white mt-6 mb-3; }
+.wp-text { @apply text-gray-300 leading-relaxed mb-4; }
+.wp-list { @apply list-disc list-inside space-y-2 text-gray-300 mb-4; }
+.wp-highlight { @apply p-6 rounded-xl bg-white/5 border border-white/10 my-6; }
+.wp-table { @apply rounded-xl bg-white/5 border border-white/10 overflow-hidden my-6; }
 </style>

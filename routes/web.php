@@ -5,6 +5,8 @@
  * Developed by Xman Studio.
  */
 
+use App\Http\Controllers\CarbonCreditController;
+use App\Http\Controllers\TokenFactoryController;
 use App\Http\Controllers\TokenSaleController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -28,7 +30,7 @@ Route::prefix('trade')->group(function () {
 
     Route::get('/{pair}', function ($pair) {
         return Inertia::render('Trade', ['pair' => $pair]);
-    })->name('trade.pair');
+    })->where('pair', '[A-Za-z0-9]+-[A-Za-z0-9]+')->name('trade.pair');
 });
 
 // Swap
@@ -65,6 +67,14 @@ Route::get('/ai-assistant', function () {
     return Inertia::render('AIAssistant');
 })->name('ai-assistant');
 
+// Blog — บทความ AI-generated + content marketing
+Route::get('/blog', function () {
+    return Inertia::render('Blog/Index');
+})->name('blog');
+Route::get('/blog/{slug}', function ($slug) {
+    return Inertia::render('Blog/Show', ['slug' => $slug]);
+})->where('slug', '[a-z0-9\-]+')->name('blog.show');
+
 // Settings
 Route::get('/settings', function () {
     return Inertia::render('Settings');
@@ -72,6 +82,12 @@ Route::get('/settings', function () {
 
 // Token Sale — หน้าขายเหรียญ TPIX (ICO/IDO)
 Route::get('/token-sale', [TokenSaleController::class, 'index'])->name('token-sale');
+
+// Token Factory — สร้างเหรียญบน TPIX Chain
+Route::get('/token-factory', [TokenFactoryController::class, 'index'])->name('token-factory');
+
+// Carbon Credits — ระบบ Carbon Credit
+Route::get('/carbon-credits', [CarbonCreditController::class, 'index'])->name('carbon-credits');
 
 // Whitepaper — เอกสาร whitepaper แบบ interactive
 Route::get('/whitepaper', [TokenSaleController::class, 'whitepaper'])->name('whitepaper');

@@ -66,6 +66,36 @@ async function handlePurchase() {
     }
 }
 
+/**
+ * ชำระเงินผ่าน Stripe (credit card)
+ */
+async function handleStripeCheckout() {
+    if (!canPurchase || !paymentAmount.value) return;
+
+    try {
+        const res = await fetch('/api/v1/token-sale/stripe/checkout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Wallet-Address': walletStore.address,
+            },
+            body: JSON.stringify({
+                wallet_address: walletStore.address,
+                amount_usd: preview.value?.payment_usd_value || paymentAmount.value,
+                phase_id: preview.value?.phase_id || null,
+            }),
+        });
+        const data = await res.json();
+        if (data.success && data.data?.url) {
+            window.location.href = data.data.url;
+        } else {
+            error.value = data.error?.message || 'Failed to create checkout session';
+        }
+    } catch (e) {
+        error.value = e.message || 'Stripe checkout failed';
+    }
+}
+
 function formatNumber(n) {
     if (!n) return '0';
     return Number(n).toLocaleString(undefined, { maximumFractionDigits: 4 });
@@ -217,9 +247,29 @@ function formatNumber(n) {
                 {{ isSendingTx ? 'Confirming...' : isSubmitting ? 'Processing...' : 'Buy TPIX' }}
             </button>
 
+            <!-- Separator -->
+            <div class="flex items-center gap-3 my-4">
+                <div class="flex-1 border-t border-white/10"></div>
+                <span class="text-xs text-gray-500">or pay with card</span>
+                <div class="flex-1 border-t border-white/10"></div>
+            </div>
+
+            <!-- Stripe Button -->
+            <button
+                class="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 bg-[#635BFF]/20 border border-[#635BFF]/30 text-[#A8A3FF] hover:bg-[#635BFF]/30 transition-all"
+                :disabled="!canPurchase || !paymentAmount"
+                :class="{ 'opacity-50 cursor-not-allowed': !canPurchase || !paymentAmount }"
+                @click="handleStripeCheckout"
+            >
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-7.076-2.19L3.28 21.873C5.153 23.017 8.005 24 11.2 24c2.612 0 4.77-.593 6.312-1.758 1.678-1.27 2.53-3.155 2.53-5.565 0-4.124-2.505-5.765-6.066-7.527z"/>
+                </svg>
+                Pay with Credit Card (Stripe)
+            </button>
+
             <!-- คำเตือน -->
             <p class="text-xs text-gray-500 mt-3 text-center">
-                Payment is processed on BSC (BNB Smart Chain). Please ensure you have sufficient balance.
+                Crypto payments are processed on BSC. Card payments via Stripe.
             </p>
         </div>
     </div>

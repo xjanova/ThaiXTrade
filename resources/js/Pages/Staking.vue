@@ -1,70 +1,230 @@
 <script setup>
 /**
- * TPIX TRADE - Staking Page (Coming Soon)
- * ระบบ Staking TPIX — APY 5%-200% ตาม lock period
+ * TPIX TRADE — Staking Page
+ * Stake TPIX บน TPIX Chain — ได้ APY 5%-200%
+ * Rewards pool: 1.4B TPIX over 5 years
  * Developed by Xman Studio
  */
-
+import { ref, computed, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { useWalletStore } from '@/Stores/walletStore';
+import axios from 'axios';
+import { useTranslation } from '@/Composables/useTranslation';
 
-const stakingTiers = [
-    { period: 'Flexible', apy: '5%', color: 'text-gray-300' },
-    { period: '30 Days', apy: '25%', color: 'text-primary-400' },
-    { period: '90 Days', apy: '60%', color: 'text-accent-400' },
-    { period: '180 Days', apy: '100%', color: 'text-trading-green' },
-    { period: '365 Days', apy: '200%', color: 'text-warm-400' },
-];
+const { t } = useTranslation();
+const walletStore = useWalletStore();
+const pools = ref([]);
+const positions = ref([]);
+const stats = ref(null);
+const isLoading = ref(true);
+const message = ref(null);
+
+// Stake form
+const selectedPool = ref(null);
+const stakeAmount = ref('');
+const stakeTxHash = ref('');
+const isStaking = ref(false);
+
+// คำนวณ estimated rewards
+const estimatedDaily = computed(() => {
+    if (!selectedPool.value || !stakeAmount.value) return 0;
+    return (parseFloat(stakeAmount.value) * selectedPool.value.apy_percent / 100 / 365).toFixed(4);
+});
+const estimatedMonthly = computed(() => (parseFloat(estimatedDaily.value) * 30).toFixed(2));
+const estimatedYearly = computed(() => {
+    if (!selectedPool.value || !stakeAmount.value) return 0;
+    return (parseFloat(stakeAmount.value) * selectedPool.value.apy_percent / 100).toFixed(2);
+});
+
+async function fetchPools() {
+    try { const { data } = await axios.get('/api/v1/staking/pools'); pools.value = data.data || []; } catch {}
+}
+async function fetchPositions() {
+    if (!walletStore.address) return;
+    try { const { data } = await axios.get(`/api/v1/staking/positions/${walletStore.address}`); positions.value = data.data || []; } catch { positions.value = []; }
+}
+async function fetchStats() {
+    try { const { data } = await axios.get('/api/v1/staking/stats'); stats.value = data.data; } catch {}
+}
+
+function selectPool(pool) { selectedPool.value = pool; }
+
+async function doStake() {
+    if (!walletStore.isConnected) { message.value = { type: 'error', text: 'กรุณาเชื่อมต่อ Wallet ก่อน' }; return; }
+    if (!selectedPool.value) { message.value = { type: 'error', text: 'กรุณาเลือก Pool' }; return; }
+    if (!stakeAmount.value || parseFloat(stakeAmount.value) < selectedPool.value.min_stake) { message.value = { type: 'error', text: `ขั้นต่ำ ${selectedPool.value.min_stake} TPIX` }; return; }
+    isStaking.value = true; message.value = null;
+    try {
+        const { data } = await axios.post('/api/v1/staking/stake', { wallet_address: walletStore.address, pool_id: selectedPool.value.id, amount: stakeAmount.value, tx_hash: stakeTxHash.value || null });
+        if (data.success) { message.value = { type: 'success', text: `Stake ${stakeAmount.value} TPIX สำเร็จ!` }; stakeAmount.value = ''; stakeTxHash.value = ''; fetchPositions(); fetchPools(); fetchStats(); }
+    } catch (err) { message.value = { type: 'error', text: err.response?.data?.error?.message || 'Stake failed' }; }
+    isStaking.value = false;
+}
+
+async function claimRewards(posId) {
+    try {
+        await axios.post(`/api/v1/staking/claim/${posId}`, { wallet_address: walletStore.address });
+        message.value = { type: 'success', text: 'Claim rewards สำเร็จ!' }; fetchPositions(); fetchStats();
+    } catch (err) { message.value = { type: 'error', text: err.response?.data?.error?.message || 'Claim failed' }; }
+}
+
+async function unstake(posId) {
+    try {
+        await axios.post(`/api/v1/staking/unstake/${posId}`, { wallet_address: walletStore.address });
+        message.value = { type: 'success', text: 'Unstake สำเร็จ!' }; fetchPositions(); fetchPools(); fetchStats();
+    } catch (err) { message.value = { type: 'error', text: err.response?.data?.error?.message || 'Unstake failed' }; }
+}
+
+function formatNum(n) { return parseFloat(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }); }
+function formatDate(d) { return d ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'; }
+
+const activePositions = computed(() => positions.value.filter(p => p.status === 'active'));
+const myTotalStaked = computed(() => activePositions.value.reduce((s, p) => s + p.amount, 0));
+const myTotalRewards = computed(() => activePositions.value.reduce((s, p) => s + p.pending_reward + p.reward_earned, 0));
+
+onMounted(async () => {
+    await Promise.all([fetchPools(), fetchPositions(), fetchStats()]);
+    isLoading.value = false;
+});
 </script>
 
 <template>
-    <Head title="TPIX Staking — Coming Soon" />
-
-    <AppLayout :hide-sidebar="true">
-        <section class="relative py-20 overflow-hidden">
-            <div class="absolute inset-0 pointer-events-none">
-                <div class="absolute top-1/4 right-1/4 w-96 h-96 rounded-full bg-trading-green/5 blur-[120px]" />
+    <Head title="Staking — Earn TPIX" />
+    <AppLayout>
+        <div class="max-w-6xl mx-auto space-y-6">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-bold text-white mb-2">🏦 {{ t('staking.title') }}</h1>
+                <p class="text-dark-400">{{ t('staking.subtitle') }}</p>
             </div>
 
-            <div class="relative max-w-3xl mx-auto px-4 text-center">
-                <img src="/logo.png" alt="TPIX" class="w-20 h-20 mx-auto mb-6 rounded-full" />
-                <h1 class="text-4xl sm:text-5xl font-bold text-white mb-4">TPIX Staking</h1>
-                <p class="text-xl text-gray-400 mb-8">
-                    Earn rewards by staking your TPIX tokens
-                </p>
+            <div v-if="message" :class="['px-4 py-3 rounded-xl text-sm', message.type === 'success' ? 'bg-trading-green/20 text-trading-green' : 'bg-trading-red/20 text-trading-red']">{{ message.text }}</div>
 
-                <!-- Coming Soon Badge -->
-                <div class="inline-block px-6 py-3 rounded-full bg-trading-green/20 border border-trading-green/30 mb-12">
-                    <span class="text-trading-green font-bold text-lg">Coming Soon — Q2 2026</span>
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="glass-card text-center py-4">
+                    <p class="text-2xl font-bold text-primary-400">{{ formatNum(stats?.tvl) }}</p>
+                    <p class="text-dark-400 text-xs">{{ t('staking.tvl') }}</p>
                 </div>
+                <div class="glass-card text-center py-4">
+                    <p class="text-2xl font-bold text-white">{{ stats?.total_stakers || 0 }}</p>
+                    <p class="text-dark-400 text-xs">{{ t('staking.stakers') }}</p>
+                </div>
+                <div class="glass-card text-center py-4">
+                    <p class="text-2xl font-bold text-trading-green">{{ formatNum(myTotalStaked) }}</p>
+                    <p class="text-dark-400 text-xs">{{ t('staking.myStaked') }}</p>
+                </div>
+                <div class="glass-card text-center py-4">
+                    <p class="text-2xl font-bold text-yellow-400">{{ formatNum(myTotalRewards) }}</p>
+                    <p class="text-dark-400 text-xs">{{ t('staking.myRewards') }}</p>
+                </div>
+            </div>
 
-                <!-- APY Tiers -->
-                <div class="max-w-md mx-auto">
-                    <h3 class="text-lg font-bold text-white mb-4">Staking APY Tiers</h3>
-                    <div class="space-y-3">
-                        <div
-                            v-for="tier in stakingTiers"
-                            :key="tier.period"
-                            class="glass-dark flex items-center justify-between p-4 rounded-lg border border-white/10"
-                        >
-                            <span class="text-gray-300">{{ tier.period }}</span>
-                            <span class="text-xl font-bold" :class="tier.color">{{ tier.apy }}</span>
+            <!-- Pool Cards -->
+            <div class="grid md:grid-cols-3 lg:grid-cols-5 gap-4">
+                <button v-for="pool in pools" :key="pool.id" @click="selectPool(pool)"
+                    :class="['glass-card text-center transition-all cursor-pointer hover:border-primary-500/50',
+                        selectedPool?.id === pool.id ? 'border-primary-500 ring-1 ring-primary-500/30' : '']">
+                    <div class="mb-3">
+                        <span :class="['text-3xl font-bold', pool.lock_days === 0 ? 'text-primary-400' : pool.apy_percent >= 100 ? 'text-trading-green' : 'text-yellow-400']">
+                            {{ pool.apy_percent }}%
+                        </span>
+                        <p class="text-dark-400 text-xs">APY</p>
+                    </div>
+                    <p class="text-white font-semibold text-sm">{{ pool.name }}</p>
+                    <p class="text-dark-500 text-xs mt-1">{{ pool.lock_days === 0 ? 'ถอนได้ทันที' : `ล็อค ${pool.lock_days} วัน` }}</p>
+                    <div class="mt-3">
+                        <div class="h-1.5 bg-dark-600 rounded-full overflow-hidden">
+                            <div class="h-full bg-primary-500 rounded-full" :style="{ width: Math.min(100, (pool.total_staked / pool.max_pool_size) * 100) + '%' }"></div>
+                        </div>
+                        <p class="text-dark-500 text-[10px] mt-1">{{ formatNum(pool.total_staked) }} / {{ formatNum(pool.max_pool_size) }}</p>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Stake Form -->
+            <div v-if="selectedPool" class="glass-card border border-primary-500/20">
+                <h3 class="text-lg font-semibold text-white mb-4">Stake เข้า {{ selectedPool.name }} ({{ selectedPool.apy_percent }}% APY)</h3>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-sm text-dark-400 mb-1 block">จำนวน TPIX</label>
+                            <input v-model="stakeAmount" type="number" :min="selectedPool.min_stake" :placeholder="`ขั้นต่ำ ${selectedPool.min_stake} TPIX`"
+                                class="w-full bg-dark-700 border border-dark-600 rounded-xl px-4 py-3 text-white text-lg font-mono placeholder-dark-500 focus:border-primary-500 outline-none" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-dark-400 mb-1 block">Transaction Hash (optional)</label>
+                            <input v-model="stakeTxHash" type="text" placeholder="0x..."
+                                class="w-full bg-dark-700 border border-dark-600 rounded-xl px-4 py-2.5 text-white text-sm font-mono placeholder-dark-500 focus:border-primary-500 outline-none" />
+                        </div>
+                        <button @click="doStake" :disabled="isStaking || !stakeAmount"
+                            class="w-full py-3 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-bold hover:shadow-lg disabled:opacity-50 transition-all">
+                            {{ isStaking ? '🔄 กำลัง Stake...' : '🏦 ' + t('staking.stakeTpix') }}
+                        </button>
+                    </div>
+                    <div class="bg-dark-700/50 rounded-xl p-4 space-y-3">
+                        <h4 class="text-sm text-dark-400 font-semibold">{{ t('staking.estimatedRewards') }}</h4>
+                        <div class="flex justify-between"><span class="text-dark-300 text-sm">ต่อวัน</span><span class="text-trading-green font-mono">{{ estimatedDaily }} TPIX</span></div>
+                        <div class="flex justify-between"><span class="text-dark-300 text-sm">ต่อเดือน</span><span class="text-trading-green font-mono">{{ estimatedMonthly }} TPIX</span></div>
+                        <div class="flex justify-between"><span class="text-dark-300 text-sm">ต่อปี</span><span class="text-trading-green font-mono text-lg font-bold">{{ estimatedYearly }} TPIX</span></div>
+                        <div class="border-t border-white/5 pt-3 space-y-1 text-xs text-dark-500">
+                            <p>Lock: {{ selectedPool.lock_days === 0 ? 'Flexible (ถอนได้ทันที)' : selectedPool.lock_days + ' วัน' }}</p>
+                            <p>Min: {{ formatNum(selectedPool.min_stake) }} TPIX</p>
+                            <p>Max: {{ formatNum(selectedPool.max_stake) }} TPIX</p>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Info -->
-                <div class="mt-12 max-w-lg mx-auto text-left glass-dark p-6 rounded-xl border border-white/10">
-                    <h3 class="text-white font-bold mb-3">How It Works</h3>
-                    <ul class="space-y-2 text-sm text-gray-400">
-                        <li>1. Connect your wallet and choose a staking pool</li>
-                        <li>2. Select your lock period for higher APY</li>
-                        <li>3. Stake your TPIX tokens</li>
-                        <li>4. Earn rewards distributed from the staking pool (1.4B TPIX over 5 years)</li>
-                        <li>5. Withdraw after the lock period ends</li>
-                    </ul>
+            <!-- My Positions -->
+            <div v-if="activePositions.length" class="glass-card">
+                <h3 class="text-lg font-semibold text-white mb-4">{{ t('staking.myPositions') }}</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-dark-400 text-xs uppercase border-b border-white/10">
+                                <th class="text-left p-3">Pool</th>
+                                <th class="text-right p-3">Amount</th>
+                                <th class="text-right p-3">APY</th>
+                                <th class="text-right p-3">Pending Reward</th>
+                                <th class="text-center p-3">Unlock</th>
+                                <th class="text-right p-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="pos in activePositions" :key="pos.id" class="border-b border-white/5 hover:bg-white/5">
+                                <td class="p-3 text-white font-medium">{{ pos.pool }}</td>
+                                <td class="p-3 text-right text-white font-mono">{{ formatNum(pos.amount) }}</td>
+                                <td class="p-3 text-right text-trading-green">{{ pos.apy_percent }}%</td>
+                                <td class="p-3 text-right text-yellow-400 font-mono">{{ parseFloat(pos.pending_reward).toFixed(4) }}</td>
+                                <td class="p-3 text-center">
+                                    <span v-if="pos.is_unlocked" class="text-trading-green text-xs">✅ ถอนได้</span>
+                                    <span v-else class="text-dark-400 text-xs">🔒 {{ pos.days_remaining }}d</span>
+                                </td>
+                                <td class="p-3 text-right space-x-2">
+                                    <button @click="claimRewards(pos.id)" class="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-lg text-xs hover:bg-yellow-500/30">{{ t('staking.claim') }}</button>
+                                    <button v-if="pos.is_unlocked" @click="unstake(pos.id)" class="px-3 py-1 bg-trading-red/20 text-trading-red rounded-lg text-xs hover:bg-trading-red/30">{{ t('staking.unstake') }}</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
-        </section>
+
+            <!-- Info -->
+            <div class="glass-card">
+                <h3 class="text-lg font-semibold text-white mb-3">{{ t('staking.howToStake') }}</h3>
+                <div class="grid md:grid-cols-4 gap-4 text-center">
+                    <div v-for="(s, i) in ['เชื่อมต่อ Wallet', 'เลือก Pool + จำนวน', 'Confirm Transaction', 'รับ Rewards']" :key="i">
+                        <div class="w-10 h-10 rounded-full bg-primary-500/20 flex items-center justify-center mx-auto mb-2">
+                            <span class="text-primary-400 font-bold">{{ i + 1 }}</span>
+                        </div>
+                        <p class="text-dark-300 text-xs">{{ s }}</p>
+                    </div>
+                </div>
+                <p class="text-dark-500 text-xs mt-4 text-center">⚠️ Staking involves risk. Past returns do not guarantee future performance. Rewards pool: 1.4B TPIX over 5 years.</p>
+            </div>
+        </div>
     </AppLayout>
 </template>

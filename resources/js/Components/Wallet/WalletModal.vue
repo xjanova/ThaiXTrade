@@ -4,11 +4,14 @@
  * Real Web3 wallet connection via ethers.js
  * รองรับ Mobile deep link + In-app browser detection (LINE, Facebook, etc.)
  * Supports MetaMask, Trust Wallet, Coinbase, OKX, TokenPocket
+ * + TPIX Embedded Wallet (ไม่ต้องติดตั้ง extension)
  * Developed by Xman Studio
  */
 
 import { ref, computed } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
+import EmbeddedWalletSetup from './EmbeddedWalletSetup.vue';
+import { isWalletStored, getStoredAddress } from '@/utils/embeddedWallet';
 import {
     isMobile,
     detectInAppBrowser,
@@ -28,6 +31,13 @@ const walletStore = useWalletStore();
 const selectedWallet = ref(null);
 const isConnecting = ref(false);
 const error = ref(null);
+const showEmbeddedSetup = ref(false);
+const showUnlockPassword = ref(false);
+const unlockPassword = ref('');
+
+// ตรวจว่ามี TPIX Wallet เก็บอยู่แล้ว (ต้อง unlock)
+const hasStoredWallet = computed(() => isWalletStored());
+const storedAddress = computed(() => getStoredAddress());
 
 // === Platform Detection (ค่าคงที่ ไม่เปลี่ยนระหว่าง session) ===
 const mobile = isMobile();
@@ -53,6 +63,15 @@ const allWallets = (() => {
     }
 
     const baseWallets = [
+        // TPIX Embedded Wallet — อยู่บนสุดเสมอ
+        {
+            id: 'tpix_wallet',
+            name: 'TPIX Wallet',
+            description: 'Wallet ในตัวเว็บ — ไม่ต้องติดตั้ง',
+            popular: true,
+            color: '#06B6D4',
+            embedded: true,
+        },
         { id: 'metamask', name: 'MetaMask', description: mobile ? 'Open in MetaMask' : 'Browser extension', popular: true, color: '#E2761B' },
         { id: 'trustwallet', name: 'Trust Wallet', description: mobile ? 'Open in Trust Wallet' : 'Mobile & Extension', popular: true, color: '#3375BB' },
         { id: 'coinbase', name: 'Coinbase Wallet', description: mobile ? 'Open in Coinbase' : 'Browser & Mobile', popular: true, color: '#0052FF' },
@@ -81,6 +100,16 @@ function isWalletDetected(walletId) {
 }
 
 const connectWallet = async (wallet) => {
+    // TPIX Wallet — embedded wallet flow
+    if (wallet.embedded) {
+        if (hasStoredWallet.value) {
+            showUnlockPassword.value = true;
+        } else {
+            showEmbeddedSetup.value = true;
+        }
+        return;
+    }
+
     if (wallet.supported === false) {
         error.value = `${wallet.name} support coming soon.`;
         return;
@@ -134,6 +163,30 @@ const openInExternalBrowser = () => {
     const url = getExternalBrowserUrl();
     window.location.href = url;
 };
+
+// Unlock embedded wallet ด้วย password
+async function unlockEmbedded() {
+    isConnecting.value = true;
+    error.value = null;
+    try {
+        await walletStore.connectEmbedded(unlockPassword.value);
+        showUnlockPassword.value = false;
+        unlockPassword.value = '';
+        emit('connected', { address: walletStore.address, wallet: 'tpix_wallet', chainId: walletStore.chainId });
+        emit('close');
+    } catch (err) {
+        error.value = err.message;
+    } finally {
+        isConnecting.value = false;
+    }
+}
+
+// Embedded setup done → connect เรียบร้อย
+function onEmbeddedDone() {
+    showEmbeddedSetup.value = false;
+    emit('connected', { address: walletStore.address, wallet: 'tpix_wallet', chainId: walletStore.chainId });
+    emit('close');
+}
 
 // ชื่อ in-app browser ที่อ่านง่าย (ค่าคงที่)
 const IN_APP_DISPLAY_NAMES = {
@@ -199,6 +252,40 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                 </template>
             </p>
 
+            <!-- Embedded Wallet Setup Flow -->
+            <template v-if="showEmbeddedSetup">
+                <EmbeddedWalletSetup @done="onEmbeddedDone" @cancel="showEmbeddedSetup = false" />
+            </template>
+
+            <!-- Unlock Embedded Wallet -->
+            <template v-else-if="showUnlockPassword">
+                <div class="space-y-4">
+                    <div class="text-center">
+                        <div class="w-12 h-12 mx-auto rounded-xl bg-primary-500/20 flex items-center justify-center mb-3">
+                            <img src="/logo.png" class="w-8 h-8 rounded-lg" alt="TPIX" />
+                        </div>
+                        <h3 class="text-lg font-bold text-white">Unlock TPIX Wallet</h3>
+                        <p class="text-dark-500 text-xs font-mono mt-1">{{ storedAddress }}</p>
+                    </div>
+                    <input v-model="unlockPassword" type="password"
+                        class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:border-primary-500 text-sm"
+                        placeholder="ใส่ Password" @keyup.enter="unlockEmbedded" />
+                    <div v-if="error" class="p-2 rounded-lg bg-trading-red/10 text-trading-red text-sm">{{ error }}</div>
+                    <div class="flex gap-3">
+                        <button @click="showUnlockPassword = false; error = null" class="flex-1 py-2 text-dark-400 hover:text-white text-sm">กลับ</button>
+                        <button @click="unlockEmbedded" :disabled="isConnecting" class="flex-1 py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-medium text-sm">
+                            {{ isConnecting ? 'กำลัง Unlock...' : 'Unlock' }}
+                        </button>
+                    </div>
+                    <button @click="showEmbeddedSetup = true; showUnlockPassword = false" class="w-full text-center text-dark-500 hover:text-dark-400 text-xs">
+                        สร้าง Wallet ใหม่ หรือ Import
+                    </button>
+                </div>
+            </template>
+
+            <!-- Normal wallet selection -->
+            <template v-else>
+
             <!-- Error Message -->
             <div v-if="error" class="mb-4 p-3 rounded-xl bg-trading-red/10 border border-trading-red/30 text-trading-red text-sm">
                 {{ error }}
@@ -220,8 +307,10 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                 >
                     <!-- Wallet Icon -->
                     <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" :style="{ background: wallet.color + '20' }">
+                        <!-- TPIX Wallet -->
+                        <img v-if="wallet.id === 'tpix_wallet'" src="/logo.png" class="w-6 h-6 rounded-md" alt="TPIX" />
                         <!-- MetaMask -->
-                        <svg v-if="wallet.id === 'metamask'" class="w-6 h-6" viewBox="0 0 35 33">
+                        <svg v-else-if="wallet.id === 'metamask'" class="w-6 h-6" viewBox="0 0 35 33">
                             <path d="M32.96 1l-13.14 9.72 2.45-5.73L32.96 1z" fill="#E2761B" stroke="#E2761B" stroke-width=".25"/>
                             <path d="M2.66 1l13.02 9.82-2.33-5.83L2.66 1zm25.57 22.53l-3.5 5.34 7.49 2.06 2.14-7.28-6.13-.12zm-26.96.12l2.13 7.28 7.47-2.06-3.48-5.34-6.12.12z" fill="#E4761B" stroke="#E4761B" stroke-width=".25"/>
                             <path d="M10.47 14.51l-2.08 3.14 7.4.34-.26-7.96-5.06 4.48zm14.68 0L20 9.93l-.17 8.06 7.4-.34-2.08-3.14zM10.87 28.87l4.49-2.16-3.88-3.02-.61 5.18zm8.89-2.16l4.51 2.16-.63-5.18-3.88 3.02z" fill="#E4761B" stroke="#E4761B" stroke-width=".25"/>
@@ -252,8 +341,8 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                     <!-- Status -->
                     <div v-if="selectedWallet === wallet.id && isConnecting" class="spinner"></div>
                     <span v-else-if="isWalletDetected(wallet.id)" class="text-[10px] text-trading-green px-2 py-0.5 rounded-full bg-trading-green/10">Detected</span>
-                    <!-- Mobile: แสดง "Open" แทน arrow -->
-                    <span v-else-if="mobile" class="text-[10px] text-primary-400 px-2 py-0.5 rounded-full bg-primary-500/10">Open</span>
+                    <!-- Mobile: แสดง "Open" แทน arrow (ไม่แสดงสำหรับ embedded wallet) -->
+                    <span v-else-if="mobile && !wallet.embedded" class="text-[10px] text-primary-400 px-2 py-0.5 rounded-full bg-primary-500/10">Open</span>
                     <svg v-else class="w-5 h-5 text-dark-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                     </svg>
@@ -302,7 +391,6 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                     </div>
                     <div class="text-left">
                         <span class="text-sm text-dark-300">{{ wallet.name }}</span>
-                        <span v-if="wallet.supported === false" class="text-[10px] text-dark-500 block">Soon</span>
                     </div>
                 </button>
             </div>
@@ -347,13 +435,13 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                     <div class="flex-1">
                         <p class="font-medium text-white text-sm">Don't have a wallet?</p>
                         <p class="text-xs text-dark-400">
-                            <a href="https://metamask.io/download/" target="_blank" rel="noopener" class="text-primary-400 hover:text-primary-300 underline">MetaMask</a>
-                            or
-                            <a href="https://trustwallet.com/" target="_blank" rel="noopener" class="text-primary-400 hover:text-primary-300 underline">Trust Wallet</a>
+                            Use <span class="text-primary-400 font-medium">TPIX Wallet</span> above — no extension needed!
                         </p>
                     </div>
                 </div>
             </div>
+
+            </template><!-- end v-else (normal wallet selection) -->
         </div>
     </div>
 </template>

@@ -8,6 +8,10 @@ import { ref, computed } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import { useWalletStore } from '@/Stores/walletStore';
 import ChainSelector from '@/Components/Navigation/ChainSelector.vue';
+import LanguageSwitcher from '@/Components/Navigation/LanguageSwitcher.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     user: Object,
@@ -62,25 +66,25 @@ const handleDisconnect = () => {
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
                         </svg>
-                        <span>Trade</span>
+                        <span>{{ t('nav.trade') }}</span>
                     </Link>
                     <Link href="/swap" class="nav-link">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
                         </svg>
-                        <span>Swap</span>
+                        <span>{{ t('nav.swap') }}</span>
                     </Link>
                     <Link href="/portfolio" class="nav-link">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/>
                         </svg>
-                        <span>Portfolio</span>
+                        <span>{{ t('nav.portfolio') }}</span>
                     </Link>
                     <Link href="/token-sale" class="nav-link">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
-                        <span>Token Sale</span>
+                        <span>{{ t('nav.tokenSale') }}</span>
                     </Link>
                     <!-- More dropdown เพื่อไม่ให้ nav ยาวเกินไป -->
                     <div class="relative group">
@@ -88,7 +92,7 @@ const handleDisconnect = () => {
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/>
                             </svg>
-                            <span>More</span>
+                            <span>{{ t('common.viewAll') }}</span>
                         </button>
                         <div class="absolute top-full left-0 mt-1 w-48 rounded-xl glass border border-white/10 shadow-xl py-2 z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all">
                             <Link href="/ai-assistant" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
@@ -100,11 +104,21 @@ const handleDisconnect = () => {
                             <Link href="/whitepaper" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
                                 Whitepaper
                             </Link>
+                            <Link href="/token-factory" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
+                                Token Factory
+                            </Link>
+                            <Link href="/carbon-credits" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
+                                Carbon Credits
+                            </Link>
+                            <div class="border-t border-white/5 my-1"></div>
                             <Link href="/bridge" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
-                                Bridge <span class="text-xs text-gray-500 ml-auto">Soon</span>
+                                {{ t('nav.bridge') }}
                             </Link>
                             <Link href="/staking" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
-                                Staking <span class="text-xs text-gray-500 ml-auto">Soon</span>
+                                {{ t('nav.staking') }}
+                            </Link>
+                            <Link href="/blog" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
+                                {{ t('nav.blog') }}
                             </Link>
                         </div>
                     </div>
@@ -115,6 +129,9 @@ const handleDisconnect = () => {
                     <!-- ตัวเลือก Chain - รองรับหลาย chain พร้อม auto-switch -->
                     <ChainSelector class="hidden sm:block" />
 
+                    <!-- Language Switcher -->
+                    <LanguageSwitcher />
+
                     <!-- Connect Wallet Button -->
                     <button
                         v-if="!isWalletConnected"
@@ -124,7 +141,7 @@ const handleDisconnect = () => {
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
                         </svg>
-                        <span class="hidden sm:inline">Connect Wallet</span>
+                        <span class="hidden sm:inline">{{ t('wallet.connect') }}</span>
                     </button>
 
                     <!-- Connected Wallet -->
@@ -170,7 +187,7 @@ const handleDisconnect = () => {
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                                     </svg>
-                                    View on Explorer
+                                    {{ t('nav.viewOnExplorer') }}
                                 </a>
                                 <button
                                     @click="handleDisconnect"
@@ -179,7 +196,7 @@ const handleDisconnect = () => {
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                                     </svg>
-                                    Disconnect
+                                    {{ t('nav.disconnect') }}
                                 </button>
                             </div>
                         </Transition>

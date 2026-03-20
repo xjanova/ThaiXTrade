@@ -33,20 +33,20 @@ export const BSC_CHAIN_CONFIG = {
 };
 
 /**
- * TPIX Chain config — Polygon Edge, IBFT PoA, Chain ID 7000, gasless.
+ * TPIX Chain config — Polygon Edge, IBFT PoA, Chain ID 4289, gasless.
  * ใช้สำหรับ add chain เข้า wallet โดยตรง (ไม่ต้องรอ backend)
  */
 export const TPIX_CHAIN_CONFIG = {
-    chainId: '0x1B58', // 7000 in hex
-    chainIdNum: 7000,
+    chainId: '0x10C1', // 4289 in hex
+    chainIdNum: 4289,
     chainName: 'TPIX Chain',
     nativeCurrency: {
         name: 'TPIX',
         symbol: 'TPIX',
         decimals: 18,
     },
-    rpcUrls: ['https://rpc.tpixchain.com'],
-    blockExplorerUrls: ['https://explorer.tpixchain.com'],
+    rpcUrls: ['https://rpc.tpix.online'],
+    blockExplorerUrls: ['https://explorer.tpix.online'],
 };
 
 /**
@@ -91,6 +91,39 @@ export async function fetchSupportedChains() {
         });
 
     return _chainCachePromise;
+}
+
+/**
+ * เพิ่ม TPIX Chain เข้ากระเป๋าอัตโนมัติ (MetaMask, Trust Wallet, etc.)
+ * ใช้ EIP-3085 wallet_addEthereumChain — ถ้า chain มีอยู่แล้วจะข้าม (ไม่ error)
+ * เรียกอัตโนมัติหลัง connect wallet สำเร็จ
+ */
+export async function addTPIXChainToWallet(providerOrWindow = null) {
+    const p = providerOrWindow || (typeof window !== 'undefined' ? window.ethereum : null);
+    if (!p?.request) return false;
+
+    try {
+        await p.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+                chainId: TPIX_CHAIN_CONFIG.chainId,
+                chainName: TPIX_CHAIN_CONFIG.chainName,
+                nativeCurrency: TPIX_CHAIN_CONFIG.nativeCurrency,
+                rpcUrls: TPIX_CHAIN_CONFIG.rpcUrls,
+                blockExplorerUrls: TPIX_CHAIN_CONFIG.blockExplorerUrls,
+            }],
+        });
+        console.log('[TPIX] ✅ TPIX Chain (4289) added to wallet');
+        return true;
+    } catch (err) {
+        // 4902 = chain ถูกเพิ่มแล้ว (ปกติ), 4001 = user ปฏิเสธ
+        if (err.code === 4001) {
+            console.warn('[TPIX] User declined to add TPIX Chain');
+        } else {
+            console.warn('[TPIX] Could not add TPIX Chain:', err.message);
+        }
+        return false;
+    }
 }
 
 /**

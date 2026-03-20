@@ -37,7 +37,7 @@
         }
     },
     "params": {
-        "chainID": 7000,
+        "chainID": 4289,
         "forks": {
             "homestead": 0,
             "byzantium": 0,

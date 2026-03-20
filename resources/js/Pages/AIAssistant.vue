@@ -1,93 +1,137 @@
 <script setup>
 /**
- * TPIX TRADE - AI Assistant Page
+ * TPIX TRADE — AI Assistant Page (Full Chat)
+ * หน้า AI ผู้ช่วยเทรด — พิมพ์สื่อสารกับ AI ได้เลย
+ * ดึงข้อมูลจาก Groq API ผ่าน /api/v1/chatbot
  * Developed by Xman Studio
  */
-
-import { ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { ref, nextTick } from 'vue';
+import { Head, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+import axios from 'axios';
 
-const features = [
-    {
-        icon: 'chart',
-        title: 'Market Analysis',
-        description: 'AI-powered technical and fundamental analysis of crypto markets.',
-    },
-    {
-        icon: 'signal',
-        title: 'Trading Signals',
-        description: 'Real-time buy/sell signals based on advanced pattern recognition.',
-    },
-    {
-        icon: 'shield',
-        title: 'Risk Assessment',
-        description: 'Evaluate portfolio risk and get suggestions for optimization.',
-    },
-    {
-        icon: 'brain',
-        title: 'Strategy Builder',
-        description: 'Create automated trading strategies with AI assistance.',
-    },
+const { t, locale } = useTranslation();
+
+const message = ref('');
+const isLoading = ref(false);
+const chatContainer = ref(null);
+
+const chatHistory = ref([
+    { role: 'bot', text: t('chatbot.greeting'), time: new Date() },
+]);
+
+function scrollBottom() {
+    nextTick(() => {
+        if (chatContainer.value) chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+    });
+}
+
+async function sendMessage() {
+    const msg = message.value.trim();
+    if (!msg || isLoading.value) return;
+    chatHistory.value.push({ role: 'user', text: msg, time: new Date() });
+    message.value = '';
+    isLoading.value = true;
+    scrollBottom();
+    try {
+        const { data } = await axios.post('/api/v1/chatbot', { message: msg, language: locale.value });
+        if (data.success) {
+            chatHistory.value.push({ role: 'bot', text: data.data.message, time: new Date(), navigation: data.data.navigation });
+        } else {
+            chatHistory.value.push({ role: 'bot', text: t('chatbot.error'), time: new Date() });
+        }
+    } catch {
+        chatHistory.value.push({ role: 'bot', text: t('chatbot.error'), time: new Date() });
+    }
+    isLoading.value = false;
+    scrollBottom();
+}
+
+function sendQuick(msg) { message.value = msg; sendMessage(); }
+function formatTime(d) { return new Date(d).toLocaleTimeString(locale.value === 'th' ? 'th-TH' : 'en-US', { hour: '2-digit', minute: '2-digit' }); }
+function goTo(url) { router.visit(url); }
+
+const quickActions = [
+    { icon: '🔥', label: t('chatbot.q1'), msg: locale.value === 'th' ? 'TPIX Chain คืออะไร อธิบายละเอียด' : 'What is TPIX Chain in detail' },
+    { icon: '💰', label: t('chatbot.q2'), msg: locale.value === 'th' ? 'ซื้อเหรียญ TPIX ได้อย่างไร' : 'How to buy TPIX tokens' },
+    { icon: '📊', label: t('chatbot.q3'), msg: locale.value === 'th' ? 'สอนวิธีเทรดบน TPIX TRADE' : 'How to trade on TPIX TRADE' },
+    { icon: '🏦', label: 'Staking', msg: locale.value === 'th' ? 'Stake TPIX ได้ APY เท่าไหร่' : 'TPIX staking APY rates' },
+    { icon: '🌉', label: 'Bridge', msg: locale.value === 'th' ? 'Bridge ข้าม chain ทำอย่างไร' : 'How to bridge across chains' },
+    { icon: '🌱', label: t('chatbot.q4'), msg: locale.value === 'th' ? 'Carbon Credit ทำงานอย่างไร' : 'How does Carbon Credit work' },
 ];
 </script>
 
 <template>
-    <Head title="AI Assistant" />
-
-    <AppLayout>
-        <div class="max-w-6xl mx-auto">
-            <!-- Page Header -->
-            <div class="mb-8">
-                <h1 class="text-3xl font-bold text-white mb-2">AI Trading Assistant</h1>
-                <p class="text-dark-400">Intelligent tools to enhance your trading decisions.</p>
+    <Head :title="t('aiAssistant.title')" />
+    <AppLayout :hide-sidebar="true">
+        <div class="max-w-5xl mx-auto">
+            <div class="text-center mb-6">
+                <h1 class="text-3xl font-bold text-white mb-2">🤖 {{ t('aiAssistant.title') }}</h1>
+                <p class="text-dark-400">{{ locale === 'th' ? 'ถามอะไรก็ได้เกี่ยวกับ TPIX Chain, การเทรด และฟีเจอร์ทั้งหมด' : 'Ask anything about TPIX Chain, trading and all features' }}</p>
             </div>
 
-            <!-- Coming Soon Banner -->
-            <div class="glass-dark rounded-2xl p-8 mb-8 text-center border border-primary-500/20 bg-gradient-to-br from-accent-500/5 via-primary-500/5 to-warm-500/5">
-                <div class="w-20 h-20 rounded-3xl bg-gradient-to-br from-accent-500/20 via-primary-500/20 to-warm-500/15 flex items-center justify-center mx-auto mb-6">
-                    <svg class="w-10 h-10 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                    </svg>
-                </div>
-                <h2 class="text-2xl font-bold text-white mb-3">Coming Soon</h2>
-                <p class="text-dark-400 max-w-lg mx-auto mb-6">
-                    Our AI-powered trading assistant is under development. It will provide intelligent market analysis,
-                    trading signals, and risk management tools to help you make better trading decisions.
-                </p>
-                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-sm text-sm text-dark-300">
-                    <span class="w-2 h-2 rounded-full bg-warm-500 animate-pulse"></span>
-                    <span>In Development</span>
-                </div>
-            </div>
-
-            <!-- Feature Preview Cards -->
-            <div class="grid md:grid-cols-2 gap-6">
-                <div
-                    v-for="feature in features"
-                    :key="feature.title"
-                    class="glass-card group opacity-75"
-                >
-                    <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-500/10 via-primary-500/15 to-warm-500/10 flex items-center justify-center mb-4">
-                        <!-- Chart Icon -->
-                        <svg v-if="feature.icon === 'chart'" class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
-                        </svg>
-                        <!-- Signal Icon -->
-                        <svg v-else-if="feature.icon === 'signal'" class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                        </svg>
-                        <!-- Shield Icon -->
-                        <svg v-else-if="feature.icon === 'shield'" class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-                        </svg>
-                        <!-- Brain Icon -->
-                        <svg v-else class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-                        </svg>
+            <div class="grid lg:grid-cols-4 gap-6">
+                <!-- Sidebar -->
+                <div class="lg:col-span-1 space-y-4">
+                    <div class="glass-card">
+                        <h3 class="text-sm font-semibold text-dark-300 mb-3">{{ t('chatbot.trySuggestion') }}</h3>
+                        <div class="space-y-2">
+                            <button v-for="q in quickActions" :key="q.label" @click="sendQuick(q.msg)"
+                                class="w-full text-left px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-dark-300 hover:bg-primary-500/10 hover:border-primary-500/30 transition-all">
+                                <span class="mr-1">{{ q.icon }}</span> {{ q.label }}
+                            </button>
+                        </div>
                     </div>
-                    <h3 class="text-lg font-semibold text-white mb-2">{{ feature.title }}</h3>
-                    <p class="text-dark-400">{{ feature.description }}</p>
+                </div>
+
+                <!-- Chat -->
+                <div class="lg:col-span-3 glass-card flex flex-col" style="height: calc(100vh - 220px); min-height: 500px;">
+                    <div ref="chatContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
+                        <div v-for="(msg, i) in chatHistory" :key="i" :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
+                            <div :class="['max-w-[80%] rounded-2xl px-4 py-3',
+                                msg.role === 'user' ? 'bg-primary-500/20 border border-primary-500/20 text-white rounded-br-sm' : 'bg-white/5 border border-white/10 text-dark-200 rounded-bl-sm']">
+                                <div v-if="msg.role === 'bot'" class="flex items-center gap-2 mb-1">
+                                    <span class="text-sm">🤖</span>
+                                    <span class="text-primary-400 text-xs font-semibold">TPIX AI</span>
+                                    <span class="text-dark-600 text-[10px]">{{ formatTime(msg.time) }}</span>
+                                </div>
+                                <div v-else class="flex items-center justify-end gap-2 mb-1">
+                                    <span class="text-dark-500 text-[10px]">{{ formatTime(msg.time) }}</span>
+                                    <span class="text-primary-300 text-xs font-semibold">{{ locale === 'th' ? 'คุณ' : 'You' }}</span>
+                                </div>
+                                <p class="whitespace-pre-wrap text-sm leading-relaxed">{{ msg.text }}</p>
+                                <button v-if="msg.navigation" @click="goTo(msg.navigation)"
+                                    class="mt-2 px-3 py-1.5 bg-primary-500/20 text-primary-300 rounded-lg text-xs hover:bg-primary-500/30 transition-colors">
+                                    {{ t('chatbot.goToPage') }}
+                                </button>
+                            </div>
+                        </div>
+                        <div v-if="isLoading" class="flex justify-start">
+                            <div class="bg-white/5 border border-white/10 px-4 py-3 rounded-2xl rounded-bl-sm">
+                                <div class="flex items-center gap-2 text-dark-400 text-sm">
+                                    <span>🤖</span>
+                                    <span class="animate-pulse">{{ t('chatbot.thinking') }}</span>
+                                    <span class="flex gap-1">
+                                        <span class="w-1.5 h-1.5 bg-primary-400 rounded-full animate-bounce"></span>
+                                        <span class="w-1.5 h-1.5 bg-primary-400 rounded-full animate-bounce" style="animation-delay:0.15s"></span>
+                                        <span class="w-1.5 h-1.5 bg-primary-400 rounded-full animate-bounce" style="animation-delay:0.3s"></span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-4 border-t border-white/10">
+                        <form @submit.prevent="sendMessage" class="flex gap-3">
+                            <input v-model="message" type="text" :placeholder="t('chatbot.placeholder')"
+                                class="flex-1 bg-dark-700 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:border-primary-500 outline-none" :disabled="isLoading" />
+                            <button type="submit" :disabled="isLoading || !message.trim()"
+                                class="px-6 py-3 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-medium hover:shadow-lg disabled:opacity-50 transition-all">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                            </button>
+                        </form>
+                        <p class="text-dark-600 text-[10px] mt-2 text-center">{{ locale === 'th' ? 'AI อาจให้ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบข้อมูลสำคัญด้วยตัวเอง' : 'AI may provide inaccurate info. Please verify important data yourself.' }}</p>
+                    </div>
                 </div>
             </div>
         </div>

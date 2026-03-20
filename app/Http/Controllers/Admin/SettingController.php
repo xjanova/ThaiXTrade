@@ -20,21 +20,26 @@ use Inertia\Response as InertiaResponse;
 class SettingController extends Controller
 {
     /**
-     * Display all site settings grouped by category.
+     * แสดงหน้า Settings — แปลง settings เป็น flat format สำหรับ Vue.
      */
     public function index(): InertiaResponse
     {
-        $settings = SiteSetting::all()->groupBy('group')->map(function ($group) {
-            return $group->mapWithKeys(function ($setting) {
-                return [$setting->key => [
-                    'value' => $setting->value,
-                    'type' => $setting->type,
-                ]];
-            });
-        });
+        // ดึง settings ทั้งหมดแล้วแปลงเป็น flat key-value
+        $allSettings = SiteSetting::all();
+        $flat = [];
+        foreach ($allSettings as $setting) {
+            $flat[$setting->key] = $setting->value;
+
+            // แปลง image path เป็น URL ที่เข้าถึงได้
+            if ($setting->type === 'image' && $setting->value) {
+                $flat[$setting->key.'_url'] = Storage::disk('public')->exists($setting->value)
+                    ? '/storage/'.$setting->value
+                    : null;
+            }
+        }
 
         return Inertia::render('Admin/Settings/Index', [
-            'settings' => $settings,
+            'settings' => $flat,
         ]);
     }
 
@@ -87,12 +92,107 @@ class SettingController extends Controller
     }
 
     /**
-     * Handle logo file upload.
+     * บันทึก General tab (รวม logo upload).
+     */
+    public function updateGeneral(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'site_name' => ['nullable', 'string', 'max:100'],
+            'site_description' => ['nullable', 'string', 'max:500'],
+            'primary_color' => ['nullable', 'string', 'max:20'],
+            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:10240'],
+            'favicon' => ['nullable', 'file', 'mimes:png,ico,svg,jpg,jpeg,webp', 'max:5120'],
+        ]);
+
+        // บันทึก text settings
+        foreach (['site_name', 'site_description', 'primary_color'] as $key) {
+            if ($request->has($key)) {
+                SiteSetting::set('general', $key, $request->input($key), 'string');
+            }
+        }
+
+        // อัปโหลด logo
+        if ($request->hasFile('logo')) {
+            $oldLogo = SiteSetting::get('general', 'logo');
+            if ($oldLogo && Storage::disk('public')->exists($oldLogo)) {
+                Storage::disk('public')->delete($oldLogo);
+            }
+            $path = $request->file('logo')->store('logos', 'public');
+            SiteSetting::set('general', 'logo', $path, 'image');
+        }
+
+        // อัปโหลด favicon
+        if ($request->hasFile('favicon')) {
+            $oldFav = SiteSetting::get('general', 'favicon');
+            if ($oldFav && Storage::disk('public')->exists($oldFav)) {
+                Storage::disk('public')->delete($oldFav);
+            }
+            $path = $request->file('favicon')->store('favicons', 'public');
+            SiteSetting::set('general', 'favicon', $path, 'image');
+        }
+
+        SiteSetting::clearCache();
+        AuditLog::log('settings.general.update');
+
+        return back()->with('success', 'บันทึก General settings สำเร็จ');
+    }
+
+    /**
+     * บันทึก SEO tab (รวม OG image upload).
+     */
+    public function updateSeo(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'meta_title' => ['nullable', 'string', 'max:200'],
+            'meta_description' => ['nullable', 'string', 'max:500'],
+            'og_image' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:10240'],
+        ]);
+
+        foreach (['meta_title', 'meta_description'] as $key) {
+            if ($request->has($key)) {
+                SiteSetting::set('seo', $key, $request->input($key), 'string');
+            }
+        }
+
+        if ($request->hasFile('og_image')) {
+            $old = SiteSetting::get('seo', 'og_image');
+            if ($old && Storage::disk('public')->exists($old)) {
+                Storage::disk('public')->delete($old);
+            }
+            $path = $request->file('og_image')->store('seo', 'public');
+            SiteSetting::set('seo', 'og_image', $path, 'image');
+        }
+
+        SiteSetting::clearCache();
+        AuditLog::log('settings.seo.update');
+
+        return back()->with('success', 'บันทึก SEO settings สำเร็จ');
+    }
+
+    /**
+     * บันทึก tab ทั่วไป (trading, security, social) — ไม่มี file upload.
+     */
+    public function updateTab(Request $request): RedirectResponse
+    {
+        $tab = last(explode('/', $request->path())); // trading, security, social
+
+        foreach ($request->except('_method') as $key => $value) {
+            SiteSetting::set($tab, $key, $value);
+        }
+
+        SiteSetting::clearCache();
+        AuditLog::log("settings.{$tab}.update");
+
+        return back()->with('success', "บันทึก {$tab} settings สำเร็จ");
+    }
+
+    /**
+     * Handle logo file upload (standalone endpoint).
      */
     public function updateLogo(Request $request): RedirectResponse
     {
         $request->validate([
-            'logo' => ['required', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:2048'],
+            'logo' => ['required', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:10240'],
         ]);
 
         // Delete old logo if exists

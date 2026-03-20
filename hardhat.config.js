@@ -43,7 +43,7 @@ module.exports = {
         // TPIX Chain Mainnet — deploy DEX contracts
         tpix: {
             url: process.env.TPIX_RPC_URL || 'http://localhost:8545',
-            chainId: 7000,
+            chainId: 4289,
             accounts: process.env.DEPLOYER_PRIVATE_KEY
                 ? [process.env.DEPLOYER_PRIVATE_KEY]
                 : [],
@@ -53,7 +53,7 @@ module.exports = {
         // TPIX Chain Testnet
         tpixTestnet: {
             url: process.env.TPIX_TESTNET_RPC_URL || 'http://localhost:8545',
-            chainId: 7001,
+            chainId: 4290,
             accounts: process.env.DEPLOYER_PRIVATE_KEY
                 ? [process.env.DEPLOYER_PRIVATE_KEY]
                 : [],

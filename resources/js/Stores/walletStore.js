@@ -1,22 +1,39 @@
 /**
  * TPIX TRADE - Wallet Store (Pinia)
  * ระบบจัดการ Wallet แบบรวมศูนย์ รองรับหลาย chain
- * รองรับ MetaMask, Trust Wallet, Coinbase, OKX
+ * รองรับ MetaMask, Trust Wallet, Coinbase, OKX + TPIX Wallet (embedded)
+ * TPIX Wallet = self-custodial wallet ในตัวเว็บ (ไม่ต้อง MetaMask)
  * สลับ chain อัตโนมัติไปยัง chain หลัก (BSC) เมื่อเชื่อมต่อ
  * Developed by Xman Studio
  */
 
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { BrowserProvider } from 'ethers';
+import { BrowserProvider, JsonRpcProvider, parseEther } from 'ethers';
+import axios from 'axios';
 import {
     BSC_CHAIN_CONFIG,
     DEFAULT_CHAIN_ID,
+    TPIX_CHAIN_CONFIG,
     switchToChain,
     fetchSupportedChains,
     getAddressUrl,
     formatAddress,
+    addTPIXChainToWallet,
 } from '@/utils/web3';
+import {
+    generateWallet,
+    importFromMnemonic,
+    importFromPrivateKey,
+    encryptAndStore,
+    unlockWallet,
+    connectToTPIXChain,
+    getTPIXBalance,
+    sendTPIX as sendTPIXTx,
+    isWalletStored,
+    getStoredAddress,
+    clearWallet,
+} from '@/utils/embeddedWallet';
 
 const STORAGE_KEY = 'tpix_wallet';
 
@@ -65,7 +82,9 @@ export const useWalletStore = defineStore('wallet', () => {
     const signer = ref(null);
     const isConnecting = ref(false);
     const error = ref(null);
-    const walletType = ref(null); // 'metamask', 'trustwallet', 'coinbase', 'okx'
+    const walletType = ref(null); // 'metamask', 'trustwallet', 'coinbase', 'okx', 'tpix_wallet'
+    const tpixBalance = ref(null); // TPIX balance สำหรับ embedded wallet
+    const isEmbedded = computed(() => walletType.value === 'tpix_wallet');
 
     // รายการ chain ที่รองรับ (ดึงจาก backend API)
     const supportedChains = ref([]);
@@ -163,16 +182,21 @@ export const useWalletStore = defineStore('wallet', () => {
             }));
 
             // สลับไป chain หลัก (BSC) อัตโนมัติถ้าไม่ได้อยู่บน chain ที่รองรับ
-            // หรือถ้าอยู่บน chain อื่นที่ไม่ใช่ chain หลัก
             if (chainId.value !== DEFAULT_CHAIN_ID) {
                 try {
                     await switchToChain(injected, DEFAULT_CHAIN_ID);
-                    // สร้าง provider ใหม่หลังสลับ chain สำเร็จ
                     await _refreshProviderState(injected);
                 } catch (switchErr) {
                     console.warn('[TPIX] ไม่สามารถสลับไป chain หลักอัตโนมัติ:', switchErr.message);
                 }
             }
+
+            // เพิ่ม TPIX Chain (4289) เข้ากระเป๋าอัตโนมัติ
+            addTPIXChainToWallet(injected).catch(() => {});
+
+            // แจ้ง backend ว่า wallet connect สำเร็จ — สร้าง user อัตโนมัติ
+            // ให้ admin เห็นในหน้า Members + Wallets
+            _registerWalletToBackend(address.value, chainId.value, type);
 
             // ตั้งค่า event listeners สำหรับ chain/account changes
             _setupListeners();
@@ -190,11 +214,162 @@ export const useWalletStore = defineStore('wallet', () => {
         }
     }
 
+    // === Embedded TPIX Wallet ===
+
+    /**
+     * สร้าง TPIX Wallet ใหม่ — generate mnemonic + encrypt + connect
+     * @param {string} password — min 8 chars
+     * @returns {Promise<{address: string, mnemonic: string}>}
+     */
+    async function createEmbeddedWallet(password) {
+        isConnecting.value = true;
+        error.value = null;
+        try {
+            const { wallet, mnemonic, address: addr } = generateWallet();
+            await encryptAndStore(wallet, password);
+            const connected = connectToTPIXChain(wallet);
+
+            address.value = addr;
+            chainId.value = TPIX_CHAIN_CONFIG.chainIdNum;
+            provider.value = connected.provider;
+            signer.value = connected;
+            walletType.value = 'tpix_wallet';
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                address: addr,
+                walletType: 'tpix_wallet',
+            }));
+
+            await loadSupportedChains();
+            await refreshTPIXBalance();
+
+            return { address: addr, mnemonic };
+        } catch (err) {
+            error.value = err.message;
+            throw err;
+        } finally {
+            isConnecting.value = false;
+        }
+    }
+
+    /**
+     * Import wallet จาก mnemonic หรือ private key
+     * @param {string} mnemonicOrKey — seed phrase หรือ private key
+     * @param {string} password — สำหรับ encrypt
+     */
+    async function importEmbeddedWallet(mnemonicOrKey, password) {
+        isConnecting.value = true;
+        error.value = null;
+        try {
+            const input = mnemonicOrKey.trim();
+            // ถ้ามี space = mnemonic, ไม่มี = private key
+            const wallet = input.includes(' ')
+                ? importFromMnemonic(input)
+                : importFromPrivateKey(input);
+
+            await encryptAndStore(wallet, password);
+            const connected = connectToTPIXChain(wallet);
+
+            address.value = wallet.address;
+            chainId.value = TPIX_CHAIN_CONFIG.chainIdNum;
+            provider.value = connected.provider;
+            signer.value = connected;
+            walletType.value = 'tpix_wallet';
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                address: wallet.address,
+                walletType: 'tpix_wallet',
+            }));
+
+            await loadSupportedChains();
+            await refreshTPIXBalance();
+
+            return wallet.address;
+        } catch (err) {
+            error.value = err.message;
+            throw err;
+        } finally {
+            isConnecting.value = false;
+        }
+    }
+
+    /**
+     * Unlock embedded wallet ด้วย password (reconnect)
+     */
+    async function connectEmbedded(password) {
+        isConnecting.value = true;
+        error.value = null;
+        try {
+            const wallet = await unlockWallet(password);
+            const connected = connectToTPIXChain(wallet);
+
+            address.value = wallet.address;
+            chainId.value = TPIX_CHAIN_CONFIG.chainIdNum;
+            provider.value = connected.provider;
+            signer.value = connected;
+            walletType.value = 'tpix_wallet';
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                address: wallet.address,
+                walletType: 'tpix_wallet',
+            }));
+
+            await loadSupportedChains();
+            await refreshTPIXBalance();
+
+            return wallet.address;
+        } catch (err) {
+            error.value = err.message;
+            throw err;
+        } finally {
+            isConnecting.value = false;
+        }
+    }
+
+    /**
+     * ส่ง TPIX (gasless!) ผ่าน embedded wallet
+     */
+    async function sendTPIX(toAddress, amount) {
+        if (walletType.value !== 'tpix_wallet' || !signer.value) {
+            throw new Error('ต้องเชื่อม TPIX Wallet ก่อน');
+        }
+        const tx = await sendTPIXTx(signer.value, toAddress, amount);
+        await refreshTPIXBalance();
+        return tx;
+    }
+
+    /**
+     * รีเฟรช TPIX balance
+     */
+    async function refreshTPIXBalance() {
+        if (!address.value) return;
+        try {
+            tpixBalance.value = await getTPIXBalance(address.value);
+        } catch {
+            tpixBalance.value = '0';
+        }
+    }
+
+    /**
+     * ตรวจว่ามี embedded wallet เก็บอยู่ (ยังไม่ unlock)
+     */
+    function hasStoredEmbeddedWallet() {
+        return isWalletStored();
+    }
+
     function disconnect() {
+        // แจ้ง backend ว่า disconnect
+        if (address.value) {
+            axios.post('/api/v1/wallet/disconnect', {
+                wallet_address: address.value,
+            }).catch(() => {});
+        }
+        // ถ้าเป็น embedded wallet — ไม่ลบ encrypted key (แค่ lock)
         address.value = null;
         chainId.value = null;
         provider.value = null;
         signer.value = null;
+        tpixBalance.value = null;
         walletType.value = null;
         error.value = null;
         localStorage.removeItem(STORAGE_KEY);
@@ -213,6 +388,17 @@ export const useWalletStore = defineStore('wallet', () => {
         try {
             const { address: savedAddr, walletType: savedType } = JSON.parse(saved);
             if (!savedAddr) return false;
+
+            // Embedded wallet — ต้อง unlock ด้วย password (ไม่ auto-reconnect)
+            // แต่แสดง address ให้เห็นว่ามี wallet อยู่
+            if (savedType === 'tpix_wallet') {
+                address.value = savedAddr;
+                walletType.value = 'tpix_wallet';
+                chainId.value = TPIX_CHAIN_CONFIG.chainIdNum;
+                await loadSupportedChains();
+                // ยังไม่มี signer จนกว่าจะ unlock
+                return true;
+            }
 
             const injected = _getProvider(savedType || 'metamask');
             if (!injected) return false;
@@ -263,6 +449,24 @@ export const useWalletStore = defineStore('wallet', () => {
             error.value = 'ไม่สามารถสลับ network ได้';
             throw err;
         }
+    }
+
+    /**
+     * แจ้ง backend เมื่อ wallet connect — สร้าง user อัตโนมัติ + บันทึก connection
+     * ไม่ block flow — fire and forget
+     */
+    function _registerWalletToBackend(walletAddress, walletChainId, walletType) {
+        axios.post('/api/v1/wallet/connect', {
+            wallet_address: walletAddress,
+            chain_id: walletChainId || 56,
+            wallet_type: walletType || 'metamask',
+        }).then((res) => {
+            if (res.data?.success) {
+                console.log('[TPIX] ✅ Wallet registered to backend:', walletAddress);
+            }
+        }).catch((err) => {
+            console.warn('[TPIX] Wallet registration failed:', err.message);
+        });
     }
 
     /**
@@ -353,5 +557,14 @@ export const useWalletStore = defineStore('wallet', () => {
         tryReconnect,
         switchChain,
         loadSupportedChains,
+        // Embedded TPIX Wallet
+        createEmbeddedWallet,
+        importEmbeddedWallet,
+        connectEmbedded,
+        sendTPIX,
+        refreshTPIXBalance,
+        hasStoredEmbeddedWallet,
+        tpixBalance,
+        isEmbedded,
     };
 });

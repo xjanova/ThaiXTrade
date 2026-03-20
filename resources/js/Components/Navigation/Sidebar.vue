@@ -7,6 +7,9 @@
 import { ref } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import { getBaseSymbol, getCoinLogo } from '@/utils/cryptoLogos';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const favoritesPairs = ref([
     { symbol: 'BTC/USDT', price: '67,234.50', change: '+2.45%', isUp: true },
@@ -60,32 +63,32 @@ const recentTrades = ref([
 
         <!-- Markets Section -->
         <div class="mb-6">
-            <h3 class="text-sm font-semibold text-dark-300 uppercase tracking-wider mb-3">Markets</h3>
+            <h3 class="text-sm font-semibold text-dark-300 uppercase tracking-wider mb-3">{{ t('nav.markets') }}</h3>
             <div class="space-y-1">
                 <Link href="/markets/spot" class="nav-link">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                     </svg>
-                    <span>Spot Markets</span>
+                    <span>{{ t('markets.spot') }}</span>
                 </Link>
                 <Link href="/markets/defi" class="nav-link">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
                     </svg>
-                    <span>DeFi Tokens</span>
+                    <span>{{ t('markets.defi') }}</span>
                 </Link>
                 <Link href="/markets/nft" class="nav-link">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                     </svg>
-                    <span>NFT Markets</span>
+                    <span>{{ t('markets.nft') }}</span>
                 </Link>
             </div>
         </div>
 
         <!-- Recent Trades -->
         <div class="mb-6">
-            <h3 class="text-sm font-semibold text-dark-300 uppercase tracking-wider mb-3">Recent Activity</h3>
+            <h3 class="text-sm font-semibold text-dark-300 uppercase tracking-wider mb-3">{{ t('trade.recentTrades') }}</h3>
             <div class="space-y-2">
                 <div
                     v-for="trade in recentTrades"
@@ -111,39 +114,55 @@ const recentTrades = ref([
 
         <!-- TPIX Ecosystem -->
         <div class="mb-6">
-            <h3 class="text-sm font-semibold text-dark-300 uppercase tracking-wider mb-3">TPIX Ecosystem</h3>
+            <h3 class="text-sm font-semibold text-dark-300 uppercase tracking-wider mb-3">{{ t('home.ecosystem') }}</h3>
             <div class="space-y-1">
                 <Link href="/token-sale" class="nav-link">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
-                    <span>Token Sale</span>
+                    <span>{{ t('nav.tokenSale') }}</span>
+                </Link>
+                <Link href="/token-factory" class="nav-link">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+                    </svg>
+                    <span>{{ t('nav.tokenFactory') }}</span>
+                </Link>
+                <Link href="/carbon-credits" class="nav-link">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span>{{ t('nav.carbonCredit') }}</span>
+                </Link>
+                <Link href="/blog" class="nav-link">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/>
+                    </svg>
+                    <span>{{ t('nav.blog') }}</span>
                 </Link>
                 <Link href="/explorer" class="nav-link">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
-                    <span>Explorer</span>
+                    <span>{{ t('nav.explorer') }}</span>
                 </Link>
                 <Link href="/whitepaper" class="nav-link">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
-                    <span>Whitepaper</span>
+                    <span>{{ t('nav.whitepaper') }}</span>
                 </Link>
                 <Link href="/bridge" class="nav-link">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
                     </svg>
-                    <span>Bridge</span>
-                    <span class="text-[10px] text-gray-500 ml-auto">Soon</span>
+                    <span>{{ t('nav.bridge') }}</span>
                 </Link>
                 <Link href="/staking" class="nav-link">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                     </svg>
-                    <span>Staking</span>
-                    <span class="text-[10px] text-gray-500 ml-auto">Soon</span>
+                    <span>{{ t('nav.staking') }}</span>
                 </Link>
             </div>
         </div>

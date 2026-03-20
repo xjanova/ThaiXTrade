@@ -6,15 +6,26 @@
  */
 
 use App\Http\Controllers\Api\AIController;
+use App\Http\Controllers\Api\ArticleController;
+use App\Http\Controllers\Api\BannerController as ApiBannerController;
+use App\Http\Controllers\Api\BridgeApiController;
+use App\Http\Controllers\Api\CarbonCreditApiController;
 use App\Http\Controllers\Api\ChainController;
+use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\MarketController;
+use App\Http\Controllers\Api\StakingApiController;
+use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\SwapApiController;
+use App\Http\Controllers\Api\TokenFactoryApiController;
 use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Middleware\VerifyWalletOwnership;
+use App\Models\SiteSetting;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 
 /*
 |--------------------------------------------------------------------------
@@ -34,6 +45,22 @@ Route::get('/', function () {
 
 // Public Routes (No Auth Required)
 Route::prefix('v1')->group(function () {
+    // Site — logo จาก admin settings (ใช้ใน Explorer + ที่อื่น)
+    Route::get('/site/logo', function () {
+        $logo = SiteSetting::get('general', 'logo');
+        if ($logo && Storage::disk('public')->exists($logo)) {
+            return response()->file(storage_path('app/public/'.$logo));
+        }
+
+        // Fallback: ใช้ logo.png ที่อยู่ใน public_html
+        $fallback = public_path('logo.png');
+        if (file_exists($fallback)) {
+            return response()->file($fallback);
+        }
+
+        abort(404);
+    });
+
     // Market Data
     Route::prefix('market')->group(function () {
         Route::get('/tickers', [MarketController::class, 'tickers']);
@@ -43,6 +70,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/klines/{symbol}', [MarketController::class, 'klines']);
         Route::get('/pairs', [MarketController::class, 'pairs']);
     });
+
+    // Banners — ป้ายโฆษณา (public, cached)
+    Route::get('/banners', [ApiBannerController::class, 'index']);
+    Route::post('/banners/{banner}/click', [ApiBannerController::class, 'click']);
 
     // Chain Configuration
     Route::prefix('chains')->group(function () {
@@ -72,7 +103,56 @@ Route::prefix('v1')->group(function () {
         Route::post('/preview', [TokenSaleApiController::class, 'preview']);
         Route::get('/purchases/{walletAddress}', [TokenSaleApiController::class, 'purchases']);
         Route::get('/vesting/{walletAddress}', [TokenSaleApiController::class, 'vesting']);
+
+        // Stripe Checkout — สร้าง session สำหรับซื้อด้วยบัตรเครดิต/เดบิต
+        Route::post('/stripe/checkout', [TokenSaleApiController::class, 'stripeCheckout']);
+        Route::get('/stripe/status/{sessionId}', [TokenSaleApiController::class, 'stripeStatus']);
     });
+
+    // Token Factory — ระบบสร้างเหรียญ (public endpoints)
+    Route::prefix('token-factory')->group(function () {
+        Route::get('/', [TokenFactoryApiController::class, 'index']);
+        Route::get('/{id}', [TokenFactoryApiController::class, 'show']);
+    });
+
+    // Carbon Credits — ระบบ Carbon Credit (public endpoints)
+    Route::prefix('carbon-credits')->group(function () {
+        Route::get('/projects', [CarbonCreditApiController::class, 'projects']);
+        Route::get('/projects/{slug}', [CarbonCreditApiController::class, 'project']);
+        Route::get('/stats', [CarbonCreditApiController::class, 'stats']);
+    });
+
+    // Bridge — cross-chain TPIX Chain ↔ BSC (public endpoints)
+    Route::prefix('bridge')->group(function () {
+        Route::get('/info', [BridgeApiController::class, 'info']);
+        Route::post('/initiate', [BridgeApiController::class, 'initiate']);
+        Route::get('/history/{wallet}', [BridgeApiController::class, 'history']);
+        Route::get('/status/{id}', [BridgeApiController::class, 'status']);
+    });
+
+    // Staking — stake TPIX บน TPIX Chain (public endpoints)
+    Route::prefix('staking')->group(function () {
+        Route::get('/pools', [StakingApiController::class, 'pools']);
+        Route::get('/stats', [StakingApiController::class, 'stats']);
+        Route::get('/positions/{wallet}', [StakingApiController::class, 'positions']);
+        Route::post('/stake', [StakingApiController::class, 'stake']);
+        Route::post('/claim/{id}', [StakingApiController::class, 'claim']);
+        Route::post('/unstake/{id}', [StakingApiController::class, 'unstake']);
+    });
+
+    // Articles / Blog — บทความ (public)
+    Route::prefix('articles')->group(function () {
+        Route::get('/', [ArticleController::class, 'index']);
+        Route::get('/{slug}', [ArticleController::class, 'show']);
+    });
+
+    // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)
+    Route::post('/chatbot', [ChatbotController::class, 'chat'])
+        ->middleware('throttle:30,1');
+
+    // Stripe Webhook — รับ event จาก Stripe (ไม่ต้อง auth)
+    Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])
+        ->withoutMiddleware([VerifyCsrfToken::class]);
 });
 
 // Protected Routes (Wallet Ownership Verified)
@@ -104,6 +184,20 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
 
     // Token Sale Purchase — ซื้อเหรียญ (ต้อง verify wallet)
     Route::post('/token-sale/purchase', [TokenSaleApiController::class, 'purchase']);
+
+    // Token Factory — สร้างเหรียญ (ต้อง verify wallet)
+    Route::prefix('token-factory')->group(function () {
+        Route::get('/my-tokens', [TokenFactoryApiController::class, 'myTokens']);
+        Route::post('/create', [TokenFactoryApiController::class, 'store']);
+    });
+
+    // Carbon Credits — ซื้อ/retire (ต้อง verify wallet)
+    Route::prefix('carbon-credits')->group(function () {
+        Route::post('/purchase', [CarbonCreditApiController::class, 'purchase']);
+        Route::post('/retire', [CarbonCreditApiController::class, 'retire']);
+        Route::get('/my-credits/{walletAddress}', [CarbonCreditApiController::class, 'myCredits']);
+        Route::get('/my-retirements/{walletAddress}', [CarbonCreditApiController::class, 'myRetirements']);
+    });
 
     // AI Assistant (stricter rate limit: 10 requests per minute)
     Route::prefix('ai')->middleware(['throttle:10,1'])->group(function () {

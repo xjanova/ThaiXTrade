@@ -6,8 +6,11 @@
  */
 
 import { ref, computed } from 'vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+
+// Flash message จาก backend
+const flash = computed(() => usePage().props.flash || {});
 
 const props = defineProps({
     settings: {
@@ -22,6 +25,8 @@ const tabs = [
     { key: 'general', label: 'General', icon: 'settings' },
     { key: 'seo', label: 'SEO', icon: 'search' },
     { key: 'trading', label: 'Trading', icon: 'chart' },
+    { key: 'payment', label: 'Payment', icon: 'card' },
+    { key: 'ai', label: 'AI', icon: 'brain' },
     { key: 'security', label: 'Security', icon: 'shield' },
     { key: 'social', label: 'Social', icon: 'share' },
 ];
@@ -54,10 +59,15 @@ const handleFaviconChange = (e) => {
     }
 };
 
+const showSuccess = ref(false);
 const saveGeneral = () => {
     generalForm.post('/admin/settings/general', {
         preserveScroll: true,
         forceFormData: true,
+        onSuccess: () => {
+            showSuccess.value = true;
+            setTimeout(() => showSuccess.value = false, 3000);
+        },
     });
 };
 
@@ -92,6 +102,8 @@ const tradingForm = useForm({
     fee_collector_wallet: props.settings.fee_collector_wallet || '',
     default_fee_rate: props.settings.default_fee_rate || 0.3,
     max_fee_rate: props.settings.max_fee_rate || 5.0,
+    staking_enabled: props.settings.staking_enabled ?? true,
+    bridge_enabled: props.settings.bridge_enabled ?? true,
 });
 
 const saveTrading = () => {
@@ -123,6 +135,30 @@ const saveSocial = () => {
     socialForm.put('/admin/settings/social', { preserveScroll: true });
 };
 
+// Payment (Stripe) form
+const paymentForm = useForm({
+    stripe_public_key: props.settings.stripe_public_key || '',
+    stripe_secret_key: props.settings.stripe_secret_key || '',
+    stripe_webhook_secret: props.settings.stripe_webhook_secret || '',
+    stripe_enabled: props.settings.stripe_enabled || false,
+});
+
+const savePayment = () => {
+    paymentForm.put('/admin/settings/payment', { preserveScroll: true });
+};
+
+// AI form
+const aiForm = useForm({
+    groq_api_key: props.settings.groq_api_key || '',
+    groq_default_model: props.settings.groq_default_model || 'llama-3.3-70b-versatile',
+    ai_chatbot_enabled: props.settings.ai_chatbot_enabled || true,
+    ai_content_enabled: props.settings.ai_content_enabled || true,
+});
+
+const saveAi = () => {
+    aiForm.put('/admin/settings/ai', { preserveScroll: true });
+};
+
 const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200';
 const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 </script>
@@ -146,6 +182,10 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
         <!-- General Tab -->
         <div v-show="activeTab === 'general'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+            <!-- Success notification -->
+            <div v-if="showSuccess" class="mb-4 p-3 rounded-xl bg-trading-green/10 border border-trading-green/30 text-trading-green text-sm">
+                บันทึกสำเร็จ!
+            </div>
             <h3 class="text-lg font-semibold text-white mb-6">General Settings</h3>
             <form @submit.prevent="saveGeneral" class="space-y-6 max-w-2xl">
                 <div>
@@ -254,6 +294,29 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
         <div v-show="activeTab === 'trading'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <h3 class="text-lg font-semibold text-white mb-6">Trading Settings</h3>
             <form @submit.prevent="saveTrading" class="space-y-6 max-w-2xl">
+                <!-- Feature Toggles -->
+                <div class="p-4 rounded-xl bg-dark-800/50 border border-white/10">
+                    <h4 class="text-sm font-semibold text-white mb-4">Feature Toggles</h4>
+                    <div class="flex flex-wrap gap-6">
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-dark-300">🏦 Staking</label>
+                            <button type="button" @click="tradingForm.staking_enabled = !tradingForm.staking_enabled"
+                                :class="['w-12 h-6 rounded-full transition-colors', tradingForm.staking_enabled ? 'bg-trading-green' : 'bg-dark-600']">
+                                <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', tradingForm.staking_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                            </button>
+                            <span :class="['text-xs', tradingForm.staking_enabled ? 'text-trading-green' : 'text-dark-500']">{{ tradingForm.staking_enabled ? 'ON' : 'OFF' }}</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-dark-300">🌉 Bridge</label>
+                            <button type="button" @click="tradingForm.bridge_enabled = !tradingForm.bridge_enabled"
+                                :class="['w-12 h-6 rounded-full transition-colors', tradingForm.bridge_enabled ? 'bg-trading-green' : 'bg-dark-600']">
+                                <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', tradingForm.bridge_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                            </button>
+                            <span :class="['text-xs', tradingForm.bridge_enabled ? 'text-trading-green' : 'text-dark-500']">{{ tradingForm.bridge_enabled ? 'ON' : 'OFF' }}</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Fee Collection Section -->
                 <div class="p-4 rounded-xl bg-gradient-to-br from-accent-500/5 via-primary-500/5 to-warm-500/5 border border-primary-500/10">
                     <h4 class="text-sm font-semibold text-primary-400 mb-4 flex items-center gap-2">
@@ -387,6 +450,82 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <button type="submit" :disabled="socialForm.processing" class="btn-primary px-6 py-2.5">
                         <span v-if="socialForm.processing">Saving...</span>
                         <span v-else>Save Social Links</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+        <!-- Payment (Stripe) Tab -->
+        <div v-show="activeTab === 'payment'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+            <h3 class="text-lg font-semibold text-white mb-6">💳 Payment Settings (Stripe)</h3>
+            <form @submit.prevent="savePayment" class="space-y-6 max-w-2xl">
+                <div class="flex items-center gap-3 mb-4">
+                    <label class="text-sm text-dark-300">เปิดใช้ Stripe</label>
+                    <button type="button" @click="paymentForm.stripe_enabled = !paymentForm.stripe_enabled"
+                        :class="['w-12 h-6 rounded-full transition-colors', paymentForm.stripe_enabled ? 'bg-primary-500' : 'bg-dark-600']">
+                        <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', paymentForm.stripe_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                    </button>
+                </div>
+                <div>
+                    <label :class="labelClass">Stripe Publishable Key</label>
+                    <input v-model="paymentForm.stripe_public_key" type="text" :class="inputClass" placeholder="pk_live_..." />
+                    <p class="text-dark-500 text-xs mt-1">ดูได้ที่ https://dashboard.stripe.com/apikeys</p>
+                </div>
+                <div>
+                    <label :class="labelClass">Stripe Secret Key</label>
+                    <input v-model="paymentForm.stripe_secret_key" type="password" :class="inputClass" placeholder="sk_live_..." />
+                </div>
+                <div>
+                    <label :class="labelClass">Stripe Webhook Secret</label>
+                    <input v-model="paymentForm.stripe_webhook_secret" type="password" :class="inputClass" placeholder="whsec_..." />
+                    <p class="text-dark-500 text-xs mt-1">Webhook endpoint: {{ $page.props.appUrl || '' }}/api/v1/stripe/webhook</p>
+                </div>
+                <div class="pt-4">
+                    <button type="submit" :disabled="paymentForm.processing" class="btn-primary px-6 py-2.5">
+                        <span v-if="paymentForm.processing">Saving...</span>
+                        <span v-else>Save Payment Settings</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- AI Tab -->
+        <div v-show="activeTab === 'ai'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+            <h3 class="text-lg font-semibold text-white mb-6">🤖 AI Settings (Groq)</h3>
+            <form @submit.prevent="saveAi" class="space-y-6 max-w-2xl">
+                <div>
+                    <label :class="labelClass">Groq API Key</label>
+                    <input v-model="aiForm.groq_api_key" type="password" :class="inputClass" placeholder="gsk_..." />
+                    <p class="text-dark-500 text-xs mt-1">สมัครฟรีที่ https://console.groq.com/keys</p>
+                </div>
+                <div>
+                    <label :class="labelClass">Default AI Model</label>
+                    <select v-model="aiForm.groq_default_model" :class="inputClass">
+                        <option value="llama-3.3-70b-versatile">Llama 3.3 70B (แนะนำ)</option>
+                        <option value="llama-3.1-8b-instant">Llama 3.1 8B (เร็ว)</option>
+                        <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                        <option value="gemma2-9b-it">Gemma 2 9B</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-6">
+                    <div class="flex items-center gap-3">
+                        <label class="text-sm text-dark-300">AI Chatbot</label>
+                        <button type="button" @click="aiForm.ai_chatbot_enabled = !aiForm.ai_chatbot_enabled"
+                            :class="['w-12 h-6 rounded-full transition-colors', aiForm.ai_chatbot_enabled ? 'bg-primary-500' : 'bg-dark-600']">
+                            <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', aiForm.ai_chatbot_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="text-sm text-dark-300">AI Content</label>
+                        <button type="button" @click="aiForm.ai_content_enabled = !aiForm.ai_content_enabled"
+                            :class="['w-12 h-6 rounded-full transition-colors', aiForm.ai_content_enabled ? 'bg-primary-500' : 'bg-dark-600']">
+                            <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', aiForm.ai_content_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                        </button>
+                    </div>
+                </div>
+                <div class="pt-4">
+                    <button type="submit" :disabled="aiForm.processing" class="btn-primary px-6 py-2.5">
+                        <span v-if="aiForm.processing">Saving...</span>
+                        <span v-else>Save AI Settings</span>
                     </button>
                 </div>
             </form>

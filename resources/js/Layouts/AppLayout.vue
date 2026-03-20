@@ -11,6 +11,8 @@ import NavBar from '@/Components/Navigation/NavBar.vue';
 import Sidebar from '@/Components/Navigation/Sidebar.vue';
 import TickerStrip from '@/Components/Trading/TickerStrip.vue';
 import WalletModal from '@/Components/Wallet/WalletModal.vue';
+import BannerAd from '@/Components/BannerAd.vue';
+import AIChatbot from '@/Components/AIChatbot.vue';
 import versionData from '../../../version.json';
 
 const props = defineProps({
@@ -67,6 +69,9 @@ onMounted(async () => {
         <!-- Ticker Strip -->
         <TickerStrip />
 
+        <!-- ป้ายโฆษณาด้านบนทุกหน้า (จัดการจาก Admin) -->
+        <BannerAd placement="all_pages_top" class="px-4 py-2" />
+
         <!-- Navigation Bar -->
         <NavBar
             :user="user"
@@ -95,13 +100,65 @@ onMounted(async () => {
             @close="closeWalletModal"
         />
 
-        <!-- Footer -->
-        <footer class="relative border-t border-white/10 py-3 px-6">
-            <div class="max-w-[1920px] mx-auto flex items-center justify-between text-xs text-dark-400">
-                <span>&copy; {{ new Date().getFullYear() }} Xman Studio. All rights reserved.</span>
-                <span class="text-dark-500">TPIX TRADE v{{ versionData.version }}</span>
+        <!-- Footer — ลิงก์เข้าถึงหน้าทั้งหมด -->
+        <footer class="relative border-t border-white/5 mt-8">
+            <div class="max-w-[1920px] mx-auto px-6 py-10">
+                <!-- ส่วนลิงก์หลัก -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-8">
+                    <!-- Trading -->
+                    <div>
+                        <h4 class="text-sm font-semibold text-white mb-3">Trading</h4>
+                        <ul class="space-y-2">
+                            <li><Link href="/trade" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Spot Trading</Link></li>
+                            <li><Link href="/swap" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Swap</Link></li>
+                            <li><Link href="/portfolio" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Portfolio</Link></li>
+                            <li><Link href="/markets/spot" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Markets</Link></li>
+                        </ul>
+                    </div>
+                    <!-- TPIX Ecosystem -->
+                    <div>
+                        <h4 class="text-sm font-semibold text-white mb-3">TPIX Ecosystem</h4>
+                        <ul class="space-y-2">
+                            <li><Link href="/token-sale" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Token Sale</Link></li>
+                            <li><Link href="/token-factory" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Token Factory</Link></li>
+                            <li><Link href="/carbon-credits" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Carbon Credits</Link></li>
+                            <li><Link href="/whitepaper" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Whitepaper</Link></li>
+                            <li><Link href="/explorer" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Explorer</Link></li>
+                            <li><Link href="/staking" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Staking</Link></li>
+                        </ul>
+                    </div>
+                    <!-- Resources -->
+                    <div>
+                        <h4 class="text-sm font-semibold text-white mb-3">Resources</h4>
+                        <ul class="space-y-2">
+                            <li><Link href="/bridge" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Bridge</Link></li>
+                            <li><Link href="/ai-assistant" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">AI Assistant</Link></li>
+                            <li><Link href="/whitepaper/download" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Download Whitepaper</Link></li>
+                            <li><Link href="/settings" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Settings</Link></li>
+                        </ul>
+                    </div>
+                    <!-- About -->
+                    <div>
+                        <h4 class="text-sm font-semibold text-white mb-3">About</h4>
+                        <ul class="space-y-2">
+                            <li><a href="https://xmanstudio.com" target="_blank" rel="noopener" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Xman Studio</a></li>
+                            <li><span class="text-xs text-dark-500">TPIX Chain ID: 4289</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <!-- ส่วนล่าง -->
+                <div class="border-t border-white/5 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <img src="/logo.png" alt="TPIX" class="w-6 h-6 rounded-lg object-cover" />
+                        <span class="text-xs text-dark-400">&copy; {{ new Date().getFullYear() }} Xman Studio. All rights reserved.</span>
+                    </div>
+                    <span class="text-xs text-dark-500">TPIX TRADE v{{ versionData.version }}</span>
+                </div>
             </div>
         </footer>
+
+        <!-- AI Chatbot — ลอยทุกหน้า -->
+        <AIChatbot />
     </div>
 </template>
 

@@ -10,13 +10,15 @@ use Inertia\Response;
 /**
  * TokenSaleController — หน้าเว็บสำหรับขายเหรียญ TPIX และ Whitepaper.
  *
- * render หน้า Inertia ให้ frontend (Vue)
+ * Render หน้า Inertia ให้ frontend (Vue).
  */
 class TokenSaleController extends Controller
 {
     public function __construct(
         private TokenSaleService $saleService,
-    ) {}
+    ) {
+        //
+    }
 
     /**
      * หน้าขายเหรียญ (ICO/IDO) — แสดง phase, ราคา, progress, buy form.
@@ -49,22 +51,25 @@ class TokenSaleController extends Controller
     }
 
     /**
-     * ดาวน์โหลด Whitepaper PDF — render จาก Blade template ด้วย DomPDF.
-     * ถ้ามีไฟล์ static PDF อยู่แล้วจะใช้ไฟล์นั้นก่อน (เร็วกว่า).
+     * ดาวน์โหลด/ดู Whitepaper PDF.
+     *
+     * 1. ถ้ามีไฟล์ static PDF ก็ให้ดาวน์โหลดเลย (เร็วที่สุด).
+     * 2. Fallback: render Blade template เป็น HTML สำหรับ print-to-PDF.
      */
     public function downloadWhitepaper()
     {
-        // ใช้ static PDF ถ้ามี (ประสิทธิภาพดีกว่า)
+        // ลำดับที่ 1: ใช้ static PDF ถ้ามี (เร็วที่สุด)
         $staticPath = public_path('whitepaper/TPIX-Whitepaper.pdf');
         if (file_exists($staticPath)) {
             return response()->download($staticPath, 'TPIX-Chain-Whitepaper.pdf');
         }
 
-        // Fallback: render จาก Blade template ด้วย DomPDF
+        // ลำดับที่ 2: generate PDF ด้วย DomPDF จาก Blade template
         $pdf = Pdf::loadView('whitepaper.pdf')
-            ->setPaper('A4')
-            ->setOption('isRemoteEnabled', true);
+            ->setPaper('a4')
+            ->setOption('isRemoteEnabled', true)
+            ->setOption('defaultFont', 'sans-serif');
 
-        return $pdf->download('TPIX-Chain-Whitepaper.pdf');
+        return $pdf->download('TPIX-Chain-Whitepaper-v2.0.pdf');
     }
 }

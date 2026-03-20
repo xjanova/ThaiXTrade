@@ -1,0 +1,30 @@
+name: Fix Composer Lock
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Update composer.lock
+        run: |
+          composer update stripe/stripe-php --no-interaction
+          git diff composer.lock | head -50
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add composer.lock
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "fix(deps): sync composer.lock with stripe/stripe-php
+
+          Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+          git push

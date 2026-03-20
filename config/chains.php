@@ -221,15 +221,15 @@ return [
         ],
 
         // TPIX Chain Mainnet — Polygon Edge, IBFT PoA, gasless
-        7000 => [
+        4289 => [
             'name' => 'TPIX Chain',
             'shortName' => 'TPIX',
-            'chainId' => 7000,
-            'networkId' => 7000,
+            'chainId' => 4289,
+            'networkId' => 4289,
             'rpc' => [
-                env('WEB3_RPC_TPIX', 'https://rpc.tpixchain.com'),
+                env('WEB3_RPC_TPIX', 'https://rpc.tpix.online'),
             ],
-            'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpixchain.com'),
+            'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpix.online'),
             'nativeCurrency' => [
                 'name' => 'TPIX',
                 'symbol' => 'TPIX',
@@ -282,12 +282,12 @@ return [
         ],
 
         // TPIX Chain Testnet — สำหรับทดสอบก่อน deploy mainnet
-        7001 => [
+        4290 => [
             'name' => 'TPIX Testnet',
             'shortName' => 'tTPIX',
-            'chainId' => 7001,
-            'rpc' => [env('WEB3_RPC_TPIX_TESTNET', 'https://testnet-rpc.tpixchain.com')],
-            'explorer' => 'https://testnet-explorer.tpixchain.com',
+            'chainId' => 4290,
+            'rpc' => [env('WEB3_RPC_TPIX_TESTNET', 'https://testnet-rpc.tpix.online')],
+            'explorer' => 'https://testnet-explorer.tpix.online',
             'nativeCurrency' => [
                 'name' => 'tTPIX',
                 'symbol' => 'tTPIX',

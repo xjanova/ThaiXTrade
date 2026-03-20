@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\SiteSetting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -15,7 +16,15 @@ class GroqService
 
     public function __construct()
     {
-        $this->apiKey = config('services.groq.api_key', '');
+        // อ่าน API key จาก Admin Settings (DB) ก่อน → fallback ไป .env
+        $dbKey = SiteSetting::get('ai', 'groq_api_key');
+        $this->apiKey = $dbKey ?: config('services.groq.api_key', '');
+
+        // อ่าน default model จาก Admin Settings
+        $dbModel = SiteSetting::get('ai', 'groq_default_model');
+        if ($dbModel) {
+            $this->defaultModel = $dbModel;
+        }
     }
 
     /**

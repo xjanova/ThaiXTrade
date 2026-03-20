@@ -5,8 +5,12 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
+import { useTranslation } from '@/Composables/useTranslation';
+import LanguageSwitcher from '@/Components/Navigation/LanguageSwitcher.vue';
+
+const { t } = useTranslation();
 
 defineProps({
     title: String,
@@ -53,51 +57,84 @@ const isActive = (path) => {
     return currentUrl.value.startsWith(path);
 };
 
-const navigationSections = [
+// เมนู admin — reactive ตามภาษา
+const navigationSections = computed(() => [
     {
         title: null,
         items: [
-            { name: 'Dashboard', href: '/admin', icon: 'dashboard' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'แดชบอร์ด' : 'Dashboard', href: '/admin', icon: 'dashboard' },
         ],
     },
     {
-        title: 'Trading',
+        title: t('common.all') === 'ทั้งหมด' ? 'สมาชิก' : 'Members',
+        items: [
+            { name: t('common.all') === 'ทั้งหมด' ? 'จัดการสมาชิก' : 'Members', href: '/admin/members', icon: 'members' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'จัดการ Wallet' : 'Wallets', href: '/admin/wallets', icon: 'wallet' },
+        ],
+    },
+    {
+        title: t('common.all') === 'ทั้งหมด' ? 'การเทรด' : 'Trading',
         items: [
             { name: 'Chains', href: '/admin/chains', icon: 'chain' },
             { name: 'Tokens', href: '/admin/tokens', icon: 'token' },
-            { name: 'Trading Pairs', href: '/admin/trading-pairs', icon: 'pair' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'คู่เทรด' : 'Trading Pairs', href: '/admin/trading-pairs', icon: 'pair' },
         ],
     },
     {
-        title: 'Finance',
+        title: t('common.all') === 'ทั้งหมด' ? 'การเงิน' : 'Finance',
         items: [
-            { name: 'Fees', href: '/admin/fees', icon: 'fee' },
-            { name: 'Transactions', href: '/admin/transactions', icon: 'transaction' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ค่าธรรมเนียม' : 'Fees', href: '/admin/fees', icon: 'fee' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ธุรกรรม' : 'Transactions', href: '/admin/transactions', icon: 'transaction' },
             { name: 'Swap', href: '/admin/swap', icon: 'swap' },
         ],
     },
     {
-        title: 'Content',
+        title: t('home.ecosystem'),
         items: [
-            { name: 'Settings', href: '/admin/settings', icon: 'settings' },
-            { name: 'Languages', href: '/admin/languages', icon: 'language' },
+            { name: t('nav.tokenSale'), href: '/admin/token-sales', icon: 'tokensale' },
+            { name: t('nav.tokenFactory'), href: '/admin/token-factory', icon: 'factory' },
+            { name: t('nav.carbonCredit'), href: '/admin/carbon-credits', icon: 'carbon' },
+            { name: t('nav.whitepaper'), href: '/whitepaper', icon: 'whitepaper', external: true },
+            { name: t('nav.explorer'), href: '/explorer', icon: 'explorer', external: true },
         ],
     },
     {
-        title: 'Support',
+        title: t('common.all') === 'ทั้งหมด' ? 'เนื้อหา' : 'Content',
         items: [
-            { name: 'Tickets', href: '/admin/support', icon: 'ticket' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'บทความ AI' : 'AI Articles', href: '/admin/content', icon: 'content' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ตั้งค่าเว็บ' : 'Settings', href: '/admin/settings', icon: 'settings' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ภาษา' : 'Languages', href: '/admin/languages', icon: 'language' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'แบนเนอร์' : 'Banners', href: '/admin/banners', icon: 'banner' },
+        ],
+    },
+    {
+        title: t('common.all') === 'ทั้งหมด' ? 'ซัพพอร์ต' : 'Support',
+        items: [
+            { name: t('common.all') === 'ทั้งหมด' ? 'ตั๋วแจ้งปัญหา' : 'Support Tickets', href: '/admin/support', icon: 'ticket' },
             { name: 'Audit Logs', href: '/admin/audit-logs', icon: 'audit' },
         ],
     },
     {
-        title: 'System',
+        title: t('common.all') === 'ทั้งหมด' ? 'ระบบ' : 'System',
         items: [
-            { name: 'Users', href: '/admin/users', icon: 'users' },
-            { name: 'Notifications', href: '/admin/notifications', icon: 'notification' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ผู้ดูแลระบบ' : 'Admins', href: '/admin/users', icon: 'users' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'การแจ้งเตือน' : 'Notifications', href: '/admin/notifications', icon: 'notification' },
         ],
     },
-];
+]);
+
+// Section พับ/กาง — เปิดเฉพาะ section ที่มี active link
+const collapsedSections = ref({});
+
+function isSectionOpen(idx) {
+    if (collapsedSections.value[idx] !== undefined) return collapsedSections.value[idx];
+    // เปิดอัตโนมัติถ้ามี active item
+    return navigationSections[idx]?.items?.some(i => isActive(i.href)) ?? true;
+}
+
+function toggleSection(idx) {
+    collapsedSections.value[idx] = !isSectionOpen(idx);
+}
 
 const toggleSidebar = () => {
     sidebarOpen.value = !sidebarOpen.value;
@@ -110,6 +147,14 @@ const toggleMobileSidebar = () => {
 const handleLogout = () => {
     router.post('/admin/logout');
 };
+
+// Auto-scroll sidebar ไปหยุดตรงเมนูที่ active
+onMounted(() => {
+    nextTick(() => {
+        const activeEl = document.querySelector('nav .text-primary-400.bg-primary-500\\/10');
+        if (activeEl) activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+});
 </script>
 
 <template>
@@ -148,18 +193,34 @@ const handleLogout = () => {
             </div>
 
             <!-- Navigation -->
-            <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-6">
-                <div v-for="(section, sIdx) in navigationSections" :key="sIdx">
-                    <p v-if="section.title && sidebarOpen" class="px-3 mb-2 text-xs font-semibold text-dark-500 uppercase tracking-wider">
-                        {{ section.title }}
-                    </p>
-                    <div v-else-if="section.title && !sidebarOpen" class="border-t border-white/5 mb-3 mx-2"></div>
+            <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1 scrollbar-thin">
+                <div v-for="(section, sIdx) in navigationSections" :key="sIdx" class="mb-1">
+                    <!-- Section header — กดพับ/กางได้ -->
+                    <button v-if="section.title && sidebarOpen" @click="toggleSection(sIdx)"
+                        class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-dark-500 uppercase tracking-wider hover:text-dark-300 transition-colors">
+                        <span>{{ section.title }}</span>
+                        <svg :class="['w-3 h-3 transition-transform', isSectionOpen(sIdx) ? 'rotate-0' : '-rotate-90']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div v-else-if="section.title && !sidebarOpen" class="border-t border-white/5 mb-2 mx-2"></div>
 
-                    <div class="space-y-1">
-                        <Link
+                    <Transition
+                        enter-active-class="transition-all duration-200 ease-out"
+                        enter-from-class="max-h-0 opacity-0"
+                        enter-to-class="max-h-96 opacity-100"
+                        leave-active-class="transition-all duration-150 ease-in"
+                        leave-from-class="max-h-96 opacity-100"
+                        leave-to-class="max-h-0 opacity-0"
+                    >
+                    <div v-show="!sidebarOpen || isSectionOpen(sIdx)" class="space-y-0.5 overflow-hidden">
+                        <component
+                            :is="item.external ? 'a' : Link"
                             v-for="item in section.items"
                             :key="item.href"
                             :href="item.href"
+                            :target="item.external ? '_blank' : undefined"
+                            :rel="item.external ? 'noopener' : undefined"
                             class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
                             :class="[
                                 isActive(item.href)
@@ -171,6 +232,14 @@ const handleLogout = () => {
                             <!-- Dashboard -->
                             <svg v-if="item.icon === 'dashboard'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                            </svg>
+                            <!-- Members -->
+                            <svg v-else-if="item.icon === 'members'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                            </svg>
+                            <!-- Wallet -->
+                            <svg v-else-if="item.icon === 'wallet'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                             </svg>
                             <!-- Chain -->
                             <svg v-else-if="item.icon === 'chain'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -205,6 +274,14 @@ const handleLogout = () => {
                             <svg v-else-if="item.icon === 'language'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
                             </svg>
+                            <!-- Content/Article icon -->
+                            <svg v-else-if="item.icon === 'content'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                            </svg>
+                            <!-- Banner/Ad icon -->
+                            <svg v-else-if="item.icon === 'banner'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                            </svg>
                             <!-- Ticket -->
                             <svg v-else-if="item.icon === 'ticket'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
@@ -217,14 +294,35 @@ const handleLogout = () => {
                             <svg v-else-if="item.icon === 'users'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                             </svg>
+                            <!-- Token Sale -->
+                            <svg v-else-if="item.icon === 'tokensale'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                            <!-- Whitepaper -->
+                            <svg v-else-if="item.icon === 'whitepaper'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <!-- Explorer -->
+                            <svg v-else-if="item.icon === 'explorer'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <!-- Factory -->
+                            <svg v-else-if="item.icon === 'factory'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                            </svg>
+                            <!-- Carbon -->
+                            <svg v-else-if="item.icon === 'carbon'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
                             <!-- Notification -->
                             <svg v-else-if="item.icon === 'notification'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                             </svg>
 
                             <span v-if="sidebarOpen" class="whitespace-nowrap">{{ item.name }}</span>
-                        </Link>
+                        </component>
                     </div>
+                    </Transition>
                 </div>
             </nav>
 
@@ -293,6 +391,9 @@ const handleLogout = () => {
                                 {{ unreadCount > 99 ? '99+' : unreadCount }}
                             </span>
                         </Link>
+
+                        <!-- Language Switcher -->
+                        <LanguageSwitcher />
 
                         <!-- Admin Info -->
                         <div class="flex items-center gap-3">

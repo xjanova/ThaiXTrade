@@ -1,0 +1,47 @@
+name: Server Check
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check image settings + fix
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 5m
+          script: |
+            cd ~/domains/tpix.online
+
+            echo "=== All image type settings ==="
+            php artisan tinker --execute="
+              \$all = App\Models\SiteSetting::where('type', 'image')->get();
+              foreach(\$all as \$s) echo \$s->group . '.' . \$s->key . ' = ' . \$s->value . \" (type=\" . \$s->type . \")\n\";
+              if(\$all->isEmpty()) echo \"No image settings\n\";
+            " 2>/dev/null
+
+            echo ""
+            echo "=== All AI/payment settings ==="
+            php artisan tinker --execute="
+              \$ai = App\Models\SiteSetting::where('group', 'ai')->get();
+              foreach(\$ai as \$s) echo 'ai.' . \$s->key . ' = ' . (\$s->key === 'groq_api_key' ? substr(\$s->value, 0, 10) . '...' : \$s->value) . \"\n\";
+              \$pay = App\Models\SiteSetting::where('group', 'payment')->get();
+              foreach(\$pay as \$s) echo 'payment.' . \$s->key . ' = ' . (str_contains(\$s->key, 'key') ? substr(\$s->value, 0, 10) . '...' : \$s->value) . \"\n\";
+            " 2>/dev/null
+
+            echo ""
+            echo "=== Storage files ==="
+            find storage/app/public -type f 2>/dev/null | head -20 || echo "No files"
+
+            echo ""
+            echo "=== Groq test ==="
+            php artisan tinker --execute="
+              \$svc = app(App\Services\GroqService::class);
+              \$r = \$svc->chat('Say OK', '', ['max_tokens'=>10]);
+              echo \$r['success'] ? 'Groq: OK' : 'Groq: FAIL - ' . (\$r['error'] ?? 'unknown');
+              echo \"\n\";
+            " 2>/dev/null

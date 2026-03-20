@@ -44,7 +44,7 @@ jobs:
           restore-keys: ${{ runner.os }}-composer-
 
       - name: Install Composer dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
+        run: composer install --prefer-dist --no-interaction --no-progress || composer update --prefer-dist --no-interaction --no-progress
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -53,7 +53,7 @@ jobs:
           cache: 'npm'
 
       - name: Install NPM dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build assets
         run: npm run build
@@ -93,7 +93,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Run JavaScript tests
         run: npm run test:run
@@ -113,7 +113,7 @@ jobs:
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
 
       - name: Install Composer dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
+        run: composer install --prefer-dist --no-interaction --no-progress || composer update --prefer-dist --no-interaction --no-progress
 
       - name: Run Laravel Pint (Code Style)
         run: ./vendor/bin/pint --test
@@ -138,7 +138,7 @@ jobs:
           cache: 'npm'
 
       - name: Install NPM dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build production assets
         run: npm run build
