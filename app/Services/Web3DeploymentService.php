@@ -18,12 +18,12 @@ class Web3DeploymentService
      * Deploy a new ERC-20 token via the factory contract.
      *
      * @param  array  $params  Token parameters:
-     *   - name: string
-     *   - symbol: string
-     *   - decimals: int (0-18)
-     *   - total_supply: string (human-readable, e.g. "1000000")
-     *   - creator_address: string (0x... wallet that receives tokens)
-     *   - token_type: string (standard|mintable|burnable|mintable_burnable)
+     *                         - name: string
+     *                         - symbol: string
+     *                         - decimals: int (0-18)
+     *                         - total_supply: string (human-readable, e.g. "1000000")
+     *                         - creator_address: string (0x... wallet that receives tokens)
+     *                         - token_type: string (standard|mintable|burnable|mintable_burnable)
      * @return array ['success' => bool, 'contractAddress' => ?string, 'txHash' => ?string, 'error' => ?string]
      */
     public function deployToken(array $params): array
