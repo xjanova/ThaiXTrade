@@ -2,14 +2,14 @@
 
 /**
  * FoodPassport — ระบบตรวจสอบที่มาอาหารบน Blockchain
- * Tables: food_products, food_traces, iot_devices, food_certificates
+ * Tables: food_products, food_traces, iot_devices, food_certificates.
  */
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
+return new class() extends Migration
 {
     public function up(): void
     {
