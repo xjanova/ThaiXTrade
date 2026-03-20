@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, inject } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
@@ -14,6 +14,7 @@ import { useTranslation } from '@/Composables/useTranslation';
 
 const { t } = useTranslation();
 const walletStore = useWalletStore();
+const openWalletModal = inject('openWalletModal', () => {});
 const factoryStore = useTokenFactoryStore();
 
 const activeTab = ref('create');
@@ -192,7 +193,13 @@ function formatSupply(val) {
                         <h3 class="text-xl font-bold text-white mb-6">{{ t('tokenFactory.createToken') }}</h3>
 
                         <div v-if="!walletStore.isConnected" class="text-center py-8">
+                            <div class="w-12 h-12 rounded-xl bg-accent-500/20 flex items-center justify-center mx-auto mb-3">
+                                <svg class="w-6 h-6 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                                </svg>
+                            </div>
                             <p class="text-gray-400 mb-4">Connect your wallet to create a token.</p>
+                            <button @click="openWalletModal" class="btn-primary px-6 py-2.5">Connect Wallet</button>
                         </div>
 
                         <form v-else @submit.prevent="handleCreate" class="space-y-5">
@@ -304,7 +311,8 @@ function formatSupply(val) {
             <!-- My Tokens Tab -->
             <div v-if="activeTab === 'my-tokens'" class="pb-16">
                 <div v-if="!walletStore.isConnected" class="text-center py-16">
-                    <p class="text-gray-400">Connect your wallet to view your tokens.</p>
+                    <p class="text-gray-400 mb-4">Connect your wallet to view your tokens.</p>
+                    <button @click="openWalletModal" class="btn-primary px-6 py-2.5">Connect Wallet</button>
                 </div>
 
                 <div v-else-if="factoryStore.myTokens.length === 0" class="text-center py-16">
