@@ -59,7 +59,7 @@ class BridgeApiController extends Controller
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'VALIDATION_ERROR', 'message' => $e->getMessage()],
+                'error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Operation failed. Please try again.'],
             ], 422);
         }
     }

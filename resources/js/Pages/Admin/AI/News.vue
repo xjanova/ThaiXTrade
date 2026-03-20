@@ -199,6 +199,13 @@ const newsData = computed(() => {
     }
     return props.news;
 });
+
+// Decode HTML entities from Laravel pagination labels (ป้องกัน XSS)
+function decodeLabel(html) {
+    const txt = document.createElement("textarea");
+    txt.innerHTML = html;
+    return txt.value;
+}
 </script>
 
 <template>
@@ -623,12 +630,12 @@ const newsData = computed(() => {
                         :class="link.active
                             ? 'bg-primary-500 text-white'
                             : 'text-dark-400 hover:text-white hover:bg-white/5'"
-                        v-html="link.label"
+                        v-text="decodeLabel(link.label)"
                     ></button>
                     <span
                         v-else
                         class="px-3 py-1.5 text-sm text-dark-600"
-                        v-html="link.label"
+                        v-text="decodeLabel(link.label)"
                     ></span>
                 </template>
             </div>

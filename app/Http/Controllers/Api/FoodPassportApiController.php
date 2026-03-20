@@ -155,7 +155,7 @@ class FoodPassportApiController extends Controller
         } catch (\RuntimeException $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'MINT_FAILED', 'message' => $e->getMessage()],
+                'error' => ['code' => 'MINT_FAILED', 'message' => 'Operation failed. Please try again.'],
             ], 422);
         }
     }
@@ -207,7 +207,7 @@ class FoodPassportApiController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'INGEST_FAILED', 'message' => $e->getMessage()],
+                'error' => ['code' => 'INGEST_FAILED', 'message' => 'Operation failed. Please try again.'],
             ], 422);
         }
     }

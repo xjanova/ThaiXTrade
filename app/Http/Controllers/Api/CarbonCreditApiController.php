@@ -87,7 +87,7 @@ class CarbonCreditApiController extends Controller
         } catch (\RuntimeException $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'PURCHASE_FAILED', 'message' => $e->getMessage()],
+                'error' => ['code' => 'PURCHASE_FAILED', 'message' => 'Operation failed. Please try again.'],
             ], 422);
         }
     }
@@ -116,7 +116,7 @@ class CarbonCreditApiController extends Controller
         } catch (\RuntimeException $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'RETIRE_FAILED', 'message' => $e->getMessage()],
+                'error' => ['code' => 'RETIRE_FAILED', 'message' => 'Operation failed. Please try again.'],
             ], 422);
         }
     }

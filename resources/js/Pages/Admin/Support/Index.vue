@@ -71,6 +71,13 @@ const viewTicket = (ticket) => {
 };
 
 const selectClass = 'bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary-500';
+
+// Decode HTML entities from Laravel pagination labels (ป้องกัน XSS)
+function decodeLabel(html) {
+    const txt = document.createElement("textarea");
+    txt.innerHTML = html;
+    return txt.value;
+}
 </script>
 
 <template>
@@ -150,10 +157,10 @@ const selectClass = 'bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-2.
                     :href="link.url"
                     class="px-3 py-2 rounded-lg text-sm transition-colors"
                     :class="link.active ? 'bg-primary-500/10 text-primary-400' : 'text-dark-400 hover:text-white hover:bg-white/5'"
-                    v-html="link.label"
+                    v-text="decodeLabel(link.label)"
                     preserve-scroll
                 />
-                <span v-else class="px-3 py-2 text-sm text-dark-600" v-html="link.label" />
+                <span v-else class="px-3 py-2 text-sm text-dark-600" v-text="decodeLabel(link.label)" />
             </template>
         </div>
     </AdminLayout>

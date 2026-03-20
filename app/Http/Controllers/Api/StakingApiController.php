@@ -70,7 +70,7 @@ class StakingApiController extends Controller
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'VALIDATION_ERROR', 'message' => $e->getMessage()],
+                'error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Operation failed. Please try again.'],
             ], 422);
         }
     }
@@ -91,7 +91,7 @@ class StakingApiController extends Controller
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'CLAIM_ERROR', 'message' => $e->getMessage()],
+                'error' => ['code' => 'CLAIM_ERROR', 'message' => 'Operation failed. Please try again.'],
             ], 422);
         }
     }
@@ -117,7 +117,7 @@ class StakingApiController extends Controller
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'UNSTAKE_ERROR', 'message' => $e->getMessage()],
+                'error' => ['code' => 'UNSTAKE_ERROR', 'message' => 'Operation failed. Please try again.'],
             ], 422);
         }
     }
