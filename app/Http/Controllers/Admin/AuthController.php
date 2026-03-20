@@ -33,7 +33,7 @@ class AuthController extends Controller
             return Inertia::render('Admin/Auth/Setup');
         }
 
-        $turnstileEnabled = (bool) SiteSetting::get('security', 'turnstile_enabled', false);
+        $turnstileEnabled = filter_var(SiteSetting::get('security', 'turnstile_enabled', false), FILTER_VALIDATE_BOOLEAN);
         $turnstileSiteKey = $turnstileEnabled
             ? (string) SiteSetting::get('security', 'turnstile_site_key', '')
             : '';
