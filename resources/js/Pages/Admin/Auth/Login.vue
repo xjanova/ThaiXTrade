@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
+import { ref, onMounted, nextTick } from 'vue';
 import { Head, useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -29,13 +29,66 @@ const form = useForm({
     email: '',
     password: '',
     remember: false,
-    cf_turnstile_response: '',
+    'cf-turnstile-response': '',
+});
+
+const turnstileReady = ref(false);
+
+const loadTurnstile = () => {
+    if (!props.turnstileEnabled || !props.turnstileSiteKey) return;
+
+    // Load Turnstile script if not already loaded
+    if (document.querySelector('script[src*="turnstile"]')) {
+        renderTurnstile();
+        return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad&render=explicit';
+    script.async = true;
+
+    window.onTurnstileLoad = () => {
+        renderTurnstile();
+    };
+
+    document.head.appendChild(script);
+};
+
+const renderTurnstile = () => {
+    nextTick(() => {
+        const container = document.getElementById('cf-turnstile');
+        if (!container || !window.turnstile) return;
+
+        container.innerHTML = '';
+        window.turnstile.render(container, {
+            sitekey: props.turnstileSiteKey,
+            theme: 'dark',
+            callback: (token) => {
+                form['cf-turnstile-response'] = token;
+                turnstileReady.value = true;
+            },
+            'expired-callback': () => {
+                form['cf-turnstile-response'] = '';
+                turnstileReady.value = false;
+            },
+        });
+    });
+};
+
+onMounted(() => {
+    loadTurnstile();
 });
 
 const submit = () => {
     form.post('/admin/login', {
         onFinish: () => {
             form.reset('password');
+            // Reset turnstile after failed attempt
+            if (props.turnstileEnabled && window.turnstile) {
+                window.turnstile.reset();
+                form['cf-turnstile-response'] = '';
+                turnstileReady.value = false;
+            }
         },
     });
 };
@@ -75,12 +128,13 @@ const submit = () => {
                 </div>
 
                 <!-- General Error -->
-                <div v-if="form.errors.email || form.errors.password" class="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+                <div v-if="form.errors.email || form.errors.password || form.errors.turnstile" class="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
                     <div class="flex items-start gap-3">
                         <svg class="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         <div class="text-sm text-red-400">
+                            <p v-if="form.errors.turnstile">{{ form.errors.turnstile }}</p>
                             <p v-if="form.errors.email">{{ form.errors.email }}</p>
                             <p v-if="form.errors.password">{{ form.errors.password }}</p>
                         </div>
@@ -158,13 +212,13 @@ const submit = () => {
 
                     <!-- Turnstile -->
                     <div v-if="turnstileEnabled" id="cf-turnstile" class="flex justify-center">
-                        <!-- Cloudflare Turnstile widget will be rendered here -->
+                        <!-- Cloudflare Turnstile widget rendered via JS -->
                     </div>
 
                     <!-- Submit -->
                     <button
                         type="submit"
-                        :disabled="form.processing"
+                        :disabled="form.processing || (turnstileEnabled && !turnstileReady)"
                         class="w-full bg-primary-500 text-white py-3 rounded-xl font-medium hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-dark-900 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-glow-sm hover:shadow-glow"
                     >
                         <svg v-if="form.processing" class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
