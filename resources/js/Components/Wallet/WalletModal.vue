@@ -449,22 +449,27 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                 </div>
             </div>
 
-            <!-- No Wallet (Desktop) -->
-            <div v-if="!mobile" class="pt-4 border-t border-white/5">
+            <!-- No Wallet — กดเพื่อสร้าง TPIX Wallet ฝังตัวได้เลย -->
+            <button
+                v-if="!mobile"
+                @click="hasStoredWallet ? (showUnlockPassword = true) : (showEmbeddedSetup = true)"
+                class="w-full pt-4 border-t border-white/5 group"
+            >
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-gradient-to-br from-accent-500/20 to-primary-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <svg class="w-5 h-5 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                        </svg>
+                    <div class="w-10 h-10 bg-gradient-to-br from-primary-500/20 to-accent-500/20 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:from-primary-500/30 group-hover:to-accent-500/30 transition-all">
+                        <img src="/logo.png" class="w-6 h-6 rounded-md" alt="TPIX" />
                     </div>
-                    <div class="flex-1">
-                        <p class="font-medium text-white text-sm">Don't have a wallet?</p>
-                        <p class="text-xs text-dark-400">
-                            Use <span class="text-primary-400 font-medium">TPIX Wallet</span> above — no extension needed!
+                    <div class="flex-1 text-left">
+                        <p class="font-medium text-white text-sm">ยังไม่มีกระเป๋า?</p>
+                        <p class="text-xs text-dark-400 group-hover:text-dark-300 transition-colors">
+                            สร้าง <span class="text-primary-400 font-medium">TPIX Wallet</span> ได้เลย — ไม่ต้องติดตั้งอะไร
                         </p>
                     </div>
+                    <svg class="w-5 h-5 text-dark-600 group-hover:text-primary-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
                 </div>
-            </div>
+            </button>
 
             </template><!-- end v-else (normal wallet selection) -->
         </div>
