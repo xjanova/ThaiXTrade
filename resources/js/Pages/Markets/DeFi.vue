@@ -1,24 +1,93 @@
 <script setup>
 /**
  * TPIX TRADE - DeFi Tokens Page
+ * Real-time DeFi token data from Binance API
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { getCoinLogo } from '@/utils/cryptoLogos';
+import { useMarketData } from '@/Composables/useMarketData';
 
-const defiTokens = ref([
-    { symbol: 'UNI', name: 'Uniswap', price: '12.34', change: '+4.56%', isUp: true, tvl: '5.2B', category: 'DEX' },
-    { symbol: 'AAVE', name: 'Aave', price: '123.45', change: '+2.34%', isUp: true, tvl: '12.3B', category: 'Lending' },
-    { symbol: 'CAKE', name: 'PancakeSwap', price: '3.45', change: '+6.78%', isUp: true, tvl: '2.1B', category: 'DEX' },
-    { symbol: 'CRV', name: 'Curve', price: '0.89', change: '-1.23%', isUp: false, tvl: '3.8B', category: 'DEX' },
-    { symbol: 'MKR', name: 'Maker', price: '2,345.67', change: '+1.23%', isUp: true, tvl: '8.9B', category: 'Lending' },
-    { symbol: 'COMP', name: 'Compound', price: '67.89', change: '-0.45%', isUp: false, tvl: '2.4B', category: 'Lending' },
-    { symbol: 'SNX', name: 'Synthetix', price: '3.21', change: '+5.67%', isUp: true, tvl: '890M', category: 'Derivatives' },
-    { symbol: 'SUSHI', name: 'SushiSwap', price: '1.23', change: '+3.45%', isUp: true, tvl: '567M', category: 'DEX' },
-]);
+const DEFI_SYMBOLS = ['UNI', 'AAVE', 'CAKE', 'CRV', 'MKR', 'COMP', 'SNX', 'SUSHI', 'LINK', 'DYDX', '1INCH', 'LDO', 'PENDLE', 'INJ', 'FET', 'RENDER'];
+
+const defiCategories = {
+    UNI: 'DEX', AAVE: 'Lending', CAKE: 'DEX', CRV: 'DEX', MKR: 'Lending',
+    COMP: 'Lending', SNX: 'Derivatives', SUSHI: 'DEX', LINK: 'Oracle', DYDX: 'Derivatives',
+    '1INCH': 'Aggregator', LDO: 'Liquid Staking', PENDLE: 'Yield', INJ: 'Layer 1',
+    FET: 'AI', RENDER: 'AI',
+};
+
+const { tickers, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
+
+const defiTokens = computed(() => {
+    return tickers.value
+        .filter(t => DEFI_SYMBOLS.includes(t.baseAsset))
+        .map(t => {
+            const price = parseFloat(t.price);
+            const change = parseFloat(t.priceChangePercent);
+            const volume = parseFloat(t.quoteVolume);
+            return {
+                symbol: t.baseAsset,
+                name: getTokenName(t.baseAsset),
+                price: formatPrice(price),
+                change: (change >= 0 ? '+' : '') + change.toFixed(2) + '%',
+                isUp: change >= 0,
+                volume: formatVolume(volume),
+                category: defiCategories[t.baseAsset] || 'DeFi',
+            };
+        })
+        .sort((a, b) => {
+            const idxA = DEFI_SYMBOLS.indexOf(a.symbol);
+            const idxB = DEFI_SYMBOLS.indexOf(b.symbol);
+            return idxA - idxB;
+        });
+});
+
+const totalDefiVolume = computed(() => {
+    const vol = tickers.value
+        .filter(t => DEFI_SYMBOLS.includes(t.baseAsset))
+        .reduce((sum, t) => sum + parseFloat(t.quoteVolume || 0), 0);
+    return formatVolume(vol);
+});
+
+const avgDefiChange = computed(() => {
+    const defi = tickers.value.filter(t => DEFI_SYMBOLS.includes(t.baseAsset));
+    if (defi.length === 0) return '0.00';
+    const avg = defi.reduce((sum, t) => sum + parseFloat(t.priceChangePercent || 0), 0) / defi.length;
+    return (avg >= 0 ? '+' : '') + avg.toFixed(2);
+});
+
+function formatPrice(price) {
+    if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (price >= 1) return price.toFixed(2);
+    if (price >= 0.01) return price.toFixed(4);
+    return price.toFixed(8);
+}
+
+function formatVolume(vol) {
+    if (vol >= 1e12) return (vol / 1e12).toFixed(1) + 'T';
+    if (vol >= 1e9) return (vol / 1e9).toFixed(1) + 'B';
+    if (vol >= 1e6) return (vol / 1e6).toFixed(1) + 'M';
+    if (vol >= 1e3) return (vol / 1e3).toFixed(1) + 'K';
+    return vol.toFixed(2);
+}
+
+function getTokenName(symbol) {
+    const names = {
+        UNI: 'Uniswap', AAVE: 'Aave', CAKE: 'PancakeSwap', CRV: 'Curve', MKR: 'Maker',
+        COMP: 'Compound', SNX: 'Synthetix', SUSHI: 'SushiSwap', LINK: 'Chainlink', DYDX: 'dYdX',
+        '1INCH': '1inch', LDO: 'Lido', PENDLE: 'Pendle', INJ: 'Injective', FET: 'Fetch.ai', RENDER: 'Render',
+    };
+    return names[symbol] || symbol;
+}
+
+onMounted(async () => {
+    await fetchTickers();
+    startAutoRefresh();
+});
 </script>
 
 <template>
@@ -40,28 +109,27 @@ const defiTokens = ref([
             </div>
 
             <!-- DeFi Stats -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
                 <div class="glass-card text-center">
-                    <p class="text-2xl font-bold text-white">$156B</p>
-                    <p class="text-sm text-dark-400">Total TVL</p>
+                    <p class="text-2xl font-bold text-white">{{ defiTokens.length }}</p>
+                    <p class="text-sm text-dark-400">DeFi Tokens</p>
                 </div>
                 <div class="glass-card text-center">
-                    <p class="text-2xl font-bold text-white">2,500+</p>
-                    <p class="text-sm text-dark-400">Protocols</p>
+                    <p class="text-2xl font-bold text-white">${{ totalDefiVolume }}</p>
+                    <p class="text-sm text-dark-400">24h Volume</p>
                 </div>
                 <div class="glass-card text-center">
-                    <p class="text-2xl font-bold text-trading-green">+12.5%</p>
-                    <p class="text-sm text-dark-400">TVL 24h</p>
-                </div>
-                <div class="glass-card text-center">
-                    <p class="text-2xl font-bold text-white">45</p>
-                    <p class="text-sm text-dark-400">Chains</p>
+                    <p :class="['text-2xl font-bold', avgDefiChange.startsWith('+') ? 'text-trading-green' : 'text-trading-red']">{{ avgDefiChange }}%</p>
+                    <p class="text-sm text-dark-400">Avg Change 24h</p>
                 </div>
             </div>
 
             <!-- Tokens Table -->
             <div class="glass-dark rounded-2xl overflow-hidden">
-                <div class="overflow-x-auto">
+                <div v-if="isLoading" class="py-12 text-center text-dark-400">
+                    <div class="animate-pulse">Loading live DeFi data...</div>
+                </div>
+                <div v-else class="overflow-x-auto">
                     <table class="w-full">
                         <thead>
                             <tr class="border-b border-white/5 text-dark-400 text-sm">
@@ -70,7 +138,7 @@ const defiTokens = ref([
                                 <th class="text-left p-4">Category</th>
                                 <th class="text-right p-4">Price</th>
                                 <th class="text-right p-4">24h Change</th>
-                                <th class="text-right p-4">TVL</th>
+                                <th class="text-right p-4">Volume (24h)</th>
                                 <th class="text-right p-4">Action</th>
                             </tr>
                         </thead>
@@ -104,7 +172,7 @@ const defiTokens = ref([
                                         {{ token.change }}
                                     </span>
                                 </td>
-                                <td class="p-4 text-right font-mono text-dark-300">${{ token.tvl }}</td>
+                                <td class="p-4 text-right font-mono text-dark-300">${{ token.volume }}</td>
                                 <td class="p-4 text-right">
                                     <Link :href="`/trade/${token.symbol}-USDT`" class="text-primary-400 hover:text-primary-300 text-sm font-medium">
                                         Trade
@@ -115,8 +183,12 @@ const defiTokens = ref([
                     </table>
                 </div>
 
+                <div v-if="!isLoading && defiTokens.length === 0" class="py-12 text-center text-dark-400">
+                    No DeFi token data available. Please try again later.
+                </div>
+
                 <div class="p-4 text-center text-dark-500 text-sm border-t border-white/5">
-                    Live DeFi data integration coming soon. Showing sample data.
+                    Real-time data from Binance. Prices update every 15 seconds.
                 </div>
             </div>
         </div>

@@ -1,21 +1,12 @@
 <script setup>
 /**
  * TPIX TRADE - NFT Markets Page
+ * NFT marketplace - Coming Soon
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-
-const collections = ref([
-    { name: 'Bored Ape Yacht Club', floor: '28.5 ETH', change: '+5.2%', isUp: true, volume: '1,234 ETH', items: '10,000' },
-    { name: 'CryptoPunks', floor: '45.0 ETH', change: '-2.1%', isUp: false, volume: '890 ETH', items: '10,000' },
-    { name: 'Pudgy Penguins', floor: '12.3 ETH', change: '+8.7%', isUp: true, volume: '567 ETH', items: '8,888' },
-    { name: 'Azuki', floor: '8.9 ETH', change: '+3.4%', isUp: true, volume: '345 ETH', items: '10,000' },
-    { name: 'Doodles', floor: '3.2 ETH', change: '-1.5%', isUp: false, volume: '123 ETH', items: '10,000' },
-    { name: 'CloneX', floor: '2.8 ETH', change: '+1.2%', isUp: true, volume: '234 ETH', items: '20,000' },
-]);
 </script>
 
 <template>
@@ -36,71 +27,51 @@ const collections = ref([
                 <p class="text-dark-400">Discover and trade top NFT collections.</p>
             </div>
 
-            <!-- Coming Soon Banner -->
-            <div class="glass-dark rounded-2xl p-8 mb-8 text-center border border-primary-500/20 bg-gradient-to-br from-accent-500/5 via-primary-500/5 to-warm-500/5">
+            <!-- Coming Soon -->
+            <div class="glass-dark rounded-2xl p-12 text-center border border-primary-500/20 bg-gradient-to-br from-accent-500/5 via-primary-500/5 to-warm-500/5">
                 <div class="w-20 h-20 rounded-3xl bg-gradient-to-br from-accent-500/20 via-primary-500/20 to-warm-500/15 flex items-center justify-center mx-auto mb-6">
                     <svg class="w-10 h-10 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                     </svg>
                 </div>
                 <h2 class="text-2xl font-bold text-white mb-3">NFT Trading Coming Soon</h2>
-                <p class="text-dark-400 max-w-lg mx-auto">
+                <p class="text-dark-400 max-w-lg mx-auto mb-6">
                     NFT marketplace integration is under development. Soon you'll be able to browse, buy, and sell NFTs directly on TPIX TRADE.
                 </p>
-                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-sm text-sm text-dark-300 mt-6">
+                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-sm text-sm text-dark-300 mb-8">
                     <span class="w-2 h-2 rounded-full bg-warm-500 animate-pulse"></span>
                     <span>In Development</span>
                 </div>
-            </div>
 
-            <!-- Preview Collections Table -->
-            <div class="glass-dark rounded-2xl overflow-hidden">
-                <div class="p-4 border-b border-white/5">
-                    <h3 class="text-lg font-semibold text-white">Trending Collections</h3>
-                </div>
-
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead>
-                            <tr class="border-b border-white/5 text-dark-400 text-sm">
-                                <th class="text-left p-4">#</th>
-                                <th class="text-left p-4">Collection</th>
-                                <th class="text-right p-4">Floor Price</th>
-                                <th class="text-right p-4">24h Change</th>
-                                <th class="text-right p-4">Volume (24h)</th>
-                                <th class="text-right p-4">Items</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr
-                                v-for="(collection, index) in collections"
-                                :key="collection.name"
-                                class="border-b border-white/5 hover:bg-white/5 transition-colors opacity-60"
-                            >
-                                <td class="p-4 text-dark-400">{{ index + 1 }}</td>
-                                <td class="p-4">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500/20 to-accent-500/20 flex items-center justify-center">
-                                            <span class="text-sm font-bold text-white">{{ collection.name.charAt(0) }}</span>
-                                        </div>
-                                        <span class="font-medium text-white">{{ collection.name }}</span>
-                                    </div>
-                                </td>
-                                <td class="p-4 text-right font-mono text-white">{{ collection.floor }}</td>
-                                <td class="p-4 text-right">
-                                    <span :class="collection.isUp ? 'text-trading-green' : 'text-trading-red'" class="font-medium">
-                                        {{ collection.change }}
-                                    </span>
-                                </td>
-                                <td class="p-4 text-right font-mono text-dark-300">{{ collection.volume }}</td>
-                                <td class="p-4 text-right text-dark-300">{{ collection.items }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="p-4 text-center text-dark-500 text-sm border-t border-white/5">
-                    Sample data shown. Live NFT market data coming soon.
+                <!-- Planned Features -->
+                <div class="grid md:grid-cols-3 gap-4 max-w-3xl mx-auto mt-8">
+                    <div class="glass-card text-center">
+                        <div class="w-12 h-12 rounded-xl bg-primary-500/10 flex items-center justify-center mx-auto mb-3">
+                            <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-white font-semibold mb-1">Browse Collections</h3>
+                        <p class="text-dark-400 text-sm">Explore NFT collections across multiple chains</p>
+                    </div>
+                    <div class="glass-card text-center">
+                        <div class="w-12 h-12 rounded-xl bg-accent-500/10 flex items-center justify-center mx-auto mb-3">
+                            <svg class="w-6 h-6 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-white font-semibold mb-1">Buy & Sell</h3>
+                        <p class="text-dark-400 text-sm">Trade NFTs directly from your wallet</p>
+                    </div>
+                    <div class="glass-card text-center">
+                        <div class="w-12 h-12 rounded-xl bg-trading-green/10 flex items-center justify-center mx-auto mb-3">
+                            <svg class="w-6 h-6 text-trading-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-white font-semibold mb-1">Verified Collections</h3>
+                        <p class="text-dark-400 text-sm">Only verified and audited collections</p>
+                    </div>
                 </div>
             </div>
         </div>
