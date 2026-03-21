@@ -53,7 +53,7 @@ return [
     ],
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'noreply@tpixtrade.com'),
+        'address' => env('MAIL_FROM_ADDRESS', 'tpixtrade@xman4289.com'),
         'name' => env('MAIL_FROM_NAME', 'TPIX TRADE'),
     ],
 ];

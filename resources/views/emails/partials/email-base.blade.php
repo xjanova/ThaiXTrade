@@ -2,7 +2,7 @@
     $siteLogo = \App\Models\SiteSetting::get('general', 'logo');
     $appName = config('app.name', 'TPIX TRADE');
     $appUrl = config('app.url');
-    $fromEmail = config('mail.from.address', 'noreply@tpixtrade.com');
+    $fromEmail = config('mail.from.address', 'tpixtrade@xman4289.com');
     $primaryColor = '#06b6d4';
     $primaryDark = '#0891b2';
 @endphp
