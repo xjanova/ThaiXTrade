@@ -136,7 +136,7 @@ Route::get('/download', function () {
                 'apkName' => $d['file_name'],
             ];
         }
-    } catch (\Exception) {
+    } catch (Exception) {
         // Fallback: frontend will fetch on mount
     }
 

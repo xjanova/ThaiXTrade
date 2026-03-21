@@ -183,6 +183,7 @@ class AppUpdateController extends Controller
 
             if (! $response->successful()) {
                 Log::warning('GitHub API failed', ['status' => $response->status()]);
+
                 return null;
             }
 
@@ -228,6 +229,7 @@ class AppUpdateController extends Controller
             return null;
         } catch (\Exception $e) {
             Log::error('GitHub release check failed', ['error' => $e->getMessage()]);
+
             return null;
         }
     }
