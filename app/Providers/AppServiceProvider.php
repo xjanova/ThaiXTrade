@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\SiteSetting;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
@@ -30,6 +31,35 @@ class AppServiceProvider extends ServiceProvider
         // Force HTTPS in production
         if ($this->app->environment('production')) {
             URL::forceScheme('https');
+        }
+
+        // Configure mail from database settings
+        $this->configureMailFromDatabase();
+    }
+
+    /**
+     * Apply email config from database (Resend API Key, from address/name).
+     */
+    private function configureMailFromDatabase(): void
+    {
+        try {
+            $apiKey = SiteSetting::get('email', 'resend_api_key');
+            if ($apiKey) {
+                config(['services.resend.key' => $apiKey]);
+                config(['mail.default' => 'resend']);
+            }
+
+            $fromAddress = SiteSetting::get('email', 'mail_from_address');
+            if ($fromAddress) {
+                config(['mail.from.address' => $fromAddress]);
+            }
+
+            $fromName = SiteSetting::get('email', 'mail_from_name');
+            if ($fromName) {
+                config(['mail.from.name' => $fromName]);
+            }
+        } catch (\Exception) {
+            // Database may not exist during migrations
         }
     }
 }

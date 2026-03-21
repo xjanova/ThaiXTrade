@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\TestMail;
 use App\Models\AuditLog;
 use App\Models\SiteSetting;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -250,5 +253,80 @@ class SettingController extends Controller
         AuditLog::log('settings.logo.update', null, ['logo' => $oldLogo], ['logo' => $path]);
 
         return back()->with('success', 'Logo updated successfully.');
+    }
+
+    /**
+     * บันทึกการตั้งค่าอีเมล (Resend API Key, From address/name).
+     */
+    public function updateEmail(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'resend_api_key' => ['nullable', 'string', 'max:255'],
+            'mail_from_address' => ['nullable', 'email', 'max:255'],
+            'mail_from_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if (! empty($validated['resend_api_key']) && ! str_starts_with($validated['resend_api_key'], '****')) {
+            SiteSetting::set('email', 'resend_api_key', $validated['resend_api_key'], 'string');
+            config(['services.resend.key' => $validated['resend_api_key']]);
+        }
+
+        if (! empty($validated['mail_from_address'])) {
+            SiteSetting::set('email', 'mail_from_address', $validated['mail_from_address'], 'string');
+        }
+
+        if (! empty($validated['mail_from_name'])) {
+            SiteSetting::set('email', 'mail_from_name', $validated['mail_from_name'], 'string');
+        }
+
+        SiteSetting::clearCache();
+        AuditLog::log('settings.email.update');
+
+        return back()->with('success', 'บันทึกการตั้งค่าอีเมลเรียบร้อยแล้ว');
+    }
+
+    /**
+     * ส่งอีเมลทดสอบ.
+     */
+    public function sendTestEmail(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'test_email' => ['required', 'email', 'max:255'],
+        ]);
+
+        // Apply dynamic mail config from DB
+        $this->applyMailConfig();
+
+        try {
+            Mail::to($validated['test_email'])->send(new TestMail);
+
+            return back()->with('success', "ส่งอีเมลทดสอบไปที่ {$validated['test_email']} เรียบร้อยแล้ว");
+        } catch (\Exception $e) {
+            Log::error('Test email failed', ['error' => $e->getMessage()]);
+
+            return back()->with('error', 'ส่งอีเมลไม่สำเร็จ: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Apply mail config from database at runtime.
+     */
+    private function applyMailConfig(): void
+    {
+        $apiKey = SiteSetting::get('email', 'resend_api_key');
+        if ($apiKey) {
+            config(['services.resend.key' => $apiKey]);
+            config(['mail.default' => 'resend']);
+        }
+
+        $fromAddress = SiteSetting::get('email', 'mail_from_address');
+        if ($fromAddress) {
+            config(['mail.from.address' => $fromAddress]);
+        }
+
+        $fromName = SiteSetting::get('email', 'mail_from_name');
+        if ($fromName) {
+            config(['mail.from.name' => $fromName]);
+        }
     }
 }

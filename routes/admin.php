@@ -57,6 +57,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::put('settings/social', [SettingController::class, 'updateTab'])->name('settings.social');
         Route::put('settings/payment', [SettingController::class, 'updateTab'])->name('settings.payment');
         Route::put('settings/ai', [SettingController::class, 'updateTab'])->name('settings.ai');
+        Route::put('settings/email', [SettingController::class, 'updateEmail'])->name('settings.email');
+        Route::post('settings/email/test', [SettingController::class, 'sendTestEmail'])->name('settings.email.test');
 
         // Fees
         Route::resource('fees', FeeController::class)->except(['create', 'show', 'edit']);
