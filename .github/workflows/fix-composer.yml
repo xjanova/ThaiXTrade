@@ -14,17 +14,18 @@ jobs:
           php-version: '8.2'
 
       - name: Update composer.lock
-        run: |
-          composer update stripe/stripe-php --no-interaction
-          git diff composer.lock | head -50
+        run: composer update --no-interaction
+
+      - name: Run Pint fix
+        run: ./vendor/bin/pint
 
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add composer.lock
+          git add -A
           git diff --cached --quiet && echo "No changes" && exit 0
-          git commit -m "fix(deps): sync composer.lock with stripe/stripe-php
+          git commit -m "fix(deps): sync composer.lock and fix code style
 
           Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
           git push
