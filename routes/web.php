@@ -5,6 +5,7 @@
  * Developed by Xman Studio.
  */
 
+use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\CarbonCreditController;
 use App\Http\Controllers\FoodPassportController;
 use App\Http\Controllers\TokenFactoryController;
@@ -117,10 +118,12 @@ Route::get('/staking', function () {
 // Download — ดาวน์โหลดแอป TPIX TRADE (ดึง release ล่าสุดจาก API ของเราเอง)
 Route::get('/download', function () {
     $release = null;
+
     try {
-        $controller = app(\App\Http\Controllers\Api\AppUpdateController::class);
+        $controller = app(AppUpdateController::class);
         $response = $controller->latest();
         $json = json_decode($response->getContent(), true);
+
         if (($json['success'] ?? false) && isset($json['data'])) {
             $d = $json['data'];
             $release = [
@@ -133,8 +136,8 @@ Route::get('/download', function () {
                 'apkName' => $d['file_name'],
             ];
         }
-    } catch (\Throwable $e) {
-        // Fallback: ให้ frontend ดึงเอง / frontend will fetch on mount
+    } catch (\Throwable) {
+        // Fallback: frontend will fetch on mount
     }
 
     return Inertia::render('Download', [

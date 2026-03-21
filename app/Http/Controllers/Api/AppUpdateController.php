@@ -21,7 +21,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class AppUpdateController extends Controller
 {
     private string $githubOwner;
+
     private string $githubRepo;
+
     private ?string $githubToken;
 
     public function __construct()
