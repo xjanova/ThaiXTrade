@@ -1,23 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   Pressable,
+  RefreshControl,
+  Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
 import { colors, spacing, typography } from '@/theme';
 import GlassCard from '@/components/common/GlassCard';
 import PriceChange from '@/components/common/PriceChange';
 import AssetRow from '@/components/portfolio/AssetRow';
 import { usePortfolioStore } from '@/stores/portfolioStore';
 import { useResponsiveLayout } from '@/utils/responsive';
+import { COIN_COLORS } from '@/components/common/CoinIcon';
 
-// Donut chart for allocation / กราฟโดนัทแสดงสัดส่วนการลงทุน
+// Donut chart for allocation
 function AllocationChart({ assets, chartSize }: { assets: { symbol: string; allocation: number; color: string }[]; chartSize: number }) {
   const radius = chartSize / 2 - 10;
   const cx = chartSize / 2;
@@ -54,14 +57,10 @@ function AllocationChart({ assets, chartSize }: { assets: { symbol: string; allo
   );
 }
 
-const ASSET_COLORS = [
-  colors.brand.cyan,
-  colors.brand.purple,
-  colors.trading.green,
-  '#F59E0B',
-  colors.text.tertiary,
-  colors.trading.red,
-];
+// Use consistent coin colors from CoinIcon / ใช้สีเหรียญที่สอดคล้องกันจาก CoinIcon
+const ASSET_COLOR_MAP: Record<string, string> = COIN_COLORS;
+const getAssetColor = (symbol: string, fallback: string = colors.brand.cyan): string =>
+  ASSET_COLOR_MAP[symbol] || fallback;
 
 type TabType = 'assets' | 'history';
 
@@ -71,45 +70,75 @@ export default function PortfolioScreen() {
   const chartSize = allocationChartSize;
   const { assets, totalValue, totalChange24h, totalChangePercent, loadMockData } = usePortfolioStore();
   const [activeTab, setActiveTab] = useState<TabType>('assets');
+  const [refreshing, setRefreshing] = useState(false);
+  const [balanceHidden, setBalanceHidden] = useState(false);
 
   useEffect(() => {
     loadMockData();
-  }, []);
+  }, [loadMockData]);
 
-  const allocationData = assets.map((a, i) => ({
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    await new Promise((r) => setTimeout(r, 800));
+    loadMockData();
+    setRefreshing(false);
+  }, [loadMockData]);
+
+  const allocationData = assets.map((a) => ({
     symbol: a.symbol,
     allocation: a.allocation,
-    color: ASSET_COLORS[i % ASSET_COLORS.length],
+    color: getAssetColor(a.symbol),
   }));
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Portfolio</Text>
-        <Pressable style={styles.iconBtn}>
-          <Ionicons name="pie-chart-outline" size={20} color={colors.text.secondary} />
+        <Pressable
+          style={styles.iconBtn}
+          onPress={() => setBalanceHidden(!balanceHidden)}
+        >
+          <Ionicons
+            name={balanceHidden ? 'eye-off-outline' : 'eye-outline'}
+            size={20}
+            color={colors.text.secondary}
+          />
         </Pressable>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.brand.cyan}
+            colors={[colors.brand.cyan]}
+            progressBackgroundColor={colors.bg.secondary}
+          />
+        }
       >
-        {/* Total Value Card / การ์ดมูลค่ารวม */}
+        {/* Total Value Card */}
         <GlassCard variant="brand" style={styles.valueCard}>
           <Text style={styles.valueLabel}>Total Balance</Text>
           <Text style={styles.totalValue}>
-            ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            {balanceHidden ? '******' : `$${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
           </Text>
           <View style={styles.changeRow}>
             <PriceChange value={totalChangePercent} size="md" showIcon />
-            <Text style={styles.changeAmount}>
-              {totalChange24h >= 0 ? '+' : ''}${totalChange24h.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </Text>
+            {!balanceHidden && (
+              <Text style={[styles.changeAmount, totalChange24h < 0 && { color: colors.trading.red }]}>
+                {totalChange24h >= 0 ? '+' : ''}${totalChange24h.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              </Text>
+            )}
           </View>
         </GlassCard>
 
-        {/* Allocation Chart / กราฟสัดส่วน */}
+        {/* Allocation Chart */}
         <GlassCard style={styles.allocationCard}>
           <Text style={styles.allocationTitle}>Allocation</Text>
           <View style={styles.allocationContent}>
@@ -126,7 +155,7 @@ export default function PortfolioScreen() {
           </View>
         </GlassCard>
 
-        {/* Tab Switcher / แถบสลับ */}
+        {/* Tab Switcher */}
         <View style={styles.tabBar}>
           <Pressable
             style={[styles.tab, activeTab === 'assets' && styles.tabActive]}
@@ -146,7 +175,7 @@ export default function PortfolioScreen() {
           </Pressable>
         </View>
 
-        {/* Asset List / รายการสินทรัพย์ */}
+        {/* Asset List */}
         {activeTab === 'assets' && (
           <View style={styles.assetList}>
             {assets.map((asset) => (
@@ -162,7 +191,7 @@ export default function PortfolioScreen() {
           </View>
         )}
 
-        {/* Transaction History / ประวัติการทำรายการ */}
+        {/* Transaction History */}
         {activeTab === 'history' && (
           <GlassCard style={styles.historyCard}>
             {[
@@ -257,7 +286,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.xl,
   },
-  // Value Card / การ์ดมูลค่า
   valueCard: {
     padding: spacing.xl,
     marginBottom: spacing.xl,
@@ -284,7 +312,6 @@ const styles = StyleSheet.create({
     color: colors.trading.green,
     fontWeight: '600',
   },
-  // Allocation / สัดส่วน
   allocationCard: {
     padding: spacing.lg,
     marginBottom: spacing.xl,
@@ -322,7 +349,6 @@ const styles = StyleSheet.create({
     ...typography.monoSmall,
     color: colors.text.tertiary,
   },
-  // Tabs / แถบ
   tabBar: {
     flexDirection: 'row',
     gap: spacing.xs,
@@ -349,12 +375,10 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: colors.brand.cyan,
   },
-  // Assets / สินทรัพย์
   assetList: {
     gap: spacing.sm,
     marginBottom: spacing.xl,
   },
-  // History / ประวัติ
   historyCard: {
     padding: spacing.lg,
     marginBottom: spacing.xl,

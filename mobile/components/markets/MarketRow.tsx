@@ -1,13 +1,15 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, Pressable } from 'react-native';
 import {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography } from '@/theme';
 import MiniChart from '../trading/MiniChart';
 import PriceChange from '../common/PriceChange';
+import CoinIcon from '../common/CoinIcon';
 import { AnimatedPressable, SPRING_CONFIG } from '@/utils/animation';
 import { formatPrice } from '@/utils/formatters';
 
@@ -18,17 +20,10 @@ interface MarketRowProps {
   change24h: number;
   volume: string;
   chartData: number[];
+  iconColor?: string;
+  isFavorite?: boolean;
   onPress?: () => void;
-}
-
-function CoinIcon({ symbol }: { symbol: string }) {
-  const letter = symbol.charAt(0).toUpperCase();
-
-  return (
-    <View style={styles.iconCircle}>
-      <Text style={styles.iconLetter}>{letter}</Text>
-    </View>
-  );
+  onToggleFavorite?: () => void;
 }
 
 export default function MarketRow({
@@ -38,7 +33,10 @@ export default function MarketRow({
   change24h,
   volume,
   chartData,
+  iconColor,
+  isFavorite = false,
   onPress,
+  onToggleFavorite,
 }: MarketRowProps) {
   const scale = useSharedValue(1);
 
@@ -70,7 +68,7 @@ export default function MarketRow({
     >
       {/* Left: coin icon + symbol/name */}
       <View style={styles.leftSection}>
-        <CoinIcon symbol={symbol} />
+        <CoinIcon symbol={symbol} color={iconColor} size={40} />
         <View style={styles.nameContainer}>
           <Text style={styles.symbol} numberOfLines={1}>
             {symbol}
@@ -91,16 +89,31 @@ export default function MarketRow({
         />
       </View>
 
-      {/* Right: price + change */}
+      {/* Right: price + change + favorite */}
       <View style={styles.rightSection}>
         <Text style={styles.price} numberOfLines={1}>
           ${formatPrice(price)}
         </Text>
-        <PriceChange value={change24h} size="sm" />
+        <View style={styles.rightBottom}>
+          <PriceChange value={change24h} size="sm" />
+          {onToggleFavorite && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation?.();
+                onToggleFavorite();
+              }}
+              hitSlop={8}
+              style={styles.starBtn}
+            >
+              <Ionicons
+                name={isFavorite ? 'star' : 'star-outline'}
+                size={16}
+                color={isFavorite ? '#FFD600' : colors.text.disabled}
+              />
+            </Pressable>
+          )}
+        </View>
       </View>
-
-      {/* Separator */}
-      <View style={styles.separator} />
     </AnimatedPressable>
   );
 }
@@ -118,21 +131,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     gap: spacing.md,
-  },
-  iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.bg.tertiary,
-    borderWidth: 1,
-    borderColor: colors.bg.cardBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconLetter: {
-    ...typography.h4,
-    color: colors.brand.cyan,
-    fontSize: 16,
   },
   nameContainer: {
     gap: 2,
@@ -155,17 +153,17 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     minWidth: 90,
   },
+  rightBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   price: {
     ...typography.mono,
     color: colors.text.primary,
     fontSize: 14,
   },
-  separator: {
-    position: 'absolute',
-    bottom: 0,
-    left: spacing.lg + 40 + spacing.md, // offset past icon
-    right: spacing.lg,
-    height: 1,
-    backgroundColor: colors.divider,
+  starBtn: {
+    padding: 2,
   },
 });

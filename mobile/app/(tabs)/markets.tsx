@@ -1,15 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   Pressable,
+  RefreshControl,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { colors, spacing, typography } from '@/theme';
 import SearchBar from '@/components/common/SearchBar';
 import MarketRow from '@/components/markets/MarketRow';
@@ -17,8 +20,6 @@ import { useMarketStore, MarketPair } from '@/stores/marketStore';
 
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
 
-// Extracted separator component (avoids re-creating on each render)
-// คอมโพเนนต์ separator แยกออกมา (ไม่สร้างใหม่ทุกรอบ render)
 function ListSeparator() {
   return <View style={separatorStyles.separator} />;
 }
@@ -35,17 +36,39 @@ type FilterTab = 'all' | 'favorites' | 'gainers' | 'losers';
 
 export default function MarketsScreen() {
   const insets = useSafeAreaInsets();
-  const { pairs, favorites, searchQuery, setSearchQuery, loadMockData } = useMarketStore();
+  const { pairs, favorites, searchQuery, setSearchQuery, setSelectedPair, toggleFavorite, loadMockData } = useMarketStore();
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [sortBy, setSortBy] = useState<SortBy>('volume');
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadMockData();
-  }, []);
+  }, [loadMockData]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    await new Promise((r) => setTimeout(r, 800));
+    loadMockData();
+    setRefreshing(false);
+  }, [loadMockData]);
+
+  const handleToggleFavorite = useCallback((symbol: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    toggleFavorite(symbol);
+  }, [toggleFavorite]);
+
+  const handleSelectPair = useCallback((pair: MarketPair) => {
+    setSelectedPair(pair);
+    router.push('/trade');
+  }, [setSelectedPair]);
 
   const filteredPairs = pairs
     .filter((pair) => {
-      // Search filter
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return (
@@ -76,7 +99,7 @@ export default function MarketsScreen() {
         case 'name':
           return a.symbol.localeCompare(b.symbol);
         default:
-          return 0; // volume - already in order
+          return 0;
       }
     });
 
@@ -95,7 +118,10 @@ export default function MarketsScreen() {
       change24h={item.change24h}
       volume={item.volume24h}
       chartData={item.chartData}
-      onPress={() => router.push('/trade')}
+      iconColor={item.iconColor}
+      isFavorite={favorites.includes(item.symbol)}
+      onPress={() => handleSelectPair(item)}
+      onToggleFavorite={() => handleToggleFavorite(item.symbol)}
     />
   );
 
@@ -174,10 +200,23 @@ export default function MarketsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={ListSeparator}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.brand.cyan}
+            colors={[colors.brand.cyan]}
+            progressBackgroundColor={colors.bg.secondary}
+          />
+        }
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="search-outline" size={48} color={colors.text.tertiary} />
-            <Text style={styles.emptyText}>No markets found</Text>
+            <Text style={styles.emptyText}>
+              {activeFilter === 'favorites'
+                ? 'No favorites yet\nTap the star icon to add'
+                : 'No markets found'}
+            </Text>
           </View>
         }
       />
@@ -270,7 +309,6 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 100,
   },
-  // Separator styles moved to ListSeparator component / ย้ายไปที่คอมโพเนนต์ ListSeparator
   empty: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -280,5 +318,7 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.body,
     color: colors.text.tertiary,
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });

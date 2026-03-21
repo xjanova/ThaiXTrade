@@ -8,6 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, radius, typography } from '@/theme';
 import PriceChange from '../common/PriceChange';
+import CoinIcon from '../common/CoinIcon';
 import { AnimatedPressable, SPRING_CONFIG } from '@/utils/animation';
 import { formatBalance, formatUsdValue } from '@/utils/formatters';
 
@@ -17,23 +18,7 @@ interface AssetRowProps {
   balance: number;
   value: number;
   change24h: number;
-  icon?: string;
   onPress?: () => void;
-}
-
-function CoinIcon({ symbol, icon }: { symbol: string; icon?: string }) {
-  const letter = symbol.charAt(0).toUpperCase();
-
-  return (
-    <LinearGradient
-      colors={[colors.bg.tertiary, colors.bg.secondary]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.iconCircle}
-    >
-      <Text style={styles.iconLetter}>{icon ?? letter}</Text>
-    </LinearGradient>
-  );
 }
 
 export default function AssetRow({
@@ -42,7 +27,6 @@ export default function AssetRow({
   balance,
   value,
   change24h,
-  icon,
   onPress,
 }: AssetRowProps) {
   const scale = useSharedValue(1);
@@ -77,9 +61,8 @@ export default function AssetRow({
         end={{ x: 1, y: 1 }}
         style={styles.container}
       >
-        {/* Left: coin icon + symbol/name */}
         <View style={styles.leftSection}>
-          <CoinIcon symbol={symbol} icon={icon} />
+          <CoinIcon symbol={symbol} size={44} />
           <View style={styles.nameContainer}>
             <Text style={styles.symbol} numberOfLines={1}>
               {symbol}
@@ -90,7 +73,6 @@ export default function AssetRow({
           </View>
         </View>
 
-        {/* Right: balance, value, change */}
         <View style={styles.rightSection}>
           <Text style={styles.balance} numberOfLines={1}>
             {formatBalance(balance)} {symbol}
@@ -123,20 +105,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     flex: 1,
     marginRight: spacing.md,
-  },
-  iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: colors.bg.cardBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconLetter: {
-    ...typography.h4,
-    color: colors.brand.cyan,
-    fontSize: 18,
   },
   nameContainer: {
     gap: 2,

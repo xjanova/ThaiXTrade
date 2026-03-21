@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,17 +6,21 @@ import {
   ScrollView,
   Pressable,
   Platform,
+  RefreshControl,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { colors, spacing, typography } from '@/theme';
 import GlassCard from '@/components/common/GlassCard';
 import PriceChange from '@/components/common/PriceChange';
 import MiniChart from '@/components/trading/MiniChart';
-import { useMarketStore } from '@/stores/marketStore';
+import CoinIcon from '@/components/common/CoinIcon';
+import { useMarketStore, MarketPair } from '@/stores/marketStore';
 import { usePortfolioStore } from '@/stores/portfolioStore';
 import { formatCurrency } from '@/utils/formatters';
 import { useResponsiveLayout } from '@/utils/responsive';
@@ -26,30 +30,72 @@ type IoniconsName = ComponentProps<typeof Ionicons>['name'];
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { contentWidth, favoriteCardWidth, isWeb } = useResponsiveLayout();
-  const { pairs, favorites, loadMockData: loadMarket } = useMarketStore();
+  const { pairs, favorites, setSelectedPair, loadMockData: loadMarket } = useMarketStore();
   const { totalValue, totalChangePercent, loadMockData: loadPortfolio } = usePortfolioStore();
+  const [refreshing, setRefreshing] = useState(false);
+  const [balanceHidden, setBalanceHidden] = useState(false);
 
   useEffect(() => {
     loadMarket();
     loadPortfolio();
-  }, []);
+  }, [loadMarket, loadPortfolio]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    await new Promise((r) => setTimeout(r, 800));
+    loadMarket();
+    loadPortfolio();
+    setRefreshing(false);
+  }, [loadMarket, loadPortfolio]);
 
   const favoritePairs = pairs.filter((p) => favorites.includes(p.symbol));
   const topGainers = [...pairs].sort((a, b) => b.change24h - a.change24h).slice(0, 5);
 
+  const handleSelectPair = useCallback((pair: MarketPair) => {
+    setSelectedPair(pair);
+    router.push('/trade');
+  }, [setSelectedPair]);
+
+  const handleQuickAction = useCallback((action: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    switch (action) {
+      case 'Swap':
+        router.push('/trade');
+        break;
+      case 'Deposit':
+      case 'Withdraw':
+      case 'Buy':
+        Alert.alert(action, `${action} feature coming soon`, [{ text: 'OK' }]);
+        break;
+    }
+  }, []);
+
+  const handleNotifications = useCallback(() => {
+    Alert.alert('Notifications', 'No new notifications', [{ text: 'OK' }]);
+  }, []);
+
+  const handleScan = useCallback(() => {
+    Alert.alert('QR Scanner', 'Scan QR code feature coming soon', [{ text: 'OK' }]);
+  }, []);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header / ส่วนหัว */}
+      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Welcome back</Text>
           <Text style={styles.appName}>TPIX TRADE</Text>
         </View>
         <View style={styles.headerRight}>
-          <Pressable style={styles.iconBtn}>
+          <Pressable style={styles.iconBtn} onPress={handleNotifications}>
             <Ionicons name="notifications-outline" size={22} color={colors.text.secondary} />
           </Pressable>
-          <Pressable style={styles.iconBtn}>
+          <Pressable style={styles.iconBtn} onPress={handleScan}>
             <Ionicons name="scan-outline" size={22} color={colors.text.secondary} />
           </Pressable>
         </View>
@@ -58,22 +104,37 @@ export default function HomeScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.brand.cyan}
+            colors={[colors.brand.cyan]}
+            progressBackgroundColor={colors.bg.secondary}
+          />
+        }
       >
-        {/* Portfolio Card / การ์ดพอร์ตโฟลิโอ */}
+        {/* Portfolio Card */}
         <GlassCard variant="brand" style={styles.portfolioCard}>
           <View style={styles.portfolioHeader}>
             <Text style={styles.portfolioLabel}>Total Portfolio Value</Text>
-            <Ionicons name="eye-outline" size={18} color={colors.text.tertiary} />
+            <Pressable onPress={() => setBalanceHidden(!balanceHidden)}>
+              <Ionicons
+                name={balanceHidden ? 'eye-off-outline' : 'eye-outline'}
+                size={18}
+                color={colors.text.tertiary}
+              />
+            </Pressable>
           </View>
           <Text style={styles.portfolioValue}>
-            {formatCurrency(totalValue)}
+            {balanceHidden ? '******' : formatCurrency(totalValue)}
           </Text>
           <View style={styles.portfolioChange}>
             <PriceChange value={totalChangePercent} size="md" showIcon />
             <Text style={styles.portfolioChangeLabel}> 24h Change</Text>
           </View>
 
-          {/* Quick Actions / ปุ่มลัด */}
+          {/* Quick Actions */}
           <View style={styles.quickActions}>
             {([
               { icon: 'arrow-down-outline' as IoniconsName, label: 'Deposit', color: colors.trading.green },
@@ -81,7 +142,11 @@ export default function HomeScreen() {
               { icon: 'swap-horizontal-outline' as IoniconsName, label: 'Swap', color: colors.brand.cyan },
               { icon: 'card-outline' as IoniconsName, label: 'Buy', color: colors.brand.purple },
             ]).map((action) => (
-              <Pressable key={action.label} style={styles.quickAction}>
+              <Pressable
+                key={action.label}
+                style={styles.quickAction}
+                onPress={() => handleQuickAction(action.label)}
+              >
                 <View style={[styles.quickActionIcon, { backgroundColor: action.color + '20' }]}>
                   <Ionicons
                     name={action.icon}
@@ -95,7 +160,7 @@ export default function HomeScreen() {
           </View>
         </GlassCard>
 
-        {/* Favorites / รายการโปรด */}
+        {/* Favorites */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Favorites</Text>
           <Pressable onPress={() => router.push('/markets')}>
@@ -103,43 +168,47 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.favoritesScroll}
-        >
-          {favoritePairs.map((pair) => (
-            <GlassCard
-              key={pair.symbol}
-              style={[styles.favoriteCard, { width: favoriteCardWidth }]}
-              onPress={() => router.push('/trade')}
-            >
-              <View style={styles.favoriteHeader}>
-                <View style={styles.coinIcon}>
-                  <Text style={styles.coinIconText}>
-                    {pair.symbol.charAt(0)}
-                  </Text>
+        {favoritePairs.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.favoritesScroll}
+          >
+            {favoritePairs.map((pair) => (
+              <GlassCard
+                key={pair.symbol}
+                style={[styles.favoriteCard, { width: favoriteCardWidth }]}
+                onPress={() => handleSelectPair(pair)}
+              >
+                <View style={styles.favoriteHeader}>
+                  <CoinIcon symbol={pair.symbol} color={pair.iconColor} size={32} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.favoriteSymbol}>{pair.symbol.split('/')[0]}</Text>
+                    <Text style={styles.favoriteName}>{pair.name}</Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.favoriteSymbol}>{pair.symbol.split('/')[0]}</Text>
-                  <Text style={styles.favoriteName}>{pair.name}</Text>
+                <MiniChart
+                  data={pair.chartData}
+                  color={pair.change24h >= 0 ? colors.trading.green : colors.trading.red}
+                  width={Math.min(favoriteCardWidth * 0.83, 180)}
+                  height={40}
+                />
+                <View style={styles.favoriteFooter}>
+                  <Text style={styles.favoritePrice}>{formatCurrency(pair.price)}</Text>
+                  <PriceChange value={pair.change24h} size="sm" />
                 </View>
-              </View>
-              <MiniChart
-                data={pair.chartData}
-                color={pair.change24h >= 0 ? colors.trading.green : colors.trading.red}
-                width={Math.min(favoriteCardWidth * 0.83, 180)}
-                height={40}
-              />
-              <View style={styles.favoriteFooter}>
-                <Text style={styles.favoritePrice}>{formatCurrency(pair.price)}</Text>
-                <PriceChange value={pair.change24h} size="sm" />
-              </View>
-            </GlassCard>
-          ))}
-        </ScrollView>
+              </GlassCard>
+            ))}
+          </ScrollView>
+        ) : (
+          <GlassCard style={styles.emptyFavorites}>
+            <Ionicons name="star-outline" size={32} color={colors.text.disabled} />
+            <Text style={styles.emptyText}>No favorites yet</Text>
+            <Text style={styles.emptySubtext}>Add coins from Markets tab</Text>
+          </GlassCard>
+        )}
 
-        {/* Top Gainers / เหรียญที่ขึ้นมากที่สุด */}
+        {/* Top Gainers */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Top Gainers</Text>
           <Pressable onPress={() => router.push('/markets')}>
@@ -155,15 +224,11 @@ export default function HomeScreen() {
                 styles.gainerRow,
                 index < topGainers.length - 1 && styles.gainerRowBorder,
               ]}
-              onPress={() => router.push('/trade')}
+              onPress={() => handleSelectPair(pair)}
             >
               <View style={styles.gainerLeft}>
                 <Text style={styles.gainerRank}>#{index + 1}</Text>
-                <View style={[styles.coinIcon, styles.coinIconSm]}>
-                  <Text style={[styles.coinIconText, { fontSize: 10 }]}>
-                    {pair.symbol.charAt(0)}
-                  </Text>
-                </View>
+                <CoinIcon symbol={pair.symbol} color={pair.iconColor} size={28} />
                 <View>
                   <Text style={styles.gainerSymbol}>{pair.symbol.split('/')[0]}</Text>
                   <Text style={styles.gainerName}>{pair.name}</Text>
@@ -177,7 +242,7 @@ export default function HomeScreen() {
           ))}
         </GlassCard>
 
-        {/* Market Overview Banner / แบนเนอร์ภาพรวมตลาด */}
+        {/* Banner */}
         <LinearGradient
           colors={['rgba(6, 182, 212, 0.15)', 'rgba(139, 92, 246, 0.15)']}
           start={{ x: 0, y: 0 }}
@@ -240,7 +305,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.xl,
   },
-  // Portfolio Card / การ์ดพอร์ตโฟลิโอ
+  // Portfolio Card
   portfolioCard: {
     padding: spacing.xl,
     marginBottom: spacing['2xl'],
@@ -292,7 +357,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     fontSize: 11,
   },
-  // Section / ส่วน
+  // Section
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -307,7 +372,7 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.brand.cyan,
   },
-  // Favorites / รายการโปรด
+  // Favorites
   favoritesScroll: {
     gap: spacing.md,
     paddingBottom: spacing['2xl'],
@@ -320,25 +385,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginBottom: spacing.md,
-  },
-  coinIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.brand.cyan + '20',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  coinIconSm: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-  },
-  coinIconText: {
-    ...typography.bodySmall,
-    color: colors.brand.cyan,
-    fontWeight: '700',
-    fontSize: 12,
   },
   favoriteSymbol: {
     ...typography.bodySmall,
@@ -360,7 +406,23 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     fontSize: 13,
   },
-  // Gainers / เหรียญขึ้น
+  // Empty favorites
+  emptyFavorites: {
+    padding: spacing['2xl'],
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing['2xl'],
+  },
+  emptyText: {
+    ...typography.body,
+    color: colors.text.tertiary,
+    fontWeight: '600',
+  },
+  emptySubtext: {
+    ...typography.bodySmall,
+    color: colors.text.disabled,
+  },
+  // Gainers
   gainersCard: {
     padding: spacing.lg,
     marginBottom: spacing['2xl'],
@@ -403,7 +465,7 @@ const styles = StyleSheet.create({
     ...typography.monoSmall,
     color: colors.text.primary,
   },
-  // Banner / แบนเนอร์
+  // Banner
   banner: {
     borderRadius: 16,
     borderWidth: 1,

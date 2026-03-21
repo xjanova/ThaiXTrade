@@ -72,6 +72,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.bg.cardBorder,
     padding: spacing.lg,
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.lg,
     gap: spacing.md,
   },
   topRow: {

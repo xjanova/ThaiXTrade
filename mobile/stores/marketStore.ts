@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { COIN_COLORS } from '@/components/common/CoinIcon';
 
 export interface MarketPair {
   symbol: string;
@@ -9,6 +10,8 @@ export interface MarketPair {
   low24h: number;
   volume24h: string;
   chartData: number[];
+  iconColor: string;
+  iconLetter: string;
 }
 
 interface MarketState {
@@ -46,6 +49,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 95800.00,
     volume24h: '2.1B',
     chartData: generateChartData(96000, 800, 1),
+    iconColor: COIN_COLORS.BTC,
+    iconLetter: 'B',
   },
   {
     symbol: 'ETH/USDT',
@@ -56,6 +61,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 3780.00,
     volume24h: '1.4B',
     chartData: generateChartData(3850, 40, -0.5),
+    iconColor: COIN_COLORS.ETH,
+    iconLetter: 'E',
   },
   {
     symbol: 'BNB/USDT',
@@ -66,6 +73,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 618.00,
     volume24h: '342M',
     chartData: generateChartData(620, 8, 0.5),
+    iconColor: COIN_COLORS.BNB,
+    iconLetter: 'B',
   },
   {
     symbol: 'SOL/USDT',
@@ -76,6 +85,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 175.00,
     volume24h: '890M',
     chartData: generateChartData(178, 5, 1.5),
+    iconColor: COIN_COLORS.SOL,
+    iconLetter: 'S',
   },
   {
     symbol: 'XRP/USDT',
@@ -86,6 +97,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 2.42,
     volume24h: '567M',
     chartData: generateChartData(2.45, 0.05, -0.3),
+    iconColor: COIN_COLORS.XRP,
+    iconLetter: 'X',
   },
   {
     symbol: 'ADA/USDT',
@@ -96,6 +109,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 0.856,
     volume24h: '234M',
     chartData: generateChartData(0.86, 0.02, 1),
+    iconColor: COIN_COLORS.ADA,
+    iconLetter: 'A',
   },
   {
     symbol: 'DOGE/USDT',
@@ -106,6 +121,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 0.1800,
     volume24h: '456M',
     chartData: generateChartData(0.19, 0.005, -1),
+    iconColor: COIN_COLORS.DOGE,
+    iconLetter: 'D',
   },
   {
     symbol: 'AVAX/USDT',
@@ -116,6 +133,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 41.20,
     volume24h: '178M',
     chartData: generateChartData(41.5, 1, 0.8),
+    iconColor: COIN_COLORS.AVAX,
+    iconLetter: 'A',
   },
   {
     symbol: 'DOT/USDT',
@@ -126,6 +145,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 8.78,
     volume24h: '123M',
     chartData: generateChartData(8.9, 0.15, -0.3),
+    iconColor: COIN_COLORS.DOT,
+    iconLetter: 'D',
   },
   {
     symbol: 'LINK/USDT',
@@ -136,6 +157,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 17.20,
     volume24h: '198M',
     chartData: generateChartData(17.5, 0.5, 1.2),
+    iconColor: COIN_COLORS.LINK,
+    iconLetter: 'L',
   },
   {
     symbol: 'UNI/USDT',
@@ -146,6 +169,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 12.10,
     volume24h: '89M',
     chartData: generateChartData(12.2, 0.3, 0.6),
+    iconColor: COIN_COLORS.UNI,
+    iconLetter: 'U',
   },
   {
     symbol: 'MATIC/USDT',
@@ -156,6 +181,8 @@ const MOCK_PAIRS: MarketPair[] = [
     low24h: 1.19,
     volume24h: '156M',
     chartData: generateChartData(1.25, 0.03, -0.5),
+    iconColor: COIN_COLORS.MATIC,
+    iconLetter: 'M',
   },
 ];
 

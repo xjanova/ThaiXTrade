@@ -1,15 +1,19 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   Pressable,
+  Alert,
+  Platform,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Rect } from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
 import { colors, spacing, typography } from '@/theme';
 import GlassCard from '@/components/common/GlassCard';
 import OrderBookMobile from '@/components/trading/OrderBookMobile';
@@ -17,30 +21,27 @@ import TradeFormMobile from '@/components/trading/TradeFormMobile';
 import PairHeader from '@/components/trading/PairHeader';
 import { formatPrice } from '@/utils/formatters';
 import { useResponsiveLayout } from '@/utils/responsive';
+import { useMarketStore } from '@/stores/marketStore';
 
 const CHART_HEIGHT = 220;
 
-// Generate candlestick-like price data / สร้างข้อมูลราคาแบบแท่งเทียน
-function generatePriceData(length: number = 60): number[] {
+function generatePriceData(base: number, length: number = 60): number[] {
   const data: number[] = [];
-  let price = 98000;
+  let price = base;
+  const volatility = base * 0.003;
   for (let i = 0; i < length; i++) {
-    price += (Math.random() - 0.48) * 300;
-    price = Math.max(price, 95000);
-    price = Math.min(price, 101000);
+    price += (Math.random() - 0.48) * volatility;
+    price = Math.max(price, base * 0.97);
+    price = Math.min(price, base * 1.03);
     data.push(price);
   }
   return data;
 }
 
-/**
- * Generate mock recent trades data once (not on every render)
- * สร้างข้อมูลการเทรดล่าสุดจำลองครั้งเดียว (ไม่สร้างใหม่ทุกรอบ render)
- */
-function generateMockTrades(count: number = 15) {
+function generateMockTrades(basePrice: number, count: number = 15) {
   return Array.from({ length: count }).map((_, i) => {
     const isBuy = Math.random() > 0.45;
-    const price = 98432.5 + (Math.random() - 0.5) * 100;
+    const price = basePrice + (Math.random() - 0.5) * (basePrice * 0.001);
     const amount = (Math.random() * 2).toFixed(4);
     const mins = Math.floor(Math.random() * 60);
     return { id: i, isBuy, price, amount, mins };
@@ -80,7 +81,6 @@ function PriceChart({ data, chartWidth }: { data: number[]; chartWidth: number }
       </Defs>
       <Path d={fillD} fill="url(#chartFill)" />
       <Path d={pathD} stroke={lineColor} strokeWidth={2} fill="none" />
-      {/* Price line at current / เส้นราคาปัจจุบัน */}
       <Rect
         x={0}
         y={points[points.length - 1].y}
@@ -97,34 +97,84 @@ type TabType = 'chart' | 'orderbook' | 'trades';
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
 const timeframes = ['1m', '5m', '15m', '1H', '4H', '1D', '1W'];
 
+// Default pair when none selected / คู่เทรดเริ่มต้นเมื่อยังไม่ได้เลือก
+const DEFAULT_PAIR = {
+  symbol: 'BTC/USDT',
+  name: 'Bitcoin',
+  price: 98432.50,
+  change24h: 2.34,
+  high24h: 99100.00,
+  low24h: 95800.00,
+  volume24h: '2.1B',
+};
+
 export default function TradeScreen() {
   const insets = useSafeAreaInsets();
   const { chartWidth } = useResponsiveLayout();
+  const selectedPair = useMarketStore((s) => s.selectedPair);
   const [activeTab, setActiveTab] = useState<TabType>('chart');
   const [activeTimeframe, setActiveTimeframe] = useState('1H');
-  const [priceData] = useState(() => generatePriceData(60));
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Memoize mock trades so they don't regenerate on every render
-  // จำ mock trades ไว้เพื่อไม่ให้สร้างใหม่ทุกรอบ render
-  const mockTrades = useMemo(() => generateMockTrades(15), []);
+  // Use selected pair or default / ใช้คู่ที่เลือกหรือค่าเริ่มต้น
+  const pair = selectedPair || DEFAULT_PAIR;
+
+  const [priceData] = useState(() => generatePriceData(pair.price, 60));
+  const mockTrades = useMemo(() => generateMockTrades(pair.price, 15), [pair.symbol]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    await new Promise((r) => setTimeout(r, 600));
+    setRefreshing(false);
+  }, []);
+
+  const handleOrderSubmit = useCallback((order: {
+    side: 'buy' | 'sell';
+    type: 'limit' | 'market';
+    price: number | null;
+    amount: number;
+    total: number;
+  }) => {
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    const baseSymbol = pair.symbol.split('/')[0];
+    Alert.alert(
+      'Order Placed',
+      `${order.side === 'buy' ? 'Buy' : 'Sell'} ${order.amount} ${baseSymbol}\n${order.type === 'market' ? 'Market Order' : `Limit @ $${formatPrice(order.price!)}`}\nTotal: $${order.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      [{ text: 'OK', style: 'default' }],
+    );
+  }, [pair.symbol]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Pair Header / ส่วนหัวคู่เทรด */}
+      {/* Pair Header */}
       <PairHeader
-        symbol="BTC/USDT"
-        price={98432.50}
-        change24h={2.34}
-        high={99100.0}
-        low={95800.0}
-        volume="2.1B"
+        symbol={pair.symbol}
+        price={pair.price}
+        change24h={pair.change24h}
+        high={pair.high24h}
+        low={pair.low24h}
+        volume={pair.volume24h}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.brand.cyan}
+            colors={[colors.brand.cyan]}
+            progressBackgroundColor={colors.bg.secondary}
+          />
+        }
       >
-        {/* Tab Switcher / แถบสลับ */}
+        {/* Tab Switcher */}
         <View style={styles.tabBar}>
           {([
             { key: 'chart' as TabType, label: 'Chart', icon: 'analytics-outline' as IoniconsName },
@@ -153,10 +203,9 @@ export default function TradeScreen() {
           ))}
         </View>
 
-        {/* Chart View / มุมมองกราฟ */}
+        {/* Chart View */}
         {activeTab === 'chart' && (
           <View>
-            {/* Timeframe Selector / เลือกกรอบเวลา */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -183,17 +232,16 @@ export default function TradeScreen() {
               ))}
             </ScrollView>
 
-            {/* Price Chart / กราฟราคา */}
             <GlassCard style={styles.chartCard}>
               <PriceChart data={priceData} chartWidth={chartWidth} />
             </GlassCard>
           </View>
         )}
 
-        {/* Order Book View / มุมมอง Order Book */}
+        {/* Order Book View */}
         {activeTab === 'orderbook' && <OrderBookMobile />}
 
-        {/* Recent Trades (memoized) / การเทรดล่าสุด (จำค่าไว้) */}
+        {/* Recent Trades */}
         {activeTab === 'trades' && (
           <GlassCard style={styles.tradesCard}>
             <View style={styles.tradesHeader}>
@@ -218,8 +266,12 @@ export default function TradeScreen() {
           </GlassCard>
         )}
 
-        {/* Trade Form / ฟอร์มเทรด */}
-        <TradeFormMobile />
+        {/* Trade Form */}
+        <TradeFormMobile
+          symbol={pair.symbol}
+          currentPrice={pair.price}
+          onSubmitOrder={handleOrderSubmit}
+        />
 
         <View style={{ height: 120 }} />
       </ScrollView>
@@ -235,7 +287,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.xl,
   },
-  // Tabs / แถบ
   tabBar: {
     flexDirection: 'row',
     gap: spacing.xs,
@@ -265,7 +316,6 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: colors.brand.cyan,
   },
-  // Timeframes / กรอบเวลา
   timeframes: {
     gap: spacing.xs,
     paddingBottom: spacing.md,
@@ -287,13 +337,11 @@ const styles = StyleSheet.create({
     color: colors.brand.cyan,
     fontWeight: '600',
   },
-  // Chart / กราฟ
   chartCard: {
     padding: spacing.md,
     marginBottom: spacing.xl,
     alignItems: 'center',
   },
-  // Trades / การเทรด
   tradesCard: {
     padding: spacing.lg,
     marginBottom: spacing.xl,
