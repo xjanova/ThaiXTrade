@@ -12,7 +12,6 @@ use App\Http\Controllers\TokenFactoryController;
 use App\Http\Controllers\TokenSaleController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-use Throwable;
 
 /*
 |--------------------------------------------------------------------------
@@ -128,7 +127,7 @@ Route::get('/download', function () {
         if (($json['success'] ?? false) && isset($json['data'])) {
             $d = $json['data'];
             $release = [
-                'version' => 'v' . $d['version'],
+                'version' => 'v'.$d['version'],
                 'name' => $d['name'],
                 'publishedAt' => $d['published_at'],
                 'body' => $d['notes'],
@@ -137,7 +136,7 @@ Route::get('/download', function () {
                 'apkName' => $d['file_name'],
             ];
         }
-    } catch (Throwable) {
+    } catch (\Exception) {
         // Fallback: frontend will fetch on mount
     }
 

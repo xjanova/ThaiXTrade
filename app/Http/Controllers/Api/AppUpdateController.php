@@ -50,7 +50,7 @@ class AppUpdateController extends Controller
             return $this->fetchLatestRelease();
         });
 
-        if (!$releaseInfo) {
+        if (! $releaseInfo) {
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -92,7 +92,7 @@ class AppUpdateController extends Controller
             return $this->fetchLatestRelease();
         });
 
-        if (!$releaseInfo || !$releaseInfo['download_url']) {
+        if (! $releaseInfo || ! $releaseInfo['download_url']) {
             return response()->json([
                 'success' => false,
                 'error' => ['code' => 'NO_UPDATE', 'message' => 'No APK available'],
@@ -140,7 +140,7 @@ class AppUpdateController extends Controller
             return $this->fetchLatestRelease();
         });
 
-        if (!$releaseInfo) {
+        if (! $releaseInfo) {
             return response()->json([
                 'success' => false,
                 'error' => ['code' => 'NO_RELEASE', 'message' => 'No release found'],
@@ -181,7 +181,7 @@ class AppUpdateController extends Controller
                 ->timeout(10)
                 ->get("https://api.github.com/repos/{$this->githubOwner}/{$this->githubRepo}/releases");
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::warning('GitHub API failed', ['status' => $response->status()]);
                 return null;
             }
@@ -203,7 +203,7 @@ class AppUpdateController extends Controller
                     return str_ends_with(strtolower($asset['name']), '.apk');
                 });
 
-                if (!$apkAsset) {
+                if (! $apkAsset) {
                     continue;
                 }
 
@@ -211,7 +211,7 @@ class AppUpdateController extends Controller
                 preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $matches);
                 $version = $matches[1] ?? null;
 
-                if (!$version) {
+                if (! $version) {
                     continue;
                 }
 
