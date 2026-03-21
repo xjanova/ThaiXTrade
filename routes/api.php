@@ -6,6 +6,7 @@
  */
 
 use App\Http\Controllers\Api\AIController;
+use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\BannerController as ApiBannerController;
 use App\Http\Controllers\Api\BridgeApiController;
@@ -159,6 +160,13 @@ Route::prefix('v1')->group(function () {
             ->middleware('throttle:30,1');
         Route::get('/iot/test/{deviceId}', [FoodPassportApiController::class, 'testDevice']);
         Route::get('/iot/config/{deviceId}', [FoodPassportApiController::class, 'deviceConfig']);
+    });
+
+    // App Update — ตรวจสอบ + ดาวน์โหลด APK (ไม่ต้องเปิด GitHub)
+    Route::prefix('app')->group(function () {
+        Route::get('/update-check', [AppUpdateController::class, 'check']);
+        Route::get('/download', [AppUpdateController::class, 'download']);
+        Route::get('/latest', [AppUpdateController::class, 'latest']);
     });
 
     // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)

@@ -36,6 +36,13 @@ return [
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET', ''),
     ],
 
+    // GitHub — สำหรับดึง release/APK (repo เป็น private ได้)
+    'github' => [
+        'owner' => env('GITHUB_OWNER', 'xjanova'),
+        'repo' => env('GITHUB_REPO', 'ThaiXTrade'),
+        'token' => env('GITHUB_TOKEN'),
+    ],
+
     // TPIX Chain — blockchain config
     'tpix_chain' => [
         'rpc_url' => env('TPIX_RPC_URL', 'https://rpc.tpix.online'),

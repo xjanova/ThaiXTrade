@@ -2,22 +2,17 @@
  * App Update Service
  * ระบบตรวจสอบและอัปเดตแอป
  *
- * Checks GitHub Releases for new APK versions, downloads APK
- * with progress tracking, and triggers installation.
- * ตรวจสอบ GitHub Releases สำหรับ APK เวอร์ชันใหม่, ดาวน์โหลด APK
- * พร้อมติดตามความคืบหน้า, และเริ่มการติดตั้ง
+ * ใช้ API ของเราเอง (tpixtrade.com) แทน GitHub โดยตรง
+ * เพื่อให้ repo เป็น private ได้ ไม่ต้องเปิดให้คนอื่นเห็น
  */
 
 import Constants from 'expo-constants';
 import { Platform, Linking } from 'react-native';
-// Platform-split: .web.ts stub on web, native impl on Android/iOS
-// แยกตาม platform: .web.ts stub บนเว็บ, native impl บน Android/iOS
 import { downloadApkNative, installApkNative } from './nativeFileOps';
 
-// GitHub repository info / ข้อมูล repository
-const GITHUB_OWNER = 'xjanova';
-const GITHUB_REPO = 'ThaiXTrade';
-const GITHUB_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}`;
+// API base URL / URL หลักของ API
+const API_BASE = Constants.expoConfig?.extra?.apiBaseUrl
+  ?? 'https://tpixtrade.com/api/v1';
 
 // Current app version / เวอร์ชันแอปปัจจุบัน
 export const CURRENT_VERSION = Constants.expoConfig?.version ?? '1.0.0';
@@ -54,11 +49,10 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-function extractVersion(tag: string): string | null {
-  const match = tag.match(/v?(\d+\.\d+\.\d+)/);
-  return match ? match[1] : null;
-}
-
+/**
+ * Check for updates via our own API
+ * ตรวจสอบอัปเดตผ่าน API ของเราเอง (ไม่เรียก GitHub โดยตรง)
+ */
 export async function checkForUpdate(): Promise<UpdateInfo> {
   const noUpdate: UpdateInfo = {
     available: false,
@@ -67,7 +61,7 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
     releaseName: '',
     releaseNotes: '',
     downloadUrl: null,
-    releaseUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`,
+    releaseUrl: `${API_BASE}/app/latest`,
     publishedAt: '',
     mandatory: false,
     fileSize: 0,
@@ -79,52 +73,36 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
-    const response = await fetch(`${GITHUB_API}/releases`, {
-      headers: {
-        Accept: 'application/vnd.github.v3+json',
-        'User-Agent': 'TPIX-TRADE-Mobile',
+    const response = await fetch(
+      `${API_BASE}/app/update-check?version=${CURRENT_VERSION}&platform=${Platform.OS}`,
+      {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'TPIX-TRADE-Mobile',
+        },
+        signal: controller.signal,
       },
-      signal: controller.signal,
-    });
+    );
     clearTimeout(timeoutId);
+
     if (!response.ok) return noUpdate;
 
-    const releases: Array<{
-      tag_name: string;
-      name: string;
-      body: string;
-      html_url: string;
-      published_at: string;
-      draft: boolean;
-      prerelease: boolean;
-      assets: Array<{ name: string; browser_download_url: string; size: number }>;
-    }> = await response.json();
+    const json = await response.json();
+    if (!json.success || !json.data) return noUpdate;
 
-    const mobileRelease = releases.find((r) => {
-      if (r.draft || r.prerelease) return false;
-      return r.tag_name.includes('mobile') && r.assets.some((a) => a.name.toLowerCase().endsWith('.apk'));
-    });
-    if (!mobileRelease) return noUpdate;
-
-    const latestVersion = extractVersion(mobileRelease.tag_name);
-    if (!latestVersion) return noUpdate;
-
-    const isNewer = compareVersions(latestVersion, CURRENT_VERSION) > 0;
-    const apkAsset = mobileRelease.assets.find((a) => a.name.toLowerCase().endsWith('.apk'));
-    const currentMajor = parseInt(CURRENT_VERSION.split('.')[0], 10);
-    const latestMajor = parseInt(latestVersion.split('.')[0], 10);
+    const data = json.data;
 
     return {
-      available: isNewer,
-      latestVersion,
+      available: data.available ?? false,
+      latestVersion: data.latest_version ?? CURRENT_VERSION,
       currentVersion: CURRENT_VERSION,
-      releaseName: mobileRelease.name || `v${latestVersion}`,
-      releaseNotes: mobileRelease.body || '',
-      downloadUrl: apkAsset?.browser_download_url ?? null,
-      releaseUrl: mobileRelease.html_url,
-      publishedAt: mobileRelease.published_at,
-      mandatory: latestMajor > currentMajor,
-      fileSize: apkAsset?.size ?? 0,
+      releaseName: data.release_name ?? '',
+      releaseNotes: data.release_notes ?? '',
+      downloadUrl: data.download_url ?? null,
+      releaseUrl: `${API_BASE}/app/latest`,
+      publishedAt: data.published_at ?? '',
+      mandatory: data.mandatory ?? false,
+      fileSize: data.file_size ?? 0,
     };
   } catch {
     return noUpdate;
@@ -164,5 +142,5 @@ export function formatFileSize(bytes: number): string {
 }
 
 export async function openReleasesPage(): Promise<void> {
-  await Linking.openURL(`https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`);
+  await Linking.openURL('https://tpixtrade.com/download');
 }

@@ -1,7 +1,7 @@
 <script setup>
 /**
  * TPIX TRADE - Download Mobile App Page
- * แสดงลิงก์ดาวน์โหลด APK จาก GitHub Releases
+ * ดาวน์โหลด APK ผ่าน API ของเราเอง (ไม่ต้องเปิด GitHub)
  * Developed by Xman Studio
  */
 
@@ -17,27 +17,26 @@ const release = ref(props.latestRelease);
 const isLoading = ref(!props.latestRelease);
 const error = ref('');
 
-// Fallback: ดึง release จาก GitHub API ถ้า server ไม่ส่งมา
+// ดึง release จาก API ของเราเอง (ไม่เรียก GitHub โดยตรง)
 onMounted(async () => {
     if (release.value) return;
 
     try {
-        const res = await fetch('https://api.github.com/repos/xjanova/ThaiXTrade/releases/latest');
+        const res = await fetch('/api/v1/app/latest');
         if (!res.ok) throw new Error('No releases found');
-        const data = await res.json();
+        const json = await res.json();
 
-        const apk = data.assets?.find(a => a.name.endsWith('.apk'));
+        if (!json.success || !json.data) throw new Error('No releases found');
 
+        const data = json.data;
         release.value = {
-            version: data.tag_name?.replace('mobile-v', 'v') || data.tag_name,
+            version: `v${data.version}`,
             name: data.name,
             publishedAt: data.published_at,
-            body: data.body,
-            apkUrl: apk?.browser_download_url || null,
-            apkSize: apk ? Math.round(apk.size / 1024 / 1024) : null,
-            apkName: apk?.name || null,
-            htmlUrl: data.html_url,
-            downloadCount: apk?.download_count || 0,
+            body: data.notes,
+            apkUrl: data.download_url,
+            apkSize: data.file_size ? Math.round(data.file_size / 1024 / 1024) : null,
+            apkName: data.file_name,
         };
     } catch {
         error.value = 'ยังไม่มี release — กรุณารอ build แรก';
@@ -81,9 +80,6 @@ function formatDate(iso) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
                     <p class="text-dark-400 mb-4">{{ error }}</p>
-                    <a href="https://github.com/xjanova/ThaiXTrade/releases" target="_blank" class="text-primary-400 hover:text-primary-300 text-sm">
-                        ดูทั้งหมดบน GitHub Releases
-                    </a>
                 </div>
 
                 <!-- Release Card -->
@@ -116,20 +112,9 @@ function formatDate(iso) {
                             <span v-if="release.apkSize" class="text-sm opacity-80">({{ release.apkSize }} MB)</span>
                         </a>
 
-                        <!-- Fallback: ไม่มี APK ใน release -->
-                        <a
-                            v-else
-                            :href="release.htmlUrl"
-                            target="_blank"
-                            class="w-full flex items-center justify-center gap-3 py-4 px-6 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-semibold transition-all"
-                        >
-                            ดูบน GitHub Releases
-                        </a>
-
                         <!-- Info -->
                         <div class="flex items-center justify-between mt-4 text-xs text-dark-500">
                             <span v-if="release.apkName">{{ release.apkName }}</span>
-                            <span v-if="release.downloadCount > 0">{{ release.downloadCount.toLocaleString() }} downloads</span>
                         </div>
                     </div>
 
@@ -168,12 +153,11 @@ function formatDate(iso) {
                         </div>
                     </div>
 
-                    <!-- All Releases Link -->
+                    <!-- Footer -->
                     <div class="text-center">
-                        <a href="https://github.com/xjanova/ThaiXTrade/releases" target="_blank"
-                            class="text-dark-500 hover:text-dark-300 text-sm transition-colors">
-                            ดูเวอร์ชันทั้งหมด
-                        </a>
+                        <p class="text-dark-500 text-sm">
+                            by Xman Studio
+                        </p>
                     </div>
                 </div>
 
