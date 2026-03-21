@@ -1,11 +1,9 @@
 <?php
 
 return [
-
     'default' => env('MAIL_MAILER', 'log'),
 
     'mailers' => [
-
         'smtp' => [
             'transport' => 'smtp',
             'scheme' => env('MAIL_SCHEME'),
@@ -52,12 +50,10 @@ return [
             ],
             'retry_after' => 60,
         ],
-
     ],
 
     'from' => [
         'address' => env('MAIL_FROM_ADDRESS', 'noreply@tpixtrade.com'),
         'name' => env('MAIL_FROM_NAME', 'TPIX TRADE'),
     ],
-
 ];

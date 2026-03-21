@@ -298,7 +298,7 @@ class SettingController extends Controller
         $this->applyMailConfig();
 
         try {
-            Mail::to($validated['test_email'])->send(new TestMail);
+            Mail::to($validated['test_email'])->send(new TestMail());
 
             return back()->with('success', "ส่งอีเมลทดสอบไปที่ {$validated['test_email']} เรียบร้อยแล้ว");
         } catch (\Exception $e) {
