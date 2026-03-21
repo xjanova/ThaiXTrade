@@ -27,6 +27,7 @@ const tabs = [
     { key: 'trading', label: 'Trading', icon: 'chart' },
     { key: 'payment', label: 'Payment', icon: 'card' },
     { key: 'ai', label: 'AI', icon: 'brain' },
+    { key: 'email', label: 'Email', icon: 'mail' },
     { key: 'security', label: 'Security', icon: 'shield' },
     { key: 'social', label: 'Social', icon: 'share' },
 ];
@@ -157,6 +158,31 @@ const aiForm = useForm({
 
 const saveAi = () => {
     aiForm.put('/admin/settings/ai', { preserveScroll: true });
+};
+
+// Email form
+const emailForm = useForm({
+    resend_api_key: props.settings.resend_api_key || '',
+    mail_from_address: props.settings.mail_from_address || 'tpixtrade@xman4289.com',
+    mail_from_name: props.settings.mail_from_name || 'TPIX TRADE',
+});
+
+const testEmailAddress = ref('');
+const emailTestLoading = ref(false);
+
+const saveEmail = () => {
+    emailForm.put('/admin/settings/email', { preserveScroll: true });
+};
+
+const sendTestEmail = () => {
+    if (!testEmailAddress.value) return;
+    emailTestLoading.value = true;
+
+    const form = useForm({ test_email: testEmailAddress.value });
+    form.post('/admin/settings/email/test', {
+        preserveScroll: true,
+        onFinish: () => { emailTestLoading.value = false; },
+    });
 };
 
 const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200';
@@ -368,6 +394,117 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     </button>
                 </div>
             </form>
+        </div>
+
+        <!-- Email Tab -->
+        <div v-show="activeTab === 'email'" class="space-y-6">
+            <!-- Flash messages -->
+            <div v-if="flash.success && activeTab === 'email'" class="p-4 rounded-xl bg-trading-green/10 border border-trading-green/30 text-trading-green text-sm flex items-center gap-2">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                {{ flash.success }}
+            </div>
+            <div v-if="flash.error && activeTab === 'email'" class="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm flex items-center gap-2">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                {{ flash.error }}
+            </div>
+
+            <!-- Email Configuration -->
+            <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">Email Configuration</h3>
+                <p class="text-dark-400 text-sm mb-6">ตั้งค่า Resend API สำหรับส่งอีเมลจากระบบ</p>
+
+                <form @submit.prevent="saveEmail" class="space-y-6 max-w-2xl">
+                    <div>
+                        <label :class="labelClass">Resend API Key</label>
+                        <input v-model="emailForm.resend_api_key" type="password" :class="inputClass" placeholder="re_xxxxxxxxxxxxxxxx" />
+                        <p class="text-dark-500 text-xs mt-1">สมัครฟรีที่ <a href="https://resend.com" target="_blank" class="text-primary-400 hover:underline">resend.com</a> — ส่งได้ 3,000 เมล/เดือน (ฟรี)</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label :class="labelClass">From Email</label>
+                            <input v-model="emailForm.mail_from_address" type="email" :class="inputClass" placeholder="noreply@xman4289.com" />
+                            <p class="text-dark-500 text-xs mt-1">ต้องเป็น domain ที่ verified ใน Resend</p>
+                        </div>
+                        <div>
+                            <label :class="labelClass">From Name</label>
+                            <input v-model="emailForm.mail_from_name" type="text" :class="inputClass" placeholder="TPIX TRADE" />
+                        </div>
+                    </div>
+
+                    <div class="pt-2">
+                        <button type="submit" :disabled="emailForm.processing" class="btn-primary px-6 py-2.5">
+                            <span v-if="emailForm.processing">Saving...</span>
+                            <span v-else>Save Email Settings</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Send Test Email -->
+            <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">ทดสอบส่งอีเมล</h3>
+                <p class="text-dark-400 text-sm mb-6">ส่งอีเมลทดสอบเพื่อตรวจสอบว่าระบบทำงานปกติ</p>
+
+                <div class="flex items-end gap-3 max-w-2xl">
+                    <div class="flex-1">
+                        <label :class="labelClass">Email ปลายทาง</label>
+                        <input v-model="testEmailAddress" type="email" :class="inputClass" placeholder="your@email.com" />
+                    </div>
+                    <button
+                        @click="sendTestEmail"
+                        :disabled="emailTestLoading || !testEmailAddress"
+                        class="px-6 py-3 rounded-xl font-medium text-sm transition-all whitespace-nowrap"
+                        :class="emailTestLoading || !testEmailAddress
+                            ? 'bg-dark-700 text-dark-500 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-primary-500 to-accent-500 text-white hover:shadow-lg hover:shadow-primary-500/25'"
+                    >
+                        <span v-if="emailTestLoading" class="flex items-center gap-2">
+                            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                            Sending...
+                        </span>
+                        <span v-else class="flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                            Send Test Email
+                        </span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Info Section -->
+            <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                <h3 class="text-lg font-semibold text-white mb-4">ข้อมูลระบบอีเมล</h3>
+                <div class="space-y-3 text-sm">
+                    <div class="flex items-start gap-3 p-3 rounded-xl bg-dark-800/50">
+                        <span class="text-primary-400 mt-0.5">📧</span>
+                        <div>
+                            <p class="text-white font-medium">Resend</p>
+                            <p class="text-dark-400">ใช้ Resend API สำหรับส่งอีเมล — เร็ว เสถียร รองรับ SPF/DKIM</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 p-3 rounded-xl bg-dark-800/50">
+                        <span class="text-trading-green mt-0.5">✅</span>
+                        <div>
+                            <p class="text-white font-medium">Domain ที่ Verified</p>
+                            <p class="text-dark-400">xman4289.com — ส่งอีเมลได้ทันที ไม่ถูก spam</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 p-3 rounded-xl bg-dark-800/50">
+                        <span class="text-yellow-400 mt-0.5">📊</span>
+                        <div>
+                            <p class="text-white font-medium">Free Plan</p>
+                            <p class="text-dark-400">ส่งได้ 3,000 เมล/เดือน, 100 เมล/วัน — เพียงพอสำหรับ notification</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 p-3 rounded-xl bg-dark-800/50">
+                        <span class="text-accent-400 mt-0.5">🎨</span>
+                        <div>
+                            <p class="text-white font-medium">Template</p>
+                            <p class="text-dark-400">Dark theme แบบ TPIX TRADE พร้อมรองรับ Thai + responsive ทุกอุปกรณ์</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Security Tab -->
