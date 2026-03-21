@@ -12,6 +12,7 @@ use App\Http\Controllers\TokenFactoryController;
 use App\Http\Controllers\TokenSaleController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use Throwable;
 
 /*
 |--------------------------------------------------------------------------
@@ -136,7 +137,7 @@ Route::get('/download', function () {
                 'apkName' => $d['file_name'],
             ];
         }
-    } catch (\Throwable) {
+    } catch (Throwable) {
         // Fallback: frontend will fetch on mount
     }
 

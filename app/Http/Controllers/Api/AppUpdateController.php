@@ -1,9 +1,9 @@
 <?php
 
 /**
- * App Update Controller
- * ตรวจสอบเวอร์ชันและให้ดาวน์โหลด APK ผ่าน API ของเราเอง
- * ไม่ต้องเปิด GitHub repo เป็น public
+ * App Update Controller.
+ * ตรวจสอบเวอร์ชันและให้ดาวน์โหลด APK ผ่าน API ของเราเอง.
+ * ไม่ต้องเปิด GitHub repo เป็น public.
  *
  * Developed by Xman Studio.
  */
@@ -34,8 +34,8 @@ class AppUpdateController extends Controller
     }
 
     /**
-     * Check for latest app version
-     * ตรวจสอบเวอร์ชันล่าสุดของแอป
+     * Check for latest app version.
+     * ตรวจสอบเวอร์ชันล่าสุดของแอป.
      *
      * GET /api/v1/app/update-check
      */
@@ -50,7 +50,7 @@ class AppUpdateController extends Controller
             return $this->fetchLatestRelease();
         });
 
-        if (! $releaseInfo) {
+        if (!$releaseInfo) {
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -81,8 +81,8 @@ class AppUpdateController extends Controller
     }
 
     /**
-     * Download latest APK
-     * ดาวน์โหลด APK เวอร์ชันล่าสุด (proxy ผ่าน server)
+     * Download latest APK.
+     * ดาวน์โหลด APK เวอร์ชันล่าสุด (proxy ผ่าน server).
      *
      * GET /api/v1/app/download
      */
@@ -92,7 +92,7 @@ class AppUpdateController extends Controller
             return $this->fetchLatestRelease();
         });
 
-        if (! $releaseInfo || ! $releaseInfo['download_url']) {
+        if (!$releaseInfo || !$releaseInfo['download_url']) {
             return response()->json([
                 'success' => false,
                 'error' => ['code' => 'NO_UPDATE', 'message' => 'No APK available'],
@@ -129,8 +129,8 @@ class AppUpdateController extends Controller
     }
 
     /**
-     * Get release info (for web Download page)
-     * ข้อมูล release สำหรับหน้าดาวน์โหลดบนเว็บ
+     * Get release info (for web Download page).
+     * ข้อมูล release สำหรับหน้าดาวน์โหลดบนเว็บ.
      *
      * GET /api/v1/app/latest
      */
@@ -140,7 +140,7 @@ class AppUpdateController extends Controller
             return $this->fetchLatestRelease();
         });
 
-        if (! $releaseInfo) {
+        if (!$releaseInfo) {
             return response()->json([
                 'success' => false,
                 'error' => ['code' => 'NO_RELEASE', 'message' => 'No release found'],
@@ -162,8 +162,8 @@ class AppUpdateController extends Controller
     }
 
     /**
-     * Fetch latest mobile release from GitHub
-     * ดึงข้อมูล release ล่าสุดจาก GitHub
+     * Fetch latest mobile release from GitHub.
+     * ดึงข้อมูล release ล่าสุดจาก GitHub.
      */
     private function fetchLatestRelease(): ?array
     {
@@ -181,7 +181,7 @@ class AppUpdateController extends Controller
                 ->timeout(10)
                 ->get("https://api.github.com/repos/{$this->githubOwner}/{$this->githubRepo}/releases");
 
-            if (! $response->successful()) {
+            if (!$response->successful()) {
                 Log::warning('GitHub API failed', ['status' => $response->status()]);
                 return null;
             }
@@ -203,7 +203,7 @@ class AppUpdateController extends Controller
                     return str_ends_with(strtolower($asset['name']), '.apk');
                 });
 
-                if (! $apkAsset) {
+                if (!$apkAsset) {
                     continue;
                 }
 
@@ -211,7 +211,7 @@ class AppUpdateController extends Controller
                 preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $matches);
                 $version = $matches[1] ?? null;
 
-                if (! $version) {
+                if (!$version) {
                     continue;
                 }
 
