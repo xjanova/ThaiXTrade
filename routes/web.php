@@ -114,9 +114,32 @@ Route::get('/staking', function () {
     return Inertia::render('Staking');
 })->name('staking');
 
-// Download — ดาวน์โหลดแอป TPIX TRADE (APK จาก GitHub Releases)
+// Download — ดาวน์โหลดแอป TPIX TRADE (ดึง release ล่าสุดจาก API ของเราเอง)
 Route::get('/download', function () {
-    return Inertia::render('Download');
+    $release = null;
+    try {
+        $controller = app(\App\Http\Controllers\Api\AppUpdateController::class);
+        $response = $controller->latest();
+        $json = json_decode($response->getContent(), true);
+        if (($json['success'] ?? false) && isset($json['data'])) {
+            $d = $json['data'];
+            $release = [
+                'version' => 'v' . $d['version'],
+                'name' => $d['name'],
+                'publishedAt' => $d['published_at'],
+                'body' => $d['notes'],
+                'apkUrl' => $d['download_url'],
+                'apkSize' => $d['file_size'] ? round($d['file_size'] / 1024 / 1024) : null,
+                'apkName' => $d['file_name'],
+            ];
+        }
+    } catch (\Throwable $e) {
+        // Fallback: ให้ frontend ดึงเอง / frontend will fetch on mount
+    }
+
+    return Inertia::render('Download', [
+        'latestRelease' => $release,
+    ]);
 })->name('download');
 
 // Health Check
