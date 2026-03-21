@@ -60,14 +60,14 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Cache node modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: mobile/node_modules
           key: ${{ runner.os }}-mobile-node-${{ hashFiles('mobile/package-lock.json') }}
           restore-keys: ${{ runner.os }}-mobile-node-
 
       - name: Cache Gradle dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
