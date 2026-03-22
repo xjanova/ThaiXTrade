@@ -18,7 +18,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AppUpdateController extends Controller
 {
@@ -88,7 +87,7 @@ class AppUpdateController extends Controller
      *
      * GET /api/v1/app/download
      */
-    public function download(): StreamedResponse|JsonResponse|RedirectResponse
+    public function download(): JsonResponse|RedirectResponse
     {
         $releaseInfo = Cache::remember('app_update_android', 300, function () {
             return $this->fetchLatestRelease();
@@ -147,39 +146,9 @@ class AppUpdateController extends Controller
             ], 502);
         }
 
-        // Step 2: Stream จาก S3 โดยตรง (เร็ว ไม่ต้อง auth)
-        return new StreamedResponse(function () use ($s3Url) {
-            $ch = curl_init($s3Url);
-
-            curl_setopt_array($ch, [
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_TIMEOUT => 300,
-                CURLOPT_CONNECTTIMEOUT => 10,
-                CURLOPT_WRITEFUNCTION => function ($ch, $data) {
-                    echo $data;
-                    if (ob_get_level()) {
-                        ob_flush();
-                    }
-                    flush();
-
-                    return strlen($data);
-                },
-            ]);
-
-            curl_exec($ch);
-
-            if (curl_errno($ch)) {
-                Log::error('APK S3 stream failed', ['error' => curl_error($ch)]);
-            }
-
-            curl_close($ch);
-        }, 200, [
-            'Content-Type' => 'application/vnd.android.package-archive',
-            'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
-            'Content-Length' => $fileSize,
-            'Cache-Control' => 'public, max-age=3600',
-            'X-Accel-Buffering' => 'no',
-        ]);
+        // Step 2: Redirect ไป S3 โดยตรง (เร็วมาก ไม่ผ่าน server)
+        // S3 URL เป็น objects.githubusercontent.com ไม่เปิดเผย GitHub repo
+        return redirect()->away($s3Url);
     }
 
     /**
