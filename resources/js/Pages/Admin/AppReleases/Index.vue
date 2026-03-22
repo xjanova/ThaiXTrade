@@ -2,9 +2,11 @@
 /**
  * TPIX TRADE - Admin App Releases Page
  * แสดงรายการ releases จาก GitHub + เลือก active release
+ * พร้อม filter + pagination
  * Developed by Xman Studio
  */
 
+import { ref, computed } from 'vue';
 import { router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
@@ -14,6 +16,31 @@ const props = defineProps({
     hasToken: { type: Boolean, default: false },
     activeTag: { type: String, default: null },
 });
+
+// Filter & Pagination
+const filter = ref('all');
+const perPage = ref(15);
+const currentPage = ref(1);
+
+const filteredReleases = computed(() => {
+    if (filter.value === 'all') return props.releases;
+    if (filter.value === 'mobile') return props.releases.filter(r => r.is_mobile);
+    if (filter.value === 'web') return props.releases.filter(r => !r.is_mobile);
+    if (filter.value === 'apk') return props.releases.filter(r => r.has_apk);
+    return props.releases;
+});
+
+const totalPages = computed(() => Math.ceil(filteredReleases.value.length / perPage.value));
+
+const paginatedReleases = computed(() => {
+    const start = (currentPage.value - 1) * perPage.value;
+    return filteredReleases.value.slice(start, start + perPage.value);
+});
+
+const setFilter = (f) => {
+    filter.value = f;
+    currentPage.value = 1;
+};
 
 const refresh = () => {
     router.post('/admin/app-releases/refresh', {}, { preserveScroll: true });
@@ -32,6 +59,13 @@ const formatDate = (dateStr) => {
         hour: '2-digit', minute: '2-digit',
     });
 };
+
+const filterCounts = computed(() => ({
+    all: props.releases.length,
+    mobile: props.releases.filter(r => r.is_mobile).length,
+    web: props.releases.filter(r => !r.is_mobile).length,
+    apk: props.releases.filter(r => r.has_apk).length,
+}));
 </script>
 
 <template>
@@ -95,11 +129,11 @@ const formatDate = (dateStr) => {
                 </div>
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
                     <p class="text-dark-400 text-sm">Mobile Releases</p>
-                    <p class="text-2xl font-bold text-primary-400 mt-1">{{ releases.filter(r => r.is_mobile).length }}</p>
+                    <p class="text-2xl font-bold text-primary-400 mt-1">{{ filterCounts.mobile }}</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
                     <p class="text-dark-400 text-sm">With APK</p>
-                    <p class="text-2xl font-bold text-trading-green mt-1">{{ releases.filter(r => r.has_apk).length }}</p>
+                    <p class="text-2xl font-bold text-trading-green mt-1">{{ filterCounts.apk }}</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
                     <p class="text-dark-400 text-sm">Total Downloads</p>
@@ -107,9 +141,32 @@ const formatDate = (dateStr) => {
                 </div>
             </div>
 
+            <!-- Filter Tabs -->
+            <div class="flex items-center gap-2">
+                <button
+                    v-for="f in [
+                        { key: 'all', label: 'All' },
+                        { key: 'mobile', label: 'Mobile' },
+                        { key: 'web', label: 'Web' },
+                        { key: 'apk', label: 'With APK' },
+                    ]"
+                    :key="f.key"
+                    @click="setFilter(f.key)"
+                    :class="[
+                        'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                        filter === f.key
+                            ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
+                            : 'bg-white/5 text-dark-400 border border-white/5 hover:bg-white/10 hover:text-white'
+                    ]"
+                >
+                    {{ f.label }}
+                    <span class="ml-1.5 text-xs opacity-60">({{ filterCounts[f.key] }})</span>
+                </button>
+            </div>
+
             <!-- Releases Table -->
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
-                <div v-if="releases.length === 0" class="p-12 text-center">
+                <div v-if="filteredReleases.length === 0" class="p-12 text-center">
                     <svg class="w-16 h-16 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
@@ -130,7 +187,7 @@ const formatDate = (dateStr) => {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/5">
-                        <tr v-for="release in releases" :key="release.id"
+                        <tr v-for="release in paginatedReleases" :key="release.id"
                             :class="['hover:bg-white/2 transition-colors', release.tag === activeTag ? 'bg-trading-green/5 border-l-2 border-trading-green' : '']">
                             <td class="px-6 py-4">
                                 <div class="flex items-center gap-2">
@@ -182,6 +239,43 @@ const formatDate = (dateStr) => {
                         </tr>
                     </tbody>
                 </table>
+
+                <!-- Pagination -->
+                <div v-if="totalPages > 1" class="flex items-center justify-between px-6 py-4 border-t border-white/5">
+                    <p class="text-dark-500 text-sm">
+                        Showing {{ (currentPage - 1) * perPage + 1 }}–{{ Math.min(currentPage * perPage, filteredReleases.length) }}
+                        of {{ filteredReleases.length }} releases
+                    </p>
+                    <div class="flex items-center gap-1">
+                        <button
+                            @click="currentPage = Math.max(1, currentPage - 1)"
+                            :disabled="currentPage === 1"
+                            :class="['px-3 py-1.5 rounded-lg text-sm transition-colors', currentPage === 1 ? 'text-dark-600 cursor-not-allowed' : 'text-dark-300 hover:bg-white/10 hover:text-white']"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                        </button>
+                        <button
+                            v-for="page in totalPages"
+                            :key="page"
+                            @click="currentPage = page"
+                            :class="[
+                                'w-8 h-8 rounded-lg text-sm font-medium transition-colors',
+                                currentPage === page
+                                    ? 'bg-primary-500/20 text-primary-400'
+                                    : 'text-dark-400 hover:bg-white/10 hover:text-white'
+                            ]"
+                        >
+                            {{ page }}
+                        </button>
+                        <button
+                            @click="currentPage = Math.min(totalPages, currentPage + 1)"
+                            :disabled="currentPage === totalPages"
+                            :class="['px-3 py-1.5 rounded-lg text-sm transition-colors', currentPage === totalPages ? 'text-dark-600 cursor-not-allowed' : 'text-dark-300 hover:bg-white/10 hover:text-white']"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- Info Note -->
