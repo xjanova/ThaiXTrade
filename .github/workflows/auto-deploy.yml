@@ -149,6 +149,11 @@ jobs:
             # Restart queue workers if running
             php artisan queue:restart 2>/dev/null || true
 
+            # Setup cron for Laravel Scheduler (content auto-generation)
+            CRON_CMD="cd $(pwd) && php artisan schedule:run >> /dev/null 2>&1"
+            (crontab -l 2>/dev/null | grep -v "artisan schedule:run"; echo "* * * * * $CRON_CMD") | sort -u | crontab - 2>/dev/null || echo "⚠️ Cron setup skipped (no crontab access)"
+            echo "✅ Laravel scheduler cron configured"
+
             echo "✅ Deployment completed successfully!"
 
       - name: Health Check

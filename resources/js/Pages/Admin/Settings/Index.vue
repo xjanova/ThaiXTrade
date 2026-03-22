@@ -163,6 +163,54 @@ const saveAi = () => {
     aiForm.put('/admin/settings/ai', { preserveScroll: true });
 };
 
+// Content Schedule form (group: content)
+const contentForm = useForm({
+    content_auto_enabled: props.settings.content_auto_enabled || false,
+    content_max_per_day: props.settings.content_max_per_day || 2,
+    content_time_slots: props.settings.content_time_slots || '["09:00","18:00"]',
+    content_categories: props.settings.content_categories || '["tpix_chain","defi","news"]',
+    content_language: props.settings.content_language || 'th',
+    content_auto_publish: props.settings.content_auto_publish || false,
+});
+
+const saveContent = () => {
+    contentForm.put('/admin/settings/content', { preserveScroll: true });
+};
+
+const timeSlots = ref(JSON.parse(contentForm.content_time_slots || '["09:00"]'));
+const newTimeSlot = ref('');
+
+function addTimeSlot() {
+    if (newTimeSlot.value && !timeSlots.value.includes(newTimeSlot.value)) {
+        timeSlots.value.push(newTimeSlot.value);
+        timeSlots.value.sort();
+        contentForm.content_time_slots = JSON.stringify(timeSlots.value);
+    }
+    newTimeSlot.value = '';
+}
+
+function removeTimeSlot(index) {
+    timeSlots.value.splice(index, 1);
+    contentForm.content_time_slots = JSON.stringify(timeSlots.value);
+}
+
+const selectedCategories = ref(JSON.parse(contentForm.content_categories || '[]'));
+const allCategories = [
+    { value: 'tpix_chain', label: 'TPIX Chain' },
+    { value: 'defi', label: 'DeFi' },
+    { value: 'news', label: 'News' },
+    { value: 'analysis', label: 'Analysis' },
+    { value: 'tutorial', label: 'Tutorial' },
+    { value: 'technology', label: 'Technology' },
+];
+
+function toggleCategory(cat) {
+    const idx = selectedCategories.value.indexOf(cat);
+    if (idx >= 0) selectedCategories.value.splice(idx, 1);
+    else selectedCategories.value.push(cat);
+    contentForm.content_categories = JSON.stringify(selectedCategories.value);
+}
+
 // Email form
 const emailForm = useForm({
     resend_api_key: props.settings.resend_api_key || '',
@@ -696,6 +744,92 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     </button>
                 </div>
             </form>
+
+            <!-- Content Auto-Generation Schedule -->
+            <div class="mt-6 p-5 rounded-xl bg-gradient-to-br from-trading-green/5 via-primary-500/5 to-accent-500/5 border border-trading-green/10">
+                <h4 class="text-base font-semibold text-white mb-1 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-trading-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    Auto Content Schedule
+                </h4>
+                <p class="text-dark-500 text-xs mb-4">ตั้งเวลาสร้างบทความ AI อัตโนมัติ — ระบบจะสร้าง + gen รูปให้เอง</p>
+
+                <form @submit.prevent="saveContent" class="space-y-5 max-w-2xl">
+                    <!-- Enable Toggle -->
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <label class="text-sm font-medium text-white">เปิดใช้ Auto Content</label>
+                            <p class="text-xs text-dark-500 mt-0.5">สร้างบทความ AI อัตโนมัติตามเวลาที่ตั้ง</p>
+                        </div>
+                        <button type="button" @click="contentForm.content_auto_enabled = !contentForm.content_auto_enabled"
+                            :class="['relative inline-flex h-6 w-11 items-center rounded-full transition-colors', contentForm.content_auto_enabled ? 'bg-trading-green' : 'bg-dark-600']">
+                            <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', contentForm.content_auto_enabled ? 'translate-x-6' : 'translate-x-1']"></span>
+                        </button>
+                    </div>
+
+                    <div v-if="contentForm.content_auto_enabled" class="space-y-4 pl-4 border-l-2 border-trading-green/30">
+                        <!-- Time Slots -->
+                        <div>
+                            <label :class="labelClass">ช่วงเวลาสร้าง</label>
+                            <div class="flex flex-wrap gap-2 mb-2">
+                                <span v-for="(slot, i) in timeSlots" :key="i"
+                                    class="inline-flex items-center gap-1 px-3 py-1.5 bg-trading-green/10 text-trading-green rounded-lg text-sm">
+                                    {{ slot }}
+                                    <button type="button" @click="removeTimeSlot(i)" class="hover:text-white ml-1">&times;</button>
+                                </span>
+                                <span v-if="!timeSlots.length" class="text-xs text-dark-500">ยังไม่มี</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <input v-model="newTimeSlot" type="time" :class="inputClass" class="!w-40" />
+                                <button type="button" @click="addTimeSlot" class="px-3 py-2 rounded-xl bg-dark-700 text-white text-sm border border-white/10 hover:bg-dark-600">+</button>
+                            </div>
+                        </div>
+
+                        <!-- Max per day -->
+                        <div>
+                            <label :class="labelClass">จำนวนสูงสุดต่อวัน</label>
+                            <input v-model.number="contentForm.content_max_per_day" type="number" min="1" max="10" :class="inputClass" class="!w-32" />
+                        </div>
+
+                        <!-- Categories -->
+                        <div>
+                            <label :class="labelClass">หมวดหมู่ที่สร้าง</label>
+                            <div class="flex flex-wrap gap-2">
+                                <button v-for="cat in allCategories" :key="cat.value" type="button" @click="toggleCategory(cat.value)"
+                                    :class="['px-3 py-1.5 rounded-xl text-xs transition-all border', selectedCategories.includes(cat.value) ? 'bg-primary-500/10 text-primary-400 border-primary-500/30' : 'bg-dark-800/50 text-dark-400 border-white/5 hover:border-white/20']">
+                                    {{ cat.label }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Language -->
+                        <div>
+                            <label :class="labelClass">ภาษา</label>
+                            <select v-model="contentForm.content_language" :class="inputClass" class="!w-48">
+                                <option value="th">ไทย</option>
+                                <option value="en">English</option>
+                                <option value="both">ทั้งสองภาษา</option>
+                            </select>
+                        </div>
+
+                        <!-- Auto Publish -->
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-dark-300">Publish ทันที</label>
+                            <button type="button" @click="contentForm.content_auto_publish = !contentForm.content_auto_publish"
+                                :class="['w-12 h-6 rounded-full transition-colors', contentForm.content_auto_publish ? 'bg-trading-green' : 'bg-dark-600']">
+                                <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', contentForm.content_auto_publish ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                            </button>
+                            <span class="text-xs text-dark-500">{{ contentForm.content_auto_publish ? 'Publish ทันทีเมื่อสร้างเสร็จ' : 'บันทึกเป็น Draft (ตรวจก่อน publish)' }}</span>
+                        </div>
+                    </div>
+
+                    <div class="pt-2">
+                        <button type="submit" :disabled="contentForm.processing" class="btn-primary px-6 py-2.5">
+                            <span v-if="contentForm.processing">Saving...</span>
+                            <span v-else>Save Content Schedule</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     </AdminLayout>
 </template>
