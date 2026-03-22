@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\SiteSetting;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -35,10 +36,18 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $socialLinks = SiteSetting::getGroup('social');
+
         return array_merge(parent::share($request), [
             'app' => [
                 'name' => config('app.name', 'TPIX TRADE'),
                 'url' => config('app.url'),
+            ],
+            'social' => [
+                'twitter' => $socialLinks['twitter_url'] ?? null,
+                'telegram' => $socialLinks['telegram_url'] ?? null,
+                'discord' => $socialLinks['discord_url'] ?? null,
+                'github' => $socialLinks['github_url'] ?? null,
             ],
             'auth' => [
                 'user' => $request->user() ? [
