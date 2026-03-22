@@ -40,6 +40,14 @@ class HandleInertiaRequests extends Middleware
                 'name' => config('app.name', 'TPIX TRADE'),
                 'url' => config('app.url'),
             ],
+            'auth' => [
+                'user' => $request->user() ? [
+                    'id' => $request->user()->id,
+                    'name' => $request->user()->name,
+                    'email' => $request->user()->email,
+                    'avatar' => $request->user()->avatar,
+                ] : null,
+            ],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),

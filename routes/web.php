@@ -6,6 +6,8 @@
  */
 
 use App\Http\Controllers\Api\AppUpdateController;
+use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\CarbonCreditController;
 use App\Http\Controllers\FoodPassportController;
 use App\Http\Controllers\TokenFactoryController;
@@ -18,6 +20,15 @@ use Inertia\Inertia;
 | Web Routes
 |--------------------------------------------------------------------------
 */
+
+// User Authentication
+Route::middleware('guest')->group(function () {
+    Route::get('login', [LoginController::class, 'showLogin'])->name('login');
+    Route::post('login', [LoginController::class, 'login'])->name('login.submit')->middleware('turnstile');
+    Route::get('register', [RegisterController::class, 'showRegister'])->name('register');
+    Route::post('register', [RegisterController::class, 'register'])->name('register.submit')->middleware('turnstile');
+});
+Route::post('logout', [LoginController::class, 'logout'])->name('logout')->middleware('auth');
 
 // Home
 Route::get('/', function () {

@@ -31,8 +31,8 @@ class TurnstileVerify
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // Skip verification for already authenticated admin sessions
-        if (Auth::guard('admin')->check()) {
+        // Skip verification for already authenticated sessions
+        if (Auth::guard('admin')->check() || Auth::guard('web')->check()) {
             return $next($request);
         }
 

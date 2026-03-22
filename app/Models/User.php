@@ -3,23 +3,25 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
 
 /**
  * TPIX TRADE — User Model (Traders/สมาชิก)
- * สมัครอัตโนมัติเมื่อ connect wallet + เพิ่ม email/profile ได้ทีหลัง
+ * สมัครผ่าน email+password หรือ connect wallet
  * Developed by Xman Studio.
  */
-class User extends Model
+class User extends Authenticatable
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, Notifiable, SoftDeletes;
 
     protected $fillable = [
         'wallet_address',
         'email',
+        'password',
         'name',
         'avatar',
         'is_verified',
@@ -32,6 +34,12 @@ class User extends Model
         'total_volume_usd',
         'last_active_at',
         'last_ip',
+        'email_verified_at',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
     ];
 
     protected function casts(): array
@@ -42,6 +50,8 @@ class User extends Model
             'total_trades' => 'integer',
             'total_volume_usd' => 'decimal:2',
             'last_active_at' => 'datetime',
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
         ];
     }
 

@@ -1,13 +1,14 @@
 <?php
 
 use App\Models\AdminUser;
+use App\Models\User;
 
 // TPIX TRADE - Authentication Configuration.
 
 return [
     'defaults' => [
         'guard' => env('AUTH_GUARD', 'web'),
-        'passwords' => env('AUTH_PASSWORD_BROKER', 'admin_users'),
+        'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
     ],
 
     'guards' => [
@@ -24,7 +25,7 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', AdminUser::class),
+            'model' => User::class,
         ],
         'admin_users' => [
             'driver' => 'eloquent',
@@ -33,6 +34,12 @@ return [
     ],
 
     'passwords' => [
+        'users' => [
+            'provider' => 'users',
+            'table' => 'password_reset_tokens',
+            'expire' => 60,
+            'throttle' => 60,
+        ],
         'admin_users' => [
             'provider' => 'admin_users',
             'table' => 'password_reset_tokens',
