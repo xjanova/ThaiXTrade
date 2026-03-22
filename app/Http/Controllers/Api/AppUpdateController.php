@@ -115,12 +115,22 @@ class AppUpdateController extends Controller
                 $headers['Authorization'] = "Bearer {$this->githubToken}";
             }
 
+            // GitHub API redirects to S3 — ต้อง follow redirects
             $response = Http::withHeaders($headers)
-                ->withOptions(['stream' => true])
+                ->withOptions([
+                    'stream' => true,
+                    'allow_redirects' => true,
+                ])
+                ->timeout(120)
                 ->get($githubUrl);
 
             if ($response->successful()) {
                 echo $response->body();
+            } else {
+                Log::warning('APK download failed', [
+                    'status' => $response->status(),
+                    'url' => $githubUrl,
+                ]);
             }
         }, $fileName, [
             'Content-Type' => 'application/vnd.android.package-archive',
@@ -226,7 +236,7 @@ class AppUpdateController extends Controller
                     'version' => $version,
                     'name' => $release['name'] ?: "v{$version}",
                     'notes' => $release['body'] ?? '',
-                    'download_url' => $apkAsset['browser_download_url'],
+                    'download_url' => $apkAsset['url'],
                     'published_at' => $release['published_at'],
                     'file_size' => $apkAsset['size'],
                 ];
