@@ -5,9 +5,10 @@
  * รองรับ: Groq (หลาย model), AI image (Pollinations.ai ฟรี)
  * Developed by Xman Studio
  */
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { Link } from '@inertiajs/vue3';
 
 const props = defineProps({
     articles: Object,
@@ -88,6 +89,26 @@ const topicSuggestions = [
     'TPIX DEX vs PancakeSwap เปรียบเทียบข้อดีข้อเสีย',
     'FoodPassport — ตรวจสอบที่มาอาหารด้วย Blockchain',
 ];
+
+// Filters
+const filterStatus = ref(props.filters?.status || '');
+const filterLanguage = ref(props.filters?.language || '');
+const searchQuery = ref(props.filters?.search || '');
+let searchTimeout = null;
+
+function applyFilters() {
+    router.get('/admin/content', {
+        status: filterStatus.value || undefined,
+        language: filterLanguage.value || undefined,
+        search: searchQuery.value || undefined,
+    }, { preserveState: true, preserveScroll: true });
+}
+
+watch([filterStatus, filterLanguage], applyFilters);
+watch(searchQuery, () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(applyFilters, 400);
+});
 
 function useSuggestion(topic) {
     generateForm.topic = topic;
@@ -201,51 +222,76 @@ const statusColors = {
                 </button>
             </div>
 
+            <!-- Filter Bar -->
+            <div class="flex flex-wrap items-center gap-3 p-4 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl">
+                <input v-model="searchQuery" type="text" placeholder="ค้นหาบทความ..."
+                    class="flex-1 min-w-[200px] bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-2.5 text-white text-sm placeholder-dark-500 focus:outline-none focus:border-primary-500" />
+                <select v-model="filterStatus" class="bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-2.5 text-white text-sm">
+                    <option value="">ทุกสถานะ</option>
+                    <option value="draft">Draft</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="published">Published</option>
+                    <option value="archived">Archived</option>
+                </select>
+                <select v-model="filterLanguage" class="bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-2.5 text-white text-sm">
+                    <option value="">ทุกภาษา</option>
+                    <option value="th">ไทย</option>
+                    <option value="en">English</option>
+                </select>
+            </div>
+
             <!-- Articles Table -->
-            <div class="glass-card overflow-hidden">
+            <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
                 <table class="w-full">
                     <thead>
                         <tr class="border-b border-white/10 text-dark-400 text-xs uppercase">
                             <th class="text-left p-4">บทความ</th>
-                            <th class="text-left p-4">หมวด</th>
-                            <th class="text-left p-4">ภาษา</th>
-                            <th class="text-left p-4">สถานะ</th>
-                            <th class="text-left p-4">อ่าน</th>
-                            <th class="text-left p-4">วันที่</th>
+                            <th class="text-left p-4 hidden md:table-cell">หมวด</th>
+                            <th class="text-left p-4 hidden sm:table-cell">สถานะ</th>
+                            <th class="text-left p-4 hidden lg:table-cell">อ่าน</th>
+                            <th class="text-left p-4 hidden lg:table-cell">วันที่</th>
                             <th class="text-right p-4">จัดการ</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="article in articles?.data" :key="article.id"
-                            class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                            class="border-b border-white/5 hover:bg-white/5 transition-colors group">
                             <td class="p-4">
-                                <div class="flex items-center gap-3">
-                                    <img v-if="article.cover_image" :src="article.cover_image" class="w-12 h-8 rounded object-cover" />
-                                    <div v-else class="w-12 h-8 rounded bg-dark-700 flex items-center justify-center text-xs">📝</div>
-                                    <div>
+                                <Link :href="`/admin/content/${article.id}/edit`" class="flex items-center gap-3 group-hover:opacity-80">
+                                    <img v-if="article.cover_image" :src="'/storage/' + article.cover_image" class="w-14 h-10 rounded-lg object-cover flex-shrink-0" />
+                                    <div v-else class="w-14 h-10 rounded-lg bg-dark-700 flex items-center justify-center text-xs flex-shrink-0">📝</div>
+                                    <div class="min-w-0">
                                         <p class="text-white text-sm font-medium line-clamp-1">{{ article.title }}</p>
-                                        <p v-if="article.is_ai_generated" class="text-accent-400 text-[10px]">🤖 AI</p>
+                                        <div class="flex items-center gap-2 mt-0.5">
+                                            <span class="text-dark-500 text-xs">{{ article.language === 'th' ? 'TH' : 'EN' }}</span>
+                                            <span v-if="article.is_ai_generated" class="text-accent-400 text-[10px]">AI</span>
+                                        </div>
                                     </div>
-                                </div>
+                                </Link>
                             </td>
-                            <td class="p-4 text-dark-300 text-sm">{{ article.category }}</td>
-                            <td class="p-4 text-dark-300 text-sm">{{ article.language === 'th' ? '🇹🇭' : '🇺🇸' }}</td>
-                            <td class="p-4">
+                            <td class="p-4 text-dark-300 text-sm hidden md:table-cell">
+                                <span class="px-2 py-0.5 bg-dark-700 rounded text-xs">{{ article.category }}</span>
+                            </td>
+                            <td class="p-4 hidden sm:table-cell">
                                 <span :class="['px-2 py-0.5 rounded-lg text-xs', statusColors[article.status]]">
                                     {{ article.status }}
                                 </span>
                             </td>
-                            <td class="p-4 text-dark-300 text-sm">{{ article.views }}</td>
-                            <td class="p-4 text-dark-400 text-xs">{{ formatDate(article.created_at) }}</td>
+                            <td class="p-4 text-dark-300 text-sm hidden lg:table-cell">{{ article.views?.toLocaleString() || 0 }}</td>
+                            <td class="p-4 text-dark-400 text-xs hidden lg:table-cell">{{ formatDate(article.created_at) }}</td>
                             <td class="p-4 text-right">
-                                <div class="flex items-center justify-end gap-2">
+                                <div class="flex items-center justify-end gap-1.5">
+                                    <Link :href="`/admin/content/${article.id}/edit`"
+                                        class="px-2.5 py-1 bg-primary-500/20 text-primary-400 rounded-lg text-xs hover:bg-primary-500/30 transition-colors">
+                                        Edit
+                                    </Link>
                                     <button v-if="article.status === 'draft'" @click="publishArticle(article.id)"
-                                        class="px-2 py-1 bg-trading-green/20 text-trading-green rounded text-xs hover:bg-trading-green/30">
+                                        class="px-2.5 py-1 bg-trading-green/20 text-trading-green rounded-lg text-xs hover:bg-trading-green/30 transition-colors">
                                         Publish
                                     </button>
                                     <button @click="deleteArticle(article.id)"
-                                        class="px-2 py-1 bg-trading-red/20 text-trading-red rounded text-xs hover:bg-trading-red/30">
-                                        ลบ
+                                        class="px-2.5 py-1 bg-trading-red/10 text-trading-red rounded-lg text-xs hover:bg-trading-red/20 transition-colors">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                     </button>
                                 </div>
                             </td>
@@ -253,9 +299,26 @@ const statusColors = {
                     </tbody>
                 </table>
 
-                <div v-if="!articles?.data?.length" class="text-center py-12 text-dark-500">
-                    <p class="text-4xl mb-2">📝</p>
-                    <p>ยังไม่มีบทความ — กด "สร้างบทความด้วย AI" เพื่อเริ่มต้น</p>
+                <div v-if="!articles?.data?.length" class="text-center py-16 text-dark-500">
+                    <p class="text-5xl mb-3">📝</p>
+                    <p class="text-lg text-dark-400 mb-1">ยังไม่มีบทความ</p>
+                    <p class="text-sm">กด "สร้างบทความด้วย AI" เพื่อเริ่มต้น</p>
+                </div>
+
+                <!-- Pagination -->
+                <div v-if="articles?.links?.length > 3" class="flex items-center justify-between px-4 py-3 border-t border-white/5">
+                    <p class="text-xs text-dark-500">
+                        {{ articles.from }}-{{ articles.to }} of {{ articles.total }}
+                    </p>
+                    <div class="flex gap-1">
+                        <template v-for="link in articles.links" :key="link.label">
+                            <Link v-if="link.url" :href="link.url"
+                                class="px-3 py-1 rounded-lg text-xs transition-colors"
+                                :class="link.active ? 'bg-primary-500 text-white' : 'text-dark-400 hover:bg-white/5'"
+                                v-html="link.label" preserve-scroll />
+                            <span v-else class="px-3 py-1 text-xs text-dark-600" v-html="link.label" />
+                        </template>
+                    </div>
                 </div>
             </div>
         </div>

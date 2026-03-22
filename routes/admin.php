@@ -179,6 +179,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Content — ระบบบทความ AI + Blog
         Route::prefix('content')->name('content.')->group(function () {
             Route::get('/', [ContentController::class, 'index'])->name('index');
+            Route::get('/{id}/edit', [ContentController::class, 'edit'])->name('edit');
             Route::post('/generate', [ContentController::class, 'generate'])->name('generate');
             Route::put('/{id}', [ContentController::class, 'update'])->name('update');
             Route::delete('/{id}', [ContentController::class, 'destroy'])->name('destroy');

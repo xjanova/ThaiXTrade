@@ -50,6 +50,18 @@ class ContentController extends Controller
     }
 
     /**
+     * แสดงหน้า Editor สำหรับแก้ไขบทความ.
+     */
+    public function edit(int $id): Response
+    {
+        $article = Article::findOrFail($id);
+
+        return Inertia::render('Admin/Content/Edit', [
+            'article' => $article,
+        ]);
+    }
+
+    /**
      * สร้างบทความด้วย AI.
      */
     public function generate(Request $request): RedirectResponse
