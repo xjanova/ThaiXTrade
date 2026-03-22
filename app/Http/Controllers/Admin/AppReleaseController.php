@@ -20,12 +20,14 @@ class AppReleaseController extends Controller
      */
     public function index(): InertiaResponse
     {
-        $releases = Cache::remember('admin_app_releases', 300, function () {
+        $result = Cache::remember('admin_app_releases', 300, function () {
             return $this->fetchAllReleases();
         });
 
         return Inertia::render('Admin/AppReleases/Index', [
-            'releases' => $releases,
+            'releases' => $result['releases'],
+            'error' => $result['error'],
+            'hasToken' => ! empty(config('services.github.token')),
         ]);
     }
 
@@ -37,7 +39,15 @@ class AppReleaseController extends Controller
         Cache::forget('admin_app_releases');
         Cache::forget('app_update_android');
 
-        return back()->with('success', 'Refreshed release data from GitHub.');
+        // ดึงใหม่ทันทีเพื่อเช็ค error
+        $result = $this->fetchAllReleases();
+        Cache::put('admin_app_releases', $result, 300);
+
+        if ($result['error']) {
+            return back()->with('error', $result['error']);
+        }
+
+        return back()->with('success', 'Refreshed — found '.count($result['releases']).' releases.');
     }
 
     /**
@@ -45,6 +55,8 @@ class AppReleaseController extends Controller
      */
     private function fetchAllReleases(): array
     {
+        $empty = ['releases' => [], 'error' => null];
+
         try {
             $owner = config('services.github.owner', 'xjanova');
             $repo = config('services.github.repo', 'ThaiXTrade');
@@ -61,17 +73,35 @@ class AppReleaseController extends Controller
 
             $response = Http::withHeaders($headers)
                 ->timeout(15)
-                ->get("https://api.github.com/repos/{$owner}/{$repo}/releases?per_page=20");
+                ->get("https://api.github.com/repos/{$owner}/{$repo}/releases?per_page=30");
 
             if (! $response->successful()) {
-                Log::warning('GitHub API failed for admin releases', ['status' => $response->status()]);
+                $status = $response->status();
+                Log::warning('GitHub API failed for admin releases', ['status' => $status]);
 
-                return [];
+                $errorMsg = match ($status) {
+                    401 => 'GitHub API: Unauthorized — GITHUB_TOKEN ไม่ถูกต้องหรือหมดอายุ',
+                    403 => 'GitHub API: Forbidden — Rate limit exceeded หรือ token ไม่มีสิทธิ์',
+                    404 => "GitHub API: Repo {$owner}/{$repo} ไม่พบ — ตรวจสอบ GITHUB_OWNER / GITHUB_REPO",
+                    default => "GitHub API error (HTTP {$status})",
+                };
+
+                if (! $token) {
+                    $errorMsg .= ' | ⚠️ GITHUB_TOKEN ไม่ได้ตั้งค่าใน .env — จำเป็นสำหรับ private repo';
+                }
+
+                return ['releases' => [], 'error' => $errorMsg];
+            }
+
+            $data = $response->json();
+
+            if (! is_array($data)) {
+                return ['releases' => [], 'error' => 'GitHub API returned invalid data'];
             }
 
             $releases = [];
-            foreach ($response->json() as $release) {
-                $apkAsset = collect($release['assets'])->first(function ($asset) {
+            foreach ($data as $release) {
+                $apkAsset = collect($release['assets'] ?? [])->first(function ($asset) {
                     return str_ends_with(strtolower($asset['name']), '.apk');
                 });
 
@@ -92,15 +122,15 @@ class AppReleaseController extends Controller
                     'apk_name' => $apkAsset['name'] ?? null,
                     'apk_size' => $apkAsset ? round($apkAsset['size'] / 1024 / 1024, 1) : null,
                     'apk_downloads' => $apkAsset['download_count'] ?? 0,
-                    'total_assets' => count($release['assets']),
+                    'total_assets' => count($release['assets'] ?? []),
                 ];
             }
 
-            return $releases;
+            return ['releases' => $releases, 'error' => null];
         } catch (\Exception $e) {
             Log::error('Failed to fetch GitHub releases for admin', ['error' => $e->getMessage()]);
 
-            return [];
+            return ['releases' => [], 'error' => 'Connection failed: '.$e->getMessage()];
         }
     }
 }

@@ -8,10 +8,18 @@
 import { router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
-defineProps({
+const props = defineProps({
     releases: {
         type: Array,
         default: () => [],
+    },
+    error: {
+        type: String,
+        default: null,
+    },
+    hasToken: {
+        type: Boolean,
+        default: false,
     },
 });
 
@@ -54,6 +62,32 @@ const formatDate = (dateStr) => {
                     </svg>
                     Refresh from GitHub
                 </button>
+            </div>
+
+            <!-- Error Alert -->
+            <div v-if="error" class="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+                <div class="flex items-start gap-3">
+                    <svg class="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                        <p class="text-red-400 text-sm font-medium">GitHub API Error</p>
+                        <p class="text-red-400/80 text-sm mt-1">{{ error }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Token Warning -->
+            <div v-if="!hasToken && !error" class="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
+                <div class="flex items-start gap-3">
+                    <svg class="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                        <p class="text-yellow-400 text-sm font-medium">GITHUB_TOKEN ไม่ได้ตั้งค่า</p>
+                        <p class="text-yellow-400/80 text-sm mt-1">เพิ่ม <code class="bg-yellow-500/20 px-1 rounded">GITHUB_TOKEN=ghp_xxx</code> ใน <code class="bg-yellow-500/20 px-1 rounded">.env</code> บน server เพื่อเข้าถึง private repo</p>
+                    </div>
+                </div>
             </div>
 
             <!-- Stats Cards -->
