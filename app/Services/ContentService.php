@@ -97,6 +97,12 @@ class ContentService
     public static function imageProviders(): array
     {
         return [
+            'cloudflare' => [
+                'name' => 'Cloudflare FLUX',
+                'description' => 'FLUX.1-schnell — ฟรี คุณภาพสูง เร็ว (แนะนำ)',
+                'requires_key' => false,
+                'setting_key' => null,
+            ],
             'pollinations' => [
                 'name' => 'Pollinations.ai',
                 'description' => 'ฟรี ไม่ต้อง API key — ภาพสไตล์ artistic',
@@ -134,10 +140,11 @@ class ContentService
         }
 
         $imageData = match ($provider) {
+            'cloudflare' => $this->generateWithCloudflare($prompt),
             'together' => $this->generateWithTogether($prompt, $width, $height),
             'huggingface' => $this->generateWithHuggingFace($prompt, $width, $height),
             'gemini' => $this->generateWithGemini($prompt),
-            default => $this->generateWithPollinations($prompt, $width, $height),
+            default => $this->generateWithCloudflare($prompt),
         };
 
         if ($imageData) {
@@ -168,7 +175,39 @@ class ContentService
             }
         }
 
-        return 'pollinations'; // fallback ฟรีเสมอ
+        return 'cloudflare'; // default: Cloudflare Workers AI FLUX (ฟรี)
+    }
+
+    /**
+     * Cloudflare Workers AI — FLUX.1-schnell (ฟรี คุณภาพสูง).
+     */
+    private function generateWithCloudflare(string $prompt): ?string
+    {
+        $workerUrl = 'https://tpix-image-gen.xjanovax.workers.dev/';
+        $apiKey = 'tpix-image-gen-2024';
+
+        try {
+            $response = Http::timeout(60)
+                ->withHeaders(['X-API-Key' => $apiKey])
+                ->post($workerUrl, [
+                    'prompt' => $prompt,
+                    'steps' => 4,
+                ]);
+
+            if ($response->successful() && strlen($response->body()) > 1000) {
+                return $response->body();
+            }
+
+            Log::warning('Cloudflare image failed', [
+                'status' => $response->status(),
+                'body' => substr($response->body(), 0, 200),
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Cloudflare image error', ['error' => $e->getMessage()]);
+        }
+
+        // Fallback to Pollinations
+        return $this->generateWithPollinations($prompt, 1200, 630);
     }
 
     /**
