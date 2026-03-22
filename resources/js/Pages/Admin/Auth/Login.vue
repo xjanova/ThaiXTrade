@@ -44,6 +44,21 @@ const turnstileRequired = computed(() => {
     return props.turnstileEnabled && props.turnstileSiteKey && !turnstileLoadFailed.value;
 });
 
+const waitForTurnstile = () => {
+    let attempts = 0;
+    const interval = setInterval(() => {
+        attempts++;
+        if (window.turnstile) {
+            clearInterval(interval);
+            renderTurnstile();
+        } else if (attempts > 50) { // 5 seconds max
+            clearInterval(interval);
+            turnstileLoadFailed.value = true;
+            turnstileError.value = 'Turnstile timeout — ลองรีเฟรชหน้า';
+        }
+    }, 100);
+};
+
 const loadTurnstile = () => {
     if (!props.turnstileEnabled || !props.turnstileSiteKey) {
         // ถ้า enabled แต่ไม่มี site key → ไม่ block login (backend จะ handle)
@@ -52,31 +67,26 @@ const loadTurnstile = () => {
     }
 
     // Load Turnstile script if not already loaded
-    if (document.querySelector('script[src*="turnstile"]')) {
-        // Script tag มีแล้ว — รอจน window.turnstile พร้อม
-        if (window.turnstile) {
-            renderTurnstile();
-        } else {
-            // Script กำลังโหลดอยู่ — hook เข้า onTurnstileLoad
-            const prevOnLoad = window.onTurnstileLoad;
-            window.onTurnstileLoad = () => {
-                prevOnLoad?.();
-                renderTurnstile();
-            };
-        }
+    if (window.turnstile) {
+        renderTurnstile();
+        return;
+    }
+
+    if (document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
+        // Script กำลังโหลดอยู่ — poll จน window.turnstile พร้อม
+        waitForTurnstile();
         return;
     }
 
     const script = document.createElement('script');
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad&render=explicit';
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
     script.async = true;
 
-    window.onTurnstileLoad = () => {
-        renderTurnstile();
+    script.onload = () => {
+        waitForTurnstile();
     };
 
     script.onerror = () => {
-        // Script โหลดไม่ได้ → ไม่ block login (backend จะ handle)
         turnstileLoadFailed.value = true;
         turnstileError.value = 'ไม่สามารถโหลด Turnstile ได้ — ลองรีเฟรชหน้า';
     };
