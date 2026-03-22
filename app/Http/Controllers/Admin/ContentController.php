@@ -196,7 +196,7 @@ class ContentController extends Controller
     {
         $validated = $request->validate([
             'prompt' => 'required|string|max:500',
-            'provider' => 'nullable|string|in:auto,pollinations,together,huggingface,gemini',
+            'provider' => 'nullable|string|in:auto,cloudflare,pollinations,together,huggingface,gemini',
             'article_id' => 'nullable|integer|exists:articles,id',
         ]);
 
