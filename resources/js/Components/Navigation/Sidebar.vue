@@ -6,7 +6,8 @@
 
 import { ref } from 'vue';
 import { Link } from '@inertiajs/vue3';
-import { getBaseSymbol, getCoinLogo } from '@/utils/cryptoLogos';
+import { getBaseSymbol } from '@/utils/cryptoLogos';
+import CoinIcon from '@/Components/CoinIcon.vue';
 import { useTranslation } from '@/Composables/useTranslation';
 
 const { t } = useTranslation();
@@ -45,10 +46,7 @@ const recentTrades = ref([
                     class="flex items-center justify-between p-2 rounded-xl hover:bg-white/5 transition-all group"
                 >
                     <div class="flex items-center gap-2">
-                        <img v-if="getCoinLogo(getBaseSymbol(pair.symbol))" :src="getCoinLogo(getBaseSymbol(pair.symbol))" :alt="getBaseSymbol(pair.symbol)" class="w-5 h-5 rounded-full" />
-                        <svg v-else class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                        </svg>
+                        <CoinIcon :symbol="getBaseSymbol(pair.symbol)" size="sm" />
                         <span class="font-medium text-white group-hover:text-primary-400 transition-colors">{{ pair.symbol }}</span>
                     </div>
                     <div class="text-right">
@@ -158,11 +156,11 @@ const recentTrades = ref([
                     </svg>
                     <span>{{ t('nav.bridge') }}</span>
                 </Link>
-                <Link href="/staking" class="nav-link">
+                <Link href="/masternode" class="nav-link">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                     </svg>
-                    <span>{{ t('nav.staking') }}</span>
+                    <span>{{ t('nav.masternode') }}</span>
                 </Link>
                 <Link href="/download" class="nav-link text-primary-400">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

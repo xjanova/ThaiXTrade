@@ -6,7 +6,7 @@
  */
 
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { getCoinLogo } from '@/utils/cryptoLogos';
+import CoinIcon from '@/Components/CoinIcon.vue';
 import axios from 'axios';
 
 const tickers = ref([]);
@@ -76,8 +76,8 @@ onUnmounted(() => {
             >
                 <div class="flex items-center gap-3">
                     <!-- Coin Logo + Symbol -->
-                    <img v-if="ticker.isTpix" src="/logo.png" :alt="ticker.symbol" class="w-4 h-4 rounded-full" />
-                    <img v-else-if="getCoinLogo(ticker.symbol)" :src="getCoinLogo(ticker.symbol, 'thumb')" :alt="ticker.symbol" class="w-4 h-4 rounded-full" />
+                    <CoinIcon v-if="ticker.isTpix" :symbol="ticker.symbol" size="xs" src="/logo.png" />
+                    <CoinIcon v-else :symbol="ticker.symbol" size="xs" />
                     <span class="ticker-symbol" :class="{ 'text-primary-400 font-semibold': ticker.isTpix }">{{ ticker.symbol }}</span>
 
                     <!-- Price -->

@@ -13,7 +13,7 @@ const props = defineProps({
         default: () => [
             { label: 'Public Sale', percent: 10, color: '#06B6D4' },    // primary/cyan
             { label: 'Liquidity Pool', percent: 30, color: '#8B5CF6' }, // accent/purple
-            { label: 'Staking Rewards', percent: 20, color: '#00C853' }, // trading green
+            { label: 'Master Node Rewards', percent: 20, color: '#00C853' }, // trading green
             { label: 'Team & Advisors', percent: 20, color: '#F97316' }, // warm/orange
             { label: 'Ecosystem Fund', percent: 10, color: '#3B82F6' }, // blue
             { label: 'Development', percent: 10, color: '#EC4899' },     // pink

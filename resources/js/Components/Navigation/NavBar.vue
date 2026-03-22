@@ -129,8 +129,8 @@ const handleDisconnect = () => {
                             <Link href="/bridge" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
                                 {{ t('nav.bridge') }}
                             </Link>
-                            <Link href="/staking" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
-                                {{ t('nav.staking') }}
+                            <Link href="/masternode" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
+                                {{ t('nav.masternode') }}
                             </Link>
                             <Link href="/blog" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
                                 {{ t('nav.blog') }}

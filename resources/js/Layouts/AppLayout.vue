@@ -166,7 +166,7 @@ onMounted(async () => {
                             <li><Link href="/carbon-credits" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Carbon Credits</Link></li>
                             <li><Link href="/whitepaper" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Whitepaper</Link></li>
                             <li><Link href="/explorer" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Explorer</Link></li>
-                            <li><Link href="/staking" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Staking</Link></li>
+                            <li><Link href="/masternode" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Master Node</Link></li>
                         </ul>
                     </div>
                     <!-- Resources -->

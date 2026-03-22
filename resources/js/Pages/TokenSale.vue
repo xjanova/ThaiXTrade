@@ -65,7 +65,7 @@ const howToBuySteps = [
 const tokenomicsData = [
     { label: 'Public Sale (ICO)', percent: 10, color: '#06B6D4' },
     { label: 'Liquidity Pool', percent: 30, color: '#8B5CF6' },
-    { label: 'Staking Rewards', percent: 20, color: '#00C853' },
+    { label: 'Master Node Rewards', percent: 20, color: '#00C853' },
     { label: 'Team & Advisors', percent: 20, color: '#F97316' },
     { label: 'Ecosystem Fund', percent: 10, color: '#3B82F6' },
     { label: 'Development', percent: 10, color: '#EC4899' },
@@ -317,7 +317,7 @@ function handlePurchaseComplete() {
                     </summary>
                     <p class="text-gray-400 mt-3 text-sm">
                         TPIX is the native coin of TPIX Chain — a Polygon Edge-based blockchain with IBFT consensus,
-                        zero gas fees, and 2-second block times. TPIX powers the entire ecosystem including DEX, staking,
+                        zero gas fees, and 2-second block times. TPIX powers the entire ecosystem including DEX, master node,
                         token factory, and cross-chain bridge.
                     </p>
                 </details>

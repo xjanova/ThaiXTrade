@@ -6,7 +6,7 @@
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { router } from '@inertiajs/vue3';
-import { getCoinLogo } from '@/utils/cryptoLogos';
+import CoinIcon from '@/Components/CoinIcon.vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -96,11 +96,8 @@ onUnmounted(() => { document.removeEventListener('click', handleClickOutside); }
                     :class="['w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/5 transition-colors',
                         t.symbol === currentPair && 'bg-primary-500/10']">
                     <div class="flex items-center gap-2">
-                        <img v-if="t.isTpix" src="/logo.png" class="w-5 h-5 rounded-full" alt="TPIX" />
-                        <img v-else-if="getCoinLogo(t.base)" :src="getCoinLogo(t.base, 'thumb')" class="w-5 h-5 rounded-full" :alt="t.base" />
-                        <div class="w-5 h-5 rounded-full bg-dark-600 flex items-center justify-center" v-else>
-                            <span class="text-[8px] text-dark-400">{{ t.base.slice(0,2) }}</span>
-                        </div>
+                        <CoinIcon v-if="t.isTpix" :symbol="t.base" size="sm" src="/logo.png" />
+                        <CoinIcon v-else :symbol="t.base" size="sm" />
                         <span class="text-white text-sm font-medium">{{ t.symbol }}</span>
                     </div>
                     <div class="text-right">

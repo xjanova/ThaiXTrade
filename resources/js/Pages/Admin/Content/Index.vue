@@ -85,7 +85,7 @@ const topicSuggestions = [
     'ทำไม TPIX Chain ถึงเร็วกว่า Ethereum 30 เท่า',
     'Carbon Credit บน Blockchain คืออะไร',
     'Token Factory — สร้างเหรียญของคุณเองบน TPIX Chain',
-    'Staking TPIX ได้ APY สูงสุด 200% ต่อปี',
+    'Master Node TPIX รับรางวัลสูงสุด 15% APY',
     'TPIX DEX vs PancakeSwap เปรียบเทียบข้อดีข้อเสีย',
     'FoodPassport — ตรวจสอบที่มาอาหารด้วย Blockchain',
 ];

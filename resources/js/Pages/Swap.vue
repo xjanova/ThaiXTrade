@@ -8,7 +8,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { getCoinLogo } from '@/utils/cryptoLogos';
+import CoinIcon from '@/Components/CoinIcon.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useSwap } from '@/Composables/useSwap';
 import { getTxUrl, BSC_CHAIN_CONFIG } from '@/utils/web3';
@@ -336,10 +336,7 @@ onMounted(async () => {
                                     @click="openTokenSelector('from')"
                                     class="flex items-center gap-2 px-3 py-2 rounded-xl bg-dark-700/60 hover:bg-dark-600/60 border border-white/5 hover:border-white/10 transition-all flex-shrink-0"
                                 >
-                                    <div class="w-6 h-6 rounded-full overflow-hidden bg-dark-600">
-                                        <img v-if="getCoinLogo(fromToken.symbol)" :src="getCoinLogo(fromToken.symbol)" :alt="fromToken.symbol" class="w-full h-full object-cover" />
-                                        <span v-else class="flex items-center justify-center w-full h-full text-xs text-white font-bold">{{ fromToken.symbol.charAt(0) }}</span>
-                                    </div>
+                                    <CoinIcon :symbol="fromToken.symbol" size="sm" />
                                     <span class="font-semibold text-white text-sm">{{ fromToken.symbol }}</span>
                                     <svg class="w-3.5 h-3.5 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -374,10 +371,7 @@ onMounted(async () => {
                                     @click="openTokenSelector('to')"
                                     class="flex items-center gap-2 px-3 py-2 rounded-xl bg-dark-700/60 hover:bg-dark-600/60 border border-white/5 hover:border-white/10 transition-all flex-shrink-0"
                                 >
-                                    <div class="w-6 h-6 rounded-full overflow-hidden bg-dark-600">
-                                        <img v-if="getCoinLogo(toToken.symbol)" :src="getCoinLogo(toToken.symbol)" :alt="toToken.symbol" class="w-full h-full object-cover" />
-                                        <span v-else class="flex items-center justify-center w-full h-full text-xs text-white font-bold">{{ toToken.symbol.charAt(0) }}</span>
-                                    </div>
+                                    <CoinIcon :symbol="toToken.symbol" size="sm" />
                                     <span class="font-semibold text-white text-sm">{{ toToken.symbol }}</span>
                                     <svg class="w-3.5 h-3.5 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -485,9 +479,7 @@ onMounted(async () => {
                 <div class="mt-4 p-3 rounded-xl bg-dark-900/60 border border-white/5">
                     <div class="flex items-center gap-3 text-xs">
                         <div class="flex items-center gap-1.5">
-                            <div class="w-4 h-4 rounded-full overflow-hidden bg-dark-700">
-                                <img v-if="getCoinLogo(fromToken.symbol)" :src="getCoinLogo(fromToken.symbol)" class="w-full h-full object-cover" />
-                            </div>
+                            <CoinIcon :symbol="fromToken.symbol" size="xs" />
                             <span class="text-dark-300 font-medium">{{ fromToken.symbol }}</span>
                         </div>
                         <div class="flex-1 border-t border-dashed border-dark-700 relative">
@@ -496,9 +488,7 @@ onMounted(async () => {
                             </div>
                         </div>
                         <div class="flex items-center gap-1.5">
-                            <div class="w-4 h-4 rounded-full overflow-hidden bg-dark-700">
-                                <img v-if="getCoinLogo(toToken.symbol)" :src="getCoinLogo(toToken.symbol)" class="w-full h-full object-cover" />
-                            </div>
+                            <CoinIcon :symbol="toToken.symbol" size="xs" />
                             <span class="text-dark-300 font-medium">{{ toToken.symbol }}</span>
                         </div>
                     </div>
@@ -542,9 +532,7 @@ onMounted(async () => {
                             @click="selectToken(token)"
                             class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-dark-800/50 border border-white/5 hover:border-white/10 text-xs text-dark-300 hover:text-white transition-all"
                         >
-                            <div class="w-4 h-4 rounded-full overflow-hidden bg-dark-600">
-                                <img v-if="getCoinLogo(token.symbol)" :src="getCoinLogo(token.symbol)" class="w-full h-full object-cover" />
-                            </div>
+                            <CoinIcon :symbol="token.symbol" size="xs" />
                             {{ token.symbol }}
                         </button>
                     </div>
@@ -560,10 +548,7 @@ onMounted(async () => {
                                     'opacity-30 pointer-events-none': (tokenSelectorMode === 'from' && token.symbol === fromToken.symbol) || (tokenSelectorMode === 'to' && token.symbol === toToken.symbol),
                                 }"
                             >
-                                <div class="w-8 h-8 rounded-full overflow-hidden bg-dark-700 flex-shrink-0">
-                                    <img v-if="getCoinLogo(token.symbol)" :src="getCoinLogo(token.symbol)" :alt="token.symbol" class="w-full h-full object-cover" />
-                                    <span v-else class="flex items-center justify-center w-full h-full text-xs text-white font-bold">{{ token.symbol.charAt(0) }}</span>
-                                </div>
+                                <CoinIcon :symbol="token.symbol" size="md" class="flex-shrink-0" />
                                 <div class="flex-1 min-w-0">
                                     <p class="font-semibold text-white text-sm">{{ token.symbol }}</p>
                                     <p class="text-xs text-dark-500 truncate">{{ token.name }}</p>

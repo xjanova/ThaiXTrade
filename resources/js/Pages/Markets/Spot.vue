@@ -8,7 +8,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { getCoinLogo } from '@/utils/cryptoLogos';
+import CoinIcon from '@/Components/CoinIcon.vue';
 import { useMarketData } from '@/Composables/useMarketData';
 
 const searchQuery = ref('');
@@ -116,10 +116,7 @@ onMounted(async () => {
                             >
                                 <td class="p-4">
                                     <div class="flex items-center gap-3">
-                                        <div class="w-8 h-8 rounded-full overflow-hidden bg-dark-800 flex items-center justify-center">
-                                            <img v-if="getCoinLogo(pair.base)" :src="getCoinLogo(pair.base)" :alt="pair.base" class="w-7 h-7" />
-                                            <span v-else class="text-sm font-bold text-white">{{ pair.base.charAt(0) }}</span>
-                                        </div>
+                                        <CoinIcon :symbol="pair.base" size="md" />
                                         <span class="font-medium text-white">{{ pair.base }}/{{ pair.quote }}</span>
                                     </div>
                                 </td>

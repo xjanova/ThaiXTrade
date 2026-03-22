@@ -56,7 +56,7 @@ const quickActions = [
     { icon: '🔥', label: t('chatbot.q1'), msg: locale.value === 'th' ? 'TPIX Chain คืออะไร อธิบายละเอียด' : 'What is TPIX Chain in detail' },
     { icon: '💰', label: t('chatbot.q2'), msg: locale.value === 'th' ? 'ซื้อเหรียญ TPIX ได้อย่างไร' : 'How to buy TPIX tokens' },
     { icon: '📊', label: t('chatbot.q3'), msg: locale.value === 'th' ? 'สอนวิธีเทรดบน TPIX TRADE' : 'How to trade on TPIX TRADE' },
-    { icon: '🏦', label: 'Staking', msg: locale.value === 'th' ? 'Stake TPIX ได้ APY เท่าไหร่' : 'TPIX staking APY rates' },
+    { icon: '🛡️', label: 'Master Node', msg: locale.value === 'th' ? 'Master Node TPIX รับรางวัลเท่าไหร่' : 'TPIX master node reward rates' },
     { icon: '🌉', label: 'Bridge', msg: locale.value === 'th' ? 'Bridge ข้าม chain ทำอย่างไร' : 'How to bridge across chains' },
     { icon: '🌱', label: t('chatbot.q4'), msg: locale.value === 'th' ? 'Carbon Credit ทำงานอย่างไร' : 'How does Carbon Credit work' },
 ];

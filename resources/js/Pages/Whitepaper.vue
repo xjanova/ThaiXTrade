@@ -31,7 +31,7 @@ const sections = computed(() => [
     { id: 'use-cases', title: t.value.toc[4] },
     { id: 'dex-protocol', title: t.value.toc[5] },
     { id: 'token-sale', title: t.value.toc[6] },
-    { id: 'staking', title: t.value.toc[7] },
+    { id: 'masternode', title: t.value.toc[7] },
     { id: 'ecosystem', title: t.value.toc[8] },
     { id: 'integrations', title: t.value.toc[9] },
     { id: 'roadmap', title: t.value.toc[10] },
@@ -65,7 +65,7 @@ onMounted(() => {
 
     // observe ทั้ง 15 sections
     const ids = ['executive-summary','problem-solution','tpix-chain','tokenomics','use-cases',
-        'dex-protocol','token-sale','staking','ecosystem','integrations','roadmap',
+        'dex-protocol','token-sale','masternode','ecosystem','integrations','roadmap',
         'tech-stack','team','security','legal'];
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -77,7 +77,7 @@ onMounted(() => {
 const tokenAllocation = [
     { label: 'Ecosystem Development', labelTh: 'พัฒนา Ecosystem', pct: 30, color: '#3B82F6', amount: '2.1B' },
     { label: 'Affiliate Rewards', labelTh: 'รางวัล Affiliate', pct: 25, color: '#8B5CF6', amount: '1.75B' },
-    { label: 'Staking Rewards', labelTh: 'รางวัล Staking', pct: 20, color: '#10B981', amount: '1.4B' },
+    { label: 'Master Node Rewards', labelTh: 'รางวัล Master Node', pct: 20, color: '#10B981', amount: '1.4B' },
     { label: 'Team & Advisors', labelTh: 'ทีมและที่ปรึกษา', pct: 15, color: '#F59E0B', amount: '1.05B' },
     { label: 'Marketing', labelTh: 'การตลาด', pct: 10, color: '#EF4444', amount: '700M' },
 ];
@@ -139,7 +139,7 @@ const content = {
         ],
         execSummary: {
             p1: 'TPIX Chain is a next-generation EVM-compatible blockchain built on Polygon Edge technology, designed specifically for the Thai and Southeast Asian digital economy. With gasless transactions, 2-second block times, and IBFT Proof-of-Authority consensus, TPIX Chain provides an unmatched platform for decentralized applications, DeFi, and real-world asset tokenization.',
-            p2: 'The native TPIX coin (7 billion fixed supply, 18 decimals) powers the entire ecosystem including: a built-in Uniswap V2 DEX, multi-tier staking pools, a token factory for custom ERC-20 creation, cross-chain bridge to BSC, an affiliate referral program, and integration with the Thaiprompt Affiliate enterprise platform serving 500,000+ users.',
+            p2: 'The native TPIX coin (7 billion fixed supply, 18 decimals) powers the entire ecosystem including: a built-in Uniswap V2 DEX, multi-tier master node system, a token factory for custom ERC-20 creation, cross-chain bridge to BSC, an affiliate referral program, and integration with the Thaiprompt Affiliate enterprise platform serving 500,000+ users.',
             p3: 'TPIX is not just a cryptocurrency — it is the backbone of a complete digital economy spanning food supply chain traceability, IoT smart farming, delivery services, e-commerce, AI bot marketplace, hotel booking, carbon credit trading, and enterprise affiliate marketing.',
             stats: [
                 { value: '7B', label: 'Total Supply' },
@@ -269,7 +269,7 @@ const content = {
         masternodeDesc: 'TPIX uses a Delegated Proof-of-Stake (DPoS) consensus with a 3-tier master node system. Node operators stake TPIX to participate in block validation and earn proportional rewards from a 1.4 billion TPIX reward pool distributed over 5 years with decreasing emission. This replaces the previous high-APY staking model with a sustainable, infrastructure-backed reward system.',
         masternodeRewardSplit: 'Each block reward is split: 50% to the Validator who produced the block, 30% shared among Sentinel nodes, and 20% shared among Light nodes (weighted by stake amount and uptime score).',
         masternodeSlashing: 'Validators face 10% stake slashing if offline >24h, 50% for double-signing. Sentinel nodes face 5% slashing if offline >48h. Light nodes have no slashing penalty. All tiers are deregistered after 7 days offline.',
-        masternodeAfterY5: 'After Year 5, node rewards transition to: transaction fee sharing (dApp/token creator fees), governance voting rewards, cross-chain bridge fees, and token listing fees from the Token Factory.',
+        masternodeAfterY5: 'After the 5-year reward pool is fully distributed, master nodes continue earning from multiple sustainable revenue streams: (1) Transaction Fee Sharing — while end-user transactions on TPIX Chain are gasless, dApp developers and token creators pay platform fees (0.1-1% per contract deployment, token creation, and high-volume API usage). 50% of these fees are distributed to active nodes. (2) Cross-Chain Bridge Fees — every TPIX↔BSC bridge transfer incurs a 0.05% fee, shared among validators. (3) Token Factory Revenue — creating tokens costs 100 TPIX, with 50% going to the node operator pool. (4) DEX Protocol Fees — 0.05% of every swap fee (from the 0.3% total) goes to the node treasury. (5) Governance Participation — nodes vote on network proposals and earn voting rewards. (6) Premium API Access — commercial dApps pay for priority RPC endpoints, with revenue shared among nodes. This multi-source model ensures node operators always have economic incentive to maintain the network, even without block emission rewards.',
         integrations: [
             { name: 'Thaiprompt Affiliate', desc: 'Enterprise MLM platform with 500,000+ users', items: ['Auto TPIX wallet on signup', 'Commission payout in TPIX', 'Rank bonuses', 'Activity rewards (100 TPIX signup, 50 TPIX referral)'] },
             { name: 'FoodPassport', desc: 'Blockchain food traceability system', items: ['Pay for quality verification', 'Certificate NFTs on TPIX Chain', 'Farmer rewards', 'Supply chain data access'] },
@@ -280,7 +280,7 @@ const content = {
             { q: 'Q1-Q2 2023', title: 'Concept & Foundation', status: 'done', items: ['Whitepaper & tokenomics design', 'Technical architecture planning', 'Team formation', 'Initial funding & partnerships'] },
             { q: 'Q3-Q4 2023', title: 'Blockchain Development', status: 'done', items: ['Polygon Edge core implementation', 'TPIX native coin (7B fixed supply)', 'IBFT consensus & EVM integration', 'Testnet deployment'] },
             { q: 'Q1-Q2 2024', title: 'Platform Integration', status: 'done', items: ['Laravel service integration', 'REST API (500+ endpoints)', 'Block explorer (Blockscout)', 'Docker deployment & monitoring'] },
-            { q: 'Q3-Q4 2024', title: 'Ecosystem Expansion', status: 'progress', items: ['DEX development (Uniswap V2 fork)', 'Staking pools live', 'Faucet service', 'SDK development (PHP, JS, Python)'] },
+            { q: 'Q3-Q4 2024', title: 'Ecosystem Expansion', status: 'progress', items: ['DEX development (Uniswap V2 fork)', 'Master Node network live', 'Faucet service', 'SDK development (PHP, JS, Python)'] },
             { q: 'Q1-Q2 2025', title: 'Real-World Applications', status: 'progress', items: ['FoodPassport integration', 'Multi-service delivery platform', 'IoT smart farm system', 'AI bot marketplace launch'] },
             { q: 'Q3-Q4 2025', title: 'Mainnet & Scaling', status: 'planned', items: ['Mainnet launch', 'Mobile wallet app', 'BSC bridge (wTPIX ↔ TPIX)', 'Governance system (DAO)'] },
             { q: 'Q1-Q2 2026', title: 'Global Expansion', status: 'current', items: ['International exchange listings', 'Multi-language support', 'Enterprise partnership network', 'Token Sale (ICO)'] },
@@ -330,7 +330,7 @@ const content = {
         ],
         execSummary: {
             p1: 'TPIX Chain เป็นบล็อกเชนที่รองรับ EVM สร้างบนเทคโนโลยี Polygon Edge ออกแบบมาโดยเฉพาะสำหรับเศรษฐกิจดิจิทัลไทยและอาเซียน ด้วยการทำธุรกรรมไม่เสียค่า Gas, เวลาสร้างบล็อก 2 วินาที และ IBFT Proof-of-Authority consensus ทำให้ TPIX Chain เป็นแพลตฟอร์มที่เหนือกว่าสำหรับแอปพลิเคชันกระจายอำนาจ, DeFi และการโทเคไนซ์สินทรัพย์ในโลกจริง',
-            p2: 'เหรียญ TPIX (จำนวนคงที่ 7 พันล้าน, 18 ทศนิยม) เป็นพลังขับเคลื่อนระบบนิเวศทั้งหมด ได้แก่: DEX ในตัว (Uniswap V2), สระ Staking หลายระดับ, โรงงานสร้างโทเคน ERC-20, สะพานข้ามเชนไป BSC, โปรแกรม Affiliate และการเชื่อมต่อกับแพลตฟอร์ม Thaiprompt Affiliate ที่มีผู้ใช้กว่า 500,000 คน',
+            p2: 'เหรียญ TPIX (จำนวนคงที่ 7 พันล้าน, 18 ทศนิยม) เป็นพลังขับเคลื่อนระบบนิเวศทั้งหมด ได้แก่: DEX ในตัว (Uniswap V2), ระบบ Master Node หลายระดับ, โรงงานสร้างโทเคน ERC-20, สะพานข้ามเชนไป BSC, โปรแกรม Affiliate และการเชื่อมต่อกับแพลตฟอร์ม Thaiprompt Affiliate ที่มีผู้ใช้กว่า 500,000 คน',
             p3: 'TPIX ไม่ใช่แค่สกุลเงินดิจิทัล — แต่เป็นกระดูกสันหลังของเศรษฐกิจดิจิทัลครบวงจร ครอบคลุมระบบตรวจสอบย้อนกลับห่วงโซ่อาหาร, ฟาร์มอัจฉริยะ IoT, บริการส่งสินค้า, อีคอมเมิร์ซ, ตลาด AI Bot, จองโรงแรม, ซื้อขายคาร์บอนเครดิต และการตลาดแบบ Affiliate ระดับองค์กร',
             stats: [
                 { value: '7B', label: 'จำนวนทั้งหมด' },
@@ -460,7 +460,7 @@ const content = {
         masternodeDesc: 'TPIX ใช้ Delegated Proof-of-Stake (DPoS) consensus พร้อมระบบ Master Node 3 ระดับ ผู้ดำเนินการโหนดจะ stake TPIX เพื่อมีส่วนร่วมในการยืนยันบล็อก และรับรางวัลตามสัดส่วนจากกองทุนรางวัล 1.4 พันล้าน TPIX ที่แจกจ่ายตลอด 5 ปีด้วยอัตราการปล่อยที่ลดลง ระบบนี้ทดแทนระบบ Staking เดิมที่ให้ APY สูงเกินไป ด้วยระบบรางวัลที่ยั่งยืนและอิงจากโครงสร้างพื้นฐานจริง',
         masternodeRewardSplit: 'รางวัลแต่ละบล็อกแบ่ง: 50% ให้ Validator ที่สร้างบล็อก, 30% แบ่งให้ Sentinel nodes, และ 20% แบ่งให้ Light nodes (ถ่วงน้ำหนักตามจำนวน stake และคะแนน uptime)',
         masternodeSlashing: 'Validator ถูกหัก stake 10% หาก offline เกิน 24 ชม., 50% หาก double-signing Sentinel ถูกหัก 5% หาก offline เกิน 48 ชม. Light node ไม่มีการลงโทษ ทุกระดับถูกยกเลิกหาก offline เกิน 7 วัน',
-        masternodeAfterY5: 'หลังปีที่ 5 รางวัลโหนดเปลี่ยนเป็น: แบ่งค่าธรรมเนียมธุรกรรม (ค่าธรรมเนียมจาก dApp/ผู้สร้างโทเคน), รางวัลการโหวต governance, ค่าธรรมเนียม cross-chain bridge, และค่าลิสต์โทเคนจาก Token Factory',
+        masternodeAfterY5: 'หลังจากกองทุนรางวัล 5 ปีถูกแจกจ่ายหมดแล้ว Master Node ยังคงได้รับรายได้จากแหล่งรายได้ที่ยั่งยืนหลายช่องทาง: (1) การแบ่งค่าธรรมเนียมธุรกรรม — แม้ธุรกรรมของผู้ใช้ปลายทางบน TPIX Chain จะไม่เสียค่า Gas แต่นักพัฒนา dApp และผู้สร้างโทเคนจ่ายค่าธรรมเนียมแพลตฟอร์ม (0.1-1% ต่อการ deploy contract, การสร้างโทเคน และการใช้ API ปริมาณสูง) โดย 50% ของค่าธรรมเนียมเหล่านี้จะแจกจ่ายให้โหนดที่ active (2) ค่าธรรมเนียม Cross-Chain Bridge — การโอน TPIX↔BSC ทุกครั้งมีค่าธรรมเนียม 0.05% ที่แบ่งให้ validator (3) รายได้จาก Token Factory — การสร้างโทเคนมีค่าใช้จ่าย 100 TPIX โดย 50% เข้ากองทุนผู้ดำเนินการโหนด (4) ค่าธรรมเนียมโปรโตคอล DEX — 0.05% ของค่าธรรมเนียม swap ทุกครั้ง (จากทั้งหมด 0.3%) เข้าคลังโหนด (5) การมีส่วนร่วมใน Governance — โหนดโหวตข้อเสนอของเครือข่ายและได้รับรางวัลการโหวต (6) การเข้าถึง API ระดับพรีเมียม — dApp เชิงพาณิชย์จ่ายค่า RPC endpoint แบบ priority โดยรายได้แบ่งให้โหนดทั้งหมด โมเดลหลายแหล่งรายได้นี้รับประกันว่าผู้ดำเนินการโหนดมีแรงจูงใจทางเศรษฐกิจในการรักษาเครือข่ายเสมอ แม้จะไม่มีรางวัลจากการปล่อยบล็อกแล้วก็ตาม',
         integrations: [
             { name: 'Thaiprompt Affiliate', desc: 'แพลตฟอร์ม MLM ระดับองค์กร ผู้ใช้ 500,000+ คน', items: ['สร้าง TPIX wallet อัตโนมัติเมื่อสมัคร', 'จ่ายคอมมิชชั่นเป็น TPIX', 'โบนัสจากการเลื่อนระดับ', 'รางวัลกิจกรรม (100 TPIX สมัคร, 50 TPIX แนะนำ)'] },
             { name: 'FoodPassport', desc: 'ระบบตรวจสอบอาหารบนบล็อกเชน', items: ['ชำระค่าตรวจสอบคุณภาพ', 'ใบรับรอง NFT บน TPIX Chain', 'รางวัลเกษตรกร', 'เข้าถึงข้อมูล Supply Chain'] },
@@ -471,7 +471,7 @@ const content = {
             { q: 'Q1-Q2 2566', title: 'แนวคิดและรากฐาน', status: 'done', items: ['ออกแบบ Whitepaper & tokenomics', 'วางแผนสถาปัตยกรรมเทคนิค', 'จัดตั้งทีม', 'ระดมทุนและจับมือพาร์ทเนอร์'] },
             { q: 'Q3-Q4 2566', title: 'พัฒนาบล็อกเชน', status: 'done', items: ['สร้าง Polygon Edge core', 'เหรียญ TPIX (7B fixed supply)', 'IBFT consensus & EVM', 'Deploy Testnet'] },
             { q: 'Q1-Q2 2567', title: 'เชื่อมต่อแพลตฟอร์ม', status: 'done', items: ['เชื่อมต่อ Laravel service', 'REST API (500+ endpoints)', 'Block Explorer (Blockscout)', 'Docker deployment & monitoring'] },
-            { q: 'Q3-Q4 2567', title: 'ขยายระบบนิเวศ', status: 'progress', items: ['พัฒนา DEX (Uniswap V2 fork)', 'เปิด Staking pools', 'Faucet service', 'พัฒนา SDK (PHP, JS, Python)'] },
+            { q: 'Q3-Q4 2567', title: 'ขยายระบบนิเวศ', status: 'progress', items: ['พัฒนา DEX (Uniswap V2 fork)', 'เปิด Master Node network', 'Faucet service', 'พัฒนา SDK (PHP, JS, Python)'] },
             { q: 'Q1-Q2 2568', title: 'แอปพลิเคชันโลกจริง', status: 'progress', items: ['เชื่อมต่อ FoodPassport', 'แพลตฟอร์มส่งสินค้าครบวงจร', 'ระบบฟาร์มอัจฉริยะ IoT', 'เปิดตลาด AI Bot'] },
             { q: 'Q3-Q4 2568', title: 'Mainnet และ Scaling', status: 'planned', items: ['เปิด Mainnet', 'แอป Mobile Wallet', 'Bridge BSC (wTPIX ↔ TPIX)', 'ระบบ DAO Governance'] },
             { q: 'Q1-Q2 2569', title: 'ขยายสู่ระดับสากล', status: 'current', items: ['ลิสต์ Exchange นานาชาติ', 'รองรับหลายภาษา', 'เครือข่ายพาร์ทเนอร์ Enterprise', 'Token Sale (ICO)'] },
@@ -604,7 +604,7 @@ const content = {
                                 <!-- DApps Layer -->
                                 <div class="flex flex-wrap justify-center gap-2">
                                     <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">DEX</span>
-                                    <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">Staking</span>
+                                    <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">Master Node</span>
                                     <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">Token Factory</span>
                                     <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">FoodPassport</span>
                                     <span class="px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 text-xs font-medium">IoT Farm</span>
@@ -800,8 +800,8 @@ const content = {
                         </div>
                     </section>
 
-                    <!-- 8. Staking & Rewards -->
-                    <section id="staking" class="wp-section">
+                    <!-- 8. Master Node & Rewards -->
+                    <section id="masternode" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[7] }}</h2>
                         <p class="wp-text">{{ t.masternodeDesc }}</p>
 
@@ -914,7 +914,7 @@ const content = {
                                         <span class="block text-lg mb-1">🏦</span>DEX
                                     </div>
                                     <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
-                                        <span class="block text-lg mb-1">💰</span>Staking
+                                        <span class="block text-lg mb-1">💰</span>Master Node
                                     </div>
                                     <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
                                         <span class="block text-lg mb-1">🏭</span>Token Factory

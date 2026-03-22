@@ -242,7 +242,7 @@ const activeSection = ref('create');
                                     • Total Supply: 7,000,000,000 TPIX (fixed, ไม่เพิ่ม)
                                     <br/>• ใช้จ่ายค่าสร้าง Token (100 TPIX)
                                     <br/>• ใช้ซื้อ Carbon Credits
-                                    <br/>• ใช้ Staking รับผลตอบแทน 5-200% APY
+                                    <br/>• ใช้ Master Node รับรางวัล 4-15% APY
                                     <br/>• Gas FREE บน TPIX Chain
                                 </p>
                             </div>

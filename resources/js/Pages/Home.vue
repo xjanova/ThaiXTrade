@@ -8,7 +8,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { getCoinLogo } from '@/utils/cryptoLogos';
+import CoinIcon from '@/Components/CoinIcon.vue';
 import { useMarketData } from '@/Composables/useMarketData';
 import BannerAd from '@/Components/BannerAd.vue';
 import versionData from '../../../version.json';
@@ -130,10 +130,7 @@ onMounted(async () => {
                                 class="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
                             >
                                 <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-dark-800 flex items-center justify-center">
-                                        <img v-if="getCoinLogo(coin.symbol)" :src="getCoinLogo(coin.symbol)" :alt="coin.symbol" class="w-8 h-8" />
-                                        <span v-else class="text-white font-bold">{{ coin.symbol.charAt(0) }}</span>
-                                    </div>
+                                    <CoinIcon :symbol="coin.symbol" size="lg" />
                                     <div>
                                         <p class="font-semibold text-white">{{ coin.symbol }}</p>
                                         <p class="text-sm text-dark-400">{{ coin.name }}</p>
@@ -163,10 +160,7 @@ onMounted(async () => {
                                 class="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
                             >
                                 <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-dark-800 flex items-center justify-center">
-                                        <img v-if="getCoinLogo(coin.symbol)" :src="getCoinLogo(coin.symbol)" :alt="coin.symbol" class="w-8 h-8" />
-                                        <span v-else class="text-white font-bold">{{ coin.symbol.charAt(0) }}</span>
-                                    </div>
+                                    <CoinIcon :symbol="coin.symbol" size="lg" />
                                     <div>
                                         <p class="font-semibold text-white">{{ coin.symbol }}</p>
                                         <p class="text-sm text-dark-400">{{ coin.name }}</p>
@@ -251,7 +245,7 @@ onMounted(async () => {
                         TPIX <span class="text-gradient">Ecosystem</span>
                     </h2>
                     <p class="text-dark-400 max-w-2xl mx-auto">
-                        Explore the complete TPIX ecosystem. From token sale to staking, everything in one place.
+                        Explore the complete TPIX ecosystem. From token sale to master node, everything in one place.
                     </p>
                 </div>
 
@@ -289,15 +283,15 @@ onMounted(async () => {
                         <p class="text-dark-400 text-sm">Browse TPIX Chain blocks, transactions, and addresses.</p>
                     </Link>
 
-                    <!-- Staking -->
-                    <Link href="/staking" class="glass-card group hover:border-warm-500/30 transition-all">
+                    <!-- Master Node -->
+                    <Link href="/masternode" class="glass-card group hover:border-warm-500/30 transition-all">
                         <div class="w-12 h-12 rounded-xl bg-warm-500/10 flex items-center justify-center mb-4 group-hover:bg-warm-500/20 transition-colors">
                             <svg class="w-6 h-6 text-warm-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                             </svg>
                         </div>
-                        <h3 class="text-lg font-semibold text-white mb-2">Staking</h3>
-                        <p class="text-dark-400 text-sm">Stake TPIX and earn up to 200% APY rewards.</p>
+                        <h3 class="text-lg font-semibold text-white mb-2">Master Node</h3>
+                        <p class="text-dark-400 text-sm">Run a TPIX Master Node and earn up to 15% APY rewards.</p>
                     </Link>
                 </div>
             </div>

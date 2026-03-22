@@ -8,7 +8,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { getCoinLogo } from '@/utils/cryptoLogos';
+import CoinIcon from '@/Components/CoinIcon.vue';
 import { useMarketData } from '@/Composables/useMarketData';
 
 const DEFI_SYMBOLS = ['UNI', 'AAVE', 'CAKE', 'CRV', 'MKR', 'COMP', 'SNX', 'SUSHI', 'LINK', 'DYDX', '1INCH', 'LDO', 'PENDLE', 'INJ', 'FET', 'RENDER'];
@@ -151,10 +151,7 @@ onMounted(async () => {
                                 <td class="p-4 text-dark-400">{{ index + 1 }}</td>
                                 <td class="p-4">
                                     <div class="flex items-center gap-3">
-                                        <div class="w-8 h-8 rounded-full overflow-hidden bg-dark-800 flex items-center justify-center">
-                                            <img v-if="getCoinLogo(token.symbol)" :src="getCoinLogo(token.symbol)" :alt="token.symbol" class="w-7 h-7" />
-                                            <span v-else class="text-sm font-bold text-white">{{ token.symbol.charAt(0) }}</span>
-                                        </div>
+                                        <CoinIcon :symbol="token.symbol" size="md" />
                                         <div>
                                             <p class="font-medium text-white">{{ token.symbol }}</p>
                                             <p class="text-xs text-dark-400">{{ token.name }}</p>
