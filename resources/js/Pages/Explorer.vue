@@ -21,6 +21,7 @@ const features = [
     { title: 'Tokens', description: 'Explore all ERC-20 tokens deployed on TPIX Chain', icon: '◎', link: '/tokens' },
     { title: 'Accounts', description: 'Search wallet addresses and check balances', icon: '◈', link: '/accounts' },
     { title: 'Contracts', description: 'Verify and interact with smart contracts', icon: '⬡', link: '/verified-contracts' },
+    { title: 'API', description: 'Access the Blockscout REST and GraphQL API', icon: '⟁', link: '/api/v2/stats' },
 ];
 
 const chainStats = [
