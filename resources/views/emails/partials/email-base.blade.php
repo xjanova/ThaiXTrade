@@ -29,29 +29,29 @@
         body {
             font-family: 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.7;
-            color: #e2e8f0;
-            background-color: #0a0e1a;
+            color: #f1f5f9;
+            background-color: #000000;
             -webkit-font-smoothing: antialiased;
         }
         .email-wrapper {
             max-width: 640px;
             margin: 0 auto;
-            background: #0f1629;
+            background: #000000;
         }
         .email-header {
             background: linear-gradient(135deg, {{ $primaryColor }} 0%, #8b5cf6 50%, #a855f7 100%);
-            padding: 32px 40px;
+            padding: 40px 40px 32px;
             text-align: center;
         }
         .email-logo {
-            margin-bottom: 16px;
+            margin-bottom: 20px;
         }
         .email-logo img {
-            max-height: 48px;
-            max-width: 200px;
+            max-height: 80px;
+            max-width: 280px;
         }
         .email-logo-text {
-            font-size: 24px;
+            font-size: 28px;
             font-weight: 700;
             color: #ffffff;
             letter-spacing: 2px;
@@ -83,37 +83,37 @@
         }
         .email-header h1 {
             color: #ffffff;
-            font-size: 22px;
+            font-size: 24px;
             font-weight: 700;
             margin: 12px 0 4px;
         }
         .email-header p {
-            color: rgba(255,255,255,0.85);
-            font-size: 14px;
+            color: rgba(255,255,255,0.9);
+            font-size: 15px;
         }
         .email-body {
             padding: 32px 40px;
-            background: #0f1629;
+            background: #000000;
         }
         .greeting {
-            font-size: 16px;
-            color: #cbd5e1;
+            font-size: 17px;
+            color: #e2e8f0;
             margin-bottom: 16px;
         }
         .greeting strong {
             color: {{ $primaryColor }};
         }
         .card {
-            background: #151c32;
-            border: 1px solid rgba(255,255,255,0.06);
+            background: #111111;
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 12px;
             padding: 24px;
             margin: 20px 0;
         }
         .card-title {
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 600;
-            color: #e2e8f0;
+            color: #f1f5f9;
             margin-bottom: 16px;
             display: flex;
             align-items: center;
@@ -122,13 +122,13 @@
         .info-row {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
             font-size: 14px;
         }
         .info-row:last-child { border-bottom: none; }
-        .info-label { color: rgba(255,255,255,0.45); }
-        .info-value { color: #e2e8f0; font-weight: 500; }
+        .info-label { color: #94a3b8; }
+        .info-value { color: #f1f5f9; font-weight: 500; }
         .order-table {
             width: 100%;
             border-collapse: collapse;
@@ -136,25 +136,25 @@
             font-size: 14px;
         }
         .order-table th {
-            background: #151c32;
+            background: #111111;
             padding: 10px 12px;
             text-align: left;
             font-weight: 600;
-            color: #cbd5e1;
+            color: #e2e8f0;
             font-size: 13px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         .order-table td {
             padding: 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-            color: #94a3b8;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            color: #cbd5e1;
         }
         .order-table .total-row td {
             font-weight: 700;
-            color: #e2e8f0;
+            color: #f1f5f9;
             font-size: 16px;
-            background: #151c32;
+            background: #111111;
             border-top: 2px solid {{ $primaryColor }};
         }
         .warning-box {
@@ -165,7 +165,7 @@
             padding: 16px 20px;
             margin: 20px 0;
             font-size: 14px;
-            color: #fbbf24;
+            color: #fde68a;
         }
         .success-box {
             background: rgba(0,200,83,0.1);
@@ -209,19 +209,19 @@
         .mb-4 { margin-bottom: 16px; }
 
         .email-footer {
-            background: #0a0e1a;
+            background: #000000;
             padding: 32px 40px;
             text-align: center;
+            border-top: 1px solid rgba(255,255,255,0.06);
         }
         .footer-logo {
             margin-bottom: 16px;
         }
         .footer-logo img {
-            max-height: 32px;
-            filter: brightness(10);
+            max-height: 40px;
         }
         .footer-text {
-            color: rgba(255,255,255,0.45);
+            color: #94a3b8;
             font-size: 13px;
             line-height: 1.8;
         }
@@ -231,32 +231,33 @@
         }
         .footer-divider {
             border: none;
-            border-top: 1px solid rgba(255,255,255,0.06);
+            border-top: 1px solid rgba(255,255,255,0.08);
             margin: 20px 0;
         }
         .footer-copyright {
-            color: rgba(255,255,255,0.25);
-            font-size: 11px;
+            color: #64748b;
+            font-size: 12px;
         }
 
         @media only screen and (max-width: 640px) {
             .email-wrapper { width: 100% !important; }
             .email-header, .email-body, .email-footer { padding: 24px 20px !important; }
             .card { padding: 16px !important; }
+            .email-logo img { max-height: 64px !important; max-width: 220px !important; }
         }
     </style>
 </head>
-<body style="background-color: #0a0e1a; margin: 0; padding: 20px 0;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0e1a;">
+<body style="background-color: #000000; margin: 0; padding: 20px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #000000;">
         <tr>
             <td align="center">
-                <div class="email-wrapper" style="max-width: 640px; background: #0f1629; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);">
+                <div class="email-wrapper" style="max-width: 640px; background: #000000; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.5);">
 
                     {{-- HEADER --}}
                     <div class="email-header">
                         <div class="email-logo">
                             @if($siteLogo)
-                                <img src="{{ $appUrl }}/storage/{{ $siteLogo }}" alt="{{ $appName }}" style="max-height: 48px; max-width: 200px;">
+                                <img src="{{ $appUrl }}/storage/{{ $siteLogo }}" alt="{{ $appName }}" style="max-height: 80px; max-width: 280px;">
                             @else
                                 <div class="email-logo-text">{{ $appName }}</div>
                             @endif
@@ -273,7 +274,7 @@
                     <div class="email-footer">
                         <div class="footer-logo">
                             @if($siteLogo)
-                                <img src="{{ $appUrl }}/storage/{{ $siteLogo }}" alt="{{ $appName }}" style="max-height: 32px; filter: brightness(10);">
+                                <img src="{{ $appUrl }}/storage/{{ $siteLogo }}" alt="{{ $appName }}" style="max-height: 40px;">
                             @else
                                 <div style="color: #ffffff; font-size: 18px; font-weight: 700; letter-spacing: 2px;">{{ $appName }}</div>
                             @endif
