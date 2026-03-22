@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TPIX Master Node — Preview</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+    theme: {
+        extend: {
+            colors: {
+                dark: { 800: '#1e293b', 900: '#0f172a', 950: '#020617' },
+                accent: { 500: '#8b5cf6' },
+                primary: { 500: '#06b6d4' },
+                warm: { 500: '#f97316' },
+                'trading-green': '#00C853',
+                'trading-red': '#FF1744',
+            },
+            animation: {
+                'float': 'float 6s ease-in-out infinite',
+                'glow-brand': 'glowBrand 3s ease-in-out infinite',
+            },
+            keyframes: {
+                float: {
+                    '0%, 100%': { transform: 'translateY(0px)' },
+                    '50%': { transform: 'translateY(-20px)' },
+                },
+                glowBrand: {
+                    '0%, 100%': { boxShadow: '0 0 30px rgba(139,92,246,0.3)' },
+                    '33%': { boxShadow: '0 0 30px rgba(6,182,212,0.3)' },
+                    '66%': { boxShadow: '0 0 30px rgba(249,115,22,0.3)' },
+                },
+            },
+        },
+    },
+}
+</script>
+<style>
+    body { background: #020617; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); }
+    .glass-sm { background: rgba(255,255,255,0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.08); }
+    .glass-brand { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); position: relative; }
+    .glass-brand::before { content:''; position:absolute; inset:-1px; border-radius:inherit; padding:1px; background:linear-gradient(135deg,#8b5cf6,#06b6d4,#f97316); -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; }
+    .glass-card { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s; }
+    .glass-card:hover { background: rgba(255,255,255,0.08); border-color: rgba(6,182,212,0.3); }
+    .text-gradient { background: linear-gradient(135deg, #8b5cf6, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .text-gradient-brand { background: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 50%, #f97316 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 200% 200%; }
+    .btn-brand { background: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 50%, #f97316 100%); background-size: 200% 200%; color: white; border: none; cursor: pointer; transition: all 0.3s; }
+    .btn-brand:hover { background-position: 100% 0; transform: scale(1.05); box-shadow: 0 10px 30px rgba(6,182,212,0.3); }
+    .btn-secondary { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: white; cursor: pointer; transition: all 0.2s; }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+</style>
+</head>
+<body class="text-slate-100 min-h-screen overflow-x-hidden">
+
+<!-- Animated Background Glow -->
+<div class="fixed inset-0 pointer-events-none -z-10">
+    <div class="absolute top-1/4 left-1/4 w-[600px] h-[600px] bg-purple-500/[0.08] rounded-full blur-[120px] animate-float"></div>
+    <div class="absolute top-1/2 right-1/3 w-[700px] h-[700px] bg-cyan-500/[0.06] rounded-full blur-[120px]" style="animation: float 8s ease-in-out infinite reverse"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-orange-500/[0.05] rounded-full blur-[120px] animate-float" style="animation-delay: -3s"></div>
+</div>
+
+<!-- Simple Nav -->
+<nav class="glass border-b border-white/10 px-6 py-3 flex items-center justify-between sticky top-0 z-50">
+    <div class="flex items-center gap-3">
+        <img src="/logo.png" alt="TPIX" class="w-8 h-8 rounded-lg ring-1 ring-white/20">
+        <span class="font-bold text-lg">TPIX <span class="text-gradient">TRADE</span></span>
+    </div>
+    <div class="flex items-center gap-4 text-sm">
+        <a href="#" class="text-gray-400 hover:text-white transition">Trade</a>
+        <a href="#" class="text-gray-400 hover:text-white transition">Swap</a>
+        <a href="#" class="text-cyan-400 font-semibold">Master Node</a>
+        <a href="#" class="text-gray-400 hover:text-white transition">Whitepaper</a>
+    </div>
+</nav>
+
+<div class="max-w-6xl mx-auto px-4 py-8 space-y-8 relative z-10">
+
+    <!-- ==================== HERO ==================== -->
+    <div class="relative">
+        <div class="absolute -inset-2 bg-gradient-to-r from-purple-500/20 via-cyan-500/15 to-orange-500/20 rounded-3xl blur-xl opacity-60"></div>
+
+        <div class="glass-brand rounded-3xl p-10 md:p-16 text-center overflow-hidden relative">
+            <!-- Floating particles -->
+            <div class="absolute top-6 left-10 w-2 h-2 bg-cyan-400/40 rounded-full animate-float"></div>
+            <div class="absolute top-20 right-16 w-1.5 h-1.5 bg-purple-400/40 rounded-full animate-float" style="animation-delay: -2s"></div>
+            <div class="absolute bottom-12 left-1/4 w-1 h-1 bg-yellow-400/40 rounded-full animate-float" style="animation-delay: -4s"></div>
+            <div class="absolute top-1/2 right-10 w-1.5 h-1.5 bg-orange-400/30 rounded-full animate-float" style="animation-delay: -1s"></div>
+
+            <!-- TPIX Logo with glow -->
+            <div class="relative inline-block mb-6">
+                <div class="absolute -inset-4 bg-gradient-to-r from-purple-500/30 via-cyan-500/30 to-orange-500/30 rounded-full blur-2xl animate-glow-brand"></div>
+                <img src="/logo.png" alt="TPIX" class="relative w-24 h-24 rounded-2xl shadow-2xl ring-2 ring-white/10">
+            </div>
+
+            <h1 class="text-4xl md:text-5xl font-black mb-3">
+                <span class="text-gradient-brand">Master Node</span>
+            </h1>
+            <p class="text-lg text-gray-300 mb-2 max-w-xl mx-auto">Secure the TPIX blockchain and earn rewards</p>
+            <p class="text-sm text-gray-500 mb-8 max-w-md mx-auto">
+                Connect your wallet, check your balance, and start running a node in seconds. No coding required.
+            </p>
+
+            <!-- Stats preview -->
+            <div class="grid grid-cols-3 gap-4 max-w-md mx-auto mb-8">
+                <div class="glass-sm rounded-xl p-3">
+                    <div class="text-xs text-gray-400">APY up to</div>
+                    <div class="text-xl font-black text-green-400">15%</div>
+                </div>
+                <div class="glass-sm rounded-xl p-3">
+                    <div class="text-xs text-gray-400">Reward Pool</div>
+                    <div class="text-xl font-black text-gradient">1.4B</div>
+                </div>
+                <div class="glass-sm rounded-xl p-3">
+                    <div class="text-xs text-gray-400">Min Stake</div>
+                    <div class="text-xl font-black text-cyan-400">10K</div>
+                </div>
+            </div>
+
+            <button class="btn-brand px-10 py-4 text-lg font-bold rounded-2xl shadow-lg inline-flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                Connect Wallet
+            </button>
+            <p class="text-xs text-gray-500 mt-4">MetaMask · Trust Wallet · Coinbase · OKX · TPIX Wallet</p>
+        </div>
+    </div>
+
+    <!-- ==================== CONNECTED STATE DEMO ==================== -->
+    <div class="text-center my-4">
+        <div class="text-xs text-gray-600 uppercase tracking-widest">— Preview: After wallet connected —</div>
+    </div>
+
+    <!-- Wallet Bar -->
+    <div class="relative group">
+        <div class="absolute -inset-0.5 bg-gradient-to-r from-purple-500/20 via-cyan-500/20 to-orange-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+        <div class="glass relative rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <div class="relative">
+                    <div class="absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full blur-sm opacity-50"></div>
+                    <img src="/logo.png" alt="TPIX" class="relative w-12 h-12 rounded-full ring-2 ring-white/20">
+                </div>
+                <div>
+                    <div class="font-mono text-sm text-cyan-400 font-semibold">0x7F4e...B31a</div>
+                    <div class="text-xs flex items-center gap-1 text-green-400 mt-0.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                        TPIX Chain (4289)
+                    </div>
+                </div>
+            </div>
+            <div class="text-right">
+                <div class="text-[10px] text-gray-400 uppercase tracking-widest">Your TPIX</div>
+                <div class="text-3xl font-black text-gradient leading-tight">1,250,000</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 p-1 glass-sm rounded-xl">
+        <button class="flex-1 py-2.5 rounded-lg text-sm font-semibold glass text-white shadow-lg">🚀 Run a Node</button>
+        <button class="flex-1 py-2.5 rounded-lg text-sm font-semibold text-gray-400 hover:text-white transition">🌐 Network</button>
+    </div>
+
+    <div class="text-center">
+        <h2 class="text-2xl font-bold text-white">Choose Your Node</h2>
+        <p class="text-sm text-gray-400 mt-1">You have <span class="text-gradient font-bold">1,250,000 TPIX</span> — select a tier to start earning</p>
+    </div>
+
+    <!-- ==================== NODE TIER CARDS ==================== -->
+    <div class="grid md:grid-cols-3 gap-6">
+
+        <!-- Validator -->
+        <div class="group relative rounded-2xl overflow-hidden hover:scale-[1.03] hover:-translate-y-1 transition-all duration-500 cursor-pointer">
+            <div class="absolute -inset-1 bg-gradient-to-b from-yellow-500/30 via-amber-500/20 to-orange-500/10 rounded-3xl blur-xl transition-opacity duration-500 opacity-0 group-hover:opacity-100"></div>
+            <div class="relative glass rounded-2xl p-6 h-full flex flex-col border-yellow-500/30 shadow-[0_0_40px_rgba(245,158,11,0.15)]">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="relative">
+                        <div class="absolute -inset-2 bg-gradient-to-b from-yellow-500/30 via-amber-500/20 to-orange-500/10 rounded-xl blur-lg opacity-40"></div>
+                        <img src="/logo.png" alt="TPIX" class="relative w-14 h-14 rounded-xl ring-1 ring-white/10">
+                    </div>
+                    <div class="bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 px-3 py-1 rounded-full text-xs font-black">12-15% APY</div>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-1">Validator Node</h3>
+                <p class="text-xs text-gray-400 mb-5 leading-relaxed">Block producer with highest rewards and governance power</p>
+                <div class="space-y-3 mb-5 flex-1">
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Min Stake</span><span class="text-sm font-bold text-yellow-400">1,000,000 TPIX</span></div>
+                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Lock Period</span><span class="text-sm text-gray-300">90 days</span></div>
+                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Block Reward</span><span class="text-sm text-gray-300">50%</span></div>
+                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Max Nodes</span><span class="text-sm text-gray-300">100</span></div>
+                </div>
+                <div class="mb-4 p-2.5 rounded-xl bg-green-500/10 border border-green-500/20">
+                    <div class="flex items-center gap-2 text-xs text-green-400 font-semibold">
+                        <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                        You can run 1 node
+                    </div>
+                </div>
+                <button class="btn-brand w-full py-3 rounded-xl font-bold text-sm">Stake 1,000,000 TPIX</button>
+                <div class="text-[10px] text-gray-600 mt-3 text-center">8 CPU · 16GB · 500GB SSD</div>
+            </div>
+        </div>
+
+        <!-- Sentinel -->
+        <div class="group relative rounded-2xl overflow-hidden hover:scale-[1.03] hover:-translate-y-1 transition-all duration-500 cursor-pointer">
+            <div class="absolute -inset-1 bg-gradient-to-b from-purple-500/30 via-violet-500/20 to-fuchsia-500/10 rounded-3xl blur-xl transition-opacity duration-500 opacity-0 group-hover:opacity-100"></div>
+            <div class="relative glass rounded-2xl p-6 h-full flex flex-col border-purple-500/30 shadow-[0_0_40px_rgba(139,92,246,0.15)]">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="relative">
+                        <div class="absolute -inset-2 bg-gradient-to-b from-purple-500/30 via-violet-500/20 to-fuchsia-500/10 rounded-xl blur-lg opacity-40"></div>
+                        <img src="/logo.png" alt="TPIX" class="relative w-14 h-14 rounded-xl ring-1 ring-white/10">
+                    </div>
+                    <div class="bg-purple-500/20 text-purple-300 border border-purple-500/40 px-3 py-1 rounded-full text-xs font-black">7-10% APY</div>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-1">Sentinel Node</h3>
+                <p class="text-xs text-gray-400 mb-5 leading-relaxed">Data relay and light validation for network integrity</p>
+                <div class="space-y-3 mb-5 flex-1">
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Min Stake</span><span class="text-sm font-bold text-purple-400">100,000 TPIX</span></div>
+                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Lock Period</span><span class="text-sm text-gray-300">30 days</span></div>
+                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Block Reward</span><span class="text-sm text-gray-300">30%</span></div>
+                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Max Nodes</span><span class="text-sm text-gray-300">500</span></div>
+                </div>
+                <div class="mb-4 p-2.5 rounded-xl bg-green-500/10 border border-green-500/20">
+                    <div class="flex items-center gap-2 text-xs text-green-400 font-semibold">
+                        <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                        You can run 12 nodes
+                    </div>
+                </div>
+                <button class="btn-brand w-full py-3 rounded-xl font-bold text-sm">Stake 100,000 TPIX</button>
+                <div class="text-[10px] text-gray-600 mt-3 text-center">4 CPU · 8GB · 200GB SSD</div>
+            </div>
+        </div>
+
+        <!-- Light -->
+        <div class="group relative rounded-2xl overflow-hidden hover:scale-[1.03] hover:-translate-y-1 transition-all duration-500 cursor-pointer">
+            <div class="absolute -inset-1 bg-gradient-to-b from-cyan-500/30 via-blue-500/20 to-teal-500/10 rounded-3xl blur-xl transition-opacity duration-500 opacity-0 group-hover:opacity-100"></div>
+            <div class="relative glass rounded-2xl p-6 h-full flex flex-col border-cyan-500/30 shadow-[0_0_40px_rgba(6,182,212,0.15)]">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="relative">
+                        <div class="absolute -inset-2 bg-gradient-to-b from-cyan-500/30 via-blue-500/20 to-teal-500/10 rounded-xl blur-lg opacity-40"></div>
+                        <img src="/logo.png" alt="TPIX" class="relative w-14 h-14 rounded-xl ring-1 ring-white/10">
+                    </div>
+                    <div class="bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-3 py-1 rounded-full text-xs font-black">4-6% APY</div>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-1">Light Node</h3>
+                <p class="text-xs text-gray-400 mb-5 leading-relaxed">Easiest entry — support the network and earn rewards</p>
+                <div class="space-y-3 mb-5 flex-1">
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Min Stake</span><span class="text-sm font-bold text-cyan-400">10,000 TPIX</span></div>
+                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Lock Period</span><span class="text-sm text-gray-300">7 days</span></div>
+                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Block Reward</span><span class="text-sm text-gray-300">20%</span></div>
+                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                    <div class="flex justify-between items-center"><span class="text-xs text-gray-500">Max Nodes</span><span class="text-sm text-gray-300">∞</span></div>
+                </div>
+                <div class="mb-4 p-2.5 rounded-xl bg-green-500/10 border border-green-500/20">
+                    <div class="flex items-center gap-2 text-xs text-green-400 font-semibold">
+                        <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                        You can run 125 nodes
+                    </div>
+                </div>
+                <button class="btn-brand w-full py-3 rounded-xl font-bold text-sm">Stake 10,000 TPIX</button>
+                <div class="text-[10px] text-gray-600 mt-3 text-center">2 CPU · 4GB · 100GB SSD</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Block Reward Split -->
+    <div class="glass rounded-2xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+            <img src="/logo.png" alt="TPIX" class="w-8 h-8 rounded-lg ring-1 ring-white/10">
+            <div>
+                <h3 class="text-sm font-bold text-white">Reward Pool: 1,400,000,000 TPIX</h3>
+                <p class="text-xs text-gray-400">5-year decreasing emission — Year 1</p>
+            </div>
+        </div>
+        <div class="flex rounded-xl overflow-hidden h-8 mb-3">
+            <div class="bg-gradient-to-r from-yellow-500 to-amber-500 flex items-center justify-center text-[10px] font-bold text-black" style="width:50%">50% Validator</div>
+            <div class="bg-gradient-to-r from-purple-500 to-violet-500 flex items-center justify-center text-[10px] font-bold text-white" style="width:30%">30% Sentinel</div>
+            <div class="bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center text-[10px] font-bold text-white" style="width:20%">20% Light</div>
+        </div>
+        <div class="grid grid-cols-5 gap-3 mt-4">
+            <div class="glass rounded-xl p-3 text-center border border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.15)] scale-105">
+                <div class="text-xs font-black text-cyan-400">Year 1</div>
+                <div class="text-lg font-bold text-white mt-1">400M</div>
+                <div class="text-[10px] text-gray-500">~25.5/block</div>
+            </div>
+            <div class="glass-sm rounded-xl p-3 text-center border border-white/5 opacity-60">
+                <div class="text-xs font-black text-gray-500">Year 2</div>
+                <div class="text-lg font-bold text-gray-400 mt-1">350M</div>
+                <div class="text-[10px] text-gray-600">~22.3/block</div>
+            </div>
+            <div class="glass-sm rounded-xl p-3 text-center border border-white/5 opacity-60">
+                <div class="text-xs font-black text-gray-500">Year 3</div>
+                <div class="text-lg font-bold text-gray-400 mt-1">300M</div>
+                <div class="text-[10px] text-gray-600">~19.1/block</div>
+            </div>
+            <div class="glass-sm rounded-xl p-3 text-center border border-white/5 opacity-60">
+                <div class="text-xs font-black text-gray-500">Year 4</div>
+                <div class="text-lg font-bold text-gray-400 mt-1">200M</div>
+                <div class="text-[10px] text-gray-600">~12.7/block</div>
+            </div>
+            <div class="glass-sm rounded-xl p-3 text-center border border-white/5 opacity-60">
+                <div class="text-xs font-black text-gray-500">Year 5</div>
+                <div class="text-lg font-bold text-gray-400 mt-1">150M</div>
+                <div class="text-[10px] text-gray-600">~9.6/block</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Download CTA -->
+    <div class="relative group">
+        <div class="absolute -inset-1 bg-gradient-to-r from-purple-500/20 via-cyan-500/20 to-orange-500/20 rounded-3xl blur-xl opacity-60 group-hover:opacity-100 transition-opacity"></div>
+        <div class="glass-brand rounded-2xl p-8 text-center relative">
+            <img src="/logo.png" alt="TPIX" class="w-16 h-16 rounded-2xl mx-auto mb-4 ring-2 ring-white/10">
+            <h3 class="text-xl font-bold text-white mb-2">Run Your Own Node</h3>
+            <p class="text-sm text-gray-400 mb-5">Download the TPIX Node app for Windows or Linux</p>
+            <div class="flex justify-center gap-3 flex-wrap">
+                <a href="https://github.com/xjanova/TPIX-Coin/releases" target="_blank" class="btn-brand px-6 py-2.5 rounded-xl font-bold text-sm inline-block">Download for Windows / Linux</a>
+                <a href="https://github.com/xjanova/TPIX-Coin" target="_blank" class="btn-secondary px-6 py-2.5 rounded-xl font-bold text-sm inline-block">View Source Code</a>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center py-6 text-xs text-gray-600">
+        TPIX Master Node · Chain 4289 · Powered by Xman Studio · <a href="https://tpix.online" class="text-cyan-500/50 hover:text-cyan-400">tpix.online</a>
+    </footer>
+</div>
+</body>
+</html>
