@@ -10,6 +10,7 @@
 
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AiController;
+use App\Http\Controllers\Admin\AppReleaseController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BannerController;
@@ -194,5 +195,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('audit-logs', [AuditLogController::class, 'index'])
             ->name('audit-logs.index')
             ->middleware('admin.role:super_admin');
+
+        // App Releases — ดูรายการ releases จาก GitHub
+        Route::get('app-releases', [AppReleaseController::class, 'index'])->name('app-releases.index');
+        Route::post('app-releases/refresh', [AppReleaseController::class, 'refresh'])->name('app-releases.refresh');
     });
 });
