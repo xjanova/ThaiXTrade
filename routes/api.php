@@ -131,11 +131,17 @@ Route::prefix('v1')->group(function () {
         Route::get('/status/{id}', [BridgeApiController::class, 'status']);
     });
 
-    // Staking — read-only public endpoints
+    // Staking — read-only public endpoints (legacy)
     Route::prefix('staking')->group(function () {
         Route::get('/pools', [StakingApiController::class, 'pools']);
         Route::get('/stats', [StakingApiController::class, 'stats']);
         Route::get('/positions/{wallet}', [StakingApiController::class, 'positions']);
+    });
+
+    // Master Node — network stats & node info
+    Route::prefix('masternode')->group(function () {
+        Route::get('/stats', [\App\Http\Controllers\MasterNodeController::class, 'stats']);
+        Route::get('/my-nodes', [\App\Http\Controllers\MasterNodeController::class, 'myNodes']);
     });
 
     // Articles / Blog — บทความ (public)

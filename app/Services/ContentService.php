@@ -176,20 +176,85 @@ class ContentService
      */
     private function generateWithPollinations(string $prompt, int $width, int $height): ?string
     {
-        $encodedPrompt = urlencode($prompt);
-        $seed = rand(1, 99999);
-        $url = "https://image.pollinations.ai/prompt/{$encodedPrompt}?width={$width}&height={$height}&seed={$seed}&nologo=true";
+        // ลองหลาย model — Pollinations เปลี่ยน default model บ่อย
+        $models = ['flux', 'turbo'];
 
-        try {
-            $response = Http::timeout(60)->get($url);
-            if ($response->successful()) {
-                return $response->body();
+        foreach ($models as $model) {
+            try {
+                $encodedPrompt = urlencode($prompt);
+                $seed = rand(1, 99999);
+                $url = "https://image.pollinations.ai/prompt/{$encodedPrompt}?model={$model}&width={$width}&height={$height}&seed={$seed}&nologo=true";
+
+                $response = Http::timeout(90)
+                    ->withOptions(['allow_redirects' => true])
+                    ->get($url);
+
+                if ($response->successful() && strlen($response->body()) > 1000) {
+                    $contentType = $response->header('Content-Type') ?? '';
+                    if (str_contains($contentType, 'image') || str_starts_with($response->body(), "\xFF\xD8") || str_starts_with($response->body(), "\x89PNG")) {
+                        return $response->body();
+                    }
+                }
+
+                Log::info("Pollinations model {$model} failed", ['status' => $response->status(), 'size' => strlen($response->body())]);
+            } catch (\Exception $e) {
+                Log::warning("Pollinations {$model} error", ['error' => $e->getMessage()]);
             }
-        } catch (\Exception $e) {
-            Log::warning('Pollinations image failed', ['error' => $e->getMessage()]);
         }
 
-        return null;
+        // Fallback: สร้าง gradient placeholder ด้วย GD/Imagick
+        return $this->generatePlaceholderImage($prompt, $width, $height);
+    }
+
+    /**
+     * สร้าง placeholder image ด้วย PHP GD — gradient + text overlay.
+     */
+    private function generatePlaceholderImage(string $prompt, int $width, int $height): ?string
+    {
+        if (! extension_loaded('gd')) {
+            Log::warning('GD extension not available for placeholder image');
+
+            return null;
+        }
+
+        $img = imagecreatetruecolor($width, $height);
+
+        // Dark gradient background
+        for ($y = 0; $y < $height; $y++) {
+            $r = (int) (10 + ($y / $height) * 15);
+            $g = (int) (15 + ($y / $height) * 25);
+            $b = (int) (30 + ($y / $height) * 50);
+            $color = imagecolorallocate($img, $r, $g, $b);
+            imageline($img, 0, $y, $width, $y, $color);
+        }
+
+        // Cyan accent circle
+        $cyan = imagecolorallocate($img, 6, 182, 212);
+        imagefilledellipse($img, (int) ($width * 0.7), (int) ($height * 0.4), 200, 200, $cyan);
+
+        // Semi-transparent overlay
+        $overlay = imagecolorallocatealpha($img, 10, 15, 30, 80);
+        imagefilledrectangle($img, 0, 0, $width, $height, $overlay);
+
+        // Text: "TPIX TRADE"
+        $white = imagecolorallocate($img, 255, 255, 255);
+        $fontSize = 5;
+        $text = 'TPIX TRADE';
+        $textWidth = imagefontwidth($fontSize) * strlen($text);
+        imagestring($img, $fontSize, (int) (($width - $textWidth) / 2), (int) ($height * 0.4), $text, $white);
+
+        // Subtitle
+        $gray = imagecolorallocate($img, 150, 160, 180);
+        $sub = substr($prompt, 0, 60);
+        $subWidth = imagefontwidth(3) * strlen($sub);
+        imagestring($img, 3, (int) (($width - $subWidth) / 2), (int) ($height * 0.55), $sub, $gray);
+
+        ob_start();
+        imagejpeg($img, null, 90);
+        $data = ob_get_clean();
+        imagedestroy($img);
+
+        return $data ?: null;
     }
 
     /**

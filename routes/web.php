@@ -10,6 +10,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\SocialController;
 use App\Http\Controllers\CarbonCreditController;
+use App\Http\Controllers\MasterNodeController;
 use App\Http\Controllers\FoodPassportController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TokenFactoryController;
@@ -143,10 +144,9 @@ Route::get('/bridge', function () {
     return Inertia::render('Bridge');
 })->name('bridge');
 
-// Staking — ระบบ Staking TPIX (Coming Soon)
-Route::get('/staking', function () {
-    return Inertia::render('Staking');
-})->name('staking');
+// Master Node — ตั้งโหนด + Network Dashboard (แทนที่ Staking เดิม)
+Route::get('/masternode', [MasterNodeController::class, 'index'])->name('masternode');
+Route::get('/staking', fn() => redirect()->route('masternode'))->name('staking'); // redirect เก่า
 
 // Download — ดาวน์โหลดแอป TPIX TRADE (ดึง release ล่าสุดจาก API ของเราเอง)
 Route::get('/download', function () {
