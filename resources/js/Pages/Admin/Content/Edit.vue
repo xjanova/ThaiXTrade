@@ -82,7 +82,7 @@ async function generateCoverImage() {
         const response = await fetch('/admin/content/generate-image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content },
-            body: JSON.stringify({ prompt: imagePrompt.value }),
+            body: JSON.stringify({ prompt: imagePrompt.value, article_id: props.article.id }),
         });
         const data = await response.json();
         if (data.success) {
@@ -193,7 +193,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         <div>
                             <label :class="labelClass">Cover Image</label>
                             <div v-if="article.cover_image" class="rounded-xl overflow-hidden border border-white/10 mb-3">
-                                <img :src="'/storage/' + article.cover_image" class="w-full h-48 object-cover" />
+                                <img :src="article.cover_image.startsWith('/') ? article.cover_image : '/storage/' + article.cover_image" class="w-full h-48 object-cover" />
                             </div>
                             <div v-else class="w-full h-48 rounded-xl bg-dark-800 border border-white/10 border-dashed flex items-center justify-center text-dark-500 mb-3">
                                 No cover image

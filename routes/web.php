@@ -108,7 +108,7 @@ Route::get('/blog', function () {
 })->name('blog');
 Route::get('/blog/{slug}', function ($slug) {
     return Inertia::render('Blog/Show', ['slug' => $slug]);
-})->where('slug', '[a-z0-9\-]+')->name('blog.show');
+})->where('slug', '[a-zA-Z0-9\-_]+')->name('blog.show');
 
 // Settings
 Route::get('/settings', function () {

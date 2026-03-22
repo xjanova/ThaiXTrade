@@ -133,11 +133,20 @@ class ContentController extends Controller
     {
         $validated = $request->validate([
             'prompt' => 'required|string|max:500',
+            'article_id' => 'nullable|integer|exists:articles,id',
         ]);
 
         $image = $this->contentService->generateImage($validated['prompt']);
 
         if ($image) {
+            // ผูกรูปกับ article ถ้าส่ง article_id มา
+            if (! empty($validated['article_id'])) {
+                Article::where('id', $validated['article_id'])->update([
+                    'cover_image' => $image,
+                    'ai_image_prompt' => $validated['prompt'],
+                ]);
+            }
+
             return response()->json(['success' => true, 'image_url' => $image]);
         }
 

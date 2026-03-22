@@ -258,7 +258,7 @@ const statusColors = {
                             class="border-b border-white/5 hover:bg-white/5 transition-colors group">
                             <td class="p-4">
                                 <Link :href="`/admin/content/${article.id}/edit`" class="flex items-center gap-3 group-hover:opacity-80">
-                                    <img v-if="article.cover_image" :src="'/storage/' + article.cover_image" class="w-14 h-10 rounded-lg object-cover flex-shrink-0" />
+                                    <img v-if="article.cover_image" :src="article.cover_image.startsWith('/') ? article.cover_image : '/storage/' + article.cover_image" class="w-14 h-10 rounded-lg object-cover flex-shrink-0" />
                                     <div v-else class="w-14 h-10 rounded-lg bg-dark-700 flex items-center justify-center text-xs flex-shrink-0">📝</div>
                                     <div class="min-w-0">
                                         <p class="text-white text-sm font-medium line-clamp-1">{{ article.title }}</p>

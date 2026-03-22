@@ -34,7 +34,12 @@ class Article extends Model
     {
         static::creating(function (self $article) {
             if (empty($article->slug)) {
-                $article->slug = Str::slug($article->title).'-'.Str::random(6);
+                $base = Str::slug($article->title);
+                // Str::slug returns empty for Thai/CJK — fallback to category or 'article'
+                if ($base === '') {
+                    $base = Str::slug($article->category ?: 'article');
+                }
+                $article->slug = $base.'-'.strtolower(Str::random(8));
             }
         });
     }

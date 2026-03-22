@@ -41,7 +41,15 @@ class ArticleController extends Controller
      */
     public function show(string $slug): JsonResponse
     {
-        $article = Article::published()->where('slug', $slug)->firstOrFail();
+        $article = Article::published()->where('slug', $slug)->first();
+
+        if (! $article) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NOT_FOUND', 'message' => 'Article not found'],
+            ], 404);
+        }
+
         $article->incrementViews();
 
         return response()->json([
