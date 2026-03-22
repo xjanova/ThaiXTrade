@@ -1,6 +1,6 @@
 {
   "name": "tpix-trade-mobile",
-  "version": "1.0.147",
+  "version": "1.0.182",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
