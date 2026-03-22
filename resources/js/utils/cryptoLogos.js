@@ -1,21 +1,77 @@
 /**
  * TPIX TRADE - Crypto Logo Helper
- * Uses CoinCap CDN (reliable, no auth required, allows hotlinking)
- * With fallback to Trust Wallet Assets for BSC tokens
+ * Multi-source fallback: CoinCap → CryptoLogos.cc → CoinGecko → Trust Wallet
  * Developed by Xman Studio
  */
 
-/**
- * Primary: CoinCap CDN - uses lowercase symbol
- * Format: https://assets.coincap.io/assets/icons/{symbol}@2x.png
- */
+// CDN sources (ไม่ต้อง auth, hotlink ได้)
 const COINCAP_CDN = 'https://assets.coincap.io/assets/icons';
+const CRYPTOLOGOS = 'https://cryptologos.cc/logos';
+const TW_ASSETS = 'https://raw.githubusercontent.com/trustwallet/assets/master';
 
 /**
- * Fallback: Trust Wallet Assets on GitHub
- * For BSC-specific tokens using contract address
+ * Known symbol → CryptoLogos.cc slug mappings
+ * ใช้เมื่อ CoinCap ไม่มีโลโก้
  */
-const TW_ASSETS = 'https://raw.githubusercontent.com/trustwallet/assets/master';
+const CRYPTOLOGOS_MAP = {
+    BTC: 'bitcoin-btc-logo.png',
+    ETH: 'ethereum-eth-logo.png',
+    BNB: 'bnb-bnb-logo.png',
+    USDT: 'tether-usdt-logo.png',
+    USDC: 'usd-coin-usdc-logo.png',
+    SOL: 'solana-sol-logo.png',
+    XRP: 'xrp-xrp-logo.png',
+    ADA: 'cardano-ada-logo.png',
+    DOGE: 'dogecoin-doge-logo.png',
+    DOT: 'polkadot-new-dot-logo.png',
+    MATIC: 'polygon-matic-logo.png',
+    AVAX: 'avalanche-avax-logo.png',
+    LINK: 'chainlink-link-logo.png',
+    UNI: 'uniswap-uni-logo.png',
+    ATOM: 'cosmos-atom-logo.png',
+    LTC: 'litecoin-ltc-logo.png',
+    FIL: 'filecoin-fil-logo.png',
+    APT: 'aptos-apt-logo.png',
+    ARB: 'arbitrum-arb-logo.png',
+    OP: 'optimism-ethereum-op-logo.png',
+    NEAR: 'near-protocol-near-logo.png',
+    AAVE: 'aave-aave-logo.png',
+    CAKE: 'pancakeswap-cake-logo.png',
+    TRX: 'tron-trx-logo.png',
+    SHIB: 'shiba-inu-shib-logo.png',
+    DAI: 'multi-collateral-dai-dai-logo.png',
+    CRO: 'cronos-cro-logo.png',
+    ALGO: 'algorand-algo-logo.png',
+    FTM: 'fantom-ftm-logo.png',
+    MANA: 'decentraland-mana-logo.png',
+    SAND: 'the-sandbox-sand-logo.png',
+    AXS: 'axie-infinity-axs-logo.png',
+    '1INCH': '1inch-1inch-logo.png',
+    SUSHI: 'sushiswap-sushi-logo.png',
+    COMP: 'compound-comp-logo.png',
+    MKR: 'maker-mkr-logo.png',
+    SNX: 'synthetix-network-token-snx-logo.png',
+    GRT: 'the-graph-grt-logo.png',
+    ENJ: 'enjin-coin-enj-logo.png',
+    ZEC: 'zcash-zec-logo.png',
+    PEPE: 'pepe-pepe-logo.png',
+    WIF: 'dogwifhat-wif-logo.png',
+    SUI: 'sui-sui-logo.png',
+    SEI: 'sei-sei-logo.png',
+    INJ: 'injective-inj-logo.png',
+    TIA: 'celestia-tia-logo.png',
+    RENDER: 'render-token-rndr-logo.png',
+    FET: 'fetch-ai-fet-logo.png',
+    TAO: 'bittensor-tao-logo.png',
+    BONK: 'bonk-bonk-logo.png',
+    FLOKI: 'floki-inu-floki-logo.png',
+    ETC: 'ethereum-classic-etc-logo.png',
+    XLM: 'stellar-xlm-logo.png',
+    HBAR: 'hedera-hbar-logo.png',
+    VET: 'vechain-vet-logo.png',
+    ICP: 'internet-computer-icp-logo.png',
+    RUNE: 'thorchain-rune-logo.png',
+};
 
 /**
  * BSC token addresses for Trust Wallet fallback
@@ -35,30 +91,72 @@ const BSC_TOKEN_ADDRESSES = {
 };
 
 /**
+ * TPIX ecosystem logos (local assets)
+ */
+const LOCAL_LOGOS = {
+    TPIX: '/logo.png',
+};
+
+/**
  * Special symbol mappings for CoinCap CDN
- * Some symbols differ from standard ticker names
  */
 const SYMBOL_MAP = {
     'MATIC': 'matic',
     '1INCH': '1inch',
+    'WBNB': 'bnb',
+    'WETH': 'eth',
+    'WBTC': 'btc',
+    'WTPIX': 'tpix',
 };
 
 /**
- * Get the logo URL for a given coin symbol
- * @param {string} symbol - Coin symbol (e.g. 'BTC', 'ETH')
- * @returns {string} Logo URL or empty string
+ * Get logo URL with multi-source fallback
+ * Priority: Local → CoinCap → CryptoLogos.cc
+ * @param {string} symbol
+ * @returns {string}
  */
 export function getCoinLogo(symbol) {
     if (!symbol) return '';
     const upper = symbol.toUpperCase().replace(/\/.*$/, '');
-    const lower = (SYMBOL_MAP[upper] || upper).toLowerCase();
+
+    // Local TPIX ecosystem logos
+    if (LOCAL_LOGOS[upper]) return LOCAL_LOGOS[upper];
+
+    // Map wrapped tokens to their base
+    const mapped = SYMBOL_MAP[upper] || upper;
+    const lower = mapped.toLowerCase();
+
     return `${COINCAP_CDN}/${lower}@2x.png`;
 }
 
 /**
+ * Get a secondary fallback URL (CryptoLogos.cc)
+ * Used when CoinCap image fails to load in <img @error>
+ * @param {string} symbol
+ * @returns {string|null}
+ */
+export function getCoinLogoFallback(symbol) {
+    if (!symbol) return null;
+    const upper = symbol.toUpperCase().replace(/\/.*$/, '');
+    const mapped = SYMBOL_MAP[upper] || upper;
+
+    // CryptoLogos.cc
+    if (CRYPTOLOGOS_MAP[mapped]) {
+        return `${CRYPTOLOGOS}/${CRYPTOLOGOS_MAP[mapped]}?v=040`;
+    }
+
+    // BSC Trust Wallet
+    if (BSC_TOKEN_ADDRESSES[mapped]) {
+        return getBSCTokenLogo(BSC_TOKEN_ADDRESSES[mapped]);
+    }
+
+    return null;
+}
+
+/**
  * Get BSC token logo from Trust Wallet Assets
- * @param {string} contractAddress - BSC token contract address
- * @returns {string} Logo URL
+ * @param {string} contractAddress
+ * @returns {string}
  */
 export function getBSCTokenLogo(contractAddress) {
     if (!contractAddress) return '';
@@ -66,8 +164,7 @@ export function getBSCTokenLogo(contractAddress) {
 }
 
 /**
- * Get logo URL with fallback to a generated gradient placeholder
- * Returns the URL or null (component should show fallback)
+ * Get logo URL or null (component handles fallback)
  * @param {string} symbol
  * @returns {string|null}
  */
@@ -77,17 +174,17 @@ export function getCoinLogoOrNull(symbol) {
 
 /**
  * Check if we have a real logo for this symbol
- * CoinCap covers most major tokens, so we return true for known ones
  * @param {string} symbol
  * @returns {boolean}
  */
 export function hasCoinLogo(symbol) {
-    return !!symbol && symbol.length > 0;
+    if (!symbol) return false;
+    const upper = symbol.toUpperCase();
+    return !!LOCAL_LOGOS[upper] || !!CRYPTOLOGOS_MAP[upper] || upper.length > 0;
 }
 
 /**
  * Extract the base symbol from a trading pair
- * e.g. 'BTC/USDT' => 'BTC', 'ETH-USDT' => 'ETH'
  * @param {string} pair
  * @returns {string}
  */
@@ -98,7 +195,7 @@ export function getBaseSymbol(pair) {
 
 /**
  * Get logo for a trading pair (returns base coin logo)
- * @param {string} pair - e.g. 'BTC/USDT'
+ * @param {string} pair
  * @returns {string}
  */
 export function getPairLogo(pair) {
@@ -107,6 +204,7 @@ export function getPairLogo(pair) {
 
 export default {
     getCoinLogo,
+    getCoinLogoFallback,
     getCoinLogoOrNull,
     getBSCTokenLogo,
     hasCoinLogo,
