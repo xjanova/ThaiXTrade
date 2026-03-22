@@ -32,10 +32,10 @@ const activeTab = ref('content');
 const showPreview = ref(false);
 const tagInput = ref('');
 const showSaved = ref(false);
-const imagePrompt = ref(props.article.ai_image_prompt || '');
 const imageLoading = ref(false);
 const selectedProvider = ref('auto');
 const generatedImageUrl = ref(null);
+const imageError = ref('');
 
 const categories = [
     { value: 'news', label: 'ข่าว', icon: '📰' },
@@ -45,6 +45,17 @@ const categories = [
     { value: 'defi', label: 'DeFi', icon: '💰' },
     { value: 'technology', label: 'เทคโนโลยี', icon: '🔬' },
 ];
+
+const categoryEnglish = { news: 'news', analysis: 'market analysis', tutorial: 'tutorial', tpix_chain: 'TPIX blockchain', defi: 'DeFi', technology: 'technology' };
+
+// Auto-generate English prompt from title + category
+function buildAutoPrompt() {
+    const cat = categoryEnglish[form.category] || form.category;
+    const titleText = form.title || 'crypto trading';
+    return `Professional ${cat} article cover image about: ${titleText}, dark theme, cyan blue accent, futuristic digital art, minimalist, no text, high quality`;
+}
+
+const imagePrompt = ref(props.article.ai_image_prompt || buildAutoPrompt());
 
 const wordCount = computed(() => {
     const text = form.content.replace(/<[^>]*>/g, '');
@@ -88,9 +99,16 @@ function removeTag(index) {
     form.tags.splice(index, 1);
 }
 
+function autoFillPrompt() {
+    imagePrompt.value = buildAutoPrompt();
+}
+
 async function generateCoverImage() {
-    if (!imagePrompt.value) return;
+    if (!imagePrompt.value) {
+        imagePrompt.value = buildAutoPrompt();
+    }
     imageLoading.value = true;
+    imageError.value = '';
     try {
         const response = await fetch('/admin/content/generate-image', {
             method: 'POST',
@@ -105,9 +123,15 @@ async function generateCoverImage() {
         if (data.success) {
             generatedImageUrl.value = data.image_url;
             if (props.article.id) router.reload({ only: ['article'] });
+        } else {
+            imageError.value = data.error || 'Image generation failed';
         }
-    } catch (e) { console.error(e); }
-    finally { imageLoading.value = false; }
+    } catch (e) {
+        imageError.value = 'Network error — please try again';
+        console.error(e);
+    } finally {
+        imageLoading.value = false;
+    }
 }
 
 const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all';
@@ -241,9 +265,20 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
                             <!-- Prompt + Generate -->
                             <div class="space-y-2">
-                                <label :class="labelClass">Image Prompt</label>
-                                <textarea v-model="imagePrompt" rows="2" :class="inputClass" placeholder="Describe the cover image you want..."></textarea>
-                                <button @click="generateCoverImage" :disabled="imageLoading || !imagePrompt"
+                                <div class="flex items-center justify-between">
+                                    <label :class="labelClass">Image Prompt (English)</label>
+                                    <button type="button" @click="autoFillPrompt" class="text-xs text-primary-400 hover:text-primary-300 transition-colors">
+                                        Auto-generate from title
+                                    </button>
+                                </div>
+                                <textarea v-model="imagePrompt" rows="3" :class="inputClass" placeholder="Professional article cover image about..."></textarea>
+
+                                <!-- Error -->
+                                <div v-if="imageError" class="p-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+                                    {{ imageError }}
+                                </div>
+
+                                <button @click="generateCoverImage" :disabled="imageLoading"
                                     class="w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
                                     :class="imageLoading || !imagePrompt
                                         ? 'bg-dark-700 text-dark-500 cursor-not-allowed'

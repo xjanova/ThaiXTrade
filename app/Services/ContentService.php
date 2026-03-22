@@ -161,7 +161,7 @@ class ContentService
         foreach ($priorities as $provider) {
             $info = self::imageProviders()[$provider];
             if ($info['setting_key']) {
-                $key = SiteSetting::getValue($info['setting_key']);
+                $key = SiteSetting::get('ai', $info['setting_key']);
                 if ($key && ! str_starts_with($key, '****')) {
                     return $provider;
                 }
@@ -197,7 +197,7 @@ class ContentService
      */
     private function generateWithTogether(string $prompt, int $width, int $height): ?string
     {
-        $apiKey = SiteSetting::getValue('together_api_key') ?: config('services.together.key');
+        $apiKey = SiteSetting::get('ai', 'together_api_key') ?: config('services.together.key');
         if (! $apiKey) {
             return $this->generateWithPollinations($prompt, $width, $height);
         }
@@ -238,7 +238,7 @@ class ContentService
      */
     private function generateWithHuggingFace(string $prompt, int $width, int $height): ?string
     {
-        $apiKey = SiteSetting::getValue('huggingface_api_key') ?: config('services.huggingface.key');
+        $apiKey = SiteSetting::get('ai', 'huggingface_api_key') ?: config('services.huggingface.key');
         if (! $apiKey) {
             return $this->generateWithPollinations($prompt, $width, $height);
         }
@@ -269,7 +269,7 @@ class ContentService
      */
     private function generateWithGemini(string $prompt): ?string
     {
-        $apiKey = SiteSetting::getValue('gemini_api_key') ?: config('services.gemini.key');
+        $apiKey = SiteSetting::get('ai', 'gemini_api_key') ?: config('services.gemini.key');
         if (! $apiKey) {
             return $this->generateWithPollinations($prompt, 1200, 630);
         }
