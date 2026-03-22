@@ -154,6 +154,9 @@ const aiForm = useForm({
     groq_default_model: props.settings.groq_default_model || 'llama-3.3-70b-versatile',
     ai_chatbot_enabled: props.settings.ai_chatbot_enabled || true,
     ai_content_enabled: props.settings.ai_content_enabled || true,
+    together_api_key: props.settings.together_api_key || '',
+    huggingface_api_key: props.settings.huggingface_api_key || '',
+    gemini_api_key: props.settings.gemini_api_key || '',
 });
 
 const saveAi = () => {
@@ -659,6 +662,33 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         </button>
                     </div>
                 </div>
+                <!-- Image Generation API Keys -->
+                <div class="p-4 rounded-xl bg-gradient-to-br from-accent-500/5 via-primary-500/5 to-warm-500/5 border border-primary-500/10">
+                    <h4 class="text-sm font-semibold text-primary-400 mb-4 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        AI Image Generation
+                    </h4>
+                    <p class="text-dark-500 text-xs mb-4">ไม่จำเป็นต้องใส่ — ระบบจะใช้ Pollinations.ai (ฟรี) เป็น fallback อัตโนมัติ</p>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label :class="labelClass">Together.ai API Key (FLUX)</label>
+                            <input v-model="aiForm.together_api_key" type="password" :class="inputClass" placeholder="(optional)" />
+                            <p class="text-dark-500 text-xs mt-1">FLUX.1 Schnell — คุณภาพสูง สมัครฟรีที่ together.ai</p>
+                        </div>
+                        <div>
+                            <label :class="labelClass">Hugging Face API Key</label>
+                            <input v-model="aiForm.huggingface_api_key" type="password" :class="inputClass" placeholder="hf_... (optional)" />
+                            <p class="text-dark-500 text-xs mt-1">SDXL-Lightning — เร็ว สมัครฟรีที่ huggingface.co</p>
+                        </div>
+                        <div>
+                            <label :class="labelClass">Google Gemini API Key</label>
+                            <input v-model="aiForm.gemini_api_key" type="password" :class="inputClass" placeholder="(optional)" />
+                            <p class="text-dark-500 text-xs mt-1">Imagen — 500 รูป/วัน ฟรี สมัครที่ aistudio.google.com</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="pt-4">
                     <button type="submit" :disabled="aiForm.processing" class="btn-primary px-6 py-2.5">
                         <span v-if="aiForm.processing">Saving...</span>

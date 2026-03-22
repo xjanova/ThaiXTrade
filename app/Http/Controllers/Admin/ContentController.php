@@ -46,7 +46,69 @@ class ContentController extends Controller
             'articles' => $articles,
             'stats' => $stats,
             'filters' => $request->only(['status', 'language', 'search']),
+            'imageProviders' => ContentService::imageProviders(),
         ]);
+    }
+
+    /**
+     * หน้าสร้างบทความเอง (manual).
+     */
+    public function create(): Response
+    {
+        return Inertia::render('Admin/Content/Edit', [
+            'article' => [
+                'id' => null,
+                'title' => '',
+                'content' => '',
+                'summary' => '',
+                'category' => 'news',
+                'language' => 'th',
+                'tags' => [],
+                'status' => 'draft',
+                'scheduled_at' => null,
+                'seo_title' => '',
+                'seo_description' => '',
+                'cover_image' => null,
+                'is_ai_generated' => false,
+                'ai_model' => null,
+                'views' => 0,
+                'likes' => 0,
+                'slug' => null,
+                'created_at' => now()->toISOString(),
+            ],
+            'imageProviders' => ContentService::imageProviders(),
+        ]);
+    }
+
+    /**
+     * บันทึกบทความใหม่ (manual).
+     */
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'content' => 'required|string',
+            'summary' => 'nullable|string',
+            'category' => 'required|string|in:news,analysis,tutorial,tpix_chain,defi,technology',
+            'language' => 'required|string|in:th,en',
+            'tags' => 'nullable|array',
+            'status' => 'nullable|in:draft,scheduled,published',
+            'scheduled_at' => 'nullable|date',
+            'seo_title' => 'nullable|string|max:255',
+            'seo_description' => 'nullable|string|max:500',
+        ]);
+
+        if (($validated['status'] ?? '') === 'published') {
+            $validated['published_at'] = now();
+        }
+
+        $validated['author_name'] = auth('admin')->user()->name ?? 'Admin';
+        $validated['is_ai_generated'] = false;
+
+        $article = Article::create($validated);
+
+        return redirect("/admin/content/{$article->id}/edit")
+            ->with('success', "สร้างบทความ \"{$article->title}\" สำเร็จ!");
     }
 
     /**
@@ -58,6 +120,7 @@ class ContentController extends Controller
 
         return Inertia::render('Admin/Content/Edit', [
             'article' => $article,
+            'imageProviders' => ContentService::imageProviders(),
         ]);
     }
 
@@ -133,10 +196,12 @@ class ContentController extends Controller
     {
         $validated = $request->validate([
             'prompt' => 'required|string|max:500',
+            'provider' => 'nullable|string|in:auto,pollinations,together,huggingface,gemini',
             'article_id' => 'nullable|integer|exists:articles,id',
         ]);
 
-        $image = $this->contentService->generateImage($validated['prompt']);
+        $provider = $validated['provider'] ?? 'auto';
+        $image = $this->contentService->generateImage($validated['prompt'], 1200, 630, $provider);
 
         if ($image) {
             // ผูกรูปกับ article ถ้าส่ง article_id มา

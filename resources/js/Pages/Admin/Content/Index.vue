@@ -136,10 +136,16 @@ const statusColors = {
                     <h1 class="text-2xl font-bold text-white">Content Management</h1>
                     <p class="text-dark-400 text-sm">สร้างบทความด้วย AI + จัดการ content</p>
                 </div>
-                <button @click="showGenerator = !showGenerator"
-                    class="px-4 py-2 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl text-sm font-medium hover:shadow-lg hover:shadow-primary-500/20 transition-all">
-                    🤖 สร้างบทความด้วย AI
-                </button>
+                <div class="flex items-center gap-2">
+                    <Link href="/admin/content/create"
+                        class="px-4 py-2 bg-dark-800 border border-white/10 text-white rounded-xl text-sm font-medium hover:bg-dark-700 transition-all">
+                        + เขียนบทความ
+                    </Link>
+                    <button @click="showGenerator = !showGenerator"
+                        class="px-4 py-2 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl text-sm font-medium hover:shadow-lg hover:shadow-primary-500/20 transition-all">
+                        🤖 สร้างด้วย AI
+                    </button>
+                </div>
             </div>
 
             <!-- Stats -->

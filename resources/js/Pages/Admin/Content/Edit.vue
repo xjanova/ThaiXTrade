@@ -1,16 +1,19 @@
 <script setup>
 /**
  * TPIX TRADE — Article Editor (Full Page)
- * Rich content editing with preview, SEO, scheduling
+ * สร้าง/แก้ไขบทความ + AI image generation (หลาย provider)
  * Developed by Xman Studio
  */
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
 const props = defineProps({
     article: Object,
+    imageProviders: { type: Object, default: () => ({}) },
 });
+
+const isNew = computed(() => !props.article.id);
 
 const form = useForm({
     title: props.article.title || '',
@@ -29,8 +32,10 @@ const activeTab = ref('content');
 const showPreview = ref(false);
 const tagInput = ref('');
 const showSaved = ref(false);
-const imagePrompt = ref('');
+const imagePrompt = ref(props.article.ai_image_prompt || '');
 const imageLoading = ref(false);
+const selectedProvider = ref('auto');
+const generatedImageUrl = ref(null);
 
 const categories = [
     { value: 'news', label: 'ข่าว', icon: '📰' },
@@ -48,14 +53,24 @@ const wordCount = computed(() => {
 
 const readTime = computed(() => Math.max(1, Math.ceil(wordCount.value / 200)));
 
+const coverImageSrc = computed(() => {
+    if (generatedImageUrl.value) return generatedImageUrl.value;
+    if (!props.article.cover_image) return null;
+    return props.article.cover_image.startsWith('/') ? props.article.cover_image : '/storage/' + props.article.cover_image;
+});
+
 function save() {
-    form.put(`/admin/content/${props.article.id}`, {
-        preserveScroll: true,
-        onSuccess: () => {
-            showSaved.value = true;
-            setTimeout(() => showSaved.value = false, 2000);
-        },
-    });
+    if (isNew.value) {
+        form.post('/admin/content', {
+            preserveScroll: true,
+            onSuccess: () => { showSaved.value = true; setTimeout(() => showSaved.value = false, 2000); },
+        });
+    } else {
+        form.put(`/admin/content/${props.article.id}`, {
+            preserveScroll: true,
+            onSuccess: () => { showSaved.value = true; setTimeout(() => showSaved.value = false, 2000); },
+        });
+    }
 }
 
 function publish() {
@@ -65,9 +80,7 @@ function publish() {
 
 function addTag() {
     const tag = tagInput.value.trim();
-    if (tag && !form.tags.includes(tag)) {
-        form.tags.push(tag);
-    }
+    if (tag && !form.tags.includes(tag)) form.tags.push(tag);
     tagInput.value = '';
 }
 
@@ -82,17 +95,19 @@ async function generateCoverImage() {
         const response = await fetch('/admin/content/generate-image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content },
-            body: JSON.stringify({ prompt: imagePrompt.value, article_id: props.article.id }),
+            body: JSON.stringify({
+                prompt: imagePrompt.value,
+                provider: selectedProvider.value,
+                article_id: props.article.id || null,
+            }),
         });
         const data = await response.json();
         if (data.success) {
-            router.reload({ only: ['article'] });
+            generatedImageUrl.value = data.image_url;
+            if (props.article.id) router.reload({ only: ['article'] });
         }
-    } catch (e) {
-        console.error(e);
-    } finally {
-        imageLoading.value = false;
-    }
+    } catch (e) { console.error(e); }
+    finally { imageLoading.value = false; }
 }
 
 const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all';
@@ -100,7 +115,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 </script>
 
 <template>
-    <Head :title="`Edit: ${article.title}`" />
+    <Head :title="isNew ? 'New Article' : `Edit: ${article.title}`" />
     <AdminLayout>
         <div class="space-y-4">
             <!-- Top Bar -->
@@ -110,17 +125,19 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                     </button>
                     <div>
-                        <h1 class="text-xl font-bold text-white line-clamp-1">{{ form.title || 'Untitled' }}</h1>
+                        <h1 class="text-xl font-bold text-white line-clamp-1">
+                            {{ isNew ? 'New Article' : (form.title || 'Untitled') }}
+                        </h1>
                         <div class="flex items-center gap-3 text-xs text-dark-500">
                             <span>{{ wordCount }} words</span>
                             <span>{{ readTime }} min read</span>
-                            <span v-if="article.is_ai_generated" class="text-accent-400">AI Generated</span>
+                            <span v-if="isNew" class="text-primary-400">Manual</span>
+                            <span v-else-if="article.is_ai_generated" class="text-accent-400">AI Generated</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="flex items-center gap-2">
-                    <!-- Saved indicator -->
                     <span v-if="showSaved" class="text-trading-green text-sm animate-pulse">Saved!</span>
 
                     <button @click="showPreview = !showPreview"
@@ -130,10 +147,10 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
                     <button @click="save" :disabled="form.processing"
                         class="px-4 py-2 rounded-xl text-sm bg-dark-800 border border-white/10 text-white hover:bg-dark-700 transition-all disabled:opacity-50">
-                        {{ form.processing ? 'Saving...' : 'Save Draft' }}
+                        {{ form.processing ? 'Saving...' : (isNew ? 'Save Article' : 'Save Draft') }}
                     </button>
 
-                    <button v-if="form.status !== 'published'" @click="publish" :disabled="form.processing"
+                    <button v-if="form.status !== 'published'" @click="publish" :disabled="form.processing || !form.title"
                         class="px-4 py-2 rounded-xl text-sm bg-gradient-to-r from-trading-green to-emerald-500 text-white font-medium hover:shadow-lg hover:shadow-trading-green/20 transition-all disabled:opacity-50">
                         Publish
                     </button>
@@ -144,7 +161,6 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
             <div class="grid gap-4" :class="showPreview ? 'lg:grid-cols-2' : 'lg:grid-cols-[1fr_320px]'">
                 <!-- Editor -->
                 <div class="space-y-4">
-                    <!-- Title -->
                     <input v-model="form.title" type="text" placeholder="Article title..."
                         class="w-full bg-transparent text-2xl font-bold text-white placeholder-dark-600 border-none outline-none px-0" />
 
@@ -180,10 +196,9 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                             <textarea v-model="form.seo_description" rows="3" :class="inputClass" placeholder="Meta description for search engines..."></textarea>
                             <p class="text-xs text-dark-500 mt-1">{{ (form.seo_description || '').length }}/160 characters</p>
                         </div>
-                        <!-- Google Preview -->
                         <div class="p-4 bg-white rounded-xl">
                             <p class="text-[#1a0dab] text-lg font-normal hover:underline cursor-pointer">{{ form.seo_title || form.title || 'Article Title' }}</p>
-                            <p class="text-[#006621] text-sm">tpixtrade.com/blog/{{ article.slug }}</p>
+                            <p class="text-[#006621] text-sm">tpixtrade.com/blog/{{ article.slug || 'new-article' }}</p>
                             <p class="text-[#545454] text-sm">{{ form.seo_description || form.summary || 'Article description will appear here...' }}</p>
                         </div>
                     </div>
@@ -192,20 +207,52 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <div v-show="activeTab === 'media'" class="space-y-4">
                         <div>
                             <label :class="labelClass">Cover Image</label>
-                            <div v-if="article.cover_image" class="rounded-xl overflow-hidden border border-white/10 mb-3">
-                                <img :src="article.cover_image.startsWith('/') ? article.cover_image : '/storage/' + article.cover_image" class="w-full h-48 object-cover" />
+                            <div v-if="coverImageSrc" class="rounded-xl overflow-hidden border border-white/10 mb-3">
+                                <img :src="coverImageSrc" class="w-full h-48 object-cover" />
                             </div>
                             <div v-else class="w-full h-48 rounded-xl bg-dark-800 border border-white/10 border-dashed flex items-center justify-center text-dark-500 mb-3">
                                 No cover image
                             </div>
                         </div>
-                        <div>
-                            <label :class="labelClass">Generate AI Cover Image</label>
-                            <div class="flex gap-2">
-                                <input v-model="imagePrompt" type="text" :class="inputClass" placeholder="Describe the image..." />
+
+                        <!-- AI Image Generator -->
+                        <div class="p-4 rounded-xl bg-gradient-to-br from-accent-500/5 via-primary-500/5 to-warm-500/5 border border-primary-500/10">
+                            <h4 class="text-sm font-semibold text-primary-400 mb-3 flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                AI Image Generator
+                            </h4>
+
+                            <!-- Provider Selector -->
+                            <div class="mb-3">
+                                <label :class="labelClass">Image Provider</label>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button type="button" @click="selectedProvider = 'auto'"
+                                        :class="['px-3 py-2 rounded-xl text-xs text-left transition-all border', selectedProvider === 'auto' ? 'bg-primary-500/10 text-primary-400 border-primary-500/30' : 'bg-dark-800/50 text-dark-400 border-white/5 hover:border-white/20']">
+                                        Auto (Best Available)
+                                    </button>
+                                    <button v-for="(info, key) in imageProviders" :key="key" type="button"
+                                        @click="selectedProvider = key"
+                                        :class="['px-3 py-2 rounded-xl text-xs text-left transition-all border', selectedProvider === key ? 'bg-primary-500/10 text-primary-400 border-primary-500/30' : 'bg-dark-800/50 text-dark-400 border-white/5 hover:border-white/20']">
+                                        <span class="block font-medium">{{ info.name }}</span>
+                                        <span class="block text-[10px] opacity-70 mt-0.5">{{ info.requires_key ? 'API Key' : 'Free' }}</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Prompt + Generate -->
+                            <div class="space-y-2">
+                                <label :class="labelClass">Image Prompt</label>
+                                <textarea v-model="imagePrompt" rows="2" :class="inputClass" placeholder="Describe the cover image you want..."></textarea>
                                 <button @click="generateCoverImage" :disabled="imageLoading || !imagePrompt"
-                                    class="px-4 py-2 rounded-xl text-sm bg-accent-500 text-white whitespace-nowrap disabled:opacity-50 hover:bg-accent-600 transition-colors">
-                                    {{ imageLoading ? 'Generating...' : 'Generate' }}
+                                    class="w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
+                                    :class="imageLoading || !imagePrompt
+                                        ? 'bg-dark-700 text-dark-500 cursor-not-allowed'
+                                        : 'bg-gradient-to-r from-accent-500 to-primary-500 text-white hover:shadow-lg hover:shadow-accent-500/25'">
+                                    <span v-if="imageLoading" class="flex items-center justify-center gap-2">
+                                        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                                        Generating...
+                                    </span>
+                                    <span v-else>Generate Cover Image</span>
                                 </button>
                             </div>
                         </div>
@@ -285,7 +332,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     </div>
 
                     <!-- Info -->
-                    <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 space-y-2 text-xs text-dark-500">
+                    <div v-if="!isNew" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 space-y-2 text-xs text-dark-500">
                         <div class="flex justify-between"><span>Created</span><span class="text-dark-300">{{ new Date(article.created_at).toLocaleDateString('th-TH') }}</span></div>
                         <div class="flex justify-between"><span>Views</span><span class="text-dark-300">{{ article.views?.toLocaleString() || 0 }}</span></div>
                         <div class="flex justify-between"><span>Likes</span><span class="text-dark-300">{{ article.likes || 0 }}</span></div>

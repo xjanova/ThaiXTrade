@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Article;
+use App\Models\SiteSetting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -10,8 +11,8 @@ use Illuminate\Support\Str;
 
 /**
  * TPIX TRADE — Content Service
- * สร้างบทความด้วย AI (Groq) + สร้างภาพด้วย AI (Pollinations.ai — ฟรี)
- * รองรับ: auto-generate, scheduled publishing, multi-language.
+ * สร้างบทความด้วย AI (Groq) + สร้างภาพด้วย AI (หลาย provider)
+ * Image providers: Pollinations (ฟรี), Together.ai (FLUX), HuggingFace, Google Gemini
  */
 class ContentService
 {
@@ -55,12 +56,10 @@ class ContentService
             throw new \RuntimeException('AI generation failed: '.($result['error'] ?? 'Unknown error'));
         }
 
-        // Parse JSON response
         $parsed = $this->parseJsonResponse($result['content']);
 
         // สร้าง cover image ด้วย AI
         $coverImage = null;
-
         try {
             $imagePrompt = "Professional crypto blockchain article cover image about: {$topic}, dark theme, cyan blue accent, futuristic, minimalist, no text";
             $coverImage = $this->generateImage($imagePrompt);
@@ -68,7 +67,6 @@ class ContentService
             Log::warning('AI image generation failed', ['error' => $e->getMessage()]);
         }
 
-        // สร้าง Article
         return Article::create([
             'title' => $parsed['title'] ?? $topic,
             'summary' => $parsed['summary'] ?? '',
@@ -88,30 +86,224 @@ class ContentService
         ]);
     }
 
+    // =========================================================================
+    // Image Generation — รองรับหลาย provider
+    // =========================================================================
+
     /**
-     * สร้างภาพด้วย Pollinations.ai (ฟรี ไม่ต้อง API key).
+     * รายการ image provider ที่รองรับ.
      */
-    public function generateImage(string $prompt, int $width = 1200, int $height = 630): ?string
+    public static function imageProviders(): array
+    {
+        return [
+            'pollinations' => [
+                'name' => 'Pollinations.ai',
+                'description' => 'ฟรี ไม่ต้อง API key — ภาพสไตล์ artistic',
+                'requires_key' => false,
+                'setting_key' => null,
+            ],
+            'together' => [
+                'name' => 'Together.ai (FLUX)',
+                'description' => 'FLUX.1 Schnell — คุณภาพสูง ภาพสมจริง',
+                'requires_key' => true,
+                'setting_key' => 'together_api_key',
+            ],
+            'huggingface' => [
+                'name' => 'Hugging Face',
+                'description' => 'SDXL-Lightning — เร็ว หลายโมเดล',
+                'requires_key' => true,
+                'setting_key' => 'huggingface_api_key',
+            ],
+            'gemini' => [
+                'name' => 'Google Gemini',
+                'description' => 'Imagen — คุณภาพระดับ Google (500 รูป/วัน ฟรี)',
+                'requires_key' => true,
+                'setting_key' => 'gemini_api_key',
+            ],
+        ];
+    }
+
+    /**
+     * สร้างภาพ — เลือก provider ได้ (default = pollinations).
+     */
+    public function generateImage(string $prompt, int $width = 1200, int $height = 630, string $provider = 'auto'): ?string
+    {
+        if ($provider === 'auto') {
+            $provider = $this->selectBestProvider();
+        }
+
+        $imageData = match ($provider) {
+            'together' => $this->generateWithTogether($prompt, $width, $height),
+            'huggingface' => $this->generateWithHuggingFace($prompt, $width, $height),
+            'gemini' => $this->generateWithGemini($prompt),
+            default => $this->generateWithPollinations($prompt, $width, $height),
+        };
+
+        if ($imageData) {
+            $filename = 'articles/'.Str::random(20).'.jpg';
+            Storage::disk('public')->put($filename, $imageData);
+
+            return '/storage/'.$filename;
+        }
+
+        return null;
+    }
+
+    /**
+     * เลือก provider ที่ดีที่สุดตาม API key ที่มี.
+     */
+    private function selectBestProvider(): string
+    {
+        // ลำดับความสำคัญ: together > huggingface > gemini > pollinations
+        $priorities = ['together', 'huggingface', 'gemini'];
+
+        foreach ($priorities as $provider) {
+            $info = self::imageProviders()[$provider];
+            if ($info['setting_key']) {
+                $key = SiteSetting::getValue($info['setting_key']);
+                if ($key && ! str_starts_with($key, '****')) {
+                    return $provider;
+                }
+            }
+        }
+
+        return 'pollinations'; // fallback ฟรีเสมอ
+    }
+
+    /**
+     * Pollinations.ai — ฟรี ไม่ต้อง API key.
+     */
+    private function generateWithPollinations(string $prompt, int $width, int $height): ?string
     {
         $encodedPrompt = urlencode($prompt);
         $seed = rand(1, 99999);
         $url = "https://image.pollinations.ai/prompt/{$encodedPrompt}?width={$width}&height={$height}&seed={$seed}&nologo=true";
 
         try {
-            $response = Http::timeout(30)->get($url);
-
+            $response = Http::timeout(60)->get($url);
             if ($response->successful()) {
-                $filename = 'articles/'.Str::random(20).'.jpg';
-                Storage::disk('public')->put($filename, $response->body());
-
-                return '/storage/'.$filename;
+                return $response->body();
             }
         } catch (\Exception $e) {
-            Log::warning('Image generation failed', ['error' => $e->getMessage()]);
+            Log::warning('Pollinations image failed', ['error' => $e->getMessage()]);
         }
 
         return null;
     }
+
+    /**
+     * Together.ai — FLUX.1 Schnell (คุณภาพสูง).
+     */
+    private function generateWithTogether(string $prompt, int $width, int $height): ?string
+    {
+        $apiKey = SiteSetting::getValue('together_api_key') ?: config('services.together.key');
+        if (! $apiKey) {
+            return $this->generateWithPollinations($prompt, $width, $height);
+        }
+
+        try {
+            // ปรับขนาดให้เป็นทวีคูณของ 64
+            $w = (int) (round($width / 64) * 64);
+            $h = (int) (round($height / 64) * 64);
+
+            $response = Http::timeout(60)
+                ->withToken($apiKey)
+                ->post('https://api.together.xyz/v1/images/generations', [
+                    'model' => 'black-forest-labs/FLUX.1-schnell-Free',
+                    'prompt' => $prompt,
+                    'width' => min($w, 1440),
+                    'height' => min($h, 1440),
+                    'steps' => 4,
+                    'n' => 1,
+                    'response_format' => 'b64_json',
+                ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $b64 = $data['data'][0]['b64_json'] ?? null;
+                if ($b64) {
+                    return base64_decode($b64);
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning('Together.ai image failed', ['error' => $e->getMessage()]);
+        }
+
+        return $this->generateWithPollinations($prompt, $width, $height);
+    }
+
+    /**
+     * Hugging Face Inference API — SDXL-Lightning.
+     */
+    private function generateWithHuggingFace(string $prompt, int $width, int $height): ?string
+    {
+        $apiKey = SiteSetting::getValue('huggingface_api_key') ?: config('services.huggingface.key');
+        if (! $apiKey) {
+            return $this->generateWithPollinations($prompt, $width, $height);
+        }
+
+        try {
+            $response = Http::timeout(60)
+                ->withToken($apiKey)
+                ->post('https://api-inference.huggingface.co/models/ByteDance/SDXL-Lightning', [
+                    'inputs' => $prompt,
+                    'parameters' => [
+                        'width' => min($width, 1024),
+                        'height' => min($height, 1024),
+                    ],
+                ]);
+
+            if ($response->successful() && str_starts_with($response->header('Content-Type') ?? '', 'image/')) {
+                return $response->body();
+            }
+        } catch (\Exception $e) {
+            Log::warning('HuggingFace image failed', ['error' => $e->getMessage()]);
+        }
+
+        return $this->generateWithPollinations($prompt, $width, $height);
+    }
+
+    /**
+     * Google Gemini — Imagen image generation.
+     */
+    private function generateWithGemini(string $prompt): ?string
+    {
+        $apiKey = SiteSetting::getValue('gemini_api_key') ?: config('services.gemini.key');
+        if (! $apiKey) {
+            return $this->generateWithPollinations($prompt, 1200, 630);
+        }
+
+        try {
+            $response = Http::timeout(60)
+                ->withHeaders(['x-goog-api-key' => $apiKey])
+                ->post('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent', [
+                    'contents' => [
+                        ['parts' => [['text' => "Generate: {$prompt}"]]],
+                    ],
+                    'generationConfig' => [
+                        'responseModalities' => ['IMAGE'],
+                    ],
+                ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $parts = $data['candidates'][0]['content']['parts'] ?? [];
+                foreach ($parts as $part) {
+                    if (isset($part['inlineData']['data'])) {
+                        return base64_decode($part['inlineData']['data']);
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning('Gemini image failed', ['error' => $e->getMessage()]);
+        }
+
+        return $this->generateWithPollinations($prompt, 1200, 630);
+    }
+
+    // =========================================================================
+    // Scheduling
+    // =========================================================================
 
     /**
      * Publish scheduled articles ที่ถึงเวลาแล้ว.
@@ -135,7 +327,6 @@ class ContentService
      */
     private function parseJsonResponse(string $content): array
     {
-        // ลบ markdown code fences ถ้ามี
         $content = preg_replace('/```json\s*/', '', $content);
         $content = preg_replace('/```\s*/', '', $content);
         $content = trim($content);

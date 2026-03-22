@@ -37,6 +37,9 @@ class SettingController extends Controller
             'google_client_secret',
             'facebook_client_secret',
             'line_channel_secret',
+            'together_api_key',
+            'huggingface_api_key',
+            'gemini_api_key',
         ];
 
         // ดึง settings ทั้งหมดแล้วแปลงเป็น flat key-value (cast ตาม type)
