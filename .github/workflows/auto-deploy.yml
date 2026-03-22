@@ -79,8 +79,11 @@ jobs:
             # Backup .env
             cp .env .env.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
 
-            # Pull latest code
+            # Pull latest code — ใช้ PAT สำหรับ private repo
             echo "📥 Pulling latest code..."
+            if [ -n "${{ secrets.GH_PAT }}" ]; then
+              git remote set-url origin "https://x-access-token:${{ secrets.GH_PAT }}@github.com/xjanova/ThaiXTrade.git"
+            fi
             git fetch origin main
             git reset --hard origin/main
 
