@@ -13,6 +13,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -87,7 +88,7 @@ class AppUpdateController extends Controller
      *
      * GET /api/v1/app/download
      */
-    public function download(): StreamedResponse|JsonResponse
+    public function download(): StreamedResponse|JsonResponse|RedirectResponse
     {
         $releaseInfo = Cache::remember('app_update_android', 300, function () {
             return $this->fetchLatestRelease();
@@ -102,12 +103,10 @@ class AppUpdateController extends Controller
 
         $githubUrl = $releaseInfo['download_url'];
         $fileName = "TPIX-TRADE-v{$releaseInfo['version']}.apk";
-
-        // Proxy APK ผ่าน server — ซ่อน GitHub URL จากผู้ใช้
-        // ใช้ cURL stream แบบ chunk เพื่อไม่โหลดทั้งไฟล์ลง memory
         $fileSize = $releaseInfo['file_size'] ?? null;
 
-        return new StreamedResponse(function () use ($githubUrl) {
+        // Step 1: ดึง S3 redirect URL จาก GitHub API (แคช 1 ชั่วโมง)
+        $s3Url = Cache::remember('apk_s3_url', 3600, function () use ($githubUrl) {
             $headers = [
                 'Accept' => 'application/octet-stream',
                 'User-Agent' => 'TPIX-TRADE-Server',
@@ -125,12 +124,42 @@ class AppUpdateController extends Controller
 
             curl_setopt_array($ch, [
                 CURLOPT_HTTPHEADER => $curlHeaders,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_NOBODY => true,
+                CURLOPT_HEADER => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+            ]);
+
+            $response = curl_exec($ch);
+            $redirectUrl = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+            curl_close($ch);
+
+            return $redirectUrl ?: null;
+        });
+
+        if (! $s3Url) {
+            Log::warning('APK download: failed to get S3 URL', ['github_url' => $githubUrl]);
+
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'DOWNLOAD_FAILED', 'message' => 'Unable to prepare download'],
+            ], 502);
+        }
+
+        // Step 2: Stream จาก S3 โดยตรง (เร็ว ไม่ต้อง auth)
+        return new StreamedResponse(function () use ($s3Url) {
+            $ch = curl_init($s3Url);
+
+            curl_setopt_array($ch, [
                 CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_MAXREDIRS => 5,
                 CURLOPT_TIMEOUT => 300,
                 CURLOPT_CONNECTTIMEOUT => 10,
                 CURLOPT_WRITEFUNCTION => function ($ch, $data) {
                     echo $data;
+                    if (ob_get_level()) {
+                        ob_flush();
+                    }
                     flush();
 
                     return strlen($data);
@@ -140,7 +169,7 @@ class AppUpdateController extends Controller
             curl_exec($ch);
 
             if (curl_errno($ch)) {
-                Log::error('APK stream failed', ['error' => curl_error($ch)]);
+                Log::error('APK S3 stream failed', ['error' => curl_error($ch)]);
             }
 
             curl_close($ch);
@@ -149,6 +178,7 @@ class AppUpdateController extends Controller
             'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
             'Content-Length' => $fileSize,
             'Cache-Control' => 'public, max-age=3600',
+            'X-Accel-Buffering' => 'no',
         ]);
     }
 
