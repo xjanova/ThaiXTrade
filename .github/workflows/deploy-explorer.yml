@@ -267,6 +267,8 @@ jobs:
             <?php
             // TPIX Explorer PHP Proxy — routes to Blockscout backend + frontend
             $path = $_SERVER['REQUEST_URI'] ?? '/';
+            // Block broken /api-docs page — redirect to explorer home
+            if (strpos($path, '/api-docs') === 0) { header('Location: /'); exit; }
             $isApi = (strpos($path, '/api') === 0 || strpos($path, '/socket') === 0 || strpos($path, '/csv-export') === 0);
             $isFrontendAsset = (strpos($path, '/_next') === 0);
             $target = ($isApi) ? 'http://127.0.0.1:4000' : 'http://127.0.0.1:3100';
