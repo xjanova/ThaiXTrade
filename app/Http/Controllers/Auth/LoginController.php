@@ -33,9 +33,18 @@ class LoginController extends Controller
             ? trim((string) SiteSetting::get('security', 'turnstile_site_key', ''))
             : '';
 
+        $enabledProviders = collect(['google', 'facebook', 'line'])
+            ->filter(fn ($p) => filter_var(
+                SiteSetting::get('social_auth', "{$p}_enabled", false),
+                FILTER_VALIDATE_BOOLEAN
+            ))
+            ->values()
+            ->all();
+
         return Inertia::render('Auth/Login', [
             'turnstileEnabled' => $turnstileEnabled,
             'turnstileSiteKey' => $turnstileSiteKey,
+            'enabledProviders' => $enabledProviders,
         ]);
     }
 

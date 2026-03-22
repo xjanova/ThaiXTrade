@@ -74,6 +74,11 @@ class User extends Authenticatable
         return $this->hasMany(WalletConnection::class);
     }
 
+    public function socialAccounts(): HasMany
+    {
+        return $this->hasMany(SocialAccount::class);
+    }
+
     public function referrer()
     {
         return $this->belongsTo(self::class, 'referred_by');

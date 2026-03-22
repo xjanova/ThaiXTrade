@@ -3,8 +3,11 @@
 namespace App\Providers;
 
 use App\Models\SiteSetting;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use SocialiteProviders\Line\LineExtendSocialite;
+use SocialiteProviders\Manager\SocialiteWasCalled;
 
 /**
  * TPIX TRADE - Application Service Provider
@@ -32,6 +35,9 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->environment('production')) {
             URL::forceScheme('https');
         }
+
+        // Register Line Socialite provider
+        Event::listen(SocialiteWasCalled::class, [LineExtendSocialite::class, 'handle']);
 
         // Configure mail from database settings
         $this->configureMailFromDatabase();

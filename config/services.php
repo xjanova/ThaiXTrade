@@ -54,4 +54,21 @@ return [
         'chain_id' => env('TPIX_CHAIN_ID', 4289),
         'master_wallet' => env('TPIX_MASTER_WALLET', ''),
     ],
+
+    // Social Login — OAuth providers (keys จัดการผ่าน SiteSetting ได้ด้วย)
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('APP_URL').'/auth/google/callback',
+    ],
+    'facebook' => [
+        'client_id' => env('FACEBOOK_CLIENT_ID'),
+        'client_secret' => env('FACEBOOK_CLIENT_SECRET'),
+        'redirect' => env('APP_URL').'/auth/facebook/callback',
+    ],
+    'line' => [
+        'client_id' => env('LINE_CHANNEL_ID'),
+        'client_secret' => env('LINE_CHANNEL_SECRET'),
+        'redirect' => env('APP_URL').'/auth/line/callback',
+    ],
 ];

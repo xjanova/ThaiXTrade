@@ -8,7 +8,9 @@
 use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Auth\SocialController;
 use App\Http\Controllers\CarbonCreditController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\FoodPassportController;
 use App\Http\Controllers\TokenFactoryController;
 use App\Http\Controllers\TokenSaleController;
@@ -29,6 +31,26 @@ Route::middleware('guest')->group(function () {
     Route::post('register', [RegisterController::class, 'register'])->name('register.submit')->middleware('turnstile');
 });
 Route::post('logout', [LoginController::class, 'logout'])->name('logout')->middleware('auth');
+
+// Social OAuth (accessible by both guests and authenticated users)
+Route::get('auth/{provider}', [SocialController::class, 'redirect'])
+    ->where('provider', 'google|facebook|line')
+    ->name('social.redirect');
+Route::get('auth/{provider}/callback', [SocialController::class, 'callback'])
+    ->where('provider', 'google|facebook|line')
+    ->name('social.callback');
+
+// User Profile (authenticated)
+Route::middleware('auth')->group(function () {
+    Route::get('profile', [ProfileController::class, 'index'])->name('profile');
+    Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::put('profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
+    Route::post('profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar');
+    Route::delete('profile/avatar', [ProfileController::class, 'deleteAvatar'])->name('profile.avatar.delete');
+    Route::delete('auth/{provider}/unlink', [SocialController::class, 'unlink'])
+        ->where('provider', 'google|facebook|line')
+        ->name('social.unlink');
+});
 
 // Home
 Route::get('/', function () {

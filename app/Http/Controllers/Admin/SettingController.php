@@ -34,6 +34,9 @@ class SettingController extends Controller
             'stripe_webhook_secret',
             'groq_api_key',
             'resend_api_key',
+            'google_client_secret',
+            'facebook_client_secret',
+            'line_channel_secret',
         ];
 
         // ดึง settings ทั้งหมดแล้วแปลงเป็น flat key-value (cast ตาม type)

@@ -7,6 +7,7 @@
 
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import SocialLoginButtons from '@/Components/Auth/SocialLoginButtons.vue';
 
 const props = defineProps({
     turnstileEnabled: {
@@ -16,6 +17,10 @@ const props = defineProps({
     turnstileSiteKey: {
         type: String,
         default: '',
+    },
+    enabledProviders: {
+        type: Array,
+        default: () => [],
     },
 });
 
@@ -305,6 +310,9 @@ const submit = () => {
                         <span v-else>Create Account</span>
                     </button>
                 </form>
+
+                <!-- Social Login -->
+                <SocialLoginButtons :enabledProviders="enabledProviders" mode="register" />
 
                 <!-- Login Link -->
                 <div class="mt-6 text-center">

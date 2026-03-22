@@ -18,12 +18,13 @@
         "laravel/framework": "^11.0",
         "laravel/octane": "^2.3",
         "laravel/reverb": "^1.0",
-        "stripe/stripe-php": "^16.0",
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.12",
         "laravel/tinker": "^2.9",
         "predis/predis": "^3.4",
         "resend/resend-php": "^0.10.0",
+        "socialiteproviders/line": "^4.1",
+        "stripe/stripe-php": "^16.0",
         "web3p/web3.php": "^0.3.2"
     },
     "require-dev": {
