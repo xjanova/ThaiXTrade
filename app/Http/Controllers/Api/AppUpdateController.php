@@ -236,7 +236,7 @@ class AppUpdateController extends Controller
 
             $response = Http::withHeaders($headers)
                 ->timeout(10)
-                ->get("https://api.github.com/repos/{$this->githubOwner}/{$this->githubRepo}/releases");
+                ->get("https://api.github.com/repos/{$this->githubOwner}/{$this->githubRepo}/releases?per_page=100");
 
             if (! $response->successful()) {
                 Log::warning('GitHub API failed', ['status' => $response->status()]);

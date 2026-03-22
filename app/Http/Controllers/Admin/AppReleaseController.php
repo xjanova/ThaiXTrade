@@ -107,7 +107,7 @@ class AppReleaseController extends Controller
 
             $response = Http::withHeaders($headers)
                 ->timeout(15)
-                ->get("https://api.github.com/repos/{$owner}/{$repo}/releases?per_page=30");
+                ->get("https://api.github.com/repos/{$owner}/{$repo}/releases?per_page=100");
 
             if (! $response->successful()) {
                 $status = $response->status();
