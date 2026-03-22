@@ -162,20 +162,19 @@ class ContentService
      */
     private function selectBestProvider(): string
     {
-        // ลำดับความสำคัญ: together > huggingface > gemini > pollinations
-        $priorities = ['together', 'huggingface', 'gemini'];
-
-        foreach ($priorities as $provider) {
-            $info = self::imageProviders()[$provider];
-            if ($info['setting_key']) {
-                $key = SiteSetting::get('ai', $info['setting_key']);
-                if ($key && ! str_starts_with($key, '****')) {
+        // ถ้ามี API key ของ provider อื่น ให้ใช้ตัวนั้น
+        foreach (['together', 'huggingface', 'gemini'] as $provider) {
+            $settingKey = self::imageProviders()[$provider]['setting_key'] ?? null;
+            if ($settingKey) {
+                $key = SiteSetting::get('ai', $settingKey);
+                if ($key && strlen($key) > 10 && ! str_starts_with($key, '****')) {
                     return $provider;
                 }
             }
         }
 
-        return 'cloudflare'; // default: Cloudflare Workers AI FLUX (ฟรี)
+        // Default: Cloudflare FLUX — ฟรี เร็ว คุณภาพสูง
+        return 'cloudflare';
     }
 
     /**
