@@ -103,37 +103,53 @@ class AppUpdateController extends Controller
         $githubUrl = $releaseInfo['download_url'];
         $fileName = "TPIX-TRADE-v{$releaseInfo['version']}.apk";
 
-        // ดึง S3 download URL จาก GitHub API แล้ว redirect ไปโดยตรง
-        // (ไม่ proxy ผ่าน server เพราะ APK ใหญ่ ~85MB)
-        $headers = [
-            'Accept' => 'application/octet-stream',
-            'User-Agent' => 'TPIX-TRADE-Server',
-        ];
+        // Proxy APK ผ่าน server — ซ่อน GitHub URL จากผู้ใช้
+        // ใช้ cURL stream แบบ chunk เพื่อไม่โหลดทั้งไฟล์ลง memory
+        $fileSize = $releaseInfo['file_size'] ?? null;
 
-        if ($this->githubToken) {
-            $headers['Authorization'] = "Bearer {$this->githubToken}";
-        }
+        return new StreamedResponse(function () use ($githubUrl) {
+            $headers = [
+                'Accept' => 'application/octet-stream',
+                'User-Agent' => 'TPIX-TRADE-Server',
+            ];
 
-        // GitHub API จะ 302 redirect ไป S3 URL — ดึง URL นั้นแล้ว redirect user ไป
-        $response = Http::withHeaders($headers)
-            ->withOptions(['allow_redirects' => false])
-            ->timeout(10)
-            ->get($githubUrl);
+            if ($this->githubToken) {
+                $headers['Authorization'] = "Bearer {$this->githubToken}";
+            }
 
-        if ($response->status() === 302 && $response->header('Location')) {
-            return redirect($response->header('Location'));
-        }
+            $ch = curl_init($githubUrl);
+            $curlHeaders = [];
+            foreach ($headers as $k => $v) {
+                $curlHeaders[] = "{$k}: {$v}";
+            }
 
-        // Fallback: ถ้าไม่ได้ redirect (เช่น public repo) ลอง stream
-        Log::warning('APK download: no redirect from GitHub', [
-            'status' => $response->status(),
-            'url' => $githubUrl,
+            curl_setopt_array($ch, [
+                CURLOPT_HTTPHEADER => $curlHeaders,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 5,
+                CURLOPT_TIMEOUT => 300,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_WRITEFUNCTION => function ($ch, $data) {
+                    echo $data;
+                    flush();
+
+                    return strlen($data);
+                },
+            ]);
+
+            curl_exec($ch);
+
+            if (curl_errno($ch)) {
+                Log::error('APK stream failed', ['error' => curl_error($ch)]);
+            }
+
+            curl_close($ch);
+        }, 200, [
+            'Content-Type' => 'application/vnd.android.package-archive',
+            'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+            'Content-Length' => $fileSize,
+            'Cache-Control' => 'public, max-age=3600',
         ]);
-
-        return response()->json([
-            'success' => false,
-            'error' => ['code' => 'DOWNLOAD_FAILED', 'message' => 'Unable to download APK. Please try again.'],
-        ], 502);
     }
 
     /**
