@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\TokenFactoryApiController;
 use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
+use App\Http\Controllers\MasterNodeController;
 use App\Http\Middleware\VerifyWalletOwnership;
 use App\Models\SiteSetting;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -140,8 +141,8 @@ Route::prefix('v1')->group(function () {
 
     // Master Node — network stats & node info
     Route::prefix('masternode')->group(function () {
-        Route::get('/stats', [\App\Http\Controllers\MasterNodeController::class, 'stats']);
-        Route::get('/my-nodes', [\App\Http\Controllers\MasterNodeController::class, 'myNodes']);
+        Route::get('/stats', [MasterNodeController::class, 'stats']);
+        Route::get('/my-nodes', [MasterNodeController::class, 'myNodes']);
     });
 
     // Articles / Blog — บทความ (public)

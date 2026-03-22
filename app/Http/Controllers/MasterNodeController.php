@@ -8,7 +8,7 @@ use Inertia\Inertia;
 class MasterNodeController extends Controller
 {
     /**
-     * Master Node setup & network dashboard page
+     * Master Node setup & network dashboard page.
      */
     public function index()
     {
@@ -20,7 +20,7 @@ class MasterNodeController extends Controller
     }
 
     /**
-     * API: Get network stats
+     * API: Get network stats.
      */
     public function stats()
     {
@@ -31,7 +31,7 @@ class MasterNodeController extends Controller
     }
 
     /**
-     * API: Get nodes for a wallet address
+     * API: Get nodes for a wallet address.
      */
     public function myNodes(Request $request)
     {
@@ -54,7 +54,7 @@ class MasterNodeController extends Controller
 
     /**
      * Get network statistics
-     * TODO: Read from NodeRegistry contract on-chain
+     * TODO: Read from NodeRegistry contract on-chain.
      */
     private function getNetworkStats(): array
     {
