@@ -305,10 +305,10 @@ class TokenSaleApiTest extends TestCase
         $response->assertStatus(200);
     }
 
-    public function test_staking_page_loads(): void
+    public function test_staking_page_redirects_to_masternode(): void
     {
         $response = $this->get('/staking');
 
-        $response->assertStatus(200);
+        $response->assertRedirect('/masternode');
     }
 }
