@@ -73,6 +73,46 @@ onMounted(() => {
     });
 });
 
+// Download PDF — ใช้ browser print เพื่อ save as PDF (รองรับภาษาที่เลือก)
+function downloadPdf() {
+    // ซ่อน navigation/header ชั่วคราวเพื่อ print เฉพาะเนื้อหา
+    const style = document.createElement('style');
+    style.id = 'print-style';
+    style.textContent = `
+        @media print {
+            body { background: white !important; color: black !important; }
+            nav, .sidebar, header, footer, button, .btn-primary, .btn-secondary,
+            .btn-brand, [class*="glass"], .fixed { display: none !important; }
+            main, section, div { background: white !important; border: none !important;
+                backdrop-filter: none !important; color: black !important; }
+            h1, h2, h3, h4 { color: #1a1a1a !important; }
+            p, span, td, th, li { color: #333 !important; }
+            a { color: #0066cc !important; text-decoration: underline !important; }
+            table { border-collapse: collapse !important; }
+            th, td { border: 1px solid #ddd !important; padding: 8px !important; }
+            .text-gradient, .text-gradient-brand { -webkit-text-fill-color: #1a1a1a !important;
+                background: none !important; color: #1a1a1a !important; }
+            @page { margin: 20mm; size: A4; }
+        }
+    `;
+    document.head.appendChild(style);
+
+    // ตั้งชื่อไฟล์ตามภาษา
+    const suffix = lang.value === 'th' ? 'TH' : 'EN';
+    document.title = `TPIX-Chain-Whitepaper-v2.0-${suffix}`;
+
+    // เปิด print dialog (Save as PDF)
+    setTimeout(() => {
+        window.print();
+        // คืนค่า title + ลบ style
+        setTimeout(() => {
+            document.title = 'TPIX Chain Whitepaper';
+            const s = document.getElementById('print-style');
+            if (s) s.remove();
+        }, 1000);
+    }, 100);
+}
+
 // Tokenomics Donut Chart — ข้อมูล allocation
 const tokenAllocation = [
     { label: 'Ecosystem Development', labelTh: 'พัฒนา Ecosystem', pct: 30, color: '#3B82F6', amount: '2.1B' },
@@ -516,10 +556,10 @@ const content = {
                 <p class="text-sm text-gray-500 mb-6">{{ t.version }}</p>
 
                 <div class="flex flex-wrap items-center justify-center gap-3">
-                    <a href="/whitepaper/download" class="btn-primary px-8 py-3 inline-flex items-center gap-2 font-semibold">
+                    <button @click="downloadPdf" class="btn-primary px-8 py-3 inline-flex items-center gap-2 font-semibold">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                         {{ t.downloadPdf }}
-                    </a>
+                    </button>
                     <button @click="toggleLang" class="btn-secondary px-6 py-3 font-semibold">
                         {{ lang === 'en' ? t.readInThai : t.readInEn }}
                     </button>
