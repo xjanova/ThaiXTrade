@@ -102,14 +102,24 @@ function formatDate(iso) {
                             </div>
                         </div>
 
+                        <!-- Android Badge -->
+                        <div class="flex items-center gap-2 mb-4">
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
+                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M17.523 2.132a.5.5 0 00-.87.49l1.14 2.03A7.47 7.47 0 0012 2.47a7.47 7.47 0 00-5.793 2.182l1.14-2.03a.5.5 0 10-.87-.49L5.063 4.79A7.97 7.97 0 004 9h16a7.97 7.97 0 00-1.063-4.21l-1.414-2.658zM8.5 7a1 1 0 110-2 1 1 0 010 2zm7 0a1 1 0 110-2 1 1 0 010 2zM5 10v8a2 2 0 002 2h10a2 2 0 002-2v-8H5z"/>
+                                </svg>
+                                Android
+                            </span>
+                        </div>
+
                         <!-- Download Button -->
                         <a
                             v-if="release.apkUrl"
                             :href="release.apkUrl"
                             class="w-full flex items-center justify-center gap-3 py-4 px-6 bg-trading-green/90 hover:bg-trading-green text-white rounded-xl font-semibold text-lg transition-all shadow-glow-sm hover:shadow-glow"
                         >
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M17.523 2.132a.5.5 0 00-.87.49l1.14 2.03A7.47 7.47 0 0012 2.47a7.47 7.47 0 00-5.793 2.182l1.14-2.03a.5.5 0 10-.87-.49L5.063 4.79A7.97 7.97 0 004 9h16a7.97 7.97 0 00-1.063-4.21l-1.414-2.658zM8.5 7a1 1 0 110-2 1 1 0 010 2zm7 0a1 1 0 110-2 1 1 0 010 2zM5 10v8a2 2 0 002 2h10a2 2 0 002-2v-8H5z"/>
                             </svg>
                             {{ t('download.downloadApk') }}
                             <span v-if="release.apkSize" class="text-sm opacity-80">({{ release.apkSize }} MB)</span>
