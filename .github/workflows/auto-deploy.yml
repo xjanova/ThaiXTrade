@@ -136,7 +136,7 @@ jobs:
             fi
 
             # สร้างโฟลเดอร์ upload
-            mkdir -p storage/app/public/logos storage/app/public/favicons storage/app/public/seo 2>/dev/null || true
+            mkdir -p storage/app/public/logos storage/app/public/favicons storage/app/public/seo storage/app/public/articles 2>/dev/null || true
 
             # รัน seeders ตามลำดับ: chains → tokens → trading pairs
             php artisan db:seed --class=Database\\Seeders\\AllChainsSeeder --force 2>&1 || echo "⚠️ Chains seeder warning"

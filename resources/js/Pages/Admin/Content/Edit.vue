@@ -7,6 +7,7 @@
 import { ref, computed } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import axios from 'axios';
 
 const props = defineProps({
     article: Object,
@@ -110,16 +111,11 @@ async function generateCoverImage() {
     imageLoading.value = true;
     imageError.value = '';
     try {
-        const response = await fetch('/admin/content/generate-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content },
-            body: JSON.stringify({
-                prompt: imagePrompt.value,
-                provider: selectedProvider.value,
-                article_id: props.article.id || null,
-            }),
+        const { data } = await axios.post('/admin/content/generate-image', {
+            prompt: imagePrompt.value,
+            provider: selectedProvider.value,
+            article_id: props.article.id || null,
         });
-        const data = await response.json();
         if (data.success) {
             generatedImageUrl.value = data.image_url;
             if (props.article.id) router.reload({ only: ['article'] });
@@ -127,8 +123,9 @@ async function generateCoverImage() {
             imageError.value = data.error || 'Image generation failed';
         }
     } catch (e) {
-        imageError.value = 'Network error — please try again';
-        console.error(e);
+        const msg = e.response?.data?.error || e.response?.data?.message || e.message;
+        imageError.value = msg || 'Network error — please try again';
+        console.error('Image gen error:', e.response?.data || e.message);
     } finally {
         imageLoading.value = false;
     }

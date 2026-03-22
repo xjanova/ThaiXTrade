@@ -128,7 +128,7 @@ const content = {
             '5. Use Cases & Applications',
             '6. DEX Protocol',
             '7. Token Sale Details',
-            '8. Staking & Rewards',
+            '8. Master Node & Rewards',
             '9. Ecosystem & Affiliate',
             '10. Platform Integrations',
             '11. Roadmap',
@@ -254,13 +254,22 @@ const content = {
             { phase: 'Pre-Sale', price: '$0.08', alloc: '200M TPIX', tge: '15%', vesting: '14d cliff, 120d linear', color: 'text-blue-400' },
             { phase: 'Public Sale', price: '$0.10', alloc: '400M TPIX', tge: '25%', vesting: 'No cliff, 90d linear', color: 'text-green-400' },
         ],
-        stakingTiers: [
-            { period: 'Flexible', apy: '5%', unlock: 'Anytime' },
-            { period: '30 Days', apy: '25%', unlock: 'After 30 days' },
-            { period: '90 Days', apy: '60%', unlock: 'After 90 days' },
-            { period: '180 Days', apy: '100%', unlock: 'After 180 days' },
-            { period: '365 Days', apy: '200%', unlock: 'After 365 days' },
+        masternodeTiers: [
+            { tier: 'Validator Node', stake: '1,000,000 TPIX', apy: '12-15%', lock: '90 days', maxNodes: '100', reward: '50% of block reward', hardware: '8 CPU, 16GB RAM, 500GB SSD' },
+            { tier: 'Sentinel Node', stake: '100,000 TPIX', apy: '7-10%', lock: '30 days', maxNodes: '500', reward: '30% of block reward', hardware: '4 CPU, 8GB RAM, 200GB SSD' },
+            { tier: 'Light Node', stake: '10,000 TPIX', apy: '4-6%', lock: '7 days', maxNodes: 'Unlimited', reward: '20% of block reward', hardware: '2 CPU, 4GB RAM, 100GB SSD' },
         ],
+        masternodeEmission: [
+            { year: 'Year 1', amount: '400,000,000 TPIX', perBlock: '~25.5 TPIX', pct: '28.6%' },
+            { year: 'Year 2', amount: '350,000,000 TPIX', perBlock: '~22.3 TPIX', pct: '25.0%' },
+            { year: 'Year 3', amount: '300,000,000 TPIX', perBlock: '~19.1 TPIX', pct: '21.4%' },
+            { year: 'Year 4', amount: '200,000,000 TPIX', perBlock: '~12.7 TPIX', pct: '14.3%' },
+            { year: 'Year 5', amount: '150,000,000 TPIX', perBlock: '~9.6 TPIX', pct: '10.7%' },
+        ],
+        masternodeDesc: 'TPIX uses a Delegated Proof-of-Stake (DPoS) consensus with a 3-tier master node system. Node operators stake TPIX to participate in block validation and earn proportional rewards from a 1.4 billion TPIX reward pool distributed over 5 years with decreasing emission. This replaces the previous high-APY staking model with a sustainable, infrastructure-backed reward system.',
+        masternodeRewardSplit: 'Each block reward is split: 50% to the Validator who produced the block, 30% shared among Sentinel nodes, and 20% shared among Light nodes (weighted by stake amount and uptime score).',
+        masternodeSlashing: 'Validators face 10% stake slashing if offline >24h, 50% for double-signing. Sentinel nodes face 5% slashing if offline >48h. Light nodes have no slashing penalty. All tiers are deregistered after 7 days offline.',
+        masternodeAfterY5: 'After Year 5, node rewards transition to: transaction fee sharing (dApp/token creator fees), governance voting rewards, cross-chain bridge fees, and token listing fees from the Token Factory.',
         integrations: [
             { name: 'Thaiprompt Affiliate', desc: 'Enterprise MLM platform with 500,000+ users', items: ['Auto TPIX wallet on signup', 'Commission payout in TPIX', 'Rank bonuses', 'Activity rewards (100 TPIX signup, 50 TPIX referral)'] },
             { name: 'FoodPassport', desc: 'Blockchain food traceability system', items: ['Pay for quality verification', 'Certificate NFTs on TPIX Chain', 'Farmer rewards', 'Supply chain data access'] },
@@ -310,7 +319,7 @@ const content = {
             '5. กรณีการใช้งานและแอปพลิเคชัน',
             '6. โปรโตคอล DEX',
             '7. รายละเอียดการขายโทเคน',
-            '8. การ Staking และรางวัล',
+            '8. Master Node และรางวัล',
             '9. ระบบนิเวศและ Affiliate',
             '10. การเชื่อมต่อแพลตฟอร์ม',
             '11. แผนงาน (Roadmap)',
@@ -436,13 +445,22 @@ const content = {
             { phase: 'Pre-Sale', price: '$0.08', alloc: '200M TPIX', tge: '15%', vesting: '14 วัน cliff, 120 วัน linear', color: 'text-blue-400' },
             { phase: 'Public Sale', price: '$0.10', alloc: '400M TPIX', tge: '25%', vesting: 'ไม่มี cliff, 90 วัน linear', color: 'text-green-400' },
         ],
-        stakingTiers: [
-            { period: 'ยืดหยุ่น', apy: '5%', unlock: 'ถอนได้ทุกเมื่อ' },
-            { period: '30 วัน', apy: '25%', unlock: 'หลัง 30 วัน' },
-            { period: '90 วัน', apy: '60%', unlock: 'หลัง 90 วัน' },
-            { period: '180 วัน', apy: '100%', unlock: 'หลัง 180 วัน' },
-            { period: '365 วัน', apy: '200%', unlock: 'หลัง 365 วัน' },
+        masternodeTiers: [
+            { tier: 'Validator Node', stake: '1,000,000 TPIX', apy: '12-15%', lock: '90 วัน', maxNodes: '100', reward: '50% ของรางวัลบล็อก', hardware: '8 CPU, 16GB RAM, 500GB SSD' },
+            { tier: 'Sentinel Node', stake: '100,000 TPIX', apy: '7-10%', lock: '30 วัน', maxNodes: '500', reward: '30% ของรางวัลบล็อก', hardware: '4 CPU, 8GB RAM, 200GB SSD' },
+            { tier: 'Light Node', stake: '10,000 TPIX', apy: '4-6%', lock: '7 วัน', maxNodes: 'ไม่จำกัด', reward: '20% ของรางวัลบล็อก', hardware: '2 CPU, 4GB RAM, 100GB SSD' },
         ],
+        masternodeEmission: [
+            { year: 'ปีที่ 1', amount: '400,000,000 TPIX', perBlock: '~25.5 TPIX', pct: '28.6%' },
+            { year: 'ปีที่ 2', amount: '350,000,000 TPIX', perBlock: '~22.3 TPIX', pct: '25.0%' },
+            { year: 'ปีที่ 3', amount: '300,000,000 TPIX', perBlock: '~19.1 TPIX', pct: '21.4%' },
+            { year: 'ปีที่ 4', amount: '200,000,000 TPIX', perBlock: '~12.7 TPIX', pct: '14.3%' },
+            { year: 'ปีที่ 5', amount: '150,000,000 TPIX', perBlock: '~9.6 TPIX', pct: '10.7%' },
+        ],
+        masternodeDesc: 'TPIX ใช้ Delegated Proof-of-Stake (DPoS) consensus พร้อมระบบ Master Node 3 ระดับ ผู้ดำเนินการโหนดจะ stake TPIX เพื่อมีส่วนร่วมในการยืนยันบล็อก และรับรางวัลตามสัดส่วนจากกองทุนรางวัล 1.4 พันล้าน TPIX ที่แจกจ่ายตลอด 5 ปีด้วยอัตราการปล่อยที่ลดลง ระบบนี้ทดแทนระบบ Staking เดิมที่ให้ APY สูงเกินไป ด้วยระบบรางวัลที่ยั่งยืนและอิงจากโครงสร้างพื้นฐานจริง',
+        masternodeRewardSplit: 'รางวัลแต่ละบล็อกแบ่ง: 50% ให้ Validator ที่สร้างบล็อก, 30% แบ่งให้ Sentinel nodes, และ 20% แบ่งให้ Light nodes (ถ่วงน้ำหนักตามจำนวน stake และคะแนน uptime)',
+        masternodeSlashing: 'Validator ถูกหัก stake 10% หาก offline เกิน 24 ชม., 50% หาก double-signing Sentinel ถูกหัก 5% หาก offline เกิน 48 ชม. Light node ไม่มีการลงโทษ ทุกระดับถูกยกเลิกหาก offline เกิน 7 วัน',
+        masternodeAfterY5: 'หลังปีที่ 5 รางวัลโหนดเปลี่ยนเป็น: แบ่งค่าธรรมเนียมธุรกรรม (ค่าธรรมเนียมจาก dApp/ผู้สร้างโทเคน), รางวัลการโหวต governance, ค่าธรรมเนียม cross-chain bridge, และค่าลิสต์โทเคนจาก Token Factory',
         integrations: [
             { name: 'Thaiprompt Affiliate', desc: 'แพลตฟอร์ม MLM ระดับองค์กร ผู้ใช้ 500,000+ คน', items: ['สร้าง TPIX wallet อัตโนมัติเมื่อสมัคร', 'จ่ายคอมมิชชั่นเป็น TPIX', 'โบนัสจากการเลื่อนระดับ', 'รางวัลกิจกรรม (100 TPIX สมัคร, 50 TPIX แนะนำ)'] },
             { name: 'FoodPassport', desc: 'ระบบตรวจสอบอาหารบนบล็อกเชน', items: ['ชำระค่าตรวจสอบคุณภาพ', 'ใบรับรอง NFT บน TPIX Chain', 'รางวัลเกษตรกร', 'เข้าถึงข้อมูล Supply Chain'] },
@@ -785,27 +803,92 @@ const content = {
                     <!-- 8. Staking & Rewards -->
                     <section id="staking" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[7] }}</h2>
-                        <p class="wp-text">
-                            {{ lang === 'en'
-                                ? 'TPIX holders can stake their tokens to earn rewards. APY varies based on lock period. Staking rewards come from the 20% allocation (1.4B TPIX) distributed over 5 years.'
-                                : 'ผู้ถือ TPIX สามารถ stake เพื่อรับรางวัล APY ขึ้นอยู่กับระยะเวลาล็อค รางวัล staking มาจากการจัดสรร 20% (1.4B TPIX) กระจายตลอด 5 ปี'
-                            }}
-                        </p>
-                        <div class="wp-table">
+                        <p class="wp-text">{{ t.masternodeDesc }}</p>
+
+                        <!-- Master Node Tiers -->
+                        <h3 class="text-lg font-semibold text-white mt-6 mb-3">{{ lang === 'en' ? 'Node Tiers' : 'ระดับโหนด' }}</h3>
+                        <div class="wp-table overflow-x-auto">
                             <table class="w-full text-sm">
                                 <thead><tr class="border-b border-white/10">
-                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Lock Period' : 'ระยะล็อค' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Tier' : 'ระดับ' }}</th>
+                                    <th class="text-right py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Min Stake' : 'Stake ขั้นต่ำ' }}</th>
                                     <th class="text-right py-2 px-3 text-gray-400">APY</th>
-                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Unlock' : 'ปลดล็อค' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Lock' : 'ล็อค' }}</th>
+                                    <th class="text-right py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Max Nodes' : 'จำนวนสูงสุด' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Reward Share' : 'ส่วนแบ่งรางวัล' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">Hardware</th>
                                 </tr></thead>
                                 <tbody>
-                                    <tr v-for="(s, i) in t.stakingTiers" :key="s.period" :class="i < t.stakingTiers.length - 1 ? 'border-b border-white/5' : ''">
-                                        <td class="py-2 px-3 text-white">{{ s.period }}</td>
-                                        <td class="py-2 px-3 text-right text-trading-green font-bold">{{ s.apy }}</td>
-                                        <td class="py-2 px-3 text-gray-400">{{ s.unlock }}</td>
+                                    <tr v-for="(n, i) in t.masternodeTiers" :key="n.tier" :class="i < t.masternodeTiers.length - 1 ? 'border-b border-white/5' : ''">
+                                        <td class="py-2 px-3 text-white font-semibold">{{ n.tier }}</td>
+                                        <td class="py-2 px-3 text-right text-cyan-400 font-bold">{{ n.stake }}</td>
+                                        <td class="py-2 px-3 text-right text-trading-green font-bold">{{ n.apy }}</td>
+                                        <td class="py-2 px-3 text-gray-400">{{ n.lock }}</td>
+                                        <td class="py-2 px-3 text-right text-gray-300">{{ n.maxNodes }}</td>
+                                        <td class="py-2 px-3 text-purple-400">{{ n.reward }}</td>
+                                        <td class="py-2 px-3 text-gray-500 text-xs">{{ n.hardware }}</td>
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+
+                        <!-- Reward Split -->
+                        <div class="mt-6 p-4 rounded-xl bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/20">
+                            <h4 class="text-sm font-bold text-cyan-400 mb-2">{{ lang === 'en' ? 'Block Reward Distribution' : 'การแบ่งรางวัลบล็อก' }}</h4>
+                            <p class="text-sm text-gray-300">{{ t.masternodeRewardSplit }}</p>
+                        </div>
+
+                        <!-- Emission Schedule -->
+                        <h3 class="text-lg font-semibold text-white mt-6 mb-3">{{ lang === 'en' ? 'Emission Schedule (5-Year Decreasing)' : 'ตารางการปล่อยรางวัล (5 ปี ลดลงเรื่อยๆ)' }}</h3>
+                        <div class="wp-table">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b border-white/10">
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Year' : 'ปี' }}</th>
+                                    <th class="text-right py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Total Reward' : 'รางวัลรวม' }}</th>
+                                    <th class="text-right py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Per Block' : 'ต่อบล็อก' }}</th>
+                                    <th class="text-right py-2 px-3 text-gray-400">{{ lang === 'en' ? '% of Pool' : '% ของกองทุน' }}</th>
+                                </tr></thead>
+                                <tbody>
+                                    <tr v-for="(e, i) in t.masternodeEmission" :key="e.year" :class="i < t.masternodeEmission.length - 1 ? 'border-b border-white/5' : ''">
+                                        <td class="py-2 px-3 text-white">{{ e.year }}</td>
+                                        <td class="py-2 px-3 text-right text-trading-green font-bold">{{ e.amount }}</td>
+                                        <td class="py-2 px-3 text-right text-cyan-400">{{ e.perBlock }}</td>
+                                        <td class="py-2 px-3 text-right text-gray-400">{{ e.pct }}</td>
+                                    </tr>
+                                    <tr class="border-t border-white/20 font-bold">
+                                        <td class="py-2 px-3 text-white">{{ lang === 'en' ? 'Total' : 'รวม' }}</td>
+                                        <td class="py-2 px-3 text-right text-yellow-400">1,400,000,000 TPIX</td>
+                                        <td class="py-2 px-3"></td>
+                                        <td class="py-2 px-3 text-right text-yellow-400">100%</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Slashing & Post-Y5 -->
+                        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+                                <h4 class="text-sm font-bold text-red-400 mb-2">{{ lang === 'en' ? 'Slashing Rules' : 'กฎการลงโทษ (Slashing)' }}</h4>
+                                <p class="text-sm text-gray-300">{{ t.masternodeSlashing }}</p>
+                            </div>
+                            <div class="p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+                                <h4 class="text-sm font-bold text-green-400 mb-2">{{ lang === 'en' ? 'After Year 5 (Sustainability)' : 'หลังปีที่ 5 (ยั่งยืนระยะยาว)' }}</h4>
+                                <p class="text-sm text-gray-300">{{ t.masternodeAfterY5 }}</p>
+                            </div>
+                        </div>
+
+                        <!-- Download Node -->
+                        <div class="mt-6 p-4 rounded-xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 text-center">
+                            <h4 class="text-lg font-bold text-white mb-2">{{ lang === 'en' ? 'Run a Master Node' : 'รัน Master Node' }}</h4>
+                            <p class="text-sm text-gray-300 mb-3">{{ lang === 'en' ? 'Download the TPIX Node software and start earning rewards today.' : 'ดาวน์โหลดซอฟต์แวร์ TPIX Node และเริ่มรับรางวัลวันนี้' }}</p>
+                            <div class="flex justify-center gap-3 flex-wrap">
+                                <a href="https://github.com/xjanova/TPIX-Coin/releases" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:bg-purple-500/30 transition text-sm font-semibold">
+                                    Download for Windows / Linux
+                                </a>
+                                <a href="https://github.com/xjanova/TPIX-Coin" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition text-sm">
+                                    GitHub Source Code
+                                </a>
+                            </div>
                         </div>
                     </section>
 

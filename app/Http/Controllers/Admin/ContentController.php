@@ -201,20 +201,26 @@ class ContentController extends Controller
         ]);
 
         $provider = $validated['provider'] ?? 'auto';
-        $image = $this->contentService->generateImage($validated['prompt'], 1200, 630, $provider);
 
-        if ($image) {
-            // ผูกรูปกับ article ถ้าส่ง article_id มา
-            if (! empty($validated['article_id'])) {
-                Article::where('id', $validated['article_id'])->update([
-                    'cover_image' => $image,
-                    'ai_image_prompt' => $validated['prompt'],
-                ]);
+        try {
+            $image = $this->contentService->generateImage($validated['prompt'], 1200, 630, $provider);
+
+            if ($image) {
+                if (! empty($validated['article_id'])) {
+                    Article::where('id', $validated['article_id'])->update([
+                        'cover_image' => $image,
+                        'ai_image_prompt' => $validated['prompt'],
+                    ]);
+                }
+
+                return response()->json(['success' => true, 'image_url' => $image]);
             }
 
-            return response()->json(['success' => true, 'image_url' => $image]);
-        }
+            return response()->json(['success' => false, 'error' => 'Image generation returned empty result'], 500);
+        } catch (\Exception $e) {
+            \Log::error('Generate image error', ['error' => $e->getMessage(), 'provider' => $provider]);
 
-        return response()->json(['success' => false, 'error' => 'Image generation failed'], 500);
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
     }
 }
