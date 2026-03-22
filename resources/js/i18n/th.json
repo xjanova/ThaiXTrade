@@ -305,5 +305,25 @@
     "privacy": "ความเป็นส่วนตัว",
     "terms": "เงื่อนไข",
     "copyright": "สงวนลิขสิทธิ์"
+  },
+  "download": {
+    "title": "TPIX TRADE Mobile",
+    "subtitle": "เทรดคริปโตได้ทุกที่ ทุกเวลา",
+    "downloadApk": "ดาวน์โหลด APK",
+    "loading": "กำลังตรวจสอบเวอร์ชันล่าสุด...",
+    "noRelease": "ยังไม่มี release — กรุณารอ build แรก",
+    "installTitle": "วิธีติดตั้ง",
+    "step1": "ดาวน์โหลดไฟล์ APK จากปุ่มด้านบน",
+    "step2Open": "เปิด",
+    "step2Settings": "Settings",
+    "step2Install": "Install unknown apps",
+    "step2Allow": "อนุญาตเบราว์เซอร์ของคุณ",
+    "step3": "เปิดไฟล์ APK ที่ดาวน์โหลดแล้วกด",
+    "step3Install": "Install",
+    "featuresTitle": "คุณสมบัติ",
+    "zeroGas": "เทรดเร็ว Zero Gas Fee",
+    "wallet": "Wallet ในตัว ปลอดภัย",
+    "charts": "กราฟราคา Real-time",
+    "multiChain": "รองรับหลาย Chain"
   }
 }

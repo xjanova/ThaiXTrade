@@ -305,5 +305,25 @@
     "privacy": "Privacy",
     "terms": "Terms",
     "copyright": "All rights reserved"
+  },
+  "download": {
+    "title": "TPIX TRADE Mobile",
+    "subtitle": "Trade crypto anywhere, anytime",
+    "downloadApk": "Download APK",
+    "loading": "Checking latest version...",
+    "noRelease": "No release available yet — please wait for the first build",
+    "installTitle": "Installation Instructions",
+    "step1": "Download the APK file from the button above",
+    "step2Open": "Open",
+    "step2Settings": "Settings",
+    "step2Install": "Install unknown apps",
+    "step2Allow": "and allow your browser",
+    "step3": "Open the downloaded APK file and tap",
+    "step3Install": "Install",
+    "featuresTitle": "Features",
+    "zeroGas": "Zero Gas Fee Trading",
+    "wallet": "Built-in Secure Wallet",
+    "charts": "Real-time Price Charts",
+    "multiChain": "Multi-Chain Support"
   }
 }

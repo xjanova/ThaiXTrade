@@ -1,13 +1,16 @@
 <script setup>
 /**
  * TPIX TRADE - Download Mobile App Page
- * ดาวน์โหลด APK ผ่าน API ของเราเอง (ไม่ต้องเปิด GitHub)
+ * ดาวน์โหลด APK — แอดมินเลือก release ที่ใช้งานได้
  * Developed by Xman Studio
  */
 
 import { ref, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     latestRelease: { type: Object, default: null },
@@ -17,7 +20,6 @@ const release = ref(props.latestRelease);
 const isLoading = ref(!props.latestRelease);
 const error = ref('');
 
-// ดึง release จาก API ของเราเอง (ไม่เรียก GitHub โดยตรง)
 onMounted(async () => {
     if (release.value) return;
 
@@ -39,7 +41,7 @@ onMounted(async () => {
             apkName: data.file_name,
         };
     } catch {
-        error.value = 'ยังไม่มี release — กรุณารอ build แรก';
+        error.value = t('download.noRelease');
     } finally {
         isLoading.value = false;
     }
@@ -47,14 +49,15 @@ onMounted(async () => {
 
 function formatDate(iso) {
     if (!iso) return '';
-    return new Date(iso).toLocaleDateString('th-TH', {
+    const loc = locale.value === 'th' ? 'th-TH' : 'en-US';
+    return new Date(iso).toLocaleDateString(loc, {
         year: 'numeric', month: 'long', day: 'numeric',
     });
 }
 </script>
 
 <template>
-    <Head title="Download App" />
+    <Head :title="t('download.downloadApk')" />
     <AppLayout>
         <div class="min-h-screen py-12 px-4">
             <div class="max-w-2xl mx-auto">
@@ -64,14 +67,14 @@ function formatDate(iso) {
                     <div class="w-24 h-24 mx-auto rounded-3xl bg-gradient-to-br from-primary-500/20 to-accent-500/20 flex items-center justify-center mb-6 shadow-glow">
                         <img src="/logo.png" class="w-16 h-16 rounded-2xl" alt="TPIX TRADE" />
                     </div>
-                    <h1 class="text-3xl font-bold text-white mb-2">TPIX TRADE Mobile</h1>
-                    <p class="text-dark-400">เทรดคริปโตได้ทุกที่ ทุกเวลา</p>
+                    <h1 class="text-3xl font-bold text-white mb-2">{{ t('download.title') }}</h1>
+                    <p class="text-dark-400">{{ t('download.subtitle') }}</p>
                 </div>
 
                 <!-- Loading -->
                 <div v-if="isLoading" class="text-center py-12">
                     <div class="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p class="text-dark-400 text-sm">กำลังตรวจสอบเวอร์ชันล่าสุด...</p>
+                    <p class="text-dark-400 text-sm">{{ t('download.loading') }}</p>
                 </div>
 
                 <!-- No Release -->
@@ -108,7 +111,7 @@ function formatDate(iso) {
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                             </svg>
-                            Download APK
+                            {{ t('download.downloadApk') }}
                             <span v-if="release.apkSize" class="text-sm opacity-80">({{ release.apkSize }} MB)</span>
                         </a>
 
@@ -120,44 +123,49 @@ function formatDate(iso) {
 
                     <!-- Install Instructions -->
                     <div class="glass-card p-6">
-                        <h3 class="text-white font-semibold mb-4">วิธีติดตั้ง</h3>
+                        <h3 class="text-white font-semibold mb-4">{{ t('download.installTitle') }}</h3>
                         <ol class="space-y-3 text-sm text-dark-300">
                             <li class="flex items-start gap-3">
                                 <span class="w-6 h-6 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">1</span>
-                                <span>ดาวน์โหลดไฟล์ APK จากปุ่มด้านบน</span>
+                                <span>{{ t('download.step1') }}</span>
                             </li>
                             <li class="flex items-start gap-3">
                                 <span class="w-6 h-6 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">2</span>
-                                <span>เปิด <strong class="text-white">Settings</strong> > <strong class="text-white">Install unknown apps</strong> > อนุญาตเบราว์เซอร์ของคุณ</span>
+                                <span>{{ t('download.step2Open') }} <strong class="text-white">{{ t('download.step2Settings') }}</strong> > <strong class="text-white">{{ t('download.step2Install') }}</strong> > {{ t('download.step2Allow') }}</span>
                             </li>
                             <li class="flex items-start gap-3">
                                 <span class="w-6 h-6 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">3</span>
-                                <span>เปิดไฟล์ APK ที่ดาวน์โหลดแล้วกด <strong class="text-white">Install</strong></span>
+                                <span>{{ t('download.step3') }} <strong class="text-white">{{ t('download.step3Install') }}</strong></span>
                             </li>
                         </ol>
                     </div>
 
                     <!-- Features -->
                     <div class="glass-card p-6">
-                        <h3 class="text-white font-semibold mb-4">คุณสมบัติ</h3>
+                        <h3 class="text-white font-semibold mb-4">{{ t('download.featuresTitle') }}</h3>
                         <div class="grid grid-cols-2 gap-3">
-                            <div v-for="feature in [
-                                { icon: '⚡', text: 'เทรดเร็ว Zero Gas Fee' },
-                                { icon: '🔐', text: 'Wallet ในตัว ปลอดภัย' },
-                                { icon: '📊', text: 'กราฟราคา Real-time' },
-                                { icon: '🌐', text: 'รองรับหลาย Chain' },
-                            ]" :key="feature.text" class="flex items-center gap-2 p-3 rounded-lg bg-white/5">
-                                <span class="text-lg">{{ feature.icon }}</span>
-                                <span class="text-sm text-dark-300">{{ feature.text }}</span>
+                            <div class="flex items-center gap-2 p-3 rounded-lg bg-white/5">
+                                <span class="text-lg">⚡</span>
+                                <span class="text-sm text-dark-300">{{ t('download.zeroGas') }}</span>
+                            </div>
+                            <div class="flex items-center gap-2 p-3 rounded-lg bg-white/5">
+                                <span class="text-lg">🔐</span>
+                                <span class="text-sm text-dark-300">{{ t('download.wallet') }}</span>
+                            </div>
+                            <div class="flex items-center gap-2 p-3 rounded-lg bg-white/5">
+                                <span class="text-lg">📊</span>
+                                <span class="text-sm text-dark-300">{{ t('download.charts') }}</span>
+                            </div>
+                            <div class="flex items-center gap-2 p-3 rounded-lg bg-white/5">
+                                <span class="text-lg">🌐</span>
+                                <span class="text-sm text-dark-300">{{ t('download.multiChain') }}</span>
                             </div>
                         </div>
                     </div>
 
                     <!-- Footer -->
                     <div class="text-center">
-                        <p class="text-dark-500 text-sm">
-                            by Xman Studio
-                        </p>
+                        <p class="text-dark-500 text-sm">by Xman Studio</p>
                     </div>
                 </div>
 
