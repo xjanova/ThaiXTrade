@@ -11,6 +11,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\SiteSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -167,6 +168,9 @@ class AppUpdateController extends Controller
      */
     private function fetchLatestRelease(): ?array
     {
+        // เช็ค admin-selected release ก่อน
+        $activeTag = SiteSetting::get('app_release', 'active_tag');
+
         try {
             $headers = [
                 'Accept' => 'application/vnd.github.v3+json',
@@ -189,14 +193,17 @@ class AppUpdateController extends Controller
 
             $releases = $response->json();
 
-            // Find latest mobile release with APK
-            // หา release มือถือล่าสุดที่มี APK
             foreach ($releases as $release) {
                 if ($release['draft'] || $release['prerelease']) {
                     continue;
                 }
 
-                if (! str_contains($release['tag_name'], 'mobile')) {
+                // ถ้ามี active tag ให้หาตัวที่ตรงกัน ถ้าไม่มีให้ใช้ mobile release แรก
+                if ($activeTag && $release['tag_name'] !== $activeTag) {
+                    continue;
+                }
+
+                if (! $activeTag && ! str_contains($release['tag_name'], 'mobile')) {
                     continue;
                 }
 
@@ -208,7 +215,6 @@ class AppUpdateController extends Controller
                     continue;
                 }
 
-                // Extract version from tag (e.g., "mobile-v1.0.145" → "1.0.145")
                 preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $matches);
                 $version = $matches[1] ?? null;
 

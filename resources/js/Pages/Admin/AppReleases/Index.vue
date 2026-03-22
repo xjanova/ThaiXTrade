@@ -1,7 +1,7 @@
 <script setup>
 /**
  * TPIX TRADE - Admin App Releases Page
- * แสดงรายการ releases จาก GitHub + สถานะ APK
+ * แสดงรายการ releases จาก GitHub + เลือก active release
  * Developed by Xman Studio
  */
 
@@ -9,37 +9,27 @@ import { router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
 const props = defineProps({
-    releases: {
-        type: Array,
-        default: () => [],
-    },
-    error: {
-        type: String,
-        default: null,
-    },
-    hasToken: {
-        type: Boolean,
-        default: false,
-    },
+    releases: { type: Array, default: () => [] },
+    error: { type: String, default: null },
+    hasToken: { type: Boolean, default: false },
+    activeTag: { type: String, default: null },
 });
 
 const refresh = () => {
     router.post('/admin/app-releases/refresh', {}, { preserveScroll: true });
 };
 
-const formatSize = (mb) => {
-    if (!mb) return '-';
-    return `${mb} MB`;
+const setActive = (tag) => {
+    router.post('/admin/app-releases/set-active', { tag }, { preserveScroll: true });
 };
+
+const formatSize = (mb) => (!mb ? '-' : `${mb} MB`);
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleDateString('th-TH', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
     });
 };
 </script>
@@ -53,10 +43,7 @@ const formatDate = (dateStr) => {
                     <h1 class="text-2xl font-bold text-white">App Releases</h1>
                     <p class="text-dark-400 text-sm mt-1">Manage mobile app releases from GitHub</p>
                 </div>
-                <button
-                    @click="refresh"
-                    class="btn-primary flex items-center gap-2"
-                >
+                <button @click="refresh" class="btn-primary flex items-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
@@ -85,8 +72,18 @@ const formatDate = (dateStr) => {
                     </svg>
                     <div>
                         <p class="text-yellow-400 text-sm font-medium">GITHUB_TOKEN ไม่ได้ตั้งค่า</p>
-                        <p class="text-yellow-400/80 text-sm mt-1">เพิ่ม <code class="bg-yellow-500/20 px-1 rounded">GITHUB_TOKEN=ghp_xxx</code> ใน <code class="bg-yellow-500/20 px-1 rounded">.env</code> บน server เพื่อเข้าถึง private repo</p>
+                        <p class="text-yellow-400/80 text-sm mt-1">เพิ่ม <code class="bg-yellow-500/20 px-1 rounded">GITHUB_TOKEN=ghp_xxx</code> ใน <code class="bg-yellow-500/20 px-1 rounded">.env</code> บน server</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- Active Release Banner -->
+            <div v-if="activeTag" class="p-4 rounded-xl bg-trading-green/10 border border-trading-green/20">
+                <div class="flex items-center gap-3">
+                    <svg class="w-5 h-5 text-trading-green flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <p class="text-trading-green text-sm">Active release for download &amp; in-app update: <strong class="text-white">{{ activeTag }}</strong></p>
                 </div>
             </div>
 
@@ -129,23 +126,26 @@ const formatDate = (dateStr) => {
                             <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">Downloads</th>
                             <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">Published</th>
                             <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">Status</th>
+                            <th class="text-center px-6 py-3 text-xs font-medium text-dark-400 uppercase">Action</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/5">
-                        <tr v-for="release in releases" :key="release.id" class="hover:bg-white/2 transition-colors">
+                        <tr v-for="release in releases" :key="release.id"
+                            :class="['hover:bg-white/2 transition-colors', release.tag === activeTag ? 'bg-trading-green/5 border-l-2 border-trading-green' : '']">
                             <td class="px-6 py-4">
-                                <div>
-                                    <p class="text-white font-medium">{{ release.name }}</p>
-                                    <p class="text-dark-500 text-xs font-mono mt-0.5">{{ release.tag }}</p>
+                                <div class="flex items-center gap-2">
+                                    <div>
+                                        <p class="text-white font-medium">{{ release.name }}</p>
+                                        <p class="text-dark-500 text-xs font-mono mt-0.5">{{ release.tag }}</p>
+                                    </div>
+                                    <span v-if="release.tag === activeTag" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-trading-green/20 text-trading-green">
+                                        Active
+                                    </span>
                                 </div>
                             </td>
                             <td class="px-6 py-4">
-                                <span v-if="release.is_mobile" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-primary-500/20 text-primary-400">
-                                    Mobile
-                                </span>
-                                <span v-else class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-dark-600 text-dark-300">
-                                    Web
-                                </span>
+                                <span v-if="release.is_mobile" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-primary-500/20 text-primary-400">Mobile</span>
+                                <span v-else class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-dark-600 text-dark-300">Web</span>
                             </td>
                             <td class="px-6 py-4">
                                 <div v-if="release.has_apk" class="text-sm">
@@ -161,15 +161,23 @@ const formatDate = (dateStr) => {
                                 <span class="text-dark-300 text-sm">{{ formatDate(release.published_at) }}</span>
                             </td>
                             <td class="px-6 py-4">
-                                <span v-if="release.is_draft" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
-                                    Draft
-                                </span>
-                                <span v-else-if="release.is_prerelease" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400">
-                                    Pre-release
-                                </span>
-                                <span v-else class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
-                                    Published
-                                </span>
+                                <span v-if="release.is_draft" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">Draft</span>
+                                <span v-else-if="release.is_prerelease" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400">Pre-release</span>
+                                <span v-else class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400">Published</span>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <button
+                                    v-if="release.has_apk && release.tag !== activeTag"
+                                    @click="setActive(release.tag)"
+                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition-colors"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    Set Active
+                                </button>
+                                <span v-else-if="release.tag === activeTag" class="text-trading-green text-xs font-medium">Active</span>
+                                <span v-else class="text-dark-600 text-xs">No APK</span>
                             </td>
                         </tr>
                     </tbody>
@@ -183,8 +191,8 @@ const formatDate = (dateStr) => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div class="text-sm text-dark-300">
-                        <p>Releases are synced from <strong class="text-white">GitHub Releases</strong>. Mobile releases must be tagged with <code class="text-primary-400">mobile-v*</code> (e.g., <code class="text-primary-400">mobile-v1.0.145</code>) and include an APK asset.</p>
-                        <p class="mt-1">Data is cached for 5 minutes. Click <strong class="text-white">Refresh</strong> to get the latest.</p>
+                        <p>Click <strong class="text-white">Set Active</strong> to choose which release appears on the <strong class="text-white">Download page</strong> and is used for <strong class="text-white">in-app updates</strong>.</p>
+                        <p class="mt-1">If no release is set as active, the latest mobile release with APK is used automatically.</p>
                     </div>
                 </div>
             </div>

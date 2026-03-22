@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\SiteSetting;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -28,6 +30,7 @@ class AppReleaseController extends Controller
             'releases' => $result['releases'],
             'error' => $result['error'],
             'hasToken' => ! empty(config('services.github.token')),
+            'activeTag' => SiteSetting::get('app_release', 'active_tag'),
         ]);
     }
 
@@ -48,6 +51,37 @@ class AppReleaseController extends Controller
         }
 
         return back()->with('success', 'Refreshed — found '.count($result['releases']).' releases.');
+    }
+
+    /**
+     * ตั้ง release ที่ใช้งานสำหรับ Download page + In-app update.
+     */
+    public function setActive(Request $request)
+    {
+        $request->validate(['tag' => 'required|string']);
+
+        $tag = $request->input('tag');
+
+        // หา release ที่ตรงกับ tag จาก cache
+        $result = Cache::get('admin_app_releases', ['releases' => [], 'error' => null]);
+        $release = collect($result['releases'])->firstWhere('tag', $tag);
+
+        if (! $release || ! $release['has_apk']) {
+            return back()->with('error', 'Release not found or has no APK.');
+        }
+
+        // บันทึกลง SiteSetting
+        SiteSetting::set('app_release', 'active_tag', $tag);
+        SiteSetting::set('app_release', 'version', $release['version']);
+        SiteSetting::set('app_release', 'name', $release['name']);
+        SiteSetting::set('app_release', 'notes', $release['notes']);
+        SiteSetting::set('app_release', 'published_at', $release['published_at']);
+        SiteSetting::set('app_release', 'apk_size', (string) $release['apk_size']);
+
+        // ล้าง cache ของ API เพื่อให้ใช้ตัวใหม่
+        Cache::forget('app_update_android');
+
+        return back()->with('success', "Set active release: {$release['name']} (v{$release['version']})");
     }
 
     /**

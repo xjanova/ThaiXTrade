@@ -199,5 +199,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // App Releases — ดูรายการ releases จาก GitHub
         Route::get('app-releases', [AppReleaseController::class, 'index'])->name('app-releases.index');
         Route::post('app-releases/refresh', [AppReleaseController::class, 'refresh'])->name('app-releases.refresh');
+        Route::post('app-releases/set-active', [AppReleaseController::class, 'setActive'])->name('app-releases.set-active');
     });
 });
