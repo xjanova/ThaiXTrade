@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 /**
  * TPIX TRADE — Content Service
  * สร้างบทความด้วย AI (Groq) + สร้างภาพด้วย AI (หลาย provider)
- * Image providers: Pollinations (ฟรี), Together.ai (FLUX), HuggingFace, Google Gemini
+ * Image providers: Pollinations (ฟรี), Together.ai (FLUX), HuggingFace, Google Gemini.
  */
 class ContentService
 {
@@ -60,6 +60,7 @@ class ContentService
 
         // สร้าง cover image ด้วย AI
         $coverImage = null;
+
         try {
             $imagePrompt = "Professional crypto blockchain article cover image about: {$topic}, dark theme, cyan blue accent, futuristic, minimalist, no text";
             $coverImage = $this->generateImage($imagePrompt);
