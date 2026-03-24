@@ -317,6 +317,88 @@ function formatDate(iso) {
                     </div>
                 </div>
 
+                <!-- ══════════ TPIX WALLET (MOBILE) ══════════ -->
+                <div class="mt-16 pt-12 border-t border-white/5">
+                    <div class="text-center mb-8">
+                        <div class="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-4 shadow-glow">
+                            <img src="/tpixlogo.webp" class="w-12 h-12 object-contain" alt="TPIX Wallet" />
+                        </div>
+                        <h2 class="text-2xl font-bold text-white mb-2">TPIX Wallet</h2>
+                        <p class="text-dark-400 text-sm">
+                            {{ locale === 'th'
+                                ? 'กระเป๋าเงินอย่างเป็นทางการสำหรับ TPIX Chain — ปลอดภัย ไม่มีค่าแก๊ส อนิเมชั่น 3D'
+                                : 'Official wallet for TPIX Chain — Secure, zero gas, beautiful 3D animations' }}
+                        </p>
+                    </div>
+
+                    <!-- Wallet Download Card -->
+                    <div class="glass-card p-6 border border-purple-500/20 mb-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                                <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                                </svg>
+                            </div>
+                            <div class="flex-1">
+                                <h3 class="text-lg font-bold text-white">TPIX Wallet for Mobile</h3>
+                                <p class="text-dark-400 text-sm">v1.0.0 &middot; Android</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2 mb-4">
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
+                                🤖 Android
+                            </span>
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-purple-500/20 text-purple-400">
+                                🔐 Encrypted
+                            </span>
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
+                                ⚡ Zero Gas
+                            </span>
+                        </div>
+
+                        <a href="https://github.com/xjanova/TPIX-Coin/releases/latest"
+                            target="_blank"
+                            class="w-full flex items-center justify-center gap-3 py-4 px-6 bg-purple-500/90 hover:bg-purple-500 text-white rounded-xl font-semibold text-lg transition-all shadow-lg hover:shadow-purple-500/20">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                            {{ locale === 'th' ? 'ดาวน์โหลด TPIX Wallet (.apk)' : 'Download TPIX Wallet (.apk)' }}
+                        </a>
+
+                        <p class="text-xs text-dark-500 mt-3 text-center">
+                            {{ locale === 'th'
+                                ? 'ดาวน์โหลดจาก GitHub Releases'
+                                : 'Download from GitHub Releases' }}
+                        </p>
+                    </div>
+
+                    <!-- Wallet Features -->
+                    <div class="glass-card p-6 mb-6">
+                        <h3 class="text-white font-semibold mb-4">
+                            {{ locale === 'th' ? 'ฟีเจอร์กระเป๋า' : 'Wallet Features' }}
+                        </h3>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="flex items-center gap-2 p-3 rounded-lg bg-white/5">
+                                <span>🔐</span>
+                                <span class="text-sm text-white">{{ locale === 'th' ? 'เข้ารหัส PIN' : 'PIN Encrypted' }}</span>
+                            </div>
+                            <div class="flex items-center gap-2 p-3 rounded-lg bg-white/5">
+                                <span>⚡</span>
+                                <span class="text-sm text-white">{{ locale === 'th' ? 'ส่งฟรี 0 แก๊ส' : 'Zero Gas Fee' }}</span>
+                            </div>
+                            <div class="flex items-center gap-2 p-3 rounded-lg bg-white/5">
+                                <span>📱</span>
+                                <span class="text-sm text-white">{{ locale === 'th' ? 'QR รับเงิน' : 'QR Receive' }}</span>
+                            </div>
+                            <div class="flex items-center gap-2 p-3 rounded-lg bg-white/5">
+                                <span>🎨</span>
+                                <span class="text-sm text-white">{{ locale === 'th' ? 'อนิเมชั่น 3D' : '3D Animations' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </AppLayout>
