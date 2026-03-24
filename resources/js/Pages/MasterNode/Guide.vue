@@ -204,12 +204,12 @@ const steps = computed(() => isTH.value ? [
 
 // Step screenshots — real captures from the app
 const stepScreenshots = {
-    'step-download': '/images/guide/about.jpg',
-    'step-wallet': '/images/guide/wallet.jpg',
-    'step-fund': '/images/guide/wallet.jpg',
-    'step-tier': '/images/guide/setup-tier.jpg',
-    'step-run': '/images/guide/dashboard.jpg',
-    'step-rewards': '/images/guide/network.jpg',
+    'step-download': '/images/guide/about.webp',
+    'step-wallet': '/images/guide/wallet.webp',
+    'step-fund': '/images/guide/wallet.webp',
+    'step-tier': '/images/guide/setup-tier.webp',
+    'step-run': '/images/guide/dashboard.webp',
+    'step-rewards': '/images/guide/network.webp',
 };
 
 // Step diagram data (overlay info on screenshots)
@@ -231,7 +231,7 @@ const stepDiagrams = {
             <!-- Header -->
             <div class="text-center mb-10">
                 <div class="inline-flex items-center gap-3 mb-4 px-4 py-2 rounded-full bg-cyan-500/10 border border-cyan-500/20">
-                    <img src="/logo.png" alt="TPIX" class="w-8 h-8">
+                    <img src="/logo.webp" alt="TPIX" class="w-8 h-8">
                     <span class="text-cyan-400 font-semibold text-sm">TPIX Master Node</span>
                 </div>
                 <h1 class="text-3xl md:text-4xl font-extrabold text-white mb-3">
@@ -466,13 +466,13 @@ const stepDiagrams = {
                 </h2>
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     <div v-for="ss in [
-                        { src: '/images/guide/dashboard.jpg', label: isTH ? 'แดชบอร์ด' : 'Dashboard' },
-                        { src: '/images/guide/setup-tier.jpg', label: isTH ? 'เลือกระดับโหนด' : 'Choose Tier' },
-                        { src: '/images/guide/wallet.jpg', label: isTH ? 'กระเป๋าเงิน' : 'Wallet' },
-                        { src: '/images/guide/network.jpg', label: isTH ? 'เครือข่าย' : 'Network' },
-                        { src: '/images/guide/links.jpg', label: isTH ? 'ลิงก์' : 'Links' },
-                        { src: '/images/guide/settings.jpg', label: isTH ? 'ตั้งค่า' : 'Settings' },
-                        { src: '/images/guide/about.jpg', label: isTH ? 'เกี่ยวกับ' : 'About' },
+                        { src: '/images/guide/dashboard.webp', label: isTH ? 'แดชบอร์ด' : 'Dashboard' },
+                        { src: '/images/guide/setup-tier.webp', label: isTH ? 'เลือกระดับโหนด' : 'Choose Tier' },
+                        { src: '/images/guide/wallet.webp', label: isTH ? 'กระเป๋าเงิน' : 'Wallet' },
+                        { src: '/images/guide/network.webp', label: isTH ? 'เครือข่าย' : 'Network' },
+                        { src: '/images/guide/links.webp', label: isTH ? 'ลิงก์' : 'Links' },
+                        { src: '/images/guide/settings.webp', label: isTH ? 'ตั้งค่า' : 'Settings' },
+                        { src: '/images/guide/about.webp', label: isTH ? 'เกี่ยวกับ' : 'About' },
                     ]" :key="ss.src"
                         class="group relative rounded-xl overflow-hidden border border-white/10 hover:border-cyan-500/30 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-cyan-500/5 cursor-pointer"
                         @click="lightboxImage = ss.src">
@@ -486,7 +486,7 @@ const stepDiagrams = {
 
             <!-- CTA -->
             <div class="text-center py-8 glass-card rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/5 via-purple-500/5 to-cyan-500/5">
-                <img src="/logo.png" alt="TPIX" class="w-16 h-16 mx-auto mb-4">
+                <img src="/logo.webp" alt="TPIX" class="w-16 h-16 mx-auto mb-4">
                 <h2 class="text-2xl font-bold text-white mb-2">
                     {{ isTH ? 'พร้อมเริ่มรัน Master Node แล้ว?' : 'Ready to Run a Master Node?' }}
                 </h2>

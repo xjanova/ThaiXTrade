@@ -550,7 +550,7 @@ const content = {
             </div>
 
             <div class="relative max-w-4xl mx-auto px-4 text-center">
-                <img src="/logo.png" alt="TPIX" class="w-28 h-28 mx-auto mb-6 shadow-lg shadow-primary-500/20" />
+                <img src="/logo.webp" alt="TPIX" class="w-28 h-28 mx-auto mb-6 shadow-lg shadow-primary-500/20" />
                 <h1 class="text-4xl sm:text-5xl font-bold text-white mb-2">{{ t.pageTitle }}</h1>
                 <p class="text-lg text-primary-400 font-medium mb-1">{{ t.subtitle }}</p>
                 <p class="text-sm text-gray-500 mb-6">{{ t.version }}</p>

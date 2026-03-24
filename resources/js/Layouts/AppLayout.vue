@@ -207,7 +207,7 @@ onMounted(async () => {
                 <!-- ส่วนล่าง -->
                 <div class="border-t border-white/5 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
                     <div class="flex items-center gap-3">
-                        <img src="/logo.png" alt="TPIX" class="w-6 h-6 object-contain" />
+                        <img src="/logo.webp" alt="TPIX" class="w-6 h-6 object-contain" />
                         <span class="text-xs text-dark-400">&copy; {{ new Date().getFullYear() }} Xman Studio. All rights reserved.</span>
                     </div>
                     <span class="text-xs text-dark-500">TPIX TRADE v{{ versionData.version }}</span>

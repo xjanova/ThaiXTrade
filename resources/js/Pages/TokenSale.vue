@@ -118,7 +118,7 @@ function handlePurchaseComplete() {
 
             <div class="relative max-w-6xl mx-auto px-4 sm:px-6 text-center">
                 <!-- Logo -->
-                <img src="/logo.png" alt="TPIX" class="w-20 h-20 mx-auto mb-6" />
+                <img src="/logo.webp" alt="TPIX" class="w-20 h-20 mx-auto mb-6" />
 
                 <h1 class="text-4xl sm:text-5xl font-bold text-white mb-3">
                     {{ t('tokenSale.title') }}

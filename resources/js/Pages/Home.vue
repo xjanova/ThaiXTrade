@@ -165,27 +165,26 @@ onMounted(async () => {
                             </div>
                         </div>
 
-                        <!-- Right: 3D Animated Node Visualization -->
-                        <div class="relative w-64 h-64 shrink-0">
+                        <!-- Right: TPIX Hero Image with Glow -->
+                        <div class="relative w-72 h-72 shrink-0 hidden md:block">
+                            <!-- Ambient glow rings -->
                             <div class="absolute inset-0 flex items-center justify-center">
-                                <!-- Rotating rings -->
-                                <div class="absolute w-56 h-56 border border-cyan-500/20 rounded-full animate-spin" style="animation-duration: 20s" />
-                                <div class="absolute w-44 h-44 border border-purple-500/20 rounded-full animate-spin" style="animation-duration: 15s; animation-direction: reverse" />
-                                <div class="absolute w-32 h-32 border border-amber-500/20 rounded-full animate-spin" style="animation-duration: 10s" />
-                                <!-- Center logo -->
-                                <div class="relative">
-                                    <div class="absolute -inset-4 bg-cyan-500/20 rounded-full blur-xl animate-pulse" />
-                                    <img src="/logo.png" alt="TPIX" class="relative w-20 h-20 object-contain" />
+                                <div class="absolute w-64 h-64 border border-cyan-500/10 rounded-full animate-spin" style="animation-duration: 25s" />
+                                <div class="absolute w-52 h-52 border border-purple-500/10 rounded-full animate-spin" style="animation-duration: 18s; animation-direction: reverse" />
+                            </div>
+                            <!-- Glow behind image -->
+                            <div class="absolute inset-8 bg-gradient-to-br from-cyan-500/20 via-purple-500/10 to-amber-500/15 rounded-full blur-2xl animate-pulse" style="animation-duration: 3s" />
+                            <!-- TPIX image -->
+                            <img src="/tpix1.webp" alt="TPIX Master Node"
+                                class="relative w-full h-full object-contain drop-shadow-2xl"
+                                style="filter: drop-shadow(0 0 30px rgba(6,182,212,0.3)) drop-shadow(0 0 60px rgba(139,92,246,0.15))" />
+                            <!-- Orbiting dots -->
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <div class="absolute w-64 h-64 animate-spin" style="animation-duration: 8s">
+                                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-cyan-400 rounded-full shadow-lg shadow-cyan-400/50" />
                                 </div>
-                                <!-- Orbiting dots -->
-                                <div class="absolute w-56 h-56 animate-spin" style="animation-duration: 8s">
-                                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-cyan-400 rounded-full shadow-lg shadow-cyan-400/50" />
-                                </div>
-                                <div class="absolute w-44 h-44 animate-spin" style="animation-duration: 6s; animation-direction: reverse">
-                                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-purple-400 rounded-full shadow-lg shadow-purple-400/50" />
-                                </div>
-                                <div class="absolute w-32 h-32 animate-spin" style="animation-duration: 4s">
-                                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2 bg-amber-400 rounded-full shadow-lg shadow-amber-400/50" />
+                                <div class="absolute w-52 h-52 animate-spin" style="animation-duration: 6s; animation-direction: reverse">
+                                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2 bg-purple-400 rounded-full shadow-lg shadow-purple-400/50" />
                                 </div>
                             </div>
                         </div>

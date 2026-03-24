@@ -265,7 +265,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
 
                 <div>
                     <label class="block text-sm font-medium text-dark-300 mb-2">Logo URL</label>
-                    <input v-model="form.logo" type="text" :class="inputClass" placeholder="https://example.com/logo.png" />
+                    <input v-model="form.logo" type="text" :class="inputClass" placeholder="https://example.com/logo.webp" />
                     <p class="mt-1 text-xs text-dark-500">Direct URL to logo image. Leave empty to use default.</p>
                 </div>
 

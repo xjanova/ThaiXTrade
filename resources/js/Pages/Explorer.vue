@@ -43,7 +43,7 @@ const chainStats = [
             </div>
 
             <div class="relative max-w-4xl mx-auto px-4 text-center">
-                <img src="/logo.png" alt="TPIX" class="w-20 h-20 mx-auto mb-6" />
+                <img src="/logo.webp" alt="TPIX" class="w-20 h-20 mx-auto mb-6" />
                 <h1 class="text-4xl sm:text-5xl font-bold text-white mb-3">{{ t('explorer.title') }}</h1>
                 <p class="text-lg text-gray-400 mb-8">
                     Powered by Blockscout — explore transactions, blocks, tokens, and contracts on TPIX Chain.
