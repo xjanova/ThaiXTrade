@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
+use Exception;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Exception;
 use Illuminate\Support\Facades\Schema;
 
 /**
