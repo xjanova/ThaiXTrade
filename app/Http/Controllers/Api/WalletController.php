@@ -6,9 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Transaction;
 use App\Services\UserWalletService;
 use App\Services\Web3BalanceService;
+use Elliptic\EC;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Elliptic\EC;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -312,7 +312,7 @@ class WalletController extends Controller
     /**
      * Recover Ethereum address from signed message using ecrecover.
      * IMPORTANT: Ethereum uses Keccak-256, NOT NIST SHA3-256.
-     * Requires: composer require kornrunner/keccak simplito/elliptic-php
+     * Requires: composer require kornrunner/keccak simplito/elliptic-php.
      *
      * Without these packages, ecRecover returns null and signature verification fails.
      * The connect() endpoint no longer grants verified status, so signature verification
