@@ -49,7 +49,9 @@ async function fetchOrders() {
 
 const cancelOrder = async (orderId) => {
     try {
-        await axios.delete(`/api/v1/trading/order/${orderId}`);
+        await axios.delete(`/api/v1/trading/order/${orderId}`, {
+            data: { wallet_address: walletStore.address },
+        });
         orders.value = orders.value.filter(o => o.id !== orderId);
     } catch (err) {
         console.warn('Failed to cancel order:', err.message);

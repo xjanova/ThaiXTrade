@@ -11,6 +11,7 @@ import axios from 'axios';
 const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
     tickerPrice: { type: Number, default: 0 },
+    selectedPrice: { type: [Number, null], default: null },
     isWalletConnected: { type: Boolean, default: false },
     balances: { type: Array, default: () => [] },
 });
@@ -49,6 +50,13 @@ const availableBalance = computed(() => {
         b.symbol?.toUpperCase() === tokenSymbol.toUpperCase()
     );
     return found ? parseFloat(found.balance).toFixed(6) : '0';
+});
+
+// Fill price from OrderBook click
+watch(() => props.selectedPrice, (val) => {
+    if (val && orderType.value === 'limit') {
+        price.value = String(val);
+    }
 });
 
 // Fee rate from backend (default 0.1%, fetched on mount)

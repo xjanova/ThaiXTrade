@@ -228,7 +228,7 @@ class SwapApiController extends Controller
                 'to_amount' => $validated['to_amount'],
                 'fee_amount' => $validated['fee_amount'],
                 'tx_hash' => $validated['tx_hash'],
-                'status' => 'pending',
+                'status' => 'confirmed', // Frontend already verified tx receipt before calling this endpoint
                 'metadata' => [
                     'fee_rate' => $expectedFee['fee_rate'],
                     'fee_collector' => SiteSetting::get('trading', 'fee_collector_wallet', ''),

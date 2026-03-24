@@ -51,6 +51,7 @@ const { balances, fetchBalances } = useWalletBalance();
 const { error: swapError } = useSwap();
 
 const activeTab = ref('openOrders');
+const selectedPrice = ref(null);
 const orderStatus = ref(null); // 'submitting', 'success', 'error'
 const orderMessage = ref('');
 
@@ -227,12 +228,14 @@ onUnmounted(() => {
                         :ticker-price="ticker.price"
                         :is-loading="isLoading"
                         class="h-[340px]"
+                        @select-price="selectedPrice = $event"
                     />
 
                     <!-- Trade Form -->
                     <TradeForm
                         :symbol="currentPair"
                         :ticker-price="ticker.price"
+                        :selected-price="selectedPrice"
                         :is-wallet-connected="walletStore.isConnected"
                         :balances="balances"
                         @submit-order="handleSubmitOrder"

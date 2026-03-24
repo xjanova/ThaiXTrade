@@ -5,7 +5,7 @@
  * Design: Glass-morphism dark with brand gradients & glow effects
  */
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { addTPIXChainToWallet } from '@/utils/web3';
@@ -238,6 +238,18 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                         <p class="text-xs text-gray-500 mt-4">
                             MetaMask · Trust Wallet · Coinbase · OKX · TPIX Wallet
                         </p>
+
+                        <!-- Guide + Download Links -->
+                        <div class="flex items-center justify-center gap-4 mt-6">
+                            <Link href="/masternode/guide"
+                                class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 transition">
+                                📖 คู่มือการตั้งค่า
+                            </Link>
+                            <a href="https://github.com/xjanova/TPIX-Coin/releases/latest" target="_blank"
+                                class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-white/10 text-gray-400 hover:bg-white/5 transition">
+                                📥 ดาวน์โหลดโปรแกรม PC
+                            </a>
+                        </div>
                     </div>
                 </div>
 
@@ -281,6 +293,18 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Guide + Download Links -->
+                    <div class="flex items-center justify-center gap-4">
+                        <Link href="/masternode/guide"
+                            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 transition">
+                            📖 คู่มือการตั้งค่า
+                        </Link>
+                        <a href="https://github.com/xjanova/TPIX-Coin/releases/latest" target="_blank"
+                            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-white/10 text-gray-400 hover:bg-white/5 transition">
+                            📥 ดาวน์โหลดโปรแกรม PC
+                        </a>
                     </div>
 
                     <!-- Switch network CTA -->

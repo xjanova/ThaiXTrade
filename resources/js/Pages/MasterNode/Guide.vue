@@ -14,6 +14,7 @@ const { t, locale } = useTranslation();
 const isTH = computed(() => locale.value === 'th');
 
 const activeStep = ref(0);
+const lightboxImage = ref(null);
 
 const tiers = computed(() => [
     {
@@ -355,13 +356,17 @@ const stepDiagrams = {
                     <!-- Right: Screenshot + Info (2 cols) -->
                     <div class="md:col-span-2 glass-card p-4 rounded-2xl border border-white/10 flex flex-col">
                         <!-- Real screenshot from the app -->
-                        <div class="relative rounded-xl overflow-hidden mb-4 border border-white/10">
+                        <div class="relative rounded-xl overflow-hidden mb-4 border border-white/10 cursor-pointer group"
+                            @click="lightboxImage = stepScreenshots[steps[activeStep].img]">
                             <img :src="stepScreenshots[steps[activeStep].img]"
                                 :alt="steps[activeStep].title"
-                                class="w-full h-auto rounded-xl"
+                                class="w-full h-auto rounded-xl transition-transform group-hover:scale-[1.02]"
                                 loading="lazy">
                             <div class="absolute top-2 right-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-lg text-xs text-cyan-400 font-semibold">
                                 {{ stepDiagrams[steps[activeStep].img]?.icon }} {{ isTH ? 'ตัวอย่างจริง' : 'Live Preview' }}
+                            </div>
+                            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
+                                <span class="bg-black/60 text-white px-3 py-1 rounded-lg text-sm">🔍 {{ isTH ? 'คลิกเพื่อขยาย' : 'Click to enlarge' }}</span>
                             </div>
                         </div>
 
@@ -469,7 +474,8 @@ const stepDiagrams = {
                         { src: '/images/guide/settings.jpg', label: isTH ? 'ตั้งค่า' : 'Settings' },
                         { src: '/images/guide/about.jpg', label: isTH ? 'เกี่ยวกับ' : 'About' },
                     ]" :key="ss.src"
-                        class="group relative rounded-xl overflow-hidden border border-white/10 hover:border-cyan-500/30 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-cyan-500/5 cursor-pointer">
+                        class="group relative rounded-xl overflow-hidden border border-white/10 hover:border-cyan-500/30 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-cyan-500/5 cursor-pointer"
+                        @click="lightboxImage = ss.src">
                         <img :src="ss.src" :alt="ss.label" class="w-full h-auto" loading="lazy">
                         <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
                             <span class="text-xs font-semibold text-white">{{ ss.label }}</span>
@@ -503,6 +509,21 @@ const stepDiagrams = {
                 </p>
             </div>
         </div>
+
+        <!-- Lightbox Modal -->
+        <Teleport to="body">
+            <div v-if="lightboxImage"
+                class="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm cursor-pointer p-4"
+                @click="lightboxImage = null">
+                <div class="relative max-w-4xl max-h-[90vh]" @click.stop>
+                    <img :src="lightboxImage" alt="Screenshot" class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl">
+                    <button @click="lightboxImage = null"
+                        class="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-lg transition">
+                        &times;
+                    </button>
+                </div>
+            </div>
+        </Teleport>
     </AppLayout>
 </template>
 

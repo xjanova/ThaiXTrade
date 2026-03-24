@@ -15,6 +15,7 @@ const props = defineProps({
     isLoading: { type: Boolean, default: false },
 });
 
+const emit = defineEmits(['select-price']);
 const viewMode = ref('both'); // 'both', 'bids', 'asks'
 
 const spreadAmount = computed(() => {
@@ -106,6 +107,7 @@ const priceIsUp = computed(() => {
                         v-for="(ask, index) in asks"
                         :key="`ask-${index}`"
                         class="relative grid grid-cols-3 gap-1 px-3 py-1 text-xs hover:bg-white/5 cursor-pointer transition-colors"
+                        @click="emit('select-price', ask.price)"
                     >
                         <div class="absolute right-0 top-0 h-full bg-trading-red/10" :style="{ width: `${ask.depth}%` }"></div>
                         <span class="text-trading-red font-mono relative z-10">${{ formatPrice(ask.price) }}</span>
@@ -143,6 +145,7 @@ const priceIsUp = computed(() => {
                     v-for="(bid, index) in bids"
                     :key="`bid-${index}`"
                     class="relative grid grid-cols-3 gap-1 px-3 py-1 text-xs hover:bg-white/5 cursor-pointer transition-colors"
+                    @click="emit('select-price', bid.price)"
                 >
                     <div class="absolute left-0 top-0 h-full bg-trading-green/10" :style="{ width: `${bid.depth}%` }"></div>
                     <span class="text-trading-green font-mono relative z-10">${{ formatPrice(bid.price) }}</span>
