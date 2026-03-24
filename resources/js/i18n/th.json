@@ -78,7 +78,12 @@
     "total": "รวม",
     "placeOrder": "ส่งคำสั่ง",
     "searchPair": "ค้นหาคู่เทรด",
-    "noPairFound": "ไม่พบคู่เทรด"
+    "noPairFound": "ไม่พบคู่เทรด",
+    "placingOrder": "กำลังสั่งซื้อ...",
+    "executingOnChain": "กำลัง execute บน chain...",
+    "orderConfirmed": "คำสั่งซื้อสำเร็จ!",
+    "orderFailed": "คำสั่งซื้อล้มเหลว",
+    "fee": "ค่าธรรมเนียม"
   },
   "swap": {
     "title": "แลกเปลี่ยนเหรียญ",

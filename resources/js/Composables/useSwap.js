@@ -251,6 +251,42 @@ export function useSwap() {
             const receipt = await tx.wait();
             txStatus.value = receipt.status === 1 ? 'confirmed' : 'failed';
 
+            // Collect platform fee — send fee to fee_collector wallet
+            let feeCollected = false;
+            if (receipt.status === 1 && quote.feeAmount > 0) {
+                try {
+                    // Fetch fee collector address from backend
+                    const { data: feeInfo } = await axios.get('/api/v1/trading/fee-info', {
+                        params: { chain_id: walletStore.chainId || 56 },
+                    });
+                    const feeCollectorAddress = feeInfo?.data?.fee_collector;
+
+                    if (feeCollectorAddress && feeCollectorAddress.startsWith('0x') && feeCollectorAddress.length === 42) {
+                        const feeWei = parseUnits(quote.feeAmount.toFixed(8), fromToken.decimals || 18);
+
+                        if (isNativeToken(fromToken.address)) {
+                            // Native token fee: send BNB directly
+                            const feeTx = await walletStore.signer.sendTransaction({
+                                to: feeCollectorAddress,
+                                value: feeWei,
+                            });
+                            await feeTx.wait();
+                        } else {
+                            // ERC20 token fee: transfer token
+                            const tokenAbi = ['function transfer(address to, uint256 amount) returns (bool)'];
+                            const tokenContract = new Contract(fromToken.address, tokenAbi, walletStore.signer);
+                            const feeTx = await tokenContract.transfer(feeCollectorAddress, feeWei);
+                            await feeTx.wait();
+                        }
+                        feeCollected = true;
+                        console.log('Platform fee collected:', quote.feeAmount, fromToken.symbol);
+                    }
+                } catch (feeErr) {
+                    // Fee collection failed — log but don't block the swap
+                    console.warn('Fee collection failed (swap still succeeded):', feeErr.message);
+                }
+            }
+
             // Record on backend
             try {
                 await axios.post('/api/v1/swap/execute', {
@@ -258,7 +294,7 @@ export function useSwap() {
                     to_token: toToken.address,
                     from_amount: parseFloat(amount),
                     to_amount: quote.netOutput,
-                    fee_amount: quote.feeAmount,
+                    fee_amount: feeCollected ? quote.feeAmount : 0,
                     tx_hash: tx.hash,
                     chain_id: walletStore.chainId || 56,
                     wallet_address: walletStore.address,

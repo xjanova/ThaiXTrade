@@ -198,10 +198,13 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     // Trading Operations
     Route::prefix('trading')->group(function () {
         Route::post('/order', [TradingController::class, 'createOrder']);
+        Route::post('/order/{orderId}/confirm', [TradingController::class, 'confirmOrder']);
+        Route::post('/order/{orderId}/fail', [TradingController::class, 'failOrder']);
         Route::delete('/order/{orderId}', [TradingController::class, 'cancelOrder']);
         Route::get('/orders', [TradingController::class, 'getOrders']);
         Route::get('/order/{orderId}', [TradingController::class, 'getOrder']);
         Route::get('/history', [TradingController::class, 'getHistory']);
+        Route::get('/fee-info', [TradingController::class, 'getFeeInfo']);
     });
 
     // Wallet Operations (requires verified wallet)

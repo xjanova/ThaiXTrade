@@ -78,7 +78,12 @@
     "total": "Total",
     "placeOrder": "Place Order",
     "searchPair": "Search trading pair...",
-    "noPairFound": "No pair found"
+    "noPairFound": "No pair found",
+    "placingOrder": "Placing order...",
+    "executingOnChain": "Executing on-chain...",
+    "orderConfirmed": "Order confirmed!",
+    "orderFailed": "Order failed",
+    "fee": "Fee"
   },
   "swap": {
     "title": "Token Swap",
