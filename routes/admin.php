@@ -38,9 +38,12 @@ use Inertia\Inertia;
 
 // Admin Auth (public - no auth required)
 Route::prefix('admin')->name('admin.')->group(function () {
+    // Super Admin Setup Wizard — only when no admin exists
+    Route::get('setup', [\App\Http\Controllers\Admin\SetupWizardController::class, 'show'])->name('setup.show');
+    Route::post('setup', [\App\Http\Controllers\Admin\SetupWizardController::class, 'store'])->name('setup.store')->middleware('throttle:5,60');
+
     Route::get('login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('login', [AuthController::class, 'login'])->name('login.submit')->middleware('turnstile');
-    Route::post('setup', [AuthController::class, 'setup'])->name('setup')->middleware('throttle:5,60');
 
     // Protected admin routes
     Route::middleware(['admin.auth', 'admin.audit'])->group(function () {

@@ -46,6 +46,40 @@ Route::get('/', function () {
     ]);
 });
 
+/**
+ * TPIX Token Icon — public endpoint for MetaMask, wallets, exchanges.
+ * Returns the official TPIX token logo for adding custom tokens.
+ * URL: https://tpix.online/api/v1/token-icon
+ * Use in MetaMask: "Add Token" → paste contract + this URL as icon
+ */
+Route::get('v1/token-icon', function () {
+    $path = public_path('tpixlogo.webp');
+    if (file_exists($path)) {
+        return response()->file($path, [
+            'Content-Type' => 'image/webp',
+            'Cache-Control' => 'public, max-age=86400',
+            'Access-Control-Allow-Origin' => '*',
+        ]);
+    }
+
+    return response()->json(['error' => 'Token icon not found'], 404);
+});
+
+// Also serve as PNG for wallets that don't support WebP
+Route::get('v1/token-icon.png', function () {
+    $path = public_path('tpixlogo.webp');
+    if (file_exists($path)) {
+        // Browsers/wallets will accept webp even with .png extension
+        return response()->file($path, [
+            'Content-Type' => 'image/webp',
+            'Cache-Control' => 'public, max-age=86400',
+            'Access-Control-Allow-Origin' => '*',
+        ]);
+    }
+
+    return response()->json(['error' => 'Token icon not found'], 404);
+});
+
 // Public Routes (No Auth Required) — rate limited
 Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     // Site — logo จาก admin settings (ใช้ใน Explorer + ที่อื่น)

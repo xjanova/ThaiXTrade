@@ -26,11 +26,11 @@ class AuthController extends Controller
      * Display the admin login page.
      * If no admin users exist, show the initial setup page.
      */
-    public function showLogin(): InertiaResponse
+    public function showLogin(): InertiaResponse|\Illuminate\Http\RedirectResponse
     {
-        // First-time setup: no admin users exist yet
+        // First-time setup: no admin users exist yet — redirect to wizard
         if (AdminUser::count() === 0) {
-            return Inertia::render('Admin/Auth/Setup');
+            return redirect()->route('admin.setup.show');
         }
 
         $turnstileEnabled = filter_var(SiteSetting::get('security', 'turnstile_enabled', false), FILTER_VALIDATE_BOOLEAN);

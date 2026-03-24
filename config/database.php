@@ -43,7 +43,7 @@ return [
     ],
 
     'redis' => [
-        'client' => env('REDIS_CLIENT', 'predis'),
+        'client' => env('REDIS_CLIENT', 'phpredis'),
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
             'prefix' => env('REDIS_PREFIX', env('APP_NAME', 'tpixtrade').'_database_'),
