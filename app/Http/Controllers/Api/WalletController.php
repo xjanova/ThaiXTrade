@@ -322,7 +322,7 @@ class WalletController extends Controller
     {
         try {
             // Check if Keccak library is available
-            if (! class_exists(\kornrunner\Keccak::class)) {
+            if (! class_exists(Keccak::class)) {
                 Log::warning('ecRecover: kornrunner/keccak not installed. Run: composer require kornrunner/keccak simplito/elliptic-php');
 
                 return null;
@@ -361,7 +361,7 @@ class WalletController extends Controller
             $pubKeyHash = Keccak::hash(hex2bin(substr($pubKeyHex, 2)), 256);
 
             return '0x'.substr($pubKeyHash, -40);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('ecRecover failed', ['error' => $e->getMessage()]);
 
             return null;
