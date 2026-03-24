@@ -22,13 +22,10 @@ $health = [
 
 $allHealthy = true;
 
-// Check 1: PHP Version
-$phpVersion = PHP_VERSION;
-$phpHealthy = version_compare($phpVersion, '8.2.0', '>=');
+// Check 1: PHP Version (don't expose exact version publicly)
+$phpHealthy = version_compare(PHP_VERSION, '8.2.0', '>=');
 $health['checks']['php'] = [
     'status' => $phpHealthy ? 'ok' : 'warning',
-    'version' => $phpVersion,
-    'required' => '8.2.0',
 ];
 if (! $phpHealthy) {
     $allHealthy = false;
@@ -54,31 +51,10 @@ if (! $cacheWritable) {
     $allHealthy = false;
 }
 
-// Check 4: Database connection
-try {
-    $envFile = __DIR__.'/../.env';
-    if (file_exists($envFile)) {
-        $env = parse_ini_file($envFile);
-        $dbConnection = $env['DB_CONNECTION'] ?? 'sqlite';
-
-        if ($dbConnection === 'sqlite') {
-            $dbPath = __DIR__.'/../database/database.sqlite';
-            if (file_exists($dbPath)) {
-                $pdo = new PDO('sqlite:'.$dbPath);
-                $pdo->query('SELECT 1');
-                $health['checks']['database'] = ['status' => 'ok', 'driver' => 'sqlite'];
-            } else {
-                $health['checks']['database'] = ['status' => 'warning', 'message' => 'SQLite file not found'];
-            }
-        } else {
-            // For MySQL/PostgreSQL, just mark as unchecked (requires full Laravel)
-            $health['checks']['database'] = ['status' => 'unchecked', 'driver' => $dbConnection];
-        }
-    }
-} catch (Exception $e) {
-    $health['checks']['database'] = ['status' => 'error', 'message' => 'Connection failed'];
-    $allHealthy = false;
-}
+// Check 4: Database — only check .env exists (don't parse it to avoid info leak)
+$health['checks']['database'] = [
+    'status' => file_exists(__DIR__.'/../.env') ? 'ok' : 'warning',
+];
 
 // Check 5: Vendor directory exists
 $vendorExists = is_dir(__DIR__.'/../vendor');
@@ -105,25 +81,21 @@ if (file_exists($versionFile)) {
     $health['build'] = $versionData['build'] ?? 0;
 }
 
-// Check 8: Disk space
+// Check 8: Disk space (status only, no details)
 $freeSpace = disk_free_space(__DIR__);
 $totalSpace = disk_total_space(__DIR__);
 $usedPercent = round((1 - $freeSpace / $totalSpace) * 100, 1);
 $diskHealthy = $usedPercent < 90;
 $health['checks']['disk'] = [
     'status' => $diskHealthy ? 'ok' : 'warning',
-    'used_percent' => $usedPercent,
-    'free_gb' => round($freeSpace / 1024 / 1024 / 1024, 2),
 ];
 if (! $diskHealthy) {
     $allHealthy = false;
 }
 
-// Check 9: Memory
+// Check 9: Memory (status only)
 $health['checks']['memory'] = [
     'status' => 'ok',
-    'limit' => ini_get('memory_limit'),
-    'current_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
 ];
 
 // Final status

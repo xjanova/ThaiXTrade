@@ -9,6 +9,7 @@ import { ref, computed, watch } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Link } from '@inertiajs/vue3';
+import { decodeHtmlEntities } from '@/utils/sanitize';
 
 const props = defineProps({
     articles: Object,
@@ -321,8 +322,8 @@ const statusColors = {
                             <Link v-if="link.url" :href="link.url"
                                 class="px-3 py-1 rounded-lg text-xs transition-colors"
                                 :class="link.active ? 'bg-primary-500 text-white' : 'text-dark-400 hover:bg-white/5'"
-                                v-html="link.label" preserve-scroll />
-                            <span v-else class="px-3 py-1 text-xs text-dark-600" v-html="link.label" />
+                                preserve-scroll>{{ decodeHtmlEntities(link.label) }}</Link>
+                            <span v-else class="px-3 py-1 text-xs text-dark-600">{{ decodeHtmlEntities(link.label) }}</span>
                         </template>
                     </div>
                 </div>

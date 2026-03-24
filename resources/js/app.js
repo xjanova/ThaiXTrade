@@ -32,6 +32,11 @@ createInertiaApp({
         // Global properties
         app.config.globalProperties.$appName = appName;
 
+        // Global error handler — catch unhandled Vue errors
+        app.config.errorHandler = (err, instance, info) => {
+            console.error('[TPIX] Vue Error:', err, info);
+        };
+
         // Mount app
         app.mount(el);
     },

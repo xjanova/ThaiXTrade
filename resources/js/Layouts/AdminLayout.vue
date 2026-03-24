@@ -130,7 +130,7 @@ const collapsedSections = ref({});
 function isSectionOpen(idx) {
     if (collapsedSections.value[idx] !== undefined) return collapsedSections.value[idx];
     // เปิดอัตโนมัติถ้ามี active item
-    return navigationSections[idx]?.items?.some(i => isActive(i.href)) ?? true;
+    return navigationSections.value[idx]?.items?.some(i => isActive(i.href)) ?? true;
 }
 
 function toggleSection(idx) {

@@ -47,6 +47,7 @@ Thumbs.db
 # Build artifacts
 /public/build
 /public_html/build
+/public_html/hot
 /public/js
 /public/css
 /public/mix-manifest.json
@@ -61,3 +62,6 @@ Thumbs.db
 /database/*.sqlite
 /database/*.sqlite-journal
 !/database/.gitkeep
+
+# Claude Code
+/.claude/settings.local.json

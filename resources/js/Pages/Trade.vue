@@ -6,7 +6,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TradingChart from '@/Components/Trading/TradingChart.vue';
@@ -43,6 +43,7 @@ const {
     isLoading,
     fetchInitialData,
     connectWebSocket,
+    disconnectWebSocket,
 } = useBinanceData(() => binanceSymbol.value);
 
 const walletStore = useWalletStore();
@@ -109,6 +110,11 @@ onMounted(async () => {
     if (walletStore.isConnected) {
         fetchBalances();
     }
+});
+
+// Clean up WebSocket on page navigation (safety net for composable cleanup)
+onUnmounted(() => {
+    disconnectWebSocket();
 });
 </script>
 

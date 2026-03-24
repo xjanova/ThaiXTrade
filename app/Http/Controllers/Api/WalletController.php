@@ -9,6 +9,7 @@ use App\Services\Web3BalanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -57,14 +58,10 @@ class WalletController extends Controller
             $request->ip()
         );
 
-        // Cache wallet as verified for write operations (4 hours)
-        // VerifyWalletOwnership middleware จะตรวจ cache นี้สำหรับ POST/PUT/DELETE
+        // NOTE: wallet_verified cache is ONLY set by verifySignature().
+        // connect() records the connection but does NOT grant write access.
+        // Users must call requestSignature() → sign → verifySignature() for write operations.
         $normalizedAddress = strtolower($validated['wallet_address']);
-        Cache::put("wallet_verified:{$normalizedAddress}", [
-            'chain_id' => $validated['chain_id'],
-            'ip' => $request->ip(),
-            'verified_at' => now()->toIso8601String(),
-        ], 14400);
 
         return response()->json([
             'success' => true,
@@ -210,7 +207,7 @@ class WalletController extends Controller
             ], 422);
         }
 
-        $walletAddress = $request->input('wallet_address');
+        $walletAddress = strtolower($request->input('wallet_address'));
         $nonce = bin2hex(random_bytes(16));
         $timestamp = now()->toIso8601String();
         $message = "TPIX TRADE: Sign this message to verify your wallet.\n\nNonce: {$nonce}\nTimestamp: {$timestamp}";
@@ -230,5 +227,142 @@ class WalletController extends Controller
                 'nonce' => $nonce,
             ],
         ]);
+    }
+
+    /**
+     * Verify a signed message to prove wallet ownership.
+     * Uses Ethereum ecrecover to validate the signature.
+     *
+     * POST /api/v1/wallet/verify-signature
+     */
+    public function verifySignature(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'signature' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{130}$/'],
+            'nonce' => ['required', 'string'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'VALIDATION_ERROR',
+                    'message' => 'Invalid parameters.',
+                ],
+            ], 422);
+        }
+
+        $walletAddress = strtolower($request->input('wallet_address'));
+        $signature = $request->input('signature');
+        $nonce = $request->input('nonce');
+
+        // Verify nonce is valid and not expired
+        $storedTimestamp = Cache::get("wallet_nonce:{$walletAddress}:{$nonce}");
+        if (! $storedTimestamp) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'INVALID_NONCE',
+                    'message' => 'Nonce is invalid or expired. Please request a new one.',
+                ],
+            ], 422);
+        }
+
+        // Reconstruct the message that was signed
+        $message = "TPIX TRADE: Sign this message to verify your wallet.\n\nNonce: {$nonce}\nTimestamp: {$storedTimestamp}";
+
+        // Verify the signature using ecrecover
+        $recoveredAddress = $this->ecRecover($message, $signature);
+
+        if (! $recoveredAddress || strtolower($recoveredAddress) !== $walletAddress) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'INVALID_SIGNATURE',
+                    'message' => 'Signature verification failed.',
+                ],
+            ], 403);
+        }
+
+        // Invalidate nonce (one-time use)
+        Cache::forget("wallet_nonce:{$walletAddress}:{$nonce}");
+        Cache::forget("wallet_active_nonce:{$walletAddress}");
+
+        // Cache wallet as cryptographically verified (4 hours)
+        Cache::put("wallet_verified:{$walletAddress}", [
+            'chain_id' => $request->input('chain_id', 56),
+            'ip' => $request->ip(),
+            'verified_at' => now()->toIso8601String(),
+            'signature_verified' => true,
+        ], 14400);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'wallet_address' => $walletAddress,
+                'verified' => true,
+                'expires_in' => 14400,
+            ],
+        ]);
+    }
+
+    /**
+     * Recover Ethereum address from signed message using ecrecover.
+     * IMPORTANT: Ethereum uses Keccak-256, NOT NIST SHA3-256.
+     * Requires: composer require kornrunner/keccak simplito/elliptic-php
+     *
+     * Without these packages, ecRecover returns null and signature verification fails.
+     * The connect() endpoint no longer grants verified status, so signature verification
+     * is mandatory for write operations.
+     */
+    private function ecRecover(string $message, string $signature): ?string
+    {
+        try {
+            // Check if Keccak library is available
+            if (! class_exists(\kornrunner\Keccak::class)) {
+                Log::warning('ecRecover: kornrunner/keccak not installed. Run: composer require kornrunner/keccak simplito/elliptic-php');
+
+                return null;
+            }
+
+            // Ethereum signed message prefix (EIP-191)
+            $prefix = "\x19Ethereum Signed Message:\n".strlen($message);
+            $msgHash = \kornrunner\Keccak::hash($prefix.$message, 256, true);
+
+            // Parse signature: r (32 bytes) + s (32 bytes) + v (1 byte)
+            $sigBin = hex2bin(substr($signature, 2));
+            if (strlen($sigBin) !== 65) {
+                return null;
+            }
+
+            $r = substr($sigBin, 0, 32);
+            $s = substr($sigBin, 32, 32);
+            $v = ord($sigBin[64]);
+
+            // Normalize v value (EIP-155 / pre-155)
+            if ($v >= 27) {
+                $v -= 27;
+            }
+            if ($v !== 0 && $v !== 1) {
+                return null;
+            }
+
+            // Use elliptic-php for ecrecover
+            $ec = new \Elliptic\EC('secp256k1');
+            $rHex = bin2hex($r);
+            $sHex = bin2hex($s);
+            $pubKey = $ec->recoverPubKey(bin2hex($msgHash), ['r' => $rHex, 's' => $sHex], $v);
+            $pubKeyHex = $pubKey->encode('hex');
+
+            // Remove 04 prefix (uncompressed), hash with Keccak-256, take last 20 bytes
+            $pubKeyHash = \kornrunner\Keccak::hash(hex2bin(substr($pubKeyHex, 2)), 256);
+
+            return '0x'.substr($pubKeyHash, -40);
+        } catch (\Exception $e) {
+            Log::error('ecRecover failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
     }
 }

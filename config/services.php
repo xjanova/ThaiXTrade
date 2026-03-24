@@ -71,4 +71,10 @@ return [
         'client_secret' => env('LINE_CHANNEL_SECRET'),
         'redirect' => env('APP_URL').'/auth/line/callback',
     ],
+
+    // Image Generation — Cloudflare Worker
+    'image_gen' => [
+        'url' => env('IMAGE_GEN_URL', 'https://tpix-image-gen.xjanovax.workers.dev/'),
+        'key' => env('IMAGE_GEN_API_KEY'),
+    ],
 ];

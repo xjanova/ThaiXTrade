@@ -3,7 +3,10 @@
 namespace App\Providers;
 
 use App\Models\SiteSetting;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Line\LineExtendSocialite;
@@ -38,6 +41,11 @@ class AppServiceProvider extends ServiceProvider
 
         // Register Line Socialite provider
         Event::listen(SocialiteWasCalled::class, [LineExtendSocialite::class, 'handle']);
+
+        // Rate limiters for API routes
+        RateLimiter::for('trading', function (Request $request) {
+            return Limit::perMinute(30)->by($request->input('wallet_address') ?? $request->ip());
+        });
 
         // Configure mail from database settings
         $this->configureMailFromDatabase();

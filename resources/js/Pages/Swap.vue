@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
@@ -103,6 +103,11 @@ watch(fromAmount, (val) => {
             isLoading.value = false;
         }
     }, 600);
+});
+
+// Cleanup debounce timeout on unmount to prevent memory leak
+onUnmounted(() => {
+    if (quoteTimeout) clearTimeout(quoteTimeout);
 });
 
 // Watch wallet connection to refresh balances

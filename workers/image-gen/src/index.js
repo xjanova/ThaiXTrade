@@ -10,7 +10,8 @@ const ALLOWED_ORIGINS = [
   'http://localhost:8000',
 ];
 
-const SECRET_KEY = 'tpix-image-gen-2024';
+// Secret key loaded from Cloudflare Worker environment variable
+// Set via: wrangler secret put IMAGE_GEN_API_KEY
 
 export default {
   async fetch(request, env) {
@@ -25,7 +26,7 @@ export default {
 
     // Auth check
     const authKey = request.headers.get('X-API-Key');
-    if (authKey !== SECRET_KEY) {
+    if (!env.IMAGE_GEN_API_KEY || authKey !== env.IMAGE_GEN_API_KEY) {
       return json({ error: 'Unauthorized' }, 401, request);
     }
 

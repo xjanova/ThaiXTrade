@@ -46,8 +46,8 @@ Route::get('/', function () {
     ]);
 });
 
-// Public Routes (No Auth Required)
-Route::prefix('v1')->group(function () {
+// Public Routes (No Auth Required) — rate limited
+Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     // Site — logo จาก admin settings (ใช้ใน Explorer + ที่อื่น)
     Route::get('/site/logo', function () {
         $logo = SiteSetting::get('general', 'logo');
@@ -92,11 +92,11 @@ Route::prefix('v1')->group(function () {
         Route::get('/{address}/price', [MarketController::class, 'tokenPrice']);
     });
 
-    // Swap API
+    // Swap API (read-only public; execute requires wallet verification)
     Route::prefix('swap')->group(function () {
         Route::get('quote', [SwapApiController::class, 'quote']);
         Route::get('routes', [SwapApiController::class, 'routes']);
-        Route::post('execute', [SwapApiController::class, 'execute']);
+        // POST execute moved to protected routes — requires wallet verification
     });
 
     // Token Sale — ระบบขายเหรียญ TPIX (public endpoints)
@@ -183,6 +183,14 @@ Route::prefix('v1')->group(function () {
     // Stripe Webhook — รับ event จาก Stripe (ไม่ต้อง auth)
     Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])
         ->withoutMiddleware([VerifyCsrfToken::class]);
+
+    // Wallet Bootstrap — connect/sign/verify must be PUBLIC (before wallet is verified)
+    Route::prefix('wallet')->middleware(['throttle:60,1'])->group(function () {
+        Route::post('/connect', [WalletController::class, 'connect']);
+        Route::post('/disconnect', [WalletController::class, 'disconnect']);
+        Route::post('/sign', [WalletController::class, 'requestSignature']);
+        Route::post('/verify-signature', [WalletController::class, 'verifySignature']);
+    });
 });
 
 // Protected Routes (Wallet Ownership Verified)
@@ -196,13 +204,10 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::get('/history', [TradingController::class, 'getHistory']);
     });
 
-    // Wallet Operations
+    // Wallet Operations (requires verified wallet)
     Route::prefix('wallet')->group(function () {
-        Route::post('/connect', [WalletController::class, 'connect']);
-        Route::post('/disconnect', [WalletController::class, 'disconnect']);
         Route::get('/balances', [WalletController::class, 'balances']);
         Route::get('/transactions', [WalletController::class, 'transactions']);
-        Route::post('/sign', [WalletController::class, 'requestSignature']);
     });
 
     // Swap Operations

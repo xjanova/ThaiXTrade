@@ -198,9 +198,22 @@ class SettingController extends Controller
      */
     public function updateTab(Request $request): RedirectResponse
     {
-        $tab = last(explode('/', $request->path())); // trading, security, social
+        // Whitelist allowed tab names to prevent path manipulation
+        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced'];
+        $tab = last(explode('/', $request->path()));
+
+        if (! in_array($tab, $allowedTabs, true)) {
+            return back()->with('error', 'Invalid settings tab.');
+        }
+
+        // Only allow keys that already exist in this group (prevent arbitrary key injection)
+        $existingKeys = SiteSetting::where('group', $tab)->pluck('key')->toArray();
 
         foreach ($request->except('_method') as $key => $value) {
+            // Skip keys not already defined in this tab group (strict — no new keys allowed)
+            if (! in_array($key, $existingKeys, true)) {
+                continue;
+            }
             // ดึง type เดิมจาก DB เพื่อไม่ให้ boolean ถูก overwrite เป็น string
             $existing = SiteSetting::where('group', $tab)
                 ->where('key', $key)

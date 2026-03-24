@@ -73,10 +73,13 @@ class TokenSaleController extends Controller
             'ends_at' => 'nullable|date|after:starts_at',
         ]);
 
-        $sale = TokenSale::updateOrCreate(
-            ['id' => $request->input('id')],
-            $validated
-        );
+        $id = $request->input('id');
+        if ($id) {
+            $sale = TokenSale::findOrFail($id);
+            $sale->update($validated);
+        } else {
+            $sale = TokenSale::create($validated);
+        }
 
         return redirect()->back()->with('success', 'Token Sale saved!');
     }
@@ -102,10 +105,13 @@ class TokenSaleController extends Controller
             'ends_at' => 'nullable|date',
         ]);
 
-        SalePhase::updateOrCreate(
-            ['id' => $request->input('id')],
-            $validated
-        );
+        $id = $request->input('id');
+        if ($id) {
+            $phase = SalePhase::findOrFail($id);
+            $phase->update($validated);
+        } else {
+            SalePhase::create($validated);
+        }
 
         return redirect()->back()->with('success', 'Phase saved!');
     }
@@ -139,8 +145,10 @@ class TokenSaleController extends Controller
             ]);
 
             $balanceHex = $response->json('result', '0x0');
-            $balanceWei = hexdec($balanceHex);
-            $balanceTpix = $balanceWei / 1e18;
+            // Use GMP for arbitrary precision to avoid float overflow on large balances
+            $hex = str_starts_with($balanceHex, '0x') ? substr($balanceHex, 2) : $balanceHex;
+            $balanceWei = gmp_init($hex ?: '0', 16);
+            $balanceTpix = (float) bcdiv(gmp_strval($balanceWei), '1000000000000000000', 18);
 
             return [
                 'address' => $address,

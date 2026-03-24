@@ -182,8 +182,8 @@ class ContentService
      */
     private function generateWithCloudflare(string $prompt): ?string
     {
-        $workerUrl = 'https://tpix-image-gen.xjanovax.workers.dev/';
-        $apiKey = 'tpix-image-gen-2024';
+        $workerUrl = config('services.image_gen.url', 'https://tpix-image-gen.xjanovax.workers.dev/');
+        $apiKey = config('services.image_gen.key');
 
         try {
             $response = Http::timeout(60)

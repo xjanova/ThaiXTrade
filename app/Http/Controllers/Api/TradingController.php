@@ -78,15 +78,18 @@ class TradingController extends Controller
     {
         $walletAddress = $request->input('wallet_address');
 
-        $query = Transaction::where('uuid', $orderId)
-            ->where('status', 'pending');
-
-        // Ensure the requester owns this order
-        if ($walletAddress) {
-            $query->where('wallet_address', $walletAddress);
+        // Wallet address is required to verify ownership
+        if (! $walletAddress) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'WALLET_REQUIRED', 'message' => 'Wallet address is required to cancel an order.'],
+            ], 422);
         }
 
-        $transaction = $query->first();
+        $transaction = Transaction::where('uuid', $orderId)
+            ->where('status', 'pending')
+            ->where('wallet_address', $walletAddress)
+            ->first();
 
         if (! $transaction) {
             return response()->json([
@@ -140,9 +143,18 @@ class TradingController extends Controller
     /**
      * Get a specific order.
      */
-    public function getOrder(string $orderId): JsonResponse
+    public function getOrder(string $orderId, Request $request): JsonResponse
     {
-        $transaction = Transaction::where('uuid', $orderId)->first();
+        $walletAddress = $request->input('wallet_address');
+
+        $query = Transaction::where('uuid', $orderId);
+
+        // If wallet_address provided, enforce ownership check
+        if ($walletAddress) {
+            $query->where('wallet_address', $walletAddress);
+        }
+
+        $transaction = $query->first();
 
         if (! $transaction) {
             return response()->json([

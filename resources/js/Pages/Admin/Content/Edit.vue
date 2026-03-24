@@ -8,6 +8,7 @@ import { ref, computed } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import axios from 'axios';
+import { sanitizeHtml } from '@/utils/sanitize';
 
 const props = defineProps({
     article: Object,
@@ -297,7 +298,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <article class="prose prose-invert max-w-none">
                         <h1 class="text-xl font-bold text-white mb-2">{{ form.title }}</h1>
                         <p v-if="form.summary" class="text-dark-400 italic text-sm mb-4">{{ form.summary }}</p>
-                        <div v-html="form.content" class="text-dark-200 text-sm leading-relaxed"></div>
+                        <div v-html="sanitizeHtml(form.content)" class="text-dark-200 text-sm leading-relaxed"></div>
                     </article>
                 </div>
 

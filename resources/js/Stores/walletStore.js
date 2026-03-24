@@ -8,7 +8,7 @@
  */
 
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, shallowRef, computed } from 'vue';
 import { BrowserProvider, JsonRpcProvider, parseEther } from 'ethers';
 import axios from 'axios';
 import {
@@ -78,8 +78,8 @@ export const useWalletStore = defineStore('wallet', () => {
     // === State ===
     const address = ref(null);
     const chainId = ref(null);
-    const provider = ref(null);
-    const signer = ref(null);
+    const provider = shallowRef(null);
+    const signer = shallowRef(null);
     const isConnecting = ref(false);
     const error = ref(null);
     const walletType = ref(null); // 'metamask', 'trustwallet', 'coinbase', 'okx', 'tpix_wallet'

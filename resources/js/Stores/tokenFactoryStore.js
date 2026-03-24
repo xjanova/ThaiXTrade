@@ -6,6 +6,7 @@
 
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import axios from 'axios';
 
 export const useTokenFactoryStore = defineStore('tokenFactory', () => {
     const tokens = ref([]);
@@ -17,13 +18,12 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
         isLoading.value = true;
         error.value = null;
         try {
-            const res = await fetch('/api/v1/token-factory');
-            const data = await res.json();
+            const { data } = await axios.get('/api/v1/token-factory');
             if (data.success) {
                 tokens.value = data.data;
             }
         } catch (e) {
-            error.value = e.message;
+            error.value = e.response?.data?.error?.message || e.message;
         } finally {
             isLoading.value = false;
         }
@@ -33,15 +33,14 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
         if (!walletAddress) return;
         isLoading.value = true;
         try {
-            const res = await fetch(`/api/v1/token-factory/my-tokens?wallet_address=${walletAddress}`, {
-                headers: { 'X-Wallet-Address': walletAddress },
+            const { data } = await axios.get(`/api/v1/token-factory/my-tokens`, {
+                params: { wallet_address: walletAddress },
             });
-            const data = await res.json();
             if (data.success) {
                 myTokens.value = data.data;
             }
         } catch (e) {
-            error.value = e.message;
+            error.value = e.response?.data?.error?.message || e.message;
         } finally {
             isLoading.value = false;
         }
@@ -51,22 +50,14 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
         isLoading.value = true;
         error.value = null;
         try {
-            const res = await fetch('/api/v1/token-factory/create', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Wallet-Address': tokenData.creator_address,
-                },
-                body: JSON.stringify(tokenData),
-            });
-            const data = await res.json();
+            const { data } = await axios.post('/api/v1/token-factory/create', tokenData);
             if (data.success) {
                 myTokens.value.unshift(data.data);
                 return data.data;
             }
             throw new Error(data.error?.message || 'Failed to create token');
         } catch (e) {
-            error.value = e.message;
+            error.value = e.response?.data?.error?.message || e.message;
             throw e;
         } finally {
             isLoading.value = false;

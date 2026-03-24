@@ -53,11 +53,12 @@ class VerifyWalletOwnership
             return $next($request);
         }
 
-        // Write requests (POST/PUT/DELETE): verify wallet ownership via cached session
-        // After wallet connects, WalletController::connect() caches verified address
+        // Write requests (POST/PUT/DELETE): require signature verification
+        // Check 1: Must have a verified session from WalletController::verifySignature()
         $cacheKey = "wallet_verified:{$normalizedAddress}";
+        $verifiedData = Cache::get($cacheKey);
 
-        if (! Cache::has($cacheKey)) {
+        if (! $verifiedData || ! is_array($verifiedData)) {
             Log::warning('Wallet ownership not verified for write operation.', [
                 'wallet' => $normalizedAddress,
                 'ip' => $request->ip(),
@@ -69,6 +70,23 @@ class VerifyWalletOwnership
                 'error' => [
                     'code' => 'WALLET_NOT_VERIFIED',
                     'message' => 'Wallet ownership not verified. Please reconnect your wallet.',
+                ],
+            ], 403);
+        }
+
+        // Check 2: IP must match the one used during verification (prevent session hijacking)
+        if (($verifiedData['ip'] ?? null) !== $request->ip()) {
+            Log::warning('Wallet verification IP mismatch.', [
+                'wallet' => $normalizedAddress,
+                'verified_ip' => $verifiedData['ip'] ?? 'unknown',
+                'request_ip' => $request->ip(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'WALLET_IP_MISMATCH',
+                    'message' => 'Wallet verification session invalid. Please reconnect.',
                 ],
             ], 403);
         }

@@ -6,6 +6,7 @@
 
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import axios from 'axios';
 
 export const useCarbonCreditStore = defineStore('carbonCredit', () => {
     const projects = ref([]);
@@ -19,13 +20,12 @@ export const useCarbonCreditStore = defineStore('carbonCredit', () => {
         isLoading.value = true;
         error.value = null;
         try {
-            const res = await fetch('/api/v1/carbon-credits/projects');
-            const data = await res.json();
+            const { data } = await axios.get('/api/v1/carbon-credits/projects');
             if (data.success) {
                 projects.value = data.data;
             }
         } catch (e) {
-            error.value = e.message;
+            error.value = e.response?.data?.error?.message || e.message;
         } finally {
             isLoading.value = false;
         }
@@ -33,43 +33,36 @@ export const useCarbonCreditStore = defineStore('carbonCredit', () => {
 
     async function fetchStats() {
         try {
-            const res = await fetch('/api/v1/carbon-credits/stats');
-            const data = await res.json();
+            const { data } = await axios.get('/api/v1/carbon-credits/stats');
             if (data.success) {
                 stats.value = data.data;
             }
         } catch (e) {
-            error.value = e.message;
+            error.value = e.response?.data?.error?.message || e.message;
         }
     }
 
     async function fetchMyCredits(walletAddress) {
         if (!walletAddress) return;
         try {
-            const res = await fetch(`/api/v1/carbon-credits/my-credits/${walletAddress}`, {
-                headers: { 'X-Wallet-Address': walletAddress },
-            });
-            const data = await res.json();
+            const { data } = await axios.get(`/api/v1/carbon-credits/my-credits/${walletAddress}`);
             if (data.success) {
                 myCredits.value = data.data;
             }
         } catch (e) {
-            error.value = e.message;
+            error.value = e.response?.data?.error?.message || e.message;
         }
     }
 
     async function fetchMyRetirements(walletAddress) {
         if (!walletAddress) return;
         try {
-            const res = await fetch(`/api/v1/carbon-credits/my-retirements/${walletAddress}`, {
-                headers: { 'X-Wallet-Address': walletAddress },
-            });
-            const data = await res.json();
+            const { data } = await axios.get(`/api/v1/carbon-credits/my-retirements/${walletAddress}`);
             if (data.success) {
                 myRetirements.value = data.data;
             }
         } catch (e) {
-            error.value = e.message;
+            error.value = e.response?.data?.error?.message || e.message;
         }
     }
 
@@ -77,22 +70,14 @@ export const useCarbonCreditStore = defineStore('carbonCredit', () => {
         isLoading.value = true;
         error.value = null;
         try {
-            const res = await fetch('/api/v1/carbon-credits/purchase', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Wallet-Address': purchaseData.wallet_address,
-                },
-                body: JSON.stringify(purchaseData),
-            });
-            const data = await res.json();
+            const { data } = await axios.post('/api/v1/carbon-credits/purchase', purchaseData);
             if (data.success) {
                 myCredits.value.unshift(data.data);
                 return data.data;
             }
             throw new Error(data.error?.message || 'Purchase failed');
         } catch (e) {
-            error.value = e.message;
+            error.value = e.response?.data?.error?.message || e.message;
             throw e;
         } finally {
             isLoading.value = false;
@@ -103,22 +88,14 @@ export const useCarbonCreditStore = defineStore('carbonCredit', () => {
         isLoading.value = true;
         error.value = null;
         try {
-            const res = await fetch('/api/v1/carbon-credits/retire', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Wallet-Address': retireData.wallet_address,
-                },
-                body: JSON.stringify(retireData),
-            });
-            const data = await res.json();
+            const { data } = await axios.post('/api/v1/carbon-credits/retire', retireData);
             if (data.success) {
                 myRetirements.value.unshift(data.data);
                 return data.data;
             }
             throw new Error(data.error?.message || 'Retirement failed');
         } catch (e) {
-            error.value = e.message;
+            error.value = e.response?.data?.error?.message || e.message;
             throw e;
         } finally {
             isLoading.value = false;

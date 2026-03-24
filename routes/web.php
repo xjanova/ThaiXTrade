@@ -146,6 +146,7 @@ Route::get('/bridge', function () {
 
 // Master Node — ตั้งโหนด + Network Dashboard (แทนที่ Staking เดิม)
 Route::get('/masternode', [MasterNodeController::class, 'index'])->name('masternode');
+Route::get('/masternode/guide', [MasterNodeController::class, 'guide'])->name('masternode.guide');
 Route::get('/staking', fn () => redirect()->route('masternode'))->name('staking'); // redirect เก่า
 
 // Download — ดาวน์โหลดแอป TPIX TRADE (ดึง release ล่าสุดจาก API ของเราเอง)
@@ -183,7 +184,7 @@ Route::get('/health', function () {
     return response()->json([
         'status' => 'healthy',
         'app' => config('app.name'),
-        'version' => '1.0.0',
+        'version' => json_decode(file_get_contents(base_path('version.json')), true)['version'] ?? 'unknown',
         'timestamp' => now()->toIso8601String(),
     ]);
 })->name('health');

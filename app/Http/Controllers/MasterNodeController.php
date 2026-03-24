@@ -20,6 +20,14 @@ class MasterNodeController extends Controller
     }
 
     /**
+     * Master Node setup guide page.
+     */
+    public function guide()
+    {
+        return Inertia::render('MasterNode/Guide');
+    }
+
+    /**
      * API: Get network stats.
      */
     public function stats()
