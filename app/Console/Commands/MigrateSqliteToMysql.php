@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Exception;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -91,7 +92,7 @@ class MigrateSqliteToMysql extends Command
         // Check if table exists in both databases
         try {
             $rows = DB::connection('sqlite_old')->table($table)->get();
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->warn("  ⏭  {$table}: not found in SQLite, skipping");
 
             return 0;
@@ -138,7 +139,7 @@ class MigrateSqliteToMysql extends Command
                         $data,
                     );
                     $transferred++;
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     $this->warn("     ⚠ Skipped {$data['group']}.{$data['key']}: {$e->getMessage()}");
                 }
             } elseif ($table === 'admin_users') {
@@ -149,7 +150,7 @@ class MigrateSqliteToMysql extends Command
                         $data,
                     );
                     $transferred++;
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     $this->warn("     ⚠ Skipped admin {$data['email']}: {$e->getMessage()}");
                 }
             } else {
@@ -157,7 +158,7 @@ class MigrateSqliteToMysql extends Command
                     // Try insert, skip on duplicate
                     DB::table($table)->insertOrIgnore($data);
                     $transferred++;
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     $this->warn("     ⚠ Skipped row: {$e->getMessage()}");
                 }
             }
