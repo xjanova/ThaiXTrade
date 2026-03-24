@@ -279,7 +279,7 @@ export function useSwap() {
                             await feeTx.wait();
                         }
                         feeCollected = true;
-                        console.log('Platform fee collected:', quote.feeAmount, fromToken.symbol);
+                        // Fee collected successfully
                     }
                 } catch (feeErr) {
                     // Fee collection failed — log but don't block the swap

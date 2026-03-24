@@ -245,7 +245,7 @@ async function sendData() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    console.log("Sent!", res.status);
+    // IoT data sent
   } catch (e) {
     console.error("Error:", e.message);
   }

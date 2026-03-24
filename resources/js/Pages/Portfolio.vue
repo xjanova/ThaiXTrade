@@ -53,7 +53,7 @@ watch(isConnected, (connected) => {
             <!-- Page Header -->
             <div class="mb-8">
                 <h1 class="text-3xl font-bold text-white mb-2">{{ t('portfolio.title') }}</h1>
-                <p class="text-dark-400">Track your assets and performance across all chains.</p>
+                <p class="text-dark-400">{{ t('portfolio.desc') }}</p>
             </div>
 
             <!-- Not Connected State -->
@@ -79,7 +79,7 @@ watch(isConnected, (connected) => {
                 <div class="glass-dark rounded-2xl p-6 mb-6">
                     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         <div>
-                            <p class="text-sm text-dark-400 mb-1">Wallet Address</p>
+                            <p class="text-sm text-dark-400 mb-1">{{ t('portfolio.walletAddress') }}</p>
                             <p class="text-lg font-mono text-white">{{ shortAddress }}</p>
                             <p class="text-sm text-dark-500 mt-1">
                                 Chain: {{ walletStore.isBSC ? 'BNB Smart Chain' : `Chain ID: ${walletStore.chainId}` }}
@@ -90,7 +90,7 @@ watch(isConnected, (connected) => {
                                 @click="fetchBalances"
                                 class="glass-sm rounded-xl px-4 py-3 text-sm text-primary-400 hover:text-primary-300 transition-colors"
                             >
-                                Refresh
+                                {{ t('portfolio.refresh') }}
                             </button>
                         </div>
                     </div>
@@ -98,7 +98,7 @@ watch(isConnected, (connected) => {
 
                 <!-- Loading -->
                 <div v-if="isLoading" class="glass-dark rounded-2xl p-12 text-center">
-                    <div class="animate-pulse text-dark-400">Fetching balances from blockchain...</div>
+                    <div class="animate-pulse text-dark-400">{{ t('portfolio.fetching') }}</div>
                 </div>
 
                 <!-- Holdings Table -->

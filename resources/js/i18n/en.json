@@ -122,7 +122,11 @@
     "assets": "Assets",
     "transactions": "Transactions",
     "noAssets": "No assets yet",
-    "connectToView": "Connect wallet to view your portfolio"
+    "connectToView": "Connect wallet to view your portfolio",
+    "desc": "Track your assets and performance across all chains.",
+    "walletAddress": "Wallet Address",
+    "refresh": "Refresh",
+    "fetching": "Fetching balances from blockchain..."
   },
   "masternode": {
     "title": "TPIX Master Node",
