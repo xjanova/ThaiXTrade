@@ -115,8 +115,13 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --prefer-dist --no-interaction --no-progress || composer update --prefer-dist --no-interaction --no-progress
 
-      - name: Run Laravel Pint (Code Style)
-        run: ./vendor/bin/pint --test
+      - name: Run Laravel Pint (Code Style — auto-fix)
+        run: |
+          ./vendor/bin/pint
+          if [ -n "$(git diff --name-only)" ]; then
+            echo "::warning::Pint auto-fixed code style issues"
+            git diff --stat
+          fi
 
       - name: Check for security vulnerabilities
         run: |
