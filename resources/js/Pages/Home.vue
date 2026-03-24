@@ -42,10 +42,10 @@ const features = computed(() => [
 ]);
 
 const stats = computed(() => [
-    { label: 'Supported Chains', value: '9' },
-    { label: 'Trading Pairs', value: '100+' },
-    { label: 'DEX Protocol', value: 'PancakeSwap' },
-    { label: 'Network', value: 'TPIX Chain + BSC' },
+    { label: t('home.supportedChains'), value: '9' },
+    { label: t('home.tradingPairs'), value: '100+' },
+    { label: t('home.dexProtocol'), value: 'PancakeSwap' },
+    { label: t('home.network'), value: 'TPIX Chain + BSC' },
 ]);
 
 onMounted(async () => {
@@ -70,18 +70,17 @@ onMounted(async () => {
             <div class="relative max-w-6xl mx-auto text-center">
                 <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-sm text-sm mb-8">
                     <span class="w-2 h-2 rounded-full bg-trading-green animate-pulse"></span>
-                    <span class="text-dark-300">Live on BNB Smart Chain</span>
+                    <span class="text-dark-300">{{ t('home.liveOnBSC') }}</span>
                 </div>
 
                 <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">
-                    Trade <span class="text-gradient">Decentralized</span>
+                    {{ t('home.heroTitle1') }} <span class="text-gradient">{{ t('home.heroTitle2') }}</span>
                     <br />
-                    Trade <span class="text-gradient-gold">Fearlessly</span>
+                    {{ t('home.heroTitle1') }} <span class="text-gradient-gold">{{ t('home.heroTitle3') }}</span>
                 </h1>
 
                 <p class="text-xl text-dark-400 max-w-2xl mx-auto mb-10">
-                    TPIX TRADE is the most secure and fastest decentralized exchange.
-                    Trade directly from your wallet with zero custody risk.
+                    {{ t('home.heroDesc') }}
                 </p>
 
                 <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -96,7 +95,7 @@ onMounted(async () => {
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
-                        Watch Demo
+                        {{ t('home.watchDemo') }}
                     </button>
                 </div>
 
@@ -110,6 +109,150 @@ onMounted(async () => {
             </div>
         </section>
 
+        <!-- Master Node Promo Banner -->
+        <section class="py-10">
+            <div class="max-w-6xl mx-auto">
+                <div class="relative overflow-hidden rounded-3xl border border-cyan-500/20">
+                    <!-- Animated gradient bg -->
+                    <div class="absolute inset-0 bg-gradient-to-br from-cyan-900/40 via-dark-900/80 to-purple-900/40" />
+                    <div class="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl" />
+                    <div class="absolute bottom-0 left-0 w-60 h-60 bg-purple-500/10 rounded-full blur-3xl" />
+
+                    <div class="relative flex flex-col md:flex-row items-center gap-8 p-8 md:p-12">
+                        <!-- Left: Info -->
+                        <div class="flex-1 text-center md:text-left">
+                            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-400 font-semibold mb-4">
+                                <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                                {{ t('home.nodeNew') }}
+                            </div>
+                            <h2 class="text-3xl md:text-4xl font-black text-white mb-3">
+                                {{ t('home.nodeTitle') }}
+                            </h2>
+                            <p class="text-gray-400 mb-6 max-w-lg">
+                                {{ t('home.nodeDesc') }}
+                            </p>
+
+                            <!-- Reward tiers mini -->
+                            <div class="grid grid-cols-3 gap-3 mb-6 max-w-md">
+                                <div class="bg-white/5 rounded-xl p-3 text-center border border-white/5">
+                                    <div class="text-xs text-gray-500">Light</div>
+                                    <div class="text-lg font-black text-cyan-400">10K</div>
+                                    <div class="text-xs text-trading-green">4-6% APY</div>
+                                </div>
+                                <div class="bg-white/5 rounded-xl p-3 text-center border border-purple-500/20">
+                                    <div class="text-xs text-gray-500">Sentinel</div>
+                                    <div class="text-lg font-black text-purple-400">100K</div>
+                                    <div class="text-xs text-trading-green">7-10% APY</div>
+                                </div>
+                                <div class="bg-white/5 rounded-xl p-3 text-center border border-amber-500/20">
+                                    <div class="text-xs text-gray-500">Validator</div>
+                                    <div class="text-lg font-black text-amber-400">1M</div>
+                                    <div class="text-xs text-trading-green">12-15% APY</div>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-3">
+                                <Link href="/masternode" class="btn-primary px-6 py-3 text-sm font-bold">
+                                    ⚡ {{ t('home.nodeStake') }}
+                                </Link>
+                                <Link href="/masternode/guide" class="px-6 py-3 text-sm font-semibold border border-cyan-500/30 text-cyan-400 rounded-xl hover:bg-cyan-500/10 transition">
+                                    📖 {{ t('home.nodeGuide') }}
+                                </Link>
+                                <a href="https://github.com/xjanova/TPIX-Coin/releases/latest" target="_blank"
+                                    class="px-6 py-3 text-sm font-semibold border border-white/10 text-gray-400 rounded-xl hover:bg-white/5 transition">
+                                    📥 {{ t('home.nodeDownload') }}
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- Right: 3D Animated Node Visualization -->
+                        <div class="relative w-64 h-64 shrink-0">
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <!-- Rotating rings -->
+                                <div class="absolute w-56 h-56 border border-cyan-500/20 rounded-full animate-spin" style="animation-duration: 20s" />
+                                <div class="absolute w-44 h-44 border border-purple-500/20 rounded-full animate-spin" style="animation-duration: 15s; animation-direction: reverse" />
+                                <div class="absolute w-32 h-32 border border-amber-500/20 rounded-full animate-spin" style="animation-duration: 10s" />
+                                <!-- Center logo -->
+                                <div class="relative">
+                                    <div class="absolute -inset-4 bg-cyan-500/20 rounded-full blur-xl animate-pulse" />
+                                    <img src="/logo.png" alt="TPIX" class="relative w-20 h-20 object-contain" />
+                                </div>
+                                <!-- Orbiting dots -->
+                                <div class="absolute w-56 h-56 animate-spin" style="animation-duration: 8s">
+                                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-cyan-400 rounded-full shadow-lg shadow-cyan-400/50" />
+                                </div>
+                                <div class="absolute w-44 h-44 animate-spin" style="animation-duration: 6s; animation-direction: reverse">
+                                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-purple-400 rounded-full shadow-lg shadow-purple-400/50" />
+                                </div>
+                                <div class="absolute w-32 h-32 animate-spin" style="animation-duration: 4s">
+                                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2 bg-amber-400 rounded-full shadow-lg shadow-amber-400/50" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TPIX Price Chart 3D -->
+        <section class="py-10">
+            <div class="max-w-6xl mx-auto">
+                <div class="glass-dark rounded-2xl p-6 border border-white/5">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h3 class="text-lg font-semibold text-white">TPIX {{ t('home.priceChart') }}</h3>
+                            <p class="text-xs text-gray-500">{{ t('home.priceChartDesc') }}</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-2xl font-black text-white">$0.18</span>
+                            <span class="text-sm text-trading-green">+0.00%</span>
+                        </div>
+                    </div>
+                    <!-- 3D-style chart with CSS perspective -->
+                    <div class="relative h-64 overflow-hidden rounded-xl" style="perspective: 800px">
+                        <div class="absolute inset-0 bg-gradient-to-t from-cyan-500/5 to-transparent" style="transform: rotateX(15deg); transform-origin: bottom" />
+                        <!-- SVG chart bars -->
+                        <svg class="w-full h-full" viewBox="0 0 800 250" preserveAspectRatio="none">
+                            <defs>
+                                <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stop-color="#00BCD4" stop-opacity="0.8"/>
+                                    <stop offset="100%" stop-color="#00BCD4" stop-opacity="0.1"/>
+                                </linearGradient>
+                                <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+                                    <stop offset="0%" stop-color="#06B6D4"/>
+                                    <stop offset="50%" stop-color="#8B5CF6"/>
+                                    <stop offset="100%" stop-color="#F59E0B"/>
+                                </linearGradient>
+                            </defs>
+                            <!-- Grid lines -->
+                            <line v-for="i in 5" :key="'g'+i" x1="0" :y1="i*50" x2="800" :y2="i*50" stroke="white" stroke-opacity="0.03" />
+                            <!-- 3D-effect bars -->
+                            <g v-for="(h, i) in [120,140,110,160,130,170,150,180,145,165,155,175,140,190,160,185,170,195,180,200,175,210,190,205,195,215,200,220,185,210]" :key="'b'+i">
+                                <rect :x="i * 26.6 + 4" :y="250 - h" width="20" :height="h" fill="url(#barGrad)" rx="2" opacity="0.4">
+                                    <animate attributeName="height" :from="0" :to="h" dur="1.5s" fill="freeze" :begin="i * 0.05 + 's'" />
+                                    <animate attributeName="y" :from="250" :to="250 - h" dur="1.5s" fill="freeze" :begin="i * 0.05 + 's'" />
+                                </rect>
+                            </g>
+                            <!-- Price line -->
+                            <polyline fill="none" stroke="url(#lineGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                                points="15,130 41,110 68,140 94,90 121,120 147,80 174,100 200,70 227,105 253,85 280,95 306,75 333,110 359,60 386,90 412,65 439,80 465,55 492,70 518,50 545,75 571,40 598,60 624,45 651,55 677,35 704,50 730,30 757,65 784,40">
+                                <animate attributeName="stroke-dashoffset" from="2000" to="0" dur="2s" fill="freeze" />
+                                <animate attributeName="stroke-dasharray" from="2000" to="2000" dur="0.01s" fill="freeze" />
+                            </polyline>
+                            <!-- Glow dot at end -->
+                            <circle cx="784" cy="40" r="4" fill="#F59E0B">
+                                <animate attributeName="r" values="3;6;3" dur="2s" repeatCount="indefinite" />
+                                <animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite" />
+                            </circle>
+                        </svg>
+                        <!-- Price labels -->
+                        <div class="absolute top-2 left-3 text-[10px] text-gray-600">$0.25</div>
+                        <div class="absolute bottom-2 left-3 text-[10px] text-gray-600">$0.10</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Markets Preview -->
         <section class="py-16">
             <div class="max-w-6xl mx-auto">
@@ -117,7 +260,7 @@ onMounted(async () => {
                     <!-- Top Gainers -->
                     <div class="glass-dark rounded-2xl p-6">
                         <div class="flex items-center justify-between mb-6">
-                            <h3 class="text-lg font-semibold text-white">Top Gainers</h3>
+                            <h3 class="text-lg font-semibold text-white">{{ t('home.topGainers') }}</h3>
                             <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">{{ t('home.viewAll') }}</Link>
                         </div>
                         <div v-if="isLoading" class="py-8 text-center text-dark-400">
@@ -147,7 +290,7 @@ onMounted(async () => {
                     <!-- Top Volume -->
                     <div class="glass-dark rounded-2xl p-6">
                         <div class="flex items-center justify-between mb-6">
-                            <h3 class="text-lg font-semibold text-white">Top Volume</h3>
+                            <h3 class="text-lg font-semibold text-white">{{ t('home.topVolume') }}</h3>
                             <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">{{ t('home.viewAll') }}</Link>
                         </div>
                         <div v-if="isLoading" class="py-8 text-center text-dark-400">

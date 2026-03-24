@@ -176,7 +176,7 @@ const submit = () => {
         <div class="relative w-full max-w-md">
             <!-- Logo -->
             <div class="text-center mb-8">
-                <img src="/logo.png" alt="TPIX TRADE" class="w-20 h-20 rounded-2xl mx-auto mb-4 shadow-glow-brand object-cover" />
+                <img src="/logo.png" alt="TPIX TRADE" class="w-20 h-20 mx-auto mb-4 shadow-glow-brand object-contain" />
                 <h1 class="text-2xl font-bold text-white">TPIX <span class="text-gradient">TRADE</span></h1>
                 <p class="text-dark-400 text-sm mt-1">Admin Panel</p>
             </div>

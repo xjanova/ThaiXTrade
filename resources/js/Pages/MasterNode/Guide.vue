@@ -231,7 +231,7 @@ const stepDiagrams = {
             <!-- Header -->
             <div class="text-center mb-10">
                 <div class="inline-flex items-center gap-3 mb-4 px-4 py-2 rounded-full bg-cyan-500/10 border border-cyan-500/20">
-                    <img src="/logo.png" alt="TPIX" class="w-8 h-8 rounded-lg">
+                    <img src="/logo.png" alt="TPIX" class="w-8 h-8">
                     <span class="text-cyan-400 font-semibold text-sm">TPIX Master Node</span>
                 </div>
                 <h1 class="text-3xl md:text-4xl font-extrabold text-white mb-3">
@@ -486,7 +486,7 @@ const stepDiagrams = {
 
             <!-- CTA -->
             <div class="text-center py-8 glass-card rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/5 via-purple-500/5 to-cyan-500/5">
-                <img src="/logo.png" alt="TPIX" class="w-16 h-16 rounded-2xl mx-auto mb-4">
+                <img src="/logo.png" alt="TPIX" class="w-16 h-16 mx-auto mb-4">
                 <h2 class="text-2xl font-bold text-white mb-2">
                     {{ isTH ? 'พร้อมเริ่มรัน Master Node แล้ว?' : 'Ready to Run a Master Node?' }}
                 </h2>

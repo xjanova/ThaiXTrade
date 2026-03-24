@@ -65,7 +65,7 @@ function formatDate(iso) {
                 <!-- Header -->
                 <div class="text-center mb-10">
                     <div class="w-24 h-24 mx-auto rounded-3xl bg-gradient-to-br from-primary-500/20 to-accent-500/20 flex items-center justify-center mb-6 shadow-glow">
-                        <img src="/logo.png" class="w-16 h-16 rounded-2xl" alt="TPIX TRADE" />
+                        <img src="/logo.png" class="w-16 h-16" alt="TPIX TRADE" />
                     </div>
                     <h1 class="text-3xl font-bold text-white mb-2">{{ t('download.title') }}</h1>
                     <p class="text-dark-400">{{ t('download.subtitle') }}</p>
@@ -183,7 +183,7 @@ function formatDate(iso) {
                 <div class="mt-16 pt-12 border-t border-white/5">
                     <div class="text-center mb-8">
                         <div class="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center mb-4 shadow-glow">
-                            <img src="/logo.png" class="w-12 h-12 rounded-xl" alt="TPIX Master Node" />
+                            <img src="/logo.png" class="w-12 h-12" alt="TPIX Master Node" />
                         </div>
                         <h2 class="text-2xl font-bold text-white mb-2">TPIX Master Node</h2>
                         <p class="text-dark-400 text-sm">

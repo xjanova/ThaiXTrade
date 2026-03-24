@@ -67,7 +67,7 @@ const handleDisconnect = () => {
 
                     <!-- Logo -->
                     <Link href="/" class="flex items-center gap-3">
-                        <img src="/logo.png" alt="TPIX TRADE" class="w-10 h-10 rounded-xl object-cover shadow-glow-sm" />
+                        <img src="/logo.png" alt="TPIX TRADE" class="w-10 h-10 object-contain" />
                         <div class="hidden sm:block">
                             <h1 class="text-xl font-bold text-white">TPIX <span class="text-gradient">TRADE</span></h1>
                             <p class="text-xs text-dark-400">by Xman Studio</p>
