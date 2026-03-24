@@ -1,6 +1,6 @@
 <?php
 
-/**
+/*
  * TPIX TRADE - API Routes
  * Developed by Xman Studio.
  */
@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\SwapApiController;
 use App\Http\Controllers\Api\TokenFactoryApiController;
 use App\Http\Controllers\Api\TokenSaleApiController;
+use App\Http\Controllers\Api\TpixPriceController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\MasterNodeController;
@@ -46,7 +47,7 @@ Route::get('/', function () {
     ]);
 });
 
-/**
+/*
  * TPIX Token Icon — public endpoint for MetaMask, wallets, exchanges.
  * Returns the official TPIX token logo for adding custom tokens.
  * URL: https://tpix.online/api/v1/token-icon
@@ -110,11 +111,11 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
 
     // TPIX Token — price feed, klines, info (for CoinMarketCap/CoinGecko)
     Route::prefix('tpix')->group(function () {
-        Route::get('/price', [\App\Http\Controllers\Api\TpixPriceController::class, 'price']);
-        Route::get('/ticker', [\App\Http\Controllers\Api\TpixPriceController::class, 'ticker']);
-        Route::get('/summary', [\App\Http\Controllers\Api\TpixPriceController::class, 'summary']);
-        Route::get('/klines', [\App\Http\Controllers\Api\TpixPriceController::class, 'klines']);
-        Route::get('/info', [\App\Http\Controllers\Api\TpixPriceController::class, 'info']);
+        Route::get('/price', [TpixPriceController::class, 'price']);
+        Route::get('/ticker', [TpixPriceController::class, 'ticker']);
+        Route::get('/summary', [TpixPriceController::class, 'summary']);
+        Route::get('/klines', [TpixPriceController::class, 'klines']);
+        Route::get('/info', [TpixPriceController::class, 'info']);
     });
 
     // Banners — ป้ายโฆษณา (public, cached)

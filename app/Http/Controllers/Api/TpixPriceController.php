@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\SalePhase;
 use App\Models\SiteSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -157,7 +158,7 @@ class TpixPriceController extends Controller
 
             // 2. Token sale price fallback
             if ($price <= 0) {
-                $salePhase = \App\Models\SalePhase::where('is_active', true)->first();
+                $salePhase = SalePhase::where('is_active', true)->first();
                 $price = $salePhase ? (float) $salePhase->price_per_tpix : 0;
             }
 

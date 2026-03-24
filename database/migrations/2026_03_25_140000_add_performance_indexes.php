@@ -4,10 +4,10 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * Add performance indexes for frequently queried columns.
  */
-return new class extends Migration
+return new class() extends Migration
 {
     public function up(): void
     {

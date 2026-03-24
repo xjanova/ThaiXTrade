@@ -26,7 +26,7 @@ class AuthController extends Controller
      * Display the admin login page.
      * If no admin users exist, show the initial setup page.
      */
-    public function showLogin(): InertiaResponse|\Illuminate\Http\RedirectResponse
+    public function showLogin(): InertiaResponse|RedirectResponse
     {
         // First-time setup: no admin users exist yet — redirect to wizard
         if (AdminUser::count() === 0) {

@@ -3,14 +3,14 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
-/**
+/*
  * Update chain logo URLs from cryptologos.cc (blocked by browsers)
  * to TrustWallet Assets CDN (reliable, CORS-friendly).
  *
  * Note: chains table uses 'logo' column (not 'icon').
  * The API transforms this to 'icon' in the response.
  */
-return new class extends Migration
+return new class() extends Migration
 {
     private array $logoMap = [
         'Ethereum' => 'https://assets.trustwalletapp.com/blockchains/ethereum/info/logo.png',

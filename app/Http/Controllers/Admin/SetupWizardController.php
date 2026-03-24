@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdminUser;
+use App\Models\SiteSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -66,7 +67,7 @@ class SetupWizardController extends Controller
 
         // Set fee collector wallet if provided
         if (! empty($validated['fee_collector_wallet'])) {
-            \App\Models\SiteSetting::set(
+            SiteSetting::set(
                 'trading',
                 'fee_collector_wallet',
                 $validated['fee_collector_wallet'],

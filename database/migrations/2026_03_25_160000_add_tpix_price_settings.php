@@ -3,14 +3,14 @@
 use App\Models\SiteSetting;
 use Illuminate\Database\Migrations\Migration;
 
-/**
+/*
  * Add TPIX token price settings for internal price feed.
  * These are used by TpixPriceController for:
  *   - Trade page (TPIX/USDT pair)
  *   - CoinMarketCap / CoinGecko integration
  *   - MetaMask portfolio display
  */
-return new class extends Migration
+return new class() extends Migration
 {
     public function up(): void
     {

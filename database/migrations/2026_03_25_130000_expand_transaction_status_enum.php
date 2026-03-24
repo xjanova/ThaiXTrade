@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * Expand transactions.status enum to include 'executing' and 'confirmed'.
  *
  * - executing: market order sent to chain, waiting for tx confirmation
@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
  * MySQL: ALTER COLUMN MODIFY to expand enum
  * SQLite: Recreate with string column (enum not enforced in SQLite)
  */
-return new class extends Migration
+return new class() extends Migration
 {
     public function up(): void
     {
