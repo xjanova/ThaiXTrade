@@ -8,9 +8,11 @@ use App\Services\UserWalletService;
 use App\Services\Web3BalanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Elliptic\EC;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use kornrunner\Keccak;
 
 /**
  * WalletController.
@@ -328,7 +330,7 @@ class WalletController extends Controller
 
             // Ethereum signed message prefix (EIP-191)
             $prefix = "\x19Ethereum Signed Message:\n".strlen($message);
-            $msgHash = \kornrunner\Keccak::hash($prefix.$message, 256, true);
+            $msgHash = Keccak::hash($prefix.$message, 256, true);
 
             // Parse signature: r (32 bytes) + s (32 bytes) + v (1 byte)
             $sigBin = hex2bin(substr($signature, 2));
@@ -349,14 +351,14 @@ class WalletController extends Controller
             }
 
             // Use elliptic-php for ecrecover
-            $ec = new \Elliptic\EC('secp256k1');
+            $ec = new EC('secp256k1');
             $rHex = bin2hex($r);
             $sHex = bin2hex($s);
             $pubKey = $ec->recoverPubKey(bin2hex($msgHash), ['r' => $rHex, 's' => $sHex], $v);
             $pubKeyHex = $pubKey->encode('hex');
 
             // Remove 04 prefix (uncompressed), hash with Keccak-256, take last 20 bytes
-            $pubKeyHash = \kornrunner\Keccak::hash(hex2bin(substr($pubKeyHex, 2)), 256);
+            $pubKeyHash = Keccak::hash(hex2bin(substr($pubKeyHex, 2)), 256);
 
             return '0x'.substr($pubKeyHash, -40);
         } catch (\Exception $e) {
