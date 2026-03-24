@@ -213,9 +213,26 @@ async function initChart() {
     const candleData = await fetchKlines();
     storedCandleData = candleData;
 
-    if (!candleData.length || !chartContainer.value) {
+    if (!chartContainer.value) {
         isLoading.value = false;
         return;
+    }
+
+    // No data: generate flat line at current price (or $0.18 default for TPIX)
+    if (!candleData.length) {
+        const basePrice = props.ticker?.price || props.ticker?.lastPrice || 0.18;
+        const now = Math.floor(Date.now() / 1000);
+        for (let i = 299; i >= 0; i--) {
+            candleData.push({
+                time: now - (i * 3600),
+                open: basePrice,
+                high: basePrice,
+                low: basePrice,
+                close: basePrice,
+                volume: 0,
+            });
+        }
+        storedCandleData = candleData;
     }
 
     chart = createChart(chartContainer.value, {
