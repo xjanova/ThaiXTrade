@@ -51,7 +51,6 @@ const { balances, fetchBalances } = useWalletBalance();
 const { error: swapError } = useSwap();
 
 const activeTab = ref('openOrders');
-const showWalletModal = ref(false);
 const orderStatus = ref(null); // 'submitting', 'success', 'error'
 const orderMessage = ref('');
 
@@ -100,7 +99,7 @@ const handleSubmitOrder = async (order) => {
 };
 
 const handleConnectWallet = () => {
-    showWalletModal.value = true;
+    walletStore.openConnectModal();
 };
 
 onMounted(async () => {

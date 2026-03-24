@@ -67,9 +67,10 @@ watch(isConnected, (connected) => {
                 <p class="text-dark-400 text-center max-w-md mb-6">
                     {{ t('portfolio.connectToView') }}
                 </p>
-                <p class="text-sm text-dark-500">
-                    Use the "Connect Wallet" button in the navigation bar to get started.
-                </p>
+                <button @click="walletStore.openConnectModal()"
+                    class="mt-2 px-6 py-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-semibold transition">
+                    {{ t('wallet.connect') }}
+                </button>
             </div>
 
             <!-- Connected State -->

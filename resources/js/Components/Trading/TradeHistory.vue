@@ -7,6 +7,7 @@
 
 import { ref, onMounted, computed } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
+import { getTxUrl } from '@/utils/web3';
 import axios from 'axios';
 
 const walletStore = useWalletStore();
@@ -93,6 +94,7 @@ onMounted(() => {
                             <th>Amount</th>
                             <th>Total</th>
                             <th>Fee</th>
+                            <th>Tx</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -113,6 +115,15 @@ onMounted(() => {
                             <td class="font-mono text-dark-300">{{ trade.amount }}</td>
                             <td class="font-mono text-white">${{ trade.total }}</td>
                             <td class="font-mono text-dark-400">${{ trade.fee }}</td>
+                            <td>
+                                <a v-if="trade.txHash"
+                                    :href="getTxUrl(trade.txHash)"
+                                    target="_blank" rel="noopener"
+                                    class="text-primary-400 hover:text-primary-300 text-xs font-mono underline">
+                                    {{ trade.txHash.slice(0, 8) }}...
+                                </a>
+                                <span v-else class="text-dark-600 text-xs">-</span>
+                            </td>
                         </tr>
                     </tbody>
                 </table>

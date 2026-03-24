@@ -195,8 +195,10 @@ export const useWalletStore = defineStore('wallet', () => {
             addTPIXChainToWallet(injected).catch(() => {});
 
             // แจ้ง backend ว่า wallet connect สำเร็จ — สร้าง user อัตโนมัติ
-            // ให้ admin เห็นในหน้า Members + Wallets
             _registerWalletToBackend(address.value, chainId.value, type);
+
+            // ยืนยัน wallet ownership ด้วย signature (จำเป็นสำหรับ write operations)
+            await _verifyWalletOwnership(ethSigner, address.value);
 
             // ตั้งค่า event listeners สำหรับ chain/account changes
             _setupListeners();
@@ -448,6 +450,42 @@ export const useWalletStore = defineStore('wallet', () => {
         } catch (err) {
             error.value = 'ไม่สามารถสลับ network ได้';
             throw err;
+        }
+    }
+
+    /**
+     * ยืนยัน wallet ownership ด้วย signature (EIP-191 personal_sign)
+     * Flow: requestSignature → sign message → verifySignature
+     * เมื่อสำเร็จ backend จะ cache "wallet_verified:{address}" 4 ชม.
+     * ทำให้ POST/PUT/DELETE requests ผ่าน VerifyWalletOwnership middleware ได้
+     */
+    async function _verifyWalletOwnership(walletSigner, walletAddress) {
+        try {
+            // 1. ขอ nonce + message จาก backend
+            const signRes = await axios.post('/api/v1/wallet/sign', {
+                wallet_address: walletAddress,
+            });
+
+            if (!signRes.data?.success) return;
+
+            const { message, nonce } = signRes.data.data;
+
+            // 2. ให้ผู้ใช้ sign message ด้วย wallet
+            const signature = await walletSigner.signMessage(message);
+
+            // 3. ส่ง signature กลับไปยืนยัน
+            const verifyRes = await axios.post('/api/v1/wallet/verify-signature', {
+                wallet_address: walletAddress,
+                signature,
+                nonce,
+            });
+
+            if (verifyRes.data?.success) {
+                console.log('[TPIX] ✅ Wallet ownership verified:', walletAddress);
+            }
+        } catch (err) {
+            // ถ้า user ปฏิเสธ sign (code 4001) หรือ backend ยังไม่พร้อม ไม่ block connection
+            console.warn('[TPIX] Wallet verification skipped:', err.message || err);
         }
     }
 

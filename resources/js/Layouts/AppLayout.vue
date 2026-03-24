@@ -141,6 +141,7 @@ onMounted(async () => {
         <WalletModal
             v-if="showWalletModal"
             @close="closeWalletModal"
+            @connected="closeWalletModal"
         />
 
         <!-- Footer — ลิงก์เข้าถึงหน้าทั้งหมด -->
