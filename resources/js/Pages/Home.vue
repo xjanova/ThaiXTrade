@@ -18,6 +18,19 @@ const { t } = useTranslation();
 
 const { topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
 
+// Hero video slideshow: 1.mp4 → 2.mp4 → bg1.webp (stop, no loop)
+const heroMedia = ref('video1'); // 'video1', 'video2', 'image'
+const heroFading = ref(false);
+
+function onVideo1Ended() {
+    heroFading.value = true;
+    setTimeout(() => { heroMedia.value = 'video2'; heroFading.value = false; }, 600);
+}
+function onVideo2Ended() {
+    heroFading.value = true;
+    setTimeout(() => { heroMedia.value = 'image'; heroFading.value = false; }, 600);
+}
+
 const features = computed(() => [
     {
         icon: 'shield',
@@ -58,13 +71,40 @@ onMounted(async () => {
     <Head title="Decentralized Trading Platform" />
 
     <AppLayout :hide-sidebar="true">
-        <!-- Hero Section -->
-        <section class="relative py-20 overflow-hidden">
-            <!-- Background Effects (brand multi-color glow) -->
+        <!-- Hero Section with Video Slideshow -->
+        <section class="relative py-20 overflow-hidden min-h-[600px]">
+            <!-- Video/Image Background Slideshow -->
             <div class="absolute inset-0 pointer-events-none">
-                <div class="absolute top-1/3 left-1/3 w-[600px] h-[600px] bg-accent-500/8 rounded-full blur-3xl"></div>
-                <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary-500/10 rounded-full blur-3xl"></div>
-                <div class="absolute bottom-1/3 right-1/3 w-[500px] h-[500px] bg-warm-500/5 rounded-full blur-3xl"></div>
+                <!-- Video 1 -->
+                <video v-if="heroMedia === 'video1'"
+                    autoplay muted playsinline
+                    @ended="onVideo1Ended"
+                    class="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
+                    :class="heroFading ? 'opacity-0' : 'opacity-40'"
+                >
+                    <source src="/videos/1.mp4" type="video/mp4" />
+                </video>
+                <!-- Video 2 -->
+                <video v-if="heroMedia === 'video2'"
+                    autoplay muted playsinline
+                    @ended="onVideo2Ended"
+                    class="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
+                    :class="heroFading ? 'opacity-0' : 'opacity-40'"
+                >
+                    <source src="/videos/2.mp4" type="video/mp4" />
+                </video>
+                <!-- Final image (stays, no loop) -->
+                <div v-if="heroMedia === 'image'"
+                    class="absolute inset-0 bg-cover bg-center transition-opacity duration-1000 opacity-30"
+                    style="background-image: url('/images/bg1.webp')"
+                />
+                <!-- Bottom fade gradient (blend into dark bg) -->
+                <div class="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-dark-950 via-dark-950/80 to-transparent" />
+                <!-- Top subtle fade -->
+                <div class="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-dark-950/60 to-transparent" />
+                <!-- Side fades -->
+                <div class="absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-dark-950/60 to-transparent" />
+                <div class="absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-dark-950/60 to-transparent" />
             </div>
 
             <div class="relative max-w-6xl mx-auto text-center">

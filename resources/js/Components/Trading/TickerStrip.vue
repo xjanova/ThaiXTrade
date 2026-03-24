@@ -76,7 +76,7 @@ onUnmounted(() => {
             >
                 <div class="flex items-center gap-3">
                     <!-- Coin Logo + Symbol -->
-                    <CoinIcon v-if="ticker.isTpix" :symbol="ticker.symbol" size="xs" src="/logo.webp" />
+                    <CoinIcon v-if="ticker.isTpix" :symbol="ticker.symbol" size="xs" src="/tpixlogo.webp" />
                     <CoinIcon v-else :symbol="ticker.symbol" size="xs" />
                     <span class="ticker-symbol" :class="{ 'text-primary-400 font-semibold': ticker.isTpix }">{{ ticker.symbol }}</span>
 

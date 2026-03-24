@@ -45,7 +45,7 @@ const chainLogos = {
     250: 'https://assets.trustwalletapp.com/blockchains/fantom/info/logo.png',
     8453: 'https://assets.trustwalletapp.com/blockchains/base/info/logo.png',
     324: 'https://assets.trustwalletapp.com/blockchains/zksync/info/logo.png',
-    4289: '/logo.webp', // TPIX Chain uses our own logo
+    4289: '/tpixlogo.webp', // TPIX Chain uses our own logo
 };
 
 // Get chain logo URL — from backend data, our map, or fallback

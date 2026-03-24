@@ -74,6 +74,11 @@ onMounted(async () => {
 
 <template>
     <div class="flex-1 flex flex-col bg-dark-950">
+        <!-- Subtle bg1 background image (very faint) -->
+        <div class="fixed inset-0 pointer-events-none">
+            <div class="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-[0.04]"
+                style="background-image: url('/images/bg1.webp')" />
+        </div>
         <!-- Background Gradient Effects (brand colors: purple, cyan, orange) -->
         <div class="fixed inset-0 pointer-events-none">
             <div class="absolute top-0 left-1/4 w-96 h-96 bg-accent-500/8 rounded-full blur-3xl"></div>

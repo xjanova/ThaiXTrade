@@ -117,7 +117,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
         <template v-if="step === 'choose'">
             <div class="text-center space-y-4">
                 <div class="w-16 h-16 mx-auto rounded-2xl bg-primary-500/20 flex items-center justify-center">
-                    <img src="/logo.webp" class="w-10 h-10" alt="TPIX" />
+                    <img src="/tpixlogo.webp" class="w-10 h-10" alt="TPIX" />
                 </div>
                 <h3 class="text-xl font-bold text-white">TPIX Wallet</h3>
                 <p class="text-dark-400 text-sm">Wallet ในตัวเว็บ — ไม่ต้องติดตั้ง extension</p>

@@ -235,7 +235,7 @@ return [
                 'symbol' => 'TPIX',
                 'decimals' => 18,
             ],
-            'icon' => '/logo.webp',
+            'icon' => '/tpixlogo.webp',
             'color' => '#06B6D4',
             'enabled' => true,
             'gasless' => true,

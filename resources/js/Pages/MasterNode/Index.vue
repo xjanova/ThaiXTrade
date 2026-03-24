@@ -23,7 +23,7 @@ const props = defineProps({
 // ============================================================
 const tiers = [
     {
-        id: 'validator', name: 'Validator Node', icon: '/logo.webp',
+        id: 'validator', name: 'Validator Node', icon: '/tpixlogo.webp',
         minStake: 1_000_000, apy: '12-15%', lock: '90 days',
         maxNodes: 100, rewardShare: '50%',
         hardware: '8 CPU · 16GB · 500GB SSD',
@@ -36,7 +36,7 @@ const tiers = [
         accent: 'text-yellow-400',
     },
     {
-        id: 'sentinel', name: 'Sentinel Node', icon: '/logo.webp',
+        id: 'sentinel', name: 'Sentinel Node', icon: '/tpixlogo.webp',
         minStake: 100_000, apy: '7-10%', lock: '30 days',
         maxNodes: 500, rewardShare: '30%',
         hardware: '4 CPU · 8GB · 200GB SSD',
@@ -49,7 +49,7 @@ const tiers = [
         accent: 'text-purple-400',
     },
     {
-        id: 'light', name: 'Light Node', icon: '/logo.webp',
+        id: 'light', name: 'Light Node', icon: '/tpixlogo.webp',
         minStake: 10_000, apy: '4-6%', lock: '7 days',
         maxNodes: null, rewardShare: '20%',
         hardware: '2 CPU · 4GB · 100GB SSD',
@@ -202,7 +202,7 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                         <!-- TPIX Logo -->
                         <div class="relative inline-block mb-6">
                             <div class="absolute -inset-4 bg-gradient-to-r from-accent-500/30 via-primary-500/30 to-warm-500/30 rounded-full blur-2xl animate-glow-brand" />
-                            <img src="/logo.webp" alt="TPIX" class="relative w-24 h-24 shadow-2xl ring-2 ring-white/10" />
+                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-24 h-24 shadow-2xl ring-2 ring-white/10" />
                         </div>
 
                         <h1 class="text-4xl md:text-5xl font-black mb-3">
@@ -266,7 +266,7 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                                 <!-- Logo avatar -->
                                 <div class="relative">
                                     <div class="absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full blur-sm opacity-50" />
-                                    <img src="/logo.webp" alt="TPIX" class="relative w-12 h-12 ring-2 ring-white/20" />
+                                    <img src="/tpixlogo.webp" alt="TPIX" class="relative w-12 h-12 ring-2 ring-white/20" />
                                 </div>
                                 <div>
                                     <div class="font-mono text-sm text-cyan-400 font-semibold">{{ walletStore.shortAddress }}</div>
@@ -363,7 +363,7 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                                     <div class="flex items-start justify-between mb-4">
                                         <div class="relative">
                                             <div :class="['absolute -inset-2 rounded-xl blur-lg opacity-40', tier.gradient]" />
-                                            <img src="/logo.webp" alt="TPIX" class="relative w-14 h-14 ring-1 ring-white/10" />
+                                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-14 h-14 ring-1 ring-white/10" />
                                         </div>
                                         <div :class="['px-3 py-1 rounded-full text-xs font-black border', tier.badge]">
                                             {{ tier.apy }} APY
@@ -457,7 +457,7 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                         <!-- My Nodes -->
                         <div v-if="myNodes.length > 0" class="glass rounded-2xl p-5">
                             <h3 class="text-sm font-bold text-white uppercase tracking-wide mb-4 flex items-center gap-2">
-                                <img src="/logo.webp" alt="" class="w-5 h-5" />
+                                <img src="/tpixlogo.webp" alt="" class="w-5 h-5" />
                                 Your Active Nodes
                             </h3>
                             <div class="space-y-2">
@@ -502,7 +502,7 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                         <!-- Reward Pool -->
                         <div class="glass rounded-2xl p-6">
                             <div class="flex items-center gap-3 mb-4">
-                                <img src="/logo.webp" alt="TPIX" class="w-8 h-8 ring-1 ring-white/10" />
+                                <img src="/tpixlogo.webp" alt="TPIX" class="w-8 h-8 ring-1 ring-white/10" />
                                 <div>
                                     <h3 class="text-sm font-bold text-white">Reward Pool</h3>
                                     <p class="text-xs text-gray-400">1,400,000,000 TPIX distributed over 5 years</p>
@@ -569,7 +569,7 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                         <div class="relative group">
                             <div class="absolute -inset-1 bg-gradient-to-r from-accent-500/20 via-primary-500/20 to-warm-500/20 rounded-3xl blur-xl opacity-60 group-hover:opacity-100 transition-opacity" />
                             <div class="glass-brand relative rounded-2xl p-8 text-center">
-                                <img src="/logo.webp" alt="TPIX" class="w-16 h-16 mx-auto mb-4 ring-2 ring-white/10" />
+                                <img src="/tpixlogo.webp" alt="TPIX" class="w-16 h-16 mx-auto mb-4 ring-2 ring-white/10" />
                                 <h3 class="text-xl font-bold text-white mb-2">Run Your Own Node</h3>
                                 <p class="text-sm text-gray-400 mb-5">Download the TPIX Node app for Windows or Linux</p>
                                 <div class="flex justify-center gap-3 flex-wrap">

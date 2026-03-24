@@ -96,7 +96,7 @@ onUnmounted(() => { document.removeEventListener('click', handleClickOutside); }
                     :class="['w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/5 transition-colors',
                         t.symbol === currentPair && 'bg-primary-500/10']">
                     <div class="flex items-center gap-2">
-                        <CoinIcon v-if="t.isTpix" :symbol="t.base" size="sm" src="/logo.webp" />
+                        <CoinIcon v-if="t.isTpix" :symbol="t.base" size="sm" src="/tpixlogo.webp" />
                         <CoinIcon v-else :symbol="t.base" size="sm" />
                         <span class="text-white text-sm font-medium">{{ t.symbol }}</span>
                     </div>
