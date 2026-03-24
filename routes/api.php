@@ -108,6 +108,15 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/pairs', [MarketController::class, 'pairs']);
     });
 
+    // TPIX Token — price feed, klines, info (for CoinMarketCap/CoinGecko)
+    Route::prefix('tpix')->group(function () {
+        Route::get('/price', [\App\Http\Controllers\Api\TpixPriceController::class, 'price']);
+        Route::get('/ticker', [\App\Http\Controllers\Api\TpixPriceController::class, 'ticker']);
+        Route::get('/summary', [\App\Http\Controllers\Api\TpixPriceController::class, 'summary']);
+        Route::get('/klines', [\App\Http\Controllers\Api\TpixPriceController::class, 'klines']);
+        Route::get('/info', [\App\Http\Controllers\Api\TpixPriceController::class, 'info']);
+    });
+
     // Banners — ป้ายโฆษณา (public, cached)
     Route::get('/banners', [ApiBannerController::class, 'index']);
     Route::post('/banners/{banner}/click', [ApiBannerController::class, 'click']);

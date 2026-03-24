@@ -34,7 +34,10 @@ const props = defineProps({
 const currentPair = computed(() => props.pair.replace('-', '/'));
 const binanceSymbol = computed(() => props.pair.replace('-', ''));
 
-// Real market data from Binance
+// Detect if this is a TPIX pair (not on Binance — use internal API)
+const isTPIXPair = computed(() => props.pair.toUpperCase().startsWith('TPIX'));
+
+// Real market data from Binance (for non-TPIX pairs)
 const {
     ticker,
     asks,
@@ -45,6 +48,28 @@ const {
     connectWebSocket,
     disconnectWebSocket,
 } = useBinanceData(() => binanceSymbol.value);
+
+// TPIX internal price data
+const tpixPrice = ref(null);
+
+async function fetchTpixPrice() {
+    try {
+        const { data } = await axios.get('/api/v1/tpix/price');
+        if (data.success) {
+            const p = data.data;
+            tpixPrice.value = p;
+            // Override ticker with TPIX data
+            ticker.value = {
+                price: p.price,
+                change: p.change_24h,
+                changePercent: p.change_24h,
+                high: p.high_24h,
+                low: p.low_24h,
+                volume: p.volume_24h,
+            };
+        }
+    } catch { /* fallback to 0 */ }
+}
 
 const walletStore = useWalletStore();
 const { balances, fetchBalances } = useWalletBalance();
@@ -147,17 +172,25 @@ const handleConnectWallet = () => {
 };
 
 onMounted(async () => {
-    await fetchInitialData();
-    connectWebSocket();
+    if (isTPIXPair.value) {
+        // TPIX pair: use internal price API (not Binance)
+        await fetchTpixPrice();
+    } else {
+        // Other pairs: use Binance data
+        await fetchInitialData();
+        connectWebSocket();
+    }
 
     if (walletStore.isConnected) {
         fetchBalances();
     }
 });
 
-// Clean up WebSocket on page navigation (safety net for composable cleanup)
+// Clean up WebSocket on page navigation
 onUnmounted(() => {
-    disconnectWebSocket();
+    if (!isTPIXPair.value) {
+        disconnectWebSocket();
+    }
 });
 </script>
 
@@ -190,23 +223,23 @@ onUnmounted(() => {
                         <div v-if="ticker" class="flex items-center gap-6 text-sm">
                             <div>
                                 <span class="text-dark-400 text-xs">{{ t('trade.price') }}</span>
-                                <p :class="['font-mono font-bold text-lg', ticker.priceChange >= 0 ? 'text-trading-green' : 'text-trading-red']">
-                                    ${{ ticker.lastPrice ? parseFloat(ticker.lastPrice).toLocaleString('en-US', {minimumFractionDigits: 2}) : '—' }}
+                                <p :class="['font-mono font-bold text-lg', (ticker.priceChange || ticker.change || 0) >= 0 ? 'text-trading-green' : 'text-trading-red']">
+                                    ${{ (ticker.lastPrice || ticker.price) ? parseFloat(ticker.lastPrice || ticker.price).toLocaleString('en-US', {minimumFractionDigits: 2}) : '—' }}
                                 </p>
                             </div>
                             <div>
                                 <span class="text-dark-400 text-xs">{{ t('trade.change24h') }}</span>
-                                <p :class="[ticker.priceChangePercent >= 0 ? 'text-trading-green' : 'text-trading-red']">
-                                    {{ ticker.priceChangePercent >= 0 ? '+' : '' }}{{ parseFloat(ticker.priceChangePercent || 0).toFixed(2) }}%
+                                <p :class="[(ticker.priceChangePercent || ticker.change || 0) >= 0 ? 'text-trading-green' : 'text-trading-red']">
+                                    {{ (ticker.priceChangePercent || ticker.change || 0) >= 0 ? '+' : '' }}{{ parseFloat(ticker.priceChangePercent || ticker.change || 0).toFixed(2) }}%
                                 </p>
                             </div>
                             <div>
                                 <span class="text-dark-400 text-xs">{{ t('trade.high24h') }}</span>
-                                <p class="text-white font-mono">${{ parseFloat(ticker.highPrice || 0).toLocaleString() }}</p>
+                                <p class="text-white font-mono">${{ parseFloat(ticker.highPrice || ticker.high || 0).toLocaleString() }}</p>
                             </div>
                             <div>
                                 <span class="text-dark-400 text-xs">{{ t('trade.low24h') }}</span>
-                                <p class="text-white font-mono">${{ parseFloat(ticker.lowPrice || 0).toLocaleString() }}</p>
+                                <p class="text-white font-mono">${{ parseFloat(ticker.lowPrice || ticker.low || 0).toLocaleString() }}</p>
                             </div>
                         </div>
                     </div>
@@ -215,6 +248,7 @@ onUnmounted(() => {
                     <TradingChart
                         :symbol="currentPair"
                         :ticker="ticker"
+                        :is-tpix="isTPIXPair"
                         class="h-[520px]"
                     />
 

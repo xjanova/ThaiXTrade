@@ -13,6 +13,7 @@ import { getPairLogo, getBaseSymbol } from '@/utils/cryptoLogos';
 const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
     ticker: { type: Object, default: () => ({}) },
+    isTpix: { type: Boolean, default: false },
 });
 
 const BINANCE_REST = 'https://api.binance.com/api/v3';
@@ -106,24 +107,36 @@ function calculateEMA(data, period = 12) {
     return result;
 }
 
-// Fetch real klines from Binance REST API
+// Fetch klines — from internal API for TPIX, from Binance for other tokens
 async function fetchKlines() {
     const interval = binanceIntervals[selectedTimeframe.value] || '1h';
-    const symbol = binanceSymbol.value;
+
     try {
-        const res = await fetch(`${BINANCE_REST}/klines?symbol=${symbol}&interval=${interval}&limit=300`);
-        if (!res.ok) throw new Error('Failed to fetch klines');
-        const data = await res.json();
+        let data;
+
+        if (props.isTpix) {
+            // TPIX pair: use our internal kline API
+            const res = await fetch(`/api/v1/tpix/klines?interval=${interval}&limit=300`);
+            if (!res.ok) throw new Error('Failed to fetch TPIX klines');
+            const json = await res.json();
+            data = json.data || [];
+        } else {
+            // Other pairs: use Binance API
+            const symbol = binanceSymbol.value;
+            const res = await fetch(`${BINANCE_REST}/klines?symbol=${symbol}&interval=${interval}&limit=300`);
+            if (!res.ok) throw new Error('Failed to fetch klines');
+            data = await res.json();
+        }
+
         return data.map(k => ({
-            time: Math.floor(k[0] / 1000),
-            open: parseFloat(k[1]),
-            high: parseFloat(k[2]),
-            low: parseFloat(k[3]),
-            close: parseFloat(k[4]),
-            volume: parseFloat(k[5]),
+            time: Math.floor((Array.isArray(k) ? k[0] : k.time) / 1000),
+            open: parseFloat(Array.isArray(k) ? k[1] : k.open),
+            high: parseFloat(Array.isArray(k) ? k[2] : k.high),
+            low: parseFloat(Array.isArray(k) ? k[3] : k.low),
+            close: parseFloat(Array.isArray(k) ? k[4] : k.close),
+            volume: parseFloat(Array.isArray(k) ? k[5] : k.volume),
         }));
     } catch (err) {
-        console.error('Kline fetch error:', err);
         return [];
     }
 }
