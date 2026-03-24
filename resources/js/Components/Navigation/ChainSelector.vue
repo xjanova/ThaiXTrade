@@ -20,7 +20,7 @@ const isLoadingChains = ref(false);
 // Default chain ID from backend (BSC = 56)
 const DEFAULT_CHAIN_ID = 56;
 
-// Chain icons as inline SVG paths (fallback when CDN icon fails)
+// Chain brand colors (fallback circle color)
 const chainColors = {
     1: '#627EEA',     // Ethereum
     56: '#F3BA2F',    // BSC
@@ -31,7 +31,32 @@ const chainColors = {
     250: '#1969FF',   // Fantom
     8453: '#0052FF',  // Base
     324: '#8C8DFC',   // zkSync
+    4289: '#00BCD4',  // TPIX Chain
 };
+
+// Real chain logo URLs (from TrustWallet assets CDN + official sources)
+const chainLogos = {
+    1: 'https://assets.trustwalletapp.com/blockchains/ethereum/info/logo.png',
+    56: 'https://assets.trustwalletapp.com/blockchains/smartchain/info/logo.png',
+    137: 'https://assets.trustwalletapp.com/blockchains/polygon/info/logo.png',
+    42161: 'https://assets.trustwalletapp.com/blockchains/arbitrum/info/logo.png',
+    10: 'https://assets.trustwalletapp.com/blockchains/optimism/info/logo.png',
+    43114: 'https://assets.trustwalletapp.com/blockchains/avalanchec/info/logo.png',
+    250: 'https://assets.trustwalletapp.com/blockchains/fantom/info/logo.png',
+    8453: 'https://assets.trustwalletapp.com/blockchains/base/info/logo.png',
+    324: 'https://assets.trustwalletapp.com/blockchains/zksync/info/logo.png',
+    4289: '/logo.webp', // TPIX Chain uses our own logo
+};
+
+// Get chain logo URL — from backend data, our map, or fallback
+function getChainLogo(chain) {
+    if (chain?.icon) return chain.icon;
+    if (chain?.logo) return chain.logo;
+    return chainLogos[chain?.chainId] || null;
+}
+
+// Track broken images to show fallback
+const brokenLogos = ref({});
 
 const isConnected = computed(() => walletStore.isConnected);
 const currentChainId = computed(() => walletStore.chainId);
@@ -137,8 +162,14 @@ onUnmounted(() => {
                 'border border-transparent': !isConnected || isOnSupportedChain,
             }"
         >
-            <!-- Chain icon circle -->
-            <div
+            <!-- Chain icon -->
+            <img v-if="currentChain && getChainLogo(currentChain) && !brokenLogos[currentChainId]"
+                :src="getChainLogo(currentChain)"
+                :alt="currentChain?.shortName"
+                class="w-5 h-5 rounded-full object-contain"
+                @error="brokenLogos[currentChainId] = true"
+            />
+            <div v-else
                 class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white"
                 :style="{ backgroundColor: currentChainColor }"
             >
@@ -210,8 +241,14 @@ onUnmounted(() => {
                             'bg-white/5': chain.chainId === currentChainId,
                         }"
                     >
-                        <!-- Chain color dot -->
-                        <div
+                        <!-- Chain logo -->
+                        <img v-if="getChainLogo(chain) && !brokenLogos[chain.chainId]"
+                            :src="getChainLogo(chain)"
+                            :alt="chain.shortName"
+                            class="w-6 h-6 rounded-full object-contain flex-shrink-0"
+                            @error="brokenLogos[chain.chainId] = true"
+                        />
+                        <div v-else
                             class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
                             :style="{ backgroundColor: chain.color || chainColors[chain.chainId] || '#6b7280' }"
                         >
