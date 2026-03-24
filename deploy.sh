@@ -470,6 +470,58 @@ update_dependencies() {
     fi
 }
 
+# Auto-configure Redis if available
+configure_redis() {
+    print_step "Checking Redis Availability"
+
+    if ! command -v redis-cli >/dev/null 2>&1; then
+        print_warning "redis-cli not found, skipping Redis configuration"
+        return 0
+    fi
+
+    # Test Redis connection
+    set +e
+    REDIS_PING=$(redis-cli ping 2>&1)
+    set -e
+
+    if [ "$REDIS_PING" != "PONG" ]; then
+        print_warning "Redis not responding (got: $REDIS_PING), keeping file-based drivers"
+        return 0
+    fi
+
+    print_success "Redis is running"
+
+    # Update .env to use Redis for session, cache, queue
+    local NEEDS_UPDATE=false
+
+    if grep -q "^SESSION_DRIVER=file" .env 2>/dev/null; then
+        sed -i 's/^SESSION_DRIVER=file/SESSION_DRIVER=redis/' .env
+        NEEDS_UPDATE=true
+    fi
+
+    if grep -q "^CACHE_STORE=file" .env 2>/dev/null; then
+        sed -i 's/^CACHE_STORE=file/CACHE_STORE=redis/' .env
+        NEEDS_UPDATE=true
+    fi
+
+    if grep -q "^QUEUE_CONNECTION=sync" .env 2>/dev/null; then
+        sed -i 's/^QUEUE_CONNECTION=sync/QUEUE_CONNECTION=redis/' .env
+        NEEDS_UPDATE=true
+    fi
+
+    if grep -q "^REDIS_CLIENT=predis" .env 2>/dev/null; then
+        sed -i 's/^REDIS_CLIENT=predis/REDIS_CLIENT=phpredis/' .env
+        NEEDS_UPDATE=true
+    fi
+
+    if [ "$NEEDS_UPDATE" = true ]; then
+        print_success "Switched to Redis: session, cache, queue"
+        php artisan config:clear 2>/dev/null || true
+    else
+        print_info "Redis already configured in .env"
+    fi
+}
+
 # Smart database migrations
 run_migrations() {
     print_step "Running Smart Database Migrations"
@@ -1024,6 +1076,7 @@ main() {
     update_dependencies
     backup_database
     cleanup_old_backups
+    configure_redis
     run_migrations
     run_smart_seeding
     build_assets
