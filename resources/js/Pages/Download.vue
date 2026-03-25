@@ -100,7 +100,7 @@ function formatDate(iso) {
                     <div class="space-y-4">
                         <div class="glass-card p-6 border border-primary-500/20">
                             <div class="flex items-center gap-3 mb-4">
-                                <img src="/logo.webp" class="w-12 h-12 object-contain" alt="TPIX TRADE" />
+                                <img src="/images/logotpixdextrade.webp" class="w-14 h-14 object-contain" alt="TPIX TRADE" />
                                 <div>
                                     <h2 class="text-lg font-bold text-white">TPIX TRADE</h2>
                                     <p class="text-dark-400 text-xs" v-if="release">{{ release.version }} &middot; {{ formatDate(release.publishedAt) }}</p>
@@ -131,7 +131,7 @@ function formatDate(iso) {
                         <!-- TPIX Wallet -->
                         <div class="glass-card p-6 border border-purple-500/20">
                             <div class="flex items-center gap-3 mb-4">
-                                <img src="/tpixlogo.webp" class="w-12 h-12 object-contain" alt="TPIX Wallet" />
+                                <img src="/images/logowallet.webp" class="w-14 h-14 object-contain" alt="TPIX Wallet" />
                                 <div>
                                     <h2 class="text-lg font-bold text-white">TPIX Wallet</h2>
                                     <p class="text-dark-400 text-xs" v-if="chainData?.wallet">v{{ chainData.version }} &middot; {{ formatDate(chainData.published_at) }}</p>
@@ -165,11 +165,7 @@ function formatDate(iso) {
                     <div class="space-y-4">
                         <div class="glass-card p-6 border border-cyan-500/20">
                             <div class="flex items-center gap-3 mb-4">
-                                <div class="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center">
-                                    <svg class="w-7 h-7 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                                    </svg>
-                                </div>
+                                <img src="/images/logomasternode.webp" class="w-14 h-14 object-contain" alt="TPIX Master Node" />
                                 <div>
                                     <h2 class="text-lg font-bold text-white">TPIX Master Node</h2>
                                     <p class="text-dark-400 text-xs" v-if="chainData?.masternode">v{{ chainData.version }} &middot; Windows 10/11</p>
