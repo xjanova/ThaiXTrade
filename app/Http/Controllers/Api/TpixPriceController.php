@@ -3,15 +3,18 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Kline;
 use App\Models\SalePhase;
 use App\Models\SiteSetting;
+use App\Models\TradingPair;
+use App\Services\OrderMatchingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 
 /**
  * TPIX Token Price Controller.
  *
- * Serves TPIX token price data from our own platform.
+ * Serves TPIX token price data from real internal trades.
  * This is the canonical price source for:
  *   - tpix.online trade page (TPIX/USDT pair)
  *   - CoinMarketCap / CoinGecko integration
@@ -19,12 +22,19 @@ use Illuminate\Support\Facades\Cache;
  *   - External aggregators
  *
  * Price source hierarchy:
- *   1. Admin-set price in SiteSetting (manually updated or via oracle)
- *   2. Latest token sale phase price
- *   3. Fallback default ($0.18)
+ *   1. Last trade price from internal order book
+ *   2. Admin-set price in SiteSetting
+ *   3. Latest token sale phase price
+ *   4. Fallback default ($0.18)
+ *
+ * Developed by Xman Studio.
  */
 class TpixPriceController extends Controller
 {
+    public function __construct(
+        private OrderMatchingService $matchingService,
+    ) {}
+
     /**
      * Get current TPIX price + 24h stats.
      *
@@ -44,8 +54,6 @@ class TpixPriceController extends Controller
      * CoinMarketCap / CoinGecko compatible ticker endpoint.
      *
      * GET /api/v1/tpix/ticker
-     *
-     * Format: https://docs.coingecko.com/reference/simple-price
      */
     public function ticker(): JsonResponse
     {
@@ -92,7 +100,7 @@ class TpixPriceController extends Controller
     }
 
     /**
-     * Historical kline/candlestick data for chart rendering.
+     * Historical kline/candlestick data from real trades.
      *
      * GET /api/v1/tpix/klines?interval=1h&limit=300
      */
@@ -101,15 +109,77 @@ class TpixPriceController extends Controller
         $interval = request('interval', '1h');
         $limit = min((int) request('limit', 300), 1000);
 
-        $data = $this->getTpixPriceData();
-        $currentPrice = $data['price'];
+        $pair = $this->getTpixPair();
 
-        // Generate realistic-looking historical candles
-        $klines = $this->generateKlines($currentPrice, $interval, $limit);
+        if (! $pair) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        // Try real klines from DB first
+        $klines = Kline::forPair($pair->id)
+            ->forInterval($interval)
+            ->orderBy('open_time')
+            ->limit($limit)
+            ->get()
+            ->map(fn (Kline $k) => $k->toKlineArray())
+            ->toArray();
+
+        // If no real klines yet, generate from current price as placeholder
+        if (empty($klines)) {
+            $data = $this->getTpixPriceData();
+            $klines = $this->generateInitialKlines($data['price'], $interval, $limit);
+        }
 
         return response()->json([
             'success' => true,
             'data' => $klines,
+        ]);
+    }
+
+    /**
+     * Public order book for TPIX/USDT pair.
+     *
+     * GET /api/v1/tpix/orderbook
+     */
+    public function orderbook(): JsonResponse
+    {
+        $pair = $this->getTpixPair();
+        $limit = min((int) request('limit', 25), 100);
+
+        if (! $pair) {
+            return response()->json([
+                'success' => true,
+                'data' => ['bids' => [], 'asks' => []],
+            ]);
+        }
+
+        $book = $this->matchingService->getOrderBook($pair->id, $limit);
+
+        return response()->json([
+            'success' => true,
+            'data' => $book,
+        ]);
+    }
+
+    /**
+     * Recent trades for TPIX/USDT pair.
+     *
+     * GET /api/v1/tpix/trades
+     */
+    public function trades(): JsonResponse
+    {
+        $pair = $this->getTpixPair();
+        $limit = min((int) request('limit', 50), 200);
+
+        if (! $pair) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        $trades = $this->matchingService->getRecentTrades($pair->id, $limit);
+
+        return response()->json([
+            'success' => true,
+            'data' => $trades,
         ]);
     }
 
@@ -129,7 +199,7 @@ class TpixPriceController extends Controller
                 'website' => 'https://tpix.online',
                 'explorer' => 'https://explorer.tpix.online',
                 'chain' => 'TPIX Chain (EVM, Chain ID: 4289)',
-                'contract' => '0x0000000000000000000000000000000000001010', // Native token
+                'contract' => '0x0000000000000000000000000000000000001010',
                 'decimals' => 18,
                 'total_supply' => 10_000_000_000,
                 'circulating_supply' => $this->getCirculatingSupply(),
@@ -152,27 +222,50 @@ class TpixPriceController extends Controller
 
     private function getTpixPriceData(): array
     {
-        return Cache::remember('tpix_price_data', 30, function () {
-            // 1. Admin-set price (highest priority)
+        return Cache::remember('tpix_price_data', 10, function () {
+            $pair = $this->getTpixPair();
+
+            // 1. Real trade data (highest priority)
+            if ($pair) {
+                $ticker = $this->matchingService->getTicker24h($pair->id);
+                if ($ticker['price'] > 0) {
+                    $circulatingSupply = $this->getCirculatingSupply();
+
+                    return [
+                        'symbol' => 'TPIX',
+                        'name' => 'TPIX Token',
+                        'price' => round($ticker['price'], 8),
+                        'change_24h' => round($ticker['change_24h'], 2),
+                        'volume_24h' => round($ticker['volume'], 2),
+                        'high_24h' => round($ticker['high'], 8),
+                        'low_24h' => round($ticker['low'], 8),
+                        'market_cap' => round($ticker['price'] * $circulatingSupply, 2),
+                        'total_supply' => 10_000_000_000,
+                        'circulating_supply' => $circulatingSupply,
+                        'logo' => url('/tpixlogo.webp'),
+                        'chain_id' => 4289,
+                        'source' => 'trades',
+                        'updated_at' => now()->toIso8601String(),
+                    ];
+                }
+            }
+
+            // 2. Admin-set price
             $price = (float) SiteSetting::get('trading', 'tpix_price', 0);
 
-            // 2. Token sale price fallback
+            // 3. Token sale price fallback
             if ($price <= 0) {
                 $salePhase = SalePhase::where('is_active', true)->first();
                 $price = $salePhase ? (float) $salePhase->price_per_tpix : 0;
             }
 
-            // 3. Default fallback
+            // 4. Default fallback
             if ($price <= 0) {
                 $price = 0.18;
             }
 
-            // Get stats from settings or defaults
             $change24h = (float) SiteSetting::get('trading', 'tpix_change_24h', 0);
             $volume24h = (float) SiteSetting::get('trading', 'tpix_volume_24h', 0);
-            $high24h = $price * 1.02; // +2% estimate
-            $low24h = $price * 0.98;  // -2% estimate
-            $totalSupply = 10_000_000_000;
             $circulatingSupply = $this->getCirculatingSupply();
 
             return [
@@ -181,15 +274,25 @@ class TpixPriceController extends Controller
                 'price' => round($price, 8),
                 'change_24h' => round($change24h, 2),
                 'volume_24h' => round($volume24h, 2),
-                'high_24h' => round($high24h, 8),
-                'low_24h' => round($low24h, 8),
+                'high_24h' => round($price * 1.02, 8),
+                'low_24h' => round($price * 0.98, 8),
                 'market_cap' => round($price * $circulatingSupply, 2),
-                'total_supply' => $totalSupply,
+                'total_supply' => 10_000_000_000,
                 'circulating_supply' => $circulatingSupply,
                 'logo' => url('/tpixlogo.webp'),
                 'chain_id' => 4289,
+                'source' => 'admin',
                 'updated_at' => now()->toIso8601String(),
             ];
+        });
+    }
+
+    private function getTpixPair(): ?TradingPair
+    {
+        return Cache::remember('tpix_trading_pair', 300, function () {
+            return TradingPair::where('symbol', 'TPIX-USDT')
+                ->active()
+                ->first();
         });
     }
 
@@ -201,10 +304,10 @@ class TpixPriceController extends Controller
     }
 
     /**
-     * Generate realistic-looking kline data for chart display.
-     * Uses seeded random walk from current price working backward.
+     * Generate initial kline data when no real trades exist yet.
+     * Uses the current price with minimal variation to show a flat line.
      */
-    private function generateKlines(float $currentPrice, string $interval, int $limit): array
+    private function generateInitialKlines(float $currentPrice, string $interval, int $limit): array
     {
         $intervalSeconds = match ($interval) {
             '1m' => 60, '5m' => 300, '15m' => 900,
@@ -214,37 +317,19 @@ class TpixPriceController extends Controller
         };
 
         $klines = [];
-        $price = $currentPrice;
         $now = time();
 
-        // Work backward from current time
         for ($i = $limit - 1; $i >= 0; $i--) {
-            $timestamp = ($now - ($i * $intervalSeconds)) * 1000; // ms
-
-            // Random walk with slight uptrend
-            $volatility = $currentPrice * 0.005; // 0.5% per candle
-            $change = (mt_rand(-100, 105) / 100) * $volatility;
-
-            $open = $price;
-            $close = $price + $change;
-            $high = max($open, $close) + abs($change * mt_rand(10, 50) / 100);
-            $low = min($open, $close) - abs($change * mt_rand(10, 50) / 100);
-            $volume = mt_rand(1000, 50000);
-
-            // Ensure positive
-            $close = max($close, $currentPrice * 0.5);
-            $low = max($low, $currentPrice * 0.4);
+            $timestamp = ($now - ($i * $intervalSeconds)) * 1000;
 
             $klines[] = [
-                $timestamp,                    // open time
-                number_format($open, 8, '.', ''),
-                number_format($high, 8, '.', ''),
-                number_format($low, 8, '.', ''),
-                number_format($close, 8, '.', ''),
-                number_format($volume, 2, '.', ''),  // volume
+                $timestamp,
+                number_format($currentPrice, 8, '.', ''),
+                number_format($currentPrice, 8, '.', ''),
+                number_format($currentPrice, 8, '.', ''),
+                number_format($currentPrice, 8, '.', ''),
+                '0.00',
             ];
-
-            $price = $close;
         }
 
         return $klines;

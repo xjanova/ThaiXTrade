@@ -109,12 +109,14 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/pairs', [MarketController::class, 'pairs']);
     });
 
-    // TPIX Token — price feed, klines, info (for CoinMarketCap/CoinGecko)
+    // TPIX Token — price feed, order book, trades, klines, info
     Route::prefix('tpix')->group(function () {
         Route::get('/price', [TpixPriceController::class, 'price']);
         Route::get('/ticker', [TpixPriceController::class, 'ticker']);
         Route::get('/summary', [TpixPriceController::class, 'summary']);
         Route::get('/klines', [TpixPriceController::class, 'klines']);
+        Route::get('/orderbook', [TpixPriceController::class, 'orderbook']);
+        Route::get('/trades', [TpixPriceController::class, 'trades']);
         Route::get('/info', [TpixPriceController::class, 'info']);
     });
 

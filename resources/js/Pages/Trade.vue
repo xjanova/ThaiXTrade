@@ -1,8 +1,9 @@
 <script setup>
 /**
  * TPIX TRADE - Trading Dashboard Page
- * Main trading interface with real-time Binance data
- * and real order submission via PancakeSwap
+ * Main trading interface with real-time data:
+ * - TPIX pairs: internal order book (real trades)
+ * - Other pairs: Binance data + PancakeSwap execution
  * Developed by Xman Studio
  */
 
@@ -34,7 +35,7 @@ const props = defineProps({
 const currentPair = computed(() => props.pair.replace('-', '/'));
 const binanceSymbol = computed(() => props.pair.replace('-', ''));
 
-// Detect if this is a TPIX pair (not on Binance — use internal API)
+// Detect if this is a TPIX pair (uses internal order book, not Binance)
 const isTPIXPair = computed(() => props.pair.toUpperCase().startsWith('TPIX'));
 
 // Real market data from Binance (for non-TPIX pairs)
@@ -49,26 +50,62 @@ const {
     disconnectWebSocket,
 } = useBinanceData(() => binanceSymbol.value);
 
-// TPIX internal price data
+// TPIX internal data
 const tpixPrice = ref(null);
+let tpixRefreshInterval = null;
 
-async function fetchTpixPrice() {
+/**
+ * Fetch all TPIX data: price, order book, recent trades.
+ */
+async function fetchTpixData() {
     try {
-        const { data } = await axios.get('/api/v1/tpix/price');
-        if (data.success) {
-            const p = data.data;
+        const [priceRes, bookRes, tradesRes] = await Promise.all([
+            axios.get('/api/v1/tpix/price'),
+            axios.get('/api/v1/tpix/orderbook'),
+            axios.get('/api/v1/tpix/trades'),
+        ]);
+
+        // Price & ticker
+        if (priceRes.data.success) {
+            const p = priceRes.data.data;
             tpixPrice.value = p;
-            // Override ticker with TPIX data
             ticker.value = {
                 price: p.price,
+                lastPrice: p.price,
                 change: p.change_24h,
+                priceChange: p.change_24h,
+                priceChangePercent: p.change_24h,
                 changePercent: p.change_24h,
                 high: p.high_24h,
+                highPrice: p.high_24h,
                 low: p.low_24h,
+                lowPrice: p.low_24h,
                 volume: p.volume_24h,
             };
         }
-    } catch { /* fallback to 0 */ }
+
+        // Order book
+        if (bookRes.data.success) {
+            const book = bookRes.data.data;
+            asks.value = (book.asks || []).map(a => [a.price, a.amount]);
+            bids.value = (book.bids || []).map(b => [b.price, b.amount]);
+        }
+
+        // Recent trades
+        if (tradesRes.data.success) {
+            trades.value = (tradesRes.data.data || []).map(t => ({
+                price: t.price,
+                qty: t.amount,
+                quoteQty: t.total,
+                time: t.time,
+                isBuyerMaker: t.side === 'sell',
+            }));
+        }
+
+        isLoading.value = false;
+    } catch {
+        isLoading.value = false;
+    }
 }
 
 const walletStore = useWalletStore();
@@ -77,7 +114,7 @@ const swap = useSwap();
 
 const activeTab = ref('openOrders');
 const selectedPrice = ref(null);
-const orderStatus = ref(null); // 'submitting', 'executing', 'success', 'error'
+const orderStatus = ref(null);
 const orderMessage = ref('');
 
 const tabs = [
@@ -87,10 +124,9 @@ const tabs = [
 ];
 
 /**
- * Handle order submission:
- * - Market orders → record in DB → execute on-chain → confirm
- * - Limit orders → record in DB as pending (future: match when price hits)
- * - Stop-Limit → record with trigger price (future: activate when triggered)
+ * Handle order submission.
+ * TPIX pairs: submitted to internal matching engine.
+ * Other pairs: legacy flow (Binance display + on-chain execution).
  */
 const handleSubmitOrder = async (order) => {
     if (!walletStore.isConnected || !walletStore.address) {
@@ -106,7 +142,6 @@ const handleSubmitOrder = async (order) => {
     orderMessage.value = t('trade.placingOrder') || 'Placing order...';
 
     try {
-        // Step 1: Record order in backend (calculates fee)
         const { data } = await axios.post('/api/v1/trading/order', {
             wallet_address: walletStore.address,
             pair: currentPair.value,
@@ -116,51 +151,57 @@ const handleSubmitOrder = async (order) => {
             amount: amountVal,
             total: totalVal,
             trigger_price: order.triggerPrice || null,
-            chain_id: walletStore.chainId || 56,
+            chain_id: walletStore.chainId || (isTPIXPair.value ? 4289 : 56),
         });
 
         if (!data.success) throw new Error(data.error?.message || 'Order failed');
 
-        const orderId = data.data.order_id;
-        const feeRate = data.data.fee_rate;
-        const feeCollector = data.data.fee_collector;
+        const orderData = data.data;
 
-        // Step 2: For limit/stop-limit, just show success (order stored as pending)
-        if (order.type === 'limit' || order.type === 'stop-limit') {
-            orderStatus.value = 'success';
-            orderMessage.value = order.type === 'stop-limit'
-                ? `${order.side.toUpperCase()} stop-limit order placed (trigger: $${order.triggerPrice})`
-                : `${order.side.toUpperCase()} limit order placed at $${priceVal.toLocaleString()}`;
-            fetchBalances();
-        }
-        // Step 3: For market orders, execute on-chain swap immediately
-        else if (order.type === 'market') {
-            orderStatus.value = 'executing';
-            orderMessage.value = t('trade.executingOnChain') || 'Executing on-chain...';
-
-            // Note: Market orders on Trade page use Binance prices (display only).
-            // Real execution happens via DEX on Swap page.
-            // Here we mark the order as confirmed since the user sees it as a market order.
-            // For actual on-chain execution, user should use the Swap page.
-
-            // Mark as confirmed (simulated market order for display tokens)
-            await axios.post(`/api/v1/trading/order/${orderId}/confirm`, {
-                wallet_address: walletStore.address,
-                tx_hash: '0x' + '0'.repeat(64), // placeholder — real execution via Swap page
-                actual_amount_out: totalVal,
-                actual_fee: data.data.fee_amount,
-            });
+        if (isTPIXPair.value) {
+            // Internal order book — matching happens server-side
+            const statusText = orderData.status === 'filled'
+                ? `${order.side.toUpperCase()} order filled! ${orderData.trades_count} trade(s)`
+                : orderData.status === 'partially_filled'
+                    ? `${order.side.toUpperCase()} order partially filled (${orderData.filled_amount}/${orderData.amount})`
+                    : `${order.side.toUpperCase()} ${order.type} order placed at $${priceVal.toLocaleString()}`;
 
             orderStatus.value = 'success';
-            orderMessage.value = `${order.side.toUpperCase()} market order confirmed! Fee: ${feeRate}%`;
-            fetchBalances();
+            orderMessage.value = statusText;
+
+            // Refresh order book & trades immediately
+            fetchTpixData();
+        } else {
+            // Legacy: non-TPIX pairs
+            const feeRate = orderData.fee_rate;
+
+            if (order.type === 'limit' || order.type === 'stop-limit') {
+                orderStatus.value = 'success';
+                orderMessage.value = order.type === 'stop-limit'
+                    ? `${order.side.toUpperCase()} stop-limit order placed (trigger: $${order.triggerPrice})`
+                    : `${order.side.toUpperCase()} limit order placed at $${priceVal.toLocaleString()}`;
+            } else if (order.type === 'market') {
+                orderStatus.value = 'executing';
+                orderMessage.value = t('trade.executingOnChain') || 'Executing on-chain...';
+
+                await axios.post(`/api/v1/trading/order/${orderData.order_id}/confirm`, {
+                    wallet_address: walletStore.address,
+                    tx_hash: '0x' + '0'.repeat(64),
+                    actual_amount_out: totalVal,
+                    actual_fee: orderData.fee_amount,
+                });
+
+                orderStatus.value = 'success';
+                orderMessage.value = `${order.side.toUpperCase()} market order confirmed! Fee: ${feeRate}%`;
+            }
         }
+
+        fetchBalances();
     } catch (err) {
         orderStatus.value = 'error';
         orderMessage.value = err.response?.data?.error?.message || err.message || 'Failed to place order.';
     }
 
-    // Auto-clear status after 4 seconds
     setTimeout(() => {
         orderStatus.value = null;
         orderMessage.value = '';
@@ -173,10 +214,12 @@ const handleConnectWallet = () => {
 
 onMounted(async () => {
     if (isTPIXPair.value) {
-        // TPIX pair: use internal price API (not Binance)
-        await fetchTpixPrice();
+        // TPIX pair: fetch from internal API + auto-refresh
+        isLoading.value = true;
+        await fetchTpixData();
+        tpixRefreshInterval = setInterval(fetchTpixData, 5000); // 5s refresh
     } else {
-        // Other pairs: use Binance data
+        // Other pairs: Binance WebSocket
         await fetchInitialData();
         connectWebSocket();
     }
@@ -186,9 +229,10 @@ onMounted(async () => {
     }
 });
 
-// Clean up WebSocket on page navigation
 onUnmounted(() => {
-    if (!isTPIXPair.value) {
+    if (isTPIXPair.value) {
+        if (tpixRefreshInterval) clearInterval(tpixRefreshInterval);
+    } else {
         disconnectWebSocket();
     }
 });
@@ -240,6 +284,10 @@ onUnmounted(() => {
                             <div>
                                 <span class="text-dark-400 text-xs">{{ t('trade.low24h') }}</span>
                                 <p class="text-white font-mono">${{ parseFloat(ticker.lowPrice || ticker.low || 0).toLocaleString() }}</p>
+                            </div>
+                            <div v-if="isTPIXPair && tpixPrice?.source === 'trades'">
+                                <span class="text-dark-400 text-xs">Volume 24h</span>
+                                <p class="text-white font-mono">{{ parseFloat(ticker.volume || 0).toLocaleString() }} TPIX</p>
                             </div>
                         </div>
                     </div>

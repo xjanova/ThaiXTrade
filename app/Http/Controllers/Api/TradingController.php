@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Models\SiteSetting;
+use App\Models\TradingPair;
 use App\Models\Transaction;
 use App\Services\FeeCalculationService;
+use App\Services\OrderMatchingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -15,13 +18,13 @@ class TradingController extends Controller
 {
     public function __construct(
         private FeeCalculationService $feeCalculationService,
+        private OrderMatchingService $orderMatchingService,
     ) {}
 
     /**
-     * Create a new order with proper fee calculation.
-     * Market orders: frontend executes on-chain immediately after this.
-     * Limit orders: stored as pending, matched when price hits.
-     * Stop-Limit orders: stored with trigger_price, activated when price hits trigger.
+     * Create a new order.
+     * TPIX pairs: use internal order book matching.
+     * Other pairs: record in transactions (legacy behavior).
      */
     public function createOrder(Request $request): JsonResponse
     {
@@ -40,16 +43,73 @@ class TradingController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'error' => [
-                    'code' => 'VALIDATION_ERROR',
-                    'message' => 'Invalid order parameters.',
-                ],
+                'error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Invalid order parameters.'],
             ], 422);
         }
 
         $validated = $validator->validated();
+        $pairSymbol = str_replace('/', '-', $validated['pair']);
 
-        // Calculate fees
+        // Check if this is a TPIX internal trading pair
+        $tradingPair = TradingPair::where('symbol', $pairSymbol)
+            ->active()
+            ->first();
+
+        if ($tradingPair) {
+            return $this->createInternalOrder($tradingPair, $validated);
+        }
+
+        // Legacy: non-TPIX pairs (Binance-based display)
+        return $this->createLegacyOrder($validated);
+    }
+
+    /**
+     * Create order on internal order book (TPIX pairs).
+     */
+    private function createInternalOrder(TradingPair $pair, array $validated): JsonResponse
+    {
+        $price = $validated['price'] ?? 0;
+        $amount = $validated['amount'];
+
+        $result = $this->orderMatchingService->placeOrder(
+            pair: $pair,
+            walletAddress: $validated['wallet_address'],
+            side: $validated['side'],
+            type: $validated['type'],
+            amount: $amount,
+            price: $price,
+            triggerPrice: $validated['trigger_price'] ?? null,
+        );
+
+        $order = $result['order'];
+        $trades = $result['trades'];
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'order_id' => $order->uuid,
+                'pair' => $validated['pair'],
+                'side' => $order->side,
+                'type' => $order->type,
+                'price' => $order->price,
+                'amount' => $order->amount,
+                'filled_amount' => $order->filled_amount,
+                'remaining_amount' => $order->remaining_amount,
+                'total' => $order->total,
+                'fee_rate' => $order->fee_rate,
+                'fee_amount' => $order->fee_amount,
+                'status' => $order->status,
+                'trades_count' => count($trades),
+                'created_at' => $order->created_at->toIso8601String(),
+            ],
+        ], 201);
+    }
+
+    /**
+     * Legacy order creation for non-TPIX pairs (stored in transactions).
+     */
+    private function createLegacyOrder(array $validated): JsonResponse
+    {
         $totalValue = $validated['total']
             ?? ($validated['amount'] * ($validated['price'] ?? 0));
         $feeData = $this->feeCalculationService->calculateSwapFee(
@@ -57,10 +117,8 @@ class TradingController extends Controller
             (int) $validated['chain_id'],
         );
 
-        // Get fee collector wallet
         $feeCollector = SiteSetting::get('trading', 'fee_collector_wallet', '');
 
-        // Record the order
         $transaction = Transaction::create([
             'type' => 'order_'.$validated['side'],
             'wallet_address' => $validated['wallet_address'],
@@ -103,7 +161,6 @@ class TradingController extends Controller
 
     /**
      * Confirm an order after on-chain execution (market orders).
-     * Called by frontend after tx is mined.
      */
     public function confirmOrder(string $orderId, Request $request): JsonResponse
     {
@@ -159,7 +216,7 @@ class TradingController extends Controller
     }
 
     /**
-     * Mark an order as failed (frontend reports tx failure).
+     * Mark an order as failed.
      */
     public function failOrder(string $orderId, Request $request): JsonResponse
     {
@@ -192,6 +249,7 @@ class TradingController extends Controller
 
     /**
      * Cancel a pending order.
+     * Supports both internal orders and legacy transactions.
      */
     public function cancelOrder(string $orderId, Request $request): JsonResponse
     {
@@ -200,10 +258,29 @@ class TradingController extends Controller
         if (! $walletAddress) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'WALLET_REQUIRED', 'message' => 'Wallet address is required to cancel an order.'],
+                'error' => ['code' => 'WALLET_REQUIRED', 'message' => 'Wallet address is required.'],
             ], 422);
         }
 
+        // Try internal order first
+        $order = Order::where('uuid', $orderId)
+            ->where('wallet_address', strtolower($walletAddress))
+            ->whereIn('status', ['open', 'partially_filled'])
+            ->first();
+
+        if ($order) {
+            $order->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'data' => ['order_id' => $order->uuid, 'status' => 'cancelled'],
+            ]);
+        }
+
+        // Legacy transaction
         $transaction = Transaction::where('uuid', $orderId)
             ->where('status', 'pending')
             ->where('wallet_address', $walletAddress)
@@ -226,6 +303,7 @@ class TradingController extends Controller
 
     /**
      * Get open orders for the authenticated wallet.
+     * Merges internal orders and legacy transactions.
      */
     public function getOrders(Request $request): JsonResponse
     {
@@ -235,7 +313,31 @@ class TradingController extends Controller
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        $orders = Transaction::where('wallet_address', $walletAddress)
+        // Internal orders
+        $internalOrders = Order::where('wallet_address', strtolower($walletAddress))
+            ->whereIn('status', ['open', 'partially_filled'])
+            ->with('tradingPair')
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get()
+            ->map(fn (Order $o) => [
+                'id' => $o->uuid,
+                'pair' => $o->tradingPair?->symbol ?? 'TPIX-USDT',
+                'side' => $o->side,
+                'type' => $o->type,
+                'price' => $o->price,
+                'amount' => $o->amount,
+                'filled_amount' => $o->filled_amount,
+                'remaining_amount' => $o->remaining_amount,
+                'total' => $o->total,
+                'fee' => $o->fee_amount,
+                'status' => $o->status,
+                'source' => 'internal',
+                'created_at' => $o->created_at->toIso8601String(),
+            ]);
+
+        // Legacy orders
+        $legacyOrders = Transaction::where('wallet_address', $walletAddress)
             ->whereIn('status', ['pending', 'executing'])
             ->whereIn('type', ['order_buy', 'order_sell'])
             ->orderByDesc('created_at')
@@ -248,13 +350,20 @@ class TradingController extends Controller
                 'type' => $tx->metadata['order_type'] ?? 'limit',
                 'price' => $tx->metadata['price'] ?? '0',
                 'amount' => $tx->from_amount,
+                'filled_amount' => '0',
+                'remaining_amount' => $tx->from_amount,
                 'total' => $tx->to_amount,
                 'fee' => $tx->fee_amount,
                 'status' => $tx->status,
+                'source' => 'legacy',
                 'created_at' => $tx->created_at->toIso8601String(),
             ]);
 
-        return response()->json(['success' => true, 'data' => $orders]);
+        $allOrders = $internalOrders->merge($legacyOrders)
+            ->sortByDesc('created_at')
+            ->values();
+
+        return response()->json(['success' => true, 'data' => $allOrders]);
     }
 
     /**
@@ -264,12 +373,33 @@ class TradingController extends Controller
     {
         $walletAddress = $request->input('wallet_address');
 
-        $query = Transaction::where('uuid', $orderId);
+        // Try internal order
+        $order = Order::where('uuid', $orderId)->first();
+        if ($order) {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $order->uuid,
+                    'pair' => $order->tradingPair?->symbol ?? 'TPIX-USDT',
+                    'side' => $order->side,
+                    'type' => $order->type,
+                    'price' => $order->price,
+                    'amount' => $order->amount,
+                    'filled_amount' => $order->filled_amount,
+                    'remaining_amount' => $order->remaining_amount,
+                    'total' => $order->total,
+                    'fee' => $order->fee_amount,
+                    'status' => $order->status,
+                    'created_at' => $order->created_at->toIso8601String(),
+                ],
+            ]);
+        }
 
+        // Try legacy
+        $query = Transaction::where('uuid', $orderId);
         if ($walletAddress) {
             $query->where('wallet_address', $walletAddress);
         }
-
         $transaction = $query->first();
 
         if (! $transaction) {
@@ -308,7 +438,34 @@ class TradingController extends Controller
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        $trades = Transaction::where('wallet_address', $walletAddress)
+        $walletLower = strtolower($walletAddress);
+
+        // Internal trades
+        $internalTrades = \App\Models\Trade::where(function ($q) use ($walletLower) {
+            $q->where('maker_wallet', $walletLower)
+                ->orWhere('taker_wallet', $walletLower);
+        })
+            ->with('tradingPair')
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get()
+            ->map(fn (\App\Models\Trade $t) => [
+                'id' => $t->uuid,
+                'type' => 'trade',
+                'pair' => $t->tradingPair?->symbol ?? 'TPIX-USDT',
+                'side' => $t->side,
+                'price' => $t->price,
+                'amount' => $t->amount,
+                'total' => $t->total,
+                'fee' => $t->taker_wallet === $walletLower ? $t->taker_fee : $t->maker_fee,
+                'role' => $t->taker_wallet === $walletLower ? 'taker' : 'maker',
+                'status' => 'completed',
+                'source' => 'internal',
+                'created_at' => $t->created_at->toIso8601String(),
+            ]);
+
+        // Legacy trades
+        $legacyTrades = Transaction::where('wallet_address', $walletAddress)
             ->whereIn('status', ['confirmed', 'completed'])
             ->orderByDesc('created_at')
             ->limit(50)
@@ -322,12 +479,18 @@ class TradingController extends Controller
                 'amount' => $tx->from_amount,
                 'total' => $tx->to_amount,
                 'fee' => $tx->fee_amount,
-                'tx_hash' => $tx->tx_hash,
+                'role' => 'taker',
                 'status' => $tx->status,
+                'tx_hash' => $tx->tx_hash,
+                'source' => 'legacy',
                 'created_at' => $tx->created_at->toIso8601String(),
             ]);
 
-        return response()->json(['success' => true, 'data' => $trades]);
+        $allTrades = $internalTrades->merge($legacyTrades)
+            ->sortByDesc('created_at')
+            ->values();
+
+        return response()->json(['success' => true, 'data' => $allTrades]);
     }
 
     /**
