@@ -182,8 +182,10 @@ class ContentService
      */
     private function generateWithCloudflare(string $prompt): ?string
     {
-        $workerUrl = config('services.image_gen.url', 'https://tpix-image-gen.xjanovax.workers.dev/');
-        $apiKey = config('services.image_gen.key');
+        $workerUrl = SiteSetting::get('ai', 'cloudflare_image_url')
+            ?: config('services.image_gen.url', 'https://tpix-image-gen.xjanovax.workers.dev/');
+        $apiKey = SiteSetting::get('ai', 'cloudflare_image_key')
+            ?: config('services.image_gen.key');
 
         // ถ้าไม่มี API key ข้ามไป fallback เลย (ไม่ต้องรอ timeout)
         if (empty($apiKey)) {

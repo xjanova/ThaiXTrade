@@ -199,7 +199,7 @@ class SettingController extends Controller
     public function updateTab(Request $request): RedirectResponse
     {
         // Whitelist allowed tab names to prevent path manipulation
-        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced'];
+        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced', 'ai'];
         $tab = last(explode('/', $request->path()));
 
         if (! in_array($tab, $allowedTabs, true)) {
@@ -207,11 +207,19 @@ class SettingController extends Controller
         }
 
         // Only allow keys that already exist in this group (prevent arbitrary key injection)
+        // Exception: AI tab allows new keys (API keys get created on first save)
         $existingKeys = SiteSetting::where('group', $tab)->pluck('key')->toArray();
 
+        // Whitelist of allowed new keys per tab (keys that can be created on first save)
+        $allowedNewKeys = [
+            'ai' => ['groq_api_key', 'groq_default_model', 'ai_chatbot_enabled', 'ai_content_enabled',
+                'cloudflare_image_url', 'cloudflare_image_key',
+                'together_api_key', 'huggingface_api_key', 'gemini_api_key'],
+        ];
+
         foreach ($request->except('_method') as $key => $value) {
-            // Skip keys not already defined in this tab group (strict — no new keys allowed)
-            if (! in_array($key, $existingKeys, true)) {
+            $isAllowedNew = in_array($key, $allowedNewKeys[$tab] ?? [], true);
+            if (! in_array($key, $existingKeys, true) && ! $isAllowedNew) {
                 continue;
             }
             // ดึง type เดิมจาก DB เพื่อไม่ให้ boolean ถูก overwrite เป็น string

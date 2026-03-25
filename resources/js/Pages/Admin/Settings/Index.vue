@@ -154,6 +154,8 @@ const aiForm = useForm({
     groq_default_model: props.settings.groq_default_model || 'llama-3.3-70b-versatile',
     ai_chatbot_enabled: props.settings.ai_chatbot_enabled || true,
     ai_content_enabled: props.settings.ai_content_enabled || true,
+    cloudflare_image_url: props.settings.cloudflare_image_url || 'https://tpix-image-gen.xjanovax.workers.dev/',
+    cloudflare_image_key: props.settings.cloudflare_image_key || '',
     together_api_key: props.settings.together_api_key || '',
     huggingface_api_key: props.settings.huggingface_api_key || '',
     gemini_api_key: props.settings.gemini_api_key || '',
@@ -719,6 +721,17 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <p class="text-dark-500 text-xs mb-4">ไม่จำเป็นต้องใส่ — ระบบจะใช้ Pollinations.ai (ฟรี) เป็น fallback อัตโนมัติ</p>
 
                     <div class="space-y-4">
+                        <div>
+                            <label :class="labelClass">Cloudflare Worker URL</label>
+                            <input v-model="aiForm.cloudflare_image_url" type="text" :class="inputClass" placeholder="https://tpix-image-gen.xjanovax.workers.dev/" />
+                            <p class="text-dark-500 text-xs mt-1">FLUX.1 Schnell via Cloudflare Workers AI — เร็วที่สุด ฟรี</p>
+                        </div>
+                        <div>
+                            <label :class="labelClass">Cloudflare Worker API Key</label>
+                            <input v-model="aiForm.cloudflare_image_key" type="password" :class="inputClass" placeholder="X-API-Key สำหรับ Worker" />
+                            <p class="text-dark-500 text-xs mt-1">ตั้งค่าใน Worker Settings → Variables and Secrets</p>
+                        </div>
+                        <hr class="border-white/5" />
                         <div>
                             <label :class="labelClass">Together.ai API Key (FLUX)</label>
                             <input v-model="aiForm.together_api_key" type="password" :class="inputClass" placeholder="(optional)" />
