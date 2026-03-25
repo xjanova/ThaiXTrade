@@ -218,6 +218,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/update-check', [AppUpdateController::class, 'check']);
         Route::get('/download', [AppUpdateController::class, 'download']);
         Route::get('/latest', [AppUpdateController::class, 'latest']);
+        Route::get('/chain-latest', [AppUpdateController::class, 'chainLatest']);
+        Route::get('/chain-download', [AppUpdateController::class, 'chainDownload']);
     });
 
     // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)

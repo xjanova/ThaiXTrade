@@ -261,4 +261,164 @@ class AppUpdateController extends Controller
             return null;
         }
     }
+
+    // =====================================================================
+    //  TPIX-Coin repo (Wallet + Master Node)
+    // =====================================================================
+
+    /**
+     * Get latest releases from TPIX-Coin repo.
+     * ดึงข้อมูล releases จาก TPIX-Coin (wallet APK + masternode EXE).
+     *
+     * GET /api/v1/app/chain-latest
+     */
+    public function chainLatest(): JsonResponse
+    {
+        $data = Cache::remember('chain_releases', 300, function () {
+            return $this->fetchChainReleases();
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+        ]);
+    }
+
+    /**
+     * Download asset from TPIX-Coin repo.
+     * ดาวน์โหลดไฟล์จาก TPIX-Coin (proxy ผ่าน server).
+     *
+     * GET /api/v1/app/chain-download?type=wallet|masternode
+     */
+    public function chainDownload(Request $request): JsonResponse|RedirectResponse
+    {
+        $type = $request->query('type', 'wallet');
+        $data = Cache::remember('chain_releases', 300, function () {
+            return $this->fetchChainReleases();
+        });
+
+        $asset = $type === 'wallet' ? ($data['wallet'] ?? null) : ($data['masternode'] ?? null);
+
+        if (! $asset || ! $asset['download_url']) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NO_ASSET', 'message' => "No {$type} download available"],
+            ], 404);
+        }
+
+        $cacheKey = "chain_s3_url_{$type}";
+        $s3Url = Cache::remember($cacheKey, 3600, function () use ($asset) {
+            $headers = [
+                'Accept: application/octet-stream',
+                'User-Agent: TPIX-TRADE-Server',
+            ];
+
+            if ($this->githubToken) {
+                $headers[] = "Authorization: Bearer {$this->githubToken}";
+            }
+
+            $ch = curl_init($asset['download_url']);
+            curl_setopt_array($ch, [
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_NOBODY => true,
+                CURLOPT_HEADER => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+            ]);
+
+            curl_exec($ch);
+            $redirectUrl = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+            curl_close($ch);
+
+            return $redirectUrl ?: null;
+        });
+
+        if (! $s3Url) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'DOWNLOAD_FAILED', 'message' => 'Unable to prepare download'],
+            ], 502);
+        }
+
+        return redirect()->away($s3Url);
+    }
+
+    /**
+     * Fetch releases from TPIX-Coin repo.
+     * ดึง releases จาก TPIX-Coin (wallet + masternode).
+     */
+    private function fetchChainReleases(): array
+    {
+        $result = ['wallet' => null, 'masternode' => null, 'tag' => null];
+
+        try {
+            $headers = [
+                'Accept' => 'application/vnd.github.v3+json',
+                'User-Agent' => 'TPIX-TRADE-Server',
+            ];
+
+            if ($this->githubToken) {
+                $headers['Authorization'] = "Bearer {$this->githubToken}";
+            }
+
+            $response = Http::withHeaders($headers)
+                ->timeout(10)
+                ->get("https://api.github.com/repos/{$this->githubOwner}/TPIX-Coin/releases?per_page=10");
+
+            if (! $response->successful()) {
+                return $result;
+            }
+
+            foreach ($response->json() as $release) {
+                if ($release['draft'] || $release['prerelease']) {
+                    continue;
+                }
+
+                $assets = collect($release['assets'] ?? []);
+                preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $matches);
+                $version = $matches[1] ?? $release['tag_name'];
+
+                $walletApk = $assets->first(fn ($a) => str_contains(strtolower($a['name']), 'wallet') && str_ends_with(strtolower($a['name']), '.apk'));
+                $masternodeExe = $assets->first(fn ($a) => str_ends_with(strtolower($a['name']), '.exe'));
+
+                $result['tag'] = $release['tag_name'];
+                $result['version'] = $version;
+                $result['name'] = $release['name'] ?: "v{$version}";
+                $result['published_at'] = $release['published_at'];
+                $result['notes'] = $release['body'] ?? '';
+
+                if ($walletApk) {
+                    $result['wallet'] = [
+                        'file_name' => $walletApk['name'],
+                        'file_size' => $walletApk['size'],
+                        'download_url' => $walletApk['url'],
+                        'downloads' => $walletApk['download_count'],
+                        'version' => $version,
+                    ];
+                }
+
+                if ($masternodeExe) {
+                    $result['masternode'] = [
+                        'file_name' => $masternodeExe['name'],
+                        'file_size' => $masternodeExe['size'],
+                        'download_url' => $masternodeExe['url'],
+                        'downloads' => $masternodeExe['download_count'],
+                        'version' => $version,
+                    ];
+                }
+
+                // ใช้ release แรกที่มี assets
+                if ($result['wallet'] || $result['masternode']) {
+                    break;
+                }
+            }
+
+            return $result;
+        } catch (\Exception $e) {
+            Log::error('TPIX-Coin release fetch failed', ['error' => $e->getMessage()]);
+
+            return $result;
+        }
+    }
 }
