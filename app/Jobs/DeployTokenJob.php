@@ -33,7 +33,7 @@ class DeployTokenJob implements ShouldQueue
 
     public function handle(Web3DeploymentService $deploymentService): void
     {
-        Log::info("DeployTokenJob: deploying {$this->token->symbol}", [
+        Log::info("DeployTokenJob: deploying {$this->token->symbol} (attempt {$this->attempts()})", [
             'token_id' => $this->token->id,
         ]);
 
@@ -55,6 +55,7 @@ class DeployTokenJob implements ShouldQueue
                 'metadata' => array_merge($this->token->metadata ?? [], [
                     'block_number' => $result['blockNumber'] ?? null,
                     'deployed_at' => now()->toIso8601String(),
+                    'deploy_attempts' => $this->attempts(),
                 ]),
             ]);
 
@@ -62,31 +63,13 @@ class DeployTokenJob implements ShouldQueue
                 'contract' => $result['contractAddress'],
                 'tx' => $result['txHash'],
             ]);
-        } else {
-            $error = $result['error'] ?? 'Unknown deployment error';
 
-            // On last attempt, mark as failed
-            if ($this->attempts() >= $this->tries) {
-                $this->token->update([
-                    'status' => 'failed',
-                    'metadata' => array_merge($this->token->metadata ?? [], [
-                        'deploy_error' => $error,
-                        'failed_at' => now()->toIso8601String(),
-                    ]),
-                ]);
-
-                Log::error("DeployTokenJob: {$this->token->symbol} failed permanently", [
-                    'error' => $error,
-                ]);
-            } else {
-                Log::warning("DeployTokenJob: {$this->token->symbol} attempt {$this->attempts()} failed", [
-                    'error' => $error,
-                ]);
-
-                // Release back to queue for retry
-                $this->release($this->backoff);
-            }
+            return;
         }
+
+        // Deployment returned failure — throw exception to let Laravel handle retry/fail
+        $error = $result['error'] ?? 'Unknown deployment error';
+        throw new \RuntimeException("Token deployment failed: {$error}");
     }
 
     /**

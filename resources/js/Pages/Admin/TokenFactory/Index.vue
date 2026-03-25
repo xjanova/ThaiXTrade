@@ -22,7 +22,9 @@ const rejectReason = ref('');
 const statusFilters = [
     { value: null, label: 'All' },
     { value: 'pending', label: 'Pending' },
+    { value: 'deploying', label: 'Deploying' },
     { value: 'deployed', label: 'Deployed' },
+    { value: 'failed', label: 'Failed' },
     { value: 'rejected', label: 'Rejected' },
 ];
 
@@ -46,6 +48,10 @@ function submitReject() {
         reason: rejectReason.value,
     });
     showRejectModal.value = false;
+}
+
+function retryDeploy(id) {
+    router.post(`/admin/token-factory/${id}/retry`);
 }
 
 function toggleVerified(id) {
@@ -152,6 +158,13 @@ function formatDate(d) {
                                         class="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20 transition-colors"
                                     >
                                         Reject
+                                    </button>
+                                    <button
+                                        v-if="token.status === 'failed'"
+                                        @click="retryDeploy(token.id)"
+                                        class="px-3 py-1.5 rounded-lg bg-yellow-500/10 text-yellow-400 text-xs font-medium hover:bg-yellow-500/20 transition-colors"
+                                    >
+                                        Retry
                                     </button>
                                     <button
                                         v-if="token.status === 'deployed'"

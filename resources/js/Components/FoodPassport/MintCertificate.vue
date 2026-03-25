@@ -8,6 +8,7 @@ import { ref, computed } from 'vue';
 const props = defineProps({
     product: { type: Object, required: true },
     walletAddress: { type: String, required: true },
+    contractAddress: { type: String, default: '' },
 });
 
 const emit = defineEmits(['close', 'minted']);
@@ -17,7 +18,7 @@ const error = ref(null);
 const step = ref(1); // 1=confirm, 2=minting, 3=done
 const mintedCertificate = ref(null);
 
-const CONTRACT_ADDRESS = '0x' + '0'.repeat(38) + '01'; // placeholder
+const CONTRACT_ADDRESS = props.contractAddress || import.meta.env.VITE_FOOD_PASSPORT_NFT_ADDRESS || '';
 
 async function mintNFT() {
     step.value = 2;

@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\BannerController;
 use App\Http\Controllers\Admin\CarbonCreditController as AdminCarbonCreditController;
 use App\Http\Controllers\Admin\ChainController;
 use App\Http\Controllers\Admin\ContentController;
+use App\Http\Controllers\Admin\FoodPassportController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FeeController;
 use App\Http\Controllers\Admin\FinanceController;
@@ -161,7 +162,26 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/', [TokenFactoryController::class, 'index'])->name('index');
             Route::post('/{id}/approve', [TokenFactoryController::class, 'approve'])->name('approve');
             Route::post('/{id}/reject', [TokenFactoryController::class, 'reject'])->name('reject');
+            Route::post('/{id}/retry', [TokenFactoryController::class, 'retry'])->name('retry');
             Route::patch('/{id}/verify', [TokenFactoryController::class, 'toggleVerified'])->name('verify');
+        });
+
+        // FoodPassport — จัดการระบบ Food Traceability
+        Route::prefix('food-passport')->name('food-passport.')->group(function () {
+            Route::get('/', [FoodPassportController::class, 'index'])->name('index');
+            Route::get('/products/{id}', [FoodPassportController::class, 'showProduct'])->name('products.show');
+            Route::patch('/products/{id}/status', [FoodPassportController::class, 'updateProductStatus'])->name('products.status');
+            Route::post('/products/{id}/suspend', [FoodPassportController::class, 'suspendProduct'])->name('products.suspend');
+            Route::get('/devices', [FoodPassportController::class, 'devices'])->name('devices');
+            Route::patch('/devices/{id}/status', [FoodPassportController::class, 'updateDeviceStatus'])->name('devices.status');
+            Route::post('/devices/{id}/regenerate-key', [FoodPassportController::class, 'regenerateDeviceKey'])->name('devices.regenerate-key');
+            Route::delete('/devices/{id}', [FoodPassportController::class, 'deleteDevice'])->name('devices.destroy');
+            Route::get('/certificates', [FoodPassportController::class, 'certificates'])->name('certificates');
+            Route::post('/certificates/{id}/revoke', [FoodPassportController::class, 'revokeCertificate'])->name('certificates.revoke');
+            Route::get('/alerts', [FoodPassportController::class, 'alerts'])->name('alerts');
+            Route::get('/docs', function () {
+                return \Inertia\Inertia::render('Admin/FoodPassport/Documentation');
+            })->name('docs');
         });
 
         // Carbon Credits — จัดการระบบ Carbon Credit

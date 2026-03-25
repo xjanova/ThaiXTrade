@@ -14,17 +14,30 @@ class TokenFactoryService
      */
     public function createToken(array $data): FactoryToken
     {
+        $tokenType = $data['token_type'] ?? 'standard';
+
+        // Auto-determine category from type
+        $nftTypes = ['nft', 'nft_collection'];
+        $specialTypes = ['governance', 'stablecoin'];
+        $category = $data['token_category']
+            ?? (in_array($tokenType, $nftTypes) ? 'nft'
+                : (in_array($tokenType, $specialTypes) ? 'special' : 'fungible'));
+
+        // NFT ใช้ decimals = 0 เสมอ
+        $decimals = in_array($tokenType, $nftTypes) ? 0 : ($data['decimals'] ?? 18);
+
         return FactoryToken::create([
             'name' => $data['name'],
             'symbol' => strtoupper($data['symbol']),
-            'decimals' => $data['decimals'] ?? 18,
+            'decimals' => $decimals,
             'total_supply' => $data['total_supply'],
             'creator_address' => strtolower($data['creator_address']),
             'chain_id' => $data['chain_id'] ?? 4289,
             'logo_url' => $data['logo_url'] ?? null,
             'description' => $data['description'] ?? null,
             'website' => $data['website'] ?? null,
-            'token_type' => $data['token_type'] ?? 'standard',
+            'token_type' => $tokenType,
+            'token_category' => $category,
             'status' => 'pending',
             'metadata' => $data['metadata'] ?? null,
         ]);
@@ -70,6 +83,12 @@ class TokenFactoryService
      */
     public function approveToken(FactoryToken $token): FactoryToken
     {
+        if (! in_array($token->status, ['pending', 'failed'])) {
+            throw new \InvalidArgumentException(
+                "Cannot approve token with status '{$token->status}'. Only pending or failed tokens can be approved."
+            );
+        }
+
         $token->update(['status' => 'deploying']);
 
         DeployTokenJob::dispatch($token);
@@ -87,6 +106,12 @@ class TokenFactoryService
      */
     public function rejectToken(FactoryToken $token, string $reason): FactoryToken
     {
+        if (! in_array($token->status, ['pending', 'failed'])) {
+            throw new \InvalidArgumentException(
+                "Cannot reject token with status '{$token->status}'. Only pending or failed tokens can be rejected."
+            );
+        }
+
         $token->update([
             'status' => 'rejected',
             'reject_reason' => $reason,
@@ -96,10 +121,16 @@ class TokenFactoryService
     }
 
     /**
-     * Admin: toggle verify.
+     * Admin: toggle verify (เฉพาะ deployed tokens).
      */
     public function toggleVerified(FactoryToken $token): FactoryToken
     {
+        if ($token->status !== 'deployed') {
+            throw new \InvalidArgumentException(
+                "Cannot verify token with status '{$token->status}'. Only deployed tokens can be verified."
+            );
+        }
+
         $token->update(['is_verified' => ! $token->is_verified]);
 
         return $token->fresh();

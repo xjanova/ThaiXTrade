@@ -200,6 +200,12 @@ class FoodPassportApiController extends Controller
             'image_url' => 'nullable|string|max:500',
         ]);
 
+        // Verify IoT API key
+        $authError = $this->verifyDeviceApiKey($request, $validated['device_id']);
+        if ($authError) {
+            return $authError;
+        }
+
         try {
             $trace = $this->ioTService->ingestData($validated);
 
@@ -223,6 +229,15 @@ class FoodPassportApiController extends Controller
             'records.*.product_id' => 'required|integer',
             'records.*.stage' => 'required|string',
         ]);
+
+        // Verify API key against first device in batch
+        $firstDeviceId = $validated['records'][0]['device_id'] ?? null;
+        if ($firstDeviceId) {
+            $authError = $this->verifyDeviceApiKey($request, $firstDeviceId);
+            if ($authError) {
+                return $authError;
+            }
+        }
 
         $results = $this->ioTService->batchIngest($validated['records']);
 
@@ -333,5 +348,37 @@ class FoodPassportApiController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * ตรวจสอบ API key ของ IoT device.
+     */
+    private function verifyDeviceApiKey(Request $request, string $deviceId): ?JsonResponse
+    {
+        $bearerToken = $request->bearerToken();
+        if (! $bearerToken) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'AUTH_REQUIRED', 'message' => 'Bearer API key is required.'],
+            ], 401);
+        }
+
+        $device = IoTDevice::where('device_id', $deviceId)->first();
+        if (! $device) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'DEVICE_NOT_FOUND', 'message' => 'Device not found.'],
+            ], 404);
+        }
+
+        $storedKey = $device->config['api_key'] ?? null;
+        if (! $storedKey || ! hash_equals($storedKey, $bearerToken)) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'INVALID_API_KEY', 'message' => 'Invalid API key for this device.'],
+            ], 403);
+        }
+
+        return null;
     }
 }

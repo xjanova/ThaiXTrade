@@ -22,6 +22,7 @@ class FactoryToken extends Model
         'description',
         'website',
         'token_type',
+        'token_category',
         'status',
         'reject_reason',
         'is_verified',

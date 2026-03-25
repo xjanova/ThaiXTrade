@@ -32,7 +32,12 @@ class TokenFactoryController extends Controller
     public function approve(int $id): RedirectResponse
     {
         $token = FactoryToken::findOrFail($id);
-        $this->tokenFactoryService->approveToken($token);
+
+        try {
+            $this->tokenFactoryService->approveToken($token);
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('error', $e->getMessage());
+        }
 
         return back()->with('success', "Token {$token->symbol} approved. Deployment in progress...");
     }
@@ -42,7 +47,12 @@ class TokenFactoryController extends Controller
         $request->validate(['reason' => 'required|string|max:500']);
 
         $token = FactoryToken::findOrFail($id);
-        $this->tokenFactoryService->rejectToken($token, $request->input('reason'));
+
+        try {
+            $this->tokenFactoryService->rejectToken($token, $request->input('reason'));
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('error', $e->getMessage());
+        }
 
         return back()->with('success', "Token {$token->symbol} rejected.");
     }
@@ -50,8 +60,26 @@ class TokenFactoryController extends Controller
     public function toggleVerified(int $id): RedirectResponse
     {
         $token = FactoryToken::findOrFail($id);
-        $this->tokenFactoryService->toggleVerified($token);
+
+        try {
+            $this->tokenFactoryService->toggleVerified($token);
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('error', $e->getMessage());
+        }
 
         return back()->with('success', "Token {$token->symbol} verification toggled.");
+    }
+
+    public function retry(int $id): RedirectResponse
+    {
+        $token = FactoryToken::findOrFail($id);
+
+        try {
+            $this->tokenFactoryService->approveToken($token);
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', "Token {$token->symbol} retry deployment dispatched.");
     }
 }

@@ -280,7 +280,8 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     // Token Factory — สร้างเหรียญ (ต้อง verify wallet)
     Route::prefix('token-factory')->group(function () {
         Route::get('/my-tokens', [TokenFactoryApiController::class, 'myTokens']);
-        Route::post('/create', [TokenFactoryApiController::class, 'store']);
+        Route::post('/create', [TokenFactoryApiController::class, 'store'])
+            ->middleware('throttle:5,60'); // สร้างได้ 5 ครั้งต่อ 60 นาที
     });
 
     // FoodPassport — จัดการสินค้า/IoT (ต้อง verify wallet)

@@ -96,6 +96,7 @@ const navigationSections = computed(() => [
             { name: t('nav.tokenFactory'), href: '/admin/token-factory', icon: 'factory' },
             { name: 'MasterNode', href: '/admin/masternode', icon: 'chain' },
             { name: t('nav.carbonCredit'), href: '/admin/carbon-credits', icon: 'carbon' },
+            { name: 'FoodPassport', href: '/admin/food-passport', icon: 'food' },
             { name: t('nav.whitepaper'), href: '/whitepaper', icon: 'whitepaper', external: true },
             { name: t('nav.explorer'), href: '/explorer', icon: 'explorer', external: true },
         ],
@@ -316,6 +317,10 @@ onMounted(() => {
                             <!-- Carbon -->
                             <svg v-else-if="item.icon === 'carbon'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <!-- Food (FoodPassport) -->
+                            <svg v-else-if="item.icon === 'food'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                             </svg>
                             <!-- Notification -->
                             <svg v-else-if="item.icon === 'notification'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
