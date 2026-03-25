@@ -24,8 +24,8 @@ const currentPage = ref(1);
 
 const filteredReleases = computed(() => {
     if (filter.value === 'all') return props.releases;
-    if (filter.value === 'mobile') return props.releases.filter(r => r.type === 'mobile');
-    if (filter.value === 'wallet') return props.releases.filter(r => r.type === 'wallet');
+    if (filter.value === 'mobile') return props.releases.filter(r => r.source === 'trade' && r.has_apk);
+    if (filter.value === 'wallet') return props.releases.filter(r => r.type === 'wallet' || r.has_wallet_apk);
     if (filter.value === 'desktop') return props.releases.filter(r => r.type === 'desktop' || r.has_exe);
     if (filter.value === 'web') return props.releases.filter(r => r.source === 'trade');
     if (filter.value === 'chain') return props.releases.filter(r => r.source === 'chain');
@@ -65,8 +65,8 @@ const formatDate = (dateStr) => {
 
 const filterCounts = computed(() => ({
     all: props.releases.length,
-    mobile: props.releases.filter(r => r.type === 'mobile').length,
-    wallet: props.releases.filter(r => r.type === 'wallet').length,
+    mobile: props.releases.filter(r => r.source === 'trade' && r.has_apk).length,
+    wallet: props.releases.filter(r => r.type === 'wallet' || r.has_wallet_apk).length,
     desktop: props.releases.filter(r => r.type === 'desktop' || r.has_exe).length,
     web: props.releases.filter(r => r.source === 'trade').length,
     chain: props.releases.filter(r => r.source === 'chain').length,
