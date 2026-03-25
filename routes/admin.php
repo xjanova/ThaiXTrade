@@ -143,6 +143,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/', [TokenSaleController::class, 'index'])->name('index');
             Route::post('/', [TokenSaleController::class, 'store'])->name('store');
             Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
+
+            // Whitelist management
+            Route::get('/whitelist/{phaseId}', [TokenSaleController::class, 'whitelist'])->name('whitelist');
+            Route::post('/whitelist', [TokenSaleController::class, 'whitelistAdd'])->name('whitelist.add');
+            Route::post('/whitelist/import', [TokenSaleController::class, 'whitelistImport'])->name('whitelist.import');
+            Route::delete('/whitelist/{id}', [TokenSaleController::class, 'whitelistRemove'])->name('whitelist.remove');
+
+            // Refund
+            Route::post('/refund/{id}', [TokenSaleController::class, 'refundTransaction'])->name('refund');
         });
 
         // Token Factory — จัดการ Token ที่สร้างจาก Factory

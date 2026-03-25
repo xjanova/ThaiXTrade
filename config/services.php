@@ -77,4 +77,9 @@ return [
         'url' => env('IMAGE_GEN_URL', 'https://tpix-image-gen.xjanovax.workers.dev/'),
         'key' => env('IMAGE_GEN_API_KEY'),
     ],
+
+    // BSC (BNB Smart Chain) — สำหรับ verify transactions
+    'bsc' => [
+        'rpc_url' => env('BSC_RPC_URL', 'https://bsc-dataseed.binance.org'),
+    ],
 ];

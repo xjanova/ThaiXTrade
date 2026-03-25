@@ -268,4 +268,69 @@ class TokenSaleApiController extends Controller
             'data' => $this->saleService->getVestingSchedule($walletAddress),
         ]);
     }
+
+    /**
+     * Claim TPIX ที่ปลดล็อคจาก vesting.
+     *
+     * POST /api/v1/token-sale/claim
+     */
+    public function claim(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'transaction_id' => ['required', 'integer', 'exists:sale_transactions,id'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'VALIDATION_ERROR', 'message' => $validator->errors()->first()],
+            ], 422);
+        }
+
+        $data = $validator->validated();
+
+        try {
+            $tx = SaleTransaction::where('id', $data['transaction_id'])
+                ->where('wallet_address', strtolower($data['wallet_address']))
+                ->where('status', 'confirmed')
+                ->firstOrFail();
+
+            // คำนวณ claimable
+            $claimable = $tx->claimableAmount;
+            $requestedAmount = (float) $data['amount'];
+
+            if ($requestedAmount > $claimable) {
+                return response()->json([
+                    'success' => false,
+                    'error' => [
+                        'code' => 'INSUFFICIENT_CLAIMABLE',
+                        'message' => "Only {$claimable} TPIX available to claim.",
+                    ],
+                ], 400);
+            }
+
+            // อัปเดต claimed_amount
+            $tx->increment('claimed_amount', $requestedAmount);
+
+            // TODO: ส่ง TPIX จาก contract ไป wallet (ต้อง integrate กับ smart contract)
+            // ตอนนี้ทำแค่บันทึกว่า claimed แล้ว admin จะส่งเหรียญเอง
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'claimed_amount' => $requestedAmount,
+                    'total_claimed' => (float) $tx->fresh()->claimed_amount,
+                    'remaining_claimable' => $tx->fresh()->claimableAmount,
+                    'message' => 'Claim recorded. TPIX will be sent to your wallet.',
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'CLAIM_ERROR', 'message' => 'Unable to process claim.'],
+            ], 400);
+        }
+    }
 }

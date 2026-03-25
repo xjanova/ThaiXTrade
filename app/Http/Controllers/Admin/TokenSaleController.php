@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\TokenSale;
+use App\Models\WhitelistEntry;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Inertia\Inertia;
@@ -185,5 +186,128 @@ class TokenSaleController extends Controller
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    // =====================================================================
+    //  Whitelist Management
+    // =====================================================================
+
+    /**
+     * ดึงรายการ whitelist ของ phase.
+     */
+    public function whitelist(int $phaseId)
+    {
+        $entries = WhitelistEntry::where('sale_phase_id', $phaseId)
+            ->orderByDesc('created_at')
+            ->get(['id', 'wallet_address', 'max_allocation', 'created_at']);
+
+        return response()->json(['success' => true, 'data' => $entries]);
+    }
+
+    /**
+     * เพิ่ม wallet เข้า whitelist.
+     */
+    public function whitelistAdd(Request $request)
+    {
+        $validated = $request->validate([
+            'sale_phase_id' => 'required|exists:sale_phases,id',
+            'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'max_allocation' => 'nullable|numeric|min:0',
+        ]);
+
+        $validated['wallet_address'] = strtolower($validated['wallet_address']);
+
+        // ป้องกันซ้ำ
+        $exists = WhitelistEntry::where('sale_phase_id', $validated['sale_phase_id'])
+            ->where('wallet_address', $validated['wallet_address'])
+            ->exists();
+
+        if ($exists) {
+            return redirect()->back()->with('error', 'This wallet is already whitelisted.');
+        }
+
+        WhitelistEntry::create($validated);
+
+        return redirect()->back()->with('success', 'Wallet added to whitelist.');
+    }
+
+    /**
+     * ลบ wallet ออกจาก whitelist.
+     */
+    public function whitelistRemove(int $id)
+    {
+        WhitelistEntry::findOrFail($id)->delete();
+
+        return redirect()->back()->with('success', 'Wallet removed from whitelist.');
+    }
+
+    /**
+     * Import whitelist จาก CSV (รายการ wallet addresses).
+     */
+    public function whitelistImport(Request $request)
+    {
+        $request->validate([
+            'sale_phase_id' => 'required|exists:sale_phases,id',
+            'wallets' => 'required|string',
+        ]);
+
+        $phaseId = $request->input('sale_phase_id');
+        $wallets = preg_split('/[\r\n,;]+/', $request->input('wallets'));
+        $added = 0;
+        $skipped = 0;
+
+        foreach ($wallets as $wallet) {
+            $wallet = strtolower(trim($wallet));
+            if (! preg_match('/^0x[a-fA-F0-9]{40}$/', $wallet)) {
+                $skipped++;
+
+                continue;
+            }
+
+            $exists = WhitelistEntry::where('sale_phase_id', $phaseId)
+                ->where('wallet_address', $wallet)
+                ->exists();
+
+            if ($exists) {
+                $skipped++;
+
+                continue;
+            }
+
+            WhitelistEntry::create([
+                'sale_phase_id' => $phaseId,
+                'wallet_address' => $wallet,
+            ]);
+            $added++;
+        }
+
+        return redirect()->back()->with('success', "Imported {$added} wallets. Skipped {$skipped}.");
+    }
+
+    // =====================================================================
+    //  Refund / Cancel
+    // =====================================================================
+
+    /**
+     * ยกเลิก/คืนเงิน transaction (admin only).
+     */
+    public function refundTransaction(int $id)
+    {
+        $tx = SaleTransaction::with('phase.tokenSale')->findOrFail($id);
+
+        if ($tx->status === 'refunded') {
+            return redirect()->back()->with('error', 'This transaction is already refunded.');
+        }
+
+        // คืนยอดขายกลับไป phase + sale
+        if ($tx->status === 'confirmed') {
+            $tx->phase?->decrement('sold', (float) $tx->tpix_amount);
+            $tx->phase?->tokenSale?->decrement('total_sold', (float) $tx->tpix_amount);
+            $tx->phase?->tokenSale?->decrement('total_raised_usd', (float) $tx->payment_usd_value);
+        }
+
+        $tx->update(['status' => 'refunded']);
+
+        return redirect()->back()->with('success', "Transaction #{$tx->id} refunded. Allocation returned.");
     }
 }

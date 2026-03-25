@@ -8,6 +8,8 @@ use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * TokenSaleService — ระบบจัดการการขายเหรียญ TPIX.
@@ -189,8 +191,20 @@ class TokenSaleService
             throw new \Exception('This transaction has already been processed.');
         }
 
+        // ตรวจสอบ transaction บน BSC on-chain
+        $txVerification = $this->verifyBscTransaction($txHash, $walletAddress, $sale->sale_wallet_address);
+        $txStatus = $txVerification['verified'] ? 'confirmed' : 'pending';
+
+        if (! $txVerification['verified']) {
+            Log::warning('BSC tx verification failed — saving as pending', [
+                'tx_hash' => $txHash,
+                'reason' => $txVerification['reason'],
+                'wallet' => $walletAddress,
+            ]);
+        }
+
         // บันทึกรายการซื้อใน DB transaction
-        return DB::transaction(function () use ($sale, $phase, $walletAddress, $currency, $amount, $conversion, $tpixAmount, $txHash) {
+        return DB::transaction(function () use ($sale, $phase, $walletAddress, $currency, $amount, $conversion, $tpixAmount, $txHash, $txStatus, $txVerification) {
             $transaction = SaleTransaction::create([
                 'token_sale_id' => $sale->id,
                 'sale_phase_id' => $phase->id,
@@ -201,8 +215,15 @@ class TokenSaleService
                 'tpix_amount' => $tpixAmount,
                 'price_per_tpix' => $phase->price_usd,
                 'tx_hash' => $txHash,
-                'status' => 'confirmed',
+                'status' => $txStatus,
                 'vesting_start_at' => $phase->ends_at ?? $sale->ends_at ?? now(),
+                'metadata' => [
+                    'bsc_verified' => $txVerification['verified'],
+                    'bsc_block' => $txVerification['block_number'] ?? null,
+                    'bsc_from' => $txVerification['from'] ?? null,
+                    'bsc_to' => $txVerification['to'] ?? null,
+                    'bsc_value' => $txVerification['value'] ?? null,
+                ],
             ]);
 
             // อัปเดตยอดขายใน phase
@@ -268,5 +289,123 @@ class TokenSaleService
             'total_claimed' => round($totalClaimed, 8),
             'total_locked' => round($totalPurchased - $totalClaimed - $totalClaimable, 8),
         ];
+    }
+
+    // =========================================================================
+    // BSC On-Chain Verification
+    // =========================================================================
+
+    /**
+     * ตรวจสอบ transaction บน BSC ว่ามีจริง + ส่งไปถูก wallet.
+     */
+    private function verifyBscTransaction(string $txHash, string $fromWallet, ?string $saleWallet): array
+    {
+        $result = ['verified' => false, 'reason' => 'not_checked'];
+
+        // ถ้าไม่มี sale wallet ข้ามการ verify
+        if (empty($saleWallet)) {
+            $result['reason'] = 'no_sale_wallet_configured';
+
+            return $result;
+        }
+
+        $rpcUrl = config('services.bsc.rpc_url', 'https://bsc-dataseed.binance.org');
+
+        try {
+            // eth_getTransactionReceipt — เช็คว่า tx สำเร็จ
+            $response = Http::timeout(10)
+                ->post($rpcUrl, [
+                    'jsonrpc' => '2.0',
+                    'id' => 1,
+                    'method' => 'eth_getTransactionReceipt',
+                    'params' => [$txHash],
+                ]);
+
+            if (! $response->successful()) {
+                $result['reason'] = 'rpc_request_failed';
+
+                return $result;
+            }
+
+            $receipt = $response->json('result');
+
+            if (! $receipt) {
+                $result['reason'] = 'tx_not_found_or_pending';
+
+                return $result;
+            }
+
+            // เช็คว่า tx สำเร็จ (status = 0x1)
+            if (($receipt['status'] ?? '') !== '0x1') {
+                $result['reason'] = 'tx_reverted';
+
+                return $result;
+            }
+
+            $result['block_number'] = hexdec($receipt['blockNumber'] ?? '0');
+
+            // ดึง tx detail เพื่อเช็ค from/to/value
+            $txResponse = Http::timeout(10)
+                ->post($rpcUrl, [
+                    'jsonrpc' => '2.0',
+                    'id' => 2,
+                    'method' => 'eth_getTransactionByHash',
+                    'params' => [$txHash],
+                ]);
+
+            $tx = $txResponse->json('result');
+            if (! $tx) {
+                $result['reason'] = 'tx_detail_not_found';
+
+                return $result;
+            }
+
+            $result['from'] = strtolower($tx['from'] ?? '');
+            $result['to'] = strtolower($tx['to'] ?? '');
+            $result['value'] = hexdec($tx['value'] ?? '0') / 1e18;
+
+            // เช็ค: tx ต้องส่งมาจาก wallet ที่อ้าง
+            if ($result['from'] !== strtolower($fromWallet)) {
+                $result['reason'] = 'from_address_mismatch';
+
+                return $result;
+            }
+
+            // สำหรับ BNB native: to ต้องเป็น sale wallet
+            // สำหรับ USDT/BUSD (ERC-20): to เป็น token contract, ต้องเช็ค logs
+            $saleWalletLower = strtolower($saleWallet);
+
+            if ($result['to'] === $saleWalletLower) {
+                // BNB native transfer — verified!
+                $result['verified'] = true;
+                $result['reason'] = 'verified_native_transfer';
+
+                return $result;
+            }
+
+            // ERC-20 transfer — เช็คจาก event logs (Transfer event)
+            $transferTopic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+            foreach ($receipt['logs'] ?? [] as $log) {
+                if (($log['topics'][0] ?? '') === $transferTopic) {
+                    // topics[2] = to address (padded to 32 bytes)
+                    $logTo = '0x'.substr($log['topics'][2] ?? '', 26);
+                    if (strtolower($logTo) === $saleWalletLower) {
+                        $result['verified'] = true;
+                        $result['reason'] = 'verified_erc20_transfer';
+
+                        return $result;
+                    }
+                }
+            }
+
+            $result['reason'] = 'recipient_mismatch';
+
+            return $result;
+        } catch (\Exception $e) {
+            Log::warning('BSC verification error', ['tx' => $txHash, 'error' => $e->getMessage()]);
+            $result['reason'] = 'verification_error: '.$e->getMessage();
+
+            return $result;
+        }
     }
 }
