@@ -63,6 +63,13 @@ const formatDate = (dateStr) => {
     });
 };
 
+// 5 releases ล่าสุดที่มี APK หรือ EXE (ทุก project รวมกัน)
+const latestDownloadable = computed(() => {
+    return props.releases
+        .filter(r => r.has_apk || r.has_wallet_apk || r.has_exe)
+        .slice(0, 5);
+});
+
 const filterCounts = computed(() => ({
     all: props.releases.length,
     mobile: props.releases.filter(r => r.source === 'trade' && r.has_apk).length,
@@ -135,6 +142,38 @@ const typeBadge = (release) => {
                         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                     </svg>
                     <p class="text-trading-green text-sm">Active release for download &amp; in-app update: <strong class="text-white">{{ activeTag }}</strong></p>
+                </div>
+            </div>
+
+            <!-- Latest APK/EXE Releases (5 ล่าสุด) -->
+            <div v-if="latestDownloadable.length" class="glass-card p-5 border border-primary-500/10">
+                <h3 class="text-sm font-semibold text-primary-400 mb-4 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                    Latest Downloadable Releases (APK/EXE)
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div v-for="r in latestDownloadable" :key="r.id"
+                        :class="['p-3 rounded-xl border transition-all', r.tag === activeTag ? 'bg-trading-green/10 border-trading-green/30' : 'bg-white/5 border-white/5 hover:border-white/20']">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span :class="['px-1.5 py-0.5 rounded text-[10px] font-bold', typeBadge(r).color]">{{ typeBadge(r).label }}</span>
+                            <span v-if="r.tag === activeTag" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-trading-green/20 text-trading-green">Active</span>
+                        </div>
+                        <p class="text-white font-semibold text-sm">{{ r.name }}</p>
+                        <p class="text-dark-500 text-xs font-mono">{{ r.tag }}</p>
+                        <div class="mt-2 space-y-0.5">
+                            <p v-if="r.apk_name" class="text-trading-green text-xs truncate">{{ r.apk_name }} ({{ formatSize(r.apk_size) }})</p>
+                            <p v-if="r.wallet_apk_name && r.wallet_apk_name !== r.apk_name" class="text-purple-400 text-xs truncate">{{ r.wallet_apk_name }}</p>
+                            <p v-if="r.exe_name" class="text-amber-400 text-xs truncate">{{ r.exe_name }}</p>
+                        </div>
+                        <div class="flex items-center justify-between mt-2">
+                            <span class="text-dark-500 text-[10px]">{{ r.repo }}</span>
+                            <button v-if="r.tag !== activeTag"
+                                @click="setActive(r.tag)"
+                                class="px-2 py-1 rounded text-[10px] font-medium bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition">
+                                Set Active
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
