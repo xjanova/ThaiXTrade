@@ -220,6 +220,7 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/latest', [AppUpdateController::class, 'latest']);
         Route::get('/chain-latest', [AppUpdateController::class, 'chainLatest']);
         Route::get('/chain-download', [AppUpdateController::class, 'chainDownload']);
+        Route::get('/download-stats', [AppUpdateController::class, 'downloadStats']);
     });
 
     // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)

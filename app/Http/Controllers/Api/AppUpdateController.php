@@ -146,8 +146,10 @@ class AppUpdateController extends Controller
             ], 502);
         }
 
-        // Step 2: Redirect ไป S3 โดยตรง (เร็วมาก ไม่ผ่าน server)
-        // S3 URL เป็น objects.githubusercontent.com ไม่เปิดเผย GitHub repo
+        // Step 2: นับสถิติดาวน์โหลด
+        $this->incrementDownloadCount('trade_apk');
+
+        // Step 3: Redirect ไป S3 โดยตรง (เร็วมาก ไม่ผ่าน server)
         return redirect()->away($s3Url);
     }
 
@@ -341,6 +343,9 @@ class AppUpdateController extends Controller
             ], 502);
         }
 
+        // นับสถิติดาวน์โหลด
+        $this->incrementDownloadCount($type === 'wallet' ? 'wallet_apk' : 'masternode_exe');
+
         return redirect()->away($s3Url);
     }
 
@@ -348,6 +353,35 @@ class AppUpdateController extends Controller
      * Fetch releases from TPIX-Coin repo.
      * ดึง releases จาก TPIX-Coin (wallet + masternode).
      */
+    /**
+     * สถิติดาวน์โหลดทั้งหมด.
+     *
+     * GET /api/v1/app/download-stats
+     */
+    public function downloadStats(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'trade_apk' => (int) SiteSetting::get('downloads', 'trade_apk', '0'),
+                'wallet_apk' => (int) SiteSetting::get('downloads', 'wallet_apk', '0'),
+                'masternode_exe' => (int) SiteSetting::get('downloads', 'masternode_exe', '0'),
+                'total' => (int) SiteSetting::get('downloads', 'trade_apk', '0')
+                    + (int) SiteSetting::get('downloads', 'wallet_apk', '0')
+                    + (int) SiteSetting::get('downloads', 'masternode_exe', '0'),
+            ],
+        ]);
+    }
+
+    /**
+     * นับจำนวนดาวน์โหลด.
+     */
+    private function incrementDownloadCount(string $type): void
+    {
+        $current = (int) SiteSetting::get('downloads', $type, '0');
+        SiteSetting::set('downloads', $type, (string) ($current + 1));
+    }
+
     private function fetchChainReleases(): array
     {
         $result = ['wallet' => null, 'masternode' => null, 'tag' => null];

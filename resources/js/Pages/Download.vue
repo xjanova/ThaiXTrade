@@ -18,16 +18,23 @@ const props = defineProps({
 
 const release = ref(props.latestRelease);
 const chainData = ref(null);
+const dlStats = ref({ trade_apk: 0, wallet_apk: 0, masternode_exe: 0, total: 0 });
 const isLoading = ref(true);
 const error = ref('');
 
 onMounted(async () => {
     try {
-        // Fetch both repos in parallel
-        const [tradeRes, chainRes] = await Promise.all([
+        // Fetch all data in parallel
+        const [tradeRes, chainRes, statsRes] = await Promise.all([
             release.value ? Promise.resolve(null) : fetch('/api/v1/app/latest'),
             fetch('/api/v1/app/chain-latest'),
+            fetch('/api/v1/app/download-stats'),
         ]);
+
+        if (statsRes.ok) {
+            const json = await statsRes.json();
+            if (json.success) dlStats.value = json.data;
+        }
 
         if (tradeRes && tradeRes.ok) {
             const json = await tradeRes.json();
@@ -120,6 +127,7 @@ function formatDate(iso) {
                             <div v-else class="w-full text-center py-3 bg-white/5 rounded-xl text-dark-500 text-sm">
                                 {{ locale === 'th' ? 'ยังไม่พร้อมดาวน์โหลด' : 'Not available yet' }}
                             </div>
+                            <p v-if="dlStats.trade_apk" class="text-center text-dark-500 text-xs mt-2">{{ dlStats.trade_apk.toLocaleString() }} {{ locale === 'th' ? 'ดาวน์โหลด' : 'downloads' }}</p>
                             <div class="grid grid-cols-2 gap-2 mt-4">
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>⚡</span> {{ t('download.zeroGas') }}</div>
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>📊</span> {{ t('download.charts') }}</div>
@@ -152,6 +160,7 @@ function formatDate(iso) {
                             <div v-else class="w-full text-center py-3 bg-white/5 rounded-xl text-dark-500 text-sm">
                                 {{ locale === 'th' ? 'ยังไม่พร้อมดาวน์โหลด' : 'Not available yet' }}
                             </div>
+                            <p v-if="dlStats.wallet_apk" class="text-center text-dark-500 text-xs mt-2">{{ dlStats.wallet_apk.toLocaleString() }} {{ locale === 'th' ? 'ดาวน์โหลด' : 'downloads' }}</p>
                             <div class="grid grid-cols-2 gap-2 mt-4">
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🔒</span> {{ locale === 'th' ? 'PIN เข้ารหัส' : 'PIN encrypted' }}</div>
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>⚡</span> {{ locale === 'th' ? 'ไม่มีค่าแก๊ส' : 'Zero gas fee' }}</div>
@@ -186,6 +195,7 @@ function formatDate(iso) {
                             <div v-else class="w-full text-center py-3 bg-white/5 rounded-xl text-dark-500 text-sm">
                                 {{ locale === 'th' ? 'ยังไม่พร้อมดาวน์โหลด' : 'Not available yet' }}
                             </div>
+                            <p v-if="dlStats.masternode_exe" class="text-center text-dark-500 text-xs mt-2">{{ dlStats.masternode_exe.toLocaleString() }} {{ locale === 'th' ? 'ดาวน์โหลด' : 'downloads' }}</p>
                             <div class="grid grid-cols-2 gap-2 mt-4">
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🖥️</span> {{ locale === 'th' ? 'ตั้งค่า 1 คลิก' : 'One-click setup' }}</div>
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>📊</span> {{ locale === 'th' ? 'แดชบอร์ดเรียลไทม์' : 'Realtime dashboard' }}</div>
@@ -244,8 +254,16 @@ function formatDate(iso) {
                     </ol>
                 </div>
 
+                <!-- Download Stats -->
+                <div v-if="dlStats.total > 0" class="mt-8 text-center">
+                    <p class="text-dark-500 text-xs">
+                        {{ locale === 'th' ? 'ดาวน์โหลดทั้งหมด' : 'Total downloads' }}:
+                        <span class="text-white font-semibold">{{ dlStats.total.toLocaleString() }}</span>
+                    </p>
+                </div>
+
                 <!-- Footer -->
-                <div class="text-center mt-8">
+                <div class="text-center mt-4">
                     <p class="text-dark-500 text-sm">by Xman Studio</p>
                 </div>
 
