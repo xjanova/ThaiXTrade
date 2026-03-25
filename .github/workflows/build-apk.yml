@@ -265,36 +265,20 @@ jobs:
           git diff --staged --quiet || git commit -m "chore: bump version to v${{ steps.version.outputs.version }} (build ${{ steps.version.outputs.build }})"
           git push || echo "Push failed - may need permissions"
 
-      # Create GitHub Release with APK (on main or manual)
-      - name: Create Release with APK
+      # Attach APK to existing release (same version tag from ci.yml)
+      - name: Attach APK to Release
         if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event.inputs.create_release == 'true')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: mobile-v${{ steps.version.outputs.version }}
-          name: 'TPIX TRADE Mobile v${{ steps.version.outputs.version }}'
+          tag_name: v${{ steps.version.outputs.version }}
+          name: 'v${{ steps.version.outputs.version }}'
+          append_body: true
           body: |
-            ## TPIX TRADE Mobile v${{ steps.version.outputs.version }}
 
-            **Build:** #${{ steps.version.outputs.build }}
-            **Platform:** Android
-            **Min SDK:** 24 (Android 7.0)
-
-            ### Download & Install / ดาวน์โหลดและติดตั้ง
-            1. Download the APK file below / ดาวน์โหลดไฟล์ APK ด้านล่าง
-            2. Enable "Install from unknown sources" / เปิด "ติดตั้งจากแหล่งที่ไม่รู้จัก"
-            3. Open the downloaded APK to install / เปิดไฟล์ APK ที่ดาวน์โหลดเพื่อติดตั้ง
-
-            ### What's New / มีอะไรใหม่
-            - Performance & code quality improvements
-            - Web platform support
-            - In-app update checker
-            - Fixed export/import consistency
-            - Responsive layout for all screen sizes
-
-            ### Tech Stack
-            - React Native (Expo) + TypeScript
-            - Zustand state management
-            - Glass morphism dark theme
+            ---
+            ### 📱 Android APK (Build #${{ steps.version.outputs.build }})
+            - **TPIX-TRADE-v${{ steps.version.outputs.version }}.apk** — Install on Android 7.0+
+            - New app icon & splash screen
           files: mobile/${{ steps.find-apk.outputs.apk_path }}
           draft: false
           prerelease: false

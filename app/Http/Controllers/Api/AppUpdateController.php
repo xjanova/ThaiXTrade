@@ -222,12 +222,8 @@ class AppUpdateController extends Controller
                     continue;
                 }
 
-                // ถ้ามี active tag ให้หาตัวที่ตรงกัน ถ้าไม่มีให้ใช้ mobile release แรก
+                // ถ้ามี active tag ให้หาตัวที่ตรงกัน
                 if ($activeTag && $release['tag_name'] !== $activeTag) {
-                    continue;
-                }
-
-                if (! $activeTag && ! str_contains($release['tag_name'], 'mobile')) {
                     continue;
                 }
 
