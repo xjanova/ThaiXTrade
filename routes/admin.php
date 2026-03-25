@@ -19,7 +19,9 @@ use App\Http\Controllers\Admin\ChainController;
 use App\Http\Controllers\Admin\ContentController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FeeController;
+use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\LanguageController;
+use App\Http\Controllers\Admin\MasterNodeAdminController;
 use App\Http\Controllers\Admin\MemberController;
 use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\ProfileController;
@@ -206,6 +208,23 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Banners — จัดการป้ายโฆษณา (Image, Google AdSense, HTML)
         Route::resource('banners', BannerController::class)->except(['create', 'show', 'edit']);
         Route::patch('banners/{banner}/toggle', [BannerController::class, 'toggleActive'])->name('banners.toggle');
+
+        // Finance Dashboard — Stripe ยอดเงิน + รายงานการเงิน
+        Route::prefix('finance')->name('finance.')->group(function () {
+            Route::get('/', [FinanceController::class, 'index'])->name('index');
+            Route::get('/stripe-balance', [FinanceController::class, 'stripeBalance'])->name('stripe-balance');
+            Route::get('/recent-payments', [FinanceController::class, 'recentPayments'])->name('recent-payments');
+            Route::get('/revenue-chart', [FinanceController::class, 'revenueChart'])->name('revenue-chart');
+            Route::post('/refund', [FinanceController::class, 'refund'])->name('refund');
+        });
+
+        // MasterNode Admin — จัดการ node network
+        Route::prefix('masternode')->name('masternode.')->group(function () {
+            Route::get('/', [MasterNodeAdminController::class, 'index'])->name('index');
+            Route::get('/stats', [MasterNodeAdminController::class, 'stats'])->name('stats');
+            Route::post('/toggle', [MasterNodeAdminController::class, 'toggle'])->name('toggle');
+            Route::put('/config', [MasterNodeAdminController::class, 'updateConfig'])->name('config');
+        });
 
         // Audit Logs (super_admin only)
         Route::get('audit-logs', [AuditLogController::class, 'index'])

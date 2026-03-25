@@ -83,6 +83,7 @@ const navigationSections = computed(() => [
     {
         title: t('common.all') === 'ทั้งหมด' ? 'การเงิน' : 'Finance',
         items: [
+            { name: t('common.all') === 'ทั้งหมด' ? 'รายงานการเงิน' : 'Finance Dashboard', href: '/admin/finance', icon: 'transaction' },
             { name: t('common.all') === 'ทั้งหมด' ? 'ค่าธรรมเนียม' : 'Fees', href: '/admin/fees', icon: 'fee' },
             { name: t('common.all') === 'ทั้งหมด' ? 'ธุรกรรม' : 'Transactions', href: '/admin/transactions', icon: 'transaction' },
             { name: 'Swap', href: '/admin/swap', icon: 'swap' },
@@ -93,6 +94,7 @@ const navigationSections = computed(() => [
         items: [
             { name: t('nav.tokenSale'), href: '/admin/token-sales', icon: 'tokensale' },
             { name: t('nav.tokenFactory'), href: '/admin/token-factory', icon: 'factory' },
+            { name: 'MasterNode', href: '/admin/masternode', icon: 'chain' },
             { name: t('nav.carbonCredit'), href: '/admin/carbon-credits', icon: 'carbon' },
             { name: t('nav.whitepaper'), href: '/whitepaper', icon: 'whitepaper', external: true },
             { name: t('nav.explorer'), href: '/explorer', icon: 'explorer', external: true },
