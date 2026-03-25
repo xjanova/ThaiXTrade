@@ -203,6 +203,14 @@ class TokenSaleApiController extends Controller
      */
     public function stripeCheckout(Request $request): JsonResponse
     {
+        // ตรวจสอบว่า Stripe เปิดใช้งาน
+        if (! $this->stripe->isEnabled()) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'STRIPE_DISABLED', 'message' => 'Card payments are currently unavailable.'],
+            ], 503);
+        }
+
         $validator = Validator::make($request->all(), [
             'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'phase_id' => ['required', 'integer', 'exists:sale_phases,id'],

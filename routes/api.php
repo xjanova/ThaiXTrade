@@ -185,10 +185,9 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/positions/{wallet}', [StakingApiController::class, 'positions']);
     });
 
-    // Master Node — network stats & node info
+    // Master Node — network stats (public, read-only)
     Route::prefix('masternode')->group(function () {
         Route::get('/stats', [MasterNodeController::class, 'stats']);
-        Route::get('/my-nodes', [MasterNodeController::class, 'myNodes']);
     });
 
     // Articles / Blog — บทความ (public)
@@ -229,9 +228,11 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     Route::post('/chatbot', [ChatbotController::class, 'chat'])
         ->middleware('throttle:30,1');
 
-    // Stripe Webhook — รับ event จาก Stripe (ไม่ต้อง auth)
+    // Stripe Webhook — รับ event จาก Stripe (ไม่ต้อง auth, ไม่ rate limit)
+    // Stripe retries webhooks → ต้องไม่โดน throttle:60,1 ของ group นี้
     Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])
-        ->withoutMiddleware([VerifyCsrfToken::class]);
+        ->withoutMiddleware([VerifyCsrfToken::class, 'throttle:60,1'])
+        ->middleware('throttle:300,1');
 
     // Wallet Bootstrap — connect/sign/verify must be PUBLIC (before wallet is verified)
     // Strict rate limit: 15 req/min to prevent brute-force signature attacks
@@ -309,6 +310,9 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::post('/claim/{id}', [StakingApiController::class, 'claim']);
         Route::post('/unstake/{id}', [StakingApiController::class, 'unstake']);
     });
+
+    // Master Node — wallet-specific queries (ต้อง verify wallet)
+    Route::get('/masternode/my-nodes', [MasterNodeController::class, 'myNodes']);
 
     // AI Assistant (stricter rate limit: 10 requests per minute)
     Route::prefix('ai')->middleware(['throttle:10,1'])->group(function () {

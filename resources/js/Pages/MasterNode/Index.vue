@@ -128,17 +128,35 @@ async function fetchBalance() {
 async function fetchMyNodes() {
     if (!walletStore.address) return;
     try {
-        const resp = await fetch(`/api/v1/masternode/my-nodes?wallet=${walletStore.address}`);
+        const resp = await fetch(`/api/v1/masternode/my-nodes?wallet_address=${walletStore.address}`, {
+            headers: walletStore.authHeaders || {},
+        });
         if (resp.ok) { const d = await resp.json(); if (d.success) myNodes.value = d.data || []; }
     } catch {}
 }
 
 // ============================================================
+//  Contract ABI fragments (NodeRegistry)
+// ============================================================
+const NODE_REGISTRY_ABI = [
+    'function registerNode(uint8 _tier, string _endpoint) payable',
+    'function claimRewards()',
+    'function deregisterNode()',
+    'function pendingReward(address _operator) view returns (uint256)',
+];
+
+// ============================================================
 //  Staking
 // ============================================================
+const isClaiming = ref(false);
+const isDeregistering = ref(false);
+const pendingReward = ref(0);
+const claimMessage = ref('');
+
 async function stakeAndRegister(tier) {
     if (!walletStore.isConnected) return connectWallet();
     stakeError.value = ''; stakeTxHash.value = '';
+    if (!props.registryAddress) { stakeError.value = 'MasterNode registry not deployed yet. Please check back soon.'; return; }
     if (tpixBalance.value < tier.minStake) { stakeError.value = `Need ${fmtNum(tier.minStake)} TPIX. You have ${fmtNum(Math.floor(tpixBalance.value))}.`; return; }
 
     isStaking.value = true; selectedTier.value = tier.id;
@@ -148,7 +166,8 @@ async function stakeAndRegister(tier) {
         if (!signer) throw new Error('No signer');
         const tierIndex = tiers.findIndex(t => t.id === tier.id);
         const stakeWei = BigInt(tier.minStake) * BigInt(1e18);
-        const iface = new (await import('ethers')).Interface(['function registerNode(uint8 _tier, string _endpoint) payable']);
+        const { Interface } = await import('ethers');
+        const iface = new Interface(NODE_REGISTRY_ABI);
         const data = iface.encodeFunctionData('registerNode', [tierIndex, `${walletStore.address.slice(0, 10)}.tpix.online`]);
         const tx = await signer.sendTransaction({ to: props.registryAddress, data, value: stakeWei, gasPrice: 0 });
         stakeTxHash.value = tx.hash;
@@ -157,14 +176,69 @@ async function stakeAndRegister(tier) {
     } catch (e) { stakeError.value = e.message || 'Transaction failed'; } finally { isStaking.value = false; selectedTier.value = null; }
 }
 
+/**
+ * Claim pending rewards from NodeRegistry contract.
+ */
+async function claimRewards() {
+    if (!walletStore.isConnected || !props.registryAddress) return;
+    isClaiming.value = true; claimMessage.value = '';
+    try {
+        await ensureTPIXChain();
+        const signer = walletStore.signer;
+        if (!signer) throw new Error('No signer');
+        const { Interface } = await import('ethers');
+        const iface = new Interface(NODE_REGISTRY_ABI);
+        const data = iface.encodeFunctionData('claimRewards', []);
+        const tx = await signer.sendTransaction({ to: props.registryAddress, data, gasPrice: 0 });
+        await tx.wait();
+        claimMessage.value = 'Rewards claimed successfully!';
+        await fetchBalance(); await fetchPendingReward();
+    } catch (e) { claimMessage.value = e.message || 'Claim failed'; } finally { isClaiming.value = false; }
+}
+
+/**
+ * Deregister (unstake) from NodeRegistry contract.
+ */
+async function deregisterNode() {
+    if (!walletStore.isConnected || !props.registryAddress) return;
+    if (!confirm('Are you sure you want to deregister? Your staked TPIX will be returned after the lock period.')) return;
+    isDeregistering.value = true; stakeError.value = '';
+    try {
+        await ensureTPIXChain();
+        const signer = walletStore.signer;
+        if (!signer) throw new Error('No signer');
+        const { Interface } = await import('ethers');
+        const iface = new Interface(NODE_REGISTRY_ABI);
+        const data = iface.encodeFunctionData('deregisterNode', []);
+        const tx = await signer.sendTransaction({ to: props.registryAddress, data, gasPrice: 0 });
+        await tx.wait();
+        await fetchBalance(); await fetchMyNodes();
+    } catch (e) { stakeError.value = e.message || 'Deregister failed'; } finally { isDeregistering.value = false; }
+}
+
+/**
+ * Fetch pending reward amount from contract.
+ */
+async function fetchPendingReward() {
+    if (!walletStore.isConnected || !props.registryAddress || !walletStore.provider) return;
+    try {
+        const { Interface } = await import('ethers');
+        const iface = new Interface(NODE_REGISTRY_ABI);
+        const data = iface.encodeFunctionData('pendingReward', [walletStore.address]);
+        const result = await walletStore.provider.call({ to: props.registryAddress, data });
+        const decoded = iface.decodeFunctionResult('pendingReward', result);
+        pendingReward.value = parseFloat(decoded[0].toString()) / 1e18;
+    } catch { pendingReward.value = 0; }
+}
+
 // ============================================================
 //  Watchers & Lifecycle
 // ============================================================
-watch(() => walletStore.address, (a) => { if (a) { fetchBalance(); fetchMyNodes(); } else { tpixBalance.value = 0; myNodes.value = []; } });
+watch(() => walletStore.address, (a) => { if (a) { fetchBalance(); fetchMyNodes(); fetchPendingReward(); } else { tpixBalance.value = 0; myNodes.value = []; pendingReward.value = 0; } });
 watch(() => walletStore.chainId, () => { if (walletStore.isConnected) fetchBalance(); });
 
 let pollInterval;
-onMounted(() => { if (walletStore.isConnected) { fetchBalance(); fetchMyNodes(); } pollInterval = setInterval(async () => { try { const r = await fetch('/api/v1/masternode/stats'); if (r.ok) { const d = await r.json(); if (d.success) networkStats.value = d.data; } } catch {} }, 30000); });
+onMounted(() => { if (walletStore.isConnected) { fetchBalance(); fetchMyNodes(); fetchPendingReward(); } pollInterval = setInterval(async () => { try { const r = await fetch('/api/v1/masternode/stats'); if (r.ok) { const d = await r.json(); if (d.success) networkStats.value = d.data; } if (walletStore.isConnected) fetchPendingReward(); } catch {} }, 30000); });
 onUnmounted(() => clearInterval(pollInterval));
 
 function fmtNum(n) { return Number(n).toLocaleString(); }
@@ -455,8 +529,8 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                         </div>
 
                         <!-- My Nodes -->
-                        <div v-if="myNodes.length > 0" class="glass rounded-2xl p-5">
-                            <h3 class="text-sm font-bold text-white uppercase tracking-wide mb-4 flex items-center gap-2">
+                        <div v-if="myNodes.length > 0" class="glass rounded-2xl p-5 space-y-4">
+                            <h3 class="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
                                 <img src="/tpixlogo.webp" alt="" class="w-5 h-5" />
                                 Your Active Nodes
                             </h3>
@@ -465,16 +539,45 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                                      class="flex items-center justify-between p-3 rounded-xl glass-sm">
                                     <div class="flex items-center gap-3">
                                         <span :class="['text-[10px] font-bold px-2.5 py-1 rounded-lg border',
-                                            nd.tier === 0 ? 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
-                                                : nd.tier === 1 ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                                            nd.tier_id === 3 ? 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
+                                                : nd.tier_id === 2 ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
                                                 : 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30']">
-                                            {{ ['Validator', 'Sentinel', 'Light'][nd.tier] }}
+                                            {{ nd.tier }}
                                         </span>
-                                        <span class="text-sm text-white font-semibold">{{ fmtNum(parseFloat(nd.staked || 0)) }} TPIX</span>
+                                        <span class="text-sm text-white font-semibold">{{ fmtNum(parseFloat(nd.stake_amount || 0)) }} TPIX staked</span>
                                     </div>
-                                    <div class="text-xs text-trading-green font-bold">+{{ nd.reward || '0' }} TPIX</div>
+                                    <div class="text-xs text-trading-green font-bold">{{ nd.status }}</div>
                                 </div>
                             </div>
+
+                            <!-- Pending Rewards + Claim -->
+                            <div class="flex items-center justify-between p-4 rounded-xl bg-trading-green/5 border border-trading-green/20">
+                                <div>
+                                    <div class="text-xs text-gray-400">Pending Rewards</div>
+                                    <div class="text-lg font-black text-trading-green">{{ fmtNum(pendingReward.toFixed(4)) }} TPIX</div>
+                                </div>
+                                <button
+                                    @click="claimRewards"
+                                    :disabled="isClaiming || pendingReward <= 0"
+                                    class="px-5 py-2.5 rounded-xl text-sm font-bold transition-all bg-trading-green/20 text-trading-green border border-trading-green/30 hover:bg-trading-green/30 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    {{ isClaiming ? 'Claiming...' : 'Claim Rewards' }}
+                                </button>
+                            </div>
+
+                            <!-- Claim message -->
+                            <div v-if="claimMessage" :class="['text-xs px-3 py-2 rounded-lg', claimMessage.includes('success') ? 'bg-trading-green/10 text-trading-green' : 'bg-trading-red/10 text-trading-red']">
+                                {{ claimMessage }}
+                            </div>
+
+                            <!-- Deregister -->
+                            <button
+                                @click="deregisterNode"
+                                :disabled="isDeregistering"
+                                class="w-full py-2.5 rounded-xl text-xs font-medium text-gray-500 hover:text-trading-red border border-white/5 hover:border-trading-red/30 transition-all"
+                            >
+                                {{ isDeregistering ? 'Processing...' : 'Deregister Node (Unstake)' }}
+                            </button>
                         </div>
                     </div>
 
