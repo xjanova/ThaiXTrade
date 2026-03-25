@@ -202,7 +202,7 @@ class TokenSaleService
                 'price_per_tpix' => $phase->price_usd,
                 'tx_hash' => $txHash,
                 'status' => 'confirmed',
-                'vesting_start_at' => now(),
+                'vesting_start_at' => $phase->ends_at ?? $sale->ends_at ?? now(),
             ]);
 
             // อัปเดตยอดขายใน phase

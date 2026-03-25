@@ -62,12 +62,17 @@ class TokenSaleController extends Controller
      */
     public function store(Request $request)
     {
+        $status = $request->input('status', 'draft');
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'total_supply_for_sale' => 'required|numeric|min:0',
             'accept_currencies' => 'nullable|array',
-            'sale_wallet_address' => 'nullable|string|regex:/^0x[a-fA-F0-9]{40}$/',
+            'sale_wallet_address' => [
+                $status === 'active' ? 'required' : 'nullable',
+                'string',
+                'regex:/^0x[a-fA-F0-9]{40}$/',
+            ],
             'status' => 'required|string|in:draft,upcoming,active,paused,completed',
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date|after:starts_at',
@@ -108,8 +113,19 @@ class TokenSaleController extends Controller
         $id = $request->input('id');
         if ($id) {
             $phase = SalePhase::findOrFail($id);
+
+            // ล็อคราคาถ้ามี transaction แล้ว (ป้องกันแก้ราคาหลังขาย)
+            if ($phase->sold > 0 && isset($validated['price_usd']) && (float) $validated['price_usd'] !== (float) $phase->price_usd) {
+                return redirect()->back()->with('error', 'Cannot change price — this phase already has '.$phase->sold.' TPIX sold. Create a new phase instead.');
+            }
+
             $phase->update($validated);
         } else {
+            // min_purchase ต้องมากกว่า 0
+            if (isset($validated['min_purchase']) && (float) $validated['min_purchase'] <= 0) {
+                $validated['min_purchase'] = null;
+            }
+
             SalePhase::create($validated);
         }
 

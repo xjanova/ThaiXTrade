@@ -267,8 +267,9 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::get('/routes', [TradingController::class, 'getSwapRoutes']);
     });
 
-    // Token Sale Purchase — ซื้อเหรียญ (ต้อง verify wallet)
-    Route::post('/token-sale/purchase', [TokenSaleApiController::class, 'purchase']);
+    // Token Sale Purchase — ซื้อเหรียญ (rate limit: 10 ครั้ง/นาที)
+    Route::middleware('throttle:10,1')
+        ->post('/token-sale/purchase', [TokenSaleApiController::class, 'purchase']);
 
     // Token Factory — สร้างเหรียญ (ต้อง verify wallet)
     Route::prefix('token-factory')->group(function () {

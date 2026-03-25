@@ -138,7 +138,8 @@ class TokenSaleApiController extends Controller
             'phase_id' => ['required', 'integer', 'exists:sale_phases,id'],
             'currency' => ['required', 'string', 'in:BNB,USDT,BUSD'],
             'amount' => ['required', 'numeric', 'gt:0'],
-            'tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
+            'tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/', 'unique:sale_transactions,tx_hash'],
+            'signature' => ['nullable', 'string'],
         ]);
 
         if ($validator->fails()) {

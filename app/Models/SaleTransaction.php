@@ -152,8 +152,10 @@ class SaleTransaction extends Model
         }
 
         // คำนวณสัดส่วน vesting ที่ปลดล็อคแล้ว
-        $daysSinceCliff = $now->diffInDays($cliffEnd);
-        $vestingDays = max(1, $phase->vesting_duration_days - $phase->vesting_cliff_days);
+        // diffInDays ต้องเรียกจาก cliffEnd เพื่อให้ได้จำนวนวันที่ผ่านไปหลัง cliff
+        $daysSinceCliff = $cliffEnd->diffInDays($now);
+        // vesting_duration_days คือระยะเวลา linear vesting หลังจาก cliff (ไม่รวม cliff)
+        $vestingDays = max(1, $phase->vesting_duration_days);
         $vestedRatio = min(1.0, $daysSinceCliff / $vestingDays);
 
         $totalClaimable = $tgeAmount + ($vestingAmount * $vestedRatio);
