@@ -41,6 +41,10 @@ class AppReleaseController extends Controller
     {
         Cache::forget('admin_app_releases');
         Cache::forget('app_update_android');
+        Cache::forget('chain_releases');
+        Cache::forget('chain_s3_url_wallet');
+        Cache::forget('chain_s3_url_masternode');
+        Cache::forget('apk_s3_url');
 
         // ดึงใหม่ทันทีเพื่อเช็ค error
         $result = $this->fetchAllReleases();
@@ -78,8 +82,12 @@ class AppReleaseController extends Controller
         SiteSetting::set('app_release', 'published_at', $release['published_at']);
         SiteSetting::set('app_release', 'apk_size', (string) $release['apk_size']);
 
-        // ล้าง cache ของ API เพื่อให้ใช้ตัวใหม่
+        // ล้าง cache ทั้งหมดเพื่อให้หน้า Download อัปเดตทันที
         Cache::forget('app_update_android');
+        Cache::forget('chain_releases');
+        Cache::forget('chain_s3_url_wallet');
+        Cache::forget('chain_s3_url_masternode');
+        Cache::forget('apk_s3_url');
 
         return back()->with('success', "Set active release: {$release['name']} (v{$release['version']})");
     }
