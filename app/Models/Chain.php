@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -81,6 +82,37 @@ class Chain extends Model
             'is_testnet' => 'boolean',
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * The accessors to append to the model's array form.
+     *
+     * @var array<int, string>
+     */
+    protected $appends = ['logo_url'];
+
+    // =========================================================================
+    // Accessors
+    // =========================================================================
+
+    /**
+     * Logo URL — รองรับทั้ง relative path และ full URL
+     */
+    protected function logoUrl(): Attribute
+    {
+        return Attribute::get(function () {
+            if (! $this->logo) {
+                return null;
+            }
+
+            // ถ้าเป็น full URL แล้วก็ return ตรงๆ
+            if (str_starts_with($this->logo, 'http')) {
+                return $this->logo;
+            }
+
+            // relative path — ต่อ asset URL
+            return asset($this->logo);
+        });
     }
 
     // =========================================================================

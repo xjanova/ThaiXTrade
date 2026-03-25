@@ -18,11 +18,11 @@ return new class() extends Migration
         'Polygon' => 'https://assets.trustwalletapp.com/blockchains/polygon/info/logo.png',
         'Arbitrum One' => 'https://assets.trustwalletapp.com/blockchains/arbitrum/info/logo.png',
         'Optimism' => 'https://assets.trustwalletapp.com/blockchains/optimism/info/logo.png',
-        'Avalanche' => 'https://assets.trustwalletapp.com/blockchains/avalanchec/info/logo.png',
+        'Avalanche C-Chain' => 'https://assets.trustwalletapp.com/blockchains/avalanchec/info/logo.png',
         'Fantom' => 'https://assets.trustwalletapp.com/blockchains/fantom/info/logo.png',
         'Base' => 'https://assets.trustwalletapp.com/blockchains/base/info/logo.png',
         'zkSync Era' => 'https://assets.trustwalletapp.com/blockchains/zksync/info/logo.png',
-        'TPIX Chain' => '/logo.webp',
+        'TPIX Chain' => '/tpixlogo.webp',
     ];
 
     public function up(): void
