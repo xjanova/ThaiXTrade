@@ -388,7 +388,8 @@ class AppUpdateController extends Controller
                 $result['published_at'] = $release['published_at'];
                 $result['notes'] = $release['body'] ?? '';
 
-                if ($walletApk) {
+                // เก็บ wallet จาก release ที่มี wallet APK ล่าสุด
+                if ($walletApk && ! $result['wallet']) {
                     $result['wallet'] = [
                         'file_name' => $walletApk['name'],
                         'file_size' => $walletApk['size'],
@@ -396,9 +397,18 @@ class AppUpdateController extends Controller
                         'downloads' => $walletApk['download_count'],
                         'version' => $version,
                     ];
+                    // ใช้ tag/version ของ wallet เป็นหลัก (release ล่าสุด)
+                    if (! $result['tag']) {
+                        $result['tag'] = $release['tag_name'];
+                        $result['version'] = $version;
+                        $result['name'] = $release['name'] ?: "v{$version}";
+                        $result['published_at'] = $release['published_at'];
+                        $result['notes'] = $release['body'] ?? '';
+                    }
                 }
 
-                if ($masternodeExe) {
+                // เก็บ masternode จาก release ที่มี EXE ล่าสุด (อาจคนละ release กับ wallet)
+                if ($masternodeExe && ! $result['masternode']) {
                     $result['masternode'] = [
                         'file_name' => $masternodeExe['name'],
                         'file_size' => $masternodeExe['size'],
@@ -408,8 +418,8 @@ class AppUpdateController extends Controller
                     ];
                 }
 
-                // ใช้ release แรกที่มี assets
-                if ($result['wallet'] || $result['masternode']) {
+                // หยุดเมื่อเจอทั้ง wallet + masternode แล้ว
+                if ($result['wallet'] && $result['masternode']) {
                     break;
                 }
             }
