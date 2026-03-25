@@ -6,7 +6,7 @@
  */
 
 import { ref } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { router, Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
 const props = defineProps({
@@ -139,9 +139,14 @@ function getStatusBadge(status) {
                     {{ f.label }}
                 </button>
             </div>
-            <button @click="openCreate" class="btn-primary px-4 py-2 text-sm">
-                + New Project
-            </button>
+            <div class="flex gap-2">
+                <Link href="/admin/carbon-credits/docs" class="px-4 py-2 rounded-lg bg-white/5 text-gray-400 text-sm font-medium hover:bg-white/10 transition-colors">
+                    Docs
+                </Link>
+                <button @click="openCreate" class="btn-primary px-4 py-2 text-sm">
+                    + New Project
+                </button>
+            </div>
         </div>
 
         <!-- Table -->

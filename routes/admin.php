@@ -190,6 +190,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/', [AdminCarbonCreditController::class, 'store'])->name('store');
             Route::put('/{id}', [AdminCarbonCreditController::class, 'update'])->name('update');
             Route::delete('/{id}', [AdminCarbonCreditController::class, 'destroy'])->name('destroy');
+            Route::get('/docs', function () {
+                return \Inertia\Inertia::render('Admin/CarbonCredits/Documentation');
+            })->name('docs');
         });
 
         // Wallets — ภาพรวม wallet ทั้งระบบ
