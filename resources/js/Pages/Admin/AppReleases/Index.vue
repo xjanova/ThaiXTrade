@@ -194,7 +194,7 @@ const typeBadge = (release) => {
                         </div>
                         <div class="flex items-center justify-between mt-2">
                             <span class="text-dark-500 text-[10px]">{{ r.repo }}</span>
-                            <button v-if="r.tag !== activeTag"
+                            <button v-if="!isActiveRelease(r)"
                                 @click="setActive(r.tag)"
                                 class="px-2 py-1 rounded text-[10px] font-medium bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition">
                                 Set Active
@@ -322,7 +322,7 @@ const typeBadge = (release) => {
                             </td>
                             <td class="px-6 py-4 text-center">
                                 <button
-                                    v-if="(release.has_apk || release.has_wallet_apk || release.has_exe) && release.tag !== activeTag"
+                                    v-if="(release.has_apk || release.has_wallet_apk || release.has_exe) && !isActiveRelease(release)"
                                     @click="setActive(release.tag)"
                                     class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition-colors"
                                 >
