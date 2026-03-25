@@ -26,8 +26,11 @@ const {
     currentPhase,
     currentPrice,
     canPurchase,
+    isSoldOut,
+    exceedsRemaining,
     calculatePreview,
     executePurchase,
+    retryPendingPurchases,
     resetForm,
 } = useTokenSale();
 
@@ -175,6 +178,18 @@ function formatNumber(n) {
             No active sale phase at the moment.
         </div>
 
+        <!-- ถ้าเหรียญหมดแล้ว -->
+        <div v-else-if="isSoldOut" class="text-center py-8">
+            <div class="w-14 h-14 rounded-2xl bg-yellow-500/20 flex items-center justify-center mx-auto mb-3">
+                <svg class="w-7 h-7 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <p class="text-yellow-400 font-semibold mb-1">SOLD OUT!</p>
+            <p class="text-gray-400 text-sm">This phase has been fully allocated.</p>
+        </div>
+
         <!-- ฟอร์มซื้อ -->
         <div v-else>
             <!-- เลือกสกุลเงิน -->
@@ -241,6 +256,14 @@ function formatNumber(n) {
             <!-- Loading preview -->
             <div v-else-if="isLoadingPreview" class="mb-4 text-center py-3">
                 <span class="text-sm text-gray-400">Calculating...</span>
+            </div>
+
+            <!-- Exceeds remaining warning -->
+            <div v-if="exceedsRemaining && preview" class="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                <p class="text-sm text-yellow-400">
+                    จำนวนเกิน allocation ที่เหลือ ({{ formatNumber(currentPhase?.remaining) }} TPIX)
+                    กรุณาลดจำนวน
+                </p>
             </div>
 
             <!-- Error -->

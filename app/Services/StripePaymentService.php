@@ -149,9 +149,15 @@ class StripePaymentService
 
     /**
      * Issue a real Stripe refund for a transaction.
+     * Reverse TPIX allocation ทันที + เรียก Stripe Refund API.
      */
     public function refundTransaction(SaleTransaction $transaction): array
     {
+        // ป้องกัน double refund
+        if ($transaction->status === 'refunded') {
+            throw new RuntimeException('This transaction has already been refunded.');
+        }
+
         $stripeSessionId = str_replace('stripe_', '', $transaction->tx_hash);
 
         // Retrieve the Stripe session to get payment_intent
@@ -167,10 +173,26 @@ class StripePaymentService
             'reason' => 'requested_by_customer',
         ]);
 
-        Log::info('Stripe refund issued', [
+        // ★ Reverse TPIX allocation ทันที (ไม่รอ webhook)
+        DB::transaction(function () use ($transaction) {
+            $transaction->update(['status' => 'refunded']);
+
+            $phase = SalePhase::find($transaction->sale_phase_id);
+            if ($phase) {
+                $phase->decrement('sold', $transaction->tpix_amount);
+            }
+            $sale = TokenSale::find($transaction->token_sale_id);
+            if ($sale) {
+                $sale->decrement('total_sold', $transaction->tpix_amount);
+                $sale->decrement('total_raised_usd', $transaction->payment_usd_value);
+            }
+        });
+
+        Log::info('Stripe refund issued + allocation reversed', [
             'transaction_id' => $transaction->uuid,
             'refund_id' => $refund->id,
             'amount' => $refund->amount / 100,
+            'tpix_reversed' => $transaction->tpix_amount,
         ]);
 
         return [
@@ -277,6 +299,24 @@ class StripePaymentService
             'status' => $transaction->status,
         ]);
 
+        // ★ Auto-refund ถ้า allocation หมดตอน confirm (ผู้ใช้จ่ายแล้วแต่ได้ไม่ได้เหรียญ)
+        if ($transaction->status === 'pending' && ($transaction->metadata['needs_refund'] ?? false)) {
+            try {
+                $this->refundTransaction($transaction);
+                Log::warning('Auto-refund issued — allocation exhausted at confirm time', [
+                    'transaction_id' => $transaction->uuid,
+                    'session_id' => $session->id,
+                ]);
+
+                return ['status' => 'auto_refunded', 'transaction_id' => $transaction->uuid];
+            } catch (\Throwable $e) {
+                Log::critical('Auto-refund FAILED — manual intervention required', [
+                    'transaction_id' => $transaction->uuid,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         return ['status' => $transaction->status === 'confirmed' ? 'success' : 'pending_refund', 'transaction_id' => $transaction->uuid];
     }
 
@@ -319,22 +359,27 @@ class StripePaymentService
         $session = $sessions->data[0];
         $transaction = SaleTransaction::where('tx_hash', 'stripe_'.$session->id)->first();
 
-        if (! $transaction || $transaction->status === 'refunded') {
+        if (! $transaction || in_array($transaction->status, ['refunded', 'failed'])) {
             return ['status' => 'already_refunded_or_not_found'];
         }
 
-        // Reverse allocation ใน DB::transaction()
+        // Reverse allocation ใน DB::transaction() — ใช้ pessimistic lock ป้องกัน double-reverse
         DB::transaction(function () use ($transaction) {
-            $transaction->update(['status' => 'refunded']);
-
-            $phase = SalePhase::find($transaction->sale_phase_id);
-            if ($phase) {
-                $phase->decrement('sold', $transaction->tpix_amount);
+            $lockedTx = SaleTransaction::lockForUpdate()->find($transaction->id);
+            if (in_array($lockedTx->status, ['refunded', 'failed'])) {
+                return; // Already processed (admin refund + webhook racing)
             }
-            $sale = TokenSale::find($transaction->token_sale_id);
+
+            $lockedTx->update(['status' => 'refunded']);
+
+            $phase = SalePhase::find($lockedTx->sale_phase_id);
+            if ($phase) {
+                $phase->decrement('sold', $lockedTx->tpix_amount);
+            }
+            $sale = TokenSale::find($lockedTx->token_sale_id);
             if ($sale) {
-                $sale->decrement('total_sold', $transaction->tpix_amount);
-                $sale->decrement('total_raised_usd', $transaction->payment_usd_value);
+                $sale->decrement('total_sold', $lockedTx->tpix_amount);
+                $sale->decrement('total_raised_usd', $lockedTx->payment_usd_value);
             }
         });
 

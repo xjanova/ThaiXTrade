@@ -11,6 +11,7 @@ import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenSaleStore } from '@/Stores/tokenSaleStore';
+import { useTokenSale } from '@/Composables/useTokenSale';
 import CountdownTimer from '@/Components/TokenSale/CountdownTimer.vue';
 import SaleProgressBar from '@/Components/TokenSale/SaleProgressBar.vue';
 import PhaseCard from '@/Components/TokenSale/PhaseCard.vue';
@@ -29,6 +30,7 @@ const props = defineProps({
 
 const walletStore = useWalletStore();
 const tokenSaleStore = useTokenSaleStore();
+const { retryPendingPurchases } = useTokenSale();
 
 // Phase ที่ผู้ใช้เลือก
 const selectedPhaseId = ref(null);
@@ -78,6 +80,11 @@ onMounted(async () => {
     // ถ้ามี active phase ให้เลือกอัตโนมัติ
     if (tokenSaleStore.activePhase) {
         selectedPhaseId.value = tokenSaleStore.activePhase.id;
+    }
+
+    // ★ กู้คืนรายการที่จ่าย BSC สำเร็จแต่ API ยังไม่ได้บันทึก
+    if (walletStore.address) {
+        retryPendingPurchases();
     }
 });
 

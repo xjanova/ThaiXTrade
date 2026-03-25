@@ -65,13 +65,27 @@ export function useTokenSale() {
         return currentPhase.value?.price_usd || 0;
     });
 
-    // ตรวจสอบว่ากรอกข้อมูลครบหรือยัง
+    // เช็คว่า phase ขายหมดหรือยัง
+    const isSoldOut = computed(() => {
+        if (!currentPhase.value) return true;
+        return (currentPhase.value.remaining ?? 0) <= 0;
+    });
+
+    // เช็คว่าจำนวนที่สั่งเกิน remaining หรือไม่
+    const exceedsRemaining = computed(() => {
+        if (!preview.value || !currentPhase.value) return false;
+        return preview.value.tpix_amount > (currentPhase.value.remaining ?? 0);
+    });
+
+    // ตรวจสอบว่ากรอกข้อมูลครบหรือยัง + เหรียญยังเหลือ
     const canPurchase = computed(() => {
         return (
             walletStore.isConnected &&
             walletStore.isBSC &&
             currentPhase.value &&
             currentPhase.value.status === 'active' &&
+            !isSoldOut.value &&
+            !exceedsRemaining.value &&
             parseFloat(paymentAmount.value) > 0 &&
             !isSendingTx.value &&
             !isSubmitting.value
@@ -170,6 +184,8 @@ export function useTokenSale() {
      * ขั้นตอนซื้อเหรียญแบบเต็ม:
      * 1. ส่งเงินบน BSC → ได้ tx_hash
      * 2. ส่ง tx_hash ไป backend เพื่อ verify และบันทึก allocation
+     *
+     * ★ ถ้าขั้นที่ 1 สำเร็จแต่ขั้นที่ 2 ล้ม → เก็บ tx_hash ไว้ให้ retry ได้
      */
     async function executePurchase() {
         if (!canPurchase.value) return;
@@ -182,31 +198,86 @@ export function useTokenSale() {
             // ขั้นที่ 1: ส่งเงินบน BSC
             const hash = await sendPaymentTransaction();
 
-            // ขั้นที่ 2: ส่ง tx_hash ไป backend
-            const result = await tokenSaleStore.submitPurchase({
+            // ★ เก็บ tx_hash ลง localStorage เผื่อ API ล้ม
+            const pendingKey = `tpix_pending_purchase_${hash}`;
+            const pendingData = {
                 wallet_address: walletStore.address,
                 phase_id: currentPhase.value.id,
                 currency: selectedCurrency.value,
                 amount: parseFloat(paymentAmount.value),
                 tx_hash: hash,
-            });
+                timestamp: Date.now(),
+            };
+            localStorage.setItem(pendingKey, JSON.stringify(pendingData));
 
-            purchaseResult.value = result;
+            // ขั้นที่ 2: ส่ง tx_hash ไป backend (retry สูงสุด 3 ครั้ง)
+            let result = null;
+            let lastError = null;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    result = await tokenSaleStore.submitPurchase(pendingData);
+                    break; // สำเร็จ
+                } catch (apiErr) {
+                    lastError = apiErr;
+                    if (attempt < 3) {
+                        await new Promise(r => setTimeout(r, 2000 * attempt)); // wait 2s, 4s
+                    }
+                }
+            }
 
-            // รีเซ็ต form หลังซื้อสำเร็จ
-            paymentAmount.value = '';
-            preview.value = null;
-            txHash.value = null;
+            if (result) {
+                // สำเร็จ — ลบ pending
+                localStorage.removeItem(pendingKey);
+                purchaseResult.value = result;
 
-            return result;
+                // รีเซ็ต form
+                paymentAmount.value = '';
+                preview.value = null;
+                txHash.value = null;
+
+                return result;
+            } else {
+                // API ล้มทั้ง 3 ครั้ง — แจ้งผู้ใช้พร้อม tx_hash
+                error.value = `การบันทึกล้มเหลว แต่เงินถูกส่งไปแล้ว! กรุณาบันทึก TX Hash: ${hash} แล้วติดต่อทีมงาน หรือรีเฟรชหน้าเว็บเพื่อลองใหม่`;
+                throw lastError;
+            }
         } catch (err) {
-            // error ถูกตั้งค่าใน sendPaymentTransaction หรือ submitPurchase แล้ว
             if (!error.value) {
                 error.value = err.message || 'การซื้อล้มเหลว';
             }
             throw err;
         } finally {
             isSubmitting.value = false;
+        }
+    }
+
+    /**
+     * Retry pending purchases — เรียกตอนเข้าหน้า Token Sale
+     * กู้คืนรายการที่จ่าย BSC สำเร็จแต่ API ยังไม่ได้บันทึก
+     */
+    async function retryPendingPurchases() {
+        if (!walletStore.address) return;
+
+        const keys = Object.keys(localStorage).filter(k => k.startsWith('tpix_pending_purchase_'));
+        for (const key of keys) {
+            try {
+                const data = JSON.parse(localStorage.getItem(key));
+                if (!data || data.wallet_address !== walletStore.address) continue;
+
+                // ข้ามถ้าเก่าเกิน 24 ชม.
+                if (Date.now() - data.timestamp > 86400000) {
+                    localStorage.removeItem(key);
+                    continue;
+                }
+
+                const result = await tokenSaleStore.submitPurchase(data);
+                if (result) {
+                    localStorage.removeItem(key);
+                    console.log('[TokenSale] Recovered pending purchase:', data.tx_hash);
+                }
+            } catch {
+                // ถ้า retry ไม่สำเร็จ จะลองอีกครั้งตอนเข้าหน้าใหม่
+            }
         }
     }
 
@@ -238,10 +309,13 @@ export function useTokenSale() {
         currentPhase,
         currentPrice,
         canPurchase,
+        isSoldOut,
+        exceedsRemaining,
         // Actions
         calculatePreview,
         sendPaymentTransaction,
         executePurchase,
+        retryPendingPurchases,
         resetForm,
     };
 }

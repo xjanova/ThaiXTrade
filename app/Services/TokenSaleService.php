@@ -163,15 +163,7 @@ class TokenSaleService
         $conversion = $this->priceFeed->convertToTpix($amount, $currency, (float) $phase->price_usd);
         $tpixAmount = $conversion['tpix_amount'];
 
-        // ตรวจสอบว่ายังมี allocation เหลือ (ใช้ pessimistic lock)
-        DB::transaction(function () use ($phase, $tpixAmount) {
-            $lockedPhase = SalePhase::lockForUpdate()->find($phase->id);
-            if ($tpixAmount > $lockedPhase->remaining_allocation) {
-                throw new \Exception('Insufficient allocation in this phase.');
-            }
-        });
-
-        // ตรวจสอบ min/max purchase
+        // ตรวจสอบ min/max purchase (ก่อน lock เพื่อลด contention)
         if ($tpixAmount < (float) $phase->min_purchase) {
             throw new \Exception("Minimum purchase is {$phase->min_purchase} TPIX.");
         }
@@ -209,8 +201,15 @@ class TokenSaleService
             ]);
         }
 
-        // บันทึกรายการซื้อใน DB transaction
+        // ★ ATOMIC: ตรวจ allocation + บันทึก + อัปเดต counters ใน transaction เดียว
+        // ป้องกัน race condition: สองคนซื้อพร้อมกันจะไม่ขายเกิน
         return DB::transaction(function () use ($sale, $phase, $walletAddress, $currency, $amount, $conversion, $tpixAmount, $txHash, $txStatus, $txVerification) {
+            // Pessimistic lock — ตรวจ allocation ภายใต้ lock
+            $lockedPhase = SalePhase::lockForUpdate()->find($phase->id);
+            if ($tpixAmount > $lockedPhase->remaining_allocation) {
+                throw new \Exception('Insufficient allocation in this phase. Only '.number_format($lockedPhase->remaining_allocation, 2).' TPIX remaining.');
+            }
+
             $transaction = SaleTransaction::create([
                 'token_sale_id' => $sale->id,
                 'sale_phase_id' => $phase->id,
@@ -222,7 +221,7 @@ class TokenSaleService
                 'price_per_tpix' => $phase->price_usd,
                 'tx_hash' => $txHash,
                 'status' => $txStatus,
-                'vesting_start_at' => $phase->ends_at ?? $sale->ends_at ?? now(),
+                'vesting_start_at' => $lockedPhase->ends_at ?? $sale->ends_at ?? now(),
                 'metadata' => [
                     'bsc_verified' => $txVerification['verified'],
                     'bsc_block' => $txVerification['block_number'] ?? null,
@@ -232,12 +231,25 @@ class TokenSaleService
                 ],
             ]);
 
-            // อัปเดตยอดขายใน phase
-            $phase->increment('sold', $tpixAmount);
+            // อัปเดตยอดขายใน phase (ใช้ locked instance)
+            $lockedPhase->increment('sold', $tpixAmount);
+
+            // Auto-close phase ถ้าขายหมดแล้ว
+            if ($lockedPhase->fresh()->remaining_allocation <= 0) {
+                $lockedPhase->update(['status' => 'completed']);
+                Log::info('Phase sold out — auto-closed', ['phase_id' => $lockedPhase->id, 'name' => $lockedPhase->name]);
+            }
 
             // อัปเดตยอดขายรวมใน sale
             $sale->increment('total_sold', $tpixAmount);
             $sale->increment('total_raised_usd', $conversion['usd_value']);
+
+            // Auto-close sale ถ้าทุก phase ปิดหมดแล้ว
+            $activePhases = SalePhase::where('token_sale_id', $sale->id)->where('status', 'active')->count();
+            if ($activePhases === 0) {
+                $sale->update(['status' => 'completed']);
+                Log::info('Token sale completed — all phases sold out', ['sale_id' => $sale->id]);
+            }
 
             // เคลียร์ cache
             Cache::forget('token_sale:active');
