@@ -142,7 +142,7 @@ function formatDate(iso) {
                                 <img src="/images/logowallet.webp" class="w-14 h-14 object-contain" alt="TPIX Wallet" />
                                 <div>
                                     <h2 class="text-lg font-bold text-white">TPIX Wallet</h2>
-                                    <p class="text-dark-400 text-xs" v-if="chainData?.wallet">v{{ chainData.version }} &middot; {{ formatDate(chainData.published_at) }}</p>
+                                    <p class="text-dark-400 text-xs" v-if="chainData?.wallet">v{{ chainData.wallet.version }} &middot; {{ formatDate(chainData.wallet.published_at) }}</p>
                                     <p class="text-dark-500 text-xs" v-else>{{ locale === 'th' ? 'กำลังโหลด...' : 'Loading...' }}</p>
                                 </div>
                             </div>
@@ -177,7 +177,7 @@ function formatDate(iso) {
                                 <img src="/images/logomasternode.webp" class="w-14 h-14 object-contain" alt="TPIX Master Node" />
                                 <div>
                                     <h2 class="text-lg font-bold text-white">TPIX Master Node</h2>
-                                    <p class="text-dark-400 text-xs" v-if="chainData?.masternode">v{{ chainData.version }} &middot; Windows 10/11</p>
+                                    <p class="text-dark-400 text-xs" v-if="chainData?.masternode">v{{ chainData.masternode.version }} &middot; Windows 10/11</p>
                                     <p class="text-dark-500 text-xs" v-else>{{ locale === 'th' ? 'กำลังโหลด...' : 'Loading...' }}</p>
                                 </div>
                             </div>

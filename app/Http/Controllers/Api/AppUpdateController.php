@@ -276,20 +276,14 @@ class AppUpdateController extends Controller
      */
     public function chainLatest(): JsonResponse
     {
-        $data = Cache::remember('chain_releases', 300, function () {
-            return $this->fetchChainReleases();
+        // ดึง active tags ที่ admin เลือก
+        $walletTag = SiteSetting::get('app_release', 'wallet_active_tag');
+        $masternodeTag = SiteSetting::get('app_release', 'masternode_active_tag');
+
+        $cacheKey = 'chain_releases_'.md5($walletTag.$masternodeTag);
+        $data = Cache::remember($cacheKey, 300, function () use ($walletTag, $masternodeTag) {
+            return $this->fetchChainReleases($walletTag, $masternodeTag);
         });
-
-        // ใช้เวอร์ชันที่ admin เลือก (ถ้ามี)
-        $walletVersion = SiteSetting::get('app_release', 'wallet_version');
-        $masternodeVersion = SiteSetting::get('app_release', 'masternode_version');
-
-        if ($walletVersion && $data['wallet']) {
-            $data['wallet']['admin_version'] = $walletVersion;
-        }
-        if ($masternodeVersion && $data['masternode']) {
-            $data['masternode']['admin_version'] = $masternodeVersion;
-        }
 
         return response()->json([
             'success' => true,
@@ -393,7 +387,7 @@ class AppUpdateController extends Controller
         SiteSetting::set('downloads', $type, (string) ($current + 1));
     }
 
-    private function fetchChainReleases(): array
+    private function fetchChainReleases(?string $walletTag = null, ?string $masternodeTag = null): array
     {
         $result = ['wallet' => null, 'masternode' => null, 'tag' => null];
 
@@ -433,33 +427,39 @@ class AppUpdateController extends Controller
                 $result['published_at'] = $release['published_at'];
                 $result['notes'] = $release['body'] ?? '';
 
-                // เก็บ wallet จาก release ที่มี wallet APK ล่าสุด
-                if ($walletApk && ! $result['wallet']) {
+                // เก็บ wallet — ถ้า admin เลือก tag → ใช้เฉพาะ tag นั้น, ถ้าไม่ → ใช้ล่าสุด
+                $walletMatch = ! $walletTag || $release['tag_name'] === $walletTag;
+                if ($walletApk && ! $result['wallet'] && $walletMatch) {
+                    // parse version จากชื่อไฟล์ เช่น TPIX-Wallet-v1.1.1.apk → 1.1.1
+                    preg_match('/v?(\d+\.\d+\.\d+)/', $walletApk['name'], $fileVer);
+                    $walletVersion = $fileVer[1] ?? $version;
+
                     $result['wallet'] = [
                         'file_name' => $walletApk['name'],
                         'file_size' => $walletApk['size'],
                         'download_url' => $walletApk['url'],
                         'downloads' => $walletApk['download_count'],
-                        'version' => $version,
+                        'version' => $walletVersion,
+                        'tag' => $release['tag_name'],
+                        'published_at' => $release['published_at'],
                     ];
-                    // ใช้ tag/version ของ wallet เป็นหลัก (release ล่าสุด)
-                    if (! $result['tag']) {
-                        $result['tag'] = $release['tag_name'];
-                        $result['version'] = $version;
-                        $result['name'] = $release['name'] ?: "v{$version}";
-                        $result['published_at'] = $release['published_at'];
-                        $result['notes'] = $release['body'] ?? '';
-                    }
                 }
 
-                // เก็บ masternode จาก release ที่มี EXE ล่าสุด (อาจคนละ release กับ wallet)
-                if ($masternodeExe && ! $result['masternode']) {
+                // เก็บ masternode — ถ้า admin เลือก tag → ใช้เฉพาะ tag นั้น, ถ้าไม่ → ใช้ล่าสุด
+                $masternodeMatch = ! $masternodeTag || $release['tag_name'] === $masternodeTag;
+                if ($masternodeExe && ! $result['masternode'] && $masternodeMatch) {
+                    // parse version จากชื่อไฟล์ เช่น TPIX-Master-Node-1.0.0.exe → 1.0.0
+                    preg_match('/(\d+\.\d+\.\d+)/', $masternodeExe['name'], $fileVer);
+                    $mnVersion = $fileVer[1] ?? $version;
+
                     $result['masternode'] = [
                         'file_name' => $masternodeExe['name'],
                         'file_size' => $masternodeExe['size'],
                         'download_url' => $masternodeExe['url'],
                         'downloads' => $masternodeExe['download_count'],
-                        'version' => $version,
+                        'version' => $mnVersion,
+                        'tag' => $release['tag_name'],
+                        'published_at' => $release['published_at'],
                     ];
                 }
 

@@ -51,7 +51,12 @@ class AppReleaseController extends Controller
     {
         Cache::forget('admin_app_releases');
         Cache::forget('app_update_android');
+        // Clear all chain release caches (key includes md5 of active tags)
         Cache::forget('chain_releases');
+        // Also clear tag-specific caches
+        $walletTag = SiteSetting::get('app_release', 'wallet_active_tag') ?? '';
+        $masternodeTag = SiteSetting::get('app_release', 'masternode_active_tag') ?? '';
+        Cache::forget('chain_releases_' . md5($walletTag . $masternodeTag));
         Cache::forget('chain_s3_url_wallet');
         Cache::forget('chain_s3_url_masternode');
         Cache::forget('apk_s3_url');
@@ -111,7 +116,12 @@ class AppReleaseController extends Controller
 
         // ล้าง cache ทั้งหมดเพื่อให้หน้า Download อัปเดตทันที
         Cache::forget('app_update_android');
+        // Clear all chain release caches (key includes md5 of active tags)
         Cache::forget('chain_releases');
+        // Also clear tag-specific caches
+        $walletTag = SiteSetting::get('app_release', 'wallet_active_tag') ?? '';
+        $masternodeTag = SiteSetting::get('app_release', 'masternode_active_tag') ?? '';
+        Cache::forget('chain_releases_' . md5($walletTag . $masternodeTag));
         Cache::forget('chain_s3_url_wallet');
         Cache::forget('chain_s3_url_masternode');
         Cache::forget('apk_s3_url');
