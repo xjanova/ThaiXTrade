@@ -185,6 +185,13 @@ class ContentService
         $workerUrl = config('services.image_gen.url', 'https://tpix-image-gen.xjanovax.workers.dev/');
         $apiKey = config('services.image_gen.key');
 
+        // ถ้าไม่มี API key ข้ามไป fallback เลย (ไม่ต้องรอ timeout)
+        if (empty($apiKey)) {
+            Log::info('Cloudflare image skipped: no API key, falling back');
+
+            return $this->generateWithPollinations($prompt, 1200, 630);
+        }
+
         try {
             $response = Http::timeout(60)
                 ->withHeaders(['X-API-Key' => $apiKey])
