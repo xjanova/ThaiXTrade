@@ -66,8 +66,8 @@ class AppReleaseController extends Controller
         $result = Cache::get('admin_app_releases', ['releases' => [], 'error' => null]);
         $release = collect($result['releases'])->firstWhere('tag', $tag);
 
-        if (! $release || ! $release['has_apk']) {
-            return back()->with('error', 'Release not found or has no APK.');
+        if (! $release || (! $release['has_apk'] && ! $release['has_wallet_apk'] && ! $release['has_exe'])) {
+            return back()->with('error', 'Release not found or has no downloadable assets.');
         }
 
         // บันทึกลง SiteSetting
@@ -85,86 +85,110 @@ class AppReleaseController extends Controller
     }
 
     /**
-     * ดึง releases ทั้งหมดจาก GitHub API.
+     * ดึง releases ทั้งหมดจาก GitHub API (ทั้ง ThaiXTrade + TPIX-Coin repos).
      */
     private function fetchAllReleases(): array
     {
-        $empty = ['releases' => [], 'error' => null];
+        $owner = config('services.github.owner', 'xjanova');
+        $token = config('services.github.token');
 
-        try {
-            $owner = config('services.github.owner', 'xjanova');
-            $repo = config('services.github.repo', 'ThaiXTrade');
-            $token = config('services.github.token');
+        $headers = [
+            'Accept' => 'application/vnd.github.v3+json',
+            'User-Agent' => 'TPIX-TRADE-Server',
+        ];
 
-            $headers = [
-                'Accept' => 'application/vnd.github.v3+json',
-                'User-Agent' => 'TPIX-TRADE-Server',
-            ];
+        if ($token) {
+            $headers['Authorization'] = "Bearer {$token}";
+        }
 
-            if ($token) {
-                $headers['Authorization'] = "Bearer {$token}";
-            }
+        // ดึงจากทั้ง 2 repos
+        $repos = [
+            ['repo' => config('services.github.repo', 'ThaiXTrade'), 'source' => 'trade'],
+            ['repo' => 'TPIX-Coin', 'source' => 'chain'],
+        ];
 
-            $response = Http::withHeaders($headers)
-                ->timeout(15)
-                ->get("https://api.github.com/repos/{$owner}/{$repo}/releases?per_page=100");
+        $allReleases = [];
+        $errors = [];
 
-            if (! $response->successful()) {
-                $status = $response->status();
-                Log::warning('GitHub API failed for admin releases', ['status' => $status]);
+        foreach ($repos as $repoConfig) {
+            try {
+                $repo = $repoConfig['repo'];
+                $source = $repoConfig['source'];
 
-                $errorMsg = match ($status) {
-                    401 => 'GitHub API: Unauthorized — GITHUB_TOKEN ไม่ถูกต้องหรือหมดอายุ',
-                    403 => 'GitHub API: Forbidden — Rate limit exceeded หรือ token ไม่มีสิทธิ์',
-                    404 => "GitHub API: Repo {$owner}/{$repo} ไม่พบ — ตรวจสอบ GITHUB_OWNER / GITHUB_REPO",
-                    default => "GitHub API error (HTTP {$status})",
-                };
+                $response = Http::withHeaders($headers)
+                    ->timeout(15)
+                    ->get("https://api.github.com/repos/{$owner}/{$repo}/releases?per_page=50");
 
-                if (! $token) {
-                    $errorMsg .= ' | ⚠️ GITHUB_TOKEN ไม่ได้ตั้งค่าใน .env — จำเป็นสำหรับ private repo';
+                if (! $response->successful()) {
+                    $errors[] = "{$repo}: HTTP {$response->status()}";
+
+                    continue;
                 }
 
-                return ['releases' => [], 'error' => $errorMsg];
+                $data = $response->json();
+                if (! is_array($data)) {
+                    continue;
+                }
+
+                foreach ($data as $release) {
+                    $assets = collect($release['assets'] ?? []);
+
+                    $apkAsset = $assets->first(fn ($a) => str_ends_with(strtolower($a['name']), '.apk'));
+                    $exeAsset = $assets->first(fn ($a) => str_ends_with(strtolower($a['name']), '.exe'));
+                    $walletApk = $assets->first(fn ($a) => str_contains(strtolower($a['name']), 'wallet') && str_ends_with(strtolower($a['name']), '.apk'));
+
+                    preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $matches);
+                    $version = $matches[1] ?? $release['tag_name'];
+
+                    // ตรวจประเภท release
+                    $type = 'web';
+                    if ($walletApk) {
+                        $type = 'wallet';
+                    } elseif ($apkAsset) {
+                        $type = 'mobile';
+                    } elseif ($exeAsset) {
+                        $type = 'desktop';
+                    } elseif ($source === 'chain') {
+                        $type = 'chain';
+                    }
+
+                    $allReleases[] = [
+                        'id' => $release['id'],
+                        'tag' => $release['tag_name'],
+                        'version' => $version,
+                        'name' => $release['name'] ?: "v{$version}",
+                        'notes' => $release['body'] ?? '',
+                        'published_at' => $release['published_at'],
+                        'is_draft' => $release['draft'],
+                        'is_prerelease' => $release['prerelease'],
+                        'is_mobile' => $type === 'mobile',
+                        'type' => $type,
+                        'source' => $source,
+                        'repo' => $repo,
+                        'has_apk' => $apkAsset !== null,
+                        'has_wallet_apk' => $walletApk !== null,
+                        'has_exe' => $exeAsset !== null,
+                        'apk_name' => $apkAsset['name'] ?? null,
+                        'wallet_apk_name' => $walletApk['name'] ?? null,
+                        'exe_name' => $exeAsset['name'] ?? null,
+                        'apk_size' => $apkAsset ? round($apkAsset['size'] / 1024 / 1024, 1) : null,
+                        'apk_downloads' => $apkAsset['download_count'] ?? 0,
+                        'total_assets' => count($release['assets'] ?? []),
+                    ];
+                }
+            } catch (\Exception $e) {
+                Log::error("Failed to fetch releases from {$repoConfig['repo']}", ['error' => $e->getMessage()]);
+                $errors[] = "{$repoConfig['repo']}: {$e->getMessage()}";
             }
-
-            $data = $response->json();
-
-            if (! is_array($data)) {
-                return ['releases' => [], 'error' => 'GitHub API returned invalid data'];
-            }
-
-            $releases = [];
-            foreach ($data as $release) {
-                $apkAsset = collect($release['assets'] ?? [])->first(function ($asset) {
-                    return str_ends_with(strtolower($asset['name']), '.apk');
-                });
-
-                preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $matches);
-                $version = $matches[1] ?? $release['tag_name'];
-
-                $releases[] = [
-                    'id' => $release['id'],
-                    'tag' => $release['tag_name'],
-                    'version' => $version,
-                    'name' => $release['name'] ?: "v{$version}",
-                    'notes' => $release['body'] ?? '',
-                    'published_at' => $release['published_at'],
-                    'is_draft' => $release['draft'],
-                    'is_prerelease' => $release['prerelease'],
-                    'is_mobile' => str_contains($release['tag_name'], 'mobile'),
-                    'has_apk' => $apkAsset !== null,
-                    'apk_name' => $apkAsset['name'] ?? null,
-                    'apk_size' => $apkAsset ? round($apkAsset['size'] / 1024 / 1024, 1) : null,
-                    'apk_downloads' => $apkAsset['download_count'] ?? 0,
-                    'total_assets' => count($release['assets'] ?? []),
-                ];
-            }
-
-            return ['releases' => $releases, 'error' => null];
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch GitHub releases for admin', ['error' => $e->getMessage()]);
-
-            return ['releases' => [], 'error' => 'Connection failed: '.$e->getMessage()];
         }
+
+        // เรียงตามวันที่ publish ล่าสุดก่อน
+        usort($allReleases, fn ($a, $b) => strcmp($b['published_at'] ?? '', $a['published_at'] ?? ''));
+
+        $error = ! empty($errors) && empty($allReleases)
+            ? implode(' | ', $errors)
+            : null;
+
+        return ['releases' => $allReleases, 'error' => $error];
     }
 }

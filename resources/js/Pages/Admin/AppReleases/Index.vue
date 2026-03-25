@@ -24,9 +24,12 @@ const currentPage = ref(1);
 
 const filteredReleases = computed(() => {
     if (filter.value === 'all') return props.releases;
-    if (filter.value === 'mobile') return props.releases.filter(r => r.is_mobile);
-    if (filter.value === 'web') return props.releases.filter(r => !r.is_mobile);
-    if (filter.value === 'apk') return props.releases.filter(r => r.has_apk);
+    if (filter.value === 'mobile') return props.releases.filter(r => r.type === 'mobile');
+    if (filter.value === 'wallet') return props.releases.filter(r => r.type === 'wallet');
+    if (filter.value === 'desktop') return props.releases.filter(r => r.type === 'desktop' || r.has_exe);
+    if (filter.value === 'web') return props.releases.filter(r => r.source === 'trade');
+    if (filter.value === 'chain') return props.releases.filter(r => r.source === 'chain');
+    if (filter.value === 'apk') return props.releases.filter(r => r.has_apk || r.has_wallet_apk);
     return props.releases;
 });
 
@@ -62,10 +65,24 @@ const formatDate = (dateStr) => {
 
 const filterCounts = computed(() => ({
     all: props.releases.length,
-    mobile: props.releases.filter(r => r.is_mobile).length,
-    web: props.releases.filter(r => !r.is_mobile).length,
-    apk: props.releases.filter(r => r.has_apk).length,
+    mobile: props.releases.filter(r => r.type === 'mobile').length,
+    wallet: props.releases.filter(r => r.type === 'wallet').length,
+    desktop: props.releases.filter(r => r.type === 'desktop' || r.has_exe).length,
+    web: props.releases.filter(r => r.source === 'trade').length,
+    chain: props.releases.filter(r => r.source === 'chain').length,
+    apk: props.releases.filter(r => r.has_apk || r.has_wallet_apk).length,
 }));
+
+const typeBadge = (release) => {
+    const badges = {
+        wallet: { label: 'Wallet', color: 'bg-purple-500/20 text-purple-400' },
+        mobile: { label: 'Mobile', color: 'bg-blue-500/20 text-blue-400' },
+        desktop: { label: 'Desktop', color: 'bg-amber-500/20 text-amber-400' },
+        chain: { label: 'Chain', color: 'bg-cyan-500/20 text-cyan-400' },
+        web: { label: 'Web', color: 'bg-green-500/20 text-green-400' },
+    };
+    return badges[release.type] || badges.web;
+};
 </script>
 
 <template>
@@ -122,32 +139,42 @@ const filterCounts = computed(() => ({
             </div>
 
             <!-- Stats Cards -->
-            <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
-                    <p class="text-dark-400 text-sm">Total Releases</p>
+                    <p class="text-dark-400 text-sm">Total</p>
                     <p class="text-2xl font-bold text-white mt-1">{{ releases.length }}</p>
                 </div>
-                <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
-                    <p class="text-dark-400 text-sm">Mobile Releases</p>
-                    <p class="text-2xl font-bold text-primary-400 mt-1">{{ filterCounts.mobile }}</p>
+                <div class="bg-white/5 backdrop-blur-xl border border-blue-500/10 rounded-xl p-4">
+                    <p class="text-dark-400 text-sm">TPIX TRADE</p>
+                    <p class="text-2xl font-bold text-blue-400 mt-1">{{ filterCounts.mobile }}</p>
                 </div>
-                <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
+                <div class="bg-white/5 backdrop-blur-xl border border-purple-500/10 rounded-xl p-4">
+                    <p class="text-dark-400 text-sm">TPIX Wallet</p>
+                    <p class="text-2xl font-bold text-purple-400 mt-1">{{ filterCounts.wallet }}</p>
+                </div>
+                <div class="bg-white/5 backdrop-blur-xl border border-amber-500/10 rounded-xl p-4">
+                    <p class="text-dark-400 text-sm">Master Node</p>
+                    <p class="text-2xl font-bold text-amber-400 mt-1">{{ filterCounts.desktop }}</p>
+                </div>
+                <div class="bg-white/5 backdrop-blur-xl border border-green-500/10 rounded-xl p-4">
                     <p class="text-dark-400 text-sm">With APK</p>
                     <p class="text-2xl font-bold text-trading-green mt-1">{{ filterCounts.apk }}</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
-                    <p class="text-dark-400 text-sm">Total Downloads</p>
+                    <p class="text-dark-400 text-sm">Downloads</p>
                     <p class="text-2xl font-bold text-accent-400 mt-1">{{ releases.reduce((sum, r) => sum + (r.apk_downloads || 0), 0).toLocaleString() }}</p>
                 </div>
             </div>
 
             <!-- Filter Tabs -->
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
                 <button
                     v-for="f in [
                         { key: 'all', label: 'All' },
-                        { key: 'mobile', label: 'Mobile' },
-                        { key: 'web', label: 'Web' },
+                        { key: 'mobile', label: 'TPIX TRADE' },
+                        { key: 'wallet', label: 'TPIX Wallet' },
+                        { key: 'desktop', label: 'Master Node' },
+                        { key: 'chain', label: 'Chain' },
                         { key: 'apk', label: 'With APK' },
                     ]"
                     :key="f.key"
@@ -201,13 +228,18 @@ const filterCounts = computed(() => ({
                                 </div>
                             </td>
                             <td class="px-6 py-4">
-                                <span v-if="release.is_mobile" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-primary-500/20 text-primary-400">Mobile</span>
-                                <span v-else class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-dark-600 text-dark-300">Web</span>
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                    <span :class="['inline-flex px-2 py-0.5 rounded-full text-xs font-medium', typeBadge(release).color]">
+                                        {{ typeBadge(release).label }}
+                                    </span>
+                                    <span class="text-[10px] text-dark-500 font-mono">{{ release.repo }}</span>
+                                </div>
                             </td>
                             <td class="px-6 py-4">
-                                <div v-if="release.has_apk" class="text-sm">
-                                    <p class="text-trading-green">{{ release.apk_name }}</p>
-                                    <p class="text-dark-500 text-xs">{{ formatSize(release.apk_size) }}</p>
+                                <div v-if="release.has_apk || release.has_wallet_apk || release.has_exe" class="text-sm space-y-0.5">
+                                    <p v-if="release.apk_name" class="text-trading-green">{{ release.apk_name }} <span class="text-dark-500 text-xs">{{ formatSize(release.apk_size) }}</span></p>
+                                    <p v-if="release.wallet_apk_name && release.wallet_apk_name !== release.apk_name" class="text-purple-400">{{ release.wallet_apk_name }}</p>
+                                    <p v-if="release.exe_name" class="text-amber-400">{{ release.exe_name }}</p>
                                 </div>
                                 <span v-else class="text-dark-500 text-sm">-</span>
                             </td>
@@ -224,7 +256,7 @@ const filterCounts = computed(() => ({
                             </td>
                             <td class="px-6 py-4 text-center">
                                 <button
-                                    v-if="release.has_apk && release.tag !== activeTag"
+                                    v-if="(release.has_apk || release.has_wallet_apk || release.has_exe) && release.tag !== activeTag"
                                     @click="setActive(release.tag)"
                                     class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition-colors"
                                 >
