@@ -190,11 +190,21 @@ class StripePaymentService
     private function handleCheckoutCompleted(object $session): array
     {
         $walletAddress = $session->metadata->wallet_address ?? '';
-        $phaseId = $session->metadata->phase_id ?? 0;
-        $saleId = $session->metadata->sale_id ?? 0;
+        $phaseId = (int) ($session->metadata->phase_id ?? 0);
+        $saleId = (int) ($session->metadata->sale_id ?? 0);
         $tpixAmount = (float) ($session->metadata->tpix_amount ?? 0);
         $pricePerTpix = (float) ($session->metadata->price_per_tpix ?? 0);
         $amountPaid = $session->amount_total / 100;
+
+        // Validate metadata — ป้องกัน corrupted webhook
+        if (empty($walletAddress) || $phaseId <= 0 || $saleId <= 0 || $tpixAmount <= 0) {
+            Log::error('Stripe checkout completed with invalid metadata', [
+                'session_id' => $session->id,
+                'metadata' => (array) $session->metadata,
+            ]);
+
+            return ['status' => 'invalid_metadata', 'session_id' => $session->id];
+        }
 
         // ตรวจซ้ำ — idempotency check
         $existing = SaleTransaction::where('tx_hash', 'stripe_'.$session->id)->first();
@@ -202,10 +212,38 @@ class StripePaymentService
             return ['status' => 'duplicate', 'transaction_id' => $existing->uuid];
         }
 
-        // ใช้ DB::transaction() ป้องกัน counter ไม่ sync
+        // ใช้ DB::transaction() + pessimistic lock ป้องกัน oversell
         $transaction = DB::transaction(function () use (
             $saleId, $phaseId, $walletAddress, $amountPaid, $tpixAmount, $pricePerTpix, $session
         ) {
+            // ล็อค phase เพื่อตรวจ allocation
+            $phase = SalePhase::lockForUpdate()->find($phaseId);
+            if (! $phase || $tpixAmount > $phase->remaining_allocation) {
+                Log::error('Stripe checkout: insufficient allocation at confirm time', [
+                    'session_id' => $session->id,
+                    'requested' => $tpixAmount,
+                    'remaining' => $phase?->remaining_allocation ?? 0,
+                ]);
+                // ยังบันทึก transaction ไว้เป็น pending เพื่อ refund ภายหลัง
+                return SaleTransaction::create([
+                    'token_sale_id' => $saleId,
+                    'sale_phase_id' => $phaseId,
+                    'wallet_address' => $walletAddress,
+                    'payment_currency' => 'USD_STRIPE',
+                    'payment_amount' => $amountPaid,
+                    'payment_usd_value' => $amountPaid,
+                    'tpix_amount' => $tpixAmount,
+                    'price_per_tpix' => $pricePerTpix,
+                    'tx_hash' => 'stripe_'.$session->id,
+                    'status' => 'pending',
+                    'metadata' => ['needs_refund' => true, 'reason' => 'insufficient_allocation'],
+                ]);
+            }
+
+            // ดึง vesting start จาก phase/sale (ไม่ใช่ now())
+            $sale = TokenSale::find($saleId);
+            $vestingStart = $phase->ends_at ?? $sale?->ends_at ?? now();
+
             $tx = SaleTransaction::create([
                 'token_sale_id' => $saleId,
                 'sale_phase_id' => $phaseId,
@@ -217,15 +255,12 @@ class StripePaymentService
                 'price_per_tpix' => $pricePerTpix,
                 'tx_hash' => 'stripe_'.$session->id,
                 'status' => 'confirmed',
-                'vesting_start_at' => now(),
+                'vesting_start_at' => $vestingStart,
             ]);
 
-            // อัปเดต counters atomically
-            $phase = SalePhase::find($phaseId);
-            if ($phase) {
-                $phase->increment('sold', $tpixAmount);
-            }
-            $sale = TokenSale::find($saleId);
+            // อัปเดต counters atomically (ใช้ locked phase)
+            $phase->increment('sold', $tpixAmount);
+
             if ($sale) {
                 $sale->increment('total_sold', $tpixAmount);
                 $sale->increment('total_raised_usd', $amountPaid);
@@ -239,9 +274,10 @@ class StripePaymentService
             'wallet' => $walletAddress,
             'tpix' => $tpixAmount,
             'usd' => $amountPaid,
+            'status' => $transaction->status,
         ]);
 
-        return ['status' => 'success', 'transaction_id' => $transaction->uuid];
+        return ['status' => $transaction->status === 'confirmed' ? 'success' : 'pending_refund', 'transaction_id' => $transaction->uuid];
     }
 
     /**
@@ -329,13 +365,34 @@ class StripePaymentService
             $transaction = SaleTransaction::where('tx_hash', 'stripe_'.$session->id)->first();
 
             if ($transaction) {
-                $transaction->update(['status' => 'disputed']);
+                // ใช้ 'failed' เพราะ 'disputed' ไม่อยู่ใน DB enum
+                // บันทึก dispute info ลง metadata
+                $transaction->update([
+                    'status' => 'failed',
+                    'metadata' => array_merge($transaction->metadata ?? [], [
+                        'dispute_id' => $dispute->id,
+                        'dispute_reason' => $dispute->reason ?? 'unknown',
+                        'dispute_amount' => ($dispute->amount ?? 0) / 100,
+                        'disputed_at' => now()->toIso8601String(),
+                    ]),
+                ]);
 
-                Log::critical('Stripe DISPUTE created — requires immediate action', [
+                // Reverse allocation เพราะ dispute = เสียเงินแน่
+                $phase = SalePhase::find($transaction->sale_phase_id);
+                if ($phase) {
+                    $phase->decrement('sold', $transaction->tpix_amount);
+                }
+                $sale = TokenSale::find($transaction->token_sale_id);
+                if ($sale) {
+                    $sale->decrement('total_sold', $transaction->tpix_amount);
+                    $sale->decrement('total_raised_usd', $transaction->payment_usd_value);
+                }
+
+                Log::critical('Stripe DISPUTE created — allocation reversed, requires immediate action', [
                     'transaction_id' => $transaction->uuid,
                     'dispute_id' => $dispute->id,
-                    'amount' => $dispute->amount / 100,
-                    'reason' => $dispute->reason,
+                    'amount' => ($dispute->amount ?? 0) / 100,
+                    'reason' => $dispute->reason ?? 'unknown',
                     'wallet' => $transaction->wallet_address,
                 ]);
             }

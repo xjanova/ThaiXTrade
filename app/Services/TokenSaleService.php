@@ -122,6 +122,7 @@ class TokenSaleService
         $conversion = $this->priceFeed->convertToTpix($amount, $currency, (float) $phase->price_usd);
 
         return [
+            'phase_id' => $phase->id,
             'phase' => $phase->name,
             'price_per_tpix' => (float) $phase->price_usd,
             'payment_amount' => $amount,
@@ -136,7 +137,7 @@ class TokenSaleService
     /**
      * ดำเนินการซื้อเหรียญ TPIX.
      *
-     * Flow: ตรวจสอบ → บันทึก → อัปเดตยอด
+     * Flow: ตรวจสอบ → verify on-chain → บันทึก → อัปเดตยอด
      *
      * @throws \Exception
      */
@@ -162,16 +163,19 @@ class TokenSaleService
         $conversion = $this->priceFeed->convertToTpix($amount, $currency, (float) $phase->price_usd);
         $tpixAmount = $conversion['tpix_amount'];
 
-        // ตรวจสอบว่ายังมี allocation เหลือ
-        if ($tpixAmount > $phase->remaining_allocation) {
-            throw new \Exception('Insufficient allocation in this phase.');
-        }
+        // ตรวจสอบว่ายังมี allocation เหลือ (ใช้ pessimistic lock)
+        DB::transaction(function () use ($phase, $tpixAmount) {
+            $lockedPhase = SalePhase::lockForUpdate()->find($phase->id);
+            if ($tpixAmount > $lockedPhase->remaining_allocation) {
+                throw new \Exception('Insufficient allocation in this phase.');
+            }
+        });
 
         // ตรวจสอบ min/max purchase
         if ($tpixAmount < (float) $phase->min_purchase) {
             throw new \Exception("Minimum purchase is {$phase->min_purchase} TPIX.");
         }
-        if ($tpixAmount > (float) $phase->max_purchase) {
+        if ((float) $phase->max_purchase > 0 && $tpixAmount > (float) $phase->max_purchase) {
             throw new \Exception("Maximum purchase is {$phase->max_purchase} TPIX.");
         }
 
@@ -191,8 +195,8 @@ class TokenSaleService
             throw new \Exception('This transaction has already been processed.');
         }
 
-        // ตรวจสอบ transaction บน BSC on-chain
-        $txVerification = $this->verifyBscTransaction($txHash, $walletAddress, $sale->sale_wallet_address);
+        // ตรวจสอบ transaction บน BSC on-chain (รวมตรวจจำนวนเงิน)
+        $txVerification = $this->verifyBscTransaction($txHash, $walletAddress, $sale->sale_wallet_address, $currency, $amount);
         $txStatus = $txVerification['verified'] ? 'confirmed' : 'pending';
 
         if (! $txVerification['verified']) {
@@ -200,6 +204,8 @@ class TokenSaleService
                 'tx_hash' => $txHash,
                 'reason' => $txVerification['reason'],
                 'wallet' => $walletAddress,
+                'claimed_amount' => $amount,
+                'actual_amount' => $txVerification['value'] ?? null,
             ]);
         }
 
@@ -296,10 +302,21 @@ class TokenSaleService
     // =========================================================================
 
     /**
-     * ตรวจสอบ transaction บน BSC ว่ามีจริง + ส่งไปถูก wallet.
+     * ตรวจสอบ transaction บน BSC ว่ามีจริง + ส่งไปถูก wallet + จำนวนเงินถูกต้อง.
+     *
+     * @param  string  $txHash  Transaction hash บน BSC
+     * @param  string  $fromWallet  Wallet address ของผู้ซื้อ
+     * @param  string|null  $saleWallet  Wallet ที่รับเงิน
+     * @param  string  $claimedCurrency  สกุลเงินที่ผู้ใช้อ้าง (BNB, USDT, BUSD)
+     * @param  float  $claimedAmount  จำนวนเงินที่ผู้ใช้อ้าง
      */
-    private function verifyBscTransaction(string $txHash, string $fromWallet, ?string $saleWallet): array
-    {
+    private function verifyBscTransaction(
+        string $txHash,
+        string $fromWallet,
+        ?string $saleWallet,
+        string $claimedCurrency = 'BNB',
+        float $claimedAmount = 0
+    ): array {
         $result = ['verified' => false, 'reason' => 'not_checked'];
 
         // ถ้าไม่มี sale wallet ข้ามการ verify
@@ -310,6 +327,9 @@ class TokenSaleService
         }
 
         $rpcUrl = config('services.bsc.rpc_url', 'https://bsc-dataseed.binance.org');
+
+        // Tolerance สำหรับ amount check (5% — เผื่อ gas/slippage)
+        $amountTolerance = 0.05;
 
         try {
             // eth_getTransactionReceipt — เช็คว่า tx สำเร็จ
@@ -362,7 +382,10 @@ class TokenSaleService
 
             $result['from'] = strtolower($tx['from'] ?? '');
             $result['to'] = strtolower($tx['to'] ?? '');
-            $result['value'] = hexdec($tx['value'] ?? '0') / 1e18;
+
+            // ใช้ gmp เพื่อป้องกัน overflow สำหรับจำนวนเงินสูง
+            $valueWei = gmp_init($tx['value'] ?? '0x0', 16);
+            $result['value'] = (float) bcdiv(gmp_strval($valueWei), '1000000000000000000', 18);
 
             // เช็ค: tx ต้องส่งมาจาก wallet ที่อ้าง
             if ($result['from'] !== strtolower($fromWallet)) {
@@ -371,25 +394,54 @@ class TokenSaleService
                 return $result;
             }
 
-            // สำหรับ BNB native: to ต้องเป็น sale wallet
-            // สำหรับ USDT/BUSD (ERC-20): to เป็น token contract, ต้องเช็ค logs
             $saleWalletLower = strtolower($saleWallet);
 
+            // === BNB Native Transfer ===
             if ($result['to'] === $saleWalletLower) {
-                // BNB native transfer — verified!
+                // ตรวจจำนวนเงิน — ต้องตรงกับที่อ้าง (tolerance 5%)
+                if (strtoupper($claimedCurrency) === 'BNB' && $claimedAmount > 0) {
+                    $minExpected = $claimedAmount * (1 - $amountTolerance);
+                    if ($result['value'] < $minExpected) {
+                        $result['reason'] = 'amount_mismatch_native';
+                        $result['expected'] = $claimedAmount;
+                        $result['actual'] = $result['value'];
+
+                        return $result;
+                    }
+                }
+
                 $result['verified'] = true;
                 $result['reason'] = 'verified_native_transfer';
 
                 return $result;
             }
 
-            // ERC-20 transfer — เช็คจาก event logs (Transfer event)
+            // === ERC-20 Transfer (USDT/BUSD) ===
             $transferTopic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
             foreach ($receipt['logs'] ?? [] as $log) {
                 if (($log['topics'][0] ?? '') === $transferTopic) {
-                    // topics[2] = to address (padded to 32 bytes)
+                    // topics[1] = from address, topics[2] = to address (padded to 32 bytes)
                     $logTo = '0x'.substr($log['topics'][2] ?? '', 26);
+
                     if (strtolower($logTo) === $saleWalletLower) {
+                        // ตรวจจำนวนเงินจาก data field (ERC-20 amount)
+                        if (in_array(strtoupper($claimedCurrency), ['USDT', 'BUSD']) && $claimedAmount > 0) {
+                            $dataHex = $log['data'] ?? '0x0';
+                            $tokenWei = gmp_init($dataHex, 16);
+                            // USDT/BUSD บน BSC ใช้ 18 decimals
+                            $actualTokenAmount = (float) bcdiv(gmp_strval($tokenWei), '1000000000000000000', 8);
+                            $minExpected = $claimedAmount * (1 - $amountTolerance);
+
+                            if ($actualTokenAmount < $minExpected) {
+                                $result['reason'] = 'amount_mismatch_erc20';
+                                $result['expected'] = $claimedAmount;
+                                $result['actual'] = $actualTokenAmount;
+
+                                return $result;
+                            }
+                            $result['value'] = $actualTokenAmount;
+                        }
+
                         $result['verified'] = true;
                         $result['reason'] = 'verified_erc20_transfer';
 

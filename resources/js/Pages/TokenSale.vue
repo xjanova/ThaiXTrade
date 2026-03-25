@@ -284,7 +284,13 @@ function handlePurchaseComplete() {
                                     ]">{{ p.status }}</span>
                                 </td>
                                 <td class="py-3">
-                                    <a v-if="p.tx_hash" :href="`https://bscscan.com/tx/${p.tx_hash}`" target="_blank" rel="noopener" class="text-primary-400 text-xs font-mono hover:underline">
+                                    <!-- Stripe transactions ไม่ใช่ BSC tx_hash -->
+                                    <template v-if="p.tx_hash?.startsWith('stripe_')">
+                                        <span class="text-xs font-mono text-purple-400" :title="p.tx_hash">
+                                            Stripe ✓
+                                        </span>
+                                    </template>
+                                    <a v-else-if="p.tx_hash" :href="`https://bscscan.com/tx/${p.tx_hash}`" target="_blank" rel="noopener" class="text-primary-400 text-xs font-mono hover:underline">
                                         {{ p.tx_hash?.slice(0, 8) }}...
                                     </a>
                                 </td>

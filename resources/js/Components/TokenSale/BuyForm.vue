@@ -70,9 +70,23 @@ async function handlePurchase() {
 
 /**
  * ชำระเงินผ่าน Stripe (credit card)
+ * ต้องมี preview ก่อนเพื่อให้ได้ amount_usd และ phase_id ที่ถูกต้อง
  */
 async function handleStripeCheckout() {
-    if (!canPurchase || !paymentAmount.value) return;
+    if (!walletStore.isConnected || !paymentAmount.value) return;
+
+    // ต้องมี preview เพื่อให้ได้ phase_id และ USD value ที่ถูกต้อง
+    if (!preview.value || !preview.value.phase_id) {
+        error.value = 'กรุณารอระบบคำนวณราคาก่อน (Please wait for price calculation)';
+        await calculatePreview();
+        return;
+    }
+
+    // ตรวจสอบว่า phase_id มีค่าจริง
+    if (!currentPhase.value?.id) {
+        error.value = 'No active sale phase available.';
+        return;
+    }
 
     try {
         const res = await fetch('/api/v1/token-sale/stripe/checkout', {
@@ -83,8 +97,8 @@ async function handleStripeCheckout() {
             },
             body: JSON.stringify({
                 wallet_address: walletStore.address,
-                amount_usd: preview.value?.payment_usd_value || paymentAmount.value,
-                phase_id: preview.value?.phase_id || null,
+                amount_usd: preview.value.payment_usd_value,
+                phase_id: currentPhase.value.id,
             }),
         });
         const data = await res.json();

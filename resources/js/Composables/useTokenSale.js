@@ -11,7 +11,9 @@ import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenSaleStore } from '@/Stores/tokenSaleStore';
 
 // ที่อยู่ wallet สำหรับรับเงิน Token Sale (BSC)
-const SALE_WALLET = import.meta.env.VITE_SALE_WALLET_ADDRESS || '0x0000000000000000000000000000000000000000';
+// ⚠️ ต้องตั้งค่า VITE_SALE_WALLET_ADDRESS ใน .env ก่อน deploy!
+const SALE_WALLET = import.meta.env.VITE_SALE_WALLET_ADDRESS || '';
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 // ที่อยู่ USDT contract บน BSC
 const USDT_BSC = '0x55d398326f99059fF775485246999027B3197955';
@@ -115,6 +117,11 @@ export function useTokenSale() {
     async function sendPaymentTransaction() {
         if (!walletStore.signer) throw new Error('กรุณาเชื่อมต่อ wallet ก่อน');
         if (!walletStore.isBSC) throw new Error('กรุณาสลับไปยัง BSC Network');
+
+        // ป้องกันส่งเงินไป zero address หรือ wallet ยังไม่ตั้งค่า
+        if (!SALE_WALLET || SALE_WALLET === ZERO_ADDRESS || SALE_WALLET.length !== 42) {
+            throw new Error('ระบบยังไม่พร้อมรับชำระเงิน กรุณาติดต่อทีมงาน (Sale wallet not configured)');
+        }
 
         const amount = parseFloat(paymentAmount.value);
         if (!amount || amount <= 0) throw new Error('กรุณากรอกจำนวนเงิน');

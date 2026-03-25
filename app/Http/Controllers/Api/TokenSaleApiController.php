@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\SaleTransaction;
 use App\Services\PriceFeedService;
 use App\Services\StripePaymentService;
 use App\Services\TokenSaleService;
@@ -286,7 +287,7 @@ class TokenSaleApiController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
-            'transaction_id' => ['required', 'integer', 'exists:sale_transactions,id'],
+            'transaction_id' => ['required', 'string', 'uuid'],
             'amount' => ['required', 'numeric', 'gt:0'],
         ]);
 
@@ -300,13 +301,14 @@ class TokenSaleApiController extends Controller
         $data = $validator->validated();
 
         try {
-            $tx = SaleTransaction::where('id', $data['transaction_id'])
+            // ใช้ UUID แทน integer ID เพื่อความปลอดภัย
+            $tx = SaleTransaction::where('uuid', $data['transaction_id'])
                 ->where('wallet_address', strtolower($data['wallet_address']))
                 ->where('status', 'confirmed')
                 ->firstOrFail();
 
             // คำนวณ claimable
-            $claimable = $tx->claimableAmount;
+            $claimable = $tx->claimable_amount;
             $requestedAmount = (float) $data['amount'];
 
             if ($requestedAmount > $claimable) {
@@ -330,7 +332,7 @@ class TokenSaleApiController extends Controller
                 'data' => [
                     'claimed_amount' => $requestedAmount,
                     'total_claimed' => (float) $tx->fresh()->claimed_amount,
-                    'remaining_claimable' => $tx->fresh()->claimableAmount,
+                    'remaining_claimable' => $tx->fresh()->claimable_amount,
                     'message' => 'Claim recorded. TPIX will be sent to your wallet.',
                 ],
             ]);
