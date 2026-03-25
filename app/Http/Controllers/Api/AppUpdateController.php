@@ -280,6 +280,17 @@ class AppUpdateController extends Controller
             return $this->fetchChainReleases();
         });
 
+        // ใช้เวอร์ชันที่ admin เลือก (ถ้ามี)
+        $walletVersion = SiteSetting::get('app_release', 'wallet_version');
+        $masternodeVersion = SiteSetting::get('app_release', 'masternode_version');
+
+        if ($walletVersion && $data['wallet']) {
+            $data['wallet']['admin_version'] = $walletVersion;
+        }
+        if ($masternodeVersion && $data['masternode']) {
+            $data['masternode']['admin_version'] = $masternodeVersion;
+        }
+
         return response()->json([
             'success' => true,
             'data' => $data,

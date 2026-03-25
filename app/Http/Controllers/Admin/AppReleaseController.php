@@ -31,6 +31,16 @@ class AppReleaseController extends Controller
             'error' => $result['error'],
             'hasToken' => ! empty(config('services.github.token')),
             'activeTag' => SiteSetting::get('app_release', 'active_tag'),
+            'activeTags' => [
+                'trade' => SiteSetting::get('app_release', 'active_tag'),
+                'wallet' => SiteSetting::get('app_release', 'wallet_active_tag'),
+                'masternode' => SiteSetting::get('app_release', 'masternode_active_tag'),
+            ],
+            'activeVersions' => [
+                'trade' => SiteSetting::get('app_release', 'version'),
+                'wallet' => SiteSetting::get('app_release', 'wallet_version'),
+                'masternode' => SiteSetting::get('app_release', 'masternode_version'),
+            ],
         ]);
     }
 
@@ -74,13 +84,30 @@ class AppReleaseController extends Controller
             return back()->with('error', 'Release not found or has no downloadable assets.');
         }
 
-        // บันทึกลง SiteSetting
-        SiteSetting::set('app_release', 'active_tag', $tag);
-        SiteSetting::set('app_release', 'version', $release['version']);
-        SiteSetting::set('app_release', 'name', $release['name']);
-        SiteSetting::set('app_release', 'notes', $release['notes']);
-        SiteSetting::set('app_release', 'published_at', $release['published_at']);
-        SiteSetting::set('app_release', 'apk_size', (string) $release['apk_size']);
+        // บันทึกแยกตาม type — ให้เวอร์ชันแต่ละแอปเป็นอิสระ
+        $type = $release['type'] ?? 'web';
+
+        if ($release['source'] === 'trade' && $release['has_apk']) {
+            // TPIX TRADE APK
+            SiteSetting::set('app_release', 'active_tag', $tag);
+            SiteSetting::set('app_release', 'version', $release['version']);
+            SiteSetting::set('app_release', 'name', $release['name']);
+            SiteSetting::set('app_release', 'notes', $release['notes']);
+            SiteSetting::set('app_release', 'published_at', $release['published_at']);
+            SiteSetting::set('app_release', 'apk_size', (string) $release['apk_size']);
+        }
+
+        if ($release['has_wallet_apk'] || $type === 'wallet') {
+            // TPIX Wallet APK
+            SiteSetting::set('app_release', 'wallet_active_tag', $tag);
+            SiteSetting::set('app_release', 'wallet_version', $release['version']);
+        }
+
+        if ($release['has_exe'] || $type === 'desktop') {
+            // Master Node EXE
+            SiteSetting::set('app_release', 'masternode_active_tag', $tag);
+            SiteSetting::set('app_release', 'masternode_version', $release['version']);
+        }
 
         // ล้าง cache ทั้งหมดเพื่อให้หน้า Download อัปเดตทันที
         Cache::forget('app_update_android');

@@ -15,7 +15,17 @@ const props = defineProps({
     error: { type: String, default: null },
     hasToken: { type: Boolean, default: false },
     activeTag: { type: String, default: null },
+    activeTags: { type: Object, default: () => ({}) },
+    activeVersions: { type: Object, default: () => ({}) },
 });
+
+// เช็คว่า release นี้เป็น active ของ type ไหน
+const isActiveRelease = (release) => {
+    if (release.tag === props.activeTags?.trade && release.source === 'trade' && release.has_apk) return 'TPIX TRADE';
+    if (release.tag === props.activeTags?.wallet && (release.has_wallet_apk || release.type === 'wallet')) return 'Wallet';
+    if (release.tag === props.activeTags?.masternode && (release.has_exe || release.type === 'desktop')) return 'Master Node';
+    return null;
+};
 
 // Filter & Pagination
 const filter = ref('all');
@@ -135,13 +145,30 @@ const typeBadge = (release) => {
                 </div>
             </div>
 
-            <!-- Active Release Banner -->
-            <div v-if="activeTag" class="p-4 rounded-xl bg-trading-green/10 border border-trading-green/20">
-                <div class="flex items-center gap-3">
+            <!-- Active Versions Banner -->
+            <div class="p-4 rounded-xl bg-trading-green/10 border border-trading-green/20">
+                <div class="flex items-center gap-2 mb-2">
                     <svg class="w-5 h-5 text-trading-green flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                     </svg>
-                    <p class="text-trading-green text-sm">Active release for download &amp; in-app update: <strong class="text-white">{{ activeTag }}</strong></p>
+                    <span class="text-trading-green text-sm font-semibold">Active Versions for Download Page</span>
+                </div>
+                <div class="flex flex-wrap gap-3 ml-7">
+                    <div class="flex items-center gap-1.5">
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400">TPIX TRADE</span>
+                        <span class="text-white text-xs font-mono">{{ activeTags?.trade || '—' }}</span>
+                        <span v-if="activeVersions?.trade" class="text-dark-500 text-xs">(v{{ activeVersions.trade }})</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-400">Wallet</span>
+                        <span class="text-white text-xs font-mono">{{ activeTags?.wallet || '—' }}</span>
+                        <span v-if="activeVersions?.wallet" class="text-dark-500 text-xs">(v{{ activeVersions.wallet }})</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400">Master Node</span>
+                        <span class="text-white text-xs font-mono">{{ activeTags?.masternode || '—' }}</span>
+                        <span v-if="activeVersions?.masternode" class="text-dark-500 text-xs">(v{{ activeVersions.masternode }})</span>
+                    </div>
                 </div>
             </div>
 
@@ -153,10 +180,10 @@ const typeBadge = (release) => {
                 </h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                     <div v-for="r in latestDownloadable" :key="r.id"
-                        :class="['p-3 rounded-xl border transition-all', r.tag === activeTag ? 'bg-trading-green/10 border-trading-green/30' : 'bg-white/5 border-white/5 hover:border-white/20']">
+                        :class="['p-3 rounded-xl border transition-all', isActiveRelease(r) ? 'bg-trading-green/10 border-trading-green/30' : 'bg-white/5 border-white/5 hover:border-white/20']">
                         <div class="flex items-center gap-2 mb-2">
                             <span :class="['px-1.5 py-0.5 rounded text-[10px] font-bold', typeBadge(r).color]">{{ typeBadge(r).label }}</span>
-                            <span v-if="r.tag === activeTag" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-trading-green/20 text-trading-green">Active</span>
+                            <span v-if="isActiveRelease(r)" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-trading-green/20 text-trading-green">Active: {{ isActiveRelease(r) }}</span>
                         </div>
                         <p class="text-white font-semibold text-sm">{{ r.name }}</p>
                         <p class="text-dark-500 text-xs font-mono">{{ r.tag }}</p>
@@ -254,14 +281,14 @@ const typeBadge = (release) => {
                     </thead>
                     <tbody class="divide-y divide-white/5">
                         <tr v-for="release in paginatedReleases" :key="release.id"
-                            :class="['hover:bg-white/2 transition-colors', release.tag === activeTag ? 'bg-trading-green/5 border-l-2 border-trading-green' : '']">
+                            :class="['hover:bg-white/2 transition-colors', isActiveRelease(release) ? 'bg-trading-green/5 border-l-2 border-trading-green' : '']">
                             <td class="px-6 py-4">
                                 <div class="flex items-center gap-2">
                                     <div>
                                         <p class="text-white font-medium">{{ release.name }}</p>
                                         <p class="text-dark-500 text-xs font-mono mt-0.5">{{ release.tag }}</p>
                                     </div>
-                                    <span v-if="release.tag === activeTag" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-trading-green/20 text-trading-green">
+                                    <span v-if="isActiveRelease(release)" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-trading-green/20 text-trading-green">
                                         Active
                                     </span>
                                 </div>
@@ -304,7 +331,7 @@ const typeBadge = (release) => {
                                     </svg>
                                     Set Active
                                 </button>
-                                <span v-else-if="release.tag === activeTag" class="text-trading-green text-xs font-medium">Active</span>
+                                <span v-else-if="isActiveRelease(release)" class="text-trading-green text-xs font-medium">Active</span>
                                 <span v-else class="text-dark-600 text-xs">No APK</span>
                             </td>
                         </tr>
