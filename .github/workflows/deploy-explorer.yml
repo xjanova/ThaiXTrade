@@ -229,7 +229,7 @@ jobs:
             # === Step 5: Start ALL services ===
             echo "[5] Starting TPIX Chain + Blockscout..."
             cd "$INFRA"
-            docker compose up -d
+            docker compose up -d --force-recreate
             echo "Waiting 20s for chain to start sealing..."
             sleep 20
 
