@@ -30,8 +30,8 @@ type IoniconsName = ComponentProps<typeof Ionicons>['name'];
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { contentWidth, favoriteCardWidth, isWeb } = useResponsiveLayout();
-  const { pairs, favorites, setSelectedPair, loadMockData: loadMarket } = useMarketStore();
-  const { totalValue, totalChangePercent, loadMockData: loadPortfolio } = usePortfolioStore();
+  const { pairs, favorites, setSelectedPair, fetchRealData: loadMarket } = useMarketStore();
+  const { totalValue, totalChangePercent, fetchRealPortfolio: loadPortfolio } = usePortfolioStore();
   const [refreshing, setRefreshing] = useState(false);
   const [balanceHidden, setBalanceHidden] = useState(false);
 

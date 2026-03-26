@@ -1,4 +1,9 @@
-import { useState, useMemo, useCallback } from 'react';
+/**
+ * Trade Screen — ใช้ข้อมูลจริงจาก Binance API
+ * Chart, Order Book, Recent Trades ดึงจาก REST API
+ */
+
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,12 +13,12 @@ import {
   Alert,
   Platform,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Rect } from 'react-native-svg';
-import * as Haptics from 'expo-haptics';
 import { colors, spacing, typography } from '@/theme';
 import GlassCard from '@/components/common/GlassCard';
 import OrderBookMobile from '@/components/trading/OrderBookMobile';
@@ -22,33 +27,110 @@ import PairHeader from '@/components/trading/PairHeader';
 import { formatPrice } from '@/utils/formatters';
 import { useResponsiveLayout } from '@/utils/responsive';
 import { useMarketStore } from '@/stores/marketStore';
+import { useWalletStore } from '@/stores/walletStore';
+import { playTradeSound, playErrorSound, playClickSound } from '@/utils/sounds';
+import api from '@/services/api';
 
+const BINANCE_REST = 'https://api.binance.com/api/v3';
 const CHART_HEIGHT = 220;
 
-function generatePriceData(base: number, length: number = 60): number[] {
-  const data: number[] = [];
-  let price = base;
-  const volatility = base * 0.003;
-  for (let i = 0; i < length; i++) {
-    price += (Math.random() - 0.48) * volatility;
-    price = Math.max(price, base * 0.97);
-    price = Math.min(price, base * 1.03);
-    data.push(price);
-  }
-  return data;
+// --- Binance data fetchers ---
+
+interface OrderBookEntry {
+  price: number;
+  amount: number;
+  total: number;
 }
 
-function generateMockTrades(basePrice: number, count: number = 15) {
-  return Array.from({ length: count }).map((_, i) => {
-    const isBuy = Math.random() > 0.45;
-    const price = basePrice + (Math.random() - 0.5) * (basePrice * 0.001);
-    const amount = (Math.random() * 2).toFixed(4);
-    const mins = Math.floor(Math.random() * 60);
-    return { id: i, isBuy, price, amount, mins };
-  });
+interface BinanceTrade {
+  id: number;
+  isBuy: boolean;
+  price: number;
+  amount: string;
+  time: number;
 }
+
+async function fetchOrderBook(symbol: string): Promise<{
+  asks: OrderBookEntry[];
+  bids: OrderBookEntry[];
+  spread: number;
+  spreadPercent: number;
+}> {
+  const binanceSymbol = symbol.replace('/', '');
+  const res = await fetch(`${BINANCE_REST}/depth?symbol=${binanceSymbol}&limit=10`, {
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error(`Binance depth error: ${res.status}`);
+  const data: { bids: [string, string][]; asks: [string, string][] } = await res.json();
+
+  let askTotal = 0;
+  const asks: OrderBookEntry[] = data.asks.slice(0, 8).map(([p, q]) => {
+    const price = parseFloat(p);
+    const amount = parseFloat(q);
+    askTotal += amount;
+    return { price, amount, total: askTotal };
+  });
+
+  let bidTotal = 0;
+  const bids: OrderBookEntry[] = data.bids.slice(0, 8).map(([p, q]) => {
+    const price = parseFloat(p);
+    const amount = parseFloat(q);
+    bidTotal += amount;
+    return { price, amount, total: bidTotal };
+  });
+
+  const spread = asks.length > 0 && bids.length > 0 ? asks[0].price - bids[0].price : 0;
+  const midPrice = bids.length > 0 ? bids[0].price : 1;
+  const spreadPercent = (spread / midPrice) * 100;
+
+  return { asks, bids, spread, spreadPercent };
+}
+
+async function fetchRecentTrades(symbol: string): Promise<BinanceTrade[]> {
+  const binanceSymbol = symbol.replace('/', '');
+  const res = await fetch(`${BINANCE_REST}/trades?symbol=${binanceSymbol}&limit=15`, {
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error(`Binance trades error: ${res.status}`);
+  const data: Array<{
+    id: number;
+    price: string;
+    qty: string;
+    time: number;
+    isBuyerMaker: boolean;
+  }> = await res.json();
+
+  return data.map((t) => ({
+    id: t.id,
+    isBuy: !t.isBuyerMaker,
+    price: parseFloat(t.price),
+    amount: parseFloat(t.qty).toFixed(4),
+    time: t.time,
+  }));
+}
+
+async function fetchKlines(symbol: string, interval: string, limit = 60): Promise<number[]> {
+  const binanceSymbol = symbol.replace('/', '');
+  const res = await fetch(
+    `${BINANCE_REST}/klines?symbol=${binanceSymbol}&interval=${interval}&limit=${limit}`,
+    { signal: AbortSignal.timeout(10000) },
+  );
+  if (!res.ok) throw new Error(`Binance klines error: ${res.status}`);
+  const data: Array<[number, string, string, string, string, ...unknown[]]> = await res.json();
+  return data.map((k) => parseFloat(k[4])); // close prices
+}
+
+// --- Chart Component ---
 
 function PriceChart({ data, chartWidth }: { data: number[]; chartWidth: number }) {
+  if (data.length < 2) {
+    return (
+      <View style={{ height: CHART_HEIGHT, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={colors.brand.cyan} />
+      </View>
+    );
+  }
+
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
@@ -95,59 +177,200 @@ function PriceChart({ data, chartWidth }: { data: number[]; chartWidth: number }
 
 type TabType = 'chart' | 'orderbook' | 'trades';
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
-const timeframes = ['1m', '5m', '15m', '1H', '4H', '1D', '1W'];
 
-// Default pair when none selected / คู่เทรดเริ่มต้นเมื่อยังไม่ได้เลือก
+// Binance interval mapping
+const TIMEFRAME_MAP: Record<string, string> = {
+  '1m': '1m',
+  '5m': '5m',
+  '15m': '15m',
+  '1H': '1h',
+  '4H': '4h',
+  '1D': '1d',
+  '1W': '1w',
+};
+const timeframes = Object.keys(TIMEFRAME_MAP);
+
+// Default pair when none selected
 const DEFAULT_PAIR = {
   symbol: 'BTC/USDT',
   name: 'Bitcoin',
-  price: 98432.50,
-  change24h: 2.34,
-  high24h: 99100.00,
-  low24h: 95800.00,
-  volume24h: '2.1B',
+  price: 0,
+  change24h: 0,
+  high24h: 0,
+  low24h: 0,
+  volume24h: '...',
 };
 
 export default function TradeScreen() {
   const insets = useSafeAreaInsets();
   const { chartWidth } = useResponsiveLayout();
   const selectedPair = useMarketStore((s) => s.selectedPair);
+  const fetchRealData = useMarketStore((s) => s.fetchRealData);
+  const wallet = useWalletStore((s) => s.wallet);
   const [activeTab, setActiveTab] = useState<TabType>('chart');
   const [activeTimeframe, setActiveTimeframe] = useState('1H');
   const [refreshing, setRefreshing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Use selected pair or default / ใช้คู่ที่เลือกหรือค่าเริ่มต้น
+  // Real data state
+  const [chartData, setChartData] = useState<number[]>([]);
+  const [orderBook, setOrderBook] = useState<{
+    asks: OrderBookEntry[];
+    bids: OrderBookEntry[];
+    spread: number;
+    spreadPercent: number;
+  } | null>(null);
+  const [trades, setTrades] = useState<BinanceTrade[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
+
   const pair = selectedPair || DEFAULT_PAIR;
+  const mountedRef = useRef(true);
 
-  const [priceData] = useState(() => generatePriceData(pair.price, 60));
-  const mockTrades = useMemo(() => generateMockTrades(pair.price, 15), [pair.symbol]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // ดึงข้อมูล chart เมื่อเปลี่ยน pair หรือ timeframe
+  useEffect(() => {
+    let cancelled = false;
+    setDataLoading(true);
+
+    async function loadChartData() {
+      try {
+        const interval = TIMEFRAME_MAP[activeTimeframe] || '1h';
+        const data = await fetchKlines(pair.symbol, interval);
+        if (!cancelled && mountedRef.current) {
+          setChartData(data);
+        }
+      } catch {
+        // ใช้ chartData จาก market store เป็น fallback
+        if (!cancelled && mountedRef.current && selectedPair?.chartData) {
+          setChartData(selectedPair.chartData);
+        }
+      } finally {
+        if (!cancelled && mountedRef.current) {
+          setDataLoading(false);
+        }
+      }
+    }
+
+    loadChartData();
+    return () => { cancelled = true; };
+  }, [pair.symbol, activeTimeframe]);
+
+  // ดึง order book + trades เมื่อเปลี่ยน pair
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMarketData() {
+      try {
+        const [ob, tr] = await Promise.all([
+          fetchOrderBook(pair.symbol),
+          fetchRecentTrades(pair.symbol),
+        ]);
+        if (!cancelled && mountedRef.current) {
+          setOrderBook(ob);
+          setTrades(tr);
+        }
+      } catch {
+        // ปล่อยให้ component ใช้ mock data
+      }
+    }
+
+    loadMarketData();
+
+    // Auto-refresh ทุก 5 วินาที
+    const interval = setInterval(loadMarketData, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [pair.symbol]);
+
+  // Fetch market data on mount
+  useEffect(() => {
+    fetchRealData();
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    playClickSound();
+    try {
+      await fetchRealData();
+      const [ob, tr, kl] = await Promise.all([
+        fetchOrderBook(pair.symbol),
+        fetchRecentTrades(pair.symbol),
+        fetchKlines(pair.symbol, TIMEFRAME_MAP[activeTimeframe] || '1h'),
+      ]);
+      if (mountedRef.current) {
+        setOrderBook(ob);
+        setTrades(tr);
+        setChartData(kl);
+      }
+    } catch {
+      // silent
+    } finally {
+      if (mountedRef.current) setRefreshing(false);
     }
-    await new Promise((r) => setTimeout(r, 600));
-    setRefreshing(false);
-  }, []);
+  }, [pair.symbol, activeTimeframe, fetchRealData]);
 
-  const handleOrderSubmit = useCallback((order: {
+  const handleOrderSubmit = useCallback(async (order: {
     side: 'buy' | 'sell';
     type: 'limit' | 'market';
     price: number | null;
     amount: number;
     total: number;
   }) => {
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (isSubmitting) return;
+
+    // ตรวจสอบว่าเชื่อมต่อ wallet แล้วหรือยัง
+    if (!wallet) {
+      playErrorSound();
+      Alert.alert(
+        'Wallet Required',
+        'Please connect your wallet before placing orders.',
+        [{ text: 'OK' }],
+      );
+      return;
     }
+
+    setIsSubmitting(true);
     const baseSymbol = pair.symbol.split('/')[0];
-    Alert.alert(
-      'Order Placed',
-      `${order.side === 'buy' ? 'Buy' : 'Sell'} ${order.amount} ${baseSymbol}\n${order.type === 'market' ? 'Market Order' : `Limit @ $${formatPrice(order.price!)}`}\nTotal: $${order.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      [{ text: 'OK', style: 'default' }],
-    );
-  }, [pair.symbol]);
+
+    try {
+      // ส่ง order จริงไปที่ backend
+      await api.createOrder({
+        pair: pair.symbol,
+        side: order.side,
+        type: order.type,
+        price: order.price ?? undefined,
+        amount: order.amount,
+      });
+
+      playTradeSound();
+      Alert.alert(
+        'Order Placed',
+        `${order.side === 'buy' ? 'Buy' : 'Sell'} ${order.amount} ${baseSymbol}\n` +
+        `${order.type === 'market' ? 'Market Order' : `Limit @ $${formatPrice(order.price!)}`}\n` +
+        `Total: $${order.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        [{ text: 'OK' }],
+      );
+    } catch (err) {
+      playErrorSound();
+      const message = err instanceof Error ? err.message : 'Order failed';
+      Alert.alert('Order Failed', message, [{ text: 'OK' }]);
+    } finally {
+      if (mountedRef.current) setIsSubmitting(false);
+    }
+  }, [pair.symbol, wallet, isSubmitting]);
+
+  const formatTradeTime = useCallback((timestamp: number) => {
+    const diff = Math.floor((Date.now() - timestamp) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    return `${Math.floor(diff / 3600)}h ago`;
+  }, []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -184,7 +407,10 @@ export default function TradeScreen() {
             <Pressable
               key={tab.key}
               style={[styles.tab, activeTab === tab.key && styles.tabActive]}
-              onPress={() => setActiveTab(tab.key)}
+              onPress={() => {
+                playClickSound();
+                setActiveTab(tab.key);
+              }}
             >
               <Ionicons
                 name={tab.icon}
@@ -218,7 +444,10 @@ export default function TradeScreen() {
                     styles.timeframeBtn,
                     activeTimeframe === tf && styles.timeframeBtnActive,
                   ]}
-                  onPress={() => setActiveTimeframe(tf)}
+                  onPress={() => {
+                    playClickSound();
+                    setActiveTimeframe(tf);
+                  }}
                 >
                   <Text
                     style={[
@@ -233,15 +462,29 @@ export default function TradeScreen() {
             </ScrollView>
 
             <GlassCard style={styles.chartCard}>
-              <PriceChart data={priceData} chartWidth={chartWidth} />
+              {dataLoading ? (
+                <View style={{ height: CHART_HEIGHT, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator color={colors.brand.cyan} />
+                  <Text style={[styles.tabText, { marginTop: 8 }]}>Loading chart...</Text>
+                </View>
+              ) : (
+                <PriceChart data={chartData} chartWidth={chartWidth} />
+              )}
             </GlassCard>
           </View>
         )}
 
-        {/* Order Book View */}
-        {activeTab === 'orderbook' && <OrderBookMobile />}
+        {/* Order Book View — ใช้ข้อมูลจริงจาก Binance */}
+        {activeTab === 'orderbook' && (
+          <OrderBookMobile
+            asks={orderBook?.asks}
+            bids={orderBook?.bids}
+            spread={orderBook?.spread}
+            spreadPercent={orderBook?.spreadPercent}
+          />
+        )}
 
-        {/* Recent Trades */}
+        {/* Recent Trades — ใช้ข้อมูลจริงจาก Binance */}
         {activeTab === 'trades' && (
           <GlassCard style={styles.tradesCard}>
             <View style={styles.tradesHeader}>
@@ -249,20 +492,27 @@ export default function TradeScreen() {
               <Text style={[styles.colLabel, { flex: 1, textAlign: 'center' }]}>Amount</Text>
               <Text style={[styles.colLabel, { flex: 1, textAlign: 'right' }]}>Time</Text>
             </View>
-            {mockTrades.map((trade) => (
-              <View key={trade.id} style={styles.tradeRow}>
-                <Text
-                  style={[
-                    styles.tradePrice,
-                    { color: trade.isBuy ? colors.trading.green : colors.trading.red },
-                  ]}
-                >
-                  {formatPrice(trade.price)}
-                </Text>
-                <Text style={styles.tradeAmount}>{trade.amount}</Text>
-                <Text style={styles.tradeTime}>{trade.mins}m ago</Text>
+            {trades.length > 0 ? (
+              trades.map((trade) => (
+                <View key={trade.id} style={styles.tradeRow}>
+                  <Text
+                    style={[
+                      styles.tradePrice,
+                      { color: trade.isBuy ? colors.trading.green : colors.trading.red },
+                    ]}
+                  >
+                    {formatPrice(trade.price)}
+                  </Text>
+                  <Text style={styles.tradeAmount}>{trade.amount}</Text>
+                  <Text style={styles.tradeTime}>{formatTradeTime(trade.time)}</Text>
+                </View>
+              ))
+            ) : (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <ActivityIndicator color={colors.brand.cyan} />
+                <Text style={[styles.tabText, { marginTop: 8 }]}>Loading trades...</Text>
               </View>
-            ))}
+            )}
           </GlassCard>
         )}
 
@@ -271,6 +521,7 @@ export default function TradeScreen() {
           symbol={pair.symbol}
           currentPrice={pair.price}
           onSubmitOrder={handleOrderSubmit}
+          isSubmitting={isSubmitting}
         />
 
         <View style={{ height: 120 }} />

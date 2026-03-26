@@ -68,14 +68,14 @@ export default function PortfolioScreen() {
   const insets = useSafeAreaInsets();
   const { allocationChartSize } = useResponsiveLayout();
   const chartSize = allocationChartSize;
-  const { assets, totalValue, totalChange24h, totalChangePercent, loadMockData } = usePortfolioStore();
+  const { assets, totalValue, totalChange24h, totalChangePercent, fetchRealPortfolio } = usePortfolioStore();
   const [activeTab, setActiveTab] = useState<TabType>('assets');
   const [refreshing, setRefreshing] = useState(false);
   const [balanceHidden, setBalanceHidden] = useState(false);
 
   useEffect(() => {
-    loadMockData();
-  }, [loadMockData]);
+    fetchRealPortfolio();
+  }, [fetchRealPortfolio]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -83,9 +83,9 @@ export default function PortfolioScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     await new Promise((r) => setTimeout(r, 800));
-    loadMockData();
+    fetchRealPortfolio();
     setRefreshing(false);
-  }, [loadMockData]);
+  }, [fetchRealPortfolio]);
 
   const allocationData = assets.map((a) => ({
     symbol: a.symbol,

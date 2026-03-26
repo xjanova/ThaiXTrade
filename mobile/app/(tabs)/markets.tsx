@@ -36,14 +36,14 @@ type FilterTab = 'all' | 'favorites' | 'gainers' | 'losers';
 
 export default function MarketsScreen() {
   const insets = useSafeAreaInsets();
-  const { pairs, favorites, searchQuery, setSearchQuery, setSelectedPair, toggleFavorite, loadMockData } = useMarketStore();
+  const { pairs, favorites, searchQuery, setSearchQuery, setSelectedPair, toggleFavorite, fetchRealData } = useMarketStore();
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [sortBy, setSortBy] = useState<SortBy>('volume');
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    loadMockData();
-  }, [loadMockData]);
+    fetchRealData();
+  }, [fetchRealData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -51,9 +51,9 @@ export default function MarketsScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     await new Promise((r) => setTimeout(r, 800));
-    loadMockData();
+    fetchRealData();
     setRefreshing(false);
-  }, [loadMockData]);
+  }, [fetchRealData]);
 
   const handleToggleFavorite = useCallback((symbol: string) => {
     if (Platform.OS !== 'web') {

@@ -1,6 +1,6 @@
 /**
- * Wallet Store - State management for wallet connections
- * จัดการสถานะกระเป๋าเงิน
+ * Wallet Store — จัดการเชื่อมต่อกระเป๋าเงินจริง
+ * มี timeout, retry, backend registration, sound effects
  */
 
 import { create } from 'zustand';
@@ -11,6 +11,10 @@ import {
   openWalletApp,
   shortenAddress,
 } from '@/services/walletService';
+import api from '@/services/api';
+import { playConnectSound, playDisconnectSound, playErrorSound } from '@/utils/sounds';
+
+const CONNECT_TIMEOUT_MS = 30_000;
 
 export interface ConnectedWallet {
   address: string;
@@ -57,7 +61,6 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
   detectWallets: async () => {
     // Throttle: skip if detected within 10 seconds
-    // จำกัดความถี่: ข้ามถ้าตรวจจับไปแล้วภายใน 10 วินาที
     const now = Date.now();
     const { lastDetectedAt } = get();
     if (lastDetectedAt && now - lastDetectedAt < 10_000) return;
@@ -67,8 +70,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       const results = await detectInstalledWallets();
       set({ detectedWallets: results, lastDetectedAt: now });
     } catch {
-      // Silent fail - keep previous results
-      // ล้มเหลวเงียบ - เก็บผลลัพธ์เดิมไว้
+      // Silent fail — เก็บผลลัพธ์เดิมไว้
     } finally {
       set({ isDetecting: false });
     }
@@ -76,24 +78,44 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
   connectWallet: async (provider: WalletProvider) => {
     set({ isConnecting: true, connectError: null });
+
+    // สร้าง timeout เพื่อป้องกันการค้าง
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Connection timeout — please try again')), CONNECT_TIMEOUT_MS);
+    });
+
     try {
-      const opened = await openWalletApp(provider);
+      const openPromise = openWalletApp(provider);
+      const opened = await Promise.race([openPromise, timeoutPromise]);
+
       if (!opened) {
+        playErrorSound();
         set({
-          connectError: `Cannot open ${provider.name}. Please install it first. / ไม่สามารถเปิด ${provider.name} ได้ กรุณาติดตั้งก่อน`,
+          connectError: `Cannot open ${provider.name}. Please install it first.`,
           isConnecting: false,
         });
         return false;
       }
 
-      // In a real implementation, we'd wait for the callback
-      // ในการใช้งานจริง เราจะรอ callback จากกระเป๋าเงิน
-      // For now, set a pending state
-      set({ isConnecting: false });
+      // เปิด wallet app สำเร็จ — รอ deep link callback
+      // isConnecting จะยังเป็น true จนกว่า handleWalletCallback จะถูกเรียก
+      // แต่ตั้ง timeout ไว้ป้องกันค้าง
+      setTimeout(() => {
+        const state = get();
+        if (state.isConnecting) {
+          set({
+            isConnecting: false,
+            connectError: 'Connection timed out. Please try again.',
+          });
+        }
+      }, CONNECT_TIMEOUT_MS);
+
       return true;
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Connection failed';
+      playErrorSound();
       set({
-        connectError: 'Connection failed / การเชื่อมต่อล้มเหลว',
+        connectError: message,
         isConnecting: false,
       });
       return false;
@@ -101,21 +123,22 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   disconnectWallet: () => {
+    playDisconnectSound();
     set({
       wallet: null,
       connectError: null,
     });
+    // Clear API token เมื่อ disconnect
+    api.clearToken();
   },
 
   showModal: () => {
     set({ isModalVisible: true });
-    // Trigger detection when opening modal
-    // ตรวจจับเมื่อเปิด modal
     get().detectWallets();
   },
 
   hideModal: () => {
-    set({ isModalVisible: false, connectError: null });
+    set({ isModalVisible: false, connectError: null, isConnecting: false });
   },
 
   clearError: () => {
@@ -125,14 +148,9 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
 /**
  * Handle deep link callback from wallet app
- * จัดการ deep link callback จากแอปกระเป๋าเงิน
- *
- * Call this when the app receives a tpixtrade:// deep link
- * เรียกใช้เมื่อแอปได้รับ deep link tpixtrade://
+ * เรียกใช้เมื่อแอปได้รับ deep link tpixtrade://wallet/connect?address=...
  */
-export function handleWalletCallback(url: string): void {
-  // Parse the callback URL
-  // แยก URL callback
+export async function handleWalletCallback(url: string): Promise<void> {
   try {
     const parsed = new URL(url);
     const path = parsed.pathname || parsed.hostname;
@@ -143,6 +161,20 @@ export function handleWalletCallback(url: string): void {
       const provider = parsed.searchParams.get('provider') || 'unknown';
 
       if (address) {
+        // ลงทะเบียนกับ backend
+        try {
+          const response = await api.request<{ token?: string }>('/wallet/register', {
+            method: 'POST',
+            body: JSON.stringify({ address, chain, provider }),
+          });
+          if (response && typeof response === 'object' && 'token' in response) {
+            api.setToken((response as any).token);
+          }
+        } catch {
+          // ลงทะเบียนล้มเหลว — ยังคงเชื่อมต่อได้แต่อาจไม่สามารถ trade ได้
+        }
+
+        playConnectSound();
         useWalletStore.setState({
           wallet: {
             address,
@@ -154,6 +186,7 @@ export function handleWalletCallback(url: string): void {
           },
           isConnecting: false,
           isModalVisible: false,
+          connectError: null,
         });
       }
     }

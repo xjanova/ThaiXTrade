@@ -1,26 +1,50 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet, Platform, Linking } from 'react-native';
+import { StyleSheet, Platform, Linking, Animated, View, Text, Image } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { colors } from '@/theme';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import UpdateModal from '@/components/common/UpdateModal';
 import { useUpdateStore } from '@/stores/updateStore';
 import { handleWalletCallback } from '@/stores/walletStore';
+import { playSplashSound } from '@/utils/sounds';
 
 // Prevent splash screen from hiding until we're ready
-// ป้องกันไม่ให้ splash screen หายไปจนกว่าจะพร้อม
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const checkUpdate = useUpdateStore((s) => s.checkUpdate);
+  const [showAnimatedSplash, setShowAnimatedSplash] = useState(true);
+  const [fadeAnim] = useState(() => new Animated.Value(1));
+  const [scaleAnim] = useState(() => new Animated.Value(0.8));
 
   const onLayoutRootView = useCallback(async () => {
-    // Hide splash screen after layout is ready
-    // ซ่อน splash screen หลังจาก layout พร้อมแล้ว
+    // ซ่อน native splash ทันที แล้วแสดง animated splash แทน
     await SplashScreen.hideAsync();
+
+    // เล่นเสียง splash
+    playSplashSound();
+
+    // Animate: scale up logo
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 6,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+
+    // Fade out animated splash หลัง 2 วินาที
+    setTimeout(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }).start(() => {
+        setShowAnimatedSplash(false);
+      });
+    }, 2000);
   }, []);
 
   // Check for updates on app start / ตรวจสอบอัปเดตตอนเปิดแอป
@@ -72,9 +96,29 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         </Stack>
 
-        {/* Update Modal - shows when new version available */}
-        {/* Modal อัปเดต - แสดงเมื่อมีเวอร์ชันใหม่ */}
+        {/* Update Modal — แสดงเมื่อมีเวอร์ชันใหม่ */}
         <UpdateModal />
+
+        {/* Animated Splash Screen Overlay */}
+        {showAnimatedSplash && (
+          <Animated.View
+            style={[
+              styles.splashOverlay,
+              { opacity: fadeAnim },
+            ]}
+            pointerEvents="none"
+          >
+            <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
+              <Image
+                source={require('../assets/images/icon.png')}
+                style={styles.splashIcon}
+                resizeMode="contain"
+              />
+              <Text style={styles.splashTitle}>TPIX TRADE</Text>
+              <Text style={styles.splashSubtitle}>Decentralized Exchange</Text>
+            </Animated.View>
+          </Animated.View>
+        )}
       </GestureHandlerRootView>
     </ErrorBoundary>
   );
@@ -90,5 +134,29 @@ const styles = StyleSheet.create({
     minHeight: '100vh',
     // @ts-ignore
     overflow: 'auto',
+  },
+  splashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.bg.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+  splashIcon: {
+    width: 100,
+    height: 100,
+    marginBottom: 16,
+  },
+  splashTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: 2,
+  },
+  splashSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 4,
+    letterSpacing: 1,
   },
 });

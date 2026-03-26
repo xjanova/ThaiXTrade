@@ -16,6 +16,7 @@ type OrderType = 'limit' | 'market';
 interface TradeFormMobileProps {
   symbol?: string;
   currentPrice?: number;
+  isSubmitting?: boolean;
   onSubmitOrder?: (order: {
     side: TradeSide;
     type: OrderType;
@@ -35,8 +36,8 @@ const MOCK_BALANCE = {
 
 export default function TradeFormMobile({
   symbol = 'BTC/USDT',
-  // Use consistent BTC price / ใช้ราคา BTC ที่สอดคล้องกัน
-  currentPrice = 98_432.50,
+  currentPrice = 0,
+  isSubmitting = false,
   onSubmitOrder,
 }: TradeFormMobileProps) {
   const [side, setSide] = useState<TradeSide>('buy');
@@ -258,12 +259,12 @@ export default function TradeFormMobile({
 
         {/* Submit Button */}
         <GradientButton
-          title={`${isBuy ? 'Buy' : 'Sell'} ${baseSymbol}`}
+          title={isSubmitting ? 'Placing Order...' : `${isBuy ? 'Buy' : 'Sell'} ${baseSymbol}`}
           onPress={handleSubmit}
           variant={isBuy ? 'buy' : 'sell'}
           size="lg"
           fullWidth
-          disabled={!canSubmit}
+          disabled={!canSubmit || isSubmitting}
           style={styles.submitBtn}
         />
       </View>
