@@ -138,13 +138,18 @@ export async function getChainConfig(chainId) {
  * Build EIP-3085 params for wallet_addEthereumChain from a backend chain config.
  */
 export function buildAddChainParams(chain) {
-    const rawRpc = Array.isArray(chain.rpc) ? chain.rpc : [chain.rpc];
+    // Support both `rpc` (backend) and `rpcUrls` (frontend config) field names
+    const raw = chain.rpcUrls || chain.rpc || [];
+    const rawRpc = Array.isArray(raw) ? raw : [raw];
     // MetaMask requires valid HTTPS URLs only — filter out null/http
-    const rpcUrls = rawRpc.filter(url => typeof url === 'string' && url.startsWith('https://'));
+    let rpcUrls = rawRpc.filter(url => typeof url === 'string' && url.startsWith('https://'));
+    // Fallback: use known RPC for common chains
     if (rpcUrls.length === 0) {
-        throw new Error(`No valid HTTPS RPC URL for chain ${chain.name || chain.chainId}`);
+        if (chain.chainId === 56 || chain.chainId === '0x38') rpcUrls = ['https://bsc-dataseed1.binance.org'];
+        else if (chain.chainId === 4289 || chain.chainId === '0x10C1') rpcUrls = ['https://rpc.tpix.online'];
+        else throw new Error(`No valid HTTPS RPC URL for chain ${chain.name || chain.chainId}`);
     }
-    const explorerUrls = chain.explorer ? [chain.explorer] : [];
+    const explorerUrls = chain.blockExplorerUrls || (chain.explorer ? [chain.explorer] : []);
 
     return {
         chainId: '0x' + chain.chainId.toString(16),
@@ -212,8 +217,12 @@ export async function switchToChain(injectedProvider, targetChainId, chainConfig
             params: [{ chainId: hexChainId }],
         });
     } catch (switchError) {
-        // Chain not added yet (error code 4902)
-        if (switchError.code === 4902) {
+        // Chain not added yet — MetaMask uses 4902, some wallets use -32603 or other codes
+        const needsAdd = switchError.code === 4902
+            || switchError.code === -32603
+            || switchError?.data?.originalError?.code === 4902
+            || /unrecognized chain|wallet_addEthereumChain/i.test(switchError.message);
+        if (needsAdd) {
             // Fetch chain config if not provided
             if (!chainConfig) {
                 chainConfig = await getChainConfig(targetChainId);
