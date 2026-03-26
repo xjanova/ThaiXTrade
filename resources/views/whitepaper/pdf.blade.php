@@ -255,7 +255,7 @@
         <tbody>
             <tr><td>Public Sale (ICO)</td><td>10%</td><td>700,000,000</td><td>10-25% TGE, 6-12 month vesting</td></tr>
             <tr><td>Liquidity Pool</td><td>30%</td><td>2,100,000,000</td><td>Locked in DEX pools</td></tr>
-            <tr><td>Staking Rewards</td><td>20%</td><td>1,400,000,000</td><td>Distributed over 5 years</td></tr>
+            <tr><td>Staking Rewards</td><td>20%</td><td>1,400,000,000</td><td>Distributed over 3 years (ending 2028)</td></tr>
             <tr><td>Team & Advisors</td><td>20%</td><td>1,400,000,000</td><td>1-year cliff, 3-year linear</td></tr>
             <tr><td>Ecosystem Fund</td><td>10%</td><td>700,000,000</td><td>DAO governed</td></tr>
             <tr><td>Development</td><td>10%</td><td>700,000,000</td><td>2-year linear</td></tr>
@@ -316,7 +316,7 @@
     <p>
         TPIX holders can stake their tokens to earn rewards. APY varies based on the lock period,
         with longer locks offering higher returns. Staking rewards are sourced from the 20% allocation
-        (1.4 billion TPIX) distributed over a period of 5 years.
+        (1.4 billion TPIX) distributed over a period of 3 years (ending 2028).
     </p>
 
     <table>

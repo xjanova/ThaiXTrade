@@ -158,8 +158,8 @@
     "step2": "Choose Node Tier",
     "step3": "Stake TPIX",
     "step4": "Earn Block Rewards",
-    "rewardPool": "Reward Pool: 1.4B TPIX over 5 years",
-    "riskWarning": "Node rewards come from a fixed pool. After Year 5, rewards transition to fee-based revenue."
+    "rewardPool": "Reward Pool: 1.4B TPIX over 3 years (ending 2028)",
+    "riskWarning": "Node rewards come from a fixed pool. After Year 3 (2028), rewards transition to fee-based revenue."
   },
   "bridge": {
     "title": "Cross-Chain Bridge",

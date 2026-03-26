@@ -2,7 +2,7 @@
 /**
  * TPIX TRADE — Staking Page
  * Stake TPIX บน TPIX Chain — ได้ APY 5%-200%
- * Rewards pool: 1.4B TPIX over 5 years
+ * Rewards pool: 1.4B TPIX over 3 years (ending 2028)
  * Developed by Xman Studio
  */
 import { ref, computed, onMounted } from 'vue';
@@ -237,7 +237,7 @@ onMounted(async () => {
                         <p class="text-dark-300 text-xs">{{ s }}</p>
                     </div>
                 </div>
-                <p class="text-dark-500 text-xs mt-4 text-center">⚠️ Staking involves risk. Past returns do not guarantee future performance. Rewards pool: 1.4B TPIX over 5 years.</p>
+                <p class="text-dark-500 text-xs mt-4 text-center">⚠️ Staking involves risk. Past returns do not guarantee future performance. Rewards pool: 1.4B TPIX over 3 years (ending 2028).</p>
             </div>
         </div>
     </AppLayout>

@@ -155,29 +155,21 @@ const tiers = [
                         <div class="text-center p-6 rounded-xl bg-gradient-to-br from-yellow-500/10 to-amber-500/5 border border-yellow-500/20">
                             <div class="text-xs text-gray-500 mb-1">Remaining Rewards</div>
                             <div class="text-3xl font-black text-yellow-400">{{ fmt(stats.remaining_rewards) }} TPIX</div>
-                            <div class="text-xs text-gray-500 mt-1">1.4B total over 5 years</div>
+                            <div class="text-xs text-gray-500 mt-1">1.4B total over 3 years (ending 2028)</div>
                         </div>
 
                         <div class="space-y-2 text-sm">
                             <div class="flex justify-between text-gray-400">
-                                <span>Year 1 Pool:</span>
-                                <span class="text-white">400,000,000 TPIX</span>
+                                <span>Year 1 (2025-2026):</span>
+                                <span class="text-white">600,000,000 TPIX</span>
                             </div>
                             <div class="flex justify-between text-gray-400">
-                                <span>Year 2 Pool:</span>
-                                <span class="text-white">350,000,000 TPIX</span>
+                                <span>Year 2 (2026-2027):</span>
+                                <span class="text-white">500,000,000 TPIX</span>
                             </div>
                             <div class="flex justify-between text-gray-400">
-                                <span>Year 3 Pool:</span>
+                                <span>Year 3 (2027-2028):</span>
                                 <span class="text-white">300,000,000 TPIX</span>
-                            </div>
-                            <div class="flex justify-between text-gray-400">
-                                <span>Year 4 Pool:</span>
-                                <span class="text-white">200,000,000 TPIX</span>
-                            </div>
-                            <div class="flex justify-between text-gray-400">
-                                <span>Year 5 Pool:</span>
-                                <span class="text-white">150,000,000 TPIX</span>
                             </div>
                         </div>
                     </div>

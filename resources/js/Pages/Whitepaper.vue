@@ -877,7 +877,7 @@ const content = {
                         </div>
 
                         <!-- Emission Schedule -->
-                        <h3 class="text-lg font-semibold text-white mt-6 mb-3">{{ lang === 'en' ? 'Emission Schedule (5-Year Decreasing)' : 'ตารางการปล่อยรางวัล (5 ปี ลดลงเรื่อยๆ)' }}</h3>
+                        <h3 class="text-lg font-semibold text-white mt-6 mb-3">{{ lang === 'en' ? 'Emission Schedule (3-Year Decreasing)' : 'ตารางการปล่อยรางวัล (3 ปี ลดลงเรื่อยๆ)' }}</h3>
                         <div class="wp-table">
                             <table class="w-full text-sm">
                                 <thead><tr class="border-b border-white/10">
@@ -910,7 +910,7 @@ const content = {
                                 <p class="text-sm text-gray-300">{{ t.masternodeSlashing }}</p>
                             </div>
                             <div class="p-4 rounded-xl bg-green-500/10 border border-green-500/20">
-                                <h4 class="text-sm font-bold text-green-400 mb-2">{{ lang === 'en' ? 'After Year 5 (Sustainability)' : 'หลังปีที่ 5 (ยั่งยืนระยะยาว)' }}</h4>
+                                <h4 class="text-sm font-bold text-green-400 mb-2">{{ lang === 'en' ? 'After Year 3 (Sustainability)' : 'หลังปีที่ 3 (ยั่งยืนระยะยาว)' }}</h4>
                                 <p class="text-sm text-gray-300">{{ t.masternodeAfterY5 }}</p>
                             </div>
                         </div>

@@ -225,7 +225,7 @@ function formatDate(iso) {
                                 </div>
                             </div>
                             <p class="text-dark-500 text-xs mt-3 text-center">
-                                {{ locale === 'th' ? 'รวมรางวัล: 1.4 พันล้าน TPIX ระยะ 5 ปี' : 'Total reward pool: 1.4 Billion TPIX over 5 years' }}
+                                {{ locale === 'th' ? 'รวมรางวัล: 1.4 พันล้าน TPIX ระยะ 3 ปี (สิ้นสุด 2028)' : 'Total reward pool: 1.4 Billion TPIX over 3 years (ending 2028)' }}
                             </p>
                         </div>
 

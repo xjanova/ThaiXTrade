@@ -621,7 +621,7 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                                 <img src="/tpixlogo.webp" alt="TPIX" class="w-8 h-8 ring-1 ring-white/10" />
                                 <div>
                                     <h3 class="text-sm font-bold text-white">Reward Pool</h3>
-                                    <p class="text-xs text-gray-400">1,400,000,000 TPIX distributed over 5 years</p>
+                                    <p class="text-xs text-gray-400">1,400,000,000 TPIX distributed over 3 years (ending 2028)</p>
                                 </div>
                                 <span class="ml-auto text-sm font-bold text-cyan-400">Year {{ networkStats.currentYear }}</span>
                             </div>

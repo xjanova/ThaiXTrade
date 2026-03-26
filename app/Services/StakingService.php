@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * TPIX TRADE — Staking Service
  * จัดการ Stake TPIX — ได้ APY 5%-200% ตาม lock period.
- * Rewards pool: 1.4B TPIX over 5 years.
+ * Rewards pool: 1.4B TPIX over 3 years (ending 2028).
  */
 class StakingService
 {
