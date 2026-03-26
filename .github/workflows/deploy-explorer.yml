@@ -153,7 +153,9 @@ jobs:
                   NEXT_PUBLIC_HOMEPAGE_CHARTS: "['daily_txs']"
                   NEXT_PUBLIC_IS_TESTNET: "false"
                   NEXT_PUBLIC_NETWORK_LOGO: "https://tpix.online/images/logotpixexplorer.webp"
+                  NEXT_PUBLIC_NETWORK_LOGO_DARK: "https://tpix.online/images/logotpixexplorer.webp"
                   NEXT_PUBLIC_NETWORK_ICON: "https://tpix.online/images/logotpixexplorer.webp"
+                  NEXT_PUBLIC_NETWORK_ICON_DARK: "https://tpix.online/images/logotpixexplorer.webp"
                   NEXT_PUBLIC_APP_HOST: explorer.tpix.online
                   NEXT_PUBLIC_APP_PROTOCOL: https
                   NEXT_PUBLIC_APP_PORT: "443"
