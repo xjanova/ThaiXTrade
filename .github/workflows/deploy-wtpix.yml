@@ -22,17 +22,46 @@ jobs:
             DEPLOY_DIR="$INFRA/deploy-wtpix"
             mkdir -p "$DEPLOY_DIR"
 
-            # Read validator private key (hex format)
-            VALIDATOR_KEY_FILE="$CHAIN/data/consensus/validator.key"
-            if [ ! -f "$VALIDATOR_KEY_FILE" ]; then
-              echo "ERROR: Validator key not found at $VALIDATOR_KEY_FILE"
-              exit 1
+            # Debug: find validator key location
+            echo "Looking for validator key..."
+            find "$INFRA" -name "*.key" -type f 2>/dev/null
+            find "$INFRA" -name "validator*" -type f 2>/dev/null
+            ls -la "$CHAIN/data/" 2>/dev/null || echo "No data dir at $CHAIN/data/"
+            ls -la "$CHAIN/data/consensus/" 2>/dev/null || echo "No consensus dir"
+
+            # Try multiple possible key locations
+            VALIDATOR_KEY_FILE=""
+            for f in \
+              "$CHAIN/data/consensus/validator.key" \
+              "$CHAIN/data/consensus/validator" \
+              "$INFRA/tpix-chain/data/consensus/validator.key" \
+              "$INFRA/data/consensus/validator.key"; do
+              if [ -f "$f" ]; then
+                VALIDATOR_KEY_FILE="$f"
+                break
+              fi
+            done
+
+            if [ -z "$VALIDATOR_KEY_FILE" ]; then
+              echo "ERROR: Validator key not found in any expected location"
+              echo "Trying to extract from Docker volume..."
+              # Key might be inside Docker volume, extract via container
+              docker run --rm -v tpix-infrastructure_tpix-chain-data:/data alpine ls -la /data/consensus/ 2>/dev/null || true
+              # Try extracting key from running container
+              PRIVATE_KEY=$(docker exec tpix-chain-node cat /data/consensus/validator.key 2>/dev/null || echo "")
+              if [ -z "$PRIVATE_KEY" ]; then
+                echo "ERROR: Cannot find or extract validator private key"
+                exit 1
+              fi
+              echo "Key extracted from running container"
+            else
+              PRIVATE_KEY=$(cat "$VALIDATOR_KEY_FILE")
+              echo "Validator key loaded from: $VALIDATOR_KEY_FILE"
             fi
-            PRIVATE_KEY=$(cat "$VALIDATOR_KEY_FILE")
-            echo "Validator key loaded"
 
             # Get validator address
-            SECRETS_OUT=$(docker run --rm -v "$CHAIN/data:/data" 0xpolygon/polygon-edge:0.9.0 secrets output --data-dir /data 2>&1)
+            SECRETS_OUT=$(docker exec tpix-chain-node /polygon-edge secrets output --data-dir /data 2>&1 || \
+              docker run --rm -v "$CHAIN/data:/data" 0xpolygon/polygon-edge:0.9.0 secrets output --data-dir /data 2>&1)
             VALIDATOR_ADDR=$(echo "$SECRETS_OUT" | grep "Public key (address)" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
             echo "Deployer: $VALIDATOR_ADDR"
 
