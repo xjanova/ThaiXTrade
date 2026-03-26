@@ -149,15 +149,15 @@ function addMarkers() {
         marker.bindPopup(`
             <div style="font-family: system-ui; min-width: 200px;">
                 <div style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 6px;">
-                    ${flag(v.country_code)} ${v.country_name || 'Unknown'}
+                    ${flag(v.country_code)} ${escHtml(v.country_name) || 'Unknown'}
                 </div>
                 <div style="font-size: 11px; color: #9ca3af; margin-bottom: 4px;">
-                    <span style="color: ${markerColor}; font-weight: 600;">${tc.label}</span> Node
+                    <span style="color: ${markerColor}; font-weight: 600;">${escHtml(tc.label)}</span> Node
                 </div>
                 <div style="font-size: 10px; color: #6b7280; font-family: monospace; word-break: break-all;">
-                    ${v.address || '—'}
+                    ${escHtml(v.address) || '—'}
                 </div>
-                ${v.endpoint ? `<div style="font-size: 10px; color: #6b7280; margin-top: 4px;">EP: ${v.endpoint}</div>` : ''}
+                ${v.endpoint ? `<div style="font-size: 10px; color: #6b7280; margin-top: 4px;">EP: ${escHtml(v.endpoint)}</div>` : ''}
                 <div style="margin-top: 6px; font-size: 11px;">
                     <span style="color: ${v.online ? '#10b981' : '#ef4444'};">● ${v.online ? 'Online' : 'Offline'}</span>
                     ${v.uptime ? `<span style="color: #9ca3af; margin-left: 8px;">Uptime: ${v.uptime}%</span>` : ''}
@@ -177,6 +177,13 @@ function addMarkers() {
             leafletMap.fitBounds(coords, { padding: [40, 40], maxZoom: 6 });
         }
     }
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 function focusNode(v) {

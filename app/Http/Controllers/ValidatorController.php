@@ -170,22 +170,33 @@ class ValidatorController extends Controller
                 $balance = $this->weiToEther($balanceResponse->json('result', '0x0'));
             }
 
-            // Check if this address is an active validator
+            // Check if this address is an active validator and get tier info
             $validators = $this->getValidatorList();
-            $isValidator = false;
+            $matchedValidator = null;
             foreach ($validators as $validator) {
                 if (strtolower($validator['address']) === $wallet) {
-                    $isValidator = true;
+                    $matchedValidator = $validator;
                     break;
                 }
             }
+
+            // Check application data for tier/stake info
+            $application = ValidatorApplication::where('wallet_address', $wallet)
+                ->whereIn('status', ['approved', 'active'])
+                ->first();
+
+            $tier = $application->tier ?? ($matchedValidator ? 'validator' : null);
+            $stakeAmounts = ['validator' => '1000000', 'sentinel' => '100000', 'light' => '10000'];
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'wallet_address' => $wallet,
-                    'is_active_validator' => $isValidator,
-                    'balance' => $balance,
+                    'active' => $matchedValidator !== null,
+                    'tier' => $tier,
+                    'pending_rewards' => $balance,
+                    'total_earned' => $balance,
+                    'stake_amount' => $stakeAmounts[$tier] ?? '0',
                 ],
             ]);
         } catch (\Throwable $e) {

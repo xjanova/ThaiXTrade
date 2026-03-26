@@ -196,7 +196,7 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/stats', [ValidatorController::class, 'stats']);
         Route::get('/list', [ValidatorController::class, 'list']);
         Route::get('/rewards', [ValidatorController::class, 'checkRewards']);
-        Route::post('/apply', [ValidatorController::class, 'submitApplication']);
+        Route::post('/apply', [ValidatorController::class, 'submitApplication'])->middleware('throttle:5,60');
     });
 
     // Articles / Blog — บทความ (public)
