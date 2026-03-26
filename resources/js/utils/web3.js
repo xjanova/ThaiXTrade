@@ -138,7 +138,12 @@ export async function getChainConfig(chainId) {
  * Build EIP-3085 params for wallet_addEthereumChain from a backend chain config.
  */
 export function buildAddChainParams(chain) {
-    const rpcUrls = Array.isArray(chain.rpc) ? chain.rpc : [chain.rpc];
+    const rawRpc = Array.isArray(chain.rpc) ? chain.rpc : [chain.rpc];
+    // MetaMask requires valid HTTPS URLs only — filter out null/http
+    const rpcUrls = rawRpc.filter(url => typeof url === 'string' && url.startsWith('https://'));
+    if (rpcUrls.length === 0) {
+        throw new Error(`No valid HTTPS RPC URL for chain ${chain.name || chain.chainId}`);
+    }
     const explorerUrls = chain.explorer ? [chain.explorer] : [];
 
     return {

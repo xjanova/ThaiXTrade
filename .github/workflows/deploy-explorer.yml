@@ -382,6 +382,22 @@ jobs:
                         img.style.cssText = "height:60px;width:auto";
                         svg.parentNode.replaceChild(img, svg);
                     });
+                    // Replace footer copyright
+                    document.querySelectorAll("footer, [class*=footer], [class*=Footer]").forEach(function(el){
+                        var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+                        while(walker.nextNode()){
+                            var node = walker.currentNode;
+                            if(node.textContent.indexOf("Blockscout")!==-1 && node.textContent.indexOf("Limited")!==-1){
+                                node.textContent = node.textContent.replace(/Copyright\s*©?\s*Blockscout\s+Limited\s+\d{4}[-–]\d{4}/gi, "© Xman Studio 2024-2026");
+                                node.textContent = node.textContent.replace(/Blockscout\s+Limited/gi, "Xman Studio");
+                            }
+                        }
+                        // Replace Blockscout link with Xman Studio
+                        el.querySelectorAll("a[href*=\'blockscout.com\']").forEach(function(a){
+                            a.href = "https://xman4289.com";
+                            a.textContent = "Xman Studio";
+                        });
+                    });
                 }
                 // Run on load + observe for SPA navigation
                 if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",replaceLogo)}else{replaceLogo()}
