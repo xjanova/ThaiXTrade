@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\TpixPriceController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\MasterNodeController;
+use App\Http\Controllers\ValidatorController;
 use App\Http\Middleware\VerifyWalletOwnership;
 use App\Models\SiteSetting;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -188,6 +189,14 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     // Master Node — network stats (public, read-only)
     Route::prefix('masternode')->group(function () {
         Route::get('/stats', [MasterNodeController::class, 'stats']);
+    });
+
+    // Validators — network dashboard + applications (public)
+    Route::prefix('validators')->group(function () {
+        Route::get('/stats', [ValidatorController::class, 'stats']);
+        Route::get('/list', [ValidatorController::class, 'list']);
+        Route::get('/rewards', [ValidatorController::class, 'checkRewards']);
+        Route::post('/apply', [ValidatorController::class, 'submitApplication']);
     });
 
     // Articles / Blog — บทความ (public)

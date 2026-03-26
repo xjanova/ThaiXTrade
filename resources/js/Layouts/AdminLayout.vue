@@ -95,6 +95,7 @@ const navigationSections = computed(() => [
             { name: t('nav.tokenSale'), href: '/admin/token-sales', icon: 'tokensale' },
             { name: t('nav.tokenFactory'), href: '/admin/token-factory', icon: 'factory' },
             { name: 'MasterNode', href: '/admin/masternode', icon: 'chain' },
+            { name: 'Validators', href: '/admin/validators', icon: 'chain' },
             { name: t('nav.carbonCredit'), href: '/admin/carbon-credits', icon: 'carbon' },
             { name: 'FoodPassport', href: '/admin/food-passport', icon: 'food' },
             { name: t('nav.whitepaper'), href: '/whitepaper', icon: 'whitepaper', external: true },

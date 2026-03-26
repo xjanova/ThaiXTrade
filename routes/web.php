@@ -14,6 +14,7 @@ use App\Http\Controllers\FoodPassportController;
 use App\Http\Controllers\MasterNodeController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TokenFactoryController;
+use App\Http\Controllers\ValidatorController;
 use App\Http\Controllers\TokenSaleController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -149,6 +150,10 @@ Route::get('/bridge', function () {
 Route::get('/masternode', [MasterNodeController::class, 'index'])->name('masternode');
 Route::get('/masternode/guide', [MasterNodeController::class, 'guide'])->name('masternode.guide');
 Route::get('/staking', fn () => redirect()->route('masternode'))->name('staking'); // redirect เก่า
+
+// Validators — Validator Network Dashboard + Applications
+Route::get('/validators', [ValidatorController::class, 'index'])->name('validators');
+Route::get('/validators/apply', [ValidatorController::class, 'apply'])->name('validators.apply');
 
 // Download — ดาวน์โหลดแอป TPIX TRADE (ดึง release ล่าสุดจาก API ของเราเอง)
 Route::get('/download', function () {

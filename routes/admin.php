@@ -24,6 +24,7 @@ use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\LanguageController;
 use App\Http\Controllers\Admin\MasterNodeAdminController;
 use App\Http\Controllers\Admin\MemberController;
+use App\Http\Controllers\Admin\ValidatorAdminController;
 use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\SettingController;
@@ -247,6 +248,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/stats', [MasterNodeAdminController::class, 'stats'])->name('stats');
             Route::post('/toggle', [MasterNodeAdminController::class, 'toggle'])->name('toggle');
             Route::put('/config', [MasterNodeAdminController::class, 'updateConfig'])->name('config');
+        });
+
+        // Validator Management — จัดการ validator applications + voting
+        Route::prefix('validators')->name('validators.')->group(function () {
+            Route::get('/', [ValidatorAdminController::class, 'index'])->name('index');
+            Route::get('/stats', [ValidatorAdminController::class, 'stats'])->name('stats');
+            Route::post('/applications/{id}/approve', [ValidatorAdminController::class, 'approveApplication'])->name('approve');
+            Route::post('/applications/{id}/reject', [ValidatorAdminController::class, 'rejectApplication'])->name('reject');
+            Route::post('/propose-vote', [ValidatorAdminController::class, 'proposeVote'])->name('propose-vote');
         });
 
         // Audit Logs (super_admin only)
