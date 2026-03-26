@@ -24,10 +24,23 @@ const props = defineProps({
 const tiers = [
     {
         id: 'validator', name: 'Validator Node', icon: '/tpixlogo.webp',
-        minStake: 1_000_000, apy: '12-15%', lock: '90 days',
-        maxNodes: 100, rewardShare: '50%',
+        minStake: 10_000_000, apy: '15-20%', lock: '180 days',
+        maxNodes: 21, rewardShare: '20%',
+        hardware: '16 CPU · 32GB · 1TB SSD',
+        desc: 'IBFT2 block sealer with governance power — company KYC required',
+        gradient: 'from-red-500/30 via-rose-500/20 to-pink-500/10',
+        border: 'border-red-500/30',
+        glow: 'shadow-[0_0_40px_rgba(239,68,68,0.15)]',
+        badge: 'bg-red-500/20 text-red-300 border-red-500/40',
+        ring: 'ring-red-500/30',
+        accent: 'text-red-400',
+    },
+    {
+        id: 'guardian', name: 'Guardian Node', icon: '/tpixlogo.webp',
+        minStake: 1_000_000, apy: '10-12%', lock: '90 days',
+        maxNodes: 100, rewardShare: '35%',
         hardware: '8 CPU · 16GB · 500GB SSD',
-        desc: 'Block producer with highest rewards and governance power',
+        desc: 'Premium masternode with high rewards',
         gradient: 'from-yellow-500/30 via-amber-500/20 to-orange-500/10',
         border: 'border-yellow-500/30',
         glow: 'shadow-[0_0_40px_rgba(245,158,11,0.15)]',
@@ -37,10 +50,10 @@ const tiers = [
     },
     {
         id: 'sentinel', name: 'Sentinel Node', icon: '/tpixlogo.webp',
-        minStake: 100_000, apy: '7-10%', lock: '30 days',
+        minStake: 100_000, apy: '7-9%', lock: '30 days',
         maxNodes: 500, rewardShare: '30%',
         hardware: '4 CPU · 8GB · 200GB SSD',
-        desc: 'Data relay and light validation for network integrity',
+        desc: 'Standard masternode for network integrity',
         gradient: 'from-purple-500/30 via-violet-500/20 to-fuchsia-500/10',
         border: 'border-purple-500/30',
         glow: 'shadow-[0_0_40px_rgba(139,92,246,0.15)]',
@@ -51,7 +64,7 @@ const tiers = [
     {
         id: 'light', name: 'Light Node', icon: '/tpixlogo.webp',
         minStake: 10_000, apy: '4-6%', lock: '7 days',
-        maxNodes: null, rewardShare: '20%',
+        maxNodes: null, rewardShare: '15%',
         hardware: '2 CPU · 4GB · 100GB SSD',
         desc: 'Easiest entry — support the network and earn rewards',
         gradient: 'from-cyan-500/30 via-blue-500/20 to-teal-500/10',
@@ -653,14 +666,17 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                         <div class="glass rounded-2xl p-6">
                             <h3 class="text-sm font-bold text-white mb-4">Block Reward Split</h3>
                             <div class="flex rounded-xl overflow-hidden h-8 mb-3">
-                                <div class="bg-gradient-to-r from-yellow-500 to-amber-500 flex items-center justify-center text-[10px] font-bold text-black" style="width:50%">
-                                    50% Validator
+                                <div class="bg-gradient-to-r from-red-500 to-rose-500 flex items-center justify-center text-[10px] font-bold text-white" style="width:20%">
+                                    20% Validator
+                                </div>
+                                <div class="bg-gradient-to-r from-yellow-500 to-amber-500 flex items-center justify-center text-[10px] font-bold text-black" style="width:35%">
+                                    35% Guardian
                                 </div>
                                 <div class="bg-gradient-to-r from-purple-500 to-violet-500 flex items-center justify-center text-[10px] font-bold text-white" style="width:30%">
                                     30% Sentinel
                                 </div>
-                                <div class="bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center text-[10px] font-bold text-white" style="width:20%">
-                                    20% Light
+                                <div class="bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center text-[10px] font-bold text-white" style="width:15%">
+                                    15% Light
                                 </div>
                             </div>
                             <p class="text-xs text-gray-400">

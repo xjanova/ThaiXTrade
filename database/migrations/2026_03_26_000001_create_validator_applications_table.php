@@ -14,7 +14,7 @@ return new class() extends Migration
         Schema::create('validator_applications', function (Blueprint $table) {
             $table->id();
             $table->string('wallet_address')->unique()->index();
-            $table->enum('tier', ['validator', 'sentinel', 'light']);
+            $table->enum('tier', ['validator', 'guardian', 'sentinel', 'light']);
             $table->string('endpoint')->nullable()->comment('RPC endpoint URL');
             $table->string('country_code', 2)->index();
             $table->string('country_name');

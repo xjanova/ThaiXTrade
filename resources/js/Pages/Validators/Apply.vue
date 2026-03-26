@@ -41,13 +41,20 @@ if (walletStore.isConnected && walletStore.address) {
 const tiers = [
     {
         id: 'validator', name: 'Validator Node',
-        stake: '1,000,000 TPIX', apy: '12-15%', lock: '90 days',
+        stake: '10,000,000 TPIX', apy: '15-20%', lock: '180 days',
+        hardware: '16 CPU / 32GB RAM / 1TB SSD',
+        color: 'border-red-500/40 bg-red-500/10', accent: 'text-red-400',
+        note: 'Company KYC required (PDPA-compliant)',
+    },
+    {
+        id: 'guardian', name: 'Guardian Node',
+        stake: '1,000,000 TPIX', apy: '10-12%', lock: '90 days',
         hardware: '8 CPU / 16GB RAM / 500GB SSD',
         color: 'border-yellow-500/40 bg-yellow-500/10', accent: 'text-yellow-400',
     },
     {
         id: 'sentinel', name: 'Sentinel Node',
-        stake: '100,000 TPIX', apy: '7-10%', lock: '30 days',
+        stake: '100,000 TPIX', apy: '7-9%', lock: '30 days',
         hardware: '4 CPU / 8GB RAM / 200GB SSD',
         color: 'border-purple-500/40 bg-purple-500/10', accent: 'text-purple-400',
     },
@@ -195,12 +202,12 @@ async function submitApplication() {
                 <!-- Step 1: Choose Tier -->
                 <div class="glass rounded-2xl p-6 space-y-4">
                     <h3 class="text-sm font-bold text-white uppercase tracking-wide">1. Choose Node Tier</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <button v-for="tier in tiers" :key="tier.id" type="button"
                             @click="form.tier = tier.id"
                             :class="['p-4 rounded-xl border-2 text-left transition-all',
                                 form.tier === tier.id
-                                    ? tier.color + ' ring-2 ring-offset-2 ring-offset-dark-900 ' + (tier.id === 'validator' ? 'ring-yellow-500' : tier.id === 'sentinel' ? 'ring-purple-500' : 'ring-cyan-500')
+                                    ? tier.color + ' ring-2 ring-offset-2 ring-offset-dark-900 ' + (tier.id === 'validator' ? 'ring-red-500' : tier.id === 'guardian' ? 'ring-yellow-500' : tier.id === 'sentinel' ? 'ring-purple-500' : 'ring-cyan-500')
                                     : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]']">
                             <div :class="['font-bold text-sm mb-1', tier.accent]">{{ tier.name }}</div>
                             <div class="text-[10px] text-gray-400 space-y-0.5">
@@ -208,6 +215,7 @@ async function submitApplication() {
                                 <div>APY: <span class="text-white">{{ tier.apy }}</span></div>
                                 <div>Lock: <span class="text-white">{{ tier.lock }}</span></div>
                                 <div>Min HW: {{ tier.hardware }}</div>
+                                <div v-if="tier.note" class="text-red-300 mt-1">{{ tier.note }}</div>
                             </div>
                         </button>
                     </div>

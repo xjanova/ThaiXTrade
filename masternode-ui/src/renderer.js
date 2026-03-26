@@ -112,7 +112,7 @@ const LANG = {
                 'Help secure and decentralize the TPIX Chain',
                 'More nodes = more stable network (fewer outages)',
                 'Support the TPIX ecosystem and community',
-                'Validators earn 12-15% APY on staked TPIX',
+                'Node operators earn 4-20% APY on staked TPIX',
             ],
         },
         logs: { empty: 'No logs yet. Start the node to see activity.' },
@@ -251,7 +251,7 @@ const LANG = {
                 'ช่วยรักษาความปลอดภัยและกระจายอำนาจ TPIX Chain',
                 'ยิ่งมี node มาก = เครือข่ายยิ่งเสถียร (ล่มน้อยลง)',
                 'สนับสนุนระบบนิเวศและชุมชน TPIX',
-                'Validator ได้ผลตอบแทน 12-15% APY จาก TPIX ที่ stake',
+                'ผู้ดำเนินการโหนดได้ผลตอบแทน 4-20% APY จาก TPIX ที่ stake',
             ],
         },
         logs: { empty: 'ยังไม่มีบันทึก เริ่มโหนดเพื่อดูกิจกรรม' },
@@ -337,13 +337,22 @@ const app = createApp({
                     : ['Medium rewards', '30-day lock', '5% slashing', 'Max 500 nodes'],
             },
             {
-                id: 'validator', name: 'Validator Node', stake: 1000000,
-                apy: '12-15% APY',
-                monthlyReward: Math.round(1000000 * 0.135 / 12),
-                yearlyReward: Math.round(1000000 * 0.135),
+                id: 'guardian', name: 'Guardian Node', stake: 1000000,
+                apy: '10-12% APY',
+                monthlyReward: Math.round(1000000 * 0.11 / 12),
+                yearlyReward: Math.round(1000000 * 0.11),
                 features: lang.value === 'th'
-                    ? ['ผลตอบแทนสูงสุด', 'ล็อค 90 วัน', 'ค่าปรับ 10%', 'สูงสุด 100 โหนด', 'ช่วยผลิตบล็อก']
-                    : ['Highest rewards', '90-day lock', '10% slashing', 'Max 100 nodes', 'Produces blocks'],
+                    ? ['ผลตอบแทนสูง', 'ล็อค 90 วัน', 'ค่าปรับ 10%', 'สูงสุด 100 โหนด']
+                    : ['High rewards', '90-day lock', '10% slashing', 'Max 100 nodes'],
+            },
+            {
+                id: 'validator', name: 'Validator Node', stake: 10000000,
+                apy: '15-20% APY',
+                monthlyReward: Math.round(10000000 * 0.175 / 12),
+                yearlyReward: Math.round(10000000 * 0.175),
+                features: lang.value === 'th'
+                    ? ['ผลตอบแทนสูงสุด', 'ล็อค 180 วัน', 'ค่าปรับ 15%', 'สูงสุด 21 โหนด', 'ผลิตบล็อก IBFT2', 'ต้องผ่าน KYC']
+                    : ['Highest rewards', '180-day lock', '15% slashing', 'Max 21 nodes', 'IBFT2 block sealer', 'KYC required'],
             },
         ]);
 

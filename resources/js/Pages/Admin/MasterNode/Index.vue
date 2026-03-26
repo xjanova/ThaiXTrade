@@ -60,9 +60,10 @@ onMounted(() => {
 onUnmounted(() => clearInterval(pollInterval));
 
 const tiers = [
-    { name: 'Validator', stake: '1,000,000 TPIX', reward: '50%', lock: '90 days', color: 'text-yellow-400', bg: 'bg-yellow-500/15 border-yellow-500/30' },
+    { name: 'Validator', stake: '10,000,000 TPIX', reward: '20%', lock: '180 days', color: 'text-red-400', bg: 'bg-red-500/15 border-red-500/30' },
+    { name: 'Guardian', stake: '1,000,000 TPIX', reward: '35%', lock: '90 days', color: 'text-yellow-400', bg: 'bg-yellow-500/15 border-yellow-500/30' },
     { name: 'Sentinel', stake: '100,000 TPIX', reward: '30%', lock: '30 days', color: 'text-purple-400', bg: 'bg-purple-500/15 border-purple-500/30' },
-    { name: 'Light', stake: '10,000 TPIX', reward: '20%', lock: '7 days', color: 'text-cyan-400', bg: 'bg-cyan-500/15 border-cyan-500/30' },
+    { name: 'Light', stake: '10,000 TPIX', reward: '15%', lock: '7 days', color: 'text-cyan-400', bg: 'bg-cyan-500/15 border-cyan-500/30' },
 ];
 </script>
 

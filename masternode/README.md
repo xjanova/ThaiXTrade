@@ -39,18 +39,19 @@ TPIX Master Node is a software that allows you to participate in the TPIX blockc
 
 | Tier | Min Stake | APY | Lock | Max Nodes | Reward Share |
 |------|-----------|-----|------|-----------|--------------|
-| **Validator** | 1,000,000 TPIX | 12-15% | 90 days | 100 | 50% of block reward |
-| **Sentinel** | 100,000 TPIX | 7-10% | 30 days | 500 | 30% of block reward |
-| **Light** | 10,000 TPIX | 4-6% | 7 days | Unlimited | 20% of block reward |
+| **Validator** | 10,000,000 TPIX | 15-20% | 180 days | 21 | 20% of block reward |
+| **Guardian** | 1,000,000 TPIX | 10-12% | 90 days | 100 | 35% of block reward |
+| **Sentinel** | 100,000 TPIX | 7-9% | 30 days | 500 | 30% of block reward |
+| **Light** | 10,000 TPIX | 4-6% | 7 days | Unlimited | 15% of block reward |
 
 ### Hardware Requirements
 
-| | Validator | Sentinel | Light |
-|---|-----------|----------|-------|
-| CPU | 8 cores | 4 cores | 2 cores |
-| RAM | 16 GB | 8 GB | 4 GB |
-| Storage | 500 GB SSD | 200 GB SSD | 100 GB SSD |
-| Network | 100 Mbps | 50 Mbps | 20 Mbps |
+| | Validator | Guardian | Sentinel | Light |
+|---|-----------|----------|----------|-------|
+| CPU | 16 cores | 8 cores | 4 cores | 2 cores |
+| RAM | 32 GB | 16 GB | 8 GB | 4 GB |
+| Storage | 1 TB NVMe | 500 GB SSD | 200 GB SSD | 100 GB SSD |
+| Network | 1 Gbps | 100 Mbps | 50 Mbps | 20 Mbps |
 
 ---
 
@@ -58,26 +59,25 @@ TPIX Master Node is a software that allows you to participate in the TPIX blockc
 
 **Total Reward Pool: 1,400,000,000 TPIX** (20% of 7B total supply)
 
-Distributed over 5 years with decreasing emission:
+Distributed over 3 years (ending 2028) with decreasing emission:
 
 | Year | Reward | Per Block (~2s) | % of Pool |
 |------|--------|-----------------|-----------|
-| Year 1 | 400,000,000 TPIX | ~25.5 TPIX | 28.6% |
-| Year 2 | 350,000,000 TPIX | ~22.3 TPIX | 25.0% |
-| Year 3 | 300,000,000 TPIX | ~19.1 TPIX | 21.4% |
-| Year 4 | 200,000,000 TPIX | ~12.7 TPIX | 14.3% |
-| Year 5 | 150,000,000 TPIX | ~9.6 TPIX | 10.7% |
+| Year 1 (2025-2026) | 600,000,000 TPIX | ~38.1 TPIX | 42.9% |
+| Year 2 (2026-2027) | 500,000,000 TPIX | ~31.7 TPIX | 35.7% |
+| Year 3 (2027-2028) | 300,000,000 TPIX | ~19.1 TPIX | 21.4% |
 
 ### Block Reward Distribution
 
 ```
 Each Block Reward:
-├── 50% → Validator (block producer)
+├── 20% → Validator (IBFT2 block sealer)
+├── 35% → Guardian nodes (premium masternode)
 ├── 30% → Sentinel nodes (shared equally)
-└── 20% → Light nodes (weighted by stake & uptime)
+└── 15% → Light nodes (weighted by stake & uptime)
 ```
 
-### After Year 5
+### After Year 3
 
 Sustainable rewards from:
 - Transaction fee sharing (dApp/token creator fees)

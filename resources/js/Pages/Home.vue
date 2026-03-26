@@ -184,10 +184,10 @@ onMounted(async () => {
                                     <div class="text-lg font-black text-purple-400">100K</div>
                                     <div class="text-xs text-trading-green">7-10% APY</div>
                                 </div>
-                                <div class="bg-white/5 rounded-xl p-3 text-center border border-amber-500/20">
+                                <div class="bg-white/5 rounded-xl p-3 text-center border border-red-500/20">
                                     <div class="text-xs text-gray-500">Validator</div>
-                                    <div class="text-lg font-black text-amber-400">1M</div>
-                                    <div class="text-xs text-trading-green">12-15% APY</div>
+                                    <div class="text-lg font-black text-red-400">10M</div>
+                                    <div class="text-xs text-trading-green">15-20% APY</div>
                                 </div>
                             </div>
 

@@ -18,7 +18,7 @@ const props = defineProps({
 //  State
 // ============================================================
 const activeTab = ref('map');        // map | list | apply
-const filterTier = ref('all');       // all | validator | sentinel | light
+const filterTier = ref('all');       // all | validator | guardian | sentinel | light
 const filterCountry = ref('all');
 const searchQuery = ref('');
 const isLoading = ref(false);
@@ -65,7 +65,7 @@ const filteredValidators = computed(() => {
 });
 
 const tierCounts = computed(() => {
-    const counts = { validator: 0, sentinel: 0, light: 0 };
+    const counts = { validator: 0, guardian: 0, sentinel: 0, light: 0 };
     validators.value.forEach(v => { if (counts[v.tier] !== undefined) counts[v.tier]++; });
     return counts;
 });
@@ -74,7 +74,8 @@ const tierCounts = computed(() => {
 //  Tier config
 // ============================================================
 const tierConfig = {
-    validator: { label: 'Validator', color: 'text-yellow-400', bg: 'bg-yellow-500/15 border-yellow-500/30', dot: '#f59e0b', icon: '🔱' },
+    validator: { label: 'Validator', color: 'text-red-400',    bg: 'bg-red-500/15 border-red-500/30',       dot: '#ef4444', icon: '🔥' },
+    guardian:  { label: 'Guardian',  color: 'text-yellow-400', bg: 'bg-yellow-500/15 border-yellow-500/30', dot: '#f59e0b', icon: '🔱' },
     sentinel:  { label: 'Sentinel',  color: 'text-purple-400', bg: 'bg-purple-500/15 border-purple-500/30', dot: '#a855f7', icon: '🛡️' },
     light:     { label: 'Light',     color: 'text-cyan-400',   bg: 'bg-cyan-500/15 border-cyan-500/30',     dot: '#06b6d4', icon: '💡' },
 };
@@ -546,24 +547,30 @@ onUnmounted(() => {
                         <div class="flex gap-3">
                             <span class="text-yellow-400 text-lg">🔱</span>
                             <div>
-                                <span class="text-yellow-400 font-bold">Validators (50%)</span> — Seal blocks every ~2 seconds, receive the largest share of block rewards. Requires 1,000,000 TPIX stake.
+                                <span class="text-red-400 font-bold">Validators (20%)</span> — Real IBFT2 block sealers with governance power. Requires 10,000,000 TPIX + company KYC.
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <span class="text-yellow-400 text-lg">🔱</span>
+                            <div>
+                                <span class="text-yellow-400 font-bold">Guardians (35%)</span> — Premium masternodes with high rewards. 1,000,000 TPIX stake.
                             </div>
                         </div>
                         <div class="flex gap-3">
                             <span class="text-purple-400 text-lg">🛡️</span>
                             <div>
-                                <span class="text-purple-400 font-bold">Sentinels (30%)</span> — Relay data and perform light validation. 100,000 TPIX stake.
+                                <span class="text-purple-400 font-bold">Sentinels (30%)</span> — Standard masternodes for network integrity. 100,000 TPIX stake.
                             </div>
                         </div>
                         <div class="flex gap-3">
                             <span class="text-cyan-400 text-lg">💡</span>
                             <div>
-                                <span class="text-cyan-400 font-bold">Light Nodes (20%)</span> — Support network availability. 10,000 TPIX stake.
+                                <span class="text-cyan-400 font-bold">Light Nodes (15%)</span> — Easiest entry to support the network. 10,000 TPIX stake.
                             </div>
                         </div>
                     </div>
                     <div class="p-4 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-gray-500">
-                        Rewards are distributed per block (~2 seconds). Year 1 emits 400M TPIX total, decreasing over 5 years to a total of 1.4B TPIX.
+                        Rewards are distributed per block (~2 seconds). Year 1 emits 600M TPIX, decreasing over 3 years (ending 2028) to a total of 1.4B TPIX.
                         Uptime score affects reward share — keep your node online 24/7 for maximum returns.
                     </div>
                 </div>

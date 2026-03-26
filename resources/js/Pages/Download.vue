@@ -210,8 +210,9 @@ function formatDate(iso) {
                             <div class="space-y-3">
                                 <div v-for="tier in [
                                     { name: 'Light Node', stake: '10,000 TPIX', apy: '4-6%', icon: '💎', color: 'text-cyan-400' },
-                                    { name: 'Sentinel Node', stake: '100,000 TPIX', apy: '7-10%', icon: '🔷', color: 'text-purple-400' },
-                                    { name: 'Validator Node', stake: '1,000,000 TPIX', apy: '12-15%', icon: '⚡', color: 'text-amber-400' },
+                                    { name: 'Sentinel Node', stake: '100,000 TPIX', apy: '7-9%', icon: '🔷', color: 'text-purple-400' },
+                                    { name: 'Guardian Node', stake: '1,000,000 TPIX', apy: '10-12%', icon: '⚡', color: 'text-amber-400' },
+                                    { name: 'Validator Node', stake: '10,000,000 TPIX', apy: '15-20%', icon: '🔥', color: 'text-red-400' },
                                 ]" :key="tier.name" class="flex items-center justify-between p-3 rounded-lg bg-white/5">
                                     <div class="flex items-center gap-3">
                                         <span class="text-lg">{{ tier.icon }}</span>

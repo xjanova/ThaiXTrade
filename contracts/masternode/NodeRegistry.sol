@@ -9,13 +9,14 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * @notice Manages master node registration, staking, and reward distribution
  * @dev Replaces old high-APY staking with sustainable node-based rewards
  *
- * Tier System:
- *   Tier 1 - Validator Node:  1,000,000 TPIX stake, 12-15% APY, max 100 nodes
- *   Tier 2 - Sentinel Node:     100,000 TPIX stake,  7-10% APY, max 500 nodes
- *   Tier 3 - Light Node:         10,000 TPIX stake,   4-6% APY, unlimited
+ * Tier System (Legacy V1 — see NodeRegistryV2 for current 4-tier structure):
+ *   Tier 0 - Guardian Node (was Validator): 1,000,000 TPIX stake, 10-12% APY, max 100 nodes
+ *   Tier 1 - Sentinel Node:                   100,000 TPIX stake,  7-9% APY, max 500 nodes
+ *   Tier 2 - Light Node:                       10,000 TPIX stake,   4-6% APY, unlimited
+ *   Tier 3 - Validator Node (NEW):         10,000,000 TPIX stake, 15-20% APY, max 21, KYC required
  *
- * Reward Pool: 1,400,000,000 TPIX over 5 years (decreasing emission)
- *   Year 1: 400M | Year 2: 350M | Year 3: 300M | Year 4: 200M | Year 5: 150M
+ * Reward Pool: 1,400,000,000 TPIX over 3 years (ending 2028)
+ *   Year 1: 600M | Year 2: 500M | Year 3: 300M
  */
 contract NodeRegistry is Ownable, ReentrancyGuard {
 

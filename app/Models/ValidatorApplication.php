@@ -43,18 +43,22 @@ class ValidatorApplication extends Model
     // Constants
     // =========================================================================
 
-    /** @var string Tier: Full validator node (block producer) */
+    /** @var string Tier: IBFT2 Validator node (block sealer + governance, 10M TPIX, company KYC) */
     public const TIER_VALIDATOR = 'validator';
 
-    /** @var string Tier: Sentinel node (monitoring & relay) */
+    /** @var string Tier: Guardian node (premium masternode, 1M TPIX) */
+    public const TIER_GUARDIAN = 'guardian';
+
+    /** @var string Tier: Sentinel node (standard masternode, 100K TPIX) */
     public const TIER_SENTINEL = 'sentinel';
 
-    /** @var string Tier: Light node (minimal resource participation) */
+    /** @var string Tier: Light node (minimal resource participation, 10K TPIX) */
     public const TIER_LIGHT = 'light';
 
     /** @var array<string, string> All available tiers with display names */
     public const TIERS = [
         self::TIER_VALIDATOR => 'Validator Node',
+        self::TIER_GUARDIAN => 'Guardian Node',
         self::TIER_SENTINEL => 'Sentinel Node',
         self::TIER_LIGHT => 'Light Node',
     ];

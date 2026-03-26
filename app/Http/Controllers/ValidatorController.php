@@ -70,7 +70,7 @@ class ValidatorController extends Controller
     {
         $validated = $request->validate([
             'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
-            'tier' => ['required', 'string', 'in:validator,sentinel,light'],
+            'tier' => ['required', 'string', 'in:validator,guardian,sentinel,light'],
             'endpoint' => ['nullable', 'url', 'max:255'],
             'country_code' => ['required', 'string', 'size:2'],
             'country_name' => ['required', 'string', 'max:100'],
@@ -186,7 +186,7 @@ class ValidatorController extends Controller
                 ->first();
 
             $tier = $application->tier ?? ($matchedValidator ? 'validator' : null);
-            $stakeAmounts = ['validator' => '1000000', 'sentinel' => '100000', 'light' => '10000'];
+            $stakeAmounts = ['validator' => '10000000', 'guardian' => '1000000', 'sentinel' => '100000', 'light' => '10000'];
 
             return response()->json([
                 'success' => true,

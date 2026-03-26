@@ -246,8 +246,9 @@ class InstanceManager extends EventEmitter {
         // Tier info for display
         const tierInfo = {
             light: { stake: 10000, apy: '4-6%' },
-            sentinel: { stake: 100000, apy: '7-10%' },
-            validator: { stake: 1000000, apy: '12-15%' },
+            sentinel: { stake: 100000, apy: '7-9%' },
+            guardian: { stake: 1000000, apy: '10-12%' },
+            validator: { stake: 10000000, apy: '15-20%' },
         };
 
         return {

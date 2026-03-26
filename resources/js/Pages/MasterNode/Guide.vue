@@ -26,17 +26,24 @@ const tiers = computed(() => [
     },
     {
         id: 'sentinel', name: 'Sentinel Node',
-        stake: '100,000 TPIX', apy: '7-10%', lock: isTH.value ? '30 วัน' : '30 days',
-        reward: { monthly: '~708 TPIX', yearly: '~8,500 TPIX' },
+        stake: '100,000 TPIX', apy: '7-9%', lock: isTH.value ? '30 วัน' : '30 days',
+        reward: { monthly: '~667 TPIX', yearly: '~8,000 TPIX' },
         hardware: isTH.value ? 'CPU 4 cores · RAM 8GB · SSD 200GB' : '4 CPU · 8GB RAM · 200GB SSD',
         color: 'purple', icon: '🛡️',
     },
     {
-        id: 'validator', name: 'Validator Node',
-        stake: '1,000,000 TPIX', apy: '12-15%', lock: isTH.value ? '90 วัน' : '90 days',
-        reward: { monthly: '~11,250 TPIX', yearly: '~135,000 TPIX' },
+        id: 'guardian', name: 'Guardian Node',
+        stake: '1,000,000 TPIX', apy: '10-12%', lock: isTH.value ? '90 วัน' : '90 days',
+        reward: { monthly: '~9,167 TPIX', yearly: '~110,000 TPIX' },
         hardware: isTH.value ? 'CPU 8 cores · RAM 16GB · SSD 500GB' : '8 CPU · 16GB RAM · 500GB SSD',
         color: 'yellow', icon: '⚡',
+    },
+    {
+        id: 'validator', name: 'Validator Node',
+        stake: '10,000,000 TPIX', apy: '15-20%', lock: isTH.value ? '180 วัน' : '180 days',
+        reward: { monthly: '~145,833 TPIX', yearly: '~1,750,000 TPIX' },
+        hardware: isTH.value ? 'CPU 16 cores · RAM 32GB · SSD 1TB' : '16 CPU · 32GB RAM · 1TB SSD',
+        color: 'red', icon: '🔥',
     },
 ]);
 
@@ -72,7 +79,7 @@ const steps = computed(() => isTH.value ? [
         details: [
             'คัดลอก Address จากหน้ากระเป๋าในโปรแกรม',
             'ส่ง TPIX จาก exchange หรือ wallet อื่นเข้ามา',
-            'จำนวนขั้นต่ำตาม tier: Light 10,000 / Sentinel 100,000 / Validator 1,000,000 TPIX',
+            'จำนวนขั้นต่ำตาม tier: Light 10,000 / Sentinel 100,000 / Guardian 1,000,000 / Validator 10,000,000 TPIX',
             'รอยืนยันบน TPIX Chain (ประมาณ 2-4 วินาที)',
             'ตรวจสอบยอดในหน้ากระเป๋าของโปรแกรม กด "รีเฟรช" เพื่ออัปเดต',
         ],
@@ -84,7 +91,7 @@ const steps = computed(() => isTH.value ? [
         desc: 'เลือก tier ที่ต้องการและกรอกชื่อโหนด',
         details: [
             'คลิกแท็บ "ตั้งค่าโหนด" (Run a Node)',
-            'เลือกระดับที่ต้องการ: Light / Sentinel / Validator',
+            'เลือกระดับที่ต้องการ: Light / Sentinel / Guardian / Validator',
             'ระบบจะแสดงรางวัลโดยประมาณที่จะได้รับ',
             'คลิก "ถัดไป" เพื่อยืนยัน wallet',
             'กรอกชื่อโหนดของคุณ (เช่น "my-tpix-node")',
@@ -152,7 +159,7 @@ const steps = computed(() => isTH.value ? [
         details: [
             'Copy your Address from the Wallet page in the app',
             'Send TPIX from an exchange or another wallet',
-            'Minimum amounts by tier: Light 10,000 / Sentinel 100,000 / Validator 1,000,000 TPIX',
+            'Minimum amounts by tier: Light 10,000 / Sentinel 100,000 / Guardian 1,000,000 / Validator 10,000,000 TPIX',
             'Wait for confirmation on TPIX Chain (~2-4 seconds)',
             'Check balance on the Wallet page — click "Refresh" to update',
         ],
@@ -164,7 +171,7 @@ const steps = computed(() => isTH.value ? [
         desc: 'Select your node tier and enter your node name',
         details: [
             'Click the "Run a Node" tab',
-            'Choose your tier: Light / Sentinel / Validator',
+            'Choose your tier: Light / Sentinel / Guardian / Validator',
             'The app will show estimated rewards for each tier',
             'Click "Next" to confirm your wallet',
             'Enter your node name (e.g., "my-tpix-node")',
@@ -426,8 +433,8 @@ const stepDiagrams = {
 
                 <p class="text-xs text-dark-500 mt-4 leading-relaxed">
                     {{ isTH
-                        ? '* รางวัลแจกตามสัดส่วน stake + uptime ของคุณ Validator ได้ส่วนแบ่ง 50%, Sentinel 30%, Light 20%'
-                        : '* Rewards distributed by stake + uptime proportion. Validators: 50%, Sentinels: 30%, Light: 20%' }}
+                        ? '* รางวัลแจกตามสัดส่วน stake + uptime ของคุณ Validator 20%, Guardian 35%, Sentinel 30%, Light 15%'
+                        : '* Rewards distributed by stake + uptime proportion. Validators: 20%, Guardians: 35%, Sentinels: 30%, Light: 15%' }}
                 </p>
             </div>
 
@@ -441,14 +448,14 @@ const stepDiagrams = {
                         { q: 'ต้องเปิดคอมทิ้งไว้ตลอดไหม?', a: 'ยิ่ง uptime สูง ยิ่งได้รางวัลมาก แนะนำเปิด 24/7 หรือใช้ VPS/Cloud Server' },
                         { q: 'รันหลายโหนดได้ไหม?', a: 'ได้ แต่แต่ละโหนดต้องมี wallet และ stake แยกกัน' },
                         { q: 'ถ้าเน็ตหลุดจะเป็นอย่างไร?', a: 'โหนดจะหยุดชั่วคราว เมื่อเน็ตกลับมาจะเชื่อมต่อใหม่อัตโนมัติ ไม่โดนลงโทษสำหรับ Light Node' },
-                        { q: 'Validator กับ Light Node ต่างกันอย่างไร?', a: 'Validator ช่วยผลิตบล็อกจริง ต้อง stake 1M TPIX และมี hardware แรง ได้รางวัลสูงสุด 12-15% APY' },
+                        { q: 'Validator กับ Guardian ต่างกันอย่างไร?', a: 'Validator คือ IBFT2 block sealer ตัวจริง ต้อง stake 10M TPIX + KYC บริษัท มีสิทธิ์โหวต governance Guardian คือ premium masternode ต้อง stake 1M TPIX' },
                         { q: 'ยิ่งมีโหนดเยอะ เชนยิ่งเสถียรจริงไหม?', a: 'ใช่! IBFT2 ต้องการ 2/3 ของ validators ออนไลน์ ยิ่งมีเยอะ ยิ่งทนทานต่อการล่ม' },
                         { q: 'โปรแกรมอัปเดตยังไง?', a: 'อัปเดตอัตโนมัติจาก GitHub! เมื่อมีเวอร์ชันใหม่จะแจ้งเตือนในแอป คลิกเดียวอัปเดตได้เลย' },
                     ] : [
                         { q: 'Do I need to keep my computer running 24/7?', a: 'Higher uptime = more rewards. Recommended 24/7 or use a VPS/Cloud Server.' },
                         { q: 'Can I run multiple nodes?', a: 'Yes, but each node needs its own wallet and separate stake.' },
                         { q: 'What happens if my internet disconnects?', a: 'The node pauses temporarily. It reconnects automatically when internet returns. Light Nodes are not penalized.' },
-                        { q: 'What is the difference between Validator and Light?', a: 'Validators produce blocks, require 1M TPIX stake and strong hardware. They earn the highest rewards at 12-15% APY.' },
+                        { q: 'What is the difference between Validator and Guardian?', a: 'Validators are real IBFT2 block sealers requiring 10M TPIX + company KYC, with governance voting power. Guardians are premium masternodes requiring 1M TPIX.' },
                         { q: 'More nodes = more stable chain?', a: 'Yes! IBFT2 requires 2/3 of validators online. More validators = more fault tolerance.' },
                         { q: 'How does the app update?', a: 'Auto-updates from GitHub! When a new version is available, you get notified in-app. One click to update.' },
                     ])" :key="i"
