@@ -34,17 +34,18 @@ export default defineConfig({
         chunkSizeWarningLimit: 1000,
         rollupOptions: {
             output: {
-                manualChunks: {
-                    vendor: ['vue', 'pinia', '@inertiajs/vue3'],
-                    charts: ['lightweight-charts', 'apexcharts'],
-                    web3: ['ethers', 'web3'],
+                manualChunks(id) {
+                    if (id.includes('node_modules/vue/') || id.includes('node_modules/pinia/') || id.includes('node_modules/@inertiajs/')) {
+                        return 'vendor';
+                    }
+                    if (id.includes('node_modules/lightweight-charts/') || id.includes('node_modules/apexcharts/')) {
+                        return 'charts';
+                    }
+                    if (id.includes('node_modules/ethers/') || id.includes('node_modules/web3/')) {
+                        return 'web3';
+                    }
                 },
             },
-        },
-        // Production: strip console.log/warn เพื่อป้องกัน information leak
-        minify: 'esbuild',
-        esbuildOptions: {
-            drop: ['console', 'debugger'],
         },
     },
     server: {
