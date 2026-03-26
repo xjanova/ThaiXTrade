@@ -124,6 +124,7 @@ Route::get('/token-factory', [TokenFactoryController::class, 'index'])->name('to
 
 // Carbon Credits — ระบบ Carbon Credit
 Route::get('/carbon-credits', [CarbonCreditController::class, 'index'])->name('carbon-credits');
+Route::get('/carbon-credits/whitepaper', [CarbonCreditController::class, 'whitepaper'])->name('carbon-credits.whitepaper');
 
 // FoodPassport — ระบบตรวจสอบที่มาอาหารบน Blockchain + IoT
 Route::get('/food-passport', [FoodPassportController::class, 'index'])->name('food-passport');

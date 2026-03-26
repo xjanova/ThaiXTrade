@@ -10,7 +10,10 @@ class CarbonCreditController extends Controller
 {
     public function __construct(
         private CarbonCreditService $carbonCreditService,
-    ) {}
+    )
+    {
+        //
+    }
 
     public function index(): Response
     {
@@ -21,5 +24,10 @@ class CarbonCreditController extends Controller
             'projects' => $projects,
             'stats' => $stats,
         ]);
+    }
+
+    public function whitepaper(): Response
+    {
+        return Inertia::render('CarbonCreditWhitepaper');
     }
 }
