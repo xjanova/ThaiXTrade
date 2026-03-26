@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use kornrunner\Keccak;
+use Throwable;
 
 /**
  * WalletController.
@@ -25,7 +26,10 @@ class WalletController extends Controller
     public function __construct(
         private Web3BalanceService $balanceService,
         private UserWalletService $userWalletService,
-    ) {}
+    )
+    {
+        //
+    }
 
     /**
      * Record a wallet connection event.
@@ -361,7 +365,7 @@ class WalletController extends Controller
             $pubKeyHash = Keccak::hash(hex2bin(substr($pubKeyHex, 2)), 256);
 
             return '0x'.substr($pubKeyHash, -40);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Log::error('ecRecover failed', ['error' => $e->getMessage()]);
 
             return null;
