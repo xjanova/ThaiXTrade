@@ -20,7 +20,7 @@
         "laravel/reverb": "^1.0",
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.12",
-        "laravel/tinker": "^2.9",
+        "laravel/tinker": "^3.0",
         "predis/predis": "^3.4",
         "resend/resend-php": "^0.10.0",
         "socialiteproviders/line": "^4.1",
