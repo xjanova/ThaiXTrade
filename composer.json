@@ -22,7 +22,7 @@
         "laravel/socialite": "^5.12",
         "laravel/tinker": "^3.0",
         "predis/predis": "^3.4",
-        "resend/resend-php": "^0.10.0",
+        "resend/resend-php": "^1.1.1",
         "socialiteproviders/line": "^4.1",
         "stripe/stripe-php": "^19.4",
         "kornrunner/keccak": "^1.1",
