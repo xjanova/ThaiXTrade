@@ -231,7 +231,10 @@ jobs:
             # === Step 5: Start ALL services ===
             echo "[5] Starting TPIX Chain + Blockscout..."
             cd "$INFRA"
-            docker compose up -d --force-recreate
+            # Start chain + db + backend without force-recreate (preserve chain state)
+            docker compose up -d tpix-node blockscout-db blockscout-backend
+            # Force-recreate frontend only (to pick up env var changes like logo)
+            docker compose up -d --force-recreate blockscout-frontend
             echo "Waiting 20s for chain to start sealing..."
             sleep 20
 
