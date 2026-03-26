@@ -328,13 +328,22 @@ jobs:
             <link rel="icon" type="image/webp" href="https://tpix.online/images/logotpixexplorer.webp">
             <style>
             /* TPIX Explorer — Custom Branding */
-            /* Replace sidebar logo */
+            /* Replace sidebar logo — full size */
+            header a[href="/"],
+            nav a[href="/"] {
+                display: inline-flex !important;
+                align-items: center !important;
+                height: auto !important;
+                max-height: none !important;
+                overflow: visible !important;
+            }
             header a[href="/"] img,
             nav a[href="/"] img,
             [class*="NetworkLogo"] img,
             [data-testid="network-logo"] img {
                 content: url(https://tpix.online/images/logotpixexplorer.webp) !important;
-                max-height: 28px !important;
+                height: 60px !important;
+                max-height: none !important;
                 width: auto !important;
                 object-fit: contain !important;
             }
@@ -343,11 +352,13 @@ jobs:
             nav a[href="/"] svg {
                 display: none !important;
             }
-            /* Sidebar logo container */
-            header a[href="/"],
-            nav a[href="/"] {
-                display: inline-flex !important;
-                align-items: center !important;
+            /* Expand logo parent containers */
+            header a[href="/"] > div,
+            nav a[href="/"] > div {
+                height: auto !important;
+                max-height: none !important;
+                width: auto !important;
+                overflow: visible !important;
             }
             /* TPIX accent color */
             :root {
@@ -362,13 +373,13 @@ jobs:
                 function replaceLogo(){
                     // Find all logo images in header/nav links to "/"
                     document.querySelectorAll("header a[href=\'/\'] img, nav a[href=\'/\'] img").forEach(function(img){
-                        if(img.src !== logo){ img.src = logo; img.style.maxHeight="28px"; img.style.width="auto"; }
+                        if(img.src !== logo){ img.src = logo; img.style.height="60px"; img.style.maxHeight="none"; img.style.width="auto"; }
                     });
                     // Find Blockscout SVG logos and replace with img
                     document.querySelectorAll("header a[href=\'/\'] svg, nav a[href=\'/\'] svg").forEach(function(svg){
                         var img = document.createElement("img");
                         img.src = logo; img.alt = "TPIX Explorer";
-                        img.style.cssText = "max-height:28px;width:auto";
+                        img.style.cssText = "height:60px;width:auto";
                         svg.parentNode.replaceChild(img, svg);
                     });
                 }
