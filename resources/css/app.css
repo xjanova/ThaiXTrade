@@ -537,4 +537,26 @@
         -ms-overflow-style: none;
         scrollbar-width: none;
     }
+
+    /* Shadow Glow (trading) */
+    .shadow-green-glow {
+        box-shadow: 0 0 12px rgba(0, 200, 83, 0.3);
+    }
+
+    .shadow-red-glow {
+        box-shadow: 0 0 12px rgba(255, 23, 68, 0.3);
+    }
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+
+@keyframes scale-in {
+    0% { opacity: 0; transform: scale(0.95); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-scale-in {
+    animation: scale-in 0.2s ease-out;
 }

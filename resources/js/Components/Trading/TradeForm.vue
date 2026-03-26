@@ -2,10 +2,12 @@
 /**
  * TPIX TRADE - Trade Form Component
  * Buy/Sell order form with real wallet balance integration
+ * ป้องกันกดซ้ำ + loading state + validation
  * Developed by Xman Studio
  */
 
 import { ref, computed, watch, onMounted } from 'vue';
+import { playClickSound } from '@/Composables/useSounds';
 import axios from 'axios';
 
 const props = defineProps({
@@ -13,6 +15,7 @@ const props = defineProps({
     tickerPrice: { type: Number, default: 0 },
     selectedPrice: { type: [Number, null], default: null },
     isWalletConnected: { type: Boolean, default: false },
+    isSubmitting: { type: Boolean, default: false },
     balances: { type: Array, default: () => [] },
 });
 
@@ -41,11 +44,7 @@ const quoteSymbol = computed(() => props.symbol.split('/')[1] || 'USDT');
 // Get available balance for the relevant token
 const availableBalance = computed(() => {
     if (!props.balances || props.balances.length === 0) return '0';
-
-    // When buying, we need quote token (USDT) balance
-    // When selling, we need base token balance
     const tokenSymbol = activeTab.value === 'buy' ? quoteSymbol.value : baseSymbol.value;
-
     const found = props.balances.find(b =>
         b.symbol?.toUpperCase() === tokenSymbol.toUpperCase()
     );
@@ -56,6 +55,7 @@ const availableBalance = computed(() => {
 watch(() => props.selectedPrice, (val) => {
     if (val && orderType.value === 'limit') {
         price.value = String(val);
+        calculateTotal();
     }
 });
 
@@ -96,6 +96,7 @@ const calculateTotal = () => {
 
 const setSliderValue = (percent) => {
     sliderValue.value = percent;
+    playClickSound();
 
     if (percent === 0) {
         amount.value = '';
@@ -110,11 +111,9 @@ const setSliderValue = (percent) => {
     if (priceNum <= 0) return;
 
     if (activeTab.value === 'buy') {
-        // Calculate how much base token we can buy with percent of quote balance
         const spendAmount = balance * (percent / 100);
         amount.value = (spendAmount / priceNum).toFixed(6);
     } else {
-        // Calculate how much base token to sell
         amount.value = (balance * (percent / 100)).toFixed(6);
     }
 
@@ -131,10 +130,16 @@ const setMarketPrice = () => {
 };
 
 const submitOrder = () => {
+    // ป้องกันกดซ้ำ
+    if (props.isSubmitting) return;
+
     if (!isConnected.value) {
         emit('connect-wallet');
         return;
     }
+
+    playClickSound();
+
     emit('submit-order', {
         side: activeTab.value,
         type: orderType.value,
@@ -150,22 +155,22 @@ const submitOrder = () => {
         <!-- Buy/Sell Tabs -->
         <div class="flex gap-2 mb-3">
             <button
-                @click="activeTab = 'buy'"
+                @click="activeTab = 'buy'; playClickSound()"
                 :class="[
                     'flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all',
                     activeTab === 'buy'
-                        ? 'bg-trading-green text-white'
+                        ? 'bg-trading-green text-white shadow-green-glow'
                         : 'bg-dark-800 text-dark-400 hover:text-white'
                 ]"
             >
                 Buy
             </button>
             <button
-                @click="activeTab = 'sell'"
+                @click="activeTab = 'sell'; playClickSound()"
                 :class="[
                     'flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all',
                     activeTab === 'sell'
-                        ? 'bg-trading-red text-white'
+                        ? 'bg-trading-red text-white shadow-red-glow'
                         : 'bg-dark-800 text-dark-400 hover:text-white'
                 ]"
             >
@@ -280,8 +285,10 @@ const submitOrder = () => {
         <!-- Submit Button -->
         <button
             @click="submitOrder"
+            :disabled="isSubmitting"
             :class="[
-                'w-full py-3 rounded-xl font-bold text-sm transition-all',
+                'w-full py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2',
+                isSubmitting ? 'opacity-60 cursor-not-allowed' : '',
                 !isConnected
                     ? 'bg-primary-500 hover:bg-primary-600 text-white'
                     : activeTab === 'buy'
@@ -289,7 +296,8 @@ const submitOrder = () => {
                         : 'btn-danger'
             ]"
         >
-            {{ !isConnected ? 'Connect Wallet' : activeTab === 'buy' ? `Buy ${baseSymbol}` : `Sell ${baseSymbol}` }}
+            <div v-if="isSubmitting" class="spinner !w-4 !h-4 !border-white/30 !border-t-white"></div>
+            {{ isSubmitting ? 'Processing...' : !isConnected ? 'Connect Wallet' : activeTab === 'buy' ? `Buy ${baseSymbol}` : `Sell ${baseSymbol}` }}
         </button>
 
         <!-- TP/SL Options -->

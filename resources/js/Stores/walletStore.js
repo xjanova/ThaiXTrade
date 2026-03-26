@@ -11,6 +11,7 @@ import { defineStore } from 'pinia';
 import { ref, shallowRef, computed } from 'vue';
 import { BrowserProvider, JsonRpcProvider, parseEther } from 'ethers';
 import axios from 'axios';
+import { playConnectSound, playDisconnectSound, playErrorSound } from '@/Composables/useSounds';
 import {
     BSC_CHAIN_CONFIG,
     DEFAULT_CHAIN_ID,
@@ -36,6 +37,20 @@ import {
 } from '@/utils/embeddedWallet';
 
 const STORAGE_KEY = 'tpix_wallet';
+const CONNECT_TIMEOUT_MS = 30000; // 30 วินาที timeout สำหรับ wallet connection
+const VERIFY_TIMEOUT_MS = 15000;  // 15 วินาที timeout สำหรับ signature verification
+
+/**
+ * Promise with timeout — ป้องกันการค้างถาวร
+ */
+function withTimeout(promise, ms, message = 'Operation timed out') {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(message)), ms)
+        ),
+    ]);
+}
 
 /**
  * Detect the correct provider for a given wallet type.
@@ -153,20 +168,32 @@ export const useWalletStore = defineStore('wallet', () => {
         _rawProvider = injected;
 
         try {
-            // โหลดรายการ chain ที่รองรับ (ขนานกับ request accounts)
-            const [accounts] = await Promise.all([
-                injected.request({ method: 'eth_requestAccounts' }),
-                loadSupportedChains(),
-            ]);
+            // โหลดรายการ chain ที่รองรับ (ขนานกับ request accounts) + timeout ป้องกันค้าง
+            const [accounts] = await withTimeout(
+                Promise.all([
+                    injected.request({ method: 'eth_requestAccounts' }),
+                    loadSupportedChains(),
+                ]),
+                CONNECT_TIMEOUT_MS,
+                'Wallet connection timed out. Please try again.'
+            );
 
             if (!accounts || accounts.length === 0) {
                 throw new Error('No accounts returned from wallet.');
             }
 
-            // สร้าง ethers provider และ signer
+            // สร้าง ethers provider และ signer (+ timeout)
             const ethProvider = new BrowserProvider(injected);
-            const ethSigner = await ethProvider.getSigner();
-            const network = await ethProvider.getNetwork();
+            const ethSigner = await withTimeout(
+                ethProvider.getSigner(),
+                10000,
+                'Failed to get wallet signer. Please try again.'
+            );
+            const network = await withTimeout(
+                ethProvider.getNetwork(),
+                10000,
+                'Failed to detect network.'
+            );
 
             // อัปเดต state
             address.value = accounts[0];
@@ -197,16 +224,22 @@ export const useWalletStore = defineStore('wallet', () => {
             // แจ้ง backend ว่า wallet connect สำเร็จ — สร้าง user อัตโนมัติ
             _registerWalletToBackend(address.value, chainId.value, type);
 
-            // ยืนยัน wallet ownership ด้วย signature (จำเป็นสำหรับ write operations)
-            await _verifyWalletOwnership(ethSigner, address.value);
+            // ยืนยัน wallet ownership ด้วย signature (ไม่ block connection — ใช้ timeout)
+            _verifyWalletOwnership(ethSigner, address.value).catch(() => {});
 
             // ตั้งค่า event listeners สำหรับ chain/account changes
             _setupListeners();
 
+            // เล่นเสียงเชื่อมต่อสำเร็จ
+            playConnectSound();
+
             return address.value;
         } catch (err) {
+            playErrorSound();
             if (err.code === 4001) {
                 error.value = 'Connection rejected by user.';
+            } else if (err.message?.includes('timed out')) {
+                error.value = err.message;
             } else {
                 error.value = err.message || 'Failed to connect wallet.';
             }
@@ -360,6 +393,8 @@ export const useWalletStore = defineStore('wallet', () => {
     }
 
     function disconnect() {
+        // เล่นเสียง disconnect
+        playDisconnectSound();
         // แจ้ง backend ว่า disconnect
         if (address.value) {
             axios.post('/api/v1/wallet/disconnect', {
@@ -407,16 +442,20 @@ export const useWalletStore = defineStore('wallet', () => {
 
             _rawProvider = injected;
 
-            // โหลด chain list ขนานกับ check accounts
-            const [accounts] = await Promise.all([
-                injected.request({ method: 'eth_accounts' }),
-                loadSupportedChains(),
-            ]);
+            // โหลด chain list ขนานกับ check accounts (+ timeout ป้องกันค้าง)
+            const [accounts] = await withTimeout(
+                Promise.all([
+                    injected.request({ method: 'eth_accounts' }),
+                    loadSupportedChains(),
+                ]),
+                10000,
+                'Auto-reconnect timed out'
+            );
 
             if (accounts && accounts.length > 0) {
                 const ethProvider = new BrowserProvider(injected);
-                const ethSigner = await ethProvider.getSigner();
-                const network = await ethProvider.getNetwork();
+                const ethSigner = await withTimeout(ethProvider.getSigner(), 10000, 'Signer timeout');
+                const network = await withTimeout(ethProvider.getNetwork(), 10000, 'Network timeout');
 
                 address.value = accounts[0];
                 chainId.value = Number(network.chainId);
@@ -461,30 +500,36 @@ export const useWalletStore = defineStore('wallet', () => {
      */
     async function _verifyWalletOwnership(walletSigner, walletAddress) {
         try {
-            // 1. ขอ nonce + message จาก backend
-            const signRes = await axios.post('/api/v1/wallet/sign', {
-                wallet_address: walletAddress,
-            });
+            // 1. ขอ nonce + message จาก backend (+ timeout)
+            const signRes = await withTimeout(
+                axios.post('/api/v1/wallet/sign', { wallet_address: walletAddress }),
+                VERIFY_TIMEOUT_MS,
+                'Signature request timed out'
+            );
 
             if (!signRes.data?.success) return;
 
             const { message, nonce } = signRes.data.data;
 
-            // 2. ให้ผู้ใช้ sign message ด้วย wallet
-            const signature = await walletSigner.signMessage(message);
+            // 2. ให้ผู้ใช้ sign message ด้วย wallet (+ timeout)
+            const signature = await withTimeout(
+                walletSigner.signMessage(message),
+                VERIFY_TIMEOUT_MS,
+                'Signature timed out'
+            );
 
             // 3. ส่ง signature กลับไปยืนยัน
-            const verifyRes = await axios.post('/api/v1/wallet/verify-signature', {
-                wallet_address: walletAddress,
-                signature,
-                nonce,
-            });
-
-            if (verifyRes.data?.success) {
-                console.log('[TPIX] ✅ Wallet ownership verified:', walletAddress);
-            }
+            await withTimeout(
+                axios.post('/api/v1/wallet/verify-signature', {
+                    wallet_address: walletAddress,
+                    signature,
+                    nonce,
+                }),
+                VERIFY_TIMEOUT_MS,
+                'Verification timed out'
+            );
         } catch (err) {
-            // ถ้า user ปฏิเสธ sign (code 4001) หรือ backend ยังไม่พร้อม ไม่ block connection
+            // ถ้า user ปฏิเสธ sign (code 4001) หรือ timeout — ไม่ block connection
             console.warn('[TPIX] Wallet verification skipped:', err.message || err);
         }
     }

@@ -12,6 +12,7 @@ import { ref, computed } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import EmbeddedWalletSetup from './EmbeddedWalletSetup.vue';
 import { isWalletStored, getStoredAddress } from '@/utils/embeddedWallet';
+import { playClickSound, playErrorSound } from '@/Composables/useSounds';
 import {
     isMobile,
     detectInAppBrowser,
@@ -105,7 +106,12 @@ const hasExternalWallet = computed(() => {
     return checkAnyWallet();
 });
 
+// Timeout สำหรับ connect — ป้องกันค้าง
+const connectTimeout = ref(null);
+
 const connectWallet = async (wallet) => {
+    playClickSound();
+
     // TPIX Wallet — embedded wallet flow
     if (wallet.embedded) {
         if (hasStoredWallet.value) {
@@ -152,13 +158,20 @@ const connectWallet = async (wallet) => {
 
         emit('close');
     } catch (err) {
+        playErrorSound();
         if (err.code === 4001) {
             error.value = 'Connection rejected. Please try again.';
+        } else if (err.message?.includes('timed out')) {
+            error.value = 'Connection timed out. Please try again.';
         } else {
             error.value = walletStore.error || err.message || 'Failed to connect. Please try again.';
         }
     } finally {
         isConnecting.value = false;
+        if (connectTimeout.value) {
+            clearTimeout(connectTimeout.value);
+            connectTimeout.value = null;
+        }
     }
 };
 
@@ -172,6 +185,10 @@ const openInExternalBrowser = () => {
 
 // Unlock embedded wallet ด้วย password
 async function unlockEmbedded() {
+    if (!unlockPassword.value) {
+        error.value = 'Please enter your password.';
+        return;
+    }
     isConnecting.value = true;
     error.value = null;
     try {
@@ -181,7 +198,8 @@ async function unlockEmbedded() {
         emit('connected', { address: walletStore.address, wallet: 'tpix_wallet', chainId: walletStore.chainId });
         emit('close');
     } catch (err) {
-        error.value = err.message;
+        playErrorSound();
+        error.value = err.message || 'Failed to unlock wallet.';
     } finally {
         isConnecting.value = false;
     }
