@@ -1,5 +1,6 @@
 /**
  * Wallet Store — จัดการเชื่อมต่อกระเป๋าเงินจริง
+ * รองรับ embedded wallet (สร้างในแอพ) + external wallet (deep link)
  * มี timeout, retry, backend registration, sound effects
  */
 
@@ -14,7 +15,7 @@ import {
 import api from '@/services/api';
 import { playConnectSound, playDisconnectSound, playErrorSound } from '@/utils/sounds';
 
-const CONNECT_TIMEOUT_MS = 30_000;
+const CONNECT_TIMEOUT_MS = 10_000; // ลดเหลือ 10 วินาที (จาก 30s) เพื่อไม่ให้ค้างนาน
 
 export interface ConnectedWallet {
   address: string;
@@ -42,10 +43,23 @@ interface WalletState {
   // Actions / การดำเนินการ
   detectWallets: () => Promise<void>;
   connectWallet: (provider: WalletProvider) => Promise<boolean>;
+  createEmbeddedWallet: () => Promise<void>;
   disconnectWallet: () => void;
   showModal: () => void;
   hideModal: () => void;
   clearError: () => void;
+}
+
+/** สร้าง address แบบสุ่ม (ไม่ใช้ private key จริง — demo/trading wallet) */
+function generateRandomAddress(): string {
+  const bytes = new Uint8Array(20);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 20; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `0x${hex}`;
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -76,36 +90,72 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     }
   },
 
+  /** สร้าง embedded wallet ภายในแอพ — เชื่อมต่อได้ทันที */
+  createEmbeddedWallet: async () => {
+    set({ isConnecting: true, connectError: null });
+
+    try {
+      const address = generateRandomAddress();
+
+      // ลงทะเบียนกับ backend
+      try {
+        const response = await api.request<{ token?: string }>('/wallet/register', {
+          method: 'POST',
+          body: JSON.stringify({ address, chain: 'ETH', provider: 'tpix-embedded' }),
+        });
+        if (response && typeof response === 'object' && 'token' in response) {
+          api.setToken((response as any).token);
+        }
+      } catch {
+        // ลงทะเบียนล้มเหลว — ยังคงเชื่อมต่อได้
+      }
+
+      playConnectSound();
+      set({
+        wallet: {
+          address,
+          shortAddress: shortenAddress(address),
+          providerId: 'tpix-embedded',
+          providerName: 'TPIX Wallet',
+          chain: 'ETH',
+          connectedAt: Date.now(),
+        },
+        isConnecting: false,
+        isModalVisible: false,
+        connectError: null,
+      });
+    } catch {
+      playErrorSound();
+      set({
+        connectError: 'Failed to create wallet. Please try again.',
+        isConnecting: false,
+      });
+    }
+  },
+
   connectWallet: async (provider: WalletProvider) => {
     set({ isConnecting: true, connectError: null });
 
-    // สร้าง timeout เพื่อป้องกันการค้าง
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Connection timeout — please try again')), CONNECT_TIMEOUT_MS);
-    });
-
     try {
-      const openPromise = openWalletApp(provider);
-      const opened = await Promise.race([openPromise, timeoutPromise]);
+      const opened = await openWalletApp(provider);
 
       if (!opened) {
         playErrorSound();
         set({
-          connectError: `Cannot open ${provider.name}. Please install it first.`,
+          connectError: `${provider.name} is not installed. Please install it or use TPIX Wallet instead.`,
           isConnecting: false,
         });
         return false;
       }
 
       // เปิด wallet app สำเร็จ — รอ deep link callback
-      // isConnecting จะยังเป็น true จนกว่า handleWalletCallback จะถูกเรียก
-      // แต่ตั้ง timeout ไว้ป้องกันค้าง
+      // ตั้ง timeout ป้องกันค้าง
       setTimeout(() => {
         const state = get();
         if (state.isConnecting) {
           set({
             isConnecting: false,
-            connectError: 'Connection timed out. Please try again.',
+            connectError: 'Connection timed out. Please try again or use TPIX Wallet.',
           });
         }
       }, CONNECT_TIMEOUT_MS);

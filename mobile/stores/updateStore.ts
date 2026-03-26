@@ -3,7 +3,7 @@
  * สโตร์สำหรับจัดการสถานะการอัปเดต
  *
  * Manages update check, download progress, and installation.
- * จัดการการตรวจสอบอัปเดต, ความคืบหน้าดาวน์โหลด, และการติดตั้ง
+ * มี timeout ป้องกันค้าง + cancel สำหรับยกเลิกดาวน์โหลด
  */
 
 import { create } from 'zustand';
@@ -15,6 +15,10 @@ import {
 } from '@/services/updateService';
 
 type DownloadStatus = 'idle' | 'downloading' | 'completed' | 'installing' | 'error';
+
+const DOWNLOAD_TIMEOUT_MS = 60_000; // 60 วินาที
+const INSTALL_TIMEOUT_MS = 30_000;  // 30 วินาที
+const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 interface UpdateState {
   /** Update information / ข้อมูลอัปเดต */
@@ -45,6 +49,8 @@ interface UpdateState {
   forceCheck: () => Promise<void>;
   /** Start downloading APK / เริ่มดาวน์โหลด APK */
   startDownload: () => Promise<void>;
+  /** Cancel download in progress / ยกเลิกดาวน์โหลด */
+  cancelDownload: () => void;
   /** Install downloaded APK / ติดตั้ง APK ที่ดาวน์โหลดแล้ว */
   startInstall: () => Promise<void>;
   /** Dismiss the update modal / ปิด modal อัปเดต */
@@ -55,7 +61,8 @@ interface UpdateState {
   resetDownload: () => void;
 }
 
-const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+// ใช้เก็บ flag ยกเลิก (อยู่นอก store เพื่อให้ closure ใน startDownload เข้าถึงได้)
+let downloadCancelled = false;
 
 export const useUpdateStore = create<UpdateState>((set, get) => ({
   updateInfo: null,
@@ -98,6 +105,8 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     if (!updateInfo?.downloadUrl) return;
     if (downloadStatus === 'downloading') return;
 
+    downloadCancelled = false;
+
     set({
       downloadStatus: 'downloading',
       downloadPercent: 0,
@@ -108,7 +117,9 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     });
 
     try {
-      const uri = await downloadApk(updateInfo.downloadUrl, (progress) => {
+      // ครอบด้วย timeout ป้องกันค้าง
+      const downloadPromise = downloadApk(updateInfo.downloadUrl, (progress) => {
+        if (downloadCancelled) return;
         set({
           downloadPercent: progress.percent,
           downloadedBytes: progress.totalBytesWritten,
@@ -116,12 +127,22 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
         });
       });
 
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Download timed out — please try again')), DOWNLOAD_TIMEOUT_MS);
+      });
+
+      const uri = await Promise.race([downloadPromise, timeoutPromise]);
+
+      // ตรวจสอบว่าถูกยกเลิกระหว่าง download หรือไม่
+      if (downloadCancelled) return;
+
       set({
         downloadStatus: 'completed',
         downloadPercent: 100,
         localFileUri: uri,
       });
     } catch (err) {
+      if (downloadCancelled) return;
       const message = err instanceof Error ? err.message : 'ดาวน์โหลดล้มเหลว';
       set({
         downloadStatus: 'error',
@@ -130,13 +151,28 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     }
   },
 
+  cancelDownload: () => {
+    downloadCancelled = true;
+    set({
+      downloadStatus: 'idle',
+      downloadPercent: 0,
+      downloadedBytes: 0,
+      error: null,
+    });
+  },
+
   startInstall: async () => {
     const { localFileUri } = get();
     if (!localFileUri) return;
 
     set({ downloadStatus: 'installing' });
     try {
-      await installApk(localFileUri);
+      const installPromise = installApk(localFileUri);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Install timed out — please try manually')), INSTALL_TIMEOUT_MS);
+      });
+
+      await Promise.race([installPromise, timeoutPromise]);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'ติดตั้งล้มเหลว';
       set({ downloadStatus: 'error', error: message });
@@ -148,12 +184,15 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     const { updateInfo } = get();
     if (updateInfo?.available) set({ showModal: true });
   },
-  resetDownload: () => set({
-    downloadStatus: 'idle',
-    downloadPercent: 0,
-    downloadedBytes: 0,
-    totalBytes: 0,
-    localFileUri: null,
-    error: null,
-  }),
+  resetDownload: () => {
+    downloadCancelled = true;
+    set({
+      downloadStatus: 'idle',
+      downloadPercent: 0,
+      downloadedBytes: 0,
+      totalBytes: 0,
+      localFileUri: null,
+      error: null,
+    });
+  },
 }));

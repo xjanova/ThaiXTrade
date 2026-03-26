@@ -34,11 +34,12 @@ export default function UpdateModal() {
     startDownload,
     startInstall,
     resetDownload,
+    cancelDownload,
   } = useUpdateStore();
 
   if (!showModal || !updateInfo?.available) return null;
 
-  const canDismiss = !updateInfo.mandatory && downloadStatus !== 'downloading';
+  const canDismiss = !updateInfo.mandatory;
   const isDownloading = downloadStatus === 'downloading';
   const isCompleted = downloadStatus === 'completed';
   const isInstalling = downloadStatus === 'installing';
@@ -196,7 +197,7 @@ export default function UpdateModal() {
               </Pressable>
             )}
 
-            {/* Main action button */}
+            {/* Main action button (ซ่อนตอน downloading / installing เพราะมีปุ่ม cancel แทน) */}
             {!isDownloading && !isInstalling && (
               <Pressable
                 style={[styles.downloadBtn, isError && { flex: 1 }]}
@@ -230,13 +231,29 @@ export default function UpdateModal() {
               </Pressable>
             )}
 
-            {/* Downloading - show cancel option */}
+            {/* Downloading — show progress + cancel button */}
             {isDownloading && (
               <View style={styles.downloadingRow}>
                 <ActivityIndicator size="small" color={colors.brand.cyan} />
                 <Text style={styles.downloadingText}>
                   Downloading... / กำลังดาวน์โหลด...
                 </Text>
+                <Pressable style={styles.cancelBtn} onPress={cancelDownload}>
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* Installing — show status + cancel fallback */}
+            {isInstalling && (
+              <View style={styles.downloadingRow}>
+                <ActivityIndicator size="small" color={colors.brand.cyan} />
+                <Text style={styles.downloadingText}>
+                  Installing... / กำลังติดตั้ง...
+                </Text>
+                <Pressable style={styles.cancelBtn} onPress={resetDownload}>
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </Pressable>
               </View>
             )}
           </View>
@@ -470,6 +487,20 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.brand.cyan,
     fontWeight: '600',
+    flex: 1,
+  },
+  cancelBtn: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.trading.red,
+  },
+  cancelText: {
+    ...typography.bodySmall,
+    color: colors.trading.red,
+    fontWeight: '600',
+    fontSize: 12,
   },
 
   // GitHub link

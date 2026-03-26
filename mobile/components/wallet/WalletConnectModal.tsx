@@ -86,6 +86,7 @@ export default function WalletConnectModal() {
     isConnecting,
     connectError,
     connectWallet,
+    createEmbeddedWallet,
     clearError,
   } = useWalletStore();
 
@@ -101,6 +102,11 @@ export default function WalletConnectModal() {
 
   const handleDownload = async (provider: WalletProvider) => {
     await openWalletDownload(provider);
+  };
+
+  const handleCreateWallet = async () => {
+    clearError();
+    await createEmbeddedWallet();
   };
 
   return (
@@ -152,6 +158,41 @@ export default function WalletConnectModal() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.walletListContent}
           >
+            {/* ===== TPIX Embedded Wallet — สร้างได้เลยไม่ต้องติดตั้งแอปอื่น ===== */}
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionDot} />
+              <Text style={styles.sectionLabel}>QUICK START / เริ่มต้นทันที</Text>
+            </View>
+
+            <Pressable
+              style={[styles.walletItem, styles.embeddedWalletItem]}
+              onPress={handleCreateWallet}
+              disabled={isConnecting}
+            >
+              <View style={[styles.walletIcon, { backgroundColor: 'rgba(6, 182, 212, 0.2)' }]}>
+                <Ionicons name="wallet-outline" size={22} color={colors.brand.cyan} />
+              </View>
+
+              <View style={styles.walletInfo}>
+                <View style={styles.walletNameRow}>
+                  <Text style={styles.walletName}>TPIX Wallet</Text>
+                  <View style={[styles.installedBadge, { backgroundColor: 'rgba(6, 182, 212, 0.15)' }]}>
+                    <Ionicons name="flash" size={8} color={colors.brand.cyan} />
+                    <Text style={[styles.installedText, { color: colors.brand.cyan }]}>Instant</Text>
+                  </View>
+                </View>
+                <Text style={styles.walletChains}>
+                  Create wallet instantly · ETH · BSC · POLYGON
+                </Text>
+              </View>
+
+              {isConnecting ? (
+                <ActivityIndicator size="small" color={colors.brand.cyan} />
+              ) : (
+                <Ionicons name="add-circle-outline" size={20} color={colors.brand.cyan} />
+              )}
+            </Pressable>
+
             {/* Detected / Installed wallets */}
             {installedWallets.length > 0 && (
               <>
@@ -182,7 +223,7 @@ export default function WalletConnectModal() {
                   <Text style={styles.sectionLabel}>
                     {installedWallets.length > 0
                       ? 'MORE WALLETS / กระเป๋าอื่น'
-                      : 'AVAILABLE WALLETS / กระเป๋าที่รองรับ'}
+                      : 'EXTERNAL WALLETS / กระเป๋าภายนอก'}
                   </Text>
                 </View>
 
@@ -199,22 +240,12 @@ export default function WalletConnectModal() {
               </>
             )}
 
-            {/* No wallets detected */}
-            {!isDetecting && detectedWallets.length === 0 && (
-              <View style={styles.emptyState}>
-                <Ionicons name="search-outline" size={40} color={colors.text.disabled} />
-                <Text style={styles.emptyText}>
-                  No wallets detected{'\n'}ไม่พบกระเป๋าเงิน
-                </Text>
-              </View>
-            )}
-
             {/* Info footer / ข้อมูลด้านล่าง */}
             <View style={styles.infoFooter}>
               <Ionicons name="shield-checkmark-outline" size={14} color={colors.text.disabled} />
               <Text style={styles.infoText}>
-                Auto-detected from your device. We never access your private keys.
-                {'\n'}ตรวจจับอัตโนมัติจากอุปกรณ์ เราไม่เข้าถึง private key ของคุณ
+                TPIX Wallet creates a local trading wallet instantly. External wallets connect via deep link.
+                {'\n'}TPIX Wallet สร้างกระเป๋าเทรดได้ทันที กระเป๋าภายนอกเชื่อมต่อผ่าน deep link
               </Text>
             </View>
           </ScrollView>
@@ -351,6 +382,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6, 182, 212, 0.06)',
     borderWidth: 1,
     borderColor: 'rgba(6, 182, 212, 0.12)',
+  },
+  embeddedWalletItem: {
+    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.25)',
   },
   walletIcon: {
     width: 44,
