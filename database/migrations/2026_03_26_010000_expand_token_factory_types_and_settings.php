@@ -14,19 +14,21 @@ return new class() extends Migration
 {
     public function up(): void
     {
-        // 1. Expand token_type enum
-        DB::statement("ALTER TABLE factory_tokens MODIFY COLUMN token_type ENUM(
-            'standard',
-            'mintable',
-            'burnable',
-            'mintable_burnable',
-            'nft',
-            'nft_collection',
-            'governance',
-            'stablecoin',
-            'utility',
-            'reward'
-        ) DEFAULT 'standard'");
+        // 1. Expand token_type enum (MySQL only — SQLite has no strict ENUM)
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE factory_tokens MODIFY COLUMN token_type ENUM(
+                'standard',
+                'mintable',
+                'burnable',
+                'mintable_burnable',
+                'nft',
+                'nft_collection',
+                'governance',
+                'stablecoin',
+                'utility',
+                'reward'
+            ) DEFAULT 'standard'");
+        }
 
         // 2. Add token_category column สำหรับจัดกลุ่ม
         Schema::table('factory_tokens', function (Blueprint $table) {
@@ -61,12 +63,14 @@ return new class() extends Migration
             $table->dropColumn('token_category');
         });
 
-        DB::statement("ALTER TABLE factory_tokens MODIFY COLUMN token_type ENUM(
-            'standard',
-            'mintable',
-            'burnable',
-            'mintable_burnable'
-        ) DEFAULT 'standard'");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE factory_tokens MODIFY COLUMN token_type ENUM(
+                'standard',
+                'mintable',
+                'burnable',
+                'mintable_burnable'
+            ) DEFAULT 'standard'");
+        }
 
         SiteSetting::where('group', 'factory')->delete();
     }
