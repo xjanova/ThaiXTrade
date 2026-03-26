@@ -16,8 +16,11 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -57,7 +60,24 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->throttleApi('60,1');
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        // แสดง Error Page แบบ Inertia สำหรับ HTTP errors ทุกประเภท
+        $exceptions->respond(function ($response, $exception, Request $request) {
+            $status = $exception instanceof HttpExceptionInterface
+                ? $exception->getStatusCode()
+                : ($response->getStatusCode() ?? 500);
+
+            // เฉพาะ error codes ที่มีหน้าเฉพาะ + เป็น web request (ไม่ใช่ API)
+            if (in_array($status, [401, 403, 404, 419, 429, 500, 503])
+                && ! $request->is('api/*', 'admin/*')
+                && ! $request->expectsJson()
+            ) {
+                return Inertia::render('Error', ['status' => $status])
+                    ->toResponse($request)
+                    ->setStatusCode($status);
+            }
+
+            return $response;
+        });
     })
     ->create()
     ->usePublicPath(__DIR__.'/../public_html'); // Use public_html instead of public
