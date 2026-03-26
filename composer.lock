@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "64a27d54a422062b51884c7c3724e0a2",
+    "content-hash": "b2af7d7a6521df5f041b90ff8bc68f90",
     "packages": [
         {
             "name": "barryvdh/laravel-dompdf",
@@ -5550,16 +5550,16 @@
         },
         {
             "name": "resend/resend-php",
-            "version": "v0.10.1",
+            "version": "v1.1.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/resend/resend-php.git",
-                "reference": "e3ffb2bbcf8dcd498f507e67307b3ca7e3858bca"
+                "reference": "3711ecd7b205b964a2a7d6f3faff9555ba3b1cc6"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/resend/resend-php/zipball/e3ffb2bbcf8dcd498f507e67307b3ca7e3858bca",
-                "reference": "e3ffb2bbcf8dcd498f507e67307b3ca7e3858bca",
+                "url": "https://api.github.com/repos/resend/resend-php/zipball/3711ecd7b205b964a2a7d6f3faff9555ba3b1cc6",
+                "reference": "3711ecd7b205b964a2a7d6f3faff9555ba3b1cc6",
                 "shasum": ""
             },
             "require": {
@@ -5569,7 +5569,7 @@
             "require-dev": {
                 "friendsofphp/php-cs-fixer": "^3.13",
                 "mockery/mockery": "^1.6",
-                "pestphp/pest": "^2.0"
+                "pestphp/pest": "^1.0|^2.0|^3.0|^4.0"
             },
             "type": "library",
             "autoload": {
@@ -5601,9 +5601,9 @@
             ],
             "support": {
                 "issues": "https://github.com/resend/resend-php/issues",
-                "source": "https://github.com/resend/resend-php/tree/v0.10.1"
+                "source": "https://github.com/resend/resend-php/tree/v1.1.1"
             },
-            "time": "2024-01-25T05:41:45+00:00"
+            "time": "2026-03-16T19:24:23+00:00"
         },
         {
             "name": "sabberworm/php-css-parser",
