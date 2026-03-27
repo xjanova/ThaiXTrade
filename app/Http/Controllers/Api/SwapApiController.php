@@ -199,8 +199,16 @@ class SwapApiController extends Controller
             $submittedFee = (float) $validated['fee_amount'];
             $expectedFeeAmount = $expectedFee['fee_amount'];
 
-            // Reject if fee mismatch exceeds 5% tolerance (accounts for rounding)
-            if ($expectedFeeAmount > 0 && abs($submittedFee - $expectedFeeAmount) / $expectedFeeAmount > 0.05) {
+            // Reject if fee mismatch exceeds tolerance
+            // กรณี expected = 0: submitted ต้อง = 0 ด้วย (ป้องกัน fee manipulation)
+            $feeMismatch = false;
+            if ($expectedFeeAmount > 0) {
+                $feeMismatch = abs($submittedFee - $expectedFeeAmount) / $expectedFeeAmount > 0.05;
+            } elseif ($submittedFee > 0.00000001) {
+                $feeMismatch = true; // expected 0 แต่ submitted > 0
+            }
+
+            if ($feeMismatch) {
                 Log::warning('Swap fee mismatch - rejected', [
                     'submitted_fee' => $submittedFee,
                     'expected_fee' => $expectedFeeAmount,

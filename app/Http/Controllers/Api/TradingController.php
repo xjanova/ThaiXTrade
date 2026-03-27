@@ -136,7 +136,7 @@ class TradingController extends Controller
 
         $transaction = Transaction::create([
             'type' => 'order_'.$validated['side'],
-            'wallet_address' => $validated['wallet_address'],
+            'wallet_address' => strtolower($validated['wallet_address']),
             'chain_id' => $validated['chain_id'],
             'from_token' => $validated['pair'],
             'to_token' => null,
@@ -195,9 +195,11 @@ class TradingController extends Controller
 
         $validated = $validator->validated();
 
+        $walletLower = strtolower($validated['wallet_address']);
+
         $transaction = Transaction::where('uuid', $orderId)
             ->whereIn('status', ['pending', 'executing'])
-            ->where('wallet_address', $validated['wallet_address'])
+            ->where('wallet_address', $walletLower)
             ->first();
 
         if (! $transaction) {
@@ -217,7 +219,7 @@ class TradingController extends Controller
         Log::info('Order confirmed on-chain', [
             'order_id' => $orderId,
             'tx_hash' => $validated['tx_hash'],
-            'wallet' => $validated['wallet_address'],
+            'wallet' => $walletLower,
         ]);
 
         return response()->json([
@@ -235,7 +237,7 @@ class TradingController extends Controller
      */
     public function failOrder(string $orderId, Request $request): JsonResponse
     {
-        $walletAddress = $request->input('wallet_address');
+        $walletAddress = strtolower((string) $request->input('wallet_address'));
 
         $transaction = Transaction::where('uuid', $orderId)
             ->whereIn('status', ['pending', 'executing'])
@@ -328,8 +330,10 @@ class TradingController extends Controller
             return response()->json(['success' => true, 'data' => []]);
         }
 
+        $walletAddress = strtolower($walletAddress);
+
         // Internal orders (รวม 'triggered' = stop-limit ที่รอ trigger)
-        $internalOrders = Order::where('wallet_address', strtolower($walletAddress))
+        $internalOrders = Order::where('wallet_address', $walletAddress)
             ->whereIn('status', ['open', 'partially_filled', 'triggered'])
             ->with('tradingPair')
             ->orderByDesc('created_at')

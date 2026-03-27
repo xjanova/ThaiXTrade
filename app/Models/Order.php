@@ -63,6 +63,8 @@ class Order extends Model
         static::creating(function (Order $order) {
             $order->uuid = $order->uuid ?: (string) Str::uuid();
             $order->remaining_amount = $order->remaining_amount ?? $order->amount;
+            $order->filled_amount = $order->filled_amount ?? '0';
+            $order->fee_amount = $order->fee_amount ?? '0';
         });
     }
 
@@ -129,6 +131,14 @@ class Order extends Model
      */
     public function applyFill(float $fillAmount, float $fillFee): void
     {
+        // ป้องกันค่าติดลบ (อาจเกิดจาก bug หรือ manipulation)
+        if ($fillAmount <= 0) {
+            throw new \InvalidArgumentException('Fill amount must be positive.');
+        }
+        if ($fillFee < 0) {
+            throw new \InvalidArgumentException('Fill fee cannot be negative.');
+        }
+
         $this->filled_amount = bcadd((string) $this->filled_amount, (string) $fillAmount, 18);
         $this->remaining_amount = bcsub((string) $this->amount, (string) $this->filled_amount, 18);
         $this->fee_amount = bcadd((string) $this->fee_amount, (string) $fillFee, 18);

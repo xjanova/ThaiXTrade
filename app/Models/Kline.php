@@ -66,7 +66,7 @@ class Kline extends Model
             number_format((float) $this->high, 8, '.', ''),
             number_format((float) $this->low, 8, '.', ''),
             number_format((float) $this->close, 8, '.', ''),
-            number_format((float) $this->volume, 2, '.', ''),
+            number_format((float) $this->volume, 8, '.', ''),
         ];
     }
 }

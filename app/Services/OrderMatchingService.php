@@ -87,6 +87,11 @@ class OrderMatchingService
                 break;
             }
 
+            // Skip counter-orders ที่ไม่สามารถ fill ได้ (defense in depth)
+            if (! $counterOrder->isFillable()) {
+                continue;
+            }
+
             // Skip self-trade
             if (strtolower($counterOrder->wallet_address) === strtolower($order->wallet_address)) {
                 continue;
@@ -261,8 +266,9 @@ class OrderMatchingService
             $total = (float) bcmul((string) $fillAmount, (string) $executionPrice, 18);
 
             // Calculate fees
-            $makerFee = (float) bcmul((string) $total, bcdiv((string) $maker->fee_rate, '100', 12), 18);
-            $takerFee = (float) bcmul((string) $total, bcdiv((string) $taker->fee_rate, '100', 12), 18);
+            // ใช้ precision 18 ตลอดทั้ง bcdiv และ bcmul เพื่อความแม่นยำ
+            $makerFee = (float) bcmul((string) $total, bcdiv((string) $maker->fee_rate, '100', 18), 18);
+            $takerFee = (float) bcmul((string) $total, bcdiv((string) $taker->fee_rate, '100', 18), 18);
 
             // Create trade record
             $trade = Trade::create([
