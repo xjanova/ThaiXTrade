@@ -121,7 +121,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       const downloadPromise = downloadApk(updateInfo.downloadUrl, (progress) => {
         if (downloadCancelled) return;
         set({
-          downloadPercent: progress.percent,
+          downloadPercent: Math.round(progress.percent),
           downloadedBytes: progress.totalBytesWritten,
           totalBytes: progress.totalBytesExpectedToWrite,
         });

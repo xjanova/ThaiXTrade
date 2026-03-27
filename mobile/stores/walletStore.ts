@@ -17,6 +17,9 @@ import { playConnectSound, playDisconnectSound, playErrorSound } from '@/utils/s
 
 const CONNECT_TIMEOUT_MS = 10_000; // ลดเหลือ 10 วินาที (จาก 30s) เพื่อไม่ให้ค้างนาน
 
+// ใช้เก็บ timer ID ของ connect timeout (อยู่นอก store เพื่อให้ล้างได้จากหลาย action)
+let connectTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
 export interface ConnectedWallet {
   address: string;
   shortAddress: string;
@@ -92,6 +95,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
   /** สร้าง embedded wallet ภายในแอพ — เชื่อมต่อทันที ไม่ต้องรอ backend */
   createEmbeddedWallet: async () => {
+    if (connectTimeoutId) { clearTimeout(connectTimeoutId); connectTimeoutId = null; }
     set({ isConnecting: true, connectError: null });
 
     try {
@@ -149,8 +153,10 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       }
 
       // เปิด wallet app สำเร็จ — รอ deep link callback
-      // ตั้ง timeout ป้องกันค้าง
-      setTimeout(() => {
+      // ตั้ง timeout ป้องกันค้าง (ล้าง timer เก่าก่อน)
+      if (connectTimeoutId) clearTimeout(connectTimeoutId);
+      connectTimeoutId = setTimeout(() => {
+        connectTimeoutId = null;
         const state = get();
         if (state.isConnecting) {
           set({
@@ -188,6 +194,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   hideModal: () => {
+    if (connectTimeoutId) { clearTimeout(connectTimeoutId); connectTimeoutId = null; }
     set({ isModalVisible: false, connectError: null, isConnecting: false });
   },
 
@@ -211,19 +218,10 @@ export async function handleWalletCallback(url: string): Promise<void> {
       const provider = parsed.searchParams.get('provider') || 'unknown';
 
       if (address) {
-        // ลงทะเบียนกับ backend
-        try {
-          const response = await api.request<{ token?: string }>('/wallet/register', {
-            method: 'POST',
-            body: JSON.stringify({ address, chain, provider }),
-          });
-          if (response && typeof response === 'object' && 'token' in response) {
-            api.setToken((response as any).token);
-          }
-        } catch {
-          // ลงทะเบียนล้มเหลว — ยังคงเชื่อมต่อได้แต่อาจไม่สามารถ trade ได้
-        }
+        // ล้าง connect timeout
+        if (connectTimeoutId) { clearTimeout(connectTimeoutId); connectTimeoutId = null; }
 
+        // เชื่อมต่อทันที — ไม่รอ backend (fire-and-forget เหมือน createEmbeddedWallet)
         playConnectSound();
         useWalletStore.setState({
           wallet: {
@@ -237,6 +235,18 @@ export async function handleWalletCallback(url: string): Promise<void> {
           isConnecting: false,
           isModalVisible: false,
           connectError: null,
+        });
+
+        // ลงทะเบียนกับ backend แบบ fire-and-forget (ไม่ block UI)
+        api.request<{ token?: string }>('/wallet/register', {
+          method: 'POST',
+          body: JSON.stringify({ address, chain, provider }),
+        }).then((response) => {
+          if (response && typeof response === 'object' && 'token' in response) {
+            api.setToken((response as any).token);
+          }
+        }).catch(() => {
+          // ลงทะเบียนล้มเหลว — ไม่กระทบ UX
         });
       }
     }
