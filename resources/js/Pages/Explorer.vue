@@ -43,7 +43,7 @@ const chainStats = [
             </div>
 
             <div class="relative max-w-4xl mx-auto px-4 text-center">
-                <img src="/images/logotpixexplorer.webp" alt="TPIX Explorer" class="h-24 w-auto mx-auto mb-6 object-contain drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]" />
+                <img src="/images/logotpixexplorer.webp" alt="TPIX Explorer" class="h-28 sm:h-40 w-auto mx-auto mb-8 object-contain rounded-2xl drop-shadow-[0_0_32px_rgba(6,182,212,0.5)]" />
                 <h1 class="text-4xl sm:text-5xl font-bold text-white mb-3">{{ t('explorer.title') }}</h1>
                 <p class="text-lg text-gray-400 mb-8">
                     Powered by Blockscout — explore transactions, blocks, tokens, and contracts on TPIX Chain.

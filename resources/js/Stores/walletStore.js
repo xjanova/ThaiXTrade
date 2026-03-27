@@ -208,18 +208,21 @@ export const useWalletStore = defineStore('wallet', () => {
                 walletType: type,
             }));
 
-            // สลับไป chain หลัก (BSC) อัตโนมัติถ้าไม่ได้อยู่บน chain ที่รองรับ
-            if (chainId.value !== DEFAULT_CHAIN_ID) {
-                try {
-                    await switchToChain(injected, DEFAULT_CHAIN_ID);
+            // เพิ่ม TPIX Chain (4289) เข้ากระเป๋าอัตโนมัติ + สลับไป TPIX Chain
+            try {
+                await addTPIXChainToWallet(injected);
+                // สลับไป TPIX Chain หลังเพิ่มสำเร็จ
+                if (chainId.value !== TPIX_CHAIN_CONFIG.chainIdNum) {
+                    await injected.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: TPIX_CHAIN_CONFIG.chainId }],
+                    });
                     await _refreshProviderState(injected);
-                } catch (switchErr) {
-                    console.warn('[TPIX] ไม่สามารถสลับไป chain หลักอัตโนมัติ:', switchErr.message);
                 }
+            } catch (tpixErr) {
+                // ถ้า user ปฏิเสธหรือ error — ไม่ block connection
+                console.warn('[TPIX] ไม่สามารถเพิ่ม/สลับไป TPIX Chain:', tpixErr.message);
             }
-
-            // เพิ่ม TPIX Chain (4289) เข้ากระเป๋าอัตโนมัติ
-            addTPIXChainToWallet(injected).catch(() => {});
 
             // แจ้ง backend ว่า wallet connect สำเร็จ — สร้าง user อัตโนมัติ
             _registerWalletToBackend(address.value, chainId.value, type);
