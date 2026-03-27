@@ -220,10 +220,10 @@ class SwapApiController extends Controller
             // Record the transaction
             $transaction = Transaction::create([
                 'type' => 'swap',
-                'wallet_address' => $validated['wallet_address'],
+                'wallet_address' => strtolower($validated['wallet_address']),
                 'chain_id' => $validated['chain_id'],
-                'from_token' => $validated['from_token'],
-                'to_token' => $validated['to_token'],
+                'from_token' => strtolower($validated['from_token']),
+                'to_token' => strtolower($validated['to_token']),
                 'from_amount' => $validated['from_amount'],
                 'to_amount' => $validated['to_amount'],
                 'fee_amount' => $validated['fee_amount'],

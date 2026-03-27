@@ -121,10 +121,14 @@ class TradingController extends Controller
      */
     private function createLegacyOrder(array $validated): JsonResponse
     {
-        $totalValue = $validated['total']
-            ?? ($validated['amount'] * ($validated['price'] ?? 0));
+        // Market order ไม่มี price → ใช้ amount เป็นฐานคำนวณ fee แทน (ป้องกัน fee = 0)
+        $price = $validated['price'] ?? 0;
+        $totalValue = $validated['total'] ?? ($validated['amount'] * $price);
+
+        // ถ้า total = 0 (market order ไม่มี price) ใช้ amount เป็นฐานคำนวณ fee
+        $feeBase = $totalValue > 0 ? $totalValue : (float) $validated['amount'];
         $feeData = $this->feeCalculationService->calculateSwapFee(
-            $totalValue,
+            $feeBase,
             (int) $validated['chain_id'],
         );
 

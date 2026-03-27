@@ -166,7 +166,37 @@ class ApiService {
     return this.request<ApiResponse<TradingPair>>(`/pairs/${encodeURIComponent(symbol)}`);
   }
 
-  // Orders / คำสั่งซื้อขาย
+  // Wallet verification / การยืนยันตัวตนกระเป๋า
+  // ต้อง verify ก่อนจึงจะส่ง POST (createOrder, swap) ได้
+  async walletConnect(data: { wallet_address: string; chain_id: number; wallet_type?: string }) {
+    return this.request<ApiResponse<{ wallet_address: string; user_id: number; is_new: boolean }>>('/wallet/connect', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async walletRequestSignature(walletAddress: string) {
+    return this.request<ApiResponse<{ message: string; nonce: string }>>('/wallet/sign', {
+      method: 'POST',
+      body: JSON.stringify({ wallet_address: walletAddress }),
+    });
+  }
+
+  async walletVerifySignature(data: { wallet_address: string; signature: string; nonce: string }) {
+    return this.request<ApiResponse<{ wallet_address: string; verified: boolean }>>('/wallet/verify-signature', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Fee info / ข้อมูลค่าธรรมเนียม
+  async getFeeInfo(chainId: number = 56) {
+    return this.request<ApiResponse<{ fee_rate: number; fee_collector: string; max_fee_rate: number }>>(
+      `/trading/fee-info?chain_id=${chainId}&wallet_address=`,
+    );
+  }
+
+  // Orders / คำสั่งซื้อขาย (ใช้ route /trading/order ตาม backend)
   async createOrder(data: {
     pair: string;
     side: 'buy' | 'sell';
@@ -178,20 +208,25 @@ class ApiService {
     total?: number;
     trigger_price?: number;
   }) {
-    return this.request<ApiResponse<Order>>('/orders', {
+    return this.request<ApiResponse<Order>>('/trading/order', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async getOrders() {
-    return this.request<ApiResponse<Order[]>>('/orders');
+  async getOrders(walletAddress: string) {
+    return this.request<ApiResponse<Order[]>>(`/trading/orders?wallet_address=${encodeURIComponent(walletAddress)}`);
   }
 
-  async cancelOrder(id: string) {
-    return this.request<ApiResponse<Order>>(`/orders/${encodeURIComponent(id)}`, {
+  async cancelOrder(id: string, walletAddress: string) {
+    return this.request<ApiResponse<Order>>(`/trading/order/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+      body: JSON.stringify({ wallet_address: walletAddress }),
     });
+  }
+
+  async getTradeHistory(walletAddress: string) {
+    return this.request<ApiResponse<any[]>>(`/trading/history?wallet_address=${encodeURIComponent(walletAddress)}`);
   }
 }
 

@@ -118,13 +118,11 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       });
 
       // ลงทะเบียนกับ backend แบบ fire-and-forget (ไม่ block UI)
-      api.request<{ token?: string }>('/wallet/register', {
-        method: 'POST',
-        body: JSON.stringify({ address, chain: 'ETH', provider: 'tpix-embedded' }),
-      }).then((response) => {
-        if (response && typeof response === 'object' && 'token' in response) {
-          api.setToken((response as any).token);
-        }
+      // ใช้ /wallet/connect (ไม่ใช่ /wallet/register ที่ไม่มีอยู่จริง)
+      api.walletConnect({
+        wallet_address: address,
+        chain_id: 56, // Default BSC
+        wallet_type: 'tpix_wallet',
       }).catch(() => {
         // ลงทะเบียนล้มเหลว — ไม่กระทบ UX
       });
@@ -238,13 +236,10 @@ export async function handleWalletCallback(url: string): Promise<void> {
         });
 
         // ลงทะเบียนกับ backend แบบ fire-and-forget (ไม่ block UI)
-        api.request<{ token?: string }>('/wallet/register', {
-          method: 'POST',
-          body: JSON.stringify({ address, chain, provider }),
-        }).then((response) => {
-          if (response && typeof response === 'object' && 'token' in response) {
-            api.setToken((response as any).token);
-          }
+        api.walletConnect({
+          wallet_address: address,
+          chain_id: 56,
+          wallet_type: provider,
         }).catch(() => {
           // ลงทะเบียนล้มเหลว — ไม่กระทบ UX
         });

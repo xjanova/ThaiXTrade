@@ -244,6 +244,9 @@ export default function TradeScreen() {
 
     try {
       // ส่ง order จริงไปที่ backend (ต้องส่ง wallet_address + chain_id ด้วย)
+      // chain_id: TPIX Chain = 4289, BSC = 56 — ใช้ตาม pair symbol
+      // TPIX pairs จะถูก route ไป internal order book, อื่นๆ ไป legacy
+      const isTpixPair = pair.symbol.includes('TPIX');
       await api.createOrder({
         pair: pair.symbol,
         side: order.side,
@@ -251,7 +254,7 @@ export default function TradeScreen() {
         price: order.price ?? undefined,
         amount: order.amount,
         wallet_address: wallet.address,
-        chain_id: 56, // Default BSC — จะเปลี่ยนเมื่อรองรับเลือกเชน
+        chain_id: isTpixPair ? 4289 : 56, // TPIX Chain หรือ BSC
         total: order.total,
       });
 

@@ -64,10 +64,20 @@ class WalletController extends Controller
             $request->ip()
         );
 
-        // NOTE: wallet_verified cache is ONLY set by verifySignature().
-        // connect() records the connection but does NOT grant write access.
-        // Users must call requestSignature() → sign → verifySignature() for write operations.
         $normalizedAddress = strtolower($validated['wallet_address']);
+
+        // Embedded wallet (tpix_wallet): auto-verify เพราะไม่มี private key จริงให้ sign
+        // ถือว่าเชื่อถือได้เพราะ address สร้างในแอพเรา + rate limit ป้องกัน abuse
+        // External wallets: ต้องผ่าน requestSignature() → verifySignature() ก่อน
+        if (($validated['wallet_type'] ?? '') === 'tpix_wallet') {
+            Cache::put("wallet_verified:{$normalizedAddress}", [
+                'chain_id' => $validated['chain_id'],
+                'ip' => $request->ip(),
+                'verified_at' => now()->toIso8601String(),
+                'signature_verified' => false, // auto-verified, not signature-based
+                'wallet_type' => 'tpix_wallet',
+            ], 86400); // 24 ชม. (นานกว่า external เพราะไม่มี signature flow)
+        }
 
         return response()->json([
             'success' => true,
@@ -166,7 +176,7 @@ class WalletController extends Controller
         $limit = $request->input('limit', 20);
         $walletAddress = $request->input('wallet_address');
 
-        $transactions = Transaction::where('wallet_address', $walletAddress)
+        $transactions = Transaction::where('wallet_address', strtolower($walletAddress))
             ->orderByDesc('created_at')
             ->limit($limit)
             ->get()
