@@ -1,7 +1,13 @@
-import React from 'react';
-import { StyleSheet, Text, View, ViewStyle, StyleProp } from 'react-native';
+/**
+ * CoinIcon — แสดงโลโก้เหรียญคริปโตจริง
+ * ใช้ CDN เดียวกับเว็บ: CoinCap → CryptoLogos.cc → ตัวอักษรย่อ
+ */
+
+import React, { useState } from 'react';
+import { StyleSheet, Text, View, Image, ViewStyle, StyleProp } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, typography } from '@/theme';
+import { colors } from '@/theme';
+import { getCoinLogo, getCoinLogoFallback, getBaseSymbol } from '@/utils/cryptoLogos';
 
 interface CoinIconProps {
   symbol: string;
@@ -30,7 +36,7 @@ const COIN_COLORS: Record<string, string> = {
 };
 
 function getCoinColor(symbol: string): string {
-  const base = symbol.split('/')[0];
+  const base = getBaseSymbol(symbol);
   return COIN_COLORS[base] || colors.brand.cyan;
 }
 
@@ -43,27 +49,49 @@ function lightenColor(hex: string, amount: number): string {
 }
 
 export default function CoinIcon({ symbol, color, size = 40, style }: CoinIconProps) {
-  const baseSymbol = symbol.split('/')[0];
-  const letter = baseSymbol.charAt(0).toUpperCase();
+  const base = getBaseSymbol(symbol);
+  const [useFallback, setUseFallback] = useState(false);
+  const [showInitial, setShowInitial] = useState(false);
+
+  const primaryUrl = getCoinLogo(base);
+  const fallbackUrl = getCoinLogoFallback(base);
+  const imageUrl = useFallback && fallbackUrl ? fallbackUrl : primaryUrl;
+
   const coinColor = color || getCoinColor(symbol);
+  const letter = base.charAt(0).toUpperCase();
   const fontSize = size * 0.4;
 
+  // แสดงตัวอักษรย่อเมื่อโหลดรูปไม่ได้
+  if (showInitial || !base) {
+    return (
+      <View style={[{ width: size, height: size, borderRadius: size / 2 }, style]}>
+        <LinearGradient
+          colors={[coinColor, lightenColor(coinColor, 40)]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.gradient, { width: size, height: size, borderRadius: size / 2 }]}
+        >
+          <Text style={[styles.letter, { fontSize, lineHeight: fontSize * 1.2 }]}>
+            {letter || '?'}
+          </Text>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  // แสดงโลโก้จริงจาก CDN
   return (
-    <View style={[{ width: size, height: size, borderRadius: size / 2 }, style]}>
-      <LinearGradient
-        colors={[coinColor, lightenColor(coinColor, 40)]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[
-          styles.gradient,
-          { width: size, height: size, borderRadius: size / 2 },
-        ]}
-      >
-        <Text style={[styles.letter, { fontSize, lineHeight: fontSize * 1.2 }]}>
-          {letter}
-        </Text>
-      </LinearGradient>
-    </View>
+    <Image
+      source={{ uri: imageUrl }}
+      style={[{ width: size, height: size, borderRadius: size / 2 }, style]}
+      onError={() => {
+        if (!useFallback && fallbackUrl) {
+          setUseFallback(true);
+        } else {
+          setShowInitial(true);
+        }
+      }}
+    />
   );
 }
 

@@ -3,7 +3,7 @@
  * Chart, Order Book, Recent Trades ดึงจาก REST API
  */
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,28 +11,25 @@ import {
   ScrollView,
   Pressable,
   Alert,
-  Platform,
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Rect } from 'react-native-svg';
 import { colors, spacing, typography } from '@/theme';
 import GlassCard from '@/components/common/GlassCard';
 import OrderBookMobile from '@/components/trading/OrderBookMobile';
 import TradeFormMobile from '@/components/trading/TradeFormMobile';
 import PairHeader from '@/components/trading/PairHeader';
+import TradingViewChart from '@/components/trading/TradingViewChart';
 import { formatPrice } from '@/utils/formatters';
-import { useResponsiveLayout } from '@/utils/responsive';
 import { useMarketStore } from '@/stores/marketStore';
 import { useWalletStore } from '@/stores/walletStore';
 import { playTradeSound, playErrorSound, playClickSound } from '@/utils/sounds';
 import api from '@/services/api';
 
 const BINANCE_REST = 'https://api.binance.com/api/v3';
-const CHART_HEIGHT = 220;
 
 // --- Binance data fetchers ---
 
@@ -109,71 +106,7 @@ async function fetchRecentTrades(symbol: string): Promise<BinanceTrade[]> {
   }));
 }
 
-async function fetchKlines(symbol: string, interval: string, limit = 60): Promise<number[]> {
-  const binanceSymbol = symbol.replace('/', '');
-  const res = await fetch(
-    `${BINANCE_REST}/klines?symbol=${binanceSymbol}&interval=${interval}&limit=${limit}`,
-    { signal: AbortSignal.timeout(10000) },
-  );
-  if (!res.ok) throw new Error(`Binance klines error: ${res.status}`);
-  const data: Array<[number, string, string, string, string, ...unknown[]]> = await res.json();
-  return data.map((k) => parseFloat(k[4])); // close prices
-}
-
-// --- Chart Component ---
-
-function PriceChart({ data, chartWidth }: { data: number[]; chartWidth: number }) {
-  if (data.length < 2) {
-    return (
-      <View style={{ height: CHART_HEIGHT, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.brand.cyan} />
-      </View>
-    );
-  }
-
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-
-  const points = data.map((val, i) => ({
-    x: (i / (data.length - 1)) * chartWidth,
-    y: CHART_HEIGHT - ((val - min) / range) * (CHART_HEIGHT - 20) - 10,
-  }));
-
-  let pathD = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 1; i < points.length; i++) {
-    const cp1x = (points[i - 1].x + points[i].x) / 2;
-    const cp1y = points[i - 1].y;
-    const cp2x = cp1x;
-    const cp2y = points[i].y;
-    pathD += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${points[i].x} ${points[i].y}`;
-  }
-
-  const fillD = pathD + ` L ${chartWidth} ${CHART_HEIGHT} L 0 ${CHART_HEIGHT} Z`;
-  const isUp = data[data.length - 1] >= data[0];
-  const lineColor = isUp ? colors.trading.green : colors.trading.red;
-
-  return (
-    <Svg width={chartWidth} height={CHART_HEIGHT}>
-      <Defs>
-        <SvgGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={lineColor} stopOpacity="0.25" />
-          <Stop offset="1" stopColor={lineColor} stopOpacity="0" />
-        </SvgGradient>
-      </Defs>
-      <Path d={fillD} fill="url(#chartFill)" />
-      <Path d={pathD} stroke={lineColor} strokeWidth={2} fill="none" />
-      <Rect
-        x={0}
-        y={points[points.length - 1].y}
-        width={chartWidth}
-        height={0.5}
-        fill={lineColor}
-        opacity={0.3}
-      />
-    </Svg>
-  );
-}
+// TradingView chart จัดการ klines เอง ไม่ต้อง fetch แยก
 
 type TabType = 'chart' | 'orderbook' | 'trades';
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
@@ -203,7 +136,6 @@ const DEFAULT_PAIR = {
 
 export default function TradeScreen() {
   const insets = useSafeAreaInsets();
-  const { chartWidth } = useResponsiveLayout();
   const selectedPair = useMarketStore((s) => s.selectedPair);
   const fetchRealData = useMarketStore((s) => s.fetchRealData);
   const wallet = useWalletStore((s) => s.wallet);
@@ -213,7 +145,6 @@ export default function TradeScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Real data state
-  const [chartData, setChartData] = useState<number[]>([]);
   const [orderBook, setOrderBook] = useState<{
     asks: OrderBookEntry[];
     bids: OrderBookEntry[];
@@ -221,7 +152,6 @@ export default function TradeScreen() {
     spreadPercent: number;
   } | null>(null);
   const [trades, setTrades] = useState<BinanceTrade[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
 
   const pair = selectedPair || DEFAULT_PAIR;
   const mountedRef = useRef(true);
@@ -231,35 +161,7 @@ export default function TradeScreen() {
     return () => { mountedRef.current = false; };
   }, []);
 
-  // ดึงข้อมูล chart เมื่อเปลี่ยน pair หรือ timeframe
-  useEffect(() => {
-    let cancelled = false;
-    setDataLoading(true);
-
-    async function loadChartData() {
-      try {
-        const interval = TIMEFRAME_MAP[activeTimeframe] || '1h';
-        const data = await fetchKlines(pair.symbol, interval);
-        if (!cancelled && mountedRef.current) {
-          setChartData(data);
-        }
-      } catch {
-        // ใช้ chartData จาก market store เป็น fallback
-        if (!cancelled && mountedRef.current && selectedPair?.chartData) {
-          setChartData(selectedPair.chartData);
-        }
-      } finally {
-        if (!cancelled && mountedRef.current) {
-          setDataLoading(false);
-        }
-      }
-    }
-
-    loadChartData();
-    return () => { cancelled = true; };
-  }, [pair.symbol, activeTimeframe]);
-
-  // ดึง order book + trades เมื่อเปลี่ยน pair
+  // ดึง order book + trades เมื่อเปลี่ยน pair (chart ใช้ TradingView จัดการเอง)
   useEffect(() => {
     let cancelled = false;
 
@@ -298,15 +200,13 @@ export default function TradeScreen() {
     playClickSound();
     try {
       await fetchRealData();
-      const [ob, tr, kl] = await Promise.all([
+      const [ob, tr] = await Promise.all([
         fetchOrderBook(pair.symbol),
         fetchRecentTrades(pair.symbol),
-        fetchKlines(pair.symbol, TIMEFRAME_MAP[activeTimeframe] || '1h'),
       ]);
       if (mountedRef.current) {
         setOrderBook(ob);
         setTrades(tr);
-        setChartData(kl);
       }
     } catch {
       // silent
@@ -429,7 +329,7 @@ export default function TradeScreen() {
           ))}
         </View>
 
-        {/* Chart View */}
+        {/* Chart View — TradingView (lightweight-charts) */}
         {activeTab === 'chart' && (
           <View>
             <ScrollView
@@ -461,16 +361,11 @@ export default function TradeScreen() {
               ))}
             </ScrollView>
 
-            <GlassCard style={styles.chartCard}>
-              {dataLoading ? (
-                <View style={{ height: CHART_HEIGHT, alignItems: 'center', justifyContent: 'center' }}>
-                  <ActivityIndicator color={colors.brand.cyan} />
-                  <Text style={[styles.tabText, { marginTop: 8 }]}>Loading chart...</Text>
-                </View>
-              ) : (
-                <PriceChart data={chartData} chartWidth={chartWidth} />
-              )}
-            </GlassCard>
+            <TradingViewChart
+              symbol={pair.symbol}
+              interval={TIMEFRAME_MAP[activeTimeframe] || '1h'}
+              height={300}
+            />
           </View>
         )}
 
@@ -588,11 +483,7 @@ const styles = StyleSheet.create({
     color: colors.brand.cyan,
     fontWeight: '600',
   },
-  chartCard: {
-    padding: spacing.md,
-    marginBottom: spacing.xl,
-    alignItems: 'center',
-  },
+  // chartCard removed — TradingView component handles its own container
   tradesCard: {
     padding: spacing.lg,
     marginBottom: spacing.xl,

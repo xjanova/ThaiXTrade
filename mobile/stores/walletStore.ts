@@ -90,26 +90,14 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     }
   },
 
-  /** สร้าง embedded wallet ภายในแอพ — เชื่อมต่อได้ทันที */
+  /** สร้าง embedded wallet ภายในแอพ — เชื่อมต่อทันที ไม่ต้องรอ backend */
   createEmbeddedWallet: async () => {
     set({ isConnecting: true, connectError: null });
 
     try {
       const address = generateRandomAddress();
 
-      // ลงทะเบียนกับ backend
-      try {
-        const response = await api.request<{ token?: string }>('/wallet/register', {
-          method: 'POST',
-          body: JSON.stringify({ address, chain: 'ETH', provider: 'tpix-embedded' }),
-        });
-        if (response && typeof response === 'object' && 'token' in response) {
-          api.setToken((response as any).token);
-        }
-      } catch {
-        // ลงทะเบียนล้มเหลว — ยังคงเชื่อมต่อได้
-      }
-
+      // เชื่อมต่อทันที — ไม่รอ backend
       playConnectSound();
       set({
         wallet: {
@@ -123,6 +111,18 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         isConnecting: false,
         isModalVisible: false,
         connectError: null,
+      });
+
+      // ลงทะเบียนกับ backend แบบ fire-and-forget (ไม่ block UI)
+      api.request<{ token?: string }>('/wallet/register', {
+        method: 'POST',
+        body: JSON.stringify({ address, chain: 'ETH', provider: 'tpix-embedded' }),
+      }).then((response) => {
+        if (response && typeof response === 'object' && 'token' in response) {
+          api.setToken((response as any).token);
+        }
+      }).catch(() => {
+        // ลงทะเบียนล้มเหลว — ไม่กระทบ UX
       });
     } catch {
       playErrorSound();

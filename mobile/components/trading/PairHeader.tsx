@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, radius, typography } from '@/theme';
 import PriceChange from '../common/PriceChange';
+import CoinIcon from '../common/CoinIcon';
 import { formatPrice } from '@/utils/formatters';
 
 interface PairHeaderProps {
@@ -44,6 +45,7 @@ export default function PairHeader({
       {/* Top row: symbol, price, change */}
       <View style={styles.topRow}>
         <View style={styles.symbolContainer}>
+          <CoinIcon symbol={symbol} size={28} />
           <Text style={styles.symbol}>{symbol}</Text>
         </View>
         <View style={styles.priceContainer}>
@@ -84,6 +86,7 @@ const styles = StyleSheet.create({
   symbolContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.sm,
   },
   symbol: {
     ...typography.h4,
