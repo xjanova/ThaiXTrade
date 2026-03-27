@@ -7,6 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { colors } from '@/theme';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import UpdateModal from '@/components/common/UpdateModal';
+import WalletConnectModal from '@/components/wallet/WalletConnectModal';
 import { useUpdateStore } from '@/stores/updateStore';
 import { handleWalletCallback } from '@/stores/walletStore';
 import { playSplashSound } from '@/utils/sounds';
@@ -98,6 +99,9 @@ export default function RootLayout() {
 
         {/* Update Modal — แสดงเมื่อมีเวอร์ชันใหม่ */}
         <UpdateModal />
+
+        {/* Wallet Connect Modal — เข้าถึงได้จากทุกหน้า */}
+        <WalletConnectModal />
 
         {/* Animated Splash Screen Overlay */}
         {showAnimatedSplash && (

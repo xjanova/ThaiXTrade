@@ -117,7 +117,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     });
 
     try {
-      // ครอบด้วย timeout ป้องกันค้าง
+      // ครอบด้วย timeout ป้องกันค้าง (ล้าง timer เมื่อเสร็จ)
       const downloadPromise = downloadApk(updateInfo.downloadUrl, (progress) => {
         if (downloadCancelled) return;
         set({
@@ -127,11 +127,12 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
         });
       });
 
+      let downloadTimer: ReturnType<typeof setTimeout>;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Download timed out — please try again')), DOWNLOAD_TIMEOUT_MS);
+        downloadTimer = setTimeout(() => reject(new Error('Download timed out — please try again')), DOWNLOAD_TIMEOUT_MS);
       });
 
-      const uri = await Promise.race([downloadPromise, timeoutPromise]);
+      const uri = await Promise.race([downloadPromise, timeoutPromise]).finally(() => clearTimeout(downloadTimer!));
 
       // ตรวจสอบว่าถูกยกเลิกระหว่าง download หรือไม่
       if (downloadCancelled) return;
@@ -168,11 +169,12 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     set({ downloadStatus: 'installing' });
     try {
       const installPromise = installApk(localFileUri);
+      let installTimer: ReturnType<typeof setTimeout>;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Install timed out — please try manually')), INSTALL_TIMEOUT_MS);
+        installTimer = setTimeout(() => reject(new Error('Install timed out — please try manually')), INSTALL_TIMEOUT_MS);
       });
 
-      await Promise.race([installPromise, timeoutPromise]);
+      await Promise.race([installPromise, timeoutPromise]).finally(() => clearTimeout(installTimer!));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'ติดตั้งล้มเหลว';
       set({ downloadStatus: 'error', error: message });

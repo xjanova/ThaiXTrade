@@ -139,6 +139,7 @@ export default function TradeScreen() {
   const selectedPair = useMarketStore((s) => s.selectedPair);
   const fetchRealData = useMarketStore((s) => s.fetchRealData);
   const wallet = useWalletStore((s) => s.wallet);
+  const showWalletModal = useWalletStore((s) => s.showModal);
   const [activeTab, setActiveTab] = useState<TabType>('chart');
   const [activeTimeframe, setActiveTimeframe] = useState('1H');
   const [refreshing, setRefreshing] = useState(false);
@@ -213,7 +214,7 @@ export default function TradeScreen() {
     } finally {
       if (mountedRef.current) setRefreshing(false);
     }
-  }, [pair.symbol, activeTimeframe, fetchRealData]);
+  }, [pair.symbol, fetchRealData]);
 
   const handleOrderSubmit = useCallback(async (order: {
     side: 'buy' | 'sell';
@@ -230,7 +231,10 @@ export default function TradeScreen() {
       Alert.alert(
         'Wallet Required',
         'Please connect your wallet before placing orders.',
-        [{ text: 'OK' }],
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Connect Wallet', onPress: showWalletModal },
+        ],
       );
       return;
     }
@@ -361,11 +365,13 @@ export default function TradeScreen() {
               ))}
             </ScrollView>
 
-            <TradingViewChart
-              symbol={pair.symbol}
-              interval={TIMEFRAME_MAP[activeTimeframe] || '1h'}
-              height={300}
-            />
+            <View style={{ marginBottom: spacing.xl }}>
+              <TradingViewChart
+                symbol={pair.symbol}
+                interval={TIMEFRAME_MAP[activeTimeframe] || '1h'}
+                height={300}
+              />
+            </View>
           </View>
         )}
 
@@ -483,7 +489,6 @@ const styles = StyleSheet.create({
     color: colors.brand.cyan,
     fontWeight: '600',
   },
-  // chartCard removed — TradingView component handles its own container
   tradesCard: {
     padding: spacing.lg,
     marginBottom: spacing.xl,

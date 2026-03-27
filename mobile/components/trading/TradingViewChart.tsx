@@ -181,10 +181,12 @@ export default function TradingViewChart({
         source={{ html }}
         style={{ flex: 1, backgroundColor: 'transparent' }}
         scrollEnabled={false}
+        nestedScrollEnabled={false}
         javaScriptEnabled
         domStorageEnabled
         originWhitelist={['*']}
         mixedContentMode="compatibility"
+        allowsInlineMediaPlayback
         startInLoadingState
         renderLoading={() => (
           <View style={styles.loading}>
