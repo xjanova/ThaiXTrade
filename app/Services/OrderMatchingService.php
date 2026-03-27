@@ -54,12 +54,15 @@ class OrderMatchingService
             'total' => bcmul((string) $amount, (string) $price, 18),
             'trigger_price' => $triggerPrice,
             'fee_rate' => $feeRate,
+            // stop-limit: status 'triggered' = รอ trigger price (ไม่อยู่ใน scopeOpen จึงไม่ถูก match)
+            // เมื่อ price feed ถึง trigger_price → เปลี่ยนเป็น 'open' แล้ว matchOrder()
             'status' => $type === 'stop-limit' ? 'triggered' : 'open',
         ]);
 
         $trades = [];
 
         // Market and limit orders: attempt matching immediately
+        // Stop-limit orders: รอ trigger จาก price feed job (ไม่ match ทันที)
         if ($type !== 'stop-limit') {
             $trades = $this->matchOrder($order);
         }

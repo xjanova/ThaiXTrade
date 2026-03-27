@@ -37,7 +37,7 @@ class TradingController extends Controller
             'amount' => ['required', 'numeric', 'gt:0'],
             'total' => ['nullable', 'numeric', 'gte:0'],
             'trigger_price' => ['required_if:type,stop-limit', 'numeric', 'gt:0'],
-            'chain_id' => ['required', 'integer'],
+            'chain_id' => ['required', 'integer', 'exists:chains,id'],
         ]);
 
         if ($validator->fails()) {
@@ -56,6 +56,17 @@ class TradingController extends Controller
             ->first();
 
         if ($tradingPair) {
+            // ตรวจว่า chain_id ตรงกับ pair.chain_id (ป้องกัน order ไปเชนผิด)
+            if ((int) $validated['chain_id'] !== $tradingPair->chain_id) {
+                return response()->json([
+                    'success' => false,
+                    'error' => [
+                        'code' => 'CHAIN_MISMATCH',
+                        'message' => 'Chain ID does not match the trading pair chain.',
+                    ],
+                ], 422);
+            }
+
             return $this->createInternalOrder($tradingPair, $validated);
         }
 
@@ -262,10 +273,10 @@ class TradingController extends Controller
             ], 422);
         }
 
-        // Try internal order first
+        // Try internal order first (รวม 'triggered' สำหรับ stop-limit ที่ยังไม่ถูก activate)
         $order = Order::where('uuid', $orderId)
             ->where('wallet_address', strtolower($walletAddress))
-            ->whereIn('status', ['open', 'partially_filled'])
+            ->whereIn('status', ['open', 'partially_filled', 'triggered'])
             ->first();
 
         if ($order) {
@@ -280,10 +291,10 @@ class TradingController extends Controller
             ]);
         }
 
-        // Legacy transaction
+        // Legacy transaction (ใช้ lowercase เหมือน internal)
         $transaction = Transaction::where('uuid', $orderId)
             ->where('status', 'pending')
-            ->where('wallet_address', $walletAddress)
+            ->where('wallet_address', strtolower($walletAddress))
             ->first();
 
         if (! $transaction) {
@@ -313,9 +324,9 @@ class TradingController extends Controller
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        // Internal orders
+        // Internal orders (รวม 'triggered' = stop-limit ที่รอ trigger)
         $internalOrders = Order::where('wallet_address', strtolower($walletAddress))
-            ->whereIn('status', ['open', 'partially_filled'])
+            ->whereIn('status', ['open', 'partially_filled', 'triggered'])
             ->with('tradingPair')
             ->orderByDesc('created_at')
             ->limit(50)
@@ -373,12 +384,19 @@ class TradingController extends Controller
     {
         $walletAddress = $request->input('wallet_address');
 
-        // Try internal order (ต้องตรวจ wallet ownership เพื่อป้องกัน data leak)
-        $orderQuery = Order::where('uuid', $orderId);
-        if ($walletAddress) {
-            $orderQuery->where('wallet_address', strtolower($walletAddress));
+        if (! $walletAddress) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'WALLET_REQUIRED', 'message' => 'Wallet address is required.'],
+            ], 422);
         }
-        $order = $orderQuery->first();
+
+        $walletLower = strtolower($walletAddress);
+
+        // Try internal order (ต้องตรวจ wallet ownership เพื่อป้องกัน data leak)
+        $order = Order::where('uuid', $orderId)
+            ->where('wallet_address', $walletLower)
+            ->first();
         if ($order) {
             return response()->json([
                 'success' => true,
@@ -400,11 +418,9 @@ class TradingController extends Controller
         }
 
         // Try legacy
-        $query = Transaction::where('uuid', $orderId);
-        if ($walletAddress) {
-            $query->where('wallet_address', $walletAddress);
-        }
-        $transaction = $query->first();
+        $transaction = Transaction::where('uuid', $orderId)
+            ->where('wallet_address', $walletLower)
+            ->first();
 
         if (! $transaction) {
             return response()->json([
@@ -468,8 +484,8 @@ class TradingController extends Controller
                 'created_at' => $t->created_at->toIso8601String(),
             ]);
 
-        // Legacy trades
-        $legacyTrades = Transaction::where('wallet_address', $walletAddress)
+        // Legacy trades (ใช้ lowercase เหมือน internal)
+        $legacyTrades = Transaction::where('wallet_address', $walletLower)
             ->whereIn('status', ['confirmed', 'completed'])
             ->orderByDesc('created_at')
             ->limit(50)
