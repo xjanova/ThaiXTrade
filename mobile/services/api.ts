@@ -173,6 +173,10 @@ class ApiService {
     type: 'limit' | 'market';
     price?: number;
     amount: number;
+    wallet_address: string;
+    chain_id: number;
+    total?: number;
+    trigger_price?: number;
   }) {
     return this.request<ApiResponse<Order>>('/orders', {
       method: 'POST',

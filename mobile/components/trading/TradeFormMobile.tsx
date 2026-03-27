@@ -17,6 +17,8 @@ interface TradeFormMobileProps {
   symbol?: string;
   currentPrice?: number;
   isSubmitting?: boolean;
+  isWalletConnected?: boolean;
+  feeRate?: number; // ค่า fee เป็น % (เช่น 0.3 = 0.3%)
   onSubmitOrder?: (order: {
     side: TradeSide;
     type: OrderType;
@@ -28,16 +30,12 @@ interface TradeFormMobileProps {
 
 const PERCENT_BUTTONS = [25, 50, 75, 100] as const;
 
-// Mock balance data / ข้อมูลยอดคงเหลือจำลอง
-const MOCK_BALANCE = {
-  base: { symbol: 'BTC', available: 0.5432 },
-  quote: { symbol: 'USDT', available: 12_480.55 },
-};
-
 export default function TradeFormMobile({
   symbol = 'BTC/USDT',
   currentPrice = 0,
   isSubmitting = false,
+  isWalletConnected = false,
+  feeRate = 0.3,
   onSubmitOrder,
 }: TradeFormMobileProps) {
   const [side, setSide] = useState<TradeSide>('buy');
@@ -49,8 +47,8 @@ export default function TradeFormMobile({
   const price = orderType === 'market' ? currentPrice : parseInputNumber(priceInput);
   const amount = parseInputNumber(amountInput);
   const total = price * amount;
+  const estimatedFee = total * (feeRate / 100);
 
-  const balance = side === 'buy' ? MOCK_BALANCE.quote : MOCK_BALANCE.base;
   const baseSymbol = symbol.split('/')[0] || 'BTC';
   const quoteSymbol = symbol.split('/')[1] || 'USDT';
 
@@ -58,21 +56,13 @@ export default function TradeFormMobile({
   const activeColor = isBuy ? colors.trading.green : colors.trading.red;
   const activeBg = isBuy ? colors.trading.greenBg : colors.trading.redBg;
 
+  // % buttons ปิดไว้เมื่อยังไม่มี balance จริง (ป้องกันคำนวณผิด)
   const handlePercentPress = useCallback(
-    (percent: number) => {
-      setSelectedPercent(percent);
-      if (isBuy) {
-        // Buying: calculate amount from quote balance
-        const spendable = (MOCK_BALANCE.quote.available * percent) / 100;
-        const amt = price > 0 ? spendable / price : 0;
-        setAmountInput(amt > 0 ? amt.toFixed(6) : '');
-      } else {
-        // Selling: calculate amount from base balance
-        const amt = (MOCK_BALANCE.base.available * percent) / 100;
-        setAmountInput(amt > 0 ? amt.toFixed(6) : '');
-      }
+    (_percent: number) => {
+      setSelectedPercent(_percent);
+      // TODO: ใช้ balance จริงจาก wallet/API เมื่อพร้อม
     },
-    [isBuy, price],
+    [],
   );
 
   const handleSubmit = useCallback(() => {
@@ -89,12 +79,11 @@ export default function TradeFormMobile({
   }, [side, orderType, price, amount, total, onSubmitOrder]);
 
   const canSubmit = useMemo(() => {
+    if (!isWalletConnected) return false;
     if (amount <= 0) return false;
     if (orderType === 'limit' && price <= 0) return false;
-    if (isBuy && total > MOCK_BALANCE.quote.available) return false;
-    if (!isBuy && amount > MOCK_BALANCE.base.available) return false;
     return true;
-  }, [amount, orderType, price, isBuy, total]);
+  }, [amount, orderType, price, isWalletConnected]);
 
   return (
     <View style={styles.container}>
@@ -170,9 +159,7 @@ export default function TradeFormMobile({
         <View style={styles.balanceRow}>
           <Text style={styles.balanceLabel}>Available</Text>
           <Text style={styles.balanceValue}>
-            {isBuy
-              ? `${formatNumber(MOCK_BALANCE.quote.available, 2)} ${quoteSymbol}`
-              : `${formatNumber(MOCK_BALANCE.base.available, 4)} ${baseSymbol}`}
+            {isWalletConnected ? `— ${isBuy ? quoteSymbol : baseSymbol}` : 'Connect Wallet'}
           </Text>
         </View>
 
@@ -256,6 +243,16 @@ export default function TradeFormMobile({
             {total > 0 ? formatNumber(total, 2) : '0.00'} {quoteSymbol}
           </Text>
         </View>
+
+        {/* Fee Display */}
+        {total > 0 && (
+          <View style={styles.feeRow}>
+            <Text style={styles.feeLabel}>Est. Fee ({feeRate}%)</Text>
+            <Text style={styles.feeValue}>
+              {formatNumber(estimatedFee, 4)} {quoteSymbol}
+            </Text>
+          </View>
+        )}
 
         {/* Submit Button */}
         <GradientButton
@@ -406,6 +403,19 @@ const styles = StyleSheet.create({
   totalValue: {
     ...typography.mono,
     color: colors.text.primary,
+  },
+  feeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  feeLabel: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+  },
+  feeValue: {
+    ...typography.monoSmall,
+    color: colors.text.tertiary,
   },
   submitBtn: {
     marginTop: spacing.xs,

@@ -373,8 +373,12 @@ class TradingController extends Controller
     {
         $walletAddress = $request->input('wallet_address');
 
-        // Try internal order
-        $order = Order::where('uuid', $orderId)->first();
+        // Try internal order (ต้องตรวจ wallet ownership เพื่อป้องกัน data leak)
+        $orderQuery = Order::where('uuid', $orderId);
+        if ($walletAddress) {
+            $orderQuery->where('wallet_address', strtolower($walletAddress));
+        }
+        $order = $orderQuery->first();
         if ($order) {
             return response()->json([
                 'success' => true,

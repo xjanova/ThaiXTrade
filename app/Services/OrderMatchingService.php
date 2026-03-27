@@ -39,8 +39,8 @@ class OrderMatchingService
         $chainId = $pair->chain_id;
         $fees = $pair->getEffectiveFees();
         $feeRate = $side === 'buy'
-            ? (float) ($fees['taker_fee'] ?: 0.3)
-            : (float) ($fees['maker_fee'] ?: 0.1);
+            ? (float) ($fees['taker_fee'] ?? 0.3)
+            : (float) ($fees['maker_fee'] ?? 0.1);
 
         $order = Order::create([
             'trading_pair_id' => $pair->id,

@@ -243,13 +243,16 @@ export default function TradeScreen() {
     const baseSymbol = pair.symbol.split('/')[0];
 
     try {
-      // ส่ง order จริงไปที่ backend
+      // ส่ง order จริงไปที่ backend (ต้องส่ง wallet_address + chain_id ด้วย)
       await api.createOrder({
         pair: pair.symbol,
         side: order.side,
         type: order.type,
         price: order.price ?? undefined,
         amount: order.amount,
+        wallet_address: wallet.address,
+        chain_id: 56, // Default BSC — จะเปลี่ยนเมื่อรองรับเลือกเชน
+        total: order.total,
       });
 
       playTradeSound();
@@ -423,6 +426,8 @@ export default function TradeScreen() {
           currentPrice={pair.price}
           onSubmitOrder={handleOrderSubmit}
           isSubmitting={isSubmitting}
+          isWalletConnected={!!wallet}
+          feeRate={0.3}
         />
 
         <View style={{ height: 120 }} />
