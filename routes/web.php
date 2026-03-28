@@ -194,23 +194,3 @@ Route::get('/health', function () {
         'timestamp' => now()->toIso8601String(),
     ]);
 })->name('health');
-
-// Temporary debug — ดู last error log (ลบหลังแก้ bug)
-Route::get('/debug-last-error', function () {
-    $logFile = storage_path('logs/laravel.log');
-    if (! file_exists($logFile)) {
-        return response()->json(['error' => 'No log file']);
-    }
-    // อ่าน 15000 bytes สุดท้ายจาก log แล้วดึงเฉพาะ ERROR entries
-    $fp = fopen($logFile, 'r');
-    fseek($fp, max(0, filesize($logFile) - 15000));
-    $tail = fread($fp, 15000);
-    fclose($fp);
-    // Extract only the error message lines
-    preg_match_all('/\[.*?\] local\.ERROR:.*?(?=\[|$)/s', $tail, $matches);
-    if (!empty($matches[0])) {
-        $tail = implode("\n---\n", array_slice($matches[0], -3)); // last 3 errors
-    }
-
-    return response('<pre>'.htmlspecialchars($tail).'</pre>');
-})->middleware('throttle:5,1');

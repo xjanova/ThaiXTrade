@@ -61,9 +61,7 @@ class DashboardController extends Controller
             if (Schema::hasTable('trades')) {
                 $totalInternalTrades = Trade::count();
                 $totalInternalVolume = Trade::sum('total');
-                $totalInternalFees = (float) Trade::selectRaw(
-                    'COALESCE(SUM(maker_fee), 0) + COALESCE(SUM(taker_fee), 0) as total_fees'
-                )->value('total_fees');
+                $totalInternalFees = (float) Trade::sum('maker_fee') + (float) Trade::sum('taker_fee');
                 $volume24h = Trade::where('created_at', '>=', $since24h)->sum('total');
                 $trades24h = Trade::where('created_at', '>=', $since24h)->count();
             }
