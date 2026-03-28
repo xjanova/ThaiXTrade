@@ -1,44 +1,39 @@
 /**
- * Wallet Connect Modal - Auto-detect wallet apps
- * Modal เชื่อมต่อกระเป๋า - ตรวจจับแอปกระเป๋าอัตโนมัติ
+ * Wallet Connect Modal v2 — สร้างจริง + เชื่อมต่อจริง
  *
- * Detects installed wallet apps via deep linking.
- * Works from any browser on both Android and iOS.
- * ตรวจจับแอปกระเป๋าที่ติดตั้งผ่าน deep linking
- * ทำงานได้จากทุกเบราว์เซอร์ทั้ง Android และ iOS
+ * 3 Sections:
+ * 1. TPIX Chain (แนะนำ) — สร้างใหม่ / import / เปิด TPIX Wallet app
+ * 2. กระเป๋าที่ติดตั้งแล้ว — MetaMask, Trust, etc.
+ * 3. กระเป๋าอื่น — ดาวน์โหลด
+ *
+ * + Backup mnemonic step (บังคับหลังสร้างใหม่)
+ * + Import mnemonic step
+ *
+ * Developed by Xman Studio
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  StyleSheet,
-  Text,
-  View,
-  Modal,
-  Pressable,
-  ActivityIndicator,
-  ScrollView,
+  StyleSheet, Text, View, Modal, Pressable, ActivityIndicator,
+  ScrollView, TextInput, Alert, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { colors, spacing, radius, typography } from '@/theme';
 import { useWalletStore } from '@/stores/walletStore';
 import { openWalletDownload, WalletProvider } from '@/services/walletService';
 
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
 
+// ===================== Wallet Item =====================
 function WalletItem({
-  provider,
-  installed,
-  onConnect,
-  onDownload,
-  isConnecting,
+  provider, installed, onConnect, onDownload, isConnecting,
 }: {
-  provider: WalletProvider;
-  installed: boolean;
-  onConnect: () => void;
-  onDownload: () => void;
-  isConnecting: boolean;
+  provider: WalletProvider; installed: boolean;
+  onConnect: () => void; onDownload: () => void; isConnecting: boolean;
 }) {
   return (
     <Pressable
@@ -49,7 +44,6 @@ function WalletItem({
       <View style={[styles.walletIcon, { backgroundColor: provider.iconColor + '20' }]}>
         <Ionicons name={provider.icon as IoniconsName} size={22} color={provider.iconColor} />
       </View>
-
       <View style={styles.walletInfo}>
         <View style={styles.walletNameRow}>
           <Text style={styles.walletName}>{provider.name}</Text>
@@ -62,10 +56,8 @@ function WalletItem({
         </View>
         <Text style={styles.walletChains} numberOfLines={1}>
           {provider.supportedChains.slice(0, 5).join(' · ')}
-          {provider.supportedChains.length > 5 && ` +${provider.supportedChains.length - 5}`}
         </Text>
       </View>
-
       {isConnecting ? (
         <ActivityIndicator size="small" color={colors.brand.cyan} />
       ) : installed ? (
@@ -77,392 +69,334 @@ function WalletItem({
   );
 }
 
+// ===================== Main Modal =====================
 export default function WalletConnectModal() {
   const {
-    isModalVisible,
-    hideModal,
-    detectedWallets,
-    isDetecting,
-    isConnecting,
-    connectError,
-    connectWallet,
-    createEmbeddedWallet,
-    clearError,
+    isModalVisible, hideModal, modalStep, setModalStep,
+    detectedWallets, isDetecting, isConnecting, connectError,
+    connectExternalWallet, createNewWallet, importWallet,
+    pendingMnemonic, confirmMnemonicBackup, clearError,
   } = useWalletStore();
+
+  const [mnemonicInput, setMnemonicInput] = useState('');
+  const [mnemonicCopied, setMnemonicCopied] = useState(false);
+  const [mnemonicConfirmed, setMnemonicConfirmed] = useState(false);
 
   if (!isModalVisible) return null;
 
-  const installedWallets = detectedWallets.filter((w) => w.installed);
-  const notInstalledWallets = detectedWallets.filter((w) => !w.installed);
+  const installedWallets = detectedWallets.filter(w => w.installed && w.provider.id !== 'tpix-wallet');
+  const otherWallets = detectedWallets.filter(w => !w.installed && w.provider.id !== 'tpix-wallet');
+  const tpixWalletDetected = detectedWallets.find(w => w.provider.id === 'tpix-wallet');
 
   const handleConnect = async (provider: WalletProvider) => {
     clearError();
-    await connectWallet(provider);
+    await connectExternalWallet(provider);
   };
 
   const handleDownload = async (provider: WalletProvider) => {
     await openWalletDownload(provider);
   };
 
-  const handleCreateWallet = async () => {
-    clearError();
-    await createEmbeddedWallet();
+  const handleCopyMnemonic = async () => {
+    if (pendingMnemonic) {
+      await Clipboard.setStringAsync(pendingMnemonic);
+      setMnemonicCopied(true);
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTimeout(() => setMnemonicCopied(false), 3000);
+    }
   };
 
+  const handleConfirmBackup = () => {
+    if (!mnemonicConfirmed) {
+      Alert.alert(
+        'Confirm Backup',
+        'Have you saved your recovery phrase? You cannot recover your wallet without it.',
+        [
+          { text: 'Not yet', style: 'cancel' },
+          { text: 'Yes, I saved it', onPress: () => { setMnemonicConfirmed(true); confirmMnemonicBackup(); } },
+        ]
+      );
+    } else {
+      confirmMnemonicBackup();
+    }
+  };
+
+  const handleImport = async () => {
+    if (!mnemonicInput.trim()) return;
+    const success = await importWallet(mnemonicInput);
+    if (success) {
+      setMnemonicInput('');
+    }
+  };
+
+  // ===================== RENDER =====================
   return (
-    <Modal
-      visible={isModalVisible}
-      transparent
-      animationType="slide"
-      statusBarTranslucent
-      onRequestClose={hideModal}
-    >
+    <Modal visible={isModalVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={hideModal}>
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={hideModal} />
-
         <View style={styles.sheet}>
-          {/* Handle bar / แถบจับ */}
           <View style={styles.handleBar} />
 
-          {/* Header */}
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.title}>Connect Wallet</Text>
-              <Text style={styles.subtitle}>เชื่อมต่อกระเป๋าเงิน</Text>
-            </View>
-            <Pressable style={styles.closeBtn} onPress={hideModal}>
-              <Ionicons name="close" size={20} color={colors.text.tertiary} />
-            </Pressable>
-          </View>
-
-          {/* Scanning indicator / แถบสแกน */}
-          {isDetecting && (
-            <View style={styles.scanningRow}>
-              <ActivityIndicator size="small" color={colors.brand.cyan} />
-              <Text style={styles.scanningText}>
-                Scanning for wallets... / กำลังสแกนหากระเป๋า...
-              </Text>
-            </View>
-          )}
-
-          {/* Error message / ข้อความ error */}
-          {connectError && (
-            <View style={styles.errorRow}>
-              <Ionicons name="alert-circle" size={16} color={colors.trading.red} />
-              <Text style={styles.errorText}>{connectError}</Text>
-            </View>
-          )}
-
-          <ScrollView
-            style={styles.walletList}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.walletListContent}
-          >
-            {/* ===== TPIX Embedded Wallet — สร้างได้เลยไม่ต้องติดตั้งแอปอื่น ===== */}
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionDot} />
-              <Text style={styles.sectionLabel}>QUICK START / เริ่มต้นทันที</Text>
-            </View>
-
-            <Pressable
-              style={[styles.walletItem, styles.embeddedWalletItem]}
-              onPress={handleCreateWallet}
-              disabled={isConnecting}
-            >
-              <View style={[styles.walletIcon, { backgroundColor: 'rgba(6, 182, 212, 0.2)' }]}>
-                <Ionicons name="wallet-outline" size={22} color={colors.brand.cyan} />
+          {/* ===== BACKUP MNEMONIC STEP ===== */}
+          {modalStep === 'backup' && pendingMnemonic ? (
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.header}>
+                <View>
+                  <Text style={styles.title}>🔐 Backup Recovery Phrase</Text>
+                  <Text style={styles.subtitle}>เก็บ 12 คำนี้ให้ปลอดภัย — ห้ามแชร์กับใคร</Text>
+                </View>
               </View>
 
-              <View style={styles.walletInfo}>
-                <View style={styles.walletNameRow}>
-                  <Text style={styles.walletName}>TPIX Wallet</Text>
-                  <View style={[styles.installedBadge, { backgroundColor: 'rgba(6, 182, 212, 0.15)' }]}>
-                    <Ionicons name="flash" size={8} color={colors.brand.cyan} />
-                    <Text style={[styles.installedText, { color: colors.brand.cyan }]}>Instant</Text>
-                  </View>
-                </View>
-                <Text style={styles.walletChains}>
-                  Create wallet instantly · ETH · BSC · POLYGON
+              <View style={styles.warningBox}>
+                <Ionicons name="warning-outline" size={20} color="#F59E0B" />
+                <Text style={styles.warningText}>
+                  Write these words down and keep them safe. If you lose them, you lose access to your wallet forever.
                 </Text>
               </View>
 
-              {isConnecting ? (
-                <ActivityIndicator size="small" color={colors.brand.cyan} />
-              ) : (
-                <Ionicons name="add-circle-outline" size={20} color={colors.brand.cyan} />
+              <View style={styles.mnemonicGrid}>
+                {pendingMnemonic.split(' ').map((word, i) => (
+                  <View key={i} style={styles.mnemonicWord}>
+                    <Text style={styles.mnemonicIndex}>{i + 1}</Text>
+                    <Text style={styles.mnemonicText}>{word}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <Pressable style={styles.copyBtn} onPress={handleCopyMnemonic}>
+                <Ionicons name={mnemonicCopied ? 'checkmark-circle' : 'copy-outline'} size={18} color={mnemonicCopied ? colors.trading.green : colors.brand.cyan} />
+                <Text style={[styles.copyText, mnemonicCopied && { color: colors.trading.green }]}>
+                  {mnemonicCopied ? 'Copied!' : 'Copy to clipboard'}
+                </Text>
+              </Pressable>
+
+              <Pressable style={styles.primaryBtn} onPress={handleConfirmBackup}>
+                <Text style={styles.primaryBtnText}>I've saved my recovery phrase</Text>
+              </Pressable>
+            </ScrollView>
+          ) : modalStep === 'import' ? (
+            /* ===== IMPORT WALLET STEP ===== */
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.header}>
+                <View>
+                  <Text style={styles.title}>Import Wallet</Text>
+                  <Text style={styles.subtitle}>นำเข้ากระเป๋าด้วย Recovery Phrase (12 คำ)</Text>
+                </View>
+                <Pressable style={styles.closeBtn} onPress={() => setModalStep('choose')}>
+                  <Ionicons name="arrow-back" size={20} color={colors.text.tertiary} />
+                </Pressable>
+              </View>
+
+              <TextInput
+                style={styles.mnemonicInput}
+                placeholder="Enter 12-word recovery phrase..."
+                placeholderTextColor={colors.text.disabled}
+                value={mnemonicInput}
+                onChangeText={setMnemonicInput}
+                multiline
+                numberOfLines={3}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+
+              {connectError && (
+                <View style={styles.errorBox}>
+                  <Ionicons name="alert-circle" size={16} color={colors.trading.red} />
+                  <Text style={styles.errorText}>{connectError}</Text>
+                </View>
               )}
-            </Pressable>
 
-            {/* Detected / Installed wallets */}
-            {installedWallets.length > 0 && (
-              <>
-                <View style={styles.sectionHeader}>
-                  <View style={styles.sectionDot} />
-                  <Text style={styles.sectionLabel}>
-                    DETECTED / ตรวจพบ ({installedWallets.length})
-                  </Text>
+              <Pressable
+                style={[styles.primaryBtn, (!mnemonicInput.trim() || isConnecting) && styles.primaryBtnDisabled]}
+                onPress={handleImport}
+                disabled={!mnemonicInput.trim() || isConnecting}
+              >
+                {isConnecting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Import Wallet</Text>
+                )}
+              </Pressable>
+            </ScrollView>
+          ) : (
+            /* ===== CHOOSE WALLET STEP (default) ===== */
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.header}>
+                <View>
+                  <Text style={styles.title}>Connect Wallet</Text>
+                  <Text style={styles.subtitle}>เชื่อมต่อกระเป๋าเงิน</Text>
                 </View>
+                <Pressable style={styles.closeBtn} onPress={hideModal}>
+                  <Ionicons name="close" size={20} color={colors.text.tertiary} />
+                </Pressable>
+              </View>
 
-                {installedWallets.map(({ provider }) => (
+              {isDetecting && (
+                <View style={styles.scanningRow}>
+                  <ActivityIndicator size="small" color={colors.brand.cyan} />
+                  <Text style={styles.scanningText}>Scanning wallets...</Text>
+                </View>
+              )}
+
+              {connectError && (
+                <View style={styles.errorBox}>
+                  <Ionicons name="alert-circle" size={16} color={colors.trading.red} />
+                  <Text style={styles.errorText}>{connectError}</Text>
+                </View>
+              )}
+
+              {/* Section 1: TPIX Chain */}
+              <Text style={styles.sectionLabel}>TPIX CHAIN (RECOMMENDED)</Text>
+              <View style={styles.tpixSection}>
+                {/* สร้างกระเป๋าใหม่ */}
+                <Pressable style={styles.tpixAction} onPress={createNewWallet} disabled={isConnecting}>
+                  <LinearGradient colors={['rgba(6,182,212,0.15)', 'rgba(139,92,246,0.15)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.tpixActionGradient}>
+                    <View style={[styles.walletIcon, { backgroundColor: colors.brand.cyan + '20' }]}>
+                      <Ionicons name="add-circle" size={22} color={colors.brand.cyan} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.walletName}>Create New Wallet</Text>
+                      <Text style={styles.walletChains}>สร้างกระเป๋าใหม่ · Free · Instant</Text>
+                    </View>
+                    {isConnecting ? <ActivityIndicator size="small" color={colors.brand.cyan} /> : <Ionicons name="chevron-forward" size={18} color={colors.brand.cyan} />}
+                  </LinearGradient>
+                </Pressable>
+
+                {/* Import กระเป๋า */}
+                <Pressable style={styles.tpixAction} onPress={() => setModalStep('import')}>
+                  <View style={styles.tpixActionFlat}>
+                    <View style={[styles.walletIcon, { backgroundColor: '#8B5CF6' + '20' }]}>
+                      <Ionicons name="key" size={22} color="#8B5CF6" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.walletName}>Import Wallet</Text>
+                      <Text style={styles.walletChains}>นำเข้าด้วย Recovery Phrase</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
+                  </View>
+                </Pressable>
+
+                {/* เปิด TPIX Wallet app */}
+                {tpixWalletDetected ? (
                   <WalletItem
-                    key={provider.id}
-                    provider={provider}
-                    installed
-                    onConnect={() => handleConnect(provider)}
-                    onDownload={() => handleDownload(provider)}
+                    provider={tpixWalletDetected.provider}
+                    installed={tpixWalletDetected.installed}
+                    onConnect={() => handleConnect(tpixWalletDetected.provider)}
+                    onDownload={() => handleDownload(tpixWalletDetected.provider)}
                     isConnecting={isConnecting}
                   />
-                ))}
-              </>
-            )}
+                ) : (
+                  <Pressable style={styles.tpixAction} onPress={() => handleDownload({ downloadUrl: { android: 'https://tpix.online/download', ios: 'https://tpix.online/download' } } as WalletProvider)}>
+                    <View style={styles.tpixActionFlat}>
+                      <View style={[styles.walletIcon, { backgroundColor: '#10B981' + '20' }]}>
+                        <Ionicons name="download" size={22} color="#10B981" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.walletName}>Download TPIX Wallet</Text>
+                        <Text style={styles.walletChains}>ดาวน์โหลดแอป TPIX Wallet</Text>
+                      </View>
+                      <Ionicons name="open-outline" size={18} color={colors.text.tertiary} />
+                    </View>
+                  </Pressable>
+                )}
+              </View>
 
-            {/* Not installed wallets */}
-            {notInstalledWallets.length > 0 && (
-              <>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionLabel}>
-                    {installedWallets.length > 0
-                      ? 'MORE WALLETS / กระเป๋าอื่น'
-                      : 'EXTERNAL WALLETS / กระเป๋าภายนอก'}
-                  </Text>
-                </View>
+              {/* Section 2: Installed Wallets */}
+              {installedWallets.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>DETECTED WALLETS</Text>
+                  {installedWallets.map(({ provider, installed }) => (
+                    <WalletItem
+                      key={provider.id}
+                      provider={provider}
+                      installed={installed}
+                      onConnect={() => handleConnect(provider)}
+                      onDownload={() => handleDownload(provider)}
+                      isConnecting={isConnecting}
+                    />
+                  ))}
+                </>
+              )}
 
-                {notInstalledWallets.map(({ provider }) => (
-                  <WalletItem
-                    key={provider.id}
-                    provider={provider}
-                    installed={false}
-                    onConnect={() => handleConnect(provider)}
-                    onDownload={() => handleDownload(provider)}
-                    isConnecting={isConnecting}
-                  />
-                ))}
-              </>
-            )}
+              {/* Section 3: More Wallets */}
+              {otherWallets.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>MORE WALLETS</Text>
+                  {otherWallets.map(({ provider, installed }) => (
+                    <WalletItem
+                      key={provider.id}
+                      provider={provider}
+                      installed={installed}
+                      onConnect={() => handleConnect(provider)}
+                      onDownload={() => handleDownload(provider)}
+                      isConnecting={isConnecting}
+                    />
+                  ))}
+                </>
+              )}
 
-            {/* Info footer / ข้อมูลด้านล่าง */}
-            <View style={styles.infoFooter}>
-              <Ionicons name="shield-checkmark-outline" size={14} color={colors.text.disabled} />
-              <Text style={styles.infoText}>
-                TPIX Wallet creates a local trading wallet instantly. External wallets connect via deep link.
-                {'\n'}TPIX Wallet สร้างกระเป๋าเทรดได้ทันที กระเป๋าภายนอกเชื่อมต่อผ่าน deep link
-              </Text>
-            </View>
-          </ScrollView>
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          )}
         </View>
       </View>
     </Modal>
   );
 }
 
+// ===================== STYLES =====================
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.bg.overlay,
-  },
-  sheet: {
-    backgroundColor: colors.bg.secondary,
-    borderTopLeftRadius: radius['2xl'],
-    borderTopRightRadius: radius['2xl'],
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: colors.bg.cardBorder,
-    maxHeight: '80%',
-    paddingBottom: spacing['3xl'],
-  },
-  handleBar: {
-    width: 40,
-    height: 4,
-    backgroundColor: colors.text.disabled,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    marginBottom: spacing.lg,
-  },
-  title: {
-    ...typography.h3,
-    color: colors.text.primary,
-  },
-  subtitle: {
-    ...typography.bodySmall,
-    color: colors.text.tertiary,
-    marginTop: 1,
-  },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.bg.tertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  overlay: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+  sheet: { backgroundColor: colors.bg.secondary, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%', paddingHorizontal: spacing.xl, paddingBottom: spacing['3xl'] },
+  handleBar: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.bg.tertiary, alignSelf: 'center', marginTop: spacing.md, marginBottom: spacing.lg },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.xl },
+  title: { ...typography.h3, color: colors.text.primary },
+  subtitle: { ...typography.bodySmall, color: colors.text.tertiary, marginTop: 2 },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bg.tertiary, alignItems: 'center', justifyContent: 'center' },
 
-  // Scanning / สแกน
-  scanningRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
-    marginBottom: spacing.md,
-  },
-  scanningText: {
-    ...typography.bodySmall,
-    color: colors.brand.cyan,
-  },
+  // Scanning & Error
+  scanningRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.lg, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.brand.cyan + '10' },
+  scanningText: { ...typography.bodySmall, color: colors.brand.cyan },
+  errorBox: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.lg, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.trading.red + '15', borderWidth: 1, borderColor: colors.trading.red + '30' },
+  errorText: { ...typography.bodySmall, color: colors.trading.red, flex: 1 },
 
-  // Error
-  errorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.md,
-    backgroundColor: colors.trading.redBg,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  errorText: {
-    ...typography.bodySmall,
-    color: colors.trading.red,
-    flex: 1,
-  },
+  // Section
+  sectionLabel: { ...typography.caption, color: colors.text.tertiary, marginBottom: spacing.sm, marginTop: spacing.lg, letterSpacing: 1 },
 
-  // Wallet list / รายการกระเป๋า
-  walletList: {
-    flex: 1,
-  },
-  walletListContent: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
-  },
+  // TPIX Section
+  tpixSection: { gap: spacing.sm },
+  tpixAction: { borderRadius: radius.lg, overflow: 'hidden' },
+  tpixActionGradient: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.brand.cyan + '30' },
+  tpixActionFlat: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.md, borderRadius: radius.lg, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.bg.cardBorder },
 
-  // Section header / หัวข้อ section
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  sectionDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.trading.green,
-  },
-  sectionLabel: {
-    ...typography.caption,
-    color: colors.text.tertiary,
-    letterSpacing: 1,
-  },
+  // Wallet Items
+  walletItem: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.md, borderRadius: radius.lg, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.bg.cardBorder, marginBottom: spacing.xs },
+  walletItemInstalled: { borderColor: colors.brand.cyan + '30' },
+  walletIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  walletInfo: { flex: 1 },
+  walletNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  walletName: { ...typography.body, color: colors.text.primary, fontWeight: '600', fontSize: 14 },
+  walletChains: { ...typography.bodySmall, color: colors.text.tertiary, fontSize: 11, marginTop: 1 },
+  installedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.trading.greenBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+  installedDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.trading.green },
+  installedText: { fontSize: 9, color: colors.trading.green, fontWeight: '600' },
 
-  // Wallet item / รายการกระเป๋า
-  walletItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    marginBottom: spacing.xs,
-  },
-  walletItemInstalled: {
-    backgroundColor: 'rgba(6, 182, 212, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.12)',
-  },
-  embeddedWalletItem: {
-    backgroundColor: 'rgba(6, 182, 212, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.25)',
-  },
-  walletIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  walletInfo: {
-    flex: 1,
-  },
-  walletNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  walletName: {
-    ...typography.body,
-    color: colors.text.primary,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  installedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: colors.trading.greenBg,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  installedDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.trading.green,
-  },
-  installedText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: colors.trading.green,
-  },
-  walletChains: {
-    ...typography.bodySmall,
-    color: colors.text.tertiary,
-    fontSize: 11,
-    marginTop: 2,
-  },
+  // Backup Mnemonic
+  warningBox: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: '#F59E0B15', borderWidth: 1, borderColor: '#F59E0B30', marginBottom: spacing.lg },
+  warningText: { ...typography.bodySmall, color: '#F59E0B', flex: 1 },
+  mnemonicGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
+  mnemonicWord: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.bg.cardBorder, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, width: '30%', flexGrow: 1 },
+  mnemonicIndex: { ...typography.caption, color: colors.text.disabled, width: 16 },
+  mnemonicText: { ...typography.body, color: colors.text.primary, fontSize: 13, fontWeight: '600' },
+  copyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.bg.cardBorder, marginBottom: spacing.lg },
+  copyText: { ...typography.bodySmall, color: colors.brand.cyan, fontWeight: '600' },
 
-  // Empty state / ไม่พบ
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: spacing['4xl'],
-    gap: spacing.md,
-  },
-  emptyText: {
-    ...typography.body,
-    color: colors.text.tertiary,
-    textAlign: 'center',
-  },
+  // Import
+  mnemonicInput: { ...typography.body, color: colors.text.primary, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.bg.cardBorder, borderRadius: radius.lg, padding: spacing.lg, minHeight: 100, textAlignVertical: 'top', marginBottom: spacing.lg },
 
-  // Info footer
-  infoFooter: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    marginTop: spacing.xl,
-    paddingTop: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
-  },
-  infoText: {
-    ...typography.bodySmall,
-    color: colors.text.disabled,
-    fontSize: 10,
-    flex: 1,
-    lineHeight: 15,
-  },
+  // Buttons
+  primaryBtn: { backgroundColor: colors.brand.cyan, borderRadius: radius.lg, padding: spacing.lg, alignItems: 'center', marginBottom: spacing.lg },
+  primaryBtnDisabled: { opacity: 0.5 },
+  primaryBtnText: { ...typography.body, color: '#000', fontWeight: '700', fontSize: 15 },
 });

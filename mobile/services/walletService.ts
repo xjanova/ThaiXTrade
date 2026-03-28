@@ -10,6 +10,54 @@
 
 import { Linking, Platform } from 'react-native';
 
+// --- Chain Configuration / ตั้งค่าเครือข่าย ---
+
+export interface ChainConfig {
+  chainId: number;
+  name: string;
+  symbol: string;
+  rpcUrl: string;
+  explorerUrl: string;
+  iconColor: string;
+  isDefault?: boolean;
+}
+
+export const SUPPORTED_CHAINS: ChainConfig[] = [
+  {
+    chainId: 4289,
+    name: 'TPIX Chain',
+    symbol: 'TPIX',
+    rpcUrl: 'https://rpc.tpix.online',
+    explorerUrl: 'https://explorer.tpix.online',
+    iconColor: '#06B6D4',
+    isDefault: true,
+  },
+  {
+    chainId: 56,
+    name: 'BNB Smart Chain',
+    symbol: 'BSC',
+    rpcUrl: 'https://bsc-dataseed1.binance.org',
+    explorerUrl: 'https://bscscan.com',
+    iconColor: '#F0B90B',
+  },
+  {
+    chainId: 1,
+    name: 'Ethereum',
+    symbol: 'ETH',
+    rpcUrl: 'https://eth.llamarpc.com',
+    explorerUrl: 'https://etherscan.io',
+    iconColor: '#627EEA',
+  },
+  {
+    chainId: 137,
+    name: 'Polygon',
+    symbol: 'MATIC',
+    rpcUrl: 'https://polygon-rpc.com',
+    explorerUrl: 'https://polygonscan.com',
+    iconColor: '#8247E5',
+  },
+];
+
 // --- Wallet Provider Definitions / รายชื่อกระเป๋าเงินที่รองรับ ---
 
 export interface WalletProvider {
@@ -39,6 +87,21 @@ export interface WalletProvider {
 }
 
 export const WALLET_PROVIDERS: WalletProvider[] = [
+  {
+    id: 'tpix-wallet',
+    name: 'TPIX Wallet',
+    icon: 'wallet',
+    iconColor: '#06B6D4',
+    deepLinkScheme: 'tpixwallet://',
+    connectUrl: 'tpixwallet://connect?callback=tpixtrade://wallet/connect',
+    walletConnectSupported: false,
+    androidPackage: 'com.xmanstudio.tpixwallet',
+    supportedChains: ['TPIX', 'BSC', 'ETH', 'POLYGON'],
+    downloadUrl: {
+      android: 'https://tpix.online/download',
+      ios: 'https://tpix.online/download',
+    },
+  },
   {
     id: 'metamask',
     name: 'MetaMask',

@@ -9,6 +9,7 @@
 const { withAndroidManifest } = require('expo/config-plugins');
 
 const WALLET_SCHEMES = [
+  'tpixwallet',
   'metamask',
   'trust',
   'cbwallet',
