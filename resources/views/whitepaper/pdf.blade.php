@@ -809,15 +809,34 @@
     {{-- ===== 14. ROADMAP ===== --}}
     <h1>14. Roadmap</h1>
 
-    <h2>Q1 2026 — Foundation</h2>
+    <h2>2023-2024 — Development &amp; Infrastructure (Completed)</h2>
     <ul>
-        <li>TPIX Chain mainnet launch (4 IBFT 2.0 validators)</li>
-        <li>Blockscout block explorer deployment</li>
-        <li>Token Sale — 3 phases (Private, Pre-Sale, Public) on BSC</li>
-        <li>Whitepaper v2.0 publication</li>
-        <li>TPIX TRADE DEX platform launch with internal order book</li>
-        <li>Master Node UI v1.0 release (Windows)</li>
-        <li>Living Identity smart contract deployment</li>
+        <li>✅ Whitepaper &amp; tokenomics design, team formation</li>
+        <li>✅ Polygon Edge core: TPIX native coin (7B supply), IBFT 2.0 consensus, EVM</li>
+        <li>✅ Testnet deployment (Chain ID 4290), Block Explorer (Blockscout)</li>
+        <li>✅ Laravel platform integration, REST API (500+ endpoints)</li>
+        <li>✅ DEX smart contracts: TPIXRouter, Factory, Pair</li>
+        <li>✅ Master Node system (NodeRegistryV2 — 4 tiers), ValidatorGovernance, ValidatorKYC</li>
+    </ul>
+
+    <h2>2025 — Mainnet &amp; Products (Completed)</h2>
+    <ul>
+        <li>✅ TPIX Chain mainnet live (Chain ID 4289, 4 IBFT validators)</li>
+        <li>✅ TPIX TRADE DEX platform launch</li>
+        <li>✅ wTPIX (BEP-20) bridge contract on BSC</li>
+        <li>✅ Token Sale contract (TPIXTokenSale.sol)</li>
+        <li>✅ Living Identity — seedless wallet recovery (TPIXIdentity.sol)</li>
+        <li>✅ Master Node UI desktop app (Electron) &amp; TPIX Wallet mobile (Flutter)</li>
+        <li>✅ Token Factory — permissionless ERC-20 creation</li>
+    </ul>
+
+    <h2>Q1 2026 — Production &amp; Token Sale (Current)</h2>
+    <ul>
+        <li>🔵 Token Sale — 3 phases (Private, Pre-Sale, Public) on BSC</li>
+        <li>🔵 Whitepaper v2.0 publication</li>
+        <li>🔵 Internal order book matching engine (limit / market / stop-limit)</li>
+        <li>🔵 Admin panel — fee management, trading dashboard analytics</li>
+        <li>🔵 Carbon Credit trading system &amp; FoodPassport traceability</li>
     </ul>
 
     <h2>Q2 2026 — DeFi Infrastructure</h2>
