@@ -12,7 +12,7 @@ import Constants from 'expo-constants';
 // ใช้ค่าจาก environment config, ถ้าไม่มีจะใช้ค่าเริ่มต้น
 const API_BASE =
   Constants.expoConfig?.extra?.apiBaseUrl ??
-  (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://tpixtrade.com/api/v1');
+  (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://tpix.online/api/v1');
 
 // Request timeout in milliseconds / ระยะเวลา timeout ของ request (มิลลิวินาที)
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -187,6 +187,27 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  }
+
+  // Wallet balance / ยอดคงเหลือกระเป๋า
+  async getWalletBalance(walletAddress: string, chainId: number = 4289) {
+    return this.request<ApiResponse<{ balances: Array<{ symbol: string; name: string; balance: string; contract_address?: string }> }>>(
+      `/wallet/balance?wallet_address=${walletAddress}&chain_id=${chainId}`,
+    );
+  }
+
+  // Trading pairs จาก tpix.online / คู่เทรด
+  async getTradingPairs() {
+    return this.request<ApiResponse<Array<{ symbol: string; base: string; quote: string; price: number; change_24h: number }>>>(
+      '/pairs',
+    );
+  }
+
+  // Chains / เครือข่ายที่รองรับ
+  async getChains() {
+    return this.request<ApiResponse<Array<{ id: number; chain_id: number; name: string; symbol: string; rpc_url: string; explorer_url: string; is_active: boolean }>>>(
+      '/chains',
+    );
   }
 
   // Fee info / ข้อมูลค่าธรรมเนียม
