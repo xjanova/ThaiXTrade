@@ -115,10 +115,15 @@ class TokenFactoryApiController extends Controller
             'decimals' => 'integer|min:0|max:18',
             'total_supply' => "required|numeric|min:1|max:{$maxSupply}",
             'creator_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
-            'chain_id' => 'nullable|integer',
+            'chain_id' => 'nullable|integer|exists:chains,chain_id',
             'description' => 'nullable|string|max:1000',
             'website' => 'nullable|url:https|max:255',
-            'logo_url' => 'nullable|url:https|max:500',
+            'logo_url' => ['nullable', 'string', 'max:500', function ($attr, $val, $fail) {
+                // อนุญาตทั้ง /storage/... path (จาก upload) และ https:// URL
+                if ($val && ! str_starts_with($val, '/storage/') && ! str_starts_with($val, 'https://')) {
+                    $fail('Logo must be an uploaded file or HTTPS URL.');
+                }
+            }],
             'token_type' => 'required|in:'.implode(',', $allowedTypes),
             'token_category' => 'nullable|in:fungible,nft,special',
             'fee_tx_hash' => ['nullable', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],

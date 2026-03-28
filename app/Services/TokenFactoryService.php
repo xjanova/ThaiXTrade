@@ -48,8 +48,8 @@ class TokenFactoryService
         // คำนวณ fee ที่ต้องจ่าย
         $feeAmount = $feeMethod === 'free' ? 0 : $feeTpix;
 
-        // สร้าง metadata พร้อม fee info
-        $metadata = $data['metadata'] ?? [];
+        // สร้าง metadata พร้อม fee info (ป้องกัน metadata เป็น non-array)
+        $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
         $metadata['fee_amount'] = $feeAmount;
         $metadata['fee_currency'] = $feeMethod === 'free' ? 'FREE' : 'TPIX';
         $metadata['fee_wallet'] = $feeWallet;

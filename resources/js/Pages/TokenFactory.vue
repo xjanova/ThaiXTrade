@@ -137,7 +137,9 @@ const canCreate = computed(() => {
         && form.value.name
         && form.value.symbol
         && form.value.total_supply
-        && props.factoryConfig.creation_enabled;
+        && props.factoryConfig.creation_enabled
+        && props.factoryConfig.ready !== false
+        && !isSubmitting.value;
 });
 
 // ===================== FEE DISPLAY =====================
@@ -209,6 +211,12 @@ async function handleCreate() {
         form.value = { name: '', symbol: '', decimals: 18, total_supply: '', description: '', website: '', token_type: 'standard', token_category: 'fungible' };
         wizardStep.value = 1;
         activeTab.value = 'my-tokens';
+
+        // Refresh ทั้ง myTokens และ explore list
+        if (walletStore.address) {
+            factoryStore.fetchMyTokens(walletStore.address);
+        }
+        factoryStore.fetchTokens();
 
         setTimeout(() => { showSuccess.value = false; }, 5000);
     } catch (e) {
@@ -298,6 +306,19 @@ function getTypeLabel(type) {
                 </div>
             </div>
         </section>
+
+        <!-- Factory Not Ready Warning -->
+        <div v-if="props.factoryConfig.ready === false" class="max-w-4xl mx-auto px-4 sm:px-6 mb-6">
+            <div class="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 flex items-start gap-3">
+                <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                <div>
+                    <p class="font-medium text-sm">Token Factory is not available yet</p>
+                    <p class="text-xs text-yellow-400/70 mt-1">{{ props.factoryConfig.issues?.join('. ') || 'System configuration pending.' }}</p>
+                </div>
+            </div>
+        </div>
 
         <!-- Success Alert -->
         <Transition
