@@ -59,8 +59,23 @@ const refresh = () => {
     router.post('/admin/app-releases/refresh', {}, { preserveScroll: true });
 };
 
-const setActive = (tag) => {
-    router.post('/admin/app-releases/set-active', { tag }, { preserveScroll: true });
+const setActive = (tag, app) => {
+    router.post('/admin/app-releases/set-active', { tag, app }, { preserveScroll: true });
+};
+
+// หา asset types ที่ release มีสำหรับแสดง set-active buttons
+const getAvailableApps = (release) => {
+    const apps = [];
+    if (release.source === 'trade' && release.has_apk) {
+        apps.push({ key: 'trade', label: 'TPIX TRADE', color: 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' });
+    }
+    if (release.has_wallet_apk) {
+        apps.push({ key: 'wallet', label: 'Wallet', color: 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30' });
+    }
+    if (release.has_exe) {
+        apps.push({ key: 'masternode', label: 'Master Node', color: 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30' });
+    }
+    return apps;
 };
 
 const formatSize = (mb) => (!mb ? '-' : `${mb} MB`);
@@ -194,11 +209,19 @@ const typeBadge = (release) => {
                         </div>
                         <div class="flex items-center justify-between mt-2">
                             <span class="text-dark-500 text-[10px]">{{ r.repo }}</span>
-                            <button v-if="!isActiveRelease(r)"
-                                @click="setActive(r.tag)"
-                                class="px-2 py-1 rounded text-[10px] font-medium bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition">
-                                Set Active
-                            </button>
+                            <div class="flex gap-1">
+                                <button v-for="app in getAvailableApps(r).filter(a => {
+                                    if (a.key === 'trade') return r.tag !== activeTags?.trade;
+                                    if (a.key === 'wallet') return r.tag !== activeTags?.wallet;
+                                    if (a.key === 'masternode') return r.tag !== activeTags?.masternode;
+                                    return true;
+                                })" :key="app.key"
+                                    @click="setActive(r.tag, app.key)"
+                                    :class="['px-1.5 py-0.5 rounded text-[9px] font-medium transition', app.color]"
+                                    :title="'Set as active ' + app.label">
+                                    {{ app.label }}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -320,19 +343,23 @@ const typeBadge = (release) => {
                                 <span v-else-if="release.is_prerelease" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400">Pre-release</span>
                                 <span v-else class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400">Published</span>
                             </td>
-                            <td class="px-6 py-4 text-center">
-                                <button
-                                    v-if="(release.has_apk || release.has_wallet_apk || release.has_exe) && !isActiveRelease(release)"
-                                    @click="setActive(release.tag)"
-                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition-colors"
-                                >
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                                    </svg>
-                                    Set Active
-                                </button>
-                                <span v-else-if="isActiveRelease(release)" class="text-trading-green text-xs font-medium">Active</span>
-                                <span v-else class="text-dark-600 text-xs">No APK</span>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center justify-center gap-1 flex-wrap">
+                                    <template v-if="getAvailableApps(release).length > 0">
+                                        <button v-for="app in getAvailableApps(release)" :key="app.key"
+                                            @click="setActive(release.tag, app.key)"
+                                            :disabled="(app.key === 'trade' && release.tag === activeTags?.trade) || (app.key === 'wallet' && release.tag === activeTags?.wallet) || (app.key === 'masternode' && release.tag === activeTags?.masternode)"
+                                            :class="[
+                                                'px-2 py-1 rounded-lg text-[10px] font-medium transition-colors',
+                                                (app.key === 'trade' && release.tag === activeTags?.trade) || (app.key === 'wallet' && release.tag === activeTags?.wallet) || (app.key === 'masternode' && release.tag === activeTags?.masternode)
+                                                    ? 'bg-trading-green/20 text-trading-green cursor-default'
+                                                    : app.color
+                                            ]">
+                                            {{ (app.key === 'trade' && release.tag === activeTags?.trade) || (app.key === 'wallet' && release.tag === activeTags?.wallet) || (app.key === 'masternode' && release.tag === activeTags?.masternode) ? '✓ ' : '' }}{{ app.label }}
+                                        </button>
+                                    </template>
+                                    <span v-else class="text-dark-600 text-xs">No assets</span>
+                                </div>
                             </td>
                         </tr>
                     </tbody>

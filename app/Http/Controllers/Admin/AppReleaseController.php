@@ -77,56 +77,78 @@ class AppReleaseController extends Controller
      */
     public function setActive(Request $request)
     {
-        $request->validate(['tag' => 'required|string']);
+        $request->validate([
+            'tag' => 'required|string',
+            'app' => 'required|string|in:trade,wallet,masternode',
+        ]);
 
         $tag = $request->input('tag');
+        $app = $request->input('app');
 
         // หา release ที่ตรงกับ tag จาก cache
         $result = Cache::get('admin_app_releases', ['releases' => [], 'error' => null]);
         $release = collect($result['releases'])->firstWhere('tag', $tag);
 
-        if (! $release || (! $release['has_apk'] && ! $release['has_wallet_apk'] && ! $release['has_exe'])) {
-            return back()->with('error', 'Release not found or has no downloadable assets.');
+        if (! $release) {
+            return back()->with('error', 'Release not found.');
         }
 
-        // บันทึกแยกตาม type — ให้เวอร์ชันแต่ละแอปเป็นอิสระ
-        $type = $release['type'] ?? 'web';
+        // ตรวจว่า release มี asset ที่ตรงกับ app ที่เลือก
+        $appLabel = match ($app) {
+            'trade' => 'TPIX TRADE',
+            'wallet' => 'TPIX Wallet',
+            'masternode' => 'Master Node',
+        };
 
-        if ($release['source'] === 'trade' && $release['has_apk']) {
-            // TPIX TRADE APK
-            SiteSetting::set('app_release', 'active_tag', $tag);
-            SiteSetting::set('app_release', 'version', $release['version']);
-            SiteSetting::set('app_release', 'name', $release['name']);
-            SiteSetting::set('app_release', 'notes', $release['notes']);
-            SiteSetting::set('app_release', 'published_at', $release['published_at']);
-            SiteSetting::set('app_release', 'apk_size', (string) $release['apk_size']);
+        if ($app === 'trade' && ! $release['has_apk']) {
+            return back()->with('error', "This release has no APK for {$appLabel}.");
+        }
+        if ($app === 'wallet' && ! $release['has_wallet_apk']) {
+            return back()->with('error', "This release has no Wallet APK.");
+        }
+        if ($app === 'masternode' && ! $release['has_exe']) {
+            return back()->with('error', "This release has no EXE for {$appLabel}.");
         }
 
-        if ($release['has_wallet_apk'] || $type === 'wallet') {
-            // TPIX Wallet APK
-            SiteSetting::set('app_release', 'wallet_active_tag', $tag);
-            SiteSetting::set('app_release', 'wallet_version', $release['version']);
-        }
-
-        if ($release['has_exe'] || $type === 'desktop') {
-            // Master Node EXE
-            SiteSetting::set('app_release', 'masternode_active_tag', $tag);
-            SiteSetting::set('app_release', 'masternode_version', $release['version']);
-        }
+        // บันทึกเฉพาะ app ที่เลือก — ไม่ set ข้ามประเภท
+        match ($app) {
+            'trade' => (function () use ($tag, $release) {
+                SiteSetting::set('app_release', 'active_tag', $tag);
+                SiteSetting::set('app_release', 'version', $release['version']);
+                SiteSetting::set('app_release', 'name', $release['name']);
+                SiteSetting::set('app_release', 'notes', $release['notes']);
+                SiteSetting::set('app_release', 'published_at', $release['published_at']);
+                SiteSetting::set('app_release', 'apk_size', (string) $release['apk_size']);
+            })(),
+            'wallet' => (function () use ($tag, $release) {
+                SiteSetting::set('app_release', 'wallet_active_tag', $tag);
+                SiteSetting::set('app_release', 'wallet_version', $release['version']);
+            })(),
+            'masternode' => (function () use ($tag, $release) {
+                SiteSetting::set('app_release', 'masternode_active_tag', $tag);
+                SiteSetting::set('app_release', 'masternode_version', $release['version']);
+            })(),
+        };
 
         // ล้าง cache ทั้งหมดเพื่อให้หน้า Download อัปเดตทันที
+        $this->clearReleaseCaches();
+
+        return back()->with('success', "Set {$appLabel} active: {$release['name']} (v{$release['version']})");
+    }
+
+    /**
+     * ล้าง cache ที่เกี่ยวข้องกับ releases ทั้งหมด.
+     */
+    private function clearReleaseCaches(): void
+    {
         Cache::forget('app_update_android');
-        // Clear all chain release caches (key includes md5 of active tags)
         Cache::forget('chain_releases');
-        // Also clear tag-specific caches
         $walletTag = SiteSetting::get('app_release', 'wallet_active_tag') ?? '';
         $masternodeTag = SiteSetting::get('app_release', 'masternode_active_tag') ?? '';
-        Cache::forget('chain_releases_' . md5($walletTag . $masternodeTag));
+        Cache::forget('chain_releases_'.md5($walletTag.$masternodeTag));
         Cache::forget('chain_s3_url_wallet');
         Cache::forget('chain_s3_url_masternode');
         Cache::forget('apk_s3_url');
-
-        return back()->with('success', "Set active release: {$release['name']} (v{$release['version']})");
     }
 
     /**
