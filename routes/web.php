@@ -194,3 +194,18 @@ Route::get('/health', function () {
         'timestamp' => now()->toIso8601String(),
     ]);
 })->name('health');
+
+// Temporary debug — ดู last error log (ลบหลังแก้ bug)
+Route::get('/debug-last-error', function () {
+    $logFile = storage_path('logs/laravel.log');
+    if (! file_exists($logFile)) {
+        return response()->json(['error' => 'No log file']);
+    }
+    // อ่าน 3000 bytes สุดท้ายจาก log
+    $fp = fopen($logFile, 'r');
+    fseek($fp, max(0, filesize($logFile) - 5000));
+    $tail = fread($fp, 5000);
+    fclose($fp);
+
+    return response('<pre>'.htmlspecialchars($tail).'</pre>');
+})->middleware('throttle:5,1');
