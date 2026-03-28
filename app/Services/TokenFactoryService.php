@@ -245,10 +245,10 @@ class TokenFactoryService
             'creation_enabled' => $creationEnabled,
             'fee_wallet_configured' => $walletConfigured,
             'fee_wallet_needed' => $needsWallet,
-            'issues' => array_filter([
+            'issues' => array_values(array_filter([
                 ! $creationEnabled ? 'Token creation is disabled' : null,
                 $needsWallet && ! $walletConfigured ? 'Fee wallet not configured' : null,
-            ]),
+            ])),
         ];
     }
 

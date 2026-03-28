@@ -315,7 +315,7 @@ function getTypeLabel(type) {
                 </svg>
                 <div>
                     <p class="font-medium text-sm">Token Factory is not available yet</p>
-                    <p class="text-xs text-yellow-400/70 mt-1">{{ props.factoryConfig.issues?.join('. ') || 'System configuration pending.' }}</p>
+                    <p class="text-xs text-yellow-400/70 mt-1">{{ Array.isArray(props.factoryConfig.issues) ? props.factoryConfig.issues.join('. ') : Object.values(props.factoryConfig.issues || {}).join('. ') || 'System configuration pending.' }}</p>
                 </div>
             </div>
         </div>
