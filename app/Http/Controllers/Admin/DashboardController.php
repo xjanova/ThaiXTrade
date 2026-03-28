@@ -4,14 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Chain;
-use App\Models\Order;
 use App\Models\SiteSetting;
 use App\Models\SupportTicket;
-use App\Models\Trade;
 use App\Models\TradingPair;
 use App\Models\Transaction;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -28,25 +26,30 @@ class DashboardController extends Controller
      */
     public function index(): InertiaResponse
     {
-        // Core stats — tables ที่มีแน่นอน
-        $totalTransactions = Transaction::count();
-        $totalVolume = Transaction::where('status', 'completed')
-            ->sum('from_amount');
-        $activeChains = Chain::where('is_active', true)->count();
-        $activePairs = TradingPair::where('is_active', true)->count();
-        $openTickets = SupportTicket::open()->count();
-        $recentTransactions = Transaction::with('chain')
-            ->orderByDesc('created_at')
-            ->limit(10)
-            ->get();
+        try {
+            $totalTransactions = Transaction::count();
+            $totalVolume = Transaction::where('status', 'completed')
+                ->sum('from_amount');
+            $activeChains = Chain::where('is_active', true)->count();
+            $activePairs = TradingPair::where('is_active', true)->count();
+            $openTickets = SupportTicket::open()->count();
+            $recentTransactions = Transaction::with('chain')
+                ->orderByDesc('created_at')
+                ->limit(10)
+                ->get();
+        } catch (\Exception $e) {
+            Log::warning('Dashboard core stats error', ['error' => $e->getMessage()]);
+            $totalTransactions = 0;
+            $totalVolume = 0;
+            $activeChains = 0;
+            $activePairs = 0;
+            $openTickets = 0;
+            $recentTransactions = collect();
+        }
 
-        // Fee collector
-        $feeCollector = SiteSetting::get('trading', 'fee_collector_wallet', '');
-        $totalFeeCollected = Transaction::where('status', 'completed')
-            ->where('fee_amount', '>', 0)
-            ->sum('fee_amount');
-
-        // Trading stats — trades/orders tables อาจยังไม่มีบน production
+        // Fee & Trading stats — ใช้ raw DB query ที่ safe กับทุก MySQL mode
+        $feeCollector = '';
+        $totalFeeCollected = 0;
         $totalInternalTrades = 0;
         $totalInternalVolume = 0;
         $totalInternalFees = 0;
@@ -56,18 +59,28 @@ class DashboardController extends Controller
         $swaps24h = 0;
 
         try {
+            $feeCollector = SiteSetting::get('trading', 'fee_collector_wallet', '');
+            $totalFeeCollected = Transaction::where('status', 'completed')
+                ->where('fee_amount', '>', 0)
+                ->sum('fee_amount');
+
             $since24h = now()->subHours(24);
 
-            if (Schema::hasTable('trades')) {
-                $totalInternalTrades = Trade::count();
-                $totalInternalVolume = Trade::sum('total');
-                $totalInternalFees = (float) Trade::sum('maker_fee') + (float) Trade::sum('taker_fee');
-                $volume24h = Trade::where('created_at', '>=', $since24h)->sum('total');
-                $trades24h = Trade::where('created_at', '>=', $since24h)->count();
+            // ตรวจ table ด้วย raw query ที่ไม่ crash
+            $hasTrades = DB::select("SHOW TABLES LIKE 'trades'");
+            if (! empty($hasTrades)) {
+                $totalInternalTrades = DB::table('trades')->count();
+                $totalInternalVolume = (float) DB::table('trades')->sum('total');
+                $makerFees = (float) DB::table('trades')->sum('maker_fee');
+                $takerFees = (float) DB::table('trades')->sum('taker_fee');
+                $totalInternalFees = $makerFees + $takerFees;
+                $volume24h = (float) DB::table('trades')->where('created_at', '>=', $since24h)->sum('total');
+                $trades24h = DB::table('trades')->where('created_at', '>=', $since24h)->count();
             }
 
-            if (Schema::hasTable('orders')) {
-                $openOrders = Order::whereIn('status', ['open', 'partially_filled'])->count();
+            $hasOrders = DB::select("SHOW TABLES LIKE 'orders'");
+            if (! empty($hasOrders)) {
+                $openOrders = DB::table('orders')->whereIn('status', ['open', 'partially_filled'])->count();
             }
 
             $swaps24h = Transaction::whereIn('type', ['swap'])
@@ -75,7 +88,7 @@ class DashboardController extends Controller
                 ->where('created_at', '>=', $since24h)
                 ->count();
         } catch (\Exception $e) {
-            Log::warning('Dashboard: some stats unavailable', ['error' => $e->getMessage()]);
+            Log::warning('Dashboard trading stats error', ['error' => $e->getMessage()]);
         }
 
         return Inertia::render('Admin/Dashboard', [
