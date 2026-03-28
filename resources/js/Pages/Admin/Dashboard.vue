@@ -1,7 +1,7 @@
 <script setup>
 /**
  * TPIX TRADE - Admin Dashboard
- * Overview stats, recent transactions, and quick actions
+ * Overview stats, recent transactions, fee analytics, and quick actions
  * Developed by Xman Studio
  */
 
@@ -19,6 +19,16 @@ const props = defineProps({
             activeChains: 0,
             activePairs: 0,
             openTickets: 0,
+            feeCollectorWallet: '',
+            feeCollectorConfigured: false,
+            totalFeeCollected: '0',
+            totalInternalTrades: 0,
+            totalInternalVolume: '$0',
+            totalInternalFees: '0',
+            openOrders: 0,
+            volume24h: '$0',
+            trades24h: 0,
+            swaps24h: 0,
         }),
     },
     recentTransactions: {
@@ -28,14 +38,32 @@ const props = defineProps({
     volumeTrend: { type: Number, default: 0 },
     transactionTrend: { type: Number, default: 0 },
 });
+
+const shortWallet = (addr) => {
+    if (!addr) return 'Not Set';
+    return addr.substring(0, 6) + '...' + addr.substring(addr.length - 4);
+};
 </script>
 
 <template>
     <Head title="Dashboard" />
 
     <AdminLayout title="Dashboard">
-        <!-- Stats Row -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <!-- Fee Collector Warning -->
+        <div v-if="!stats.feeCollectorConfigured" class="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-3">
+            <svg class="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <div>
+                <h3 class="text-sm font-semibold text-red-400">Fee Collector Wallet Not Configured</h3>
+                <p class="text-xs text-red-400/70 mt-1">Trading and swaps are blocked until a fee collector wallet is set. Go to
+                    <Link href="/admin/settings" class="underline hover:text-red-300">Settings > Trading</Link> to configure.
+                </p>
+            </div>
+        </div>
+
+        <!-- Primary Stats Row -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
             <StatCard
                 title="Total Volume"
                 :value="stats.totalVolume"
@@ -65,6 +93,39 @@ const props = defineProps({
                 :value="stats.openTickets"
                 icon="ticket"
             />
+        </div>
+
+        <!-- Trading & Fee Analytics Row -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
+                <div class="text-xs font-medium text-dark-400 uppercase tracking-wider mb-2">24h Volume</div>
+                <div class="text-xl font-bold text-white">{{ stats.volume24h }}</div>
+                <div class="text-xs text-dark-400 mt-1">{{ stats.trades24h }} trades / {{ stats.swaps24h }} swaps</div>
+            </div>
+            <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
+                <div class="text-xs font-medium text-dark-400 uppercase tracking-wider mb-2">Internal Order Book</div>
+                <div class="text-xl font-bold text-white">{{ stats.totalInternalTrades }} trades</div>
+                <div class="text-xs text-dark-400 mt-1">{{ stats.openOrders }} open orders</div>
+            </div>
+            <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
+                <div class="text-xs font-medium text-dark-400 uppercase tracking-wider mb-2">Fees Collected (Swap)</div>
+                <div class="text-xl font-bold text-trading-green">{{ stats.totalFeeCollected }}</div>
+                <div class="text-xs text-dark-400 mt-1">Internal fees: {{ stats.totalInternalFees }}</div>
+            </div>
+            <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
+                <div class="text-xs font-medium text-dark-400 uppercase tracking-wider mb-2">Fee Collector</div>
+                <div :class="['text-sm font-mono', stats.feeCollectorConfigured ? 'text-trading-green' : 'text-red-400']">
+                    {{ shortWallet(stats.feeCollectorWallet) }}
+                </div>
+                <div class="mt-2">
+                    <span v-if="stats.feeCollectorConfigured" class="inline-flex items-center gap-1 text-xs text-trading-green bg-trading-green/10 px-2 py-0.5 rounded-full">
+                        <span class="w-1.5 h-1.5 rounded-full bg-trading-green"></span> Active
+                    </span>
+                    <span v-else class="inline-flex items-center gap-1 text-xs text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">
+                        <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span> Not Set
+                    </span>
+                </div>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -148,6 +209,21 @@ const props = defineProps({
                             <div>
                                 <p class="text-sm font-medium text-white">Add Trading Pair</p>
                                 <p class="text-xs text-dark-400">Create a new trading pair</p>
+                            </div>
+                        </Link>
+
+                        <Link
+                            href="/admin/fees"
+                            class="flex items-center gap-3 p-3 rounded-xl bg-dark-800/50 hover:bg-dark-800 border border-white/5 hover:border-white/10 transition-all duration-200 group"
+                        >
+                            <div class="w-10 h-10 rounded-lg bg-cyan-500/10 flex items-center justify-center group-hover:bg-cyan-500/20 transition-colors">
+                                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-white">Fee Management</p>
+                                <p class="text-xs text-dark-400">Configure trading fees</p>
                             </div>
                         </Link>
 

@@ -212,6 +212,8 @@ class SettingController extends Controller
 
         // Whitelist of allowed new keys per tab (keys that can be created on first save)
         $allowedNewKeys = [
+            'trading' => ['default_slippage', 'max_slippage', 'masternode_enabled', 'bridge_enabled',
+                'fee_collector_wallet', 'default_fee_rate', 'max_fee_rate'],
             'ai' => ['groq_api_key', 'groq_default_model', 'ai_chatbot_enabled', 'ai_content_enabled',
                 'cloudflare_image_url', 'cloudflare_image_key',
                 'together_api_key', 'huggingface_api_key', 'gemini_api_key'],

@@ -177,6 +177,18 @@ class SwapApiController extends Controller
 
         $validated = $validator->validated();
 
+        // ต้องตั้ง fee_collector_wallet ก่อนถึงจะ swap ได้
+        $feeCollector = SiteSetting::get('trading', 'fee_collector_wallet', '');
+        if (empty($feeCollector)) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'PLATFORM_NOT_READY',
+                    'message' => 'Swap is not available yet. Platform fee configuration is pending.',
+                ],
+            ], 503);
+        }
+
         try {
             // Verify chain is active
             $chain = Chain::active()->find($validated['chain_id']);
