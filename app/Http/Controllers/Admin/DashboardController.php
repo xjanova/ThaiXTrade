@@ -10,6 +10,8 @@ use App\Models\SupportTicket;
 use App\Models\Trade;
 use App\Models\TradingPair;
 use App\Models\Transaction;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -26,6 +28,7 @@ class DashboardController extends Controller
      */
     public function index(): InertiaResponse
     {
+        // Core stats — tables ที่มีแน่นอน
         $totalTransactions = Transaction::count();
         $totalVolume = Transaction::where('status', 'completed')
             ->sum('from_amount');
@@ -37,25 +40,45 @@ class DashboardController extends Controller
             ->limit(10)
             ->get();
 
-        // Fee & Trading stats
+        // Fee collector
         $feeCollector = SiteSetting::get('trading', 'fee_collector_wallet', '');
         $totalFeeCollected = Transaction::where('status', 'completed')
             ->where('fee_amount', '>', 0)
             ->sum('fee_amount');
-        $totalInternalTrades = Trade::count();
-        $totalInternalVolume = Trade::sum('total');
-        $totalInternalFees = Trade::selectRaw('COALESCE(SUM(maker_fee), 0) + COALESCE(SUM(taker_fee), 0) as total_fees')
-            ->value('total_fees');
-        $openOrders = Order::whereIn('status', ['open', 'partially_filled'])->count();
 
-        // 24h stats
-        $since24h = now()->subHours(24);
-        $volume24h = Trade::where('created_at', '>=', $since24h)->sum('total');
-        $trades24h = Trade::where('created_at', '>=', $since24h)->count();
-        $swaps24h = Transaction::whereIn('type', ['swap'])
-            ->where('status', 'completed')
-            ->where('created_at', '>=', $since24h)
-            ->count();
+        // Trading stats — trades/orders tables อาจยังไม่มีบน production
+        $totalInternalTrades = 0;
+        $totalInternalVolume = 0;
+        $totalInternalFees = 0;
+        $openOrders = 0;
+        $volume24h = 0;
+        $trades24h = 0;
+        $swaps24h = 0;
+
+        try {
+            $since24h = now()->subHours(24);
+
+            if (Schema::hasTable('trades')) {
+                $totalInternalTrades = Trade::count();
+                $totalInternalVolume = Trade::sum('total');
+                $totalInternalFees = (float) Trade::selectRaw(
+                    'COALESCE(SUM(maker_fee), 0) + COALESCE(SUM(taker_fee), 0) as total_fees'
+                )->value('total_fees');
+                $volume24h = Trade::where('created_at', '>=', $since24h)->sum('total');
+                $trades24h = Trade::where('created_at', '>=', $since24h)->count();
+            }
+
+            if (Schema::hasTable('orders')) {
+                $openOrders = Order::whereIn('status', ['open', 'partially_filled'])->count();
+            }
+
+            $swaps24h = Transaction::whereIn('type', ['swap'])
+                ->where('status', 'completed')
+                ->where('created_at', '>=', $since24h)
+                ->count();
+        } catch (\Exception $e) {
+            Log::warning('Dashboard: some stats unavailable', ['error' => $e->getMessage()]);
+        }
 
         return Inertia::render('Admin/Dashboard', [
             'stats' => [
