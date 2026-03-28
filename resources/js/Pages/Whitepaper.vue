@@ -32,13 +32,16 @@ const sections = computed(() => [
     { id: 'dex-protocol', title: t.value.toc[5] },
     { id: 'token-sale', title: t.value.toc[6] },
     { id: 'masternode', title: t.value.toc[7] },
-    { id: 'ecosystem', title: t.value.toc[8] },
-    { id: 'integrations', title: t.value.toc[9] },
-    { id: 'roadmap', title: t.value.toc[10] },
-    { id: 'tech-stack', title: t.value.toc[11] },
-    { id: 'team', title: t.value.toc[12] },
-    { id: 'security', title: t.value.toc[13] },
-    { id: 'legal', title: t.value.toc[14] },
+    { id: 'living-identity', title: t.value.toc[8] },
+    { id: 'governance', title: t.value.toc[9] },
+    { id: 'bridge', title: t.value.toc[10] },
+    { id: 'ecosystem', title: t.value.toc[11] },
+    { id: 'integrations', title: t.value.toc[12] },
+    { id: 'roadmap', title: t.value.toc[13] },
+    { id: 'tech-stack', title: t.value.toc[14] },
+    { id: 'team', title: t.value.toc[15] },
+    { id: 'security', title: t.value.toc[16] },
+    { id: 'legal', title: t.value.toc[17] },
 ]);
 
 // Section ที่กำลังดูอยู่
@@ -63,10 +66,10 @@ onMounted(() => {
         { threshold: 0.2, rootMargin: '-80px 0px -50% 0px' }
     );
 
-    // observe ทั้ง 15 sections
+    // observe ทั้ง 18 sections
     const ids = ['executive-summary','problem-solution','tpix-chain','tokenomics','use-cases',
-        'dex-protocol','token-sale','masternode','ecosystem','integrations','roadmap',
-        'tech-stack','team','security','legal'];
+        'dex-protocol','token-sale','masternode','living-identity','governance','bridge',
+        'ecosystem','integrations','roadmap','tech-stack','team','security','legal'];
     ids.forEach(id => {
         const el = document.getElementById(id);
         if (el) observer.observe(el);
@@ -113,13 +116,14 @@ function downloadPdf() {
     }, 100);
 }
 
-// Tokenomics Donut Chart — ข้อมูล allocation
+// Tokenomics Donut Chart — ข้อมูล allocation (ตรงกับ TPIX-Coin NodeRegistryV2)
 const tokenAllocation = [
-    { label: 'Ecosystem Development', labelTh: 'พัฒนา Ecosystem', pct: 30, color: '#3B82F6', amount: '2.1B' },
-    { label: 'Affiliate Rewards', labelTh: 'รางวัล Affiliate', pct: 25, color: '#8B5CF6', amount: '1.75B' },
+    { label: 'Ecosystem Development', labelTh: 'พัฒนา Ecosystem', pct: 25, color: '#3B82F6', amount: '1.75B' },
+    { label: 'Community & Rewards', labelTh: 'ชุมชนและรางวัล', pct: 20, color: '#8B5CF6', amount: '1.4B' },
     { label: 'Master Node Rewards', labelTh: 'รางวัล Master Node', pct: 20, color: '#10B981', amount: '1.4B' },
-    { label: 'Team & Advisors', labelTh: 'ทีมและที่ปรึกษา', pct: 15, color: '#F59E0B', amount: '1.05B' },
-    { label: 'Marketing', labelTh: 'การตลาด', pct: 10, color: '#EF4444', amount: '700M' },
+    { label: 'Liquidity & Market Making', labelTh: 'สภาพคล่องและ Market Making', pct: 15, color: '#06B6D4', amount: '1.05B' },
+    { label: 'Token Sale (ICO)', labelTh: 'ขายเหรียญ (ICO)', pct: 10, color: '#F59E0B', amount: '700M' },
+    { label: 'Team & Advisors', labelTh: 'ทีมและที่ปรึกษา', pct: 10, color: '#EF4444', amount: '700M' },
 ];
 
 // คำนวณ SVG donut chart paths
@@ -169,13 +173,16 @@ const content = {
             '6. DEX Protocol',
             '7. Token Sale Details',
             '8. Master Node & Rewards',
-            '9. Ecosystem & Affiliate',
-            '10. Platform Integrations',
-            '11. Roadmap',
-            '12. Technology Stack',
-            '13. Team & Partners',
-            '14. Security & Audits',
-            '15. Legal Disclaimer',
+            '9. Living Identity — Seedless Recovery',
+            '10. Validator Governance',
+            '11. Cross-Chain Bridge',
+            '12. Ecosystem & Affiliate',
+            '13. Platform Integrations',
+            '14. Roadmap',
+            '15. Technology Stack',
+            '16. Team & Partners',
+            '17. Security & Audits',
+            '18. Legal Disclaimer',
         ],
         execSummary: {
             p1: 'TPIX Chain is a next-generation EVM-compatible blockchain built on Polygon Edge technology, designed specifically for the Thai and Southeast Asian digital economy. With gasless transactions, 2-second block times, and IBFT Proof-of-Authority consensus, TPIX Chain provides an unmatched platform for decentralized applications, DeFi, and real-world asset tokenization.',
@@ -359,13 +366,16 @@ const content = {
             '6. โปรโตคอล DEX',
             '7. รายละเอียดการขายโทเคน',
             '8. Master Node และรางวัล',
-            '9. ระบบนิเวศและ Affiliate',
-            '10. การเชื่อมต่อแพลตฟอร์ม',
-            '11. แผนงาน (Roadmap)',
-            '12. เทคโนโลยีที่ใช้',
-            '13. ทีมงานและพาร์ทเนอร์',
-            '14. ความปลอดภัยและการตรวจสอบ',
-            '15. ข้อจำกัดความรับผิดชอบ',
+            '9. Living Identity — กู้กระเป๋าไม่ต้องใช้ Seed Phrase',
+            '10. Validator Governance — การปกครองแบบกระจายอำนาจ',
+            '11. Cross-Chain Bridge',
+            '12. ระบบนิเวศและ Affiliate',
+            '13. การเชื่อมต่อแพลตฟอร์ม',
+            '14. แผนงาน (Roadmap)',
+            '15. เทคโนโลยีที่ใช้',
+            '16. ทีมงานและพาร์ทเนอร์',
+            '17. ความปลอดภัยและการตรวจสอบ',
+            '18. ข้อจำกัดความรับผิดชอบ',
         ],
         execSummary: {
             p1: 'TPIX Chain เป็นบล็อกเชนที่รองรับ EVM สร้างบนเทคโนโลยี Polygon Edge ออกแบบมาโดยเฉพาะสำหรับเศรษฐกิจดิจิทัลไทยและอาเซียน ด้วยการทำธุรกรรมไม่เสียค่า Gas, เวลาสร้างบล็อก 2 วินาที และ IBFT Proof-of-Authority consensus ทำให้ TPIX Chain เป็นแพลตฟอร์มที่เหนือกว่าสำหรับแอปพลิเคชันกระจายอำนาจ, DeFi และการโทเคไนซ์สินทรัพย์ในโลกจริง',
@@ -930,9 +940,135 @@ const content = {
                         </div>
                     </section>
 
-                    <!-- 9. Ecosystem & Affiliate -->
-                    <section id="ecosystem" class="wp-section">
+                    <!-- 9. Living Identity — Seedless Recovery -->
+                    <section id="living-identity" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[8] }}</h2>
+                        <div class="glass-dark p-6 rounded-2xl border border-accent-500/20 mb-6">
+                            <p class="text-lg font-bold text-accent-400 mb-2">{{ lang === 'en' ? "World's First On-Chain Seedless Wallet Recovery" : 'ระบบกู้คืนกระเป๋าแบบไม่ต้องใช้ Seed Phrase ตัวแรกของโลก' }}</p>
+                            <p class="text-gray-300 text-sm">{{ lang === 'en' ? 'No more seed phrases. No more lost funds. Your identity is your key.' : 'ไม่ต้องจำ Seed Phrase อีกต่อไป ไม่มีเงินหาย ตัวตนของคุณคือกุญแจ' }}</p>
+                        </div>
+                        <p class="wp-text">{{ lang === 'en' ? 'Living Identity (TPIXIdentity smart contract) allows users to recover wallet access by combining three verification factors into a single on-chain proof — security questions, GPS locations, and a 6-digit recovery PIN. Only a 32-byte keccak256 hash is stored on-chain. Zero personal data is retrievable from the blockchain.' : 'Living Identity (TPIXIdentity smart contract) ช่วยให้ผู้ใช้กู้คืนกระเป๋าได้โดยรวม 3 ปัจจัยยืนยันเข้าด้วยกัน — คำถามความปลอดภัย, พิกัด GPS และ PIN กู้คืน 6 หลัก เก็บเฉพาะ hash 32 bytes บนเชน ไม่มีข้อมูลส่วนตัวใดดึงออกจากบล็อกเชนได้' }}</p>
+
+                        <div class="overflow-x-auto mt-4">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b border-white/10">
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Step' : 'ขั้นตอน' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Action' : 'การกระทำ' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'On-Chain Data' : 'ข้อมูลบนเชน' }}</th>
+                                </tr></thead>
+                                <tbody>
+                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-white">1. Register</td><td class="py-2 px-3 text-gray-300">{{ lang === 'en' ? 'Set security questions + GPS + PIN' : 'ตั้งคำถาม + GPS + PIN' }}</td><td class="py-2 px-3 text-gray-400">{{ lang === 'en' ? '32-byte keccak256 hash only' : 'เก็บเฉพาะ hash 32 bytes' }}</td></tr>
+                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-white">2. Loss</td><td class="py-2 px-3 text-gray-300">{{ lang === 'en' ? 'User loses device or seed phrase' : 'ผู้ใช้ทำอุปกรณ์หาย' }}</td><td class="py-2 px-3 text-gray-400">-</td></tr>
+                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-white">3. Recovery</td><td class="py-2 px-3 text-gray-300">{{ lang === 'en' ? 'Answer questions + stand at GPS + enter PIN' : 'ตอบคำถาม + ยืนที่ GPS + ใส่ PIN' }}</td><td class="py-2 px-3 text-gray-400">{{ lang === 'en' ? '48-hour timelock starts' : 'เริ่ม timelock 48 ชม.' }}</td></tr>
+                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-white">4. Safety</td><td class="py-2 px-3 text-gray-300">{{ lang === 'en' ? 'Owner can cancel within 48 hours' : 'เจ้าของยกเลิกได้ภายใน 48 ชม.' }}</td><td class="py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Cancel tx reverts recovery' : 'ยกเลิก tx คืนค่า' }}</td></tr>
+                                    <tr><td class="py-2 px-3 text-white">5. Execute</td><td class="py-2 px-3 text-gray-300">{{ lang === 'en' ? 'After 48h, wallet transfers to new address' : 'หลัง 48 ชม. กระเป๋าโอนไปที่อยู่ใหม่' }}</td><td class="py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Ownership updated' : 'อัปเดตเจ้าของ' }}</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+                            <div class="glass-dark p-4 rounded-xl border border-white/10 text-center">
+                                <span class="text-2xl mb-2 block">🔐</span>
+                                <p class="text-sm font-medium text-white">{{ lang === 'en' ? 'Zero Knowledge' : 'ไม่เก็บข้อมูลส่วนตัว' }}</p>
+                                <p class="text-xs text-gray-400 mt-1">{{ lang === 'en' ? 'Only 32-byte hash on-chain' : 'เก็บเฉพาะ hash 32 bytes' }}</p>
+                            </div>
+                            <div class="glass-dark p-4 rounded-xl border border-white/10 text-center">
+                                <span class="text-2xl mb-2 block">⏰</span>
+                                <p class="text-sm font-medium text-white">{{ lang === 'en' ? '48-Hour Timelock' : 'ล็อค 48 ชั่วโมง' }}</p>
+                                <p class="text-xs text-gray-400 mt-1">{{ lang === 'en' ? 'Anti-theft protection' : 'ป้องกันขโมย' }}</p>
+                            </div>
+                            <div class="glass-dark p-4 rounded-xl border border-white/10 text-center">
+                                <span class="text-2xl mb-2 block">🆓</span>
+                                <p class="text-sm font-medium text-white">{{ lang === 'en' ? 'Free to Use' : 'ใช้ฟรี' }}</p>
+                                <p class="text-xs text-gray-400 mt-1">{{ lang === 'en' ? 'Zero gas on TPIX Chain' : 'ไม่เสียค่า Gas' }}</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 10. Validator Governance -->
+                    <section id="governance" class="wp-section">
+                        <h2 class="wp-heading">{{ t.toc[9] }}</h2>
+                        <p class="wp-text">{{ lang === 'en' ? 'The ValidatorGovernance smart contract enables on-chain governance exclusively for Validator-tier nodes (10M TPIX stake + KYC-approved). Validators act as the chain\'s decision-making body for protocol upgrades, parameter changes, and membership.' : 'ValidatorGovernance smart contract เปิดให้การปกครองบนเชนเฉพาะ Validator-tier (stake 10M TPIX + ผ่าน KYC) ทำหน้าที่เป็นคณะกรรมการตัดสินใจของเชน' }}</p>
+
+                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4 mb-6">
+                            <div class="glass-dark p-3 rounded-xl border border-white/10 text-center">
+                                <p class="text-xs text-gray-400">{{ lang === 'en' ? 'Voting Period' : 'ระยะโหวต' }}</p>
+                                <p class="text-lg font-bold text-white">7 {{ lang === 'en' ? 'days' : 'วัน' }}</p>
+                            </div>
+                            <div class="glass-dark p-3 rounded-xl border border-white/10 text-center">
+                                <p class="text-xs text-gray-400">{{ lang === 'en' ? 'Quorum' : 'องค์ประชุม' }}</p>
+                                <p class="text-lg font-bold text-white">&gt;50%</p>
+                            </div>
+                            <div class="glass-dark p-3 rounded-xl border border-white/10 text-center">
+                                <p class="text-xs text-gray-400">{{ lang === 'en' ? 'Approval' : 'ผ่านมติ' }}</p>
+                                <p class="text-lg font-bold text-white">&gt;50%</p>
+                            </div>
+                            <div class="glass-dark p-3 rounded-xl border border-white/10 text-center">
+                                <p class="text-xs text-gray-400">Timelock</p>
+                                <p class="text-lg font-bold text-white">48h</p>
+                            </div>
+                            <div class="glass-dark p-3 rounded-xl border border-white/10 text-center">
+                                <p class="text-xs text-gray-400">KYC</p>
+                                <p class="text-lg font-bold text-accent-400">PDPA</p>
+                            </div>
+                        </div>
+
+                        <h3 class="text-lg font-semibold text-white mb-3">{{ lang === 'en' ? 'Proposal Types' : 'ประเภทข้อเสนอ' }}</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="glass-dark p-3 rounded-xl border border-white/10">
+                                <p class="text-sm font-medium text-white">AddValidator</p>
+                                <p class="text-xs text-gray-400">{{ lang === 'en' ? 'Admit new IBFT2 validator node' : 'เพิ่ม Validator node ใหม่' }}</p>
+                            </div>
+                            <div class="glass-dark p-3 rounded-xl border border-white/10">
+                                <p class="text-sm font-medium text-white">RemoveValidator</p>
+                                <p class="text-xs text-gray-400">{{ lang === 'en' ? 'Remove misbehaving validator' : 'ลบ Validator ที่ทำผิด' }}</p>
+                            </div>
+                            <div class="glass-dark p-3 rounded-xl border border-white/10">
+                                <p class="text-sm font-medium text-white">ChangeParameter</p>
+                                <p class="text-xs text-gray-400">{{ lang === 'en' ? 'Modify stake requirements, fees, emission rates' : 'แก้ไขจำนวน stake, ค่าธรรมเนียม, อัตรา emission' }}</p>
+                            </div>
+                            <div class="glass-dark p-3 rounded-xl border border-white/10">
+                                <p class="text-sm font-medium text-white">UpgradeContract</p>
+                                <p class="text-xs text-gray-400">{{ lang === 'en' ? 'Deploy new contract versions' : 'อัปเกรด smart contract' }}</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 11. Cross-Chain Bridge -->
+                    <section id="bridge" class="wp-section">
+                        <h2 class="wp-heading">{{ t.toc[10] }}</h2>
+                        <p class="wp-text">{{ lang === 'en' ? 'The TPIX Bridge enables seamless asset transfer between TPIX Chain (native TPIX) and BNB Smart Chain (wTPIX, BEP-20). This allows TPIX holders to access BSC\'s DeFi ecosystem while maintaining the ability to bridge back.' : 'TPIX Bridge เชื่อมต่อ TPIX Chain (TPIX ดั้งเดิม) กับ BNB Smart Chain (wTPIX, BEP-20) ช่วยให้ผู้ถือ TPIX เข้าถึง DeFi บน BSC ได้' }}</p>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                            <div class="glass-dark p-4 rounded-xl border border-green-500/20">
+                                <p class="text-sm font-bold text-green-400 mb-2">BSC → TPIX Chain</p>
+                                <p class="text-xs text-gray-300">{{ lang === 'en' ? 'Burn wTPIX on BSC → Mint native TPIX on TPIX Chain' : 'เผา wTPIX บน BSC → สร้าง TPIX บน TPIX Chain' }}</p>
+                            </div>
+                            <div class="glass-dark p-4 rounded-xl border border-blue-500/20">
+                                <p class="text-sm font-bold text-blue-400 mb-2">TPIX Chain → BSC</p>
+                                <p class="text-xs text-gray-300">{{ lang === 'en' ? 'Lock native TPIX → Mint wTPIX on BSC' : 'ล็อค TPIX → สร้าง wTPIX บน BSC' }}</p>
+                            </div>
+                        </div>
+
+                        <div class="overflow-x-auto mt-4">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b border-white/10">
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Feature' : 'คุณสมบัติ' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Details' : 'รายละเอียด' }}</th>
+                                </tr></thead>
+                                <tbody>
+                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-white">wTPIX Max Supply</td><td class="py-2 px-3 text-gray-300">700,000,000 (10% of total)</td></tr>
+                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-white">Standard</td><td class="py-2 px-3 text-gray-300">ERC-20 + Burnable (BEP-20 on BSC)</td></tr>
+                                    <tr class="border-b border-white/5"><td class="py-2 px-3 text-white">Bridge Fee</td><td class="py-2 px-3 text-gray-300">0.1% (90% treasury, 10% burned)</td></tr>
+                                    <tr><td class="py-2 px-3 text-white">{{ lang === 'en' ? 'Supply Integrity' : 'ความสมบูรณ์ Supply' }}</td><td class="py-2 px-3 text-gray-300">{{ lang === 'en' ? 'Native TPIX + wTPIX always = 7 billion' : 'TPIX + wTPIX รวมกัน = 7 พันล้านเสมอ' }}</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- 12. Ecosystem & Affiliate -->
+                    <section id="ecosystem" class="wp-section">
+                        <h2 class="wp-heading">{{ t.toc[11] }}</h2>
                         <p class="wp-text">
                             {{ lang === 'en'
                                 ? 'The TPIX ecosystem includes a comprehensive affiliate/referral program and a token factory allowing anyone to create ERC-20 tokens on TPIX Chain.'
@@ -1005,9 +1141,9 @@ const content = {
                         </div>
                     </section>
 
-                    <!-- 10. Platform Integrations -->
+                    <!-- 13. Platform Integrations -->
                     <section id="integrations" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[9] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[12] }}</h2>
                         <div class="grid sm:grid-cols-2 gap-4">
                             <div v-for="int in t.integrations" :key="int.name" class="p-5 rounded-xl bg-white/5 border border-white/10">
                                 <h4 class="font-semibold text-white mb-1">{{ int.name }}</h4>
@@ -1022,9 +1158,9 @@ const content = {
                         </div>
                     </section>
 
-                    <!-- 11. Roadmap -->
+                    <!-- 14. Roadmap -->
                     <section id="roadmap" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[10] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[13] }}</h2>
                         <div class="space-y-4">
                             <div v-for="r in t.roadmap" :key="r.q" class="flex gap-4">
                                 <div class="flex-shrink-0 w-28">
@@ -1053,9 +1189,9 @@ const content = {
                         </div>
                     </section>
 
-                    <!-- 12. Technology Stack -->
+                    <!-- 15. Technology Stack -->
                     <section id="tech-stack" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[11] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[14] }}</h2>
                         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             <div v-for="(items, category) in t.techStack" :key="category" class="p-4 rounded-xl bg-white/5 border border-white/10">
                                 <h4 class="font-semibold text-white mb-3 capitalize">{{ category === 'smartContracts' ? 'Smart Contracts' : category }}</h4>
@@ -1067,9 +1203,9 @@ const content = {
                         </div>
                     </section>
 
-                    <!-- 13. Team & Partners -->
+                    <!-- 16. Team & Partners -->
                     <section id="team" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[12] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[15] }}</h2>
                         <p class="wp-text">{{ t.teamDesc }}</p>
                         <div class="wp-highlight">
                             <h4 class="font-semibold text-white mb-3">{{ lang === 'en' ? 'Key Highlights' : 'จุดเด่น' }}</h4>
@@ -1082,9 +1218,9 @@ const content = {
                         </div>
                     </section>
 
-                    <!-- 14. Security & Audits -->
+                    <!-- 17. Security & Audits -->
                     <section id="security" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[13] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[16] }}</h2>
                         <div class="grid sm:grid-cols-2 gap-4">
                             <div v-for="item in t.securityItems" :key="item.title" class="p-4 rounded-xl bg-white/5 border border-white/10">
                                 <h4 class="font-semibold text-white mb-2">🔒 {{ item.title }}</h4>
@@ -1093,9 +1229,9 @@ const content = {
                         </div>
                     </section>
 
-                    <!-- 15. Legal Disclaimer -->
+                    <!-- 18. Legal Disclaimer -->
                     <section id="legal" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[14] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[17] }}</h2>
                         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
                             <p class="text-sm text-gray-500 mb-3">
                                 {{ lang === 'en'
