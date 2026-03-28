@@ -66,6 +66,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::put('settings/social', [SettingController::class, 'updateTab'])->name('settings.social');
         Route::put('settings/payment', [SettingController::class, 'updateTab'])->name('settings.payment');
         Route::put('settings/ai', [SettingController::class, 'updateTab'])->name('settings.ai');
+        Route::put('settings/factory', [SettingController::class, 'updateTab'])->name('settings.factory');
         Route::put('settings/content', [SettingController::class, 'updateTab'])->name('settings.content');
         Route::put('settings/email', [SettingController::class, 'updateEmail'])->name('settings.email');
         Route::post('settings/email/test', [SettingController::class, 'sendTestEmail'])->name('settings.email.test');
@@ -165,6 +166,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{id}/reject', [TokenFactoryController::class, 'reject'])->name('reject');
             Route::post('/{id}/retry', [TokenFactoryController::class, 'retry'])->name('retry');
             Route::patch('/{id}/verify', [TokenFactoryController::class, 'toggleVerified'])->name('verify');
+            Route::patch('/{id}/list', [TokenFactoryController::class, 'toggleListed'])->name('list');
         });
 
         // FoodPassport — จัดการระบบ Food Traceability

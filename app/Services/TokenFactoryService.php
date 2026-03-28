@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\DeployTokenJob;
 use App\Models\FactoryToken;
+use App\Models\SiteSetting;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
 
@@ -11,9 +12,27 @@ class TokenFactoryService
 {
     /**
      * สร้างคำขอสร้าง Token ใหม่.
+     *
+     * ตรวจสอบ:
+     * - ระบบเปิดให้สร้างหรือไม่ (creation_enabled)
+     * - fee_wallet ตั้งค่าแล้วหรือไม่
+     * - fee payment record ถูกต้อง
+     * - auto_approve flag
      */
     public function createToken(array $data): FactoryToken
     {
+        // Guard: ต้องตั้ง fee_wallet ก่อน (เหมือน fee_collector_wallet ของ trading)
+        $feeWallet = SiteSetting::get('factory', 'fee_wallet', '');
+        $feeMethod = SiteSetting::get('factory', 'fee_payment_method', 'tpix');
+        $feeTpix = (float) SiteSetting::get('factory', 'creation_fee_tpix', 100);
+
+        // ถ้า fee ไม่ใช่ free → ต้องมี fee_wallet
+        if ($feeMethod !== 'free' && $feeTpix > 0 && empty($feeWallet)) {
+            throw new \RuntimeException(
+                'Token Factory fee wallet is not configured. Please contact administrator.'
+            );
+        }
+
         $tokenType = $data['token_type'] ?? 'standard';
 
         // Auto-determine category from type
@@ -26,7 +45,18 @@ class TokenFactoryService
         // NFT ใช้ decimals = 0 เสมอ
         $decimals = in_array($tokenType, $nftTypes) ? 0 : ($data['decimals'] ?? 18);
 
-        return FactoryToken::create([
+        // คำนวณ fee ที่ต้องจ่าย
+        $feeAmount = $feeMethod === 'free' ? 0 : $feeTpix;
+
+        // สร้าง metadata พร้อม fee info
+        $metadata = $data['metadata'] ?? [];
+        $metadata['fee_amount'] = $feeAmount;
+        $metadata['fee_currency'] = $feeMethod === 'free' ? 'FREE' : 'TPIX';
+        $metadata['fee_wallet'] = $feeWallet;
+        $metadata['fee_tx_hash'] = $data['fee_tx_hash'] ?? null;
+
+        // สร้าง token record
+        $token = FactoryToken::create([
             'name' => $data['name'],
             'symbol' => strtoupper($data['symbol']),
             'decimals' => $decimals,
@@ -39,8 +69,28 @@ class TokenFactoryService
             'token_type' => $tokenType,
             'token_category' => $category,
             'status' => 'pending',
-            'metadata' => $data['metadata'] ?? null,
+            'metadata' => $metadata,
         ]);
+
+        Log::info('Token creation request submitted', [
+            'token_id' => $token->id,
+            'symbol' => $token->symbol,
+            'creator' => $token->creator_address,
+            'fee' => $feeAmount,
+        ]);
+
+        // Auto-approve ถ้าเปิดไว้ (เฉพาะ fungible ที่ไม่ใช่ special types)
+        $autoApprove = filter_var(
+            SiteSetting::get('factory', 'auto_approve', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
+
+        if ($autoApprove && $category === 'fungible' && in_array($tokenType, ['standard', 'mintable', 'burnable', 'mintable_burnable'])) {
+            $this->approveToken($token);
+            Log::info("Token {$token->symbol} auto-approved", ['token_id' => $token->id]);
+        }
+
+        return $token->fresh();
     }
 
     /**
@@ -48,7 +98,7 @@ class TokenFactoryService
      */
     public function getTokensByCreator(string $address, int $perPage = 20): LengthAwarePaginator
     {
-        return FactoryToken::byCreator($address)
+        return FactoryToken::byCreator(strtolower($address))
             ->orderByDesc('created_at')
             ->paginate($perPage);
     }
@@ -56,23 +106,39 @@ class TokenFactoryService
     /**
      * ดึง Token ที่ deployed ทั้งหมด (public listing).
      */
-    public function getDeployedTokens(int $perPage = 20): LengthAwarePaginator
+    public function getDeployedTokens(?string $search = null, int $perPage = 20): LengthAwarePaginator
     {
-        return FactoryToken::deployed()
+        $query = FactoryToken::deployed()
             ->where('is_listed', true)
-            ->orderByDesc('created_at')
-            ->paginate($perPage);
+            ->orderByDesc('created_at');
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('symbol', 'like', "%{$search}%");
+            });
+        }
+
+        return $query->paginate($perPage);
     }
 
     /**
      * Admin: ดึงทุก token พร้อม filter.
      */
-    public function getAllTokens(?string $status = null, int $perPage = 20): LengthAwarePaginator
+    public function getAllTokens(?string $status = null, ?string $search = null, int $perPage = 20): LengthAwarePaginator
     {
-        $query = FactoryToken::query()->orderByDesc('created_at');
+        $query = FactoryToken::query()->with('chain')->orderByDesc('created_at');
 
         if ($status) {
             $query->where('status', $status);
+        }
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('symbol', 'like', "%{$search}%")
+                    ->orWhere('creator_address', 'like', "%{$search}%");
+            });
         }
 
         return $query->paginate($perPage);
@@ -96,6 +162,7 @@ class TokenFactoryService
         Log::info("Token {$token->symbol} approved, deployment job dispatched", [
             'token_id' => $token->id,
             'creator' => $token->creator_address,
+            'type' => $token->token_type,
         ]);
 
         return $token->fresh();
@@ -115,6 +182,11 @@ class TokenFactoryService
         $token->update([
             'status' => 'rejected',
             'reject_reason' => $reason,
+        ]);
+
+        Log::info("Token {$token->symbol} rejected", [
+            'token_id' => $token->id,
+            'reason' => $reason,
         ]);
 
         return $token->fresh();
@@ -137,6 +209,50 @@ class TokenFactoryService
     }
 
     /**
+     * Admin: toggle listed (เฉพาะ deployed tokens).
+     */
+    public function toggleListed(FactoryToken $token): FactoryToken
+    {
+        if ($token->status !== 'deployed') {
+            throw new \InvalidArgumentException(
+                "Cannot toggle listing for token with status '{$token->status}'."
+            );
+        }
+
+        $token->update(['is_listed' => ! $token->is_listed]);
+
+        return $token->fresh();
+    }
+
+    /**
+     * ตรวจสอบว่าระบบพร้อมสร้าง token หรือไม่
+     */
+    public function isFactoryReady(): array
+    {
+        $creationEnabled = filter_var(
+            SiteSetting::get('factory', 'creation_enabled', true),
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $feeWallet = SiteSetting::get('factory', 'fee_wallet', '');
+        $feeMethod = SiteSetting::get('factory', 'fee_payment_method', 'tpix');
+        $feeTpix = (float) SiteSetting::get('factory', 'creation_fee_tpix', 100);
+
+        $needsWallet = $feeMethod !== 'free' && $feeTpix > 0;
+        $walletConfigured = ! empty($feeWallet);
+
+        return [
+            'ready' => $creationEnabled && (! $needsWallet || $walletConfigured),
+            'creation_enabled' => $creationEnabled,
+            'fee_wallet_configured' => $walletConfigured,
+            'fee_wallet_needed' => $needsWallet,
+            'issues' => array_filter([
+                ! $creationEnabled ? 'Token creation is disabled' : null,
+                $needsWallet && ! $walletConfigured ? 'Fee wallet not configured' : null,
+            ]),
+        ];
+    }
+
+    /**
      * สถิติรวม
      */
     public function getStats(): array
@@ -144,10 +260,29 @@ class TokenFactoryService
         return [
             'total' => FactoryToken::count(),
             'pending' => FactoryToken::where('status', 'pending')->count(),
+            'deploying' => FactoryToken::where('status', 'deploying')->count(),
             'deployed' => FactoryToken::where('status', 'deployed')->count(),
+            'failed' => FactoryToken::where('status', 'failed')->count(),
             'rejected' => FactoryToken::where('status', 'rejected')->count(),
             'verified' => FactoryToken::where('is_verified', true)->count(),
             'unique_creators' => FactoryToken::distinct('creator_address')->count('creator_address'),
+        ];
+    }
+
+    /**
+     * Get factory configuration for frontend
+     */
+    public function getFactoryConfig(): array
+    {
+        return [
+            'creation_fee_tpix' => (float) SiteSetting::get('factory', 'creation_fee_tpix', 100),
+            'creation_fee_usd' => (float) SiteSetting::get('factory', 'creation_fee_usd', 10),
+            'fee_payment_method' => SiteSetting::get('factory', 'fee_payment_method', 'tpix'),
+            'fee_wallet' => SiteSetting::get('factory', 'fee_wallet', ''),
+            'nft_enabled' => filter_var(SiteSetting::get('factory', 'nft_enabled', true), FILTER_VALIDATE_BOOLEAN),
+            'max_supply_limit' => (float) SiteSetting::get('factory', 'max_supply_limit', 999999999999999),
+            'auto_approve' => filter_var(SiteSetting::get('factory', 'auto_approve', false), FILTER_VALIDATE_BOOLEAN),
+            'creation_enabled' => filter_var(SiteSetting::get('factory', 'creation_enabled', true), FILTER_VALIDATE_BOOLEAN),
         ];
     }
 }

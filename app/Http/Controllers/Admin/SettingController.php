@@ -199,7 +199,7 @@ class SettingController extends Controller
     public function updateTab(Request $request): RedirectResponse
     {
         // Whitelist allowed tab names to prevent path manipulation
-        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced', 'ai'];
+        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced', 'ai', 'factory'];
         $tab = last(explode('/', $request->path()));
 
         if (! in_array($tab, $allowedTabs, true)) {
@@ -214,6 +214,8 @@ class SettingController extends Controller
         $allowedNewKeys = [
             'trading' => ['default_slippage', 'max_slippage', 'masternode_enabled', 'bridge_enabled',
                 'fee_collector_wallet', 'default_fee_rate', 'max_fee_rate'],
+            'factory' => ['creation_fee_tpix', 'creation_fee_usd', 'fee_payment_method', 'fee_wallet',
+                'nft_enabled', 'max_supply_limit', 'auto_approve', 'creation_enabled'],
             'ai' => ['groq_api_key', 'groq_default_model', 'ai_chatbot_enabled', 'ai_content_enabled',
                 'cloudflare_image_url', 'cloudflare_image_key',
                 'together_api_key', 'huggingface_api_key', 'gemini_api_key'],

@@ -25,6 +25,7 @@ const tabs = [
     { key: 'general', label: 'General', icon: 'settings' },
     { key: 'seo', label: 'SEO', icon: 'search' },
     { key: 'trading', label: 'Trading', icon: 'chart' },
+    { key: 'factory', label: 'Token Factory', icon: 'settings' },
     { key: 'payment', label: 'Payment', icon: 'card' },
     { key: 'ai', label: 'AI', icon: 'brain' },
     { key: 'email', label: 'Email', icon: 'mail' },
@@ -109,6 +110,22 @@ const tradingForm = useForm({
 
 const saveTrading = () => {
     tradingForm.put('/admin/settings/trading', { preserveScroll: true });
+};
+
+// Factory form
+const factoryForm = useForm({
+    creation_enabled: props.settings.creation_enabled ?? true,
+    auto_approve: props.settings.auto_approve ?? false,
+    nft_enabled: props.settings.nft_enabled ?? true,
+    fee_wallet: props.settings.fee_wallet || '',
+    creation_fee_tpix: props.settings.creation_fee_tpix || 100,
+    creation_fee_usd: props.settings.creation_fee_usd || 10,
+    fee_payment_method: props.settings.fee_payment_method || 'tpix',
+    max_supply_limit: props.settings.max_supply_limit || 999999999999999,
+});
+
+const saveFactory = () => {
+    factoryForm.put('/admin/settings/factory', { preserveScroll: true });
 };
 
 // Security form
@@ -444,6 +461,93 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <button type="submit" :disabled="tradingForm.processing" class="btn-primary px-6 py-2.5">
                         <span v-if="tradingForm.processing">Saving...</span>
                         <span v-else>Save Trading Settings</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Factory Tab -->
+        <div v-show="activeTab === 'factory'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+            <h3 class="text-lg font-semibold text-white mb-6">Token Factory Settings</h3>
+            <form @submit.prevent="saveFactory" class="space-y-6 max-w-2xl">
+                <!-- Feature Toggles -->
+                <div class="p-4 rounded-xl bg-dark-800/50 border border-white/10">
+                    <h4 class="text-sm font-semibold text-white mb-4">Feature Toggles</h4>
+                    <div class="flex flex-wrap gap-6">
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-dark-300">Token Creation</label>
+                            <button type="button" @click="factoryForm.creation_enabled = !factoryForm.creation_enabled"
+                                :class="['w-12 h-6 rounded-full transition-colors', factoryForm.creation_enabled ? 'bg-trading-green' : 'bg-dark-600']">
+                                <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', factoryForm.creation_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                            </button>
+                            <span :class="['text-xs', factoryForm.creation_enabled ? 'text-trading-green' : 'text-dark-500']">{{ factoryForm.creation_enabled ? 'ON' : 'OFF' }}</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-dark-300">Auto-Approve</label>
+                            <button type="button" @click="factoryForm.auto_approve = !factoryForm.auto_approve"
+                                :class="['w-12 h-6 rounded-full transition-colors', factoryForm.auto_approve ? 'bg-trading-green' : 'bg-dark-600']">
+                                <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', factoryForm.auto_approve ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                            </button>
+                            <span :class="['text-xs', factoryForm.auto_approve ? 'text-trading-green' : 'text-dark-500']">{{ factoryForm.auto_approve ? 'ON' : 'OFF' }}</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="text-sm text-dark-300">NFT Creation</label>
+                            <button type="button" @click="factoryForm.nft_enabled = !factoryForm.nft_enabled"
+                                :class="['w-12 h-6 rounded-full transition-colors', factoryForm.nft_enabled ? 'bg-trading-green' : 'bg-dark-600']">
+                                <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', factoryForm.nft_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                            </button>
+                            <span :class="['text-xs', factoryForm.nft_enabled ? 'text-trading-green' : 'text-dark-500']">{{ factoryForm.nft_enabled ? 'ON' : 'OFF' }}</span>
+                        </div>
+                    </div>
+                    <p v-if="factoryForm.auto_approve" class="mt-3 text-xs text-yellow-400 bg-yellow-500/10 p-2 rounded-lg">Auto-approve only applies to standard fungible tokens (standard, mintable, burnable). Governance, stablecoin, and NFT always require manual review.</p>
+                </div>
+
+                <!-- Fee Configuration -->
+                <div class="p-4 rounded-xl bg-gradient-to-br from-accent-500/5 via-primary-500/5 to-warm-500/5 border border-primary-500/10">
+                    <h4 class="text-sm font-semibold text-primary-400 mb-4 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                        </svg>
+                        Fee Configuration
+                    </h4>
+                    <div class="space-y-4">
+                        <div>
+                            <label :class="labelClass">Fee Wallet Address</label>
+                            <input v-model="factoryForm.fee_wallet" type="text" :class="inputClass" placeholder="0x..." />
+                            <p class="mt-1 text-xs text-dark-500">EVM wallet that receives token creation fees</p>
+                        </div>
+                        <div>
+                            <label :class="labelClass">Payment Method</label>
+                            <select v-model="factoryForm.fee_payment_method" :class="inputClass">
+                                <option value="tpix">TPIX Token</option>
+                                <option value="usd">USD (Stripe)</option>
+                                <option value="free">Free (No Fee)</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label :class="labelClass">Fee (TPIX)</label>
+                                <input v-model.number="factoryForm.creation_fee_tpix" type="number" step="1" min="0" :class="inputClass" placeholder="100" />
+                            </div>
+                            <div>
+                                <label :class="labelClass">Fee (USD)</label>
+                                <input v-model.number="factoryForm.creation_fee_usd" type="number" step="0.01" min="0" :class="inputClass" placeholder="10" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Limits -->
+                <div>
+                    <label :class="labelClass">Max Supply Limit</label>
+                    <input v-model.number="factoryForm.max_supply_limit" type="number" min="1" :class="inputClass" placeholder="999999999999999" />
+                    <p class="mt-1 text-xs text-dark-500">Maximum total supply a user can set when creating a token</p>
+                </div>
+
+                <div class="pt-4">
+                    <button type="submit" :disabled="factoryForm.processing" class="btn-primary px-6 py-2.5">
+                        <span v-if="factoryForm.processing">Saving...</span>
+                        <span v-else>Save Factory Settings</span>
                     </button>
                 </div>
             </form>

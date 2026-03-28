@@ -162,7 +162,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     // Token Factory — ระบบสร้างเหรียญ (public endpoints)
     Route::prefix('token-factory')->group(function () {
         Route::get('/', [TokenFactoryApiController::class, 'index']);
-        Route::get('/{id}', [TokenFactoryApiController::class, 'show']);
+        Route::get('/config', [TokenFactoryApiController::class, 'config']);
+        Route::get('/{id}', [TokenFactoryApiController::class, 'show'])->where('id', '[0-9]+');
     });
 
     // Carbon Credits — ระบบ Carbon Credit (public endpoints)
@@ -291,6 +292,8 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::get('/my-tokens', [TokenFactoryApiController::class, 'myTokens']);
         Route::post('/create', [TokenFactoryApiController::class, 'store'])
             ->middleware('throttle:5,60'); // สร้างได้ 5 ครั้งต่อ 60 นาที
+        Route::post('/upload-logo', [TokenFactoryApiController::class, 'uploadLogo'])
+            ->middleware('throttle:10,60');
     });
 
     // FoodPassport — จัดการสินค้า/IoT (ต้อง verify wallet)
