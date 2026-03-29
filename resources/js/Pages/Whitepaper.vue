@@ -84,17 +84,24 @@ function downloadPdf() {
     style.textContent = `
         @page {
             size: A4;
-            margin: 16mm 14mm 20mm 14mm;
+            margin: 15mm 12mm 18mm 12mm;
         }
 
         @media print {
-            /* ===== พื้นฐาน — Dark Premium ===== */
+            /* ===== Reset & พื้นฐาน ===== */
+            *, *::before, *::after {
+                box-shadow: none !important;
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+                text-shadow: none !important;
+            }
+
             html, body {
-                background: #080c1a !important;
+                background: #0a0e1a !important;
                 color: #cbd5e1 !important;
-                font-family: 'Sarabun', 'Noto Sans Thai', 'Inter', 'Helvetica Neue', Arial, sans-serif !important;
-                font-size: 10pt !important;
-                line-height: 1.75 !important;
+                font-family: 'Sarabun', 'Noto Sans Thai', 'Inter', sans-serif !important;
+                font-size: 9.5pt !important;
+                line-height: 1.6 !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
             }
@@ -104,247 +111,236 @@ function downloadPdf() {
             button, .btn-primary, .btn-secondary, .btn-brand,
             .fixed, .sticky,
             .ticker-strip, .banner-ad,
-            [class*="animate-pulse"] {
+            [class*="animate-pulse"],
+            [class*="blur-"] {
                 display: none !important;
             }
 
-            /* ===== ล้าง effects ที่ print ไม่รองรับ ===== */
-            * {
-                box-shadow: none !important;
-                backdrop-filter: none !important;
-                -webkit-backdrop-filter: none !important;
-                text-shadow: none !important;
+            /* ===== Layout: content full width ===== */
+            .flex.gap-8 { display: block !important; }
+            aside { display: none !important; }
+            main, .flex-1, .min-w-0 {
+                max-width: 100% !important;
+                width: 100% !important;
             }
+            .max-w-7xl { max-width: 100% !important; }
+            .px-4, .sm\\:px-6 { padding-left: 0 !important; padding-right: 0 !important; }
 
-            /* ===== หน้าปก — Premium Cover ===== */
+            /* ===== หน้าปก ===== */
             .print-cover {
                 page-break-after: always !important;
-                background: #080c1a !important;
-                min-height: 92vh !important;
+                background: #0a0e1a !important;
+                min-height: 90vh !important;
                 display: flex !important;
                 flex-direction: column !important;
                 align-items: center !important;
                 justify-content: center !important;
                 text-align: center !important;
                 position: relative !important;
-                overflow: hidden !important;
             }
             .print-cover::before {
                 content: '' !important;
                 position: absolute !important;
-                top: 15% !important;
-                left: 50% !important;
+                top: 20% !important; left: 50% !important;
                 transform: translateX(-50%) !important;
-                width: 500px !important;
-                height: 500px !important;
-                background: radial-gradient(circle, rgba(59,130,246,0.12) 0%, rgba(139,92,246,0.06) 40%, transparent 70%) !important;
+                width: 400px !important; height: 400px !important;
+                background: radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%) !important;
                 border-radius: 50% !important;
             }
             .print-cover img {
                 display: block !important;
-                width: 88px !important;
-                height: 88px !important;
-                margin: 0 auto 28px !important;
+                width: 80px !important; height: 80px !important;
+                margin: 0 auto 24px !important;
                 position: relative !important;
             }
             .print-cover h1 {
-                font-size: 32pt !important;
+                font-size: 28pt !important;
                 font-weight: 800 !important;
                 color: #f1f5f9 !important;
                 margin-bottom: 6px !important;
-                letter-spacing: -0.5px !important;
                 position: relative !important;
             }
             .print-cover .text-primary-400 {
                 color: #60a5fa !important;
-                font-size: 13pt !important;
+                font-size: 12pt !important;
                 position: relative !important;
             }
             .print-cover .text-gray-500 {
                 color: #64748b !important;
-                font-size: 10pt !important;
+                font-size: 9pt !important;
                 position: relative !important;
             }
 
             /* ===== Typography ===== */
-            h1 {
-                font-size: 20pt !important;
-                color: #f1f5f9 !important;
-                font-weight: 800 !important;
-            }
+            h1 { font-size: 18pt !important; color: #f1f5f9 !important; font-weight: 800 !important; }
             h2 {
-                font-size: 15pt !important;
+                font-size: 14pt !important;
                 color: #e2e8f0 !important;
                 font-weight: 700 !important;
                 border-bottom: 1px solid rgba(255,255,255,0.1) !important;
-                padding-bottom: 8px !important;
-                margin-top: 4px !important;
-                margin-bottom: 12px !important;
+                padding-bottom: 6px !important;
+                margin-top: 0 !important;
+                margin-bottom: 10px !important;
             }
-            h3 {
-                font-size: 12pt !important;
-                color: #e2e8f0 !important;
-                font-weight: 600 !important;
-                margin-bottom: 6px !important;
-            }
-            h4 {
-                font-size: 11pt !important;
-                color: #cbd5e1 !important;
-                font-weight: 600 !important;
-            }
-            p, li, span, div {
-                color: #94a3b8 !important;
-            }
-            a {
-                color: #60a5fa !important;
-                text-decoration: none !important;
-            }
+            h3 { font-size: 11pt !important; color: #e2e8f0 !important; font-weight: 600 !important; margin-bottom: 6px !important; }
+            h4 { font-size: 10pt !important; color: #cbd5e1 !important; font-weight: 600 !important; }
+            p, li, span, div { color: #94a3b8 !important; }
+            a { color: #60a5fa !important; text-decoration: none !important; }
 
-            /* Gradient text → สีสว่าง */
-            .text-gradient, .text-gradient-brand {
-                -webkit-text-fill-color: #60a5fa !important;
-                background: none !important;
-                color: #60a5fa !important;
-            }
-            .text-gradient-gold {
-                -webkit-text-fill-color: #fbbf24 !important;
-                background: none !important;
-                color: #fbbf24 !important;
-            }
+            .text-gradient, .text-gradient-brand { -webkit-text-fill-color: #60a5fa !important; background: none !important; color: #60a5fa !important; }
+            .text-gradient-gold { -webkit-text-fill-color: #fbbf24 !important; background: none !important; color: #fbbf24 !important; }
+            .font-medium, strong, b { color: #e2e8f0 !important; }
 
-            /* เน้นข้อความสำคัญ */
-            .font-medium, strong, b {
-                color: #e2e8f0 !important;
-            }
-
-            /* ===== ป้องกันเนื้อหาขาดข้ามหน้า ===== */
+            /* ===== Page Break Management ===== */
+            /* ห้าม break ใน section — ลบออก! section ยาวมากจะทำให้เกิดหน้าว่าง */
+            /* ใช้ break-before บน heading แทน เพื่อให้ section ใหม่เริ่มหน้าใหม่ */
             .wp-section {
-                break-inside: avoid;
-                page-break-inside: avoid;
-            }
-            h2, h3, h4 {
-                page-break-after: avoid;
-                break-after: avoid;
-            }
-            p, .wp-text {
-                orphans: 3;
-                widows: 3;
-            }
-            .wp-highlight, .wp-table,
-            [class*="rounded-xl"], [class*="rounded-2xl"],
-            table, tr, img, svg, figure {
-                page-break-inside: avoid;
-                break-inside: avoid;
+                margin-bottom: 20px !important;
             }
 
-            /* ===== ตาราง — Dark Glass Style ===== */
+            /* section สำคัญ เริ่มหน้าใหม่ */
+            #problem-solution, #tpix-chain, #tokenomics, #use-cases,
+            #dex-protocol, #masternode, #roadmap, #tech-stack, #security {
+                page-break-before: always !important;
+            }
+
+            /* heading ห้ามอยู่ท้ายหน้า */
+            h2, h3, h4 {
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+            }
+
+            /* ย่อหน้า — orphan/widow */
+            p, .wp-text { orphans: 3; widows: 3; }
+
+            /* card/highlight เล็กๆ ห้าม break ข้ามหน้า */
+            .glass-dark, [class*="rounded-xl"] {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+
+            /* table row ห้าม break ข้ามหน้า (แต่ table ทั้งอันได้) */
+            tr {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            thead { display: table-header-group !important; }
+
+            /* SVG ห้าม break */
+            svg, img, figure {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+
+            /* ===== ตาราง ===== */
             table {
                 border-collapse: separate !important;
                 border-spacing: 0 !important;
                 width: 100% !important;
-                font-size: 8.5pt !important;
-                margin: 8px 0 !important;
-                border-radius: 8px !important;
-                overflow: hidden !important;
+                font-size: 8pt !important;
+                margin: 6px 0 !important;
                 border: 1px solid rgba(255,255,255,0.08) !important;
+                border-radius: 6px !important;
             }
-            thead tr {
-                background: rgba(255,255,255,0.06) !important;
-            }
+            thead tr { background: rgba(255,255,255,0.06) !important; }
             th {
                 background: rgba(255,255,255,0.06) !important;
                 color: #94a3b8 !important;
                 font-weight: 600 !important;
                 border-bottom: 1px solid rgba(255,255,255,0.08) !important;
-                border-right: none !important;
-                border-left: none !important;
-                border-top: none !important;
-                padding: 8px 10px !important;
+                border-right: none !important; border-left: none !important; border-top: none !important;
+                padding: 6px 8px !important;
                 text-align: left !important;
-                font-size: 7.5pt !important;
+                font-size: 7pt !important;
                 text-transform: uppercase !important;
                 letter-spacing: 0.5px !important;
             }
             td {
                 border-bottom: 1px solid rgba(255,255,255,0.04) !important;
-                border-right: none !important;
-                border-left: none !important;
-                border-top: none !important;
-                padding: 7px 10px !important;
+                border-right: none !important; border-left: none !important; border-top: none !important;
+                padding: 5px 8px !important;
                 color: #cbd5e1 !important;
                 vertical-align: top !important;
             }
-            tbody tr:nth-child(even) {
-                background: rgba(255,255,255,0.02) !important;
-            }
+            tbody tr:nth-child(even) { background: rgba(255,255,255,0.02) !important; }
 
-            /* ===== Cards & Highlights — Glass Dark ===== */
+            /* ===== Cards & Highlights ===== */
             .wp-highlight {
                 border: 1px solid rgba(255,255,255,0.08) !important;
-                border-radius: 12px !important;
-                padding: 16px !important;
+                border-radius: 8px !important;
+                padding: 12px !important;
                 background: rgba(255,255,255,0.03) !important;
-                margin: 12px 0 !important;
+                margin: 8px 0 !important;
             }
             .wp-table {
                 border: 1px solid rgba(255,255,255,0.08) !important;
-                border-radius: 12px !important;
+                border-radius: 8px !important;
                 background: rgba(255,255,255,0.02) !important;
+                margin: 6px 0 !important;
             }
+            .wp-section { padding: 0 !important; }
 
             /* Problem/Solution cards */
-            [class*="bg-red-500/5"] {
+            [class*="bg-red-500/5"], [class*="bg-red-500/10"] {
                 border: 1px solid rgba(239,68,68,0.2) !important;
                 border-left: 3px solid #ef4444 !important;
-                padding: 12px !important;
+                padding: 10px !important;
                 background: rgba(239,68,68,0.05) !important;
-                border-radius: 8px !important;
+                border-radius: 6px !important;
             }
-            [class*="bg-green-500/5"] {
+            [class*="bg-green-500/5"], [class*="bg-green-500/10"] {
                 border: 1px solid rgba(34,197,94,0.2) !important;
                 border-left: 3px solid #22c55e !important;
-                padding: 12px !important;
+                padding: 10px !important;
                 background: rgba(34,197,94,0.05) !important;
-                border-radius: 8px !important;
+                border-radius: 6px !important;
             }
 
-            /* Stats / Key numbers */
-            .wp-highlight .text-2xl,
-            .text-2xl {
-                font-size: 16pt !important;
+            /* Stats numbers */
+            .wp-highlight .text-2xl, .text-2xl {
+                font-size: 14pt !important;
                 font-weight: 700 !important;
                 color: #60a5fa !important;
             }
+            .text-3xl { font-size: 16pt !important; font-weight: 700 !important; }
+            .text-lg { font-size: 10.5pt !important; }
 
-            /* ===== Grid ===== */
-            .grid {
-                display: grid !important;
-                gap: 8px !important;
+            /* ===== Grid — ปรับให้เหมาะกับ A4 ===== */
+            .grid { display: grid !important; gap: 8px !important; }
+
+            /* Stats 6 คอลัมน์: คงไว้ 3 คอลัมน์ */
+            .grid-cols-2.sm\\:grid-cols-3.lg\\:grid-cols-6 {
+                grid-template-columns: repeat(3, 1fr) !important;
             }
 
-            /* ===== SVG (Donut chart etc.) ===== */
-            svg {
-                page-break-inside: avoid;
-                max-width: 100% !important;
-            }
-            svg path, svg circle, svg rect {
+            /* 2 คอลัมน์ปกติ: คงไว้ */
+            .sm\\:grid-cols-2 { grid-template-columns: repeat(2, 1fr) !important; }
+
+            /* 3 คอลัมน์: คง 3 (sale phases) */
+            .sm\\:grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; }
+
+            /* 5 คอลัมน์: ลดเป็น 5 คง (governance stats) */
+            .grid-cols-2.sm\\:grid-cols-5 { grid-template-columns: repeat(5, 1fr) !important; }
+
+            /* Tokenomics 2 คอลัมน์: คงไว้ */
+            .lg\\:grid-cols-2 { grid-template-columns: repeat(2, 1fr) !important; }
+
+            /* Tech stack 3 คอลัมน์: ลดเป็น 2 */
+            .sm\\:grid-cols-2.lg\\:grid-cols-3 { grid-template-columns: repeat(2, 1fr) !important; }
+
+            /* 4 คอลัมน์ ecosystem map: ลดเป็น 4 คง */
+            .grid-cols-2.sm\\:grid-cols-4 { grid-template-columns: repeat(4, 1fr) !important; }
+
+            /* ===== SVG Donut Chart ===== */
+            svg { max-width: 100% !important; }
+            svg path, svg circle, svg rect, svg text {
                 print-color-adjust: exact !important;
                 -webkit-print-color-adjust: exact !important;
             }
+            /* ลดขนาด donut chart สำหรับ print */
+            .w-64.h-64 { width: 180px !important; height: 180px !important; }
 
-            /* ===== Layout: full width content ===== */
-            .flex.gap-8 {
-                display: block !important;
-            }
-            aside {
-                display: none !important;
-            }
-            main {
-                max-width: 100% !important;
-                width: 100% !important;
-            }
-
-            /* ===== สีหลักให้ print exact ===== */
+            /* ===== สี ===== */
             [class*="text-trading-green"] { color: #22c55e !important; }
             [class*="text-trading-red"] { color: #ef4444 !important; }
             [class*="text-primary-400"] { color: #60a5fa !important; }
@@ -353,28 +349,32 @@ function downloadPdf() {
             [class*="text-yellow-400"] { color: #fbbf24 !important; }
             [class*="text-cyan-400"] { color: #22d3ee !important; }
             [class*="text-white"] { color: #f1f5f9 !important; }
+            [class*="text-warm-400"] { color: #fb923c !important; }
+            [class*="text-purple-400"] { color: #a78bfa !important; }
+            [class*="text-blue-400"] { color: #60a5fa !important; }
+            [class*="text-green-400"] { color: #4ade80 !important; }
+            [class*="text-red-400"] { color: #f87171 !important; }
 
-            /* ===== Responsive columns: show all ===== */
+            /* ===== Responsive: แสดงทุกอย่าง ===== */
             .hidden { display: revert !important; }
-            [class*="hidden sm:"], [class*="hidden md:"], [class*="hidden lg:"] {
-                display: revert !important;
-            }
+            .hidden.xl\\:block { display: none !important; } /* ซ่อน TOC sidebar */
+            .hidden.print\\:block { display: block !important; }
+            [class*="print:hidden"] { display: none !important; }
 
-            /* ===== Lists ===== */
-            ul, ol { padding-left: 18px !important; }
-            li { margin-bottom: 3px !important; color: #94a3b8 !important; }
+            /* Lists */
+            ul, ol { padding-left: 16px !important; }
+            li { margin-bottom: 2px !important; }
 
-            /* ===== Print-only elements ===== */
-            .print\\:block { display: block !important; }
-            .print\\:hidden { display: none !important; }
-
-            /* ===== Blur backgrounds → ซ่อน ===== */
-            [class*="blur-"] { display: none !important; }
+            /* ===== Roadmap layout — compact ===== */
+            .space-y-4 > div { margin-bottom: 8px !important; }
+            .flex.gap-4 { gap: 8px !important; }
+            .w-28 { width: 70px !important; flex-shrink: 0 !important; }
+            .pb-4 { padding-bottom: 6px !important; }
 
             /* ===== Page footer ===== */
             @page {
                 @bottom-center {
-                    content: "TPIX Chain Whitepaper  ·  Page " counter(page);
+                    content: "TPIX Chain Whitepaper v2.0  •  Page " counter(page);
                     font-size: 7pt;
                     color: #475569;
                 }
@@ -396,7 +396,7 @@ function downloadPdf() {
             const s = document.getElementById('print-style');
             if (s) s.remove();
         }, 1000);
-    }, 200);
+    }, 300);
 }
 
 // Tokenomics Donut Chart — ข้อมูล allocation (ตรงกับ TPIX-Coin NodeRegistryV2)
@@ -860,10 +860,10 @@ const content = {
                 </div>
 
                 <div class="flex flex-wrap items-center justify-center gap-3 print:hidden">
-                    <a :href="`/whitepaper/download?lang=${lang}`" class="btn-primary px-8 py-3 inline-flex items-center gap-2 font-semibold">
+                    <button @click="downloadPdf" class="btn-primary px-8 py-3 inline-flex items-center gap-2 font-semibold">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                         {{ t.downloadPdf }}
-                    </a>
+                    </button>
                     <button @click="toggleLang" class="btn-secondary px-6 py-3 font-semibold">
                         {{ lang === 'en' ? t.readInThai : t.readInEn }}
                     </button>

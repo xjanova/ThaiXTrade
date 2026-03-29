@@ -183,7 +183,7 @@ onMounted(async () => {
                         <ul class="space-y-2">
                             <li><Link href="/bridge" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Bridge</Link></li>
                             <li><Link href="/ai-assistant" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">AI Assistant</Link></li>
-                            <li><Link href="/whitepaper/download" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Download Whitepaper</Link></li>
+                            <li><Link href="/whitepaper" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Download Whitepaper</Link></li>
                             <li><Link href="/settings" class="text-xs text-dark-400 hover:text-primary-400 transition-colors">Settings</Link></li>
                         </ul>
                     </div>
