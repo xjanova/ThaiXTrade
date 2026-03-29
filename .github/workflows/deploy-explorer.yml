@@ -175,6 +175,9 @@ jobs:
                   NEXT_PUBLIC_AD_TEXT_PROVIDER: "none"
                   NEXT_PUBLIC_PROMOTE_BLOCKSCOUT_IN_TITLE: "false"
                   NEXT_PUBLIC_HAS_BEACON_CHAIN: "false"
+                  NEXT_PUBLIC_VIEWS_ADDRESS_HIDDEN_VIEWS: "[]"
+                  NEXT_PUBLIC_HOMEPAGE_STATS: "['total_blocks','average_block_time','total_txs','wallet_addresses','gas_tracker']"
+                  NEXT_PUBLIC_NETWORK_VERIFICATION_TYPE: "validation"
                 ports:
                   - "127.0.0.1:3100:3000"
                 networks:
@@ -215,6 +218,9 @@ jobs:
                   BLOCK_TRANSFORMER: base
                   INDEXER_DISABLE_INTERNAL_TRANSACTIONS_FETCHER: "true"
                   INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: "true"
+                  INDEXER_COIN_BALANCES_BATCH_SIZE: "50"
+                  COIN_BALANCE_ON_DEMAND_FETCHER_ENABLED: "true"
+                  TOKEN_BALANCE_ON_DEMAND_FETCHER_ENABLED: "true"
                   ECTO_USE_SSL: "false"
                   SECRET_KEY_BASE: "56OgMJny00smDFHkKNv27A7eBZmqaJPkWTp9HOYcR6M/Rij24bLey3qrB3PJFH3N"
                   API_V2_ENABLED: "true"
