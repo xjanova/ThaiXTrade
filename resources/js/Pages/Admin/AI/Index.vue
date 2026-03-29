@@ -270,7 +270,7 @@ const viewAnalysis = (analysis) => {
                             <!-- Analysis Type -->
                             <div>
                                 <label class="block text-sm font-medium text-dark-300 mb-2">Analysis Type</label>
-                                <div class="grid grid-cols-2 gap-3">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <button
                                         v-for="aType in analysisTypes"
                                         :key="aType.value"

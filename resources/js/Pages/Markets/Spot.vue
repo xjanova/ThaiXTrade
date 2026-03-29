@@ -102,9 +102,9 @@ onMounted(async () => {
                                 <th class="text-left p-4">Pair</th>
                                 <th class="text-right p-4">Last Price</th>
                                 <th class="text-right p-4">24h Change</th>
-                                <th class="text-right p-4">24h High</th>
-                                <th class="text-right p-4">24h Low</th>
-                                <th class="text-right p-4">Volume (24h)</th>
+                                <th class="text-right p-4 hidden lg:table-cell">24h High</th>
+                                <th class="text-right p-4 hidden lg:table-cell">24h Low</th>
+                                <th class="text-right p-4 hidden md:table-cell">Volume (24h)</th>
                                 <th class="text-right p-4">Action</th>
                             </tr>
                         </thead>
@@ -120,15 +120,15 @@ onMounted(async () => {
                                         <span class="font-medium text-white">{{ pair.base }}/{{ pair.quote }}</span>
                                     </div>
                                 </td>
-                                <td class="p-4 text-right font-mono text-white">${{ pair.price }}</td>
+                                <td class="p-4 text-right font-mono text-white text-sm sm:text-base">${{ pair.price }}</td>
                                 <td class="p-4 text-right">
-                                    <span :class="pair.isUp ? 'text-trading-green' : 'text-trading-red'" class="font-medium">
+                                    <span :class="pair.isUp ? 'text-trading-green' : 'text-trading-red'" class="font-medium text-sm sm:text-base">
                                         {{ pair.change }}
                                     </span>
                                 </td>
-                                <td class="p-4 text-right font-mono text-dark-300">${{ pair.high }}</td>
-                                <td class="p-4 text-right font-mono text-dark-300">${{ pair.low }}</td>
-                                <td class="p-4 text-right font-mono text-dark-300">${{ pair.volume }}</td>
+                                <td class="p-4 text-right font-mono text-dark-300 hidden lg:table-cell">${{ pair.high }}</td>
+                                <td class="p-4 text-right font-mono text-dark-300 hidden lg:table-cell">${{ pair.low }}</td>
+                                <td class="p-4 text-right font-mono text-dark-300 hidden md:table-cell">${{ pair.volume }}</td>
                                 <td class="p-4 text-right">
                                     <Link :href="`/trade/${pair.base}-${pair.quote}`" class="btn-primary text-sm px-4 py-2">
                                         Trade

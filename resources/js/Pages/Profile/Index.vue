@@ -108,7 +108,7 @@ const kycBadge = {
 
         <div class="max-w-4xl mx-auto px-4 py-8">
             <!-- Header -->
-            <div class="flex items-center gap-4 mb-8">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8">
                 <div class="relative group">
                     <div class="w-20 h-20 rounded-2xl bg-primary-500/20 border border-primary-500/30 flex items-center justify-center overflow-hidden">
                         <img v-if="profileUser.avatar" :src="profileUser.avatar" class="w-full h-full object-cover" />
@@ -130,7 +130,7 @@ const kycBadge = {
                 <div>
                     <h1 class="text-2xl font-bold text-white">{{ profileUser.name || 'Trader' }}</h1>
                     <p class="text-dark-400 text-sm">{{ profileUser.email }}</p>
-                    <p v-if="profileUser.wallet_address" class="text-dark-500 text-xs font-mono mt-1">{{ profileUser.wallet_address }}</p>
+                    <p v-if="profileUser.wallet_address" class="text-dark-500 text-xs font-mono mt-1 truncate max-w-[280px] sm:max-w-none">{{ profileUser.wallet_address }}</p>
                 </div>
             </div>
 

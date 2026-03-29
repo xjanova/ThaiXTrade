@@ -232,7 +232,7 @@ function statusBadge(s) {
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-4 gap-4 mb-4 text-sm">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 text-sm">
                             <div><span class="text-gray-500">Supply</span><p class="text-white font-medium">{{ fmt(sale.total_supply_for_sale) }}</p></div>
                             <div><span class="text-gray-500">Sold</span><p class="text-trading-green font-medium">{{ fmt(sale.total_sold) }}</p></div>
                             <div><span class="text-gray-500">Raised</span><p class="text-primary-400 font-medium">${{ fmt(sale.total_raised_usd) }}</p></div>
@@ -240,8 +240,8 @@ function statusBadge(s) {
                         </div>
 
                         <!-- Phases Table -->
-                        <div v-if="sale.phases?.length" class="border-t border-white/5 pt-3">
-                            <table class="w-full text-sm">
+                        <div v-if="sale.phases?.length" class="border-t border-white/5 pt-3 overflow-x-auto">
+                            <table class="w-full text-sm min-w-[600px]">
                                 <thead><tr class="text-gray-500 text-xs">
                                     <th class="text-left py-1 px-2">Phase</th>
                                     <th class="text-right py-1 px-2">Price</th>
@@ -277,26 +277,26 @@ function statusBadge(s) {
 
             <!-- ==================== TAB: Transactions ==================== -->
             <div v-if="activeTab === 'transactions'">
-                <div class="glass-dark rounded-xl border border-white/10 overflow-hidden">
-                    <table class="w-full text-sm">
+                <div class="glass-dark rounded-xl border border-white/10 overflow-hidden overflow-x-auto">
+                    <table class="w-full text-sm min-w-[600px]">
                         <thead><tr class="border-b border-white/10 text-gray-500 text-xs">
                             <th class="text-left py-3 px-4">ID</th>
                             <th class="text-left py-3 px-4">Wallet</th>
-                            <th class="text-left py-3 px-4">Payment</th>
+                            <th class="text-left py-3 px-4 hidden sm:table-cell">Payment</th>
                             <th class="text-right py-3 px-4">USD</th>
                             <th class="text-right py-3 px-4">TPIX</th>
                             <th class="text-center py-3 px-4">Status</th>
-                            <th class="text-right py-3 px-4">Date</th>
+                            <th class="text-right py-3 px-4 hidden md:table-cell">Date</th>
                         </tr></thead>
                         <tbody>
                             <tr v-for="tx in transactions.data" :key="tx.id" class="border-t border-white/5 hover:bg-white/5">
                                 <td class="py-2 px-4 text-gray-400 font-mono text-xs">{{ tx.uuid?.slice(0, 8) }}...</td>
                                 <td class="py-2 px-4 text-primary-400 font-mono text-xs">{{ tx.wallet_address?.slice(0, 10) }}...</td>
-                                <td class="py-2 px-4 text-gray-300">{{ tx.payment_currency }}</td>
+                                <td class="py-2 px-4 text-gray-300 hidden sm:table-cell">{{ tx.payment_currency }}</td>
                                 <td class="py-2 px-4 text-right text-white">${{ Number(tx.payment_usd_value).toFixed(2) }}</td>
                                 <td class="py-2 px-4 text-right text-trading-green font-medium">{{ fmt(tx.tpix_amount) }}</td>
                                 <td class="py-2 px-4 text-center"><span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(tx.status)">{{ tx.status }}</span></td>
-                                <td class="py-2 px-4 text-right text-gray-500 text-xs">{{ new Date(tx.created_at).toLocaleDateString() }}</td>
+                                <td class="py-2 px-4 text-right text-gray-500 text-xs hidden md:table-cell">{{ new Date(tx.created_at).toLocaleDateString() }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -370,7 +370,7 @@ function statusBadge(s) {
                                 <label class="block text-sm text-gray-400 mb-1">Description</label>
                                 <textarea v-model="saleForm.description" class="trading-input w-full" rows="2" />
                             </div>
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm text-gray-400 mb-1">Supply for Sale</label>
                                     <input v-model.number="saleForm.total_supply_for_sale" type="number" class="trading-input w-full" />
@@ -390,7 +390,7 @@ function statusBadge(s) {
                                 <label class="block text-sm text-gray-400 mb-1">Sale Wallet Address</label>
                                 <input v-model="saleForm.sale_wallet_address" class="trading-input w-full font-mono text-sm" placeholder="0x..." />
                             </div>
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm text-gray-400 mb-1">Starts At</label>
                                     <input v-model="saleForm.starts_at" type="datetime-local" class="trading-input w-full" />
@@ -415,7 +415,7 @@ function statusBadge(s) {
                     <div class="glass-dark rounded-xl border border-white/10 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
                         <h3 class="text-xl font-bold text-white mb-4">Add Sale Phase</h3>
                         <form @submit.prevent="submitPhase" class="space-y-4">
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm text-gray-400 mb-1">Phase Name</label>
                                     <input v-model="phaseForm.name" class="trading-input w-full" placeholder="Private Sale" />
@@ -425,7 +425,7 @@ function statusBadge(s) {
                                     <input v-model.number="phaseForm.phase_order" type="number" class="trading-input w-full" />
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm text-gray-400 mb-1">Price (USD)</label>
                                     <input v-model.number="phaseForm.price_usd" type="number" step="0.001" class="trading-input w-full" />
@@ -435,7 +435,7 @@ function statusBadge(s) {
                                     <input v-model.number="phaseForm.allocation" type="number" class="trading-input w-full" />
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm text-gray-400 mb-1">Min Purchase</label>
                                     <input v-model.number="phaseForm.min_purchase" type="number" class="trading-input w-full" />
@@ -446,7 +446,7 @@ function statusBadge(s) {
                                 </div>
                             </div>
                             <h4 class="text-sm font-semibold text-white pt-2">Vesting</h4>
-                            <div class="grid grid-cols-3 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
                                     <label class="block text-sm text-gray-400 mb-1">TGE %</label>
                                     <input v-model.number="phaseForm.vesting_tge_percent" type="number" class="trading-input w-full" />
@@ -460,7 +460,7 @@ function statusBadge(s) {
                                     <input v-model.number="phaseForm.vesting_duration_days" type="number" class="trading-input w-full" />
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm text-gray-400 mb-1">Status</label>
                                     <select v-model="phaseForm.status" class="trading-input w-full">

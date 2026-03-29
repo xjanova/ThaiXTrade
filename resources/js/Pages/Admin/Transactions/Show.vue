@@ -119,7 +119,7 @@ const formatMetadata = (meta) => {
                     </div>
 
                     <!-- Dates -->
-                    <div class="mt-6 pt-4 border-t border-white/5 grid grid-cols-2 gap-4">
+                    <div class="mt-6 pt-4 border-t border-white/5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">Created At</p>
                             <p class="text-sm text-dark-300">{{ transaction.created_at }}</p>

@@ -27,7 +27,7 @@ const recentTrades = ref([
 </script>
 
 <template>
-    <aside class="w-64 min-h-[calc(100vh-120px)] glass-dark border-r border-white/5 p-4">
+    <aside class="w-64 min-h-[calc(100vh-120px)] max-h-[calc(100vh-120px)] overflow-y-auto thin-scrollbar glass-dark border-r border-white/5 p-4">
         <!-- Favorites Section -->
         <div class="mb-6">
             <div class="flex items-center justify-between mb-3">

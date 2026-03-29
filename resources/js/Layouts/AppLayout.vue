@@ -120,7 +120,7 @@ onMounted(async () => {
                         leave-from-class="translate-x-0"
                         leave-to-class="-translate-x-full"
                     >
-                        <div v-if="showMobileMenu" class="relative w-72 h-full overflow-y-auto" @click.stop>
+                        <div v-if="showMobileMenu" class="relative w-72 h-full overflow-y-auto thin-scrollbar" @click.stop>
                             <Sidebar />
                         </div>
                     </Transition>

@@ -111,26 +111,28 @@ function shortAddr(addr) {
             <div class="p-4 border-b border-white/5">
                 <h2 class="text-lg font-bold text-white">Wallet Connections</h2>
             </div>
+            <div class="overflow-x-auto">
             <table class="w-full">
                 <thead>
                     <tr class="border-b border-white/5">
                         <th class="text-left p-3 text-xs text-dark-400 uppercase">Wallet</th>
-                        <th class="text-left p-3 text-xs text-dark-400 uppercase">Type</th>
-                        <th class="text-left p-3 text-xs text-dark-400 uppercase">Chain</th>
+                        <th class="text-left p-3 text-xs text-dark-400 uppercase hidden sm:table-cell">Type</th>
+                        <th class="text-left p-3 text-xs text-dark-400 uppercase hidden sm:table-cell">Chain</th>
                         <th class="text-left p-3 text-xs text-dark-400 uppercase">Connected</th>
-                        <th class="text-left p-3 text-xs text-dark-400 uppercase">Disconnected</th>
+                        <th class="text-left p-3 text-xs text-dark-400 uppercase hidden md:table-cell">Disconnected</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-for="conn in connections" :key="conn.id" class="border-b border-white/5">
                         <td class="p-3 text-primary-400 font-mono text-xs">{{ shortAddr(conn.wallet_address) }}</td>
-                        <td class="p-3 text-dark-300 text-xs capitalize">{{ conn.wallet_type }}</td>
-                        <td class="p-3 text-dark-300 text-xs">{{ conn.chain_id }}</td>
+                        <td class="p-3 text-dark-300 text-xs capitalize hidden sm:table-cell">{{ conn.wallet_type }}</td>
+                        <td class="p-3 text-dark-300 text-xs hidden sm:table-cell">{{ conn.chain_id }}</td>
                         <td class="p-3 text-dark-400 text-xs">{{ new Date(conn.connected_at).toLocaleString() }}</td>
-                        <td class="p-3 text-dark-400 text-xs">{{ conn.disconnected_at ? new Date(conn.disconnected_at).toLocaleString() : 'Active' }}</td>
+                        <td class="p-3 text-dark-400 text-xs hidden md:table-cell">{{ conn.disconnected_at ? new Date(conn.disconnected_at).toLocaleString() : 'Active' }}</td>
                     </tr>
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 </template>

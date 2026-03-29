@@ -247,7 +247,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                             <!-- Provider Selector -->
                             <div class="mb-3">
                                 <label :class="labelClass">Image Provider</label>
-                                <div class="grid grid-cols-2 gap-2">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     <button type="button" @click="selectedProvider = 'auto'"
                                         :class="['px-3 py-2 rounded-xl text-xs text-left transition-all border', selectedProvider === 'auto' ? 'bg-primary-500/10 text-primary-400 border-primary-500/30' : 'bg-dark-800/50 text-dark-400 border-white/5 hover:border-white/20']">
                                         Auto (Best Available)
@@ -324,7 +324,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
                         <div>
                             <label :class="labelClass">Category</label>
-                            <div class="grid grid-cols-2 gap-2">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <button v-for="c in categories" :key="c.value" @click="form.category = c.value" type="button"
                                     :class="['px-3 py-2 rounded-xl text-xs text-left transition-all border', form.category === c.value ? 'bg-primary-500/10 text-primary-400 border-primary-500/30' : 'bg-dark-800/50 text-dark-400 border-white/5 hover:border-white/20']">
                                     {{ c.icon }} {{ c.label }}

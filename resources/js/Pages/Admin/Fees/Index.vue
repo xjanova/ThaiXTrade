@@ -201,7 +201,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                         <option v-for="t in feeTypes" :key="t" :value="t">{{ t.charAt(0).toUpperCase() + t.slice(1) }}</option>
                     </select>
                 </div>
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-dark-300 mb-2">Maker Fee %</label>
                         <input v-model.number="form.maker_fee" type="number" step="0.001" :class="inputClass" />
@@ -211,7 +211,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                         <input v-model.number="form.taker_fee" type="number" step="0.001" :class="inputClass" />
                     </div>
                 </div>
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-dark-300 mb-2">Min Amount</label>
                         <input v-model.number="form.min_amount" type="number" step="0.01" :class="inputClass" />

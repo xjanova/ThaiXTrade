@@ -290,14 +290,15 @@ const typeBadge = (release) => {
                     <p class="text-dark-500 text-sm mt-1">Check GitHub token configuration or click Refresh</p>
                 </div>
 
-                <table v-else class="w-full">
+                <div v-else class="overflow-x-auto">
+                <table class="w-full">
                     <thead>
                         <tr class="border-b border-white/5">
                             <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">Release</th>
-                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">Type</th>
-                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">APK</th>
-                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">Downloads</th>
-                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">Published</th>
+                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase hidden sm:table-cell">Type</th>
+                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase hidden lg:table-cell">APK</th>
+                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase hidden md:table-cell">Downloads</th>
+                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase hidden md:table-cell">Published</th>
                             <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">Status</th>
                             <th class="text-center px-6 py-3 text-xs font-medium text-dark-400 uppercase">Action</th>
                         </tr>
@@ -316,7 +317,7 @@ const typeBadge = (release) => {
                                     </span>
                                 </div>
                             </td>
-                            <td class="px-6 py-4">
+                            <td class="px-6 py-4 hidden sm:table-cell">
                                 <div class="flex items-center gap-1.5 flex-wrap">
                                     <span :class="['inline-flex px-2 py-0.5 rounded-full text-xs font-medium', typeBadge(release).color]">
                                         {{ typeBadge(release).label }}
@@ -324,7 +325,7 @@ const typeBadge = (release) => {
                                     <span class="text-[10px] text-dark-500 font-mono">{{ release.repo }}</span>
                                 </div>
                             </td>
-                            <td class="px-6 py-4">
+                            <td class="px-6 py-4 hidden lg:table-cell">
                                 <div v-if="release.has_apk || release.has_wallet_apk || release.has_exe" class="text-sm space-y-0.5">
                                     <p v-if="release.apk_name" class="text-trading-green">{{ release.apk_name }} <span class="text-dark-500 text-xs">{{ formatSize(release.apk_size) }}</span></p>
                                     <p v-if="release.wallet_apk_name && release.wallet_apk_name !== release.apk_name" class="text-purple-400">{{ release.wallet_apk_name }}</p>
@@ -332,10 +333,10 @@ const typeBadge = (release) => {
                                 </div>
                                 <span v-else class="text-dark-500 text-sm">-</span>
                             </td>
-                            <td class="px-6 py-4">
+                            <td class="px-6 py-4 hidden md:table-cell">
                                 <span class="text-white text-sm">{{ release.apk_downloads?.toLocaleString() || '-' }}</span>
                             </td>
-                            <td class="px-6 py-4">
+                            <td class="px-6 py-4 hidden md:table-cell">
                                 <span class="text-dark-300 text-sm">{{ formatDate(release.published_at) }}</span>
                             </td>
                             <td class="px-6 py-4">
@@ -364,6 +365,7 @@ const typeBadge = (release) => {
                         </tr>
                     </tbody>
                 </table>
+                </div>
 
                 <!-- Pagination -->
                 <div v-if="totalPages > 1" class="flex items-center justify-between px-6 py-4 border-t border-white/5">

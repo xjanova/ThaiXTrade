@@ -204,7 +204,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
         <!-- Create/Edit Modal -->
         <Modal :show="showModal" :title="editingChain ? 'Edit Chain' : 'Add Chain'" max-width="xl" @close="showModal = false">
             <form @submit.prevent="saveChain" class="space-y-4">
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-dark-300 mb-2">Chain Name</label>
                         <input v-model="form.name" type="text" :class="inputClass" placeholder="Ethereum" />
@@ -247,7 +247,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     </div>
                 </div>
 
-                <div class="grid grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-dark-300 mb-2">Currency Name</label>
                         <input v-model="form.native_currency_name" type="text" :class="inputClass" placeholder="Ether" />

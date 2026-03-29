@@ -121,12 +121,12 @@ const statCards = [
                     <thead>
                         <tr class="border-b border-white/5">
                             <th class="text-left p-4 text-gray-400 font-medium">Product</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Category</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Origin</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Traces</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Category</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden lg:table-cell">Origin</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">Traces</th>
                             <th class="text-left p-4 text-gray-400 font-medium">Status</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Certificate</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Date</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Certificate</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden lg:table-cell">Date</th>
                             <th class="text-right p-4 text-gray-400 font-medium">Actions</th>
                         </tr>
                     </thead>
@@ -147,9 +147,9 @@ const statCards = [
                                     </div>
                                 </div>
                             </td>
-                            <td class="p-4 text-gray-300">{{ product.category || '—' }}</td>
-                            <td class="p-4 text-gray-300">{{ product.origin || '—' }}</td>
-                            <td class="p-4">
+                            <td class="p-4 text-gray-300 hidden md:table-cell">{{ product.category || '—' }}</td>
+                            <td class="p-4 text-gray-300 hidden lg:table-cell">{{ product.origin || '—' }}</td>
+                            <td class="p-4 hidden sm:table-cell">
                                 <span class="text-white font-medium">{{ product.traces_count || 0 }}</span>
                             </td>
                             <td class="p-4">
@@ -157,13 +157,13 @@ const statCards = [
                                     {{ product.status?.replace(/_/g, ' ') }}
                                 </span>
                             </td>
-                            <td class="p-4">
+                            <td class="p-4 hidden md:table-cell">
                                 <span v-if="product.certificate" class="text-xs px-2.5 py-1 rounded-full font-medium bg-green-500/20 text-green-400">
                                     NFT #{{ product.certificate.id }}
                                 </span>
                                 <span v-else class="text-xs text-gray-500">None</span>
                             </td>
-                            <td class="p-4 text-gray-400 text-xs">{{ formatDate(product.created_at) }}</td>
+                            <td class="p-4 text-gray-400 text-xs hidden lg:table-cell">{{ formatDate(product.created_at) }}</td>
                             <td class="p-4 text-right">
                                 <div class="flex items-center justify-end gap-2">
                                     <Link

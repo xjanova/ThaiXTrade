@@ -273,7 +273,7 @@ async function submitApplication() {
                 <!-- Step 4: Hardware -->
                 <div class="glass rounded-2xl p-6 space-y-4">
                     <h3 class="text-sm font-bold text-white uppercase tracking-wide">4. Hardware Specs (optional)</h3>
-                    <div class="grid grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-xs text-gray-400 mb-1.5">CPU Cores</label>
                             <input v-model="form.hardware_cpu" type="text" placeholder="8"

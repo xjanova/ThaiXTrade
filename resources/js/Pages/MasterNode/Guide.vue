@@ -266,7 +266,7 @@ const stepDiagrams = {
                 <h2 class="text-xl font-bold text-white mb-6 text-center">
                     {{ isTH ? 'เปรียบเทียบระดับโหนด' : 'Compare Node Tiers' }}
                 </h2>
-                <div class="grid md:grid-cols-3 gap-4">
+                <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div v-for="tier in tiers" :key="tier.id"
                         class="glass-card p-5 rounded-2xl border border-white/10 hover:border-white/20 transition-all hover:-translate-y-1 hover:shadow-xl">
                         <div class="text-3xl mb-3">{{ tier.icon }}</div>

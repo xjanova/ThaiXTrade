@@ -404,10 +404,10 @@ onUnmounted(() => {
                                     <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">Status</th>
                                     <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">Tier</th>
                                     <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">Address</th>
-                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">Location</th>
-                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">Endpoint</th>
-                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">Uptime</th>
-                                    <th class="px-4 py-3 text-right text-[10px] text-gray-500 uppercase tracking-wider font-medium">Staked</th>
+                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden md:table-cell">Location</th>
+                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden lg:table-cell">Endpoint</th>
+                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden sm:table-cell">Uptime</th>
+                                    <th class="px-4 py-3 text-right text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden sm:table-cell">Staked</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -432,15 +432,15 @@ onUnmounted(() => {
                                             {{ shortAddr(v.address) }}
                                         </a>
                                     </td>
-                                    <td class="px-4 py-3">
+                                    <td class="px-4 py-3 hidden md:table-cell">
                                         <span class="text-xs text-gray-300">
                                             {{ flag(v.country_code) }} {{ v.country_name || '—' }}
                                         </span>
                                     </td>
-                                    <td class="px-4 py-3">
+                                    <td class="px-4 py-3 hidden lg:table-cell">
                                         <span class="text-xs text-gray-500 font-mono">{{ v.endpoint || '—' }}</span>
                                     </td>
-                                    <td class="px-4 py-3">
+                                    <td class="px-4 py-3 hidden sm:table-cell">
                                         <span :class="['text-xs font-medium',
                                             (v.uptime || 0) >= 95 ? 'text-emerald-400'
                                             : (v.uptime || 0) >= 80 ? 'text-yellow-400'
@@ -448,7 +448,7 @@ onUnmounted(() => {
                                             {{ v.uptime || '—' }}{{ v.uptime ? '%' : '' }}
                                         </span>
                                     </td>
-                                    <td class="px-4 py-3 text-right">
+                                    <td class="px-4 py-3 text-right hidden sm:table-cell">
                                         <span class="text-xs text-white font-semibold">{{ fmtNum(v.stake_amount || 0) }}</span>
                                         <span class="text-[10px] text-gray-500 ml-1">TPIX</span>
                                     </td>

@@ -114,6 +114,7 @@ const chainLabels = {
             <div class="p-4 border-b border-white/5">
                 <h2 class="text-lg font-bold text-white">การเชื่อมต่อล่าสุด</h2>
             </div>
+            <div class="overflow-x-auto">
             <table class="w-full">
                 <thead>
                     <tr class="border-b border-white/5">
@@ -135,6 +136,7 @@ const chainLabels = {
                     </tr>
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 </template>

@@ -138,11 +138,11 @@ function isOffline(device) {
                     <thead>
                         <tr class="border-b border-white/5">
                             <th class="text-left p-4 text-gray-400 font-medium">Device</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Type</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Owner</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Traces</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">Type</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Owner</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">Traces</th>
                             <th class="text-left p-4 text-gray-400 font-medium">Status</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Last Ping</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden lg:table-cell">Last Ping</th>
                             <th class="text-right p-4 text-gray-400 font-medium">Actions</th>
                         </tr>
                     </thead>
@@ -170,17 +170,17 @@ function isOffline(device) {
                                     </div>
                                 </div>
                             </td>
-                            <td class="p-4 text-gray-300">{{ device.type || '—' }}</td>
-                            <td class="p-4">
+                            <td class="p-4 text-gray-300 hidden sm:table-cell">{{ device.type || '—' }}</td>
+                            <td class="p-4 hidden md:table-cell">
                                 <span class="text-xs text-gray-400 font-mono">{{ device.owner_address?.slice(0, 8) }}...{{ device.owner_address?.slice(-4) }}</span>
                             </td>
-                            <td class="p-4 text-white font-medium">{{ device.traces_count || 0 }}</td>
+                            <td class="p-4 text-white font-medium hidden sm:table-cell">{{ device.traces_count || 0 }}</td>
                             <td class="p-4">
                                 <span :class="['text-xs px-2.5 py-1 rounded-full font-medium', getStatusBadge(device.status)]">
                                     {{ device.status }}
                                 </span>
                             </td>
-                            <td class="p-4">
+                            <td class="p-4 hidden lg:table-cell">
                                 <span class="text-xs" :class="isOffline(device) ? 'text-red-400' : 'text-gray-400'">
                                     {{ formatDate(device.last_ping_at) }}
                                 </span>

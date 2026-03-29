@@ -429,7 +429,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                             <p class="mt-1 text-xs text-dark-500">EVM wallet address that receives all platform swap fees</p>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label :class="labelClass">Default Fee Rate (%)</label>
                                 <input v-model.number="tradingForm.default_fee_rate" type="number" step="0.01" min="0" max="5" :class="inputClass" placeholder="0.3" />
@@ -524,7 +524,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                                 <option value="free">Free (No Fee)</option>
                             </select>
                         </div>
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label :class="labelClass">Fee (TPIX)</label>
                                 <input v-model.number="factoryForm.creation_fee_tpix" type="number" step="1" min="0" :class="inputClass" placeholder="100" />

@@ -144,10 +144,10 @@ function decodeLabel(html) {
                     <tr class="bg-dark-800/50">
                         <th class="w-8 py-3 px-2"></th>
                         <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4">Date</th>
-                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4">Admin</th>
+                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 hidden sm:table-cell">Admin</th>
                         <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4">Action</th>
-                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4">Model</th>
-                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4">IP Address</th>
+                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 hidden md:table-cell">Model</th>
+                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 hidden lg:table-cell">IP Address</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -166,15 +166,15 @@ function decodeLabel(html) {
                                 </svg>
                             </td>
                             <td class="py-3 px-4 text-sm text-dark-400">{{ log.created_at }}</td>
-                            <td class="py-3 px-4 text-sm text-white">{{ log.admin?.name || '-' }}</td>
+                            <td class="py-3 px-4 text-sm text-white hidden sm:table-cell">{{ log.admin?.name || '-' }}</td>
                             <td class="py-3 px-4 text-sm capitalize" :class="actionColors[log.action] || 'text-dark-300'">
                                 {{ log.action }}
                             </td>
-                            <td class="py-3 px-4 text-sm text-dark-300">
+                            <td class="py-3 px-4 text-sm text-dark-300 hidden md:table-cell">
                                 {{ log.auditable_type?.split('\\').pop() || '-' }}
                                 <span v-if="log.auditable_id" class="text-dark-500"> #{{ log.auditable_id }}</span>
                             </td>
-                            <td class="py-3 px-4 text-sm font-mono text-dark-500">{{ log.ip_address || '-' }}</td>
+                            <td class="py-3 px-4 text-sm font-mono text-dark-500 hidden lg:table-cell">{{ log.ip_address || '-' }}</td>
                         </tr>
 
                         <!-- Expanded Diff Row -->

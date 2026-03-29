@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
@@ -18,18 +18,26 @@ const { t } = useTranslation();
 
 const { topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
 
-// Hero video slideshow: 1.mp4 → 2.mp4 → bg1.webp (stop, no loop)
-const heroMedia = ref('video1'); // 'video1', 'video2', 'image'
-const heroFading = ref(false);
+// Hero video slideshow: Netflix-style crossfade
+// All media stay in DOM, only opacity changes for seamless transitions
+const activeLayer = ref(0); // 0=video1, 1=video2, 2=image
+const video1Ready = ref(false);
+const video2Ready = ref(false);
 
 function onVideo1Ended() {
-    heroFading.value = true;
-    setTimeout(() => { heroMedia.value = 'video2'; heroFading.value = false; }, 600);
+    activeLayer.value = 1;
 }
 function onVideo2Ended() {
-    heroFading.value = true;
-    setTimeout(() => { heroMedia.value = 'image'; heroFading.value = false; }, 600);
+    activeLayer.value = 2;
 }
+
+const video2Ref = ref(null);
+
+watch(activeLayer, (val) => {
+    if (val === 1 && video2Ref.value) {
+        video2Ref.value.play().catch(() => {});
+    }
+});
 
 const features = computed(() => [
     {
@@ -71,40 +79,50 @@ onMounted(async () => {
     <Head title="Decentralized Trading Platform" />
 
     <AppLayout :hide-sidebar="true">
-        <!-- Hero Section with Video Slideshow -->
+        <!-- Hero Section — Netflix-style cinematic video background -->
         <section class="relative py-20 overflow-hidden min-h-[600px]">
-            <!-- Video/Image Background Slideshow -->
+            <!-- Cinematic Video/Image Background — all layers in DOM, crossfade via opacity -->
             <div class="absolute inset-0 pointer-events-none">
                 <!-- Video 1 -->
-                <video v-if="heroMedia === 'video1'"
+                <video
                     autoplay muted playsinline
                     @ended="onVideo1Ended"
-                    class="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
-                    :class="heroFading ? 'opacity-0' : 'opacity-40'"
+                    @canplay="video1Ready = true"
+                    class="hero-media"
+                    :class="activeLayer === 0 && video1Ready ? 'opacity-50 scale-105' : 'opacity-0 scale-100'"
                 >
                     <source src="/videos/1.mp4" type="video/mp4" />
                 </video>
-                <!-- Video 2 -->
-                <video v-if="heroMedia === 'video2'"
-                    autoplay muted playsinline
+                <!-- Video 2 — preloads while video1 plays -->
+                <video
+                    preload="auto"
+                    :autoplay="false"
+                    muted playsinline
+                    ref="video2Ref"
                     @ended="onVideo2Ended"
-                    class="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
-                    :class="heroFading ? 'opacity-0' : 'opacity-40'"
+                    @canplay="video2Ready = true"
+                    class="hero-media"
+                    :class="activeLayer === 1 ? 'opacity-50 scale-105' : 'opacity-0 scale-100'"
                 >
                     <source src="/videos/2.mp4" type="video/mp4" />
                 </video>
-                <!-- Final image (stays, no loop) -->
-                <div v-if="heroMedia === 'image'"
-                    class="absolute inset-0 bg-cover bg-center transition-opacity duration-1000 opacity-30"
+                <!-- Final image — Ken Burns slow zoom -->
+                <div
+                    class="hero-media bg-cover bg-center"
+                    :class="activeLayer === 2 ? 'opacity-40 hero-ken-burns' : 'opacity-0'"
                     style="background-image: url('/images/bg1.webp')"
                 />
-                <!-- Bottom fade gradient (blend into dark bg) -->
-                <div class="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-dark-950 via-dark-950/80 to-transparent" />
-                <!-- Top subtle fade -->
-                <div class="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-dark-950/60 to-transparent" />
-                <!-- Side fades -->
-                <div class="absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-dark-950/60 to-transparent" />
-                <div class="absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-dark-950/60 to-transparent" />
+
+                <!-- Netflix-style cinematic overlays -->
+                <!-- Bottom: heavy gradient blending into page -->
+                <div class="absolute bottom-0 left-0 right-0 h-[60%] bg-gradient-to-t from-dark-950 via-dark-950/90 to-transparent" />
+                <!-- Top: subtle header blend -->
+                <div class="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-dark-950/80 to-transparent" />
+                <!-- Side vignettes -->
+                <div class="absolute inset-y-0 left-0 w-48 bg-gradient-to-r from-dark-950/70 to-transparent" />
+                <div class="absolute inset-y-0 right-0 w-48 bg-gradient-to-l from-dark-950/70 to-transparent" />
+                <!-- Radial vignette for depth -->
+                <div class="absolute inset-0" style="background: radial-gradient(ellipse at center, transparent 40%, rgba(2,6,23,0.6) 100%)" />
             </div>
 
             <div class="relative max-w-6xl mx-auto text-center">
@@ -173,7 +191,7 @@ onMounted(async () => {
                             </p>
 
                             <!-- Reward tiers mini -->
-                            <div class="grid grid-cols-3 gap-3 mb-6 max-w-md">
+                            <div class="grid grid-cols-3 gap-2 sm:gap-3 mb-6 max-w-md">
                                 <div class="bg-white/5 rounded-xl p-3 text-center border border-white/5">
                                     <div class="text-xs text-gray-500">Light</div>
                                     <div class="text-lg font-black text-cyan-400">10K</div>
@@ -400,7 +418,7 @@ onMounted(async () => {
                         </div>
 
                         <!-- Right: Price Cards -->
-                        <div class="flex-shrink-0 grid grid-cols-3 gap-3">
+                        <div class="flex-shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div class="glass-card text-center px-4 py-5 min-w-[100px]">
                                 <p class="text-xs text-dark-400 mb-1">Private</p>
                                 <p class="text-lg font-bold text-white">$0.05</p>
@@ -540,3 +558,25 @@ onMounted(async () => {
         <!-- Footer ใช้จาก AppLayout — ไม่ต้องซ้ำที่นี่ -->
     </AppLayout>
 </template>
+
+<style scoped>
+/* Netflix-style cinematic media layers */
+.hero-media {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: opacity 1.5s cubic-bezier(0.4, 0, 0.2, 1), transform 8s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: opacity, transform;
+}
+
+/* Ken Burns slow zoom for final image */
+@keyframes ken-burns {
+    0%   { transform: scale(1); }
+    100% { transform: scale(1.12); }
+}
+.hero-ken-burns {
+    animation: ken-burns 30s ease-out forwards;
+}
+</style>

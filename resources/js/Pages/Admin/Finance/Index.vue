@@ -214,8 +214,8 @@ const statusColor = (status) => ({
                                 <th class="text-left p-3">Date</th>
                                 <th class="text-left p-3">Wallet</th>
                                 <th class="text-right p-3">Amount (USD)</th>
-                                <th class="text-right p-3">TPIX</th>
-                                <th class="text-right p-3">Price</th>
+                                <th class="text-right p-3 hidden sm:table-cell">TPIX</th>
+                                <th class="text-right p-3 hidden md:table-cell">Price</th>
                                 <th class="text-center p-3">Status</th>
                                 <th class="text-center p-3">Actions</th>
                             </tr>
@@ -227,8 +227,8 @@ const statusColor = (status) => ({
                                     <span class="font-mono text-xs text-white">{{ tx.wallet?.slice(0, 6) }}...{{ tx.wallet?.slice(-4) }}</span>
                                 </td>
                                 <td class="p-3 text-right text-white font-bold">${{ fmt(tx.amount_usd) }}</td>
-                                <td class="p-3 text-right text-gray-300 font-mono">{{ fmt(tx.tpix_amount) }}</td>
-                                <td class="p-3 text-right text-gray-400 font-mono">${{ tx.price_per_tpix }}</td>
+                                <td class="p-3 text-right text-gray-300 font-mono hidden sm:table-cell">{{ fmt(tx.tpix_amount) }}</td>
+                                <td class="p-3 text-right text-gray-400 font-mono hidden md:table-cell">${{ tx.price_per_tpix }}</td>
                                 <td class="p-3 text-center">
                                     <span :class="['text-[10px] font-bold px-2 py-1 rounded-lg border', statusColor(tx.status)]">
                                         {{ tx.status.toUpperCase() }}

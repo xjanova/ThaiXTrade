@@ -123,11 +123,11 @@ const hoursOptions = [
                         <tr class="border-b border-white/5">
                             <th class="text-left p-4 text-gray-400 font-medium">Time</th>
                             <th class="text-left p-4 text-gray-400 font-medium">Product</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Stage</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Location</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">Stage</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden lg:table-cell">Location</th>
                             <th class="text-left p-4 text-gray-400 font-medium">Temperature</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Humidity</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Deviation</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Humidity</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Deviation</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -147,15 +147,15 @@ const hoursOptions = [
                                 </Link>
                                 <span v-else class="text-gray-500">Unknown</span>
                             </td>
-                            <td class="p-4 text-gray-300 capitalize">{{ v.stage?.replace(/_/g, ' ') || '—' }}</td>
-                            <td class="p-4 text-gray-300">{{ v.location || '—' }}</td>
+                            <td class="p-4 text-gray-300 capitalize hidden sm:table-cell">{{ v.stage?.replace(/_/g, ' ') || '—' }}</td>
+                            <td class="p-4 text-gray-300 hidden lg:table-cell">{{ v.location || '—' }}</td>
                             <td class="p-4">
                                 <span :class="getTempSeverity(v.temperature, threshold.min, threshold.max)">
                                     {{ v.temperature }}°C
                                 </span>
                             </td>
-                            <td class="p-4 text-gray-300">{{ v.humidity != null ? `${v.humidity}%` : '—' }}</td>
-                            <td class="p-4">
+                            <td class="p-4 text-gray-300 hidden md:table-cell">{{ v.humidity != null ? `${v.humidity}%` : '—' }}</td>
+                            <td class="p-4 hidden md:table-cell">
                                 <span v-if="v.temperature < threshold.min" class="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-400">
                                     {{ (threshold.min - v.temperature).toFixed(1) }}°C below
                                 </span>

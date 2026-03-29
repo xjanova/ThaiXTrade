@@ -34,7 +34,7 @@ onMounted(fetchArticle);
 <template>
     <Head :title="article?.title || 'Article'" />
     <AppLayout>
-        <div class="max-w-4xl mx-auto">
+        <div class="max-w-4xl mx-auto px-2 sm:px-0">
             <!-- Loading -->
             <div v-if="isLoading" class="animate-pulse space-y-4">
                 <div class="h-8 bg-dark-700 rounded w-3/4"></div>

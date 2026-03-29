@@ -173,7 +173,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
         <!-- Create/Edit Modal -->
         <Modal :show="showModal" :title="editingLanguage ? 'Edit Language' : 'Add Language'" @close="showModal = false">
             <form @submit.prevent="saveLanguage" class="space-y-4">
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-dark-300 mb-2">Language Code</label>
                         <input v-model="form.code" type="text" :class="inputClass" placeholder="en" maxlength="5" :disabled="!!editingLanguage" />

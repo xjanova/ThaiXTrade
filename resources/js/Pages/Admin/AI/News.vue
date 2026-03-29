@@ -381,11 +381,11 @@ function decodeLabel(html) {
                     <thead>
                         <tr class="bg-dark-800/50">
                             <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">Title</th>
-                            <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">Category</th>
-                            <th class="text-center text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">Lang</th>
+                            <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden md:table-cell">Category</th>
+                            <th class="text-center text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden sm:table-cell">Lang</th>
                             <th class="text-center text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">Status</th>
-                            <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">Date</th>
-                            <th class="text-right text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">Views</th>
+                            <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden lg:table-cell">Date</th>
+                            <th class="text-right text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden sm:table-cell">Views</th>
                             <th class="text-right text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">Actions</th>
                         </tr>
                     </thead>
@@ -420,7 +420,7 @@ function decodeLabel(html) {
                                         {{ article.title }}
                                     </button>
                                 </td>
-                                <td class="py-3 px-4">
+                                <td class="py-3 px-4 hidden md:table-cell">
                                     <span
                                         class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border"
                                         :class="getCategoryColor(article.category)"
@@ -428,7 +428,7 @@ function decodeLabel(html) {
                                         {{ getCategoryLabel(article.category) }}
                                     </span>
                                 </td>
-                                <td class="py-3 px-4 text-center">
+                                <td class="py-3 px-4 text-center hidden sm:table-cell">
                                     <span class="text-xs font-medium text-dark-300 bg-dark-800/50 px-2 py-1 rounded">
                                         {{ getLanguageLabel(article.language_code) }}
                                     </span>
@@ -442,10 +442,10 @@ function decodeLabel(html) {
                                         {{ article.status }}
                                     </span>
                                 </td>
-                                <td class="py-3 px-4 text-sm text-dark-400">
+                                <td class="py-3 px-4 text-sm text-dark-400 hidden lg:table-cell">
                                     {{ formatDate(article.published_at || article.created_at) }}
                                 </td>
-                                <td class="py-3 px-4 text-right text-sm text-dark-400">
+                                <td class="py-3 px-4 text-right text-sm text-dark-400 hidden sm:table-cell">
                                     {{ article.views.toLocaleString() }}
                                 </td>
                                 <td class="py-3 px-4">

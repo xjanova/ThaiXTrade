@@ -710,7 +710,7 @@ GET /api/v1/food-passport/fdp-token-info
                         <div>
                             <h3 class="text-lg font-semibold text-white mb-3">📊 Dashboard</h3>
                             <p class="text-gray-400 mb-3">หน้าแรกแสดงสถิติภาพรวม — จำนวนสินค้า, certificates, devices, alerts</p>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div v-for="stat in [
                                     'Total Products — จำนวนสินค้าทั้งหมด',
                                     'Certified — สินค้าที่ได้ใบรับรอง',

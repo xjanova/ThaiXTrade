@@ -303,7 +303,7 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                         </p>
 
                         <!-- Stats preview -->
-                        <div class="grid grid-cols-3 gap-4 max-w-md mx-auto mb-8">
+                        <div class="grid grid-cols-3 gap-3 sm:gap-4 max-w-md mx-auto mb-8">
                             <div class="glass-sm rounded-xl p-3">
                                 <div class="text-xs text-gray-400">APY up to</div>
                                 <div class="text-xl font-black text-trading-green">15%</div>
@@ -431,7 +431,7 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                         </div>
 
                         <!-- Tier Cards -->
-                        <div class="grid md:grid-cols-3 gap-6">
+                        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
                             <div v-for="tier in affordableTiers" :key="tier.id"
                                  :class="[
                                      'group relative rounded-2xl overflow-hidden transition-all duration-500',
@@ -636,7 +636,7 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                             </div>
 
                             <!-- Emission cards -->
-                            <div class="grid grid-cols-5 gap-3">
+                            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                                 <div v-for="em in [
                                     { y: 1, amt: '400M', pb: '~25.5/block', pct: '28.6%' },
                                     { y: 2, amt: '350M', pb: '~22.3/block', pct: '25.0%' },
@@ -665,18 +665,18 @@ function fmtNum(n) { return Number(n).toLocaleString(); }
                         <!-- Reward split visualization -->
                         <div class="glass rounded-2xl p-6">
                             <h3 class="text-sm font-bold text-white mb-4">Block Reward Split</h3>
-                            <div class="flex rounded-xl overflow-hidden h-8 mb-3">
-                                <div class="bg-gradient-to-r from-red-500 to-rose-500 flex items-center justify-center text-[10px] font-bold text-white" style="width:20%">
-                                    20% Validator
+                            <div class="flex rounded-xl overflow-hidden h-8 sm:h-10 mb-3">
+                                <div class="bg-gradient-to-r from-red-500 to-rose-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white" style="width:20%">
+                                    <span class="hidden sm:inline">20% Validator</span><span class="sm:hidden">20%</span>
                                 </div>
-                                <div class="bg-gradient-to-r from-yellow-500 to-amber-500 flex items-center justify-center text-[10px] font-bold text-black" style="width:35%">
-                                    35% Guardian
+                                <div class="bg-gradient-to-r from-yellow-500 to-amber-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-black" style="width:35%">
+                                    <span class="hidden sm:inline">35% Guardian</span><span class="sm:hidden">35%</span>
                                 </div>
-                                <div class="bg-gradient-to-r from-purple-500 to-violet-500 flex items-center justify-center text-[10px] font-bold text-white" style="width:30%">
-                                    30% Sentinel
+                                <div class="bg-gradient-to-r from-purple-500 to-violet-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white" style="width:30%">
+                                    <span class="hidden sm:inline">30% Sentinel</span><span class="sm:hidden">30%</span>
                                 </div>
-                                <div class="bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center text-[10px] font-bold text-white" style="width:15%">
-                                    15% Light
+                                <div class="bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white" style="width:15%">
+                                    <span class="hidden sm:inline">15% Light</span><span class="sm:hidden">15%</span>
                                 </div>
                             </div>
                             <p class="text-xs text-gray-400">

@@ -44,7 +44,7 @@ const gasOptions = [
                 <!-- Slippage Tolerance -->
                 <div class="mb-6">
                     <label class="block text-sm font-medium text-dark-300 mb-3">Slippage Tolerance</label>
-                    <div class="flex items-center gap-3">
+                    <div class="flex flex-wrap items-center gap-3">
                         <button
                             v-for="option in slippageOptions"
                             :key="option"
@@ -58,7 +58,7 @@ const gasOptions = [
                         >
                             {{ option }}%
                         </button>
-                        <div class="relative flex-1">
+                        <div class="relative flex-1 min-w-[120px]">
                             <input
                                 v-model="slippageTolerance"
                                 type="text"
@@ -87,7 +87,7 @@ const gasOptions = [
                 <!-- Gas Price -->
                 <div>
                     <label class="block text-sm font-medium text-dark-300 mb-3">Gas Price</label>
-                    <div class="grid grid-cols-3 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <button
                             v-for="option in gasOptions"
                             :key="option.id"
@@ -113,10 +113,10 @@ const gasOptions = [
                 <h2 class="text-lg font-semibold text-white mb-6">Wallet</h2>
 
                 <div v-if="isConnected" class="space-y-4">
-                    <div class="flex items-center justify-between p-4 rounded-xl bg-white/5">
-                        <div>
+                    <div class="flex items-center justify-between p-4 rounded-xl bg-white/5 gap-3">
+                        <div class="min-w-0">
                             <p class="text-sm text-dark-400">Connected Address</p>
-                            <p class="font-mono text-white">{{ walletStore.address }}</p>
+                            <p class="font-mono text-white text-sm sm:text-base truncate">{{ walletStore.address }}</p>
                         </div>
                         <div class="w-2 h-2 rounded-full bg-trading-green animate-pulse"></div>
                     </div>

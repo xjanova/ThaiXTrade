@@ -64,7 +64,7 @@ onMounted(fetchArticles);
             </div>
 
             <!-- Categories -->
-            <div class="flex flex-wrap gap-2 mb-8">
+            <div class="flex flex-wrap gap-2 mb-8 overflow-x-auto pb-1">
                 <button v-for="cat in categories" :key="cat.id" @click="setCategory(cat.id)"
                     :class="['px-4 py-2 rounded-xl text-sm font-medium transition-all',
                         activeCategory === cat.id
@@ -75,7 +75,7 @@ onMounted(fetchArticles);
             </div>
 
             <!-- Loading -->
-            <div v-if="isLoading" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div v-if="isLoading" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div v-for="i in 6" :key="i" class="glass-card animate-pulse">
                     <div class="h-48 bg-dark-700 rounded-xl mb-4"></div>
                     <div class="h-4 bg-dark-700 rounded w-3/4 mb-2"></div>
@@ -84,7 +84,7 @@ onMounted(fetchArticles);
             </div>
 
             <!-- Articles Grid -->
-            <div v-else-if="articles.length" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div v-else-if="articles.length" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 <Link v-for="article in articles" :key="article.id" :href="`/blog/${article.slug}`"
                     class="glass-card group hover:border-primary-500/30 transition-all">
                     <div class="h-48 rounded-xl overflow-hidden mb-4 bg-dark-700">

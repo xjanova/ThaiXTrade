@@ -200,12 +200,12 @@ function goToPage(page) {
                     <thead>
                         <tr class="border-b border-white/5">
                             <th class="text-left p-4 text-gray-400 font-medium">Token</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Creator</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Supply</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Type</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">Creator</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Supply</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden lg:table-cell">Type</th>
                             <th class="text-left p-4 text-gray-400 font-medium">Status</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Listed</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Date</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Listed</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden lg:table-cell">Date</th>
                             <th class="text-right p-4 text-gray-400 font-medium">Actions</th>
                         </tr>
                     </thead>
@@ -234,11 +234,11 @@ function goToPage(page) {
                                     </div>
                                 </div>
                             </td>
-                            <td class="p-4">
+                            <td class="p-4 hidden sm:table-cell">
                                 <span class="text-xs text-gray-400 font-mono">{{ shortAddr(token.creator_address) }}</span>
                             </td>
-                            <td class="p-4 text-white font-mono text-xs">{{ Number(token.total_supply).toLocaleString() }}</td>
-                            <td class="p-4">
+                            <td class="p-4 text-white font-mono text-xs hidden md:table-cell">{{ Number(token.total_supply).toLocaleString() }}</td>
+                            <td class="p-4 hidden lg:table-cell">
                                 <span class="text-xs text-gray-300 capitalize">{{ token.token_type?.replace('_', ' ') }}</span>
                                 <span class="block text-[10px] text-gray-500">{{ token.token_category }}</span>
                             </td>
@@ -250,13 +250,13 @@ function goToPage(page) {
                                 <p v-if="token.reject_reason" class="text-[10px] text-red-400 mt-1 max-w-[150px] truncate" :title="token.reject_reason">{{ token.reject_reason }}</p>
                                 <p v-if="token.status === 'failed' && token.metadata?.error" class="text-[10px] text-red-400 mt-1 max-w-[150px] truncate" :title="token.metadata.error">{{ token.metadata.error }}</p>
                             </td>
-                            <td class="p-4">
+                            <td class="p-4 hidden md:table-cell">
                                 <span v-if="token.status === 'deployed'" :class="['text-xs', token.is_listed ? 'text-green-400' : 'text-gray-500']">
                                     {{ token.is_listed ? 'Yes' : 'No' }}
                                 </span>
                                 <span v-else class="text-xs text-gray-600">-</span>
                             </td>
-                            <td class="p-4 text-gray-400 text-xs">{{ formatDate(token.created_at) }}</td>
+                            <td class="p-4 text-gray-400 text-xs hidden lg:table-cell">{{ formatDate(token.created_at) }}</td>
                             <td class="p-4 text-right">
                                 <div class="flex items-center justify-end gap-1.5 flex-wrap">
                                     <!-- Pending actions -->

@@ -135,11 +135,11 @@ onMounted(async () => {
                     <table class="w-full">
                         <thead>
                             <tr class="border-b border-white/5 text-dark-400 text-sm">
-                                <th class="text-left p-4">#</th>
+                                <th class="text-left p-4 hidden sm:table-cell">#</th>
                                 <th class="text-left p-4">Token</th>
                                 <th class="text-right p-4">Price</th>
                                 <th class="text-right p-4">24h Change</th>
-                                <th class="text-right p-4">Volume (24h)</th>
+                                <th class="text-right p-4 hidden md:table-cell">Volume (24h)</th>
                                 <th class="text-right p-4">Action</th>
                             </tr>
                         </thead>
@@ -149,7 +149,7 @@ onMounted(async () => {
                                 :key="token.symbol"
                                 class="border-b border-white/5 hover:bg-white/5 transition-colors"
                             >
-                                <td class="p-4 text-dark-400">{{ index + 1 }}</td>
+                                <td class="p-4 text-dark-400 hidden sm:table-cell">{{ index + 1 }}</td>
                                 <td class="p-4">
                                     <div class="flex items-center gap-3">
                                         <CoinIcon :symbol="token.symbol" size="md" />
@@ -159,13 +159,13 @@ onMounted(async () => {
                                         </div>
                                     </div>
                                 </td>
-                                <td class="p-4 text-right font-mono text-white">${{ token.price }}</td>
+                                <td class="p-4 text-right font-mono text-white text-sm sm:text-base">${{ token.price }}</td>
                                 <td class="p-4 text-right">
-                                    <span :class="token.isUp ? 'text-trading-green' : 'text-trading-red'" class="font-medium">
+                                    <span :class="token.isUp ? 'text-trading-green' : 'text-trading-red'" class="font-medium text-sm sm:text-base">
                                         {{ token.change }}
                                     </span>
                                 </td>
-                                <td class="p-4 text-right text-dark-300 font-mono">${{ token.volume }}</td>
+                                <td class="p-4 text-right text-dark-300 font-mono hidden md:table-cell">${{ token.volume }}</td>
                                 <td class="p-4 text-right">
                                     <Link :href="`/trade/${token.symbol}-USDT`" class="text-primary-400 hover:text-primary-300 text-sm font-medium">
                                         Trade

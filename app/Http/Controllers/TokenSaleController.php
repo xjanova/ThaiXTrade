@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\TokenSaleService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -51,25 +52,46 @@ class TokenSaleController extends Controller
     }
 
     /**
-     * ดาวน์โหลด/ดู Whitepaper PDF.
+     * ดาวน์โหลด Whitepaper PDF (รองรับไทย/อังกฤษ).
      *
-     * 1. ถ้ามีไฟล์ static PDF ก็ให้ดาวน์โหลดเลย (เร็วที่สุด).
-     * 2. Fallback: render Blade template เป็น HTML สำหรับ print-to-PDF.
+     * ?lang=en  → ภาษาอังกฤษ (default)
+     * ?lang=th  → ภาษาไทย
+     *
+     * 1. ถ้ามีไฟล์ static PDF ตามภาษา ให้ดาวน์โหลดเลย (เร็วที่สุด).
+     * 2. Fallback: render Blade template เป็น PDF ด้วย DomPDF.
      */
-    public function downloadWhitepaper()
+    public function downloadWhitepaper(Request $request)
     {
+        $lang = $request->query('lang', 'en');
+        if (! in_array($lang, ['en', 'th'])) {
+            $lang = 'en';
+        }
+
         // ลำดับที่ 1: ใช้ static PDF ถ้ามี (เร็วที่สุด)
-        $staticPath = public_path('whitepaper/TPIX-Whitepaper.pdf');
+        $staticPath = public_path("whitepaper/TPIX-Whitepaper-{$lang}.pdf");
         if (file_exists($staticPath)) {
-            return response()->download($staticPath, 'TPIX-Chain-Whitepaper.pdf');
+            $downloadName = $lang === 'th'
+                ? 'TPIX-Chain-Whitepaper-Thai.pdf'
+                : 'TPIX-Chain-Whitepaper.pdf';
+            return response()->download($staticPath, $downloadName);
         }
 
         // ลำดับที่ 2: generate PDF ด้วย DomPDF จาก Blade template
-        $pdf = Pdf::loadView('whitepaper.pdf')
+        $defaultFont = 'sans-serif';
+        if ($lang === 'th' && file_exists(storage_path('fonts/Sarabun-Regular.ttf'))) {
+            $defaultFont = 'sarabun';
+        }
+
+        $pdf = Pdf::loadView('whitepaper.pdf', ['lang' => $lang])
             ->setPaper('a4')
             ->setOption('isRemoteEnabled', true)
-            ->setOption('defaultFont', 'sans-serif');
+            ->setOption('defaultFont', $defaultFont)
+            ->setOption('isFontSubsettingEnabled', true);
 
-        return $pdf->download('TPIX-Chain-Whitepaper-v2.0.pdf');
+        $filename = $lang === 'th'
+            ? 'TPIX-Chain-Whitepaper-Thai-v2.0.pdf'
+            : 'TPIX-Chain-Whitepaper-v2.0.pdf';
+
+        return $pdf->download($filename);
     }
 }

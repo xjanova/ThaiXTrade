@@ -156,8 +156,8 @@ function getStatusBadge(status) {
                     <thead>
                         <tr class="border-b border-white/5">
                             <th class="text-left p-4 text-gray-400 font-medium">Project</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Type</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Credits</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">Type</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Credits</th>
                             <th class="text-left p-4 text-gray-400 font-medium">Price</th>
                             <th class="text-left p-4 text-gray-400 font-medium">Status</th>
                             <th class="text-right p-4 text-gray-400 font-medium">Actions</th>
@@ -173,8 +173,8 @@ function getStatusBadge(status) {
                                 <p class="font-medium text-white">{{ project.name }}</p>
                                 <p class="text-xs text-gray-400">{{ project.location }} ({{ project.country }})</p>
                             </td>
-                            <td class="p-4 text-gray-300 capitalize">{{ project.project_type?.replace(/_/g, ' ') }}</td>
-                            <td class="p-4">
+                            <td class="p-4 text-gray-300 capitalize hidden sm:table-cell">{{ project.project_type?.replace(/_/g, ' ') }}</td>
+                            <td class="p-4 hidden md:table-cell">
                                 <p class="text-white">{{ Number(project.available_credits).toLocaleString() }} / {{ Number(project.total_credits).toLocaleString() }}</p>
                                 <p class="text-xs text-gray-400">{{ Number(project.retired_credits).toLocaleString() }} retired</p>
                             </td>
@@ -225,7 +225,7 @@ function getStatusBadge(status) {
                                 <textarea v-model="form.description" rows="3" class="trading-input w-full resize-none" required></textarea>
                             </div>
 
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-300 mb-1">Location *</label>
                                     <input v-model="form.location" type="text" class="trading-input w-full" required />
@@ -236,7 +236,7 @@ function getStatusBadge(status) {
                                 </div>
                             </div>
 
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-300 mb-1">Project Type</label>
                                     <select v-model="form.project_type" class="trading-input w-full">
@@ -249,7 +249,7 @@ function getStatusBadge(status) {
                                 </div>
                             </div>
 
-                            <div class="grid grid-cols-3 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-300 mb-1">Total Credits *</label>
                                     <input v-model.number="form.total_credits" type="number" min="1" class="trading-input w-full" required />
@@ -264,7 +264,7 @@ function getStatusBadge(status) {
                                 </div>
                             </div>
 
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-300 mb-1">Status</label>
                                     <select v-model="form.status" class="trading-input w-full">

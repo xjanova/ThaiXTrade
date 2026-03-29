@@ -72,8 +72,8 @@ const quickActions = [
             </div>
 
             <div class="grid lg:grid-cols-4 gap-6">
-                <!-- Sidebar -->
-                <div class="lg:col-span-1 space-y-4">
+                <!-- Sidebar — hidden on mobile, shown at bottom or as collapsible -->
+                <div class="order-2 lg:order-1 lg:col-span-1 space-y-4">
                     <div class="glass-card">
                         <h3 class="text-sm font-semibold text-dark-300 mb-3">{{ t('chatbot.trySuggestion') }}</h3>
                         <div class="space-y-2">
@@ -86,7 +86,7 @@ const quickActions = [
                 </div>
 
                 <!-- Chat -->
-                <div class="lg:col-span-3 glass-card flex flex-col" style="height: calc(100vh - 220px); min-height: 500px;">
+                <div class="order-1 lg:order-2 lg:col-span-3 glass-card flex flex-col" style="height: calc(100vh - 280px); min-height: 400px;">
                     <div ref="chatContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
                         <div v-for="(msg, i) in chatHistory" :key="i" :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
                             <div :class="['max-w-[80%] rounded-2xl px-4 py-3',

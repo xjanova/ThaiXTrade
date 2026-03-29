@@ -123,12 +123,12 @@ function decodeLabel(html) {
                 <thead>
                     <tr class="border-b border-white/5">
                         <th class="text-left p-4 text-xs text-dark-400 uppercase">Wallet</th>
-                        <th class="text-left p-4 text-xs text-dark-400 uppercase">Email</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase">KYC</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase">Wallets</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase">Trades</th>
+                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden md:table-cell">Email</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden sm:table-cell">KYC</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">Wallets</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">Trades</th>
                         <th class="text-center p-4 text-xs text-dark-400 uppercase">Status</th>
-                        <th class="text-left p-4 text-xs text-dark-400 uppercase">Last Active</th>
+                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden md:table-cell">Last Active</th>
                         <th class="text-right p-4 text-xs text-dark-400 uppercase">Actions</th>
                     </tr>
                 </thead>
@@ -139,18 +139,18 @@ function decodeLabel(html) {
                                 {{ shortAddr(member.wallet_address) }}
                             </Link>
                         </td>
-                        <td class="p-4 text-dark-300 text-sm">{{ member.email || '-' }}</td>
-                        <td class="p-4 text-center">
+                        <td class="p-4 text-dark-300 text-sm hidden md:table-cell">{{ member.email || '-' }}</td>
+                        <td class="p-4 text-center hidden sm:table-cell">
                             <span :class="kycBadge(member.kyc_status)" class="px-2 py-1 rounded-md text-xs font-medium">{{ member.kyc_status }}</span>
                         </td>
-                        <td class="p-4 text-center text-dark-300 text-sm">{{ member.wallet_connections_count }}</td>
-                        <td class="p-4 text-center text-dark-300 text-sm">{{ member.total_trades }}</td>
+                        <td class="p-4 text-center text-dark-300 text-sm hidden lg:table-cell">{{ member.wallet_connections_count }}</td>
+                        <td class="p-4 text-center text-dark-300 text-sm hidden lg:table-cell">{{ member.total_trades }}</td>
                         <td class="p-4 text-center">
                             <span :class="member.is_banned ? 'bg-trading-red/20 text-trading-red' : 'bg-trading-green/20 text-trading-green'" class="px-2 py-1 rounded-full text-xs font-medium">
                                 {{ member.is_banned ? 'Banned' : 'Active' }}
                             </span>
                         </td>
-                        <td class="p-4 text-dark-400 text-xs">{{ member.last_active_at ? new Date(member.last_active_at).toLocaleDateString() : '-' }}</td>
+                        <td class="p-4 text-dark-400 text-xs hidden md:table-cell">{{ member.last_active_at ? new Date(member.last_active_at).toLocaleDateString() : '-' }}</td>
                         <td class="p-4 text-right">
                             <Link :href="`/admin/members/${member.id}`" class="text-primary-400 hover:text-primary-300 text-sm mr-3">ดู</Link>
                             <button @click="toggleBan(member)" :class="member.is_banned ? 'text-trading-green' : 'text-trading-red'" class="text-sm hover:opacity-80">

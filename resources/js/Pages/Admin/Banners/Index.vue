@@ -153,15 +153,15 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
         </div>
 
         <!-- Table -->
-        <div class="glass-card rounded-xl overflow-hidden">
+        <div class="glass-card rounded-xl overflow-hidden overflow-x-auto">
             <table class="w-full">
                 <thead>
                     <tr class="border-b border-white/5">
                         <th class="text-left p-4 text-xs text-dark-400 uppercase">Title</th>
-                        <th class="text-left p-4 text-xs text-dark-400 uppercase">Type</th>
-                        <th class="text-left p-4 text-xs text-dark-400 uppercase">Placement</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase">Views</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase">Clicks</th>
+                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden sm:table-cell">Type</th>
+                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden md:table-cell">Placement</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">Views</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">Clicks</th>
                         <th class="text-center p-4 text-xs text-dark-400 uppercase">Status</th>
                         <th class="text-right p-4 text-xs text-dark-400 uppercase">Actions</th>
                     </tr>
@@ -180,10 +180,10 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                                 </div>
                             </div>
                         </td>
-                        <td class="p-4"><span :class="typeBadge(banner.type)" class="px-2 py-1 rounded-md text-xs font-medium">{{ types[banner.type] || banner.type }}</span></td>
-                        <td class="p-4 text-dark-400 text-xs">{{ placements[banner.placement] || banner.placement }}</td>
-                        <td class="p-4 text-center text-dark-300 text-sm">{{ banner.view_count?.toLocaleString() }}</td>
-                        <td class="p-4 text-center text-dark-300 text-sm">{{ banner.click_count?.toLocaleString() }}</td>
+                        <td class="p-4 hidden sm:table-cell"><span :class="typeBadge(banner.type)" class="px-2 py-1 rounded-md text-xs font-medium">{{ types[banner.type] || banner.type }}</span></td>
+                        <td class="p-4 text-dark-400 text-xs hidden md:table-cell">{{ placements[banner.placement] || banner.placement }}</td>
+                        <td class="p-4 text-center text-dark-300 text-sm hidden lg:table-cell">{{ banner.view_count?.toLocaleString() }}</td>
+                        <td class="p-4 text-center text-dark-300 text-sm hidden lg:table-cell">{{ banner.click_count?.toLocaleString() }}</td>
                         <td class="p-4 text-center">
                             <button @click="toggleActive(banner)" :class="banner.is_active ? 'bg-trading-green/20 text-trading-green' : 'bg-dark-600 text-dark-400'" class="px-3 py-1 rounded-full text-xs font-medium transition-colors">
                                 {{ banner.is_active ? 'Active' : 'Off' }}
@@ -275,7 +275,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     </div>
 
                     <!-- Sort + Schedule -->
-                    <div class="grid grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-sm text-dark-300 mb-1">ลำดับ</label>
                             <input v-model.number="form.sort_order" type="number" :class="inputClass" min="0" />

@@ -538,6 +538,32 @@
         scrollbar-width: none;
     }
 
+    /* Thin scrollbar for sidebar — shows only on hover */
+    .thin-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: transparent transparent;
+        transition: scrollbar-color 0.3s;
+    }
+    .thin-scrollbar:hover {
+        scrollbar-color: theme('colors.dark.700') transparent;
+    }
+    .thin-scrollbar::-webkit-scrollbar {
+        width: 4px;
+    }
+    .thin-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .thin-scrollbar::-webkit-scrollbar-thumb {
+        background: transparent;
+        border-radius: 9999px;
+    }
+    .thin-scrollbar:hover::-webkit-scrollbar-thumb {
+        background: theme('colors.dark.700');
+    }
+    .thin-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: theme('colors.dark.600');
+    }
+
     /* Shadow Glow (trading) */
     .shadow-green-glow {
         box-shadow: 0 0 12px rgba(0, 200, 83, 0.3);

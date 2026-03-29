@@ -76,26 +76,309 @@ onMounted(() => {
     });
 });
 
-// Download PDF — ใช้ browser print เพื่อ save as PDF (รองรับภาษาที่เลือก)
+// Download PDF — Dark Premium Theme (เหมือนหน้าเว็บ)
+// รองรับไทย/อังกฤษ, ป้องกันเนื้อหาขาดข้ามหน้า, หน้าปกหรูหรา
 function downloadPdf() {
-    // ซ่อน navigation/header ชั่วคราวเพื่อ print เฉพาะเนื้อหา
     const style = document.createElement('style');
     style.id = 'print-style';
     style.textContent = `
+        @page {
+            size: A4;
+            margin: 16mm 14mm 20mm 14mm;
+        }
+
         @media print {
-            body { background: white !important; color: black !important; }
-            nav, .sidebar, header, footer, button, .btn-primary, .btn-secondary,
-            .btn-brand, [class*="glass"], .fixed { display: none !important; }
-            main, section, div { background: white !important; border: none !important;
-                backdrop-filter: none !important; color: black !important; }
-            h1, h2, h3, h4 { color: #1a1a1a !important; }
-            p, span, td, th, li { color: #333 !important; }
-            a { color: #0066cc !important; text-decoration: underline !important; }
-            table { border-collapse: collapse !important; }
-            th, td { border: 1px solid #ddd !important; padding: 8px !important; }
-            .text-gradient, .text-gradient-brand { -webkit-text-fill-color: #1a1a1a !important;
-                background: none !important; color: #1a1a1a !important; }
-            @page { margin: 20mm; size: A4; }
+            /* ===== พื้นฐาน — Dark Premium ===== */
+            html, body {
+                background: #080c1a !important;
+                color: #cbd5e1 !important;
+                font-family: 'Sarabun', 'Noto Sans Thai', 'Inter', 'Helvetica Neue', Arial, sans-serif !important;
+                font-size: 10pt !important;
+                line-height: 1.75 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
+            /* ===== ซ่อน UI elements ===== */
+            nav, header, footer, aside,
+            button, .btn-primary, .btn-secondary, .btn-brand,
+            .fixed, .sticky,
+            .ticker-strip, .banner-ad,
+            [class*="animate-pulse"] {
+                display: none !important;
+            }
+
+            /* ===== ล้าง effects ที่ print ไม่รองรับ ===== */
+            * {
+                box-shadow: none !important;
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+                text-shadow: none !important;
+            }
+
+            /* ===== หน้าปก — Premium Cover ===== */
+            .print-cover {
+                page-break-after: always !important;
+                background: #080c1a !important;
+                min-height: 92vh !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: center !important;
+                text-align: center !important;
+                position: relative !important;
+                overflow: hidden !important;
+            }
+            .print-cover::before {
+                content: '' !important;
+                position: absolute !important;
+                top: 15% !important;
+                left: 50% !important;
+                transform: translateX(-50%) !important;
+                width: 500px !important;
+                height: 500px !important;
+                background: radial-gradient(circle, rgba(59,130,246,0.12) 0%, rgba(139,92,246,0.06) 40%, transparent 70%) !important;
+                border-radius: 50% !important;
+            }
+            .print-cover img {
+                display: block !important;
+                width: 88px !important;
+                height: 88px !important;
+                margin: 0 auto 28px !important;
+                position: relative !important;
+            }
+            .print-cover h1 {
+                font-size: 32pt !important;
+                font-weight: 800 !important;
+                color: #f1f5f9 !important;
+                margin-bottom: 6px !important;
+                letter-spacing: -0.5px !important;
+                position: relative !important;
+            }
+            .print-cover .text-primary-400 {
+                color: #60a5fa !important;
+                font-size: 13pt !important;
+                position: relative !important;
+            }
+            .print-cover .text-gray-500 {
+                color: #64748b !important;
+                font-size: 10pt !important;
+                position: relative !important;
+            }
+
+            /* ===== Typography ===== */
+            h1 {
+                font-size: 20pt !important;
+                color: #f1f5f9 !important;
+                font-weight: 800 !important;
+            }
+            h2 {
+                font-size: 15pt !important;
+                color: #e2e8f0 !important;
+                font-weight: 700 !important;
+                border-bottom: 1px solid rgba(255,255,255,0.1) !important;
+                padding-bottom: 8px !important;
+                margin-top: 4px !important;
+                margin-bottom: 12px !important;
+            }
+            h3 {
+                font-size: 12pt !important;
+                color: #e2e8f0 !important;
+                font-weight: 600 !important;
+                margin-bottom: 6px !important;
+            }
+            h4 {
+                font-size: 11pt !important;
+                color: #cbd5e1 !important;
+                font-weight: 600 !important;
+            }
+            p, li, span, div {
+                color: #94a3b8 !important;
+            }
+            a {
+                color: #60a5fa !important;
+                text-decoration: none !important;
+            }
+
+            /* Gradient text → สีสว่าง */
+            .text-gradient, .text-gradient-brand {
+                -webkit-text-fill-color: #60a5fa !important;
+                background: none !important;
+                color: #60a5fa !important;
+            }
+            .text-gradient-gold {
+                -webkit-text-fill-color: #fbbf24 !important;
+                background: none !important;
+                color: #fbbf24 !important;
+            }
+
+            /* เน้นข้อความสำคัญ */
+            .font-medium, strong, b {
+                color: #e2e8f0 !important;
+            }
+
+            /* ===== ป้องกันเนื้อหาขาดข้ามหน้า ===== */
+            .wp-section {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+            h2, h3, h4 {
+                page-break-after: avoid;
+                break-after: avoid;
+            }
+            p, .wp-text {
+                orphans: 3;
+                widows: 3;
+            }
+            .wp-highlight, .wp-table,
+            [class*="rounded-xl"], [class*="rounded-2xl"],
+            table, tr, img, svg, figure {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+
+            /* ===== ตาราง — Dark Glass Style ===== */
+            table {
+                border-collapse: separate !important;
+                border-spacing: 0 !important;
+                width: 100% !important;
+                font-size: 8.5pt !important;
+                margin: 8px 0 !important;
+                border-radius: 8px !important;
+                overflow: hidden !important;
+                border: 1px solid rgba(255,255,255,0.08) !important;
+            }
+            thead tr {
+                background: rgba(255,255,255,0.06) !important;
+            }
+            th {
+                background: rgba(255,255,255,0.06) !important;
+                color: #94a3b8 !important;
+                font-weight: 600 !important;
+                border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                border-right: none !important;
+                border-left: none !important;
+                border-top: none !important;
+                padding: 8px 10px !important;
+                text-align: left !important;
+                font-size: 7.5pt !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.5px !important;
+            }
+            td {
+                border-bottom: 1px solid rgba(255,255,255,0.04) !important;
+                border-right: none !important;
+                border-left: none !important;
+                border-top: none !important;
+                padding: 7px 10px !important;
+                color: #cbd5e1 !important;
+                vertical-align: top !important;
+            }
+            tbody tr:nth-child(even) {
+                background: rgba(255,255,255,0.02) !important;
+            }
+
+            /* ===== Cards & Highlights — Glass Dark ===== */
+            .wp-highlight {
+                border: 1px solid rgba(255,255,255,0.08) !important;
+                border-radius: 12px !important;
+                padding: 16px !important;
+                background: rgba(255,255,255,0.03) !important;
+                margin: 12px 0 !important;
+            }
+            .wp-table {
+                border: 1px solid rgba(255,255,255,0.08) !important;
+                border-radius: 12px !important;
+                background: rgba(255,255,255,0.02) !important;
+            }
+
+            /* Problem/Solution cards */
+            [class*="bg-red-500/5"] {
+                border: 1px solid rgba(239,68,68,0.2) !important;
+                border-left: 3px solid #ef4444 !important;
+                padding: 12px !important;
+                background: rgba(239,68,68,0.05) !important;
+                border-radius: 8px !important;
+            }
+            [class*="bg-green-500/5"] {
+                border: 1px solid rgba(34,197,94,0.2) !important;
+                border-left: 3px solid #22c55e !important;
+                padding: 12px !important;
+                background: rgba(34,197,94,0.05) !important;
+                border-radius: 8px !important;
+            }
+
+            /* Stats / Key numbers */
+            .wp-highlight .text-2xl,
+            .text-2xl {
+                font-size: 16pt !important;
+                font-weight: 700 !important;
+                color: #60a5fa !important;
+            }
+
+            /* ===== Grid ===== */
+            .grid {
+                display: grid !important;
+                gap: 8px !important;
+            }
+
+            /* ===== SVG (Donut chart etc.) ===== */
+            svg {
+                page-break-inside: avoid;
+                max-width: 100% !important;
+            }
+            svg path, svg circle, svg rect {
+                print-color-adjust: exact !important;
+                -webkit-print-color-adjust: exact !important;
+            }
+
+            /* ===== Layout: full width content ===== */
+            .flex.gap-8 {
+                display: block !important;
+            }
+            aside {
+                display: none !important;
+            }
+            main {
+                max-width: 100% !important;
+                width: 100% !important;
+            }
+
+            /* ===== สีหลักให้ print exact ===== */
+            [class*="text-trading-green"] { color: #22c55e !important; }
+            [class*="text-trading-red"] { color: #ef4444 !important; }
+            [class*="text-primary-400"] { color: #60a5fa !important; }
+            [class*="text-primary-300"] { color: #93bbfd !important; }
+            [class*="text-accent-"] { color: #a78bfa !important; }
+            [class*="text-yellow-400"] { color: #fbbf24 !important; }
+            [class*="text-cyan-400"] { color: #22d3ee !important; }
+            [class*="text-white"] { color: #f1f5f9 !important; }
+
+            /* ===== Responsive columns: show all ===== */
+            .hidden { display: revert !important; }
+            [class*="hidden sm:"], [class*="hidden md:"], [class*="hidden lg:"] {
+                display: revert !important;
+            }
+
+            /* ===== Lists ===== */
+            ul, ol { padding-left: 18px !important; }
+            li { margin-bottom: 3px !important; color: #94a3b8 !important; }
+
+            /* ===== Print-only elements ===== */
+            .print\\:block { display: block !important; }
+            .print\\:hidden { display: none !important; }
+
+            /* ===== Blur backgrounds → ซ่อน ===== */
+            [class*="blur-"] { display: none !important; }
+
+            /* ===== Page footer ===== */
+            @page {
+                @bottom-center {
+                    content: "TPIX Chain Whitepaper  ·  Page " counter(page);
+                    font-size: 7pt;
+                    color: #475569;
+                }
+            }
         }
     `;
     document.head.appendChild(style);
@@ -113,7 +396,7 @@ function downloadPdf() {
             const s = document.getElementById('print-style');
             if (s) s.remove();
         }, 1000);
-    }, 100);
+    }, 200);
 }
 
 // Tokenomics Donut Chart — ข้อมูล allocation (ตรงกับ TPIX-Coin NodeRegistryV2)
@@ -556,9 +839,9 @@ const content = {
     <Head :title="t.pageTitle" />
 
     <AppLayout :hide-sidebar="true">
-        <!-- Hero — หัวหน้าเอกสาร -->
-        <section class="relative py-16 overflow-hidden">
-            <div class="absolute inset-0 pointer-events-none">
+        <!-- Hero — หน้าปก (print: จะเป็นหน้าแรกของ PDF) -->
+        <section class="print-cover relative py-16 overflow-hidden">
+            <div class="absolute inset-0 pointer-events-none print:hidden">
                 <div class="absolute top-0 left-1/4 w-96 h-96 rounded-full bg-primary-500/10 blur-[120px]" />
                 <div class="absolute bottom-0 right-1/3 w-80 h-80 rounded-full bg-accent-500/10 blur-[100px]" />
             </div>
@@ -569,11 +852,18 @@ const content = {
                 <p class="text-lg text-primary-400 font-medium mb-1">{{ t.subtitle }}</p>
                 <p class="text-sm text-gray-500 mb-6">{{ t.version }}</p>
 
-                <div class="flex flex-wrap items-center justify-center gap-3">
-                    <button @click="downloadPdf" class="btn-primary px-8 py-3 inline-flex items-center gap-2 font-semibold">
+                <!-- Print-only: ข้อมูลเอกสารเพิ่มเติม -->
+                <div class="hidden print:block mt-12 text-sm text-gray-500 space-y-1">
+                    <p>Developed by Xman Studio</p>
+                    <p>https://tpix.trade</p>
+                    <p class="mt-4 text-xs text-gray-400">{{ lang === 'en' ? 'This document is confidential. © 2026 TPIX Chain. All rights reserved.' : 'เอกสารนี้เป็นความลับ © 2026 TPIX Chain สงวนลิขสิทธิ์' }}</p>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-center gap-3 print:hidden">
+                    <a :href="`/whitepaper/download?lang=${lang}`" class="btn-primary px-8 py-3 inline-flex items-center gap-2 font-semibold">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                         {{ t.downloadPdf }}
-                    </button>
+                    </a>
                     <button @click="toggleLang" class="btn-secondary px-6 py-3 font-semibold">
                         {{ lang === 'en' ? t.readInThai : t.readInEn }}
                     </button>
@@ -1268,5 +1558,5 @@ const content = {
 .wp-text { @apply text-gray-300 leading-relaxed mb-4; }
 .wp-list { @apply list-disc list-inside space-y-2 text-gray-300 mb-4; }
 .wp-highlight { @apply p-6 rounded-xl bg-white/5 border border-white/10 my-6; }
-.wp-table { @apply rounded-xl bg-white/5 border border-white/10 overflow-hidden my-6; }
+.wp-table { @apply rounded-xl bg-white/5 border border-white/10 overflow-x-auto my-6; }
 </style>

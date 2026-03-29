@@ -134,7 +134,7 @@ const tiers = [
                                 <span :class="['font-bold', tier.color]">{{ tier.name }}</span>
                                 <span class="text-xs text-gray-400">Lock: {{ tier.lock }}</span>
                             </div>
-                            <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                                 <div>
                                     <span class="text-gray-500">Min Stake:</span>
                                     <span class="text-white ml-1 font-mono">{{ tier.stake }}</span>

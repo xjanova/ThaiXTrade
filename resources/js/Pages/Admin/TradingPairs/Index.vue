@@ -204,7 +204,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     <p v-if="form.errors.chain_id" class="mt-1 text-sm text-red-400">{{ form.errors.chain_id }}</p>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-dark-300 mb-2">Base Token</label>
                         <select v-model="form.base_token_id" :class="inputClass" :disabled="!selectedChainId">
@@ -223,7 +223,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-dark-300 mb-2">Price Precision</label>
                         <input v-model.number="form.price_precision" type="number" min="0" max="18" :class="inputClass" />
@@ -234,7 +234,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-dark-300 mb-2">Min Amount</label>
                         <input v-model.number="form.min_amount" type="number" step="0.00000001" :class="inputClass" />
@@ -245,7 +245,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-dark-300 mb-2">Maker Fee Override %</label>
                         <input v-model="form.maker_fee_override" type="number" step="0.001" :class="inputClass" placeholder="Leave empty for default" />

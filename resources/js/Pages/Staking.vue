@@ -136,7 +136,7 @@ onMounted(async () => {
             </div>
 
             <!-- Pool Cards -->
-            <div class="grid md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <button v-for="pool in pools" :key="pool.id" @click="selectPool(pool)"
                     :class="['glass-card text-center transition-all cursor-pointer hover:border-primary-500/50',
                         selectedPool?.id === pool.id ? 'border-primary-500 ring-1 ring-primary-500/30' : '']">
@@ -200,9 +200,9 @@ onMounted(async () => {
                             <tr class="text-dark-400 text-xs uppercase border-b border-white/10">
                                 <th class="text-left p-3">Pool</th>
                                 <th class="text-right p-3">Amount</th>
-                                <th class="text-right p-3">APY</th>
-                                <th class="text-right p-3">Pending Reward</th>
-                                <th class="text-center p-3">Unlock</th>
+                                <th class="text-right p-3 hidden sm:table-cell">APY</th>
+                                <th class="text-right p-3 hidden md:table-cell">Pending Reward</th>
+                                <th class="text-center p-3 hidden sm:table-cell">Unlock</th>
                                 <th class="text-right p-3">Actions</th>
                             </tr>
                         </thead>
@@ -210,11 +210,11 @@ onMounted(async () => {
                             <tr v-for="pos in activePositions" :key="pos.id" class="border-b border-white/5 hover:bg-white/5">
                                 <td class="p-3 text-white font-medium">{{ pos.pool }}</td>
                                 <td class="p-3 text-right text-white font-mono">{{ formatNum(pos.amount) }}</td>
-                                <td class="p-3 text-right text-trading-green">{{ pos.apy_percent }}%</td>
-                                <td class="p-3 text-right text-yellow-400 font-mono">{{ parseFloat(pos.pending_reward).toFixed(4) }}</td>
-                                <td class="p-3 text-center">
-                                    <span v-if="pos.is_unlocked" class="text-trading-green text-xs">✅ ถอนได้</span>
-                                    <span v-else class="text-dark-400 text-xs">🔒 {{ pos.days_remaining }}d</span>
+                                <td class="p-3 text-right text-trading-green hidden sm:table-cell">{{ pos.apy_percent }}%</td>
+                                <td class="p-3 text-right text-yellow-400 font-mono hidden md:table-cell">{{ parseFloat(pos.pending_reward).toFixed(4) }}</td>
+                                <td class="p-3 text-center hidden sm:table-cell">
+                                    <span v-if="pos.is_unlocked" class="text-trading-green text-xs">ถอนได้</span>
+                                    <span v-else class="text-dark-400 text-xs">{{ pos.days_remaining }}d</span>
                                 </td>
                                 <td class="p-3 text-right space-x-2">
                                     <button @click="claimRewards(pos.id)" class="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-lg text-xs hover:bg-yellow-500/30">{{ t('staking.claim') }}</button>
@@ -229,7 +229,7 @@ onMounted(async () => {
             <!-- Info -->
             <div class="glass-card">
                 <h3 class="text-lg font-semibold text-white mb-3">{{ t('staking.howToStake') }}</h3>
-                <div class="grid md:grid-cols-4 gap-4 text-center">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                     <div v-for="(s, i) in ['เชื่อมต่อ Wallet', 'เลือก Pool + จำนวน', 'Confirm Transaction', 'รับ Rewards']" :key="i">
                         <div class="w-10 h-10 rounded-full bg-primary-500/20 flex items-center justify-center mx-auto mb-2">
                             <span class="text-primary-400 font-bold">{{ i + 1 }}</span>

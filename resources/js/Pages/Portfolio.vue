@@ -78,9 +78,9 @@ watch(isConnected, (connected) => {
                 <!-- Balance Overview -->
                 <div class="glass-dark rounded-2xl p-6 mb-6">
                     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                        <div>
+                        <div class="min-w-0">
                             <p class="text-sm text-dark-400 mb-1">{{ t('portfolio.walletAddress') }}</p>
-                            <p class="text-lg font-mono text-white">{{ shortAddress }}</p>
+                            <p class="text-base sm:text-lg font-mono text-white truncate">{{ shortAddress }}</p>
                             <p class="text-sm text-dark-500 mt-1">
                                 Chain: {{ walletStore.isBSC ? 'BNB Smart Chain' : `Chain ID: ${walletStore.chainId}` }}
                             </p>

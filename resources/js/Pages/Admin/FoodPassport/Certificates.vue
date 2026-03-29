@@ -51,7 +51,7 @@ function formatDate(d) {
         </div>
 
         <!-- Stats -->
-        <div class="grid grid-cols-3 gap-4 mb-6">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div class="glass-dark p-4 rounded-xl border border-white/10">
                 <p class="text-2xl font-bold text-white">{{ certStats?.total || 0 }}</p>
                 <p class="text-xs text-gray-400">Total Certificates</p>
@@ -74,9 +74,9 @@ function formatDate(d) {
                         <tr class="border-b border-white/5">
                             <th class="text-left p-4 text-gray-400 font-medium">Certificate</th>
                             <th class="text-left p-4 text-gray-400 font-medium">Product</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Owner</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Owner</th>
                             <th class="text-left p-4 text-gray-400 font-medium">Status</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Issued</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">Issued</th>
                             <th class="text-right p-4 text-gray-400 font-medium">Actions</th>
                         </tr>
                     </thead>
@@ -107,7 +107,7 @@ function formatDate(d) {
                                 </Link>
                                 <span v-else class="text-gray-500">—</span>
                             </td>
-                            <td class="p-4">
+                            <td class="p-4 hidden md:table-cell">
                                 <span class="text-xs text-gray-400 font-mono">{{ cert.owner_address?.slice(0, 8) }}...{{ cert.owner_address?.slice(-4) }}</span>
                             </td>
                             <td class="p-4">
@@ -118,7 +118,7 @@ function formatDate(d) {
                                     {{ cert.status }}
                                 </span>
                             </td>
-                            <td class="p-4 text-gray-400 text-xs">{{ formatDate(cert.created_at) }}</td>
+                            <td class="p-4 text-gray-400 text-xs hidden sm:table-cell">{{ formatDate(cert.created_at) }}</td>
                             <td class="p-4 text-right">
                                 <button
                                     v-if="cert.status === 'active'"

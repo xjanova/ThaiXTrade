@@ -193,10 +193,10 @@ onUnmounted(() => clearInterval(pollInterval));
                                 <tr class="border-b border-white/5">
                                     <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase">Status</th>
                                     <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase">Wallet</th>
-                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase">Tier</th>
-                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase">Location</th>
-                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase">Contact</th>
-                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase">Date</th>
+                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase hidden sm:table-cell">Tier</th>
+                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase hidden md:table-cell">Location</th>
+                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase hidden lg:table-cell">Contact</th>
+                                    <th class="px-4 py-3 text-left text-[10px] text-gray-500 uppercase hidden md:table-cell">Date</th>
                                     <th class="px-4 py-3 text-right text-[10px] text-gray-500 uppercase">Actions</th>
                                 </tr>
                             </thead>
@@ -214,23 +214,23 @@ onUnmounted(() => clearInterval(pollInterval));
                                     <td class="px-4 py-3">
                                         <span class="font-mono text-xs text-cyan-400">{{ shortAddr(app.wallet_address) }}</span>
                                     </td>
-                                    <td class="px-4 py-3">
+                                    <td class="px-4 py-3 hidden sm:table-cell">
                                         <span :class="['text-xs font-medium', tierConfig[app.tier]?.color || 'text-gray-400']">
                                             {{ tierConfig[app.tier]?.label || app.tier }}
                                         </span>
                                     </td>
-                                    <td class="px-4 py-3">
+                                    <td class="px-4 py-3 hidden md:table-cell">
                                         <span class="text-xs text-gray-300">
                                             {{ flag(app.country_code) }} {{ app.country_name || '—' }}
                                         </span>
                                     </td>
-                                    <td class="px-4 py-3">
+                                    <td class="px-4 py-3 hidden lg:table-cell">
                                         <div class="text-xs text-gray-400">
                                             <div v-if="app.contact_email">{{ app.contact_email }}</div>
                                             <div v-if="app.contact_telegram" class="text-gray-500">{{ app.contact_telegram }}</div>
                                         </div>
                                     </td>
-                                    <td class="px-4 py-3 text-xs text-gray-500">
+                                    <td class="px-4 py-3 text-xs text-gray-500 hidden md:table-cell">
                                         {{ new Date(app.created_at).toLocaleDateString() }}
                                     </td>
                                     <td class="px-4 py-3 text-right">

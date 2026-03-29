@@ -290,7 +290,7 @@ function getTypeLabel(type) {
                 <p class="text-gray-400 max-w-xl mx-auto text-sm">{{ t('tokenFactory.subtitle') }}</p>
 
                 <!-- Stats Row -->
-                <div class="flex items-center justify-center gap-6 mt-6 text-sm">
+                <div class="flex flex-wrap items-center justify-center gap-3 sm:gap-6 mt-6 text-sm">
                     <div class="flex items-center gap-1.5 text-gray-400">
                         <span class="w-2 h-2 rounded-full bg-green-400"></span>
                         TPIX Chain
@@ -604,7 +604,7 @@ function getTypeLabel(type) {
                                 </div>
 
                                 <!-- Decimals (hidden for NFT) -->
-                                <div v-if="!isNFT" class="grid grid-cols-2 gap-4">
+                                <div v-if="!isNFT" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label class="block text-sm font-medium text-gray-300 mb-1.5">Decimals</label>
                                         <select v-model.number="form.decimals" class="trading-input w-full">
@@ -670,7 +670,7 @@ function getTypeLabel(type) {
                                 </div>
 
                                 <!-- Details Grid -->
-                                <div class="grid grid-cols-2 gap-4 text-sm">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                                     <div class="space-y-3">
                                         <div>
                                             <p class="text-gray-500 text-xs">Category</p>
