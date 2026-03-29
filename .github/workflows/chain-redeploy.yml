@@ -297,7 +297,7 @@ jobs:
 
               # ─── Smart Contract Verifier — verify & publish contracts ───
               sc-verifier:
-                image: ghcr.io/blockscout/smart-contract-verifier:v1.9.1
+                image: ghcr.io/blockscout/smart-contract-verifier:v1.10.3
                 container_name: blockscout-sc-verifier
                 restart: unless-stopped
                 environment:
@@ -325,7 +325,7 @@ jobs:
 
               # ─── Visualizer — Solidity to UML diagrams ───
               visualizer:
-                image: ghcr.io/blockscout/visualizer:v0.2.2
+                image: ghcr.io/blockscout/visualizer:v0.2.1
                 container_name: blockscout-visualizer
                 restart: unless-stopped
                 environment:
