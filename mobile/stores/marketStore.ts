@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import { COIN_COLORS } from '@/components/common/CoinIcon';
 
 const BINANCE_REST = 'https://api.binance.com/api/v3';
-const API_BASE = 'https://tpixtrade.com/api/v1';
+const API_BASE = 'https://tpix.online/api/v1';
 
 // คู่เทรดที่แสดงในแอพ (Binance symbol → display)
 const TRADING_PAIRS = [

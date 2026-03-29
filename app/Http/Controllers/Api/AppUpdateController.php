@@ -190,6 +190,33 @@ class AppUpdateController extends Controller
      * Fetch latest mobile release from GitHub.
      * ดึงข้อมูล release ล่าสุดจาก GitHub.
      */
+    /**
+     * CI webhook — auto-set active release after build.
+     * POST /api/v1/app/notify-release?secret=xxx&tag=v1.0.262
+     */
+    public function notifyRelease(Request $request): JsonResponse
+    {
+        $secret = $request->query('secret');
+        $expectedSecret = config('services.github.deploy_secret', '');
+
+        if (! $expectedSecret || ! hash_equals($expectedSecret, (string) $secret)) {
+            return response()->json(['success' => false, 'error' => 'Unauthorized'], 403);
+        }
+
+        $tag = $request->query('tag', '');
+        if ($tag) {
+            SiteSetting::set('app_release', 'active_tag', $tag);
+        }
+
+        // เคลียร์แคช update เพื่อให้ดึง release ใหม่ทันที
+        Cache::forget('app_update_android');
+        Cache::forget('apk_s3_url');
+
+        Log::info('Release notified via CI', ['tag' => $tag]);
+
+        return response()->json(['success' => true, 'data' => ['active_tag' => $tag]]);
+    }
+
     private function fetchLatestRelease(): ?array
     {
         // เช็ค admin-selected release ก่อน
@@ -217,39 +244,33 @@ class AppUpdateController extends Controller
 
             $releases = $response->json();
 
+            // Pass 1: ถ้ามี active tag → หาตัวที่ตรง
+            if ($activeTag) {
+                foreach ($releases as $release) {
+                    if ($release['draft'] || $release['prerelease']) {
+                        continue;
+                    }
+                    if ($release['tag_name'] !== $activeTag) {
+                        continue;
+                    }
+                    $result = $this->parseRelease($release);
+                    if ($result) {
+                        return $result;
+                    }
+                }
+                // active_tag ไม่ตรงกับ release ใดเลย → fallback ไป latest
+                Log::info('Active tag not found, falling back to latest', ['active_tag' => $activeTag]);
+            }
+
+            // Pass 2: ใช้ release ล่าสุดที่มี APK
             foreach ($releases as $release) {
                 if ($release['draft'] || $release['prerelease']) {
                     continue;
                 }
-
-                // ถ้ามี active tag ให้หาตัวที่ตรงกัน
-                if ($activeTag && $release['tag_name'] !== $activeTag) {
-                    continue;
+                $result = $this->parseRelease($release);
+                if ($result) {
+                    return $result;
                 }
-
-                $apkAsset = collect($release['assets'])->first(function ($asset) {
-                    return str_ends_with(strtolower($asset['name']), '.apk');
-                });
-
-                if (! $apkAsset) {
-                    continue;
-                }
-
-                preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $matches);
-                $version = $matches[1] ?? null;
-
-                if (! $version) {
-                    continue;
-                }
-
-                return [
-                    'version' => $version,
-                    'name' => $release['name'] ?: "v{$version}",
-                    'notes' => $release['body'] ?? '',
-                    'download_url' => $apkAsset['url'],
-                    'published_at' => $release['published_at'],
-                    'file_size' => $apkAsset['size'],
-                ];
             }
 
             return null;
@@ -258,6 +279,37 @@ class AppUpdateController extends Controller
 
             return null;
         }
+    }
+
+    /**
+     * Parse a GitHub release into our format.
+     * แปลง release จาก GitHub เป็นรูปแบบของเรา
+     */
+    private function parseRelease(array $release): ?array
+    {
+        $apkAsset = collect($release['assets'])->first(function ($asset) {
+            return str_ends_with(strtolower($asset['name']), '.apk');
+        });
+
+        if (! $apkAsset) {
+            return null;
+        }
+
+        preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $matches);
+        $version = $matches[1] ?? null;
+
+        if (! $version) {
+            return null;
+        }
+
+        return [
+            'version' => $version,
+            'name' => $release['name'] ?: "v{$version}",
+            'notes' => $release['body'] ?? '',
+            'download_url' => $apkAsset['url'],
+            'published_at' => $release['published_at'],
+            'file_size' => $apkAsset['size'],
+        ];
     }
 
     // =====================================================================

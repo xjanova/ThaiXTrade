@@ -203,8 +203,8 @@ class ApiService {
     );
   }
 
-  // Chains / เครือข่ายที่รองรับ
-  async getChains() {
+  // Chains (detailed) / เครือข่ายที่รองรับ (รายละเอียด)
+  async getChainsDetailed() {
     return this.request<ApiResponse<Array<{ id: number; chain_id: number; name: string; symbol: string; rpc_url: string; explorer_url: string; is_active: boolean }>>>(
       '/chains',
     );

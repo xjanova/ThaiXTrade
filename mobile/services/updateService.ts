@@ -2,7 +2,7 @@
  * App Update Service
  * ระบบตรวจสอบและอัปเดตแอป
  *
- * ใช้ API ของเราเอง (tpixtrade.com) แทน GitHub โดยตรง
+ * ใช้ API ของเราเอง (tpix.online) แทน GitHub โดยตรง
  * เพื่อให้ repo เป็น private ได้ ไม่ต้องเปิดให้คนอื่นเห็น
  */
 
@@ -12,7 +12,7 @@ import { downloadApkNative, installApkNative } from './nativeFileOps';
 
 // API base URL / URL หลักของ API
 const API_BASE = Constants.expoConfig?.extra?.apiBaseUrl
-  ?? 'https://tpixtrade.com/api/v1';
+  ?? 'https://tpix.online/api/v1';
 
 // Current app version / เวอร์ชันแอปปัจจุบัน
 export const CURRENT_VERSION = Constants.expoConfig?.version ?? '1.0.0';
@@ -142,5 +142,5 @@ export function formatFileSize(bytes: number): string {
 }
 
 export async function openReleasesPage(): Promise<void> {
-  await Linking.openURL('https://tpixtrade.com/download');
+  await Linking.openURL('https://tpix.online/download');
 }

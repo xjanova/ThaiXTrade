@@ -66,7 +66,7 @@ export function getBaseSymbol(pair: string): string {
 export function getCoinLogo(symbol: string): string {
   if (!symbol) return '';
   const upper = symbol.toUpperCase().replace(/\/.*$/, '');
-  if (upper === 'TPIX') return 'https://tpixtrade.com/tpixlogo.webp';
+  if (upper === 'TPIX') return 'https://tpix.online/tpixlogo.webp';
   const mapped = SYMBOL_MAP[upper] || upper;
   return `${COINCAP_CDN}/${mapped.toLowerCase()}@2x.png`;
 }

@@ -46,6 +46,7 @@ return [
         'owner' => env('GITHUB_OWNER', 'xjanova'),
         'repo' => env('GITHUB_REPO', 'ThaiXTrade'),
         'token' => env('GITHUB_TOKEN'),
+        'deploy_secret' => env('GITHUB_DEPLOY_SECRET'),
     ],
 
     // TPIX Chain — blockchain config

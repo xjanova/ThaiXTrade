@@ -232,6 +232,9 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/chain-latest', [AppUpdateController::class, 'chainLatest']);
         Route::get('/chain-download', [AppUpdateController::class, 'chainDownload']);
         Route::get('/download-stats', [AppUpdateController::class, 'downloadStats']);
+        // CI webhook — auto-set active release after build (protected by deploy secret)
+        Route::post('/notify-release', [AppUpdateController::class, 'notifyRelease'])
+            ->middleware('throttle:10,1');
     });
 
     // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)

@@ -285,6 +285,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Auto-set active release on backend (clears cache + sets active_tag)
+      - name: Notify backend of new release
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event.inputs.create_release == 'true')
+        env:
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+        run: |
+          if [ -n "$DEPLOY_SECRET" ]; then
+            curl -s -X POST \
+              "https://tpix.online/api/v1/app/notify-release?secret=${DEPLOY_SECRET}&tag=v${{ steps.version.outputs.version }}" \
+              -H "User-Agent: GitHub-Actions" \
+              -H "Accept: application/json" || echo "Backend notify failed (non-critical)"
+          else
+            echo "DEPLOY_SECRET not set — skipping backend notify"
+          fi
+
       - name: Build Summary
         if: always()
         run: |
