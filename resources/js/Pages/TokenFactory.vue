@@ -142,16 +142,110 @@ const canCreate = computed(() => {
         && !isSubmitting.value;
 });
 
-// ===================== FEE DISPLAY =====================
-const feeDisplay = computed(() => {
+// ===================== DYNAMIC FEE CALCULATOR =====================
+const dynamicFee = computed(() => {
+    const fees = props.factoryConfig.dynamic_fees;
+    if (!fees) {
+        // Fallback ถ้า backend ยังไม่ส่ง dynamic_fees
+        return {
+            total: props.factoryConfig.creation_fee_tpix || 100,
+            breakdown: [{ label: 'Creation Fee', label_th: 'ค่าสร้างเหรียญ', amount: props.factoryConfig.creation_fee_tpix || 100 }],
+            is_free: false,
+        };
+    }
+
     const method = props.factoryConfig.fee_payment_method;
-    if (method === 'free' || (props.factoryConfig.creation_fee_tpix === 0 && props.factoryConfig.creation_fee_usd === 0)) {
+    if (method === 'free') {
+        return { total: 0, breakdown: [], is_free: true };
+    }
+
+    const breakdown = [];
+    let total = 0;
+
+    // 1. Base fee
+    const baseFee = fees.base_fee || 50;
+    breakdown.push({ label: 'Base Fee', label_th: 'ค่าพื้นฐาน', amount: baseFee });
+    total += baseFee;
+
+    // 2. Category fee
+    const category = form.value.token_category || 'fungible';
+    const catFee = fees.category_fees?.[category] || 0;
+    if (catFee > 0) {
+        const catLabels = { nft: 'NFT Category', special: 'Special Category' };
+        const catLabelsTh = { nft: 'ประเภท NFT', special: 'ประเภทพิเศษ' };
+        breakdown.push({
+            label: catLabels[category] || category,
+            label_th: catLabelsTh[category] || category,
+            amount: catFee,
+        });
+        total += catFee;
+    }
+
+    // 3. Type fee
+    const tokenType = form.value.token_type || 'standard';
+    const typFee = fees.type_fees?.[tokenType] || 0;
+    if (typFee > 0) {
+        const typeLabels = {
+            mintable: 'Mint Function', burnable: 'Burn Function',
+            mintable_burnable: 'Mint + Burn', utility: 'Utility Features',
+            reward: 'Reward Features', nft_collection: 'Collection Features',
+            governance: 'Governance', stablecoin: 'Stablecoin Mechanism',
+        };
+        const typeLabelsTh = {
+            mintable: 'ฟังก์ชัน Mint', burnable: 'ฟังก์ชัน Burn',
+            mintable_burnable: 'Mint + Burn', utility: 'Utility',
+            reward: 'Reward', nft_collection: 'Collection',
+            governance: 'Governance', stablecoin: 'Stablecoin',
+        };
+        breakdown.push({
+            label: typeLabels[tokenType] || tokenType,
+            label_th: typeLabelsTh[tokenType] || tokenType,
+            amount: typFee,
+        });
+        total += typFee;
+    }
+
+    // 4. Custom decimals fee
+    const decimals = form.value.decimals;
+    if (decimals !== 18 && decimals !== 0) {
+        const decFee = fees.option_fees?.custom_decimals || 5;
+        if (decFee > 0) {
+            breakdown.push({ label: `Custom Decimals (${decimals})`, label_th: `Decimals พิเศษ (${decimals})`, amount: decFee });
+            total += decFee;
+        }
+    }
+
+    // 5. Large supply fee
+    const supply = parseFloat(form.value.total_supply) || 0;
+    const veryLargeThreshold = fees.very_large_supply_threshold || 100000000000;
+    const largeThreshold = fees.large_supply_threshold || 1000000000;
+
+    if (supply > veryLargeThreshold) {
+        const supFee = fees.option_fees?.very_large_supply || 25;
+        if (supFee > 0) {
+            breakdown.push({ label: 'Very Large Supply (>100B)', label_th: 'Supply ใหญ่มาก (>100B)', amount: supFee });
+            total += supFee;
+        }
+    } else if (supply > largeThreshold) {
+        const supFee = fees.option_fees?.large_supply || 10;
+        if (supFee > 0) {
+            breakdown.push({ label: 'Large Supply (>1B)', label_th: 'Supply ใหญ่ (>1B)', amount: supFee });
+            total += supFee;
+        }
+    }
+
+    return { total: Math.round(total * 100) / 100, breakdown, is_free: false };
+});
+
+const feeDisplay = computed(() => {
+    if (dynamicFee.value.is_free) {
         return { amount: 'FREE', currency: '', isFree: true };
     }
-    if (method === 'usd') {
-        return { amount: `$${props.factoryConfig.creation_fee_usd}`, currency: 'USD', isFree: false };
-    }
-    return { amount: props.factoryConfig.creation_fee_tpix.toLocaleString(), currency: 'TPIX', isFree: false };
+    return {
+        amount: dynamicFee.value.total.toLocaleString(),
+        currency: 'TPIX',
+        isFree: false,
+    };
 });
 
 // ===================== WIZARD NAVIGATION =====================
@@ -711,18 +805,33 @@ function getTypeLabel(type) {
                                 </div>
                             </div>
 
-                            <!-- Fee Box -->
-                            <div class="glass-dark p-4 rounded-xl border border-white/10 flex items-center justify-between">
-                                <div>
-                                    <p class="text-sm font-medium text-white">Creation Fee</p>
-                                    <p class="text-xs text-gray-400">One-time fee for token deployment</p>
+                            <!-- Dynamic Fee Breakdown -->
+                            <div class="glass-dark p-5 rounded-xl border border-white/10">
+                                <p class="text-sm font-medium text-white mb-3">Creation Fee</p>
+
+                                <!-- Fee breakdown items -->
+                                <div v-if="dynamicFee.breakdown.length > 0" class="space-y-2 mb-3">
+                                    <div
+                                        v-for="(item, idx) in dynamicFee.breakdown"
+                                        :key="idx"
+                                        class="flex items-center justify-between text-sm"
+                                    >
+                                        <span class="text-gray-400">{{ item.label_th || item.label }}</span>
+                                        <span class="text-white font-mono">+{{ item.amount }} TPIX</span>
+                                    </div>
                                 </div>
-                                <div class="text-right">
-                                    <p class="text-lg font-bold" :class="feeDisplay.isFree ? 'text-green-400' : 'text-white'">
-                                        {{ feeDisplay.amount }}
-                                    </p>
-                                    <p v-if="!feeDisplay.isFree" class="text-xs text-gray-400">{{ feeDisplay.currency }}</p>
+
+                                <!-- Total -->
+                                <div class="flex items-center justify-between pt-3 border-t border-white/10">
+                                    <span class="text-sm font-medium text-gray-300">Total</span>
+                                    <span class="text-xl font-bold" :class="dynamicFee.is_free ? 'text-green-400' : 'text-white'">
+                                        {{ dynamicFee.is_free ? 'FREE' : `${dynamicFee.total.toLocaleString()} TPIX` }}
+                                    </span>
                                 </div>
+
+                                <p class="text-xs text-gray-500 mt-2">
+                                    ค่าธรรมเนียมคำนวณจากออฟชั่นที่คุณเลือก — ยิ่งฟีเจอร์เยอะ ค่าสร้างยิ่งเพิ่ม
+                                </p>
                             </div>
 
                             <!-- Process Info -->

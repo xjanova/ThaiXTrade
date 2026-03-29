@@ -134,6 +134,10 @@ jobs:
                   # ─── GraphQL ───
                   NEXT_PUBLIC_GRAPHIQL_TRANSACTION: "0x0000000000000000000000000000000000000000000000000000000000000000"
 
+                  # ─── Contract Verification UI ───
+                  NEXT_PUBLIC_CONTRACT_CODE_IDES: "[{'title':'Remix IDE','url':'https://remix.blockscout.com/?address={hash}&blockscout={domain}','icon_url':'https://remix.ethereum.org/favicon.ico'}]"
+                  NEXT_PUBLIC_VISUALIZE_API_HOST: "https://explorer.tpix.online"
+
                   # ─── Disabled Features (ไม่เกี่ยวกับ PoA chain) ───
                   NEXT_PUBLIC_HAS_BEACON_CHAIN: "false"
                   NEXT_PUBLIC_HAS_USER_OPS: "false"
@@ -234,11 +238,13 @@ jobs:
                   GAS_PRICE_ORACLE_AVERAGE_PERCENTILE: "60"
                   GAS_PRICE_ORACLE_FAST_PERCENTILE: "90"
 
-                  # ─── Smart Contract (ปิด — ไม่มี verifier microservice) ───
-                  MICROSERVICE_SC_VERIFIER_ENABLED: "false"
-                  MICROSERVICE_SC_VERIFIER_URL: ""
+                  # ─── Smart Contract Verifier ───
+                  MICROSERVICE_SC_VERIFIER_ENABLED: "true"
+                  MICROSERVICE_SC_VERIFIER_URL: "http://sc-verifier:8050/"
+                  MICROSERVICE_SC_VERIFIER_TYPE: "sc_verifier"
                   SOURCIFY_INTEGRATION_ENABLED: "false"
-                  MICROSERVICE_VISUALIZE_SOL2UML_ENABLED: "false"
+                  MICROSERVICE_VISUALIZE_SOL2UML_ENABLED: "true"
+                  MICROSERVICE_VISUALIZE_SOL2UML_URL: "http://visualizer:8050/"
 
                   # ─── Sig Provider (decode function/event names) ───
                   MICROSERVICE_SIG_PROVIDER_ENABLED: "true"
@@ -289,8 +295,54 @@ jobs:
                 networks:
                   - tpix
 
+              # ─── Smart Contract Verifier — verify & publish contracts ───
+              sc-verifier:
+                image: ghcr.io/blockscout/smart-contract-verifier:v1.9.1
+                container_name: blockscout-sc-verifier
+                restart: unless-stopped
+                environment:
+                  SMART_CONTRACT_VERIFIER__SERVER__HTTP__ADDR: "0.0.0.0:8050"
+                  SMART_CONTRACT_VERIFIER__SOLIDITY__ENABLED: "true"
+                  SMART_CONTRACT_VERIFIER__SOLIDITY__COMPILERS_DIR: "/tmp/solidity-compilers"
+                  SMART_CONTRACT_VERIFIER__SOLIDITY__REFRESH_VERSIONS_SCHEDULE: "0 0 * * * * *"
+                  SMART_CONTRACT_VERIFIER__VYPER__ENABLED: "true"
+                  SMART_CONTRACT_VERIFIER__VYPER__COMPILERS_DIR: "/tmp/vyper-compilers"
+                  SMART_CONTRACT_VERIFIER__SOURCIFY__ENABLED: "false"
+                  SMART_CONTRACT_VERIFIER__METRICS__ENABLED: "false"
+                  SMART_CONTRACT_VERIFIER__JAEGER__ENABLED: "false"
+                mem_limit: 512m
+                memswap_limit: 512m
+                volumes:
+                  - sc-verifier-compilers:/tmp/solidity-compilers
+                  - sc-verifier-vyper:/tmp/vyper-compilers
+                logging:
+                  driver: json-file
+                  options:
+                    max-size: "20m"
+                    max-file: "2"
+                networks:
+                  - tpix
+
+              # ─── Visualizer — Solidity to UML diagrams ───
+              visualizer:
+                image: ghcr.io/blockscout/visualizer:v0.2.2
+                container_name: blockscout-visualizer
+                restart: unless-stopped
+                environment:
+                  VISUALIZER__SERVER__HTTP__ADDR: "0.0.0.0:8050"
+                mem_limit: 256m
+                logging:
+                  driver: json-file
+                  options:
+                    max-size: "10m"
+                    max-file: "2"
+                networks:
+                  - tpix
+
             volumes:
               blockscout-db-data:
+              sc-verifier-compilers:
+              sc-verifier-vyper:
 
             networks:
               tpix:
@@ -301,11 +353,11 @@ jobs:
             sed -i 's/^            //' "$INFRA/docker-compose.yml"
 
             # Recreate ทุก service ที่เปลี่ยน config (ไม่กระทบ chain data)
-            echo "Pulling new images (sig-provider)..."
-            docker compose pull sig-provider
+            echo "Pulling new images..."
+            docker compose pull sig-provider sc-verifier visualizer
 
-            echo "Recreating blockscout services + sig-provider..."
-            docker compose up -d --force-recreate sig-provider blockscout-backend blockscout-frontend
+            echo "Recreating blockscout services + microservices..."
+            docker compose up -d --force-recreate sig-provider sc-verifier visualizer blockscout-backend blockscout-frontend
             echo "Waiting 30s for services to start..."
             sleep 30
 

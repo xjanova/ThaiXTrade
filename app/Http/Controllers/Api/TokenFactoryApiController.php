@@ -186,6 +186,28 @@ class TokenFactoryApiController extends Controller
     }
 
     /**
+     * คำนวณค่าธรรมเนียมแบบ dynamic ตาม options ที่เลือก.
+     *
+     * POST /api/v1/token-factory/calculate-fee
+     */
+    public function calculateFee(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'token_category' => 'required|in:fungible,nft,special',
+            'token_type' => 'required|string',
+            'decimals' => 'nullable|integer|min:0|max:18',
+            'total_supply' => 'nullable|numeric|min:0',
+        ]);
+
+        $fee = $this->tokenFactoryService->calculateFee($validated);
+
+        return response()->json([
+            'success' => true,
+            'data' => $fee,
+        ]);
+    }
+
+    /**
      * Upload logo สำหรับ token (ก่อนหรือหลังสร้าง).
      */
     public function uploadLogo(Request $request): JsonResponse

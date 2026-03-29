@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\FactoryToken;
+use App\Services\BlockscoutVerifyService;
 use App\Services\Web3DeploymentService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,7 +32,7 @@ class DeployTokenJob implements ShouldQueue
         public FactoryToken $token,
     ) {}
 
-    public function handle(Web3DeploymentService $deploymentService): void
+    public function handle(Web3DeploymentService $deploymentService, BlockscoutVerifyService $verifyService): void
     {
         Log::info("DeployTokenJob: deploying {$this->token->symbol} (attempt {$this->attempts()})", [
             'token_id' => $this->token->id,
@@ -52,6 +53,7 @@ class DeployTokenJob implements ShouldQueue
                 'contract_address' => strtolower($result['contractAddress']),
                 'tx_hash' => $result['txHash'],
                 'is_listed' => true,
+                'is_verified' => true,
                 'metadata' => array_merge($this->token->metadata ?? [], [
                     'block_number' => $result['blockNumber'] ?? null,
                     'deployed_at' => now()->toIso8601String(),
@@ -63,6 +65,35 @@ class DeployTokenJob implements ShouldQueue
                 'contract' => $result['contractAddress'],
                 'tx' => $result['txHash'],
             ]);
+
+            // Auto-verify contract บน Blockscout Explorer
+            try {
+                $verifyResult = $verifyService->verifyFactoryToken(
+                    $result['contractAddress'],
+                    $this->token
+                );
+
+                if ($verifyResult['success']) {
+                    $this->token->update([
+                        'metadata' => array_merge($this->token->metadata ?? [], [
+                            'explorer_verified' => true,
+                            'explorer_verified_at' => now()->toIso8601String(),
+                        ]),
+                    ]);
+                    Log::info("DeployTokenJob: {$this->token->symbol} verified on Blockscout", [
+                        'contract' => $result['contractAddress'],
+                    ]);
+                } else {
+                    Log::warning("DeployTokenJob: {$this->token->symbol} verification failed (non-critical)", [
+                        'error' => $verifyResult['error'] ?? 'unknown',
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                // Verification failure ไม่ควรทำให้ deploy job fail
+                Log::warning("DeployTokenJob: {$this->token->symbol} auto-verify exception (non-critical)", [
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             return;
         }

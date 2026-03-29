@@ -163,6 +163,7 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     Route::prefix('token-factory')->group(function () {
         Route::get('/', [TokenFactoryApiController::class, 'index']);
         Route::get('/config', [TokenFactoryApiController::class, 'config']);
+        Route::post('/calculate-fee', [TokenFactoryApiController::class, 'calculateFee']);
         Route::get('/{id}', [TokenFactoryApiController::class, 'show'])->where('id', '[0-9]+');
     });
 

@@ -45,13 +45,21 @@ class TokenFactoryService
         // NFT ใช้ decimals = 0 เสมอ
         $decimals = in_array($tokenType, $nftTypes) ? 0 : ($data['decimals'] ?? 18);
 
-        // คำนวณ fee ที่ต้องจ่าย
-        $feeAmount = $feeMethod === 'free' ? 0 : $feeTpix;
+        // คำนวณ fee แบบ dynamic ตามออฟชั่นที่เลือก
+        $feeResult = $this->calculateFee([
+            'token_category' => $data['token_category'] ?? 'fungible',
+            'token_type' => $tokenType,
+            'decimals' => $data['decimals'] ?? 18,
+            'total_supply' => $data['total_supply'] ?? 0,
+        ]);
+
+        $feeAmount = $feeResult['total'];
 
         // สร้าง metadata พร้อม fee info (ป้องกัน metadata เป็น non-array)
         $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
         $metadata['fee_amount'] = $feeAmount;
-        $metadata['fee_currency'] = $feeMethod === 'free' ? 'FREE' : 'TPIX';
+        $metadata['fee_currency'] = $feeResult['currency'];
+        $metadata['fee_breakdown'] = $feeResult['breakdown'];
         $metadata['fee_wallet'] = $feeWallet;
         $metadata['fee_tx_hash'] = $data['fee_tx_hash'] ?? null;
 
@@ -270,19 +278,165 @@ class TokenFactoryService
     }
 
     /**
-     * Get factory configuration for frontend
+     * คำนวณค่าธรรมเนียมแบบ dynamic ตามออฟชั่นที่เลือก.
+     *
+     * fee = base_fee + category_fee + type_fee + option_fees
+     *
+     * @param  array  $options  ['token_category', 'token_type', 'decimals', 'total_supply', 'description', 'website', 'logo_url']
+     * @return array  ['total' => float, 'breakdown' => [...]]
+     */
+    public function calculateFee(array $options): array
+    {
+        $fees = config('blockchain.creation_fees', []);
+
+        // ดึง fee config จาก SiteSettings ก่อน (admin override) → fallback ไป config/blockchain.php
+        $baseFee = (float) SiteSetting::get('factory', 'base_fee', $fees['base_fee'] ?? 50);
+
+        $categoryFees = $fees['category_fees'] ?? [];
+        $typeFees = $fees['type_fees'] ?? [];
+        $optionFees = $fees['option_fees'] ?? [];
+
+        // Override จาก SiteSettings (ถ้า admin ตั้งค่าไว้)
+        $feeOverride = SiteSetting::get('factory', 'fee_override_json', '');
+        if (! empty($feeOverride)) {
+            $override = json_decode($feeOverride, true);
+            if (is_array($override)) {
+                $baseFee = (float) ($override['base_fee'] ?? $baseFee);
+                $categoryFees = array_merge($categoryFees, $override['category_fees'] ?? []);
+                $typeFees = array_merge($typeFees, $override['type_fees'] ?? []);
+                $optionFees = array_merge($optionFees, $override['option_fees'] ?? []);
+            }
+        }
+
+        $breakdown = [];
+        $total = 0;
+
+        // 1. Base fee
+        $breakdown[] = ['label' => 'Base Fee', 'label_th' => 'ค่าพื้นฐาน', 'amount' => $baseFee];
+        $total += $baseFee;
+
+        // 2. Category fee
+        $category = $options['token_category'] ?? 'fungible';
+        $catFee = (float) ($categoryFees[$category] ?? 0);
+        if ($catFee > 0) {
+            $catLabels = ['nft' => 'NFT Category', 'special' => 'Special Category'];
+            $catLabelsTh = ['nft' => 'ประเภท NFT', 'special' => 'ประเภทพิเศษ'];
+            $breakdown[] = [
+                'label' => $catLabels[$category] ?? ucfirst($category),
+                'label_th' => $catLabelsTh[$category] ?? ucfirst($category),
+                'amount' => $catFee,
+            ];
+            $total += $catFee;
+        }
+
+        // 3. Type fee
+        $tokenType = $options['token_type'] ?? 'standard';
+        $typFee = (float) ($typeFees[$tokenType] ?? 0);
+        if ($typFee > 0) {
+            $typeLabels = [
+                'mintable' => 'Mint Function',
+                'burnable' => 'Burn Function',
+                'mintable_burnable' => 'Mint + Burn Functions',
+                'utility' => 'Utility Features',
+                'reward' => 'Reward Features',
+                'nft_collection' => 'Collection Features',
+                'governance' => 'Governance Mechanism',
+                'stablecoin' => 'Stablecoin Mechanism',
+            ];
+            $typeLabelsTh = [
+                'mintable' => 'ฟังก์ชัน Mint',
+                'burnable' => 'ฟังก์ชัน Burn',
+                'mintable_burnable' => 'ฟังก์ชัน Mint + Burn',
+                'utility' => 'ฟีเจอร์ Utility',
+                'reward' => 'ฟีเจอร์ Reward',
+                'nft_collection' => 'ฟีเจอร์ Collection',
+                'governance' => 'ระบบ Governance',
+                'stablecoin' => 'ระบบ Stablecoin',
+            ];
+            $breakdown[] = [
+                'label' => $typeLabels[$tokenType] ?? ucfirst($tokenType),
+                'label_th' => $typeLabelsTh[$tokenType] ?? ucfirst($tokenType),
+                'amount' => $typFee,
+            ];
+            $total += $typFee;
+        }
+
+        // 4. Option fees
+        $decimals = (int) ($options['decimals'] ?? 18);
+        if ($decimals !== 18 && $decimals !== 0) {
+            $decFee = (float) ($optionFees['custom_decimals'] ?? 5);
+            if ($decFee > 0) {
+                $breakdown[] = ['label' => "Custom Decimals ({$decimals})", 'label_th' => "Decimals พิเศษ ({$decimals})", 'amount' => $decFee];
+                $total += $decFee;
+            }
+        }
+
+        // Supply size fee
+        $supply = (float) ($options['total_supply'] ?? 0);
+        $veryLargeThreshold = $fees['very_large_supply_threshold'] ?? 100000000000;
+        $largeThreshold = $fees['large_supply_threshold'] ?? 1000000000;
+
+        if ($supply > $veryLargeThreshold) {
+            $supFee = (float) ($optionFees['very_large_supply'] ?? 25);
+            if ($supFee > 0) {
+                $breakdown[] = ['label' => 'Very Large Supply (>100B)', 'label_th' => 'Supply ขนาดใหญ่มาก (>100B)', 'amount' => $supFee];
+                $total += $supFee;
+            }
+        } elseif ($supply > $largeThreshold) {
+            $supFee = (float) ($optionFees['large_supply'] ?? 10);
+            if ($supFee > 0) {
+                $breakdown[] = ['label' => 'Large Supply (>1B)', 'label_th' => 'Supply ขนาดใหญ่ (>1B)', 'amount' => $supFee];
+                $total += $supFee;
+            }
+        }
+
+        // เช็คว่า fee method เป็น free หรือเปล่า
+        $feeMethod = SiteSetting::get('factory', 'fee_payment_method', 'tpix');
+        if ($feeMethod === 'free') {
+            return [
+                'total' => 0,
+                'currency' => 'FREE',
+                'breakdown' => [],
+                'is_free' => true,
+            ];
+        }
+
+        return [
+            'total' => round($total, 2),
+            'currency' => 'TPIX',
+            'breakdown' => $breakdown,
+            'is_free' => false,
+        ];
+    }
+
+    /**
+     * Get factory configuration for frontend (รวม dynamic fee config)
      */
     public function getFactoryConfig(): array
     {
+        $fees = config('blockchain.creation_fees', []);
+
         return [
-            'creation_fee_tpix' => (float) SiteSetting::get('factory', 'creation_fee_tpix', 100),
-            'creation_fee_usd' => (float) SiteSetting::get('factory', 'creation_fee_usd', 10),
             'fee_payment_method' => SiteSetting::get('factory', 'fee_payment_method', 'tpix'),
             'fee_wallet' => SiteSetting::get('factory', 'fee_wallet', ''),
             'nft_enabled' => filter_var(SiteSetting::get('factory', 'nft_enabled', true), FILTER_VALIDATE_BOOLEAN),
             'max_supply_limit' => (float) SiteSetting::get('factory', 'max_supply_limit', 999999999999999),
             'auto_approve' => filter_var(SiteSetting::get('factory', 'auto_approve', false), FILTER_VALIDATE_BOOLEAN),
             'creation_enabled' => filter_var(SiteSetting::get('factory', 'creation_enabled', true), FILTER_VALIDATE_BOOLEAN),
+
+            // Dynamic fee config — ส่งให้ frontend คำนวณได้ real-time
+            'dynamic_fees' => [
+                'base_fee' => (float) SiteSetting::get('factory', 'base_fee', $fees['base_fee'] ?? 50),
+                'category_fees' => $fees['category_fees'] ?? ['fungible' => 0, 'nft' => 30, 'special' => 50],
+                'type_fees' => $fees['type_fees'] ?? [],
+                'option_fees' => $fees['option_fees'] ?? [],
+                'large_supply_threshold' => $fees['large_supply_threshold'] ?? 1000000000,
+                'very_large_supply_threshold' => $fees['very_large_supply_threshold'] ?? 100000000000,
+            ],
+
+            // Legacy (backward compat) — ค่า fee ของ standard token
+            'creation_fee_tpix' => (float) SiteSetting::get('factory', 'base_fee', $fees['base_fee'] ?? 50),
+            'creation_fee_usd' => (float) SiteSetting::get('factory', 'creation_fee_usd', 10),
         ];
     }
 }
