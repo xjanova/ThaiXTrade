@@ -28,6 +28,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Phase 2: Factory V2 Contracts
+    |--------------------------------------------------------------------------
+    |
+    | V2 factory สำหรับ token ทุกประเภท (ERC-20 + NFT)
+    | ถ้าไม่ตั้ง V2 address → fallback ใช้ V1 สำหรับ basic ERC-20 types
+    |
+    */
+
+    'factory_v2_address' => env('TOKEN_FACTORY_V2_ADDRESS'),
+    'nft_factory_address' => env('NFT_FACTORY_ADDRESS'),
+
+    /*
+    |--------------------------------------------------------------------------
     | TPIX Chain RPC
     |--------------------------------------------------------------------------
     */
@@ -62,6 +75,12 @@ return [
         'mintable' => 1,
         'burnable' => 2,
         'mintable_burnable' => 3,
+        'utility' => 10,
+        'reward' => 11,
+        'nft' => 20,
+        'nft_collection' => 21,
+        'governance' => 30,
+        'stablecoin' => 31,
     ],
 
     /*

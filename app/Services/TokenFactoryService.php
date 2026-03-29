@@ -109,13 +109,20 @@ class TokenFactoryService
             'fee' => $feeAmount,
         ]);
 
-        // Auto-approve ถ้าเปิดไว้ (เฉพาะ fungible ที่ไม่ใช่ special types)
+        // Auto-approve ถ้าเปิดไว้
+        // Phase 2: fungible tokens (basic + utility + reward) สามารถ auto-approve ได้
+        // governance + stablecoin + NFT ต้องผ่าน admin review เสมอ
         $autoApprove = filter_var(
             SiteSetting::get('factory', 'auto_approve', false),
             FILTER_VALIDATE_BOOLEAN
         );
 
-        if ($autoApprove && $category === 'fungible' && in_array($tokenType, ['standard', 'mintable', 'burnable', 'mintable_burnable'])) {
+        $autoApprovableTypes = [
+            'standard', 'mintable', 'burnable', 'mintable_burnable',
+            'utility', 'reward',
+        ];
+
+        if ($autoApprove && $category === 'fungible' && in_array($tokenType, $autoApprovableTypes)) {
             $this->approveToken($token);
             Log::info("Token {$token->symbol} auto-approved", ['token_id' => $token->id]);
         }

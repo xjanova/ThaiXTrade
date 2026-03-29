@@ -9,8 +9,10 @@ use Illuminate\Support\Facades\Log;
 /**
  * BlockscoutVerifyService.
  *
- * Auto-verify deployed ERC-20 contracts บน Blockscout Explorer
- * ใช้ Blockscout API v2 สำหรับ standard-input verification.
+ * Auto-verify deployed contracts บน Blockscout Explorer
+ * Phase 2: รองรับ contract ทุกประเภท (ERC-20, NFT, Governance, etc.)
+ *
+ * ใช้ Blockscout API v2 สำหรับ flattened-code verification.
  *
  * Developed by Xman Studio
  */
@@ -27,10 +29,73 @@ class BlockscoutVerifyService
     }
 
     /**
-     * Verify factory-deployed ERC-20 token บน Blockscout.
-     *
-     * ใช้ flattened source verification เพราะ contract ถูก deploy ผ่าน factory
-     * (CREATE2) ไม่สามารถใช้ standard input ได้ตรงๆ
+     * Phase 2: Contract type → info mapping
+     * แต่ละ type ใช้ contract name + flattened file ต่างกัน
+     */
+    private function getContractInfo(string $tokenType): array
+    {
+        return match ($tokenType) {
+            'standard', 'mintable', 'burnable', 'mintable_burnable' => [
+                'name' => $this->hasV2Contract() ? 'FactoryERC20V2' : 'FactoryERC20',
+                'flat' => $this->hasV2Contract() ? 'FactoryERC20V2.flat.sol' : 'FactoryERC20.flat.sol',
+                'compiler' => $this->hasV2Contract() ? 'v0.8.24+commit.e11b9ed9' : 'v0.8.20+commit.a1b79de6',
+                'evm' => $this->hasV2Contract() ? 'cancun' : 'paris',
+            ],
+            'utility' => [
+                'name' => 'UtilityToken',
+                'flat' => 'UtilityToken.flat.sol',
+                'compiler' => 'v0.8.24+commit.e11b9ed9',
+                'evm' => 'cancun',
+            ],
+            'reward' => [
+                'name' => 'RewardToken',
+                'flat' => 'RewardToken.flat.sol',
+                'compiler' => 'v0.8.24+commit.e11b9ed9',
+                'evm' => 'cancun',
+            ],
+            'governance' => [
+                'name' => 'GovernanceToken',
+                'flat' => 'GovernanceToken.flat.sol',
+                'compiler' => 'v0.8.24+commit.e11b9ed9',
+                'evm' => 'cancun',
+            ],
+            'stablecoin' => [
+                'name' => 'StablecoinToken',
+                'flat' => 'StablecoinToken.flat.sol',
+                'compiler' => 'v0.8.24+commit.e11b9ed9',
+                'evm' => 'cancun',
+            ],
+            'nft' => [
+                'name' => 'FactoryERC721',
+                'flat' => 'FactoryERC721.flat.sol',
+                'compiler' => 'v0.8.24+commit.e11b9ed9',
+                'evm' => 'cancun',
+            ],
+            'nft_collection' => [
+                'name' => 'NFTCollection',
+                'flat' => 'NFTCollection.flat.sol',
+                'compiler' => 'v0.8.24+commit.e11b9ed9',
+                'evm' => 'cancun',
+            ],
+            default => [
+                'name' => 'FactoryERC20',
+                'flat' => 'FactoryERC20.flat.sol',
+                'compiler' => 'v0.8.20+commit.a1b79de6',
+                'evm' => 'paris',
+            ],
+        };
+    }
+
+    /**
+     * Check ว่ามี V2 contract deploy แล้วหรือยัง
+     */
+    private function hasV2Contract(): bool
+    {
+        return ! empty(config('blockchain.factory_v2_address'));
+    }
+
+    /**
+     * Verify factory-deployed token/NFT บน Blockscout.
      *
      * @return array ['success' => bool, 'error' => ?string]
      */
@@ -40,15 +105,15 @@ class BlockscoutVerifyService
             return ['success' => false, 'error' => 'Verification disabled'];
         }
 
-        // รอให้ Blockscout index contract ก่อน (อาจใช้เวลา)
+        // รอให้ Blockscout index contract ก่อน
         sleep(5);
 
-        // ลอง verify ด้วย Blockscout API v2
         try {
             return $this->verifyViaApiV2($contractAddress, $token);
         } catch (\Throwable $e) {
             Log::error('BlockscoutVerifyService: verification exception', [
                 'contract' => $contractAddress,
+                'token_type' => $token->token_type,
                 'error' => $e->getMessage(),
             ]);
 
@@ -58,46 +123,35 @@ class BlockscoutVerifyService
 
     /**
      * Verify contract ผ่าน Blockscout API v2
-     * POST /api/v2/smart-contracts/{address_hash}/verification/via/flattened-code
      */
     private function verifyViaApiV2(string $contractAddress, FactoryToken $token): array
     {
         $url = "{$this->apiUrl}/v2/smart-contracts/{$contractAddress}/verification/via/flattened-code";
 
-        // สร้าง flattened source code สำหรับ FactoryERC20
-        $sourceCode = $this->generateFlattenedSource($token);
+        // Phase 2: ดึง contract info ตาม token_type
+        $contractInfo = $this->getContractInfo($token->token_type);
+        $sourceCode = $this->loadFlattenedSource($contractInfo['flat']);
 
-        // Map token type → constructor args
-        $tokenType = config('blockchain.token_types.'.$token->token_type, 0);
-        $mintable = in_array($tokenType, [1, 3]);
-        $burnable = in_array($tokenType, [2, 3]);
-
-        // Encode constructor arguments (ABI-encoded)
-        $constructorArgs = $this->encodeConstructorArgs(
-            $token->name,
-            $token->symbol,
-            $token->decimals,
-            $token->total_supply,
-            $token->creator_address,
-            $mintable,
-            $burnable
-        );
+        if (empty($sourceCode)) {
+            return ['success' => false, 'error' => "Flattened source not found: {$contractInfo['flat']}"];
+        }
 
         $payload = [
-            'compiler_version' => 'v0.8.20+commit.a1b79de6',
+            'compiler_version' => $contractInfo['compiler'],
             'source_code' => $sourceCode,
             'is_optimization_enabled' => true,
             'optimization_runs' => 200,
-            'contract_name' => 'FactoryERC20',
-            'evm_version' => 'paris',
+            'contract_name' => $contractInfo['name'],
+            'evm_version' => $contractInfo['evm'],
             'autodetect_constructor_args' => true,
-            'constructor_args' => $constructorArgs,
+            'constructor_args' => '',
         ];
 
         Log::info('BlockscoutVerifyService: submitting verification', [
             'url' => $url,
             'contract' => $contractAddress,
-            'contract_name' => 'FactoryERC20',
+            'contract_name' => $contractInfo['name'],
+            'token_type' => $token->token_type,
         ]);
 
         $response = Http::timeout(60)
@@ -106,12 +160,10 @@ class BlockscoutVerifyService
         if ($response->successful()) {
             $data = $response->json();
 
-            // Blockscout returns the smart contract data on success
             if (isset($data['is_verified']) && $data['is_verified']) {
                 return ['success' => true];
             }
 
-            // อาจยัง pending verification
             if (isset($data['message'])) {
                 Log::info('BlockscoutVerifyService: response', ['message' => $data['message']]);
 
@@ -128,73 +180,36 @@ class BlockscoutVerifyService
             'status' => $response->status(),
             'error' => $errorMsg,
             'contract' => $contractAddress,
+            'contract_name' => $contractInfo['name'],
         ]);
 
         return ['success' => false, 'error' => "HTTP {$response->status()}: {$errorMsg}"];
     }
 
     /**
-     * สร้าง flattened source code ของ FactoryERC20 contract.
-     *
-     * รวม OpenZeppelin imports ทั้งหมดเป็นไฟล์เดียว
-     * เพื่อให้ Blockscout สามารถ verify ได้
+     * Load flattened source code ของ contract.
+     * Phase 2: รองรับหลาย contract types
      */
-    private function generateFlattenedSource(FactoryToken $token): string
+    private function loadFlattenedSource(string $filename): string
     {
-        // อ่าน flattened file ที่ pre-generate ไว้ (จาก hardhat flatten)
-        $flattenedPath = base_path('contracts/factory/FactoryERC20.flat.sol');
+        // Flat files อยู่ใน build/flat/ (ย้ายออกจาก contracts/ เพื่อไม่กวน compilation)
+        $flattenedPath = base_path("build/flat/{$filename}");
 
         if (file_exists($flattenedPath)) {
             return file_get_contents($flattenedPath);
         }
 
-        // Fallback: ส่ง source ตรง (ต้องมี OZ imports resolved)
-        // ในกรณีนี้ Blockscout จะลอง resolve imports เอง
-        $sourcePath = base_path('contracts/factory/FactoryERC20.sol');
-        if (file_exists($sourcePath)) {
-            return file_get_contents($sourcePath);
+        // Fallback: ลองหาใน contracts/factory/
+        $buildPath = base_path("contracts/factory/{$filename}");
+        if (file_exists($buildPath)) {
+            return file_get_contents($buildPath);
         }
 
-        throw new \RuntimeException('FactoryERC20 source code not found for verification');
-    }
+        Log::warning("BlockscoutVerifyService: flattened source not found", [
+            'file' => $filename,
+            'tried' => [$flattenedPath, $buildPath],
+        ]);
 
-    /**
-     * ABI-encode constructor arguments ของ FactoryERC20.
-     *
-     * constructor(string name_, string symbol_, uint8 decimals_,
-     *             uint256 totalSupply_, address owner_, bool mintable_, bool burnable_)
-     */
-    private function encodeConstructorArgs(
-        string $name,
-        string $symbol,
-        int $decimals,
-        string $totalSupply,
-        string $ownerAddress,
-        bool $mintable,
-        bool $burnable
-    ): string {
-        // Convert total supply to wei
-        $totalSupplyWei = $this->toWei($totalSupply, $decimals);
-
-        // ABI encoding ใช้ ethers.js approach — ส่ง hex string
-        // Blockscout จะ auto-detect ถ้าตั้ง autodetect_constructor_args = true
-        // ส่ง raw hex เพื่อ manual matching ถ้า auto-detect ไม่ทำงาน
-
-        // สำหรับ dynamic types (string) ต้อง encode complex ABI
-        // ให้ Blockscout auto-detect แทน → return empty
         return '';
-    }
-
-    /**
-     * Convert human-readable amount to wei.
-     */
-    private function toWei(string $amount, int $decimals): string
-    {
-        $parts = explode('.', $amount);
-        $integer = $parts[0];
-        $fraction = $parts[1] ?? '';
-        $fraction = str_pad(substr($fraction, 0, $decimals), $decimals, '0');
-
-        return ltrim($integer.$fraction, '0') ?: '0';
     }
 }

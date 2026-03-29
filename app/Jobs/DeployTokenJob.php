@@ -38,6 +38,9 @@ class DeployTokenJob implements ShouldQueue
             'token_id' => $this->token->id,
         ]);
 
+        // Phase 2: ส่ง sub_options + token_category ให้ Web3DeploymentService
+        $metadata = $this->token->metadata ?? [];
+
         $result = $deploymentService->deployToken([
             'name' => $this->token->name,
             'symbol' => $this->token->symbol,
@@ -45,6 +48,9 @@ class DeployTokenJob implements ShouldQueue
             'total_supply' => $this->token->total_supply,
             'creator_address' => $this->token->creator_address,
             'token_type' => $this->token->token_type,
+            'token_category' => $this->token->token_category,
+            'sub_options' => $metadata['sub_options'] ?? [],
+            'logo_url' => $this->token->logo_url,
         ]);
 
         if ($result['success']) {

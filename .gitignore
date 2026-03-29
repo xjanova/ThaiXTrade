@@ -2,6 +2,11 @@
 /node_modules
 /vendor
 
+# Hardhat (Solidity compilation)
+/artifacts
+/cache
+/build/flat
+
 # Laravel specific
 /bootstrap/cache/*
 !/bootstrap/cache/.gitkeep
