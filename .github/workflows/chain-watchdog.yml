@@ -47,7 +47,7 @@ jobs:
             if [ "$CONTAINER_STATUS" != "running" ]; then
                 echo "ERROR: Container not running! Starting..."
                 cd "$INFRA"
-                docker compose up -d tpix-chain-node
+                docker compose up -d tpix-node
                 sleep 15
                 CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' tpix-chain-node 2>/dev/null || echo "not_found")
                 echo "Container after start: $CONTAINER_STATUS"
@@ -67,7 +67,7 @@ jobs:
 
                 echo "Restarting chain node..."
                 cd "$INFRA"
-                docker compose restart tpix-chain-node
+                docker compose restart tpix-node
                 sleep 15
 
                 BLOCK1=$(get_block)
@@ -115,7 +115,7 @@ jobs:
                 echo "$((RESTART_COUNT + 1))" > "$RESTART_FILE"
 
                 cd "$INFRA"
-                docker compose restart tpix-chain-node
+                docker compose restart tpix-node
                 sleep 15
 
                 BLOCK3=$(get_block)

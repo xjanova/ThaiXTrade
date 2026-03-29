@@ -508,7 +508,7 @@ get_block() {
 STATUS=\$(docker inspect -f '{{.State.Status}}' tpix-chain-node 2>/dev/null || echo "dead")
 if [ "\$STATUS" != "running" ]; then
     log "ERROR: Container not running (\$STATUS) — starting..."
-    cd "\$INFRA" && docker compose up -d tpix-chain-node
+    cd "\$INFRA" && docker compose up -d tpix-node
     sleep 15
     log "Container restarted"
     exit 0
@@ -518,7 +518,7 @@ fi
 B1=\$(get_block)
 if [ -z "\$B1" ]; then
     log "ERROR: RPC not responding — restarting..."
-    cd "\$INFRA" && docker compose restart tpix-chain-node
+    cd "\$INFRA" && docker compose restart tpix-node
     sleep 15
     docker compose restart blockscout-backend 2>/dev/null || true
     log "Restarted (RPC dead)"
@@ -543,7 +543,7 @@ if [ "\$B1" = "\$B2" ]; then
     echo "\$((COUNT + 1))" > "\$RESTART_FILE"
 
     log "ERROR: Chain stuck at \$B1 — restarting (attempt \$((COUNT+1))/3)..."
-    cd "\$INFRA" && docker compose restart tpix-chain-node
+    cd "\$INFRA" && docker compose restart tpix-node
     sleep 15
     docker compose restart blockscout-backend 2>/dev/null || true
     B3=\$(get_block)

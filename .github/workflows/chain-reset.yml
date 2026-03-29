@@ -1,0 +1,175 @@
+name: Reset TPIX Chain (Emergency)
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type RESET to confirm chain data wipe'
+        required: true
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm == 'RESET' }}
+    steps:
+      - name: Reset TPIX Chain Data & Restart
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 10m
+          script: |
+            echo "=== TPIX Chain Reset — $(date) ==="
+            INFRA="$HOME/tpix-infrastructure"
+            CHAIN="$INFRA/tpix-chain"
+            IMG="0xpolygon/polygon-edge:0.9.0"
+
+            # === Step 1: Stop all containers ===
+            echo "[1] Stopping all containers..."
+            cd "$INFRA"
+            docker compose down 2>/dev/null || true
+            echo "All containers stopped"
+
+            # === Step 2: Backup old data (just in case) ===
+            echo "[2] Backing up old chain data..."
+            BACKUP_DIR="$HOME/tpix-chain-backup-$(date +%Y%m%d-%H%M%S)"
+            if [ -d "$CHAIN/data" ]; then
+                cp -r "$CHAIN/data" "$BACKUP_DIR" 2>/dev/null || true
+                echo "Backed up to $BACKUP_DIR"
+            fi
+
+            # === Step 3: Wipe chain data but keep keys ===
+            echo "[3] Wiping chain data (keeping validator keys)..."
+            # เก็บ validator key ไว้! ลบเฉพาะ blockchain data
+            if [ -f "$CHAIN/data/consensus/validator.key" ]; then
+                VALIDATOR_KEY_BACKUP="/tmp/validator-key-backup"
+                mkdir -p "$VALIDATOR_KEY_BACKUP"
+                cp -r "$CHAIN/data/consensus" "$VALIDATOR_KEY_BACKUP/" 2>/dev/null || true
+                cp -r "$CHAIN/data/libp2p" "$VALIDATOR_KEY_BACKUP/" 2>/dev/null || true
+                echo "Validator keys backed up"
+            fi
+
+            # ลบ data ทั้งหมด
+            rm -rf "$CHAIN/data"
+            mkdir -p "$CHAIN/data"
+
+            # คืน validator keys
+            if [ -d "$VALIDATOR_KEY_BACKUP/consensus" ]; then
+                cp -r "$VALIDATOR_KEY_BACKUP/consensus" "$CHAIN/data/"
+                cp -r "$VALIDATOR_KEY_BACKUP/libp2p" "$CHAIN/data/" 2>/dev/null || true
+                rm -rf "$VALIDATOR_KEY_BACKUP"
+                echo "Validator keys restored"
+            else
+                echo "No keys to restore, generating new..."
+                docker run --rm -v "$CHAIN/data:/data" $IMG secrets init --data-dir /data --insecure
+            fi
+
+            # === Step 4: Get validator info ===
+            echo "[4] Getting validator info..."
+            SECRETS_OUT=$(docker run --rm -v "$CHAIN/data:/data" $IMG secrets output --data-dir /data 2>&1)
+            echo "$SECRETS_OUT"
+
+            NODE_ID=$(echo "$SECRETS_OUT" | grep "Node ID" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+            VALIDATOR_ADDR=$(echo "$SECRETS_OUT" | grep "Public key (address)" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+            BLS_KEY=$(echo "$SECRETS_OUT" | grep "BLS Public key" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+
+            echo "Node ID: $NODE_ID"
+            echo "Validator: $VALIDATOR_ADDR"
+            echo "BLS Key: $BLS_KEY"
+
+            if [ -z "$VALIDATOR_ADDR" ]; then
+                echo "ERROR: Cannot get validator address!"
+                exit 1
+            fi
+
+            # === Step 5: Regenerate genesis ===
+            echo "[5] Generating fresh genesis.json..."
+            rm -f "$CHAIN/genesis.json"
+
+            BOOTNODE_FLAG=""
+            if [ -n "$NODE_ID" ]; then
+                BOOTNODE_FLAG="--bootnode /ip4/127.0.0.1/tcp/10001/p2p/$NODE_ID"
+            fi
+
+            if [ -n "$BLS_KEY" ]; then
+                VALIDATOR_STR="${VALIDATOR_ADDR}:${BLS_KEY}"
+            else
+                VALIDATOR_STR="${VALIDATOR_ADDR}"
+            fi
+
+            docker run --rm -v "$CHAIN:/chain" $IMG genesis \
+                --consensus ibft \
+                --ibft-validator "$VALIDATOR_STR" \
+                $BOOTNODE_FLAG \
+                --chain-id 4289 \
+                --block-gas-limit 20000000 \
+                --epoch-size 100000 \
+                --premine "${VALIDATOR_ADDR}:7000000000000000000000000000" \
+                --dir /chain/genesis.json
+
+            echo "Genesis created! Validator $VALIDATOR_ADDR premined with 7B TPIX"
+
+            # === Step 6: Wipe Blockscout DB (must re-index from block 0) ===
+            echo "[6] Wiping Blockscout database..."
+            docker volume rm $(docker volume ls -q | grep blockscout-db) 2>/dev/null || true
+            echo "Blockscout DB wiped"
+
+            # === Step 7: Start everything ===
+            echo "[7] Starting all services..."
+            docker compose up -d tpix-node blockscout-db
+            echo "Waiting 20s for chain + db..."
+            sleep 20
+
+            docker compose up -d blockscout-backend
+            echo "Waiting 15s for backend..."
+            sleep 15
+
+            docker compose up -d blockscout-frontend
+
+            # === Step 8: Verify chain ===
+            echo "[8] Verifying chain..."
+            for i in 1 2 3 4 5 6; do
+                BLOCK=$(curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" \
+                    -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null \
+                    | grep -o '"result":"[^"]*"' | cut -d'"' -f4)
+                echo "Check $i: block $BLOCK"
+                if [ "$BLOCK" != "0x0" ] && [ -n "$BLOCK" ]; then
+                    echo "✅ Chain is producing blocks!"
+                    break
+                fi
+                sleep 5
+            done
+
+            # Verify block progression
+            sleep 4
+            BLOCK2=$(curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" \
+                -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null \
+                | grep -o '"result":"[^"]*"' | cut -d'"' -f4)
+            echo "Block progressed to: $BLOCK2"
+
+            if [ "$BLOCK" = "$BLOCK2" ] || [ -z "$BLOCK2" ]; then
+                echo "⚠️ WARNING: Blocks may not be progressing"
+            else
+                echo "✅ Blocks are progressing: $BLOCK → $BLOCK2"
+            fi
+
+            # Balance check
+            BAL=$(curl -s http://127.0.0.1:8545 -X POST -H "Content-Type: application/json" \
+                -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"${VALIDATOR_ADDR}\",\"latest\"],\"id\":1}" 2>/dev/null)
+            echo "Validator balance: $BAL"
+
+            # Container status
+            echo ""
+            echo "=== Container Status ==="
+            docker ps --format "table {{.Names}}\t{{.Status}}"
+
+            # Reset watchdog counter
+            rm -f /tmp/tpix-restart-count /tmp/tpix-watchdog-restart-count
+            echo "Watchdog counters reset"
+
+            echo ""
+            echo "Validator: $VALIDATOR_ADDR"
+            echo "Explorer: https://explorer.tpix.online"
+            echo "RPC: https://rpc.tpix.online"
+            echo "=== RESET COMPLETE ==="

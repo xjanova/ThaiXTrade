@@ -144,7 +144,7 @@ restart_chain() {
 
     # Restart เฉพาะ chain node (ไม่กระทบ Blockscout)
     log "Stopping tpix-chain-node..."
-    docker compose restart tpix-chain-node 2>&1
+    docker compose restart tpix-node 2>&1
 
     # รอให้ node เริ่ม seal
     log "Waiting 15s for node to start sealing..."
