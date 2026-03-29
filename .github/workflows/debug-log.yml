@@ -1,0 +1,46 @@
+name: Debug Server Log
+on:
+  workflow_dispatch:
+
+jobs:
+  check-log:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read Laravel error log
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 2m
+          script: |
+            cd ~/domains/tpix.online
+
+            echo "=== Last 100 lines of Laravel log ==="
+            tail -100 storage/logs/laravel.log 2>/dev/null || echo "No log file"
+
+            echo ""
+            echo "=== Test whitepaper PDF render ==="
+            php artisan tinker --execute="
+              try {
+                  \$pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('whitepaper.pdf', ['lang' => 'en'])
+                      ->setPaper('a4')
+                      ->setOption('isRemoteEnabled', true)
+                      ->setOption('defaultFont', 'sans-serif')
+                      ->setOption('isFontSubsettingEnabled', true);
+                  \$pdf->render();
+                  echo 'PDF OK, size: ' . strlen(\$pdf->output()) . ' bytes';
+              } catch (\Throwable \$e) {
+                  echo 'ERROR: ' . \$e->getMessage() . PHP_EOL;
+                  echo 'File: ' . \$e->getFile() . ':' . \$e->getLine();
+              }
+            " 2>&1
+
+            echo ""
+            echo "=== Check storage/fonts dir ==="
+            ls -la storage/fonts/ 2>/dev/null || echo "No fonts dir"
+
+            echo ""
+            echo "=== Check views cache ==="
+            php artisan view:clear 2>&1
