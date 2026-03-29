@@ -840,6 +840,12 @@ fix_permissions() {
     # สร้าง storage/fonts/ สำหรับ DomPDF (Whitepaper PDF)
     mkdir -p storage/fonts
 
+    # ติดตั้ง Thai font (Sarabun) สำหรับ Whitepaper PDF ถ้ายังไม่มี
+    if [ ! -f storage/fonts/Sarabun-Regular.ttf ]; then
+        echo "  Installing Thai font (Sarabun) for PDF rendering..."
+        php artisan tpix:install-thai-font 2>&1 || echo "  Warning: Thai font installation failed (non-critical)"
+    fi
+
     chmod -R 775 storage bootstrap/cache 2>&1
     chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
 

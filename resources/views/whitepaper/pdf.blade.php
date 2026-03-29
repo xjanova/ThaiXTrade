@@ -8,7 +8,6 @@
      */
     $isEn = ($lang ?? 'en') === 'en';
     $fontDir = storage_path('fonts');
-    $hasThaiFonts = file_exists($fontDir . '/Sarabun-Regular.ttf');
 @endphp
 <!DOCTYPE html>
 <html lang="{{ $isEn ? 'en' : 'th' }}">
@@ -18,7 +17,7 @@
     <title>{{ $isEn ? 'TPIX Chain Whitepaper v2.0' : 'TPIX Chain ไวท์เปเปอร์ v2.0' }}</title>
     <style>
         /* === Thai Font (Sarabun) — ต้อง install ด้วย php artisan tpix:install-thai-font === */
-        @if($hasThaiFonts)
+        /* ใส่ @font-face เสมอ — ถ้าไฟล์ไม่มี DomPDF จะ fallback เป็น sans-serif เอง */
         @font-face {
             font-family: 'Sarabun';
             font-style: normal;
@@ -31,7 +30,6 @@
             font-weight: 700;
             src: url('{{ $fontDir }}/Sarabun-Bold.ttf') format('truetype');
         }
-        @endif
 
         /* === Page Setup === */
         @page {
@@ -41,7 +39,7 @@
 
         /* === Base Typography === */
         body {
-            font-family: {{ $hasThaiFonts && !$isEn ? "'Sarabun'," : '' }} 'Helvetica', 'Arial', sans-serif;
+            font-family: 'Sarabun', 'Helvetica', 'Arial', sans-serif;
             color: #1e293b;
             font-size: {{ $isEn ? '10.5pt' : '11pt' }};
             line-height: {{ $isEn ? '1.65' : '1.7' }};
@@ -50,13 +48,15 @@
             padding: 0;
         }
 
-        /* === Page Break Management — ป้องกันเนื้อหาขาดข้ามหน้า === */
+        /* === Page Break Management — DomPDF-friendly rules === */
         .page-break { page-break-before: always; }
         .no-break { page-break-inside: avoid; }
         h1, h2, h3 { page-break-after: avoid; }
         p { orphans: 3; widows: 3; }
-        table { page-break-inside: avoid; }
-        .highlight, .highlight-warn, .highlight-info { page-break-inside: avoid; }
+        /* ห้ามใส่ page-break-inside: avoid บน table — DomPDF จะดัน table ทั้งก้อนไปหน้าใหม่ */
+        /* ใช้ thead repeating แทน เพื่อให้ header ซ้ำทุกหน้า */
+        thead { display: table-header-group; }
+        tr { page-break-inside: avoid; }
 
         /* === Cover Page === */
         .cover {
@@ -165,7 +165,6 @@
             padding: 12px 16px;
             margin: 14px 0;
             border-radius: 0 6px 6px 0;
-            page-break-inside: avoid;
         }
         .highlight strong { color: #0891b2; }
 
@@ -175,7 +174,6 @@
             padding: 12px 16px;
             margin: 14px 0;
             border-radius: 0 6px 6px 0;
-            page-break-inside: avoid;
         }
         .highlight-warn strong { color: #d97706; }
 
@@ -185,7 +183,6 @@
             padding: 12px 16px;
             margin: 14px 0;
             border-radius: 0 6px 6px 0;
-            page-break-inside: avoid;
         }
         .highlight-info strong { color: #2563eb; }
 
@@ -193,7 +190,6 @@
         .stats-grid {
             text-align: center;
             margin: 20px 0;
-            page-break-inside: avoid;
         }
         .stats-grid table {
             margin: 0 auto;
@@ -261,8 +257,8 @@
         .page-footer .left { float: left; }
         .page-footer .right { float: right; }
 
-        /* === Section wrapper (avoid break within small blocks) === */
-        .block { page-break-inside: avoid; margin-bottom: 16px; }
+        /* === Section wrapper — ห้ามใช้ page-break-inside: avoid กับ block ใหญ่ === */
+        .block { margin-bottom: 16px; }
     </style>
 </head>
 <body>

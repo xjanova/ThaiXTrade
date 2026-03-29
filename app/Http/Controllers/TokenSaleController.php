@@ -77,15 +77,12 @@ class TokenSaleController extends Controller
         }
 
         // ลำดับที่ 2: generate PDF ด้วย DomPDF จาก Blade template
-        $defaultFont = 'sans-serif';
-        if ($lang === 'th' && file_exists(storage_path('fonts/Sarabun-Regular.ttf'))) {
-            $defaultFont = 'sarabun';
-        }
-
+        // ใช้ Sarabun เป็น default font เสมอ (รองรับทั้ง Thai + English)
+        // ถ้าไม่มีไฟล์ฟอนต์ DomPDF จะ fallback เป็น sans-serif อัตโนมัติ
         $pdf = Pdf::loadView('whitepaper.pdf', ['lang' => $lang])
             ->setPaper('a4')
             ->setOption('isRemoteEnabled', true)
-            ->setOption('defaultFont', $defaultFont)
+            ->setOption('defaultFont', 'sarabun')
             ->setOption('isFontSubsettingEnabled', true);
 
         $filename = $lang === 'th'

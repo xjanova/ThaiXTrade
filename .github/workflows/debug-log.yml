@@ -6,20 +6,29 @@ jobs:
   check-log:
     runs-on: ubuntu-latest
     steps:
-      - name: Read Laravel error log & fix issues
+      - name: Install Thai font & debug PDF
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: 3m
+          command_timeout: 5m
           script: |
             cd ~/domains/tpix.online
 
             echo "=== Create storage/fonts if missing ==="
             mkdir -p storage/fonts
             chmod 775 storage/fonts
+
+            echo ""
+            echo "=== Install Thai Font (Sarabun) ==="
+            if [ ! -f storage/fonts/Sarabun-Regular.ttf ]; then
+                php artisan tpix:install-thai-font 2>&1
+            else
+                echo "Thai font already installed"
+                ls -la storage/fonts/
+            fi
 
             echo ""
             echo "=== Clear caches ==="
@@ -34,10 +43,12 @@ jobs:
               echo 'font_dir: ' . config('dompdf.options.font_dir', 'NOT SET') . PHP_EOL;
               echo 'public_html exists: ' . (is_dir(base_path('public_html')) ? 'YES' : 'NO') . PHP_EOL;
               echo 'storage/fonts exists: ' . (is_dir(storage_path('fonts')) ? 'YES' : 'NO') . PHP_EOL;
+              echo 'Sarabun-Regular.ttf: ' . (file_exists(storage_path('fonts/Sarabun-Regular.ttf')) ? 'YES' : 'NO') . PHP_EOL;
+              echo 'Sarabun-Bold.ttf: ' . (file_exists(storage_path('fonts/Sarabun-Bold.ttf')) ? 'YES' : 'NO') . PHP_EOL;
             " 2>&1
 
             echo ""
-            echo "=== Test whitepaper PDF render ==="
+            echo "=== Test English PDF render ==="
             php artisan tinker --execute="
               try {
                   \$pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('whitepaper.pdf', ['lang' => 'en'])
@@ -46,18 +57,30 @@ jobs:
                       ->setOption('defaultFont', 'sans-serif')
                       ->setOption('isFontSubsettingEnabled', true);
                   \$pdf->render();
-                  echo 'PDF OK, size: ' . strlen(\$pdf->output()) . ' bytes';
+                  echo 'EN PDF OK, size: ' . strlen(\$pdf->output()) . ' bytes' . PHP_EOL;
               } catch (\Throwable \$e) {
-                  echo 'ERROR: ' . \$e->getMessage() . PHP_EOL;
+                  echo 'EN ERROR: ' . \$e->getMessage() . PHP_EOL;
                   echo 'File: ' . \$e->getFile() . ':' . \$e->getLine() . PHP_EOL;
-                  echo 'Trace: ' . PHP_EOL . \$e->getTraceAsString();
               }
             " 2>&1
 
             echo ""
-            echo "=== Last 50 lines of Laravel log (whitepaper errors) ==="
-            grep -i "whitepaper\|dompdf\|Cannot resolve" storage/logs/laravel.log 2>/dev/null | tail -20 || echo "No whitepaper errors found"
+            echo "=== Test Thai PDF render ==="
+            php artisan tinker --execute="
+              try {
+                  \$pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('whitepaper.pdf', ['lang' => 'th'])
+                      ->setPaper('a4')
+                      ->setOption('isRemoteEnabled', true)
+                      ->setOption('defaultFont', 'sans-serif')
+                      ->setOption('isFontSubsettingEnabled', true);
+                  \$pdf->render();
+                  echo 'TH PDF OK, size: ' . strlen(\$pdf->output()) . ' bytes' . PHP_EOL;
+              } catch (\Throwable \$e) {
+                  echo 'TH ERROR: ' . \$e->getMessage() . PHP_EOL;
+                  echo 'File: ' . \$e->getFile() . ':' . \$e->getLine() . PHP_EOL;
+              }
+            " 2>&1
 
             echo ""
-            echo "=== Check storage/fonts dir ==="
-            ls -la storage/fonts/ 2>/dev/null || echo "No fonts dir"
+            echo "=== Last whitepaper errors in log ==="
+            grep -i "whitepaper\|dompdf\|Cannot resolve\|Sarabun" storage/logs/laravel.log 2>/dev/null | tail -20 || echo "No whitepaper errors found"
