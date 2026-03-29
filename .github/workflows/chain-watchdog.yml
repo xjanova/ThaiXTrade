@@ -1,0 +1,155 @@
+name: TPIX Chain Watchdog
+on:
+  schedule:
+    # ทุก 5 นาที — ตรวจว่าเชนยัง produce block อยู่
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check & Auto-Restart TPIX Chain
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 3m
+          script: |
+            INFRA="$HOME/tpix-infrastructure"
+            RPC="http://127.0.0.1:8545"
+            RESTART_FILE="/tmp/tpix-watchdog-restart-count"
+
+            echo "=== TPIX Chain Watchdog — $(date) ==="
+
+            # ─── Function: get block number ───
+            get_block() {
+                curl -s --max-time 10 "$RPC" \
+                  -X POST -H "Content-Type: application/json" \
+                  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null \
+                  | grep -o '"result":"[^"]*"' | cut -d'"' -f4
+            }
+
+            # ─── Function: get peer count ───
+            get_peers() {
+                curl -s --max-time 10 "$RPC" \
+                  -X POST -H "Content-Type: application/json" \
+                  -d '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' 2>/dev/null \
+                  | grep -o '"result":"[^"]*"' | cut -d'"' -f4
+            }
+
+            # ─── Check 1: Container status ───
+            CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' tpix-chain-node 2>/dev/null || echo "not_found")
+            echo "Container: $CONTAINER_STATUS"
+
+            if [ "$CONTAINER_STATUS" != "running" ]; then
+                echo "ERROR: Container not running! Starting..."
+                cd "$INFRA"
+                docker compose up -d tpix-chain-node
+                sleep 15
+                CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' tpix-chain-node 2>/dev/null || echo "not_found")
+                echo "Container after start: $CONTAINER_STATUS"
+                if [ "$CONTAINER_STATUS" != "running" ]; then
+                    echo "CRITICAL: Cannot start chain!"
+                    docker logs tpix-chain-node --tail 30 2>&1
+                    exit 1
+                fi
+            fi
+
+            # ─── Check 2: RPC responding ───
+            BLOCK1=$(get_block)
+            if [ -z "$BLOCK1" ]; then
+                echo "ERROR: RPC not responding"
+                echo "Chain node logs (last 20):"
+                docker logs tpix-chain-node --tail 20 2>&1
+
+                echo "Restarting chain node..."
+                cd "$INFRA"
+                docker compose restart tpix-chain-node
+                sleep 15
+
+                BLOCK1=$(get_block)
+                if [ -z "$BLOCK1" ]; then
+                    echo "CRITICAL: Chain still not responding after restart!"
+                    docker logs tpix-chain-node --tail 50 2>&1
+                    exit 1
+                fi
+                echo "Chain recovered after restart, block: $BLOCK1"
+                # Restart blockscout to re-sync
+                docker compose restart blockscout-backend 2>/dev/null || true
+                exit 0
+            fi
+
+            echo "Block #1: $BLOCK1"
+
+            # ─── Check 3: Blocks progressing ───
+            sleep 6
+
+            BLOCK2=$(get_block)
+            echo "Block #2: $BLOCK2 (after 6s)"
+
+            if [ "$BLOCK1" = "$BLOCK2" ]; then
+                echo "ERROR: Chain STUCK at $BLOCK1 — blocks not progressing!"
+
+                # ตรวจ restart counter — ป้องกัน restart loop
+                RESTART_COUNT=0
+                if [ -f "$RESTART_FILE" ]; then
+                    FILE_AGE=$(( $(date +%s) - $(stat -c %Y "$RESTART_FILE" 2>/dev/null || echo 0) ))
+                    if [ $FILE_AGE -gt 3600 ]; then
+                        echo "0" > "$RESTART_FILE"
+                    fi
+                    RESTART_COUNT=$(cat "$RESTART_FILE" 2>/dev/null || echo 0)
+                fi
+
+                if [ "$RESTART_COUNT" -ge 3 ]; then
+                    echo "CRITICAL: Already restarted $RESTART_COUNT times in last hour!"
+                    echo "Manual intervention required."
+                    echo "Last 50 lines of chain log:"
+                    docker logs tpix-chain-node --tail 50 2>&1
+                    exit 1
+                fi
+
+                echo "Restarting chain (attempt $((RESTART_COUNT + 1))/3)..."
+                echo "$((RESTART_COUNT + 1))" > "$RESTART_FILE"
+
+                cd "$INFRA"
+                docker compose restart tpix-chain-node
+                sleep 15
+
+                BLOCK3=$(get_block)
+                echo "Block after restart: $BLOCK3"
+                sleep 4
+                BLOCK4=$(get_block)
+                echo "Block after restart +4s: $BLOCK4"
+
+                if [ "$BLOCK3" != "$BLOCK4" ] && [ -n "$BLOCK4" ]; then
+                    echo "SUCCESS: Chain recovered! Blocks progressing."
+                    # Restart blockscout to re-sync
+                    docker compose restart blockscout-backend 2>/dev/null || true
+                else
+                    echo "CRITICAL: Chain still stuck after restart!"
+                    docker logs tpix-chain-node --tail 50 2>&1
+                    exit 1
+                fi
+            else
+                BLOCK_DEC=$(printf "%d" "$BLOCK2" 2>/dev/null || echo "?")
+                echo "OK: Chain is alive! Block $BLOCK2 (decimal: $BLOCK_DEC)"
+            fi
+
+            # ─── Check 4: Docker stats ───
+            echo ""
+            echo "=== Container Stats ==="
+            docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}" \
+                tpix-chain-node blockscout-backend blockscout-frontend blockscout-db 2>/dev/null || true
+
+            # ─── Check 5: Disk usage ───
+            echo ""
+            echo "=== Disk Usage ==="
+            df -h / | tail -1
+            echo "Docker volumes:"
+            docker system df --format "{{.Type}}\t{{.Size}}\t{{.Reclaimable}}" 2>/dev/null || true
+
+            echo ""
+            echo "=== Watchdog Complete $(date) ==="
