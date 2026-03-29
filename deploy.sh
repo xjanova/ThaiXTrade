@@ -837,6 +837,9 @@ optimize_application() {
 fix_permissions() {
     print_step "Fixing File Permissions"
 
+    # สร้าง storage/fonts/ สำหรับ DomPDF (Whitepaper PDF)
+    mkdir -p storage/fonts
+
     chmod -R 775 storage bootstrap/cache 2>&1
     chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
 
