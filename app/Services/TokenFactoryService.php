@@ -21,16 +21,29 @@ class TokenFactoryService
      */
     public function createToken(array $data): FactoryToken
     {
-        // Guard: ต้องตั้ง fee_wallet ก่อน (เหมือน fee_collector_wallet ของ trading)
-        $feeWallet = SiteSetting::get('factory', 'fee_wallet', '');
-        $feeMethod = SiteSetting::get('factory', 'fee_payment_method', 'tpix');
-        $feeTpix = (float) SiteSetting::get('factory', 'creation_fee_tpix', 100);
+        $chainId = (int) ($data['chain_id'] ?? 4289);
+        $onTestnet = $this->isTestnet($chainId);
 
-        // ถ้า fee ไม่ใช่ free → ต้องมี fee_wallet
-        if ($feeMethod !== 'free' && $feeTpix > 0 && empty($feeWallet)) {
-            throw new \RuntimeException(
-                'Token Factory fee wallet is not configured. Please contact administrator.'
-            );
+        // Guard: ต้องตั้ง fee_wallet ก่อน — fallback ใช้ revenue tpix_wallet → legacy wallet_address
+        // Testnet: ข้าม fee wallet guard — สร้างฟรี
+        $feeWallet = '';
+        if (! $onTestnet) {
+            $feeWallet = SiteSetting::get('factory', 'fee_wallet', '');
+            if (empty($feeWallet)) {
+                $feeWallet = SiteSetting::get('revenue', 'tpix_wallet', '');
+            }
+            if (empty($feeWallet)) {
+                $feeWallet = SiteSetting::get('revenue', 'wallet_address', '');
+            }
+            $feeMethod = SiteSetting::get('factory', 'fee_payment_method', 'tpix');
+            $feeTpix = (float) SiteSetting::get('factory', 'creation_fee_tpix', 100);
+
+            // ถ้า fee ไม่ใช่ free → ต้องมี fee_wallet
+            if ($feeMethod !== 'free' && $feeTpix > 0 && empty($feeWallet)) {
+                throw new \RuntimeException(
+                    'Token Factory fee wallet is not configured. Please contact administrator.'
+                );
+            }
         }
 
         $tokenType = $data['token_type'] ?? 'standard';
@@ -45,12 +58,13 @@ class TokenFactoryService
         // NFT ใช้ decimals = 0 เสมอ
         $decimals = in_array($tokenType, $nftTypes) ? 0 : ($data['decimals'] ?? 18);
 
-        // คำนวณ fee แบบ dynamic ตามออฟชั่นที่เลือก
+        // คำนวณ fee แบบ dynamic ตามออฟชั่นที่เลือก (testnet = FREE)
         $feeResult = $this->calculateFee([
             'token_category' => $data['token_category'] ?? 'fungible',
             'token_type' => $tokenType,
             'decimals' => $data['decimals'] ?? 18,
             'total_supply' => $data['total_supply'] ?? 0,
+            'chain_id' => $chainId,
         ]);
 
         $feeAmount = $feeResult['total'];
@@ -62,6 +76,7 @@ class TokenFactoryService
         $metadata['fee_breakdown'] = $feeResult['breakdown'];
         $metadata['fee_wallet'] = $feeWallet;
         $metadata['fee_tx_hash'] = $data['fee_tx_hash'] ?? null;
+        $metadata['is_testnet'] = $onTestnet;
 
         // สร้าง token record
         $token = FactoryToken::create([
@@ -242,6 +257,13 @@ class TokenFactoryService
             FILTER_VALIDATE_BOOLEAN
         );
         $feeWallet = SiteSetting::get('factory', 'fee_wallet', '');
+        // Fallback: ใช้ revenue tpix_wallet → legacy wallet_address
+        if (empty($feeWallet)) {
+            $feeWallet = SiteSetting::get('revenue', 'tpix_wallet', '');
+        }
+        if (empty($feeWallet)) {
+            $feeWallet = SiteSetting::get('revenue', 'wallet_address', '');
+        }
         $feeMethod = SiteSetting::get('factory', 'fee_payment_method', 'tpix');
         $feeTpix = (float) SiteSetting::get('factory', 'creation_fee_tpix', 100);
 
@@ -278,15 +300,38 @@ class TokenFactoryService
     }
 
     /**
+     * ตรวจว่า chain_id เป็น testnet หรือไม่
+     * Testnet สร้าง token ฟรี — ไม่เสียค่าธรรมเนียม
+     */
+    public function isTestnet(int $chainId): bool
+    {
+        $testnetIds = config('blockchain.testnet_chain_ids', [4290, 11155111, 97]);
+
+        return in_array($chainId, $testnetIds, true);
+    }
+
+    /**
      * คำนวณค่าธรรมเนียมแบบ dynamic ตามออฟชั่นที่เลือก.
      *
      * fee = base_fee + category_fee + type_fee + option_fees
+     * ถ้าเป็น testnet → fee = 0 (FREE) เสมอ
      *
-     * @param  array  $options  ['token_category', 'token_type', 'decimals', 'total_supply', 'description', 'website', 'logo_url']
+     * @param  array  $options  ['token_category', 'token_type', 'decimals', 'total_supply', 'chain_id']
      * @return array  ['total' => float, 'breakdown' => [...]]
      */
     public function calculateFee(array $options): array
     {
+        // Testnet → สร้างฟรีเสมอ
+        $chainId = (int) ($options['chain_id'] ?? 4289);
+        if ($this->isTestnet($chainId)) {
+            return [
+                'total' => 0,
+                'currency' => 'FREE',
+                'breakdown' => [],
+                'is_free' => true,
+                'is_testnet' => true,
+            ];
+        }
         $fees = config('blockchain.creation_fees', []);
 
         // ดึง fee config จาก SiteSettings ก่อน (admin override) → fallback ไป config/blockchain.php
@@ -398,6 +443,7 @@ class TokenFactoryService
                 'currency' => 'FREE',
                 'breakdown' => [],
                 'is_free' => true,
+                'is_testnet' => false,
             ];
         }
 
@@ -406,6 +452,7 @@ class TokenFactoryService
             'currency' => 'TPIX',
             'breakdown' => $breakdown,
             'is_free' => false,
+            'is_testnet' => false,
         ];
     }
 
@@ -437,6 +484,10 @@ class TokenFactoryService
             // Legacy (backward compat) — ค่า fee ของ standard token
             'creation_fee_tpix' => (float) SiteSetting::get('factory', 'base_fee', $fees['base_fee'] ?? 50),
             'creation_fee_usd' => (float) SiteSetting::get('factory', 'creation_fee_usd', 10),
+
+            // Testnet: สร้าง token ฟรี + reset ข้อมูลเป็นระยะ
+            'testnet_chain_ids' => config('blockchain.testnet_chain_ids', [4290, 11155111, 97]),
+            'testnet_reset_months' => config('blockchain.testnet_reset_months', 3),
         ];
     }
 }

@@ -23,6 +23,7 @@ const activeTab = ref('general');
 
 const tabs = [
     { key: 'general', label: 'General', icon: 'settings' },
+    { key: 'revenue', label: 'Revenue Wallet', icon: 'wallet' },
     { key: 'seo', label: 'SEO', icon: 'search' },
     { key: 'trading', label: 'Trading', icon: 'chart' },
     { key: 'factory', label: 'Token Factory', icon: 'settings' },
@@ -127,6 +128,38 @@ const factoryForm = useForm({
 const saveFactory = () => {
     factoryForm.put('/admin/settings/factory', { preserveScroll: true });
 };
+
+// Revenue form — แยก wallet ตาม token type (TPIX / wTPIX) + chain
+const revenueForm = useForm({
+    tpix_wallet: props.settings.tpix_wallet || props.settings.wallet_address || '',
+    tpix_chain_id: props.settings.tpix_chain_id || 4289,
+    wtpix_wallet: props.settings.wtpix_wallet || '',
+    wtpix_chain_id: props.settings.wtpix_chain_id || 56,
+    auto_collect_enabled: props.settings.auto_collect_enabled ?? true,
+});
+
+// Chain options สำหรับ wTPIX
+const wtpixChainOptions = [
+    { id: 56, name: 'BNB Smart Chain (BSC)', color: '#F0B90B' },
+    { id: 1, name: 'Ethereum', color: '#627EEA' },
+    { id: 137, name: 'Polygon', color: '#8247E5' },
+    { id: 43114, name: 'Avalanche', color: '#E84142' },
+];
+
+const saveRevenue = () => {
+    revenueForm.put('/admin/settings/revenue', {
+        preserveScroll: true,
+        onSuccess: () => {
+            // Sync TPIX wallet ไปยัง trading + factory
+            if (revenueForm.tpix_wallet) {
+                tradingForm.fee_collector_wallet = revenueForm.tpix_wallet;
+                factoryForm.fee_wallet = revenueForm.tpix_wallet;
+            }
+        },
+    });
+};
+
+const isValidEvmAddress = (addr) => /^0x[a-fA-F0-9]{40}$/.test(addr);
 
 // Security form
 const securityForm = useForm({
@@ -382,6 +415,174 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         <span v-if="seoForm.processing">Saving...</span>
                         <span v-else>Save SEO Settings</span>
                     </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Revenue Wallet Tab -->
+        <div v-show="activeTab === 'revenue'" class="space-y-6">
+            <!-- Header -->
+            <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                <div class="flex items-center gap-3 mb-2">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-white">Revenue Wallets</h3>
+                        <p class="text-xs text-gray-400">แยกกระเป๋ารับรายได้ตามเหรียญและเชน — TPIX (Native) / wTPIX (Wrapped)</p>
+                    </div>
+                </div>
+            </div>
+
+            <form @submit.prevent="saveRevenue" class="space-y-6">
+                <!-- TPIX Native Wallet -->
+                <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                    <div class="flex items-center gap-3 mb-5">
+                        <div class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                            <span class="text-cyan-400 text-sm font-bold">T</span>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-white">TPIX (Native Coin)</h4>
+                            <p class="text-xs text-gray-400">TPIX Chain (ID: 4289) — เหรียญหลักของเชน</p>
+                        </div>
+                        <span class="ml-auto px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-medium">Native</span>
+                    </div>
+
+                    <div class="max-w-2xl space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">TPIX Wallet Address</label>
+                            <div class="relative">
+                                <input v-model="revenueForm.tpix_wallet" type="text" :class="inputClass" placeholder="0x... (กระเป๋ารับ TPIX บน TPIX Chain)" />
+                                <div v-if="revenueForm.tpix_wallet" class="absolute right-3 top-1/2 -translate-y-1/2">
+                                    <span v-if="isValidEvmAddress(revenueForm.tpix_wallet)" class="text-green-400 text-xs flex items-center gap-1">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                        Valid
+                                    </span>
+                                    <span v-else class="text-red-400 text-xs">Invalid</span>
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1.5">รายได้จาก Trading Fees, Swap Fees, Token Factory (ที่จ่ายด้วย TPIX) จะเข้ากระเป๋านี้</p>
+                        </div>
+
+                        <!-- TPIX Revenue Sources -->
+                        <div class="p-3 rounded-xl bg-cyan-500/5 border border-cyan-500/10">
+                            <p class="text-xs font-medium text-cyan-400 mb-2">รายได้ที่รับเป็น TPIX</p>
+                            <div class="grid grid-cols-3 gap-2 text-xs">
+                                <div class="flex items-center gap-1.5 text-gray-300">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                                    Trading Fees
+                                </div>
+                                <div class="flex items-center gap-1.5 text-gray-300">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+                                    Swap Fees
+                                </div>
+                                <div class="flex items-center gap-1.5 text-gray-300">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                    Token Factory
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- wTPIX Wrapped Wallet -->
+                <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                    <div class="flex items-center gap-3 mb-5">
+                        <div class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                            <span class="text-amber-400 text-sm font-bold">w</span>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-white">wTPIX (Wrapped Token)</h4>
+                            <p class="text-xs text-gray-400">เหรียญ Wrapped บนเชนอื่น — เลือกเชนได้</p>
+                        </div>
+                        <span class="ml-auto px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium">Wrapped</span>
+                    </div>
+
+                    <div class="max-w-2xl space-y-4">
+                        <!-- Chain Selector -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">เชนสำหรับ wTPIX</label>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                <button
+                                    v-for="chain in wtpixChainOptions"
+                                    :key="chain.id"
+                                    type="button"
+                                    @click="revenueForm.wtpix_chain_id = chain.id"
+                                    class="flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm transition-all"
+                                    :class="revenueForm.wtpix_chain_id == chain.id
+                                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                                        : 'bg-dark-800/50 border-dark-600 text-gray-400 hover:border-dark-500 hover:text-white'"
+                                >
+                                    <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: chain.color }"></span>
+                                    <span class="truncate">{{ chain.name.split(' ')[0] }}</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">wTPIX Wallet Address</label>
+                            <div class="relative">
+                                <input v-model="revenueForm.wtpix_wallet" type="text" :class="inputClass" placeholder="0x... (กระเป๋ารับ wTPIX บนเชนที่เลือก)" />
+                                <div v-if="revenueForm.wtpix_wallet" class="absolute right-3 top-1/2 -translate-y-1/2">
+                                    <span v-if="isValidEvmAddress(revenueForm.wtpix_wallet)" class="text-green-400 text-xs flex items-center gap-1">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                        Valid
+                                    </span>
+                                    <span v-else class="text-red-400 text-xs">Invalid</span>
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1.5">รายได้จากการซื้อขาย wTPIX บน {{ wtpixChainOptions.find(c => c.id == revenueForm.wtpix_chain_id)?.name || 'เชนที่เลือก' }}</p>
+                        </div>
+
+                        <!-- wTPIX Info -->
+                        <div class="p-3 rounded-xl bg-amber-500/5 border border-amber-500/10">
+                            <p class="text-xs font-medium text-amber-400 mb-2">รายได้ที่รับเป็น wTPIX</p>
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div class="flex items-center gap-1.5 text-gray-300">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                                    Cross-chain Trading
+                                </div>
+                                <div class="flex items-center gap-1.5 text-gray-300">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+                                    Bridge Fees
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Options -->
+                <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                    <h4 class="text-sm font-semibold text-white mb-4">Options</h4>
+
+                    <!-- Auto Sync Toggle -->
+                    <div class="flex items-center justify-between py-3 px-4 rounded-xl bg-white/5 border border-white/10 max-w-2xl">
+                        <div>
+                            <p class="text-sm font-medium text-white">Auto Sync Wallet</p>
+                            <p class="text-xs text-gray-400">ซิงค์ TPIX wallet ไปยัง Trading Fee และ Factory Fee อัตโนมัติ</p>
+                        </div>
+                        <button type="button" @click="revenueForm.auto_collect_enabled = !revenueForm.auto_collect_enabled"
+                            :class="['w-12 h-6 rounded-full transition-colors', revenueForm.auto_collect_enabled ? 'bg-trading-green' : 'bg-dark-600']">
+                            <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', revenueForm.auto_collect_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                        </button>
+                    </div>
+
+                    <!-- Warning if no wallet set -->
+                    <div v-if="!revenueForm.tpix_wallet && !revenueForm.wtpix_wallet" class="mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-2 max-w-2xl">
+                        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                        ยังไม่ได้ตั้งกระเป๋ารับรายได้ — ระบบ Trading และ Token Factory จะไม่สามารถเก็บค่าธรรมเนียมได้
+                    </div>
+
+                    <div class="mt-6">
+                        <button type="submit" :disabled="revenueForm.processing" class="btn-primary px-6 py-2.5">
+                            <span v-if="revenueForm.processing">Saving...</span>
+                            <span v-else>Save Revenue Wallets</span>
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>

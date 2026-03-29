@@ -197,6 +197,7 @@ class TokenFactoryApiController extends Controller
             'token_type' => 'required|string',
             'decimals' => 'nullable|integer|min:0|max:18',
             'total_supply' => 'nullable|numeric|min:0',
+            'chain_id' => 'nullable|integer',
         ]);
 
         $fee = $this->tokenFactoryService->calculateFee($validated);

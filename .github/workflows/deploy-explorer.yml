@@ -227,7 +227,7 @@ jobs:
                   DISABLE_EXCHANGE_RATES: "true"
                   POOL_SIZE: "20"
                   POOL_SIZE_API: "5"
-                  ACCOUNT_ENABLED: "false"
+                  ACCOUNT_ENABLED: "true"
                   MICROSERVICE_SC_VERIFIER_ENABLED: "false"
                   MICROSERVICE_SC_VERIFIER_URL: ""
                   MICROSERVICE_VISUALIZE_SOL2UML_ENABLED: "false"

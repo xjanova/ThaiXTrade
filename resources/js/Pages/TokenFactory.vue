@@ -49,8 +49,34 @@ const form = ref({
     total_supply: '',
     description: '',
     website: '',
+    logo_url: '',
     token_type: 'standard',
     token_category: 'fungible',
+});
+
+// Logo upload state
+const logoFile = ref(null);
+const logoPreview = ref('');
+const isUploadingLogo = ref(false);
+
+// ===================== CHAIN / TESTNET =====================
+const selectedChainId = ref(4289);
+
+const chainOptions = [
+    { id: 4289, name: 'TPIX Chain', label: 'Mainnet', color: '#06B6D4', testnet: false },
+    { id: 4290, name: 'TPIX Testnet', label: 'Testnet', color: '#f59e0b', testnet: true },
+];
+
+const isTestnet = computed(() => {
+    const testnetIds = props.factoryConfig.testnet_chain_ids || [4290, 11155111, 97];
+    return testnetIds.includes(selectedChainId.value);
+});
+
+const testnetResetMonths = computed(() => props.factoryConfig.testnet_reset_months || 3);
+
+const selectedChainName = computed(() => {
+    const chain = chainOptions.find(c => c.id === selectedChainId.value);
+    return chain?.name || `Chain ${selectedChainId.value}`;
 });
 
 // ===================== TOKEN CATEGORIES =====================
@@ -144,6 +170,11 @@ const canCreate = computed(() => {
 
 // ===================== DYNAMIC FEE CALCULATOR =====================
 const dynamicFee = computed(() => {
+    // Testnet → สร้างฟรีเสมอ
+    if (isTestnet.value) {
+        return { total: 0, breakdown: [], is_free: true, is_testnet: true };
+    }
+
     const fees = props.factoryConfig.dynamic_fees;
     if (!fees) {
         // Fallback ถ้า backend ยังไม่ส่ง dynamic_fees
@@ -151,12 +182,13 @@ const dynamicFee = computed(() => {
             total: props.factoryConfig.creation_fee_tpix || 100,
             breakdown: [{ label: 'Creation Fee', label_th: 'ค่าสร้างเหรียญ', amount: props.factoryConfig.creation_fee_tpix || 100 }],
             is_free: false,
+            is_testnet: false,
         };
     }
 
     const method = props.factoryConfig.fee_payment_method;
     if (method === 'free') {
-        return { total: 0, breakdown: [], is_free: true };
+        return { total: 0, breakdown: [], is_free: true, is_testnet: false };
     }
 
     const breakdown = [];
@@ -234,17 +266,23 @@ const dynamicFee = computed(() => {
         }
     }
 
-    return { total: Math.round(total * 100) / 100, breakdown, is_free: false };
+    return { total: Math.round(total * 100) / 100, breakdown, is_free: false, is_testnet: false };
 });
 
 const feeDisplay = computed(() => {
     if (dynamicFee.value.is_free) {
-        return { amount: 'FREE', currency: '', isFree: true };
+        return {
+            amount: 'FREE',
+            currency: dynamicFee.value.is_testnet ? '(Testnet)' : '',
+            isFree: true,
+            isTestnet: dynamicFee.value.is_testnet || false,
+        };
     }
     return {
         amount: dynamicFee.value.total.toLocaleString(),
         currency: 'TPIX',
         isFree: false,
+        isTestnet: false,
     };
 });
 
@@ -285,6 +323,62 @@ function selectCategory(catId) {
     }
 }
 
+// ===================== LOGO UPLOAD =====================
+async function handleLogoSelect(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type & size (client-side)
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) {
+        formErrors.value.logo = 'Only PNG, JPG, WEBP, SVG files are allowed.';
+        return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+        formErrors.value.logo = 'Logo must be less than 2MB.';
+        return;
+    }
+
+    formErrors.value.logo = '';
+    logoFile.value = file;
+
+    // Preview
+    const reader = new FileReader();
+    reader.onload = (e) => { logoPreview.value = e.target.result; };
+    reader.readAsDataURL(file);
+
+    // Upload ทันที
+    isUploadingLogo.value = true;
+    try {
+        const formData = new FormData();
+        formData.append('logo', file);
+        const res = await fetch('/api/v1/token-factory/upload-logo', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                Accept: 'application/json',
+            },
+        });
+        const data = await res.json();
+        if (data.success) {
+            form.value.logo_url = data.data.logo_url;
+        } else {
+            formErrors.value.logo = 'Upload failed. Please try again.';
+        }
+    } catch {
+        formErrors.value.logo = 'Upload failed. Please try again.';
+    } finally {
+        isUploadingLogo.value = false;
+    }
+}
+
+function removeLogo() {
+    logoFile.value = null;
+    logoPreview.value = '';
+    form.value.logo_url = '';
+}
+
 // ===================== SUBMIT =====================
 async function handleCreate() {
     if (!canCreate.value) return;
@@ -295,14 +389,16 @@ async function handleCreate() {
         await factoryStore.createToken({
             ...form.value,
             creator_address: walletStore.address,
-            chain_id: 4289,
+            chain_id: selectedChainId.value,
         });
 
         successMessage.value = `Token ${form.value.symbol.toUpperCase()} submitted for review!`;
         showSuccess.value = true;
 
         // Reset
-        form.value = { name: '', symbol: '', decimals: 18, total_supply: '', description: '', website: '', token_type: 'standard', token_category: 'fungible' };
+        form.value = { name: '', symbol: '', decimals: 18, total_supply: '', description: '', website: '', logo_url: '', token_type: 'standard', token_category: 'fungible' };
+        logoFile.value = null;
+        logoPreview.value = '';
         wizardStep.value = 1;
         activeTab.value = 'my-tokens';
 
@@ -386,8 +482,9 @@ function getTypeLabel(type) {
                 <!-- Stats Row -->
                 <div class="flex flex-wrap items-center justify-center gap-3 sm:gap-6 mt-6 text-sm">
                     <div class="flex items-center gap-1.5 text-gray-400">
-                        <span class="w-2 h-2 rounded-full bg-green-400"></span>
-                        TPIX Chain
+                        <span class="w-2 h-2 rounded-full" :class="isTestnet ? 'bg-amber-400' : 'bg-green-400'"></span>
+                        {{ selectedChainName }}
+                        <span v-if="isTestnet" class="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] rounded-md font-bold">TESTNET</span>
                     </div>
                     <div class="text-gray-400">Gas: <span class="text-green-400 font-semibold">FREE</span></div>
                     <div class="text-gray-400">
@@ -473,6 +570,46 @@ function getTypeLabel(type) {
 
                 <!-- Wizard -->
                 <div v-else class="max-w-2xl mx-auto">
+                    <!-- Persistent Chain Selector Bar -->
+                    <div class="mb-4 p-3 rounded-xl glass-dark border border-white/10">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">Deploy Chain</span>
+                            <div class="flex items-center gap-2">
+                                <button
+                                    v-for="chain in chainOptions"
+                                    :key="chain.id"
+                                    type="button"
+                                    @click="selectedChainId = chain.id"
+                                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
+                                    :class="selectedChainId === chain.id
+                                        ? chain.testnet
+                                            ? 'bg-amber-500/15 border-amber-500/40 text-amber-400 ring-1 ring-amber-500/20'
+                                            : 'bg-primary-500/15 border-primary-500/40 text-primary-400 ring-1 ring-primary-500/20'
+                                        : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'"
+                                >
+                                    <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: chain.color }"></span>
+                                    {{ chain.name }}
+                                    <span v-if="chain.testnet && selectedChainId === chain.id" class="px-1 py-0.5 bg-green-500/20 text-green-400 text-[9px] rounded font-bold ml-0.5">FREE</span>
+                                    <span v-else-if="chain.testnet" class="px-1 py-0.5 bg-amber-500/20 text-amber-400 text-[9px] rounded font-bold ml-0.5">FREE</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Persistent Testnet Warning Banner -->
+                    <div v-if="isTestnet" class="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                        <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-2">
+                                <span class="relative flex h-2.5 w-2.5">
+                                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400"></span>
+                                </span>
+                                <span class="text-sm font-bold text-amber-400">TESTNET</span>
+                            </div>
+                            <span class="text-xs text-amber-400/80">สร้าง Token ฟรี — ไม่มีค่าธรรมเนียม · Reset ทุก {{ testnetResetMonths }} เดือน · ไม่มีมูลค่าจริง</span>
+                        </div>
+                    </div>
+
                     <!-- Step Indicator -->
                     <div class="flex items-center justify-between mb-8 px-4">
                         <button
@@ -732,6 +869,35 @@ function getTypeLabel(type) {
                                     <label class="block text-sm font-medium text-gray-300 mb-1.5">Website <span class="text-gray-500">(Optional)</span></label>
                                     <input v-model="form.website" type="url" placeholder="https://..." class="trading-input w-full" />
                                 </div>
+
+                                <!-- Logo Upload (optional) -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-300 mb-1.5">Token Logo <span class="text-gray-500">(Optional)</span></label>
+                                    <div v-if="logoPreview" class="flex items-center gap-4 mb-3">
+                                        <img :src="logoPreview" alt="Logo preview" class="w-16 h-16 rounded-xl object-cover border border-white/10" />
+                                        <div class="flex-1">
+                                            <p class="text-sm text-white">{{ logoFile?.name }}</p>
+                                            <p class="text-xs text-gray-400">{{ logoFile ? (logoFile.size / 1024).toFixed(1) + ' KB' : '' }}</p>
+                                            <div v-if="isUploadingLogo" class="mt-1 flex items-center gap-2">
+                                                <svg class="w-3.5 h-3.5 animate-spin text-primary-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                                <span class="text-xs text-primary-400">Uploading...</span>
+                                            </div>
+                                            <p v-else-if="form.logo_url" class="text-xs text-green-400 mt-1">✓ Uploaded</p>
+                                        </div>
+                                        <button type="button" @click="removeLogo" class="text-gray-400 hover:text-red-400 transition-colors p-1">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        </button>
+                                    </div>
+                                    <label v-else class="flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed border-white/10 hover:border-primary-500/30 hover:bg-primary-500/5 transition-all cursor-pointer group">
+                                        <svg class="w-8 h-8 text-gray-500 group-hover:text-primary-400 transition-colors mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                        </svg>
+                                        <span class="text-xs text-gray-400 group-hover:text-gray-300">Click to upload logo</span>
+                                        <span class="text-[10px] text-gray-500 mt-0.5">PNG, JPG, WEBP, SVG · Max 2MB</span>
+                                        <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="handleLogoSelect" />
+                                    </label>
+                                    <p v-if="formErrors.logo" class="text-xs text-red-400 mt-1">{{ formErrors.logo }}</p>
+                                </div>
                             </div>
                         </div>
                     </Transition>
@@ -754,12 +920,18 @@ function getTypeLabel(type) {
                             <div class="glass-dark p-6 rounded-2xl border border-white/10">
                                 <!-- Token Preview Card -->
                                 <div class="flex items-center gap-4 mb-6 pb-6 border-b border-white/10">
-                                    <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-500 to-primary-500 flex items-center justify-center">
+                                    <div v-if="logoPreview" class="w-14 h-14 rounded-2xl overflow-hidden border border-white/10">
+                                        <img :src="logoPreview" alt="Token logo" class="w-full h-full object-cover" />
+                                    </div>
+                                    <div v-else class="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-500 to-primary-500 flex items-center justify-center">
                                         <span class="text-xl font-bold text-white">{{ form.symbol?.charAt(0)?.toUpperCase() || '?' }}</span>
                                     </div>
                                     <div>
                                         <h3 class="text-lg font-bold text-white">{{ form.name || 'Token Name' }}</h3>
-                                        <p class="text-sm text-gray-400">{{ form.symbol?.toUpperCase() || 'SYMBOL' }} on TPIX Chain</p>
+                                        <p class="text-sm text-gray-400">
+                                            {{ form.symbol?.toUpperCase() || 'SYMBOL' }} on {{ selectedChainName }}
+                                            <span v-if="isTestnet" class="ml-1 px-1.5 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] rounded-full font-bold">TESTNET</span>
+                                        </p>
                                     </div>
                                 </div>
 
@@ -786,7 +958,10 @@ function getTypeLabel(type) {
                                         </div>
                                         <div>
                                             <p class="text-gray-500 text-xs">Chain</p>
-                                            <p class="text-white font-medium">TPIX Chain (4289)</p>
+                                            <p class="text-white font-medium">
+                                                {{ selectedChainName }} ({{ selectedChainId }})
+                                                <span v-if="isTestnet" class="ml-1 text-amber-400 text-[10px]">⚠ TESTNET</span>
+                                            </p>
                                         </div>
                                         <div>
                                             <p class="text-gray-500 text-xs">Creator</p>
@@ -802,6 +977,10 @@ function getTypeLabel(type) {
                                 <div v-if="form.website" class="mt-3">
                                     <p class="text-gray-500 text-xs mb-1">Website</p>
                                     <p class="text-sm text-primary-400">{{ form.website }}</p>
+                                </div>
+                                <div v-if="form.logo_url" class="mt-3">
+                                    <p class="text-gray-500 text-xs mb-1">Logo</p>
+                                    <p class="text-sm text-green-400">✓ Uploaded</p>
                                 </div>
                             </div>
 
@@ -834,9 +1013,18 @@ function getTypeLabel(type) {
                                 </p>
                             </div>
 
+                            <!-- Testnet FREE highlight in fee area -->
+                            <div v-if="isTestnet" class="p-4 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center gap-3">
+                                <span class="text-2xl">🎉</span>
+                                <div>
+                                    <p class="text-sm font-bold text-green-400">Testnet — ไม่มีค่าธรรมเนียม!</p>
+                                    <p class="text-xs text-green-400/70">Token จะถูก deploy บน {{ selectedChainName }} ฟรี สำหรับทดสอบเท่านั้น</p>
+                                </div>
+                            </div>
+
                             <!-- Process Info -->
                             <div class="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10 text-xs text-blue-300/80">
-                                After submission, our team will review your token within 24 hours. Once approved, it will be deployed on TPIX Chain automatically.
+                                After submission, our team will review your token within 24 hours. Once approved, it will be deployed on <span class="font-semibold text-blue-300">{{ selectedChainName }}</span> automatically.
                             </div>
                         </div>
                     </Transition>
