@@ -59,12 +59,14 @@ class TokenFactoryService
         $decimals = in_array($tokenType, $nftTypes) ? 0 : ($data['decimals'] ?? 18);
 
         // คำนวณ fee แบบ dynamic ตามออฟชั่นที่เลือก (testnet = FREE)
+        // รวม sub_options เพื่อคำนวณ sub-option fees ด้วย
         $feeResult = $this->calculateFee([
             'token_category' => $data['token_category'] ?? 'fungible',
             'token_type' => $tokenType,
             'decimals' => $data['decimals'] ?? 18,
             'total_supply' => $data['total_supply'] ?? 0,
             'chain_id' => $chainId,
+            'sub_options' => $data['sub_options'] ?? [],
         ]);
 
         $feeAmount = $feeResult['total'];
@@ -77,6 +79,11 @@ class TokenFactoryService
         $metadata['fee_wallet'] = $feeWallet;
         $metadata['fee_tx_hash'] = $data['fee_tx_hash'] ?? null;
         $metadata['is_testnet'] = $onTestnet;
+
+        // เก็บ sub-options ที่ user เลือก (Phase 1: data capture, Phase 2: deploy จริง)
+        if (! empty($data['sub_options']) && is_array($data['sub_options'])) {
+            $metadata['sub_options'] = $data['sub_options'];
+        }
 
         // สร้าง token record
         $token = FactoryToken::create([
@@ -432,6 +439,46 @@ class TokenFactoryService
             if ($supFee > 0) {
                 $breakdown[] = ['label' => 'Large Supply (>1B)', 'label_th' => 'Supply ขนาดใหญ่ (>1B)', 'amount' => $supFee];
                 $total += $supFee;
+            }
+        }
+
+        // 5. Sub-option fees — คิดค่าธรรมเนียมเพิ่มตาม sub-options ที่เลือก
+        $subOptions = $options['sub_options'] ?? [];
+        if (is_array($subOptions) && ! empty($subOptions)) {
+            // Sub-option fee labels (EN / TH)
+            $subOptionLabels = [
+                'pausable' => ['Pausable', 'หยุดชั่วคราวได้'],
+                'blacklist' => ['Blacklist', 'ระบบ Blacklist'],
+                'tax_system' => ['Tax System', 'ระบบภาษี'],
+                'anti_whale' => ['Anti-Whale', 'ป้องกันวาฬ'],
+                'anti_bot' => ['Anti-Bot', 'ป้องกันบอท'],
+                'auto_liquidity' => ['Auto Liquidity', 'สภาพคล่องอัตโนมัติ'],
+                'reflection' => ['Reflection/Rewards', 'ระบบ Reflection'],
+                'vesting' => ['Vesting Schedule', 'ตาราง Vesting'],
+                'royalty' => ['Royalty (ERC-2981)', 'ค่าลิขสิทธิ์'],
+                'delayed_reveal' => ['Delayed Reveal', 'เปิดเผยภายหลัง'],
+                'treasury' => ['Treasury', 'คลัง Treasury'],
+                'delegation' => ['Delegation', 'การมอบอำนาจ'],
+                'soulbound' => ['Soulbound (SBT)', 'โทเคนผูกตัว'],
+                'freeze' => ['Freeze/Compliance', 'อายัด/Compliance'],
+                'kyc' => ['KYC Required', 'ต้อง KYC'],
+                'auto_burn' => ['Auto Burn', 'เผาอัตโนมัติ'],
+            ];
+
+            foreach ($subOptions as $key => $value) {
+                // เช็คเฉพาะ boolean sub-options ที่เปิดใช้งาน
+                if ($value === true && isset($optionFees[$key])) {
+                    $subFee = (float) $optionFees[$key];
+                    if ($subFee > 0) {
+                        $labels = $subOptionLabels[$key] ?? [ucfirst(str_replace('_', ' ', $key)), ucfirst(str_replace('_', ' ', $key))];
+                        $breakdown[] = [
+                            'label' => $labels[0],
+                            'label_th' => $labels[1],
+                            'amount' => $subFee,
+                        ];
+                        $total += $subFee;
+                    }
+                }
             }
         }
 

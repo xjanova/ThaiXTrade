@@ -98,6 +98,9 @@ class TokenFactoryApiController extends Controller
         // governance & stablecoin ต้องผ่าน admin review เสมอ
         $allowedTypes = array_merge($allowedTypes, ['governance', 'stablecoin']);
 
+        // รวม testnet chain IDs เข้ากับ chains table สำหรับ validation
+        $testnetChainIds = config('blockchain.testnet_chain_ids', [4290, 11155111, 97]);
+
         $validated = $request->validate([
             'name' => 'required|string|min:2|max:100',
             'symbol' => [
@@ -115,7 +118,15 @@ class TokenFactoryApiController extends Controller
             'decimals' => 'integer|min:0|max:18',
             'total_supply' => "required|numeric|min:1|max:{$maxSupply}",
             'creator_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
-            'chain_id' => 'nullable|integer|exists:chains,chain_id',
+            'chain_id' => ['nullable', 'integer', function ($attr, $val, $fail) use ($testnetChainIds) {
+                // อนุญาต testnet chain IDs แม้ไม่อยู่ใน chains table
+                if ($val && ! in_array((int) $val, $testnetChainIds, true)) {
+                    $existsInDb = \App\Models\Chain::where('chain_id', $val)->exists();
+                    if (! $existsInDb) {
+                        $fail("Chain ID {$val} is not supported.");
+                    }
+                }
+            }],
             'description' => 'nullable|string|max:1000',
             'website' => 'nullable|url:https|max:255',
             'logo_url' => ['nullable', 'string', 'max:500', function ($attr, $val, $fail) {
@@ -127,6 +138,10 @@ class TokenFactoryApiController extends Controller
             'token_type' => 'required|in:'.implode(',', $allowedTypes),
             'token_category' => 'nullable|in:fungible,nft,special',
             'fee_tx_hash' => ['nullable', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
+
+            // Sub-options สำหรับ advanced token features (Phase 1: เก็บ data, Phase 2: deploy จริง)
+            'sub_options' => 'nullable|array',
+            'sub_options.*' => 'nullable',
         ]);
 
         try {
@@ -198,6 +213,7 @@ class TokenFactoryApiController extends Controller
             'decimals' => 'nullable|integer|min:0|max:18',
             'total_supply' => 'nullable|numeric|min:0',
             'chain_id' => 'nullable|integer',
+            'sub_options' => 'nullable|array',
         ]);
 
         $fee = $this->tokenFactoryService->calculateFee($validated);
