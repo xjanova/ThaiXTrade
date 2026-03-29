@@ -126,6 +126,23 @@ return [
             'has_logo' => 0,             // ฟรี
             'large_supply' => 10,        // +10 ถ้า supply > 1B
             'very_large_supply' => 25,   // +25 ถ้า supply > 100B
+            // Sub-options fees
+            'pausable' => 5,
+            'blacklist' => 5,
+            'tax_system' => 15,
+            'anti_whale' => 10,
+            'anti_bot' => 10,
+            'auto_liquidity' => 15,
+            'reflection' => 20,
+            'vesting' => 10,
+            'royalty' => 5,
+            'delayed_reveal' => 10,
+            'treasury' => 15,
+            'delegation' => 5,
+            'soulbound' => 5,
+            'freeze' => 5,
+            'kyc' => 5,
+            'auto_burn' => 10,
         ],
 
         // Supply thresholds สำหรับ large supply fee

@@ -37,7 +37,7 @@ const successMessage = ref('');
 
 // ===================== WIZARD STATE =====================
 const wizardStep = ref(1);
-const totalSteps = 4;
+const totalSteps = 5;
 const isSubmitting = ref(false);
 const formErrors = ref({});
 
@@ -85,6 +85,7 @@ const tokenCategories = [
         id: 'fungible',
         label: 'Token (ERC-20)',
         desc: 'เหรียญดิจิทัลทั่วไป สำหรับเทรด, จ่ายค่าบริการ, หรือ Reward',
+        desc_en: 'General digital token for trading, payments, or rewards',
         icon: 'coin',
         color: 'from-primary-500 to-accent-500',
     },
@@ -92,6 +93,7 @@ const tokenCategories = [
         id: 'nft',
         label: 'NFT (ERC-721)',
         desc: 'สินทรัพย์ดิจิทัลเฉพาะตัว สำหรับ Art, Collectibles, Real Estate',
+        desc_en: 'Unique digital asset for Art, Collectibles, Real Estate',
         icon: 'nft',
         color: 'from-purple-500 to-pink-500',
         disabled: !props.factoryConfig.nft_enabled,
@@ -100,6 +102,7 @@ const tokenCategories = [
         id: 'special',
         label: 'Special Token',
         desc: 'Governance, Stablecoin — เหรียญประเภทพิเศษ',
+        desc_en: 'Governance, Stablecoin — Special token types',
         icon: 'star',
         color: 'from-amber-500 to-orange-500',
     },
@@ -108,26 +111,395 @@ const tokenCategories = [
 // ===================== TOKEN TYPES per category =====================
 const tokenTypesByCategory = {
     fungible: [
-        { value: 'standard', label: 'Standard', desc: 'Supply คงที่ ไม่สามารถ Mint/Burn', icon: '🔒', recommended: true },
-        { value: 'mintable', label: 'Mintable', desc: 'เจ้าของสามารถ Mint เหรียญเพิ่มได้', icon: '➕' },
-        { value: 'burnable', label: 'Burnable', desc: 'ผู้ถือสามารถ Burn เหรียญได้', icon: '🔥' },
-        { value: 'mintable_burnable', label: 'Full Function', desc: 'Mint + Burn ครบทุกฟังก์ชัน', icon: '⚡' },
-        { value: 'utility', label: 'Utility Token', desc: 'ใช้งานในระบบ เช่น จ่ายค่าบริการ', icon: '🔧' },
-        { value: 'reward', label: 'Reward Token', desc: 'แจกรางวัล, Loyalty Points, Cashback', icon: '🎁' },
+        { value: 'standard', label: 'Standard', desc: 'Supply คงที่ ไม่สามารถ Mint/Burn', desc_en: 'Fixed supply, no Mint/Burn', icon: '🔒', recommended: true },
+        { value: 'mintable', label: 'Mintable', desc: 'เจ้าของสามารถ Mint เหรียญเพิ่มได้', desc_en: 'Owner can mint more tokens', icon: '➕' },
+        { value: 'burnable', label: 'Burnable', desc: 'ผู้ถือสามารถ Burn เหรียญได้', desc_en: 'Holders can burn tokens', icon: '🔥' },
+        { value: 'mintable_burnable', label: 'Full Function', desc: 'Mint + Burn ครบทุกฟังก์ชัน', desc_en: 'Full Mint + Burn functions', icon: '⚡' },
+        { value: 'utility', label: 'Utility Token', desc: 'มีระบบภาษี, Anti-Whale, Auto Liquidity', desc_en: 'Tax system, Anti-Whale, Auto Liquidity', icon: '🔧' },
+        { value: 'reward', label: 'Reward Token', desc: 'แจกรางวัลอัตโนมัติ, Loyalty Points, Staking', desc_en: 'Auto rewards, Loyalty Points, Staking', icon: '🎁' },
     ],
     nft: [
-        { value: 'nft', label: 'Single NFT', desc: 'สร้าง NFT เดี่ยว — Art, Certificate, Deed', icon: '🖼️', recommended: true },
-        { value: 'nft_collection', label: 'NFT Collection', desc: 'สร้างชุดสะสม — PFP, Game Items', icon: '🃏' },
+        { value: 'nft', label: 'Single NFT', desc: 'สร้าง NFT เดี่ยว — Art, Certificate, Deed', desc_en: 'Single NFT — Art, Certificate, Deed', icon: '🖼️', recommended: true },
+        { value: 'nft_collection', label: 'NFT Collection', desc: 'สร้างชุดสะสม — PFP, Game Items', desc_en: 'Collection — PFP, Game Items', icon: '🃏' },
     ],
     special: [
-        { value: 'governance', label: 'Governance', desc: 'ใช้โหวตตัดสินใจใน DAO/Community', icon: '🏛️', recommended: true },
-        { value: 'stablecoin', label: 'Stablecoin', desc: 'เหรียญผูกค่าเงิน (ต้องมี Reserve)', icon: '💵' },
+        { value: 'governance', label: 'Governance', desc: 'โหวตตัดสินใจใน DAO พร้อม Treasury', desc_en: 'DAO voting with Treasury management', icon: '🏛️', recommended: true },
+        { value: 'stablecoin', label: 'Stablecoin', desc: 'เหรียญผูกค่าเงิน พร้อมระบบ Reserve', desc_en: 'Pegged currency with Reserve system', icon: '💵' },
+    ],
+};
+
+// ===================== SUB-OPTIONS CONFIG per token type =====================
+// ออฟชั่นย่อยของแต่ละ token type — แสดงใน Step 3 (Advanced Options)
+const subOptionsConfig = {
+    // ─── Common options (เพิ่มให้ทุก type ที่ต้องการ) ───
+    _common: [
+        {
+            group: 'protection', label: 'Protection', label_th: 'ความปลอดภัย',
+            icon: '🛡️', fee: 0,
+            options: [
+                { key: 'pausable', type: 'toggle', label: 'Pausable', label_th: 'หยุดชั่วคราวได้', desc_en: 'Owner can pause all transfers in emergencies', desc_th: 'เจ้าของสามารถหยุดการโอนชั่วคราวได้ (กรณีฉุกเฉิน)', fee: 5, default: false },
+                { key: 'blacklist_enabled', type: 'toggle', label: 'Blacklist', label_th: 'บัญชีดำ', desc_en: 'Block specific addresses from transfers', desc_th: 'บล็อกกระเป๋าที่ต้องการไม่ให้ใช้งาน', fee: 5, default: false },
+            ],
+        },
+        {
+            group: 'ownership', label: 'Ownership', label_th: 'ความเป็นเจ้าของ',
+            icon: '👑', fee: 0,
+            options: [
+                { key: 'ownership_type', type: 'select', label: 'Ownership', label_th: 'รูปแบบเจ้าของ', desc_en: 'Choose who controls the token', desc_th: 'เลือกรูปแบบการควบคุมเหรียญ', fee: 0, default: 'ownable',
+                    choices: [
+                        { value: 'ownable', label: 'Single Owner', label_th: 'เจ้าของคนเดียว' },
+                        { value: 'renounced', label: 'Renounced (No Owner)', label_th: 'ไม่มีเจ้าของ (ล็อคถาวร)' },
+                    ],
+                },
+            ],
+        },
+    ],
+
+    // ─── Standard: แค่ common options ───
+    standard: [],
+
+    // ─── Mintable ───
+    mintable: [
+        {
+            group: 'mint_controls', label: 'Mint Controls', label_th: 'ควบคุมการ Mint',
+            icon: '➕', fee: 0,
+            options: [
+                { key: 'mint_cap_enabled', type: 'toggle', label: 'Supply Cap', label_th: 'จำกัด Supply สูงสุด', desc_en: 'Set a maximum total supply that can ever exist', desc_th: 'กำหนดจำนวนสูงสุดที่สามารถ Mint ได้', fee: 0, default: false },
+                { key: 'mint_cap', type: 'number', label: 'Max Supply Cap', label_th: 'Supply สูงสุด', desc_en: 'Maximum total supply allowed', desc_th: 'จำนวนเหรียญสูงสุดที่สามารถมีได้', fee: 0, default: '', show_if: 'mint_cap_enabled' },
+            ],
+        },
+    ],
+
+    // ─── Burnable ───
+    burnable: [
+        {
+            group: 'burn_controls', label: 'Burn Controls', label_th: 'ควบคุมการ Burn',
+            icon: '🔥', fee: 0,
+            options: [
+                { key: 'auto_burn_enabled', type: 'toggle', label: 'Auto Burn', label_th: 'Burn อัตโนมัติ', desc_en: 'Automatically burn a percentage on every transfer', desc_th: 'Burn อัตโนมัติทุกครั้งที่โอน', fee: 10, default: false },
+                { key: 'auto_burn_rate', type: 'range', label: 'Burn Rate (%)', label_th: 'อัตรา Burn (%)', desc_en: 'Percentage burned per transfer', desc_th: 'เปอร์เซ็นต์ที่ Burn ต่อการโอน', fee: 0, default: 1, min: 0.1, max: 10, step: 0.1, show_if: 'auto_burn_enabled' },
+                { key: 'burn_floor', type: 'number', label: 'Burn Floor', label_th: 'ขั้นต่ำที่เหลือ', desc_en: 'Minimum supply that cannot be burned below', desc_th: 'จำนวนเหรียญขั้นต่ำที่ไม่สามารถ Burn ต่ำกว่าได้', fee: 0, default: '' },
+            ],
+        },
+    ],
+
+    // ─── Mintable + Burnable ───
+    mintable_burnable: [
+        {
+            group: 'mint_controls', label: 'Mint Controls', label_th: 'ควบคุมการ Mint',
+            icon: '➕', fee: 0,
+            options: [
+                { key: 'mint_cap_enabled', type: 'toggle', label: 'Supply Cap', label_th: 'จำกัด Supply สูงสุด', desc_en: 'Set a maximum total supply', desc_th: 'กำหนดจำนวนสูงสุดที่ Mint ได้', fee: 0, default: false },
+                { key: 'mint_cap', type: 'number', label: 'Max Supply Cap', label_th: 'Supply สูงสุด', desc_en: 'Maximum supply allowed', desc_th: 'จำนวนเหรียญสูงสุด', fee: 0, default: '', show_if: 'mint_cap_enabled' },
+            ],
+        },
+        {
+            group: 'burn_controls', label: 'Burn Controls', label_th: 'ควบคุมการ Burn',
+            icon: '🔥', fee: 0,
+            options: [
+                { key: 'auto_burn_enabled', type: 'toggle', label: 'Auto Burn', label_th: 'Burn อัตโนมัติ', desc_en: 'Auto burn on every transfer', desc_th: 'Burn อัตโนมัติทุกครั้งที่โอน', fee: 10, default: false },
+                { key: 'auto_burn_rate', type: 'range', label: 'Burn Rate (%)', label_th: 'อัตรา Burn (%)', desc_en: 'Percentage burned per transfer', desc_th: 'เปอร์เซ็นต์ Burn', fee: 0, default: 1, min: 0.1, max: 10, step: 0.1, show_if: 'auto_burn_enabled' },
+            ],
+        },
+    ],
+
+    // ─── Utility Token (ออฟชั่นเยอะที่สุด) ───
+    utility: [
+        {
+            group: 'tax_system', label: 'Transaction Tax', label_th: 'ภาษีธุรกรรม',
+            icon: '💰', fee: 15,
+            options: [
+                { key: 'tax_enabled', type: 'toggle', label: 'Enable Tax', label_th: 'เปิดระบบภาษี', desc_en: 'Charge tax on buy/sell/transfer', desc_th: 'เก็บภาษีทุกครั้งที่ซื้อ/ขาย/โอน', fee: 15, default: false },
+                { key: 'buy_tax_rate', type: 'range', label: 'Buy Tax (%)', label_th: 'ภาษีซื้อ (%)', desc_en: 'Tax when token is bought', desc_th: 'ภาษีเมื่อซื้อเหรียญ', fee: 0, default: 3, min: 0, max: 25, step: 0.5, show_if: 'tax_enabled' },
+                { key: 'sell_tax_rate', type: 'range', label: 'Sell Tax (%)', label_th: 'ภาษีขาย (%)', desc_en: 'Tax when token is sold', desc_th: 'ภาษีเมื่อขายเหรียญ', fee: 0, default: 5, min: 0, max: 25, step: 0.5, show_if: 'tax_enabled' },
+                { key: 'transfer_tax_rate', type: 'range', label: 'Transfer Tax (%)', label_th: 'ภาษีโอน (%)', desc_en: 'Tax on wallet-to-wallet transfers', desc_th: 'ภาษีโอนระหว่างกระเป๋า', fee: 0, default: 0, min: 0, max: 10, step: 0.5, show_if: 'tax_enabled' },
+                { key: 'tax_wallet', type: 'address', label: 'Tax Recipient Wallet', label_th: 'กระเป๋ารับภาษี', desc_en: 'Wallet that receives collected tax', desc_th: 'กระเป๋าที่รับภาษีที่เก็บได้', fee: 0, default: '', show_if: 'tax_enabled' },
+                { key: 'marketing_wallet', type: 'address', label: 'Marketing Wallet', label_th: 'กระเป๋า Marketing', desc_en: 'Separate wallet for marketing funds', desc_th: 'กระเป๋าแยกสำหรับค่าการตลาด', fee: 0, default: '', show_if: 'tax_enabled' },
+                { key: 'marketing_share', type: 'range', label: 'Marketing Share (%)', label_th: 'ส่วนแบ่ง Marketing (%)', desc_en: 'Percentage of tax sent to marketing', desc_th: 'เปอร์เซ็นต์ภาษีที่ส่งไป Marketing', fee: 0, default: 40, min: 0, max: 100, step: 5, show_if: 'tax_enabled' },
+            ],
+        },
+        {
+            group: 'anti_whale', label: 'Anti-Whale', label_th: 'ป้องกันวาฬ',
+            icon: '🐋', fee: 10,
+            options: [
+                { key: 'anti_whale_enabled', type: 'toggle', label: 'Enable Anti-Whale', label_th: 'เปิด Anti-Whale', desc_en: 'Limit max balance and transaction amounts', desc_th: 'จำกัดจำนวนเหรียญสูงสุดต่อกระเป๋าและต่อธุรกรรม', fee: 10, default: false },
+                { key: 'max_wallet_percent', type: 'range', label: 'Max Wallet (%)', label_th: 'ถือสูงสุดต่อกระเป๋า (%)', desc_en: 'Max % of supply per wallet', desc_th: 'เปอร์เซ็นต์สูงสุดต่อกระเป๋า', fee: 0, default: 2, min: 0.5, max: 10, step: 0.5, show_if: 'anti_whale_enabled' },
+                { key: 'max_tx_percent', type: 'range', label: 'Max Transaction (%)', label_th: 'โอนสูงสุดต่อครั้ง (%)', desc_en: 'Max % of supply per transaction', desc_th: 'เปอร์เซ็นต์สูงสุดต่อธุรกรรม', fee: 0, default: 1, min: 0.1, max: 5, step: 0.1, show_if: 'anti_whale_enabled' },
+            ],
+        },
+        {
+            group: 'anti_bot', label: 'Anti-Bot (Launch)', label_th: 'ป้องกันบอท',
+            icon: '🤖', fee: 10,
+            options: [
+                { key: 'anti_bot_enabled', type: 'toggle', label: 'Enable Anti-Bot', label_th: 'เปิด Anti-Bot', desc_en: 'Protect against bots at launch', desc_th: 'ป้องกันบอทตอนเปิดขาย', fee: 10, default: false },
+                { key: 'anti_bot_duration', type: 'number', label: 'Duration (minutes)', label_th: 'ระยะเวลา (นาที)', desc_en: 'How long anti-bot is active after launch', desc_th: 'ระยะเวลาที่ Anti-Bot ทำงานหลังเปิดขาย', fee: 0, default: 30, min: 5, max: 1440, show_if: 'anti_bot_enabled' },
+                { key: 'trading_cooldown', type: 'number', label: 'Cooldown (seconds)', label_th: 'เว้นเวลาเทรด (วินาที)', desc_en: 'Min seconds between trades per wallet', desc_th: 'เวลาขั้นต่ำระหว่างการเทรดต่อกระเป๋า', fee: 0, default: 30, min: 5, max: 300, show_if: 'anti_bot_enabled' },
+            ],
+        },
+        {
+            group: 'auto_liquidity', label: 'Auto Liquidity', label_th: 'สภาพคล่องอัตโนมัติ',
+            icon: '💧', fee: 15,
+            options: [
+                { key: 'auto_lp_enabled', type: 'toggle', label: 'Enable Auto LP', label_th: 'เปิด Auto Liquidity', desc_en: 'Auto-add portion of tax to liquidity pool', desc_th: 'เพิ่มสภาพคล่องอัตโนมัติจากส่วนหนึ่งของภาษี', fee: 15, default: false },
+                { key: 'auto_lp_rate', type: 'range', label: 'LP Rate (%)', label_th: 'อัตรา LP (%)', desc_en: 'Percentage of tax that goes to liquidity', desc_th: 'เปอร์เซ็นต์ภาษีที่ส่งเข้า LP', fee: 0, default: 20, min: 5, max: 50, step: 5, show_if: 'auto_lp_enabled' },
+                { key: 'lp_lock_days', type: 'number', label: 'LP Lock (days)', label_th: 'ล็อค LP (วัน)', desc_en: 'Auto-lock LP tokens for security', desc_th: 'ล็อค LP Token อัตโนมัติเพื่อความปลอดภัย', fee: 0, default: 90, min: 30, max: 365, show_if: 'auto_lp_enabled' },
+            ],
+        },
+    ],
+
+    // ─── Reward Token ───
+    reward: [
+        {
+            group: 'reward_system', label: 'Reward Distribution', label_th: 'แจกรางวัล',
+            icon: '🎁', fee: 20,
+            options: [
+                { key: 'reward_type', type: 'select', label: 'Reward Type', label_th: 'ประเภทรางวัล', desc_en: 'How rewards are distributed', desc_th: 'วิธีการแจกรางวัลให้ผู้ถือ', fee: 20, default: 'reflection',
+                    choices: [
+                        { value: 'reflection', label: 'Reflection (Auto)', label_th: 'สะท้อน (อัตโนมัติ)' },
+                        { value: 'dividend', label: 'Dividend (Other Token)', label_th: 'ปันผล (เหรียญอื่น)' },
+                        { value: 'staking', label: 'Staking Pool', label_th: 'Staking Pool' },
+                    ],
+                },
+                { key: 'reflection_rate', type: 'range', label: 'Reward Rate (%)', label_th: 'อัตรารางวัล (%)', desc_en: 'Percentage of transactions redistributed', desc_th: 'เปอร์เซ็นต์ของธุรกรรมที่แจกคืนผู้ถือ', fee: 0, default: 3, min: 1, max: 15, step: 0.5 },
+                { key: 'min_hold_for_reward', type: 'number', label: 'Min Hold', label_th: 'ถือขั้นต่ำ', desc_en: 'Minimum tokens to qualify for rewards', desc_th: 'จำนวนเหรียญขั้นต่ำเพื่อรับรางวัล', fee: 0, default: 100 },
+            ],
+        },
+        {
+            group: 'vesting', label: 'Vesting / Lock', label_th: 'การปลดล็อคเหรียญ',
+            icon: '🔐', fee: 10,
+            options: [
+                { key: 'vesting_enabled', type: 'toggle', label: 'Enable Vesting', label_th: 'เปิด Vesting', desc_en: 'Lock tokens and release on schedule', desc_th: 'ล็อคเหรียญและปลดล็อคตามกำหนด', fee: 10, default: false },
+                { key: 'vesting_cliff_days', type: 'number', label: 'Cliff (days)', label_th: 'ระยะ Cliff (วัน)', desc_en: 'Lock period before first unlock', desc_th: 'ระยะเวลาก่อนปลดล็อคครั้งแรก', fee: 0, default: 90, min: 0, max: 730, show_if: 'vesting_enabled' },
+                { key: 'vesting_duration_days', type: 'number', label: 'Vesting Duration (days)', label_th: 'ระยะ Vesting (วัน)', desc_en: 'Total linear vesting period after cliff', desc_th: 'ระยะเวลาทั้งหมดของการปลดล็อคแบบ linear', fee: 0, default: 365, min: 30, max: 1460, show_if: 'vesting_enabled' },
+            ],
+        },
+    ],
+
+    // ─── Single NFT ───
+    nft: [
+        {
+            group: 'nft_metadata', label: 'NFT Metadata', label_th: 'ข้อมูล NFT',
+            icon: '📄', fee: 0,
+            options: [
+                { key: 'metadata_storage', type: 'select', label: 'Storage', label_th: 'ที่เก็บข้อมูล', desc_en: 'Where metadata is stored', desc_th: 'เลือกที่เก็บข้อมูล Metadata', fee: 0, default: 'ipfs',
+                    choices: [
+                        { value: 'ipfs', label: 'IPFS (Decentralized)', label_th: 'IPFS (กระจายศูนย์)' },
+                        { value: 'onchain', label: 'On-chain', label_th: 'บน Blockchain' },
+                        { value: 'centralized', label: 'URL (Centralized)', label_th: 'URL (ส่วนกลาง)' },
+                    ],
+                },
+                { key: 'metadata_uri', type: 'text', label: 'Metadata URI', label_th: 'URI ข้อมูล', desc_en: 'URL to metadata JSON', desc_th: 'URL ไปยังไฟล์ metadata', fee: 0, default: '' },
+            ],
+        },
+        {
+            group: 'royalty', label: 'Royalty (ERC-2981)', label_th: 'ค่าลิขสิทธิ์',
+            icon: '👑', fee: 5,
+            options: [
+                { key: 'royalty_enabled', type: 'toggle', label: 'Enable Royalty', label_th: 'เปิดค่าลิขสิทธิ์', desc_en: 'Receive % on every secondary sale', desc_th: 'รับเปอร์เซ็นต์ทุกครั้งที่มีการขายต่อ', fee: 5, default: true },
+                { key: 'royalty_rate', type: 'range', label: 'Royalty (%)', label_th: 'ค่าลิขสิทธิ์ (%)', desc_en: 'Percentage per resale', desc_th: 'เปอร์เซ็นต์ต่อการขายต่อ', fee: 0, default: 5, min: 0, max: 15, step: 0.5, show_if: 'royalty_enabled' },
+                { key: 'royalty_wallet', type: 'address', label: 'Royalty Wallet', label_th: 'กระเป๋ารับลิขสิทธิ์', desc_en: 'Wallet that receives royalties', desc_th: 'กระเป๋าที่รับค่าลิขสิทธิ์', fee: 0, default: '', show_if: 'royalty_enabled' },
+            ],
+        },
+        {
+            group: 'nft_transfer', label: 'Transfer Rules', label_th: 'กฎการโอน',
+            icon: '🔗', fee: 0,
+            options: [
+                { key: 'soulbound', type: 'toggle', label: 'Soulbound (SBT)', label_th: 'ผูกกระเป๋า (SBT)', desc_en: 'Non-transferable — for certificates, badges', desc_th: 'โอนไม่ได้ — สำหรับใบรับรอง, เหรียญตรา', fee: 5, default: false },
+            ],
+        },
+    ],
+
+    // ─── NFT Collection ───
+    nft_collection: [
+        {
+            group: 'mint_config', label: 'Minting Config', label_th: 'ตั้งค่า Mint',
+            icon: '🎨', fee: 0,
+            options: [
+                { key: 'mint_type', type: 'select', label: 'Mint Type', label_th: 'ประเภท Mint', desc_en: 'How NFTs are minted', desc_th: 'วิธีการ Mint NFT', fee: 0, default: 'public',
+                    choices: [
+                        { value: 'public', label: 'Public Sale', label_th: 'ขายสาธารณะ' },
+                        { value: 'whitelist', label: 'Whitelist Only', label_th: 'Whitelist เท่านั้น' },
+                        { value: 'free_claim', label: 'Free Claim', label_th: 'รับฟรี' },
+                    ],
+                },
+                { key: 'mint_price', type: 'number', label: 'Mint Price (TPIX)', label_th: 'ราคา Mint (TPIX)', desc_en: 'Price per NFT in TPIX', desc_th: 'ราคาต่อ NFT (TPIX)', fee: 0, default: 0, min: 0 },
+                { key: 'max_per_wallet', type: 'number', label: 'Max per Wallet', label_th: 'สูงสุดต่อกระเป๋า', desc_en: 'Maximum NFTs per wallet', desc_th: 'จำนวน NFT สูงสุดต่อกระเป๋า', fee: 0, default: 10, min: 1 },
+                { key: 'max_per_tx', type: 'number', label: 'Max per TX', label_th: 'สูงสุดต่อธุรกรรม', desc_en: 'Maximum NFTs per transaction', desc_th: 'จำนวน NFT สูงสุดต่อธุรกรรม', fee: 0, default: 5, min: 1 },
+                { key: 'reserve_count', type: 'number', label: 'Reserve for Team', label_th: 'สำรองให้ทีม', desc_en: 'NFTs reserved and minted to owner', desc_th: 'จำนวน NFT ที่สำรองให้ทีม (Mint ให้เจ้าของ)', fee: 0, default: 0, min: 0 },
+            ],
+        },
+        {
+            group: 'reveal', label: 'Reveal Mechanism', label_th: 'การเปิดเผย',
+            icon: '🎭', fee: 10,
+            options: [
+                { key: 'delayed_reveal', type: 'toggle', label: 'Delayed Reveal', label_th: 'เปิดเผยภายหลัง', desc_en: 'All NFTs show placeholder until reveal', desc_th: 'แสดงภาพ Placeholder จนกว่าจะเปิดเผย', fee: 10, default: false },
+                { key: 'placeholder_uri', type: 'text', label: 'Placeholder Image URI', label_th: 'URI ภาพ Placeholder', desc_en: 'Image shown before reveal', desc_th: 'ภาพที่แสดงก่อนเปิดเผย', fee: 0, default: '', show_if: 'delayed_reveal' },
+            ],
+        },
+        {
+            group: 'royalty', label: 'Royalty (ERC-2981)', label_th: 'ค่าลิขสิทธิ์',
+            icon: '👑', fee: 5,
+            options: [
+                { key: 'royalty_enabled', type: 'toggle', label: 'Enable Royalty', label_th: 'เปิดค่าลิขสิทธิ์', desc_en: 'Receive % on every secondary sale', desc_th: 'รับเปอร์เซ็นต์ทุกครั้งที่ขายต่อ', fee: 5, default: true },
+                { key: 'royalty_rate', type: 'range', label: 'Royalty (%)', label_th: 'ค่าลิขสิทธิ์ (%)', fee: 0, default: 5, min: 0, max: 15, step: 0.5, show_if: 'royalty_enabled' },
+                { key: 'royalty_wallet', type: 'address', label: 'Royalty Wallet', label_th: 'กระเป๋ารับลิขสิทธิ์', fee: 0, default: '', show_if: 'royalty_enabled' },
+            ],
+        },
+    ],
+
+    // ─── Governance ───
+    governance: [
+        {
+            group: 'voting', label: 'Voting Mechanism', label_th: 'ระบบโหวต',
+            icon: '🗳️', fee: 0,
+            options: [
+                { key: 'voting_type', type: 'select', label: 'Voting Type', label_th: 'ประเภทการโหวต', desc_en: 'How voting power is calculated', desc_th: 'วิธีคำนวณอำนาจโหวต', fee: 0, default: 'token_weighted',
+                    choices: [
+                        { value: 'token_weighted', label: 'Token-Weighted', label_th: 'ตามจำนวนเหรียญ' },
+                        { value: 'quadratic', label: 'Quadratic', label_th: 'แบบ Quadratic' },
+                    ],
+                },
+                { key: 'proposal_threshold', type: 'number', label: 'Proposal Threshold', label_th: 'ขั้นต่ำเสนอ Proposal', desc_en: 'Min tokens required to create a proposal', desc_th: 'จำนวนเหรียญขั้นต่ำเพื่อเสนอ Proposal', fee: 0, default: 1000 },
+                { key: 'quorum_percent', type: 'range', label: 'Quorum (%)', label_th: 'องค์ประชุม (%)', desc_en: 'Min participation for a vote to pass', desc_th: 'สัดส่วนขั้นต่ำของผู้โหวตเพื่อให้ Vote ผ่าน', fee: 0, default: 10, min: 1, max: 67, step: 1 },
+                { key: 'voting_period_days', type: 'number', label: 'Voting Period (days)', label_th: 'ระยะโหวต (วัน)', desc_en: 'How long voting stays open', desc_th: 'ระยะเวลาที่เปิดให้โหวต', fee: 0, default: 7, min: 1, max: 30 },
+            ],
+        },
+        {
+            group: 'treasury', label: 'Treasury', label_th: 'คลังเงิน',
+            icon: '🏦', fee: 15,
+            options: [
+                { key: 'treasury_enabled', type: 'toggle', label: 'Enable Treasury', label_th: 'เปิดคลังเงิน', desc_en: 'DAO treasury controlled by governance', desc_th: 'คลังเงิน DAO ควบคุมโดยการโหวต', fee: 15, default: false },
+                { key: 'treasury_wallet', type: 'address', label: 'Treasury Wallet', label_th: 'กระเป๋าคลัง', desc_en: 'Wallet that holds treasury funds', desc_th: 'กระเป๋าที่เก็บเงินคลัง', fee: 0, default: '', show_if: 'treasury_enabled' },
+            ],
+        },
+        {
+            group: 'delegation', label: 'Delegation', label_th: 'มอบอำนาจโหวต',
+            icon: '🤝', fee: 0,
+            options: [
+                { key: 'delegation_enabled', type: 'toggle', label: 'Allow Delegation', label_th: 'เปิดมอบอำนาจ', desc_en: 'Token holders can delegate votes', desc_th: 'ผู้ถือเหรียญสามารถมอบอำนาจโหวตได้', fee: 5, default: true },
+            ],
+        },
+    ],
+
+    // ─── Stablecoin ───
+    stablecoin: [
+        {
+            group: 'peg', label: 'Peg Configuration', label_th: 'การผูกค่าเงิน',
+            icon: '📌', fee: 0,
+            options: [
+                { key: 'peg_currency', type: 'select', label: 'Pegged Currency', label_th: 'ค่าเงินที่ผูก', desc_en: 'Currency this stablecoin tracks', desc_th: 'สกุลเงินที่เหรียญนี้ผูกมูลค่า', fee: 0, default: 'THB',
+                    choices: [
+                        { value: 'THB', label: 'Thai Baht (THB)', label_th: 'บาทไทย (THB)' },
+                        { value: 'USD', label: 'US Dollar (USD)', label_th: 'ดอลลาร์สหรัฐ (USD)' },
+                        { value: 'EUR', label: 'Euro (EUR)', label_th: 'ยูโร (EUR)' },
+                    ],
+                },
+                { key: 'peg_ratio', type: 'number', label: 'Peg Ratio', label_th: 'อัตราผูก', desc_en: '1 token = how much of pegged currency', desc_th: '1 เหรียญ = กี่หน่วยของสกุลเงินที่ผูก', fee: 0, default: 1, min: 0.0001 },
+            ],
+        },
+        {
+            group: 'reserve', label: 'Reserve Management', label_th: 'จัดการ Reserve',
+            icon: '🏦', fee: 0,
+            options: [
+                { key: 'reserve_type', type: 'select', label: 'Reserve Type', label_th: 'ประเภท Reserve', desc_en: 'How stablecoin is backed', desc_th: 'วิธีหนุนค่าเหรียญ', fee: 0, default: 'full_collateral',
+                    choices: [
+                        { value: 'full_collateral', label: 'Full Collateral (100%)', label_th: 'หลักประกันเต็ม (100%)' },
+                        { value: 'fractional', label: 'Fractional Reserve', label_th: 'หลักประกันบางส่วน' },
+                        { value: 'algorithmic', label: 'Algorithmic', label_th: 'อัลกอริธึม' },
+                    ],
+                },
+                { key: 'reserve_wallet', type: 'address', label: 'Reserve Wallet', label_th: 'กระเป๋า Reserve', desc_en: 'Wallet holding collateral', desc_th: 'กระเป๋าที่เก็บหลักประกัน', fee: 0, default: '' },
+            ],
+        },
+        {
+            group: 'compliance', label: 'Compliance', label_th: 'การปฏิบัติตามกฎ',
+            icon: '⚖️', fee: 0,
+            options: [
+                { key: 'freeze_enabled', type: 'toggle', label: 'Account Freeze', label_th: 'อายัดบัญชีได้', desc_en: 'Authority can freeze accounts (regulatory)', desc_th: 'มีอำนาจอายัดบัญชี (ตามกฎหมาย)', fee: 5, default: false },
+                { key: 'kyc_required', type: 'toggle', label: 'KYC Required', label_th: 'ต้อง KYC', desc_en: 'Require KYC for holders above threshold', desc_th: 'ต้องยืนยันตัวตนสำหรับผู้ถือเกินเกณฑ์', fee: 5, default: false },
+            ],
+        },
     ],
 };
 
 const currentTypes = computed(() => tokenTypesByCategory[form.value.token_category] || []);
 
 const isNFT = computed(() => form.value.token_category === 'nft');
+
+// ===================== SUB-OPTIONS STATE =====================
+const subOptions = ref({});
+
+// ดึง config สำหรับ token type ปัจจุบัน (common + type-specific)
+const currentSubOptionsGroups = computed(() => {
+    const tt = form.value.token_type || 'standard';
+    const common = subOptionsConfig._common || [];
+    const specific = subOptionsConfig[tt] || [];
+    return [...common, ...specific];
+});
+
+// ตรวจว่า option ควรแสดงหรือไม่ (show_if dependency)
+function shouldShowOption(opt) {
+    if (!opt.show_if) return true;
+    return !!subOptions.value[opt.show_if];
+}
+
+// เมื่อเปลี่ยน token type → reset sub-options เป็น defaults
+watch(() => form.value.token_type, () => {
+    const defaults = {};
+    for (const group of currentSubOptionsGroups.value) {
+        for (const opt of group.options) {
+            defaults[opt.key] = opt.default;
+        }
+    }
+    subOptions.value = defaults;
+}, { immediate: true });
+
+// คำนวณ fee เพิ่มจาก sub-options
+const subOptionsFee = computed(() => {
+    let fee = 0;
+    const items = [];
+    for (const group of currentSubOptionsGroups.value) {
+        for (const opt of group.options) {
+            if (opt.fee > 0 && opt.type === 'toggle' && subOptions.value[opt.key]) {
+                fee += opt.fee;
+                items.push({ label: opt.label, label_th: opt.label_th, amount: opt.fee });
+            } else if (opt.fee > 0 && opt.type === 'select' && subOptions.value[opt.key] && subOptions.value[opt.key] !== opt.default) {
+                // Select ที่เปลี่ยนจาก default (ถ้ามี fee)
+            }
+        }
+    }
+    return { total: fee, items };
+});
+
+// สรุป sub-options ที่เลือกสำหรับ Review
+const selectedSubOptionsSummary = computed(() => {
+    const summary = [];
+    for (const group of currentSubOptionsGroups.value) {
+        const activeOpts = [];
+        for (const opt of group.options) {
+            if (!shouldShowOption(opt)) continue;
+            const val = subOptions.value[opt.key];
+            if (val === undefined || val === '' || val === opt.default) continue;
+            if (opt.type === 'toggle' && val) {
+                activeOpts.push({ ...opt, displayValue: 'ON' });
+            } else if (opt.type === 'range' || opt.type === 'number') {
+                activeOpts.push({ ...opt, displayValue: val });
+            } else if (opt.type === 'select') {
+                const choice = opt.choices?.find(c => c.value === val);
+                activeOpts.push({ ...opt, displayValue: choice?.label || val });
+            } else if (opt.type === 'address' || opt.type === 'text') {
+                if (val) activeOpts.push({ ...opt, displayValue: val.length > 20 ? val.slice(0, 10) + '...' + val.slice(-6) : val });
+            }
+        }
+        if (activeOpts.length > 0) {
+            summary.push({ group: group.label, group_th: group.label_th, icon: group.icon, options: activeOpts });
+        }
+    }
+    return summary;
+});
+
+// มี sub-options ที่เลือกอยู่หรือไม่
+const hasActiveSubOptions = computed(() => selectedSubOptionsSummary.value.length > 0);
 
 // ===================== SUPPLY PRESETS =====================
 const supplyPresets = computed(() => {
@@ -152,8 +524,9 @@ const stepValid = computed(() => {
     switch (wizardStep.value) {
         case 1: return !!form.value.token_category;
         case 2: return !!form.value.token_type;
-        case 3: return !!form.value.name && !!form.value.symbol && !!form.value.total_supply;
-        case 4: return true; // Review step
+        case 3: return true; // Advanced options — always valid (all optional)
+        case 4: return !!form.value.name && !!form.value.symbol && !!form.value.total_supply;
+        case 5: return true; // Review step
         default: return false;
     }
 });
@@ -264,6 +637,12 @@ const dynamicFee = computed(() => {
             breakdown.push({ label: 'Large Supply (>1B)', label_th: 'Supply ใหญ่ (>1B)', amount: supFee });
             total += supFee;
         }
+    }
+
+    // 6. Sub-options fees
+    for (const item of subOptionsFee.value.items) {
+        breakdown.push({ label: item.label, label_th: item.label_th, amount: item.amount });
+        total += item.amount;
     }
 
     return { total: Math.round(total * 100) / 100, breakdown, is_free: false, is_testnet: false };
@@ -388,6 +767,7 @@ async function handleCreate() {
     try {
         await factoryStore.createToken({
             ...form.value,
+            sub_options: subOptions.value,
             creator_address: walletStore.address,
             chain_id: selectedChainId.value,
         });
@@ -606,18 +986,19 @@ function getTypeLabel(type) {
                                 </span>
                                 <span class="text-sm font-bold text-amber-400">TESTNET</span>
                             </div>
-                            <span class="text-xs text-amber-400/80">สร้าง Token ฟรี — ไม่มีค่าธรรมเนียม · Reset ทุก {{ testnetResetMonths }} เดือน · ไม่มีมูลค่าจริง</span>
+                            <span class="text-xs text-amber-400/80">FREE tokens · No fees · Reset every {{ testnetResetMonths }} months · No real value / สร้างฟรี · รีเซ็ตทุก {{ testnetResetMonths }} เดือน</span>
                         </div>
                     </div>
 
                     <!-- Step Indicator -->
-                    <div class="flex items-center justify-between mb-8 px-4">
+                    <div class="flex items-center justify-between mb-8 px-2">
                         <button
                             v-for="step in [
                                 { n: 1, label: 'Category' },
                                 { n: 2, label: 'Type' },
-                                { n: 3, label: 'Details' },
-                                { n: 4, label: 'Review' },
+                                { n: 3, label: 'Options' },
+                                { n: 4, label: 'Details' },
+                                { n: 5, label: 'Review' },
                             ]"
                             :key="step.n"
                             @click="goToStep(step.n)"
@@ -663,7 +1044,7 @@ function getTypeLabel(type) {
                         <div v-if="wizardStep === 1" class="space-y-4">
                             <div class="text-center mb-6">
                                 <h2 class="text-xl font-bold text-white">Choose Token Category</h2>
-                                <p class="text-sm text-gray-400 mt-1">Select the type of digital asset you want to create</p>
+                                <p class="text-sm text-gray-400 mt-1">เลือกประเภทสินทรัพย์ดิจิทัลที่ต้องการสร้าง / Select the type of digital asset</p>
                             </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -699,6 +1080,7 @@ function getTypeLabel(type) {
 
                                     <h3 class="font-semibold text-white mb-1">{{ cat.label }}</h3>
                                     <p class="text-xs text-gray-400 leading-relaxed">{{ cat.desc }}</p>
+                                    <p v-if="cat.desc_en" class="text-[10px] text-gray-500 mt-0.5">{{ cat.desc_en }}</p>
 
                                     <!-- Selected indicator -->
                                     <div v-if="form.token_category === cat.id && !cat.disabled" class="absolute top-3 right-3">
@@ -725,7 +1107,7 @@ function getTypeLabel(type) {
                         <div v-if="wizardStep === 2" class="space-y-4">
                             <div class="text-center mb-6">
                                 <h2 class="text-xl font-bold text-white">Choose Token Type</h2>
-                                <p class="text-sm text-gray-400 mt-1">Select the functionality for your {{ getCategoryLabel(form.token_category) }}</p>
+                                <p class="text-sm text-gray-400 mt-1">เลือกฟังก์ชันสำหรับ {{ getCategoryLabel(form.token_category) }} / Select functionality</p>
                             </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -747,6 +1129,7 @@ function getTypeLabel(type) {
                                                 <span v-if="tt.recommended" class="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 font-medium">Recommended</span>
                                             </div>
                                             <p class="text-xs text-gray-400 mt-0.5">{{ tt.desc }}</p>
+                                            <p v-if="tt.desc_en" class="text-[10px] text-gray-500">{{ tt.desc_en }}</p>
                                         </div>
                                     </div>
 
@@ -760,7 +1143,7 @@ function getTypeLabel(type) {
                         </div>
                     </Transition>
 
-                    <!-- ===== STEP 3: Token Details ===== -->
+                    <!-- ===== STEP 3: Advanced Options (Sub-Options) ===== -->
                     <Transition
                         enter-active-class="transition ease-out duration-200"
                         enter-from-class="opacity-0 translate-x-4"
@@ -769,10 +1152,146 @@ function getTypeLabel(type) {
                         leave-from-class="opacity-100"
                         leave-to-class="opacity-0"
                     >
-                        <div v-if="wizardStep === 3" class="space-y-5">
+                        <div v-if="wizardStep === 3" class="space-y-4">
+                            <div class="text-center mb-6">
+                                <h2 class="text-xl font-bold text-white">Advanced Options</h2>
+                                <p class="text-sm text-gray-400 mt-1">ตั้งค่าฟีเจอร์เพิ่มเติม (ไม่จำเป็น) / Configure additional features (optional)</p>
+                            </div>
+
+                            <!-- No options message for standard -->
+                            <div v-if="currentSubOptionsGroups.length === 0 || (currentSubOptionsGroups.length === 2 && form.token_type === 'standard')" class="glass-dark p-8 rounded-2xl border border-white/10 text-center">
+                                <p class="text-gray-400 text-sm">Standard token ไม่มีออฟชั่นเพิ่มเติม</p>
+                                <p class="text-xs text-gray-500 mt-1">Standard token has no additional options. Click Next to continue.</p>
+                            </div>
+
+                            <!-- Option Groups -->
+                            <div v-for="group in currentSubOptionsGroups" :key="group.group" class="glass-dark rounded-2xl border border-white/10 overflow-hidden">
+                                <!-- Group Header -->
+                                <div class="p-4 border-b border-white/5 flex items-center gap-3">
+                                    <span class="text-xl">{{ group.icon }}</span>
+                                    <div class="flex-1">
+                                        <h3 class="text-sm font-semibold text-white">{{ group.label }}</h3>
+                                        <p class="text-[10px] text-gray-500">{{ group.label_th }}</p>
+                                    </div>
+                                    <div v-if="group.fee > 0" class="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 text-[10px] font-medium">
+                                        +{{ group.fee }} TPIX
+                                    </div>
+                                </div>
+
+                                <!-- Options -->
+                                <div class="p-4 space-y-4">
+                                    <div v-for="opt in group.options" :key="opt.key" v-show="shouldShowOption(opt)">
+
+                                        <!-- Toggle -->
+                                        <div v-if="opt.type === 'toggle'" class="flex items-center justify-between py-2">
+                                            <div class="flex-1 mr-4">
+                                                <div class="flex items-center gap-2">
+                                                    <p class="text-sm font-medium text-white">{{ opt.label }}</p>
+                                                    <span class="text-[10px] text-gray-500">{{ opt.label_th }}</span>
+                                                    <span v-if="opt.fee > 0 && subOptions[opt.key]" class="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[9px] font-medium">+{{ opt.fee }} TPIX</span>
+                                                </div>
+                                                <p class="text-xs text-gray-400 mt-0.5">{{ opt.desc_en || '' }}</p>
+                                                <p class="text-[10px] text-gray-500">{{ opt.desc_th || '' }}</p>
+                                            </div>
+                                            <button type="button" @click="subOptions[opt.key] = !subOptions[opt.key]"
+                                                :class="['w-11 h-6 rounded-full transition-colors flex-shrink-0', subOptions[opt.key] ? 'bg-primary-500' : 'bg-white/10']">
+                                                <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', subOptions[opt.key] ? 'translate-x-5' : 'translate-x-0.5']"></div>
+                                            </button>
+                                        </div>
+
+                                        <!-- Range / Slider -->
+                                        <div v-else-if="opt.type === 'range'" class="py-2">
+                                            <div class="flex items-center justify-between mb-1.5">
+                                                <div class="flex items-center gap-2">
+                                                    <p class="text-sm font-medium text-white">{{ opt.label }}</p>
+                                                    <span class="text-[10px] text-gray-500">{{ opt.label_th }}</span>
+                                                </div>
+                                                <span class="text-sm font-bold text-primary-400">{{ subOptions[opt.key] }}%</span>
+                                            </div>
+                                            <input type="range" v-model.number="subOptions[opt.key]" :min="opt.min" :max="opt.max" :step="opt.step"
+                                                class="w-full h-1.5 rounded-full appearance-none bg-white/10 accent-primary-500 cursor-pointer" />
+                                            <div class="flex justify-between text-[10px] text-gray-500 mt-0.5">
+                                                <span>{{ opt.min }}%</span>
+                                                <span>{{ opt.max }}%</span>
+                                            </div>
+                                        </div>
+
+                                        <!-- Number -->
+                                        <div v-else-if="opt.type === 'number'" class="py-2">
+                                            <div class="flex items-center gap-2 mb-1.5">
+                                                <p class="text-sm font-medium text-white">{{ opt.label }}</p>
+                                                <span class="text-[10px] text-gray-500">{{ opt.label_th }}</span>
+                                            </div>
+                                            <input type="number" v-model.number="subOptions[opt.key]" :min="opt.min" :max="opt.max"
+                                                :placeholder="opt.desc_en" class="trading-input w-full max-w-xs" />
+                                            <p class="text-[10px] text-gray-500 mt-0.5">{{ opt.desc_th }}</p>
+                                        </div>
+
+                                        <!-- Select -->
+                                        <div v-else-if="opt.type === 'select'" class="py-2">
+                                            <div class="flex items-center gap-2 mb-1.5">
+                                                <p class="text-sm font-medium text-white">{{ opt.label }}</p>
+                                                <span class="text-[10px] text-gray-500">{{ opt.label_th }}</span>
+                                            </div>
+                                            <div class="flex flex-wrap gap-2">
+                                                <button v-for="choice in opt.choices" :key="choice.value" type="button"
+                                                    @click="subOptions[opt.key] = choice.value"
+                                                    class="px-3 py-2 rounded-lg border text-xs font-medium transition-all"
+                                                    :class="subOptions[opt.key] === choice.value
+                                                        ? 'bg-primary-500/15 border-primary-500/40 text-primary-400'
+                                                        : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'">
+                                                    <span>{{ choice.label }}</span>
+                                                    <span class="block text-[10px] text-gray-500 mt-0.5">{{ choice.label_th }}</span>
+                                                </button>
+                                            </div>
+                                            <p v-if="opt.desc_th" class="text-[10px] text-gray-500 mt-1">{{ opt.desc_th }}</p>
+                                        </div>
+
+                                        <!-- Address -->
+                                        <div v-else-if="opt.type === 'address'" class="py-2">
+                                            <div class="flex items-center gap-2 mb-1.5">
+                                                <p class="text-sm font-medium text-white">{{ opt.label }}</p>
+                                                <span class="text-[10px] text-gray-500">{{ opt.label_th }}</span>
+                                            </div>
+                                            <input type="text" v-model="subOptions[opt.key]" placeholder="0x..." class="trading-input w-full font-mono text-xs" />
+                                            <p class="text-[10px] text-gray-500 mt-0.5">{{ opt.desc_th }}</p>
+                                        </div>
+
+                                        <!-- Text -->
+                                        <div v-else-if="opt.type === 'text'" class="py-2">
+                                            <div class="flex items-center gap-2 mb-1.5">
+                                                <p class="text-sm font-medium text-white">{{ opt.label }}</p>
+                                                <span class="text-[10px] text-gray-500">{{ opt.label_th }}</span>
+                                            </div>
+                                            <input type="text" v-model="subOptions[opt.key]" :placeholder="opt.desc_en" class="trading-input w-full text-xs" />
+                                            <p class="text-[10px] text-gray-500 mt-0.5">{{ opt.desc_th }}</p>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Fee Preview -->
+                            <div v-if="subOptionsFee.total > 0 && !isTestnet" class="p-3 rounded-xl bg-amber-500/5 border border-amber-500/10 flex items-center justify-between text-sm">
+                                <span class="text-gray-400">ค่าธรรมเนียม Options / Options Fee</span>
+                                <span class="text-amber-400 font-bold">+{{ subOptionsFee.total }} TPIX</span>
+                            </div>
+                        </div>
+                    </Transition>
+
+                    <!-- ===== STEP 4: Token Details ===== -->
+                    <Transition
+                        enter-active-class="transition ease-out duration-200"
+                        enter-from-class="opacity-0 translate-x-4"
+                        enter-to-class="opacity-100 translate-x-0"
+                        leave-active-class="transition ease-in duration-150"
+                        leave-from-class="opacity-100"
+                        leave-to-class="opacity-0"
+                    >
+                        <div v-if="wizardStep === 4" class="space-y-5">
                             <div class="text-center mb-6">
                                 <h2 class="text-xl font-bold text-white">Token Details</h2>
-                                <p class="text-sm text-gray-400 mt-1">Fill in the basic information for your token</p>
+                                <p class="text-sm text-gray-400 mt-1">กรอกข้อมูลเหรียญ / Fill in token information</p>
                             </div>
 
                             <div class="glass-dark p-6 rounded-2xl border border-white/10 space-y-5">
@@ -902,7 +1421,7 @@ function getTypeLabel(type) {
                         </div>
                     </Transition>
 
-                    <!-- ===== STEP 4: Review & Confirm ===== -->
+                    <!-- ===== STEP 5: Review & Confirm ===== -->
                     <Transition
                         enter-active-class="transition ease-out duration-200"
                         enter-from-class="opacity-0 translate-x-4"
@@ -911,10 +1430,10 @@ function getTypeLabel(type) {
                         leave-from-class="opacity-100"
                         leave-to-class="opacity-0"
                     >
-                        <div v-if="wizardStep === 4" class="space-y-5">
+                        <div v-if="wizardStep === 5" class="space-y-5">
                             <div class="text-center mb-6">
                                 <h2 class="text-xl font-bold text-white">Review & Confirm</h2>
-                                <p class="text-sm text-gray-400 mt-1">Double check everything before submitting</p>
+                                <p class="text-sm text-gray-400 mt-1">ตรวจสอบข้อมูลก่อนส่ง / Double check everything before submitting</p>
                             </div>
 
                             <div class="glass-dark p-6 rounded-2xl border border-white/10">
@@ -984,9 +1503,30 @@ function getTypeLabel(type) {
                                 </div>
                             </div>
 
+                            <!-- Sub-Options Review -->
+                            <div v-if="hasActiveSubOptions" class="glass-dark p-5 rounded-xl border border-white/10">
+                                <p class="text-sm font-medium text-white mb-3">Advanced Options / ออฟชั่นเพิ่มเติม</p>
+                                <div v-for="grp in selectedSubOptionsSummary" :key="grp.group" class="mb-3 last:mb-0">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="text-sm">{{ grp.icon }}</span>
+                                        <span class="text-xs font-medium text-gray-300">{{ grp.group }}</span>
+                                        <span class="text-[10px] text-gray-500">{{ grp.group_th }}</span>
+                                    </div>
+                                    <div class="pl-6 space-y-1">
+                                        <div v-for="opt in grp.options" :key="opt.key" class="flex items-center justify-between text-xs">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-gray-400">{{ opt.label }}</span>
+                                                <span class="text-[10px] text-gray-500">{{ opt.label_th }}</span>
+                                            </div>
+                                            <span class="text-white font-mono">{{ opt.displayValue }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- Dynamic Fee Breakdown -->
                             <div class="glass-dark p-5 rounded-xl border border-white/10">
-                                <p class="text-sm font-medium text-white mb-3">Creation Fee</p>
+                                <p class="text-sm font-medium text-white mb-3">Creation Fee / ค่าธรรมเนียมสร้างเหรียญ</p>
 
                                 <!-- Fee breakdown items -->
                                 <div v-if="dynamicFee.breakdown.length > 0" class="space-y-2 mb-3">
@@ -1009,6 +1549,9 @@ function getTypeLabel(type) {
                                 </div>
 
                                 <p class="text-xs text-gray-500 mt-2">
+                                    Fee is calculated based on selected options — more features = higher fee
+                                </p>
+                                <p class="text-[10px] text-gray-600">
                                     ค่าธรรมเนียมคำนวณจากออฟชั่นที่คุณเลือก — ยิ่งฟีเจอร์เยอะ ค่าสร้างยิ่งเพิ่ม
                                 </p>
                             </div>
@@ -1017,14 +1560,16 @@ function getTypeLabel(type) {
                             <div v-if="isTestnet" class="p-4 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center gap-3">
                                 <span class="text-2xl">🎉</span>
                                 <div>
-                                    <p class="text-sm font-bold text-green-400">Testnet — ไม่มีค่าธรรมเนียม!</p>
-                                    <p class="text-xs text-green-400/70">Token จะถูก deploy บน {{ selectedChainName }} ฟรี สำหรับทดสอบเท่านั้น</p>
+                                    <p class="text-sm font-bold text-green-400">Testnet — FREE / ไม่มีค่าธรรมเนียม!</p>
+                                    <p class="text-xs text-green-400/70">Your token will be deployed on {{ selectedChainName }} for free (testing only)</p>
+                                    <p class="text-[10px] text-green-400/60">Token จะถูก deploy บน {{ selectedChainName }} ฟรี สำหรับทดสอบเท่านั้น</p>
                                 </div>
                             </div>
 
                             <!-- Process Info -->
-                            <div class="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10 text-xs text-blue-300/80">
-                                After submission, our team will review your token within 24 hours. Once approved, it will be deployed on <span class="font-semibold text-blue-300">{{ selectedChainName }}</span> automatically.
+                            <div class="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10 text-xs space-y-1">
+                                <p class="text-blue-300/80">After submission, our team will review your token within 24 hours. Once approved, it will be deployed on <span class="font-semibold text-blue-300">{{ selectedChainName }}</span> automatically.</p>
+                                <p class="text-blue-300/50 text-[10px]">หลังจากส่ง ทีมงานจะรีวิวเหรียญของคุณภายใน 24 ชั่วโมง เมื่ออนุมัติจะ deploy บน {{ selectedChainName }} อัตโนมัติ</p>
                             </div>
                         </div>
                     </Transition>
