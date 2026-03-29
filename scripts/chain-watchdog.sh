@@ -5,12 +5,10 @@
 # Developed by Xman Studio
 # ============================================================
 
-set -euo pipefail
-
 # ─── Config ───
 INFRA_DIR="${TPIX_INFRA_DIR:-$HOME/tpix-infrastructure}"
 RPC_URL="http://127.0.0.1:8545"
-LOG_FILE="/var/log/tpix-watchdog.log"
+LOG_FILE="${TPIX_WATCHDOG_LOG:-$HOME/tpix-watchdog.log}"
 MAX_BLOCK_AGE=30           # block ต้องไม่เก่ากว่า 30 วินาที (block time = 2s)
 MAX_RESTART_PER_HOUR=3     # restart ได้สูงสุด 3 ครั้ง/ชม. (ป้องกัน restart loop)
 RESTART_COUNTER_FILE="/tmp/tpix-restart-counter"

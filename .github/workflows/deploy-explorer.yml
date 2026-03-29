@@ -111,17 +111,13 @@ jobs:
                   - ./tpix-chain/genesis.json:/genesis.json:ro
                 command: server --data-dir /data --chain /genesis.json --grpc-address 0.0.0.0:10000 --libp2p 0.0.0.0:10001 --jsonrpc 0.0.0.0:8545 --seal --max-slots 4096 --block-gas-target 20000000 --price-limit 0 --log-level INFO
                 healthcheck:
-                  test: ["CMD-SHELL", "wget -qO- --timeout=5 --post-data='{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}' --header='Content-Type: application/json' http://127.0.0.1:8545 || exit 1"]
+                  test: ["CMD-SHELL", "polygon-edge status --grpc-address 127.0.0.1:10000 > /dev/null 2>&1"]
                   interval: 30s
                   timeout: 10s
                   retries: 3
-                  start_period: 30s
-                deploy:
-                  resources:
-                    limits:
-                      memory: 2G
-                    reservations:
-                      memory: 512M
+                  start_period: 60s
+                mem_limit: 2g
+                memswap_limit: 2g
                 logging:
                   driver: json-file
                   options:
@@ -194,12 +190,8 @@ jobs:
                   tpix-node:
                     condition: service_healthy
                 command: sh -c "bin/blockscout eval 'Elixir.Explorer.ReleaseTasks.create_and_migrate()' && bin/blockscout start"
-                deploy:
-                  resources:
-                    limits:
-                      memory: 2G
-                    reservations:
-                      memory: 512M
+                mem_limit: 2g
+                memswap_limit: 2g
                 logging:
                   driver: json-file
                   options:
@@ -492,84 +484,85 @@ jobs:
             echo ""
             echo "=== Setting up chain watchdog cron ==="
             WATCHDOG_SCRIPT="$HOME/chain-watchdog.sh"
-            cat > "$WATCHDOG_SCRIPT" << 'WATCHDOG'
-            #!/bin/bash
-            # TPIX Chain Watchdog — auto-restart if chain stops producing blocks
-            RPC="http://127.0.0.1:8545"
-            INFRA="$HOME/tpix-infrastructure"
-            LOG="/var/log/tpix-watchdog.log"
-            RESTART_FILE="/tmp/tpix-restart-count"
+            WATCHDOG_LOG="$HOME/tpix-watchdog.log"
 
-            log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG"; }
+            cat > "$WATCHDOG_SCRIPT" << WATCHDOG_EOF
+#!/bin/bash
+# TPIX Chain Watchdog — auto-restart if chain stops producing blocks
+# Installed by deploy-explorer workflow
+RPC="http://127.0.0.1:8545"
+INFRA="$HOME/tpix-infrastructure"
+LOG="$HOME/tpix-watchdog.log"
+RESTART_FILE="/tmp/tpix-restart-count"
 
-            # Get block number
-            get_block() {
-                curl -s --max-time 10 "$RPC" -X POST \
-                    -H "Content-Type: application/json" \
-                    -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null \
-                    | grep -o '"result":"[^"]*"' | cut -d'"' -f4
-            }
+log() { echo "[\$(date '+%Y-%m-%d %H:%M:%S')] \$1" >> "\$LOG"; }
 
-            # Check container
-            STATUS=$(docker inspect -f '{{.State.Status}}' tpix-chain-node 2>/dev/null || echo "dead")
-            if [ "$STATUS" != "running" ]; then
-                log "ERROR: Container not running ($STATUS) — starting..."
-                cd "$INFRA" && docker compose up -d tpix-chain-node
-                sleep 15
-                log "Container restarted"
-                exit 0
-            fi
+get_block() {
+    curl -s --max-time 10 "\$RPC" -X POST \\
+        -H "Content-Type: application/json" \\
+        -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null \\
+        | grep -o '"result":"[^"]*"' | cut -d'"' -f4
+}
 
-            # Check blocks progressing
-            B1=$(get_block)
-            if [ -z "$B1" ]; then
-                log "ERROR: RPC not responding — restarting..."
-                cd "$INFRA" && docker compose restart tpix-chain-node
-                sleep 15
-                docker compose restart blockscout-backend 2>/dev/null || true
-                log "Restarted (RPC dead)"
-                exit 0
-            fi
+# Check container running
+STATUS=\$(docker inspect -f '{{.State.Status}}' tpix-chain-node 2>/dev/null || echo "dead")
+if [ "\$STATUS" != "running" ]; then
+    log "ERROR: Container not running (\$STATUS) — starting..."
+    cd "\$INFRA" && docker compose up -d tpix-chain-node
+    sleep 15
+    log "Container restarted"
+    exit 0
+fi
 
-            sleep 6
-            B2=$(get_block)
+# Check RPC responding
+B1=\$(get_block)
+if [ -z "\$B1" ]; then
+    log "ERROR: RPC not responding — restarting..."
+    cd "\$INFRA" && docker compose restart tpix-chain-node
+    sleep 15
+    docker compose restart blockscout-backend 2>/dev/null || true
+    log "Restarted (RPC dead)"
+    exit 0
+fi
 
-            if [ "$B1" = "$B2" ]; then
-                # ตรวจ restart limit
-                COUNT=0
-                if [ -f "$RESTART_FILE" ]; then
-                    AGE=$(( $(date +%s) - $(stat -c %Y "$RESTART_FILE" 2>/dev/null || echo 0) ))
-                    [ $AGE -gt 3600 ] && echo "0" > "$RESTART_FILE"
-                    COUNT=$(cat "$RESTART_FILE" 2>/dev/null || echo 0)
-                fi
-                if [ "$COUNT" -ge 3 ]; then
-                    log "CRITICAL: 3+ restarts in 1h — manual fix needed!"
-                    exit 1
-                fi
-                echo "$((COUNT + 1))" > "$RESTART_FILE"
+# Check blocks progressing
+sleep 6
+B2=\$(get_block)
 
-                log "ERROR: Chain stuck at $B1 — restarting (attempt $((COUNT+1))/3)..."
-                cd "$INFRA" && docker compose restart tpix-chain-node
-                sleep 15
-                docker compose restart blockscout-backend 2>/dev/null || true
-                B3=$(get_block)
-                log "After restart: block $B3"
-            else
-                BDEC=$(printf "%d" "$B2" 2>/dev/null || echo "?")
-                log "OK: block $B2 ($BDEC)"
-            fi
-            WATCHDOG
+if [ "\$B1" = "\$B2" ]; then
+    COUNT=0
+    if [ -f "\$RESTART_FILE" ]; then
+        AGE=\$(( \$(date +%s) - \$(stat -c %Y "\$RESTART_FILE" 2>/dev/null || echo 0) ))
+        [ \$AGE -gt 3600 ] && echo "0" > "\$RESTART_FILE"
+        COUNT=\$(cat "\$RESTART_FILE" 2>/dev/null || echo 0)
+    fi
+    if [ "\$COUNT" -ge 3 ]; then
+        log "CRITICAL: 3+ restarts in 1h — manual fix needed!"
+        exit 1
+    fi
+    echo "\$((COUNT + 1))" > "\$RESTART_FILE"
+
+    log "ERROR: Chain stuck at \$B1 — restarting (attempt \$((COUNT+1))/3)..."
+    cd "\$INFRA" && docker compose restart tpix-chain-node
+    sleep 15
+    docker compose restart blockscout-backend 2>/dev/null || true
+    B3=\$(get_block)
+    log "After restart: block \$B3"
+else
+    BDEC=\$(printf "%d" "\$B2" 2>/dev/null || echo "?")
+    log "OK: block \$B2 (\$BDEC)"
+fi
+WATCHDOG_EOF
 
             chmod +x "$WATCHDOG_SCRIPT"
-            # ลบ sed indentation ที่ heredoc ใส่มา
-            sed -i 's/^            //' "$WATCHDOG_SCRIPT"
 
-            # ติดตั้ง cron ทุก 5 นาที (ถ้ายังไม่มี)
-            CRON_LINE="*/5 * * * * $WATCHDOG_SCRIPT >> /var/log/tpix-watchdog.log 2>&1"
-            (crontab -l 2>/dev/null | grep -v "chain-watchdog" || true; echo "$CRON_LINE") | crontab -
+            # ติดตั้ง cron ทุก 5 นาที
+            CRON_LINE="*/5 * * * * $WATCHDOG_SCRIPT >> $WATCHDOG_LOG 2>&1"
+            # ลบ cron เก่า แล้วเพิ่มใหม่
+            (crontab -l 2>/dev/null | grep -v "$WATCHDOG_SCRIPT" || true; echo "$CRON_LINE") | crontab -
             echo "Cron installed: $CRON_LINE"
-            crontab -l | grep watchdog || echo "Warning: cron not found"
-            touch /var/log/tpix-watchdog.log 2>/dev/null || true
+            crontab -l | grep "chain-watchdog" || echo "Warning: cron not set"
+            touch "$WATCHDOG_LOG" 2>/dev/null || true
 
             echo ""
             echo "Validator: $VALIDATOR_ADDR"
