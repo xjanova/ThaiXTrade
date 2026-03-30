@@ -108,13 +108,24 @@ jobs:
             # ──────────────────────────────────────────
             echo "[4/5] Deploying contracts..."
 
+            # Ensure package.json has type=module for ESM imports
+            # (compile step creates it but let's be safe)
+            cd "$WORK"
+            cat package.json 2>/dev/null | head -5 || echo "No package.json found"
+            ls -la deploy.mjs 2>/dev/null || echo "deploy.mjs not found!"
+
             DEPLOY_OUTPUT=$(docker run --rm \
               --network host \
               -e DEPLOYER_KEY="$PRIVATE_KEY" \
               -v "$WORK:/app" \
               -w /app \
               node:22-alpine \
-              sh -c "npm install ethers@6 > /dev/null 2>&1 && node deploy.mjs" 2>&1)
+              sh -c "
+                npm pkg set type=module 2>/dev/null
+                npm install ethers@6 2>/dev/null
+                echo 'Starting deploy...'
+                node deploy.mjs 2>&1
+              " 2>&1)
 
             echo "$DEPLOY_OUTPUT"
 
