@@ -101,13 +101,14 @@ jobs:
             # Create package.json for ESM
             echo '{"type":"module"}' > /tmp/factory-deploy/package.json
 
-            DEPLOY_OUTPUT=$(cd /tmp/factory-deploy && \
-              DEPLOYER_KEY="$PRIVATE_KEY" \
+            cd /tmp/factory-deploy
+            DEPLOYER_KEY="$PRIVATE_KEY" \
               V2_ARTIFACT="/tmp/factory-deploy/TPIXTokenFactoryV2.json" \
               NFT_ARTIFACT="/tmp/factory-deploy/TPIXNFTFactory.json" \
-              node deploy.mjs 2>&1)
+              node deploy.mjs 2>&1 | tee /tmp/factory-deploy-output.log || true
 
-            echo "$DEPLOY_OUTPUT"
+            DEPLOY_OUTPUT=$(cat /tmp/factory-deploy-output.log)
+            echo "Deploy output captured (${#DEPLOY_OUTPUT} chars)"
 
             V2_ADDR=$(echo "$DEPLOY_OUTPUT" | grep "^TOKEN_FACTORY_V2_ADDRESS=" | tail -1 | cut -d'=' -f2)
             NFT_ADDR=$(echo "$DEPLOY_OUTPUT" | grep "^NFT_FACTORY_ADDRESS=" | tail -1 | cut -d'=' -f2)
