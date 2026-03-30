@@ -119,7 +119,7 @@ class UserWalletService
                     'user_email' => $conn->user?->email,
                     'user_created_at' => $conn->user?->created_at?->toISOString(),
                     'last_active_at' => $conn->user?->last_active_at?->toISOString(),
-                    'first_connected_at' => $conn->connected_at->toISOString(),
+                    'latest_connected_at' => $conn->connected_at->toISOString(),
                     'chains' => [],
                 ];
             }
@@ -128,8 +128,8 @@ class UserWalletService
                 $grouped[$addr]['chains'][] = $chainId;
             }
             // ใช้เวลา connected_at ล่าสุด
-            if ($conn->connected_at->toISOString() > $grouped[$addr]['first_connected_at']) {
-                $grouped[$addr]['first_connected_at'] = $conn->connected_at->toISOString();
+            if ($conn->connected_at->toISOString() > $grouped[$addr]['latest_connected_at']) {
+                $grouped[$addr]['latest_connected_at'] = $conn->connected_at->toISOString();
             }
         }
 
