@@ -66,22 +66,40 @@ async function main() {
     console.log("  Using gasLimit:", gasLimit);
 
     const v2Factory = new ethers.ContractFactory(v2Art.abi, v2Art.bytecode, wallet);
-    console.log("  Sending deploy tx...");
-    const v2 = await v2Factory.deploy({ gasPrice: 0, gasLimit });
-    console.log("  Tx sent:", v2.deploymentTransaction().hash);
-    console.log("  Waiting for confirmation...");
-    const v2Receipt = await v2.deploymentTransaction().wait();
-    const v2Addr = await v2.getAddress();
+
+    // Step-by-step deploy for debugging
+    console.log("  Step 1: Getting deploy transaction...");
+    const v2DeployTx = await v2Factory.getDeployTransaction({ gasPrice: 0, gasLimit });
+    console.log("  Deploy tx data length:", v2DeployTx.data.length, "chars");
+
+    console.log("  Step 2: Getting nonce...");
+    const nonce = await wallet.getNonce();
+    console.log("  Nonce:", nonce);
+
+    console.log("  Step 3: Populating transaction...");
+    const v2PopTx = await wallet.populateTransaction({ ...v2DeployTx, nonce });
+    console.log("  Gas limit in tx:", v2PopTx.gasLimit?.toString());
+
+    console.log("  Step 4: Signing transaction...");
+    const v2SignedTx = await wallet.signTransaction(v2PopTx);
+    console.log("  Signed tx length:", v2SignedTx.length, "chars");
+
+    console.log("  Step 5: Broadcasting transaction...");
+    const v2TxResponse = await provider.broadcastTransaction(v2SignedTx);
+    console.log("  Tx hash:", v2TxResponse.hash);
+
+    console.log("  Step 6: Waiting for confirmation...");
+    const v2Receipt = await v2TxResponse.wait();
+    const v2Addr = v2Receipt.contractAddress;
     console.log("  TPIXTokenFactoryV2:", v2Addr);
     console.log("  Gas used:", v2Receipt.gasUsed.toString());
 
     // Deploy TPIXNFTFactory
     console.log("\n[2/2] Deploying TPIXNFTFactory...");
     const nftFactory = new ethers.ContractFactory(nftArt.abi, nftArt.bytecode, wallet);
-    console.log("  Sending deploy tx...");
+    const nftDeployTx = await nftFactory.getDeployTransaction({ gasPrice: 0, gasLimit });
+    console.log("  NFT deploy tx data length:", nftDeployTx.data.length);
     const nft = await nftFactory.deploy({ gasPrice: 0, gasLimit });
-    console.log("  Tx sent:", nft.deploymentTransaction().hash);
-    console.log("  Waiting for confirmation...");
     const nftReceipt = await nft.deploymentTransaction().wait();
     const nftAddr = await nft.getAddress();
     console.log("  TPIXNFTFactory:", nftAddr);

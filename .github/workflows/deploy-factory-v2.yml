@@ -105,7 +105,7 @@ jobs:
             DEPLOYER_KEY="$PRIVATE_KEY" \
               V2_ARTIFACT="/tmp/factory-deploy/TPIXTokenFactoryV2.json" \
               NFT_ARTIFACT="/tmp/factory-deploy/TPIXNFTFactory.json" \
-              node deploy.mjs > /tmp/factory-deploy-output.log 2>&1 || true
+              node --max-old-space-size=4096 deploy.mjs > /tmp/factory-deploy-output.log 2>&1 || true
             NODE_EXIT=$?
             echo "Node exit code: $NODE_EXIT"
             echo "=== Deploy script output ==="
