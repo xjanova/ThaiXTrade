@@ -104,7 +104,7 @@ jobs:
               node:22-alpine \
               sh -c "
                 npm pkg set type=module > /dev/null 2>&1
-                npm install hardhat @nomicfoundation/hardhat-toolbox @openzeppelin/contracts ethers@6 > /dev/null 2>&1
+                npm install hardhat@2 '@nomicfoundation/hardhat-toolbox@hh2' '@openzeppelin/contracts@^5.0.0' ethers@6 > /dev/null 2>&1
                 npx hardhat compile --config hardhat.config.cjs 2>&1
               "
 
