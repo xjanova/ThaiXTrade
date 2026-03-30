@@ -97,7 +97,8 @@ jobs:
 
             # Run deploy script with env vars
             # Symlink node_modules so ESM import resolves ethers
-            ln -sf "$DEPLOY_PATH/node_modules" /tmp/factory-deploy/node_modules
+            rm -rf /tmp/factory-deploy/node_modules
+            ln -s "$DEPLOY_PATH/node_modules" /tmp/factory-deploy/node_modules
             # Create package.json for ESM
             echo '{"type":"module"}' > /tmp/factory-deploy/package.json
 
