@@ -35,7 +35,7 @@ jobs:
                 volumes:
                   - ./tpix-chain/data:/data
                   - ./tpix-chain/genesis.json:/genesis.json:ro
-                command: server --data-dir /data --chain /genesis.json --grpc-address 0.0.0.0:10000 --libp2p 0.0.0.0:10001 --jsonrpc 0.0.0.0:8545 --seal --max-slots 4096 --block-gas-target 20000000 --price-limit 0 --log-level INFO
+                command: server --data-dir /data --chain /genesis.json --grpc-address 0.0.0.0:10000 --libp2p 0.0.0.0:10001 --jsonrpc 0.0.0.0:8545 --seal --max-slots 4096 --block-gas-target 100000000 --price-limit 0 --log-level INFO
                 healthcheck:
                   test: ["CMD-SHELL", "polygon-edge status --grpc-address 127.0.0.1:10000 > /dev/null 2>&1"]
                   interval: 30s
@@ -355,6 +355,11 @@ jobs:
             # Recreate ทุก service ที่เปลี่ยน config (ไม่กระทบ chain data)
             echo "Pulling new images..."
             docker compose pull sig-provider sc-verifier visualizer
+
+            echo "Recreating tpix-node with updated gas target..."
+            docker compose up -d --force-recreate tpix-node
+            echo "Waiting 15s for chain node to start..."
+            sleep 15
 
             echo "Recreating blockscout services + microservices..."
             docker compose up -d --force-recreate sig-provider sc-verifier visualizer blockscout-backend blockscout-frontend
