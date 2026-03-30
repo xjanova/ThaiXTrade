@@ -22,12 +22,27 @@ console.log("ethers version:", ethers.version);
 
 async function deployContract(name, factory, wallet, provider, args = []) {
   const nonce = await wallet.getNonce();
-  const gasLimit = 30_000_000; // 30M — safe for Polygon Edge (avoid using full block gas limit)
+  const gasLimit = 30_000_000;
   console.log(`  Deploying ${name} (gasLimit: ${gasLimit}, nonce: ${nonce})...`);
 
-  // Log deploy tx data length for debugging
   const deployTx = await factory.getDeployTransaction(...args);
   console.log(`  ${name} tx data length: ${deployTx.data?.length || 0} chars (${Math.round((deployTx.data?.length || 0) / 2)} bytes)`);
+
+  // Simulate first with eth_call to catch revert reasons
+  try {
+    const simResult = await provider.call({
+      from: wallet.address,
+      data: deployTx.data,
+      gasPrice: 0,
+      gasLimit,
+    });
+    console.log(`  ${name} simulation OK, result length: ${simResult.length}`);
+  } catch (simErr) {
+    console.log(`  ${name} simulation FAILED: ${simErr.message}`);
+    console.log(`  ${name} simulation error code: ${simErr.code}`);
+    if (simErr.data) console.log(`  ${name} simulation error data: ${simErr.data}`);
+    // Continue with actual deploy anyway to see the on-chain result
+  }
 
   const contract = await factory.deploy(...args, { gasPrice: 0, gasLimit, nonce });
   const receipt = await contract.deploymentTransaction().wait();
