@@ -124,19 +124,31 @@ tpix-blockchain/contracts/
 | **LP Token** | "TPIX LP Token" / "TPIX-LP" |
 | **Pair Creation** | CREATE2 (deterministic addresses) |
 
-### 3.3 Token Factory (สร้าง Token บน TPIX Chain)
+### 3.3 Token Factory (สร้าง Token บน TPIX Chain) — Phase 2
 
-ผู้ใช้สามารถสร้าง ERC-20 token ของตัวเองบน TPIX Chain:
+ผู้ใช้สามารถสร้าง ERC-20 และ ERC-721 token ของตัวเองบน TPIX Chain ผ่าน 5-step wizard:
 
 | พารามิเตอร์ | ค่า |
 |---|---|
-| **ค่าสร้าง Token** | 100 TPIX |
-| **ค่า Deploy** | 50 TPIX |
-| **ค่า Verify** | 200 TPIX |
-| **Token ต่อผู้ใช้ (สูงสุด)** | 10 |
-| **Token ต่อวัน (สูงสุด)** | 5 |
-| **Supply Range** | 1 — 1,000,000,000,000 |
-| **ฟีเจอร์** | Burnable, Mintable, Pausable, Freezable, Permit |
+| **ค่าสร้าง Token** | 50-150+ TPIX (dynamic pricing ตาม type + options) |
+| **Token Types** | 10 ประเภท (4 basic ERC-20 + utility + reward + governance + stablecoin + NFT + collection) |
+| **Sub-Options** | 16 ออฟชั่นเสริม (pausable, blacklist, tax, anti-whale, royalty, vesting ฯลฯ) |
+| **Supply Range** | 1 — 999,999,999,999,999 |
+| **Testnet** | ฟรี (TPIX Testnet 4290, Sepolia, BSC Testnet) |
+| **Auto-Verify** | Contract verify อัตโนมัติบน Blockscout |
+
+**Token Categories:**
+- **Fungible (ERC-20):** Standard, Mintable, Burnable, Mintable+Burnable, Utility, Reward
+- **NFT (ERC-721):** Single NFT, NFT Collection
+- **Special:** Governance (ERC20Votes), Stablecoin (freeze/KYC)
+
+**Smart Contracts (11 ไฟล์):**
+- `TPIXTokenFactory.sol` — V1 factory (basic types)
+- `TPIXTokenFactoryV2.sol` — V2 factory (all ERC-20 types)
+- `TPIXNFTFactory.sol` — NFT factory
+- `FactoryERC20V2.sol`, `UtilityToken.sol`, `RewardToken.sol`
+- `GovernanceToken.sol`, `StablecoinToken.sol`
+- `FactoryERC721.sol`, `NFTCollection.sol`
 
 ---
 
