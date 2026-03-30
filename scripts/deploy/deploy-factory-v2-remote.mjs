@@ -46,16 +46,11 @@ async function main() {
   // Deploy TPIXTokenFactoryV2
   console.log("\n[1/2] Deploying TPIXTokenFactoryV2...");
   try {
+    const gasLimit = block.gasLimit;
+    console.log("  Using gasLimit:", gasLimit.toString());
+
     const v2Factory = new ethers.ContractFactory(v2Art.abi, v2Art.bytecode, wallet);
-
-    // Estimate gas first
-    const v2EstGas = await provider.estimateGas({
-      data: v2Factory.getDeployTransaction().data,
-      from: wallet.address,
-    });
-    console.log("  V2 estimated gas:", v2EstGas.toString());
-
-    const v2 = await v2Factory.deploy({ gasPrice: 0, gasLimit: v2EstGas * 120n / 100n });
+    const v2 = await v2Factory.deploy({ gasPrice: 0, gasLimit });
     const v2Receipt = await v2.deploymentTransaction().wait();
     const v2Addr = await v2.getAddress();
     console.log("  TPIXTokenFactoryV2:", v2Addr);
@@ -64,14 +59,7 @@ async function main() {
     // Deploy TPIXNFTFactory
     console.log("\n[2/2] Deploying TPIXNFTFactory...");
     const nftFactory = new ethers.ContractFactory(nftArt.abi, nftArt.bytecode, wallet);
-
-    const nftEstGas = await provider.estimateGas({
-      data: nftFactory.getDeployTransaction().data,
-      from: wallet.address,
-    });
-    console.log("  NFT estimated gas:", nftEstGas.toString());
-
-    const nft = await nftFactory.deploy({ gasPrice: 0, gasLimit: nftEstGas * 120n / 100n });
+    const nft = await nftFactory.deploy({ gasPrice: 0, gasLimit });
     const nftReceipt = await nft.deploymentTransaction().wait();
     const nftAddr = await nft.getAddress();
     console.log("  TPIXNFTFactory:", nftAddr);
