@@ -1,150 +1,119 @@
 #!/usr/bin/env node
 /**
- * Deploy TPIX Token Factory V2 + NFT Factory
+ * Deploy TPIX Token Factory V2 (Coordinator + 5 Creators) + NFT Factory
  * Runs on production server via GitHub Actions
  *
  * Env vars:
- *   DEPLOYER_KEY   - Private key for deploying
- *   V2_ARTIFACT    - Path to TPIXTokenFactoryV2.json (optional)
- *   NFT_ARTIFACT   - Path to TPIXNFTFactory.json (optional)
+ *   DEPLOYER_KEY    - Private key for deploying
+ *   ARTIFACTS_DIR   - Path to compiled artifacts directory
  *
  * Developed by Xman Studio
  */
 
 import { readFileSync, writeFileSync } from "fs";
 
-// Catch unhandled rejections
 process.on("unhandledRejection", (reason) => {
   console.log("UNHANDLED REJECTION:", reason);
-  if (reason instanceof Error) {
-    console.log("Stack:", reason.stack);
-  }
   process.exit(1);
 });
 
-process.on("uncaughtException", (err) => {
-  console.log("UNCAUGHT EXCEPTION:", err.message);
-  console.log("Stack:", err.stack);
-  process.exit(1);
-});
-
-// Dynamic import ethers (works with NODE_PATH or local node_modules)
 const { ethers } = await import("ethers");
 console.log("ethers version:", ethers.version);
+
+async function deployContract(name, factory, wallet, provider, args = []) {
+  const block = await provider.getBlock("latest");
+  const gasLimit = Number(block.gasLimit);
+  console.log(`  Deploying ${name} (gasLimit: ${gasLimit})...`);
+
+  const contract = await factory.deploy(...args, { gasPrice: 0, gasLimit });
+  const receipt = await contract.deploymentTransaction().wait();
+  const addr = await contract.getAddress();
+  console.log(`  ${name}: ${addr} (gas: ${receipt.gasUsed.toString()})`);
+  return addr;
+}
+
+function loadArtifact(dir, path) {
+  const art = JSON.parse(readFileSync(`${dir}/${path}`, "utf8"));
+  console.log(`  ${path}: ${Math.round(art.bytecode.length / 2)} bytes`);
+  return art;
+}
 
 async function main() {
   const rpc = "http://127.0.0.1:8545";
   const privateKey = process.env.DEPLOYER_KEY;
   if (!privateKey) {
-    console.error("ERROR: DEPLOYER_KEY not set");
+    console.log("ERROR: DEPLOYER_KEY not set");
     process.exit(1);
   }
+
+  const dir = process.env.ARTIFACTS_DIR || "/tmp/factory-deploy";
 
   const provider = new ethers.JsonRpcProvider(rpc, { chainId: 4289, name: "TPIX Chain" });
   const wallet = new ethers.Wallet(privateKey, provider);
   console.log("Deployer:", wallet.address);
   console.log("Balance:", ethers.formatEther(await provider.getBalance(wallet.address)), "TPIX");
 
-  const block = await provider.getBlock("latest");
-  console.log("Block gas limit:", block.gasLimit.toString());
+  // Load all artifacts
+  console.log("\nLoading artifacts...");
+  const erc20V2CreatorArt = loadArtifact(dir, "ERC20V2Creator.json");
+  const utilityCreatorArt = loadArtifact(dir, "UtilityTokenCreator.json");
+  const rewardCreatorArt = loadArtifact(dir, "RewardTokenCreator.json");
+  const governanceCreatorArt = loadArtifact(dir, "GovernanceTokenCreator.json");
+  const stablecoinCreatorArt = loadArtifact(dir, "StablecoinTokenCreator.json");
+  const factoryV2Art = loadArtifact(dir, "TPIXTokenFactoryV2.json");
+  const nftFactoryArt = loadArtifact(dir, "TPIXNFTFactory.json");
 
-  // Load artifacts
-  const v2Path = process.env.V2_ARTIFACT || "artifacts/contracts/factory/TPIXTokenFactoryV2.sol/TPIXTokenFactoryV2.json";
-  const nftPath = process.env.NFT_ARTIFACT || "artifacts/contracts/factory/TPIXNFTFactory.sol/TPIXNFTFactory.json";
-  console.log("V2 artifact:", v2Path);
-  console.log("NFT artifact:", nftPath);
-  const v2Art = JSON.parse(readFileSync(v2Path, "utf8"));
-  const nftArt = JSON.parse(readFileSync(nftPath, "utf8"));
+  // Deploy 5 creators
+  console.log("\n[1/7] Deploying ERC20V2Creator...");
+  const erc20V2Addr = await deployContract("ERC20V2Creator",
+    new ethers.ContractFactory(erc20V2CreatorArt.abi, erc20V2CreatorArt.bytecode, wallet),
+    wallet, provider);
 
-  console.log("V2 bytecode size:", Math.round(v2Art.bytecode.length / 2), "bytes");
-  console.log("NFT bytecode size:", Math.round(nftArt.bytecode.length / 2), "bytes");
+  console.log("\n[2/7] Deploying UtilityTokenCreator...");
+  const utilityAddr = await deployContract("UtilityTokenCreator",
+    new ethers.ContractFactory(utilityCreatorArt.abi, utilityCreatorArt.bytecode, wallet),
+    wallet, provider);
 
-  // Deploy TPIXTokenFactoryV2
-  console.log("\n[1/2] Deploying TPIXTokenFactoryV2...");
-  try {
-    const gasLimit = Number(block.gasLimit);
-    console.log("  Using gasLimit:", gasLimit);
+  console.log("\n[3/7] Deploying RewardTokenCreator...");
+  const rewardAddr = await deployContract("RewardTokenCreator",
+    new ethers.ContractFactory(rewardCreatorArt.abi, rewardCreatorArt.bytecode, wallet),
+    wallet, provider);
 
-    const v2Factory = new ethers.ContractFactory(v2Art.abi, v2Art.bytecode, wallet);
+  console.log("\n[4/7] Deploying GovernanceTokenCreator...");
+  const governanceAddr = await deployContract("GovernanceTokenCreator",
+    new ethers.ContractFactory(governanceCreatorArt.abi, governanceCreatorArt.bytecode, wallet),
+    wallet, provider);
 
-    // Step-by-step deploy for debugging
-    console.log("  Step 1: Getting deploy transaction...");
-    const v2DeployTx = await v2Factory.getDeployTransaction({ gasPrice: 0, gasLimit });
-    console.log("  Deploy tx data length:", v2DeployTx.data.length, "chars");
+  console.log("\n[5/7] Deploying StablecoinTokenCreator...");
+  const stablecoinAddr = await deployContract("StablecoinTokenCreator",
+    new ethers.ContractFactory(stablecoinCreatorArt.abi, stablecoinCreatorArt.bytecode, wallet),
+    wallet, provider);
 
-    console.log("  Step 2: Getting nonce...");
-    const nonce = await wallet.getNonce();
-    console.log("  Nonce:", nonce);
+  // Deploy coordinator factory with creator addresses
+  console.log("\n[6/7] Deploying TPIXTokenFactoryV2 (coordinator)...");
+  const v2Addr = await deployContract("TPIXTokenFactoryV2",
+    new ethers.ContractFactory(factoryV2Art.abi, factoryV2Art.bytecode, wallet),
+    wallet, provider,
+    [erc20V2Addr, utilityAddr, rewardAddr, governanceAddr, stablecoinAddr]);
 
-    console.log("  Step 3: Populating transaction...");
-    const v2PopTx = await wallet.populateTransaction({ ...v2DeployTx, nonce });
-    console.log("  Gas limit in tx:", v2PopTx.gasLimit?.toString());
+  // Deploy NFT Factory
+  console.log("\n[7/7] Deploying TPIXNFTFactory...");
+  const nftAddr = await deployContract("TPIXNFTFactory",
+    new ethers.ContractFactory(nftFactoryArt.abi, nftFactoryArt.bytecode, wallet),
+    wallet, provider);
 
-    console.log("  Step 4: Signing transaction...");
-    const v2SignedTx = await wallet.signTransaction(v2PopTx);
-    console.log("  Signed tx length:", v2SignedTx.length, "chars");
+  // Verify
+  console.log("\nVerification:");
+  const v2Contract = new ethers.Contract(v2Addr, factoryV2Art.abi, provider);
+  const nftContract = new ethers.Contract(nftAddr, nftFactoryArt.abi, provider);
+  console.log("  V2 owner:", await v2Contract.owner());
+  console.log("  V2 totalTokens:", (await v2Contract.totalTokens()).toString());
+  console.log("  NFT owner:", await nftContract.owner());
+  console.log("  NFT totalNFTs:", (await nftContract.totalNFTs()).toString());
 
-    console.log("  Step 5: Broadcasting transaction via raw fetch...");
-    // Bypass ethers — use raw HTTP to see exact RPC response
-    const rpcPayload = JSON.stringify({
-      jsonrpc: "2.0",
-      method: "eth_sendRawTransaction",
-      params: [v2SignedTx],
-      id: 1,
-    });
-    console.log("  RPC payload size:", rpcPayload.length, "bytes");
-
-    const fetchRes = await fetch(rpc, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: rpcPayload,
-    });
-    const rpcResult = await fetchRes.json();
-    console.log("  RPC response:", JSON.stringify(rpcResult));
-    writeFileSync("/tmp/factory-rpc-response.log", JSON.stringify(rpcResult, null, 2));
-
-    if (rpcResult.error) {
-      throw new Error("RPC error: " + JSON.stringify(rpcResult.error));
-    }
-    const v2TxHash = rpcResult.result;
-    console.log("  Tx hash:", v2TxHash);
-
-    console.log("  Step 6: Waiting for tx receipt...");
-    const v2Receipt = await provider.waitForTransaction(v2TxHash, 1, 120000);
-    const v2Addr = v2Receipt.contractAddress;
-    console.log("  TPIXTokenFactoryV2:", v2Addr);
-    console.log("  Gas used:", v2Receipt.gasUsed.toString());
-
-    // Deploy TPIXNFTFactory
-    console.log("\n[2/2] Deploying TPIXNFTFactory...");
-    const nftFactory = new ethers.ContractFactory(nftArt.abi, nftArt.bytecode, wallet);
-    const nftDeployTx = await nftFactory.getDeployTransaction({ gasPrice: 0, gasLimit });
-    console.log("  NFT deploy tx data length:", nftDeployTx.data.length);
-    const nft = await nftFactory.deploy({ gasPrice: 0, gasLimit });
-    const nftReceipt = await nft.deploymentTransaction().wait();
-    const nftAddr = await nft.getAddress();
-    console.log("  TPIXNFTFactory:", nftAddr);
-    console.log("  Gas used:", nftReceipt.gasUsed.toString());
-
-    // Verify contracts respond
-    const v2Contract = new ethers.Contract(v2Addr, v2Art.abi, provider);
-    const nftContract = new ethers.Contract(nftAddr, nftArt.abi, provider);
-    console.log("\nVerification:");
-    console.log("  V2 owner:", await v2Contract.owner());
-    console.log("  V2 totalTokens:", (await v2Contract.totalTokens()).toString());
-    console.log("  NFT owner:", await nftContract.owner());
-    console.log("  NFT totalNFTs:", (await nftContract.totalNFTs()).toString());
-
-    // Output for parsing
-    console.log("\nTOKEN_FACTORY_V2_ADDRESS=" + v2Addr);
-    console.log("NFT_FACTORY_ADDRESS=" + nftAddr);
-  } catch (err) {
-    console.log("Deploy failed:", err.message);
-    if (err.info) console.log("Info:", JSON.stringify(err.info));
-    if (err.error) console.log("Error detail:", err.error.message || err.error);
-    console.log("Full error:", JSON.stringify(err, Object.getOwnPropertyNames(err)));
-    process.exit(1);
-  }
+  // Output for parsing
+  console.log("\nTOKEN_FACTORY_V2_ADDRESS=" + v2Addr);
+  console.log("NFT_FACTORY_ADDRESS=" + nftAddr);
 }
 
 main().catch((e) => {

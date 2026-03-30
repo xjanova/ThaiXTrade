@@ -38,12 +38,20 @@ jobs:
           mkdir -p factory-artifacts
           node -e "
             const fs = require('fs');
-            const v2 = JSON.parse(fs.readFileSync('artifacts/contracts/factory/TPIXTokenFactoryV2.sol/TPIXTokenFactoryV2.json'));
-            const nft = JSON.parse(fs.readFileSync('artifacts/contracts/factory/TPIXNFTFactory.sol/TPIXNFTFactory.json'));
-            fs.writeFileSync('factory-artifacts/TPIXTokenFactoryV2.json', JSON.stringify({ abi: v2.abi, bytecode: v2.bytecode }));
-            fs.writeFileSync('factory-artifacts/TPIXNFTFactory.json', JSON.stringify({ abi: nft.abi, bytecode: nft.bytecode }));
-            console.log('V2 bytecode:', Math.round(v2.bytecode.length / 2), 'bytes');
-            console.log('NFT bytecode:', Math.round(nft.bytecode.length / 2), 'bytes');
+            const contracts = {
+              'ERC20V2Creator': 'artifacts/contracts/factory/creators/ERC20V2Creator.sol/ERC20V2Creator.json',
+              'UtilityTokenCreator': 'artifacts/contracts/factory/creators/UtilityTokenCreator.sol/UtilityTokenCreator.json',
+              'RewardTokenCreator': 'artifacts/contracts/factory/creators/RewardTokenCreator.sol/RewardTokenCreator.json',
+              'GovernanceTokenCreator': 'artifacts/contracts/factory/creators/GovernanceTokenCreator.sol/GovernanceTokenCreator.json',
+              'StablecoinTokenCreator': 'artifacts/contracts/factory/creators/StablecoinTokenCreator.sol/StablecoinTokenCreator.json',
+              'TPIXTokenFactoryV2': 'artifacts/contracts/factory/TPIXTokenFactoryV2.sol/TPIXTokenFactoryV2.json',
+              'TPIXNFTFactory': 'artifacts/contracts/factory/TPIXNFTFactory.sol/TPIXNFTFactory.json',
+            };
+            for (const [name, path] of Object.entries(contracts)) {
+              const art = JSON.parse(fs.readFileSync(path));
+              fs.writeFileSync('factory-artifacts/' + name + '.json', JSON.stringify({ abi: art.abi, bytecode: art.bytecode }));
+              console.log(name + ':', Math.round(art.bytecode.length / 2), 'bytes');
+            }
           "
           # Also copy deploy script into artifacts dir
           cp scripts/deploy/deploy-factory-v2-remote.mjs factory-artifacts/deploy.mjs
@@ -87,35 +95,24 @@ jobs:
             # Verify artifacts + deploy script were uploaded
             ls -la /tmp/factory-deploy/
             test -f /tmp/factory-deploy/TPIXTokenFactoryV2.json || { echo "ERROR: V2 artifact missing"; exit 1; }
-            test -f /tmp/factory-deploy/TPIXNFTFactory.json || { echo "ERROR: NFT artifact missing"; exit 1; }
             test -f /tmp/factory-deploy/deploy.mjs || { echo "ERROR: deploy script missing"; exit 1; }
 
             # 2. Deploy using Node.js on server with ethers from app
-            echo "[2/3] Deploying contracts..."
+            echo "[2/3] Deploying contracts (7 contracts)..."
             echo "Node: $(node --version)"
 
-            # Run deploy script with env vars
             # Symlink node_modules so ESM import resolves ethers
             rm -rf /tmp/factory-deploy/node_modules
             ln -s "$DEPLOY_PATH/node_modules" /tmp/factory-deploy/node_modules
-            # Create package.json for ESM
             echo '{"type":"module"}' > /tmp/factory-deploy/package.json
 
             cd /tmp/factory-deploy
             DEPLOYER_KEY="$PRIVATE_KEY" \
-              V2_ARTIFACT="/tmp/factory-deploy/TPIXTokenFactoryV2.json" \
-              NFT_ARTIFACT="/tmp/factory-deploy/TPIXNFTFactory.json" \
+              ARTIFACTS_DIR="/tmp/factory-deploy" \
               node --max-old-space-size=4096 deploy.mjs > /tmp/factory-deploy-output.log 2>&1 || true
-            NODE_EXIT=$?
-            echo "Node exit code: $NODE_EXIT"
             echo "=== Deploy script output ==="
             cat /tmp/factory-deploy-output.log
             echo "=== End output ==="
-            if [ -f /tmp/factory-rpc-error.log ]; then
-              echo "=== RPC Error ==="
-              cat /tmp/factory-rpc-error.log
-              echo "=== End RPC Error ==="
-            fi
 
             DEPLOY_OUTPUT=$(cat /tmp/factory-deploy-output.log)
 
