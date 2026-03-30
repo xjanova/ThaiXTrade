@@ -10,7 +10,7 @@
  * Developed by Xman Studio
  */
 
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync } from "fs";
 
 process.on("unhandledRejection", (reason) => {
   console.log("UNHANDLED REJECTION:", reason);
@@ -21,32 +21,35 @@ const { ethers } = await import("ethers");
 console.log("ethers version:", ethers.version);
 
 async function deployContract(name, factory, wallet, provider, args = []) {
+  const block = await provider.getBlock("latest");
+  const blockGasLimit = Number(block.gasLimit);
   const nonce = await wallet.getNonce();
-  const gasLimit = 30_000_000;
-  console.log(`  Deploying ${name} (gasLimit: ${gasLimit}, nonce: ${nonce})...`);
+  // Use half block gas limit, capped at 20M
+  const gasLimit = Math.min(Math.floor(blockGasLimit / 2), 20_000_000);
+  console.log(`  Block gas limit: ${blockGasLimit}, using gasLimit: ${gasLimit}, nonce: ${nonce}`);
 
+  // Build deploy transaction data
   const deployTx = await factory.getDeployTransaction(...args);
-  console.log(`  ${name} tx data length: ${deployTx.data?.length || 0} chars (${Math.round((deployTx.data?.length || 0) / 2)} bytes)`);
+  const dataLen = deployTx.data?.length || 0;
+  console.log(`  ${name} tx data: ${dataLen} chars (${Math.round(dataLen / 2)} bytes)`);
 
-  // Simulate first with eth_call to catch revert reasons
-  try {
-    const simResult = await provider.call({
-      from: wallet.address,
-      data: deployTx.data,
-      gasPrice: 0,
-      gasLimit,
-    });
-    console.log(`  ${name} simulation OK, result length: ${simResult.length}`);
-  } catch (simErr) {
-    console.log(`  ${name} simulation FAILED: ${simErr.message}`);
-    console.log(`  ${name} simulation error code: ${simErr.code}`);
-    if (simErr.data) console.log(`  ${name} simulation error data: ${simErr.data}`);
-    // Continue with actual deploy anyway to see the on-chain result
+  // Deploy using raw sendTransaction for full control
+  const tx = await wallet.sendTransaction({
+    data: deployTx.data,
+    gasPrice: 0,
+    gasLimit,
+    nonce,
+  });
+  console.log(`  ${name} tx hash: ${tx.hash}`);
+  const receipt = await tx.wait();
+
+  if (receipt.status === 0) {
+    console.log(`  ERROR: ${name} deployment REVERTED (gasUsed: ${receipt.gasUsed.toString()})`);
+    console.log(`  Receipt: ${JSON.stringify({ blockNumber: receipt.blockNumber, contractAddress: receipt.contractAddress, gasUsed: receipt.gasUsed.toString(), status: receipt.status })}`);
+    throw new Error(`${name} deployment reverted`);
   }
 
-  const contract = await factory.deploy(...args, { gasPrice: 0, gasLimit, nonce });
-  const receipt = await contract.deploymentTransaction().wait();
-  const addr = await contract.getAddress();
+  const addr = receipt.contractAddress;
   console.log(`  ${name}: ${addr} (gas: ${receipt.gasUsed.toString()})`);
   return addr;
 }
@@ -71,6 +74,10 @@ async function main() {
   const wallet = new ethers.Wallet(privateKey, provider);
   console.log("Deployer:", wallet.address);
   console.log("Balance:", ethers.formatEther(await provider.getBalance(wallet.address)), "TPIX");
+
+  // Check block gas limit
+  const block = await provider.getBlock("latest");
+  console.log("Current block:", block.number, "gasLimit:", Number(block.gasLimit));
 
   // Load all artifacts
   console.log("\nLoading artifacts...");
