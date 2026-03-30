@@ -45,6 +45,8 @@ jobs:
             console.log('V2 bytecode:', Math.round(v2.bytecode.length / 2), 'bytes');
             console.log('NFT bytecode:', Math.round(nft.bytecode.length / 2), 'bytes');
           "
+          # Also copy deploy script into artifacts dir
+          cp scripts/deploy/deploy-factory-v2-remote.mjs factory-artifacts/deploy.mjs
           ls -la factory-artifacts/
           echo "✅ Contracts compiled and artifacts extracted"
 
@@ -83,67 +85,27 @@ jobs:
             fi
             echo "✅ Deployer key loaded"
 
-            # Verify artifacts were uploaded
-            ls -la /tmp/factory-deploy/TPIXTokenFactoryV2.json
-            ls -la /tmp/factory-deploy/TPIXNFTFactory.json
+            # Verify artifacts + deploy script were uploaded
+            ls -la /tmp/factory-deploy/
+            test -f /tmp/factory-deploy/TPIXTokenFactoryV2.json || { echo "ERROR: V2 artifact missing"; exit 1; }
+            test -f /tmp/factory-deploy/TPIXNFTFactory.json || { echo "ERROR: NFT artifact missing"; exit 1; }
+            test -f /tmp/factory-deploy/deploy.mjs || { echo "ERROR: deploy script missing"; exit 1; }
 
-            # 2. Deploy using Node.js directly on server (ethers available in app)
+            # 2. Deploy using Node.js on server with ethers from app
             echo "[2/3] Deploying contracts..."
-            echo "Node version: $(node --version)"
+            echo "Node: $(node --version)"
 
-            # Create inline deploy script using CommonJS (server may not support ESM)
-            export DEPLOYER_KEY="$PRIVATE_KEY"
-            export V2_ARTIFACT="/tmp/factory-deploy/TPIXTokenFactoryV2.json"
-            export NFT_ARTIFACT="/tmp/factory-deploy/TPIXNFTFactory.json"
+            # Run deploy script with env vars
+            # Symlink node_modules so ESM import resolves ethers
+            ln -sf "$DEPLOY_PATH/node_modules" /tmp/factory-deploy/node_modules
+            # Create package.json for ESM
+            echo '{"type":"module"}' > /tmp/factory-deploy/package.json
 
-            DEPLOY_OUTPUT=$(cd "$DEPLOY_PATH" && node -e '
-              const { ethers } = require("ethers");
-              const fs = require("fs");
-
-              async function main() {
-                const rpc = "http://127.0.0.1:8545";
-                const privateKey = process.env.DEPLOYER_KEY;
-                const provider = new ethers.JsonRpcProvider(rpc, { chainId: 4289, name: "TPIX Chain" });
-                const wallet = new ethers.Wallet(privateKey, provider);
-                console.log("Deployer:", wallet.address);
-                console.log("Balance:", ethers.formatEther(await provider.getBalance(wallet.address)), "TPIX");
-
-                const block = await provider.getBlock("latest");
-                console.log("Block gas limit:", block.gasLimit.toString());
-
-                const v2Art = JSON.parse(fs.readFileSync(process.env.V2_ARTIFACT, "utf8"));
-                const nftArt = JSON.parse(fs.readFileSync(process.env.NFT_ARTIFACT, "utf8"));
-
-                console.log("\n[1/2] Deploying TPIXTokenFactoryV2...");
-                const v2Factory = new ethers.ContractFactory(v2Art.abi, v2Art.bytecode, wallet);
-                const v2 = await v2Factory.deploy({ gasPrice: 0 });
-                const v2Receipt = await v2.deploymentTransaction().wait();
-                const v2Addr = await v2.getAddress();
-                console.log("TPIXTokenFactoryV2:", v2Addr);
-                console.log("  Gas used:", v2Receipt.gasUsed.toString());
-
-                console.log("\n[2/2] Deploying TPIXNFTFactory...");
-                const nftFactory = new ethers.ContractFactory(nftArt.abi, nftArt.bytecode, wallet);
-                const nft = await nftFactory.deploy({ gasPrice: 0 });
-                const nftReceipt = await nft.deploymentTransaction().wait();
-                const nftAddr = await nft.getAddress();
-                console.log("TPIXNFTFactory:", nftAddr);
-                console.log("  Gas used:", nftReceipt.gasUsed.toString());
-
-                const v2Contract = new ethers.Contract(v2Addr, v2Art.abi, provider);
-                const nftContract = new ethers.Contract(nftAddr, nftArt.abi, provider);
-                console.log("\nVerification:");
-                console.log("  V2 owner:", await v2Contract.owner());
-                console.log("  V2 totalTokens:", (await v2Contract.totalTokens()).toString());
-                console.log("  NFT owner:", await nftContract.owner());
-                console.log("  NFT totalNFTs:", (await nftContract.totalNFTs()).toString());
-
-                console.log("\nTOKEN_FACTORY_V2_ADDRESS=" + v2Addr);
-                console.log("NFT_FACTORY_ADDRESS=" + nftAddr);
-              }
-
-              main().catch(e => { console.error("Deploy failed:", e.message || e); if (e.info) console.error("Info:", JSON.stringify(e.info)); process.exit(1); });
-            ' 2>&1)
+            DEPLOY_OUTPUT=$(cd /tmp/factory-deploy && \
+              DEPLOYER_KEY="$PRIVATE_KEY" \
+              V2_ARTIFACT="/tmp/factory-deploy/TPIXTokenFactoryV2.json" \
+              NFT_ARTIFACT="/tmp/factory-deploy/TPIXNFTFactory.json" \
+              node deploy.mjs 2>&1)
 
             echo "$DEPLOY_OUTPUT"
 

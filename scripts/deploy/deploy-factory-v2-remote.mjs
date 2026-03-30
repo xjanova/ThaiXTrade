@@ -3,13 +3,18 @@
  * Deploy TPIX Token Factory V2 + NFT Factory
  * Runs on production server via GitHub Actions
  *
- * Usage: DEPLOYER_KEY=0x... node deploy-factory-v2-remote.mjs
+ * Env vars:
+ *   DEPLOYER_KEY   - Private key for deploying
+ *   V2_ARTIFACT    - Path to TPIXTokenFactoryV2.json (optional)
+ *   NFT_ARTIFACT   - Path to TPIXNFTFactory.json (optional)
  *
  * Developed by Xman Studio
  */
 
-import { ethers } from "ethers";
 import { readFileSync } from "fs";
+
+// Dynamic import ethers (works with NODE_PATH or local node_modules)
+const { ethers } = await import("ethers");
 
 async function main() {
   const rpc = "http://127.0.0.1:8545";
@@ -24,13 +29,16 @@ async function main() {
   console.log("Deployer:", wallet.address);
   console.log("Balance:", ethers.formatEther(await provider.getBalance(wallet.address)), "TPIX");
 
-  // Check block gas limit
   const block = await provider.getBlock("latest");
   console.log("Block gas limit:", block.gasLimit.toString());
 
   // Load artifacts
-  const v2Art = JSON.parse(readFileSync("artifacts/contracts/factory/TPIXTokenFactoryV2.sol/TPIXTokenFactoryV2.json", "utf8"));
-  const nftArt = JSON.parse(readFileSync("artifacts/contracts/factory/TPIXNFTFactory.sol/TPIXNFTFactory.json", "utf8"));
+  const v2Path = process.env.V2_ARTIFACT || "artifacts/contracts/factory/TPIXTokenFactoryV2.sol/TPIXTokenFactoryV2.json";
+  const nftPath = process.env.NFT_ARTIFACT || "artifacts/contracts/factory/TPIXNFTFactory.sol/TPIXNFTFactory.json";
+  console.log("V2 artifact:", v2Path);
+  console.log("NFT artifact:", nftPath);
+  const v2Art = JSON.parse(readFileSync(v2Path, "utf8"));
+  const nftArt = JSON.parse(readFileSync(nftPath, "utf8"));
 
   console.log("V2 bytecode size:", Math.round(v2Art.bytecode.length / 2), "bytes");
   console.log("NFT bytecode size:", Math.round(nftArt.bytecode.length / 2), "bytes");
@@ -39,33 +47,19 @@ async function main() {
   console.log("\n[1/2] Deploying TPIXTokenFactoryV2...");
   try {
     const v2Factory = new ethers.ContractFactory(v2Art.abi, v2Art.bytecode, wallet);
-    const gasEstimate = await provider.estimateGas({
-      data: v2Art.bytecode,
-      from: wallet.address,
-      gasPrice: 0,
-    });
-    console.log("  Estimated gas:", gasEstimate.toString());
-
-    const v2 = await v2Factory.deploy({ gasPrice: 0, gasLimit: gasEstimate * 2n });
+    const v2 = await v2Factory.deploy({ gasPrice: 0 });
     const v2Receipt = await v2.deploymentTransaction().wait();
     const v2Addr = await v2.getAddress();
-    console.log("  ✅ TPIXTokenFactoryV2:", v2Addr);
+    console.log("  TPIXTokenFactoryV2:", v2Addr);
     console.log("  Gas used:", v2Receipt.gasUsed.toString());
 
     // Deploy TPIXNFTFactory
     console.log("\n[2/2] Deploying TPIXNFTFactory...");
-    const nftFactoryDeploy = new ethers.ContractFactory(nftArt.abi, nftArt.bytecode, wallet);
-    const nftGasEstimate = await provider.estimateGas({
-      data: nftArt.bytecode,
-      from: wallet.address,
-      gasPrice: 0,
-    });
-    console.log("  Estimated gas:", nftGasEstimate.toString());
-
-    const nft = await nftFactoryDeploy.deploy({ gasPrice: 0, gasLimit: nftGasEstimate * 2n });
+    const nftFactory = new ethers.ContractFactory(nftArt.abi, nftArt.bytecode, wallet);
+    const nft = await nftFactory.deploy({ gasPrice: 0 });
     const nftReceipt = await nft.deploymentTransaction().wait();
     const nftAddr = await nft.getAddress();
-    console.log("  ✅ TPIXNFTFactory:", nftAddr);
+    console.log("  TPIXNFTFactory:", nftAddr);
     console.log("  Gas used:", nftReceipt.gasUsed.toString());
 
     // Verify contracts respond
@@ -78,10 +72,8 @@ async function main() {
     console.log("  NFT totalNFTs:", (await nftContract.totalNFTs()).toString());
 
     // Output for parsing
-    console.log("\n═══════════════════════════════════════════");
-    console.log("TOKEN_FACTORY_V2_ADDRESS=" + v2Addr);
+    console.log("\nTOKEN_FACTORY_V2_ADDRESS=" + v2Addr);
     console.log("NFT_FACTORY_ADDRESS=" + nftAddr);
-    console.log("═══════════════════════════════════════════");
   } catch (err) {
     console.error("Deploy failed:", err.message);
     if (err.info) console.error("Info:", JSON.stringify(err.info));
