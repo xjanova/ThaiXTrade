@@ -44,7 +44,8 @@ jobs:
             # ──────────────────────────────────────────
             echo "[2/5] Setting up Hardhat project..."
             cd "$WORK"
-            rm -rf contracts artifacts cache node_modules
+            # Clean previous artifacts (may be owned by root from Docker)
+            docker run --rm -v "$WORK:/app" alpine rm -rf /app/contracts /app/artifacts /app/cache /app/node_modules /app/deploy.mjs /app/hardhat.config.cjs /app/package.json /app/package-lock.json
 
             # Copy sources from deployed app
             cp -r "$DEPLOY_PATH/contracts" ./contracts
@@ -158,5 +159,6 @@ jobs:
             echo " NFT_FACTORY_ADDRESS=$NFT_ADDR"
             echo "═══════════════════════════════════════════"
 
-            # Cleanup
-            rm -rf "$WORK"
+            # Cleanup (Docker-owned files need root)
+            docker run --rm -v "$WORK:/app" alpine rm -rf /app/contracts /app/artifacts /app/cache /app/node_modules
+            rm -rf "$WORK" 2>/dev/null || true
