@@ -70,7 +70,6 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 5m
           script: |
-            set -e
             echo "=== Deploy Token Factory V2 + NFT Factory — $(date) ==="
 
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"

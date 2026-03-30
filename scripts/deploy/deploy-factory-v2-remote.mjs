@@ -11,10 +11,26 @@
  * Developed by Xman Studio
  */
 
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
+
+// Catch unhandled rejections
+process.on("unhandledRejection", (reason) => {
+  console.log("UNHANDLED REJECTION:", reason);
+  if (reason instanceof Error) {
+    console.log("Stack:", reason.stack);
+  }
+  process.exit(1);
+});
+
+process.on("uncaughtException", (err) => {
+  console.log("UNCAUGHT EXCEPTION:", err.message);
+  console.log("Stack:", err.stack);
+  process.exit(1);
+});
 
 // Dynamic import ethers (works with NODE_PATH or local node_modules)
 const { ethers } = await import("ethers");
+console.log("ethers version:", ethers.version);
 
 async function main() {
   const rpc = "http://127.0.0.1:8545";
