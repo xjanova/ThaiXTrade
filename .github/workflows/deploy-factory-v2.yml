@@ -1,0 +1,242 @@
+name: Deploy Token Factory V2 + NFT Factory
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Factories to TPIX Chain
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 15m
+          script: |
+            echo "=== Deploy Token Factory V2 + NFT Factory — $(date) ==="
+
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            DEPLOY_PATH="${DEPLOY_PATH:-/home/admin/domains/tpix.online}"
+            INFRA="$HOME/tpix-infrastructure"
+            WORK="$INFRA/deploy-factory-v2"
+            mkdir -p "$WORK"
+
+            # ──────────────────────────────────────────
+            #  1. Extract validator private key
+            # ──────────────────────────────────────────
+            echo "[1/5] Extracting deployer key..."
+            PRIVATE_KEY=$(docker exec tpix-chain-node cat /data/consensus/validator.key 2>/dev/null || echo "")
+            if [ -z "$PRIVATE_KEY" ]; then
+              echo "ERROR: Cannot extract validator private key from container"
+              exit 1
+            fi
+            echo "✅ Deployer key loaded"
+
+            # Get deployer address for logging
+            SECRETS_OUT=$(docker exec tpix-chain-node /polygon-edge secrets output --data-dir /data 2>&1 || true)
+            VALIDATOR_ADDR=$(echo "$SECRETS_OUT" | grep "Public key (address)" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+            echo "Deployer: $VALIDATOR_ADDR"
+
+            # ──────────────────────────────────────────
+            #  2. Copy contracts from deployed app
+            # ──────────────────────────────────────────
+            echo "[2/5] Setting up Hardhat project..."
+            cd "$WORK"
+
+            # Copy contract sources
+            rm -rf contracts package.json hardhat.config.cjs
+            cp -r "$DEPLOY_PATH/contracts" ./contracts
+
+            # Create minimal package.json
+            cat > package.json << 'PKGJSON'
+            {
+              "name": "tpix-factory-deploy",
+              "private": true,
+              "dependencies": {
+                "ethers": "^6.13.0"
+              }
+            }
+            PKGJSON
+
+            # ──────────────────────────────────────────
+            #  3. Compile contracts in Docker
+            # ──────────────────────────────────────────
+            echo "[3/5] Compiling contracts..."
+
+            # Create hardhat config for compilation
+            cat > hardhat.config.cjs << 'HARDHAT'
+            require("@nomicfoundation/hardhat-toolbox");
+            module.exports = {
+              solidity: {
+                compilers: [
+                  {
+                    version: "0.8.24",
+                    settings: {
+                      optimizer: { enabled: true, runs: 200 },
+                      evmVersion: "cancun",
+                      viaIR: true,
+                    },
+                  },
+                  {
+                    version: "0.8.20",
+                    settings: {
+                      optimizer: { enabled: true, runs: 200 },
+                      evmVersion: "paris",
+                    },
+                  },
+                ],
+              },
+              paths: {
+                sources: "./contracts",
+                cache: "./cache",
+                artifacts: "./artifacts",
+              },
+            };
+            HARDHAT
+
+            # Compile in Docker (with Hardhat + OpenZeppelin)
+            docker run --rm \
+              -v "$WORK:/app" \
+              -w /app \
+              node:20-alpine \
+              sh -c "
+                npm init -y > /dev/null 2>&1
+                npm install hardhat @nomicfoundation/hardhat-toolbox @openzeppelin/contracts ethers@6 > /dev/null 2>&1
+                npx hardhat compile --config hardhat.config.cjs 2>&1
+              "
+
+            # Verify artifacts exist
+            if [ ! -f "artifacts/contracts/factory/TPIXTokenFactoryV2.sol/TPIXTokenFactoryV2.json" ]; then
+              echo "ERROR: TPIXTokenFactoryV2 artifact not found after compilation"
+              exit 1
+            fi
+            if [ ! -f "artifacts/contracts/factory/TPIXNFTFactory.sol/TPIXNFTFactory.json" ]; then
+              echo "ERROR: TPIXNFTFactory artifact not found after compilation"
+              exit 1
+            fi
+            echo "✅ Contracts compiled"
+
+            # ──────────────────────────────────────────
+            #  4. Deploy via ethers.js
+            # ──────────────────────────────────────────
+            echo "[4/5] Deploying contracts..."
+
+            cat > deploy.mjs << 'SCRIPT'
+            import { ethers } from "ethers";
+            import { readFileSync } from "fs";
+
+            async function main() {
+              const rpc = "http://127.0.0.1:8545";
+              const privateKey = process.env.DEPLOYER_KEY;
+              if (!privateKey) { console.error("ERROR: DEPLOYER_KEY not set"); process.exit(1); }
+
+              const provider = new ethers.JsonRpcProvider(rpc, { chainId: 4289, name: "TPIX Chain" });
+              const wallet = new ethers.Wallet(privateKey, provider);
+              console.log("Deployer:", wallet.address);
+              console.log("Balance:", ethers.formatEther(await provider.getBalance(wallet.address)), "TPIX");
+
+              // Load artifacts
+              const v2Art = JSON.parse(readFileSync("artifacts/contracts/factory/TPIXTokenFactoryV2.sol/TPIXTokenFactoryV2.json", "utf8"));
+              const nftArt = JSON.parse(readFileSync("artifacts/contracts/factory/TPIXNFTFactory.sol/TPIXNFTFactory.json", "utf8"));
+
+              // Deploy TPIXTokenFactoryV2
+              console.log("\n[1/2] Deploying TPIXTokenFactoryV2...");
+              const v2Factory = new ethers.ContractFactory(v2Art.abi, v2Art.bytecode, wallet);
+              const v2 = await v2Factory.deploy({ gasPrice: 0, gasLimit: 50000000 });
+              await v2.waitForDeployment();
+              const v2Addr = await v2.getAddress();
+              console.log("✅ TPIXTokenFactoryV2:", v2Addr);
+
+              // Deploy TPIXNFTFactory
+              console.log("\n[2/2] Deploying TPIXNFTFactory...");
+              const nftFactoryDeploy = new ethers.ContractFactory(nftArt.abi, nftArt.bytecode, wallet);
+              const nft = await nftFactoryDeploy.deploy({ gasPrice: 0, gasLimit: 30000000 });
+              await nft.waitForDeployment();
+              const nftAddr = await nft.getAddress();
+              console.log("✅ TPIXNFTFactory:", nftAddr);
+
+              // Verify contracts respond
+              const v2Contract = new ethers.Contract(v2Addr, v2Art.abi, provider);
+              const nftContract = new ethers.Contract(nftAddr, nftArt.abi, provider);
+              console.log("\nVerification:");
+              console.log("  V2 owner:", await v2Contract.owner());
+              console.log("  V2 totalTokens:", (await v2Contract.totalTokens()).toString());
+              console.log("  NFT owner:", await nftContract.owner());
+              console.log("  NFT totalNFTs:", (await nftContract.totalNFTs()).toString());
+
+              console.log("\n═══════════════════════════════════════════");
+              console.log(" Deployment Complete!");
+              console.log("═══════════════════════════════════════════");
+              console.log("TOKEN_FACTORY_V2_ADDRESS=" + v2Addr);
+              console.log("NFT_FACTORY_ADDRESS=" + nftAddr);
+              console.log("Explorer: https://explorer.tpix.online/address/" + v2Addr);
+              console.log("Explorer: https://explorer.tpix.online/address/" + nftAddr);
+              console.log("═══════════════════════════════════════════");
+
+              // Write addresses to file for .env update
+              const out = "TOKEN_FACTORY_V2_ADDRESS=" + v2Addr + "\nNFT_FACTORY_ADDRESS=" + nftAddr + "\n";
+              process.stdout.write("\n__ADDRESSES__\n" + out + "__END__\n");
+            }
+
+            main().catch(e => { console.error("Deploy failed:", e.message || e); process.exit(1); });
+            SCRIPT
+
+            # Run deploy
+            DEPLOY_OUTPUT=$(docker run --rm \
+              --network host \
+              -e DEPLOYER_KEY="$PRIVATE_KEY" \
+              -v "$WORK:/app" \
+              -w /app \
+              node:20-alpine \
+              sh -c "npm install ethers@6 > /dev/null 2>&1 && node deploy.mjs" 2>&1)
+
+            echo "$DEPLOY_OUTPUT"
+
+            # Extract addresses
+            V2_ADDR=$(echo "$DEPLOY_OUTPUT" | grep "TOKEN_FACTORY_V2_ADDRESS=" | tail -1 | cut -d'=' -f2)
+            NFT_ADDR=$(echo "$DEPLOY_OUTPUT" | grep "NFT_FACTORY_ADDRESS=" | tail -1 | cut -d'=' -f2)
+
+            if [ -z "$V2_ADDR" ] || [ -z "$NFT_ADDR" ]; then
+              echo "ERROR: Failed to extract deployed addresses"
+              exit 1
+            fi
+
+            # ──────────────────────────────────────────
+            #  5. Update .env on production server
+            # ──────────────────────────────────────────
+            echo "[5/5] Updating .env..."
+            cd "$DEPLOY_PATH"
+
+            # Backup .env
+            cp .env .env.backup.factory-v2.$(date +%Y%m%d_%H%M%S)
+
+            # Add or update TOKEN_FACTORY_V2_ADDRESS
+            if grep -q '^TOKEN_FACTORY_V2_ADDRESS=' .env 2>/dev/null; then
+              sed -i "s|^TOKEN_FACTORY_V2_ADDRESS=.*|TOKEN_FACTORY_V2_ADDRESS=$V2_ADDR|" .env
+            else
+              echo "TOKEN_FACTORY_V2_ADDRESS=$V2_ADDR" >> .env
+            fi
+
+            # Add or update NFT_FACTORY_ADDRESS
+            if grep -q '^NFT_FACTORY_ADDRESS=' .env 2>/dev/null; then
+              sed -i "s|^NFT_FACTORY_ADDRESS=.*|NFT_FACTORY_ADDRESS=$NFT_ADDR|" .env
+            else
+              echo "NFT_FACTORY_ADDRESS=$NFT_ADDR" >> .env
+            fi
+
+            # Clear Laravel config cache so new env vars take effect
+            php artisan config:clear 2>/dev/null || true
+            php artisan config:cache 2>/dev/null || true
+
+            echo ""
+            echo "═══════════════════════════════════════════"
+            echo " Factory V2 Deployment Complete!"
+            echo "═══════════════════════════════════════════"
+            echo " TOKEN_FACTORY_V2_ADDRESS=$V2_ADDR"
+            echo " NFT_FACTORY_ADDRESS=$NFT_ADDR"
+            echo "═══════════════════════════════════════════"
+
+            # Cleanup
+            rm -rf "$WORK"
