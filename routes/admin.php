@@ -203,10 +203,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('wallets', function () {
             $service = app(UserWalletService::class);
             $stats = $service->getStats();
-            $recent = WalletConnection::orderByDesc('connected_at')->limit(20)->get();
+            $activeWallets = $service->getActiveWallets();
+            $recent = WalletConnection::with('user:id,wallet_address,name')
+                ->orderByDesc('connected_at')
+                ->limit(30)
+                ->get();
 
             return Inertia::render('Admin/Wallets/Index', [
                 'stats' => $stats,
+                'activeWallets' => $activeWallets,
                 'recentConnections' => $recent,
             ]);
         })->name('wallets.index');

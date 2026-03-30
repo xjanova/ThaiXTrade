@@ -86,6 +86,7 @@ class UserWalletService
             'banned_users' => User::banned()->count(),
             'kyc_pending' => User::where('kyc_status', 'pending')->count(),
             'total_wallets' => WalletConnection::distinct('wallet_address')->count('wallet_address'),
+            'connected_wallets' => WalletConnection::whereNull('disconnected_at')->distinct('wallet_address')->count('wallet_address'),
             'wallet_types' => WalletConnection::selectRaw('wallet_type, count(*) as total')
                 ->groupBy('wallet_type')
                 ->pluck('total', 'wallet_type'),
@@ -93,5 +94,45 @@ class UserWalletService
                 ->groupBy('chain_id')
                 ->pluck('total', 'chain_id'),
         ];
+    }
+
+    /**
+     * Wallet ที่ยังเชื่อมต่ออยู่ — group by address พร้อม chains ทั้งหมด.
+     */
+    public function getActiveWallets(int $limit = 50): array
+    {
+        // ดึง wallet ที่ยังไม่ disconnect
+        $connections = WalletConnection::with('user:id,wallet_address,name,email,last_active_at,created_at')
+            ->whereNull('disconnected_at')
+            ->orderByDesc('connected_at')
+            ->get();
+
+        // Group by wallet_address → แต่ละ address เชื่อมกี่ chain
+        $grouped = [];
+        foreach ($connections as $conn) {
+            $addr = strtolower($conn->wallet_address);
+            if (!isset($grouped[$addr])) {
+                $grouped[$addr] = [
+                    'wallet_address' => $conn->wallet_address,
+                    'wallet_type' => $conn->wallet_type,
+                    'user_name' => $conn->user?->name,
+                    'user_email' => $conn->user?->email,
+                    'user_created_at' => $conn->user?->created_at?->toISOString(),
+                    'last_active_at' => $conn->user?->last_active_at?->toISOString(),
+                    'first_connected_at' => $conn->connected_at->toISOString(),
+                    'chains' => [],
+                ];
+            }
+            $chainId = $conn->chain_id;
+            if (!in_array($chainId, $grouped[$addr]['chains'])) {
+                $grouped[$addr]['chains'][] = $chainId;
+            }
+            // ใช้เวลา connected_at ล่าสุด
+            if ($conn->connected_at->toISOString() > $grouped[$addr]['first_connected_at']) {
+                $grouped[$addr]['first_connected_at'] = $conn->connected_at->toISOString();
+            }
+        }
+
+        return array_slice(array_values($grouped), 0, $limit);
     }
 }
