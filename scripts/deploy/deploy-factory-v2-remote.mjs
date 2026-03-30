@@ -23,9 +23,10 @@ console.log("ethers version:", ethers.version);
 async function deployContract(name, factory, wallet, provider, args = []) {
   const block = await provider.getBlock("latest");
   const gasLimit = Number(block.gasLimit);
-  console.log(`  Deploying ${name} (gasLimit: ${gasLimit})...`);
+  const nonce = await wallet.getNonce();
+  console.log(`  Deploying ${name} (gasLimit: ${gasLimit}, nonce: ${nonce})...`);
 
-  const contract = await factory.deploy(...args, { gasPrice: 0, gasLimit });
+  const contract = await factory.deploy(...args, { gasPrice: 0, gasLimit, nonce });
   const receipt = await contract.deploymentTransaction().wait();
   const addr = await contract.getAddress();
   console.log(`  ${name}: ${addr} (gas: ${receipt.gasUsed.toString()})`);
