@@ -34,17 +34,18 @@ jobs:
 
           npx hardhat compile --config hardhat.config.cjs
 
-          # Extract minimal artifacts (ABI + bytecode only)
-          mkdir -p /tmp/factory-artifacts
+          # Extract minimal artifacts (ABI + bytecode only) into workspace
+          mkdir -p factory-artifacts
           node -e "
             const fs = require('fs');
             const v2 = JSON.parse(fs.readFileSync('artifacts/contracts/factory/TPIXTokenFactoryV2.sol/TPIXTokenFactoryV2.json'));
             const nft = JSON.parse(fs.readFileSync('artifacts/contracts/factory/TPIXNFTFactory.sol/TPIXNFTFactory.json'));
-            fs.writeFileSync('/tmp/factory-artifacts/TPIXTokenFactoryV2.json', JSON.stringify({ abi: v2.abi, bytecode: v2.bytecode }));
-            fs.writeFileSync('/tmp/factory-artifacts/TPIXNFTFactory.json', JSON.stringify({ abi: nft.abi, bytecode: nft.bytecode }));
+            fs.writeFileSync('factory-artifacts/TPIXTokenFactoryV2.json', JSON.stringify({ abi: v2.abi, bytecode: v2.bytecode }));
+            fs.writeFileSync('factory-artifacts/TPIXNFTFactory.json', JSON.stringify({ abi: nft.abi, bytecode: nft.bytecode }));
             console.log('V2 bytecode:', Math.round(v2.bytecode.length / 2), 'bytes');
             console.log('NFT bytecode:', Math.round(nft.bytecode.length / 2), 'bytes');
           "
+          ls -la factory-artifacts/
           echo "✅ Contracts compiled and artifacts extracted"
 
       - name: Upload artifacts to server
@@ -54,9 +55,9 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          source: "/tmp/factory-artifacts/*"
+          source: "factory-artifacts/*"
           target: "/tmp/factory-deploy"
-          strip_components: 2
+          strip_components: 1
 
       - name: Deploy to TPIX Chain via SSH
         uses: appleboy/ssh-action@v1
