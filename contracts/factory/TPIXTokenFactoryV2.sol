@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.20;
 
-import "./creators/ERC20V2Creator.sol";
-import "./creators/UtilityTokenCreator.sol";
-import "./creators/RewardTokenCreator.sol";
-import "./creators/GovernanceTokenCreator.sol";
-import "./creators/StablecoinTokenCreator.sol";
+import "./interfaces/ITokenCreators.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
@@ -29,14 +25,14 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract TPIXTokenFactoryV2 is Ownable {
 
     // ═══════════════════════════════════════════
-    //  SUB-FACTORY CREATORS
+    //  SUB-FACTORY CREATORS (interfaces only)
     // ═══════════════════════════════════════════
 
-    ERC20V2Creator public immutable erc20V2Creator;
-    UtilityTokenCreator public immutable utilityCreator;
-    RewardTokenCreator public immutable rewardCreator;
-    GovernanceTokenCreator public immutable governanceCreator;
-    StablecoinTokenCreator public immutable stablecoinCreator;
+    IERC20V2Creator public immutable erc20V2Creator;
+    IUtilityTokenCreator public immutable utilityCreator;
+    IRewardTokenCreator public immutable rewardCreator;
+    IGovernanceTokenCreator public immutable governanceCreator;
+    IStablecoinTokenCreator public immutable stablecoinCreator;
 
     // ═══════════════════════════════════════════
     //  STATE
@@ -78,11 +74,11 @@ contract TPIXTokenFactoryV2 is Ownable {
         address governanceCreator_,
         address stablecoinCreator_
     ) Ownable(msg.sender) {
-        erc20V2Creator = ERC20V2Creator(erc20V2Creator_);
-        utilityCreator = UtilityTokenCreator(utilityCreator_);
-        rewardCreator = RewardTokenCreator(rewardCreator_);
-        governanceCreator = GovernanceTokenCreator(governanceCreator_);
-        stablecoinCreator = StablecoinTokenCreator(stablecoinCreator_);
+        erc20V2Creator = IERC20V2Creator(erc20V2Creator_);
+        utilityCreator = IUtilityTokenCreator(utilityCreator_);
+        rewardCreator = IRewardTokenCreator(rewardCreator_);
+        governanceCreator = IGovernanceTokenCreator(governanceCreator_);
+        stablecoinCreator = IStablecoinTokenCreator(stablecoinCreator_);
     }
 
     // ═══════════════════════════════════════════
@@ -152,8 +148,8 @@ contract TPIXTokenFactoryV2 is Ownable {
         bool burnable_,
         bool pausable_,
         bool blacklistEnabled_,
-        UtilityToken.TaxConfig calldata taxConfig_,
-        UtilityToken.ProtectionConfig calldata protectionConfig_
+        TaxConfig calldata taxConfig_,
+        ProtectionConfig calldata protectionConfig_
     ) external onlyOwner returns (address) {
         bytes32 salt = _nextSalt();
 
@@ -261,7 +257,7 @@ contract TPIXTokenFactoryV2 is Ownable {
 
     // ═══════════════════════════════════════════
     //  VIEW
-    // ════════════���══════════════════════════════
+    // ═══════════════════════════════════════════
 
     function totalTokens() external view returns (uint256) {
         return deployedTokens.length;

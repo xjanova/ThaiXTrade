@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.20;
 
-import "./creators/FactoryERC721Creator.sol";
-import "./creators/NFTCollectionCreator.sol";
+import "./interfaces/INFTCreators.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
@@ -23,11 +22,11 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract TPIXNFTFactory is Ownable {
 
     // ═══════════════════════════════════════════
-    //  SUB-FACTORY CREATORS
+    //  SUB-FACTORY CREATORS (interfaces only)
     // ═══════════════════════════════════════════
 
-    FactoryERC721Creator public immutable erc721Creator;
-    NFTCollectionCreator public immutable collectionCreator;
+    IFactoryERC721Creator public immutable erc721Creator;
+    INFTCollectionCreator public immutable collectionCreator;
 
     // ═══════════════════════════════════════════
     //  STATE
@@ -66,8 +65,8 @@ contract TPIXNFTFactory is Ownable {
         address erc721Creator_,
         address collectionCreator_
     ) Ownable(msg.sender) {
-        erc721Creator = FactoryERC721Creator(erc721Creator_);
-        collectionCreator = NFTCollectionCreator(collectionCreator_);
+        erc721Creator = IFactoryERC721Creator(erc721Creator_);
+        collectionCreator = INFTCollectionCreator(collectionCreator_);
     }
 
     // ═══════════════════════════════════════════
