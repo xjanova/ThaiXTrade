@@ -46,11 +46,14 @@ async function main() {
   // Deploy TPIXTokenFactoryV2
   console.log("\n[1/2] Deploying TPIXTokenFactoryV2...");
   try {
-    const gasLimit = block.gasLimit;
-    console.log("  Using gasLimit:", gasLimit.toString());
+    const gasLimit = Number(block.gasLimit);
+    console.log("  Using gasLimit:", gasLimit);
 
     const v2Factory = new ethers.ContractFactory(v2Art.abi, v2Art.bytecode, wallet);
+    console.log("  Sending deploy tx...");
     const v2 = await v2Factory.deploy({ gasPrice: 0, gasLimit });
+    console.log("  Tx sent:", v2.deploymentTransaction().hash);
+    console.log("  Waiting for confirmation...");
     const v2Receipt = await v2.deploymentTransaction().wait();
     const v2Addr = await v2.getAddress();
     console.log("  TPIXTokenFactoryV2:", v2Addr);
@@ -59,7 +62,10 @@ async function main() {
     // Deploy TPIXNFTFactory
     console.log("\n[2/2] Deploying TPIXNFTFactory...");
     const nftFactory = new ethers.ContractFactory(nftArt.abi, nftArt.bytecode, wallet);
+    console.log("  Sending deploy tx...");
     const nft = await nftFactory.deploy({ gasPrice: 0, gasLimit });
+    console.log("  Tx sent:", nft.deploymentTransaction().hash);
+    console.log("  Waiting for confirmation...");
     const nftReceipt = await nft.deploymentTransaction().wait();
     const nftAddr = await nft.getAddress();
     console.log("  TPIXNFTFactory:", nftAddr);
@@ -78,14 +84,16 @@ async function main() {
     console.log("\nTOKEN_FACTORY_V2_ADDRESS=" + v2Addr);
     console.log("NFT_FACTORY_ADDRESS=" + nftAddr);
   } catch (err) {
-    console.error("Deploy failed:", err.message);
-    if (err.info) console.error("Info:", JSON.stringify(err.info));
-    if (err.error) console.error("Error detail:", err.error.message || err.error);
+    console.log("Deploy failed:", err.message);
+    if (err.info) console.log("Info:", JSON.stringify(err.info));
+    if (err.error) console.log("Error detail:", err.error.message || err.error);
+    console.log("Full error:", JSON.stringify(err, Object.getOwnPropertyNames(err)));
     process.exit(1);
   }
 }
 
 main().catch((e) => {
-  console.error("Fatal:", e.message || e);
+  console.log("Fatal:", e.message || e);
+  console.log("Stack:", e.stack || "no stack");
   process.exit(1);
 });
