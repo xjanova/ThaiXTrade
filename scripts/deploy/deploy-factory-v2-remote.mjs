@@ -85,8 +85,22 @@ async function main() {
     console.log("  Signed tx length:", v2SignedTx.length, "chars");
 
     console.log("  Step 5: Broadcasting transaction...");
-    const v2TxResponse = await provider.broadcastTransaction(v2SignedTx);
-    console.log("  Tx hash:", v2TxResponse.hash);
+    // Use raw RPC to capture exact error
+    let v2TxHash;
+    try {
+      v2TxHash = await provider.send("eth_sendRawTransaction", [v2SignedTx]);
+      console.log("  Tx hash:", v2TxHash);
+    } catch (rpcErr) {
+      writeFileSync("/tmp/factory-rpc-error.log", JSON.stringify(rpcErr, Object.getOwnPropertyNames(rpcErr), 2));
+      console.log("  RPC ERROR:", rpcErr.message);
+      if (rpcErr.info) console.log("  RPC info:", JSON.stringify(rpcErr.info));
+      if (rpcErr.error) console.log("  RPC error detail:", JSON.stringify(rpcErr.error));
+      throw rpcErr;
+    }
+
+    console.log("  Step 6: Waiting for tx receipt...");
+    const v2TxResponse = await provider.getTransaction(v2TxHash);
+    const v2Receipt = await v2TxResponse.wait();
 
     console.log("  Step 6: Waiting for confirmation...");
     const v2Receipt = await v2TxResponse.wait();

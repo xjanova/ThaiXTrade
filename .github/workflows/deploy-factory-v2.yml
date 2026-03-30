@@ -111,6 +111,11 @@ jobs:
             echo "=== Deploy script output ==="
             cat /tmp/factory-deploy-output.log
             echo "=== End output ==="
+            if [ -f /tmp/factory-rpc-error.log ]; then
+              echo "=== RPC Error ==="
+              cat /tmp/factory-rpc-error.log
+              echo "=== End RPC Error ==="
+            fi
 
             DEPLOY_OUTPUT=$(cat /tmp/factory-deploy-output.log)
 
