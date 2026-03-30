@@ -84,23 +84,33 @@ async function main() {
     const v2SignedTx = await wallet.signTransaction(v2PopTx);
     console.log("  Signed tx length:", v2SignedTx.length, "chars");
 
-    console.log("  Step 5: Broadcasting transaction...");
-    // Use raw RPC to capture exact error
-    let v2TxHash;
-    try {
-      v2TxHash = await provider.send("eth_sendRawTransaction", [v2SignedTx]);
-      console.log("  Tx hash:", v2TxHash);
-    } catch (rpcErr) {
-      writeFileSync("/tmp/factory-rpc-error.log", JSON.stringify(rpcErr, Object.getOwnPropertyNames(rpcErr), 2));
-      console.log("  RPC ERROR:", rpcErr.message);
-      if (rpcErr.info) console.log("  RPC info:", JSON.stringify(rpcErr.info));
-      if (rpcErr.error) console.log("  RPC error detail:", JSON.stringify(rpcErr.error));
-      throw rpcErr;
+    console.log("  Step 5: Broadcasting transaction via raw fetch...");
+    // Bypass ethers — use raw HTTP to see exact RPC response
+    const rpcPayload = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "eth_sendRawTransaction",
+      params: [v2SignedTx],
+      id: 1,
+    });
+    console.log("  RPC payload size:", rpcPayload.length, "bytes");
+
+    const fetchRes = await fetch(rpc, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: rpcPayload,
+    });
+    const rpcResult = await fetchRes.json();
+    console.log("  RPC response:", JSON.stringify(rpcResult));
+    writeFileSync("/tmp/factory-rpc-response.log", JSON.stringify(rpcResult, null, 2));
+
+    if (rpcResult.error) {
+      throw new Error("RPC error: " + JSON.stringify(rpcResult.error));
     }
+    const v2TxHash = rpcResult.result;
+    console.log("  Tx hash:", v2TxHash);
 
     console.log("  Step 6: Waiting for tx receipt...");
-    const v2TxResponse = await provider.getTransaction(v2TxHash);
-    const v2Receipt = await v2TxResponse.wait();
+    const v2Receipt = await provider.waitForTransaction(v2TxHash, 1, 120000);
     const v2Addr = v2Receipt.contractAddress;
     console.log("  TPIXTokenFactoryV2:", v2Addr);
     console.log("  Gas used:", v2Receipt.gasUsed.toString());
