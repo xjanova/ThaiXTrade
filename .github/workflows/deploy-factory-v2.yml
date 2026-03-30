@@ -27,6 +27,16 @@ jobs:
                 { version: "0.8.24", settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true } },
                 { version: "0.8.20", settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "paris" } },
               ],
+              overrides: {
+                "contracts/factory/TPIXTokenFactoryV2.sol": {
+                  version: "0.8.24",
+                  settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun" }
+                },
+                "contracts/factory/TPIXNFTFactory.sol": {
+                  version: "0.8.24",
+                  settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun" }
+                }
+              },
             },
             paths: { sources: "./contracts", cache: "./cache", artifacts: "./artifacts" },
           };
