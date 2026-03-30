@@ -97,12 +97,13 @@ jobs:
             HARDHAT
 
             # Compile in Docker (with Hardhat + OpenZeppelin)
+            # Node 22 LTS required for Hardhat ESM support
             docker run --rm \
               -v "$WORK:/app" \
               -w /app \
-              node:20-alpine \
+              node:22-alpine \
               sh -c "
-                npm init -y > /dev/null 2>&1
+                npm pkg set type=module > /dev/null 2>&1
                 npm install hardhat @nomicfoundation/hardhat-toolbox @openzeppelin/contracts ethers@6 > /dev/null 2>&1
                 npx hardhat compile --config hardhat.config.cjs 2>&1
               "
@@ -189,7 +190,7 @@ jobs:
               -e DEPLOYER_KEY="$PRIVATE_KEY" \
               -v "$WORK:/app" \
               -w /app \
-              node:20-alpine \
+              node:22-alpine \
               sh -c "npm install ethers@6 > /dev/null 2>&1 && node deploy.mjs" 2>&1)
 
             echo "$DEPLOY_OUTPUT"
