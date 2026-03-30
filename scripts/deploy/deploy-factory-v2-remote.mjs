@@ -101,9 +101,6 @@ async function main() {
     console.log("  Step 6: Waiting for tx receipt...");
     const v2TxResponse = await provider.getTransaction(v2TxHash);
     const v2Receipt = await v2TxResponse.wait();
-
-    console.log("  Step 6: Waiting for confirmation...");
-    const v2Receipt = await v2TxResponse.wait();
     const v2Addr = v2Receipt.contractAddress;
     console.log("  TPIXTokenFactoryV2:", v2Addr);
     console.log("  Gas used:", v2Receipt.gasUsed.toString());
