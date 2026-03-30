@@ -21,10 +21,13 @@ const { ethers } = await import("ethers");
 console.log("ethers version:", ethers.version);
 
 async function deployContract(name, factory, wallet, provider, args = []) {
-  const block = await provider.getBlock("latest");
-  const gasLimit = Number(block.gasLimit);
   const nonce = await wallet.getNonce();
+  const gasLimit = 30_000_000; // 30M — safe for Polygon Edge (avoid using full block gas limit)
   console.log(`  Deploying ${name} (gasLimit: ${gasLimit}, nonce: ${nonce})...`);
+
+  // Log deploy tx data length for debugging
+  const deployTx = await factory.getDeployTransaction(...args);
+  console.log(`  ${name} tx data length: ${deployTx.data?.length || 0} chars (${Math.round((deployTx.data?.length || 0) / 2)} bytes)`);
 
   const contract = await factory.deploy(...args, { gasPrice: 0, gasLimit, nonce });
   const receipt = await contract.deploymentTransaction().wait();
