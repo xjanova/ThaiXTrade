@@ -61,46 +61,62 @@ async function main() {
   const governanceCreatorArt = loadArtifact(dir, "GovernanceTokenCreator.json");
   const stablecoinCreatorArt = loadArtifact(dir, "StablecoinTokenCreator.json");
   const factoryV2Art = loadArtifact(dir, "TPIXTokenFactoryV2.json");
+  const erc721CreatorArt = loadArtifact(dir, "FactoryERC721Creator.json");
+  const collectionCreatorArt = loadArtifact(dir, "NFTCollectionCreator.json");
   const nftFactoryArt = loadArtifact(dir, "TPIXNFTFactory.json");
 
-  // Deploy 5 creators
-  console.log("\n[1/7] Deploying ERC20V2Creator...");
+  const total = 9;
+
+  // Deploy 5 ERC-20 creators
+  console.log(`\n[1/${total}] Deploying ERC20V2Creator...`);
   const erc20V2Addr = await deployContract("ERC20V2Creator",
     new ethers.ContractFactory(erc20V2CreatorArt.abi, erc20V2CreatorArt.bytecode, wallet),
     wallet, provider);
 
-  console.log("\n[2/7] Deploying UtilityTokenCreator...");
+  console.log(`\n[2/${total}] Deploying UtilityTokenCreator...`);
   const utilityAddr = await deployContract("UtilityTokenCreator",
     new ethers.ContractFactory(utilityCreatorArt.abi, utilityCreatorArt.bytecode, wallet),
     wallet, provider);
 
-  console.log("\n[3/7] Deploying RewardTokenCreator...");
+  console.log(`\n[3/${total}] Deploying RewardTokenCreator...`);
   const rewardAddr = await deployContract("RewardTokenCreator",
     new ethers.ContractFactory(rewardCreatorArt.abi, rewardCreatorArt.bytecode, wallet),
     wallet, provider);
 
-  console.log("\n[4/7] Deploying GovernanceTokenCreator...");
+  console.log(`\n[4/${total}] Deploying GovernanceTokenCreator...`);
   const governanceAddr = await deployContract("GovernanceTokenCreator",
     new ethers.ContractFactory(governanceCreatorArt.abi, governanceCreatorArt.bytecode, wallet),
     wallet, provider);
 
-  console.log("\n[5/7] Deploying StablecoinTokenCreator...");
+  console.log(`\n[5/${total}] Deploying StablecoinTokenCreator...`);
   const stablecoinAddr = await deployContract("StablecoinTokenCreator",
     new ethers.ContractFactory(stablecoinCreatorArt.abi, stablecoinCreatorArt.bytecode, wallet),
     wallet, provider);
 
-  // Deploy coordinator factory with creator addresses
-  console.log("\n[6/7] Deploying TPIXTokenFactoryV2 (coordinator)...");
+  // Deploy ERC-20 coordinator
+  console.log(`\n[6/${total}] Deploying TPIXTokenFactoryV2 (coordinator)...`);
   const v2Addr = await deployContract("TPIXTokenFactoryV2",
     new ethers.ContractFactory(factoryV2Art.abi, factoryV2Art.bytecode, wallet),
     wallet, provider,
     [erc20V2Addr, utilityAddr, rewardAddr, governanceAddr, stablecoinAddr]);
 
-  // Deploy NFT Factory
-  console.log("\n[7/7] Deploying TPIXNFTFactory...");
+  // Deploy 2 NFT creators
+  console.log(`\n[7/${total}] Deploying FactoryERC721Creator...`);
+  const erc721Addr = await deployContract("FactoryERC721Creator",
+    new ethers.ContractFactory(erc721CreatorArt.abi, erc721CreatorArt.bytecode, wallet),
+    wallet, provider);
+
+  console.log(`\n[8/${total}] Deploying NFTCollectionCreator...`);
+  const collectionAddr = await deployContract("NFTCollectionCreator",
+    new ethers.ContractFactory(collectionCreatorArt.abi, collectionCreatorArt.bytecode, wallet),
+    wallet, provider);
+
+  // Deploy NFT coordinator
+  console.log(`\n[9/${total}] Deploying TPIXNFTFactory (coordinator)...`);
   const nftAddr = await deployContract("TPIXNFTFactory",
     new ethers.ContractFactory(nftFactoryArt.abi, nftFactoryArt.bytecode, wallet),
-    wallet, provider);
+    wallet, provider,
+    [erc721Addr, collectionAddr]);
 
   // Verify
   console.log("\nVerification:");

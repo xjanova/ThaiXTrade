@@ -45,6 +45,8 @@ jobs:
               'GovernanceTokenCreator': 'artifacts/contracts/factory/creators/GovernanceTokenCreator.sol/GovernanceTokenCreator.json',
               'StablecoinTokenCreator': 'artifacts/contracts/factory/creators/StablecoinTokenCreator.sol/StablecoinTokenCreator.json',
               'TPIXTokenFactoryV2': 'artifacts/contracts/factory/TPIXTokenFactoryV2.sol/TPIXTokenFactoryV2.json',
+              'FactoryERC721Creator': 'artifacts/contracts/factory/creators/FactoryERC721Creator.sol/FactoryERC721Creator.json',
+              'NFTCollectionCreator': 'artifacts/contracts/factory/creators/NFTCollectionCreator.sol/NFTCollectionCreator.json',
               'TPIXNFTFactory': 'artifacts/contracts/factory/TPIXNFTFactory.sol/TPIXNFTFactory.json',
             };
             for (const [name, path] of Object.entries(contracts)) {
@@ -76,7 +78,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: 5m
+          command_timeout: 15m
           script: |
             echo "=== Deploy Token Factory V2 + NFT Factory — $(date) ==="
 
