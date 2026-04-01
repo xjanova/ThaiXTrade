@@ -106,7 +106,8 @@ jobs:
 
             # Install NPM and build assets
             echo "🏗️ Building frontend assets..."
-            npm install 2>&1
+            rm -rf node_modules 2>/dev/null || true
+            npm ci 2>&1
             node ./node_modules/vite/bin/vite.js build 2>&1
 
             # Run migrations + seeders
