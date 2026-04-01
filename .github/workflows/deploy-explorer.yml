@@ -353,83 +353,134 @@ jobs:
             <link rel="icon" type="image/webp" href="https://tpix.online/images/logotpixexplorer.webp">
             <style>
             /* TPIX Explorer — Custom Branding */
-            /* Replace sidebar logo — full size */
-            header a[href="/"],
-            nav a[href="/"] {
-                display: inline-flex !important;
-                align-items: center !important;
-                height: auto !important;
-                max-height: none !important;
-                overflow: visible !important;
-            }
-            header a[href="/"] img,
-            nav a[href="/"] img,
-            [class*="NetworkLogo"] img,
-            [data-testid="network-logo"] img {
-                content: url(https://tpix.online/images/logotpixexplorer.webp) !important;
-                height: 60px !important;
-                max-height: none !important;
-                width: auto !important;
-                object-fit: contain !important;
-            }
-            /* Replace sidebar icon (mobile) */
-            header a[href="/"] svg,
-            nav a[href="/"] svg {
-                display: none !important;
-            }
-            /* Expand logo parent containers */
-            header a[href="/"] > div,
-            nav a[href="/"] > div {
-                height: auto !important;
-                max-height: none !important;
-                width: auto !important;
-                overflow: visible !important;
-            }
-            /* TPIX accent color */
-            :root {
-                --chakra-colors-blue-500: #06b6d4 !important;
-                --chakra-colors-blue-600: #0891b2 !important;
-            }
+            header a[href="/"],nav a[href="/"]{display:inline-flex!important;align-items:center!important;height:auto!important;max-height:none!important;overflow:visible!important}
+            header a[href="/"] img,nav a[href="/"] img,[class*="NetworkLogo"] img,[data-testid="network-logo"] img{content:url(https://tpix.online/images/logotpixexplorer.webp)!important;height:60px!important;max-height:none!important;width:auto!important;object-fit:contain!important}
+            header a[href="/"] svg,nav a[href="/"] svg{display:none!important}
+            header a[href="/"]>div,nav a[href="/"]>div{height:auto!important;max-height:none!important;width:auto!important;overflow:visible!important}
+            :root{--chakra-colors-blue-500:#06b6d4!important;--chakra-colors-blue-600:#0891b2!important}
+            .tpix-stat-link{text-decoration:none!important;color:inherit!important;cursor:pointer!important}.tpix-stat-link:hover{opacity:.85}
+            /* All Addresses Page */
+            .tpix-accounts-wrapper{max-width:1200px;margin:0 auto;padding:24px 0 48px}
+            .tpix-accounts-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+            .tpix-accounts-header h1{font-size:24px;font-weight:700;color:#e2e8f0;margin:0}
+            .tpix-accounts-stats{display:flex;gap:16px;flex-wrap:wrap}
+            .tpix-stat-chip{padding:4px 14px;border-radius:20px;font-size:13px;font-weight:600;background:rgba(6,182,212,.12);color:#06b6d4}
+            .tpix-stat-chip.purple{background:rgba(168,85,247,.12);color:#a855f7}
+            .tpix-stat-chip.green{background:rgba(0,230,118,.12);color:#00e676}
+            .tpix-filters{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+            .tpix-filter-input{flex:1;min-width:220px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e2e8f0;font-size:14px;outline:none}
+            .tpix-filter-input:focus{border-color:#06b6d4}.tpix-filter-input::placeholder{color:rgba(255,255,255,.35)}
+            .tpix-filter-select{padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#e2e8f0;font-size:13px;outline:none;cursor:pointer}
+            .tpix-filter-select option{background:#1a202c;color:#e2e8f0}
+            .tpix-table-wrap{border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02)}
+            .tpix-table{width:100%;border-collapse:collapse;font-size:14px}
+            .tpix-table thead th{text-align:left;padding:12px 16px;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.5);border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;user-select:none;white-space:nowrap}
+            .tpix-table thead th:hover{color:#06b6d4}
+            .tpix-table tbody tr{border-bottom:1px solid rgba(255,255,255,.04);transition:background .15s}
+            .tpix-table tbody tr:hover{background:rgba(6,182,212,.06)}
+            .tpix-table td{padding:12px 16px;color:#e2e8f0}
+            .tpix-table td.rank{color:rgba(255,255,255,.4);font-weight:600;width:50px}
+            .tpix-table td.addr-cell{font-family:monospace;font-size:13px}
+            .tpix-table td.addr-cell a{color:#06b6d4;text-decoration:none}.tpix-table td.addr-cell a:hover{text-decoration:underline}
+            .tpix-table td.balance{text-align:right;font-weight:600;white-space:nowrap}
+            .tpix-table td.balance .amount{color:#06b6d4}.tpix-table td.balance .zero{color:rgba(255,255,255,.25)}
+            .tpix-table td.txcount{text-align:right}
+            .tpix-type-badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600}
+            .tpix-type-eoa{background:rgba(6,182,212,.12);color:#06b6d4}
+            .tpix-type-contract{background:rgba(168,85,247,.12);color:#a855f7}
+            .tpix-balance-bar{height:4px;border-radius:2px;margin-top:4px;background:rgba(6,182,212,.25);max-width:120px;margin-left:auto}
+            .tpix-balance-bar-fill{height:100%;border-radius:2px;background:#06b6d4}
+            .tpix-loading{text-align:center;padding:48px;color:rgba(255,255,255,.4)}
+            .tpix-loading .spinner{width:32px;height:32px;border:3px solid rgba(6,182,212,.2);border-top-color:#06b6d4;border-radius:50%;animation:tpixSpin .8s linear infinite;margin:0 auto 12px}
+            @keyframes tpixSpin{to{transform:rotate(360deg)}}
+            .tpix-empty{text-align:center;padding:48px;color:rgba(255,255,255,.35)}
+            .tpix-results-info{font-size:12px;color:rgba(255,255,255,.35);margin-bottom:8px}
+            @media(max-width:768px){.tpix-table td.addr-cell{font-size:11px}.tpix-filters{flex-direction:column}.tpix-accounts-header{flex-direction:column;align-items:flex-start}}
             </style>
             <script>
-            // Replace logo images after hydration
             (function(){
-                var logo = "https://tpix.online/images/logotpixexplorer.webp";
+                var logo="https://tpix.online/images/logotpixexplorer.webp";
+                /* ── Logo ── */
                 function replaceLogo(){
-                    // Find all logo images in header/nav links to "/"
-                    document.querySelectorAll("header a[href=\'/\'] img, nav a[href=\'/\'] img").forEach(function(img){
-                        if(img.src !== logo){ img.src = logo; img.style.height="60px"; img.style.maxHeight="none"; img.style.width="auto"; }
-                    });
-                    // Find Blockscout SVG logos and replace with img
-                    document.querySelectorAll("header a[href=\'/\'] svg, nav a[href=\'/\'] svg").forEach(function(svg){
-                        var img = document.createElement("img");
-                        img.src = logo; img.alt = "TPIX Explorer";
-                        img.style.cssText = "height:60px;width:auto";
-                        svg.parentNode.replaceChild(img, svg);
-                    });
-                    // Replace footer copyright
-                    document.querySelectorAll("footer, [class*=footer], [class*=Footer]").forEach(function(el){
-                        var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-                        while(walker.nextNode()){
-                            var node = walker.currentNode;
-                            if(node.textContent.indexOf("Blockscout")!==-1 && node.textContent.indexOf("Limited")!==-1){
-                                node.textContent = node.textContent.replace(/Copyright\s*©?\s*Blockscout\s+Limited\s+\d{4}[-–]\d{4}/gi, "© Xman Studio 2024-2026");
-                                node.textContent = node.textContent.replace(/Blockscout\s+Limited/gi, "Xman Studio");
-                            }
-                        }
-                        // Replace Blockscout link with Xman Studio
-                        el.querySelectorAll("a[href*=\'blockscout.com\']").forEach(function(a){
-                            a.href = "https://xman4289.com";
-                            a.textContent = "Xman Studio";
-                        });
+                    document.querySelectorAll("header a[href=\'/\'] img,nav a[href=\'/\'] img").forEach(function(img){if(img.src!==logo){img.src=logo;img.style.height="60px";img.style.maxHeight="none";img.style.width="auto"}});
+                    document.querySelectorAll("header a[href=\'/\'] svg,nav a[href=\'/\'] svg").forEach(function(svg){var i=document.createElement("img");i.src=logo;i.alt="TPIX Explorer";i.style.cssText="height:60px;width:auto";svg.parentNode.replaceChild(i,svg)});
+                }
+                /* ── Footer ── */
+                function replaceFooter(){
+                    document.querySelectorAll("footer,[class*=footer],[class*=Footer]").forEach(function(el){
+                        var w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null,false);
+                        while(w.nextNode()){var n=w.currentNode;if(n.textContent.indexOf("Blockscout")!==-1){n.textContent=n.textContent.replace(/Copyright\\s*©?\\s*Blockscout\\s+Limited\\s+\\d{4}[-–]\\d{4}/gi,"© Xman Studio 2024-2026");n.textContent=n.textContent.replace(/Blockscout\\s+Limited/gi,"Xman Studio")}}
+                        el.querySelectorAll("a[href*=\'blockscout.com\']").forEach(function(a){a.href="https://xman4289.com";a.textContent="Xman Studio"});
                     });
                 }
-                // Run on load + observe for SPA navigation
-                if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",replaceLogo)}else{replaceLogo()}
-                var obs = new MutationObserver(function(){ replaceLogo() });
-                obs.observe(document.body||document.documentElement, {childList:true, subtree:true});
-                // Stop observing after 30s to save resources
-                setTimeout(function(){ obs.disconnect() }, 30000);
+                /* ── Stat Card Links ── */
+                var statLinks={"Wallet addresses":"/accounts"};
+                function linkStatCards(){
+                    document.querySelectorAll("main h2").forEach(function(h2){
+                        var t=h2.textContent.trim(),u=statLinks[t];if(!u)return;
+                        var p=h2.parentElement;while(p&&p.tagName!=="MAIN"){if(p.parentElement&&p.parentElement.querySelectorAll(":scope > a[href]").length>0)break;p=p.parentElement}
+                        if(!p||p.tagName==="MAIN"||p.tagName==="A"||p.dataset.tpixLinked)return;p.dataset.tpixLinked="1";
+                        var a=document.createElement("a");a.href=u;a.className=p.className+" tpix-stat-link";a.style.cssText=p.style.cssText;a.innerHTML=p.innerHTML;p.parentNode.replaceChild(a,p);
+                    });
+                }
+                /* ── All Addresses Page ── */
+                var accountsInjected=false;
+                function formatBal(w){if(!w||w==="0")return"0";var s=w.padStart(19,"0"),wh=s.slice(0,s.length-18)||"0",fr=s.slice(s.length-18,s.length-12).replace(/0+$/,"");wh=wh.replace(/\\B(?=(\\d{3})+(?!\\d))/g,",");return fr?wh+"."+fr:wh}
+                function shortAddr(a){return a?a.slice(0,8)+"..."+a.slice(-6):""}
+                function injectAccountsPage(){
+                    if(accountsInjected||!(window.location.pathname==="/accounts"||window.location.pathname==="/accounts/"))return;
+                    var main=document.querySelector("main");if(!main)return;var title=main.querySelector("h1,h2");if(!title)return;
+                    accountsInjected=true;
+                    main.innerHTML=\'<div class="tpix-accounts-wrapper" id="tpix-accounts"><div class="tpix-loading"><div class="spinner"></div>Loading all addresses...</div></div>\';
+                    var container=document.getElementById("tpix-accounts");
+                    fetch("/api?module=account&action=listaccounts&page=1&offset=500").then(function(r){return r.json()}).then(function(data){
+                        var addresses=(data.result||[]).map(function(a){return{address:a.address,balance:a.balance||"0",balanceBig:BigInt(a.balance||"0"),txCount:null,isContract:null,loaded:false,name:null}});
+                        addresses.sort(function(a,b){return a.balanceBig>b.balanceBig?-1:a.balanceBig<b.balanceBig?1:0});
+                        var maxBal=addresses.length?addresses[0].balanceBig:1n;if(maxBal===0n)maxBal=1n;
+                        var state={addresses:addresses,search:"",typeFilter:"all",balanceFilter:"all",sortBy:"balance",sortDir:"desc",maxBal:maxBal};
+                        function getFiltered(){
+                            var l=state.addresses.slice();
+                            if(state.search){var q=state.search.toLowerCase();l=l.filter(function(a){return a.address.toLowerCase().includes(q)||(a.name&&a.name.toLowerCase().includes(q))})}
+                            if(state.typeFilter==="eoa")l=l.filter(function(a){return a.loaded&&!a.isContract});
+                            if(state.typeFilter==="contract")l=l.filter(function(a){return a.loaded&&a.isContract});
+                            if(state.balanceFilter==="has")l=l.filter(function(a){return a.balanceBig>0n});
+                            if(state.balanceFilter==="zero")l=l.filter(function(a){return a.balanceBig===0n});
+                            l.sort(function(a,b){var va,vb;if(state.sortBy==="balance"){va=a.balanceBig;vb=b.balanceBig}else{va=BigInt(a.txCount||0);vb=BigInt(b.txCount||0)}var c=va>vb?-1:(va<vb?1:0);return state.sortDir==="asc"?-c:c});
+                            return l;
+                        }
+                        function renderTable(){
+                            var tbody=document.getElementById("tpix-table-body"),info=document.getElementById("tpix-results-info"),cc=document.getElementById("tpix-contract-count");
+                            if(!tbody)return;
+                            if(cc)cc.textContent=state.addresses.filter(function(a){return a.isContract}).length+" Contracts";
+                            var f=getFiltered();
+                            if(info)info.textContent=(state.search||state.typeFilter!=="all"||state.balanceFilter!=="all")?"Showing "+f.length+" of "+state.addresses.length+" addresses":"";
+                            if(!f.length){tbody.innerHTML=\'<tr><td colspan="5" class="tpix-empty">No addresses match your filters</td></tr>\';return}
+                            var h="";for(var i=0;i<f.length;i++){var a=f[i],bal=formatBal(a.balance),iz=a.balanceBig===0n,bp=Number((a.balanceBig*100n)/state.maxBal);
+                            var ty=!a.loaded?\'<span style="color:rgba(255,255,255,.2)">...</span>\':a.isContract?\'<span class="tpix-type-badge tpix-type-contract">Contract</span>\':\'<span class="tpix-type-badge tpix-type-eoa">EOA</span>\';
+                            var tx=a.loaded?(a.txCount||0).toLocaleString():\'<span style="color:rgba(255,255,255,.2)">...</span>\';
+                            var nm=a.name?\' <span style="color:#a855f7;font-size:12px;margin-left:6px;">\'+a.name+\'</span>\':\'<span></span>\';
+                            h+=\'<tr><td class="rank">\'+(i+1)+\'</td><td class="addr-cell"><a href="/address/\'+a.address+\'">\'+shortAddr(a.address)+\'</a>\'+nm+\'</td><td class="type-cell">\'+ty+\'</td><td class="balance"><span class="\'+(iz?"zero":"amount")+\'">\'+bal+\'</span>\'+(bp>0?\'<div class="tpix-balance-bar"><div class="tpix-balance-bar-fill" style="width:\'+bp+\'%"></div></div>\':\'\')+\'</td><td class="txcount">\'+tx+\'</td></tr>\'}
+                            tbody.innerHTML=h;
+                        }
+                        var total=addresses.length,withBal=addresses.filter(function(a){return a.balanceBig>0n}).length;
+                        container.innerHTML=\'<div class="tpix-accounts-header"><h1>All Addresses</h1><div class="tpix-accounts-stats"><span class="tpix-stat-chip">\'+total+\' Total</span><span class="tpix-stat-chip green">\'+withBal+\' With Balance</span><span class="tpix-stat-chip purple" id="tpix-contract-count">0 Contracts</span></div></div><div class="tpix-filters"><input class="tpix-filter-input" id="tpix-search" type="text" placeholder="Search by address or name..."><select class="tpix-filter-select" id="tpix-type-filter"><option value="all">All Types</option><option value="eoa">EOA (Wallet)</option><option value="contract">Contract</option></select><select class="tpix-filter-select" id="tpix-balance-filter"><option value="all">All Balances</option><option value="has">Has Balance</option><option value="zero">Zero Balance</option></select></div><div id="tpix-results-info" class="tpix-results-info"></div><div class="tpix-table-wrap"><table class="tpix-table"><thead><tr><th>#</th><th>Address</th><th>Type</th><th class="tpix-sortable" data-sort="balance">Balance TPIX &#9660;</th><th class="tpix-sortable" data-sort="txcount">Txn Count</th></tr></thead><tbody id="tpix-table-body"></tbody></table></div>\';
+                        var dt;document.getElementById("tpix-search").addEventListener("input",function(e){clearTimeout(dt);dt=setTimeout(function(){state.search=e.target.value.trim();renderTable()},300)});
+                        document.getElementById("tpix-type-filter").addEventListener("change",function(e){state.typeFilter=e.target.value;renderTable()});
+                        document.getElementById("tpix-balance-filter").addEventListener("change",function(e){state.balanceFilter=e.target.value;renderTable()});
+                        document.querySelectorAll(".tpix-sortable").forEach(function(th){th.addEventListener("click",function(){var c=th.dataset.sort;if(state.sortBy===c)state.sortDir=state.sortDir==="desc"?"asc":"desc";else{state.sortBy=c;state.sortDir="desc"}document.querySelectorAll(".tpix-sortable").forEach(function(t){var txt=t.dataset.sort==="balance"?"Balance TPIX":"Txn Count";t.innerHTML=txt+(t.dataset.sort===state.sortBy?(state.sortDir==="desc"?" &#9660;":" &#9650;"):"")});renderTable()})});
+                        renderTable();
+                        var queue=addresses.slice(),bs=5;
+                        function next(){if(!queue.length)return;var batch=queue.splice(0,bs);Promise.all(batch.map(function(a){return fetch("/api/v2/addresses/"+a.address).then(function(r){return r.json()}).then(function(d){a.txCount=d.transactions_count||0;a.isContract=d.is_contract||false;a.name=d.name||null;a.loaded=true}).catch(function(){a.loaded=true;a.txCount=0;a.isContract=false})})).then(function(){renderTable();next()})}
+                        next();
+                    }).catch(function(err){container.innerHTML=\'<div class="tpix-empty">Failed to load: \'+err.message+\'</div>\'});
+                }
+                /* ── Run All ── */
+                var prevPath=window.location.pathname;
+                function runAll(){replaceLogo();replaceFooter();linkStatCards();injectAccountsPage()}
+                if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",runAll)}else{runAll()}
+                var obs=new MutationObserver(function(){if(window.location.pathname!==prevPath){prevPath=window.location.pathname;accountsInjected=false}runAll()});
+                obs.observe(document.body||document.documentElement,{childList:true,subtree:true});
+                setTimeout(function(){obs.disconnect()},120000);
             })();
             </script>';
                 $body = str_replace('</head>', $tpixBrand . '</head>', $body);
