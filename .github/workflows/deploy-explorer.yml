@@ -543,82 +543,11 @@ jobs:
             WATCHDOG_SCRIPT="$HOME/chain-watchdog.sh"
             WATCHDOG_LOG="$HOME/tpix-watchdog.log"
 
-            cat > "$WATCHDOG_SCRIPT" << WATCHDOG_EOF
-#!/bin/bash
-# TPIX Chain Watchdog — auto-restart if chain stops producing blocks
-# Installed by deploy-explorer workflow
-RPC="http://127.0.0.1:8545"
-INFRA="$HOME/tpix-infrastructure"
-LOG="$HOME/tpix-watchdog.log"
-RESTART_FILE="/tmp/tpix-restart-count"
-
-log() { echo "[\$(date '+%Y-%m-%d %H:%M:%S')] \$1" >> "\$LOG"; }
-
-get_block() {
-    curl -s --max-time 10 "\$RPC" -X POST \\
-        -H "Content-Type: application/json" \\
-        -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null \\
-        | grep -o '"result":"[^"]*"' | cut -d'"' -f4
-}
-
-# Check container running
-STATUS=\$(docker inspect -f '{{.State.Status}}' tpix-chain-node 2>/dev/null || echo "dead")
-if [ "\$STATUS" != "running" ]; then
-    log "ERROR: Container not running (\$STATUS) — starting..."
-    cd "\$INFRA" && docker compose up -d tpix-node
-    sleep 15
-    log "Container restarted"
-    exit 0
-fi
-
-# Check RPC responding
-B1=\$(get_block)
-if [ -z "\$B1" ]; then
-    log "ERROR: RPC not responding — restarting..."
-    cd "\$INFRA" && docker compose restart tpix-node
-    sleep 15
-    docker compose restart blockscout-backend 2>/dev/null || true
-    log "Restarted (RPC dead)"
-    exit 0
-fi
-
-# Check blocks progressing
-sleep 6
-B2=\$(get_block)
-
-if [ "\$B1" = "\$B2" ]; then
-    COUNT=0
-    if [ -f "\$RESTART_FILE" ]; then
-        AGE=\$(( \$(date +%s) - \$(stat -c %Y "\$RESTART_FILE" 2>/dev/null || echo 0) ))
-        [ \$AGE -gt 3600 ] && echo "0" > "\$RESTART_FILE"
-        COUNT=\$(cat "\$RESTART_FILE" 2>/dev/null || echo 0)
-    fi
-    if [ "\$COUNT" -ge 3 ]; then
-        log "CRITICAL: 3+ restarts in 1h — manual fix needed!"
-        exit 1
-    fi
-    echo "\$((COUNT + 1))" > "\$RESTART_FILE"
-
-    log "ERROR: Chain stuck at \$B1 — restarting (attempt \$((COUNT+1))/3)..."
-    cd "\$INFRA" && docker compose restart tpix-node
-    sleep 15
-    docker compose restart blockscout-backend 2>/dev/null || true
-    B3=\$(get_block)
-    log "After restart: block \$B3"
-else
-    BDEC=\$(printf "%d" "\$B2" 2>/dev/null || echo "?")
-    log "OK: block \$B2 (\$BDEC)"
-fi
-WATCHDOG_EOF
-
+            echo "IyEvYmluL2Jhc2gKIyBUUElYIENoYWluIFdhdGNoZG9nIOKAlCBhdXRvLXJlc3RhcnQgaWYgY2hhaW4gc3RvcHMgcHJvZHVjaW5nIGJsb2NrcwojIEluc3RhbGxlZCBieSBkZXBsb3ktZXhwbG9yZXIgd29ya2Zsb3cKUlBDPSJodHRwOi8vMTI3LjAuMC4xOjg1NDUiCklORlJBPSIkSE9NRS90cGl4LWluZnJhc3RydWN0dXJlIgpMT0c9IiRIT01FL3RwaXgtd2F0Y2hkb2cubG9nIgpSRVNUQVJUX0ZJTEU9Ii90bXAvdHBpeC1yZXN0YXJ0LWNvdW50IgoKbG9nKCkgeyBlY2hvICJbJChkYXRlICcrJVktJW0tJWQgJUg6JU06JVMnKV0gJDEiID4+ICIkTE9HIjsgfQoKZ2V0X2Jsb2NrKCkgewogICAgY3VybCAtcyAtLW1heC10aW1lIDEwICIkUlBDIiAtWCBQT1NUIFwKICAgICAgICAtSCAiQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uIiBcCiAgICAgICAgLWQgJ3sianNvbnJwYyI6IjIuMCIsIm1ldGhvZCI6ImV0aF9ibG9ja051bWJlciIsInBhcmFtcyI6W10sImlkIjoxfScgMj4vZGV2L251bGwgXAogICAgICAgIHwgZ3JlcCAtbyAnInJlc3VsdCI6IlteIl0qIicgfCBjdXQgLWQnIicgLWY0Cn0KCiMgQ2hlY2sgY29udGFpbmVyIHJ1bm5pbmcKU1RBVFVTPSQoZG9ja2VyIGluc3BlY3QgLWYgJ3t7LlN0YXRlLlN0YXR1c319JyB0cGl4LWNoYWluLW5vZGUgMj4vZGV2L251bGwgfHwgZWNobyAiZGVhZCIpCmlmIFsgIiRTVEFUVVMiICE9ICJydW5uaW5nIiBdOyB0aGVuCiAgICBsb2cgIkVSUk9SOiBDb250YWluZXIgbm90IHJ1bm5pbmcgKCRTVEFUVVMpIOKAlCBzdGFydGluZy4uLiIKICAgIGNkICIkSU5GUkEiICYmIGRvY2tlciBjb21wb3NlIHVwIC1kIHRwaXgtbm9kZQogICAgc2xlZXAgMTUKICAgIGxvZyAiQ29udGFpbmVyIHJlc3RhcnRlZCIKICAgIGV4aXQgMApmaQoKIyBDaGVjayBSUEMgcmVzcG9uZGluZwpCMT0kKGdldF9ibG9jaykKaWYgWyAteiAiJEIxIiBdOyB0aGVuCiAgICBsb2cgIkVSUk9SOiBSUEMgbm90IHJlc3BvbmRpbmcg4oCUIHJlc3RhcnRpbmcuLi4iCiAgICBjZCAiJElORlJBIiAmJiBkb2NrZXIgY29tcG9zZSByZXN0YXJ0IHRwaXgtbm9kZQogICAgc2xlZXAgMTUKICAgIGRvY2tlciBjb21wb3NlIHJlc3RhcnQgYmxvY2tzY291dC1iYWNrZW5kIDI+L2Rldi9udWxsIHx8IHRydWUKICAgIGxvZyAiUmVzdGFydGVkIChSUEMgZGVhZCkiCiAgICBleGl0IDAKZmkKCiMgQ2hlY2sgYmxvY2tzIHByb2dyZXNzaW5nCnNsZWVwIDYKQjI9JChnZXRfYmxvY2spCgppZiBbICIkQjEiID0gIiRCMiIgXTsgdGhlbgogICAgQ09VTlQ9MAogICAgaWYgWyAtZiAiJFJFU1RBUlRfRklMRSIgXTsgdGhlbgogICAgICAgIEFHRT0kKCggJChkYXRlICslcykgLSAkKHN0YXQgLWMgJVkgIiRSRVNUQVJUX0ZJTEUiIDI+L2Rldi9udWxsIHx8IGVjaG8gMCkgKSkKICAgICAgICBbICRBR0UgLWd0IDM2MDAgXSAmJiBlY2hvICIwIiA+ICIkUkVTVEFSVF9GSUxFIgogICAgICAgIENPVU5UPSQoY2F0ICIkUkVTVEFSVF9GSUxFIiAyPi9kZXYvbnVsbCB8fCBlY2hvIDApCiAgICBmaQogICAgaWYgWyAiJENPVU5UIiAtZ2UgMyBdOyB0aGVuCiAgICAgICAgbG9nICJDUklUSUNBTDogMysgcmVzdGFydHMgaW4gMWgg4oCUIG1hbnVhbCBmaXggbmVlZGVkISIKICAgICAgICBleGl0IDEKICAgIGZpCiAgICBlY2hvICIkKChDT1VOVCArIDEpKSIgPiAiJFJFU1RBUlRfRklMRSIKCiAgICBsb2cgIkVSUk9SOiBDaGFpbiBzdHVjayBhdCAkQjEg4oCUIHJlc3RhcnRpbmcgKGF0dGVtcHQgJCgoQ09VTlQrMSkpLzMpLi4uIgogICAgY2QgIiRJTkZSQSIgJiYgZG9ja2VyIGNvbXBvc2UgcmVzdGFydCB0cGl4LW5vZGUKICAgIHNsZWVwIDE1CiAgICBkb2NrZXIgY29tcG9zZSByZXN0YXJ0IGJsb2Nrc2NvdXQtYmFja2VuZCAyPi9kZXYvbnVsbCB8fCB0cnVlCiAgICBCMz0kKGdldF9ibG9jaykKICAgIGxvZyAiQWZ0ZXIgcmVzdGFydDogYmxvY2sgJEIzIgplbHNlCiAgICBCREVDPSQocHJpbnRmICIlZCIgIiRCMiIgMj4vZGV2L251bGwgfHwgZWNobyAiPyIpCiAgICBsb2cgIk9LOiBibG9jayAkQjIgKCRCREVDKSIKZmkK" | base64 -d > "$WATCHDOG_SCRIPT"
             chmod +x "$WATCHDOG_SCRIPT"
 
-            # ติดตั้ง cron ทุก 5 นาที
             CRON_LINE="*/5 * * * * $WATCHDOG_SCRIPT >> $WATCHDOG_LOG 2>&1"
-            # ลบ cron เก่า แล้วเพิ่มใหม่
             (crontab -l 2>/dev/null | grep -v "$WATCHDOG_SCRIPT" || true; echo "$CRON_LINE") | crontab -
-            echo "Cron installed: $CRON_LINE"
-            crontab -l | grep "chain-watchdog" || echo "Warning: cron not set"
             touch "$WATCHDOG_LOG" 2>/dev/null || true
 
             echo ""
