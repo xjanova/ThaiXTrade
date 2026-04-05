@@ -68,24 +68,24 @@ export default function PortfolioScreen() {
   const insets = useSafeAreaInsets();
   const { allocationChartSize } = useResponsiveLayout();
   const chartSize = allocationChartSize;
-  const { assets, totalValue, totalChange24h, totalChangePercent, fetchRealPortfolio } = usePortfolioStore();
+  const { assets, totalValue, totalChange24h, totalChangePercent, fetchRealPortfolio, transactions, isLoadingTx, fetchTransactionHistory } = usePortfolioStore();
   const [activeTab, setActiveTab] = useState<TabType>('assets');
   const [refreshing, setRefreshing] = useState(false);
   const [balanceHidden, setBalanceHidden] = useState(false);
 
   useEffect(() => {
     fetchRealPortfolio();
-  }, [fetchRealPortfolio]);
+    fetchTransactionHistory();
+  }, [fetchRealPortfolio, fetchTransactionHistory]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    await new Promise((r) => setTimeout(r, 800));
-    fetchRealPortfolio();
+    await Promise.all([fetchRealPortfolio(), fetchTransactionHistory()]);
     setRefreshing(false);
-  }, [fetchRealPortfolio]);
+  }, [fetchRealPortfolio, fetchTransactionHistory]);
 
   const allocationData = assets.map((a) => ({
     symbol: a.symbol,
@@ -191,63 +191,70 @@ export default function PortfolioScreen() {
           </View>
         )}
 
-        {/* Transaction History */}
+        {/* Transaction History — ดึงจาก API จริง */}
         {activeTab === 'history' && (
           <GlassCard style={styles.historyCard}>
-            {[
-              { type: 'buy', symbol: 'BTC', amount: '0.025', value: '$2,460', time: '2h ago' },
-              { type: 'sell', symbol: 'ETH', amount: '1.5', value: '$5,770', time: '5h ago' },
-              { type: 'buy', symbol: 'SOL', amount: '10', value: '$1,873', time: '1d ago' },
-              { type: 'deposit', symbol: 'USDT', amount: '5,000', value: '$5,000', time: '2d ago' },
-              { type: 'buy', symbol: 'LINK', amount: '50', value: '$911', time: '3d ago' },
-              { type: 'sell', symbol: 'DOGE', amount: '10,000', value: '$1,847', time: '5d ago' },
-            ].map((tx, i) => (
-              <View key={i} style={[styles.txRow, i > 0 && styles.txRowBorder]}>
-                <View
-                  style={[
-                    styles.txIcon,
-                    {
-                      backgroundColor:
-                        tx.type === 'buy'
-                          ? colors.trading.greenBg
-                          : tx.type === 'sell'
-                          ? colors.trading.redBg
-                          : colors.brand.cyan + '20',
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name={
-                      tx.type === 'buy'
-                        ? 'arrow-down'
-                        : tx.type === 'sell'
-                        ? 'arrow-up'
-                        : 'wallet'
-                    }
-                    size={16}
-                    color={
-                      tx.type === 'buy'
-                        ? colors.trading.green
-                        : tx.type === 'sell'
-                        ? colors.trading.red
-                        : colors.brand.cyan
-                    }
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.txTitle}>
-                    {tx.type.charAt(0).toUpperCase() + tx.type.slice(1)} {tx.symbol}
-                  </Text>
-                  <Text style={styles.txTime}>{tx.time}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.txAmount}>
-                    {tx.type === 'sell' ? '-' : '+'}{tx.amount} {tx.symbol}
-                  </Text>
-                  <Text style={styles.txValue}>{tx.value}</Text>
-                </View>
+            {isLoadingTx ? (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <Ionicons name="time-outline" size={20} color={colors.text.tertiary} />
+                <Text style={[styles.txTime, { marginTop: 8 }]}>Loading history...</Text>
               </View>
-            ))}
+            ) : transactions.length === 0 ? (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <Ionicons name="receipt-outline" size={24} color={colors.text.disabled} />
+                <Text style={[styles.txTime, { marginTop: 8 }]}>No transactions yet</Text>
+              </View>
+            ) : (
+              transactions.map((tx, i) => (
+                <View key={tx.id} style={[styles.txRow, i > 0 && styles.txRowBorder]}>
+                  <View
+                    style={[
+                      styles.txIcon,
+                      {
+                        backgroundColor:
+                          tx.type === 'buy' || tx.type === 'deposit'
+                            ? colors.trading.greenBg
+                            : tx.type === 'sell' || tx.type === 'withdraw'
+                            ? colors.trading.redBg
+                            : colors.brand.cyan + '20',
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        tx.type === 'buy' || tx.type === 'deposit'
+                          ? 'arrow-down'
+                          : tx.type === 'sell' || tx.type === 'withdraw'
+                          ? 'arrow-up'
+                          : 'swap-horizontal'
+                      }
+                      size={16}
+                      color={
+                        tx.type === 'buy' || tx.type === 'deposit'
+                          ? colors.trading.green
+                          : tx.type === 'sell' || tx.type === 'withdraw'
+                          ? colors.trading.red
+                          : colors.brand.cyan
+                      }
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.txTitle}>
+                      {tx.type.charAt(0).toUpperCase() + tx.type.slice(1)} {tx.symbol}
+                    </Text>
+                    <Text style={styles.txTime}>
+                      {tx.time ? new Date(tx.time).toLocaleDateString() : ''}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.txAmount}>
+                      {tx.type === 'sell' || tx.type === 'withdraw' ? '-' : '+'}{tx.amount} {tx.symbol}
+                    </Text>
+                    <Text style={styles.txValue}>{tx.value}</Text>
+                  </View>
+                </View>
+              ))
+            )}
           </GlassCard>
         )}
 

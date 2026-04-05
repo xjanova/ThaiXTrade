@@ -4,15 +4,27 @@
  *
  * ใช้ API ของเราเอง (tpix.online) แทน GitHub โดยตรง
  * เพื่อให้ repo เป็น private ได้ ไม่ต้องเปิดให้คนอื่นเห็น
+ *
+ * Flow เหมือน TPIX Wallet (TPIX-Coin/update_service.dart):
+ * 1. Check → API (tpix.online) แทน GitHub API โดยตรง
+ * 2. Download → APK with progress + cancel + file validation
+ * 3. Install → Android intent (เหมือน OpenFilex.open)
+ * 4. Fallback → เปิด tpix.online → GitHub releases
+ *
+ * Developed by Xman Studio
  */
 
 import Constants from 'expo-constants';
 import { Platform, Linking } from 'react-native';
-import { downloadApkNative, installApkNative } from './nativeFileOps';
+import { downloadApkNative, installApkNative, cancelActiveDownload } from './nativeFileOps';
 
 // API base URL / URL หลักของ API
 const API_BASE = Constants.expoConfig?.extra?.apiBaseUrl
   ?? 'https://tpix.online/api/v1';
+
+// Fallback URLs (เหมือน wallet: tpix.online → GitHub releases)
+const DOWNLOAD_PAGE_URL = 'https://tpix.online/download';
+const GITHUB_RELEASES_URL = 'https://github.com/xjanova/ThaiXTrade/releases/latest';
 
 // Current app version / เวอร์ชันแอปปัจจุบัน
 export const CURRENT_VERSION = Constants.expoConfig?.version ?? '1.0.0';
@@ -111,6 +123,7 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
 
 /**
  * Download APK with progress / ดาวน์โหลด APK พร้อมแถบความคืบหน้า
+ * เหมือน wallet: Dio().download() with onReceiveProgress
  */
 export async function downloadApk(
   url: string,
@@ -124,14 +137,52 @@ export async function downloadApk(
 }
 
 /**
- * Install APK from local file / ติดตั้ง APK จากไฟล์ในเครื่อง
+ * Cancel active download / ยกเลิกดาวน์โหลดที่กำลังทำอยู่
+ * เหมือน wallet: cancelToken.cancel()
  */
-export async function installApk(fileUri: string): Promise<void> {
+export function cancelDownload(): void {
+  if (Platform.OS !== 'web') {
+    cancelActiveDownload();
+  }
+}
+
+/**
+ * Install APK from local file / ติดตั้ง APK จากไฟล์ในเครื่อง
+ * เหมือน wallet: OpenFilex.open(filePath) → returns ResultType.done
+ *
+ * Returns true if install intent launched, false if failed
+ * ถ้า false → caller ควร fallback to browser (เหมือน wallet)
+ */
+export async function installApk(fileUri: string): Promise<boolean> {
   if (Platform.OS !== 'android') {
     await Linking.openURL(fileUri);
-    return;
+    return true;
   }
   return installApkNative(fileUri);
+}
+
+/**
+ * Fallback: open download page in browser
+ * เหมือน wallet: openDownloadPage() → tpix.online → GitHub releases
+ *
+ * ลองเปิด tpix.online ก่อน → ถ้าไม่ได้ → เปิด GitHub releases
+ */
+export async function openDownloadPage(): Promise<void> {
+  try {
+    const canOpen = await Linking.canOpenURL(DOWNLOAD_PAGE_URL);
+    if (canOpen) {
+      await Linking.openURL(DOWNLOAD_PAGE_URL);
+      return;
+    }
+  } catch {
+    // Fallback to GitHub
+  }
+
+  try {
+    await Linking.openURL(GITHUB_RELEASES_URL);
+  } catch {
+    throw new Error('Could not open download page');
+  }
 }
 
 export function formatFileSize(bytes: number): string {
@@ -141,6 +192,7 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
+/** @deprecated Use openDownloadPage() instead */
 export async function openReleasesPage(): Promise<void> {
-  await Linking.openURL('https://tpix.online/download');
+  await openDownloadPage();
 }

@@ -66,8 +66,12 @@ export default function TradeFormMobile({
   );
 
   const handleSubmit = useCallback(() => {
-    if (amount <= 0) return;
-    if (orderType === 'limit' && price <= 0) return;
+    // FIX: Input validation ป้องกัน NaN, ค่าลบ, ค่าเกินขอบเขต
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    if (orderType === 'limit' && (!Number.isFinite(price) || price <= 0)) return;
+    if (!Number.isFinite(total) || total <= 0) return;
+    // ป้องกัน amount/price เกินขอบเขต (max 1 billion)
+    if (amount > 1_000_000_000 || (price && price > 1_000_000_000)) return;
 
     onSubmitOrder?.({
       side,
@@ -80,10 +84,11 @@ export default function TradeFormMobile({
 
   const canSubmit = useMemo(() => {
     if (!isWalletConnected) return false;
-    if (amount <= 0) return false;
-    if (orderType === 'limit' && price <= 0) return false;
+    if (!Number.isFinite(amount) || amount <= 0) return false;
+    if (orderType === 'limit' && (!Number.isFinite(price) || price <= 0)) return false;
+    if (!Number.isFinite(total) || total <= 0) return false;
     return true;
-  }, [amount, orderType, price, isWalletConnected]);
+  }, [amount, orderType, price, total, isWalletConnected]);
 
   return (
     <View style={styles.container}>

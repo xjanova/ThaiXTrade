@@ -208,16 +208,21 @@ class SwapApiController extends Controller
                 (int) $validated['chain_id'],
             );
 
-            $submittedFee = (float) $validated['fee_amount'];
-            $expectedFeeAmount = $expectedFee['fee_amount'];
+            // SECURITY FIX: ใช้ bcmath เปรียบเทียบ ป้องกัน floating-point precision loss
+            // ลด tolerance 5% → 1% ป้องกัน fee manipulation
+            $submittedFeeStr = (string) $validated['fee_amount'];
+            $expectedFeeStr = (string) $expectedFee['fee_amount'];
 
-            // Reject if fee mismatch exceeds tolerance
-            // กรณี expected = 0: submitted ต้อง = 0 ด้วย (ป้องกัน fee manipulation)
             $feeMismatch = false;
-            if ($expectedFeeAmount > 0) {
-                $feeMismatch = abs($submittedFee - $expectedFeeAmount) / $expectedFeeAmount > 0.05;
-            } elseif ($submittedFee > 0.00000001) {
-                $feeMismatch = true; // expected 0 แต่ submitted > 0
+            if (bccomp($expectedFeeStr, '0', 18) > 0) {
+                $diff = bcsub($submittedFeeStr, $expectedFeeStr, 18);
+                if (bccomp($diff, '0', 18) < 0) {
+                    $diff = bcsub($expectedFeeStr, $submittedFeeStr, 18);
+                }
+                $tolerance = bcmul($expectedFeeStr, '0.01', 18); // 1% tolerance
+                $feeMismatch = bccomp($diff, $tolerance, 18) > 0;
+            } elseif (bccomp($submittedFeeStr, '0.00000001', 18) > 0) {
+                $feeMismatch = true;
             }
 
             if ($feeMismatch) {
@@ -237,8 +242,8 @@ class SwapApiController extends Controller
                 ], 422);
             }
 
-            // Record the transaction
-            $transaction = Transaction::create([
+            // SECURITY FIX: wrap in DB transaction ป้องกัน orphaned records
+            $transaction = \Illuminate\Support\Facades\DB::transaction(fn () => Transaction::create([
                 'type' => 'swap',
                 'wallet_address' => strtolower($validated['wallet_address']),
                 'chain_id' => $validated['chain_id'],
@@ -253,7 +258,7 @@ class SwapApiController extends Controller
                     'fee_rate' => $expectedFee['fee_rate'],
                     'fee_collector' => SiteSetting::get('trading', 'fee_collector_wallet', ''),
                 ],
-            ]);
+            ]));
 
             return response()->json([
                 'success' => true,

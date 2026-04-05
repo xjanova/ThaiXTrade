@@ -11,7 +11,6 @@ import { colors, spacing, radius, typography } from '@/theme';
 import GlassCard from '@/components/common/GlassCard';
 import { useUpdateStore } from '@/stores/updateStore';
 import { useWalletStore } from '@/stores/walletStore';
-import WalletConnectModal from '@/components/wallet/WalletConnectModal';
 import { CURRENT_VERSION } from '@/services/updateService';
 import { SUPPORTED_CHAINS } from '@/services/walletService';
 
@@ -47,6 +46,7 @@ export default function SettingsScreen() {
   const { wallet, showModal: showWalletModal, disconnectWallet, settings, updateSettings, loadSettings, activeChainId, switchChain, userChains } = useWalletStore();
   const { updateInfo, isChecking, forceCheck, openModal } = useUpdateStore();
   const hasUpdate = updateInfo?.available ?? false;
+  const [checkResult, setCheckResult] = useState<'none' | 'uptodate' | 'error'>('none');
 
   // โหลด settings เมื่อเปิดหน้า
   useEffect(() => { loadSettings(); }, []);
@@ -89,6 +89,7 @@ export default function SettingsScreen() {
     const next = settings.language === 'en' ? 'th' : 'en';
     updateSettings({ language: next });
     haptic();
+    Alert.alert('Saved', next === 'th' ? 'เปลี่ยนเป็นภาษาไทย' : 'Changed to English');
   }, [settings.language]);
 
   const handleCurrencySwitch = useCallback(() => {
@@ -320,15 +321,44 @@ export default function SettingsScreen() {
           <Text style={styles.appInfoVersion}>Version {CURRENT_VERSION}</Text>
           <Text style={styles.appInfoDev}>by Xman Studio</Text>
 
-          <Pressable style={styles.checkUpdateBtn} onPress={async () => { await forceCheck(); }} disabled={isChecking}>
+          <Pressable
+            style={styles.checkUpdateBtn}
+            onPress={async () => {
+              if (isChecking) return; // ป้องกันกด double-tap
+              setCheckResult('none');
+              try {
+                await forceCheck();
+                // ถ้าไม่มีอัพเดท → แสดง "Up to date"
+                const info = useUpdateStore.getState().updateInfo;
+                if (!info?.available) {
+                  setCheckResult('uptodate');
+                  setTimeout(() => setCheckResult('none'), 5000);
+                }
+              } catch {
+                setCheckResult('error');
+                setTimeout(() => setCheckResult('none'), 5000);
+              }
+            }}
+            disabled={isChecking}
+          >
             {isChecking ? (
               <ActivityIndicator size="small" color={colors.brand.cyan} />
+            ) : checkResult === 'uptodate' ? (
+              <>
+                <Ionicons name="checkmark-circle" size={16} color={colors.trading.green} />
+                <Text style={[styles.checkUpdateText, { color: colors.trading.green }]}>Up to date!</Text>
+              </>
+            ) : hasUpdate ? (
+              <>
+                <Ionicons name="arrow-up-circle" size={16} color={colors.trading.green} />
+                <Text style={[styles.checkUpdateText, { color: colors.trading.green }]}>
+                  Update to v{updateInfo?.latestVersion}
+                </Text>
+              </>
             ) : (
               <>
-                <Ionicons name={hasUpdate ? 'arrow-up-circle' : 'refresh-outline'} size={16} color={hasUpdate ? colors.trading.green : colors.brand.cyan} />
-                <Text style={[styles.checkUpdateText, hasUpdate && { color: colors.trading.green }]}>
-                  {hasUpdate ? `Update to v${updateInfo?.latestVersion}` : 'Check for Updates'}
-                </Text>
+                <Ionicons name="refresh-outline" size={16} color={colors.brand.cyan} />
+                <Text style={styles.checkUpdateText}>Check for Updates</Text>
               </>
             )}
           </Pressable>
@@ -337,7 +367,6 @@ export default function SettingsScreen() {
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      <WalletConnectModal />
     </View>
   );
 }

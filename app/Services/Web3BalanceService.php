@@ -36,10 +36,23 @@ class Web3BalanceService
                     'id' => 1,
                 ]);
 
-                if ($response->successful() && isset($response->json()['result'])) {
-                    $hexBalance = $response->json()['result'];
+                if ($response->successful()) {
+                    $data = $response->json();
 
-                    return $this->hexToDecimal($hexBalance, 18);
+                    // SECURITY FIX: ตรวจ JSON-RPC error ก่อนใช้ result
+                    // ป้องกัน attacker ส่ง response ที่มี error field แต่ HTTP 200
+                    if (isset($data['error'])) {
+                        Log::warning('RPC error in getNativeBalance', [
+                            'chain_id' => $chainId,
+                            'error' => $data['error']['message'] ?? 'Unknown RPC error',
+                        ]);
+
+                        return '0';
+                    }
+
+                    if (isset($data['result'])) {
+                        return $this->hexToDecimal($data['result'], 18);
+                    }
                 }
             } catch (\Exception $e) {
                 Log::warning('Failed to fetch native balance', [
@@ -83,10 +96,22 @@ class Web3BalanceService
                     'id' => 1,
                 ]);
 
-                if ($response->successful() && isset($response->json()['result'])) {
-                    $hexBalance = $response->json()['result'];
+                if ($response->successful()) {
+                    $rpcData = $response->json();
 
-                    return $this->hexToDecimal($hexBalance, $decimals);
+                    if (isset($rpcData['error'])) {
+                        Log::warning('RPC error in getTokenBalance', [
+                            'chain_id' => $chainId,
+                            'token' => $tokenAddress,
+                            'error' => $rpcData['error']['message'] ?? 'Unknown',
+                        ]);
+
+                        return '0';
+                    }
+
+                    if (isset($rpcData['result'])) {
+                        return $this->hexToDecimal($rpcData['result'], $decimals);
+                    }
                 }
             } catch (\Exception $e) {
                 Log::warning('Failed to fetch token balance', [

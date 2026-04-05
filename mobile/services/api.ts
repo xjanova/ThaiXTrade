@@ -190,9 +190,17 @@ class ApiService {
   }
 
   // Wallet balance / ยอดคงเหลือกระเป๋า
+  // FIX: endpoint คือ /wallet/balances (plural) ไม่ใช่ /wallet/balance
   async getWalletBalance(walletAddress: string, chainId: number = 4289) {
     return this.request<ApiResponse<{ balances: Array<{ symbol: string; name: string; balance: string; contract_address?: string }> }>>(
-      `/wallet/balance?wallet_address=${walletAddress}&chain_id=${chainId}`,
+      `/wallet/balances?wallet_address=${walletAddress}&chain_id=${chainId}`,
+    );
+  }
+
+  // Wallet transaction history / ประวัติธุรกรรม
+  async getWalletTransactions(walletAddress: string, limit: number = 50) {
+    return this.request<ApiResponse<any[]>>(
+      `/wallet/transactions?wallet_address=${walletAddress}&limit=${limit}`,
     );
   }
 
@@ -248,6 +256,55 @@ class ApiService {
 
   async getTradeHistory(walletAddress: string) {
     return this.request<ApiResponse<any[]>>(`/trading/history?wallet_address=${encodeURIComponent(walletAddress)}`);
+  }
+
+  // Order confirmation (after execution) / ยืนยัน order หลัง execute
+  async confirmOrder(orderId: string, data: { wallet_address: string; tx_hash: string; actual_amount_out?: number }) {
+    return this.request<ApiResponse<any>>(`/trading/order/${encodeURIComponent(orderId)}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Swap / สว็อป
+  async getSwapQuote(params: { from_token: string; to_token: string; amount: number; chain_id: number; slippage?: number }) {
+    const qs = new URLSearchParams({
+      from_token: params.from_token,
+      to_token: params.to_token,
+      amount: String(params.amount),
+      chain_id: String(params.chain_id),
+      ...(params.slippage ? { slippage: String(params.slippage) } : {}),
+    });
+    return this.request<ApiResponse<any>>(`/swap/quote?${qs}`);
+  }
+
+  async executeSwap(data: {
+    from_token: string; to_token: string; from_amount: number;
+    to_amount: number; fee_amount: number; tx_hash: string;
+    chain_id: number; wallet_address: string;
+  }) {
+    return this.request<ApiResponse<any>>('/swap/execute', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Market data / ข้อมูลตลาด
+  async getMarketTickers() {
+    return this.request<ApiResponse<any[]>>('/market/tickers');
+  }
+
+  async getMarketOrderbook(symbol: string, limit: number = 20) {
+    return this.request<ApiResponse<{ bids: any[]; asks: any[] }>>(`/market/orderbook/${encodeURIComponent(symbol)}?limit=${limit}`);
+  }
+
+  async getMarketKlines(symbol: string, interval: string = '1h', limit: number = 100) {
+    return this.request<ApiResponse<any[]>>(`/market/klines/${encodeURIComponent(symbol)}?interval=${interval}&limit=${limit}`);
+  }
+
+  // TPIX price / ราคา TPIX
+  async getTpixPrice() {
+    return this.request<ApiResponse<{ price: number; change_24h: number; volume_24h: number; market_cap: number }>>('/tpix/price');
   }
 }
 

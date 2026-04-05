@@ -180,11 +180,14 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         activeChainId: 4289,
       });
 
-      // Register กับ backend (fire-and-forget)
+      // Register กับ backend + auto-verify (ต้อง verify ก่อนใช้ protected endpoints)
       api.walletConnect({
         wallet_address: address,
         chain_id: 4289,
         wallet_type: 'tpix_embedded',
+      }).then(() => {
+        // Auto-verify หลัง connect สำเร็จ (ใช้ signature challenge)
+        get().verifyWithBackend();
       }).catch(() => {});
 
     } catch (err) {
@@ -238,10 +241,13 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         activeChainId: 4289,
       });
 
+      // Register + auto-verify
       api.walletConnect({
         wallet_address: address,
         chain_id: 4289,
         wallet_type: 'tpix_embedded',
+      }).then(() => {
+        get().verifyWithBackend();
       }).catch(() => {});
 
       return true;
@@ -306,34 +312,51 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   // ========== Verify กับ backend (signature challenge) ==========
+  // SECURITY FIX: ทุก wallet ต้อง verify (ลบ auto-verify ของ tpix_wallet ที่ backend แล้ว)
+  // เพิ่ม timeout 15 วินาที ป้องกันค้าง
   verifyWithBackend: async () => {
     const { wallet, signMessage } = get();
-    if (!wallet || !wallet.isEmbedded) {
-      // External wallet — auto verified by backend
-      set({ isVerified: true });
-      return true;
+    if (!wallet) return false;
+
+    // External wallet ที่ไม่มี private key — ไม่สามารถ sign ได้ในแอป
+    // ต้อง verify ผ่าน external wallet app (ยังไม่ support)
+    if (!wallet.isEmbedded) {
+      set({ isVerified: false });
+      return false;
     }
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15_000);
+
       // Step 1: ขอ nonce
       const signResponse = await api.walletRequestSignature(wallet.address);
-      if (!signResponse?.data?.message) return false;
+      if (!signResponse?.data?.message) {
+        clearTimeout(timeoutId);
+        return false;
+      }
 
-      // Step 2: Sign message
+      // Step 2: Sign message ด้วย private key ที่เก็บใน SecureStore
       const signature = await signMessage(signResponse.data.message);
-      if (!signature) return false;
+      if (!signature) {
+        clearTimeout(timeoutId);
+        return false;
+      }
 
-      // Step 3: Verify
+      // Step 3: Verify signature กับ backend
       const verifyResponse = await api.walletVerifySignature({
         wallet_address: wallet.address,
         signature,
         nonce: signResponse.data.nonce,
       });
 
+      clearTimeout(timeoutId);
+
       const verified = verifyResponse?.data?.verified === true;
       set({ isVerified: verified });
       return verified;
     } catch {
+      set({ isVerified: false });
       return false;
     }
   },
