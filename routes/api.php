@@ -320,6 +320,7 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
 
     // Bridge — write operations (ต้อง verify wallet)
     Route::post('/bridge/initiate', [BridgeApiController::class, 'initiate']);
+    Route::post('/bridge/retry/{id}', [BridgeApiController::class, 'retry']);
 
     // Staking — write operations (ต้อง verify wallet)
     Route::prefix('staking')->group(function () {

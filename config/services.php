@@ -56,6 +56,13 @@ return [
         'master_wallet' => env('TPIX_MASTER_WALLET', ''),
     ],
 
+    // Bridge — cross-chain TPIX Chain ↔ BSC
+    'bridge' => [
+        'treasury_address' => env('BRIDGE_TREASURY_ADDRESS', ''),
+        'signer_private_key' => env('BRIDGE_SIGNER_PRIVATE_KEY', ''),
+        'wtpix_bsc_address' => env('WTPIX_BSC_ADDRESS', ''),
+    ],
+
     // Social Login — OAuth providers (keys จัดการผ่าน SiteSetting ได้ด้วย)
     'google' => [
         'client_id' => env('GOOGLE_CLIENT_ID'),

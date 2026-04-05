@@ -15,11 +15,15 @@ class BridgeTransaction extends Model
         'source_chain_id', 'target_chain_id',
         'source_tx_hash', 'target_tx_hash',
         'status', 'error_message',
+        'retry_count', 'verified_at', 'completed_at',
     ];
 
     protected $casts = [
         'amount' => 'decimal:18',
         'fee' => 'decimal:18',
+        'verified_at' => 'datetime',
+        'completed_at' => 'datetime',
+        'retry_count' => 'integer',
     ];
 
     // === Scopes ===
