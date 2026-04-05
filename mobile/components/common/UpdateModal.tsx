@@ -14,12 +14,13 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography } from '@/theme';
 import { useUpdateStore } from '@/stores/updateStore';
-import { formatFileSize, openReleasesPage } from '@/services/updateService';
+import { formatFileSize, openDownloadPage } from '@/services/updateService';
 
 export default function UpdateModal() {
   const {
@@ -128,6 +129,32 @@ export default function UpdateModal() {
             </View>
           </View>
 
+          {/* Release notes / บันทึกการเปลี่ยนแปลง (เหมือน wallet: "What's new:") */}
+          {isIdle && updateInfo.releaseNotes ? (
+            <View style={styles.releaseNotesSection}>
+              <Text style={styles.releaseNotesLabel}>What's new:</Text>
+              <ScrollView style={styles.releaseNotesScroll} nestedScrollEnabled>
+                <Text style={styles.releaseNotesText}>{updateInfo.releaseNotes}</Text>
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {/* Download method indicator (เหมือน wallet: "Download & install automatically") */}
+          {isIdle && !isError && (
+            <View style={styles.downloadMethodBox}>
+              <Ionicons
+                name={updateInfo.downloadUrl ? 'download-outline' : 'open-outline'}
+                size={16}
+                color={colors.brand.cyan}
+              />
+              <Text style={styles.downloadMethodText}>
+                {updateInfo.downloadUrl
+                  ? 'Download & install automatically'
+                  : 'Download from tpix.online'}
+              </Text>
+            </View>
+          )}
+
           {/* ============ PROGRESS BAR SECTION ============ */}
           {(isDownloading || isCompleted || isInstalling) && (
             <View style={styles.progressSection}>
@@ -161,13 +188,21 @@ export default function UpdateModal() {
             </View>
           )}
 
-          {/* Error section / ส่วนแสดง error */}
+          {/* Error section + fallback / ส่วนแสดง error + ลิงก์สำรอง */}
           {isError && (
             <View style={styles.errorSection}>
               <Ionicons name="alert-circle" size={18} color={colors.trading.red} />
-              <Text style={styles.errorText}>
-                {error || 'Download failed / ดาวน์โหลดล้มเหลว'}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.errorText}>
+                  {error || 'Download failed / ดาวน์โหลดล้มเหลว'}
+                </Text>
+                <Pressable style={styles.browserFallback} onPress={openDownloadPage}>
+                  <Ionicons name="open-outline" size={14} color={colors.brand.cyan} />
+                  <Text style={styles.browserFallbackText}>
+                    Download from website / ดาวน์โหลดจากเว็บไซต์แทน
+                  </Text>
+                </Pressable>
+              </View>
             </View>
           )}
 
@@ -259,7 +294,7 @@ export default function UpdateModal() {
           </View>
 
           {/* GitHub link */}
-          <Pressable style={styles.githubLink} onPress={openReleasesPage}>
+          <Pressable style={styles.githubLink} onPress={openDownloadPage}>
             <Ionicons name="logo-github" size={14} color={colors.text.tertiary} />
             <Text style={styles.githubText}>View on GitHub</Text>
           </Pressable>
@@ -344,6 +379,49 @@ const styles = StyleSheet.create({
     color: colors.brand.cyan,
   },
 
+  // Release notes (เหมือน wallet: "What's new:" section)
+  releaseNotesSection: {
+    width: '100%',
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  releaseNotesLabel: {
+    ...typography.bodySmall,
+    color: colors.text.secondary,
+    fontWeight: '700',
+    fontSize: 12,
+    marginBottom: spacing.xs,
+  },
+  releaseNotesScroll: {
+    maxHeight: 80,
+  },
+  releaseNotesText: {
+    ...typography.bodySmall,
+    color: colors.text.tertiary,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+
+  // Download method indicator (เหมือน wallet)
+  downloadMethodBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.brand.cyan + '10',
+    borderWidth: 1,
+    borderColor: colors.brand.cyan + '20',
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  downloadMethodText: {
+    ...typography.bodySmall,
+    color: colors.text.secondary,
+    fontSize: 11,
+  },
+
   // Progress bar / แถบความคืบหน้า
   progressSection: {
     width: '100%',
@@ -404,7 +482,18 @@ const styles = StyleSheet.create({
   errorText: {
     ...typography.bodySmall,
     color: colors.trading.red,
-    flex: 1,
+  },
+  browserFallback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  browserFallbackText: {
+    ...typography.bodySmall,
+    color: colors.brand.cyan,
+    fontWeight: '600',
+    fontSize: 11,
   },
 
   // File size / ขนาดไฟล์

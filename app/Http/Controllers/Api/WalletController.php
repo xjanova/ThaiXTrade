@@ -64,20 +64,10 @@ class WalletController extends Controller
             $request->ip()
         );
 
-        $normalizedAddress = strtolower($validated['wallet_address']);
-
-        // Embedded wallet (tpix_wallet): auto-verify เพราะไม่มี private key จริงให้ sign
-        // ถือว่าเชื่อถือได้เพราะ address สร้างในแอพเรา + rate limit ป้องกัน abuse
-        // External wallets: ต้องผ่าน requestSignature() → verifySignature() ก่อน
-        if (($validated['wallet_type'] ?? '') === 'tpix_wallet') {
-            Cache::put("wallet_verified:{$normalizedAddress}", [
-                'chain_id' => $validated['chain_id'],
-                'ip' => $request->ip(),
-                'verified_at' => now()->toIso8601String(),
-                'signature_verified' => false, // auto-verified, not signature-based
-                'wallet_type' => 'tpix_wallet',
-            ], 86400); // 24 ชม. (นานกว่า external เพราะไม่มี signature flow)
-        }
+        // SECURITY FIX: ทุก wallet ต้อง verify ผ่าน requestSignature() → verifySignature()
+        // ลบ auto-verify สำหรับ tpix_wallet เพราะ attacker สามารถส่ง wallet_type=tpix_wallet
+        // ด้วย address ของเหยื่อ แล้วได้ verified session 24 ชม. ทันที
+        // Mobile app ต้องเรียก verifyWithBackend() หลัง connect เสมอ
 
         return response()->json([
             'success' => true,

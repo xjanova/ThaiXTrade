@@ -1,12 +1,38 @@
 {
   "name": "TPIX TRADE",
-  "version": "1.0.317",
-  "build": 318,
-  "releaseDate": "2026-04-01",
+  "version": "1.1.1",
+  "build": 322,
+  "releaseDate": "2026-04-05",
   "channel": "stable",
   "developer": "Xman Studio",
   "website": "https://xmanstudio.com",
   "changelog": {
+    "1.1.0": {
+      "date": "2026-04-05",
+      "changes": [
+        "SECURITY: Remove tpix_wallet auto-verification bypass — all wallets require signature",
+        "SECURITY: Add pessimistic locking to order matching — prevent double-fill race condition",
+        "SECURITY: Enforce wallet ownership on GET orders/balances — prevent data leakage",
+        "SECURITY: Fix swap fee precision (bcmath) + reduce tolerance 5% to 1%",
+        "SECURITY: Validate JSON-RPC responses before using balance data",
+        "FIX: Mobile wallet/balance endpoint URL mismatch (balance → balances)",
+        "FIX: Auto-verify wallet after create/import with signature challenge",
+        "FIX: Portfolio uses real transaction history from API (remove mock data)",
+        "FIX: Fee rate fetched from backend API (remove hardcoded 0.3%)",
+        "FIX: Double-submit protection with useRef in trade form",
+        "FIX: Settings duplicate WalletConnectModal causing freeze",
+        "FIX: App update download timeout 60s → 5min with proper cancel",
+        "FIX: Wallet connect modal cancel button + countdown timer",
+        "FIX: Market store race condition with isFetching guard",
+        "FIX: Trade form input validation (NaN, bounds, negative values)",
+        "FIX: NaN protection in portfolio calculations",
+        "NEW: Add 8 missing API methods (swap, market, tpix, transactions)",
+        "NEW: Update system matches TPIX Wallet (file validation, auto-fallback, release notes)",
+        "NEW: Browser fallback chain (tpix.online → GitHub) when install fails",
+        "UX: Settings check update shows 'Up to date' status",
+        "UX: Language switch shows confirmation alert"
+      ]
+    },
     "1.0.0": {
       "date": "2024-01-25",
       "changes": [

@@ -2,21 +2,26 @@
  * Update State Store
  * สโตร์สำหรับจัดการสถานะการอัปเดต
  *
- * Manages update check, download progress, and installation.
+ * Flow เหมือน TPIX Wallet (TPIX-Coin/update_service.dart):
+ * Check → Download (progress + cancel) → Validate → Install → Auto-fallback to browser
+ *
  * มี timeout ป้องกันค้าง + cancel สำหรับยกเลิกดาวน์โหลด
+ * Developed by Xman Studio
  */
 
 import { create } from 'zustand';
 import {
   checkForUpdate,
   downloadApk,
+  cancelDownload as cancelDownloadService,
   installApk,
+  openDownloadPage,
   type UpdateInfo,
 } from '@/services/updateService';
 
 type DownloadStatus = 'idle' | 'downloading' | 'completed' | 'installing' | 'error';
 
-const DOWNLOAD_TIMEOUT_MS = 60_000; // 60 วินาที
+const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000; // 5 นาที — APK อาจใหญ่ 50-150MB
 const INSTALL_TIMEOUT_MS = 30_000;  // 30 วินาที
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
@@ -96,13 +101,25 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   },
 
   forceCheck: async () => {
-    set({ lastCheckedAt: null });
+    // รีเซ็ต isChecking ด้วยเพื่อป้องกันค้าง (กรณี check ก่อนหน้า error แต่ flag ไม่ถูกรีเซ็ต)
+    set({ lastCheckedAt: null, isChecking: false });
     await get().checkUpdate();
   },
 
   startDownload: async () => {
     const { updateInfo, downloadStatus } = get();
-    if (!updateInfo?.downloadUrl) return;
+
+    // ถ้าไม่มี downloadUrl → fallback to browser ทันที (เหมือน wallet: if apkUrl == null)
+    if (!updateInfo?.downloadUrl) {
+      try {
+        await openDownloadPage();
+        set({ showModal: false });
+      } catch {
+        set({ downloadStatus: 'error', error: 'ไม่พบลิงก์ดาวน์โหลด' });
+      }
+      return;
+    }
+
     if (downloadStatus === 'downloading') return;
 
     downloadCancelled = false;
@@ -117,7 +134,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     });
 
     try {
-      // ครอบด้วย timeout ป้องกันค้าง (ล้าง timer เมื่อเสร็จ)
+      // ครอบด้วย timeout 5 นาที (เหมือน wallet: receiveTimeout = 5 minutes)
       const downloadPromise = downloadApk(updateInfo.downloadUrl, (progress) => {
         if (downloadCancelled) return;
         set({
@@ -129,7 +146,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
 
       let downloadTimer: ReturnType<typeof setTimeout>;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        downloadTimer = setTimeout(() => reject(new Error('Download timed out — please try again')), DOWNLOAD_TIMEOUT_MS);
+        downloadTimer = setTimeout(() => reject(new Error('Download timed out')), DOWNLOAD_TIMEOUT_MS);
       });
 
       const uri = await Promise.race([downloadPromise, timeoutPromise]).finally(() => clearTimeout(downloadTimer!));
@@ -154,6 +171,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
 
   cancelDownload: () => {
     downloadCancelled = true;
+    cancelDownloadService(); // ยกเลิก native download จริง
     set({
       downloadStatus: 'idle',
       downloadPercent: 0,
@@ -170,14 +188,36 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     try {
       const installPromise = installApk(localFileUri);
       let installTimer: ReturnType<typeof setTimeout>;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        installTimer = setTimeout(() => reject(new Error('Install timed out — please try manually')), INSTALL_TIMEOUT_MS);
+      const timeoutPromise = new Promise<boolean>((resolve) => {
+        installTimer = setTimeout(() => resolve(false), INSTALL_TIMEOUT_MS);
       });
 
-      await Promise.race([installPromise, timeoutPromise]).finally(() => clearTimeout(installTimer!));
+      const success = await Promise.race([installPromise, timeoutPromise]).finally(() => clearTimeout(installTimer!));
+
+      if (success) {
+        // Install intent launched — dialog จะปิดเอง (user เห็น system installer)
+        set({ showModal: false });
+      } else {
+        // Install ไม่สำเร็จ → fallback to browser (เหมือน wallet: _fallbackToBrowser)
+        try {
+          await openDownloadPage();
+          set({ showModal: false, downloadStatus: 'idle' });
+        } catch {
+          set({
+            downloadStatus: 'error',
+            error: 'ติดตั้งไม่สำเร็จ — กรุณาดาวน์โหลดจากเว็บไซต์',
+          });
+        }
+      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'ติดตั้งล้มเหลว';
-      set({ downloadStatus: 'error', error: message });
+      // Download/install failed → fallback to browser (เหมือน wallet)
+      try {
+        await openDownloadPage();
+        set({ showModal: false, downloadStatus: 'idle' });
+      } catch {
+        const message = err instanceof Error ? err.message : 'ติดตั้งล้มเหลว';
+        set({ downloadStatus: 'error', error: message });
+      }
     }
   },
 

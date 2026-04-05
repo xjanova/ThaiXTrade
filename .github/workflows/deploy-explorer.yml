@@ -395,6 +395,16 @@ jobs:
             @keyframes tpixSpin{to{transform:rotate(360deg)}}
             .tpix-empty{text-align:center;padding:48px;color:rgba(255,255,255,.35)}
             .tpix-results-info{font-size:12px;color:rgba(255,255,255,.35);margin-bottom:8px}
+            .tpix-pagination{display:flex;align-items:center;justify-content:center;gap:4px;margin-top:16px;flex-wrap:wrap}
+            .tpix-page-btn{padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#e2e8f0;font-size:13px;cursor:pointer;transition:all .15s;min-width:36px;text-align:center}
+            .tpix-page-btn:hover{background:rgba(6,182,212,.15);border-color:#06b6d4}
+            .tpix-page-btn.active{background:#06b6d4;color:#0f1117;border-color:#06b6d4;font-weight:700}
+            .tpix-page-btn.disabled{opacity:.3;cursor:default;pointer-events:none}
+            .tpix-page-dots{color:rgba(255,255,255,.3);padding:0 4px;font-size:13px}
+            .tpix-page-info{font-size:12px;color:rgba(255,255,255,.35);margin-top:8px;text-align:center}
+            .tpix-per-page{display:flex;align-items:center;gap:6px;margin-left:auto}
+            .tpix-per-page label{font-size:12px;color:rgba(255,255,255,.35)}
+            .tpix-per-page select{padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#e2e8f0;font-size:12px;cursor:pointer}
             @media(max-width:768px){.tpix-table td.addr-cell{font-size:11px}.tpix-filters{flex-direction:column}.tpix-accounts-header{flex-direction:column;align-items:flex-start}}
             </style>
             <script>
@@ -437,7 +447,7 @@ jobs:
                         var addresses=(data.result||[]).map(function(a){return{address:a.address,balance:a.balance||"0",balanceBig:BigInt(a.balance||"0"),txCount:null,isContract:null,loaded:false,name:null}});
                         addresses.sort(function(a,b){return a.balanceBig>b.balanceBig?-1:a.balanceBig<b.balanceBig?1:0});
                         var maxBal=addresses.length?addresses[0].balanceBig:1n;if(maxBal===0n)maxBal=1n;
-                        var state={addresses:addresses,search:"",typeFilter:"all",balanceFilter:"all",sortBy:"balance",sortDir:"desc",maxBal:maxBal};
+                        var state={addresses:addresses,search:"",typeFilter:"all",balanceFilter:"all",sortBy:"balance",sortDir:"desc",maxBal:maxBal,page:1,perPage:25};
                         function getFiltered(){
                             var l=state.addresses.slice();
                             if(state.search){var q=state.search.toLowerCase();l=l.filter(function(a){return a.address.toLowerCase().includes(q)||(a.name&&a.name.toLowerCase().includes(q))})}
@@ -448,25 +458,44 @@ jobs:
                             l.sort(function(a,b){var va,vb;if(state.sortBy==="balance"){va=a.balanceBig;vb=b.balanceBig}else{va=BigInt(a.txCount||0);vb=BigInt(b.txCount||0)}var c=va>vb?-1:(va<vb?1:0);return state.sortDir==="asc"?-c:c});
                             return l;
                         }
+                        function renderPagination(totalItems){
+                            var pg=document.getElementById("tpix-pagination");if(!pg)return;
+                            var totalPages=Math.ceil(totalItems/state.perPage);if(totalPages<=1){pg.innerHTML="";return}
+                            if(state.page>totalPages)state.page=totalPages;
+                            var h=\'<button class="tpix-page-btn\'+(state.page<=1?" disabled":"")+\'" data-p="prev">&laquo; Prev</button>\';
+                            var start=Math.max(1,state.page-2),end=Math.min(totalPages,state.page+2);
+                            if(start>1){h+=\'<button class="tpix-page-btn" data-p="1">1</button>\';if(start>2)h+=\'<span class="tpix-page-dots">...</span>\'}
+                            for(var p=start;p<=end;p++)h+=\'<button class="tpix-page-btn\'+(p===state.page?" active":"")+\'" data-p="\'+p+\'">\'+p+\'</button>\';
+                            if(end<totalPages){if(end<totalPages-1)h+=\'<span class="tpix-page-dots">...</span>\';h+=\'<button class="tpix-page-btn" data-p="\'+totalPages+\'">\'+totalPages+\'</button>\'}
+                            h+=\'<button class="tpix-page-btn\'+(state.page>=totalPages?" disabled":"")+\'" data-p="next">Next &raquo;</button>\';
+                            h+=\'<div class="tpix-per-page"><label>Per page:</label><select id="tpix-per-page-select"><option value="25"\'+(state.perPage===25?" selected":"")+\'>25</option><option value="50"\'+(state.perPage===50?" selected":"")+\'>50</option><option value="100"\'+(state.perPage===100?" selected":"")+\'>100</option></select></div>\';
+                            pg.innerHTML=h;
+                            var from=(state.page-1)*state.perPage+1,to=Math.min(state.page*state.perPage,totalItems);
+                            var pi=document.getElementById("tpix-page-info");if(pi)pi.textContent="Showing "+from+" - "+to+" of "+totalItems+" addresses";
+                            pg.querySelectorAll(".tpix-page-btn").forEach(function(btn){btn.addEventListener("click",function(){var v=btn.dataset.p;if(v==="prev")state.page=Math.max(1,state.page-1);else if(v==="next")state.page=Math.min(totalPages,state.page+1);else state.page=parseInt(v);renderTable()})});
+                            var pps=document.getElementById("tpix-per-page-select");if(pps)pps.addEventListener("change",function(){state.perPage=parseInt(pps.value);state.page=1;renderTable()});
+                        }
                         function renderTable(){
                             var tbody=document.getElementById("tpix-table-body"),info=document.getElementById("tpix-results-info"),cc=document.getElementById("tpix-contract-count");
                             if(!tbody)return;
                             if(cc)cc.textContent=state.addresses.filter(function(a){return a.isContract}).length+" Contracts";
                             var f=getFiltered();
                             if(info)info.textContent=(state.search||state.typeFilter!=="all"||state.balanceFilter!=="all")?"Showing "+f.length+" of "+state.addresses.length+" addresses":"";
-                            if(!f.length){tbody.innerHTML=\'<tr><td colspan="5" class="tpix-empty">No addresses match your filters</td></tr>\';return}
-                            var h="";for(var i=0;i<f.length;i++){var a=f[i],bal=formatBal(a.balance),iz=a.balanceBig===0n,bp=Number((a.balanceBig*100n)/state.maxBal);
+                            if(!f.length){tbody.innerHTML=\'<tr><td colspan="5" class="tpix-empty">No addresses match your filters</td></tr>\';renderPagination(0);var pi=document.getElementById("tpix-page-info");if(pi)pi.textContent="";return}
+                            var startIdx=(state.page-1)*state.perPage,pageItems=f.slice(startIdx,startIdx+state.perPage);
+                            var h="";for(var i=0;i<pageItems.length;i++){var a=pageItems[i],globalIdx=startIdx+i,bal=formatBal(a.balance),iz=a.balanceBig===0n,bp=Number((a.balanceBig*100n)/state.maxBal);
                             var ty=!a.loaded?\'<span style="color:rgba(255,255,255,.2)">...</span>\':a.isContract?\'<span class="tpix-type-badge tpix-type-contract">Contract</span>\':\'<span class="tpix-type-badge tpix-type-eoa">EOA</span>\';
                             var tx=a.loaded?(a.txCount||0).toLocaleString():\'<span style="color:rgba(255,255,255,.2)">...</span>\';
                             var nm=a.name?\' <span style="color:#a855f7;font-size:12px;margin-left:6px;">\'+a.name+\'</span>\':\'<span></span>\';
-                            h+=\'<tr><td class="rank">\'+(i+1)+\'</td><td class="addr-cell"><a href="/address/\'+a.address+\'">\'+shortAddr(a.address)+\'</a>\'+nm+\'</td><td class="type-cell">\'+ty+\'</td><td class="balance"><span class="\'+(iz?"zero":"amount")+\'">\'+bal+\'</span>\'+(bp>0?\'<div class="tpix-balance-bar"><div class="tpix-balance-bar-fill" style="width:\'+bp+\'%"></div></div>\':\'\')+\'</td><td class="txcount">\'+tx+\'</td></tr>\'}
+                            h+=\'<tr><td class="rank">\'+(globalIdx+1)+\'</td><td class="addr-cell"><a href="/address/\'+a.address+\'">\'+shortAddr(a.address)+\'</a>\'+nm+\'</td><td class="type-cell">\'+ty+\'</td><td class="balance"><span class="\'+(iz?"zero":"amount")+\'">\'+bal+\'</span>\'+(bp>0?\'<div class="tpix-balance-bar"><div class="tpix-balance-bar-fill" style="width:\'+bp+\'%"></div></div>\':\'\')+\'</td><td class="txcount">\'+tx+\'</td></tr>\'}
                             tbody.innerHTML=h;
+                            renderPagination(f.length);
                         }
                         var total=addresses.length,withBal=addresses.filter(function(a){return a.balanceBig>0n}).length;
-                        container.innerHTML=\'<div class="tpix-accounts-header"><h1>All Addresses</h1><div class="tpix-accounts-stats"><span class="tpix-stat-chip">\'+total+\' Total</span><span class="tpix-stat-chip green">\'+withBal+\' With Balance</span><span class="tpix-stat-chip purple" id="tpix-contract-count">0 Contracts</span></div></div><div class="tpix-filters"><input class="tpix-filter-input" id="tpix-search" type="text" placeholder="Search by address or name..."><select class="tpix-filter-select" id="tpix-type-filter"><option value="all">All Types</option><option value="eoa">EOA (Wallet)</option><option value="contract">Contract</option></select><select class="tpix-filter-select" id="tpix-balance-filter"><option value="all">All Balances</option><option value="has">Has Balance</option><option value="zero">Zero Balance</option></select></div><div id="tpix-results-info" class="tpix-results-info"></div><div class="tpix-table-wrap"><table class="tpix-table"><thead><tr><th>#</th><th>Address</th><th>Type</th><th class="tpix-sortable" data-sort="balance">Balance TPIX &#9660;</th><th class="tpix-sortable" data-sort="txcount">Txn Count</th></tr></thead><tbody id="tpix-table-body"></tbody></table></div>\';
-                        var dt;document.getElementById("tpix-search").addEventListener("input",function(e){clearTimeout(dt);dt=setTimeout(function(){state.search=e.target.value.trim();renderTable()},300)});
-                        document.getElementById("tpix-type-filter").addEventListener("change",function(e){state.typeFilter=e.target.value;renderTable()});
-                        document.getElementById("tpix-balance-filter").addEventListener("change",function(e){state.balanceFilter=e.target.value;renderTable()});
+                        container.innerHTML=\'<div class="tpix-accounts-header"><h1>All Addresses</h1><div class="tpix-accounts-stats"><span class="tpix-stat-chip">\'+total+\' Total</span><span class="tpix-stat-chip green">\'+withBal+\' With Balance</span><span class="tpix-stat-chip purple" id="tpix-contract-count">0 Contracts</span></div></div><div class="tpix-filters"><input class="tpix-filter-input" id="tpix-search" type="text" placeholder="Search by address or name..."><select class="tpix-filter-select" id="tpix-type-filter"><option value="all">All Types</option><option value="eoa">EOA (Wallet)</option><option value="contract">Contract</option></select><select class="tpix-filter-select" id="tpix-balance-filter"><option value="all">All Balances</option><option value="has">Has Balance</option><option value="zero">Zero Balance</option></select></div><div id="tpix-results-info" class="tpix-results-info"></div><div class="tpix-table-wrap"><table class="tpix-table"><thead><tr><th>#</th><th>Address</th><th>Type</th><th class="tpix-sortable" data-sort="balance">Balance TPIX &#9660;</th><th class="tpix-sortable" data-sort="txcount">Txn Count</th></tr></thead><tbody id="tpix-table-body"></tbody></table></div><div id="tpix-pagination" class="tpix-pagination"></div><div id="tpix-page-info" class="tpix-page-info"></div>\';
+                        var dt;document.getElementById("tpix-search").addEventListener("input",function(e){clearTimeout(dt);dt=setTimeout(function(){state.search=e.target.value.trim();state.page=1;renderTable()},300)});
+                        document.getElementById("tpix-type-filter").addEventListener("change",function(e){state.typeFilter=e.target.value;state.page=1;renderTable()});
+                        document.getElementById("tpix-balance-filter").addEventListener("change",function(e){state.balanceFilter=e.target.value;state.page=1;renderTable()});
                         document.querySelectorAll(".tpix-sortable").forEach(function(th){th.addEventListener("click",function(){var c=th.dataset.sort;if(state.sortBy===c)state.sortDir=state.sortDir==="desc"?"asc":"desc";else{state.sortBy=c;state.sortDir="desc"}document.querySelectorAll(".tpix-sortable").forEach(function(t){var txt=t.dataset.sort==="balance"?"Balance TPIX":"Txn Count";t.innerHTML=txt+(t.dataset.sort===state.sortBy?(state.sortDir==="desc"?" &#9660;":" &#9650;"):"")});renderTable()})});
                         renderTable();
                         var queue=addresses.slice(),bs=5;

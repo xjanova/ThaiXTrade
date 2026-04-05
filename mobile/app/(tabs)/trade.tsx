@@ -144,6 +144,8 @@ export default function TradeScreen() {
   const [activeTimeframe, setActiveTimeframe] = useState('1H');
   const [refreshing, setRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false); // FIX: ใช้ ref ป้องกัน double-submit (state อาจ update ไม่ทัน)
+  const [feeRate, setFeeRate] = useState(0.3); // Default, จะ fetch จาก API
 
   // Real data state
   const [orderBook, setOrderBook] = useState<{
@@ -191,9 +193,17 @@ export default function TradeScreen() {
     };
   }, [pair.symbol]);
 
-  // Fetch market data on mount
+  // Fetch market data + fee rate on mount
   useEffect(() => {
     fetchRealData();
+
+    // Fetch real fee rate from backend (ไม่ hardcode)
+    const isTpixPair = pair.symbol.includes('TPIX');
+    api.getFeeInfo(isTpixPair ? 4289 : 56).then((res) => {
+      if (res?.data?.fee_rate != null && mountedRef.current) {
+        setFeeRate(Number(res.data.fee_rate) || 0.3);
+      }
+    }).catch(() => {}); // ใช้ default 0.3 ถ้า fetch ล้มเหลว
   }, []);
 
   const onRefresh = useCallback(async () => {
@@ -223,7 +233,9 @@ export default function TradeScreen() {
     amount: number;
     total: number;
   }) => {
-    if (isSubmitting) return;
+    // FIX: ใช้ ref ป้องกัน double-submit (state update อาจไม่ทัน)
+    if (submittingRef.current || isSubmitting) return;
+    submittingRef.current = true;
 
     // ตรวจสอบว่าเชื่อมต่อ wallet แล้วหรือยัง
     if (!wallet) {
@@ -271,6 +283,7 @@ export default function TradeScreen() {
       const message = err instanceof Error ? err.message : 'Order failed';
       Alert.alert('Order Failed', message, [{ text: 'OK' }]);
     } finally {
+      submittingRef.current = false;
       if (mountedRef.current) setIsSubmitting(false);
     }
   }, [pair.symbol, wallet, isSubmitting]);
@@ -430,7 +443,7 @@ export default function TradeScreen() {
           onSubmitOrder={handleOrderSubmit}
           isSubmitting={isSubmitting}
           isWalletConnected={!!wallet}
-          feeRate={0.3}
+          feeRate={feeRate}
         />
 
         <View style={{ height: 120 }} />

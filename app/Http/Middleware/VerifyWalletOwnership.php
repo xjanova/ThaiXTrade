@@ -48,8 +48,23 @@ class VerifyWalletOwnership
         $normalizedAddress = strtolower($walletAddress);
         $request->merge(['wallet_address' => $normalizedAddress]);
 
-        // GET requests: format validation is sufficient (read-only)
+        // SECURITY FIX: GET requests ก็ต้องตรวจ verified session
+        // เพราะ route group นี้มีข้อมูลส่วนตัว (orders, balances, transactions)
+        // ป้องกัน attacker query wallet_address ของคนอื่น
+        // GET requests ไม่ต้อง check IP (เพราะเป็น read-only)
         if ($request->isMethod('GET')) {
+            $cacheKey = "wallet_verified:{$normalizedAddress}";
+            $verifiedData = Cache::get($cacheKey);
+            if (! $verifiedData || ! is_array($verifiedData)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => [
+                        'code' => 'WALLET_NOT_VERIFIED',
+                        'message' => 'Wallet ownership not verified.',
+                    ],
+                ], 403);
+            }
+
             return $next($request);
         }
 

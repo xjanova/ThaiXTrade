@@ -16,6 +16,10 @@ export async function downloadApkNative(
   throw new Error('APK download is not supported on web / ไม่รองรับดาวน์โหลด APK บนเว็บ');
 }
 
-export async function installApkNative(_fileUri: string): Promise<void> {
-  throw new Error('APK install is not supported on web / ไม่รองรับติดตั้ง APK บนเว็บ');
+export async function installApkNative(_fileUri: string): Promise<boolean> {
+  return false; // Web ไม่รองรับ → จะ fallback to browser
+}
+
+export function cancelActiveDownload(): void {
+  // No-op on web / ไม่ทำอะไรบนเว็บ
 }

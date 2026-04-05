@@ -83,12 +83,15 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     })),
 
   fetchRealData: async () => {
+    // FIX: ป้องกัน race condition — ถ้ากำลัง fetch อยู่ ไม่ fetch ซ้ำ
+    const { lastFetchedAt, isLoading } = get();
+    if (isLoading) return;
+
     // Throttle: ไม่ fetch ถ้า fetch ไปแล้วภายใน 5 วินาที
     const now = Date.now();
-    const { lastFetchedAt } = get();
     if (lastFetchedAt && now - lastFetchedAt < 5000) return;
 
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, lastFetchedAt: now });
 
     try {
       // ดึง ticker 24hr จาก Binance สำหรับทุกคู่

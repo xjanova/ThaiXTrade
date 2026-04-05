@@ -12,7 +12,7 @@
  * Developed by Xman Studio
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, Modal, Pressable, ActivityIndicator,
   ScrollView, TextInput, Alert, Platform,
@@ -81,6 +81,36 @@ export default function WalletConnectModal() {
   const [mnemonicInput, setMnemonicInput] = useState('');
   const [mnemonicCopied, setMnemonicCopied] = useState(false);
   const [mnemonicConfirmed, setMnemonicConfirmed] = useState(false);
+  const [connectingProviderName, setConnectingProviderName] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(0);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Countdown timer สำหรับแสดงเวลาที่เหลือระหว่างรอ connect
+  useEffect(() => {
+    if (isConnecting && countdown > 0) {
+      countdownRef.current = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            if (countdownRef.current) clearInterval(countdownRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [isConnecting, countdown > 0]);
+
+  // รีเซ็ต connecting state เมื่อ modal ปิดหรือ connect สำเร็จ
+  useEffect(() => {
+    if (!isConnecting) {
+      setConnectingProviderName(null);
+      setCountdown(0);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    }
+  }, [isConnecting]);
 
   if (!isModalVisible) return null;
 
@@ -90,7 +120,15 @@ export default function WalletConnectModal() {
 
   const handleConnect = async (provider: WalletProvider) => {
     clearError();
+    setConnectingProviderName(provider.name);
+    setCountdown(10); // 10 วินาที timeout
     await connectExternalWallet(provider);
+  };
+
+  const handleCancelConnect = () => {
+    hideModal();
+    setConnectingProviderName(null);
+    setCountdown(0);
   };
 
   const handleDownload = async (provider: WalletProvider) => {
@@ -238,6 +276,24 @@ export default function WalletConnectModal() {
                 </View>
               )}
 
+              {/* Connecting status — แสดงกระเป๋าที่กำลังเชื่อมต่อ + ปุ่มยกเลิก */}
+              {isConnecting && connectingProviderName && (
+                <View style={styles.connectingBox}>
+                  <View style={styles.connectingInfo}>
+                    <ActivityIndicator size="small" color={colors.brand.cyan} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.connectingText}>Connecting to {connectingProviderName}...</Text>
+                      {countdown > 0 && (
+                        <Text style={styles.connectingCountdown}>Timeout in {countdown}s</Text>
+                      )}
+                    </View>
+                  </View>
+                  <Pressable style={styles.connectCancelBtn} onPress={handleCancelConnect}>
+                    <Text style={styles.connectCancelText}>Cancel</Text>
+                  </Pressable>
+                </View>
+              )}
+
               {connectError && (
                 <View style={styles.errorBox}>
                   <Ionicons name="alert-circle" size={16} color={colors.trading.red} />
@@ -354,6 +410,14 @@ const styles = StyleSheet.create({
   title: { ...typography.h3, color: colors.text.primary },
   subtitle: { ...typography.bodySmall, color: colors.text.tertiary, marginTop: 2 },
   closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bg.tertiary, alignItems: 'center', justifyContent: 'center' },
+
+  // Connecting state
+  connectingBox: { marginBottom: spacing.lg, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.brand.cyan + '10', borderWidth: 1, borderColor: colors.brand.cyan + '30', gap: spacing.sm },
+  connectingInfo: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  connectingText: { ...typography.bodySmall, color: colors.brand.cyan, fontWeight: '600' },
+  connectingCountdown: { ...typography.caption, color: colors.text.tertiary, marginTop: 1 },
+  connectCancelBtn: { alignSelf: 'flex-end', paddingVertical: spacing.xs, paddingHorizontal: spacing.lg, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.trading.red + '50', backgroundColor: colors.trading.red + '10' },
+  connectCancelText: { ...typography.bodySmall, color: colors.trading.red, fontWeight: '600', fontSize: 12 },
 
   // Scanning & Error
   scanningRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.lg, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.brand.cyan + '10' },

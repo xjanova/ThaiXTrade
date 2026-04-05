@@ -77,49 +77,57 @@ class OrderMatchingService
      */
     public function matchOrder(Order $order): array
     {
-        $trades = [];
+        // SECURITY FIX: ใช้ pessimistic locking ป้องกัน race condition
+        // ถ้าไม่ lock → 2 orders อ่าน remaining_amount พร้อมกัน → fill เกินจำนวน
+        return DB::transaction(function () use ($order) {
+            $trades = [];
 
-        // Get opposite side orders sorted by price-time priority
-        $oppositeOrders = $this->getMatchableOrders($order);
-
-        foreach ($oppositeOrders as $counterOrder) {
-            if (! $order->isFillable()) {
-                break;
+            // Lock taker order ก่อน match
+            $order = Order::where('id', $order->id)->lockForUpdate()->first();
+            if (! $order || ! $order->isFillable()) {
+                return $trades;
             }
 
-            // Skip counter-orders ที่ไม่สามารถ fill ได้ (defense in depth)
-            if (! $counterOrder->isFillable()) {
-                continue;
+            // Get opposite side orders WITH lock (ป้องกัน concurrent fill)
+            $oppositeOrders = $this->getMatchableOrders($order, lockForUpdate: true);
+
+            foreach ($oppositeOrders as $counterOrder) {
+                if (! $order->isFillable()) {
+                    break;
+                }
+
+                if (! $counterOrder->isFillable()) {
+                    continue;
+                }
+
+                // Skip self-trade
+                if (strtolower($counterOrder->wallet_address) === strtolower($order->wallet_address)) {
+                    continue;
+                }
+
+                if (! $this->pricesMatch($order, $counterOrder)) {
+                    break;
+                }
+
+                $fillAmount = min(
+                    (float) $order->remaining_amount,
+                    (float) $counterOrder->remaining_amount,
+                );
+
+                if ($fillAmount <= 0) {
+                    continue;
+                }
+
+                $trade = $this->executeTrade($order, $counterOrder, $fillAmount);
+                if ($trade) {
+                    $trades[] = $trade;
+                    // Refresh order state หลัง fill (ค่า remaining_amount เปลี่ยน)
+                    $order->refresh();
+                }
             }
 
-            // Skip self-trade
-            if (strtolower($counterOrder->wallet_address) === strtolower($order->wallet_address)) {
-                continue;
-            }
-
-            // Check price compatibility
-            if (! $this->pricesMatch($order, $counterOrder)) {
-                break; // No more matches possible (sorted by price)
-            }
-
-            // Calculate fill
-            $fillAmount = min(
-                (float) $order->remaining_amount,
-                (float) $counterOrder->remaining_amount,
-            );
-
-            if ($fillAmount <= 0) {
-                continue;
-            }
-
-            // Execute trade
-            $trade = $this->executeTrade($order, $counterOrder, $fillAmount);
-            if ($trade) {
-                $trades[] = $trade;
-            }
-        }
-
-        return $trades;
+            return $trades;
+        });
     }
 
     /**
@@ -226,18 +234,21 @@ class OrderMatchingService
     // Private Methods
     // =========================================================================
 
-    private function getMatchableOrders(Order $order): \Illuminate\Database\Eloquent\Collection
+    private function getMatchableOrders(Order $order, bool $lockForUpdate = false): \Illuminate\Database\Eloquent\Collection
     {
         $query = Order::forPair($order->trading_pair_id)
             ->open()
             ->where('price', '>', 0);
 
         if ($order->side === 'buy') {
-            // Match against sells: lowest price first, then oldest
             $query->sells()->orderBy('price')->orderBy('created_at');
         } else {
-            // Match against buys: highest price first, then oldest
             $query->buys()->orderByDesc('price')->orderBy('created_at');
+        }
+
+        // SECURITY: lock rows ป้องกัน concurrent fill
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
         }
 
         return $query->limit(100)->get();
@@ -330,10 +341,11 @@ class OrderMatchingService
                 (int) floor($trade->created_at->timestamp / $seconds) * $seconds
             );
 
-            // Try to find existing kline for this period
+            // SECURITY FIX: lock row ป้องกัน concurrent kline update ทำให้ volume หาย
             $kline = Kline::where('trading_pair_id', $pairId)
                 ->where('interval', $interval)
                 ->where('open_time', $openTime)
+                ->lockForUpdate()
                 ->first();
 
             if ($kline) {
