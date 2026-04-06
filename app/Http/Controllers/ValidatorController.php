@@ -245,6 +245,8 @@ class ValidatorController extends Controller
                 $blockHeight = hexdec($block['number'] ?? '0x0');
                 $validators = $this->extractValidatorsFromExtraData($block['extraData'] ?? '');
 
+                $stakePerValidator = 10000000;
+
                 return [
                     'total_validators' => count($validators),
                     'active_validators' => count($validators),
@@ -254,6 +256,8 @@ class ValidatorController extends Controller
                     'block_time' => 2,
                     'gas_price' => '0',
                     'last_block_timestamp' => hexdec($block['timestamp'] ?? '0x0'),
+                    'total_staked' => count($validators) * $stakePerValidator,
+                    'current_year' => 1,
                 ];
             } catch (\Throwable $e) {
                 Log::error('Validator stats query failed', ['error' => $e->getMessage()]);
@@ -308,21 +312,32 @@ class ValidatorController extends Controller
 
                 $validatorAddresses = $this->extractValidatorsFromExtraData($block['extraData'] ?? '');
 
+                // Default geo spread for chain validators without application data
+                // Placed across Thailand (TPIX HQ region)
+                $defaultGeo = [
+                    ['lat' => 13.7563, 'lng' => 100.5018, 'cc' => 'TH', 'cn' => 'Thailand'],  // Bangkok
+                    ['lat' => 18.7883, 'lng' => 98.9853,  'cc' => 'TH', 'cn' => 'Thailand'],  // Chiang Mai
+                    ['lat' => 7.8804,  'lng' => 98.3923,  'cc' => 'TH', 'cn' => 'Thailand'],  // Phuket
+                    ['lat' => 14.8830, 'lng' => 100.5876, 'cc' => 'TH', 'cn' => 'Thailand'],  // Nakhon Sawan
+                    ['lat' => 16.4419, 'lng' => 102.8360, 'cc' => 'TH', 'cn' => 'Thailand'],  // Khon Kaen
+                ];
+
                 // Build validator info list
                 $validators = [];
                 foreach ($validatorAddresses as $index => $address) {
+                    $geo = $defaultGeo[$index % count($defaultGeo)];
                     $validators[] = [
                         'address' => $address,
                         'tier' => 'validator',
                         'status' => 'active',
                         'online' => true,
                         'uptime' => 99.5,
-                        'country_code' => null,
-                        'country_name' => null,
-                        'latitude' => null,
-                        'longitude' => null,
+                        'country_code' => $geo['cc'],
+                        'country_name' => $geo['cn'],
+                        'latitude' => $geo['lat'],
+                        'longitude' => $geo['lng'],
                         'endpoint' => null,
-                        'stake_amount' => 0,
+                        'stake_amount' => 10000000,
                         'rewards' => '0',
                         'index' => $index,
                     ];
@@ -416,10 +431,19 @@ class ValidatorController extends Controller
             }
 
             // First element is the validators list
+            // Supports both IBFT2 (flat: [addr, addr, ...]) and
+            // QBFT (nested: [[addr, blsPubKey], [addr, blsPubKey], ...])
             $validators = [];
-            foreach ($decoded[0] as $validatorHex) {
-                if (strlen($validatorHex) === 40) {
-                    $validators[] = '0x'.strtolower($validatorHex);
+            foreach ($decoded[0] as $validatorEntry) {
+                if (is_array($validatorEntry)) {
+                    // QBFT format: [address, blsPublicKey]
+                    $addr = $validatorEntry[0] ?? '';
+                    if (is_string($addr) && strlen($addr) === 40) {
+                        $validators[] = '0x'.strtolower($addr);
+                    }
+                } elseif (is_string($validatorEntry) && strlen($validatorEntry) === 40) {
+                    // IBFT2 format: plain address
+                    $validators[] = '0x'.strtolower($validatorEntry);
                 }
             }
 
