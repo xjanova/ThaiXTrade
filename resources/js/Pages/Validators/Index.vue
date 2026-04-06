@@ -266,11 +266,11 @@ onMounted(() => {
     if (typeof L === 'undefined') {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        link.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
         document.head.appendChild(link);
 
         const script = document.createElement('script');
-        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
         script.onload = () => setTimeout(initMap, 100);
         document.head.appendChild(script);
     } else {
@@ -347,7 +347,7 @@ onUnmounted(() => {
                 <!-- ============================================================ -->
                 <!--  Stats Row with glass-card glow                              -->
                 <!-- ============================================================ -->
-                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
                     <div v-for="stat in [
                         { label: 'Total Nodes', value: fmtNum(validators.length), color: 'text-white', glow: '' },
                         { label: 'Validators', value: tierCounts.validator, color: 'text-red-400', glow: 'hover:shadow-[0_0_20px_rgba(239,68,68,0.1)]' },
@@ -355,6 +355,8 @@ onUnmounted(() => {
                         { label: 'Sentinels', value: tierCounts.sentinel, color: 'text-purple-400', glow: 'hover:shadow-[0_0_20px_rgba(168,85,247,0.1)]' },
                         { label: 'Light Nodes', value: tierCounts.light, color: 'text-cyan-400', glow: 'hover:shadow-[0_0_20px_rgba(6,182,212,0.1)]' },
                         { label: 'Countries', value: countries.length, color: 'text-emerald-400', glow: '' },
+                        { label: 'Block Height', value: fmtNum(networkStats.block_height || 0), color: 'text-white', glow: '' },
+                        { label: 'Total Staked', value: fmtNum(networkStats.total_staked || 0) + ' TPIX', color: 'text-trading-green', glow: 'hover:shadow-[0_0_20px_rgba(0,200,83,0.1)]' },
                     ]" :key="stat.label"
                        :class="['glass-card rounded-xl p-4 text-center group hover:scale-105 transition-all duration-300', stat.glow]">
                         <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{{ stat.label }}</div>
