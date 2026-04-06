@@ -266,12 +266,19 @@ onMounted(() => {
     if (typeof L === 'undefined') {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+        link.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css';
         document.head.appendChild(link);
 
         const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+        script.src = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js';
         script.onload = () => setTimeout(initMap, 100);
+        script.onerror = () => {
+            // Fallback: try unpkg if jsdelivr fails
+            const fb = document.createElement('script');
+            fb.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+            fb.onload = () => setTimeout(initMap, 100);
+            document.head.appendChild(fb);
+        };
         document.head.appendChild(script);
     } else {
         setTimeout(initMap, 100);
