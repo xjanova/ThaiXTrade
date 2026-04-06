@@ -7,6 +7,8 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 const props = defineProps({
     validators: { type: Array, default: () => [] },
@@ -262,28 +264,8 @@ async function checkRewards() {
 //  Lifecycle
 // ============================================================
 onMounted(() => {
-    // Load Leaflet CSS/JS dynamically if not loaded
-    if (typeof L === 'undefined') {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css';
-        document.head.appendChild(link);
-
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js';
-        script.onload = () => setTimeout(initMap, 100);
-        script.onerror = () => {
-            // Fallback: try unpkg if jsdelivr fails
-            const fb = document.createElement('script');
-            fb.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-            fb.onload = () => setTimeout(initMap, 100);
-            document.head.appendChild(fb);
-        };
-        document.head.appendChild(script);
-    } else {
-        setTimeout(initMap, 100);
-    }
-
+    // Leaflet is now bundled via npm — no CDN needed
+    setTimeout(initMap, 100);
     pollInterval = setInterval(refreshData, 30000);
 });
 
