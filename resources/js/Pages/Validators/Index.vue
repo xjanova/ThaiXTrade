@@ -183,13 +183,16 @@ function addMarkers() {
         marker.addTo(markerGroup);
     });
 
-    // Fit bounds if we have markers
+    // Center map on markers
     if (filteredValidators.value.length > 0) {
         const coords = filteredValidators.value
             .filter(v => v.latitude && v.longitude)
             .map(v => [v.latitude, v.longitude]);
-        if (coords.length > 0 && leafletMap) {
-            leafletMap.fitBounds(coords, { padding: [40, 40], maxZoom: 6 });
+        if (coords.length === 1 && leafletMap) {
+            // Single marker — setView works better than fitBounds
+            leafletMap.setView(coords[0], 7);
+        } else if (coords.length > 1 && leafletMap) {
+            leafletMap.fitBounds(coords, { padding: [40, 40], maxZoom: 8 });
         }
     }
 }
