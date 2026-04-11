@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\BannerController as ApiBannerController;
 use App\Http\Controllers\Api\BridgeApiController;
+use App\Http\Controllers\Api\FeeConfigController;
 use App\Http\Controllers\Api\CarbonCreditApiController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\ChatbotController;
@@ -124,6 +125,9 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     // Banners — ป้ายโฆษณา (public, cached)
     Route::get('/banners', [ApiBannerController::class, 'index']);
     Route::post('/banners/{banner}/click', [ApiBannerController::class, 'click']);
+
+    // Unified Fee Configuration — swap + bridge fees for wallet apps
+    Route::get('/fees', [FeeConfigController::class, 'index']);
 
     // Chain Configuration
     Route::prefix('chains')->group(function () {
