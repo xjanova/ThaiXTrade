@@ -59,6 +59,7 @@ class TokenSaleApiController extends Controller
                 'total_raised_usd' => (float) $sale->total_raised_usd,
                 'percent_sold' => $sale->percent_sold,
                 'accept_currencies' => $sale->accept_currencies ?? ['BNB', 'USDT'],
+                'sale_wallet_address' => $sale->sale_wallet_address,
                 'starts_at' => $sale->starts_at?->toIso8601String(),
                 'ends_at' => $sale->ends_at?->toIso8601String(),
                 'phases' => $sale->phases->map(fn ($p) => [

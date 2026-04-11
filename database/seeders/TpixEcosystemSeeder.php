@@ -38,7 +38,7 @@ class TpixEcosystemSeeder extends Seeder
             'total_supply_for_sale' => 700000000,
             'total_sold' => 0,
             'total_raised_usd' => 0,
-            'accept_currencies' => ['USDT', 'STRIPE'],
+            'accept_currencies' => ['BNB', 'USDT'],
             'accept_chain_id' => 56,
             'sale_wallet_address' => '0xF1CD82550E1145664a86f238AcC8AC67D0d68B4f',
             'status' => 'active',

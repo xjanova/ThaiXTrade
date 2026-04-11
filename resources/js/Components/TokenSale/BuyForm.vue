@@ -5,10 +5,11 @@
  * ส่ง transaction บน BSC แล้ว submit tx_hash ไป backend
  * Developed by Xman Studio
  */
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenSale } from '@/Composables/useTokenSale';
 import { isMobile, downloadTpixApp } from '@/utils/mobileWallet';
+import { getCoinLogo, getCoinLogoFallback } from '@/utils/cryptoLogos';
 
 const walletStore = useWalletStore();
 const mobile = isMobile();
@@ -46,12 +47,13 @@ watch([selectedCurrency, paymentAmount], () => {
     debounceTimer = setTimeout(calculatePreview, 500);
 });
 
-// ไอคอนสกุลเงิน
-const currencyIcons = {
-    BNB: 'https://cryptologos.cc/logos/bnb-bnb-logo.svg',
-    USDT: 'https://cryptologos.cc/logos/tether-usdt-logo.svg',
-    BUSD: 'https://cryptologos.cc/logos/binance-usd-busd-logo.svg',
-};
+// สกุลเงินคริปโตที่รองรับ (ไม่รวม payment method เช่น STRIPE)
+const CRYPTO_CURRENCIES = ['BNB', 'USDT', 'BUSD'];
+
+// กรองเฉพาะสกุลเงินคริปโตจาก acceptCurrencies
+const cryptoCurrencies = computed(() => {
+    return acceptCurrencies.value.filter(c => CRYPTO_CURRENCIES.includes(c));
+});
 
 /**
  * ดำเนินการซื้อ
@@ -197,7 +199,7 @@ function formatNumber(n) {
                 <label class="block text-sm text-gray-400 mb-2">Pay With</label>
                 <div class="flex gap-2">
                     <button
-                        v-for="currency in acceptCurrencies"
+                        v-for="currency in cryptoCurrencies"
                         :key="currency"
                         class="flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-all text-sm font-medium"
                         :class="selectedCurrency === currency
@@ -205,7 +207,12 @@ function formatNumber(n) {
                             : 'border-white/10 bg-white/5 text-gray-300 hover:border-white/20'"
                         @click="selectedCurrency = currency"
                     >
-                        <img :src="currencyIcons[currency]" :alt="currency" class="w-5 h-5" />
+                        <img
+                            :src="getCoinLogo(currency)"
+                            :alt="currency"
+                            class="w-5 h-5"
+                            @error="(e) => { const fb = getCoinLogoFallback(currency); if (fb) e.target.src = fb; }"
+                        />
                         {{ currency }}
                     </button>
                 </div>

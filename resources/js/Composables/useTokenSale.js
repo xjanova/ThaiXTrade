@@ -10,9 +10,6 @@ import { parseUnits } from 'ethers';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenSaleStore } from '@/Stores/tokenSaleStore';
 
-// ที่อยู่ wallet สำหรับรับเงิน Token Sale (BSC)
-// ⚠️ ต้องตั้งค่า VITE_SALE_WALLET_ADDRESS ใน .env ก่อน deploy!
-const SALE_WALLET = import.meta.env.VITE_SALE_WALLET_ADDRESS || '';
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 // ที่อยู่ USDT contract บน BSC
@@ -131,6 +128,9 @@ export function useTokenSale() {
     async function sendPaymentTransaction() {
         if (!walletStore.signer) throw new Error('กรุณาเชื่อมต่อ wallet ก่อน');
         if (!walletStore.isBSC) throw new Error('กรุณาสลับไปยัง BSC Network');
+
+        // ดึง wallet address จาก API (เก็บใน tokenSaleStore)
+        const SALE_WALLET = tokenSaleStore.sale?.sale_wallet_address || '';
 
         // ป้องกันส่งเงินไป zero address หรือ wallet ยังไม่ตั้งค่า
         if (!SALE_WALLET || SALE_WALLET === ZERO_ADDRESS || SALE_WALLET.length !== 42) {
