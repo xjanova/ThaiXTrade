@@ -43,7 +43,7 @@
     "@walletconnect/ethereum-provider": "^2.23.9",
     "@walletconnect/modal": "^2.7.0",
     "@walletconnect/web3-provider": "^1.8.0",
-    "apexcharts": "^5.10.4",
+    "apexcharts": "^5.10.6",
     "chart.js": "^4.4.1",
     "dompurify": "^3.3.3",
     "ethers": "^6.11.1",
