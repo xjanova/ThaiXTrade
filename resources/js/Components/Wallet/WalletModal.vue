@@ -80,13 +80,19 @@ const allWallets = (() => {
         { id: 'tokenpocket', name: 'TokenPocket', description: mobile ? 'Open in TokenPocket' : 'Browser extension', popular: false, color: '#2980FE' },
     ];
 
-    // Desktop: เพิ่ม WalletConnect (coming soon)
-    if (!mobile) {
-        baseWallets.push({
-            id: 'walletconnect', name: 'WalletConnect', description: 'Coming soon',
-            popular: false, color: '#3B99FC', supported: false,
-        });
-    }
+    // WalletConnect — QR code สำหรับเชื่อมแอพมือถือ (TPIX Wallet, MetaMask, Trust, etc.)
+    baseWallets.push({
+        id: 'walletconnect', name: 'WalletConnect',
+        description: mobile ? 'เชื่อมต่อแอพกระเป๋า' : 'Scan QR code จากแอพมือถือ',
+        popular: false, color: '#3B99FC',
+    });
+
+    // TPIX Wallet App — deep link สำหรับมือถือ, QR สำหรับ desktop
+    baseWallets.push({
+        id: 'tpix_wallet_app', name: 'TPIX Wallet App',
+        description: mobile ? 'เปิดแอพ TPIX Wallet' : 'เชื่อมต่อผ่าน WalletConnect',
+        popular: false, color: '#8B5CF6', isNativeApp: true,
+    });
 
     return baseWallets;
 })();
@@ -129,6 +135,51 @@ const connectWallet = async (wallet) => {
 
     selectedWallet.value = wallet.id;
     error.value = null;
+
+    // === WalletConnect v2 — QR code modal ===
+    if (wallet.id === 'walletconnect') {
+        isConnecting.value = true;
+        try {
+            const address = await walletStore.connectWalletConnect();
+            emit('connected', { address, wallet: 'walletconnect', chainId: walletStore.chainId });
+            emit('close');
+        } catch (err) {
+            playErrorSound();
+            error.value = walletStore.error || err.message || 'WalletConnect failed.';
+        } finally {
+            isConnecting.value = false;
+        }
+        return;
+    }
+
+    // === TPIX Wallet App — mobile deep link หรือ desktop WalletConnect ===
+    if (wallet.id === 'tpix_wallet_app') {
+        if (mobile) {
+            // มือถือ: เปิดแอพผ่าน deep link (ถ้ามีก็เปิด ถ้าไม่มีก็ redirect ไปดาวน์โหลด)
+            const wcUri = ''; // WalletConnect URI จะถูกสร้างหลัง init
+            window.location.href = 'tpixwallet://';
+            // Fallback: ถ้าแอพไม่เปิดภายใน 2 วินาที → แสดงตัวเลือกดาวน์โหลด
+            setTimeout(() => {
+                if (document.visibilityState !== 'hidden') {
+                    error.value = 'ไม่พบแอพ TPIX Wallet — กรุณาดาวน์โหลดจาก Google Play หรือ App Store';
+                }
+            }, 2000);
+            return;
+        }
+        // Desktop: ใช้ WalletConnect เหมือนกัน
+        isConnecting.value = true;
+        try {
+            const address = await walletStore.connectWalletConnect();
+            emit('connected', { address, wallet: 'tpix_wallet_app', chainId: walletStore.chainId });
+            emit('close');
+        } catch (err) {
+            playErrorSound();
+            error.value = walletStore.error || err.message || 'WalletConnect failed.';
+        } finally {
+            isConnecting.value = false;
+        }
+        return;
+    }
 
     // === Mobile: ถ้าไม่มี injected provider → เปิดแอปผ่าน deep link ===
     if (mobile && !isWalletDetected(wallet.id)) {
@@ -416,6 +467,8 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                             <rect x="8" y="22" width="10" height="10" rx="1" fill="white"/>
                             <rect x="22" y="22" width="10" height="10" rx="1" fill="white"/>
                         </svg>
+                        <!-- TPIX Wallet App -->
+                        <img v-else-if="wallet.id === 'tpix_wallet_app'" src="/tpixlogo.webp" class="w-5 h-5" alt="TPIX" />
                         <!-- WalletConnect -->
                         <svg v-else-if="wallet.id === 'walletconnect'" class="w-5 h-5" viewBox="0 0 40 40">
                             <circle cx="20" cy="20" r="18" fill="#3B99FC"/>

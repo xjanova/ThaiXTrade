@@ -42,6 +42,7 @@ class HandleInertiaRequests extends Middleware
             'app' => [
                 'name' => config('app.name', 'TPIX TRADE'),
                 'url' => config('app.url'),
+                'walletconnect_project_id' => SiteSetting::get('trading', 'walletconnect_project_id', ''),
             ],
             'social' => [
                 'twitter' => $socialLinks['twitter_url'] ?? null,

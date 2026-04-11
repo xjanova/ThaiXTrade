@@ -107,6 +107,7 @@ const tradingForm = useForm({
     max_fee_rate: props.settings.max_fee_rate || 5.0,
     masternode_enabled: props.settings.masternode_enabled ?? true,
     bridge_enabled: props.settings.bridge_enabled ?? true,
+    walletconnect_project_id: props.settings.walletconnect_project_id || '',
 });
 
 const saveTrading = () => {
@@ -656,6 +657,26 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <label :class="labelClass">Max Slippage (%)</label>
                     <input v-model.number="tradingForm.max_slippage" type="number" step="0.1" min="0" :class="inputClass" placeholder="50" />
                     <p class="mt-1 text-xs text-dark-500">Maximum allowed slippage tolerance</p>
+                </div>
+
+                <!-- WalletConnect Section -->
+                <div class="p-4 rounded-xl bg-gradient-to-br from-blue-500/5 via-purple-500/5 to-primary-500/5 border border-blue-500/10">
+                    <h4 class="text-sm font-semibold text-blue-400 mb-4 flex items-center gap-2">
+                        <svg class="w-4 h-4" viewBox="0 0 40 40">
+                            <circle cx="20" cy="20" r="18" fill="#3B99FC"/>
+                            <path d="M12.5 16.5C16.6 12.5 23.4 12.5 27.5 16.5L28 17C28.2 17.2 28.2 17.5 28 17.7L26.5 19.1C26.4 19.2 26.2 19.2 26.1 19.1L25.4 18.5C22.5 15.7 17.5 15.7 14.6 18.5L13.8 19.2C13.7 19.3 13.5 19.3 13.4 19.2L11.9 17.8C11.7 17.6 11.7 17.3 11.9 17.1L12.5 16.5Z" fill="white"/>
+                            <path d="M30 19L31.4 20.3C31.6 20.5 31.6 20.8 31.4 21L25.4 26.8C25.2 27 24.8 27 24.6 26.8L20.5 22.8C20.45 22.75 20.35 22.75 20.3 22.8L16.2 26.8C16 27 15.6 27 15.4 26.8L9.4 21C9.2 20.8 9.2 20.5 9.4 20.3L10.8 19C11 18.8 11.4 18.8 11.6 19L15.7 23C15.75 23.05 15.85 23.05 15.9 23L20 19C20.2 18.8 20.6 18.8 20.8 19L24.9 23C24.95 23.05 25.05 23.05 25.1 23L29.2 19C29.4 18.8 29.8 18.8 30 19Z" fill="white"/>
+                        </svg>
+                        WalletConnect v2
+                    </h4>
+                    <div>
+                        <label :class="labelClass">Project ID</label>
+                        <input v-model="tradingForm.walletconnect_project_id" type="text" :class="inputClass" placeholder="e.g. 52dc35105b74..." />
+                        <p class="mt-1 text-xs text-dark-500">
+                            Project ID จาก <a href="https://cloud.reown.com" target="_blank" class="text-blue-400 hover:underline">cloud.reown.com</a>
+                            — ใช้สำหรับเชื่อมต่อ wallet ผ่าน QR code (TPIX Wallet app, MetaMask mobile, etc.)
+                        </p>
+                    </div>
                 </div>
 
                 <div class="pt-4">

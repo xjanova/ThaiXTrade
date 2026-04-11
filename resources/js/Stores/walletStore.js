@@ -1,15 +1,17 @@
 /**
  * TPIX TRADE - Wallet Store (Pinia)
  * ระบบจัดการ Wallet แบบรวมศูนย์ รองรับหลาย chain
- * รองรับ MetaMask, Trust Wallet, Coinbase, OKX + TPIX Wallet (embedded)
+ * รองรับ MetaMask, Trust Wallet, Coinbase, OKX, WalletConnect v2 + TPIX Wallet (embedded)
  * TPIX Wallet = self-custodial wallet ในตัวเว็บ (ไม่ต้อง MetaMask)
- * สลับ chain อัตโนมัติไปยัง chain หลัก (BSC) เมื่อเชื่อมต่อ
+ * WalletConnect v2 = เชื่อมต่อกระเป๋ามือถือผ่าน QR code (TPIX Wallet app, etc.)
+ * สลับ chain อัตโนมัติไปยัง TPIX Chain เมื่อเชื่อมต่อ
  * Developed by Xman Studio
  */
 
 import { defineStore } from 'pinia';
 import { ref, shallowRef, computed } from 'vue';
 import { BrowserProvider, JsonRpcProvider, parseEther } from 'ethers';
+import { usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { playConnectSound, playDisconnectSound, playErrorSound } from '@/Composables/useSounds';
 import {
@@ -491,6 +493,119 @@ export const useWalletStore = defineStore('wallet', () => {
         return false;
     }
 
+    // === WalletConnect v2 ===
+
+    /**
+     * เชื่อมต่อผ่าน WalletConnect v2 — แสดง QR code ให้สแกนจากแอพมือถือ
+     * รองรับ TPIX Wallet app, MetaMask mobile, Trust Wallet, etc.
+     * หลังเชื่อมต่อจะสั่ง wallet เพิ่ม TPIX Chain + สลับ chain อัตโนมัติ
+     */
+    async function connectWalletConnect() {
+        isConnecting.value = true;
+        error.value = null;
+
+        try {
+            const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
+
+            // ดึง Project ID จาก admin settings (Inertia shared props) — fallback ไป env variable
+            const pageProps = usePage()?.props;
+            const projectId = pageProps?.app?.walletconnect_project_id
+                || import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
+                || '';
+
+            if (!projectId) {
+                throw new Error('WalletConnect Project ID not configured. Please set it in Admin Settings → Trading.');
+            }
+
+            // สร้าง WalletConnect provider — จะแสดง QR modal อัตโนมัติ
+            const wcProvider = await withTimeout(
+                EthereumProvider.init({
+                    projectId,
+                    chains: [4289], // TPIX Chain เป็น chain หลัก
+                    optionalChains: [56, 137, 1], // BSC, Polygon, ETH
+                    showQrModal: true,
+                    metadata: {
+                        name: 'TPIX TRADE',
+                        description: 'Decentralized Exchange on TPIX Chain',
+                        url: window.location.origin,
+                        icons: [`${window.location.origin}/tpixlogo.webp`],
+                    },
+                    // สั่ง wallet เพิ่ม TPIX Chain อัตโนมัติถ้ายังไม่มี (EIP-3085)
+                    rpcMap: {
+                        4289: TPIX_CHAIN_CONFIG.rpcUrls[0],
+                        56: 'https://bsc-dataseed1.binance.org',
+                        137: 'https://polygon-rpc.com',
+                        1: 'https://eth.llamarpc.com',
+                    },
+                }),
+                CONNECT_TIMEOUT_MS,
+                'WalletConnect connection timed out.'
+            );
+
+            // เปิด QR modal แล้วรอ user สแกน + approve
+            await withTimeout(
+                wcProvider.enable(),
+                60000, // 60 วินาที — ให้เวลาสแกน QR
+                'WalletConnect pairing timed out. Please try again.'
+            );
+
+            const accounts = wcProvider.accounts;
+            if (!accounts || accounts.length === 0) {
+                throw new Error('No accounts returned from WalletConnect.');
+            }
+
+            // สร้าง ethers provider จาก WalletConnect provider
+            const ethProvider = new BrowserProvider(wcProvider);
+            const ethSigner = await withTimeout(
+                ethProvider.getSigner(),
+                10000,
+                'Failed to get signer from WalletConnect.'
+            );
+            const network = await withTimeout(
+                ethProvider.getNetwork(),
+                10000,
+                'Failed to detect network.'
+            );
+
+            // อัปเดต state
+            address.value = accounts[0];
+            chainId.value = Number(network.chainId);
+            provider.value = ethProvider;
+            signer.value = ethSigner;
+            walletType.value = 'walletconnect';
+            _rawProvider = wcProvider;
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                address: accounts[0],
+                walletType: 'walletconnect',
+            }));
+
+            await loadSupportedChains();
+
+            // แจ้ง backend + ยืนยัน ownership
+            _registerWalletToBackend(accounts[0], chainId.value, 'walletconnect');
+            _verifyWalletOwnership(ethSigner, accounts[0]).catch(() => {});
+
+            // ตั้งค่า event listeners (WalletConnect provider ก็รองรับ events เหมือน MetaMask)
+            _setupListeners();
+
+            playConnectSound();
+            return accounts[0];
+        } catch (err) {
+            playErrorSound();
+            if (err.message?.includes('timed out')) {
+                error.value = err.message;
+            } else if (err.message?.includes('User rejected') || err.code === 4001) {
+                error.value = 'Connection rejected by user.';
+            } else {
+                error.value = err.message || 'WalletConnect failed.';
+            }
+            throw err;
+        } finally {
+            isConnecting.value = false;
+        }
+    }
+
     /**
      * สลับไปยัง chain ที่ระบุ (รองรับทุก chain ในระบบ)
      * ถ้าไม่ระบุ targetChainId จะสลับไป chain หลัก (BSC)
@@ -672,6 +787,8 @@ export const useWalletStore = defineStore('wallet', () => {
         hasStoredEmbeddedWallet,
         tpixBalance,
         isEmbedded,
+        // WalletConnect v2
+        connectWalletConnect,
         // Modal control
         openConnectModal,
         closeConnectModal,
