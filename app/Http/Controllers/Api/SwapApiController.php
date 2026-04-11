@@ -41,7 +41,8 @@ class SwapApiController extends Controller
             'from_token' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'to_token' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'amount' => 'required|numeric|gt:0',
-            'chain_id' => 'required|integer|exists:chains,id',
+            // chain_id = blockchain chainId (56, 4289) — แปลงเป็น DB PK ภายใน
+            'chain_id' => 'required|integer|min:1',
             'slippage' => 'nullable|numeric|min:0.01|max:50',
         ]);
 
@@ -58,8 +59,8 @@ class SwapApiController extends Controller
         $validated = $validator->validated();
 
         try {
-            // Verify chain is active
-            $chain = Chain::active()->find($validated['chain_id']);
+            // แปลง blockchain chainId → DB chain record
+            $chain = $this->resolveChain((int) $validated['chain_id']);
             if (! $chain) {
                 return response()->json([
                     'success' => false,
@@ -69,6 +70,9 @@ class SwapApiController extends Controller
                     ],
                 ], 404);
             }
+
+            // ใช้ DB chain PK สำหรับ query downstream
+            $validated['chain_id'] = $chain->id;
 
             // Verify tokens exist on this chain
             $fromToken = Token::active()
@@ -161,7 +165,8 @@ class SwapApiController extends Controller
             'to_amount' => 'required|numeric|gte:0',
             'fee_amount' => 'required|numeric|gte:0',
             'tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/', 'unique:transactions,tx_hash'],
-            'chain_id' => 'required|integer|exists:chains,id',
+            // chain_id = blockchain chainId (56, 4289) — แปลงเป็น DB PK ภายใน
+            'chain_id' => 'required|integer|min:1',
             'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
         ]);
 
@@ -190,8 +195,8 @@ class SwapApiController extends Controller
         }
 
         try {
-            // Verify chain is active
-            $chain = Chain::active()->find($validated['chain_id']);
+            // แปลง blockchain chainId → DB chain record
+            $chain = $this->resolveChain((int) $validated['chain_id']);
             if (! $chain) {
                 return response()->json([
                     'success' => false,
@@ -201,6 +206,9 @@ class SwapApiController extends Controller
                     ],
                 ], 404);
             }
+
+            // ใช้ DB chain PK สำหรับ query downstream
+            $validated['chain_id'] = $chain->id;
 
             // Verify the fee amount is reasonable
             $expectedFee = $this->feeCalculationService->calculateSwapFee(
@@ -227,8 +235,8 @@ class SwapApiController extends Controller
 
             if ($feeMismatch) {
                 Log::warning('Swap fee mismatch - rejected', [
-                    'submitted_fee' => $submittedFee,
-                    'expected_fee' => $expectedFeeAmount,
+                    'submitted_fee' => $submittedFeeStr,
+                    'expected_fee' => $expectedFeeStr,
                     'wallet' => $validated['wallet_address'],
                     'tx_hash' => $validated['tx_hash'],
                 ]);
@@ -298,7 +306,8 @@ class SwapApiController extends Controller
     public function routes(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'chain_id' => 'nullable|integer|exists:chains,id',
+            // blockchain chainId (optional) — แปลงเป็น DB PK ก่อนใช้
+            'chain_id' => 'nullable|integer|min:1',
         ]);
 
         if ($validator->fails()) {
@@ -315,7 +324,11 @@ class SwapApiController extends Controller
             $query = SwapConfig::active()->with('chain');
 
             if ($request->filled('chain_id')) {
-                $query->where('chain_id', $request->input('chain_id'));
+                $chain = $this->resolveChain((int) $request->input('chain_id'));
+                if ($chain) {
+                    $query->where('chain_id', $chain->id);
+                }
+                // ถ้า resolve ไม่ได้ → return empty list แทน error (routes เป็น optional filter)
             }
 
             $configs = $query->get();
@@ -361,5 +374,27 @@ class SwapApiController extends Controller
                 ],
             ], 500);
         }
+    }
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+
+    /**
+     * แปลง blockchain chainId (เช่น 56, 4289) เป็น Chain record (DB PK)
+     * Frontend ส่ง blockchain chainId มา แต่ DB ใช้ auto-increment ID
+     * ลุคอัพผ่าน chain_id_hex เช่น '0x38' (BSC), '0x10c1' (TPIX)
+     */
+    private function resolveChain(int $blockchainChainId): ?Chain
+    {
+        $lower = '0x'.strtolower(dechex($blockchainChainId));
+        $upper = '0x'.strtoupper(dechex($blockchainChainId));
+
+        return Chain::active()
+            ->where(function ($q) use ($lower, $upper) {
+                $q->where('chain_id_hex', $lower)
+                    ->orWhere('chain_id_hex', $upper);
+            })
+            ->first();
     }
 }

@@ -281,6 +281,11 @@ export const useWalletStore = defineStore('wallet', () => {
             await loadSupportedChains();
             await refreshTPIXBalance();
 
+            // แจ้ง backend + ยืนยัน ownership ผ่าน signature
+            // จำเป็นเพื่อให้ POST/PUT/DELETE ผ่าน VerifyWalletOwnership middleware ได้
+            _registerWalletToBackend(addr, TPIX_CHAIN_CONFIG.chainIdNum, 'tpix_wallet');
+            _verifyWalletOwnership(connected, addr).catch(() => {});
+
             return { address: addr, mnemonic };
         } catch (err) {
             error.value = err.message;
@@ -322,6 +327,10 @@ export const useWalletStore = defineStore('wallet', () => {
             await loadSupportedChains();
             await refreshTPIXBalance();
 
+            // แจ้ง backend + ยืนยัน ownership (จำเป็นสำหรับ trading/bridge/swap)
+            _registerWalletToBackend(wallet.address, TPIX_CHAIN_CONFIG.chainIdNum, 'tpix_wallet');
+            _verifyWalletOwnership(connected, wallet.address).catch(() => {});
+
             return wallet.address;
         } catch (err) {
             error.value = err.message;
@@ -354,6 +363,11 @@ export const useWalletStore = defineStore('wallet', () => {
 
             await loadSupportedChains();
             await refreshTPIXBalance();
+
+            // แจ้ง backend + ยืนยัน ownership ทุกครั้งที่ unlock
+            // cache หมดอายุ 4 ชม. — ต้อง re-verify เมื่อ unlock ครั้งต่อไป
+            _registerWalletToBackend(wallet.address, TPIX_CHAIN_CONFIG.chainIdNum, 'tpix_wallet');
+            _verifyWalletOwnership(connected, wallet.address).catch(() => {});
 
             return wallet.address;
         } catch (err) {

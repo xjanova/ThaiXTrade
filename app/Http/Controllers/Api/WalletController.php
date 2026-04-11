@@ -295,20 +295,24 @@ class WalletController extends Controller
         Cache::forget("wallet_nonce:{$walletAddress}:{$nonce}");
         Cache::forget("wallet_active_nonce:{$walletAddress}");
 
-        // Cache wallet as cryptographically verified (1 hour — reduced from 4h for security)
+        // Cache wallet as cryptographically verified (4 hours)
+        // SECURITY: ถ้าแก้เลขนี้ ต้องแก้ expires_in ด้านล่างให้ตรงกัน
+        // เพื่อให้ frontend กับ backend รู้เวลาหมดอายุตรงกัน (ไม่งั้น session ขาดช่วง)
+        $verificationTtl = 14400;
+
         Cache::put("wallet_verified:{$walletAddress}", [
             'chain_id' => $request->input('chain_id', 56),
             'ip' => $request->ip(),
             'verified_at' => now()->toIso8601String(),
             'signature_verified' => true,
-        ], 3600);
+        ], $verificationTtl);
 
         return response()->json([
             'success' => true,
             'data' => [
                 'wallet_address' => $walletAddress,
                 'verified' => true,
-                'expires_in' => 14400,
+                'expires_in' => $verificationTtl,
             ],
         ]);
     }

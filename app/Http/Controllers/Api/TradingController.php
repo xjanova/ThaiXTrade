@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Chain;
 use App\Models\Order;
 use App\Models\SiteSetting;
 use App\Models\TradingPair;
@@ -37,7 +38,8 @@ class TradingController extends Controller
             'amount' => ['required', 'numeric', 'gt:0'],
             'total' => ['nullable', 'numeric', 'gte:0'],
             'trigger_price' => ['required_if:type,stop-limit', 'numeric', 'gt:0'],
-            'chain_id' => ['required', 'integer', 'exists:chains,id'],
+            // chain_id = blockchain chainId (เช่น 56=BSC, 4289=TPIX) — ไม่ใช่ DB PK
+            'chain_id' => ['required', 'integer', 'min:1'],
         ]);
 
         if ($validator->fails()) {
@@ -61,6 +63,24 @@ class TradingController extends Controller
             ], 503);
         }
 
+        // แปลง blockchain chainId → DB chain PK
+        // chains.chain_id_hex เป็น hex เช่น '0x38' (BSC 56), '0x10C1' (TPIX 4289)
+        $blockchainChainId = (int) $validated['chain_id'];
+        $chainHex = '0x'.strtolower(dechex($blockchainChainId));
+        $chain = Chain::where('chain_id_hex', $chainHex)
+            ->orWhere('chain_id_hex', '0x'.strtoupper(dechex($blockchainChainId)))
+            ->first();
+
+        if (! $chain) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'INVALID_CHAIN',
+                    'message' => 'Unsupported blockchain chain.',
+                ],
+            ], 422);
+        }
+
         $pairSymbol = str_replace('/', '-', $validated['pair']);
 
         // Check if this is a TPIX internal trading pair
@@ -69,21 +89,26 @@ class TradingController extends Controller
             ->first();
 
         if ($tradingPair) {
-            // ตรวจว่า chain_id ตรงกับ pair.chain_id (ป้องกัน order ไปเชนผิด)
-            if ((int) $validated['chain_id'] !== $tradingPair->chain_id) {
+            // ตรวจว่า chain ของ wallet ตรงกับ pair.chain_id (DB PK) ป้องกัน order ไปเชนผิด
+            if ($chain->id !== (int) $tradingPair->chain_id) {
                 return response()->json([
                     'success' => false,
                     'error' => [
                         'code' => 'CHAIN_MISMATCH',
-                        'message' => 'Chain ID does not match the trading pair chain.',
+                        'message' => 'Please switch your wallet to the correct network for this trading pair.',
                     ],
                 ], 422);
             }
 
+            // ส่ง DB chain PK ไปให้ createInternalOrder ใช้
+            $validated['chain_id'] = $chain->id;
+
             return $this->createInternalOrder($tradingPair, $validated);
         }
 
-        // Legacy: non-TPIX pairs (Binance-based display)
+        // Legacy: non-TPIX pairs — ส่ง DB chain PK ไปให้ createLegacyOrder ใช้
+        $validated['chain_id'] = $chain->id;
+
         return $this->createLegacyOrder($validated);
     }
 
@@ -536,11 +561,20 @@ class TradingController extends Controller
 
     /**
      * Get fee info for the connected wallet/chain.
+     * Input chain_id = blockchain chainId (แปลงเป็น DB PK ก่อนใช้)
      */
     public function getFeeInfo(Request $request): JsonResponse
     {
-        $chainId = $request->input('chain_id', 56);
-        $feeRate = $this->feeCalculationService->getEffectiveFeeRate('swap', (int) $chainId);
+        $blockchainChainId = (int) $request->input('chain_id', 56);
+        $chainHex = '0x'.strtolower(dechex($blockchainChainId));
+        $chain = Chain::where('chain_id_hex', $chainHex)
+            ->orWhere('chain_id_hex', '0x'.strtoupper(dechex($blockchainChainId)))
+            ->first();
+
+        $feeRate = $this->feeCalculationService->getEffectiveFeeRate(
+            'swap',
+            $chain?->id,
+        );
         $feeCollector = SiteSetting::get('trading', 'fee_collector_wallet', '');
 
         return response()->json([

@@ -30,10 +30,11 @@ const amount = ref('');
 const total = ref('');
 const sliderValue = ref(0);
 
+// หมายเหตุ: stop-limit ยังไม่รองรับใน launch นี้ (ต้องมี trigger job ใน backend)
+// เปิดกลับคืนเมื่อมี OrderTriggerJob + trigger price input field พร้อม
 const orderTypes = [
     { value: 'limit', label: 'Limit' },
     { value: 'market', label: 'Market' },
-    { value: 'stop-limit', label: 'Stop Limit' },
 ];
 
 const sliderPercentages = [0, 25, 50, 75, 100];

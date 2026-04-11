@@ -175,6 +175,12 @@ const handleSubmitOrder = async (order) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
+        // TPIX pairs ต้องใช้ TPIX Chain (4289) เสมอ ไม่ว่า wallet จะอยู่เชนไหน
+        // ถ้าอยู่เชนผิด backend จะ reject พร้อมข้อความบอกให้สลับเชน
+        const chainIdToSend = isTPIXPair.value
+            ? 4289
+            : (walletStore.chainId || 56);
+
         const { data } = await axios.post('/api/v1/trading/order', {
             wallet_address: walletStore.address,
             pair: currentPair.value,
@@ -184,7 +190,7 @@ const handleSubmitOrder = async (order) => {
             amount: amountVal,
             total: totalVal,
             trigger_price: order.triggerPrice || null,
-            chain_id: walletStore.chainId || (isTPIXPair.value ? 4289 : 56),
+            chain_id: chainIdToSend,
         }, { signal: controller.signal });
 
         clearTimeout(timeoutId);
