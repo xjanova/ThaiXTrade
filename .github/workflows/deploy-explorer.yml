@@ -434,14 +434,14 @@ jobs:
                     });
                 }
                 /* ── All Addresses Page ── */
-                var accountsInjected=false;
+                var accountsLoading=false;
                 function formatBal(w){if(!w||w==="0")return"0";var s=w.padStart(19,"0"),wh=s.slice(0,s.length-18)||"0",fr=s.slice(s.length-18,s.length-12).replace(/0+$/,"");wh=wh.replace(/\\B(?=(\\d{3})+(?!\\d))/g,",");return fr?wh+"."+fr:wh}
                 function shortAddr(a){return a?a.slice(0,8)+"..."+a.slice(-6):""}
                 function injectAccountsPage(){
-                    if(accountsInjected||!(window.location.pathname==="/accounts"||window.location.pathname==="/accounts/"))return;
+                    if(!(window.location.pathname==="/accounts"||window.location.pathname==="/accounts/"))return;
+                    if(document.getElementById("tpix-accounts"))return;
                     var main=document.querySelector("main");if(!main){var eh=document.querySelector("#__next h1,#__next h2");if(!eh)return;main=eh.parentElement;while(main&&main.parentElement&&main.parentElement.id!=="__next"){main=main.parentElement}if(!main||main.id==="__next")return;}
-                    accountsInjected=true;
-                    main.innerHTML=\'<div class="tpix-accounts-wrapper" id="tpix-accounts"><div class="tpix-loading"><div class="spinner"></div>Loading all addresses...</div></div>\';
+                    var newMain=document.createElement("main");newMain.innerHTML=\'<div class="tpix-accounts-wrapper" id="tpix-accounts"><div class="tpix-loading"><div class="spinner"></div>Loading all addresses...</div></div>\';main.replaceWith(newMain);
                     var container=document.getElementById("tpix-accounts");
                     fetch("/api?module=account&action=listaccounts&page=1&offset=500").then(function(r){return r.json()}).then(function(data){
                         var addresses=(data.result||[]).map(function(a){return{address:a.address,balance:a.balance||"0",balanceBig:BigInt(a.balance||"0"),txCount:null,isContract:null,loaded:false,name:null}});
@@ -507,7 +507,7 @@ jobs:
                 var prevPath=window.location.pathname;
                 function runAll(){replaceLogo();replaceFooter();linkStatCards();injectAccountsPage()}
                 if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",runAll)}else{runAll()}
-                var obs=new MutationObserver(function(){if(window.location.pathname!==prevPath){prevPath=window.location.pathname;accountsInjected=false}runAll()});
+                var obs=new MutationObserver(function(){prevPath=window.location.pathname;runAll()});
                 obs.observe(document.body||document.documentElement,{childList:true,subtree:true});
                 setTimeout(function(){obs.disconnect()},120000);
             })();
