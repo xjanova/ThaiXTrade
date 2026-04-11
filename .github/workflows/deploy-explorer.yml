@@ -439,7 +439,7 @@ jobs:
                 function shortAddr(a){return a?a.slice(0,8)+"..."+a.slice(-6):""}
                 function injectAccountsPage(){
                     if(accountsInjected||!(window.location.pathname==="/accounts"||window.location.pathname==="/accounts/"))return;
-                    var main=document.querySelector("main");if(!main)return;var title=main.querySelector("h1,h2");if(!title)return;
+                    var main=document.querySelector("main");if(!main){var eh=document.querySelector("#__next h1,#__next h2");if(!eh)return;main=eh.parentElement;while(main&&main.parentElement&&main.parentElement.id!=="__next"){main=main.parentElement}if(!main||main.id==="__next")return;}
                     accountsInjected=true;
                     main.innerHTML=\'<div class="tpix-accounts-wrapper" id="tpix-accounts"><div class="tpix-loading"><div class="spinner"></div>Loading all addresses...</div></div>\';
                     var container=document.getElementById("tpix-accounts");
