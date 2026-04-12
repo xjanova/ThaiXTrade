@@ -105,7 +105,7 @@ jobs:
 
             # 1. Extract validator private key
             echo "[1/3] Extracting deployer key..."
-            PRIVATE_KEY=$(docker exec tpix-chain-node cat /data/consensus/validator.key 2>/dev/null || echo "")
+            PRIVATE_KEY=$(docker exec tpix-validator-1 cat /data/consensus/validator.key 2>/dev/null || echo "")
             if [ -z "$PRIVATE_KEY" ]; then
               echo "ERROR: Cannot extract validator private key"
               exit 1

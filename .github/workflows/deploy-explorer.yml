@@ -1,10 +1,18 @@
-name: Deploy TPIX Chain + Explorer
+name: "[DISABLED] Deploy TPIX Chain + Explorer (single-node — use chain-regenesis-4v instead)"
 on:
+  # DISABLED: This workflow uses single-node config. After 4-validator regenesis,
+  # running this would overwrite the 4-validator docker-compose.
+  # TODO: Rewrite to use 4-validator config.
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'WARNING: This workflow is OUTDATED (single-node). Type OVERRIDE to run anyway.'
+        required: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm == 'OVERRIDE' }}
     steps:
       - name: Deploy TPIX Chain & Blockscout
         uses: appleboy/ssh-action@v1

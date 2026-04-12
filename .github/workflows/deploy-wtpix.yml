@@ -32,10 +32,10 @@ jobs:
             # Try multiple possible key locations
             VALIDATOR_KEY_FILE=""
             for f in \
+              "$CHAIN/data/validator-1/consensus/validator.key" \
+              "$CHAIN/data/validator-1/consensus/validator" \
               "$CHAIN/data/consensus/validator.key" \
-              "$CHAIN/data/consensus/validator" \
-              "$INFRA/tpix-chain/data/consensus/validator.key" \
-              "$INFRA/data/consensus/validator.key"; do
+              "$INFRA/tpix-chain/data/validator-1/consensus/validator.key"; do
               if [ -f "$f" ]; then
                 VALIDATOR_KEY_FILE="$f"
                 break
@@ -48,7 +48,7 @@ jobs:
               # Key might be inside Docker volume, extract via container
               docker run --rm -v tpix-infrastructure_tpix-chain-data:/data alpine ls -la /data/consensus/ 2>/dev/null || true
               # Try extracting key from running container
-              PRIVATE_KEY=$(docker exec tpix-chain-node cat /data/consensus/validator.key 2>/dev/null || echo "")
+              PRIVATE_KEY=$(docker exec tpix-validator-1 cat /data/consensus/validator.key 2>/dev/null || echo "")
               if [ -z "$PRIVATE_KEY" ]; then
                 echo "ERROR: Cannot find or extract validator private key"
                 exit 1
@@ -60,8 +60,8 @@ jobs:
             fi
 
             # Get validator address
-            SECRETS_OUT=$(docker exec tpix-chain-node /polygon-edge secrets output --data-dir /data 2>&1 || \
-              docker run --rm -v "$CHAIN/data:/data" 0xpolygon/polygon-edge:0.9.0 secrets output --data-dir /data 2>&1)
+            SECRETS_OUT=$(docker exec tpix-validator-1 /polygon-edge secrets output --data-dir /data 2>&1 || \
+              docker run --rm -v "$CHAIN/data/validator-1:/data" 0xpolygon/polygon-edge:0.9.0 secrets output --data-dir /data 2>&1)
             VALIDATOR_ADDR=$(echo "$SECRETS_OUT" | grep "Public key (address)" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
             echo "Deployer: $VALIDATOR_ADDR"
 
