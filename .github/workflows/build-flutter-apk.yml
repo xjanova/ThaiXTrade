@@ -1,4 +1,4 @@
-name: Build Flutter APK
+name: Flutter APK Release
 
 on:
   push:
@@ -32,8 +32,8 @@ permissions:
   contents: write
 
 jobs:
-  build-flutter-apk:
-    name: Build Flutter APK
+  flutter-apk:
+    name: Flutter APK
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -195,7 +195,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add version.json mobile-flutter/pubspec.yaml
-          git diff --staged --quiet || git commit -m "chore: bump flutter app to v${{ steps.version.outputs.version }} (build ${{ steps.version.outputs.build }})"
+          git diff --staged --quiet || git commit -m "chore: bump flutter app to v${{ steps.version.outputs.version }}"
           git push || echo "Push failed — may need permissions"
 
       # ══════════════════════════════════════════════════
@@ -214,17 +214,16 @@ jobs:
             ---
             ## Android APK (Flutter)
 
-            | Item | Value |
-            |------|-------|
+            | | |
+            |---|---|
             | **Version** | v${{ steps.version.outputs.version }} |
-            | **Build** | #${{ steps.version.outputs.build }} |
             | **Size** | ${{ steps.apk.outputs.apk_size }} |
             | **Min Android** | 7.0 (API 24) |
-            | **Framework** | Flutter 3.38.5 |
+            | **Framework** | Flutter 3.38 |
 
-            ### What's new
+            ### Highlights
             - Glass morphism dark theme matching web
-            - BIP39/BIP32 native wallet (instant connect, no hang)
+            - BIP39/BIP32 native wallet (instant connect)
             - Auto-update from GitHub Releases
             - Thai/English language support
 
@@ -232,7 +231,6 @@ jobs:
             1. Download **${{ steps.apk.outputs.apk_name }}** below
             2. Open on Android device
             3. Allow "Install from unknown sources" if prompted
-            4. Tap Install
 
           files: mobile-flutter/${{ steps.apk.outputs.apk_path }}
           draft: false
@@ -270,19 +268,14 @@ jobs:
       - name: Build Summary
         if: always()
         run: |
-          echo "## TPIX TRADE — Flutter APK Build" >> $GITHUB_STEP_SUMMARY
+          echo "## TPIX TRADE — Flutter APK" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| **Version** | v${{ steps.version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Build** | #${{ steps.version.outputs.build }} |" >> $GITHUB_STEP_SUMMARY
           if [ -f "${{ steps.apk.outputs.apk_path }}" ]; then
             echo "| **APK Size** | ${{ steps.apk.outputs.apk_size }} |" >> $GITHUB_STEP_SUMMARY
             echo "| **Status** | ✅ Success |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| **Status** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.bump.outputs.bumped }}" = "true" ]; then
-            echo "> Version bumped and committed automatically" >> $GITHUB_STEP_SUMMARY
           fi
