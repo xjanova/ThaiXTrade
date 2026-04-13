@@ -2,7 +2,7 @@
   "expo": {
     "name": "TPIX TRADE",
     "slug": "tpix-trade",
-    "version": "1.1.33",
+    "version": "1.1.35",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "tpixtrade",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.xmanstudio.tpixtrade",
-      "buildNumber": "354"
+      "buildNumber": "356"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +24,7 @@
         "backgroundColor": "#0a0e1a"
       },
       "package": "com.xmanstudio.tpixtrade",
-      "versionCode": 354,
+      "versionCode": 356,
       "permissions": [
         "INTERNET",
         "VIBRATE"
