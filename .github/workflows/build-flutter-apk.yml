@@ -1,0 +1,288 @@
+name: Build Flutter APK
+
+on:
+  push:
+    branches: ['main', 'develop', 'claude/**']
+    paths:
+      - 'mobile-flutter/**'
+      - '.github/workflows/build-flutter-apk.yml'
+  pull_request:
+    branches: ['main']
+    paths:
+      - 'mobile-flutter/**'
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a GitHub Release with APK'
+        required: false
+        default: 'true'
+        type: boolean
+      bump_version:
+        description: 'Bump version (patch/minor/major/none)'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - none
+
+permissions:
+  contents: write
+
+jobs:
+  build-flutter-apk:
+    name: Build Flutter APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile-flutter
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js (for version.json)
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          channel: 'master'
+          cache: true
+
+      - name: Flutter info
+        run: flutter --version
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.pub-cache
+            mobile-flutter/.dart_tool
+          key: ${{ runner.os }}-flutter-pub-${{ hashFiles('mobile-flutter/pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-flutter-pub-
+
+      # ══════════════════════════════════════════════════
+      # Auto-bump version on main branch or manual trigger
+      # อัปเวอร์ชันอัตโนมัติทุกครั้งที่ push main หรือ trigger manual
+      # ══════════════════════════════════════════════════
+      - name: Bump version
+        id: bump
+        if: github.ref == 'refs/heads/main' || github.event.inputs.bump_version != 'none'
+        working-directory: .
+        run: |
+          BUMP_TYPE="${{ github.event.inputs.bump_version || 'patch' }}"
+
+          # Read current version from version.json
+          CURRENT=$(node -e "console.log(require('./version.json').version)")
+          BUILD=$(node -e "console.log(require('./version.json').build || 1)")
+
+          # Calculate new version
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "$BUMP_TYPE" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          NEW_BUILD=$((BUILD + 1))
+
+          echo "Bumping version: $CURRENT -> $NEW_VERSION (build $NEW_BUILD)"
+
+          # ── Update version.json ──
+          node -e "
+            const fs = require('fs');
+            const v = JSON.parse(fs.readFileSync('./version.json', 'utf8'));
+            v.version = '$NEW_VERSION';
+            v.build = $NEW_BUILD;
+            v.releaseDate = new Date().toISOString().split('T')[0];
+            fs.writeFileSync('./version.json', JSON.stringify(v, null, 2) + '\n');
+          "
+
+          # ── Update mobile-flutter/pubspec.yaml version ──
+          sed -i "s/^version: .*/version: $NEW_VERSION+$NEW_BUILD/" mobile-flutter/pubspec.yaml
+
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "build=$NEW_BUILD" >> $GITHUB_OUTPUT
+          echo "bumped=true" >> $GITHUB_OUTPUT
+
+      # ── Get version (no bump) ──
+      - name: Get version info
+        id: version
+        working-directory: .
+        run: |
+          if [ "${{ steps.bump.outputs.bumped }}" = "true" ]; then
+            echo "version=${{ steps.bump.outputs.version }}" >> $GITHUB_OUTPUT
+            echo "build=${{ steps.bump.outputs.build }}" >> $GITHUB_OUTPUT
+          else
+            if [ -f version.json ]; then
+              VERSION=$(node -e "console.log(require('./version.json').version)" 2>/dev/null || echo "1.0.0")
+              BUILD=$(node -e "console.log(require('./version.json').build || 1)" 2>/dev/null || echo "1")
+            else
+              VERSION="1.0.0"
+              BUILD="1"
+            fi
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "build=$BUILD" >> $GITHUB_OUTPUT
+          fi
+          echo "=== Version: v$(grep version $GITHUB_OUTPUT | head -1 | cut -d= -f2), Build: $(grep build $GITHUB_OUTPUT | head -1 | cut -d= -f2) ==="
+
+      # ══════════════════════════════════════════════════
+      # Build
+      # ══════════════════════════════════════════════════
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze code
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build APK (Release)
+        run: |
+          flutter build apk \
+            --release \
+            --no-tree-shake-icons \
+            --build-name=${{ steps.version.outputs.version }} \
+            --build-number=${{ steps.version.outputs.build }}
+
+      - name: Find and rename APK
+        id: apk
+        run: |
+          APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
+          if [ ! -f "$APK_PATH" ]; then
+            echo "ERROR: APK not found at $APK_PATH"
+            find build -name "*.apk" -type f 2>/dev/null || true
+            exit 1
+          fi
+          APK_NAME="TPIX-TRADE-v${{ steps.version.outputs.version }}.apk"
+          cp "$APK_PATH" "$APK_NAME"
+          APK_SIZE=$(stat -c%s "$APK_NAME" 2>/dev/null || stat -f%z "$APK_NAME")
+          APK_SIZE_MB=$(echo "scale=1; $APK_SIZE / 1048576" | bc)
+          echo "apk_path=$APK_NAME" >> $GITHUB_OUTPUT
+          echo "apk_name=$APK_NAME" >> $GITHUB_OUTPUT
+          echo "apk_size=${APK_SIZE_MB}MB" >> $GITHUB_OUTPUT
+          echo "=== APK: $APK_NAME ($APK_SIZE_MB MB) ==="
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: TPIX-TRADE-v${{ steps.version.outputs.version }}
+          path: mobile-flutter/${{ steps.apk.outputs.apk_path }}
+          retention-days: 90
+
+      # ══════════════════════════════════════════════════
+      # Commit version bump กลับ repo
+      # ══════════════════════════════════════════════════
+      - name: Commit version bump
+        if: steps.bump.outputs.bumped == 'true'
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json mobile-flutter/pubspec.yaml
+          git diff --staged --quiet || git commit -m "chore: bump flutter app to v${{ steps.version.outputs.version }} (build ${{ steps.version.outputs.build }})"
+          git push || echo "Push failed — may need permissions"
+
+      # ══════════════════════════════════════════════════
+      # Create GitHub Release + แนบ APK อัตโนมัติ
+      # ══════════════════════════════════════════════════
+      - name: Create Release with APK
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event.inputs.create_release == 'true')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: 'TPIX TRADE v${{ steps.version.outputs.version }}'
+          generate_release_notes: true
+          append_body: true
+          body: |
+
+            ---
+            ## Android APK (Flutter)
+
+            | Item | Value |
+            |------|-------|
+            | **Version** | v${{ steps.version.outputs.version }} |
+            | **Build** | #${{ steps.version.outputs.build }} |
+            | **Size** | ${{ steps.apk.outputs.apk_size }} |
+            | **Min Android** | 7.0 (API 24) |
+            | **Framework** | Flutter 3.38.5 |
+
+            ### What's new
+            - Glass morphism dark theme matching web
+            - BIP39/BIP32 native wallet (instant connect, no hang)
+            - Auto-update from GitHub Releases
+            - Thai/English language support
+
+            ### Install
+            1. Download **${{ steps.apk.outputs.apk_name }}** below
+            2. Open on Android device
+            3. Allow "Install from unknown sources" if prompted
+            4. Tap Install
+
+          files: mobile-flutter/${{ steps.apk.outputs.apk_path }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ══════════════════════════════════════════════════
+      # แจ้ง backend ว่ามี release ใหม่ (clear cache + set active_tag)
+      # ══════════════════════════════════════════════════
+      - name: Notify backend of new release
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event.inputs.create_release == 'true')
+        env:
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+        run: |
+          if [ -n "$DEPLOY_SECRET" ]; then
+            echo "Notifying backend: v${{ steps.version.outputs.version }}"
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+              "https://tpix.online/api/v1/app/notify-release?secret=${DEPLOY_SECRET}&tag=v${{ steps.version.outputs.version }}" \
+              -H "User-Agent: GitHub-Actions" \
+              -H "Accept: application/json")
+            echo "Backend response: $HTTP_CODE"
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Backend notified successfully"
+            else
+              echo "Backend notify returned $HTTP_CODE (non-critical)"
+            fi
+          else
+            echo "DEPLOY_SECRET not set — skipping backend notify"
+          fi
+
+      # ══════════════════════════════════════════════════
+      # Build Summary
+      # ══════════════════════════════════════════════════
+      - name: Build Summary
+        if: always()
+        run: |
+          echo "## TPIX TRADE — Flutter APK Build" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | v${{ steps.version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build** | #${{ steps.version.outputs.build }} |" >> $GITHUB_STEP_SUMMARY
+          if [ -f "${{ steps.apk.outputs.apk_path }}" ]; then
+            echo "| **APK Size** | ${{ steps.apk.outputs.apk_size }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Status** | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Status** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.bump.outputs.bumped }}" = "true" ]; then
+            echo "> Version bumped and committed automatically" >> $GITHUB_STEP_SUMMARY
+          fi

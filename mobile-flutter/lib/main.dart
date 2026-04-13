@@ -1,0 +1,33 @@
+/// TPIX TRADE — Entry Point
+/// MultiProvider setup + App initialization
+///
+/// Developed by Xman Studio
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'app.dart';
+import 'providers/wallet_provider.dart';
+import 'providers/market_provider.dart';
+import 'core/locale/locale_provider.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Lock portrait orientation
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => LocaleProvider()),
+        ChangeNotifierProvider(create: (_) => WalletProvider()),
+        ChangeNotifierProvider(create: (_) => MarketProvider()),
+      ],
+      child: const TpixTradeApp(),
+    ),
+  );
+}
