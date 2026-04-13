@@ -3,50 +3,6 @@
 ///
 /// Developed by Xman Studio
 
-class ApiResponse<T> {
-  final bool success;
-  final T? data;
-  final ApiError? error;
-  final ApiMeta? meta;
-
-  const ApiResponse({
-    required this.success,
-    this.data,
-    this.error,
-    this.meta,
-  });
-}
-
-class ApiError {
-  final String code;
-  final String message;
-
-  const ApiError({required this.code, required this.message});
-
-  factory ApiError.fromJson(Map<String, dynamic> json) => ApiError(
-        code: json['code'] as String? ?? 'UNKNOWN',
-        message: json['message'] as String? ?? 'Unknown error',
-      );
-}
-
-class ApiMeta {
-  final int page;
-  final int perPage;
-  final int total;
-
-  const ApiMeta({
-    required this.page,
-    required this.perPage,
-    required this.total,
-  });
-
-  factory ApiMeta.fromJson(Map<String, dynamic> json) => ApiMeta(
-        page: json['page'] as int? ?? 1,
-        perPage: json['per_page'] as int? ?? 20,
-        total: json['total'] as int? ?? 0,
-      );
-}
-
 // ── Ticker ──
 
 class Ticker {

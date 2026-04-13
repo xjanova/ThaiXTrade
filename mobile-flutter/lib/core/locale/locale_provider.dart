@@ -117,6 +117,33 @@ class LocaleProvider extends ChangeNotifier {
       'common.loading': 'กำลังโหลด...',
       'common.no_data': 'ไม่มีข้อมูล',
       'common.copied': 'คัดลอกแล้ว!',
+      'common.coming_soon': 'เร็วๆ นี้',
+      'common.later': 'ไว้ทีหลัง',
+      'common.download': 'ดาวน์โหลด',
+      'common.downloading': 'กำลังดาวน์โหลด...',
+      'common.search_pairs': 'ค้นหาคู่เทรด...',
+      'common.chart': 'กราฟ',
+      'common.spread': 'สเปรด',
+
+      // Update
+      'update.checking': 'กำลังตรวจสอบอัปเดต...',
+      'update.latest': 'คุณใช้เวอร์ชันล่าสุดแล้ว',
+      'update.available': 'มีอัปเดตใหม่',
+
+      // Wallet status
+      'wallet.verified': 'ยืนยันแล้ว',
+      'wallet.pending': 'รอยืนยัน',
+      'wallet.address_copied': 'คัดลอกที่อยู่แล้ว!',
+
+      // Portfolio
+      'portfolio.no_assets': 'ยังไม่มีสินทรัพย์',
+      'portfolio.assets_count': 'สินทรัพย์',
+
+      // Trade
+      'trade.order_success': 'สร้างออเดอร์สำเร็จ',
+      'trade.order_failed': 'สร้างออเดอร์ไม่สำเร็จ',
+      'trade.invalid_amount': 'กรุณาใส่จำนวนที่ถูกต้อง',
+      'trade.invalid_price': 'กรุณาใส่ราคาที่ถูกต้อง',
     },
     'en': {
       // Navigation
@@ -201,6 +228,33 @@ class LocaleProvider extends ChangeNotifier {
       'common.loading': 'Loading...',
       'common.no_data': 'No data',
       'common.copied': 'Copied!',
+      'common.coming_soon': 'Coming soon',
+      'common.later': 'Later',
+      'common.download': 'Download',
+      'common.downloading': 'Downloading...',
+      'common.search_pairs': 'Search pairs...',
+      'common.chart': 'Chart',
+      'common.spread': 'Spread',
+
+      // Update
+      'update.checking': 'Checking for updates...',
+      'update.latest': 'You are on the latest version',
+      'update.available': 'Update Available',
+
+      // Wallet status
+      'wallet.verified': 'Verified',
+      'wallet.pending': 'Pending',
+      'wallet.address_copied': 'Address copied!',
+
+      // Portfolio
+      'portfolio.no_assets': 'No assets yet',
+      'portfolio.assets_count': 'assets',
+
+      // Trade
+      'trade.order_success': 'Order placed successfully',
+      'trade.order_failed': 'Failed to place order',
+      'trade.invalid_amount': 'Please enter a valid amount',
+      'trade.invalid_price': 'Please enter a valid price',
     },
   };
 }

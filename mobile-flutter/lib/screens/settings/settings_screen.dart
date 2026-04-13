@@ -152,7 +152,7 @@ class _WalletCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  wallet.isVerified ? 'Verified' : 'Pending',
+                  wallet.isVerified ? locale.t('wallet.verified') : locale.t('wallet.pending'),
                   style: GoogleFonts.inter(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
@@ -508,9 +508,9 @@ class _AboutCard extends StatelessWidget {
     final service = UpdateService();
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Checking for updates...'),
-        duration: Duration(seconds: 1),
+      SnackBar(
+        content: Text(locale.t('update.checking')),
+        duration: const Duration(seconds: 1),
       ),
     );
 
@@ -521,9 +521,9 @@ class _AboutCard extends StatelessWidget {
       _showUpdateDialog(context, result, service);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You are on the latest version'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(locale.t('update.latest')),
+          duration: const Duration(seconds: 2),
         ),
       );
     }

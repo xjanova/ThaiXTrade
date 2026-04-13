@@ -79,14 +79,6 @@ class ApiService {
     }
   }
 
-  // ── Chains ──
-
-  Future<List<Map<String, dynamic>>> getChains() async {
-    final res = await _get(ApiConstants.chains);
-    if (res == null || res['success'] != true) return [];
-    return List<Map<String, dynamic>>.from(res['data'] ?? []);
-  }
-
   // ── Market Data ──
 
   Future<List<Ticker>> getTickers() async {

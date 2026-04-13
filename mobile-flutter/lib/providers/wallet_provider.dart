@@ -13,6 +13,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hex/hex.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web3dart/web3dart.dart';
+import '../models/api_models.dart';
 import '../models/chain_config.dart';
 import '../services/api_service.dart';
 
@@ -35,6 +36,12 @@ class WalletProvider extends ChangeNotifier {
   String? _error;
   int _activeChainId = 4289;
   String? _pendingMnemonic;
+
+  // Portfolio data
+  List<TokenBalance> _balances = [];
+  List<TradeOrder> _openOrders = [];
+  List<TradeOrder> _tradeHistory = [];
+  bool _isLoadingPortfolio = false;
 
   // Settings
   String _language = 'en';
@@ -63,6 +70,15 @@ class WalletProvider extends ChangeNotifier {
     if (_address == null) return '';
     return '${_address!.substring(0, 6)}...${_address!.substring(_address!.length - 4)}';
   }
+
+  // Portfolio getters
+  List<TokenBalance> get balances => _balances;
+  List<TradeOrder> get openOrders => _openOrders;
+  List<TradeOrder> get tradeHistory => _tradeHistory;
+  bool get isLoadingPortfolio => _isLoadingPortfolio;
+
+  double get totalPortfolioValue =>
+      _balances.fold(0.0, (sum, b) => sum + (b.usdValue ?? 0));
 
   // Settings getters
   String get language => _language;
@@ -273,6 +289,33 @@ class WalletProvider extends ChangeNotifier {
     _isVerified = false;
     _error = null;
     _pendingMnemonic = null;
+    _balances = [];
+    _openOrders = [];
+    _tradeHistory = [];
+    notifyListeners();
+  }
+
+  // ── Portfolio Data ──
+
+  Future<void> loadPortfolio() async {
+    if (_address == null) return;
+    _isLoadingPortfolio = true;
+    notifyListeners();
+
+    try {
+      final results = await Future.wait([
+        ApiService().getWalletBalances(_address!, chainId: _activeChainId),
+        ApiService().getOpenOrders(_address!),
+        ApiService().getTradeHistory(_address!),
+      ]);
+      _balances = results[0] as List<TokenBalance>;
+      _openOrders = results[1] as List<TradeOrder>;
+      _tradeHistory = results[2] as List<TradeOrder>;
+    } catch (_) {
+      // ใช้ค่าเดิม — ไม่ clear
+    }
+
+    _isLoadingPortfolio = false;
     notifyListeners();
   }
 
@@ -284,6 +327,8 @@ class WalletProvider extends ChangeNotifier {
     SharedPreferences.getInstance().then((prefs) {
       prefs.setInt('tpix_trade_chain_id', chainId);
     }).catchError((_) {});
+    // รีโหลด portfolio data ตาม chain ใหม่
+    loadPortfolio();
   }
 
   // ── Settings ──

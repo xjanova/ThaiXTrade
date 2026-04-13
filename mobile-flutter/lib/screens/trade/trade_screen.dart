@@ -476,7 +476,7 @@ class _TradeScreenState extends State<TradeScreen>
     // Validate amount
     final amount = double.tryParse(amountText);
     if (amount == null || amount <= 0) {
-      _showSnack(locale.isThai ? 'กรุณาใส่จำนวนที่ถูกต้อง' : 'Please enter a valid amount');
+      _showSnack(locale.t('trade.invalid_amount'));
       return;
     }
 
@@ -485,7 +485,7 @@ class _TradeScreenState extends State<TradeScreen>
     if (!isMarket) {
       price = double.tryParse(priceText);
       if (price == null || price <= 0) {
-        _showSnack(locale.isThai ? 'กรุณาใส่ราคาที่ถูกต้อง' : 'Please enter a valid price');
+        _showSnack(locale.t('trade.invalid_price'));
         return;
       }
     }
@@ -508,20 +508,15 @@ class _TradeScreenState extends State<TradeScreen>
       if (order != null) {
         _priceController.clear();
         _amountController.clear();
-        _showSnack(
-          locale.isThai
-              ? 'สร้างออเดอร์สำเร็จ'
-              : 'Order placed successfully',
-          isSuccess: true,
-        );
+        _showSnack(locale.t('trade.order_success'), isSuccess: true);
         // Reload order book
         market.loadOrderBook();
       } else {
-        _showSnack(locale.isThai ? 'สร้างออเดอร์ไม่สำเร็จ' : 'Failed to place order');
+        _showSnack(locale.t('trade.order_failed'));
       }
     } catch (e) {
       if (!mounted) return;
-      _showSnack(locale.isThai ? 'เกิดข้อผิดพลาด' : 'An error occurred');
+      _showSnack(locale.t('common.error'));
     }
 
     if (mounted) setState(() => _isSubmitting = false);

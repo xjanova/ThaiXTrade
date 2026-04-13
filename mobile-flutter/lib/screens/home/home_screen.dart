@@ -71,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                     child: wallet.isConnected
-                        ? _buildPortfolioCard(wallet, market)
+                        ? _buildPortfolioCard(wallet, market, locale)
                         : _buildConnectCard(locale),
                   ),
                 ),
@@ -176,9 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(
-                    locale.isThai ? 'เร็วๆ นี้' : 'Coming soon',
-                  ),
+                  content: Text(locale.t('common.coming_soon')),
                   duration: const Duration(seconds: 1),
                 ),
               );
@@ -191,7 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPortfolioCard(WalletProvider wallet, MarketProvider market) {
+  Widget _buildPortfolioCard(WalletProvider wallet, MarketProvider market, LocaleProvider locale) {
     return GlassCard(
       variant: GlassVariant.elevated,
       borderRadius: 20,
@@ -217,9 +215,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (wallet.address != null) {
                     Clipboard.setData(ClipboardData(text: wallet.address!));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Address copied!'),
-                        duration: Duration(seconds: 1),
+                      SnackBar(
+                        content: Text(locale.t('wallet.address_copied')),
+                        duration: const Duration(seconds: 1),
                       ),
                     );
                   }
@@ -231,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Portfolio Value',
+            locale.isThai ? 'มูลค่าพอร์ต' : 'Portfolio Value',
             style: GoogleFonts.inter(
               fontSize: 12,
               color: AppColors.textTertiary,
@@ -239,39 +237,19 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            '\$0.00',
+            '\$${wallet.totalPortfolioValue.toStringAsFixed(2)}',
             style: AppTheme.mono(
               fontSize: 28,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.tradingGreenBg,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '+\$0.00 (0.00%)',
-                  style: AppTheme.mono(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.tradingGreen,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '24h',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  color: AppColors.textTertiary,
-                ),
-              ),
-            ],
+          Text(
+            '${wallet.balances.length} ${locale.isThai ? 'สินทรัพย์' : 'assets'}',
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: AppColors.textTertiary,
+            ),
           ),
         ],
       ),

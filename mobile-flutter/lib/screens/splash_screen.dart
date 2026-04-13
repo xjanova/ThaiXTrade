@@ -13,6 +13,7 @@ import '../core/theme/gradients.dart';
 import '../providers/wallet_provider.dart';
 import '../providers/market_provider.dart';
 import '../core/locale/locale_provider.dart';
+import '../services/biometric_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -38,6 +39,24 @@ class _SplashScreenState extends State<SplashScreen> {
       context.read<LocaleProvider>().init(),
       Future.delayed(const Duration(milliseconds: 1800)), // minimum splash time
     ]);
+
+    if (!mounted) return;
+
+    // Biometric auth ถ้าเปิดไว้ + มี wallet
+    final wallet = context.read<WalletProvider>();
+    if (wallet.isConnected && wallet.biometricEnabled) {
+      final ok = await BiometricService().authenticate('Unlock TPIX TRADE');
+      if (!mounted) return;
+      if (!ok) {
+        // ล้มเหลว — ยังให้เข้าได้แต่ disconnect wallet เพื่อความปลอดภัย
+        await wallet.disconnect();
+      } else {
+        // โหลด portfolio data หลัง biometric ผ่าน
+        wallet.loadPortfolio();
+      }
+    } else if (wallet.isConnected) {
+      wallet.loadPortfolio();
+    }
 
     if (!mounted) return;
     context.go('/home');
