@@ -15,12 +15,12 @@
  */
 
 import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ethers } from 'ethers';
 import { shortenAddress, SUPPORTED_CHAINS, type ChainConfig } from '@/services/walletService';
 import api from '@/services/api';
 import { playConnectSound, playDisconnectSound, playErrorSound } from '@/utils/sounds';
+import { setSecureItem, getSecureItem, deleteSecureItem } from '@/utils/secureStorage';
 
 // ========== Constants ==========
 const SECURE_KEY_WALLET = 'tpix_wallet_key';
@@ -131,9 +131,9 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       const mnemonic = wallet.mnemonic?.phrase;
       if (!mnemonic) throw new Error('Failed to generate mnemonic');
 
-      // เก็บ private key + mnemonic ใน SecureStore (encrypted by OS)
-      await SecureStore.setItemAsync(SECURE_KEY_WALLET, wallet.privateKey);
-      await SecureStore.setItemAsync(SECURE_KEY_MNEMONIC, mnemonic);
+      // เก็บ private key + mnemonic ใน SecureStore (native) หรือ AsyncStorage (web)
+      await setSecureItem(SECURE_KEY_WALLET, wallet.privateKey);
+      await setSecureItem(SECURE_KEY_MNEMONIC, mnemonic);
 
       const connectedWallet: ConnectedWallet = {
         address: wallet.address,
@@ -186,8 +186,8 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
       const wallet = ethers.Wallet.fromPhrase(trimmed);
 
-      await SecureStore.setItemAsync(SECURE_KEY_WALLET, wallet.privateKey);
-      await SecureStore.setItemAsync(SECURE_KEY_MNEMONIC, trimmed);
+      await setSecureItem(SECURE_KEY_WALLET, wallet.privateKey);
+      await setSecureItem(SECURE_KEY_MNEMONIC, trimmed);
 
       const connectedWallet: ConnectedWallet = {
         address: wallet.address,
@@ -231,7 +231,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   // ========== Sign message ด้วย private key ==========
   signMessage: async (message: string) => {
     try {
-      const privateKey = await SecureStore.getItemAsync(SECURE_KEY_WALLET);
+      const privateKey = await getSecureItem(SECURE_KEY_WALLET);
       if (!privateKey) return null;
       const wallet = new ethers.Wallet(privateKey);
       return await wallet.signMessage(message);
@@ -280,7 +280,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       if (saved) {
         const walletData: ConnectedWallet = JSON.parse(saved);
         if (walletData.isEmbedded) {
-          const hasKey = await SecureStore.getItemAsync(SECURE_KEY_WALLET);
+          const hasKey = await getSecureItem(SECURE_KEY_WALLET);
           if (!hasKey) {
             await AsyncStorage.removeItem(STORAGE_KEY_WALLET_STATE);
             return;
@@ -306,8 +306,8 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   // ========== Disconnect ==========
   disconnectWallet: () => {
     playDisconnectSound();
-    SecureStore.deleteItemAsync(SECURE_KEY_WALLET).catch(() => {});
-    SecureStore.deleteItemAsync(SECURE_KEY_MNEMONIC).catch(() => {});
+    deleteSecureItem(SECURE_KEY_WALLET).catch(() => {});
+    deleteSecureItem(SECURE_KEY_MNEMONIC).catch(() => {});
     AsyncStorage.removeItem(STORAGE_KEY_WALLET_STATE).catch(() => {});
     api.clearToken();
     set({
