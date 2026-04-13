@@ -329,7 +329,7 @@ class AppUpdateController extends Controller
         $masternodeTag = SiteSetting::get('app_release', 'masternode_active_tag');
 
         $cacheKey = 'chain_releases_'.md5($walletTag.$masternodeTag);
-        $data = Cache::remember($cacheKey, 300, function () use ($walletTag, $masternodeTag) {
+        $data = Cache::remember($cacheKey, 1800, function () use ($walletTag, $masternodeTag) {
             return $this->fetchChainReleases($walletTag, $masternodeTag);
         });
 
@@ -348,7 +348,7 @@ class AppUpdateController extends Controller
     public function chainDownload(Request $request): JsonResponse|RedirectResponse
     {
         $type = $request->query('type', 'wallet');
-        $data = Cache::remember('chain_releases', 300, function () {
+        $data = Cache::remember('chain_releases', 1800, function () {
             return $this->fetchChainReleases();
         });
 
@@ -454,6 +454,11 @@ class AppUpdateController extends Controller
                 ->get("https://api.github.com/repos/{$this->githubOwner}/TPIX-Coin/releases?per_page=10");
 
             if (! $response->successful()) {
+                Log::warning('TPIX-Coin releases fetch failed', [
+                    'status' => $response->status(),
+                    'has_token' => (bool) $this->githubToken,
+                ]);
+
                 return $result;
             }
 

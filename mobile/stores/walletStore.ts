@@ -1,9 +1,15 @@
 /**
- * Wallet Store v2 — กระเป๋าจริง + Chain Management
+ * Wallet Store v3 — Simplified & Reliable
  *
- * สร้าง wallet ด้วย ethers.js → เก็บ key ใน SecureStore
- * รองรับ: สร้างใหม่, import mnemonic, external wallet (deep link)
+ * สร้าง wallet ด้วย ethers.js -> เก็บ key ใน SecureStore
+ * รองรับ: สร้างใหม่, import mnemonic
  * มี chain management: เพิ่ม/สลับ chain, TPIX Chain default
+ *
+ * v3 Changes:
+ * - ลบ wallet detection (canOpenURL ไม่เสถียรบน Android 11+)
+ * - ลบ external wallet deep link connect (ไม่มี WalletConnect v2)
+ * - เพิ่ม error handling ที่ดีขึ้น
+ * - ต้องมี crypto polyfill (expo-crypto) ก่อน import
  *
  * Developed by Xman Studio
  */
@@ -12,15 +18,7 @@ import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ethers } from 'ethers';
-import {
-  WalletProvider,
-  WalletDetectionResult,
-  detectInstalledWallets,
-  openWalletApp,
-  shortenAddress,
-  SUPPORTED_CHAINS,
-  type ChainConfig,
-} from '@/services/walletService';
+import { shortenAddress, SUPPORTED_CHAINS, type ChainConfig } from '@/services/walletService';
 import api from '@/services/api';
 import { playConnectSound, playDisconnectSound, playErrorSound } from '@/utils/sounds';
 
@@ -30,9 +28,6 @@ const SECURE_KEY_MNEMONIC = 'tpix_wallet_mnemonic';
 const STORAGE_KEY_WALLET_STATE = 'tpix_wallet_state';
 const STORAGE_KEY_CHAINS = 'tpix_user_chains';
 const STORAGE_KEY_SETTINGS = 'tpix_user_settings';
-const CONNECT_TIMEOUT_MS = 10_000;
-
-let connectTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 // ========== Types ==========
 export interface ConnectedWallet {
@@ -74,18 +69,11 @@ interface WalletState {
   isConnecting: boolean;
   connectError: string | null;
   isVerified: boolean;
-
-  // Mnemonic (ชั่วคราว — แสดงให้ user backup แล้วลบ)
   pendingMnemonic: string | null;
-
-  // Detection
-  detectedWallets: WalletDetectionResult[];
-  isDetecting: boolean;
-  lastDetectedAt: number | null;
 
   // Modal
   isModalVisible: boolean;
-  modalStep: 'choose' | 'create' | 'import' | 'backup';
+  modalStep: 'choose' | 'backup' | 'import';
 
   // Chains
   activeChainId: number;
@@ -97,20 +85,16 @@ interface WalletState {
   // Actions — Wallet
   createNewWallet: () => Promise<void>;
   importWallet: (mnemonic: string) => Promise<boolean>;
-  connectExternalWallet: (provider: WalletProvider) => Promise<boolean>;
   disconnectWallet: () => void;
   signMessage: (message: string) => Promise<string | null>;
   verifyWithBackend: () => Promise<boolean>;
   loadSavedWallet: () => Promise<void>;
   confirmMnemonicBackup: () => void;
 
-  // Actions — Detection
-  detectWallets: () => Promise<void>;
-
   // Actions — Modal
   showModal: () => void;
   hideModal: () => void;
-  setModalStep: (step: 'choose' | 'create' | 'import' | 'backup') => void;
+  setModalStep: (step: 'choose' | 'backup' | 'import') => void;
   clearError: () => void;
 
   // Actions — Chains
@@ -130,10 +114,6 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   isVerified: false,
   pendingMnemonic: null,
 
-  detectedWallets: [],
-  isDetecting: false,
-  lastDetectedAt: null,
-
   isModalVisible: false,
   modalStep: 'choose',
 
@@ -146,7 +126,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   createNewWallet: async () => {
     set({ isConnecting: true, connectError: null });
     try {
-      // สร้าง wallet จริงด้วย ethers
+      // สร้าง wallet จริงด้วย ethers (ต้องมี crypto polyfill)
       const wallet = ethers.Wallet.createRandom();
       const mnemonic = wallet.mnemonic?.phrase;
       if (!mnemonic) throw new Error('Failed to generate mnemonic');
@@ -155,10 +135,9 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       await SecureStore.setItemAsync(SECURE_KEY_WALLET, wallet.privateKey);
       await SecureStore.setItemAsync(SECURE_KEY_MNEMONIC, mnemonic);
 
-      const address = wallet.address;
       const connectedWallet: ConnectedWallet = {
-        address,
-        shortAddress: shortenAddress(address),
+        address: wallet.address,
+        shortAddress: shortenAddress(wallet.address),
         providerId: 'tpix-embedded',
         providerName: 'TPIX Wallet',
         chain: 'TPIX',
@@ -167,7 +146,6 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         isEmbedded: true,
       };
 
-      // Save state
       await AsyncStorage.setItem(STORAGE_KEY_WALLET_STATE, JSON.stringify(connectedWallet));
 
       playConnectSound();
@@ -180,22 +158,17 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         activeChainId: 4289,
       });
 
-      // Register กับ backend + auto-verify (ต้อง verify ก่อนใช้ protected endpoints)
+      // Register กับ backend (non-blocking)
       api.walletConnect({
-        wallet_address: address,
+        wallet_address: wallet.address,
         chain_id: 4289,
         wallet_type: 'tpix_embedded',
-      }).then(() => {
-        // Auto-verify หลัง connect สำเร็จ (ใช้ signature challenge)
-        get().verifyWithBackend();
-      }).catch(() => {});
+      }).then(() => get().verifyWithBackend()).catch(() => {});
 
     } catch (err) {
       playErrorSound();
-      set({
-        connectError: err instanceof Error ? err.message : 'Failed to create wallet',
-        isConnecting: false,
-      });
+      const message = err instanceof Error ? err.message : 'Failed to create wallet';
+      set({ connectError: message, isConnecting: false });
     }
   },
 
@@ -207,20 +180,18 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
       // Validate mnemonic
       if (!ethers.Mnemonic.isValidMnemonic(trimmed)) {
-        set({ connectError: 'Invalid mnemonic phrase. Please check and try again.', isConnecting: false });
+        set({ connectError: 'Invalid recovery phrase. Please check and try again.', isConnecting: false });
         return false;
       }
 
       const wallet = ethers.Wallet.fromPhrase(trimmed);
 
-      // เก็บ key
       await SecureStore.setItemAsync(SECURE_KEY_WALLET, wallet.privateKey);
       await SecureStore.setItemAsync(SECURE_KEY_MNEMONIC, trimmed);
 
-      const address = wallet.address;
       const connectedWallet: ConnectedWallet = {
-        address,
-        shortAddress: shortenAddress(address),
+        address: wallet.address,
+        shortAddress: shortenAddress(wallet.address),
         providerId: 'tpix-embedded',
         providerName: 'TPIX Wallet',
         chain: 'TPIX',
@@ -241,60 +212,18 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         activeChainId: 4289,
       });
 
-      // Register + auto-verify
+      // Register + auto-verify (non-blocking)
       api.walletConnect({
-        wallet_address: address,
+        wallet_address: wallet.address,
         chain_id: 4289,
         wallet_type: 'tpix_embedded',
-      }).then(() => {
-        get().verifyWithBackend();
-      }).catch(() => {});
+      }).then(() => get().verifyWithBackend()).catch(() => {});
 
       return true;
     } catch (err) {
       playErrorSound();
-      set({
-        connectError: err instanceof Error ? err.message : 'Failed to import wallet',
-        isConnecting: false,
-      });
-      return false;
-    }
-  },
-
-  // ========== เชื่อมต่อ external wallet (deep link) ==========
-  connectExternalWallet: async (provider: WalletProvider) => {
-    set({ isConnecting: true, connectError: null });
-    try {
-      const opened = await openWalletApp(provider);
-      if (!opened) {
-        playErrorSound();
-        set({
-          connectError: `${provider.name} is not installed. Please install it or create a new wallet.`,
-          isConnecting: false,
-        });
-        return false;
-      }
-
-      // ตั้ง timeout ป้องกันค้าง
-      if (connectTimeoutId) clearTimeout(connectTimeoutId);
-      connectTimeoutId = setTimeout(() => {
-        connectTimeoutId = null;
-        const state = get();
-        if (state.isConnecting) {
-          set({
-            isConnecting: false,
-            connectError: 'Connection timed out. Please try again.',
-          });
-        }
-      }, CONNECT_TIMEOUT_MS);
-
-      return true;
-    } catch (err) {
-      playErrorSound();
-      set({
-        connectError: err instanceof Error ? err.message : 'Connection failed',
-        isConnecting: false,
-      });
+      const message = err instanceof Error ? err.message : 'Failed to import wallet';
+      set({ connectError: message, isConnecting: false });
       return false;
     }
   },
@@ -312,36 +241,21 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   // ========== Verify กับ backend (signature challenge) ==========
-  // SECURITY FIX: ทุก wallet ต้อง verify (ลบ auto-verify ของ tpix_wallet ที่ backend แล้ว)
-  // เพิ่ม timeout 15 วินาที ป้องกันค้าง
   verifyWithBackend: async () => {
     const { wallet, signMessage } = get();
-    if (!wallet) return false;
-
-    // External wallet ที่ไม่มี private key — ไม่สามารถ sign ได้ในแอป
-    // ต้อง verify ผ่าน external wallet app (ยังไม่ support)
-    if (!wallet.isEmbedded) {
+    if (!wallet || !wallet.isEmbedded) {
       set({ isVerified: false });
       return false;
     }
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15_000);
-
-      // Step 1: ขอ nonce
+      // Step 1: ขอ nonce (api service มี timeout 15s ในตัว)
       const signResponse = await api.walletRequestSignature(wallet.address);
-      if (!signResponse?.data?.message) {
-        clearTimeout(timeoutId);
-        return false;
-      }
+      if (!signResponse?.data?.message) return false;
 
       // Step 2: Sign message ด้วย private key ที่เก็บใน SecureStore
       const signature = await signMessage(signResponse.data.message);
-      if (!signature) {
-        clearTimeout(timeoutId);
-        return false;
-      }
+      if (!signature) return false;
 
       // Step 3: Verify signature กับ backend
       const verifyResponse = await api.walletVerifySignature({
@@ -349,8 +263,6 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         signature,
         nonce: signResponse.data.nonce,
       });
-
-      clearTimeout(timeoutId);
 
       const verified = verifyResponse?.data?.verified === true;
       set({ isVerified: verified });
@@ -367,7 +279,6 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       const saved = await AsyncStorage.getItem(STORAGE_KEY_WALLET_STATE);
       if (saved) {
         const walletData: ConnectedWallet = JSON.parse(saved);
-        // ตรวจว่ายังมี key อยู่ไหม (embedded wallet)
         if (walletData.isEmbedded) {
           const hasKey = await SecureStore.getItemAsync(SECURE_KEY_WALLET);
           if (!hasKey) {
@@ -378,13 +289,12 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         set({ wallet: walletData, activeChainId: walletData.chainId });
       }
 
-      // โหลด chains ที่ user เพิ่มไว้
       const savedChains = await AsyncStorage.getItem(STORAGE_KEY_CHAINS);
       if (savedChains) {
         set({ userChains: JSON.parse(savedChains) });
       }
     } catch {
-      // Silent fail — เริ่มใหม่
+      // Silent fail
     }
   },
 
@@ -408,32 +318,9 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     });
   },
 
-  // ========== Detection ==========
-  detectWallets: async () => {
-    const now = Date.now();
-    const { lastDetectedAt } = get();
-    if (lastDetectedAt && now - lastDetectedAt < 10_000) return;
-
-    set({ isDetecting: true });
-    try {
-      const results = await detectInstalledWallets();
-      set({ detectedWallets: results, lastDetectedAt: now });
-    } catch {
-      // Silent
-    } finally {
-      set({ isDetecting: false });
-    }
-  },
-
   // ========== Modal ==========
-  showModal: () => {
-    set({ isModalVisible: true, modalStep: 'choose', connectError: null });
-    get().detectWallets();
-  },
-  hideModal: () => {
-    if (connectTimeoutId) { clearTimeout(connectTimeoutId); connectTimeoutId = null; }
-    set({ isModalVisible: false, connectError: null, isConnecting: false });
-  },
+  showModal: () => set({ isModalVisible: true, modalStep: 'choose', connectError: null }),
+  hideModal: () => set({ isModalVisible: false, connectError: null, isConnecting: false }),
   setModalStep: (step) => set({ modalStep: step, connectError: null }),
   clearError: () => set({ connectError: null }),
 
@@ -445,7 +332,6 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
     set({ activeChainId: chainId });
 
-    // อัปเดต wallet state ด้วย
     if (wallet) {
       const updated = { ...wallet, chain: chain.symbol, chainId };
       set({ wallet: updated });
@@ -455,20 +341,18 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
   addChain: async (chain: ChainConfig) => {
     const { userChains } = get();
-    if (userChains.find(c => c.chainId === chain.chainId)) return; // มีอยู่แล้ว
+    if (userChains.find(c => c.chainId === chain.chainId)) return;
     const updated = [...userChains, chain];
     set({ userChains: updated });
     await AsyncStorage.setItem(STORAGE_KEY_CHAINS, JSON.stringify(updated));
   },
 
   removeChain: async (chainId: number) => {
-    // ห้ามลบ TPIX Chain
-    if (chainId === 4289) return;
+    if (chainId === 4289) return; // ห้ามลบ TPIX Chain
     const { userChains, activeChainId } = get();
     const updated = userChains.filter(c => c.chainId !== chainId);
     set({ userChains: updated });
     await AsyncStorage.setItem(STORAGE_KEY_CHAINS, JSON.stringify(updated));
-    // ถ้าลบ chain ที่กำลังใช้ → สลับไป TPIX
     if (activeChainId === chainId) {
       get().switchChain(4289);
     }
@@ -495,6 +379,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 }));
 
 // ========== Deep link callback handler ==========
+// รองรับ callback จาก TPIX Wallet app (เก็บไว้สำหรับอนาคต)
 export async function handleWalletCallback(url: string): Promise<void> {
   try {
     const parsed = new URL(url);
@@ -502,13 +387,11 @@ export async function handleWalletCallback(url: string): Promise<void> {
 
     if (path === 'wallet/connect' || path === '/wallet/connect') {
       const address = parsed.searchParams.get('address');
-      const chain = parsed.searchParams.get('chain') || 'ETH';
-      const chainId = parseInt(parsed.searchParams.get('chainId') || '56', 10);
+      const chain = parsed.searchParams.get('chain') || 'TPIX';
+      const chainId = parseInt(parsed.searchParams.get('chainId') || '4289', 10);
       const provider = parsed.searchParams.get('provider') || 'external';
 
       if (address && ethers.isAddress(address)) {
-        if (connectTimeoutId) { clearTimeout(connectTimeoutId); connectTimeoutId = null; }
-
         const connectedWallet: ConnectedWallet = {
           address,
           shortAddress: shortenAddress(address),

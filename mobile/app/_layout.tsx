@@ -1,3 +1,4 @@
+import '@/polyfills'; // Must be first — crypto polyfill for ethers.js
 import { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
@@ -9,7 +10,7 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import UpdateModal from '@/components/common/UpdateModal';
 import WalletConnectModal from '@/components/wallet/WalletConnectModal';
 import { useUpdateStore } from '@/stores/updateStore';
-import { handleWalletCallback } from '@/stores/walletStore';
+import { handleWalletCallback, useWalletStore } from '@/stores/walletStore';
 import { playSplashSound } from '@/utils/sounds';
 
 // Prevent splash screen from hiding until we're ready
@@ -17,6 +18,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const checkUpdate = useUpdateStore((s) => s.checkUpdate);
+  const loadSavedWallet = useWalletStore((s) => s.loadSavedWallet);
   const [showAnimatedSplash, setShowAnimatedSplash] = useState(true);
   const [fadeAnim] = useState(() => new Animated.Value(1));
   const [scaleAnim] = useState(() => new Animated.Value(0.8));
@@ -47,6 +49,9 @@ export default function RootLayout() {
       });
     }, 2000);
   }, []);
+
+  // Restore wallet state on app start / กู้คืนสถานะกระเป๋าตอนเปิดแอป
+  useEffect(() => { loadSavedWallet(); }, []);
 
   // Check for updates on app start / ตรวจสอบอัปเดตตอนเปิดแอป
   useEffect(() => {
