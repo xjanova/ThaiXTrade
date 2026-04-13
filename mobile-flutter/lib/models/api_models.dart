@@ -50,6 +50,19 @@ class Ticker {
 
   String get displaySymbol => '${baseAsset}/${quoteAsset}';
   bool get isPositive => priceChangePercent >= 0;
+
+  Ticker copyWith({double? lastPrice, double? quoteVolume24h}) => Ticker(
+        symbol: symbol,
+        baseAsset: baseAsset,
+        quoteAsset: quoteAsset,
+        lastPrice: lastPrice ?? this.lastPrice,
+        priceChange: priceChange,
+        priceChangePercent: priceChangePercent,
+        high24h: high24h,
+        low24h: low24h,
+        volume24h: volume24h,
+        quoteVolume24h: quoteVolume24h ?? this.quoteVolume24h,
+      );
 }
 
 // ── Order Book ──

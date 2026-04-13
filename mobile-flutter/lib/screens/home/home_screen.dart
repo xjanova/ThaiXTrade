@@ -13,6 +13,7 @@ import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/market_provider.dart';
+import '../../widgets/common/coin_logo.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/price_text.dart';
 import '../../widgets/common/shimmer_loading.dart';
@@ -133,15 +134,10 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         children: [
           // TPIX logo
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              gradient: AppGradients.brand,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.show_chart_rounded,
-                size: 18, color: Colors.white),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.asset('assets/images/logo.webp',
+                width: 36, height: 36, fit: BoxFit.cover),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -312,25 +308,8 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          // TPIX icon
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              gradient: AppGradients.brand,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(
-                'T',
-                style: GoogleFonts.inter(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
+          // TPIX logo
+          CoinLogo(symbol: 'TPIX', size: 40, borderRadius: 12),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

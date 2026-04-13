@@ -10,6 +10,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../providers/market_provider.dart';
+import '../../widgets/common/coin_logo.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/price_text.dart';
 import '../../widgets/common/shimmer_loading.dart';
@@ -307,27 +308,8 @@ class _TickerItem extends StatelessWidget {
             ),
             const SizedBox(width: 10),
 
-            // Coin icon placeholder
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.bgTertiary,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Center(
-                child: Text(
-                  ticker.baseAsset.isNotEmpty
-                      ? ticker.baseAsset.substring(0, 1)
-                      : '?',
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.brandCyan,
-                  ),
-                ),
-              ),
-            ),
+            // Coin logo จาก CDN
+            CoinLogo(symbol: ticker.baseAsset, size: 36),
             const SizedBox(width: 10),
 
             // Name

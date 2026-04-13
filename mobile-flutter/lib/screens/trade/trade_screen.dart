@@ -1,5 +1,5 @@
 /// TPIX TRADE — Trade Screen
-/// Chart + Order Book + Trade Form (Buy/Sell)
+/// TradingView Chart + Order Book + Trade Form (Buy/Sell) + Open Orders
 ///
 /// Developed by Xman Studio
 
@@ -14,9 +14,14 @@ import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/market_provider.dart';
 import '../../services/api_service.dart';
+import '../../utils/crypto_logos.dart';
+import '../../widgets/common/coin_logo.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
 import '../../widgets/common/price_text.dart';
+import '../../widgets/trading/trading_chart.dart';
+import '../../widgets/trading/timeframe_selector.dart';
+import '../../widgets/trading/chart_type_toggle.dart';
 import '../../models/api_models.dart';
 
 class TradeScreen extends StatefulWidget {
@@ -31,14 +36,16 @@ class _TradeScreenState extends State<TradeScreen>
   late TabController _orderTypeTab;
   bool _isBuy = true;
   bool _isSubmitting = false;
+  String _timeframe = '1h';
+  String _chartType = 'candle';
   final _priceController = TextEditingController();
   final _amountController = TextEditingController();
+  final _chartKey = GlobalKey<TradingChartState>();
 
   @override
   void initState() {
     super.initState();
     _orderTypeTab = TabController(length: 2, vsync: this);
-    // Load order book + klines for selected pair
     final market = context.read<MarketProvider>();
     market.loadOrderBook();
     market.loadKlines();
@@ -58,6 +65,9 @@ class _TradeScreenState extends State<TradeScreen>
     final market = context.watch<MarketProvider>();
     final wallet = context.watch<WalletProvider>();
     final ticker = market.selectedTicker;
+    final isTpix = CryptoLogos.isTpix(
+      CryptoLogos.baseSymbol(market.selectedPair),
+    );
 
     return Scaffold(
       body: Container(
@@ -66,17 +76,49 @@ class _TradeScreenState extends State<TradeScreen>
           bottom: false,
           child: Column(
             children: [
-              // Pair selector + price
               _buildPairHeader(market, ticker),
-
-              // Main content
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.only(bottom: 100),
                   child: Column(
                     children: [
-                      // Mini chart placeholder
-                      _buildMiniChart(market),
+                      // Timeframe + chart type row
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TimeframeSelector(
+                                selected: _timeframe,
+                                onChanged: (tf) {
+                                  setState(() => _timeframe = tf);
+                                  _chartKey.currentState?.changeTimeframe(tf);
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ChartTypeToggle(
+                              selected: _chartType,
+                              onChanged: (type) {
+                                setState(() => _chartType = type);
+                                _chartKey.currentState?.setChartType(type);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // TradingView Chart (WebView)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: TradingChart(
+                          key: _chartKey,
+                          symbol: market.selectedPair,
+                          interval: _timeframe,
+                          isTpix: isTpix,
+                          height: 300,
+                        ),
+                      ),
 
                       const SizedBox(height: 12),
 
@@ -93,6 +135,13 @@ class _TradeScreenState extends State<TradeScreen>
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: _buildTradeForm(locale, wallet, market),
                       ),
+
+                      // Open Orders
+                      if (wallet.isConnected && wallet.openOrders.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                          child: _buildOpenOrders(wallet, locale),
+                        ),
                     ],
                   ),
                 ),
@@ -104,18 +153,24 @@ class _TradeScreenState extends State<TradeScreen>
     );
   }
 
-  // ── Pair header ──
+  // ── Pair header with CoinLogo ──
 
   Widget _buildPairHeader(MarketProvider market, Ticker? ticker) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       child: Row(
         children: [
-          // Pair name
           GestureDetector(
             onTap: () => _showPairPicker(market),
             child: Row(
               children: [
+                if (ticker != null)
+                  CoinLogo(
+                    symbol: ticker.baseAsset,
+                    size: 24,
+                    borderRadius: 8,
+                  ),
+                if (ticker != null) const SizedBox(width: 8),
                 Text(
                   ticker?.displaySymbol ?? market.selectedPair,
                   style: GoogleFonts.inter(
@@ -147,28 +202,6 @@ class _TradeScreenState extends State<TradeScreen>
           ],
         ],
       ),
-    );
-  }
-
-  // ── Mini chart placeholder ──
-
-  Widget _buildMiniChart(MarketProvider market) {
-    return Container(
-      height: 180,
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.bgCardBorder),
-      ),
-      child: market.klines.isEmpty
-          ? const Center(
-              child: Text('Chart', style: TextStyle(color: AppColors.textTertiary)),
-            )
-          : CustomPaint(
-              painter: _MiniChartPainter(klines: market.klines),
-              size: Size.infinite,
-            ),
     );
   }
 
@@ -233,7 +266,7 @@ class _TradeScreenState extends State<TradeScreen>
               children: [
                 if (ob != null && ob.asks.isNotEmpty && ob.bids.isNotEmpty)
                   Text(
-                    'Spread: ${(ob.asks.first.price - ob.bids.first.price).toStringAsFixed(2)}',
+                    '${locale.t('common.spread')}: ${(ob.asks.first.price - ob.bids.first.price).toStringAsFixed(2)}',
                     style: AppTheme.mono(
                       fontSize: 10,
                       color: AppColors.textTertiary,
@@ -254,11 +287,12 @@ class _TradeScreenState extends State<TradeScreen>
                 ),
 
           if (ob == null)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
-                child: Text('Loading...',
-                    style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+                child: Text(locale.t('common.loading'),
+                    style: const TextStyle(
+                        color: AppColors.textTertiary, fontSize: 12)),
               ),
             ),
         ],
@@ -268,7 +302,9 @@ class _TradeScreenState extends State<TradeScreen>
 
   double _maxQty(List<OrderBookEntry> entries) {
     if (entries.isEmpty) return 1;
-    return entries.take(5).fold(0.0, (max, e) => e.quantity > max ? e.quantity : max);
+    return entries
+        .take(5)
+        .fold(0.0, (max, e) => e.quantity > max ? e.quantity : max);
   }
 
   TextStyle get _obHeaderStyle => GoogleFonts.inter(
@@ -306,7 +342,8 @@ class _TradeScreenState extends State<TradeScreen>
                         style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: _isBuy ? Colors.white : AppColors.textTertiary,
+                          color:
+                              _isBuy ? Colors.white : AppColors.textTertiary,
                         ),
                       ),
                     ),
@@ -343,7 +380,7 @@ class _TradeScreenState extends State<TradeScreen>
 
           const SizedBox(height: 14),
 
-          // Order type tabs
+          // Order type tabs (Limit / Market)
           Container(
             decoration: BoxDecoration(
               color: AppColors.bgTertiary,
@@ -360,8 +397,8 @@ class _TradeScreenState extends State<TradeScreen>
               indicatorPadding: const EdgeInsets.all(2),
               labelColor: AppColors.textPrimary,
               unselectedLabelColor: AppColors.textTertiary,
-              labelStyle:
-                  GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
+              labelStyle: GoogleFonts.inter(
+                  fontSize: 12, fontWeight: FontWeight.w600),
               dividerColor: Colors.transparent,
               tabs: [
                 Tab(text: locale.t('trade.limit'), height: 32),
@@ -378,7 +415,6 @@ class _TradeScreenState extends State<TradeScreen>
             controller: _priceController,
             suffix: market.selectedTicker?.quoteAsset ?? 'USDT',
           ),
-
           const SizedBox(height: 10),
 
           // Amount input
@@ -387,7 +423,6 @@ class _TradeScreenState extends State<TradeScreen>
             controller: _amountController,
             suffix: market.selectedTicker?.baseAsset ?? 'BTC',
           ),
-
           const SizedBox(height: 10),
 
           // Amount shortcuts
@@ -396,16 +431,18 @@ class _TradeScreenState extends State<TradeScreen>
             children: ['25%', '50%', '75%', '100%'].map((pct) {
               return GestureDetector(
                 onTap: () {
-                  // ใส่ % ของ max amount ตาม price ปัจจุบัน (placeholder)
-                  final factor = double.parse(pct.replaceAll('%', '')) / 100;
-                  final current = double.tryParse(_amountController.text) ?? 0;
+                  final factor =
+                      double.parse(pct.replaceAll('%', '')) / 100;
+                  final current =
+                      double.tryParse(_amountController.text) ?? 0;
                   if (current > 0) {
-                    _amountController.text = (current * factor).toStringAsFixed(4);
+                    _amountController.text =
+                        (current * factor).toStringAsFixed(4);
                   }
                 },
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppColors.bgTertiary,
                     borderRadius: BorderRadius.circular(6),
@@ -428,7 +465,9 @@ class _TradeScreenState extends State<TradeScreen>
                 : '${locale.t('trade.sell')} ${market.selectedTicker?.baseAsset ?? ''}',
             variant: _isBuy ? ButtonVariant.buy : ButtonVariant.sell,
             isLoading: _isSubmitting,
-            onPressed: wallet.isConnected && !_isSubmitting ? () => _submitOrder() : null,
+            onPressed: wallet.isConnected && !_isSubmitting
+                ? () => _submitOrder()
+                : null,
           ),
 
           if (!wallet.isConnected) ...[
@@ -443,6 +482,55 @@ class _TradeScreenState extends State<TradeScreen>
       ),
     );
   }
+
+  // ── Open Orders ──
+
+  Widget _buildOpenOrders(WalletProvider wallet, LocaleProvider locale) {
+    final orders = wallet.openOrders
+        .where((o) => o.pair == context.read<MarketProvider>().selectedPair)
+        .toList();
+
+    if (orders.isEmpty) return const SizedBox.shrink();
+
+    return GlassCard(
+      variant: GlassVariant.standard,
+      borderRadius: 14,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            locale.t('trade.open_orders'),
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...orders.map((order) => _OpenOrderRow(
+                order: order,
+                onCancel: () => _cancelOrder(order.id, wallet),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _cancelOrder(String orderId, WalletProvider wallet) async {
+    if (wallet.address == null) return;
+    final ok =
+        await ApiService().cancelOrder(orderId, wallet.address!);
+    if (!mounted) return;
+    if (ok) {
+      wallet.loadPortfolio();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order cancelled')),
+      );
+    }
+  }
+
+  // ── Pair picker ──
 
   void _showPairPicker(MarketProvider market) {
     showModalBottomSheet(
@@ -459,8 +547,9 @@ class _TradeScreenState extends State<TradeScreen>
     );
   }
 
+  // ── Submit order ──
+
   Future<void> _submitOrder() async {
-    // C3: Guard double-tap — เช็ค synchronous ก่อน async
     if (_isSubmitting) return;
 
     final wallet = context.read<WalletProvider>();
@@ -473,14 +562,12 @@ class _TradeScreenState extends State<TradeScreen>
     final amountText = _amountController.text.trim();
     final isMarket = _orderTypeTab.index == 1;
 
-    // Validate amount
     final amount = double.tryParse(amountText);
     if (amount == null || amount <= 0) {
       _showSnack(locale.t('trade.invalid_amount'));
       return;
     }
 
-    // Validate price (limit order only)
     double? price;
     if (!isMarket) {
       price = double.tryParse(priceText);
@@ -509,8 +596,8 @@ class _TradeScreenState extends State<TradeScreen>
         _priceController.clear();
         _amountController.clear();
         _showSnack(locale.t('trade.order_success'), isSuccess: true);
-        // Reload order book
         market.loadOrderBook();
+        wallet.loadPortfolio();
       } else {
         _showSnack(locale.t('trade.order_failed'));
       }
@@ -603,24 +690,23 @@ class _OrderBookRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fillRatio = maxQty > 0 ? entry.quantity / maxQty : 0.0;
-    final barColor = isBid
-        ? AppColors.tradingGreenBg
-        : AppColors.tradingRedBg;
-    final textColor = isBid ? AppColors.tradingGreen : AppColors.tradingRed;
+    final barColor =
+        isBid ? AppColors.tradingGreenBg : AppColors.tradingRedBg;
+    final textColor =
+        isBid ? AppColors.tradingGreen : AppColors.tradingRed;
 
     return Stack(
       children: [
-        // Background fill bar
         Positioned.fill(
           child: Align(
-            alignment: isBid ? Alignment.centerLeft : Alignment.centerRight,
+            alignment:
+                isBid ? Alignment.centerLeft : Alignment.centerRight,
             child: FractionallySizedBox(
               widthFactor: fillRatio.clamp(0, 1),
               child: Container(color: barColor),
             ),
           ),
         ),
-        // Content
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
           child: Row(
@@ -655,73 +741,73 @@ class _OrderBookRow extends StatelessWidget {
   }
 }
 
-// ── Simple mini chart painter ──
+// ── Open Order Row ──
 
-class _MiniChartPainter extends CustomPainter {
-  final List<Kline> klines;
+class _OpenOrderRow extends StatelessWidget {
+  final TradeOrder order;
+  final VoidCallback onCancel;
 
-  _MiniChartPainter({required this.klines});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (klines.isEmpty) return;
-
-    final prices = klines.map((k) => k.close).toList();
-    final minPrice = prices.reduce((a, b) => a < b ? a : b);
-    final maxPrice = prices.reduce((a, b) => a > b ? a : b);
-    final priceRange = maxPrice - minPrice;
-    if (priceRange == 0) return;
-
-    final isPositive = prices.last >= prices.first;
-    final lineColor = isPositive
-        ? const Color(0xFF00C853)
-        : const Color(0xFFFF1744);
-    final fillColor = lineColor.withValues(alpha: 0.1);
-
-    final linePaint = Paint()
-      ..color = lineColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-
-    final path = Path();
-    final fillPath = Path();
-
-    for (int i = 0; i < prices.length; i++) {
-      final x = (i / (prices.length - 1)) * size.width;
-      final y = size.height - ((prices[i] - minPrice) / priceRange) * (size.height - 20) - 10;
-
-      if (i == 0) {
-        path.moveTo(x, y);
-        fillPath.moveTo(x, size.height);
-        fillPath.lineTo(x, y);
-      } else {
-        path.lineTo(x, y);
-        fillPath.lineTo(x, y);
-      }
-    }
-
-    // Fill gradient area
-    fillPath.lineTo(size.width, size.height);
-    fillPath.close();
-
-    final fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [fillColor, fillColor.withValues(alpha: 0)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-
-    canvas.drawPath(fillPath, fillPaint);
-    canvas.drawPath(path, linePaint);
-  }
+  const _OpenOrderRow({required this.order, required this.onCancel});
 
   @override
-  bool shouldRepaint(covariant _MiniChartPainter old) {
-    if (old.klines.length != klines.length) return true;
-    if (klines.isEmpty) return false;
-    // เช็คราคาล่าสุดเปลี่ยนไหม — ไม่ต้อง deep compare ทั้ง list
-    return old.klines.last.close != klines.last.close;
+  Widget build(BuildContext context) {
+    final isBuy = order.isBuy;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 28,
+            decoration: BoxDecoration(
+              color: isBuy ? AppColors.tradingGreen : AppColors.tradingRed,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${order.side.toUpperCase()} ${order.type}',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isBuy
+                        ? AppColors.tradingGreen
+                        : AppColors.tradingRed,
+                  ),
+                ),
+                Text(
+                  '${order.amount.toStringAsFixed(4)} @ ${order.price?.toStringAsFixed(2) ?? 'market'}',
+                  style: AppTheme.mono(
+                      fontSize: 10, color: AppColors.textTertiary),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: onCancel,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.tradingRedBg,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.tradingRed),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -760,15 +846,17 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
           ),
           decoration: const BoxDecoration(
             color: Color(0xF20A0E1A),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border(top: BorderSide(color: Color(0x1AFFFFFF))),
+            borderRadius:
+                BorderRadius.vertical(top: Radius.circular(24)),
+            border:
+                Border(top: BorderSide(color: Color(0x1AFFFFFF))),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Handle bar
               Container(
-                width: 40, height: 4,
+                width: 40,
+                height: 4,
                 margin: const EdgeInsets.only(top: 12, bottom: 16),
                 decoration: BoxDecoration(
                   color: AppColors.textTertiary,
@@ -786,45 +874,65 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                   ),
                   child: TextField(
                     onChanged: (v) => setState(() => _search = v),
-                    style: GoogleFonts.inter(fontSize: 14, color: AppColors.textPrimary),
+                    style: GoogleFonts.inter(
+                        fontSize: 14, color: AppColors.textPrimary),
                     decoration: InputDecoration(
-                      hintText: 'Search pairs...',
-                      hintStyle: GoogleFonts.inter(fontSize: 14, color: AppColors.textDisabled),
+                      hintText: context
+                          .read<LocaleProvider>()
+                          .t('common.search_pairs'),
+                      hintStyle: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: AppColors.textDisabled),
                       prefixIcon: const Icon(Icons.search_rounded,
                           color: AppColors.textTertiary, size: 20),
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      contentPadding:
+                          const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
                 ),
               ),
               const SizedBox(height: 8),
-              // List
               Flexible(
                 child: ListView.builder(
                   itemCount: _filtered.length,
                   padding: const EdgeInsets.only(bottom: 24),
                   itemBuilder: (_, i) {
                     final t = _filtered[i];
-                    final isSelected = t.symbol == widget.market.selectedPair;
+                    final isSelected =
+                        t.symbol == widget.market.selectedPair;
                     return ListTile(
                       dense: true,
                       selected: isSelected,
-                      selectedTileColor: AppColors.brandCyan.withValues(alpha: 0.08),
+                      selectedTileColor:
+                          AppColors.brandCyan.withValues(alpha: 0.08),
+                      leading: CoinLogo(
+                        symbol: t.baseAsset,
+                        size: 28,
+                        borderRadius: 8,
+                      ),
                       title: Text(
                         t.displaySymbol,
                         style: GoogleFonts.inter(
                           fontSize: 14,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                          color: isSelected ? AppColors.brandCyan : AppColors.textPrimary,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                          color: isSelected
+                              ? AppColors.brandCyan
+                              : AppColors.textPrimary,
                         ),
                       ),
                       trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          PriceText(price: t.lastPrice, fontSize: 13),
-                          ChangeBadge(changePercent: t.priceChangePercent, fontSize: 10),
+                          PriceText(
+                              price: t.lastPrice, fontSize: 13),
+                          ChangeBadge(
+                              changePercent:
+                                  t.priceChangePercent,
+                              fontSize: 10),
                         ],
                       ),
                       onTap: () => widget.onSelect(t.symbol),

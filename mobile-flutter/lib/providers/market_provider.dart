@@ -1,5 +1,6 @@
 /// TPIX TRADE — Market Data Provider
 /// จัดการ tickers, orderbook, klines, favorites
+/// รองรับ WebSocket real-time updates จาก Binance
 ///
 /// Developed by Xman Studio
 
@@ -8,9 +9,11 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/api_models.dart';
 import '../services/api_service.dart';
+import '../services/binance_ws.dart';
 
 class MarketProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
+  final BinanceWS _ws = BinanceWS();
 
   // Tickers
   List<Ticker> _tickers = [];
@@ -28,6 +31,8 @@ class MarketProvider extends ChangeNotifier {
   TpixPrice? _tpixPrice;
 
   Timer? _tickerTimer;
+  StreamSubscription? _tickerSub;
+  StreamSubscription? _depthSub;
 
   // Getters
   List<Ticker> get tickers => _filteredTickers;
@@ -77,26 +82,59 @@ class MarketProvider extends ChangeNotifier {
       _tickers = await _api.getTickers();
       _applyFilter();
     } catch (e) {
-      debugPrint('loadTickers error: $e');
+      debugPrint('loadTickers error: ${e.runtimeType}');
     }
 
     _isLoading = false;
     notifyListeners();
   }
 
-  // ── Auto-refresh ──
+  // ── Auto-refresh (HTTP fallback + WebSocket) ──
 
   void startAutoRefresh() {
+    // HTTP polling (backup ทุก 30 วินาที)
     _tickerTimer?.cancel();
     _tickerTimer = Timer.periodic(
-      const Duration(seconds: 10),
+      const Duration(seconds: 30),
       (_) => loadTickers(silent: true),
     );
+
+    // WebSocket real-time tickers
+    _ws.connectTickers();
+    _tickerSub?.cancel();
+    _tickerSub = _ws.tickerStream.listen(_onTickerUpdate);
+  }
+
+  void _onTickerUpdate(Map<String, dynamic> data) {
+    // Binance miniTicker format: { s: "BTCUSDT", c: "67000.00", ... }
+    final symbol = data['s'] as String?;
+    if (symbol == null) return;
+
+    // หา matching ticker — Binance ส่ง "BTCUSDT" ต้อง match กับ "BTC-USDT"
+    for (int i = 0; i < _tickers.length; i++) {
+      final binSymbol = _tickers[i].symbol.replaceAll('-', '');
+      if (binSymbol == symbol) {
+        final price = double.tryParse(data['c']?.toString() ?? '') ?? 0;
+        final volume = double.tryParse(data['v']?.toString() ?? '') ?? 0;
+        if (price > 0) {
+          _tickers[i] = _tickers[i].copyWith(
+            lastPrice: price,
+            quoteVolume24h: volume,
+          );
+          _applyFilter();
+          notifyListeners();
+        }
+        break;
+      }
+    }
   }
 
   void stopAutoRefresh() {
     _tickerTimer?.cancel();
     _tickerTimer = null;
+    _tickerSub?.cancel();
+    _tickerSub = null;
+    _ws.pause();
   }
 
   // ── Search & Sort ──
@@ -121,14 +159,14 @@ class MarketProvider extends ChangeNotifier {
   void _applyFilter() {
     var list = List<Ticker>.from(_tickers);
 
-    // Search
     if (_searchQuery.isNotEmpty) {
-      list = list.where((t) =>
-          t.baseAsset.contains(_searchQuery) ||
-          t.symbol.contains(_searchQuery)).toList();
+      list = list
+          .where((t) =>
+              t.baseAsset.contains(_searchQuery) ||
+              t.symbol.contains(_searchQuery))
+          .toList();
     }
 
-    // Sort
     list.sort((a, b) {
       int cmp;
       switch (_sortBy) {
@@ -138,7 +176,7 @@ class MarketProvider extends ChangeNotifier {
           cmp = a.priceChangePercent.compareTo(b.priceChangePercent);
         case 'name':
           cmp = a.baseAsset.compareTo(b.baseAsset);
-        default: // volume
+        default:
           cmp = a.quoteVolume24h.compareTo(b.quoteVolume24h);
       }
       return _sortAsc ? cmp : -cmp;
@@ -184,10 +222,34 @@ class MarketProvider extends ChangeNotifier {
   Future<void> selectPair(String pair) async {
     _selectedPair = pair;
     notifyListeners();
+
+    // Subscribe WebSocket depth สำหรับ pair นี้
+    _depthSub?.cancel();
+    _ws.subscribePair(pair);
+    _depthSub = _ws.depthStream.listen(_onDepthUpdate);
+
     await Future.wait([
       loadOrderBook(),
       loadKlines(),
     ]);
+  }
+
+  void _onDepthUpdate(Map<String, dynamic> data) {
+    // Binance depth20 format: { bids: [[price, qty], ...], asks: [[price, qty], ...] }
+    try {
+      final bids = (data['bids'] as List<dynamic>?)
+              ?.map((e) => OrderBookEntry.fromList(e as List<dynamic>))
+              .toList() ??
+          [];
+      final asks = (data['asks'] as List<dynamic>?)
+              ?.map((e) => OrderBookEntry.fromList(e as List<dynamic>))
+              .toList() ??
+          [];
+      if (bids.isNotEmpty || asks.isNotEmpty) {
+        _orderBook = OrderBook(bids: bids, asks: asks);
+        notifyListeners();
+      }
+    } catch (_) {}
   }
 
   // ── Order Book ──
@@ -197,7 +259,7 @@ class MarketProvider extends ChangeNotifier {
       _orderBook = await _api.getOrderBook(_selectedPair);
       notifyListeners();
     } catch (e) {
-      debugPrint('loadOrderBook error: $e');
+      debugPrint('loadOrderBook error: ${e.runtimeType}');
     }
   }
 
@@ -209,7 +271,7 @@ class MarketProvider extends ChangeNotifier {
           interval: interval, limit: limit);
       notifyListeners();
     } catch (e) {
-      debugPrint('loadKlines error: $e');
+      debugPrint('loadKlines error: ${e.runtimeType}');
     }
   }
 
@@ -220,13 +282,14 @@ class MarketProvider extends ChangeNotifier {
       _tpixPrice = await _api.getTpixPrice();
       notifyListeners();
     } catch (e) {
-      debugPrint('loadTpixPrice error: $e');
+      debugPrint('loadTpixPrice error: ${e.runtimeType}');
     }
   }
 
   @override
   void dispose() {
     stopAutoRefresh();
+    _depthSub?.cancel();
     super.dispose();
   }
 }

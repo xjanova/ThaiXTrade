@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0A0E1A;overflow:hidden;font-family:sans-serif}
+#chart{width:100%;height:100vh}
+#loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#4a5568;font-size:12px}
+</style>
+</head>
+<body>
+<div id="chart"></div>
+<div id="loading">Loading chart...</div>
+<script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+// TPIX TRADE — TradingView Lightweight Charts
+// Dark theme matching web app (tpix.online)
+// Developed by Xman Studio
+
+let chart, candleSeries, lineSeries, volumeSeries, maSeries, emaSeries;
+let ws = null;
+let currentSymbol = '';
+let currentInterval = '1h';
+let isTpixPair = false;
+let chartType = 'candle';
+
+const BINANCE_REST = 'https://api.binance.com/api/v3/klines';
+const BINANCE_WS = 'wss://stream.binance.com:9443/ws';
+const TPIX_API = 'https://tpix.online/api/v1';
+
+function initChart() {
+  const container = document.getElementById('chart');
+  chart = LightweightCharts.createChart(container, {
+    layout: {
+      background: { type: 'solid', color: 'transparent' },
+      textColor: '#64748B',
+      fontSize: 10,
+    },
+    grid: {
+      vertLines: { color: 'rgba(255,255,255,0.04)' },
+      horzLines: { color: 'rgba(255,255,255,0.04)' },
+    },
+    crosshair: {
+      mode: LightweightCharts.CrosshairMode.Normal,
+      vertLine: { color: '#06B6D4', width: 1, style: 2 },
+      horzLine: { color: '#06B6D4', width: 1, style: 2 },
+    },
+    rightPriceScale: {
+      borderColor: 'rgba(255,255,255,0.08)',
+      scaleMargins: { top: 0.1, bottom: 0.25 },
+    },
+    timeScale: {
+      borderColor: 'rgba(255,255,255,0.08)',
+      timeVisible: true,
+      secondsVisible: false,
+    },
+    handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+    handleScale: { mouseWheel: true, pinch: true },
+  });
+
+  // Candlestick series
+  candleSeries = chart.addCandlestickSeries({
+    upColor: '#00C853',
+    downColor: '#FF1744',
+    borderUpColor: '#00C853',
+    borderDownColor: '#FF1744',
+    wickUpColor: '#00C85380',
+    wickDownColor: '#FF174480',
+  });
+
+  // Line series (hidden by default)
+  lineSeries = chart.addLineSeries({
+    color: '#06B6D4',
+    lineWidth: 2,
+    visible: false,
+  });
+
+  // Volume histogram
+  volumeSeries = chart.addHistogramSeries({
+    priceFormat: { type: 'volume' },
+    priceScaleId: 'volume',
+  });
+  chart.priceScale('volume').applyOptions({
+    scaleMargins: { top: 0.8, bottom: 0 },
+  });
+
+  // MA(20) indicator
+  maSeries = chart.addLineSeries({
+    color: '#F59E0B',
+    lineWidth: 1,
+    visible: true,
+  });
+
+  // EMA(12) indicator
+  emaSeries = chart.addLineSeries({
+    color: '#A855F7',
+    lineWidth: 1,
+    visible: true,
+  });
+
+  // Responsive resize
+  const ro = new ResizeObserver(() => {
+    chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+  });
+  ro.observe(container);
+}
+
+function calculateMA(data, period) {
+  const result = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) continue;
+    let sum = 0;
+    for (let j = 0; j < period; j++) sum += data[i - j].close;
+    result.push({ time: data[i].time, value: sum / period });
+  }
+  return result;
+}
+
+function calculateEMA(data, period) {
+  const result = [];
+  const k = 2 / (period + 1);
+  let ema = null;
+  for (let i = 0; i < data.length; i++) {
+    if (ema === null) {
+      if (i >= period - 1) {
+        let sum = 0;
+        for (let j = 0; j < period; j++) sum += data[i - j].close;
+        ema = sum / period;
+        result.push({ time: data[i].time, value: ema });
+      }
+    } else {
+      ema = data[i].close * k + ema * (1 - k);
+      result.push({ time: data[i].time, value: ema });
+    }
+  }
+  return result;
+}
+
+async function fetchKlines(symbol, interval) {
+  try {
+    let url, data;
+    if (isTpixPair) {
+      url = `${TPIX_API}/tpix/klines?interval=${interval}&limit=300`;
+      const res = await fetch(url);
+      const json = await res.json();
+      data = json.success ? json.data : [];
+    } else {
+      // Binance — symbol format ไม่มี dash (BTCUSDT)
+      const binSymbol = symbol.replace('-', '').toUpperCase();
+      url = `${BINANCE_REST}?symbol=${binSymbol}&interval=${interval}&limit=300`;
+      const res = await fetch(url);
+      data = await res.json();
+    }
+
+    if (!Array.isArray(data) || data.length === 0) return [];
+
+    return data.map(k => {
+      const arr = Array.isArray(k) ? k : [
+        new Date(k.open_time || k.openTime).getTime(),
+        k.open, k.high, k.low, k.close, k.volume
+      ];
+      return {
+        time: Math.floor(Number(arr[0]) / 1000),
+        open: parseFloat(arr[1]),
+        high: parseFloat(arr[2]),
+        low: parseFloat(arr[3]),
+        close: parseFloat(arr[4]),
+        volume: parseFloat(arr[5]),
+      };
+    });
+  } catch (e) {
+    console.error('fetchKlines error:', e);
+    return [];
+  }
+}
+
+function applyData(candles) {
+  if (!candles.length) return;
+
+  // Candle + Line data
+  candleSeries.setData(candles);
+  lineSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
+
+  // Volume bars — สีตาม candle
+  volumeSeries.setData(candles.map(c => ({
+    time: c.time,
+    value: c.volume,
+    color: c.close >= c.open ? 'rgba(0,200,83,0.3)' : 'rgba(255,23,68,0.3)',
+  })));
+
+  // Indicators
+  maSeries.setData(calculateMA(candles, 20));
+  emaSeries.setData(calculateEMA(candles, 12));
+
+  chart.timeScale().fitContent();
+}
+
+function connectWebSocket(symbol, interval) {
+  disconnectWS();
+  if (isTpixPair) return; // TPIX ไม่มี Binance WebSocket
+
+  const binSymbol = symbol.replace('-', '').toLowerCase();
+  const wsUrl = `${BINANCE_WS}/${binSymbol}@kline_${interval}`;
+
+  ws = new WebSocket(wsUrl);
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (!msg.k) return;
+      const k = msg.k;
+      const candle = {
+        time: Math.floor(k.t / 1000),
+        open: parseFloat(k.o),
+        high: parseFloat(k.h),
+        low: parseFloat(k.l),
+        close: parseFloat(k.c),
+        volume: parseFloat(k.v),
+      };
+      candleSeries.update(candle);
+      lineSeries.update({ time: candle.time, value: candle.close });
+      volumeSeries.update({
+        time: candle.time,
+        value: candle.volume,
+        color: candle.close >= candle.open ? 'rgba(0,200,83,0.3)' : 'rgba(255,23,68,0.3)',
+      });
+
+      // ส่ง price update กลับ Flutter
+      if (window.FlutterChannel) {
+        window.FlutterChannel.postMessage(JSON.stringify({
+          type: 'priceUpdate',
+          data: { price: candle.close, symbol: symbol }
+        }));
+      }
+    } catch (e) { /* ignore parse errors */ }
+  };
+  ws.onclose = () => {
+    // Auto-reconnect หลัง 5 วินาที
+    setTimeout(() => {
+      if (currentSymbol === symbol) connectWebSocket(symbol, interval);
+    }, 5000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+function disconnectWS() {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+}
+
+// ── Public API (เรียกจาก Flutter) ──
+
+window.loadChart = async function(symbol, interval, isTpix) {
+  currentSymbol = symbol;
+  currentInterval = interval;
+  isTpixPair = isTpix === true || isTpix === 'true';
+
+  document.getElementById('loading').style.display = 'block';
+  const candles = await fetchKlines(symbol, interval);
+  document.getElementById('loading').style.display = 'none';
+
+  if (candles.length) {
+    applyData(candles);
+    connectWebSocket(symbol, interval);
+  }
+};
+
+window.setChartType = function(type) {
+  chartType = type;
+  candleSeries.applyOptions({ visible: type === 'candle' });
+  lineSeries.applyOptions({ visible: type === 'line' });
+};
+
+window.setIndicators = function(indicators) {
+  const arr = typeof indicators === 'string' ? JSON.parse(indicators) : indicators;
+  maSeries.applyOptions({ visible: arr.includes('MA') });
+  emaSeries.applyOptions({ visible: arr.includes('EMA') });
+};
+
+window.dispose = function() {
+  disconnectWS();
+  if (chart) { chart.remove(); chart = null; }
+};
+
+// Init
+initChart();
+// แจ้ง Flutter ว่า chart พร้อมแล้ว
+if (window.FlutterChannel) {
+  window.FlutterChannel.postMessage(JSON.stringify({ type: 'ready' }));
+}
+</script>
+</body>
+</html>

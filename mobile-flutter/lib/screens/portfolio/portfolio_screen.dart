@@ -12,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
+import '../../widgets/common/coin_logo.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
 import '../../widgets/common/shimmer_loading.dart';
@@ -340,24 +341,7 @@ class _AssetTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.brandCyan.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: Text(
-                token.symbol.isNotEmpty ? token.symbol[0] : '?',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.brandCyan,
-                ),
-              ),
-            ),
-          ),
+          CoinLogo(symbol: token.symbol, size: 36, borderRadius: 10),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
