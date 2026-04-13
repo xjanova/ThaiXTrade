@@ -4,6 +4,8 @@
 ///
 /// Developed by Xman Studio
 
+import 'dart:convert';
+
 import 'package:bip39/bip39.dart' as bip39;
 import 'package:bip32/bip32.dart' as bip32;
 import 'package:flutter/foundation.dart';
@@ -53,8 +55,9 @@ class WalletProvider extends ChangeNotifier {
   String? get pendingMnemonic => _pendingMnemonic;
   ChainConfig get activeChain => ChainConfig.byId(_activeChainId);
 
-  /// Mnemonic ของ wallet ปัจจุบัน (ใช้ตอน backup/export)
-  String? get mnemonic => _mnemonic;
+  /// Mnemonic — เข้าถึงได้เฉพาะตอน backup pending เท่านั้น
+  /// หลัง confirm backup แล้วจะ null ทันที (ไม่เก็บใน memory)
+  String? get mnemonic => _pendingMnemonic != null ? _mnemonic : null;
 
   String get shortAddress {
     if (_address == null) return '';
@@ -108,7 +111,7 @@ class WalletProvider extends ChangeNotifier {
       _error = 'Failed to create wallet';
       _isConnecting = false;
       notifyListeners();
-      debugPrint('createWallet error: $e');
+      debugPrint('createWallet error: ${e.runtimeType}');
     }
   }
 
@@ -155,7 +158,7 @@ class WalletProvider extends ChangeNotifier {
       _error = 'Failed to import wallet';
       _isConnecting = false;
       notifyListeners();
-      debugPrint('importWallet error: $e');
+      debugPrint('importWallet error: ${e.runtimeType}');
       return false;
     }
   }
@@ -172,7 +175,7 @@ class WalletProvider extends ChangeNotifier {
       final signature = credentials.signPersonalMessageToUint8List(messageBytes);
       return '0x${HEX.encode(signature)}';
     } catch (e) {
-      debugPrint('signMessage error: $e');
+      debugPrint('signMessage error: ${e.runtimeType}');
       return null;
     }
   }
@@ -203,7 +206,7 @@ class WalletProvider extends ChangeNotifier {
       notifyListeners();
       return _isVerified;
     } catch (e) {
-      debugPrint('verifyWithBackend error: $e');
+      debugPrint('verifyWithBackend error: ${e.runtimeType}');
       _isVerified = false;
       notifyListeners();
       return false;
@@ -218,10 +221,17 @@ class WalletProvider extends ChangeNotifier {
       final savedAddress = prefs.getString(_keyWalletState);
 
       if (savedAddress != null) {
-        final hasKey = await _storage.read(key: _keyPrivateKey);
-        if (hasKey != null) {
-          _address = savedAddress;
+        final privateKey = await _storage.read(key: _keyPrivateKey);
+        if (privateKey != null) {
+          // S4: Derive address จาก private key จริง ไม่เชื่อค่าใน SharedPreferences
+          final credentials = EthPrivateKey.fromHex(privateKey);
+          _address = credentials.address.hex;
           _activeChainId = prefs.getInt('tpix_trade_chain_id') ?? 4289;
+
+          // อัปเดต stored address ถ้าไม่ตรง (ป้องกัน tampering)
+          if (_address != savedAddress) {
+            await prefs.setString(_keyWalletState, _address!);
+          }
           notifyListeners();
         } else {
           await prefs.remove(_keyWalletState);
@@ -231,7 +241,7 @@ class WalletProvider extends ChangeNotifier {
       // Load settings
       await _loadSettings();
     } catch (e) {
-      debugPrint('loadSavedWallet error: $e');
+      debugPrint('loadSavedWallet error: ${e.runtimeType}');
     }
   }
 
@@ -239,17 +249,22 @@ class WalletProvider extends ChangeNotifier {
 
   void confirmMnemonicBackup() {
     _pendingMnemonic = null;
+    _mnemonic = null; // ลบ mnemonic จาก memory ทันทีหลัง backup
     notifyListeners();
   }
 
   // ── Disconnect ──
 
-  void disconnect() {
-    _storage.delete(key: _keyPrivateKey).catchError((_) => null);
-    _storage.delete(key: _keyMnemonic).catchError((_) => null);
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.remove(_keyWalletState);
-    }).catchError((_) {});
+  Future<void> disconnect() async {
+    // S6: Await secure storage deletion — ต้อง clear key ก่อน update state
+    try {
+      await _storage.delete(key: _keyPrivateKey);
+      await _storage.delete(key: _keyMnemonic);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_keyWalletState);
+    } catch (_) {
+      // Best effort — continue with state cleanup
+    }
 
     ApiService().clearToken();
 
@@ -332,27 +347,29 @@ class WalletProvider extends ChangeNotifier {
   }
 
   String _settingsToJson() {
-    return '{"language":"$_language","currency":"$_currency",'
-        '"defaultPair":"$_defaultPair","defaultOrderType":"$_defaultOrderType",'
-        '"slippage":$_slippage,"biometricEnabled":$_biometricEnabled,'
-        '"pushNotifications":$_pushNotifications}';
+    return jsonEncode({
+      'language': _language,
+      'currency': _currency,
+      'defaultPair': _defaultPair,
+      'defaultOrderType': _defaultOrderType,
+      'slippage': _slippage,
+      'biometricEnabled': _biometricEnabled,
+      'pushNotifications': _pushNotifications,
+    });
   }
 
-  void _settingsFromJson(String json) {
+  void _settingsFromJson(String raw) {
     try {
-      // Simple parser — avoid importing dart:convert just for this
-      if (json.contains('"language":"th"')) _language = 'th';
-      if (json.contains('"currency":"THB"')) _currency = 'THB';
-      final pairMatch = RegExp(r'"defaultPair":"([^"]+)"').firstMatch(json);
-      if (pairMatch != null) _defaultPair = pairMatch.group(1)!;
-      final orderMatch = RegExp(r'"defaultOrderType":"([^"]+)"').firstMatch(json);
-      if (orderMatch != null) _defaultOrderType = orderMatch.group(1)!;
-      final slipMatch = RegExp(r'"slippage":([\d.]+)').firstMatch(json);
-      if (slipMatch != null) _slippage = double.tryParse(slipMatch.group(1)!) ?? 0.5;
-      if (json.contains('"biometricEnabled":true')) _biometricEnabled = true;
-      if (json.contains('"pushNotifications":false')) _pushNotifications = false;
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      _language = (map['language'] as String?) ?? _language;
+      _currency = (map['currency'] as String?) ?? _currency;
+      _defaultPair = (map['defaultPair'] as String?) ?? _defaultPair;
+      _defaultOrderType = (map['defaultOrderType'] as String?) ?? _defaultOrderType;
+      _slippage = (map['slippage'] as num?)?.toDouble() ?? _slippage;
+      _biometricEnabled = (map['biometricEnabled'] as bool?) ?? _biometricEnabled;
+      _pushNotifications = (map['pushNotifications'] as bool?) ?? _pushNotifications;
     } catch (_) {
-      // Use defaults
+      // Use defaults — ค่าเก่า format ผิดก็ไม่เป็นไร
     }
   }
 }

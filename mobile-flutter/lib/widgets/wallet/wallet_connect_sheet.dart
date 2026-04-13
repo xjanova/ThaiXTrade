@@ -3,6 +3,7 @@
 ///
 /// Developed by Xman Studio
 
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,10 +27,12 @@ class WalletConnectSheet extends StatefulWidget {
 class _WalletConnectSheetState extends State<WalletConnectSheet> {
   _SheetStep _step = _SheetStep.choose;
   final _mnemonicController = TextEditingController();
+  Timer? _clipboardClearTimer;
 
   @override
   void dispose() {
     _mnemonicController.dispose();
+    _clipboardClearTimer?.cancel();
     super.dispose();
   }
 
@@ -427,10 +430,19 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
             if (wallet.pendingMnemonic != null) {
               Clipboard.setData(
                   ClipboardData(text: wallet.pendingMnemonic!));
+              // C1: Auto-clear clipboard หลัง 60 วินาที ป้องกัน mnemonic ค้าง
+              _clipboardClearTimer?.cancel();
+              _clipboardClearTimer = Timer(
+                const Duration(seconds: 60),
+                () => Clipboard.setData(const ClipboardData(text: '')),
+              );
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(locale.t('common.copied')),
-                  duration: const Duration(seconds: 1),
+                  content: Text(
+                    '${locale.t('common.copied')} '
+                    '(${locale.isThai ? 'จะลบอัตโนมัติใน 60 วินาที' : 'auto-clears in 60s'})',
+                  ),
+                  duration: const Duration(seconds: 2),
                 ),
               );
             }
@@ -449,6 +461,9 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
         GradientButton(
           text: locale.t('wallet.confirm_backup'),
           onPressed: () {
+            // Clear clipboard ทันทีเมื่อ confirm backup
+            _clipboardClearTimer?.cancel();
+            Clipboard.setData(const ClipboardData(text: ''));
             wallet.confirmMnemonicBackup();
             Navigator.pop(context);
           },

@@ -5,6 +5,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -203,9 +204,9 @@ class _WalletCard extends StatelessWidget {
                 style: const TextStyle(color: AppColors.textTertiary)),
           ),
           TextButton(
-            onPressed: () {
-              wallet.disconnect();
-              Navigator.pop(ctx);
+            onPressed: () async {
+              await wallet.disconnect();
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: Text(locale.t('common.confirm'),
                 style: const TextStyle(color: AppColors.tradingRed)),
@@ -463,10 +464,13 @@ class _AboutCard extends StatelessWidget {
           _SettingsTile(
             icon: Icons.info_outline_rounded,
             title: locale.t('settings.about'),
-            trailing: Text(
-              'v1.0.0',
-              style: GoogleFonts.inter(
-                  fontSize: 12, color: AppColors.textTertiary),
+            trailing: FutureBuilder<PackageInfo>(
+              future: PackageInfo.fromPlatform(),
+              builder: (_, snap) => Text(
+                snap.hasData ? 'v${snap.data!.version}' : '...',
+                style: GoogleFonts.inter(
+                    fontSize: 12, color: AppColors.textTertiary),
+              ),
             ),
           ),
 

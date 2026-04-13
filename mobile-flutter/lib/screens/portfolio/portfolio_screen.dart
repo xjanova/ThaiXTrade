@@ -14,6 +14,7 @@ import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
+import '../../widgets/wallet/wallet_connect_sheet.dart';
 
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
@@ -262,7 +263,12 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               child: GradientButton(
                 text: locale.t('settings.connect_wallet'),
                 onPressed: () {
-                  // Navigate to settings for wallet connect
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => const WalletConnectSheet(),
+                  );
                 },
               ),
             ),

@@ -34,6 +34,7 @@ class _SplashScreenState extends State<SplashScreen> {
       context.read<WalletProvider>().loadSavedWallet(),
       context.read<MarketProvider>().loadTickers(),
       context.read<MarketProvider>().loadTpixPrice(),
+      context.read<MarketProvider>().loadFavorites(),
       context.read<LocaleProvider>().init(),
       Future.delayed(const Duration(milliseconds: 1800)), // minimum splash time
     ]);

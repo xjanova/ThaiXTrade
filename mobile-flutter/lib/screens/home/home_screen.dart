@@ -16,6 +16,7 @@ import '../../providers/market_provider.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/price_text.dart';
 import '../../widgets/common/shimmer_loading.dart';
+import '../../widgets/wallet/wallet_connect_sheet.dart';
 import '../../models/api_models.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -271,6 +272,14 @@ class _HomeScreenState extends State<HomeScreen> {
       variant: GlassVariant.brand,
       borderRadius: 20,
       padding: const EdgeInsets.all(24),
+      onTap: () {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => const WalletConnectSheet(),
+        );
+      },
       child: Column(
         children: [
           Container(

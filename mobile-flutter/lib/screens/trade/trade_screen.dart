@@ -3,6 +3,7 @@
 ///
 /// Developed by Xman Studio
 
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +13,7 @@ import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/market_provider.dart';
+import '../../services/api_service.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
 import '../../widgets/common/price_text.dart';
@@ -28,6 +30,7 @@ class _TradeScreenState extends State<TradeScreen>
     with SingleTickerProviderStateMixin {
   late TabController _orderTypeTab;
   bool _isBuy = true;
+  bool _isSubmitting = false;
   final _priceController = TextEditingController();
   final _amountController = TextEditingController();
 
@@ -417,7 +420,8 @@ class _TradeScreenState extends State<TradeScreen>
                 ? '${locale.t('trade.buy')} ${market.selectedTicker?.baseAsset ?? ''}'
                 : '${locale.t('trade.sell')} ${market.selectedTicker?.baseAsset ?? ''}',
             variant: _isBuy ? ButtonVariant.buy : ButtonVariant.sell,
-            onPressed: wallet.isConnected ? () => _submitOrder() : null,
+            isLoading: _isSubmitting,
+            onPressed: wallet.isConnected && !_isSubmitting ? () => _submitOrder() : null,
           ),
 
           if (!wallet.isConnected) ...[
@@ -434,11 +438,93 @@ class _TradeScreenState extends State<TradeScreen>
   }
 
   void _showPairPicker(MarketProvider market) {
-    // TODO: Full pair picker bottom sheet
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PairPickerSheet(
+        market: market,
+        onSelect: (pair) {
+          market.selectPair(pair);
+          Navigator.pop(context);
+        },
+      ),
+    );
   }
 
-  void _submitOrder() {
-    // TODO: Create order via API
+  Future<void> _submitOrder() async {
+    final wallet = context.read<WalletProvider>();
+    final market = context.read<MarketProvider>();
+    final locale = context.read<LocaleProvider>();
+
+    if (!wallet.isConnected || wallet.address == null) return;
+
+    final priceText = _priceController.text.trim();
+    final amountText = _amountController.text.trim();
+    final isMarket = _orderTypeTab.index == 1;
+
+    // Validate amount
+    final amount = double.tryParse(amountText);
+    if (amount == null || amount <= 0) {
+      _showSnack(locale.isThai ? 'กรุณาใส่จำนวนที่ถูกต้อง' : 'Please enter a valid amount');
+      return;
+    }
+
+    // Validate price (limit order only)
+    double? price;
+    if (!isMarket) {
+      price = double.tryParse(priceText);
+      if (price == null || price <= 0) {
+        _showSnack(locale.isThai ? 'กรุณาใส่ราคาที่ถูกต้อง' : 'Please enter a valid price');
+        return;
+      }
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final order = await ApiService().createOrder(
+        pair: market.selectedPair,
+        side: _isBuy ? 'buy' : 'sell',
+        type: isMarket ? 'market' : 'limit',
+        price: price,
+        amount: amount,
+        walletAddress: wallet.address!,
+        chainId: wallet.activeChainId,
+      );
+
+      if (!mounted) return;
+
+      if (order != null) {
+        _priceController.clear();
+        _amountController.clear();
+        _showSnack(
+          locale.isThai
+              ? 'สร้างออเดอร์สำเร็จ'
+              : 'Order placed successfully',
+          isSuccess: true,
+        );
+        // Reload order book
+        market.loadOrderBook();
+      } else {
+        _showSnack(locale.isThai ? 'สร้างออเดอร์ไม่สำเร็จ' : 'Failed to place order');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(locale.isThai ? 'เกิดข้อผิดพลาด' : 'An error occurred');
+    }
+
+    if (mounted) setState(() => _isSubmitting = false);
+  }
+
+  void _showSnack(String msg, {bool isSuccess = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: isSuccess ? AppColors.tradingGreen : null,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 }
 
@@ -626,6 +712,125 @@ class _MiniChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _MiniChartPainter old) =>
-      old.klines.length != klines.length;
+  bool shouldRepaint(covariant _MiniChartPainter old) {
+    if (old.klines.length != klines.length) return true;
+    if (klines.isEmpty) return false;
+    // เช็คราคาล่าสุดเปลี่ยนไหม — ไม่ต้อง deep compare ทั้ง list
+    return old.klines.last.close != klines.last.close;
+  }
+}
+
+// ── Pair Picker Bottom Sheet ──
+
+class _PairPickerSheet extends StatefulWidget {
+  final MarketProvider market;
+  final ValueChanged<String> onSelect;
+
+  const _PairPickerSheet({required this.market, required this.onSelect});
+
+  @override
+  State<_PairPickerSheet> createState() => _PairPickerSheetState();
+}
+
+class _PairPickerSheetState extends State<_PairPickerSheet> {
+  String _search = '';
+
+  List<Ticker> get _filtered {
+    final q = _search.toUpperCase();
+    if (q.isEmpty) return widget.market.allTickers;
+    return widget.market.allTickers
+        .where((t) => t.baseAsset.contains(q) || t.symbol.contains(q))
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          decoration: const BoxDecoration(
+            color: Color(0xF20A0E1A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border(top: BorderSide(color: Color(0x1AFFFFFF))),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                width: 40, height: 4,
+                margin: const EdgeInsets.only(top: 12, bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Search
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.bgInput,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.bgCardBorder),
+                  ),
+                  child: TextField(
+                    onChanged: (v) => setState(() => _search = v),
+                    style: GoogleFonts.inter(fontSize: 14, color: AppColors.textPrimary),
+                    decoration: InputDecoration(
+                      hintText: 'Search pairs...',
+                      hintStyle: GoogleFonts.inter(fontSize: 14, color: AppColors.textDisabled),
+                      prefixIcon: const Icon(Icons.search_rounded,
+                          color: AppColors.textTertiary, size: 20),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // List
+              Flexible(
+                child: ListView.builder(
+                  itemCount: _filtered.length,
+                  padding: const EdgeInsets.only(bottom: 24),
+                  itemBuilder: (_, i) {
+                    final t = _filtered[i];
+                    final isSelected = t.symbol == widget.market.selectedPair;
+                    return ListTile(
+                      dense: true,
+                      selected: isSelected,
+                      selectedTileColor: AppColors.brandCyan.withValues(alpha: 0.08),
+                      title: Text(
+                        t.displaySymbol,
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                          color: isSelected ? AppColors.brandCyan : AppColors.textPrimary,
+                        ),
+                      ),
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          PriceText(price: t.lastPrice, fontSize: 13),
+                          ChangeBadge(changePercent: t.priceChangePercent, fontSize: 10),
+                        ],
+                      ),
+                      onTap: () => widget.onSelect(t.symbol),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

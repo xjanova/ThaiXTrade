@@ -5,6 +5,7 @@
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/api_models.dart';
 import '../services/api_service.dart';
 
@@ -146,7 +147,9 @@ class MarketProvider extends ChangeNotifier {
     _filteredTickers = list;
   }
 
-  // ── Favorites ──
+  // ── Favorites (persisted) ──
+
+  static const _keyFavorites = 'tpix_trade_favorites';
 
   void toggleFavorite(String symbol) {
     if (_favorites.contains(symbol)) {
@@ -155,6 +158,25 @@ class MarketProvider extends ChangeNotifier {
       _favorites.add(symbol);
     }
     notifyListeners();
+    _saveFavorites();
+  }
+
+  Future<void> loadFavorites() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_keyFavorites);
+      if (list != null) {
+        _favorites = list.toSet();
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveFavorites() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_keyFavorites, _favorites.toList());
+    } catch (_) {}
   }
 
   // ── Select Pair ──
