@@ -106,10 +106,12 @@ class OrderBookEntry {
 
   double get total => price * quantity;
 
-  factory OrderBookEntry.fromList(List<dynamic> arr) => OrderBookEntry(
-        price: _toDouble(arr[0]),
-        quantity: _toDouble(arr[1]),
-      );
+  factory OrderBookEntry.fromList(List<dynamic> arr) => arr.length >= 2
+      ? OrderBookEntry(
+          price: _toDouble(arr[0]),
+          quantity: _toDouble(arr[1]),
+        )
+      : const OrderBookEntry(price: 0, quantity: 0);
 }
 
 class OrderBook {
@@ -157,14 +159,19 @@ class Kline {
         volume: _toDouble(json['volume']),
       );
 
-  factory Kline.fromList(List<dynamic> arr) => Kline(
-        openTime: DateTime.fromMillisecondsSinceEpoch(arr[0] as int),
-        open: _toDouble(arr[1]),
-        high: _toDouble(arr[2]),
-        low: _toDouble(arr[3]),
-        close: _toDouble(arr[4]),
-        volume: _toDouble(arr[5]),
-      );
+  factory Kline.fromList(List<dynamic> arr) => arr.length >= 6
+      ? Kline(
+          openTime: DateTime.fromMillisecondsSinceEpoch(arr[0] as int),
+          open: _toDouble(arr[1]),
+          high: _toDouble(arr[2]),
+          low: _toDouble(arr[3]),
+          close: _toDouble(arr[4]),
+          volume: _toDouble(arr[5]),
+        )
+      : Kline(
+          openTime: DateTime.now(),
+          open: 0, high: 0, low: 0, close: 0, volume: 0,
+        );
 }
 
 // ── Trade Order ──

@@ -35,7 +35,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    // Auto-refresh จะถูกจัดการโดย MarketProvider.dispose()
+    // L3: หยุด auto-refresh เมื่อออกจาก Home tab — ประหยัด battery
+    context.read<MarketProvider>().stopAutoRefresh();
     super.dispose();
   }
 
@@ -54,8 +55,9 @@ class _HomeScreenState extends State<HomeScreen> {
             color: AppColors.brandCyan,
             backgroundColor: AppColors.bgSecondary,
             onRefresh: () async {
+              // U5: ใช้ silent mode ไม่ให้ shimmer flash เมื่อ pull-to-refresh
               await Future.wait([
-                market.loadTickers(),
+                market.loadTickers(silent: true),
                 market.loadTpixPrice(),
               ]);
             },
@@ -171,7 +173,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           // Notification bell
           IconButton(
-            onPressed: () {},
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    locale.isThai ? 'เร็วๆ นี้' : 'Coming soon',
+                  ),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+            },
             icon: const Icon(Icons.notifications_outlined,
                 color: AppColors.textSecondary, size: 22),
           ),

@@ -11,11 +11,11 @@ import 'providers/wallet_provider.dart';
 import 'providers/market_provider.dart';
 import 'core/locale/locale_provider.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Lock portrait orientation
-  SystemChrome.setPreferredOrientations([
+  await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);

@@ -38,7 +38,7 @@ class UpdateService {
         return ReleaseInfo.fromJson(response.data);
       }
     } catch (e) {
-      debugPrint('Update check failed: $e');
+      debugPrint('Update check failed: ${e.runtimeType}');
     }
     return null;
   }
@@ -63,7 +63,7 @@ class UpdateService {
         apkSize: release.apkSize,
       );
     } catch (e) {
-      debugPrint('Update check error: $e');
+      debugPrint('Update check error: ${e.runtimeType}');
       return UpdateResult(available: false, currentVersion: 'unknown');
     }
   }
@@ -120,7 +120,7 @@ class UpdateService {
       return result.type == ResultType.done;
     } catch (e) {
       if (e is DioException && e.type == DioExceptionType.cancel) rethrow;
-      debugPrint('Download/install failed: $e');
+      debugPrint('Download/install failed: ${e.runtimeType}');
       return false;
     }
   }

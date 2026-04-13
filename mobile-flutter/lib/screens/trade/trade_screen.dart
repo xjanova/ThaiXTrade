@@ -395,7 +395,14 @@ class _TradeScreenState extends State<TradeScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: ['25%', '50%', '75%', '100%'].map((pct) {
               return GestureDetector(
-                onTap: () {},
+                onTap: () {
+                  // ใส่ % ของ max amount ตาม price ปัจจุบัน (placeholder)
+                  final factor = double.parse(pct.replaceAll('%', '')) / 100;
+                  final current = double.tryParse(_amountController.text) ?? 0;
+                  if (current > 0) {
+                    _amountController.text = (current * factor).toStringAsFixed(4);
+                  }
+                },
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -453,6 +460,9 @@ class _TradeScreenState extends State<TradeScreen>
   }
 
   Future<void> _submitOrder() async {
+    // C3: Guard double-tap — เช็ค synchronous ก่อน async
+    if (_isSubmitting) return;
+
     final wallet = context.read<WalletProvider>();
     final market = context.read<MarketProvider>();
     final locale = context.read<LocaleProvider>();

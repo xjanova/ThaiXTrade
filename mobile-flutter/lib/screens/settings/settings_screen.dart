@@ -13,6 +13,7 @@ import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../models/chain_config.dart';
+import '../../services/biometric_service.dart';
 import '../../services/update_service.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
@@ -407,14 +408,25 @@ class _PreferencesCard extends StatelessWidget {
 
           const Divider(color: AppColors.divider, height: 1, indent: 52),
 
-          // Biometric
+          // Biometric — S8: ต้อง authenticate ก่อนปิด
           _SettingsTile(
             icon: Icons.fingerprint_rounded,
             title: locale.t('settings.biometric'),
             trailing: Switch(
               value: wallet.biometricEnabled,
               activeThumbColor: AppColors.brandCyan,
-              onChanged: (v) => wallet.updateSettings(biometricEnabled: v),
+              onChanged: (v) async {
+                if (!v && wallet.biometricEnabled) {
+                  // ปิด biometric → ต้อง verify ก่อน
+                  final ok = await BiometricService().authenticate(
+                    locale.isThai
+                        ? 'ยืนยันเพื่อปิดการใช้ลายนิ้วมือ'
+                        : 'Verify to disable biometric',
+                  );
+                  if (!ok) return;
+                }
+                wallet.updateSettings(biometricEnabled: v);
+              },
             ),
           ),
 
@@ -440,6 +452,8 @@ class _PreferencesCard extends StatelessWidget {
 
 class _AboutCard extends StatelessWidget {
   final LocaleProvider locale;
+  // M7: Cache Future เพื่อไม่ให้ FutureBuilder สร้างใหม่ทุก build
+  static final _packageInfoFuture = PackageInfo.fromPlatform();
 
   const _AboutCard({required this.locale});
 
@@ -465,7 +479,7 @@ class _AboutCard extends StatelessWidget {
             icon: Icons.info_outline_rounded,
             title: locale.t('settings.about'),
             trailing: FutureBuilder<PackageInfo>(
-              future: PackageInfo.fromPlatform(),
+              future: _packageInfoFuture,
               builder: (_, snap) => Text(
                 snap.hasData ? 'v${snap.data!.version}' : '...',
                 style: GoogleFonts.inter(

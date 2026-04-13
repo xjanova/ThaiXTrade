@@ -144,7 +144,7 @@ class WalletProvider extends ChangeNotifier {
       await _storage.write(key: _keyMnemonic, value: trimmed);
 
       _address = address;
-      _mnemonic = trimmed;
+      _mnemonic = null; // C1: ไม่เก็บ mnemonic ใน memory — มีใน SecureStorage แล้ว
       _pendingMnemonic = null;
       _activeChainId = 4289;
       _isConnecting = false;

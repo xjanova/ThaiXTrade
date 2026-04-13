@@ -35,7 +35,7 @@ class ApiService {
         return handler.next(options);
       },
       onError: (error, handler) {
-        debugPrint('[API] Error: ${error.requestOptions.path} — ${error.message}');
+        debugPrint('[API] ${error.type.name}: ${error.response?.statusCode ?? '?'}');
         return handler.next(error);
       },
     ));
@@ -52,7 +52,7 @@ class ApiService {
       final response = await _dio.get(path, queryParameters: queryParams);
       return response.data as Map<String, dynamic>?;
     } on DioException catch (e) {
-      debugPrint('[API] GET $path failed: ${e.message}');
+      debugPrint('[API] GET $path: ${e.response?.statusCode ?? e.type.name}');
       return null;
     }
   }
@@ -63,7 +63,7 @@ class ApiService {
       final response = await _dio.post(path, data: data);
       return response.data as Map<String, dynamic>?;
     } on DioException catch (e) {
-      debugPrint('[API] POST $path failed: ${e.message}');
+      debugPrint('[API] POST $path: ${e.response?.statusCode ?? e.type.name}');
       return null;
     }
   }
@@ -74,7 +74,7 @@ class ApiService {
       final response = await _dio.delete(path, data: data);
       return response.data as Map<String, dynamic>?;
     } on DioException catch (e) {
-      debugPrint('[API] DELETE $path failed: ${e.message}');
+      debugPrint('[API] DELETE $path: ${e.response?.statusCode ?? e.type.name}');
       return null;
     }
   }
@@ -200,12 +200,13 @@ class ApiService {
     required String walletAddress,
     required int chainId,
   }) async {
+    // C4: ส่ง price/amount เป็น String เพื่อรักษา precision (ไม่ใช้ double ตรง)
     final res = await _post(ApiConstants.tradingOrder, data: {
       'pair': pair,
       'side': side,
       'type': type,
-      if (price != null) 'price': price,
-      'amount': amount,
+      if (price != null) 'price': price.toStringAsFixed(8),
+      'amount': amount.toStringAsFixed(8),
       'wallet_address': walletAddress,
       'chain_id': chainId,
     });
