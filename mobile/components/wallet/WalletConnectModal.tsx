@@ -18,7 +18,7 @@
 import React, { useState } from 'react';
 import {
   StyleSheet, Text, View, Modal, Pressable, ActivityIndicator,
-  ScrollView, TextInput, Alert, Platform,
+  ScrollView, TextInput, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +37,7 @@ export default function WalletConnectModal() {
 
   const [mnemonicInput, setMnemonicInput] = useState('');
   const [mnemonicCopied, setMnemonicCopied] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   if (!isModalVisible) return null;
 
@@ -58,14 +59,13 @@ export default function WalletConnectModal() {
   };
 
   const handleConfirmBackup = () => {
-    Alert.alert(
-      'Confirm Backup',
-      'Have you saved your recovery phrase? You cannot recover your wallet without it.',
-      [
-        { text: 'Not yet', style: 'cancel' },
-        { text: 'Yes, I saved it', onPress: () => { haptic(); confirmMnemonicBackup(); } },
-      ]
-    );
+    setShowConfirm(true);
+  };
+
+  const handleConfirmYes = () => {
+    setShowConfirm(false);
+    haptic();
+    confirmMnemonicBackup();
   };
 
   const handleImport = async () => {
@@ -136,6 +136,27 @@ export default function WalletConnectModal() {
               <Pressable style={styles.primaryBtn} onPress={handleConfirmBackup}>
                 <Text style={styles.primaryBtnText}>I've saved my recovery phrase</Text>
               </Pressable>
+
+              {/* In-app confirm dialog (แทน Alert.alert ที่ค้างบน web) */}
+              {showConfirm && (
+                <View style={styles.confirmOverlay}>
+                  <View style={styles.confirmBox}>
+                    <Ionicons name="shield-checkmark" size={32} color="#F59E0B" style={{ alignSelf: 'center', marginBottom: 12 }} />
+                    <Text style={styles.confirmTitle}>Confirm Backup</Text>
+                    <Text style={styles.confirmMessage}>
+                      Have you saved your recovery phrase? You cannot recover your wallet without it.
+                    </Text>
+                    <View style={styles.confirmButtons}>
+                      <Pressable style={styles.confirmBtnCancel} onPress={() => setShowConfirm(false)}>
+                        <Text style={styles.confirmBtnCancelText}>Not yet</Text>
+                      </Pressable>
+                      <Pressable style={styles.confirmBtnOk} onPress={handleConfirmYes}>
+                        <Text style={styles.confirmBtnOkText}>Yes, I saved it</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              )}
             </ScrollView>
 
           ) : modalStep === 'import' ? (
@@ -406,4 +427,51 @@ const styles = StyleSheet.create({
   },
   primaryBtnDisabled: { opacity: 0.5 },
   primaryBtnText: { ...typography.body, color: '#000', fontWeight: '700', fontSize: 15 },
+
+  // In-app Confirm Dialog (แทน Alert.alert)
+  confirmOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+    borderRadius: 24,
+  },
+  confirmBox: {
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radius.xl,
+    padding: spacing.xl,
+    marginHorizontal: spacing.xl,
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: '#F59E0B30',
+  },
+  confirmTitle: {
+    ...typography.h3, color: colors.text.primary,
+    textAlign: 'center', marginBottom: spacing.sm,
+  },
+  confirmMessage: {
+    ...typography.bodySmall, color: colors.text.secondary,
+    textAlign: 'center', marginBottom: spacing.xl, lineHeight: 20,
+  },
+  confirmButtons: {
+    flexDirection: 'row', gap: spacing.md,
+  },
+  confirmBtnCancel: {
+    flex: 1, padding: spacing.md, borderRadius: radius.lg,
+    backgroundColor: colors.bg.card,
+    borderWidth: 1, borderColor: colors.bg.cardBorder,
+    alignItems: 'center',
+  },
+  confirmBtnCancelText: {
+    ...typography.body, color: colors.text.secondary, fontWeight: '600', fontSize: 14,
+  },
+  confirmBtnOk: {
+    flex: 1, padding: spacing.md, borderRadius: radius.lg,
+    backgroundColor: colors.brand.cyan,
+    alignItems: 'center',
+  },
+  confirmBtnOkText: {
+    ...typography.body, color: '#000', fontWeight: '700', fontSize: 14,
+  },
 });

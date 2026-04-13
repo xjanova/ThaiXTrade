@@ -15,12 +15,36 @@
  */
 
 import { create } from 'zustand';
+import { InteractionManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ethers } from 'ethers';
 import { shortenAddress, SUPPORTED_CHAINS, type ChainConfig } from '@/services/walletService';
 import api from '@/services/api';
 import { playConnectSound, playDisconnectSound, playErrorSound } from '@/utils/sounds';
 import { setSecureItem, getSecureItem, deleteSecureItem } from '@/utils/secureStorage';
+
+/**
+ * Lazy import ethers.js — ไลบรารีใหญ่ (~1MB)
+ * ไม่โหลดตอนเปิดแอป โหลดเฉพาะตอนใช้จริง (สร้าง/import wallet)
+ * ป้องกัน startup lag บน Hermes
+ */
+let _ethers: typeof import('ethers') | null = null;
+async function getEthers() {
+  if (!_ethers) _ethers = await import('ethers');
+  return _ethers;
+}
+
+/**
+ * รอให้ animation/interaction จบก่อน แล้วค่อยทำ heavy work
+ * ป้องกัน UI ค้างตอน modal กำลังเปิด
+ */
+function waitForUI(): Promise<void> {
+  return new Promise(resolve => {
+    InteractionManager.runAfterInteractions(() => {
+      // delay อีก 50ms ให้ React commit render จริง
+      setTimeout(resolve, 50);
+    });
+  });
+}
 
 // ========== Constants ==========
 const SECURE_KEY_WALLET = 'tpix_wallet_key';
@@ -126,6 +150,12 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   createNewWallet: async () => {
     set({ isConnecting: true, connectError: null });
     try {
+      // รอ UI render loading state ก่อน (ป้องกัน UI ค้าง)
+      await waitForUI();
+
+      // Lazy load ethers.js (ครั้งแรกอาจใช้เวลา ~1-2 วิ)
+      const { ethers } = await getEthers();
+
       // สร้าง wallet จริงด้วย ethers (ต้องมี crypto polyfill)
       const wallet = ethers.Wallet.createRandom();
       const mnemonic = wallet.mnemonic?.phrase;
@@ -176,6 +206,9 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   importWallet: async (mnemonic: string) => {
     set({ isConnecting: true, connectError: null });
     try {
+      await waitForUI();
+      const { ethers } = await getEthers();
+
       const trimmed = mnemonic.trim().toLowerCase();
 
       // Validate mnemonic
@@ -231,6 +264,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   // ========== Sign message ด้วย private key ==========
   signMessage: async (message: string) => {
     try {
+      const { ethers } = await getEthers();
       const privateKey = await getSecureItem(SECURE_KEY_WALLET);
       if (!privateKey) return null;
       const wallet = new ethers.Wallet(privateKey);
@@ -391,7 +425,9 @@ export async function handleWalletCallback(url: string): Promise<void> {
       const chainId = parseInt(parsed.searchParams.get('chainId') || '4289', 10);
       const provider = parsed.searchParams.get('provider') || 'external';
 
-      if (address && ethers.isAddress(address)) {
+      // Validate address format (basic hex check แทน ethers.isAddress เพื่อไม่ต้อง lazy load)
+      const isValidAddr = address && /^0x[0-9a-fA-F]{40}$/.test(address);
+      if (isValidAddr) {
         const connectedWallet: ConnectedWallet = {
           address,
           shortAddress: shortenAddress(address),
