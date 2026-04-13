@@ -53,6 +53,9 @@ class WalletProvider extends ChangeNotifier {
   String? get pendingMnemonic => _pendingMnemonic;
   ChainConfig get activeChain => ChainConfig.byId(_activeChainId);
 
+  /// Mnemonic ของ wallet ปัจจุบัน (ใช้ตอน backup/export)
+  String? get mnemonic => _mnemonic;
+
   String get shortAddress {
     if (_address == null) return '';
     return '${_address!.substring(0, 6)}...${_address!.substring(_address!.length - 4)}';
