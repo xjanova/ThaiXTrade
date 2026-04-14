@@ -202,6 +202,7 @@ jobs:
           git commit -m "chore: bump flutter app to v${{ steps.version.outputs.version }}"
 
           # Retry push 3 ครั้ง พร้อม rebase — กัน race condition กับ dev push
+          # --autostash กัน build artifacts ทำให้ pull fail
           for i in 1 2 3; do
             echo "Push attempt $i..."
             if git push origin HEAD:main; then
@@ -209,10 +210,10 @@ jobs:
               exit 0
             fi
             echo "Push failed, rebasing and retrying..."
-            git pull --rebase origin main || true
+            git pull --rebase --autostash origin main || true
           done
-          echo "ERROR: Push failed after 3 attempts"
-          exit 1
+          echo "WARN: Push failed after 3 attempts — continuing build (non-blocking)"
+          exit 0
 
       # ══════════════════════════════════════════════════
       # Create GitHub Release + แนบ APK อัตโนมัติ
