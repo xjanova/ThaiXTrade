@@ -13,10 +13,10 @@ import '../screens/trade/trade_screen.dart';
 import '../screens/portfolio/portfolio_screen.dart';
 import '../screens/settings/settings_screen.dart';
 
-final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final GoRouter appRouter = GoRouter(
-  navigatorKey: _rootNavigatorKey,
+  navigatorKey: rootNavigatorKey,
   initialLocation: '/splash',
   routes: [
     // Splash screen

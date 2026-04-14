@@ -10,11 +10,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/gradients.dart';
+import '../core/router.dart';
 import '../providers/wallet_provider.dart';
 import '../providers/market_provider.dart';
 import '../providers/update_provider.dart';
 import '../core/locale/locale_provider.dart';
 import '../services/biometric_service.dart';
+import '../services/deep_link_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -63,6 +65,9 @@ class _SplashScreenState extends State<SplashScreen> {
 
     // Auto-check update ใน background — ไม่ block UI, แค่เก็บผลไว้ให้ Home แสดง banner
     context.read<UpdateProvider>().checkInBackground();
+
+    // Init deep link handler — รับ tpixtrade:// จาก Wallet หรือ external
+    DeepLinkService().init(rootNavigatorKey);
 
     context.go('/home');
   }

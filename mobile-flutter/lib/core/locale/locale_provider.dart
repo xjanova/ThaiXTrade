@@ -144,6 +144,15 @@ class LocaleProvider extends ChangeNotifier {
       'trade.order_failed': 'สร้างออเดอร์ไม่สำเร็จ',
       'trade.invalid_amount': 'กรุณาใส่จำนวนที่ถูกต้อง',
       'trade.invalid_price': 'กรุณาใส่ราคาที่ถูกต้อง',
+
+      // Peer app (cross-app discovery)
+      'peer.open_wallet': 'เปิด TPIX Wallet',
+      'peer.wallet_desc': 'กระเป๋าของคุณติดตั้งอยู่ในเครื่อง',
+      'peer.install_wallet': 'ติดตั้ง TPIX Wallet',
+      'peer.install_wallet_desc': 'จัดการกระเป๋าและเหรียญแบบครบครัน',
+      'peer.connect_title': 'เชื่อมกระเป๋าจาก Wallet?',
+      'peer.connect_desc': 'TPIX Wallet ส่งที่อยู่มาให้คุณ',
+      'peer.connect_accept': 'เชื่อมต่อ',
     },
     'en': {
       // Navigation
@@ -255,6 +264,15 @@ class LocaleProvider extends ChangeNotifier {
       'trade.order_failed': 'Failed to place order',
       'trade.invalid_amount': 'Please enter a valid amount',
       'trade.invalid_price': 'Please enter a valid price',
+
+      // Peer app (cross-app discovery)
+      'peer.open_wallet': 'Open TPIX Wallet',
+      'peer.wallet_desc': 'Your wallet is installed on this device',
+      'peer.install_wallet': 'Install TPIX Wallet',
+      'peer.install_wallet_desc': 'Manage your wallets and tokens',
+      'peer.connect_title': 'Connect wallet from Wallet app?',
+      'peer.connect_desc': 'TPIX Wallet wants to share this address',
+      'peer.connect_accept': 'Connect',
     },
   };
 }

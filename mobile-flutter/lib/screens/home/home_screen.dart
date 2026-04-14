@@ -17,6 +17,7 @@ import '../../providers/update_provider.dart';
 import '../../services/update_service.dart';
 import '../../widgets/common/coin_logo.dart';
 import '../../widgets/common/glass_card.dart';
+import '../../widgets/common/peer_app_card.dart';
 import '../../widgets/common/price_text.dart';
 import '../../widgets/common/shimmer_loading.dart';
 import '../../widgets/wallet/wallet_connect_sheet.dart';
@@ -71,6 +72,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 // Update Banner (ถ้ามี update ใหม่)
                 SliverToBoxAdapter(child: _buildUpdateBanner(locale)),
+
+                // Peer app card (ถ้า TPIX Wallet ติดตั้งในเครื่อง)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: PeerAppCard(),
+                  ),
+                ),
 
                 // Portfolio / Connect Card
                 SliverToBoxAdapter(

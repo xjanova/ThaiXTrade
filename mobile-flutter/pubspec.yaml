@@ -42,6 +42,9 @@ dependencies:
   dio: ^5.8.0+1
   web_socket_channel: ^3.0.2
 
+  # Deep links (cross-app discovery)
+  app_links: ^6.3.2
+
   # Chart (WebView for TradingView lightweight-charts)
   webview_flutter: ^4.10.0
 
