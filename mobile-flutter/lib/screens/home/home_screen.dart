@@ -13,6 +13,8 @@ import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/market_provider.dart';
+import '../../providers/update_provider.dart';
+import '../../services/update_service.dart';
 import '../../widgets/common/coin_logo.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/price_text.dart';
@@ -66,6 +68,9 @@ class _HomeScreenState extends State<HomeScreen> {
               slivers: [
                 // Header
                 SliverToBoxAdapter(child: _buildHeader(locale, wallet)),
+
+                // Update Banner (ถ้ามี update ใหม่)
+                SliverToBoxAdapter(child: _buildUpdateBanner(locale)),
 
                 // Portfolio / Connect Card
                 SliverToBoxAdapter(
@@ -125,6 +130,79 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  // ── Update Banner ──
+
+  Widget _buildUpdateBanner(LocaleProvider locale) {
+    return Consumer<UpdateProvider>(
+      builder: (_, update, __) {
+        if (!update.hasUpdate) return const SizedBox.shrink();
+        final result = update.result!;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: GlassCard(
+            variant: GlassVariant.brand,
+            borderRadius: 14,
+            padding: const EdgeInsets.all(12),
+            onTap: () => _showUpdateDialog(result, update.service, locale),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    gradient: AppGradients.brand,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.system_update_rounded,
+                      color: Colors.white, size: 18),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        locale.t('update.available'),
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        'v${result.currentVersion} → v${result.latestVersion}',
+                        style: AppTheme.mono(
+                          fontSize: 11,
+                          color: AppColors.brandCyan,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded,
+                      color: AppColors.textTertiary, size: 18),
+                  onPressed: () => update.dismiss(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showUpdateDialog(
+      UpdateResult result, UpdateService service, LocaleProvider locale) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _HomeUpdateDialog(
+          result: result, service: service, locale: locale),
     );
   }
 
@@ -441,5 +519,159 @@ class _TickerMiniCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ── Home Update Dialog ──
+
+class _HomeUpdateDialog extends StatefulWidget {
+  final UpdateResult result;
+  final UpdateService service;
+  final LocaleProvider locale;
+
+  const _HomeUpdateDialog({
+    required this.result,
+    required this.service,
+    required this.locale,
+  });
+
+  @override
+  State<_HomeUpdateDialog> createState() => _HomeUpdateDialogState();
+}
+
+class _HomeUpdateDialogState extends State<_HomeUpdateDialog> {
+  bool _downloading = false;
+  double _progress = 0;
+  String _status = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final locale = widget.locale;
+    return AlertDialog(
+      backgroundColor: AppColors.bgElevated,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: AppColors.bgCardBorder),
+      ),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.brandCyan.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.system_update_rounded,
+                color: AppColors.brandCyan, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(locale.t('update.available'),
+                style: const TextStyle(
+                    color: AppColors.textPrimary, fontSize: 16)),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'v${widget.result.currentVersion} → v${widget.result.latestVersion}',
+            style: AppTheme.mono(fontSize: 14, color: AppColors.brandCyan),
+          ),
+          if (widget.result.releaseNotes != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 100),
+              child: SingleChildScrollView(
+                child: Text(
+                  widget.result.releaseNotes!,
+                  style: GoogleFonts.inter(
+                      fontSize: 11, color: AppColors.textTertiary),
+                ),
+              ),
+            ),
+          ],
+          if (_downloading) ...[
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: _progress > 0 ? _progress : null,
+                backgroundColor: AppColors.bgTertiary,
+                valueColor:
+                    const AlwaysStoppedAnimation(AppColors.brandCyan),
+                minHeight: 5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(_status,
+                style: GoogleFonts.inter(
+                    fontSize: 11, color: AppColors.textTertiary)),
+          ],
+        ],
+      ),
+      actions: [
+        if (!_downloading) ...[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(locale.t('common.later'),
+                style:
+                    const TextStyle(color: AppColors.textTertiary)),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.download_rounded,
+                color: Colors.white, size: 16),
+            label: Text(locale.t('common.download'),
+                style: const TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.brandCyan,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: _startDownload,
+          ),
+        ],
+      ],
+    );
+  }
+
+  void _startDownload() async {
+    final url = widget.result.apkDownloadUrl;
+    if (url == null) {
+      await widget.service.openDownloadPage();
+      if (mounted) Navigator.pop(context);
+      return;
+    }
+
+    setState(() {
+      _downloading = true;
+      _status = widget.locale.t('common.downloading');
+    });
+
+    final success = await widget.service.downloadAndInstall(
+      url,
+      widget.result.latestVersion ?? 'latest',
+      expectedSize: widget.result.apkSize,
+      onProgress: (received, total) {
+        if (!mounted) return;
+        if (total > 0) {
+          setState(() {
+            _progress = received / total;
+            final mb = (received / 1024 / 1024).toStringAsFixed(1);
+            final totalMb = (total / 1024 / 1024).toStringAsFixed(1);
+            _status = '$mb / $totalMb MB';
+          });
+        }
+      },
+    );
+
+    if (!mounted) return;
+    if (success) {
+      Navigator.pop(context);
+    } else {
+      await widget.service.openDownloadPage();
+      if (mounted) Navigator.pop(context);
+    }
   }
 }

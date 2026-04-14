@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'app.dart';
 import 'providers/wallet_provider.dart';
 import 'providers/market_provider.dart';
+import 'providers/update_provider.dart';
 import 'core/locale/locale_provider.dart';
 
 Future<void> main() async {
@@ -26,6 +27,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => LocaleProvider()),
         ChangeNotifierProvider(create: (_) => WalletProvider()),
         ChangeNotifierProvider(create: (_) => MarketProvider()),
+        ChangeNotifierProvider(create: (_) => UpdateProvider()),
       ],
       child: const TpixTradeApp(),
     ),
