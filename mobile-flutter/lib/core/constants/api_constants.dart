@@ -9,8 +9,13 @@ class ApiConstants {
   static const String baseUrl = 'https://tpix.online/api/v1';
   static const Duration timeout = Duration(seconds: 15);
 
+  // ── Config (from backend) ──
+  static const String fees = '/fees';
+  static const String chains = '/chains';
+  static String chainTokens(int chainId) => '/chains/$chainId/tokens';
+
   // ── Trading Pairs ──
-  static const String pairs = '/pairs';
+  static const String pairs = '/market/pairs';
 
   // ── Wallet ──
   static const String walletConnect = '/wallet/connect';

@@ -79,6 +79,39 @@ class ApiService {
     }
   }
 
+  // ── Config (fees + chains + pairs) ──
+
+  Future<FeeConfig?> getFees() async {
+    final res = await _get(ApiConstants.fees);
+    if (res == null) return null;
+    return FeeConfig.fromJson(res);
+  }
+
+  Future<List<ChainInfo>> getChains() async {
+    final res = await _get(ApiConstants.chains);
+    if (res == null || res['success'] != true) return [];
+    final list = res['data'] as List<dynamic>? ?? [];
+    return list
+        .map((e) => ChainInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<TradingPairInfo>> getPairs() async {
+    final res = await _get(ApiConstants.pairs);
+    if (res == null || res['success'] != true) return [];
+    final list = res['data'] as List<dynamic>? ?? [];
+    return list
+        .map((e) => TradingPairInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getChainTokens(int chainId) async {
+    final res = await _get(ApiConstants.chainTokens(chainId));
+    if (res == null || res['success'] != true) return [];
+    final list = res['data'] as List<dynamic>? ?? [];
+    return list.cast<Map<String, dynamic>>();
+  }
+
   // ── Market Data ──
 
   Future<List<Ticker>> getTickers() async {

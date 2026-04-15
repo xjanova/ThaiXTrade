@@ -234,6 +234,145 @@ class TpixPrice {
       );
 }
 
+// ── Fee Config ──
+
+class FeeConfig {
+  final double swapFeePercent;
+  final String swapFeeWallet;
+  final bool swapEnabled;
+
+  final double bridgeFeePercent;
+  final String bridgeFeeWallet;
+  final double bridgeMinAmount;
+  final double bridgeMaxAmount;
+  final double bridgeMinFee;
+  final int bridgeEstimatedMinutes;
+  final bool bridgeEnabled;
+
+  const FeeConfig({
+    required this.swapFeePercent,
+    required this.swapFeeWallet,
+    required this.swapEnabled,
+    required this.bridgeFeePercent,
+    required this.bridgeFeeWallet,
+    required this.bridgeMinAmount,
+    required this.bridgeMaxAmount,
+    required this.bridgeMinFee,
+    required this.bridgeEstimatedMinutes,
+    required this.bridgeEnabled,
+  });
+
+  factory FeeConfig.fromJson(Map<String, dynamic> json) {
+    final swap = (json['swap'] as Map<String, dynamic>?) ?? {};
+    final bridge = (json['bridge'] as Map<String, dynamic>?) ?? {};
+    return FeeConfig(
+      swapFeePercent: _toDouble(swap['feePercent']),
+      swapFeeWallet: (swap['feeWallet'] as String?) ?? '',
+      swapEnabled: swap['enabled'] == true,
+      bridgeFeePercent: _toDouble(bridge['feePercent']),
+      bridgeFeeWallet: (bridge['feeWallet'] as String?) ?? '',
+      bridgeMinAmount: _toDouble(bridge['minAmount']),
+      bridgeMaxAmount: _toDouble(bridge['maxAmount']),
+      bridgeMinFee: _toDouble(bridge['minFee']),
+      bridgeEstimatedMinutes: (bridge['estimatedMinutes'] as num?)?.toInt() ?? 5,
+      bridgeEnabled: bridge['enabled'] == true,
+    );
+  }
+
+  factory FeeConfig.empty() => const FeeConfig(
+        swapFeePercent: 0.3,
+        swapFeeWallet: '',
+        swapEnabled: false,
+        bridgeFeePercent: 0,
+        bridgeFeeWallet: '',
+        bridgeMinAmount: 0,
+        bridgeMaxAmount: 0,
+        bridgeMinFee: 0,
+        bridgeEstimatedMinutes: 5,
+        bridgeEnabled: false,
+      );
+}
+
+// ── Chain Info (from /api/v1/chains) ──
+
+class ChainInfo {
+  final int chainId;
+  final String name;
+  final String shortName;
+  final String symbol;
+  final String rpcUrl;
+  final String explorerUrl;
+  final int decimals;
+  final bool gasless;
+
+  const ChainInfo({
+    required this.chainId,
+    required this.name,
+    required this.shortName,
+    required this.symbol,
+    required this.rpcUrl,
+    required this.explorerUrl,
+    required this.decimals,
+    required this.gasless,
+  });
+
+  factory ChainInfo.fromJson(Map<String, dynamic> json) => ChainInfo(
+        chainId: (json['chain_id'] ?? json['chainId']) as int? ?? 0,
+        name: (json['name'] as String?) ?? '',
+        shortName: (json['short_name'] ?? json['shortName'] ?? json['symbol'])
+                as String? ??
+            '',
+        symbol: (json['symbol'] as String?) ?? '',
+        rpcUrl: (json['rpc_url'] ?? json['rpcUrl']) as String? ?? '',
+        explorerUrl:
+            (json['explorer_url'] ?? json['explorerUrl']) as String? ?? '',
+        decimals: (json['decimals'] as num?)?.toInt() ?? 18,
+        gasless: json['gasless'] == true,
+      );
+}
+
+// ── Trading Pair Info (from /api/v1/market/pairs) ──
+
+class TradingPairInfo {
+  final String symbol; // BTC-USDT
+  final String baseAsset;
+  final String quoteAsset;
+  final double minTradeAmount;
+  final double maxTradeAmount;
+  final int pricePrecision;
+  final int amountPrecision;
+  final double? feeRateOverride;
+
+  const TradingPairInfo({
+    required this.symbol,
+    required this.baseAsset,
+    required this.quoteAsset,
+    required this.minTradeAmount,
+    required this.maxTradeAmount,
+    required this.pricePrecision,
+    required this.amountPrecision,
+    this.feeRateOverride,
+  });
+
+  factory TradingPairInfo.fromJson(Map<String, dynamic> json) {
+    final symbol = (json['symbol'] as String?) ?? '';
+    final parts = symbol.contains('-') ? symbol.split('-') : [symbol, 'USDT'];
+    return TradingPairInfo(
+      symbol: symbol,
+      baseAsset: (json['base_asset'] ?? parts[0]) as String,
+      quoteAsset:
+          (json['quote_asset'] ?? (parts.length > 1 ? parts[1] : 'USDT'))
+              as String,
+      minTradeAmount: _toDouble(json['min_trade_amount']),
+      maxTradeAmount: _toDouble(json['max_trade_amount']),
+      pricePrecision: (json['price_precision'] as num?)?.toInt() ?? 2,
+      amountPrecision: (json['amount_precision'] as num?)?.toInt() ?? 4,
+      feeRateOverride:
+          json['fee_rate'] != null ? _toDouble(json['fee_rate']) : null,
+    );
+  }
+}
+
 // ── Helpers ──
 
 double _toDouble(dynamic value) {

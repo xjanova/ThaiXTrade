@@ -14,6 +14,7 @@ import '../core/router.dart';
 import '../providers/wallet_provider.dart';
 import '../providers/market_provider.dart';
 import '../providers/update_provider.dart';
+import '../providers/config_provider.dart';
 import '../core/locale/locale_provider.dart';
 import '../services/biometric_service.dart';
 import '../services/deep_link_service.dart';
@@ -40,6 +41,7 @@ class _SplashScreenState extends State<SplashScreen> {
       context.read<MarketProvider>().loadTpixPrice(),
       context.read<MarketProvider>().loadFavorites(),
       context.read<LocaleProvider>().init(),
+      context.read<ConfigProvider>().loadAll(), // fees + chains + pairs
       Future.delayed(const Duration(milliseconds: 1800)), // minimum splash time
     ]);
 

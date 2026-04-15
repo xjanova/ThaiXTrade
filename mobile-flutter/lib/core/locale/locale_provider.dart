@@ -144,6 +144,10 @@ class LocaleProvider extends ChangeNotifier {
       'trade.order_failed': 'สร้างออเดอร์ไม่สำเร็จ',
       'trade.invalid_amount': 'กรุณาใส่จำนวนที่ถูกต้อง',
       'trade.invalid_price': 'กรุณาใส่ราคาที่ถูกต้อง',
+      'trade.fee': 'ค่าธรรมเนียม',
+      'trade.below_min': 'จำนวนต่ำกว่าขั้นต่ำ',
+      'trade.above_max': 'จำนวนเกินสูงสุด',
+      'trade.platform_not_ready': 'ระบบยังไม่พร้อมให้เทรด — ติดต่อผู้ดูแล',
 
       // Peer app (cross-app discovery)
       'peer.open_wallet': 'เปิด TPIX Wallet',
@@ -264,6 +268,10 @@ class LocaleProvider extends ChangeNotifier {
       'trade.order_failed': 'Failed to place order',
       'trade.invalid_amount': 'Please enter a valid amount',
       'trade.invalid_price': 'Please enter a valid price',
+      'trade.fee': 'Fee',
+      'trade.below_min': 'Amount below minimum',
+      'trade.above_max': 'Amount exceeds maximum',
+      'trade.platform_not_ready': 'Platform not ready — contact admin',
 
       // Peer app (cross-app discovery)
       'peer.open_wallet': 'Open TPIX Wallet',

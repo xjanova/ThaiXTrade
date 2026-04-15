@@ -13,6 +13,7 @@ import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/market_provider.dart';
+import '../../providers/config_provider.dart';
 import '../../services/api_service.dart';
 import '../../utils/crypto_logos.dart';
 import '../../widgets/common/coin_logo.dart';
@@ -456,7 +457,12 @@ class _TradeScreenState extends State<TradeScreen>
             }).toList(),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+
+          // Fee summary (จาก backend /api/v1/fees + pair override)
+          _buildFeeSummary(locale, market),
+
+          const SizedBox(height: 12),
 
           // Submit button
           GradientButton(
@@ -476,6 +482,106 @@ class _TradeScreenState extends State<TradeScreen>
               locale.t('settings.connect_wallet'),
               style: GoogleFonts.inter(
                   fontSize: 12, color: AppColors.textTertiary),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Fee Summary ──
+
+  Widget _buildFeeSummary(LocaleProvider locale, MarketProvider market) {
+    final config = context.watch<ConfigProvider>();
+    if (!config.isReady) return const SizedBox.shrink();
+
+    final feeRate = config.feeRateForPair(market.selectedPair);
+    final pair = config.pairBySymbol(market.selectedPair);
+
+    // คำนวณ estimated fee จาก amount ที่ user กรอก
+    final amount = double.tryParse(_amountController.text) ?? 0;
+    final price = double.tryParse(_priceController.text) ?? 0;
+    final total = (_orderTypeTab.index == 1) // market
+        ? amount * (market.selectedTicker?.lastPrice ?? 0)
+        : amount * price;
+    final feeAmount = total * (feeRate / 100);
+    final quoteAsset = market.selectedTicker?.quoteAsset ?? 'USDT';
+
+    // แสดง warning ถ้าเกิน min/max
+    String? warning;
+    if (pair != null && amount > 0) {
+      if (pair.minTradeAmount > 0 && amount < pair.minTradeAmount) {
+        warning = locale.isThai
+            ? 'ต่ำกว่าขั้นต่ำ ${pair.minTradeAmount}'
+            : 'Below min ${pair.minTradeAmount}';
+      } else if (pair.maxTradeAmount > 0 && amount > pair.maxTradeAmount) {
+        warning = locale.isThai
+            ? 'เกินสูงสุด ${pair.maxTradeAmount}'
+            : 'Above max ${pair.maxTradeAmount}';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.bgTertiary,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: warning != null
+              ? AppColors.tradingRed.withValues(alpha: 0.4)
+              : AppColors.bgCardBorder,
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline_rounded,
+                  size: 12,
+                  color: AppColors.textTertiary),
+              const SizedBox(width: 6),
+              Text(
+                locale.isThai ? 'ค่าธรรมเนียม' : 'Fee',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${feeRate.toStringAsFixed(2)}%',
+                style: AppTheme.mono(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.brandCyan,
+                ),
+              ),
+              if (feeAmount > 0) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '(~${feeAmount.toStringAsFixed(2)} $quoteAsset)',
+                  style: AppTheme.mono(
+                      fontSize: 10, color: AppColors.textTertiary),
+                ),
+              ],
+            ],
+          ),
+          if (warning != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded,
+                    size: 12, color: AppColors.tradingRed),
+                const SizedBox(width: 6),
+                Text(
+                  warning,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    color: AppColors.tradingRed,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ],
         ],
@@ -555,8 +661,17 @@ class _TradeScreenState extends State<TradeScreen>
     final wallet = context.read<WalletProvider>();
     final market = context.read<MarketProvider>();
     final locale = context.read<LocaleProvider>();
+    final config = context.read<ConfigProvider>();
 
     if (!wallet.isConnected || wallet.address == null) return;
+
+    // ตรวจก่อนว่า backend พร้อมเทรด (มี fee wallet ตั้งค่าแล้ว)
+    if (!config.canTrade) {
+      _showSnack(locale.isThai
+          ? 'ระบบยังไม่พร้อมให้เทรด — ติดต่อผู้ดูแล'
+          : 'Platform not ready — contact admin');
+      return;
+    }
 
     final priceText = _priceController.text.trim();
     final amountText = _amountController.text.trim();
@@ -566,6 +681,23 @@ class _TradeScreenState extends State<TradeScreen>
     if (amount == null || amount <= 0) {
       _showSnack(locale.t('trade.invalid_amount'));
       return;
+    }
+
+    // Validate min/max จาก TradingPair config
+    final pair = config.pairBySymbol(market.selectedPair);
+    if (pair != null) {
+      if (pair.minTradeAmount > 0 && amount < pair.minTradeAmount) {
+        _showSnack(locale.isThai
+            ? 'จำนวนต่ำกว่าขั้นต่ำ ${pair.minTradeAmount}'
+            : 'Amount below min ${pair.minTradeAmount}');
+        return;
+      }
+      if (pair.maxTradeAmount > 0 && amount > pair.maxTradeAmount) {
+        _showSnack(locale.isThai
+            ? 'จำนวนเกินสูงสุด ${pair.maxTradeAmount}'
+            : 'Amount above max ${pair.maxTradeAmount}');
+        return;
+      }
     }
 
     double? price;
