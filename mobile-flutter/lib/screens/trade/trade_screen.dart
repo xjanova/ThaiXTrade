@@ -75,14 +75,17 @@ class _TradeScreenState extends State<TradeScreen>
   /// ล้างค่า price/trigger ที่ไม่เกี่ยวข้องเมื่อ user สลับ tab
   /// กัน phantom data (เช่น กรอก price ใน Limit แล้วสลับไป Market
   /// ค่า price จะถูกซ่อนแต่ไม่หาย → กลับมา Limit เห็นค่าเก่า)
+  /// Guard: TabController fires 2x (indexIsChanging + indexChanged) — รันตอน settled เท่านั้น
   void _handleOrderTypeChange() {
     if (!mounted) return;
+    if (_orderTypeTab.indexIsChanging) return; // รอ animation เสร็จก่อน
     if (_isMarket && _priceController.text.isNotEmpty) {
       _priceController.clear();
     }
     if (!_isStopLimit && _triggerPriceController.text.isNotEmpty) {
       _triggerPriceController.clear();
     }
+    // Rebuild เพื่อ show/hide inputs (ถ้า controller ว่างอยู่แล้ว clear ไม่ trigger)
     setState(() {});
   }
 

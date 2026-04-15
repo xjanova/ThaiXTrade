@@ -86,11 +86,14 @@ class _BridgeScreenState extends State<BridgeScreen> {
                       IconButton(
                         icon: const Icon(Icons.swap_vert_rounded,
                             color: AppColors.brandCyan),
-                        onPressed: () => setState(() {
-                          final tmp = _fromChainId;
-                          _fromChainId = _toChainId;
-                          _toChainId = tmp;
-                        }),
+                        // Disable swap เมื่อ chain ซ้ำ (ไม่มีอะไรให้สลับ)
+                        onPressed: _fromChainId == _toChainId
+                            ? null
+                            : () => setState(() {
+                                  final tmp = _fromChainId;
+                                  _fromChainId = _toChainId;
+                                  _toChainId = tmp;
+                                }),
                       ),
                       _buildChainPicker(
                         label: locale.t('bridge.to_chain'),
