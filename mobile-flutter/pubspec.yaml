@@ -65,7 +65,7 @@ dev_dependencies:
 
 flutter_launcher_icons:
   android: true
-  ios: true
+  ios: false  # iOS folder ยังไม่มี — Android only
   image_path: "logotpixdextrade.png"
   adaptive_icon_background: "#0A0E1A"
   adaptive_icon_foreground: "logotpixdextrade.png"
