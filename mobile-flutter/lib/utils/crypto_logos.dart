@@ -7,6 +7,9 @@
 class CryptoLogos {
   CryptoLogos._();
 
+  // Primary: spothq curated icon set — 600+ coins, GitHub raw (never down)
+  static const _spothq =
+      'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color';
   static const _coincapCdn = 'https://assets.coincap.io/assets/icons';
   static const _cryptoLogos = 'https://cryptologos.cc/logos';
   static const _twAssets =
@@ -104,7 +107,7 @@ class CryptoLogos {
     return s == 'TPIX' || s == 'WTPIX';
   }
 
-  /// Primary logo URL (CoinCap CDN)
+  /// Primary logo URL (spothq GitHub — 600+ curated coins)
   static String getLogoUrl(String symbol) {
     if (symbol.isEmpty) return '';
     final upper = symbol.toUpperCase().split(RegExp(r'[/\-]')).first;
@@ -113,11 +116,21 @@ class CryptoLogos {
     if (isTpix(upper)) return '';
 
     final mapped = _symbolMap[upper] ?? upper;
+    return '$_spothq/${mapped.toLowerCase()}.png';
+  }
+
+  /// Fallback 1 URL (CoinCap CDN)
+  static String? getFallbackUrl(String symbol) {
+    if (symbol.isEmpty) return null;
+    final upper = symbol.toUpperCase().split(RegExp(r'[/\-]')).first;
+    if (isTpix(upper)) return null;
+
+    final mapped = _symbolMap[upper] ?? upper;
     return '$_coincapCdn/${mapped.toLowerCase()}@2x.png';
   }
 
-  /// Fallback logo URL (CryptoLogos.cc → Trust Wallet BSC)
-  static String? getFallbackUrl(String symbol) {
+  /// Fallback 2 URL (CryptoLogos.cc → Trust Wallet BSC) — final tier
+  static String? getFallback2Url(String symbol) {
     if (symbol.isEmpty) return null;
     final upper = symbol.toUpperCase().split(RegExp(r'[/\-]')).first;
     final mapped = _symbolMap[upper] ?? upper;

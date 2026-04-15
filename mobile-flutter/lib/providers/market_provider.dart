@@ -80,6 +80,7 @@ class MarketProvider extends ChangeNotifier {
 
     try {
       _tickers = await _api.getTickers();
+      _ensureTpixFirst();
       _applyFilter();
     } catch (e) {
       debugPrint('loadTickers error: ${e.runtimeType}');
@@ -87,6 +88,35 @@ class MarketProvider extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  /// ให้ TPIX-USDT อยู่ต้นสุดเสมอ (ตรงกับเว็บที่ force-prepend TPIX)
+  void _ensureTpixFirst() {
+    final hasTpix = _tickers.any((t) => t.symbol == 'TPIX-USDT');
+    if (!hasTpix) {
+      _tickers.insert(
+        0,
+        Ticker(
+          symbol: 'TPIX-USDT',
+          baseAsset: 'TPIX',
+          quoteAsset: 'USDT',
+          lastPrice: _tpixPrice?.price ?? 0,
+          priceChange: 0,
+          priceChangePercent: _tpixPrice?.change24h ?? 0,
+          high24h: 0,
+          low24h: 0,
+          volume24h: 0,
+          quoteVolume24h: _tpixPrice?.volume24h ?? 0,
+        ),
+      );
+    } else {
+      // ย้าย TPIX-USDT ไปต้นสุด
+      final idx = _tickers.indexWhere((t) => t.symbol == 'TPIX-USDT');
+      if (idx > 0) {
+        final tpix = _tickers.removeAt(idx);
+        _tickers.insert(0, tpix);
+      }
+    }
   }
 
   // ── Auto-refresh (HTTP fallback + WebSocket) ──

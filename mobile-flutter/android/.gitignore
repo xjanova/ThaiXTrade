@@ -10,5 +10,10 @@ GeneratedPluginRegistrant.java
 # Remember to never publicly share your keystore.
 # See https://flutter.dev/to/reference-keystore
 key.properties
-**/*.keystore
 **/*.jks
+
+# NOTE: tpix-trade.keystore is intentionally committed — ใช้สำหรับ sign
+# APK ทุก build ด้วย key เดียวกัน (ป้องกัน package conflict ตอน update)
+# Password อยู่ใน build.gradle.kts (ok สำหรับ dev keystore)
+# ถ้าต้องการ production keystore แยกต่างหาก → ใช้ GitHub Secrets
+!app/tpix-trade.keystore

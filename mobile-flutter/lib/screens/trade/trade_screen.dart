@@ -579,6 +579,19 @@ class _TradeScreenState extends State<TradeScreen>
 
     setState(() => _isSubmitting = true);
 
+    // ถ้ายังไม่ verified → verify ก่อนเพื่อได้ auth token
+    if (!wallet.isVerified) {
+      final ok = await wallet.verifyWithBackend();
+      if (!mounted) return;
+      if (!ok) {
+        setState(() => _isSubmitting = false);
+        _showSnack(locale.isThai
+            ? 'ยืนยันกระเป๋าไม่สำเร็จ — ลองอีกครั้ง'
+            : 'Wallet verification failed — try again');
+        return;
+      }
+    }
+
     try {
       final order = await ApiService().createOrder(
         pair: market.selectedPair,

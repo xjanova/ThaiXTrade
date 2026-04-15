@@ -146,6 +146,18 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
+
+      - name: Verify persistent keystore
+        run: |
+          if [ ! -f android/app/tpix-trade.keystore ]; then
+            echo "ERROR: Persistent keystore missing at android/app/tpix-trade.keystore"
+            echo "This is required for consistent APK signing across builds"
+            exit 1
+          fi
+          echo "✓ Persistent keystore found — builds will sign with same key"
+
       - name: Analyze code
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 

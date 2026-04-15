@@ -249,6 +249,10 @@ class WalletProvider extends ChangeNotifier {
             await prefs.setString(_keyWalletState, _address!);
           }
           notifyListeners();
+
+          // Auto re-verify กับ backend — เพื่อให้ได้ auth token สำหรับเทรด
+          // ไม่ block UI (fire-and-forget)
+          _registerWithBackend(_address!);
         } else {
           await prefs.remove(_keyWalletState);
         }

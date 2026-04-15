@@ -27,13 +27,28 @@ class CoinLogo extends StatefulWidget {
 }
 
 class _CoinLogoState extends State<CoinLogo> {
-  bool _primaryFailed = false;
+  /// Tier ปัจจุบัน: 0=primary, 1=fallback1, 2=fallback2, 3=letter
+  int _tier = 0;
 
   @override
   void didUpdateWidget(CoinLogo old) {
     super.didUpdateWidget(old);
     if (old.symbol != widget.symbol) {
-      _primaryFailed = false;
+      _tier = 0;
+    }
+  }
+
+  String? _urlForTier(int tier) {
+    switch (tier) {
+      case 0:
+        final u = CryptoLogos.getLogoUrl(widget.symbol);
+        return u.isEmpty ? null : u;
+      case 1:
+        return CryptoLogos.getFallbackUrl(widget.symbol);
+      case 2:
+        return CryptoLogos.getFallback2Url(widget.symbol);
+      default:
+        return null;
     }
   }
 
@@ -53,25 +68,30 @@ class _CoinLogoState extends State<CoinLogo> {
       );
     }
 
-    final primaryUrl = CryptoLogos.getLogoUrl(widget.symbol);
-    if (primaryUrl.isEmpty) return _letterFallback();
-
-    final fallbackUrl = CryptoLogos.getFallbackUrl(widget.symbol);
-    final url = _primaryFailed && fallbackUrl != null ? fallbackUrl : primaryUrl;
+    // หา URL ของ tier ปัจจุบัน — ถ้าไม่มีก็ข้าม tier ไป
+    String? url;
+    int tier = _tier;
+    while (tier < 3) {
+      url = _urlForTier(tier);
+      if (url != null) break;
+      tier++;
+    }
+    if (url == null) return _letterFallback();
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(widget.borderRadius),
       child: CachedNetworkImage(
+        key: ValueKey('${widget.symbol}_$tier'),
         imageUrl: url,
         width: widget.size,
         height: widget.size,
         fit: BoxFit.cover,
         placeholder: (_, __) => _shimmerPlaceholder(),
         errorWidget: (_, __, ___) {
-          // Primary failed → try fallback
-          if (!_primaryFailed && fallbackUrl != null) {
+          // Downgrade → tier ถัดไป
+          if (tier < 2) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) setState(() => _primaryFailed = true);
+              if (mounted) setState(() => _tier = tier + 1);
             });
             return _shimmerPlaceholder();
           }

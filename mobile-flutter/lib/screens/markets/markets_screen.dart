@@ -12,6 +12,7 @@ import '../../core/locale/locale_provider.dart';
 import '../../providers/market_provider.dart';
 import '../../widgets/common/coin_logo.dart';
 import '../../widgets/common/glass_card.dart';
+import '../../widgets/common/mini_sparkline.dart';
 import '../../widgets/common/price_text.dart';
 import '../../widgets/common/shimmer_loading.dart';
 import '../../models/api_models.dart';
@@ -341,6 +342,17 @@ class _TickerItem extends StatelessWidget {
                 ],
               ),
             ),
+
+            // Mini sparkline (24h trend) — เฉพาะ non-TPIX pairs (TPIX ไม่มีใน Binance)
+            if (ticker.baseAsset != 'TPIX') ...[
+              MiniSparkline(
+                symbol: ticker.symbol,
+                width: 56,
+                height: 28,
+                isPositive: ticker.isPositive,
+              ),
+              const SizedBox(width: 10),
+            ],
 
             // Price
             Column(
