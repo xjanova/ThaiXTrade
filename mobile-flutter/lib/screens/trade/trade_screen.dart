@@ -54,7 +54,8 @@ class _TradeScreenState extends State<TradeScreen>
   void initState() {
     super.initState();
     _orderTypeTab = TabController(length: 3, vsync: this);
-    _orderTypeTab.addListener(_rebuildOnInputChange);
+    // Tab change ใช้ handler พิเศษ (ล้างค่าไม่เกี่ยวข้อง + rebuild)
+    _orderTypeTab.addListener(_handleOrderTypeChange);
     _priceController.addListener(_rebuildOnInputChange);
     _amountController.addListener(_rebuildOnInputChange);
     _triggerPriceController.addListener(_rebuildOnInputChange);
@@ -71,9 +72,23 @@ class _TradeScreenState extends State<TradeScreen>
     if (mounted) setState(() {});
   }
 
+  /// ล้างค่า price/trigger ที่ไม่เกี่ยวข้องเมื่อ user สลับ tab
+  /// กัน phantom data (เช่น กรอก price ใน Limit แล้วสลับไป Market
+  /// ค่า price จะถูกซ่อนแต่ไม่หาย → กลับมา Limit เห็นค่าเก่า)
+  void _handleOrderTypeChange() {
+    if (!mounted) return;
+    if (_isMarket && _priceController.text.isNotEmpty) {
+      _priceController.clear();
+    }
+    if (!_isStopLimit && _triggerPriceController.text.isNotEmpty) {
+      _triggerPriceController.clear();
+    }
+    setState(() {});
+  }
+
   @override
   void dispose() {
-    _orderTypeTab.removeListener(_rebuildOnInputChange);
+    _orderTypeTab.removeListener(_handleOrderTypeChange);
     _priceController.removeListener(_rebuildOnInputChange);
     _amountController.removeListener(_rebuildOnInputChange);
     _triggerPriceController.removeListener(_rebuildOnInputChange);
@@ -435,12 +450,30 @@ class _TradeScreenState extends State<TradeScreen>
 
           const SizedBox(height: 14),
 
-          // Trigger Price input (stop-limit only)
+          // Trigger Price input (stop-limit only) — อธิบาย semantics
           if (_isStopLimit) ...[
             _TradeInput(
               label: locale.t('trade.trigger_price'),
               controller: _triggerPriceController,
               suffix: market.selectedTicker?.quoteAsset ?? 'USDT',
+            ),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                _isBuy
+                    ? (locale.isThai
+                        ? 'ทริกเกอร์เมื่อราคาขึ้นถึง (ซื้อตอนราคาขึ้นทะลุ)'
+                        : 'Triggers when price rises to this level (buy breakout)')
+                    : (locale.isThai
+                        ? 'ทริกเกอร์เมื่อราคาลงถึง (ขายตอนราคาหลุด)'
+                        : 'Triggers when price falls to this level (sell stop)'),
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  color: AppColors.textTertiary,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             ),
             const SizedBox(height: 10),
           ],

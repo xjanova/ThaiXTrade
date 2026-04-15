@@ -168,10 +168,45 @@ class _BridgeScreenState extends State<BridgeScreen> {
 
                       const SizedBox(height: 16),
 
+                      // Warning ถ้าเลือก chain เดียวกัน
+                      if (_fromChainId == _toChainId) ...[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.tradingRed.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color: AppColors.tradingRed
+                                    .withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.warning_amber_rounded,
+                                  size: 14, color: AppColors.tradingRed),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  locale.isThai
+                                      ? 'กรุณาเลือกเชนต้นทางและปลายทางให้ต่างกัน'
+                                      : 'From and To chains must differ',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    color: AppColors.tradingRed,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
                       GradientButton(
                         text: locale.t('bridge.submit'),
                         onPressed:
-                            (fees?.bridgeEnabled == true && wallet.isConnected)
+                            (fees?.bridgeEnabled == true &&
+                                    wallet.isConnected &&
+                                    _fromChainId != _toChainId)
                                 ? _submitBridge
                                 : null,
                       ),
@@ -294,13 +329,41 @@ class _BridgeScreenState extends State<BridgeScreen> {
 
   void _submitBridge() {
     final locale = context.read<LocaleProvider>();
+    final config = context.read<ConfigProvider>();
+    final fees = config.fees;
+
+    // Validate amount
+    final amount = double.tryParse(_amountController.text);
+    if (amount == null || amount <= 0) {
+      _showSnack(locale.t('trade.invalid_amount'));
+      return;
+    }
+
+    // Validate min/max
+    if (fees != null) {
+      if (fees.bridgeMinAmount > 0 && amount < fees.bridgeMinAmount) {
+        _showSnack(locale.isThai
+            ? 'ต่ำกว่าขั้นต่ำ ${fees.bridgeMinAmount}'
+            : 'Below minimum ${fees.bridgeMinAmount}');
+        return;
+      }
+      if (fees.bridgeMaxAmount > 0 && amount > fees.bridgeMaxAmount) {
+        _showSnack(locale.isThai
+            ? 'เกินสูงสุด ${fees.bridgeMaxAmount}'
+            : 'Above maximum ${fees.bridgeMaxAmount}');
+        return;
+      }
+    }
+
+    // TODO future: เรียก API bridge จริง — ตอนนี้ยังไม่มี endpoint ฝั่ง backend
+    _showSnack(locale.isThai
+        ? 'ฟีเจอร์บริดจ์กำลังพัฒนา — ติดตามเร็วๆ นี้'
+        : 'Bridge feature coming soon');
+  }
+
+  void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(locale.isThai
-            ? 'ฟีเจอร์บริดจ์กำลังพัฒนา — ติดตามเร็วๆ นี้'
-            : 'Bridge feature coming soon'),
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
     );
   }
 }
