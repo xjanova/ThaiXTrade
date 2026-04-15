@@ -219,8 +219,9 @@ class ApiService {
   Future<TradeOrder?> createOrder({
     required String pair,
     required String side,
-    required String type,
+    required String type, // limit | market | stop-limit
     double? price,
+    double? triggerPrice,
     required double amount,
     required String walletAddress,
     required int chainId,
@@ -231,6 +232,8 @@ class ApiService {
       'side': side,
       'type': type,
       if (price != null) 'price': price.toStringAsFixed(8),
+      if (triggerPrice != null)
+        'trigger_price': triggerPrice.toStringAsFixed(8),
       'amount': amount.toStringAsFixed(8),
       'wallet_address': walletAddress,
       'chain_id': chainId,

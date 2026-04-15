@@ -12,6 +12,7 @@ import '../screens/markets/markets_screen.dart';
 import '../screens/trade/trade_screen.dart';
 import '../screens/portfolio/portfolio_screen.dart';
 import '../screens/settings/settings_screen.dart';
+import '../screens/bridge/bridge_screen.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -80,6 +81,13 @@ final GoRouter appRouter = GoRouter(
           ],
         ),
       ],
+    ),
+
+    // Bridge (full screen, ไม่อยู่ใน bottom nav)
+    GoRoute(
+      path: '/bridge',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const BridgeScreen(),
     ),
   ],
 );

@@ -148,6 +148,22 @@ class LocaleProvider extends ChangeNotifier {
       'trade.below_min': 'จำนวนต่ำกว่าขั้นต่ำ',
       'trade.above_max': 'จำนวนเกินสูงสุด',
       'trade.platform_not_ready': 'ระบบยังไม่พร้อมให้เทรด — ติดต่อผู้ดูแล',
+      'trade.stop_limit': 'Stop-Limit',
+      'trade.trigger_price': 'ราคาทริกเกอร์',
+      'trade.invalid_trigger': 'กรุณาใส่ราคาทริกเกอร์',
+
+      // Bridge
+      'bridge.title': 'บริดจ์ข้ามเชน',
+      'bridge.from_chain': 'เชนต้นทาง',
+      'bridge.to_chain': 'เชนปลายทาง',
+      'bridge.amount': 'จำนวน',
+      'bridge.fee': 'ค่าธรรมเนียมบริดจ์',
+      'bridge.estimated_time': 'เวลาโดยประมาณ',
+      'bridge.minutes': 'นาที',
+      'bridge.submit': 'เริ่มบริดจ์',
+      'bridge.disabled': 'ระบบบริดจ์ยังไม่เปิด',
+      'bridge.min_amount': 'ขั้นต่ำ',
+      'bridge.max_amount': 'สูงสุด',
 
       // Peer app (cross-app discovery)
       'peer.open_wallet': 'เปิด TPIX Wallet',
@@ -272,6 +288,22 @@ class LocaleProvider extends ChangeNotifier {
       'trade.below_min': 'Amount below minimum',
       'trade.above_max': 'Amount exceeds maximum',
       'trade.platform_not_ready': 'Platform not ready — contact admin',
+      'trade.stop_limit': 'Stop-Limit',
+      'trade.trigger_price': 'Trigger Price',
+      'trade.invalid_trigger': 'Please enter a valid trigger price',
+
+      // Bridge
+      'bridge.title': 'Cross-chain Bridge',
+      'bridge.from_chain': 'From Chain',
+      'bridge.to_chain': 'To Chain',
+      'bridge.amount': 'Amount',
+      'bridge.fee': 'Bridge Fee',
+      'bridge.estimated_time': 'Estimated Time',
+      'bridge.minutes': 'min',
+      'bridge.submit': 'Start Bridge',
+      'bridge.disabled': 'Bridge service is not available',
+      'bridge.min_amount': 'Min',
+      'bridge.max_amount': 'Max',
 
       // Peer app (cross-app discovery)
       'peer.open_wallet': 'Open TPIX Wallet',

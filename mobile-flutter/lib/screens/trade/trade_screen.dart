@@ -41,15 +41,23 @@ class _TradeScreenState extends State<TradeScreen>
   String _chartType = 'candle';
   final _priceController = TextEditingController();
   final _amountController = TextEditingController();
+  final _triggerPriceController = TextEditingController();
   final _chartKey = GlobalKey<TradingChartState>();
+
+  // index: 0=limit, 1=market, 2=stop-limit
+  String get _orderType =>
+      ['limit', 'market', 'stop-limit'][_orderTypeTab.index];
+  bool get _isMarket => _orderTypeTab.index == 1;
+  bool get _isStopLimit => _orderTypeTab.index == 2;
 
   @override
   void initState() {
     super.initState();
-    _orderTypeTab = TabController(length: 2, vsync: this);
+    _orderTypeTab = TabController(length: 3, vsync: this);
     _orderTypeTab.addListener(_rebuildOnInputChange);
     _priceController.addListener(_rebuildOnInputChange);
     _amountController.addListener(_rebuildOnInputChange);
+    _triggerPriceController.addListener(_rebuildOnInputChange);
     final market = context.read<MarketProvider>();
     market.loadOrderBook();
     market.loadKlines();
@@ -68,9 +76,11 @@ class _TradeScreenState extends State<TradeScreen>
     _orderTypeTab.removeListener(_rebuildOnInputChange);
     _priceController.removeListener(_rebuildOnInputChange);
     _amountController.removeListener(_rebuildOnInputChange);
+    _triggerPriceController.removeListener(_rebuildOnInputChange);
     _orderTypeTab.dispose();
     _priceController.dispose();
     _amountController.dispose();
+    _triggerPriceController.dispose();
     super.dispose();
   }
 
@@ -418,19 +428,32 @@ class _TradeScreenState extends State<TradeScreen>
               tabs: [
                 Tab(text: locale.t('trade.limit'), height: 32),
                 Tab(text: locale.t('trade.market'), height: 32),
+                Tab(text: locale.t('trade.stop_limit'), height: 32),
               ],
             ),
           ),
 
           const SizedBox(height: 14),
 
-          // Price input
-          _TradeInput(
-            label: locale.t('trade.price'),
-            controller: _priceController,
-            suffix: market.selectedTicker?.quoteAsset ?? 'USDT',
-          ),
-          const SizedBox(height: 10),
+          // Trigger Price input (stop-limit only)
+          if (_isStopLimit) ...[
+            _TradeInput(
+              label: locale.t('trade.trigger_price'),
+              controller: _triggerPriceController,
+              suffix: market.selectedTicker?.quoteAsset ?? 'USDT',
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          // Price input (ซ่อนใน market order)
+          if (!_isMarket) ...[
+            _TradeInput(
+              label: locale.t('trade.price'),
+              controller: _priceController,
+              suffix: market.selectedTicker?.quoteAsset ?? 'USDT',
+            ),
+            const SizedBox(height: 10),
+          ],
 
           // Amount input
           _TradeInput(
@@ -689,7 +712,8 @@ class _TradeScreenState extends State<TradeScreen>
 
     final priceText = _priceController.text.trim();
     final amountText = _amountController.text.trim();
-    final isMarket = _orderTypeTab.index == 1;
+    final triggerText = _triggerPriceController.text.trim();
+    final orderType = _orderType; // 'limit' | 'market' | 'stop-limit'
 
     final amount = double.tryParse(amountText);
     if (amount == null || amount <= 0) {
@@ -715,10 +739,20 @@ class _TradeScreenState extends State<TradeScreen>
     }
 
     double? price;
-    if (!isMarket) {
+    if (orderType != 'market') {
       price = double.tryParse(priceText);
       if (price == null || price <= 0) {
         _showSnack(locale.t('trade.invalid_price'));
+        return;
+      }
+    }
+
+    // Stop-limit ต้องมี trigger price
+    double? triggerPrice;
+    if (orderType == 'stop-limit') {
+      triggerPrice = double.tryParse(triggerText);
+      if (triggerPrice == null || triggerPrice <= 0) {
+        _showSnack(locale.t('trade.invalid_trigger'));
         return;
       }
     }
@@ -742,8 +776,9 @@ class _TradeScreenState extends State<TradeScreen>
       final order = await ApiService().createOrder(
         pair: market.selectedPair,
         side: _isBuy ? 'buy' : 'sell',
-        type: isMarket ? 'market' : 'limit',
+        type: orderType,
         price: price,
+        triggerPrice: triggerPrice,
         amount: amount,
         walletAddress: wallet.address!,
         chainId: wallet.activeChainId,

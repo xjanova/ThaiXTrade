@@ -4,6 +4,7 @@
 /// Developed by Xman Studio
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
@@ -490,6 +491,17 @@ class _AboutCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         children: [
+          // Bridge
+          _SettingsTile(
+            icon: Icons.swap_horiz_rounded,
+            title: locale.t('bridge.title'),
+            trailing: const Icon(Icons.chevron_right_rounded,
+                color: AppColors.textTertiary, size: 20),
+            onTap: () => context.push('/bridge'),
+          ),
+
+          const Divider(color: AppColors.divider, height: 1, indent: 52),
+
           _SettingsTile(
             icon: Icons.system_update_rounded,
             title: locale.t('settings.check_update'),

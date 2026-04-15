@@ -301,9 +301,13 @@ class ChainInfo {
   final String shortName;
   final String symbol;
   final String rpcUrl;
+  final List<String> fallbackRpcs;
   final String explorerUrl;
   final int decimals;
   final bool gasless;
+  final bool enabled;
+  final String? iconUrl;
+  final String? color;
 
   const ChainInfo({
     required this.chainId,
@@ -311,24 +315,52 @@ class ChainInfo {
     required this.shortName,
     required this.symbol,
     required this.rpcUrl,
+    this.fallbackRpcs = const [],
     required this.explorerUrl,
     required this.decimals,
     required this.gasless,
+    this.enabled = true,
+    this.iconUrl,
+    this.color,
   });
 
-  factory ChainInfo.fromJson(Map<String, dynamic> json) => ChainInfo(
-        chainId: (json['chain_id'] ?? json['chainId']) as int? ?? 0,
-        name: (json['name'] as String?) ?? '',
-        shortName: (json['short_name'] ?? json['shortName'] ?? json['symbol'])
-                as String? ??
-            '',
-        symbol: (json['symbol'] as String?) ?? '',
-        rpcUrl: (json['rpc_url'] ?? json['rpcUrl']) as String? ?? '',
-        explorerUrl:
-            (json['explorer_url'] ?? json['explorerUrl']) as String? ?? '',
-        decimals: (json['decimals'] as num?)?.toInt() ?? 18,
-        gasless: json['gasless'] == true,
-      );
+  factory ChainInfo.fromJson(Map<String, dynamic> json) {
+    // Parse rpc array — เอาตัวแรก + เก็บตัวที่เหลือเป็น fallback
+    final rpcField = json['rpc'] ?? json['rpc_url'] ?? json['rpcUrl'];
+    String rpc = '';
+    List<String> fallbacks = [];
+    if (rpcField is List && rpcField.isNotEmpty) {
+      rpc = rpcField.first.toString();
+      fallbacks = rpcField.skip(1).map((e) => e.toString()).toList();
+    } else if (rpcField is String) {
+      rpc = rpcField;
+    }
+
+    // Parse nativeCurrency nested object
+    final nc = json['nativeCurrency'] as Map<String, dynamic>?;
+    final symbol = (nc?['symbol'] ?? json['symbol']) as String? ?? '';
+    final decimals = (nc?['decimals'] ?? json['decimals']) as int? ?? 18;
+
+    return ChainInfo(
+      chainId: (json['chainId'] ?? json['chain_id']) as int? ?? 0,
+      name: (json['name'] as String?) ?? '',
+      shortName: (json['shortName'] ?? json['short_name'] ?? symbol)
+              as String? ??
+          '',
+      symbol: symbol,
+      rpcUrl: rpc,
+      fallbackRpcs: fallbacks,
+      explorerUrl:
+          (json['explorer'] ?? json['explorer_url'] ?? json['explorerUrl'])
+                  as String? ??
+              '',
+      decimals: decimals,
+      gasless: json['gasless'] == true,
+      enabled: json['enabled'] != false, // default true
+      iconUrl: json['icon'] as String?,
+      color: json['color'] as String?,
+    );
+  }
 }
 
 // ── Trading Pair Info (from /api/v1/market/pairs) ──
