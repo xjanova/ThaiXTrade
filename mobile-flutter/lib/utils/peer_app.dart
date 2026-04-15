@@ -11,9 +11,8 @@ class PeerApp {
   PeerApp._();
 
   static const String _walletScheme = 'tpixwallet';
-  // Direct download — GitHub release API จะ 302 redirect ไปยัง APK asset
-  static const String _walletInstallUrl =
-      'https://github.com/xjanova/TPIX-Coin/releases/latest';
+  // หน้าดาวน์โหลดกลางของ tpix.online — มี APK ทั้ง Trade + Wallet + Masternode
+  static const String _walletInstallUrl = 'https://tpix.online/download';
   static const String _walletPackage = 'com.xmanstudio.tpix_wallet';
 
   // Cache — ถ้าเพิ่งตรวจไปภายใน 5 นาที ใช้ผลเดิม
