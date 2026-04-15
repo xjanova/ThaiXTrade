@@ -47,13 +47,27 @@ class _TradeScreenState extends State<TradeScreen>
   void initState() {
     super.initState();
     _orderTypeTab = TabController(length: 2, vsync: this);
+    _orderTypeTab.addListener(_rebuildOnInputChange);
+    _priceController.addListener(_rebuildOnInputChange);
+    _amountController.addListener(_rebuildOnInputChange);
     final market = context.read<MarketProvider>();
     market.loadOrderBook();
     market.loadKlines();
+    // Refresh config ถ้า stale (เข้าหน้า trade อาจห่างจาก splash นาน)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<ConfigProvider>().refreshIfStale();
+    });
+  }
+
+  void _rebuildOnInputChange() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _orderTypeTab.removeListener(_rebuildOnInputChange);
+    _priceController.removeListener(_rebuildOnInputChange);
+    _amountController.removeListener(_rebuildOnInputChange);
     _orderTypeTab.dispose();
     _priceController.dispose();
     _amountController.dispose();
@@ -556,7 +570,7 @@ class _TradeScreenState extends State<TradeScreen>
                   color: AppColors.brandCyan,
                 ),
               ),
-              if (feeAmount > 0) ...[
+              if (feeAmount > 0 && amount > 0) ...[
                 const SizedBox(width: 6),
                 Text(
                   '(~${feeAmount.toStringAsFixed(2)} $quoteAsset)',

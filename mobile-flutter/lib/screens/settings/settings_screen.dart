@@ -12,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
+import '../../providers/config_provider.dart';
 import '../../models/chain_config.dart';
 import '../../services/biometric_service.dart';
 import '../../services/update_service.dart';
@@ -305,24 +306,41 @@ class _ChainSelector extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Wrap(
+          // Dynamic chain list จาก /api/v1/chains (10 chains) + fallback static
+          Consumer<ConfigProvider>(
+            builder: (_, config, __) => Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: ChainConfig.all.map((chain) {
+            children: config.displayChains.map((chain) {
               final isActive = chain.chainId == wallet.activeChainId;
+              final color = chain.config?.color ?? AppColors.textTertiary;
               return GestureDetector(
-                onTap: () => wallet.switchChain(chain.chainId),
-                child: Container(
+                onTap: chain.supported
+                    ? () => wallet.switchChain(chain.chainId)
+                    : () {
+                        // Chain ยัง not supported ใน mobile
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(locale.isThai
+                                ? 'กำลังเปิดบน mobile เร็วๆ นี้: ${chain.name}'
+                                : 'Coming soon on mobile: ${chain.name}'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                child: Opacity(
+                  opacity: chain.supported ? 1.0 : 0.5,
+                  child: Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: isActive
-                        ? chain.color.withValues(alpha: 0.15)
+                        ? color.withValues(alpha: 0.15)
                         : AppColors.bgTertiary,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: isActive
-                          ? chain.color.withValues(alpha: 0.4)
+                          ? color.withValues(alpha: 0.4)
                           : AppColors.bgCardBorder,
                     ),
                   ),
@@ -333,7 +351,7 @@ class _ChainSelector extends StatelessWidget {
                         width: 8,
                         height: 8,
                         decoration: BoxDecoration(
-                          color: chain.color,
+                          color: color,
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -345,15 +363,22 @@ class _ChainSelector extends StatelessWidget {
                           fontWeight:
                               isActive ? FontWeight.w600 : FontWeight.w400,
                           color: isActive
-                              ? chain.color
+                              ? color
                               : AppColors.textSecondary,
                         ),
                       ),
+                      if (!chain.supported) ...[
+                        const SizedBox(width: 4),
+                        const Icon(Icons.access_time_rounded,
+                            size: 10, color: AppColors.textTertiary),
+                      ],
                     ],
                   ),
                 ),
+                ),
               );
             }).toList(),
+          ),
           ),
         ],
       ),

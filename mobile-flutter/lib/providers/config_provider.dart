@@ -6,7 +6,27 @@
 
 import 'package:flutter/foundation.dart';
 import '../models/api_models.dart';
+import '../models/chain_config.dart';
 import '../services/api_service.dart';
+
+/// การผสมข้อมูล chain จาก API (display) + static (supported for signing)
+class DisplayChain {
+  final int chainId;
+  final String name;
+  final String shortName;
+  final String symbol;
+  final bool supported; // true = มี ChainConfig ใน static list (switch ได้)
+  final ChainConfig? config; // null ถ้ายังไม่ support
+
+  const DisplayChain({
+    required this.chainId,
+    required this.name,
+    required this.shortName,
+    required this.symbol,
+    required this.supported,
+    this.config,
+  });
+}
 
 class ConfigProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
@@ -27,6 +47,45 @@ class ConfigProvider extends ChangeNotifier {
   double get swapFeePercent => _fees?.swapFeePercent ?? 0.3;
   String get feeCollectorWallet => _fees?.swapFeeWallet ?? '';
   bool get canTrade => _fees?.swapEnabled == true;
+
+  /// Merge API chains + static ChainConfig
+  /// คืน list สำหรับ UI display — chain ที่ support จะ switch ได้
+  /// chain ที่ไม่ support (จาก API) จะแสดง "Coming soon"
+  List<DisplayChain> get displayChains {
+    // Fallback: static list ถ้า API ยังไม่โหลด
+    if (_chains.isEmpty) {
+      return ChainConfig.all
+          .map((c) => DisplayChain(
+                chainId: c.chainId,
+                name: c.name,
+                shortName: c.shortName,
+                symbol: c.symbol,
+                supported: true,
+                config: c,
+              ))
+          .toList();
+    }
+    // Merge: API provides name/symbol; static provides RPC+config for signing
+    return _chains.map((apiChain) {
+      ChainConfig? staticConfig;
+      try {
+        staticConfig =
+            ChainConfig.all.firstWhere((c) => c.chainId == apiChain.chainId);
+      } catch (_) {
+        staticConfig = null;
+      }
+      return DisplayChain(
+        chainId: apiChain.chainId,
+        name: apiChain.name,
+        shortName: apiChain.shortName.isNotEmpty
+            ? apiChain.shortName
+            : apiChain.symbol,
+        symbol: apiChain.symbol,
+        supported: staticConfig != null,
+        config: staticConfig,
+      );
+    }).toList();
+  }
 
   /// หา trading pair ตาม symbol (BTC-USDT)
   TradingPairInfo? pairBySymbol(String symbol) {
@@ -53,25 +112,39 @@ class ConfigProvider extends ChangeNotifier {
   }
 
   /// Load ทุก config — เรียกตอน splash
+  /// Partial failure tolerant — ถ้า endpoint หนึ่งพัง endpoint อื่นยังได้ผล
   Future<void> loadAll({bool silent = false}) async {
     if (!silent) {
       _isLoading = true;
       notifyListeners();
     }
 
-    try {
-      // ดึง 3 endpoints parallel
-      final results = await Future.wait([
-        _api.getFees(),
-        _api.getChains(),
-        _api.getPairs(),
-      ]);
-      _fees = results[0] as FeeConfig?;
-      _chains = results[1] as List<ChainInfo>;
-      _pairs = results[2] as List<TradingPairInfo>;
+    // รันพร้อมกันแต่ใช้ try-catch แยกแต่ละตัว — กัน partial failure
+    final feesFuture = _api.getFees().catchError((e) {
+      debugPrint('getFees: ${e.runtimeType}');
+      return null as FeeConfig?;
+    });
+    final chainsFuture = _api.getChains().catchError((e) {
+      debugPrint('getChains: ${e.runtimeType}');
+      return <ChainInfo>[];
+    });
+    final pairsFuture = _api.getPairs().catchError((e) {
+      debugPrint('getPairs: ${e.runtimeType}');
+      return <TradingPairInfo>[];
+    });
+
+    final fees = await feesFuture;
+    final chains = await chainsFuture;
+    final pairs = await pairsFuture;
+
+    // อัพเดตเฉพาะตัวที่ได้ผล — ไม่ overwrite ด้วย empty ถ้าเคยโหลดสำเร็จ
+    if (fees != null) _fees = fees;
+    if (chains.isNotEmpty) _chains = chains;
+    if (pairs.isNotEmpty) _pairs = pairs;
+
+    // ถ้าได้ของใหม่อย่างน้อย 1 ตัว ถือว่าโหลดสำเร็จ (update lastLoadedAt)
+    if (fees != null || chains.isNotEmpty || pairs.isNotEmpty) {
       _lastLoadedAt = DateTime.now();
-    } catch (e) {
-      debugPrint('ConfigProvider.loadAll: ${e.runtimeType}');
     }
 
     _isLoading = false;
