@@ -1,7 +1,7 @@
 name: tpix_trade
 description: "TPIX TRADE — Decentralized Exchange"
 publish_to: 'none'
-version: 1.1.46+367
+version: 1.1.47+368
 
 environment:
   sdk: ^3.10.4
