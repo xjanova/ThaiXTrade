@@ -45,6 +45,11 @@ dependencies:
   # Deep links (cross-app discovery)
   app_links: ^6.3.2
 
+  # External Wallet — WalletConnect v2 / Reown AppKit
+  # รองรับ MetaMask, Trust, Rainbow, Coinbase, OKX 100+ wallet
+  # ต้องตั้ง REOWN_PROJECT_ID ผ่าน --dart-define ตอน build
+  reown_appkit: ^1.6.0
+
   # Chart (WebView for TradingView lightweight-charts)
   webview_flutter: ^4.10.0
 

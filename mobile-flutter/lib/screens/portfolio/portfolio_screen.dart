@@ -341,7 +341,12 @@ class _AssetTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CoinLogo(symbol: token.symbol, size: 36, borderRadius: 10),
+          CoinLogo(
+            symbol: token.symbol,
+            size: 36,
+            borderRadius: 10,
+            logoUrl: token.logo,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

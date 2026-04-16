@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Token;
+use App\Models\TradingPair;
 use App\Services\MarketDataService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -60,11 +61,48 @@ class MarketController extends Controller
         return response()->json(['success' => true, 'data' => $data]);
     }
 
+    /**
+     * List trading pairs available for trading.
+     *
+     * Source of truth: trading_pairs table (admin-managed via TradingPairController).
+     * Falls back to Binance pairs only if DB is empty (migration safety net).
+     *
+     * Returns symbols in canonical "BASE-QUOTE" format (e.g., "BTC-USDT", "TPIX-USDT")
+     * which matches what TradingController expects on order submission.
+     */
     public function pairs(): JsonResponse
     {
-        $data = $this->marketDataService->getPairs();
+        $dbPairs = TradingPair::active()
+            ->with(['baseToken:id,symbol,logo', 'quoteToken:id,symbol'])
+            ->orderBy('sort_order')
+            ->orderBy('symbol')
+            ->get()
+            ->map(fn (TradingPair $p) => [
+                'symbol' => $p->symbol,
+                'base_asset' => $p->baseToken?->symbol ?? explode('-', $p->symbol)[0],
+                'quote_asset' => $p->quoteToken?->symbol ?? 'USDT',
+                'base_logo' => $p->baseToken?->logo,
+                'min_trade_amount' => (float) $p->min_trade_amount,
+                'max_trade_amount' => (float) $p->max_trade_amount,
+                'price_precision' => $p->price_precision,
+                'amount_precision' => $p->amount_precision,
+                'fee_rate' => $p->taker_fee_override !== null
+                    ? (float) $p->taker_fee_override
+                    : null,
+                'chain_id' => $p->chain_id,
+                'is_active' => true,
+            ])
+            ->all();
 
-        return response()->json(['success' => true, 'data' => $data]);
+        // Fallback to Binance only if DB is empty (initial deployment / no admin config)
+        if (empty($dbPairs)) {
+            return response()->json([
+                'success' => true,
+                'data' => $this->marketDataService->getPairs(),
+            ]);
+        }
+
+        return response()->json(['success' => true, 'data' => $dbPairs]);
     }
 
     public function tokenInfo(string $address): JsonResponse

@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
+import '../../providers/config_provider.dart';
 import '../../providers/market_provider.dart';
 import '../../widgets/common/coin_logo.dart';
 import '../../widgets/common/glass_card.dart';
@@ -309,8 +310,15 @@ class _TickerItem extends StatelessWidget {
             ),
             const SizedBox(width: 10),
 
-            // Coin logo จาก CDN
-            CoinLogo(symbol: ticker.baseAsset, size: 36),
+            // Coin logo — DB logo > CDN > letter fallback
+            CoinLogo(
+              symbol: ticker.baseAsset,
+              size: 36,
+              logoUrl: context
+                  .read<ConfigProvider>()
+                  .pairBySymbol(ticker.symbol)
+                  ?.baseLogo,
+            ),
             const SizedBox(width: 10),
 
             // Name

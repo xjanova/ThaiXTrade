@@ -192,6 +192,7 @@ class TokenBalance {
   final double balance;
   final String? contractAddress;
   final double? usdValue;
+  final String? logo; // โลโก้จริงจาก Token DB (ถ้ามี)
 
   const TokenBalance({
     required this.symbol,
@@ -199,6 +200,7 @@ class TokenBalance {
     required this.balance,
     this.contractAddress,
     this.usdValue,
+    this.logo,
   });
 
   factory TokenBalance.fromJson(Map<String, dynamic> json) => TokenBalance(
@@ -208,6 +210,7 @@ class TokenBalance {
         contractAddress: json['contract_address'] as String?,
         usdValue:
             json['usd_value'] != null ? _toDouble(json['usd_value']) : null,
+        logo: json['logo'] as String?,
       );
 }
 
@@ -374,6 +377,8 @@ class TradingPairInfo {
   final int pricePrecision;
   final int amountPrecision;
   final double? feeRateOverride;
+  final String? baseLogo; // โลโก้จริงจาก Token DB (มี/ไม่มีก็ได้)
+  final int? chainId; // chain ที่ pair นี้อยู่ — สำหรับ pre-submit validation
 
   const TradingPairInfo({
     required this.symbol,
@@ -384,6 +389,8 @@ class TradingPairInfo {
     required this.pricePrecision,
     required this.amountPrecision,
     this.feeRateOverride,
+    this.baseLogo,
+    this.chainId,
   });
 
   factory TradingPairInfo.fromJson(Map<String, dynamic> json) {
@@ -401,8 +408,62 @@ class TradingPairInfo {
       amountPrecision: (json['amount_precision'] as num?)?.toInt() ?? 4,
       feeRateOverride:
           json['fee_rate'] != null ? _toDouble(json['fee_rate']) : null,
+      baseLogo: json['base_logo'] as String?,
+      chainId: (json['chain_id'] as num?)?.toInt(),
     );
   }
+}
+
+// ── User Profile (sync ระหว่าง mobile ↔ web) ──
+
+class UserProfile {
+  final String walletAddress;
+  final String? email;
+  final String? name;
+  final String? avatar;
+  final bool isVerified;
+  final String kycStatus; // none | pending | approved | rejected
+  final String? referralCode;
+  final int totalTrades;
+  final double totalVolumeUsd;
+  final Map<String, dynamic> preferences; // language, theme, default_chain_id, ...
+  final DateTime? createdAt;
+  final DateTime? lastActiveAt;
+
+  const UserProfile({
+    required this.walletAddress,
+    this.email,
+    this.name,
+    this.avatar,
+    this.isVerified = false,
+    this.kycStatus = 'none',
+    this.referralCode,
+    this.totalTrades = 0,
+    this.totalVolumeUsd = 0,
+    this.preferences = const {},
+    this.createdAt,
+    this.lastActiveAt,
+  });
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
+        walletAddress: (json['wallet_address'] as String?) ?? '',
+        email: json['email'] as String?,
+        name: json['name'] as String?,
+        avatar: json['avatar'] as String?,
+        isVerified: json['is_verified'] == true,
+        kycStatus: (json['kyc_status'] as String?) ?? 'none',
+        referralCode: json['referral_code'] as String?,
+        totalTrades: (json['total_trades'] as num?)?.toInt() ?? 0,
+        totalVolumeUsd: _toDouble(json['total_volume_usd']),
+        preferences: (json['preferences'] as Map?)?.cast<String, dynamic>() ?? {},
+        createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
+        lastActiveAt: DateTime.tryParse(json['last_active_at'] as String? ?? ''),
+      );
+
+  /// Helper getters สำหรับ preferences ที่ใช้บ่อย
+  String? get prefLanguage => preferences['language'] as String?;
+  String? get prefTheme => preferences['theme'] as String?;
+  int? get prefDefaultChainId => (preferences['default_chain_id'] as num?)?.toInt();
 }
 
 // ── Helpers ──

@@ -93,6 +93,25 @@ class LocaleProvider extends ChangeNotifier {
       'settings.version': 'เวอร์ชัน',
       'settings.check_update': 'ตรวจสอบอัปเดต',
       'settings.update_available': 'มีอัปเดตใหม่',
+      'settings.profile': 'โปรไฟล์',
+      'settings.edit_profile': 'แก้ไขโปรไฟล์',
+
+      // Profile
+      'profile.title': 'โปรไฟล์ของฉัน',
+      'profile.name': 'ชื่อแสดง',
+      'profile.email': 'อีเมล',
+      'profile.avatar': 'รูปโปรไฟล์ (URL)',
+      'profile.referral_code': 'รหัสแนะนำเพื่อน',
+      'profile.kyc_status': 'สถานะยืนยันตัวตน',
+      'profile.total_trades': 'จำนวนการเทรด',
+      'profile.set_name': 'ตั้งชื่อ',
+      'profile.set_email': 'เพิ่มอีเมล',
+      'profile.guest': 'ผู้ใช้ใหม่',
+      'profile.update_success': 'บันทึกโปรไฟล์แล้ว',
+      'profile.update_failed': 'บันทึกโปรไฟล์ไม่สำเร็จ',
+      'profile.invalid_email': 'อีเมลไม่ถูกต้อง',
+      'profile.name_too_long': 'ชื่อยาวเกินไป (สูงสุด 50 ตัวอักษร)',
+      'profile.verify_first': 'กรุณายืนยัน wallet ก่อนแก้ไขโปรไฟล์',
 
       // Wallet
       'wallet.create': 'สร้างกระเป๋าใหม่',
@@ -233,6 +252,25 @@ class LocaleProvider extends ChangeNotifier {
       'settings.version': 'Version',
       'settings.check_update': 'Check for Updates',
       'settings.update_available': 'Update Available',
+      'settings.profile': 'Profile',
+      'settings.edit_profile': 'Edit Profile',
+
+      // Profile
+      'profile.title': 'My Profile',
+      'profile.name': 'Display name',
+      'profile.email': 'Email',
+      'profile.avatar': 'Avatar (URL)',
+      'profile.referral_code': 'Referral code',
+      'profile.kyc_status': 'KYC status',
+      'profile.total_trades': 'Total trades',
+      'profile.set_name': 'Set name',
+      'profile.set_email': 'Add email',
+      'profile.guest': 'New user',
+      'profile.update_success': 'Profile saved',
+      'profile.update_failed': 'Failed to save profile',
+      'profile.invalid_email': 'Invalid email',
+      'profile.name_too_long': 'Name too long (max 50 chars)',
+      'profile.verify_first': 'Please verify wallet first',
 
       // Wallet
       'wallet.create': 'Create New Wallet',

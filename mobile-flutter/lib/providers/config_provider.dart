@@ -36,12 +36,14 @@ class ConfigProvider extends ChangeNotifier {
   List<TradingPairInfo> _pairs = [];
   bool _isLoading = false;
   DateTime? _lastLoadedAt;
+  int? _activeChainId; // chain ที่ใช้ดึง fees ล่าสุด — refetch ถ้าเปลี่ยน
 
   FeeConfig? get fees => _fees;
   List<ChainInfo> get chains => _chains;
   List<TradingPairInfo> get pairs => _pairs;
   bool get isLoading => _isLoading;
   bool get isReady => _fees != null && _chains.isNotEmpty;
+  int? get activeChainId => _activeChainId;
 
   /// ค่า fee rate ที่ใช้งานจริง (% ของ trade amount)
   double get swapFeePercent => _fees?.swapFeePercent ?? 0.3;
@@ -113,14 +115,18 @@ class ConfigProvider extends ChangeNotifier {
 
   /// Load ทุก config — เรียกตอน splash
   /// Partial failure tolerant — ถ้า endpoint หนึ่งพัง endpoint อื่นยังได้ผล
-  Future<void> loadAll({bool silent = false}) async {
+  /// [chainId] = ส่งเพื่อดึง chain-specific fee (ถ้า null = global fee)
+  Future<void> loadAll({bool silent = false, int? chainId}) async {
     if (!silent) {
       _isLoading = true;
       notifyListeners();
     }
 
+    // จำ active chain ไว้สำหรับ refetch
+    if (chainId != null) _activeChainId = chainId;
+
     // รันพร้อมกันแต่ใช้ try-catch แยกแต่ละตัว — กัน partial failure
-    final feesFuture = _api.getFees().catchError((e) {
+    final feesFuture = _api.getFees(chainId: _activeChainId).catchError((e) {
       debugPrint('getFees: ${e.runtimeType}');
       return null as FeeConfig?;
     });
@@ -149,6 +155,23 @@ class ConfigProvider extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  /// เรียกตอน user เปลี่ยน active chain — refetch fees เฉพาะ chain ใหม่
+  /// (ถ้า chainId เดียวกับที่จำไว้แล้ว = no-op)
+  Future<void> setActiveChain(int chainId) async {
+    if (_activeChainId == chainId && _fees != null) return;
+    _activeChainId = chainId;
+
+    final fees = await _api.getFees(chainId: chainId).catchError((e) {
+      debugPrint('setActiveChain.getFees: ${e.runtimeType}');
+      return null as FeeConfig?;
+    });
+    if (fees != null) {
+      _fees = fees;
+      _lastLoadedAt = DateTime.now();
+      notifyListeners();
+    }
   }
 
   /// Refresh ถ้าเก่ากว่า 5 นาที

@@ -22,6 +22,8 @@ class ApiConstants {
   static const String walletSign = '/wallet/sign';
   static const String walletVerify = '/wallet/verify-signature';
   static const String walletBalances = '/wallet/balances';
+  static const String walletProfile = '/wallet/profile';
+  static const String walletTransactions = '/wallet/transactions';
 
   // ── Trading ──
   static const String tradingOrder = '/trading/order';
@@ -37,8 +39,12 @@ class ApiConstants {
   static String marketOrderbook(String symbol) => '/market/orderbook/$symbol';
   static String marketKlines(String symbol) => '/market/klines/$symbol';
 
-  // ── TPIX Price ──
+  // ── TPIX Price + Internal Order Book ──
+  // ใช้สำหรับ TPIX-USDT pair เท่านั้น (ไม่ผ่าน Binance)
   static const String tpixPrice = '/tpix/price';
+  static const String tpixOrderbook = '/tpix/orderbook';
+  static const String tpixTrades = '/tpix/trades';
+  static const String tpixKlines = '/tpix/klines';
 
   // ── Update ──
   static const String updateCheck = '/app/check-update';

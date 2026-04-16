@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Services\UserWalletService;
 use App\Services\Web3BalanceService;
 use Elliptic\EC;
@@ -12,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use kornrunner\Keccak;
 use Throwable;
 
@@ -188,6 +190,124 @@ class WalletController extends Controller
         return response()->json([
             'success' => true,
             'data' => $transactions,
+        ]);
+    }
+
+    /**
+     * Get user profile + preferences for cross-device sync.
+     *
+     * GET /api/v1/wallet/profile?wallet_address=0x...
+     * Requires verified wallet (via VerifyWalletOwnership middleware).
+     */
+    public function getProfile(Request $request): JsonResponse
+    {
+        $walletAddress = strtolower($request->input('wallet_address'));
+
+        $user = User::where('wallet_address', $walletAddress)->first();
+
+        if (! $user) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'USER_NOT_FOUND',
+                    'message' => 'User not found. Please connect wallet first.',
+                ],
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'wallet_address' => $user->wallet_address,
+                'email' => $user->email,
+                'name' => $user->name,
+                'avatar' => $user->avatar,
+                'is_verified' => (bool) $user->is_verified,
+                'kyc_status' => $user->kyc_status,
+                'referral_code' => $user->referral_code,
+                'total_trades' => (int) $user->total_trades,
+                'total_volume_usd' => (float) $user->total_volume_usd,
+                'preferences' => $user->preferences ?? [],
+                'created_at' => $user->created_at?->toIso8601String(),
+                'last_active_at' => $user->last_active_at?->toIso8601String(),
+            ],
+        ]);
+    }
+
+    /**
+     * Update user profile + preferences (write op — requires signature).
+     *
+     * PUT /api/v1/wallet/profile
+     * Body: { wallet_address, name?, email?, avatar?, preferences? }
+     */
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $walletAddress = strtolower($request->input('wallet_address'));
+
+        $user = User::where('wallet_address', $walletAddress)->first();
+
+        if (! $user) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'USER_NOT_FOUND',
+                    'message' => 'User not found. Please connect wallet first.',
+                ],
+            ], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'name' => ['nullable', 'string', 'max:50'],
+            'email' => [
+                'nullable',
+                'email:rfc',
+                'max:255',
+                Rule::unique('users', 'email')->ignore($user->id),
+            ],
+            'avatar' => ['nullable', 'string', 'max:500'],
+            'preferences' => ['nullable', 'array'],
+            'preferences.language' => ['nullable', 'string', 'in:en,th'],
+            'preferences.theme' => ['nullable', 'string', 'in:dark,light,auto'],
+            'preferences.default_chain_id' => ['nullable', 'integer'],
+            'preferences.notifications' => ['nullable', 'array'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'VALIDATION_ERROR',
+                    'message' => $validator->errors()->first(),
+                    'errors' => $validator->errors()->toArray(),
+                ],
+            ], 422);
+        }
+
+        $validated = $validator->validated();
+
+        // Merge preferences (don't overwrite — partial update)
+        if (isset($validated['preferences'])) {
+            $existing = $user->preferences ?? [];
+            $validated['preferences'] = array_merge($existing, $validated['preferences']);
+        }
+
+        // Only update fields that were sent (allow clearing with explicit null)
+        $updates = array_intersect_key($validated, array_flip(['name', 'email', 'avatar', 'preferences']));
+
+        if (! empty($updates)) {
+            $user->update($updates);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'wallet_address' => $user->wallet_address,
+                'email' => $user->email,
+                'name' => $user->name,
+                'avatar' => $user->avatar,
+                'preferences' => $user->preferences ?? [],
+                'updated_at' => $user->updated_at?->toIso8601String(),
+            ],
         ]);
     }
 

@@ -7,6 +7,7 @@ use App\Models\SiteSetting;
 use App\Services\BridgeService;
 use App\Services\FeeCalculationService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -30,12 +31,18 @@ class FeeConfigController extends Controller
      *
      * Returns swap fee %, bridge fee %, fee wallet addresses, and limits.
      * Response format matches what the Flutter FeeService expects.
+     *
+     * Optional query: ?chain_id=X — returns chain-specific swap fee
+     * (falls back to global if no chain-specific override exists).
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $data = Cache::remember('api:fees:unified', 300, function () {
-            // Swap fee config
-            $swapFeeRate = $this->feeCalculationService->getEffectiveFeeRate('swap');
+        $chainId = $request->integer('chain_id') ?: null;
+        $cacheKey = 'api:fees:unified:'.($chainId ?? 'global');
+
+        $data = Cache::remember($cacheKey, 300, function () use ($chainId) {
+            // Swap fee config — chain-specific if chainId provided
+            $swapFeeRate = $this->feeCalculationService->getEffectiveFeeRate('swap', $chainId);
             $feeCollectorWallet = SiteSetting::get('trading', 'fee_collector_wallet', '');
 
             // Bridge fee config
@@ -46,6 +53,7 @@ class FeeConfigController extends Controller
                     'feePercent' => round($swapFeeRate, 4),
                     'feeWallet' => $feeCollectorWallet,
                     'enabled' => ! empty($feeCollectorWallet),
+                    'chainId' => $chainId,
                 ],
                 'bridge' => [
                     'feePercent' => $bridgeInfo['fee_percent'],

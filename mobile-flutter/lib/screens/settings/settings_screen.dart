@@ -19,6 +19,7 @@ import '../../services/biometric_service.dart';
 import '../../services/update_service.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
+import '../../widgets/wallet/profile_edit_sheet.dart';
 import '../../widgets/wallet/wallet_connect_sheet.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -60,6 +61,15 @@ class SettingsScreen extends StatelessWidget {
                       : _ConnectWalletCard(locale: locale),
                 ),
               ),
+
+              // Profile section — แสดงเฉพาะตอน verified แล้ว (มี profile sync)
+              if (wallet.isConnected && wallet.isVerified)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    child: _ProfileCard(wallet: wallet, locale: locale),
+                  ),
+                ),
 
               // Chain selector
               if (wallet.isConnected)
@@ -220,6 +230,133 @@ class _WalletCard extends StatelessWidget {
   }
 }
 
+// ── Profile card (sync ↔ backend) ──
+
+class _ProfileCard extends StatelessWidget {
+  final WalletProvider wallet;
+  final LocaleProvider locale;
+
+  const _ProfileCard({required this.wallet, required this.locale});
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = wallet.profile;
+    final name = profile?.name;
+    final email = profile?.email;
+    final hasName = name != null && name.isNotEmpty;
+    final hasEmail = email != null && email.isNotEmpty;
+
+    return GlassCard(
+      variant: GlassVariant.standard,
+      borderRadius: 16,
+      padding: const EdgeInsets.all(16),
+      onTap: () => _openEditSheet(context),
+      child: Row(
+        children: [
+          // Avatar / placeholder
+          _ProfileAvatar(
+            avatarUrl: profile?.avatar,
+            fallbackChar: hasName ? name[0] : 'T',
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hasName ? name : locale.t('profile.guest'),
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasEmail ? email : locale.t('profile.set_email'),
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: hasEmail
+                        ? AppColors.textSecondary
+                        : AppColors.brandCyan,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          // Edit chevron
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.brandCyan.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.edit_rounded,
+                color: AppColors.brandCyan, size: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openEditSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const ProfileEditSheet(),
+    );
+  }
+}
+
+class _ProfileAvatar extends StatelessWidget {
+  final String? avatarUrl;
+  final String fallbackChar;
+
+  const _ProfileAvatar({this.avatarUrl, required this.fallbackChar});
+
+  @override
+  Widget build(BuildContext context) {
+    if (avatarUrl != null && avatarUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Image.network(
+          avatarUrl!,
+          width: 44,
+          height: 44,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _placeholder(),
+          loadingBuilder: (_, child, progress) =>
+              progress == null ? child : _placeholder(),
+        ),
+      );
+    }
+    return _placeholder();
+  }
+
+  Widget _placeholder() {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        gradient: AppGradients.brand,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Center(
+        child: Text(
+          fallbackChar.toUpperCase(),
+          style: GoogleFonts.inter(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ── Connect wallet card ──
 
 class _ConnectWalletCard extends StatelessWidget {
@@ -317,7 +454,11 @@ class _ChainSelector extends StatelessWidget {
               final color = chain.config?.color ?? AppColors.textTertiary;
               return GestureDetector(
                 onTap: chain.supported
-                    ? () => wallet.switchChain(chain.chainId)
+                    ? () {
+                        wallet.switchChain(chain.chainId);
+                        // Refetch chain-specific fees ทันที
+                        config.setActiveChain(chain.chainId);
+                      }
                     : () {
                         // Chain ยัง not supported ใน mobile
                         ScaffoldMessenger.of(context).showSnackBar(

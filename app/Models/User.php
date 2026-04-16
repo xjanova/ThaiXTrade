@@ -24,6 +24,7 @@ class User extends Authenticatable
         'password',
         'name',
         'avatar',
+        'preferences',
         'is_verified',
         'is_banned',
         'ban_reason',
@@ -52,6 +53,7 @@ class User extends Authenticatable
             'last_active_at' => 'datetime',
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'preferences' => 'array',
         ];
     }
 

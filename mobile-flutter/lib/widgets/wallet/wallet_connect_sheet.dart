@@ -241,6 +241,62 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
           ),
         ),
 
+        const SizedBox(height: 12),
+
+        // External Wallet (WalletConnect v2 — MetaMask, Trust, Rainbow, ...)
+        GlassCard(
+          variant: GlassVariant.standard,
+          borderRadius: 16,
+          padding: const EdgeInsets.all(20),
+          onTap: wallet.isConnecting
+              ? null
+              : () => wallet.connectExternalWallet(context),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.bgTertiary,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.bgCardBorder),
+                ),
+                child: const Icon(Icons.account_balance_wallet_outlined,
+                    color: AppColors.brandCyan, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      locale.isThai
+                          ? 'เชื่อมกระเป๋าภายนอก'
+                          : 'Connect External Wallet',
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      locale.isThai
+                          ? 'MetaMask, Trust, Rainbow, OKX (100+)'
+                          : 'MetaMask, Trust, Rainbow, OKX (100+)',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_ios_rounded,
+                  color: AppColors.textTertiary, size: 16),
+            ],
+          ),
+        ),
+
         // Error message
         if (wallet.error != null) ...[
           const SizedBox(height: 16),

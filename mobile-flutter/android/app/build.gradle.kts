@@ -31,7 +31,9 @@ android {
 
     defaultConfig {
         applicationId = "com.xmanstudio.tpix_trade"
-        minSdk = flutter.minSdkVersion
+        // reown_appkit (WalletConnect v2) ต้องการ minSdk 23+
+        // ถ้าไม่ override จะใช้ flutter default (21) แล้ว build ไม่ผ่าน
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

@@ -15,11 +15,16 @@ class CoinLogo extends StatefulWidget {
   final double size;
   final double borderRadius;
 
+  /// โลโก้จริงจาก backend (Token DB) — ถ้ามีจะใช้ก่อน CDN
+  /// สำคัญสำหรับ custom token จาก Token Factory ที่ CDN ไม่มี
+  final String? logoUrl;
+
   const CoinLogo({
     super.key,
     required this.symbol,
     this.size = 36,
     this.borderRadius = 18,
+    this.logoUrl,
   });
 
   @override
@@ -27,13 +32,13 @@ class CoinLogo extends StatefulWidget {
 }
 
 class _CoinLogoState extends State<CoinLogo> {
-  /// Tier ปัจจุบัน: 0=primary, 1=fallback1, 2=fallback2, 3=letter
+  /// Tier ปัจจุบัน: 0=DB logo, 1=primary CDN, 2=fallback CDN, 3=fallback2 CDN, 4=letter
   int _tier = 0;
 
   @override
   void didUpdateWidget(CoinLogo old) {
     super.didUpdateWidget(old);
-    if (old.symbol != widget.symbol) {
+    if (old.symbol != widget.symbol || old.logoUrl != widget.logoUrl) {
       _tier = 0;
     }
   }
@@ -41,11 +46,15 @@ class _CoinLogoState extends State<CoinLogo> {
   String? _urlForTier(int tier) {
     switch (tier) {
       case 0:
+        // Tier 0: โลโก้จาก backend DB (ถ้ามี) — priority สูงสุด
+        final u = widget.logoUrl;
+        return (u != null && u.isNotEmpty) ? u : null;
+      case 1:
         final u = CryptoLogos.getLogoUrl(widget.symbol);
         return u.isEmpty ? null : u;
-      case 1:
-        return CryptoLogos.getFallbackUrl(widget.symbol);
       case 2:
+        return CryptoLogos.getFallbackUrl(widget.symbol);
+      case 3:
         return CryptoLogos.getFallback2Url(widget.symbol);
       default:
         return null;
@@ -71,7 +80,7 @@ class _CoinLogoState extends State<CoinLogo> {
     // หา URL ของ tier ปัจจุบัน — ถ้าไม่มีก็ข้าม tier ไป
     String? url;
     int tier = _tier;
-    while (tier < 3) {
+    while (tier < 4) {
       url = _urlForTier(tier);
       if (url != null) break;
       tier++;
@@ -89,7 +98,7 @@ class _CoinLogoState extends State<CoinLogo> {
         placeholder: (_, __) => _shimmerPlaceholder(),
         errorWidget: (_, __, ___) {
           // Downgrade → tier ถัดไป
-          if (tier < 2) {
+          if (tier < 3) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) setState(() => _tier = tier + 1);
             });

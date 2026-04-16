@@ -41,14 +41,20 @@ class _SplashScreenState extends State<SplashScreen> {
       context.read<MarketProvider>().loadTpixPrice(),
       context.read<MarketProvider>().loadFavorites(),
       context.read<LocaleProvider>().init(),
-      context.read<ConfigProvider>().loadAll(), // fees + chains + pairs
+      context.read<ConfigProvider>().loadAll(), // fees + chains + pairs (global)
       Future.delayed(const Duration(milliseconds: 1800)), // minimum splash time
     ]);
 
     if (!mounted) return;
 
-    // Biometric auth ถ้าเปิดไว้ + มี wallet
     final wallet = context.read<WalletProvider>();
+
+    // หลัง wallet โหลดแล้ว — refetch fees ตาม chain ที่ active (chain-specific)
+    if (wallet.isConnected) {
+      context.read<ConfigProvider>().setActiveChain(wallet.activeChainId);
+    }
+
+    // Biometric auth ถ้าเปิดไว้ + มี wallet
     if (wallet.isConnected && wallet.biometricEnabled) {
       final ok = await BiometricService().authenticate('Unlock TPIX TRADE');
       if (!mounted) return;

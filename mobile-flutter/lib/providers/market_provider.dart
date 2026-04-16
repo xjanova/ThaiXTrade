@@ -249,14 +249,20 @@ class MarketProvider extends ChangeNotifier {
 
   // ── Select Pair ──
 
+  /// true ถ้า selected pair คือ TPIX — ต้องใช้ internal endpoints
+  bool get _isTpixPair => _selectedPair == 'TPIX-USDT';
+
   Future<void> selectPair(String pair) async {
     _selectedPair = pair;
     notifyListeners();
 
-    // Subscribe WebSocket depth สำหรับ pair นี้
+    // Subscribe Binance WebSocket depth — เฉพาะ pair ที่อยู่บน Binance
+    // TPIX ไม่ได้อยู่บน Binance ใช้ HTTP polling แทน (ผ่าน auto-refresh)
     _depthSub?.cancel();
-    _ws.subscribePair(pair);
-    _depthSub = _ws.depthStream.listen(_onDepthUpdate);
+    if (!_isTpixPair) {
+      _ws.subscribePair(pair);
+      _depthSub = _ws.depthStream.listen(_onDepthUpdate);
+    }
 
     await Future.wait([
       loadOrderBook(),
@@ -286,7 +292,10 @@ class MarketProvider extends ChangeNotifier {
 
   Future<void> loadOrderBook() async {
     try {
-      _orderBook = await _api.getOrderBook(_selectedPair);
+      // TPIX ใช้ internal matching engine — ไม่ใช่ Binance
+      _orderBook = _isTpixPair
+          ? await _api.getTpixOrderbook()
+          : await _api.getOrderBook(_selectedPair);
       notifyListeners();
     } catch (e) {
       debugPrint('loadOrderBook error: ${e.runtimeType}');
@@ -297,8 +306,11 @@ class MarketProvider extends ChangeNotifier {
 
   Future<void> loadKlines({String interval = '1h', int limit = 100}) async {
     try {
-      _klines = await _api.getKlines(_selectedPair,
-          interval: interval, limit: limit);
+      // TPIX klines มาจาก internal trades (ไม่ใช่ Binance)
+      _klines = _isTpixPair
+          ? await _api.getTpixKlines(interval: interval, limit: limit)
+          : await _api.getKlines(_selectedPair,
+              interval: interval, limit: limit);
       notifyListeners();
     } catch (e) {
       debugPrint('loadKlines error: ${e.runtimeType}');

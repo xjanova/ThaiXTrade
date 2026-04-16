@@ -280,6 +280,9 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     Route::prefix('wallet')->group(function () {
         Route::get('/balances', [WalletController::class, 'balances']);
         Route::get('/transactions', [WalletController::class, 'transactions']);
+        // Profile sync — name/email/avatar/preferences across mobile ↔ web
+        Route::get('/profile', [WalletController::class, 'getProfile']);
+        Route::put('/profile', [WalletController::class, 'updateProfile']);
     });
 
     // Swap Operations

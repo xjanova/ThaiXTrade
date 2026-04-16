@@ -79,10 +79,26 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>?> _put(String path,
+      {Map<String, dynamic>? data}) async {
+    try {
+      final response = await _dio.put(path, data: data);
+      return response.data as Map<String, dynamic>?;
+    } on DioException catch (e) {
+      debugPrint('[API] PUT $path: ${e.response?.statusCode ?? e.type.name}');
+      return null;
+    }
+  }
+
   // ── Config (fees + chains + pairs) ──
 
-  Future<FeeConfig?> getFees() async {
-    final res = await _get(ApiConstants.fees);
+  /// Fetch fee config — pass [chainId] for chain-specific swap fee.
+  /// Falls back to global fee if no chain-specific override exists in backend.
+  Future<FeeConfig?> getFees({int? chainId}) async {
+    final res = await _get(
+      ApiConstants.fees,
+      queryParams: chainId != null ? {'chain_id': chainId} : null,
+    );
     if (res == null) return null;
     return FeeConfig.fromJson(res);
   }
@@ -146,12 +162,51 @@ class ApiService {
     }).toList();
   }
 
-  // ── TPIX Price ──
+  // ── TPIX Price + Internal Order Book ──
 
   Future<TpixPrice?> getTpixPrice() async {
     final res = await _get(ApiConstants.tpixPrice);
     if (res == null || res['success'] != true) return null;
     return TpixPrice.fromJson(res['data'] as Map<String, dynamic>);
+  }
+
+  /// TPIX OrderBook — ใช้ internal matching engine (ไม่ผ่าน Binance)
+  /// สำหรับ TPIX-USDT pair เท่านั้น
+  Future<OrderBook?> getTpixOrderbook({int limit = 20}) async {
+    final res = await _get(
+      ApiConstants.tpixOrderbook,
+      queryParams: {'limit': limit},
+    );
+    if (res == null || res['success'] != true) return null;
+    return OrderBook.fromJson(res['data'] as Map<String, dynamic>);
+  }
+
+  /// TPIX Klines (candlestick) — สร้างจาก internal trades
+  Future<List<Kline>> getTpixKlines({
+    String interval = '1h',
+    int limit = 100,
+  }) async {
+    final res = await _get(
+      ApiConstants.tpixKlines,
+      queryParams: {'interval': interval, 'limit': limit},
+    );
+    if (res == null || res['success'] != true) return [];
+    final list = res['data'] as List<dynamic>? ?? [];
+    return list.map((e) {
+      if (e is List) return Kline.fromList(e);
+      return Kline.fromJson(e as Map<String, dynamic>);
+    }).toList();
+  }
+
+  /// TPIX recent trades — สำหรับแสดงใน trade history feed
+  Future<List<Map<String, dynamic>>> getTpixTrades({int limit = 50}) async {
+    final res = await _get(
+      ApiConstants.tpixTrades,
+      queryParams: {'limit': limit},
+    );
+    if (res == null || res['success'] != true) return [];
+    return (res['data'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
   }
 
   // ── Wallet ──
@@ -199,6 +254,37 @@ class ApiService {
       setToken(res['data']['token'] as String);
     }
     return res['data'] as Map<String, dynamic>?;
+  }
+
+  /// ดึง user profile (name, email, avatar, preferences) — sync จาก backend
+  /// ต้องเรียกหลัง verify wallet แล้ว (มี verified session)
+  Future<UserProfile?> getProfile(String walletAddress) async {
+    final res = await _get(ApiConstants.walletProfile, queryParams: {
+      'wallet_address': walletAddress,
+    });
+    if (res == null || res['success'] != true) return null;
+    return UserProfile.fromJson(res['data'] as Map<String, dynamic>);
+  }
+
+  /// อัปเดต profile + preferences — sync ไป backend
+  /// รับ partial update: ส่งเฉพาะ field ที่ต้องการแก้
+  Future<UserProfile?> updateProfile({
+    required String walletAddress,
+    String? name,
+    String? email,
+    String? avatar,
+    Map<String, dynamic>? preferences,
+  }) async {
+    final body = <String, dynamic>{
+      'wallet_address': walletAddress,
+      if (name != null) 'name': name,
+      if (email != null) 'email': email,
+      if (avatar != null) 'avatar': avatar,
+      if (preferences != null) 'preferences': preferences,
+    };
+    final res = await _put(ApiConstants.walletProfile, data: body);
+    if (res == null || res['success'] != true) return null;
+    return UserProfile.fromJson(res['data'] as Map<String, dynamic>);
   }
 
   Future<List<TokenBalance>> getWalletBalances(String walletAddress,

@@ -63,8 +63,16 @@ class _TradeScreenState extends State<TradeScreen>
     market.loadOrderBook();
     market.loadKlines();
     // Refresh config ถ้า stale (เข้าหน้า trade อาจห่างจาก splash นาน)
+    // + sync ConfigProvider กับ chain ปัจจุบันของ wallet (กัน fee mismatch
+    //   หลัง backend preferences sync เปลี่ยน default_chain_id)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<ConfigProvider>().refreshIfStale();
+      if (!mounted) return;
+      final config = context.read<ConfigProvider>();
+      final wallet = context.read<WalletProvider>();
+      config.refreshIfStale();
+      if (wallet.isConnected) {
+        config.setActiveChain(wallet.activeChainId);
+      }
     });
   }
 
@@ -212,6 +220,10 @@ class _TradeScreenState extends State<TradeScreen>
                     symbol: ticker.baseAsset,
                     size: 24,
                     borderRadius: 8,
+                    logoUrl: context
+                        .read<ConfigProvider>()
+                        .pairBySymbol(ticker.symbol)
+                        ?.baseLogo,
                   ),
                 if (ticker != null) const SizedBox(width: 8),
                 Text(
@@ -774,6 +786,31 @@ class _TradeScreenState extends State<TradeScreen>
       }
     }
 
+    // Pre-submit chain validation — pair อยู่ chain ใด wallet ต้อง active chain นั้น
+    // (กัน user เผลอส่ง order ผิดเครือข่าย — backend จะ reject แต่ UX แย่)
+    final pairChainId = pair?.chainId;
+    if (pairChainId != null && pairChainId != wallet.activeChainId) {
+      final fromName = config.chainById(wallet.activeChainId)?.name ??
+          'Chain ${wallet.activeChainId}';
+      final toName = config.chainById(pairChainId)?.name ?? 'Chain $pairChainId';
+      final shouldSwitch = await _confirmChainSwitch(
+        locale,
+        fromName: fromName,
+        toName: toName,
+      );
+      if (!mounted) return;
+      if (!shouldSwitch) {
+        _showSnack(locale.isThai
+            ? 'ยกเลิก — เครือข่ายไม่ตรงกับคู่เทรด'
+            : 'Cancelled — wrong chain for this pair');
+        return;
+      }
+      wallet.switchChain(pairChainId);
+      // ConfigProvider.setActiveChain refetches chain-specific fees ทันที
+      await config.setActiveChain(pairChainId);
+      if (!mounted) return;
+    }
+
     double? price;
     if (orderType != 'market') {
       price = double.tryParse(priceText);
@@ -847,6 +884,50 @@ class _TradeScreenState extends State<TradeScreen>
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  /// แสดง dialog ขอ confirm สลับเครือข่ายก่อน submit order
+  /// คืน true ถ้า user กด "switch", false ถ้าโดน cancel/dismiss
+  Future<bool> _confirmChainSwitch(
+    LocaleProvider locale, {
+    required String fromName,
+    required String toName,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgElevated,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppColors.bgCardBorder),
+        ),
+        title: Text(
+          locale.isThai ? 'สลับเครือข่าย?' : 'Switch chain?',
+          style: const TextStyle(color: AppColors.textPrimary),
+        ),
+        content: Text(
+          locale.isThai
+              ? 'คู่เทรดนี้อยู่บน $toName แต่ wallet ใช้ $fromName อยู่ — สลับเครือข่ายเพื่อส่งคำสั่ง?'
+              : 'This pair is on $toName but your wallet is on $fromName — switch to place this order?',
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(locale.t('common.cancel'),
+                style: const TextStyle(color: AppColors.textTertiary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              locale.isThai ? 'สลับ' : 'Switch',
+              style: const TextStyle(color: AppColors.brandCyan),
+            ),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 }
 
@@ -1140,6 +1221,10 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                         symbol: t.baseAsset,
                         size: 28,
                         borderRadius: 8,
+                        logoUrl: context
+                            .read<ConfigProvider>()
+                            .pairBySymbol(t.symbol)
+                            ?.baseLogo,
                       ),
                       title: Text(
                         t.displaySymbol,
