@@ -79,6 +79,12 @@ deploy:
 deploy-quick:
 	@./deploy.sh --quick
 
+post-deploy:
+	@./scripts/post-deploy.sh
+
+post-deploy-dry:
+	@./scripts/post-deploy.sh --dry-run
+
 optimize:
 	@./scripts/optimize.sh
 
