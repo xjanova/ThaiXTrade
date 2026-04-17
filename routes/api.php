@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\BannerController as ApiBannerController;
 use App\Http\Controllers\Api\BridgeApiController;
+use App\Http\Controllers\Api\CmcController;
 use App\Http\Controllers\Api\FeeConfigController;
 use App\Http\Controllers\Api\CarbonCreditApiController;
 use App\Http\Controllers\Api\ChainController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\StakingApiController;
 use App\Http\Controllers\Api\StripeWebhookController;
+use App\Http\Controllers\Api\SupplyController;
 use App\Http\Controllers\Api\SwapApiController;
 use App\Http\Controllers\Api\TokenFactoryApiController;
 use App\Http\Controllers\Api\TokenSaleApiController;
@@ -120,6 +122,36 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/orderbook', [TpixPriceController::class, 'orderbook']);
         Route::get('/trades', [TpixPriceController::class, 'trades']);
         Route::get('/info', [TpixPriceController::class, 'info']);
+    });
+
+    /*
+     * TPIX Supply — CoinGecko plain-text spec + JSON snapshot.
+     * Verifiable on-chain via RPC: circulating = total - sum(balance of locked genesis addresses).
+     *   GET /api/v1/supply                      → full JSON breakdown
+     *   GET /api/v1/supply/total_supply         → "7000000000" (text/plain)
+     *   GET /api/v1/supply/circulating_supply   → "<computed>" (text/plain)
+     *   GET /api/v1/supply/max_supply           → "7000000000" (text/plain)
+     */
+    Route::prefix('supply')->group(function () {
+        Route::get('/', [SupplyController::class, 'index']);
+        Route::get('/total_supply', [SupplyController::class, 'total']);
+        Route::get('/circulating_supply', [SupplyController::class, 'circulating']);
+        Route::get('/max_supply', [SupplyController::class, 'max']);
+    });
+
+    /*
+     * CoinMarketCap / CoinGecko DEX API specification.
+     * Ref: https://github.com/CoinMarketCap/dex-api-specification
+     *   GET /api/v1/cmc/summary              → all pairs condensed
+     *   GET /api/v1/cmc/assets               → traded asset metadata
+     *   GET /api/v1/cmc/tickers              → tickers per pair
+     *   GET /api/v1/cmc/orderbook/{market}   → order book for BASE_QUOTE
+     */
+    Route::prefix('cmc')->group(function () {
+        Route::get('/summary', [CmcController::class, 'summary']);
+        Route::get('/assets', [CmcController::class, 'assets']);
+        Route::get('/tickers', [CmcController::class, 'tickers']);
+        Route::get('/orderbook/{market}', [CmcController::class, 'orderbook']);
     });
 
     // Banners — ป้ายโฆษณา (public, cached)

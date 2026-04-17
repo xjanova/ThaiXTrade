@@ -8,6 +8,7 @@ use App\Models\SalePhase;
 use App\Models\SiteSetting;
 use App\Models\TradingPair;
 use App\Services\OrderMatchingService;
+use App\Services\SupplyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 
@@ -33,6 +34,7 @@ class TpixPriceController extends Controller
 {
     public function __construct(
         private OrderMatchingService $matchingService,
+        private SupplyService $supplyService,
     ) {}
 
     /**
@@ -201,9 +203,9 @@ class TpixPriceController extends Controller
                 'chain' => 'TPIX Chain (EVM, Chain ID: 4289)',
                 'contract' => '0x0000000000000000000000000000000000001010',
                 'decimals' => 18,
-                'total_supply' => 10_000_000_000,
+                'total_supply' => 7_000_000_000,
                 'circulating_supply' => $this->getCirculatingSupply(),
-                'max_supply' => 10_000_000_000,
+                'max_supply' => 7_000_000_000,
                 'social' => [
                     'twitter' => 'https://twitter.com/tpixchain',
                     'telegram' => 'https://t.me/tpixchain',
@@ -240,7 +242,7 @@ class TpixPriceController extends Controller
                         'high_24h' => round($ticker['high'], 8),
                         'low_24h' => round($ticker['low'], 8),
                         'market_cap' => round($ticker['price'] * $circulatingSupply, 2),
-                        'total_supply' => 10_000_000_000,
+                        'total_supply' => 7_000_000_000,
                         'circulating_supply' => $circulatingSupply,
                         'logo' => url('/tpixlogo.webp'),
                         'chain_id' => 4289,
@@ -277,7 +279,7 @@ class TpixPriceController extends Controller
                 'high_24h' => round($price * 1.02, 8),
                 'low_24h' => round($price * 0.98, 8),
                 'market_cap' => round($price * $circulatingSupply, 2),
-                'total_supply' => 10_000_000_000,
+                'total_supply' => 7_000_000_000,
                 'circulating_supply' => $circulatingSupply,
                 'logo' => url('/tpixlogo.webp'),
                 'chain_id' => 4289,
@@ -296,11 +298,18 @@ class TpixPriceController extends Controller
         });
     }
 
+    /**
+     * Get circulating supply (whole TPIX).
+     *
+     * Delegates to SupplyService which computes it on-chain:
+     *   circulating = total_supply - sum(balance of genesis-locked addresses)
+     *
+     * Fully verifiable by third parties against TPIX RPC. See config/supply.php.
+     */
     private function getCirculatingSupply(): float
     {
-        return (float) Cache::remember('tpix_circulating_supply', 300, function () {
-            return SiteSetting::get('trading', 'tpix_circulating_supply', 1_000_000_000);
-        });
+        $snapshot = $this->supplyService->snapshot();
+        return (float) $snapshot['circulating'];
     }
 
     /**
