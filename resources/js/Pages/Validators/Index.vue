@@ -295,43 +295,56 @@ onUnmounted(() => {
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 relative z-10">
 
                 <!-- ============================================================ -->
-                <!--  HERO Header with glow backdrop                              -->
+                <!--  HERO Header — MasterNode-style centered hero                -->
                 <!-- ============================================================ -->
                 <div class="relative">
                     <div class="absolute -inset-2 bg-gradient-to-r from-cyan-500/20 via-purple-500/15 to-yellow-500/20 rounded-3xl blur-xl opacity-60" />
-                    <div class="glass-brand relative rounded-3xl p-8 md:p-10 overflow-hidden">
+                    <div class="glass-brand relative rounded-3xl p-8 md:p-12 text-center overflow-hidden">
                         <!-- Floating particles -->
                         <div class="absolute top-6 left-10 w-2 h-2 bg-cyan-400/40 rounded-full animate-float" />
                         <div class="absolute top-16 right-16 w-1.5 h-1.5 bg-purple-400/40 rounded-full animate-float" style="animation-delay: -2s" />
                         <div class="absolute bottom-8 left-1/4 w-1 h-1 bg-yellow-400/40 rounded-full animate-float" style="animation-delay: -4s" />
                         <div class="absolute bottom-12 right-1/3 w-1.5 h-1.5 bg-red-400/30 rounded-full animate-float" style="animation-delay: -1s" />
 
-                        <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 relative">
-                            <div class="flex items-center gap-5">
-                                <!-- TPIX Logo with glow -->
-                                <div class="relative shrink-0">
-                                    <div class="absolute -inset-3 bg-gradient-to-r from-cyan-500/30 via-purple-500/30 to-yellow-500/30 rounded-full blur-2xl animate-glow-brand" />
-                                    <img src="/tpixlogo.webp" alt="TPIX" class="relative w-16 h-16 ring-2 ring-white/10" />
-                                </div>
-                                <div>
-                                    <h1 class="text-3xl md:text-4xl font-black">
-                                        <span class="text-gradient-brand">Validator Network</span>
-                                    </h1>
-                                    <p class="text-sm text-gray-400 mt-1">
-                                        Real-time map of TPIX Chain validators, guardians, sentinels & light nodes worldwide
-                                    </p>
-                                </div>
+                        <!-- TPIX Logo with radial glow -->
+                        <div class="relative inline-block mb-5">
+                            <div class="absolute -inset-4 bg-gradient-to-r from-cyan-500/30 via-purple-500/30 to-yellow-500/30 rounded-full blur-2xl animate-glow-brand" />
+                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-20 h-20 ring-2 ring-white/10" />
+                        </div>
+
+                        <h1 class="text-4xl md:text-5xl font-black mb-3">
+                            <span class="text-gradient-brand">Validator Network</span>
+                        </h1>
+                        <p class="text-sm md:text-base text-gray-400 max-w-2xl mx-auto mb-8">
+                            Real-time map of TPIX Chain validators, guardians, sentinels &amp; light nodes worldwide
+                        </p>
+
+                        <!-- Stats preview (MasterNode-style 3-tile grid) -->
+                        <div class="grid grid-cols-3 gap-3 sm:gap-4 max-w-md mx-auto mb-8">
+                            <div class="glass-sm rounded-xl p-3">
+                                <div class="text-xs text-gray-400">Nodes</div>
+                                <div class="text-xl font-black text-gradient">{{ fmtNum(validators.length) }}</div>
                             </div>
-                            <div class="flex items-center gap-3 shrink-0">
-                                <button @click="refreshData" :disabled="isLoading"
-                                    class="px-4 py-2.5 text-sm font-medium rounded-xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all disabled:opacity-50">
-                                    {{ isLoading ? 'Refreshing...' : 'Refresh' }}
-                                </button>
-                                <Link href="/validators/apply"
-                                    class="btn-brand px-5 py-2.5 text-sm font-bold rounded-xl hover:scale-105 transition-all">
-                                    Apply to Validate
-                                </Link>
+                            <div class="glass-sm rounded-xl p-3">
+                                <div class="text-xs text-gray-400">Countries</div>
+                                <div class="text-xl font-black text-cyan-400">{{ countries.length }}</div>
                             </div>
+                            <div class="glass-sm rounded-xl p-3">
+                                <div class="text-xs text-gray-400">Block Height</div>
+                                <div class="text-xl font-black text-trading-green">{{ fmtNum(networkStats.block_height || 0) }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Primary actions -->
+                        <div class="flex items-center justify-center gap-3 flex-wrap">
+                            <Link href="/validators/apply"
+                                class="btn-brand px-8 py-3 text-base font-bold rounded-2xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300">
+                                Apply to Validate
+                            </Link>
+                            <button @click="refreshData" :disabled="isLoading"
+                                class="px-6 py-3 text-sm font-semibold rounded-2xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all disabled:opacity-50">
+                                {{ isLoading ? 'Refreshing...' : 'Refresh' }}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -375,15 +388,15 @@ onUnmounted(() => {
                 </div>
 
                 <!-- ============================================================ -->
-                <!--  Tabs                                                        -->
+                <!--  Tabs — full-width like MasterNode                           -->
                 <!-- ============================================================ -->
-                <div class="flex gap-1 p-1 glass-sm rounded-xl w-fit mx-auto">
+                <div class="flex gap-1 p-1 glass-sm rounded-xl max-w-xl mx-auto">
                     <button v-for="tab in [
                         { id: 'map', label: 'World Map', icon: '🌍' },
                         { id: 'list', label: 'Node List', icon: '📋' },
                         { id: 'rewards', label: 'Rewards', icon: '💰' },
                     ]" :key="tab.id" @click="activeTab = tab.id"
-                       :class="['px-6 py-2.5 rounded-lg text-sm font-semibold transition-all',
+                       :class="['flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all',
                            activeTab === tab.id
                                ? 'glass text-white shadow-lg'
                                : 'text-gray-400 hover:text-white']">
@@ -661,28 +674,50 @@ onUnmounted(() => {
                     </div>
 
                     <!-- ============================================================ -->
-                    <!--  How Rewards Work — Tier Info Cards                           -->
+                    <!--  How Rewards Work — Tier Info Cards (MasterNode style)       -->
                     <!-- ============================================================ -->
-                    <div class="glass rounded-2xl p-6 space-y-4">
-                        <h3 class="text-sm font-bold text-white uppercase tracking-wide">How Rewards Work</h3>
-                        <div class="grid sm:grid-cols-2 gap-3">
+                    <div class="glass rounded-2xl p-6 space-y-5">
+                        <div class="flex items-center gap-3">
+                            <img src="/tpixlogo.webp" alt="TPIX" class="w-8 h-8 ring-1 ring-white/10" />
+                            <div>
+                                <h3 class="text-sm font-bold text-white uppercase tracking-wide">How Rewards Work</h3>
+                                <p class="text-xs text-gray-400">Reward share by tier &amp; minimum stake</p>
+                            </div>
+                        </div>
+                        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div v-for="info in [
                                 { tier: 'validator', share: '20%', stake: '10,000,000 TPIX', desc: 'Real IBFT2 block sealers with governance power. Requires company KYC.' },
                                 { tier: 'guardian', share: '35%', stake: '1,000,000 TPIX', desc: 'Premium masternodes with high rewards.' },
                                 { tier: 'sentinel', share: '30%', stake: '100,000 TPIX', desc: 'Standard masternodes for network integrity.' },
                                 { tier: 'light', share: '15%', stake: '10,000 TPIX', desc: 'Easiest entry to support the network and earn rewards.' },
                             ]" :key="info.tier"
-                               :class="['rounded-xl p-4 border transition-all hover:scale-[1.02]', tierConfig[info.tier].bg]">
-                                <div class="flex items-center gap-2 mb-2">
-                                    <div :style="{ background: tierConfig[info.tier].dot, boxShadow: '0 0 10px ' + tierConfig[info.tier].dot + '60' }"
-                                         class="w-3 h-3 rounded-full" />
-                                    <span :class="['font-bold text-sm', tierConfig[info.tier].color]">
+                                 class="group relative rounded-2xl overflow-hidden transition-all duration-500 hover:scale-[1.03] hover:-translate-y-1">
+                                <!-- Glow backdrop on hover (per-tier color) -->
+                                <div :style="{ background: 'radial-gradient(circle at top, ' + tierConfig[info.tier].dot + '33, transparent 70%)' }"
+                                     class="absolute -inset-1 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+                                <!-- Card body -->
+                                <div :class="['relative glass rounded-2xl p-4 h-full flex flex-col border', tierConfig[info.tier].bg]">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div class="relative">
+                                            <div :style="{ background: 'radial-gradient(circle, ' + tierConfig[info.tier].dot + '40, transparent 70%)' }"
+                                                 class="absolute -inset-1.5 rounded-xl blur-lg" />
+                                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-10 h-10 ring-1 ring-white/10" />
+                                        </div>
+                                        <div :class="['px-2 py-0.5 rounded-full text-[10px] font-black border', tierConfig[info.tier].bg]">
+                                            <span :class="tierConfig[info.tier].color">{{ info.share }}</span>
+                                        </div>
+                                    </div>
+                                    <h4 :class="['text-base font-bold mb-1', tierConfig[info.tier].color]">
                                         {{ tierConfig[info.tier].icon }} {{ tierConfig[info.tier].label }}
-                                    </span>
-                                    <span class="ml-auto text-xs text-gray-400 font-bold">{{ info.share }}</span>
+                                    </h4>
+                                    <p class="text-[11px] text-gray-400 mb-3 leading-relaxed flex-1">{{ info.desc }}</p>
+                                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-2" />
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-[10px] text-gray-500">Min Stake</span>
+                                        <span :class="['text-xs font-bold', tierConfig[info.tier].color]">{{ info.stake }}</span>
+                                    </div>
                                 </div>
-                                <div class="text-xs text-gray-400 mb-1">{{ info.desc }}</div>
-                                <div class="text-[10px] text-gray-500">Min Stake: {{ info.stake }}</div>
                             </div>
                         </div>
                         <div class="p-4 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-gray-500">
@@ -692,21 +727,23 @@ onUnmounted(() => {
                 </div>
 
                 <!-- ============================================================ -->
-                <!--  CTA: Apply to Validate — with glow backdrop                  -->
+                <!--  CTA: Apply to Validate — MasterNode Download-style block    -->
                 <!-- ============================================================ -->
                 <div class="relative group">
-                    <div class="absolute -inset-1 bg-gradient-to-r from-red-500/20 via-purple-500/20 to-cyan-500/20 rounded-3xl blur-xl opacity-60 group-hover:opacity-100 transition-opacity duration-500" />
-                    <div class="glass-brand relative rounded-2xl p-8 text-center overflow-hidden">
+                    <div class="absolute -inset-1 bg-gradient-to-r from-accent-500/20 via-primary-500/20 to-warm-500/20 rounded-3xl blur-xl opacity-60 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div class="glass-brand relative rounded-2xl p-8 md:p-10 text-center overflow-hidden">
                         <!-- Particles -->
                         <div class="absolute top-4 left-12 w-1.5 h-1.5 bg-cyan-400/30 rounded-full animate-float" />
                         <div class="absolute bottom-6 right-10 w-1 h-1 bg-yellow-400/30 rounded-full animate-float" style="animation-delay: -2s" />
 
-                        <div class="relative">
-                            <div class="absolute -inset-4 bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-yellow-500/20 rounded-full blur-2xl mx-auto w-24 h-24 left-1/2 -translate-x-1/2" />
-                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-16 h-16 mx-auto mb-4 ring-2 ring-white/10" />
+                        <!-- Logo with radial glow (matches MasterNode hero treatment) -->
+                        <div class="relative inline-block mb-4">
+                            <div class="absolute -inset-3 bg-gradient-to-r from-cyan-500/30 via-purple-500/30 to-yellow-500/30 rounded-full blur-2xl animate-glow-brand" />
+                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-16 h-16 ring-2 ring-white/10" />
                         </div>
-                        <h3 class="text-xl font-bold text-white mb-2">Become a TPIX Validator</h3>
-                        <p class="text-sm text-gray-400 mb-5 max-w-lg mx-auto">
+
+                        <h3 class="text-xl md:text-2xl font-bold text-white mb-2">Become a TPIX Validator</h3>
+                        <p class="text-sm text-gray-400 mb-6 max-w-lg mx-auto">
                             Help secure the TPIX Chain and earn rewards. Apply now to join the validator network.
                         </p>
                         <div class="flex justify-center gap-3 flex-wrap">
@@ -715,11 +752,11 @@ onUnmounted(() => {
                                 Apply Now
                             </Link>
                             <Link href="/masternode"
-                                class="px-6 py-2.5 rounded-xl font-bold text-sm bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all">
+                                class="btn-secondary px-6 py-2.5 rounded-xl font-bold text-sm">
                                 Run a Node
                             </Link>
                             <Link href="/masternode/guide"
-                                class="px-6 py-2.5 rounded-xl font-bold text-sm bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all">
+                                class="btn-secondary px-6 py-2.5 rounded-xl font-bold text-sm">
                                 Setup Guide
                             </Link>
                         </div>
