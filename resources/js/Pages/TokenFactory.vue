@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
@@ -35,6 +35,20 @@ const factoryStore = useTokenFactoryStore();
 const activeTab = ref('create');
 const showSuccess = ref(false);
 const successMessage = ref('');
+const showError = ref(false);
+const errorMessage = ref('');
+
+function toastSuccess(msg, duration = 3000) {
+    successMessage.value = msg;
+    showSuccess.value = true;
+    setTimeout(() => { showSuccess.value = false; }, duration);
+}
+
+function toastError(msg, duration = 4500) {
+    errorMessage.value = msg;
+    showError.value = true;
+    setTimeout(() => { showError.value = false; }, duration);
+}
 
 // ===================== WIZARD STATE =====================
 const wizardStep = ref(1);
@@ -805,11 +819,22 @@ onMounted(async () => {
     await factoryStore.fetchTokens();
     if (walletStore.address) {
         await factoryStore.fetchMyTokens(walletStore.address);
+        snapshotStatuses();
+        if (hasPendingTokens()) startPolling();
     }
 });
 
+onUnmounted(() => {
+    stopPolling();
+});
+
 watch(() => walletStore.address, async (addr) => {
-    if (addr) await factoryStore.fetchMyTokens(addr);
+    stopPolling();
+    if (addr) {
+        await factoryStore.fetchMyTokens(addr);
+        snapshotStatuses();
+        if (hasPendingTokens()) startPolling();
+    }
 });
 
 // ===================== HELPERS =====================
@@ -830,6 +855,7 @@ function formatSupply(val) {
 
 // ===================== ADD TOKEN TO WALLET =====================
 const addingToken = ref(null); // track which contract is currently being added (for button spinner)
+const copyingToken = ref(null); // track which contract is currently being copied
 
 async function handleAddToWallet(token) {
     if (!token?.contract_address) return;
@@ -839,15 +865,18 @@ async function handleAddToWallet(token) {
     }
 
     addingToken.value = token.contract_address;
+    let chainSwitchDeclined = false;
     try {
-        // ตรวจสอบว่าอยู่บน TPIX Chain หรือไม่ — ถ้าไม่ให้สลับไปก่อน
-        // (wallet_watchAsset บาง wallet จะไม่ทำงานถ้าไม่อยู่บน chain ที่ token deploy อยู่)
-        const provider = walletStore.provider || (typeof window !== 'undefined' ? window.ethereum : null);
-        if (provider && walletStore.chainId !== TPIX_CHAIN_CONFIG.chainIdNum) {
+        // ใช้ raw EIP-1193 provider (window.ethereum) สำหรับ .request() calls
+        // walletStore.provider เป็น ethers BrowserProvider wrapper ซึ่งไม่มี .request() โดยตรง
+        // WalletConnect จะใช้ window.ethereum ไม่ได้ — ข้าม chain-switch แล้วปล่อยให้ wallet จัดการเอง
+        const rawProvider = typeof window !== 'undefined' ? window.ethereum : null;
+        if (rawProvider && walletStore.chainId !== TPIX_CHAIN_CONFIG.chainIdNum) {
             try {
-                await switchToChain(provider, TPIX_CHAIN_CONFIG.chainIdNum, TPIX_CHAIN_CONFIG);
+                await switchToChain(rawProvider, TPIX_CHAIN_CONFIG.chainIdNum, TPIX_CHAIN_CONFIG);
             } catch (switchErr) {
-                // ถ้าสลับ chain ไม่ได้ (user cancel) ให้ยังลองเพิ่ม token ต่อ — wallet บางตัว accept cross-chain
+                // ถ้าสลับ chain ไม่ได้ (user cancel, 4001) ให้ยังลองเพิ่ม token ต่อ
+                chainSwitchDeclined = switchErr?.code === 4001 || /user rejected|user denied/i.test(switchErr?.message || '');
                 console.warn('[TokenFactory] Chain switch failed, attempting watchAsset anyway:', switchErr.message);
             }
         }
@@ -857,16 +886,105 @@ async function handleAddToWallet(token) {
             symbol: token.symbol,
             decimals: token.decimals || 18,
             image: token.logo_url || undefined,
-        }, provider);
+        }, rawProvider);
 
         if (added) {
-            successMessage.value = `✅ ${token.symbol} added to wallet!`;
-            showSuccess.value = true;
-            setTimeout(() => { showSuccess.value = false; }, 3000);
+            toastSuccess(`✅ ${token.symbol} added to wallet!`);
+        } else if (chainSwitchDeclined) {
+            toastError(`กรุณาสลับไป TPIX Chain ก่อนเพื่อเพิ่ม ${token.symbol}`);
         }
+        // else: user declined watchAsset itself — wallet already showed its own UI, no toast needed
     } finally {
         addingToken.value = null;
     }
+}
+
+async function handleCopyContract(token) {
+    if (!token?.contract_address) return;
+    copyingToken.value = token.contract_address;
+    try {
+        await navigator.clipboard.writeText(token.contract_address);
+        toastSuccess('คัดลอก contract address แล้ว', 2000);
+    } catch (e) {
+        console.warn('[TokenFactory] Copy failed', e);
+        toastError('คัดลอกไม่สำเร็จ ลองอีกครั้ง');
+    } finally {
+        setTimeout(() => { copyingToken.value = null; }, 600);
+    }
+}
+
+// ===================== STATUS POLLING + DEPLOY-READY DETECTION =====================
+// Poll /api/v1/token-factory/my-tokens ทุก 15 วินาที ตราบใดที่มี token อยู่ในสถานะ pending/deploying
+// เมื่อตรวจพบ transition → 'deployed' จะแสดง modal ถามว่าจะเพิ่มเข้ากระเป๋าเลยไหม
+const POLL_INTERVAL_MS = 15000;
+let pollTimer = null;
+const knownStatuses = ref(new Map()); // Map<tokenId, status> — snapshot ไว้ detect transition
+const deployReadyToken = ref(null);   // token object ที่เพิ่ง deploy เสร็จ (สำหรับ modal)
+const promptedDeployIds = ref(new Set()); // กัน prompt ซ้ำสำหรับ id เดิมในเซสชัน
+
+function hasPendingTokens() {
+    return factoryStore.myTokens.some(t => ['pending', 'deploying'].includes(t?.status));
+}
+
+function snapshotStatuses() {
+    const map = new Map();
+    for (const t of factoryStore.myTokens) {
+        if (t?.id != null) map.set(t.id, t.status);
+    }
+    knownStatuses.value = map;
+}
+
+function detectDeployTransition() {
+    for (const t of factoryStore.myTokens) {
+        if (t?.id == null || t.status !== 'deployed') continue;
+        const prev = knownStatuses.value.get(t.id);
+        if (prev && prev !== 'deployed' && !promptedDeployIds.value.has(t.id)) {
+            // พบ transition → deployed
+            deployReadyToken.value = t;
+            promptedDeployIds.value.add(t.id);
+            break; // prompt ทีละอัน
+        }
+    }
+    snapshotStatuses();
+}
+
+async function pollTick() {
+    if (!walletStore.address) return;
+    if (!hasPendingTokens() && !deployReadyToken.value) {
+        // ไม่มีอะไรต้อง poll หยุด interval เพื่อประหยัด API
+        stopPolling();
+        return;
+    }
+    await factoryStore.fetchMyTokens(walletStore.address);
+    detectDeployTransition();
+}
+
+function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(pollTick, POLL_INTERVAL_MS);
+}
+
+function stopPolling() {
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+}
+
+// เริ่ม polling เมื่อมี token pending/deploying (เช่น หลัง submit สำเร็จ)
+watch(() => factoryStore.myTokens, () => {
+    snapshotStatuses();
+    if (hasPendingTokens()) startPolling();
+}, { deep: false });
+
+async function confirmDeployReady() {
+    const t = deployReadyToken.value;
+    deployReadyToken.value = null;
+    if (t) await handleAddToWallet(t);
+}
+
+function dismissDeployReady() {
+    deployReadyToken.value = null;
 }
 
 function getCategoryLabel(cat) {
@@ -948,6 +1066,95 @@ function getTypeLabel(type) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     {{ successMessage }}
+                </div>
+            </div>
+        </Transition>
+
+        <!-- Error Alert -->
+        <Transition
+            enter-active-class="transition ease-out duration-300"
+            enter-from-class="opacity-0 -translate-y-2"
+            enter-to-class="opacity-100 translate-y-0"
+            leave-active-class="transition ease-in duration-200"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+        >
+            <div v-if="showError" class="max-w-4xl mx-auto px-4 sm:px-6 mb-6">
+                <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center gap-3">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    {{ errorMessage }}
+                </div>
+            </div>
+        </Transition>
+
+        <!-- Deploy-Ready Modal: token ที่เพิ่ง deploy สำเร็จ → ถามว่าจะเพิ่มเข้ากระเป๋าไหม -->
+        <Transition
+            enter-active-class="transition ease-out duration-300"
+            enter-from-class="opacity-0"
+            enter-to-class="opacity-100"
+            leave-active-class="transition ease-in duration-200"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+        >
+            <div
+                v-if="deployReadyToken"
+                class="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm"
+                @click.self="dismissDeployReady"
+            >
+                <div class="glass-dark w-full max-w-md rounded-2xl p-6 border border-primary-500/30 shadow-2xl">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-accent-500 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-lg font-semibold text-white">🎉 Your token is live!</p>
+                            <p class="text-xs text-gray-400">Deployed on TPIX Chain</p>
+                        </div>
+                    </div>
+
+                    <div class="rounded-xl bg-dark-900/50 border border-white/10 p-4 mb-4 space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Name</span>
+                            <span class="text-white font-medium">{{ deployReadyToken.name }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Symbol</span>
+                            <span class="text-white font-mono">{{ deployReadyToken.symbol }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Contract</span>
+                            <a
+                                :href="`https://explorer.tpix.online/address/${deployReadyToken.contract_address}`"
+                                target="_blank"
+                                rel="noopener"
+                                class="text-primary-400 hover:text-primary-300 font-mono text-xs"
+                            >
+                                {{ deployReadyToken.contract_address?.slice(0, 8) }}...{{ deployReadyToken.contract_address?.slice(-6) }}
+                            </a>
+                        </div>
+                    </div>
+
+                    <p class="text-sm text-gray-300 mb-4">ต้องการเพิ่ม <span class="text-primary-400 font-semibold">{{ deployReadyToken.symbol }}</span> เข้ากระเป๋าของคุณเลยไหม?</p>
+
+                    <div class="flex gap-2">
+                        <button
+                            @click="dismissDeployReady"
+                            class="flex-1 px-4 py-2.5 rounded-lg bg-dark-800/50 hover:bg-dark-800 border border-white/10 text-gray-300 text-sm font-medium transition-all"
+                        >
+                            Later
+                        </button>
+                        <button
+                            @click="confirmDeployReady"
+                            class="flex-[2] px-4 py-2.5 rounded-lg bg-gradient-to-r from-accent-500 to-primary-500 hover:opacity-90 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                            Add to Wallet
+                        </button>
+                    </div>
                 </div>
             </div>
         </Transition>
@@ -1731,16 +1938,26 @@ function getTypeLabel(type) {
                             Deploying to TPIX Chain...
                         </div>
 
-                        <button
-                            v-if="token.contract_address && token.status === 'deployed'"
-                            @click="handleAddToWallet(token)"
-                            :disabled="addingToken === token.contract_address"
-                            class="mt-3 w-full px-3 py-2 rounded-lg bg-primary-500/10 hover:bg-primary-500/20 border border-primary-500/20 hover:border-primary-500/40 text-primary-400 text-xs font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <svg v-if="addingToken === token.contract_address" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                            <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-                            {{ addingToken === token.contract_address ? 'Adding...' : 'Add to Wallet' }}
-                        </button>
+                        <div v-if="token.contract_address && token.status === 'deployed'" class="mt-3 flex gap-2">
+                            <button
+                                @click="handleCopyContract(token)"
+                                :disabled="copyingToken === token.contract_address"
+                                :title="'Copy contract address'"
+                                class="px-3 py-2 rounded-lg bg-dark-800/50 hover:bg-dark-800 border border-white/10 hover:border-white/20 text-gray-300 text-xs font-medium transition-all flex items-center justify-center disabled:opacity-50"
+                            >
+                                <svg v-if="copyingToken === token.contract_address" class="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                            </button>
+                            <button
+                                @click="handleAddToWallet(token)"
+                                :disabled="addingToken === token.contract_address"
+                                class="flex-1 px-3 py-2 rounded-lg bg-primary-500/10 hover:bg-primary-500/20 border border-primary-500/20 hover:border-primary-500/40 text-primary-400 text-xs font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <svg v-if="addingToken === token.contract_address" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                                {{ addingToken === token.contract_address ? 'Adding...' : 'Add to Wallet' }}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1792,16 +2009,26 @@ function getTypeLabel(type) {
                             </div>
                         </div>
 
-                        <button
-                            v-if="token.contract_address"
-                            @click="handleAddToWallet(token)"
-                            :disabled="addingToken === token.contract_address"
-                            class="mt-4 w-full px-3 py-2 rounded-lg bg-primary-500/10 hover:bg-primary-500/20 border border-primary-500/20 hover:border-primary-500/40 text-primary-400 text-xs font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <svg v-if="addingToken === token.contract_address" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                            <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-                            {{ addingToken === token.contract_address ? 'Adding...' : 'Add to Wallet' }}
-                        </button>
+                        <div v-if="token.contract_address" class="mt-4 flex gap-2">
+                            <button
+                                @click="handleCopyContract(token)"
+                                :disabled="copyingToken === token.contract_address"
+                                :title="'Copy contract address'"
+                                class="px-3 py-2 rounded-lg bg-dark-800/50 hover:bg-dark-800 border border-white/10 hover:border-white/20 text-gray-300 text-xs font-medium transition-all flex items-center justify-center disabled:opacity-50"
+                            >
+                                <svg v-if="copyingToken === token.contract_address" class="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                            </button>
+                            <button
+                                @click="handleAddToWallet(token)"
+                                :disabled="addingToken === token.contract_address"
+                                class="flex-1 px-3 py-2 rounded-lg bg-primary-500/10 hover:bg-primary-500/20 border border-primary-500/20 hover:border-primary-500/40 text-primary-400 text-xs font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <svg v-if="addingToken === token.contract_address" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                                {{ addingToken === token.contract_address ? 'Adding...' : 'Add to Wallet' }}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
