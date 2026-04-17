@@ -727,6 +727,7 @@ class _TradeScreenState extends State<TradeScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true, // กัน Android nav bar บัง content ด้านล่าง
       backgroundColor: Colors.transparent,
       builder: (_) => _PairPickerSheet(
         market: market,

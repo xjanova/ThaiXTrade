@@ -1,5 +1,5 @@
 /// TPIX TRADE — Deep Link Service
-/// รับ tpixtrade://connect?address=... จาก Wallet → เสนอให้ user เชื่อม
+/// รับ tpixtrade://connect?address=... จาก Wallet → auto-link wallet
 /// รับ tpixtrade://trade?pair=BTC-USDT → เปิดหน้า trade pair นั้น
 ///
 /// Developed by Xman Studio
@@ -10,11 +10,11 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../core/locale/locale_provider.dart';
 import '../core/theme/app_colors.dart';
 import '../providers/market_provider.dart';
+import '../providers/wallet_provider.dart';
 import 'package:provider/provider.dart';
 
 class DeepLinkService {
@@ -74,106 +74,76 @@ class DeepLinkService {
     }
   }
 
-  void _handleConnect(BuildContext context, Uri uri) {
+  Future<void> _handleConnect(BuildContext context, Uri uri) async {
     final address = uri.queryParameters['address'];
-    if (address == null || !_isValidAddress(address)) return;
+    if (address == null || !_isValidAddress(address)) {
+      _showSnack(context, _isThai(context)
+          ? 'ลิงก์ไม่ถูกต้อง — ไม่พบ address'
+          : 'Invalid link — missing address');
+      return;
+    }
 
     final chain = int.tryParse(uri.queryParameters['chain'] ?? '4289') ?? 4289;
     // Whitelist chain IDs ที่รองรับ
-    if (![1, 56, 137, 4289].contains(chain)) return;
+    if (![1, 56, 137, 4289].contains(chain)) {
+      _showSnack(context, _isThai(context)
+          ? 'เครือข่าย $chain ไม่รองรับ'
+          : 'Chain $chain not supported');
+      return;
+    }
 
-    final locale = context.read<LocaleProvider>();
-    final short = '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+    final walletName = uri.queryParameters['wallet']; // optional source app name
 
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgElevated,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppColors.bgCardBorder),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.brandCyan.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.account_balance_wallet_rounded,
-                  color: AppColors.brandCyan, size: 20),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                locale.t('peer.connect_title'),
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              locale.t('peer.connect_desc'),
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.bgTertiary,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                short,
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 14,
-                  color: AppColors.brandCyan,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              locale.t('common.cancel'),
-              style: const TextStyle(color: AppColors.textTertiary),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              // TODO future: auto-import address เข้า wallet provider
-              // ตอนนี้แค่เปิดหน้า wallet connect ให้ user ใส่ mnemonic/private key ของ address นี้
-              Navigator.pop(ctx);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.brandCyan,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: Text(
-              locale.t('peer.connect_accept'),
-              style: const TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
+    // Auto-link โดยไม่ต้องเปิด picker — wallet app ส่ง address มาแล้ว trust
+    final wallet = context.read<WalletProvider>();
+    final ok = await wallet.linkFromDeepLink(
+      address: address,
+      chainId: chain,
+      walletName: walletName,
     );
+
+    if (!context.mounted) return;
+
+    if (ok) {
+      final short = '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+      _showSnack(
+        context,
+        _isThai(context)
+            ? 'เชื่อม ${walletName ?? 'TPIX Wallet'} แล้ว — $short'
+            : 'Linked ${walletName ?? 'TPIX Wallet'} — $short',
+        isSuccess: true,
+      );
+      // ไปหน้า portfolio เพื่อให้ user เห็น balance ทันที
+      try {
+        GoRouter.of(context).go('/portfolio');
+      } catch (_) {}
+    } else {
+      _showSnack(context, _isThai(context)
+          ? 'เชื่อม wallet ไม่สำเร็จ'
+          : 'Failed to link wallet');
+    }
+  }
+
+  bool _isThai(BuildContext context) {
+    try {
+      return context.read<LocaleProvider>().isThai;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _showSnack(BuildContext context, String msg, {bool isSuccess = false}) {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: isSuccess ? AppColors.tradingGreen : null,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (_) {
+      // ScaffoldMessenger ไม่พร้อม (เช่น deep link มาตอน splash) — ignore
+    }
   }
 
   void _handleTrade(BuildContext context, Uri uri) {

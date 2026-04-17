@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\TradingPair;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -43,11 +44,32 @@ class MarketDataService
                     return [$this->formatTicker($data)];
                 }
 
-                // Filter to USDT pairs and top volume
-                return collect($data)
-                    ->filter(fn ($t) => str_ends_with($t['symbol'], 'USDT'))
-                    ->sortByDesc(fn ($t) => (float) $t['quoteVolume'])
-                    ->take(50)
+                // Build allowlist of admin-configured pairs from DB.
+                // Mobile + web markets list MUST mirror admin's TradingPair table —
+                // not Binance's full list. Falls back to top-50 only when DB is empty
+                // (initial deployment / no admin config yet).
+                $adminPairs = TradingPair::active()
+                    ->pluck('symbol')
+                    ->map(fn ($s) => $this->toBinanceSymbol($s))
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                $collection = collect($data)
+                    ->filter(fn ($t) => str_ends_with($t['symbol'], 'USDT'));
+
+                if (! empty($adminPairs)) {
+                    $allow = array_flip($adminPairs);
+                    $collection = $collection->filter(fn ($t) => isset($allow[$t['symbol']]));
+                } else {
+                    // Fallback — top 50 by volume (legacy behavior, only when DB empty)
+                    $collection = $collection
+                        ->sortByDesc(fn ($t) => (float) $t['quoteVolume'])
+                        ->take(50);
+                }
+
+                return $collection
                     ->values()
                     ->map(fn ($t) => $this->formatTicker($t))
                     ->all();
@@ -253,20 +275,35 @@ class MarketDataService
      */
     private function formatTicker(array $data): array
     {
-        $symbol = $data['symbol'] ?? '';
-        $baseAsset = str_replace('USDT', '', $symbol);
+        $rawSymbol = $data['symbol'] ?? '';
+        // Strip trailing USDT to get base — canonicalize to BASE-USDT format
+        // so client parsers (mobile + web) can split on "-" to separate base/quote.
+        $baseAsset = str_ends_with($rawSymbol, 'USDT')
+            ? substr($rawSymbol, 0, -4)
+            : $rawSymbol;
+        $canonicalSymbol = $baseAsset.'-USDT';
 
         return [
-            'symbol' => $symbol,
+            'symbol' => $canonicalSymbol,         // "BTC-USDT" (canonical)
+            'binance_symbol' => $rawSymbol,       // "BTCUSDT" (kept for WS subscribe)
             'baseAsset' => $baseAsset,
             'quoteAsset' => 'USDT',
+            // Both camelCase + snake_case for client compat
             'price' => $data['lastPrice'] ?? '0',
+            'lastPrice' => $data['lastPrice'] ?? '0',
+            'last_price' => $data['lastPrice'] ?? '0',
             'priceChange' => $data['priceChange'] ?? '0',
+            'price_change' => $data['priceChange'] ?? '0',
             'priceChangePercent' => $data['priceChangePercent'] ?? '0',
+            'price_change_percent' => $data['priceChangePercent'] ?? '0',
             'high' => $data['highPrice'] ?? '0',
+            'high_24h' => $data['highPrice'] ?? '0',
             'low' => $data['lowPrice'] ?? '0',
+            'low_24h' => $data['lowPrice'] ?? '0',
             'volume' => $data['volume'] ?? '0',
+            'volume_24h' => $data['volume'] ?? '0',
             'quoteVolume' => $data['quoteVolume'] ?? '0',
+            'quote_volume_24h' => $data['quoteVolume'] ?? '0',
             'openPrice' => $data['openPrice'] ?? '0',
         ];
     }

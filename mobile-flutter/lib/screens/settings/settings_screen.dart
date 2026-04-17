@@ -304,6 +304,7 @@ class _ProfileCard extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true, // กัน Android nav bar บัง content
       backgroundColor: Colors.transparent,
       builder: (_) => const ProfileEditSheet(),
     );
@@ -405,6 +406,7 @@ class _ConnectWalletCard extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true, // กัน Android nav bar บัง wallet picker
       backgroundColor: Colors.transparent,
       builder: (_) => const WalletConnectSheet(),
     );

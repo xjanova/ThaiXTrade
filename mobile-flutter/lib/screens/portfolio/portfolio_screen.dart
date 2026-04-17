@@ -309,6 +309,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                   showModalBottomSheet(
                     context: context,
                     isScrollControlled: true,
+                    useSafeArea: true, // กัน Android nav bar บัง wallet picker
                     backgroundColor: Colors.transparent,
                     builder: (_) => const WalletConnectSheet(),
                   );

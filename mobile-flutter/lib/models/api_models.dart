@@ -31,18 +31,46 @@ class Ticker {
   });
 
   factory Ticker.fromJson(Map<String, dynamic> json) {
-    final symbol = json['symbol'] as String? ?? '';
-    final parts = symbol.split('-');
+    final symbol = (json['symbol'] as String? ?? '').trim();
+
+    // Prefer explicit baseAsset/quoteAsset from server (canonical, accurate
+    // even when symbol is in Binance format like "BTCUSDT" without a separator).
+    String? base = (json['baseAsset'] ?? json['base_asset']) as String?;
+    String? quote = (json['quoteAsset'] ?? json['quote_asset']) as String?;
+
+    // Fallback: parse from symbol if server didn't send explicit fields.
+    // Try '-' or '/' first; if neither separator present and symbol ends with
+    // 'USDT'/'USDC'/'BUSD', strip the quote suffix.
+    if (base == null || base.isEmpty) {
+      final parts = symbol.split(RegExp(r'[/\-]'));
+      if (parts.length > 1) {
+        base = parts[0];
+        quote ??= parts[1];
+      } else {
+        for (final q in const ['USDT', 'USDC', 'BUSD', 'TUSD', 'DAI']) {
+          if (symbol.endsWith(q) && symbol.length > q.length) {
+            base = symbol.substring(0, symbol.length - q.length);
+            quote ??= q;
+            break;
+          }
+        }
+        base ??= symbol;
+        quote ??= 'USDT';
+      }
+    }
+
     return Ticker(
       symbol: symbol,
-      baseAsset: parts.isNotEmpty ? parts[0] : '',
-      quoteAsset: parts.length > 1 ? parts[1] : 'USDT',
-      lastPrice: _toDouble(json['last_price'] ?? json['lastPrice']),
+      baseAsset: base,
+      quoteAsset: quote ?? 'USDT',
+      lastPrice:
+          _toDouble(json['last_price'] ?? json['lastPrice'] ?? json['price']),
       priceChange: _toDouble(json['price_change'] ?? json['priceChange']),
       priceChangePercent: _toDouble(
           json['price_change_percent'] ?? json['priceChangePercent']),
-      high24h: _toDouble(json['high_24h'] ?? json['highPrice']),
-      low24h: _toDouble(json['low_24h'] ?? json['lowPrice']),
+      high24h:
+          _toDouble(json['high_24h'] ?? json['high'] ?? json['highPrice']),
+      low24h: _toDouble(json['low_24h'] ?? json['low'] ?? json['lowPrice']),
       volume24h: _toDouble(json['volume_24h'] ?? json['volume']),
       quoteVolume24h: _toDouble(json['quote_volume_24h'] ?? json['quoteVolume']),
     );

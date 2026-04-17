@@ -28,6 +28,10 @@ enum WalletKind {
 
   /// external wallet — เช่น MetaMask, Trust ผ่าน WalletConnect v2
   walletConnect,
+
+  /// linked via cross-app deep link (เช่น TPIX Wallet ส่ง address มา)
+  /// ลายเซ็น/transaction ต้องส่งกลับไปที่ wallet app ผ่าน deep link callback
+  linked,
 }
 
 class WalletProvider extends ChangeNotifier {
@@ -88,6 +92,9 @@ class WalletProvider extends ChangeNotifier {
 
   /// true ถ้าใช้ external wallet (MetaMask, Trust, ...)
   bool get isExternalWallet => _kind == WalletKind.walletConnect;
+
+  /// true ถ้าเชื่อมผ่าน deep link จากแอป wallet ภายนอก (TPIX Wallet ฯลฯ)
+  bool get isLinkedWallet => _kind == WalletKind.linked;
 
   /// ชื่อ external wallet (ถ้าเชื่อมผ่าน WalletConnect)
   String? get externalWalletName => _externalWalletName;
@@ -279,6 +286,54 @@ class WalletProvider extends ChangeNotifier {
     }
   }
 
+  // ── Link From Deep Link (cross-app from TPIX Wallet, etc.) ──
+
+  /// เชื่อม wallet ผ่าน deep link จากแอป wallet ภายนอก (เช่น TPIX Wallet)
+  /// — ไม่ต้องเปิด wallet picker, ใช้ address ที่ wallet app ส่งมาเลย
+  ///
+  /// Address มาจาก deep link `tpixtrade://connect?address=0x..&chain=4289`
+  /// คืน true ถ้า link สำเร็จ, false ถ้า address ไม่ valid หรือ chain ไม่รองรับ
+  Future<bool> linkFromDeepLink({
+    required String address,
+    required int chainId,
+    String? walletName,
+  }) async {
+    // Defense in depth — validate address อีกครั้ง
+    if (!RegExp(r'^0x[a-fA-F0-9]{40}$').hasMatch(address)) {
+      _error = 'Invalid wallet address';
+      notifyListeners();
+      return false;
+    }
+
+    try {
+      _kind = WalletKind.linked;
+      _address = address;
+      _externalWalletName = walletName ?? 'TPIX Wallet';
+      _activeChainId = chainId;
+      _mnemonic = null;
+      _pendingMnemonic = null;
+      _isVerified = false; // ต้อง verify ก่อนเทรด — แต่ browse balance/markets ได้
+      _isConnecting = false;
+      _error = null;
+      notifyListeners();
+
+      await _saveWalletState();
+
+      // Register address กับ backend (best effort) — ได้ user record
+      _registerWithBackend(address);
+
+      // โหลด portfolio (read-only)
+      loadPortfolio();
+
+      return true;
+    } catch (e) {
+      _error = 'Failed to link wallet';
+      notifyListeners();
+      debugPrint('linkFromDeepLink error: ${e.runtimeType}');
+      return false;
+    }
+  }
+
   // ── Sign Message ──
 
   Future<String?> signMessage(String message) async {
@@ -291,6 +346,14 @@ class WalletProvider extends ChangeNotifier {
           address: _address!,
           message: message,
         );
+      }
+
+      if (_kind == WalletKind.linked) {
+        // Linked wallet — ไม่มี private key ในแอป
+        // ตอนนี้ยังไม่รองรับ sign — return null เพื่อให้ caller รู้ว่าต้อง
+        // ขอ signature จาก wallet app ผ่าน deep link callback
+        // (จะเพิ่มในเฟสถัดไปเมื่อ TPIX Wallet support deep-link signing)
+        return null;
       }
 
       // Embedded wallet — sign locally ด้วย private key
@@ -463,11 +526,22 @@ class WalletProvider extends ChangeNotifier {
       }
 
       // Determine wallet kind (default: embedded — backward compat กับเวอร์ชันก่อน)
-      final savedKind = savedKindStr == 'walletConnect'
-          ? WalletKind.walletConnect
-          : WalletKind.embedded;
+      final savedKind = switch (savedKindStr) {
+        'walletConnect' => WalletKind.walletConnect,
+        'linked' => WalletKind.linked,
+        _ => WalletKind.embedded,
+      };
 
-      if (savedKind == WalletKind.walletConnect) {
+      if (savedKind == WalletKind.linked) {
+        // Linked from cross-app deep link — restore as-is (ไม่มี session ของเราเอง)
+        _kind = WalletKind.linked;
+        _address = savedAddress;
+        _externalWalletName =
+            prefs.getString(_keyExternalWalletName) ?? 'TPIX Wallet';
+        _activeChainId = prefs.getInt('tpix_trade_chain_id') ?? 4289;
+        notifyListeners();
+        // ไม่ auto-register — ต้องรอ user ทำ explicit verify ผ่าน wallet app callback
+      } else if (savedKind == WalletKind.walletConnect) {
         // External wallet — Reown AppKit เก็บ session เองใน storage
         // เราต้อง resume session แล้วเช็คว่า address ตรงกับที่บันทึกไว้
         final session = ExternalWalletService().resumeSession();
@@ -661,7 +735,11 @@ class WalletProvider extends ChangeNotifier {
       await prefs.setInt('tpix_trade_chain_id', _activeChainId);
       await prefs.setString(
         _keyWalletKind,
-        _kind == WalletKind.walletConnect ? 'walletConnect' : 'embedded',
+        switch (_kind) {
+          WalletKind.walletConnect => 'walletConnect',
+          WalletKind.linked => 'linked',
+          WalletKind.embedded => 'embedded',
+        },
       );
       if (_externalWalletName != null) {
         await prefs.setString(_keyExternalWalletName, _externalWalletName!);
