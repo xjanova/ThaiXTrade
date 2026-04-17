@@ -569,6 +569,41 @@ class _TradeScreenState extends State<TradeScreen>
                   fontSize: 12, color: AppColors.textTertiary),
             ),
           ],
+
+          // Linked-wallet hint — แจ้ง user ว่า submit จะส่ง sign request ไป
+          // TPIX Wallet (กัน user งงว่าทำไมแอพสลับไป-มา)
+          if (wallet.isConnected && wallet.isLinkedWallet && !wallet.isVerified) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.brandCyan.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppColors.brandCyan.withValues(alpha: 0.25),
+                  width: 0.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded,
+                      size: 14, color: AppColors.brandCyan),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      locale.isThai
+                          ? 'ครั้งแรก: แอพจะเปิด TPIX Wallet ให้เซ็นยืนยันตัวตน'
+                          : 'First time: TPIX Wallet will open to confirm your identity',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
