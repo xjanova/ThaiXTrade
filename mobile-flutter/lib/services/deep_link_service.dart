@@ -15,6 +15,7 @@ import '../core/locale/locale_provider.dart';
 import '../core/theme/app_colors.dart';
 import '../providers/market_provider.dart';
 import '../providers/wallet_provider.dart';
+import 'linked_wallet_signer.dart';
 import 'package:provider/provider.dart';
 
 class DeepLinkService {
@@ -54,11 +55,17 @@ class DeepLinkService {
     // ยอมรับเฉพาะ tpixtrade:// scheme
     if (uri.scheme != 'tpixtrade') return;
 
+    // Log เฉพาะ scheme + host (ไม่ log query params ที่มี address/signature)
+    debugPrint('DeepLink: ${uri.scheme}://${uri.host}');
+
+    // sign-result ไม่ต้องใช้ context — route ตรงไปที่ signer
+    if (uri.host == 'sign-result') {
+      _handleSignResult(uri);
+      return;
+    }
+
     final ctx = _navKey?.currentContext;
     if (ctx == null) return;
-
-    // Log เฉพาะ scheme + host (ไม่ log query params ที่มี address)
-    debugPrint('DeepLink: ${uri.scheme}://${uri.host}');
 
     switch (uri.host) {
       case 'connect':
@@ -72,6 +79,19 @@ class DeepLinkService {
         // แค่เปิดแอพเฉยๆ — ไม่ต้องทำอะไร
         break;
     }
+  }
+
+  /// `tpixtrade://sign-result?nonce=<n>&signature=0x...` หรือ `&error=user_rejected`
+  /// ส่งต่อให้ LinkedWalletSigner resolve pending Future
+  void _handleSignResult(Uri uri) {
+    final nonce = uri.queryParameters['nonce'];
+    if (nonce == null || nonce.isEmpty) return;
+
+    LinkedWalletSigner().completeSignature(
+      nonce: nonce,
+      signature: uri.queryParameters['signature'],
+      error: uri.queryParameters['error'],
+    );
   }
 
   Future<void> _handleConnect(BuildContext context, Uri uri) async {

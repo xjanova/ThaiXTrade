@@ -20,6 +20,7 @@ import '../models/api_models.dart';
 import '../models/chain_config.dart';
 import '../services/api_service.dart';
 import '../services/external_wallet_service.dart';
+import '../services/linked_wallet_signer.dart';
 
 /// ประเภทของ wallet ที่ user เลือกเชื่อม
 enum WalletKind {
@@ -350,10 +351,9 @@ class WalletProvider extends ChangeNotifier {
 
       if (_kind == WalletKind.linked) {
         // Linked wallet — ไม่มี private key ในแอป
-        // ตอนนี้ยังไม่รองรับ sign — return null เพื่อให้ caller รู้ว่าต้อง
-        // ขอ signature จาก wallet app ผ่าน deep link callback
-        // (จะเพิ่มในเฟสถัดไปเมื่อ TPIX Wallet support deep-link signing)
-        return null;
+        // ส่ง deep-link ไป TPIX Wallet ขอลายเซ็น แล้วรอ callback กลับมา
+        // (LinkedWalletSigner เปิดแอพ wallet → user confirm → callback → resolve)
+        return await LinkedWalletSigner().requestSignature(message);
       }
 
       // Embedded wallet — sign locally ด้วย private key

@@ -136,13 +136,45 @@ class _WalletCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'TPIX Wallet',
-                      style: GoogleFonts.inter(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            _walletDisplayName(wallet),
+                            style: GoogleFonts.inter(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (wallet.isLinkedWallet) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.brandCyan.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color:
+                                    AppColors.brandCyan.withValues(alpha: 0.4),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Text(
+                              locale.isThai ? 'ลิงก์' : 'LINKED',
+                              style: GoogleFonts.inter(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.brandCyan,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     Text(
                       wallet.shortAddress,
@@ -189,6 +221,16 @@ class _WalletCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// แสดงชื่อ wallet ตาม kind:
+  /// - linked: 'TPIX Wallet' (หรือชื่อจาก deep link param)
+  /// - walletConnect: 'MetaMask' / 'Trust' / etc.
+  /// - embedded: 'TPIX Wallet' (in-app default)
+  String _walletDisplayName(WalletProvider w) {
+    final ext = w.externalWalletName;
+    if (ext != null && ext.isNotEmpty) return ext;
+    return 'TPIX Wallet';
   }
 
   void _showDisconnectDialog(BuildContext context) {
