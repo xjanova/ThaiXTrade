@@ -36,6 +36,12 @@ class LinkedWalletSigner {
   /// Cleared when callback arrives or timeout fires.
   final Map<String, Completer<String?>> _pending = {};
 
+  /// Reactive pending count — UI listens to this via ValueListenableBuilder
+  /// to show/hide the "Waiting for TPIX Wallet" banner.
+  final ValueNotifier<int> _pendingCount = ValueNotifier<int>(0);
+  ValueListenable<int> get pendingCount => _pendingCount;
+  bool get hasPending => _pendingCount.value > 0;
+
   /// User-facing timeout for completing the sign in the wallet app.
   static const _timeout = Duration(seconds: 90);
 
@@ -45,6 +51,19 @@ class LinkedWalletSigner {
   /// Callback URL the wallet app will open with the result.
   static const _callbackUrl = 'tpixtrade://sign-result';
 
+  /// Re-open the TPIX Wallet app (for the "Open Wallet" button on the
+  /// waiting banner — when user dismissed the wallet without signing).
+  Future<bool> reopenWalletApp() async {
+    try {
+      return await launchUrl(
+        Uri.parse('$_walletScheme://open'),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Ask the linked wallet app to sign a message.
   ///
   /// Returns the 0x-prefixed hex signature, or null if the user rejected,
@@ -53,6 +72,7 @@ class LinkedWalletSigner {
     final nonce = _generateNonce();
     final completer = Completer<String?>();
     _pending[nonce] = completer;
+    _pendingCount.value = _pending.length;
 
     // Build sign URL — message + callback are URL-encoded
     final uri = Uri(
@@ -72,12 +92,12 @@ class LinkedWalletSigner {
         mode: LaunchMode.externalApplication,
       );
       if (!launched) {
-        _pending.remove(nonce);
+        _removePending(nonce);
         return null;
       }
     } catch (e) {
       debugPrint('LinkedWalletSigner.requestSignature: ${e.runtimeType}');
-      _pending.remove(nonce);
+      _removePending(nonce);
       return null;
     }
 
@@ -85,12 +105,29 @@ class LinkedWalletSigner {
     try {
       return await completer.future.timeout(_timeout);
     } on TimeoutException {
-      _pending.remove(nonce);
+      _removePending(nonce);
       return null;
     } catch (_) {
-      _pending.remove(nonce);
+      _removePending(nonce);
       return null;
     }
+  }
+
+  /// Cancel ALL pending signs — used by the banner's Cancel button.
+  /// Resolves their Completers to null so awaiting calls return without
+  /// hanging until the natural 90s timeout.
+  void cancelAllPending() {
+    for (final c in _pending.values) {
+      if (!c.isCompleted) c.complete(null);
+    }
+    _pending.clear();
+    _pendingCount.value = 0;
+  }
+
+  /// Internal — remove + update reactive count
+  void _removePending(String nonce) {
+    _pending.remove(nonce);
+    _pendingCount.value = _pending.length;
   }
 
   /// Called by DeepLinkService when `tpixtrade://sign-result?...` arrives.
@@ -106,6 +143,7 @@ class LinkedWalletSigner {
     String? error,
   }) {
     final completer = _pending.remove(nonce);
+    _pendingCount.value = _pending.length;
     if (completer == null) {
       // Unknown nonce — either timed out already or spoofed. Ignore.
       debugPrint('LinkedWalletSigner: callback for unknown nonce');

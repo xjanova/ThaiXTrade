@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/gradients.dart';
 import '../core/locale/locale_provider.dart';
+import '../widgets/wallet/waiting_for_wallet_banner.dart';
 
 class ShellScreen extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
@@ -21,7 +22,19 @@ class ShellScreen extends StatelessWidget {
     final locale = context.watch<LocaleProvider>();
 
     return Scaffold(
-      body: navigationShell,
+      // Stack: tab content + WaitingForWalletBanner overlay (auto-hides)
+      // Banner mount จุดเดียว — ทุก tab เห็นเมื่อมี pending sign จาก linked wallet
+      body: Stack(
+        children: [
+          navigationShell,
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(child: WaitingForWalletBanner()),
+          ),
+        ],
+      ),
       extendBody: true,
       bottomNavigationBar: ClipRRect(
         child: BackdropFilter(
