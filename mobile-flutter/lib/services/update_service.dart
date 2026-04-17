@@ -46,25 +46,73 @@ class UpdateService {
   Future<UpdateResult> checkForUpdate() async {
     try {
       final currentVersion = await getCurrentVersion();
-      final release = await getLatestRelease();
 
-      if (release == null) {
+      // Scan up to 5 most recent releases — the LATEST tag might be a web-only
+      // release.yml trigger without an APK attached yet. Find the newest release
+      // (by semver) that still has an APK asset.
+      final releases = await _getRecentReleases();
+      if (releases.isEmpty) {
         return UpdateResult(available: false, currentVersion: currentVersion);
       }
 
-      final isNewer = _isNewerVersion(currentVersion, release.version);
+      // Pick: newest release that has an APK and is > current
+      ReleaseInfo? best;
+      ReleaseInfo? latestAny;
+      for (final r in releases) {
+        latestAny ??= r;
+        if (r.apkDownloadUrl == null) continue;
+        if (!_isNewerVersion(currentVersion, r.version)) continue;
+        if (best == null || _isNewerVersion(best.version, r.version)) {
+          best = r;
+        }
+      }
+
+      // Fallback: no installable APK found in recent releases
+      if (best == null) {
+        // If the newest-any tag IS newer than current but has no APK, report
+        // "pending build" so the UI can tell user "new version is being built"
+        // instead of wrongly claiming up-to-date or silently pushing them to web.
+        final newerButNoApk = latestAny != null &&
+            _isNewerVersion(currentVersion, latestAny.version);
+        return UpdateResult(
+          available: false,
+          currentVersion: currentVersion,
+          latestVersion: latestAny?.version,
+          pendingApkBuild: newerButNoApk,
+        );
+      }
+
       return UpdateResult(
-        available: isNewer,
+        available: true,
         currentVersion: currentVersion,
-        latestVersion: release.version,
-        releaseNotes: release.body,
-        releaseDate: release.publishedAt,
-        apkDownloadUrl: release.apkDownloadUrl,
-        apkSize: release.apkSize,
+        latestVersion: best.version,
+        releaseNotes: best.body,
+        releaseDate: best.publishedAt,
+        apkDownloadUrl: best.apkDownloadUrl,
+        apkSize: best.apkSize,
       );
     } catch (e) {
       debugPrint('Update check error: ${e.runtimeType}');
       return UpdateResult(available: false, currentVersion: 'unknown');
+    }
+  }
+
+  /// Fetch up to 5 most recent releases — used to skip releases that are
+  /// missing an APK asset (e.g. web-only backend releases).
+  Future<List<ReleaseInfo>> _getRecentReleases() async {
+    try {
+      final response = await _dio.get(
+        'https://api.github.com/repos/$_owner/$_repo/releases',
+        queryParameters: {'per_page': 5},
+      );
+      if (response.statusCode != 200) return [];
+      final list = response.data as List<dynamic>;
+      return list
+          .map((e) => ReleaseInfo.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      debugPrint('Recent releases fetch failed: ${e.runtimeType}');
+      return [];
     }
   }
 
@@ -185,6 +233,12 @@ class UpdateResult {
   final String? apkDownloadUrl;
   final int? apkSize;
 
+  /// true ถ้า tag ใหม่มีอยู่บน GitHub แล้วแต่ APK ยังไม่ถูก build/attach
+  /// (เช่น release.yml เพิ่งสร้าง tag แต่ build-flutter-apk.yml ยังไม่รัน).
+  /// UI ควรแสดงว่า "มีเวอร์ชั่นใหม่กำลัง build — ลองใหม่อีกครั้งภายหลัง"
+  /// แทนที่จะเด้งไป download page ทันที
+  final bool pendingApkBuild;
+
   UpdateResult({
     required this.available,
     required this.currentVersion,
@@ -193,5 +247,6 @@ class UpdateResult {
     this.releaseDate,
     this.apkDownloadUrl,
     this.apkSize,
+    this.pendingApkBuild = false,
   });
 }

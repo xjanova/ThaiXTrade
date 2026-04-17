@@ -741,6 +741,18 @@ class _AboutCard extends StatelessWidget {
 
     if (result.available) {
       _showUpdateDialog(context, result, service);
+    } else if (result.pendingApkBuild) {
+      // มี tag ใหม่บน GitHub แต่ APK ยังไม่ build/attach — แจ้งผู้ใช้
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            locale.isThai
+                ? 'เวอร์ชั่น ${result.latestVersion} กำลัง build — ลองใหม่ภายหลัง'
+                : 'v${result.latestVersion} is being built — try again shortly',
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

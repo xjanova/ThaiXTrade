@@ -6,6 +6,10 @@ on:
     paths:
       - 'mobile-flutter/**'
       - '.github/workflows/build-flutter-apk.yml'
+    # Also trigger on every version tag — ensures APK always ships with
+    # release.yml's backend tarball, not just on mobile-flutter pushes.
+    tags:
+      - 'v*.*.*'
   pull_request:
     branches: ['main']
     paths:
@@ -20,13 +24,18 @@ on:
       bump_version:
         description: 'Bump version (patch/minor/major/none)'
         required: false
-        default: 'patch'
+        default: 'none'
         type: choice
         options:
           - patch
           - minor
           - major
           - none
+      target_tag:
+        description: 'Target release tag (e.g. v1.1.64) for attaching APK to an existing release'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -78,10 +87,15 @@ jobs:
       # ══════════════════════════════════════════════════
       # Auto-bump version on main branch or manual trigger
       # อัปเวอร์ชันอัตโนมัติทุกครั้งที่ push main หรือ trigger manual
+      # ข้าม bump ถ้าถูก trigger จาก tag push (version มาจาก tag แล้ว)
+      # หรือถ้า manual dispatch เลือก bump_version=none / ใส่ target_tag
       # ══════════════════════════════════════════════════
       - name: Bump version
         id: bump
-        if: github.ref == 'refs/heads/main' || github.event.inputs.bump_version != 'none'
+        if: >-
+          !startsWith(github.ref, 'refs/tags/') &&
+          github.event.inputs.target_tag == '' &&
+          (github.ref == 'refs/heads/main' || (github.event.inputs.bump_version != '' && github.event.inputs.bump_version != 'none'))
         working-directory: .
         run: |
           BUMP_TYPE="${{ github.event.inputs.bump_version || 'patch' }}"
@@ -120,25 +134,40 @@ jobs:
           echo "bumped=true" >> $GITHUB_OUTPUT
 
       # ── Get version (no bump) ──
+      # Priority: target_tag input > tag ref > bump step output > version.json
       - name: Get version info
         id: version
         working-directory: .
         run: |
-          if [ "${{ steps.bump.outputs.bumped }}" = "true" ]; then
-            echo "version=${{ steps.bump.outputs.version }}" >> $GITHUB_OUTPUT
-            echo "build=${{ steps.bump.outputs.build }}" >> $GITHUB_OUTPUT
+          TARGET_TAG="${{ github.event.inputs.target_tag }}"
+          if [ -n "$TARGET_TAG" ]; then
+            # Manual dispatch with target_tag — attach APK to existing release
+            VERSION="${TARGET_TAG#v}"
+            BUILD=$(node -e "console.log(require('./version.json').build || 1)" 2>/dev/null || echo "1")
+            echo "=== Target tag mode: v$VERSION (build $BUILD) ==="
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            # Tag push — use tag version
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            BUILD=$(node -e "console.log(require('./version.json').build || 1)" 2>/dev/null || echo "1")
+            echo "=== Tag push mode: v$VERSION (build $BUILD) ==="
+          elif [ "${{ steps.bump.outputs.bumped }}" = "true" ]; then
+            VERSION="${{ steps.bump.outputs.version }}"
+            BUILD="${{ steps.bump.outputs.build }}"
+            echo "=== Bump mode: v$VERSION (build $BUILD) ==="
+          elif [ -f version.json ]; then
+            VERSION=$(node -e "console.log(require('./version.json').version)" 2>/dev/null || echo "1.0.0")
+            BUILD=$(node -e "console.log(require('./version.json').build || 1)" 2>/dev/null || echo "1")
+            echo "=== version.json mode: v$VERSION (build $BUILD) ==="
           else
-            if [ -f version.json ]; then
-              VERSION=$(node -e "console.log(require('./version.json').version)" 2>/dev/null || echo "1.0.0")
-              BUILD=$(node -e "console.log(require('./version.json').build || 1)" 2>/dev/null || echo "1")
-            else
-              VERSION="1.0.0"
-              BUILD="1"
-            fi
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "build=$BUILD" >> $GITHUB_OUTPUT
+            VERSION="1.0.0"
+            BUILD="1"
           fi
-          echo "=== Version: v$(grep version $GITHUB_OUTPUT | head -1 | cut -d= -f2), Build: $(grep build $GITHUB_OUTPUT | head -1 | cut -d= -f2) ==="
+
+          # Sync pubspec.yaml to the resolved version so the built APK matches
+          sed -i "s/^version: .*/version: $VERSION+$BUILD/" mobile-flutter/pubspec.yaml
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build=$BUILD" >> $GITHUB_OUTPUT
 
       # ══════════════════════════════════════════════════
       # Build
@@ -229,9 +258,19 @@ jobs:
 
       # ══════════════════════════════════════════════════
       # Create GitHub Release + แนบ APK อัตโนมัติ
+      # รันเมื่อ:
+      #   - push main (after bump)
+      #   - push tag v*.*.* (release.yml created the tag, we add the APK)
+      #   - manual dispatch with create_release=true OR target_tag set
+      # softprops/action-gh-release@v2 จะ update release ที่มีอยู่แล้ว
+      # โดย append APK เป็น asset ใหม่ (ไม่ลบ tarball เดิม)
       # ══════════════════════════════════════════════════
       - name: Create Release with APK
-        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event.inputs.create_release == 'true')
+        if: >-
+          (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+          startsWith(github.ref, 'refs/tags/') ||
+          github.event.inputs.create_release == 'true' ||
+          github.event.inputs.target_tag != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
@@ -271,7 +310,11 @@ jobs:
       # แจ้ง backend ว่ามี release ใหม่ (clear cache + set active_tag)
       # ══════════════════════════════════════════════════
       - name: Notify backend of new release
-        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event.inputs.create_release == 'true')
+        if: >-
+          (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+          startsWith(github.ref, 'refs/tags/') ||
+          github.event.inputs.create_release == 'true' ||
+          github.event.inputs.target_tag != ''
         env:
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
         run: |
