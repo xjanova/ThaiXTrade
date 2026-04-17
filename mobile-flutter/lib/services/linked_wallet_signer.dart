@@ -22,6 +22,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -102,6 +103,67 @@ class LinkedWalletSigner {
     }
 
     // Wait for callback OR timeout
+    try {
+      return await completer.future.timeout(_timeout);
+    } on TimeoutException {
+      _removePending(nonce);
+      return null;
+    } catch (_) {
+      _removePending(nonce);
+      return null;
+    }
+  }
+
+  /// Ask the linked wallet app to sign an EIP-712 typed-data structure.
+  ///
+  /// The [typedData] map follows the EIP-712 TypedData format:
+  /// ```
+  /// {
+  ///   "types": { "EIP712Domain": [...], "Order": [...] },
+  ///   "primaryType": "Order",
+  ///   "domain": { "name": "TPIX Trade", "version": "1", "chainId": 4289 },
+  ///   "message": { "pair": "BTC-USDT", "amount": "0.5", ... }
+  /// }
+  /// ```
+  ///
+  /// Wallet shows the structured message for user review before signing.
+  /// Currently signs as personal_sign(json) — same as WalletConnect's
+  /// simplified handler. Full EIP-712 struct hashing is a future upgrade.
+  ///
+  /// Returns the 0x-prefixed hex signature, or null on reject/timeout.
+  Future<String?> requestTypedSignature(Map<String, dynamic> typedData) async {
+    final nonce = _generateNonce();
+    final completer = Completer<String?>();
+    _pending[nonce] = completer;
+    _pendingCount.value = _pending.length;
+
+    final typedJson = jsonEncode(typedData);
+    final uri = Uri(
+      scheme: _walletScheme,
+      host: 'sign-typed',
+      queryParameters: {
+        'typed': typedJson,
+        'nonce': nonce,
+        'callback': _callbackUrl,
+        'from': 'trade',
+      },
+    );
+
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) {
+        _removePending(nonce);
+        return null;
+      }
+    } catch (e) {
+      debugPrint('LinkedWalletSigner.requestTypedSignature: ${e.runtimeType}');
+      _removePending(nonce);
+      return null;
+    }
+
     try {
       return await completer.future.timeout(_timeout);
     } on TimeoutException {
