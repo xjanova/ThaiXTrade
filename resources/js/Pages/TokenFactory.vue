@@ -11,6 +11,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenFactoryStore } from '@/Stores/tokenFactoryStore';
 import { useTranslation } from '@/Composables/useTranslation';
+import { addTokenToWallet, switchToChain, TPIX_CHAIN_CONFIG } from '@/utils/web3';
 
 const props = defineProps({
     tokens: Object,
@@ -825,6 +826,47 @@ function getStatusColor(status) {
 
 function formatSupply(val) {
     return Number(val).toLocaleString();
+}
+
+// ===================== ADD TOKEN TO WALLET =====================
+const addingToken = ref(null); // track which contract is currently being added (for button spinner)
+
+async function handleAddToWallet(token) {
+    if (!token?.contract_address) return;
+    if (!walletStore.isConnected) {
+        walletStore.openConnectModal();
+        return;
+    }
+
+    addingToken.value = token.contract_address;
+    try {
+        // ตรวจสอบว่าอยู่บน TPIX Chain หรือไม่ — ถ้าไม่ให้สลับไปก่อน
+        // (wallet_watchAsset บาง wallet จะไม่ทำงานถ้าไม่อยู่บน chain ที่ token deploy อยู่)
+        const provider = walletStore.provider || (typeof window !== 'undefined' ? window.ethereum : null);
+        if (provider && walletStore.chainId !== TPIX_CHAIN_CONFIG.chainIdNum) {
+            try {
+                await switchToChain(provider, TPIX_CHAIN_CONFIG.chainIdNum, TPIX_CHAIN_CONFIG);
+            } catch (switchErr) {
+                // ถ้าสลับ chain ไม่ได้ (user cancel) ให้ยังลองเพิ่ม token ต่อ — wallet บางตัว accept cross-chain
+                console.warn('[TokenFactory] Chain switch failed, attempting watchAsset anyway:', switchErr.message);
+            }
+        }
+
+        const added = await addTokenToWallet({
+            address: token.contract_address,
+            symbol: token.symbol,
+            decimals: token.decimals || 18,
+            image: token.logo_url || undefined,
+        }, provider);
+
+        if (added) {
+            successMessage.value = `✅ ${token.symbol} added to wallet!`;
+            showSuccess.value = true;
+            setTimeout(() => { showSuccess.value = false; }, 3000);
+        }
+    } finally {
+        addingToken.value = null;
+    }
 }
 
 function getCategoryLabel(cat) {
@@ -1688,6 +1730,17 @@ function getTypeLabel(type) {
                             <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
                             Deploying to TPIX Chain...
                         </div>
+
+                        <button
+                            v-if="token.contract_address && token.status === 'deployed'"
+                            @click="handleAddToWallet(token)"
+                            :disabled="addingToken === token.contract_address"
+                            class="mt-3 w-full px-3 py-2 rounded-lg bg-primary-500/10 hover:bg-primary-500/20 border border-primary-500/20 hover:border-primary-500/40 text-primary-400 text-xs font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <svg v-if="addingToken === token.contract_address" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                            <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                            {{ addingToken === token.contract_address ? 'Adding...' : 'Add to Wallet' }}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1738,6 +1791,17 @@ function getTypeLabel(type) {
                                 </a>
                             </div>
                         </div>
+
+                        <button
+                            v-if="token.contract_address"
+                            @click="handleAddToWallet(token)"
+                            :disabled="addingToken === token.contract_address"
+                            class="mt-4 w-full px-3 py-2 rounded-lg bg-primary-500/10 hover:bg-primary-500/20 border border-primary-500/20 hover:border-primary-500/40 text-primary-400 text-xs font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <svg v-if="addingToken === token.contract_address" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                            <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                            {{ addingToken === token.contract_address ? 'Adding...' : 'Add to Wallet' }}
+                        </button>
                     </div>
                 </div>
             </div>

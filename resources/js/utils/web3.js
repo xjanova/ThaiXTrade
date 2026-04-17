@@ -33,6 +33,13 @@ export const BSC_CHAIN_CONFIG = {
 };
 
 /**
+ * URL โลโก้ TPIX Chain — ใช้ใน iconUrls ของ wallet_addEthereumChain (EIP-3085)
+ * IPFS pin: bafybeiby5mwnwdi53fye4iurjxlddfzonsj67ejl4sjy7qda53za6jlgo4 (512x512 PNG)
+ * Rabby, OKX, Trust อ่านฟิลด์นี้และแสดงโลโก้เชน — MetaMask ปัจจุบัน ignore (bug มายาวนาน)
+ */
+export const TPIX_CHAIN_LOGO_URL = 'https://tpix.online/images/tpix-logo-512.png';
+
+/**
  * TPIX Chain config — Polygon Edge, IBFT PoA, Chain ID 4289, gasless.
  * ใช้สำหรับ add chain เข้า wallet โดยตรง (ไม่ต้องรอ backend)
  */
@@ -47,6 +54,7 @@ export const TPIX_CHAIN_CONFIG = {
     },
     rpcUrls: ['https://rpc.tpix.online'],
     blockExplorerUrls: ['https://explorer.tpix.online'],
+    iconUrls: [TPIX_CHAIN_LOGO_URL],
 };
 
 /**
@@ -111,6 +119,7 @@ export async function addTPIXChainToWallet(providerOrWindow = null) {
                 nativeCurrency: TPIX_CHAIN_CONFIG.nativeCurrency,
                 rpcUrls: TPIX_CHAIN_CONFIG.rpcUrls,
                 blockExplorerUrls: TPIX_CHAIN_CONFIG.blockExplorerUrls,
+                iconUrls: TPIX_CHAIN_CONFIG.iconUrls,
             }],
         });
         console.log('[TPIX] ✅ TPIX Chain (4289) added to wallet');
@@ -151,13 +160,71 @@ export function buildAddChainParams(chain) {
     }
     const explorerUrls = chain.blockExplorerUrls || (chain.explorer ? [chain.explorer] : []);
 
-    return {
+    // iconUrls: frontend config → backend config → known fallback for TPIX
+    let iconUrls = chain.iconUrls || (chain.icon_url ? [chain.icon_url] : []);
+    if (iconUrls.length === 0 && (chain.chainId === 4289 || chain.chainId === '0x10C1')) {
+        iconUrls = [TPIX_CHAIN_LOGO_URL];
+    }
+
+    const params = {
         chainId: '0x' + chain.chainId.toString(16),
         chainName: chain.name,
         nativeCurrency: chain.nativeCurrency || { name: 'ETH', symbol: 'ETH', decimals: 18 },
         rpcUrls,
         blockExplorerUrls: explorerUrls,
     };
+    if (iconUrls.length > 0) params.iconUrls = iconUrls;
+    return params;
+}
+
+/**
+ * เพิ่ม ERC20 token เข้ากระเป๋าผู้ใช้ผ่าน EIP-747 wallet_watchAsset
+ * รองรับ MetaMask, Rabby, OKX, Trust, Coinbase Wallet
+ *
+ * @param {object} token - Token metadata
+ * @param {string} token.address - Contract address (required)
+ * @param {string} token.symbol - Token symbol, 2-11 chars (required)
+ * @param {number} token.decimals - Token decimals, usually 18 (required)
+ * @param {string} [token.image] - Logo URL (optional but strongly recommended)
+ * @param {object} [providerOrWindow=window.ethereum] - Wallet provider (optional)
+ * @returns {Promise<boolean>} true ถ้าเพิ่มสำเร็จ, false ถ้าผู้ใช้ปฏิเสธหรือ error
+ */
+export async function addTokenToWallet(token, providerOrWindow = null) {
+    const p = providerOrWindow || (typeof window !== 'undefined' ? window.ethereum : null);
+    if (!p?.request) {
+        console.warn('[TPIX] No wallet provider detected');
+        return false;
+    }
+    if (!token?.address || !token?.symbol || token?.decimals == null) {
+        console.warn('[TPIX] addTokenToWallet: missing required fields (address/symbol/decimals)');
+        return false;
+    }
+
+    try {
+        const wasAdded = await p.request({
+            method: 'wallet_watchAsset',
+            params: {
+                type: 'ERC20',
+                options: {
+                    address: token.address,
+                    symbol: String(token.symbol).toUpperCase().slice(0, 11),
+                    decimals: Number(token.decimals),
+                    image: token.image || undefined,
+                },
+            },
+        });
+        if (wasAdded) {
+            console.log(`[TPIX] ✅ Token ${token.symbol} added to wallet`);
+        }
+        return !!wasAdded;
+    } catch (err) {
+        if (err.code === 4001) {
+            console.warn(`[TPIX] User declined to add token ${token.symbol}`);
+        } else {
+            console.warn(`[TPIX] Could not add token ${token.symbol}:`, err.message);
+        }
+        return false;
+    }
 }
 
 // Native BNB placeholder address (used by DEX frontends)
