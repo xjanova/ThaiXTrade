@@ -17,15 +17,28 @@ const isOpen = ref(false);
 const search = ref('');
 const tickers = ref([]);
 
-// ดึง tickers จาก API
+// ดึง tickers + pairs (parallel) — pairs มี base_logo จาก admin DB
 async function fetchTickers() {
     try {
-        const { data } = await axios.get('/api/v1/market/tickers');
-        if (data.success) {
-            tickers.value = data.data.map(t => ({
+        const [tickerRes, pairRes] = await Promise.all([
+            axios.get('/api/v1/market/tickers'),
+            axios.get('/api/v1/market/pairs'),
+        ]);
+
+        // map symbol → base_logo จาก pairs DB (admin-managed)
+        const logoMap = {};
+        if (pairRes.data?.success) {
+            pairRes.data.data.forEach(p => {
+                logoMap[p.base_asset] = p.base_logo;
+            });
+        }
+
+        if (tickerRes.data.success) {
+            tickers.value = tickerRes.data.data.map(t => ({
                 symbol: `${t.baseAsset}/${t.quoteAsset}`,
                 pair: `${t.baseAsset}-${t.quoteAsset}`,
                 base: t.baseAsset,
+                logo: logoMap[t.baseAsset] || null,
                 price: parseFloat(t.price),
                 change: parseFloat(t.priceChangePercent),
                 volume: parseFloat(t.quoteVolume || 0),
@@ -35,12 +48,13 @@ async function fetchTickers() {
         if (!tickers.value.find(t => t.base === 'TPIX')) {
             tickers.value.unshift({
                 symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX',
+                logo: logoMap['TPIX'] || '/tpixlogo.webp',
                 price: 0.10, change: 0, volume: 0, isTpix: true,
             });
         }
     } catch {
         // Fallback — แค่ TPIX
-        tickers.value = [{ symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', price: 0.10, change: 0, volume: 0, isTpix: true }];
+        tickers.value = [{ symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', logo: '/tpixlogo.webp', price: 0.10, change: 0, volume: 0, isTpix: true }];
     }
 }
 
@@ -96,8 +110,7 @@ onUnmounted(() => { document.removeEventListener('click', handleClickOutside); }
                     :class="['w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/5 transition-colors',
                         t.symbol === currentPair && 'bg-primary-500/10']">
                     <div class="flex items-center gap-2">
-                        <CoinIcon v-if="t.isTpix" :symbol="t.base" size="sm" src="/tpixlogo.webp" />
-                        <CoinIcon v-else :symbol="t.base" size="sm" />
+                        <CoinIcon :symbol="t.base" size="sm" :src="t.logo || (t.isTpix ? '/tpixlogo.webp' : undefined)" />
                         <span class="text-white text-sm font-medium">{{ t.symbol }}</span>
                     </div>
                     <div class="text-right">

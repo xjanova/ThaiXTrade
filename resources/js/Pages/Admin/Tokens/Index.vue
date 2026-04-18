@@ -66,15 +66,41 @@ const form = useForm({
     contract_address: '',
     decimals: 18,
     logo: '',
+    logo_file: null,
     coingecko_id: '',
     is_active: true,
     sort_order: 0,
+});
+
+// URL ของ logo ที่ preview ตอน edit (รวม logo เก่าถ้ามี + file ที่เพิ่ง pick)
+const logoPreviewUrl = ref(null);
+
+const handleLogoFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    form.logo_file = file;
+    form.logo = ''; // ล้าง URL — ใช้ file แทน
+    logoPreviewUrl.value = URL.createObjectURL(file);
+};
+
+const clearLogoFile = () => {
+    form.logo_file = null;
+    logoPreviewUrl.value = null;
+    // คงค่า form.logo URL เดิม (ถ้ามี)
+};
+
+const currentLogoSrc = computed(() => {
+    // ลำดับ: file ที่เพิ่ง pick > URL ที่กรอก > logo_url accessor (ตอน edit)
+    if (logoPreviewUrl.value) return logoPreviewUrl.value;
+    if (form.logo) return form.logo.startsWith('http') ? form.logo : `/storage/${form.logo}`;
+    return editingToken.value?.logo_url || null;
 });
 
 const openCreateModal = () => {
     editingToken.value = null;
     form.reset();
     form.clearErrors();
+    logoPreviewUrl.value = null;
     if (isChainView.value) {
         form.chain_id = props.chain.id;
     }
@@ -88,25 +114,31 @@ const openEditModal = (token) => {
     form.symbol = token.symbol;
     form.contract_address = token.contract_address;
     form.decimals = token.decimals;
-    form.logo = token.logo || '';
+    // เก็บ raw logo (URL หรือ relative path) — preview ใช้ logo_url ตอน render
+    form.logo = (token.logo && token.logo.startsWith('http')) ? token.logo : '';
+    form.logo_file = null;
     form.coingecko_id = token.coingecko_id || '';
     form.is_active = token.is_active;
     form.sort_order = token.sort_order || 0;
     form.clearErrors();
+    logoPreviewUrl.value = null;
     showModal.value = true;
 };
 
 const saveToken = () => {
+    // ส่ง FormData เสมอ — รองรับทั้ง file upload + URL string ใน request เดียว
+    // forceFormData: true ทำให้ Inertia ใช้ multipart/form-data
+    const opts = {
+        preserveScroll: true,
+        forceFormData: true,
+        onSuccess: () => { showModal.value = false; },
+    };
     if (editingToken.value) {
-        form.put(`/admin/tokens/${editingToken.value.id}`, {
-            preserveScroll: true,
-            onSuccess: () => { showModal.value = false; },
-        });
+        // Inertia put + FormData ต้องใช้ _method spoofing
+        form.transform((data) => ({ ...data, _method: 'put' }))
+            .post(`/admin/tokens/${editingToken.value.id}`, opts);
     } else {
-        form.post('/admin/tokens', {
-            preserveScroll: true,
-            onSuccess: () => { showModal.value = false; },
-        });
+        form.post('/admin/tokens', opts);
     }
 };
 
@@ -167,8 +199,8 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
         <DataTable :columns="columns" :data="filteredTokens">
             <template #cell-symbol="{ row }">
                 <div class="flex items-center gap-2">
-                    <div v-if="row.logo" class="w-6 h-6 rounded-full overflow-hidden bg-dark-800">
-                        <img :src="row.logo" :alt="row.symbol" class="w-full h-full object-cover" />
+                    <div v-if="row.logo_url" class="w-6 h-6 rounded-full overflow-hidden bg-dark-800">
+                        <img :src="row.logo_url" :alt="row.symbol" class="w-full h-full object-cover" />
                     </div>
                     <div v-else class="w-6 h-6 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center">
                         <span class="text-white font-bold text-xs">{{ (row.symbol || '?').charAt(0) }}</span>
@@ -264,9 +296,37 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-2">Logo URL</label>
-                    <input v-model="form.logo" type="text" :class="inputClass" placeholder="https://example.com/logo.webp" />
-                    <p class="mt-1 text-xs text-dark-500">Direct URL to logo image. Leave empty to use default.</p>
+                    <label class="block text-sm font-medium text-dark-300 mb-2">Logo</label>
+                    <div class="flex items-center gap-4">
+                        <!-- Preview circle -->
+                        <div class="shrink-0 w-16 h-16 rounded-full bg-dark-800 border border-dark-600 overflow-hidden flex items-center justify-center">
+                            <img v-if="currentLogoSrc" :src="currentLogoSrc" :alt="form.symbol || 'logo'" class="w-full h-full object-cover" />
+                            <span v-else class="text-dark-500 text-xs">{{ (form.symbol || '?').charAt(0) }}</span>
+                        </div>
+
+                        <div class="flex-1 space-y-2">
+                            <!-- File upload -->
+                            <div class="flex items-center gap-2">
+                                <label class="cursor-pointer inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-800 border border-dark-600 hover:border-primary-500 text-sm text-dark-200 transition-colors">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                    </svg>
+                                    <span>{{ form.logo_file ? 'เปลี่ยนไฟล์' : 'อัปโหลดรูป' }}</span>
+                                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="handleLogoFileChange" />
+                                </label>
+                                <button v-if="form.logo_file" type="button" @click="clearLogoFile" class="text-xs text-red-400 hover:text-red-300">
+                                    ล้างไฟล์
+                                </button>
+                                <span v-if="form.logo_file" class="text-xs text-dark-400 truncate max-w-[200px]">{{ form.logo_file.name }}</span>
+                            </div>
+
+                            <!-- URL fallback (ใช้เมื่อไม่ upload file) -->
+                            <input v-model="form.logo" type="text" :class="inputClass" placeholder="หรือใส่ URL: https://example.com/logo.webp" :disabled="!!form.logo_file" />
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs text-dark-500">รองรับ PNG, JPG, WEBP, SVG (ไม่เกิน 2MB) — หรือใส่ URL ภายนอกก็ได้</p>
+                    <p v-if="form.errors.logo_file" class="mt-1 text-sm text-red-400">{{ form.errors.logo_file }}</p>
+                    <p v-if="form.errors.logo" class="mt-1 text-sm text-red-400">{{ form.errors.logo }}</p>
                 </div>
 
                 <div>

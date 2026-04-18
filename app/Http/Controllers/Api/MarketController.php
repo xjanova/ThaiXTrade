@@ -73,7 +73,7 @@ class MarketController extends Controller
     public function pairs(): JsonResponse
     {
         $dbPairs = TradingPair::active()
-            ->with(['baseToken:id,symbol,logo', 'quoteToken:id,symbol'])
+            ->with(['baseToken:id,symbol,logo', 'quoteToken:id,symbol,logo'])
             ->orderBy('sort_order')
             ->orderBy('symbol')
             ->get()
@@ -81,7 +81,9 @@ class MarketController extends Controller
                 'symbol' => $p->symbol,
                 'base_asset' => $p->baseToken?->symbol ?? explode('-', $p->symbol)[0],
                 'quote_asset' => $p->quoteToken?->symbol ?? 'USDT',
-                'base_logo' => $p->baseToken?->logo,
+                // logo_url ผ่าน accessor → resolve relative path ที่ admin upload เป็น full URL
+                'base_logo' => $p->baseToken?->logo_url,
+                'quote_logo' => $p->quoteToken?->logo_url,
                 'min_trade_amount' => (float) $p->min_trade_amount,
                 'max_trade_amount' => (float) $p->max_trade_amount,
                 'price_precision' => $p->price_precision,

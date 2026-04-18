@@ -7,12 +7,23 @@
 
 import { ref, computed, onMounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
+import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import { useMarketData } from '@/Composables/useMarketData';
 
 const searchQuery = ref('');
 const { tickers, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
+const pairLogos = ref({}); // base_asset → logo URL จาก admin DB
+
+async function fetchPairLogos() {
+    try {
+        const { data } = await axios.get('/api/v1/market/pairs');
+        if (data?.success) {
+            data.data.forEach(p => { pairLogos.value[p.base_asset] = p.base_logo; });
+        }
+    } catch {}
+}
 
 const spotPairs = computed(() => {
     const q = searchQuery.value.toLowerCase();
@@ -27,6 +38,7 @@ const spotPairs = computed(() => {
             return {
                 base: t.baseAsset,
                 quote: 'USDT',
+                logo: pairLogos.value[t.baseAsset] || null,
                 price: formatPrice(price),
                 change: (change >= 0 ? '+' : '') + change.toFixed(2) + '%',
                 isUp: change >= 0,
@@ -52,7 +64,8 @@ function formatVolume(vol) {
 }
 
 onMounted(async () => {
-    await fetchTickers();
+    // ดึง pair logos + tickers parallel
+    await Promise.all([fetchTickers(), fetchPairLogos()]);
     startAutoRefresh();
 });
 </script>
@@ -116,7 +129,7 @@ onMounted(async () => {
                             >
                                 <td class="p-4">
                                     <div class="flex items-center gap-3">
-                                        <CoinIcon :symbol="pair.base" size="md" />
+                                        <CoinIcon :symbol="pair.base" size="md" :src="pair.logo" />
                                         <span class="font-medium text-white">{{ pair.base }}/{{ pair.quote }}</span>
                                     </div>
                                 </td>

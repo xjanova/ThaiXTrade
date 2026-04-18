@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -61,6 +62,11 @@ class Token extends Model
     ];
 
     /**
+     * Append computed attributes to JSON output (for API + Inertia).
+     */
+    protected $appends = ['logo_url'];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -70,6 +76,35 @@ class Token extends Model
         return [
             'is_active' => 'boolean',
         ];
+    }
+
+    // =========================================================================
+    // Accessors
+    // =========================================================================
+
+    /**
+     * Resolve logo to a full URL.
+     * — full URL → return as-is
+     * — relative path (e.g. "tokens/btc.png" จาก storage upload) → asset() prepend domain
+     */
+    protected function logoUrl(): Attribute
+    {
+        return Attribute::get(function () {
+            if (! $this->logo) {
+                return null;
+            }
+            if (str_starts_with($this->logo, 'http')) {
+                return $this->logo;
+            }
+
+            // Storage path — ใช้ /storage/ prefix (ผ่าน symlink ที่ deploy.yml สร้าง)
+            $path = ltrim($this->logo, '/');
+            if (! str_starts_with($path, 'storage/')) {
+                $path = 'storage/'.$path;
+            }
+
+            return asset($path);
+        });
     }
 
     // =========================================================================
