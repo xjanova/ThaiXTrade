@@ -175,12 +175,9 @@ const handleSubmitOrder = async (order) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-        // TPIX pairs ต้องใช้ TPIX Chain (4289) เสมอ ไม่ว่า wallet จะอยู่เชนไหน
-        // ถ้าอยู่เชนผิด backend จะ reject พร้อมข้อความบอกให้สลับเชน
-        const chainIdToSend = isTPIXPair.value
-            ? 4289
-            : (walletStore.chainId || 56);
-
+        // Trade เป็น index/proxy — ราคาดึง realtime จาก Binance, balance off-chain
+        // ทุกคู่เทรด register บน TPIX chain (4289) — ส่ง chain_id ตายตัว
+        // wallet จะอยู่เชนไหนก็ได้ (สำหรับ Bridge/Send/Receive); การเทรดไม่ผูกกับ wallet chain
         const { data } = await axios.post('/api/v1/trading/order', {
             wallet_address: walletStore.address,
             pair: currentPair.value,
@@ -190,7 +187,7 @@ const handleSubmitOrder = async (order) => {
             amount: amountVal,
             total: totalVal,
             trigger_price: order.triggerPrice || null,
-            chain_id: chainIdToSend,
+            chain_id: 4289,
         }, { signal: controller.signal });
 
         clearTimeout(timeoutId);

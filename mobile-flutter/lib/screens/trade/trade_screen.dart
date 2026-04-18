@@ -822,30 +822,10 @@ class _TradeScreenState extends State<TradeScreen>
       }
     }
 
-    // Pre-submit chain validation — pair อยู่ chain ใด wallet ต้อง active chain นั้น
-    // (กัน user เผลอส่ง order ผิดเครือข่าย — backend จะ reject แต่ UX แย่)
-    final pairChainId = pair?.chainId;
-    if (pairChainId != null && pairChainId != wallet.activeChainId) {
-      final fromName = config.chainById(wallet.activeChainId)?.name ??
-          'Chain ${wallet.activeChainId}';
-      final toName = config.chainById(pairChainId)?.name ?? 'Chain $pairChainId';
-      final shouldSwitch = await _confirmChainSwitch(
-        locale,
-        fromName: fromName,
-        toName: toName,
-      );
-      if (!mounted) return;
-      if (!shouldSwitch) {
-        _showSnack(locale.isThai
-            ? 'ยกเลิก — เครือข่ายไม่ตรงกับคู่เทรด'
-            : 'Cancelled — wrong chain for this pair');
-        return;
-      }
-      wallet.switchChain(pairChainId);
-      // ConfigProvider.setActiveChain refetches chain-specific fees ทันที
-      await config.setActiveChain(pairChainId);
-      if (!mounted) return;
-    }
+    // Trade เป็น index/proxy — ทุกคู่ register บน TPIX chain (4289)
+    // ราคาดึง realtime จาก Binance, balance off-chain ใน DB ระบบ trade
+    // → ไม่ต้องสลับ wallet chain เพื่อเทรด (chain_id เป็น metadata เท่านั้น)
+    // wallet จะอยู่เชนไหนก็เทรดได้ — chain switching ใช้สำหรับ Bridge/Send/Receive ต่างหาก
 
     double? price;
     if (orderType != 'market') {
@@ -890,7 +870,7 @@ class _TradeScreenState extends State<TradeScreen>
         triggerPrice: triggerPrice,
         amount: amount,
         walletAddress: wallet.address!,
-        chainId: wallet.activeChainId,
+        chainId: 4289, // TPIX-only — see comment above pre-submit block
       );
 
       if (!mounted) return;
@@ -922,49 +902,6 @@ class _TradeScreenState extends State<TradeScreen>
     );
   }
 
-  /// แสดง dialog ขอ confirm สลับเครือข่ายก่อน submit order
-  /// คืน true ถ้า user กด "switch", false ถ้าโดน cancel/dismiss
-  Future<bool> _confirmChainSwitch(
-    LocaleProvider locale, {
-    required String fromName,
-    required String toName,
-  }) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgElevated,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.bgCardBorder),
-        ),
-        title: Text(
-          locale.isThai ? 'สลับเครือข่าย?' : 'Switch chain?',
-          style: const TextStyle(color: AppColors.textPrimary),
-        ),
-        content: Text(
-          locale.isThai
-              ? 'คู่เทรดนี้อยู่บน $toName แต่ wallet ใช้ $fromName อยู่ — สลับเครือข่ายเพื่อส่งคำสั่ง?'
-              : 'This pair is on $toName but your wallet is on $fromName — switch to place this order?',
-          style: const TextStyle(color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(locale.t('common.cancel'),
-                style: const TextStyle(color: AppColors.textTertiary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              locale.isThai ? 'สลับ' : 'Switch',
-              style: const TextStyle(color: AppColors.brandCyan),
-            ),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
-  }
 }
 
 // ── Trade input field ──
