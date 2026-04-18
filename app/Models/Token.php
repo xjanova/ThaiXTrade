@@ -84,8 +84,9 @@ class Token extends Model
 
     /**
      * Resolve logo to a full URL.
-     * — full URL → return as-is
-     * — relative path (e.g. "tokens/btc.png" จาก storage upload) → asset() prepend domain
+     * — full URL (http/https) → return as-is
+     * — leading-slash path (e.g. "/tpixlogo.webp") → public root file
+     * — bare relative path (e.g. "tokens/btc.png") → storage upload via symlink
      */
     protected function logoUrl(): Attribute
     {
@@ -96,14 +97,13 @@ class Token extends Model
             if (str_starts_with($this->logo, 'http')) {
                 return $this->logo;
             }
-
-            // Storage path — ใช้ /storage/ prefix (ผ่าน symlink ที่ deploy.yml สร้าง)
-            $path = ltrim($this->logo, '/');
-            if (! str_starts_with($path, 'storage/')) {
-                $path = 'storage/'.$path;
+            // /xxx → public file (ไม่ผ่าน storage)
+            if (str_starts_with($this->logo, '/')) {
+                return asset(ltrim($this->logo, '/'));
             }
 
-            return asset($path);
+            // bare path = admin upload → ผ่าน storage symlink
+            return asset('storage/'.$this->logo);
         });
     }
 

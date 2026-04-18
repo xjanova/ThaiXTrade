@@ -145,6 +145,8 @@ jobs:
             php artisan db:seed --class=Database\\Seeders\\TpixTradingPairSeeder --force 2>&1 || echo "⚠️ TpixPair seeder warning"
             # Major pairs (BTC, ETH, BNB, SOL, ฯลฯ) — index trading บน TPIX chain
             php artisan db:seed --class=Database\\Seeders\\MajorTradingPairsSeeder --force 2>&1 || echo "⚠️ MajorPairs seeder warning"
+            # Token logos — update existing tokens ที่ logo=null (TPIX, USDT จาก TpixPair)
+            php artisan db:seed --class=Database\\Seeders\\TokenLogosSeeder --force 2>&1 || echo "⚠️ TokenLogos seeder warning"
 
             # Fix permissions
             chmod -R 775 storage bootstrap/cache 2>/dev/null || true
