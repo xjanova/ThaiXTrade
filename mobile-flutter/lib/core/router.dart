@@ -13,12 +13,25 @@ import '../screens/trade/trade_screen.dart';
 import '../screens/portfolio/portfolio_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/bridge/bridge_screen.dart';
+import '../services/deep_link_service.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final GoRouter appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
   initialLocation: '/splash',
+  redirect: (context, state) {
+    // Deep-link fallback — Android intent ส่ง tpixtrade://connect?address=...
+    // Flutter framework parse แล้ว host หาย เหลือแค่ path "/" + query
+    // → ส่งให้ DeepLinkService infer host จาก query keys + handle เอง
+    // → redirect ไป /splash ไม่ให้ router throw "no routes for location"
+    final uri = state.uri;
+    if (uri.path == '/' && uri.queryParameters.isNotEmpty) {
+      DeepLinkService().handleRouterFallback(uri);
+      return '/splash';
+    }
+    return null;
+  },
   routes: [
     // Splash screen
     GoRoute(

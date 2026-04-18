@@ -74,10 +74,14 @@ class _SplashScreenState extends State<SplashScreen> {
     // Auto-check update ใน background — ไม่ block UI, แค่เก็บผลไว้ให้ Home แสดง banner
     context.read<UpdateProvider>().checkInBackground();
 
-    // Init deep link handler — รับ tpixtrade:// จาก Wallet หรือ external
-    DeepLinkService().init(rootNavigatorKey);
-
     context.go('/home');
+
+    // Init deep-link handler หลัง /home mount — เพื่อให้ ScaffoldMessenger
+    // พร้อมแสดง snackbar ตอน auto-link wallet จาก deep-link
+    // (ถ้า init ตอน splash → snackbar ขึ้นไม่ได้เพราะไม่มี Scaffold ancestor)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      DeepLinkService().init(rootNavigatorKey);
+    });
   }
 
   @override

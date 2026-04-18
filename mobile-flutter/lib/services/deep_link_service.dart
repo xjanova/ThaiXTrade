@@ -7,7 +7,6 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -27,9 +26,22 @@ class DeepLinkService {
   StreamSubscription<Uri>? _sub;
   GlobalKey<NavigatorState>? _navKey;
 
+  // Buffer สำหรับ deep-link ที่มาก่อน init() เสร็จ (router redirect ส่งเข้ามา)
+  Uri? _pendingFromRouter;
+
+  // Dedupe — กัน handle URI เดียวกัน 2 ครั้ง (router-fallback + getInitialLink)
+  String? _lastHandledKey;
+
   /// เรียกครั้งเดียวใน splash / main
   Future<void> init(GlobalKey<NavigatorState> navKey) async {
     _navKey = navKey;
+
+    // Flush pending จาก router redirect (มาก่อน init)
+    if (_pendingFromRouter != null) {
+      final pending = _pendingFromRouter!;
+      _pendingFromRouter = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _handle(pending));
+    }
 
     // จัดการ link ที่เปิดแอพตอนแรก
     try {
@@ -46,6 +58,41 @@ class DeepLinkService {
     );
   }
 
+  /// Fallback สำหรับเคสที่ Flutter framework รับ Android/iOS intent มาก่อน
+  /// `app_links` — go_router ได้ initial location แค่ "/?address=...&chain=..."
+  /// (host หายระหว่าง URL parsing) → infer host จาก query keys + reconstruct
+  ///
+  /// เรียกจาก go_router redirect ตอน path="/" + มี query
+  void handleRouterFallback(Uri uri) {
+    final qp = uri.queryParameters;
+    String? host;
+    if (qp.containsKey('address') && qp.containsKey('chain')) {
+      host = 'connect';
+    } else if (qp.containsKey('nonce') && qp.containsKey('signature')) {
+      host = 'sign-result';
+    } else if (qp.containsKey('nonce') && qp.containsKey('error')) {
+      host = 'sign-result';
+    } else if (qp.containsKey('pair')) {
+      host = 'trade';
+    }
+    if (host == null) return;
+
+    final reconstructed = Uri(
+      scheme: 'tpixtrade',
+      host: host,
+      queryParameters: qp,
+    );
+
+    // ถ้า navigator ยังไม่ register → buffer ไว้ให้ init() flush
+    if (_navKey == null) {
+      _pendingFromRouter = reconstructed;
+      return;
+    }
+
+    // Defer 1 frame เพื่อรอ navigator settle หลัง redirect
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handle(reconstructed));
+  }
+
   void dispose() {
     _sub?.cancel();
     _sub = null;
@@ -54,6 +101,15 @@ class DeepLinkService {
   void _handle(Uri uri) {
     // ยอมรับเฉพาะ tpixtrade:// scheme
     if (uri.scheme != 'tpixtrade') return;
+
+    // Dedupe — กัน handle URI เดียวกัน 2 ครั้ง (router-fallback + getInitialLink
+    // อาจส่ง deep-link เดียวกันมาทั้งคู่ตอนเปิดแอพจาก wallet)
+    final key = '${uri.host}:${uri.query}';
+    if (key == _lastHandledKey) {
+      debugPrint('DeepLink: dedup ${uri.host}');
+      return;
+    }
+    _lastHandledKey = key;
 
     // Log เฉพาะ scheme + host (ไม่ log query params ที่มี address/signature)
     debugPrint('DeepLink: ${uri.scheme}://${uri.host}');
