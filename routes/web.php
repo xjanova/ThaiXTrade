@@ -11,6 +11,7 @@ use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\SocialController;
 use App\Http\Controllers\CarbonCreditController;
 use App\Http\Controllers\FoodPassportController;
+use App\Http\Controllers\LaunchController;
 use App\Http\Controllers\MasterNodeController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TokenFactoryController;
@@ -119,6 +120,9 @@ Route::get('/settings', function () {
 
 // Token Sale — หน้าขายเหรียญ TPIX (ICO/IDO)
 Route::get('/token-sale', [TokenSaleController::class, 'index'])->name('token-sale');
+
+// Launch — Bonding Curve fair launch (on-chain TPIX sale)
+Route::get('/launch', [LaunchController::class, 'index'])->name('launch');
 
 // Token Factory — สร้างเหรียญบน TPIX Chain
 Route::get('/token-factory', [TokenFactoryController::class, 'index'])->name('token-factory');
