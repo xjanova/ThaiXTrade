@@ -29,9 +29,15 @@ use Inertia\Inertia;
 // User Authentication
 Route::middleware('guest')->group(function () {
     Route::get('login', [LoginController::class, 'showLogin'])->name('login');
-    Route::post('login', [LoginController::class, 'login'])->name('login.submit')->middleware('turnstile');
+    // 5 attempts/min — anti brute-force (Turnstile + throttle layered defense)
+    Route::post('login', [LoginController::class, 'login'])
+        ->name('login.submit')
+        ->middleware(['turnstile', 'throttle:5,1']);
     Route::get('register', [RegisterController::class, 'showRegister'])->name('register');
-    Route::post('register', [RegisterController::class, 'register'])->name('register.submit')->middleware('turnstile');
+    // 3 signups/min per IP — anti spam-account creation
+    Route::post('register', [RegisterController::class, 'register'])
+        ->name('register.submit')
+        ->middleware(['turnstile', 'throttle:3,1']);
 });
 Route::post('logout', [LoginController::class, 'logout'])->name('logout')->middleware('auth');
 
