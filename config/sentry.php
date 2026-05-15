@@ -46,23 +46,9 @@ return [
     // Strip PII from events sent to Sentry
     'send_default_pii' => false,
 
-    // Capture deprecations and silenced errors
-    'integrations' => fn() => [],
+    // Capture deprecations and silenced errors — empty array is config:cache-safe
+    'integrations' => [],
 
-    // Tags every event gets
-    'before_send' => function (\Sentry\Event $event): ?\Sentry\Event {
-        $event->setTag('site', 'tpix-trade');
-        $event->setTag('chain_id', '4289');
-
-        // Strip wallet addresses, mnemonic, private key fragments from messages
-        if ($message = $event->getMessage()) {
-            $cleaned = preg_replace('/0x[a-fA-F0-9]{40,64}/', '0x[REDACTED]', $message);
-            $cleaned = preg_replace('/\b([a-z]+ ){11,23}[a-z]+\b/i', '[MNEMONIC_REDACTED]', $cleaned);
-            if ($cleaned !== $message) {
-                $event->setMessage($cleaned);
-            }
-        }
-
-        return $event;
-    },
+    // Tags every event + scrub PII — invokable class (not closure) so config:cache works
+    'before_send' => \App\Sentry\ScrubPiiBeforeSend::class,
 ];

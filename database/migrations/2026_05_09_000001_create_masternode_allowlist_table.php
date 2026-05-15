@@ -29,7 +29,9 @@ return new class extends Migration {
 
             // หลักฐาน delegation: wallet sign "I authorize delegate_address until <timestamp>"
             $t->text('delegation_signature');
-            $t->timestamp('delegation_expires_at');
+            // ใช้ dateTime แทน timestamp เพราะ MySQL strict mode + NO_ZERO_DATE จะ reject
+            // TIMESTAMP NOT NULL ที่ไม่มี explicit default (Laravel implicit '0000-00-00' default)
+            $t->dateTime('delegation_expires_at');
 
             // IP ที่ allow (IPv4 หรือ IPv6 — max 45 chars)
             $t->string('ip_address', 45);
@@ -40,8 +42,8 @@ return new class extends Migration {
             // Cloudflare access rule ID (ใช้ delete ตอน cleanup)
             $t->string('cf_rule_id', 64)->nullable();
 
-            // TTL — allowlist หมดอายุเมื่อไหร่
-            $t->timestamp('allowed_until');
+            // TTL — allowlist หมดอายุเมื่อไหร่ (dateTime ด้วยเหตุผลเดียวกับ delegation_expires_at)
+            $t->dateTime('allowed_until');
 
             // Last heartbeat — ใช้สถิติ + detect zombie
             $t->timestamp('last_heartbeat')->useCurrent();
