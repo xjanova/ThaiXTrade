@@ -256,6 +256,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/stats', [MasterNodeAdminController::class, 'stats'])->name('stats');
             Route::post('/toggle', [MasterNodeAdminController::class, 'toggle'])->name('toggle');
             Route::put('/config', [MasterNodeAdminController::class, 'updateConfig'])->name('config');
+
+            // Cloudflare auto-allowlist management
+            Route::get('/allowlist', [\App\Http\Controllers\Admin\MasternodeAllowlistController::class, 'index'])->name('allowlist.index');
+            Route::post('/allowlist/{id}/revoke', [\App\Http\Controllers\Admin\MasternodeAllowlistController::class, 'revoke'])->name('allowlist.revoke');
+            Route::delete('/allowlist/{id}', [\App\Http\Controllers\Admin\MasternodeAllowlistController::class, 'destroy'])->name('allowlist.destroy');
+            Route::post('/allowlist/cleanup', [\App\Http\Controllers\Admin\MasternodeAllowlistController::class, 'runCleanup'])->name('allowlist.cleanup');
         });
 
         // Validator Management — จัดการ validator applications + voting

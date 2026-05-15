@@ -10,6 +10,8 @@ const NodeManager = require('./node-manager');
 const WalletManager = require('./wallet-manager');
 const AppUpdater = require('./auto-updater');
 const InstanceManager = require('./instance-manager');
+const DelegationManager = require('./delegation-manager');
+const HeartbeatClient = require('./heartbeat-client');
 
 let mainWindow = null;
 let tray = null;
@@ -17,6 +19,8 @@ let nodeManager = null;
 let walletManager = null;
 let appUpdater = null;
 let instanceManager = null;
+let delegationManager = null;
+let heartbeatClient = null;
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -114,6 +118,87 @@ function createTray() {
 function setupIPC() {
     nodeManager = new NodeManager();
     walletManager = new WalletManager();
+    delegationManager = new DelegationManager(walletManager);
+    heartbeatClient = new HeartbeatClient(delegationManager);
+
+    // Configure heartbeat endpoint จาก node config (ถ้ามี)
+    try {
+        const cfg = nodeManager.getConfig();
+        const base = cfg?.apiBaseUrl || 'https://tpix.online';
+        heartbeatClient.setApiUrl(`${base.replace(/\/$/, '')}/api/v1/node/heartbeat`);
+    } catch { /* default */ }
+
+    // Forward heartbeat events → renderer
+    heartbeatClient.on('heartbeat-success', (data) => {
+        mainWindow?.webContents.send('heartbeat:update', { ok: true, ...data });
+    });
+    heartbeatClient.on('heartbeat-error', (data) => {
+        mainWindow?.webContents.send('heartbeat:update', { ok: false, ...data });
+    });
+
+    // ─── Delegation handlers ───────────────────────────
+    ipcMain.handle('delegation:exists', () => {
+        return delegationManager.exists();
+    });
+
+    ipcMain.handle('delegation:info', () => {
+        try {
+            return delegationManager.getInfo();
+        } catch (err) {
+            return { exists: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('delegation:create', async (_, password, lifetimeSeconds) => {
+        try {
+            if (typeof password !== 'string') throw new Error('password required');
+            return await delegationManager.create(password, lifetimeSeconds);
+        } catch (err) {
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('delegation:unlock', (_, password) => {
+        try {
+            if (typeof password !== 'string') throw new Error('password required');
+            delegationManager.unlock(password);
+            return { success: true };
+        } catch (err) {
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('delegation:revoke', () => {
+        // หยุด heartbeat ก่อน — ไม่งั้นจะ sign แบบไม่มี delegation
+        heartbeatClient.stop();
+        return delegationManager.revoke();
+    });
+
+    // ─── Heartbeat handlers ────────────────────────────
+    ipcMain.handle('heartbeat:start', async () => {
+        try {
+            return await heartbeatClient.start();
+        } catch (err) {
+            return { ok: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('heartbeat:stop', () => {
+        heartbeatClient.stop();
+        return { ok: true };
+    });
+
+    ipcMain.handle('heartbeat:sendNow', async () => {
+        try {
+            return await heartbeatClient.sendOnce();
+        } catch (err) {
+            return { ok: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('heartbeat:status', () => {
+        return heartbeatClient.getStatus();
+    });
 
     // Wallet handlers
     ipcMain.handle('wallet:create', (_, password) => {
@@ -368,6 +453,9 @@ app.on('activate', () => {
 app.on('before-quit', (e) => {
     const nodeRunning = nodeManager && nodeManager.isRunning();
     const instancesRunning = instanceManager && instanceManager.runningCount() > 0;
+
+    // Stop heartbeat ตอนปิดแอป (no-op if not started)
+    if (heartbeatClient) heartbeatClient.stop();
 
     if (nodeRunning || instancesRunning) {
         e.preventDefault();

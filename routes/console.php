@@ -24,3 +24,10 @@ Schedule::call(function () {
         \Illuminate\Support\Facades\Log::info('Bridge: re-dispatched stuck tx', ['id' => $tx->id]);
     }
 })->everyMinute()->name('bridge:process-stuck');
+
+// Masternode allowlist: ลบ entries ที่หมดอายุ + cleanup CF rules ทุก 5 นาที
+Schedule::command('masternode:cleanup')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('masternode:cleanup');

@@ -86,4 +86,22 @@ contextBridge.exposeInMainWorld('tpix', {
         exportKey: (password) => ipcRenderer.invoke('wallet:exportKey', password),
         exists: () => ipcRenderer.invoke('wallet:exists'),
     },
+
+    // Delegation (dual-key for Cloudflare allowlist auth)
+    delegation: {
+        exists: () => ipcRenderer.invoke('delegation:exists'),
+        info: () => ipcRenderer.invoke('delegation:info'),
+        create: (password, lifetimeSeconds) => ipcRenderer.invoke('delegation:create', password, lifetimeSeconds),
+        unlock: (password) => ipcRenderer.invoke('delegation:unlock', password),
+        revoke: () => ipcRenderer.invoke('delegation:revoke'),
+    },
+
+    // Heartbeat (auto-allowlist via backend API)
+    heartbeat: {
+        start: () => ipcRenderer.invoke('heartbeat:start'),
+        stop: () => ipcRenderer.invoke('heartbeat:stop'),
+        sendNow: () => ipcRenderer.invoke('heartbeat:sendNow'),
+        status: () => ipcRenderer.invoke('heartbeat:status'),
+        onUpdate: (cb) => onEvent('heartbeat:update', cb),
+    },
 });

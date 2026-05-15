@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\MarketController;
+use App\Http\Controllers\Api\NodeHeartbeatController;
 use App\Http\Controllers\Api\StakingApiController;
 use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\SupplyController;
@@ -83,6 +84,19 @@ Route::get('v1/token-icon.png', function () {
     }
 
     return response()->json(['error' => 'Token icon not found'], 404);
+});
+
+/*
+ * Masternode / Validator Auto-Allowlist
+ * - POST /api/v1/node/heartbeat — operator ส่ง heartbeat (signed) → server เพิ่ม IP เข้า CF allowlist
+ * - GET  /api/v1/node/status/{wallet} — เช็คสถานะ allowlist ของ wallet
+ *
+ * Throttle: 10 req/min per IP (heartbeat) — เผื่อ retry แต่ไม่ flood
+ * เก็บไว้นอก v1 group เพราะ throttle/middleware เฉพาะ
+ */
+Route::prefix('v1/node')->middleware(['throttle:'.config('masternode.heartbeat.rate_limit_per_minute', 10).',1'])->group(function () {
+    Route::post('heartbeat', [NodeHeartbeatController::class, 'heartbeat'])->name('node.heartbeat');
+    Route::get('status/{wallet}', [NodeHeartbeatController::class, 'status'])->name('node.status');
 });
 
 // Public Routes (No Auth Required) — rate limited
