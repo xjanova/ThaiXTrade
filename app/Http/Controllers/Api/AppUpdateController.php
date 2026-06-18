@@ -35,6 +35,64 @@ class AppUpdateController extends Controller
     }
 
     /**
+     * ดึง mobile release (TRADE APK) พร้อม cache แบบกัน negative-caching.
+     * สำเร็จ → cache 5 นาที, ล้มเหลว (null) → cache แค่ 60 วิ (sentinel 'none')
+     * เพื่อไม่ให้ผลว่างจาก GitHub สะดุดค้างนาน.
+     */
+    private function cachedLatestRelease(): ?array
+    {
+        $key = 'app_update_android';
+        $cached = Cache::get($key);
+
+        if ($cached === 'none') {
+            return null;
+        }
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $fetched = $this->fetchLatestRelease();
+        Cache::put($key, $fetched ?: 'none', $fetched ? 300 : 60);
+
+        return $fetched;
+    }
+
+    /**
+     * คีย์ cache สำหรับ chain releases — ผูกกับ active tag ปัจจุบัน.
+     * ใช้ร่วมกันทั้ง chainLatest / chainDownload / notifyRelease
+     * เพื่อไม่ให้ key หลุดกัน (เดิม chainDownload ใช้ 'chain_releases' เปล่า ๆ คนละ key).
+     */
+    private function chainCacheKey(?string $walletTag = null, ?string $masternodeTag = null): string
+    {
+        $walletTag ??= SiteSetting::get('app_release', 'wallet_active_tag');
+        $masternodeTag ??= SiteSetting::get('app_release', 'masternode_active_tag');
+
+        return 'chain_releases_'.md5((string) $walletTag.'|'.(string) $masternodeTag);
+    }
+
+    /**
+     * ดึง releases จาก TPIX-Coin (wallet + masternode) พร้อม cache แบบกัน negative-caching.
+     * สำเร็จ (มี asset อย่างน้อย 1) → cache 30 นาที, ล้มเหลว/ว่าง → cache แค่ 60 วิ.
+     */
+    private function cachedChainReleases(): array
+    {
+        $walletTag = SiteSetting::get('app_release', 'wallet_active_tag');
+        $masternodeTag = SiteSetting::get('app_release', 'masternode_active_tag');
+        $key = $this->chainCacheKey($walletTag, $masternodeTag);
+
+        $cached = Cache::get($key);
+        if (is_array($cached) && (! empty($cached['wallet']) || ! empty($cached['masternode']))) {
+            return $cached;
+        }
+
+        $data = $this->fetchChainReleases($walletTag, $masternodeTag);
+        $ttl = (! empty($data['wallet']) || ! empty($data['masternode'])) ? 1800 : 60;
+        Cache::put($key, $data, $ttl);
+
+        return $data;
+    }
+
+    /**
      * Check for latest app version.
      * ตรวจสอบเวอร์ชันล่าสุดของแอป.
      *
@@ -43,13 +101,8 @@ class AppUpdateController extends Controller
     public function check(Request $request): JsonResponse
     {
         $currentVersion = $request->query('version', '0.0.0');
-        $platform = $request->query('platform', 'android');
 
-        // Cache 5 minutes / แคช 5 นาที
-        $cacheKey = "app_update_{$platform}";
-        $releaseInfo = Cache::remember($cacheKey, 300, function () {
-            return $this->fetchLatestRelease();
-        });
+        $releaseInfo = $this->cachedLatestRelease();
 
         if (! $releaseInfo) {
             return response()->json([
@@ -89,9 +142,7 @@ class AppUpdateController extends Controller
      */
     public function download(): JsonResponse|RedirectResponse
     {
-        $releaseInfo = Cache::remember('app_update_android', 300, function () {
-            return $this->fetchLatestRelease();
-        });
+        $releaseInfo = $this->cachedLatestRelease();
 
         if (! $releaseInfo || ! $releaseInfo['download_url']) {
             return response()->json([
@@ -161,9 +212,7 @@ class AppUpdateController extends Controller
      */
     public function latest(): JsonResponse
     {
-        $releaseInfo = Cache::remember('app_update_android', 300, function () {
-            return $this->fetchLatestRelease();
-        });
+        $releaseInfo = $this->cachedLatestRelease();
 
         if (! $releaseInfo) {
             return response()->json([
@@ -211,6 +260,9 @@ class AppUpdateController extends Controller
         // เคลียร์แคช update เพื่อให้ดึง release ใหม่ทันที
         Cache::forget('app_update_android');
         Cache::forget('apk_s3_url');
+        Cache::forget($this->chainCacheKey());
+        Cache::forget('chain_s3_url_wallet');
+        Cache::forget('chain_s3_url_masternode');
 
         Log::info('Release notified via CI', ['tag' => $tag]);
 
@@ -324,14 +376,7 @@ class AppUpdateController extends Controller
      */
     public function chainLatest(): JsonResponse
     {
-        // ดึง active tags ที่ admin เลือก
-        $walletTag = SiteSetting::get('app_release', 'wallet_active_tag');
-        $masternodeTag = SiteSetting::get('app_release', 'masternode_active_tag');
-
-        $cacheKey = 'chain_releases_'.md5($walletTag.$masternodeTag);
-        $data = Cache::remember($cacheKey, 1800, function () use ($walletTag, $masternodeTag) {
-            return $this->fetchChainReleases($walletTag, $masternodeTag);
-        });
+        $data = $this->cachedChainReleases();
 
         return response()->json([
             'success' => true,
@@ -348,9 +393,7 @@ class AppUpdateController extends Controller
     public function chainDownload(Request $request): JsonResponse|RedirectResponse
     {
         $type = $request->query('type', 'wallet');
-        $data = Cache::remember('chain_releases', 1800, function () {
-            return $this->fetchChainReleases();
-        });
+        $data = $this->cachedChainReleases();
 
         $asset = $type === 'wallet' ? ($data['wallet'] ?? null) : ($data['masternode'] ?? null);
 
@@ -451,7 +494,7 @@ class AppUpdateController extends Controller
 
             $response = Http::withHeaders($headers)
                 ->timeout(10)
-                ->get("https://api.github.com/repos/{$this->githubOwner}/TPIX-Coin/releases?per_page=10");
+                ->get("https://api.github.com/repos/{$this->githubOwner}/TPIX-Coin/releases?per_page=30");
 
             if (! $response->successful()) {
                 Log::warning('TPIX-Coin releases fetch failed', [
