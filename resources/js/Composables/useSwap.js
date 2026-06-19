@@ -1,6 +1,16 @@
 /**
  * TPIX TRADE - useSwap Composable
- * Handles swap quotes, execution, and token approvals
+ * Handles swap quotes, execution, and token approvals (BSC / PancakeSwap V2).
+ *
+ * Key invariants (see audit 2026-06-19):
+ *  - Prices & balances are read from a dedicated BSC RPC, never the wallet's
+ *    provider — so quotes work even while the wallet is on TPIX Chain (4289)
+ *    and a quote is NEVER fabricated to a 1:1 fallback.
+ *  - The ~0.3% platform fee is taken from the INPUT token and RESERVED: only
+ *    (amount - fee) is routed through the swap, so the fee transfer always
+ *    succeeds (even on MAX) and the displayed numbers match what lands on-chain.
+ *  - minOut reflects slippage ONLY (the fee never reduces the router output).
+ *
  * Developed by Xman Studio
  */
 
@@ -11,16 +21,48 @@ import {
     PANCAKE_ROUTER_ADDRESS,
     PANCAKE_ROUTER_ABI,
     WBNB_ADDRESS,
-    NATIVE_TOKEN_ADDRESS,
     isNativeToken,
     getRoutingAddress,
     getTokenBalance,
     getAllowance,
     approveToken as approveTokenUtil,
     getAmountsOut,
+    getBscReadProvider,
     getTxUrl,
 } from '@/utils/web3';
 import axios from 'axios';
+
+// Swaps run on BSC only.
+const SWAP_CHAIN_ID = 56;
+
+/**
+ * Convert a human float amount to wei. Fractional precision is capped to avoid
+ * float garbage in the low digits; the input-side fee reserve provides the
+ * safety margin so a MAX swap can never exceed the on-chain balance.
+ */
+function toWei(value, decimals) {
+    const prec = Math.min(decimals, 12);
+    return parseUnits(Number(value).toFixed(prec), decimals);
+}
+
+/**
+ * Map raw ethers / router errors to clean, user-facing messages.
+ * Never surface raw exception strings (project rule).
+ */
+function friendlyError(err) {
+    if (err?.code === 4001 || err?.code === 'ACTION_REJECTED') return 'Transaction rejected by user.';
+    const msg = (err?.reason || err?.shortMessage || err?.message || '').toString().toLowerCase();
+    if (msg.includes('no liquidity')) return 'No liquidity available for this token pair.';
+    if (msg.includes('insufficient_output_amount')) return 'Price moved too much — increase slippage and try again.';
+    if (msg.includes('insufficient_a_amount') || msg.includes('insufficient_b_amount')) return 'Price moved too much — please try again.';
+    if (msg.includes('expired')) return 'The swap expired before confirming. Please try again.';
+    if (msg.includes('transfer_from_failed') || msg.includes('transferfrom')) return 'Token transfer failed — check your balance and approval.';
+    if (msg.includes('insufficient')) return 'Insufficient balance for this swap.';
+    if (msg.includes('missing revert data') || msg.includes('call_exception')) return 'Swap failed on-chain. Try a smaller amount or higher slippage.';
+    if (msg.includes('user rejected') || msg.includes('user denied')) return 'Transaction rejected by user.';
+    if (msg.includes('timeout') || msg.includes('timed out')) return 'Network timed out. Please try again.';
+    return 'Swap failed. Please try again.';
+}
 
 export function useSwap() {
     const isLoadingQuote = ref(false);
@@ -31,14 +73,15 @@ export function useSwap() {
     const txStatus = ref(null); // 'pending', 'confirmed', 'failed'
 
     /**
-     * Get a swap quote combining on-chain price from PancakeSwap
-     * and fee breakdown from the backend.
+     * Get a swap quote: real on-chain price from PancakeSwap (read via a BSC RPC)
+     * plus the platform fee taken from the input side. Returns null (no quote) on
+     * any failure — never a fabricated rate.
      */
     async function getQuote(fromToken, toToken, amount) {
-        const walletStore = useWalletStore();
         error.value = null;
 
-        if (!amount || parseFloat(amount) <= 0) {
+        const grossAmount = parseFloat(amount);
+        if (!grossAmount || grossAmount <= 0) {
             return null;
         }
 
@@ -47,79 +90,89 @@ export function useSwap() {
         try {
             const fromDecimals = fromToken.decimals || 18;
             const toDecimals = toToken.decimals || 18;
-            const amountIn = parseUnits(amount.toString(), fromDecimals);
 
-            // Build routing path
+            // 1) Fee / slippage config from backend (needed to size the swap input).
+            let backendQuote = null;
+            try {
+                const { data } = await axios.get('/api/v1/swap/quote', {
+                    params: {
+                        from_token: fromToken.address,
+                        to_token: toToken.address,
+                        amount: grossAmount,
+                        chain_id: SWAP_CHAIN_ID,
+                    },
+                });
+                if (data.success) backendQuote = data.data.quote;
+            } catch (apiErr) {
+                console.warn('Backend quote unavailable:', apiErr.message);
+            }
+            const feeRate = backendQuote?.fee_rate ?? 0.3;
+            const slippage = backendQuote?.slippage ?? 0.5;
+            const priceImpact = backendQuote?.price_impact ?? 0;
+
+            // 2) Platform fee is taken from the INPUT token; only (amount - fee) is swapped.
+            const feeAmount = grossAmount * (feeRate / 100);
+            const swapInput = grossAmount - feeAmount;
+            if (swapInput <= 0) {
+                error.value = 'Amount is too small after fees.';
+                return null;
+            }
+            const grossWei = toWei(grossAmount, fromDecimals);
+            const amountInSwapWei = toWei(swapInput, fromDecimals);
+            if (amountInSwapWei <= 0n) {
+                error.value = 'Amount is too small to swap.';
+                return null;
+            }
+            // Fee = the remainder, so (swap + fee) sums EXACTLY to the gross the user
+            // holds. The fee transfer therefore can never exceed the on-chain balance
+            // (even on a MAX swap) and can't revert by a rounding wei.
+            const feeWei = grossWei > amountInSwapWei ? grossWei - amountInSwapWei : 0n;
+
+            // 3) Build routing path (direct, or via WBNB for liquidity).
             const fromAddr = getRoutingAddress(fromToken.address);
             const toAddr = getRoutingAddress(toToken.address);
-
             let path;
             if (fromAddr.toLowerCase() === WBNB_ADDRESS.toLowerCase() ||
                 toAddr.toLowerCase() === WBNB_ADDRESS.toLowerCase()) {
                 path = [fromAddr, toAddr];
             } else {
-                // Route through WBNB for better liquidity
                 path = [fromAddr, WBNB_ADDRESS, toAddr];
             }
 
-            // Get on-chain price from PancakeSwap router
+            // 4) REAL on-chain price from a BSC node — independent of the wallet's chain.
+            const readProvider = getBscReadProvider();
             let amountOut;
-            if (walletStore.provider) {
-                try {
-                    amountOut = await getAmountsOut(amountIn, path, walletStore.provider);
-                } catch (routerErr) {
-                    // Pair might not exist or insufficient liquidity
-                    console.warn('Router getAmountsOut failed:', routerErr.message);
-                    // Try direct path if routed through WBNB
-                    if (path.length === 3) {
-                        try {
-                            path = [fromAddr, toAddr];
-                            amountOut = await getAmountsOut(amountIn, path, walletStore.provider);
-                        } catch {
-                            throw new Error('No liquidity available for this token pair.');
-                        }
-                    } else {
+            try {
+                amountOut = await getAmountsOut(amountInSwapWei, path, readProvider);
+            } catch (routerErr) {
+                console.warn('Router getAmountsOut failed:', routerErr.message);
+                // Pair may lack a direct WBNB hop — try the direct path once.
+                if (path.length === 3) {
+                    try {
+                        path = [fromAddr, toAddr];
+                        amountOut = await getAmountsOut(amountInSwapWei, path, readProvider);
+                    } catch {
                         throw new Error('No liquidity available for this token pair.');
                     }
+                } else {
+                    throw new Error('No liquidity available for this token pair.');
                 }
             }
-
-            // Get fee breakdown from backend
-            let backendQuote = null;
-            try {
-                const chainId = walletStore.chainId || 56;
-                const { data } = await axios.get('/api/v1/swap/quote', {
-                    params: {
-                        from_token: fromToken.address,
-                        to_token: toToken.address,
-                        amount: parseFloat(amount),
-                        chain_id: chainId,
-                    },
-                });
-                if (data.success) {
-                    backendQuote = data.data.quote;
-                }
-            } catch (apiErr) {
-                console.warn('Backend quote unavailable:', apiErr.message);
+            // Never proceed without a real on-chain amount (no 1:1 fabrication).
+            if (amountOut == null) {
+                throw new Error('No liquidity available for this token pair.');
             }
 
-            // Calculate output values
-            const rawOutputAmount = amountOut
-                ? parseFloat(formatUnits(amountOut, toDecimals))
-                : parseFloat(amount); // fallback
-
-            const feeRate = backendQuote?.fee_rate ?? 0.3;
-            const feeAmount = parseFloat(amount) * (feeRate / 100);
-            const priceImpact = backendQuote?.price_impact ?? 0;
-            const slippage = backendQuote?.slippage ?? 0.5;
-
-            // The on-chain amount already reflects the real exchange rate
-            const exchangeRate = rawOutputAmount / parseFloat(amount);
-            const netOutput = rawOutputAmount * (1 - feeRate / 100);
+            // Fee is already deducted from the input, so the router output IS what
+            // the user receives — no second haircut on the output side.
+            const rawOutputAmount = parseFloat(formatUnits(amountOut, toDecimals));
+            const netOutput = rawOutputAmount;
             const minimumReceived = netOutput * (1 - slippage / 100);
+            const exchangeRate = netOutput / grossAmount; // effective rate per total token paid
 
             return {
-                amountIn: parseFloat(amount),
+                amountIn: grossAmount,        // total the user pays (swap + fee)
+                swapInput,                    // amount actually routed through PancakeSwap
                 amountOut: rawOutputAmount,
                 netOutput,
                 exchangeRate,
@@ -129,10 +182,12 @@ export function useSwap() {
                 slippage,
                 minimumReceived: Math.max(minimumReceived, 0),
                 path,
-                rawAmountOut: amountOut,
+                rawAmountOut: amountOut,       // BigInt — router output for the swapped amount
+                amountInSwapWei,              // BigInt — exact wei routed through the swap
+                feeWei,                       // BigInt — reserved platform fee (input token)
             };
         } catch (err) {
-            error.value = err.message || 'Failed to get quote.';
+            error.value = friendlyError(err);
             return null;
         } finally {
             isLoadingQuote.value = false;
@@ -141,24 +196,24 @@ export function useSwap() {
 
     /**
      * Check if the router has sufficient allowance to spend the token.
+     * Read against the BSC RPC so it is correct regardless of the wallet's chain.
      */
     async function checkAllowance(tokenAddress, amount, decimals = 18) {
         const walletStore = useWalletStore();
-        if (!walletStore.provider || !walletStore.address) return false;
+        if (!walletStore.address) return false;
         if (isNativeToken(tokenAddress)) return true;
 
         const allowance = await getAllowance(
             tokenAddress,
             walletStore.address,
             PANCAKE_ROUTER_ADDRESS,
-            walletStore.provider,
+            getBscReadProvider(),
         );
-        const amountWei = parseUnits(amount.toString(), decimals);
-        return allowance >= amountWei;
+        return allowance >= toWei(parseFloat(amount) || 0, decimals);
     }
 
     /**
-     * Approve the router to spend tokens.
+     * Approve the router to spend tokens (must be on BSC — caller switches first).
      */
     async function approveToken(tokenAddress) {
         const walletStore = useWalletStore();
@@ -171,11 +226,7 @@ export function useSwap() {
             const tx = await approveTokenUtil(tokenAddress, PANCAKE_ROUTER_ADDRESS, walletStore.signer);
             return tx;
         } catch (err) {
-            if (err.code === 4001) {
-                error.value = 'Approval rejected by user.';
-            } else {
-                error.value = 'Failed to approve token.';
-            }
+            error.value = err.code === 4001 ? 'Approval rejected by user.' : 'Failed to approve token.';
             throw err;
         } finally {
             isApproving.value = false;
@@ -183,13 +234,24 @@ export function useSwap() {
     }
 
     /**
-     * Execute the swap transaction on PancakeSwap.
+     * Execute the swap on PancakeSwap (BSC). The caller must already have switched
+     * the wallet to BSC. Swaps (amount - fee), then transfers the reserved fee.
      */
     async function executeSwap(fromToken, toToken, amount, quote, slippage = 0.5) {
         const walletStore = useWalletStore();
 
         if (!walletStore.signer || !walletStore.address) {
             error.value = 'Please connect your wallet first.';
+            throw new Error(error.value);
+        }
+        // Safety: never execute against a missing/ fabricated quote.
+        if (!quote || quote.rawAmountOut == null || quote.amountInSwapWei == null) {
+            error.value = 'Price quote unavailable — please re-enter the amount.';
+            throw new Error(error.value);
+        }
+        // Defensive: swaps must run on BSC (caller switches before calling).
+        if (walletStore.chainId !== SWAP_CHAIN_ID) {
+            error.value = 'Please switch to BSC to swap.';
             throw new Error(error.value);
         }
 
@@ -199,104 +261,86 @@ export function useSwap() {
         txStatus.value = 'pending';
 
         try {
-            const fromDecimals = fromToken.decimals || 18;
-            const toDecimals = toToken.decimals || 18;
-            const amountIn = parseUnits(amount.toString(), fromDecimals);
+            const amountInSwap = quote.amountInSwapWei;      // BigInt — (amount - fee)
+            const feeWei = quote.feeWei || 0n;
 
-            // Calculate minimum output with slippage + fee
-            const feeRate = quote.feeRate || 0.3;
-            const slippageFactor = 1 - (slippage / 100) - (feeRate / 100);
-            const minOut = quote.rawAmountOut
-                ? (quote.rawAmountOut * BigInt(Math.floor(slippageFactor * 10000))) / 10000n
-                : 0n;
+            // minOut from SLIPPAGE ONLY — the fee never reduces the router output.
+            const slipFactorBps = BigInt(Math.max(0, Math.floor((1 - slippage / 100) * 10000)));
+            const minOut = (quote.rawAmountOut * slipFactorBps) / 10000n;
+            if (minOut <= 0n) {
+                error.value = 'Slippage too high — please adjust and retry.';
+                throw new Error(error.value);
+            }
 
             const path = quote.path;
             const deadline = Math.floor(Date.now() / 1000) + 1200; // 20 minutes
-
             const router = new Contract(PANCAKE_ROUTER_ADDRESS, PANCAKE_ROUTER_ABI, walletStore.signer);
 
             let tx;
             if (isNativeToken(fromToken.address)) {
                 // BNB → Token
                 tx = await router.swapExactETHForTokens(
-                    minOut,
-                    path,
-                    walletStore.address,
-                    deadline,
-                    { value: amountIn },
+                    minOut, path, walletStore.address, deadline,
+                    { value: amountInSwap },
                 );
             } else if (isNativeToken(toToken.address)) {
                 // Token → BNB
                 tx = await router.swapExactTokensForETH(
-                    amountIn,
-                    minOut,
-                    path,
-                    walletStore.address,
-                    deadline,
+                    amountInSwap, minOut, path, walletStore.address, deadline,
                 );
             } else {
                 // Token → Token
                 tx = await router.swapExactTokensForTokens(
-                    amountIn,
-                    minOut,
-                    path,
-                    walletStore.address,
-                    deadline,
+                    amountInSwap, minOut, path, walletStore.address, deadline,
                 );
             }
 
             txHash.value = tx.hash;
-
-            // Wait for confirmation
             const receipt = await tx.wait();
             txStatus.value = receipt.status === 1 ? 'confirmed' : 'failed';
 
-            // Collect platform fee — send fee to fee_collector wallet
+            // Collect the RESERVED platform fee — the user still holds it because
+            // we only swapped (amount - fee), so this transfer cannot run dry.
             let feeCollected = false;
-            if (receipt.status === 1 && quote.feeAmount > 0) {
+            if (receipt.status === 1 && feeWei > 0n) {
                 try {
-                    // Fetch fee collector address from backend
                     const { data: feeInfo } = await axios.get('/api/v1/trading/fee-info', {
-                        params: { chain_id: walletStore.chainId || 56 },
+                        params: { chain_id: SWAP_CHAIN_ID },
                     });
                     const feeCollectorAddress = feeInfo?.data?.fee_collector;
 
                     if (feeCollectorAddress && feeCollectorAddress.startsWith('0x') && feeCollectorAddress.length === 42) {
-                        const feeWei = parseUnits(quote.feeAmount.toFixed(8), fromToken.decimals || 18);
-
                         if (isNativeToken(fromToken.address)) {
-                            // Native token fee: send BNB directly
                             const feeTx = await walletStore.signer.sendTransaction({
                                 to: feeCollectorAddress,
                                 value: feeWei,
                             });
                             await feeTx.wait();
                         } else {
-                            // ERC20 token fee: transfer token
                             const tokenAbi = ['function transfer(address to, uint256 amount) returns (bool)'];
                             const tokenContract = new Contract(fromToken.address, tokenAbi, walletStore.signer);
                             const feeTx = await tokenContract.transfer(feeCollectorAddress, feeWei);
                             await feeTx.wait();
                         }
                         feeCollected = true;
-                        // Fee collected successfully
                     }
                 } catch (feeErr) {
-                    // Fee collection failed — log but don't block the swap
-                    console.warn('Fee collection failed (swap still succeeded):', feeErr.message);
+                    // Fee collection failed (e.g. user rejected the 2nd prompt) —
+                    // the swap already succeeded, so don't block it.
+                    console.warn('Fee collection skipped (swap still succeeded):', feeErr.message);
                 }
             }
 
-            // Record on backend
+            // Record on backend (best-effort).
             try {
                 await axios.post('/api/v1/swap/execute', {
                     from_token: fromToken.address,
                     to_token: toToken.address,
-                    from_amount: parseFloat(amount),
+                    from_amount: quote.amountIn,
                     to_amount: quote.netOutput,
                     fee_amount: feeCollected ? quote.feeAmount : 0,
                     tx_hash: tx.hash,
-                    chain_id: walletStore.chainId || 56,
+                    chain_id: SWAP_CHAIN_ID,
                     wallet_address: walletStore.address,
                 });
             } catch (apiErr) {
@@ -306,17 +350,11 @@ export function useSwap() {
             return {
                 hash: tx.hash,
                 status: txStatus.value,
-                url: getTxUrl(tx.hash),
+                url: getTxUrl(tx.hash, SWAP_CHAIN_ID),
             };
         } catch (err) {
             txStatus.value = 'failed';
-            if (err.code === 4001 || err.code === 'ACTION_REJECTED') {
-                error.value = 'Transaction rejected by user.';
-            } else if (err.message?.includes('insufficient')) {
-                error.value = 'Insufficient balance for this swap.';
-            } else {
-                error.value = err.reason || err.message || 'Swap failed. Please try again.';
-            }
+            error.value = friendlyError(err);
             throw err;
         } finally {
             isExecuting.value = false;
@@ -324,14 +362,15 @@ export function useSwap() {
     }
 
     /**
-     * Get token balance for the connected wallet.
+     * Get a token balance for the connected wallet (always read from BSC).
+     * Returns the full-precision formatted string.
      */
     async function getBalance(tokenAddress) {
         const walletStore = useWalletStore();
-        if (!walletStore.provider || !walletStore.address) return '0';
+        if (!walletStore.address) return '0';
 
         try {
-            return await getTokenBalance(tokenAddress, walletStore.address, walletStore.provider);
+            return await getTokenBalance(tokenAddress, walletStore.address, getBscReadProvider());
         } catch {
             return '0';
         }

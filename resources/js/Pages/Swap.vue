@@ -39,6 +39,7 @@ const showSlippageSettings = ref(false);
 const showTokenSelector = ref(false);
 const tokenSelectorMode = ref('from');
 const isLoading = ref(false);
+const isSwapInFlight = ref(false); // guards the whole swap incl. the chain-switch await
 const showWalletModal = ref(false);
 
 // Quote data
@@ -115,7 +116,7 @@ watch(() => walletStore.isConnected, async (connected) => {
     if (connected) {
         await refreshBalances();
     } else {
-        popularTokens.value.forEach(t => t.balance = '0.00');
+        popularTokens.value.forEach(t => { t.balance = '0.00'; t.balanceRaw = '0'; });
     }
 });
 
@@ -158,14 +159,16 @@ const selectToken = (token) => {
 
 const slippageOptions = [0.1, 0.5, 1.0, 3.0];
 
-// Fetch real token balances
+// Fetch real token balances (always read from BSC — swaps are BSC-only)
 async function refreshBalances() {
     if (!walletStore.isConnected) return;
     for (const token of popularTokens.value) {
         try {
             const balance = await swap.getBalance(token.address);
-            token.balance = parseFloat(balance).toFixed(4);
+            token.balanceRaw = balance;                     // full precision — used by MAX
+            token.balance = parseFloat(balance).toFixed(4); // display
         } catch {
+            token.balanceRaw = '0';
             token.balance = '0.00';
         }
     }
@@ -183,6 +186,9 @@ async function handleApprove() {
 
 // Execute the swap
 async function executeSwap() {
+    // Re-entrancy / double-tap guard — covers the chain-switch await window too,
+    // so a second tap during switchChain() can't fire a second transaction.
+    if (isSwapInFlight.value || swap.isExecuting.value || isLoading.value || swap.isLoadingQuote.value) return;
     if (!fromAmount.value || !toAmount.value || !currentQuote.value) return;
 
     if (!isWalletConnected.value) {
@@ -190,16 +196,14 @@ async function executeSwap() {
         return;
     }
 
-    if (!isOnBSC.value) {
-        try {
-            await walletStore.switchChain();
-        } catch {
-            return;
-        }
-    }
-
+    isSwapInFlight.value = true;
     try {
-        const result = await swap.executeSwap(
+        // Swaps run on BSC — switch first (throws if the user rejects).
+        if (!isOnBSC.value) {
+            await walletStore.switchChain();
+        }
+
+        await swap.executeSwap(
             fromToken.value,
             toToken.value,
             parseFloat(fromAmount.value),
@@ -207,28 +211,35 @@ async function executeSwap() {
             slippage.value,
         );
 
-        // Refresh balances after swap
+        // Refresh balances after swap, then reset the form
         await refreshBalances();
-
-        // Reset form
         fromAmount.value = '';
         toAmount.value = '';
         currentQuote.value = null;
     } catch (err) {
-        // Error is already set in swap composable
+        // Error is already set in swap composable (or the user rejected the switch)
+    } finally {
+        isSwapInFlight.value = false;
     }
 }
 
 // Set max amount from balance
 function setMaxAmount() {
-    const bal = parseFloat(fromToken.value.balance);
-    if (bal > 0) {
-        // Leave a little BNB for gas if swapping native token
-        if (fromToken.value.symbol === 'BNB') {
-            fromAmount.value = Math.max(bal - 0.005, 0).toString();
-        } else {
-            fromAmount.value = bal.toString();
-        }
+    const raw = String(fromToken.value.balanceRaw ?? fromToken.value.balance ?? '0');
+    if (parseFloat(raw) <= 0) return;
+
+    // TRUNCATE (never round) the full-precision balance string so MAX is always
+    // <= the real on-chain balance — avoids both TRANSFER_FROM_FAILED and the
+    // fee-leg reverting by a rounding wei, even for balances ending in many 9s.
+    const dec = Math.min(8, fromToken.value.decimals || 18);
+    const [intPart, fracPart = ''] = raw.split('.');
+    const truncated = dec > 0 && fracPart ? `${intPart}.${fracPart.slice(0, dec)}` : intPart;
+
+    if (fromToken.value.symbol === 'BNB') {
+        // Reserve a little BNB for gas (covers both the swap and the fee transfer).
+        fromAmount.value = Math.max(parseFloat(truncated) - 0.005, 0).toString();
+    } else {
+        fromAmount.value = truncated;
     }
 }
 
@@ -463,11 +474,11 @@ onMounted(async () => {
 
                         <button
                             v-else
-                            :disabled="!fromAmount || !toAmount || isLoading || swap.isExecuting.value || swap.isLoadingQuote.value"
+                            :disabled="!fromAmount || !toAmount || isLoading || isSwapInFlight || swap.isExecuting.value || swap.isLoadingQuote.value"
                             class="w-full mt-4 btn-primary py-3.5 text-base disabled:opacity-40"
                             @click="executeSwap"
                         >
-                            {{ swap.isExecuting.value ? 'Swapping...' : (isLoading || swap.isLoadingQuote.value) ? 'Fetching Quote...' : 'Swap' }}
+                            {{ (swap.isExecuting.value || isSwapInFlight) ? 'Swapping...' : (isLoading || swap.isLoadingQuote.value) ? 'Fetching Quote...' : 'Swap' }}
                         </button>
 
                         <!-- Powered by -->

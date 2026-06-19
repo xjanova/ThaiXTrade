@@ -4,7 +4,7 @@
  * Developed by Xman Studio
  */
 
-import { Contract, formatUnits, parseUnits, MaxUint256 } from 'ethers';
+import { Contract, formatUnits, parseUnits, MaxUint256, JsonRpcProvider } from 'ethers';
 import axios from 'axios';
 
 // =============================================================================
@@ -377,6 +377,24 @@ export async function approveToken(tokenAddress, spenderAddress, signer) {
     const tx = await contract.approve(spenderAddress, MaxUint256);
     await tx.wait();
     return tx;
+}
+
+/**
+ * Read-only BSC provider for swap quotes and balance reads.
+ *
+ * Swaps run ONLY on BSC/PancakeSwap, so prices and token balances must be read
+ * from a BSC node REGARDLESS of which chain the user's wallet is currently on
+ * (the wallet auto-switches to TPIX Chain 4289 on connect, where the BSC router
+ * and token contracts don't exist). Using a dedicated BSC RPC means quotes and
+ * balances are always real — never a fabricated/zero fallback.
+ */
+let _bscReadProvider = null;
+export function getBscReadProvider() {
+    if (!_bscReadProvider) {
+        // staticNetwork avoids per-call eth_chainId round-trips for a fixed chain.
+        _bscReadProvider = new JsonRpcProvider(BSC_CHAIN_CONFIG.rpcUrls[0], 56, { staticNetwork: true });
+    }
+    return _bscReadProvider;
 }
 
 /**
