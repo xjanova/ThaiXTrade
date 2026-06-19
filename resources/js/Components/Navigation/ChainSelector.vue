@@ -86,9 +86,18 @@ const statusClass = computed(() => {
     return 'bg-yellow-500 animate-pulse';
 });
 
-// Only show production-enabled chains
+// TPIX Chain (4289) เป็นเชนหลักของเรา — ปักหมุดไว้บนสุดเสมอ
+const TPIX_CHAIN_ID = 4289;
+
+// Only show production-enabled chains, with TPIX Chain pinned to the top.
 const availableChains = computed(() => {
-    return supportedChains.value.filter(c => c.enabled !== false);
+    const chains = supportedChains.value.filter(c => c.enabled !== false);
+    // Array.sort is stable → all non-TPIX chains keep their backend order.
+    return [...chains].sort((a, b) => {
+        if (a.chainId === TPIX_CHAIN_ID) return -1;
+        if (b.chainId === TPIX_CHAIN_ID) return 1;
+        return 0;
+    });
 });
 
 async function fetchChains() {

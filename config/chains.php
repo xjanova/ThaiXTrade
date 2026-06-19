@@ -23,6 +23,29 @@ return [
     */
 
     'chains' => [
+        // TPIX Chain Mainnet — เชนหลักของเรา ปักหมุดไว้บนสุดเสมอ (Polygon Edge, IBFT PoA, gasless)
+        4289 => [
+            'name' => 'TPIX Chain',
+            'shortName' => 'TPIX',
+            'chainId' => 4289,
+            'networkId' => 4289,
+            'rpc' => [
+                env('WEB3_RPC_TPIX', 'https://rpc.tpix.online'),
+            ],
+            'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpix.online'),
+            'nativeCurrency' => [
+                'name' => 'TPIX',
+                'symbol' => 'TPIX',
+                'decimals' => 18,
+            ],
+            'icon' => '/tpixlogo.webp',
+            'color' => '#06B6D4',
+            'enabled' => true,
+            'gasless' => true,
+            'blockTime' => 2,
+            'consensus' => 'IBFT',
+        ],
+
         // Ethereum Mainnet
         1 => [
             'name' => 'Ethereum',
@@ -218,29 +241,6 @@ return [
             'icon' => 'https://assets.trustwalletapp.com/blockchains/zksync/info/logo.png',
             'color' => '#8C8DFC',
             'enabled' => true,
-        ],
-
-        // TPIX Chain Mainnet — Polygon Edge, IBFT PoA, gasless
-        4289 => [
-            'name' => 'TPIX Chain',
-            'shortName' => 'TPIX',
-            'chainId' => 4289,
-            'networkId' => 4289,
-            'rpc' => [
-                env('WEB3_RPC_TPIX', 'https://rpc.tpix.online'),
-            ],
-            'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpix.online'),
-            'nativeCurrency' => [
-                'name' => 'TPIX',
-                'symbol' => 'TPIX',
-                'decimals' => 18,
-            ],
-            'icon' => '/tpixlogo.webp',
-            'color' => '#06B6D4',
-            'enabled' => true,
-            'gasless' => true,
-            'blockTime' => 2,
-            'consensus' => 'IBFT',
         ],
     ],
 
