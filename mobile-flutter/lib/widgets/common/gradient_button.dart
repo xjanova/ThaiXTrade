@@ -1,13 +1,20 @@
 /// TPIX TRADE — Gradient Button
-/// ปุ่มไล่เฉดสี brand (cyan → purple) + Buy/Sell variants
+/// Gilded CTAs. Variants:
+///   • gold / brand — champagne-gold gradient, dark text, gold glow (default CTA)
+///   • buy          — green gradient, white text (Buy / Execute)
+///   • sell         — red gradient, white text
+///   • outline      — gold hairline, gold text
+/// Gold variants follow the active metal tone (AccentProvider).
 ///
 /// Developed by Xman Studio
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/gradients.dart';
+import '../../providers/accent_provider.dart';
 
-enum ButtonVariant { brand, buy, sell, outline }
+enum ButtonVariant { brand, gold, buy, sell, outline }
 
 class GradientButton extends StatelessWidget {
   final String text;
@@ -23,18 +30,25 @@ class GradientButton extends StatelessWidget {
     super.key,
     required this.text,
     this.onPressed,
-    this.variant = ButtonVariant.brand,
+    this.variant = ButtonVariant.gold,
     this.isLoading = false,
     this.icon,
-    this.height = 48,
-    this.borderRadius = 16,
+    this.height = 50,
+    this.borderRadius = 14,
     this.fullWidth = true,
   });
 
+  bool get _isGold =>
+      variant == ButtonVariant.gold || variant == ButtonVariant.brand;
+
   @override
   Widget build(BuildContext context) {
-    final gradient = _gradient;
+    final accent = context.watch<AccentProvider>();
     final isDisabled = onPressed == null || isLoading;
+
+    final gradient = _gradient(accent);
+    final textColor = _textColor(accent);
+    final glow = _glowColor(accent);
 
     Widget button = Container(
       height: height,
@@ -44,15 +58,16 @@ class GradientButton extends StatelessWidget {
         color: isDisabled ? AppColors.bgTertiary : null,
         borderRadius: BorderRadius.circular(borderRadius),
         border: variant == ButtonVariant.outline
-            ? Border.all(color: AppColors.brandCyan, width: 1.5)
+            ? Border.all(color: accent.g2, width: 1.6)
             : null,
         boxShadow: isDisabled
             ? null
             : [
                 BoxShadow(
-                  color: _glowColor.withValues(alpha: 0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+                  color: glow.withValues(alpha: _isGold ? 0.45 : 0.32),
+                  blurRadius: _isGold ? 22 : 14,
+                  offset: const Offset(0, 6),
+                  spreadRadius: _isGold ? -6 : 0,
                 ),
               ],
       ),
@@ -63,12 +78,12 @@ class GradientButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(borderRadius),
           child: Center(
             child: isLoading
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white,
+                      color: textColor,
                     ),
                   )
                 : Row(
@@ -77,13 +92,13 @@ class GradientButton extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       if (icon != null) ...[
-                        Icon(icon, color: _textColor, size: 18),
+                        Icon(icon, color: textColor, size: 18),
                         const SizedBox(width: 8),
                       ],
                       Text(
                         text,
                         style: TextStyle(
-                          color: _textColor,
+                          color: textColor,
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.3,
@@ -107,7 +122,7 @@ class GradientButton extends StatelessWidget {
     return button;
   }
 
-  LinearGradient? get _gradient {
+  LinearGradient? _gradient(AccentProvider accent) {
     switch (variant) {
       case ButtonVariant.buy:
         return AppGradients.buy;
@@ -116,31 +131,34 @@ class GradientButton extends StatelessWidget {
       case ButtonVariant.outline:
         return null;
       case ButtonVariant.brand:
-        return AppGradients.brand;
+      case ButtonVariant.gold:
+        return accent.goldGradient;
     }
   }
 
-  Color get _textColor {
+  Color _textColor(AccentProvider accent) {
     switch (variant) {
       case ButtonVariant.outline:
-        return AppColors.brandCyan;
+        return accent.g2;
       case ButtonVariant.brand:
+      case ButtonVariant.gold:
+        return AppColors.goldTextOn; // dark text on gold
       case ButtonVariant.buy:
       case ButtonVariant.sell:
-        return Colors.white;
+        return AppColors.white;
     }
   }
 
-  Color get _glowColor {
+  Color _glowColor(AccentProvider accent) {
     switch (variant) {
       case ButtonVariant.buy:
         return AppColors.tradingGreen;
       case ButtonVariant.sell:
         return AppColors.tradingRed;
       case ButtonVariant.outline:
-        return AppColors.brandCyan;
       case ButtonVariant.brand:
-        return AppColors.brandCyan;
+      case ButtonVariant.gold:
+        return accent.goldGlow;
     }
   }
 }

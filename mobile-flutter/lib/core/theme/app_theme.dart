@@ -26,7 +26,12 @@ class AppTheme {
   static const double radiusMd = 12;
   static const double radiusLg = 16;
   static const double radiusXl = 20;
+  static const double radius2xl = 24;
+  static const double radiusHero = 22; // hero / metallic cards
   static const double radiusFull = 999;
+
+  // ── Signature gilded edge ──────────────────────
+  static const double goldBorderWidth = 1.6;
 
   /// Dark theme — glass morphism style
   static ThemeData get darkTheme {
@@ -91,14 +96,14 @@ class AppTheme {
       brightness: Brightness.dark,
       useMaterial3: true,
       scaffoldBackgroundColor: AppColors.bgPrimary,
-      primaryColor: AppColors.brandCyan,
+      primaryColor: AppColors.gold2,
       colorScheme: const ColorScheme.dark(
-        primary: AppColors.brandCyan,
-        secondary: AppColors.brandPurple,
+        primary: AppColors.gold2,
+        secondary: AppColors.gold3,
         surface: AppColors.bgSecondary,
         error: AppColors.tradingRed,
-        onPrimary: AppColors.black,
-        onSecondary: AppColors.white,
+        onPrimary: AppColors.goldTextOn,
+        onSecondary: AppColors.goldTextOn,
         onSurface: AppColors.textPrimary,
         onError: AppColors.white,
       ),
@@ -152,8 +157,8 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.brandCyan,
-          foregroundColor: AppColors.black,
+          backgroundColor: AppColors.gold2,
+          foregroundColor: AppColors.goldTextOn,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(

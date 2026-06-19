@@ -1,7 +1,10 @@
-/// TPIX TRADE — Trade Screen
-/// TradingView Chart + Order Book + Trade Form (Buy/Sell) + Open Orders
+/// TPIX TRADE — Trade Screen (Luxury Dark / Gilded Metal)
+/// Pair header · gilded chart card with gold timeframe pills · depth-bar order
+/// book · Buy/Sell order form. Sits on the gunmetal+gold backdrop with ambient
+/// fireflies. All trading data is real (market + config + wallet providers).
 ///
 /// Developed by Xman Studio
+library;
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -11,17 +14,19 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
+import '../../providers/accent_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/market_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../services/api_service.dart';
 import '../../utils/crypto_logos.dart';
+import '../../widgets/common/app_background.dart';
+import '../../widgets/common/coin_chip.dart';
 import '../../widgets/common/coin_logo.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
 import '../../widgets/common/price_text.dart';
 import '../../widgets/trading/trading_chart.dart';
-import '../../widgets/trading/timeframe_selector.dart';
 import '../../widgets/trading/chart_type_toggle.dart';
 import '../../models/api_models.dart';
 
@@ -43,6 +48,10 @@ class _TradeScreenState extends State<TradeScreen>
   final _amountController = TextEditingController();
   final _triggerPriceController = TextEditingController();
   final _chartKey = GlobalKey<TradingChartState>();
+
+  // Gold timeframe pills surfaced on the chart card.
+  static const _pillTimeframes = ['15m', '1h', '4h', '1d', '1w'];
+  static const _pillLabels = ['15m', '1H', '4H', '1D', '1W'];
 
   // index: 0=limit, 1=market, 2=stop-limit
   String get _orderType =>
@@ -121,57 +130,25 @@ class _TradeScreenState extends State<TradeScreen>
     );
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppGradients.darkBg),
+      backgroundColor: Colors.transparent,
+      body: AppBackground(
         child: SafeArea(
           bottom: false,
           child: Column(
             children: [
-              _buildPairHeader(market, ticker),
+              _buildPairHeader(market, ticker, locale),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 100),
+                  padding: const EdgeInsets.only(bottom: 110),
                   child: Column(
                     children: [
-                      // Timeframe + chart type row
+                      // Gilded chart card — gold timeframe pills + chart widget
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: TimeframeSelector(
-                                selected: _timeframe,
-                                onChanged: (tf) {
-                                  setState(() => _timeframe = tf);
-                                  _chartKey.currentState?.changeTimeframe(tf);
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            ChartTypeToggle(
-                              selected: _chartType,
-                              onChanged: (type) {
-                                setState(() => _chartType = type);
-                                _chartKey.currentState?.setChartType(type);
-                              },
-                            ),
-                          ],
-                        ),
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                        child: _buildChartCard(market, locale, isTpix),
                       ),
 
-                      // TradingView Chart (WebView)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: TradingChart(
-                          key: _chartKey,
-                          symbol: market.selectedPair,
-                          interval: _timeframe,
-                          isTpix: isTpix,
-                          height: 300,
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
 
                       // Order book
                       Padding(
@@ -204,57 +181,161 @@ class _TradeScreenState extends State<TradeScreen>
     );
   }
 
-  // ── Pair header with CoinLogo ──
+  // ── Pair header ──
 
-  Widget _buildPairHeader(MarketProvider market, Ticker? ticker) {
+  Widget _buildPairHeader(
+      MarketProvider market, Ticker? ticker, LocaleProvider locale) {
+    final isFav =
+        ticker != null && market.favorites.contains(ticker.symbol);
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 6),
       child: Row(
         children: [
           GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => _showPairPicker(market),
             child: Row(
               children: [
-                if (ticker != null)
-                  CoinLogo(
-                    symbol: ticker.baseAsset,
-                    size: 24,
-                    borderRadius: 8,
-                    logoUrl: context
-                        .read<ConfigProvider>()
-                        .pairBySymbol(ticker.symbol)
-                        ?.baseLogo,
-                  ),
-                if (ticker != null) const SizedBox(width: 8),
-                Text(
-                  ticker?.displaySymbol ?? market.selectedPair,
-                  style: GoogleFonts.inter(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
+                CoinChip(
+                  symbol: ticker?.baseAsset ??
+                      CryptoLogos.baseSymbol(market.selectedPair),
+                  size: 40,
+                  logoUrl: ticker == null
+                      ? null
+                      : context
+                          .read<ConfigProvider>()
+                          .pairBySymbol(ticker.symbol)
+                          ?.baseLogo,
                 ),
-                const SizedBox(width: 4),
-                const Icon(Icons.keyboard_arrow_down_rounded,
-                    color: AppColors.textTertiary, size: 20),
+                const SizedBox(width: 11),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          ticker?.displaySymbol ?? market.selectedPair,
+                          style: GoogleFonts.inter(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.keyboard_arrow_down_rounded,
+                            color: AppColors.textTertiary, size: 20),
+                      ],
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      'TPIX Chain · 4289',
+                      style: GoogleFonts.inter(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textTertiary,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          // Favorite star (real — MarketProvider.toggleFavorite)
+          if (ticker != null)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => market.toggleFavorite(ticker.symbol),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(
+                  isFav ? Icons.star_rounded : Icons.star_border_rounded,
+                  size: 22,
+                  color: isFav
+                      ? context.watch<AccentProvider>().g2
+                      : AppColors.textTertiary,
+                ),
+              ),
+            ),
           const Spacer(),
-          if (ticker != null) ...[
+          if (ticker != null)
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 PriceText(
                   price: ticker.lastPrice,
                   change: ticker.priceChangePercent,
-                  fontSize: 16,
+                  fontSize: 17,
                   fontWeight: FontWeight.w700,
                 ),
+                const SizedBox(height: 3),
                 ChangeBadge(changePercent: ticker.priceChangePercent),
               ],
             ),
-          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Chart card (gilded hero) ──
+
+  Widget _buildChartCard(
+      MarketProvider market, LocaleProvider locale, bool isTpix) {
+    return GlassCard(
+      variant: GlassVariant.hero,
+      borderRadius: AppTheme.radiusHero,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+      child: Column(
+        children: [
+          // Timeframe pills + chart-type toggle row
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 30,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.zero,
+                    itemCount: _pillTimeframes.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 6),
+                    itemBuilder: (_, i) => _TimeframePill(
+                      label: _pillLabels[i],
+                      active: _timeframe == _pillTimeframes[i],
+                      onTap: () {
+                        if (_timeframe == _pillTimeframes[i]) return;
+                        setState(() => _timeframe = _pillTimeframes[i]);
+                        _chartKey.currentState
+                            ?.changeTimeframe(_pillTimeframes[i]);
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ChartTypeToggle(
+                selected: _chartType,
+                onChanged: (type) {
+                  setState(() => _chartType = type);
+                  _chartKey.currentState?.setChartType(type);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // TradingView Chart (WebView) — unchanged logic
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+            child: TradingChart(
+              key: _chartKey,
+              symbol: market.selectedPair,
+              interval: _timeframe,
+              isTpix: isTpix,
+              height: 300,
+            ),
+          ),
         ],
       ),
     );
@@ -267,43 +348,46 @@ class _TradeScreenState extends State<TradeScreen>
 
     return GlassCard(
       variant: GlassVariant.standard,
-      borderRadius: 14,
+      borderRadius: AppTheme.radiusLg,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            locale.t('trade.orderbook'),
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+          Row(
+            children: [
+              Icon(Icons.menu_rounded, size: 15, color: AppColors.gold2),
+              const SizedBox(width: 7),
+              Text(
+                locale.t('trade.orderbook'),
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
           // Header
           Row(
             children: [
               Expanded(
-                child: Text(locale.t('trade.price'),
-                    style: _obHeaderStyle),
+                child: Text(locale.t('trade.price'), style: _obHeaderStyle),
               ),
               Expanded(
                 child: Text(locale.t('trade.amount'),
-                    style: _obHeaderStyle,
-                    textAlign: TextAlign.right),
+                    style: _obHeaderStyle, textAlign: TextAlign.right),
               ),
               Expanded(
                 child: Text(locale.t('trade.total'),
-                    style: _obHeaderStyle,
-                    textAlign: TextAlign.right),
+                    style: _obHeaderStyle, textAlign: TextAlign.right),
               ),
             ],
           ),
           const SizedBox(height: 6),
 
-          // Asks (sell) — top 5
+          // Asks (sell) — top 5, depth bars grow from the right
           if (ob != null)
             ...ob.asks.take(5).toList().reversed.map(
                   (entry) => _OrderBookRow(
@@ -313,25 +397,46 @@ class _TradeScreenState extends State<TradeScreen>
                   ),
                 ),
 
-          // Spread
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (ob != null && ob.asks.isNotEmpty && ob.bids.isNotEmpty)
+          // Spread — gold line in the middle
+          if (ob != null && ob.asks.isNotEmpty && ob.bids.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+              decoration: BoxDecoration(
+                color: AppColors.goldTint,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppColors.goldBorder,
+                  width: 0.8,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
                   Text(
-                    '${locale.t('common.spread')}: ${(ob.asks.first.price - ob.bids.first.price).toStringAsFixed(2)}',
-                    style: AppTheme.mono(
+                    locale.t('common.spread'),
+                    style: GoogleFonts.inter(
                       fontSize: 10,
-                      color: AppColors.textTertiary,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.gold2,
+                      letterSpacing: 0.4,
                     ),
                   ),
-              ],
+                  const SizedBox(width: 8),
+                  Text(
+                    (ob.asks.first.price - ob.bids.first.price)
+                        .toStringAsFixed(2),
+                    style: AppTheme.mono(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.gold2,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          // Bids (buy) — top 5
+          // Bids (buy) — top 5, depth bars grow from the left
           if (ob != null)
             ...ob.bids.take(5).map(
                   (entry) => _OrderBookRow(
@@ -364,113 +469,129 @@ class _TradeScreenState extends State<TradeScreen>
 
   TextStyle get _obHeaderStyle => GoogleFonts.inter(
         fontSize: 10,
-        fontWeight: FontWeight.w500,
+        fontWeight: FontWeight.w600,
         color: AppColors.textTertiary,
+        letterSpacing: 0.3,
       );
 
   // ── Trade form ──
 
   Widget _buildTradeForm(
       LocaleProvider locale, WalletProvider wallet, MarketProvider market) {
+    final ticker = market.selectedTicker;
+    final baseAsset = ticker?.baseAsset ?? 'BTC';
+    final quoteAsset = ticker?.quoteAsset ?? 'USDT';
+
+    // Available balance — real, from wallet portfolio (off-chain trade balance).
+    final availAsset = _isBuy ? quoteAsset : baseAsset;
+    final availBalance =
+        wallet.isConnected ? _balanceOf(wallet, availAsset) : 0.0;
+
     return GlassCard(
       variant: GlassVariant.elevated,
-      borderRadius: 16,
+      borderRadius: AppTheme.radiusXl,
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Buy / Sell toggle
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _isBuy = true),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      gradient: _isBuy ? AppGradients.buy : null,
-                      color: _isBuy ? null : AppColors.bgTertiary,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Center(
-                      child: Text(
-                        locale.t('trade.buy'),
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color:
-                              _isBuy ? Colors.white : AppColors.textTertiary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _isBuy = false),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      gradient: !_isBuy ? AppGradients.sell : null,
-                      color: !_isBuy ? null : AppColors.bgTertiary,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Center(
-                      child: Text(
-                        locale.t('trade.sell'),
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color:
-                              !_isBuy ? Colors.white : AppColors.textTertiary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 14),
-
-          // Order type tabs (Limit / Market)
+          // Segmented Buy / Sell
           Container(
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: AppColors.bgTertiary,
-              borderRadius: BorderRadius.circular(8),
+              color: AppColors.bgInputStrong,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.bgCardBorder),
             ),
-            child: TabBar(
-              controller: _orderTypeTab,
-              indicator: BoxDecoration(
-                color: AppColors.bgSecondary,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppColors.bgCardBorder),
-              ),
-              indicatorSize: TabBarIndicatorSize.tab,
-              indicatorPadding: const EdgeInsets.all(2),
-              labelColor: AppColors.textPrimary,
-              unselectedLabelColor: AppColors.textTertiary,
-              labelStyle: GoogleFonts.inter(
-                  fontSize: 12, fontWeight: FontWeight.w600),
-              dividerColor: Colors.transparent,
-              tabs: [
-                Tab(text: locale.t('trade.limit'), height: 32),
-                Tab(text: locale.t('trade.market'), height: 32),
-                Tab(text: locale.t('trade.stop_limit'), height: 32),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _SideTab(
+                    label: locale.t('trade.buy'),
+                    active: _isBuy,
+                    isBuy: true,
+                    onTap: () => setState(() => _isBuy = true),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: _SideTab(
+                    label: locale.t('trade.sell'),
+                    active: !_isBuy,
+                    isBuy: false,
+                    onTap: () => setState(() => _isBuy = false),
+                  ),
+                ),
               ],
             ),
           ),
 
           const SizedBox(height: 14),
 
+          // Order type tabs (Limit / Market / Stop-limit)
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.bgInputStrong,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.bgCardBorder),
+            ),
+            child: TabBar(
+              controller: _orderTypeTab,
+              indicator: BoxDecoration(
+                color: AppColors.bgTertiary,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.goldBorder, width: 1),
+              ),
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicatorPadding: const EdgeInsets.all(3),
+              labelColor: AppColors.gold1,
+              unselectedLabelColor: AppColors.textTertiary,
+              labelStyle:
+                  GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+              unselectedLabelStyle:
+                  GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500),
+              dividerColor: Colors.transparent,
+              tabs: [
+                Tab(text: locale.t('trade.limit'), height: 34),
+                Tab(text: locale.t('trade.market'), height: 34),
+                Tab(text: locale.t('trade.stop_limit'), height: 34),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          // Available balance row
+          Row(
+            children: [
+              Icon(Icons.account_balance_wallet_rounded,
+                  size: 13, color: AppColors.textTertiary),
+              const SizedBox(width: 6),
+              Text(
+                locale.isThai ? 'ยอดที่ใช้ได้' : 'Available',
+                style: GoogleFonts.inter(
+                    fontSize: 11.5, color: AppColors.textTertiary),
+              ),
+              const Spacer(),
+              Text(
+                wallet.isConnected
+                    ? '${_fmtAmount(availBalance)} $availAsset'
+                    : '—',
+                style: AppTheme.mono(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
           // Trigger Price input (stop-limit only) — อธิบาย semantics
           if (_isStopLimit) ...[
             _TradeInput(
               label: locale.t('trade.trigger_price'),
               controller: _triggerPriceController,
-              suffix: market.selectedTicker?.quoteAsset ?? 'USDT',
+              suffix: quoteAsset,
             ),
             const SizedBox(height: 4),
             Padding(
@@ -498,7 +619,7 @@ class _TradeScreenState extends State<TradeScreen>
             _TradeInput(
               label: locale.t('trade.price'),
               controller: _priceController,
-              suffix: market.selectedTicker?.quoteAsset ?? 'USDT',
+              suffix: quoteAsset,
             ),
             const SizedBox(height: 10),
           ],
@@ -507,36 +628,26 @@ class _TradeScreenState extends State<TradeScreen>
           _TradeInput(
             label: locale.t('trade.amount'),
             controller: _amountController,
-            suffix: market.selectedTicker?.baseAsset ?? 'BTC',
+            suffix: baseAsset,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
-          // Amount shortcuts
+          // Amount quick chips: 25/50/75/100% of available balance
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: ['25%', '50%', '75%', '100%'].map((pct) {
-              return GestureDetector(
-                onTap: () {
-                  final factor =
-                      double.parse(pct.replaceAll('%', '')) / 100;
-                  final current =
-                      double.tryParse(_amountController.text) ?? 0;
-                  if (current > 0) {
-                    _amountController.text =
-                        (current * factor).toStringAsFixed(4);
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.bgTertiary,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppColors.bgCardBorder),
+              final isLast = pct == '100%';
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: isLast ? 0 : 8),
+                  child: _QuickChip(
+                    label: pct,
+                    onTap: () => _applyQuickPercent(
+                      pct,
+                      wallet,
+                      market,
+                      availBalance,
+                    ),
                   ),
-                  child: Text(pct,
-                      style: GoogleFonts.inter(
-                          fontSize: 11, color: AppColors.textSecondary)),
                 ),
               );
             }).toList(),
@@ -547,13 +658,13 @@ class _TradeScreenState extends State<TradeScreen>
           // Fee summary (จาก backend /api/v1/fees + pair override)
           _buildFeeSummary(locale, market),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
 
-          // Submit button
+          // Submit CTA — green for Buy, red for Sell
           GradientButton(
             text: _isBuy
-                ? '${locale.t('trade.buy')} ${market.selectedTicker?.baseAsset ?? ''}'
-                : '${locale.t('trade.sell')} ${market.selectedTicker?.baseAsset ?? ''}',
+                ? '${locale.t('trade.buy')} $baseAsset'
+                : '${locale.t('trade.sell')} $baseAsset',
             variant: _isBuy ? ButtonVariant.buy : ButtonVariant.sell,
             isLoading: _isSubmitting,
             onPressed: wallet.isConnected && !_isSubmitting
@@ -572,22 +683,21 @@ class _TradeScreenState extends State<TradeScreen>
 
           // Linked-wallet hint — แจ้ง user ว่า submit จะส่ง sign request ไป
           // TPIX Wallet (กัน user งงว่าทำไมแอพสลับไป-มา)
-          if (wallet.isConnected && wallet.isLinkedWallet && !wallet.isVerified) ...[
+          if (wallet.isConnected &&
+              wallet.isLinkedWallet &&
+              !wallet.isVerified) ...[
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: AppColors.brandCyan.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: AppColors.brandCyan.withValues(alpha: 0.25),
-                  width: 0.5,
-                ),
+                color: AppColors.goldTint,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.goldBorder, width: 0.8),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.info_outline_rounded,
-                      size: 14, color: AppColors.brandCyan),
+                  Icon(Icons.info_outline_rounded,
+                      size: 14, color: AppColors.gold2),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -607,6 +717,58 @@ class _TradeScreenState extends State<TradeScreen>
         ],
       ),
     );
+  }
+
+  /// Quick-percent fill: prefer % of available balance; if balance unknown
+  /// (not connected / zero), fall back to % of the current amount entry.
+  void _applyQuickPercent(
+    String pct,
+    WalletProvider wallet,
+    MarketProvider market,
+    double availBalance,
+  ) {
+    final factor = double.parse(pct.replaceAll('%', '')) / 100;
+
+    if (wallet.isConnected && availBalance > 0) {
+      // For Buy, available is in quote → convert to base amount via price.
+      if (_isBuy) {
+        final px = _isMarket
+            ? (market.selectedTicker?.lastPrice ?? 0)
+            : (double.tryParse(_priceController.text) ?? 0);
+        if (px > 0) {
+          _amountController.text =
+              (availBalance * factor / px).toStringAsFixed(4);
+          return;
+        }
+        // No usable price yet — leave amount untouched.
+        return;
+      }
+      // Sell → available already in base asset.
+      _amountController.text = (availBalance * factor).toStringAsFixed(4);
+      return;
+    }
+
+    // Fallback: scale whatever the user already typed.
+    final current = double.tryParse(_amountController.text) ?? 0;
+    if (current > 0) {
+      _amountController.text = (current * factor).toStringAsFixed(4);
+    }
+  }
+
+  /// Look up a wallet's available balance for an asset symbol (case-insensitive).
+  /// Returns 0 when the asset isn't held — no fabricated figures.
+  double _balanceOf(WalletProvider wallet, String symbol) {
+    final up = symbol.toUpperCase();
+    for (final b in wallet.balances) {
+      if (b.symbol.toUpperCase() == up) return b.balance;
+    }
+    return 0.0;
+  }
+
+  String _fmtAmount(double v) {
+    if (v >= 1000) return v.toStringAsFixed(2);
+    if (v >= 1) return v.toStringAsFixed(4);
+    return v.toStringAsFixed(6);
   }
 
   // ── Fee Summary ──
@@ -644,11 +806,11 @@ class _TradeScreenState extends State<TradeScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.bgTertiary,
-        borderRadius: BorderRadius.circular(10),
+        color: AppColors.bgInputStrong,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: warning != null
-              ? AppColors.tradingRed.withValues(alpha: 0.4)
+              ? AppColors.tradingRed
               : AppColors.bgCardBorder,
         ),
       ),
@@ -656,9 +818,8 @@ class _TradeScreenState extends State<TradeScreen>
         children: [
           Row(
             children: [
-              Icon(Icons.info_outline_rounded,
-                  size: 12,
-                  color: AppColors.textTertiary),
+              Icon(Icons.receipt_long_rounded,
+                  size: 13, color: AppColors.textTertiary),
               const SizedBox(width: 6),
               Text(
                 locale.isThai ? 'ค่าธรรมเนียม' : 'Fee',
@@ -672,8 +833,8 @@ class _TradeScreenState extends State<TradeScreen>
                 '${feeRate.toStringAsFixed(2)}%',
                 style: AppTheme.mono(
                   fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.brandCyan,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.gold2,
                 ),
               ),
               if (feeAmount > 0 && amount > 0) ...[
@@ -720,20 +881,27 @@ class _TradeScreenState extends State<TradeScreen>
 
     return GlassCard(
       variant: GlassVariant.standard,
-      borderRadius: 14,
+      borderRadius: AppTheme.radiusLg,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            locale.t('trade.open_orders'),
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+          Row(
+            children: [
+              Icon(Icons.pending_actions_rounded,
+                  size: 15, color: AppColors.gold2),
+              const SizedBox(width: 7),
+              Text(
+                locale.t('trade.open_orders'),
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           ...orders.map((order) => _OpenOrderRow(
                 order: order,
                 onCancel: () => _cancelOrder(order.id, wallet),
@@ -745,8 +913,7 @@ class _TradeScreenState extends State<TradeScreen>
 
   Future<void> _cancelOrder(String orderId, WalletProvider wallet) async {
     if (wallet.address == null) return;
-    final ok =
-        await ApiService().cancelOrder(orderId, wallet.address!);
+    final ok = await ApiService().cancelOrder(orderId, wallet.address!);
     if (!mounted) return;
     if (ok) {
       wallet.loadPortfolio();
@@ -901,7 +1068,137 @@ class _TradeScreenState extends State<TradeScreen>
       ),
     );
   }
+}
 
+// ── Buy / Sell segmented tab ──
+
+class _SideTab extends StatelessWidget {
+  final String label;
+  final bool active;
+  final bool isBuy;
+  final VoidCallback onTap;
+
+  const _SideTab({
+    required this.label,
+    required this.active,
+    required this.isBuy,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accentColor =
+        isBuy ? AppColors.tradingGreen : AppColors.tradingRed;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(
+          gradient:
+              active ? (isBuy ? AppGradients.buy : AppGradients.sell) : null,
+          borderRadius: BorderRadius.circular(11),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: accentColor.withValues(alpha: 0.30),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: active ? AppColors.white : AppColors.textTertiary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Gold timeframe pill ──
+
+class _TimeframePill extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _TimeframePill({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.watch<AccentProvider>();
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: active ? accent.goldGradient : null,
+          color: active ? null : AppColors.bgInputStrong,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: active ? Colors.transparent : AppColors.bgCardBorder,
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 11.5,
+            fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+            color: active ? AppColors.goldTextOn : AppColors.textTertiary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Quick percent chip ──
+
+class _QuickChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _QuickChip({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.bgInputStrong,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.bgCardBorder),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Trade input field ──
@@ -919,13 +1216,14 @@ class _TradeInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = context.watch<AccentProvider>();
     return Container(
       decoration: BoxDecoration(
         color: AppColors.bgInput,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.bgCardBorder),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
           Text(label,
@@ -939,10 +1237,13 @@ class _TradeInput extends StatelessWidget {
                   const TextInputType.numberWithOptions(decimal: true),
               style: AppTheme.mono(fontSize: 14),
               textAlign: TextAlign.right,
+              cursorColor: accent.g2,
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
-                contentPadding: EdgeInsets.symmetric(vertical: 10),
+                hintText: '0.00',
+                hintStyle: TextStyle(color: AppColors.textDisabled),
+                contentPadding: EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
@@ -950,7 +1251,7 @@ class _TradeInput extends StatelessWidget {
           Text(suffix,
               style: GoogleFonts.inter(
                   fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                   color: AppColors.textSecondary)),
         ],
       ),
@@ -976,29 +1277,34 @@ class _OrderBookRow extends StatelessWidget {
     final fillRatio = maxQty > 0 ? entry.quantity / maxQty : 0.0;
     final barColor =
         isBid ? AppColors.tradingGreenBg : AppColors.tradingRedBg;
-    final textColor =
-        isBid ? AppColors.tradingGreen : AppColors.tradingRed;
+    final textColor = isBid ? AppColors.tradingGreen : AppColors.tradingRed;
 
     return Stack(
       children: [
+        // Depth bar — bids fill from the left, asks fill from the right.
         Positioned.fill(
           child: Align(
-            alignment:
-                isBid ? Alignment.centerLeft : Alignment.centerRight,
+            alignment: isBid ? Alignment.centerLeft : Alignment.centerRight,
             child: FractionallySizedBox(
               widthFactor: fillRatio.clamp(0, 1),
-              child: Container(color: barColor),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: barColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
             ),
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
           child: Row(
             children: [
               Expanded(
                 child: Text(
                   entry.price.toStringAsFixed(2),
-                  style: AppTheme.mono(fontSize: 11, color: textColor),
+                  style: AppTheme.mono(
+                      fontSize: 11, fontWeight: FontWeight.w700, color: textColor),
                 ),
               ),
               Expanded(
@@ -1042,7 +1348,7 @@ class _OpenOrderRow extends StatelessWidget {
         children: [
           Container(
             width: 6,
-            height: 28,
+            height: 30,
             decoration: BoxDecoration(
               color: isBuy ? AppColors.tradingGreen : AppColors.tradingRed,
               borderRadius: BorderRadius.circular(3),
@@ -1057,7 +1363,7 @@ class _OpenOrderRow extends StatelessWidget {
                   '${order.side.toUpperCase()} ${order.type}',
                   style: GoogleFonts.inter(
                     fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: isBuy
                         ? AppColors.tradingGreen
                         : AppColors.tradingRed,
@@ -1073,18 +1379,19 @@ class _OpenOrderRow extends StatelessWidget {
           ),
           GestureDetector(
             onTap: onCancel,
+            behavior: HitTestBehavior.opaque,
             child: Container(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: AppColors.tradingRedBg,
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 'Cancel',
                 style: GoogleFonts.inter(
                     fontSize: 10,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: AppColors.tradingRed),
               ),
             ),
@@ -1120,6 +1427,7 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = context.watch<AccentProvider>();
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: BackdropFilter(
@@ -1128,12 +1436,11 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(context).size.height * 0.7,
           ),
-          decoration: const BoxDecoration(
-            color: Color(0xF20A0E1A),
+          decoration: BoxDecoration(
+            color: AppColors.bgElevated,
             borderRadius:
-                BorderRadius.vertical(top: Radius.circular(24)),
-            border:
-                Border(top: BorderSide(color: Color(0x1AFFFFFF))),
+                const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border(top: BorderSide(color: accent.goldBorder, width: 1.2)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1153,11 +1460,12 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                 child: Container(
                   decoration: BoxDecoration(
                     color: AppColors.bgInput,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: AppColors.bgCardBorder),
                   ),
                   child: TextField(
                     onChanged: (v) => setState(() => _search = v),
+                    cursorColor: accent.g2,
                     style: GoogleFonts.inter(
                         fontSize: 14, color: AppColors.textPrimary),
                     decoration: InputDecoration(
@@ -1165,8 +1473,7 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                           .read<LocaleProvider>()
                           .t('common.search_pairs'),
                       hintStyle: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: AppColors.textDisabled),
+                          fontSize: 14, color: AppColors.textDisabled),
                       prefixIcon: const Icon(Icons.search_rounded,
                           color: AppColors.textTertiary, size: 20),
                       border: InputBorder.none,
@@ -1188,8 +1495,7 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                     return ListTile(
                       dense: true,
                       selected: isSelected,
-                      selectedTileColor:
-                          AppColors.brandCyan.withValues(alpha: 0.08),
+                      selectedTileColor: accent.goldTint,
                       leading: CoinLogo(
                         symbol: t.baseAsset,
                         size: 28,
@@ -1204,10 +1510,10 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                         style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: isSelected
-                              ? FontWeight.w600
+                              ? FontWeight.w700
                               : FontWeight.w400,
                           color: isSelected
-                              ? AppColors.brandCyan
+                              ? accent.g1
                               : AppColors.textPrimary,
                         ),
                       ),
@@ -1215,11 +1521,9 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          PriceText(
-                              price: t.lastPrice, fontSize: 13),
+                          PriceText(price: t.lastPrice, fontSize: 13),
                           ChangeBadge(
-                              changePercent:
-                                  t.priceChangePercent,
+                              changePercent: t.priceChangePercent,
                               fontSize: 10),
                         ],
                       ),

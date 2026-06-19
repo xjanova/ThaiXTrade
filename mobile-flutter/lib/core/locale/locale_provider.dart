@@ -41,6 +41,10 @@ class LocaleProvider extends ChangeNotifier {
       'nav.trade': 'เทรด',
       'nav.portfolio': 'พอร์ต',
       'nav.settings': 'ตั้งค่า',
+      'nav.ai': 'AI',
+      'nav.market': 'ตลาด',
+      'nav.swap': 'สลับ',
+      'nav.wallet': 'กระเป๋า',
 
       // Home
       'home.welcome': 'สวัสดี',
@@ -200,6 +204,10 @@ class LocaleProvider extends ChangeNotifier {
       'nav.trade': 'Trade',
       'nav.portfolio': 'Portfolio',
       'nav.settings': 'Settings',
+      'nav.ai': 'AI',
+      'nav.market': 'Market',
+      'nav.swap': 'Swap',
+      'nav.wallet': 'Wallet',
 
       // Home
       'home.welcome': 'Hello',

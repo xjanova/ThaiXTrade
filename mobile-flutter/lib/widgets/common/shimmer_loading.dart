@@ -1,11 +1,25 @@
 /// TPIX TRADE — Shimmer Loading
-/// Skeleton loading animation ตอนกำลังโหลดข้อมูล
+/// Skeleton loading animation ตอนกำลังโหลดข้อมูล.
+/// Honors AccentProvider.reduceMotion — renders a STATIC skeleton (no sweep)
+/// when the user has reduce-motion on.
 ///
 /// Developed by Xman Studio
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../core/theme/app_colors.dart';
+import '../../providers/accent_provider.dart';
+
+/// Wrap [child] in a shimmer sweep unless reduce-motion is enabled.
+Widget _maybeShimmer(BuildContext context, Widget child) {
+  if (context.watch<AccentProvider>().reduceMotion) return child;
+  return Shimmer.fromColors(
+    baseColor: AppColors.bgTertiary,
+    highlightColor: const Color(0xFF2A2E3C),
+    child: child,
+  );
+}
 
 class ShimmerBox extends StatelessWidget {
   final double width;
@@ -21,10 +35,9 @@ class ShimmerBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Shimmer.fromColors(
-      baseColor: AppColors.bgTertiary,
-      highlightColor: const Color(0xFF1E2740),
-      child: Container(
+    return _maybeShimmer(
+      context,
+      Container(
         width: width,
         height: height,
         decoration: BoxDecoration(
@@ -44,10 +57,9 @@ class ShimmerTickerItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Shimmer.fromColors(
-        baseColor: AppColors.bgTertiary,
-        highlightColor: const Color(0xFF1E2740),
-        child: Row(
+      child: _maybeShimmer(
+        context,
+        Row(
           children: [
             // Icon
             Container(

@@ -11,6 +11,7 @@ import 'providers/wallet_provider.dart';
 import 'providers/market_provider.dart';
 import 'providers/update_provider.dart';
 import 'providers/config_provider.dart';
+import 'providers/accent_provider.dart';
 import 'core/locale/locale_provider.dart';
 
 Future<void> main() async {
@@ -22,6 +23,10 @@ Future<void> main() async {
     DeviceOrientation.portraitDown,
   ]);
 
+  // Preload the saved metal tone before the first frame (avoids a tone flash).
+  final accent = AccentProvider();
+  await accent.ready;
+
   runApp(
     MultiProvider(
       providers: [
@@ -30,6 +35,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => MarketProvider()),
         ChangeNotifierProvider(create: (_) => UpdateProvider()),
         ChangeNotifierProvider(create: (_) => ConfigProvider()),
+        ChangeNotifierProvider<AccentProvider>.value(value: accent),
       ],
       child: const TpixTradeApp(),
     ),
