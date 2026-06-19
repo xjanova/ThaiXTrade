@@ -1,18 +1,23 @@
-/// TPIX TRADE — Markets Screen
-/// รายการเหรียญ: ค้นหา, filter, sort, favorites
-///
-/// Developed by Xman Studio
+// TPIX TRADE — Markets Screen (Luxury Dark / Gilded Metal)
+// The coin / market picker: search, All/Spot/Favorites tabs, sortable header,
+// and a list of gilded market rows. Sits on the gunmetal+gold backdrop with
+// ambient fireflies. All figures are real (MarketProvider); the favorites and
+// row-tap behaviour are unchanged.
+//
+// Developed by Xman Studio
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
+import '../../providers/accent_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../providers/market_provider.dart';
-import '../../widgets/common/coin_logo.dart';
-import '../../widgets/common/glass_card.dart';
+import '../../widgets/common/app_background.dart';
+import '../../widgets/common/coin_chip.dart';
 import '../../widgets/common/mini_sparkline.dart';
 import '../../widgets/common/price_text.dart';
 import '../../widgets/common/shimmer_loading.dart';
@@ -47,82 +52,109 @@ class _MarketsScreenState extends State<MarketsScreen>
   Widget build(BuildContext context) {
     final locale = context.watch<LocaleProvider>();
     final market = context.watch<MarketProvider>();
+    final accent = context.watch<AccentProvider>();
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppGradients.darkBg),
+      backgroundColor: Colors.transparent,
+      body: AppBackground(
         child: SafeArea(
           bottom: false,
           child: Column(
             children: [
-              // Header
+              // ── Header ──
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  locale.t('nav.markets'),
-                  style: GoogleFonts.inter(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
+                child: Row(
+                  children: [
+                    Icon(Icons.show_chart_rounded,
+                        size: 22, color: accent.g2),
+                    const SizedBox(width: 10),
+                    Text(
+                      locale.t('nav.markets'),
+                      style: GoogleFonts.inter(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
-              // Search bar
+              // ── Search bar ──
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: GlassContainer(
-                  borderRadius: 12,
-                  padding: EdgeInsets.zero,
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (v) => market.setSearchQuery(v),
-                    style: GoogleFonts.inter(
-                        color: AppColors.textPrimary, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: locale.t('markets.search'),
-                      hintStyle: GoogleFonts.inter(
-                          color: AppColors.textDisabled, fontSize: 14),
-                      prefixIcon: const Icon(Icons.search_rounded,
-                          color: AppColors.textTertiary, size: 20),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded,
-                                  color: AppColors.textTertiary, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                market.setSearchQuery('');
-                              },
-                            )
-                          : null,
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (v) => market.setSearchQuery(v),
+                  style: GoogleFonts.inter(
+                      color: AppColors.textPrimary, fontSize: 14),
+                  cursorColor: accent.g2,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    filled: true,
+                    fillColor: AppColors.bgInput,
+                    hintText: locale.t('markets.search'),
+                    hintStyle: GoogleFonts.inter(
+                        color: AppColors.textTertiary, fontSize: 14),
+                    prefixIcon: Icon(Icons.search_rounded,
+                        color: accent.g2, size: 20),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded,
+                                color: AppColors.textTertiary, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              market.setSearchQuery('');
+                              setState(() {});
+                            },
+                          )
+                        : null,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide:
+                          const BorderSide(color: AppColors.bgCardBorder),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: accent.g2, width: 1.5),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide:
+                          const BorderSide(color: AppColors.bgCardBorder),
                     ),
                   ),
                 ),
               ),
 
-              // Tabs: All / Spot / Favorites
+              // ── Tabs: All / Spot / Favorites ──
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
+                margin: const EdgeInsets.symmetric(horizontal: 18),
+                padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
-                  color: AppColors.bgTertiary,
-                  borderRadius: BorderRadius.circular(10),
+                  color: AppColors.bgInput,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.bgCardBorder, width: 1),
                 ),
                 child: TabBar(
                   controller: _tabController,
                   indicator: BoxDecoration(
-                    gradient: AppGradients.brand,
-                    borderRadius: BorderRadius.circular(8),
+                    gradient: accent.goldGradient,
+                    borderRadius: BorderRadius.circular(9),
                   ),
                   indicatorSize: TabBarIndicatorSize.tab,
-                  indicatorPadding: const EdgeInsets.all(3),
-                  labelColor: Colors.white,
+                  labelColor: AppColors.goldTextOn,
                   unselectedLabelColor: AppColors.textTertiary,
                   labelStyle: GoogleFonts.inter(
+                      fontSize: 13, fontWeight: FontWeight.w700),
+                  unselectedLabelStyle: GoogleFonts.inter(
                       fontSize: 13, fontWeight: FontWeight.w600),
                   dividerColor: Colors.transparent,
+                  splashBorderRadius: BorderRadius.circular(9),
                   tabs: [
                     Tab(text: locale.t('markets.all')),
                     Tab(text: locale.t('markets.spot')),
@@ -131,15 +163,15 @@ class _MarketsScreenState extends State<MarketsScreen>
                 ),
               ),
 
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
 
-              // Sort header
+              // ── Sort header ──
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 22),
                 child: Row(
                   children: [
                     _SortButton(
-                      label: 'Name',
+                      label: locale.isThai ? 'ชื่อ' : 'Name',
                       isActive: market.sortBy == 'name',
                       ascending: market.sortAsc,
                       onTap: () => market.setSortBy('name'),
@@ -151,7 +183,7 @@ class _MarketsScreenState extends State<MarketsScreen>
                       ascending: market.sortAsc,
                       onTap: () => market.setSortBy('price'),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 18),
                     _SortButton(
                       label: locale.t('markets.change'),
                       isActive: market.sortBy == 'change',
@@ -162,9 +194,9 @@ class _MarketsScreenState extends State<MarketsScreen>
                 ),
               ),
 
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
 
-              // Ticker list
+              // ── Ticker list ──
               Expanded(
                 child: TabBarView(
                   controller: _tabController,
@@ -201,25 +233,33 @@ class _SortButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = context.watch<AccentProvider>();
+    final color = isActive ? accent.g2 : AppColors.textTertiary;
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             label,
             style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-              color: isActive ? AppColors.brandCyan : AppColors.textTertiary,
+              fontSize: 11.5,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+              color: color,
+              letterSpacing: 0.2,
             ),
           ),
-          if (isActive)
+          if (isActive) ...[
+            const SizedBox(width: 2),
             Icon(
-              ascending ? Icons.arrow_upward : Icons.arrow_downward,
+              ascending
+                  ? Icons.arrow_upward_rounded
+                  : Icons.arrow_downward_rounded,
               size: 12,
-              color: AppColors.brandCyan,
+              color: color,
             ),
+          ],
         ],
       ),
     );
@@ -241,6 +281,7 @@ class _TickerList extends StatelessWidget {
     }
 
     if (tickers.isEmpty) {
+      final locale = context.read<LocaleProvider>();
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -249,7 +290,7 @@ class _TickerList extends StatelessWidget {
                 color: AppColors.textTertiary, size: 48),
             const SizedBox(height: 12),
             Text(
-              context.read<LocaleProvider>().t('common.no_data'),
+              locale.t('common.no_data'),
               style: GoogleFonts.inter(
                   color: AppColors.textTertiary, fontSize: 14),
             ),
@@ -259,14 +300,18 @@ class _TickerList extends StatelessWidget {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 100),
+      padding: const EdgeInsets.fromLTRB(18, 6, 18, 110),
       itemCount: tickers.length,
       itemBuilder: (context, index) {
         final ticker = tickers[index];
-        return _TickerItem(
+        return _MarketRow(
           ticker: ticker,
           isFavorite: market.favorites.contains(ticker.symbol),
-          onTap: () => market.selectPair(ticker.symbol),
+          onTap: () {
+            // Pick the market, then open Trade (same shell branch → tab bar stays)
+            market.selectPair(ticker.symbol);
+            context.go('/trade');
+          },
           onFavorite: () => market.toggleFavorite(ticker.symbol),
         );
       },
@@ -274,15 +319,15 @@ class _TickerList extends StatelessWidget {
   }
 }
 
-// ── Ticker item row ──
+// ── Market row (mirrors Home _MarketRow) ──
 
-class _TickerItem extends StatelessWidget {
+class _MarketRow extends StatelessWidget {
   final Ticker ticker;
   final bool isFavorite;
   final VoidCallback onTap;
   final VoidCallback onFavorite;
 
-  const _TickerItem({
+  const _MarketRow({
     required this.ticker,
     required this.isFavorite,
     required this.onTap,
@@ -291,87 +336,112 @@ class _TickerItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        child: Row(
-          children: [
-            // Favorite star
-            GestureDetector(
-              onTap: onFavorite,
-              child: Icon(
-                isFavorite ? Icons.star_rounded : Icons.star_border_rounded,
-                size: 18,
-                color: isFavorite
-                    ? AppColors.tradingYellow
-                    : AppColors.textDisabled,
-              ),
-            ),
-            const SizedBox(width: 10),
+    final accent = context.watch<AccentProvider>();
+    final logoUrl = context
+        .read<ConfigProvider>()
+        .pairBySymbol(ticker.symbol)
+        ?.baseLogo;
+    final isTpix = ticker.baseAsset == 'TPIX';
 
-            // Coin logo — DB logo > CDN > letter fallback
-            CoinLogo(
-              symbol: ticker.baseAsset,
-              size: 36,
-              logoUrl: context
-                  .read<ConfigProvider>()
-                  .pairBySymbol(ticker.symbol)
-                  ?.baseLogo,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: AppGradients.cardSubtle,
+              border: Border.all(color: AppColors.bgCardBorder, width: 1),
             ),
-            const SizedBox(width: 10),
-
-            // Name
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ticker.baseAsset,
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+            child: Row(
+              children: [
+                // Favorite star — gold accent when active (not a price colour)
+                GestureDetector(
+                  onTap: onFavorite,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Icon(
+                      isFavorite
+                          ? Icons.star_rounded
+                          : Icons.star_border_rounded,
+                      size: 18,
+                      color: isFavorite ? accent.g2 : AppColors.textDisabled,
                     ),
                   ),
-                  Row(
+                ),
+
+                CoinChip(
+                  symbol: ticker.baseAsset,
+                  size: 38,
+                  logoUrl: logoUrl,
+                ),
+                const SizedBox(width: 12),
+
+                // Name + pair + volume
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        ticker.quoteAsset,
+                        ticker.baseAsset,
                         style: GoogleFonts.inter(
-                          fontSize: 11,
-                          color: AppColors.textTertiary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(width: 6),
-                      VolumeText(volume: ticker.quoteVolume24h, fontSize: 10),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            ticker.displaySymbol,
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          VolumeText(
+                              volume: ticker.quoteVolume24h, fontSize: 10),
+                        ],
+                      ),
                     ],
                   ),
+                ),
+
+                // Mini sparkline (24h trend) — TPIX has no Binance feed
+                if (!isTpix) ...[
+                  MiniSparkline(
+                    symbol: '${ticker.baseAsset}-${ticker.quoteAsset}',
+                    width: 52,
+                    height: 28,
+                    isPositive: ticker.isPositive,
+                  ),
+                  const SizedBox(width: 12),
                 ],
-              ),
-            ),
 
-            // Mini sparkline (24h trend) — เฉพาะ non-TPIX pairs (TPIX ไม่มีใน Binance)
-            if (ticker.baseAsset != 'TPIX') ...[
-              MiniSparkline(
-                symbol: ticker.symbol,
-                width: 56,
-                height: 28,
-                isPositive: ticker.isPositive,
-              ),
-              const SizedBox(width: 10),
-            ],
-
-            // Price
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                PriceText(price: ticker.lastPrice, fontSize: 13),
-                const SizedBox(height: 4),
-                ChangeBadge(changePercent: ticker.priceChangePercent),
+                // Price + change
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    PriceText(price: ticker.lastPrice, fontSize: 14),
+                    const SizedBox(height: 4),
+                    ChangeBadge(
+                        changePercent: ticker.priceChangePercent,
+                        fontSize: 10),
+                  ],
+                ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

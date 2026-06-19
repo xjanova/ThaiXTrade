@@ -33,13 +33,26 @@ void main() {
     });
   });
 
-  group('AppColors', () {
-    test('brand cyan is correct', () {
-      expect(AppColors.brandCyan.value, 0xFF06B6D4);
+  group('AppColors (Luxury Dark / Gilded Metal)', () {
+    test('champagne gold tokens are correct', () {
+      expect(AppColors.gold1.toARGB32(), 0xFFFCEBB8);
+      expect(AppColors.gold2.toARGB32(), 0xFFD4AF37);
+      expect(AppColors.gold3.toARGB32(), 0xFF9C7A1E);
     });
 
-    test('trading green is correct', () {
-      expect(AppColors.tradingGreen.value, 0xFF00C853);
+    test('legacy brand aliases now resolve to gold', () {
+      // brandCyan/brandPurple are kept for back-compat but re-skin to gold.
+      expect(AppColors.brandCyan.toARGB32(), AppColors.gold2.toARGB32());
+      expect(AppColors.brandPurple.toARGB32(), AppColors.gold2.toARGB32());
+    });
+
+    test('trading up/down match the design tokens', () {
+      expect(AppColors.tradingGreen.toARGB32(), 0xFF4ED9A4); // --up
+      expect(AppColors.tradingRed.toARGB32(), 0xFFFF6B7A); // --down
+    });
+
+    test('primary text is warm white', () {
+      expect(AppColors.textPrimary.toARGB32(), 0xFFF3F1EA);
     });
   });
 }
