@@ -12,6 +12,7 @@ import 'providers/market_provider.dart';
 import 'providers/update_provider.dart';
 import 'providers/config_provider.dart';
 import 'providers/accent_provider.dart';
+import 'providers/ai_trade_provider.dart';
 import 'core/locale/locale_provider.dart';
 
 Future<void> main() async {
@@ -36,6 +37,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => UpdateProvider()),
         ChangeNotifierProvider(create: (_) => ConfigProvider()),
         ChangeNotifierProvider<AccentProvider>.value(value: accent),
+        ChangeNotifierProvider(create: (_) => AiTradeProvider()),
       ],
       child: const TpixTradeApp(),
     ),
