@@ -20,6 +20,7 @@ import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../providers/accent_provider.dart';
 import '../../providers/wallet_provider.dart';
+import '../../utils/peer_app.dart';
 import '../common/glass_card.dart';
 import '../common/gradient_button.dart';
 
@@ -35,6 +36,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
   final _mnemonicController = TextEditingController();
   Timer? _clipboardClearTimer;
   bool _showPhrase = false;
+  bool _connectingTpix = false;
 
   @override
   void dispose() {
@@ -152,23 +154,41 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
         Center(
           child: Text(
             th
-                ? 'สแกนด้วยกระเป๋าของคุณ หรือเลือกผู้ให้บริการด้านล่าง'
-                : 'Scan with your wallet, or pick a provider below',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: AppColors.textTertiary,
-            ),
+                ? 'เชื่อม TPIX Wallet (แนะนำ) หรือใช้กระเป๋าอื่น'
+                : 'Connect TPIX Wallet (recommended), or use another wallet',
+            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textTertiary),
             textAlign: TextAlign.center,
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
 
-        // Scanner viewport (gold brackets + animated scan line)
+        // ── PRIMARY: Connect TPIX Wallet (one-tap link to the TPIX Wallet app) ──
+        _TpixWalletTile(
+          locale: locale,
+          connecting: _connectingTpix,
+          onTap: _connectingTpix ? null : _connectTpixWallet,
+        ),
+
+        const SizedBox(height: 18),
+
+        // Scanner viewport — TPIX Wallet can scan this to connect.
         Center(child: _ScannerViewport(locale: locale)),
+        const SizedBox(height: 8),
+        Center(
+          child: Text(
+            th
+                ? 'หรือเปิด TPIX Wallet แล้วสแกนรหัสนี้'
+                : 'Or open TPIX Wallet and scan this code',
+            style: GoogleFonts.inter(fontSize: 11, color: AppColors.textTertiary),
+            textAlign: TextAlign.center,
+          ),
+        ),
 
         const SizedBox(height: 22),
 
-        // Provider chips row — all open the Reown AppKit picker
+        // ── Other wallets (Reown AppKit / WalletConnect) ──
+        _SectionLabel(text: th ? 'กระเป๋าอื่น' : 'Other wallets'),
+        const SizedBox(height: 10),
         Row(
           children: [
             _ProviderChip(
@@ -209,25 +229,16 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
           ],
         ),
 
-        const SizedBox(height: 16),
-
-        // Create new wallet (in-app, BIP-39) — keep this real entry point
-        _CreateWalletTile(
-          locale: locale,
-          isConnecting: wallet.isConnecting,
-          onTap: wallet.isConnecting ? null : () => wallet.createWallet(),
-        ),
-
         const SizedBox(height: 18),
 
-        // Divider — "or import manually"
+        // Divider — "or import recovery phrase"
         _OrDivider(
-          text: th ? 'หรือนำเข้าด้วยตนเอง' : 'or import manually',
+          text: th ? 'หรือนำเข้าวลีกู้คืน' : 'or import recovery phrase',
         ),
 
         const SizedBox(height: 16),
 
-        // Recovery-phrase (private key) card
+        // Recovery-phrase import card
         _ManualImportCard(
           locale: locale,
           controller: _mnemonicController,
@@ -244,9 +255,9 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
 
         const SizedBox(height: 18),
 
-        // Full-width gold CTA
+        // Import CTA
         GradientButton(
-          text: th ? 'เชื่อมต่ออย่างปลอดภัย' : 'Connect Securely',
+          text: th ? 'นำเข้าวลีกู้คืน' : 'Import Recovery Phrase',
           variant: ButtonVariant.gold,
           icon: Icons.lock_rounded,
           isLoading: wallet.isConnecting,
@@ -278,6 +289,74 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
         ),
       ],
     );
+  }
+
+  /// Connect via the TPIX Wallet app: open it (one-tap link) if installed,
+  /// otherwise route to the install page. The Wallet calls back
+  /// `tpixtrade://connect?address=...` which DeepLinkService completes.
+  Future<void> _connectTpixWallet() async {
+    setState(() => _connectingTpix = true);
+    final installed = await PeerApp.isWalletInstalled(forceRefresh: true);
+    if (!mounted) return;
+    final th = context.read<LocaleProvider>().isThai;
+    if (installed) {
+      final from = context.read<WalletProvider>().address;
+      final opened = await PeerApp.openWallet(
+        path: 'connect',
+        params: from != null ? {'from': from} : null,
+      );
+      if (!mounted) return;
+      setState(() => _connectingTpix = false);
+      if (opened) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(th
+              ? 'ยืนยันการเชื่อมต่อใน TPIX Wallet แล้วระบบจะเชื่อมให้อัตโนมัติ'
+              : 'Approve the connection in TPIX Wallet — you’ll be linked automatically'),
+          duration: const Duration(seconds: 3),
+        ));
+      }
+    } else {
+      setState(() => _connectingTpix = false);
+      await _promptInstallTpixWallet(th);
+    }
+  }
+
+  Future<void> _promptInstallTpixWallet(bool th) async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.bgElevated,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: AppColors.bgCardBorder),
+        ),
+        title: Text(th ? 'ยังไม่ได้ติดตั้ง TPIX Wallet' : 'TPIX Wallet not installed',
+            style: GoogleFonts.inter(
+                color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
+        content: Text(
+          th
+              ? 'ติดตั้ง TPIX Wallet เพื่อเชื่อมต่อแบบแตะครั้งเดียว หรือใช้กระเป๋าอื่น/นำเข้าวลีกู้คืนด้านล่าง'
+              : 'Install TPIX Wallet for one-tap connect, or use another wallet / import a recovery phrase below.',
+          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(th ? 'ภายหลัง' : 'Later',
+                style: const TextStyle(color: AppColors.textTertiary)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.gold2,
+              foregroundColor: AppColors.goldTextOn,
+            ),
+            child: Text(th ? 'ติดตั้ง' : 'Install'),
+          ),
+        ],
+      ),
+    );
+    if (go == true) await PeerApp.openWalletInstallPage();
   }
 
   /// Primary CTA: if the field already holds a phrase, import it directly;
@@ -579,8 +658,8 @@ class _ScannerViewportState extends State<_ScannerViewport>
             ),
           ),
 
-          // TPIX emblem in a QR-style frame (placeholder until a URI exists)
-          _EmblemPlaceholder(accent: accent),
+          // Functional link-request QR (TPIX Wallet scans this to connect)
+          const _EmblemPlaceholder(),
 
           // 4 gold corner brackets
           ..._corners(accent),
@@ -609,35 +688,33 @@ class _ScannerViewportState extends State<_ScannerViewport>
   }
 }
 
-/// TPIX emblem rendered inside the viewport (logo + faint QR scaffold).
+/// Functional link-request QR rendered inside the viewport.
 class _EmblemPlaceholder extends StatelessWidget {
-  final AccentProvider accent;
-  const _EmblemPlaceholder({required this.accent});
+  const _EmblemPlaceholder();
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // A faint, decorative QR built from the app scheme so the viewport
-        // reads as a scanner target — this is NOT a live connection URI.
-        Opacity(
-          opacity: 0.16,
-          child: QrImageView(
-            data: 'tpixtrade://connect',
-            version: QrVersions.auto,
-            size: 120,
-            eyeStyle: QrEyeStyle(
-              eyeShape: QrEyeShape.square,
-              color: accent.g2,
-            ),
-            dataModuleStyle: QrDataModuleStyle(
-              dataModuleShape: QrDataModuleShape.square,
-              color: accent.g1,
-            ),
-          ),
+    // Functional link-request QR: the TPIX Wallet app scans this and calls back
+    // `tpixtrade://connect?address=...`, which DeepLinkService completes.
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.textPrimary,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: QrImageView(
+        data: 'tpixtrade://connect',
+        version: QrVersions.auto,
+        size: 108,
+        eyeStyle: const QrEyeStyle(
+          eyeShape: QrEyeShape.square,
+          color: AppColors.bgPrimary,
         ),
-      ],
+        dataModuleStyle: const QrDataModuleStyle(
+          dataModuleShape: QrDataModuleShape.square,
+          color: AppColors.bgPrimary,
+        ),
+      ),
     );
   }
 }
@@ -781,63 +858,97 @@ class _ProviderChip extends StatelessWidget {
   }
 }
 
-// ── Create wallet tile ──
+// ── Primary: Connect TPIX Wallet tile ──
 
-class _CreateWalletTile extends StatelessWidget {
+class _TpixWalletTile extends StatelessWidget {
   final LocaleProvider locale;
-  final bool isConnecting;
+  final bool connecting;
   final VoidCallback? onTap;
 
-  const _CreateWalletTile({
+  const _TpixWalletTile({
     required this.locale,
-    required this.isConnecting,
+    required this.connecting,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final accent = context.watch<AccentProvider>();
+    final th = locale.isThai;
     return GlassCard(
-      variant: GlassVariant.brand,
-      borderRadius: 16,
+      variant: GlassVariant.hero,
+      borderRadius: 18,
       padding: const EdgeInsets.all(16),
       onTap: onTap,
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 48,
+            height: 48,
+            padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
+              shape: BoxShape.circle,
               gradient: accent.goldGradient,
-              borderRadius: BorderRadius.circular(13),
               boxShadow: [
                 BoxShadow(
-                  color: accent.goldGlow.withValues(alpha: 0.35),
+                  color: accent.goldGlow.withValues(alpha: 0.4),
                   blurRadius: 16,
-                  spreadRadius: -5,
+                  spreadRadius: -4,
                 ),
               ],
             ),
-            child: const Icon(Icons.add_rounded,
-                color: AppColors.goldTextOn, size: 22),
+            child: const DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.bgGradBottom,
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(7),
+                child: Image(
+                  image: AssetImage('assets/images/logo.webp'),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  locale.t('wallet.create'),
-                  style: GoogleFonts.inter(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      th ? 'เชื่อม TPIX Wallet' : 'Connect TPIX Wallet',
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        color: accent.goldTint,
+                        border: Border.all(color: accent.goldBorder, width: 1),
+                      ),
+                      child: Text(
+                        th ? 'แนะนำ' : 'BEST',
+                        style: GoogleFonts.inter(
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w800,
+                          color: accent.g1,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 2),
                 Text(
-                  locale.isThai
-                      ? 'สร้างกระเป๋าใหม่บน TPIX Chain'
-                      : 'Create a new wallet on TPIX Chain',
+                  th ? 'แตะครั้งเดียว ปลอดภัย เชื่อมผ่านแอป' : 'One-tap secure link via the app',
                   style: GoogleFonts.inter(
                     fontSize: 11.5,
                     color: AppColors.textTertiary,
@@ -846,19 +957,33 @@ class _CreateWalletTile extends StatelessWidget {
               ],
             ),
           ),
-          if (isConnecting)
+          if (connecting)
             SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: accent.g2,
-              ),
+              child: CircularProgressIndicator(strokeWidth: 2, color: accent.g2),
             )
           else
-            const Icon(Icons.arrow_forward_ios_rounded,
-                color: AppColors.textTertiary, size: 15),
+            Icon(Icons.arrow_forward_ios_rounded, color: accent.g2, size: 15),
         ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text.toUpperCase(),
+      style: GoogleFonts.inter(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        color: AppColors.textTertiary,
+        letterSpacing: 1.2,
       ),
     );
   }
