@@ -89,7 +89,7 @@ class _PeerAppCardState extends State<PeerAppCard>
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(Icons.account_balance_wallet_rounded,
-                color: Colors.white, size: 18),
+                color: AppColors.goldTextOn, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -171,7 +171,7 @@ class _PeerAppCardState extends State<PeerAppCard>
                     ],
                   ),
                   child: const Icon(Icons.account_balance_wallet_rounded,
-                      color: Colors.white, size: 24),
+                      color: AppColors.goldTextOn, size: 24),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -209,14 +209,14 @@ class _PeerAppCardState extends State<PeerAppCard>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.download_rounded,
-                          color: Colors.white, size: 14),
+                          color: AppColors.goldTextOn, size: 14),
                       const SizedBox(width: 4),
                       Text(
                         locale.t('common.download'),
                         style: GoogleFonts.inter(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: Colors.white,
+                          color: AppColors.goldTextOn,
                         ),
                       ),
                     ],

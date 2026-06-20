@@ -331,6 +331,10 @@ class _HomeScreenState extends State<HomeScreen> {
         price: tpix.price,
         changePercent: tpix.change24h,
         showSparkline: false,
+        onTap: () {
+          market.selectPair('TPIX-USDT');
+          context.go('/trade');
+        },
       ));
     }
 
@@ -358,6 +362,10 @@ class _HomeScreenState extends State<HomeScreen> {
         changePercent: t.priceChangePercent,
         sparklineSymbol: '${t.baseAsset}-${t.quoteAsset}',
         showSparkline: true,
+        onTap: () {
+          market.selectPair(t.symbol);
+          context.go('/trade');
+        },
       ));
     }
 
@@ -888,6 +896,7 @@ class _MarketRow extends StatelessWidget {
   final double changePercent;
   final String? sparklineSymbol;
   final bool showSparkline;
+  final VoidCallback? onTap;
 
   const _MarketRow({
     required this.symbol,
@@ -897,12 +906,16 @@ class _MarketRow extends StatelessWidget {
     required this.changePercent,
     this.sparklineSymbol,
     this.showSparkline = true,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final positive = changePercent >= 0;
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -954,6 +967,7 @@ class _MarketRow extends StatelessWidget {
             ],
           ),
         ],
+      ),
       ),
     );
   }
