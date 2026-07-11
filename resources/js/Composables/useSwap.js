@@ -264,12 +264,38 @@ export function useSwap() {
             const amountInSwap = quote.amountInSwapWei;      // BigInt — (amount - fee)
             const feeWei = quote.feeWei || 0n;
 
+            // FAIL-CLOSED: ต้องรู้ที่อยู่ fee collector ก่อนส่ง swap — ถ้าแพลตฟอร์ม
+            // ยังไม่ตั้งค่า (หรือ backend ล่ม) ห้าม swap เพื่อไม่ให้เกิดเคส
+            // "swap สำเร็จแต่เก็บ fee ไม่ได้" ซึ่งตรวจย้อนหลังไม่ได้
+            let feeCollectorAddress = null;
+            if (feeWei > 0n) {
+                try {
+                    const { data: feeInfo } = await axios.get('/api/v1/trading/fee-info', {
+                        params: { chain_id: SWAP_CHAIN_ID },
+                    });
+                    feeCollectorAddress = feeInfo?.data?.fee_collector || null;
+                } catch {
+                    feeCollectorAddress = null;
+                }
+                const isValidCollector = typeof feeCollectorAddress === 'string'
+                    && feeCollectorAddress.startsWith('0x')
+                    && feeCollectorAddress.length === 42;
+                if (!isValidCollector) {
+                    error.value = 'Swap is temporarily unavailable. Please try again later.';
+                    const abortErr = new Error(error.value);
+                    abortErr.isFriendly = true; // ข้อความนี้แสดงต่อ user ได้เลย — อย่าให้ friendlyError ทับ
+                    throw abortErr;
+                }
+            }
+
             // minOut from SLIPPAGE ONLY — the fee never reduces the router output.
             const slipFactorBps = BigInt(Math.max(0, Math.floor((1 - slippage / 100) * 10000)));
             const minOut = (quote.rawAmountOut * slipFactorBps) / 10000n;
             if (minOut <= 0n) {
                 error.value = 'Slippage too high — please adjust and retry.';
-                throw new Error(error.value);
+                const slipErr = new Error(error.value);
+                slipErr.isFriendly = true;
+                throw slipErr;
             }
 
             const path = quote.path;
@@ -301,29 +327,23 @@ export function useSwap() {
 
             // Collect the RESERVED platform fee — the user still holds it because
             // we only swapped (amount - fee), so this transfer cannot run dry.
+            // (fee collector ถูก validate ไว้แล้วก่อนส่ง swap ด้านบน)
             let feeCollected = false;
-            if (receipt.status === 1 && feeWei > 0n) {
+            if (receipt.status === 1 && feeWei > 0n && feeCollectorAddress) {
                 try {
-                    const { data: feeInfo } = await axios.get('/api/v1/trading/fee-info', {
-                        params: { chain_id: SWAP_CHAIN_ID },
-                    });
-                    const feeCollectorAddress = feeInfo?.data?.fee_collector;
-
-                    if (feeCollectorAddress && feeCollectorAddress.startsWith('0x') && feeCollectorAddress.length === 42) {
-                        if (isNativeToken(fromToken.address)) {
-                            const feeTx = await walletStore.signer.sendTransaction({
-                                to: feeCollectorAddress,
-                                value: feeWei,
-                            });
-                            await feeTx.wait();
-                        } else {
-                            const tokenAbi = ['function transfer(address to, uint256 amount) returns (bool)'];
-                            const tokenContract = new Contract(fromToken.address, tokenAbi, walletStore.signer);
-                            const feeTx = await tokenContract.transfer(feeCollectorAddress, feeWei);
-                            await feeTx.wait();
-                        }
-                        feeCollected = true;
+                    if (isNativeToken(fromToken.address)) {
+                        const feeTx = await walletStore.signer.sendTransaction({
+                            to: feeCollectorAddress,
+                            value: feeWei,
+                        });
+                        await feeTx.wait();
+                    } else {
+                        const tokenAbi = ['function transfer(address to, uint256 amount) returns (bool)'];
+                        const tokenContract = new Contract(fromToken.address, tokenAbi, walletStore.signer);
+                        const feeTx = await tokenContract.transfer(feeCollectorAddress, feeWei);
+                        await feeTx.wait();
                     }
+                    feeCollected = true;
                 } catch (feeErr) {
                     // Fee collection failed (e.g. user rejected the 2nd prompt) —
                     // the swap already succeeded, so don't block it.
@@ -354,7 +374,8 @@ export function useSwap() {
             };
         } catch (err) {
             txStatus.value = 'failed';
-            error.value = friendlyError(err);
+            // error ที่เรา throw เองมีข้อความ user-facing อยู่แล้ว — ไม่ต้อง map ซ้ำ
+            error.value = err.isFriendly ? err.message : friendlyError(err);
             throw err;
         } finally {
             isExecuting.value = false;

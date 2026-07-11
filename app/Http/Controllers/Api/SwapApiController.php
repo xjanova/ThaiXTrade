@@ -75,14 +75,15 @@ class SwapApiController extends Controller
             $validated['chain_id'] = $chain->id;
 
             // Verify tokens exist on this chain
+            // (native coin: frontend ใช้ sentinel 0xEeee... แต่ DB เก็บ 0x0000...)
             $fromToken = Token::active()
                 ->where('chain_id', $validated['chain_id'])
-                ->where('contract_address', $validated['from_token'])
+                ->where('contract_address', $this->normalizeNativeAddress($validated['from_token']))
                 ->first();
 
             $toToken = Token::active()
                 ->where('chain_id', $validated['chain_id'])
-                ->where('contract_address', $validated['to_token'])
+                ->where('contract_address', $this->normalizeNativeAddress($validated['to_token']))
                 ->first();
 
             if (! $fromToken || ! $toToken) {
@@ -379,6 +380,20 @@ class SwapApiController extends Controller
     // =========================================================================
     // Helpers
     // =========================================================================
+
+    /**
+     * แปลง sentinel address ของ native coin (0xEeee...EEeE — convention ฝั่ง
+     * frontend/ethers) ให้เป็น 0x0000...0000 ที่ BaseTokensSeeder ใช้เก็บ
+     * native coin ใน DB — ไม่งั้น quote ของคู่ที่มี BNB จะตอบ INVALID_TOKEN
+     */
+    private function normalizeNativeAddress(string $address): string
+    {
+        if (strtolower($address) === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
+            return '0x0000000000000000000000000000000000000000';
+        }
+
+        return $address;
+    }
 
     /**
      * แปลง blockchain chainId (เช่น 56, 4289) เป็น Chain record (DB PK)

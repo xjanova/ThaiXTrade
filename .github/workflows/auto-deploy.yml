@@ -147,6 +147,8 @@ jobs:
             php artisan db:seed --class=Database\\Seeders\\MajorTradingPairsSeeder --force 2>&1 || echo "⚠️ MajorPairs seeder warning"
             # Token logos — update existing tokens ที่ logo=null (TPIX, USDT จาก TpixPair)
             php artisan db:seed --class=Database\\Seeders\\TokenLogosSeeder --force 2>&1 || echo "⚠️ TokenLogos seeder warning"
+            # BSC swap tokens + PancakeSwap V2 config — ให้ /swap/quote รู้จักทุก token ในหน้า Swap
+            php artisan db:seed --class=Database\\Seeders\\BscSwapTokensSeeder --force 2>&1 || echo "⚠️ BscSwapTokens seeder warning"
 
             # Fix permissions
             chmod -R 775 storage bootstrap/cache 2>/dev/null || true
