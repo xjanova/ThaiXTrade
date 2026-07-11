@@ -196,47 +196,24 @@ const handleSubmitOrder = async (order) => {
 
         const orderData = data.data;
 
-        if (isTPIXPair.value) {
-            // Internal order book — matching happens server-side
-            const statusText = orderData.status === 'filled'
-                ? `${order.side.toUpperCase()} order filled! ${orderData.trades_count} trade(s)`
-                : orderData.status === 'partially_filled'
-                    ? `${order.side.toUpperCase()} order partially filled (${orderData.filled_amount}/${orderData.amount})`
+        // ทุก pair ที่ admin ตั้งใน trading_pairs เข้า internal order book ฝั่ง backend
+        // เหมือนกันหมด — ไม่มี on-chain execution ในเส้นทางนี้ จึงไม่มีการยิง confirm
+        // ด้วย tx_hash (path เดิมยิง tx ปลอม 0x000...0 แล้วยัง 404 เพราะ order
+        // เป็น internal ไม่ใช่ Transaction — ลบทิ้งแล้ว)
+        const statusText = orderData.status === 'filled'
+            ? `${order.side.toUpperCase()} order filled! ${orderData.trades_count} trade(s)`
+            : orderData.status === 'partially_filled'
+                ? `${order.side.toUpperCase()} order partially filled (${orderData.filled_amount}/${orderData.amount})`
+                : order.type === 'stop-limit'
+                    ? `${order.side.toUpperCase()} stop-limit order placed (trigger: $${order.triggerPrice})`
                     : `${order.side.toUpperCase()} ${order.type} order placed at $${priceVal.toLocaleString()}`;
 
-            orderStatus.value = 'success';
-            orderMessage.value = statusText;
+        orderStatus.value = 'success';
+        orderMessage.value = statusText;
 
-            // Refresh order book & trades immediately
+        // Refresh order book & trades ทันที (เฉพาะ TPIX pair ที่ใช้ internal data feed)
+        if (isTPIXPair.value) {
             fetchTpixData();
-        } else {
-            // Legacy: non-TPIX pairs
-            const feeRate = orderData.fee_rate;
-
-            if (order.type === 'limit' || order.type === 'stop-limit') {
-                orderStatus.value = 'success';
-                orderMessage.value = order.type === 'stop-limit'
-                    ? `${order.side.toUpperCase()} stop-limit order placed (trigger: $${order.triggerPrice})`
-                    : `${order.side.toUpperCase()} limit order placed at $${priceVal.toLocaleString()}`;
-            } else if (order.type === 'market') {
-                orderStatus.value = 'executing';
-                orderMessage.value = t('trade.executingOnChain') || 'Executing on-chain...';
-
-                const confirmController = new AbortController();
-                const confirmTimeout = setTimeout(() => confirmController.abort(), 30000);
-
-                await axios.post(`/api/v1/trading/order/${orderData.order_id}/confirm`, {
-                    wallet_address: walletStore.address,
-                    tx_hash: '0x' + '0'.repeat(64),
-                    actual_amount_out: totalVal,
-                    actual_fee: orderData.fee_amount,
-                }, { signal: confirmController.signal });
-
-                clearTimeout(confirmTimeout);
-
-                orderStatus.value = 'success';
-                orderMessage.value = `${order.side.toUpperCase()} market order confirmed! Fee: ${feeRate}%`;
-            }
         }
 
         // เล่นเสียง trade สำเร็จ
