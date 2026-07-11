@@ -54,8 +54,9 @@ class BscSwapTokensSeeder extends Seeder
         }
 
         // SwapConfig — PancakeSwap V2 router (ใช้โดย /swap/routes + default slippage)
+        // protocol เป็น enum: uniswap_v2|uniswap_v3|pancakeswap|sushiswap|custom เท่านั้น
         SwapConfig::firstOrCreate(
-            ['chain_id' => $bsc->id, 'protocol' => 'pancakeswap_v2'],
+            ['chain_id' => $bsc->id, 'protocol' => 'pancakeswap'],
             [
                 'name' => 'PancakeSwap V2',
                 'router_address' => '0x10ED43C718714eb63d5aA57B78B54704E256024E',
