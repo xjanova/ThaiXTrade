@@ -201,6 +201,10 @@ class OrderMatchingService
     {
         $since = now()->subHours(24);
 
+        // Subquery ต้องไม่อ้างคอลัมน์ของ outer query (trades.trading_pair_id)
+        // เพราะ outer เป็น aggregate ไม่มี GROUP BY — MySQL sql_mode
+        // ONLY_FULL_GROUP_BY (ค่า default บน production) จะ reject ทั้ง query
+        // ใช้ bind $tradingPairId ตรงๆ ให้ subquery เป็นอิสระแทน
         $stats = Trade::where('trading_pair_id', $tradingPairId)
             ->where('created_at', '>=', $since)
             ->selectRaw('
@@ -209,9 +213,9 @@ class OrderMatchingService
                 SUM(total) as quote_volume,
                 MAX(price) as high,
                 MIN(price) as low,
-                (SELECT price FROM trades t2 WHERE t2.trading_pair_id = trades.trading_pair_id ORDER BY t2.created_at DESC LIMIT 1) as last_price,
-                (SELECT price FROM trades t3 WHERE t3.trading_pair_id = trades.trading_pair_id AND t3.created_at < ? ORDER BY t3.created_at DESC LIMIT 1) as open_price
-            ', [$since])
+                (SELECT price FROM trades t2 WHERE t2.trading_pair_id = ? ORDER BY t2.created_at DESC LIMIT 1) as last_price,
+                (SELECT price FROM trades t3 WHERE t3.trading_pair_id = ? AND t3.created_at < ? ORDER BY t3.created_at DESC LIMIT 1) as open_price
+            ', [$tradingPairId, $tradingPairId, $since])
             ->first();
 
         $lastPrice = (float) ($stats->last_price ?? 0);
