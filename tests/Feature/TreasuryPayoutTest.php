@@ -189,6 +189,39 @@ class TreasuryPayoutTest extends TestCase
         $this->assertNotEmpty(array_filter($check['errors'], fn ($e) => str_contains($e, 'whitelist')));
     }
 
+    public function test_token_sale_payouts_skip_whitelist_but_other_purposes_do_not(): void
+    {
+        $this->fakeChain(Wei::toWei('99999999'));
+        $buyer = '0x1111111111111111111111111111111111111111';   // ไม่อยู่ใน whitelist
+
+        // ผู้ซื้อ claim vesting — ปลายทางเป็นกระเป๋าลูกค้าซึ่งเอาเข้า whitelist
+        // ล่วงหน้าไม่ได้ จึงต้องผ่าน
+        $sale = app(TreasuryService::class)->validatePayout($buyer, Wei::toWei('1'), null, 'token_sale');
+        $this->assertTrue($sale['ok'], 'การจ่ายให้ผู้ซื้อควรผ่านโดยไม่ต้องอยู่ใน whitelist');
+
+        // แต่การยกเว้นต้องไม่ลามไปวัตถุประสงค์อื่น
+        foreach (['masternode', 'refund', 'other', null] as $purpose) {
+            $other = app(TreasuryService::class)->validatePayout($buyer, Wei::toWei('1'), null, $purpose);
+            $this->assertFalse($other['ok'], "purpose '{$purpose}' ต้องยังบังคับ whitelist");
+        }
+    }
+
+    public function test_token_sale_payouts_still_obey_the_amount_limits(): void
+    {
+        $this->fakeChain(Wei::toWei('99999999'));
+
+        // ยกเว้น whitelist ไม่ได้แปลว่ายกเว้นวงเงิน
+        $check = app(TreasuryService::class)->validatePayout(
+            '0x1111111111111111111111111111111111111111',
+            Wei::toWei('2000000'),   // วงเงินต่อครั้งคือ 1,000,000
+            null,
+            'token_sale',
+        );
+
+        $this->assertFalse($check['ok']);
+        $this->assertNotEmpty(array_filter($check['errors'], fn ($e) => str_contains($e, 'ต่อครั้ง')));
+    }
+
     public function test_amount_over_per_transaction_limit_is_rejected(): void
     {
         $this->fakeChain(Wei::toWei('99999999'));

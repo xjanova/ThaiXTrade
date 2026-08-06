@@ -275,6 +275,18 @@ class TreasuryService
     }
 
     /**
+     * วัตถุประสงค์ที่ยกเว้นการบังคับ whitelist.
+     *
+     * `token_sale` คือการส่งเหรียญให้ผู้ซื้อที่ claim vesting ปลายทางเป็นกระเป๋า
+     * ของลูกค้าซึ่งเป็นคนละใบทุกครั้ง จะเอาเข้า whitelist ล่วงหน้าไม่ได้
+     *
+     * ที่ยกเว้นได้เพราะปลายทางไม่ได้มาจากคนกรอก — มันถูกผูกกับ
+     * `sale_transactions.wallet_address` ของรายการซื้อที่ยืนยันแล้ว ซึ่งต้องผ่าน
+     * การตรวจการชำระเงินบน BSC มาก่อน และวงเงินต่อครั้ง/ต่อวันยังบังคับอยู่ครบ
+     */
+    private const WHITELIST_EXEMPT_PURPOSES = ['token_sale'];
+
+    /**
      * ตรวจว่ารายการจ่ายเงินนี้ผ่านกฎทุกข้อไหม.
      *
      * เรียกทั้งตอนสร้างรายการและตอนก่อนเซ็น — เพราะวงเงินหรือ whitelist
@@ -282,8 +294,12 @@ class TreasuryService
      *
      * @return array{ok: bool, errors: array<int, string>}
      */
-    public function validatePayout(string $toAddress, string $amountWei, ?int $ignorePayoutId = null): array
-    {
+    public function validatePayout(
+        string $toAddress,
+        string $amountWei,
+        ?int $ignorePayoutId = null,
+        ?string $purpose = null,
+    ): array {
         $errors = [];
 
         if (! preg_match('/^0x[a-fA-F0-9]{40}$/', $toAddress)) {
@@ -296,7 +312,10 @@ class TreasuryService
 
         // whitelist
         $entry = TreasuryWhitelist::findActiveByAddress($toAddress);
-        if (config('treasury.limits.require_whitelist', true) && ! $entry) {
+        $needsWhitelist = config('treasury.limits.require_whitelist', true)
+            && ! in_array($purpose, self::WHITELIST_EXEMPT_PURPOSES, true);
+
+        if ($needsWhitelist && ! $entry) {
             $errors[] = 'ปลายทางนี้ไม่อยู่ใน whitelist';
         }
 

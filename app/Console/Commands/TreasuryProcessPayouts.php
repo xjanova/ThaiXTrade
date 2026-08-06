@@ -125,6 +125,7 @@ class TreasuryProcessPayouts extends Command
             $payout->to_address,
             (string) $payout->amount_wei,
             $payout->id,
+            $payout->purpose,
         );
 
         if (! $check['ok']) {

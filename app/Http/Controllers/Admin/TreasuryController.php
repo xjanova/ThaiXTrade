@@ -123,7 +123,12 @@ class TreasuryController extends Controller
             ]);
         }
 
-        $check = $this->treasury->validatePayout($validated['to_address'], $amountWei);
+        $check = $this->treasury->validatePayout(
+            $validated['to_address'],
+            $amountWei,
+            null,
+            $validated['purpose'],
+        );
         if (! $check['ok']) {
             return response()->json([
                 'success' => false,
@@ -187,6 +192,7 @@ class TreasuryController extends Controller
                 $payout->to_address,
                 (string) $payout->amount_wei,
                 $payout->id,
+                $payout->purpose,
             );
 
             if (! $check['ok']) {
@@ -290,6 +296,7 @@ class TreasuryController extends Controller
                 $payout->to_address,
                 (string) $payout->amount_wei,
                 $payout->id,
+                $payout->purpose,
             );
 
             if (! $check['ok']) {
