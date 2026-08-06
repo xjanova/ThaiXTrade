@@ -137,12 +137,12 @@ class TreasuryService
 
         // 2) keystore ต้องมีจริงและอ่านได้
         $keystorePath = (string) config('treasury.hot_wallet.keystore_path');
-        $keystoreOk = $keystorePath !== '' && is_readable($keystorePath);
+        $keystore = $this->inspectKeystorePath($keystorePath);
         $checks[] = [
             'key' => 'keystore',
             'label' => 'วางไฟล์ keystore ของกระเป๋าร้อนบนเซิร์ฟเวอร์',
-            'hint' => $keystorePath !== '' ? $keystorePath : 'ยังไม่ได้ตั้ง TPIX_HOT_WALLET_KEYSTORE',
-            'ok' => $keystoreOk,
+            'hint' => $keystore['hint'],
+            'ok' => $keystore['ok'],
         ];
 
         // 3) passphrase ต้องอยู่ใน .env (ไม่ใช่ใน database)
@@ -181,6 +181,62 @@ class TreasuryService
             'ready' => $blocking === [],
             'checks' => $checks,
             'blocking' => $blocking,
+        ];
+    }
+
+    /**
+     * ตรวจว่าไฟล์ keystore อ่านได้ไหม โดย **ห้ามโยน error ออกไปเด็ดขาด**.
+     *
+     * `is_readable()` บนพาธที่อยู่นอก `open_basedir` ไม่ได้คืน false เฉย ๆ —
+     * มันปล่อย PHP warning ออกมา ซึ่ง Laravel แปลงเป็น ErrorException แล้ว
+     * หน้าคลังทั้งหน้ากลายเป็น 500 ทั้งที่แค่ยังไม่ได้วางไฟล์
+     *
+     * เซิร์ฟเวอร์นี้ตั้ง open_basedir ไว้ที่ `/home/admin/` เป็นต้น การวาง
+     * keystore ไว้ที่ `/etc/tpix/` จึงอ่านจากฝั่งเว็บไม่ได้เลย ต้องวางใน
+     * `/home/admin/` แต่ **นอก document root** (เช่น `/home/admin/.tpix/`)
+     * ซึ่งยังปลอดภัยเท่าเดิมเพราะเว็บเข้าไม่ถึงอยู่ดี
+     *
+     * @return array{ok: bool, hint: string}
+     */
+    private function inspectKeystorePath(string $path): array
+    {
+        if ($path === '') {
+            return ['ok' => false, 'hint' => 'ยังไม่ได้ตั้ง TPIX_HOT_WALLET_KEYSTORE'];
+        }
+
+        // เช็ค open_basedir ก่อน เพื่อบอกเหตุผลที่แท้จริงแทนที่จะบอกแค่ "ไม่พบไฟล์"
+        $baseDirs = array_filter(explode(PATH_SEPARATOR, (string) ini_get('open_basedir')));
+
+        if ($baseDirs !== []) {
+            $allowed = false;
+            foreach ($baseDirs as $dir) {
+                if (str_starts_with($path, rtrim($dir, '/').'/') || $path === rtrim($dir, '/')) {
+                    $allowed = true;
+                    break;
+                }
+            }
+
+            if (! $allowed) {
+                return [
+                    'ok' => false,
+                    'hint' => $path.' — อยู่นอก open_basedir ('.implode(', ', $baseDirs).') '
+                        .'PHP ฝั่งเว็บอ่านไม่ได้ ต้องย้ายไปไว้ใน /home/admin/ แต่นอก public_html',
+                ];
+            }
+        }
+
+        // กันทุกกรณีที่เหลือ (permission, path แปลก) ไม่ให้ warning หลุดออกไปเป็น 500
+        set_error_handler(static fn () => true);
+
+        try {
+            $readable = is_readable($path);
+        } finally {
+            restore_error_handler();
+        }
+
+        return [
+            'ok' => $readable,
+            'hint' => $readable ? $path : $path.' — ยังไม่พบไฟล์หรืออ่านไม่ได้',
         ];
     }
 

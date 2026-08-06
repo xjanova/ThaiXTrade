@@ -279,7 +279,47 @@ class TreasuryPayoutTest extends TestCase
         $this->payout(TreasuryPayout::STATUS_PENDING, ['idempotency_key' => $key]);
     }
 
-    // ── 6. อ่านยอดไม่ได้ ต้องไม่กลายเป็นศูนย์ ──────────────────────────
+    // ── 6. readiness ต้องไม่ทำให้หน้าพัง ────────────────────────────────
+
+    public function test_readiness_never_throws_on_unreachable_keystore_path(): void
+    {
+        $this->fakeChain('0');
+
+        // พาธที่ PHP แตะไม่ได้ — ของจริงคือ /etc/tpix/ ที่อยู่นอก open_basedir
+        // is_readable() จะปล่อย warning ซึ่ง Laravel แปลงเป็น ErrorException
+        // แล้วหน้าคลังทั้งหน้ากลายเป็น 500 ทั้งที่แค่ยังไม่ได้วางไฟล์
+        foreach (['/etc/tpix/hot-wallet.keystore.json', '/root/secret.json', ''] as $path) {
+            config(['treasury.hot_wallet.keystore_path' => $path]);
+
+            $readiness = app(TreasuryService::class)->readiness();
+
+            $this->assertFalse($readiness['ready']);
+            $this->assertContains('keystore', array_column($readiness['blocking'], 'key'));
+
+            // ต้องบอกเหตุผลได้ ไม่ใช่เงียบ
+            $keystoreCheck = collect($readiness['checks'])->firstWhere('key', 'keystore');
+            $this->assertNotEmpty($keystoreCheck['hint']);
+        }
+    }
+
+    public function test_readiness_accepts_a_keystore_inside_an_allowed_path(): void
+    {
+        $this->fakeChain('0');
+
+        $path = storage_path('framework/testing/fake-keystore.json');
+        @mkdir(dirname($path), 0700, true);
+        file_put_contents($path, '{"version":3}');
+
+        config(['treasury.hot_wallet.keystore_path' => $path]);
+        $readiness = app(TreasuryService::class)->readiness();
+
+        $keystoreCheck = collect($readiness['checks'])->firstWhere('key', 'keystore');
+        $this->assertTrue($keystoreCheck['ok'], 'ไฟล์ที่มีจริงและอ่านได้ต้องผ่าน');
+
+        @unlink($path);
+    }
+
+    // ── 7. อ่านยอดไม่ได้ ต้องไม่กลายเป็นศูนย์ ──────────────────────────
 
     public function test_unreadable_balance_is_null_not_zero(): void
     {

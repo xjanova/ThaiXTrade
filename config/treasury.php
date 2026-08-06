@@ -101,11 +101,18 @@ return [
     | **ห้ามเก็บ passphrase ลง database และห้าม commit**
     | แอปถอดรหัสตอนรันไทม์ ไม่เขียน private key ลงดิสก์หรือ log
     |
+    | ⚠️ พาธต้องอยู่ใน open_basedir ของ PHP ฝั่งเว็บ
+    | เซิร์ฟเวอร์นี้ (DirectAdmin) จำกัดไว้ที่ /home/admin/ เป็นต้น การวางไว้ที่
+    | /etc/tpix/ จึงอ่านไม่ได้เลยและทำให้หน้าคลังพังเป็น 500
+    |
+    | /home/admin/.tpix/ ปลอดภัยเท่ากันเพราะอยู่นอก public_html เว็บเข้าไม่ถึง
+    | ตั้งสิทธิ์ให้แน่น: chmod 700 โฟลเดอร์ · chmod 600 ไฟล์
+    |
     */
 
     'hot_wallet' => [
         'address' => env('TPIX_HOT_WALLET_ADDRESS', '0x78B81dF5345e69ef7A1af231dE1C5b1b30869C8f'),
-        'keystore_path' => env('TPIX_HOT_WALLET_KEYSTORE', '/etc/tpix/hot-wallet.keystore.json'),
+        'keystore_path' => env('TPIX_HOT_WALLET_KEYSTORE', '/home/admin/.tpix/hot-wallet.keystore.json'),
         'passphrase' => env('TPIX_HOT_WALLET_PASS'),
 
         // เตือนเมื่อยอดต่ำกว่านี้ (หน่วย TPIX) — 0 = ปิดการเตือน
