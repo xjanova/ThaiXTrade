@@ -36,6 +36,7 @@ use App\Http\Controllers\Admin\TokenFactoryController;
 use App\Http\Controllers\Admin\TokenSaleController;
 use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
+use App\Http\Controllers\Admin\TreasuryController;
 use App\Models\WalletConnection;
 use App\Services\UserWalletService;
 use Illuminate\Support\Facades\Route;
@@ -272,6 +273,33 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/applications/{id}/reject', [ValidatorAdminController::class, 'rejectApplication'])->name('reject');
             Route::post('/propose-vote', [ValidatorAdminController::class, 'proposeVote'])->name('propose-vote');
         });
+
+        // ชั้นคลัง TPIX — กระเป๋าคลัง 6 ใบ (ดูอย่างเดียว) + กระเป๋าร้อน
+        // การจ่ายเงินยังปิดอยู่จนกว่า TreasuryService::readiness() จะผ่านครบ
+        // ทั้งกลุ่มจำกัดไว้ที่ super_admin เพราะเป็นเรื่องเงินคลังทั้งหมด
+        Route::prefix('treasury')->name('treasury.')
+            ->middleware('admin.role:super_admin')
+            ->group(function () {
+                Route::get('/', [TreasuryController::class, 'index'])->name('index');
+                Route::get('/balances', [TreasuryController::class, 'balances'])->name('balances');
+
+                // คิวจ่ายเงิน
+                Route::get('/payouts', [TreasuryController::class, 'payouts'])->name('payouts');
+                Route::post('/payouts', [TreasuryController::class, 'storePayout'])->name('payouts.store');
+                Route::post('/payouts/{id}/approve', [TreasuryController::class, 'approvePayout'])->name('payouts.approve');
+                Route::post('/payouts/{id}/reject', [TreasuryController::class, 'rejectPayout'])->name('payouts.reject');
+                Route::post('/payouts/{id}/broadcast', [TreasuryController::class, 'broadcastPayout'])->name('payouts.broadcast');
+
+                // whitelist ปลายทาง
+                Route::get('/whitelist', [TreasuryController::class, 'whitelist'])->name('whitelist');
+                Route::post('/whitelist', [TreasuryController::class, 'storeWhitelist'])->name('whitelist.store');
+                Route::post('/whitelist/{id}/toggle', [TreasuryController::class, 'toggleWhitelist'])->name('whitelist.toggle');
+                Route::delete('/whitelist/{id}', [TreasuryController::class, 'destroyWhitelist'])->name('whitelist.destroy');
+
+                // สมุดบัญชี + กระทบยอด
+                Route::get('/ledger', [TreasuryController::class, 'ledger'])->name('ledger');
+                Route::get('/reconcile', [TreasuryController::class, 'reconcile'])->name('reconcile');
+            });
 
         // Audit Logs (super_admin only)
         Route::get('audit-logs', [AuditLogController::class, 'index'])

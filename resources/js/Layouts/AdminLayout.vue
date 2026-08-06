@@ -83,6 +83,10 @@ const navigationSections = computed(() => [
     {
         title: t('common.all') === 'ทั้งหมด' ? 'การเงิน' : 'Finance',
         items: [
+            { name: t('common.all') === 'ทั้งหมด' ? 'ชั้นคลัง' : 'Treasury', href: '/admin/treasury', icon: 'wallet' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'คิวจ่ายเงิน' : 'Payout Queue', href: '/admin/treasury/payouts', icon: 'transaction' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'Whitelist ปลายทาง' : 'Payout Whitelist', href: '/admin/treasury/whitelist', icon: 'wallet' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'สมุดบัญชีคลัง' : 'Treasury Ledger', href: '/admin/treasury/ledger', icon: 'transaction' },
             { name: t('common.all') === 'ทั้งหมด' ? 'รายงานการเงิน' : 'Finance Dashboard', href: '/admin/finance', icon: 'transaction' },
             { name: t('common.all') === 'ทั้งหมด' ? 'ค่าธรรมเนียม' : 'Fees', href: '/admin/fees', icon: 'fee' },
             { name: t('common.all') === 'ทั้งหมด' ? 'ธุรกรรม' : 'Transactions', href: '/admin/transactions', icon: 'transaction' },

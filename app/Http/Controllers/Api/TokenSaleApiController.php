@@ -4,11 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SaleTransaction;
+use App\Models\TreasuryPayout;
 use App\Services\PriceFeedService;
 use App\Services\StripePaymentService;
 use App\Services\TokenSaleService;
+use App\Support\Wei;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -302,42 +306,70 @@ class TokenSaleApiController extends Controller
         $data = $validator->validated();
 
         try {
-            // ใช้ UUID แทน integer ID เพื่อความปลอดภัย
-            $tx = SaleTransaction::where('uuid', $data['transaction_id'])
-                ->where('wallet_address', strtolower($data['wallet_address']))
-                ->where('status', 'confirmed')
-                ->firstOrFail();
+            // ทั้งก้อนอยู่ใน transaction + ล็อกแถว เพราะเดิมอ่าน claimable แล้วค่อย
+            // increment โดยไม่ล็อก สองคำขอที่มาพร้อมกันจะผ่านด่านตรวจได้ทั้งคู่
+            // แล้ว claim เกินสิทธิ์ (TOCTOU)
+            $result = DB::transaction(function () use ($data) {
+                // ใช้ UUID แทน integer ID เพื่อความปลอดภัย
+                $tx = SaleTransaction::where('uuid', $data['transaction_id'])
+                    ->where('wallet_address', strtolower($data['wallet_address']))
+                    ->where('status', 'confirmed')
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            // คำนวณ claimable
-            $claimable = $tx->claimable_amount;
-            $requestedAmount = (float) $data['amount'];
+                // คำนวณ claimable ใหม่ภายใต้ล็อก
+                $claimable = $tx->claimable_amount;
+                $requestedAmount = (float) $data['amount'];
 
-            if ($requestedAmount > $claimable) {
-                return response()->json([
-                    'success' => false,
-                    'error' => [
+                if ($requestedAmount > $claimable) {
+                    return ['error' => [
                         'code' => 'INSUFFICIENT_CLAIMABLE',
                         'message' => "Only {$claimable} TPIX available to claim.",
+                    ]];
+                }
+
+                $tx->increment('claimed_amount', $requestedAmount);
+                $tx->refresh();
+
+                // เข้าคิวจ่ายเงินจากกระเป๋าร้อน แทนที่จะรอแอดมินส่งเหรียญเอง
+                //
+                // idempotency key ผูกกับยอดสะสมหลัง claim ครั้งนี้ ทำให้การกดซ้ำ
+                // ที่ให้ผลลัพธ์เดียวกันได้รายการเดิม ส่วนการ claim ครั้งถัดไป
+                // (ยอดสะสมต่างออกไป) ได้รายการใหม่ตามที่ควร
+                $payout = TreasuryPayout::firstOrCreate(
+                    ['idempotency_key' => 'sale-claim-'.$tx->uuid.'-'.$tx->claimed_amount],
+                    [
+                        'to_address' => strtolower($data['wallet_address']),
+                        'amount_wei' => Wei::toWei((string) $requestedAmount),
+                        'purpose' => 'token_sale',
+                        'memo' => 'claim vesting จากรายการซื้อ '.$tx->uuid,
+                        'status' => TreasuryPayout::STATUS_PENDING,
                     ],
-                ], 400);
+                );
+
+                return ['tx' => $tx, 'payout' => $payout, 'claimed' => $requestedAmount];
+            });
+
+            if (isset($result['error'])) {
+                return response()->json(['success' => false, 'error' => $result['error']], 400);
             }
-
-            // อัปเดต claimed_amount
-            $tx->increment('claimed_amount', $requestedAmount);
-
-            // TODO: ส่ง TPIX จาก contract ไป wallet (ต้อง integrate กับ smart contract)
-            // ตอนนี้ทำแค่บันทึกว่า claimed แล้ว admin จะส่งเหรียญเอง
 
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'claimed_amount' => $requestedAmount,
-                    'total_claimed' => (float) $tx->fresh()->claimed_amount,
-                    'remaining_claimable' => $tx->fresh()->claimable_amount,
+                    'claimed_amount' => $result['claimed'],
+                    'total_claimed' => (float) $result['tx']->claimed_amount,
+                    'remaining_claimable' => $result['tx']->claimable_amount,
+                    'payout_status' => $result['payout']->status,
                     'message' => 'Claim recorded. TPIX will be sent to your wallet.',
                 ],
             ]);
         } catch (\Exception $e) {
+            Log::warning('token-sale: claim ไม่สำเร็จ', [
+                'wallet' => $data['wallet_address'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'success' => false,
                 'error' => ['code' => 'CLAIM_ERROR', 'message' => 'Unable to process claim.'],

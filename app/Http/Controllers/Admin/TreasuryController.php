@@ -1,0 +1,415 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Models\TreasuryLedger;
+use App\Models\TreasuryPayout;
+use App\Models\TreasuryWhitelist;
+use App\Services\TreasuryService;
+use App\Support\Wei;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response as InertiaResponse;
+
+/**
+ * TreasuryController — ชั้นคลัง TPIX (หลังบ้าน tpix.online).
+ *
+ * กระเป๋าคลัง 6 ใบ **ดูอย่างเดียว** ระบบไม่มีคีย์ของมัน
+ * การจ่ายเงินทำผ่านกระเป๋าร้อนเท่านั้น และยัง **ปิดอยู่** จนกว่า
+ * TreasuryService::readiness() จะผ่านครบทุกข้อ
+ *
+ * Developed by Xman Studio.
+ */
+class TreasuryController extends Controller
+{
+    public function __construct(private TreasuryService $treasury) {}
+
+    /**
+     * แดชบอร์ดคลัง — ยอด 6 ใบสด + กระเป๋าร้อน + สถานะความพร้อม.
+     */
+    public function index(): InertiaResponse
+    {
+        return Inertia::render('Admin/Treasury/Index', [
+            'pools' => $this->treasury->pools(),
+            'hotWallet' => $this->treasury->hotWallet(),
+            'readiness' => $this->treasury->readiness(),
+            'totalSupply' => config('treasury.total_supply'),
+            'blockNumber' => $this->treasury->blockNumber(),
+            'rpcUrl' => config('treasury.rpc_url'),
+            'explorerUrl' => config('chains.chains.4289.explorer', 'https://explorer.tpix.online'),
+            'limits' => [
+                'per_transaction' => config('treasury.limits.per_transaction'),
+                'per_day' => config('treasury.limits.per_day'),
+                'require_whitelist' => config('treasury.limits.require_whitelist'),
+            ],
+            'pendingCount' => TreasuryPayout::pending()->count(),
+        ]);
+    }
+
+    /**
+     * API: รีเฟรชยอด (หน้า poll ทุก 30 วินาที).
+     */
+    public function balances(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'pools' => $this->treasury->pools(),
+                'hotWallet' => $this->treasury->hotWallet(),
+                'blockNumber' => $this->treasury->blockNumber(),
+                'readiness' => $this->treasury->readiness(),
+            ],
+        ]);
+    }
+
+    // ── คิวจ่ายเงิน ──────────────────────────────────────────────────────
+
+    public function payouts(Request $request): InertiaResponse
+    {
+        $status = $request->query('status');
+
+        $payouts = TreasuryPayout::with(['requester:id,name', 'approver:id,name'])
+            ->when($status, fn ($q) => $q->where('status', $status))
+            ->latest()
+            ->paginate(25)
+            ->withQueryString();
+
+        return Inertia::render('Admin/Treasury/Payouts', [
+            'payouts' => $payouts,
+            'filters' => ['status' => $status],
+            'readiness' => $this->treasury->readiness(),
+            'hotWallet' => $this->treasury->hotWallet(),
+            'whitelist' => TreasuryWhitelist::active()->orderBy('label')->get(),
+            'limits' => [
+                'per_transaction' => config('treasury.limits.per_transaction'),
+                'per_day' => config('treasury.limits.per_day'),
+            ],
+            'spentToday' => Wei::format($this->treasury->spentTodayWei()),
+            'explorerUrl' => config('chains.chains.4289.explorer', 'https://explorer.tpix.online'),
+        ]);
+    }
+
+    /**
+     * สร้างรายการจ่ายเงินเข้าคิว.
+     *
+     * ต้องส่ง idempotency_key มาด้วย — ถ้าซ้ำจะคืนรายการเดิม ไม่สร้างใหม่
+     * กันกรณีกดปุ่มรัว ๆ หรือ client retry
+     */
+    public function storePayout(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'to_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,18})?$/'],
+            'purpose' => ['required', 'string', Rule::in(['masternode', 'token_sale', 'refund', 'other'])],
+            'memo' => ['nullable', 'string', 'max:500'],
+            'idempotency_key' => ['required', 'string', 'max:100'],
+        ]);
+
+        $amountWei = Wei::toWei($validated['amount']);
+
+        // idempotency: มีอยู่แล้วก็คืนตัวเดิม
+        $existing = TreasuryPayout::where('idempotency_key', $validated['idempotency_key'])->first();
+        if ($existing) {
+            return response()->json([
+                'success' => true,
+                'duplicate' => true,
+                'message' => 'รายการนี้ถูกสร้างไว้แล้ว ไม่ได้สร้างซ้ำ',
+                'data' => $existing,
+            ]);
+        }
+
+        $check = $this->treasury->validatePayout(
+            $validated['to_address'],
+            $amountWei,
+            null,
+            $validated['purpose'],
+        );
+        if (! $check['ok']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'สร้างรายการไม่ได้',
+                'errors' => $check['errors'],
+            ], 422);
+        }
+
+        try {
+            $payout = TreasuryPayout::create([
+                'idempotency_key' => $validated['idempotency_key'],
+                'to_address' => $validated['to_address'],
+                'amount_wei' => $amountWei,
+                'purpose' => $validated['purpose'],
+                'memo' => $validated['memo'] ?? null,
+                'status' => TreasuryPayout::STATUS_PENDING,
+                'requested_by' => $request->user()?->id,
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // ชนกันพอดีระหว่างสอง request ที่ใช้ key เดียวกัน — unique index กันไว้
+            $existing = TreasuryPayout::where('idempotency_key', $validated['idempotency_key'])->first();
+            if ($existing) {
+                return response()->json([
+                    'success' => true,
+                    'duplicate' => true,
+                    'message' => 'รายการนี้ถูกสร้างไว้แล้ว ไม่ได้สร้างซ้ำ',
+                    'data' => $existing,
+                ]);
+            }
+
+            throw $e;
+        }
+
+        return response()->json(['success' => true, 'data' => $payout]);
+    }
+
+    /**
+     * อนุมัติรายการ — ยังไม่เซ็น ยังไม่ broadcast.
+     *
+     * ล็อกแถวด้วย lockForUpdate ก่อนเช็คสถานะ เพื่อกันสองแอดมินกดอนุมัติ
+     * พร้อมกันแล้วผ่านทั้งคู่
+     */
+    public function approvePayout(Request $request, int $id): JsonResponse
+    {
+        $result = DB::transaction(function () use ($request, $id) {
+            $payout = TreasuryPayout::lockForUpdate()->find($id);
+
+            if (! $payout) {
+                return ['code' => 404, 'body' => ['success' => false, 'message' => 'ไม่พบรายการ']];
+            }
+
+            if (! $payout->isOpen()) {
+                return ['code' => 409, 'body' => [
+                    'success' => false,
+                    'message' => 'รายการนี้ถูกดำเนินการไปแล้ว (สถานะ: '.$payout->status.')',
+                ]];
+            }
+
+            // ตรวจกฎซ้ำอีกรอบ — วงเงินหรือ whitelist อาจถูกแก้ระหว่างรออนุมัติ
+            $check = $this->treasury->validatePayout(
+                $payout->to_address,
+                (string) $payout->amount_wei,
+                $payout->id,
+                $payout->purpose,
+            );
+
+            if (! $check['ok']) {
+                return ['code' => 422, 'body' => [
+                    'success' => false,
+                    'message' => 'อนุมัติไม่ได้ กฎเปลี่ยนไปตั้งแต่ตอนสร้างรายการ',
+                    'errors' => $check['errors'],
+                ]];
+            }
+
+            $hot = $this->treasury->hotWallet();
+
+            $payout->update([
+                'status' => TreasuryPayout::STATUS_APPROVED,
+                'approved_by' => $request->user()?->id,
+                'approved_at' => now(),
+                'hot_balance_at_approval_wei' => $hot['balance_wei'],
+            ]);
+
+            return ['code' => 200, 'body' => ['success' => true, 'data' => $payout->fresh()]];
+        });
+
+        return response()->json($result['body'], $result['code']);
+    }
+
+    public function rejectPayout(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        $result = DB::transaction(function () use ($validated, $id) {
+            $payout = TreasuryPayout::lockForUpdate()->find($id);
+
+            if (! $payout) {
+                return ['code' => 404, 'body' => ['success' => false, 'message' => 'ไม่พบรายการ']];
+            }
+
+            if (! $payout->isOpen()) {
+                return ['code' => 409, 'body' => [
+                    'success' => false,
+                    'message' => 'รายการนี้ถูกดำเนินการไปแล้ว (สถานะ: '.$payout->status.')',
+                ]];
+            }
+
+            $payout->update([
+                'status' => TreasuryPayout::STATUS_REJECTED,
+                'failure_reason' => $validated['reason'],
+            ]);
+
+            return ['code' => 200, 'body' => ['success' => true, 'data' => $payout->fresh()]];
+        });
+
+        return response()->json($result['body'], $result['code']);
+    }
+
+    /**
+     * สั่งส่งขึ้นเชน — เปลี่ยนสถานะเป็น broadcasting แล้วให้ CLI เป็นคนเซ็นจริง
+     *
+     * หน้าเว็บ **ไม่ได้เซ็นเอง** เพราะ php-fpm บนเซิร์ฟเวอร์นี้ปิด proc_open
+     * การเซ็นต้องเรียก ethers ผ่าน Node ซึ่งทำได้เฉพาะฝั่ง CLI
+     * คำสั่ง `tpix:treasury-payouts` ที่รันทุกนาทีจะมาหยิบไปเซ็นและส่งต่อ
+     *
+     * แยกแบบนี้ดีกว่าตรงที่ request ไม่ต้องค้างรอการเซ็น (~1 วินาที) และถ้า
+     * ส่งไม่สำเร็จก็มีคนลองใหม่ให้เองโดยไม่ต้องมีคนมานั่งกดซ้ำ
+     */
+    public function broadcastPayout(int $id): JsonResponse
+    {
+        $readiness = $this->treasury->readiness();
+
+        if (! $readiness['ready']) {
+            Log::info('treasury: มีคนสั่งจ่ายเงินขณะที่ระบบยังไม่พร้อม', [
+                'payout_id' => $id,
+                'blocking' => array_column($readiness['blocking'], 'key'),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'ระบบจ่ายเงินยังไม่พร้อมใช้งาน',
+                'readiness' => $readiness,
+            ], 423); // 423 Locked
+        }
+
+        $result = DB::transaction(function () use ($id) {
+            $payout = TreasuryPayout::lockForUpdate()->find($id);
+
+            if (! $payout) {
+                return ['code' => 404, 'body' => ['success' => false, 'message' => 'ไม่พบรายการ']];
+            }
+
+            // ส่งได้เฉพาะรายการที่อนุมัติแล้วเท่านั้น และต้องยังไม่เคยมี tx
+            // ถ้ามี tx_hash แล้วแปลว่าส่งไปแล้ว ห้ามส่งซ้ำเด็ดขาด
+            if ($payout->status !== TreasuryPayout::STATUS_APPROVED || $payout->tx_hash) {
+                return ['code' => 409, 'body' => [
+                    'success' => false,
+                    'message' => 'รายการนี้ส่งไม่ได้ (สถานะ: '.$payout->status.')',
+                ]];
+            }
+
+            $check = $this->treasury->validatePayout(
+                $payout->to_address,
+                (string) $payout->amount_wei,
+                $payout->id,
+                $payout->purpose,
+            );
+
+            if (! $check['ok']) {
+                return ['code' => 422, 'body' => [
+                    'success' => false,
+                    'message' => 'ส่งไม่ได้ กฎเปลี่ยนไปตั้งแต่ตอนอนุมัติ',
+                    'errors' => $check['errors'],
+                ]];
+            }
+
+            $payout->update(['status' => TreasuryPayout::STATUS_BROADCASTING]);
+
+            return ['code' => 200, 'body' => [
+                'success' => true,
+                'message' => 'เข้าคิวส่งขึ้นเชนแล้ว ระบบจะเซ็นและส่งให้ภายใน 1 นาที',
+                'data' => $payout->fresh(),
+            ]];
+        });
+
+        return response()->json($result['body'], $result['code']);
+    }
+
+    // ── whitelist ────────────────────────────────────────────────────────
+
+    public function whitelist(): InertiaResponse
+    {
+        return Inertia::render('Admin/Treasury/Whitelist', [
+            'entries' => TreasuryWhitelist::with('creator:id,name')->latest()->get(),
+            'limits' => [
+                'per_transaction' => config('treasury.limits.per_transaction'),
+                'per_day' => config('treasury.limits.per_day'),
+                'require_whitelist' => config('treasury.limits.require_whitelist'),
+            ],
+        ]);
+    }
+
+    public function storeWhitelist(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'label' => ['required', 'string', 'max:120'],
+            'note' => ['nullable', 'string', 'max:500'],
+            'purpose' => ['required', 'string', Rule::in(['masternode', 'token_sale', 'refund', 'other'])],
+            'max_per_tx' => ['nullable', 'string', 'regex:/^\d+(\.\d{1,18})?$/'],
+            'max_per_day' => ['nullable', 'string', 'regex:/^\d+(\.\d{1,18})?$/'],
+        ]);
+
+        // เทียบแบบไม่สนตัวพิมพ์ — model normalize เป็นตัวเล็กให้อยู่แล้ว
+        if (TreasuryWhitelist::where('address', strtolower($validated['address']))->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'ที่อยู่นี้อยู่ใน whitelist แล้ว',
+            ], 422);
+        }
+
+        $entry = TreasuryWhitelist::create([
+            'address' => $validated['address'],
+            'label' => $validated['label'],
+            'note' => $validated['note'] ?? null,
+            'purpose' => $validated['purpose'],
+            'max_per_tx_wei' => filled($validated['max_per_tx'] ?? null) ? Wei::toWei($validated['max_per_tx']) : null,
+            'max_per_day_wei' => filled($validated['max_per_day'] ?? null) ? Wei::toWei($validated['max_per_day']) : null,
+            'is_active' => true,
+            'created_by' => $request->user()?->id,
+        ]);
+
+        return response()->json(['success' => true, 'data' => $entry->load('creator:id,name')]);
+    }
+
+    public function toggleWhitelist(int $id): JsonResponse
+    {
+        $entry = TreasuryWhitelist::findOrFail($id);
+        $entry->update(['is_active' => ! $entry->is_active]);
+
+        return response()->json(['success' => true, 'data' => $entry]);
+    }
+
+    public function destroyWhitelist(int $id): JsonResponse
+    {
+        TreasuryWhitelist::findOrFail($id)->delete();
+
+        return response()->json(['success' => true]);
+    }
+
+    // ── สมุดบัญชี + กระทบยอด ─────────────────────────────────────────────
+
+    public function ledger(Request $request): InertiaResponse
+    {
+        $walletKey = $request->query('wallet');
+
+        $entries = TreasuryLedger::with(['recorder:id,name', 'payout:id,tx_hash,status'])
+            ->when($walletKey, fn ($q) => $q->where('wallet_key', $walletKey))
+            ->latest()
+            ->paginate(50)
+            ->withQueryString();
+
+        return Inertia::render('Admin/Treasury/Ledger', [
+            'entries' => $entries,
+            'filters' => ['wallet' => $walletKey],
+            'reconciliation' => $this->treasury->reconcile(),
+            'pools' => config('treasury.pools'),
+            'explorerUrl' => config('chains.chains.4289.explorer', 'https://explorer.tpix.online'),
+        ]);
+    }
+
+    /**
+     * API: กระทบยอดใหม่ตามคำสั่ง (ปุ่มบนหน้า).
+     */
+    public function reconcile(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->treasury->reconcile(),
+        ]);
+    }
+}

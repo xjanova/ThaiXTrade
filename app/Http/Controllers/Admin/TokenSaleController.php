@@ -7,6 +7,7 @@ use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
+use App\Support\Wei;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Inertia\Inertia;
@@ -162,10 +163,9 @@ class TokenSaleController extends Controller
             ]);
 
             $balanceHex = $response->json('result', '0x0');
-            // Use GMP for arbitrary precision to avoid float overflow on large balances
-            $hex = str_starts_with($balanceHex, '0x') ? substr($balanceHex, 2) : $balanceHex;
-            $balanceWei = gmp_init($hex ?: '0', 16);
-            $balanceTpix = (float) bcdiv(gmp_strval($balanceWei), '1000000000000000000', 18);
+            // แปลงแบบ arbitrary precision กัน float overflow ตอนยอดใหญ่
+            // เดิมใช้ gmp_* ซึ่งเซิร์ฟเวอร์ไม่มี ext-gmp → โยน \Error ที่ catch ไม่ติด
+            $balanceTpix = (float) Wei::hexToDecimal($balanceHex);
 
             return [
                 'address' => $address,
