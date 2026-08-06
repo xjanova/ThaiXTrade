@@ -84,7 +84,7 @@ class OrderMatchingService
 
             // Lock taker order ก่อน match
             $order = Order::where('id', $order->id)->lockForUpdate()->first();
-            if (! $order || ! $order->isFillable()) {
+            if (! $order || ! $order->canBeFilled()) {
                 return $trades;
             }
 
@@ -92,11 +92,11 @@ class OrderMatchingService
             $oppositeOrders = $this->getMatchableOrders($order, lockForUpdate: true);
 
             foreach ($oppositeOrders as $counterOrder) {
-                if (! $order->isFillable()) {
+                if (! $order->canBeFilled()) {
                     break;
                 }
 
-                if (! $counterOrder->isFillable()) {
+                if (! $counterOrder->canBeFilled()) {
                     continue;
                 }
 
