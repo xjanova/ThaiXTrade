@@ -31,3 +31,14 @@ Schedule::command('masternode:cleanup')
     ->withoutOverlapping(10)
     ->onOneServer()
     ->name('masternode:cleanup');
+
+// ชั้นคลัง: เก็บรายการเคลื่อนไหวของกระเป๋าคลังจากเชนเข้าสมุดบัญชี ทุก 5 นาที
+//
+// ต้องมีตัวนี้ ไม่งั้นพอมีใครโอนเงินออกจากคลังผ่าน Masternode UI (ทางเดียวที่โอนได้
+// เพราะระบบเว็บไม่มีคีย์ของคลัง) สมุดจะไม่รู้เรื่อง แล้วตัวกระทบยอดจะฟ้องว่า
+// ไม่ตรงทั้งที่เป็นการโอนที่ถูกต้อง — เคสแรกที่จะเจอคือตอนเติมเงินกระเป๋าร้อน
+Schedule::command('tpix:treasury-sync')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('treasury:sync');
