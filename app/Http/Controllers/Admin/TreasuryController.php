@@ -244,30 +244,72 @@ class TreasuryController extends Controller
     }
 
     /**
-     * เซ็นและส่งขึ้นเชน — **ยังไม่เปิดใช้งาน**.
+     * สั่งส่งขึ้นเชน — เปลี่ยนสถานะเป็น broadcasting แล้วให้ CLI เป็นคนเซ็นจริง
      *
-     * ตั้งใจให้ endpoint นี้มีอยู่แต่ปฏิเสธทุกครั้งจนกว่าจะพร้อมจริง
-     * เพื่อให้หน้าจอเรียกได้และได้คำตอบที่บอกเหตุผลชัดเจน แทนที่จะ 404
-     * แล้วคนเข้าใจว่าระบบพัง
+     * หน้าเว็บ **ไม่ได้เซ็นเอง** เพราะ php-fpm บนเซิร์ฟเวอร์นี้ปิด proc_open
+     * การเซ็นต้องเรียก ethers ผ่าน Node ซึ่งทำได้เฉพาะฝั่ง CLI
+     * คำสั่ง `tpix:treasury-payouts` ที่รันทุกนาทีจะมาหยิบไปเซ็นและส่งต่อ
      *
-     * เหตุผลที่ยังไม่เขียนส่วนเซ็น: กระเป๋าร้อนยังไม่ถูกเติมเงินและยังไม่ได้
-     * วาง keystore บนเซิร์ฟเวอร์ การเขียนโค้ดเซ็นทิ้งไว้โดยทดสอบจริงไม่ได้
-     * เสี่ยงกว่าการยังไม่เขียน — โค้ดจ่ายเงินที่ไม่เคยรันคือโค้ดที่ไม่รู้ว่าถูก
+     * แยกแบบนี้ดีกว่าตรงที่ request ไม่ต้องค้างรอการเซ็น (~1 วินาที) และถ้า
+     * ส่งไม่สำเร็จก็มีคนลองใหม่ให้เองโดยไม่ต้องมีคนมานั่งกดซ้ำ
      */
     public function broadcastPayout(int $id): JsonResponse
     {
         $readiness = $this->treasury->readiness();
 
-        Log::info('treasury: มีคนพยายามสั่งจ่ายเงินขณะที่ยังปิดอยู่', [
-            'payout_id' => $id,
-            'blocking' => array_column($readiness['blocking'], 'key'),
-        ]);
+        if (! $readiness['ready']) {
+            Log::info('treasury: มีคนสั่งจ่ายเงินขณะที่ระบบยังไม่พร้อม', [
+                'payout_id' => $id,
+                'blocking' => array_column($readiness['blocking'], 'key'),
+            ]);
 
-        return response()->json([
-            'success' => false,
-            'message' => 'ระบบจ่ายเงินยังไม่เปิดใช้งาน',
-            'readiness' => $readiness,
-        ], 423); // 423 Locked
+            return response()->json([
+                'success' => false,
+                'message' => 'ระบบจ่ายเงินยังไม่พร้อมใช้งาน',
+                'readiness' => $readiness,
+            ], 423); // 423 Locked
+        }
+
+        $result = DB::transaction(function () use ($id) {
+            $payout = TreasuryPayout::lockForUpdate()->find($id);
+
+            if (! $payout) {
+                return ['code' => 404, 'body' => ['success' => false, 'message' => 'ไม่พบรายการ']];
+            }
+
+            // ส่งได้เฉพาะรายการที่อนุมัติแล้วเท่านั้น และต้องยังไม่เคยมี tx
+            // ถ้ามี tx_hash แล้วแปลว่าส่งไปแล้ว ห้ามส่งซ้ำเด็ดขาด
+            if ($payout->status !== TreasuryPayout::STATUS_APPROVED || $payout->tx_hash) {
+                return ['code' => 409, 'body' => [
+                    'success' => false,
+                    'message' => 'รายการนี้ส่งไม่ได้ (สถานะ: '.$payout->status.')',
+                ]];
+            }
+
+            $check = $this->treasury->validatePayout(
+                $payout->to_address,
+                (string) $payout->amount_wei,
+                $payout->id,
+            );
+
+            if (! $check['ok']) {
+                return ['code' => 422, 'body' => [
+                    'success' => false,
+                    'message' => 'ส่งไม่ได้ กฎเปลี่ยนไปตั้งแต่ตอนอนุมัติ',
+                    'errors' => $check['errors'],
+                ]];
+            }
+
+            $payout->update(['status' => TreasuryPayout::STATUS_BROADCASTING]);
+
+            return ['code' => 200, 'body' => [
+                'success' => true,
+                'message' => 'เข้าคิวส่งขึ้นเชนแล้ว ระบบจะเซ็นและส่งให้ภายใน 1 นาที',
+                'data' => $payout->fresh(),
+            ]];
+        });
+
+        return response()->json($result['body'], $result['code']);
     }
 
     // ── whitelist ────────────────────────────────────────────────────────

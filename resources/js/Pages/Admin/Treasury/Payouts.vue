@@ -82,6 +82,7 @@ async function submitPayout() {
 /* ── อนุมัติ / ปฏิเสธ ─────────────────────────────────────────────── */
 const busyId = ref(null);
 const actionError = ref('');
+const actionNotice = ref('');
 
 async function approve(payout) {
     if (busyId.value) return;
@@ -111,16 +112,23 @@ async function reject(payout) {
 }
 
 async function broadcast(payout) {
+    if (busyId.value) return;
+    if (!confirm(
+        `ยืนยันส่งขึ้นเชนจริง?\n\n${fmtTpix(payout.amount_tpix)} TPIX -> ${payout.to_address}\n\n`
+        + 'เมื่อส่งแล้วยกเลิกไม่ได้ เงินจะออกจากกระเป๋าร้อนทันทีที่เชนรับ'
+    )) return;
+
     busyId.value = payout.id;
     actionError.value = '';
     try {
-        await axios.post(`/admin/treasury/payouts/${payout.id}/broadcast`);
+        const { data } = await axios.post(`/admin/treasury/payouts/${payout.id}/broadcast`);
+        actionNotice.value = data.message ?? 'เข้าคิวส่งแล้ว';
         router.reload({ only: ['payouts'] });
     } catch (e) {
-        // 423 Locked = ยังไม่เปิดใช้งาน ซึ่งเป็นพฤติกรรมที่ตั้งใจ
+        // 423 Locked = ยังไม่พร้อมใช้งาน ซึ่งเป็นพฤติกรรมที่ตั้งใจ
         actionError.value = e.response?.status === 423
-            ? 'ระบบจ่ายเงินยังไม่เปิดใช้งาน — ดูรายการที่ยังขาดในกล่องด้านบน'
-            : (e.response?.data?.message ?? 'ส่งขึ้นเชนไม่สำเร็จ');
+            ? 'ระบบจ่ายเงินยังไม่พร้อม — ดูรายการที่ยังขาดในกล่องด้านบน'
+            : ((e.response?.data?.errors ?? [e.response?.data?.message ?? 'สั่งส่งไม่สำเร็จ']).join(' · '));
     } finally { busyId.value = null; }
 }
 
@@ -192,6 +200,9 @@ function filterStatus(status) {
 
             <div v-if="actionError" class="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-300">
                 {{ actionError }}
+            </div>
+            <div v-if="actionNotice" class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-sm text-emerald-300">
+                {{ actionNotice }}
             </div>
 
             <!-- ตัวกรอง -->

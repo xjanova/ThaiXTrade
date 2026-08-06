@@ -42,3 +42,15 @@ Schedule::command('tpix:treasury-sync')
     ->withoutOverlapping(10)
     ->onOneServer()
     ->name('treasury:sync');
+
+// ชั้นคลัง: เซ็น ส่ง และตามผลรายการจ่ายเงินจากกระเป๋าร้อน ทุกนาที
+//
+// ต้องอยู่ฝั่ง CLI เพราะการเซ็นเรียก ethers ผ่าน Node ซึ่ง php-fpm ทำไม่ได้
+// (ปิด proc_open ไว้) หน้าเว็บทำได้แค่เปลี่ยนสถานะเป็น broadcasting
+//
+// withoutOverlapping สำคัญมาก — ถ้าสองรอบทำงานทับกันจะแย่ง nonce กัน
+Schedule::command('tpix:treasury-payouts')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer()
+    ->name('treasury:payouts');
