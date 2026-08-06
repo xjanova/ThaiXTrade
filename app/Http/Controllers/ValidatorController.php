@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ValidatorApplication;
+use App\Support\Wei;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -576,12 +577,12 @@ class ValidatorController extends Controller
 
     /**
      * Convert wei hex string to ether string.
+     *
+     * เดิมใช้ gmp_* ซึ่งเซิร์ฟเวอร์ไม่มี ext-gmp → โยน \Error ที่ catch ไม่ติด
+     * Wei::hexToWholeUnits() หารปัดลงเหมือน gmp_div_q ทุกประการ
      */
     private function weiToEther(string $hexWei): string
     {
-        $wei = gmp_init($hexWei, 16);
-        $ether = gmp_div_q($wei, gmp_init('1000000000000000000'));
-
-        return gmp_strval($ether);
+        return Wei::hexToWholeUnits($hexWei);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
+use App\Support\Wei;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -173,10 +174,9 @@ class MasterNodeAdminController extends Controller
 
         if ($response->successful() && ! $response->json('error')) {
             $hex = $response->json('result', '0x0');
-            $wei = gmp_init($hex, 16);
-            $ether = gmp_div_q($wei, gmp_init('1000000000000000000'));
 
-            return gmp_strval($ether);
+            // เดิมใช้ gmp_* ซึ่งเซิร์ฟเวอร์ไม่มี ext-gmp → โยน \Error ที่ catch ไม่ติด
+            return Wei::hexToWholeUnits($hex);
         }
 
         return '0';

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Token;
+use App\Support\Wei;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -228,34 +229,15 @@ class Web3BalanceService
 
     /**
      * Convert hex balance to human-readable decimal string.
+     *
+     * เดิมทำเองด้วย gmp_init()/gmp_strval() ซึ่งเซิร์ฟเวอร์ไม่มี ext-gmp →
+     * โยน \Error ที่ `catch (\Exception)` ข้างบนจับไม่ติด กลายเป็น fatal
+     * บั๊กนี้ซ่อนตัวได้เพราะโค้ดเดิม return '0' ก่อนถ้า hex เป็น '0x'/'0x0'
+     * ยอดศูนย์จึงดูปกติ มีแต่ยอดที่ไม่ใช่ศูนย์เท่านั้นที่ระเบิด
      */
     private function hexToDecimal(string $hex, int $decimals): string
     {
-        if ($hex === '0x' || $hex === '0x0') {
-            return '0';
-        }
-
-        $hex = ltrim(substr($hex, 2), '0') ?: '0';
-        $bigInt = gmp_init($hex, 16);
-        $stringVal = gmp_strval($bigInt);
-
-        if ($decimals === 0) {
-            return $stringVal;
-        }
-
-        // Pad left to ensure enough digits
-        $stringVal = str_pad($stringVal, $decimals + 1, '0', STR_PAD_LEFT);
-        $intPart = substr($stringVal, 0, -$decimals);
-        $fracPart = substr($stringVal, -$decimals);
-
-        // Trim trailing zeros from fractional part
-        $fracPart = rtrim($fracPart, '0');
-
-        if ($fracPart === '') {
-            return $intPart;
-        }
-
-        return $intPart.'.'.$fracPart;
+        return Wei::format(Wei::hexToInt($hex), $decimals);
     }
 
     /**
@@ -263,12 +245,6 @@ class Web3BalanceService
      */
     private function hexToBigInt(string $hex): string
     {
-        if ($hex === '0x' || $hex === '0x0') {
-            return '0';
-        }
-
-        $hex = ltrim(substr($hex, 2), '0') ?: '0';
-
-        return gmp_strval(gmp_init($hex, 16));
+        return Wei::hexToInt($hex);
     }
 }

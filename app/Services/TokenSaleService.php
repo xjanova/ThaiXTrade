@@ -6,6 +6,7 @@ use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
+use App\Support\Wei;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -395,9 +396,11 @@ class TokenSaleService
             $result['from'] = strtolower($tx['from'] ?? '');
             $result['to'] = strtolower($tx['to'] ?? '');
 
-            // ใช้ gmp เพื่อป้องกัน overflow สำหรับจำนวนเงินสูง
-            $valueWei = gmp_init($tx['value'] ?? '0x0', 16);
-            $result['value'] = (float) bcdiv(gmp_strval($valueWei), '1000000000000000000', 18);
+            // แปลงแบบ arbitrary precision กัน overflow ตอนจำนวนเงินสูง
+            // เดิมใช้ gmp_* ซึ่งเซิร์ฟเวอร์ไม่มี ext-gmp → โยน \Error ที่ catch ไม่ติด
+            // ทางนี้เป็นทางตรวจยอดชำระของผู้ซื้อ ถ้าพังกลางคันจะยืนยันการชำระไม่ได้เลย
+            $valueWei = Wei::hexToInt($tx['value'] ?? '0x0');
+            $result['value'] = (float) bcdiv($valueWei, '1000000000000000000', 18);
 
             // เช็ค: tx ต้องส่งมาจาก wallet ที่อ้าง
             if ($result['from'] !== strtolower($fromWallet)) {
@@ -439,9 +442,10 @@ class TokenSaleService
                         // ตรวจจำนวนเงินจาก data field (ERC-20 amount)
                         if (in_array(strtoupper($claimedCurrency), ['USDT', 'BUSD']) && $claimedAmount > 0) {
                             $dataHex = $log['data'] ?? '0x0';
-                            $tokenWei = gmp_init($dataHex, 16);
+                            // เดิมใช้ gmp_* ซึ่งเซิร์ฟเวอร์ไม่มี ext-gmp
+                            $tokenWei = Wei::hexToInt($dataHex);
                             // USDT/BUSD บน BSC ใช้ 18 decimals
-                            $actualTokenAmount = (float) bcdiv(gmp_strval($tokenWei), '1000000000000000000', 8);
+                            $actualTokenAmount = (float) bcdiv($tokenWei, '1000000000000000000', 8);
                             $minExpected = $claimedAmount * (1 - $amountTolerance);
 
                             if ($actualTokenAmount < $minExpected) {

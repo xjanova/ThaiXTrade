@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BridgeTransaction;
 use App\Models\SiteSetting;
+use App\Support\Wei;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -257,7 +258,9 @@ class BridgeService
 
             // amount จาก data field
             $burnAmountHex = $log['data'] ?? '0x0';
-            $burnAmountWei = gmp_strval(gmp_init($burnAmountHex, 16));
+            // เดิมใช้ gmp_* ซึ่งเซิร์ฟเวอร์ไม่มี ext-gmp → โยน \Error ที่ catch ไม่ติด
+            // ทางนี้เป็นทางตรวจยอด burn ถ้าพังกลางคัน bridge จะยืนยันไม่ได้เลย
+            $burnAmountWei = Wei::hexToInt($burnAmountHex);
             $burnAmount = bcdiv($burnAmountWei, '1000000000000000000', 18);
 
             // ตรวจว่า burn amount ตรงกับที่อ้าง (tolerance 1%)
@@ -310,8 +313,8 @@ class BridgeService
             return $result;
         }
 
-        // ตรวจ value
-        $valueWei = gmp_strval(gmp_init($txDetail['value'] ?? '0x0', 16));
+        // ตรวจ value — เดิมใช้ gmp_* ซึ่งเซิร์ฟเวอร์ไม่มี ext-gmp
+        $valueWei = Wei::hexToInt($txDetail['value'] ?? '0x0');
         $value = bcdiv($valueWei, '1000000000000000000', 18);
 
         $expectedAmount = (string) $tx->amount;
