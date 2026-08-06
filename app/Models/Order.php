@@ -120,7 +120,15 @@ class Order extends Model
     // Methods
     // =========================================================================
 
-    public function isFillable(): bool
+    /**
+     * ออเดอร์ยังรับการจับคู่เพิ่มได้หรือไม่
+     *
+     * ห้ามตั้งชื่อว่า isFillable(): Eloquent มี Model::isFillable(string $key): bool
+     * อยู่แล้ว (GuardsAttributes) การ override ด้วย signature ที่ไม่รับพารามิเตอร์
+     * ผิด LSP → PHP fatal error ตอน link คลาส ทำให้ทุก request ที่แตะ Order พัง
+     * เช่นเดียวกับ applyFill() ที่เลี่ยงชนกับ Model::fill()
+     */
+    public function canBeFilled(): bool
     {
         return in_array($this->status, ['open', 'partially_filled']);
     }
