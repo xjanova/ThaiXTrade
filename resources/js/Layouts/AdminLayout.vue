@@ -41,9 +41,54 @@ const fetchUnreadCount = async () => {
     }
 };
 
+// คาดแดง — เหตุวิกฤตโครงสร้างพื้นฐาน (เชนหยุด/เซิร์ฟเวอร์เงียบ) จาก watchdog
+const systemAlerts = ref([]);
+const alertsExpanded = ref(false);
+const resolvingAlertId = ref(null);
+
+const criticalAlerts = computed(() => systemAlerts.value.filter(a => a.severity === 'critical'));
+const topAlert = computed(() => criticalAlerts.value[0] || systemAlerts.value[0] || null);
+const isThai = computed(() => t('common.all') === 'ทั้งหมด');
+
+const fetchSystemAlerts = async () => {
+    try {
+        const res = await fetch('/admin/system-alerts/active', {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (res.ok) {
+            systemAlerts.value = (await res.json()).alerts || [];
+            if (systemAlerts.value.length <= 1) alertsExpanded.value = false;
+        }
+    } catch {
+        // Silently fail — โพลรอบถัดไปเอง อย่าทำให้หน้า admin พังเพราะระบบเตือน
+    }
+};
+
+const resolveAlert = (id) => {
+    if (resolvingAlertId.value) return; // กันกดรัว
+    resolvingAlertId.value = id;
+    router.post(`/admin/system-alerts/${id}/resolve`, {}, {
+        preserveScroll: true,
+        onFinish: () => {
+            resolvingAlertId.value = null;
+            fetchSystemAlerts();
+        },
+    });
+};
+
+const alertTime = (a) => {
+    if (!a?.last_seen_at) return '';
+    const d = new Date(a.last_seen_at);
+    return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
 onMounted(() => {
     fetchUnreadCount();
-    pollInterval = setInterval(fetchUnreadCount, 30000);
+    fetchSystemAlerts();
+    pollInterval = setInterval(() => {
+        fetchUnreadCount();
+        fetchSystemAlerts();
+    }, 30000);
 });
 
 onUnmounted(() => {
@@ -449,6 +494,89 @@ onMounted(() => {
                     </div>
                 </div>
             </header>
+
+            <!-- คาดแดง — เหตุวิกฤตโครงสร้างพื้นฐาน แสดงทุกหน้า admin จนกว่าจะกดรับทราบ
+                 หรือระบบตรวจว่าหายแล้ว (heartbeat กลับมา) — แดง = วิกฤตยังดำเนินอยู่,
+                 เหลือง = เหตุจบแล้วแต่ควรรู้ (เช่น watchdog เพิ่ง restart เชนให้อัตโนมัติ) -->
+            <div v-if="topAlert" class="sticky top-16 z-40 px-4 lg:px-6 pt-3">
+                <div
+                    class="rounded-2xl border shadow-lg overflow-hidden"
+                    :class="criticalAlerts.length
+                        ? 'bg-red-950/95 border-red-500/50 shadow-red-900/40'
+                        : 'bg-amber-950/95 border-amber-500/40 shadow-amber-900/30'"
+                >
+                    <div class="flex items-center gap-3 px-4 py-3">
+                        <span class="relative flex h-3 w-3 flex-shrink-0">
+                            <span
+                                v-if="criticalAlerts.length"
+                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"
+                            ></span>
+                            <span
+                                class="relative inline-flex rounded-full h-3 w-3"
+                                :class="criticalAlerts.length ? 'bg-red-500' : 'bg-amber-400'"
+                            ></span>
+                        </span>
+
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold truncate" :class="criticalAlerts.length ? 'text-red-200' : 'text-amber-200'">
+                                <span class="uppercase tracking-wider mr-2 font-bold" :class="criticalAlerts.length ? 'text-red-400' : 'text-amber-400'">
+                                    {{ criticalAlerts.length ? (isThai ? '🔴 เหตุวิกฤต' : '🔴 CRITICAL') : (isThai ? '⚠️ แจ้งเตือน' : '⚠️ WARNING') }}
+                                </span>
+                                <span class="font-mono text-xs mr-2 opacity-80">[{{ topAlert.node }}]</span>
+                                {{ topAlert.message }}
+                            </p>
+                            <p class="text-xs mt-0.5 opacity-70" :class="criticalAlerts.length ? 'text-red-300' : 'text-amber-300'">
+                                {{ alertTime(topAlert) }}
+                                <span v-if="topAlert.occurrences > 1"> · ×{{ topAlert.occurrences }}</span>
+                                <span v-if="systemAlerts.length > 1"> · {{ isThai ? `และอีก ${systemAlerts.length - 1} รายการ` : `+${systemAlerts.length - 1} more` }}</span>
+                            </p>
+                        </div>
+
+                        <button
+                            v-if="systemAlerts.length > 1"
+                            @click="alertsExpanded = !alertsExpanded"
+                            class="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                            {{ alertsExpanded ? (isThai ? 'ย่อ' : 'Collapse') : (isThai ? 'ดูทั้งหมด' : 'Show all') }}
+                        </button>
+                        <button
+                            @click="resolveAlert(topAlert.id)"
+                            :disabled="resolvingAlertId !== null"
+                            class="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                            :class="criticalAlerts.length
+                                ? 'bg-red-500/20 text-red-200 hover:bg-red-500/40 border border-red-500/40'
+                                : 'bg-amber-500/20 text-amber-200 hover:bg-amber-500/40 border border-amber-500/40'"
+                        >
+                            {{ isThai ? 'รับทราบ' : 'Acknowledge' }}
+                        </button>
+                    </div>
+
+                    <!-- รายการที่เหลือ (กดดูทั้งหมด) -->
+                    <div v-if="alertsExpanded && systemAlerts.length > 1" class="border-t border-white/10 divide-y divide-white/5">
+                        <div
+                            v-for="a in systemAlerts.slice(1)"
+                            :key="a.id"
+                            class="flex items-center gap-3 px-4 py-2.5"
+                        >
+                            <span
+                                class="inline-flex rounded-full h-2 w-2 flex-shrink-0"
+                                :class="a.severity === 'critical' ? 'bg-red-500' : 'bg-amber-400'"
+                            ></span>
+                            <p class="flex-1 min-w-0 text-xs truncate" :class="a.severity === 'critical' ? 'text-red-200' : 'text-amber-200'">
+                                <span class="font-mono opacity-80 mr-1.5">[{{ a.node }}]</span>{{ a.message }}
+                                <span class="opacity-60 ml-1.5">{{ alertTime(a) }}<span v-if="a.occurrences > 1"> ×{{ a.occurrences }}</span></span>
+                            </p>
+                            <button
+                                @click="resolveAlert(a.id)"
+                                :disabled="resolvingAlertId !== null"
+                                class="flex-shrink-0 px-2 py-1 rounded text-[11px] font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
+                            >
+                                {{ isThai ? 'รับทราบ' : 'Ack' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <!-- Page Content -->
             <main class="p-4 lg:p-6 min-h-[calc(100vh-64px)]">

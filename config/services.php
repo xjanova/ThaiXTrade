@@ -56,6 +56,13 @@ return [
         'master_wallet' => env('TPIX_MASTER_WALLET', ''),
     ],
 
+    // Infra Alerts — watchdog เซิร์ฟเวอร์เชนยิง heartbeat/เหตุวิกฤตเข้าคาดแดงหลังบ้าน
+    // token ต้องตรงกับ TPIX_ALERT_TOKEN ใน /etc/tpix-watchdog.env บนเครื่องเชน
+    'infra_alerts' => [
+        'token' => env('TPIX_INFRA_ALERT_TOKEN', ''),
+        'stale_minutes' => env('TPIX_INFRA_STALE_MINUTES', 3),
+    ],
+
     // Bridge — cross-chain TPIX Chain ↔ BSC
     'bridge' => [
         'treasury_address' => env('BRIDGE_TREASURY_ADDRESS', ''),

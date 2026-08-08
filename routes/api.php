@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\CarbonCreditApiController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\FoodPassportApiController;
+use App\Http\Controllers\Api\InfraAlertController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\NodeHeartbeatController;
 use App\Http\Controllers\Api\StakingApiController;
@@ -97,6 +98,19 @@ Route::get('v1/token-icon.png', function () {
 Route::prefix('v1/node')->middleware(['throttle:'.config('masternode.heartbeat.rate_limit_per_minute', 10).',1'])->group(function () {
     Route::post('heartbeat', [NodeHeartbeatController::class, 'heartbeat'])->name('node.heartbeat');
     Route::get('status/{wallet}', [NodeHeartbeatController::class, 'status'])->name('node.status');
+});
+
+/*
+ * Infra Alerts — คาดแดงหลังบ้าน (คนละระบบกับ v1/node ข้างบนซึ่งเป็นของ masternode ผู้ใช้)
+ * - POST /api/infra/heartbeat — watchdog เซิร์ฟเวอร์เชนยิงทุก 1 นาทีตอน check ผ่านครบ
+ * - POST /api/infra/alert     — watchdog ยกเหตุ (chain_stalled / chain_down / ...)
+ *
+ * Auth: Bearer token = TPIX_INFRA_ALERT_TOKEN (.env) เทียบ hash_equals ใน controller
+ * Throttle: 30 req/min per IP — heartbeat ปกติ 1/นาที/เครื่อง เผื่อไว้หลายเครื่อง+retry
+ */
+Route::prefix('infra')->middleware(['throttle:30,1'])->group(function () {
+    Route::post('heartbeat', [InfraAlertController::class, 'heartbeat'])->name('infra.heartbeat');
+    Route::post('alert', [InfraAlertController::class, 'alert'])->name('infra.alert');
 });
 
 // Public Routes (No Auth Required) — rate limited

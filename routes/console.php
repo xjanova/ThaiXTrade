@@ -43,6 +43,15 @@ Schedule::command('tpix:treasury-sync')
     ->onOneServer()
     ->name('treasury:sync');
 
+// คาดแดง: ตรวจ heartbeat ของเครื่องโครงสร้างพื้นฐาน (เซิร์ฟเวอร์เชน) ทุกนาที
+//
+// นี่คือชั้นเดียวที่จับ "ทั้งเครื่องเชนดับ" ได้ — watchdog ฝั่งนั้นแจ้งเหตุเอง
+// ได้ทุกกรณียกเว้นกรณีที่ตัวมันดับไปด้วย เครื่องเว็บจึงต้องเป็นคนจับความเงียบ
+Schedule::command('infra:check-heartbeats')
+    ->everyMinute()
+    ->onOneServer()
+    ->name('infra:check-heartbeats');
+
 // ชั้นคลัง: เซ็น ส่ง และตามผลรายการจ่ายเงินจากกระเป๋าร้อน ทุกนาที
 //
 // ต้องอยู่ฝั่ง CLI เพราะการเซ็นเรียก ethers ผ่าน Node ซึ่ง php-fpm ทำไม่ได้

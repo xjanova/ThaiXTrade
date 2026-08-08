@@ -31,6 +31,7 @@ use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\SetupWizardController;
 use App\Http\Controllers\Admin\SupportController;
 use App\Http\Controllers\Admin\SwapController;
+use App\Http\Controllers\Admin\SystemAlertController;
 use App\Http\Controllers\Admin\TokenController;
 use App\Http\Controllers\Admin\TokenFactoryController;
 use App\Http\Controllers\Admin\TokenSaleController;
@@ -125,6 +126,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::patch('/news/{news}/publish', [AiController::class, 'newsPublish'])->name('news.publish');
             Route::delete('/news/{news}', [AiController::class, 'newsDestroy'])->name('news.destroy');
         });
+
+        // System Alerts — คาดแดงเหตุวิกฤตโครงสร้างพื้นฐาน (เชน/เซิร์ฟเวอร์) แสดงใน AdminLayout
+        Route::get('system-alerts/active', [SystemAlertController::class, 'active'])->name('system-alerts.active');
+        Route::post('system-alerts/{systemAlert}/resolve', [SystemAlertController::class, 'resolve'])->name('system-alerts.resolve');
 
         // Notifications
         Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
