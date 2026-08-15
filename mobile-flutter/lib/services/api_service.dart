@@ -376,4 +376,38 @@ class ApiService {
     if (res == null || res['success'] != true) return null;
     return res['data'] as Map<String, dynamic>?;
   }
+
+  /// ที่อยู่ fee collector + fee rate ของแพลตฟอร์ม — ใช้ตรวจแบบ fail-closed
+  /// ก่อน swap จริง (ไม่มี collector = ไม่เทรด)
+  Future<Map<String, dynamic>?> getTradingFeeInfo({required int chainId}) async {
+    final res = await _get(ApiConstants.tradingFeeInfo,
+        queryParams: {'chain_id': chainId});
+    if (res == null || res['success'] != true) return null;
+    return res['data'] as Map<String, dynamic>?;
+  }
+
+  /// บันทึกผล swap ที่ execute บนเชนแล้วให้ backend (best-effort)
+  /// — payload ต้องตรงกับที่เว็บส่ง (useSwap.js → POST /swap/execute)
+  Future<bool> recordSwapExecution({
+    required String fromToken,
+    required String toToken,
+    required double fromAmount,
+    required double toAmount,
+    required double feeAmount,
+    required String txHash,
+    required int chainId,
+    required String walletAddress,
+  }) async {
+    final res = await _post(ApiConstants.swapExecute, data: {
+      'from_token': fromToken,
+      'to_token': toToken,
+      'from_amount': fromAmount,
+      'to_amount': toAmount,
+      'fee_amount': feeAmount,
+      'tx_hash': txHash,
+      'chain_id': chainId,
+      'wallet_address': walletAddress,
+    });
+    return res?['success'] == true;
+  }
 }

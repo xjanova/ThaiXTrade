@@ -14,6 +14,7 @@ import 'package:bip32/bip32.dart' as bip32;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hex/hex.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web3dart/web3dart.dart';
 import '../models/api_models.dart';
@@ -368,6 +369,136 @@ class WalletProvider extends ChangeNotifier {
       debugPrint('signMessage error: ${e.runtimeType}');
       return null;
     }
+  }
+
+  // ── Send Transaction (BSC — สำหรับเทรดจริงผ่าน PancakeSwap) ──
+
+  /// ส่งธุรกรรมบนเชน BSC (56) — dispatch ตามชนิด wallet:
+  ///  embedded      → เซ็นด้วย private key ในเครื่อง ส่งผ่าน BSC RPC ตรง
+  ///  walletConnect → ขอ external wallet ส่งผ่าน Reown (สลับเชนให้ก่อน)
+  ///  linked        → ยังไม่รองรับ (TPIX Wallet deep-link เซ็นได้เฉพาะ message)
+  /// คืน tx hash หรือ null (พร้อมตั้ง [error] อธิบายเหตุ)
+  Future<String?> sendBscTransaction({
+    required String to,
+    Uint8List? data,
+    BigInt? value,
+  }) async {
+    if (_address == null) {
+      _error = 'Wallet not connected';
+      notifyListeners();
+      return null;
+    }
+
+    if (_kind == WalletKind.linked) {
+      _error = 'Linked wallet ยังเทรดบนเชนไม่ได้ — ใช้กระเป๋าในแอพหรือ WalletConnect';
+      notifyListeners();
+      return null;
+    }
+
+    if (_kind == WalletKind.walletConnect) {
+      return _sendViaWalletConnect(to: to, data: data, value: value);
+    }
+
+    return _sendViaEmbedded(to: to, data: data, value: value);
+  }
+
+  /// External wallet — เชนของ wallet ต้องเป็น BSC ก่อนส่ง (ขอสลับให้อัตโนมัติ)
+  Future<String?> _sendViaWalletConnect({
+    required String to,
+    Uint8List? data,
+    BigInt? value,
+  }) async {
+    final svc = ExternalWalletService();
+
+    if (svc.selectedChainId != 56) {
+      await svc.switchChain(56);
+      if (svc.selectedChainId != 56) {
+        _error = 'กรุณาสลับ wallet ไปเชน BSC เพื่อเทรด';
+        notifyListeners();
+        return null;
+      }
+      _activeChainId = 56;
+      notifyListeners();
+    }
+
+    final hash = await svc.sendTransaction(
+      from: _address!,
+      to: to,
+      valueHex: value != null ? '0x${value.toRadixString(16)}' : null,
+      dataHex: data != null ? '0x${HEX.encode(data)}' : null,
+    );
+    if (hash == null) {
+      _error = 'ธุรกรรมถูกปฏิเสธจาก wallet';
+      notifyListeners();
+    }
+    return hash;
+  }
+
+  /// Embedded wallet — เซ็นเองในเครื่อง private key ไม่ออกจาก SecureStorage
+  /// gas: estimate จากเชนจริง + buffer 30% (swap บน Pancake ~200k ประมาณเองไม่ได้)
+  Future<String?> _sendViaEmbedded({
+    required String to,
+    Uint8List? data,
+    BigInt? value,
+  }) async {
+    final privateKey = await _storage.read(key: _keyPrivateKey);
+    if (privateKey == null) {
+      _error = 'Wallet key not found';
+      notifyListeners();
+      return null;
+    }
+
+    final credentials = EthPrivateKey.fromHex(privateKey);
+    final toAddress = EthereumAddress.fromHex(to);
+    final etherValue =
+        value != null ? EtherAmount.inWei(value) : null;
+
+    final rpcs = [ChainConfig.bsc.rpcUrl, ...ChainConfig.bsc.fallbackRpcs];
+    for (final rpc in rpcs) {
+      final client = Web3Client(rpc, http.Client());
+      try {
+        // Estimate ก่อนส่ง — ถ้า revert ตั้งแต่ estimate = tx จะ fail แน่ อย่าส่ง
+        BigInt gasEstimate;
+        try {
+          gasEstimate = await client.estimateGas(
+            sender: credentials.address,
+            to: toAddress,
+            data: data,
+            value: etherValue,
+          );
+        } catch (_) {
+          _error = 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือ/ค่า gas (BNB)';
+          notifyListeners();
+          return null;
+        }
+
+        final gasPrice = await client.getGasPrice();
+        final maxGas =
+            (gasEstimate * BigInt.from(13) ~/ BigInt.from(10)).toInt();
+
+        final hash = await client.sendTransaction(
+          credentials,
+          Transaction(
+            to: toAddress,
+            data: data,
+            value: etherValue,
+            gasPrice: gasPrice,
+            maxGas: maxGas,
+          ),
+          chainId: 56,
+        );
+        return hash;
+      } catch (e) {
+        debugPrint('sendBscTransaction rpc failed: ${e.runtimeType}');
+        // RPC ตัวนี้ล่ม — ลองตัวถัดไป
+      } finally {
+        client.dispose();
+      }
+    }
+
+    _error = 'ส่งธุรกรรมไม่สำเร็จ — เครือข่าย BSC ขัดข้อง ลองใหม่';
+    notifyListeners();
+    return null;
   }
 
   // ── Verify with Backend ──

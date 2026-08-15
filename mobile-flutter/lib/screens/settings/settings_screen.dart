@@ -848,6 +848,31 @@ class _ChainSelector extends StatelessWidget {
                                   : AppColors.textSecondary,
                             ),
                           ),
+                          // ป้ายสถานะเทรด — ตรงกับเว็บ: BSC = Trade,
+                          // เชนอื่น = Soon (สลับดูยอดได้ แต่เทรดยังไม่เปิด)
+                          const SizedBox(width: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: chain.tradeLive
+                                  ? AppColors.tradingGreen
+                                      .withValues(alpha: 0.15)
+                                  : const Color(0xFFF59E0B)
+                                      .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              chain.tradeLive ? 'Trade' : 'Soon',
+                              style: GoogleFonts.inter(
+                                fontSize: 8,
+                                fontWeight: FontWeight.w700,
+                                color: chain.tradeLive
+                                    ? AppColors.tradingGreen
+                                    : const Color(0xFFF59E0B),
+                              ),
+                            ),
+                          ),
                           if (!chain.supported) ...[
                             const SizedBox(width: 4),
                             const Icon(Icons.access_time_rounded,

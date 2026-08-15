@@ -6,10 +6,12 @@
 /// Developed by Xman Studio
 library;
 
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/gradients.dart';
@@ -19,6 +21,8 @@ import '../../providers/wallet_provider.dart';
 import '../../providers/market_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/bsc_swap_service.dart';
+import '../../models/bsc_trade_tokens.dart';
 import '../../utils/crypto_logos.dart';
 import '../../widgets/common/app_background.dart';
 import '../../widgets/common/coin_chip.dart';
@@ -49,6 +53,18 @@ class _TradeScreenState extends State<TradeScreen>
   final _triggerPriceController = TextEditingController();
   final _chartKey = GlobalKey<TradingChartState>();
 
+  // ── เทรดจริงบน BSC (สอดคล้องกับเว็บ) ──
+  final _swapService = BscSwapService();
+  // ยอดคงเหลือของ base/quote อ่านตรงจาก BSC RPC (null = ยังไม่โหลด)
+  double? _bscBaseBalance;
+  double? _bscQuoteBalance;
+  String? _bscBalanceKey; // pair|address ล่าสุดที่โหลดไว้ — กันโหลดซ้ำ
+  // Preview ราคาจริงจาก PancakeSwap router (debounce)
+  BscSwapQuote? _marketQuote;
+  bool _quotingPreview = false;
+  Timer? _previewDebounce;
+  int _previewSeq = 0;
+
   // Gold timeframe pills surfaced on the chart card.
   static const _pillTimeframes = ['15m', '1h', '4h', '1d', '1w'];
   static const _pillLabels = ['15m', '1H', '4H', '1D', '1W'];
@@ -62,7 +78,9 @@ class _TradeScreenState extends State<TradeScreen>
   @override
   void initState() {
     super.initState();
-    _orderTypeTab = TabController(length: 3, vsync: this);
+    // เริ่มที่ Market — คู่ major เทรดจริงได้เฉพาะ market order
+    // (limit/stop-limit เปิดพร้อม TPIX Chain)
+    _orderTypeTab = TabController(length: 3, vsync: this, initialIndex: 1);
     // Tab change ใช้ handler พิเศษ (ล้างค่าไม่เกี่ยวข้อง + rebuild)
     _orderTypeTab.addListener(_handleOrderTypeChange);
     _priceController.addListener(_rebuildOnInputChange);
@@ -87,6 +105,125 @@ class _TradeScreenState extends State<TradeScreen>
 
   void _rebuildOnInputChange() {
     if (mounted) setState(() {});
+    _schedulePreview();
+  }
+
+  // ── เทรดจริงบน BSC — helpers ──
+
+  String _baseOf(MarketProvider market) =>
+      market.selectedTicker?.baseAsset ??
+      CryptoLogos.baseSymbol(market.selectedPair);
+
+  String _quoteOf(MarketProvider market) {
+    final t = market.selectedTicker;
+    if (t != null && t.quoteAsset.isNotEmpty) return t.quoteAsset;
+    final parts = market.selectedPair.split('-');
+    return parts.length > 1 ? parts[1] : 'USDT';
+  }
+
+  bool _isTpixPairNow(MarketProvider market) =>
+      CryptoLogos.isTpix(_baseOf(market));
+
+  /// คู่นี้ execute จริงบน BSC ได้ไหม — base+quote ต้องอยู่ใน registry
+  /// (ตรรกะเดียวกับเว็บ: TPIX pair = รอเชน TPIX, คู่แปลก = ยังไม่เปิด)
+  bool _isBscTradableNow(MarketProvider market) =>
+      !_isTpixPairNow(market) &&
+      isBscTradablePair(_baseOf(market), _quoteOf(market));
+
+  /// โหลดยอด base/quote จาก BSC RPC — เรียกซ้ำได้ (กันโหลดซ้ำด้วย key)
+  void _maybeReloadBscBalances(MarketProvider market, WalletProvider wallet) {
+    if (!_isBscTradableNow(market)) return;
+    final key = '${market.selectedPair}|${wallet.address ?? ''}';
+    if (key == _bscBalanceKey) return;
+    _bscBalanceKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadBscBalances());
+  }
+
+  Future<void> _loadBscBalances() async {
+    final market = context.read<MarketProvider>();
+    final wallet = context.read<WalletProvider>();
+    if (!wallet.isConnected || !_isBscTradableNow(market)) {
+      if (mounted) {
+        setState(() {
+          _bscBaseBalance = null;
+          _bscQuoteBalance = null;
+        });
+      }
+      return;
+    }
+    final base = _baseOf(market);
+    final quote = _quoteOf(market);
+    final address = wallet.address!;
+    final results = await Future.wait([
+      _swapService.getBalance(base, address),
+      _swapService.getBalance(quote, address),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _bscBaseBalance = results[0];
+      _bscQuoteBalance = results[1];
+    });
+  }
+
+  /// ขอ quote จริงจาก router แบบ debounce (ตามที่ผู้ใช้พิมพ์จำนวน)
+  void _schedulePreview() {
+    _previewDebounce?.cancel();
+    _previewDebounce =
+        Timer(const Duration(milliseconds: 500), _refreshPreview);
+  }
+
+  Future<void> _refreshPreview() async {
+    if (!mounted) return;
+    final market = context.read<MarketProvider>();
+    final wallet = context.read<WalletProvider>();
+
+    if (!_isBscTradableNow(market) || !_isMarket) {
+      if (_marketQuote != null || _quotingPreview) {
+        setState(() {
+          _marketQuote = null;
+          _quotingPreview = false;
+        });
+      }
+      return;
+    }
+
+    final amount = double.tryParse(_amountController.text.trim()) ?? 0;
+    final price = market.selectedTicker?.lastPrice ?? 0;
+    // buy: input จริงคือยอด quote (USDT) = amount × ราคาตลาด
+    final input = _isBuy ? amount * price : amount;
+    if (amount <= 0 || input <= 0) {
+      if (_marketQuote != null || _quotingPreview) {
+        setState(() {
+          _marketQuote = null;
+          _quotingPreview = false;
+        });
+      }
+      return;
+    }
+
+    final seq = ++_previewSeq;
+    setState(() => _quotingPreview = true);
+    try {
+      final fromSym = _isBuy ? _quoteOf(market) : _baseOf(market);
+      final toSym = _isBuy ? _baseOf(market) : _quoteOf(market);
+      final quote = await _swapService.getQuote(
+        fromSymbol: fromSym,
+        toSymbol: toSym,
+        amount: input,
+        slippageOverride: wallet.slippage,
+      );
+      if (!mounted || seq != _previewSeq) return;
+      setState(() {
+        _marketQuote = quote;
+        _quotingPreview = false;
+      });
+    } catch (_) {
+      if (!mounted || seq != _previewSeq) return;
+      setState(() {
+        _marketQuote = null;
+        _quotingPreview = false;
+      });
+    }
   }
 
   /// ล้างค่า price/trigger ที่ไม่เกี่ยวข้องเมื่อ user สลับ tab
@@ -104,10 +241,12 @@ class _TradeScreenState extends State<TradeScreen>
     }
     // Rebuild เพื่อ show/hide inputs (ถ้า controller ว่างอยู่แล้ว clear ไม่ trigger)
     setState(() {});
+    _schedulePreview();
   }
 
   @override
   void dispose() {
+    _previewDebounce?.cancel();
     _orderTypeTab.removeListener(_handleOrderTypeChange);
     _priceController.removeListener(_rebuildOnInputChange);
     _amountController.removeListener(_rebuildOnInputChange);
@@ -128,6 +267,9 @@ class _TradeScreenState extends State<TradeScreen>
     final isTpix = CryptoLogos.isTpix(
       CryptoLogos.baseSymbol(market.selectedPair),
     );
+
+    // คู่ major → โหลดยอดจาก BSC สำหรับฟอร์มเทรด (โหลดครั้งเดียวต่อ pair/wallet)
+    _maybeReloadBscBalances(market, wallet);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -229,8 +371,11 @@ class _TradeScreenState extends State<TradeScreen>
                       ],
                     ),
                     const SizedBox(height: 1),
+                    // คู่ major เทรดจริงบน BSC — คู่ TPIX รอเชน TPIX เปิด
                     Text(
-                      'TPIX Chain · 4289',
+                      _isBscTradableNow(market)
+                          ? 'BSC · PancakeSwap'
+                          : 'TPIX Chain · Coming soon',
                       style: GoogleFonts.inter(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
@@ -481,11 +626,19 @@ class _TradeScreenState extends State<TradeScreen>
     final ticker = market.selectedTicker;
     final baseAsset = ticker?.baseAsset ?? 'BTC';
     final quoteAsset = ticker?.quoteAsset ?? 'USDT';
+    final tradable = _isBscTradableNow(market);
 
-    // Available balance — real, from wallet portfolio (off-chain trade balance).
+    // คู่ที่ยังเทรดจริงไม่ได้ (TPIX รอเชน / คู่ไม่มี token บน BSC)
+    // → โชว์ Coming Soon แทนฟอร์ม (เห็นไว้ก่อน กดไม่ได้ — ตรงกับเว็บ)
+    if (!tradable) {
+      return _buildComingSoonCard(locale, market);
+    }
+
+    // Available balance — คู่ major อ่านยอดจริงจาก BSC RPC โดยตรง
+    // (ไม่ใช่ portfolio off-chain เดิม เพราะเทรด settle บน BSC จริง)
     final availAsset = _isBuy ? quoteAsset : baseAsset;
-    final availBalance =
-        wallet.isConnected ? _balanceOf(wallet, availAsset) : 0.0;
+    final bscBalance = _isBuy ? _bscQuoteBalance : _bscBaseBalance;
+    final availBalance = bscBalance ?? 0.0;
 
     return GlassCard(
       variant: GlassVariant.elevated,
@@ -535,6 +688,16 @@ class _TradeScreenState extends State<TradeScreen>
             ),
             child: TabBar(
               controller: _orderTypeTab,
+              // Limit/Stop-limit ยังไม่เปิดสำหรับเทรดจริงบน BSC (AMM ทำ
+              // limit order ไม่ได้) — เห็นไว้ก่อน กดแล้วเด้งกลับ Market
+              onTap: (index) {
+                if (index != 1) {
+                  _orderTypeTab.index = 1;
+                  _showSnack(locale.isThai
+                      ? 'Limit/Stop-limit เปิดพร้อม TPIX Chain — ตอนนี้ใช้ Market'
+                      : 'Limit & stop-limit open with TPIX Chain — use Market for now');
+                }
+              },
               indicator: BoxDecoration(
                 color: AppColors.bgTertiary,
                 borderRadius: BorderRadius.circular(8),
@@ -550,9 +713,11 @@ class _TradeScreenState extends State<TradeScreen>
                   GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500),
               dividerColor: Colors.transparent,
               tabs: [
-                Tab(text: locale.t('trade.limit'), height: 34),
+                Tab(height: 34, child: _soonTabLabel(locale.t('trade.limit'))),
                 Tab(text: locale.t('trade.market'), height: 34),
-                Tab(text: locale.t('trade.stop_limit'), height: 34),
+                Tab(
+                    height: 34,
+                    child: _soonTabLabel(locale.t('trade.stop_limit'))),
               ],
             ),
           ),
@@ -655,22 +820,80 @@ class _TradeScreenState extends State<TradeScreen>
 
           const SizedBox(height: 12),
 
-          // Fee summary (จาก backend /api/v1/fees + pair override)
-          _buildFeeSummary(locale, market),
+          // Market preview — ตัวเลขจริงจาก PancakeSwap router
+          // (แทน fee summary เดิมเมื่อมี quote เพราะ fee ใน quote คือของจริง)
+          if (_isMarket && (_marketQuote != null || _quotingPreview))
+            _buildMarketPreview(locale, market)
+          else
+            _buildFeeSummary(locale, market),
 
           const SizedBox(height: 14),
 
           // Submit CTA — green for Buy, red for Sell
+          // Linked wallet (TPIX Wallet deep-link) เซ็น tx บน BSC ไม่ได้
+          // → ปุ่มกดไม่ได้ + มีแถบอธิบายด้านล่าง
           GradientButton(
             text: _isBuy
                 ? '${locale.t('trade.buy')} $baseAsset'
                 : '${locale.t('trade.sell')} $baseAsset',
             variant: _isBuy ? ButtonVariant.buy : ButtonVariant.sell,
             isLoading: _isSubmitting,
-            onPressed: wallet.isConnected && !_isSubmitting
+            onPressed: wallet.isConnected &&
+                    !_isSubmitting &&
+                    !wallet.isLinkedWallet
                 ? () => _submitOrder()
                 : null,
           ),
+
+          // แถบบอกว่าเทรดจริงบน BSC — ให้ผู้ใช้รู้ว่าเหรียญเข้ากระเป๋าจริง
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.bolt_rounded, size: 12, color: AppColors.gold2),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  locale.isThai
+                      ? 'คำสั่ง Market ทำงานจริงบน BSC ผ่าน PancakeSwap'
+                      : 'Market orders execute for real on BSC via PancakeSwap',
+                  style: GoogleFonts.inter(
+                      fontSize: 10, color: AppColors.textTertiary),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+
+          if (wallet.isConnected && wallet.isLinkedWallet) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.goldTint,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.goldBorder, width: 0.8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      size: 14, color: AppColors.gold2),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      locale.isThai
+                          ? 'กระเป๋าแบบลิงก์ยังส่งธุรกรรม BSC ไม่ได้ — ใช้กระเป๋าในแอพหรือ WalletConnect เพื่อเทรดจริง'
+                          : 'Linked wallets can\'t send BSC transactions yet — use the in-app wallet or WalletConnect to trade.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           if (!wallet.isConnected) ...[
             const SizedBox(height: 10),
@@ -755,20 +978,177 @@ class _TradeScreenState extends State<TradeScreen>
     }
   }
 
-  /// Look up a wallet's available balance for an asset symbol (case-insensitive).
-  /// Returns 0 when the asset isn't held — no fabricated figures.
-  double _balanceOf(WalletProvider wallet, String symbol) {
-    final up = symbol.toUpperCase();
-    for (final b in wallet.balances) {
-      if (b.symbol.toUpperCase() == up) return b.balance;
-    }
-    return 0.0;
-  }
-
   String _fmtAmount(double v) {
     if (v >= 1000) return v.toStringAsFixed(2);
     if (v >= 1) return v.toStringAsFixed(4);
     return v.toStringAsFixed(6);
+  }
+
+  /// ป้ายแท็บ order type ที่ยังไม่เปิด (Limit/Stop-limit) — เห็นแต่กดไม่ได้
+  Widget _soonTabLabel(String label) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Opacity(opacity: 0.55, child: Text(label)),
+          const SizedBox(width: 3),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: Text(
+              'Soon',
+              style: GoogleFonts.inter(
+                fontSize: 7,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFFF59E0B),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// คู่ที่ยังไม่เปิดเทรด (TPIX รอเชน) — แผง Coming Soon แทนฟอร์ม
+  Widget _buildComingSoonCard(LocaleProvider locale, MarketProvider market) {
+    final pair = market.selectedTicker?.displaySymbol ?? market.selectedPair;
+    return GlassCard(
+      variant: GlassVariant.elevated,
+      borderRadius: AppTheme.radiusXl,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 28),
+      child: Column(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.goldTint,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.goldBorder, width: 1),
+            ),
+            child: Icon(Icons.lock_clock_rounded,
+                size: 24, color: AppColors.gold2),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '$pair — Coming Soon',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            locale.isThai
+                ? 'เปิดเทรดพร้อม TPIX Chain เร็วๆ นี้\nระหว่างนี้เทรดคู่เหรียญหลักได้จริงบน BSC'
+                : 'Trading opens with TPIX Chain launch.\nMeanwhile, trade major pairs live on BSC.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: 11.5,
+              height: 1.5,
+              color: AppColors.textTertiary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'TPIX Chain — Coming Soon',
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFFF59E0B),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Preview ตัวเลขจริงจาก router — You receive / Min received / Fee
+  Widget _buildMarketPreview(LocaleProvider locale, MarketProvider market) {
+    final q = _marketQuote;
+    final toSym = _isBuy ? _baseOf(market) : _quoteOf(market);
+    final fromSym = _isBuy ? _quoteOf(market) : _baseOf(market);
+
+    Widget row(String label, String? value, {Color? valueColor}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          children: [
+            Text(label,
+                style: GoogleFonts.inter(
+                    fontSize: 11, color: AppColors.textTertiary)),
+            const Spacer(),
+            if (value == null)
+              const SizedBox(
+                width: 60,
+                height: 10,
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            else
+              Text(value,
+                  style: AppTheme.mono(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: valueColor ?? AppColors.textSecondary,
+                  )),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.bgInputStrong,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.goldBorder, width: 0.8),
+      ),
+      child: Column(
+        children: [
+          row(
+            locale.isThai ? 'จะได้รับ ≈' : 'You receive ≈',
+            q == null ? null : '${_fmtAmount(q.netOutput)} $toSym',
+            valueColor: AppColors.textPrimary,
+          ),
+          row(
+            locale.isThai ? 'ขั้นต่ำที่ได้รับ' : 'Min received',
+            q == null ? null : '${_fmtAmount(q.minReceived)} $toSym',
+          ),
+          row(
+            locale.isThai
+                ? 'ค่าธรรมเนียม (${q?.feeRate.toStringAsFixed(2) ?? '—'}%)'
+                : 'Fee (${q?.feeRate.toStringAsFixed(2) ?? '—'}%)',
+            q == null ? null : '${_fmtAmount(q.feeAmount)} $fromSym',
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.verified_rounded, size: 10, color: AppColors.gold2),
+              const SizedBox(width: 4),
+              Text(
+                locale.isThai
+                    ? 'ราคาจริงจาก PancakeSwap (BSC)'
+                    : 'Live price from PancakeSwap (BSC)',
+                style: GoogleFonts.inter(
+                    fontSize: 9, color: AppColors.textTertiary),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   // ── Fee Summary ──
@@ -942,6 +1322,10 @@ class _TradeScreenState extends State<TradeScreen>
   }
 
   // ── Submit order ──
+  // Dispatcher — แยกเส้นทางเหมือนเว็บ:
+  //  คู่ major (BSC registry) → market order execute จริงผ่าน PancakeSwap
+  //  คู่ TPIX               → Coming Soon (รอเชน TPIX — ฟอร์มถูกซ่อนอยู่แล้ว)
+  //  คู่อื่น                → internal order book เดิม (เปิดคืนพร้อม TPIX Chain)
 
   Future<void> _submitOrder() async {
     if (_isSubmitting) return;
@@ -952,6 +1336,19 @@ class _TradeScreenState extends State<TradeScreen>
     final config = context.read<ConfigProvider>();
 
     if (!wallet.isConnected || wallet.address == null) return;
+
+    if (_isBscTradableNow(market)) {
+      await _executeBscMarketOrder(wallet, market, locale);
+      return;
+    }
+
+    if (_isTpixPairNow(market)) {
+      // กันไว้อีกชั้น — ฟอร์ม TPIX ถูกแทนด้วย Coming Soon card อยู่แล้ว
+      _showSnack(locale.isThai
+          ? 'คู่ TPIX เปิดเทรดพร้อม TPIX Chain — เร็วๆ นี้'
+          : 'TPIX pairs open with TPIX Chain — coming soon');
+      return;
+    }
 
     // ตรวจก่อนว่า backend พร้อมเทรด (มี fee wallet ตั้งค่าแล้ว)
     if (!config.canTrade) {
@@ -1059,12 +1456,162 @@ class _TradeScreenState extends State<TradeScreen>
     if (mounted) setState(() => _isSubmitting = false);
   }
 
-  void _showSnack(String msg, {bool isSuccess = false}) {
+  /// Market order เทรดจริงบน BSC ผ่าน PancakeSwap — ลำดับเหมือนเว็บทุกขั้น:
+  /// ตรวจ token on-chain → quote จริง → กันราคาเพี้ยน (>10% ไม่ส่ง)
+  /// → approve ถ้าจำเป็น → swap → เก็บ fee → บันทึก backend → refresh ยอด
+  Future<void> _executeBscMarketOrder(
+    WalletProvider wallet,
+    MarketProvider market,
+    LocaleProvider locale,
+  ) async {
+    if (!_isMarket) {
+      _showSnack(locale.isThai
+          ? 'Limit/Stop-limit เปิดพร้อม TPIX Chain — ตอนนี้ใช้ Market'
+          : 'Limit & stop-limit open with TPIX Chain — use Market for now');
+      return;
+    }
+
+    if (wallet.isLinkedWallet) {
+      _showSnack(locale.isThai
+          ? 'กระเป๋าแบบลิงก์ยังเทรดจริงไม่ได้ — ใช้กระเป๋าในแอพหรือ WalletConnect'
+          : 'Linked wallets can\'t trade on-chain yet — use in-app wallet or WalletConnect');
+      return;
+    }
+
+    final amount = double.tryParse(_amountController.text.trim());
+    if (amount == null || amount <= 0) {
+      _showSnack(locale.t('trade.invalid_amount'));
+      return;
+    }
+
+    final marketPrice = market.selectedTicker?.lastPrice ?? 0;
+    if (marketPrice <= 0) {
+      _showSnack(locale.isThai
+          ? 'ราคาตลาดยังไม่พร้อม ลองใหม่อีกครั้ง'
+          : 'Market price unavailable — try again.');
+      return;
+    }
+
+    final base = _baseOf(market);
+    final quote = _quoteOf(market);
+    final fromSym = _isBuy ? quote : base;
+    final toSym = _isBuy ? base : quote;
+    // buy: จ่าย quote (USDT) = จำนวน base × ราคาตลาด, sell: จ่าย base ตรงๆ
+    final inputAmount = _isBuy ? amount * marketPrice : amount;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      // 1) Quote จริงจาก router (ตรวจ token กับ on-chain ในตัว — fail-closed)
+      final swapQuote = await _swapService.getQuote(
+        fromSymbol: fromSym,
+        toSymbol: toSym,
+        amount: inputAmount,
+        slippageOverride: wallet.slippage,
+      );
+
+      // 2) กันราคา on-chain เพี้ยนจากราคาตลาดเกิน 10% (สภาพคล่องบาง/pool ผิดปกติ)
+      if (swapQuote.netOutput > 0) {
+        final effPrice = _isBuy
+            ? swapQuote.amountIn / swapQuote.netOutput // จ่าย USDT ต่อ 1 base
+            : swapQuote.netOutput / swapQuote.amountIn; // ได้ USDT ต่อ 1 base
+        final deviation = (effPrice - marketPrice).abs() / marketPrice;
+        if (deviation > 0.10) {
+          throw const SwapException(
+            'On-chain price differs too much from market price. Try a smaller amount.',
+            'ราคาบนเชนต่างจากราคาตลาดมากเกินไป ลองจำนวนน้อยลง',
+          );
+        }
+      }
+
+      // 3) Approve router ถ้า allowance ไม่พอ (เฉพาะ token ไม่ใช่ BNB)
+      if (!swapQuote.fromToken.native) {
+        final hasAllowance = await _swapService.hasAllowance(
+          swapQuote.fromToken,
+          wallet.address!,
+          swapQuote.amountInSwapWei,
+        );
+        if (!hasAllowance) {
+          if (mounted) {
+            _showSnack(locale.isThai
+                ? 'กำลังขอ approve $fromSym — ยืนยันในกระเป๋า'
+                : 'Approving $fromSym — confirm in your wallet');
+          }
+          final approveHash = await wallet.sendBscTransaction(
+            to: swapQuote.fromToken.address,
+            data: _swapService.approveCalldata(),
+          );
+          if (approveHash == null) {
+            throw const SwapException(
+                'Approval rejected.', 'การ approve ถูกปฏิเสธ');
+          }
+          final approved = await _swapService.waitConfirmed(approveHash);
+          if (!approved) {
+            throw const SwapException(
+                'Approval not confirmed — try again.',
+                'การ approve ยังไม่ยืนยัน ลองใหม่อีกครั้ง');
+          }
+        }
+      }
+
+      // 4) ส่ง swap จริง — service เก็บ fee + บันทึก backend ให้ครบ
+      final result = await _swapService.executeMarketSwap(
+        quote: swapQuote,
+        walletAddress: wallet.address!,
+        sendTx: wallet.sendBscTransaction,
+      );
+
+      if (!mounted) return;
+
+      _amountController.clear();
+      _marketQuote = null;
+      final received = '${_fmtAmount(swapQuote.netOutput)} $toSym';
+      _showSnack(
+        result.confirmed
+            ? (locale.isThai
+                ? '${_isBuy ? 'ซื้อ' : 'ขาย'}สำเร็จ ≈ $received บน BSC'
+                : '${_isBuy ? 'Bought' : 'Sold'} ≈ $received on BSC')
+            : (locale.isThai
+                ? 'ส่งธุรกรรมแล้ว กำลังรอยืนยันบนเชน'
+                : 'Transaction sent — awaiting confirmation'),
+        isSuccess: result.confirmed,
+        actionLabel: locale.isThai ? 'ดู tx' : 'View tx',
+        onAction: () => launchUrl(
+          Uri.parse(result.explorerUrl),
+          mode: LaunchMode.externalApplication,
+        ),
+      );
+
+      // Refresh ยอดจริงจาก BSC + portfolio
+      _bscBalanceKey = null;
+      _loadBscBalances();
+      wallet.loadPortfolio();
+    } on SwapException catch (e) {
+      if (mounted) _showSnack(e.message(locale.isThai));
+    } catch (_) {
+      if (mounted) {
+        _showSnack(wallet.error ?? locale.t('common.error'));
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  void _showSnack(
+    String msg, {
+    bool isSuccess = false,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
         backgroundColor: isSuccess ? AppColors.tradingGreen : null,
-        duration: const Duration(seconds: 2),
+        // มีปุ่ม action (เช่นลิงก์ดู tx) ให้ค้างนานขึ้นพอที่จะกด
+        duration: Duration(seconds: actionLabel != null ? 8 : 2),
+        action: actionLabel != null && onAction != null
+            ? SnackBarAction(label: actionLabel, onPressed: onAction)
+            : null,
       ),
     );
   }

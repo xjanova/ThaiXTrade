@@ -18,6 +18,11 @@ class DisplayChain {
   final bool supported; // true = มี ChainConfig ใน static list (switch ได้)
   final ChainConfig? config; // null ถ้ายังไม่ support
 
+  /// สถานะเทรดจาก backend (status ใน /api/v1/chains):
+  /// true = เชนเปิดเทรดจริงแล้ว (ตอนนี้มีแค่ BSC), false = Trade coming soon
+  /// หมายเหตุ: ไม่กระทบการสลับเชนเพื่อดูยอด/รับเหรียญ — เป็นแค่ป้ายสถานะเทรด
+  final bool tradeLive;
+
   const DisplayChain({
     required this.chainId,
     required this.name,
@@ -25,6 +30,7 @@ class DisplayChain {
     required this.symbol,
     required this.supported,
     this.config,
+    this.tradeLive = false,
   });
 }
 
@@ -54,7 +60,7 @@ class ConfigProvider extends ChangeNotifier {
   /// คืน list สำหรับ UI display — chain ที่ support จะ switch ได้
   /// chain ที่ไม่ support (จาก API) จะแสดง "Coming soon"
   List<DisplayChain> get displayChains {
-    // Fallback: static list ถ้า API ยังไม่โหลด
+    // Fallback: static list ถ้า API ยังไม่โหลด — สถานะเทรดรู้แน่แค่ BSC
     if (_chains.isEmpty) {
       return ChainConfig.all
           .map((c) => DisplayChain(
@@ -64,10 +70,11 @@ class ConfigProvider extends ChangeNotifier {
                 symbol: c.symbol,
                 supported: true,
                 config: c,
+                tradeLive: c.chainId == 56,
               ))
           .toList();
     }
-    // Merge: API provides name/symbol; static provides RPC+config for signing
+    // Merge: API provides name/symbol/status; static provides RPC+config for signing
     return _chains.map((apiChain) {
       ChainConfig? staticConfig;
       try {
@@ -85,6 +92,7 @@ class ConfigProvider extends ChangeNotifier {
         symbol: apiChain.symbol,
         supported: staticConfig != null,
         config: staticConfig,
+        tradeLive: apiChain.isLive,
       );
     }).toList();
   }

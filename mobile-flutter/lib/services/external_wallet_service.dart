@@ -146,6 +146,46 @@ class ExternalWalletService {
     }
   }
 
+  /// ขอให้ wallet ส่งธุรกรรม (eth_sendTransaction) บนเชนที่เลือกอยู่
+  /// คืน tx hash หรือ null ถ้า user reject / wallet ไม่ตอบ
+  /// caller ต้อง switchChain() ไปเชนเป้าหมายก่อน (เช่น BSC สำหรับเทรด)
+  Future<String?> sendTransaction({
+    required String from,
+    required String to,
+    String? valueHex, // 0x... (wei) — null = ไม่ส่ง value
+    String? dataHex, // 0x... calldata — null = โอนธรรมดา
+  }) async {
+    if (_modal == null || !_modal!.isConnected) return null;
+
+    try {
+      final tx = <String, String>{
+        'from': from,
+        'to': to,
+        if (valueHex != null) 'value': valueHex,
+        if (dataHex != null) 'data': dataHex,
+      };
+      // ใช้ pattern เดียวกับ signPersonalMessage ที่พิสูจน์แล้วว่าใช้งานได้
+      final result = await _modal!.request(
+        topic: _modal!.session!.topic!,
+        chainId: _modal!.selectedChain!.chainId,
+        request: SessionRequestParams(
+          method: 'eth_sendTransaction',
+          params: [tx],
+        ),
+      );
+
+      if (result is String && result.startsWith('0x')) return result;
+      return null;
+    } catch (e) {
+      debugPrint('sendTransaction error: ${e.runtimeType}');
+      return null;
+    }
+  }
+
+  /// เชน (id ตัวเลข) ที่ wallet เลือกอยู่ตอนนี้ — null ถ้าไม่รู้
+  int? get selectedChainId =>
+      int.tryParse(_modal?.selectedChain?.chainId ?? '');
+
   /// สลับเชนใน wallet (ขอ wallet เปลี่ยนเชน)
   /// บาง wallet จะ auto-add chain ถ้ายังไม่มี
   Future<bool> switchChain(int chainId) async {

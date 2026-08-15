@@ -1,11 +1,8 @@
 /// TPIX TRADE — Swap Screen (Luxury Dark / Gilded Metal)
-/// Token-to-token swap on the gunmetal+gold backdrop. "You pay" / "You receive"
-/// cards with a centered gold flip button between them, a live quote pulled from
-/// the real /swap/quote endpoint (debounced), and a details card whose rows are
-/// populated ONLY from fields the backend actually returns — no invented numbers.
-///
-/// There is no on-chain swap-execution path in services yet, so "Swap Now"
-/// confirms the live quote in a review sheet rather than faking a settled swap.
+/// Token-to-token swap จริงบน BSC ผ่าน PancakeSwap V2 — สอดคล้องกับหน้า
+/// Swap ของเว็บ: quote จริงจาก router (debounced), fee หักจากฝั่งจ่ายแบบ
+/// reserve, ยอดคงเหลืออ่านจาก BSC RPC ตรง, กด Swap แล้ว settle บนเชนจริง
+/// เหรียญเข้ากระเป๋าผู้ใช้ (มีลิงก์ดู tx บน BscScan)
 ///
 /// Developed by Xman Studio
 library;
@@ -15,15 +12,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
+import '../../models/bsc_trade_tokens.dart';
 import '../../providers/accent_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/market_provider.dart';
-import '../../providers/config_provider.dart';
-import '../../services/api_service.dart';
+import '../../services/bsc_swap_service.dart';
 import '../../widgets/common/app_background.dart';
 import '../../widgets/common/coin_chip.dart';
 import '../../widgets/common/glass_card.dart';
@@ -38,20 +36,30 @@ class SwapScreen extends StatefulWidget {
 
 class _SwapScreenState extends State<SwapScreen> {
   final _payController = TextEditingController();
-  final _api = ApiService();
+  final _swapService = BscSwapService();
 
-  // Selected swap tokens (symbols). Defaults give a meaningful first pair.
-  String _fromToken = 'TPIX';
+  // Selected swap tokens (symbols) — ต้องเป็นเหรียญใน BSC registry เท่านั้น
+  // (TPIX สลับได้เมื่อ DEX บน TPIX Chain เปิด — ตอนนี้ยังไม่อยู่ในลิสต์)
+  String _fromToken = 'BNB';
   String _toToken = 'USDT';
 
   double _slippage = 0.5; // %
 
-  // Quote state
-  Map<String, dynamic>? _quote;
+  // Quote state — ราคาจริงจาก PancakeSwap router
+  BscSwapQuote? _routerQuote;
+  Map<String, dynamic>? _quote; // มุมมองแบบ map สำหรับ details card เดิม
   bool _quoting = false;
   String? _quoteError;
   int _quoteSeq = 0; // guards out-of-order async responses
   Timer? _debounce;
+
+  // Execution state
+  bool _executing = false;
+
+  // ยอดคงเหลือบน BSC ของเหรียญที่เลือก (อ่านจาก RPC ตรง — ไม่ใช่ portfolio
+  // ของ active chain เพราะ swap ทำงานบน BSC เสมอ)
+  final Map<String, double> _bscBalances = {};
+  String? _balanceWalletKey;
 
   @override
   void initState() {
@@ -60,6 +68,7 @@ class _SwapScreenState extends State<SwapScreen> {
     final wallet = context.read<WalletProvider>();
     _slippage = wallet.slippage;
     _payController.addListener(_onAmountChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadBscBalances());
   }
 
   @override
@@ -71,28 +80,39 @@ class _SwapScreenState extends State<SwapScreen> {
   }
 
   // ── Token universe ──
-  // Build a real, de-duplicated token list from the connected wallet balances
-  // plus the active chain's known tokens (native + USDT/USDC) and TPIX.
+  // เหรียญที่ swap จริงบน BSC ได้ = registry เดียวกับหน้า Trade/เว็บเท่านั้น
   List<String> _tokenUniverse(WalletProvider wallet) {
-    final set = <String>{};
-    for (final b in wallet.balances) {
-      if (b.symbol.isNotEmpty) set.add(b.symbol.toUpperCase());
-    }
-    for (final t in wallet.activeChain.allTokens) {
-      if (t.symbol.isNotEmpty) set.add(t.symbol.toUpperCase());
-    }
-    // Always offer TPIX + common quotes so an empty/disconnected wallet still
-    // has something to pick.
-    set.addAll(const ['TPIX', 'USDT', 'USDC']);
-    final list = set.toList()..sort();
+    final list = kBscTradeTokens.keys.toList()..sort();
     return list;
   }
 
   double? _balanceOf(WalletProvider wallet, String symbol) {
-    for (final b in wallet.balances) {
-      if (b.symbol.toUpperCase() == symbol.toUpperCase()) return b.balance;
-    }
-    return null;
+    return _bscBalances[symbol.toUpperCase()];
+  }
+
+  /// โหลดยอดจาก BSC ของเหรียญที่เลือกอยู่ (from + to)
+  Future<void> _loadBscBalances() async {
+    final wallet = context.read<WalletProvider>();
+    if (!wallet.isConnected || wallet.address == null) return;
+    final address = wallet.address!;
+    final symbols = {_fromToken, _toToken};
+    final results = await Future.wait(
+        symbols.map((s) => _swapService.getBalance(s, address)));
+    if (!mounted) return;
+    setState(() {
+      var i = 0;
+      for (final s in symbols) {
+        _bscBalances[s.toUpperCase()] = results[i++];
+      }
+    });
+  }
+
+  /// โหลดยอดใหม่เมื่อ wallet เปลี่ยน (เรียกจาก build — กันซ้ำด้วย key)
+  void _maybeReloadBalances(WalletProvider wallet) {
+    final key = wallet.address ?? '';
+    if (key == _balanceWalletKey) return;
+    _balanceWalletKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadBscBalances());
   }
 
   // ── Quote fetching (debounced) ──
@@ -106,6 +126,7 @@ class _SwapScreenState extends State<SwapScreen> {
       if (_quote != null || _quoteError != null || _quoting) {
         setState(() {
           _quote = null;
+          _routerQuote = null;
           _quoteError = null;
           _quoting = false;
         });
@@ -121,30 +142,35 @@ class _SwapScreenState extends State<SwapScreen> {
     if (_fromToken == _toToken) {
       setState(() {
         _quote = null;
+        _routerQuote = null;
         _quoteError = null;
         _quoting = false;
       });
       return;
     }
 
-    final wallet = context.read<WalletProvider>();
     final seq = ++_quoteSeq;
     setState(() {
       _quoting = true;
       _quoteError = null;
     });
 
-    Map<String, dynamic>? res;
+    // Quote จริงจาก PancakeSwap router (ตรวจ token กับ on-chain ในตัว)
+    BscSwapQuote? quote;
+    String? error;
     try {
-      res = await _api.getSwapQuote(
-        fromToken: _fromToken,
-        toToken: _toToken,
+      quote = await _swapService.getQuote(
+        fromSymbol: _fromToken,
+        toSymbol: _toToken,
         amount: amount,
-        chainId: wallet.activeChainId,
-        slippage: _slippage,
+        slippageOverride: _slippage,
       );
+    } on SwapException catch (e) {
+      error = e.message(context.mounted
+          ? context.read<LocaleProvider>().isThai
+          : false);
     } catch (_) {
-      res = null;
+      error = null; // ใช้ข้อความ default ด้านล่าง
     }
 
     // Guard: a newer request superseded this one, or the screen is gone.
@@ -152,11 +178,27 @@ class _SwapScreenState extends State<SwapScreen> {
 
     setState(() {
       _quoting = false;
-      _quote = res;
-      _quoteError = res == null
-          ? (context.read<LocaleProvider>().isThai
-              ? 'ดึงราคาไม่สำเร็จ ลองอีกครั้ง'
-              : 'Could not fetch quote. Try again.')
+      _routerQuote = quote;
+      // มุมมอง map สำหรับ details card (field ตรงกับ reader เดิม)
+      _quote = quote == null
+          ? null
+          : {
+              'amount_out': quote.netOutput,
+              'rate': quote.amountIn > 0
+                  ? quote.netOutput / quote.amountIn
+                  : null,
+              'min_received': quote.minReceived,
+              'slippage': quote.slippage,
+              // เส้นทาง swap จริง — 3 ขาแปลว่าวิ่งผ่าน WBNB
+              'route': quote.path.length == 3
+                  ? [_fromToken, 'WBNB', _toToken]
+                  : [_fromToken, _toToken],
+            };
+      _quoteError = quote == null
+          ? (error ??
+              (context.read<LocaleProvider>().isThai
+                  ? 'ดึงราคาไม่สำเร็จ ลองอีกครั้ง'
+                  : 'Could not fetch quote. Try again.'))
           : null;
     });
   }
@@ -169,9 +211,11 @@ class _SwapScreenState extends State<SwapScreen> {
       _fromToken = _toToken;
       _toToken = wasFrom;
       _quote = null;
+      _routerQuote = null;
       _quoteError = null;
     });
     _onAmountChanged();
+    _loadBscBalances();
   }
 
   // ── Token picker ──
@@ -202,9 +246,11 @@ class _SwapScreenState extends State<SwapScreen> {
         _toToken = picked;
       }
       _quote = null;
+      _routerQuote = null;
       _quoteError = null;
     });
     _onAmountChanged();
+    _loadBscBalances();
   }
 
   // ── Slippage dialog ──
@@ -223,19 +269,27 @@ class _SwapScreenState extends State<SwapScreen> {
     _onAmountChanged();
   }
 
-  // ── Review (no real execution path yet) ──
+  // ── Review + execute (เทรดจริงบน BSC) ──
 
   void _reviewSwap() {
     final locale = context.read<LocaleProvider>();
+    final wallet = context.read<WalletProvider>();
     final amount = double.tryParse(_payController.text.trim());
     if (amount == null || amount <= 0) {
       _snack(locale.isThai ? 'กรอกจำนวนให้ถูกต้อง' : 'Enter a valid amount');
       return;
     }
-    if (_quote == null) {
+    if (_routerQuote == null) {
       _snack(locale.isThai ? 'รอราคาก่อน' : 'Wait for the quote');
       return;
     }
+    if (wallet.isLinkedWallet) {
+      _snack(locale.isThai
+          ? 'กระเป๋าแบบลิงก์ยังสลับเหรียญจริงไม่ได้ — ใช้กระเป๋าในแอพหรือ WalletConnect'
+          : 'Linked wallets can\'t swap on-chain yet — use in-app wallet or WalletConnect');
+      return;
+    }
+    final q = _routerQuote!;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -244,17 +298,123 @@ class _SwapScreenState extends State<SwapScreen> {
         fromToken: _fromToken,
         toToken: _toToken,
         payAmount: amount,
-        receiveAmount: _receiveAmount(),
-        quote: _quote!,
-        slippage: _slippage,
+        receiveAmount: q.netOutput,
+        feeText:
+            '${_trimNum(q.feeAmount)} $_fromToken (${_trimNum(q.feeRate)}%)',
+        minReceivedText: '${_trimNum(q.minReceived)} $_toToken',
         locale: locale,
+        onConfirm: () {
+          Navigator.pop(context);
+          _executeSwap();
+        },
       ),
     );
   }
 
-  void _snack(String msg) {
+  /// Execute swap จริงบน BSC — quote ใหม่สดก่อนส่งเสมอ (กันราคาค้างจอ)
+  /// แล้ววิ่ง flow เดียวกับหน้า Trade: approve → swap → เก็บ fee → บันทึก
+  Future<void> _executeSwap() async {
+    if (_executing) return;
+    final wallet = context.read<WalletProvider>();
+    final locale = context.read<LocaleProvider>();
+    if (!wallet.isConnected || wallet.address == null) return;
+
+    final amount = double.tryParse(_payController.text.trim());
+    if (amount == null || amount <= 0) return;
+
+    setState(() => _executing = true);
+    try {
+      // 1) Quote สดใหม่ ณ วินาทีส่ง — minOut คิดจากราคาปัจจุบันจริง
+      final quote = await _swapService.getQuote(
+        fromSymbol: _fromToken,
+        toSymbol: _toToken,
+        amount: amount,
+        slippageOverride: _slippage,
+      );
+
+      // 2) Approve router ถ้า allowance ไม่พอ (ข้ามได้ถ้าจ่ายด้วย BNB)
+      if (!quote.fromToken.native) {
+        final hasAllowance = await _swapService.hasAllowance(
+          quote.fromToken,
+          wallet.address!,
+          quote.amountInSwapWei,
+        );
+        if (!hasAllowance) {
+          if (mounted) {
+            _snack(locale.isThai
+                ? 'กำลังขอ approve $_fromToken — ยืนยันในกระเป๋า'
+                : 'Approving $_fromToken — confirm in your wallet');
+          }
+          final approveHash = await wallet.sendBscTransaction(
+            to: quote.fromToken.address,
+            data: _swapService.approveCalldata(),
+          );
+          if (approveHash == null) {
+            throw const SwapException(
+                'Approval rejected.', 'การ approve ถูกปฏิเสธ');
+          }
+          final approved = await _swapService.waitConfirmed(approveHash);
+          if (!approved) {
+            throw const SwapException(
+                'Approval not confirmed — try again.',
+                'การ approve ยังไม่ยืนยัน ลองใหม่อีกครั้ง');
+          }
+        }
+      }
+
+      // 3) Swap จริง — service เก็บ fee + บันทึก backend ให้ครบ
+      final result = await _swapService.executeMarketSwap(
+        quote: quote,
+        walletAddress: wallet.address!,
+        sendTx: wallet.sendBscTransaction,
+      );
+
+      if (!mounted) return;
+
+      _payController.clear();
+      setState(() {
+        _quote = null;
+        _routerQuote = null;
+      });
+      final received = '${_trimNum(quote.netOutput)} $_toToken';
+      _snack(
+        result.confirmed
+            ? (locale.isThai
+                ? 'สลับสำเร็จ ≈ $received'
+                : 'Swapped ≈ $received')
+            : (locale.isThai
+                ? 'ส่งธุรกรรมแล้ว กำลังรอยืนยันบนเชน'
+                : 'Transaction sent — awaiting confirmation'),
+        actionLabel: locale.isThai ? 'ดู tx' : 'View tx',
+        onAction: () => launchUrl(
+          Uri.parse(result.explorerUrl),
+          mode: LaunchMode.externalApplication,
+        ),
+      );
+      _loadBscBalances();
+      wallet.loadPortfolio();
+    } on SwapException catch (e) {
+      if (mounted) _snack(e.message(locale.isThai));
+    } catch (_) {
+      if (mounted) {
+        _snack(wallet.error ??
+            (locale.isThai ? 'สลับไม่สำเร็จ ลองใหม่' : 'Swap failed — try again'));
+      }
+    } finally {
+      if (mounted) setState(() => _executing = false);
+    }
+  }
+
+  void _snack(String msg, {String? actionLabel, VoidCallback? onAction}) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
+      SnackBar(
+        content: Text(msg),
+        // มีปุ่ม action (ลิงก์ดู tx) ให้ค้างนานพอที่จะกด
+        duration: Duration(seconds: actionLabel != null ? 8 : 2),
+        action: actionLabel != null && onAction != null
+            ? SnackBarAction(label: actionLabel, onPressed: onAction)
+            : null,
+      ),
     );
   }
 
@@ -276,6 +436,9 @@ class _SwapScreenState extends State<SwapScreen> {
     final wallet = context.watch<WalletProvider>();
     // market watched so USD ≈ lines refresh as live prices stream in.
     context.watch<MarketProvider>();
+
+    // โหลดยอด BSC ใหม่เมื่อ wallet เปลี่ยน (เชื่อมทีหลัง/สลับ address)
+    _maybeReloadBalances(wallet);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -430,47 +593,21 @@ class _SwapScreenState extends State<SwapScreen> {
       ));
     }
 
-    final platformFee = _readNum(_quote, const [
-      'platform_fee',
-      'platformFee',
-      'fee',
-      'swap_fee',
-      'swapFee',
-    ]);
-    if (platformFee != null) {
+    // Platform fee — ตัวเลขจริงจาก router quote (หักจากฝั่งจ่าย)
+    final rq = _routerQuote;
+    if (rq != null) {
       rows.add(_DetailRow(
         label: locale.isThai ? 'ค่าธรรมเนียมแพลตฟอร์ม' : 'Platform fee',
-        value: _trimNum(platformFee),
-      ));
-    } else {
-      // Fall back to the chain swap fee % from real config, clearly labelled %.
-      final feePct = context.read<ConfigProvider>().swapFeePercent;
-      rows.add(_DetailRow(
-        label: locale.isThai ? 'ค่าธรรมเนียมแพลตฟอร์ม' : 'Platform fee',
-        value: '${_trimNum(feePct)}%',
+        value:
+            '${_trimNum(rq.feeAmount)} $_fromToken (${_trimNum(rq.feeRate)}%)',
       ));
     }
 
-    final networkFee = _readNum(_quote, const [
-      'network_fee',
-      'networkFee',
-      'gas_fee',
-      'gasFee',
-      'gas',
-    ]);
-    if (networkFee != null) {
-      rows.add(_DetailRow(
-        label: locale.isThai ? 'ค่าธรรมเนียมเครือข่าย' : 'Network fee',
-        value: _trimNum(networkFee),
-      ));
-    } else if (context.read<WalletProvider>().activeChain.isGasless) {
-      // TPIX Chain is gasless — this is a real property, not a guess.
-      rows.add(_DetailRow(
-        label: locale.isThai ? 'ค่าธรรมเนียมเครือข่าย' : 'Network fee',
-        value: locale.isThai ? 'ไม่มี (Zero gas)' : 'None (Zero gas)',
-        valueColor: AppColors.gold1,
-      ));
-    }
+    // Swap ทำงานบน BSC เสมอ — ค่า gas จ่ายเป็น BNB (ไม่ใช่ gasless ของ TPIX)
+    rows.add(_DetailRow(
+      label: locale.isThai ? 'ค่าธรรมเนียมเครือข่าย' : 'Network fee',
+      value: locale.isThai ? 'BNB (gas บนเชน BSC)' : 'BNB (BSC network gas)',
+    ));
 
     // Minimum received (after slippage) — only if backend returns it.
     final minReceived = _readNum(_quote, const [
@@ -583,12 +720,15 @@ class _SwapScreenState extends State<SwapScreen> {
     final ready = wallet.isConnected &&
         hasAmount &&
         _fromToken != _toToken &&
-        _quote != null &&
-        !_quoting;
+        _routerQuote != null &&
+        !_quoting &&
+        !_executing;
 
     final label = !wallet.isConnected
         ? (locale.isThai ? 'เชื่อมกระเป๋าก่อน' : 'Connect wallet first')
-        : (locale.isThai ? 'สลับตอนนี้' : 'Swap Now');
+        : _executing
+            ? (locale.isThai ? 'กำลังสลับ...' : 'Swapping...')
+            : (locale.isThai ? 'สลับตอนนี้' : 'Swap Now');
 
     return Column(
       children: [
@@ -596,14 +736,14 @@ class _SwapScreenState extends State<SwapScreen> {
           text: label,
           variant: ButtonVariant.gold,
           icon: Icons.swap_horiz_rounded,
-          isLoading: _quoting && hasAmount,
+          isLoading: _executing || (_quoting && hasAmount),
           onPressed: ready ? _reviewSwap : null,
         ),
         const SizedBox(height: 10),
         Text(
           locale.isThai
-              ? 'ราคาจริงจาก TPIX • อาจเปลี่ยนแปลงได้ตามตลาด'
-              : 'Live quote from TPIX • subject to market movement',
+              ? 'ราคาจริงจาก PancakeSwap (BSC) • settle บนเชนจริง เหรียญเข้ากระเป๋าคุณ'
+              : 'Live price from PancakeSwap (BSC) • settles on-chain to your wallet',
           style: GoogleFonts.inter(
             fontSize: 10.5,
             color: AppColors.textTertiary,
@@ -1023,12 +1163,10 @@ class _FlipButton extends StatelessWidget {
 class _DetailRow extends StatelessWidget {
   final String label;
   final String value;
-  final Color? valueColor;
 
   const _DetailRow({
     required this.label,
     required this.value,
-    this.valueColor,
   });
 
   @override
@@ -1050,7 +1188,7 @@ class _DetailRow extends StatelessWidget {
               textAlign: TextAlign.right,
               style: AppTheme.mono(
                 fontSize: 12,
-                color: valueColor ?? AppColors.textPrimary,
+                color: AppColors.textPrimary,
               ),
             ),
           ),
@@ -1427,25 +1565,27 @@ class _SlippageDialogState extends State<_SlippageDialog> {
   }
 }
 
-// ── Review sheet (quote confirmation — not a settled swap) ──
+// ── Review sheet — ยืนยันก่อนส่ง swap จริงบนเชน BSC ──
 
 class _ReviewSheet extends StatelessWidget {
   final String fromToken;
   final String toToken;
   final double payAmount;
   final double? receiveAmount;
-  final Map<String, dynamic> quote;
-  final double slippage;
+  final String feeText;
+  final String minReceivedText;
   final LocaleProvider locale;
+  final VoidCallback onConfirm;
 
   const _ReviewSheet({
     required this.fromToken,
     required this.toToken,
     required this.payAmount,
     required this.receiveAmount,
-    required this.quote,
-    required this.slippage,
+    required this.feeText,
+    required this.minReceivedText,
     required this.locale,
+    required this.onConfirm,
   });
 
   @override
@@ -1510,6 +1650,7 @@ class _ReviewSheet extends StatelessWidget {
                   valueColor: AppColors.gold1,
                 ),
                 const SizedBox(height: 16),
+                // สรุป fee + ขั้นต่ำที่ได้รับ ก่อนกดยืนยันส่งขึ้นเชนจริง
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -1518,31 +1659,46 @@ class _ReviewSheet extends StatelessWidget {
                     border:
                         Border.all(color: AppColors.goldBorder, width: 1),
                   ),
-                  child: Row(
+                  child: Column(
                     children: [
-                      const Icon(Icons.info_outline_rounded,
-                          size: 16, color: AppColors.gold2),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          locale.isThai
-                              ? 'การลงนามสลับบนเชนกำลังจะเปิดให้บริการเร็วๆ นี้ — นี่คือราคาจริงจากระบบ'
-                              : 'On-chain swap signing is coming soon — this is a live quote, not a settled trade.',
-                          style: GoogleFonts.inter(
-                            fontSize: 11.5,
-                            color: AppColors.textSecondary,
-                            height: 1.35,
-                          ),
-                        ),
+                      _infoRow(
+                          locale.isThai ? 'ค่าธรรมเนียม' : 'Fee', feeText),
+                      const SizedBox(height: 6),
+                      _infoRow(
+                          locale.isThai ? 'ได้รับขั้นต่ำ' : 'Min received',
+                          minReceivedText),
+                      const SizedBox(height: 6),
+                      _infoRow(
+                        locale.isThai ? 'เครือข่าย' : 'Network',
+                        'BSC · PancakeSwap',
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
                 GradientButton(
-                  text: locale.isThai ? 'รับทราบ' : 'Got it',
+                  text: locale.isThai
+                      ? 'ยืนยันสลับ (ส่งขึ้นเชนจริง)'
+                      : 'Confirm swap (on-chain)',
                   variant: ButtonVariant.gold,
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: onConfirm,
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Text(
+                        locale.isThai ? 'ยกเลิก' : 'Cancel',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1569,6 +1725,23 @@ class _ReviewSheet extends StatelessWidget {
             fontSize: 15,
             color: valueColor ?? AppColors.textPrimary,
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Row(
+      children: [
+        Text(
+          label,
+          style:
+              GoogleFonts.inter(fontSize: 11.5, color: AppColors.textTertiary),
+        ),
+        const Spacer(),
+        Text(
+          value,
+          style: AppTheme.mono(fontSize: 11.5, color: AppColors.textSecondary),
         ),
       ],
     );

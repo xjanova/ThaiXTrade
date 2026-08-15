@@ -340,6 +340,10 @@ class ChainInfo {
   final String? iconUrl;
   final String? color;
 
+  /// สถานะจาก backend: 'live' = เปิดเทรดจริง, 'coming_soon' = โชว์ไว้ก่อน
+  /// (API เก่าไม่มี field นี้ → default 'live' เพื่อ backward compat)
+  final String status;
+
   const ChainInfo({
     required this.chainId,
     required this.name,
@@ -353,7 +357,11 @@ class ChainInfo {
     this.enabled = true,
     this.iconUrl,
     this.color,
+    this.status = 'live',
   });
+
+  /// เชนนี้เปิดใช้งานเต็มรูปแบบ (เลือกเทรดได้) หรือยัง
+  bool get isLive => status == 'live';
 
   factory ChainInfo.fromJson(Map<String, dynamic> json) {
     // Parse rpc array — เอาตัวแรก + เก็บตัวที่เหลือเป็น fallback
@@ -390,6 +398,7 @@ class ChainInfo {
       enabled: json['enabled'] != false, // default true
       iconUrl: json['icon'] as String?,
       color: json['color'] as String?,
+      status: (json['status'] as String?) ?? 'live',
     );
   }
 }

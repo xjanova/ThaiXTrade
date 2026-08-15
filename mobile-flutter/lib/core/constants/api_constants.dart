@@ -33,6 +33,9 @@ class ApiConstants {
 
   // ── Swap ──
   static const String swapQuote = '/swap/quote';
+  static const String swapExecute = '/swap/execute';
+  // fee-info = ที่อยู่ fee collector (fail-closed: ไม่มี = ห้ามเทรด)
+  static const String tradingFeeInfo = '/trading/fee-info';
 
   // ── Market Data ──
   static const String marketTickers = '/market/tickers';

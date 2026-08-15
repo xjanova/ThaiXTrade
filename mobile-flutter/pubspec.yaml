@@ -26,6 +26,9 @@ dependencies:
 
   # Blockchain / Crypto
   web3dart: ^2.7.3
+  # http client สำหรับ Web3Client (BSC RPC) — web3dart ใช้ตัวนี้อยู่แล้ว
+  # ประกาศตรงๆ เพื่อไม่พึ่ง transitive dependency
+  http: ^1.2.0
   bip39: ^1.0.6
   bip32: ^2.0.0
   hex: ^0.2.0
