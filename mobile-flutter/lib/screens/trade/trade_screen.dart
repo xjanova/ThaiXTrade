@@ -7,6 +7,7 @@
 library;
 
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -830,17 +831,13 @@ class _TradeScreenState extends State<TradeScreen>
           const SizedBox(height: 14),
 
           // Submit CTA — green for Buy, red for Sell
-          // Linked wallet (TPIX Wallet deep-link) เซ็น tx บน BSC ไม่ได้
-          // → ปุ่มกดไม่ได้ + มีแถบอธิบายด้านล่าง
           GradientButton(
             text: _isBuy
                 ? '${locale.t('trade.buy')} $baseAsset'
                 : '${locale.t('trade.sell')} $baseAsset',
             variant: _isBuy ? ButtonVariant.buy : ButtonVariant.sell,
             isLoading: _isSubmitting,
-            onPressed: wallet.isConnected &&
-                    !_isSubmitting &&
-                    !wallet.isLinkedWallet
+            onPressed: wallet.isConnected && !_isSubmitting
                 ? () => _submitOrder()
                 : null,
           ),
@@ -865,6 +862,8 @@ class _TradeScreenState extends State<TradeScreen>
             ],
           ),
 
+          // Linked wallet — เทรดผ่าน TPIX Wallet: แอพจะสลับไปให้ยืนยัน
+          // แต่ละธุรกรรม (approve → swap → fee) แล้วเด้งกลับมาเอง
           if (wallet.isConnected && wallet.isLinkedWallet) ...[
             const SizedBox(height: 10),
             Container(
@@ -876,14 +875,14 @@ class _TradeScreenState extends State<TradeScreen>
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline_rounded,
+                  Icon(Icons.swap_calls_rounded,
                       size: 14, color: AppColors.gold2),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       locale.isThai
-                          ? 'กระเป๋าแบบลิงก์ยังส่งธุรกรรม BSC ไม่ได้ — ใช้กระเป๋าในแอพหรือ WalletConnect เพื่อเทรดจริง'
-                          : 'Linked wallets can\'t send BSC transactions yet — use the in-app wallet or WalletConnect to trade.',
+                          ? 'จะเปิด TPIX Wallet ให้ยืนยันธุรกรรมทีละรายการ แล้วกลับมาที่นี่อัตโนมัติ'
+                          : 'TPIX Wallet will open to confirm each transaction, then return here automatically.',
                       style: GoogleFonts.inter(
                         fontSize: 11,
                         color: AppColors.textSecondary,
@@ -1471,13 +1470,6 @@ class _TradeScreenState extends State<TradeScreen>
       return;
     }
 
-    if (wallet.isLinkedWallet) {
-      _showSnack(locale.isThai
-          ? 'กระเป๋าแบบลิงก์ยังเทรดจริงไม่ได้ — ใช้กระเป๋าในแอพหรือ WalletConnect'
-          : 'Linked wallets can\'t trade on-chain yet — use in-app wallet or WalletConnect');
-      return;
-    }
-
     final amount = double.tryParse(_amountController.text.trim());
     if (amount == null || amount <= 0) {
       _showSnack(locale.t('trade.invalid_amount'));
@@ -1540,6 +1532,7 @@ class _TradeScreenState extends State<TradeScreen>
           final approveHash = await wallet.sendBscTransaction(
             to: swapQuote.fromToken.address,
             data: _swapService.approveCalldata(),
+            summary: 'Approve $fromSym for PancakeSwap router',
           );
           if (approveHash == null) {
             throw const SwapException(
@@ -1555,10 +1548,19 @@ class _TradeScreenState extends State<TradeScreen>
       }
 
       // 4) ส่ง swap จริง — service เก็บ fee + บันทึก backend ให้ครบ
+      // ห่อ sender เพื่อแนบ summary ให้ TPIX Wallet โชว์ตอนยืนยัน (linked)
+      final actionText =
+          '${_isBuy ? 'Buy' : 'Sell'} $base — TPIX Trade market order';
       final result = await _swapService.executeMarketSwap(
         quote: swapQuote,
         walletAddress: wallet.address!,
-        sendTx: wallet.sendBscTransaction,
+        sendTx: ({required String to, Uint8List? data, BigInt? value}) =>
+            wallet.sendBscTransaction(
+          to: to,
+          data: data,
+          value: value,
+          summary: actionText,
+        ),
       );
 
       if (!mounted) return;

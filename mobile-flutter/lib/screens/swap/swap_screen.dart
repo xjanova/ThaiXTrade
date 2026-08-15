@@ -8,6 +8,7 @@
 library;
 
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -273,7 +274,6 @@ class _SwapScreenState extends State<SwapScreen> {
 
   void _reviewSwap() {
     final locale = context.read<LocaleProvider>();
-    final wallet = context.read<WalletProvider>();
     final amount = double.tryParse(_payController.text.trim());
     if (amount == null || amount <= 0) {
       _snack(locale.isThai ? 'กรอกจำนวนให้ถูกต้อง' : 'Enter a valid amount');
@@ -281,12 +281,6 @@ class _SwapScreenState extends State<SwapScreen> {
     }
     if (_routerQuote == null) {
       _snack(locale.isThai ? 'รอราคาก่อน' : 'Wait for the quote');
-      return;
-    }
-    if (wallet.isLinkedWallet) {
-      _snack(locale.isThai
-          ? 'กระเป๋าแบบลิงก์ยังสลับเหรียญจริงไม่ได้ — ใช้กระเป๋าในแอพหรือ WalletConnect'
-          : 'Linked wallets can\'t swap on-chain yet — use in-app wallet or WalletConnect');
       return;
     }
     final q = _routerQuote!;
@@ -348,6 +342,7 @@ class _SwapScreenState extends State<SwapScreen> {
           final approveHash = await wallet.sendBscTransaction(
             to: quote.fromToken.address,
             data: _swapService.approveCalldata(),
+            summary: 'Approve $_fromToken for PancakeSwap router',
           );
           if (approveHash == null) {
             throw const SwapException(
@@ -363,10 +358,18 @@ class _SwapScreenState extends State<SwapScreen> {
       }
 
       // 3) Swap จริง — service เก็บ fee + บันทึก backend ให้ครบ
+      // ห่อ sender เพื่อแนบ summary ให้ TPIX Wallet โชว์ตอนยืนยัน (linked)
+      final actionText = 'Swap $_fromToken → $_toToken — TPIX Trade';
       final result = await _swapService.executeMarketSwap(
         quote: quote,
         walletAddress: wallet.address!,
-        sendTx: wallet.sendBscTransaction,
+        sendTx: ({required String to, Uint8List? data, BigInt? value}) =>
+            wallet.sendBscTransaction(
+          to: to,
+          data: data,
+          value: value,
+          summary: actionText,
+        ),
       );
 
       if (!mounted) return;

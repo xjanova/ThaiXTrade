@@ -376,12 +376,14 @@ class WalletProvider extends ChangeNotifier {
   /// ส่งธุรกรรมบนเชน BSC (56) — dispatch ตามชนิด wallet:
   ///  embedded      → เซ็นด้วย private key ในเครื่อง ส่งผ่าน BSC RPC ตรง
   ///  walletConnect → ขอ external wallet ส่งผ่าน Reown (สลับเชนให้ก่อน)
-  ///  linked        → ยังไม่รองรับ (TPIX Wallet deep-link เซ็นได้เฉพาะ message)
+  ///  linked        → deep-link ไป TPIX Wallet ให้ยืนยัน+เซ็น+broadcast
+  ///                  แล้วส่ง tx hash กลับ (cross-app sign-tx protocol)
   /// คืน tx hash หรือ null (พร้อมตั้ง [error] อธิบายเหตุ)
   Future<String?> sendBscTransaction({
     required String to,
     Uint8List? data,
     BigInt? value,
+    String? summary,
   }) async {
     if (_address == null) {
       _error = 'Wallet not connected';
@@ -390,9 +392,8 @@ class WalletProvider extends ChangeNotifier {
     }
 
     if (_kind == WalletKind.linked) {
-      _error = 'Linked wallet ยังเทรดบนเชนไม่ได้ — ใช้กระเป๋าในแอพหรือ WalletConnect';
-      notifyListeners();
-      return null;
+      return _sendViaLinkedWallet(
+          to: to, data: data, value: value, summary: summary);
     }
 
     if (_kind == WalletKind.walletConnect) {
@@ -400,6 +401,28 @@ class WalletProvider extends ChangeNotifier {
     }
 
     return _sendViaEmbedded(to: to, data: data, value: value);
+  }
+
+  /// Linked wallet (TPIX Wallet) — ส่งคำขอธุรกรรมข้ามแอพ ผู้ใช้ยืนยันใน
+  /// TPIX Wallet ซึ่งเป็นผู้ถือ key แล้ว broadcast เอง คืน hash ผ่าน callback
+  Future<String?> _sendViaLinkedWallet({
+    required String to,
+    Uint8List? data,
+    BigInt? value,
+    String? summary,
+  }) async {
+    final hash = await LinkedWalletSigner().requestTransaction(
+      to: to,
+      valueHex: value != null ? '0x${value.toRadixString(16)}' : null,
+      dataHex: data != null ? '0x${HEX.encode(data)}' : null,
+      chainId: 56,
+      summary: summary,
+    );
+    if (hash == null) {
+      _error = 'ธุรกรรมถูกปฏิเสธใน TPIX Wallet หรือหมดเวลา';
+      notifyListeners();
+    }
+    return hash;
   }
 
   /// External wallet — เชนของ wallet ต้องเป็น BSC ก่อนส่ง (ขอสลับให้อัตโนมัติ)

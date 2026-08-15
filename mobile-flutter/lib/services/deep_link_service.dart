@@ -68,6 +68,10 @@ class DeepLinkService {
     String? host;
     if (qp.containsKey('address') && qp.containsKey('chain')) {
       host = 'connect';
+    } else if (qp['kind'] == 'tx') {
+      // tx-result ฝัง kind=tx ไว้ใน callback URL — ต้องเช็คก่อน sign-result
+      // เพราะ error case มี nonce+error เหมือนกัน (แยกไม่ออกถ้าไม่มี kind)
+      host = 'tx-result';
     } else if (qp.containsKey('nonce') && qp.containsKey('signature')) {
       host = 'sign-result';
     } else if (qp.containsKey('nonce') && qp.containsKey('error')) {
@@ -114,9 +118,13 @@ class DeepLinkService {
     // Log เฉพาะ scheme + host (ไม่ log query params ที่มี address/signature)
     debugPrint('DeepLink: ${uri.scheme}://${uri.host}');
 
-    // sign-result ไม่ต้องใช้ context — route ตรงไปที่ signer
+    // sign-result / tx-result ไม่ต้องใช้ context — route ตรงไปที่ signer
     if (uri.host == 'sign-result') {
       _handleSignResult(uri);
+      return;
+    }
+    if (uri.host == 'tx-result') {
+      _handleTxResult(uri);
       return;
     }
 
@@ -146,6 +154,19 @@ class DeepLinkService {
     LinkedWalletSigner().completeSignature(
       nonce: nonce,
       signature: uri.queryParameters['signature'],
+      error: uri.queryParameters['error'],
+    );
+  }
+
+  /// `tpixtrade://tx-result?kind=tx&nonce=<n>&txhash=0x...` หรือ `&error=...`
+  /// ผลจากการส่งธุรกรรมผ่าน TPIX Wallet (เทรดจริงบน BSC ของ linked wallet)
+  void _handleTxResult(Uri uri) {
+    final nonce = uri.queryParameters['nonce'];
+    if (nonce == null || nonce.isEmpty) return;
+
+    LinkedWalletSigner().completeTransaction(
+      nonce: nonce,
+      txHash: uri.queryParameters['txhash'],
       error: uri.queryParameters['error'],
     );
   }
