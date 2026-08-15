@@ -87,11 +87,13 @@ const allWallets = (() => {
         popular: false, color: '#3B99FC',
     });
 
-    // TPIX Wallet App — deep link สำหรับมือถือ, QR สำหรับ desktop
+    // TPIX Wallet App — deep link สำหรับมือถือ, สแกน QR สำหรับ desktop
+    // (desktop จะเปิด WalletConnect QR modal → ผู้ใช้เปิดแอพ TPIX Wallet
+    //  กด Connect → สแกน → ยืนยันธุรกรรมจากมือถือได้เลย)
     baseWallets.push({
         id: 'tpix_wallet_app', name: 'TPIX Wallet App',
-        description: mobile ? 'เปิดแอพ TPIX Wallet' : 'เชื่อมต่อผ่าน WalletConnect',
-        popular: false, color: '#8B5CF6', isNativeApp: true,
+        description: mobile ? 'เปิดแอพ TPIX Wallet' : 'สแกน QR ด้วยแอพ TPIX Wallet',
+        popular: true, color: '#8B5CF6', isNativeApp: true,
     });
 
     return baseWallets;
@@ -156,7 +158,6 @@ const connectWallet = async (wallet) => {
     if (wallet.id === 'tpix_wallet_app') {
         if (mobile) {
             // มือถือ: เปิดแอพผ่าน deep link (ถ้ามีก็เปิด ถ้าไม่มีก็ redirect ไปดาวน์โหลด)
-            const wcUri = ''; // WalletConnect URI จะถูกสร้างหลัง init
             window.location.href = 'tpixwallet://';
             // Fallback: ถ้าแอพไม่เปิดภายใน 2 วินาที → แสดงตัวเลือกดาวน์โหลด
             setTimeout(() => {
