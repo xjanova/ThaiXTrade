@@ -7,7 +7,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TradingChart from '@/Components/Trading/TradingChart.vue';
@@ -22,8 +22,12 @@ import { useSwap } from '@/Composables/useSwap';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useWalletBalance } from '@/Composables/useWalletBalance';
 import { playTradeSound, playErrorSound, playNotificationSound } from '@/Composables/useSounds';
+import { getBscTradeToken, getVerifiedTradeToken } from '@/Config/bscTradeTokens';
 import axios from 'axios';
 import { useTranslation } from '@/Composables/useTranslation';
+
+// การเทรดจริงทั้งหมดรันบน BSC (PancakeSwap) จนกว่า DEX บน TPIX Chain จะพร้อม
+const BSC_CHAIN_ID = 56;
 
 const { t } = useTranslation();
 const props = defineProps({
@@ -38,6 +42,21 @@ const binanceSymbol = computed(() => props.pair.replace('-', ''));
 
 // Detect if this is a TPIX pair (uses internal order book, not Binance)
 const isTPIXPair = computed(() => props.pair.toUpperCase().startsWith('TPIX'));
+
+const baseSymbol = computed(() => currentPair.value.split('/')[0] || '');
+const quoteSymbol = computed(() => currentPair.value.split('/')[1] || '');
+
+// คู่ที่เทรดจริงบน BSC ได้ — ทั้ง base และ quote ต้องมีใน registry (เช็ค address แล้ว)
+const isBscTradable = computed(() =>
+    !isTPIXPair.value
+    && !!getBscTradeToken(baseSymbol.value)
+    && !!getBscTradeToken(quoteSymbol.value)
+);
+
+// โหมดของ TradeForm:
+//  onchain  = market order execute จริงผ่าน PancakeSwap บน BSC
+//  disabled = TPIX pair (รอเชน TPIX) หรือคู่ที่ไม่มี token บน BSC — เห็นไว้ก่อน กดไม่ได้
+const tradeFormMode = computed(() => (isBscTradable.value ? 'onchain' : 'disabled'));
 
 // Real market data from Binance (for non-TPIX pairs)
 const {
@@ -118,11 +137,106 @@ const walletStore = useWalletStore();
 const { balances, fetchBalances } = useWalletBalance();
 const swap = useSwap();
 
+// ── เทรดจริงบน BSC (market order → PancakeSwap) ─────────────────────────────
+
+// ยอดคงเหลือของ base/quote อ่านตรงจาก BSC RPC — ถูกต้องเสมอไม่ว่า wallet อยู่เชนไหน
+const bscFormBalances = ref([]);
+
+async function fetchBscFormBalances() {
+    if (!walletStore.isConnected || !isBscTradable.value) {
+        bscFormBalances.value = [];
+        return;
+    }
+    try {
+        const baseTok = getBscTradeToken(baseSymbol.value);
+        const quoteTok = getBscTradeToken(quoteSymbol.value);
+        const [baseBal, quoteBal] = await Promise.all([
+            swap.getBalance(baseTok.address),
+            swap.getBalance(quoteTok.address),
+        ]);
+        bscFormBalances.value = [
+            { symbol: baseSymbol.value, balance: baseBal },
+            { symbol: quoteSymbol.value, balance: quoteBal },
+        ];
+    } catch {
+        // อ่านไม่ได้ก็คงค่าเดิมไว้ — ฟอร์มยังใช้งานได้ (executeSwap เช็คยอดจริงอีกที)
+    }
+}
+
+// ฟอร์มโหมด onchain ใช้ยอดจาก BSC, โหมดอื่นใช้ยอดจาก wallet chain ปัจจุบัน (เดิม)
+const formBalances = computed(() =>
+    tradeFormMode.value === 'onchain' ? bscFormBalances.value : balances.value
+);
+
+// จัดรูปตัวเลขจำนวนเหรียญสำหรับแสดงผล
+function fmtQty(n) {
+    const num = Number(n) || 0;
+    return num.toLocaleString('en-US', { maximumFractionDigits: num >= 1 ? 4 : 8 });
+}
+
+function friendly(message) {
+    const err = new Error(message);
+    err.isFriendly = true;
+    return err;
+}
+
+// Preview ราคาจริงจาก router (debounce 400ms) — แสดงใน TradeForm ก่อนกดยืนยัน
+const marketPreview = ref(null);
+let previewTimer = null;
+let previewSeq = 0;
+
+function handleFormChange(form) {
+    if (tradeFormMode.value !== 'onchain' || form.type !== 'market') {
+        marketPreview.value = null;
+        return;
+    }
+    const amountNum = parseFloat(form.amount) || 0;
+    const totalNum = parseFloat(String(form.total).replace(/,/g, '')) || 0;
+    // buy ใช้ยอด quote (USDT) เป็น input จริง, sell ใช้ยอด base
+    const inputAmount = form.side === 'buy' ? totalNum : amountNum;
+    if (inputAmount <= 0) {
+        marketPreview.value = null;
+        return;
+    }
+    marketPreview.value = { loading: true };
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => refreshMarketPreview(form, inputAmount), 400);
+}
+
+async function refreshMarketPreview(form, inputAmount) {
+    const seq = ++previewSeq;
+    try {
+        const fromSym = form.side === 'buy' ? quoteSymbol.value : baseSymbol.value;
+        const toSym = form.side === 'buy' ? baseSymbol.value : quoteSymbol.value;
+        // ใช้ token ที่ตรวจ decimals จาก on-chain แล้ว — กัน preview เพี้ยนถ้าค่า static ผิด
+        const [fromTok, toTok] = await Promise.all([
+            getVerifiedTradeToken(fromSym),
+            getVerifiedTradeToken(toSym),
+        ]);
+        const q = await swap.getQuote(fromTok, toTok, inputAmount);
+        if (seq !== previewSeq) return; // มี request ใหม่กว่าแล้ว — ทิ้งผลนี้
+        if (!q) {
+            marketPreview.value = null;
+            return;
+        }
+        marketPreview.value = {
+            loading: false,
+            receiveText: `${fmtQty(q.netOutput)} ${toSym}`,
+            minReceivedText: `${fmtQty(q.minimumReceived)} ${toSym}`,
+            feeText: `${fmtQty(q.feeAmount)} ${fromSym} (${q.feeRate}%)`,
+        };
+    } catch {
+        if (seq === previewSeq) marketPreview.value = null;
+    }
+}
+
 const activeTab = ref('openOrders');
 const selectedPrice = ref(null);
 const orderStatus = ref(null);
 const orderMessage = ref('');
+const orderTxUrl = ref(null); // ลิงก์ BscScan ของเทรดที่สำเร็จ (โหมด onchain)
 const isSubmitting = ref(false); // ป้องกันกด submit ซ้ำ
+let toastTimer = null;
 
 const tabs = [
     { id: 'openOrders', label: 'Open Orders', count: 0 },
@@ -131,10 +245,10 @@ const tabs = [
 ];
 
 /**
- * Handle order submission.
- * TPIX pairs: submitted to internal matching engine.
- * Other pairs: legacy flow (Binance display + on-chain execution).
- * ป้องกันกดซ้ำ (debounce) + timeout
+ * Handle order submission — แยกตามโหมดของคู่เทรด:
+ *  onchain  → market order execute จริงบน BSC ผ่าน PancakeSwap
+ *  disabled → ฟอร์มถูกปิดอยู่แล้ว (TPIX รอเชน) — กันไว้อีกชั้น
+ *  อื่นๆ    → internal order book (path เดิม ใช้เมื่อ TPIX Chain เปิด)
  */
 const handleSubmitOrder = async (order) => {
     // ป้องกันกด submit ซ้ำ (rapid tap)
@@ -145,6 +259,138 @@ const handleSubmitOrder = async (order) => {
         return;
     }
 
+    if (tradeFormMode.value === 'disabled') return;
+
+    if (tradeFormMode.value === 'onchain') {
+        await executeBscMarketOrder(order);
+        return;
+    }
+
+    await submitInternalOrder(order);
+};
+
+/**
+ * แสดง toast error สั้นๆ ของฟอร์มเทรด
+ */
+function showOrderError(message) {
+    orderStatus.value = 'error';
+    orderMessage.value = message;
+    playErrorSound();
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { orderStatus.value = null; orderMessage.value = ''; }, 4000);
+}
+
+/**
+ * Market order เทรดจริงบน BSC ผ่าน PancakeSwap
+ * ลำดับ: ตรวจ token on-chain → สลับเชนเป็น BSC → quote จริง → กันราคาเพี้ยน
+ * → approve (ถ้าจำเป็น) → swap → refresh ยอด
+ */
+async function executeBscMarketOrder(order) {
+    if (order.type !== 'market') {
+        showOrderError('Limit orders open with TPIX Chain launch — use Market for now.');
+        return;
+    }
+
+    const amountVal = parseFloat(order.amount) || 0;
+    const totalVal = parseFloat(String(order.total).replace(/,/g, '')) || 0;
+    // buy จ่าย quote token (USDT) ตามช่อง Total, sell จ่าย base token ตามช่อง Amount
+    const inputAmount = order.side === 'buy' ? totalVal : amountVal;
+    if (inputAmount <= 0) {
+        showOrderError(t('trade.enterAmount') || 'Please enter an amount.');
+        return;
+    }
+
+    isSubmitting.value = true;
+    orderStatus.value = 'executing';
+    orderMessage.value = 'Preparing on-chain trade…';
+    orderTxUrl.value = null;
+
+    try {
+        // 1) ตรวจ token address กับ on-chain (symbol + decimals) — ไม่ผ่าน = ไม่เทรด
+        const fromSym = order.side === 'buy' ? quoteSymbol.value : baseSymbol.value;
+        const toSym = order.side === 'buy' ? baseSymbol.value : quoteSymbol.value;
+        const [fromTok, toTok] = await Promise.all([
+            getVerifiedTradeToken(fromSym),
+            getVerifiedTradeToken(toSym),
+        ]);
+
+        // 2) การเทรดรันบน BSC เท่านั้น — สลับ wallet ให้ (ผู้ใช้กดยืนยันใน wallet)
+        if (walletStore.chainId !== BSC_CHAIN_ID) {
+            orderMessage.value = 'Switching wallet to BSC…';
+            try {
+                await walletStore.switchChain(BSC_CHAIN_ID);
+            } catch {
+                throw friendly('Network switch was cancelled — trading runs on BSC.');
+            }
+            if (walletStore.chainId !== BSC_CHAIN_ID) {
+                throw friendly('Please switch your wallet to BSC to trade.');
+            }
+        }
+
+        // 3) Quote จริงจาก PancakeSwap router (รวมค่าธรรมเนียมแพลตฟอร์มแล้ว)
+        const quote = await swap.getQuote(fromTok, toTok, inputAmount);
+        if (!quote) {
+            throw friendly(swap.error.value || 'No liquidity available for this pair.');
+        }
+
+        // 4) กันราคา on-chain เพี้ยนจากราคาตลาด (สภาพคล่องบาง/pool ผิดปกติ) — เกิน 10% ไม่ส่ง
+        const marketPrice = parseFloat(ticker.value?.lastPrice || ticker.value?.price || 0);
+        if (marketPrice > 0 && quote.netOutput > 0) {
+            const effPrice = order.side === 'buy'
+                ? quote.amountIn / quote.netOutput   // จ่าย USDT ต่อ 1 base
+                : quote.netOutput / quote.amountIn;  // ได้ USDT ต่อ 1 base
+            const deviation = Math.abs(effPrice - marketPrice) / marketPrice;
+            if (deviation > 0.10) {
+                throw friendly('On-chain price differs too much from market price. Try a smaller amount or use Swap.');
+            }
+        }
+
+        // 5) Approve router ถ้า allowance ไม่พอ (เฉพาะ token ไม่ใช่ BNB)
+        if (!fromTok.native) {
+            const hasAllowance = await swap.checkAllowance(fromTok.address, inputAmount, fromTok.decimals);
+            if (!hasAllowance) {
+                orderMessage.value = `Approving ${fromSym} in your wallet…`;
+                const approveTx = await swap.approveToken(fromTok.address);
+                await approveTx.wait();
+            }
+        }
+
+        // 6) ส่ง swap จริง — executeSwap เก็บ platform fee + บันทึก backend ให้แล้ว
+        orderMessage.value = `Confirm the ${order.side} order in your wallet…`;
+        const result = await swap.executeSwap(fromTok, toTok, inputAmount, quote, quote.slippage);
+
+        orderStatus.value = 'success';
+        orderMessage.value = order.side === 'buy'
+            ? `Bought ≈ ${fmtQty(quote.netOutput)} ${toSym} on BSC`
+            : `Sold ${fmtQty(inputAmount)} ${fromSym} for ≈ ${fmtQty(quote.netOutput)} ${toSym}`;
+        orderTxUrl.value = result?.url || null;
+
+        playTradeSound();
+        fetchBscFormBalances();
+        fetchBalances();
+    } catch (err) {
+        orderStatus.value = 'error';
+        // error ที่ตั้งใจ throw เองมีข้อความพร้อมแสดง — นอกนั้น useSwap map ให้แล้ว
+        orderMessage.value = err?.isFriendly ? err.message : (swap.error.value || 'Trade failed. Please try again.');
+        playErrorSound();
+    } finally {
+        isSubmitting.value = false;
+        clearTimeout(toastTimer);
+        // สำเร็จค้าง toast ไว้นานขึ้นให้กดดู tx ได้
+        const holdMs = orderStatus.value === 'success' && orderTxUrl.value ? 10000 : 4000;
+        toastTimer = setTimeout(() => {
+            orderStatus.value = null;
+            orderMessage.value = '';
+            orderTxUrl.value = null;
+        }, holdMs);
+    }
+}
+
+/**
+ * Internal order book (path เดิม) — ใช้เมื่อ TPIX Chain เปิดเทรด
+ * ป้องกันกดซ้ำ (debounce) + timeout
+ */
+const submitInternalOrder = async (order) => {
     const priceVal = parseFloat(String(order.price).replace(/,/g, '')) || 0;
     const amountVal = parseFloat(order.amount) || 0;
 
@@ -260,7 +506,13 @@ onMounted(async () => {
 
     if (walletStore.isConnected) {
         fetchBalances();
+        fetchBscFormBalances();
     }
+});
+
+// เชื่อม wallet ทีหลัง / สลับ address → โหลดยอด BSC สำหรับฟอร์มเทรดใหม่
+watch(() => walletStore.address, () => {
+    fetchBscFormBalances();
 });
 
 onUnmounted(() => {
@@ -269,6 +521,8 @@ onUnmounted(() => {
     } else {
         disconnectWebSocket();
     }
+    clearTimeout(previewTimer);
+    clearTimeout(toastTimer);
 });
 </script>
 
@@ -306,6 +560,16 @@ onUnmounted(() => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
                     <span>{{ orderStatus === 'submitting' ? 'Placing order...' : orderMessage }}</span>
+                    <!-- ลิงก์ดูธุรกรรมจริงบน BscScan (เฉพาะเทรด on-chain สำเร็จ) -->
+                    <a
+                        v-if="orderStatus === 'success' && orderTxUrl"
+                        :href="orderTxUrl"
+                        target="_blank"
+                        rel="noopener"
+                        class="underline font-semibold whitespace-nowrap hover:opacity-80"
+                    >
+                        View tx ↗
+                    </a>
                 </div>
             </Transition>
 
@@ -315,6 +579,20 @@ onUnmounted(() => {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
                 </svg>
                 {{ dataError }}
+            </div>
+
+            <!-- แถบบอกโหมดเทรด: on-chain จริงบน BSC หรือรอ TPIX Chain -->
+            <div v-if="tradeFormMode === 'onchain'" class="mb-3 px-3 py-2 rounded-xl bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs flex items-center gap-2">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                <span>Market orders execute for real on BSC via PancakeSwap — tokens settle in your wallet. Limit orders open with TPIX Chain.</span>
+            </div>
+            <div v-else-if="isTPIXPair" class="mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span>TPIX/USDT trading opens with TPIX Chain launch — coming soon.</span>
             </div>
 
             <!-- Trading Layout: 3 columns -->
@@ -449,9 +727,12 @@ onUnmounted(() => {
                         :selected-price="selectedPrice"
                         :is-wallet-connected="walletStore.isConnected"
                         :is-submitting="isSubmitting"
-                        :balances="balances"
+                        :balances="formBalances"
+                        :mode="tradeFormMode"
+                        :market-preview="marketPreview"
                         @submit-order="handleSubmitOrder"
                         @connect-wallet="handleConnectWallet"
+                        @form-change="handleFormChange"
                     />
 
                     <!-- Recent Trades -->

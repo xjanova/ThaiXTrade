@@ -100,6 +100,12 @@ const availableChains = computed(() => {
     });
 });
 
+// เชนที่ยังไม่พร้อมใช้งาน (status = coming_soon) — โชว์ในลิสต์แต่กดเลือกไม่ได้
+// ไม่มี status (API เก่า/fallback) ถือว่า live เพื่อไม่ให้ selector ใช้งานไม่ได้
+function isComingSoon(chain) {
+    return !!chain.status && chain.status !== 'live';
+}
+
 async function fetchChains() {
     isLoadingChains.value = true;
     try {
@@ -123,6 +129,9 @@ async function fetchChains() {
 }
 
 async function selectChain(chain) {
+    // เชนที่ยังไม่เปิด — กันไว้อีกชั้นเผื่อ disabled attribute ไม่ทำงาน (เช่น keyboard)
+    if (isComingSoon(chain)) return;
+
     showDropdown.value = false;
     if (!isConnected.value) return;
     if (chain.chainId === currentChainId.value) return;
@@ -245,9 +254,12 @@ onUnmounted(() => {
                         v-for="chain in availableChains"
                         :key="chain.chainId"
                         @click="selectChain(chain)"
-                        class="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors"
+                        :disabled="isComingSoon(chain)"
+                        class="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors"
                         :class="{
                             'bg-white/5': chain.chainId === currentChainId,
+                            'hover:bg-white/5': !isComingSoon(chain),
+                            'opacity-50 cursor-not-allowed': isComingSoon(chain),
                         }"
                     >
                         <!-- Chain logo -->
@@ -255,6 +267,7 @@ onUnmounted(() => {
                             :src="getChainLogo(chain)"
                             :alt="chain.shortName"
                             class="w-6 h-6 rounded-full object-contain flex-shrink-0"
+                            :class="{ 'grayscale': isComingSoon(chain) }"
                             @error="brokenLogos[chain.chainId] = true"
                         />
                         <div v-else
@@ -267,15 +280,23 @@ onUnmounted(() => {
                         <!-- Chain info -->
                         <div class="flex-1 text-left">
                             <p class="text-white font-medium text-sm">{{ chain.name }}</p>
-                            <p class="text-dark-500 text-xs">{{ chain.nativeCurrency?.symbol }}</p>
+                            <p class="text-dark-500 text-xs">{{ isComingSoon(chain) ? 'Coming soon' : chain.nativeCurrency?.symbol }}</p>
                         </div>
 
                         <!-- Current chain indicator -->
                         <div v-if="chain.chainId === currentChainId" class="w-2 h-2 rounded-full bg-trading-green"></div>
 
+                        <!-- Coming soon badge — เชนยังไม่พร้อม กดไม่ได้ -->
+                        <span
+                            v-if="isComingSoon(chain)"
+                            class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 font-medium"
+                        >
+                            Soon
+                        </span>
+
                         <!-- Default badge -->
                         <span
-                            v-if="chain.chainId === 56"
+                            v-else-if="chain.chainId === 56"
                             class="text-[10px] px-1.5 py-0.5 rounded bg-primary-500/20 text-primary-400 font-medium"
                         >
                             Main

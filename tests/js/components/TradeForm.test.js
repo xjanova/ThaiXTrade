@@ -108,4 +108,70 @@ describe('TradeForm Component', () => {
 
         expect(wrapper.text()).toContain('USDT');
     });
+
+    // ── โหมด onchain: market order จริงบน BSC ─────────────────────────────
+
+    it('onchain mode defaults to market and disables limit', () => {
+        const wrapper = mount(TradeForm, {
+            props: { ...defaultProps, mode: 'onchain' },
+        });
+
+        const limitButton = wrapper.findAll('button').find(btn => btn.text().includes('Limit'));
+        expect(limitButton.attributes('disabled')).toBeDefined();
+        // ช่อง Price ต้องอยู่โหมด Market (disabled + placeholder Market Price)
+        expect(wrapper.find('input[placeholder="Market Price"]').exists()).toBe(true);
+    });
+
+    it('onchain mode hides TP/SL options', () => {
+        const wrapper = mount(TradeForm, {
+            props: { ...defaultProps, mode: 'onchain' },
+        });
+
+        expect(wrapper.text()).not.toContain('TP/SL');
+    });
+
+    it('onchain mode shows router preview when provided', () => {
+        const wrapper = mount(TradeForm, {
+            props: {
+                ...defaultProps,
+                mode: 'onchain',
+                marketPreview: {
+                    loading: false,
+                    receiveText: '0.0015 BTC',
+                    minReceivedText: '0.001492 BTC',
+                    feeText: '0.3 USDT (0.3%)',
+                },
+            },
+        });
+
+        expect(wrapper.text()).toContain('You receive');
+        expect(wrapper.text()).toContain('0.0015 BTC');
+        expect(wrapper.text()).toContain('PancakeSwap');
+    });
+
+    it('emits form-change when amount changes', async () => {
+        const wrapper = mount(TradeForm, {
+            props: { ...defaultProps, mode: 'onchain', isWalletConnected: true },
+        });
+
+        const amountInput = wrapper.findAll('input[type="text"]').find(
+            i => i.attributes('placeholder') === '0.00' && !i.attributes('readonly'),
+        );
+        await amountInput.setValue('0.5');
+
+        expect(wrapper.emitted('form-change')).toBeTruthy();
+    });
+
+    // ── โหมด disabled: คู่ TPIX รอเชน — เห็นไว้ก่อน กดไม่ได้ ─────────────
+
+    it('disabled mode shows coming soon instead of the form', () => {
+        const wrapper = mount(TradeForm, {
+            props: { ...defaultProps, symbol: 'TPIX/USDT', mode: 'disabled' },
+        });
+
+        expect(wrapper.text()).toContain('Coming Soon');
+        // ฟอร์มซื้อขายต้องไม่ render เลย
+        expect(wrapper.text()).not.toContain('Buy TPIX');
+        expect(wrapper.find('input[type="text"]').exists()).toBe(false);
+    });
 });

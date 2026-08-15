@@ -51,6 +51,21 @@ class TradingController extends Controller
 
         $validated = $validator->validated();
 
+        // Internal order book ปิดชั่วคราวจนกว่า DEX บน TPIX Chain จะ deploy เสร็จ —
+        // ป้องกัน order ที่ match กันใน DB แต่ไม่มีการ settle บนเชนจริง (เทรดหลอก)
+        // คู่ major เทรดจริงผ่าน market order → PancakeSwap (BSC) ฝั่ง frontend แทน
+        // เปิดคืนได้โดยไม่ต้อง deploy: ตั้ง SiteSetting trading.orderbook_enabled = 1
+        $orderbookEnabled = SiteSetting::get('trading', 'orderbook_enabled', '0');
+        if (! in_array($orderbookEnabled, [true, 1, '1', 'true'], true)) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'ORDERBOOK_COMING_SOON',
+                    'message' => 'Order-book trading opens with TPIX Chain launch. Major pairs trade on-chain via market orders on BSC.',
+                ],
+            ], 503);
+        }
+
         // ต้องตั้ง fee_collector_wallet ก่อนถึงจะเทรดได้ (ป้องกัน fee หาย)
         $feeCollector = SiteSetting::get('trading', 'fee_collector_wallet', '');
         if (empty($feeCollector)) {

@@ -112,6 +112,10 @@ onUnmounted(() => { document.removeEventListener('click', handleClickOutside); }
                     <div class="flex items-center gap-2">
                         <CoinIcon :symbol="t.base" size="sm" :src="t.logo || (t.isTpix ? '/tpixlogo.webp' : undefined)" />
                         <span class="text-white text-sm font-medium">{{ t.symbol }}</span>
+                        <!-- คู่ TPIX เปิดเทรดเมื่อเชน TPIX พร้อม — โชว์ไว้ก่อน -->
+                        <span v-if="t.base === 'TPIX'" class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 font-medium">
+                            Soon
+                        </span>
                     </div>
                     <div class="text-right">
                         <p class="text-white text-sm font-mono">${{ formatPrice(t.price) }}</p>

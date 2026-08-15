@@ -23,6 +23,10 @@ return [
     |--------------------------------------------------------------------------
     | Supported Chains
     |--------------------------------------------------------------------------
+    | status:
+    |   'live'        = เปิดใช้งานเต็มรูปแบบ — เลือกใน chain selector ได้ เทรดได้จริง
+    |   'coming_soon' = แสดงให้เห็นแต่กดเลือกไม่ได้ (รอระบบฝั่งเชนนั้นพร้อม)
+    | ค่านี้ส่งออกทาง /api/v1/chains ให้ทั้งเว็บและแอปมือถือใช้ตัดสินใจ
     */
 
     'chains' => [
@@ -44,6 +48,8 @@ return [
             'icon' => '/tpixlogo.webp',
             'color' => '#06B6D4',
             'enabled' => true,
+            // เชนหลักของเรา — เปิดเทรดเมื่อ DEX บนเชน deploy เสร็จ (ตอนนี้โชว์ไว้ก่อน กดไม่ได้)
+            'status' => 'coming_soon',
             'gasless' => true,
             'blockTime' => 2,
             'consensus' => 'IBFT',
@@ -69,6 +75,7 @@ return [
             'icon' => 'https://assets.trustwalletapp.com/blockchains/ethereum/info/logo.png',
             'color' => '#627EEA',
             'enabled' => true,
+            'status' => 'coming_soon',
         ],
 
         // BNB Smart Chain
@@ -92,6 +99,8 @@ return [
             'icon' => 'https://assets.trustwalletapp.com/blockchains/smartchain/info/logo.png',
             'color' => '#F3BA2F',
             'enabled' => true,
+            // เชนเดียวที่เปิดเทรดจริงตอนนี้ — swap/market order ผ่าน PancakeSwap
+            'status' => 'live',
         ],
 
         // Polygon
@@ -114,6 +123,7 @@ return [
             'icon' => 'https://assets.trustwalletapp.com/blockchains/polygon/info/logo.png',
             'color' => '#8247E5',
             'enabled' => true,
+            'status' => 'coming_soon',
         ],
 
         // Arbitrum One
@@ -136,6 +146,7 @@ return [
             'icon' => 'https://assets.trustwalletapp.com/blockchains/arbitrum/info/logo.png',
             'color' => '#28A0F0',
             'enabled' => true,
+            'status' => 'coming_soon',
         ],
 
         // Optimism
@@ -158,6 +169,7 @@ return [
             'icon' => 'https://assets.trustwalletapp.com/blockchains/optimism/info/logo.png',
             'color' => '#FF0420',
             'enabled' => true,
+            'status' => 'coming_soon',
         ],
 
         // Avalanche C-Chain
@@ -180,6 +192,7 @@ return [
             'icon' => 'https://assets.trustwalletapp.com/blockchains/avalanchec/info/logo.png',
             'color' => '#E84142',
             'enabled' => true,
+            'status' => 'coming_soon',
         ],
 
         // Fantom
@@ -202,6 +215,7 @@ return [
             'icon' => 'https://assets.trustwalletapp.com/blockchains/fantom/info/logo.png',
             'color' => '#1969FF',
             'enabled' => true,
+            'status' => 'coming_soon',
         ],
 
         // Base
@@ -224,6 +238,7 @@ return [
             'icon' => 'https://assets.trustwalletapp.com/blockchains/base/info/logo.png',
             'color' => '#0052FF',
             'enabled' => true,
+            'status' => 'coming_soon',
         ],
 
         // zkSync Era
@@ -244,6 +259,7 @@ return [
             'icon' => 'https://assets.trustwalletapp.com/blockchains/zksync/info/logo.png',
             'color' => '#8C8DFC',
             'enabled' => true,
+            'status' => 'coming_soon',
         ],
     ],
 

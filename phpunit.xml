@@ -32,6 +32,9 @@
         <env name="APP_KEY" value="base64:2fl+Ktvkfl+Fuz4Qp/A75G2RTiWVA/ZoKZvp6fiiM10="/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_DRIVER" value="array"/>
+        <!-- Laravel 11 อ่าน CACHE_STORE ไม่ใช่ CACHE_DRIVER — ถ้าไม่ตั้ง test จะใช้
+             file cache จริง ทำให้ค่า SiteSetting (Cache::remember) รั่วข้าม test -->
+        <env name="CACHE_STORE" value="array"/>
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
         <env name="MAIL_MAILER" value="array"/>

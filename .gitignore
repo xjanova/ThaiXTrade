@@ -70,3 +70,6 @@ Thumbs.db
 
 # Claude Code
 /.claude/settings.local.json
+
+# sqlite local dev (สร้างจาก DB_DATABASE ใน .env เครื่อง dev)
+/admin_tpix
