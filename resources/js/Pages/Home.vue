@@ -9,7 +9,10 @@ import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
+import PageArt from '@/Components/PageArt.vue';
+import Sparkline from '@/Components/Trading/Sparkline.vue';
 import { useMarketData } from '@/Composables/useMarketData';
+import { useSparklines } from '@/Composables/useSparklines';
 import BannerAd from '@/Components/BannerAd.vue';
 import versionData from '../../../version.json';
 import { useTranslation } from '@/Composables/useTranslation';
@@ -17,6 +20,14 @@ import { useTranslation } from '@/Composables/useTranslation';
 const { t } = useTranslation();
 
 const { topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
+
+// เส้นกราฟย่อของการ์ด Top Gainers / Top Volume
+const { series, load: loadSparklines } = useSparklines();
+
+watch([topGainers, topVolume], () => {
+    const symbols = [...topGainers.value, ...topVolume.value].map(c => `${c.symbol}-USDT`);
+    if (symbols.length) loadSparklines(symbols);
+}, { immediate: true });
 
 // Hero video slideshow: Netflix-style crossfade
 // All media stay in DOM, only opacity changes for seamless transitions
@@ -110,7 +121,7 @@ onMounted(async () => {
                 <div
                     class="hero-media bg-cover bg-center"
                     :class="activeLayer === 2 ? 'opacity-40 hero-ken-burns' : 'opacity-0'"
-                    style="background-image: url('/images/bg1.webp')"
+                    style="background-image: url('/images/art/hero-trade.webp')"
                 />
 
                 <!-- Netflix-style cinematic overlays -->
@@ -311,8 +322,9 @@ onMounted(async () => {
         </section>
 
         <!-- Markets Preview -->
-        <section class="py-16">
-            <div class="max-w-6xl mx-auto">
+        <section class="relative py-16">
+            <PageArt art="section-markets" :opacity="55" fade="edges" />
+            <div class="relative max-w-6xl mx-auto">
                 <div class="grid md:grid-cols-2 gap-6">
                     <!-- Top Gainers -->
                     <div class="glass-dark rounded-2xl p-6">
@@ -336,6 +348,14 @@ onMounted(async () => {
                                         <p class="text-sm text-dark-400">{{ coin.name }}</p>
                                     </div>
                                 </div>
+                                <Sparkline
+                                    class="hidden sm:block"
+                                    :points="series[`${coin.symbol}-USDT`] || []"
+                                    is-up
+                                    :width="76"
+                                    :height="26"
+                                    :loading="series[`${coin.symbol}-USDT`] === undefined"
+                                />
                                 <div class="text-right">
                                     <p class="font-mono text-white">${{ coin.price }}</p>
                                     <p class="text-sm text-trading-green font-medium">{{ coin.change }}</p>
@@ -366,6 +386,14 @@ onMounted(async () => {
                                         <p class="text-sm text-dark-400">{{ coin.name }}</p>
                                     </div>
                                 </div>
+                                <Sparkline
+                                    class="hidden sm:block"
+                                    :points="series[`${coin.symbol}-USDT`] || []"
+                                    :is-up="coin.isUp"
+                                    :width="76"
+                                    :height="26"
+                                    :loading="series[`${coin.symbol}-USDT`] === undefined"
+                                />
                                 <div class="text-right">
                                     <p class="font-mono text-white">${{ coin.price }}</p>
                                     <p :class="['text-sm font-medium', coin.isUp ? 'text-trading-green' : 'text-trading-red']">
@@ -451,55 +479,80 @@ onMounted(async () => {
 
                 <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <!-- Token Sale -->
-                    <Link href="/token-sale" class="glass-card group hover:border-primary-500/30 transition-all">
-                        <div class="w-12 h-12 rounded-xl bg-primary-500/10 flex items-center justify-center mb-4 group-hover:bg-primary-500/20 transition-colors">
-                            <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
+                    <Link href="/token-sale" class="eco-card group hover:border-primary-500/30">
+                        <div class="eco-card__media">
+                            <img src="/images/art/card-tokensale.webp" alt="" loading="lazy" decoding="async" />
+                            <span class="eco-card__scrim"></span>
                         </div>
-                        <h3 class="text-lg font-semibold text-white mb-2">Token Sale</h3>
-                        <p class="text-dark-400 text-sm">Buy TPIX at ICO price. Pay with BNB or USDT.</p>
+                        <div class="relative p-6 pt-0 -mt-7">
+                            <div class="w-12 h-12 rounded-xl bg-primary-500/10 backdrop-blur-md border border-white/10 flex items-center justify-center mb-4 group-hover:bg-primary-500/20 transition-colors">
+                                <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                            <h3 class="text-lg font-semibold text-white mb-2">Token Sale</h3>
+                            <p class="text-dark-400 text-sm">Buy TPIX at ICO price. Pay with BNB or USDT.</p>
+                        </div>
                     </Link>
 
                     <!-- Whitepaper -->
-                    <Link href="/whitepaper" class="glass-card group hover:border-accent-500/30 transition-all">
-                        <div class="w-12 h-12 rounded-xl bg-accent-500/10 flex items-center justify-center mb-4 group-hover:bg-accent-500/20 transition-colors">
-                            <svg class="w-6 h-6 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                            </svg>
+                    <Link href="/whitepaper" class="eco-card group hover:border-accent-500/30">
+                        <div class="eco-card__media">
+                            <img src="/images/art/card-whitepaper.webp" alt="" loading="lazy" decoding="async" />
+                            <span class="eco-card__scrim"></span>
                         </div>
-                        <h3 class="text-lg font-semibold text-white mb-2">Whitepaper</h3>
-                        <p class="text-dark-400 text-sm">Learn about TPIX vision, tokenomics, and roadmap.</p>
+                        <div class="relative p-6 pt-0 -mt-7">
+                            <div class="w-12 h-12 rounded-xl bg-accent-500/10 backdrop-blur-md border border-white/10 flex items-center justify-center mb-4 group-hover:bg-accent-500/20 transition-colors">
+                                <svg class="w-6 h-6 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                            </div>
+                            <h3 class="text-lg font-semibold text-white mb-2">Whitepaper</h3>
+                            <p class="text-dark-400 text-sm">Learn about TPIX vision, tokenomics, and roadmap.</p>
+                        </div>
                     </Link>
 
                     <!-- Explorer -->
-                    <Link href="/explorer" class="glass-card group hover:border-trading-green/30 transition-all">
-                        <div class="w-12 h-12 rounded-xl bg-trading-green/10 flex items-center justify-center mb-4 group-hover:bg-trading-green/20 transition-colors">
-                            <svg class="w-6 h-6 text-trading-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                            </svg>
+                    <Link href="/explorer" class="eco-card group hover:border-trading-green/30">
+                        <div class="eco-card__media">
+                            <img src="/images/art/card-explorer.webp" alt="" loading="lazy" decoding="async" />
+                            <span class="eco-card__scrim"></span>
                         </div>
-                        <h3 class="text-lg font-semibold text-white mb-2">Explorer</h3>
-                        <p class="text-dark-400 text-sm">Browse TPIX Chain blocks, transactions, and addresses.</p>
+                        <div class="relative p-6 pt-0 -mt-7">
+                            <div class="w-12 h-12 rounded-xl bg-trading-green/10 backdrop-blur-md border border-white/10 flex items-center justify-center mb-4 group-hover:bg-trading-green/20 transition-colors">
+                                <svg class="w-6 h-6 text-trading-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                </svg>
+                            </div>
+                            <h3 class="text-lg font-semibold text-white mb-2">Explorer</h3>
+                            <p class="text-dark-400 text-sm">Browse TPIX Chain blocks, transactions, and addresses.</p>
+                        </div>
                     </Link>
 
                     <!-- Master Node -->
-                    <Link href="/masternode" class="glass-card group hover:border-warm-500/30 transition-all">
-                        <div class="w-12 h-12 rounded-xl bg-warm-500/10 flex items-center justify-center mb-4 group-hover:bg-warm-500/20 transition-colors">
-                            <svg class="w-6 h-6 text-warm-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                            </svg>
+                    <Link href="/masternode" class="eco-card group hover:border-warm-500/30">
+                        <div class="eco-card__media">
+                            <img src="/images/art/card-masternode.webp" alt="" loading="lazy" decoding="async" />
+                            <span class="eco-card__scrim"></span>
                         </div>
-                        <h3 class="text-lg font-semibold text-white mb-2">Master Node</h3>
-                        <p class="text-dark-400 text-sm">Run a TPIX Master Node and earn up to 15% APY rewards.</p>
+                        <div class="relative p-6 pt-0 -mt-7">
+                            <div class="w-12 h-12 rounded-xl bg-warm-500/10 backdrop-blur-md border border-white/10 flex items-center justify-center mb-4 group-hover:bg-warm-500/20 transition-colors">
+                                <svg class="w-6 h-6 text-warm-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                                </svg>
+                            </div>
+                            <h3 class="text-lg font-semibold text-white mb-2">Master Node</h3>
+                            <p class="text-dark-400 text-sm">Run a TPIX Master Node and earn up to 15% APY rewards.</p>
+                        </div>
                     </Link>
                 </div>
             </div>
         </section>
 
         <!-- Features -->
-        <section class="py-16">
-            <div class="max-w-6xl mx-auto">
+        <section class="relative py-16">
+            <PageArt art="section-features" :opacity="40" fade="radial" position="right center" />
+            <div class="relative max-w-6xl mx-auto">
                 <div class="text-center mb-12">
                     <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
                         Why Trade with TPIX TRADE?
@@ -538,19 +591,22 @@ onMounted(async () => {
         <!-- CTA Section -->
         <section class="py-16">
             <div class="max-w-4xl mx-auto">
-                <div class="glass-card text-center bg-brand-gradient-subtle border-primary-500/20">
-                    <h2 class="text-3xl font-bold text-white mb-4">
-                        Ready to {{ t('home.startTrading') }}?
-                    </h2>
-                    <p class="text-dark-400 mb-8 max-w-xl mx-auto">
-                        Connect your wallet and start trading in seconds. No registration required.
-                    </p>
-                    <Link href="/trade" class="btn-primary px-8 py-4 text-lg inline-flex">
-                        Launch App
-                        <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
-                        </svg>
-                    </Link>
+                <div class="relative overflow-hidden glass-card text-center bg-brand-gradient-subtle border-primary-500/20">
+                    <PageArt art="section-cta" :opacity="45" fade="radial" rounded="rounded-2xl" />
+                    <div class="relative">
+                        <h2 class="text-3xl font-bold text-white mb-4">
+                            Ready to {{ t('home.startTrading') }}?
+                        </h2>
+                        <p class="text-dark-400 mb-8 max-w-xl mx-auto">
+                            Connect your wallet and start trading in seconds. No registration required.
+                        </p>
+                        <Link href="/trade" class="btn-primary px-8 py-4 text-lg inline-flex">
+                            Launch App
+                            <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                            </svg>
+                        </Link>
+                    </div>
                 </div>
             </div>
         </section>
@@ -578,5 +634,56 @@ onMounted(async () => {
 }
 .hero-ken-burns {
     animation: ken-burns 30s ease-out forwards;
+}
+
+/* การ์ด Ecosystem — แถบภาพเต็มขอบด้านบน ไอคอนคร่อมรอยต่อ
+   media เป็น element ใน flow (ไม่ใช่ absolute) จึงไม่มีปัญหาทับเนื้อหา */
+.eco-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 1rem;
+    background: rgb(255 255 255 / 0.05);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgb(255 255 255 / 0.1);
+    transition: background-color .3s ease, border-color .3s ease, box-shadow .3s ease;
+}
+
+.eco-card:hover {
+    background: rgb(255 255 255 / 0.1);
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+}
+
+.eco-card__media {
+    position: relative;
+    height: 9rem;
+    overflow: hidden;
+}
+
+.eco-card__media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: .75;
+    transform: scale(1);
+    transition: opacity .5s ease, transform .7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.eco-card:hover .eco-card__media img {
+    opacity: 1;
+    transform: scale(1.06);
+}
+
+/* ไล่เฉดให้ภาพจมลงไปในพื้นการ์ด ไม่เป็นกล่องตัดขาด */
+.eco-card__scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgb(15 23 42) 0%, rgb(15 23 42 / 0.55) 45%, transparent 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .eco-card__media img { transition: none; }
+    .eco-card:hover .eco-card__media img { transform: none; }
 }
 </style>

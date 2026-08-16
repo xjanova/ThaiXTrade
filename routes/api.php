@@ -10,11 +10,11 @@ use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\BannerController as ApiBannerController;
 use App\Http\Controllers\Api\BridgeApiController;
-use App\Http\Controllers\Api\CmcController;
-use App\Http\Controllers\Api\FeeConfigController;
 use App\Http\Controllers\Api\CarbonCreditApiController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\ChatbotController;
+use App\Http\Controllers\Api\CmcController;
+use App\Http\Controllers\Api\FeeConfigController;
 use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\InfraAlertController;
 use App\Http\Controllers\Api\MarketController;
@@ -138,6 +138,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/orderbook/{symbol}', [MarketController::class, 'orderbook']);
         Route::get('/trades/{symbol}', [MarketController::class, 'trades']);
         Route::get('/klines/{symbol}', [MarketController::class, 'klines']);
+        // เส้นกราฟย่อ (sparkline) หลายคู่ในคำขอเดียว — ใช้ในรายการคู่เทรด
+        Route::get('/sparklines', [MarketController::class, 'sparklines']);
         Route::get('/pairs', [MarketController::class, 'pairs']);
     });
 

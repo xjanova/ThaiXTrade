@@ -181,6 +181,67 @@ class MarketDataService
     }
 
     /**
+     * Get compact close-price series for many symbols at once (mini sparklines).
+     *
+     * The web pair lists render one tiny trend line per row. Letting the browser
+     * call Binance once per row would mean ~20 cross-origin requests per page
+     * view and burn the shared rate limit, so the fan-out happens here and the
+     * result is cached long enough that a page refresh costs nothing.
+     *
+     * @param  array<int, string>  $symbols  canonical symbols, e.g. ['BTC-USDT']
+     * @return array<string, array<int, float>> symbol => close prices (oldest first)
+     */
+    public function getSparklines(array $symbols, string $interval = '1h', int $limit = 24): array
+    {
+        $interval = in_array($interval, ['15m', '1h', '4h', '1d'], true) ? $interval : '1h';
+        $limit = max(8, min($limit, 96));
+
+        $out = [];
+
+        foreach ($symbols as $symbol) {
+            $symbol = strtoupper(trim($symbol));
+            if ($symbol === '') {
+                continue;
+            }
+
+            $cacheKey = "market:sparkline:{$symbol}:{$interval}:{$limit}";
+
+            // 5 min TTL — a 24h trend line does not change meaningfully faster,
+            // and this keeps a whole page of rows to at most one Binance call each
+            // per 5 minutes no matter how many visitors are on the markets page.
+            $series = Cache::remember($cacheKey, 300, function () use ($symbol, $interval, $limit) {
+                try {
+                    $response = Http::timeout(8)->get("{$this->baseUrl}/klines", [
+                        'symbol' => $this->toBinanceSymbol($symbol),
+                        'interval' => $interval,
+                        'limit' => $limit,
+                    ]);
+
+                    if ($response->failed()) {
+                        return [];
+                    }
+
+                    return collect($response->json())
+                        ->map(fn ($k) => (float) $k[4])   // close
+                        ->filter(fn ($p) => $p > 0)
+                        ->values()
+                        ->all();
+                } catch (\Exception $e) {
+                    Log::warning('Sparkline fetch failed', ['symbol' => $symbol, 'error' => $e->getMessage()]);
+
+                    return [];
+                }
+            });
+
+            // Symbols with no Binance listing (e.g. TPIX before chain launch) return
+            // an empty array — the client draws nothing rather than a flat fake line.
+            $out[$symbol] = $series;
+        }
+
+        return $out;
+    }
+
+    /**
      * Get available trading pairs from Binance.
      */
     public function getPairs(): array

@@ -17,6 +17,7 @@ import RecentTrades from '@/Components/Trading/RecentTrades.vue';
 import OpenOrders from '@/Components/Trading/OpenOrders.vue';
 import TradeHistory from '@/Components/Trading/TradeHistory.vue';
 import PairSelector from '@/Components/Trading/PairSelector.vue';
+import PageArt from '@/Components/PageArt.vue';
 import { useBinanceData } from '@/Composables/useBinanceData';
 import { useSwap } from '@/Composables/useSwap';
 import { useWalletStore } from '@/Stores/walletStore';
@@ -531,6 +532,14 @@ onUnmounted(() => {
 
     <AppLayout :hide-sidebar="true">
         <div class="max-w-[1920px] mx-auto">
+            <!-- บรรยากาศพื้นหลังหน้าเทรด — จางมากเพื่อไม่แย่งสายตาจากตัวเลข
+                 วางเป็นตัวแรกสุด แล้วให้ทุก block ถัดไปเป็น relative เพื่อลอยอยู่เหนือมัน -->
+            <div class="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
+                <img src="/images/art/trade-desk.webp" alt="" loading="eager" fetchpriority="low" decoding="async"
+                    class="w-full h-full object-cover opacity-[0.13]" />
+                <div class="absolute inset-0 bg-gradient-to-b from-dark-950/70 via-dark-950/85 to-dark-950"></div>
+            </div>
+
             <!-- Order Status Toast -->
             <Transition
                 enter-active-class="transition-all duration-300 ease-out"
@@ -574,7 +583,7 @@ onUnmounted(() => {
             </Transition>
 
             <!-- Data Error Banner -->
-            <div v-if="dataError" class="mb-3 p-3 rounded-xl bg-trading-red/10 border border-trading-red/30 text-trading-red text-sm flex items-center gap-2">
+            <div v-if="dataError" class="relative mb-3 p-3 rounded-xl bg-trading-red/10 border border-trading-red/30 text-trading-red text-sm flex items-center gap-2">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
                 </svg>
@@ -582,13 +591,13 @@ onUnmounted(() => {
             </div>
 
             <!-- แถบบอกโหมดเทรด: on-chain จริงบน BSC หรือรอ TPIX Chain -->
-            <div v-if="tradeFormMode === 'onchain'" class="mb-3 px-3 py-2 rounded-xl bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs flex items-center gap-2">
+            <div v-if="tradeFormMode === 'onchain'" class="relative mb-3 px-3 py-2 rounded-xl bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs flex items-center gap-2">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                 </svg>
                 <span>Market orders execute for real on BSC via PancakeSwap — tokens settle in your wallet. Limit orders open with TPIX Chain.</span>
             </div>
-            <div v-else-if="isTPIXPair" class="mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
+            <div v-else-if="isTPIXPair" class="relative mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
@@ -596,14 +605,17 @@ onUnmounted(() => {
             </div>
 
             <!-- Trading Layout: 3 columns -->
-            <div class="grid grid-cols-12 gap-3">
+            <div class="relative grid grid-cols-12 gap-3">
 
                 <!-- Left Column: Pair Selector + Chart + Order Tabs -->
                 <div class="col-span-12 xl:col-span-8 lg:col-span-7 space-y-3">
-                    <!-- Pair Selector + Ticker Info -->
-                    <div class="flex items-center gap-4 flex-wrap">
-                        <PairSelector :currentPair="currentPair" />
-                        <div v-if="ticker && ticker.price" class="flex items-center gap-6 text-sm">
+                    <!-- Pair Selector + Ticker Info
+                         ห้ามใส่ overflow-hidden ที่กล่องนี้ — dropdown ของ PairSelector จะโดนตัด
+                         (PageArt คลิปตัวเองอยู่แล้ว จึงไม่กระทบ) -->
+                    <div class="relative flex items-center gap-4 flex-wrap rounded-2xl border border-white/5 bg-dark-900/40 backdrop-blur-md px-4 py-3">
+                        <PageArt art="hero-trade" :opacity="22" fade="edges" rounded="rounded-2xl" position="center" loading="eager" />
+                        <PairSelector class="relative" :currentPair="currentPair" />
+                        <div v-if="ticker && ticker.price" class="relative flex items-center gap-6 text-sm">
                             <div>
                                 <span class="text-dark-400 text-xs">{{ t('trade.price') }}</span>
                                 <p :class="['font-mono font-bold text-lg', (ticker.priceChange || ticker.change || 0) >= 0 ? 'text-trading-green' : 'text-trading-red']">
@@ -630,7 +642,7 @@ onUnmounted(() => {
                             </div>
                         </div>
                         <!-- Loading skeleton for ticker -->
-                        <div v-else-if="isLoading" class="flex items-center gap-6">
+                        <div v-else-if="isLoading" class="relative flex items-center gap-6">
                             <div class="space-y-1">
                                 <div class="skeleton w-8 h-3"></div>
                                 <div class="skeleton w-24 h-6"></div>

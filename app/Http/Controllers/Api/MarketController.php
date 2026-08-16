@@ -62,6 +62,41 @@ class MarketController extends Controller
     }
 
     /**
+     * Batch mini-chart data for the pair lists.
+     *
+     * GET /api/v1/market/sparklines?symbols=BTC-USDT,ETH-USDT&interval=1h&limit=24
+     *
+     * Capped at 40 symbols per call so one request can never fan out into an
+     * unbounded number of upstream Binance calls.
+     */
+    public function sparklines(Request $request): JsonResponse
+    {
+        $raw = (string) $request->query('symbols', '');
+
+        $symbols = collect(explode(',', $raw))
+            ->map(fn ($s) => strtoupper(trim($s)))
+            // canonical BASE-QUOTE only — rejects anything that could be smuggled
+            // into the upstream URL
+            ->filter(fn ($s) => preg_match('/^[A-Z0-9]{2,15}-[A-Z0-9]{2,15}$/', $s) === 1)
+            ->unique()
+            ->take(40)
+            ->values()
+            ->all();
+
+        if (empty($symbols)) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        $data = $this->marketDataService->getSparklines(
+            $symbols,
+            (string) $request->query('interval', '1h'),
+            $request->integer('limit', 24),
+        );
+
+        return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    /**
      * List trading pairs available for trading.
      *
      * Source of truth: trading_pairs table (admin-managed via TradingPairController).
