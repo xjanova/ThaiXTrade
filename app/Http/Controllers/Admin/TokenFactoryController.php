@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\FactoryToken;
-use App\Models\SiteSetting;
 use App\Services\TokenFactoryService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;

@@ -1,7 +1,14 @@
 <?php
 
+use App\Sentry\ScrubPiiBeforeSend;
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
+
 /**
- * TPIX Trade — Sentry config (Laravel)
+ * TPIX Trade — Sentry config (Laravel).
  *
  * To activate:
  *   1. composer require sentry/sentry-laravel
@@ -27,27 +34,27 @@ return [
     'environment' => env('APP_ENV', 'production'),
 
     // Sample 100% of errors but only 10% of perf transactions
-    'sample_rate'             => (float) env('SENTRY_SAMPLE_RATE', 1.0),
-    'traces_sample_rate'      => (float) env('SENTRY_TRACES_SAMPLE_RATE', 0.10),
-    'profiles_sample_rate'    => (float) env('SENTRY_PROFILES_SAMPLE_RATE', 0.0),
+    'sample_rate' => (float) env('SENTRY_SAMPLE_RATE', 1.0),
+    'traces_sample_rate' => (float) env('SENTRY_TRACES_SAMPLE_RATE', 0.10),
+    'profiles_sample_rate' => (float) env('SENTRY_PROFILES_SAMPLE_RATE', 0.0),
 
     // Performance — capture HTTP, DB, Redis, queue, console commands
     'breadcrumbs' => [
-        'logs'         => true,
-        'sql_queries'  => true,
+        'logs' => true,
+        'sql_queries' => true,
         'sql_bindings' => false, // ⚠️ never log SQL bindings — may contain PII/secrets
-        'queue_info'   => true,
+        'queue_info' => true,
         'command_info' => true,
         'http_client_requests' => true,
     ],
 
     // Don't send these errors (noise filter)
     'ignore_exceptions' => [
-        \Symfony\Component\HttpKernel\Exception\NotFoundHttpException::class,        // 404
-        \Illuminate\Auth\AuthenticationException::class,                              // expected login redirect
-        \Illuminate\Validation\ValidationException::class,                            // 422 form errors
-        \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException::class,    // 403
-        \Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException::class, // 429 rate limit
+        NotFoundHttpException::class,        // 404
+        AuthenticationException::class,                              // expected login redirect
+        ValidationException::class,                            // 422 form errors
+        AccessDeniedHttpException::class,    // 403
+        TooManyRequestsHttpException::class, // 429 rate limit
     ],
 
     // Strip PII from events sent to Sentry
@@ -57,5 +64,5 @@ return [
     'integrations' => [],
 
     // Tags every event + scrub PII — invokable class (not closure) so config:cache works
-    'before_send' => \App\Sentry\ScrubPiiBeforeSend::class,
+    'before_send' => ScrubPiiBeforeSend::class,
 ];

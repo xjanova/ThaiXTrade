@@ -4,14 +4,14 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * System Alerts — คาดแดงเหตุวิกฤตโครงสร้างพื้นฐาน (เชน/เซิร์ฟเวอร์) ในหลังบ้าน.
  *
  * แหล่งข้อมูล: watchdog บนเซิร์ฟเวอร์เชนยิง heartbeat + alert เข้า POST /api/infra/*
  * (ดู TPIX-Coin: infrastructure/scripts/chain-watchdog.sh) และ scheduler ฝั่งนี้
  * ตรวจ heartbeat ขาดเองอีกชั้น — ครอบเคสทั้งเครื่องเชนดับซึ่ง watchdog ยิงอะไรไม่ได้แล้ว
  */
-return new class extends Migration
+return new class() extends Migration
 {
     public function up(): void
     {

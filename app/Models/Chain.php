@@ -96,7 +96,7 @@ class Chain extends Model
     // =========================================================================
 
     /**
-     * Logo URL — รองรับทั้ง relative path และ full URL
+     * Logo URL — รองรับทั้ง relative path และ full URL.
      */
     protected function logoUrl(): Attribute
     {

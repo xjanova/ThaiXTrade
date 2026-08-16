@@ -60,8 +60,8 @@ class ValidatorAdminController extends Controller
                 $sanitized = trim($search);
                 $query->where(function ($q) use ($sanitized) {
                     $q->where('wallet_address', 'like', "%{$sanitized}%")
-                      ->orWhere('country_name', 'like', "%{$sanitized}%")
-                      ->orWhere('contact_email', 'like', "%{$sanitized}%");
+                        ->orWhere('country_name', 'like', "%{$sanitized}%")
+                        ->orWhere('contact_email', 'like', "%{$sanitized}%");
                 });
             })
             ->orderByDesc('created_at')
@@ -83,7 +83,7 @@ class ValidatorAdminController extends Controller
         if ($application->status !== 'pending') {
             return response()->json([
                 'success' => false,
-                'message' => 'Application is not in pending status. Current status: ' . $application->status,
+                'message' => 'Application is not in pending status. Current status: '.$application->status,
             ], 422);
         }
 
@@ -121,7 +121,7 @@ class ValidatorAdminController extends Controller
         if ($application->status !== 'pending') {
             return response()->json([
                 'success' => false,
-                'message' => 'Application is not in pending status. Current status: ' . $application->status,
+                'message' => 'Application is not in pending status. Current status: '.$application->status,
             ], 422);
         }
 
@@ -188,7 +188,7 @@ class ValidatorAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Vote intent recorded. Execute the following on each validator node to complete the vote.",
+            'message' => 'Vote intent recorded. Execute the following on each validator node to complete the vote.',
             'data' => [
                 'validator_address' => $validatorAddress,
                 'vote' => $vote,
@@ -197,7 +197,7 @@ class ValidatorAdminController extends Controller
                     "curl -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"ibft_proposeValidatorVote\",\"params\":[\"{$validatorAddress}\", {$authValue}],\"id\":1}' -H 'Content-Type: application/json' {$rpcUrl}",
                     '',
                     '# Or via Polygon Edge CLI:',
-                    "polygon-edge ibft propose --addr {$validatorAddress} --vote " . ($auth ? 'auth' : 'drop') . " --grpc-address 127.0.0.1:9632",
+                    "polygon-edge ibft propose --addr {$validatorAddress} --vote ".($auth ? 'auth' : 'drop').' --grpc-address 127.0.0.1:9632',
                 ],
             ],
         ]);
@@ -323,10 +323,10 @@ class ValidatorAdminController extends Controller
         $offset = 0;
 
         // RLP list prefix: 0xf8+ = long list
-        if ($firstByte >= 0xf8) {
-            $lengthOfLength = $firstByte - 0xf7;
+        if ($firstByte >= 0xF8) {
+            $lengthOfLength = $firstByte - 0xF7;
             $offset = 2 + ($lengthOfLength * 2);
-        } elseif ($firstByte >= 0xc0) {
+        } elseif ($firstByte >= 0xC0) {
             // Short list (0xc0 - 0xf7)
             $offset = 2;
         } else {
@@ -338,12 +338,12 @@ class ValidatorAdminController extends Controller
         $innerFirstByte = hexdec(substr($innerHex, 0, 2));
         $innerOffset = 0;
 
-        if ($innerFirstByte >= 0xf8) {
-            $lengthOfLength = $innerFirstByte - 0xf7;
+        if ($innerFirstByte >= 0xF8) {
+            $lengthOfLength = $innerFirstByte - 0xF7;
             $listLength = hexdec(substr($innerHex, 2, $lengthOfLength * 2));
             $innerOffset = 2 + ($lengthOfLength * 2);
-        } elseif ($innerFirstByte >= 0xc0) {
-            $listLength = $innerFirstByte - 0xc0;
+        } elseif ($innerFirstByte >= 0xC0) {
+            $listLength = $innerFirstByte - 0xC0;
             $innerOffset = 2;
         } else {
             return [];
@@ -362,7 +362,7 @@ class ValidatorAdminController extends Controller
                 $pos += 2;
                 $addrHex = substr($innerHex, $pos, 40);
                 if (strlen($addrHex) === 40) {
-                    $addresses[] = '0x' . $addrHex;
+                    $addresses[] = '0x'.$addrHex;
                 }
                 $pos += 40;
             } else {
@@ -418,7 +418,8 @@ class ValidatorAdminController extends Controller
             if ($response->successful()) {
                 return (int) hexdec($response->json('result', '0x0'));
             }
-        } catch (\Throwable) {}
+        } catch (\Throwable) {
+        }
 
         return 0;
     }

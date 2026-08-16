@@ -7,6 +7,7 @@ use App\Models\TreasuryPayout;
 use App\Models\TreasuryWhitelist;
 use App\Services\TreasuryService;
 use App\Support\Wei;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
- * กฎของเงินในชั้นคลัง — เทสต์ชุดนี้กันความผิดพลาดที่ทำให้เงินหายหรือจ่ายซ้ำ
+ * กฎของเงินในชั้นคลัง — เทสต์ชุดนี้กันความผิดพลาดที่ทำให้เงินหายหรือจ่ายซ้ำ.
  *
  * เน้นสี่เรื่อง:
  *   1. ระบบต้องไม่จ่ายเงินตอนที่ยังไม่พร้อม
@@ -275,7 +276,7 @@ class TreasuryPayoutTest extends TestCase
         $key = 'same-key-twice';
         $this->payout(TreasuryPayout::STATUS_PENDING, ['idempotency_key' => $key]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         $this->payout(TreasuryPayout::STATUS_PENDING, ['idempotency_key' => $key]);
     }
 

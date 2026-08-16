@@ -99,7 +99,7 @@ class TokenController extends Controller
 
     /**
      * Validation rules ที่ใช้ทั้ง store + update
-     * รองรับ logo เป็น file upload หรือ URL string
+     * รองรับ logo เป็น file upload หรือ URL string.
      */
     private function validatePayload(Request $request): array
     {
@@ -151,7 +151,7 @@ class TokenController extends Controller
     }
 
     /**
-     * ลบ logo file จาก storage ถ้าเป็น relative path (ไม่ใช่ external URL)
+     * ลบ logo file จาก storage ถ้าเป็น relative path (ไม่ใช่ external URL).
      */
     private function deleteStoredLogo(?string $logo): void
     {

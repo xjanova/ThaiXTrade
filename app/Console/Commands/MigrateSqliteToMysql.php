@@ -133,6 +133,7 @@ class MigrateSqliteToMysql extends Command
             // Keep ID for site_settings (upsert by group+key)
             if ($table === 'site_settings') {
                 unset($data['id']);
+
                 try {
                     DB::table($table)->updateOrInsert(
                         ['group' => $data['group'], 'key' => $data['key']],
@@ -144,6 +145,7 @@ class MigrateSqliteToMysql extends Command
                 }
             } elseif ($table === 'admin_users') {
                 unset($data['id']);
+
                 try {
                     DB::table($table)->updateOrInsert(
                         ['email' => $data['email']],

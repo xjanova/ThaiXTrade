@@ -12,7 +12,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Admin Dashboard — Masternode Auto-Allowlist
+ * Admin Dashboard — Masternode Auto-Allowlist.
  *
  * URL: /admin/masternode/allowlist
  *
@@ -26,9 +26,7 @@ use Inertia\Response;
  */
 class MasternodeAllowlistController extends Controller
 {
-    public function __construct(private CloudflareWafService $cf)
-    {
-    }
+    public function __construct(private CloudflareWafService $cf) {}
 
     public function index(Request $request): Response
     {
@@ -58,7 +56,7 @@ class MasternodeAllowlistController extends Controller
         $dbRuleIds = MasternodeAllowlist::active()->pluck('cf_rule_id')->filter()->all();
 
         $orphanRules = collect($cfRules)
-            ->filter(fn ($r) => !in_array($r['id'], $dbRuleIds, true))
+            ->filter(fn ($r) => ! in_array($r['id'], $dbRuleIds, true))
             ->values()
             ->all();
 

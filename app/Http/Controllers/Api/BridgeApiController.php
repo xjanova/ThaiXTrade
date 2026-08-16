@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * TPIX TRADE — Bridge API Controller (Production)
- * API สำหรับ cross-chain bridge: TPIX Chain ↔ BSC
+ * API สำหรับ cross-chain bridge: TPIX Chain ↔ BSC.
  *
  * Flow:
  * 1. Frontend: user sign tx (burn/transfer) → ได้ tx_hash

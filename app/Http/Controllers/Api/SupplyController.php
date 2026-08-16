@@ -22,9 +22,7 @@ use Illuminate\Http\Response;
  */
 class SupplyController extends Controller
 {
-    public function __construct(private readonly SupplyService $supply)
-    {
-    }
+    public function __construct(private readonly SupplyService $supply) {}
 
     /**
      * Plain-text total supply — CoinGecko spec.

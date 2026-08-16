@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * CloudflareWafService — manage IP Access Rules ที่ Cloudflare
+ * CloudflareWafService — manage IP Access Rules ที่ Cloudflare.
  *
  * ใช้ Cloudflare API endpoint:
  *   POST /zones/{zone_id}/firewall/access_rules/rules
@@ -23,8 +23,11 @@ class CloudflareWafService
     private string $baseUrl = 'https://api.cloudflare.com/client/v4';
 
     private string $token;
+
     private string $zoneId;
+
     private string $mode;
+
     private string $notesPrefix;
 
     public function __construct()
@@ -36,7 +39,7 @@ class CloudflareWafService
     }
 
     /**
-     * เช็คว่า config CF พร้อมใช้งานมั้ย
+     * เช็คว่า config CF พร้อมใช้งานมั้ย.
      */
     public function configured(): bool
     {
@@ -44,14 +47,15 @@ class CloudflareWafService
     }
 
     /**
-     * เพิ่ม IP allowlist rule ที่ Cloudflare
+     * เพิ่ม IP allowlist rule ที่ Cloudflare.
      *
      * @return array|null ['id' => '...', 'created_on' => '...'] หรือ null ถ้า fail
      */
     public function addAllowRule(string $ip, string $walletAddress, string $tier): ?array
     {
-        if (!$this->configured()) {
+        if (! $this->configured()) {
             Log::warning('Cloudflare not configured — skipping addAllowRule', compact('ip', 'walletAddress'));
+
             return null;
         }
 
@@ -70,16 +74,18 @@ class CloudflareWafService
                     'notes' => $note,
                 ]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('Cloudflare addAllowRule failed', [
                     'ip' => $ip,
                     'status' => $response->status(),
                     'body' => $response->json(),
                 ]);
+
                 return null;
             }
 
             $data = $response->json('result');
+
             return [
                 'id' => $data['id'] ?? null,
                 'created_on' => $data['created_on'] ?? now()->toIso8601String(),
@@ -89,16 +95,17 @@ class CloudflareWafService
                 'ip' => $ip,
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
 
     /**
-     * ลบ IP rule (ใช้ตอน cleanup เมื่อ allowlist หมดอายุ)
+     * ลบ IP rule (ใช้ตอน cleanup เมื่อ allowlist หมดอายุ).
      */
     public function deleteRule(string $ruleId): bool
     {
-        if (!$this->configured() || $ruleId === '') {
+        if (! $this->configured() || $ruleId === '') {
             return false;
         }
 
@@ -119,18 +126,19 @@ class CloudflareWafService
                 'rule_id' => $ruleId,
                 'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
 
     /**
-     * List rules ที่สร้างโดย system นี้ (ใช้ admin dashboard)
+     * List rules ที่สร้างโดย system นี้ (ใช้ admin dashboard).
      *
      * @return array<int, array{id:string, ip:string, mode:string, notes:string, created_on:string}>
      */
     public function listAutoRules(int $perPage = 50): array
     {
-        if (!$this->configured()) {
+        if (! $this->configured()) {
             return [];
         }
 
@@ -147,11 +155,12 @@ class CloudflareWafService
                         'per_page' => $perPage,
                     ]);
 
-                if (!$response->successful()) {
+                if (! $response->successful()) {
                     return [];
                 }
 
                 $rules = $response->json('result', []);
+
                 return array_map(function ($r) {
                     return [
                         'id' => $r['id'] ?? '',
@@ -163,6 +172,7 @@ class CloudflareWafService
                 }, $rules);
             } catch (\Throwable $e) {
                 Log::error('Cloudflare listAutoRules exception', ['error' => $e->getMessage()]);
+
                 return [];
             }
         });
@@ -182,6 +192,7 @@ class CloudflareWafService
         if (str_contains($ip, ':')) {
             return 'ip6';
         }
+
         return 'ip';
     }
 }

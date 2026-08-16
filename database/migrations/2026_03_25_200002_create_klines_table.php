@@ -4,12 +4,12 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * TPIX TRADE - Klines (candlestick) table.
  * Aggregated from real trades for chart rendering.
  * Developed by Xman Studio.
  */
-return new class extends Migration
+return new class() extends Migration
 {
     public function up(): void
     {

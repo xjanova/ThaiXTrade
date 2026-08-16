@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Log;
 class InfraAlertController extends Controller
 {
     /**
-     * POST /api/infra/heartbeat — สัญญาณชีพ "ทุก check ฝั่งเชนผ่าน"
+     * POST /api/infra/heartbeat — สัญญาณชีพ "ทุก check ฝั่งเชนผ่าน".
      *
      * นอกจากบันทึกชีพ ยังปิดเหตุร้ายที่ระบบปิดเองได้ของ node นั้น
      * (chain_stalled ฯลฯ) เพราะ heartbeat ยิงเฉพาะตอนเชนกลับมาปกติแล้ว

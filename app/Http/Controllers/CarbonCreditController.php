@@ -10,8 +10,7 @@ class CarbonCreditController extends Controller
 {
     public function __construct(
         private CarbonCreditService $carbonCreditService,
-    )
-    {
+    ) {
         //
     }
 

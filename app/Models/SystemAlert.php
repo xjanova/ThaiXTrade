@@ -18,10 +18,10 @@ use Illuminate\Support\Facades\DB;
  * @property int $id
  * @property string $node
  * @property string $alert_key
- * @property string $severity  critical|warning|info
+ * @property string $severity critical|warning|info
  * @property string $message
  * @property array|null $data
- * @property string $status    active|resolved
+ * @property string $status active|resolved
  * @property int $occurrences
  * @property Carbon|null $first_seen_at
  * @property Carbon|null $last_seen_at
@@ -32,7 +32,7 @@ class SystemAlert extends Model
 {
     /**
      * เหตุที่ heartbeat (= "ทุก check ฝั่งเชนผ่าน") ถือว่าจบแล้ว ปิดให้อัตโนมัติ —
-     * ส่วน chain_restarted (warning) ค้างไว้ให้แอดมินกดรับทราบเอง จะได้รู้ว่าเคยเกิด
+     * ส่วน chain_restarted (warning) ค้างไว้ให้แอดมินกดรับทราบเอง จะได้รู้ว่าเคยเกิด.
      */
     public const AUTO_RESOLVE_KEYS = [
         'chain_stalled',
@@ -79,7 +79,7 @@ class SystemAlert extends Model
     // =========================================================================
 
     /**
-     * ยกเหตุขึ้น (หรือรวมเข้าเหตุ active เดิมของ node+key เดียวกัน)
+     * ยกเหตุขึ้น (หรือรวมเข้าเหตุ active เดิมของ node+key เดียวกัน).
      *
      * ทำใน transaction + lockForUpdate กันสอง request ชนกันสร้างแถวซ้ำ
      * ยกระดับ severity ได้ (warning → critical) แต่ไม่ลดระดับเอง
@@ -149,7 +149,7 @@ class SystemAlert extends Model
 
     /**
      * กระจายเข้ากระดิ่งแจ้งเตือนของแอดมินทุกคน (เฉพาะเหตุ critical ใหม่/ยกระดับ)
-     * — คาดแดงเห็นเฉพาะตอนเปิดหน้า admin อยู่ กระดิ่งเก็บไว้ให้คนที่เพิ่งล็อกอินเห็นด้วย
+     * — คาดแดงเห็นเฉพาะตอนเปิดหน้า admin อยู่ กระดิ่งเก็บไว้ให้คนที่เพิ่งล็อกอินเห็นด้วย.
      */
     protected static function notifyAdmins(self $alert): void
     {

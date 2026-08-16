@@ -262,7 +262,7 @@ class TokenFactoryService
     }
 
     /**
-     * ตรวจสอบว่าระบบพร้อมสร้าง token หรือไม่
+     * ตรวจสอบว่าระบบพร้อมสร้าง token หรือไม่.
      */
     public function isFactoryReady(): array
     {
@@ -331,7 +331,7 @@ class TokenFactoryService
      * ถ้าเป็น testnet → fee = 0 (FREE) เสมอ
      *
      * @param  array  $options  ['token_category', 'token_type', 'decimals', 'total_supply', 'chain_id']
-     * @return array  ['total' => float, 'breakdown' => [...]]
+     * @return array ['total' => float, 'breakdown' => [...]]
      */
     public function calculateFee(array $options): array
     {
@@ -511,7 +511,7 @@ class TokenFactoryService
     }
 
     /**
-     * Get factory configuration for frontend (รวม dynamic fee config)
+     * Get factory configuration for frontend (รวม dynamic fee config).
      */
     public function getFactoryConfig(): array
     {

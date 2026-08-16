@@ -6,7 +6,7 @@ use Sentry\Event;
 use Sentry\EventHint;
 
 /**
- * Sentry before_send hook — strip wallet addresses / mnemonic / private key fragments
+ * Sentry before_send hook — strip wallet addresses / mnemonic / private key fragments.
  *
  * เก็บเป็น invokable class (ไม่ใช่ closure ใน config/sentry.php) เพื่อให้ `php artisan config:cache`
  * serialize ได้ — ตั้งใน config เป็น string class name

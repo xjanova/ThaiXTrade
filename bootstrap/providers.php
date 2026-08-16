@@ -1,7 +1,9 @@
 <?php
 
+use App\Providers\AppServiceProvider;
+
 /**
- * TPIX TRADE - Service Provider Registration
+ * TPIX TRADE - Service Provider Registration.
  *
  * Laravel 11 โหลด provider จากไฟล์นี้เท่านั้น — ถ้าไฟล์นี้หายไป
  * AppServiceProvider จะไม่ถูก register เลย ทำให้ rate limiter 'trading'
@@ -13,5 +15,5 @@
  */
 
 return [
-    App\Providers\AppServiceProvider::class,
+    AppServiceProvider::class,
 ];

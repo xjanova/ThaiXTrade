@@ -56,7 +56,7 @@ class AppReleaseController extends Controller
         // Also clear tag-specific caches
         $walletTag = SiteSetting::get('app_release', 'wallet_active_tag') ?? '';
         $masternodeTag = SiteSetting::get('app_release', 'masternode_active_tag') ?? '';
-        Cache::forget('chain_releases_' . md5($walletTag . $masternodeTag));
+        Cache::forget('chain_releases_'.md5($walletTag.$masternodeTag));
         Cache::forget('chain_s3_url_wallet');
         Cache::forget('chain_s3_url_masternode');
         Cache::forget('apk_s3_url');
@@ -104,7 +104,7 @@ class AppReleaseController extends Controller
             return back()->with('error', "This release has no APK for {$appLabel}.");
         }
         if ($app === 'wallet' && ! $release['has_wallet_apk']) {
-            return back()->with('error', "This release has no Wallet APK.");
+            return back()->with('error', 'This release has no Wallet APK.');
         }
         if ($app === 'masternode' && ! $release['has_exe']) {
             return back()->with('error', "This release has no EXE for {$appLabel}.");

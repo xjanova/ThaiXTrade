@@ -5,7 +5,7 @@ namespace App\Http\Requests\Api;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
- * NodeHeartbeatRequest — validate payload สำหรับ POST /api/v1/node/heartbeat
+ * NodeHeartbeatRequest — validate payload สำหรับ POST /api/v1/node/heartbeat.
  *
  * Payload format:
  * {

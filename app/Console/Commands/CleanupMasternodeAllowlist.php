@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * CleanupMasternodeAllowlist — เก็บกวาด entries ที่หมดอายุ
+ * CleanupMasternodeAllowlist — เก็บกวาด entries ที่หมดอายุ.
  *
  * Workflow:
  *   1. หา entries ที่ status=active แต่ allowed_until < now()
@@ -60,7 +60,7 @@ class CleanupMasternodeAllowlist extends Command
             // ลบ CF rule
             if ($entry->cf_rule_id) {
                 $deleted = $cf->deleteRule($entry->cf_rule_id);
-                if (!$deleted) {
+                if (! $deleted) {
                     $cfRuleErrors++;
                     Log::warning('masternode.cleanup: failed to delete CF rule', [
                         'wallet' => $entry->wallet_address,
@@ -80,7 +80,7 @@ class CleanupMasternodeAllowlist extends Command
 
         // Hard-delete row เก่าเกิน 30 วันที่ status=expired/revoked
         $hardDeleted = 0;
-        if (!$dryRun) {
+        if (! $dryRun) {
             $hardDeleted = MasternodeAllowlist::whereIn('status', ['expired', 'revoked'])
                 ->where('updated_at', '<', now()->subDays(30))
                 ->delete();

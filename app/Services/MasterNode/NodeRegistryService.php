@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * NodeRegistryService — ตรวจสอบว่า wallet เป็น masternode/validator ที่ active บน chain มั้ย
+ * NodeRegistryService — ตรวจสอบว่า wallet เป็น masternode/validator ที่ active บน chain มั้ย.
  *
  * Resolution order:
  *   1. ถ้ามี genesis_operators ใน config → match wallet กับ tier ที่ระบุ (Phase 1 fallback)
@@ -20,19 +20,19 @@ class NodeRegistryService
 {
     /**
      * eth_call selector สำหรับ NodeRegistry.isActiveNode(address)
-     * keccak256("isActiveNode(address)") → 0x???????? (4 bytes)
+     * keccak256("isActiveNode(address)") → 0x???????? (4 bytes).
      */
     private const SELECTOR_IS_ACTIVE = '0xfb7a7c81';
 
     /**
-     * eth_call selector สำหรับ NodeRegistry.getTier(address)
+     * eth_call selector สำหรับ NodeRegistry.getTier(address).
      */
     private const SELECTOR_GET_TIER = '0x6e9960c3';
 
     /**
-     * Lookup operator status — return null ถ้าไม่ใช่ masternode
+     * Lookup operator status — return null ถ้าไม่ใช่ masternode.
      *
-     * @return array{tier:string, source:string}|null  source = 'genesis'|'registry'|'balance'
+     * @return array{tier:string, source:string}|null source = 'genesis'|'registry'|'balance'
      */
     public function lookup(string $walletAddress): ?array
     {
@@ -73,7 +73,7 @@ class NodeRegistryService
     }
 
     /**
-     * Phase 2: query NodeRegistry contract via eth_call
+     * Phase 2: query NodeRegistry contract via eth_call.
      */
     private function queryRegistry(string $wallet, string $registryAddress): ?string
     {
@@ -102,6 +102,7 @@ class NodeRegistryService
                     'wallet' => $wallet,
                     'error' => $e->getMessage(),
                 ]);
+
                 return null;
             }
         });
@@ -109,7 +110,7 @@ class NodeRegistryService
 
     /**
      * Phase 1 fallback: ดู balance — ถ้าพอตามขั้น tier ก็ allow
-     * เป็น proxy สำหรับ stake (assumption: wallet ที่ run masternode ควรมี TPIX อย่างน้อย minStake)
+     * เป็น proxy สำหรับ stake (assumption: wallet ที่ run masternode ควรมี TPIX อย่างน้อย minStake).
      */
     private function tierByBalance(string $wallet): ?string
     {
@@ -133,11 +134,12 @@ class NodeRegistryService
 
         // ต่ำกว่า Light minimum → ไม่ allow
         $minBalance = (int) config('masternode.registry.fallback_min_balance_tpix', 100000);
+
         return $balanceTpix >= $minBalance ? 'Light' : null;
     }
 
     /**
-     * eth_getBalance via JSON-RPC
+     * eth_getBalance via JSON-RPC.
      */
     private function getBalance(string $wallet): ?float
     {
@@ -149,24 +151,25 @@ class NodeRegistryService
                 'id' => 1,
             ]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 return null;
             }
 
             $hex = $response->json('result');
-            if (!$hex || !is_string($hex)) {
+            if (! $hex || ! is_string($hex)) {
                 return null;
             }
 
             return (float) hexdec($hex);
         } catch (\Throwable $e) {
             Log::warning('eth_getBalance failed', ['wallet' => $wallet, 'error' => $e->getMessage()]);
+
             return null;
         }
     }
 
     /**
-     * Generic eth_call
+     * Generic eth_call.
      */
     private function ethCall(string $to, string $data): ?string
     {

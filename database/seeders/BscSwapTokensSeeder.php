@@ -8,7 +8,7 @@ use App\Models\Token;
 use Illuminate\Database\Seeder;
 
 /**
- * TPIX TRADE — Token สำหรับหน้า Swap บน BSC (PancakeSwap V2)
+ * TPIX TRADE — Token สำหรับหน้า Swap บน BSC (PancakeSwap V2).
  *
  * หน้า /swap ฝั่ง frontend มี token list 8 ตัว (Swap.vue) แต่ DB production
  * มีแค่ BNB + USDT ทำให้ /api/v1/swap/quote ตอบ INVALID_TOKEN สำหรับคู่อื่น

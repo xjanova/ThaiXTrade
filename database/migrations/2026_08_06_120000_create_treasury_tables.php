@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * ชั้นคลัง TPIX — คิวจ่ายเงิน, whitelist ปลายทาง, สมุดบัญชีคลัง
  *
  * จำนวนเงินเก็บเป็น **wei ในคอลัมน์ string** ทุกที่ ไม่ใช่ decimal/float
@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
  * ออกมาเป็น string อยู่ดี และ float จะพังตั้งแต่ 10 TPIX (เกิน PHP_INT_MAX)
  * ใช้ App\Support\Wei ในการคำนวณทุกครั้ง ห้ามแปลงเป็น int/float
  */
-return new class extends Migration
+return new class() extends Migration
 {
     public function up(): void
     {

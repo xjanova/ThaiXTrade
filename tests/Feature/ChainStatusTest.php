@@ -33,7 +33,7 @@ class ChainStatusTest extends TestCase
     }
 
     /**
-     * BSC (56) เป็นเชนเดียวที่เปิดเทรดจริงตอนนี้
+     * BSC (56) เป็นเชนเดียวที่เปิดเทรดจริงตอนนี้.
      */
     public function test_bsc_is_the_only_live_chain(): void
     {

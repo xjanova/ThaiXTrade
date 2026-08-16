@@ -9,11 +9,12 @@ use App\Services\MasterNode\CloudflareWafService;
 use App\Services\MasterNode\NodeRegistryService;
 use App\Services\MasterNode\Web3SignatureService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * NodeHeartbeatController — รับ heartbeat จาก masternode-ui และจัดการ Cloudflare allowlist
+ * NodeHeartbeatController — รับ heartbeat จาก masternode-ui และจัดการ Cloudflare allowlist.
  *
  * Flow:
  *   1. Validate input shape (NodeHeartbeatRequest)
@@ -71,7 +72,7 @@ class NodeHeartbeatController extends Controller
             (int) $data['delegation_expires_at']
         );
 
-        if (!$this->sigService->verify($delegationMessage, $data['delegation_signature'], $wallet)) {
+        if (! $this->sigService->verify($delegationMessage, $data['delegation_signature'], $wallet)) {
             return response()->json([
                 'error' => 'invalid_delegation',
                 'message' => 'Delegation signature does not match wallet',
@@ -81,7 +82,7 @@ class NodeHeartbeatController extends Controller
 
         // 3. Verify heartbeat signature (delegate-key ลงนาม heartbeat)
         $heartbeatMessage = $this->sigService->buildHeartbeatMessage($wallet, (int) $data['timestamp']);
-        if (!$this->sigService->verify($heartbeatMessage, $data['signature'], $delegateAddress)) {
+        if (! $this->sigService->verify($heartbeatMessage, $data['signature'], $delegateAddress)) {
             return response()->json([
                 'error' => 'invalid_heartbeat_signature',
                 'message' => 'Heartbeat signature does not match delegate address',
@@ -129,7 +130,7 @@ class NodeHeartbeatController extends Controller
         }
 
         // Validate IP format อีกชั้น (กัน garbage)
-        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+        if (! filter_var($ip, FILTER_VALIDATE_IP)) {
             return response()->json([
                 'error' => 'invalid_client_ip',
                 'message' => 'Could not determine valid client IP',
@@ -204,20 +205,20 @@ class NodeHeartbeatController extends Controller
     }
 
     /**
-     * GET /api/v1/node/status — ให้ masternode-ui เช็คสถานะตัวเองว่ายัง allowlist อยู่มั้ย
+     * GET /api/v1/node/status — ให้ masternode-ui เช็คสถานะตัวเองว่ายัง allowlist อยู่มั้ย.
      *
      * Public endpoint — ห้าม return IP จริงของ operator (privacy + กัน DDoS reconnaissance)
      * Caller verify ว่าตัวเองคือ allowlist ผ่าน is_active + match กับ IP ของตัวเองเอง
      */
-    public function status(string $wallet, \Illuminate\Http\Request $request)
+    public function status(string $wallet, Request $request)
     {
-        if (!preg_match('/^0x[a-fA-F0-9]{40}$/', $wallet)) {
+        if (! preg_match('/^0x[a-fA-F0-9]{40}$/', $wallet)) {
             return response()->json(['error' => 'invalid_wallet'], 400);
         }
 
         $row = MasternodeAllowlist::where('wallet_address', strtolower($wallet))->first();
 
-        if (!$row) {
+        if (! $row) {
             return response()->json(['exists' => false]);
         }
 

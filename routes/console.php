@@ -1,5 +1,8 @@
 <?php
 
+use App\Jobs\ProcessBridgeJob;
+use App\Models\BridgeTransaction;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
 /*
@@ -13,15 +16,15 @@ Schedule::command('content:generate-scheduled')->everyThirtyMinutes();
 
 // Bridge: ตรวจ pending/processing tx ที่ค้าง > 2 นาที → re-dispatch job
 Schedule::call(function () {
-    $stuck = \App\Models\BridgeTransaction::whereIn('status', ['processing', 'pending'])
+    $stuck = BridgeTransaction::whereIn('status', ['processing', 'pending'])
         ->whereNotNull('source_tx_hash')
         ->where('updated_at', '<', now()->subMinutes(2))
         ->where('retry_count', '<', 5)
         ->get();
 
     foreach ($stuck as $tx) {
-        \App\Jobs\ProcessBridgeJob::dispatch($tx);
-        \Illuminate\Support\Facades\Log::info('Bridge: re-dispatched stuck tx', ['id' => $tx->id]);
+        ProcessBridgeJob::dispatch($tx);
+        Log::info('Bridge: re-dispatched stuck tx', ['id' => $tx->id]);
     }
 })->everyMinute()->name('bridge:process-stuck');
 

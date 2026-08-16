@@ -73,6 +73,7 @@ class TokenSaleController extends Controller
             $downloadName = $lang === 'th'
                 ? 'TPIX-Chain-Whitepaper-Thai.pdf'
                 : 'TPIX-Chain-Whitepaper.pdf';
+
             return response()->download($staticPath, $downloadName);
         }
 

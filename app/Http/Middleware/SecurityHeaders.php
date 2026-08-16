@@ -41,8 +41,8 @@ class SecurityHeaders
                 "object-src 'none'",
                 "base-uri 'self'",
                 "form-action 'self'",
-                "upgrade-insecure-requests",
-                "block-all-mixed-content",
+                'upgrade-insecure-requests',
+                'block-all-mixed-content',
             ]);
             $response->headers->set('Content-Security-Policy', $csp);
         }

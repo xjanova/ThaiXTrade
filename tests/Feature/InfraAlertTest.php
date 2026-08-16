@@ -8,7 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * ระบบคาดแดงหลังบ้าน — รับ heartbeat/alert จาก watchdog เซิร์ฟเวอร์เชน
+ * ระบบคาดแดงหลังบ้าน — รับ heartbeat/alert จาก watchdog เซิร์ฟเวอร์เชน.
  *
  * เน้นสามเรื่อง:
  *   1. ประตูต้องล็อกจริง — ไม่มี token / token ผิด / ยังไม่ตั้ง token ต้องเข้าไม่ได้

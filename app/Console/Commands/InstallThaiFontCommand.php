@@ -6,7 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 
 /**
- * ติดตั้งฟอนต์ Sarabun (Thai) สำหรับ DomPDF
+ * ติดตั้งฟอนต์ Sarabun (Thai) สำหรับ DomPDF.
  *
  * ดาวน์โหลดจาก Google Fonts GitHub repository และบันทึกลง storage/fonts/
  * ใช้สำหรับสร้าง Whitepaper PDF ภาษาไทย
@@ -16,10 +16,11 @@ use Illuminate\Support\Facades\Http;
 class InstallThaiFontCommand extends Command
 {
     protected $signature = 'tpix:install-thai-font';
+
     protected $description = 'ดาวน์โหลดและติดตั้งฟอนต์ Sarabun (Thai) สำหรับ DomPDF Whitepaper';
 
     /**
-     * Google Fonts GitHub — Sarabun TTF files
+     * Google Fonts GitHub — Sarabun TTF files.
      */
     private const FONT_BASE_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/sarabun/';
 
@@ -54,8 +55,8 @@ class InstallThaiFontCommand extends Command
         $failed = 0;
 
         foreach (self::FONT_FILES as $file) {
-            $url = self::FONT_BASE_URL . $file;
-            $dest = $fontDir . '/' . $file;
+            $url = self::FONT_BASE_URL.$file;
+            $dest = $fontDir.'/'.$file;
 
             // ข้ามถ้ามีอยู่แล้ว
             if (file_exists($dest) && filesize($dest) > 10000) {
@@ -97,17 +98,18 @@ class InstallThaiFontCommand extends Command
 
         // ตรวจสอบว่ามีไฟล์หลักครบ
         $required = ['Sarabun-Regular.ttf', 'Sarabun-Bold.ttf'];
-        $missing = array_filter($required, fn ($f) => ! file_exists($fontDir . '/' . $f));
+        $missing = array_filter($required, fn ($f) => ! file_exists($fontDir.'/'.$f));
 
         if (empty($missing)) {
             $this->info('Thai font is ready! You can now generate Thai PDF:');
             $this->comment('  /whitepaper/download?lang=th');
+
             return self::SUCCESS;
         }
 
-        $this->error('Missing required font files: ' . implode(', ', $missing));
+        $this->error('Missing required font files: '.implode(', ', $missing));
         $this->comment('Try running the command again or download manually from:');
-        $this->comment('  ' . self::FONT_BASE_URL);
+        $this->comment('  '.self::FONT_BASE_URL);
 
         return self::FAILURE;
     }

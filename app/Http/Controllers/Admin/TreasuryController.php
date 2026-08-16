@@ -8,6 +8,7 @@ use App\Models\TreasuryPayout;
 use App\Models\TreasuryWhitelist;
 use App\Services\TreasuryService;
 use App\Support\Wei;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -147,7 +148,7 @@ class TreasuryController extends Controller
                 'status' => TreasuryPayout::STATUS_PENDING,
                 'requested_by' => $request->user()?->id,
             ]);
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             // ชนกันพอดีระหว่างสอง request ที่ใช้ key เดียวกัน — unique index กันไว้
             $existing = TreasuryPayout::where('idempotency_key', $validated['idempotency_key'])->first();
             if ($existing) {
@@ -250,7 +251,7 @@ class TreasuryController extends Controller
     }
 
     /**
-     * สั่งส่งขึ้นเชน — เปลี่ยนสถานะเป็น broadcasting แล้วให้ CLI เป็นคนเซ็นจริง
+     * สั่งส่งขึ้นเชน — เปลี่ยนสถานะเป็น broadcasting แล้วให้ CLI เป็นคนเซ็นจริง.
      *
      * หน้าเว็บ **ไม่ได้เซ็นเอง** เพราะ php-fpm บนเซิร์ฟเวอร์นี้ปิด proc_open
      * การเซ็นต้องเรียก ethers ผ่าน Node ซึ่งทำได้เฉพาะฝั่ง CLI

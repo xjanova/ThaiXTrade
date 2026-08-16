@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Chain;
 use App\Models\Order;
 use App\Models\SiteSetting;
+use App\Models\Trade;
 use App\Models\TradingPair;
 use App\Models\Transaction;
 use App\Services\FeeCalculationService;
@@ -522,7 +523,7 @@ class TradingController extends Controller
         $walletLower = strtolower($walletAddress);
 
         // Internal trades
-        $internalTrades = \App\Models\Trade::where(function ($q) use ($walletLower) {
+        $internalTrades = Trade::where(function ($q) use ($walletLower) {
             $q->where('maker_wallet', $walletLower)
                 ->orWhere('taker_wallet', $walletLower);
         })
@@ -530,7 +531,7 @@ class TradingController extends Controller
             ->orderByDesc('created_at')
             ->limit(50)
             ->get()
-            ->map(fn (\App\Models\Trade $t) => [
+            ->map(fn (Trade $t) => [
                 'id' => $t->uuid,
                 'type' => 'trade',
                 'pair' => $t->tradingPair?->symbol ?? 'TPIX-USDT',
@@ -576,7 +577,7 @@ class TradingController extends Controller
 
     /**
      * Get fee info for the connected wallet/chain.
-     * Input chain_id = blockchain chainId (แปลงเป็น DB PK ก่อนใช้)
+     * Input chain_id = blockchain chainId (แปลงเป็น DB PK ก่อนใช้).
      */
     public function getFeeInfo(Request $request): JsonResponse
     {

@@ -13,7 +13,6 @@
 */
 
 return [
-
     /*
     |--------------------------------------------------------------------------
     | Heartbeat
@@ -67,9 +66,9 @@ return [
 
     'tiers' => [
         'Validator' => 10_000_000,   // 10M TPIX
-        'Guardian'  => 1_000_000,    // 1M TPIX
-        'Sentinel'  => 100_000,      // 100K TPIX
-        'Light'     => 10_000,       // 10K TPIX
+        'Guardian' => 1_000_000,    // 1M TPIX
+        'Sentinel' => 100_000,      // 100K TPIX
+        'Light' => 10_000,       // 10K TPIX
     ],
 
     /*

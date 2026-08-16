@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Process;
 
 /**
  * TPIX TRADE — Bridge Service (Production)
- * จัดการ cross-chain bridge: TPIX Chain (4289) ↔ BSC (56)
+ * จัดการ cross-chain bridge: TPIX Chain (4289) ↔ BSC (56).
  *
  * Flow:
  * BSC → TPIX: User burn wTPIX on BSC → backend verify → send native TPIX from treasury
@@ -223,7 +223,7 @@ class BridgeService
 
     /**
      * BSC→TPIX: ตรวจว่า user burn wTPIX จริง
-     * ดู Transfer event ที่ to = 0x0 (burn)
+     * ดู Transfer event ที่ to = 0x0 (burn).
      */
     private function verifyBscBurn(BridgeTransaction $tx, array $receipt, array $result): array
     {
@@ -292,7 +292,7 @@ class BridgeService
     }
 
     /**
-     * TPIX→BSC: ตรวจว่า user ส่ง native TPIX ไปที่ treasury จริง
+     * TPIX→BSC: ตรวจว่า user ส่ง native TPIX ไปที่ treasury จริง.
      */
     private function verifyTpixTransfer(BridgeTransaction $tx, array $txDetail, array $result): array
     {
@@ -411,7 +411,7 @@ class BridgeService
 
     /**
      * Process bridge transaction: verify → execute → complete.
-     * เรียกจาก ProcessBridgeJob
+     * เรียกจาก ProcessBridgeJob.
      */
     public function processBridgeTransaction(BridgeTransaction $tx): void
     {

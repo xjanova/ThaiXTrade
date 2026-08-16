@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * TPIX TRADE — Unified Fee Configuration API
+ * TPIX TRADE — Unified Fee Configuration API.
  *
  * Returns swap + bridge fee configuration in a single call.
  * Used by the Flutter mobile wallet to display fees and fee wallet addresses.

@@ -6,7 +6,7 @@ use Elliptic\EC;
 use kornrunner\Keccak;
 
 /**
- * Web3SignatureService — verify Ethereum personal_sign signatures
+ * Web3SignatureService — verify Ethereum personal_sign signatures.
  *
  * รองรับ format มาตรฐาน MetaMask / WalletConnect:
  *   - Message: "<text>"
@@ -20,10 +20,10 @@ use kornrunner\Keccak;
 class Web3SignatureService
 {
     /**
-     * Recover Ethereum address ที่ sign message นี้
+     * Recover Ethereum address ที่ sign message นี้.
      *
-     * @param string $message Plain text message ที่ user sign
-     * @param string $signature 0x-prefixed hex (130 chars after 0x = 65 bytes)
+     * @param  string  $message  Plain text message ที่ user sign
+     * @param  string  $signature  0x-prefixed hex (130 chars after 0x = 65 bytes)
      * @return string Address (0x... lowercase) หรือ '' ถ้า verify ไม่ผ่าน
      */
     public function recoverAddress(string $message, string $signature): string
@@ -31,7 +31,7 @@ class Web3SignatureService
         try {
             // 1. Strip 0x prefix — ห้ามใช้ ltrim('0x') เพราะมัน strip char '0'/'x' ทุกตัวที่นำหน้า
             //    sig ที่ r ขึ้นต้นด้วย '0' (1/16) จะถูกตัด leading zero → verify fail สุ่ม
-            if (!str_starts_with(strtolower($signature), '0x')) {
+            if (! str_starts_with(strtolower($signature), '0x')) {
                 return '';
             }
             $sig = substr($signature, 2);
@@ -71,7 +71,7 @@ class Web3SignatureService
     }
 
     /**
-     * Verify ว่า signature ตรงกับ wallet address ที่คาดหวัง
+     * Verify ว่า signature ตรงกับ wallet address ที่คาดหวัง.
      */
     public function verify(string $message, string $signature, string $expectedAddress): bool
     {
@@ -85,7 +85,7 @@ class Web3SignatureService
 
     /**
      * Build delegation message ที่ใช้ user sign ครั้งเดียว (ผ่าน wallet)
-     *   "tpix-masternode-delegate:<wallet>:<delegateAddress>:<expiresAt>"
+     *   "tpix-masternode-delegate:<wallet>:<delegateAddress>:<expiresAt>".
      */
     public function buildDelegationMessage(string $walletAddress, string $delegateAddress, int $expiresAt): string
     {
@@ -102,7 +102,7 @@ class Web3SignatureService
 
     /**
      * Build heartbeat message ที่ delegate-key sign ทุกครั้งที่ heartbeat
-     *   "tpix-masternode-heartbeat:<wallet>:<timestamp>"
+     *   "tpix-masternode-heartbeat:<wallet>:<timestamp>".
      */
     public function buildHeartbeatMessage(string $walletAddress, int $timestamp): string
     {

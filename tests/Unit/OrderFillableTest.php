@@ -4,10 +4,11 @@ namespace Tests\Unit;
 
 use App\Models\Order;
 use Illuminate\Database\Eloquent\Model;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
- * TPIX TRADE - Order fill-state Tests
+ * TPIX TRADE - Order fill-state Tests.
  *
  * กันการถอยกลับของบั๊กที่ Order เคยประกาศ isFillable(): bool ทับเมธอดของ
  * Eloquent (Model::isFillable(string $key): bool) ซึ่งผิด LSP ทำให้ PHP
@@ -69,7 +70,7 @@ class OrderFillableTest extends TestCase
         $this->assertTrue($this->orderWithStatus('partially_filled')->canBeFilled());
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('closedStatuses')]
+    #[DataProvider('closedStatuses')]
     public function test_closed_order_cannot_be_filled(string $status): void
     {
         $this->assertFalse($this->orderWithStatus($status)->canBeFilled());

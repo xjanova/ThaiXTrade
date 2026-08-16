@@ -6,6 +6,7 @@ use App\Models\Kline;
 use App\Models\Order;
 use App\Models\Trade;
 use App\Models\TradingPair;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -238,7 +239,7 @@ class OrderMatchingService
     // Private Methods
     // =========================================================================
 
-    private function getMatchableOrders(Order $order, bool $lockForUpdate = false): \Illuminate\Database\Eloquent\Collection
+    private function getMatchableOrders(Order $order, bool $lockForUpdate = false): Collection
     {
         $query = Order::forPair($order->trading_pair_id)
             ->open()
@@ -341,7 +342,8 @@ class OrderMatchingService
         $pairId = $trade->trading_pair_id;
 
         foreach ($intervals as $interval => $seconds) {
-            $openTime = date('Y-m-d H:i:s',
+            $openTime = date(
+                'Y-m-d H:i:s',
                 (int) floor($trade->created_at->timestamp / $seconds) * $seconds
             );
 

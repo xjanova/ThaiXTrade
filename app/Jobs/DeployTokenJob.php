@@ -106,6 +106,7 @@ class DeployTokenJob implements ShouldQueue
 
         // Deployment returned failure — throw exception to let Laravel handle retry/fail
         $error = $result['error'] ?? 'Unknown deployment error';
+
         throw new \RuntimeException("Token deployment failed: {$error}");
     }
 

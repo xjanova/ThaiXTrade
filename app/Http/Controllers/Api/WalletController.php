@@ -28,8 +28,7 @@ class WalletController extends Controller
     public function __construct(
         private Web3BalanceService $balanceService,
         private UserWalletService $userWalletService,
-    )
-    {
+    ) {
         //
     }
 

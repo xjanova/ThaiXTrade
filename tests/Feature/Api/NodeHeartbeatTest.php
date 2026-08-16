@@ -5,14 +5,16 @@ namespace Tests\Feature\Api;
 use App\Models\MasternodeAllowlist;
 use App\Services\MasterNode\CloudflareWafService;
 use App\Services\MasterNode\NodeRegistryService;
+use App\Services\MasterNode\Web3SignatureService;
+use Elliptic\EC;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use kornrunner\Keccak;
 use Mockery;
 use Tests\TestCase;
 
 /**
- * Feature tests for POST /api/v1/node/heartbeat
+ * Feature tests for POST /api/v1/node/heartbeat.
  *
  * Coverage:
  *   - Valid signature flow (genesis operator) → 200 + DB row + CF rule call
@@ -39,7 +41,7 @@ class NodeHeartbeatTest extends TestCase
         parent::setUp();
 
         // Disable throttling for tests
-        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        $this->withoutMiddleware(ThrottleRequests::class);
 
         // Mock Cloudflare service — return fake rule id
         $cfMock = Mockery::mock(CloudflareWafService::class);
@@ -198,7 +200,7 @@ class NodeHeartbeatTest extends TestCase
         // Regression: เดิมใช้ ltrim('0x') → strip char '0'/'x' ทุกตัวที่นำหน้า
         // sig ที่ r ขึ้นต้นด้วย '0' (1/16 ของ sigs) จะถูกตัด leading zero → length ผิด → verify fail สุ่ม
         // หลัง fix ต้องผ่านทุก sig แม้ขึ้นต้นด้วย '0'
-        $sigService = $this->app->make(\App\Services\MasterNode\Web3SignatureService::class);
+        $sigService = $this->app->make(Web3SignatureService::class);
 
         // สร้าง signature ที่ r เริ่มด้วย '0' โดยตรง — fake แต่ทดสอบ parser logic
         $fakeSigWithLeadingZero = '0x0'.str_repeat('1', 63).'0'.str_repeat('2', 63).'1b';
@@ -209,7 +211,7 @@ class NodeHeartbeatTest extends TestCase
     }
 
     /**
-     * สร้าง payload ที่ valid — sign ด้วย kornrunner/keccak + simplito/elliptic-php
+     * สร้าง payload ที่ valid — sign ด้วย kornrunner/keccak + simplito/elliptic-php.
      */
     private function buildValidPayload(): array
     {
@@ -241,14 +243,14 @@ class NodeHeartbeatTest extends TestCase
     }
 
     /**
-     * Helper: sign message ด้วย private key (เลียนแบบ MetaMask personal_sign)
+     * Helper: sign message ด้วย private key (เลียนแบบ MetaMask personal_sign).
      */
     private function signMessage(string $message, string $privateKey): string
     {
         $prefix = "\x19Ethereum Signed Message:\n".strlen($message);
         $hash = Keccak::hash($prefix.$message, 256);
 
-        $ec = new \Elliptic\EC('secp256k1');
+        $ec = new EC('secp256k1');
         $key = $ec->keyFromPrivate(ltrim($privateKey, '0x'));
         $sig = $key->sign($hash, ['canonical' => true]);
 

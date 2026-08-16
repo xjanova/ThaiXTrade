@@ -11,6 +11,7 @@ use App\Models\Transaction;
 use App\Services\FeeCalculationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
@@ -252,7 +253,7 @@ class SwapApiController extends Controller
             }
 
             // SECURITY FIX: wrap in DB transaction ป้องกัน orphaned records
-            $transaction = \Illuminate\Support\Facades\DB::transaction(fn () => Transaction::create([
+            $transaction = DB::transaction(fn () => Transaction::create([
                 'type' => 'swap',
                 'wallet_address' => strtolower($validated['wallet_address']),
                 'chain_id' => $validated['chain_id'],
@@ -384,7 +385,7 @@ class SwapApiController extends Controller
     /**
      * แปลง sentinel address ของ native coin (0xEeee...EEeE — convention ฝั่ง
      * frontend/ethers) ให้เป็น 0x0000...0000 ที่ BaseTokensSeeder ใช้เก็บ
-     * native coin ใน DB — ไม่งั้น quote ของคู่ที่มี BNB จะตอบ INVALID_TOKEN
+     * native coin ใน DB — ไม่งั้น quote ของคู่ที่มี BNB จะตอบ INVALID_TOKEN.
      */
     private function normalizeNativeAddress(string $address): string
     {
@@ -398,7 +399,7 @@ class SwapApiController extends Controller
     /**
      * แปลง blockchain chainId (เช่น 56, 4289) เป็น Chain record (DB PK)
      * Frontend ส่ง blockchain chainId มา แต่ DB ใช้ auto-increment ID
-     * ลุคอัพผ่าน chain_id_hex เช่น '0x38' (BSC), '0x10c1' (TPIX)
+     * ลุคอัพผ่าน chain_id_hex เช่น '0x38' (BSC), '0x10c1' (TPIX).
      */
     private function resolveChain(int $blockchainChainId): ?Chain
     {

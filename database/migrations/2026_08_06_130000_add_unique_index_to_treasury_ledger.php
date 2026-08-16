@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * กันสมุดบัญชีบันทึกธุรกรรมเดียวกันซ้ำ.
  *
  * ตัวเก็บรายการอัตโนมัติ (tpix:treasury-sync) รันซ้ำได้ตลอด ถ้าไม่มี unique
@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
  * คีย์เป็นสามส่วนเพราะธุรกรรมเดียวอาจโผล่สองแถวโดยชอบธรรม — ตอนโอนเงิน
  * ระหว่างกระเป๋าคลังสองใบ ใบส่งได้ debit ใบรับได้ credit จาก tx_hash เดียวกัน
  */
-return new class extends Migration
+return new class() extends Migration
 {
     public function up(): void
     {

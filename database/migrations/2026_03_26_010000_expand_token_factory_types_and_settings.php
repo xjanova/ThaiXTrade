@@ -6,7 +6,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * Expand token_type enum เพื่อรองรับ NFT, Governance, Stablecoin etc.
  * เพิ่ม factory settings ใน site_settings สำหรับ admin กำหนดค่าสร้างเหรียญ.
  */

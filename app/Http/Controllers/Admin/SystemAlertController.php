@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Auth;
 class SystemAlertController extends Controller
 {
     /**
-     * GET /admin/system-alerts/active — เหตุที่ยัง active สำหรับแถบคาดแดง (JSON)
+     * GET /admin/system-alerts/active — เหตุที่ยัง active สำหรับแถบคาดแดง (JSON).
      */
     public function active(): JsonResponse
     {

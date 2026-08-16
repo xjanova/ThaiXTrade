@@ -499,7 +499,7 @@ class ValidatorController extends Controller
         }
 
         // Short string [0x80, 0xb7] — length = prefix - 0x80
-        if ($prefix <= 0xb7) {
+        if ($prefix <= 0xB7) {
             $length = $prefix - 0x80;
             $offset++;
             $data = substr($bytes, $offset, $length);
@@ -509,8 +509,8 @@ class ValidatorController extends Controller
         }
 
         // Long string [0xb8, 0xbf] — length of length = prefix - 0xb7
-        if ($prefix <= 0xbf) {
-            $lengthOfLength = $prefix - 0xb7;
+        if ($prefix <= 0xBF) {
+            $lengthOfLength = $prefix - 0xB7;
             $offset++;
             $length = 0;
             for ($i = 0; $i < $lengthOfLength; $i++) {
@@ -524,8 +524,8 @@ class ValidatorController extends Controller
         }
 
         // Short list [0xc0, 0xf7] — length = prefix - 0xc0
-        if ($prefix <= 0xf7) {
-            $length = $prefix - 0xc0;
+        if ($prefix <= 0xF7) {
+            $length = $prefix - 0xC0;
             $offset++;
             $end = $offset + $length;
             $items = [];
@@ -537,7 +537,7 @@ class ValidatorController extends Controller
         }
 
         // Long list [0xf8, 0xff] — length of length = prefix - 0xf7
-        $lengthOfLength = $prefix - 0xf7;
+        $lengthOfLength = $prefix - 0xF7;
         $offset++;
         $length = 0;
         for ($i = 0; $i < $lengthOfLength; $i++) {

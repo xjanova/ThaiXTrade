@@ -20,7 +20,6 @@
 */
 
 return [
-
     /*
     |--------------------------------------------------------------------------
     | กระเป๋าคลัง 6 ใบ (ดูอย่างเดียว)
@@ -181,5 +180,4 @@ return [
     'rpc_user_agent' => env('TPIX_RPC_USER_AGENT', 'TPIX-Treasury/1.0 (+https://tpix.online)'),
     'rpc_timeout' => 10,
     'balance_cache_seconds' => 15,
-
 ];

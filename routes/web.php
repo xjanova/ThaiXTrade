@@ -15,8 +15,8 @@ use App\Http\Controllers\LaunchController;
 use App\Http\Controllers\MasterNodeController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TokenFactoryController;
-use App\Http\Controllers\ValidatorController;
 use App\Http\Controllers\TokenSaleController;
+use App\Http\Controllers\ValidatorController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 

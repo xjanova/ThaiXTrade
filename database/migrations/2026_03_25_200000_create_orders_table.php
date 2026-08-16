@@ -4,12 +4,12 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * TPIX TRADE - Orders table for internal order book.
  * Supports limit, market, stop-limit orders on TPIX chain.
  * Developed by Xman Studio.
  */
-return new class extends Migration
+return new class() extends Migration
 {
     public function up(): void
     {

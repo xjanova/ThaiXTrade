@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Chain;
 use App\Models\FactoryToken;
 use App\Models\SiteSetting;
 use App\Services\TokenFactoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class TokenFactoryApiController extends Controller
 {
@@ -121,7 +121,7 @@ class TokenFactoryApiController extends Controller
             'chain_id' => ['nullable', 'integer', function ($attr, $val, $fail) use ($testnetChainIds) {
                 // อนุญาต testnet chain IDs แม้ไม่อยู่ใน chains table
                 if ($val && ! in_array((int) $val, $testnetChainIds, true)) {
-                    $existsInDb = \App\Models\Chain::where('chain_id', $val)->exists();
+                    $existsInDb = Chain::where('chain_id', $val)->exists();
                     if (! $existsInDb) {
                         $fail("Chain ID {$val} is not supported.");
                     }
@@ -154,7 +154,6 @@ class TokenFactoryApiController extends Controller
                     ? 'Token auto-approved and deployment started!'
                     : 'Token creation request submitted for review.',
             ], 201);
-
         } catch (\RuntimeException $e) {
             return response()->json([
                 'success' => false,

@@ -26,7 +26,7 @@ class SupplyService
 
     /**
      * TTL (วินาที) เมื่อดึงยอดจาก RPC ไม่ครบ — สั้นกว่าปกติเพื่อให้ตัวเลขที่
-     * คลาดเคลื่อนอยู่บนหน้าสาธารณะสั้นที่สุด
+     * คลาดเคลื่อนอยู่บนหน้าสาธารณะสั้นที่สุด.
      */
     private const DEGRADED_CACHE_TTL = 15;
 
@@ -202,7 +202,9 @@ class SupplyService
     private function hexWeiToTpix(string $hex): string
     {
         $hex = ltrim($hex, '0x');
-        if ($hex === '' || $hex === '0') return '0';
+        if ($hex === '' || $hex === '0') {
+            return '0';
+        }
 
         // Convert hex → decimal string via bcmath (handles arbitrary precision)
         $dec = '0';

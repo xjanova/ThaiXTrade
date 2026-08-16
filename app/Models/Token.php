@@ -86,7 +86,7 @@ class Token extends Model
      * Resolve logo to a full URL.
      * — full URL (http/https) → return as-is
      * — leading-slash path (e.g. "/tpixlogo.webp") → public root file
-     * — bare relative path (e.g. "tokens/btc.png") → storage upload via symlink
+     * — bare relative path (e.g. "tokens/btc.png") → storage upload via symlink.
      */
     protected function logoUrl(): Attribute
     {

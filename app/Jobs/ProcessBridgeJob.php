@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Process Bridge Transaction Job
- * ดำเนินการ bridge: verify source tx → execute target transfer → complete
+ * ดำเนินการ bridge: verify source tx → execute target transfer → complete.
  *
  * Pattern จาก DeployTokenJob:
  * - 5 retries, 30s backoff, 120s timeout
@@ -26,19 +26,19 @@ class ProcessBridgeJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
-     * จำนวนครั้งที่ retry (tx อาจยังไม่ confirmed → ต้องรอ)
+     * จำนวนครั้งที่ retry (tx อาจยังไม่ confirmed → ต้องรอ).
      */
     public int $tries = 5;
 
     /**
      * เวลา backoff ระหว่าง retry (วินาที)
-     * TPIX Chain = 2s blocks, BSC = 3s blocks → 30s น่าจะ confirm แล้ว
+     * TPIX Chain = 2s blocks, BSC = 3s blocks → 30s น่าจะ confirm แล้ว.
      */
     public int $backoff = 30;
 
     /**
      * Timeout ต่อ attempt (วินาที)
-     * Node.js script อาจใช้เวลา sign + wait confirmation
+     * Node.js script อาจใช้เวลา sign + wait confirmation.
      */
     public int $timeout = 120;
 

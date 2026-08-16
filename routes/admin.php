@@ -17,14 +17,14 @@ use App\Http\Controllers\Admin\BannerController;
 use App\Http\Controllers\Admin\CarbonCreditController as AdminCarbonCreditController;
 use App\Http\Controllers\Admin\ChainController;
 use App\Http\Controllers\Admin\ContentController;
-use App\Http\Controllers\Admin\FoodPassportController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FeeController;
 use App\Http\Controllers\Admin\FinanceController;
+use App\Http\Controllers\Admin\FoodPassportController;
 use App\Http\Controllers\Admin\LanguageController;
 use App\Http\Controllers\Admin\MasterNodeAdminController;
+use App\Http\Controllers\Admin\MasternodeAllowlistController;
 use App\Http\Controllers\Admin\MemberController;
-use App\Http\Controllers\Admin\ValidatorAdminController;
 use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\SettingController;
@@ -38,6 +38,7 @@ use App\Http\Controllers\Admin\TokenSaleController;
 use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
 use App\Http\Controllers\Admin\TreasuryController;
+use App\Http\Controllers\Admin\ValidatorAdminController;
 use App\Models\WalletConnection;
 use App\Services\UserWalletService;
 use Illuminate\Support\Facades\Route;
@@ -190,7 +191,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/certificates/{id}/revoke', [FoodPassportController::class, 'revokeCertificate'])->name('certificates.revoke');
             Route::get('/alerts', [FoodPassportController::class, 'alerts'])->name('alerts');
             Route::get('/docs', function () {
-                return \Inertia\Inertia::render('Admin/FoodPassport/Documentation');
+                return Inertia::render('Admin/FoodPassport/Documentation');
             })->name('docs');
         });
 
@@ -201,7 +202,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::put('/{id}', [AdminCarbonCreditController::class, 'update'])->name('update');
             Route::delete('/{id}', [AdminCarbonCreditController::class, 'destroy'])->name('destroy');
             Route::get('/docs', function () {
-                return \Inertia\Inertia::render('Admin/CarbonCredits/Documentation');
+                return Inertia::render('Admin/CarbonCredits/Documentation');
             })->name('docs');
         });
 
@@ -264,10 +265,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::put('/config', [MasterNodeAdminController::class, 'updateConfig'])->name('config');
 
             // Cloudflare auto-allowlist management
-            Route::get('/allowlist', [\App\Http\Controllers\Admin\MasternodeAllowlistController::class, 'index'])->name('allowlist.index');
-            Route::post('/allowlist/{id}/revoke', [\App\Http\Controllers\Admin\MasternodeAllowlistController::class, 'revoke'])->name('allowlist.revoke');
-            Route::delete('/allowlist/{id}', [\App\Http\Controllers\Admin\MasternodeAllowlistController::class, 'destroy'])->name('allowlist.destroy');
-            Route::post('/allowlist/cleanup', [\App\Http\Controllers\Admin\MasternodeAllowlistController::class, 'runCleanup'])->name('allowlist.cleanup');
+            Route::get('/allowlist', [MasternodeAllowlistController::class, 'index'])->name('allowlist.index');
+            Route::post('/allowlist/{id}/revoke', [MasternodeAllowlistController::class, 'revoke'])->name('allowlist.revoke');
+            Route::delete('/allowlist/{id}', [MasternodeAllowlistController::class, 'destroy'])->name('allowlist.destroy');
+            Route::post('/allowlist/cleanup', [MasternodeAllowlistController::class, 'runCleanup'])->name('allowlist.cleanup');
         });
 
         // Validator Management — จัดการ validator applications + voting

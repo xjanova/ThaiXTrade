@@ -241,7 +241,7 @@ class AppUpdateController extends Controller
      */
     /**
      * CI webhook — auto-set active release after build.
-     * POST /api/v1/app/notify-release?secret=xxx&tag=v1.0.262
+     * POST /api/v1/app/notify-release?secret=xxx&tag=v1.0.262.
      */
     public function notifyRelease(Request $request): JsonResponse
     {
@@ -335,7 +335,7 @@ class AppUpdateController extends Controller
 
     /**
      * Parse a GitHub release into our format.
-     * แปลง release จาก GitHub เป็นรูปแบบของเรา
+     * แปลง release จาก GitHub เป็นรูปแบบของเรา.
      */
     private function parseRelease(array $release): ?array
     {

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Create masternode_allowlist table — auto-allowlist สำหรับ Masternode/Validator IPs
+ * Create masternode_allowlist table — auto-allowlist สำหรับ Masternode/Validator IPs.
  *
  * Operator masternode/validator พิสูจน์ตัวตนผ่าน wallet signature (ผ่าน delegate key)
  * → server เพิ่ม IP เข้า Cloudflare allowlist TTL 1 ชั่วโมง
@@ -15,7 +15,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class() extends Migration
+{
     public function up(): void
     {
         Schema::create('masternode_allowlist', function (Blueprint $t) {

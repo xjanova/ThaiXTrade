@@ -18,7 +18,7 @@ class OrderbookGateTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Payload ที่ผ่าน validation ของ createOrder
+     * Payload ที่ผ่าน validation ของ createOrder.
      */
     private function validOrderPayload(): array
     {
@@ -35,7 +35,7 @@ class OrderbookGateTest extends TestCase
 
     /**
      * ค่า default: order book ปิด → ตอบ 503 ORDERBOOK_COMING_SOON เสมอ
-     * (แม้จะตั้ง fee_collector_wallet แล้วก็ตาม)
+     * (แม้จะตั้ง fee_collector_wallet แล้วก็ตาม).
      */
     public function test_order_creation_is_blocked_while_orderbook_disabled(): void
     {
@@ -51,7 +51,7 @@ class OrderbookGateTest extends TestCase
 
     /**
      * เปิด flag แล้ว gate ต้องปล่อยผ่านไปเจอเช็คตัวถัดไป
-     * (ในเทสนี้ fee_collector ว่าง → ต้องเจอ PLATFORM_NOT_READY ไม่ใช่ COMING_SOON)
+     * (ในเทสนี้ fee_collector ว่าง → ต้องเจอ PLATFORM_NOT_READY ไม่ใช่ COMING_SOON).
      */
     public function test_orderbook_flag_reopens_order_creation_path(): void
     {

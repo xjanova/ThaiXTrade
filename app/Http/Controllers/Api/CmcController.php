@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Kline;
 use App\Models\TradingPair;
 use App\Services\OrderMatchingService;
 use App\Services\SupplyService;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -38,8 +38,7 @@ class CmcController extends Controller
     public function __construct(
         private readonly OrderMatchingService $matching,
         private readonly SupplyService $supply,
-    ) {
-    }
+    ) {}
 
     /**
      * GET /cmc/summary — condensed pair info (CMC spec).
@@ -52,7 +51,9 @@ class CmcController extends Controller
 
             foreach ($pairs as $pair) {
                 $data = $this->pairTicker($pair);
-                if (! $data) continue;
+                if (! $data) {
+                    continue;
+                }
 
                 $market = $data['market'];
                 $out[$market] = [
@@ -131,7 +132,9 @@ class CmcController extends Controller
 
             foreach ($pairs as $pair) {
                 $data = $this->pairTicker($pair);
-                if (! $data) continue;
+                if (! $data) {
+                    continue;
+                }
 
                 $market = $data['market'];
                 $out[$market] = [
@@ -187,7 +190,7 @@ class CmcController extends Controller
     // ───────────────────────── helpers ─────────────────────────
 
     /**
-     * @return \Illuminate\Database\Eloquent\Collection<int, TradingPair>
+     * @return Collection<int, TradingPair>
      */
     private function activePairs()
     {
@@ -209,7 +212,9 @@ class CmcController extends Controller
     {
         $base = $pair->baseToken?->symbol ?? null;
         $quote = $pair->quoteToken?->symbol ?? null;
-        if (! $base || ! $quote) return null;
+        if (! $base || ! $quote) {
+            return null;
+        }
 
         $market = "{$base}_{$quote}";
 
@@ -245,12 +250,14 @@ class CmcController extends Controller
     }
 
     /**
-     * "TPIX_USDT" → TradingPair|null
+     * "TPIX_USDT" → TradingPair|null.
      */
     private function findPairByMarket(string $market): ?TradingPair
     {
         $parts = explode('_', strtoupper($market));
-        if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') return null;
+        if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
+            return null;
+        }
 
         [$base, $quote] = $parts;
 

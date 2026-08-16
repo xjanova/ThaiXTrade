@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\TreasuryLedger;
 use App\Support\Wei;
 use Illuminate\Console\Command;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -111,7 +112,7 @@ class TreasurySync extends Command
     }
 
     /**
-     * @return array{new: int, seen: int}|null  null = ดึงข้อมูลไม่สำเร็จ
+     * @return array{new: int, seen: int}|null null = ดึงข้อมูลไม่สำเร็จ
      */
     private function syncWallet(string $explorer, array $wallet, int $maxPages, bool $dryRun): ?array
     {
@@ -262,7 +263,7 @@ class TreasurySync extends Command
                 'block_number' => $tx['block_number'] ?? $tx['block'] ?? null,
                 'note' => 'เก็บอัตโนมัติจาก explorer',
             ]);
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             // ชนกับ unique = มีคนบันทึกไปแล้วระหว่างที่เรากำลังทำ ไม่ใช่ error
             return false;
         }

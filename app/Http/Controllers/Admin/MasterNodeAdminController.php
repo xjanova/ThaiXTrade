@@ -158,7 +158,8 @@ class MasterNodeAdminController extends Controller
             if ($response->successful()) {
                 return (int) hexdec($response->json('result', '0x0'));
             }
-        } catch (\Throwable) {}
+        } catch (\Throwable) {
+        }
 
         return 0;
     }

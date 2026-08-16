@@ -30,7 +30,7 @@ class BlockscoutVerifyService
 
     /**
      * Phase 2: Contract type → info mapping
-     * แต่ละ type ใช้ contract name + flattened file ต่างกัน
+     * แต่ละ type ใช้ contract name + flattened file ต่างกัน.
      */
     private function getContractInfo(string $tokenType): array
     {
@@ -87,7 +87,7 @@ class BlockscoutVerifyService
     }
 
     /**
-     * Check ว่ามี V2 contract deploy แล้วหรือยัง
+     * Check ว่ามี V2 contract deploy แล้วหรือยัง.
      */
     private function hasV2Contract(): bool
     {
@@ -122,7 +122,7 @@ class BlockscoutVerifyService
     }
 
     /**
-     * Verify contract ผ่าน Blockscout API v2
+     * Verify contract ผ่าน Blockscout API v2.
      */
     private function verifyViaApiV2(string $contractAddress, FactoryToken $token): array
     {
@@ -188,7 +188,7 @@ class BlockscoutVerifyService
 
     /**
      * Load flattened source code ของ contract.
-     * Phase 2: รองรับหลาย contract types
+     * Phase 2: รองรับหลาย contract types.
      */
     private function loadFlattenedSource(string $filename): string
     {
@@ -205,7 +205,7 @@ class BlockscoutVerifyService
             return file_get_contents($buildPath);
         }
 
-        Log::warning("BlockscoutVerifyService: flattened source not found", [
+        Log::warning('BlockscoutVerifyService: flattened source not found', [
             'file' => $filename,
             'tried' => [$flattenedPath, $buildPath],
         ]);

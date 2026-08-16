@@ -111,7 +111,7 @@ class UserWalletService
         $grouped = [];
         foreach ($connections as $conn) {
             $addr = strtolower($conn->wallet_address);
-            if (!isset($grouped[$addr])) {
+            if (! isset($grouped[$addr])) {
                 $grouped[$addr] = [
                     'wallet_address' => $conn->wallet_address,
                     'wallet_type' => $conn->wallet_type,
@@ -124,7 +124,7 @@ class UserWalletService
                 ];
             }
             $chainId = $conn->chain_id;
-            if (!in_array($chainId, $grouped[$addr]['chains'])) {
+            if (! in_array($chainId, $grouped[$addr]['chains'])) {
                 $grouped[$addr]['chains'][] = $chainId;
             }
             // ใช้เวลา connected_at ล่าสุด

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Masternode Allowlist — operator ที่ผ่านการ verify แล้วได้ allowlist IP บน Cloudflare
+ * Masternode Allowlist — operator ที่ผ่านการ verify แล้วได้ allowlist IP บน Cloudflare.
  *
  * Lifecycle:
  *   1. masternode-ui ส่ง POST /api/v1/node/heartbeat → controller verify → insert/update row + add CF rule
@@ -50,7 +50,7 @@ class MasternodeAllowlist extends Model
     ];
 
     /**
-     * Scope: เฉพาะ entry ที่ยัง active
+     * Scope: เฉพาะ entry ที่ยัง active.
      */
     public function scopeActive($query)
     {
@@ -59,7 +59,7 @@ class MasternodeAllowlist extends Model
     }
 
     /**
-     * Scope: เฉพาะ entry ที่หมดอายุแล้ว (รอ cleanup)
+     * Scope: เฉพาะ entry ที่หมดอายุแล้ว (รอ cleanup).
      */
     public function scopeExpired($query)
     {
@@ -68,7 +68,7 @@ class MasternodeAllowlist extends Model
     }
 
     /**
-     * Helper: เช็คว่า delegation ยังไม่หมดอายุ
+     * Helper: เช็คว่า delegation ยังไม่หมดอายุ.
      */
     public function delegationValid(): bool
     {
@@ -76,7 +76,7 @@ class MasternodeAllowlist extends Model
     }
 
     /**
-     * Mask sensitive fields for admin UI display
+     * Mask sensitive fields for admin UI display.
      */
     public function toAdminArray(): array
     {

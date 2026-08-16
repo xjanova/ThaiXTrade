@@ -8,7 +8,7 @@ use App\Models\TradingPair;
 use Illuminate\Database\Seeder;
 
 /**
- * TPIX TRADE — เพิ่มคู่เทรดยอดนิยม (BTC, ETH, BNB, SOL ฯลฯ) คู่กับ USDT
+ * TPIX TRADE — เพิ่มคู่เทรดยอดนิยม (BTC, ETH, BNB, SOL ฯลฯ) คู่กับ USDT.
  *
  * ระบบ trade เป็น index/proxy → token entries เป็น virtual record
  * ราคาจริงดึงจาก Binance ผ่าน MarketDataService.getTokenPrice()
@@ -26,7 +26,7 @@ class MajorTradingPairsSeeder extends Seeder
 {
     /**
      * ลำดับเรียงตาม market cap (ปรับได้ตามต้องการ)
-     * [symbol, name, decimals, logo_url, sort_order]
+     * [symbol, name, decimals, logo_url, sort_order].
      *
      * Logos จาก trustwallet/assets (CDN public, มีรูปครบทุก major coin)
      */
@@ -139,7 +139,7 @@ class MajorTradingPairsSeeder extends Seeder
     }
 
     /**
-     * Price precision ตามราคาจริง (ลดทศนิยมสำหรับเหรียญราคาสูง, เพิ่มสำหรับเหรียญถูก)
+     * Price precision ตามราคาจริง (ลดทศนิยมสำหรับเหรียญราคาสูง, เพิ่มสำหรับเหรียญถูก).
      */
     private function precisionFor(string $symbol): int
     {

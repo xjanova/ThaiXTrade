@@ -236,7 +236,13 @@ class StripePaymentService
 
         // ใช้ DB::transaction() + pessimistic lock ป้องกัน oversell
         $transaction = DB::transaction(function () use (
-            $saleId, $phaseId, $walletAddress, $amountPaid, $tpixAmount, $pricePerTpix, $session
+            $saleId,
+            $phaseId,
+            $walletAddress,
+            $amountPaid,
+            $tpixAmount,
+            $pricePerTpix,
+            $session
         ) {
             // ล็อค phase เพื่อตรวจ allocation
             $phase = SalePhase::lockForUpdate()->find($phaseId);
@@ -246,6 +252,7 @@ class StripePaymentService
                     'requested' => $tpixAmount,
                     'remaining' => $phase?->remaining_allocation ?? 0,
                 ]);
+
                 // ยังบันทึก transaction ไว้เป็น pending เพื่อ refund ภายหลัง
                 return SaleTransaction::create([
                     'token_sale_id' => $saleId,

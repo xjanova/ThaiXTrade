@@ -6,7 +6,7 @@ use App\Models\Token;
 use Illuminate\Database\Seeder;
 
 /**
- * TPIX TRADE — Update token logos สำหรับ token ที่มีอยู่ใน DB อยู่แล้ว
+ * TPIX TRADE — Update token logos สำหรับ token ที่มีอยู่ใน DB อยู่แล้ว.
  *
  * ทำไมต้องแยก seeder: TpixTradingPairSeeder/MajorTradingPairsSeeder ใช้
  * `firstOrCreate` ซึ่งจะ skip การ update logo ถ้า record มีอยู่แล้ว →
@@ -26,7 +26,7 @@ use Illuminate\Database\Seeder;
 class TokenLogosSeeder extends Seeder
 {
     /**
-     * symbol → logo URL (canonical default)
+     * symbol → logo URL (canonical default).
      *
      * Logos จาก trustwallet/assets — public CDN ที่เสถียร
      * TPIX ใช้ logo ภายใน /tpixlogo.webp (admin upload override ได้)

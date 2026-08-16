@@ -309,6 +309,7 @@ class TpixPriceController extends Controller
     private function getCirculatingSupply(): float
     {
         $snapshot = $this->supplyService->snapshot();
+
         return (float) $snapshot['circulating'];
     }
 

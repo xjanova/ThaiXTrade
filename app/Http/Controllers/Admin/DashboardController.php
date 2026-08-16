@@ -129,7 +129,7 @@ class DashboardController extends Controller
 
     /**
      * คำนวณรายได้จากทุกแหล่ง + daily trend สำหรับกราฟ
-     * แยกตาม token type (TPIX native / wTPIX wrapped) และ chain
+     * แยกตาม token type (TPIX native / wTPIX wrapped) และ chain.
      */
     private function getRevenueAnalytics(): array
     {
@@ -277,6 +277,7 @@ class DashboardController extends Controller
 
         // ─── Token Factory stats ───
         $factoryStats = ['total_created' => 0, 'total_deployed' => 0, 'pending' => 0];
+
         try {
             $hasFactory = DB::select("SHOW TABLES LIKE 'factory_tokens'");
             if (! empty($hasFactory)) {
@@ -306,7 +307,7 @@ class DashboardController extends Controller
     }
 
     /**
-     * ดึง revenue wallets ที่ตั้งค่าไว้ — แยกตาม token/chain
+     * ดึง revenue wallets ที่ตั้งค่าไว้ — แยกตาม token/chain.
      *
      * รองรับ:
      * - TPIX (native) บน TPIX Chain (4289)
@@ -360,7 +361,7 @@ class DashboardController extends Controller
     }
 
     /**
-     * ชื่อ chain จาก chain ID
+     * ชื่อ chain จาก chain ID.
      */
     private function getChainName(int $chainId): string
     {
@@ -376,7 +377,7 @@ class DashboardController extends Controller
     }
 
     /**
-     * ดึง daily revenue สำหรับ bar chart (รวมทุกแหล่ง)
+     * ดึง daily revenue สำหรับ bar chart (รวมทุกแหล่ง).
      */
     private function getDailyRevenueTrend(int $days): array
     {

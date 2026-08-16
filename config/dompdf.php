@@ -1,7 +1,6 @@
 <?php
 
 return [
-
     /*
     |--------------------------------------------------------------------------
     | DomPDF Settings for TPIX TRADE
@@ -47,5 +46,4 @@ return [
         'font_height_ratio' => 1.1,
         'enable_html5_parser' => true,
     ],
-
 ];

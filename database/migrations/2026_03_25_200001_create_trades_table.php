@@ -4,12 +4,12 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * TPIX TRADE - Trades table for recording matched orders.
  * Each trade links a maker (limit) and taker (market/limit) order.
  * Developed by Xman Studio.
  */
-return new class extends Migration
+return new class() extends Migration
 {
     public function up(): void
     {

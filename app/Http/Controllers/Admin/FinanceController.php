@@ -15,8 +15,6 @@ use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Stripe\Balance;
-use Stripe\BalanceTransaction;
-use Stripe\PaymentIntent;
 use Stripe\Stripe;
 
 /**
