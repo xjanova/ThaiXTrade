@@ -610,9 +610,14 @@ onUnmounted(() => {
                 <!-- Left Column: Pair Selector + Chart + Order Tabs -->
                 <div class="col-span-12 xl:col-span-8 lg:col-span-7 space-y-3">
                     <!-- Pair Selector + Ticker Info
-                         ห้ามใส่ overflow-hidden ที่กล่องนี้ — dropdown ของ PairSelector จะโดนตัด
-                         (PageArt คลิปตัวเองอยู่แล้ว จึงไม่กระทบ) -->
-                    <div class="relative flex items-center gap-4 flex-wrap rounded-2xl border border-white/5 bg-dark-900/40 backdrop-blur-md px-4 py-3">
+                         ข้อควรระวัง 2 ข้อของกล่องนี้:
+                         1. ห้ามใส่ overflow-hidden — dropdown ของ PairSelector จะโดนตัด
+                            (PageArt คลิปตัวเองอยู่แล้ว จึงไม่กระทบ)
+                         2. ต้องมี z-30 — `backdrop-blur` สร้าง stacking context ทำให้ z-50
+                            ของ dropdown ถูกขังไว้ในกล่องนี้ ออกไปสู้กับกราฟไม่ได้
+                            และ chart-container ก็มี backdrop-blur (= stacking context) เหมือนกัน
+                            ทั้งคู่ z-index:auto → ตัวที่อยู่หลังใน DOM (กราฟ) ทับ dropdown -->
+                    <div class="relative z-30 flex items-center gap-4 flex-wrap rounded-2xl border border-white/5 bg-dark-900/40 backdrop-blur-md px-4 py-3">
                         <PageArt art="hero-trade" :opacity="22" fade="edges" rounded="rounded-2xl" position="center" loading="eager" />
                         <PairSelector class="relative" :currentPair="currentPair" />
                         <div v-if="ticker && ticker.price" class="relative flex items-center gap-6 text-sm">
