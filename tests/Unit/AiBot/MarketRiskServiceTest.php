@@ -293,6 +293,36 @@ class MarketRiskServiceTest extends TestCase
     }
 
     /**
+     * ⭐ ต้องแยก "ข่าวเงียบ" ออกจาก "ตัวดึงข่าวพัง" ได้.
+     *
+     * ถ้าดูแต่จำนวนข่าวเสี่ยง เลข 0 จะกำกวม — ระบบข่าวตายแล้วไม่มีใครรู้
+     * total_recent บอกว่ามีข้อมูลไหลเข้ามาไหม โดยไม่สนว่าน่ากลัวหรือเปล่า
+     */
+    #[Test]
+    public function it_reports_total_news_volume_so_a_dead_feed_is_distinguishable(): void
+    {
+        // ข่าวปกติ 3 ข่าว ไม่มีข่าวไหนน่ากลัวเลย
+        foreach (range(1, 3) as $i) {
+            $this->news(['panic_score' => 0, 'sentiment' => 0.4, 'matched_terms' => []]);
+        }
+
+        $quiet = $this->risk->assess('BTC/USDT', $this->calmCandles())['news'];
+
+        $this->assertSame(0, $quiet['count'], 'ไม่มีข่าวเสี่ยง');
+        $this->assertSame(3, $quiet['total_recent'], 'แต่ตัวดึงข่าวยังทำงานอยู่');
+        $this->assertNotNull($quiet['last_ingested_at']);
+
+        Cache::flush();
+        MarketNews::query()->delete();
+
+        $dead = $this->risk->assess('BTC/USDT', $this->calmCandles())['news'];
+
+        $this->assertSame(0, $dead['count']);
+        $this->assertSame(0, $dead['total_recent'], 'ไม่มีข้อมูลเลย = ตัวดึงข่าวพัง');
+        $this->assertNull($dead['last_ingested_at']);
+    }
+
+    /**
      * ต้องส่งพาดหัวข่าวกลับมาให้ผู้ใช้เห็นด้วยว่าบอทตัดสินใจจากอะไร.
      */
     #[Test]

@@ -146,6 +146,15 @@ class MarketRiskService
         return Cache::remember($cacheKey, 60, function () use ($base, $minutes) {
             $since = now()->subMinutes($minutes);
 
+            // นับข่าวทั้งหมดในหน้าต่างเวลาด้วย ไม่ใช่เฉพาะข่าวเสี่ยง
+            //
+            // เหตุผล: ถ้าดูแต่จำนวนข่าวเสี่ยง เลข 0 จะแปลได้สองอย่างที่ต่างกันมาก
+            //   - วันนี้ข่าวเงียบ ไม่มีอะไรน่ากลัว  (ปกติ)
+            //   - ตัวดึงข่าวพัง ไม่มีข้อมูลเข้ามาเลย (บอทเสียด่านข่าวไปเงียบๆ)
+            // แยกสองอย่างนี้ไม่ออก = ระบบข่าวตายแล้วไม่มีใครรู้
+            $totalRecent = MarketNews::where('published_at', '>=', $since)->count();
+            $lastIngested = MarketNews::max('created_at');
+
             $news = MarketNews::where('published_at', '>=', $since)
                 ->where('panic_score', '>', 0)
                 ->orderByDesc('panic_score')
@@ -153,7 +162,14 @@ class MarketRiskService
                 ->get();
 
             if ($news->isEmpty()) {
-                return ['score' => 0.0, 'headlines' => [], 'reasons' => [], 'count' => 0];
+                return [
+                    'score' => 0.0,
+                    'headlines' => [],
+                    'reasons' => [],
+                    'count' => 0,
+                    'total_recent' => $totalRecent,
+                    'last_ingested_at' => $lastIngested,
+                ];
             }
 
             $score = 0.0;
@@ -206,6 +222,8 @@ class MarketRiskService
                 'headlines' => $headlines,
                 'reasons' => $reasons,
                 'count' => $news->count(),
+                'total_recent' => $totalRecent,
+                'last_ingested_at' => $lastIngested,
             ];
         });
     }
