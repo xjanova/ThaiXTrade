@@ -222,9 +222,19 @@ const handleDisconnect = () => {
                         </Transition>
                     </div>
 
-                    <!-- Login Link (not authenticated) -->
-                    <Link v-else href="/login" class="text-sm text-dark-300 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
-                        Sign In
+                    <!--
+                        เชื่อมกระเป๋าแล้ว = ใช้เลขกระเป๋าเป็นไอดี ไม่ต้องโชว์ Sign In อีก
+                        ถ้าอยากผูกบัญชีอีเมลเพิ่ม เข้าไปกดในโปรไฟล์ได้ (ลิงก์อยู่ในเมนูกระเป๋า)
+
+                        ⚠️ ห้ามซ่อนปุ่มนี้โดยไม่มีทางเข้าโปรไฟล์ให้ผู้ใช้กระเป๋า
+                           ไม่งั้นคนที่ใช้กระเป๋าอย่างเดียวจะเข้าโปรไฟล์ไม่ได้เลย
+                    -->
+                    <Link
+                        v-else-if="!isWalletConnected"
+                        href="/login"
+                        class="text-sm text-dark-300 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all"
+                    >
+                        {{ t('nav.signIn') }}
                     </Link>
 
                     <!-- Connect Wallet Button -->
@@ -284,6 +294,32 @@ const handleDisconnect = () => {
                                     </svg>
                                     {{ t('nav.viewOnExplorer') }}
                                 </a>
+                                <!-- ทางเข้าโปรไฟล์ของผู้ใช้ที่ใช้กระเป๋าเป็นไอดี
+                                     (เดิมโปรไฟล์เข้าได้ทางเดียวคือเมนูของผู้ที่ล็อกอินอีเมล) -->
+                                <Link
+                                    :href="authUser ? '/profile' : '/wallet'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5 transition-colors"
+                                    @click="showWalletMenu = false"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                    </svg>
+                                    {{ t('nav.profile') }}
+                                </Link>
+
+                                <!-- ยังไม่ได้ผูกบัญชีอีเมล — เสนอทางเลือกไว้ ไม่บังคับ -->
+                                <Link
+                                    v-if="!authUser"
+                                    href="/login"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm text-primary-300 hover:text-primary-200 hover:bg-white/5 transition-colors"
+                                    @click="showWalletMenu = false"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 11-5.656-5.656l1.5-1.5M10.172 13.828a4 4 0 010-5.656l3-3a4 4 0 115.656 5.656l-1.5 1.5"/>
+                                    </svg>
+                                    {{ t('nav.linkAccount') }}
+                                </Link>
+
                                 <button
                                     @click="handleDisconnect"
                                     class="w-full flex items-center gap-2 px-4 py-2 text-sm text-trading-red hover:bg-trading-red/10 transition-colors"

@@ -17,6 +17,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TokenFactoryController;
 use App\Http\Controllers\TokenSaleController;
 use App\Http\Controllers\ValidatorController;
+use App\Http\Controllers\WalletProfileController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -48,6 +49,14 @@ Route::get('auth/{provider}', [SocialController::class, 'redirect'])
 Route::get('auth/{provider}/callback', [SocialController::class, 'callback'])
     ->where('provider', 'google|facebook|line')
     ->name('social.callback');
+
+/*
+ * โปรไฟล์ของผู้ใช้ที่ใช้เลขกระเป๋าเป็นไอดี — ไม่ต้องมี session
+ *
+ * จำเป็นต้องมี เพราะเราซ่อนปุ่ม Sign In เมื่อผู้ใช้เชื่อมกระเป๋าแล้ว
+ * ถ้าไม่มีหน้านี้ ผู้ใช้กระเป๋าจะไม่มีทางเข้าถึงโปรไฟล์ของตัวเองเลย
+ */
+Route::get('wallet', [WalletProfileController::class, 'index'])->name('wallet.profile');
 
 // User Profile (authenticated)
 Route::middleware('auth')->group(function () {

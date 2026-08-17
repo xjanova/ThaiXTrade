@@ -18,7 +18,10 @@
         "connectWallet": "Connect Wallet",
         "disconnect": "Disconnect",
         "viewOnExplorer": "View on Explorer",
-        "language": "Language"
+        "language": "Language",
+        "signIn": "Sign In",
+        "profile": "Profile",
+        "linkAccount": "Link an email account"
     },
     "home": {
         "hero": "Decentralized Exchange Platform",
@@ -738,5 +741,22 @@
         "browserBotStopped": "The bot stopped because you left this page",
         "upgradeForCloud": "Upgrade to keep it running with your browser closed",
         "lastTickAt": "Last cycle"
+    },
+    "walletProfile": {
+        "title": "Wallet profile",
+        "subtitle": "Your wallet address is your ID — no signup, no password to remember",
+        "connectFirst": "Connect a wallet to see your profile",
+        "yourId": "Your ID (wallet address)",
+        "copy": "Copy",
+        "copied": "Copied",
+        "chainId": "Chain",
+        "idExplain": "Everything here — your bots, credits and trade history — is tied to this address. Whoever holds this wallet owns this account, so never let anyone else reach your keys.",
+        "linkTitle": "Link an email account (optional)",
+        "linkBody": "Linking an email makes recovery easier and unlocks features that need a verified identity. Without it, everything still works through your wallet.",
+        "linkedTo": "Linked to",
+        "openAccount": "Manage account",
+        "botTitle": "AI TRADE status",
+        "currentPlan": "Current plan",
+        "disconnectHint": "Disconnects the wallet from this browser. Your data stays intact."
     }
 }
