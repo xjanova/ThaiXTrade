@@ -8,7 +8,11 @@ use App\Models\TradingPair;
 use Illuminate\Database\Seeder;
 
 /**
- * TPIX TRADE — เพิ่มคู่เทรดยอดนิยม (BTC, ETH, BNB, SOL ฯลฯ) คู่กับ USDT.
+ * TPIX TRADE — เพิ่มคู่เทรดยอดนิยม (BTC, ETH, BNB, SOL ฯลฯ) คู่กับ USDT บน TPIX Chain.
+ *
+ * ⚠️ ถูกแทนที่ด้วย BscMajorPairsSeeder แล้ว (2026-08-17) — deploy ไม่เรียก seeder นี้อีก
+ *    เพราะการเทรดจริง execute บน BSC คู่เทรดจึงต้องอยู่บนเชน BSC พร้อม address จริง
+ *    เก็บไฟล์ไว้สำหรับตอน DEX บน TPIX Chain เปิด แล้วค่อยเปิดคู่เทรดฝั่ง TPIX คืน
  *
  * ระบบ trade เป็น index/proxy → token entries เป็น virtual record
  * ราคาจริงดึงจาก Binance ผ่าน MarketDataService.getTokenPrice()

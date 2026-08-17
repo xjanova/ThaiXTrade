@@ -98,10 +98,12 @@ if [[ $SKIP_MIGRATE -eq 0 ]]; then
   log_success "Migrations done"
 
   # Idempotent seeders — safe เพราะใช้ firstOrCreate
-  # MajorTradingPairsSeeder = คู่เทรดหลัก (BTC, ETH, BNB, SOL, ฯลฯ)
+  # BscMajorPairsSeeder = คู่เทรดหลักบน BSC (เชนที่ execute จริง) + ปิด placeholder เก่าบน TPIX
   log_info "Seeding major trading pairs (idempotent)..."
   if [[ $DRY_RUN -eq 0 ]]; then
-    php artisan db:seed --class=MajorTradingPairsSeeder --force
+    php artisan db:seed --class=BscMajorPairsSeeder --force
+    # AiBotPlanSeeder = แพลนเช่าบอท AI TRADE (updateOrCreate ตาม code)
+    php artisan db:seed --class=AiBotPlanSeeder --force
   fi
   log_success "Trading pairs synced"
 else
