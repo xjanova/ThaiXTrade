@@ -67,6 +67,11 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           command_timeout: 5m
+          # ⚠️ ค่าเริ่มต้นของ action นี้คือ false = ผลลัพธ์ทุกอย่างที่เซิร์ฟเวอร์พิมพ์
+          #    ไม่ถูกส่งกลับมาที่ Actions เลย เห็นแต่ตัวสคริปต์ที่ส่งไป
+          #    ที่ผ่านมา migration ล้มเหลวจึงเงียบสนิท: deploy เขียว แต่ตารางไม่ขึ้น
+          #    และไม่มีใครรู้จนกว่าจะมีคนเปิดหน้าเว็บแล้วเจอ 500
+          capture_stdout: true
           script: |
             set -e
 
