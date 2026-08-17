@@ -87,9 +87,12 @@ async function fetchTickers({ silent = false } = {}) {
             axios.get('/api/v1/market/pairs'),
         ]);
 
-        const logoMap = {};
+        // เก็บทั้งโลโก้และโหมดการทำงานจากทะเบียนคู่เทรดของแอดมิน
+        const meta = {};
         if (pairRes.data?.success) {
-            pairRes.data.data.forEach(p => { logoMap[p.base_asset] = p.base_logo; });
+            pairRes.data.data.forEach(p => {
+                meta[p.base_asset] = { logo: p.base_logo, mode: p.execution_mode };
+            });
         }
 
         if (tickerRes.data?.success) {
@@ -97,7 +100,9 @@ async function fetchTickers({ silent = false } = {}) {
                 symbol: `${t.baseAsset}/${t.quoteAsset}`,
                 pair: `${t.baseAsset}-${t.quoteAsset}`,
                 base: t.baseAsset,
-                logo: logoMap[t.baseAsset] || null,
+                logo: meta[t.baseAsset]?.logo || null,
+                // index = ดูราคา/กราฟได้ แต่ยังส่งคำสั่งไม่ได้
+                isIndex: meta[t.baseAsset]?.mode === 'index',
                 price: parseFloat(t.price) || 0,
                 change: parseFloat(t.priceChangePercent) || 0,
                 volume: parseFloat(t.quoteVolume || 0),
@@ -107,7 +112,7 @@ async function fetchTickers({ silent = false } = {}) {
         if (!tickers.value.find(t => t.base === 'TPIX')) {
             tickers.value.unshift({
                 symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX',
-                logo: logoMap.TPIX || '/tpixlogo.webp',
+                logo: meta.TPIX?.logo || '/tpixlogo.webp',
                 price: 0.10, change: 0, volume: 0, isTpix: true,
             });
         }
@@ -287,7 +292,7 @@ onUnmounted(() => {
                             <span class="flex items-center gap-1">
                                 <span class="text-white text-xs font-medium truncate">{{ row.base }}</span>
                                 <span class="text-dark-500 text-[10px]">/{{ row.symbol.split('/')[1] }}</span>
-                                <span v-if="row.isTpix" class="text-[8px] px-1 py-px rounded bg-amber-500/15 text-amber-400 font-medium">
+                                <span v-if="row.isTpix || row.isIndex" class="text-[8px] px-1 py-px rounded bg-amber-500/15 text-amber-400 font-medium">
                                     {{ t('trade.market.soon') }}
                                 </span>
                             </span>

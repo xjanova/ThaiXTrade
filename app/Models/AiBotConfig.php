@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * TPIX TRADE — AI Trade bot configuration.
@@ -25,7 +26,10 @@ class AiBotConfig extends Model
         'params',
         'risk',
         'status',
+        'mode',
         'last_run_at',
+        'last_signal_at',
+        'last_reason',
         'stats',
     ];
 
@@ -36,12 +40,29 @@ class AiBotConfig extends Model
             'risk' => 'array',
             'stats' => 'array',
             'last_run_at' => 'datetime',
+            'last_signal_at' => 'datetime',
         ];
     }
 
     public function subscription(): BelongsTo
     {
         return $this->belongsTo(AiBotSubscription::class, 'ai_bot_subscription_id');
+    }
+
+    public function trades(): HasMany
+    {
+        return $this->hasMany(AiBotTrade::class, 'ai_bot_config_id');
+    }
+
+    public function positions(): HasMany
+    {
+        return $this->hasMany(AiBotPosition::class, 'ai_bot_config_id');
+    }
+
+    /** บอทที่ engine ต้องรันในรอบนี้ */
+    public function scopeRunnable(Builder $query): Builder
+    {
+        return $query->where('status', 'running');
     }
 
     public function scopeForWallet(Builder $query, string $wallet): Builder

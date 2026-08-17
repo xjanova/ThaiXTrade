@@ -12,6 +12,8 @@ import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import PageArt from '@/Components/PageArt.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
+import AiDemoPanel from '@/Components/Trading/AiDemoPanel.vue';
+import AiRiskPanel from '@/Components/Trading/AiRiskPanel.vue';
 import { useAiBot } from '@/Composables/useAiBot';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTranslation } from '@/Composables/useTranslation';
@@ -26,6 +28,10 @@ const selectedDays = ref(7);
 const pairs = ref([]);
 const editingId = ref(null);
 const showBuilder = ref(false);
+
+// ด่านความเสี่ยงของคู่ที่กำลังดูอยู่ (โหลดจาก /ai-bot/risk)
+const risk = ref(null);
+const riskPair = ref('BTC/USDT');
 
 /** ฟอร์มสร้าง/แก้บอท — params/risk เติมจาก schema ของกลยุทธ์ที่เลือก */
 const form = ref({
@@ -234,6 +240,43 @@ async function setState(item, action) {
     if (!result.ok) flash('error', result.error.message);
 }
 
+/** สลับบอทระหว่างโหมดทดลองกับโหมดจริง */
+async function toggleMode(item) {
+    playClickSound();
+
+    const next = item.mode === 'demo' ? 'live' : 'demo';
+    const result = await bot.setBotMode(item.id, next);
+
+    if (!result.ok) {
+        flash('error', result.error.message);
+        return;
+    }
+
+    flash('success', t('aiTrade.modeSwitched'));
+    // ไม้ของโหมดใหม่คนละชุดกับโหมดเดิม — ต้องโหลดพอร์ตทดลองใหม่
+    bot.loadDemo();
+}
+
+async function resetDemo() {
+    playClickSound();
+
+    const result = await bot.resetDemo();
+
+    if (!result.ok) {
+        flash('error', result.error.message);
+        return;
+    }
+
+    flash('success', t('aiTrade.demoResetOk'));
+}
+
+/** ความเสี่ยง + ข่าวของคู่ที่กำลังดู */
+async function loadRisk(pair) {
+    if (!pair) return;
+    riskPair.value = pair;
+    risk.value = await bot.loadRisk(pair);
+}
+
 async function removeBot(item) {
     if (!window.confirm(t('aiTrade.deleteConfirm', { name: item.name }))) return;
 
@@ -246,17 +289,27 @@ onMounted(() => {
     bot.loadCatalog().then(syncRiskDefaults);
     loadPairs();
 
-    if (walletStore.isConnected) bot.loadStatus();
+    if (walletStore.isConnected) {
+        bot.loadStatus();
+        bot.loadDemo();
+    }
 
     // มาจากการ์ดในหน้าเทรด → ตั้งคู่เทรดให้ตรงกับที่ผู้ใช้ดูอยู่
     const pairParam = new URLSearchParams(window.location.search).get('pair');
     if (pairParam && /^[A-Za-z0-9]{2,15}\/[A-Za-z0-9]{2,15}$/.test(pairParam)) {
         form.value.pair = pairParam.toUpperCase();
     }
+
+    loadRisk(form.value.pair || 'BTC/USDT');
 });
 
+// เปลี่ยนคู่ในฟอร์ม → ดูความเสี่ยงของคู่นั้นทันที
+watch(() => form.value.pair, (pair) => loadRisk(pair));
+
 watch(() => walletStore.address, (address) => {
-    if (address) bot.loadStatus();
+    if (!address) return;
+    bot.loadStatus();
+    bot.loadDemo();
 });
 </script>
 
@@ -454,7 +507,25 @@ watch(() => walletStore.address, (address) => {
                 </div>
             </section>
 
-            <!-- บอทของฉัน -->
+            <!-- โหมดทดลอง + ด่านความเสี่ยง — ต้องเชื่อมกระเป๋าก่อนถึงจะมีพอร์ตทดลอง -->
+            <template v-if="walletStore.isConnected">
+                <section class="grid gap-4 lg:grid-cols-[1.6fr_1fr] items-start">
+                    <AiDemoPanel
+                        :demo="bot.demo.value"
+                        :loading="bot.isLoadingDemo.value"
+                        :resets-left="bot.demoResetsLeft.value"
+                        :working="bot.isWorking.value"
+                        @reset="resetDemo"
+                    />
+                    <AiRiskPanel :risk="risk" :pair="riskPair" />
+                </section>
+            </template>
+
+            <!-- ด่านความเสี่ยงยังดูได้แม้ยังไม่เชื่อมกระเป๋า (เป็นข้อมูลตลาด) -->
+            <section v-else>
+                <AiRiskPanel :risk="risk" :pair="riskPair" />
+            </section>
+
             <!-- บอทของฉัน + ฟอร์มสร้างบอท — ต้องเชื่อมกระเป๋าก่อน -->
             <template v-if="walletStore.isConnected">
                 <section>
@@ -487,7 +558,31 @@ watch(() => walletStore.address, (address) => {
                                     {{ item.pair }} · {{ bot.strategyLabel(item) }} · {{ item.timeframe }} ·
                                     SL {{ item.risk.stop_loss_pct }}% / TP {{ item.risk.take_profit_pct }}%
                                 </p>
+                                <!-- บอทกำลังคิดอะไรอยู่ — ผู้ใช้ต้องเห็นเหตุผล ไม่ใช่แค่ไฟกะพริบ -->
+                                <p v-if="item.last_reason" class="text-[11px] text-dark-500 truncate mt-0.5">
+                                    <span
+                                        v-if="item.last_reason.startsWith('[รอยืนยัน]')"
+                                        class="text-primary-300 font-medium"
+                                    >{{ t('aiTrade.awaitingConfirm') }} · </span>{{ item.last_reason.replace('[รอยืนยัน] ', '') }}
+                                </p>
+                                <p v-else class="text-[11px] text-dark-600 truncate mt-0.5">
+                                    {{ t('aiTrade.noDecisionYet') }}
+                                </p>
                             </div>
+
+                            <!-- โหมด: กดสลับได้ตรงนี้เลย -->
+                            <button
+                                type="button"
+                                :class="['px-2 py-0.5 rounded-full text-[10px] font-medium ring-1 transition-colors',
+                                    item.mode === 'live'
+                                        ? 'bg-primary-500/15 text-primary-300 ring-primary-500/25 hover:bg-primary-500/25'
+                                        : 'bg-white/5 text-dark-300 ring-white/10 hover:text-white']"
+                                :title="item.mode === 'live' ? t('aiTrade.switchToDemo') : t('aiTrade.switchToLive')"
+                                :disabled="bot.isWorking.value"
+                                @click="toggleMode(item)"
+                            >
+                                {{ item.mode === 'live' ? t('aiTrade.modeLiveShort') : t('aiTrade.modeDemoShort') }}
+                            </button>
 
                             <span :class="['px-2 py-0.5 rounded-full text-[10px] font-medium ring-1', riskTone[item.risk_level]]">
                                 {{ t(riskLabel[item.risk_level]) }}

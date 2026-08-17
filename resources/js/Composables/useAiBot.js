@@ -22,6 +22,10 @@ const error = ref(null);
 /** true เมื่อ backend ตอบ WALLET_NOT_VERIFIED — ต้องเซ็นข้อความยืนยันกระเป๋าก่อน */
 const needsVerification = ref(false);
 
+// โหมดทดลอง — พอร์ตกระดาษที่ใช้ราคาจริง { account, positions, trades, summary }
+const demo = ref(null);
+const isLoadingDemo = ref(false);
+
 let catalogPromise = null;
 
 function readError(err, fallback = 'ทำรายการไม่สำเร็จ') {
@@ -154,6 +158,55 @@ export function useAiBot() {
         axios.delete(`/api/v1/ai-bot/bots/${id}`, { data: { wallet_address: address } })
     );
 
+    /** สลับบอทระหว่างโหมดทดลองกับโหมดจริง */
+    const setBotMode = (id, mode) => mutate(address =>
+        axios.post(`/api/v1/ai-bot/bots/${id}/mode`, { wallet_address: address, mode })
+    );
+
+    // ── โหมดทดลอง ────────────────────────────────────────────────────────────
+
+    /** โหลดพอร์ตทดลอง — เงิน ของที่ถือ ประวัติไม้ และสรุปผล */
+    async function loadDemo() {
+        if (!wallet.value) return null;
+
+        isLoadingDemo.value = true;
+
+        try {
+            const { data } = await axios.get('/api/v1/ai-bot/demo', {
+                params: { wallet_address: wallet.value },
+            });
+            demo.value = data?.data ?? null;
+            return demo.value;
+        } catch (err) {
+            // 403 = ยังไม่ได้เซ็นยืนยันกระเป๋า ไม่ใช่ error ที่ต้องเด้งเตือน
+            if (err?.response?.status === 403) needsVerification.value = true;
+            return null;
+        } finally {
+            isLoadingDemo.value = false;
+        }
+    }
+
+    /** ล้างพอร์ตทดลองกลับไปตั้งต้น (จำกัดจำนวนครั้งต่อวันที่ฝั่งเซิร์ฟเวอร์) */
+    async function resetDemo() {
+        const result = await mutate(address =>
+            axios.post('/api/v1/ai-bot/demo/reset', { wallet_address: address }),
+        { refresh: false });
+
+        if (result.ok) demo.value = result.data;
+
+        return result;
+    }
+
+    /** ความเสี่ยงล่าสุดของคู่เทรด + พาดหัวข่าวที่ทำให้บอทตัดสินใจแบบนั้น */
+    async function loadRisk(pair) {
+        try {
+            const { data } = await axios.get('/api/v1/ai-bot/risk', { params: { pair } });
+            return data?.data ?? null;
+        } catch {
+            return null;
+        }
+    }
+
     // ── ค่าที่หน้าจอใช้บ่อย ──────────────────────────────────────────────────
     const credits = computed(() => status.value?.credits ?? 0);
     const isActive = computed(() => !!status.value?.is_active);
@@ -164,6 +217,28 @@ export function useAiBot() {
     const strategies = computed(() => catalog.value?.strategies ?? []);
     const packs = computed(() => catalog.value?.packs ?? []);
     const rentalDays = computed(() => catalog.value?.rental_days ?? [1, 7, 30]);
+
+    // มูลค่าพอร์ตทดลอง = เงินสด + ต้นทุนของที่ถืออยู่
+    // ใช้ต้นทุน ไม่ใช่ราคาตลาด เพราะราคาตลาดเปลี่ยนทุกวินาทีและยังไม่ใช่เงินจริง
+    const demoEquity = computed(() => {
+        if (!demo.value) return 0;
+        const held = (demo.value.positions ?? []).reduce((sum, p) => sum + Number(p.cost_basis || 0), 0);
+        return Number(demo.value.account?.balance || 0) + held;
+    });
+
+    /** กำไรขาดทุนสะสมของพอร์ตทดลองเทียบทุนตั้งต้น (เฉพาะไม้ที่ปิดแล้ว) */
+    const demoPnl = computed(() => Number(demo.value?.summary?.realized_pnl ?? 0));
+
+    const demoPnlPct = computed(() => {
+        const start = Number(demo.value?.account?.starting_balance ?? 0);
+        return start > 0 ? (demoPnl.value / start) * 100 : 0;
+    });
+
+    const demoResetsLeft = computed(() => {
+        const account = demo.value?.account;
+        if (!account) return 0;
+        return Math.max(0, (account.resets_per_day ?? 0) - (account.resets_used_today ?? 0));
+    });
 
     const quotaText = computed(() => {
         const q = status.value?.quota;
@@ -213,12 +288,15 @@ export function useAiBot() {
         catalog, status, error, needsVerification,
         isLoadingCatalog, isLoadingStatus, isWorking,
         wallet, isConnected,
+        demo, isLoadingDemo,
         // derived
         credits, isActive, subscription, bots, runningBots,
         plans, strategies, packs, rentalDays, quotaText,
+        demoEquity, demoPnl, demoPnlPct, demoResetsLeft,
         // actions
         loadCatalog, loadStatus, subscribe, cancel, claimWelcome, requestTopup,
-        createBot, updateBot, setBotState, deleteBot,
+        createBot, updateBot, setBotState, setBotMode, deleteBot,
+        loadDemo, resetDemo, loadRisk,
         costOf, canAfford, strategyByCode,
         // ป้ายชื่อตามภาษา
         planLabel, planDescription, planFeatures, strategyLabel, strategyDescription,

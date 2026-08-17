@@ -6,6 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\AiBotConfig;
 use App\Models\AiBotCredit;
 use App\Models\AiBotPlan;
+use App\Models\AiBotPosition;
+use App\Models\AiBotTrade;
+use App\Services\AiBot\MarketRiskService;
+use App\Services\AiBot\PaperBroker;
 use App\Services\AiBotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,7 +35,10 @@ class AiBotController extends Controller
         'INVALID_PACK' => 'ไม่พบแพ็กเกจเครดิตที่เลือก',
     ];
 
-    public function __construct(private readonly AiBotService $bots) {}
+    public function __construct(
+        private readonly AiBotService $bots,
+        private readonly PaperBroker $broker,
+    ) {}
 
     // =========================================================================
     // Public
@@ -311,6 +318,148 @@ class AiBotController extends Controller
     }
 
     // =========================================================================
+    // โหมดทดลอง (เครดิตเดโม)
+    // =========================================================================
+
+    /**
+     * ภาพรวมพอร์ตทดลอง — เงิน ของที่ถือ ไม้ที่ผ่านมา และสรุปผล.
+     *
+     * ตัวเลขสรุปคำนวณจาก "ไม้ที่ปิดแล้ว" เท่านั้น ไม่รวมกำไรลอยของไม้ที่ยังเปิดอยู่
+     * เพราะกำไรลอยเปลี่ยนทุกวินาทีและยังไม่ใช่เงินจริง — โชว์รวมกันจะดูดีเกินจริง
+     */
+    public function demo(Request $request): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+        $account = $this->broker->account($wallet);
+
+        $botIds = AiBotConfig::forWallet($wallet)->pluck('id');
+
+        $positions = AiBotPosition::with('bot:id,name,strategy')
+            ->whereIn('ai_bot_config_id', $botIds)
+            ->where('mode', 'demo')
+            ->get()
+            ->map(fn (AiBotPosition $p) => [
+                'id' => $p->id,
+                'bot_id' => $p->ai_bot_config_id,
+                'bot_name' => $p->bot?->name,
+                'pair' => $p->pair,
+                'quantity' => (float) $p->quantity,
+                'entry_price' => (float) $p->entry_price,
+                'cost_basis' => (float) $p->cost_basis,
+                'entry_count' => $p->entry_count,
+                'opened_at' => $p->opened_at?->toIso8601String(),
+            ])
+            ->all();
+
+        $trades = AiBotTrade::whereIn('ai_bot_config_id', $botIds)
+            ->where('mode', 'demo')
+            ->latest('id')
+            ->limit(60)
+            ->get()
+            ->map(fn (AiBotTrade $t) => [
+                'id' => $t->id,
+                'bot_id' => $t->ai_bot_config_id,
+                'pair' => $t->pair,
+                'side' => $t->side,
+                'price' => (float) $t->price,
+                'quantity' => (float) $t->quantity,
+                'gross_value' => (float) $t->gross_value,
+                'fee' => (float) $t->fee,
+                'slippage_cost' => (float) $t->slippage_cost,
+                'realized_pnl' => $t->realized_pnl === null ? null : (float) $t->realized_pnl,
+                'strategy' => $t->strategy,
+                'reason' => $t->reason,
+                'risk_level' => $t->risk_level,
+                'created_at' => $t->created_at->toIso8601String(),
+            ])
+            ->all();
+
+        $closed = AiBotTrade::whereIn('ai_bot_config_id', $botIds)
+            ->where('mode', 'demo')
+            ->whereNotNull('realized_pnl')
+            ->get();
+
+        $wins = $closed->where('realized_pnl', '>', 0)->count();
+        $closedCount = $closed->count();
+
+        return response()->json(['success' => true, 'data' => [
+            'account' => [
+                'balance' => (float) $account->balance,
+                'starting_balance' => (float) $account->starting_balance,
+                'resets_used_today' => $account->last_reset_at?->isToday() ? $account->reset_count : 0,
+                'resets_per_day' => (int) config('aibot_risk.demo.max_resets_per_day', 3),
+                'fee_rate' => (float) config('aibot_risk.demo.fee_rate', 0.1),
+                'slippage_bps' => (int) config('aibot_risk.demo.slippage_bps', 8),
+            ],
+            'positions' => $positions,
+            'trades' => $trades,
+            'summary' => [
+                'realized_pnl' => round((float) $closed->sum('realized_pnl'), 2),
+                'total_fees' => round((float) AiBotTrade::whereIn('ai_bot_config_id', $botIds)->where('mode', 'demo')->sum('fee'), 2),
+                'trade_count' => AiBotTrade::whereIn('ai_bot_config_id', $botIds)->where('mode', 'demo')->count(),
+                'closed_count' => $closedCount,
+                'wins' => $wins,
+                'losses' => $closedCount - $wins,
+                'win_rate' => $closedCount > 0 ? round(($wins / $closedCount) * 100, 1) : null,
+            ],
+        ]]);
+    }
+
+    /** ล้างพอร์ตทดลองกลับไปตั้งต้น */
+    public function resetDemo(Request $request): JsonResponse
+    {
+        $result = $this->broker->reset($this->wallet($request));
+
+        if (! ($result['ok'] ?? false)) {
+            return $this->failure('RESET_LIMIT', $result['reason'] ?? 'ล้างพอร์ตไม่สำเร็จ');
+        }
+
+        return $this->demo($request);
+    }
+
+    /**
+     * สลับโหมดของบอทระหว่างทดลองกับจริง.
+     *
+     * แยกจาก update() เพราะเป็นการตัดสินใจเรื่องเงินจริง ควรเป็นการกระทำที่ชัดเจน
+     * ไม่ใช่ผลข้างเคียงของการกดบันทึกการตั้งค่า
+     */
+    public function setMode(Request $request, int $id): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+        $bot = $this->findBot($wallet, $id);
+
+        if (! $bot) {
+            return $this->failure('BOT_NOT_FOUND', 'ไม่พบบอทตัวนี้', 404);
+        }
+
+        $validated = $request->validate(['mode' => ['required', 'string', 'in:demo,live']]);
+
+        if ($validated['mode'] === 'live' && ! $this->bots->activeSubscription($wallet)) {
+            return $this->failure('NO_SUBSCRIPTION', 'ต้องเช่าบอทก่อนถึงจะใช้โหมดจริงได้');
+        }
+
+        // ของที่ถืออยู่ในโหมดเดิมต้องไม่ตามข้ามโหมดไป — คนละบัญชีคนละความหมาย
+        $bot->update(['mode' => $validated['mode']]);
+
+        return response()->json(['success' => true, 'data' => $this->presentBot($bot->fresh())]);
+    }
+
+    /**
+     * ความเสี่ยงล่าสุดของคู่เทรด พร้อมพาดหัวข่าวที่ทำให้บอทตัดสินใจแบบนั้น.
+     *
+     * เปิดให้เรียกได้โดยไม่ต้องมี wallet — เป็นข้อมูลตลาด ไม่ใช่ข้อมูลส่วนตัว
+     * และเป็นตัวที่ทำให้ผู้ใช้เชื่อใจบอทได้ว่ามันไม่ได้สุ่มตัดสินใจ
+     */
+    public function risk(Request $request, MarketRiskService $risk): JsonResponse
+    {
+        $validated = $request->validate([
+            'pair' => ['required', 'string', 'regex:/^[A-Za-z0-9]{2,15}\/[A-Za-z0-9]{2,15}$/'],
+        ]);
+
+        return response()->json(['success' => true, 'data' => $risk->assess(strtoupper($validated['pair']))]);
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 
@@ -359,9 +508,33 @@ class AiBotController extends Controller
             'params' => $bot->params ?? [],
             'risk' => $bot->risk ?? [],
             'status' => $bot->status,
+            'mode' => $bot->mode,
             'stats' => $bot->stats ?? [],
             'last_run_at' => $bot->last_run_at?->toIso8601String(),
+            'last_signal_at' => $bot->last_signal_at?->toIso8601String(),
+            'last_reason' => $bot->last_reason,
+            'position' => $this->openPosition($bot),
             'created_at' => $bot->created_at->toIso8601String(),
+        ];
+    }
+
+    /** ของที่บอทถืออยู่ในโหมดปัจจุบัน (null = ไม่ได้ถืออะไร) */
+    private function openPosition(AiBotConfig $bot): ?array
+    {
+        $position = AiBotPosition::where('ai_bot_config_id', $bot->id)
+            ->where('mode', $bot->mode)
+            ->first();
+
+        if (! $position) {
+            return null;
+        }
+
+        return [
+            'quantity' => (float) $position->quantity,
+            'entry_price' => (float) $position->entry_price,
+            'cost_basis' => (float) $position->cost_basis,
+            'entry_count' => $position->entry_count,
+            'opened_at' => $position->opened_at?->toIso8601String(),
         ];
     }
 

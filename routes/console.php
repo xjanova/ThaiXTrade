@@ -66,3 +66,27 @@ Schedule::command('tpix:treasury-payouts')
     ->withoutOverlapping(5)
     ->onOneServer()
     ->name('treasury:payouts');
+
+/*
+ * AI TRADE — ดึงข่าวตลาดทุก 15 นาที
+ *
+ * ความถี่นี้ตั้งใจ: ข่าวแพนิค (แฮก ล้มละลาย ถอนเงินไม่ได้) ราคาไหลภายในไม่กี่สิบนาที
+ * ดึงถี่กว่านี้เปลืองโดยไม่ได้อะไรเพิ่ม ห่างกว่านี้บอทจะรู้ตัวช้าเกินไป
+ */
+Schedule::command('aibot:sync-news')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('aibot:sync-news');
+
+/*
+ * AI TRADE — ให้บอททุกตัวคิดหนึ่งรอบทุก 5 นาที
+ *
+ * ถี่พอสำหรับ timeframe ต่ำสุดที่เปิดให้ใช้ (1m ยังพอไหว เพราะกลยุทธ์รอบสั้น
+ * ตัดสินจากหลายแท่ง ไม่ใช่แท่งเดียว) และไม่ถี่จนยิง Binance เกินโควตา
+ */
+Schedule::command('aibot:tick')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('aibot:tick');

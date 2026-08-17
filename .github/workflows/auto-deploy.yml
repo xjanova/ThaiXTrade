@@ -146,6 +146,7 @@ jobs:
             # คู่เทรดหลักบน BSC (เชนที่ execute จริงผ่าน PancakeSwap) + ปิด placeholder เก่าบน TPIX
             php artisan db:seed --class=Database\\Seeders\\BscMajorPairsSeeder --force 2>&1 || echo "⚠️ BscMajorPairs seeder warning"
             # Token logos — update existing tokens ที่ logo=null (TPIX, USDT จาก TpixPair)
+            php artisan db:seed --class=Database\Seeders\PopularMarketPairsSeeder --force 2>&1 || echo "PopularMarketPairs seeder warning"
             php artisan db:seed --class=Database\\Seeders\\TokenLogosSeeder --force 2>&1 || echo "⚠️ TokenLogos seeder warning"
             # BSC swap tokens + PancakeSwap V2 config — ให้ /swap/quote รู้จักทุก token ในหน้า Swap
             php artisan db:seed --class=Database\\Seeders\\BscSwapTokensSeeder --force 2>&1 || echo "⚠️ BscSwapTokens seeder warning"

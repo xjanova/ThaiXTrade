@@ -308,6 +308,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     // AI Trade (Cloud Bot) — แคตตาล็อกแพลน/กลยุทธ์/แพ็กเครดิต
     // public เพื่อให้เว็บ + แอพแสดงราคาได้ก่อนเชื่อม wallet (ไม่มีข้อมูลส่วนตัว)
     Route::get('/ai-bot/catalog', [AiBotController::class, 'catalog']);
+    // ความเสี่ยงของคู่เทรด + พาดหัวข่าวที่ทำให้บอทตัดสินใจ — เป็นข้อมูลตลาด ไม่ใช่ข้อมูลส่วนตัว
+    Route::get('/ai-bot/risk', [AiBotController::class, 'risk']);
 
     // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)
     Route::post('/chatbot', [ChatbotController::class, 'chat'])
@@ -423,7 +425,12 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::post('/bots', [AiBotController::class, 'store']);
         Route::put('/bots/{id}', [AiBotController::class, 'update'])->where('id', '[0-9]+');
         Route::post('/bots/{id}/state', [AiBotController::class, 'setState'])->where('id', '[0-9]+');
+        Route::post('/bots/{id}/mode', [AiBotController::class, 'setMode'])->where('id', '[0-9]+');
         Route::delete('/bots/{id}', [AiBotController::class, 'destroy'])->where('id', '[0-9]+');
+
+        // โหมดทดลอง — พอร์ตกระดาษที่ใช้ราคาจริง ให้ลองก่อนตัดสินใจเช่า
+        Route::get('/demo', [AiBotController::class, 'demo']);
+        Route::post('/demo/reset', [AiBotController::class, 'resetDemo']);
     });
 
     // AI Assistant (stricter rate limit: 10 requests per minute)

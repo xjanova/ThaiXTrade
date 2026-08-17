@@ -127,6 +127,8 @@ class MarketController extends Controller
                     ? (float) $p->taker_fee_override
                     : null,
                 'chain_id' => $p->chain_id,
+                // onchain = ส่งคำสั่งได้จริง · index = ดูราคา/กราฟอย่างเดียว
+                'execution_mode' => $p->execution_mode,
                 'is_active' => true,
             ])
             ->all();

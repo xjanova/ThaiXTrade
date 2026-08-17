@@ -113,6 +113,7 @@ class BscMajorPairsSeeder extends Seeder
                 [
                     'symbol' => "{$symbol}-{$quoteSymbol}",
                     'is_active' => true,
+                    'execution_mode' => 'onchain',
                     'price_precision' => $precisions[$symbol] ?? 2,
                     'amount_precision' => 6,
                     'min_trade_amount' => 0.0001,

@@ -102,6 +102,8 @@ if [[ $SKIP_MIGRATE -eq 0 ]]; then
   log_info "Seeding major trading pairs (idempotent)..."
   if [[ $DRY_RUN -eq 0 ]]; then
     php artisan db:seed --class=BscMajorPairsSeeder --force
+    # PopularMarketPairsSeeder = 50 คู่เทรดยอดนิยมเพิ่มเติม (ราคาอ้างอิงจาก Binance)
+    php artisan db:seed --class=PopularMarketPairsSeeder --force
     # AiBotPlanSeeder = แพลนเช่าบอท AI TRADE (updateOrCreate ตาม code)
     php artisan db:seed --class=AiBotPlanSeeder --force
   fi

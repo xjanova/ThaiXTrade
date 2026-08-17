@@ -55,6 +55,7 @@ class TradingPair extends Model
         'chain_id',
         'symbol',
         'is_active',
+        'execution_mode',
         'min_trade_amount',
         'max_trade_amount',
         'price_precision',
