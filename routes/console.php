@@ -90,3 +90,18 @@ Schedule::command('aibot:tick')
     ->withoutOverlapping(10)
     ->onOneServer()
     ->name('aibot:tick');
+
+/*
+ * คืนค่าบริการของใบอนุญาตวางไม้ที่หมดอายุ
+ *
+ * ⚠️ ตั๋วค้างสถานะ issued = เงินที่หักจากคลังผู้ใช้ไปแล้วแต่ไม่มีใครได้อะไร
+ *    ผู้ใช้ที่ขอตั๋วแล้วปิดแท็บทิ้งจะเสีย TPIX ฟรีถ้าตัวนี้ไม่เดิน
+ *    และไม่มีทางรู้ตัว เพราะยอดหายทีละนิดโดยไม่มีอะไรแจ้ง
+ *
+ * ทุกนาที เพราะตั๋วอายุสั้น (ปริยาย 15 นาที) และการคืนช้าคือเงินของคนอื่นค้างอยู่กับเรา
+ */
+Schedule::command('trading:expire-tickets')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer()
+    ->name('trading:expire-tickets');

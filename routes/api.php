@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\TokenFactoryApiController;
 use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TpixPriceController;
 use App\Http\Controllers\Api\TradingController;
+use App\Http\Controllers\Api\TradingFeeController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\MasterNodeController;
 use App\Http\Controllers\ValidatorController;
@@ -311,6 +312,10 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     // ความเสี่ยงของคู่เทรด + พาดหัวข่าวที่ทำให้บอทตัดสินใจ — เป็นข้อมูลตลาด ไม่ใช่ข้อมูลส่วนตัว
     Route::get('/ai-bot/risk', [AiBotController::class, 'risk']);
 
+    // ตารางค่าบริการวางไม้ — public เพื่อให้ดูราคาได้ก่อนเชื่อมกระเป๋า
+    // เจ้าของสั่งว่าต้อง "ชี้แจงรายละเอียดให้ครบ" ก่อนผู้ใช้ตัดสินใจ
+    Route::get('/trading-fee/tiers', [TradingFeeController::class, 'tiers']);
+
     // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)
     Route::post('/chatbot', [ChatbotController::class, 'chat'])
         ->middleware('throttle:30,1');
@@ -441,6 +446,27 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
 
         Route::get('/demo', [AiBotController::class, 'demo']);
         Route::post('/demo/reset', [AiBotController::class, 'resetDemo']);
+    });
+
+    /*
+     * คลัง TPIX + ใบอนุญาตวางไม้
+     *
+     * ค่าบริการถูกเก็บตอนขอใบอนุญาต ก่อนผู้ใช้เซ็นธุรกรรมของไม้ — เป็นจุดเดียว
+     * ที่เก็บได้จริง เพราะเส้นทางเทรดบน BSC ผู้ใช้เซ็นกับ PancakeSwap ตรงๆ
+     * เหรียญไม่ผ่านเราเลย
+     *
+     * quote ถูกเรียกทุกครั้งที่ผู้ใช้พิมพ์จำนวน จึงให้โควตาสูงกว่าตัวที่เขียนข้อมูล
+     */
+    Route::prefix('trading-fee')->group(function () {
+        Route::post('/quote', [TradingFeeController::class, 'quote'])->middleware('throttle:120,1');
+        Route::get('/balance', [TradingFeeController::class, 'balance'])->middleware('throttle:60,1');
+
+        Route::middleware('throttle:30,1')->group(function () {
+            Route::post('/tickets', [TradingFeeController::class, 'issueTicket']);
+            Route::post('/tickets/{uuid}/consume', [TradingFeeController::class, 'consumeTicket']);
+            Route::post('/tickets/{uuid}/refund', [TradingFeeController::class, 'refundTicket']);
+            Route::post('/topup/confirm', [TradingFeeController::class, 'confirmTopup']);
+        });
     });
 
     // AI Assistant (stricter rate limit: 10 requests per minute)
