@@ -4,9 +4,10 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { useWalletStore } from '@/Stores/walletStore';
+import { useTradeLayout, TRADE_CARDS } from '@/Composables/useTradeLayout';
 import ChainSelector from '@/Components/Navigation/ChainSelector.vue';
 import LanguageSwitcher from '@/Components/Navigation/LanguageSwitcher.vue';
 import { useTranslation } from '@/Composables/useTranslation';
@@ -22,11 +23,36 @@ const emit = defineEmits(['toggle-sidebar', 'connect-wallet']);
 
 const walletStore = useWalletStore();
 
+
 const isWalletConnected = computed(() => walletStore.isConnected);
 const shortAddress = computed(() => walletStore.shortAddress);
 
 // Auth user from Inertia shared props
 const page = usePage();
+
+/*
+ * ปุ่มปรับผังกระดานเทรด
+ *
+ * ย้ายมาไว้ที่นี่ตามที่เจ้าของสั่ง เพื่อคืนพื้นที่ให้หน้าเทรด (เดิมกินเต็มแถวเพื่อปุ่มเดียว)
+ *
+ * useTradeLayout เป็น module singleton — เรียกตรงจากที่นี่ได้เลย ไม่ต้องส่ง prop
+ * ข้ามคอมโพเนนต์ แต่ NavBar อยู่ทุกหน้า จึงต้องกันไม่ให้ปุ่มโผล่นอกหน้าเทรด
+ */
+const tradeLayout = useTradeLayout();
+const showLayoutMenu = ref(false);
+
+const isTradePage = computed(() => (page.url || '').startsWith('/trade'));
+
+const hideableCards = computed(() =>
+    TRADE_CARDS.filter(c => !c.essential).map(c => ({ id: c.id, label: t(c.titleKey) }))
+);
+
+function closeLayoutMenu(event) {
+    if (!event.target.closest('.nav-layout-menu')) showLayoutMenu.value = false;
+}
+
+onMounted(() => document.addEventListener('click', closeLayoutMenu));
+onUnmounted(() => document.removeEventListener('click', closeLayoutMenu));
 const authUser = computed(() => page.props.auth?.user);
 
 const menuOpen = ref(false);
@@ -160,6 +186,70 @@ const handleDisconnect = () => {
 
                 <!-- Right: Wallet & User -->
                 <div class="flex items-center gap-3">
+                    <!--
+                        ปรับผังกระดานเทรด — โผล่เฉพาะหน้าเทรด
+                        ย้ายมาจากแถบในหน้าเทรดที่กินเต็มแถวเพื่อปุ่มเดียว (~44px)
+                    -->
+                    <div v-if="isTradePage" class="nav-layout-menu relative hidden xl:block">
+                        <button
+                            type="button"
+                            class="flex items-center gap-1.5 px-2.5 py-2 rounded-xl glass-sm hover:bg-white/10 text-[11px] text-dark-300 hover:text-white transition-all"
+                            :title="t('trade.layout.customize')"
+                            @click.stop="showLayoutMenu = !showLayoutMenu"
+                        >
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6h16M4 12h10M4 18h7" />
+                            </svg>
+                            <span class="hidden 2xl:inline">{{ t('trade.layout.customize') }}</span>
+                        </button>
+
+                        <div
+                            v-if="showLayoutMenu"
+                            class="absolute right-0 top-full mt-2 w-64 z-50 rounded-xl border border-white/10 bg-dark-800/95 backdrop-blur-xl shadow-2xl p-3"
+                            @click.stop
+                        >
+                            <p class="text-[11px] text-dark-400 mb-2 leading-relaxed">
+                                {{ t('trade.layout.hint') }}
+                            </p>
+
+                            <label class="flex items-start gap-2 py-1.5 cursor-pointer border-y border-white/5 mb-2">
+                                <input
+                                    type="checkbox"
+                                    class="mt-0.5 rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500 w-3.5 h-3.5"
+                                    :checked="tradeLayout.fitScreen.value"
+                                    @change="tradeLayout.fitScreen.value = !tradeLayout.fitScreen.value"
+                                >
+                                <span class="min-w-0">
+                                    <span class="block text-xs text-white">{{ t('trade.layout.fitScreen') }}</span>
+                                    <span class="block text-[10px] text-dark-500 leading-snug">{{ t('trade.layout.fitScreenHint') }}</span>
+                                </span>
+                            </label>
+
+                            <p class="text-[10px] text-dark-500 mb-1.5">{{ t('trade.layout.showCards') }}</p>
+                            <label
+                                v-for="card in hideableCards"
+                                :key="card.id"
+                                class="flex items-center gap-2 py-1 cursor-pointer text-xs text-dark-300 hover:text-white"
+                            >
+                                <input
+                                    type="checkbox"
+                                    class="rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500 w-3.5 h-3.5"
+                                    :checked="!tradeLayout.hidden.value.includes(card.id)"
+                                    @change="tradeLayout.toggleHidden(card.id)"
+                                >
+                                {{ card.label }}
+                            </label>
+
+                            <button
+                                type="button"
+                                class="w-full mt-2.5 py-1.5 rounded-lg bg-white/5 text-[11px] text-dark-300 hover:text-white hover:bg-white/10 transition-colors"
+                                @click="tradeLayout.reset()"
+                            >
+                                {{ t('trade.layout.reset') }}
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- ตัวเลือก Chain - รองรับหลาย chain พร้อม auto-switch -->
                     <ChainSelector class="hidden sm:block" />
 

@@ -31,11 +31,12 @@ import { useBinanceData } from '@/Composables/useBinanceData';
 import { useSwap } from '@/Composables/useSwap';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useWalletBalance } from '@/Composables/useWalletBalance';
-import { useTradeLayout, COLUMNS, TRADE_CARDS, CHART_HEIGHTS } from '@/Composables/useTradeLayout';
+import { useTradeLayout, COLUMNS } from '@/Composables/useTradeLayout';
 import { playTradeSound, playErrorSound } from '@/Composables/useSounds';
 import { getBscTradeToken, getVerifiedTradeToken } from '@/Config/bscTradeTokens';
 import axios from 'axios';
 import { useTranslation } from '@/Composables/useTranslation';
+import { showToast } from '@/Composables/useToasts';
 
 // การเทรดจริงทั้งหมดรันบน BSC (PancakeSwap) จนกว่า DEX บน TPIX Chain จะพร้อม
 const BSC_CHAIN_ID = 56;
@@ -72,7 +73,6 @@ const tradeFormMode = computed(() => (isBscTradable.value ? 'onchain' : 'disable
 
 // ── ผังการ์ด ────────────────────────────────────────────────────────────────
 const layout = useTradeLayout();
-const showLayoutMenu = ref(false);
 const isChartFullscreen = ref(false);
 
 const board = useTemplateRef('board');
@@ -184,10 +184,6 @@ const gridTemplate = computed(() => renderedColumns.value.map((col) => {
     return `minmax(${min}px, ${Math.min(min + 80, 340)}px)`;
 }).join(' '));
 
-const hideableCards = computed(() =>
-    TRADE_CARDS.filter(c => !c.essential).map(c => ({ id: c.id, label: t(c.titleKey) }))
-);
-
 /** ความสูงของการ์ดหนึ่งใบ — โหมดพอดีจอใช้ flex, โหมดเลื่อนหน้าใช้ px */
 function styleFor(cardId) {
     if (cardId === 'chart' && isChartFullscreen.value) return {};
@@ -198,10 +194,6 @@ function onColumnDrop(column) {
     if (!layout.draggingId.value) return;
     layout.dropOnColumn(column);
     layout.endDrag();
-}
-
-function closeLayoutMenu(e) {
-    if (!e.target.closest('.layout-menu')) showLayoutMenu.value = false;
 }
 
 // Real market data from Binance (for non-TPIX pairs)
@@ -222,6 +214,15 @@ let tpixRefreshInterval = null;
 
 // Connection error state
 const dataError = ref(null);
+
+/*
+ * แถบเตือนเดิมกินพื้นที่ในผังจริง ทำให้การ์ดทั้งกระดานเลื่อนลงทุกครั้งที่มี error
+ * และ measureBoard ต้องคำนวณความสูงใหม่ตาม — เปลี่ยนเป็นข้อความลอยแทน
+ * อยู่ 10 วินาทีแล้วหายเอง หรือกดปิดได้ทันที
+ */
+watch(dataError, (text) => {
+    if (text) showToast({ text, type: 'error' });
+});
 
 /**
  * รวมความลึกของ order book ให้อยู่รูปแบบเดียวกับที่ OrderBook ใช้
@@ -661,7 +662,6 @@ onMounted(async () => {
     measureBoard();
     wideQuery?.addEventListener('change', measureBoard);
     window.addEventListener('resize', measureBoard);
-    document.addEventListener('click', closeLayoutMenu);
 
     if (isTPIXPair.value) {
         // TPIX pair: fetch from internal API + auto-refresh
@@ -713,7 +713,6 @@ onUnmounted(() => {
     clearTimeout(toastTimer);
     wideQuery?.removeEventListener('change', measureBoard);
     window.removeEventListener('resize', measureBoard);
-    document.removeEventListener('click', closeLayoutMenu);
 });
 </script>
 
@@ -766,98 +765,6 @@ onUnmounted(() => {
                     </a>
                 </div>
             </Transition>
-
-            <!-- Data Error Banner -->
-            <div v-if="dataError" class="relative mb-3 p-3 rounded-xl bg-trading-red/10 border border-trading-red/30 text-trading-red text-sm flex items-center gap-2">
-                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-                {{ dataError }}
-            </div>
-
-            <!-- แถบเครื่องมือจัดผัง (แถวบางๆ ชิดขวา)
-                 เอาออกไปแล้ว 2 อย่างเพราะซ้ำกับที่อื่นและกินพื้นที่แนวตั้ง:
-                 - ตัวเลือกคู่เทรด → เลือกจากการ์ด "คู่เทรด" ในคอลัมน์ซ้ายได้อยู่แล้ว
-                 - แผงราคา/24h    → หัวกราฟแสดงคู่+ราคา+เปอร์เซ็นต์ และย้าย high/low/vol ไปไว้ที่นั่น
-                 ยังต้องมี z-30 เพราะ backdrop-blur สร้าง stacking context
-                 และห้าม overflow-hidden ไม่งั้นเมนูจัดผังโดนตัด -->
-            <div class="relative z-30 flex items-center justify-end gap-2 mb-3">
-                <!-- เครื่องมือจัดผัง -->
-                <div class="relative ml-auto flex items-center gap-2 layout-menu">
-                    <!-- ขนาดกราฟ — มีผลเฉพาะโหมดเลื่อนหน้า (โหมดพอดีจอกราฟยืดเอง) -->
-                    <div v-if="!packed" class="hidden md:flex items-center gap-0.5 p-0.5 rounded-lg bg-dark-800/80">
-                        <button
-                            v-for="h in CHART_HEIGHTS"
-                            :key="h.id"
-                            type="button"
-                            :title="`${t('trade.layout.chartSize')}: ${t(h.labelKey)}`"
-                            :class="['px-2 py-1 rounded-md text-[10px] font-medium transition-colors',
-                                layout.chartHeight.value === h.id ? 'bg-dark-600 text-white' : 'text-dark-400 hover:text-white']"
-                            @click="layout.chartHeight.value = h.id"
-                        >
-                            {{ t(h.labelKey) }}
-                        </button>
-                    </div>
-
-                    <button
-                        type="button"
-                        class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-dark-800/80 border border-white/5 text-[11px] text-dark-300 hover:text-white hover:border-primary-500/40 transition-colors"
-                        @click="showLayoutMenu = !showLayoutMenu"
-                    >
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6h16M4 12h10M4 18h7" />
-                        </svg>
-                        {{ t('trade.layout.customize') }}
-                    </button>
-
-                    <!-- เมนูจัดผัง -->
-                    <div
-                        v-if="showLayoutMenu"
-                        class="absolute right-0 top-full mt-2 w-64 z-50 rounded-xl border border-white/10 bg-dark-800/95 backdrop-blur-xl shadow-2xl p-3"
-                    >
-                        <p class="text-[11px] text-dark-400 mb-2 leading-relaxed">
-                            {{ t('trade.layout.hint') }}
-                            <span v-if="isNarrow" class="block text-amber-400 mt-1">{{ t('trade.layout.wideOnly') }}</span>
-                        </p>
-
-                        <label class="flex items-start gap-2 py-1.5 cursor-pointer border-y border-white/5 mb-2">
-                            <input
-                                type="checkbox"
-                                class="mt-0.5 rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500 w-3.5 h-3.5"
-                                :checked="layout.fitScreen.value"
-                                @change="layout.fitScreen.value = !layout.fitScreen.value"
-                            >
-                            <span class="min-w-0">
-                                <span class="block text-xs text-white">{{ t('trade.layout.fitScreen') }}</span>
-                                <span class="block text-[10px] text-dark-500 leading-snug">{{ t('trade.layout.fitScreenHint') }}</span>
-                            </span>
-                        </label>
-
-                        <p class="text-[10px] text-dark-500 mb-1.5">{{ t('trade.layout.showCards') }}</p>
-                        <label
-                            v-for="card in hideableCards"
-                            :key="card.id"
-                            class="flex items-center gap-2 py-1 cursor-pointer text-xs text-dark-300 hover:text-white"
-                        >
-                            <input
-                                type="checkbox"
-                                class="rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500 w-3.5 h-3.5"
-                                :checked="!layout.hidden.value.includes(card.id)"
-                                @change="layout.toggleHidden(card.id)"
-                            >
-                            {{ card.label }}
-                        </label>
-
-                        <button
-                            type="button"
-                            class="w-full mt-2.5 py-1.5 rounded-lg bg-white/5 text-[11px] text-dark-300 hover:text-white hover:bg-white/10 transition-colors"
-                            @click="layout.reset()"
-                        >
-                            {{ t('trade.layout.reset') }}
-                        </button>
-                    </div>
-                </div>
-            </div>
 
             <!-- แถบบอกโหมดเทรด: on-chain จริงบน BSC หรือรอ TPIX Chain -->
             <div v-if="tradeFormMode === 'onchain'" class="relative mb-3 px-3 py-2 rounded-xl bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs flex items-center gap-2">

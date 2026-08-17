@@ -14,6 +14,7 @@ import WalletModal from '@/Components/Wallet/WalletModal.vue';
 import BannerAd from '@/Components/BannerAd.vue';
 import AIChatbot from '@/Components/AIChatbot.vue';
 import PageArt from '@/Components/PageArt.vue';
+import ToastStack from '@/Components/ToastStack.vue';
 import { useTranslation } from '@/Composables/useTranslation';
 import versionData from '../../../version.json';
 
@@ -144,6 +145,9 @@ onMounted(async () => {
             <div class="absolute top-1/3 right-1/3 w-80 h-80 bg-primary-500/10 rounded-full blur-3xl"></div>
             <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-warm-500/5 rounded-full blur-3xl"></div>
         </div>
+
+        <!-- แถบแจ้งเตือนลอย — วางที่เดียวทั้งเว็บ ทุกหน้าเรียก showToast() ได้เลย -->
+        <ToastStack />
 
         <!-- Ticker Strip -->
         <TickerStrip v-if="!hideTicker" />
