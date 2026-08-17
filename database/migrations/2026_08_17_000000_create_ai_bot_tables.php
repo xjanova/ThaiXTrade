@@ -13,6 +13,13 @@ use Illuminate\Support\Facades\Schema;
  *   ai_bot_subscriptions — การเช่าที่ยังไม่หมดอายุของแต่ละ wallet
  *   ai_bot_configs       — บอทที่ผู้ใช้ตั้งไว้ (กลยุทธ์ + พารามิเตอร์ + กรอบความเสี่ยง)
  *
+
+     * ⚠️ ใช้ dateTime ไม่ใช่ timestamp สำหรับคอลัมน์ที่ไม่ nullable
+     *    MySQL แจก DEFAULT '0000-00-00 00:00:00' ให้ TIMESTAMP NOT NULL ที่ไม่ระบุ default
+     *    ซึ่ง sql_mode ที่มี NO_ZERO_DATE จะปฏิเสธ → error 1067 Invalid default value
+     *    SQLite ที่ใช้ตอน dev ไม่มีข้อจำกัดนี้ บั๊กเลยโผล่เฉพาะบนโปรดักชัน
+     *    (เกิดจริง 2026-08-17 — migration ค้าง 3 ตัวเพราะเรื่องนี้)
+ *
  * Developed by Xman Studio.
  */
 return new class() extends Migration
@@ -77,8 +84,8 @@ return new class() extends Migration
                 $table->enum('status', ['active', 'expired', 'cancelled'])->default('active');
                 $table->unsignedSmallInteger('days')->default(1);
                 $table->decimal('credits_spent', 20, 4)->default(0);
-                $table->timestamp('started_at');
-                $table->timestamp('expires_at');
+                $table->dateTime('started_at');
+                $table->dateTime('expires_at');
                 $table->timestamp('cancelled_at')->nullable();
                 $table->timestamps();
 

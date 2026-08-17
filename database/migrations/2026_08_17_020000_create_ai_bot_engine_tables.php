@@ -14,6 +14,13 @@ use Illuminate\Support\Facades\Schema;
  *
  * เพิ่ม `mode` ให้ ai_bot_configs: demo = เทรดกระดาษด้วยราคาจริง · live = เทรดจริง
  *
+
+     * ⚠️ ใช้ dateTime ไม่ใช่ timestamp สำหรับคอลัมน์ที่ไม่ nullable
+     *    MySQL แจก DEFAULT '0000-00-00 00:00:00' ให้ TIMESTAMP NOT NULL ที่ไม่ระบุ default
+     *    ซึ่ง sql_mode ที่มี NO_ZERO_DATE จะปฏิเสธ → error 1067 Invalid default value
+     *    SQLite ที่ใช้ตอน dev ไม่มีข้อจำกัดนี้ บั๊กเลยโผล่เฉพาะบนโปรดักชัน
+     *    (เกิดจริง 2026-08-17 — migration ค้าง 3 ตัวเพราะเรื่องนี้)
+ *
  * Developed by Xman Studio.
  */
 return new class() extends Migration
@@ -28,7 +35,7 @@ return new class() extends Migration
                 // ชี้ซ้ำจากฟีดได้บ่อย — กันบันทึกข่าวเดิมซ้ำด้วย hash ของลิงก์
                 $table->string('url_hash', 64)->unique();
                 $table->text('url');
-                $table->timestamp('published_at')->index();
+                $table->dateTime('published_at')->index();
                 $table->decimal('panic_score', 6, 3)->default(0)->comment('0 = ปกติ, 1 = ตื่นตระหนกสุด');
                 $table->decimal('sentiment', 6, 3)->default(0)->comment('-1 ลบ .. +1 บวก');
                 $table->json('symbols')->nullable()->comment('เหรียญที่ข่าวพาดพิงถึง');
@@ -61,7 +68,7 @@ return new class() extends Migration
                 $table->decimal('entry_price', 32, 12)->comment('ต้นทุนเฉลี่ย (DCA เติมไม้แล้วเฉลี่ยใหม่)');
                 $table->decimal('cost_basis', 24, 8)->comment('เงินที่จ่ายไปทั้งหมดรวมค่าธรรมเนียม');
                 $table->unsignedInteger('entry_count')->default(1);
-                $table->timestamp('opened_at');
+                $table->dateTime('opened_at');
                 $table->timestamps();
 
                 // บอทหนึ่งตัวถือได้คู่เดียวต่อโหมด — กันสถานะซ้อนจนคำนวณกำไรเพี้ยน
