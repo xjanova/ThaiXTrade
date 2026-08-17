@@ -5,6 +5,7 @@
  * Developed by Xman Studio.
  */
 
+use App\Http\Controllers\Api\AiBotController;
 use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Api\ArticleController;
@@ -304,6 +305,10 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
             ->middleware('throttle:10,1');
     });
 
+    // AI Trade (Cloud Bot) — แคตตาล็อกแพลน/กลยุทธ์/แพ็กเครดิต
+    // public เพื่อให้เว็บ + แอพแสดงราคาได้ก่อนเชื่อม wallet (ไม่มีข้อมูลส่วนตัว)
+    Route::get('/ai-bot/catalog', [AiBotController::class, 'catalog']);
+
     // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)
     Route::post('/chatbot', [ChatbotController::class, 'chat'])
         ->middleware('throttle:30,1');
@@ -400,6 +405,26 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
 
     // Master Node — wallet-specific queries (ต้อง verify wallet)
     Route::get('/masternode/my-nodes', [MasterNodeController::class, 'myNodes']);
+
+    /*
+     * AI Trade (Cloud Bot) — เช่าบอท, เครดิตการทำงาน, ตั้งค่ากลยุทธ์
+     * ทุก endpoint ผูกกับ wallet ของผู้เรียก (VerifyWalletOwnership ตรวจลายเซ็นแล้ว)
+     * throttle แยก 30/นาที — หน้าเทรด poll สถานะทุก 60 วิ + การกดเช่า/แก้บอท
+     */
+    Route::prefix('ai-bot')->middleware(['throttle:30,1'])->group(function () {
+        Route::get('/status', [AiBotController::class, 'status']);
+        Route::get('/credits', [AiBotController::class, 'credits']);
+        Route::post('/welcome', [AiBotController::class, 'claimWelcome']);
+        Route::post('/topup', [AiBotController::class, 'topup']);
+        Route::post('/subscribe', [AiBotController::class, 'subscribe']);
+        Route::post('/cancel', [AiBotController::class, 'cancel']);
+
+        Route::get('/bots', [AiBotController::class, 'index']);
+        Route::post('/bots', [AiBotController::class, 'store']);
+        Route::put('/bots/{id}', [AiBotController::class, 'update'])->where('id', '[0-9]+');
+        Route::post('/bots/{id}/state', [AiBotController::class, 'setState'])->where('id', '[0-9]+');
+        Route::delete('/bots/{id}', [AiBotController::class, 'destroy'])->where('id', '[0-9]+');
+    });
 
     // AI Assistant (stricter rate limit: 10 requests per minute)
     Route::prefix('ai')->middleware(['throttle:10,1'])->group(function () {

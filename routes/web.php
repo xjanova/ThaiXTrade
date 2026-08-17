@@ -111,6 +111,12 @@ Route::get('/ai-assistant', function () {
     return Inertia::render('AIAssistant');
 })->name('ai-assistant');
 
+// AI Trade — ตั้งค่าบอทเทรดคลาวด์แบบละเอียด (เช่าบอท + กลยุทธ์ + ความเสี่ยง)
+// state ทั้งหมดมาจาก /api/v1/ai-bot/* ฝั่ง client จึง render เปล่าได้
+Route::get('/ai-trade', function () {
+    return Inertia::render('AiTrade');
+})->name('ai-trade');
+
 // Blog — บทความ AI-generated + content marketing
 Route::get('/blog', function () {
     return Inertia::render('Blog/Index');

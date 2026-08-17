@@ -110,6 +110,12 @@ const handleDisconnect = () => {
                             <span>{{ t('common.viewAll') }}</span>
                         </button>
                         <div class="absolute top-full left-0 mt-1 w-48 rounded-xl bg-dark-900/90 backdrop-blur-2xl border border-white/10 shadow-2xl py-2 z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all">
+                            <Link href="/ai-trade" class="flex items-center gap-2 px-4 py-2 text-sm text-accent-300 hover:text-accent-200 hover:bg-accent-500/10">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z"/>
+                                </svg>
+                                AI TRADE
+                            </Link>
                             <Link href="/ai-assistant" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
                                 AI Assistant
                             </Link>

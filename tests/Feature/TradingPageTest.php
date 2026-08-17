@@ -39,4 +39,13 @@ class TradingPageTest extends TestCase
 
         $response->assertSee('TPIX TRADE');
     }
+
+    /**
+     * AI Trade console (หน้าตั้งค่าบอทคลาวด์) ต้องเปิดได้โดยไม่ต้องล็อกอิน —
+     * state ทั้งหมดผูกกับ wallet ฝั่ง client ไม่ใช่ session.
+     */
+    public function test_ai_trade_page_loads(): void
+    {
+        $this->get('/ai-trade')->assertStatus(200);
+    }
 }

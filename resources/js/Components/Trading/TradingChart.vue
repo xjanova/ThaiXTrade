@@ -53,22 +53,7 @@ const displayChange = computed(() => {
     return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
 });
 const isPositive = computed(() => (props.ticker?.priceChangePercent ?? 0) >= 0);
-const displayHigh = computed(() => {
-    const h = props.ticker?.high;
-    return h ? (h >= 1 ? h.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : h.toFixed(8)) : '—';
-});
-const displayLow = computed(() => {
-    const l = props.ticker?.low;
-    return l ? (l >= 1 ? l.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : l.toFixed(8)) : '—';
-});
-const displayVolume = computed(() => {
-    const v = props.ticker?.volume;
-    if (!v) return '—';
-    if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B';
-    if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M';
-    if (v >= 1e3) return (v / 1e3).toFixed(2) + 'K';
-    return v.toFixed(2);
-});
+// 24h high/low/volume แสดงบนแถบหัวของหน้าเทรดแล้ว จึงไม่คำนวณซ้ำที่นี่
 
 const pairName = computed(() => {
     const base = getBaseSymbol(props.symbol);
@@ -350,102 +335,83 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="chart-container flex flex-col overflow-hidden">
-        <!-- Chart Header -->
-        <div class="chart-toolbar flex-shrink-0">
-            <div class="flex items-center gap-4 min-w-0">
-                <!-- Symbol Info -->
-                <div class="flex items-center gap-3 flex-shrink-0">
-                    <div class="w-8 h-8 rounded-lg overflow-hidden bg-dark-800 flex items-center justify-center">
-                        <img v-if="getPairLogo(symbol)" :src="getPairLogo(symbol)" :alt="getBaseSymbol(symbol)" class="w-7 h-7" />
-                        <span v-else class="text-white font-bold text-xs">{{ getBaseSymbol(symbol).charAt(0) }}</span>
-                    </div>
-                    <div>
-                        <h2 class="text-base font-bold text-white leading-tight">{{ symbol }}</h2>
-                        <p class="text-xs text-dark-400 leading-tight">{{ pairName }}</p>
-                    </div>
+    <!-- ไม่มีกรอบ/พื้นหลังของตัวเอง — การ์ดที่ครอบอยู่ (DraggableCard) เป็นคนวาดให้
+         ไม่งั้นจะเห็นขอบกระจกซ้อนกันสองชั้น -->
+    <div class="flex flex-col overflow-hidden min-h-0">
+        <!-- แถบเครื่องมือแถวเดียว — ราคา 24h high/low/volume อยู่บนแถบหัวหน้าเทรดแล้ว
+             ไม่แสดงซ้ำที่นี่ เพื่อคืนพื้นที่แนวตั้งให้กราฟ -->
+        <div class="flex items-center gap-2 px-3 py-1.5 border-b border-white/5 flex-shrink-0 flex-wrap">
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <div class="w-6 h-6 rounded-md overflow-hidden bg-dark-800 flex items-center justify-center">
+                    <img v-if="getPairLogo(symbol)" :src="getPairLogo(symbol)" :alt="getBaseSymbol(symbol)" class="w-5 h-5" />
+                    <span v-else class="text-white font-bold text-[10px]">{{ getBaseSymbol(symbol).charAt(0) }}</span>
                 </div>
-
-                <!-- Price Display -->
-                <div class="hidden md:flex items-center gap-4 ml-4 pl-4 border-l border-white/10 min-w-0">
-                    <div class="flex-shrink-0">
-                        <p :class="['text-xl font-bold font-mono leading-tight', isPositive ? 'text-trading-green' : 'text-trading-red']">
-                            ${{ displayPrice }}
-                        </p>
-                        <p :class="['text-xs leading-tight', isPositive ? 'text-trading-green' : 'text-trading-red']">
-                            {{ displayChange }}
-                        </p>
-                    </div>
-                    <div class="hidden xl:grid grid-cols-3 gap-3 text-xs">
-                        <div>
-                            <p class="text-dark-400">24h High</p>
-                            <p class="text-white font-mono">${{ displayHigh }}</p>
-                        </div>
-                        <div>
-                            <p class="text-dark-400">24h Low</p>
-                            <p class="text-white font-mono">${{ displayLow }}</p>
-                        </div>
-                        <div>
-                            <p class="text-dark-400">Volume</p>
-                            <p class="text-white font-mono">${{ displayVolume }}</p>
-                        </div>
-                    </div>
+                <div class="leading-none">
+                    <h2 class="text-xs font-bold text-white">{{ symbol }}</h2>
+                    <p class="text-[10px] text-dark-500 hidden sm:block">{{ pairName }}</p>
                 </div>
+                <p :class="['ml-1 text-sm font-bold font-mono', isPositive ? 'text-trading-green' : 'text-trading-red']">
+                    ${{ displayPrice }}
+                    <span class="text-[10px] font-medium">{{ displayChange }}</span>
+                </p>
             </div>
 
-            <div class="flex items-center gap-2 flex-shrink-0">
-                <!-- Chart Type -->
-                <div class="flex items-center gap-1 p-1 rounded-lg bg-dark-800">
-                    <button
-                        @click="chartType = 'candle'"
-                        :class="['p-1.5 rounded-lg transition-all', chartType === 'candle' ? 'bg-primary-500/20 text-primary-400' : 'text-dark-400 hover:text-white']"
-                        title="Candlestick"
-                    >
-                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                            <rect x="3" y="6" width="4" height="12" rx="1"/>
-                            <rect x="10" y="3" width="4" height="18" rx="1"/>
-                            <rect x="17" y="8" width="4" height="8" rx="1"/>
-                        </svg>
-                    </button>
-                    <button
-                        @click="chartType = 'line'"
-                        :class="['p-1.5 rounded-lg transition-all', chartType === 'line' ? 'bg-primary-500/20 text-primary-400' : 'text-dark-400 hover:text-white']"
-                        title="Line"
-                    >
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
-                        </svg>
-                    </button>
-                </div>
+            <!-- Timeframes -->
+            <div class="flex items-center gap-0.5 flex-wrap">
+                <button
+                    v-for="tf in timeframes"
+                    :key="tf"
+                    type="button"
+                    :class="['px-1.5 py-0.5 text-[11px] font-medium rounded-md transition-all',
+                        selectedTimeframe === tf ? 'text-primary-400 bg-primary-500/10' : 'text-dark-400 hover:text-white hover:bg-white/5']"
+                    @click="selectedTimeframe = tf"
+                >
+                    {{ tf }}
+                </button>
+            </div>
+
+            <div class="ml-auto flex items-center gap-1.5 flex-shrink-0">
+                <span v-if="isLoading" class="text-[10px] text-dark-500 animate-pulse">Loading…</span>
 
                 <!-- Indicators -->
-                <div class="hidden lg:flex items-center gap-1">
+                <button
+                    v-for="indicator in indicators"
+                    :key="indicator"
+                    type="button"
+                    :class="['px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-all',
+                        activeIndicators.includes(indicator) ? 'bg-primary-500/20 text-primary-400' : 'text-dark-400 hover:text-white hover:bg-white/5']"
+                    @click="toggleIndicator(indicator)"
+                >
+                    {{ indicator }}
+                </button>
+
+                <!-- Chart Type -->
+                <div class="flex items-center gap-0.5 p-0.5 rounded-lg bg-dark-800">
                     <button
-                        v-for="indicator in indicators"
-                        :key="indicator"
-                        @click="toggleIndicator(indicator)"
-                        :class="['px-2 py-1 text-xs font-medium rounded-lg transition-all', activeIndicators.includes(indicator) ? 'bg-primary-500/20 text-primary-400' : 'text-dark-400 hover:text-white hover:bg-white/5']"
+                        type="button"
+                        title="Candlestick"
+                        aria-label="กราฟแท่งเทียน"
+                        :class="['p-1 rounded-md transition-all', chartType === 'candle' ? 'bg-primary-500/20 text-primary-400' : 'text-dark-400 hover:text-white']"
+                        @click="chartType = 'candle'"
                     >
-                        {{ indicator }}
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <rect x="3" y="6" width="4" height="12" rx="1" />
+                            <rect x="10" y="3" width="4" height="18" rx="1" />
+                            <rect x="17" y="8" width="4" height="8" rx="1" />
+                        </svg>
+                    </button>
+                    <button
+                        type="button"
+                        title="Line"
+                        aria-label="กราฟเส้น"
+                        :class="['p-1 rounded-md transition-all', chartType === 'line' ? 'bg-primary-500/20 text-primary-400' : 'text-dark-400 hover:text-white']"
+                        @click="chartType = 'line'"
+                    >
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                        </svg>
                     </button>
                 </div>
-            </div>
-        </div>
-
-        <!-- Timeframe Selector -->
-        <div class="flex items-center gap-1 px-4 py-2 border-b border-white/5 flex-shrink-0">
-            <button
-                v-for="tf in timeframes"
-                :key="tf"
-                @click="selectedTimeframe = tf"
-                :class="['chart-timeframe-btn', { 'active': selectedTimeframe === tf }]"
-            >
-                {{ tf }}
-            </button>
-            <div class="ml-auto flex items-center gap-2">
-                <span v-if="isLoading" class="text-xs text-dark-500 animate-pulse">Loading...</span>
-                <span class="text-xs text-dark-500">Powered by</span>
-                <span class="text-xs font-semibold text-primary-400">TradingView</span>
             </div>
         </div>
 

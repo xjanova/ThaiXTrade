@@ -564,6 +564,28 @@
         background: theme('colors.dark.600');
     }
 
+    /* Compact scrollbar for trading panels (order book, market list, recent trades).
+       เดิมคลาสนี้ถูกใช้ใน RecentTrades แต่ไม่เคยถูกนิยาม — แถบเลื่อนจึงเป็นขนาดเต็ม
+       ของ ::-webkit-scrollbar ระดับ global (8px) กินพื้นที่คอลัมน์แคบไปมาก */
+    .custom-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: theme('colors.dark.700') transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 5px;
+        height: 5px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: theme('colors.dark.700');
+        border-radius: 9999px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: theme('colors.primary.700');
+    }
+
     /* Shadow Glow (trading) */
     .shadow-green-glow {
         box-shadow: 0 0 12px rgba(0, 200, 83, 0.3);

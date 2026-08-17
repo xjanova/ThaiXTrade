@@ -9,7 +9,7 @@
  *
  * Developed by Xman Studio
  */
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 
 const props = defineProps({
     /** ชื่อไฟล์ (ไม่ต้องมีนามสกุล) ใน public_html/images/art/ */
@@ -30,10 +30,14 @@ const props = defineProps({
 const safeArt = computed(() => String(props.art).replace(/[^a-z0-9-]/gi, ''));
 const src = computed(() => `/images/art/${safeArt.value}.webp`);
 const alpha = computed(() => Math.min(100, Math.max(0, props.opacity)) / 100);
+
+// ภาพยังไม่ถูกเจนหรือถูกลบ → ซ่อนทั้งเลเยอร์ ไม่ให้เห็นไอคอนรูปเสียของเบราว์เซอร์
+const failed = ref(false);
 </script>
 
 <template>
     <div
+        v-if="!failed"
         :class="['absolute inset-0 overflow-hidden pointer-events-none select-none', rounded]"
         aria-hidden="true"
     >
@@ -45,6 +49,7 @@ const alpha = computed(() => Math.min(100, Math.max(0, props.opacity)) / 100);
             decoding="async"
             class="w-full h-full object-cover"
             :style="{ opacity: alpha, objectPosition: position }"
+            @error="failed = true"
         />
 
         <!-- ไล่จางให้ภาพกลืนกับพื้นหลังเพจ ไม่ตัดเป็นกล่องชัดๆ -->

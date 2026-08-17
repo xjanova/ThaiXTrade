@@ -1,14 +1,20 @@
 <script setup>
 /**
  * TPIX TRADE - Trading Dashboard Page
- * Main trading interface with real-time data:
- * - TPIX pairs: internal order book (real trades)
- * - Other pairs: Binance data + PancakeSwap execution
+ * กระดานเทรด 3 คอลัมน์ ที่ผู้ใช้จัดผังการ์ดเองได้
+ *   ซ้าย  = รายการคู่เทรด + AI TRADE
+ *   กลาง  = กราฟ + ฟอร์มซื้อขาย + คำสั่งของฉัน
+ *   ขวา   = สมุดคำสั่ง + เทรดล่าสุด
+ *
+ * โหมด "พอดีหน้าจอ": การ์ดยืด/หดแบ่งความสูงที่เหลือกันเอง (ตาม CARD_FLEX)
+ * โดยมีความสูงต่ำสุดของแต่ละใบ ถ้าใส่ไม่ลงจริงๆ คอลัมน์จะเลื่อนแทนการบีบจนอ่านไม่ออก
+ *
+ * ข้อมูล: คู่ TPIX ใช้ order book ภายใน · คู่อื่นใช้ Binance + execute บน PancakeSwap
  * Developed by Xman Studio
  */
 
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, useTemplateRef } from 'vue';
+import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TradingChart from '@/Components/Trading/TradingChart.vue';
 import OrderBook from '@/Components/Trading/OrderBook.vue';
@@ -17,25 +23,30 @@ import RecentTrades from '@/Components/Trading/RecentTrades.vue';
 import OpenOrders from '@/Components/Trading/OpenOrders.vue';
 import TradeHistory from '@/Components/Trading/TradeHistory.vue';
 import PairSelector from '@/Components/Trading/PairSelector.vue';
+import MarketListPanel from '@/Components/Trading/MarketListPanel.vue';
+import AiTradeCard from '@/Components/Trading/AiTradeCard.vue';
+import DraggableCard from '@/Components/Trading/DraggableCard.vue';
 import PageArt from '@/Components/PageArt.vue';
 import { useBinanceData } from '@/Composables/useBinanceData';
 import { useSwap } from '@/Composables/useSwap';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useWalletBalance } from '@/Composables/useWalletBalance';
-import { playTradeSound, playErrorSound, playNotificationSound } from '@/Composables/useSounds';
+import { useTradeLayout, COLUMNS, TRADE_CARDS, CHART_HEIGHTS } from '@/Composables/useTradeLayout';
+import { playTradeSound, playErrorSound } from '@/Composables/useSounds';
 import { getBscTradeToken, getVerifiedTradeToken } from '@/Config/bscTradeTokens';
 import axios from 'axios';
 import { useTranslation } from '@/Composables/useTranslation';
 
 // การเทรดจริงทั้งหมดรันบน BSC (PancakeSwap) จนกว่า DEX บน TPIX Chain จะพร้อม
 const BSC_CHAIN_ID = 56;
+const TPIX_CHAIN_ID = 4289;
 
 const { t } = useTranslation();
 const props = defineProps({
     pair: {
         type: String,
-        default: 'BTC-USDT'
-    }
+        default: 'BTC-USDT',
+    },
 });
 
 const currentPair = computed(() => props.pair.replace('-', '/'));
@@ -59,6 +70,79 @@ const isBscTradable = computed(() =>
 //  disabled = TPIX pair (รอเชน TPIX) หรือคู่ที่ไม่มี token บน BSC — เห็นไว้ก่อน กดไม่ได้
 const tradeFormMode = computed(() => (isBscTradable.value ? 'onchain' : 'disabled'));
 
+// ── ผังการ์ด ────────────────────────────────────────────────────────────────
+const layout = useTradeLayout();
+const showLayoutMenu = ref(false);
+const isChartFullscreen = ref(false);
+
+const board = useTemplateRef('board');
+const boardHeight = ref(0);
+
+/** จอเล็กกว่า xl วางการ์ดเรียงลงมา — ลาก DnD ด้วยนิ้วไม่เสถียร จึงล็อกไว้ */
+const isNarrow = ref(false);
+
+/** โหมดจัดการ์ดให้พอดีหน้าจอ (เฉพาะจอกว้างที่มีที่ให้จัดจริง) */
+const packed = computed(() => layout.fitScreen.value && !isNarrow.value);
+
+/**
+ * ความสูงของกระดาน = ที่เหลือจากขอบล่างของแถบหัวถึงก้นหน้าจอ
+ * วัดจากของจริงแทนการคำนวณจากความสูงของ NavBar/ticker/แบนเนอร์
+ * เพราะแบนเนอร์โฆษณาและแถบแจ้งเตือนโผล่/หายได้ตลอด
+ */
+/**
+ * เกณฑ์จอกว้าง — ใช้ matchMedia ไม่ใช่ window.innerWidth ใน event `resize`
+ * เพราะ resize ไม่ถูกส่งเสมอไป (แท็บพื้นหลัง/เปลี่ยนขนาดผ่านเครื่องมือ) แล้ว
+ * โหมดพอดีจอจะค้างเป็น true บนมือถือ → กริดถูกล็อกความสูงทั้งที่คอลัมน์เป็น
+ * `display:contents` ทำให้การ์ดยุบเหลือ 0
+ */
+let wideQuery = null;
+
+function syncBreakpoint() {
+    if (typeof window === 'undefined') return;
+    wideQuery = wideQuery || window.matchMedia('(min-width: 1280px)');
+    isNarrow.value = !wideQuery.matches;
+}
+
+function measureBoard() {
+    syncBreakpoint();
+
+    if (!board.value || typeof window === 'undefined') return;
+    // rect.top เป็นระยะจากขอบบนของ viewport อยู่แล้ว จึงลบออกจากความสูงจอได้ตรงๆ
+    // (ในโหมดพอดีจอหน้าไม่เลื่อน ค่านี้จึงคงที่)
+    const viewportTop = board.value.getBoundingClientRect().top;
+    boardHeight.value = Math.max(520, window.innerHeight - viewportTop - 14);
+}
+
+const boardStyle = computed(() =>
+    packed.value && boardHeight.value ? { height: `${boardHeight.value}px` } : {}
+);
+
+const columnClass = {
+    left: 'lg:order-3 lg:col-span-2 xl:order-1 xl:col-span-1',
+    center: 'lg:order-1 xl:order-2',
+    right: 'lg:order-2 xl:order-3',
+};
+
+const hideableCards = computed(() =>
+    TRADE_CARDS.filter(c => !c.essential).map(c => ({ id: c.id, label: t(c.titleKey) }))
+);
+
+/** ความสูงของการ์ดหนึ่งใบ — โหมดพอดีจอใช้ flex, โหมดเลื่อนหน้าใช้ px */
+function styleFor(cardId) {
+    if (cardId === 'chart' && isChartFullscreen.value) return {};
+    return layout.cardStyle(cardId, packed.value);
+}
+
+function onColumnDrop(column) {
+    if (!layout.draggingId.value) return;
+    layout.dropOnColumn(column);
+    layout.endDrag();
+}
+
+function closeLayoutMenu(e) {
+    if (!e.target.closest('.layout-menu')) showLayoutMenu.value = false;
+}
+
 // Real market data from Binance (for non-TPIX pairs)
 const {
     ticker,
@@ -77,6 +161,26 @@ let tpixRefreshInterval = null;
 
 // Connection error state
 const dataError = ref(null);
+
+/**
+ * รวมความลึกของ order book ให้อยู่รูปแบบเดียวกับที่ OrderBook ใช้
+ * (เดิมฝั่ง TPIX ส่งเป็น array [price, amount] แต่คอมโพเนนต์อ่าน .price/.amount
+ *  ทำให้สมุดคำสั่งของคู่ TPIX ว่างเปล่าทั้งที่ API คืนข้อมูลมาแล้ว)
+ */
+function normalizeDepth(rows) {
+    const parsed = (rows || []).map(r => ({
+        price: parseFloat(r.price ?? r[0]) || 0,
+        amount: parseFloat(r.amount ?? r[1]) || 0,
+    })).filter(r => r.price > 0 && r.amount > 0);
+
+    const maxTotal = Math.max(...parsed.map(r => r.price * r.amount), 1);
+
+    return parsed.map(r => ({
+        ...r,
+        total: r.price * r.amount,
+        depth: Math.min(100, ((r.price * r.amount) / maxTotal) * 100),
+    }));
+}
 
 /**
  * Fetch all TPIX data: price, order book, recent trades.
@@ -108,21 +212,21 @@ async function fetchTpixData() {
             };
         }
 
-        // Order book
+        // Order book — asks เรียงจากราคาต่ำสุด, bids เรียงจากราคาสูงสุด (เหมือนฟีด Binance)
         if (bookRes.data.success) {
-            const book = bookRes.data.data;
-            asks.value = (book.asks || []).map(a => [a.price, a.amount]);
-            bids.value = (book.bids || []).map(b => [b.price, b.amount]);
+            const bookData = bookRes.data.data;
+            asks.value = normalizeDepth(bookData.asks).sort((a, b) => a.price - b.price);
+            bids.value = normalizeDepth(bookData.bids).sort((a, b) => b.price - a.price);
         }
 
         // Recent trades
         if (tradesRes.data.success) {
-            trades.value = (tradesRes.data.data || []).map(t => ({
-                price: t.price,
-                qty: t.amount,
-                quoteQty: t.total,
-                time: t.time,
-                isBuyerMaker: t.side === 'sell',
+            trades.value = (tradesRes.data.data || []).map((tr, i) => ({
+                id: tr.id ?? `${tr.time}-${i}`,
+                price: parseFloat(tr.price) || 0,
+                amount: parseFloat(tr.amount) || 0,
+                time: new Date(tr.time).toLocaleTimeString('en-US', { hour12: false }),
+                isBuy: tr.side === 'buy',
             }));
         }
 
@@ -130,7 +234,7 @@ async function fetchTpixData() {
         dataError.value = null;
     } catch {
         isLoading.value = false;
-        dataError.value = 'Failed to load market data. Retrying...';
+        dataError.value = t('trade.notice.dataError');
     }
 }
 
@@ -238,12 +342,23 @@ const orderMessage = ref('');
 const orderTxUrl = ref(null); // ลิงก์ BscScan ของเทรดที่สำเร็จ (โหมด onchain)
 const isSubmitting = ref(false); // ป้องกันกด submit ซ้ำ
 let toastTimer = null;
+let priceNonce = 0;
 
 const tabs = [
-    { id: 'openOrders', label: 'Open Orders', count: 0 },
-    { id: 'history', label: 'Trade History', count: null },
-    { id: 'funds', label: 'Funds', count: null },
+    { id: 'openOrders', key: 'trade.tabs.openOrders' },
+    { id: 'history', key: 'trade.tabs.history' },
+    { id: 'funds', key: 'trade.tabs.funds' },
 ];
+
+/**
+ * รับราคาที่ผู้ใช้คลิกจากสมุดคำสั่ง/เทรดล่าสุด แล้วส่งต่อให้ฟอร์ม
+ * ต้องแนบ nonce เพราะคลิก "ราคาเดิมซ้ำ" จะไม่ทำให้ watcher ของฟอร์มทำงาน
+ * ถ้าเทียบแค่ค่าราคา (อาการเดิม: กดแล้วเงียบ ต้องไปคลิกราคาอื่นก่อน)
+ */
+function handleSelectPrice(payload) {
+    const picked = typeof payload === 'object' && payload !== null ? payload : { price: payload };
+    selectedPrice.value = { ...picked, nonce: ++priceNonce };
+}
 
 /**
  * Handle order submission — แยกตามโหมดของคู่เทรด:
@@ -288,7 +403,7 @@ function showOrderError(message) {
  */
 async function executeBscMarketOrder(order) {
     if (order.type !== 'market') {
-        showOrderError('Limit orders open with TPIX Chain launch — use Market for now.');
+        showOrderError(t('trade.status.limitSoon'));
         return;
     }
 
@@ -297,13 +412,13 @@ async function executeBscMarketOrder(order) {
     // buy จ่าย quote token (USDT) ตามช่อง Total, sell จ่าย base token ตามช่อง Amount
     const inputAmount = order.side === 'buy' ? totalVal : amountVal;
     if (inputAmount <= 0) {
-        showOrderError(t('trade.enterAmount') || 'Please enter an amount.');
+        showOrderError(t('trade.enterAmount'));
         return;
     }
 
     isSubmitting.value = true;
     orderStatus.value = 'executing';
-    orderMessage.value = 'Preparing on-chain trade…';
+    orderMessage.value = t('trade.status.preparing');
     orderTxUrl.value = null;
 
     try {
@@ -317,21 +432,21 @@ async function executeBscMarketOrder(order) {
 
         // 2) การเทรดรันบน BSC เท่านั้น — สลับ wallet ให้ (ผู้ใช้กดยืนยันใน wallet)
         if (walletStore.chainId !== BSC_CHAIN_ID) {
-            orderMessage.value = 'Switching wallet to BSC…';
+            orderMessage.value = t('trade.status.switchingChain');
             try {
                 await walletStore.switchChain(BSC_CHAIN_ID);
             } catch {
-                throw friendly('Network switch was cancelled — trading runs on BSC.');
+                throw friendly(t('trade.status.switchCancelled'));
             }
             if (walletStore.chainId !== BSC_CHAIN_ID) {
-                throw friendly('Please switch your wallet to BSC to trade.');
+                throw friendly(t('trade.status.switchToBsc'));
             }
         }
 
         // 3) Quote จริงจาก PancakeSwap router (รวมค่าธรรมเนียมแพลตฟอร์มแล้ว)
         const quote = await swap.getQuote(fromTok, toTok, inputAmount);
         if (!quote) {
-            throw friendly(swap.error.value || 'No liquidity available for this pair.');
+            throw friendly(swap.error.value || t('trade.status.noLiquidity'));
         }
 
         // 4) กันราคา on-chain เพี้ยนจากราคาตลาด (สภาพคล่องบาง/pool ผิดปกติ) — เกิน 10% ไม่ส่ง
@@ -342,7 +457,7 @@ async function executeBscMarketOrder(order) {
                 : quote.netOutput / quote.amountIn;  // ได้ USDT ต่อ 1 base
             const deviation = Math.abs(effPrice - marketPrice) / marketPrice;
             if (deviation > 0.10) {
-                throw friendly('On-chain price differs too much from market price. Try a smaller amount or use Swap.');
+                throw friendly(t('trade.status.deviation'));
             }
         }
 
@@ -350,20 +465,24 @@ async function executeBscMarketOrder(order) {
         if (!fromTok.native) {
             const hasAllowance = await swap.checkAllowance(fromTok.address, inputAmount, fromTok.decimals);
             if (!hasAllowance) {
-                orderMessage.value = `Approving ${fromSym} in your wallet…`;
+                orderMessage.value = t('trade.status.approving', { symbol: fromSym });
                 const approveTx = await swap.approveToken(fromTok.address);
                 await approveTx.wait();
             }
         }
 
         // 6) ส่ง swap จริง — executeSwap เก็บ platform fee + บันทึก backend ให้แล้ว
-        orderMessage.value = `Confirm the ${order.side} order in your wallet…`;
-        const result = await swap.executeSwap(fromTok, toTok, inputAmount, quote, quote.slippage);
+        //    slippage ที่ผู้ใช้เลือกในฟอร์มมีผลจริงกับ minOut ที่ส่งเข้า router
+        orderMessage.value = order.side === 'buy' ? t('trade.status.confirmBuy') : t('trade.status.confirmSell');
+        const slippage = Number.isFinite(Number(order.slippage)) && order.slippage !== null
+            ? Number(order.slippage)
+            : quote.slippage;
+        const result = await swap.executeSwap(fromTok, toTok, inputAmount, quote, slippage);
 
         orderStatus.value = 'success';
         orderMessage.value = order.side === 'buy'
-            ? `Bought ≈ ${fmtQty(quote.netOutput)} ${toSym} on BSC`
-            : `Sold ${fmtQty(inputAmount)} ${fromSym} for ≈ ${fmtQty(quote.netOutput)} ${toSym}`;
+            ? t('trade.status.bought', { amount: fmtQty(quote.netOutput), symbol: toSym })
+            : t('trade.status.sold', { amount: fmtQty(inputAmount), from: fromSym, out: fmtQty(quote.netOutput), to: toSym });
         orderTxUrl.value = result?.url || null;
 
         playTradeSound();
@@ -372,7 +491,7 @@ async function executeBscMarketOrder(order) {
     } catch (err) {
         orderStatus.value = 'error';
         // error ที่ตั้งใจ throw เองมีข้อความพร้อมแสดง — นอกนั้น useSwap map ให้แล้ว
-        orderMessage.value = err?.isFriendly ? err.message : (swap.error.value || 'Trade failed. Please try again.');
+        orderMessage.value = err?.isFriendly ? err.message : (swap.error.value || t('trade.status.failed'));
         playErrorSound();
     } finally {
         isSubmitting.value = false;
@@ -395,36 +514,29 @@ const submitInternalOrder = async (order) => {
     const priceVal = parseFloat(String(order.price).replace(/,/g, '')) || 0;
     const amountVal = parseFloat(order.amount) || 0;
 
-    // Validate ก่อน submit
     if (amountVal <= 0) {
-        orderStatus.value = 'error';
-        orderMessage.value = t('trade.enterAmount') || 'Please enter an amount.';
-        playErrorSound();
-        setTimeout(() => { orderStatus.value = null; orderMessage.value = ''; }, 3000);
+        showOrderError(t('trade.enterAmount'));
         return;
     }
 
     if (order.type !== 'market' && priceVal <= 0) {
-        orderStatus.value = 'error';
-        orderMessage.value = t('trade.enterPrice') || 'Please enter a price.';
-        playErrorSound();
-        setTimeout(() => { orderStatus.value = null; orderMessage.value = ''; }, 3000);
+        showOrderError(t('trade.enterPrice'));
         return;
     }
 
     const totalVal = parseFloat(String(order.total).replace(/,/g, '')) || (priceVal * amountVal);
+    const sideLabel = order.side === 'buy' ? t('trade.form.buy') : t('trade.form.sell');
 
     isSubmitting.value = true;
     orderStatus.value = 'submitting';
-    orderMessage.value = t('trade.placingOrder') || 'Placing order...';
+    orderMessage.value = t('trade.status.placing');
 
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-        // Trade เป็น index/proxy — ราคาดึง realtime จาก Binance, balance off-chain
-        // ทุกคู่เทรด register บน TPIX chain (4289) — ส่ง chain_id ตายตัว
-        // wallet จะอยู่เชนไหนก็ได้ (สำหรับ Bridge/Send/Receive); การเทรดไม่ผูกกับ wallet chain
+        // ส่งเชนของคู่ที่เทรดจริง ไม่ใช่ค่าตายตัว — คู่ major ถูกย้ายไปอยู่บน BSC แล้ว
+        // (backend map chainId → chains.chain_id_hex เพื่อหาแถวคู่เทรด ส่งผิดเชนจะหาไม่เจอ)
         const { data } = await axios.post('/api/v1/trading/order', {
             wallet_address: walletStore.address,
             pair: currentPair.value,
@@ -434,51 +546,47 @@ const submitInternalOrder = async (order) => {
             amount: amountVal,
             total: totalVal,
             trigger_price: order.triggerPrice || null,
-            chain_id: 4289,
+            chain_id: isBscTradable.value ? BSC_CHAIN_ID : TPIX_CHAIN_ID,
         }, { signal: controller.signal });
 
         clearTimeout(timeoutId);
 
-        if (!data.success) throw new Error(data.error?.message || 'Order failed');
+        if (!data.success) throw new Error(data.error?.message || t('trade.status.failed'));
 
         const orderData = data.data;
 
-        // ทุก pair ที่ admin ตั้งใน trading_pairs เข้า internal order book ฝั่ง backend
-        // เหมือนกันหมด — ไม่มี on-chain execution ในเส้นทางนี้ จึงไม่มีการยิง confirm
-        // ด้วย tx_hash (path เดิมยิง tx ปลอม 0x000...0 แล้วยัง 404 เพราะ order
-        // เป็น internal ไม่ใช่ Transaction — ลบทิ้งแล้ว)
-        const statusText = orderData.status === 'filled'
-            ? `${order.side.toUpperCase()} order filled! ${orderData.trades_count} trade(s)`
-            : orderData.status === 'partially_filled'
-                ? `${order.side.toUpperCase()} order partially filled (${orderData.filled_amount}/${orderData.amount})`
-                : order.type === 'stop-limit'
-                    ? `${order.side.toUpperCase()} stop-limit order placed (trigger: $${order.triggerPrice})`
-                    : `${order.side.toUpperCase()} ${order.type} order placed at $${priceVal.toLocaleString()}`;
-
         orderStatus.value = 'success';
-        orderMessage.value = statusText;
+        orderMessage.value = orderData.status === 'filled'
+            ? t('trade.status.orderFilled', { side: sideLabel, count: orderData.trades_count })
+            : orderData.status === 'partially_filled'
+                ? t('trade.status.orderPartial', { side: sideLabel, filled: orderData.filled_amount, amount: orderData.amount })
+                : t('trade.status.orderPlaced', {
+                    side: sideLabel,
+                    type: order.type === 'market' ? t('trade.form.marketType') : t('trade.form.limit'),
+                    price: priceVal.toLocaleString(),
+                });
 
         // Refresh order book & trades ทันที (เฉพาะ TPIX pair ที่ใช้ internal data feed)
         if (isTPIXPair.value) {
             fetchTpixData();
         }
 
-        // เล่นเสียง trade สำเร็จ
         playTradeSound();
         fetchBalances();
     } catch (err) {
         orderStatus.value = 'error';
         if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
-            orderMessage.value = 'Order timed out. Please try again.';
+            orderMessage.value = t('trade.status.timeout');
         } else {
-            orderMessage.value = err.response?.data?.error?.message || err.message || 'Failed to place order.';
+            orderMessage.value = err.response?.data?.error?.message || err.message || t('trade.status.failed');
         }
         playErrorSound();
     } finally {
         isSubmitting.value = false;
     }
 
-    setTimeout(() => {
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
         orderStatus.value = null;
         orderMessage.value = '';
     }, 4000);
@@ -489,6 +597,11 @@ const handleConnectWallet = () => {
 };
 
 onMounted(async () => {
+    measureBoard();
+    wideQuery?.addEventListener('change', measureBoard);
+    window.addEventListener('resize', measureBoard);
+    document.addEventListener('click', closeLayoutMenu);
+
     if (isTPIXPair.value) {
         // TPIX pair: fetch from internal API + auto-refresh
         isLoading.value = true;
@@ -500,7 +613,7 @@ onMounted(async () => {
             await fetchInitialData();
             connectWebSocket();
         } catch {
-            dataError.value = 'Failed to connect to market data. Please refresh.';
+            dataError.value = t('trade.notice.connectError');
             isLoading.value = false;
         }
     }
@@ -509,11 +622,24 @@ onMounted(async () => {
         fetchBalances();
         fetchBscFormBalances();
     }
+
+    nextTick(measureBoard);
 });
 
 // เชื่อม wallet ทีหลัง / สลับ address → โหลดยอด BSC สำหรับฟอร์มเทรดใหม่
 watch(() => walletStore.address, () => {
     fetchBscFormBalances();
+});
+
+// แถบแจ้งเตือนโผล่/หาย หรือสลับโหมด → ตำแหน่งบนสุดของกระดานขยับ ต้องวัดใหม่
+watch([dataError, tradeFormMode, () => layout.fitScreen.value], () => {
+    nextTick(measureBoard);
+});
+
+// เปลี่ยนคู่เทรด → ราคาที่เคยคลิกไว้เป็นของคู่เดิม ต้องล้างทิ้ง
+watch(currentPair, () => {
+    selectedPrice.value = null;
+    isChartFullscreen.value = false;
 });
 
 onUnmounted(() => {
@@ -524,6 +650,9 @@ onUnmounted(() => {
     }
     clearTimeout(previewTimer);
     clearTimeout(toastTimer);
+    wideQuery?.removeEventListener('change', measureBoard);
+    window.removeEventListener('resize', measureBoard);
+    document.removeEventListener('click', closeLayoutMenu);
 });
 </script>
 
@@ -532,8 +661,7 @@ onUnmounted(() => {
 
     <AppLayout :hide-sidebar="true">
         <div class="max-w-[1920px] mx-auto">
-            <!-- บรรยากาศพื้นหลังหน้าเทรด — จางมากเพื่อไม่แย่งสายตาจากตัวเลข
-                 วางเป็นตัวแรกสุด แล้วให้ทุก block ถัดไปเป็น relative เพื่อลอยอยู่เหนือมัน -->
+            <!-- บรรยากาศพื้นหลังหน้าเทรด — จางมากเพื่อไม่แย่งสายตาจากตัวเลข -->
             <div class="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
                 <img src="/images/art/trade-desk.webp" alt="" loading="eager" fetchpriority="low" decoding="async"
                     class="w-full h-full object-cover opacity-[0.13]" />
@@ -552,24 +680,20 @@ onUnmounted(() => {
                 <div
                     v-if="orderStatus"
                     :class="[
-                        'fixed top-4 right-4 z-50 px-5 py-3.5 rounded-xl shadow-lg text-sm font-medium flex items-center gap-3',
+                        'fixed top-4 right-4 z-[70] max-w-[92vw] px-5 py-3.5 rounded-xl shadow-lg text-sm font-medium flex items-center gap-3',
                         orderStatus === 'success' ? 'bg-trading-green/90 text-white' :
                         orderStatus === 'error' ? 'bg-trading-red/90 text-white' :
                         'bg-primary-500/90 text-white'
                     ]"
                 >
-                    <!-- Spinner for submitting/executing -->
                     <div v-if="orderStatus === 'submitting' || orderStatus === 'executing'" class="spinner !w-4 !h-4 !border-white/30 !border-t-white"></div>
-                    <!-- Check for success -->
-                    <svg v-else-if="orderStatus === 'success'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    <svg v-else-if="orderStatus === 'success'" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                     </svg>
-                    <!-- X for error -->
-                    <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    <svg v-else class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
-                    <span>{{ orderStatus === 'submitting' ? 'Placing order...' : orderMessage }}</span>
-                    <!-- ลิงก์ดูธุรกรรมจริงบน BscScan (เฉพาะเทรด on-chain สำเร็จ) -->
+                    <span>{{ orderMessage }}</span>
                     <a
                         v-if="orderStatus === 'success' && orderTxUrl"
                         :href="orderTxUrl"
@@ -577,7 +701,7 @@ onUnmounted(() => {
                         rel="noopener"
                         class="underline font-semibold whitespace-nowrap hover:opacity-80"
                     >
-                        View tx ↗
+                        {{ t('trade.status.viewTx') }} ↗
                     </a>
                 </div>
             </Transition>
@@ -585,180 +709,362 @@ onUnmounted(() => {
             <!-- Data Error Banner -->
             <div v-if="dataError" class="relative mb-3 p-3 rounded-xl bg-trading-red/10 border border-trading-red/30 text-trading-red text-sm flex items-center gap-2">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
                 {{ dataError }}
+            </div>
+
+            <!-- แถบหัว: เลือกคู่เทรด + ราคาสด + เครื่องมือจัดผัง
+                 ข้อควรระวัง 2 ข้อของกล่องนี้:
+                 1. ห้ามใส่ overflow-hidden — dropdown ของ PairSelector จะโดนตัด
+                 2. ต้องมี z-30 — `backdrop-blur` สร้าง stacking context ทำให้ z-50
+                    ของ dropdown ถูกขังไว้ในกล่องนี้ ออกไปสู้กับกราฟไม่ได้ -->
+            <div class="relative z-30 flex items-center gap-3 flex-wrap rounded-2xl border border-white/5 bg-dark-900/40 backdrop-blur-md px-4 py-2.5 mb-3">
+                <PageArt art="hero-trade" :opacity="22" fade="edges" rounded="rounded-2xl" position="center" loading="eager" />
+
+                <PairSelector class="relative" :currentPair="currentPair" />
+
+                <div v-if="ticker && ticker.price" class="relative flex items-center gap-5 text-sm">
+                    <div>
+                        <span class="text-dark-400 text-[10px] block leading-none mb-0.5">{{ t('trade.price') }}</span>
+                        <p :class="['font-mono font-bold text-lg leading-none', (ticker.priceChange || ticker.change || 0) >= 0 ? 'text-trading-green' : 'text-trading-red']">
+                            ${{ (ticker.lastPrice || ticker.price) ? parseFloat(ticker.lastPrice || ticker.price).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '—' }}
+                        </p>
+                    </div>
+                    <div>
+                        <span class="text-dark-400 text-[10px] block leading-none mb-0.5">{{ t('trade.change24h') }}</span>
+                        <p :class="['font-mono text-sm leading-none', (ticker.priceChangePercent || ticker.change || 0) >= 0 ? 'text-trading-green' : 'text-trading-red']">
+                            {{ (ticker.priceChangePercent || ticker.change || 0) >= 0 ? '+' : '' }}{{ parseFloat(ticker.priceChangePercent || ticker.change || 0).toFixed(2) }}%
+                        </p>
+                    </div>
+                    <div class="hidden sm:block">
+                        <span class="text-dark-400 text-[10px] block leading-none mb-0.5">{{ t('trade.high24h') }}</span>
+                        <p class="text-white font-mono text-sm leading-none">${{ parseFloat(ticker.highPrice || ticker.high || 0).toLocaleString() }}</p>
+                    </div>
+                    <div class="hidden sm:block">
+                        <span class="text-dark-400 text-[10px] block leading-none mb-0.5">{{ t('trade.low24h') }}</span>
+                        <p class="text-white font-mono text-sm leading-none">${{ parseFloat(ticker.lowPrice || ticker.low || 0).toLocaleString() }}</p>
+                    </div>
+                    <div class="hidden md:block">
+                        <span class="text-dark-400 text-[10px] block leading-none mb-0.5">{{ t('trade.volume24h') }}</span>
+                        <p class="text-white font-mono text-sm leading-none">
+                            {{ parseFloat(ticker.volume || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }) }}
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Loading skeleton for ticker -->
+                <div v-else-if="isLoading" class="relative flex items-center gap-6">
+                    <div class="space-y-1">
+                        <div class="skeleton w-8 h-3"></div>
+                        <div class="skeleton w-24 h-6"></div>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="skeleton w-12 h-3"></div>
+                        <div class="skeleton w-16 h-4"></div>
+                    </div>
+                </div>
+
+                <!-- เครื่องมือจัดผัง -->
+                <div class="relative ml-auto flex items-center gap-2 layout-menu">
+                    <!-- ขนาดกราฟ — มีผลเฉพาะโหมดเลื่อนหน้า (โหมดพอดีจอกราฟยืดเอง) -->
+                    <div v-if="!packed" class="hidden md:flex items-center gap-0.5 p-0.5 rounded-lg bg-dark-800/80">
+                        <button
+                            v-for="h in CHART_HEIGHTS"
+                            :key="h.id"
+                            type="button"
+                            :title="`${t('trade.layout.chartSize')}: ${t(h.labelKey)}`"
+                            :class="['px-2 py-1 rounded-md text-[10px] font-medium transition-colors',
+                                layout.chartHeight.value === h.id ? 'bg-dark-600 text-white' : 'text-dark-400 hover:text-white']"
+                            @click="layout.chartHeight.value = h.id"
+                        >
+                            {{ t(h.labelKey) }}
+                        </button>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-dark-800/80 border border-white/5 text-[11px] text-dark-300 hover:text-white hover:border-primary-500/40 transition-colors"
+                        @click="showLayoutMenu = !showLayoutMenu"
+                    >
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6h16M4 12h10M4 18h7" />
+                        </svg>
+                        {{ t('trade.layout.customize') }}
+                    </button>
+
+                    <!-- เมนูจัดผัง -->
+                    <div
+                        v-if="showLayoutMenu"
+                        class="absolute right-0 top-full mt-2 w-64 z-50 rounded-xl border border-white/10 bg-dark-800/95 backdrop-blur-xl shadow-2xl p-3"
+                    >
+                        <p class="text-[11px] text-dark-400 mb-2 leading-relaxed">
+                            {{ t('trade.layout.hint') }}
+                            <span v-if="isNarrow" class="block text-amber-400 mt-1">{{ t('trade.layout.wideOnly') }}</span>
+                        </p>
+
+                        <label class="flex items-start gap-2 py-1.5 cursor-pointer border-y border-white/5 mb-2">
+                            <input
+                                type="checkbox"
+                                class="mt-0.5 rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500 w-3.5 h-3.5"
+                                :checked="layout.fitScreen.value"
+                                @change="layout.fitScreen.value = !layout.fitScreen.value"
+                            >
+                            <span class="min-w-0">
+                                <span class="block text-xs text-white">{{ t('trade.layout.fitScreen') }}</span>
+                                <span class="block text-[10px] text-dark-500 leading-snug">{{ t('trade.layout.fitScreenHint') }}</span>
+                            </span>
+                        </label>
+
+                        <p class="text-[10px] text-dark-500 mb-1.5">{{ t('trade.layout.showCards') }}</p>
+                        <label
+                            v-for="card in hideableCards"
+                            :key="card.id"
+                            class="flex items-center gap-2 py-1 cursor-pointer text-xs text-dark-300 hover:text-white"
+                        >
+                            <input
+                                type="checkbox"
+                                class="rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500 w-3.5 h-3.5"
+                                :checked="!layout.hidden.value.includes(card.id)"
+                                @change="layout.toggleHidden(card.id)"
+                            >
+                            {{ card.label }}
+                        </label>
+
+                        <button
+                            type="button"
+                            class="w-full mt-2.5 py-1.5 rounded-lg bg-white/5 text-[11px] text-dark-300 hover:text-white hover:bg-white/10 transition-colors"
+                            @click="layout.reset()"
+                        >
+                            {{ t('trade.layout.reset') }}
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- แถบบอกโหมดเทรด: on-chain จริงบน BSC หรือรอ TPIX Chain -->
             <div v-if="tradeFormMode === 'onchain'" class="relative mb-3 px-3 py-2 rounded-xl bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs flex items-center gap-2">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                <span>Market orders execute for real on BSC via PancakeSwap — tokens settle in your wallet. Limit orders open with TPIX Chain.</span>
+                <span>{{ t('trade.notice.onchain') }}</span>
             </div>
             <div v-else-if="isTPIXPair" class="relative mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span>TPIX/USDT trading opens with TPIX Chain launch — coming soon.</span>
+                <span>{{ t('trade.notice.tpixSoon') }}</span>
             </div>
 
-            <!-- Trading Layout: 3 columns -->
-            <div class="relative grid grid-cols-12 gap-3">
+            <!-- ── ผัง 3 คอลัมน์ ────────────────────────────────────────────────
+                 การ์ดทุกใบเขียนครั้งเดียวใน loop ของคอลัมน์ — ย้ายไปคอลัมน์ไหน
+                 ก็ render ที่นั่น ไม่ต้องเขียนซ้ำ 3 ชุดให้หลุดกันภายหลัง -->
+            <div
+                ref="board"
+                class="relative grid gap-3 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[276px_minmax(0,1fr)_336px]"
+                :class="packed ? 'items-stretch' : 'items-start'"
+                :style="boardStyle"
+            >
+                <div
+                    v-for="col in COLUMNS"
+                    :key="col"
+                    :class="[
+                        'contents lg:flex lg:flex-col lg:gap-3 lg:min-w-0',
+                        packed && 'lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden custom-scrollbar',
+                        columnClass[col],
+                    ]"
+                    @dragover.prevent
+                    @drop="onColumnDrop(col)"
+                >
+                    <template v-for="cardId in layout.visible.value[col]" :key="cardId">
+                        <!-- คู่เทรด -->
+                        <DraggableCard
+                            v-if="cardId === 'market'"
+                            card-id="market"
+                            :locked="isNarrow"
+                            :class="layout.stackClass('market')"
+                            :style="styleFor('market')"
+                        >
+                            <MarketListPanel :current-pair="currentPair" />
+                        </DraggableCard>
 
-                <!-- Left Column: Pair Selector + Chart + Order Tabs -->
-                <div class="col-span-12 xl:col-span-8 lg:col-span-7 space-y-3">
-                    <!-- Pair Selector + Ticker Info
-                         ข้อควรระวัง 2 ข้อของกล่องนี้:
-                         1. ห้ามใส่ overflow-hidden — dropdown ของ PairSelector จะโดนตัด
-                            (PageArt คลิปตัวเองอยู่แล้ว จึงไม่กระทบ)
-                         2. ต้องมี z-30 — `backdrop-blur` สร้าง stacking context ทำให้ z-50
-                            ของ dropdown ถูกขังไว้ในกล่องนี้ ออกไปสู้กับกราฟไม่ได้
-                            และ chart-container ก็มี backdrop-blur (= stacking context) เหมือนกัน
-                            ทั้งคู่ z-index:auto → ตัวที่อยู่หลังใน DOM (กราฟ) ทับ dropdown -->
-                    <div class="relative z-30 flex items-center gap-4 flex-wrap rounded-2xl border border-white/5 bg-dark-900/40 backdrop-blur-md px-4 py-3">
-                        <PageArt art="hero-trade" :opacity="22" fade="edges" rounded="rounded-2xl" position="center" loading="eager" />
-                        <PairSelector class="relative" :currentPair="currentPair" />
-                        <div v-if="ticker && ticker.price" class="relative flex items-center gap-6 text-sm">
-                            <div>
-                                <span class="text-dark-400 text-xs">{{ t('trade.price') }}</span>
-                                <p :class="['font-mono font-bold text-lg', (ticker.priceChange || ticker.change || 0) >= 0 ? 'text-trading-green' : 'text-trading-red']">
-                                    ${{ (ticker.lastPrice || ticker.price) ? parseFloat(ticker.lastPrice || ticker.price).toLocaleString('en-US', {minimumFractionDigits: 2}) : '—' }}
-                                </p>
-                            </div>
-                            <div>
-                                <span class="text-dark-400 text-xs">{{ t('trade.change24h') }}</span>
-                                <p :class="[(ticker.priceChangePercent || ticker.change || 0) >= 0 ? 'text-trading-green' : 'text-trading-red']">
-                                    {{ (ticker.priceChangePercent || ticker.change || 0) >= 0 ? '+' : '' }}{{ parseFloat(ticker.priceChangePercent || ticker.change || 0).toFixed(2) }}%
-                                </p>
-                            </div>
-                            <div class="hidden sm:block">
-                                <span class="text-dark-400 text-xs">{{ t('trade.high24h') }}</span>
-                                <p class="text-white font-mono">${{ parseFloat(ticker.highPrice || ticker.high || 0).toLocaleString() }}</p>
-                            </div>
-                            <div class="hidden sm:block">
-                                <span class="text-dark-400 text-xs">{{ t('trade.low24h') }}</span>
-                                <p class="text-white font-mono">${{ parseFloat(ticker.lowPrice || ticker.low || 0).toLocaleString() }}</p>
-                            </div>
-                            <div v-if="isTPIXPair && tpixPrice?.source === 'trades'" class="hidden md:block">
-                                <span class="text-dark-400 text-xs">Volume 24h</span>
-                                <p class="text-white font-mono">{{ parseFloat(ticker.volume || 0).toLocaleString() }} TPIX</p>
-                            </div>
-                        </div>
-                        <!-- Loading skeleton for ticker -->
-                        <div v-else-if="isLoading" class="relative flex items-center gap-6">
-                            <div class="space-y-1">
-                                <div class="skeleton w-8 h-3"></div>
-                                <div class="skeleton w-24 h-6"></div>
-                            </div>
-                            <div class="space-y-1">
-                                <div class="skeleton w-12 h-3"></div>
-                                <div class="skeleton w-16 h-4"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Chart -->
-                    <TradingChart
-                        :symbol="currentPair"
-                        :ticker="ticker"
-                        :is-tpix="isTPIXPair"
-                        class="h-[520px]"
-                    />
-
-                    <!-- Order Tabs -->
-                    <div class="glass-dark rounded-2xl overflow-hidden">
-                        <div class="flex items-center border-b border-white/5">
-                            <button
-                                v-for="tab in tabs"
-                                :key="tab.id"
-                                @click="activeTab = tab.id"
-                                :class="[
-                                    'px-5 py-3 text-sm font-medium transition-all relative',
-                                    activeTab === tab.id
-                                        ? 'text-primary-400'
-                                        : 'text-dark-400 hover:text-white'
-                                ]"
-                            >
-                                <span>{{ tab.label }}</span>
-                                <span
-                                    v-if="tab.count"
-                                    class="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-primary-500/20 text-primary-400"
+                        <!-- กราฟ
+                             เต็มจอต้องเป็น `!fixed` — DraggableCard มี `relative` เป็นคลาสคงที่
+                             และ Tailwind วาง .relative ไว้หลัง .fixed ในไฟล์ output
+                             คลาสที่ specificity เท่ากันจึงแพ้ให้ตัวที่มาทีหลังเสมอ -->
+                        <DraggableCard
+                            v-else-if="cardId === 'chart'"
+                            card-id="chart"
+                            :locked="isNarrow"
+                            :class="[layout.stackClass('chart'), isChartFullscreen ? '!fixed inset-3 z-[55]' : '']"
+                            :style="styleFor('chart')"
+                        >
+                            <template #actions>
+                                <button
+                                    type="button"
+                                    class="p-1 rounded text-dark-500 hover:text-white hover:bg-white/5 transition-colors"
+                                    :title="isChartFullscreen ? t('trade.layout.exitFullscreen') : t('trade.layout.fullscreen')"
+                                    :aria-label="isChartFullscreen ? t('trade.layout.exitFullscreen') : t('trade.layout.fullscreen')"
+                                    @click="isChartFullscreen = !isChartFullscreen"
                                 >
-                                    {{ tab.count }}
-                                </span>
-                                <div
-                                    v-if="activeTab === tab.id"
-                                    class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500"
-                                ></div>
-                            </button>
-                        </div>
-                        <div class="p-4">
-                            <OpenOrders v-if="activeTab === 'openOrders'" />
-                            <TradeHistory v-else-if="activeTab === 'history'" />
-                            <div v-else class="py-6 text-center text-dark-400 text-sm">
-                                <div v-if="walletStore.isConnected && balances.length > 0">
-                                    <div v-for="bal in balances" :key="bal.token_address" class="flex items-center justify-between py-2 border-b border-white/5">
-                                        <span class="text-white font-medium">{{ bal.symbol }}</span>
-                                        <span class="font-mono text-white">{{ parseFloat(bal.balance).toFixed(6) }}</span>
-                                    </div>
-                                </div>
-                                <div v-else-if="walletStore.isConnected" class="py-8">
-                                    <svg class="w-8 h-8 mx-auto text-dark-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 12V8H6a2 2 0 01-2-2c0-1.1.9-2 2-2h12v4m2 0v8a2 2 0 01-2 2H6a2 2 0 01-2-2V6"/>
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path v-if="!isChartFullscreen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4" />
+                                        <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 4v5H4M15 4v5h5M15 20v-5h5M9 20v-5H4" />
                                     </svg>
-                                    <p class="text-dark-500">No balances found</p>
-                                </div>
-                                <div v-else class="py-8">
-                                    <svg class="w-8 h-8 mx-auto text-dark-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
-                                    </svg>
-                                    <p class="text-dark-500 mb-3">Connect wallet to view funds</p>
-                                    <button @click="handleConnectWallet" class="btn-primary text-sm px-6 py-2">
-                                        Connect Wallet
+                                </button>
+                            </template>
+
+                            <!-- ฉากหลังกราฟจางๆ — วางก่อนกราฟ และกราฟต้องเป็น positioned
+                                 ไม่งั้นเลเยอร์ absolute นี้จะทับกราฟทั้งใบ -->
+                            <PageArt art="chart-backdrop" :opacity="11" fade="radial" />
+
+                            <TradingChart
+                                :symbol="currentPair"
+                                :ticker="ticker"
+                                :is-tpix="isTPIXPair"
+                                class="flex-1 relative z-10"
+                            />
+                        </DraggableCard>
+
+                        <!-- ฟอร์มซื้อ/ขาย -->
+                        <DraggableCard
+                            v-else-if="cardId === 'form'"
+                            card-id="form"
+                            :locked="isNarrow"
+                            :class="layout.stackClass('form')"
+                            :style="styleFor('form')"
+                            body-class="overflow-y-auto custom-scrollbar"
+                        >
+                            <TradeForm
+                                :symbol="currentPair"
+                                :ticker-price="ticker?.price || 0"
+                                :selected-price="selectedPrice"
+                                :is-wallet-connected="walletStore.isConnected"
+                                :is-submitting="isSubmitting"
+                                :balances="formBalances"
+                                :mode="tradeFormMode"
+                                :market-preview="marketPreview"
+                                @submit-order="handleSubmitOrder"
+                                @connect-wallet="handleConnectWallet"
+                                @form-change="handleFormChange"
+                            />
+                        </DraggableCard>
+
+                        <!-- คำสั่งของฉัน -->
+                        <DraggableCard
+                            v-else-if="cardId === 'orders'"
+                            card-id="orders"
+                            :locked="isNarrow"
+                            :class="layout.stackClass('orders')"
+                            :style="styleFor('orders')"
+                        >
+                            <template #actions>
+                                <div class="flex items-center gap-0.5">
+                                    <button
+                                        v-for="tab in tabs"
+                                        :key="tab.id"
+                                        type="button"
+                                        :class="['px-2 py-1 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap',
+                                            activeTab === tab.id ? 'bg-primary-500/15 text-primary-300' : 'text-dark-400 hover:text-white']"
+                                        @click="activeTab = tab.id"
+                                    >
+                                        {{ t(tab.key) }}
                                     </button>
                                 </div>
+                            </template>
+
+                            <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4">
+                                <OpenOrders v-if="activeTab === 'openOrders'" />
+                                <TradeHistory v-else-if="activeTab === 'history'" />
+                                <div v-else class="text-center text-dark-400 text-sm">
+                                    <div v-if="walletStore.isConnected && balances.length > 0">
+                                        <div v-for="bal in balances" :key="bal.token_address" class="flex items-center justify-between py-2 border-b border-white/5">
+                                            <span class="text-white font-medium">{{ bal.symbol }}</span>
+                                            <span class="font-mono text-white">{{ parseFloat(bal.balance).toFixed(6) }}</span>
+                                        </div>
+                                    </div>
+                                    <div v-else-if="walletStore.isConnected" class="py-8">
+                                        <svg class="w-8 h-8 mx-auto text-dark-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 12V8H6a2 2 0 01-2-2c0-1.1.9-2 2-2h12v4m2 0v8a2 2 0 01-2 2H6a2 2 0 01-2-2V6" />
+                                        </svg>
+                                        <p class="text-dark-500">{{ t('trade.tabs.noBalances') }}</p>
+                                    </div>
+                                    <div v-else class="py-8">
+                                        <svg class="w-8 h-8 mx-auto text-dark-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                        </svg>
+                                        <p class="text-dark-500 mb-3">{{ t('trade.tabs.connectForFunds') }}</p>
+                                        <button type="button" class="btn-primary text-sm px-6 py-2" @click="handleConnectWallet">
+                                            {{ t('trade.form.connectWallet') }}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        </DraggableCard>
+
+                        <!-- สมุดคำสั่ง -->
+                        <DraggableCard
+                            v-else-if="cardId === 'book'"
+                            card-id="book"
+                            :locked="isNarrow"
+                            :class="layout.stackClass('book')"
+                            :style="styleFor('book')"
+                        >
+                            <OrderBook
+                                :symbol="currentPair"
+                                :asks="asks"
+                                :bids="bids"
+                                :ticker-price="ticker?.price || 0"
+                                :is-loading="isLoading"
+                                @select-price="handleSelectPrice"
+                            />
+                        </DraggableCard>
+
+                        <!-- AI TRADE -->
+                        <DraggableCard
+                            v-else-if="cardId === 'ai'"
+                            card-id="ai"
+                            :locked="isNarrow"
+                            :class="layout.stackClass('ai')"
+                            :style="styleFor('ai')"
+                            :art-opacity="10"
+                        >
+                            <template #actions>
+                                <Link
+                                    :href="`/ai-trade?pair=${encodeURIComponent(currentPair)}`"
+                                    class="px-2 py-0.5 rounded-md text-[10px] font-medium text-primary-400 hover:text-primary-300 hover:bg-white/5 transition-colors"
+                                >
+                                    {{ t('trade.layout.settings') }}
+                                </Link>
+                            </template>
+
+                            <AiTradeCard :pair="currentPair" />
+                        </DraggableCard>
+
+                        <!-- เทรดล่าสุด -->
+                        <DraggableCard
+                            v-else-if="cardId === 'trades'"
+                            card-id="trades"
+                            :locked="isNarrow"
+                            :class="layout.stackClass('trades')"
+                            :style="styleFor('trades')"
+                        >
+                            <RecentTrades
+                                :symbol="currentPair"
+                                :trades="trades"
+                                :is-loading="isLoading"
+                                @select-price="handleSelectPrice"
+                            />
+                        </DraggableCard>
+                    </template>
+
+                    <!-- พื้นที่รับการ์ดตอนคอลัมน์ว่าง -->
+                    <div
+                        v-if="layout.draggingId.value && layout.visible.value[col].length === 0"
+                        class="h-24 rounded-2xl border-2 border-dashed border-primary-500/40 flex items-center justify-center text-[11px] text-primary-300"
+                    >
+                        {{ t('trade.layout.dropHere') }}
                     </div>
-                </div>
-
-                <!-- Right Column: Order Book + Trade Form + Recent Trades -->
-                <div class="col-span-12 xl:col-span-4 lg:col-span-5 space-y-3">
-                    <!-- Order Book -->
-                    <OrderBook
-                        :symbol="currentPair"
-                        :asks="asks"
-                        :bids="bids"
-                        :ticker-price="ticker?.price || 0"
-                        :is-loading="isLoading"
-                        class="h-[340px]"
-                        @select-price="selectedPrice = $event"
-                    />
-
-                    <!-- Trade Form -->
-                    <TradeForm
-                        :symbol="currentPair"
-                        :ticker-price="ticker?.price || 0"
-                        :selected-price="selectedPrice"
-                        :is-wallet-connected="walletStore.isConnected"
-                        :is-submitting="isSubmitting"
-                        :balances="formBalances"
-                        :mode="tradeFormMode"
-                        :market-preview="marketPreview"
-                        @submit-order="handleSubmitOrder"
-                        @connect-wallet="handleConnectWallet"
-                        @form-change="handleFormChange"
-                    />
-
-                    <!-- Recent Trades -->
-                    <RecentTrades
-                        :symbol="currentPair"
-                        :trades="trades"
-                        :is-loading="isLoading"
-                        class="h-[280px]"
-                    />
                 </div>
             </div>
         </div>
