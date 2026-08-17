@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\SiteSetting;
+use App\Services\WalletIdentityService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
@@ -46,6 +48,10 @@ class ProfileController extends Controller
                 'total_trades' => $user->total_trades,
                 'total_volume_usd' => $user->total_volume_usd,
                 'has_password' => $user->password !== null,
+                // ถอดกระเป๋าได้ก็ต่อเมื่อยังมีทางเข้าอื่นเหลืออยู่ — คำนวณฝั่งเซิร์ฟเวอร์
+                // ให้ตรงกับกฎที่บังคับใช้จริง ไม่ให้หน้าเว็บเดาเอง
+                'can_unlink_wallet' => $user->wallet_address !== null
+                    && app(WalletIdentityService::class)->hasOtherSignInMethod($user),
                 'created_at' => $user->created_at?->format('Y-m-d'),
             ],
             'socialAccounts' => $user->socialAccounts->map(fn ($sa) => [
@@ -66,17 +72,55 @@ class ProfileController extends Controller
 
     /**
      * Update profile info (name, email).
+     *
+     * อีเมลไม่บังคับ — ผู้ใช้ที่เข้าระบบด้วยกระเป๋าไม่มีอีเมลตั้งแต่แรก บังคับกรอก
+     * เท่ากับเขาแก้แค่ชื่อที่แสดงไม่ได้เลยจนกว่าจะยอมให้อีเมล
      */
     public function update(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,'.$request->user()->id],
+            'email' => ['nullable', 'string', 'email', 'max:255', 'unique:users,email,'.$request->user()->id],
         ]);
 
-        $request->user()->update($validated);
+        $user = $request->user();
+
+        // ห้ามลบอีเมลทิ้งถ้ามันเป็นทางเข้าเดียวที่เหลือ — ล้างแล้วล็อกอินกลับไม่ได้อีก
+        if (blank($validated['email'] ?? null) && $user->email !== null && $user->wallet_address === null) {
+            return back()->withErrors(['email' => 'ลบอีเมลไม่ได้ — เป็นทางเข้าเดียวของบัญชีนี้']);
+        }
+
+        $user->update($validated);
 
         return back()->with('success', 'Profile updated.');
+    }
+
+    /**
+     * ถอดกระเป๋าออกจากบัญชี.
+     *
+     * เหตุผลที่ต้องมี: ผู้ใช้เปลี่ยนกระเป๋า ทำ seed หาย หรือเผลอผูกผิดใบ
+     * ถ้าถอดเองไม่ได้ ทางเดียวคือทิ้งบัญชีแล้วเริ่มใหม่ ซึ่งประวัติเทรดหายหมด
+     */
+    public function unlinkWallet(Request $request, WalletIdentityService $identities): RedirectResponse
+    {
+        $user = $request->user();
+        $wallet = $user->wallet_address;
+
+        $result = $identities->unlink($user);
+
+        if (! $result['ok']) {
+            return back()->withErrors(['wallet' => match ($result['error']) {
+                'ONLY_SIGN_IN_METHOD' => 'ถอดกระเป๋าไม่ได้ — เป็นทางเข้าเดียวของบัญชีนี้ ตั้งอีเมลกับรหัสผ่านก่อน',
+                default => 'ยังไม่ได้ผูกกระเป๋ากับบัญชีนี้',
+            }]);
+        }
+
+        // สิทธิ์ฝั่ง API ของกระเป๋าใบที่ถอดออกต้องหมดทันที ไม่ใช่รออีก 4 ชั่วโมง
+        if ($wallet) {
+            Cache::forget('wallet_verified:'.strtolower($wallet));
+        }
+
+        return back()->with('success', 'ถอดกระเป๋าออกจากบัญชีแล้ว');
     }
 
     /**

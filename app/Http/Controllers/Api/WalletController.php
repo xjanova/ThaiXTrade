@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\UserWalletService;
+use App\Services\WalletIdentityService;
 use App\Services\Web3BalanceService;
 use Elliptic\EC;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -25,9 +27,17 @@ use Throwable;
  */
 class WalletController extends Controller
 {
+    /** เหตุผลที่ผูกกระเป๋าไม่ได้ — เขียนให้ผู้ใช้อ่านแล้วรู้ว่าต้องทำอะไรต่อ */
+    private const LINK_ERRORS = [
+        WalletIdentityService::ERR_WALLET_TAKEN => 'กระเป๋าใบนี้ผูกกับบัญชีอื่นอยู่แล้ว — เข้าสู่ระบบด้วยบัญชีนั้น หรือติดต่อทีมงานเพื่อรวมบัญชี',
+        WalletIdentityService::ERR_ALREADY_LINKED => 'บัญชีนี้ผูกกระเป๋าใบอื่นไว้แล้ว — ถอดใบเดิมออกในหน้าโปรไฟล์ก่อน',
+        WalletIdentityService::ERR_BANNED => 'บัญชีนี้ถูกระงับการใช้งาน',
+    ];
+
     public function __construct(
         private Web3BalanceService $balanceService,
         private UserWalletService $userWalletService,
+        private WalletIdentityService $identities,
     ) {
         //
     }
@@ -57,18 +67,20 @@ class WalletController extends Controller
 
         $validated = $validator->validated();
 
-        // สมัครสมาชิกอัตโนมัติ (หรือหา user ที่มีอยู่)
-        $user = $this->userWalletService->findOrCreateByWallet(
-            $validated['wallet_address'],
-            $validated['chain_id'],
-            $validated['wallet_type'] ?? 'metamask',
-            $request->ip()
-        );
-
         // SECURITY FIX: ทุก wallet ต้อง verify ผ่าน requestSignature() → verifySignature()
         // ลบ auto-verify สำหรับ tpix_wallet เพราะ attacker สามารถส่ง wallet_type=tpix_wallet
         // ด้วย address ของเหยื่อ แล้วได้ verified session 24 ชม. ทันที
         // Mobile app ต้องเรียก verifyWithBackend() หลัง connect เสมอ
+        //
+        // ⚠️ ปลายทางนี้ไม่พิสูจน์อะไรเลย จึงห้ามผูกกระเป๋าเข้าบัญชีที่ล็อกอินอยู่ตรงนี้
+        //    การผูกเกิดที่ verifySignature() หลัง ecrecover ผ่านแล้วเท่านั้น
+        $user = $this->identities->resolveForConnect(
+            $request->user(),
+            $validated['wallet_address'],
+            $validated['chain_id'],
+            $validated['wallet_type'] ?? 'metamask',
+            $request->ip(),
+        );
 
         return response()->json([
             'success' => true,
@@ -76,9 +88,12 @@ class WalletController extends Controller
                 'wallet_address' => $validated['wallet_address'],
                 'chain_id' => $validated['chain_id'],
                 'connected_at' => now()->toIso8601String(),
-                'user_id' => $user->id,
-                'is_new' => $user->wasRecentlyCreated,
-                'referral_code' => $user->referral_code,
+                'user_id' => $user?->id,
+                'is_new' => (bool) $user?->wasRecentlyCreated,
+                'referral_code' => $user?->referral_code,
+                // กระเป๋าใบนี้ยังไม่ได้ผูกกับบัญชีที่ล็อกอินอยู่ — ต้องเซ็นก่อน
+                'needs_link' => $user !== null
+                    && $user->wallet_address !== strtolower($validated['wallet_address']),
             ],
         ]);
     }
@@ -92,14 +107,40 @@ class WalletController extends Controller
     {
         // Clear verified wallet cache on disconnect
         $walletAddress = $request->input('wallet_address');
+        $signedOut = false;
+
         if ($walletAddress && preg_match('/^0x[a-fA-F0-9]{40}$/', $walletAddress)) {
-            Cache::forget('wallet_verified:'.strtolower($walletAddress));
+            $walletAddress = strtolower($walletAddress);
+            Cache::forget("wallet_verified:{$walletAddress}");
+
+            /*
+             * ถอดกระเป๋าที่เป็นตัวพาเข้าระบบ = ออกจากระบบด้วย
+             *
+             * ผู้ใช้ที่เข้ามาด้วยการเซ็นกระเป๋าคาดว่า "ตัดการเชื่อมต่อ" แปลว่าออกแล้ว
+             * ถ้าปล่อย session ค้างไว้ คนถัดไปที่มาใช้เครื่องเดียวกันจะเปิดหน้าโปรไฟล์
+             * ของเจ้าของกระเป๋าได้ทั้งที่หน้าเว็บแสดงว่าไม่ได้เชื่อมกระเป๋าแล้ว
+             *
+             * ผู้ใช้ที่ล็อกอินด้วยอีเมลแล้วมาผูกกระเป๋าทีหลังไม่ถูกเตะออก — เขาเข้ามา
+             * ด้วยรหัสผ่าน การถอดกระเป๋าไม่ควรลบสิ่งที่ไม่เกี่ยวกัน
+             */
+            $user = $request->user();
+
+            if ($user && $user->wallet_address === $walletAddress
+                && ! $this->identities->hasOtherSignInMethod($user)
+                && $request->hasSession()
+            ) {
+                Auth::guard('web')->logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+                $signedOut = true;
+            }
         }
 
         return response()->json([
             'success' => true,
             'data' => [
                 'disconnected_at' => now()->toIso8601String(),
+                'signed_out' => $signedOut,
             ],
         ]);
     }
@@ -414,17 +455,75 @@ class WalletController extends Controller
         Cache::forget("wallet_nonce:{$walletAddress}:{$nonce}");
         Cache::forget("wallet_active_nonce:{$walletAddress}");
 
+        $chainId = (int) $request->input('chain_id', 56);
+        $walletType = $request->input('wallet_type', 'metamask');
+
+        /*
+         * ตรงนี้คือจุดเดียวที่ระบบรู้แน่ว่า "คนที่ยิงมาถือกุญแจของกระเป๋าใบนี้จริง"
+         * จึงเป็นจุดเดียวที่ผูกกระเป๋าเข้ากับบัญชีได้
+         */
+        $identity = $this->identities->linkVerified(
+            $request->user(),
+            $walletAddress,
+            $chainId,
+            $walletType,
+            $request->ip(),
+        );
+
+        if ($identity['error']) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => $identity['error'],
+                    'message' => self::LINK_ERRORS[$identity['error']] ?? 'ผูกกระเป๋ากับบัญชีไม่สำเร็จ',
+                ],
+            ], 409);
+        }
+
         // Cache wallet as cryptographically verified (4 hours)
         // SECURITY: ถ้าแก้เลขนี้ ต้องแก้ expires_in ด้านล่างให้ตรงกัน
         // เพื่อให้ frontend กับ backend รู้เวลาหมดอายุตรงกัน (ไม่งั้น session ขาดช่วง)
         $verificationTtl = 14400;
 
         Cache::put("wallet_verified:{$walletAddress}", [
-            'chain_id' => $request->input('chain_id', 56),
+            'chain_id' => $chainId,
             'ip' => $request->ip(),
             'verified_at' => now()->toIso8601String(),
             'signature_verified' => true,
         ], $verificationTtl);
+
+        /*
+         * เปิด session ให้ผู้ใช้กระเป๋าจริงๆ
+         *
+         * เดิมการเซ็นสำเร็จได้แค่แถวในแคช `wallet_verified:` ซึ่ง API ของบอทใช้ได้
+         * แต่ฝั่งเว็บยังมองว่าเป็นคนแปลกหน้า — `auth.user` เป็น null ตลอด หน้าโปรไฟล์
+         * เข้าไม่ได้ ตั้งค่าอะไรไม่ได้ กลายเป็นระบบล็อกอินสองชุดที่ไม่รู้จักกัน
+         *
+         * เว็บ (คำขอมี session) ได้ทั้งแคชและ session · แอพมือถือ (ไม่มี session)
+         * ได้แคชอย่างเดียวเหมือนเดิม ไม่ต้องแก้อะไรฝั่งแอพ
+         */
+        $signedIn = false;
+        if ($request->hasSession() && $identity['user']) {
+            Auth::guard('web')->login($identity['user'], remember: true);
+            $request->session()->regenerate();   // กัน session fixation ตอนสิทธิ์เปลี่ยนมือ
+            $signedIn = true;
+        } elseif ($identity['user'] && $this->looksLikeOurFrontend($request)) {
+            /*
+             * คำขอมาจากหน้าเว็บของเราเองแต่ไม่มี session ให้ใช้ = ตั้งค่าผิดที่ไหนสักแห่ง
+             *
+             * session ของ /api/* มาจาก Sanctum ที่ดู Referer/Origin เทียบกับ
+             * `sanctum.stateful` ถ้าใครไปแก้ APP_URL หรือ SANCTUM_STATEFUL_DOMAINS
+             * ให้ไม่ตรงกับโดเมนจริง การเข้าระบบด้วยกระเป๋าจะพังเงียบๆ ทั้งระบบ:
+             * ผู้ใช้เซ็นผ่าน เห็นว่าเชื่อมกระเป๋าแล้ว แต่เว็บยังถือว่าเป็นคนแปลกหน้า
+             *
+             * ไม่มีใครรายงานเรื่องแบบนี้ — เขาจะเลิกใช้เฉยๆ จึงต้องดังในล็อกของเรา
+             */
+            Log::warning('เซ็นกระเป๋าผ่านแต่เปิด session ให้ไม่ได้ — ตรวจ sanctum.stateful กับ APP_URL', [
+                'origin' => $request->headers->get('origin'),
+                'referer' => $request->headers->get('referer'),
+                'stateful' => config('sanctum.stateful'),
+            ]);
+        }
 
         return response()->json([
             'success' => true,
@@ -432,8 +531,36 @@ class WalletController extends Controller
                 'wallet_address' => $walletAddress,
                 'verified' => true,
                 'expires_in' => $verificationTtl,
+                'signed_in' => $signedIn,
+                'link_result' => $identity['result'],
+                'user_id' => $identity['user']?->id,
             ],
         ]);
+    }
+
+    /**
+     * คำขอนี้มาจากหน้าเว็บของเราเองไหม (ไม่ใช่แอพมือถือหรือสคริปต์ภายนอก).
+     *
+     * ใช้แยกว่า "ไม่มี session เพราะเป็นแอพมือถือ" (ปกติ) ออกจาก
+     * "ไม่มี session ทั้งที่มาจากเว็บเรา" (ตั้งค่าผิด ต้องรู้)
+     */
+    private function looksLikeOurFrontend(Request $request): bool
+    {
+        $host = parse_url((string) config('app.url'), PHP_URL_HOST);
+
+        if (! $host) {
+            return false;
+        }
+
+        foreach (['origin', 'referer'] as $header) {
+            $value = $request->headers->get($header);
+
+            if ($value && parse_url($value, PHP_URL_HOST) === $host) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

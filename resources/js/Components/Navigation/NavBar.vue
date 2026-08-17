@@ -59,8 +59,31 @@ const menuOpen = ref(false);
 const showWalletMenu = ref(false);
 const showUserMenu = ref(false);
 
+/**
+ * ชื่อที่แสดงในเมนูบัญชี.
+ *
+ * ผู้ใช้ที่เข้าระบบด้วยการเซ็นกระเป๋าไม่มีทั้งชื่อและอีเมล — ถ้าไม่ตกมาที่เลขกระเป๋า
+ * เมนูจะโชว์ช่องว่างเปล่าๆ แล้วดูเหมือนหน้าเว็บพัง ทั้งที่ล็อกอินสำเร็จแล้ว
+ */
+const userDisplayName = computed(() => {
+    const user = authUser.value;
+    if (!user) return '';
+    if (user.name) return user.name;
+    if (user.email) return user.email;
+    if (user.wallet_address) return `${user.wallet_address.slice(0, 6)}...${user.wallet_address.slice(-4)}`;
+
+    return 'Trader';
+});
+
 const userInitial = computed(() => {
-    const name = authUser.value?.name || authUser.value?.email || 'U';
+    const name = authUser.value?.name || authUser.value?.email;
+    // เลขกระเป๋าขึ้นต้นด้วย 0x เหมือนกันทุกใบ — ตัวอักษรตัวแรกไม่ได้แยกใครออกจากใคร
+    // ใช้ตัวแรกหลัง 0x แทน จะได้ไม่เห็นวงกลม "0" เหมือนกันหมดทุกคน
+    if (!name) {
+        const wallet = authUser.value?.wallet_address;
+        return wallet ? wallet.slice(2, 3).toUpperCase() : 'U';
+    }
+
     return name[0].toUpperCase();
 });
 
@@ -272,7 +295,7 @@ const handleDisconnect = () => {
                                 <img v-if="authUser.avatar" :src="authUser.avatar" class="w-full h-full object-cover" />
                                 <span v-else class="text-sm font-bold text-primary-400">{{ userInitial }}</span>
                             </div>
-                            <span class="hidden sm:inline text-sm text-dark-300">{{ authUser.name || authUser.email }}</span>
+                            <span class="hidden sm:inline text-sm text-dark-300">{{ userDisplayName }}</span>
                             <svg class="w-3 h-3 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                             </svg>
@@ -293,7 +316,11 @@ const handleDisconnect = () => {
                             >
                                 <div class="px-4 py-2 border-b border-white/5">
                                     <p class="text-sm text-white font-medium truncate">{{ authUser.name || 'Trader' }}</p>
-                                    <p class="text-xs text-dark-400 truncate">{{ authUser.email }}</p>
+                                    <p v-if="authUser.email" class="text-xs text-dark-400 truncate">{{ authUser.email }}</p>
+                                    <!-- ผู้ใช้ที่เข้าด้วยกระเป๋าไม่มีอีเมล — โชว์เลขกระเป๋าแทนช่องว่าง -->
+                                    <p v-else-if="authUser.wallet_address" class="text-xs text-dark-400 font-mono truncate">
+                                        {{ authUser.wallet_address.slice(0, 6) }}...{{ authUser.wallet_address.slice(-4) }}
+                                    </p>
                                 </div>
                                 <Link
                                     href="/profile"

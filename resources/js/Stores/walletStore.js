@@ -11,7 +11,7 @@
 import { defineStore } from 'pinia';
 import { ref, shallowRef, computed } from 'vue';
 import { BrowserProvider, JsonRpcProvider, parseEther } from 'ethers';
-import { usePage } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { playConnectSound, playDisconnectSound, playErrorSound } from '@/Composables/useSounds';
 import {
@@ -99,6 +99,13 @@ export const useWalletStore = defineStore('wallet', () => {
     const signer = shallowRef(null);
     const isConnecting = ref(false);
     const error = ref(null);
+    /*
+     * ผูกกระเป๋าเข้ากับบัญชีไม่สำเร็จ — แยกจาก `error` ของการเชื่อมต่อ
+     *
+     * เชื่อมกระเป๋าสำเร็จแล้วแต่ผูกกับบัญชีไม่ได้ (เป็นของบัญชีอื่น / บัญชีนี้ผูกใบอื่นไว้)
+     * เป็นคนละเรื่องกับเชื่อมไม่ติด — ใช้งานกระเป๋าต่อได้ปกติ แค่ยังไม่รวมเป็นบัญชีเดียว
+     */
+    const linkError = ref(null);
     const walletType = ref(null); // 'metamask', 'trustwallet', 'coinbase', 'okx', 'tpix_wallet'
     const tpixBalance = ref(null); // TPIX balance สำหรับ embedded wallet
     const isEmbedded = computed(() => walletType.value === 'tpix_wallet');
@@ -440,8 +447,13 @@ export const useWalletStore = defineStore('wallet', () => {
         if (address.value) {
             axios.post('/api/v1/wallet/disconnect', {
                 wallet_address: address.value,
+            }).then((res) => {
+                // เซิร์ฟเวอร์ปิด session ให้ด้วย (ผู้ใช้ที่เข้ามาด้วยกระเป๋าล้วน)
+                // ต้องดึง props ใหม่ ไม่งั้นเมนูบัญชียังค้างอยู่ทั้งที่ออกไปแล้ว
+                if (res?.data?.data?.signed_out) router.reload({ only: ['auth'] });
             }).catch(() => {});
         }
+        linkError.value = null;
         // ถ้าเป็น embedded wallet — ไม่ลบ encrypted key (แค่ lock)
         address.value = null;
         chainId.value = null;
@@ -687,6 +699,8 @@ export const useWalletStore = defineStore('wallet', () => {
      * ทำให้ POST/PUT/DELETE requests ผ่าน VerifyWalletOwnership middleware ได้
      */
     async function _verifyWalletOwnership(walletSigner, walletAddress) {
+        linkError.value = null;
+
         try {
             // 1. ขอ nonce + message จาก backend (+ timeout)
             const signRes = await withTimeout(
@@ -707,16 +721,43 @@ export const useWalletStore = defineStore('wallet', () => {
             );
 
             // 3. ส่ง signature กลับไปยืนยัน
-            await withTimeout(
+            //    ส่ง chain_id + wallet_type ไปด้วย ไม่งั้นประวัติการเชื่อมต่อจะถูก
+            //    บันทึกเป็น BSC/metamask ตามค่าปริยายของเซิร์ฟเวอร์เสมอ
+            const verifyRes = await withTimeout(
                 axios.post('/api/v1/wallet/verify-signature', {
                     wallet_address: walletAddress,
                     signature,
                     nonce,
+                    chain_id: chainId.value || DEFAULT_CHAIN_ID,
+                    wallet_type: walletType.value || 'metamask',
                 }),
                 VERIFY_TIMEOUT_MS,
                 'Verification timed out'
             );
+
+            /*
+             * เซ็นผ่านแล้วเซิร์ฟเวอร์เปิด session ให้ — ต้องดึง props ใหม่
+             *
+             * Inertia เก็บ props ที่ได้ตอนโหลดหน้าไว้ ถ้าไม่สั่งดึงใหม่ `auth.user`
+             * จะยังเป็น null จนกว่าผู้ใช้จะกดเปลี่ยนหน้าเอง — เขาจะเห็นปุ่ม
+             * "เข้าสู่ระบบ" ทั้งที่เข้าไปแล้ว
+             */
+            if (verifyRes.data?.data?.signed_in) {
+                router.reload({ only: ['auth'] });
+            }
         } catch (err) {
+            /*
+             * ผูกกระเป๋าไม่ได้ (409) ต่างจากการเซ็นล้มเหลว — ต้องบอกผู้ใช้
+             *
+             * กระเป๋าใบนี้เป็นของบัญชีอื่น หรือบัญชีนี้ผูกใบอื่นไว้แล้ว เป็นเรื่องที่
+             * ผู้ใช้ต้องไปจัดการเอง เงียบไว้เท่ากับปล่อยให้เขาใช้งานต่อโดยคิดว่า
+             * ผูกสำเร็จแล้ว แล้วไปงงทีหลังว่าทำไมข้อมูลไม่ตรง
+             */
+            if (err?.response?.status === 409) {
+                linkError.value = err.response.data?.error?.message || 'ผูกกระเป๋ากับบัญชีไม่สำเร็จ';
+                return;
+            }
+
             // ถ้า user ปฏิเสธ sign (code 4001) หรือ timeout — ไม่ block connection
             console.warn('[TPIX] Wallet verification skipped:', err.message || err);
         }
@@ -818,6 +859,7 @@ export const useWalletStore = defineStore('wallet', () => {
         signer,
         isConnecting,
         error,
+        linkError,
         walletType,
         supportedChains,
         showConnectModal,

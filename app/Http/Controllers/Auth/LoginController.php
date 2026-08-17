@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -113,7 +114,21 @@ class LoginController extends Controller
      */
     public function logout(Request $request): RedirectResponse
     {
+        /*
+         * ล้างสิทธิ์ฝั่งกระเป๋าด้วย ไม่ใช่แค่ session
+         *
+         * ผู้ใช้ที่เข้าระบบด้วยการเซ็นกระเป๋าจะมีสองอย่างพร้อมกัน: session ของเว็บ
+         * กับแถว `wallet_verified:` ในแคชที่ API ของบอทใช้ (อายุ 4 ชั่วโมง)
+         * ล้างแค่ session = กดออกจากระบบแล้วแต่ API ยังรับคำสั่งจากกระเป๋าใบนั้นต่อ
+         * ได้อีกหลายชั่วโมง ซึ่งอันตรายมากบนเครื่องที่ใช้ร่วมกัน
+         */
+        $wallet = $request->user()?->wallet_address;
+
         Auth::guard('web')->logout();
+
+        if ($wallet) {
+            Cache::forget('wallet_verified:'.strtolower($wallet));
+        }
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

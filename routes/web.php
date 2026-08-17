@@ -65,6 +65,8 @@ Route::middleware('auth')->group(function () {
     Route::put('profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
     Route::post('profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar');
     Route::delete('profile/avatar', [ProfileController::class, 'deleteAvatar'])->name('profile.avatar.delete');
+    // ถอดกระเป๋าออกจากบัญชี — ผูกเข้าทำที่ /api/v1/wallet/verify-signature หลังพิสูจน์ลายเซ็น
+    Route::delete('profile/wallet', [ProfileController::class, 'unlinkWallet'])->name('profile.wallet.unlink');
     Route::delete('auth/{provider}/unlink', [SocialController::class, 'unlink'])
         ->where('provider', 'google|facebook|line')
         ->name('social.unlink');

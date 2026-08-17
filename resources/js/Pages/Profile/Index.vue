@@ -5,9 +5,10 @@
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
-import { Head, useForm, router } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+import { Head, useForm, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { useWalletStore } from '@/Stores/walletStore';
 
 const props = defineProps({
     profileUser: Object,
@@ -71,6 +72,23 @@ const deleteAvatar = () => {
 const unlinkSocial = (provider) => {
     if (!confirm(`Disconnect ${provider} account?`)) return;
     router.delete(`/auth/${provider}/unlink`, { preserveScroll: true });
+};
+
+// ── กระเป๋าที่ผูกกับบัญชี ────────────────────────────────────────────────────
+const walletStore = useWalletStore();
+const errors = computed(() => usePage().props.errors || {});
+
+/**
+ * ใช้ค่าจาก props เป็นหลัก ไม่ใช่จากกระเป๋าที่กำลังเชื่อมอยู่
+ *
+ * สองอย่างนี้ต่างกันได้: ผู้ใช้สลับบัญชีในกระเป๋าไปคนละใบกับที่ผูกไว้ ถ้าโชว์ใบที่
+ * กำลังเชื่อมอยู่ เขาจะเข้าใจว่าผูกใบนั้นแล้วทั้งที่ยังไม่ได้ผูก
+ */
+const linkedWallet = computed(() => props.profileUser.wallet_address || null);
+
+const unlinkWallet = () => {
+    if (!confirm('ถอดกระเป๋าออกจากบัญชีนี้? จะเข้าสู่ระบบด้วยกระเป๋าใบนี้ไม่ได้อีก')) return;
+    router.delete('/profile/wallet', { preserveScroll: true });
 };
 
 // Copy referral code
@@ -295,12 +313,62 @@ const kycBadge = {
                     </div>
                 </div>
 
+                <!-- กระเป๋าที่ผูกกับบัญชีนี้ — ต่างจากประวัติการเชื่อมต่อด้านล่าง -->
+                <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-glass">
+                    <h2 class="text-lg font-semibold text-white mb-1">กระเป๋าของบัญชีนี้</h2>
+                    <p class="text-dark-500 text-xs mb-6">ใช้เข้าสู่ระบบได้โดยไม่ต้องใช้รหัสผ่าน</p>
+
+                    <div v-if="linkedWallet" class="p-4 rounded-xl bg-dark-800/30 border border-white/5">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="w-2 h-2 rounded-full bg-trading-green shrink-0"></span>
+                                    <span class="text-xs text-trading-green font-medium">ผูกแล้ว</span>
+                                </div>
+                                <p class="text-white font-mono text-sm break-all">{{ linkedWallet }}</p>
+                            </div>
+
+                            <div class="shrink-0">
+                                <button
+                                    v-if="profileUser.can_unlink_wallet"
+                                    type="button"
+                                    @click="unlinkWallet"
+                                    class="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                                >
+                                    ถอดกระเป๋า
+                                </button>
+                                <!-- ถอดไม่ได้ต้องบอกว่าทำอะไรก่อนถึงจะถอดได้ ไม่ใช่ซ่อนปุ่มเฉยๆ -->
+                                <p v-else class="text-[11px] text-dark-500 max-w-[220px] leading-relaxed">
+                                    ถอดไม่ได้ — เป็นทางเข้าเดียวของบัญชีนี้
+                                    <button type="button" class="text-primary-400 hover:text-primary-300 underline" @click="activeTab = 'security'">
+                                        ตั้งอีเมลกับรหัสผ่านก่อน
+                                    </button>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-else class="p-4 rounded-xl bg-dark-800/30 border border-white/5">
+                        <p class="text-dark-300 text-sm mb-1">ยังไม่ได้ผูกกระเป๋า</p>
+                        <p class="text-dark-500 text-xs leading-relaxed mb-3">
+                            เชื่อมกระเป๋าจากปุ่มมุมขวาบน แล้วเซ็นข้อความยืนยัน — กระเป๋าจะผูกเข้าบัญชีนี้เอง
+                            ประวัติเทรดและบอทจะรวมอยู่ที่เดียวกัน ไม่แตกเป็นสองบัญชี
+                        </p>
+                        <p v-if="walletStore.linkError" class="text-xs text-amber-300 leading-relaxed">
+                            {{ walletStore.linkError }}
+                        </p>
+                    </div>
+
+                    <p v-if="errors.wallet" class="text-red-400 text-xs mt-3">{{ errors.wallet }}</p>
+                </div>
+
                 <!-- Wallet Connections -->
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-glass">
-                    <h2 class="text-lg font-semibold text-white mb-6">Wallet Connections</h2>
+                    <h2 class="text-lg font-semibold text-white mb-1">ประวัติการเชื่อมต่อ</h2>
+                    <p class="text-dark-500 text-xs mb-6">ทุกครั้งที่กระเป๋าเชื่อมเข้ามา — ไว้ตรวจย้อนหลัง</p>
 
                     <div v-if="walletConnections.length === 0" class="text-dark-400 text-sm">
-                        No wallets connected.
+                        ยังไม่มีประวัติ
                     </div>
 
                     <div v-else class="space-y-3">

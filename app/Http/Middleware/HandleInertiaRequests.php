@@ -50,12 +50,21 @@ class HandleInertiaRequests extends Middleware
                 'discord' => $socialLinks['discord_url'] ?? null,
                 'github' => $socialLinks['github_url'] ?? null,
             ],
+            /*
+             * ผู้ใช้ที่เข้าระบบด้วยการเซ็นกระเป๋าจะไม่มีชื่อและไม่มีอีเมล
+             *
+             * ต้องส่ง wallet_address มาด้วย ไม่งั้นหน้าเว็บที่แสดงชื่อผู้ใช้จะว่างเปล่า
+             * และไม่มีทางรู้ว่าบัญชีที่ล็อกอินอยู่ผูกกับกระเป๋าใบไหน — ซึ่งเป็นสิ่งที่
+             * ต้องรู้เพื่อเตือนเมื่อผู้ใช้สลับกระเป๋าไปคนละใบกับที่ผูกไว้
+             */
             'auth' => [
                 'user' => $request->user() ? [
                     'id' => $request->user()->id,
                     'name' => $request->user()->name,
                     'email' => $request->user()->email,
                     'avatar' => $request->user()->avatar,
+                    'wallet_address' => $request->user()->wallet_address,
+                    'has_password' => $request->user()->password !== null,
                 ] : null,
             ],
             'flash' => [
