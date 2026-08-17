@@ -101,10 +101,22 @@ class NewsFeedService
         return $items;
     }
 
+    /**
+     * แปลง pubDate ของ RSS เป็นเวลาโซนเดียวกับแอพ.
+     *
+     * ⚠️ ต้อง setTimezone เสมอ ห้ามเก็บดิบ
+     *    ฟีดข่าวส่ง pubDate มาเป็น GMT/UTC ("Sun, 17 Aug 2026 09:13:02 +0000")
+     *    ถ้าเก็บตามนั้นแล้วไปเทียบกับ now() ที่เป็น Asia/Bangkok ข่าวจะดู "เก่ากว่าจริง 7 ชั่วโมง"
+     *    ด้วยหน้าต่าง 180 นาที = ไม่มีข่าวไหนผ่านเกณฑ์ได้เลย ด่านข่าวตาบอดสนิท
+     *
+     *    เจอจริงบนโปรดักชัน 2026-08-17: ดึงข่าวสำเร็จ 10 ข่าว แต่ total_recent = 0 ตลอด
+     */
     private function parseDate(string $raw): Carbon
     {
         try {
-            return $raw !== '' ? Carbon::parse($raw) : now();
+            return $raw !== ''
+                ? Carbon::parse($raw)->setTimezone(config('app.timezone'))
+                : now();
         } catch (\Throwable) {
             return now();
         }

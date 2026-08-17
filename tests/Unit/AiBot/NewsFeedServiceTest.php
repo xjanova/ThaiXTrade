@@ -106,6 +106,50 @@ class NewsFeedServiceTest extends TestCase
     }
 
     /**
+     * ⭐ pubDate ที่เป็น UTC ต้องถูกแปลงเป็นโซนเวลาของแอพก่อนเก็บ.
+     *
+     * ไม่งั้นข่าวจะดูเก่ากว่าจริงเท่ากับ offset ของโซนเวลา (ไทย = 7 ชั่วโมง)
+     * แล้วหน้าต่าง 180 นาทีจะไม่มีข่าวไหนผ่านเลย = ด่านข่าวตาบอด
+     */
+    #[Test]
+    public function it_converts_feed_timestamps_into_the_app_timezone(): void
+    {
+        config(['app.timezone' => 'Asia/Bangkok']);
+
+        $method = new \ReflectionMethod(NewsFeedService::class, 'parseDate');
+        // ไม่ใส่ชื่อวันในสตริงทดสอบ — ถ้าใส่ชื่อวันผิด PHP จะเลื่อนไปวันนั้นของสัปดาห์ถัดไป
+        // แล้วเทสต์จะแดงด้วยเหตุผลที่ไม่เกี่ยวกับโซนเวลาซึ่งเป็นสิ่งที่กำลังทดสอบ
+        $parsed = $method->invoke($this->service, '17 Aug 2026 09:13:02 +0000');
+
+        $this->assertSame('Asia/Bangkok', $parsed->timezone->getName());
+        // 09:13 UTC = 16:13 ตามเวลาไทย
+        $this->assertSame('2026-08-17 16:13:02', $parsed->format('Y-m-d H:i:s'));
+    }
+
+    /**
+     * ข่าวที่เพิ่งออกต้องนับว่า "สด" เมื่อเทียบกับ now() ของแอพ.
+     */
+    #[Test]
+    public function a_just_published_article_is_recent_relative_to_app_now(): void
+    {
+        config(['app.timezone' => 'Asia/Bangkok']);
+
+        // ข่าวที่ออกเมื่อ 10 นาทีที่แล้ว แต่ฟีดส่งมาเป็น UTC
+        $raw = now('UTC')->subMinutes(10)->format('D, d M Y H:i:s O');
+
+        $method = new \ReflectionMethod(NewsFeedService::class, 'parseDate');
+        $parsed = $method->invoke($this->service, $raw);
+
+        $ageMinutes = now()->diffInMinutes($parsed, false) * -1;
+
+        $this->assertLessThan(
+            180,
+            $ageMinutes,
+            "ข่าวอายุ {$ageMinutes} นาที ต้องอยู่ในหน้าต่าง 180 นาที — ถ้าเกินแปลว่าโซนเวลาเพี้ยน"
+        );
+    }
+
+    /**
      * ตัวย่อเหรียญต้องเทียบแบบทั้งคำ — กัน "sol" ไปโดน "solution".
      */
     #[Test]
