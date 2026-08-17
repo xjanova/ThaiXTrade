@@ -612,14 +612,48 @@ export const useWalletStore = defineStore('wallet', () => {
      * @param {number} targetChainId - Chain ID เป้าหมาย
      */
     async function switchChain(targetChainId = DEFAULT_CHAIN_ID) {
+        error.value = null;
+
+        /*
+         * ⚠️ กระเป๋าฝัง (TPIX Wallet) ห้ามตกไปใช้ window.ethereum เด็ดขาด
+         *
+         * เดิมโค้ดเป็น `_rawProvider || _getProvider(walletType.value || 'metamask')`
+         * สำหรับกระเป๋าฝัง `_rawProvider` ไม่เคยถูกเซ็ต และ _getProvider('tpix_wallet')
+         * ไม่ตรงเงื่อนไขใดเลยจึงตกมาที่ `return window.ethereum` = ส่วนขยาย MetaMask
+         * จากนั้น _refreshProviderState() เขียนทับ signer ด้วยบัญชีของ MetaMask
+         * ขณะที่ address/walletType ยังเป็นของกระเป๋าฝัง
+         * → ธุรกรรมถัดไปถูกเซ็นด้วยบัญชีผิดใบ (เงินออกจากกระเป๋าที่ผู้ใช้ไม่ได้ตั้งใจ)
+         *
+         * กระเป๋าฝังใช้ได้เฉพาะ TPIX Chain อยู่แล้ว จึงไม่มีเหตุผลให้สลับเชน
+         */
+        if (isEmbedded.value) {
+            if (Number(targetChainId) === TPIX_CHAIN_CONFIG.chainIdNum) {
+                chainId.value = TPIX_CHAIN_CONFIG.chainIdNum;
+                return;
+            }
+
+            error.value = 'TPIX Wallet ใช้ได้เฉพาะ TPIX Chain — เชื่อมกระเป๋าภายนอกเพื่อใช้เชนอื่น';
+            throw new Error('EMBEDDED_WALLET_SINGLE_CHAIN');
+        }
+
         const injected = _rawProvider || _getProvider(walletType.value || 'metamask');
-        if (!injected) return;
+
+        // เดิม return เฉยๆ ทำให้ผู้ใช้เห็นเหมือนสำเร็จทั้งที่ไม่มีอะไรเกิดขึ้น
+        // และโค้ดที่เรียกต่อ (เช่นหน้า Bridge) เดินต่อบนเชนที่ผิด
+        if (!injected) {
+            error.value = 'ไม่พบกระเป๋าที่เชื่อมอยู่ — เชื่อมกระเป๋าก่อนสลับเครือข่าย';
+            throw new Error('NO_WALLET_PROVIDER');
+        }
 
         try {
             await switchToChain(injected, targetChainId);
             await _refreshProviderState(injected);
+            error.value = null;
         } catch (err) {
-            error.value = 'ไม่สามารถสลับ network ได้';
+            // ผู้ใช้กดยกเลิกเองไม่ใช่ระบบพัง — แยกข้อความให้ตรงกับสิ่งที่เกิดขึ้น
+            error.value = err?.code === 4001
+                ? 'คุณยกเลิกการสลับเครือข่าย'
+                : 'ไม่สามารถสลับ network ได้';
             throw err;
         }
     }

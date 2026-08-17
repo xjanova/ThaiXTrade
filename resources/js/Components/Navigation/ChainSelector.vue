@@ -128,27 +128,57 @@ async function fetchChains() {
     }
 }
 
+/*
+ * ผลลัพธ์ของการสลับเชนต้องเห็นบนหน้าจอ ไม่ใช่ใน console
+ *
+ * เดิมปิด dropdown ทิ้งทันทีแล้ว catch ไปลง console.warn — ผู้ใช้กด reject
+ * ในกระเป๋าแล้วจะไม่เห็นอะไรเลย ป้ายยังเป็นเชนเดิม ไม่รู้ว่ากดพลาดหรือระบบพัง
+ */
+const switchError = ref(null);
+const switchingTo = ref(null);
+
 async function selectChain(chain) {
     // เชนที่ยังไม่เปิด — กันไว้อีกชั้นเผื่อ disabled attribute ไม่ทำงาน (เช่น keyboard)
     if (isComingSoon(chain)) return;
 
-    showDropdown.value = false;
-    if (!isConnected.value) return;
-    if (chain.chainId === currentChainId.value) return;
+    // ยังไม่เชื่อมกระเป๋า → พาไปเชื่อมเลย ดีกว่ากดแล้วเงียบ
+    if (!isConnected.value) {
+        showDropdown.value = false;
+        walletStore.openConnectModal?.();
+        return;
+    }
+
+    if (chain.chainId === currentChainId.value) {
+        showDropdown.value = false;
+        return;
+    }
+
+    switchError.value = null;
+    switchingTo.value = chain.chainId;
 
     try {
         await walletStore.switchChain(chain.chainId);
+        showDropdown.value = false;   // ปิดเฉพาะตอนสำเร็จจริง
     } catch (err) {
-        console.warn('Chain switch failed:', err.message);
+        // ข้อความที่ store เตรียมไว้อ่านรู้เรื่องกว่า err.message ดิบๆ
+        switchError.value = walletStore.error || err?.message || 'สลับเครือข่ายไม่สำเร็จ';
+    } finally {
+        switchingTo.value = null;
     }
 }
 
 async function switchToDefault() {
     if (!isConnected.value) return;
+
+    switchError.value = null;
+    switchingTo.value = DEFAULT_CHAIN_ID;
+
     try {
         await walletStore.switchChain(DEFAULT_CHAIN_ID);
     } catch (err) {
-        console.warn('Switch to default chain failed:', err.message);
+        switchError.value = walletStore.error || err?.message || 'สลับเครือข่ายไม่สำเร็จ';
+    } finally {
+        switchingTo.value = null;
     }
 }
 
@@ -229,6 +259,22 @@ onUnmounted(() => {
                     <p class="text-xs text-dark-400 font-medium">Select Network</p>
                 </div>
 
+                <!-- กำลังรอกระเป๋าตอบ — ไม่งั้นผู้ใช้ไม่รู้ว่ากดติดหรือยัง -->
+                <div v-if="switchingTo !== null" class="mx-3 mt-2 mb-1 px-3 py-2 rounded-lg bg-primary-500/10 border border-primary-500/20 flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full border-2 border-primary-400 border-t-transparent animate-spin shrink-0"></span>
+                    <p class="text-[11px] text-primary-300">กำลังสลับเครือข่าย — ยืนยันในกระเป๋าของคุณ</p>
+                </div>
+
+                <!-- ผลลัพธ์ของการสลับที่ล้มเหลว — ต้องเห็นตรงนี้ ไม่ใช่ใน console -->
+                <div v-if="switchError" class="mx-3 mt-2 mb-1 px-3 py-2 rounded-lg bg-trading-red/10 border border-trading-red/25">
+                    <div class="flex items-start gap-2">
+                        <svg class="w-3.5 h-3.5 text-trading-red shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                        <p class="text-[11px] text-trading-red leading-snug">{{ switchError }}</p>
+                    </div>
+                </div>
+
                 <!-- Unsupported Chain Warning -->
                 <div v-if="isConnected && !isOnSupportedChain" class="mx-3 mt-2 mb-1 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
                     <p class="text-xs text-yellow-400 font-medium">Unsupported Network</p>
@@ -254,7 +300,7 @@ onUnmounted(() => {
                         v-for="chain in availableChains"
                         :key="chain.chainId"
                         @click="selectChain(chain)"
-                        :disabled="isComingSoon(chain)"
+                        :disabled="isComingSoon(chain) || switchingTo !== null"
                         class="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors"
                         :class="{
                             'bg-white/5': chain.chainId === currentChainId,
