@@ -112,7 +112,24 @@ jobs:
 
             # Run migrations + seeders
             echo "🗃️ Running migrations..."
-            php artisan migrate --force 2>&1 || echo "⚠️ Migration warnings (non-fatal)"
+            # เก็บ exit code ไว้ก่อน แล้วค่อยรายงาน — ที่ผ่านมาใช้ `|| echo` เฉยๆ
+            # ทำให้ migration ที่ล้มเหลวเงียบสนิท: deploy ขึ้นเขียว โค้ดใหม่ขึ้นเซิร์ฟ
+            # แต่ตารางไม่มี → หน้าเว็บ 500 โดยไม่มีใครรู้จนกว่าจะมีคนกดเจอ
+            if php artisan migrate --force 2>&1; then
+              echo "✅ Migrations OK"
+            else
+              echo "::error::MIGRATION FAILED — โค้ดใหม่ขึ้นแล้วแต่ schema ยังไม่ตาม อาจ 500 ได้"
+              echo "❌ MIGRATION FAILED (ดูข้อความข้างบน)"
+            fi
+
+            # รายงาน migration ที่ยังค้างเสมอ — ตัวเลขนี้ต้องเป็น 0 หลัง deploy สำเร็จ
+            PENDING=$(php artisan migrate:status 2>/dev/null | grep -c "Pending" || true)
+            if [ "${PENDING:-0}" -gt 0 ]; then
+              echo "::error::ยังมี migration ค้าง ${PENDING} ตัว — ฟีเจอร์ใหม่จะยังใช้ไม่ได้"
+              php artisan migrate:status 2>/dev/null | grep "Pending" || true
+            else
+              echo "✅ ไม่มี migration ค้าง"
+            fi
             echo "🌱 Running ecosystem seeder..."
             php artisan db:seed --class=TpixEcosystemSeeder --force 2>&1 || echo "⚠️ Seeder warnings (non-fatal)"
 
@@ -146,7 +163,7 @@ jobs:
             # คู่เทรดหลักบน BSC (เชนที่ execute จริงผ่าน PancakeSwap) + ปิด placeholder เก่าบน TPIX
             php artisan db:seed --class=Database\\Seeders\\BscMajorPairsSeeder --force 2>&1 || echo "⚠️ BscMajorPairs seeder warning"
             # Token logos — update existing tokens ที่ logo=null (TPIX, USDT จาก TpixPair)
-            php artisan db:seed --class=Database\Seeders\PopularMarketPairsSeeder --force 2>&1 || echo "PopularMarketPairs seeder warning"
+            php artisan db:seed --class=Database\\Seeders\\PopularMarketPairsSeeder --force 2>&1 || echo "PopularMarketPairs seeder warning"
             php artisan db:seed --class=Database\\Seeders\\TokenLogosSeeder --force 2>&1 || echo "⚠️ TokenLogos seeder warning"
             # BSC swap tokens + PancakeSwap V2 config — ให้ /swap/quote รู้จักทุก token ในหน้า Swap
             php artisan db:seed --class=Database\\Seeders\\BscSwapTokensSeeder --force 2>&1 || echo "⚠️ BscSwapTokens seeder warning"
