@@ -23,12 +23,14 @@ return new class() extends Migration
 {
     public function up(): void
     {
-        Schema::table('trading_pairs', function (Blueprint $table) {
-            $table->enum('execution_mode', ['onchain', 'index'])
-                ->default('index')
-                ->after('is_active')
-                ->comment('onchain = ส่งคำสั่งได้จริง, index = ดูราคาอย่างเดียว');
-        });
+        if (! Schema::hasColumn('trading_pairs', 'execution_mode')) {
+            Schema::table('trading_pairs', function (Blueprint $table) {
+                $table->enum('execution_mode', ['onchain', 'index'])
+                    ->default('index')
+                    ->after('is_active')
+                    ->comment('onchain = ส่งคำสั่งได้จริง, index = ดูราคาอย่างเดียว');
+            });
+        }
 
         // คู่ที่มีอยู่แล้วบนเชนที่เทรดจริง (BSC) = onchain ที่เหลือเป็น index
         $bscId = DB::table('chains')->where('chain_id_hex', '0x38')->value('id');
