@@ -26,6 +26,21 @@ const needsVerification = ref(false);
 const demo = ref(null);
 const isLoadingDemo = ref(false);
 
+/*
+ * ตัวเดินบอทของแพลนฟรี
+ *
+ * แพลนฟรีไม่ได้ซื้อการรันบนคลาวด์ ตัวจับเวลาฝั่งเซิร์ฟเวอร์จึงข้ามบอทพวกนี้ไป
+ * หน้าเว็บที่เปิดค้างอยู่เป็นคนสั่งให้บอทคิดทีละรอบแทน — ปิดแท็บแล้วหยุดจริงๆ
+ * ซึ่งตรงกับที่โฆษณาไว้บนหน้าเช่า ไม่ใช่แค่คำพูด
+ *
+ * เก็บ interval ไว้ระดับโมดูล (ไม่ใช่ในคอมโพเนนต์) เพราะหน้าเทรดกับหน้า /ai-trade
+ * เรียก composable นี้พร้อมกันได้ ถ้าเก็บแยกจะเดินบอทซ้อนกันสองตัว
+ */
+const browserLoopId = ref(null);
+const browserLoopActive = ref(false);
+const lastBrowserTick = ref(null);
+const browserTickLog = ref([]);
+
 let catalogPromise = null;
 
 function readError(err, fallback = 'ทำรายการไม่สำเร็จ') {
@@ -197,6 +212,74 @@ export function useAiBot() {
         return result;
     }
 
+    // ── ตัวเดินบอทของแพลนฟรี ────────────────────────────────────────────────
+
+    /** แพลนที่ถืออยู่ให้เซิร์ฟเวอร์เดินบอทให้ไหม */
+    const runsInCloud = computed(() => status.value?.subscription?.execution === 'cloud');
+
+    /** บอทที่ต้องให้หน้าเว็บสั่งเดินเอง (แพลนฟรี + สถานะกำลังทำงาน) */
+    const browserBots = computed(() =>
+        runsInCloud.value ? [] : bots.value.filter(b => b.status === 'running')
+    );
+
+    /** สั่งบอทตัวหนึ่งคิดหนึ่งรอบ */
+    async function tickBot(id) {
+        if (!wallet.value) return null;
+
+        try {
+            const { data } = await axios.post(`/api/v1/ai-bot/bots/${id}/tick`, {
+                wallet_address: wallet.value,
+            });
+            return data?.data ?? null;
+        } catch (err) {
+            // บอทตัวเดียวพังต้องไม่หยุดลูปทั้งหมด
+            return { error: readError(err).message };
+        }
+    }
+
+    /** เดินบอทฟรีทุกตัวหนึ่งรอบ */
+    async function runBrowserCycle() {
+        const targets = browserBots.value;
+
+        if (!targets.length) return;
+
+        for (const bot of targets) {
+            const result = await tickBot(bot.id);
+
+            if (result && !result.skipped) {
+                lastBrowserTick.value = new Date().toISOString();
+                browserTickLog.value = [
+                    { at: lastBrowserTick.value, bot: bot.name, action: result.action, reason: result.reason },
+                    ...browserTickLog.value,
+                ].slice(0, 20);
+            }
+        }
+
+        // สถานะบอทเปลี่ยนหลังเดินรอบ — ดึงพอร์ตทดลองใหม่ให้ตัวเลขตรง
+        await loadDemo();
+    }
+
+    /**
+     * เริ่มเดินบอทฟรีจากหน้าเว็บ.
+     *
+     * ปลอดภัยที่จะเรียกซ้ำ — ถ้าเดินอยู่แล้วจะไม่สร้างตัวจับเวลาใหม่
+     */
+    function startBrowserLoop(intervalSeconds = 30) {
+        if (browserLoopId.value !== null) return;
+
+        browserLoopActive.value = true;
+        runBrowserCycle();
+        browserLoopId.value = window.setInterval(runBrowserCycle, Math.max(15, intervalSeconds) * 1000);
+    }
+
+    function stopBrowserLoop() {
+        if (browserLoopId.value !== null) {
+            window.clearInterval(browserLoopId.value);
+            browserLoopId.value = null;
+        }
+        browserLoopActive.value = false;
+    }
+
     /** ความเสี่ยงล่าสุดของคู่เทรด + พาดหัวข่าวที่ทำให้บอทตัดสินใจแบบนั้น */
     async function loadRisk(pair) {
         try {
@@ -289,14 +372,17 @@ export function useAiBot() {
         isLoadingCatalog, isLoadingStatus, isWorking,
         wallet, isConnected,
         demo, isLoadingDemo,
+        browserLoopActive, lastBrowserTick, browserTickLog,
         // derived
         credits, isActive, subscription, bots, runningBots,
         plans, strategies, packs, rentalDays, quotaText,
         demoEquity, demoPnl, demoPnlPct, demoResetsLeft,
+        runsInCloud, browserBots,
         // actions
         loadCatalog, loadStatus, subscribe, cancel, claimWelcome, requestTopup,
         createBot, updateBot, setBotState, setBotMode, deleteBot,
         loadDemo, resetDemo, loadRisk,
+        startBrowserLoop, stopBrowserLoop, tickBot,
         costOf, canAfford, strategyByCode,
         // ป้ายชื่อตามภาษา
         planLabel, planDescription, planFeatures, strategyLabel, strategyDescription,

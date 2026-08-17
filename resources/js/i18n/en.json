@@ -711,6 +711,24 @@
         "newsScanned": "News refreshed every 15 minutes",
         "lastDecision": "Latest decision",
         "awaitingConfirm": "Awaiting your confirmation",
-        "noDecisionYet": "The bot has not made its first decision yet"
+        "noDecisionYet": "The bot has not made its first decision yet",
+        "runsInCloud": "Runs in the cloud",
+        "runsInBrowser": "Runs in your browser",
+        "tpixPerDay": "TPIX/day",
+        "totalCostTpix": "{days} days = {tpix} TPIX",
+        "freeForever": "Free",
+        "noPaymentNeeded": "Nothing to pay",
+        "startFree": "Start free",
+        "payWithTpix": "Paid in TPIX only",
+        "compareFreeTitle": "Free — the bot runs inside your browser",
+        "compareFreeBody": "The bot lives in this tab, so this page has to stay open. Close the tab, shut the machine or lose your connection and the bot stops immediately — it will not resume until you open the page again. One bot, with the Grid and DCA strategies.",
+        "compareCloudTitle": "Paid — our servers run it around the clock",
+        "compareCloudBody": "The bot lives on our servers. Close your browser, shut your computer, go to sleep — it keeps watching the market and trading. Includes the 15-minute news risk gate, every strategy, and several bots at once.",
+        "demoOnlyNotice": "Only demo mode is open right now — trading uses simulated credits at real market prices, so no plan places real orders yet. Live mode opens once the system has been fully proven.",
+        "browserBotRunning": "Your bot is running in this tab",
+        "browserBotWarning": "Keep this tab open — closing it stops the bot immediately",
+        "browserBotStopped": "The bot stopped because you left this page",
+        "upgradeForCloud": "Upgrade to keep it running with your browser closed",
+        "lastTickAt": "Last cycle"
     }
 }

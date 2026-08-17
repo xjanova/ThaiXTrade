@@ -8,6 +8,7 @@ use App\Models\AiBotCredit;
 use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
 use App\Models\AiBotTrade;
+use App\Services\AiBot\BotRunner;
 use App\Services\AiBot\MarketRiskService;
 use App\Services\AiBot\PaperBroker;
 use App\Services\AiBotService;
@@ -57,7 +58,10 @@ class AiBotController extends Controller
             'description' => $plan->description,
             'description_th' => $plan->description_th,
             'tier' => $plan->tier,
+            // ที่บอทเดิน — browser = ต้องเปิดเว็บทิ้งไว้, cloud = เซิร์ฟเวอร์เดินให้
+            'execution' => $plan->execution,
             'credits_per_day' => $plan->credits_per_day,
+            'price_tpix_per_day' => (float) $plan->price_tpix_per_day,
             'max_bots' => $plan->max_bots,
             'max_capital_usd' => $plan->max_capital_usd ? (float) $plan->max_capital_usd : null,
             'features' => $plan->features ?? [],
@@ -104,6 +108,8 @@ class AiBotController extends Controller
                     'plan_name' => $plan?->name,
                     'plan_name_th' => $plan?->name_th,
                     'tier' => $plan?->tier,
+                    'execution' => $plan?->execution,
+                    'is_free' => $plan?->isFree() ?? true,
                     'credits_per_day' => $plan?->credits_per_day,
                     'days_remaining' => $subscription->daysRemaining(),
                     'expires_at' => $subscription->expires_at->toIso8601String(),
@@ -317,6 +323,53 @@ class AiBotController extends Controller
         return response()->json(['success' => true, 'data' => ['deleted' => $id]]);
     }
 
+    /**
+     * ให้เบราว์เซอร์สั่งบอทของแพลนฟรีเดินหนึ่งรอบ.
+     *
+     * แพลนฟรีไม่ได้ซื้อการรันบนคลาวด์ ตัวจับเวลาของเซิร์ฟเวอร์จึงข้ามบอทพวกนี้ไป
+     * หน้าเว็บที่เปิดค้างอยู่เป็นคนเรียก endpoint นี้เป็นระยะแทน — ปิดแท็บก็หยุดจริง
+     *
+     * บอทของแพลนคลาวด์ห้ามเรียกทางนี้เด็ดขาด ไม่งั้นจะถูกเดินสองทาง
+     * (ทั้งเซิร์ฟเวอร์และเบราว์เซอร์) แล้วเปิดไม้ซ้ำ
+     */
+    public function tickFromBrowser(Request $request, int $id, BotRunner $runner): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+        $bot = $this->findBot($wallet, $id);
+
+        if (! $bot) {
+            return $this->failure('BOT_NOT_FOUND', 'ไม่พบบอทตัวนี้', 404);
+        }
+
+        if ($bot->status !== 'running') {
+            return $this->failure('BOT_NOT_RUNNING', 'บอทตัวนี้ยังไม่ได้เริ่มทำงาน');
+        }
+
+        $plan = $this->bots->activeSubscription($wallet)?->plan;
+
+        if ($plan?->runsInCloud()) {
+            return $this->failure('CLOUD_BOT', 'บอทของแพลนนี้เดินบนคลาวด์อยู่แล้ว ไม่ต้องสั่งจากหน้าเว็บ');
+        }
+
+        // กันหน้าเว็บยิงรัวเกินจำเป็น — คิดหนึ่งรอบต่อช่วงเวลาที่กำหนดก็พอ
+        $minSeconds = (int) config('aibot.browser_tick_min_seconds', 30);
+
+        if ($bot->last_run_at && $bot->last_run_at->diffInSeconds(now()) < $minSeconds) {
+            return response()->json(['success' => true, 'data' => [
+                'skipped' => true,
+                'reason' => 'ยังไม่ถึงรอบถัดไป',
+                'next_in_seconds' => $minSeconds - (int) $bot->last_run_at->diffInSeconds(now()),
+            ]]);
+        }
+
+        $result = $runner->tick($bot);
+
+        return response()->json(['success' => true, 'data' => array_merge($result, [
+            'skipped' => false,
+            'bot' => $this->presentBot($bot->fresh()),
+        ])]);
+    }
+
     // =========================================================================
     // โหมดทดลอง (เครดิตเดโม)
     // =========================================================================
@@ -434,8 +487,15 @@ class AiBotController extends Controller
 
         $validated = $request->validate(['mode' => ['required', 'string', 'in:demo,live']]);
 
-        if ($validated['mode'] === 'live' && ! $this->bots->activeSubscription($wallet)) {
-            return $this->failure('NO_SUBSCRIPTION', 'ต้องเช่าบอทก่อนถึงจะใช้โหมดจริงได้');
+        if ($validated['mode'] === 'live') {
+            // ยังไม่เปิดโหมดจริงทั้งระบบ — ให้ทุกคนอยู่โหมดทดลองไปก่อน
+            if (! config('aibot.live_enabled', false)) {
+                return $this->failure('LIVE_DISABLED', 'ตอนนี้เปิดให้ใช้เฉพาะโหมดทดลองก่อน');
+            }
+
+            if (! $this->bots->activeSubscription($wallet)) {
+                return $this->failure('NO_SUBSCRIPTION', 'ต้องเช่าบอทก่อนถึงจะใช้โหมดจริงได้');
+            }
         }
 
         // ของที่ถืออยู่ในโหมดเดิมต้องไม่ตามข้ามโหมดไป — คนละบัญชีคนละความหมาย

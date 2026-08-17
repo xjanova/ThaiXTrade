@@ -216,6 +216,8 @@ class AiBotDemoApiTest extends TestCase
     #[Test]
     public function switching_to_live_mode_requires_an_active_rental(): void
     {
+        config(['aibot.live_enabled' => true]);
+
         $bot = $this->makeBot();
 
         $this->postJson("/api/v1/ai-bot/bots/{$bot->id}/mode", [
@@ -234,6 +236,8 @@ class AiBotDemoApiTest extends TestCase
     #[Test]
     public function a_subscriber_can_switch_a_bot_to_live_mode(): void
     {
+        config(['aibot.live_enabled' => true]);
+
         $plan = $this->makePlan();
         AiBotSubscription::create([
             'wallet_address' => self::WALLET,

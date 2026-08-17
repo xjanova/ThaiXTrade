@@ -131,6 +131,7 @@ class AiBotService
         return [
             'reference' => $reference,
             'pack' => $pack,
+            'currency' => config('aibot.credits.currency', 'TPIX'),
             'wallet_address' => $this->normalize($wallet),
             'status' => 'pending_payment',
         ];
@@ -139,6 +140,47 @@ class AiBotService
     // =========================================================================
     // การเช่า
     // =========================================================================
+
+    /** แพลนฟรี (ถ้าแอดมินยังเปิดใช้อยู่) */
+    public function freePlan(): ?AiBotPlan
+    {
+        return AiBotPlan::active()->where('code', 'free')->first();
+    }
+
+    /**
+     * รับประกันว่า wallet นี้มีการเช่าอย่างน้อย "แพลนฟรี" เสมอ.
+     *
+     * ทำไมต้องสร้างแถวจริง ไม่ใช่ปล่อยให้ไม่มี subscription แล้วไปดักเป็นกรณีพิเศษ:
+     * ทั้ง BotRunner, การนับโควตา, การปลดล็อกกลยุทธ์ และการตัดเครดิต ล้วนอ่านจาก
+     * subscription->plan ถ้าปล่อยให้ผู้ใช้ฟรีไม่มีแถว ทุกจุดจะต้องมี if พิเศษของตัวเอง
+     * แล้วสักจุดจะลืม — กลายเป็นผู้ใช้ฟรีได้สิทธิ์ของแพลนเสียเงินโดยไม่มีใครสังเกต
+     *
+     * แพลนฟรีไม่ตัดเครดิตและไม่มีวันหมดอายุจริง (ต่ออายุอัตโนมัติเมื่อถูกเรียก)
+     */
+    public function ensureFreeSubscription(string $wallet): ?AiBotSubscription
+    {
+        $wallet = $this->normalize($wallet);
+
+        if ($existing = $this->activeSubscription($wallet)) {
+            return $existing;
+        }
+
+        $plan = $this->freePlan();
+
+        if (! $plan) {
+            return null;
+        }
+
+        return AiBotSubscription::create([
+            'wallet_address' => $wallet,
+            'ai_bot_plan_id' => $plan->id,
+            'status' => 'active',
+            'days' => 365,
+            'credits_spent' => 0,
+            'started_at' => now(),
+            'expires_at' => now()->addYear(),
+        ]);
+    }
 
     public function activeSubscription(string $wallet): ?AiBotSubscription
     {
@@ -269,7 +311,9 @@ class AiBotService
      */
     public function assertCanRunBot(string $wallet, string $strategyCode, ?AiBotConfig $existing = null): AiBotSubscription
     {
-        $subscription = $this->activeSubscription($wallet);
+        // ยังไม่เคยเช่า → ลงแพลนฟรีให้อัตโนมัติ แทนที่จะปฏิเสธไปเลย
+        // (ฟรีก็สร้างบอทได้ แค่บอทจะเดินเฉพาะตอนเปิดหน้าเว็บทิ้งไว้)
+        $subscription = $this->activeSubscription($wallet) ?? $this->ensureFreeSubscription($wallet);
 
         if (! $subscription) {
             throw new RuntimeException(self::ERR_NO_SUBSCRIPTION);

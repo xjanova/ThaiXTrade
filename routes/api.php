@@ -426,6 +426,10 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::put('/bots/{id}', [AiBotController::class, 'update'])->where('id', '[0-9]+');
         Route::post('/bots/{id}/state', [AiBotController::class, 'setState'])->where('id', '[0-9]+');
         Route::post('/bots/{id}/mode', [AiBotController::class, 'setMode'])->where('id', '[0-9]+');
+        // แพลนฟรีเดินบอทจากหน้าเว็บ — throttle สูงกว่ากลุ่มอื่นเพราะหน้าเว็บเรียกเป็นระยะ
+        Route::post('/bots/{id}/tick', [AiBotController::class, 'tickFromBrowser'])
+            ->where('id', '[0-9]+')
+            ->middleware('throttle:60,1');
         Route::delete('/bots/{id}', [AiBotController::class, 'destroy'])->where('id', '[0-9]+');
 
         // โหมดทดลอง — พอร์ตกระดาษที่ใช้ราคาจริง ให้ลองก่อนตัดสินใจเช่า

@@ -8,7 +8,13 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * TPIX TRADE — ให้บอททุกตัวที่กำลังทำงานคิดหนึ่งรอบ.
+ * TPIX TRADE — ให้บอท "ที่ซื้อคลาวด์ไว้" คิดหนึ่งรอบ.
+ *
+ * ⚠️ รันเฉพาะบอทของแพลนที่ execution = cloud เท่านั้น
+ *    บอทของแพลนฟรีเป็น execution = browser ต้องให้หน้าเว็บของผู้ใช้เป็นคนสั่งเดินเอง
+ *    (POST /api/v1/ai-bot/bots/{id}/tick) ปิดแท็บแล้วต้องหยุดจริงๆ
+ *
+ *    ถ้าลืมกรองตรงนี้ ผู้ใช้ฟรีจะได้คลาวด์ฟรีไปด้วย แล้วแพลนที่เสียเงินก็ไม่เหลือจุดขาย
  *
  * บอทตัวหนึ่งพังต้องไม่ลาก bot ตัวอื่นล้มไปด้วย — จับ exception ต่อตัว
  *
@@ -22,7 +28,7 @@ class AiBotTick extends Command
 
     public function handle(BotRunner $runner): int
     {
-        $query = AiBotConfig::runnable();
+        $query = AiBotConfig::runnable()->cloudExecuted();
 
         if ($botId = $this->option('bot')) {
             $query->where('id', $botId);
@@ -31,7 +37,7 @@ class AiBotTick extends Command
         $bots = $query->get();
 
         if ($bots->isEmpty()) {
-            $this->info('ไม่มีบอทที่กำลังทำงาน');
+            $this->info('ไม่มีบอทคลาวด์ที่กำลังทำงาน');
 
             return self::SUCCESS;
         }

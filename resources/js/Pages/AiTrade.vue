@@ -6,7 +6,7 @@
  * ระบบเดียวกับการ์ด AI TRADE ในหน้าเทรดและในแอพ TPIX (state มาจาก /api/v1/ai-bot/*)
  * Developed by Xman Studio
  */
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -311,6 +311,24 @@ watch(() => walletStore.address, (address) => {
     bot.loadStatus();
     bot.loadDemo();
 });
+
+/*
+ * แพลนฟรี = หน้าเว็บนี้เป็นคนเดินบอท
+ *
+ * เริ่มลูปเมื่อมีบอทฟรีที่กำลังทำงาน และหยุดทันทีที่ออกจากหน้านี้
+ * onUnmounted สำคัญมาก — ถ้าลืม ลูปจะเดินต่อหลังผู้ใช้ไปหน้าอื่นแล้ว
+ * กลายเป็นบอทเดินอยู่เบื้องหลังโดยที่ผู้ใช้ไม่เห็นและไม่ได้ตั้งใจ
+ */
+watch(
+    () => bot.browserBots.value.length,
+    (count) => {
+        if (count > 0) bot.startBrowserLoop();
+        else bot.stopBrowserLoop();
+    },
+    { immediate: true }
+);
+
+onUnmounted(() => bot.stopBrowserLoop());
 </script>
 
 <template>
@@ -412,7 +430,7 @@ watch(() => walletStore.address, (address) => {
             </template>
 
             <!-- แพลน + เติมเครดิต — เปิดให้ดูราคาได้ก่อนเชื่อมกระเป๋า -->
-            <section>
+            <section id="plans">
                 <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <h2 class="text-lg font-bold text-white">{{ t('aiTrade.choosePlanTitle') }}</h2>
                     <div class="flex items-center gap-1.5">
@@ -430,7 +448,34 @@ watch(() => walletStore.address, (address) => {
                     </div>
                 </div>
 
-                <div class="grid gap-3 md:grid-cols-3">
+                <!-- เทียบให้เห็นชัดก่อนดูราคา: ต่างกันที่ "บอทเดินตอนไหน" ไม่ใช่จำนวนบอท
+                     ผู้ใช้ที่เข้าใจผิดตรงนี้จะเช่าไปแล้วรู้สึกว่าไม่คุ้ม -->
+                <div class="grid gap-3 sm:grid-cols-2 mb-4">
+                    <div class="rounded-2xl border border-amber-500/25 bg-amber-500/[0.04] p-4">
+                        <p class="text-sm font-bold text-amber-300 flex items-center gap-1.5">
+                            🖥️ {{ t('aiTrade.compareFreeTitle') }}
+                        </p>
+                        <p class="text-[11px] text-dark-300 leading-relaxed mt-1.5">
+                            {{ t('aiTrade.compareFreeBody') }}
+                        </p>
+                    </div>
+                    <div class="rounded-2xl border border-primary-500/25 bg-primary-500/[0.04] p-4">
+                        <p class="text-sm font-bold text-primary-300 flex items-center gap-1.5">
+                            ☁️ {{ t('aiTrade.compareCloudTitle') }}
+                        </p>
+                        <p class="text-[11px] text-dark-300 leading-relaxed mt-1.5">
+                            {{ t('aiTrade.compareCloudBody') }}
+                        </p>
+                    </div>
+                </div>
+
+                <!-- ตอนนี้เปิดเฉพาะโหมดทดลอง — ต้องบอกก่อนจ่ายเงิน ไม่ใช่ให้มารู้ทีหลัง -->
+                <p class="rounded-xl border border-white/10 bg-dark-900/50 px-3 py-2 text-[11px] text-dark-300 mb-4 flex gap-2">
+                    <span class="text-primary-400 shrink-0">ℹ️</span>
+                    <span>{{ t('aiTrade.demoOnlyNotice') }}</span>
+                </p>
+
+                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <div
                         v-for="plan in bot.plans.value"
                         :key="plan.code"
@@ -450,17 +495,38 @@ watch(() => walletStore.address, (address) => {
                         </span>
 
                         <h3 class="text-base font-bold text-white">{{ bot.planLabel(plan) }}</h3>
-                        <p class="text-[11px] text-dark-400 leading-relaxed mt-1 mb-3 min-h-[32px]">
+
+                        <!-- ป้ายบอก "บอทเดินที่ไหน" — เป็นความต่างหลักระหว่างฟรีกับเสียเงิน
+                             จึงต้องอยู่บนสุด เห็นก่อนราคา ไม่ใช่ซ่อนอยู่ในรายการคุณสมบัติ -->
+                        <span
+                            :class="['inline-flex items-center gap-1 self-start mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ring-1',
+                                plan.execution === 'cloud'
+                                    ? 'bg-primary-500/10 text-primary-300 ring-primary-500/25'
+                                    : 'bg-amber-500/10 text-amber-300 ring-amber-500/25']"
+                        >
+                            {{ plan.execution === 'cloud' ? '☁️' : '🖥️' }}
+                            {{ plan.execution === 'cloud' ? t('aiTrade.runsInCloud') : t('aiTrade.runsInBrowser') }}
+                        </span>
+
+                        <p class="text-[11px] text-dark-400 leading-relaxed mt-2 mb-3 min-h-[32px]">
                             {{ bot.planDescription(plan) }}
                         </p>
 
-                        <p class="text-2xl font-black font-mono text-white leading-none">
-                            {{ plan.credits_per_day }}
-                            <span class="text-[11px] font-normal text-dark-400">{{ t('aiTrade.creditsPerDay') }}</span>
+                        <p v-if="plan.price_tpix_per_day > 0" class="text-2xl font-black font-mono text-white leading-none">
+                            {{ Number(plan.price_tpix_per_day).toLocaleString() }}
+                            <span class="text-[11px] font-normal text-dark-400">{{ t('aiTrade.tpixPerDay') }}</span>
                         </p>
-                        <p class="text-[11px] text-dark-500 mt-1 mb-3 font-mono">
-                            {{ t('aiTrade.totalCost', { days: selectedDays, credits: (plan.credits_per_day * selectedDays).toLocaleString() }) }}
+                        <p v-else class="text-2xl font-black font-mono text-trading-green leading-none">
+                            {{ t('aiTrade.freeForever') }}
                         </p>
+
+                        <p v-if="plan.price_tpix_per_day > 0" class="text-[11px] text-dark-500 mt-1 mb-3 font-mono">
+                            {{ t('aiTrade.totalCostTpix', {
+                                days: selectedDays,
+                                tpix: (Number(plan.price_tpix_per_day) * selectedDays).toLocaleString(),
+                            }) }}
+                        </p>
+                        <p v-else class="text-[11px] text-dark-500 mt-1 mb-3">{{ t('aiTrade.noPaymentNeeded') }}</p>
 
                         <ul class="space-y-1.5 mb-4 flex-1">
                             <li v-for="feature in bot.planFeatures(plan)" :key="feature" class="flex gap-1.5 text-[11px] text-dark-300 leading-relaxed">
@@ -476,8 +542,8 @@ watch(() => walletStore.address, (address) => {
                             @click="rent(plan.code)"
                         >
                             {{ bot.subscription.value?.plan_code === plan.code
-                                ? t('aiTrade.renewFor', { days: selectedDays })
-                                : t('aiTrade.rentFor', { days: selectedDays }) }}
+                                ? (plan.price_tpix_per_day > 0 ? t('aiTrade.renewFor', { days: selectedDays }) : t('aiTrade.currentPlan'))
+                                : (plan.price_tpix_per_day > 0 ? t('aiTrade.rentFor', { days: selectedDays }) : t('aiTrade.startFree')) }}
                         </button>
                     </div>
                 </div>
@@ -502,9 +568,40 @@ watch(() => walletStore.address, (address) => {
                         <p v-if="pack.bonus" class="text-[11px] text-trading-green font-mono mt-0.5">
                             + {{ t('aiTrade.bonus', { n: pack.bonus.toLocaleString() }) }}
                         </p>
-                        <p class="text-sm text-dark-300 mt-2">${{ pack.price_usd }}</p>
+                        <p class="text-sm text-dark-300 mt-2 font-mono">
+                            {{ Number(pack.price_tpix).toLocaleString() }}
+                            <span class="text-[10px] text-dark-500">TPIX</span>
+                        </p>
                     </button>
                 </div>
+            </section>
+
+            <!-- บอทฟรีเดินอยู่ในแท็บนี้ — ต้องบอกให้ชัดว่าปิดแล้วหยุด ไม่ใช่ปล่อยให้เข้าใจผิด -->
+            <section
+                v-if="bot.browserLoopActive.value && bot.browserBots.value.length"
+                class="rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 flex flex-wrap items-center gap-3"
+            >
+                <span class="relative flex h-2.5 w-2.5 shrink-0">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60"></span>
+                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400"></span>
+                </span>
+
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold text-amber-300">
+                        {{ t('aiTrade.browserBotRunning') }}
+                        <span class="text-dark-400 font-normal">· {{ bot.browserBots.value.length }} {{ t('aiTrade.botsUnit') }}</span>
+                    </p>
+                    <p class="text-[11px] text-dark-300 mt-0.5">
+                        {{ t('aiTrade.browserBotWarning') }}
+                        <span v-if="bot.lastBrowserTick.value" class="text-dark-500 font-mono ml-1">
+                            · {{ t('aiTrade.lastTickAt') }} {{ new Date(bot.lastBrowserTick.value).toLocaleTimeString() }}
+                        </span>
+                    </p>
+                </div>
+
+                <a href="#plans" class="text-[11px] font-medium text-primary-300 hover:text-primary-200 whitespace-nowrap">
+                    {{ t('aiTrade.upgradeForCloud') }} →
+                </a>
             </section>
 
             <!-- โหมดทดลอง + ด่านความเสี่ยง — ต้องเชื่อมกระเป๋าก่อนถึงจะมีพอร์ตทดลอง -->

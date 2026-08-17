@@ -7,7 +7,7 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 
-/**
+/*
  * TPIX Trade — Sentry config (Laravel).
  *
  * To activate:

@@ -71,6 +71,26 @@ class AiBotConfig extends Model
     }
 
     /** บอทที่กินโควตาของแพลน (draft ไม่นับ เพราะยังไม่ทำงาน) */
+    /**
+     * เฉพาะบอทที่เจ้าของซื้อ "การรันบนคลาวด์" ไว้.
+     *
+     * ต้องมีการเช่าที่ยังไม่หมดอายุ และแพลนนั้นต้องเป็น execution = cloud
+     * ตัวจับเวลาของเซิร์ฟเวอร์ (aibot:tick) ใช้ scope นี้เป็นด่านเดียวในการตัดสิน
+     * ว่าจะเดินบอทตัวไหน — บอทของแพลนฟรีจะไม่ถูกแตะเลย
+     */
+    public function scopeCloudExecuted(Builder $query): Builder
+    {
+        return $query->whereExists(function ($sub) {
+            $sub->selectRaw('1')
+                ->from('ai_bot_subscriptions')
+                ->join('ai_bot_plans', 'ai_bot_plans.id', '=', 'ai_bot_subscriptions.ai_bot_plan_id')
+                ->whereColumn('ai_bot_subscriptions.wallet_address', 'ai_bot_configs.wallet_address')
+                ->where('ai_bot_subscriptions.status', 'active')
+                ->where('ai_bot_subscriptions.expires_at', '>', now())
+                ->where('ai_bot_plans.execution', 'cloud');
+        });
+    }
+
     public function scopeCountingTowardQuota(Builder $query): Builder
     {
         return $query->whereIn('status', ['running', 'paused']);

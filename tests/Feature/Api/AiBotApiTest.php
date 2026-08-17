@@ -53,7 +53,7 @@ class AiBotApiTest extends TestCase
         $this->getJson('/api/v1/ai-bot/catalog')
             ->assertStatus(200)
             ->assertJsonPath('success', true)
-            ->assertJsonCount(3, 'data.plans')
+            ->assertJsonCount(AiBotPlan::active()->count(), 'data.plans')
             ->assertJsonCount(count(config('aibot.strategies')), 'data.strategies');
     }
 
@@ -142,7 +142,11 @@ class AiBotApiTest extends TestCase
 
     // ── บอท ─────────────────────────────────────────────────────────────────
 
-    public function test_creating_a_bot_without_a_subscription_is_refused(): void
+    /**
+     * ไม่เคยเช่า = ตกลงมาที่แพลนฟรีอัตโนมัติ (บอทเดินเฉพาะตอนเปิดหน้าเว็บทิ้งไว้)
+     * เปลี่ยนจากพฤติกรรมเดิมที่ปฏิเสธไปเลย — ดู AiBotTierTest สำหรับเส้นแบ่งฟรี/คลาวด์.
+     */
+    public function test_creating_a_bot_without_a_subscription_falls_back_to_the_free_plan(): void
     {
         $this->postJson('/api/v1/ai-bot/bots', [
             'wallet_address' => $this->wallet,
@@ -150,9 +154,30 @@ class AiBotApiTest extends TestCase
             'pair' => 'BTC/USDT',
             'strategy' => 'grid',
             'timeframe' => '1h',
+        ])->assertStatus(201);
+
+        $this->assertSame(
+            'free',
+            $this->service->activeSubscription($this->wallet)->plan->code,
+            'ต้องถูกลงแพลนฟรีให้อัตโนมัติ'
+        );
+    }
+
+    /**
+     * แต่กลยุทธ์ที่แพลนฟรียังไม่ปลดล็อก ต้องถูกปฏิเสธเหมือนเดิม
+     * (เจตนาเดิมของเทสต์ที่ถูกแทนที่ด้านบน — สิทธิ์ต้องไม่หลุด).
+     */
+    public function test_creating_a_bot_with_a_locked_strategy_is_still_refused(): void
+    {
+        $this->postJson('/api/v1/ai-bot/bots', [
+            'wallet_address' => $this->wallet,
+            'name' => 'Bot A',
+            'pair' => 'BTC/USDT',
+            'strategy' => 'ai_signal',
+            'timeframe' => '1h',
         ])
             ->assertStatus(403)
-            ->assertJsonPath('error.code', AiBotService::ERR_NO_SUBSCRIPTION);
+            ->assertJsonPath('error.code', AiBotService::ERR_STRATEGY_LOCKED);
     }
 
     public function test_starter_plan_cannot_use_a_vip_strategy(): void
