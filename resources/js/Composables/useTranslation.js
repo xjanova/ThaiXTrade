@@ -31,8 +31,16 @@ if (typeof document !== 'undefined') {
 
 /**
  * ดึงค่า nested key จาก object
+ *
+ * รับเฉพาะสตริง — เรียกด้วย undefined เมื่อไหร่ `path.split` จะโยน TypeError
+ * ออกมากลางการ render แล้ว Vue ทิ้งทั้งต้นไม้เป็นจอว่าง
+ *
+ * เคสนี้เกิดจริงมาแล้ว: `t(tierLabel[s.tier])` โดยที่ map ไม่มีคีย์ของระดับนั้น
+ * ป้ายเล็กๆ อันเดียวที่หาคำแปลไม่เจอ ทำให้ทั้งหน้าหายไป — ราคาที่แพงเกินเหตุ
  */
 function getNestedValue(obj, path) {
+    if (typeof path !== 'string' || path === '') return undefined;
+
     return path.split('.').reduce((current, key) => current?.[key], obj);
 }
 
@@ -51,8 +59,8 @@ function t(key, params = {}) {
         text = getNestedValue(messages.en, key);
     }
 
-    // Fallback ไป key
-    if (!text) return key;
+    // Fallback ไป key — คีย์ที่ไม่ใช่สตริงคืนค่าว่าง ดีกว่าโชว์ "undefined" ให้ผู้ใช้เห็น
+    if (!text) return typeof key === 'string' ? key : '';
 
     // แทนที่ {param}
     if (typeof text === 'string' && params) {

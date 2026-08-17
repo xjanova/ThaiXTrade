@@ -148,6 +148,19 @@ export const useWalletStore = defineStore('wallet', () => {
     }
 
     /**
+     * TPIX Chain เปิดให้ใช้จริงแล้วหรือยัง (ตาม status ที่แบ็กเอนด์ประกาศ)
+     *
+     * ใช้เกณฑ์เดียวกับ ChainSelector — ไม่มี status ถือว่า live เพื่อรองรับ API เก่า
+     * โหลดรายการเชนไม่สำเร็จ = ไม่รู้ = ไม่สลับ ปล่อยผู้ใช้อยู่บนเชนเดิมที่ใช้งานได้อยู่
+     */
+    function isTpixChainLive() {
+        const tpix = supportedChains.value.find(c => c.chainId === TPIX_CHAIN_CONFIG.chainIdNum);
+        if (!tpix) return false;
+
+        return !tpix.status || tpix.status === 'live';
+    }
+
+    /**
      * เชื่อมต่อ wallet แล้วสลับไป chain หลักอัตโนมัติ
      * ถ้าผู้ใช้อยู่บน chain อื่นที่ไม่ใช่ BSC จะ prompt ให้สลับ
      */
@@ -210,11 +223,20 @@ export const useWalletStore = defineStore('wallet', () => {
                 walletType: type,
             }));
 
-            // เพิ่ม TPIX Chain (4289) เข้ากระเป๋าอัตโนมัติ + สลับไป TPIX Chain
+            /*
+             * เพิ่ม TPIX Chain (4289) เข้ากระเป๋าอัตโนมัติ + สลับไปให้
+             *
+             * ⚠️ สลับให้เฉพาะตอนที่เชนเปิดใช้จริงแล้วเท่านั้น
+             *    ตอนที่เชนยัง coming_soon ตัวเลือกเชนจะขึ้นป้าย "Soon" แล้วกดไม่ได้
+             *    ถ้ายังบังคับสลับไปตรงนั้น ผู้ใช้จะถูกจอดบนเชนที่หน้าเว็บเองบอกว่า
+             *    ยังไม่เปิด — เห็นยอดเป็นศูนย์ทั้งที่มีเหรียญ และไม่รู้ว่าต้องทำยังไงต่อ
+             *
+             *    ยังเพิ่มเชนเข้ากระเป๋าไว้ก่อนได้ (ไม่เสียหาย และพอเปิดจริงก็พร้อมใช้)
+             */
             try {
                 await addTPIXChainToWallet(injected);
-                // สลับไป TPIX Chain หลังเพิ่มสำเร็จ
-                if (chainId.value !== TPIX_CHAIN_CONFIG.chainIdNum) {
+
+                if (isTpixChainLive() && chainId.value !== TPIX_CHAIN_CONFIG.chainIdNum) {
                     await injected.request({
                         method: 'wallet_switchEthereumChain',
                         params: [{ chainId: TPIX_CHAIN_CONFIG.chainId }],

@@ -13,6 +13,7 @@ use App\Services\AiBot\BotRunner;
 use App\Services\AiBot\MarketRiskService;
 use App\Services\AiBot\PaperBroker;
 use App\Services\AiBot\StrategyAnalytics;
+use App\Services\AiBot\StrategyAvailability;
 use App\Services\AiBotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,6 +43,7 @@ class AiBotController extends Controller
     public function __construct(
         private readonly AiBotService $bots,
         private readonly PaperBroker $broker,
+        private readonly StrategyAvailability $availability,
     ) {}
 
     // =========================================================================
@@ -77,7 +79,9 @@ class AiBotController extends Controller
             'success' => true,
             'data' => [
                 'plans' => $plans,
-                'strategies' => config('aibot.strategies', []),
+                // แนบสถานะ "ลงมือได้จริงไหม" ไปด้วย — ปลดล็อกตามแพลนกับใช้ได้จริง
+                // เป็นคนละเรื่อง หน้าเว็บและแอพต้องแยกสองอย่างนี้ออกจากกันให้ผู้ใช้เห็น
+                'strategies' => $this->availability->decorate(config('aibot.strategies', [])),
                 'packs' => config('aibot.credits.packs', []),
                 'rental_days' => config('aibot.credits.rental_days', [1, 7, 30]),
                 'timeframes' => config('aibot.timeframes', []),
@@ -260,7 +264,8 @@ class AiBotController extends Controller
             return $this->failure('BOT_NOT_FOUND', 'ไม่พบบอทตัวนี้', 404);
         }
 
-        $validated = $this->validateBot($request);
+        // ส่งบอทเดิมไปด้วย เพื่อให้กลยุทธ์ที่มันใช้อยู่ยังแก้ไขต่อได้แม้จะถูกปิดไปแล้ว
+        $validated = $this->validateBot($request, $bot);
 
         try {
             $subscription = $this->bots->assertCanRunBot($wallet, $validated['strategy'], $bot);
@@ -503,6 +508,19 @@ class AiBotController extends Controller
 
         $stats = $analytics->forWallet($wallet);
 
+        // ยังไม่มีไม้ที่ปิดแล้วก็ไม่มีอะไรให้วิเคราะห์ — ตัดจบตรงนี้ก่อนถึง LLM
+        //
+        // ถามไปทั้งที่ไม่มีข้อมูลจะได้คำตอบกลวงๆ ที่อ่านดูน่าเชื่อถือ แล้วผู้ใช้อาจ
+        // เอาไปตั้งค่าเงินจริงตาม ทั้งยังกินโควตาฟรีของวันนั้นทิ้งไปเปล่าๆ ด้วย
+        if ((int) ($stats['overall']['closed'] ?? 0) === 0) {
+            return response()->json(['success' => true, 'data' => [
+                'ok' => false,
+                'provider' => $advisor->name(),
+                'text' => '',
+                'reason' => 'ยังไม่มีไม้ที่ปิดแล้วให้วิเคราะห์ — เปิดบอทเดินสักพักก่อนแล้วค่อยกลับมาถาม',
+            ]]);
+        }
+
         // แคชต่อ wallet — รีเฟรชหน้าไม่ควรยิง LLM ใหม่ทุกครั้ง
         $minutes = (int) config('aibot_advisor.cache_minutes', 15);
         $key = 'aibot:advice:'.$wallet.':'.md5(json_encode($stats['overall']));
@@ -580,9 +598,20 @@ class AiBotController extends Controller
     // Helpers
     // =========================================================================
 
-    private function validateBot(Request $request): array
+    /**
+     * ตรวจข้อมูลบอท.
+     *
+     * $current = บอทที่กำลังแก้อยู่ ถ้ามี — กลยุทธ์เดิมของมันผ่านได้เสมอแม้จะถูกปิด
+     * ไปแล้ว ไม่งั้นผู้ใช้ที่มีบอทอาร์บิทราจค้างอยู่จะแก้ชื่อหรือลดความเสี่ยงก็ไม่ได้
+     * ต้องลบทิ้งอย่างเดียว ซึ่งไม่ใช่สิ่งที่ควรบังคับ
+     */
+    private function validateBot(Request $request, ?AiBotConfig $current = null): array
     {
-        $strategyCodes = collect(config('aibot.strategies', []))->pluck('code')->all();
+        $strategyCodes = $this->availability->availableCodes();
+
+        if ($current && ! in_array($current->strategy, $strategyCodes, true)) {
+            $strategyCodes[] = $current->strategy;
+        }
 
         return $request->validate([
             'name' => ['required', 'string', 'max:'.config('aibot.limits.max_name_length', 60)],
@@ -592,7 +621,25 @@ class AiBotController extends Controller
             'timeframe' => ['required', 'string', 'in:'.implode(',', config('aibot.timeframes', []))],
             'params' => ['sometimes', 'array'],
             'risk' => ['sometimes', 'array'],
+        ], [
+            // ข้อความปริยาย ("The selected strategy is invalid") ทำให้ผู้ใช้คิดว่าตัวเอง
+            // กรอกผิด ทั้งที่กลยุทธ์นั้นมีอยู่จริงแค่ยังเปิดใช้ไม่ได้
+            'strategy.in' => $this->strategyRejectedMessage($request->input('strategy')),
         ]);
+    }
+
+    /** บอกเหตุผลจริงว่าทำไมกลยุทธ์นี้ถึงใช้ไม่ได้ */
+    private function strategyRejectedMessage(mixed $code): string
+    {
+        if (! is_string($code)) {
+            return 'ไม่พบกลยุทธ์ที่เลือก';
+        }
+
+        $status = $this->availability->check($code);
+
+        return $status['available']
+            ? 'ไม่พบกลยุทธ์ที่เลือก'
+            : 'กลยุทธ์นี้ยังเปิดใช้งานไม่ได้ — '.$status['reason'];
     }
 
     private function findBot(string $wallet, int $id): ?AiBotConfig

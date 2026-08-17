@@ -74,6 +74,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::put('settings/content', [SettingController::class, 'updateTab'])->name('settings.content');
         Route::put('settings/email', [SettingController::class, 'updateEmail'])->name('settings.email');
         Route::post('settings/email/test', [SettingController::class, 'sendTestEmail'])->name('settings.email.test');
+        // ที่ปรึกษา AI ของบอทเทรด — กรอกคีย์ที่นี่แทนการแก้ .env บนเซิร์ฟเวอร์
+        Route::put('settings/advisor', [SettingController::class, 'updateTab'])->name('settings.advisor');
+        // จำกัดการยิงทดสอบ — แต่ละครั้งกินโควตาจริงของผู้ให้บริการ
+        Route::post('settings/advisor/test', [SettingController::class, 'testAdvisor'])
+            ->middleware('throttle:10,1')
+            ->name('settings.advisor.test');
 
         // Fees
         Route::resource('fees', FeeController::class)->except(['create', 'show', 'edit']);

@@ -11,11 +11,17 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useSwap } from '@/Composables/useSwap';
+import { usePlatformReadiness } from '@/Composables/usePlatformReadiness';
 import { getTxUrl, BSC_CHAIN_CONFIG } from '@/utils/web3';
 import WalletModal from '@/Components/Wallet/WalletModal.vue';
 
 const walletStore = useWalletStore();
 const swap = useSwap();
+
+// swap ต้องมี fee_collector_wallet ที่แอดมินตั้งไว้ ไม่งั้น API ตอบ 503
+// เช็กตั้งแต่ตอนเข้าหน้า ดีกว่าปล่อยให้กรอกจนจบแล้วค่อยเจอ error
+const readiness = usePlatformReadiness();
+const swapBlockedReason = computed(() => readiness.reasonFor('swap'));
 
 // Token lists (BSC mainnet addresses)
 const popularTokens = ref([
@@ -245,6 +251,9 @@ function setMaxAmount() {
 
 // Load balances on mount if wallet is connected
 onMounted(async () => {
+    // ถามก่อนว่าบริการเปิดจริงไหม — ไม่รอผลนี้ก่อนโหลดยอด เพราะเป็นคนละเรื่องกัน
+    readiness.load();
+
     if (walletStore.isConnected) {
         await refreshBalances();
     }
@@ -451,9 +460,26 @@ onMounted(async () => {
                             </div>
                         </div>
 
+                        <!-- ยังตั้งค่าไม่ครบ — บอกให้ชัดว่าไม่ใช่เว็บพัง แล้วปิดปุ่มทั้งชุด -->
+                        <div v-if="swapBlockedReason" class="mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300 text-sm">
+                            <div class="flex items-start gap-2.5">
+                                <svg class="w-5 h-5 shrink-0 mt-px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                                </svg>
+                                <div class="min-w-0">
+                                    <p class="font-semibold mb-0.5">ยังสลับเหรียญไม่ได้</p>
+                                    <p class="text-amber-300/80 text-xs leading-relaxed">{{ swapBlockedReason }}</p>
+                                    <button v-if="readiness.loadFailed.value" type="button" @click="readiness.reload()"
+                                        class="mt-2 px-3 py-1.5 text-xs rounded-lg bg-amber-500/15 hover:bg-amber-500/25 transition-colors">
+                                        ลองใหม่
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Action Button -->
                         <button
-                            v-if="!isWalletConnected"
+                            v-else-if="!isWalletConnected"
                             class="w-full mt-4 btn-brand py-3.5 text-base"
                             @click="showWalletModal = true"
                         >

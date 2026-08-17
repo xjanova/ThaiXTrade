@@ -17,13 +17,13 @@ import AiRiskPanel from '@/Components/Trading/AiRiskPanel.vue';
 import { useAiBot } from '@/Composables/useAiBot';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTranslation } from '@/Composables/useTranslation';
+import { showToast } from '@/Composables/useToasts';
 import { playClickSound, playErrorSound, playNotificationSound } from '@/Composables/useSounds';
 
 const walletStore = useWalletStore();
 const bot = useAiBot();
 const { t, locale } = useTranslation();
 
-const notice = ref(null); // { type: 'success' | 'error', text }
 const selectedDays = ref(7);
 const pairs = ref([]);
 const editingId = ref(null);
@@ -60,6 +60,19 @@ const riskTone = {
 const riskLabel = { low: 'aiTrade.riskLow', medium: 'aiTrade.riskMedium', high: 'aiTrade.riskHigh' };
 const tierLabel = { basic: 'aiTrade.tierBasic', pro: 'aiTrade.tierPro', vip: 'aiTrade.tierVip' };
 
+/**
+ * ป้ายระดับแพลนของกลยุทธ์ — คืนค่าว่างเมื่อไม่มีคำแปลของระดับนั้น
+ *
+ * config มีระดับ `free` ด้วยแต่ tierLabel ไม่มีคีย์นั้น (ตั้งใจ: ของที่ทุกคนได้
+ * ไม่ต้องติดป้าย) การส่ง undefined เข้า t() ทำให้ระเบิดที่ `path.split('.')`
+ * แล้ว Vue ทิ้งทั้งหน้าเป็นจอว่าง — พังทั้งหน้าเพราะป้ายเล็กๆ อันเดียว
+ */
+function tierText(tier) {
+    const key = tierLabel[tier];
+
+    return key ? t(key) : '';
+}
+
 const unlocked = computed(() => bot.status.value?.unlocked_strategies ?? []);
 const selectedStrategy = computed(() => bot.strategyByCode(form.value.strategy));
 const limits = computed(() => bot.catalog.value?.limits ?? {});
@@ -79,11 +92,65 @@ function isUnlocked(code) {
     return unlocked.value.includes(code);
 }
 
+/**
+ * "ปลดล็อกตามแพลน" กับ "ลงมือได้จริง" เป็นคนละเรื่อง
+ *
+ * อาร์บิทราจปลดล็อกที่ VIP แต่ยังต้องรอพูล DEX ถึงจะมีราคาสองฝั่งให้เทียบ
+ * ต้องแยกให้ผู้ใช้เห็น ไม่งั้นคนที่จ่าย VIP มาแล้วจะงงว่าทำไมยังกดไม่ได้
+ * (แบ็กเอนด์ปฏิเสธด้วยเหตุผลเดียวกัน — ตรงนี้แค่ไม่ปล่อยให้เดินไปถึงตรงนั้น)
+ */
+function isRunnable(s) {
+    return s?.available !== false;
+}
+
+function isSelectable(s) {
+    return isUnlocked(s.code) && isRunnable(s);
+}
+
+// ── ที่ปรึกษา AI ────────────────────────────────────────────────────────────
+/**
+ * หน้าเว็บกันแค่ "ยังไม่ได้เชื่อมกระเป๋า" เท่านั้น.
+ *
+ * เงื่อนไข "ต้องมีไม้ที่ปิดแล้ว" ตัดสินที่ฝั่งเซิร์ฟเวอร์ เพราะที่นั่นเห็นไม้ทั้งหมด
+ * ของกระเป๋าจริงๆ ส่วนหน้านี้เห็นแค่บอทที่โหลดมา — เดาจากตรงนี้จะปิดปุ่มผิดเคส
+ * (มีไม้จากบอทที่ลบไปแล้วก็ยังวิเคราะห์ได้)
+ */
+const canAskAdvice = computed(() => walletStore.isConnected && !bot.isAskingAdvice.value);
+
+const adviceBlockedReason = computed(() =>
+    walletStore.isConnected ? '' : t('aiTrade.advisorNeedWallet')
+);
+
+async function askAdvice() {
+    if (!canAskAdvice.value) return;
+    playClickSound();
+
+    const result = await bot.askAdvice();
+    if (!result?.ok) playErrorSound();
+}
+
+function strategyBlockedTitle(s) {
+    if (!isRunnable(s)) {
+        return (locale.value === 'th' ? s.unavailable_reason : s.unavailable_reason_en || s.unavailable_reason) || '';
+    }
+    if (!isUnlocked(s.code)) {
+        return t('aiTrade.needTier', { tier: tierText(s.tier) });
+    }
+    return '';
+}
+
+/**
+ * แจ้งผลการทำรายการ.
+ *
+ * ย้ายมาใช้แถบลอยกลาง (useToasts) แทนแถบในผังหน้า ซึ่งเดิมมีปัญหาสามข้อ:
+ * กินพื้นที่จริงจนดันเนื้อหาเลื่อนลงทั้งหน้า · อยู่ 5 วิ ไม่ใช่ 10 วิเหมือนที่อื่น ·
+ * และเรียกซ้อนกันสองครั้งเมื่อไหร่ ตัวจับเวลาของอันแรกจะลบข้อความอันที่สองทิ้ง
+ */
 function flash(type, text) {
-    notice.value = { type, text };
     if (type === 'success') playNotificationSound();
     else playErrorSound();
-    setTimeout(() => { notice.value = null; }, 5000);
+
+    showToast({ text, type });
 }
 
 // ── ข้อมูลตั้งต้น ───────────────────────────────────────────────────────────
@@ -198,7 +265,8 @@ function openBuilder(existing = null) {
         };
     } else {
         editingId.value = null;
-        const firstUnlocked = bot.strategies.value.find(s => isUnlocked(s.code))?.code || 'grid';
+        // ต้องทั้งปลดล็อกและใช้ได้จริง — ไม่งั้นฟอร์มเปิดมาพร้อมกลยุทธ์ที่กดบันทึกไม่ผ่าน
+        const firstUnlocked = bot.strategies.value.find(s => isSelectable(s))?.code || 'grid';
         form.value = {
             name: t('aiTrade.defaultBotName', { n: bot.bots.value.length + 1 }),
             pair: form.value.pair,
@@ -368,15 +436,6 @@ onUnmounted(() => bot.stopBrowserLoop());
                     <p class="text-sm text-dark-300 max-w-2xl leading-relaxed">{{ t('aiTrade.intro') }}</p>
                 </div>
             </section>
-
-            <!-- แจ้งผล -->
-            <p
-                v-if="notice"
-                :class="['px-4 py-2.5 rounded-xl text-sm',
-                    notice.type === 'success' ? 'bg-trading-green/10 text-trading-green' : 'bg-trading-red/10 text-trading-red']"
-            >
-                {{ notice.text }}
-            </p>
 
             <!-- ยังไม่เชื่อมกระเป๋า -->
             <!-- ยังไม่เชื่อมกระเป๋า — ยังดูราคาและกลยุทธ์ได้ครบ แค่ยังสร้างบอทไม่ได้ -->
@@ -756,20 +815,27 @@ onUnmounted(() => bot.stopBrowserLoop());
                                 v-for="s in bot.strategies.value"
                                 :key="s.code"
                                 type="button"
-                                :disabled="!isUnlocked(s.code)"
-                                :title="isUnlocked(s.code) ? '' : t('aiTrade.needTier', { tier: t(tierLabel[s.tier]) })"
+                                :disabled="!isSelectable(s)"
+                                :title="strategyBlockedTitle(s)"
                                 :class="['relative text-left p-3 rounded-xl border transition-all',
                                     form.strategy === s.code ? 'border-primary-500/60 bg-primary-500/10' : 'border-white/10 bg-white/5 hover:border-white/25',
-                                    !isUnlocked(s.code) && 'opacity-45 cursor-not-allowed']"
+                                    !isSelectable(s) && 'opacity-45 cursor-not-allowed']"
                                 @click="form.strategy = s.code"
                             >
                                 <span class="flex items-center gap-1.5 mb-1">
                                     <span class="text-xs font-bold text-white truncate">{{ bot.strategyLabel(s) }}</span>
-                                    <span v-if="!isUnlocked(s.code)" class="text-[9px] px-1 rounded bg-warm-500/20 text-warm-300 shrink-0">
-                                        {{ t(tierLabel[s.tier]) }}
+                                    <!-- ยังเปิดใช้ไม่ได้ สำคัญกว่าเรื่องระดับแพลน — อัปเกรดแพลนก็ยังใช้ไม่ได้อยู่ดี -->
+                                    <span v-if="!isRunnable(s)" class="text-[9px] px-1 rounded bg-dark-600 text-dark-300 shrink-0">
+                                        {{ t('aiTrade.notReady') }}
+                                    </span>
+                                    <span v-else-if="!isUnlocked(s.code)" class="text-[9px] px-1 rounded bg-warm-500/20 text-warm-300 shrink-0">
+                                        {{ tierText(s.tier) }}
                                     </span>
                                 </span>
                                 <span class="block text-[10px] text-dark-400 leading-relaxed line-clamp-3">{{ bot.strategyDescription(s) }}</span>
+                                <span v-if="!isRunnable(s)" class="block mt-1 text-[10px] text-amber-300/80 leading-relaxed">
+                                    {{ strategyBlockedTitle(s) }}
+                                </span>
                                 <span :class="['inline-block mt-1.5 px-1.5 py-0.5 rounded text-[9px] ring-1', riskTone[s.risk]]">
                                     {{ t(riskLabel[s.risk]) }}
                                 </span>
@@ -846,6 +912,43 @@ onUnmounted(() => bot.stopBrowserLoop());
                 </section>
             </template>
 
+            <!-- ที่ปรึกษา AI — อ่านสถิติของบอทแล้วให้ความเห็น สั่งเทรดเองไม่ได้ -->
+            <section class="rounded-2xl border border-white/10 bg-dark-900/50 p-4 sm:p-5">
+                <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
+                    <div class="min-w-0">
+                        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                            <svg class="w-5 h-5 text-primary-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                            {{ t('aiTrade.advisorTitle') }}
+                        </h2>
+                        <p class="text-[11px] text-dark-400 mt-0.5">{{ t('aiTrade.advisorSub') }}</p>
+                    </div>
+                    <button
+                        type="button"
+                        :disabled="!canAskAdvice"
+                        :title="adviceBlockedReason"
+                        class="btn-brand px-4 py-2 text-sm shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                        @click="askAdvice"
+                    >
+                        {{ bot.isAskingAdvice.value ? t('aiTrade.advisorAsking') : (bot.advice.value?.ok ? t('aiTrade.advisorRefresh') : t('aiTrade.advisorAsk')) }}
+                    </button>
+                </div>
+
+                <!-- ยังกดไม่ได้ ต้องบอกว่าขาดอะไร ไม่ใช่ปล่อยปุ่มเทาเปล่าๆ -->
+                <p v-if="adviceBlockedReason" class="mt-3 text-[11px] text-amber-300/80 leading-relaxed">
+                    {{ adviceBlockedReason }}
+                </p>
+
+                <div v-else-if="bot.advice.value" class="mt-3">
+                    <div v-if="bot.advice.value.ok" class="p-3.5 rounded-xl bg-white/5 border border-white/10">
+                        <p class="text-[13px] text-dark-100 leading-relaxed whitespace-pre-line">{{ bot.advice.value.text }}</p>
+                        <p class="mt-2.5 text-[10px] text-dark-500 font-mono">{{ bot.advice.value.provider }}</p>
+                    </div>
+                    <p v-else class="text-[11px] text-amber-300/80 leading-relaxed">{{ bot.advice.value.reason }}</p>
+                </div>
+
+                <p class="mt-3 text-[10px] text-dark-500 leading-relaxed">{{ t('aiTrade.advisorDisclaimer') }}</p>
+            </section>
+
             <section>
                 <h2 class="text-lg font-bold text-white mb-1">{{ t('aiTrade.allStrategies') }}</h2>
                 <p class="text-[11px] text-dark-400 mb-3">{{ t('aiTrade.allStrategiesSub') }}</p>
@@ -857,11 +960,16 @@ onUnmounted(() => bot.stopBrowserLoop());
                     >
                         <div class="flex items-center gap-2 mb-2">
                             <h3 class="text-sm font-bold text-white">{{ bot.strategyLabel(s) }}</h3>
-                            <span v-if="s.tier !== 'basic'" class="ml-auto text-[9px] px-1.5 py-0.5 rounded bg-warm-500/15 text-warm-300">
-                                {{ t(tierLabel[s.tier]) }}
+                            <span v-if="!isRunnable(s)" class="ml-auto text-[9px] px-1.5 py-0.5 rounded bg-dark-600 text-dark-300">
+                                {{ t('aiTrade.notReady') }}
+                            </span>
+                            <!-- ติดป้ายเฉพาะระดับที่มีคำแปล — `free` กับ `basic` ไม่ต้องติด -->
+                            <span v-else-if="tierText(s.tier) && s.tier !== 'basic'" class="ml-auto text-[9px] px-1.5 py-0.5 rounded bg-warm-500/15 text-warm-300">
+                                {{ tierText(s.tier) }}
                             </span>
                         </div>
                         <p class="text-[11px] text-dark-400 leading-relaxed mb-2">{{ bot.strategyDescription(s) }}</p>
+                        <p v-if="!isRunnable(s)" class="text-[10px] text-amber-300/80 leading-relaxed mb-2">{{ strategyBlockedTitle(s) }}</p>
                         <div class="flex items-center gap-1.5 flex-wrap">
                             <span :class="['px-1.5 py-0.5 rounded text-[9px] ring-1', riskTone[s.risk]]">{{ t(riskLabel[s.risk]) }}</span>
                             <span class="text-[9px] text-dark-500 font-mono">{{ s.timeframes.join(' · ') }}</span>

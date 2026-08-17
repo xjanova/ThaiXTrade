@@ -6,7 +6,7 @@
  */
 
 import { ref, computed } from 'vue';
-import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
 // Flash message จาก backend
@@ -16,6 +16,11 @@ const props = defineProps({
     settings: {
         type: Object,
         default: () => ({}),
+    },
+    // สถานะที่ปรึกษา AI ที่คำนวณจากฝั่งเซิร์ฟเวอร์ — คีย์ถูก mask แล้ว ดูจากตรงนี้ไม่ออก
+    advisorStatus: {
+        type: Object,
+        default: () => ({ enabled: true, providers: {} }),
     },
 });
 
@@ -215,6 +220,46 @@ const aiForm = useForm({
 const saveAi = () => {
     aiForm.put('/admin/settings/ai', { preserveScroll: true });
 };
+
+// ── ที่ปรึกษา AI ของบอทเทรด (group: advisor) ────────────────────────────────
+// แยกจากคีย์สร้างรูปด้านบน เพราะคนละงานและอาจใช้คนละบัญชี
+// ต่างจากแท็บอื่นตรงที่ที่นี่คือทางเดียวที่เจ้าของระบบตั้งคีย์ได้โดยไม่ต้องแก้ .env
+const advisorForm = useForm({
+    advisor_enabled: props.settings.advisor_enabled ?? true,
+    advisor_gemini_api_key: props.settings.advisor_gemini_api_key || '',
+    advisor_gemini_model: props.settings.advisor_gemini_model || 'gemini-2.0-flash',
+    advisor_gemini_max_calls: props.settings.advisor_gemini_max_calls || 40,
+    advisor_openai_api_key: props.settings.advisor_openai_api_key || '',
+    advisor_openai_model: props.settings.advisor_openai_model || 'gpt-4o-mini',
+    advisor_openai_max_calls: props.settings.advisor_openai_max_calls || 200,
+});
+
+const saveAdvisor = () => {
+    advisorForm.put('/admin/settings/advisor', { preserveScroll: true });
+};
+
+// ปุ่มทดสอบยิงจริงและกินโควตา — กันกดรัวด้วยตัวแปรเดียวต่อผู้ให้บริการ
+const advisorTesting = ref('');
+const testAdvisor = (provider) => {
+    if (advisorTesting.value) return;
+    advisorTesting.value = provider;
+    router.post('/admin/settings/advisor/test', { provider }, {
+        preserveScroll: true,
+        onFinish: () => { advisorTesting.value = ''; },
+    });
+};
+
+/** ป้ายบอกว่าคีย์ที่ใช้อยู่มาจากไหน — กันแอดมินสับสนตอนช่องกรอกว่างแต่ระบบบอกว่าพร้อม */
+const advisorSourceLabel = {
+    admin: 'คีย์ที่กรอกไว้ตรงนี้',
+    shared: 'ใช้คีย์ Gemini ช่องสร้างรูปด้านบน',
+    env: 'มาจาก .env บนเซิร์ฟเวอร์',
+    none: 'ยังไม่ได้ตั้งคีย์',
+};
+
+function advisorProvider(name) {
+    return props.advisorStatus?.providers?.[name] || { configured: false, source: 'none' };
+}
 
 // Content Schedule form (group: content)
 const contentForm = useForm({
@@ -1007,6 +1052,16 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
         <!-- AI Tab -->
         <div v-show="activeTab === 'ai'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <h3 class="text-lg font-semibold text-white mb-6">🤖 AI Settings (Groq)</h3>
+
+            <!-- ผลการทดสอบคีย์กลับมาเป็น flash — ต้องมีที่แสดงในแท็บนี้ ไม่งั้นกดแล้วเหมือนไม่มีอะไรเกิดขึ้น -->
+            <div v-if="flash.success" class="mb-6 p-4 rounded-xl bg-trading-green/10 border border-trading-green/30 text-trading-green text-sm flex items-start gap-2">
+                <svg class="w-5 h-5 shrink-0 mt-px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span class="break-words">{{ flash.success }}</span>
+            </div>
+            <div v-if="flash.error" class="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm flex items-start gap-2">
+                <svg class="w-5 h-5 shrink-0 mt-px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span class="break-words">{{ flash.error }}</span>
+            </div>
             <form @submit.prevent="saveAi" class="space-y-6 max-w-2xl">
                 <div>
                     <label :class="labelClass">Groq API Key</label>
@@ -1083,6 +1138,97 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     </button>
                 </div>
             </form>
+
+            <!-- ที่ปรึกษา AI ของบอทเทรด — ตั้งคีย์ที่นี่แทนการ ssh ไปแก้ .env -->
+            <div class="mt-6 p-5 rounded-xl bg-gradient-to-br from-primary-500/5 via-accent-500/5 to-trading-green/5 border border-primary-500/10">
+                <div class="flex items-start justify-between gap-4 mb-1">
+                    <h4 class="text-base font-semibold text-white flex items-center gap-2">
+                        <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                        ที่ปรึกษา AI ของบอทเทรด
+                    </h4>
+                    <button type="button" @click="advisorForm.advisor_enabled = !advisorForm.advisor_enabled"
+                        :class="['shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors', advisorForm.advisor_enabled ? 'bg-primary-500' : 'bg-dark-600']">
+                        <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', advisorForm.advisor_enabled ? 'translate-x-6' : 'translate-x-1']"></span>
+                    </button>
+                </div>
+                <p class="text-dark-500 text-xs mb-4">
+                    ให้ความเห็นประกอบการปรับตั้งค่าบอทเท่านั้น — <span class="text-dark-400">สั่งเทรดเองไม่ได้</span>
+                    ไม่ใส่คีย์ระบบก็ยังเดินตามปกติ แค่ไม่มีคำแนะนำ
+                </p>
+
+                <form @submit.prevent="saveAdvisor" class="space-y-5 max-w-2xl">
+                    <!-- Gemini — แพลนฟรี -->
+                    <div class="p-4 rounded-lg bg-black/20 border border-white/5">
+                        <div class="flex items-center justify-between gap-3 mb-3">
+                            <span class="text-sm font-medium text-white">Google Gemini <span class="text-dark-500 font-normal">— แพลนฟรี</span></span>
+                            <span :class="['text-[11px] px-2 py-0.5 rounded-full ring-1', advisorProvider('gemini').configured ? 'text-trading-green bg-trading-green/10 ring-trading-green/25' : 'text-amber-300 bg-amber-500/10 ring-amber-500/25']">
+                                {{ advisorSourceLabel[advisorProvider('gemini').source] }}
+                            </span>
+                        </div>
+                        <div class="space-y-3">
+                            <div>
+                                <label :class="labelClass">API Key</label>
+                                <input v-model="advisorForm.advisor_gemini_api_key" type="password" :class="inputClass" placeholder="เว้นว่าง = ใช้คีย์ Gemini ช่องสร้างรูปด้านบน" autocomplete="off" />
+                                <p class="text-dark-500 text-xs mt-1">รับคีย์ฟรีที่ aistudio.google.com/apikey</p>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label :class="labelClass">โมเดล</label>
+                                    <input v-model="advisorForm.advisor_gemini_model" type="text" :class="inputClass" placeholder="gemini-2.0-flash" />
+                                </div>
+                                <div>
+                                    <label :class="labelClass">เพดานต่อวัน</label>
+                                    <input v-model.number="advisorForm.advisor_gemini_max_calls" type="number" min="1" max="10000" :class="inputClass" />
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" @click="testAdvisor('gemini')"
+                            :disabled="!advisorProvider('gemini').configured || !!advisorTesting"
+                            class="mt-3 px-4 py-2 text-xs rounded-lg bg-white/5 text-dark-200 border border-white/10 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                            {{ advisorTesting === 'gemini' ? 'กำลังทดสอบ...' : 'ทดสอบคีย์' }}
+                        </button>
+                        <span v-if="!advisorProvider('gemini').configured" class="ml-2 text-xs text-dark-500">บันทึกคีย์ก่อนถึงทดสอบได้</span>
+                    </div>
+
+                    <!-- OpenAI — แพลนเสียเงิน -->
+                    <div class="p-4 rounded-lg bg-black/20 border border-white/5">
+                        <div class="flex items-center justify-between gap-3 mb-3">
+                            <span class="text-sm font-medium text-white">OpenAI <span class="text-dark-500 font-normal">— แพลนเสียเงิน</span></span>
+                            <span :class="['text-[11px] px-2 py-0.5 rounded-full ring-1', advisorProvider('openai').configured ? 'text-trading-green bg-trading-green/10 ring-trading-green/25' : 'text-amber-300 bg-amber-500/10 ring-amber-500/25']">
+                                {{ advisorSourceLabel[advisorProvider('openai').source] }}
+                            </span>
+                        </div>
+                        <div class="space-y-3">
+                            <div>
+                                <label :class="labelClass">API Key</label>
+                                <input v-model="advisorForm.advisor_openai_api_key" type="password" :class="inputClass" placeholder="sk-..." autocomplete="off" />
+                                <p class="text-dark-500 text-xs mt-1">ค่าใช้จ่ายส่วนนี้เราออกเองจากค่าเช่าแพลน</p>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label :class="labelClass">โมเดล</label>
+                                    <input v-model="advisorForm.advisor_openai_model" type="text" :class="inputClass" placeholder="gpt-4o-mini" />
+                                </div>
+                                <div>
+                                    <label :class="labelClass">เพดานต่อวัน</label>
+                                    <input v-model.number="advisorForm.advisor_openai_max_calls" type="number" min="1" max="10000" :class="inputClass" />
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" @click="testAdvisor('openai')"
+                            :disabled="!advisorProvider('openai').configured || !!advisorTesting"
+                            class="mt-3 px-4 py-2 text-xs rounded-lg bg-white/5 text-dark-200 border border-white/10 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                            {{ advisorTesting === 'openai' ? 'กำลังทดสอบ...' : 'ทดสอบคีย์' }}
+                        </button>
+                        <span v-if="!advisorProvider('openai').configured" class="ml-2 text-xs text-dark-500">บันทึกคีย์ก่อนถึงทดสอบได้</span>
+                    </div>
+
+                    <button type="submit" :disabled="advisorForm.processing" class="btn-primary px-6 py-2.5">
+                        <span v-if="advisorForm.processing">กำลังบันทึก...</span>
+                        <span v-else>บันทึกที่ปรึกษา AI</span>
+                    </button>
+                </form>
+            </div>
 
             <!-- Content Auto-Generation Schedule -->
             <div class="mt-6 p-5 rounded-xl bg-gradient-to-br from-trading-green/5 via-primary-500/5 to-accent-500/5 border border-trading-green/10">

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Mail\TestMail;
 use App\Models\AuditLog;
 use App\Models\SiteSetting;
+use App\Services\AiBot\Advisor\AdvisorFactory;
+use App\Services\AiBot\Advisor\AdvisorSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -40,6 +42,7 @@ class SettingController extends Controller
             'together_api_key',
             'huggingface_api_key',
             'gemini_api_key',
+            ...AdvisorSettings::SECRET_KEYS,
         ];
 
         // ดึง settings ทั้งหมดแล้วแปลงเป็น flat key-value (cast ตาม type)
@@ -64,7 +67,84 @@ class SettingController extends Controller
 
         return Inertia::render('Admin/Settings/Index', [
             'settings' => $flat,
+            // สถานะจริงของที่ปรึกษา AI — หน้าเว็บใช้บอกว่า "พร้อมใช้" หรือ "ยังไม่ได้ตั้งคีย์"
+            // คำนวณฝั่งเซิร์ฟเวอร์เพราะค่าที่ส่งไปถูก mask แล้ว ดูจาก frontend ไม่ออก
+            'advisorStatus' => $this->advisorStatus(app(AdvisorSettings::class)),
         ]);
+    }
+
+    /**
+     * ผู้ให้บริการที่ปรึกษาแต่ละราย ตั้งคีย์ครบหรือยัง + คีย์นั้นมาจากไหน.
+     *
+     * บอก source ด้วยเพราะแอดมินที่เห็นแค่ "พร้อมใช้" ทั้งที่ช่องกรอกว่าง
+     * จะไม่รู้ว่าคีย์มาจาก `.env` — แล้วเผลอคิดว่าตัวเองกรอกไปแล้ว
+     */
+    private function advisorStatus(AdvisorSettings $settings): array
+    {
+        $status = [
+            'enabled' => $settings->enabled(),
+            'providers' => [],
+        ];
+
+        foreach (['gemini', 'openai'] as $provider) {
+            $config = $settings->providerConfig($provider) ?? [];
+            $hasKey = trim((string) ($config['api_key'] ?? '')) !== '';
+
+            $status['providers'][$provider] = [
+                'configured' => $hasKey,
+                'model' => $config['model'] ?? '',
+                'max_calls_per_day' => (int) ($config['max_calls_per_day'] ?? 0),
+                'source' => $hasKey ? $this->advisorKeySource($provider) : 'none',
+            ];
+        }
+
+        return $status;
+    }
+
+    /** คีย์ที่กำลังใช้อยู่มาจากช่องกรอกหลังบ้าน คีย์สร้างรูปที่ใช้ร่วมกัน หรือ `.env` */
+    private function advisorKeySource(string $provider): string
+    {
+        if (trim((string) SiteSetting::get(AdvisorSettings::GROUP, "advisor_{$provider}_api_key", '')) !== '') {
+            return 'admin';
+        }
+
+        if ($provider === 'gemini' && trim((string) SiteSetting::get('ai', 'gemini_api_key', '')) !== '') {
+            return 'shared';
+        }
+
+        return 'env';
+    }
+
+    /**
+     * ยิงคำถามสั้นๆ ไปยังผู้ให้บริการจริง เพื่อพิสูจน์ว่าคีย์ใช้ได้.
+     *
+     * มีไว้เพราะคีย์ที่พิมพ์ตกตัวอักษรจะดู "ตั้งค่าแล้ว" ทุกประการ — ผิดพลาดเงียบ
+     * จนกว่าผู้ใช้จริงจะกดขอคำแนะนำแล้วไม่ได้อะไร ซึ่งไม่มีใครรายงานกลับมา
+     */
+    public function testAdvisor(Request $request, AdvisorFactory $advisors): RedirectResponse
+    {
+        $validated = $request->validate([
+            'provider' => ['required', 'string', 'in:gemini,openai'],
+        ]);
+
+        // ทดสอบได้แม้ปิดบริการอยู่ ไม่งั้นต้องเปิดให้ผู้ใช้จริงเจอคีย์ที่ยังไม่ได้ตรวจ
+        $advisor = $advisors->makeForTest($validated['provider']);
+
+        $result = $advisor->advise([
+            'strategy' => 'ทดสอบการเชื่อมต่อ',
+            'stats' => ['note' => 'ตอบสั้นที่สุดว่าเชื่อมต่อได้'],
+        ]);
+
+        AuditLog::log('settings.advisor.test', null, null, [
+            'provider' => $validated['provider'],
+            'ok' => $result['ok'] ?? false,
+        ]);
+
+        if (! ($result['ok'] ?? false)) {
+            return back()->with('error', "ทดสอบ {$validated['provider']} ไม่ผ่าน: ".($result['reason'] ?? 'ไม่ทราบสาเหตุ'));
+        }
+
+        return back()->with('success', "เชื่อมต่อ {$validated['provider']} ได้ — ตอบกลับมาว่า: ".mb_substr($result['text'], 0, 120));
     }
 
     /**
@@ -199,7 +279,7 @@ class SettingController extends Controller
     public function updateTab(Request $request): RedirectResponse
     {
         // Whitelist allowed tab names to prevent path manipulation
-        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced', 'ai', 'factory', 'revenue'];
+        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced', 'ai', 'factory', 'revenue', 'advisor'];
         $tab = last(explode('/', $request->path()));
 
         if (! in_array($tab, $allowedTabs, true)) {
@@ -222,6 +302,8 @@ class SettingController extends Controller
             'ai' => ['groq_api_key', 'groq_default_model', 'ai_chatbot_enabled', 'ai_content_enabled',
                 'cloudflare_image_url', 'cloudflare_image_key',
                 'together_api_key', 'huggingface_api_key', 'gemini_api_key'],
+            // ที่ปรึกษา AI ของบอทเทรด — คีย์ทั้งชุดสร้างได้ตอนบันทึกครั้งแรก
+            'advisor' => AdvisorSettings::KEYS,
         ];
 
         foreach ($request->except('_method') as $key => $value) {

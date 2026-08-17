@@ -94,6 +94,35 @@ describe('t() behaviour', () => {
     });
 });
 
+/**
+ * คีย์ที่หาไม่เจอต้องไม่ทำให้ทั้งหน้าหายไป
+ *
+ * เกิดจริงมาแล้วในหน้า /ai-trade: `t(tierLabel[s.tier])` โดยที่ map ไม่มีคีย์ของ
+ * ระดับ `free` → t(undefined) → `path.split` โยน TypeError → Vue ทิ้งทั้งต้นไม้
+ * เหลือจอว่าง ป้ายเล็กๆ อันเดียวแลกกับทั้งหน้า
+ */
+describe('a missing key never takes the page down', () => {
+    it.each([
+        ['undefined', undefined],
+        ['null', null],
+        ['a number', 42],
+        ['an empty string', ''],
+        ['an object', {}],
+    ])('survives %s as the key', (_label, key) => {
+        expect(() => t(key)).not.toThrow();
+        expect(typeof t(key)).toBe('string');
+    });
+
+    it('still falls back to the key itself when it is a real string', () => {
+        expect(t('this.key.does.not.exist')).toBe('this.key.does.not.exist');
+    });
+
+    it('never renders the literal text "undefined"', () => {
+        expect(t(undefined)).toBe('');
+        expect(t(null)).toBe('');
+    });
+});
+
 describe('components react to a language switch', () => {
     it('re-renders trading labels when the locale changes', async () => {
         setLocale('en');

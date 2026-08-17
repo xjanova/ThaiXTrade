@@ -1,0 +1,115 @@
+<?php
+
+namespace App\Services\AiBot;
+
+use Illuminate\Support\Facades\Log;
+
+/**
+ * TPIX TRADE — กลยุทธ์ไหนลงมือได้จริงแล้วบ้าง.
+ *
+ * "ปลดล็อกตามแพลน" กับ "ทำงานได้จริง" เป็นคนละเรื่องกัน ผู้ใช้ระดับ VIP ปลดล็อก
+ * อาร์บิทราจได้ แต่กลยุทธ์นั้นต้องมีราคาสองแหล่งถึงจะมีส่วนต่างให้จับ — ตอนนี้มี
+ * แค่ราคาจากตลาดกลาง เพราะพูล DEX บน TPIX Chain ยังไม่ deploy
+ *
+ * ปล่อยให้สร้างบอทได้จะเกิดสิ่งที่แย่กว่าปุ่มเทา: บอทที่ดูเหมือนทำงาน กินเครดิต
+ * ทุกครั้งที่ตื่น แล้วไม่เคยเข้าไม้เลย ผู้ใช้จะคิดว่ากลยุทธ์นี้ห่วย ไม่ใช่ว่ายังไม่เปิด
+ *
+ * ⚠️ ต้องบังคับที่ฝั่งเซิร์ฟเวอร์ด้วย ไม่ใช่แค่ทำปุ่มเทา
+ *    แอพมือถือกับใครก็ตามที่ยิง API ตรงไม่ได้เห็นปุ่มของเรา
+ *
+ * Developed by Xman Studio.
+ */
+class StrategyAvailability
+{
+    private const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+    /** ผลการอ่านไฟล์ที่อยู่สัญญา — อ่านครั้งเดียวต่อ request */
+    private ?bool $dexDeployed = null;
+
+    /**
+     * กลยุทธ์นี้ลงมือได้จริงไหม.
+     *
+     * @return array{available: bool, reason: ?string, reason_en: ?string}
+     */
+    public function check(string $code): array
+    {
+        if ($code === 'arbitrage' && ! $this->dexDeployed()) {
+            return [
+                'available' => false,
+                'reason' => 'รอพูล DEX บน TPIX Chain เปิดใช้งานก่อน จึงจะมีราคาสองฝั่งให้เทียบส่วนต่าง',
+                'reason_en' => 'Waiting for the TPIX Chain DEX pool — arbitrage needs a second price source.',
+            ];
+        }
+
+        return ['available' => true, 'reason' => null, 'reason_en' => null];
+    }
+
+    public function isAvailable(string $code): bool
+    {
+        return $this->check($code)['available'];
+    }
+
+    /** แนบสถานะลงในแคตตาล็อกที่ส่งให้หน้าเว็บและแอพ */
+    public function decorate(array $strategies): array
+    {
+        return array_map(function (array $strategy) {
+            $status = $this->check($strategy['code'] ?? '');
+
+            return $strategy + [
+                'available' => $status['available'],
+                'unavailable_reason' => $status['reason'],
+                'unavailable_reason_en' => $status['reason_en'],
+            ];
+        }, $strategies);
+    }
+
+    /** โค้ดของกลยุทธ์ที่ลงมือได้จริง — ใช้เป็นรายการอนุญาตตอน validate */
+    public function availableCodes(): array
+    {
+        return collect(config('aibot.strategies', []))
+            ->pluck('code')
+            ->filter(fn (string $code) => $this->isAvailable($code))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * DEX บน TPIX Chain deploy แล้วหรือยัง.
+     *
+     * อ่านไฟล์เดียวกับที่หน้าเว็บใช้ (dexContracts.json ซึ่ง deploy-dex.js เขียนทับ
+     * ตอน deploy จริง) — ถ้าแยกกันเก็บ สองฝั่งจะไม่ตรงกันวันใดวันหนึ่งแน่นอน
+     *
+     * อ่านไม่ได้ = ถือว่ายังไม่ deploy กลยุทธ์ที่พึ่งมันจะถูกปิดไว้ ซึ่งเป็นฝั่งที่
+     * ปลอดภัยกว่าการเดาว่าพร้อมแล้วปล่อยให้ผู้ใช้เสียเครดิตทิ้ง
+     */
+    public function dexDeployed(): bool
+    {
+        if ($this->dexDeployed !== null) {
+            return $this->dexDeployed;
+        }
+
+        $path = resource_path('js/Config/dexContracts.json');
+
+        if (! is_readable($path)) {
+            return $this->dexDeployed = false;
+        }
+
+        try {
+            $deployed = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            Log::warning('อ่าน dexContracts.json ไม่ได้ ถือว่า DEX ยังไม่ deploy', ['error' => $e->getMessage()]);
+
+            return $this->dexDeployed = false;
+        }
+
+        foreach (['WTPIX', 'USDT', 'FACTORY', 'ROUTER'] as $key) {
+            $address = strtolower(trim((string) ($deployed[$key] ?? '')));
+
+            if ($address === '' || $address === self::ZERO_ADDRESS) {
+                return $this->dexDeployed = false;
+            }
+        }
+
+        return $this->dexDeployed = true;
+    }
+}

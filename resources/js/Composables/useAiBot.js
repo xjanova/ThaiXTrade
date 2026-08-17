@@ -26,6 +26,11 @@ const needsVerification = ref(false);
 const demo = ref(null);
 const isLoadingDemo = ref(false);
 
+// คำแนะนำล่าสุดจากที่ปรึกษา AI { ok, provider, text, reason }
+// เก็บระดับโมดูลเพราะฝั่งเซิร์ฟเวอร์แคชไว้ 15 นาทีอยู่แล้ว — สลับหน้าไม่ควรยิงซ้ำ
+const advice = ref(null);
+const isAskingAdvice = ref(false);
+
 /*
  * ตัวเดินบอทของแพลนฟรี
  *
@@ -290,6 +295,33 @@ export function useAiBot() {
         }
     }
 
+    /**
+     * ขอความเห็นจากที่ปรึกษา AI ตามแพลนที่เช่าไว้.
+     *
+     * คืน { ok, provider, text, reason } เสมอ ไม่ throw — ที่ปรึกษาล้มเหลวเป็นเรื่องปกติ
+     * (ยังไม่ได้ตั้งคีย์ · โควตาหมด · ผู้ให้บริการล่ม) และไม่ควรทำให้หน้าจอพัง
+     *
+     * ⚠️ คำแนะนำนี้ไม่มีผลต่อการเทรด บอทยังตัดสินใจจากกฎเหมือนเดิม
+     */
+    async function askAdvice() {
+        if (!wallet.value) {
+            return { ok: false, reason: 'กรุณาเชื่อมกระเป๋าก่อน' };
+        }
+
+        isAskingAdvice.value = true;
+        try {
+            const { data } = await axios.post('/api/v1/ai-bot/advice', { wallet_address: wallet.value });
+            advice.value = data?.data ?? { ok: false, reason: 'ไม่ได้รับคำตอบจากเซิร์ฟเวอร์' };
+        } catch (err) {
+            const { message } = readError(err, 'ขอคำแนะนำไม่สำเร็จ');
+            advice.value = { ok: false, reason: message };
+        } finally {
+            isAskingAdvice.value = false;
+        }
+
+        return advice.value;
+    }
+
     // ── ค่าที่หน้าจอใช้บ่อย ──────────────────────────────────────────────────
     const credits = computed(() => status.value?.credits ?? 0);
     const isActive = computed(() => !!status.value?.is_active);
@@ -372,6 +404,7 @@ export function useAiBot() {
         isLoadingCatalog, isLoadingStatus, isWorking,
         wallet, isConnected,
         demo, isLoadingDemo,
+        advice, isAskingAdvice,
         browserLoopActive, lastBrowserTick, browserTickLog,
         // derived
         credits, isActive, subscription, bots, runningBots,
@@ -381,7 +414,7 @@ export function useAiBot() {
         // actions
         loadCatalog, loadStatus, subscribe, cancel, claimWelcome, requestTopup,
         createBot, updateBot, setBotState, setBotMode, deleteBot,
-        loadDemo, resetDemo, loadRisk,
+        loadDemo, resetDemo, loadRisk, askAdvice,
         startBrowserLoop, stopBrowserLoop, tickBot,
         costOf, canAfford, strategyByCode,
         // ป้ายชื่อตามภาษา

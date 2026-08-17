@@ -250,8 +250,14 @@ const handleDisconnect = () => {
                         </div>
                     </div>
 
-                    <!-- ตัวเลือก Chain - รองรับหลาย chain พร้อม auto-switch -->
-                    <ChainSelector class="hidden sm:block" />
+                    <!--
+                        ตัวเลือก Chain — รองรับหลาย chain พร้อม auto-switch
+
+                        ห้ามซ่อนบนมือถือ: นี่เป็นที่เดียวในเว็บที่สลับเชนได้ ซ่อนเมื่อไหร่
+                        ผู้ใช้มือถือที่กระเป๋าอยู่ผิดเชนจะติดอยู่ตรงนั้นถาวร ทำอะไรไม่ได้เลย
+                        ตัวคอมโพเนนต์ย่อชื่อเชนทิ้งเองอยู่แล้วเมื่อจอแคบ เหลือแค่ไอคอน
+                    -->
+                    <ChainSelector />
 
                     <!-- Language Switcher -->
                     <LanguageSwitcher />

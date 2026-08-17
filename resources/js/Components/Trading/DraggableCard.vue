@@ -12,6 +12,7 @@ import { ref, computed } from 'vue';
 import PageArt from '@/Components/PageArt.vue';
 import { useTradeLayout } from '@/Composables/useTradeLayout';
 import { useTranslation } from '@/Composables/useTranslation';
+import { usePointerCapability } from '@/Composables/usePointerCapability';
 
 const props = defineProps({
     cardId: { type: String, required: true },
@@ -25,6 +26,7 @@ const props = defineProps({
 
 const { t } = useTranslation();
 const layout = useTradeLayout();
+const { hasFinePointer } = usePointerCapability();
 
 const meta = computed(() => layout.cardMeta(props.cardId));
 const title = computed(() => (meta.value?.titleKey ? t(meta.value.titleKey) : props.cardId));
@@ -35,10 +37,19 @@ const isDragging = computed(() => layout.draggingId.value === props.cardId);
 const armed = ref(false);
 const hint = ref(null); // 'before' | 'after'
 
+/** ปรับแต่งการ์ดได้ไหม (ย่อ/ซ่อน) — ใช้ได้ทั้งเมาส์และนิ้ว */
 const canDrag = computed(() => !props.locked);
 
+/*
+ * ที่จับลากแยกจาก canDrag
+ *
+ * ย่อ/ซ่อนกดด้วยนิ้วได้ปกติ แต่ลากวางแบบ HTML5 ใช้กับการแตะไม่ได้เลย
+ * ปิดรวมกันทั้งชุดจะเสียความสามารถที่ยังใช้ได้ไปฟรีๆ บนแท็บเล็ต
+ */
+const canReorder = computed(() => canDrag.value && hasFinePointer.value);
+
 function arm() {
-    if (canDrag.value) armed.value = true;
+    if (canReorder.value) armed.value = true;
 }
 
 function disarm() {
@@ -71,7 +82,17 @@ function onDragOver(e) {
     hint.value = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
 }
 
-function onDragLeave() {
+/**
+ * dragleave ยิงตอนตัวชี้ย้ายเข้าลูกของการ์ดด้วย ไม่ใช่แค่ตอนออกนอกการ์ด
+ *
+ * ไม่เช็ก relatedTarget แล้วเส้นบอกจุดวางจะกะพริบทุกครั้งที่ลากผ่านหัวการ์ด
+ * ตารางราคา หรือปุ่ม — คือแทบทุกจุดที่ลากผ่าน ผู้ใช้จะเล็งจุดวางไม่ได้เลย
+ *
+ * relatedTarget เป็น null ตอนลากออกนอกหน้าต่าง — contains(null) คืน false
+ * จึงล้างเส้นให้ถูกต้องอยู่แล้ว
+ */
+function onDragLeave(e) {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
     hint.value = null;
 }
 
@@ -113,7 +134,7 @@ function onDrop(e) {
             <!-- แถบหัวการ์ด: ไล่สีเข้ม + ลายทแยง + เส้นไฮไลต์บน = ดูนูนขึ้นมา -->
             <div class="trade-card__head">
                 <button
-                    v-if="canDrag"
+                    v-if="canReorder"
                     type="button"
                     class="trade-card__grip"
                     :aria-label="t('trade.layout.drag', { name: title })"
