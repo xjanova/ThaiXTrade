@@ -42,11 +42,27 @@ class BridgeService
     /**
      * เช็คว่า admin เปิดใช้ bridge หรือไม่.
      */
+    /**
+     * Bridge เปิดให้ใช้จริงไหม.
+     *
+     * ⚠️ ต้องเช็ก address ด้วย ไม่ใช่แค่สวิตช์ของแอดมิน
+     *    ที่อยู่สัญญาว่างเปล่ามีผลเท่ากับปิดบริการ — ถ้าคืน true ทั้งที่ address ว่าง
+     *    หน้าเว็บจะโชว์ปุ่มเขียวเชิญให้กด แล้วเด้ง error ทุกครั้ง
+     *    ผู้ใช้จะคิดว่าเว็บพัง ทั้งที่จริงคือยังไม่ได้ตั้งค่า
+     */
     public function isEnabled(): bool
     {
         $val = SiteSetting::get('trading', 'bridge_enabled');
+        $adminEnabled = $val === null || $val === true || $val === '1' || $val === 'true';
 
-        return $val === null || $val === true || $val === '1' || $val === 'true';
+        return $adminEnabled && $this->isConfigured();
+    }
+
+    /** ตั้งค่าที่อยู่สัญญาครบหรือยัง */
+    public function isConfigured(): bool
+    {
+        return trim((string) config('services.bridge.treasury_address')) !== ''
+            && trim((string) config('services.bridge.wtpix_bsc_address')) !== '';
     }
 
     /**

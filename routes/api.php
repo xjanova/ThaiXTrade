@@ -397,6 +397,8 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     // Bridge — write operations (ต้อง verify wallet)
     Route::post('/bridge/initiate', [BridgeApiController::class, 'initiate']);
     Route::post('/bridge/retry/{id}', [BridgeApiController::class, 'retry']);
+    // แนบ tx hash เข้ารายการที่จองไว้ — ต้องจองก่อนโอนเหรียญเสมอ ดูเหตุผลใน attachTx()
+    Route::post('/bridge/{id}/tx', [BridgeApiController::class, 'attachTx'])->where('id', '[0-9]+');
 
     // Staking — write operations (ต้อง verify wallet)
     Route::prefix('staking')->group(function () {

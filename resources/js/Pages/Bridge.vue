@@ -10,7 +10,7 @@
  * ไม่ต้อง paste tx_hash เอง — frontend sign แล้ว auto-submit
  * Developed by Xman Studio
  */
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
@@ -51,7 +51,18 @@ const receiveAmount = computed(() => {
     return Math.max(0, parseFloat(amount.value) - parseFloat(fee.value)).toFixed(4);
 });
 
+/*
+ * Bridge พร้อมให้บริการจริงไหม
+ *
+ * backend คืน enabled = false เมื่อที่อยู่สัญญายังว่าง — ต้องเชื่อค่านี้
+ * ไม่งั้นปุ่มจะสว่างเขียวเชิญให้กด แล้วเด้ง error ทุกครั้ง ผู้ใช้จะคิดว่าเว็บพัง
+ */
+const bridgeReady = computed(() => bridgeInfo.value?.enabled !== false
+    && !!bridgeInfo.value?.treasury_address
+    && !!bridgeInfo.value?.wtpix_bsc_address);
+
 const canBridge = computed(() => {
+    if (!bridgeReady.value) return false;
     if (!walletStore.isConnected || !amount.value || isBridging.value) return false;
     const amt = parseFloat(amount.value);
     return amt >= (bridgeInfo.value?.min_amount || 10) && amt <= (bridgeInfo.value?.max_amount || 10000000);
@@ -105,33 +116,29 @@ async function executeBridge() {
 async function executeBscToTpix(amountStr) {
     if (!walletStore.signer) throw new Error('Wallet not connected');
     const wtpixAddress = bridgeInfo.value?.wtpix_bsc_address;
-    if (!wtpixAddress) throw new Error('wTPIX contract address not configured');
+    if (!wtpixAddress) throw new Error(t('bridge.notConfigured'));
 
-    // Switch to BSC if needed
-    bridgeStep.value = 'signing';
-    if (walletStore.chainId !== 56) {
-        await walletStore.switchChain(56);
-    }
+    await ensureChain(56);
 
     const amountWei = ethers.parseEther(amountStr);
     const wtpix = new ethers.Contract(wtpixAddress, WTPIX_ABI, walletStore.signer);
 
-    // Check balance
     const balance = await wtpix.balanceOf(walletStore.address);
     if (balance < amountWei) {
         throw new Error(`Insufficient wTPIX balance. Have: ${ethers.formatEther(balance)}`);
     }
 
-    // Sign burn transaction
+    // ⭐ จองรายการก่อนเผาเหรียญ — ถ้าถูกปฏิเสธตรงนี้ เหรียญยังอยู่ครบ
+    const bridgeId = await reserveBridge(amountStr, 'bsc_to_tpix');
+
+    bridgeStep.value = 'signing';
     const tx = await wtpix.burn(amountWei);
+
     bridgeStep.value = 'confirming';
-
-    // Wait for confirmation
     const receipt = await tx.wait(1);
-    bridgeStep.value = 'submitting';
 
-    // Submit to backend
-    await submitBridge(amountStr, 'bsc_to_tpix', receipt.hash);
+    bridgeStep.value = 'submitting';
+    await attachTx(bridgeId, receipt.hash);
 }
 
 /**
@@ -143,50 +150,142 @@ async function executeBscToTpix(amountStr) {
 async function executeTpixToBsc(amountStr) {
     if (!walletStore.signer) throw new Error('Wallet not connected');
     const treasuryAddress = bridgeInfo.value?.treasury_address;
-    if (!treasuryAddress) throw new Error('Treasury address not configured');
+    if (!treasuryAddress) throw new Error(t('bridge.notConfigured'));
 
-    bridgeStep.value = 'signing';
-    if (walletStore.chainId !== 4289) {
-        await walletStore.switchChain(4289);
-    }
+    await ensureChain(4289);
 
     const amountWei = ethers.parseEther(amountStr);
 
-    // Send native TPIX to treasury (gasless on TPIX Chain)
+    // ⭐ จองรายการก่อนโอนเหรียญออก
+    const bridgeId = await reserveBridge(amountStr, 'tpix_to_bsc');
+
+    bridgeStep.value = 'signing';
+
+    // gasPrice 0 ใช้ได้เฉพาะบน TPIX Chain — ensureChain ด้านบนยืนยันแล้วว่าอยู่เชนถูก
     const tx = await walletStore.signer.sendTransaction({
         to: treasuryAddress,
         value: amountWei,
         gasPrice: 0,
     });
+
     bridgeStep.value = 'confirming';
-
     const receipt = await tx.wait(1);
-    bridgeStep.value = 'submitting';
 
-    await submitBridge(amountStr, 'tpix_to_bsc', receipt.hash);
+    bridgeStep.value = 'submitting';
+    await attachTx(bridgeId, receipt.hash);
 }
 
 /**
- * Submit to backend API → dispatch ProcessBridgeJob
+ * ยืนยันว่าสลับเชนสำเร็จจริงก่อนทำอะไรต่อ.
+ *
+ * เดิมเรียก switchChain แล้วเดินต่อทันทีโดยไม่เช็กผล — ถ้าสลับไม่สำเร็จ
+ * โค้ดจะไปอ่านยอดเหรียญบนเชนผิด แล้วขึ้นว่า "ยอดไม่พอ" ทั้งที่ผู้ใช้มีเหรียญอยู่จริง
+ * (หรือแย่กว่านั้นคือส่งธุรกรรมบนเชนที่ไม่ได้ตั้งใจ)
  */
-async function submitBridge(amountStr, dir, txHash) {
+async function ensureChain(targetChainId) {
+    if (walletStore.chainId === targetChainId) return;
+
+    await walletStore.switchChain(targetChainId);
+
+    if (walletStore.chainId !== targetChainId) {
+        throw new Error(t('bridge.switchFailed'));
+    }
+}
+
+/**
+ * ⭐ จองรายการกับ backend ก่อนเหรียญออกจากกระเป๋า
+ *
+ * ถูกปฏิเสธตรงนี้ (ลายเซ็นหมดอายุ / IP เปลี่ยน / แอดมินปิดบริการ) ก็แค่หยุด
+ * เหรียญยังอยู่ครบ ต่างจากลำดับเดิมที่โอนไปแล้วค่อยรู้ว่า backend ไม่รับ
+ * แล้วผู้ใช้ไม่มีรายการอะไรไปเคลมเลย
+ */
+async function reserveBridge(amountStr, dir) {
+    bridgeStep.value = 'reserving';
+
     const { data } = await axios.post('/api/v1/bridge/initiate', {
         wallet_address: walletStore.address,
         amount: amountStr,
         direction: dir,
-        tx_hash: txHash,
     });
 
-    if (data.success) {
-        activeBridgeId.value = data.data.id;
-        bridgeStep.value = 'processing';
-        message.value = { type: 'success', text: `Bridge submitted! TX: ${txHash.slice(0, 16)}... — Processing...` };
-        amount.value = '';
-        fetchHistory();
-        startPolling(data.data.id);
-    } else {
-        throw new Error(data.error?.message || 'Submit failed');
+    if (!data.success || !data.data?.id) {
+        throw new Error(data.error?.message || t('bridge.reserveFailed'));
     }
+
+    activeBridgeId.value = data.data.id;
+
+    return data.data.id;
+}
+
+/**
+ * แนบ tx hash เข้ารายการที่จองไว้ แล้วให้ backend เริ่มประมวลผล.
+ *
+ * ตรงนี้เหรียญออกไปแล้ว ห้ามยอมแพ้ตั้งแต่ครั้งแรก — ลองซ้ำแบบถอยเป็นขั้น
+ * และเก็บ hash ไว้ใน localStorage ตั้งแต่ต้น เผื่อผู้ใช้ปิดหน้าไปกลางทาง
+ * จะได้มีหลักฐานไปเคลม ไม่ใช่เหรียญหายแบบไม่มีร่องรอย
+ */
+async function attachTx(bridgeId, txHash) {
+    const pendingKey = 'tpix.bridge.pending';
+
+    try {
+        localStorage.setItem(pendingKey, JSON.stringify({ bridgeId, txHash, at: Date.now() }));
+    } catch (e) { /* โหมดส่วนตัวเขียนไม่ได้ ไม่ใช่เรื่องคอขาดบาดตาย */ }
+
+    let lastError = null;
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+            const { data } = await axios.post(`/api/v1/bridge/${bridgeId}/tx`, {
+                wallet_address: walletStore.address,
+                tx_hash: txHash,
+            });
+
+            if (data.success) {
+                try { localStorage.removeItem(pendingKey); } catch (e) { /* ไม่เป็นไร */ }
+
+                bridgeStep.value = 'processing';
+                message.value = { type: 'success', text: `${t('bridge.submitted')} ${txHash.slice(0, 16)}…` };
+                amount.value = '';
+                fetchHistory();
+                startPolling(bridgeId);
+
+                return;
+            }
+
+            lastError = data.error?.message;
+        } catch (err) {
+            lastError = err?.response?.data?.error?.message || err.message;
+        }
+
+        // ถอยเป็นขั้น 1s → 2s → 4s เผื่อเน็ตสะดุดชั่วคราว
+        await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt));
+    }
+
+    // เหรียญออกไปแล้วแต่แนบไม่สำเร็จ — ต้องบอกเลขรายการกับ tx ให้ผู้ใช้เก็บไว้เคลม
+    throw new Error(`${t('bridge.attachFailed')} (#${bridgeId} · ${txHash}) ${lastError || ''}`);
+}
+
+/**
+ * กู้รายการที่ค้างจากรอบก่อน (ผู้ใช้ปิดหน้าไปตอนกำลังแนบ hash).
+ */
+async function recoverPendingBridge() {
+    const pendingKey = 'tpix.bridge.pending';
+    let pending = null;
+
+    try {
+        pending = JSON.parse(localStorage.getItem(pendingKey) || 'null');
+    } catch (e) { return; }
+
+    if (!pending?.bridgeId || !pending?.txHash || !walletStore.address) return;
+
+    try {
+        await axios.post(`/api/v1/bridge/${pending.bridgeId}/tx`, {
+            wallet_address: walletStore.address,
+            tx_hash: pending.txHash,
+        });
+        localStorage.removeItem(pendingKey);
+        fetchHistory();
+    } catch (e) { /* ลองใหม่รอบหน้า */ }
 }
 
 // ================================================================
@@ -226,11 +325,35 @@ async function retryBridge(txId) {
 }
 
 const statusCfg = { pending: { l: 'Pending', c: 'bg-yellow-500/20 text-yellow-400' }, processing: { l: 'Processing', c: 'bg-primary-500/20 text-primary-400' }, completed: { l: 'Completed', c: 'bg-trading-green/20 text-trading-green' }, failed: { l: 'Failed', c: 'bg-trading-red/20 text-trading-red' } };
-const stepLabels = { signing: '✍️ Signing transaction...', confirming: '⏳ Waiting for confirmation...', submitting: '📤 Submitting to bridge...', processing: '🔄 Processing bridge transfer...' };
+// 'reserving' คือขั้นแรกเสมอ — จองรายการก่อนเหรียญออกจากกระเป๋า
+const stepLabels = computed(() => ({
+    reserving: '🧾 ' + t('bridge.reserving') + '…',
+    signing: '✍️ Signing transaction...',
+    confirming: '⏳ Waiting for confirmation...',
+    submitting: '📤 Submitting to bridge...',
+    processing: '🔄 Processing bridge transfer...',
+}));
 function shortHash(h) { return h ? h.slice(0, 10) + '...' + h.slice(-6) : '-'; }
 function timeAgo(d) { const s = Math.floor((Date.now() - new Date(d)) / 1000); if (s < 60) return s + 's ago'; if (s < 3600) return Math.floor(s / 60) + 'm ago'; if (s < 86400) return Math.floor(s / 3600) + 'h ago'; return Math.floor(s / 86400) + 'd ago'; }
 
-onMounted(() => { fetchInfo(); fetchHistory(); });
+onMounted(() => {
+    fetchInfo();
+    fetchHistory();
+    recoverPendingBridge();
+});
+
+/*
+ * เดิมประวัติโหลดครั้งเดียวตอน mount — ผู้ใช้ที่เชื่อมกระเป๋าทีหลัง (หรือสลับบัญชี)
+ * จะเห็นประวัติว่างตลอด ทั้งที่มีรายการอยู่จริง
+ */
+watch(() => walletStore.address, (address) => {
+    if (!address) {
+        history.value = [];
+        return;
+    }
+    fetchHistory();
+    recoverPendingBridge();
+});
 onUnmounted(() => { stopPolling(); });
 </script>
 
@@ -298,8 +421,18 @@ onUnmounted(() => { stopPolling(); });
                     <div class="flex justify-between"><span class="text-dark-400">Estimated time</span><span class="text-white">2-5 min</span></div>
                 </div>
 
+                <!-- ยังไม่ได้ตั้งค่าสัญญา = บอกตรงๆ ดีกว่าโชว์ปุ่มเขียวที่กดแล้วพังทุกครั้ง -->
+                <div v-if="!bridgeReady" class="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4 flex gap-3">
+                    <span class="text-lg shrink-0">🚧</span>
+                    <div>
+                        <p class="text-sm font-semibold text-amber-300">{{ t('bridge.notReady') }}</p>
+                        <p class="text-[12px] text-dark-300 leading-relaxed mt-1">{{ t('bridge.notReadyBody') }}</p>
+                    </div>
+                </div>
+
                 <!-- Bridge Button -->
                 <button
+                    v-else
                     @click="walletStore.isConnected ? executeBridge() : walletStore.openConnectModal()"
                     :disabled="walletStore.isConnected && !canBridge"
                     class="w-full py-4 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-bold text-lg hover:shadow-lg hover:shadow-primary-500/20 disabled:opacity-50 transition-all">

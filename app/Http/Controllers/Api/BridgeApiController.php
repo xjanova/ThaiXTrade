@@ -139,6 +139,57 @@ class BridgeApiController extends Controller
     }
 
     /**
+     * POST /api/v1/bridge/{id}/tx — แนบ tx hash เข้ากับรายการที่จองไว้แล้ว.
+     *
+     * ⭐ หัวใจของลำดับที่ปลอดภัย
+     *
+     * ลำดับเดิมคือ "โอนเหรียญบนเชนก่อน แล้วค่อยบอก backend" ซึ่งอันตรายมาก:
+     * ถ้า backend ปฏิเสธตอนนั้น (ลายเซ็นหมดอายุ · IP เปลี่ยนเพราะสลับ WiFi ↔ 4G ·
+     * แอดมินเพิ่งปิดบริการ) เหรียญออกจากกระเป๋าไปแล้วโดยไม่มีรายการอยู่ในระบบเลย
+     * ผู้ใช้ไม่มีอะไรไปเคลมและกด retry ก็ไม่ได้เพราะไม่มี record
+     *
+     * ลำดับใหม่: จองรายการก่อน (ยังไม่มี tx_hash) → ถ้าถูกปฏิเสธก็หยุดตรงนั้น
+     * เหรียญยังอยู่ครบ → ค่อยเซ็นและส่งบนเชน → แล้วแนบ hash กลับมาที่รายการเดิม
+     */
+    public function attachTx(int $id, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'wallet_address' => 'required|regex:/^0x[a-fA-F0-9]{40}$/',
+            'tx_hash' => 'required|regex:/^0x[a-fA-F0-9]{64}$/',
+        ]);
+
+        $tx = BridgeTransaction::findOrFail($id);
+
+        if ($tx->wallet_address !== strtolower($validated['wallet_address'])) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'UNAUTHORIZED', 'message' => 'Not your transaction'],
+            ], 403);
+        }
+
+        // แนบซ้ำได้ถ้าเป็น hash เดิม (หน้าเว็บอาจยิงซ้ำตอนเน็ตกระตุก)
+        // แต่ห้ามเปลี่ยนเป็น hash อื่น — รายการหนึ่งผูกกับธุรกรรมเดียวเท่านั้น
+        if ($tx->source_tx_hash && $tx->source_tx_hash !== $validated['tx_hash']) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'ALREADY_ATTACHED', 'message' => 'This bridge already has a different transaction'],
+            ], 422);
+        }
+
+        if (! $tx->source_tx_hash) {
+            $tx->update(['source_tx_hash' => $validated['tx_hash'], 'status' => 'processing']);
+            ProcessBridgeJob::dispatch($tx);
+
+            Log::info('Bridge tx attached', ['bridge_id' => $tx->id, 'tx_hash' => $validated['tx_hash']]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => ['id' => $tx->id, 'status' => $tx->status, 'tx_hash' => $tx->source_tx_hash],
+        ]);
+    }
+
+    /**
      * GET /api/v1/bridge/history/{wallet} — ประวัติ bridge ของ wallet.
      */
     public function history(string $wallet): JsonResponse

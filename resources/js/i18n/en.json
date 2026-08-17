@@ -324,7 +324,15 @@
         "step2": "Send Transaction",
         "step3": "Wait for Confirmation",
         "step4": "Receive Tokens",
-        "minAmount": "Minimum"
+        "minAmount": "Minimum",
+        "notConfigured": "The bridge is not open yet (contract addresses are not set)",
+        "notReady": "Bridge is not available yet",
+        "notReadyBody": "An administrator has not configured the bridge contract addresses, so cross-chain transfers are unavailable right now.",
+        "switchFailed": "Could not switch network — nothing has been transferred. Please try again.",
+        "reserveFailed": "Could not reserve the transfer — your coins were not moved.",
+        "attachFailed": "The on-chain transfer succeeded but we could not notify the system. Please keep this reference and contact support.",
+        "submitted": "Submitted and processing · TX",
+        "reserving": "Reserving your transfer"
     },
     "tokenSale": {
         "title": "Buy TPIX Token",
