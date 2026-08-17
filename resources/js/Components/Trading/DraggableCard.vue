@@ -130,10 +130,10 @@ function onDrop(e) {
 
                 <span class="trade-card__dot" aria-hidden="true"></span>
 
-                <h3 class="trade-card__title">{{ title }}</h3>
+                <h3 class="trade-card__title min-w-0 truncate">{{ title }}</h3>
 
                 <!-- ปุ่ม/ตัวเลือกเฉพาะการ์ด -->
-                <div class="ml-auto flex items-center gap-1 min-w-0">
+                <div class="ml-auto flex items-center gap-1 flex-shrink-0">
                     <slot name="actions" />
 
                     <button
@@ -195,8 +195,15 @@ function onDrop(e) {
 }
 
 /* แถบหัว — ลายทแยงจางๆ + เส้นไล่สีแบรนด์ที่ขอบล่าง */
+/*
+ * min-w-0 + overflow-hidden ที่หัวการ์ด
+ *
+ * ถ้าไม่มี พอผู้ใช้ลากการ์ดหลายใบไปกองไว้คอลัมน์เดียวจนคอลัมน์แคบ
+ * หัวการ์ด (ชื่อ + ปุ่ม) จะกว้างเกินกล่องแล้วล้นทะลุออกไปทับการ์ดข้างๆ
+ * วัดได้จริงที่คอลัมน์กว้าง 288px หัวการ์ดต้องการ 375px
+ */
 .trade-card__head {
-    @apply relative z-10 flex items-center gap-2 px-3 py-2 flex-shrink-0;
+    @apply relative z-10 flex items-center gap-2 px-3 py-2 flex-shrink-0 min-w-0 overflow-hidden;
     background:
         repeating-linear-gradient(
             135deg,

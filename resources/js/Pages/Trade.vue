@@ -113,9 +113,17 @@ function measureBoard() {
     boardHeight.value = Math.max(520, window.innerHeight - viewportTop - 14);
 }
 
-const boardStyle = computed(() =>
-    packed.value && boardHeight.value ? { height: `${boardHeight.value}px` } : {}
-);
+const boardStyle = computed(() => {
+    const style = packed.value && boardHeight.value ? { height: `${boardHeight.value}px` } : {};
+
+    // ผังคอลัมน์ไดนามิกใช้เฉพาะจอกว้าง — ต่ำกว่านั้นคลาส Tailwind คุมอยู่แล้ว
+    // (จอแคบ = คอลัมน์เดียว, lg = สองคอลัมน์)
+    if (!isNarrow.value) {
+        style.gridTemplateColumns = gridTemplate.value;
+    }
+
+    return style;
+});
 
 /**
  * ตำแหน่งของแต่ละคอลัมน์ในแต่ละขนาดจอ
@@ -131,6 +139,50 @@ const columnClass = {
     right: 'lg:order-2 xl:order-3',
     far: 'lg:order-4 lg:col-span-2 xl:order-4 xl:col-span-1',
 };
+
+/**
+ * คอลัมน์ที่มีการ์ดอยู่จริง — คอลัมน์ว่างจะไม่ถูก render จึงไม่กินพื้นที่
+ *
+ * นี่คือสิ่งที่ทำให้ผังกลายเป็น 4 → 3 → 2 คอลัมน์เองตามที่ผู้ใช้ลากวาง
+ */
+const filledColumns = computed(() => COLUMNS.filter(col => layout.visible.value[col].length > 0));
+
+/**
+ * ⭐ กับดักที่ต้องแก้: ยุบคอลัมน์ว่างทิ้งแล้ว "ที่วางการ์ด" ก็หายไปด้วย
+ *    ผู้ใช้จะลากการ์ดกลับเข้าคอลัมน์นั้นไม่ได้อีกเลย = ผังพังถาวร
+ *
+ * แก้โดยระหว่างที่กำลังลากอยู่ ให้ render คอลัมน์ว่างกลับมาเป็นแถบบางๆ รับวาง
+ * พอปล่อยมือแล้วคอลัมน์ที่ยังว่างก็ยุบหายไปเหมือนเดิม
+ */
+const isDragging = computed(() => !!layout.draggingId.value);
+
+const renderedColumns = computed(() => (isDragging.value ? COLUMNS : filledColumns.value));
+
+/** คอลัมน์ที่ถือกราฟอยู่ — รางนี้เป็นตัวยืด ส่วนคอลัมน์อื่นกว้างคงที่ */
+const chartColumn = computed(() =>
+    COLUMNS.find(col => layout.visible.value[col].includes('chart')) ?? filledColumns.value[0]
+);
+
+/**
+ * grid template สร้างจากคอลัมน์ที่ render จริง
+ *
+ * เดิมเป็นค่าคงที่ 4 ราง ทำให้คอลัมน์ว่างยังกินพื้นที่ 248px เต็มความสูง
+ * และรางยืด 1fr ผูกกับ "ชื่อคอลัมน์ center" ไม่ใช่การ์ดกราฟ — พอลากกราฟออกไป
+ * กราฟจะไปอยู่ในรางแคบแล้วโดนบีบ ส่วนคอลัมน์ที่ไม่มีกราฟกลับได้ที่ว่างทั้งหมด
+ */
+const gridTemplate = computed(() => renderedColumns.value.map((col) => {
+    if (col === chartColumn.value) return 'minmax(0,1fr)';
+
+    const cards = layout.visible.value[col];
+
+    // คอลัมน์ว่างระหว่างลาก = แถบบางๆ ให้เล็งวางได้ ไม่กินที่มาก
+    if (!cards.length) return '96px';
+
+    // เผื่อจากค่า min ของการ์ดที่กว้างสุดในคอลัมน์ แล้วคุมเพดานไม่ให้เบียดกราฟ
+    const min = layout.columnMinWidth(cards);
+
+    return `minmax(${min}px, ${Math.min(min + 80, 340)}px)`;
+}).join(' '));
 
 const hideableCards = computed(() =>
     TRADE_CARDS.filter(c => !c.essential).map(c => ({ id: c.id, label: t(c.titleKey) }))
@@ -826,12 +878,12 @@ onUnmounted(() => {
                  ก็ render ที่นั่น ไม่ต้องเขียนซ้ำ 3 ชุดให้หลุดกันภายหลัง -->
             <div
                 ref="board"
-                class="relative grid gap-3 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[248px_minmax(0,1fr)_284px_236px] 2xl:grid-cols-[268px_minmax(0,1fr)_312px_260px]"
+                class="relative grid gap-3 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] trade-board"
                 :class="packed ? 'items-stretch' : 'items-start'"
                 :style="boardStyle"
             >
                 <div
-                    v-for="col in COLUMNS"
+                    v-for="col in renderedColumns"
                     :key="col"
                     :class="[
                         'contents lg:flex lg:flex-col lg:gap-3 lg:min-w-0',
@@ -841,6 +893,20 @@ onUnmounted(() => {
                     @dragover.prevent
                     @drop="onColumnDrop(col)"
                 >
+                    <!--
+                        ⭐ ที่วางสำหรับคอลัมน์ว่าง — โผล่เฉพาะตอนกำลังลาก
+
+                        ถ้าไม่มีอันนี้ พอผู้ใช้ลากการ์ดใบสุดท้ายออกจากคอลัมน์ คอลัมน์นั้น
+                        จะยุบหายไปพร้อมกับ "ที่รับวาง" ของมัน แล้วจะเอาการ์ดกลับเข้าไป
+                        ไม่ได้อีกเลย — ผังพังถาวรโดยที่ผู้ใช้ไม่ได้ทำอะไรผิด
+                    -->
+                    <div
+                        v-if="isDragging && !layout.visible.value[col].length"
+                        class="hidden lg:flex items-center justify-center rounded-2xl border-2 border-dashed border-primary-500/40 bg-primary-500/[0.04] min-h-[160px] text-[10px] text-primary-300/70 text-center px-1 leading-tight"
+                    >
+                        {{ t('trade.layout.dropHere') }}
+                    </div>
+
                     <template v-for="cardId in layout.visible.value[col]" :key="cardId">
                         <!-- คู่เทรด -->
                         <DraggableCard

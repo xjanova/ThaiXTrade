@@ -109,7 +109,7 @@
             "wideOnly": "(dragging needs a screen 1280px or wider)",
             "showCards": "Show cards",
             "reset": "Reset to default",
-            "dropHere": "Drop card here",
+            "dropHere": "Drop here",
             "fitScreen": "Fit to screen",
             "fitScreenHint": "Pack every card into one screen, no page scrolling",
             "chartSize": "Chart size",

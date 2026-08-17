@@ -89,6 +89,19 @@ export const CHART_HEIGHTS = [
     { id: 'lg', labelKey: 'trade.layout.large', px: 600 },
 ];
 
+/**
+ * ความกว้างขั้นต่ำที่คอลัมน์หนึ่งต้องการ = ค่า min ที่มากที่สุดของการ์ดในคอลัมน์นั้น
+ *
+ * ใช้สร้าง grid template แบบไดนามิก — คอลัมน์ที่ถือสมุดคำสั่ง (min 200) ต้องกว้าง
+ * กว่าคอลัมน์ที่ถือเฉพาะประวัติเทรด (min 150) โดยไม่ต้อง hardcode ความกว้างตามชื่อคอลัมน์
+ * (ซึ่งจะผิดทันทีที่ผู้ใช้ลากการ์ดสลับคอลัมน์กัน)
+ */
+function columnMinWidth(cardIds) {
+    if (!cardIds?.length) return 0;
+
+    return cardIds.reduce((widest, id) => Math.max(widest, CARD_FLEX[id]?.min ?? 160), 0);
+}
+
 function defaultColumns() {
     return COLUMNS.reduce((acc, col) => {
         acc[col] = TRADE_CARDS.filter(c => c.column === col).map(c => c.id);
@@ -320,5 +333,6 @@ export function useTradeLayout() {
         isCollapsed: id => collapsed.value.includes(id),
         cardMeta: id => TRADE_CARDS.find(c => c.id === id) || null,
         stackClass: id => STACK_CLASS[id] || '',
+        columnMinWidth,
     };
 }
