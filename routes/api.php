@@ -433,6 +433,10 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::delete('/bots/{id}', [AiBotController::class, 'destroy'])->where('id', '[0-9]+');
 
         // โหมดทดลอง — พอร์ตกระดาษที่ใช้ราคาจริง ให้ลองก่อนตัดสินใจเช่า
+        // สถิติย้อนหลังของกลยุทธ์ + คำแนะนำจากที่ปรึกษา AI (ตามแพลน)
+        Route::get('/analytics', [AiBotController::class, 'analytics']);
+        Route::post('/advice', [AiBotController::class, 'advice'])->middleware('throttle:10,1');
+
         Route::get('/demo', [AiBotController::class, 'demo']);
         Route::post('/demo/reset', [AiBotController::class, 'resetDemo']);
     });

@@ -8,12 +8,15 @@ use App\Models\AiBotCredit;
 use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
 use App\Models\AiBotTrade;
+use App\Services\AiBot\Advisor\AdvisorFactory;
 use App\Services\AiBot\BotRunner;
 use App\Services\AiBot\MarketRiskService;
 use App\Services\AiBot\PaperBroker;
+use App\Services\AiBot\StrategyAnalytics;
 use App\Services\AiBotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
 /**
@@ -456,6 +459,60 @@ class AiBotController extends Controller
                 'win_rate' => $closedCount > 0 ? round(($wins / $closedCount) * 100, 1) : null,
             ],
         ]]);
+    }
+
+    /**
+     * สถิติผลงานย้อนหลังของทุกกลยุทธ์ที่ wallet นี้เคยใช้.
+     *
+     * เจ้าของต้องการให้ประวัติ "นำกลับมาวิเคราะห์เพื่อตัดสินใจในอนาคตได้"
+     * จึงไม่ใช่แค่รายการไม้ แต่เป็นตัวเลขที่ตัดสินใจต่อได้: profit factor,
+     * expectancy, ขาดทุนสูงสุด และผลแยกตามระดับความเสี่ยงของตลาดตอนเข้าไม้
+     */
+    public function analytics(Request $request, StrategyAnalytics $analytics): JsonResponse
+    {
+        $validated = $request->validate([
+            'mode' => ['sometimes', 'string', 'in:demo,live'],
+        ]);
+
+        return response()->json(['success' => true, 'data' => $analytics->forWallet(
+            $this->wallet($request),
+            $validated['mode'] ?? 'demo',
+        )]);
+    }
+
+    /**
+     * ขอความเห็นจากที่ปรึกษา AI ตามแพลนของผู้ใช้ (ฟรี = Gemini, เสียเงิน = OpenAI).
+     *
+     * ⚠️ คำแนะนำนี้ไม่มีผลต่อการเทรด — บอทยังตัดสินใจจากกฎ + ด่านความเสี่ยงเหมือนเดิม
+     *    เป็นข้อมูลให้ "คน" อ่านประกอบการตัดสินใจปรับตั้งค่าเท่านั้น
+     */
+    public function advice(Request $request, StrategyAnalytics $analytics, AdvisorFactory $advisors): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+        $plan = $this->bots->activeSubscription($wallet)?->plan;
+        $advisor = $advisors->forPlan($plan);
+
+        if (! $advisor->isAvailable()) {
+            return response()->json(['success' => true, 'data' => [
+                'ok' => false,
+                'provider' => $advisor->name(),
+                'text' => '',
+                'reason' => $advisor->advise([])['reason'] ?? 'ยังไม่พร้อมใช้งาน',
+            ]]);
+        }
+
+        $stats = $analytics->forWallet($wallet);
+
+        // แคชต่อ wallet — รีเฟรชหน้าไม่ควรยิง LLM ใหม่ทุกครั้ง
+        $minutes = (int) config('aibot_advisor.cache_minutes', 15);
+        $key = 'aibot:advice:'.$wallet.':'.md5(json_encode($stats['overall']));
+
+        $result = Cache::remember($key, now()->addMinutes($minutes), fn () => $advisor->advise([
+            'stats' => $stats['overall'],
+            'by_strategy' => $stats['by_strategy'],
+        ]));
+
+        return response()->json(['success' => true, 'data' => $result]);
     }
 
     /** ล้างพอร์ตทดลองกลับไปตั้งต้น */
