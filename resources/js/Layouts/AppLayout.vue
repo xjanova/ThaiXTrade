@@ -20,6 +20,9 @@ import versionData from '../../../version.json';
 const props = defineProps({
     title: String,
     hideSidebar: Boolean,
+    // หน้าที่ต้องการพื้นที่แนวตั้งมากๆ (เช่นกระดานเทรด) ปิดแถบราคาเลื่อนได้
+    // ราคาของคู่ที่กำลังดูอยู่มีให้เห็นในกราฟและรายการคู่เทรดอยู่แล้ว แถบนี้จึงซ้ำซ้อน
+    hideTicker: Boolean,
 });
 
 const page = usePage();
@@ -143,7 +146,7 @@ onMounted(async () => {
         </div>
 
         <!-- Ticker Strip -->
-        <TickerStrip />
+        <TickerStrip v-if="!hideTicker" />
 
         <!-- ป้ายโฆษณาด้านบนทุกหน้า (จัดการจาก Admin) -->
         <BannerAd placement="all_pages_top" class="px-4 py-2" />

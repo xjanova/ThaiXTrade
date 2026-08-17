@@ -37,12 +37,13 @@ describe('useTradeLayout', () => {
     });
 
     it('drops after the target when the pointer is on the lower half', () => {
-        layout.startDrag('book');
-        layout.dropOnCard('trades', 'after');
+        // ทั้งสองใบอยู่คอลัมน์ far ตามผังเริ่มต้นใหม่ (orders → trades)
+        layout.startDrag('trades');
+        layout.dropOnCard('orders', 'after');
         layout.endDrag();
 
-        const right = layout.columns.value.right;
-        expect(right.indexOf('book')).toBe(right.indexOf('trades') + 1);
+        const far = layout.columns.value.far;
+        expect(far.indexOf('trades')).toBe(far.indexOf('orders') + 1);
     });
 
     it('appends to the end when dropped on empty column space', () => {
@@ -69,7 +70,7 @@ describe('useTradeLayout', () => {
 
         layout.toggleHidden('trades');
         expect(layout.hidden.value).toContain('trades');
-        expect(layout.visible.value.right).not.toContain('trades');
+        expect(layout.visible.value.far).not.toContain('trades');
     });
 
     it('collapses and expands a card', () => {
@@ -90,7 +91,8 @@ describe('useTradeLayout', () => {
 
         expect(layout.columns.value.left).toEqual(['market', 'ai']);
         expect(layout.columns.value.center).toEqual(['chart', 'form']);
-        expect(layout.columns.value.right).toEqual(['orders', 'book', 'trades']);
+        expect(layout.columns.value.right).toEqual(['book']);
+        expect(layout.columns.value.far).toEqual(['orders', 'trades']);
         expect(layout.hidden.value).toEqual([]);
         expect(layout.fitScreen.value).toBe(true);
     });

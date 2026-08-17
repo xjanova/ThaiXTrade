@@ -117,10 +117,19 @@ const boardStyle = computed(() =>
     packed.value && boardHeight.value ? { height: `${boardHeight.value}px` } : {}
 );
 
+/**
+ * ตำแหน่งของแต่ละคอลัมน์ในแต่ละขนาดจอ
+ *
+ *   lg (2 ช่อง) : กราฟ | สมุดคำสั่ง  →  คู่เทรด(กว้าง 2)  →  คำสั่ง/ประวัติ(กว้าง 2)
+ *   xl (4 ช่อง) : คู่เทรด | กราฟ | สมุดคำสั่ง | คำสั่ง+ประวัติ
+ *
+ * ที่ให้คอลัมน์ 4 เริ่มที่ xl ไม่ใช่ lg เพราะต่ำกว่านั้นกราฟจะเหลือแคบเกินจนเสียรูป
+ */
 const columnClass = {
     left: 'lg:order-3 lg:col-span-2 xl:order-1 xl:col-span-1',
     center: 'lg:order-1 xl:order-2',
     right: 'lg:order-2 xl:order-3',
+    far: 'lg:order-4 lg:col-span-2 xl:order-4 xl:col-span-1',
 };
 
 const hideableCards = computed(() =>
@@ -659,7 +668,7 @@ onUnmounted(() => {
 <template>
     <Head :title="`Trade ${currentPair}`" />
 
-    <AppLayout :hide-sidebar="true">
+    <AppLayout :hide-sidebar="true" :hide-ticker="true">
         <div class="max-w-[1920px] mx-auto">
             <!-- บรรยากาศพื้นหลังหน้าเทรด — จางมากเพื่อไม่แย่งสายตาจากตัวเลข -->
             <div class="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
@@ -714,57 +723,13 @@ onUnmounted(() => {
                 {{ dataError }}
             </div>
 
-            <!-- แถบหัว: เลือกคู่เทรด + ราคาสด + เครื่องมือจัดผัง
-                 ข้อควรระวัง 2 ข้อของกล่องนี้:
-                 1. ห้ามใส่ overflow-hidden — dropdown ของ PairSelector จะโดนตัด
-                 2. ต้องมี z-30 — `backdrop-blur` สร้าง stacking context ทำให้ z-50
-                    ของ dropdown ถูกขังไว้ในกล่องนี้ ออกไปสู้กับกราฟไม่ได้ -->
-            <div class="relative z-30 flex items-center gap-3 flex-wrap rounded-2xl border border-white/5 bg-dark-900/40 backdrop-blur-md px-4 py-2.5 mb-3">
-                <PageArt art="hero-trade" :opacity="22" fade="edges" rounded="rounded-2xl" position="center" loading="eager" />
-
-                <PairSelector class="relative" :currentPair="currentPair" />
-
-                <div v-if="ticker && ticker.price" class="relative flex items-center gap-5 text-sm">
-                    <div>
-                        <span class="text-dark-400 text-[10px] block leading-none mb-0.5">{{ t('trade.price') }}</span>
-                        <p :class="['font-mono font-bold text-lg leading-none', (ticker.priceChange || ticker.change || 0) >= 0 ? 'text-trading-green' : 'text-trading-red']">
-                            ${{ (ticker.lastPrice || ticker.price) ? parseFloat(ticker.lastPrice || ticker.price).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '—' }}
-                        </p>
-                    </div>
-                    <div>
-                        <span class="text-dark-400 text-[10px] block leading-none mb-0.5">{{ t('trade.change24h') }}</span>
-                        <p :class="['font-mono text-sm leading-none', (ticker.priceChangePercent || ticker.change || 0) >= 0 ? 'text-trading-green' : 'text-trading-red']">
-                            {{ (ticker.priceChangePercent || ticker.change || 0) >= 0 ? '+' : '' }}{{ parseFloat(ticker.priceChangePercent || ticker.change || 0).toFixed(2) }}%
-                        </p>
-                    </div>
-                    <div class="hidden sm:block">
-                        <span class="text-dark-400 text-[10px] block leading-none mb-0.5">{{ t('trade.high24h') }}</span>
-                        <p class="text-white font-mono text-sm leading-none">${{ parseFloat(ticker.highPrice || ticker.high || 0).toLocaleString() }}</p>
-                    </div>
-                    <div class="hidden sm:block">
-                        <span class="text-dark-400 text-[10px] block leading-none mb-0.5">{{ t('trade.low24h') }}</span>
-                        <p class="text-white font-mono text-sm leading-none">${{ parseFloat(ticker.lowPrice || ticker.low || 0).toLocaleString() }}</p>
-                    </div>
-                    <div class="hidden md:block">
-                        <span class="text-dark-400 text-[10px] block leading-none mb-0.5">{{ t('trade.volume24h') }}</span>
-                        <p class="text-white font-mono text-sm leading-none">
-                            {{ parseFloat(ticker.volume || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }) }}
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Loading skeleton for ticker -->
-                <div v-else-if="isLoading" class="relative flex items-center gap-6">
-                    <div class="space-y-1">
-                        <div class="skeleton w-8 h-3"></div>
-                        <div class="skeleton w-24 h-6"></div>
-                    </div>
-                    <div class="space-y-1">
-                        <div class="skeleton w-12 h-3"></div>
-                        <div class="skeleton w-16 h-4"></div>
-                    </div>
-                </div>
-
+            <!-- แถบเครื่องมือจัดผัง (แถวบางๆ ชิดขวา)
+                 เอาออกไปแล้ว 2 อย่างเพราะซ้ำกับที่อื่นและกินพื้นที่แนวตั้ง:
+                 - ตัวเลือกคู่เทรด → เลือกจากการ์ด "คู่เทรด" ในคอลัมน์ซ้ายได้อยู่แล้ว
+                 - แผงราคา/24h    → หัวกราฟแสดงคู่+ราคา+เปอร์เซ็นต์ และย้าย high/low/vol ไปไว้ที่นั่น
+                 ยังต้องมี z-30 เพราะ backdrop-blur สร้าง stacking context
+                 และห้าม overflow-hidden ไม่งั้นเมนูจัดผังโดนตัด -->
+            <div class="relative z-30 flex items-center justify-end gap-2 mb-3">
                 <!-- เครื่องมือจัดผัง -->
                 <div class="relative ml-auto flex items-center gap-2 layout-menu">
                     <!-- ขนาดกราฟ — มีผลเฉพาะโหมดเลื่อนหน้า (โหมดพอดีจอกราฟยืดเอง) -->
@@ -856,12 +821,12 @@ onUnmounted(() => {
                 <span>{{ t('trade.notice.tpixSoon') }}</span>
             </div>
 
-            <!-- ── ผัง 3 คอลัมน์ ────────────────────────────────────────────────
+            <!-- ── ผัง 4 คอลัมน์ ────────────────────────────────────────────────
                  การ์ดทุกใบเขียนครั้งเดียวใน loop ของคอลัมน์ — ย้ายไปคอลัมน์ไหน
                  ก็ render ที่นั่น ไม่ต้องเขียนซ้ำ 3 ชุดให้หลุดกันภายหลัง -->
             <div
                 ref="board"
-                class="relative grid gap-3 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[276px_minmax(0,1fr)_336px]"
+                class="relative grid gap-3 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[248px_minmax(0,1fr)_284px_236px] 2xl:grid-cols-[268px_minmax(0,1fr)_312px_260px]"
                 :class="packed ? 'items-stretch' : 'items-start'"
                 :style="boardStyle"
             >

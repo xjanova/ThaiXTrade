@@ -44,11 +44,19 @@ const root = useTemplateRef('root');
 const { width } = useElementSize(root);
 /**
  * ResizeObserver อาจยังไม่ยิงในเฟรมแรก (และไม่ยิงเลยถ้าแท็บไม่ได้ compositing)
- * จึงวัดเองหนึ่งครั้งตอน mount แล้วใช้ค่าที่มากกว่า — กันฟอร์มเรนเดอร์ผังแคบ
+ * จึงวัดเองหนึ่งครั้งตอน mount ไว้ใช้ "ระหว่างรอ" — กันฟอร์มเรนเดอร์ผังแคบ
  * ทั้งที่วางอยู่ใต้กราฟกว้างๆ
+ *
+ * ⚠️ ห้ามใช้ Math.max(width, initialWidth)
+ *    เคยใช้แบบนั้นแล้วฟอร์ม "โตได้อย่างเดียว ไม่ยอมหดกลับ" — พอย่อหน้าต่างลง
+ *    (หรือคอลัมน์กลางแคบลงตอนเป็นผัง 4 คอลัมน์) ฟอร์มยังคิดว่าตัวเองกว้างอยู่
+ *    เลยใช้ผัง 3 ช่องในกล่อง 394px จนช่องเหลือ 123px และเนื้อหาล้นออกนอกการ์ด
+ *    วัดได้จริงที่ความกว้างหน้าต่าง 1280px
+ *
+ *    ค่าจาก ResizeObserver เป็นตัวจริงเสมอเมื่อมีค่าแล้ว
  */
 const initialWidth = ref(0);
-const cardWidth = computed(() => Math.max(width.value, initialWidth.value));
+const cardWidth = computed(() => (width.value > 0 ? width.value : initialWidth.value));
 /** การ์ดกว้างพอจะวางช่องกรอกเรียงข้างกันไหม (เช่น ตอนอยู่ใต้กราฟ) */
 const isWide = computed(() => cardWidth.value >= 520);
 

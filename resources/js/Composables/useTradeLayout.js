@@ -10,10 +10,12 @@
 
 import { ref, computed, watch } from 'vue';
 
-const STORAGE_KEY = 'tpix.tradeLayout.v2';
+// v3 = เพิ่มคอลัมน์ที่ 4 — ต้องขึ้นเวอร์ชันคีย์ ไม่งั้นผู้ใช้เดิมที่มีผัง 3 คอลัมน์
+// บันทึกไว้จะได้คอลัมน์ที่ 4 ว่างเปล่าตลอดไป และไม่มีทางเห็นผังใหม่เลย
+const STORAGE_KEY = 'tpix.tradeLayout.v3';
 
 /** คอลัมน์ที่รองรับ — ลำดับนี้คือลำดับที่แสดงบนจอกว้าง */
-export const COLUMNS = ['left', 'center', 'right'];
+export const COLUMNS = ['left', 'center', 'right', 'far'];
 
 /**
  * ทะเบียนการ์ดทั้งหมดของหน้าเทรด
@@ -26,9 +28,10 @@ export const TRADE_CARDS = [
     { id: 'ai', titleKey: 'trade.card.ai', column: 'left', essential: false, art: 'card-aitrade' },
     { id: 'chart', titleKey: 'trade.card.chart', column: 'center', essential: true, art: null },
     { id: 'form', titleKey: 'trade.card.form', column: 'center', essential: true, art: 'card-form' },
-    { id: 'orders', titleKey: 'trade.card.orders', column: 'right', essential: false, art: 'card-orders' },
+    // สมุดคำสั่งอยู่คอลัมน์ของตัวเอง — เป็นการ์ดที่ได้ประโยชน์จากความสูงมากที่สุด
     { id: 'book', titleKey: 'trade.card.book', column: 'right', essential: false, art: 'card-book' },
-    { id: 'trades', titleKey: 'trade.card.trades', column: 'right', essential: false, art: 'card-trades' },
+    { id: 'orders', titleKey: 'trade.card.orders', column: 'far', essential: false, art: 'card-orders' },
+    { id: 'trades', titleKey: 'trade.card.trades', column: 'far', essential: false, art: 'card-trades' },
 ];
 
 const CARD_IDS = TRADE_CARDS.map(c => c.id);

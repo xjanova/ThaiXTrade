@@ -55,6 +55,37 @@ const displayChange = computed(() => {
 const isPositive = computed(() => (props.ticker?.priceChangePercent ?? 0) >= 0);
 // 24h high/low/volume แสดงบนแถบหัวของหน้าเทรดแล้ว จึงไม่คำนวณซ้ำที่นี่
 
+/**
+ * สถิติ 24 ชั่วโมง — ย้ายมาจากแถบหัวของหน้าเทรดที่ถูกตัดออกไปแล้ว
+ * วางไว้แถวเดียวกับ timeframe จึงไม่กินพื้นที่แนวตั้งเพิ่มแม้แต่พิกเซลเดียว
+ */
+const stats24h = computed(() => {
+    const t = props.ticker || {};
+    const num = (...candidates) => {
+        for (const c of candidates) {
+            const n = parseFloat(c);
+            if (Number.isFinite(n) && n !== 0) return n;
+        }
+        return null;
+    };
+
+    return {
+        high: num(t.highPrice, t.high),
+        low: num(t.lowPrice, t.low),
+        volume: num(t.volume, t.quoteVolume),
+    };
+});
+
+function compactNumber(value) {
+    if (value === null) return '—';
+    return value.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 1 });
+}
+
+function priceLabel(value) {
+    if (value === null) return '—';
+    return '$' + value.toLocaleString('en-US', { maximumFractionDigits: value >= 1 ? 2 : 6 });
+}
+
 const pairName = computed(() => {
     const base = getBaseSymbol(props.symbol);
     const names = { BTC: 'Bitcoin', ETH: 'Ethereum', BNB: 'BNB', SOL: 'Solana', XRP: 'XRP', ADA: 'Cardano', DOGE: 'Dogecoin', DOT: 'Polkadot' };
@@ -338,8 +369,8 @@ onUnmounted(() => {
     <!-- ไม่มีกรอบ/พื้นหลังของตัวเอง — การ์ดที่ครอบอยู่ (DraggableCard) เป็นคนวาดให้
          ไม่งั้นจะเห็นขอบกระจกซ้อนกันสองชั้น -->
     <div class="flex flex-col overflow-hidden min-h-0">
-        <!-- แถบเครื่องมือแถวเดียว — ราคา 24h high/low/volume อยู่บนแถบหัวหน้าเทรดแล้ว
-             ไม่แสดงซ้ำที่นี่ เพื่อคืนพื้นที่แนวตั้งให้กราฟ -->
+        <!-- แถบเครื่องมือแถวเดียว — รวมคู่เทรด ราคา timeframe อินดิเคเตอร์ และสถิติ 24 ชม.
+             แถบหัวของหน้าเทรดถูกตัดออกแล้ว ข้อมูลทั้งหมดจึงมารวมอยู่แถวนี้แถวเดียว -->
         <div class="flex items-center gap-2 px-3 py-1.5 border-b border-white/5 flex-shrink-0 flex-wrap">
             <div class="flex items-center gap-2 flex-shrink-0">
                 <div class="w-6 h-6 rounded-md overflow-hidden bg-dark-800 flex items-center justify-center">
@@ -368,6 +399,19 @@ onUnmounted(() => {
                 >
                     {{ tf }}
                 </button>
+            </div>
+
+            <!-- สถิติ 24 ชม. — โชว์เฉพาะจอกว้างพอ ไม่งั้นแถบตกบรรทัดแล้วกินพื้นที่กราฟ -->
+            <div class="hidden 2xl:flex items-center gap-3 text-[10px] font-mono flex-shrink-0">
+                <span class="text-dark-500">
+                    H <span class="text-dark-200">{{ priceLabel(stats24h.high) }}</span>
+                </span>
+                <span class="text-dark-500">
+                    L <span class="text-dark-200">{{ priceLabel(stats24h.low) }}</span>
+                </span>
+                <span class="text-dark-500">
+                    V <span class="text-dark-200">{{ compactNumber(stats24h.volume) }}</span>
+                </span>
             </div>
 
             <div class="ml-auto flex items-center gap-1.5 flex-shrink-0">
