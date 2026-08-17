@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Token;
 use App\Models\TradingPair;
+use App\Services\FeeCalculationService;
 use App\Services\MarketDataService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,7 @@ class MarketController extends Controller
 {
     public function __construct(
         private MarketDataService $marketDataService,
+        private FeeCalculationService $fees,
     ) {}
 
     public function tickers(): JsonResponse
@@ -123,9 +125,17 @@ class MarketController extends Controller
                 'max_trade_amount' => (float) $p->max_trade_amount,
                 'price_precision' => $p->price_precision,
                 'amount_precision' => $p->amount_precision,
-                'fee_rate' => $p->taker_fee_override !== null
-                    ? (float) $p->taker_fee_override
-                    : null,
+                /*
+                 * อัตราค่าธรรมเนียมที่ "จะถูกเก็บจริง" ไม่ใช่แค่ค่าที่ตั้งทับไว้
+                 *
+                 * เดิมคืน null เมื่อไม่มีค่าตั้งทับ แล้วหน้าเว็บไปเดาเอาเองจากที่อื่น
+                 * ผลคือฟอร์มโชว์ 0.1% ขณะที่ระบบเก็บจริง 0.3% — ผู้ใช้คำนวณกำไร
+                 * ผิดทุกไม้ และไม่มีทางรู้จนกว่าจะมานั่งเทียบยอดย้อนหลัง
+                 *
+                 * คำนวณด้วยตัวเดียวกับที่หักเงินจริง (FeeCalculationService) เพื่อให้
+                 * ตัวเลขสองฝั่งเพี้ยนจากกันไม่ได้ต่อให้แอดมินเปลี่ยนค่าตั้งทีหลัง
+                 */
+                'fee_rate' => $this->fees->calculateSwapFee(100.0, (int) $p->chain_id, $p->id)['fee_rate'],
                 'chain_id' => $p->chain_id,
                 // onchain = ส่งคำสั่งได้จริง · index = ดูราคา/กราฟอย่างเดียว
                 'execution_mode' => $p->execution_mode,

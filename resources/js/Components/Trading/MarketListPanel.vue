@@ -28,8 +28,8 @@ const { t } = useTranslation();
 
 const FAV_KEY = 'tpix.favPairs';
 const REFRESH_MS = 30000;
-/** เพดานของ /api/v1/market/sparklines ต่อ 1 คำขอ */
-const SPARKLINE_CAP = 40;
+
+const QUOTE_KEY = 'tpix.marketQuote';
 
 const tickers = ref([]);
 const isLoading = ref(true);
@@ -37,6 +37,10 @@ const search = ref('');
 const activeFilter = ref('all'); // all | favorites | gainers | losers
 const sortKey = ref('volume');   // volume | change | name
 const favorites = ref([]);
+/** สกุลหลักที่กำลังดูอยู่ — '' = ทุกสกุล */
+const activeQuote = ref('');
+/** สกุลหลักทั้งหมดที่แอดมินเปิดไว้ (มาจากทะเบียนคู่เทรด ไม่ได้ hardcode) */
+const quoteAssets = ref([]);
 
 const { series, load: loadSparklines } = useSparklines();
 
@@ -93,6 +97,18 @@ async function fetchTickers({ silent = false } = {}) {
             pairRes.data.data.forEach(p => {
                 meta[p.base_asset] = { logo: p.base_logo, mode: p.execution_mode };
             });
+
+            /*
+             * รายการสกุลหลักมาจากคู่เทรดที่แอดมินเปิดจริง ไม่ได้เขียนตายไว้
+             *
+             * แอดมินเพิ่มคู่ THB เมื่อไหร่ ปุ่มหมวด THB ก็โผล่เอง ไม่ต้องแก้โค้ด
+             * เรียงตามจำนวนคู่ที่มี — สกุลที่ใช้เยอะที่สุดอยู่ซ้ายสุด
+             */
+            const counts = {};
+            pairRes.data.data.forEach(p => {
+                if (p.quote_asset) counts[p.quote_asset] = (counts[p.quote_asset] || 0) + 1;
+            });
+            quoteAssets.value = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
         }
 
         if (tickerRes.data?.success) {
@@ -100,6 +116,7 @@ async function fetchTickers({ silent = false } = {}) {
                 symbol: `${t.baseAsset}/${t.quoteAsset}`,
                 pair: `${t.baseAsset}-${t.quoteAsset}`,
                 base: t.baseAsset,
+                quote: t.quoteAsset,
                 logo: meta[t.baseAsset]?.logo || null,
                 // index = ดูราคา/กราฟได้ แต่ยังส่งคำสั่งไม่ได้
                 isIndex: meta[t.baseAsset]?.mode === 'index',
@@ -111,10 +128,21 @@ async function fetchTickers({ silent = false } = {}) {
 
         if (!tickers.value.find(t => t.base === 'TPIX')) {
             tickers.value.unshift({
-                symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX',
+                symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', quote: 'USDT',
                 logo: meta.TPIX?.logo || '/tpixlogo.webp',
                 price: 0.10, change: 0, volume: 0, isTpix: true,
             });
+        }
+
+        // ยังไม่มีทะเบียนคู่เทรด (DB ว่าง) — เอาสกุลหลักจากราคาที่ได้มาแทน
+        if (quoteAssets.value.length === 0) {
+            quoteAssets.value = [...new Set(tickers.value.map(t => t.quote).filter(Boolean))];
+        }
+
+        // สกุลที่เคยเลือกไว้หายไปจากระบบแล้ว (แอดมินปิดคู่นั้น) — กลับไปดูทุกสกุล
+        // ไม่งั้นผู้ใช้จะเจอลิสต์ว่างเปล่าโดยไม่รู้ว่าทำไม
+        if (activeQuote.value && !quoteAssets.value.includes(activeQuote.value)) {
+            activeQuote.value = '';
         }
     } catch {
         // API ล่ม — คงรายการเดิมไว้ ถ้ายังไม่เคยโหลดเลยให้เหลือ TPIX ตัวเดียว
@@ -134,6 +162,9 @@ const filtered = computed(() => {
     const q = search.value.trim().toUpperCase();
 
     let list = tickers.value.filter(t => {
+        // หมวดสกุลหลักกรองก่อนเสมอ — ยกเว้นตอนค้นหา เพราะคนพิมพ์ชื่อเหรียญ
+        // คาดว่าจะเจอมัน ไม่ว่าจะอยู่หมวดไหน
+        if (!q && activeQuote.value && t.quote !== activeQuote.value) return false;
         if (q && !t.symbol.includes(q) && !t.base.includes(q)) return false;
         if (activeFilter.value === 'favorites') return favorites.value.includes(t.pair);
         if (activeFilter.value === 'gainers') return t.change > 0;
@@ -147,18 +178,57 @@ const filtered = computed(() => {
         return b.volume - a.volume;
     });
 
-    // TPIX เป็นเหรียญของแพลตฟอร์ม — ปักหมุดบนสุดเสมอ ยกเว้นตอนค้นหาเจาะจง
+    /*
+     * ลำดับการปักหมุด (บนลงล่าง): TPIX → รายการโปรด → ที่เหลือ
+     *
+     * ทำหลังจัดเรียงเสร็จ เพราะการปักหมุดเป็นเรื่อง "ของฉันอยู่ไหน" ไม่ใช่ผลของ
+     * การจัดเรียง — ติดดาวไว้แล้วยังต้องเลื่อนหาคือดาวไม่ได้ทำหน้าที่อะไรเลย
+     *
+     * ตอนค้นหาไม่ปักหมุด เพราะคนพิมพ์ชื่อเหรียญมาคาดว่าผลที่ตรงที่สุดอยู่บนสุด
+     */
     if (!q) {
-        const idx = list.findIndex(t => t.base === 'TPIX');
-        if (idx > 0) list.unshift(list.splice(idx, 1)[0]);
+        const favs = list.filter(t => t.base !== 'TPIX' && favorites.value.includes(t.pair));
+        const rest = list.filter(t => t.base !== 'TPIX' && !favorites.value.includes(t.pair));
+        const tpix = list.filter(t => t.base === 'TPIX');
+
+        list = [...tpix, ...favs, ...rest];
     }
 
     return list;
 });
 
-// โหลดเส้นกราฟของรายการที่กรองแล้ว (ตัดที่เพดานของ API — คู่ที่เหลือได้ขีดจางแทน)
+/** แถวแรกที่ไม่ใช่รายการโปรด — ใช้ขีดเส้นคั่นให้เห็นว่ากลุ่มโปรดจบตรงไหน */
+const firstNonFavoritePair = computed(() => {
+    if (search.value.trim() || activeFilter.value === 'favorites') return null;
+
+    const rows = filtered.value;
+    const hasFav = rows.some(t => favorites.value.includes(t.pair));
+    if (!hasFav) return null;
+
+    return rows.find(t => t.base !== 'TPIX' && !favorites.value.includes(t.pair))?.pair ?? null;
+});
+
+function selectQuote(quote) {
+    activeQuote.value = quote;
+    try {
+        localStorage.setItem(QUOTE_KEY, quote);
+    } catch {
+        // โหมดส่วนตัว/โควตาเต็ม — ใช้งานต่อได้ แค่ไม่ถูกจำไว้รอบหน้า
+    }
+}
+
+/*
+ * โหลดเส้นกราฟของทุกแถวที่แสดงอยู่ — ไม่ตัดทิ้ง
+ *
+ * ⚠️ เดิม slice(0, 40) ก่อนส่งไปขอ วัดได้จริงว่ามี 70 แถวแต่ได้กราฟแค่ 40
+ *    30 แถวท้ายลิสต์ไม่มีกราฟตลอดกาล และไม่มีอะไรฟ้อง — แถวที่ไม่มีกราฟหน้าตา
+ *    เหมือนแถวที่ "ยังโหลดไม่เสร็จ" ทุกประการ ผู้ใช้จึงรอไปเรื่อยๆ
+ *
+ *    เพดาน 40 เป็นของ "ต่อหนึ่งคำขอ" ไม่ใช่ต่อหนึ่งหน้า — useSparklines แบ่ง
+ *    ก้อนให้เองอยู่แล้ว และฝั่งเซิร์ฟเวอร์ยิงขนานทั้งก้อน (~1 วิ ต่อ 40 เหรียญ)
+ */
 watch(filtered, (rows) => {
-    const symbols = rows.filter(t => !t.isTpix).slice(0, SPARKLINE_CAP).map(t => t.pair);
+    const symbols = rows.filter(t => !t.isTpix).map(t => t.pair);
     if (symbols.length) loadSparklines(symbols);
 }, { immediate: true });
 
@@ -184,6 +254,11 @@ function selectPair(t) {
 
 onMounted(() => {
     readFavorites();
+    try {
+        activeQuote.value = localStorage.getItem(QUOTE_KEY) || '';
+    } catch {
+        activeQuote.value = '';
+    }
     fetchTickers();
     refreshTimer = setInterval(() => fetchTickers({ silent: true }), REFRESH_MS);
 });
@@ -209,6 +284,36 @@ onUnmounted(() => {
                     :aria-label="t('trade.market.searchAria')"
                     class="w-full bg-dark-800/70 border border-dark-700 rounded-lg pl-8 pr-2 py-1.5 text-white text-xs placeholder-dark-500 focus:border-primary-500 outline-none transition-colors"
                 />
+            </div>
+        </div>
+
+        <!--
+            หมวดสกุลหลัก — ต้องเด่นที่สุดในแผงนี้
+
+            เมื่อชื่อคู่ไม่มี "/USDT" ต่อท้ายแล้ว ปุ่มหมวดคือสิ่งเดียวที่บอกว่ากำลังดู
+            ราคาเทียบกับสกุลไหนอยู่ ถ้ามันจางเท่าปุ่มอื่น ผู้ใช้จะอ่านราคา BTC 0.0341
+            แล้วเข้าใจว่าเป็นดอลลาร์ — ตัวเลขเดียวกันคนละความหมายโดยสิ้นเชิง
+        -->
+        <div v-if="quoteAssets.length" class="px-2.5 pt-2.5">
+            <div class="flex items-center gap-1 overflow-x-auto scrollbar-none">
+                <!--
+                    ปุ่ม "ทุกสกุล" มีความหมายเมื่อมีสกุลให้เลือกมากกว่าหนึ่งเท่านั้น
+                    มีสกุลเดียวแล้วยังใส่ = ปุ่มสองอันที่ให้ผลเหมือนกันเป๊ะ
+                -->
+                <button
+                    v-if="quoteAssets.length > 1"
+                    type="button"
+                    :class="['quote-tab', activeQuote === '' && 'quote-tab--active']"
+                    @click="selectQuote('')"
+                >{{ t('trade.market.allQuotes') }}</button>
+                <button
+                    v-for="quote in quoteAssets"
+                    :key="quote"
+                    type="button"
+                    :class="['quote-tab',
+                        (activeQuote === quote || (quoteAssets.length === 1 && !activeQuote)) && 'quote-tab--active']"
+                    @click="selectQuote(quote)"
+                >{{ quote }}</button>
             </div>
         </div>
 
@@ -264,7 +369,9 @@ onUnmounted(() => {
                 <div
                     v-for="row in filtered"
                     :key="row.pair"
-                    :class="['market-row', row.symbol === currentPair && 'market-row--active']"
+                    :class="['market-row',
+                        row.symbol === currentPair && 'market-row--active',
+                        row.pair === firstNonFavoritePair && 'market-row--after-favorites']"
                 >
                     <button
                         type="button"
@@ -288,11 +395,19 @@ onUnmounted(() => {
                             :src="row.logo || (row.isTpix ? '/tpixlogo.webp' : undefined)"
                         />
 
+                        <!--
+                            ชื่อเหรียญห้ามย่อ — ชื่อที่ถูกตัดคือชื่อที่อ่านผิดได้
+
+                            เลิกใช้ truncate แล้วให้ชื่อกำหนดความกว้างของตัวเอง (w-auto)
+                            ช่องว่างที่ได้มาจากการตัด "/USDT" ทิ้งพอสำหรับสัญลักษณ์ที่ยาว
+                            ที่สุดที่มีอยู่ ส่วนสกุลหลักไปอยู่ที่ปุ่มหมวดด้านบนแทน
+                        -->
                         <span class="min-w-0 flex-1">
                             <span class="flex items-center gap-1">
-                                <span class="text-white text-xs font-medium truncate">{{ row.base }}</span>
-                                <span class="text-dark-500 text-[10px]">/{{ row.symbol.split('/')[1] }}</span>
-                                <span v-if="row.isTpix || row.isIndex" class="text-[8px] px-1 py-px rounded bg-amber-500/15 text-amber-400 font-medium">
+                                <span class="text-white text-xs font-semibold whitespace-nowrap">{{ row.base }}</span>
+                                <!-- โชว์สกุลหลักต่อท้ายเฉพาะตอนดูรวมทุกสกุล ซึ่งชื่อเหรียญซ้ำกันได้ -->
+                                <span v-if="!activeQuote" class="text-dark-500 text-[9px] font-mono shrink-0">{{ row.quote }}</span>
+                                <span v-if="row.isTpix || row.isIndex" class="text-[8px] px-1 py-px rounded bg-amber-500/15 text-amber-400 font-medium shrink-0">
                                     {{ t('trade.market.soon') }}
                                 </span>
                             </span>
@@ -334,4 +449,26 @@ onUnmounted(() => {
 .market-row--active {
     @apply bg-primary-500/10 border-l-primary-500;
 }
+
+/* เส้นคั่นจบกลุ่มรายการโปรด — ไม่ต้องมีหัวข้อมากินความสูงของแผงที่แคบอยู่แล้ว */
+.market-row--after-favorites {
+    @apply border-t border-amber-500/20;
+}
+
+/*
+ * ปุ่มหมวดสกุลหลัก — ตัวที่เลือกอยู่ต้องอ่านออกในพริบตา
+ * ใช้พื้นทึบ + ตัวหนา + เงาเรือง ไม่ใช่แค่เปลี่ยนสีตัวอักษรเหมือนปุ่มอื่นในแผงนี้
+ */
+.quote-tab {
+    @apply shrink-0 px-2.5 py-1 rounded-md text-[11px] font-semibold whitespace-nowrap transition-all;
+    @apply bg-white/5 text-dark-400 ring-1 ring-transparent hover:text-white hover:bg-white/10;
+}
+
+.quote-tab--active {
+    @apply bg-primary-500 text-white ring-primary-400/60;
+    box-shadow: 0 0 12px rgba(6, 182, 212, 0.35);
+}
+
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { scrollbar-width: none; }
 </style>

@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\TradingPair;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -196,46 +198,97 @@ class MarketDataService
         $interval = in_array($interval, ['15m', '1h', '4h', '1d'], true) ? $interval : '1h';
         $limit = max(8, min($limit, 96));
 
+        $symbols = collect($symbols)
+            ->map(fn ($s) => strtoupper(trim((string) $s)))
+            ->filter()
+            ->unique()
+            ->values();
+
         $out = [];
+        $missing = [];
 
         foreach ($symbols as $symbol) {
-            $symbol = strtoupper(trim($symbol));
-            if ($symbol === '') {
-                continue;
+            $cached = Cache::get($this->sparklineKey($symbol, $interval, $limit));
+
+            if (is_array($cached)) {
+                $out[$symbol] = $cached;
+            } else {
+                $missing[] = $symbol;
             }
+        }
 
-            $cacheKey = "market:sparkline:{$symbol}:{$interval}:{$limit}";
+        if ($missing !== []) {
+            $out += $this->fetchSparklines($missing, $interval, $limit);
+        }
 
-            // 5 min TTL — a 24h trend line does not change meaningfully faster,
-            // and this keeps a whole page of rows to at most one Binance call each
-            // per 5 minutes no matter how many visitors are on the markets page.
-            $series = Cache::remember($cacheKey, 300, function () use ($symbol, $interval, $limit) {
-                try {
-                    $response = Http::timeout(8)->get("{$this->baseUrl}/klines", [
+        // คืนตามลำดับที่ขอมา เพื่อให้ผู้เรียกจับคู่กับรายการของตัวเองได้ตรง
+        return $symbols->mapWithKeys(fn ($s) => [$s => $out[$s] ?? []])->all();
+    }
+
+    private function sparklineKey(string $symbol, string $interval, int $limit): string
+    {
+        return "market:sparkline:{$symbol}:{$interval}:{$limit}";
+    }
+
+    /**
+     * ดึงเส้นกราฟของหลายเหรียญ "พร้อมกัน" ไม่ใช่ทีละตัว.
+     *
+     * ⚠️ เดิมวนยิงทีละเหรียญ วัดได้ 14.6 วินาทีสำหรับ 25 เหรียญตอนแคชเย็น
+     *    ปลายทางแต่ละครั้งใช้ ~0.6 วิ ซึ่งเร็วพอ — ที่ช้าคือการต่อคิวกัน 25 รอบ
+     *
+     *    ผลที่ผู้ใช้เห็นคือ "กราฟย่อมาไม่ครบ" เพราะกว่าจะครบก็ผ่านไปสิบกว่าวินาที
+     *    หรือคำขอถูกตัดกลางทางไปก่อน แล้วฝั่งหน้าเว็บจำ "ไม่มีข้อมูล" ไว้อีก 5 นาที
+     *    — ไม่มี error ให้เห็นสักบรรทัด เพราะไม่มีอะไรผิดพลาดจริงๆ แค่ช้า
+     *
+     * @return array<string, array<int, float>>
+     */
+    private function fetchSparklines(array $symbols, string $interval, int $limit): array
+    {
+        try {
+            $responses = Http::pool(fn (Pool $pool) => collect($symbols)
+                ->map(fn (string $symbol) => $pool->as($symbol)
+                    ->timeout(8)
+                    ->get("{$this->baseUrl}/klines", [
                         'symbol' => $this->toBinanceSymbol($symbol),
                         'interval' => $interval,
                         'limit' => $limit,
-                    ]);
+                    ]))
+                ->all());
+        } catch (\Throwable $e) {
+            Log::warning('Sparkline pool failed', ['error' => $e->getMessage(), 'count' => count($symbols)]);
 
-                    if ($response->failed()) {
-                        return [];
-                    }
+            return [];
+        }
 
-                    return collect($response->json())
-                        ->map(fn ($k) => (float) $k[4])   // close
-                        ->filter(fn ($p) => $p > 0)
-                        ->values()
-                        ->all();
-                } catch (\Exception $e) {
-                    Log::warning('Sparkline fetch failed', ['symbol' => $symbol, 'error' => $e->getMessage()]);
+        $out = [];
+        $failed = [];
 
-                    return [];
-                }
-            });
+        foreach ($symbols as $symbol) {
+            $response = $responses[$symbol] ?? null;
 
-            // Symbols with no Binance listing (e.g. TPIX before chain launch) return
-            // an empty array — the client draws nothing rather than a flat fake line.
+            // ยิงไม่สำเร็จ ≠ เหรียญนี้ไม่มีข้อมูล — ห้ามเก็บผลว่างลงแคช
+            // ไม่งั้นปลายทางล่มแวบเดียวจะทำให้กราฟหายไปทั้งหน้านาน 5 นาที
+            if (! $response instanceof Response || $response->failed()) {
+                $failed[] = $symbol;
+                $out[$symbol] = [];
+
+                continue;
+            }
+
+            $series = collect($response->json())
+                ->map(fn ($k) => (float) ($k[4] ?? 0))   // close
+                ->filter(fn ($p) => $p > 0)
+                ->values()
+                ->all();
+
+            // เหรียญที่ไม่มีอยู่บน Binance (เช่น TPIX ก่อนเปิดเชน) ได้ชุดว่างจริงๆ
+            // เก็บแคชไว้ได้ ไม่ต้องไปถามซ้ำทุกรอบ
+            Cache::put($this->sparklineKey($symbol, $interval, $limit), $series, 300);
             $out[$symbol] = $series;
+        }
+
+        if ($failed !== []) {
+            Log::warning('Sparkline symbols failed', ['symbols' => $failed]);
         }
 
         return $out;

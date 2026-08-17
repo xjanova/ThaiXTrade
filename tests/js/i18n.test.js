@@ -11,8 +11,15 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import th from '@/i18n/th.json';
 import en from '@/i18n/en.json';
+
+// อ่านข้อความดิบด้วย — JSON.parse กลืนคีย์ซ้ำไปแล้ว จับจากอ็อบเจ็กต์ไม่ได้
+const i18nDir = resolve(process.cwd(), 'resources/js/i18n');
+const thRaw = readFileSync(resolve(i18nDir, 'th.json'), 'utf8');
+const enRaw = readFileSync(resolve(i18nDir, 'en.json'), 'utf8');
 import { t, setLocale } from '@/Composables/useTranslation';
 import RecentTrades from '@/Components/Trading/RecentTrades.vue';
 
@@ -91,6 +98,50 @@ describe('t() behaviour', () => {
 
         expect(english).toBe('Order Book');
         expect(thai).not.toBe(english);
+    });
+});
+
+/**
+ * คีย์ซ้ำในไฟล์เดียวกันต้องไม่มี
+ *
+ * ⚠️ JSON.parse กลืนคีย์ซ้ำเงียบๆ — ตัวหลังทับตัวหน้าโดยไม่มีอะไรฟ้อง
+ *    เทสต์ที่เทียบชุดคีย์ระหว่างสองภาษามองไม่เห็นเลย เพราะกว่าจะถึงมือเทสต์
+ *    ก็เหลือคีย์เดียวไปแล้วทั้งสองไฟล์
+ *
+ * เกิดจริงมาแล้ว: เพิ่ม `trade.form.youReceive` ทับของเดิมที่แปลว่า "ได้รับประมาณ"
+ * ป้ายในหน้าเทรดเลยเปลี่ยนความหมายจาก "ประมาณการ" เป็น "สุทธิ" ทั้งที่ตัวเลข
+ * ยังเป็นประมาณการเหมือนเดิม
+ *
+ * ต้องอ่านจากข้อความดิบ ไม่ใช่จากอ็อบเจ็กต์ที่ parse แล้ว
+ */
+describe('translation files have no duplicate keys', () => {
+    it.each([
+        ['th.json', thRaw],
+        ['en.json', enRaw],
+    ])('%s defines every key once', (name, raw) => {
+        const seen = new Map();
+        const duplicates = [];
+        const path = [];
+
+        // เดินทีละบรรทัดเพื่อรู้ว่าคีย์อยู่ชั้นไหน — ชื่อเดียวกันคนละชั้นไม่ใช่ปัญหา
+        const lines = raw.split('\n');
+        lines.forEach((line, i) => {
+            const open = (line.match(/\{/g) || []).length;
+            const close = (line.match(/\}/g) || []).length;
+            const match = line.match(/^\s*"([^"]+)"\s*:/);
+
+            if (match) {
+                const full = [...path, match[1]].join('.');
+                if (seen.has(full)) duplicates.push(`${full} (บรรทัด ${seen.get(full)} และ ${i + 1})`);
+                else seen.set(full, i + 1);
+
+                if (open > close) path.push(match[1]);
+            } else if (close > open) {
+                path.pop();
+            }
+        });
+
+        expect(duplicates, `พบคีย์ซ้ำใน ${name}`).toEqual([]);
     });
 });
 

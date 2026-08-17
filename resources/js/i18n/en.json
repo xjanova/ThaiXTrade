@@ -139,7 +139,8 @@
             "removeFavorite": "Remove {pair} from favorites",
             "empty": "No pairs found",
             "emptyFavorites": "No favorite pairs yet",
-            "soon": "Soon"
+            "soon": "Soon",
+            "allQuotes": "All"
         },
         "book": {
             "step": "Step",
@@ -177,6 +178,8 @@
             "minReceived": "Min received",
             "executedVia": "Executed on BSC via PancakeSwap",
             "fee": "Fee",
+            "netPay": "You pay in total",
+            "netReceive": "You receive net",
             "processing": "Processing...",
             "connectWallet": "Connect Wallet",
             "buySymbol": "Buy {symbol}",

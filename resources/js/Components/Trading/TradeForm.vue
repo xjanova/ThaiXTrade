@@ -174,20 +174,85 @@ function formatPriceInput(value) {
         : value.toFixed(8);
 }
 
-// Fee rate from backend (default 0.1%, fetched on mount)
-const feeRate = ref(0.1);
-const feeAmount = computed(() => (toNumber(total.value) * (feeRate.value / 100)).toFixed(2));
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ค่าธรรมเนียม — ตัวเลขนี้ต้องตรงกับที่ระบบหักจริงเสมอ
+ * ═══════════════════════════════════════════════════════════════════════════
+ * เดิมดึงจาก /api/v1/swap/routes ซึ่งเป็นค่าของ "การสลับเหรียญ" คนละอย่างกับ
+ * ค่าธรรมเนียมเทรด และตกมาที่ 0.1% ทั้งที่ค่าปริยายจริงคือ 0.3% — ผู้ใช้คำนวณ
+ * กำไรผิดทุกไม้โดยไม่มีทางรู้ จนกว่าจะมานั่งเทียบยอดย้อนหลัง
+ *
+ * ตอนนี้อ่านจาก /api/v1/market/pairs ซึ่งคำนวณด้วย FeeCalculationService
+ * ตัวเดียวกับที่หักเงินจริง (รวมค่าตั้งทับรายคู่ + เพดานของแอดมินแล้ว)
+ */
+const feeRate = ref(null);
+
+/** ยังไม่รู้อัตราจริง = ยังไม่โชว์ตัวเลข ดีกว่าโชว์ค่าเดาที่ผู้ใช้เอาไปคิดกำไร */
+const feeKnown = computed(() => feeRate.value !== null);
+
+/** ฐานคิดค่าธรรมเนียม — ตรงกับฝั่งเซิร์ฟเวอร์: ใช้ total ถ้ามี ไม่งั้นใช้ amount */
+const feeBase = computed(() => {
+    const totalNum = toNumber(total.value);
+    return totalNum > 0 ? totalNum : toNumber(amount.value) * effectivePrice.value;
+});
+
+const feeAmount = computed(() => (feeKnown.value ? feeBase.value * (feeRate.value / 100) : 0));
+
+/**
+ * ยอดที่ต้องจ่ายจริง / ที่จะได้รับจริง — ตัวเลขที่ผู้ใช้ต้องใช้ตัดสินใจ
+ *
+ * ซื้อ: จ่ายมูลค่ารวม + ค่าธรรมเนียม · ขาย: ได้มูลค่ารวม − ค่าธรรมเนียม
+ * โชว์แค่ค่าธรรมเนียมเฉยๆ ยังต้องให้ผู้ใช้บวกลบเองในหัวทุกครั้ง
+ */
+const netTotal = computed(() => {
+    const gross = toNumber(total.value);
+    if (gross <= 0) return 0;
+
+    return activeTab.value === 'buy' ? gross + feeAmount.value : gross - feeAmount.value;
+});
+
+/**
+ * ทศนิยมตามขนาดของตัวเลข ไม่ใช่ 2 ตำแหน่งตายตัว
+ *
+ * ⚠️ ของเดิมใช้ toFixed(2) ทุกกรณี — คู่ที่เทียบด้วย BTC จะได้ค่าธรรมเนียม
+ *    0.00005 BTC แล้วแสดงเป็น "0.00" ผู้ใช้อ่านว่าเทรดฟรี ทั้งที่ถูกหักจริง
+ */
+function formatQuote(value) {
+    const n = Number(value) || 0;
+    if (n === 0) return '0';
+    if (Math.abs(n) >= 1) return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (Math.abs(n) >= 0.01) return n.toFixed(4);
+    if (Math.abs(n) >= 0.0001) return n.toFixed(6);
+
+    return n.toFixed(8);
+}
+
+const feeAmountText = computed(() => formatQuote(feeAmount.value));
+const netTotalText = computed(() => formatQuote(netTotal.value));
 
 onMounted(async () => {
     if (root.value) initialWidth.value = root.value.getBoundingClientRect().width;
 
-    try {
-        const { data } = await axios.get('/api/v1/swap/routes');
-        if (data.success && data.data?.length > 0) {
-            feeRate.value = data.data[0].fee_rate ?? 0.1;
-        }
-    } catch { /* keep default */ }
+    await loadFeeRate();
 });
+
+/** อัตราของคู่ที่กำลังดูอยู่ — เปลี่ยนคู่แล้วต้องโหลดใหม่ อัตราตั้งทับรายคู่ได้ */
+async function loadFeeRate() {
+    feeRate.value = null;
+
+    try {
+        const { data } = await axios.get('/api/v1/market/pairs');
+        if (!data?.success) return;
+
+        const wanted = props.symbol.replace('/', '-').toUpperCase();
+        const pair = data.data.find(p => `${p.base_asset}-${p.quote_asset}`.toUpperCase() === wanted);
+
+        // ไม่เจอคู่นี้ในทะเบียน = ยังไม่รู้อัตราจริง ปล่อยเป็น null ไม่เดา
+        if (pair && typeof pair.fee_rate === 'number') feeRate.value = pair.fee_rate;
+    } catch {
+        // อ่านไม่ได้ = ไม่รู้ ไม่ใช่ 0
+    }
+}
 
 onUnmounted(() => {
     clearTimeout(flashTimer);
@@ -206,6 +271,8 @@ watch(() => props.symbol, () => {
     amount.value = '';
     total.value = '';
     sliderValue.value = 0;
+    // อัตราค่าธรรมเนียมตั้งทับรายคู่ได้ — ค้างค่าของคู่เดิมไว้คือโชว์เลขผิด
+    loadFeeRate();
 });
 
 const calculateTotal = () => {
@@ -377,7 +444,7 @@ const submitOrder = () => {
                             ]"
                             @input="calculateTotal"
                         >
-                        <span class="input-suffix text-xs">{{ quoteSymbol }}</span>
+                        <span class="input-suffix text-xs quote-tint">{{ quoteSymbol }}</span>
                     </div>
                 </div>
 
@@ -393,7 +460,7 @@ const submitOrder = () => {
                             placeholder="0.00"
                             @input="calculateTotal"
                         >
-                        <span class="input-suffix text-xs">{{ baseSymbol }}</span>
+                        <span class="input-suffix text-xs base-tint">{{ baseSymbol }}</span>
                     </div>
                 </div>
 
@@ -409,7 +476,7 @@ const submitOrder = () => {
                             placeholder="0.00"
                             @input="calculateAmountFromTotal"
                         >
-                        <span class="input-suffix text-xs">{{ quoteSymbol }}</span>
+                        <span class="input-suffix text-xs quote-tint">{{ quoteSymbol }}</span>
                     </div>
                 </div>
             </div>
@@ -481,15 +548,42 @@ const submitOrder = () => {
                 </div>
             </div>
 
-            <!-- ค่าธรรมเนียม — โหมด onchain ใช้ค่าจริงจาก quote, โหมดอื่นใช้ rate จาก backend -->
-            <div class="flex items-center justify-between gap-2 mb-3 text-xs text-dark-400">
+            <!--
+                ค่าธรรมเนียม + ยอดสุทธิ — ตัวเลขที่ผู้ใช้ใช้ตัดสินใจเรื่องเงิน
+
+                โหมด onchain ใช้ค่าจริงจาก quote ของ router ส่วนโหมดอื่นคำนวณจาก
+                อัตราที่เซิร์ฟเวอร์บอก (ตัวเดียวกับที่หักจริง) และอัปเดตทุกครั้งที่พิมพ์
+            -->
+            <div class="mb-3 rounded-lg bg-black/20 border border-white/5 px-2.5 py-2 space-y-1">
                 <template v-if="mode === 'onchain' && marketPreview && marketPreview.feeText">
-                    <span>{{ t('trade.form.fee') }}</span>
-                    <span class="font-mono truncate">{{ marketPreview.feeText }}</span>
+                    <div class="flex items-center justify-between gap-2 text-xs text-dark-400">
+                        <span>{{ t('trade.form.fee') }}</span>
+                        <span class="font-mono truncate text-dark-200">{{ marketPreview.feeText }}</span>
+                    </div>
                 </template>
+
                 <template v-else>
-                    <span>{{ t('trade.form.fee') }} ({{ feeRate }}%)</span>
-                    <span class="font-mono">~${{ feeAmount }}</span>
+                    <div class="flex items-center justify-between gap-2 text-xs text-dark-400">
+                        <span>
+                            {{ t('trade.form.fee') }}
+                            <span v-if="feeKnown" class="font-mono">({{ feeRate }}%)</span>
+                        </span>
+                        <!-- ยังไม่รู้อัตราจริง = ขีดกลาง ไม่ใช่ 0 ที่อ่านว่า "ไม่เสียค่าธรรมเนียม" -->
+                        <span v-if="!feeKnown" class="font-mono text-dark-500">—</span>
+                        <span v-else class="font-mono text-dark-200">
+                            {{ feeAmountText }} <span class="quote-tint">{{ quoteSymbol }}</span>
+                        </span>
+                    </div>
+
+                    <div v-if="feeKnown && netTotal > 0"
+                        class="flex items-center justify-between gap-2 text-xs pt-1 border-t border-white/5">
+                        <span class="text-dark-300">
+                            {{ activeTab === 'buy' ? t('trade.form.netPay') : t('trade.form.netReceive') }}
+                        </span>
+                        <span :class="['font-mono font-semibold', activeTab === 'buy' ? 'text-trading-red' : 'text-trading-green']">
+                            {{ netTotalText }} <span class="quote-tint">{{ quoteSymbol }}</span>
+                        </span>
+                    </div>
                 </template>
             </div>
 
@@ -529,3 +623,23 @@ const submitOrder = () => {
         </template>
     </div>
 </template>
+
+<style scoped>
+/*
+ * สีของสัญลักษณ์สกุลเงินในช่องกรอก
+ *
+ * ช่องราคา/จำนวน/มูลค่ารวมหน้าตาเหมือนกันหมด ต่างกันแค่ตัวอักษรจางๆ ที่มุมขวา
+ * ซึ่งเป็นตัวบอกว่าเลขที่พิมพ์ลงไปหมายถึงอะไร — กรอกจำนวนเหรียญลงช่องมูลค่ารวม
+ * แล้วสั่งซื้อ คือสั่งผิดขนาดหลายเท่าตัวโดยที่ทุกอย่างดูปกติ
+ *
+ * ให้สองสกุลคนละสีจึงแยกออกได้ด้วยการชำเลืองมอง ไม่ต้องอ่านตัวอักษร
+ * เขียวอมฟ้า = สกุลหลักที่จ่าย/ได้รับ · ส้ม = เหรียญที่กำลังซื้อขาย
+ */
+.quote-tint {
+    @apply text-primary-300 font-semibold;
+}
+
+.base-tint {
+    @apply text-warm-300 font-semibold;
+}
+</style>

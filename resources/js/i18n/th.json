@@ -139,7 +139,8 @@
             "removeFavorite": "เอา {pair} ออกจากรายการโปรด",
             "empty": "ไม่พบคู่เทรด",
             "emptyFavorites": "ยังไม่มีคู่เทรดในรายการโปรด",
-            "soon": "เร็วๆ นี้"
+            "soon": "เร็วๆ นี้",
+            "allQuotes": "ทุกสกุล"
         },
         "book": {
             "step": "ขั้น",
@@ -177,6 +178,8 @@
             "minReceived": "ได้รับอย่างน้อย",
             "executedVia": "ทำรายการจริงบน BSC ผ่าน PancakeSwap",
             "fee": "ค่าธรรมเนียม",
+            "netPay": "จ่ายทั้งหมด",
+            "netReceive": "ได้รับสุทธิ",
             "processing": "กำลังดำเนินการ...",
             "connectWallet": "เชื่อมกระเป๋า",
             "buySymbol": "ซื้อ {symbol}",
