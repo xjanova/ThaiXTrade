@@ -160,6 +160,20 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
             </template>
             <template #cell-chain="{ row }">
                 <span class="text-dark-300">{{ row.chain?.name || '-' }}</span>
+                <!--
+                    คู่ execution_mode=index อ้างอิงราคาจาก Binance เฉยๆ swap จริงไม่ได้
+                    ต้องติดป้ายให้ชัด ไม่งั้นหลังบ้านจะอ่านว่า "คู่นี้เทรดได้บนเชนนี้" ซึ่งไม่จริง
+                -->
+                <span
+                    v-if="row.execution_mode === 'index'"
+                    class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/5 text-dark-400 ring-1 ring-white/10"
+                    title="ดูราคาอย่างเดียว — ยังไม่มีสภาพคล่องบนเชนให้ swap"
+                >ดูราคา</span>
+                <span
+                    v-else
+                    class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-trading-green/10 text-trading-green ring-1 ring-trading-green/20"
+                    title="swap ได้จริงบนเชนนี้"
+                >swap ได้</span>
             </template>
             <template #cell-min_amount="{ value }">
                 <span class="font-mono text-dark-300">{{ value || '-' }}</span>
