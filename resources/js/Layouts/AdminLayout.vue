@@ -115,6 +115,8 @@ const navigationSections = computed(() => [
         items: [
             { name: t('common.all') === 'ทั้งหมด' ? 'จัดการสมาชิก' : 'Members', href: '/admin/members', icon: 'members' },
             { name: t('common.all') === 'ทั้งหมด' ? 'จัดการ Wallet' : 'Wallets', href: '/admin/wallets', icon: 'wallet' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ยืนยันตัวตน (KYC)' : 'KYC Review', href: '/admin/kyc', icon: 'members' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'คำขอลบข้อมูล' : 'Data Deletion', href: '/admin/kyc/deletions', icon: 'audit' },
         ],
     },
     {
@@ -134,6 +136,7 @@ const navigationSections = computed(() => [
             { name: t('common.all') === 'ทั้งหมด' ? 'สมุดบัญชีคลัง' : 'Treasury Ledger', href: '/admin/treasury/ledger', icon: 'transaction' },
             { name: t('common.all') === 'ทั้งหมด' ? 'รายงานการเงิน' : 'Finance Dashboard', href: '/admin/finance', icon: 'transaction' },
             { name: t('common.all') === 'ทั้งหมด' ? 'ค่าธรรมเนียม' : 'Fees', href: '/admin/fees', icon: 'fee' },
+            { name: t('common.all') === 'ทั้งหมด' ? 'ค่าบริการวางไม้' : 'Order Fees', href: '/admin/trading-fees', icon: 'fee' },
             { name: t('common.all') === 'ทั้งหมด' ? 'ธุรกรรม' : 'Transactions', href: '/admin/transactions', icon: 'transaction' },
             { name: 'Swap', href: '/admin/swap', icon: 'swap' },
         ],

@@ -373,21 +373,21 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     // Swap Operations
     Route::prefix('swap')->group(function () {
         Route::post('/quote', [TradingController::class, 'getSwapQuote']);
-        Route::post('/execute', [TradingController::class, 'executeSwap']);
+        Route::post('/execute', [TradingController::class, 'executeSwap'])->middleware('kyc:trading');
         Route::get('/routes', [TradingController::class, 'getSwapRoutes']);
     });
 
     // Token Sale Purchase + Claim — ซื้อ/เคลมเหรียญ (rate limit: 10 ครั้ง/นาที)
     Route::middleware('throttle:10,1')->group(function () {
-        Route::post('/token-sale/purchase', [TokenSaleApiController::class, 'purchase']);
-        Route::post('/token-sale/claim', [TokenSaleApiController::class, 'claim']);
+        Route::post('/token-sale/purchase', [TokenSaleApiController::class, 'purchase'])->middleware('kyc:token_sale');
+        Route::post('/token-sale/claim', [TokenSaleApiController::class, 'claim'])->middleware('kyc:token_sale');
     });
 
     // Token Factory — สร้างเหรียญ (ต้อง verify wallet)
     Route::prefix('token-factory')->group(function () {
         Route::get('/my-tokens', [TokenFactoryApiController::class, 'myTokens']);
         Route::post('/create', [TokenFactoryApiController::class, 'store'])
-            ->middleware('throttle:5,60'); // สร้างได้ 5 ครั้งต่อ 60 นาที
+            ->middleware(['throttle:5,60', 'kyc:token_factory']); // สร้างได้ 5 ครั้งต่อ 60 นาที
         Route::post('/upload-logo', [TokenFactoryApiController::class, 'uploadLogo'])
             ->middleware('throttle:10,60');
     });
@@ -411,14 +411,14 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     });
 
     // Bridge — write operations (ต้อง verify wallet)
-    Route::post('/bridge/initiate', [BridgeApiController::class, 'initiate']);
+    Route::post('/bridge/initiate', [BridgeApiController::class, 'initiate'])->middleware('kyc:bridge');
     Route::post('/bridge/retry/{id}', [BridgeApiController::class, 'retry']);
     // แนบ tx hash เข้ารายการที่จองไว้ — ต้องจองก่อนโอนเหรียญเสมอ ดูเหตุผลใน attachTx()
     Route::post('/bridge/{id}/tx', [BridgeApiController::class, 'attachTx'])->where('id', '[0-9]+');
 
     // Staking — write operations (ต้อง verify wallet)
     Route::prefix('staking')->group(function () {
-        Route::post('/stake', [StakingApiController::class, 'stake']);
+        Route::post('/stake', [StakingApiController::class, 'stake'])->middleware('kyc:masternode');
         Route::post('/claim/{id}', [StakingApiController::class, 'claim']);
         Route::post('/unstake/{id}', [StakingApiController::class, 'unstake']);
     });
@@ -434,13 +434,22 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     Route::prefix('ai-bot')->middleware(['throttle:30,1'])->group(function () {
         Route::get('/status', [AiBotController::class, 'status']);
         Route::get('/credits', [AiBotController::class, 'credits']);
-        Route::post('/welcome', [AiBotController::class, 'claimWelcome']);
-        Route::post('/topup', [AiBotController::class, 'topup']);
-        Route::post('/subscribe', [AiBotController::class, 'subscribe']);
+        /*
+         * ด่าน KYC ลงเฉพาะปลายทางที่ "ได้ของ" ไม่ใช่ปลายทางที่แค่อ่านสถานะ
+         *
+         * ถ้าไปแปะที่ /status หรือ /credits ด้วย หน้า AI Trade จะพังทั้งหน้า
+         * ผู้ใช้ที่ยังไม่ยืนยันตัวตนจะเปิดดูไม่ได้เลยว่ามีอะไรให้ใช้บ้าง
+         * ซึ่งเท่ากับปิดไม่ให้เขารู้ว่าต้องยืนยันตัวตนไปเพื่ออะไร
+         *
+         * /welcome อยู่ในด่านด้วย เพราะเป็นเครดิตฟรี — ไม่มีด่านก็เปิดบัญชีรับซ้ำได้ไม่จำกัด
+         */
+        Route::post('/welcome', [AiBotController::class, 'claimWelcome'])->middleware('kyc:ai_bot');
+        Route::post('/topup', [AiBotController::class, 'topup'])->middleware('kyc:ai_bot');
+        Route::post('/subscribe', [AiBotController::class, 'subscribe'])->middleware('kyc:ai_bot');
         Route::post('/cancel', [AiBotController::class, 'cancel']);
 
         Route::get('/bots', [AiBotController::class, 'index']);
-        Route::post('/bots', [AiBotController::class, 'store']);
+        Route::post('/bots', [AiBotController::class, 'store'])->middleware('kyc:ai_bot');
         Route::put('/bots/{id}', [AiBotController::class, 'update'])->where('id', '[0-9]+');
         Route::post('/bots/{id}/state', [AiBotController::class, 'setState'])->where('id', '[0-9]+');
         Route::post('/bots/{id}/mode', [AiBotController::class, 'setMode'])->where('id', '[0-9]+');

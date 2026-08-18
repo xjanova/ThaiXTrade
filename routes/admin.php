@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FeeController;
 use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\FoodPassportController;
+use App\Http\Controllers\Admin\KycController as AdminKycController;
 use App\Http\Controllers\Admin\LanguageController;
 use App\Http\Controllers\Admin\MasterNodeAdminController;
 use App\Http\Controllers\Admin\MasternodeAllowlistController;
@@ -40,6 +41,7 @@ use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
 use App\Http\Controllers\Admin\TreasuryController;
 use App\Http\Controllers\Admin\ValidatorAdminController;
+use App\Http\Controllers\KycDocumentController;
 use App\Models\WalletConnection;
 use App\Services\UserWalletService;
 use Illuminate\Support\Facades\Route;
@@ -93,6 +95,29 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::put('trading-fees/settings', [TradingFeeTierController::class, 'updateSettings'])->name('trading-fees.settings');
         Route::put('trading-fees/{tier}', [TradingFeeTierController::class, 'update'])->name('trading-fees.update');
         Route::delete('trading-fees/{tier}', [TradingFeeTierController::class, 'destroy'])->name('trading-fees.destroy');
+
+        /*
+         * ยืนยันตัวตน (KYC) — คิวตรวจ + ด่านรายฟีเจอร์ + คำขอลบข้อมูล
+         *
+         * ⚠️ ลำดับสำคัญ: settings / deletions ต้องมาก่อน {uuid}
+         *    ไม่งั้น Laravel จับคู่ /admin/kyc/settings เป็น uuid = "settings"
+         *    แล้ววิ่งเข้า show() → 404 ทั้งที่หน้ามีอยู่จริง
+         */
+        Route::prefix('kyc')->name('kyc.')->group(function () {
+            Route::get('/', [AdminKycController::class, 'index'])->name('index');
+            Route::put('settings', [AdminKycController::class, 'updateSettings'])->name('settings');
+
+            Route::get('deletions', [AdminKycController::class, 'deletionRequests'])->name('deletions');
+            Route::post('deletions/{deletionRequest}/complete', [AdminKycController::class, 'completeDeletion'])->name('deletions.complete');
+            Route::post('deletions/{deletionRequest}/reject', [AdminKycController::class, 'rejectDeletion'])->name('deletions.reject');
+
+            // เปิดดูรูปบัตร — บันทึกทุกครั้งว่าใครเปิด (PDPA ต้องตอบได้)
+            Route::get('documents/{document}', [KycDocumentController::class, 'admin'])->name('document');
+
+            Route::get('{uuid}', [AdminKycController::class, 'show'])->name('show');
+            Route::post('{uuid}/approve', [AdminKycController::class, 'approve'])->name('approve');
+            Route::post('{uuid}/reject', [AdminKycController::class, 'reject'])->name('reject');
+        });
 
         // Fees
         Route::resource('fees', FeeController::class)->except(['create', 'show', 'edit']);

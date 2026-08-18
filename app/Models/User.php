@@ -91,6 +91,24 @@ class User extends Authenticatable
         return $this->hasMany(self::class, 'referred_by');
     }
 
+    public function kycSubmissions(): HasMany
+    {
+        return $this->hasMany(KycSubmission::class);
+    }
+
+    public function kycDeletionRequests(): HasMany
+    {
+        return $this->hasMany(KycDeletionRequest::class);
+    }
+
+    /**
+     * ใบยืนยันตัวตนล่าสุด — ใบที่มีผลกับสถานะปัจจุบัน.
+     */
+    public function latestKycSubmission(): ?KycSubmission
+    {
+        return $this->kycSubmissions()->latest('id')->first();
+    }
+
     // === Scopes ===
 
     public function scopeActive($query)

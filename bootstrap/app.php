@@ -9,6 +9,7 @@ use App\Http\Middleware\AdminAuth;
 use App\Http\Middleware\AdminRole;
 use App\Http\Middleware\AuditAdmin;
 use App\Http\Middleware\EnsureEmailIsVerified;
+use App\Http\Middleware\EnsureKycApproved;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\TurnstileVerify;
@@ -76,6 +77,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.role' => AdminRole::class,
             'admin.audit' => AuditAdmin::class,
             'turnstile' => TurnstileVerify::class,
+            // ใช้แบบ ->middleware('kyc:ai_bot') — ชื่อฟีเจอร์อยู่ใน config/kyc.php
+            'kyc' => EnsureKycApproved::class,
         ]);
 
         // Rate limiting for trading endpoints

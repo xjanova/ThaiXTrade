@@ -11,6 +11,8 @@ use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\SocialController;
 use App\Http\Controllers\CarbonCreditController;
 use App\Http\Controllers\FoodPassportController;
+use App\Http\Controllers\KycController;
+use App\Http\Controllers\KycDocumentController;
 use App\Http\Controllers\LaunchController;
 use App\Http\Controllers\MasterNodeController;
 use App\Http\Controllers\ProfileController;
@@ -70,6 +72,30 @@ Route::middleware('auth')->group(function () {
     Route::delete('auth/{provider}/unlink', [SocialController::class, 'unlink'])
         ->where('provider', 'google|facebook|line')
         ->name('social.unlink');
+
+    /*
+     * ยืนยันตัวตน (KYC)
+     *
+     * อยู่หลัง 'auth' ทั้งชุดเพราะการยืนยันตัวตนผูกกับ "บัญชี" ไม่ใช่กระเป๋า
+     * กระเป๋าสร้างใหม่ฟรีไม่จำกัด ด่านที่ผูกกับกระเป๋าจึงไม่กันอะไรเลย
+     *
+     * throttle ที่ store: อัปโหลดรูปหลายใบกินทั้งแบนด์วิดท์และพื้นที่ดิสก์
+     * และการตรวจต้องใช้คนจริง — ยิงรัวๆ ได้เท่ากับถล่มคิวทีมงาน
+     */
+    Route::prefix('kyc')->name('kyc.')->group(function () {
+        Route::get('/', [KycController::class, 'index'])->name('index');
+        Route::post('/', [KycController::class, 'store'])->name('store')->middleware('throttle:10,60');
+        Route::post('/{uuid}/cancel', [KycController::class, 'cancel'])->name('cancel');
+
+        // PDPA — สิทธิของเจ้าของข้อมูล
+        Route::get('/export', [KycController::class, 'export'])->name('export')->middleware('throttle:5,60');
+        Route::post('/deletion-request', [KycController::class, 'requestDeletion'])
+            ->name('deletion-request')
+            ->middleware('throttle:5,60');
+
+        // เจ้าของเปิดดูเอกสารตัวเองเพื่อตรวจทานว่าส่งรูปถูกใบ
+        Route::get('/documents/{document}', [KycDocumentController::class, 'owner'])->name('document');
+    });
 });
 
 // Home

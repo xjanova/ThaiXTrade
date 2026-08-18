@@ -3,6 +3,8 @@
 namespace App\Http\Middleware;
 
 use App\Models\SiteSetting;
+use App\Models\User;
+use App\Services\Kyc\KycGate;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -65,8 +67,25 @@ class HandleInertiaRequests extends Middleware
                     'avatar' => $request->user()->avatar,
                     'wallet_address' => $request->user()->wallet_address,
                     'has_password' => $request->user()->password !== null,
+                    'kyc_status' => $request->user()->kyc_status,
                 ] : null,
             ],
+            /*
+             * สถานะด่านยืนยันตัวตนของทุกฟีเจอร์ ส่งไปกับทุกหน้า
+             *
+             * ⚠️ instanceof User ไม่ใช่ความระแวงเกินเหตุ
+             *    หน้าหลังบ้านก็เป็น Inertia และใช้ guard 'admin' — ตรงนั้น $request->user()
+             *    คืน AdminUser ไม่ใช่ User ส่งเข้าไปตรงๆ แล้วหลังบ้านพังทุกหน้า
+             *    (เกิดจริงตอนเขียน จับได้ด้วยเทสต์ของหน้าตั้งค่าที่มีอยู่แล้ว)
+             *
+             * ⚠️ อันนี้มีไว้ปิดปุ่มให้ผู้ใช้รู้ตัวก่อนกด ไม่ใช่ตัวกัน
+             *    ตัวกันจริงคือ middleware 'kyc:<feature>' ที่ route
+             */
+            'kyc' => function () use ($request) {
+                $user = $request->user();
+
+                return app(KycGate::class)->statusFor($user instanceof User ? $user : null);
+            },
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
