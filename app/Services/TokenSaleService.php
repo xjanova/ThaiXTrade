@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\PurchaseException;
 use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\TokenSale;
@@ -154,10 +155,10 @@ class TokenSaleService
 
         // ตรวจสอบว่า sale และ phase ยัง active
         if ($sale->status !== 'active') {
-            throw new \Exception('Token sale is not active.');
+            throw new PurchaseException('Token sale is not active.');
         }
         if ($phase->status !== 'active') {
-            throw new \Exception('This phase is not active.');
+            throw new PurchaseException('This phase is not active.');
         }
 
         // ★ ด่านช่วงเวลา — ต้องตรงกับ getActivePhase() ไม่งั้นเฟสที่ปิดไปแล้ว
@@ -165,10 +166,10 @@ class TokenSaleService
         // แต่ backend ยังรับ) = รับเงินเข้ารอบที่ประกาศปิดไปแล้ว
         $now = now();
         if ($phase->starts_at !== null && $phase->starts_at->gt($now)) {
-            throw new \Exception('This phase has not started yet.');
+            throw new PurchaseException('This phase has not started yet.');
         }
         if ($phase->ends_at !== null && $phase->ends_at->lt($now)) {
-            throw new \Exception('This phase has already ended.');
+            throw new PurchaseException('This phase has already ended.');
         }
 
         // ตรวจสอบ whitelist (ถ้า phase ต้อง whitelist)
@@ -177,13 +178,13 @@ class TokenSaleService
                 ->where('wallet_address', strtolower($walletAddress))
                 ->first();
             if (! $entry) {
-                throw new \Exception('Your wallet is not whitelisted for this phase.');
+                throw new PurchaseException('Your wallet is not whitelisted for this phase.');
             }
         }
 
         // ตรวจ tx_hash ซ้ำแบบเร็วก่อน (ด่านจริงคือ unique index ในฐานข้อมูล)
         if (SaleTransaction::where('tx_hash', $txHash)->exists()) {
-            throw new \Exception('This transaction has already been processed.');
+            throw new PurchaseException('This transaction has already been processed.');
         }
 
         /*
@@ -214,7 +215,7 @@ class TokenSaleService
                 'claimed_amount' => $amount,
             ]);
 
-            throw new \Exception($this->purchaseErrorMessage($verification));
+            throw new PurchaseException($this->purchaseErrorMessage($verification));
         }
 
         // ยอดและสกุลที่ใช้ออกเหรียญ = ของจริงบนเชน ไม่ใช่ของที่ผู้ซื้อกรอก
@@ -235,15 +236,15 @@ class TokenSaleService
         $tpixAmount = $conversion['tpix_amount'];
 
         if ($tpixAmount <= 0) {
-            throw new \Exception('Unable to price this payment right now. Please contact support.');
+            throw new PurchaseException('Unable to price this payment right now. Please contact support.');
         }
 
         // ตรวจสอบ min/max purchase (ก่อน lock เพื่อลด contention)
         if ($tpixAmount < (float) $phase->min_purchase) {
-            throw new \Exception("Minimum purchase is {$phase->min_purchase} TPIX.");
+            throw new PurchaseException("Minimum purchase is {$phase->min_purchase} TPIX.");
         }
         if ((float) $phase->max_purchase > 0 && $tpixAmount > (float) $phase->max_purchase) {
-            throw new \Exception("Maximum purchase is {$phase->max_purchase} TPIX.");
+            throw new PurchaseException("Maximum purchase is {$phase->max_purchase} TPIX.");
         }
 
         // ★ ATOMIC: ตรวจ allocation + บันทึก + อัปเดต counters ใน transaction เดียว
@@ -253,7 +254,7 @@ class TokenSaleService
                 // Pessimistic lock — ตรวจ allocation ภายใต้ lock
                 $lockedPhase = SalePhase::lockForUpdate()->find($phase->id);
                 if ($tpixAmount > $lockedPhase->remaining_allocation) {
-                    throw new \Exception('Insufficient allocation in this phase. Only '.number_format($lockedPhase->remaining_allocation, 2).' TPIX remaining.');
+                    throw new PurchaseException('Insufficient allocation in this phase. Only '.number_format($lockedPhase->remaining_allocation, 2).' TPIX remaining.');
                 }
 
                 // เพดานสะสมต่อกระเป๋าในเฟส whitelist — เดิมตั้งค่าไว้แต่ไม่เคยบังคับใช้
@@ -270,7 +271,7 @@ class TokenSaleService
                             ->sum('tpix_amount');
 
                         if ($already + $tpixAmount > $cap) {
-                            throw new \Exception('This purchase exceeds your allocation for this phase.');
+                            throw new PurchaseException('This purchase exceeds your allocation for this phase.');
                         }
                     }
                 }
@@ -326,7 +327,7 @@ class TokenSaleService
             });
         } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
             // ยิงขนานมาหลายคำขอด้วย tx เดียว — ใบแรกชนะ ที่เหลือถูกฐานข้อมูลปัด
-            throw new \Exception('This transaction has already been processed.');
+            throw new PurchaseException('This transaction has already been processed.');
         }
     }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Exceptions\PurchaseException;
 use App\Models\SaleTransaction;
 use App\Models\TreasuryPayout;
 use App\Services\PriceFeedService;
@@ -178,7 +179,20 @@ class TokenSaleApiController extends Controller
                     'created_at' => $transaction->created_at->toIso8601String(),
                 ],
             ], 201);
+        } catch (PurchaseException $e) {
+            // ข้อความจากคลาสนี้เขียนไว้ให้ผู้ซื้ออ่านโดยเฉพาะ — ต้องส่งถึงเขาจริง
+            // ไม่งั้นคนที่โอนเงินแล้วแต่ต้องรอ confirmation จะเห็นแค่ "ล้มเหลว"
+            // แล้วคิดว่าเงินหาย
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'PURCHASE_REJECTED', 'message' => $e->getMessage()],
+            ], 422);
         } catch (\Exception $e) {
+            Log::warning('token-sale: purchase ล้มเหลวโดยไม่คาดคิด', [
+                'wallet' => $data['wallet_address'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'success' => false,
                 'error' => ['code' => 'PURCHASE_ERROR', 'message' => 'Operation failed. Please try again.'],

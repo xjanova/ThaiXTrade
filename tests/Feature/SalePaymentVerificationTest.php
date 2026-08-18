@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\PurchaseException;
 use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\TokenSale;
