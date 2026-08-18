@@ -182,8 +182,16 @@ jobs:
             php artisan queue:restart 2>/dev/null || true
 
             # Setup cron for Laravel Scheduler (content auto-generation)
-            CRON_CMD="cd $(pwd) && php artisan schedule:run >> /dev/null 2>&1"
-            (crontab -l 2>/dev/null | grep -v "artisan schedule:run"; echo "* * * * * $CRON_CMD") | sort -u | crontab - 2>/dev/null || echo "⚠️ Cron setup skipped (no crontab access)"
+            # NOTE: this box hosts ~20 Laravel apps under the same 'admin' user.
+            # The old filter was  grep -v "artisan schedule:run"  which deleted EVERY
+            # app schedule:run line on the machine and re-added only this one, silently
+            # killing every other app scheduler on each deploy (confirmed 2026-08-18:
+            # main.thaiprompt.online died 6 times in 3 days, netwix.online stayed dead
+            # for 2 days 20 hours). Scope the filter to THIS app directory only,
+            # and drop 'sort -u' so other apps keep their original ordering.
+            APP_DIR="$(pwd)"
+            CRON_CMD="cd $APP_DIR && php artisan schedule:run >> /dev/null 2>&1"
+            (crontab -l 2>/dev/null | awk -v p="$APP_DIR" '!(index($0, p) && index($0, "artisan schedule:run"))'; echo "* * * * * $CRON_CMD") | crontab - 2>/dev/null || echo "⚠️ Cron setup skipped (no crontab access)"
             echo "✅ Laravel scheduler cron configured"
 
             echo "✅ Deployment completed successfully!"
