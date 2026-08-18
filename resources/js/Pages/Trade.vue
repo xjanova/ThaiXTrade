@@ -878,6 +878,7 @@ onUnmounted(() => {
                                 :ticker-price="ticker?.price || 0"
                                 :selected-price="selectedPrice"
                                 :is-wallet-connected="walletStore.isConnected"
+                                :wallet-address="walletStore.address"
                                 :is-submitting="isSubmitting"
                                 :balances="formBalances"
                                 :mode="tradeFormMode"

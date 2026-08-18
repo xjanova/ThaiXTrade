@@ -14,6 +14,9 @@ import { useElementSize } from '@vueuse/core';
 import { playClickSound } from '@/Composables/useSounds';
 import { useTranslation } from '@/Composables/useTranslation';
 import axios from 'axios';
+import OrderFeeNotice from '@/Components/Trading/OrderFeeNotice.vue';
+import TpixTopupModal from '@/Components/Trading/TpixTopupModal.vue';
+import { useTradingFee } from '@/Composables/useTradingFee';
 
 const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
@@ -34,6 +37,13 @@ const props = defineProps({
     mode: { type: String, default: 'internal' },
     // ตัวเลข preview จาก quote จริงของ router (parent format มาให้พร้อมแสดง)
     marketPreview: { type: Object, default: null },
+    /**
+     * เลขกระเป๋าที่เชื่อมอยู่ — ใช้ถามค่าบริการวางไม้และยอดเครดิต
+     *
+     * รับผ่าน prop ไม่ดึงจาก store เอง: คอมโพเนนต์นี้ตั้งใจให้ mount ทดสอบได้
+     * โดยไม่ต้องตั้ง Pinia และรับสถานะกระเป๋าทาง prop อยู่แล้ว (isWalletConnected)
+     */
+    walletAddress: { type: String, default: null },
 });
 
 const emit = defineEmits(['submit-order', 'connect-wallet', 'form-change']);
@@ -325,11 +335,74 @@ const setMarketPrice = () => {
     }
 };
 
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ค่าบริการวางไม้ (เครดิต TPIX) — เก็บก่อนวางไม้ ไม่ใช่หลังปิดไม้
+ * ═══════════════════════════════════════════════════════════════════════════
+ * เจ้าของกำหนด: ต้องมี TPIX ในคลังก่อนถึงวางไม้ได้ · ไม่มีก็เทรดได้แต่จ่ายแพงกว่า
+ * และคืนเงินโดนหักค่าแก๊ส · ความต่างนี้ต้องเห็นก่อนกดยืนยันทุกครั้ง
+ */
+const tradingFee = useTradingFee();
+const feeMethod = ref('tpix_credit');
+const showTopup = ref(false);
+
+/** มูลค่าไม้เป็น USD — คู่ที่เทียบด้วย USDT ถือว่าเท่ากับดอลลาร์ */
+const orderValueUsd = computed(() => {
+    const gross = toNumber(total.value);
+    return gross > 0 ? gross : toNumber(amount.value) * effectivePrice.value;
+});
+
+/** ขอใบเสนอราคาใหม่เมื่อขนาดไม้เปลี่ยน — หน่วงไว้ไม่ให้ยิงทุกตัวอักษรที่พิมพ์ */
+let feeQuoteTimer = null;
+watch([orderValueUsd, () => props.symbol, () => props.walletAddress], () => {
+    clearTimeout(feeQuoteTimer);
+    feeQuoteTimer = setTimeout(() => {
+        tradingFee.quote({
+            wallet: props.walletAddress,
+            orderValueUsd: orderValueUsd.value,
+            chainId: 56,
+            pair: props.symbol,
+        });
+    }, 400);
+});
+
+/*
+ * เครดิตไม่พอ + เลือกจ่ายด้วย TPIX = วางไม้ไม่ได้
+ *
+ * ⚠️ ไม่ปิดปุ่มถ้าเขาเลือกจ่ายเป็นเหรียญ — เจ้าของสั่งว่าไม่มี TPIX ก็ยังเทรดได้
+ *    แค่จ่ายแพงกว่า การปิดประตูใส่ผู้ใช้ใหม่ทั้งหมดไม่ใช่สิ่งที่ต้องการ
+ */
+const feeBlocked = computed(() => {
+    if (tradingFee.currentQuote.value?.enabled !== true) return false;
+    if (feeMethod.value !== 'tpix_credit') return false;
+
+    return tradingFee.canPayWithCredit.value !== true;
+});
+
+const feeBlockedReason = computed(() => {
+    if (!feeBlocked.value) return '';
+    const q = tradingFee.currentQuote.value?.tpix;
+    if (q?.available !== true) return q?.reason || 'ยังใช้ค่าบริการแบบ TPIX ไม่ได้';
+
+    return `เครดิตไม่พอ — ขาดอีก ${tradingFee.creditShortfall.value} TPIX`;
+});
+
+/** ระบบแนะนำทางไหน ก็ตั้งให้ตรงนั้นเป็นค่าเริ่มต้น (ผู้ใช้เปลี่ยนเองได้) */
+watch(() => tradingFee.recommended.value, (rec) => {
+    if (rec) feeMethod.value = rec;
+});
+
 const submitOrder = () => {
     if (props.isSubmitting) return;
 
     if (!isConnected.value) {
         emit('connect-wallet');
+        return;
+    }
+
+    // เครดิตไม่พอสำหรับทางที่เลือก — พาไปเติมแทนที่จะปล่อยให้กดแล้วพัง
+    if (feeBlocked.value) {
+        showTopup.value = true;
         return;
     }
 
@@ -342,6 +415,9 @@ const submitOrder = () => {
         amount: amount.value,
         total: total.value,
         slippage: slippage.value,
+        // ทางจ่ายค่าบริการ — parent เอาไปขอใบอนุญาตก่อนเซ็นธุรกรรมของไม้
+        feeMethod: feeMethod.value,
+        orderValueUsd: orderValueUsd.value,
     });
 };
 </script>
@@ -587,6 +663,20 @@ const submitOrder = () => {
                 </template>
             </div>
 
+            <!--
+                ค่าบริการวางไม้ — ต้องเห็นก่อนกดยืนยันเสมอ
+                เจ้าของสั่งว่า "ต้องชี้แจงรายละเอียดให้ครบ" และ "แนะนำให้ใช้ TPIX"
+            -->
+            <OrderFeeNotice
+                v-if="isConnected"
+                class="mb-3"
+                :quote="tradingFee.currentQuote.value"
+                :method="feeMethod"
+                :quote-symbol="quoteSymbol"
+                @select-method="feeMethod = $event"
+                @topup="showTopup = true"
+            />
+
             <button
                 type="button"
                 :disabled="isSubmitting"
@@ -595,9 +685,11 @@ const submitOrder = () => {
                     isSubmitting ? 'opacity-60 cursor-not-allowed' : '',
                     !isConnected
                         ? 'bg-primary-500 hover:bg-primary-600 text-white'
-                        : activeTab === 'buy'
-                            ? 'btn-success'
-                            : 'btn-danger'
+                        : feeBlocked
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
+                            : activeTab === 'buy'
+                                ? 'btn-success'
+                                : 'btn-danger'
                 ]"
                 @click="submitOrder"
             >
@@ -605,10 +697,23 @@ const submitOrder = () => {
                 {{
                     isSubmitting ? t('trade.form.processing')
                     : !isConnected ? t('trade.form.connectWallet')
+                    : feeBlocked ? 'เติมเครดิต TPIX เพื่อวางไม้'
                     : activeTab === 'buy' ? t('trade.form.buySymbol', { symbol: baseSymbol })
                     : t('trade.form.sellSymbol', { symbol: baseSymbol })
                 }}
             </button>
+
+            <!-- ปุ่มไม่ได้ตายเฉยๆ — บอกว่าขาดอะไรและกดแล้วไปไหนต่อ -->
+            <p v-if="feeBlocked" class="mt-1.5 text-[11px] text-amber-300/90 text-center leading-relaxed">
+                {{ feeBlockedReason }}
+            </p>
+
+            <TpixTopupModal
+                v-if="showTopup"
+                :show="showTopup"
+                @close="showTopup = false"
+                @credited="tradingFee.quote({ wallet: walletAddress, orderValueUsd, chainId: 56, pair: symbol })"
+            />
 
             <!-- TP/SL — ยังไม่มีจริงในโหมด onchain (AMM) จึงซ่อนไว้ -->
             <div v-if="mode !== 'onchain'" class="mt-3 flex items-center justify-between text-xs">

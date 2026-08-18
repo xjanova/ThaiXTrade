@@ -35,6 +35,7 @@ use App\Http\Controllers\Admin\SystemAlertController;
 use App\Http\Controllers\Admin\TokenController;
 use App\Http\Controllers\Admin\TokenFactoryController;
 use App\Http\Controllers\Admin\TokenSaleController;
+use App\Http\Controllers\Admin\TradingFeeTierController;
 use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
 use App\Http\Controllers\Admin\TreasuryController;
@@ -80,6 +81,18 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('settings/advisor/test', [SettingController::class, 'testAdvisor'])
             ->middleware('throttle:10,1')
             ->name('settings.advisor.test');
+
+        /*
+         * ค่าบริการวางไม้ (เครดิต TPIX)
+         *
+         * แยกหน้าจาก /admin/settings เพราะขั้นบันไดเป็นรายการที่เพิ่ม/ลบได้
+         * ไม่ใช่ฟอร์มค่าคงที่ — และต้องเห็นทั้งตารางพร้อมกันถึงจะรู้ว่าช่วงไหนขาด
+         */
+        Route::get('trading-fees', [TradingFeeTierController::class, 'index'])->name('trading-fees.index');
+        Route::post('trading-fees', [TradingFeeTierController::class, 'store'])->name('trading-fees.store');
+        Route::put('trading-fees/settings', [TradingFeeTierController::class, 'updateSettings'])->name('trading-fees.settings');
+        Route::put('trading-fees/{tier}', [TradingFeeTierController::class, 'update'])->name('trading-fees.update');
+        Route::delete('trading-fees/{tier}', [TradingFeeTierController::class, 'destroy'])->name('trading-fees.destroy');
 
         // Fees
         Route::resource('fees', FeeController::class)->except(['create', 'show', 'edit']);
