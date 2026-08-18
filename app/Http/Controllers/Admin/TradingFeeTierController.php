@@ -135,12 +135,17 @@ class TradingFeeTierController extends Controller
             'ticket_ttl_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
         ]);
 
+        /*
+         * ⚠️ คอลัมน์ type เป็น enum: string · text · boolean · number · json · image
+         *    ใส่ค่านอกรายการนี้ = CHECK constraint ปฏิเสธทั้งคำขอ หน้าจอขึ้น error
+         *    ที่อ่านไม่รู้เรื่อง (เคยพลาดใส่ 'integer' มาแล้ว — เทสต์จับได้)
+         */
         SiteSetting::set('trading', 'tpix_fee_enabled', $validated['tpix_fee_enabled'] ? '1' : '0', 'boolean');
         SiteSetting::set('trading', 'tpix_topup_wallet', strtolower((string) ($validated['tpix_topup_wallet'] ?? '')));
-        SiteSetting::set('trading', 'tpix_topup_chain_id', (string) $validated['tpix_topup_chain_id'], 'integer');
-        SiteSetting::set('trading', 'tpix_min_topup', (string) $validated['tpix_min_topup']);
-        SiteSetting::set('trading', 'refund_gas_fee', (string) $validated['refund_gas_fee']);
-        SiteSetting::set('trading', 'ticket_ttl_minutes', (string) $validated['ticket_ttl_minutes'], 'integer');
+        SiteSetting::set('trading', 'tpix_topup_chain_id', (string) $validated['tpix_topup_chain_id'], 'number');
+        SiteSetting::set('trading', 'tpix_min_topup', (string) $validated['tpix_min_topup'], 'number');
+        SiteSetting::set('trading', 'refund_gas_fee', (string) $validated['refund_gas_fee'], 'number');
+        SiteSetting::set('trading', 'ticket_ttl_minutes', (string) $validated['ticket_ttl_minutes'], 'number');
 
         SiteSetting::clearCache();
         AuditLog::log('trading_fee.settings.update', null, null, $validated);

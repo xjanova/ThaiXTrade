@@ -29,6 +29,7 @@ import DraggableCard from '@/Components/Trading/DraggableCard.vue';
 import PageArt from '@/Components/PageArt.vue';
 import { useBinanceData } from '@/Composables/useBinanceData';
 import { useSwap } from '@/Composables/useSwap';
+import { useTradingFee } from '@/Composables/useTradingFee';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useWalletBalance } from '@/Composables/useWalletBalance';
 import { useTradeLayout, COLUMNS } from '@/Composables/useTradeLayout';
@@ -303,6 +304,7 @@ async function fetchTpixData() {
 const walletStore = useWalletStore();
 const { balances, fetchBalances } = useWalletBalance();
 const swap = useSwap();
+const tradingFee = useTradingFee();
 
 // ── เทรดจริงบน BSC (market order → PancakeSwap) ─────────────────────────────
 
@@ -483,6 +485,9 @@ async function executeBscMarketOrder(order) {
     orderMessage.value = t('trade.status.preparing');
     orderTxUrl.value = null;
 
+    // ใบอนุญาตวางไม้ที่ขอไว้ — ต้องคืนเงินถ้าไม้ไม่ได้ลง (ดู finally)
+    let ticket = null;
+
     try {
         // 1) ตรวจ token address กับ on-chain (symbol + decimals) — ไม่ผ่าน = ไม่เทรด
         const fromSym = order.side === 'buy' ? quoteSymbol.value : baseSymbol.value;
@@ -533,13 +538,50 @@ async function executeBscMarketOrder(order) {
             }
         }
 
-        // 6) ส่ง swap จริง — executeSwap เก็บ platform fee + บันทึก backend ให้แล้ว
+        /*
+         * 6) ขอใบอนุญาตวางไม้ — ค่าบริการถูกเก็บตรงนี้
+         *
+         * ⚠️ ต้องขอตรงนี้ ไม่ใช่ตั้งแต่ต้น
+         *    ขั้น 1-5 ล้มด้วยเหตุที่ไม่เกี่ยวกับค่าบริการได้ (ไม่มีสภาพคล่อง ·
+         *    ราคาเพี้ยน · ผู้ใช้กดยกเลิกตอนสลับเชนหรือ approve) เก็บเงินก่อน
+         *    แล้วคืนวนไปมาทุกครั้งไม่มีประโยชน์กับใคร
+         *
+         * ⚠️ ได้ใบแล้วต้องปิดบัญชีให้จบทุกทาง — สำเร็จ = ใช้ตั๋ว · ล้ม = คืนเงิน
+         *    ปล่อยค้างเมื่อไหร่ = ผู้ใช้เสีย TPIX โดยไม่ได้อะไรเลย
+         */
+        const feeQuoteEnabled = tradingFee.currentQuote.value?.enabled === true;
+        const orderValueUsd = Number(order.orderValueUsd) > 0 ? Number(order.orderValueUsd) : totalVal;
+
+        if (feeQuoteEnabled && orderValueUsd > 0) {
+            orderMessage.value = t('trade.status.preparing');
+            ticket = await tradingFee.issueTicket({
+                wallet: walletStore.address,
+                pair: currentPair.value,
+                side: order.side,
+                orderValueUsd,
+                chainId: BSC_CHAIN_ID,
+                method: order.feeMethod === 'onchain' ? 'onchain' : 'tpix_credit',
+            });
+
+            // ไม่ได้ใบ = วางไม้ไม่ได้ ตามที่เจ้าของกำหนด — บอกเหตุผลตรงๆ
+            if (!ticket) {
+                throw friendly(tradingFee.error.value || 'ขอใบอนุญาตวางไม้ไม่สำเร็จ');
+            }
+        }
+
+        // 7) ส่ง swap จริง — executeSwap เก็บ platform fee + บันทึก backend ให้แล้ว
         //    slippage ที่ผู้ใช้เลือกในฟอร์มมีผลจริงกับ minOut ที่ส่งเข้า router
         orderMessage.value = order.side === 'buy' ? t('trade.status.confirmBuy') : t('trade.status.confirmSell');
         const slippage = Number.isFinite(Number(order.slippage)) && order.slippage !== null
             ? Number(order.slippage)
             : quote.slippage;
         const result = await swap.executeSwap(fromTok, toTok, inputAmount, quote, slippage);
+
+        // ไม้ลงจริงแล้ว — ปิดใบอนุญาต (ตั้งค่า null กัน finally คืนเงินซ้ำ)
+        if (ticket) {
+            await tradingFee.consumeTicket(walletStore.address, ticket.uuid, result?.hash || null);
+            ticket = null;
+        }
 
         orderStatus.value = 'success';
         orderMessage.value = order.side === 'buy'
@@ -556,6 +598,20 @@ async function executeBscMarketOrder(order) {
         orderMessage.value = err?.isFriendly ? err.message : (swap.error.value || t('trade.status.failed'));
         playErrorSound();
     } finally {
+        /*
+         * ⚠️ ใบอนุญาตที่ยังค้าง = เงินที่หักไปแล้วแต่ไม่มีไม้ลง ต้องคืนทุกกรณี
+         *
+         * อยู่ใน finally ไม่ใช่ catch เพราะทางที่ออกจาก try ได้มีมากกว่าการ throw
+         * (ผู้ใช้กดยกเลิกในกระเป๋าเป็นเคสที่เกิดบ่อยที่สุด และมาถึงตรงนี้เสมอ)
+         *
+         * ตัวเก็บกวาดฝั่งเซิร์ฟเวอร์คืนให้อยู่แล้วเมื่อตั๋วหมดอายุ — ตรงนี้คือคืนทันที
+         * ไม่ให้ผู้ใช้ต้องรอเห็นยอดหายไป 15 นาทีแล้วค่อยกลับมา
+         */
+        if (ticket) {
+            await tradingFee.refundTicket(walletStore.address, ticket.uuid, 'ไม้ไม่ได้ลง');
+            ticket = null;
+        }
+
         isSubmitting.value = false;
         clearTimeout(toastTimer);
         // สำเร็จค้าง toast ไว้นานขึ้นให้กดดู tx ได้
