@@ -160,6 +160,17 @@ class TokenSaleService
             throw new \Exception('This phase is not active.');
         }
 
+        // ★ ด่านช่วงเวลา — ต้องตรงกับ getActivePhase() ไม่งั้นเฟสที่ปิดไปแล้ว
+        // ยังถูกซื้อได้ด้วยการยิง API ตรงพร้อม phase_id เก่า (หน้าเว็บซ่อนไปแล้ว
+        // แต่ backend ยังรับ) = รับเงินเข้ารอบที่ประกาศปิดไปแล้ว
+        $now = now();
+        if ($phase->starts_at !== null && $phase->starts_at->gt($now)) {
+            throw new \Exception('This phase has not started yet.');
+        }
+        if ($phase->ends_at !== null && $phase->ends_at->lt($now)) {
+            throw new \Exception('This phase has already ended.');
+        }
+
         // คำนวณ TPIX ที่จะได้
         $conversion = $this->priceFeed->convertToTpix($amount, $currency, (float) $phase->price_usd);
         $tpixAmount = $conversion['tpix_amount'];

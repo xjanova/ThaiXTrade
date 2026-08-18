@@ -176,6 +176,26 @@ function handlePurchaseComplete() {
 
         <!-- ===== BUY FORM + INFO ===== -->
         <section id="buy-section" class="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+            <!-- แจ้งเงื่อนไขก่อนจ่ายเงิน — ผู้ซื้อต้องรู้ล่วงหน้าว่าซื้อแล้วขายคืนไม่ได้
+                 และเหรียญทยอยปลดตาม vesting ไม่ได้ครบทันที -->
+            <div class="mb-8 rounded-xl border border-amber-500/30 bg-amber-500/5 p-5">
+                <div class="flex items-start gap-3">
+                    <svg class="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    <div class="text-sm leading-relaxed">
+                        <p class="font-semibold text-amber-300 mb-2">{{ t('tokenSale.riskTitle') }}</p>
+                        <ul class="space-y-1.5 text-gray-300 list-disc list-inside marker:text-amber-500/60">
+                            <li>{{ t('tokenSale.riskOneWay') }}</li>
+                            <li>{{ t('tokenSale.riskVesting') }}</li>
+                            <li>{{ t('tokenSale.riskNetwork') }}</li>
+                            <li>{{ t('tokenSale.riskFinal') }}</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <!-- ฟอร์มซื้อ -->
                 <BuyForm @purchase-complete="handlePurchaseComplete" />

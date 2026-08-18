@@ -355,7 +355,12 @@
         "howToBuy": "How to Buy",
         "noWithdrawal": "⚠️ No cash withdrawal — exchange with USDT only",
         "myPurchases": "My Purchases",
-        "vesting": "Vesting Schedule"
+        "vesting": "Vesting Schedule",
+        "riskTitle": "Please read before you pay",
+        "riskOneWay": "This is a one-way purchase. TPIX bought here cannot be sold back or bridged to BSC yet — the return path opens only after the bridge and DEX go live.",
+        "riskVesting": "You do not receive all tokens at once. A portion unlocks at TGE, the rest unlocks gradually over the vesting period shown for each phase.",
+        "riskNetwork": "Pay only in the accepted currency to the official sale wallet on BNB Smart Chain. Sending from an exchange account or on the wrong network will lose your funds permanently.",
+        "riskFinal": "All purchases are final. There are no refunds once a payment is confirmed on-chain."
     },
     "tokenFactory": {
         "title": "Token Factory",
