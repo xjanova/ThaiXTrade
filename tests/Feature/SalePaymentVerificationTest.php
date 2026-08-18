@@ -297,6 +297,39 @@ class SalePaymentVerificationTest extends TestCase
     }
 
     /**
+     * จ่ายเงินผ่านแล้วแต่โควตาเฟสไม่พอ — ต้องมีร่องรอยไว้ตามคืนเงินได้
+     *
+     * ถ้าไม่บันทึกอะไรเลย ลูกค้าจ่ายเงินจริงแล้วระบบไม่รู้จักรายการนั้น
+     * ฝ่ายซัพพอร์ตตามคืนไม่ได้ มีแต่ tx hash ที่ลูกค้าถืออยู่ฝ่ายเดียว
+     */
+    public function test_verified_payment_that_cannot_be_fulfilled_is_recorded_for_refund(): void
+    {
+        // เหลือโควตาแค่ 1 TPIX แต่จ่ายมา 500 USDT (= 10,000 TPIX)
+        $this->phase->update(['allocation' => 1, 'sold' => 0]);
+
+        $this->fakeRpc(
+            $this->erc20Receipt(self::USDT, '500'),
+            ['from' => self::BUYER, 'to' => self::USDT, 'value' => '0x0'],
+        );
+
+        try {
+            $this->buy('USDT', 500);
+            $this->fail('ควรถูกปฏิเสธเพราะโควตาไม่พอ');
+        } catch (\Throwable $e) {
+            $this->assertStringContainsString('Insufficient allocation', $e->getMessage());
+        }
+
+        $record = SaleTransaction::where('tx_hash', self::TX)->first();
+        $this->assertNotNull($record, 'ต้องมีบันทึกไว้ว่าเงินเข้ามาแล้ว');
+        $this->assertSame('failed', $record->status);
+        $this->assertTrue((bool) ($record->metadata['needs_refund'] ?? false));
+        $this->assertSame(500.0, (float) $record->payment_amount);
+
+        // ต้องไม่ถูกนับเป็นยอดขาย
+        $this->assertSame(0.0, (float) $this->phase->fresh()->sold);
+    }
+
+    /**
      * แม้ด่านเช็คซ้ำในโค้ดจะถูกข้าม (จำลองการยิงขนาน) ฐานข้อมูลต้องกันได้เอง
      */
     public function test_database_rejects_duplicate_tx_hash(): void

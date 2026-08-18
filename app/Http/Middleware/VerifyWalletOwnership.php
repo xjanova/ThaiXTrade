@@ -25,8 +25,17 @@ class VerifyWalletOwnership
 {
     public function handle(Request $request, Closure $next): Response
     {
+        /*
+         * ที่อยู่กระเป๋าอาจมาได้ 3 ทาง: body, query string หรือ route parameter
+         *
+         * ⚠️ เดิมอ่านแค่ body/query ทำให้ route แบบ /purchases/{walletAddress}
+         *    ที่ย้ายมาอยู่หลัง middleware นี้ "ไม่ถูกป้องกันเลย" — middleware
+         *    มองไม่เห็นค่า จึงตกไปเส้นทาง fail-open ด้านล่างทุกครั้ง
+         */
         $walletAddress = $request->input('wallet_address')
-            ?? $request->query('wallet_address');
+            ?? $request->query('wallet_address')
+            ?? $request->route('walletAddress')
+            ?? $request->route('wallet_address');
 
         // If no wallet address in request, let the controller handle it
         if (! $walletAddress) {

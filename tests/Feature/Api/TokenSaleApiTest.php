@@ -194,6 +194,20 @@ class TokenSaleApiTest extends TestCase
     // GET /api/v1/token-sale/purchases/{wallet} — ดึงรายการซื้อ
     // =========================================================================
 
+    /**
+     * จำลองว่ากระเป๋านี้เซ็นยืนยันตัวตนแล้ว
+     *
+     * ประวัติการซื้อ/vesting ไม่ใช่ข้อมูลสาธารณะอีกต่อไป — ต้องยืนยันก่อนดู
+     * ไม่งั้นใครก็ไล่ดูได้ว่ากระเป๋าไหนถือเยอะแล้วเล็งไปหลอกต่อ
+     */
+    private function verifyWallet(string $wallet): void
+    {
+        \Illuminate\Support\Facades\Cache::put('wallet_verified:'.strtolower($wallet), [
+            'verified_at' => now()->toIso8601String(),
+            'ip' => '127.0.0.1',
+        ], 3600);
+    }
+
     public function test_get_purchases_for_wallet(): void
     {
         $wallet = '0xabcdef0123456789abcdef0123456789abcdef01';
@@ -212,6 +226,7 @@ class TokenSaleApiTest extends TestCase
             'vesting_start_at' => now(),
         ]);
 
+        $this->verifyWallet($wallet);
         $response = $this->getJson("/api/v1/token-sale/purchases/{$wallet}");
 
         $response->assertStatus(200)
@@ -223,9 +238,19 @@ class TokenSaleApiTest extends TestCase
     {
         $response = $this->getJson('/api/v1/token-sale/purchases/not-a-wallet');
 
+        // ตอนนี้ middleware ตรวจรูปแบบก่อนถึง controller จึงได้ INVALID_WALLET
         $response->assertStatus(422)
-            ->assertJsonPath('success', false)
-            ->assertJsonPath('error.code', 'INVALID_ADDRESS');
+            ->assertJsonPath('success', false);
+    }
+
+    /**
+     * ยังไม่ยืนยันตัวตน = ดูประวัติการซื้อของกระเป๋าใดไม่ได้เลย
+     */
+    public function test_purchases_require_verified_wallet(): void
+    {
+        $this->getJson('/api/v1/token-sale/purchases/0x'.str_repeat('ab', 20))
+            ->assertStatus(403)
+            ->assertJsonPath('error.code', 'WALLET_NOT_VERIFIED');
     }
 
     // =========================================================================
@@ -250,6 +275,7 @@ class TokenSaleApiTest extends TestCase
             'vesting_start_at' => now(),
         ]);
 
+        $this->verifyWallet($wallet);
         $response = $this->getJson("/api/v1/token-sale/vesting/{$wallet}");
 
         $response->assertStatus(200)

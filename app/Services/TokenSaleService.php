@@ -328,6 +328,84 @@ class TokenSaleService
         } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
             // ยิงขนานมาหลายคำขอด้วย tx เดียว — ใบแรกชนะ ที่เหลือถูกฐานข้อมูลปัด
             throw new PurchaseException('This transaction has already been processed.');
+        } catch (PurchaseException $e) {
+            /*
+             * มาถึงตรงนี้แปลว่า "เงินเข้ากระเป๋าขายแล้วจริง" (ผ่าน verify มาแล้ว)
+             * แต่ออกเหรียญให้ไม่ได้ เช่น โควตาเฟสหมดพอดี หรือเกินเพดานต่อกระเป๋า
+             *
+             * ถ้าไม่บันทึกอะไรเลย ลูกค้าจะจ่ายเงินจริงแล้วไม่มีร่องรอยในระบบ
+             * ฝ่ายซัพพอร์ตตามคืนไม่ได้ มีแต่ tx hash ที่ลูกค้าถืออยู่ฝ่ายเดียว
+             * จึงบันทึกไว้เป็น failed + ตั้งธงว่าต้องคืนเงิน (ไม่บวก sold)
+             */
+            $this->recordUnfulfilledPayment(
+                $sale,
+                $phase,
+                $walletAddress,
+                $paidCurrency,
+                $paidAmount,
+                $conversion,
+                $tpixAmount,
+                $txHash,
+                $verification,
+                $e->getMessage(),
+            );
+
+            throw $e;
+        }
+    }
+
+    /**
+     * บันทึกรายการที่ "จ่ายเงินจริงแล้วแต่ออกเหรียญไม่ได้" ไว้ให้ตามคืนได้.
+     *
+     * ไม่บวก sold และไม่ให้สิทธิ์เคลม — เป็นแค่หลักฐานว่าเงินเข้ามาแล้ว
+     * เพื่อให้แอดมินเห็นในหน้าหลังบ้านแล้วสั่งคืนเงินได้
+     */
+    private function recordUnfulfilledPayment(
+        TokenSale $sale,
+        SalePhase $phase,
+        string $walletAddress,
+        string $paidCurrency,
+        float $paidAmount,
+        array $conversion,
+        float $tpixAmount,
+        string $txHash,
+        array $verification,
+        string $reason,
+    ): void {
+        try {
+            SaleTransaction::create([
+                'token_sale_id' => $sale->id,
+                'sale_phase_id' => $phase->id,
+                'wallet_address' => $walletAddress,
+                'payment_currency' => $paidCurrency,
+                'payment_amount' => $paidAmount,
+                'payment_usd_value' => $conversion['usd_value'],
+                'tpix_amount' => $tpixAmount,
+                'price_per_tpix' => $phase->price_usd,
+                'tx_hash' => $txHash,
+                'status' => 'failed',
+                'metadata' => [
+                    'bsc_verified' => true,
+                    'needs_refund' => true,
+                    'failure_reason' => $reason,
+                    'bsc_block' => $verification['block_number'] ?? null,
+                    'bsc_amount' => $paidAmount,
+                ],
+            ]);
+
+            Log::error('token-sale: รับเงินแล้วแต่ออกเหรียญไม่ได้ — ต้องคืนเงิน', [
+                'tx_hash' => $txHash,
+                'wallet' => $walletAddress,
+                'amount' => $paidAmount,
+                'currency' => $paidCurrency,
+                'reason' => $reason,
+            ]);
+        } catch (\Throwable $t) {
+            // บันทึกไม่ได้ก็ต้องไม่กลบข้อผิดพลาดเดิมของผู้ซื้อ — log ไว้อย่างเดียว
+            Log::critical('token-sale: บันทึกรายการที่ต้องคืนเงินไม่สำเร็จ', [
+                'tx_hash' => $txHash,
+                'error' => $t->getMessage(),
+            ]);
         }
     }
 
