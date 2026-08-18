@@ -45,7 +45,11 @@ return Application::configure(basePath: dirname(__DIR__))
          * รายการพร็อกซีอยู่ใน config/trustedproxy.php พร้อมเหตุผลว่าทำไมไม่ใช้ '*'
          */
         $middleware->trustProxies(
-            at: config('trustedproxy.proxies'),
+            // ⚠️ require ไฟล์ตรงๆ ห้ามใช้ config()
+            //    closure นี้รันตอน resolve HTTP Kernel ซึ่ง "ก่อน" config service ถูกผูก
+            //    เรียก config() ตรงนี้ = fatal ทุกคำขอ HTTP (เว็บล่มทั้งเว็บ)
+            //    และเทสต์จับไม่ได้ เพราะตอนเทสต์ Laravel โหลด config ก่อน resolve kernel
+            at: (require __DIR__.'/../config/trustedproxy.php')['proxies'],
             headers: Request::HEADER_X_FORWARDED_FOR
                 | Request::HEADER_X_FORWARDED_HOST
                 | Request::HEADER_X_FORWARDED_PORT

@@ -60,7 +60,12 @@ $cloudflare = [
     '2c0f:f248::/32',
 ];
 
-$configured = trim((string) env('TRUSTED_PROXIES', ''));
+/*
+ * ⚠️ อ่านจาก $_SERVER/getenv ตรงๆ ไม่ผ่าน env()
+ *    ไฟล์นี้ถูก require ตั้งแต่ตอน bootstrap ก่อน LoadEnvironmentVariables จะทำงาน
+ *    env() ตอนนั้นยังคืนค่าไม่ได้ ค่าที่ตั้งใน .env จะถูกมองข้ามเงียบๆ
+ */
+$configured = trim((string) ($_SERVER['TRUSTED_PROXIES'] ?? $_ENV['TRUSTED_PROXIES'] ?? getenv('TRUSTED_PROXIES') ?: ''));
 
 return [
     /*
