@@ -119,47 +119,62 @@ class SaleTransaction extends Model
     // =========================================================================
 
     /**
-     * จำนวน TPIX ที่ปลดล็อคแล้ว (claimable) ตาม vesting schedule.
+     * จำนวน TPIX ที่ยังเคลมได้ตอนนี้ (ปลดล็อคแล้ว − ที่เคลมไปแล้ว).
+     *
+     * ⚠️ กับดักที่เคยเกิดจริง: เดิมมีทางออก 4 ทางในเมธอดนี้ แต่มีแค่ทางสุดท้าย
+     *    ทางเดียวที่หัก claimed_amount อีกสามทาง (ไม่มี phase / TGE 100% /
+     *    ยังไม่ถึง vesting start / อยู่ในช่วง cliff) คืนยอดเต็มทุกครั้งที่เรียก
+     *    → กด claim ซ้ำได้ไม่จำกัดจากการซื้อครั้งเดียว
+     *
+     *    วิธีกันไม่ให้พลาดซ้ำ: คำนวณ "ยอดที่ปลดล็อคแล้ว" ให้เสร็จก่อน
+     *    แล้วหัก claimed_amount ที่จุดเดียวตอน return — ห้ามมี return กลางทาง
      */
     public function getClaimableAmountAttribute(): float
     {
-        $phase = $this->phase;
-        if (! $phase) {
-            return (float) $this->tpix_amount;
-        }
-
-        // ถ้าไม่มี vesting (TGE 100%) → ได้ทั้งหมดทันที
-        if ((float) $phase->vesting_tge_percent >= 100 || $phase->vesting_duration_days <= 0) {
-            return (float) $this->tpix_amount;
-        }
-
         $totalTpix = (float) $this->tpix_amount;
+        $phase = $this->phase;
+
+        $unlocked = $this->unlockedAmount($phase, $totalTpix);
+
+        return max(0, min($unlocked, $totalTpix) - (float) $this->claimed_amount);
+    }
+
+    /**
+     * ยอดที่ปลดล็อคแล้วตามตาราง vesting (ยังไม่หักส่วนที่เคลมไปแล้ว).
+     */
+    private function unlockedAmount(?SalePhase $phase, float $totalTpix): float
+    {
+        // ไม่มีข้อมูลเฟส → ถือว่าปลดล็อคหมด (ข้อมูลเก่าก่อนมีระบบ vesting)
+        if (! $phase) {
+            return $totalTpix;
+        }
+
+        // ไม่มี vesting (TGE 100% หรือไม่ได้ตั้งระยะเวลา) → ปลดล็อคหมดทันที
+        if ((float) $phase->vesting_tge_percent >= 100 || $phase->vesting_duration_days <= 0) {
+            return $totalTpix;
+        }
+
         $tgeAmount = $totalTpix * ((float) $phase->vesting_tge_percent / 100);
         $vestingAmount = $totalTpix - $tgeAmount;
 
-        // ถ้ายังไม่ถึง vesting start
         $vestingStart = $this->vesting_start_at ?? $this->created_at;
         if (! $vestingStart) {
             return $tgeAmount;
         }
 
-        $now = now();
         $cliffEnd = $vestingStart->copy()->addDays($phase->vesting_cliff_days);
 
-        // ยังอยู่ใน cliff period → ได้แค่ TGE
-        if ($now->lt($cliffEnd)) {
+        // ยังอยู่ในช่วง cliff → ปลดล็อคแค่ส่วน TGE
+        if (now()->lt($cliffEnd)) {
             return $tgeAmount;
         }
 
-        // คำนวณสัดส่วน vesting ที่ปลดล็อคแล้ว
-        // diffInDays ต้องเรียกจาก cliffEnd เพื่อให้ได้จำนวนวันที่ผ่านไปหลัง cliff
-        $daysSinceCliff = $cliffEnd->diffInDays($now);
-        // vesting_duration_days คือระยะเวลา linear vesting หลังจาก cliff (ไม่รวม cliff)
+        // หลังพ้น cliff → ทยอยปลดแบบเส้นตรงตามจำนวนวันที่ผ่านไป
+        // diffInDays เรียกจาก cliffEnd เพื่อให้ได้จำนวนวันหลัง cliff
+        $daysSinceCliff = $cliffEnd->diffInDays(now());
         $vestingDays = max(1, $phase->vesting_duration_days);
         $vestedRatio = min(1.0, $daysSinceCliff / $vestingDays);
 
-        $totalClaimable = $tgeAmount + ($vestingAmount * $vestedRatio);
-
-        return max(0, $totalClaimable - (float) $this->claimed_amount);
+        return $tgeAmount + ($vestingAmount * $vestedRatio);
     }
 }

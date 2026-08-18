@@ -328,6 +328,16 @@ class TokenSaleApiController extends Controller
                     ]];
                 }
 
+                // ด่านซ้อน: ยอดเคลมสะสมต้องไม่เกินยอดที่ซื้อไว้ ไม่ว่ากรณีใด
+                // (claimable_amount คำนวณถูกแล้ว แต่ถ้าสูตรนั้นพลาดอีกครั้ง
+                //  ด่านนี้จะกันไม่ให้เหรียญไหลออกเกินสิ่งที่ลูกค้าจ่ายมาจริง)
+                if ((float) $tx->claimed_amount + $requestedAmount > (float) $tx->tpix_amount) {
+                    return ['error' => [
+                        'code' => 'EXCEEDS_PURCHASE',
+                        'message' => 'Claim exceeds the amount purchased.',
+                    ]];
+                }
+
                 $tx->increment('claimed_amount', $requestedAmount);
                 $tx->refresh();
 

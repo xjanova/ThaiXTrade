@@ -96,5 +96,42 @@ return [
     // BSC (BNB Smart Chain) — สำหรับ verify transactions
     'bsc' => [
         'rpc_url' => env('BSC_RPC_URL', 'https://bsc-dataseed.binance.org'),
+
+        /*
+         * จำนวนบล็อกที่ต้องรอก่อนถือว่าการชำระเงินนิ่งพอ
+         *
+         * BSC จบบล็อกเร็วแต่ reorg สั้นๆ เกิดได้ — ถ้ายืนยันที่ 0 confirmation
+         * แล้วบล็อกถูกม้วนกลับ เท่ากับออกเหรียญให้โดยที่เงินไม่เคยเข้าจริง
+         */
+        'min_confirmations' => (int) env('BSC_MIN_CONFIRMATIONS', 15),
+
+        /*
+         * อายุสูงสุดของธุรกรรมที่ยอมรับ (นาที)
+         *
+         * กันการเอา tx เก่าตอนราคาถูกมายื่นตอนราคาแพง — เราตีราคา ณ เวลาที่ยื่น
+         * ถ้าไม่จำกัดอายุ ส่วนต่างราคาทั้งหมดจะตกเป็นกำไรของผู้ยื่น
+         */
+        'max_tx_age_minutes' => (int) env('BSC_MAX_TX_AGE_MINUTES', 60),
+
+        /*
+         * เหรียญที่รับชำระได้ — ต้องระบุ contract address ตัวจริงเสมอ
+         *
+         * ⚠️ ห้ามรับ ERC-20 โดยดูแค่ event Transfer เพราะใครก็ deploy เหรียญ
+         *    ตั้งชื่อ USDT แล้วโอนเข้ากระเป๋าขายได้ด้วยต้นทุนหลักสิบบาท
+         *    ต้องเทียบ address ของสัญญาที่ปล่อย event กับรายการนี้เท่านั้น
+         *
+         * decimals ต้องตรงกับสัญญาจริง — USDT/BUSD บน BSC ใช้ 18 (ต่างจาก
+         * USDT บน Ethereum/Tron ที่ใช้ 6) การใช้ค่าผิดทำให้ยอดเพี้ยน 10^12 เท่า
+         */
+        'payment_tokens' => [
+            'USDT' => [
+                'address' => env('BSC_USDT_ADDRESS', '0x55d398326f99059fF775485246999027B3197955'),
+                'decimals' => 18,
+            ],
+            'BUSD' => [
+                'address' => env('BSC_BUSD_ADDRESS', '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56'),
+                'decimals' => 18,
+            ],
+        ],
     ],
 ];

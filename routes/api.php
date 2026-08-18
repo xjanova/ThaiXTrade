@@ -219,8 +219,18 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/', [TokenSaleApiController::class, 'index']);
         Route::get('/stats', [TokenSaleApiController::class, 'stats']);
         Route::post('/preview', [TokenSaleApiController::class, 'preview']);
-        Route::get('/purchases/{walletAddress}', [TokenSaleApiController::class, 'purchases']);
-        Route::get('/vesting/{walletAddress}', [TokenSaleApiController::class, 'vesting']);
+
+        /*
+         * ประวัติการซื้อและตาราง vesting ของกระเป๋าหนึ่งๆ ต้องพิสูจน์ตัวตนก่อน
+         *
+         * เดิมเป็น public — ใครก็เปิดดูได้ว่ากระเป๋าไหนซื้อไปเท่าไร ทำให้เล็ง
+         * ผู้ถือรายใหญ่ไปหลอกลวงต่อได้แม่นยำ และ tx_hash ที่หลุดออกไปยังเป็น
+         * วัตถุดิบให้การโจมตีอื่นด้วย
+         */
+        Route::middleware(VerifyWalletOwnership::class)->group(function () {
+            Route::get('/purchases/{walletAddress}', [TokenSaleApiController::class, 'purchases']);
+            Route::get('/vesting/{walletAddress}', [TokenSaleApiController::class, 'vesting']);
+        });
 
         // Stripe Checkout — สร้าง session สำหรับซื้อด้วยบัตรเครดิต/เดบิต
         Route::post('/stripe/checkout', [TokenSaleApiController::class, 'stripeCheckout']);
