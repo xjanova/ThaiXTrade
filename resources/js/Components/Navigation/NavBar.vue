@@ -75,6 +75,39 @@ const userDisplayName = computed(() => {
     return 'Trader';
 });
 
+/*
+ * บัญชีที่ล็อกอินอยู่กับกระเป๋าที่เชื่อมอยู่ เป็นคนเดียวกันไหม
+ *
+ * หลังจากที่การเซ็นกระเป๋าเปิด session ให้จริง ผู้ใช้กระเป๋าจะมีทั้ง authUser และ
+ * walletStore.address พร้อมกัน — ถ้าไม่รวมเมนู จะได้ปุ่มสองอันข้างกันที่แสดง
+ * เลขกระเป๋าใบเดียวกัน ผู้ใช้ต้องเดาเองว่าอันไหนทำอะไร
+ */
+const sameIdentity = computed(() => {
+    const linked = authUser.value?.wallet_address?.toLowerCase();
+    const connected = walletStore.address?.toLowerCase();
+
+    return !!linked && !!connected && linked === connected;
+});
+
+/*
+ * ⚠️ กระเป๋าที่เชื่อมอยู่ไม่ใช่ใบที่ผูกกับบัญชี — ต้องเห็นชัด ห้ามรวมเมนู
+ *
+ * เกิดเมื่อผู้ใช้ล็อกอินด้วยอีเมลแล้วสลับบัญชีในกระเป๋า หรือเชื่อมกระเป๋าใบใหม่
+ * ที่ยังไม่ได้ผูก — รวมเมนูตอนนี้เท่ากับบอกว่าเป็นตัวตนเดียวกันทั้งที่ไม่ใช่
+ * แล้วเขาอาจเทรดด้วยกระเป๋าที่ไม่ได้ผูกโดยไม่รู้ตัว
+ */
+const walletMismatch = computed(() => {
+    const linked = authUser.value?.wallet_address?.toLowerCase();
+    const connected = walletStore.address?.toLowerCase();
+
+    return !!connected && !!linked && linked !== connected;
+});
+
+/** โชว์เมนูกระเป๋าแยกต่างหากเมื่อไหร่ */
+const showSeparateWalletMenu = computed(() =>
+    isWalletConnected.value && (!authUser.value || walletMismatch.value)
+);
+
 const userInitial = computed(() => {
     const name = authUser.value?.name || authUser.value?.email;
     // เลขกระเป๋าขึ้นต้นด้วย 0x เหมือนกันทุกใบ — ตัวอักษรตัวแรกไม่ได้แยกใครออกจากใคร
@@ -314,14 +347,34 @@ const handleDisconnect = () => {
                                 class="absolute right-0 top-full mt-2 w-48 rounded-xl bg-dark-900/90 backdrop-blur-2xl border border-white/10 shadow-2xl py-2 z-50"
                                 @click.stop
                             >
-                                <div class="px-4 py-2 border-b border-white/5">
+                                <div class="px-4 py-2.5 border-b border-white/5">
                                     <p class="text-sm text-white font-medium truncate">{{ authUser.name || 'Trader' }}</p>
                                     <p v-if="authUser.email" class="text-xs text-dark-400 truncate">{{ authUser.email }}</p>
-                                    <!-- ผู้ใช้ที่เข้าด้วยกระเป๋าไม่มีอีเมล — โชว์เลขกระเป๋าแทนช่องว่าง -->
-                                    <p v-else-if="authUser.wallet_address" class="text-xs text-dark-400 font-mono truncate">
+
+                                    <!--
+                                        บัญชีกับกระเป๋าเป็นตัวตนเดียวกัน = รวมรายละเอียดไว้ที่เดียว
+                                        ไม่ต้องมีเมนูกระเป๋าอีกอันที่แสดงเลขเดียวกันข้างๆ
+                                    -->
+                                    <div v-if="sameIdentity" class="mt-1.5 flex items-center gap-1.5">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-trading-green shrink-0"></span>
+                                        <span class="text-[11px] text-dark-400 font-mono truncate">{{ shortAddress }}</span>
+                                        <span class="text-[10px] text-dark-500 shrink-0">· {{ walletStore.chainId }}</span>
+                                    </div>
+                                    <p v-else-if="authUser.wallet_address" class="text-xs text-dark-400 font-mono truncate mt-0.5">
                                         {{ authUser.wallet_address.slice(0, 6) }}...{{ authUser.wallet_address.slice(-4) }}
                                     </p>
                                 </div>
+
+                                <!--
+                                    ⚠️ กระเป๋าที่เชื่อมอยู่คนละใบกับที่ผูกไว้กับบัญชี
+                                    ต้องเตือนก่อนเขาเทรดด้วยกระเป๋าที่ไม่ได้ผูกกับบัญชีนี้โดยไม่รู้ตัว
+                                -->
+                                <div v-if="walletMismatch" class="mx-2 my-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
+                                    <p class="text-[11px] text-amber-300 leading-snug">
+                                        กระเป๋าที่เชื่อมอยู่ไม่ใช่ใบที่ผูกกับบัญชีนี้
+                                    </p>
+                                </div>
+
                                 <Link
                                     href="/profile"
                                     class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5 transition-colors"
@@ -332,7 +385,41 @@ const handleDisconnect = () => {
                                     </svg>
                                     Profile
                                 </Link>
+                                <!-- ยกมาจากเมนูกระเป๋า — มีเฉพาะตอนที่กระเป๋าคือตัวตนเดียวกับบัญชี -->
+                                <a
+                                    v-if="sameIdentity"
+                                    :href="walletStore.explorerAddressUrl"
+                                    target="_blank"
+                                    rel="noopener"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5 transition-colors"
+                                    @click="showUserMenu = false"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                                    </svg>
+                                    {{ t('nav.viewOnExplorer') }}
+                                </a>
+
+                                <div v-if="sameIdentity" class="border-t border-white/5 my-1"></div>
+
+                                <!--
+                                    ผู้ใช้ที่เข้ามาด้วยกระเป๋าล้วน (ไม่มีรหัสผ่าน) มีทางออกทางเดียว
+                                    คือตัดการเชื่อมต่อ — เซิร์ฟเวอร์ปิด session ให้เองอยู่แล้ว
+                                    (ดู WalletController::disconnect) จึงไม่ต้องมีปุ่มออกสองอันให้งง
+                                -->
                                 <button
+                                    v-if="sameIdentity && !authUser.has_password"
+                                    @click="handleDisconnect"
+                                    class="w-full flex items-center gap-2 px-4 py-2 text-sm text-trading-red hover:bg-trading-red/10 transition-colors"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                                    </svg>
+                                    {{ t('nav.disconnect') }}
+                                </button>
+
+                                <button
+                                    v-else
                                     @click="handleLogout"
                                     class="w-full flex items-center gap-2 px-4 py-2 text-sm text-trading-red hover:bg-trading-red/10 transition-colors"
                                 >
@@ -372,8 +459,11 @@ const handleDisconnect = () => {
                         <span class="hidden sm:inline">{{ t('wallet.connect') }}</span>
                     </button>
 
-                    <!-- Connected Wallet -->
-                    <div v-else class="flex items-center gap-3 relative">
+                    <!--
+                        เมนูกระเป๋าแยก — โชว์เฉพาะตอนที่ยังไม่ได้รวมเข้าเมนูบัญชี
+                        คือยังไม่ได้ล็อกอิน หรือกระเป๋าที่เชื่อมคนละใบกับที่ผูกไว้
+                    -->
+                    <div v-if="showSeparateWalletMenu" class="flex items-center gap-3 relative">
                         <button
                             @click="showWalletMenu = !showWalletMenu"
                             class="wallet-badge cursor-pointer hover:bg-white/10 transition-all"
