@@ -342,7 +342,7 @@ class TokenSaleService
         return match ($verification['reason']) {
             'insufficient_confirmations' => 'Payment found but not confirmed yet. Please wait about a minute and submit again.',
             'tx_not_found_or_pending', 'tx_detail_not_found' => 'Transaction not found on BSC yet. Please wait for it to confirm and submit again.',
-            'rpc_request_failed', 'verification_error' => 'Could not reach BSC right now. Please try again shortly — your payment is safe.',
+            'rpc_request_failed', 'verification_error', 'block_time_unavailable' => 'Could not reach BSC right now. Please try again shortly — your payment is safe.',
             'from_address_mismatch' => 'This transaction was not sent from your connected wallet.',
             'currency_mismatch_native' => 'This transaction paid in BNB. Please select BNB as the payment currency.',
             'currency_mismatch_erc20' => 'The token in this transaction does not match the currency you selected.',
@@ -548,14 +548,28 @@ class TokenSaleService
              * ที่จ่ายพุ่งขึ้น แล้วเอา tx ตอนราคาถูกมาขึ้นเงิน ส่วนต่างตกเป็นของผู้ยื่นฟรี
              */
             $block = $this->rpcCall($rpcUrl, 'eth_getBlockByNumber', ['0x'.dechex($blockNumber), false]);
-            if (is_array($block) && isset($block['timestamp'])) {
-                $blockTime = (int) hexdec($block['timestamp']);
-                $result['block_timestamp'] = $blockTime;
-                if ($maxAgeMinutes > 0 && (time() - $blockTime) / 60 > $maxAgeMinutes) {
-                    $result['reason'] = 'tx_too_old';
+            if ($block === false) {
+                $result['reason'] = 'rpc_request_failed';
+                $result['retryable'] = true;
 
-                    return $result;
-                }
+                return $result;
+            }
+            if (! is_array($block) || ! isset($block['timestamp'])) {
+                // ตรวจอายุไม่ได้ = ไม่ผ่าน (fail-closed เหมือนด่านอื่น)
+                // ถ้าปล่อยผ่านตรงนี้ ด่านกันเอา tx เก่ามาขึ้นเงินตอนราคาพุ่งจะไร้ผล
+                // เพียงแค่ทำให้ RPC ตอบผิดรูปครั้งเดียว
+                $result['reason'] = 'block_time_unavailable';
+                $result['retryable'] = true;
+
+                return $result;
+            }
+
+            $blockTime = (int) hexdec($block['timestamp']);
+            $result['block_timestamp'] = $blockTime;
+            if ($maxAgeMinutes > 0 && (time() - $blockTime) / 60 > $maxAgeMinutes) {
+                $result['reason'] = 'tx_too_old';
+
+                return $result;
             }
 
             $saleWalletLower = strtolower($saleWallet);

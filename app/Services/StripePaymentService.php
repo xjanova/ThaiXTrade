@@ -117,6 +117,23 @@ class StripePaymentService
         $webhookSecret = SiteSetting::get('stripe', 'stripe_webhook_secret')
             ?: config('services.stripe.webhook_secret');
 
+        /*
+         * ═══════════════════════════════════════════════════════════════════
+         * FAIL-CLOSED: ไม่มี secret = ไม่รับ webhook เด็ดขาด
+         * ═══════════════════════════════════════════════════════════════════
+         * Stripe\Webhook::constructEvent ไม่เคยตรวจว่า secret ว่างหรือไม่ —
+         * มันคำนวณ HMAC ด้วยกุญแจว่างได้ตามปกติ แปลว่าใครก็เซ็น header เองแล้ว
+         * ส่ง payload ปลอมเข้ามาสร้างรายการซื้อสถานะ confirmed ได้ฟรี
+         * โดยไม่ต้องจ่ายเงินและไม่ต้องผ่านด่านตรวจ BSC เลยแม้แต่นิดเดียว
+         *
+         * ห้ามถอดด่านนี้ออกไม่ว่ากรณีใด
+         */
+        if (! is_string($webhookSecret) || ! str_starts_with($webhookSecret, 'whsec_')) {
+            Log::error('stripe: ปฏิเสธ webhook เพราะยังไม่ได้ตั้ง webhook secret');
+
+            throw new RuntimeException('Stripe webhook secret is not configured.');
+        }
+
         $event = Webhook::constructEvent($payload, $signature, $webhookSecret);
 
         return match ($event->type) {
@@ -211,12 +228,51 @@ class StripePaymentService
      */
     private function handleCheckoutCompleted(object $session): array
     {
-        $walletAddress = $session->metadata->wallet_address ?? '';
+        /*
+         * ถาม Stripe กลับไปว่า session นี้จ่ายจริงไหม — ห้ามเชื่อ payload
+         *
+         * payload ที่เข้ามาเป็นข้อความที่ผู้ส่งเขียนเองได้ ต่อให้ลายเซ็นถูกต้อง
+         * ก็ยืนยันได้แค่ "ใครส่ง" ไม่ได้ยืนยัน "จ่ายเงินจริงเท่าไร" ยอดและ
+         * metadata ที่ใช้ออกเหรียญจึงต้องมาจากคำตอบของ Stripe เท่านั้น
+         */
+        try {
+            $verified = Session::retrieve($session->id);
+        } catch (\Throwable $e) {
+            Log::error('stripe: ตรวจสอบ session กับ Stripe ไม่สำเร็จ', [
+                'session_id' => $session->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['status' => 'verification_failed', 'session_id' => $session->id];
+        }
+
+        // ต้องจ่ายเงินสำเร็จจริงเท่านั้น
+        if (($verified->payment_status ?? '') !== 'paid') {
+            Log::warning('stripe: session ยังไม่ได้จ่ายเงิน — ไม่ออกเหรียญ', [
+                'session_id' => $session->id,
+                'payment_status' => $verified->payment_status ?? null,
+            ]);
+
+            return ['status' => 'not_paid', 'session_id' => $session->id];
+        }
+
+        $session = $verified;
+
+        $walletAddress = strtolower((string) ($session->metadata->wallet_address ?? ''));
         $phaseId = (int) ($session->metadata->phase_id ?? 0);
         $saleId = (int) ($session->metadata->sale_id ?? 0);
-        $tpixAmount = (float) ($session->metadata->tpix_amount ?? 0);
         $pricePerTpix = (float) ($session->metadata->price_per_tpix ?? 0);
-        $amountPaid = $session->amount_total / 100;
+        $amountPaid = ((float) ($session->amount_total ?? 0)) / 100;
+
+        /*
+         * คำนวณจำนวนเหรียญใหม่จากยอดที่ Stripe บอกว่าจ่ายจริง หารด้วยราคาของเฟส
+         * ไม่ใช้ tpix_amount ที่ฝากมาใน metadata — ค่านั้นเป็นแค่ตัวเลขที่เคย
+         * คำนวณตอนสร้าง session และแก้ได้จากภายนอก
+         */
+        $phaseForPricing = SalePhase::find($phaseId);
+        $unitPrice = $phaseForPricing ? (float) $phaseForPricing->price_usd : $pricePerTpix;
+        $tpixAmount = $unitPrice > 0 ? round($amountPaid / $unitPrice, 8) : 0.0;
+        $pricePerTpix = $unitPrice;
 
         // Validate metadata — ป้องกัน corrupted webhook
         if (empty($walletAddress) || $phaseId <= 0 || $saleId <= 0 || $tpixAmount <= 0) {

@@ -35,6 +35,24 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
+        /*
+         * อ่าน IP จริงของผู้ใช้จากหลัง Cloudflare
+         *
+         * ⚠️ ไม่ตั้งตรงนี้ = $request->ip() คืน IP ของ Cloudflare เหมือนกันหมดทุกคน
+         *    ผลคือ rate limit ทุกตัวกลายเป็นโควตารวมของทั้งเว็บ ผู้ใช้เจอ 429
+         *    ทั้งที่เพิ่งกดครั้งแรก (วัดได้จริง 2026-08-18) และการแบน IP ใช้ไม่ได้เลย
+         *
+         * รายการพร็อกซีอยู่ใน config/trustedproxy.php พร้อมเหตุผลว่าทำไมไม่ใช้ '*'
+         */
+        $middleware->trustProxies(
+            at: config('trustedproxy.proxies'),
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO
+                | Request::HEADER_X_FORWARDED_AWS_ELB,
+        );
+
         $middleware->web(prepend: [
             SecurityHeaders::class,
         ]);

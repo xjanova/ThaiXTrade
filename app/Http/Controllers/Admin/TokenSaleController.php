@@ -33,7 +33,7 @@ class TokenSaleController extends Controller
             $q->orderBy('phase_order');
         }])->latest()->get();
 
-        $transactions = SaleTransaction::with(['tokenSale', 'salePhase'])
+        $transactions = SaleTransaction::with(['tokenSale', 'phase'])
             ->latest()
             ->paginate(20);
 

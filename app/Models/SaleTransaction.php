@@ -90,6 +90,21 @@ class SaleTransaction extends Model
     // Relationships
     // =========================================================================
 
+    /**
+     * บังคับเก็บที่อยู่กระเป๋าเป็นตัวพิมพ์เล็กเสมอ.
+     *
+     * ทุกที่ที่ "อ่าน" ค้นด้วย strtolower อยู่แล้ว (scopeByWallet, claim)
+     * แต่ฝั่ง "เขียน" เคยมีเส้นทางที่ลืมแปลง — เส้นทาง Stripe บันทึก address
+     * แบบ checksum (มีพิมพ์ใหญ่ปน ซึ่งเป็นค่าเริ่มต้นของ MetaMask) ทำให้
+     * ลูกค้าจ่ายเงินจริงแล้วหารายการของตัวเองไม่เจอและเคลมไม่ได้ตลอดกาล
+     *
+     * บังคับที่โมเดลจุดเดียว ทุกเส้นทางจึงถูกต้องเหมือนกันหมด
+     */
+    public function setWalletAddressAttribute(?string $value): void
+    {
+        $this->attributes['wallet_address'] = $value !== null ? strtolower($value) : null;
+    }
+
     public function tokenSale(): BelongsTo
     {
         return $this->belongsTo(TokenSale::class);

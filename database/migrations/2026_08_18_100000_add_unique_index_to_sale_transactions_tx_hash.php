@@ -44,7 +44,10 @@ return new class extends Migration
                     ->where('id', $id)
                     ->update([
                         'tx_hash' => $row->tx_hash.'-dup'.$id,
-                        'status' => 'cancelled',
+                        // ต้องเป็นค่าที่อยู่ใน enum จริง ['pending','confirmed','claimed','refunded','failed']
+                        // MySQL strict mode จะปฏิเสธค่านอก enum แล้ว migration ตายกลางคัน
+                        // (SQLite ไม่บังคับ enum จึงผ่านตอนเทสต์แต่พังตอน deploy จริง)
+                        'status' => 'failed',
                     ]);
             }
         }
