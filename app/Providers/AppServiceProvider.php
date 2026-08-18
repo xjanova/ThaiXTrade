@@ -47,6 +47,32 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(30)->by($request->input('wallet_address') ?? $request->ip());
         });
 
+        /*
+         * เชื่อมกระเป๋า / ขอข้อความ / ยืนยันลายเซ็น
+         *
+         * นับสองชั้นพร้อมกัน เพราะสองภัยคนละแบบ:
+         *
+         *   ต่อกระเป๋า — กันคนคนเดียวกดรัวจนเปลืองทรัพยากร
+         *                แต่ต้องพอให้เชื่อมใหม่/สลับกระเป๋าได้หลายรอบ
+         *                (หนึ่งครั้งที่เชื่อม = 3 คำขอ: connect + sign + verify)
+         *
+         *   ต่อ IP     — กันเดาลายเซ็นด้วยการหมุนเลขกระเป๋าไปเรื่อยๆ
+         *                ซึ่งการนับต่อกระเป๋าอย่างเดียวกันไม่ได้เลย
+         *                ตั้งสูงกว่าเพราะผู้ใช้มือถือหลายคนใช้ IP เดียวกัน (NAT)
+         *
+         * ⚠️ ตัวเลขนี้จะมีความหมายก็ต่อเมื่ออ่าน IP จริงได้เท่านั้น
+         *    ดู config/trustedproxy.php — ถ้าไม่เชื่อพร็อกซี ทุกคนจะกลายเป็น IP
+         *    เดียวกันแล้วโควตาต่อ IP จะกลายเป็นโควตารวมของทั้งเว็บ
+         */
+        RateLimiter::for('wallet-bootstrap', function (Request $request) {
+            $wallet = strtolower((string) $request->input('wallet_address', ''));
+
+            return [
+                Limit::perMinute(20)->by('wallet:'.($wallet ?: $request->ip())),
+                Limit::perMinute(60)->by('ip:'.$request->ip()),
+            ];
+        });
+
         // Configure mail from database settings
         $this->configureMailFromDatabase();
     }
