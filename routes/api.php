@@ -337,9 +337,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         ->middleware('throttle:300,1');
 
     // Wallet Bootstrap — connect/sign/verify must be PUBLIC (before wallet is verified)
-    // นับสองชั้น: ต่อกระเป๋า (กันกดรัว) + ต่อ IP (กันเดาลายเซ็นด้วยการหมุนเลขกระเป๋า)
-    // ดู RateLimiter::for('wallet-bootstrap') ใน AppServiceProvider
-    Route::prefix('wallet')->middleware(['throttle:wallet-bootstrap'])->group(function () {
+    // Strict rate limit: 15 req/min to prevent brute-force signature attacks
+    Route::prefix('wallet')->middleware(['throttle:15,1'])->group(function () {
         Route::post('/connect', [WalletController::class, 'connect']);
         Route::post('/disconnect', [WalletController::class, 'disconnect']);
         Route::post('/sign', [WalletController::class, 'requestSignature']);
