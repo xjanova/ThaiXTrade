@@ -423,6 +423,45 @@ class MarketDataService
     }
 
     /**
+     * คู่นี้มีแท่งเทียนให้ใช้จริงไหม — ตอบได้สามอย่าง ไม่ใช่สอง.
+     *
+     * getKlines() คืน [] ทั้งตอน "ไม่มีคู่นี้จริงๆ" และตอน "เน็ตล่ม" ซึ่งแยกไม่ออก
+     * ใครเอาไปตัดสินใจต่อจึงกันคนใช้ผิดกลุ่มได้ง่ายมาก — เน็ตสะดุดครั้งเดียว
+     * กลายเป็น "คู่นี้ใช้ไม่ได้" ถาวรในสายตาผู้ใช้
+     *
+     * @return bool|null true = มีข้อมูลพอ · false = ตลาดยืนยันว่าไม่มีคู่นี้
+     *                   · null = ถามไม่สำเร็จ ตัดสินไม่ได้ (ผู้เรียกควรปล่อยผ่าน)
+     */
+    public function hasKlines(string $symbol, string $interval = '1h'): ?bool
+    {
+        try {
+            $response = Http::timeout(6)->get("{$this->baseUrl}/klines", [
+                'symbol' => $this->toBinanceSymbol($symbol),
+                'interval' => $interval,
+                'limit' => 40,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('ตรวจแท่งเทียนของคู่เทรดไม่สำเร็จ', ['symbol' => $symbol, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        // 400 = ตลาดบอกเองว่าไม่รู้จักคู่นี้ (Invalid symbol) → ตอบ false ได้เต็มปาก
+        if ($response->clientError()) {
+            return false;
+        }
+
+        // 5xx / ถูกจำกัดอัตรา = ปัญหาฝั่งเรากับตลาด ไม่ใช่คำตอบเรื่องคู่เทรด
+        if ($response->failed()) {
+            return null;
+        }
+
+        $rows = $response->json();
+
+        return is_array($rows) && count($rows) >= 30;
+    }
+
+    /**
      * Convert our symbol format to Binance format.
      * e.g. BTC-USDT or BTC/USDT -> BTCUSDT.
      */

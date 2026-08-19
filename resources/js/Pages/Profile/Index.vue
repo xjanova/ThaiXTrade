@@ -91,6 +91,43 @@ const unlinkWallet = () => {
     router.delete('/profile/wallet', { preserveScroll: true });
 };
 
+/*
+ * ผูกกระเป๋าจากหน้านี้ได้เลย — เดิมมีแต่ปุ่ม "ถอดกระเป๋า"
+ *
+ * การผูกเกิดขึ้นหลัง ecrecover ผ่านเท่านั้น (ห้ามผูกจากที่อื่น) หน้านี้จึงไม่ได้
+ * ผูกเอง แต่พาผู้ใช้ไปถึงจุดที่เซ็น: ยังไม่เชื่อม → เปิดหน้าต่างเลือกกระเป๋า ·
+ * เชื่อมแล้วแต่ลายเซ็นหมดอายุ → เซ็นใหม่ตรงนี้ ไม่ต้องตัดการเชื่อมต่อก่อน
+ *
+ * เดิมข้อความบอกให้ "กดปุ่มมุมขวาบน" ซึ่งบนจอแคบปุ่มนั้นอยู่ในเมนูที่พับไว้
+ * ผู้ใช้จึงอ่านวิธีทำแล้วหาปุ่มไม่เจอ
+ */
+const isLinking = ref(false);
+
+const linkWallet = async () => {
+    if (isLinking.value) return;   // กันกดรัว — ป๊อปอัพขอลายเซ็นซ้อนกันไม่ได้
+
+    if (!walletStore.isConnected) {
+        walletStore.openConnectModal();
+        return;
+    }
+
+    isLinking.value = true;
+    try {
+        const signed = await walletStore.verifyOwnership();
+
+        // ไม่มี signer = กระเป๋าฝังที่ยังไม่ปลดล็อก → ต้องใส่รหัสผ่านก่อน
+        if (!signed) {
+            walletStore.openConnectModal();
+            return;
+        }
+
+        // ผูกสำเร็จหรือไม่ ดูจาก props ที่เซิร์ฟเวอร์ส่งกลับมา ไม่ใช่เดาจากที่ไม่ throw
+        router.reload({ only: ['profileUser', 'walletConnections'], preserveScroll: true });
+    } finally {
+        isLinking.value = false;
+    }
+};
+
 // Copy referral code
 const copied = ref(false);
 const copyReferral = () => {
@@ -351,10 +388,19 @@ const kycBadge = {
                     <div v-else class="p-4 rounded-xl bg-dark-800/30 border border-white/5">
                         <p class="text-dark-300 text-sm mb-1">ยังไม่ได้ผูกกระเป๋า</p>
                         <p class="text-dark-500 text-xs leading-relaxed mb-3">
-                            เชื่อมกระเป๋าจากปุ่มมุมขวาบน แล้วเซ็นข้อความยืนยัน — กระเป๋าจะผูกเข้าบัญชีนี้เอง
-                            ประวัติเทรดและบอทจะรวมอยู่ที่เดียวกัน ไม่แตกเป็นสองบัญชี
+                            ผูกแล้วประวัติเทรดและบอทจะรวมอยู่ที่เดียวกัน ไม่แตกเป็นสองบัญชี
+                            การผูกทำโดยเซ็นข้อความยืนยัน ไม่เสียค่าแก๊ส
                         </p>
-                        <p v-if="walletStore.linkError" class="text-xs text-amber-300 leading-relaxed">
+                        <button
+                            type="button"
+                            class="btn-brand px-5 py-2 text-xs disabled:opacity-50 inline-flex items-center gap-2"
+                            :disabled="isLinking"
+                            @click="linkWallet"
+                        >
+                            <span v-if="isLinking" class="spinner !w-3 !h-3 !border-white/30 !border-t-white"></span>
+                            {{ isLinking ? 'รอเซ็นในกระเป๋า...' : (walletStore.isConnected ? 'เซ็นเพื่อผูกกระเป๋า' : 'เชื่อมกระเป๋าเพื่อผูก') }}
+                        </button>
+                        <p v-if="walletStore.linkError" class="text-xs text-amber-300 leading-relaxed mt-3">
                             {{ walletStore.linkError }}
                         </p>
                     </div>

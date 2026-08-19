@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\AiBotConfig;
 use App\Models\AiBotPlan;
 use App\Models\AiBotSubscription;
+use App\Services\MarketDataService;
 use Database\Seeders\AiBotPlanSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -40,6 +41,13 @@ class AiBotStrategyGateTest extends TestCase
             'ip' => '127.0.0.1',
             'verified_at' => now()->toIso8601String(),
         ], now()->addHours(4));
+
+        // ด่านสร้างบอทถามตลาดว่าคู่นี้มีแท่งเทียนไหม — ตอบว่ามีเสมอในเทสต์นี้
+        // ไม่งั้นต้องพึ่งเน็ตจริง ผลจะเปลี่ยนตามเครื่องที่รัน
+        $this->partialMock(
+            MarketDataService::class,
+            fn ($mock) => $mock->shouldReceive('hasKlines')->andReturn(true)
+        );
 
         // VIP ปลดล็อกทุกกลยุทธ์ — เพื่อพิสูจน์ว่าด่านนี้ไม่ใช่เรื่องระดับแพลน
         AiBotSubscription::create([

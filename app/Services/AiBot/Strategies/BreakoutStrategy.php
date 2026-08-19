@@ -61,7 +61,10 @@ class BreakoutStrategy implements Strategy
         ];
 
         if ($position) {
-            $stop = $position['entry'] - $atr * $atrMultiple;
+            // วาง stop จากราคาตลาดตอนเข้าไม้ ไม่ใช่ต้นทุนที่รวมค่าธรรมเนียมไว้แล้ว
+            // (ต้นทุนลอยเหนือตลาด ~18 bps — ใช้มันวาง stop = ตัดขาดทุนตัวเองทันที)
+            $base = (float) ($position['entry_market'] ?? $position['entry']);
+            $stop = $base - $atr * $atrMultiple;
             $meta['stop'] = round($stop, 8);
 
             if ($close <= $stop) {

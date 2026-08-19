@@ -3,8 +3,13 @@
  * TPIX TRADE — พอร์ตทดลองของ AI TRADE.
  *
  * เป็นด่านแรกที่ผู้ใช้เจอก่อนตัดสินใจจ่ายเงินเช่าบอท จึงต้องแสดงผลตรงไปตรงมา:
- * บอกค่าธรรมเนียมกับ slippage ที่ใช้จำลอง และนับกำไรเฉพาะไม้ที่ปิดแล้ว
- * (กำไรลอยเปลี่ยนทุกวินาทีและยังไม่ใช่เงิน — โชว์รวมกันจะดูดีเกินจริง)
+ * บอกค่าธรรมเนียมกับ slippage ที่ใช้จำลอง และ **แยก** กำไรที่ปิดไม้แล้ว
+ * ออกจากกำไร/ขาดทุนของไม้ที่ยังค้างอยู่
+ *
+ * ⚠️ แยกกันไม่ได้แปลว่าซ่อนอันหลังไว้ — เดิมแสดงเฉพาะไม้ที่ปิดแล้ว โดยให้เหตุผลว่า
+ *    "กำไรลอยยังไม่ใช่เงิน" ซึ่งจริงครึ่งเดียว: ไม้ที่กำลังติดลบก็ไม่โผล่เหมือนกัน
+ *    ผู้ใช้จึงเห็นแต่ฝั่งที่ปิดสวยๆ ส่วนไม้ที่ค้างขาดทุนถูกตีเท่าทุนไว้ทั้งก้อน
+ *    ซึ่งเป็นตัวเลขที่หลอกให้ตัดสินใจจ่ายเงินผิด
  *
  * Developed by Xman Studio.
  */
@@ -28,14 +33,35 @@ const summary = computed(() => props.demo?.summary ?? null);
 const positions = computed(() => props.demo?.positions ?? []);
 const trades = computed(() => props.demo?.trades ?? []);
 
-/** มูลค่าพอร์ตรวม = เงินสด + ต้นทุนของที่ถืออยู่ */
+/** มูลค่าพอร์ตรวม = เงินสด + ของที่ถืออยู่ตีด้วย "ราคาตลาดปัจจุบัน" */
 const equity = computed(() => {
     if (!account.value) return 0;
-    const held = positions.value.reduce((sum, p) => sum + Number(p.cost_basis || 0), 0);
+
+    const fromServer = summary.value?.equity;
+    if (fromServer != null) return Number(fromServer);
+
+    const held = positions.value.reduce((sum, p) => sum + Number(p.market_value ?? p.cost_basis ?? 0), 0);
+
     return Number(account.value.balance || 0) + held;
 });
 
 const pnl = computed(() => Number(summary.value?.realized_pnl ?? 0));
+
+/** กำไร/ขาดทุนของไม้ที่ยังไม่ปิด — ตัวเลขที่เคยถูกซ่อนไว้ทั้งหมด */
+const unrealized = computed(() => Number(summary.value?.unrealized_pnl ?? 0));
+
+const unrealizedTone = computed(() => {
+    if (unrealized.value > 0) return 'text-trading-green';
+    if (unrealized.value < 0) return 'text-trading-red';
+    return 'text-dark-300';
+});
+
+function pnlToneOf(value) {
+    const n = Number(value || 0);
+    if (n > 0) return 'text-trading-green';
+    if (n < 0) return 'text-trading-red';
+    return 'text-dark-400';
+}
 
 const pnlPct = computed(() => {
     const start = Number(account.value?.starting_balance ?? 0);
@@ -159,6 +185,16 @@ function confirmReset() {
                     <p :class="['text-[10px] font-mono mt-0.5', pnlTone]">
                         {{ pnl >= 0 ? '+' : '' }}{{ pnlPct.toFixed(2) }}%
                     </p>
+
+                    <!--
+                        ไม้ที่ยังไม่ปิด — แยกบรรทัดไว้ ไม่รวมกับตัวเลขที่ปิดแล้ว
+
+                        รวมกันจะทำให้ "กำไรที่เกิดขึ้นจริง" ปนกับ "กำไรลอยที่ยังไม่ใช่เงิน"
+                        แต่ซ่อนไปเลยก็ทำให้ไม้ที่กำลังติดลบหายไปจากสายตาผู้ใช้ทั้งก้อน
+                    -->
+                    <p v-if="unrealized !== 0" :class="['text-[10px] font-mono mt-1', unrealizedTone]">
+                        {{ t('aiTrade.unrealized') }} {{ signedMoney(unrealized) }}
+                    </p>
                 </div>
                 <div class="rounded-xl border border-white/10 bg-dark-950/40 p-3">
                     <p class="text-[10px] uppercase tracking-wide text-dark-500">{{ t('aiTrade.demoWinRate') }}</p>
@@ -191,6 +227,18 @@ function confirmReset() {
                         </span>
                         <span class="text-[11px] text-dark-400 font-mono">
                             {{ t('aiTrade.costBasis') }} ${{ money(position.cost_basis) }}
+                        </span>
+
+                        <!--
+                            ไม้นี้ตอนนี้กำไรหรือขาดทุนอยู่เท่าไหร่ — ถ้าปิดเดี๋ยวนี้
+                            เดิมแถวนี้มีแต่ราคาทุน ผู้ใช้จึงไม่มีทางรู้เลยว่าไม้ที่ค้างอยู่ติดลบ
+                        -->
+                        <span v-if="position.priced" class="text-[11px] font-mono" :class="pnlToneOf(position.unrealized_pnl)">
+                            {{ t('aiTrade.unrealized') }} {{ signedMoney(position.unrealized_pnl) }}
+                            ({{ position.unrealized_pct >= 0 ? '+' : '' }}{{ position.unrealized_pct }}%)
+                        </span>
+                        <span v-else class="text-[11px] text-dark-500 font-mono">
+                            {{ t('aiTrade.unpriced') }}
                         </span>
                         <span v-if="position.entry_count > 1" class="text-[11px] text-primary-300 font-mono">
                             {{ t('aiTrade.entryCount') }} ×{{ position.entry_count }}

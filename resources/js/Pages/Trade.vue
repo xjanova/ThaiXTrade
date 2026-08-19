@@ -33,6 +33,9 @@ import { useTradingFee } from '@/Composables/useTradingFee';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useWalletBalance } from '@/Composables/useWalletBalance';
 import { useTradeLayout, COLUMNS } from '@/Composables/useTradeLayout';
+import { useDragAutoScroll } from '@/Composables/useDragAutoScroll';
+import { useAiBot } from '@/Composables/useAiBot';
+import { useMyTrades } from '@/Composables/useMyTrades';
 import { playTradeSound, playErrorSound } from '@/Composables/useSounds';
 import { getBscTradeToken, getVerifiedTradeToken } from '@/Config/bscTradeTokens';
 import axios from 'axios';
@@ -74,6 +77,37 @@ const tradeFormMode = computed(() => (isBscTradable.value ? 'onchain' : 'disable
 
 // ── ผังการ์ด ────────────────────────────────────────────────────────────────
 const layout = useTradeLayout();
+
+/*
+ * ป้ายไม้บนกราฟ — ทั้งของบอทและที่เราวางเอง
+ *
+ * เจ้าของสั่งไว้ตรงๆ ว่า "เปิดบอทแล้วต้องเห็นไม้ที่บอทวางในกราฟ" และ
+ * "เราวางเองตรงไหนก็ต้องเห็น" — กราฟที่ไม่มีป้ายทำให้ผู้ใช้ตรวจสอบบอทไม่ได้เลย
+ * ว่ามันเข้าไม้ตรงจุดที่ควรเข้าไหม ได้แต่เชื่อตัวเลขสรุปอย่างเดียว
+ *
+ * ไม้ของบอทมาจากพอร์ตทดลอง (โหมดจริงยังเป็นสัญญาณรอยืนยัน ยังไม่มีไม้จริง)
+ */
+const bot = useAiBot();
+const myTrades = useMyTrades();
+
+const botMarkers = computed(() => {
+    const wanted = currentPair.value.toUpperCase();
+
+    return (bot.demo.value?.trades ?? [])
+        .filter(t => String(t.pair || '').replace('-', '/').toUpperCase() === wanted)
+        .map(t => ({
+            time: Math.floor(new Date(t.created_at).getTime() / 1000),
+            side: String(t.side || '').toLowerCase(),
+            price: Number(t.price),
+            source: 'bot',
+        }))
+        .filter(m => Number.isFinite(m.time));
+});
+
+const chartMarkers = computed(() => [
+    ...botMarkers.value,
+    ...myTrades.markersFor(currentPair.value),
+]);
 const isChartFullscreen = ref(false);
 
 const board = useTemplateRef('board');
@@ -191,7 +225,22 @@ function styleFor(cardId) {
     return layout.cardStyle(cardId, packed.value);
 }
 
+/*
+ * ลากไปค้างที่ขอบคอลัมน์แล้วให้มันเลื่อนเอง
+ *
+ * ผูกที่คอลัมน์ไม่ใช่ที่การ์ด เพราะ dragover ของการ์ดไม่ได้ stopPropagation
+ * (มีแต่ drop ที่หยุด) เหตุการณ์จึงลอยขึ้นมาถึงคอลัมน์เสมอ — ผูกที่เดียวครอบคลุม
+ * ทั้งตอนลากผ่านการ์ดและตอนลากผ่านที่ว่าง
+ */
+const autoScroll = useDragAutoScroll();
+
+function onColumnDragOver(event) {
+    if (!layout.draggingId.value) return;
+    autoScroll.onDragOver(event, event.currentTarget);
+}
+
 function onColumnDrop(column) {
+    autoScroll.stop();
     if (!layout.draggingId.value) return;
     layout.dropOnColumn(column);
     layout.endDrag();
@@ -592,6 +641,7 @@ async function executeBscMarketOrder(order) {
         playTradeSound();
         fetchBscFormBalances();
         fetchBalances();
+        myTrades.load(true);   // ไม้ที่เพิ่งวางต้องโผล่บนกราฟทันที
     } catch (err) {
         orderStatus.value = 'error';
         // error ที่ตั้งใจ throw เองมีข้อความพร้อมแสดง — นอกนั้น useSwap map ให้แล้ว
@@ -691,6 +741,7 @@ const submitInternalOrder = async (order) => {
 
         playTradeSound();
         fetchBalances();
+        myTrades.load(true);   // ไม้ที่เพิ่งวางต้องโผล่บนกราฟทันที
     } catch (err) {
         orderStatus.value = 'error';
         if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
@@ -738,14 +789,48 @@ onMounted(async () => {
     if (walletStore.isConnected) {
         fetchBalances();
         fetchBscFormBalances();
+        loadChartMarkerSources();
     }
 
+    startMarkerRefresh();
     nextTick(measureBoard);
 });
+
+/**
+ * โหลดที่มาของป้ายบนกราฟ — ไม้ของบอท (พอร์ตทดลอง) + ไม้ที่เราวางเอง.
+ *
+ * ทั้งสองตัวเงียบเมื่อกระเป๋ายังไม่ยืนยัน (403) จึงไม่ต้องดักอะไรเพิ่มตรงนี้
+ */
+function loadChartMarkerSources() {
+    bot.loadDemo();
+    myTrades.load();
+}
+
+/*
+ * บอทคลาวด์เข้าไม้เองที่ฝั่งเซิร์ฟเวอร์ หน้าเว็บจึงไม่มีทางรู้ว่ามีไม้ใหม่
+ * ถ้าไม่ถามเป็นระยะ — ป้ายบนกราฟจะค้างจนกว่าผู้ใช้จะรีเฟรชหน้าเอง
+ *
+ * 60 วิพอสำหรับรอบบอทที่เร็วที่สุด (VIP 1 นาที) และไม่ถี่จนกวนเซิร์ฟเวอร์
+ */
+let markerRefreshInterval = null;
+
+function startMarkerRefresh() {
+    stopMarkerRefresh();
+    markerRefreshInterval = setInterval(() => {
+        if (walletStore.isConnected) loadChartMarkerSources();
+    }, 60_000);
+}
+
+function stopMarkerRefresh() {
+    if (markerRefreshInterval) clearInterval(markerRefreshInterval);
+    markerRefreshInterval = null;
+}
 
 // เชื่อม wallet ทีหลัง / สลับ address → โหลดยอด BSC สำหรับฟอร์มเทรดใหม่
 watch(() => walletStore.address, () => {
     fetchBscFormBalances();
+    // ป้ายบนกราฟผูกกับกระเป๋า — สลับกระเป๋าแล้วต้องไม่ค้างไม้ของคนก่อน
+    loadChartMarkerSources();
 });
 
 // แถบแจ้งเตือนโผล่/หาย หรือสลับโหมด → ตำแหน่งบนสุดของกระดานขยับ ต้องวัดใหม่
@@ -769,6 +854,7 @@ onUnmounted(() => {
     clearTimeout(toastTimer);
     wideQuery?.removeEventListener('change', measureBoard);
     window.removeEventListener('resize', measureBoard);
+    stopMarkerRefresh();
 });
 </script>
 
@@ -853,7 +939,7 @@ onUnmounted(() => {
                         packed && 'lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden custom-scrollbar',
                         columnClass[col],
                     ]"
-                    @dragover.prevent
+                    @dragover.prevent="onColumnDragOver"
                     @drop="onColumnDrop(col)"
                 >
                     <!--
@@ -916,6 +1002,7 @@ onUnmounted(() => {
                                 :symbol="currentPair"
                                 :ticker="ticker"
                                 :is-tpix="isTPIXPair"
+                                :markers="chartMarkers"
                                 class="flex-1 relative z-10"
                             />
                         </DraggableCard>

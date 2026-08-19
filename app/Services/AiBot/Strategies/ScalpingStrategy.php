@@ -41,8 +41,21 @@ class ScalpingStrategy implements Strategy
             return Signal::hold('ข้อมูลแท่งเทียนยังไม่พอ');
         }
 
-        $targetBps = (float) ($params['target_bps'] ?? 15);
-        $maxSpreadBps = (float) ($params['max_spread_bps'] ?? 8);
+        $targetBps = (float) ($params['target_bps'] ?? 45);
+        $maxVolatilityBps = (float) ($params['max_volatility_bps'] ?? $params['max_spread_bps'] ?? 80);
+
+        /*
+         * "พักระหว่างไม้" ที่ผู้ใช้ตั้งไว้ — ต้องมีผลจริง
+         *
+         * เวลามาจาก engine (`_seconds_since_trade`) เพราะกลยุทธ์เห็นแต่แท่งเทียน
+         * ไม่รู้ว่าไม้ล่าสุดปิดไปกี่วินาที ค่านี้ไม่มีอยู่ = ยังไม่เคยเทรด จึงไม่ต้องพัก
+         */
+        $cooldown = (float) ($params['cooldown_sec'] ?? 0);
+        $sinceTrade = $params['_seconds_since_trade'] ?? PHP_INT_MAX;
+
+        if (! $position && $cooldown > 0 && $sinceTrade < $cooldown) {
+            return Signal::hold(sprintf('พักระหว่างไม้ อีก %d วิ', (int) ceil($cooldown - $sinceTrade)));
+        }
 
         $closes = array_column($candles, 'close');
         $close = (float) $closes[count($closes) - 1];
@@ -56,7 +69,7 @@ class ScalpingStrategy implements Strategy
         $meta = [
             'close' => round($close, 8),
             'volatility_bps' => round($volatilityBps, 1),
-            'max_spread_bps' => $maxSpreadBps,
+            'max_volatility_bps' => $maxVolatilityBps,
             'target_bps' => $targetBps,
         ];
 
@@ -77,8 +90,20 @@ class ScalpingStrategy implements Strategy
             return Signal::hold('ถือต่อ ยังไม่ถึงเป้าและยังไม่ย้อน', $meta);
         }
 
-        // ผันผวนเกินเพดาน = ต้นทุนเข้าออกกินกำไรรอบสั้น ไม่คุ้มเข้า
-        if ($volatilityBps > $maxSpreadBps * 10) {
+        /*
+         * ผันผวนเกินเพดาน = ต้นทุนเข้าออกกินกำไรรอบสั้น ไม่คุ้มเข้า
+         *
+         * ⚠️ เดิมเขียน `> $maxSpreadBps * 10` โดยไม่มีคำอธิบาย — ผู้ใช้ตั้ง 8
+         *    แต่เกณฑ์จริงคือ 80 ต่างกันสิบเท่าโดยไม่มีอะไรบอก และค่าที่วัดคือ
+         *    ATR ต่อราคา ไม่ใช่สเปรด bid/ask ตามชื่อช่อง
+         *
+         *    ที่แย่กว่าคือ meta ของทุกไม้เก็บ `volatility_bps: 79` คู่กับ
+         *    `max_spread_bps: 8` ไว้บนคำสั่งซื้อ = หลักฐานที่ขัดกันเองในระบบเรา
+         *
+         *    ตอนนี้เทียบตรงๆ กับค่าที่ผู้ใช้ตั้ง และเปลี่ยนชื่อช่องใน config
+         *    ให้ตรงกับสิ่งที่วัดจริง (ความผันผวนต่อแท่ง ไม่ใช่สเปรด)
+         */
+        if ($volatilityBps > $maxVolatilityBps) {
             return Signal::hold('ความผันผวนสูงเกินไปสำหรับรอบสั้น', $meta);
         }
 

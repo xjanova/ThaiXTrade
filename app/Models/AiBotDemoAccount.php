@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Model;
 class AiBotDemoAccount extends Model
 {
     protected $fillable = [
-        'wallet_address', 'balance', 'starting_balance', 'reset_count', 'last_reset_at',
+        'wallet_address', 'bucket', 'balance', 'starting_balance', 'reset_count', 'last_reset_at',
     ];
 
     protected function casts(): array

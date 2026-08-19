@@ -457,6 +457,56 @@ class StrategiesTest extends TestCase
         $this->assertGreaterThan(55, $signal->meta['confidence']);
     }
 
+    /**
+     * ต้องซื้อได้ด้วย "ค่าปริยายจริงจาก config" ไม่ใช่ค่าที่เทสต์ป้อนให้เอง.
+     *
+     * เทสต์ชุดเดิมส่ง confidence_min = 55 เข้าไปเองทุกครั้ง จึงไม่มีใครเห็นว่า
+     * ค่าปริยายจริง (65) สูงกว่าคะแนนสูงสุดที่สูตรเดิมทำได้ (~56.6) — กลยุทธ์ที่
+     * เป็นจุดขายของแพลน VIP จึงไม่เคยออกสัญญาณซื้อเลย และไม่มีเทสต์ไหนจับได้
+     */
+    public function test_ai_signal_buys_an_uptrend_using_the_shipped_defaults(): void
+    {
+        $defaults = collect(config('aibot.strategies'))
+            ->firstWhere('code', 'ai_signal')['params'];
+
+        $params = collect($defaults)->pluck('default', 'key')->all();
+
+        $signal = $this->registry->find('ai_signal')
+            ->decide($this->risingMarket(70, 20), $params, null);
+
+        $this->assertSame(Signal::BUY, $signal->action, sprintf(
+            'ความมั่นใจ %.1f%% ยังไม่ถึงเกณฑ์ปริยาย %s%%',
+            $signal->meta['confidence'] ?? 0,
+            $params['confidence_min'] ?? '?'
+        ));
+    }
+
+    /**
+     * ตลาดออกข้างแล้วราคาย่อลงชนขอบล่าง = ของถูกในกรอบ ต้องไม่ตีความเป็นสัญญาณขาย.
+     *
+     * เป็นอีกด้านของการแก้สูตร: พอให้น้ำหนักฝั่งตามเทรนด์มากขึ้นตอนตลาดมีทิศทาง
+     * ต้องไม่เผลอทิ้งฝั่งสวนค่าเฉลี่ยไปด้วยตอนตลาดไม่มีทิศทาง ซึ่งเป็นสถานการณ์
+     * ที่ฝั่งนั้นถูกของมันเอง (ai_signal ต้องใช้ได้ทั้งสองสภาพตลาด ไม่ใช่แค่ขาขึ้น)
+     */
+    public function test_ai_signal_still_buys_a_dip_in_a_ranging_market(): void
+    {
+        // ต้องยาวกว่า minCandles (60) ไม่งั้นได้ hold เพราะข้อมูลไม่พอ ไม่ใช่เพราะสูตร
+        $closes = [];
+        for ($i = 0; $i < 64; $i++) {
+            $closes[] = 100.0 + ($i % 2 === 0 ? 1.5 : -1.5);
+        }
+        // ย่อเบาๆ ให้ยังอยู่ในกรอบ — ถ้าย่อแรงก็กลายเป็นขาลงจริง ซึ่งควรถูกอ่านว่าขาลง
+        for ($i = 1; $i <= 4; $i++) {
+            $closes[] = 100.0 - $i * 0.4;
+        }
+
+        $signal = $this->registry->find('ai_signal')
+            ->decide($this->candles($closes), ['confidence_min' => 65, 'mode' => 'balanced'], null);
+
+        $this->assertNotSame(Signal::SELL, $signal->action);
+        $this->assertGreaterThan(50, $signal->meta['confidence']);
+    }
+
     public function test_ai_signal_scores_every_dimension(): void
     {
         $signal = $this->registry->find('ai_signal')

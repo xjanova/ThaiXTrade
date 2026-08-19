@@ -38,6 +38,9 @@ class AiBotTierTest extends TestCase
             'ip' => '127.0.0.1',
             'verified_at' => now()->toIso8601String(),
         ], now()->addHours(4));
+
+        // ชุดนี้ทดสอบเส้นแบ่งฟรี/คลาวด์ ไม่ใช่ด่านเปิด-ปิดการขาย
+        config(['aibot.sales_open' => true]);
     }
 
     private function subscribeTo(string $planCode): AiBotSubscription
@@ -83,7 +86,11 @@ class AiBotTierTest extends TestCase
     #[Test]
     public function every_paid_plan_runs_in_the_cloud_and_is_priced_in_tpix(): void
     {
-        $paid = AiBotPlan::where('code', '!=', 'free')->get();
+        /*
+         * เฉพาะแพลนที่ "ขายจริง" — แพลนทีมงาน (is_active = false) ราคา 0 โดยตั้งใจ
+         * และไม่มีวันโผล่ในแคตตาล็อก จึงไม่อยู่ในกติกาข้อนี้
+         */
+        $paid = AiBotPlan::active()->where('code', '!=', 'free')->get();
 
         $this->assertNotEmpty($paid);
 
@@ -351,9 +358,23 @@ class AiBotTierTest extends TestCase
     #[Test]
     public function a_topup_intent_states_tpix_as_the_currency(): void
     {
+        // ค่าปริยายคือปิดรับเงิน — เทสต์นี้สนใจสกุลเงิน จึงเปิดให้ถึงตัวที่จะวัด
+        config(['aibot.credits.topup_enabled' => true]);
+
         $intent = app(AiBotService::class)->createTopupIntent(self::WALLET, 'pack_500');
 
         $this->assertSame('TPIX', $intent['currency']);
         $this->assertSame('pending_payment', $intent['status']);
+    }
+
+    /** ปิดรับเงินอยู่ = ต้องโยนเหตุผลออกมา ไม่ใช่คืนใบแจ้งความจำนงลอยๆ */
+    #[Test]
+    public function a_topup_is_refused_while_payments_are_closed(): void
+    {
+        config(['aibot.credits.topup_enabled' => false]);
+
+        $this->expectExceptionMessage(AiBotService::ERR_TOPUP_CLOSED);
+
+        app(AiBotService::class)->createTopupIntent(self::WALLET, 'pack_500');
     }
 }

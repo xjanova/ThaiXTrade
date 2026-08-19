@@ -4,9 +4,11 @@ namespace Tests\Feature\Api;
 
 use App\Models\AiBotConfig;
 use App\Models\AiBotPlan;
+use App\Models\AiBotPosition;
 use App\Models\AiBotSubscription;
 use App\Models\MarketNews;
 use App\Services\AiBot\PaperBroker;
+use App\Services\MarketDataService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use PHPUnit\Framework\Attributes\Test;
@@ -332,5 +334,112 @@ class AiBotDemoApiTest extends TestCase
     {
         $this->getJson('/api/v1/ai-bot/risk?pair='.urlencode("BTC'; DROP TABLE users--"))
             ->assertStatus(422);
+    }
+
+    // ── ไม้ที่ยังไม่ปิดต้องเห็นกำไร/ขาดทุนจริง ──────────────────────────────
+
+    /**
+     * ราคาตกแล้วต้องเห็นว่าขาดทุน ทั้งที่ยังไม่ได้ปิดไม้.
+     *
+     * เดิมส่งออกแต่ราคาทุน หน้าเว็บจึงตีมูลค่าพอร์ตด้วยราคาทุน — ซื้อที่ $100
+     * ราคาร่วงเหลือ $50 พอร์ตยังโชว์เต็ม ขาดทุนโผล่ก็ต่อเมื่อบอทยอมปิดไม้
+     * ซึ่งอาจไม่เกิดขึ้นเลย = ตัวเลขที่หลอกให้ตัดสินใจจ่ายเงินเช่าผิด
+     */
+    #[Test]
+    public function an_open_position_shows_its_loss_at_the_current_market_price(): void
+    {
+        $this->priceIs(50.0);
+
+        $bot = $this->makeBot();
+        AiBotPosition::create([
+            'ai_bot_config_id' => $bot->id,
+            'pair' => 'BTC/USDT',
+            'mode' => 'demo',
+            'quantity' => 10.0,
+            'entry_price' => 100.0,
+            'cost_basis' => 1000.0,
+            'entry_count' => 1,
+            'opened_at' => now()->subHour(),
+        ]);
+
+        $data = $this->getJson('/api/v1/ai-bot/demo?'.$this->query())->assertOk()->json('data');
+
+        $position = $data['positions'][0];
+
+        $this->assertEquals(500.0, $position['market_value']);
+        $this->assertEquals(-500.0, $position['unrealized_pnl']);
+        $this->assertEquals(-50.0, $position['unrealized_pct']);
+        $this->assertEquals(-500.0, $data['summary']['unrealized_pnl']);
+
+        // มูลค่าพอร์ต = เงินสด + ของที่ถือ "ตีด้วยราคาตลาด" ไม่ใช่ราคาทุน
+        $this->assertEquals(
+            round((float) $data['account']['balance'] + 500.0, 2),
+            $data['summary']['equity'],
+        );
+    }
+
+    /** ราคาขึ้นก็ต้องเห็นกำไรที่ยังไม่ปิดเหมือนกัน — ไม่ใช่โชว์เฉพาะตอนขาดทุน */
+    #[Test]
+    public function an_open_position_shows_its_gain_too(): void
+    {
+        $this->priceIs(130.0);
+
+        $bot = $this->makeBot();
+        AiBotPosition::create([
+            'ai_bot_config_id' => $bot->id,
+            'pair' => 'BTC/USDT',
+            'mode' => 'demo',
+            'quantity' => 10.0,
+            'entry_price' => 100.0,
+            'cost_basis' => 1000.0,
+            'entry_count' => 1,
+            'opened_at' => now()->subHour(),
+        ]);
+
+        $data = $this->getJson('/api/v1/ai-bot/demo?'.$this->query())->assertOk()->json('data');
+
+        $this->assertEquals(300.0, $data['summary']['unrealized_pnl']);
+    }
+
+    /**
+     * ดึงราคาตลาดไม่ได้ = ตีเท่าทุนไปก่อน และบอกว่ายังตีราคาไม่ได้.
+     *
+     * ห้ามเดาว่ากำไรหรือขาดทุนตอนที่เราไม่รู้ราคา — เดาผิดทางไหนก็ทำให้
+     * ผู้ใช้ตัดสินใจผิด ต้องบอกตรงๆ ว่ายังไม่รู้
+     */
+    #[Test]
+    public function a_position_without_a_price_is_marked_unpriced_instead_of_guessed(): void
+    {
+        $this->priceIs(null);
+
+        $bot = $this->makeBot();
+        AiBotPosition::create([
+            'ai_bot_config_id' => $bot->id,
+            'pair' => 'BTC/USDT',
+            'mode' => 'demo',
+            'quantity' => 10.0,
+            'entry_price' => 100.0,
+            'cost_basis' => 1000.0,
+            'entry_count' => 1,
+            'opened_at' => now()->subHour(),
+        ]);
+
+        $data = $this->getJson('/api/v1/ai-bot/demo?'.$this->query())->assertOk()->json('data');
+
+        $position = $data['positions'][0];
+
+        $this->assertFalse($position['priced']);
+        $this->assertNull($position['current_price']);
+        $this->assertEquals(0.0, $position['unrealized_pnl']);
+    }
+
+    /** ตลาดปลอมที่คืนราคาตามที่เทสต์กำหนด — ไม่ยิงเน็ตจริง */
+    private function priceIs(?float $price): void
+    {
+        $this->partialMock(
+            MarketDataService::class,
+            fn ($mock) => $mock->shouldReceive('getTokenPrice')
+                ->andReturn($price === null ? null : ['price' => $price])
+        );
     }
 }

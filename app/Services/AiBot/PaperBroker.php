@@ -34,11 +34,23 @@ class PaperBroker
             return ['ok' => false, 'reason' => 'ไม่มีราคาตลาดให้ใช้คำนวณ'];
         }
 
-        $account = $this->account($bot->wallet_address);
+        $account = $this->accountFor($bot);
         $budget = min($budgetUsd, (float) $account->balance);
 
         if ($budget < 1.0) {
-            return ['ok' => false, 'reason' => 'เครดิตทดลองไม่พอสำหรับไม้นี้'];
+            /*
+             * แยกสองสาเหตุออกจากกัน — อาการเหมือนกันแต่วิธีแก้คนละเรื่อง
+             *
+             * งบที่ส่งมาน้อยเองแปลว่ากรอบความเสี่ยงของบอทถูกตั้งไว้ต่ำ (เคยเกิดจาก
+             * เพดานทุนของแพลนเป็น 0) ซึ่งผู้ใช้แก้ได้เองที่หน้าตั้งค่าบอท ส่วน
+             * "เครดิตทดลองไม่พอ" คือพอร์ตทดลองหมด ต้องกดล้างพอร์ต — บอกผิดทาง
+             * แล้วผู้ใช้จะไปกดล้างพอร์ตซ้ำๆ ทั้งที่ไม่ใช่ต้นเหตุ
+             */
+            $reason = $budgetUsd < 1.0
+                ? 'ทุนต่อไม้ที่ตั้งไว้น้อยเกินไป — แก้ได้ที่กรอบความเสี่ยงของบอท'
+                : 'เครดิตทดลองไม่พอสำหรับไม้นี้';
+
+            return ['ok' => false, 'reason' => $reason];
         }
 
         $fillPrice = $this->fillPrice($marketPrice, 'buy');
@@ -133,7 +145,7 @@ class PaperBroker
         $pnl = $proceeds - (float) $position->cost_basis;
 
         return DB::transaction(function () use ($bot, $position, $quantity, $fillPrice, $marketPrice, $gross, $fee, $proceeds, $pnl, $context) {
-            $this->account($bot->wallet_address)->increment('balance', $proceeds);
+            $this->accountFor($bot)->increment('balance', $proceeds);
 
             $trade = AiBotTrade::create([
                 'ai_bot_config_id' => $bot->id,
@@ -171,15 +183,30 @@ class PaperBroker
             : $marketPrice * (1 - $slippage);
     }
 
-    /** กระเป๋าทดลองของ wallet — สร้างพร้อมเงินตั้งต้นถ้ายังไม่มี */
-    public function account(string $wallet): AiBotDemoAccount
+    /**
+     * พอร์ตทดลองหนึ่งใบ.
+     *
+     * @param  string|null  $bucket  รหัสกลยุทธ์ — แต่ละกลยุทธ์มีพอร์ตของตัวเอง
+     *                               null = พอร์ตรวม (ของเดิมก่อนแยกพอร์ต)
+     *
+     * แยกพอร์ตเพราะเดิมทุกกลยุทธ์กินเงินก้อนเดียวกัน กลยุทธ์ที่เข้าไม้ก่อน
+     * กินงบไปหมดแล้วตัวอื่นไม่เหลือให้เทรด — เอาผลมาเทียบกันไม่ได้เลยว่า
+     * กลยุทธ์ไหนทำได้ดีกว่า ซึ่งเป็นคำถามเดียวที่ต้องตอบก่อนเปิดขาย
+     */
+    public function account(string $wallet, ?string $bucket = null): AiBotDemoAccount
     {
         $starting = (float) config('aibot_risk.demo.starting_balance', 10000);
 
         return AiBotDemoAccount::firstOrCreate(
-            ['wallet_address' => strtolower($wallet)],
+            ['wallet_address' => strtolower($wallet), 'bucket' => $bucket],
             ['balance' => $starting, 'starting_balance' => $starting],
         );
+    }
+
+    /** พอร์ตของบอทตัวนี้ — ผูกกับกลยุทธ์ ไม่ใช่ตัวบอท (บอทหลายตัวของกลยุทธ์เดียวกันใช้พอร์ตร่วม) */
+    private function accountFor(AiBotConfig $bot): AiBotDemoAccount
+    {
+        return $this->account($bot->wallet_address, $bot->strategy);
     }
 
     /**
@@ -190,25 +217,50 @@ class PaperBroker
     public function reset(string $wallet): array
     {
         $wallet = strtolower($wallet);
-        $account = $this->account($wallet);
         $maxPerDay = (int) config('aibot_risk.demo.max_resets_per_day', 3);
 
-        // นับเฉพาะการล้างของวันนี้ — ป้องกันการล้างรัวเพื่อไล่หาผลลัพธ์สวยๆ
-        if ($account->last_reset_at?->isToday() && $account->reset_count >= $maxPerDay) {
+        /*
+         * โควตาการล้างนับรวมทั้งกระเป๋า ไม่ใช่ต่อพอร์ต
+         *
+         * นับต่อพอร์ตแล้วผู้ใช้จะล้างได้ 8 กลยุทธ์ × 3 ครั้ง = 24 ครั้งต่อวัน
+         * ซึ่งพอสำหรับไล่หาผลลัพธ์สวยๆ แล้วเอาไปอ้างว่ากลยุทธ์นี้ดี — ตรงข้าม
+         * กับเหตุผลที่มีโควตาตั้งแต่แรก
+         */
+        $accounts = AiBotDemoAccount::where('wallet_address', $wallet)->get();
+
+        /*
+         * ยังไม่เคยมีพอร์ตเลย = สร้างพอร์ตรวมไว้หนึ่งใบก่อน
+         *
+         * ไม่งั้นโควตาการล้างไม่มีที่เก็บ — วนล้างได้ไม่จำกัดครั้งเพราะ reset_count
+         * ไม่เคยถูกเขียนลงไหนเลย (ด่านที่ตั้งใจกันการไล่หาผลลัพธ์สวยๆ หายไปเงียบๆ)
+         */
+        if ($accounts->isEmpty()) {
+            $accounts = collect([$this->account($wallet)]);
+        }
+
+        $usedToday = (int) $accounts
+            ->filter(fn (AiBotDemoAccount $a) => $a->last_reset_at?->isToday())
+            ->max('reset_count');
+
+        if ($usedToday >= $maxPerDay) {
             return ['ok' => false, 'reason' => "ล้างพอร์ตทดลองได้วันละ {$maxPerDay} ครั้ง"];
         }
 
-        DB::transaction(function () use ($wallet, $account) {
+        DB::transaction(function () use ($wallet, $accounts, $usedToday) {
             $botIds = AiBotConfig::where('wallet_address', $wallet)->pluck('id');
 
             AiBotPosition::whereIn('ai_bot_config_id', $botIds)->where('mode', 'demo')->delete();
             AiBotTrade::whereIn('ai_bot_config_id', $botIds)->where('mode', 'demo')->delete();
 
-            $account->update([
-                'balance' => $account->starting_balance,
-                'reset_count' => $account->last_reset_at?->isToday() ? $account->reset_count + 1 : 1,
-                'last_reset_at' => now(),
-            ]);
+            // ล้างทุกพอร์ตพร้อมกัน — ล้างทีละใบทำให้เทียบกลยุทธ์กันไม่ได้
+            // เพราะแต่ละพอร์ตเริ่มนับจากคนละจุดเวลา
+            foreach ($accounts as $account) {
+                $account->update([
+                    'balance' => $account->starting_balance,
+                    'reset_count' => $usedToday + 1,
+                    'last_reset_at' => now(),
+                ]);
+            }
         });
 
         return ['ok' => true];

@@ -333,16 +333,79 @@ export function useAiBot() {
     const packs = computed(() => catalog.value?.packs ?? []);
     const rentalDays = computed(() => catalog.value?.rental_days ?? [1, 7, 30]);
 
+    /*
+     * อะไรเปิดใช้จริงแล้ว — อ่านจากเซิร์ฟเวอร์ ไม่ใช่เดาหรือฮาร์ดโค้ดในหน้าจอ
+     *
+     * ตั้งค่าปริยายเป็น false ตอนแคตตาล็อกยังไม่โหลด เพื่อให้จอเริ่มจาก "ยังไม่เปิด"
+     * แล้วค่อยเปิดเมื่อรู้จริง — เดาว่าเปิดไว้ก่อนแล้วผิด แปลว่าผู้ใช้กดปุ่มที่ใช้ไม่ได้
+     */
+    const liveEnabled = computed(() => catalog.value?.features?.live_trading === true);
+    const topupEnabled = computed(() => catalog.value?.features?.credit_topup === true);
+
+    /** เปิดให้คนทั่วไปเช่าแล้วหรือยัง — ทีมงานข้ามด่านนี้ได้ */
+    const salesOpen = computed(() => catalog.value?.features?.sales_open === true);
+
+    /** กระเป๋านี้เป็นของทีมงานไหม (เซิร์ฟเวอร์เป็นคนตัดสิน หน้าเว็บแค่แสดงผลตาม) */
+    const isAdminWallet = computed(() => status.value?.is_admin === true);
+
+    /** เช่าได้ไหมในตอนนี้ — ปิดขายอยู่และไม่ใช่ทีมงาน = ยังเช่าไม่ได้ */
+    const canRent = computed(() => salesOpen.value || isAdminWallet.value);
+
+    /**
+     * บอทตัวนี้เงียบไปนานผิดปกติไหม (นาที) — null เมื่อยังไม่เคยเดินหรือไม่ได้เปิดอยู่
+     *
+     * ตัวจับเวลาฝั่งเซิร์ฟเวอร์ตายเงียบได้ และหน้าจอก็ยังวาดจุดเขียวกะพริบต่อไป
+     * เพราะดูแค่ `status === 'running'` ซึ่งเป็นสิ่งที่ผู้ใช้ตั้งไว้ ไม่ใช่สิ่งที่เกิดขึ้นจริง
+     */
+    function minutesSinceRun(item) {
+        if (!item || item.status !== 'running' || !item.last_run_at) return null;
+
+        const last = new Date(item.last_run_at).getTime();
+        if (Number.isNaN(last)) return null;
+
+        return Math.floor((Date.now() - last) / 60000);
+    }
+
+    /** เกินสองเท่าของรอบที่ช้าที่สุด (5 นาที) = ผิดปกติพอที่จะเตือน */
+    function isStale(item) {
+        const minutes = minutesSinceRun(item);
+
+        return minutes !== null && minutes >= 10;
+    }
+
     // มูลค่าพอร์ตทดลอง = เงินสด + ต้นทุนของที่ถืออยู่
     // ใช้ต้นทุน ไม่ใช่ราคาตลาด เพราะราคาตลาดเปลี่ยนทุกวินาทีและยังไม่ใช่เงินจริง
+    /*
+     * มูลค่าพอร์ตทดลอง = เงินสด + ของที่ถืออยู่ "ตีด้วยราคาตลาด"
+     *
+     * เดิมตีด้วยราคาทุน ซึ่งทำให้ไม้ที่กำลังติดลบไม่ปรากฏเลย — ซื้อที่ $100
+     * ราคาร่วงเหลือ $50 พอร์ตยังโชว์เต็ม ขาดทุนจะโผล่ก็ต่อเมื่อบอทยอมปิดไม้
+     * ซึ่งอาจไม่เกิดขึ้นเลย ผู้ใช้จึงตัดสินใจ "เช่าจริงไหม" จากตัวเลขที่สวยเกินจริง
+     *
+     * เซิร์ฟเวอร์คำนวณ equity มาให้แล้ว (เห็นราคาจริง) — ใช้ค่านั้นเป็นหลัก
+     * ส่วนการบวกเองเป็นทางสำรองตอน payload เก่ายังค้างอยู่ในหน้าที่เปิดทิ้งไว้
+     */
     const demoEquity = computed(() => {
         if (!demo.value) return 0;
-        const held = (demo.value.positions ?? []).reduce((sum, p) => sum + Number(p.cost_basis || 0), 0);
+
+        const fromServer = demo.value.summary?.equity;
+        if (fromServer != null) return Number(fromServer);
+
+        const held = (demo.value.positions ?? [])
+            .reduce((sum, p) => sum + Number(p.market_value ?? p.cost_basis ?? 0), 0);
+
         return Number(demo.value.account?.balance || 0) + held;
     });
 
+    /** กำไร/ขาดทุนของไม้ที่ยังไม่ปิด — ส่วนที่เคยถูกซ่อนไว้ทั้งหมด */
+    const demoUnrealized = computed(() => Number(demo.value?.summary?.unrealized_pnl ?? 0));
+
     /** กำไรขาดทุนสะสมของพอร์ตทดลองเทียบทุนตั้งต้น (เฉพาะไม้ที่ปิดแล้ว) */
+    /** กำไร/ขาดทุนที่ปิดไม้แล้ว (ตัวเลขที่ "เกิดขึ้นจริง" ในพอร์ตทดลอง) */
     const demoPnl = computed(() => Number(demo.value?.summary?.realized_pnl ?? 0));
+
+    /** ผลรวมที่ผู้ใช้ควรใช้ตัดสินใจ — ปิดแล้ว + ที่ยังค้างอยู่ */
+    const demoTotalPnl = computed(() => demoPnl.value + demoUnrealized.value);
 
     const demoPnlPct = computed(() => {
         const start = Number(demo.value?.account?.starting_balance ?? 0);
@@ -409,7 +472,8 @@ export function useAiBot() {
         // derived
         credits, isActive, subscription, bots, runningBots,
         plans, strategies, packs, rentalDays, quotaText,
-        demoEquity, demoPnl, demoPnlPct, demoResetsLeft,
+        liveEnabled, topupEnabled, salesOpen, isAdminWallet, canRent, minutesSinceRun, isStale,
+        demoEquity, demoPnl, demoPnlPct, demoResetsLeft, demoUnrealized, demoTotalPnl,
         runsInCloud, browserBots,
         // actions
         loadCatalog, loadStatus, subscribe, cancel, claimWelcome, requestTopup,

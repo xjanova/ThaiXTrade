@@ -59,7 +59,11 @@ class AiBotSubscription extends Model
         return $this->status === 'active' && $this->expires_at?->isFuture();
     }
 
-    /** เหลืออีกกี่วัน (ปัดขึ้น) — 0 เมื่อหมดอายุแล้ว */
+    /**
+     * เหลืออีกกี่วัน (ปัดขึ้น) — 0 เมื่อหมดอายุแล้ว.
+     *
+     * ⚠️ ใช้ "แสดงผล" เท่านั้น ห้ามเอาไปคูณราคาเพื่อคืนเงิน — ดู refundableDays()
+     */
     public function daysRemaining(): int
     {
         if (! $this->isLive()) {
@@ -67,5 +71,26 @@ class AiBotSubscription extends Model
         }
 
         return max(0, (int) ceil(now()->floatDiffInDays($this->expires_at, false)));
+    }
+
+    /**
+     * วันที่คืนเงินได้ — เศษวันคิดตามจริง ไม่ปัด.
+     *
+     * ทำไมต้องแยกจาก daysRemaining(): ตัวนั้นปัดขึ้น เหลืออีก 1 นาทีก็นับเป็น 1 วัน
+     * เอามาคูณราคาคืนเงินแล้วได้ช่องโหว่ที่ใช้ของฟรีตลอดกาล — เช่า VIP 90 วัน
+     * (21,600 เครดิต) ใช้ 23 ชม. 59 นาที แล้วกดยกเลิก ได้คืนครบ 21,600 เพราะ
+     * ceil(90 − 0.999) = 90 แล้วเช่าใหม่ทันที วนแบบนี้ได้ทุกวันโดยไม่เสียอะไรเลย
+     *
+     * ที่ไม่ใช้ floor แทน เพราะจะเหวี่ยงไปอีกทาง — กดเช่าผิดแล้วยกเลิกทันที
+     * ต้องเสียค่าเช่าเต็มวัน (แพลน 1 วันคือเสียทั้งก้อน) คิดตามจริงยุติธรรมทั้งสองฝั่ง
+     * และปิดช่องโหว่ได้เท่ากัน เพราะใช้ VIP ไป 1 วันก็จ่ายค่า 1 วันพอดี
+     */
+    public function refundableDays(): float
+    {
+        if (! $this->isLive()) {
+            return 0.0;
+        }
+
+        return max(0.0, (float) now()->floatDiffInDays($this->expires_at, false));
     }
 }

@@ -53,6 +53,17 @@ class PaperBrokerTest extends TestCase
         ]);
     }
 
+    /**
+     * ยอดคงเหลือของพอร์ตที่บอทตัวนี้ใช้จริง.
+     *
+     * พอร์ตทดลองแยกตามกลยุทธ์แล้ว — อ่านพอร์ตรวม (bucket = null) จะได้เงินตั้งต้น
+     * เสมอ เพราะบอทไปหักจากพอร์ตของกลยุทธ์ตัวเอง ไม่ใช่พอร์ตรวม
+     */
+    private function walletBalance(): float
+    {
+        return (float) $this->broker->account(self::WALLET, $this->bot->strategy)->balance;
+    }
+
     // ─────────────────────────── ราคาที่ได้จริง ───────────────────────────
 
     /**
@@ -91,7 +102,7 @@ class PaperBrokerTest extends TestCase
         $this->assertEqualsWithDelta($expectedQty, (float) $trade->quantity, 0.00000001);
 
         // เงินออกจากกระเป๋าเต็มงบ (ทั้งค่าเหรียญและค่าธรรมเนียม)
-        $this->assertEqualsWithDelta(9000.0, (float) $this->broker->account(self::WALLET)->balance, 0.00001);
+        $this->assertEqualsWithDelta(9000.0, (float) $this->walletBalance(), 0.00001);
     }
 
     /**
@@ -102,7 +113,7 @@ class PaperBrokerTest extends TestCase
     {
         $this->broker->buy($this->bot, 100.0, 999999.0, ['reason' => 'ขอเกินตัว']);
 
-        $balance = (float) $this->broker->account(self::WALLET)->balance;
+        $balance = (float) $this->walletBalance();
 
         $this->assertGreaterThanOrEqual(0.0, $balance);
         $this->assertEqualsWithDelta(0.0, $balance, 0.00001);
@@ -114,8 +125,10 @@ class PaperBrokerTest extends TestCase
     #[Test]
     public function buy_is_rejected_when_credits_run_out(): void
     {
+        // ต้องตั้งยอดที่ "พอร์ตของกลยุทธ์นั้น" ไม่ใช่พอร์ตรวม
         AiBotDemoAccount::create([
             'wallet_address' => self::WALLET,
+            'bucket' => $this->bot->strategy,
             'balance' => 0.5,
             'starting_balance' => 10000.0,
         ]);
@@ -182,7 +195,7 @@ class PaperBrokerTest extends TestCase
         $proceeds = $gross - ($gross * 0.001);
 
         $this->assertEqualsWithDelta($proceeds, 9000.0 + $proceeds - 9000.0, 0.00001);
-        $this->assertEqualsWithDelta(9000.0 + $proceeds, (float) $this->broker->account(self::WALLET)->balance, 0.0001);
+        $this->assertEqualsWithDelta(9000.0 + $proceeds, (float) $this->walletBalance(), 0.0001);
         $this->assertEqualsWithDelta($proceeds - 1000.0, $result['pnl'], 0.0001);
         $this->assertGreaterThan(0.0, $result['pnl'], 'ขายที่ราคาสูงกว่าต้นทุน 20% ต้องได้กำไร');
     }
@@ -210,12 +223,12 @@ class PaperBrokerTest extends TestCase
     #[Test]
     public function a_flat_round_trip_always_loses_money(): void
     {
-        $start = (float) $this->broker->account(self::WALLET)->balance;
+        $start = (float) $this->walletBalance();
 
         $this->broker->buy($this->bot, 100.0, 1000.0, ['reason' => 'เข้า']);
         $result = $this->broker->sell($this->bot, 100.0, ['reason' => 'ออกที่ราคาเดิม']);
 
-        $end = (float) $this->broker->account(self::WALLET)->balance;
+        $end = (float) $this->walletBalance();
 
         $this->assertLessThan(0.0, $result['pnl'], 'เข้าออกที่ราคาเดิมต้องขาดทุนจากค่าธรรมเนียม + slippage');
         $this->assertLessThan($start, $end, 'ยอดเงินต้องลดลง');
@@ -261,7 +274,7 @@ class PaperBrokerTest extends TestCase
         $this->assertTrue($result['ok']);
         $this->assertSame(0, AiBotPosition::count());
         $this->assertSame(0, AiBotTrade::count());
-        $this->assertEqualsWithDelta(10000.0, (float) $this->broker->account(self::WALLET)->balance, 0.00001);
+        $this->assertEqualsWithDelta(10000.0, (float) $this->walletBalance(), 0.00001);
     }
 
     /**
@@ -305,7 +318,7 @@ class PaperBrokerTest extends TestCase
 
         $this->broker->buy($this->bot, 100.0, 5000.0, ['reason' => 'เข้าไม้']);
 
-        $this->assertEqualsWithDelta(5000.0, (float) $this->broker->account(self::WALLET)->balance, 0.00001);
-        $this->assertEqualsWithDelta(10000.0, (float) $this->broker->account($other)->balance, 0.00001);
+        $this->assertEqualsWithDelta(5000.0, (float) $this->walletBalance(), 0.00001);
+        $this->assertEqualsWithDelta(10000.0, (float) $this->broker->account($other, $this->bot->strategy)->balance, 0.00001);
     }
 }

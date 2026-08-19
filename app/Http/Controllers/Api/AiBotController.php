@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AiBotConfig;
 use App\Models\AiBotCredit;
+use App\Models\AiBotDemoAccount;
 use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
 use App\Models\AiBotTrade;
@@ -15,6 +16,7 @@ use App\Services\AiBot\PaperBroker;
 use App\Services\AiBot\StrategyAnalytics;
 use App\Services\AiBot\StrategyAvailability;
 use App\Services\AiBotService;
+use App\Services\MarketDataService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -37,6 +39,9 @@ class AiBotController extends Controller
         AiBotService::ERR_NO_SUBSCRIPTION => 'ยังไม่ได้เช่าบอท AI TRADE — เลือกแพลนก่อนเริ่มใช้งาน',
         AiBotService::ERR_BOT_LIMIT => 'จำนวนบอทเต็มโควตาของแพลนนี้แล้ว',
         AiBotService::ERR_STRATEGY_LOCKED => 'กลยุทธ์นี้ต้องใช้แพลนระดับสูงกว่า',
+        AiBotService::ERR_SUBSCRIBE_BUSY => 'กำลังทำรายการเช่าของกระเป๋านี้อยู่ กรุณารอสักครู่แล้วลองใหม่',
+        AiBotService::ERR_TOPUP_CLOSED => 'ยังไม่เปิดให้เติมเครดิต — รอประกาศเปิดระบบชำระเงินก่อน ระหว่างนี้ใช้เครดิตต้อนรับทดลองได้',
+        AiBotService::ERR_SALES_CLOSED => 'AI TRADE ยังอยู่ระหว่างทดสอบ ยังไม่เปิดให้เช่า — ระหว่างนี้ทดลองใช้โหมดทดลองได้เต็มที่ ไม่มีค่าใช้จ่าย',
         'INVALID_PACK' => 'ไม่พบแพ็กเกจเครดิตที่เลือก',
     ];
 
@@ -68,7 +73,10 @@ class AiBotController extends Controller
             'credits_per_day' => $plan->credits_per_day,
             'price_tpix_per_day' => (float) $plan->price_tpix_per_day,
             'max_bots' => $plan->max_bots,
-            'max_capital_usd' => $plan->max_capital_usd ? (float) $plan->max_capital_usd : null,
+            // เทียบกับ null ตรงๆ ห้ามใช้ truthiness — decimal:2 คืน "0.00" ซึ่ง PHP
+            // มองว่า falsy แล้วส่ง null ออกไป หน้าเว็บจึงโฆษณาว่า "ไม่จำกัดทุนต่อไม้"
+            // ทั้งที่ของจริงคือเปิดไม้ไม่ได้เลย (ตรงข้ามกันคนละขั้ว)
+            'max_capital_usd' => $plan->max_capital_usd === null ? null : (float) $plan->max_capital_usd,
             'features' => $plan->features ?? [],
             'features_th' => $plan->features_th ?? [],
             'badge' => $plan->badge,
@@ -86,6 +94,20 @@ class AiBotController extends Controller
                 'rental_days' => config('aibot.credits.rental_days', [1, 7, 30]),
                 'timeframes' => config('aibot.timeframes', []),
                 'limits' => config('aibot.limits', []),
+                /*
+                 * ธงบอกว่าอะไร "เปิดใช้จริงแล้ว" — ส่งจากที่เดียวให้ทั้งเว็บและแอพ
+                 *
+                 * ก่อนหน้านี้หน้าเว็บฮาร์ดโค้ดข้อความ "ตอนนี้เปิดเฉพาะโหมดทดลอง"
+                 * ไว้เอง ซึ่งแปลว่าวันที่เปิดโหมดจริง ต้องไล่แก้ทุกที่ที่เขียนไว้
+                 * และแอพมือถือจะไม่มีทางรู้เลยว่าอะไรเปิดอะไรปิด
+                 */
+                'features' => [
+                    'live_trading' => (bool) config('aibot.live_enabled', false),
+                    'credit_topup' => (bool) config('aibot.credits.topup_enabled', false),
+                    // ยังไม่เปิดให้เช่า = หน้าเว็บต้องปิดปุ่มเช่าและบอกเหตุผล
+                    // ไม่ใช่ปล่อยให้กดแล้วค่อยเด้ง error ตอนจ่ายเงิน
+                    'sales_open' => $this->bots->salesOpen(),
+                ],
             ],
         ]);
     }
@@ -98,7 +120,20 @@ class AiBotController extends Controller
     public function status(Request $request): JsonResponse
     {
         $wallet = $this->wallet($request);
-        $subscription = $this->bots->activeSubscription($wallet);
+
+        /*
+         * ลงแพลนฟรีให้ตั้งแต่ถามสถานะครั้งแรก ไม่ใช่รอตอนกดสร้างบอท
+         *
+         * เดิมใช้ activeSubscription() เฉยๆ → กระเป๋าที่ยังไม่เคยเช่าได้
+         * subscription = null · max_bots = 0 · unlocked_strategies = []
+         * หน้าเว็บจึงเห็นแผงเปล่า กลยุทธ์ล็อกหมด และปุ่ม "บอทใหม่" ถูกปิด
+         * (quotaFull คิดจาก used_bots >= max_bots → 0 >= 0 เป็นจริง)
+         * ผู้ใช้ใหม่จึงเข้ามาเจอหน้าที่กดอะไรไม่ได้เลย ทั้งที่แพลนฟรีเปิดให้ใช้อยู่
+         *
+         * assertCanRunBot() เรียกตัวเดียวกันนี้อยู่แล้ว — ย้ายมาเรียกให้เร็วขึ้น
+         * เท่านั้น ไม่ได้เพิ่มสิทธิ์ใหม่ให้ใคร
+         */
+        $subscription = $this->bots->ensureFreeSubscription($wallet);
         $plan = $subscription?->plan;
 
         $usedBots = AiBotConfig::forWallet($wallet)->countingTowardQuota()->count();
@@ -127,6 +162,11 @@ class AiBotController extends Controller
                     'used_bots' => $usedBots,
                 ],
                 'unlocked_strategies' => $plan?->unlockedStrategies() ?? [],
+                /*
+                 * กระเป๋าของทีมงาน — หน้าเว็บใช้ตัดสินว่าจะซ่อนด่านการขายไหม
+                 * (สิทธิ์จริงบังคับที่เซิร์ฟเวอร์อยู่แล้ว ธงนี้มีไว้ให้จอแสดงผลถูก)
+                 */
+                'is_admin' => $this->bots->isAdminWallet($wallet),
                 'bots' => $this->botList($wallet),
             ],
         ]);
@@ -203,7 +243,16 @@ class AiBotController extends Controller
         try {
             $this->bots->subscribe($this->wallet($request), $plan, (int) $validated['days']);
         } catch (RuntimeException $e) {
-            return $this->failure($e->getMessage(), null, 402);
+            /*
+             * 402 (ต้องชำระเงิน) ใช้ได้เฉพาะ "เครดิตไม่พอ" เท่านั้น
+             *
+             * เหมารวมทุกเหตุผลเป็น 402 ทำให้ "ยังไม่เปิดขาย" ถูกอ่านว่าเป็นเรื่องเงิน
+             * ทั้งฝั่งแอพมือถือและใครก็ตามที่เขียนโค้ดคุยกับ API — เขาจะพาผู้ใช้ไป
+             * หน้าเติมเงินทั้งที่เติมไปก็ยังเช่าไม่ได้อยู่ดี
+             */
+            $status = $e->getMessage() === AiBotService::ERR_INSUFFICIENT_CREDITS ? 402 : 422;
+
+            return $this->failure($e->getMessage(), null, $status);
         }
 
         return $this->status($request);
@@ -238,6 +287,13 @@ class AiBotController extends Controller
             $subscription = $this->bots->assertCanRunBot($wallet, $validated['strategy']);
         } catch (RuntimeException $e) {
             return $this->failure($e->getMessage(), null, 403);
+        }
+
+        if (! $this->pairHasCandles($validated['pair'], $validated['timeframe'])) {
+            return $this->failure(
+                'PAIR_NO_CANDLES',
+                'คู่ '.strtoupper($validated['pair']).' ยังไม่มีข้อมูลแท่งเทียนให้บอทใช้ตัดสินใจ — เลือกคู่อื่นก่อน'
+            );
         }
 
         $bot = AiBotConfig::create([
@@ -359,6 +415,22 @@ class AiBotController extends Controller
             return $this->failure('CLOUD_BOT', 'บอทของแพลนนี้เดินบนคลาวด์อยู่แล้ว ไม่ต้องสั่งจากหน้าเว็บ');
         }
 
+        /*
+         * สิทธิ์ต้องคิดจากแพลน "ปัจจุบัน" ทุกรอบที่สั่งเดิน
+         *
+         * เดิมด่านเดียวคือ "แพลนนี้เป็นคลาวด์ไหม" — พอแพลน VIP หมดอายุ ระบบลง
+         * แพลนฟรีให้ (execution = browser) เส้นทางนี้จึงเปิดกว้าง ผู้ใช้ที่เคยจ่าย
+         * VIP รันบอท 10 ตัวด้วยกลยุทธ์ VIP ต่อได้ฟรีตลอดกาลผ่านหน้าเว็บ
+         *
+         * assertCanRunBot บังคับทั้งระดับกลยุทธ์และโควตาจำนวนบอทในที่เดียว
+         * (ส่ง $bot เป็น existing เพื่อไม่ให้ตัวมันเองถูกนับซ้ำในโควตา)
+         */
+        try {
+            $this->bots->assertCanRunBot($wallet, $bot->strategy, $bot);
+        } catch (RuntimeException $e) {
+            return $this->failure($e->getMessage(), null, 403);
+        }
+
         // กันหน้าเว็บยิงรัวเกินจำเป็น — คิดหนึ่งรอบต่อช่วงเวลาที่กำหนดก็พอ
         $minSeconds = (int) config('aibot.browser_tick_min_seconds', 30);
 
@@ -388,28 +460,82 @@ class AiBotController extends Controller
      * ตัวเลขสรุปคำนวณจาก "ไม้ที่ปิดแล้ว" เท่านั้น ไม่รวมกำไรลอยของไม้ที่ยังเปิดอยู่
      * เพราะกำไรลอยเปลี่ยนทุกวินาทีและยังไม่ใช่เงินจริง — โชว์รวมกันจะดูดีเกินจริง
      */
-    public function demo(Request $request): JsonResponse
+    public function demo(Request $request, MarketDataService $market): JsonResponse
     {
         $wallet = $this->wallet($request);
-        $account = $this->broker->account($wallet);
+
+        /*
+         * พอร์ตทดลองแยกตามกลยุทธ์ — แต่ละกลยุทธ์มีเงินก้อนของตัวเอง
+         *
+         * ต้องแยกเพราะถ้าใช้ก้อนเดียวกัน กลยุทธ์ที่เข้าไม้ก่อนกินงบไปหมด
+         * แล้วตัวอื่นไม่เหลือให้เทรด — เอาผลมาเทียบกันไม่ได้เลยว่าตัวไหนดีกว่า
+         * ซึ่งเป็นคำถามเดียวที่ต้องตอบให้ได้ก่อนเปิดขาย
+         *
+         * `account` ที่ส่งออกยังเป็นภาพรวมรวมทุกพอร์ต เพื่อไม่ให้หน้าจอเดิมพัง
+         * ส่วน `portfolios` คือรายพอร์ตสำหรับหน้าที่อยากเทียบกลยุทธ์
+         */
+        $accounts = AiBotDemoAccount::where('wallet_address', $wallet)->get();
+
+        if ($accounts->isEmpty()) {
+            $accounts = collect([$this->broker->account($wallet)]);
+        }
+
+        $account = $accounts->first();
 
         $botIds = AiBotConfig::forWallet($wallet)->pluck('id');
 
-        $positions = AiBotPosition::with('bot:id,name,strategy')
+        $openPositions = AiBotPosition::with('bot:id,name,strategy')
             ->whereIn('ai_bot_config_id', $botIds)
             ->where('mode', 'demo')
-            ->get()
-            ->map(fn (AiBotPosition $p) => [
-                'id' => $p->id,
-                'bot_id' => $p->ai_bot_config_id,
-                'bot_name' => $p->bot?->name,
-                'pair' => $p->pair,
-                'quantity' => (float) $p->quantity,
-                'entry_price' => (float) $p->entry_price,
-                'cost_basis' => (float) $p->cost_basis,
-                'entry_count' => $p->entry_count,
-                'opened_at' => $p->opened_at?->toIso8601String(),
-            ])
+            ->get();
+
+        /*
+         * ตีราคาของที่ถืออยู่ด้วยราคาตลาดปัจจุบัน ไม่ใช่ราคาทุน
+         *
+         * เดิมส่งแต่ `cost_basis` ออกไป หน้าเว็บจึงคิดมูลค่าพอร์ตจากราคาทุน —
+         * ซื้อที่ $100 แล้วราคาร่วงเหลือ $50 พอร์ตยังโชว์เต็ม $100 อยู่ดี
+         * ขาดทุนจะโผล่ก็ต่อเมื่อบอทปิดไม้ ซึ่งอาจไม่เกิดขึ้นเลยถ้าราคาไม่กลับ
+         *
+         * โหมดทดลองมีไว้ให้ผู้ใช้ตัดสินใจว่าจะจ่ายเงินเช่าจริงไหม ตัวเลขที่สวย
+         * เพราะซ่อนไม้ที่ติดลบไว้ จึงเป็นการหลอกให้ตัดสินใจผิด — ต้องเห็นว่า
+         * "ตอนนี้ถ้าปิดจะได้เท่าไหร่" ทุกวินาที ไม่ใช่รอให้บอทยอมปิดก่อน
+         *
+         * ดึงราคาทีละคู่ที่ไม่ซ้ำกัน (แคช 10 วิอยู่แล้วใน MarketDataService)
+         */
+        $prices = $openPositions
+            ->pluck('pair')
+            ->unique()
+            ->mapWithKeys(fn (string $pair) => [$pair => $market->getTokenPrice($pair)['price'] ?? null])
+            ->all();
+
+        $positions = $openPositions
+            ->map(function (AiBotPosition $p) use ($prices) {
+                $quantity = (float) $p->quantity;
+                $costBasis = (float) $p->cost_basis;
+                $price = $prices[$p->pair] ?? null;
+
+                // ราคาตลาดดึงไม่ได้ = ตีเท่าทุนไปก่อน และบอกด้วยว่ายังตีราคาไม่ได้
+                $marketValue = $price !== null ? $quantity * (float) $price : $costBasis;
+
+                return [
+                    'id' => $p->id,
+                    'bot_id' => $p->ai_bot_config_id,
+                    'bot_name' => $p->bot?->name,
+                    'pair' => $p->pair,
+                    'quantity' => $quantity,
+                    'entry_price' => (float) $p->entry_price,
+                    'cost_basis' => $costBasis,
+                    'entry_count' => $p->entry_count,
+                    'opened_at' => $p->opened_at?->toIso8601String(),
+                    'current_price' => $price !== null ? (float) $price : null,
+                    'market_value' => round($marketValue, 2),
+                    'unrealized_pnl' => round($marketValue - $costBasis, 2),
+                    'unrealized_pct' => $costBasis > 0
+                        ? round((($marketValue - $costBasis) / $costBasis) * 100, 2)
+                        : 0.0,
+                    'priced' => $price !== null,
+                ];
+            })
             ->all();
 
         $trades = AiBotTrade::whereIn('ai_bot_config_id', $botIds)
@@ -445,8 +571,9 @@ class AiBotController extends Controller
 
         return response()->json(['success' => true, 'data' => [
             'account' => [
-                'balance' => (float) $account->balance,
-                'starting_balance' => (float) $account->starting_balance,
+                // รวมทุกพอร์ต — ตัวเลขที่ผู้ใช้เห็นเป็นภาพรวมของการทดลองทั้งหมด
+                'balance' => round((float) $accounts->sum(fn ($a) => (float) $a->balance), 2),
+                'starting_balance' => round((float) $accounts->sum(fn ($a) => (float) $a->starting_balance), 2),
                 'resets_used_today' => $account->last_reset_at?->isToday() ? $account->reset_count : 0,
                 'resets_per_day' => (int) config('aibot_risk.demo.max_resets_per_day', 3),
                 'fee_rate' => (float) config('aibot_risk.demo.fee_rate', 0.1),
@@ -454,8 +581,31 @@ class AiBotController extends Controller
             ],
             'positions' => $positions,
             'trades' => $trades,
+            /*
+             * รายพอร์ต — ใช้เทียบว่ากลยุทธ์ไหนทำได้ดีกว่าในช่วงเวลาเดียวกัน
+             * (bucket = null คือพอร์ตรวมของเดิมก่อนแยกพอร์ต)
+             */
+            'portfolios' => $accounts
+                ->map(fn (AiBotDemoAccount $a) => [
+                    'strategy' => $a->bucket,
+                    'balance' => (float) $a->balance,
+                    'starting_balance' => (float) $a->starting_balance,
+                    'pnl' => round((float) $a->balance - (float) $a->starting_balance, 2),
+                ])
+                ->sortBy('strategy')
+                ->values()
+                ->all(),
             'summary' => [
                 'realized_pnl' => round((float) $closed->sum('realized_pnl'), 2),
+                /*
+                 * กำไร/ขาดทุนของไม้ที่ยังไม่ปิด + มูลค่าพอร์ตรวม
+                 *
+                 * ต้องคิดจากฝั่งเซิร์ฟเวอร์ที่เห็นราคาจริง ไม่ใช่ให้หน้าเว็บบวกเอง
+                 * จากราคาทุน — แอพมือถือก็อ่านชุดเดียวกันนี้และต้องได้เลขเดียวกัน
+                 */
+                'unrealized_pnl' => round(collect($positions)->sum('unrealized_pnl'), 2),
+                'positions_value' => round(collect($positions)->sum('market_value'), 2),
+                'equity' => round((float) $account->balance + collect($positions)->sum('market_value'), 2),
                 'total_fees' => round((float) AiBotTrade::whereIn('ai_bot_config_id', $botIds)->where('mode', 'demo')->sum('fee'), 2),
                 'trade_count' => AiBotTrade::whereIn('ai_bot_config_id', $botIds)->where('mode', 'demo')->count(),
                 'closed_count' => $closedCount,
@@ -534,7 +684,7 @@ class AiBotController extends Controller
     }
 
     /** ล้างพอร์ตทดลองกลับไปตั้งต้น */
-    public function resetDemo(Request $request): JsonResponse
+    public function resetDemo(Request $request, MarketDataService $market): JsonResponse
     {
         $result = $this->broker->reset($this->wallet($request));
 
@@ -542,7 +692,7 @@ class AiBotController extends Controller
             return $this->failure('RESET_LIMIT', $result['reason'] ?? 'ล้างพอร์ตไม่สำเร็จ');
         }
 
-        return $this->demo($request);
+        return $this->demo($request, $market);
     }
 
     /**
@@ -613,19 +763,71 @@ class AiBotController extends Controller
             $strategyCodes[] = $current->strategy;
         }
 
-        return $request->validate([
+        /*
+         * กรอบเวลาต้องตรวจกับกลยุทธ์ที่เลือก ไม่ใช่รายการรวมของทั้งระบบ
+         *
+         * เดิมตรวจกับ config('aibot.timeframes') ซึ่งเป็นรายการรวม 6 ค่า — หน้าเว็บ
+         * กรองให้เองอยู่แล้ว แต่แอพมือถือหรือคนที่ยิง API ตรงสร้าง dca บน 1m ได้
+         * ซึ่ง engine ต้องย้อนดู 1,440 แท่งแต่ดึงมาแค่ 150 → บอทเงียบตลอดกาล
+         * โดยไม่มีข้อความบอกว่าตั้งค่าผิด (กันฟีเจอร์ต้องกันที่ API ด้วย)
+         */
+        // aibot.strategies เป็น "รายการ" ไม่ใช่ map ที่คีย์ด้วย code — ต้องค้นเอง
+        $spec = collect(config('aibot.strategies', []))
+            ->firstWhere('code', $request->input('strategy'));
+
+        $timeframes = $spec['timeframes'] ?? config('aibot.timeframes', []);
+
+        $validated = $request->validate([
             'name' => ['required', 'string', 'max:'.config('aibot.limits.max_name_length', 60)],
             // คู่เทรดรูปแบบ BASE/QUOTE เท่านั้น — กันสตริงแปลกปลอมไหลไป engine
             'pair' => ['required', 'string', 'regex:/^[A-Za-z0-9]{2,15}\/[A-Za-z0-9]{2,15}$/'],
             'strategy' => ['required', 'string', 'in:'.implode(',', $strategyCodes)],
-            'timeframe' => ['required', 'string', 'in:'.implode(',', config('aibot.timeframes', []))],
+            'timeframe' => ['required', 'string', 'in:'.implode(',', $timeframes)],
             'params' => ['sometimes', 'array'],
             'risk' => ['sometimes', 'array'],
         ], [
             // ข้อความปริยาย ("The selected strategy is invalid") ทำให้ผู้ใช้คิดว่าตัวเอง
             // กรอกผิด ทั้งที่กลยุทธ์นั้นมีอยู่จริงแค่ยังเปิดใช้ไม่ได้
             'strategy.in' => $this->strategyRejectedMessage($request->input('strategy')),
+            'timeframe.in' => 'กลยุทธ์นี้ใช้กรอบเวลาได้เฉพาะ '.implode(' · ', $timeframes),
         ]);
+
+        return $validated;
+    }
+
+    /**
+     * คู่นี้มีแท่งเทียนให้บอทใช้จริงไหม.
+     *
+     * ต้องถามก่อนสร้างบอท ไม่ใช่ปล่อยให้รู้ตอนบอทเดินแล้วเงียบ — คู่ที่ไม่มีบน
+     * Binance (รวม TPIX/USDT ซึ่งเป็นคู่เรือธงของเว็บเอง) ดึงแท่งเทียนไม่ได้เลย
+     * บอทจะขึ้นว่า "ยังดึงแท่งเทียนของคู่นี้ไม่ได้" วนทุก 5 นาทีตลอดอายุการเช่า
+     * ซึ่งอ่านเหมือนปัญหาชั่วคราว ทั้งที่ถาวร — ผู้ใช้รอไปเรื่อยๆ โดยไม่มีอะไรบอก
+     *
+     * แคชผลไว้เพราะเป็นคุณสมบัติของคู่เทรด ไม่ใช่ของผู้ใช้ และการยิงตลาด
+     * ทุกครั้งที่กดบันทึกฟอร์มเป็นการรอที่ไม่จำเป็น
+     *
+     * ปล่อยผ่านเมื่อตัดสินไม่ได้ (เน็ตล่ม/โดนจำกัดอัตรา) — ปฏิเสธการสร้างบอทเพราะ
+     * เราถามตลาดไม่สำเร็จ เป็นการลงโทษผู้ใช้ด้วยปัญหาของเราเอง และแคชคำตอบผิดไว้
+     * อีก 6 ชั่วโมงด้วย จึงแคชเฉพาะคำตอบที่ชัดเจนเท่านั้น
+     */
+    private function pairHasCandles(string $pair, string $timeframe): bool
+    {
+        $key = 'aibot:pair-candles:'.strtolower($pair).':'.$timeframe;
+        $cached = Cache::get($key);
+
+        if ($cached !== null) {
+            return (bool) $cached;
+        }
+
+        $answer = app(MarketDataService::class)->hasKlines($pair, $timeframe);
+
+        if ($answer === null) {
+            return true;
+        }
+
+        Cache::put($key, $answer, now()->addHours(6));
+
+        return $answer;
     }
 
     /** บอกเหตุผลจริงว่าทำไมกลยุทธ์นี้ถึงใช้ไม่ได้ */

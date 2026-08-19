@@ -6,7 +6,9 @@ use App\Models\AiBotConfig;
 use App\Models\AiBotCredit;
 use App\Models\AiBotPlan;
 use App\Models\AiBotSubscription;
+use Database\Seeders\AiBotPlanSeeder;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -29,6 +31,15 @@ class AiBotService
     public const ERR_BOT_LIMIT = 'BOT_LIMIT_REACHED';
 
     public const ERR_STRATEGY_LOCKED = 'STRATEGY_LOCKED';
+
+    /** มีคำขอเช่าของกระเป๋านี้กำลังทำงานอยู่ — กันกดรัวจนตัดเครดิตซ้อน */
+    public const ERR_SUBSCRIBE_BUSY = 'SUBSCRIBE_IN_PROGRESS';
+
+    /** ยังไม่เปิดให้เติมเครดิต (ยังไม่มีรางรับเงินจริง) */
+    public const ERR_TOPUP_CLOSED = 'TOPUP_UNAVAILABLE';
+
+    /** ยังไม่เปิดขายให้คนทั่วไป — อยู่ระหว่างทดสอบ */
+    public const ERR_SALES_CLOSED = 'SALES_CLOSED';
 
     // =========================================================================
     // เครดิต
@@ -119,6 +130,21 @@ class AiBotService
      */
     public function createTopupIntent(string $wallet, string $packCode): array
     {
+        /*
+         * ยังไม่มีรางรับเงินจริง — ต้องบอกตรงๆ ไม่ใช่ตอบ "สำเร็จ" แล้วเงียบหาย
+         *
+         * เมธอดนี้คืนแค่ใบแจ้งความจำนง (`pending_payment`) ไม่มีใครมารับเงินต่อ
+         * และไม่มีหน้าแอดมินยืนยันการเติม ผู้ใช้ที่กดแล้วเห็นข้อความ "ส่งคำขอแล้ว"
+         * จะรอเครดิตที่ไม่มีวันมา แล้วกลับมากดซ้ำ — เสียความเชื่อถือมากกว่าบอกว่า
+         * ยังไม่เปิดตั้งแต่แรก
+         *
+         * เปิดใช้เมื่อไหร่ให้ตั้ง `aibot.credits.topup_enabled` เป็น true พร้อมกับ
+         * ต่อตัวรับเงินจริง (ใช้ซ้ำจาก TradingTopupService ที่ยืนยันบนเชนได้แล้ว)
+         */
+        if (! config('aibot.credits.topup_enabled', false)) {
+            throw new RuntimeException(self::ERR_TOPUP_CLOSED);
+        }
+
         $pack = collect(config('aibot.credits.packs', []))
             ->firstWhere('code', $packCode);
 
@@ -148,6 +174,37 @@ class AiBotService
     }
 
     /**
+     * กระเป๋านี้เป็นของทีมงานไหม.
+     *
+     * เทียบแบบ lower-case ทั้งสองฝั่ง เพราะที่อยู่กระเป๋าที่คนพิมพ์ใส่ .env มัก
+     * เป็น checksum case (มีตัวใหญ่ปน) ส่วนในระบบเก็บเป็นตัวเล็กล้วน —
+     * เทียบตรงๆ แล้วจะไม่ตรงกันเลยสักใบ และอาการคือ "สิทธิ์แอดมินไม่ทำงาน"
+     * ที่หาสาเหตุยากมากเพราะไม่มี error อะไรเลย
+     */
+    public function isAdminWallet(?string $wallet): bool
+    {
+        if (! $wallet) {
+            return false;
+        }
+
+        $allowed = array_map('strtolower', config('aibot.admin_wallets', []));
+
+        return in_array($this->normalize($wallet), $allowed, true);
+    }
+
+    /** แพลนของทีมงาน — ไม่อยู่ในรายการขาย จึงต้องหาโดยไม่ใช้ scope active() */
+    public function adminPlan(): ?AiBotPlan
+    {
+        return AiBotPlan::where('code', AiBotPlanSeeder::ADMIN_PLAN_CODE)->first();
+    }
+
+    /** เปิดขายให้คนทั่วไปแล้วหรือยัง (ทีมงานใช้ได้เสมอไม่ว่าจะเปิดหรือปิด) */
+    public function salesOpen(): bool
+    {
+        return (bool) config('aibot.sales_open', false);
+    }
+
+    /**
      * รับประกันว่า wallet นี้มีการเช่าอย่างน้อย "แพลนฟรี" เสมอ.
      *
      * ทำไมต้องสร้างแถวจริง ไม่ใช่ปล่อยให้ไม่มี subscription แล้วไปดักเป็นกรณีพิเศษ:
@@ -165,12 +222,52 @@ class AiBotService
             return $existing;
         }
 
-        $plan = $this->freePlan();
+        /*
+         * กระเป๋าของทีมงานได้แพลนทีมงาน ไม่ใช่แพลนฟรี
+         *
+         * ต้องเป็น subscription จริง ไม่ใช่การใส่ if ตามจุดต่างๆ — ทั้งการปลดล็อก
+         * กลยุทธ์ · โควตาบอท · การเดินบนคลาวด์ · เพดานทุน ล้วนอ่านจากแพลนอยู่แล้ว
+         * ทำครั้งเดียวตรงนี้จึงถูกทุกจุดโดยอัตโนมัติ และไม่มีจุดไหนหลุด
+         */
+        $plan = $this->isAdminWallet($wallet)
+            ? ($this->adminPlan() ?? $this->freePlan())
+            : $this->freePlan();
 
         if (! $plan) {
             return null;
         }
 
+        /*
+         * ล็อกก่อนสร้าง — ตารางนี้ไม่มี unique index กันไว้
+         *
+         * หน้า /ai-trade กับการ์ดในหน้าเทรดเรียก status() ได้พร้อมกัน และหน้าเว็บ
+         * ยังถามสถานะซ้ำเป็นระยะ ถ้าสองคำขอมาถึงพร้อมกันตอนยังไม่มีแถว ทั้งคู่จะ
+         * เห็น "ไม่มี" แล้วสร้างคนละแถว — ผู้ใช้ฟรีคนเดียวได้ subscription สองใบ
+         * (ไม่พังทันทีเพราะ activeSubscription เลือกใบล่าสุด แต่ตารางจะเน่าไปเรื่อยๆ
+         * และการนับโควตา/ประวัติจะอ่านยากขึ้นทุกครั้งที่เกิด)
+         *
+         * ได้ล็อกช้า = อีกคำขอสร้างไปแล้ว จึงเช็คซ้ำอีกรอบก่อนสร้างจริง
+         */
+        $lock = Cache::lock("aibot:free-sub:{$wallet}", 10);
+
+        if (! $lock->get()) {
+            return $this->activeSubscription($wallet);
+        }
+
+        try {
+            if ($existing = $this->activeSubscription($wallet)) {
+                return $existing;
+            }
+
+            return $this->createFreeSubscription($wallet, $plan);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /** สร้างแถวแพลนฟรี — เรียกจาก ensureFreeSubscription หลังถือล็อกแล้วเท่านั้น */
+    private function createFreeSubscription(string $wallet, AiBotPlan $plan): AiBotSubscription
+    {
         return AiBotSubscription::create([
             'wallet_address' => $wallet,
             'ai_bot_plan_id' => $plan->id,
@@ -203,16 +300,63 @@ class AiBotService
         $days = $this->clampRentalDays($days);
         $cost = round($plan->credits_per_day * $days, 4);
 
-        if ($this->balanceFor($wallet) < $cost) {
-            throw new RuntimeException(self::ERR_INSUFFICIENT_CREDITS);
+        /*
+         * ด่านสุดท้ายก่อนมีใครเสียเงิน
+         *
+         * เจ้าของสั่งให้ปิดการขายไว้จนกว่าจะทดสอบกลยุทธ์ครบและมั่นใจ — ปิดที่นี่
+         * เพราะเป็นทางเดียวที่เครดิตถูกตัด ปิดแค่ปุ่มบนหน้าเว็บไม่พอ แอพมือถือกับ
+         * คนที่ยิง API ตรงไม่เห็นปุ่มเรา
+         *
+         * ทีมงานผ่านได้เสมอ (แพลนทีมงานราคา 0 อยู่แล้ว จึงไม่มีเงินเปลี่ยนมือ)
+         */
+        if (! $this->salesOpen() && ! $this->isAdminWallet($wallet) && $cost > 0) {
+            throw new RuntimeException(self::ERR_SALES_CLOSED);
         }
 
+        /*
+         * ล็อกต่อกระเป๋าก่อนแตะเงิน
+         *
+         * เดิมไม่มีล็อกเลย ทั้งที่ ensureFreeSubscription() ซึ่งไม่แตะเงินยังมี —
+         * คำขอสองใบพร้อมกันอ่าน activeSubscription() ได้ค่าเดียวกัน แล้วสร้าง
+         * subscription คนละแถว ตัดเครดิตครบสองรอบ (reference ผูกกับ id ที่ต่างกัน
+         * unique index จึงไม่ช่วย) ผู้ใช้จ่ายสองเท่าแต่ได้แพลนใบเดียว ส่วนอีกใบ
+         * กลายเป็นแถวกำพร้าที่ activeSubscription() มองไม่เห็นและ cancel() ไม่คืนให้
+         */
+        $lock = Cache::lock("aibot:subscribe:{$wallet}", 15);
+
+        if (! $lock->get()) {
+            throw new RuntimeException(self::ERR_SUBSCRIBE_BUSY);
+        }
+
+        try {
+            return $this->commitSubscription($wallet, $plan, $days, $cost);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /** ตัวเนื้อของ subscribe() — เรียกได้เฉพาะตอนถือล็อกของกระเป๋านั้นแล้ว */
+    private function commitSubscription(string $wallet, AiBotPlan $plan, int $days, float $cost): AiBotSubscription
+    {
         return DB::transaction(function () use ($wallet, $plan, $days, $cost) {
             $current = $this->activeSubscription($wallet);
+            $planChanged = $current && $current->ai_bot_plan_id !== $plan->id;
 
-            if ($current && $current->ai_bot_plan_id !== $plan->id) {
+            if ($planChanged) {
                 $this->refundRemaining($current);
                 $current = null;
+            }
+
+            /*
+             * เช็คยอด "หลัง" คืนเงินแพลนเดิม ไม่ใช่ก่อน
+             *
+             * เดิมเช็คนอก transaction ตั้งแต่ต้น → ผู้ใช้ VIP ที่ยอดคงเหลือ 0 แต่มี
+             * มูลค่าค้างอยู่ในแพลน 7,200 กดลดมา Starter (900) โดนปฏิเสธว่า
+             * "เครดิตไม่พอ กรุณาเติมเครดิต" ทั้งที่กำลังจะได้คืน 7,200 ในบรรทัดถัดไป
+             * โยนที่นี่ทำให้ transaction ย้อนกลับ การคืนเงินจึงไม่เกิดขึ้นจริงด้วย
+             */
+            if ($this->balanceFor($wallet) < $cost) {
+                throw new RuntimeException(self::ERR_INSUFFICIENT_CREDITS);
             }
 
             if ($current) {
@@ -233,21 +377,69 @@ class AiBotService
 
             $subscription->save();
 
-            // reference ผูกกับ (subscription, วันที่ต่อ, ยอด) จึงต่ออายุซ้ำได้ แต่ retry
-            // ของคำขอเดิมจะไม่ตัดซ้ำ เพราะ hash ของ payload เดียวกันให้ reference เดิม
+            /*
+             * reference ต้องซ้ำได้เองเมื่อเป็น "คำขอเดิมที่ถูกส่งซ้ำ"
+             *
+             * เดิมใช้ subscription->id ซึ่งเปลี่ยนทุกครั้งที่สร้างแถวใหม่ (การอัปเกรด
+             * จากแพลนฟรีเข้าเส้นทางนี้ทุกคน) → retry ของคำขอเดิมได้ reference ใหม่
+             * → unique index ไม่ทำงาน → ตัดเครดิตครบสองรอบ
+             * คอมเมนต์เดิมอ้างว่ามี hash ของ payload อยู่แล้ว ซึ่งไม่เคยมี — อันตราย
+             * กว่าไม่มีคอมเมนต์ เพราะคนอ่านรอบหน้าจะเชื่อว่ากันซ้ำไว้แล้ว
+             *
+             * หน้าต่าง 1 นาที: กดปุ่มรัวหรือเน็ตหลุดแล้วยิงซ้ำ = ตัดครั้งเดียว
+             * ส่วนการตั้งใจต่ออายุอีกรอบจริงๆ รอข้ามนาทีแล้วทำได้ตามปกติ
+             */
+            $window = now()->format('YmdHi');
             $this->record(
                 $wallet,
                 'charge',
                 -$cost,
-                'subscribe:'.$subscription->id.':'.$subscription->days,
+                sprintf('subscribe:%s:%d:%s', $plan->code, $days, $window),
                 ['plan' => $plan->code, 'days' => $days]
             );
 
             $subscription->credits_spent = round((float) $subscription->credits_spent + $cost, 4);
             $subscription->save();
 
-            return $subscription->fresh('plan');
+            $subscription = $subscription->fresh('plan');
+
+            /*
+             * เปลี่ยนแพลนแล้วต้องคำนวณกรอบความเสี่ยงของบอทเดิมใหม่
+             *
+             * นี่คือจุดที่ทำให้ "จ่ายแล้วไม่ได้ของ" จริงๆ: sanitizeRisk() ถูกเรียก
+             * เฉพาะตอนสร้าง/แก้บอทเท่านั้น บอทที่สร้างตอนอยู่แพลนฟรีจึงเก็บเพดานทุน
+             * ของแพลนฟรีไว้ในฐานข้อมูล พออัปเกรดเป็นแพลนเสียเงิน คลาวด์เดินบอทให้
+             * ทุก 5 นาทีตามที่จ่าย แต่บอทยังถูกบีบด้วยเพดานเดิม จนกว่าผู้ใช้จะไปกด
+             * บันทึกฟอร์มใหม่เอง โดยไม่มีอะไรบอกว่าต้องทำ
+             *
+             * ทำเฉพาะตอนเปลี่ยนแพลน — ต่ออายุแพลนเดิมไม่ควรไปทับค่าที่ผู้ใช้ตั้งเอง
+             */
+            if ($planChanged) {
+                $this->reapplyPlanLimits($wallet, $subscription->plan);
+            }
+
+            return $subscription;
         });
+    }
+
+    /**
+     * คำนวณกรอบความเสี่ยงของบอททุกตัวใหม่ตามแพลนที่ถืออยู่.
+     *
+     * เก็บค่าที่ผู้ใช้ตั้งไว้เป็นตัวตั้ง แล้วให้ sanitizeRisk() บีบตามเพดานของแพลนใหม่
+     * → อัปเกรดแล้วเพดานขยายเอง · ลดแพลนแล้วถูกบีบลงตามสิทธิ์ที่เหลือ
+     */
+    private function reapplyPlanLimits(string $wallet, ?AiBotPlan $plan): void
+    {
+        AiBotConfig::forWallet($wallet)
+            ->get()
+            ->each(function (AiBotConfig $bot) use ($plan) {
+                $next = $this->sanitizeRisk($bot->risk ?? [], $plan);
+
+                if ($next !== ($bot->risk ?? [])) {
+                    $bot->risk = $next;
+                    $bot->save();
+                }
+            });
     }
 
     /** ยกเลิกการเช่า + คืนเครดิตของวันที่เหลือ แล้วหยุดบอททั้งหมด */
@@ -273,9 +465,22 @@ class AiBotService
     /** คืนเครดิตตามจำนวนวันเต็มที่ยังไม่ได้ใช้ แล้วปิดการเช่า */
     private function refundRemaining(AiBotSubscription $subscription): void
     {
-        $remainingDays = $subscription->daysRemaining();
+        /*
+         * ปัดลง ไม่ใช่ปัดขึ้น — daysRemaining() มีไว้แสดงผลอย่างเดียว
+         * (ปัดขึ้นแล้วเช่า-ยกเลิกวันละรอบได้ VIP ฟรีตลอดกาล ดู refundableDays)
+         */
+        $remainingDays = $subscription->refundableDays();
         $perDay = (float) ($subscription->plan?->credits_per_day ?? 0);
         $refund = round($remainingDays * $perDay, 4);
+
+        /*
+         * ห้ามคืนเกินที่จ่ายมาจริง
+         *
+         * เพดานนี้ไม่ใช่แค่กันเผื่อ: ผู้ใช้ที่ต่ออายุหลายรอบมี days สะสมขึ้นเรื่อยๆ
+         * ถ้าราคาแพลนถูกปรับขึ้นทีหลัง ยอดคืนที่คิดจากราคาปัจจุบันจะมากกว่าที่เขาจ่าย
+         * ตอนราคาถูก — กลายเป็นเสกเครดิตจากส่วนต่างราคาโดยไม่ต้องเทรดเลย
+         */
+        $refund = min($refund, round((float) $subscription->credits_spent, 4));
 
         if ($refund > 0) {
             $this->record(
@@ -369,7 +574,48 @@ class AiBotService
             };
         }
 
-        return $clean;
+        return $this->applyCrossParamRules($strategyCode, $clean);
+    }
+
+    /**
+     * ต้นทุนเข้า-ออกหนึ่งรอบ หน่วย bps — คิดจาก config ไม่ใช่ตัวเลขฝังในโค้ด.
+     *
+     * ต้องคิดสดทุกครั้ง เพราะถ้าแอดมินปรับค่าธรรมเนียมหรือ slippage แล้วเลขนี้
+     * ไม่ขยับตาม กฎที่อิงมันจะกลายเป็นของหลอกทันทีโดยไม่มีใครสังเกต
+     */
+    public function roundTripCostBps(): float
+    {
+        $feeBps = (float) config('aibot_risk.demo.fee_rate', 0.1) * 100;   // % → bps
+        $slipBps = (float) config('aibot_risk.demo.slippage_bps', 8);
+
+        return 2 * ($feeBps + $slipBps);   // เข้าหนึ่งครั้ง ออกหนึ่งครั้ง
+    }
+
+    /**
+     * กฎที่ต้องดูหลายค่าพร้อมกัน — แต่ละค่าถูกต้องของตัวเอง แต่รวมกันแล้วใช้ไม่ได้.
+     *
+     * schema กำหนดช่วงของแต่ละคีย์แยกกัน จึงเลือกคู่ที่ "ผ่านทุกช่องแต่ขาดทุนแน่นอน"
+     * ได้เสมอ เช่นกริด 60 ชั้นในกรอบ 0.5% = ระยะชั้นละ 0.8 bps ขณะที่ต้นทุนไปกลับ
+     * 36 bps → เก็บครบทุกชั้นก็ยังติดลบ และผู้ใช้จะไม่มีทางรู้จนกว่าจะเสียเงินไปแล้ว
+     */
+    private function applyCrossParamRules(string $strategyCode, array $params): array
+    {
+        $costBps = $this->roundTripCostBps();
+
+        if ($strategyCode === 'grid' && isset($params['grid_levels'], $params['range_pct'])) {
+            // กรอบต้องกว้างพอให้ชั้นน้อยสุด (3) ยังห่างกันเกินต้นทุน
+            $params['range_pct'] = max((float) $params['range_pct'], round(3 * $costBps / 100, 2));
+
+            $maxLevels = max(3, (int) floor((float) $params['range_pct'] * 100 / $costBps));
+            $params['grid_levels'] = min((float) $params['grid_levels'], $maxLevels);
+        }
+
+        if ($strategyCode === 'scalping' && isset($params['target_bps'])) {
+            // เผื่อ 20% เหนือต้นทุน — เท่าทุนพอดีคือทำงานฟรี
+            $params['target_bps'] = max((float) $params['target_bps'], round($costBps * 1.2));
+        }
+
+        return $params;
     }
 
     /** ตัดค่าเสี่ยงให้อยู่ในกรอบของระบบ และไม่เกินเพดานทุนของแพลน */
@@ -377,16 +623,45 @@ class AiBotService
     {
         $limits = config('aibot.limits');
 
+        /*
+         * ฐานของ "ทุนสูงสุดต่อไม้" คือค่าที่ผู้ใช้ขอ ไม่ใช่ค่าที่ถูกเพดานแพลนบีบไว้แล้ว
+         *
+         * ถ้าเก็บแต่ค่าที่บีบแล้ว ค่าที่ผู้ใช้ตั้งใจจะหายไปตลอดกาล — คนที่ตั้ง $5,000
+         * ตอนอยู่แพลนฟรี (ถูกบีบเหลือ $100) พออัปเกรดเป็น VIP ที่ไม่จำกัด ก็ยังได้
+         * $100 เท่าเดิม เพราะไม่มีใครจำได้แล้วว่าเขาเคยขอเท่าไหร่ = จ่ายแล้วไม่ได้ของ
+         *
+         * บอทที่สร้างก่อนมีคีย์นี้จะไม่มี _requested — ใช้ค่าที่บีบแล้วเป็นฐานไปก่อน
+         * (ขยายกลับให้อัตโนมัติไม่ได้ แต่ผู้ใช้ตั้งใหม่เองได้ทันทีที่หน้าตั้งค่า)
+         */
+        $input['max_position_usd'] = $input['max_position_usd_requested']
+            ?? $input['max_position_usd']
+            ?? null;
+
         $risk = [];
 
         foreach (['max_position_usd', 'stop_loss_pct', 'take_profit_pct', 'max_daily_loss_usd'] as $key) {
             $risk[$key] = $this->clampNumber($input[$key] ?? null, $limits[$key]);
         }
 
-        // เพดานทุนของแพลน (null = ไม่จำกัด) — บังคับที่ server เสมอ
+        $risk['max_position_usd_requested'] = $risk['max_position_usd'];
+
+        /*
+         * เพดานทุนของแพลน (null = ไม่จำกัด) — บังคับที่ server เสมอ
+         *
+         * ⚠️ เทียบ `!== null` เฉยๆ ไม่พอ: คอลัมน์ cast เป็น decimal:2 จึงคืน "0.00"
+         *    ซึ่งไม่ใช่ null → min(x, 0.0) = 0 → บอทเปิดไม้ไม่ได้เลยแบบเงียบๆ
+         *    และค่า 0 ถูกเก็บลง DB ค้างไว้ข้ามการอัปเกรดแพลนด้วย
+         *    เพดาน 0 ไม่ใช่ค่าที่ตั้งใจได้ในทางธุรกิจ — ถือว่าไม่ได้ตั้งเพดาน
+         */
         $cap = $plan?->max_capital_usd;
-        if ($cap !== null) {
+        if ($cap !== null && (float) $cap > 0) {
             $risk['max_position_usd'] = min($risk['max_position_usd'], (float) $cap);
+
+            // เพดานแพลนต้องไม่กดต่ำกว่าขั้นต่ำของระบบ ไม่งั้นได้ไม้ที่เล็กจนเปิดไม่ได้
+            $risk['max_position_usd'] = max(
+                $risk['max_position_usd'],
+                (float) ($limits['max_position_usd']['min'] ?? 0)
+            );
         }
 
         return $risk;

@@ -7,13 +7,20 @@
  */
 
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
 import { getPairLogo, getBaseSymbol } from '@/utils/cryptoLogos';
 
 const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
     ticker: { type: Object, default: () => ({}) },
     isTpix: { type: Boolean, default: false },
+    /**
+     * ไม้ที่ต้องปักบนกราฟ — ทั้งของบอทและที่ผู้ใช้วางเอง
+     *
+     * รูปแบบ: { time (วินาที), side: 'buy'|'sell', price, source: 'bot'|'mine', label? }
+     * ตัวกราฟไม่รู้ว่าไม้มาจากไหน ผู้เรียกเป็นคนรวมรายการมาให้ครบแล้ว
+     */
+    markers: { type: Array, default: () => [] },
 });
 
 const BINANCE_REST = 'https://api.binance.com/api/v3';
@@ -38,6 +45,7 @@ let emaSeriesRef = null;
 let klineWs = null;
 let reconnectTimer = null;
 let storedCandleData = [];
+let markersApi = null;
 
 const binanceSymbol = computed(() => props.symbol.replace('/', ''));
 
@@ -314,6 +322,14 @@ async function initChart() {
         }))
     );
 
+    /*
+     * ป้ายไม้บนกราฟ — ผูกกับซีรีส์แท่งเทียนเสมอ แม้ตอนนั้นจะแสดงแบบเส้นอยู่
+     *
+     * v5 ย้าย marker ออกจาก series API มาเป็นปลั๊กอินแยก (createSeriesMarkers)
+     * ผูกไว้กับซีรีส์เดียวตายตัวเพื่อไม่ให้ป้ายหายตอนผู้ใช้สลับ candle/line
+     */
+    markersApi = createSeriesMarkers(candleSeriesRef, buildMarkers());
+
     // Toggle visibility
     candleSeriesRef.applyOptions({ visible: chartType.value === 'candle' });
     lineSeriesRef.applyOptions({ visible: chartType.value === 'line' });
@@ -345,6 +361,43 @@ function updateIndicators(data) {
 }
 
 // Watch chart type changes
+/**
+ * แปลงไม้ที่ส่งเข้ามาเป็นป้ายของ lightweight-charts.
+ *
+ * จัดเรียงตามเวลาเสมอ — ปลั๊กอิน marker ของ v5 ต้องการลำดับเวลาจากน้อยไปมาก
+ * ไม่งั้นมันจะโยน error แล้วป้ายหายทั้งชุด (ไม่ใช่แค่ใบที่ผิดลำดับ)
+ *
+ * แยกสีตามที่มา: ไม้ของบอทใช้สีฟ้า/ม่วงของแบรนด์ · ไม้ที่เราวางเองใช้เขียว/แดง
+ * เพื่อให้มองแวบเดียวก็รู้ว่าอันไหนบอททำ อันไหนเราทำเอง
+ */
+function buildMarkers() {
+    return [...(props.markers || [])]
+        .filter(m => m && Number.isFinite(Number(m.time)))
+        .sort((a, b) => Number(a.time) - Number(b.time))
+        .map((m) => {
+            const isBuy = String(m.side).toLowerCase() === 'buy';
+            const isBot = m.source === 'bot';
+
+            return {
+                time: Math.floor(Number(m.time)),
+                position: isBuy ? 'belowBar' : 'aboveBar',
+                shape: isBuy ? 'arrowUp' : 'arrowDown',
+                color: isBot
+                    ? (isBuy ? '#38bdf8' : '#c084fc')
+                    : (isBuy ? '#00C853' : '#FF1744'),
+                text: m.label || '',
+                size: 1,
+            };
+        });
+}
+
+function refreshMarkers() {
+    if (markersApi) markersApi.setMarkers(buildMarkers());
+}
+
+// ไม้ใหม่เข้ามา (บอทเพิ่งวาง หรือเราเพิ่งกดเอง) ต้องโผล่บนกราฟทันที
+watch(() => props.markers, refreshMarkers, { deep: true });
+
 watch(chartType, (newType) => {
     if (candleSeriesRef) candleSeriesRef.applyOptions({ visible: newType === 'candle' });
     if (lineSeriesRef) lineSeriesRef.applyOptions({ visible: newType === 'line' });
@@ -360,6 +413,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    markersApi = null;
     disconnectKlineWS();
     if (chart) { chart.remove(); chart = null; }
 });

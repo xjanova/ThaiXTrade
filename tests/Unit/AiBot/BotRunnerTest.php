@@ -80,6 +80,9 @@ class BotRunnerTest extends TestCase
     {
         $candles = [];
 
+        // +1 สำหรับแท่งที่ "กำลังวิ่ง" ซึ่ง BotRunner จะตัดทิ้งก่อนส่งให้กลยุทธ์
+        $count++;
+
         for ($i = 0; $i < $count; $i++) {
             $close = $price + (($i % 2 === 0) ? 0.15 : -0.15);
             $candles[] = [
@@ -102,6 +105,15 @@ class BotRunnerTest extends TestCase
     private function risingCandles(int $flat = 60): array
     {
         $closes = array_fill(0, $flat, 100.0);
+        $closes[] = 102.0;
+
+        /*
+         * แท่งท้ายสุดคือแท่งที่ "ยังปิดไม่จบ" ซึ่ง BotRunner ตัดทิ้งเสมอ
+         *
+         * ของจริงตลาดคืนแท่งที่กำลังวิ่งมาด้วยทุกครั้ง ฟิกซ์เจอร์จึงต้องมีให้เหมือนกัน
+         * ไม่งั้นเทสต์จะทดสอบสภาพที่ไม่มีทางเกิดขึ้นจริง — และตอนที่แก้ให้ตัดแท่งสด
+         * เทสต์จะแดงทั้งที่โค้ดถูกขึ้น (เกิดขึ้นแล้วรอบนี้)
+         */
         $closes[] = 102.0;
 
         $candles = [];
@@ -496,5 +508,137 @@ class BotRunnerTest extends TestCase
         $this->assertNotEmpty($trade->reason);
         $this->assertSame('momentum', $trade->strategy);
         $this->assertSame('calm', $trade->risk_level);
+    }
+
+    // ── ช่องในฟอร์มที่เคยไม่มีโค้ดอ่าน ────────────────────────────────────────
+
+    /**
+     * "ขนาดต่อไม้ (USD)" ของกริดต้องคุมขนาดไม้จริง.
+     *
+     * เดิมไม่มีโค้ดอ่านคีย์นี้เลยสักบรรทัด — ผู้ใช้ตั้ง $20 แล้วบอทเข้าไม้ตามเพดาน
+     * ทุน ($1,000 ในเทสต์นี้) ห้าสิบเท่าของที่สั่ง และไม่มีอะไรบอกว่าค่าที่ตั้งถูกทิ้ง
+     */
+    #[Test]
+    public function the_grid_order_size_actually_caps_the_trade(): void
+    {
+        $bot = $this->makeBot([
+            'strategy' => 'grid',
+            'timeframe' => '1h',
+            'params' => ['grid_levels' => 3, 'range_pct' => 6, 'order_size_usd' => 20],
+            'risk' => ['max_position_usd' => 1000],
+        ]);
+
+        $this->candles = $this->fallingIntoGrid();
+        $this->runner->tick($bot);
+
+        $trade = AiBotTrade::first();
+
+        $this->assertNotNull($trade, 'ราคาหลุดขอบล่างของกริด ควรเข้าไม้');
+        $this->assertLessThanOrEqual(20.0, (float) $trade->quote_amount);
+    }
+
+    /**
+     * "หยุดเทรดช่วงข่าวแรง" ต้องปิดได้จริง.
+     *
+     * เดิมเก็บค่าไว้เฉยๆ — ผู้ใช้ปิดสวิตช์แล้วด่านข่าวยังทำงานอยู่เหมือนเดิม
+     */
+    #[Test]
+    public function turning_off_the_news_filter_actually_skips_the_news_gate(): void
+    {
+        MarketNews::create([
+            'source' => 'test',
+            'title' => 'Major exchange halts withdrawals after hack',
+            'url_hash' => hash('sha256', 'news-filter-test'),
+            'url' => 'https://example.test/hack',
+            'published_at' => now()->subMinutes(5),
+            'panic_score' => 0.98,
+            'symbols' => ['BTC'],
+        ]);
+
+        $withFilter = $this->makeBot([
+            'strategy' => 'grid',
+            'params' => ['grid_levels' => 3, 'range_pct' => 6, 'news_filter' => true],
+        ]);
+
+        $this->candles = $this->fallingIntoGrid();
+        $blocked = $this->runner->tick($withFilter);
+
+        Cache::flush();   // คะแนนข่าวถูกแคชไว้ 60 วิ — ต้องล้างก่อนวัดอีกฝั่ง
+
+        $withoutFilter = AiBotConfig::create([
+            'wallet_address' => self::WALLET,
+            'name' => 'ปิดด่านข่าว',
+            'pair' => 'BTC/USDT',
+            'strategy' => 'grid',
+            'timeframe' => '1h',
+            'status' => 'running',
+            'mode' => 'demo',
+            'params' => ['grid_levels' => 3, 'range_pct' => 6, 'news_filter' => false],
+            'risk' => ['max_position_usd' => 1000],
+        ]);
+
+        $allowed = $this->runner->tick($withoutFilter);
+
+        $this->assertSame('panic', $blocked['risk'], 'เปิดด่านข่าวไว้ ต้องเห็นข่าวแพนิค');
+        $this->assertSame('calm', $allowed['risk'], 'ปิดด่านข่าวแล้ว ข่าวต้องไม่มีผลกับคะแนน');
+    }
+
+    /**
+     * บอทที่ params ว่าง ต้องได้ค่าปริยายของกลยุทธ์ ไม่ใช่ตกไปใช้เพดานทุน.
+     *
+     * เจอตอนรันกับตลาดจริง: ตั้งงบ $25 แต่ลงจริง $30 เพราะ orderSizeFor() อ่าน
+     * `$bot->params` ดิบซึ่งว่างอยู่ → เงื่อนไข "ผู้ใช้ระบุจำนวนเงินไหม" เป็นเท็จ
+     * → ไปคิดจากเพดานทุน $100 × ความแรงสัญญาณแทน
+     *
+     * บอทที่สร้างก่อนกติกาเปลี่ยนก็อยู่ในสภาพนี้ทั้งหมด
+     */
+    #[Test]
+    public function a_bot_with_empty_params_still_uses_the_strategy_default_budget(): void
+    {
+        $bot = $this->makeBot([
+            'strategy' => 'grid',
+            'timeframe' => '1h',
+            'params' => [],                              // ว่างเปล่า เหมือนบอทที่สร้างไว้ก่อน
+            'risk' => ['max_position_usd' => 1000],      // เพดานสูงกว่างบมาก
+        ]);
+
+        $this->candles = $this->fallingIntoGrid();
+        $this->runner->tick($bot);
+
+        $trade = AiBotTrade::first();
+        $this->assertNotNull($trade, 'ราคาลงถึงชั้นซื้อ ควรเข้าไม้');
+
+        // ค่าปริยายของกริดคือ order_size_usd = 20 — ต้องไม่ใช่ 1000 หรือครึ่งหนึ่งของมัน
+        $spent = (float) $trade->gross_value + (float) $trade->fee;
+
+        $this->assertLessThanOrEqual(20.0, $spent);
+        $this->assertGreaterThan(0.0, $spent);
+    }
+
+    /** ราคาไหลลงจนหลุดขอบล่างของกริด — จุดที่กลยุทธ์กริดเข้าไม้ */
+    private function fallingIntoGrid(): array
+    {
+        /*
+         * ต้องลงมาอยู่ "ในกรอบแต่ต่ำกว่าชั้นซื้อ" พอดี
+         * ลงลึกกว่านี้กริดจะอ่านว่าหลุดกรอบล่างแล้วหยุดเข้าใหม่ (ไม่ใช่สัญญาณซื้อ)
+         */
+        $closes = array_fill(0, 60, 100.0);
+        foreach (range(1, 4) as $i) {
+            $closes[] = 100.0 - $i * 0.8;
+        }
+
+        // แท่งที่กำลังวิ่ง — ถูกตัดทิ้ง จึงต้องซ้ำราคาเดิมไว้ไม่ให้สัญญาณเปลี่ยน
+        $closes[] = end($closes);
+
+        $candles = [];
+        foreach ($closes as $i => $close) {
+            $candles[] = [
+                'time' => 1_700_000_000_000 + $i * 3_600_000,
+                'open' => $close * 1.001, 'high' => $close * 1.002, 'low' => $close * 0.998,
+                'close' => $close, 'volume' => 1000.0,
+            ];
+        }
+
+        return $candles;
     }
 }

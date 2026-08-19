@@ -27,12 +27,25 @@ const state = {
         { code: 'vip', name: 'VIP', name_th: 'วีไอพี', tier: 'vip', credits_per_day: 240, max_bots: 10, max_capital_usd: null, badge: 'VIP', description: 'Everything', description_th: 'ทุกกลยุทธ์' },
     ]),
     strategies: ref(new Array(8).fill(0).map((_, i) => ({ code: `s${i}` }))),
+    /*
+     * ต้องตรงกับที่ API ส่งจริง — เครดิตขายด้วย TPIX เท่านั้น ไม่มี price_usd แล้ว
+     *
+     * ฟิกซ์เจอร์เดิมปลอม price_usd ไว้ การ์ดจึงอ่านคีย์ที่ไม่มีอยู่จริงได้โดยเทสต์
+     * ไม่ทักอะไร แล้วบนของจริงขึ้นเป็น "$" เปล่าๆ ให้ผู้ใช้เห็น
+     */
     packs: ref([
-        { code: 'pack_500', credits: 500, price_usd: 5, bonus: 0 },
-        { code: 'pack_1500', credits: 1500, price_usd: 14, bonus: 100 },
+        { code: 'pack_500', credits: 500, price_tpix: 50, bonus: 0 },
+        { code: 'pack_1500', credits: 1500, price_tpix: 140, bonus: 100 },
     ]),
     rentalDays: ref([1, 7, 30]),
     quotaText: ref('0/1'),
+
+    /*
+     * ธงว่าอะไร "เปิดใช้จริงแล้ว" — ค่าปริยายคือปิด เหมือนที่เซิร์ฟเวอร์ส่งมาจริง
+     * (config aibot.live_enabled และ aibot.credits.topup_enabled เป็น false)
+     */
+    liveEnabled: ref(false),
+    topupEnabled: ref(false),
 };
 
 const subscribe = vi.fn(() => Promise.resolve({ ok: true }));
@@ -56,6 +69,9 @@ vi.mock('@/Composables/useAiBot', () => ({
         subscribe,
         requestTopup,
         setBotState,
+        // บอทเงียบผิดปกติไหม — การ์ดใช้ตัดสินสีไฟสถานะ
+        minutesSinceRun: () => null,
+        isStale: () => false,
         costOf: (code, days) => (state.plans.value.find(p => p.code === code)?.credits_per_day ?? 0) * days,
         canAfford: (code, days) =>
             state.credits.value >= (state.plans.value.find(p => p.code === code)?.credits_per_day ?? 0) * days,
@@ -83,6 +99,9 @@ function reset() {
     state.bots.value = [];
     state.needsVerification.value = false;
     state.isWorking.value = false;
+    // ค่าปริยายตรงกับที่เซิร์ฟเวอร์ส่งจริงตอนนี้ — ทั้งสองอย่างยังไม่เปิด
+    state.liveEnabled.value = false;
+    state.topupEnabled.value = false;
     subscribe.mockClear();
     requestTopup.mockClear();
     setBotState.mockClear();
@@ -164,6 +183,7 @@ describe('AiTradeCard', () => {
 
     it('creates a top-up request when a credit pack is picked', async () => {
         wallet.isConnected = true;
+        state.topupEnabled.value = true;
 
         const wrapper = mount(AiTradeCard, { attachTo: document.body });
         await wrapper.findAll('button').find(b => b.text().includes('Activate AI TRADE')).trigger('click');
@@ -173,6 +193,52 @@ describe('AiTradeCard', () => {
         await wrapper.vm.$nextTick();
 
         expect(requestTopup).toHaveBeenCalledWith('pack_1500');
+    });
+
+    /**
+     * ยังไม่เปิดรับเงิน = ปุ่มต้องกดไม่ได้ และต้องบอกเหตุผล
+     *
+     * ปุ่มที่กดได้แล้วตอบว่า "ส่งคำขอแล้ว" ทั้งที่ไม่มีใครมารับเงินต่อ
+     * ทำให้ผู้ใช้รอเครดิตที่ไม่มีวันมา
+     */
+    it('disables the credit packs while payments are closed', async () => {
+        wallet.isConnected = true;
+        state.topupEnabled.value = false;
+
+        const wrapper = mount(AiTradeCard, { attachTo: document.body });
+        await wrapper.findAll('button').find(b => b.text().includes('Activate AI TRADE')).trigger('click');
+
+        const pack = [...document.querySelectorAll('button')].find(b => b.textContent.includes('1,500'));
+
+        expect(pack.disabled).toBe(true);
+        expect(document.body.textContent).toContain('not open yet');
+
+        pack.click();
+        await wrapper.vm.$nextTick();
+
+        expect(requestTopup).not.toHaveBeenCalled();
+    });
+
+    /** ราคาต้องเป็น TPIX ที่อ่านออก ไม่ใช่ "$" เปล่าๆ จากคีย์ที่ API ไม่ส่งแล้ว */
+    it('prices the credit packs in TPIX', async () => {
+        wallet.isConnected = true;
+
+        const wrapper = mount(AiTradeCard, { attachTo: document.body });
+        await wrapper.findAll('button').find(b => b.text().includes('Activate AI TRADE')).trigger('click');
+
+        const gate = document.body.textContent;
+        expect(gate).toContain('140 TPIX');
+        expect(gate).not.toContain('$undefined');
+    });
+
+    /** คนที่เช่าจากการ์ดนี้ต้องเห็นคำเตือนโหมดทดลองก่อนจ่าย เหมือนที่หน้า /ai-trade */
+    it('warns that only demo mode is open before the user pays', async () => {
+        wallet.isConnected = true;
+
+        const wrapper = mount(AiTradeCard, { attachTo: document.body });
+        await wrapper.findAll('button').find(b => b.text().includes('Activate AI TRADE')).trigger('click');
+
+        expect(document.body.textContent).toContain('demo mode');
     });
 
     it('shows the active plan, remaining days and the running bots', () => {

@@ -181,10 +181,37 @@ jobs:
             # Restart queue workers if running
             php artisan queue:restart 2>/dev/null || true
 
-            # Setup cron for Laravel Scheduler (content auto-generation)
-            CRON_CMD="cd $(pwd) && php artisan schedule:run >> /dev/null 2>&1"
-            (crontab -l 2>/dev/null | grep -v "artisan schedule:run"; echo "* * * * * $CRON_CMD") | sort -u | crontab - 2>/dev/null || echo "⚠️ Cron setup skipped (no crontab access)"
-            echo "✅ Laravel scheduler cron configured"
+            # ── ตัวจับเวลาของ Laravel (บอท AI TRADE พึ่งตัวนี้ทั้งหมด) ──────────
+            #
+            # ⚠️⚠️ ห้ามกรองด้วย "artisan schedule:run" เฉยๆ เด็ดขาด
+            #
+            # เครื่องนี้มีหลายแอป deploy มาที่ user เดียวกัน การกรองแบบนั้นลบ
+            # schedule:run ของ *ทุกแอป* แล้วเติมกลับเฉพาะของเรา
+            # เกิดขึ้นจริง 2026-08-18: main.thaiprompt ตาย 6 รอบใน 3 วัน (รอบหนึ่ง
+            # 10 ชม.) · netwix ตาย 2 วัน 20 ชม. รวมถึงตัวเฝ้าเงินเข้าและคิวงาน
+            # ต้องกรองด้วย "พาธของเราเอง" เท่านั้น
+            APP_DIR="$(pwd)"
+            CRON_CMD="cd $APP_DIR && php artisan schedule:run >> /dev/null 2>&1"
+
+            if crontab -l >/dev/null 2>&1 || [ -z "$(crontab -l 2>&1)" ]; then
+              # grep -F = เทียบข้อความตรงๆ ไม่ตีความ regex (พาธมี . และ / ปนอยู่)
+              (crontab -l 2>/dev/null | grep -vF "$APP_DIR"; echo "* * * * * $CRON_CMD") | crontab -
+
+              # ── ยืนยันว่าลงจริง ห้าม echo ✅ ลอยๆ ──────────────────────────
+              #
+              # ของเดิมพิมพ์ "✅ configured" ทุกกรณีแม้คำสั่งจะล้มเหลว — deploy
+              # จึงเขียวตลอดขณะที่บอทไม่ได้เดินเลย ซึ่งเป็นอาการที่หาสาเหตุยากที่สุด
+              # เพราะทุกอย่างดู "สำเร็จ" หมด
+              if crontab -l 2>/dev/null | grep -qF "$APP_DIR && php artisan schedule:run"; then
+                echo "✅ Laravel scheduler cron verified in crontab"
+              else
+                echo "::error::ตั้ง cron ไม่สำเร็จ — บอท AI TRADE จะไม่เดินบนคลาวด์"
+                exit 1
+              fi
+            else
+              echo "::error::เข้าถึง crontab ไม่ได้ — ตัวจับเวลาไม่ทำงาน บอทจะไม่เดิน"
+              exit 1
+            fi
 
             echo "✅ Deployment completed successfully!"
 

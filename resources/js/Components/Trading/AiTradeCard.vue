@@ -7,7 +7,7 @@
  *  1) ยังไม่เชื่อมกระเป๋า      → ชวนเชื่อม
  *  2) เชื่อมแล้วแต่ยังไม่เช่า   → กดแล้วเด้งเตือนให้เติมเครดิต/เลือกแพลน
  *  3) เช่าอยู่                → เห็นแพลน วันคงเหลือ เครดิต และบอทของตัวเอง สั่งเริ่ม/พักได้
- *  4) กระเป๋ายังไม่เซ็นยืนยัน   → บอกให้เชื่อมใหม่เพื่อเซ็นข้อความ
+ *  4) กระเป๋ายังไม่เซ็นยืนยัน   → กดเซ็นยืนยันได้จากในการ์ดเลย (ลายเซ็นหมดอายุ 4 ชม.)
  *
  * ย่อตัวเองตามความกว้างของการ์ด — ย้ายไปคอลัมน์ซ้าย (276px) ก็ยังอ่านครบ
  * ระบบเดียวกับในแอพ TPIX (คลาวด์) — ข้อมูลมาจาก /api/v1/ai-bot/*
@@ -126,6 +126,36 @@ async function toggleBot(item) {
     await bot.setBotState(item.id, item.status === 'running' ? 'pause' : 'start');
 }
 
+/**
+ * เซ็นยืนยันกระเป๋าใหม่จากในการ์ด — ไม่ต้องตัดการเชื่อมต่อแล้วต่อใหม่.
+ *
+ * เดิมปุ่มนี้เปิดหน้าต่างเลือกกระเป๋า ซึ่งไม่ตรงกับปัญหา: กระเป๋าเชื่อมอยู่แล้ว
+ * ที่หมดอายุคือลายเซ็นฝั่งเซิร์ฟเวอร์ (4 ชั่วโมง) ผู้ใช้ที่กดแล้วเห็นรายชื่อกระเป๋า
+ * มักปิดทิ้งเพราะคิดว่ากดผิดปุ่ม แล้วก็ติดค้างอยู่ตรงนั้นต่อ
+ */
+const isVerifying = ref(false);
+
+async function verifyWallet() {
+    if (isVerifying.value) return;   // กันกดรัว — ป๊อปอัพขอลายเซ็นซ้อนกันไม่ได้
+
+    isVerifying.value = true;
+    playClickSound();
+
+    try {
+        const hasSigner = await walletStore.verifyOwnership();
+
+        // กระเป๋าฝังที่ยังไม่ปลดล็อกไม่มี signer — ต้องใส่รหัสผ่านที่หน้าต่างเชื่อมกระเป๋า
+        if (!hasSigner) {
+            walletStore.openConnectModal();
+            return;
+        }
+
+        await bot.loadStatus();
+    } finally {
+        isVerifying.value = false;
+    }
+}
+
 onMounted(() => {
     if (root.value) initialWidth.value = root.value.getBoundingClientRect().width;
 
@@ -169,8 +199,14 @@ watch(() => walletStore.address, (address) => {
                 <div class="text-center py-3 flex-1 flex flex-col justify-center">
                     <p class="text-sm font-semibold text-white mb-1">{{ t('aiTrade.needVerify') }}</p>
                     <p class="text-[11px] text-dark-400 leading-relaxed mb-3">{{ t('aiTrade.needVerifyBody') }}</p>
-                    <button type="button" class="w-full btn-secondary py-2 text-xs" @click="walletStore.openConnectModal()">
-                        {{ t('aiTrade.reconnect') }}
+                    <button
+                        type="button"
+                        class="w-full btn-brand py-2 text-xs disabled:opacity-50 flex items-center justify-center gap-2"
+                        :disabled="isVerifying"
+                        @click="verifyWallet"
+                    >
+                        <span v-if="isVerifying" class="spinner !w-3 !h-3 !border-white/30 !border-t-white"></span>
+                        {{ isVerifying ? t('aiTrade.verifying') : t('aiTrade.verifyNow') }}
                     </button>
                 </div>
             </template>
@@ -356,6 +392,25 @@ watch(() => walletStore.address, (address) => {
                                 </div>
                             </div>
 
+                            <!--
+                                คำเตือนโหมดทดลอง — ต้องอยู่ตรงจุดที่ผู้ใช้กำลังจะจ่าย
+
+                                หน้า /ai-trade มีป้ายนี้อยู่แล้ว แต่การ์ดนี้เช่าได้ครบวงจรเหมือนกัน
+                                คนที่เช่าจากหน้าเทรดจึงจ่ายเงินโดยไม่เคยเห็นว่ายังไม่มีการส่งคำสั่งจริง
+                            -->
+                            <p
+                                v-if="!bot.liveEnabled.value"
+                                class="text-[10px] leading-relaxed px-3 py-2 rounded-lg bg-amber-500/10 text-amber-200/90 ring-1 ring-amber-500/20"
+                            >
+                                {{ t('aiTrade.demoOnlyNotice') }}
+                            </p>
+                            <p
+                                v-if="!bot.topupEnabled.value"
+                                class="text-[10px] leading-relaxed px-3 py-2 rounded-lg bg-dark-800/60 text-dark-300 ring-1 ring-white/10"
+                            >
+                                {{ t('aiTrade.topupClosed') }}
+                            </p>
+
                             <!-- แพลน -->
                             <div class="space-y-2">
                                 <p class="text-[11px] text-dark-400">{{ t('aiTrade.choosePlan') }}</p>
@@ -405,14 +460,22 @@ watch(() => walletStore.address, (address) => {
                                             suggestedPack && suggestedPack.code === pack.code
                                                 ? 'border-primary-500/50 bg-primary-500/10'
                                                 : 'border-white/10 bg-white/5 hover:border-white/20']"
-                                        :disabled="bot.isWorking.value"
+                                        :disabled="bot.isWorking.value || !bot.topupEnabled.value"
+                                        :title="bot.topupEnabled.value ? '' : t('aiTrade.topupClosed')"
                                         @click="requestPack(pack.code)"
                                     >
                                         <span class="block text-xs font-bold text-white font-mono">
                                             {{ pack.credits.toLocaleString() }}
                                             <span v-if="pack.bonus" class="text-[9px] text-trading-green">+{{ pack.bonus }}</span>
                                         </span>
-                                        <span class="block text-[10px] text-dark-400">${{ pack.price_usd }}</span>
+                                        <!--
+                                            เซิร์ฟเวอร์ถอด price_usd ออกไปแล้ว เหลือแต่ price_tpix
+                                            (เจ้าของสั่งว่าเครดิตขายด้วย TPIX เท่านั้น) การ์ดนี้ยังอ่านคีย์เก่า
+                                            จึงขึ้นเป็น "$" เปล่าๆ — ผู้ใช้เห็นราคาว่าง แล้วไม่กล้ากด
+                                        -->
+                                        <span class="block text-[10px] text-dark-400 font-mono">
+                                            {{ Number(pack.price_tpix || 0).toLocaleString() }} TPIX
+                                        </span>
                                     </button>
                                 </div>
                                 <p class="text-[10px] text-dark-500 leading-relaxed">{{ t('aiTrade.packHint') }}</p>

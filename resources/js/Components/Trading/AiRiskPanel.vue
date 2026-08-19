@@ -21,6 +21,14 @@ const { t, locale } = useTranslation();
 
 const level = computed(() => props.risk?.level ?? 'calm');
 
+/*
+ * มีข้อมูลมาแล้วแต่ประเมินไม่ได้ — คนละอย่างกับ "ยังโหลดไม่เสร็จ"
+ *
+ * เช็ค `=== false` ตรงๆ เพื่อไม่ให้ตอนยังไม่มี risk (null) กลายเป็น unavailable
+ * ทั้งที่แค่ยังโหลดไม่เสร็จ
+ */
+const unavailable = computed(() => props.risk?.available === false);
+
 const levelTone = {
     calm: 'bg-trading-green/10 text-trading-green ring-trading-green/25',
     caution: 'bg-amber-500/10 text-amber-300 ring-amber-500/25',
@@ -68,12 +76,32 @@ function when(iso) {
                 </p>
             </div>
 
-            <span :class="['px-2.5 py-1 rounded-full text-[11px] font-semibold ring-1', levelTone[level]]">
+            <span
+                v-if="unavailable"
+                class="px-2.5 py-1 rounded-full text-[11px] font-semibold ring-1 bg-dark-700/60 text-dark-300 ring-white/10"
+            >
+                {{ t('aiTrade.riskUnavailable') }}
+            </span>
+            <span v-else :class="['px-2.5 py-1 rounded-full text-[11px] font-semibold ring-1', levelTone[level]]">
                 {{ t(levelLabel[level]) }}
             </span>
         </header>
 
-        <div class="relative p-5 pt-4 space-y-4">
+        <!--
+            ประเมินไม่ได้ ≠ ปลอดภัย
+
+            เซิร์ฟเวอร์ส่ง available=false มาเมื่อแท่งเทียนไม่พอ (เช่นคู่ที่ไม่มีบน
+            ตลาดอ้างอิง รวมถึง TPIX/USDT) พร้อมคะแนน 0 ตามค่าปริยาย ถ้าวาดตามนั้น
+            หน้าจอจะขึ้น "สงบ · ความเสี่ยง 0% · ขนาดไม้ 100%" ซึ่งเป็นการยืนยัน
+            ให้ผู้ใช้มั่นใจก่อนจ่ายเงิน ทั้งที่เราไม่รู้อะไรเลยเกี่ยวกับคู่นั้น
+        -->
+        <div v-if="unavailable" class="relative p-5 pt-4">
+            <p class="text-[12px] text-amber-300/90 leading-relaxed">
+                {{ t('aiTrade.riskUnavailableBody', { pair }) }}
+            </p>
+        </div>
+
+        <div v-else class="relative p-5 pt-4 space-y-4">
             <!-- แถบระดับความเสี่ยง + สิ่งที่บอทจะทำ -->
             <div>
                 <div class="flex items-center justify-between text-[11px] mb-1.5">

@@ -153,6 +153,42 @@ function flash(type, text) {
     showToast({ text, type });
 }
 
+// ── ยืนยันกระเป๋าใหม่ ────────────────────────────────────────────────────────
+const isVerifying = ref(false);
+
+/**
+ * เซ็นยืนยันกระเป๋าใหม่ แล้วโหลดของที่ผูกกับกระเป๋าอีกรอบ.
+ *
+ * ต้องมีเพราะการยืนยันฝั่งเซิร์ฟเวอร์อยู่ได้ 4 ชั่วโมงและถูกล้างทุกครั้งที่ deploy
+ * ส่วนการเปิดหน้าใหม่แค่คืน address จาก localStorage ไม่ได้เซ็นซ้ำ — ผู้ใช้จึงเห็นว่า
+ * "เชื่อมกระเป๋าแล้ว" ทั้งที่ API ตอบ 403 ทุกตัว หน้าจึงว่างเปล่าโดยไม่บอกสาเหตุ
+ *
+ * ถือว่าสำเร็จก็ต่อเมื่อ loadStatus() ผ่านจริง ไม่ใช่แค่ผู้ใช้กดเซ็น — ลายเซ็นที่ถูก
+ * ปฏิเสธหรือหมดเวลาไม่ throw ขึ้นมาถึงตรงนี้ (walletStore กลืนไว้ไม่ให้ตัดการเชื่อมต่อ)
+ */
+async function verifyWallet() {
+    if (isVerifying.value) return;   // กันกดรัว — ป๊อปอัพขอลายเซ็นซ้อนกันไม่ได้
+
+    isVerifying.value = true;
+    playClickSound();
+
+    try {
+        const hasSigner = await walletStore.verifyOwnership();
+
+        if (!hasSigner) {
+            flash('error', t('aiTrade.verifyNeedUnlock'));
+            return;
+        }
+
+        await Promise.all([bot.loadStatus(), bot.loadDemo()]);
+
+        if (bot.needsVerification.value) flash('error', t('aiTrade.verifyFailed'));
+        else flash('success', t('aiTrade.verifyOk'));
+    } finally {
+        isVerifying.value = false;
+    }
+}
+
 // ── ข้อมูลตั้งต้น ───────────────────────────────────────────────────────────
 async function loadPairs() {
     try {
@@ -206,10 +242,34 @@ async function rent(planCode) {
         return;
     }
 
+    // ยังไม่เปิดขาย — เซิร์ฟเวอร์ปฏิเสธอยู่แล้ว แต่บอกตรงนี้ก่อนจะดีกว่าปล่อยให้กดแล้วเด้ง
+    if (!bot.canRent.value) {
+        flash('error', t('aiTrade.salesClosed'));
+        return;
+    }
+
     if (!bot.canAfford(planCode, selectedDays.value)) {
         const need = bot.costOf(planCode, selectedDays.value) - bot.credits.value;
         flash('error', t('aiTrade.notEnoughLong', { n: need.toLocaleString() }));
         return;
+    }
+
+    /*
+     * เปลี่ยนแพลนคือการ "จบแพลนเดิมทันที" — ต้องถามก่อน
+     *
+     * ปุ่มยกเลิกยังถาม แต่ปุ่มเลือกแพลนไม่ถาม ทั้งที่ผลกับแพลนที่ถืออยู่เหมือนกัน
+     * กด "เริ่มใช้ฟรี" ครั้งเดียวขณะถือ VIP = VIP จบทันที บอทหลุดจากคิวคลาวด์
+     * รอบถัดไป โดยไม่มีอะไรถามสักคำ
+     */
+    const current = bot.subscription.value;
+
+    if (current && current.plan_code !== planCode) {
+        const message = t('aiTrade.switchConfirm', {
+            from: bot.planLabel(current),
+            days: current.days_remaining,
+        });
+
+        if (!window.confirm(message)) return;
     }
 
     const result = await bot.subscribe(planCode, selectedDays.value);
@@ -437,7 +497,6 @@ onUnmounted(() => bot.stopBrowserLoop());
                 </div>
             </section>
 
-            <!-- ยังไม่เชื่อมกระเป๋า -->
             <!-- ยังไม่เชื่อมกระเป๋า — ยังดูราคาและกลยุทธ์ได้ครบ แค่ยังสร้างบอทไม่ได้ -->
             <section v-if="!walletStore.isConnected" class="glass-dark rounded-2xl p-5 flex flex-wrap items-center gap-3">
                 <div class="min-w-0 flex-1">
@@ -447,6 +506,51 @@ onUnmounted(() => bot.stopBrowserLoop());
                 <button type="button" class="btn-brand px-6 py-2 text-sm" @click="walletStore.openConnectModal()">
                     {{ t('aiTrade.connectWallet') }}
                 </button>
+            </section>
+
+            <!--
+                เชื่อมแล้วแต่ลายเซ็นยืนยันหมดอายุ — API ที่ผูกกับกระเป๋าตอบ 403 ทั้งหมด
+                ถ้าไม่บอกตรงนี้ ผู้ใช้จะเห็นแค่แผงศูนย์ทั้งหน้าโดยไม่รู้ว่าต้องทำอะไร
+            -->
+            <section
+                v-if="walletStore.isConnected && bot.needsVerification.value"
+                class="glass-dark rounded-2xl p-5 ring-1 ring-amber-500/25 flex flex-wrap items-center gap-3"
+            >
+                <div class="min-w-0 flex-1">
+                    <p class="text-white font-semibold text-sm">{{ t('aiTrade.needVerify') }}</p>
+                    <p class="text-dark-400 text-xs mt-0.5">{{ t('aiTrade.needVerifyBody') }}</p>
+                    <p class="text-dark-500 text-[11px] mt-1">{{ t('aiTrade.verifyExpiredHint') }}</p>
+                </div>
+                <button
+                    type="button"
+                    class="btn-brand px-6 py-2 text-sm disabled:opacity-50 flex items-center gap-2"
+                    :disabled="isVerifying"
+                    @click="verifyWallet"
+                >
+                    <span v-if="isVerifying" class="spinner !w-3.5 !h-3.5 !border-white/30 !border-t-white"></span>
+                    {{ isVerifying ? t('aiTrade.verifying') : t('aiTrade.verifyNow') }}
+                </button>
+            </section>
+
+            <!--
+                ยังไม่เปิดขาย — บอกตั้งแต่บนสุดก่อนผู้ใช้เลื่อนไปดูราคา
+
+                เจ้าของสั่งให้ปิดไว้จนกว่าจะทดสอบกลยุทธ์ครบและมั่นใจว่าทำงานถูกต้อง
+                ผู้ใช้ยังทดลองโหมดทดลองได้เต็มที่ เพราะไม่มีใครเสียเงิน
+            -->
+            <section
+                v-if="!bot.salesOpen.value && !bot.isAdminWallet.value"
+                class="glass-dark rounded-2xl p-4 ring-1 ring-amber-500/25"
+            >
+                <p class="text-[12px] text-amber-200/90 leading-relaxed">{{ t('aiTrade.salesClosed') }}</p>
+            </section>
+
+            <!-- โหมดทีมงาน — ต้องเห็นชัดว่ากำลังใช้สิทธิ์พิเศษอยู่ ไม่ใช่สภาพจริงของลูกค้า -->
+            <section
+                v-if="bot.isAdminWallet.value"
+                class="glass-dark rounded-2xl p-4 ring-1 ring-primary-500/30"
+            >
+                <p class="text-[12px] text-primary-200/90 leading-relaxed">{{ t('aiTrade.teamMode') }}</p>
             </section>
 
             <!-- สถานะของ wallet — เห็นเฉพาะตอนเชื่อมแล้ว -->
@@ -531,7 +635,9 @@ onUnmounted(() => bot.stopBrowserLoop());
                 <!-- ตอนนี้เปิดเฉพาะโหมดทดลอง — ต้องบอกก่อนจ่ายเงิน ไม่ใช่ให้มารู้ทีหลัง -->
                 <p class="rounded-xl border border-white/10 bg-dark-900/50 px-3 py-2 text-[11px] text-dark-300 mb-4 flex gap-2">
                     <span class="text-primary-400 shrink-0">ℹ️</span>
-                    <span>{{ t('aiTrade.demoOnlyNotice') }}</span>
+                    <!-- อ่านธงจากเซิร์ฟเวอร์ — วันที่เปิดโหมดจริงจะได้ไม่ต้องไล่แก้ทุกหน้า -->
+                    <span v-if="!bot.liveEnabled.value">{{ t('aiTrade.demoOnlyNotice') }}</span>
+                    <span v-else>{{ t('aiTrade.liveOpenNotice') }}</span>
                 </p>
 
                 <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -612,13 +718,28 @@ onUnmounted(() => bot.stopBrowserLoop());
             <section>
                 <h2 class="text-lg font-bold text-white mb-1">{{ t('aiTrade.topupTitle') }}</h2>
                 <p class="text-[11px] text-dark-400 mb-3">{{ t('aiTrade.topupSub') }}</p>
+
+                <!--
+                    ยังไม่มีรางรับเงินจริง — บอกไว้ตรงนี้ก่อนผู้ใช้กด
+
+                    ปุ่มที่กดแล้วตอบว่า "ส่งคำขอแล้ว" ทั้งที่ไม่มีใครมารับเงินต่อ
+                    ทำให้ผู้ใช้รอเครดิตที่ไม่มีวันมา แล้วกลับมากดซ้ำ
+                -->
+                <p
+                    v-if="!bot.topupEnabled.value"
+                    class="text-[11px] leading-relaxed px-3 py-2 mb-3 rounded-xl bg-amber-500/10 text-amber-200/90 ring-1 ring-amber-500/20"
+                >
+                    {{ t('aiTrade.topupClosed') }}
+                </p>
+
                 <div class="grid gap-3 grid-cols-2 lg:grid-cols-4">
                     <button
                         v-for="pack in bot.packs.value"
                         :key="pack.code"
                         type="button"
-                        class="rounded-2xl border border-white/10 bg-dark-900/50 p-4 text-left hover:border-primary-500/40 transition-all disabled:opacity-50"
-                        :disabled="bot.isWorking.value"
+                        class="rounded-2xl border border-white/10 bg-dark-900/50 p-4 text-left hover:border-primary-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        :disabled="bot.isWorking.value || !bot.topupEnabled.value"
+                        :title="bot.topupEnabled.value ? '' : t('aiTrade.topupClosed')"
                         @click="topup(pack.code)"
                     >
                         <p class="text-xl font-black font-mono text-white leading-none">
@@ -704,9 +825,17 @@ onUnmounted(() => bot.stopBrowserLoop());
                             :key="item.id"
                             class="flex items-center gap-3 rounded-2xl border border-white/10 bg-dark-900/50 p-3 flex-wrap"
                         >
+                            <!--
+                                ไฟเขียวต้องหมายถึง "เดินอยู่จริง" ไม่ใช่ "ผู้ใช้กดเปิดไว้"
+
+                                ตัวจับเวลาฝั่งเซิร์ฟเวอร์ตายเงียบได้ (และเคยตายมาแล้ว) แต่จอ
+                                ยังกะพริบเขียวต่อไป ผู้ใช้ที่จ่ายค่าเช่าล่วงหน้าทั้งงวดจึงไม่มี
+                                ทางรู้เลยว่ากำลังจ่ายค่าบอทที่ไม่ได้ทำงาน
+                            -->
                             <span :class="['w-2 h-2 rounded-full shrink-0',
-                                item.status === 'running' ? 'bg-trading-green animate-pulse'
-                                    : item.status === 'paused' ? 'bg-amber-400' : 'bg-dark-600']"></span>
+                                bot.isStale(item) ? 'bg-amber-400'
+                                    : item.status === 'running' ? 'bg-trading-green animate-pulse'
+                                        : item.status === 'paused' ? 'bg-amber-400' : 'bg-dark-600']"></span>
 
                             <div class="min-w-0 flex-1">
                                 <p class="text-sm font-semibold text-white truncate">{{ item.name }}</p>
@@ -714,6 +843,10 @@ onUnmounted(() => bot.stopBrowserLoop());
                                     {{ item.pair }} · {{ bot.strategyLabel(item) }} · {{ item.timeframe }} ·
                                     SL {{ item.risk.stop_loss_pct }}% / TP {{ item.risk.take_profit_pct }}%
                                 </p>
+                                <p v-if="bot.isStale(item)" class="text-[11px] text-amber-300 mt-0.5">
+                                    {{ t('aiTrade.botStale', { n: bot.minutesSinceRun(item) }) }}
+                                </p>
+
                                 <!-- บอทกำลังคิดอะไรอยู่ — ผู้ใช้ต้องเห็นเหตุผล ไม่ใช่แค่ไฟกะพริบ -->
                                 <p v-if="item.last_reason" class="text-[11px] text-dark-500 truncate mt-0.5">
                                     <span

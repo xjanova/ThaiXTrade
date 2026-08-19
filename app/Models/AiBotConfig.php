@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 /**
  * TPIX TRADE — AI Trade bot configuration.
@@ -89,6 +90,29 @@ class AiBotConfig extends Model
                 ->where('ai_bot_subscriptions.expires_at', '>', now())
                 ->where('ai_bot_plans.execution', 'cloud');
         });
+    }
+
+    /**
+     * ระดับแพลนของเจ้าของบอท (0 = ฟรี … 3 = VIP) — ใช้จัดคิวประมวลผล.
+     *
+     * ทำเป็น subquery ไม่ใช่ join เพราะกระเป๋าหนึ่งใบอาจมีแถว subscription เก่า
+     * ค้างอยู่ได้ join แล้วบอทจะโผล่ซ้ำหลายแถวจนเดินซ้ำในรอบเดียว
+     */
+    public function scopeWithPlanRank(Builder $query): Builder
+    {
+        $cases = collect(AiBotPlan::TIER_RANK)
+            ->map(fn (int $rank, string $tier) => sprintf("WHEN '%s' THEN %d", $tier, $rank))
+            ->implode(' ');
+
+        return $query->select('ai_bot_configs.*')->selectSub(
+            DB::table('ai_bot_subscriptions')
+                ->join('ai_bot_plans', 'ai_bot_plans.id', '=', 'ai_bot_subscriptions.ai_bot_plan_id')
+                ->whereColumn('ai_bot_subscriptions.wallet_address', 'ai_bot_configs.wallet_address')
+                ->where('ai_bot_subscriptions.status', 'active')
+                ->where('ai_bot_subscriptions.expires_at', '>', now())
+                ->selectRaw("COALESCE(MAX(CASE ai_bot_plans.tier {$cases} ELSE 0 END), 0)"),
+            'plan_rank'
+        );
     }
 
     public function scopeCountingTowardQuota(Builder $query): Builder

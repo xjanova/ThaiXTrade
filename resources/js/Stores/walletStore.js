@@ -764,6 +764,32 @@ export const useWalletStore = defineStore('wallet', () => {
     }
 
     /**
+     * เซ็นยืนยันกระเป๋าใหม่ โดยไม่ต้องตัดการเชื่อมต่อก่อน.
+     *
+     * ทำไมต้องมี: แถว `wallet_verified:` ฝั่งเซิร์ฟเวอร์อยู่ได้ 4 ชั่วโมง และถูกล้าง
+     * ทุกครั้งที่ deploy (`cache:clear`) แต่ `tryReconnect()` ตอนเปิดหน้าใหม่แค่คืน
+     * address จาก localStorage — ไม่ได้เซ็นซ้ำ ผู้ใช้จึงเห็นว่า "เชื่อมกระเป๋าแล้ว"
+     * ทั้งที่ API ทุกตัวที่ผูกกับกระเป๋าตอบ 403 WALLET_NOT_VERIFIED
+     *
+     * ไม่เซ็นอัตโนมัติตอนเปิดหน้า เพราะป๊อปอัพขอลายเซ็นที่โผล่เองทุกครั้งที่รีเฟรช
+     * ทำให้ผู้ใช้กดปฏิเสธจนติดเป็นนิสัย — ให้หน้าจอที่เจอ 403 เรียกตัวนี้ตอนผู้ใช้กดเอง
+     *
+     * ตัวนี้ไม่บอกว่า "ยืนยันสำเร็จไหม" โดยตั้งใจ — ไม่มี endpoint สาธารณะให้ถาม
+     * และไม่ควรมี (ถามได้ทีละกระเป๋า = บอกคนนอกว่ากระเป๋าไหนกำลังใช้งานเว็บอยู่)
+     * ผู้เรียกต้องยิง API ที่ตัวเองต้องใช้ซ้ำ แล้วดูว่าหลุด 403 หรือยัง — อันนั้น
+     * คือความจริงที่ตรงกับสิ่งที่ผู้ใช้จะทำต่อจริงๆ
+     *
+     * @returns {Promise<boolean>} false เมื่อยังไม่มี signer (กระเป๋าฝังยังไม่ปลดล็อก)
+     */
+    async function verifyOwnership() {
+        if (!signer.value || !address.value) return false;
+
+        await _verifyWalletOwnership(signer.value, address.value);
+
+        return true;
+    }
+
+    /**
      * แจ้ง backend เมื่อ wallet connect — สร้าง user อัตโนมัติ + บันทึก connection
      * ไม่ block flow — fire and forget
      */
@@ -874,6 +900,7 @@ export const useWalletStore = defineStore('wallet', () => {
         connect,
         disconnect,
         tryReconnect,
+        verifyOwnership,
         switchChain,
         loadSupportedChains,
         // Embedded TPIX Wallet
