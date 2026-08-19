@@ -194,8 +194,14 @@ jobs:
             CRON_CMD="cd $APP_DIR && php artisan schedule:run >> /dev/null 2>&1"
 
             if crontab -l >/dev/null 2>&1 || [ -z "$(crontab -l 2>&1)" ]; then
-              # grep -F = เทียบข้อความตรงๆ ไม่ตีความ regex (พาธมี . และ / ปนอยู่)
-              (crontab -l 2>/dev/null | grep -vF "$APP_DIR"; echo "* * * * * $CRON_CMD") | crontab -
+              # awk index() = เทียบข้อความตรงๆ ไม่ตีความ regex (พาธมี . และ / ปนอยู่)
+              # และต้องเข้าเงื่อนไข "พาธของเรา" AND "schedule:run" พร้อมกัน —
+              # กรองด้วยพาธอย่างเดียวจะลบ cron อื่นของแอปเดียวกันไปด้วย (เช่น queue worker)
+              #
+              # ไม่ใช้ sort -u ด้วย เพราะมันจัดลำดับ crontab ของแอปอื่นใหม่ทั้งไฟล์
+              (crontab -l 2>/dev/null \
+                | awk -v p="$APP_DIR" '!(index($0, p) && index($0, "artisan schedule:run"))'; \
+                echo "* * * * * $CRON_CMD") | crontab -
 
               # ── ยืนยันว่าลงจริง ห้าม echo ✅ ลอยๆ ──────────────────────────
               #
