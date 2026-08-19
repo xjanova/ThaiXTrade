@@ -231,8 +231,9 @@ return [
             'code' => 'breakout',
             'name' => 'Volatility Breakout',
             'name_th' => 'เบรกเอาต์ผันผวน',
-            'description' => 'Enters when price closes outside a Donchian channel with an ATR-scaled stop.',
-            'description_th' => 'เข้าเมื่อราคาปิดทะลุกรอบสูงสุด/ต่ำสุด พร้อมตั้ง stop ตามค่าความผันผวน (ATR)',
+            // เข้าเฉพาะตอนทะลุ "ขอบบน" — ขอบล่างใช้เป็นสัญญาณปิดไม้ ไม่ใช่เปิดไม้ฝั่งขาย
+            'description' => 'Enters when price closes above the Donchian channel, with an ATR-scaled stop.',
+            'description_th' => 'เข้าเมื่อราคาปิดทะลุกรอบด้านบน พร้อมตั้ง stop ตามค่าความผันผวน (ATR) และปิดไม้เมื่อหลุดกรอบล่าง',
             'risk' => 'high',
             'tier' => 'pro',
             'icon' => 'bolt',
@@ -240,7 +241,18 @@ return [
             'params' => [
                 ['key' => 'channel_period', 'label' => 'คาบกรอบราคา', 'label_en' => 'Channel period', 'type' => 'number', 'default' => 20, 'min' => 5, 'max' => 200, 'step' => 1],
                 ['key' => 'atr_multiple', 'label' => 'ตัวคูณ ATR', 'label_en' => 'ATR multiple', 'type' => 'number', 'default' => 2, 'min' => 0.5, 'max' => 10, 'step' => 0.1],
-                ['key' => 'direction', 'label' => 'ทิศทาง', 'label_en' => 'Direction', 'type' => 'select', 'default' => 'both', 'options' => ['long', 'short', 'both']],
+                /*
+                 * ⚠️ เหลือ long อย่างเดียว — short/both เป็นตัวเลือกหลอก
+                 *
+                 * BreakoutStrategy ใช้ค่านี้ที่เดียวคือปฏิเสธ short ส่วน long กับ both
+                 * เดินเส้นทางเดียวกันเป๊ะ · ทั้งเอนจินเป็น spot ฝั่งซื้ออย่างเดียว
+                 * โดยออกแบบ (ไม่มีตลาดยืมเหรียญ) ลูกค้าที่เลือก short จึงได้บอทที่
+                 * ไม่มีวันเข้าไม้เลย โดยไม่มีอะไรบอกว่าทำไม
+                 *
+                 * บอทเก่าที่บันทึก 'both'/'short' ไว้จะถูก sanitizeParams ยกมาเป็น
+                 * 'long' ให้เองตอนรัน (select ที่ค่าไม่อยู่ใน options → ใช้ default)
+                 */
+                ['key' => 'direction', 'label' => 'ทิศทาง', 'label_en' => 'Direction', 'type' => 'select', 'default' => 'long', 'options' => ['long']],
             ],
         ],
         [

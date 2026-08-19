@@ -41,7 +41,9 @@ class BreakoutStrategy implements Strategy
 
         $period = (int) ($params['channel_period'] ?? 20);
         $atrMultiple = (float) ($params['atr_multiple'] ?? 2);
-        $direction = $params['direction'] ?? 'both';
+        // ค่าปริยายเป็น long — ทั้งเอนจินเป็น spot ฝั่งซื้ออย่างเดียว
+        // (บอทเก่าที่บันทึก 'both' ไว้ ถูก sanitizeParams ยกมาเป็น long ให้แล้วตอนรัน)
+        $direction = $params['direction'] ?? 'long';
 
         $channel = Indicators::donchian($candles, $period);
         $upper = Indicators::last($channel['upper']);
