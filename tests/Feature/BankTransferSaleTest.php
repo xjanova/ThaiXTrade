@@ -120,6 +120,33 @@ class BankTransferSaleTest extends TestCase
         $this->bank()->createOrder(self::BUYER, $phase->id, 100.0);
     }
 
+    /**
+     * ★ รอบขายที่ประกาศรับแค่บัตร ต้องปฏิเสธการสั่งซื้อทางโอนเงิน.
+     *
+     * เจ้าของสั่งให้ใช้ Stripe อย่างเดียว การมีเลขบัญชีค้างอยู่ในระบบ
+     * ต้องไม่ทำให้ทางโอนเงินเปิดขึ้นมาเองเงียบๆ — นโยบายมาจาก accept_currencies
+     * ไม่ใช่จากผลข้างเคียงของการตั้งค่า
+     */
+    public function test_bank_order_is_refused_when_sale_accepts_card_only(): void
+    {
+        $phase = $this->makeOpenPhase(['accept_currencies' => ['CARD']]);
+
+        $this->expectException(PurchaseException::class);
+        $this->expectExceptionMessage('This payment method is not accepted');
+
+        $this->bank()->createOrder(self::BUYER, $phase->id, 100.0);
+    }
+
+    /** แต่ทางบัตรยังต้องซื้อได้ตามปกติในรอบขายเดียวกัน */
+    public function test_card_still_works_when_sale_accepts_card_only(): void
+    {
+        $phase = $this->makeOpenPhase(['accept_currencies' => ['CARD']]);
+
+        $result = app(TokenSaleService::class)->assertPurchasable(self::BUYER, $phase->id, 'USD', 100.0);
+
+        $this->assertSame(1000.0, $result['tpix_amount']);
+    }
+
     /** เฟสปิดแล้วสั่งซื้อไม่ได้ — ใช้ด่านเดียวกับทุกช่องทาง */
     public function test_order_is_refused_when_phase_is_closed(): void
     {

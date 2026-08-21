@@ -53,6 +53,9 @@ class TokenSaleApiController extends Controller
             ]);
         }
 
+        // ช่องทางที่รอบขายนี้ประกาศรับ — เป็นตัวตัดสินนโยบาย ไม่ใช่การตั้งค่าปลีกย่อย
+        $accepted = array_map('strtoupper', (array) ($sale->accept_currencies ?? []));
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -64,7 +67,7 @@ class TokenSaleApiController extends Controller
                 'total_sold' => (float) $sale->total_sold,
                 'total_raised_usd' => (float) $sale->total_raised_usd,
                 'percent_sold' => $sale->percent_sold,
-                'accept_currencies' => $sale->accept_currencies ?? [],
+                'accept_currencies' => $accepted,
 
                 /*
                  * เชนที่ผู้ซื้อต้องต่อกระเป๋าอยู่เพื่อรับเหรียญ (4289)
@@ -80,8 +83,16 @@ class TokenSaleApiController extends Controller
                  * ถ้าโชว์ปุ่มทั้งที่ใช้ไม่ได้ ผู้ซื้อจะกดแล้วเจอ error เปล่าๆ
                  */
                 'payment_methods' => [
-                    'card' => $stripe->isEnabled(),
-                    'bank' => $bank->isConfigured(),
+                    /*
+                     * ★ ต้องผ่าน "สองด่าน" ทั้งคู่: รอบขายประกาศรับช่องทางนี้ไหม
+                     *   และช่องทางนั้นตั้งค่าครบจนใช้ได้จริงหรือยัง
+                     *
+                     * ถ้าดูแค่ว่าตั้งค่าครบ (เช่น มีเลขบัญชี) ช่องทางที่เจ้าของ
+                     * ตั้งใจปิดจะกลับมาเปิดเองเงียบๆ ทันทีที่มีใครเผลอกรอกค่า
+                     * — นโยบายต้องมาจาก accept_currencies เสมอ ไม่ใช่จากผลข้างเคียง
+                     */
+                    'card' => in_array('CARD', $accepted, true) && $stripe->isEnabled(),
+                    'bank' => in_array('BANK', $accepted, true) && $bank->isConfigured(),
                 ],
 
                 'sale_wallet_address' => $sale->sale_wallet_address,
