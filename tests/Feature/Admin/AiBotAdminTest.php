@@ -5,6 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Models\AdminUser;
 use App\Models\AiBotConfig;
 use App\Models\AiBotDecision;
+use App\Models\AiBotDemoAccount;
 use App\Models\AiBotPlan;
 use App\Models\AiBotSubscription;
 use App\Models\AiBotTrade;
@@ -129,6 +130,38 @@ class AiBotAdminTest extends TestCase
                     ->where('summary.closed_trades', 1)
                 // JSON ย่อ 100.0 เหลือ 100 — เทียบแบบ strict จึงต้องเป็น int
                     ->where('summary.win_rate', 100)
+            );
+    }
+
+    /**
+     * พอร์ตรวมของเดิม (bucket = null) ต้องไม่ถูกนับในยอดเงินทุนด้านบน.
+     *
+     * เจอตอนดูของจริงบน production: มีพอร์ตเก่าค้างอยู่ที่ไม่มีบอทตัวไหนใช้แล้ว
+     * นับรวมเข้าไปทำให้ยอดเงินทุนบวมและไม่เท่ากับผลรวมของการ์ดกลยุทธ์ข้างล่าง
+     * ซึ่งอ่านทีละ bucket — แอดมินที่บวกเลขตามจะเจอตัวเลขไม่ตรงโดยไม่มีคำอธิบาย
+     */
+    #[Test]
+    public function เงินทุนไม่นับพอร์ตรวมของเดิม(): void
+    {
+        $bot = $this->makeBot('cloud');
+
+        AiBotDemoAccount::create([
+            'wallet_address' => $bot->wallet_address, 'bucket' => 'grid',
+            'balance' => 9500, 'starting_balance' => 10000,
+        ]);
+
+        // พอร์ตเก่าที่ไม่ผูกกับกลยุทธ์ไหนเลย — ต้องไม่ถูกนับ
+        AiBotDemoAccount::create([
+            'wallet_address' => $bot->wallet_address, 'bucket' => null,
+            'balance' => 10000, 'starting_balance' => 10000,
+        ]);
+
+        $this->get('/admin/ai-bots')
+            ->assertOk()
+            ->assertInertia(
+                fn ($page) => $page
+                    ->where('summary.capital', 10000)
+                    ->where('summary.cash', 9500)
             );
     }
 

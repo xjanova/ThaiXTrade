@@ -200,8 +200,18 @@ class AiBotAdminController extends Controller
         $openValue = $positions->sum(fn (AiBotPosition $p) => $this->positionValue($p, $prices)['value']);
         $openPnl = $positions->sum(fn (AiBotPosition $p) => $this->positionValue($p, $prices)['pnl']);
 
-        $cash = (float) $accounts->sum('balance');
-        $capital = (float) $accounts->sum('starting_balance');
+        /*
+         * นับเฉพาะพอร์ตที่ผูกกับกลยุทธ์ — ข้ามพอร์ตรวมของเดิม (bucket = null)
+         *
+         * เจอตอนดูของจริงบน production: มีพอร์ตเก่าค้างอยู่หนึ่งใบที่ไม่มีบอทตัวไหนใช้
+         * (`PaperBroker::accountFor()` ผูก bucket กับกลยุทธ์เสมอแล้ว) เงินก้อนนั้น
+         * ทำให้ยอด "เงินทุน" ด้านบนบวมขึ้นทั้งก้อน และไม่เท่ากับผลรวมของการ์ดกลยุทธ์
+         * ข้างล่างที่อ่านทีละ bucket — แอดมินที่บวกเลขตามจะเจอตัวเลขไม่ตรงกันโดยไม่มีคำอธิบาย
+         */
+        $tracked = $accounts->filter(fn (AiBotDemoAccount $a) => filled($a->bucket));
+
+        $cash = (float) $tracked->sum('balance');
+        $capital = (float) $tracked->sum('starting_balance');
 
         return [
             'bots_total' => $bots->count(),
