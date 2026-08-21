@@ -158,7 +158,6 @@ const navigationSections = computed(() => [
         title: t('common.all') === 'ทั้งหมด' ? 'เนื้อหา' : 'Content',
         items: [
             { name: t('common.all') === 'ทั้งหมด' ? 'บทความ AI' : 'AI Articles', href: '/admin/content', icon: 'content' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'ตั้งค่าเว็บ' : 'Settings', href: '/admin/settings', icon: 'settings' },
             { name: t('common.all') === 'ทั้งหมด' ? 'ภาษา' : 'Languages', href: '/admin/languages', icon: 'language' },
             { name: t('common.all') === 'ทั้งหมด' ? 'แบนเนอร์' : 'Banners', href: '/admin/banners', icon: 'banner' },
         ],
@@ -173,6 +172,16 @@ const navigationSections = computed(() => [
     {
         title: t('common.all') === 'ทั้งหมด' ? 'ระบบ' : 'System',
         items: [
+            /*
+             * ตั้งค่าเว็บอยู่หมวด "ระบบ" ไม่ใช่ "เนื้อหา"
+             *
+             * เดิมอยู่ใต้เนื้อหาคู่กับบทความ/แบนเนอร์ ทั้งที่ในนั้นมีคีย์ Stripe, Turnstile,
+             * กระเป๋ารับค่าธรรมเนียม และคีย์ AI — ไม่ใช่เรื่องเนื้อหาสักอย่าง
+             * เจ้าของหาไม่เจอจนคิดว่าหน้าตั้งค่าหายไปจากระบบ
+             *
+             * วางไว้บนสุดของหมวดเพราะเป็นหน้าที่เข้าบ่อยที่สุดในกลุ่มนี้
+             */
+            { name: t('common.all') === 'ทั้งหมด' ? 'ตั้งค่าเว็บ' : 'Settings', href: '/admin/settings', icon: 'settings' },
             { name: t('common.all') === 'ทั้งหมด' ? 'ผู้ดูแลระบบ' : 'Admins', href: '/admin/users', icon: 'users' },
             { name: t('common.all') === 'ทั้งหมด' ? 'การแจ้งเตือน' : 'Notifications', href: '/admin/notifications', icon: 'notification' },
             { name: t('common.all') === 'ทั้งหมด' ? 'อัพเดทแอพ' : 'App Releases', href: '/admin/app-releases', icon: 'download' },
