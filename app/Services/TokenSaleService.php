@@ -8,6 +8,7 @@ use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
 use App\Support\Wei;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -116,11 +117,107 @@ class TokenSaleService
     // =========================================================================
 
     /**
+     * ด่านเดียวที่ตัดสินว่า "เฟสนี้เปิดขายอยู่จริงไหม" — ทุกทางที่รับเงินต้องเรียกตัวนี้.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * ห้ามเขียนเงื่อนไขนี้ซ้ำที่อื่นเด็ดขาด
+     * ═══════════════════════════════════════════════════════════════════════
+     * เดิมด่านช่วงเวลาอยู่ใน processPurchase() ทางเดียว ส่วน preview กับ Stripe
+     * ไม่มีเลย ผลที่เกิดจริงบน production:
+     *   1. preview ตอบว่า "จ่าย 10 USDT ได้ 200 TPIX" ทั้งที่เฟสปิดไป 3 เดือนแล้ว
+     *      ลูกค้าเชื่อแล้วโอนเงินบน BSC จริง ค่อยมารู้ตอน backend ปฏิเสธ = เงินหาย
+     *      (ลำดับการซื้อคือจ่ายก่อน แล้วค่อยยื่น tx_hash จึงย้อนกลับไม่ได้)
+     *   2. Stripe ขายจากเฟสไหนก็ได้ที่ยิง phase_id มา — เลือกเฟสถูกที่สุดตลอดกาล
+     *      ($0.05 แทนที่จะเป็น $0.10) = ส่วนลด 50% ให้ใครก็ได้ที่แก้ค่าใน request
+     *
+     * เขียนไว้ที่เดียวแล้วเรียกใช้ทุกทาง ด่านจะไม่หลุดกันเองอีก
+     *
+     * เงื่อนไขต้องตรงกับ getActivePhase() เป๊ะ ไม่งั้นหน้าเว็บกับหลังบ้านจะเห็นไม่ตรงกัน
+     *
+     * @throws PurchaseException ข้อความปลอดภัยพอที่จะแสดงให้ผู้ซื้ออ่านตรงๆ
+     */
+    /**
+     * รอบขายนี้รับชำระด้วยช่องทางนี้ไหม.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * ★ ด่านที่ปิดทางโอนคริปโตหลังเปลี่ยนมาขายด้วยเงินสด
+     * ═══════════════════════════════════════════════════════════════════════
+     * เจ้าของกำหนดให้รับเงินเป็นบัตร/โอนเงินเท่านั้น และส่งมอบบนเชน 4289
+     * แต่ปลายทาง /token-sale/purchase (ที่รับ tx_hash จาก BSC) ยังอยู่ในระบบ
+     * ถ้าไม่มีด่านนี้ ใครก็ยังยิง API ตรงเพื่อโอน BNB/USDT ไปยัง
+     * `sale_wallet_address` เดิมได้ — ซึ่งเป็นกระเป๋าที่ยังพิสูจน์ไม่ได้ว่า
+     * มีใครถือกุญแจ (nonce 0 ยอด 0) = เงินลูกค้าอาจล็อกถาวร
+     *
+     * อ่านจาก `accept_currencies` ของรอบขาย ไม่ฝังไว้ในโค้ด
+     * เจ้าของจึงเปิดทางคริปโตกลับมาได้เองจากหลังบ้านถ้าวันหนึ่งพร้อม
+     *
+     * @throws PurchaseException
+     */
+    /**
+     * สกุลนี้เป็นคริปโตที่ต้องโอนเข้ากระเป๋าไหม (ตรงข้ามกับเงินสดผ่านบัตร/ธนาคาร).
+     */
+    public function isCryptoCurrency(string $currency): bool
+    {
+        return ! in_array(strtoupper($currency), ['USD', 'CARD', 'BANK'], true);
+    }
+
+    public function assertCurrencyAccepted(TokenSale $sale, string $currency): void
+    {
+        $accepted = array_map('strtoupper', (array) ($sale->accept_currencies ?? []));
+        $currency = strtoupper($currency);
+
+        // ไม่ได้ตั้งไว้ = ไม่จำกัด (ข้อมูลเก่าก่อนมีระบบนี้)
+        if ($accepted === []) {
+            return;
+        }
+
+        /*
+         * CARD/BANK เป็น "ช่องทาง" ส่วนสกุลที่บันทึกจริงคือ USD
+         * จึงถือว่ารอบขายที่รับ CARD หรือ BANK = รับ USD โดยปริยาย
+         */
+        if ($currency === 'USD' && (in_array('CARD', $accepted, true) || in_array('BANK', $accepted, true))) {
+            return;
+        }
+
+        if (! in_array($currency, $accepted, true)) {
+            throw new PurchaseException('This payment method is not accepted for this sale.');
+        }
+    }
+
+    public function assertPhaseOpen(SalePhase $phase): void
+    {
+        $sale = $phase->tokenSale;
+
+        if (! $sale || $sale->status !== 'active') {
+            throw new PurchaseException('Token sale is not active.');
+        }
+
+        if ($phase->status !== 'active') {
+            throw new PurchaseException('This phase is not active.');
+        }
+
+        $now = now();
+
+        if ($phase->starts_at !== null && $phase->starts_at->gt($now)) {
+            throw new PurchaseException('This phase has not started yet.');
+        }
+
+        if ($phase->ends_at !== null && $phase->ends_at->lt($now)) {
+            throw new PurchaseException('This phase has already ended.');
+        }
+    }
+
+    /**
      * คำนวณ preview ก่อนซื้อ (จำนวน TPIX ที่จะได้).
+     *
+     * ★ ต้องผ่านด่านเดียวกับตอนซื้อจริง — preview ที่ตอบสำเร็จคือคำสัญญากับลูกค้า
+     *   ว่าถ้าโอนเงินมาจะได้เหรียญ ถ้าด่านสองฝั่งไม่ตรงกัน คำสัญญานั้นจะเป็นเท็จ
      */
     public function calculatePurchasePreview(int $phaseId, string $currency, float $amount): array
     {
-        $phase = SalePhase::findOrFail($phaseId);
+        $phase = SalePhase::with('tokenSale')->findOrFail($phaseId);
+
+        $this->assertPhaseOpen($phase);
         $conversion = $this->priceFeed->convertToTpix($amount, $currency, (float) $phase->price_usd);
 
         return [
@@ -133,6 +230,85 @@ class TokenSaleService
             'tpix_amount' => $conversion['tpix_amount'],
             'currency_rate' => $conversion['rate'],
             'remaining_in_phase' => $phase->remaining_allocation,
+        ];
+    }
+
+    /**
+     * ตรวจทุกด่านของการซื้อ "ยกเว้นการยืนยันเงินบนเชน" — ใช้ก่อนผู้ใช้จ่ายเงินจริง.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * ทำไมต้องมีด่านตรวจล่วงหน้าแยกต่างหาก
+     * ═══════════════════════════════════════════════════════════════════════
+     * ลำดับการซื้อคือ "จ่ายเงินบน BSC ก่อน แล้วค่อยยื่น tx_hash" ซึ่งย้อนกลับไม่ได้
+     * ทุกด่านที่ไปโผล่ตอนยื่น tx_hash จึงเป็นด่านที่ "ปฏิเสธหลังเงินออกไปแล้ว"
+     *
+     * /preview ที่หน้าเว็บเรียกอยู่เป็นปลายทางสาธารณะ ไม่ผ่านการยืนยันเจ้าของกระเป๋า
+     * ผู้ใช้ที่เปิดหน้าค้างไว้จนเซสชันกระเป๋าหมดอายุจึงผ่าน preview ได้ตามปกติ
+     * โอนเงินจริง แล้วเจอ 403 WALLET_NOT_VERIFIED ตอนยื่น tx_hash
+     * — ไม่มีแถวบันทึกใดๆ เหลือแค่ tx_hash ใน localStorage ของเครื่องเขาเอง
+     *
+     * ตัวนี้จึงอยู่ในกลุ่มที่ผ่าน VerifyWalletOwnership + KYC เหมือน purchase
+     * เพื่อให้ด่านทั้งหมดถูกตรวจ "ก่อน" เงินออกจากกระเป๋า
+     *
+     * @throws PurchaseException ข้อความปลอดภัยพอที่จะแสดงให้ผู้ซื้ออ่านตรงๆ
+     */
+    public function assertPurchasable(string $walletAddress, int $phaseId, string $currency, float $amount): array
+    {
+        $phase = SalePhase::with('tokenSale')->findOrFail($phaseId);
+        $sale = $phase->tokenSale;
+
+        $this->assertPhaseOpen($phase);
+        $this->assertCurrencyAccepted($sale, $currency);
+
+        /*
+         * กระเป๋ารับเงินจำเป็นเฉพาะ "ทางคริปโต" เท่านั้น
+         *
+         * ทางบัตร/โอนเงินไม่มีการโอนเข้ากระเป๋าใดๆ — เงินเข้า Stripe หรือบัญชีธนาคาร
+         * ถ้าบังคับให้ต้องมีกระเป๋ารับคริปโตด้วย รอบขายที่ขายด้วยเงินสดล้วนจะซื้อไม่ได้เลย
+         * ทั้งที่ไม่ได้ขาดอะไรจริง
+         *
+         * และนี่คือเหตุผลที่โมเดลใหม่ปลอดภัยกว่า: ไม่ต้องมีกระเป๋ารับคริปโต
+         * จึงไม่ต้องพิสูจน์ว่าใครถือกุญแจของมัน
+         */
+        if ($this->isCryptoCurrency($currency) && blank($sale->sale_wallet_address)) {
+            throw new PurchaseException('The sale is not accepting payments right now. Please try again later.');
+        }
+
+        if ($phase->whitelist_only) {
+            $entry = WhitelistEntry::where('sale_phase_id', $phase->id)
+                ->where('wallet_address', strtolower($walletAddress))
+                ->first();
+
+            if (! $entry) {
+                throw new PurchaseException('Your wallet is not whitelisted for this phase.');
+            }
+        }
+
+        // คำนวณจำนวนเหรียญด้วยสูตรเดียวกับตอนซื้อจริง แล้วตรวจเพดานให้ครบ
+        $conversion = $this->priceFeed->convertToTpix($amount, $currency, (float) $phase->price_usd);
+        $tpixAmount = (float) $conversion['tpix_amount'];
+
+        if ($tpixAmount < (float) $phase->min_purchase) {
+            throw new PurchaseException("Minimum purchase is {$phase->min_purchase} TPIX.");
+        }
+
+        if ((float) $phase->max_purchase > 0 && $tpixAmount > (float) $phase->max_purchase) {
+            throw new PurchaseException("Maximum purchase is {$phase->max_purchase} TPIX.");
+        }
+
+        if ($tpixAmount > $phase->remaining_allocation) {
+            throw new PurchaseException(
+                'Insufficient allocation in this phase. Only '
+                .number_format($phase->remaining_allocation, 2).' TPIX remaining.'
+            );
+        }
+
+        return [
+            'phase_id' => $phase->id,
+            'tpix_amount' => $tpixAmount,
+            'payment_usd_value' => $conversion['usd_value'],
+            'sale_wallet_address' => $sale->sale_wallet_address,
+            'accept_chain_id' => (int) $sale->accept_chain_id,
         ];
     }
 
@@ -153,24 +329,11 @@ class TokenSaleService
         $phase = SalePhase::with('tokenSale')->findOrFail($phaseId);
         $sale = $phase->tokenSale;
 
-        // ตรวจสอบว่า sale และ phase ยัง active
-        if ($sale->status !== 'active') {
-            throw new PurchaseException('Token sale is not active.');
-        }
-        if ($phase->status !== 'active') {
-            throw new PurchaseException('This phase is not active.');
-        }
+        // ด่านเดียวกับ preview และ Stripe — ดู assertPhaseOpen() ว่าทำไมต้องรวมไว้ที่เดียว
+        $this->assertPhaseOpen($phase);
 
-        // ★ ด่านช่วงเวลา — ต้องตรงกับ getActivePhase() ไม่งั้นเฟสที่ปิดไปแล้ว
-        // ยังถูกซื้อได้ด้วยการยิง API ตรงพร้อม phase_id เก่า (หน้าเว็บซ่อนไปแล้ว
-        // แต่ backend ยังรับ) = รับเงินเข้ารอบที่ประกาศปิดไปแล้ว
-        $now = now();
-        if ($phase->starts_at !== null && $phase->starts_at->gt($now)) {
-            throw new PurchaseException('This phase has not started yet.');
-        }
-        if ($phase->ends_at !== null && $phase->ends_at->lt($now)) {
-            throw new PurchaseException('This phase has already ended.');
-        }
+        // ปิดทางโอนคริปโตเมื่อรอบขายประกาศรับแค่บัตร/โอนเงิน
+        $this->assertCurrencyAccepted($sale, $currency);
 
         // ตรวจสอบ whitelist (ถ้า phase ต้อง whitelist)
         if ($phase->whitelist_only) {
@@ -325,7 +488,7 @@ class TokenSaleService
 
                 return $transaction;
             });
-        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+        } catch (UniqueConstraintViolationException $e) {
             // ยิงขนานมาหลายคำขอด้วย tx เดียว — ใบแรกชนะ ที่เหลือถูกฐานข้อมูลปัด
             throw new PurchaseException('This transaction has already been processed.');
         } catch (PurchaseException $e) {

@@ -233,7 +233,6 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         });
 
         // Stripe Checkout — สร้าง session สำหรับซื้อด้วยบัตรเครดิต/เดบิต
-        Route::post('/stripe/checkout', [TokenSaleApiController::class, 'stripeCheckout']);
         Route::get('/stripe/status/{sessionId}', [TokenSaleApiController::class, 'stripeStatus']);
     });
 
@@ -379,7 +378,23 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
 
     // Token Sale Purchase + Claim — ซื้อ/เคลมเหรียญ (rate limit: 10 ครั้ง/นาที)
     Route::middleware('throttle:10,1')->group(function () {
+        /*
+         * ตรวจล่วงหน้าก่อนเงินออกจากกระเป๋า — ต้องอยู่ในกลุ่มเดียวกับ purchase
+         * เพื่อให้ผ่านด่านเดียวกันทั้ง VerifyWalletOwnership และ KYC
+         * ถ้าย้ายออกไปเป็นปลายทางสาธารณะ มันจะกลับไปมีปัญหาเดิมของ /preview ทันที
+         */
+        Route::post('/token-sale/precheck', [TokenSaleApiController::class, 'precheck'])->middleware('kyc:token_sale');
         Route::post('/token-sale/purchase', [TokenSaleApiController::class, 'purchase'])->middleware('kyc:token_sale');
+
+        /*
+         * ทางรับเงินจริงสองทาง — ต้องอยู่ในกลุ่มนี้ทั้งคู่
+         *
+         * ทั้ง Stripe และการโอนเงินผูก "กระเป๋าปลายทางที่จะได้รับเหรียญ" เข้ากับ
+         * คำสั่งซื้อ ถ้าปลายทางเหล่านี้เปิดสาธารณะ ใครก็ยิงคำสั่งซื้อโดยใส่
+         * กระเป๋าของคนอื่นได้ และเราจะไม่มีทางรู้เลยว่าคนสั่งคือเจ้าของกระเป๋าจริง
+         */
+        Route::post('/token-sale/bank-order', [TokenSaleApiController::class, 'bankOrder'])->middleware('kyc:token_sale');
+        Route::post('/token-sale/stripe/checkout', [TokenSaleApiController::class, 'stripeCheckout'])->middleware('kyc:token_sale');
         Route::post('/token-sale/claim', [TokenSaleApiController::class, 'claim'])->middleware('kyc:token_sale');
     });
 

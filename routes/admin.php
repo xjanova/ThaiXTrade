@@ -220,6 +220,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
             // Refund
             Route::post('/refund/{id}', [TokenSaleController::class, 'refundTransaction'])->name('refund');
+
+            // การโอนเงินเข้าบัญชี — ทีมงานยืนยันเองหลังเปิดดูรายการเดินบัญชีจริง
+            Route::post('/bank/{id}/confirm', [TokenSaleController::class, 'confirmBankTransfer'])->name('bank.confirm');
+            Route::post('/bank/{id}/reject', [TokenSaleController::class, 'rejectBankTransfer'])->name('bank.reject');
         });
 
         // Token Factory — จัดการ Token ที่สร้างจาก Factory

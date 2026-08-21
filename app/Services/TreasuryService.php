@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\TreasuryLedger;
 use App\Models\TreasuryPayout;
 use App\Models\TreasuryWhitelist;
+use App\Support\TreasuryWallet;
 use App\Support\Wei;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -97,7 +98,8 @@ class TreasuryService
      */
     public function hotWallet(): array
     {
-        $address = config('treasury.hot_wallet.address');
+        // กระเป๋าเดียวกับที่รับค่าบริการ — ดู App\Support\TreasuryWallet
+        $address = TreasuryWallet::address();
         $balance = $this->balanceWei($address);
         $warnAt = (string) config('treasury.hot_wallet.low_balance_warning', '0');
         $warnWei = $warnAt === '0' ? '0' : Wei::toWei($warnAt);

@@ -123,6 +123,16 @@ export const useWalletStore = defineStore('wallet', () => {
     // ตรวจสอบว่าอยู่บน chain หลัก (BSC) หรือไม่
     const isBSC = computed(() => chainId.value === DEFAULT_CHAIN_ID);
 
+    /*
+     * อยู่บนเชน TPIX (4289) หรือยัง
+     *
+     * ★ รอบขายเหรียญบังคับใช้ค่านี้ — เจ้าของกำหนดว่า "ผู้ซื้อต้องอยู่เชน TPIX
+     *   จึงจะเห็นเหรียญ" เพราะ TPIX เป็นเหรียญเนทีฟของเชนนี้ ไม่ใช่โทเคนบน BSC
+     *   ถ้าปล่อยให้ซื้อจากเชนอื่น ผู้ซื้อจะจ่ายเงินแล้วเปิดกระเป๋าไม่เห็นอะไรเลย
+     *   แล้วคิดว่าโดนโกง — เป็นปัญหาความเชื่อมั่นที่แก้ทีหลังยากมาก
+     */
+    const isTpixChain = computed(() => chainId.value === TPIX_CHAIN_CONFIG.chainIdNum);
+
     // ตรวจสอบว่าอยู่บน chain ที่รองรับหรือไม่
     const isOnSupportedChain = computed(() => {
         if (!chainId.value || supportedChains.value.length === 0) return false;
@@ -893,6 +903,7 @@ export const useWalletStore = defineStore('wallet', () => {
         isConnected,
         shortAddress,
         isBSC,
+        isTpixChain,
         isOnSupportedChain,
         currentChain,
         explorerAddressUrl,

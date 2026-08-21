@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use App\Exceptions\PurchaseException;
+use App\Http\Controllers\Controller;
 use App\Models\SaleTransaction;
 use App\Models\TreasuryPayout;
+use App\Services\BankTransferSaleService;
 use App\Services\PriceFeedService;
 use App\Services\StripePaymentService;
 use App\Services\TokenSaleService;
@@ -40,7 +41,7 @@ class TokenSaleApiController extends Controller
     /**
      * ดึงข้อมูลรอบขายที่ active พร้อม phases.
      */
-    public function index(): JsonResponse
+    public function index(BankTransferSaleService $bank, StripePaymentService $stripe): JsonResponse
     {
         $sale = $this->saleService->getActiveSale();
 
@@ -63,7 +64,26 @@ class TokenSaleApiController extends Controller
                 'total_sold' => (float) $sale->total_sold,
                 'total_raised_usd' => (float) $sale->total_raised_usd,
                 'percent_sold' => $sale->percent_sold,
-                'accept_currencies' => $sale->accept_currencies ?? ['BNB', 'USDT'],
+                'accept_currencies' => $sale->accept_currencies ?? [],
+
+                /*
+                 * เชนที่ผู้ซื้อต้องต่อกระเป๋าอยู่เพื่อรับเหรียญ (4289)
+                 * หน้าเว็บใช้ค่านี้บังคับสลับเชนก่อนเปิดให้กดซื้อ
+                 */
+                'receive_chain_id' => (int) ($sale->accept_chain_id ?: 4289),
+
+                /*
+                 * ช่องทางชำระเงินที่ "เปิดใช้ได้จริงตอนนี้"
+                 *
+                 * แยกจาก accept_currencies เพราะช่องทางหนึ่งอาจถูกประกาศไว้
+                 * แต่ยังตั้งค่าไม่ครบ (เช่น ยังไม่ใส่เลขบัญชี หรือยังไม่มีคีย์ Stripe)
+                 * ถ้าโชว์ปุ่มทั้งที่ใช้ไม่ได้ ผู้ซื้อจะกดแล้วเจอ error เปล่าๆ
+                 */
+                'payment_methods' => [
+                    'card' => $stripe->isEnabled(),
+                    'bank' => $bank->isConfigured(),
+                ],
+
                 'sale_wallet_address' => $sale->sale_wallet_address,
                 'starts_at' => $sale->starts_at?->toIso8601String(),
                 'ends_at' => $sale->ends_at?->toIso8601String(),
@@ -127,10 +147,132 @@ class TokenSaleApiController extends Controller
             );
 
             return response()->json(['success' => true, 'data' => $preview]);
+        } catch (PurchaseException $e) {
+            /*
+             * เฟสปิด/ยังไม่เปิด/รอบขายไม่ active — ต้องบอกเหตุผลจริง ไม่ใช่ "Operation failed"
+             *
+             * หน้าเว็บใช้โค้ด PHASE_CLOSED นี้ปิดปุ่มซื้อทันที ก่อนที่ผู้ใช้จะกดจ่ายเงิน
+             * ถ้ากลบเป็นข้อความรวม หน้าเว็บจะแยกไม่ออกว่า "ระบบล่ม" กับ "รอบขายปิด"
+             * แล้วปล่อยให้กดจ่ายเงินต่อได้ ซึ่งคือจังหวะที่เงินหายจริง
+             *
+             * ข้อความจาก PurchaseException ตั้งใจเขียนให้ผู้ซื้ออ่านได้อยู่แล้ว
+             */
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'PHASE_CLOSED', 'message' => $e->getMessage()],
+            ], 409);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => ['code' => 'PREVIEW_ERROR', 'message' => 'Operation failed. Please try again.'],
+            ], 400);
+        }
+    }
+
+    /**
+     * ตรวจล่วงหน้าก่อนผู้ใช้จ่ายเงินจริง — ไม่แตะฐานข้อมูล ไม่สร้างรายการ.
+     *
+     * ★ อยู่ในกลุ่มที่ผ่าน VerifyWalletOwnership + KYC เหมือน purchase โดยตั้งใจ
+     *   /preview เป็นปลายทางสาธารณะ จึงตรวจไม่ได้ว่าเซสชันกระเป๋ายังใช้ได้อยู่ไหม
+     *   ผู้ใช้ที่เปิดหน้าค้างไว้จนเซสชันหมดอายุจะผ่าน preview แล้วโอนเงินจริง
+     *   ก่อนจะเจอ 403 ตอนยื่น tx_hash — เงินออกไปแล้วโดยไม่มีแถวบันทึกใดๆ
+     *
+     * POST /api/v1/token-sale/precheck
+     */
+    public function precheck(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'phase_id' => ['required', 'integer', 'exists:sale_phases,id'],
+            'currency' => ['required', 'string', 'in:BNB,USDT,BUSD'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'VALIDATION_ERROR', 'message' => $validator->errors()->first()],
+            ], 422);
+        }
+
+        $data = $validator->validated();
+
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $this->saleService->assertPurchasable(
+                    $data['wallet_address'],
+                    (int) $data['phase_id'],
+                    $data['currency'],
+                    (float) $data['amount'],
+                ),
+            ]);
+        } catch (PurchaseException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NOT_PURCHASABLE', 'message' => $e->getMessage()],
+            ], 409);
+        } catch (\Exception $e) {
+            Log::warning('token-sale: precheck ไม่สำเร็จ', [
+                'wallet' => $data['wallet_address'],
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'PRECHECK_ERROR', 'message' => 'Unable to verify this purchase right now.'],
+            ], 400);
+        }
+    }
+
+    /**
+     * สั่งซื้อโดยโอนเงินเข้าบัญชี — คืนรหัสอ้างอิง + เลขบัญชีให้ผู้ซื้อ.
+     *
+     * ยังไม่นับเป็นยอดขายและยังไม่จองโควตา จนกว่าทีมงานจะยืนยันว่าเงินเข้าจริง
+     * (ดูเหตุผลใน BankTransferSaleService)
+     *
+     * POST /api/v1/token-sale/bank-order
+     */
+    public function bankOrder(Request $request, BankTransferSaleService $bank): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'phase_id' => ['required', 'integer', 'exists:sale_phases,id'],
+            'amount_usd' => ['required', 'numeric', 'min:1', 'max:1000000'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'VALIDATION_ERROR', 'message' => $validator->errors()->first()],
+            ], 422);
+        }
+
+        $data = $validator->validated();
+
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $bank->createOrder(
+                    $data['wallet_address'],
+                    (int) $data['phase_id'],
+                    (float) $data['amount_usd'],
+                ),
+            ], 201);
+        } catch (PurchaseException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NOT_PURCHASABLE', 'message' => $e->getMessage()],
+            ], 409);
+        } catch (\Exception $e) {
+            Log::warning('token-sale: สร้างคำสั่งซื้อทางโอนเงินไม่สำเร็จ', [
+                'wallet' => $data['wallet_address'],
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'ORDER_ERROR', 'message' => 'Unable to create the order right now.'],
             ], 400);
         }
     }

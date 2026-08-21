@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\PurchaseException;
 use App\Http\Controllers\Controller;
 use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
+use App\Services\BankTransferSaleService;
 use App\Support\Wei;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -88,6 +92,8 @@ class TokenSaleController extends Controller
             $sale = TokenSale::create($validated);
         }
 
+        $this->forgetSaleCache();
+
         return redirect()->back()->with('success', 'Token Sale saved!');
     }
 
@@ -109,7 +115,9 @@ class TokenSaleController extends Controller
             'vesting_duration_days' => 'nullable|integer|min:0',
             'status' => 'required|string|in:upcoming,active,completed,cancelled',
             'starts_at' => 'nullable|date',
-            'ends_at' => 'nullable|date',
+            // ต้องหลัง starts_at เสมอ — ช่วงเวลากลับหัวทำให้ assertPhaseOpen()
+            // ปฏิเสธทุกการซื้อโดยที่หน้าแอดมินยังโชว์ว่าเฟสนี้ active
+            'ends_at' => 'nullable|date|after:starts_at',
         ]);
 
         $id = $request->input('id');
@@ -128,10 +136,84 @@ class TokenSaleController extends Controller
                 $validated['min_purchase'] = null;
             }
 
+            /*
+             * ★ slug เป็นคอลัมน์ NOT NULL ที่ไม่มีค่าเริ่มต้น และฟอร์มไม่เคยส่งมา
+             *
+             * เดิมกด "Add Phase" แล้วตายทันทีด้วย
+             *   SQLSTATE[HY000] [1364] Field 'slug' doesn't have a default value
+             * ซึ่งแปลว่าแอดมินสร้างเฟสใหม่ไม่ได้เลยสักครั้งตั้งแต่ระบบนี้มีมา
+             * — ปิดทางแก้ปัญหาเฟสหมดอายุด้วยตัวเอง เหลือแค่ทางบรรทัดคำสั่ง
+             *
+             * ผูก phase_order เข้าไปด้วยเพื่อกันชนกันเองเมื่อตั้งชื่อซ้ำในรอบเดียวกัน
+             */
+            $validated['slug'] = Str::slug($validated['name']).'-'.$validated['phase_order'];
+
             SalePhase::create($validated);
         }
 
+        $this->forgetSaleCache();
+
         return redirect()->back()->with('success', 'Phase saved!');
+    }
+
+    /**
+     * ยืนยันว่าเงินโอนเข้าบัญชีจริง → นับเป็นยอดขาย + เข้าคิวจ่ายเหรียญ.
+     *
+     * ⚠️ จุดเดียวที่ทำให้เหรียญออกจากคำสั่งซื้อทางโอนเงิน
+     *    ทีมงานต้องเปิดดูรายการเดินบัญชีจริงก่อนกดเสมอ ระบบตรวจแทนไม่ได้
+     */
+    public function confirmBankTransfer(int $id, BankTransferSaleService $bank)
+    {
+        $tx = SaleTransaction::findOrFail($id);
+
+        try {
+            $confirmed = $bank->confirm($tx, auth('admin')->user()?->email);
+            $bank->queueInitialPayout($confirmed);
+        } catch (PurchaseException $e) {
+            return redirect()->back()->withErrors(['bank' => $e->getMessage()]);
+        }
+
+        $this->forgetSaleCache();
+
+        $reference = $confirmed->metadata['reference'] ?? $confirmed->uuid;
+
+        return redirect()->back()->with(
+            'success',
+            "ยืนยันการโอนเงิน {$reference} แล้ว — เข้าคิวจ่าย ".number_format((float) $confirmed->tpix_amount, 2).' TPIX'
+        );
+    }
+
+    /**
+     * ปฏิเสธคำสั่งซื้อที่ไม่มีเงินเข้า.
+     */
+    public function rejectBankTransfer(Request $request, int $id, BankTransferSaleService $bank)
+    {
+        $validated = $request->validate([
+            'reason' => 'required|string|max:255',
+        ]);
+
+        $tx = SaleTransaction::findOrFail($id);
+
+        try {
+            $bank->reject($tx, $validated['reason'], auth('admin')->user()?->email);
+        } catch (PurchaseException $e) {
+            return redirect()->back()->withErrors(['bank' => $e->getMessage()]);
+        }
+
+        return redirect()->back()->with('success', 'ปฏิเสธคำสั่งซื้อแล้ว');
+    }
+
+    /**
+     * ล้างแคชรอบขายทันทีหลังแอดมินแก้ข้อมูล.
+     *
+     * TokenSaleService::getActiveSale() แคชไว้ 30 วินาที ถ้าไม่ล้าง แอดมินที่
+     * เพิ่งแก้วันปิดเฟสจะรีเฟรชหน้า /token-sale แล้วยังเห็นของเก่า สรุปว่า
+     * "แก้ไม่ติด" แล้วกดแก้ซ้ำอีกรอบ — เป็นการแก้ซ้ำซ้อนกลางเหตุการณ์จริง
+     * ที่อันตรายที่สุดตอนกำลังกู้ระบบขายให้กลับมาขายได้
+     */
+    private function forgetSaleCache(): void
+    {
+        Cache::forget('token_sale:active');
     }
 
     /**

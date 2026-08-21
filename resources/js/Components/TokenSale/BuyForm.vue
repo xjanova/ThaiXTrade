@@ -1,119 +1,163 @@
 <script setup>
 /**
  * BuyForm — ฟอร์มซื้อเหรียญ TPIX
- * เลือกสกุลเงิน → กรอกจำนวน → ดู preview → ซื้อ
- * ส่ง transaction บน BSC แล้ว submit tx_hash ไป backend
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * โมเดลการขาย (เจ้าของกำหนด 21 ส.ค. 2026)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *   รับเงิน : บัตรเครดิต (Stripe) หรือโอนเงินเข้าบัญชีธนาคาร
+ *   ส่งมอบ  : TPIX เนทีฟบนเชน 4289 เท่านั้น
+ *   ผู้ซื้อ  : ต้องต่อกระเป๋าอยู่บนเชน 4289 ถึงจะกดซื้อได้
+ *
+ * ทำไมต้องบังคับเชนก่อนซื้อ: TPIX เป็นเหรียญเนทีฟของเชน 4289 ไม่ใช่โทเคนบน BSC
+ * ถ้าปล่อยให้ซื้อจากเชนอื่น ผู้ซื้อจะจ่ายเงินแล้วเปิดกระเป๋าไม่เห็นอะไรเลย
+ * แล้วสรุปเองว่าโดนโกง — ความเชื่อมั่นที่เสียไปตรงนั้นเรียกคืนยากกว่าเงิน
+ *
+ * ไม่มีทางจ่ายด้วยคริปโตแล้ว (ด่านจริงอยู่ที่ TokenSaleService::assertCurrencyAccepted)
+ *
  * Developed by Xman Studio
  */
 import { ref, watch, computed } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
+import { useTokenSaleStore } from '@/Stores/tokenSaleStore';
 import { useTokenSale } from '@/Composables/useTokenSale';
 import { isMobile, downloadTpixApp } from '@/utils/mobileWallet';
-import { getCoinLogo, getCoinLogoFallback } from '@/utils/cryptoLogos';
+import { TPIX_CHAIN_CONFIG } from '@/utils/web3';
 
 const walletStore = useWalletStore();
+const tokenSaleStore = useTokenSaleStore();
 const mobile = isMobile();
+
 const {
     selectedCurrency,
     paymentAmount,
     preview,
     isLoadingPreview,
-    isSendingTx,
-    isSubmitting,
     error,
-    txHash,
-    purchaseResult,
-    acceptCurrencies,
+    phaseClosedReason,
     currentPhase,
     currentPrice,
-    canPurchase,
     isSoldOut,
     exceedsRemaining,
     calculatePreview,
-    executePurchase,
-    retryPendingPurchases,
-    resetForm,
 } = useTokenSale();
 
 const emit = defineEmits(['purchase-complete']);
 
-// สถานะ UI
-const showSuccess = ref(false);
+// รอบขายนี้คิดเป็นเงินสดเสมอ — ช่องกรอกจึงเป็น USD ไม่ใช่สกุลคริปโต
+selectedCurrency.value = 'USD';
 
-// คำนวณ preview เมื่อเปลี่ยน currency หรือ amount (debounce 500ms)
+/** วิธีชำระเงินที่เลือกอยู่: 'card' | 'bank' */
+const method = ref('card');
+
+const isSubmittingOrder = ref(false);
+
+/** ผลลัพธ์คำสั่งซื้อทางโอนเงิน (รหัสอ้างอิง + เลขบัญชี) */
+const bankOrder = ref(null);
+
+// คำนวณ preview เมื่อจำนวนเงินเปลี่ยน (debounce 500ms)
 let debounceTimer = null;
-watch([selectedCurrency, paymentAmount], () => {
+watch(paymentAmount, () => {
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(calculatePreview, 500);
 });
 
-// สกุลเงินคริปโตที่รองรับ (ไม่รวม payment method เช่น STRIPE)
-const CRYPTO_CURRENCIES = ['BNB', 'USDT', 'BUSD'];
+/** ช่องทางที่เปิดใช้ได้จริงตอนนี้ (หลังบ้านเป็นคนบอก) */
+const methods = computed(() => tokenSaleStore.sale?.payment_methods || { card: false, bank: false });
 
-// กรองเฉพาะสกุลเงินคริปโตจาก acceptCurrencies
-const cryptoCurrencies = computed(() => {
-    return acceptCurrencies.value.filter(c => CRYPTO_CURRENCIES.includes(c));
+const hasAnyMethod = computed(() => methods.value.card || methods.value.bank);
+
+/** เชนที่ผู้ซื้อต้องอยู่เพื่อรับเหรียญ — ปกติคือ 4289 */
+const receiveChainId = computed(
+    () => tokenSaleStore.sale?.receive_chain_id || TPIX_CHAIN_CONFIG.chainIdNum
+);
+
+const isOnReceiveChain = computed(() => walletStore.chainId === receiveChainId.value);
+
+const canSubmit = computed(() => {
+    return (
+        walletStore.isConnected &&
+        isOnReceiveChain.value &&
+        currentPhase.value &&
+        !isSoldOut.value &&
+        !exceedsRemaining.value &&
+        !phaseClosedReason.value &&
+        parseFloat(paymentAmount.value) > 0 &&
+        preview.value &&
+        !isSubmittingOrder.value &&
+        methods.value[method.value]
+    );
 });
 
-/**
- * ดำเนินการซื้อ
- */
-async function handlePurchase() {
+/** สลับกระเป๋าไปเชน TPIX (เพิ่มเครือข่ายให้อัตโนมัติถ้ายังไม่มี) */
+async function switchToReceiveChain() {
+    error.value = null;
     try {
-        await executePurchase();
-        showSuccess.value = true;
-        emit('purchase-complete');
-
-        // ซ่อน success หลัง 10 วินาที
-        setTimeout(() => {
-            showSuccess.value = false;
-        }, 10000);
-    } catch {
-        // error ถูกจัดการใน composable แล้ว
+        await walletStore.switchChain(receiveChainId.value);
+    } catch (e) {
+        error.value = e?.message || 'สลับเครือข่ายไม่สำเร็จ กรุณาสลับในแอปกระเป๋าเอง';
     }
 }
 
 /**
- * ชำระเงินผ่าน Stripe (credit card)
- * ต้องมี preview ก่อนเพื่อให้ได้ amount_usd และ phase_id ที่ถูกต้อง
+ * กดซื้อ — แยกทางตามวิธีชำระเงิน
+ *
+ * ทั้งสองทางผ่านด่านฝั่งเซิร์ฟเวอร์ชุดเดียวกัน (เฟสเปิด · กระเป๋ายืนยันแล้ว ·
+ * ขั้นต่ำ/เพดาน · โควตาที่เหลือ) ก่อนจะมีอะไรเกิดขึ้นกับเงินจริง
  */
-async function handleStripeCheckout() {
-    if (!walletStore.isConnected || !paymentAmount.value) return;
+async function submitOrder() {
+    if (!canSubmit.value) return;
 
-    // ต้องมี preview เพื่อให้ได้ phase_id และ USD value ที่ถูกต้อง
-    if (!preview.value || !preview.value.phase_id) {
-        error.value = 'กรุณารอระบบคำนวณราคาก่อน (Please wait for price calculation)';
-        await calculatePreview();
-        return;
-    }
+    isSubmittingOrder.value = true;
+    error.value = null;
+    bankOrder.value = null;
 
-    // ตรวจสอบว่า phase_id มีค่าจริง
-    if (!currentPhase.value?.id) {
-        error.value = 'No active sale phase available.';
-        return;
-    }
+    const payload = {
+        wallet_address: walletStore.address,
+        phase_id: currentPhase.value.id,
+        amount_usd: Number(preview.value.payment_usd_value),
+    };
 
     try {
-        const res = await fetch('/api/v1/token-sale/stripe/checkout', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Wallet-Address': walletStore.address,
-            },
-            body: JSON.stringify({
-                wallet_address: walletStore.address,
-                amount_usd: preview.value.payment_usd_value,
-                phase_id: currentPhase.value.id,
-            }),
-        });
-        const data = await res.json();
-        if (data.success && data.data?.url) {
-            window.location.href = data.data.url;
-        } else {
-            error.value = data.error?.message || 'Failed to create checkout session';
+        if (method.value === 'card') {
+            const res = await tokenSaleStore.createStripeCheckout(payload);
+
+            if (!res.ok) {
+                error.value = res.message;
+                return;
+            }
+
+            // พาไปหน้าชำระเงินของ Stripe
+            window.location.href = res.url;
+
+            return;
         }
-    } catch (e) {
-        error.value = e.message || 'Stripe checkout failed';
+
+        const res = await tokenSaleStore.createBankOrder(payload);
+
+        if (!res.ok) {
+            error.value = res.message;
+            return;
+        }
+
+        bankOrder.value = res.data;
+        emit('purchase-complete');
+    } finally {
+        isSubmittingOrder.value = false;
+    }
+}
+
+function resetBankOrder() {
+    bankOrder.value = null;
+    paymentAmount.value = '';
+    preview.value = null;
+}
+
+async function copyText(text) {
+    try {
+        await navigator.clipboard.writeText(String(text));
+    } catch {
+        // เบราว์เซอร์บางตัวไม่ให้สิทธิ์คลิปบอร์ด — ผู้ใช้ยังเลือกคัดลอกเองได้
     }
 }
 
@@ -125,12 +169,12 @@ function formatNumber(n) {
 
 <template>
     <div class="buy-form glass-dark p-6 rounded-xl border border-white/10">
-        <h3 class="text-xl font-bold text-white mb-1">Buy TPIX Tokens</h3>
+        <h3 class="text-xl font-bold text-white mb-1">ซื้อเหรียญ TPIX</h3>
         <p class="text-sm text-gray-400 mb-6">
-            Current Price: <span class="text-primary-400 font-semibold">${{ currentPrice }}</span> per TPIX
+            ราคาปัจจุบัน <span class="text-primary-400 font-semibold">${{ currentPrice }}</span> ต่อ TPIX
         </p>
 
-        <!-- ถ้ายังไม่เชื่อมต่อ wallet -->
+        <!-- ยังไม่เชื่อมกระเป๋า -->
         <div v-if="!walletStore.isConnected" class="text-center py-6 space-y-4">
             <div class="w-14 h-14 rounded-2xl bg-primary-500/20 flex items-center justify-center mx-auto">
                 <svg class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -139,48 +183,54 @@ function formatNumber(n) {
                 </svg>
             </div>
             <div>
-                <p class="text-white font-semibold mb-1">เชื่อมต่อ Wallet เพื่อซื้อ TPIX</p>
-                <p class="text-gray-400 text-xs">ยังไม่มีแอปกระเป๋า? สร้าง TPIX Wallet ได้เลย ไม่ต้องติดตั้ง</p>
+                <p class="text-white font-semibold mb-1">เชื่อมต่อกระเป๋าเพื่อซื้อ TPIX</p>
+                <p class="text-gray-400 text-xs">กระเป๋านี้คือที่ที่เหรียญจะถูกส่งไป ยังไม่มีก็สร้างได้เลย</p>
             </div>
 
-            <!-- ปุ่ม Connect Wallet (เปิด WalletModal ซึ่งมี TPIX Wallet ให้สร้างได้) -->
             <button
                 @click="walletStore.openConnectModal()"
                 class="w-full py-3 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-primary-500/20 transition-all"
             >
-                Connect Wallet / สร้างกระเป๋า
+                เชื่อมต่อกระเป๋า / สร้างกระเป๋า
             </button>
 
-            <!-- Mobile: ปุ่มดาวน์โหลดแอป TPIX -->
             <button
                 v-if="mobile"
                 @click="downloadTpixApp"
                 class="w-full py-2.5 rounded-xl font-medium text-sm bg-accent-500/10 border border-accent-500/20 text-accent-300 hover:bg-accent-500/20 transition-all"
             >
-                Download TPIX App
+                ดาวน์โหลดแอป TPIX
             </button>
         </div>
 
-        <!-- ถ้าไม่ได้อยู่บน BSC -->
-        <div v-else-if="!walletStore.isBSC" class="text-center py-8">
-            <div class="text-yellow-400 mb-4">
-                <svg class="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                        d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                </svg>
-                Please switch to BSC Network
+        <!--
+            ★ ด่านเชน — ต้องอยู่บนเชน TPIX ก่อนถึงจะซื้อได้
+            TPIX เป็นเหรียญเนทีฟของเชน 4289 ซื้อจากเชนอื่นแล้วจะเปิดกระเป๋าไม่เห็นเหรียญ
+        -->
+        <div v-else-if="!isOnReceiveChain" class="text-center py-8 space-y-4">
+            <div class="w-14 h-14 rounded-2xl bg-primary-500/20 flex items-center justify-center mx-auto">
+                <img src="/tpixlogo.webp" alt="TPIX Chain" class="w-9 h-9 object-contain" />
             </div>
-            <button class="btn-primary px-6 py-2" @click="walletStore.switchChain(56)">
-                Switch to BSC
+            <div>
+                <p class="text-white font-semibold mb-1">สลับไปเครือข่าย TPIX Chain ก่อน</p>
+                <p class="text-gray-400 text-xs max-w-sm mx-auto">
+                    TPIX เป็นเหรียญหลักของเครือข่ายนี้ ต้องต่อกระเป๋าอยู่บน TPIX Chain
+                    จึงจะเห็นเหรียญที่ซื้อ — ถ้ายังไม่มีเครือข่ายนี้ ระบบจะเพิ่มให้อัตโนมัติ
+                </p>
+            </div>
+            <button class="btn-primary px-6 py-2.5" @click="switchToReceiveChain">
+                สลับไป TPIX Chain
             </button>
+            <p v-if="error" class="text-sm text-trading-red">{{ error }}</p>
         </div>
 
-        <!-- ถ้าไม่มี active phase -->
+        <!-- ไม่มีเฟสที่เปิดขาย -->
         <div v-else-if="!currentPhase" class="text-center py-8 text-gray-400">
-            No active sale phase at the moment.
+            <p>ยังไม่มีรอบขายที่เปิดอยู่ในขณะนี้</p>
+            <p v-if="phaseClosedReason" class="mt-2 text-sm text-yellow-400">{{ phaseClosedReason }}</p>
         </div>
 
-        <!-- ถ้าเหรียญหมดแล้ว -->
+        <!-- เหรียญหมดรอบ -->
         <div v-else-if="isSoldOut" class="text-center py-8">
             <div class="w-14 h-14 rounded-2xl bg-yellow-500/20 flex items-center justify-center mx-auto mb-3">
                 <svg class="w-7 h-7 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -188,155 +238,149 @@ function formatNumber(n) {
                         d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
             </div>
-            <p class="text-yellow-400 font-semibold mb-1">SOLD OUT!</p>
-            <p class="text-gray-400 text-sm">This phase has been fully allocated.</p>
+            <p class="text-yellow-400 font-semibold mb-1">ขายหมดรอบนี้แล้ว</p>
+            <p class="text-gray-400 text-sm">โควตาของเฟสนี้ถูกจองครบแล้ว</p>
+        </div>
+
+        <!-- ผลลัพธ์คำสั่งซื้อทางโอนเงิน -->
+        <div v-else-if="bankOrder" class="space-y-4">
+            <div class="p-4 rounded-xl bg-trading-green/10 border border-trading-green/30">
+                <p class="text-trading-green font-semibold mb-1">สร้างคำสั่งซื้อแล้ว</p>
+                <p class="text-sm text-gray-300">
+                    โอนเงิน <span class="text-white font-semibold">${{ formatNumber(bankOrder.amount_usd) }}</span>
+                    แล้วทีมงานจะยืนยันและส่ง
+                    <span class="text-white font-semibold">{{ formatNumber(bankOrder.tpix_amount) }} TPIX</span>
+                    ให้ที่กระเป๋าของคุณบน TPIX Chain
+                </p>
+            </div>
+
+            <!-- รหัสอ้างอิง — สำคัญที่สุด ต้องใส่ตอนโอน -->
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <p class="text-xs text-gray-400 mb-1">รหัสอ้างอิง (ใส่ในหมายเหตุตอนโอน)</p>
+                <div class="flex items-center justify-between gap-3">
+                    <code class="text-lg font-bold text-primary-300 tracking-wider">{{ bankOrder.reference }}</code>
+                    <button class="text-xs px-3 py-1.5 rounded-lg bg-white/10 text-gray-200 hover:bg-white/20"
+                        @click="copyText(bankOrder.reference)">คัดลอก</button>
+                </div>
+                <p class="text-xs text-yellow-400/80 mt-2">
+                    ไม่ใส่รหัสนี้ ทีมงานจะจับคู่รายการโอนของคุณไม่ได้
+                </p>
+            </div>
+
+            <!-- บัญชีปลายทาง -->
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2 text-sm">
+                <div class="flex justify-between gap-3">
+                    <span class="text-gray-400">ธนาคาร</span>
+                    <span class="text-white">{{ bankOrder.bank.bank_name || '—' }}</span>
+                </div>
+                <div class="flex justify-between gap-3">
+                    <span class="text-gray-400">ชื่อบัญชี</span>
+                    <span class="text-white">{{ bankOrder.bank.account_name || '—' }}</span>
+                </div>
+                <div class="flex justify-between gap-3 items-center">
+                    <span class="text-gray-400">เลขบัญชี</span>
+                    <span class="flex items-center gap-2">
+                        <span class="text-white font-mono">{{ bankOrder.bank.account_no }}</span>
+                        <button class="text-xs px-2 py-1 rounded bg-white/10 text-gray-200 hover:bg-white/20"
+                            @click="copyText(bankOrder.bank.account_no)">คัดลอก</button>
+                    </span>
+                </div>
+                <p v-if="bankOrder.bank.note" class="text-xs text-gray-400 pt-2 border-t border-white/5">
+                    {{ bankOrder.bank.note }}
+                </p>
+            </div>
+
+            <button class="w-full py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10"
+                @click="resetBankOrder">
+                สั่งซื้อรายการใหม่
+            </button>
         </div>
 
         <!-- ฟอร์มซื้อ -->
         <div v-else>
-            <!-- เลือกสกุลเงิน -->
-            <div class="mb-4">
-                <label class="block text-sm text-gray-400 mb-2">Pay With</label>
-                <div class="flex gap-2">
-                    <button
-                        v-for="currency in cryptoCurrencies"
-                        :key="currency"
-                        class="flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-all text-sm font-medium"
-                        :class="selectedCurrency === currency
-                            ? 'border-primary-500 bg-primary-500/10 text-primary-400'
-                            : 'border-white/10 bg-white/5 text-gray-300 hover:border-white/20'"
-                        @click="selectedCurrency = currency"
-                    >
-                        <img
-                            :src="getCoinLogo(currency)"
-                            :alt="currency"
-                            class="w-5 h-5"
-                            @error="(e) => { const fb = getCoinLogoFallback(currency); if (fb) e.target.src = fb; }"
+            <!-- ยังไม่เปิดช่องทางชำระเงินสักทาง -->
+            <div v-if="!hasAnyMethod" class="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-sm text-yellow-300">
+                ยังไม่เปิดช่องทางชำระเงิน กรุณาติดต่อทีมงาน
+            </div>
+
+            <template v-else>
+                <!-- เลือกวิธีชำระเงิน -->
+                <div class="mb-4">
+                    <label class="block text-sm text-gray-400 mb-2">ชำระด้วย</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button
+                            v-if="methods.card"
+                            class="px-4 py-3 rounded-lg border transition-all text-sm font-medium"
+                            :class="method === 'card'
+                                ? 'border-primary-500 bg-primary-500/10 text-primary-400'
+                                : 'border-white/10 bg-white/5 text-gray-300 hover:border-white/20'"
+                            @click="method = 'card'"
+                        >
+                            บัตรเครดิต / เดบิต
+                        </button>
+                        <button
+                            v-if="methods.bank"
+                            class="px-4 py-3 rounded-lg border transition-all text-sm font-medium"
+                            :class="method === 'bank'
+                                ? 'border-primary-500 bg-primary-500/10 text-primary-400'
+                                : 'border-white/10 bg-white/5 text-gray-300 hover:border-white/20'"
+                            @click="method = 'bank'"
+                        >
+                            โอนเงินเข้าบัญชี
+                        </button>
+                    </div>
+                </div>
+
+                <!-- จำนวนเงิน -->
+                <div class="mb-4">
+                    <label class="block text-sm text-gray-400 mb-2">จำนวนเงิน (USD)</label>
+                    <div class="relative">
+                        <input
+                            v-model="paymentAmount"
+                            type="number"
+                            step="any"
+                            min="0"
+                            placeholder="0.00"
+                            class="trading-input w-full pr-16"
                         />
-                        {{ currency }}
-                    </button>
-                </div>
-            </div>
-
-            <!-- กรอกจำนวนเงิน -->
-            <div class="mb-4">
-                <label class="block text-sm text-gray-400 mb-2">Amount ({{ selectedCurrency }})</label>
-                <div class="relative">
-                    <input
-                        v-model="paymentAmount"
-                        type="number"
-                        step="any"
-                        min="0"
-                        placeholder="0.00"
-                        class="trading-input w-full pr-16"
-                    />
-                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-                        {{ selectedCurrency }}
-                    </span>
-                </div>
-            </div>
-
-            <!-- Preview — จำนวน TPIX ที่จะได้ -->
-            <div v-if="preview" class="mb-4 p-4 rounded-lg bg-white/5 border border-white/10">
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-sm text-gray-400">You Will Receive</span>
-                    <span class="text-xl font-bold text-trading-green">
-                        {{ formatNumber(preview.tpix_amount) }} TPIX
-                    </span>
-                </div>
-                <div class="space-y-1 text-xs text-gray-400">
-                    <div class="flex justify-between">
-                        <span>Payment Value</span>
-                        <span class="text-white">${{ formatNumber(preview.payment_usd_value) }}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Price per TPIX</span>
-                        <span class="text-white">${{ preview.price_per_tpix }}</span>
-                    </div>
-                    <div v-if="preview.bonus_percent > 0" class="flex justify-between">
-                        <span>Bonus</span>
-                        <span class="text-trading-green">+{{ preview.bonus_percent }}%</span>
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">USD</span>
                     </div>
                 </div>
-            </div>
 
-            <!-- Loading preview -->
-            <div v-else-if="isLoadingPreview" class="mb-4 text-center py-3">
-                <span class="text-sm text-gray-400">Calculating...</span>
-            </div>
-
-            <!-- Exceeds remaining warning -->
-            <div v-if="exceedsRemaining && preview" class="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                <p class="text-sm text-yellow-400">
-                    จำนวนเกิน allocation ที่เหลือ ({{ formatNumber(currentPhase?.remaining) }} TPIX)
-                    กรุณาลดจำนวน
-                </p>
-            </div>
-
-            <!-- Error -->
-            <div v-if="error" class="mb-4 p-3 rounded-lg bg-trading-red/10 border border-trading-red/20">
-                <p class="text-sm text-trading-red">{{ error }}</p>
-            </div>
-
-            <!-- Success -->
-            <div v-if="showSuccess && purchaseResult" class="mb-4 p-4 rounded-lg bg-trading-green/10 border border-trading-green/20">
-                <p class="text-sm text-trading-green font-semibold mb-1">Purchase Successful!</p>
-                <p class="text-xs text-gray-300">
-                    You purchased {{ formatNumber(purchaseResult.tpix_amount) }} TPIX
-                </p>
-            </div>
-
-            <!-- Transaction progress -->
-            <div v-if="isSendingTx || isSubmitting" class="mb-4 p-3 rounded-lg bg-primary-500/10 border border-primary-500/20">
-                <div class="flex items-center gap-2">
-                    <!-- Spinner -->
-                    <svg class="animate-spin h-4 w-4 text-primary-400" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    <span class="text-sm text-primary-400">
-                        {{ isSendingTx ? 'Sending transaction on BSC...' : 'Verifying purchase...' }}
-                    </span>
+                <!-- จำนวนเหรียญที่จะได้ -->
+                <div v-if="preview" class="mb-4 p-4 rounded-lg bg-white/5 border border-white/10">
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="text-gray-400">จะได้รับ</span>
+                        <span class="text-white font-semibold">{{ formatNumber(preview.tpix_amount) }} TPIX</span>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-500">
+                        <span>ส่งไปที่</span>
+                        <span class="font-mono">{{ walletStore.shortAddress }} · TPIX Chain</span>
+                    </div>
                 </div>
-                <p v-if="txHash" class="text-xs text-gray-400 mt-1 font-mono truncate">
-                    Tx: {{ txHash }}
+
+                <div v-else-if="isLoadingPreview" class="mb-4 text-sm text-gray-400">กำลังคำนวณ…</div>
+
+                <p v-if="exceedsRemaining" class="mb-3 text-sm text-yellow-400">
+                    จำนวนนี้เกินโควตาที่เหลือของเฟสนี้
                 </p>
-            </div>
 
-            <!-- ปุ่มซื้อ -->
-            <button
-                class="w-full btn-success py-3 text-lg font-bold"
-                :disabled="!canPurchase"
-                :class="{ 'opacity-50 cursor-not-allowed': !canPurchase }"
-                @click="handlePurchase"
-            >
-                {{ isSendingTx ? 'Confirming...' : isSubmitting ? 'Processing...' : 'Buy TPIX' }}
-            </button>
+                <p v-if="error" class="mb-3 text-sm text-trading-red">{{ error }}</p>
 
-            <!-- Separator -->
-            <div class="flex items-center gap-3 my-4">
-                <div class="flex-1 border-t border-white/10"></div>
-                <span class="text-xs text-gray-500">or pay with card</span>
-                <div class="flex-1 border-t border-white/10"></div>
-            </div>
+                <button
+                    class="w-full py-3 rounded-xl font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-primary-500 to-accent-500 text-white hover:shadow-lg hover:shadow-primary-500/20"
+                    :disabled="!canSubmit"
+                    @click="submitOrder"
+                >
+                    <span v-if="isSubmittingOrder">กำลังดำเนินการ…</span>
+                    <span v-else-if="method === 'card'">ชำระด้วยบัตร</span>
+                    <span v-else>รับเลขบัญชีเพื่อโอนเงิน</span>
+                </button>
 
-            <!-- Stripe Button -->
-            <button
-                class="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 bg-[#635BFF]/20 border border-[#635BFF]/30 text-[#A8A3FF] hover:bg-[#635BFF]/30 transition-all"
-                :disabled="!canPurchase || !paymentAmount"
-                :class="{ 'opacity-50 cursor-not-allowed': !canPurchase || !paymentAmount }"
-                @click="handleStripeCheckout"
-            >
-                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-7.076-2.19L3.28 21.873C5.153 23.017 8.005 24 11.2 24c2.612 0 4.77-.593 6.312-1.758 1.678-1.27 2.53-3.155 2.53-5.565 0-4.124-2.505-5.765-6.066-7.527z"/>
-                </svg>
-                Pay with Credit Card (Stripe)
-            </button>
-
-            <!-- คำเตือน -->
-            <p class="text-xs text-gray-500 mt-3 text-center">
-                Crypto payments are processed on BSC. Card payments via Stripe.
-            </p>
+                <p class="mt-3 text-xs text-gray-500 text-center">
+                    เหรียญจะถูกส่งเป็น TPIX เนทีฟบน TPIX Chain ตามตารางปลดล็อกของเฟสนี้
+                </p>
+            </template>
         </div>
     </div>
 </template>

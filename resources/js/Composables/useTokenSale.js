@@ -47,6 +47,9 @@ export function useTokenSale() {
     const txHash = ref(null);
     const purchaseResult = ref(null);
 
+    // เหตุผลจากเซิร์ฟเวอร์ว่าทำไมรอบขายนี้ซื้อไม่ได้ (null = ซื้อได้)
+    const phaseClosedReason = ref(null);
+
     // === Computed ===
 
     // สกุลเงินที่รับ (จาก sale config)
@@ -80,7 +83,10 @@ export function useTokenSale() {
             walletStore.isConnected &&
             walletStore.isBSC &&
             currentPhase.value &&
-            currentPhase.value.status === 'active' &&
+            // ★ ด่านเดียวกับ store + เซิร์ฟเวอร์ — ป้าย status อย่างเดียวเชื่อไม่ได้
+            //   เฟสที่ค้าง active ไว้แต่เลยวันปิดแล้วต้องกดซื้อไม่ได้
+            tokenSaleStore.isPhaseOpen(currentPhase.value) &&
+            !phaseClosedReason.value &&
             !isSoldOut.value &&
             !exceedsRemaining.value &&
             parseFloat(paymentAmount.value) > 0 &&
@@ -112,8 +118,18 @@ export function useTokenSale() {
                 amount
             );
             preview.value = result;
+            phaseClosedReason.value = null;
         } catch (err) {
             preview.value = null;
+
+            /*
+             * เซิร์ฟเวอร์บอกว่ารอบขายปิด — ต้องแสดงให้เห็นและปิดปุ่มซื้อทันที
+             * เดิมกลืนเงียบ ปุ่มยังกดได้ ผู้ใช้จ่ายเงินไปทั้งที่ backend ปฏิเสธแน่นอน
+             */
+            if (err?.code === 'PHASE_CLOSED') {
+                phaseClosedReason.value = err.userMessage || err.message;
+                error.value = phaseClosedReason.value;
+            }
         } finally {
             isLoadingPreview.value = false;
         }
@@ -195,6 +211,32 @@ export function useTokenSale() {
         purchaseResult.value = null;
 
         try {
+            /*
+             * ═══════════════════════════════════════════════════════════════
+             * ★ ด่านสุดท้ายก่อนเงินออกจากกระเป๋า — ตรวจ "ทุกด่าน" ณ วินาทีนี้
+             * ═══════════════════════════════════════════════════════════════
+             * ลำดับการซื้อคือ "จ่ายก่อน แล้วค่อยยื่น tx_hash" ซึ่งย้อนกลับไม่ได้
+             * ทุกด่านที่ไปโผล่ตอนยื่น tx_hash = ด่านที่ปฏิเสธหลังเงินออกไปแล้ว
+             *
+             * ใช้ /precheck ไม่ใช่ /preview เพราะ precheck อยู่หลังการยืนยัน
+             * เจ้าของกระเป๋าและ KYC จึงตรวจได้ครบทั้ง:
+             *   - รอบขาย/เฟสเปิดอยู่จริงไหม
+             *   - เซสชันกระเป๋ายังใช้ได้ไหม (เคสเปิดหน้าค้างข้ามวัน)
+             *   - อยู่ใน whitelist ไหม · เกินขั้นต่ำ/เพดาน/โควตาที่เหลือไหม
+             *   - กระเป๋ารับเงินตั้งค่าไว้แล้วหรือยัง
+             */
+            const check = await tokenSaleStore.precheckPurchase({
+                wallet_address: walletStore.address,
+                phase_id: currentPhase.value.id,
+                currency: selectedCurrency.value,
+                amount: parseFloat(paymentAmount.value),
+            });
+
+            if (!check.ok) {
+                error.value = check.message;
+                return;
+            }
+
             // ขั้นที่ 1: ส่งเงินบน BSC
             const hash = await sendPaymentTransaction();
 
@@ -304,6 +346,7 @@ export function useTokenSale() {
         error,
         txHash,
         purchaseResult,
+        phaseClosedReason,
         // Computed
         acceptCurrencies,
         currentPhase,

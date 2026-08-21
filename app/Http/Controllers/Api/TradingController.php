@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Chain;
 use App\Models\Order;
 use App\Models\SiteSetting;
 use App\Models\Trade;
 use App\Models\TradingPair;
 use App\Models\Transaction;
+use App\Services\ChainResolver;
 use App\Services\FeeCalculationService;
 use App\Services\OrderMatchingService;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +21,7 @@ class TradingController extends Controller
     public function __construct(
         private FeeCalculationService $feeCalculationService,
         private OrderMatchingService $orderMatchingService,
+        private ChainResolver $chains,
     ) {}
 
     /**
@@ -79,13 +80,17 @@ class TradingController extends Controller
             ], 503);
         }
 
-        // แปลง blockchain chainId → DB chain PK
-        // chains.chain_id_hex เป็น hex เช่น '0x38' (BSC 56), '0x10C1' (TPIX 4289)
+        /*
+         * แปลง blockchain chainId → แถวในตาราง chains
+         *
+         * ★ ใช้ resolveActive() ไม่ใช่ resolve() เฉยๆ
+         *   เดิมตรงนี้ไม่เคยเช็ค is_active เลย ขณะที่ฝั่ง swap เช็ค
+         *   ผลคือปุ่ม "ปิดเชน" ในหลังบ้านปิดได้แค่ครึ่งเดียว — swap หยุดจริง
+         *   แต่การวางไม้ยังเดินต่อและยังรับเงินผู้ใช้อยู่ ซึ่งตรงข้ามกับ
+         *   สิ่งที่ปุ่มปิดฉุกเฉินควรทำทุกประการ
+         */
         $blockchainChainId = (int) $validated['chain_id'];
-        $chainHex = '0x'.strtolower(dechex($blockchainChainId));
-        $chain = Chain::where('chain_id_hex', $chainHex)
-            ->orWhere('chain_id_hex', '0x'.strtoupper(dechex($blockchainChainId)))
-            ->first();
+        $chain = $this->chains->resolveActive($blockchainChainId);
 
         if (! $chain) {
             return response()->json([
@@ -581,11 +586,10 @@ class TradingController extends Controller
      */
     public function getFeeInfo(Request $request): JsonResponse
     {
+        // ใช้ตัวแปลงตัวเดียวกับทุกทาง — อัตราค่าธรรมเนียมของเชนที่ถูกปิดอยู่
+        // ไม่ควรถูกเอาไปคิดเงิน (getEffectiveFeeRate จะตกไปใช้อัตรากลางแทน)
         $blockchainChainId = (int) $request->input('chain_id', 56);
-        $chainHex = '0x'.strtolower(dechex($blockchainChainId));
-        $chain = Chain::where('chain_id_hex', $chainHex)
-            ->orWhere('chain_id_hex', '0x'.strtoupper(dechex($blockchainChainId)))
-            ->first();
+        $chain = $this->chains->resolveActive($blockchainChainId);
 
         $feeRate = $this->feeCalculationService->getEffectiveFeeRate(
             'swap',

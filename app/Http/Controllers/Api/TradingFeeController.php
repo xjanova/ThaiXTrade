@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\TradingOrderTicket;
 use App\Models\TradingPair;
+use App\Services\ChainResolver;
 use App\Services\Trading\OrderTicketService;
 use App\Services\Trading\TradingCreditService;
 use App\Services\Trading\TradingFeeQuoteService;
@@ -43,7 +44,30 @@ class TradingFeeController extends Controller
         private readonly TradingFeeQuoteService $quotes,
         private readonly OrderTicketService $tickets,
         private readonly TradingTopupService $topups,
+        private readonly ChainResolver $chains,
     ) {}
+
+    /**
+     * แปลง chain id ของบล็อกเชน → เลขแถวในตาราง chains (0 = หาไม่เจอ).
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * ★ สองเลขนี้คนละชุดกัน และเคยถูกส่งสลับกันมาตลอด
+     * ═══════════════════════════════════════════════════════════════════════
+     * client ส่ง chain_id ของบล็อกเชนมา (56, 4289) แต่ fee_configs.chain_id
+     * เก็บเลขแถว (1..11) การส่งต่อดิบๆ ทำให้เงื่อนไข "ค่าธรรมเนียมเฉพาะเชน"
+     * ใน FeeCalculationService ไม่มีทางตรงกับแถวไหนได้เลย
+     *
+     * วันนี้ยังไม่เห็นผลเพราะมันตกไปใช้อัตรากลางแทนอย่างเงียบๆ แต่แปลว่า
+     * ถ้าแอดมินตั้งค่าธรรมเนียมรายเชนที่ /admin/fees ค่านั้นจะไม่ถูกใช้เลย
+     * — เป็นการตั้งค่าที่ไม่มีผลอะไร ซึ่งอันตรายกว่าตั้งไม่ได้
+     *
+     * คืน 0 เมื่อหาไม่เจอ เพื่อให้ตกไปใช้อัตรากลางเหมือนพฤติกรรมเดิมทุกประการ
+     * (FeeCalculationService เช็ค `if ($chainId)` ซึ่ง 0 เป็นเท็จ)
+     */
+    private function chainRowId(int $blockchainChainId): int
+    {
+        return (int) ($this->chains->resolveActive($blockchainChainId)?->id ?? 0);
+    }
 
     /** ตารางขั้นบันไดค่าบริการ — สาธารณะ ให้ดูได้ก่อนเชื่อมกระเป๋า */
     public function tiers(): JsonResponse
@@ -92,7 +116,7 @@ class TradingFeeController extends Controller
         return response()->json(['success' => true, 'data' => $this->quotes->quote(
             $validated['wallet_address'] ?? null,
             (float) $validated['order_value_usd'],
-            (int) $validated['chain_id'],
+            $this->chainRowId((int) $validated['chain_id']),
             $pairId,
         )]);
     }
@@ -127,7 +151,7 @@ class TradingFeeController extends Controller
                     $validated['pair'],
                     $validated['side'],
                     (float) $validated['order_value_usd'],
-                    (int) $validated['chain_id'],
+                    $this->chainRowId((int) $validated['chain_id']),
                 )
                 : $this->tickets->issueWithOnchainFee(
                     $wallet,

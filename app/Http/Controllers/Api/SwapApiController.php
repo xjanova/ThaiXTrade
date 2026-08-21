@@ -8,6 +8,7 @@ use App\Models\SiteSetting;
 use App\Models\SwapConfig;
 use App\Models\Token;
 use App\Models\Transaction;
+use App\Services\ChainResolver;
 use App\Services\FeeCalculationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,7 @@ class SwapApiController extends Controller
 {
     public function __construct(
         private FeeCalculationService $feeCalculationService,
+        private ChainResolver $chains,
     ) {}
 
     // =========================================================================
@@ -403,14 +405,16 @@ class SwapApiController extends Controller
      */
     private function resolveChain(int $blockchainChainId): ?Chain
     {
-        $lower = '0x'.strtolower(dechex($blockchainChainId));
-        $upper = '0x'.strtoupper(dechex($blockchainChainId));
-
-        return Chain::active()
-            ->where(function ($q) use ($lower, $upper) {
-                $q->where('chain_id_hex', $lower)
-                    ->orWhere('chain_id_hex', $upper);
-            })
-            ->first();
+        /*
+         * ตรรกะย้ายไปอยู่ที่ App\Services\ChainResolver แล้ว
+         *
+         * โค้ดชุดนี้เคยถูกคัดลอกไว้ 4 ที่ (ที่นี่, TradingController สองจุด,
+         * และ TokenFactoryApiController ที่คัดลอกผิดจนอ้างคอลัมน์ที่ไม่มีจริง)
+         * แต่ละที่เขียนไม่เหมือนกัน — บางที่เช็ค is_active บางที่ไม่เช็ค
+         * ปุ่มปิดเชนในหลังบ้านจึงปิดได้แค่บางส่วนของระบบ
+         *
+         * คงเมธอดนี้ไว้เป็นทางผ่าน เพื่อไม่ต้องแก้จุดเรียกทั้งไฟล์
+         */
+        return $this->chains->resolveActive($blockchainChainId);
     }
 }

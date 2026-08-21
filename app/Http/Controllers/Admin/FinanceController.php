@@ -295,7 +295,9 @@ class FinanceController extends Controller
 
     private function initStripe(): void
     {
-        $secretKey = SiteSetting::get('stripe', 'stripe_secret_key')
+        // หน้าหลังบ้านบันทึกลงกลุ่ม 'payment' — ดูเหตุผลใน StripePaymentService::setting()
+        $secretKey = SiteSetting::get('payment', 'stripe_secret_key')
+            ?? SiteSetting::get('stripe', 'stripe_secret_key')
             ?: config('services.stripe.secret');
 
         Stripe::setApiKey($secretKey);

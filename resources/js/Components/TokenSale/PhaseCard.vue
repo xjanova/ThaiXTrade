@@ -5,6 +5,7 @@
  * Developed by Xman Studio
  */
 import { computed } from 'vue';
+import { isPhaseOpen, phaseDisplayStatus } from '@/utils/salePhase';
 
 const props = defineProps({
     /** ข้อมูล phase */
@@ -18,9 +19,18 @@ const emit = defineEmits(['select']);
 // เปอร์เซ็นต์ที่ขายไปแล้วของ phase นี้
 const percentSold = computed(() => props.phase.percent_sold || 0);
 
+/*
+ * สถานะที่ "ตรงกับความจริง" ไม่ใช่ตรงกับคอลัมน์ status
+ *
+ * เดิมการ์ดอ่าน props.phase.status ตรงๆ จึงขึ้นป้าย "Active Now" สีเขียว
+ * ให้เฟสที่เลยวันปิดไปแล้ว — เป็นสัญญาณแรกที่ทำให้ผู้ใช้เชื่อว่ายังซื้อได้
+ * แล้วเดินต่อไปจนโอนเงินจริง
+ */
+const displayStatus = computed(() => phaseDisplayStatus(props.phase));
+
 // สี status badge
 const statusColor = computed(() => {
-    switch (props.phase.status) {
+    switch (displayStatus.value.key) {
         case 'active': return 'bg-trading-green/20 text-trading-green border-trading-green/30';
         case 'upcoming': return 'bg-primary-500/20 text-primary-400 border-primary-500/30';
         case 'completed': return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
@@ -30,18 +40,13 @@ const statusColor = computed(() => {
 });
 
 // label สำหรับ status
-const statusLabel = computed(() => {
-    switch (props.phase.status) {
-        case 'active': return 'Active Now';
-        case 'upcoming': return 'Coming Soon';
-        case 'completed': return 'Completed';
-        case 'sold_out': return 'Sold Out';
-        default: return props.phase.status;
-    }
-});
+const statusLabel = computed(() => displayStatus.value.label);
 
-// สามารถเลือกซื้อได้หรือไม่
-const canSelect = computed(() => props.phase.status === 'active');
+/*
+ * เลือกเฟสนี้เพื่อซื้อได้ไหม — ต้องใช้ด่านเดียวกับสโตร์และเซิร์ฟเวอร์
+ * ห้ามกลับไปเช็ค props.phase.status เดี่ยวๆ อีก (ดู utils/salePhase.js)
+ */
+const canSelect = computed(() => isPhaseOpen(props.phase));
 
 function formatNumber(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';

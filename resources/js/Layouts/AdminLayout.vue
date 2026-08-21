@@ -20,6 +20,38 @@ const page = usePage();
 const sidebarOpen = ref(true);
 const mobileSidebarOpen = ref(false);
 
+/*
+ * ★ ข้อความยืนยันผลจากหลังบ้าน — เดิมไม่มีหน้าไหนแสดงเลย
+ *
+ * HandleInertiaRequests แชร์ flash.success / flash.error มาให้ทุกหน้าอยู่แล้ว
+ * และคอนโทรลเลอร์แอดมินกว่าสิบตัวเรียก ->with('success') ทุกครั้งที่บันทึกสำเร็จ
+ * แต่ไม่มีใครเอามาวาด ผลคือแอดมินกดปุ่มแล้วหน้าจอเงียบสนิท ไม่รู้ว่าสำเร็จหรือล้ม
+ * → กดซ้ำ ซึ่งบางปุ่ม (เช่น สลับเปิด/ปิดเชน) เป็นการสลับค่า กดสองครั้ง = กลับที่เดิม
+ *
+ * วางไว้ที่ layout ครั้งเดียว ทุกหน้าแอดมินจึงได้ไปพร้อมกัน
+ */
+const flashSuccess = computed(() => page.props.flash?.success || null);
+const flashError = computed(() => page.props.flash?.error || null);
+
+/*
+ * error ที่ไม่ได้ผูกกับช่องกรอกใดช่องหนึ่ง เช่นการลบที่ถูกปฏิเสธ
+ * (router.delete ไม่มี form object ให้ผูก error จึงมาโผล่ที่ page.props.errors)
+ */
+const pageErrors = computed(() => Object.values(page.props.errors || {}));
+
+/*
+ * เก็บ "ข้อความที่ถูกปิดไปแล้ว" ไม่ใช่แค่ธง true/false
+ *
+ * ถ้าใช้ธงเปล่า พอแอดมินกดปิดครั้งแรก ข้อความถัดๆ ไปจะไม่ขึ้นอีกเลยทั้งเซสชัน
+ * — กลับไปเงียบเหมือนเดิม ซึ่งคือปัญหาที่แบนเนอร์นี้ตั้งใจแก้
+ */
+const dismissedMessage = ref(null);
+
+const flashKey = computed(() => JSON.stringify([flashSuccess.value, flashError.value, pageErrors.value]));
+const showFlash = computed(() =>
+    (flashSuccess.value || flashError.value || pageErrors.value.length) && dismissedMessage.value !== flashKey.value
+);
+
 const admin = computed(() => page.props.auth?.admin || page.props.auth?.user);
 const currentUrl = computed(() => page.url);
 
@@ -597,6 +629,37 @@ onMounted(() => {
 
             <!-- Page Content -->
             <main class="p-4 lg:p-6 min-h-[calc(100vh-64px)]">
+                <!-- ผลลัพธ์จากหลังบ้าน — สำเร็จ / ล้มเหลว / ถูกปฏิเสธ -->
+                <div
+                    v-if="showFlash"
+                    class="mb-4 space-y-2"
+                >
+                    <div
+                        v-if="flashSuccess"
+                        class="flex items-start gap-3 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3"
+                    >
+                        <svg class="w-5 h-5 text-green-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <p class="text-sm text-green-300 flex-1">{{ flashSuccess }}</p>
+                        <button type="button" class="text-green-400/60 hover:text-green-300" @click="dismissedMessage = flashKey">&times;</button>
+                    </div>
+
+                    <div
+                        v-if="flashError || pageErrors.length"
+                        class="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3"
+                    >
+                        <svg class="w-5 h-5 text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        </svg>
+                        <div class="flex-1 space-y-1">
+                            <p v-if="flashError" class="text-sm text-red-300">{{ flashError }}</p>
+                            <p v-for="(msg, i) in pageErrors" :key="i" class="text-sm text-red-300">{{ msg }}</p>
+                        </div>
+                        <button type="button" class="text-red-400/60 hover:text-red-300" @click="dismissedMessage = flashKey">&times;</button>
+                    </div>
+                </div>
+
                 <slot />
             </main>
         </div>

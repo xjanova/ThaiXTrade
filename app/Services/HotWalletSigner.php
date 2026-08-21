@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\TreasuryWallet;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
@@ -39,7 +40,8 @@ class HotWalletSigner
             'TPIX_ACTION' => 'sign',
             'TPIX_KEYSTORE_PATH' => (string) config('treasury.hot_wallet.keystore_path'),
             'TPIX_KEYSTORE_PASS' => (string) config('treasury.hot_wallet.passphrase'),
-            'TPIX_EXPECT_ADDRESS' => (string) config('treasury.hot_wallet.address'),
+            // ต้องตรงกับกระเป๋าที่ตั้งไว้ในหลังบ้าน ไม่งั้นปฏิเสธการเซ็น (fail-closed)
+            'TPIX_EXPECT_ADDRESS' => TreasuryWallet::address(),
             'TPIX_TO' => $toAddress,
             'TPIX_VALUE_WEI' => $amountWei,
             'TPIX_NONCE' => $nonce === null ? '' : (string) $nonce,

@@ -11,6 +11,7 @@ use App\Services\OrderMatchingService;
 use App\Services\SupplyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /**
  * TPIX Token Price Controller.
@@ -255,10 +256,34 @@ class TpixPriceController extends Controller
             // 2. Admin-set price
             $price = (float) SiteSetting::get('trading', 'tpix_price', 0);
 
-            // 3. Token sale price fallback
+            /*
+             * 3. ราคาจากรอบขายเหรียญ
+             *
+             * ★ สองบรรทัดนี้เคยอ้างคอลัมน์ที่ไม่มีอยู่จริงทั้งคู่
+             *   - `is_active`      → ตารางนี้ใช้ `status` ('upcoming'|'active'|...)
+             *   - `price_per_tpix` → ชื่อจริงคือ `price_usd`
+             *   ผลคือ QueryException 1054 Unknown column หลุดออกจาก closure ของแคช
+             *   → API ราคาสาธารณะ 500 แทนที่จะตกไปใช้ค่าเริ่มต้น $0.18 ที่เขียนรออยู่แล้ว
+             *
+             *   วันนี้ยังไม่ระเบิดเพราะ prod ตั้ง trading.tpix_price = 0.18 ไว้
+             *   ถ้าแอดมินล้างค่านั้นเมื่อไหร่ คนที่กำลังจะซื้อเหรียญจะเจอหน้า error ทันที
+             *
+             * ครอบ try/catch ไว้ด้วย เพราะขั้นนี้เป็นแค่ "ทางเลือกสำรอง"
+             * ความล้มเหลวของมันไม่ควรทำให้ราคาทั้งก้อนพัง — ตกไปใช้ค่าเริ่มต้นดีกว่า
+             */
             if ($price <= 0) {
-                $salePhase = SalePhase::where('is_active', true)->first();
-                $price = $salePhase ? (float) $salePhase->price_per_tpix : 0;
+                try {
+                    $salePhase = SalePhase::where('status', 'active')
+                        ->orderBy('phase_order')
+                        ->first();
+
+                    $price = $salePhase ? (float) $salePhase->price_usd : 0;
+                } catch (\Throwable $e) {
+                    Log::warning('tpix-price: อ่านราคาจากรอบขายไม่สำเร็จ ใช้ค่าเริ่มต้นแทน', [
+                        'error' => $e->getMessage(),
+                    ]);
+                    $price = 0;
+                }
             }
 
             // 4. Default fallback

@@ -24,21 +24,59 @@ use Stripe\Webhook;
  */
 class StripePaymentService
 {
-    public function __construct()
-    {
+    public function __construct(
+        private readonly TokenSaleService $saleService,
+    ) {
         // ใช้ key จาก admin SiteSetting ก่อน, fallback เป็น .env
-        $secretKey = SiteSetting::get('stripe', 'stripe_secret_key')
-            ?: config('services.stripe.secret');
+        Stripe::setApiKey($this->secretKey());
+    }
 
-        Stripe::setApiKey($secretKey);
+    /**
+     * อ่านค่า Stripe จากหลังบ้าน — ลองกลุ่ม 'payment' ก่อน แล้วค่อย 'stripe'.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * ★ บั๊กที่ทำให้คีย์ที่กรอกไว้แล้ว "หายไป" ทั้งที่อยู่ในฐานข้อมูลครบ
+     * ═══════════════════════════════════════════════════════════════════════
+     * หน้า /admin/settings แท็บ payment บันทึกลง **กลุ่ม `payment`**
+     * (ชื่อกลุ่มมาจากท้าย path ของ route `settings/payment`)
+     * แต่โค้ดทุกจุดที่อ่านค่ากลับไปอ่าน **กลุ่ม `stripe`** ซึ่งไม่มีอยู่จริง
+     *
+     * ผลที่เกิดจริงบน production: เจ้าของกรอก pk_live / sk_live / whsec_
+     * และเปิดสวิตช์ไว้เรียบร้อยแล้ว แต่ระบบรายงานว่า "ยังไม่ได้ตั้งค่า Stripe"
+     * เพราะหาผิดกลุ่มมาตลอด — ค่าไม่เคยหาย แค่ไม่มีใครไปอ่านที่ที่มันอยู่
+     *
+     * คงกลุ่ม 'stripe' ไว้เป็นทางสำรอง เผื่อมีสภาพแวดล้อมไหนเคยบันทึกไว้แบบนั้น
+     */
+    private function setting(string $key, mixed $default = null): mixed
+    {
+        return SiteSetting::get('payment', $key, null)
+            ?? SiteSetting::get('stripe', $key, $default);
+    }
+
+    /** กุญแจลับของ Stripe — หลังบ้านมาก่อน แล้วค่อย .env */
+    private function secretKey(): string
+    {
+        return (string) ($this->setting('stripe_secret_key')
+            ?: config('services.stripe.secret', ''));
     }
 
     /**
      * ตรวจสอบว่า Stripe เปิดใช้งานอยู่หรือไม่.
+     *
+     * ★ ไม่มีกุญแจ = ปิด ไม่ว่าสวิตช์ในหลังบ้านจะเปิดไว้แค่ไหน
+     * ─────────────────────────────────────────────────────────────────────
+     * เดิมอ่านแค่สวิตช์ `stripe_enabled` ซึ่ง default เป็น true → ระบบบอกว่า
+     * "จ่ายบัตรได้" ทั้งที่ยังไม่เคยตั้งกุญแจ พอผู้ใช้กดจริง Stripe จะโยน
+     * exception ดิบออกมาเป็น 500 แทนที่จะเป็น 503 พร้อมข้อความสุภาพ
+     * ผู้ใช้เห็นหน้าพัง ไม่ใช่เห็นว่า "ช่องทางนี้ยังไม่เปิด"
      */
     public function isEnabled(): bool
     {
-        return (bool) SiteSetting::get('stripe', 'stripe_enabled', true);
+        if ($this->secretKey() === '') {
+            return false;
+        }
+
+        return (bool) $this->setting('stripe_enabled', true);
     }
 
     /**
@@ -51,8 +89,20 @@ class StripePaymentService
             throw new RuntimeException('Stripe payments are currently disabled.');
         }
 
-        $phase = SalePhase::findOrFail($phaseId);
+        $phase = SalePhase::with('tokenSale')->findOrFail($phaseId);
         $sale = $phase->tokenSale;
+
+        /*
+         * ★ ด่านเดียวกับทางโอนคริปโต — ต้องอยู่ "ก่อน" สร้าง session เสมอ
+         *
+         * เดิมทางบัตรตรวจแค่ allocation กับ min/max ไม่เคยดู status หรือช่วงวันเลย
+         * ใครยิง phase_id=1 (Private Sale $0.05) เข้ามาก็ซื้อราคานั้นได้ตลอดกาล
+         * ทั้งที่รอบจริงเดินไปถึง Public Sale ($0.10) แล้ว = ส่วนลด 50% ฟรี
+         *
+         * ที่ต้องกันตรงนี้ ไม่ใช่ตอน webhook เพราะ webhook มาหลังลูกค้ารูดบัตรแล้ว
+         * ปฏิเสธตอนนั้นเท่ากับรับเงินไปโดยไม่ให้เหรียญ
+         */
+        $this->saleService->assertPhaseOpen($phase);
 
         // คำนวณจำนวน TPIX ที่จะได้รับ
         $tpixAmount = $amountUsd / $phase->price_usd;
@@ -114,7 +164,7 @@ class StripePaymentService
      */
     public function handleWebhook(string $payload, string $signature): array
     {
-        $webhookSecret = SiteSetting::get('stripe', 'stripe_webhook_secret')
+        $webhookSecret = $this->setting('stripe_webhook_secret')
             ?: config('services.stripe.webhook_secret');
 
         /*

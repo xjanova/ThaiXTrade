@@ -16,6 +16,10 @@ use Illuminate\Support\Facades\Log;
  */
 class Web3BalanceService
 {
+    public function __construct(
+        private readonly ChainResolver $chains,
+    ) {}
+
     /**
      * Get native token balance for a wallet address.
      */
@@ -148,11 +152,31 @@ class Web3BalanceService
             ];
         }
 
-        // ERC20 token balances from database
-        $tokens = Token::active()
-            ->where('chain_id', $chainId)
-            ->orderBy('sort_order')
-            ->get();
+        /*
+         * ═══════════════════════════════════════════════════════════════════
+         * ★ ERC-20 จากฐานข้อมูล — ต้องแปลง chain id เป็น row id ก่อนเสมอ
+         * ═══════════════════════════════════════════════════════════════════
+         * $chainId ที่รับเข้ามาคือ "chain id จริงของบล็อกเชน" (56, 4289, ...)
+         * แต่ tokens.chain_id เก็บ "เลขแถวของตาราง chains" (1..11) — คนละชุดกัน
+         *
+         * เดิมเอาตัวเดียวกันไปใช้ทั้งสองความหมาย ผลคือ:
+         *   - chain_id=10 (Optimism) → ไปได้แถวที่ id=10 ซึ่งคือ zkSync Era
+         *     แล้วเอาที่อยู่สัญญาของ zkSync ไปถามผ่าน RPC ของ Optimism
+         *   - chain_id=56 (BSC) → ไม่มีแถว id=56 (มีแค่ถึง 11) → ไม่คืนโทเคนเลย
+         *     ซึ่งคือค่าเริ่มต้นของระบบ จึงเงียบมาตลอดโดยไม่มีใครสังเกต
+         *   - chain_id=1 บังเอิญถูก เพราะ Ethereum เป็นทั้ง chain id 1 และแถวที่ 1
+         *
+         * ยอดที่ผิดถูกกรองทิ้งด้วย bccomp(...) > 0 ข้างล่าง อาการจึงออกมาเป็น
+         * "ไม่มีโทเคนสักตัว" ไม่ใช่ตัวเลขมั่ว — ยิ่งหายากเข้าไปอีก
+         */
+        $chain = $this->chains->resolve($chainId);
+
+        $tokens = $chain
+            ? Token::active()
+                ->where('chain_id', $chain->id)
+                ->orderBy('sort_order')
+                ->get()
+            : collect();
 
         foreach ($tokens as $token) {
             $balance = $this->getTokenBalance(

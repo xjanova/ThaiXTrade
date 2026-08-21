@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\SalePhase;
 use App\Models\TokenSale;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -43,7 +44,7 @@ class SaleReschedule extends Command
 
         try {
             $cursor = $this->option('start')
-                ? \Carbon\Carbon::parse($this->option('start'))->startOfDay()
+                ? Carbon::parse($this->option('start'))->startOfDay()
                 : now();
         } catch (\Throwable) {
             $this->error('รูปแบบวันที่ของ --start ไม่ถูกต้อง (ใช้เช่น 2026-08-20)');
@@ -118,13 +119,31 @@ class SaleReschedule extends Command
             return self::SUCCESS;
         }
 
-        DB::transaction(function () use ($plan) {
+        // เฟสสุดท้ายปิดเมื่อไหร่ — ใช้ขยายกรอบเวลาของ "รอบขาย" ให้ครอบคลุม
+        $lastPhaseEndsAt = collect($plan)->max('ends_at');
+
+        DB::transaction(function () use ($plan, $sale, $lastPhaseEndsAt) {
             foreach ($plan as $p) {
                 SalePhase::whereKey($p['phase']->id)->update([
                     'starts_at' => $p['starts_at'],
                     'ends_at' => $p['ends_at'],
                     'status' => $p['status'],
                 ]);
+            }
+
+            /*
+             * ขยายกรอบเวลาของรอบขายให้ครอบคลุมเฟสสุดท้ายเสมอ
+             *
+             * ถ้าไม่ขยาย จะได้สภาพที่ขัดกันเอง: เฟสเปิดขายอยู่ แต่ token_sales.ends_at
+             * เป็นวันในอดีต → หน้าเว็บนับถอยหลังขึ้นว่า "รอบขายจบแล้ว" ทั้งที่ยังซื้อได้
+             * ผู้ซื้อที่เห็นตัวเลขติดลบจะไม่กล้าโอนเงิน = เสียยอดขายฟรีๆ
+             *
+             * ขยับเฉพาะขาปลาย ไม่แตะ starts_at ของรอบขาย เพราะนั่นคือประวัติว่า
+             * ประกาศเปิดรอบครั้งแรกเมื่อไหร่
+             */
+            if ($lastPhaseEndsAt !== null
+                && ($sale->ends_at === null || $sale->ends_at->lt($lastPhaseEndsAt))) {
+                $sale->forceFill(['ends_at' => $lastPhaseEndsAt])->save();
             }
         });
 
@@ -133,6 +152,7 @@ class SaleReschedule extends Command
 
         $this->newLine();
         $this->info('บันทึกแล้ว — เฟสแรกเปิดขายตั้งแต่ '.$plan[0]['starts_at']->format('Y-m-d H:i'));
+        $this->info('รอบขายสิ้นสุด '.$sale->fresh()->ends_at?->format('Y-m-d H:i'));
 
         return self::SUCCESS;
     }

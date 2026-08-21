@@ -94,6 +94,26 @@ function submitSale() {
 }
 
 // ===== Phase CRUD =====
+
+/**
+ * แปลงวันที่จาก API (ISO-8601 พร้อม timezone) ให้ <input type="datetime-local"> อ่านได้
+ *
+ * input ชนิดนี้รับได้เฉพาะรูปแบบ 'YYYY-MM-DDTHH:mm' เท่านั้น ถ้าโยน ISO เต็มเข้าไป
+ * ช่องจะขึ้นว่างเปล่า — แอดมินเห็นเป็นช่องว่างแล้วเผลอกดบันทึกทับวันเดิมเป็น null
+ */
+function toLocalInput(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** เฟสนี้ค้างสถานะ active ไว้แต่เลยวันปิดไปแล้วหรือยัง (= ขายไม่ได้จริง) */
+function isPhaseExpired(phase) {
+    return phase.status === 'active' && !!phase.ends_at && new Date(phase.ends_at) < new Date();
+}
+
 function openAddPhase(sale) {
     phaseForm.reset();
     phaseForm.token_sale_id = sale.id;
@@ -101,9 +121,85 @@ function openAddPhase(sale) {
     showPhaseModal.value = true;
 }
 
+/**
+ * เปิดฟอร์มแก้ไขเฟสที่มีอยู่
+ *
+ * ★ เดิมตารางเฟสเป็น "ดูอย่างเดียว" ไม่มีปุ่มแก้ไขเลย ทั้งที่หลังบ้านรองรับอยู่แล้ว
+ *   (updatePhase() แยกสาขาด้วย id มาตั้งแต่ต้น) ผลคือเมื่อเฟสหมดอายุ เจ้าของ
+ *   แก้วันปิดเองไม่ได้ ต้องรันคำสั่งบนเซิร์ฟเวอร์เท่านั้น = ระบบขายหยุดขาย
+ *   โดยที่คนดูแลกู้เองไม่ได้
+ */
+function openEditPhase(sale, phase) {
+    phaseForm.reset();
+    phaseForm.id = phase.id;
+    phaseForm.token_sale_id = sale.id;
+    phaseForm.name = phase.name;
+    phaseForm.phase_order = phase.phase_order;
+    phaseForm.price_usd = Number(phase.price_usd);
+    phaseForm.allocation = Number(phase.allocation);
+    phaseForm.min_purchase = Number(phase.min_purchase);
+    phaseForm.max_purchase = Number(phase.max_purchase);
+    phaseForm.vesting_tge_percent = Number(phase.vesting_tge_percent);
+    phaseForm.vesting_cliff_days = Number(phase.vesting_cliff_days);
+    phaseForm.vesting_duration_days = Number(phase.vesting_duration_days);
+    phaseForm.status = phase.status;
+    phaseForm.starts_at = toLocalInput(phase.starts_at);
+    phaseForm.ends_at = toLocalInput(phase.ends_at);
+    showPhaseModal.value = true;
+}
+
 function submitPhase() {
     phaseForm.post('/admin/token-sales/phase', {
         onSuccess: () => { showPhaseModal.value = false; },
+    });
+}
+
+// ===== การโอนเงินเข้าบัญชี =====
+
+/** รายการนี้เป็นการโอนเงินที่รอทีมงานยืนยันหรือเปล่า */
+function isPendingBankTransfer(tx) {
+    return tx.status === 'pending' && tx.metadata?.method === 'bank_transfer';
+}
+
+/** รหัสอ้างอิงที่ผู้ซื้อใส่ตอนโอน — ใช้จับคู่กับรายการเดินบัญชี */
+function bankReference(tx) {
+    return tx.metadata?.reference || null;
+}
+
+const confirmingId = ref(null);
+
+/**
+ * ยืนยันว่าเงินเข้าบัญชีจริง
+ *
+ * ⚠️ จุดเดียวที่ทำให้เหรียญออกจากคำสั่งซื้อทางโอนเงิน
+ *    ต้องเปิดดูรายการเดินบัญชีจริงก่อนกดเสมอ ระบบตรวจแทนไม่ได้
+ */
+function confirmBank(tx) {
+    if (confirmingId.value) return;
+
+    const ref = bankReference(tx) || tx.uuid;
+    if (!window.confirm(`ยืนยันว่าได้รับเงินโอนของรายการ ${ref} แล้วจริงหรือไม่?\n\nกดยืนยันแล้วระบบจะนับเป็นยอดขายและเข้าคิวจ่ายเหรียญทันที`)) {
+        return;
+    }
+
+    confirmingId.value = tx.id;
+    router.post(`/admin/token-sales/bank/${tx.id}/confirm`, {}, {
+        preserveScroll: true,
+        onFinish: () => { confirmingId.value = null; },
+    });
+}
+
+/** ปฏิเสธรายการที่ไม่มีเงินเข้า */
+function rejectBank(tx) {
+    if (confirmingId.value) return;
+
+    const reason = window.prompt('เหตุผลที่ปฏิเสธ (บันทึกไว้ในระบบ)', 'ไม่พบเงินเข้าตามรหัสอ้างอิง');
+    if (!reason) return;
+
+    confirmingId.value = tx.id;
+    router.post(`/admin/token-sales/bank/${tx.id}/reject`, { reason }, {
+        preserveScroll: true,
+        onFinish: () => { confirmingId.value = null; },
     });
 }
 
@@ -251,6 +347,8 @@ function statusBadge(s) {
                                     <th class="text-center py-1 px-2">TGE</th>
                                     <th class="text-center py-1 px-2">Vesting</th>
                                     <th class="text-center py-1 px-2">Status</th>
+                                    <th class="text-center py-1 px-2">ช่วงเวลา</th>
+                                    <th class="text-right py-1 px-2">จัดการ</th>
                                 </tr></thead>
                                 <tbody>
                                     <tr v-for="p in sale.phases" :key="p.id" class="border-t border-white/5">
@@ -261,7 +359,30 @@ function statusBadge(s) {
                                         <td class="py-1.5 px-2 text-right text-gray-400">{{ p.allocation > 0 ? ((p.sold / p.allocation) * 100).toFixed(1) : 0 }}%</td>
                                         <td class="py-1.5 px-2 text-center text-gray-300">{{ p.vesting_tge_percent }}%</td>
                                         <td class="py-1.5 px-2 text-center text-gray-400 text-xs">{{ p.vesting_cliff_days }}d cliff / {{ p.vesting_duration_days }}d</td>
-                                        <td class="py-1.5 px-2 text-center"><span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(p.status)">{{ p.status }}</span></td>
+                                        <td class="py-1.5 px-2 text-center">
+                                            <span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(p.status)">{{ p.status }}</span>
+                                            <!--
+                                                ป้าย status อย่างเดียวหลอกตาได้ — เฟสที่ค้าง active ไว้แต่เลยวันปิด
+                                                จะถูกปฏิเสธทุกการซื้อ ต้องเห็นตรงนี้ทันทีว่าต้องเข้าไปแก้
+                                            -->
+                                            <span
+                                                v-if="isPhaseExpired(p)"
+                                                class="ml-1 px-2 py-0.5 text-xs rounded-full bg-trading-red/20 text-trading-red border border-trading-red/30"
+                                                title="สถานะเป็น active แต่เลยวันปิดแล้ว — ระบบจะปฏิเสธทุกการซื้อ"
+                                            >หมดอายุ</span>
+                                        </td>
+                                        <td class="py-1.5 px-2 text-center text-xs text-gray-400 whitespace-nowrap">
+                                            {{ p.starts_at ? new Date(p.starts_at).toLocaleDateString('th-TH') : '—' }}
+                                            &rarr;
+                                            {{ p.ends_at ? new Date(p.ends_at).toLocaleDateString('th-TH') : '—' }}
+                                        </td>
+                                        <td class="py-1.5 px-2 text-right">
+                                            <button
+                                                type="button"
+                                                class="px-2 py-1 text-xs rounded-lg bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"
+                                                @click="openEditPhase(sale, p)"
+                                            >แก้ไข</button>
+                                        </td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -286,7 +407,9 @@ function statusBadge(s) {
                             <th class="text-right py-3 px-4">USD</th>
                             <th class="text-right py-3 px-4">TPIX</th>
                             <th class="text-center py-3 px-4">Status</th>
+                            <th class="text-center py-3 px-4">รหัสอ้างอิง</th>
                             <th class="text-right py-3 px-4 hidden md:table-cell">Date</th>
+                            <th class="text-right py-3 px-4">จัดการ</th>
                         </tr></thead>
                         <tbody>
                             <tr v-for="tx in transactions.data" :key="tx.id" class="border-t border-white/5 hover:bg-white/5">
@@ -296,7 +419,30 @@ function statusBadge(s) {
                                 <td class="py-2 px-4 text-right text-white">${{ Number(tx.payment_usd_value).toFixed(2) }}</td>
                                 <td class="py-2 px-4 text-right text-trading-green font-medium">{{ fmt(tx.tpix_amount) }}</td>
                                 <td class="py-2 px-4 text-center"><span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(tx.status)">{{ tx.status }}</span></td>
+                                <td class="py-2 px-4 text-center">
+                                    <code v-if="bankReference(tx)" class="text-xs text-primary-300">{{ bankReference(tx) }}</code>
+                                    <span v-else class="text-gray-600 text-xs">—</span>
+                                </td>
                                 <td class="py-2 px-4 text-right text-gray-500 text-xs hidden md:table-cell">{{ new Date(tx.created_at).toLocaleDateString() }}</td>
+                                <td class="py-2 px-4 text-right whitespace-nowrap">
+                                    <!--
+                                        ปุ่มโผล่เฉพาะรายการโอนเงินที่ยังรอยืนยัน
+                                        รายการทางบัตรยืนยันเองอัตโนมัติผ่าน webhook ของ Stripe
+                                    -->
+                                    <template v-if="isPendingBankTransfer(tx)">
+                                        <button
+                                            class="px-2 py-1 text-xs rounded-lg bg-trading-green/20 text-trading-green hover:bg-trading-green/30 transition disabled:opacity-40"
+                                            :disabled="confirmingId === tx.id"
+                                            @click="confirmBank(tx)"
+                                        >ได้รับเงินแล้ว</button>
+                                        <button
+                                            class="ml-1 px-2 py-1 text-xs rounded-lg bg-white/5 text-gray-400 hover:text-trading-red hover:bg-trading-red/10 transition disabled:opacity-40"
+                                            :disabled="confirmingId === tx.id"
+                                            @click="rejectBank(tx)"
+                                        >ปฏิเสธ</button>
+                                    </template>
+                                    <span v-else class="text-gray-600 text-xs">—</span>
+                                </td>
                             </tr>
                         </tbody>
                     </table>
@@ -413,7 +559,7 @@ function statusBadge(s) {
             <Teleport to="body">
                 <div v-if="showPhaseModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="showPhaseModal = false">
                     <div class="glass-dark rounded-xl border border-white/10 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                        <h3 class="text-xl font-bold text-white mb-4">Add Sale Phase</h3>
+                        <h3 class="text-xl font-bold text-white mb-4">{{ phaseForm.id ? 'แก้ไขเฟสรอบขาย' : 'Add Sale Phase' }}</h3>
                         <form @submit.prevent="submitPhase" class="space-y-4">
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
@@ -474,8 +620,23 @@ function statusBadge(s) {
                                     <input v-model="phaseForm.starts_at" type="datetime-local" class="trading-input w-full" />
                                 </div>
                             </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <!--
+                                        ช่องนี้เคยไม่มีในฟอร์มเลย ทั้งที่เป็นค่าที่ตัดสินว่าเฟสยังขายได้ไหม
+                                        เฟสที่เลย ends_at จะถูกปฏิเสธทุกการซื้อ แต่แอดมินแก้ไม่ได้
+                                    -->
+                                    <label class="block text-sm text-gray-400 mb-1">Ends At</label>
+                                    <input v-model="phaseForm.ends_at" type="datetime-local" class="trading-input w-full" />
+                                    <p class="mt-1 text-xs text-gray-500">ว่างไว้ = ไม่จำกัดวันปิด</p>
+                                </div>
+                            </div>
+                            <!-- แสดง error จากเซิร์ฟเวอร์ ไม่งั้นกดบันทึกแล้วเงียบ ไม่รู้ว่าติดอะไร -->
+                            <div v-if="Object.keys(phaseForm.errors).length" class="rounded-lg border border-trading-red/30 bg-trading-red/10 px-3 py-2">
+                                <p v-for="(msg, field) in phaseForm.errors" :key="field" class="text-xs text-trading-red">{{ msg }}</p>
+                            </div>
                             <div class="flex gap-3 pt-2">
-                                <button type="submit" class="btn-primary px-6 py-2 font-semibold" :disabled="phaseForm.processing">Add Phase</button>
+                                <button type="submit" class="btn-primary px-6 py-2 font-semibold" :disabled="phaseForm.processing">{{ phaseForm.processing ? 'กำลังบันทึก...' : (phaseForm.id ? 'บันทึกการแก้ไข' : 'Add Phase') }}</button>
                                 <button type="button" class="btn-secondary px-6 py-2" @click="showPhaseModal = false">Cancel</button>
                             </div>
                         </form>

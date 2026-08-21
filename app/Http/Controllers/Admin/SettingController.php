@@ -279,7 +279,12 @@ class SettingController extends Controller
     public function updateTab(Request $request): RedirectResponse
     {
         // Whitelist allowed tab names to prevent path manipulation
-        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced', 'ai', 'factory', 'revenue', 'advisor'];
+        /*
+         * ★ 'payment' เคยตกหล่นจากรายการนี้ ทั้งที่ route settings/payment มีอยู่จริง
+         *   ผลคือกดบันทึกแท็บการชำระเงินแล้วเด้งกลับพร้อม "Invalid settings tab."
+         *   — แก้คีย์ Stripe จากหลังบ้านไม่ได้เลยสักครั้ง
+         */
+        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced', 'ai', 'factory', 'revenue', 'advisor', 'payment'];
         $tab = last(explode('/', $request->path()));
 
         if (! in_array($tab, $allowedTabs, true)) {
@@ -299,6 +304,8 @@ class SettingController extends Controller
                 'nft_enabled', 'max_supply_limit', 'auto_approve', 'creation_enabled'],
             'revenue' => ['wallet_address', 'auto_collect_enabled',
                 'tpix_wallet', 'tpix_chain_id', 'wtpix_wallet', 'wtpix_chain_id'],
+            // คีย์ Stripe + บัญชีรับโอนเงินของรอบขายเหรียญ
+            'payment' => ['stripe_enabled', 'stripe_public_key', 'stripe_secret_key', 'stripe_webhook_secret'],
             'ai' => ['groq_api_key', 'groq_default_model', 'ai_chatbot_enabled', 'ai_content_enabled',
                 'cloudflare_image_url', 'cloudflare_image_key',
                 'together_api_key', 'huggingface_api_key', 'gemini_api_key'],
