@@ -341,10 +341,51 @@ class SettingController extends Controller
             SiteSetting::set($tab, $key, $value, $type);
         }
 
+        $this->propagateRevenueWallets($tab);
+
         SiteSetting::clearCache();
         AuditLog::log("settings.{$tab}.update");
 
         return back()->with('success', "บันทึก {$tab} settings สำเร็จ");
+    }
+
+    /**
+     * กระจายกระเป๋ารับรายได้ไปยังกลุ่มที่ระบบจริงอ่าน.
+     *
+     * ⚠️ ด่านที่ปิดการเทรดและการสลับเหรียญอ่าน `trading.fee_collector_wallet`
+     *    ไม่ใช่ `revenue.*` — เจ้าของกรอกกระเป๋ารับรายได้ครบแล้วกดบันทึก หน้าเว็บ
+     *    ขึ้นว่าสำเร็จ แต่ swap/เทรดยังตอบ PLATFORM_NOT_READY อยู่เหมือนเดิม
+     *    เพราะเป็นคนละคีย์กัน (เกิดจริง 2026-08-21 — ไม่มีอะไรบนหน้าจอบอกเลย)
+     *
+     * เดิมมีโค้ด "sync" อยู่ฝั่งเบราว์เซอร์ที่แก้แค่ตัวแปรในฟอร์ม โดยไม่เคยส่งขึ้นมา
+     * ย้ายมาทำที่นี่เพราะเป็นจุดเดียวที่ข้ามไม่ได้ ไม่ว่าจะกดจากหน้าเว็บหรือยิง API ตรง
+     *
+     * จับคู่ตามเชนที่เกิดรายได้จริง:
+     *   - ค่าธรรมเนียมเทรด/สลับเหรียญ เกิดบนเชนที่ซื้อขาย wTPIX (ปัจจุบันคือ BSC)
+     *   - ค่าสร้างเหรียญของโรงงาน เกิดบน TPIX Chain
+     *
+     * เขียนเฉพาะตอนต้นทางมีค่า — ไม่งั้นการกดบันทึกแท็บนี้ตอนช่องยังว่าง
+     * จะไปล้างกระเป๋ารับเงินที่ตั้งไว้ดีอยู่แล้วทิ้งโดยไม่มีใครรู้ตัว
+     */
+    private function propagateRevenueWallets(string $tab): void
+    {
+        if ($tab !== 'revenue') {
+            return;
+        }
+
+        $tpixWallet = trim((string) SiteSetting::get('revenue', 'tpix_wallet', ''));
+        $wtpixWallet = trim((string) SiteSetting::get('revenue', 'wtpix_wallet', ''));
+
+        // เชนที่ซื้อขายจริงมาก่อน ยังไม่ได้ตั้งค่อยตกมาใช้กระเป๋าบน TPIX Chain
+        $tradingWallet = $wtpixWallet !== '' ? $wtpixWallet : $tpixWallet;
+
+        if ($tradingWallet !== '') {
+            SiteSetting::set('trading', 'fee_collector_wallet', $tradingWallet, 'string');
+        }
+
+        if ($tpixWallet !== '') {
+            SiteSetting::set('factory', 'fee_wallet', $tpixWallet, 'string');
+        }
     }
 
     /**

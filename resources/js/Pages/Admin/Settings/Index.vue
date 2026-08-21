@@ -156,9 +156,24 @@ const saveRevenue = () => {
     revenueForm.put('/admin/settings/revenue', {
         preserveScroll: true,
         onSuccess: () => {
-            // Sync TPIX wallet ไปยัง trading + factory
+            /*
+             * เซิร์ฟเวอร์เป็นคนกระจายค่าจริง (SettingController::propagateRevenueWallets)
+             * ตรงนี้แค่ทำให้ฟอร์มที่ยังค้างอยู่บนหน้าตรงกับที่เพิ่งบันทึกไป
+             *
+             * ⚠️ ห้ามกลับไปทำแบบเดิมที่ตั้งค่าให้ฟอร์มอย่างเดียวโดยไม่มีฝั่งเซิร์ฟเวอร์
+             *    ฟอร์มพวกนี้ไม่ได้ถูกส่งขึ้นไปด้วย ค่าจึงไม่เคยลงฐานข้อมูล —
+             *    เห็นช่องมีเลขกระเป๋าแล้วนึกว่าบันทึกแล้ว ทั้งที่การเทรดยังถูกปิดอยู่
+             *
+             * กติกาต้องตรงกับฝั่งเซิร์ฟเวอร์เป๊ะ: ค่าธรรมเนียมเทรดใช้กระเป๋าบนเชนที่
+             * ซื้อขาย wTPIX ก่อน · ค่าสร้างเหรียญใช้กระเป๋าบน TPIX Chain
+             */
+            const tradingWallet = revenueForm.wtpix_wallet || revenueForm.tpix_wallet;
+
+            if (tradingWallet) {
+                tradingForm.fee_collector_wallet = tradingWallet;
+            }
+
             if (revenueForm.tpix_wallet) {
-                tradingForm.fee_collector_wallet = revenueForm.tpix_wallet;
                 factoryForm.fee_wallet = revenueForm.tpix_wallet;
             }
         },
