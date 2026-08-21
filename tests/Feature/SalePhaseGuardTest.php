@@ -123,6 +123,35 @@ class SalePhaseGuardTest extends TestCase
             ->assertJsonPath('error.message', 'This phase has already ended.');
     }
 
+    /**
+     * ★ /preview ต้องรับสกุล USD ผ่าน HTTP จริง.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * บทเรียน: เทสต์ที่เรียก service ตรงจับด่าน validation ของ HTTP ไม่ได้
+     * ═══════════════════════════════════════════════════════════════════════
+     * เทสต์ชุดอื่นเรียก calculatePurchasePreview() ตรงจึงผ่านหมด
+     * แต่บน production ตัว validator ของคอนโทรลเลอร์ยังอนุญาตแค่ BNB/USDT/BUSD
+     * → ฟอร์มซื้อแบบใหม่ (ที่ส่ง USD) โดน VALIDATION_ERROR ทุกครั้ง
+     * → หน้าเว็บไม่เคยได้ราคา ปุ่มซื้อค้าง disabled ตลอดกาล
+     *   ทั้งที่ทุกอย่างอื่นพร้อมหมดแล้ว
+     */
+    public function test_preview_endpoint_accepts_usd(): void
+    {
+        $phase = $this->makePhase(
+            now()->subDay()->toDateTimeString(),
+            now()->addDays(30)->toDateTimeString(),
+        );
+
+        $this->postJson('/api/v1/token-sale/preview', [
+            'phase_id' => $phase->id,
+            'currency' => 'USD',
+            'amount' => 10,
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.tpix_amount', 200);
+    }
+
     /** เฟสที่เปิดอยู่จริง → preview ต้องคำนวณให้ตามปกติ */
     public function test_preview_works_while_phase_is_open(): void
     {

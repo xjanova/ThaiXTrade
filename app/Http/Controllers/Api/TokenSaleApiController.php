@@ -126,7 +126,17 @@ class TokenSaleApiController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'phase_id' => ['required', 'integer', 'exists:sale_phases,id'],
-            'currency' => ['required', 'string', 'in:BNB,USDT,BUSD'],
+            /*
+             * ★ ต้องมี USD ด้วย — รอบขายรับชำระเป็นเงินสด (บัตร/โอน) แล้ว
+             *
+             * เดิมรายการนี้มีแค่สกุลคริปโต ทำให้ /preview ปฏิเสธทุกคำขอของ
+             * ฟอร์มซื้อแบบใหม่ด้วย VALIDATION_ERROR → หน้าเว็บไม่เคยได้ราคา
+             * → ปุ่มซื้อค้างเป็น disabled ตลอดกาล ทั้งที่ทุกอย่างอื่นพร้อมหมด
+             *
+             * ด่านที่ตัดสินว่ารอบขายรับสกุลไหนจริงคือ assertCurrencyAccepted()
+             * ตรงนี้เป็นแค่การตรวจรูปแบบ ไม่ใช่นโยบาย
+             */
+            'currency' => ['required', 'string', 'in:USD,BNB,USDT,BUSD'],
             'amount' => ['required', 'numeric', 'gt:0'],
         ]);
 
@@ -184,7 +194,17 @@ class TokenSaleApiController extends Controller
         $validator = Validator::make($request->all(), [
             'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'phase_id' => ['required', 'integer', 'exists:sale_phases,id'],
-            'currency' => ['required', 'string', 'in:BNB,USDT,BUSD'],
+            /*
+             * ★ ต้องมี USD ด้วย — รอบขายรับชำระเป็นเงินสด (บัตร/โอน) แล้ว
+             *
+             * เดิมรายการนี้มีแค่สกุลคริปโต ทำให้ /preview ปฏิเสธทุกคำขอของ
+             * ฟอร์มซื้อแบบใหม่ด้วย VALIDATION_ERROR → หน้าเว็บไม่เคยได้ราคา
+             * → ปุ่มซื้อค้างเป็น disabled ตลอดกาล ทั้งที่ทุกอย่างอื่นพร้อมหมด
+             *
+             * ด่านที่ตัดสินว่ารอบขายรับสกุลไหนจริงคือ assertCurrencyAccepted()
+             * ตรงนี้เป็นแค่การตรวจรูปแบบ ไม่ใช่นโยบาย
+             */
+            'currency' => ['required', 'string', 'in:USD,BNB,USDT,BUSD'],
             'amount' => ['required', 'numeric', 'gt:0'],
         ]);
 
@@ -285,7 +305,17 @@ class TokenSaleApiController extends Controller
         $validator = Validator::make($request->all(), [
             'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'phase_id' => ['required', 'integer', 'exists:sale_phases,id'],
-            'currency' => ['required', 'string', 'in:BNB,USDT,BUSD'],
+            /*
+             * ★ ต้องมี USD ด้วย — รอบขายรับชำระเป็นเงินสด (บัตร/โอน) แล้ว
+             *
+             * เดิมรายการนี้มีแค่สกุลคริปโต ทำให้ /preview ปฏิเสธทุกคำขอของ
+             * ฟอร์มซื้อแบบใหม่ด้วย VALIDATION_ERROR → หน้าเว็บไม่เคยได้ราคา
+             * → ปุ่มซื้อค้างเป็น disabled ตลอดกาล ทั้งที่ทุกอย่างอื่นพร้อมหมด
+             *
+             * ด่านที่ตัดสินว่ารอบขายรับสกุลไหนจริงคือ assertCurrencyAccepted()
+             * ตรงนี้เป็นแค่การตรวจรูปแบบ ไม่ใช่นโยบาย
+             */
+            'currency' => ['required', 'string', 'in:USD,BNB,USDT,BUSD'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/', 'unique:sale_transactions,tx_hash'],
             'signature' => ['nullable', 'string'],
