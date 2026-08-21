@@ -356,6 +356,15 @@ class AiBotController extends Controller
         ]);
 
         if ($validated['action'] === 'start') {
+            // บอทที่ทีมงานปิดกั้นไว้ เจ้าของกดเริ่มเองไม่ได้ ไม่งั้นการแบนไม่มีความหมาย
+            if ($bot->isBanned()) {
+                return $this->failure(
+                    'BOT_BANNED',
+                    'บอทตัวนี้ถูกทีมงานระงับไว้'.($bot->banned_reason ? ' — '.$bot->banned_reason : ''),
+                    403
+                );
+            }
+
             try {
                 $this->bots->assertCanRunBot($wallet, $bot->strategy, $bot);
             } catch (RuntimeException $e) {
@@ -407,6 +416,19 @@ class AiBotController extends Controller
 
         if ($bot->status !== 'running') {
             return $this->failure('BOT_NOT_RUNNING', 'บอทตัวนี้ยังไม่ได้เริ่มทำงาน');
+        }
+
+        /*
+         * ⚠️ ต้องกันที่นี่อีกชั้น — `scopeRunnable()` คุมเฉพาะเส้นทางคลาวด์
+         *    แพลนฟรีเดินบอทด้วยการให้เบราว์เซอร์ยิงเข้ามาตรงๆ ไม่ผ่าน scope นั้นเลย
+         *    ลืมจุดนี้ = แบนแล้วบอทบนคลาวด์หยุด แต่บอทของแพลนฟรีเดินต่อได้เรื่อยๆ
+         */
+        if ($bot->isBanned()) {
+            return $this->failure(
+                'BOT_BANNED',
+                'บอทตัวนี้ถูกทีมงานระงับไว้'.($bot->banned_reason ? ' — '.$bot->banned_reason : ''),
+                403
+            );
         }
 
         $plan = $this->bots->activeSubscription($wallet)?->plan;
@@ -874,6 +896,14 @@ class AiBotController extends Controller
             'params' => $bot->params ?? [],
             'risk' => $bot->risk ?? [],
             'status' => $bot->status,
+            /*
+             * ต้องส่งออกไปด้วย ไม่ใช่ปล่อยให้บอทเงียบเฉยๆ
+             *
+             * ถ้าไม่บอก เจ้าของจะเห็นบอทสถานะ "หยุด" ที่กดเริ่มแล้วไม่ติดโดยไม่มีเหตุผล
+             * แล้วเดาว่าระบบพัง — ทั้งที่ทีมงานตั้งใจปิดกั้นและมีเหตุผลบันทึกไว้แล้ว
+             */
+            'banned' => $bot->isBanned(),
+            'banned_reason' => $bot->banned_reason,
             'mode' => $bot->mode,
             'stats' => $bot->stats ?? [],
             'last_run_at' => $bot->last_run_at?->toIso8601String(),

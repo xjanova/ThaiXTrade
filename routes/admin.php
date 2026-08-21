@@ -9,6 +9,7 @@
  */
 
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\AiBotAdminController;
 use App\Http\Controllers\Admin\AiController;
 use App\Http\Controllers\Admin\AppReleaseController;
 use App\Http\Controllers\Admin\AuditLogController;
@@ -90,6 +91,16 @@ Route::prefix('admin')->name('admin.')->group(function () {
          * แยกหน้าจาก /admin/settings เพราะขั้นบันไดเป็นรายการที่เพิ่ม/ลบได้
          * ไม่ใช่ฟอร์มค่าคงที่ — และต้องเห็นทั้งตารางพร้อมกันถึงจะรู้ว่าช่วงไหนขาด
          */
+        /*
+         * ศูนย์เฝ้าดูบอทเทรด — เห็นบอททุกตัวของทุกกระเป๋า ทั้งคลาวด์และแพลนฟรี
+         * พร้อมสั่งหยุด/ระงับได้ (ทุกคำสั่งลง AuditLog)
+         */
+        Route::get('ai-bots', [AiBotAdminController::class, 'index'])->name('ai-bots.index');
+        Route::post('ai-bots/{bot}/pause', [AiBotAdminController::class, 'pause'])->name('ai-bots.pause');
+        Route::post('ai-bots/{bot}/resume', [AiBotAdminController::class, 'resume'])->name('ai-bots.resume');
+        Route::post('ai-bots/{bot}/ban', [AiBotAdminController::class, 'ban'])->name('ai-bots.ban');
+        Route::post('ai-bots/{bot}/unban', [AiBotAdminController::class, 'unban'])->name('ai-bots.unban');
+
         Route::get('trading-fees', [TradingFeeTierController::class, 'index'])->name('trading-fees.index');
         Route::post('trading-fees', [TradingFeeTierController::class, 'store'])->name('trading-fees.store');
         Route::put('trading-fees/settings', [TradingFeeTierController::class, 'updateSettings'])->name('trading-fees.settings');

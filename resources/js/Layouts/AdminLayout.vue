@@ -125,6 +125,11 @@ const navigationSections = computed(() => [
             { name: 'Chains', href: '/admin/chains', icon: 'chain' },
             { name: 'Tokens', href: '/admin/tokens', icon: 'token' },
             { name: t('common.all') === 'ทั้งหมด' ? 'คู่เทรด' : 'Trading Pairs', href: '/admin/trading-pairs', icon: 'pair' },
+            /*
+             * ศูนย์เฝ้าดูบอทเทรด — เห็นบอททุกตัวของทุกกระเป๋า ทั้งคลาวด์และแพลนฟรี
+             * อยู่หมวดการเทรดเพราะเป็นการเฝ้าดูการวางไม้ ไม่ใช่การตั้งค่าระบบ
+             */
+            { name: t('common.all') === 'ทั้งหมด' ? 'บอทเทรด (AI)' : 'AI Bots', href: '/admin/ai-bots', icon: 'dashboard' },
         ],
     },
     {

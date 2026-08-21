@@ -32,6 +32,9 @@ class AiBotConfig extends Model
         'last_signal_at',
         'last_reason',
         'stats',
+        'banned_at',
+        'banned_reason',
+        'banned_by',
     ];
 
     protected function casts(): array
@@ -42,6 +45,7 @@ class AiBotConfig extends Model
             'stats' => 'array',
             'last_run_at' => 'datetime',
             'last_signal_at' => 'datetime',
+            'banned_at' => 'datetime',
         ];
     }
 
@@ -63,7 +67,13 @@ class AiBotConfig extends Model
     /** บอทที่ engine ต้องรันในรอบนี้ */
     public function scopeRunnable(Builder $query): Builder
     {
-        return $query->where('status', 'running');
+        return $query->where('status', 'running')->whereNull('banned_at');
+    }
+
+    /** ถูกทีมงานปิดกั้นไว้ — เจ้าของปลดเองไม่ได้ */
+    public function isBanned(): bool
+    {
+        return $this->banned_at !== null;
     }
 
     public function scopeForWallet(Builder $query, string $wallet): Builder
