@@ -5,6 +5,8 @@ node_modules/
 tmp/
 
 # ไฟล์วิดีโอที่เรนเดอร์แล้ว (~200 MB) — อัปขึ้นเซิร์ฟเวอร์ด้วย scp ไม่ผ่าน git
-out/
+# แต่ปก YouTube เก็บไว้ (รวมกัน 1.2 MB) เพราะต้องหยิบไปอัปซ้ำเรื่อย ๆ
+out/*
+!out/thumbs/
 
 # แหล่งที่มาที่ต้องเก็บไว้: script/ scenes/ build/ assets/fonts/ assets/plates/ assets/tpix-logo.*
