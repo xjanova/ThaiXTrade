@@ -49,6 +49,14 @@
         "--port=8002"
       ],
       "port": 8002
+    },
+    {
+      "name": "static-range",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "video-studio/build/static-range.mjs"
+      ],
+      "port": 8099
     }
   ]
 }

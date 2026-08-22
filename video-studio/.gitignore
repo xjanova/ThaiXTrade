@@ -1,0 +1,10 @@
+# ของที่สร้างใหม่ได้เสมอ — ไม่ต้องเก็บใน git
+node_modules/
+
+# เสียงพากย์ + ตารางซับ + ภาพนิ่งตรวจงาน (สร้างใหม่ได้จาก script/*.json ด้วย build/tts.py)
+tmp/
+
+# ไฟล์วิดีโอที่เรนเดอร์แล้ว (~200 MB) — อัปขึ้นเซิร์ฟเวอร์ด้วย scp ไม่ผ่าน git
+out/
+
+# แหล่งที่มาที่ต้องเก็บไว้: script/ scenes/ build/ assets/fonts/ assets/plates/ assets/tpix-logo.*

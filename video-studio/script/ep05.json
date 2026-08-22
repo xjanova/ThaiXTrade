@@ -1,0 +1,212 @@
+{
+  "id": "ep05",
+  "title": "The Trading Layer",
+  "covers": [
+    "6. DEX Protocol",
+    "9. Token Factory",
+    "11. Cross-Chain Bridge"
+  ],
+  "voice": "en-US-ChristopherNeural",
+  "rate": "-7%",
+  "pitch": "+0Hz",
+  "lines": [
+    {
+      "id": "t1",
+      "en": "Part five: The Trading Layer. Where value moves — the exchange, the token factory, and the bridge.",
+      "th": [
+        "ตอนที่ห้า — ชั้นการซื้อขาย",
+        "จุดที่มูลค่าเคลื่อนตัว ทั้งกระดานเทรด โรงงานโทเคน และสะพานข้ามเชน"
+      ],
+      "gap": 0.8
+    },
+    {
+      "id": "a1",
+      "en": "TPIX TRADE is a Uniswap V2 fork, deployed natively on the chain.",
+      "th": "TPIX TRADE คือ Uniswap V2 ที่ถูกแยกสายมาติดตั้งบนเชนนี้โดยตรง",
+      "gap": 0.45
+    },
+    {
+      "id": "a2",
+      "en": "It uses the constant product formula — x times y equals k. Every swap moves along that curve, and the pool price adjusts automatically.",
+      "th": [
+        "ใช้สูตรผลคูณคงที่ x คูณ y เท่ากับ k",
+        "ทุกการสวอปเลื่อนไปตามเส้นโค้งนั้น ราคาในพูลจึงปรับเองอัตโนมัติ"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "a3",
+      "en": "The swap fee is zero point three percent. Zero point two five goes to liquidity providers; zero point zero five to the protocol treasury.",
+      "th": [
+        "ค่าธรรมเนียมสวอปอยู่ที่ 0.3%",
+        "แบ่งเป็น 0.25% ให้ผู้เติมสภาพคล่อง และ 0.05% เข้าคลังของโปรโตคอล"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "a4",
+      "en": "Order book trading carries a separate fee — zero point one percent for makers, zero point two percent for takers.",
+      "th": "การเทรดผ่านสมุดคำสั่งคิดค่าธรรมเนียมแยก คือ 0.1% สำหรับผู้ตั้ง และ 0.2% สำหรับผู้รับ",
+      "gap": 0.5
+    },
+    {
+      "id": "a5",
+      "en": "Four contracts do the work. The Factory creates and tracks trading pairs. The Router handles multi-hop swaps and liquidity operations.",
+      "th": [
+        "มีสัญญาสี่ตัวทำงานร่วมกัน Factory สร้างและติดตามคู่เทรด",
+        "ส่วน Router ดูแลการสวอปหลายทอดและการเติม–ถอนสภาพคล่อง"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "a6",
+      "en": "The Pair contract is the pool itself, issuing E R C twenty L P tokens. And WTPIX wraps the native coin so it can move through E R C twenty plumbing.",
+      "th": [
+        "สัญญา Pair คือตัวพูลเอง ที่ออกโทเคน LP มาตรฐาน ERC-20",
+        "ส่วน WTPIX ห่อเหรียญหลักไว้ เพื่อให้เดินผ่านท่อ ERC-20 ได้"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "a7",
+      "en": "Because gas is free, arbitrage and rebalancing cost nothing to execute — which in practice keeps spreads tighter than the same design achieves on a fee-charging chain.",
+      "th": [
+        "เพราะค่าแก๊สเป็นศูนย์ การทำอาร์บิทราจและการปรับสมดุลพูลจึงไม่มีต้นทุน",
+        "ผลในทางปฏิบัติคือส่วนต่างราคาแคบกว่าการออกแบบเดียวกันบนเชนที่เก็บค่าแก๊ส"
+      ],
+      "gap": 0.9
+    },
+    {
+      "id": "b0",
+      "en": "The Token Factory lets any user deploy a token without writing a line of Solidity.",
+      "th": "โรงงานโทเคนเปิดให้ผู้ใช้ทุกคนสร้างโทเคนได้ โดยไม่ต้องเขียน Solidity แม้แต่บรรทัดเดียว",
+      "gap": 0.5
+    },
+    {
+      "id": "b1",
+      "en": "Four categories: fungible E R C twenty, fungible advanced, non-fungible E R C seven twenty-one, and special-purpose tokens.",
+      "th": [
+        "แบ่งเป็นสี่หมวด — ERC-20 มาตรฐาน, ERC-20 ขั้นสูง,",
+        "NFT มาตรฐาน ERC-721 และโทเคนเฉพาะทาง"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "b2",
+      "en": "Ten token types are available. Standard, Mintable, Burnable and the combination, from fifty to eighty-five TPIX. Utility and Reward tokens at sixty.",
+      "th": [
+        "มีให้เลือกสิบชนิด — Standard, Mintable, Burnable และแบบผสม ราคา 50 ถึง 85 เหรียญ",
+        "ส่วน Utility และ Reward อยู่ที่ 60 เหรียญ"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "b3",
+      "en": "Governance tokens at one hundred and thirty. Stablecoins at one hundred and fifty. A single N F T at eighty, or a full collection at one hundred.",
+      "th": [
+        "โทเคนกำกับดูแล 130 เหรียญ · เหรียญคงมูลค่า 150 เหรียญ",
+        "NFT เดี่ยว 80 เหรียญ หรือทั้งคอลเลกชัน 100 เหรียญ"
+      ],
+      "gap": 0.5
+    },
+    {
+      "id": "b4",
+      "en": "On top of the type, sixteen sub-options can be layered — each carrying its own add-on fee.",
+      "th": "เหนือชนิดที่เลือก ยังซ้อนตัวเลือกเสริมได้อีก 16 อย่าง แต่ละอย่างมีค่าธรรมเนียมของตัวเอง",
+      "gap": 0.45
+    },
+    {
+      "id": "b5",
+      "en": "Pausable and blacklist at five TPIX. Anti-whale and anti-bot at ten. Tax system and auto-liquidity at fifteen. Reflection at twenty.",
+      "th": [
+        "หยุดโอนชั่วคราวและบัญชีดำ อย่างละ 5 เหรียญ · กันวาฬและกันบอท อย่างละ 10 เหรียญ",
+        "ระบบภาษีและเติมสภาพคล่องอัตโนมัติ อย่างละ 15 เหรียญ · ปันผลอัตโนมัติ 20 เหรียญ"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "b6",
+      "en": "The total is simply the sum: base fee, plus category, plus type, plus every option selected.",
+      "th": "ค่าธรรมเนียมรวมคือผลบวกตรง ๆ — ค่าพื้นฐาน บวกหมวด บวกชนิด บวกทุกตัวเลือกที่กาไว้",
+      "gap": 0.4
+    },
+    {
+      "id": "b7",
+      "en": "A Utility token with tax, anti-whale and pausable comes to ninety TPIX.",
+      "th": "โทเคน Utility ที่ติดระบบภาษี กันวาฬ และหยุดโอนได้ รวมเป็น 90 เหรียญ",
+      "gap": 0.55
+    },
+    {
+      "id": "b8",
+      "en": "Creation runs as a five-step wizard. Choose category. Choose type. Configure options. Enter token details. Review and confirm.",
+      "th": [
+        "ขั้นตอนสร้างเป็นตัวช่วยห้าขั้น — เลือกหมวด เลือกชนิด",
+        "ตั้งค่าตัวเลือก กรอกรายละเอียดโทเคน แล้วทบทวนก่อนยืนยัน"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "b9",
+      "en": "The backend validates, computes the fee, and deploys through CREATE2 — which gives a deterministic address — on OpenZeppelin five point x, entirely gas-free.",
+      "th": [
+        "ระบบหลังบ้านตรวจสอบ คำนวณค่าธรรมเนียม แล้วนำขึ้นใช้ผ่าน CREATE2",
+        "ซึ่งให้ที่อยู่ที่คาดเดาได้ล่วงหน้า บนไลบรารี OpenZeppelin 5.x และไม่เสียค่าแก๊สเลย"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "b10",
+      "en": "The contract is auto-verified on Blockscout and becomes tradeable on TPIX TRADE immediately. On testnet, all of it is free.",
+      "th": [
+        "สัญญาถูกยืนยันซอร์สโค้ดบน Blockscout ให้อัตโนมัติ และซื้อขายบน TPIX TRADE ได้ทันที",
+        "และถ้าทำบนเทสต์เน็ต ทั้งหมดนี้ฟรี"
+      ],
+      "gap": 0.9
+    },
+    {
+      "id": "c1",
+      "en": "The bridge connects TPIX Chain to Binance Smart Chain using a lock-and-mint model.",
+      "th": "สะพานเชื่อม TPIX Chain เข้ากับ Binance Smart Chain ด้วยรูปแบบล็อกแล้วออกเหรียญใหม่",
+      "gap": 0.45
+    },
+    {
+      "id": "c2",
+      "en": "TPIX is locked in the bridge contract on the home chain, and an equal amount of wrapped TPIX — a B E P twenty token — is minted on B S C. Burning the wrapped token releases the original.",
+      "th": [
+        "เหรียญ TPIX ถูกล็อกไว้ในสัญญาสะพานบนเชนต้นทาง",
+        "แล้วออก wTPIX มาตรฐาน BEP-20 จำนวนเท่ากันบน BSC · เผา wTPIX เมื่อไร ก็ปลดล็อกตัวจริงคืน"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "c3",
+      "en": "Four controls constrain it. A three-of-five multi-signature validator set. A fifteen-minute time-lock on transfers above one million TPIX.",
+      "th": [
+        "มีสี่ด่านคุมไว้ — ชุดผู้ตรวจสอบแบบลงนามหลายฝ่าย 3 จาก 5",
+        "และการหน่วงเวลา 15 นาที สำหรับการโอนเกิน 1 ล้านเหรียญ"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "c4",
+      "en": "A rate limit of ten million TPIX per twenty-four hours. And a full audit trail written to both chains.",
+      "th": "จำกัดปริมาณไม่เกิน 10 ล้านเหรียญต่อ 24 ชั่วโมง และบันทึกร่องรอยการตรวจสอบไว้บนทั้งสองเชน",
+      "gap": 0.45
+    },
+    {
+      "id": "c5",
+      "en": "Bridge fees are zero point one percent — ninety percent to treasury, ten percent burned.",
+      "th": "ค่าธรรมเนียมสะพานอยู่ที่ 0.1% แบ่ง 90% เข้าคลัง และ 10% เผาทิ้ง",
+      "gap": 0.85
+    },
+    {
+      "id": "e1",
+      "en": "Next — part six: AI TRADE. The strategy engine, and why a true DEX is the only place it can honestly exist.",
+      "th": [
+        "ตอนต่อไป — ตอนที่หก AI TRADE",
+        "เครื่องยนต์กลยุทธ์ และเหตุผลว่าทำไมมันจะเกิดขึ้นอย่างสุจริตได้เฉพาะบน DEX แท้"
+      ],
+      "gap": 0.2
+    }
+  ]
+}

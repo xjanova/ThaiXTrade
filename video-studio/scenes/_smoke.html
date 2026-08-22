@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>smoke</title>
+<link rel="stylesheet" href="_theme.css">
+<div id="stage">
+    <div class="frame">
+        <div class="eyebrow" data-in="0.6">Engine Smoke Test</div>
+        <h1 class="h1" style="margin-top:18px" data-in="0.9" data-anim="blur">Deterministic <span class="gold">frame</span> pipeline</h1>
+        <p class="body" style="margin-top:28px" data-in="1.4">Counters, bars, SVG draw, Thai subtitles and grain must all be a pure function of <span class="mono cyan">t</span>.</p>
+
+        <div style="display:flex;gap:60px;margin-top:60px">
+            <div class="stat"><div class="v gold" data-in="2.0" data-count="7000000000" data-count-fmt="compact" data-dur="1.8">0</div><div class="k" data-in="2.1">Total Supply</div></div>
+            <div class="stat"><div class="v cyan" data-in="2.3" data-count="1500" data-dur="1.6">0</div><div class="k" data-in="2.4">TPS Capacity</div></div>
+            <div class="stat"><div class="v" data-in="2.6" data-count="2" data-count-fmt="dec" data-count-dec="0" data-count-post="s" data-dur="1.2">0</div><div class="k" data-in="2.7">Block Time</div></div>
+        </div>
+
+        <div style="margin-top:56px;width:900px">
+            <div style="height:14px;border-radius:8px;background:rgba(255,255,255,.07);overflow:hidden">
+                <div data-in="3.0" data-bar="0.7143" data-dur="1.6" data-anim="fade"
+                     style="height:100%;width:calc(var(--p,0)*100%);background:linear-gradient(90deg,var(--gold),var(--cyan))"></div>
+            </div>
+            <div class="figcap" style="margin-top:14px" data-in="3.2"><b>Fig. 0</b> — bar fill driven by <span class="mono">--p</span></div>
+        </div>
+
+        <svg width="700" height="180" style="margin-top:40px">
+            <path data-in="3.6" data-draw data-dur="1.6" data-anim="fade"
+                  d="M20,150 C 180,150 200,40 340,40 S 520,150 680,30"
+                  fill="none" stroke="var(--cyan)" stroke-width="4" stroke-linecap="round"/>
+        </svg>
+    </div>
+</div>
+<script src="_engine.js"></script>
+<script>
+TPIX.init({
+    duration: 8,
+    chapter: 'Smoke',
+    camera: { from: 1, to: 1.02 },
+    cues: [
+        { t0: 0.9, t1: 3.4, th: 'ทุกเฟรมต้องคำนวณจากเวลาอย่างเดียว จึงเรนเดอร์ซ้ำได้ผลเหมือนเดิมเป๊ะ' },
+        { t0: 3.6, t1: 7.4, th: 'ตัวเลขวิ่ง แถบเติม เส้นกราฟ และซับไตเติ้ลไทย ทำงานร่วมกันได้ครบ' },
+    ],
+});
+window.__ready = true;
+</script>

@@ -1,0 +1,158 @@
+{
+  "id": "ep02",
+  "title": "The Chain",
+  "covers": ["3. TPIX Chain Architecture", "4. Consensus Mechanism", "15. Technology Stack"],
+  "voice": "en-US-ChristopherNeural",
+  "rate": "-7%",
+  "pitch": "+0Hz",
+  "lines": [
+    {
+      "id": "t1",
+      "en": "Part two: The Chain. The specification, the consensus, and the stack that runs it.",
+      "th": ["ตอนที่สอง — ตัวเชน", "ข้อกำหนดทางเทคนิค ฉันทามติ และกองเทคโนโลยีที่ขับเคลื่อนมัน"],
+      "gap": 0.8
+    },
+
+    {
+      "id": "a1",
+      "en": "TPIX Chain operates two networks. Mainnet, chain I D four two eight nine. And testnet, chain I D four two nine zero.",
+      "th": ["TPIX Chain เปิดให้บริการสองเครือข่าย", "เมนเน็ต Chain ID 4289 และเทสต์เน็ต Chain ID 4290"],
+      "gap": 0.45
+    },
+    {
+      "id": "a2",
+      "en": "Both are fully E V M compatible. Any Solidity contract deploys without modification, and the E R C twenty, seven twenty-one and eleven fifty-five standards work unchanged.",
+      "th": ["ทั้งคู่รองรับ EVM เต็มรูปแบบ สัญญา Solidity ใด ๆ นำขึ้นใช้ได้โดยไม่ต้องแก้", "มาตรฐาน ERC-20, ERC-721 และ ERC-1155 ทำงานได้ทันที"],
+      "gap": 0.45
+    },
+    {
+      "id": "a3",
+      "en": "Blocks are produced every two seconds. Finality arrives at five blocks — roughly ten seconds — and it is absolute. Once committed, a block cannot be reorganised.",
+      "th": ["ออกบล็อกทุก 2 วินาที ยืนยันเด็ดขาดที่บล็อกที่ 5 หรือราว 10 วินาที", "และเป็นการยืนยันขั้นสิ้นสุด เมื่อคอมมิตแล้ว บล็อกนั้นถูกจัดเรียงใหม่ไม่ได้"],
+      "gap": 0.45
+    },
+    {
+      "id": "a4",
+      "en": "The network sustains roughly fifteen hundred transactions per second, at a gas price fixed at zero.",
+      "th": "เครือข่ายรองรับได้ราว 1,500 ธุรกรรมต่อวินาที ที่ค่าแก๊สคงที่เท่ากับศูนย์",
+      "gap": 0.45
+    },
+    {
+      "id": "a5",
+      "en": "The native coin carries eighteen decimals and a total supply of seven billion, pre-mined in the genesis block.",
+      "th": "เหรียญหลักมีทศนิยม 18 ตำแหน่ง อุปทานรวม 7,000 ล้านเหรียญ ขุดไว้ล่วงหน้าในบล็อกกำเนิด",
+      "gap": 0.45
+    },
+    {
+      "id": "a6",
+      "en": "Four validator nodes secure the network. Byzantine fault tolerance holds while no more than one of them fails.",
+      "th": ["ตัวตรวจสอบ 4 โหนดทำหน้าที่รักษาความปลอดภัยของเครือข่าย", "ความทนทานแบบไบแซนไทน์ยังคงอยู่ตราบที่ล้มเหลวไม่เกิน 1 โหนด"],
+      "gap": 0.85
+    },
+
+    {
+      "id": "b1",
+      "en": "That guarantee comes from I B F T two point zero — Istanbul Byzantine Fault Tolerant consensus, operating as proof of authority.",
+      "th": ["หลักประกันนั้นมาจาก IBFT 2.0", "ฉันทามติแบบ Istanbul Byzantine Fault Tolerant ที่ทำงานในโหมด Proof of Authority"],
+      "gap": 0.5
+    },
+    {
+      "id": "b2",
+      "en": "Each round begins with a proposer, selected round-robin from the validator set.",
+      "th": "แต่ละรอบเริ่มจากผู้เสนอบล็อก ซึ่งเลือกวนตามลำดับจากชุดผู้ตรวจสอบ",
+      "gap": 0.4
+    },
+    {
+      "id": "b3",
+      "en": "The proposer assembles pending transactions into a block and broadcasts it across the libp2p network.",
+      "th": "ผู้เสนอรวบรวมธุรกรรมที่รออยู่เข้าเป็นบล็อก แล้วกระจายออกไปทั่วเครือข่าย libp2p",
+      "gap": 0.4
+    },
+    {
+      "id": "b4",
+      "en": "Every validator verifies the block and returns a PREPARE message. Once two thirds have prepared, they issue COMMIT.",
+      "th": ["ผู้ตรวจสอบทุกโหนดตรวจบล็อกแล้วส่งข้อความ PREPARE กลับมา", "เมื่อครบสองในสาม จึงส่ง COMMIT ต่อ"],
+      "gap": 0.4
+    },
+    {
+      "id": "b5",
+      "en": "At two thirds COMMIT, the block is final. No probabilistic settlement. No confirmation count to wait for. No possibility of a reorganisation.",
+      "th": ["เมื่อ COMMIT ครบสองในสาม บล็อกถือเป็นที่สิ้นสุด", "ไม่มีการยืนยันเชิงความน่าจะเป็น ไม่ต้องนับจำนวนคอนเฟิร์ม", "และไม่มีทางเกิดการจัดเรียงบล็อกใหม่"],
+      "gap": 0.45
+    },
+    {
+      "id": "b6",
+      "en": "Because consensus requires neither mining nor staking, the energy cost of a block is the cost of running four ordinary servers.",
+      "th": ["เพราะฉันทามติไม่ต้องขุดและไม่ต้องวางเดิมพัน", "ต้นทุนพลังงานต่อบล็อกจึงเท่ากับค่าเดินเครื่องเซิร์ฟเวอร์ธรรมดา 4 ตัวเท่านั้น"],
+      "gap": 0.85
+    },
+
+    {
+      "id": "c1",
+      "en": "The chain is reached through four public services.",
+      "th": "เข้าถึงเชนได้ผ่านบริการสาธารณะสี่ทาง",
+      "gap": 0.45
+    },
+    {
+      "id": "c2",
+      "en": "JSON-RPC and WebSocket at r p c dot tpix dot online. The block explorer at explorer dot tpix dot online. And the exchange at tpix dot online.",
+      "th": ["JSON-RPC และ WebSocket ที่ rpc.tpix.online", "ตัวสำรวจบล็อกที่ explorer.tpix.online และกระดานแลกเปลี่ยนที่ tpix.online"],
+      "gap": 0.45
+    },
+    {
+      "id": "c3",
+      "en": "Infrastructure runs as a four-node cluster under Docker Compose, with Blockscout and a PostgreSQL backend providing explorer and contract verification services.",
+      "th": ["โครงสร้างพื้นฐานรันเป็นคลัสเตอร์ 4 โหนดภายใต้ Docker Compose", "โดยมี Blockscout และฐานข้อมูล PostgreSQL ให้บริการสำรวจบล็อกและตรวจสอบสัญญา"],
+      "gap": 0.45
+    },
+    {
+      "id": "c4",
+      "en": "A validator node requires eight C P U cores, sixteen gigabytes of memory, five hundred gigabytes of solid-state storage, and a hundred-megabit link.",
+      "th": ["โหนดผู้ตรวจสอบต้องมีซีพียู 8 คอร์ หน่วยความจำ 16 กิกะไบต์", "พื้นที่ SSD 500 กิกะไบต์ และลิงก์เครือข่าย 100 เมกะบิต"],
+      "gap": 0.85
+    },
+
+    {
+      "id": "d0",
+      "en": "Above the chain sits a conventional, auditable stack.",
+      "th": "เหนือตัวเชนขึ้นมาคือกองเทคโนโลยีมาตรฐานที่ตรวจสอบได้",
+      "gap": 0.5
+    },
+    {
+      "id": "d1",
+      "en": "Polygon Edge in Go for the node itself. Solidity zero point eight point twenty for contracts, with Hardhat for testing and OpenZeppelin for audited primitives.",
+      "th": ["ตัวโหนดใช้ Polygon Edge เขียนด้วย Go ส่วนสัญญาใช้ Solidity 0.8.20", "ทดสอบด้วย Hardhat และใช้ไลบรารีที่ผ่านการตรวจสอบจาก OpenZeppelin"],
+      "gap": 0.4
+    },
+    {
+      "id": "d2",
+      "en": "Laravel eleven on P H P eight point two for services. MySQL for relational data, Redis for caching and queues.",
+      "th": ["ฝั่งบริการใช้ Laravel 11 บน PHP 8.2", "เก็บข้อมูลเชิงสัมพันธ์ด้วย MySQL และใช้ Redis สำหรับแคชและคิวงาน"],
+      "gap": 0.4
+    },
+    {
+      "id": "d3",
+      "en": "Vue three with Inertia and TailwindCSS for the interface.",
+      "th": "ส่วนหน้าจอใช้ Vue 3 ร่วมกับ Inertia และ TailwindCSS",
+      "gap": 0.4
+    },
+    {
+      "id": "d4",
+      "en": "And Docker, Prometheus, Grafana and GitHub Actions for deployment, metrics and delivery.",
+      "th": "และใช้ Docker, Prometheus, Grafana กับ GitHub Actions สำหรับการติดตั้ง วัดผล และส่งมอบ",
+      "gap": 0.45
+    },
+    {
+      "id": "d5",
+      "en": "Nothing exotic. Every layer is a technology a working engineering team can audit, operate, and replace.",
+      "th": ["ไม่มีอะไรแปลกประหลาด", "ทุกชั้นเป็นเทคโนโลยีที่ทีมวิศวกรรมจริงตรวจสอบ ดูแล และเปลี่ยนทดแทนได้"],
+      "gap": 0.8
+    },
+    {
+      "id": "e1",
+      "en": "Next — part three: the economics of the coin itself.",
+      "th": "ตอนต่อไป — ตอนที่สาม ว่าด้วยเศรษฐศาสตร์ของตัวเหรียญ",
+      "gap": 0.2
+    }
+  ]
+}

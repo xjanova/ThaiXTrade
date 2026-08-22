@@ -1,0 +1,9 @@
+{
+  "name": "tpix-whitepaper-video",
+  "private": true,
+  "type": "module",
+  "description": "TPIX Chain whitepaper — animated narrated video series",
+  "dependencies": {
+    "puppeteer-core": "^24.9.0"
+  }
+}

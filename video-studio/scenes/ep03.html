@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>TPIX Whitepaper — Part Three: Economics</title>
+<link rel="stylesheet" href="_theme.css">
+<style>
+    .act { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; }
+    .title-wrap { position: absolute; inset: 0; display: flex; flex-direction: column;
+                  align-items: center; justify-content: center; text-align: center; }
+
+    .legend { display: flex; align-items: center; gap: 16px; padding: 13px 0;
+              border-bottom: 1px solid var(--line); }
+    .legend .sw { width: 16px; height: 16px; border-radius: 4px; flex: none; }
+    .legend .nm { font-size: 24px; font-weight: 650; flex: 1; }
+    .legend .amt { font-family: "JetBrains Mono", monospace; font-size: 21px; color: var(--ink-2); }
+    .legend .pct { font-size: 25px; font-weight: 750; min-width: 118px; text-align: right; }
+
+    .phase { border-radius: 20px; padding: 30px 32px; border: 1px solid var(--line-2);
+             background: rgba(255,255,255,.035); }
+    .phase .pn { font-size: 19px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
+    .phase .pp { font-size: 66px; font-weight: 800; letter-spacing: -.03em; line-height: 1; margin-top: 14px; }
+    .phase .pr { display: flex; justify-content: space-between; font-size: 20px;
+                 padding: 11px 0; border-top: 1px solid var(--line); color: var(--ink-3); }
+    .phase .pr b { color: var(--ink); font-weight: 650; }
+
+    .burn { display: flex; align-items: center; gap: 26px; padding: 26px 30px;
+            border: 1px solid rgba(246,92,110,.30); border-radius: 18px;
+            background: rgba(246,92,110,.08); }
+    .burn .bp { font-size: 52px; font-weight: 800; letter-spacing: -.03em; min-width: 168px; }
+</style>
+
+<div id="stage">
+<div class="title-plate" data-in="0.1" data-anim="fade" data-dur="1.8" data-out="9.8" data-odur="1.0">
+    <img src="../assets/plates/ep03.jpg" alt="">
+</div>
+<div class="frame">
+
+<!-- ══════ A · chapter card  0 → 10.5 ══════ -->
+<div class="act" data-in="0.15" data-anim="fade" data-dur="1.0" data-out="9.8" data-odur="0.7">
+    <div class="title-wrap">
+        <img src="../assets/tpix-logo.webp" style="width:96px;height:96px;object-fit:contain;
+             filter:drop-shadow(0 0 28px rgba(233,174,40,.42))" data-in="0.3" data-anim="pop" data-dur="1.2">
+        <div class="label" style="color:var(--cyan);letter-spacing:.42em;margin-top:28px"
+             data-in="0.8" data-dur="0.9">Part Three of Nine</div>
+        <div class="display" style="margin-top:20px" data-in="1.1" data-anim="blur" data-dur="1.2">Economics</div>
+        <div style="width:230px;height:2px;margin-top:32px;
+             background:linear-gradient(90deg,transparent,var(--gold),transparent)"
+             data-in="1.8" data-anim="wipe" data-dur="0.9"></div>
+        <div style="display:flex;gap:18px;margin-top:40px" data-in="2.3" data-dur="0.9">
+            <div class="card" style="padding:20px 28px"><div class="label" style="color:var(--gold-2)">Chapter 4</div>
+                <div style="font-size:25px;font-weight:650;margin-top:7px">Tokenomics</div></div>
+            <div class="card" style="padding:20px 28px"><div class="label" style="color:var(--gold-2)">Chapter 7</div>
+                <div style="font-size:25px;font-weight:650;margin-top:7px">Token Sale Details</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ B · fixed supply statement  10.4 → 21.5 ══════ -->
+<div class="act" data-in="10.4" data-anim="fade" data-dur="0.7" data-out="20.9" data-odur="0.7">
+    <div class="title-wrap">
+        <div class="label" data-in="10.6" data-dur="0.6" style="letter-spacing:.32em">§4 · Monetary Base</div>
+        <div style="font-size:132px;font-weight:800;letter-spacing:-.045em;margin-top:26px;line-height:1"
+             class="mono gold" data-in="10.9" data-count="7000000000" data-dur="2.6" data-anim="fade">0</div>
+        <div class="h3" style="margin-top:18px;color:var(--ink-2)" data-in="12.6" data-dur="0.9">
+            TPIX — the entire supply, in the genesis block</div>
+        <div style="display:flex;gap:22px;margin-top:46px">
+            <div class="card accent-red" style="padding:20px 30px" data-in="14.6" data-anim="pop" data-dur="0.7">
+                <div style="font-size:26px;font-weight:700" class="red">✕ No mining</div></div>
+            <div class="card accent-red" style="padding:20px 30px" data-in="15.0" data-anim="pop" data-dur="0.7">
+                <div style="font-size:26px;font-weight:700" class="red">✕ No staking issuance</div></div>
+            <div class="card accent-red" style="padding:20px 30px" data-in="15.4" data-anim="pop" data-dur="0.7">
+                <div style="font-size:26px;font-weight:700" class="red">✕ No mint function</div></div>
+        </div>
+        <div class="figcap" style="margin-top:34px;max-width:1000px;text-align:center" data-in="17.6" data-dur="0.8">
+            <b>Fig. 1</b> — A fixed monetary base. The total can never rise; the only permitted
+            direction of change is downward, through burning.
+        </div>
+    </div>
+</div>
+
+<!-- ══════ C · distribution  21.4 → 92.9 ══════ -->
+<div class="act" data-in="21.4" data-anim="fade" data-dur="0.7" data-out="92.2" data-odur="0.7">
+    <div class="label" data-in="21.6" data-dur="0.6">§4 · Distribution</div>
+    <div style="display:flex;gap:70px;margin-top:24px;align-items:center">
+        <svg id="donut" width="600" height="600" viewBox="0 0 600 600" style="flex:none"></svg>
+
+        <div style="flex:1">
+            <div id="legend"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                        margin-top:20px;padding-top:20px;border-top:1px solid var(--line-2)"
+                 data-in="81.0" data-anim="rise" data-dur="0.7">
+                <div style="font-size:26px;font-weight:750">Total</div>
+                <div class="mono gold" style="font-size:28px;font-weight:650">7,000,000,000 TPIX</div>
+                <div style="font-size:26px;font-weight:750" class="gold">100%</div>
+            </div>
+
+            <div class="card" style="margin-top:30px;padding:24px 28px" data-in="82.6" data-anim="rise" data-dur="0.8">
+                <div class="label" style="color:var(--cyan)">Treasury derivation</div>
+                <div class="mono" style="font-size:25px;margin-top:14px;color:var(--ink)">
+                    m / 44' / 60' / 0' / 0 / <span class="cyan">n</span></div>
+                <div class="small" style="margin-top:12px;max-width:640px">
+                    Every allocation address is a child of one BIP-44 root, so the whole treasury
+                    reconciles to a single auditable seed.
+                </div>
+            </div>
+            <div class="figcap" style="margin-top:20px;max-width:700px" data-in="88.0" data-dur="0.8">
+                <b>Fig. 2</b> — Allocation of the fixed supply across six programmes plus genesis validator stakes.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ D · sale phases  92.8 → 153.4 ══════ -->
+<div class="act" data-in="92.8" data-anim="fade" data-dur="0.7" data-out="152.7" data-odur="0.7">
+    <div class="label" data-in="93.0" data-dur="0.6">§7 · Token Sale</div>
+    <h2 class="h2" style="margin-top:12px" data-in="93.2" data-anim="rise" data-dur="0.9">
+        Three phases — <span class="gold">price traded against lock-up</span></h2>
+
+    <div style="display:flex;gap:24px;margin-top:34px">
+        <div class="phase" style="flex:1;border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.09)"
+             data-in="101.8" data-anim="rise" data-dur="0.8">
+            <div class="pn violet">Private Sale</div>
+            <div class="pp violet">$0.05</div>
+            <div style="margin-top:22px">
+                <div class="pr"><span>Allocation</span><b>100M TPIX</b></div>
+                <div class="pr"><span>TGE unlock</span><b>10%</b></div>
+                <div class="pr"><span>Cliff</span><b>30 days</b></div>
+                <div class="pr"><span>Linear vesting</span><b>180 days</b></div>
+            </div>
+        </div>
+        <div class="phase" style="flex:1;border-color:rgba(34,211,238,.4);background:rgba(34,211,238,.09)"
+             data-in="116.2" data-anim="rise" data-dur="0.8">
+            <div class="pn cyan">Pre-Sale</div>
+            <div class="pp cyan">$0.08</div>
+            <div style="margin-top:22px">
+                <div class="pr"><span>Allocation</span><b>200M TPIX</b></div>
+                <div class="pr"><span>TGE unlock</span><b>15%</b></div>
+                <div class="pr"><span>Cliff</span><b>14 days</b></div>
+                <div class="pr"><span>Linear vesting</span><b>120 days</b></div>
+            </div>
+        </div>
+        <div class="phase" style="flex:1;border-color:rgba(43,196,106,.4);background:rgba(43,196,106,.09)"
+             data-in="129.5" data-anim="rise" data-dur="0.8">
+            <div class="pn grn">Public Sale</div>
+            <div class="pp grn">$0.10</div>
+            <div style="margin-top:22px">
+                <div class="pr"><span>Allocation</span><b>400M TPIX</b></div>
+                <div class="pr"><span>TGE unlock</span><b>25%</b></div>
+                <div class="pr"><span>Cliff</span><b>None</b></div>
+                <div class="pr"><span>Linear vesting</span><b>90 days</b></div>
+            </div>
+        </div>
+
+        <div style="flex:1.15">
+            <div class="label" style="color:var(--ink-2)" data-in="101.8" data-dur="0.7">Release schedule — % of allocation unlocked</div>
+            <svg id="vest" width="700" height="330" style="margin-top:18px"></svg>
+            <div class="figcap" style="margin-top:6px;max-width:690px" data-in="148.0" data-dur="0.8">
+                <b>Fig. 3</b> — Vesting curves. The cheapest price carries the longest lock,
+                so early capital cannot exit ahead of the market it helped create.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ E · deflation  153.3 → 188.0 ══════ -->
+<div class="act" data-in="153.3" data-anim="fade" data-dur="0.7" data-out="187.4" data-odur="0.7">
+    <div class="label" style="color:var(--red)" data-in="153.5" data-dur="0.6">§4 · Deflationary Mechanisms</div>
+    <h2 class="h2" style="margin-top:12px" data-in="153.7" data-anim="rise" data-dur="0.9">
+        Three routes out of circulation — <span class="red">permanent</span></h2>
+
+    <div style="display:flex;gap:60px;margin-top:38px;align-items:flex-start">
+        <div style="width:900px;display:flex;flex-direction:column;gap:20px">
+            <div class="burn" data-in="159.4" data-anim="left" data-dur="0.7">
+                <div class="bp red">50%</div>
+                <div><div style="font-size:28px;font-weight:700">Token Factory burn</div>
+                     <div class="small" style="margin-top:6px">Half of every token creation fee is destroyed at mint time.</div></div>
+            </div>
+            <div class="burn" data-in="165.8" data-anim="left" data-dur="0.7">
+                <div class="bp red">0.05%</div>
+                <div><div style="font-size:28px;font-weight:700">Exchange protocol fee</div>
+                     <div class="small" style="margin-top:6px">Of all swap volume — routed to buy-back and burn.</div></div>
+            </div>
+            <div class="burn" data-in="173.8" data-anim="left" data-dur="0.7">
+                <div class="bp red">10%</div>
+                <div><div style="font-size:28px;font-weight:700">Bridge fee burn</div>
+                     <div class="small" style="margin-top:6px">Of every cross-chain transfer fee, destroyed on settlement.</div></div>
+            </div>
+        </div>
+
+        <div style="flex:1">
+            <svg id="ceiling" width="640" height="330"></svg>
+            <div class="figcap" style="margin-top:10px;max-width:640px" data-in="182.0" data-dur="0.8">
+                <b>Fig. 4</b> — Supply trajectory. With no issuance path and three burn paths,
+                seven billion is a ceiling rather than a target.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ F · outro  187.9 → 195.5 ══════ -->
+<div class="act" data-in="187.9" data-anim="fade" data-dur="0.8">
+    <div class="title-wrap">
+        <img src="../assets/tpix-logo.webp" style="width:108px;height:108px;object-fit:contain;opacity:.9;
+             filter:drop-shadow(0 0 30px rgba(233,174,40,.4))" data-in="188.1" data-anim="pop" data-dur="1.0">
+        <div class="label" style="margin-top:28px;letter-spacing:.4em" data-in="188.5" data-dur="0.8">End of Part Three</div>
+        <div class="h1" style="margin-top:16px" data-in="188.8" data-anim="rise" data-dur="0.9">Economics</div>
+        <div style="width:180px;height:1px;background:var(--line-2);margin-top:30px" data-in="189.4" data-anim="wipe" data-dur="0.8"></div>
+        <div class="body" style="margin-top:28px;font-size:27px;text-align:center" data-in="189.7" data-dur="0.9">
+            Next — <span class="cyan">Part Four: Master Nodes.</span>
+            Four tiers, the reward pool, and validator governance.
+        </div>
+    </div>
+</div>
+
+</div><!-- /frame -->
+</div><!-- /stage -->
+
+<script src="_engine.js"></script>
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const svgEl = (n, at) => { const e = document.createElementNS(NS, n);
+    for (const k in at) e.setAttribute(k, at[k]); return e; };
+
+/* ---------- การจัดสรรตามไวท์เปเปอร์ §6 ---------- */
+const ALLOC = [
+    { nm: 'Master Node Rewards',       amt: '1,400,000,000', pct: 20.00, at: 29.3, c: '#E9AE28' },
+    { nm: 'Ecosystem Development',     amt: '1,710,000,000', pct: 24.43, at: 39.8, c: '#22D3EE' },
+    { nm: 'Community & Rewards',       amt: '1,400,000,000', pct: 20.00, at: 51.8, c: '#8B5CF6' },
+    { nm: 'Liquidity & Market Making', amt: '1,050,000,000', pct: 15.00, at: 57.6, c: '#2BC46A' },
+    { nm: 'Team & Advisors',           amt: '700,000,000',   pct: 10.00, at: 63.9, c: '#F8D678' },
+    { nm: 'Token Sale',                amt: '700,000,000',   pct: 10.00, at: 68.9, c: '#7DE7F7' },
+    { nm: 'Validator Stakes (4 × 10M)',amt: '40,000,000',    pct:  0.57, at: 73.7, c: '#F65C6E' },
+];
+
+/* ---------- โดนัทสัดส่วน ---------- */
+(function buildDonut() {
+    const svg = document.getElementById('donut');
+    const CX = 300, CY = 300, R = 218, W = 62;
+    let angle = -90;
+
+    svg.appendChild(svgEl('circle', { cx: CX, cy: CY, r: R, fill: 'none',
+        stroke: 'rgba(255,255,255,.045)', 'stroke-width': W }));
+
+    ALLOC.forEach((a) => {
+        const sweep = (a.pct / 100) * 360;
+        const circ = 2 * Math.PI * R;
+        const arc = svgEl('circle', { cx: CX, cy: CY, r: R, fill: 'none', stroke: a.c,
+            'stroke-width': W, 'stroke-dasharray': `${(sweep / 360) * circ} ${circ}`,
+            transform: `rotate(${angle} ${CX} ${CY})` });
+        arc.dataset.in = a.at.toFixed(2);
+        arc.dataset.anim = 'fade';
+        arc.dataset.dur = '0.75';
+        arc._sweepCirc = (sweep / 360) * circ;
+        arc._circ = circ;
+        svg.appendChild(arc);
+        a._arc = arc;
+        angle += sweep;
+    });
+
+    const img = svgEl('image', { href: '../assets/tpix-logo.webp',
+        x: CX - 62, y: CY - 84, width: 124, height: 124, opacity: 0.85 });
+    svg.appendChild(img);
+    const t1 = svgEl('text', { x: CX, y: CY + 84, 'text-anchor': 'middle', fill: '#F8D678',
+        'font-family': 'JetBrains Mono, monospace', 'font-size': 27, 'font-weight': 600 });
+    t1.textContent = '7,000,000,000';
+    const t2 = svgEl('text', { x: CX, y: CY + 116, 'text-anchor': 'middle', fill: '#5F7089',
+        'font-size': 16, 'font-weight': 700, 'letter-spacing': 3 });
+    t2.textContent = 'FIXED TOTAL SUPPLY';
+    svg.appendChild(t1); svg.appendChild(t2);
+})();
+
+/* ---------- ตารางประกอบโดนัท ---------- */
+(function buildLegend() {
+    const box = document.getElementById('legend');
+    ALLOC.forEach((a) => {
+        const row = document.createElement('div');
+        row.className = 'legend';
+        row.dataset.in = a.at.toFixed(2);
+        row.dataset.anim = 'left';
+        row.dataset.dur = '0.6';
+        row.innerHTML =
+            `<span class="sw" style="background:${a.c}"></span>` +
+            `<span class="nm">${a.nm}</span>` +
+            `<span class="amt">${a.amt}</span>` +
+            `<span class="pct" style="color:${a.c}">${a.pct.toFixed(2)}%</span>`;
+        box.appendChild(row);
+    });
+})();
+
+/* ---------- เส้นโค้งการปลดล็อก ---------- */
+(function buildVesting() {
+    const svg = document.getElementById('vest');
+    const X0 = 58, Y0 = 264, X1 = 668, Y1 = 26;
+    const DAYS = 220;
+    const px = (d) => X0 + (d / DAYS) * (X1 - X0);
+    const py = (p) => Y0 - (p / 100) * (Y0 - Y1);
+
+    // แกน
+    svg.appendChild(svgEl('line', { x1: X0, y1: Y0, x2: X1, y2: Y0, stroke: 'rgba(255,255,255,.16)' }));
+    svg.appendChild(svgEl('line', { x1: X0, y1: Y0, x2: X0, y2: Y1, stroke: 'rgba(255,255,255,.16)' }));
+    [0, 25, 50, 75, 100].forEach((p) => {
+        svg.appendChild(svgEl('line', { x1: X0, y1: py(p), x2: X1, y2: py(p),
+            stroke: 'rgba(255,255,255,.05)' }));
+        const t = svgEl('text', { x: X0 - 12, y: py(p) + 6, 'text-anchor': 'end',
+            fill: '#5F7089', 'font-size': 15, 'font-weight': 600 });
+        t.textContent = p + '%'; svg.appendChild(t);
+    });
+    [0, 60, 120, 180].forEach((d) => {
+        const t = svgEl('text', { x: px(d), y: Y0 + 24, 'text-anchor': 'middle',
+            fill: '#5F7089', 'font-size': 15, 'font-weight': 600 });
+        t.textContent = d + 'd'; svg.appendChild(t);
+    });
+
+    // เส้นของแต่ละเฟส: TGE → cliff → linear
+    const CURVES = [
+        { tge: 10, cliff: 30, lin: 180, c: '#8B5CF6', at: 103.2 },
+        { tge: 15, cliff: 14, lin: 120, c: '#22D3EE', at: 117.6 },
+        { tge: 25, cliff: 0,  lin: 90,  c: '#2BC46A', at: 130.8 },
+    ];
+    CURVES.forEach((cv) => {
+        const d = `M${px(0)},${py(cv.tge)} L${px(cv.cliff)},${py(cv.tge)} ` +
+                  `L${px(cv.cliff + cv.lin)},${py(100)} L${px(DAYS)},${py(100)}`;
+        const p = svgEl('path', { d, fill: 'none', stroke: cv.c, 'stroke-width': 3.2,
+            'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+        p.dataset.in = cv.at.toFixed(2); p.dataset.draw = ''; p.dataset.dur = '1.5';
+        p.dataset.anim = 'fade';
+        svg.appendChild(p);
+    });
+})();
+
+/* ---------- เพดานอุปทาน ---------- */
+(function buildCeiling() {
+    const svg = document.getElementById('ceiling');
+    const X0 = 40, X1 = 600, YTOP = 60, YBOT = 262;
+    svg.appendChild(svgEl('line', { x1: X0, y1: YBOT, x2: X1, y2: YBOT, stroke: 'rgba(255,255,255,.16)' }));
+
+    // เส้นเพดาน
+    const cap = svgEl('line', { x1: X0, y1: YTOP, x2: X1, y2: YTOP, stroke: '#E9AE28',
+        'stroke-width': 2, 'stroke-dasharray': '9 7' });
+    cap.dataset.in = '179.9'; cap.dataset.anim = 'fade'; cap.dataset.dur = '0.8';
+    svg.appendChild(cap);
+    const capT = svgEl('text', { x: X1, y: YTOP - 14, 'text-anchor': 'end', fill: '#F8D678',
+        'font-size': 19, 'font-weight': 750, 'letter-spacing': 1.6 });
+    capT.textContent = 'CEILING · 7,000,000,000';
+    capT.dataset.in = '180.3'; capT.dataset.anim = 'fade'; capT.dataset.dur = '0.7';
+    svg.appendChild(capT);
+
+    // เส้นอุปทานที่ค่อย ๆ ลด
+    const pts = [];
+    for (let i = 0; i <= 40; i++) {
+        const x = X0 + (i / 40) * (X1 - X0);
+        const y = YTOP + 12 + Math.pow(i / 40, 1.35) * 96;
+        pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    }
+    const line = svgEl('polyline', { points: pts.join(' '), fill: 'none', stroke: '#F65C6E',
+        'stroke-width': 3.4, 'stroke-linecap': 'round' });
+    line.dataset.in = '180.6'; line.dataset.draw = ''; line.dataset.dur = '1.8'; line.dataset.anim = 'fade';
+    svg.appendChild(line);
+
+    const lt = svgEl('text', { x: X1, y: YTOP + 138, 'text-anchor': 'end', fill: '#F65C6E',
+        'font-size': 19, 'font-weight': 750, 'letter-spacing': 1.6 });
+    lt.textContent = 'CIRCULATING · BURN-ADJUSTED';
+    lt.dataset.in = '182.6'; lt.dataset.anim = 'fade'; lt.dataset.dur = '0.7';
+    svg.appendChild(lt);
+
+    const ax = svgEl('text', { x: X0, y: YBOT + 26, fill: '#5F7089', 'font-size': 16, 'font-weight': 650 });
+    ax.textContent = 'TIME →'; svg.appendChild(ax);
+})();
+
+/* ---------- cue track ---------- */
+fetch('../tmp/ep03/timing.json').then(r => r.json()).then(d => {
+    TPIX.init({ duration: d.duration, chapter: 'Part Three · Economics', cues: d.lines });
+
+    // โดนัท: ลากส่วนโค้งให้ค่อย ๆ กวาดออกมาแทนการเฟดเฉย ๆ
+    TPIX.custom((t) => {
+        ALLOC.forEach((a) => {
+            const u = TPIX.Ease.out(TPIX.clamp01((t - a.at) / 0.9));
+            const arc = a._arc;
+            arc.setAttribute('stroke-dasharray', `${(arc._sweepCirc * u).toFixed(2)} ${arc._circ}`);
+        });
+    });
+    window.__ready = true;
+});
+</script>
+</html>

@@ -1,0 +1,243 @@
+{
+  "id": "ep07",
+  "title": "Living Identity",
+  "covers": [
+    "9. Living Identity — Seedless Recovery"
+  ],
+  "voice": "en-US-ChristopherNeural",
+  "rate": "-7%",
+  "pitch": "+0Hz",
+  "lines": [
+    {
+      "id": "t1",
+      "en": "Part seven: Living Identity. Wallet recovery without a seed phrase.",
+      "th": [
+        "ตอนที่เจ็ด — Living Identity",
+        "การกู้กระเป๋าคืนโดยไม่ต้องพึ่งวลีลับ"
+      ],
+      "gap": 0.8
+    },
+    {
+      "id": "a1",
+      "en": "Every self-custody wallet in existence rests on the same fragile object: a sequence of twelve to twenty-four words.",
+      "th": [
+        "กระเป๋าแบบถือกุญแจเองทุกใบในโลก ตั้งอยู่บนของเปราะบางชิ้นเดียวกัน",
+        "นั่นคือลำดับคำ 12 ถึง 24 คำ"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "a2",
+      "en": "Written on paper, that sequence is a single point of failure. Lose it, and the wallet is gone forever. Let someone photograph it, and the wallet is theirs.",
+      "th": [
+        "เมื่อจดลงกระดาษ ลำดับคำนั้นกลายเป็นจุดพังจุดเดียวของทั้งระบบ",
+        "ทำหาย = เงินหายถาวร · ให้ใครถ่ายรูปไว้ = กระเป๋าเป็นของคนนั้น"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "a3",
+      "en": "There is no recovery, no appeal, and no customer service. This single design choice is responsible for more permanent loss than any exploit in the industry's history.",
+      "th": [
+        "ไม่มีการกู้คืน ไม่มีการอุทธรณ์ และไม่มีฝ่ายบริการลูกค้า",
+        "การออกแบบข้อเดียวนี้ ทำให้เงินหายถาวรมากกว่าการโจมตีครั้งใดในประวัติศาสตร์วงการ"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "a4",
+      "en": "Living Identity replaces the phrase with two things you cannot misplace: what you know, and where you are.",
+      "th": [
+        "Living Identity แทนที่วลีลับ ด้วยสองสิ่งที่ทำหายไม่ได้",
+        "คือสิ่งที่คุณรู้ และสถานที่ที่คุณอยู่"
+      ],
+      "gap": 0.9
+    },
+    {
+      "id": "b0",
+      "en": "Registration has three layers.",
+      "th": "การลงทะเบียนมีสามชั้น",
+      "gap": 0.45
+    },
+    {
+      "id": "b1",
+      "en": "First, the user sets three to five security questions, with answers only they would know.",
+      "th": "ชั้นแรก ผู้ใช้ตั้งคำถามความปลอดภัย 3 ถึง 5 ข้อ พร้อมคำตอบที่มีเพียงตัวเองรู้",
+      "gap": 0.4
+    },
+    {
+      "id": "b2",
+      "en": "Second, up to three G P S locations are registered — home, workplace, anywhere the user reliably returns to.",
+      "th": [
+        "ชั้นที่สอง ลงทะเบียนพิกัด GPS ได้ถึง 3 จุด",
+        "เช่น บ้าน ที่ทำงาน หรือที่ใดก็ตามที่กลับไปได้แน่นอน"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "b3",
+      "en": "Third, a six to eight digit recovery P I N is set, as a fallback for when G P S is unavailable.",
+      "th": "ชั้นที่สาม ตั้งรหัส PIN กู้คืน 6 ถึง 8 หลัก ไว้ใช้แทนตอนที่ GPS ใช้ไม่ได้",
+      "gap": 0.4
+    },
+    {
+      "id": "b4",
+      "en": "Each layer is stored independently, as a one-way hash. Never as plaintext.",
+      "th": "แต่ละชั้นเก็บแยกกัน ในรูปค่าแฮชทางเดียว ไม่เคยเก็บเป็นข้อความจริง",
+      "gap": 0.9
+    },
+    {
+      "id": "c0",
+      "en": "G P S is the most sensitive of the three, so it deserves a precise description.",
+      "th": "GPS เป็นข้อมูลอ่อนไหวที่สุดในสามชั้นนี้ จึงควรอธิบายให้ชัด",
+      "gap": 0.45
+    },
+    {
+      "id": "c1",
+      "en": "Your coordinates are never stored. Not in plaintext, and not even encrypted.",
+      "th": "พิกัดของคุณไม่ถูกเก็บไว้เลย ไม่ใช่แค่ไม่เก็บเป็นข้อความ แต่ไม่เก็บแม้ในรูปที่เข้ารหัสไว้",
+      "gap": 0.4
+    },
+    {
+      "id": "c2",
+      "en": "The latitude and longitude are first rounded to a grid of roughly one hundred and eleven metres. Thirteen point seven five six three becomes thirteen point seven five six.",
+      "th": [
+        "ละติจูดและลองจิจูดถูกปัดลงตาราง ขนาดราว 111 เมตรก่อน",
+        "เช่น 13.7563 ปัดเหลือ 13.756"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "c3",
+      "en": "That rounded pair is composed into a string, hashed with S H A two fifty-six, and only the hash is written to the database.",
+      "th": [
+        "คู่พิกัดที่ปัดแล้วถูกประกอบเป็นข้อความ แล้วแฮชด้วย SHA-256",
+        "และมีเพียงค่าแฮชเท่านั้นที่ถูกบันทึกลงฐานข้อมูล"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "c4",
+      "en": "What exists in storage is a meaningless string of hexadecimal. No latitude. No longitude. No address, no city, no country.",
+      "th": [
+        "สิ่งที่อยู่ในที่เก็บข้อมูลคือสตริงเลขฐานสิบหกที่ไม่มีความหมายในตัวเอง",
+        "ไม่มีละติจูด ไม่มีลองจิจูด ไม่มีที่อยู่ ไม่มีชื่อเมือง ไม่มีประเทศ"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "c5",
+      "en": "Verification checks nine grid cells — the exact one plus its eight neighbours — giving about two hundred metres of tolerance. You do not need to stand on an exact spot.",
+      "th": [
+        "การตรวจสอบจะเทียบ 9 ช่องตาราง คือช่องตรงกลางกับช่องรอบข้างอีกแปดช่อง",
+        "ให้ความคลาดเคลื่อนได้ราว 200 เมตร คุณจึงไม่ต้องยืนตรงจุดเป๊ะ"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "c6",
+      "en": "The hash cannot be reversed. An attacker would have to brute-force every grid cell on Earth — on the order of five hundred billion combinations — while simultaneously matching the correct wallet, against a rate limiter.",
+      "th": [
+        "ค่าแฮชย้อนกลับไม่ได้ ผู้โจมตีต้องไล่เดาทุกช่องตารางบนโลก",
+        "ราวห้าแสนล้านความเป็นไปได้ พร้อมกับต้องจับคู่กระเป๋าให้ถูกใบ ภายใต้ตัวจำกัดอัตราการลอง"
+      ],
+      "gap": 0.9
+    },
+    {
+      "id": "d0",
+      "en": "Recovery proceeds in stages.",
+      "th": "ขั้นตอนการกู้คืนเดินเป็นลำดับ",
+      "gap": 0.45
+    },
+    {
+      "id": "d1",
+      "en": "The user answers the security questions. Sixty percent correct is required to continue.",
+      "th": "ผู้ใช้ตอบคำถามความปลอดภัย ต้องถูกอย่างน้อย 60% จึงจะไปต่อได้",
+      "gap": 0.4
+    },
+    {
+      "id": "d2",
+      "en": "The user then proves location — or enters the recovery P I N, which is hashed with P B K D F two at one hundred thousand rounds.",
+      "th": [
+        "จากนั้นพิสูจน์ตำแหน่ง หรือใส่รหัส PIN กู้คืนแทน",
+        "ซึ่งถูกแฮชด้วย PBKDF2 จำนวนหนึ่งแสนรอบ"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "d3",
+      "en": "Five failed attempts trigger a five-minute lockout. And a self-test mode lets the user rehearse the whole flow without touching those counters.",
+      "th": [
+        "พลาดครบ 5 ครั้งจะถูกล็อก 5 นาที",
+        "และมีโหมดทดสอบตัวเอง ให้ซ้อมทั้งกระบวนการได้โดยไม่ไปกระทบตัวนับนั้น"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "d4",
+      "en": "The design then specifies a forty-eight-hour time-lock, now being brought on chain, during which the original owner can cancel the recovery.",
+      "th": [
+        "จากนั้นการออกแบบกำหนดให้มีการหน่วงเวลา 48 ชั่วโมง ซึ่งกำลังทยอยนำขึ้นเชน",
+        "ในช่วงนั้นเจ้าของเดิมยกเลิกการกู้คืนได้"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "d5",
+      "en": "That is the theft protection. An attacker who somehow satisfies every factor still cannot complete the transfer silently.",
+      "th": [
+        "นั่นคือด่านกันขโมย",
+        "ต่อให้ผู้โจมตีผ่านครบทุกปัจจัย ก็ยังโอนสิทธิ์ให้เสร็จอย่างเงียบ ๆ ไม่ได้"
+      ],
+      "gap": 0.9
+    },
+    {
+      "id": "f1",
+      "en": "Set against a seed phrase, the difference is structural.",
+      "th": "เมื่อวางเทียบกับวลีลับ ความต่างอยู่ที่โครงสร้าง ไม่ใช่รายละเอียด",
+      "gap": 0.45
+    },
+    {
+      "id": "f2",
+      "en": "A seed phrase requires you to remember twenty-four words exactly. Living Identity requires you to be yourself.",
+      "th": [
+        "วลีลับบังคับให้จำคำ 24 คำได้เป๊ะ",
+        "ส่วน Living Identity ขอเพียงให้คุณเป็นคุณ"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "f3",
+      "en": "Stolen paper means total loss. Here, an attacker needs three independent factors simultaneously.",
+      "th": [
+        "กระดาษถูกขโมย เท่ากับเสียทั้งหมด",
+        "แต่ที่นี่ ผู้โจมตีต้องได้ครบทั้งสามปัจจัยพร้อมกัน"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "f4",
+      "en": "Forget a seed phrase and it is gone forever. Forget nothing — answer your questions, go to your location — and the wallet returns.",
+      "th": [
+        "ลืมวลีลับ คือหายไปตลอดกาล",
+        "แต่ที่นี่ไม่ต้องจำอะไร แค่ตอบคำถามและไปยังสถานที่ของคุณ กระเป๋าก็กลับมา"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "f5",
+      "en": "On chain this is TPIXIdentity dot sol. Register identity. Initiate recovery. Cancel recovery. Complete recovery. Four functions, zero gas.",
+      "th": [
+        "บนเชนคือสัญญา TPIXIdentity.sol",
+        "สี่ฟังก์ชัน — ลงทะเบียน เริ่มกู้คืน ยกเลิกการกู้คืน และทำการกู้คืนให้เสร็จ · ค่าแก๊สเป็นศูนย์"
+      ],
+      "gap": 0.85
+    },
+    {
+      "id": "e1",
+      "en": "Next — part eight: the real-world ecosystem this chain was built to serve.",
+      "th": "ตอนต่อไป — ตอนที่แปด ระบบนิเวศในโลกจริงที่เชนนี้ถูกสร้างมาเพื่อรองรับ",
+      "gap": 0.2
+    }
+  ]
+}

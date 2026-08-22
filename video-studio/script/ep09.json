@@ -1,0 +1,221 @@
+{
+  "id": "ep09",
+  "title": "The Road Ahead",
+  "covers": ["14. Roadmap", "16. Team & Partners", "17. Security & Audits", "18. Legal Disclaimer"],
+  "voice": "en-US-ChristopherNeural",
+  "rate": "-7%",
+  "pitch": "+0Hz",
+  "lines": [
+    {
+      "id": "t1",
+      "en": "Part nine: The Road Ahead. Roadmap, team, security, and the legal position.",
+      "th": ["ตอนที่เก้า — เส้นทางข้างหน้า", "แผนงาน ทีม ความปลอดภัย และจุดยืนทางกฎหมาย"],
+      "gap": 0.8
+    },
+
+    {
+      "id": "a0",
+      "en": "The roadmap runs in three phases. Phase one — foundation and infrastructure, from twenty twenty-three to twenty twenty-six.",
+      "th": ["แผนงานแบ่งเป็นสามช่วง", "ช่วงแรกคือรากฐานและโครงสร้างพื้นฐาน ตั้งแต่ปี 2023 ถึง 2026"],
+      "gap": 0.45
+    },
+    {
+      "id": "a1",
+      "en": "Twenty twenty-three delivered the whitepaper, the architecture, the Polygon Edge mainnet, the TPIX coin, and I B F T consensus.",
+      "th": ["ปี 2023 ส่งมอบไวท์เปเปอร์ สถาปัตยกรรม เมนเน็ตบน Polygon Edge", "เหรียญ TPIX และฉันทามติ IBFT"],
+      "gap": 0.4
+    },
+    {
+      "id": "a2",
+      "en": "Twenty twenty-four added the service layer, a REST A P I of more than five hundred endpoints, and the Blockscout explorer.",
+      "th": ["ปี 2024 เพิ่มชั้นบริการ REST API กว่า 500 จุดเชื่อมต่อ", "และตัวสำรวจบล็อก Blockscout"],
+      "gap": 0.4
+    },
+    {
+      "id": "a3",
+      "en": "Twenty twenty-five brought the exchange, the master node network, FoodPassport, the IoT smart farm, the bridge to B S C, and the mobile wallet.",
+      "th": ["ปี 2025 ได้กระดานแลกเปลี่ยน เครือข่ายมาสเตอร์โหนด FoodPassport", "ฟาร์มอัจฉริยะ IoT สะพานไป BSC และกระเป๋าบนมือถือ"],
+      "gap": 0.4
+    },
+    {
+      "id": "a4",
+      "en": "Early twenty twenty-six delivered Living Identity, the Token Factory, the token sale, the internal order book, the carbon credit system, and AI TRADE.",
+      "th": ["ต้นปี 2026 ส่งมอบ Living Identity โรงงานโทเคน การเปิดขายเหรียญ", "สมุดคำสั่งภายใน ระบบคาร์บอนเครดิต และ AI TRADE"],
+      "gap": 0.4
+    },
+    {
+      "id": "a5",
+      "en": "The remainder of twenty twenty-six is enterprise tooling, government compliance, ASEAN expansion, and a D A O governance proposal.",
+      "th": ["ช่วงที่เหลือของปี 2026 คือชุดเครื่องมือระดับองค์กร การปฏิบัติตามกฎภาครัฐ", "การขยายสู่อาเซียน และข้อเสนอการปกครองแบบ DAO"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "b0",
+      "en": "Phase two, in twenty twenty-seven, is the ambitious one: A I governance of the chain itself.",
+      "th": ["ช่วงที่สอง ปี 2027 คือช่วงที่ทะเยอทะยานที่สุด", "นั่นคือการให้ AI กำกับดูแลตัวเชนเอง"],
+      "gap": 0.45
+    },
+    {
+      "id": "b1",
+      "en": "First quarter — an A I validator agent that monitors chain health and detects anomalies. It runs in shadow mode: the A I proposes, humans approve.",
+      "th": ["ไตรมาสแรก — เอเจนต์ AI ที่คอยเฝ้าสุขภาพเชนและจับความผิดปกติ", "ทำงานในโหมดเงา คือ AI เสนอ มนุษย์อนุมัติ"],
+      "gap": 0.4
+    },
+    {
+      "id": "b2",
+      "en": "Second quarter — autonomous slashing. The A I takes over enforcement against malicious validators, double-signing, and prolonged downtime, removing human bias from the decision.",
+      "th": ["ไตรมาสสอง — การลงโทษอัตโนมัติ AI รับหน้าที่บังคับใช้กติกากับผู้ตรวจสอบที่ประสงค์ร้าย", "การเซ็นซ้ำ และการดับต่อเนื่อง เพื่อตัดอคติของมนุษย์ออกจากการตัดสิน"],
+      "gap": 0.4
+    },
+    {
+      "id": "b3",
+      "en": "Third quarter — parameter tuning. Block size, gas limits, consensus timeouts and reward distribution optimised in real time from network telemetry.",
+      "th": ["ไตรมาสสาม — การปรับพารามิเตอร์ ขนาดบล็อก เพดานแก๊ส เวลาหมดอายุของฉันทามติ", "และการแบ่งรางวัล ถูกปรับให้เหมาะสมแบบเรียลไทม์จากข้อมูลวัดผลของเครือข่าย"],
+      "gap": 0.4
+    },
+    {
+      "id": "b4",
+      "en": "Fourth quarter — full handover. Consensus management, validator selection, threat detection and scaling run autonomously.",
+      "th": ["ไตรมาสสี่ — ส่งมอบเต็มรูปแบบ การจัดการฉันทามติ การเลือกผู้ตรวจสอบ", "การตรวจจับภัยคุกคาม และการขยายกำลัง ทำงานได้เอง"],
+      "gap": 0.45
+    },
+    {
+      "id": "b5",
+      "en": "The reasoning is straightforward. A I does not sleep, carries no political bias, detects threats in milliseconds rather than hours, and anticipates load from telemetry it has already seen.",
+      "th": ["เหตุผลตรงไปตรงมา — AI ไม่หลับ ไม่มีอคติทางการเมือง", "ตรวจจับภัยได้ในหลักมิลลิวินาทีแทนที่จะเป็นชั่วโมง และคาดการณ์ภาระงานจากข้อมูลที่เคยเห็นมาแล้ว"],
+      "gap": 0.4
+    },
+    {
+      "id": "b6",
+      "en": "The safeguard is equally straightforward. A community multi-signature circuit breaker can pause A I governance if a critical anomaly appears.",
+      "th": ["ด่านนิรภัยก็ตรงไปตรงมาเช่นกัน", "ชุมชนมีสวิตช์ตัดวงจรแบบลงนามหลายฝ่าย ที่หยุดการกำกับดูแลด้วย AI ได้ทันทีหากเกิดความผิดปกติร้ายแรง"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "c0",
+      "en": "Phase three, in twenty twenty-eight, takes the chain beyond finance.",
+      "th": "ช่วงที่สาม ปี 2028 พาเชนออกไปไกลกว่าเรื่องการเงิน",
+      "gap": 0.45
+    },
+    {
+      "id": "c1",
+      "en": "A gaming platform with zero-gas transactions, N F T game assets, and fairness that can be verified in a contract rather than trusted.",
+      "th": ["แพลตฟอร์มเกมที่ธุรกรรมไม่มีค่าแก๊ส ไอเทมในเกมเป็น NFT", "และความยุติธรรมที่ตรวจสอบได้ในสัญญา แทนที่จะต้องเชื่อใจ"],
+      "gap": 0.4
+    },
+    {
+      "id": "c2",
+      "en": "A I-designed and A I-manufactured consumer products, with the full supply chain tracked on chain and an N F T certificate of origin for every unit.",
+      "th": ["สินค้าอุปโภคบริโภคที่ AI ออกแบบและผลิต", "โดยมีห่วงโซ่อุปทานทั้งสายบันทึกบนเชน และใบรับรองแหล่งกำเนิดเป็น NFT ต่อชิ้น"],
+      "gap": 0.4
+    },
+    {
+      "id": "c3",
+      "en": "Food quality control — the FoodPassport pipeline extended with A I inspection and a quality score the consumer can see at the shelf.",
+      "th": ["ระบบควบคุมคุณภาพอาหาร — ต่อยอด FoodPassport ด้วยการตรวจสอบด้วย AI", "และคะแนนคุณภาพที่ผู้บริโภคเห็นได้ตั้งแต่หน้าชั้นวาง"],
+      "gap": 0.4
+    },
+    {
+      "id": "c4",
+      "en": "And finally, integration. Gaming rewards buy manufactured products. Food quality scores rank marketplace listings. All of it on one token economy.",
+      "th": ["และสุดท้ายคือการเชื่อมรวม รางวัลจากเกมใช้ซื้อสินค้าที่ผลิตขึ้นได้", "คะแนนคุณภาพอาหารมีผลต่ออันดับในตลาด ทั้งหมดอยู่บนเศรษฐกิจเหรียญเดียวกัน"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "d0",
+      "en": "The chain is developed by Xman Studio, a Thai technology studio working across blockchain, A I and enterprise software.",
+      "th": ["เชนนี้พัฒนาโดย Xman Studio", "สตูดิโอเทคโนโลยีของไทยที่ทำงานครอบคลุมทั้งบล็อกเชน AI และซอฟต์แวร์ระดับองค์กร"],
+      "gap": 0.45
+    },
+    {
+      "id": "d1",
+      "en": "The scale is measurable. More than five hundred thousand platform users. Three hundred and eighty-nine data models. Two hundred and ninety-four controllers. Twenty integrated business modules, and live infrastructure with a public block explorer.",
+      "th": ["ขนาดของงานวัดได้จริง — ผู้ใช้บนแพลตฟอร์มกว่า 500,000 ราย", "โมเดลข้อมูล 389 ตัว คอนโทรลเลอร์ 294 ตัว โมดูลธุรกิจที่เชื่อมกัน 20 โมดูล และโครงสร้างพื้นฐานที่เปิดให้ตรวจสอบได้จริง"],
+      "gap": 0.45
+    },
+    {
+      "id": "d2",
+      "en": "Governance moves in step with the roadmap. Centralised development through twenty twenty-six, a community advisory board and D A O proposal in the third quarter, shadow A I governance in twenty twenty-seven, full A I governance by the fourth quarter, and from twenty twenty-eight, A I governance with a community emergency override.",
+      "th": ["การกำกับดูแลเดินไปพร้อมแผนงาน — พัฒนาแบบรวมศูนย์ถึงปี 2026", "ตั้งคณะที่ปรึกษาชุมชนและเสนอ DAO ในไตรมาสสาม · AI โหมดเงาปี 2027 · AI เต็มรูปแบบไตรมาสสี่", "และตั้งแต่ปี 2028 เป็น AI กำกับดูแล โดยมีชุมชนถือสิทธิ์หยุดฉุกเฉิน"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "e0",
+      "en": "Security is layered, and each layer is specified rather than asserted.",
+      "th": "ความปลอดภัยทำเป็นชั้น ๆ และแต่ละชั้นระบุไว้ชัด ไม่ใช่แค่กล่าวอ้าง",
+      "gap": 0.45
+    },
+    {
+      "id": "e1",
+      "en": "At the contract level: OpenZeppelin reentrancy guards on every value-transfer function, two-step ownership transfer, Solidity zero point eight point twenty's built-in overflow checks, E I P one ninety-one signature verification, and one-time nonces that expire in five minutes.",
+      "th": ["ระดับสัญญา — ตัวกันเรียกซ้ำของ OpenZeppelin บนทุกฟังก์ชันที่โอนมูลค่า การโอนสิทธิ์เจ้าของแบบสองขั้น", "การตรวจล้นเลขในตัวของ Solidity 0.8.20 การยืนยันลายเซ็นแบบ EIP-191 และ nonce ใช้ครั้งเดียวที่หมดอายุใน 5 นาที"],
+      "gap": 0.4
+    },
+    {
+      "id": "e2",
+      "en": "At the network level: Byzantine tolerance of one faulty validator, A P I rate limiting, T L S one point three on every endpoint, and a cryptographic signature required for every write operation.",
+      "th": ["ระดับเครือข่าย — ทนต่อผู้ตรวจสอบที่ล้มเหลวได้ 1 โหนด จำกัดอัตราการเรียก API", "เข้ารหัส TLS 1.3 ทุกจุดเชื่อมต่อ และทุกการเขียนข้อมูลต้องมีลายเซ็นเข้ารหัสกำกับ"],
+      "gap": 0.4
+    },
+    {
+      "id": "e3",
+      "en": "At the wallet level: A E S two fifty-six encrypted keystores, P I N and biometric locks, auto-lock on inactivity, and B I P thirty-nine backup alongside Living Identity.",
+      "th": ["ระดับกระเป๋า — คีย์สโตร์เข้ารหัส AES-256 ล็อกด้วย PIN และชีวมิติ", "ล็อกอัตโนมัติเมื่อไม่ได้ใช้งาน และมีการสำรองแบบ BIP-39 ควบคู่กับ Living Identity"],
+      "gap": 0.4
+    },
+    {
+      "id": "e4",
+      "en": "Contracts are audited by third parties before mainnet. Protocol funds sit behind a three-of-five multi-signature. And a standing bug bounty pays up to ten thousand TPIX for a critical disclosure.",
+      "th": ["สัญญาผ่านการตรวจสอบจากบุคคลที่สามก่อนขึ้นเมนเน็ต เงินของโปรโตคอลอยู่หลังลายเซ็นหลายฝ่ายแบบ 3 จาก 5", "และมีโครงการล่ารางวัลช่องโหว่ จ่ายสูงสุด 10,000 TPIX สำหรับช่องโหว่ระดับวิกฤต"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "f0",
+      "en": "On the legal position, the whitepaper is explicit.",
+      "th": "ส่วนจุดยืนทางกฎหมาย ไวท์เปเปอร์ระบุไว้ชัดเจน",
+      "gap": 0.45
+    },
+    {
+      "id": "f1",
+      "en": "TPIX Chain operates under Thai digital asset regulation. The token sale follows S E C Thailand guidance. K Y C and A M L verification are required for fiat on-ramp.",
+      "th": ["TPIX Chain ดำเนินการภายใต้กฎหมายสินทรัพย์ดิจิทัลของไทย", "การเปิดขายเหรียญเป็นไปตามแนวทางของ ก.ล.ต. และการเติมเงินด้วยเงินบาทต้องผ่าน KYC และ AML"],
+      "gap": 0.4
+    },
+    {
+      "id": "f2",
+      "en": "The carbon credit system follows V C S and Gold Standard verification protocols, and all smart contracts are open source and auditable.",
+      "th": ["ระบบคาร์บอนเครดิตเป็นไปตามระเบียบการรับรองของ VCS และ Gold Standard", "และสัญญาอัจฉริยะทั้งหมดเปิดซอร์สให้ตรวจสอบได้"],
+      "gap": 0.4
+    },
+    {
+      "id": "f3",
+      "en": "And plainly stated: none of this is financial advice, and all trading carries risk.",
+      "th": "และขอบอกตรง ๆ ทั้งหมดนี้ไม่ใช่คำแนะนำการลงทุน และการเทรดทุกรูปแบบมีความเสี่ยง",
+      "gap": 0.95
+    },
+
+    {
+      "id": "g1",
+      "en": "That completes the whitepaper.",
+      "th": "และนั่นคือไวท์เปเปอร์ทั้งฉบับ",
+      "gap": 0.5
+    },
+    {
+      "id": "g2",
+      "en": "Nine parts — from a fixed monetary base and a two-second block, to a strategy engine that cannot trade against you, and a wallet you recover simply by being yourself.",
+      "th": ["เก้าตอน ตั้งแต่ฐานเงินที่คงที่และบล็อกทุก 2 วินาที", "ไปจนถึงเครื่องยนต์กลยุทธ์ที่เทรดสวนคุณไม่ได้ และกระเป๋าที่กู้คืนได้เพียงเพราะคุณเป็นคุณ"],
+      "gap": 0.5
+    },
+    {
+      "id": "g3",
+      "en": "TPIX Chain. Built in Thailand, for the digital economy of Southeast Asia.",
+      "th": ["TPIX Chain", "สร้างในประเทศไทย เพื่อเศรษฐกิจดิจิทัลของเอเชียตะวันออกเฉียงใต้"],
+      "gap": 0.3
+    }
+  ]
+}

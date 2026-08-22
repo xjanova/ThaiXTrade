@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>TPIX Whitepaper — Part Five: The Trading Layer</title>
+<link rel="stylesheet" href="_theme.css">
+<style>
+    .act { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; }
+    .title-wrap { position: absolute; inset: 0; display: flex; flex-direction: column;
+                  align-items: center; justify-content: center; text-align: center; }
+
+    .ttype { border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px;
+             background: rgba(255,255,255,.032); display: flex; align-items: center; gap: 14px; }
+    .ttype .tn { font-size: 21px; font-weight: 700; flex: 1; }
+    .ttype .tf { font-family: "JetBrains Mono", monospace; font-size: 20px; font-weight: 600;
+                 color: var(--gold-2); }
+
+    .opt { border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px;
+           background: rgba(255,255,255,.028); display: flex; justify-content: space-between;
+           align-items: center; gap: 10px; }
+    .opt .on { font-size: 18px; font-weight: 650; }
+    .opt .of { font-family: "JetBrains Mono", monospace; font-size: 17px; color: var(--cyan-2); }
+
+    .step { display: flex; gap: 16px; align-items: flex-start; padding: 14px 0;
+            border-top: 1px solid var(--line); }
+    .step .sn { font-family: "JetBrains Mono", monospace; font-size: 19px; color: var(--cyan);
+                min-width: 34px; padding-top: 2px; }
+    .step .st { font-size: 21px; font-weight: 650; }
+    .step .ss { font-size: 17px; color: var(--ink-3); margin-top: 3px; }
+
+    .guard { border: 1px solid rgba(43,196,106,.32); border-radius: 16px; padding: 22px 24px;
+             background: rgba(43,196,106,.07); }
+    .guard .gn { font-size: 24px; font-weight: 750; }
+    .guard .gd { font-size: 18px; color: var(--ink-3); margin-top: 8px; line-height: 1.4; }
+</style>
+
+<div id="stage">
+<div class="title-plate" data-in="0.1" data-anim="fade" data-dur="1.8" data-out="9.9" data-odur="1.0">
+    <img src="../assets/plates/ep05.jpg" alt="">
+</div>
+<div class="frame">
+
+<!-- ══════ A · chapter card  0 → 10.6 ══════ -->
+<div class="act" data-in="0.15" data-anim="fade" data-dur="1.0" data-out="9.9" data-odur="0.7">
+    <div class="title-wrap">
+        <img src="../assets/tpix-logo.webp" style="width:96px;height:96px;object-fit:contain;
+             filter:drop-shadow(0 0 28px rgba(233,174,40,.42))" data-in="0.3" data-anim="pop" data-dur="1.2">
+        <div class="label" style="color:var(--cyan);letter-spacing:.42em;margin-top:28px"
+             data-in="0.8" data-dur="0.9">Part Five of Nine</div>
+        <div class="display" style="margin-top:20px" data-in="1.1" data-anim="blur" data-dur="1.2">The Trading Layer</div>
+        <div style="width:230px;height:2px;margin-top:32px;
+             background:linear-gradient(90deg,transparent,var(--gold),transparent)"
+             data-in="1.8" data-anim="wipe" data-dur="0.9"></div>
+        <div style="display:flex;gap:18px;margin-top:40px" data-in="2.3" data-dur="0.9">
+            <div class="card" style="padding:20px 26px"><div class="label" style="color:var(--gold-2)">Chapter 8</div>
+                <div style="font-size:25px;font-weight:650;margin-top:7px">DEX Protocol</div></div>
+            <div class="card" style="padding:20px 26px"><div class="label" style="color:var(--gold-2)">Chapter 10</div>
+                <div style="font-size:25px;font-weight:650;margin-top:7px">Token Factory</div></div>
+            <div class="card" style="padding:20px 26px"><div class="label" style="color:var(--gold-2)">Chapter 12</div>
+                <div style="font-size:25px;font-weight:650;margin-top:7px">Cross-Chain Bridge</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ B · the exchange  10.6 → 85.5 ══════ -->
+<div class="act" data-in="10.6" data-anim="fade" data-dur="0.7" data-out="84.8" data-odur="0.7">
+    <div class="label" data-in="10.7" data-dur="0.6">§8 · Decentralised Exchange</div>
+    <h2 class="h2" style="margin-top:12px" data-in="10.9" data-anim="rise" data-dur="0.9">
+        A <span class="cyan">Uniswap V2</span> fork, native to the chain</h2>
+
+    <div style="display:flex;gap:64px;margin-top:32px;align-items:flex-start">
+        <div>
+            <svg id="amm" width="700" height="372"></svg>
+            <div class="figcap" style="margin-top:4px;max-width:690px" data-in="24.0" data-dur="0.8">
+                <b>Fig. 1</b> — Constant-product market making. Every swap slides along the curve;
+                the pool price is the slope at that point, so it corrects itself without an order book.
+            </div>
+            <div class="card accent-green" style="margin-top:26px;padding:20px 24px;max-width:700px"
+                 data-in="74.0" data-anim="rise" data-dur="0.9">
+                <div style="font-size:22px;line-height:1.45">
+                    <b class="grn">Zero gas has a second-order effect:</b> arbitrage and rebalancing
+                    cost nothing to execute, so spreads stay tighter than the same design achieves
+                    on a fee-charging chain.
+                </div>
+            </div>
+        </div>
+
+        <div style="flex:1">
+            <!-- fee split -->
+            <div class="label" style="color:var(--gold-2)" data-in="28.4" data-dur="0.6">Swap fee — 0.3%</div>
+            <div style="display:flex;height:56px;border-radius:12px;overflow:hidden;margin-top:18px;
+                        border:1px solid var(--line)">
+                <div data-in="29.0" data-bar="0.8333" data-dur="1.1" data-anim="fade"
+                     style="width:calc(var(--p,0)*100%);background:#22D3EE;display:flex;align-items:center;
+                            justify-content:center;font-size:20px;font-weight:750;color:#04060C">0.25% → LPs</div>
+                <div data-in="30.4" data-bar="0.1667" data-dur="1.1" data-anim="fade"
+                     style="width:calc(var(--p,0)*100%);background:#E9AE28;display:flex;align-items:center;
+                            justify-content:center;font-size:17px;font-weight:750;color:#04060C">0.05%</div>
+            </div>
+            <div class="small" style="margin-top:12px" data-in="31.4" data-dur="0.6">
+                Liquidity providers take five-sixths; the protocol treasury takes one-sixth.
+            </div>
+
+            <div style="margin-top:34px" data-in="40.0" data-anim="rise" data-dur="0.8">
+                <div class="label">Order book — separate schedule</div>
+                <div style="display:flex;gap:22px;margin-top:16px">
+                    <div class="card" style="flex:1;padding:20px 22px;text-align:center">
+                        <div class="grn" style="font-size:38px;font-weight:800">0.1%</div>
+                        <div class="label" style="margin-top:6px">Maker</div></div>
+                    <div class="card" style="flex:1;padding:20px 22px;text-align:center">
+                        <div class="gold" style="font-size:38px;font-weight:800">0.2%</div>
+                        <div class="label" style="margin-top:6px">Taker</div></div>
+                </div>
+            </div>
+
+            <table class="tbl" style="margin-top:36px;font-size:23px">
+                <thead><tr data-in="49.0" data-dur="0.5"><th>Contract</th><th>Role</th></tr></thead>
+                <tbody>
+                <tr data-in="49.4" data-anim="left" data-dur="0.5"><td class="mono cyan">TPIXDEXFactory</td><td>Creates and tracks trading pairs</td></tr>
+                <tr data-in="54.0" data-anim="left" data-dur="0.5"><td class="mono cyan">TPIXDEXRouter02</td><td>Multi-hop swaps · liquidity operations</td></tr>
+                <tr data-in="60.6" data-anim="left" data-dur="0.5"><td class="mono cyan">TPIXDEXPair</td><td>The pool itself · issues ERC-20 LP tokens</td></tr>
+                <tr data-in="66.4" data-anim="left" data-dur="0.5"><td class="mono gold">WTPIX</td><td>Wraps the native coin for ERC-20 plumbing</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- ══════ C1 · token factory — types  85.4 → 136.0 ══════ -->
+<div class="act" data-in="85.4" data-anim="fade" data-dur="0.7" data-out="135.3" data-odur="0.7">
+    <div class="label" data-in="85.6" data-dur="0.6">§10 · Token Factory</div>
+    <h2 class="h2" style="margin-top:12px" data-in="85.8" data-anim="rise" data-dur="0.9">
+        Deploy a token without writing <span class="violet">a line of Solidity</span></h2>
+
+    <div style="display:flex;gap:22px;margin-top:32px">
+        <div class="card accent-cyan" style="flex:1;padding:22px 24px" data-in="92.0" data-anim="pop" data-dur="0.6">
+            <div style="font-size:23px;font-weight:700">Fungible</div>
+            <div class="small" style="margin-top:6px">ERC-20 · standard set</div></div>
+        <div class="card accent-cyan" style="flex:1;padding:22px 24px" data-in="94.4" data-anim="pop" data-dur="0.6">
+            <div style="font-size:23px;font-weight:700">Fungible Advanced</div>
+            <div class="small" style="margin-top:6px">Utility · Reward</div></div>
+        <div class="card accent-viol" style="flex:1;padding:22px 24px" data-in="96.8" data-anim="pop" data-dur="0.6">
+            <div style="font-size:23px;font-weight:700">Non-Fungible</div>
+            <div class="small" style="margin-top:6px">ERC-721 · single &amp; collection</div></div>
+        <div class="card accent-gold" style="flex:1;padding:22px 24px" data-in="99.2" data-anim="pop" data-dur="0.6">
+            <div style="font-size:23px;font-weight:700">Special Purpose</div>
+            <div class="small" style="margin-top:6px">Governance · Stablecoin</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px 32px;margin-top:36px">
+        <div class="ttype" data-in="103.0" data-anim="left" data-dur="0.5"><span class="tn">Standard</span><span class="tf">50</span></div>
+        <div class="ttype" data-in="107.6" data-anim="right" data-dur="0.5"><span class="tn">Mintable</span><span class="tf">70</span></div>
+        <div class="ttype" data-in="104.2" data-anim="left" data-dur="0.5"><span class="tn">Burnable</span><span class="tf">70</span></div>
+        <div class="ttype" data-in="108.4" data-anim="right" data-dur="0.5"><span class="tn">Mintable + Burnable</span><span class="tf">85</span></div>
+        <div class="ttype" data-in="112.6" data-anim="left" data-dur="0.5"><span class="tn">Utility <span class="small">— tax · anti-whale · anti-bot</span></span><span class="tf">60</span></div>
+        <div class="ttype" data-in="113.4" data-anim="right" data-dur="0.5"><span class="tn">Reward <span class="small">— reflection · vesting</span></span><span class="tf">60</span></div>
+        <div class="ttype" style="border-color:rgba(233,174,40,.35);background:rgba(233,174,40,.07)"
+             data-in="117.0" data-anim="left" data-dur="0.5"><span class="tn gold">Governance <span class="small">— ERC20Votes</span></span><span class="tf">130</span></div>
+        <div class="ttype" style="border-color:rgba(233,174,40,.35);background:rgba(233,174,40,.07)"
+             data-in="119.6" data-anim="right" data-dur="0.5"><span class="tn gold">Stablecoin <span class="small">— freeze · KYC</span></span><span class="tf">150</span></div>
+        <div class="ttype" style="border-color:rgba(139,92,246,.35);background:rgba(139,92,246,.07)"
+             data-in="123.0" data-anim="left" data-dur="0.5"><span class="tn violet">Single NFT <span class="small">— royalty · soulbound</span></span><span class="tf">80</span></div>
+        <div class="ttype" style="border-color:rgba(139,92,246,.35);background:rgba(139,92,246,.07)"
+             data-in="125.0" data-anim="right" data-dur="0.5"><span class="tn violet">NFT Collection <span class="small">— delayed reveal</span></span><span class="tf">100</span></div>
+    </div>
+    <div class="figcap" style="margin-top:26px;max-width:1400px" data-in="129.0" data-dur="0.8">
+        <b>Fig. 2</b> — Ten token types and their base fees, in TPIX. Every deployment is gas-free;
+        the fee is a platform charge, half of which is burned.
+    </div>
+</div>
+
+<!-- ══════ C2 · sub-options, fee maths, flow  135.9 → 202.6 ══════ -->
+<div class="act" data-in="135.9" data-anim="fade" data-dur="0.7" data-out="201.9" data-odur="0.7">
+    <div class="label" data-in="136.0" data-dur="0.6">§10 · Options, Fee Calculation &amp; Deployment</div>
+    <div style="display:flex;gap:44px;margin-top:26px;align-items:flex-start">
+        <!-- sub options -->
+        <div style="width:640px">
+            <div class="label" style="color:var(--cyan)" data-in="136.2" data-dur="0.6">Sixteen sub-options</div>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px">
+                <div class="opt" data-in="136.4" data-anim="fade" data-dur="0.4"><span class="on">Pausable</span><span class="of">+5</span></div>
+                <div class="opt" data-in="136.6" data-anim="fade" data-dur="0.4"><span class="on">Blacklist</span><span class="of">+5</span></div>
+                <div class="opt" data-in="140.2" data-anim="fade" data-dur="0.4"><span class="on">Anti-Whale</span><span class="of">+10</span></div>
+                <div class="opt" data-in="140.4" data-anim="fade" data-dur="0.4"><span class="on">Anti-Bot</span><span class="of">+10</span></div>
+                <div class="opt" data-in="143.2" data-anim="fade" data-dur="0.4"><span class="on">Tax System</span><span class="of">+15</span></div>
+                <div class="opt" data-in="143.4" data-anim="fade" data-dur="0.4"><span class="on">Auto-Liquidity</span><span class="of">+15</span></div>
+                <div class="opt" data-in="146.4" data-anim="fade" data-dur="0.4"><span class="on">Reflection</span><span class="of">+20</span></div>
+                <div class="opt" data-in="146.6" data-anim="fade" data-dur="0.4"><span class="on">Vesting</span><span class="of">+10</span></div>
+                <div class="opt" data-in="147.2" data-anim="fade" data-dur="0.4"><span class="on">Royalty (2981)</span><span class="of">+5</span></div>
+                <div class="opt" data-in="147.4" data-anim="fade" data-dur="0.4"><span class="on">Soulbound</span><span class="of">+5</span></div>
+                <div class="opt" data-in="147.6" data-anim="fade" data-dur="0.4"><span class="on">Delayed Reveal</span><span class="of">+10</span></div>
+                <div class="opt" data-in="147.8" data-anim="fade" data-dur="0.4"><span class="on">Treasury</span><span class="of">+15</span></div>
+                <div class="opt" data-in="148.0" data-anim="fade" data-dur="0.4"><span class="on">Delegation</span><span class="of">+5</span></div>
+                <div class="opt" data-in="148.2" data-anim="fade" data-dur="0.4"><span class="on">Freeze</span><span class="of">+5</span></div>
+                <div class="opt" data-in="148.4" data-anim="fade" data-dur="0.4"><span class="on">KYC Required</span><span class="of">+5</span></div>
+                <div class="opt" data-in="148.6" data-anim="fade" data-dur="0.4"><span class="on">Auto-Burn</span><span class="of">+10</span></div>
+            </div>
+        </div>
+
+        <!-- fee calculator -->
+        <div style="width:480px">
+            <div class="label" style="color:var(--gold-2)" data-in="149.8" data-dur="0.6">Fee = sum of parts</div>
+            <div class="card" style="margin-top:18px;padding:26px 28px">
+                <div class="mono" style="font-size:20px;color:var(--ink-3);line-height:1.9">
+                    <div data-in="150.2" data-anim="fade" data-dur="0.5">base <span style="float:right" class="ink">50</span></div>
+                    <div data-in="150.6" data-anim="fade" data-dur="0.5">+ category <span style="float:right" class="ink">0</span></div>
+                    <div data-in="151.0" data-anim="fade" data-dur="0.5">+ type <span style="float:right" class="ink">10</span></div>
+                    <div data-in="158.2" data-anim="fade" data-dur="0.5">+ tax system <span style="float:right" class="cyan">15</span></div>
+                    <div data-in="159.0" data-anim="fade" data-dur="0.5">+ anti-whale <span style="float:right" class="cyan">10</span></div>
+                    <div data-in="159.8" data-anim="fade" data-dur="0.5">+ pausable <span style="float:right" class="cyan">5</span></div>
+                    <div style="height:1px;background:var(--line-2);margin:12px 0"
+                         data-in="161.0" data-anim="wipe" data-dur="0.6"></div>
+                    <div style="font-size:30px;font-weight:700" class="gold"
+                         data-in="161.4" data-anim="fade" data-dur="0.6">
+                        TOTAL <span style="float:right" data-in="161.4" data-count="90" data-dur="1.2"
+                                    data-anim="fade">0</span></div>
+                </div>
+                <div class="small" style="margin-top:16px">Utility token · tax · anti-whale · pausable</div>
+            </div>
+            <div class="figcap" style="margin-top:18px" data-in="163.0" data-dur="0.7">
+                <b>Fig. 3</b> — Dynamic fee calculation. Nothing is hidden in a bundle;
+                every option prices itself.
+            </div>
+        </div>
+
+        <!-- creation flow -->
+        <div style="flex:1">
+            <div class="label" style="color:var(--cyan)" data-in="165.2" data-dur="0.6">Five-step wizard</div>
+            <div style="margin-top:14px">
+                <div class="step" data-in="165.6" data-anim="right" data-dur="0.5"><span class="sn">01</span>
+                    <div><div class="st">Category</div><div class="ss">Fungible · NFT · Special</div></div></div>
+                <div class="step" data-in="167.6" data-anim="right" data-dur="0.5"><span class="sn">02</span>
+                    <div><div class="st">Type</div><div class="ss">Utility, Governance, Collection…</div></div></div>
+                <div class="step" data-in="169.6" data-anim="right" data-dur="0.5"><span class="sn">03</span>
+                    <div><div class="st">Options</div><div class="ss">Tax · anti-whale · royalty…</div></div></div>
+                <div class="step" data-in="172.6" data-anim="right" data-dur="0.5"><span class="sn">04</span>
+                    <div><div class="st">Details</div><div class="ss">Name · symbol · supply · logo</div></div></div>
+                <div class="step" data-in="175.4" data-anim="right" data-dur="0.5"><span class="sn">05</span>
+                    <div><div class="st">Review &amp; confirm</div><div class="ss">Full fee breakdown before paying</div></div></div>
+            </div>
+
+            <div class="card accent-cyan" style="margin-top:26px;padding:22px 24px"
+                 data-in="180.0" data-anim="rise" data-dur="0.8">
+                <div class="mono cyan" style="font-size:22px;font-weight:600">CREATE2</div>
+                <div class="small" style="margin-top:8px">Deterministic address · OpenZeppelin 5.x · gas-free</div>
+            </div>
+            <div style="display:flex;gap:14px;margin-top:16px">
+                <div class="card accent-green" style="flex:1;padding:18px 20px" data-in="192.4" data-anim="pop" data-dur="0.6">
+                    <div style="font-size:20px;font-weight:700">Auto-verified</div>
+                    <div class="small" style="margin-top:5px">on Blockscout</div></div>
+                <div class="card accent-green" style="flex:1;padding:18px 20px" data-in="193.0" data-anim="pop" data-dur="0.6">
+                    <div style="font-size:20px;font-weight:700">Tradeable</div>
+                    <div class="small" style="margin-top:5px">immediately on TPIX TRADE</div></div>
+                <div class="card accent-gold" style="flex:1;padding:18px 20px" data-in="197.8" data-anim="pop" data-dur="0.6">
+                    <div style="font-size:20px;font-weight:700">Testnet</div>
+                    <div class="small" style="margin-top:5px">entirely free</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ D · bridge  202.5 → 251.9 ══════ -->
+<div class="act" data-in="202.5" data-anim="fade" data-dur="0.7" data-out="251.2" data-odur="0.7">
+    <div class="label" data-in="202.7" data-dur="0.6">§12 · Cross-Chain Bridge</div>
+    <h2 class="h2" style="margin-top:12px" data-in="202.9" data-anim="rise" data-dur="0.9">
+        Lock and mint — TPIX Chain ↔ <span class="gold">Binance Smart Chain</span></h2>
+
+    <svg id="bridge" width="1656" height="290" style="margin-top:26px"></svg>
+
+    <div style="display:flex;gap:20px;margin-top:24px">
+        <div class="guard" style="flex:1" data-in="223.2" data-anim="rise" data-dur="0.7">
+            <div class="gn grn">3-of-5</div>
+            <div class="gd">Multi-signature validator set on every transfer</div></div>
+        <div class="guard" style="flex:1" data-in="228.4" data-anim="rise" data-dur="0.7">
+            <div class="gn grn">15 min</div>
+            <div class="gd">Time-lock on transfers above 1,000,000 TPIX</div></div>
+        <div class="guard" style="flex:1" data-in="235.4" data-anim="rise" data-dur="0.7">
+            <div class="gn grn">10M / 24h</div>
+            <div class="gd">Hard rate limit across the whole bridge</div></div>
+        <div class="guard" style="flex:1" data-in="238.8" data-anim="rise" data-dur="0.7">
+            <div class="gn grn">Both chains</div>
+            <div class="gd">Full audit trail written on each side</div></div>
+        <div class="guard" style="flex:1;border-color:rgba(233,174,40,.35);background:rgba(233,174,40,.07)"
+             data-in="244.4" data-anim="rise" data-dur="0.7">
+            <div class="gn gold">0.1%</div>
+            <div class="gd">Bridge fee — 90% treasury, 10% burned</div></div>
+    </div>
+    <div class="figcap" style="margin-top:24px;max-width:1400px" data-in="247.0" data-dur="0.8">
+        <b>Fig. 4</b> — Bridge mechanics and its four constraints. Wrapped supply on BSC can never
+        exceed the amount locked on the home chain.
+    </div>
+</div>
+
+<!-- ══════ E · outro  251.8 → 263.5 ══════ -->
+<div class="act" data-in="251.8" data-anim="fade" data-dur="0.8">
+    <div class="title-wrap">
+        <img src="../assets/tpix-logo.webp" style="width:108px;height:108px;object-fit:contain;opacity:.9;
+             filter:drop-shadow(0 0 30px rgba(233,174,40,.4))" data-in="252.0" data-anim="pop" data-dur="1.0">
+        <div class="label" style="margin-top:28px;letter-spacing:.4em" data-in="252.4" data-dur="0.8">End of Part Five</div>
+        <div class="h1" style="margin-top:16px" data-in="252.7" data-anim="rise" data-dur="0.9">The Trading Layer</div>
+        <div style="width:180px;height:1px;background:var(--line-2);margin-top:30px" data-in="253.3" data-anim="wipe" data-dur="0.8"></div>
+        <div class="body" style="margin-top:28px;font-size:27px;text-align:center;max-width:1200px"
+             data-in="253.6" data-dur="0.9">
+            Next — <span class="gold">Part Six: AI TRADE.</span>
+            The strategy engine, and why a true DEX is the only place it can honestly exist.
+        </div>
+    </div>
+</div>
+
+</div><!-- /frame -->
+</div><!-- /stage -->
+
+<script src="_engine.js"></script>
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const sv = (n, at) => { const e = document.createElementNS(NS, n);
+    for (const k in at) e.setAttribute(k, at[k]); return e; };
+
+/* ---------- เส้นโค้ง x·y = k ---------- */
+const AMM = (() => {
+    const svg = document.getElementById('amm');
+    const X0 = 96, X1 = 660, Y0 = 296, Y1 = 34;
+    const K = 1.0;
+    // x ในช่วง 0.35..2.6 ; y = K / x
+    const xmin = 0.35, xmax = 2.6, ymax = 1 / xmin;
+    const px = (x) => X0 + ((x - xmin) / (xmax - xmin)) * (X1 - X0);
+    const py = (y) => Y0 - (y / ymax) * (Y0 - Y1);
+
+    svg.appendChild(sv('line', { x1: X0, y1: Y0, x2: X1 + 18, y2: Y0, stroke: 'rgba(255,255,255,.16)' }));
+    svg.appendChild(sv('line', { x1: X0, y1: Y0, x2: X0, y2: Y1 - 12, stroke: 'rgba(255,255,255,.16)' }));
+    const xl = sv('text', { x: X1 + 18, y: Y0 + 28, 'text-anchor': 'end', fill: '#5F7089',
+        'font-size': 18, 'font-weight': 650 }); xl.textContent = 'TOKEN X RESERVE';
+    const yl = sv('text', { x: X0 - 14, y: Y1 - 2, 'text-anchor': 'start', fill: '#5F7089',
+        'font-size': 18, 'font-weight': 650 }); yl.textContent = 'TOKEN Y RESERVE';
+    svg.appendChild(xl); svg.appendChild(yl);
+
+    let d = '';
+    for (let i = 0; i <= 90; i++) {
+        const x = xmin + (i / 90) * (xmax - xmin);
+        d += (i ? ' L' : 'M') + px(x).toFixed(1) + ',' + py(K / x).toFixed(1);
+    }
+    const curve = sv('path', { d, fill: 'none', stroke: '#22D3EE', 'stroke-width': 3.4,
+        'stroke-linecap': 'round' });
+    curve.dataset.in = '17.0'; curve.dataset.draw = ''; curve.dataset.dur = '1.8';
+    curve.dataset.anim = 'fade';
+    svg.appendChild(curve);
+
+    const eq = sv('text', { x: X1 - 6, y: Y1 + 46, 'text-anchor': 'end', fill: '#7DE7F7',
+        'font-family': 'JetBrains Mono, monospace', 'font-size': 34, 'font-weight': 600 });
+    eq.textContent = 'x · y = k';
+    eq.dataset.in = '19.2'; eq.dataset.anim = 'fade'; eq.dataset.dur = '0.8';
+    svg.appendChild(eq);
+
+    // จุดที่ไถลไปตามเส้นโค้ง + เส้นประบอกพิกัด
+    const g = sv('g', {});
+    const hx = sv('line', { stroke: 'rgba(233,174,40,.45)', 'stroke-width': 1.4, 'stroke-dasharray': '6 6' });
+    const hy = sv('line', { stroke: 'rgba(233,174,40,.45)', 'stroke-width': 1.4, 'stroke-dasharray': '6 6' });
+    const dot = sv('circle', { r: 9, fill: '#F8D678', stroke: '#04060C', 'stroke-width': 2 });
+    const tag = sv('text', { fill: '#F8D678', 'font-size': 19, 'font-weight': 750 });
+    g.appendChild(hx); g.appendChild(hy); g.appendChild(dot); g.appendChild(tag);
+    svg.appendChild(g);
+
+    function seek(t) {
+        const on = t >= 20.4 && t < 84.0;
+        g.setAttribute('opacity', on ? TPIX.clamp01((t - 20.4) / 0.6) : 0);
+        if (!on) return;
+        // ไถลไปกลับช้า ๆ ให้เห็นว่าราคาปรับตามปริมาณสำรอง
+        const u = 0.5 - 0.5 * Math.cos(((t - 20.4) / 9.0) * Math.PI);
+        const x = 0.62 + u * 1.5;
+        const y = K / x;
+        const X = px(x), Y = py(y);
+        dot.setAttribute('cx', X); dot.setAttribute('cy', Y);
+        hx.setAttribute('x1', X0); hx.setAttribute('y1', Y); hx.setAttribute('x2', X); hx.setAttribute('y2', Y);
+        hy.setAttribute('x1', X); hy.setAttribute('y1', Y0); hy.setAttribute('x2', X); hy.setAttribute('y2', Y);
+        tag.setAttribute('x', X + 16); tag.setAttribute('y', Y - 14);
+        tag.textContent = 'price = ' + (y / x).toFixed(2);
+    }
+    return { seek };
+})();
+
+/* ---------- แผนภาพสะพาน ---------- */
+(function bridge() {
+    const svg = document.getElementById('bridge');
+    const box = (x, title, sub, col, at) => {
+        const g = sv('g', {});
+        g.dataset.in = at.toFixed(2); g.dataset.anim = 'pop'; g.dataset.dur = '0.8';
+        g.appendChild(sv('rect', { x, y: 40, width: 460, height: 150, rx: 20,
+            fill: col.bg, stroke: col.br, 'stroke-width': 1.6 }));
+        const t1 = sv('text', { x: x + 230, y: 96, 'text-anchor': 'middle', fill: col.tx,
+            'font-size': 32, 'font-weight': 780 }); t1.textContent = title;
+        const t2 = sv('text', { x: x + 230, y: 134, 'text-anchor': 'middle', fill: '#A6B6CC',
+            'font-size': 20, 'font-weight': 620 }); t2.textContent = sub;
+        g.appendChild(t1); g.appendChild(t2);
+        svg.appendChild(g);
+    };
+    box(60, 'TPIX Chain', 'chain id 4289 — coins locked',
+        { bg: 'rgba(233,174,40,.10)', br: 'rgba(233,174,40,.45)', tx: '#F8D678' }, 203.2);
+    box(1136, 'Binance Smart Chain', 'chain id 56 — wTPIX (BEP-20) minted',
+        { bg: 'rgba(139,92,246,.10)', br: 'rgba(139,92,246,.45)', tx: '#B79BFB' }, 209.6);
+
+    // ลูกศรสองทาง
+    const mk = (y, dir, label, col, at) => {
+        const x1 = dir > 0 ? 536 : 1124, x2 = dir > 0 ? 1124 : 536;
+        const p = sv('path', { d: `M${x1},${y} L${x2},${y}`, fill: 'none', stroke: col,
+            'stroke-width': 2.2 });
+        p.dataset.in = at.toFixed(2); p.dataset.draw = ''; p.dataset.dur = '1.0'; p.dataset.anim = 'fade';
+        svg.appendChild(p);
+        const head = sv('path', { d: dir > 0 ? `M${x2 - 12},${y - 8} L${x2},${y} L${x2 - 12},${y + 8} Z`
+                                            : `M${x2 + 12},${y - 8} L${x2},${y} L${x2 + 12},${y + 8} Z`,
+            fill: col });
+        head.dataset.in = (at + 0.8).toFixed(2); head.dataset.anim = 'fade'; head.dataset.dur = '0.4';
+        svg.appendChild(head);
+        const t = sv('text', { x: 830, y: y - 16, 'text-anchor': 'middle', fill: col,
+            'font-size': 21, 'font-weight': 700, 'letter-spacing': 1.2 });
+        t.textContent = label;
+        t.dataset.in = (at + 0.4).toFixed(2); t.dataset.anim = 'fade'; t.dataset.dur = '0.5';
+        svg.appendChild(t);
+    };
+    mk(96, 1, 'LOCK TPIX → MINT wTPIX', '#E9AE28', 210.4);
+    mk(176, -1, 'BURN wTPIX → UNLOCK TPIX', '#8B5CF6', 216.0);
+
+    const inv = sv('text', { x: 830, y: 250, 'text-anchor': 'middle', fill: '#5F7089',
+        'font-size': 19, 'font-weight': 650 });
+    inv.textContent = 'INVARIANT:  wTPIX supply on BSC  ≤  TPIX locked on chain 4289';
+    inv.dataset.in = '220.0'; inv.dataset.anim = 'fade'; inv.dataset.dur = '0.8';
+    svg.appendChild(inv);
+})();
+
+/* ---------- cue track ---------- */
+fetch('../tmp/ep05/timing.json').then(r => r.json()).then(d => {
+    TPIX.init({ duration: d.duration, chapter: 'Part Five · The Trading Layer', cues: d.lines });
+    TPIX.custom((t) => AMM.seek(t));
+    window.__ready = true;
+});
+</script>
+</html>

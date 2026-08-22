@@ -1,0 +1,235 @@
+{
+  "id": "ep08",
+  "title": "Real World",
+  "covers": [
+    "5. Use Cases & Applications",
+    "12. Ecosystem & Affiliate",
+    "13. Platform Integrations",
+    "Carbon Credit",
+    "FoodPassport"
+  ],
+  "voice": "en-US-ChristopherNeural",
+  "rate": "-7%",
+  "pitch": "+0Hz",
+  "lines": [
+    {
+      "id": "t1",
+      "en": "Part eight: Real World. The applications this chain exists to settle.",
+      "th": [
+        "ตอนที่แปด — โลกจริง",
+        "ผลิตภัณฑ์ที่เชนนี้มีอยู่เพื่อชำระบัญชีให้"
+      ],
+      "gap": 0.6
+    },
+    {
+      "id": "t2",
+      "en": "A blockchain with no commerce attached to it is a database with extra steps. This chapter is the answer to what actually runs on TPIX Chain.",
+      "th": [
+        "บล็อกเชนที่ไม่มีการค้าเกาะอยู่ ก็เป็นเพียงฐานข้อมูลที่ยุ่งยากกว่าเดิม",
+        "ตอนนี้คือคำตอบว่ามีอะไรทำงานอยู่บน TPIX Chain จริง ๆ บ้าง"
+      ],
+      "gap": 0.8
+    },
+    {
+      "id": "a0",
+      "en": "Nine applications are live today. Two more are in development, and two are planned.",
+      "th": "วันนี้มีเก้าผลิตภัณฑ์ที่เปิดใช้จริงแล้ว อีกสองอยู่ระหว่างพัฒนา และอีกสองอยู่ในแผน",
+      "gap": 0.5
+    },
+    {
+      "id": "a1",
+      "en": "TPIX TRADE — the decentralised exchange. Token Factory — permissionless issuance, ten types and sixteen options.",
+      "th": [
+        "TPIX TRADE คือกระดานแลกเปลี่ยนแบบกระจายศูนย์",
+        "Token Factory คือโรงงานสร้างโทเคน 10 ชนิด พร้อมตัวเลือกเสริม 16 อย่าง"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "a2",
+      "en": "FoodPassport — farm-to-table traceability. Carbon Credit — verified emission reductions, traded on chain.",
+      "th": [
+        "FoodPassport คือการตามสอบอาหารตั้งแต่ฟาร์มถึงโต๊ะ",
+        "Carbon Credit คือคาร์บอนเครดิตที่ผ่านการรับรอง ซื้อขายกันบนเชน"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "a3",
+      "en": "IoT Smart Farm — sensor networks feeding agricultural data into a marketplace. And the Master Node network itself.",
+      "th": [
+        "IoT Smart Farm คือเครือข่ายเซ็นเซอร์ที่ป้อนข้อมูลการเกษตรเข้าสู่ตลาดกลาง",
+        "และเครือข่ายมาสเตอร์โหนดเองก็นับเป็นหนึ่งในนั้น"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "a4",
+      "en": "The Delivery Platform — food, groceries, courier and home services, with three percent cashback in TPIX on every order and rider earnings paid in TPIX.",
+      "th": [
+        "แพลตฟอร์มส่งของ ครอบคลุมอาหาร ของชำ พัสดุ และบริการถึงบ้าน",
+        "คืนเงิน 3% เป็น TPIX ทุกออร์เดอร์ และจ่ายค่ารอบไรเดอร์เป็น TPIX"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "a5",
+      "en": "And Thaiprompt Affiliate — an enterprise platform already serving more than five hundred thousand users.",
+      "th": "และ Thaiprompt Affiliate แพลตฟอร์มระดับองค์กรที่มีผู้ใช้อยู่แล้วกว่า 500,000 ราย",
+      "gap": 0.4
+    },
+    {
+      "id": "a6",
+      "en": "In development: the cross-chain bridge, and a multi-vendor e-commerce marketplace with five percent cashback. Planned: an A I bot marketplace, and decentralised hotel booking.",
+      "th": [
+        "กำลังพัฒนา — สะพานข้ามเชน และตลาดอีคอมเมิร์ซหลายผู้ขายที่คืนเงิน 5%",
+        "อยู่ในแผน — ตลาดบอท AI และระบบจองโรงแรมแบบกระจายศูนย์"
+      ],
+      "gap": 0.9
+    },
+    {
+      "id": "b0",
+      "en": "Two of these deserve closer examination, because they are where the chain touches physical goods.",
+      "th": [
+        "สองในนั้นควรดูให้ละเอียด",
+        "เพราะเป็นจุดที่เชนสัมผัสกับสินค้าที่จับต้องได้จริง"
+      ],
+      "gap": 0.5
+    },
+    {
+      "id": "b1",
+      "en": "FoodPassport tracks food from the farm to the consumer's hand, recording each stage on chain as it happens.",
+      "th": [
+        "FoodPassport ติดตามอาหารตั้งแต่ฟาร์มจนถึงมือผู้บริโภค",
+        "บันทึกทุกช่วงลงเชนตามจริงขณะที่มันเกิดขึ้น"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "b2",
+      "en": "At the farm, soil moisture and p H sensors record soil quality, pesticide application and harvest date.",
+      "th": "ที่ฟาร์ม เซ็นเซอร์ความชื้นดินและค่า pH บันทึกคุณภาพดิน การใช้สารเคมี และวันเก็บเกี่ยว",
+      "gap": 0.4
+    },
+    {
+      "id": "b3",
+      "en": "In processing, thermometers and hygrometers log temperature, humidity and method. In transport, a G P S tracker and a temperature logger record the cold chain and the route.",
+      "th": [
+        "ช่วงแปรรูป เทอร์โมมิเตอร์และไฮโกรมิเตอร์บันทึกอุณหภูมิ ความชื้น และวิธีการ",
+        "ช่วงขนส่ง เครื่องติดตาม GPS และตัวบันทึกอุณหภูมิเก็บข้อมูลห่วงโซ่ความเย็นและเส้นทาง"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "b4",
+      "en": "In storage, environmental sensors record warehouse conditions and duration. At retail, a smart shelf sensor records shelf life and display temperature.",
+      "th": [
+        "ในคลัง เซ็นเซอร์สภาพแวดล้อมบันทึกสภาวะและระยะเวลาจัดเก็บ",
+        "หน้าร้าน เซ็นเซอร์ชั้นวางอัจฉริยะบันทึกอายุสินค้าและอุณหภูมิที่วางขาย"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "b5",
+      "en": "The consumer scans a Q R code on the packaging and sees the complete journey — every sensor reading, and the certifications behind it.",
+      "th": [
+        "ผู้บริโภคสแกนคิวอาร์โค้ดบนบรรจุภัณฑ์ แล้วเห็นเส้นทางทั้งหมด",
+        "ทั้งค่าที่เซ็นเซอร์อ่านได้ทุกจุด และใบรับรองที่อยู่เบื้องหลัง"
+      ],
+      "gap": 0.9
+    },
+    {
+      "id": "c0",
+      "en": "The Carbon Credit system tokenises verified emission reductions.",
+      "th": "ระบบคาร์บอนเครดิตแปลงการลดการปล่อยก๊าซที่ผ่านการรับรองให้อยู่ในรูปโทเคน",
+      "gap": 0.45
+    },
+    {
+      "id": "c1",
+      "en": "Four standards are supported. The Verified Carbon Standard. The Gold Standard. The U N Clean Development Mechanism. And the American Carbon Registry.",
+      "th": [
+        "รองรับสี่มาตรฐาน — Verified Carbon Standard และ Gold Standard",
+        "รวมถึงกลไก CDM ขององค์การสหประชาชาติ และ American Carbon Registry"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "c2",
+      "en": "A project registers — a solar farm, a reforestation site. I o T sensors measure the actual reduction. Verified credits are then minted as tokens on chain.",
+      "th": [
+        "โครงการลงทะเบียนเข้ามา เช่น ฟาร์มโซลาร์ หรือพื้นที่ปลูกป่า",
+        "เซ็นเซอร์ IoT วัดปริมาณที่ลดได้จริง แล้วจึงออกเครดิตที่ผ่านการรับรองเป็นโทเคนบนเชน"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "c3",
+      "en": "Credits trade on the marketplace. When they are used for offsetting they are retired — burned permanently — leaving an on-chain certificate as proof for compliance.",
+      "th": [
+        "เครดิตซื้อขายกันได้ในตลาด",
+        "เมื่อถูกใช้ชดเชยคาร์บอนก็จะถูกปลดระวาง คือเผาทิ้งถาวร เหลือใบรับรองบนเชนไว้เป็นหลักฐาน"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "c4",
+      "en": "The architecture is hybrid. Metadata lives off chain on I P F S, ownership lives on chain, and each credit batch is an E R C seven twenty-one carrying its verification data.",
+      "th": [
+        "สถาปัตยกรรมเป็นแบบผสม ข้อมูลประกอบเก็บนอกเชนไว้บน IPFS ส่วนกรรมสิทธิ์อยู่บนเชน",
+        "และเครดิตแต่ละล็อตคือ NFT มาตรฐาน ERC-721 ที่พกข้อมูลการรับรองไว้ในตัว"
+      ],
+      "gap": 0.9
+    },
+    {
+      "id": "d0",
+      "en": "Underneath all of it, four platform integrations bind the ecosystem to real accounts and real balances.",
+      "th": [
+        "ใต้ทั้งหมดนี้ มีการเชื่อมต่อสี่แพลตฟอร์ม",
+        "ที่ผูกระบบนิเวศเข้ากับบัญชีจริงและยอดเงินจริง"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "d1",
+      "en": "Thaiprompt Affiliate creates a TPIX wallet automatically at signup, pays commissions and rank bonuses in TPIX, and rewards activity — one hundred TPIX for signup, fifty for a referral.",
+      "th": [
+        "Thaiprompt Affiliate สร้างกระเป๋า TPIX ให้อัตโนมัติตั้งแต่สมัคร",
+        "จ่ายค่าคอมและโบนัสตำแหน่งเป็น TPIX พร้อมรางวัลกิจกรรม 100 เหรียญตอนสมัคร และ 50 เหรียญต่อการแนะนำ"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "d2",
+      "en": "FoodPassport charges for verification and issues certificate N F Ts. The Delivery Platform settles orders, cashback and rider pay.",
+      "th": [
+        "FoodPassport เก็บค่าตรวจสอบ และออกใบรับรองเป็น NFT",
+        "แพลตฟอร์มส่งของชำระค่าออร์เดอร์ เงินคืน และค่ารอบไรเดอร์"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "d3",
+      "en": "IoT Smart Farm runs a sensor data marketplace, equipment rental, and carbon credit generation from the same readings.",
+      "th": [
+        "IoT Smart Farm เปิดตลาดซื้อขายข้อมูลเซ็นเซอร์ ให้เช่าอุปกรณ์",
+        "และสร้างคาร์บอนเครดิตจากค่าที่วัดได้ชุดเดียวกัน"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "d4",
+      "en": "In each case the coin is not an investment product bolted on afterwards. It is the unit of account the system already needed.",
+      "th": [
+        "ในทุกกรณี เหรียญไม่ใช่สินค้าการลงทุนที่เอามาแปะทีหลัง",
+        "แต่เป็นหน่วยชำระบัญชีที่ระบบต้องการอยู่แล้ว"
+      ],
+      "gap": 0.85
+    },
+    {
+      "id": "e1",
+      "en": "Next — part nine: the road ahead. Roadmap, team, security, and the legal position.",
+      "th": "ตอนต่อไป — ตอนที่เก้า เส้นทางข้างหน้า ทั้งแผนงาน ทีม ความปลอดภัย และจุดยืนทางกฎหมาย",
+      "gap": 0.2
+    }
+  ]
+}

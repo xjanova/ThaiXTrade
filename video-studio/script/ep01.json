@@ -1,0 +1,178 @@
+{
+  "id": "ep01",
+  "title": "Foundation",
+  "covers": ["1. Executive Summary", "2. Problem & Solution"],
+  "voice": "en-US-ChristopherNeural",
+  "rate": "-7%",
+  "pitch": "+0Hz",
+  "lines": [
+    {
+      "id": "t1",
+      "en": "TPIX Chain. A next-generation, E V M compatible blockchain, engineered for the digital economy of Southeast Asia.",
+      "th": [
+        "TPIX Chain — บล็อกเชนรุ่นใหม่ที่รองรับ EVM",
+        "ออกแบบมาเพื่อเศรษฐกิจดิจิทัลของเอเชียตะวันออกเฉียงใต้"
+      ],
+      "gap": 0.6
+    },
+    {
+      "id": "t2",
+      "en": "Part one: the foundation. What this network is, and the problem it was built to solve.",
+      "th": [
+        "ตอนที่หนึ่ง — รากฐาน",
+        "ว่าเครือข่ายนี้คืออะไร และถูกสร้างขึ้นเพื่อแก้ปัญหาใด"
+      ],
+      "gap": 0.8
+    },
+
+    {
+      "id": "a1",
+      "en": "TPIX Chain is built on Polygon Edge, a modular blockchain framework written in Go.",
+      "th": "TPIX Chain สร้างบน Polygon Edge เฟรมเวิร์กบล็อกเชนแบบโมดูลาร์ที่เขียนด้วยภาษา Go",
+      "gap": 0.45
+    },
+    {
+      "id": "a2",
+      "en": "It runs I B F T Proof of Authority consensus, producing one block every two seconds, with finality in approximately ten seconds — that is, five blocks.",
+      "th": [
+        "ใช้ฉันทามติ IBFT แบบ Proof of Authority ออกบล็อกทุก 2 วินาที",
+        "และยืนยันเด็ดขาดภายในราว 10 วินาที หรือเท่ากับ 5 บล็อก"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "a3",
+      "en": "Throughput is rated at roughly fifteen hundred transactions per second.",
+      "th": "รองรับปริมาณธุรกรรมได้ราว 1,500 รายการต่อวินาที",
+      "gap": 0.5
+    },
+    {
+      "id": "a4",
+      "en": "And the gas price is zero. Not subsidised — zero, hardcoded into the genesis block itself.",
+      "th": [
+        "และค่าแก๊สเป็นศูนย์ — ไม่ใช่การอุดหนุนราคา",
+        "แต่ถูกกำหนดเป็นศูนย์ไว้ในบล็อกกำเนิดโดยตรง"
+      ],
+      "gap": 0.7
+    },
+
+    {
+      "id": "b1",
+      "en": "The native coin, TPIX, has a fixed supply of seven billion units at eighteen decimals, fully pre-mined at genesis.",
+      "th": [
+        "เหรียญหลักของเครือข่ายคือ TPIX อุปทานคงที่ 7,000 ล้านเหรียญ ทศนิยม 18 ตำแหน่ง",
+        "ขุดไว้ล่วงหน้าทั้งหมดตั้งแต่บล็อกกำเนิด"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "b2",
+      "en": "That coin powers a built-in Uniswap V2 exchange, a four-tier master node system, a token factory, and a cross-chain bridge to Binance Smart Chain.",
+      "th": [
+        "เหรียญนี้ขับเคลื่อนกระดานแลกเปลี่ยนแบบ Uniswap V2 ในตัว และระบบมาสเตอร์โหนด 4 ระดับ",
+        "รวมถึงโรงงานสร้างโทเคน และสะพานข้ามเชนไปยัง Binance Smart Chain"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "b3",
+      "en": "TPIX is not merely a currency. It is the settlement layer of a working digital economy.",
+      "th": "TPIX ไม่ใช่แค่สกุลเงิน แต่เป็นชั้นชำระบัญชีของเศรษฐกิจดิจิทัลที่ใช้งานจริง",
+      "gap": 0.4
+    },
+    {
+      "id": "b4",
+      "en": "Food traceability. Smart farming. Delivery. E-commerce. Carbon credits. And an enterprise affiliate platform serving more than five hundred thousand users.",
+      "th": [
+        "การตามสอบอาหาร ฟาร์มอัจฉริยะ บริการส่งของ",
+        "อีคอมเมิร์ซ และคาร์บอนเครดิต",
+        "และแพลตฟอร์มพันธมิตรระดับองค์กรที่มีผู้ใช้กว่า 500,000 ราย"
+      ],
+      "gap": 0.9
+    },
+
+    {
+      "id": "c0",
+      "en": "Now consider the barriers that have kept blockchain out of everyday commerce.",
+      "th": "ทีนี้ลองพิจารณาอุปสรรคที่ทำให้บล็อกเชนยังเข้าไม่ถึงการค้าในชีวิตประจำวัน",
+      "gap": 0.55
+    },
+    {
+      "id": "c1",
+      "en": "First, cost. Ethereum gas fees range from five to fifty dollars. Binance Smart Chain charges up to one dollar. At that price, a micro-transaction is not viable.",
+      "th": [
+        "หนึ่ง — ต้นทุน ค่าแก๊สบน Ethereum อยู่ที่ 5 ถึง 50 ดอลลาร์",
+        "ส่วน BSC คิดสูงถึง 1 ดอลลาร์",
+        "ที่ราคาระดับนี้ ธุรกรรมย่อย ๆ ย่อมเป็นไปไม่ได้"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "c2",
+      "en": "Second, complexity. Existing exchanges demand deep technical knowledge — intimidating for the ninety-five percent of people who have never used cryptocurrency.",
+      "th": [
+        "สอง — ความซับซ้อน กระดานเทรดที่มีอยู่ต้องอาศัยความรู้เชิงเทคนิคสูง",
+        "ซึ่งน่าหวั่นใจสำหรับคน 95% ที่ไม่เคยใช้คริปโตมาก่อน"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "c3",
+      "en": "Third, geography. Major ecosystems are designed for Western markets. There is no localised infrastructure for Thai and ASEAN users.",
+      "th": [
+        "สาม — ภูมิศาสตร์ ระบบนิเวศใหญ่ ๆ ออกแบบมาเพื่อตลาดตะวันตก",
+        "ยังไม่มีโครงสร้างพื้นฐานที่ปรับให้เข้ากับผู้ใช้ไทยและอาเซียน"
+      ],
+      "gap": 0.45
+    },
+    {
+      "id": "c4",
+      "en": "And fourth, utility. Most tokens exist only for speculation, disconnected from any real business.",
+      "th": [
+        "และสี่ — ประโยชน์ใช้สอย",
+        "โทเคนส่วนใหญ่มีไว้เก็งกำไรเท่านั้น ไม่เชื่อมกับธุรกิจจริงใด ๆ"
+      ],
+      "gap": 0.85
+    },
+
+    {
+      "id": "d0",
+      "en": "TPIX answers each of these directly.",
+      "th": "TPIX ตอบทั้งสี่ข้อนี้อย่างตรงจุด",
+      "gap": 0.5
+    },
+    {
+      "id": "d1",
+      "en": "Zero gas fees remove the cost barrier permanently — every transaction on the chain is free.",
+      "th": "ค่าแก๊สเป็นศูนย์ ขจัดกำแพงต้นทุนอย่างถาวร ทุกธุรกรรมบนเชนนี้ฟรี",
+      "gap": 0.4
+    },
+    {
+      "id": "d2",
+      "en": "A clean three-click interface, in Thai and in English, removes the complexity barrier.",
+      "th": "หน้าจอที่เรียบง่าย จบใน 3 คลิก ทั้งภาษาไทยและอังกฤษ ขจัดกำแพงความซับซ้อน",
+      "gap": 0.4
+    },
+    {
+      "id": "d3",
+      "en": "ASEAN-first design brings local language, local payment rails, and culturally relevant use cases.",
+      "th": [
+        "การออกแบบโดยยึดอาเซียนเป็นหลัก นำมาซึ่งภาษาและช่องทางชำระเงินท้องถิ่น",
+        "พร้อมรูปแบบการใช้งานที่เข้ากับวัฒนธรรม"
+      ],
+      "gap": 0.4
+    },
+    {
+      "id": "d4",
+      "en": "And real-world integration means every application in the ecosystem settles in TPIX.",
+      "th": "และการเชื่อมกับโลกจริง หมายความว่าทุกแอปพลิเคชันในระบบนิเวศชำระบัญชีด้วย TPIX",
+      "gap": 0.8
+    },
+    {
+      "id": "e1",
+      "en": "The chapters that follow examine each layer of that design in turn.",
+      "th": "ตอนต่อ ๆ ไปจะพาไปดูการออกแบบทีละชั้น",
+      "gap": 0.2
+    }
+  ]
+}

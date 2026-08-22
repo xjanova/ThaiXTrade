@@ -1,0 +1,264 @@
+{
+  "id": "ep06",
+  "title": "AI TRADE",
+  "covers": ["9. AI TRADE — Non-Custodial Strategy Engine"],
+  "voice": "en-US-ChristopherNeural",
+  "rate": "-7%",
+  "pitch": "+0Hz",
+  "lines": [
+    {
+      "id": "t1",
+      "en": "Part six: AI TRADE. A strategy engine — and the reason it can only exist honestly on a true decentralised exchange.",
+      "th": ["ตอนที่หก — AI TRADE", "เครื่องยนต์กลยุทธ์ และเหตุผลว่าทำไมมันจะเกิดขึ้นอย่างสุจริตได้เฉพาะบน DEX แท้เท่านั้น"],
+      "gap": 0.8
+    },
+
+    {
+      "id": "a0",
+      "en": "Automated trading assistants are everywhere in marketing and almost nowhere in practice. The obstacle is not technical. It is structural, and it has two halves.",
+      "th": ["บอทช่วยเทรดมีอยู่เต็มไปหมดในโฆษณา แต่แทบไม่มีที่ใช้ได้จริง", "อุปสรรคไม่ใช่เรื่องเทคนิค แต่เป็นเรื่องโครงสร้าง และมีอยู่สองข้อ"],
+      "gap": 0.5
+    },
+    {
+      "id": "a1",
+      "en": "The first is cost. On a chain that charges gas, a strategy evaluating the market every minute pays a fee for every evaluation, and again for every rebalance.",
+      "th": ["ข้อแรกคือต้นทุน บนเชนที่เก็บค่าแก๊ส กลยุทธ์ที่ประเมินตลาดทุกนาที", "ต้องจ่ายค่าธรรมเนียมทุกครั้งที่คิด และจ่ายอีกทุกครั้งที่ปรับพอร์ต"],
+      "gap": 0.4
+    },
+    {
+      "id": "a2",
+      "en": "That fee floor eliminates most short-horizon strategies before the first trade is placed. Spread arbitrage most of all — the gas on a round trip exceeds the spread it was trying to capture.",
+      "th": ["พื้นค่าธรรมเนียมนั้นฆ่ากลยุทธ์ระยะสั้นเกือบทั้งหมดก่อนจะได้เปิดไม้แรกด้วยซ้ำ", "หนักที่สุดคืออาร์บิทราจ — ค่าแก๊สไปกลับหนึ่งรอบ แพงกว่าส่วนต่างที่มันพยายามเก็บ"],
+      "gap": 0.5
+    },
+    {
+      "id": "a3",
+      "en": "The second half is worse, because no amount of engineering fixes it.",
+      "th": "ข้อที่สองหนักกว่า เพราะไม่ว่าจะเขียนโค้ดเก่งแค่ไหนก็แก้ไม่ได้",
+      "gap": 0.4
+    },
+    {
+      "id": "a4",
+      "en": "A centralised exchange is the counterparty to its own users. It holds the deposits. It sees the order book. Its revenue rises when its users lose.",
+      "th": ["กระดานเทรดแบบรวมศูนย์คือคู่สัญญาของผู้ใช้เอง", "มันถือเงินฝาก มันเห็นสมุดคำสั่ง และรายได้ของมันเพิ่มขึ้นเมื่อผู้ใช้ขาดทุน"],
+      "gap": 0.4
+    },
+    {
+      "id": "a5",
+      "en": "Any bot such an exchange operates is sitting on the wrong side of the table. However good the code is, the incentive points the wrong way.",
+      "th": ["บอทที่กระดานแบบนั้นทำขึ้น ย่อมนั่งอยู่ผิดฝั่งโต๊ะ", "โค้ดจะดีแค่ไหน แรงจูงใจก็ชี้ผิดทางอยู่ดี"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "b0",
+      "en": "TPIX Chain removes the first half. Gas is zero, so a strategy may evaluate as often as it needs to — and arbitrage becomes viable rather than theoretical.",
+      "th": ["TPIX Chain ปลดข้อแรกออก ค่าแก๊สเป็นศูนย์ กลยุทธ์จึงประเมินตลาดถี่เท่าที่ต้องการได้", "และอาร์บิทราจกลายเป็นสิ่งที่ทำได้จริง ไม่ใช่แค่ทฤษฎี"],
+      "gap": 0.4
+    },
+    {
+      "id": "b1",
+      "en": "TPIX TRADE removes the second. It is a genuine decentralised exchange. The user's coins never leave the user's wallet, and the platform never holds a private key.",
+      "th": ["TPIX TRADE ปลดข้อที่สอง เพราะเป็น DEX แท้", "เหรียญของผู้ใช้ไม่เคยออกจากกระเป๋าตัวเอง และแพลตฟอร์มไม่เคยถือกุญแจส่วนตัว"],
+      "gap": 0.4
+    },
+    {
+      "id": "b2",
+      "en": "That is the whole argument. The platform cannot trade against the user, cannot front-run the user, and cannot profit from the user's loss — because it never takes custody, and never holds the other side.",
+      "th": ["นั่นคือทั้งหมดของเหตุผล แพลตฟอร์มเทรดสวนผู้ใช้ไม่ได้ ตัดหน้าไม่ได้", "และไม่ได้กำไรจากการที่ผู้ใช้ขาดทุน เพราะมันไม่เคยถือเหรียญ และไม่เคยถืออีกฝั่งของดีล"],
+      "gap": 0.4
+    },
+    {
+      "id": "b3",
+      "en": "AI TRADE is not honest because we promise it is. It is honest because the architecture leaves no room to be anything else.",
+      "th": ["AI TRADE ไม่ได้ซื่อสัตย์เพราะเราสัญญาว่าจะซื่อสัตย์", "แต่ซื่อสัตย์เพราะสถาปัตยกรรมไม่เปิดช่องให้เป็นอย่างอื่นได้เลย"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "c0",
+      "en": "One design decision deserves stating up front. The decision engine is a deterministic rule ensemble. It is not a large language model.",
+      "th": ["มีการตัดสินใจเชิงออกแบบข้อหนึ่งที่ควรบอกไว้ก่อน", "ตัวตัดสินใจเป็นโมเดลกฎรวมคะแนนที่ให้ผลแน่นอน ไม่ใช่โมเดลภาษาขนาดใหญ่"],
+      "gap": 0.4
+    },
+    {
+      "id": "c1",
+      "en": "That was a choice, not a limitation. A decision that puts real money at risk has to be reproducible and auditable — the same market data must always produce the same answer, and every answer must carry a written reason.",
+      "th": ["นี่คือการเลือก ไม่ใช่ข้อจำกัด การตัดสินใจที่เอาเงินจริงไปเสี่ยงต้องย้อนตรวจได้", "ข้อมูลชุดเดิมต้องให้คำตอบเดิมเสมอ และทุกคำตอบต้องมีเหตุผลเขียนกำกับไว้"],
+      "gap": 0.4
+    },
+    {
+      "id": "c2",
+      "en": "An optional language-model advisor does exist, for commentary on past performance. Its interface exposes no method capable of placing a trade.",
+      "th": ["ระบบมีที่ปรึกษาที่เป็นโมเดลภาษาให้เลือกใช้ ไว้ให้ความเห็นเรื่องผลงานย้อนหลัง", "แต่อินเทอร์เฟซของมันไม่มีเมธอดใดที่สั่งเทรดได้เลย"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "d0",
+      "en": "Eight strategies ship today.",
+      "th": "วันนี้มีกลยุทธ์พร้อมใช้แปดตัว",
+      "gap": 0.45
+    },
+    {
+      "id": "d1",
+      "en": "Grid Trading and Smart DCA are the low-risk pair, open on the free tier. Momentum Trend rides EMA crossovers confirmed by volume.",
+      "th": ["Grid Trading กับ Smart DCA เป็นคู่ความเสี่ยงต่ำ เปิดให้ใช้ตั้งแต่ระดับฟรี", "Momentum Trend เข้าตามเทรนด์เมื่อ EMA ตัดกันและมีวอลุ่มยืนยัน"],
+      "gap": 0.4
+    },
+    {
+      "id": "d2",
+      "en": "RSI Mean Reversion buys statistical oversold and sells overbought around a rolling mean. Volatility Breakout enters on a Donchian channel break with an ATR-scaled stop.",
+      "th": ["RSI Mean Reversion ซื้อตอน oversold ขายตอน overbought รอบค่าเฉลี่ยเคลื่อนที่", "Volatility Breakout เข้าเมื่อราคาทะลุกรอบ Donchian พร้อมจุดตัดขาดทุนอิง ATR"],
+      "gap": 0.4
+    },
+    {
+      "id": "d3",
+      "en": "Micro Scalper works order-book imbalance in basis points. Spread Arbitrage captures the gap between the TPIX pool price and a reference exchange price — the strategy that zero gas makes possible at all.",
+      "th": ["Micro Scalper เก็บกำไรระดับจุดฐานจากความไม่สมดุลของสมุดคำสั่ง", "ส่วน Spread Arbitrage เก็บส่วนต่างระหว่างราคาในพูล TPIX กับราคาอ้างอิง — กลยุทธ์ที่เกิดขึ้นได้เพราะค่าแก๊สเป็นศูนย์"],
+      "gap": 0.5
+    },
+    {
+      "id": "d4",
+      "en": "And the eighth: TPIX AI Signal — the ensemble.",
+      "th": "และตัวที่แปด TPIX AI Signal — โมเดลรวมสัญญาณ",
+      "gap": 0.6
+    },
+
+    {
+      "id": "e0",
+      "en": "AI Signal blends four independent readings of price action, each scored from minus one to plus one.",
+      "th": "AI Signal รวมสี่มุมมองที่เป็นอิสระจากกัน แต่ละมุมให้คะแนนตั้งแต่ลบหนึ่งถึงบวกหนึ่ง",
+      "gap": 0.4
+    },
+    {
+      "id": "e1",
+      "en": "E M A trend, at thirty percent — which way is the market actually going. Momentum, at twenty five — how much force is behind the move.",
+      "th": ["เทรนด์ EMA น้ำหนัก 30% — ตลาดกำลังไปทางไหนจริง ๆ", "โมเมนตัม น้ำหนัก 25% — แรงส่งของการเคลื่อนไหวนี้มีแค่ไหน"],
+      "gap": 0.4
+    },
+    {
+      "id": "e2",
+      "en": "R S I mean reversion, at twenty five — is price cheap or expensive against its own centre. And Bollinger position, at twenty — where in its range price is sitting.",
+      "th": ["RSI สวนค่าเฉลี่ย น้ำหนัก 25% — ราคาถูกหรือแพงเทียบค่ากลางของตัวเอง", "และตำแหน่งในกรอบ Bollinger น้ำหนัก 20% — ตอนนี้ราคาอยู่ตรงไหนของช่วง"],
+      "gap": 0.4
+    },
+    {
+      "id": "e3",
+      "en": "The weights are then re-balanced by regime. A directional market leans on trend and momentum. A ranging market leans on mean reversion and band position.",
+      "th": ["จากนั้นน้ำหนักจะถูกปรับตามสภาพตลาด", "ตลาดที่มีทิศทางจะพึ่งเทรนด์และโมเมนตัม ส่วนตลาดออกข้างจะพึ่งการสวนค่าเฉลี่ยและตำแหน่งในกรอบ"],
+      "gap": 0.4
+    },
+    {
+      "id": "e4",
+      "en": "The blended score must then clear a confidence threshold the user sets, between fifty five and ninety five percent.",
+      "th": "คะแนนรวมต้องผ่านระดับความมั่นใจที่ผู้ใช้ตั้งไว้ ระหว่าง 55 ถึง 95 เปอร์เซ็นต์",
+      "gap": 0.4
+    },
+    {
+      "id": "e5",
+      "en": "The floor is fifty five, not fifty, and the reason is instructive. At fifty, the buy gate and the sell gate meet exactly. The hold band disappears, and identical inputs flip the bot on every tick.",
+      "th": ["ขั้นต่ำเป็น 55 ไม่ใช่ 50 และเหตุผลน่าสนใจ", "ที่ 50 ประตูซื้อกับประตูขายชนกันพอดี ช่วงถือหายไป และข้อมูลชุดเดิมทำให้บอทสลับข้างทุกติ๊ก"],
+      "gap": 0.4
+    },
+    {
+      "id": "e6",
+      "en": "Measured in a ranging market, that produced a five point six percent loss across two hundred and one ticks — entirely from fees, without a single wrong directional call.",
+      "th": ["วัดจริงในตลาดออกข้าง ได้ผลติดลบ 5.6% ตลอด 201 ติ๊ก", "ขาดทุนจากค่าธรรมเนียมล้วน ๆ โดยไม่ได้เดาทิศผิดแม้แต่ครั้งเดียว"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "f0",
+      "en": "Before any strategy acts, a risk gate runs.",
+      "th": "ก่อนที่กลยุทธ์ใดจะลงมือ มีด่านความเสี่ยงทำงานก่อนเสมอ",
+      "gap": 0.4
+    },
+    {
+      "id": "f1",
+      "en": "It combines two independent signals. Price behaviour, which detects a break before the news reports it. And market news, which explains why, and confirms the move is not noise.",
+      "th": ["มันรวมสองสัญญาณที่เป็นอิสระจากกัน — พฤติกรรมราคา ซึ่งจับได้ก่อนข่าวจะออก", "และข่าวตลาด ซึ่งบอกว่าทำไม และยืนยันว่าไม่ใช่แค่สัญญาณรบกวน"],
+      "gap": 0.4
+    },
+    {
+      "id": "f2",
+      "en": "The gate takes the higher of the two readings. Never the average — averaging lets one calm signal mask an alarming one, and walks the bot straight into the fire.",
+      "th": ["ด่านนี้ใช้ค่าที่สูงกว่าระหว่างสองฝั่ง ไม่ใช่ค่าเฉลี่ย", "เพราะการเฉลี่ยจะให้สัญญาณที่นิ่งกลบสัญญาณอันตราย แล้วพาบอทเดินเข้ากองไฟ"],
+      "gap": 0.4
+    },
+    {
+      "id": "f3",
+      "en": "Its output is one of four: enter at full size, enter reduced, pause new entries, or exit everything held.",
+      "th": "ผลลัพธ์มีสี่แบบ — เข้าเต็มไม้ ลดขนาดไม้ หยุดเข้าไม้ใหม่ หรือเทออกทั้งหมด",
+      "gap": 0.4
+    },
+    {
+      "id": "f4",
+      "en": "News is read from public feeds and scored by weighted keyword, so any decision can be replayed and explained after the fact.",
+      "th": ["ข่าวดึงจากฟีดสาธารณะแล้วให้คะแนนด้วยคำสำคัญถ่วงน้ำหนัก", "ทุกการตัดสินใจจึงย้อนดูได้ว่าทำไมบอทถึงทำแบบนั้น"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "g0",
+      "en": "Which brings us back to custody — the part that matters.",
+      "th": "ซึ่งพาเรากลับมาที่เรื่องใครถือเหรียญ — จุดที่สำคัญที่สุด",
+      "gap": 0.4
+    },
+    {
+      "id": "g1",
+      "en": "Paper trading is the default. The full engine runs against live prices in a simulated portfolio. No funds are involved, and nobody signs anything.",
+      "th": ["ค่าเริ่มต้นคือโหมดทดลอง เครื่องยนต์ทำงานเต็มรูปแบบกับราคาจริง ในพอร์ตจำลอง", "ไม่มีเงินจริงเข้ามาเกี่ยวข้อง และไม่มีใครต้องเซ็นอะไร"],
+      "gap": 0.4
+    },
+    {
+      "id": "g2",
+      "en": "In live mode, the engine records a signal awaiting confirmation. The user signs it, in their own wallet.",
+      "th": ["ในโหมดจริง เครื่องยนต์บันทึกเป็นสัญญาณรอการยืนยัน", "แล้วผู้ใช้เป็นคนกดเซ็นเองในกระเป๋าของตัวเอง"],
+      "gap": 0.4
+    },
+    {
+      "id": "g3",
+      "en": "The system holds no private key in either mode. Even with live trading enabled, AI TRADE never submits a transaction on a user's behalf.",
+      "th": ["ระบบไม่ถือกุญแจส่วนตัวในทั้งสองโหมด", "ต่อให้เปิดโหมดจริงแล้ว AI TRADE ก็ไม่เคยส่งธุรกรรมแทนผู้ใช้"],
+      "gap": 0.4
+    },
+    {
+      "id": "g4",
+      "en": "And live trading ships disabled, so every user can watch a strategy behave on real prices before any capital is exposed.",
+      "th": ["และโหมดจริงถูกปิดมาตั้งแต่ต้น", "เพื่อให้ทุกคนได้ดูพฤติกรรมจริงของกลยุทธ์บนราคาจริงก่อน แล้วค่อยตัดสินใจเอาเงินเข้า"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "h0",
+      "en": "One boundary, stated plainly rather than left to be inferred. The user selects the trading pair. The engine decides buy, sell or hold on that pair — it does not scan the market and choose an asset. Automatic pair selection is on the roadmap, not in the build.",
+      "th": ["ขอบเขตข้อหนึ่ง ขอบอกตรง ๆ ไม่ปล่อยให้เดาเอง — ผู้ใช้เป็นคนเลือกคู่เทรด", "เครื่องยนต์ตัดสินใจว่าซื้อ ขาย หรือถือ บนคู่นั้น มันยังไม่กวาดตลาดเลือกเหรียญให้ · การเลือกคู่อัตโนมัติอยู่ในแผน ยังไม่อยู่ในของที่ส่งมอบ"],
+      "gap": 0.5
+    },
+    {
+      "id": "h1",
+      "en": "Credits are denominated in TPIX and nothing else, so every bot rental is direct demand for the native coin rather than revenue leaving the ecosystem.",
+      "th": ["เครดิตคิดเป็น TPIX อย่างเดียว ไม่รับสกุลอื่น", "ทุกการเช่าบอทจึงเป็นแรงซื้อเหรียญหลักโดยตรง ไม่ใช่รายได้ที่รั่วออกไปนอกระบบ"],
+      "gap": 0.5
+    },
+    {
+      "id": "h2",
+      "en": "A centralised exchange can build a faster bot. It cannot build an honest one, because it is the counterparty.",
+      "th": ["กระดานเทรดแบบรวมศูนย์สร้างบอทที่เร็วกว่าได้", "แต่สร้างบอทที่ซื่อสัตย์ไม่ได้ เพราะตัวมันเองคือคู่สัญญา"],
+      "gap": 0.4
+    },
+    {
+      "id": "h3",
+      "en": "AI TRADE is positioned where the incentives finally line up. The user keeps custody. The platform holds no other side. And the only route to revenue is being worth renting again.",
+      "th": ["AI TRADE ยืนอยู่ในจุดที่แรงจูงใจตรงกันทั้งหมดเสียที", "ผู้ใช้ถือเหรียญเอง แพลตฟอร์มไม่ได้ถืออีกฝั่ง และทางเดียวที่จะมีรายได้คือมันต้องดีพอให้คนอยากเช่าอีกครั้ง"],
+      "gap": 0.85
+    },
+    {
+      "id": "z1",
+      "en": "Next — part seven: Living Identity. Wallet recovery without a seed phrase.",
+      "th": "ตอนต่อไป — ตอนที่เจ็ด Living Identity การกู้กระเป๋าคืนโดยไม่ต้องมีวลีลับ",
+      "gap": 0.2
+    }
+  ]
+}

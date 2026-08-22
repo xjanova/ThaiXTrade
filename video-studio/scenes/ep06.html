@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>TPIX Whitepaper — Part Six: AI TRADE</title>
+<link rel="stylesheet" href="_theme.css">
+<style>
+    .act { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; }
+    .title-wrap { position: absolute; inset: 0; display: flex; flex-direction: column;
+                  align-items: center; justify-content: center; text-align: center; }
+
+    .barrier { border-radius: 20px; padding: 30px 34px; border: 1px solid rgba(246,92,110,.32);
+               background: rgba(246,92,110,.08); }
+    .barrier .bn { font-size: 19px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase;
+                   color: var(--red); }
+    .barrier .bt { font-size: 34px; font-weight: 750; margin-top: 12px; letter-spacing: -.015em; }
+    .barrier .bd { font-size: 21px; line-height: 1.5; color: var(--ink-3); margin-top: 14px; }
+
+    .strat { border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px;
+             background: rgba(255,255,255,.032); position: relative; }
+    .strat .sn { font-size: 23px; font-weight: 700; }
+    .strat .sc { font-family: "JetBrains Mono", monospace; font-size: 15px; color: var(--cyan);
+                 margin-top: 3px; }
+    .strat .sd { font-size: 17px; line-height: 1.4; color: var(--ink-3); margin-top: 11px; }
+    .strat .tag { position: absolute; top: 20px; right: 22px; font-size: 14px; font-weight: 750;
+                  letter-spacing: .12em; padding: 4px 10px; border-radius: 6px;
+                  border: 1px solid var(--line-2); color: var(--ink-3); }
+
+    .view { border: 1px solid rgba(34,211,238,.3); border-radius: 18px; padding: 26px 24px;
+            background: rgba(34,211,238,.07); }
+    .view .w { font-size: 52px; font-weight: 800; letter-spacing: -.03em; color: var(--cyan-2); line-height: 1; }
+    .view .v { font-size: 23px; font-weight: 700; margin-top: 12px; }
+    .view .q { font-size: 18px; line-height: 1.4; color: var(--ink-3); margin-top: 10px; }
+
+    .gate { border: 1px solid var(--line); border-radius: 16px; padding: 20px 24px;
+            background: rgba(255,255,255,.03); text-align: center; }
+    .gate .gt { font-size: 22px; font-weight: 700; }
+    .gate .gs { font-size: 16px; color: var(--ink-3); margin-top: 6px; }
+</style>
+
+<div id="stage">
+<div class="title-plate" data-in="0.1" data-anim="fade" data-dur="1.8" data-out="10.8" data-odur="1.0">
+    <img src="../assets/plates/ep06.jpg" alt="">
+</div>
+<div class="frame">
+
+<!-- ══════ A · chapter card  0 → 11.5 ══════ -->
+<div class="act" data-in="0.15" data-anim="fade" data-dur="1.0" data-out="10.8" data-odur="0.7">
+    <div class="title-wrap">
+        <img src="../assets/tpix-logo.webp" style="width:96px;height:96px;object-fit:contain;
+             filter:drop-shadow(0 0 28px rgba(233,174,40,.42))" data-in="0.3" data-anim="pop" data-dur="1.2">
+        <div class="label" style="color:var(--cyan);letter-spacing:.42em;margin-top:28px"
+             data-in="0.8" data-dur="0.9">Part Six of Nine</div>
+        <div class="display" style="margin-top:20px" data-in="1.1" data-anim="blur" data-dur="1.2">AI TRADE</div>
+        <div class="body" style="margin-top:22px;font-size:29px;text-align:center;max-width:1180px"
+             data-in="1.9" data-dur="1.0">
+            A non-custodial strategy engine —<br>and why it can only exist honestly on a true DEX
+        </div>
+        <div style="width:230px;height:2px;margin-top:34px;
+             background:linear-gradient(90deg,transparent,var(--gold),transparent)"
+             data-in="2.6" data-anim="wipe" data-dur="0.9"></div>
+        <div class="card" style="padding:20px 30px;margin-top:34px" data-in="3.1" data-dur="0.9">
+            <div class="label" style="color:var(--gold-2)">Chapter 9</div>
+            <div style="font-size:25px;font-weight:650;margin-top:7px">AI TRADE — Non-Custodial Strategy Engine</div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ B · the two barriers  11.4 → 79.8 ══════ -->
+<div class="act" data-in="11.4" data-anim="fade" data-dur="0.7" data-out="79.1" data-odur="0.7">
+    <div class="label" style="color:var(--red)" data-in="11.6" data-dur="0.6">§9 · The Structural Obstacle</div>
+    <h2 class="h2" style="margin-top:12px" data-in="11.9" data-anim="rise" data-dur="0.9">
+        Everywhere in marketing. Almost <span class="red">nowhere in practice</span>.</h2>
+
+    <div style="display:flex;gap:32px;margin-top:40px">
+        <div class="barrier" style="flex:1" data-in="24.4" data-anim="left" data-dur="0.9">
+            <div class="bn">Barrier 01</div>
+            <div class="bt red">Cost</div>
+            <div class="bd">A strategy that evaluates the market every minute pays gas on every
+                evaluation — and again on every rebalance.</div>
+            <div style="margin-top:26px;padding-top:22px;border-top:1px solid rgba(246,92,110,.22)"
+                 data-in="37.0" data-anim="fade" data-dur="0.8">
+                <div class="label" style="color:var(--ink-2)">Worst case — spread arbitrage</div>
+                <svg width="620" height="132" style="margin-top:16px">
+                    <text x="0" y="22" fill="#5F7089" font-size="17" font-weight="650">GAS ON A ROUND TRIP</text>
+                    <rect x="0" y="34" width="404" height="26" rx="6" fill="rgba(246,92,110,.85)"
+                          data-in="38.4" data-anim="wipe" data-dur="0.9"/>
+                    <text x="0" y="94" fill="#5F7089" font-size="17" font-weight="650">SPREAD BEING CAPTURED</text>
+                    <rect x="0" y="106" width="122" height="26" rx="6" fill="rgba(34,211,238,.6)"
+                          data-in="39.2" data-anim="wipe" data-dur="0.9"/>
+                </svg>
+                <div class="figcap" style="margin-top:12px">
+                    <b>Fig. 1</b> — The strategy is dead before the first trade.
+                </div>
+            </div>
+        </div>
+
+        <div class="barrier" style="flex:1" data-in="55.8" data-anim="right" data-dur="0.9">
+            <div class="bn">Barrier 02</div>
+            <div class="bt red">Conflict of Interest</div>
+            <div class="bd">A centralised exchange is the counterparty to its own users. It holds the
+                deposits. It sees the order book. Its revenue rises when its users lose.</div>
+            <div style="margin-top:26px;padding-top:22px;border-top:1px solid rgba(246,92,110,.22)"
+                 data-in="69.3" data-anim="fade" data-dur="0.8">
+                <svg width="620" height="146">
+                    <rect x="0" y="18" width="248" height="76" rx="14" fill="rgba(255,255,255,.05)"
+                          stroke="rgba(255,255,255,.18)"/>
+                    <text x="124" y="52" text-anchor="middle" fill="#EDF2F9" font-size="22" font-weight="700">User</text>
+                    <text x="124" y="76" text-anchor="middle" fill="#5F7089" font-size="15"
+                          font-weight="650" letter-spacing="1.6">DEPOSITS HELD</text>
+
+                    <rect x="352" y="18" width="268" height="76" rx="14" fill="rgba(246,92,110,.14)"
+                          stroke="rgba(246,92,110,.5)"/>
+                    <text x="486" y="52" text-anchor="middle" fill="#F65C6E" font-size="22" font-weight="700">CEX + its bot</text>
+                    <text x="486" y="76" text-anchor="middle" fill="#A6B6CC" font-size="15"
+                          font-weight="650" letter-spacing="1.6">SEES THE BOOK</text>
+
+                    <path d="M256,56 L344,56" stroke="rgba(246,92,110,.7)" stroke-width="2"/>
+                    <path d="M336,50 L346,56 L336,62 Z" fill="rgba(246,92,110,.9)"/>
+                    <text x="300" y="124" text-anchor="middle" fill="#F65C6E" font-size="18"
+                          font-weight="700" letter-spacing="1.4">SAME SIDE OF NOTHING</text>
+                </svg>
+                <div class="figcap" style="margin-top:6px">
+                    <b>Fig. 2</b> — However good the code, the incentive points the wrong way.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ C · TPIX removes both  79.7 → 130.3 ══════ -->
+<div class="act" data-in="79.7" data-anim="fade" data-dur="0.7" data-out="129.6" data-odur="0.7">
+    <div class="label" style="color:var(--green)" data-in="79.9" data-dur="0.6">§9 · Why TPIX Changes the Answer</div>
+    <div style="display:flex;gap:32px;margin-top:34px">
+        <div class="card accent-green" style="flex:1;padding:34px 36px" data-in="80.1" data-anim="left" data-dur="0.9">
+            <div class="label" style="color:var(--green)">Barrier 01 — removed</div>
+            <div style="font-size:60px;font-weight:800;letter-spacing:-.03em;margin-top:16px" class="grn">Gas = 0</div>
+            <div class="body" style="font-size:23px;margin-top:18px;max-width:640px">
+                A strategy may evaluate as often as it needs to. Arbitrage becomes viable
+                rather than theoretical.
+            </div>
+        </div>
+        <div class="card accent-green" style="flex:1;padding:34px 36px" data-in="93.0" data-anim="right" data-dur="0.9">
+            <div class="label" style="color:var(--green)">Barrier 02 — removed</div>
+            <div style="font-size:60px;font-weight:800;letter-spacing:-.03em;margin-top:16px" class="grn">True DEX</div>
+            <div class="body" style="font-size:23px;margin-top:18px;max-width:640px">
+                Coins never leave the user's wallet. The platform never holds a private key.
+            </div>
+        </div>
+    </div>
+
+    <div style="display:flex;gap:22px;margin-top:36px">
+        <div class="gate accent-green" style="flex:1;border-color:rgba(43,196,106,.35);background:rgba(43,196,106,.07)"
+             data-in="106.2" data-anim="pop" data-dur="0.7">
+            <div class="gt grn">Cannot trade against you</div>
+            <div class="gs">No other side to hold</div></div>
+        <div class="gate" style="flex:1;border-color:rgba(43,196,106,.35);background:rgba(43,196,106,.07)"
+             data-in="106.8" data-anim="pop" data-dur="0.7">
+            <div class="gt grn">Cannot front-run you</div>
+            <div class="gs">No private order flow</div></div>
+        <div class="gate" style="flex:1;border-color:rgba(43,196,106,.35);background:rgba(43,196,106,.07)"
+             data-in="107.4" data-anim="pop" data-dur="0.7">
+            <div class="gt grn">Cannot profit from your loss</div>
+            <div class="gs">Never takes custody</div></div>
+    </div>
+
+    <div class="h3" style="margin-top:44px;text-align:center;max-width:1400px;margin-left:auto;margin-right:auto"
+         data-in="120.4" data-anim="rise" data-dur="0.9">
+        Not honest because it is <span class="red">promised</span> —
+        honest because the <span class="grn">architecture leaves no room to be otherwise</span>.
+    </div>
+    <div class="figcap" style="margin-top:22px;text-align:center" data-in="124.0" data-dur="0.8">
+        <b>Fig. 3</b> — Incentive alignment as an architectural property, not a policy statement.
+    </div>
+</div>
+
+<!-- ══════ D · explainable not oracular  130.2 → 169.0 ══════ -->
+<div class="act" data-in="130.2" data-anim="fade" data-dur="0.7" data-out="168.4" data-odur="0.7">
+    <div class="label" data-in="130.4" data-dur="0.6">§9 · Design Principle</div>
+    <h2 class="h2" style="margin-top:12px" data-in="130.7" data-anim="rise" data-dur="0.9">
+        Explainable — <span class="cyan">not oracular</span></h2>
+
+    <div style="display:flex;gap:28px;margin-top:42px">
+        <div class="card accent-cyan" style="flex:1;padding:32px 34px" data-in="131.4" data-anim="left" data-dur="0.9">
+            <div class="label" style="color:var(--cyan)">What the engine is</div>
+            <div style="font-size:36px;font-weight:750;margin-top:14px;line-height:1.2">
+                A deterministic<br>rule ensemble</div>
+            <div class="small" style="margin-top:18px;font-size:21px;line-height:1.5">
+                Same market data in → same answer out. Every answer carries a written reason.
+            </div>
+        </div>
+        <div class="card accent-red" style="flex:1;padding:32px 34px" data-in="132.0" data-anim="right" data-dur="0.9">
+            <div class="label" style="color:var(--red)">What it is not</div>
+            <div style="font-size:36px;font-weight:750;margin-top:14px;line-height:1.2">
+                A large<br>language model</div>
+            <div class="small" style="margin-top:18px;font-size:21px;line-height:1.5">
+                Non-reproducible output has no place in a decision that risks real money.
+            </div>
+        </div>
+        <div class="card" style="flex:1.1;padding:32px 34px" data-in="157.2" data-anim="right" data-dur="0.9">
+            <div class="label" style="color:var(--ink-2)">The optional advisor</div>
+            <div style="font-size:26px;font-weight:700;margin-top:14px;line-height:1.3">
+                LLM commentary on past performance</div>
+            <div class="mono" style="margin-top:20px;font-size:19px;color:var(--ink-3);
+                 border:1px solid var(--line);border-radius:10px;padding:16px 18px;background:rgba(0,0,0,.3)">
+                interface Advisor {<br>
+                &nbsp;&nbsp;name(): string<br>
+                &nbsp;&nbsp;isAvailable(): bool<br>
+                &nbsp;&nbsp;advise(context): opinion<br>
+                }
+            </div>
+            <div class="small grn" style="margin-top:14px;font-size:19px">
+                No method capable of placing a trade.
+            </div>
+        </div>
+    </div>
+    <div class="figcap" style="margin-top:30px;max-width:1400px" data-in="162.0" data-dur="0.8">
+        <b>Fig. 4</b> — The advisor is advisory by type signature, not by convention.
+    </div>
+</div>
+
+<!-- ══════ E · eight strategies  168.9 → 217.0 ══════ -->
+<div class="act" data-in="168.9" data-anim="fade" data-dur="0.7" data-out="216.3" data-odur="0.7">
+    <div class="label" data-in="169.1" data-dur="0.6">§9 · Strategy Catalogue</div>
+    <h2 class="h2" style="margin-top:12px" data-in="169.3" data-anim="rise" data-dur="0.9">
+        Eight strategies, <span class="gold">shipping today</span></h2>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:34px">
+        <div class="strat" style="border-color:rgba(43,196,106,.35)" data-in="172.5" data-anim="rise" data-dur="0.7">
+            <div class="tag grn">FREE</div><div class="sn">Grid Trading</div><div class="sc">grid</div>
+            <div class="sd">Buys dips inside its range, sells one grid step higher. One position at a time.</div></div>
+        <div class="strat" style="border-color:rgba(43,196,106,.35)" data-in="173.0" data-anim="rise" data-dur="0.7">
+            <div class="tag grn">FREE</div><div class="sn">Smart DCA</div><div class="sc">dca</div>
+            <div class="sd">Buys on schedule, and buys bigger below the moving average.</div></div>
+        <div class="strat" style="border-color:rgba(34,211,238,.35)" data-in="177.2" data-anim="rise" data-dur="0.7">
+            <div class="tag cyan">BASIC</div><div class="sn">Momentum Trend</div><div class="sc">momentum</div>
+            <div class="sd">EMA crossover confirmed by volume expansion.</div></div>
+        <div class="strat" style="border-color:rgba(139,92,246,.35)" data-in="183.7" data-anim="rise" data-dur="0.7">
+            <div class="tag violet">PRO</div><div class="sn">RSI Mean Reversion</div><div class="sc">mean_reversion</div>
+            <div class="sd">Buys statistical oversold, sells overbought around a rolling mean.</div></div>
+        <div class="strat" style="border-color:rgba(139,92,246,.35)" data-in="189.4" data-anim="rise" data-dur="0.7">
+            <div class="tag violet">PRO</div><div class="sn">Volatility Breakout</div><div class="sc">breakout</div>
+            <div class="sd">Donchian channel break with an ATR-scaled stop.</div></div>
+        <div class="strat" style="border-color:rgba(139,92,246,.35)" data-in="196.6" data-anim="rise" data-dur="0.7">
+            <div class="tag violet">PRO</div><div class="sn">Micro Scalper</div><div class="sc">scalping</div>
+            <div class="sd">Order-book imbalance, targets in basis points, volatility-capped.</div></div>
+        <div class="strat" style="border-color:rgba(233,174,40,.4);background:rgba(233,174,40,.07)"
+             data-in="202.4" data-anim="rise" data-dur="0.7">
+            <div class="tag gold">VIP</div><div class="sn gold">Spread Arbitrage</div><div class="sc">arbitrage</div>
+            <div class="sd">Pool price vs reference price. <b class="gold">Only possible because gas is zero.</b></div></div>
+        <div class="strat" style="border-color:rgba(233,174,40,.4);background:rgba(233,174,40,.07)"
+             data-in="211.8" data-anim="pop" data-dur="0.7">
+            <div class="tag gold">VIP</div><div class="sn gold">TPIX AI Signal</div><div class="sc">ai_signal</div>
+            <div class="sd">Four-view weighted ensemble, re-weighted by market regime.</div></div>
+    </div>
+    <div class="figcap" style="margin-top:28px;max-width:1400px" data-in="213.0" data-dur="0.8">
+        <b>Fig. 5</b> — Strategy catalogue. Access tier rises with risk and computational cost;
+        each strategy holds at most one position at a time.
+    </div>
+</div>
+
+<!-- ══════ F · the ensemble  216.9 → 297.5 ══════ -->
+<div class="act" data-in="216.9" data-anim="fade" data-dur="0.7" data-out="296.8" data-odur="0.7">
+    <div class="label" style="color:var(--gold-2)" data-in="217.1" data-dur="0.6">§9 · TPIX AI Signal</div>
+    <h2 class="h2" style="margin-top:12px" data-in="217.3" data-anim="rise" data-dur="0.9">
+        Four views of the same price, <span class="gold">weighted by regime</span></h2>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:32px">
+        <div class="view" data-in="224.8" data-anim="rise" data-dur="0.8">
+            <div class="w">30%</div><div class="v">EMA Trend</div>
+            <div class="q">Which way is the market actually going?</div></div>
+        <div class="view" data-in="230.4" data-anim="rise" data-dur="0.8">
+            <div class="w">25%</div><div class="v">Momentum (ROC)</div>
+            <div class="q">How much force is behind the move?</div></div>
+        <div class="view" data-in="236.2" data-anim="rise" data-dur="0.8">
+            <div class="w">25%</div><div class="v">RSI Mean Reversion</div>
+            <div class="q">Cheap or expensive against its own centre?</div></div>
+        <div class="view" data-in="242.6" data-anim="rise" data-dur="0.8">
+            <div class="w">20%</div><div class="v">Bollinger Position</div>
+            <div class="q">Where in its range is price sitting?</div></div>
+    </div>
+
+    <div style="display:flex;gap:56px;margin-top:38px;align-items:flex-start">
+        <div style="width:820px">
+            <div class="label" style="color:var(--cyan)" data-in="248.6" data-dur="0.6">Re-weighting by market regime</div>
+            <div style="display:flex;gap:20px;margin-top:20px">
+                <div class="card accent-cyan" style="flex:1;padding:22px 24px" data-in="249.0" data-anim="left" data-dur="0.7">
+                    <div style="font-size:24px;font-weight:700">Directional market</div>
+                    <div class="small" style="margin-top:8px">Leans on trend + momentum</div></div>
+                <div class="card accent-viol" style="flex:1;padding:22px 24px" data-in="253.6" data-anim="left" data-dur="0.7">
+                    <div style="font-size:24px;font-weight:700">Ranging market</div>
+                    <div class="small" style="margin-top:8px">Leans on mean reversion + band position</div></div>
+            </div>
+
+            <div style="margin-top:34px">
+                <div class="label" data-in="260.9" data-dur="0.6">Confidence threshold — user set</div>
+                <svg id="conf" width="800" height="130" style="margin-top:18px"></svg>
+            </div>
+        </div>
+
+        <div style="flex:1">
+            <div class="card accent-red" style="padding:28px 30px" data-in="269.4" data-anim="rise" data-dur="0.9">
+                <div class="label" style="color:var(--red)">Why the floor is 55, not 50</div>
+                <div class="body" style="font-size:22px;margin-top:16px;line-height:1.5">
+                    At 50 the buy gate and the sell gate meet exactly. The hold band vanishes —
+                    identical inputs flip the bot on every tick.
+                </div>
+                <div style="display:flex;align-items:baseline;gap:16px;margin-top:24px;
+                            padding-top:22px;border-top:1px solid rgba(246,92,110,.24)"
+                     data-in="285.5" data-anim="fade" data-dur="0.8">
+                    <div class="red" style="font-size:62px;font-weight:800;letter-spacing:-.03em">−5.6%</div>
+                    <div class="small" style="font-size:20px;line-height:1.4">across 201 ticks<br>
+                        <b style="color:var(--ink-2)">from fees alone</b></div>
+                </div>
+                <div class="small" style="margin-top:16px;font-size:19px">
+                    Measured in a ranging market — without a single wrong directional call.
+                </div>
+            </div>
+            <div class="figcap" style="margin-top:20px;max-width:660px" data-in="291.0" data-dur="0.8">
+                <b>Fig. 6</b> — The hold band is not a comfort feature. It is what stops fee bleed.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ G · risk gate  297.4 → 346.9 ══════ -->
+<div class="act" data-in="297.4" data-anim="fade" data-dur="0.7" data-out="346.2" data-odur="0.7">
+    <div class="label" data-in="297.6" data-dur="0.6">§9 · Risk Gate</div>
+    <h2 class="h2" style="margin-top:12px" data-in="297.9" data-anim="rise" data-dur="0.9">
+        Price and news — combined by <span class="gold">max, never average</span></h2>
+
+    <svg id="riskgate" width="1656" height="360" style="margin-top:26px"></svg>
+
+    <div class="figcap" style="margin-top:10px;max-width:1400px" data-in="338.0" data-dur="0.8">
+        <b>Fig. 7</b> — Averaging lets one calm signal mask an alarming one, and walks the bot into
+        the fire. News is read from public feeds and scored by weighted keyword, so any decision
+        can be replayed and explained after the fact.
+    </div>
+</div>
+
+<!-- ══════ H · custody  346.8 → 394.1 ══════ -->
+<div class="act" data-in="346.8" data-anim="fade" data-dur="0.7" data-out="393.4" data-odur="0.7">
+    <div class="label" style="color:var(--green)" data-in="347.0" data-dur="0.6">§9 · Custody Model</div>
+    <h2 class="h2" style="margin-top:12px" data-in="347.2" data-anim="rise" data-dur="0.9">
+        The part that <span class="grn">matters</span></h2>
+
+    <table class="tbl" style="margin-top:36px;font-size:25px">
+        <thead><tr data-in="351.0" data-dur="0.5">
+            <th style="width:280px">Mode</th><th>What the system does</th><th style="width:340px">Who signs</th>
+        </tr></thead>
+        <tbody>
+        <tr data-in="351.9" data-anim="left" data-dur="0.6">
+            <td class="grn">Paper trading<br><span class="small" style="font-weight:400">default</span></td>
+            <td>Runs the full engine against <b class="ink">live prices</b> in a simulated portfolio. No funds involved.</td>
+            <td class="grn">Nobody</td></tr>
+        <tr data-in="364.6" data-anim="left" data-dur="0.6">
+            <td class="gold">Live</td>
+            <td>Records a <b class="ink">signal awaiting confirmation</b>.</td>
+            <td class="gold">The user, in their own wallet</td></tr>
+        </tbody>
+    </table>
+
+    <div style="display:flex;gap:22px;margin-top:38px">
+        <div class="card accent-green" style="flex:1;padding:26px 30px" data-in="373.6" data-anim="pop" data-dur="0.8">
+            <div style="font-size:27px;font-weight:750">No private key held</div>
+            <div class="small" style="margin-top:8px">In either mode. Ever.</div></div>
+        <div class="card accent-green" style="flex:1;padding:26px 30px" data-in="374.2" data-anim="pop" data-dur="0.8">
+            <div style="font-size:27px;font-weight:750">No transaction submitted</div>
+            <div class="small" style="margin-top:8px">Even with live trading enabled</div></div>
+        <div class="card accent-green" style="flex:1;padding:26px 30px" data-in="384.7" data-anim="pop" data-dur="0.8">
+            <div class="mono" style="font-size:23px;font-weight:600">AIBOT_LIVE_ENABLED=false</div>
+            <div class="small" style="margin-top:8px">Ships disabled — observe first, commit later</div></div>
+    </div>
+    <div class="figcap" style="margin-top:30px;max-width:1400px" data-in="388.0" data-dur="0.8">
+        <b>Fig. 8</b> — Custody model. The engine produces a recommendation; the user executes it.
+    </div>
+</div>
+
+<!-- ══════ I · scope + closing  394.0 → 448.7 ══════ -->
+<div class="act" data-in="394.0" data-anim="fade" data-dur="0.7" data-out="448.0" data-odur="0.7">
+    <div class="label" style="color:var(--gold-2)" data-in="394.2" data-dur="0.6">§9 · Scope &amp; Position</div>
+
+    <div style="display:flex;gap:52px;margin-top:30px;align-items:flex-start">
+        <div style="width:880px">
+            <div class="card accent-gold" style="padding:30px 34px" data-in="394.4" data-anim="left" data-dur="0.9">
+                <div class="label" style="color:var(--gold-2)">Stated plainly — what the engine does not do</div>
+                <div class="body" style="font-size:24px;margin-top:16px;line-height:1.5;max-width:780px">
+                    <b class="ink">The user selects the trading pair.</b> The engine decides buy, sell
+                    or hold on that pair. It does not scan the market and choose an asset.
+                </div>
+                <div class="small" style="margin-top:16px;font-size:20px">
+                    Automatic pair selection is on the roadmap — not in the build.
+                </div>
+            </div>
+
+            <div class="card" style="margin-top:24px;padding:28px 34px" data-in="414.6" data-anim="left" data-dur="0.9">
+                <div class="label" style="color:var(--cyan)">Credits</div>
+                <div style="display:flex;align-items:baseline;gap:18px;margin-top:14px">
+                    <div class="gold" style="font-size:44px;font-weight:800;letter-spacing:-.02em">TPIX only</div>
+                    <div class="small" style="font-size:20px">no other currency accepted</div>
+                </div>
+                <div class="small" style="margin-top:14px;font-size:20px;max-width:740px">
+                    Every bot rental is direct buy-side demand for the native coin — not revenue
+                    leaving the ecosystem.
+                </div>
+            </div>
+        </div>
+
+        <div style="flex:1">
+            <div class="h3" style="line-height:1.35" data-in="424.8" data-anim="rise" data-dur="0.9">
+                A centralised exchange can build a <span class="ink">faster</span> bot.
+            </div>
+            <div class="h3" style="margin-top:16px;line-height:1.35" data-in="428.4" data-anim="rise" data-dur="0.9">
+                It cannot build an <span class="red">honest</span> one —
+                because it is the counterparty.
+            </div>
+            <div style="height:1px;background:var(--line-2);margin:30px 0" data-in="433.7" data-anim="wipe" data-dur="0.9"></div>
+            <div style="display:flex;flex-direction:column;gap:16px">
+                <div class="gate" style="text-align:left;border-color:rgba(43,196,106,.35);background:rgba(43,196,106,.07)"
+                     data-in="434.0" data-anim="right" data-dur="0.7">
+                    <div class="gt grn">The user keeps custody</div></div>
+                <div class="gate" style="text-align:left;border-color:rgba(43,196,106,.35);background:rgba(43,196,106,.07)"
+                     data-in="437.6" data-anim="right" data-dur="0.7">
+                    <div class="gt grn">The platform holds no other side</div></div>
+                <div class="gate" style="text-align:left;border-color:rgba(233,174,40,.4);background:rgba(233,174,40,.08)"
+                     data-in="441.2" data-anim="right" data-dur="0.7">
+                    <div class="gt gold">The only route to revenue is being worth renting again</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ J · outro  448.6 → 457.4 ══════ -->
+<div class="act" data-in="448.6" data-anim="fade" data-dur="0.8">
+    <div class="title-wrap">
+        <img src="../assets/tpix-logo.webp" style="width:108px;height:108px;object-fit:contain;opacity:.9;
+             filter:drop-shadow(0 0 30px rgba(233,174,40,.4))" data-in="448.8" data-anim="pop" data-dur="1.0">
+        <div class="label" style="margin-top:28px;letter-spacing:.4em" data-in="449.2" data-dur="0.8">End of Part Six</div>
+        <div class="h1" style="margin-top:16px" data-in="449.5" data-anim="rise" data-dur="0.9">AI TRADE</div>
+        <div style="width:180px;height:1px;background:var(--line-2);margin-top:30px" data-in="450.1" data-anim="wipe" data-dur="0.8"></div>
+        <div class="body" style="margin-top:28px;font-size:27px;text-align:center" data-in="450.4" data-dur="0.9">
+            Next — <span class="cyan">Part Seven: Living Identity.</span>
+            Wallet recovery without a seed phrase.
+        </div>
+    </div>
+</div>
+
+</div><!-- /frame -->
+</div><!-- /stage -->
+
+<script src="_engine.js"></script>
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const sv = (n, at) => { const e = document.createElementNS(NS, n);
+    for (const k in at) e.setAttribute(k, at[k]); return e; };
+
+/* ---------- แถบระดับความมั่นใจ ---------- */
+(function confidenceBar() {
+    const svg = document.getElementById('conf');
+    const X0 = 20, X1 = 780, Y = 52, H = 32;
+    const pos = (p) => X0 + ((p - 50) / 50) * (X1 - X0);   // 50..100
+
+    svg.appendChild(sv('rect', { x: X0, y: Y, width: X1 - X0, height: H, rx: 8,
+        fill: 'rgba(255,255,255,.05)', stroke: 'rgba(255,255,255,.12)' }));
+
+    // โซนอันตราย 50–55
+    const danger = sv('rect', { x: pos(50), y: Y, width: pos(55) - pos(50), height: H,
+        fill: 'rgba(246,92,110,.42)' });
+    danger.dataset.in = '269.6'; danger.dataset.anim = 'fade'; danger.dataset.dur = '0.7';
+    svg.appendChild(danger);
+
+    // ช่วงที่ใช้ได้ 55–95
+    const ok = sv('rect', { x: pos(55), y: Y, width: pos(95) - pos(55), height: H,
+        fill: 'rgba(34,211,238,.26)' });
+    ok.dataset.in = '261.4'; ok.dataset.anim = 'wipe'; ok.dataset.dur = '1.0';
+    svg.appendChild(ok);
+
+    // เครื่องหมายค่าเริ่มต้น 65
+    const mk = sv('line', { x1: pos(65), y1: Y - 12, x2: pos(65), y2: Y + H + 12,
+        stroke: '#F8D678', 'stroke-width': 3 });
+    mk.dataset.in = '263.4'; mk.dataset.anim = 'fade'; mk.dataset.dur = '0.6';
+    svg.appendChild(mk);
+    const mt = sv('text', { x: pos(65), y: Y - 20, 'text-anchor': 'middle', fill: '#F8D678',
+        'font-size': 18, 'font-weight': 750 }); mt.textContent = 'DEFAULT 65%';
+    mt.dataset.in = '263.8'; mt.dataset.anim = 'fade'; mt.dataset.dur = '0.6';
+    svg.appendChild(mt);
+
+    [[50, '50'], [55, '55'], [75, '75'], [95, '95']].forEach(([p, lbl]) => {
+        const t = sv('text', { x: pos(p), y: Y + H + 30, 'text-anchor': 'middle',
+            fill: p === 55 ? '#F65C6E' : '#5F7089', 'font-size': 17, 'font-weight': 700 });
+        t.textContent = lbl + '%'; svg.appendChild(t);
+    });
+    const nope = sv('text', { x: pos(52.5), y: Y + H + 56, 'text-anchor': 'middle', fill: '#F65C6E',
+        'font-size': 16, 'font-weight': 700, 'letter-spacing': 1.4 });
+    nope.textContent = 'FORBIDDEN';
+    nope.dataset.in = '270.2'; nope.dataset.anim = 'fade'; nope.dataset.dur = '0.6';
+    svg.appendChild(nope);
+})();
+
+/* ---------- ด่านความเสี่ยง ---------- */
+(function riskGate() {
+    const svg = document.getElementById('riskgate');
+    const CX = 828;
+
+    // สองสัญญาณเข้า
+    const box = (x, y, w, h, title, sub, col, at) => {
+        const g = sv('g', {});
+        g.dataset.in = at.toFixed(2); g.dataset.anim = 'rise'; g.dataset.dur = '0.8';
+        g.appendChild(sv('rect', { x, y, width: w, height: h, rx: 16,
+            fill: col.bg, stroke: col.br, 'stroke-width': 1.4 }));
+        const t1 = sv('text', { x: x + w / 2, y: y + 42, 'text-anchor': 'middle', fill: col.tx,
+            'font-size': 26, 'font-weight': 750 }); t1.textContent = title;
+        const t2 = sv('text', { x: x + w / 2, y: y + 74, 'text-anchor': 'middle', fill: '#A6B6CC',
+            'font-size': 19, 'font-weight': 600 }); t2.textContent = sub;
+        g.appendChild(t1); g.appendChild(t2);
+        svg.appendChild(g);
+        return g;
+    };
+
+    box(120, 24, 520, 104, 'Price behaviour', 'detects the break first',
+        { bg: 'rgba(34,211,238,.10)', br: 'rgba(34,211,238,.42)', tx: '#7DE7F7' }, 302.6);
+    box(120, 168, 520, 104, 'Market news', 'explains why — filters noise',
+        { bg: 'rgba(139,92,246,.10)', br: 'rgba(139,92,246,.42)', tx: '#B79BFB' }, 306.4);
+
+    // ตัวรวม
+    const comb = sv('g', {});
+    comb.dataset.in = '317.2'; comb.dataset.anim = 'pop'; comb.dataset.dur = '0.8';
+    comb.appendChild(sv('rect', { x: 720, y: 96, width: 236, height: 104, rx: 16,
+        fill: 'rgba(233,174,40,.14)', stroke: '#E9AE28', 'stroke-width': 1.8 }));
+    const c1 = sv('text', { x: 838, y: 140, 'text-anchor': 'middle', fill: '#F8D678',
+        'font-size': 34, 'font-weight': 800 }); c1.textContent = 'MAX';
+    const c2 = sv('text', { x: 838, y: 172, 'text-anchor': 'middle', fill: '#A6B6CC',
+        'font-size': 18, 'font-weight': 650, 'letter-spacing': 1.6 }); c2.textContent = 'NEVER AVERAGE';
+    comb.appendChild(c1); comb.appendChild(c2);
+    svg.appendChild(comb);
+
+    [[644, 76, 714, 130], [644, 220, 714, 166]].forEach(([x1, y1, x2, y2], i) => {
+        const p = sv('path', { d: `M${x1},${y1} C${x1 + 40},${y1} ${x2 - 40},${y2} ${x2},${y2}`,
+            fill: 'none', stroke: 'rgba(255,255,255,.28)', 'stroke-width': 1.8 });
+        p.dataset.in = (303.4 + i * 3.8).toFixed(2); p.dataset.draw = ''; p.dataset.dur = '0.8';
+        p.dataset.anim = 'fade';
+        svg.appendChild(p);
+    });
+
+    // ผลลัพธ์สี่ทาง
+    const OUT = [
+        { t: 'Full size', s: 'enter at 100%', c: '#2BC46A', at: 329.0 },
+        { t: 'Reduced', s: 'smaller position', c: '#E9AE28', at: 330.2 },
+        { t: 'Pause', s: 'no new entries', c: '#B79BFB', at: 331.4 },
+        { t: 'Force exit', s: 'sell everything held', c: '#F65C6E', at: 332.6 },
+    ];
+    OUT.forEach((o, i) => {
+        const x = 1030 + 0, y = 12 + i * 84;
+        const g = sv('g', {});
+        g.dataset.in = o.at.toFixed(2); g.dataset.anim = 'right'; g.dataset.dur = '0.6';
+        g.appendChild(sv('rect', { x, y, width: 500, height: 68, rx: 14,
+            fill: 'rgba(255,255,255,.035)', stroke: 'rgba(255,255,255,.14)' }));
+        g.appendChild(sv('rect', { x, y, width: 6, height: 68, rx: 3, fill: o.c }));
+        const t1 = sv('text', { x: x + 28, y: y + 30, fill: o.c, 'font-size': 24, 'font-weight': 750 });
+        t1.textContent = o.t;
+        const t2 = sv('text', { x: x + 28, y: y + 54, fill: '#5F7089', 'font-size': 18, 'font-weight': 600 });
+        t2.textContent = o.s;
+        g.appendChild(t1); g.appendChild(t2);
+        svg.appendChild(g);
+
+        const p = sv('path', { d: `M960,148 C995,148 1000,${y + 34} ${x - 8},${y + 34}`,
+            fill: 'none', stroke: 'rgba(255,255,255,.2)', 'stroke-width': 1.5 });
+        p.dataset.in = (o.at - 0.4).toFixed(2); p.dataset.draw = ''; p.dataset.dur = '0.6';
+        p.dataset.anim = 'fade';
+        svg.appendChild(p);
+    });
+})();
+
+/* ---------- cue track ---------- */
+fetch('../tmp/ep06/timing.json').then(r => r.json()).then(d => {
+    TPIX.init({ duration: d.duration, chapter: 'Part Six · AI TRADE', cues: d.lines });
+    window.__ready = true;
+});
+</script>
+</html>

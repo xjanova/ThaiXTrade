@@ -73,3 +73,7 @@ Thumbs.db
 
 # sqlite local dev (สร้างจาก DB_DATABASE ใน .env เครื่อง dev)
 /admin_tpix
+
+# วิดีโอบรรยายไวท์เปเปอร์ (~200 MB) — อัปขึ้นเซิร์ฟเวอร์ด้วย scp ไม่เก็บใน git
+# deploy ใช้ git pull เฉย ๆ ไม่ล้าง public_html ไฟล์ที่อัปไว้จึงอยู่ข้ามรอบ deploy
+/public_html/videos/whitepaper/*.mp4

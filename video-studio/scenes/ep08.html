@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>TPIX Whitepaper — Part Eight: Real World</title>
+<link rel="stylesheet" href="_theme.css">
+<style>
+    .act { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; }
+    .title-wrap { position: absolute; inset: 0; display: flex; flex-direction: column;
+                  align-items: center; justify-content: center; text-align: center; }
+
+    .app { border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px;
+           background: rgba(255,255,255,.032); position: relative; }
+    .app .an { font-size: 23px; font-weight: 700; }
+    .app .ad { font-size: 17px; color: var(--ink-3); margin-top: 8px; line-height: 1.4; }
+    .app .st { position: absolute; top: 20px; right: 22px; font-size: 13px; font-weight: 750;
+               letter-spacing: .12em; padding: 4px 9px; border-radius: 5px; }
+    .st.live { color: var(--green); background: rgba(43,196,106,.14); border: 1px solid rgba(43,196,106,.4); }
+    .st.dev  { color: var(--gold-2); background: rgba(233,174,40,.14); border: 1px solid rgba(233,174,40,.4); }
+    .st.plan { color: var(--ink-3); background: rgba(255,255,255,.05); border: 1px solid var(--line-2); }
+
+    .stage { border: 1px solid var(--line); border-radius: 16px; padding: 20px 20px;
+             background: rgba(255,255,255,.03); flex: 1; }
+    .stage .sg { font-size: 20px; font-weight: 750; }
+    .stage .sd { font-size: 16px; color: var(--ink-3); margin-top: 8px; line-height: 1.4; }
+    .stage .ss { font-size: 15px; color: var(--cyan); margin-top: 10px;
+                 font-family: "JetBrains Mono", monospace; }
+
+    .std { border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px;
+           background: rgba(255,255,255,.03); }
+    .std .sa { font-size: 26px; font-weight: 800; letter-spacing: -.01em; }
+    .std .sn { font-size: 16px; color: var(--ink-3); margin-top: 6px; line-height: 1.35; }
+
+    .intg { border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px;
+            background: rgba(255,255,255,.03); }
+    .intg .in { font-size: 24px; font-weight: 750; }
+    .intg li { font-size: 18px; color: var(--ink-3); line-height: 1.6; list-style: none;
+               padding-left: 18px; position: relative; }
+    .intg li::before { content: "·"; position: absolute; left: 4px; color: var(--cyan); }
+</style>
+
+<div id="stage">
+<div class="title-plate" data-in="0.1" data-anim="fade" data-dur="1.8" data-out="18.5" data-odur="1.0">
+    <img src="../assets/plates/ep08.jpg" alt="">
+</div>
+<div class="frame">
+
+<!-- ══════ A · chapter card  0 → 19.2 ══════ -->
+<div class="act" data-in="0.15" data-anim="fade" data-dur="1.0" data-out="18.5" data-odur="0.7">
+    <div class="title-wrap">
+        <img src="../assets/tpix-logo.webp" style="width:96px;height:96px;object-fit:contain;
+             filter:drop-shadow(0 0 28px rgba(233,174,40,.42))" data-in="0.3" data-anim="pop" data-dur="1.2">
+        <div class="label" style="color:var(--cyan);letter-spacing:.42em;margin-top:28px"
+             data-in="0.8" data-dur="0.9">Part Eight of Nine</div>
+        <div class="display" style="margin-top:20px" data-in="1.1" data-anim="blur" data-dur="1.2">Real World</div>
+        <div style="width:230px;height:2px;margin-top:32px;
+             background:linear-gradient(90deg,transparent,var(--gold),transparent)"
+             data-in="1.8" data-anim="wipe" data-dur="0.9"></div>
+        <div class="h3" style="margin-top:38px;max-width:1200px;color:var(--ink-2);line-height:1.4"
+             data-in="8.4" data-anim="rise" data-dur="0.9">
+            A blockchain with no commerce attached to it is
+            <span class="red">a database with extra steps</span>.
+        </div>
+        <div style="display:flex;gap:16px;margin-top:34px" data-in="12.0" data-dur="0.9">
+            <div class="card" style="padding:18px 24px"><div class="label" style="color:var(--gold-2)">Ch. 5</div>
+                <div style="font-size:22px;font-weight:650;margin-top:6px">Use Cases</div></div>
+            <div class="card" style="padding:18px 24px"><div class="label" style="color:var(--gold-2)">Ch. 13</div>
+                <div style="font-size:22px;font-weight:650;margin-top:6px">Ecosystem</div></div>
+            <div class="card" style="padding:18px 24px"><div class="label" style="color:var(--gold-2)">Ch. 14</div>
+                <div style="font-size:22px;font-weight:650;margin-top:6px">Carbon Credit</div></div>
+            <div class="card" style="padding:18px 24px"><div class="label" style="color:var(--gold-2)">Ch. 15</div>
+                <div style="font-size:22px;font-weight:650;margin-top:6px">FoodPassport</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ B · the application map  19.1 → 90.8 ══════ -->
+<div class="act" data-in="19.1" data-anim="fade" data-dur="0.7" data-out="90.1" data-odur="0.7">
+    <div class="label" data-in="19.3" data-dur="0.6">§13 · Ecosystem Status</div>
+    <h2 class="h2" style="margin-top:12px" data-in="19.5" data-anim="rise" data-dur="0.9">
+        Nine <span class="grn">live</span> · two in development · two planned</h2>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:34px">
+        <div class="app" data-in="27.2" data-anim="rise" data-dur="0.6"><span class="st live">LIVE</span>
+            <div class="an">TPIX TRADE</div><div class="ad">AMM exchange with zero-gas trading</div></div>
+        <div class="app" data-in="31.4" data-anim="rise" data-dur="0.6"><span class="st live">LIVE</span>
+            <div class="an">Token Factory</div><div class="ad">10 types · 16 sub-options · permissionless</div></div>
+        <div class="app" data-in="37.5" data-anim="rise" data-dur="0.6"><span class="st live">LIVE</span>
+            <div class="an">FoodPassport</div><div class="ad">Farm-to-table traceability</div></div>
+        <div class="app" data-in="42.0" data-anim="rise" data-dur="0.6"><span class="st live">LIVE</span>
+            <div class="an">Carbon Credit</div><div class="ad">Verified reductions, traded on chain</div></div>
+        <div class="app" data-in="47.2" data-anim="rise" data-dur="0.6"><span class="st live">LIVE</span>
+            <div class="an">IoT Smart Farm</div><div class="ad">Sensor network → data marketplace</div></div>
+        <div class="app" data-in="52.4" data-anim="rise" data-dur="0.6"><span class="st live">LIVE</span>
+            <div class="an">Master Node Network</div><div class="ad">Four tiers · staking rewards</div></div>
+        <div class="app" data-in="57.2" data-anim="rise" data-dur="0.6"><span class="st live">LIVE</span>
+            <div class="an">Delivery Platform</div><div class="ad">Food · grocery · courier · home services<br>3% TPIX cashback per order</div></div>
+        <div class="app" style="border-color:rgba(233,174,40,.4);background:rgba(233,174,40,.07)"
+             data-in="69.4" data-anim="pop" data-dur="0.7"><span class="st live">LIVE</span>
+            <div class="an gold">Thaiprompt Affiliate</div><div class="ad">Enterprise platform · 500,000+ users</div></div>
+        <div class="app" data-in="77.0" data-anim="rise" data-dur="0.6"><span class="st dev">IN DEV</span>
+            <div class="an">Cross-Chain Bridge</div><div class="ad">TPIX Chain ↔ BSC</div></div>
+        <div class="app" data-in="79.4" data-anim="rise" data-dur="0.6"><span class="st dev">IN DEV</span>
+            <div class="an">E-Commerce</div><div class="ad">Multi-vendor · 5% cashback</div></div>
+        <div class="app" data-in="84.0" data-anim="rise" data-dur="0.6"><span class="st plan">PLANNED</span>
+            <div class="an">AI Bot Marketplace</div><div class="ad">Buy, sell and subscribe to agents</div></div>
+        <div class="app" data-in="86.0" data-anim="rise" data-dur="0.6"><span class="st plan">PLANNED</span>
+            <div class="an">Hotel Booking</div><div class="ad">Decentralised travel, TPIX settlement</div></div>
+    </div>
+    <div class="figcap" style="margin-top:26px;max-width:1400px" data-in="88.0" data-dur="0.7">
+        <b>Fig. 1</b> — Application status as of this edition. Every live product settles in TPIX.
+    </div>
+</div>
+
+<!-- ══════ C · FoodPassport  90.7 → 150.4 ══════ -->
+<div class="act" data-in="90.7" data-anim="fade" data-dur="0.7" data-out="149.7" data-odur="0.7">
+    <div class="label" data-in="90.9" data-dur="0.6">§15 · FoodPassport</div>
+    <h2 class="h2" style="margin-top:12px" data-in="91.1" data-anim="rise" data-dur="0.9">
+        Farm to hand — every stage <span class="cyan">recorded as it happens</span></h2>
+
+    <div style="display:flex;gap:16px;margin-top:38px">
+        <div class="stage" style="border-color:rgba(43,196,106,.35);background:rgba(43,196,106,.07)"
+             data-in="106.4" data-anim="rise" data-dur="0.7">
+            <div class="sg grn">01 · Farm</div>
+            <div class="sd">Soil quality · pesticide use · harvest date</div>
+            <div class="ss">soil moisture · pH</div></div>
+        <div class="stage" data-in="115.4" data-anim="rise" data-dur="0.7">
+            <div class="sg">02 · Processing</div>
+            <div class="sd">Temperature · humidity · method</div>
+            <div class="ss">thermometer · hygrometer</div></div>
+        <div class="stage" data-in="119.6" data-anim="rise" data-dur="0.7">
+            <div class="sg">03 · Transport</div>
+            <div class="sd">Cold chain · GPS route</div>
+            <div class="ss">GPS tracker · temp logger</div></div>
+        <div class="stage" data-in="128.9" data-anim="rise" data-dur="0.7">
+            <div class="sg">04 · Storage</div>
+            <div class="sd">Warehouse conditions · duration</div>
+            <div class="ss">environmental sensor</div></div>
+        <div class="stage" data-in="133.4" data-anim="rise" data-dur="0.7">
+            <div class="sg">05 · Retail</div>
+            <div class="sd">Shelf life · display temperature</div>
+            <div class="ss">smart shelf sensor</div></div>
+        <div class="stage" style="border-color:rgba(233,174,40,.4);background:rgba(233,174,40,.08)"
+             data-in="140.7" data-anim="pop" data-dur="0.8">
+            <div class="sg gold">06 · Consumer</div>
+            <div class="sd">Scan the QR code — the complete journey, every reading, every certificate</div>
+            <div class="ss gold">tpix.online/food-passport</div></div>
+    </div>
+
+    <svg width="1656" height="60" style="margin-top:10px">
+        <path data-in="107.0" data-draw data-dur="2.4" data-anim="fade"
+              d="M138,30 L1520,30" fill="none" stroke="rgba(34,211,238,.35)" stroke-width="1.6"/>
+    </svg>
+
+    <div style="display:flex;gap:44px;align-items:flex-start;margin-top:4px">
+        <div style="flex:1">
+            <div class="label" style="color:var(--gold-2)" data-in="141.4" data-dur="0.6">What the consumer sees after one scan</div>
+            <div style="display:flex;gap:14px;margin-top:18px">
+                <div class="card" style="flex:1;padding:18px 20px" data-in="141.8" data-anim="rise" data-dur="0.6">
+                    <div class="mono cyan" style="font-size:17px">01</div>
+                    <div style="font-size:20px;font-weight:650;margin-top:8px">Complete journey</div>
+                    <div class="small" style="margin-top:5px;font-size:16px">farm → shelf, with timestamps</div></div>
+                <div class="card" style="flex:1;padding:18px 20px" data-in="142.2" data-anim="rise" data-dur="0.6">
+                    <div class="mono cyan" style="font-size:17px">02</div>
+                    <div style="font-size:20px;font-weight:650;margin-top:8px">Sensor readings</div>
+                    <div class="small" style="margin-top:5px;font-size:16px">every stage, as recorded</div></div>
+                <div class="card" style="flex:1;padding:18px 20px" data-in="142.6" data-anim="rise" data-dur="0.6">
+                    <div class="mono cyan" style="font-size:17px">03</div>
+                    <div style="font-size:20px;font-weight:650;margin-top:8px">Certifications</div>
+                    <div class="small" style="margin-top:5px;font-size:16px">safety &amp; quality standards</div></div>
+                <div class="card" style="flex:1;padding:18px 20px" data-in="143.0" data-anim="rise" data-dur="0.6">
+                    <div class="mono cyan" style="font-size:17px">04</div>
+                    <div style="font-size:20px;font-weight:650;margin-top:8px">Rate &amp; review</div>
+                    <div class="small" style="margin-top:5px;font-size:16px">feedback tied to the batch</div></div>
+            </div>
+            <div class="figcap" style="margin-top:24px;max-width:1400px" data-in="145.0" data-dur="0.8">
+                <b>Fig. 2</b> — Traceability chain. Each stage writes to the chain at the moment it
+                happens, so the record cannot be assembled retrospectively to suit the result.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ D · Carbon Credit  150.3 → 209.8 ══════ -->
+<div class="act" data-in="150.3" data-anim="fade" data-dur="0.7" data-out="209.1" data-odur="0.7">
+    <div class="label" style="color:var(--green)" data-in="150.5" data-dur="0.6">§14 · Carbon Credit System</div>
+    <h2 class="h2" style="margin-top:12px" data-in="150.7" data-anim="rise" data-dur="0.9">
+        Verified emission reductions, <span class="grn">tokenised</span></h2>
+
+    <div style="display:flex;gap:52px;margin-top:34px;align-items:flex-start">
+        <div style="width:760px">
+            <div class="label" style="color:var(--ink-2)" data-in="156.2" data-dur="0.6">Supported standards</div>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:18px">
+                <div class="std" data-in="156.8" data-anim="pop" data-dur="0.6">
+                    <div class="sa cyan">VCS</div><div class="sn">Verified Carbon Standard — largest voluntary market</div></div>
+                <div class="std" data-in="159.4" data-anim="pop" data-dur="0.6">
+                    <div class="sa gold">Gold Standard</div><div class="sn">Premium tier, SDG co-benefits</div></div>
+                <div class="std" data-in="162.6" data-anim="pop" data-dur="0.6">
+                    <div class="sa violet">CDM</div><div class="sn">UN Clean Development Mechanism</div></div>
+                <div class="std" data-in="165.8" data-anim="pop" data-dur="0.6">
+                    <div class="sa grn">ACR</div><div class="sn">American Carbon Registry</div></div>
+            </div>
+
+            <div class="card" style="margin-top:32px;padding:24px 28px" data-in="195.8" data-anim="rise" data-dur="0.8">
+                <div class="label" style="color:var(--cyan)">Hybrid architecture</div>
+                <div style="display:flex;gap:32px;margin-top:16px">
+                    <div><div style="font-size:22px;font-weight:700">Off chain</div>
+                         <div class="small" style="margin-top:6px">Metadata on IPFS</div></div>
+                    <div><div style="font-size:22px;font-weight:700">On chain</div>
+                         <div class="small" style="margin-top:6px">Ownership · transfers · retirement</div></div>
+                    <div><div style="font-size:22px;font-weight:700">Per batch</div>
+                         <div class="small" style="margin-top:6px">ERC-721 carrying its verification data</div></div>
+                </div>
+            </div>
+        </div>
+
+        <div style="flex:1">
+            <div class="label" style="color:var(--ink-2)" data-in="170.4" data-dur="0.6">Credit lifecycle</div>
+            <div style="display:flex;flex-direction:column;gap:12px;margin-top:18px">
+                <div class="stage" style="flex:none" data-in="170.8" data-anim="right" data-dur="0.6">
+                    <div class="sg">01 · Project registers</div>
+                    <div class="sd">Solar farm · reforestation site</div></div>
+                <div class="stage" style="flex:none" data-in="175.4" data-anim="right" data-dur="0.6">
+                    <div class="sg">02 · IoT sensors measure</div>
+                    <div class="sd">The actual reduction, not an estimate</div></div>
+                <div class="stage" style="flex:none" data-in="179.4" data-anim="right" data-dur="0.6">
+                    <div class="sg">03 · Credits minted</div>
+                    <div class="sd">Verified batches issued as tokens</div></div>
+                <div class="stage" style="flex:none" data-in="184.4" data-anim="right" data-dur="0.6">
+                    <div class="sg">04 · Traded on the marketplace</div>
+                    <div class="sd">Transparent, on-chain ownership</div></div>
+                <div class="stage" style="flex:none;border-color:rgba(246,92,110,.38);background:rgba(246,92,110,.08)"
+                     data-in="188.6" data-anim="right" data-dur="0.6">
+                    <div class="sg red">05 · Retired — burned permanently</div>
+                    <div class="sd">On-chain certificate remains as compliance proof</div></div>
+            </div>
+            <div class="figcap" style="margin-top:20px;max-width:760px" data-in="203.0" data-dur="0.8">
+                <b>Fig. 3</b> — Retirement is a burn, so a credit cannot be counted twice.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ E · platform integrations  209.7 → 262.1 ══════ -->
+<div class="act" data-in="209.7" data-anim="fade" data-dur="0.7" data-out="261.4" data-odur="0.7">
+    <div class="label" data-in="209.9" data-dur="0.6">§14 · Platform Integrations</div>
+    <h2 class="h2" style="margin-top:12px" data-in="210.1" data-anim="rise" data-dur="0.9">
+        Four bindings to <span class="gold">real accounts and real balances</span></h2>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:36px">
+        <div class="intg" style="border-color:rgba(233,174,40,.4);background:rgba(233,174,40,.07)"
+             data-in="217.8" data-anim="rise" data-dur="0.8">
+            <div class="in gold">Thaiprompt Affiliate</div>
+            <div class="small" style="margin-top:6px">500,000+ users</div>
+            <ul style="margin-top:14px">
+                <li>TPIX wallet created at signup</li>
+                <li>Commission paid in TPIX</li>
+                <li>Rank bonuses</li>
+                <li>100 TPIX signup · 50 TPIX referral</li>
+            </ul>
+        </div>
+        <div class="intg" data-in="231.9" data-anim="rise" data-dur="0.8">
+            <div class="in">FoodPassport</div>
+            <div class="small" style="margin-top:6px">Traceability</div>
+            <ul style="margin-top:14px">
+                <li>Pay for quality verification</li>
+                <li>Certificate NFTs on chain</li>
+                <li>Farmer rewards</li>
+                <li>Supply-chain data access</li>
+            </ul>
+        </div>
+        <div class="intg" data-in="236.6" data-anim="rise" data-dur="0.8">
+            <div class="in">Delivery Platform</div>
+            <div class="small" style="margin-top:6px">Multi-service</div>
+            <ul style="margin-top:14px">
+                <li>Order settlement in TPIX</li>
+                <li>3% cashback per order</li>
+                <li>Rider earnings</li>
+                <li>Merchant instant settlement</li>
+            </ul>
+        </div>
+        <div class="intg" data-in="243.3" data-anim="rise" data-dur="0.8">
+            <div class="in">IoT Smart Farm</div>
+            <div class="small" style="margin-top:6px">Agriculture</div>
+            <ul style="margin-top:14px">
+                <li>Sensor data marketplace</li>
+                <li>Equipment rental</li>
+                <li>Carbon credit generation</li>
+                <li>Yield prediction</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card accent-gold" style="margin-top:34px;padding:24px 32px" data-in="252.4" data-anim="rise" data-dur="0.9">
+        <div style="font-size:27px;font-weight:700;line-height:1.45">
+            In each case the coin is <b class="red">not an investment product bolted on afterwards</b>.
+            It is the <b class="gold">unit of account the system already needed</b>.
+        </div>
+    </div>
+</div>
+
+<!-- ══════ F · outro  262.0 → 272.1 ══════ -->
+<div class="act" data-in="262.0" data-anim="fade" data-dur="0.8">
+    <div class="title-wrap">
+        <img src="../assets/tpix-logo.webp" style="width:108px;height:108px;object-fit:contain;opacity:.9;
+             filter:drop-shadow(0 0 30px rgba(233,174,40,.4))" data-in="262.2" data-anim="pop" data-dur="1.0">
+        <div class="label" style="margin-top:28px;letter-spacing:.4em" data-in="262.6" data-dur="0.8">End of Part Eight</div>
+        <div class="h1" style="margin-top:16px" data-in="262.9" data-anim="rise" data-dur="0.9">Real World</div>
+        <div style="width:180px;height:1px;background:var(--line-2);margin-top:30px" data-in="263.5" data-anim="wipe" data-dur="0.8"></div>
+        <div class="body" style="margin-top:28px;font-size:27px;text-align:center;max-width:1200px"
+             data-in="263.8" data-dur="0.9">
+            Next — <span class="cyan">Part Nine: The Road Ahead.</span>
+            Roadmap, team, security, and the legal position.
+        </div>
+    </div>
+</div>
+
+</div><!-- /frame -->
+</div><!-- /stage -->
+
+<script src="_engine.js"></script>
+<script>
+fetch('../tmp/ep08/timing.json').then(r => r.json()).then(d => {
+    TPIX.init({ duration: d.duration, chapter: 'Part Eight · Real World', cues: d.lines });
+    window.__ready = true;
+});
+</script>
+</html>

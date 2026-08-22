@@ -1,0 +1,133 @@
+{
+  "id": "ep03",
+  "title": "Economics",
+  "covers": ["4. Tokenomics", "7. Token Sale Details"],
+  "voice": "en-US-ChristopherNeural",
+  "rate": "-7%",
+  "pitch": "+0Hz",
+  "lines": [
+    {
+      "id": "t1",
+      "en": "Part three: Economics. How seven billion coins are allocated, sold, and removed from supply.",
+      "th": ["ตอนที่สาม — เศรษฐศาสตร์ของเหรียญ", "ว่าเหรียญ 7,000 ล้านถูกจัดสรร ขาย และถูกทำลายออกจากระบบอย่างไร"],
+      "gap": 0.8
+    },
+
+    {
+      "id": "a1",
+      "en": "The entire supply exists from block zero. There is no mining, no staking issuance, and no mechanism by which the total can increase.",
+      "th": ["อุปทานทั้งหมดมีอยู่ครบตั้งแต่บล็อกที่ศูนย์", "ไม่มีการขุด ไม่มีการออกเหรียญจากการวางเดิมพัน และไม่มีกลไกใดทำให้ยอดรวมเพิ่มขึ้นได้"],
+      "gap": 0.5
+    },
+    {
+      "id": "a2",
+      "en": "Seven billion TPIX are divided across six programme allocations and one validator stake.",
+      "th": "เหรียญ TPIX 7,000 ล้าน ถูกแบ่งเป็นโครงการ 6 ส่วน กับเงินวางค้ำของผู้ตรวจสอบอีกหนึ่งส่วน",
+      "gap": 0.55
+    },
+    {
+      "id": "a3",
+      "en": "Master Node Rewards — one point four billion, twenty percent. This is the pool that pays node operators across three years.",
+      "th": ["รางวัลมาสเตอร์โหนด 1,400 ล้านเหรียญ คิดเป็น 20%", "เป็นกองรางวัลที่จ่ายให้ผู้ดูแลโหนดตลอด 3 ปี"],
+      "gap": 0.4
+    },
+    {
+      "id": "a4",
+      "en": "Ecosystem Development — one point seven one billion, twenty four point four three percent. The largest single allocation, funding product build-out.",
+      "th": ["พัฒนาระบบนิเวศ 1,710 ล้านเหรียญ คิดเป็น 24.43%", "เป็นก้อนใหญ่ที่สุด ใช้สร้างผลิตภัณฑ์ในระบบ"],
+      "gap": 0.4
+    },
+    {
+      "id": "a5",
+      "en": "Community and Rewards — one point four billion, twenty percent. Liquidity and Market Making — one point zero five billion, fifteen percent.",
+      "th": ["ชุมชนและรางวัล 1,400 ล้านเหรียญ คิดเป็น 20%", "สภาพคล่องและการดูแลตลาด 1,050 ล้านเหรียญ คิดเป็น 15%"],
+      "gap": 0.4
+    },
+    {
+      "id": "a6",
+      "en": "Team and Advisors — seven hundred million, ten percent. Token Sale — seven hundred million, ten percent.",
+      "th": ["ทีมงานและที่ปรึกษา 700 ล้านเหรียญ คิดเป็น 10%", "และส่วนเปิดขาย 700 ล้านเหรียญ คิดเป็น 10%"],
+      "gap": 0.4
+    },
+    {
+      "id": "a7",
+      "en": "And forty million — roughly half a percent — staked across the four genesis validator nodes, ten million each.",
+      "th": ["และอีก 40 ล้านเหรียญ ราวครึ่งเปอร์เซ็นต์", "วางค้ำไว้กับโหนดผู้ตรวจสอบตั้งต้นทั้งสี่ โหนดละ 10 ล้านเหรียญ"],
+      "gap": 0.45
+    },
+    {
+      "id": "a8",
+      "en": "Every allocation wallet derives from a single B I P forty-four hierarchical wallet, so the entire treasury reconciles to one auditable root.",
+      "th": ["กระเป๋าของทุกส่วนจัดสรรแตกออกมาจากกระเป๋า BIP-44 ชุดเดียวกัน", "คลังทั้งหมดจึงกระทบยอดกลับไปยังรากเดียวที่ตรวจสอบได้"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "b0",
+      "en": "The public sale proceeds in three phases, each with its own price, allocation, unlock and vesting schedule.",
+      "th": ["การเปิดขายแบ่งเป็นสามเฟส", "แต่ละเฟสมีราคา โควตา สัดส่วนปลดล็อกวันแรก และตารางทยอยปลดของตัวเอง"],
+      "gap": 0.5
+    },
+    {
+      "id": "b1",
+      "en": "Private Sale. Five cents per coin. One hundred million allocated. Ten percent released at generation, then a thirty-day cliff and a hundred-and-eighty-day linear release.",
+      "th": ["เฟสส่วนตัว ราคา 0.05 ดอลลาร์ต่อเหรียญ โควตา 100 ล้านเหรียญ", "ปลดล็อกวันแรก 10% จากนั้นพัก 30 วัน แล้วทยอยปลดแบบเส้นตรง 180 วัน"],
+      "gap": 0.4
+    },
+    {
+      "id": "b2",
+      "en": "Pre-Sale. Eight cents. Two hundred million allocated. Fifteen percent at generation, a fourteen-day cliff, one hundred and twenty days linear.",
+      "th": ["เฟสก่อนขายทั่วไป ราคา 0.08 ดอลลาร์ โควตา 200 ล้านเหรียญ", "ปลดล็อกวันแรก 15% พัก 14 วัน แล้วทยอยปลด 120 วัน"],
+      "gap": 0.4
+    },
+    {
+      "id": "b3",
+      "en": "Public Sale. Ten cents. Four hundred million allocated. Twenty five percent at generation, no cliff, ninety days linear.",
+      "th": ["เฟสขายทั่วไป ราคา 0.10 ดอลลาร์ โควตา 400 ล้านเหรียญ", "ปลดล็อกวันแรก 25% ไม่มีช่วงพัก และทยอยปลด 90 วัน"],
+      "gap": 0.45
+    },
+    {
+      "id": "b4",
+      "en": "The structure is deliberate. Earlier capital accepts a longer lock in exchange for a lower price — and a longer lock means less sell pressure at listing.",
+      "th": ["โครงสร้างนี้ตั้งใจออกแบบไว้ ทุนที่เข้ามาก่อนยอมรับการล็อกนานกว่าเพื่อแลกกับราคาที่ถูกกว่า", "และการล็อกที่นานกว่าย่อมหมายถึงแรงขายที่น้อยลงตอนเข้าตลาด"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "c0",
+      "en": "Against that issuance, three mechanisms remove coins permanently.",
+      "th": "ตรงข้ามกับการปล่อยเหรียญ มีสามกลไกที่ทำลายเหรียญออกจากระบบอย่างถาวร",
+      "gap": 0.5
+    },
+    {
+      "id": "c1",
+      "en": "Token Factory burn — fifty percent of every token creation fee is destroyed.",
+      "th": "เผาจากโรงงานสร้างโทเคน — ครึ่งหนึ่งของค่าธรรมเนียมการสร้างทุกครั้งถูกทำลาย",
+      "gap": 0.4
+    },
+    {
+      "id": "c2",
+      "en": "Exchange protocol fee — zero point zero five percent of swap volume funds a buy-back and burn.",
+      "th": "ค่าธรรมเนียมโปรโตคอลของกระดานเทรด — 0.05% ของมูลค่าสวอป นำไปซื้อคืนแล้วเผาทิ้ง",
+      "gap": 0.4
+    },
+    {
+      "id": "c3",
+      "en": "Bridge fee burn — ten percent of every cross-chain transfer fee is destroyed.",
+      "th": "เผาจากค่าธรรมเนียมสะพาน — 10% ของค่าธรรมเนียมโอนข้ามเชนทุกครั้งถูกทำลาย",
+      "gap": 0.45
+    },
+    {
+      "id": "c4",
+      "en": "Total supply can therefore only fall. Seven billion is a ceiling, not a target.",
+      "th": ["อุปทานรวมจึงมีแต่จะลดลง", "ตัวเลข 7,000 ล้าน เป็นเพดาน ไม่ใช่เป้าหมาย"],
+      "gap": 0.85
+    },
+    {
+      "id": "e1",
+      "en": "Next — part four: the master node network, and the governance it carries.",
+      "th": "ตอนต่อไป — ตอนที่สี่ ว่าด้วยเครือข่ายมาสเตอร์โหนด และอำนาจกำกับดูแลที่มากับมัน",
+      "gap": 0.2
+    }
+  ]
+}

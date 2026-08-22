@@ -1,0 +1,158 @@
+{
+  "id": "ep04",
+  "title": "Master Nodes",
+  "covers": ["8. Master Node & Rewards", "10. Validator Governance"],
+  "voice": "en-US-ChristopherNeural",
+  "rate": "-7%",
+  "pitch": "+0Hz",
+  "lines": [
+    {
+      "id": "t1",
+      "en": "Part four: Master Nodes. Who runs the network, what they stake, and what they are paid.",
+      "th": ["ตอนที่สี่ — มาสเตอร์โหนด", "ใครเป็นผู้เดินเครือข่าย วางค้ำเท่าไร และได้ผลตอบแทนอย่างไร"],
+      "gap": 0.8
+    },
+
+    {
+      "id": "a0",
+      "en": "TPIX operates a four-tier node system. Each tier differs in stake, lock period, hardware, and role.",
+      "th": ["TPIX ใช้ระบบโหนดสี่ระดับ", "แต่ละระดับต่างกันที่จำนวนเหรียญค้ำ ระยะล็อก สเปกเครื่อง และบทบาท"],
+      "gap": 0.5
+    },
+    {
+      "id": "a1",
+      "en": "Validator. Ten million TPIX staked, locked for one hundred and eighty days. A maximum of twenty-one nodes. These are the real I B F T block sealers, and they hold governance power.",
+      "th": ["ระดับ Validator วางค้ำ 10 ล้านเหรียญ ล็อก 180 วัน จำกัดไม่เกิน 21 โหนด", "นี่คือผู้ปิดผนึกบล็อกจริงในระบบ IBFT และเป็นผู้ถืออำนาจกำกับดูแล"],
+      "gap": 0.4
+    },
+    {
+      "id": "a2",
+      "en": "Guardian. One million TPIX, a ninety-day lock, up to one hundred nodes, returning ten to twelve percent a year.",
+      "th": ["ระดับ Guardian วางค้ำ 1 ล้านเหรียญ ล็อก 90 วัน ไม่เกิน 100 โหนด", "ผลตอบแทน 10 ถึง 12% ต่อปี"],
+      "gap": 0.4
+    },
+    {
+      "id": "a3",
+      "en": "Sentinel. One hundred thousand TPIX, a thirty-day lock, up to five hundred nodes, at seven to nine percent.",
+      "th": "ระดับ Sentinel วางค้ำ 1 แสนเหรียญ ล็อก 30 วัน ไม่เกิน 500 โหนด ผลตอบแทน 7 ถึง 9%",
+      "gap": 0.4
+    },
+    {
+      "id": "a4",
+      "en": "Light. Ten thousand TPIX, a seven-day lock, unlimited in number, at four to six percent — on hardware as modest as two cores and four gigabytes of memory.",
+      "th": ["ระดับ Light วางค้ำ 1 หมื่นเหรียญ ล็อก 7 วัน ไม่จำกัดจำนวน ผลตอบแทน 4 ถึง 6%", "ใช้เครื่องเล็กเพียง 2 คอร์ หน่วยความจำ 4 กิกะไบต์ก็พอ"],
+      "gap": 0.45
+    },
+    {
+      "id": "a5",
+      "en": "The tiers exist so participation scales with capacity. A household can run a Light node. A company runs a Validator.",
+      "th": ["แบ่งระดับไว้เพื่อให้การมีส่วนร่วมยืดหยุ่นตามกำลัง", "ครัวเรือนหนึ่งรัน Light node ได้ ส่วนบริษัทจึงจะรัน Validator"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "b0",
+      "en": "A reward pool of one point four billion TPIX is distributed across three years, ending in twenty twenty-eight.",
+      "th": "กองรางวัล 1,400 ล้านเหรียญ ทยอยแจกจ่ายตลอด 3 ปี สิ้นสุดปี 2028",
+      "gap": 0.5
+    },
+    {
+      "id": "b1",
+      "en": "Every block reward is split four ways. Twenty percent to Validators. Thirty-five percent to Guardians. Thirty percent shared among Sentinels. Fifteen percent among Light nodes.",
+      "th": ["รางวัลของทุกบล็อกถูกแบ่งสี่ทาง", "Validator 20% · Guardian 35% · Sentinel 30% · Light 15%"],
+      "gap": 0.4
+    },
+    {
+      "id": "b2",
+      "en": "Within each tier, the share is weighted by stake amount and by uptime score — so a node that is offline earns nothing while it is down.",
+      "th": ["ภายในแต่ละระดับ ส่วนแบ่งถ่วงน้ำหนักตามจำนวนเหรียญค้ำและคะแนนเวลาออนไลน์", "โหนดที่ดับอยู่จึงไม่ได้รับรางวัลในช่วงนั้น"],
+      "gap": 0.45
+    },
+    {
+      "id": "b3",
+      "en": "Emission decreases every year. Six hundred million in year one. Five hundred million in year two. Three hundred million in year three.",
+      "th": ["อัตราการปล่อยรางวัลลดลงทุกปี", "ปีแรก 600 ล้าน ปีที่สอง 500 ล้าน และปีที่สาม 300 ล้านเหรียญ"],
+      "gap": 0.4
+    },
+    {
+      "id": "b4",
+      "en": "In per-block terms that is roughly thirty-eight TPIX falling to nineteen — a deliberate front-load that pays most to the infrastructure that arrives earliest.",
+      "th": ["คิดเป็นต่อบล็อกคือราว 38 เหรียญ ลดลงเหลือ 19 เหรียญ", "เป็นการเทน้ำหนักไปข้างหน้าโดยตั้งใจ เพื่อตอบแทนโครงสร้างพื้นฐานที่มาก่อน"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "c0",
+      "en": "Misbehaviour is penalised by slashing.",
+      "th": "การทำผิดกติกามีบทลงโทษด้วยการหักเหรียญค้ำ",
+      "gap": 0.45
+    },
+    {
+      "id": "c1",
+      "en": "Validators forfeit fifteen percent of stake. Guardians ten percent after twenty-four hours offline. Sentinels five percent after forty-eight. All tiers are deregistered after seven days down.",
+      "th": ["Validator ถูกหัก 15% · Guardian หัก 10% เมื่อออฟไลน์เกิน 24 ชั่วโมง", "Sentinel หัก 5% เมื่อเกิน 48 ชั่วโมง และทุกระดับถูกถอดออกหากดับเกิน 7 วัน"],
+      "gap": 0.45
+    },
+    {
+      "id": "c2",
+      "en": "And when the pool is exhausted in twenty twenty-eight, node income does not stop — it shifts to protocol revenue.",
+      "th": ["และเมื่อกองรางวัลหมดในปี 2028 รายได้ของโหนดไม่ได้จบลง", "แต่เปลี่ยนไปพึ่งรายได้จากตัวโปรโตคอลแทน"],
+      "gap": 0.4
+    },
+    {
+      "id": "c3",
+      "en": "Platform fees on contract deployment. Bridge transfer fees. Token factory revenue. Exchange protocol fees. Governance rewards. And premium A P I access for commercial applications.",
+      "th": ["ค่าธรรมเนียมแพลตฟอร์มตอนนำสัญญาขึ้นใช้ ค่าธรรมเนียมสะพาน รายได้จากโรงงานโทเคน", "ค่าธรรมเนียมโปรโตคอลของกระดานเทรด รางวัลจากการโหวต และค่าเข้าถึง API ระดับพรีเมียม"],
+      "gap": 0.9
+    },
+
+    {
+      "id": "d0",
+      "en": "The Validator tier is also the governance council — the board of the chain.",
+      "th": "ระดับ Validator ยังทำหน้าที่เป็นสภากำกับดูแล เปรียบได้กับคณะกรรมการของเชน",
+      "gap": 0.5
+    },
+    {
+      "id": "d1",
+      "en": "Admission is restricted to registered companies, verified through K Y C conducted under the Thai Personal Data Protection Act.",
+      "th": ["การรับเข้าเปิดให้เฉพาะนิติบุคคลที่จดทะเบียนแล้ว", "ผ่านการยืนยันตัวตนตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคลของไทย"],
+      "gap": 0.4
+    },
+    {
+      "id": "d2",
+      "en": "Only a keccak two fifty-six hash of the K Y C record is written on chain. No personal data ever touches the blockchain.",
+      "th": ["บนเชนบันทึกเพียงค่าแฮช keccak-256 ของข้อมูลยืนยันตัวตนเท่านั้น", "ไม่มีข้อมูลส่วนบุคคลใดขึ้นไปอยู่บนบล็อกเชน"],
+      "gap": 0.4
+    },
+    {
+      "id": "d3",
+      "en": "Documents remain encrypted off chain with access logging, purpose is limited to admission review, and consent can be revoked at any time.",
+      "th": ["เอกสารจริงเก็บเข้ารหัสไว้นอกเชนพร้อมบันทึกการเข้าถึง", "ใช้เพื่อพิจารณารับเข้าเท่านั้น และผู้สมัครถอนความยินยอมได้ทุกเมื่อ"],
+      "gap": 0.45
+    },
+    {
+      "id": "d4",
+      "en": "Validators propose and vote on protocol parameters, admit or remove other validators, and approve smart contract upgrades.",
+      "th": ["Validator เสนอและลงมติเรื่องพารามิเตอร์ของโปรโตคอล", "รับเข้าหรือถอดถอน Validator รายอื่น และอนุมัติการอัปเกรดสัญญาอัจฉริยะ"],
+      "gap": 0.4
+    },
+    {
+      "id": "d5",
+      "en": "Each proposal runs a seven-day voting period, requires a majority quorum, and passes through a forty-eight-hour timelock before it takes effect.",
+      "th": ["ข้อเสนอแต่ละเรื่องเปิดโหวต 7 วัน ต้องมีองค์ประชุมเกินกึ่งหนึ่ง", "และต้องผ่านการหน่วงเวลา 48 ชั่วโมงก่อนจึงจะมีผลบังคับใช้"],
+      "gap": 0.45
+    },
+    {
+      "id": "d6",
+      "en": "Operators run one of two applications: the TPIX Wallet on Android and iOS, or the Master Node desktop application for Windows, which configures and monitors multiple nodes from a single dashboard.",
+      "th": ["ผู้ดูแลโหนดใช้แอปได้สองทาง — TPIX Wallet บนแอนดรอยด์และ iOS", "หรือแอป Master Node บนวินโดวส์ ที่ตั้งค่าและเฝ้าดูหลายโหนดได้จากแดชบอร์ดเดียว"],
+      "gap": 0.85
+    },
+    {
+      "id": "e1",
+      "en": "Next — part five: the trading layer. The exchange, the token factory, and the bridge.",
+      "th": "ตอนต่อไป — ตอนที่ห้า ชั้นการซื้อขาย ทั้งกระดานเทรด โรงงานโทเคน และสะพานข้ามเชน",
+      "gap": 0.2
+    }
+  ]
+}

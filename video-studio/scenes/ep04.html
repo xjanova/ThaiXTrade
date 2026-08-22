@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>TPIX Whitepaper — Part Four: Master Nodes</title>
+<link rel="stylesheet" href="_theme.css">
+<style>
+    .act { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; }
+    .title-wrap { position: absolute; inset: 0; display: flex; flex-direction: column;
+                  align-items: center; justify-content: center; text-align: center; }
+
+    .tier { border-radius: 20px; padding: 26px 26px 24px; border: 1px solid var(--line-2);
+            background: rgba(255,255,255,.035); position: relative; overflow: hidden; }
+    .tier .tn { font-size: 27px; font-weight: 750; letter-spacing: -.01em; }
+    .tier .tk { font-size: 17px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+                color: var(--ink-3); margin-top: 4px; }
+    .tier .stk { font-family: "JetBrains Mono", monospace; font-size: 27px; font-weight: 600;
+                 margin-top: 20px; }
+    .tier .r { display: flex; justify-content: space-between; font-size: 19px; padding: 10px 0;
+               border-top: 1px solid var(--line); color: var(--ink-3); }
+    .tier .r b { color: var(--ink); font-weight: 650; }
+    .tier .apy { position: absolute; top: 26px; right: 26px; font-size: 24px; font-weight: 800; }
+
+    .rev { display: flex; gap: 16px; align-items: center; padding: 18px 22px;
+           border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.03); }
+    .rev .n { font-family: "JetBrains Mono", monospace; font-size: 19px; color: var(--cyan-2); min-width: 34px; }
+    .rev .t { font-size: 22px; font-weight: 650; }
+
+    .gov { display: flex; gap: 22px; align-items: flex-start; padding: 22px 26px;
+           border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.03); }
+    .gov .step { font-size: 20px; font-weight: 800; color: var(--violet); min-width: 40px; }
+</style>
+
+<div id="stage">
+<div class="title-plate" data-in="0.1" data-anim="fade" data-dur="1.8" data-out="8.7" data-odur="1.0">
+    <img src="../assets/plates/ep04.jpg" alt="">
+</div>
+<div class="frame">
+
+<!-- ══════ A · chapter card  0 → 9.4 ══════ -->
+<div class="act" data-in="0.15" data-anim="fade" data-dur="1.0" data-out="8.7" data-odur="0.7">
+    <div class="title-wrap">
+        <img src="../assets/tpix-logo.webp" style="width:96px;height:96px;object-fit:contain;
+             filter:drop-shadow(0 0 28px rgba(233,174,40,.42))" data-in="0.3" data-anim="pop" data-dur="1.2">
+        <div class="label" style="color:var(--cyan);letter-spacing:.42em;margin-top:28px"
+             data-in="0.8" data-dur="0.9">Part Four of Nine</div>
+        <div class="display" style="margin-top:20px" data-in="1.1" data-anim="blur" data-dur="1.2">Master Nodes</div>
+        <div style="width:230px;height:2px;margin-top:32px;
+             background:linear-gradient(90deg,transparent,var(--gold),transparent)"
+             data-in="1.8" data-anim="wipe" data-dur="0.9"></div>
+        <div style="display:flex;gap:18px;margin-top:40px" data-in="2.3" data-dur="0.9">
+            <div class="card" style="padding:20px 28px"><div class="label" style="color:var(--gold-2)">Chapter 8</div>
+                <div style="font-size:25px;font-weight:650;margin-top:7px">Master Node &amp; Rewards</div></div>
+            <div class="card" style="padding:20px 28px"><div class="label" style="color:var(--gold-2)">Chapter 10</div>
+                <div style="font-size:25px;font-weight:650;margin-top:7px">Validator Governance</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ B · four tiers  9.4 → 79.5 ══════ -->
+<div class="act" data-in="9.4" data-anim="fade" data-dur="0.7" data-out="78.8" data-odur="0.7">
+    <div class="label" data-in="9.5" data-dur="0.6">§7 · Four-Tier Architecture</div>
+    <h2 class="h2" style="margin-top:12px" data-in="9.7" data-anim="rise" data-dur="0.9">
+        Participation scales with <span class="gold">capacity</span></h2>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:22px;margin-top:34px">
+        <div class="tier" style="border-color:rgba(233,174,40,.45);background:rgba(233,174,40,.10)"
+             data-in="19.2" data-anim="rise" data-dur="0.8">
+            <div class="apy gold">15–20%</div>
+            <div class="tn gold">Validator</div><div class="tk">IBFT block sealer</div>
+            <div class="stk gold">10,000,000</div>
+            <div style="margin-top:18px">
+                <div class="r"><span>Lock</span><b>180 days</b></div>
+                <div class="r"><span>Max nodes</span><b>21</b></div>
+                <div class="r"><span>Hardware</span><b>16 CPU · 32 GB · 1 TB</b></div>
+                <div class="r"><span>Reward share</span><b>20%</b></div>
+                <div class="r"><span>Governance</span><b class="gold">Yes — voting seat</b></div>
+            </div>
+        </div>
+        <div class="tier" style="border-color:rgba(34,211,238,.42);background:rgba(34,211,238,.09)"
+             data-in="34.8" data-anim="rise" data-dur="0.8">
+            <div class="apy cyan">10–12%</div>
+            <div class="tn cyan">Guardian</div><div class="tk">Premium masternode</div>
+            <div class="stk cyan">1,000,000</div>
+            <div style="margin-top:18px">
+                <div class="r"><span>Lock</span><b>90 days</b></div>
+                <div class="r"><span>Max nodes</span><b>100</b></div>
+                <div class="r"><span>Hardware</span><b>8 CPU · 16 GB · 500 GB</b></div>
+                <div class="r"><span>Reward share</span><b>35%</b></div>
+                <div class="r"><span>Governance</span><b>—</b></div>
+            </div>
+        </div>
+        <div class="tier" style="border-color:rgba(139,92,246,.42);background:rgba(139,92,246,.09)"
+             data-in="45.0" data-anim="rise" data-dur="0.8">
+            <div class="apy violet">7–9%</div>
+            <div class="tn violet">Sentinel</div><div class="tk">Standard masternode</div>
+            <div class="stk violet">100,000</div>
+            <div style="margin-top:18px">
+                <div class="r"><span>Lock</span><b>30 days</b></div>
+                <div class="r"><span>Max nodes</span><b>500</b></div>
+                <div class="r"><span>Hardware</span><b>4 CPU · 8 GB · 200 GB</b></div>
+                <div class="r"><span>Reward share</span><b>30%</b></div>
+                <div class="r"><span>Governance</span><b>—</b></div>
+            </div>
+        </div>
+        <div class="tier" style="border-color:rgba(43,196,106,.42);background:rgba(43,196,106,.09)"
+             data-in="55.2" data-anim="rise" data-dur="0.8">
+            <div class="apy grn">4–6%</div>
+            <div class="tn grn">Light</div><div class="tk">Data relay</div>
+            <div class="stk grn">10,000</div>
+            <div style="margin-top:18px">
+                <div class="r"><span>Lock</span><b>7 days</b></div>
+                <div class="r"><span>Max nodes</span><b>Unlimited</b></div>
+                <div class="r"><span>Hardware</span><b>2 CPU · 4 GB · 100 GB</b></div>
+                <div class="r"><span>Reward share</span><b>15%</b></div>
+                <div class="r"><span>Governance</span><b>—</b></div>
+            </div>
+        </div>
+    </div>
+    <div class="figcap" style="margin-top:28px;max-width:1400px" data-in="69.0" data-dur="0.8">
+        <b>Fig. 1</b> — Node tiers. Stake, lock period and hardware rise together with responsibility;
+        only the Validator tier carries a governance seat. Annual yields are target ranges.
+    </div>
+</div>
+
+<!-- ══════ C · reward pool & emission  79.4 → 136.9 ══════ -->
+<div class="act" data-in="79.4" data-anim="fade" data-dur="0.7" data-out="136.2" data-odur="0.7">
+    <div class="label" data-in="79.6" data-dur="0.6">§7 · Reward Distribution</div>
+    <div style="display:flex;gap:70px;margin-top:26px;align-items:flex-start">
+        <!-- ซ้าย: กองรางวัล + ตารางปล่อยรายปี -->
+        <div style="width:800px">
+            <div style="display:flex;align-items:baseline;gap:16px" data-in="79.9" data-anim="rise" data-dur="0.8">
+                <div class="mono gold" style="font-size:66px;font-weight:700;letter-spacing:-.03em"
+                     data-in="80.1" data-count="1400000000" data-count-fmt="compact" data-dur="2.0" data-anim="fade">0</div>
+                <div style="font-size:30px;color:var(--ink-3);font-weight:650">TPIX reward pool</div>
+            </div>
+            <div class="small" style="margin-top:10px" data-in="80.4" data-dur="0.6">
+                Distributed across three years · ending 2028</div>
+
+            <div class="label" style="color:var(--gold-2);margin-top:40px"
+                 data-in="113.9" data-dur="0.6">Annual emission schedule</div>
+            <svg id="emission" width="740" height="340" style="margin-top:16px"></svg>
+            <div class="figcap" style="margin-top:4px;max-width:730px" data-in="127.0" data-dur="0.8">
+                <b>Fig. 2</b> — Emission decays year on year: 600 M, then 500 M, then 300 M TPIX.
+                Per block, roughly 38 TPIX falling to 19 — a deliberate front-load toward
+                the infrastructure that arrives earliest.
+            </div>
+        </div>
+
+        <!-- ขวา: การแบ่งต่อบล็อก + สูตรถ่วงน้ำหนัก -->
+        <div style="flex:1">
+            <div class="label" style="color:var(--cyan)" data-in="88.2" data-dur="0.6">Per-block split by tier</div>
+            <div style="display:flex;height:64px;border-radius:12px;overflow:hidden;margin-top:20px;
+                        border:1px solid var(--line)">
+                <div data-in="88.6" data-bar="0.20" data-dur="1.0" data-anim="fade"
+                     style="width:calc(var(--p,0)*100%);background:#E9AE28"></div>
+                <div data-in="89.4" data-bar="0.35" data-dur="1.0" data-anim="fade"
+                     style="width:calc(var(--p,0)*100%);background:#22D3EE"></div>
+                <div data-in="90.2" data-bar="0.30" data-dur="1.0" data-anim="fade"
+                     style="width:calc(var(--p,0)*100%);background:#8B5CF6"></div>
+                <div data-in="91.0" data-bar="0.15" data-dur="1.0" data-anim="fade"
+                     style="width:calc(var(--p,0)*100%);background:#2BC46A"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:14px;margin-top:24px">
+                <div style="display:flex;align-items:center;gap:16px;font-size:23px" data-in="88.8" data-anim="left" data-dur="0.5">
+                    <span style="width:14px;height:14px;border-radius:4px;background:#E9AE28"></span>
+                    <b class="gold" style="min-width:74px">20%</b><span style="color:var(--ink-2)">Validator — IBFT block sealers</span></div>
+                <div style="display:flex;align-items:center;gap:16px;font-size:23px" data-in="89.6" data-anim="left" data-dur="0.5">
+                    <span style="width:14px;height:14px;border-radius:4px;background:#22D3EE"></span>
+                    <b class="cyan" style="min-width:74px">35%</b><span style="color:var(--ink-2)">Guardian — premium masternodes</span></div>
+                <div style="display:flex;align-items:center;gap:16px;font-size:23px" data-in="90.4" data-anim="left" data-dur="0.5">
+                    <span style="width:14px;height:14px;border-radius:4px;background:#8B5CF6"></span>
+                    <b class="violet" style="min-width:74px">30%</b><span style="color:var(--ink-2)">Sentinel — standard masternodes</span></div>
+                <div style="display:flex;align-items:center;gap:16px;font-size:23px" data-in="91.2" data-anim="left" data-dur="0.5">
+                    <span style="width:14px;height:14px;border-radius:4px;background:#2BC46A"></span>
+                    <b class="grn" style="min-width:74px">15%</b><span style="color:var(--ink-2)">Light — data relays</span></div>
+            </div>
+
+            <div class="card" style="margin-top:38px;padding:26px 30px" data-in="104.6" data-anim="rise" data-dur="0.8">
+                <div class="label" style="color:var(--ink-2)">Within a tier</div>
+                <div class="mono" style="font-size:29px;margin-top:16px;color:var(--ink)">
+                    share = <span class="gold">stake</span> × <span class="cyan">uptime</span></div>
+                <div class="small" style="margin-top:12px;max-width:660px">
+                    A node that is offline earns nothing for the period it is down — availability is
+                    priced, not assumed.
+                </div>
+            </div>
+            <div class="figcap" style="margin-top:22px;max-width:700px" data-in="109.0" data-dur="0.8">
+                <b>Fig. 1b</b> — Reward split. Tier share is fixed by protocol; the split inside a tier
+                is earned.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ D · slashing & post-2028 revenue  136.8 → 184.6 ══════ -->
+<div class="act" data-in="136.8" data-anim="fade" data-dur="0.7" data-out="183.9" data-odur="0.7">
+    <div class="label" style="color:var(--red)" data-in="137.0" data-dur="0.6">§7 · Accountability &amp; Long-Run Revenue</div>
+    <div style="display:flex;gap:60px;margin-top:28px;align-items:flex-start">
+        <div style="width:820px">
+            <h3 class="h3" data-in="137.3" data-anim="rise" data-dur="0.8">Slashing</h3>
+            <table class="tbl" style="margin-top:22px;font-size:24px">
+                <thead><tr data-in="140.9" data-dur="0.5"><th>Tier</th><th>Penalty</th><th>Trigger</th></tr></thead>
+                <tbody>
+                <tr data-in="141.4" data-anim="left" data-dur="0.5"><td class="gold">Validator</td><td class="red mono">−15%</td><td>Provable misbehaviour</td></tr>
+                <tr data-in="143.4" data-anim="left" data-dur="0.5"><td class="cyan">Guardian</td><td class="red mono">−10%</td><td>Offline &gt; 24 h</td></tr>
+                <tr data-in="146.4" data-anim="left" data-dur="0.5"><td class="violet">Sentinel</td><td class="red mono">−5%</td><td>Offline &gt; 48 h</td></tr>
+                <tr data-in="149.4" data-anim="left" data-dur="0.5"><td class="grn">Light</td><td class="mono">None</td><td>—</td></tr>
+                <tr data-in="152.4" data-anim="left" data-dur="0.5"><td>All tiers</td><td class="red mono">Deregistered</td><td>Offline &gt; 7 days</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div style="flex:1">
+            <h3 class="h3" data-in="157.2" data-anim="rise" data-dur="0.8">
+                After the pool — <span class="grn">2028 onward</span></h3>
+            <div class="small" style="margin-top:12px;max-width:700px" data-in="157.6" data-dur="0.7">
+                Node income transitions from emission to protocol revenue.
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;margin-top:24px">
+                <div class="rev" data-in="165.7" data-anim="left" data-dur="0.5"><span class="n">01</span><span class="t">Platform fees on contract deployment</span></div>
+                <div class="rev" data-in="167.7" data-anim="left" data-dur="0.5"><span class="n">02</span><span class="t">Cross-chain bridge transfer fees</span></div>
+                <div class="rev" data-in="169.7" data-anim="left" data-dur="0.5"><span class="n">03</span><span class="t">Token Factory revenue share</span></div>
+                <div class="rev" data-in="172.7" data-anim="left" data-dur="0.5"><span class="n">04</span><span class="t">Exchange protocol fee (0.05% of swaps)</span></div>
+                <div class="rev" data-in="175.7" data-anim="left" data-dur="0.5"><span class="n">05</span><span class="t">Governance participation rewards</span></div>
+                <div class="rev" data-in="178.2" data-anim="left" data-dur="0.5"><span class="n">06</span><span class="t">Premium API access for commercial dApps</span></div>
+            </div>
+            <div class="figcap" style="margin-top:22px;max-width:700px" data-in="180.6" data-dur="0.8">
+                <b>Fig. 3</b> — Six revenue streams replace emission once the reward pool closes.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ E · governance & KYC  184.5 → 253.8 ══════ -->
+<div class="act" data-in="184.5" data-anim="fade" data-dur="0.7" data-out="253.1" data-odur="0.7">
+    <div class="label" style="color:#B79BFB" data-in="184.7" data-dur="0.6">§10 · Validator Governance</div>
+    <h2 class="h2" style="margin-top:12px" data-in="184.9" data-anim="rise" data-dur="0.9">
+        The validator set is the <span class="violet">board of the chain</span></h2>
+
+    <div style="display:flex;gap:56px;margin-top:32px;align-items:flex-start">
+        <!-- KYC / PDPA -->
+        <div style="width:800px">
+            <div class="label" style="color:var(--ink-2)" data-in="190.6" data-dur="0.6">Admission — KYC under Thai PDPA</div>
+            <div class="card accent-viol" style="margin-top:20px;padding:26px 30px"
+                 data-in="190.9" data-anim="rise" data-dur="0.8">
+                <div style="font-size:25px;font-weight:700">Registered companies only</div>
+                <div class="small" style="margin-top:8px">Company registration · authorised person ID ·
+                    dedicated server proof · admin review · existing-validator vote</div>
+            </div>
+
+            <div style="display:flex;gap:20px;margin-top:22px">
+                <div class="card" style="flex:1;padding:24px 26px" data-in="199.6" data-anim="left" data-dur="0.7">
+                    <div class="label" style="color:var(--green)">On-chain</div>
+                    <div class="mono" style="font-size:23px;margin-top:14px;color:var(--ink);word-break:break-all">
+                        keccak256(kycData)</div>
+                    <div class="small" style="margin-top:10px">A hash and nothing else</div>
+                </div>
+                <div class="card" style="flex:1;padding:24px 26px" data-in="209.6" data-anim="right" data-dur="0.7">
+                    <div class="label" style="color:var(--gold-2)">Off-chain</div>
+                    <div style="font-size:23px;margin-top:14px;color:var(--ink)">Encrypted documents</div>
+                    <div class="small" style="margin-top:10px">Access-logged · purpose-limited ·
+                        consent revocable · right to erasure</div>
+                </div>
+            </div>
+            <div class="figcap" style="margin-top:22px;max-width:790px" data-in="214.0" data-dur="0.8">
+                <b>Fig. 4</b> — PDPA-compliant identity model. Personal data never reaches the ledger;
+                the chain stores only a commitment to it.
+            </div>
+        </div>
+
+        <!-- proposal lifecycle -->
+        <div style="flex:1">
+            <div class="label" style="color:var(--ink-2)" data-in="219.5" data-dur="0.6">Proposal lifecycle</div>
+            <div style="display:flex;flex-direction:column;gap:14px;margin-top:20px">
+                <div class="gov" data-in="219.8" data-anim="right" data-dur="0.6"><span class="step">01</span>
+                    <div><b style="font-size:23px">Propose</b>
+                        <div class="small" style="margin-top:5px">Parameters · validator admission or removal · contract upgrade</div></div></div>
+                <div class="gov" data-in="229.2" data-anim="right" data-dur="0.6"><span class="step">02</span>
+                    <div><b style="font-size:23px">Vote — 7 days</b>
+                        <div class="small" style="margin-top:5px">Open to the validator set only</div></div></div>
+                <div class="gov" data-in="231.8" data-anim="right" data-dur="0.6"><span class="step">03</span>
+                    <div><b style="font-size:23px">Quorum &gt; 50%</b>
+                        <div class="small" style="margin-top:5px">Below quorum, the proposal lapses</div></div></div>
+                <div class="gov" style="border-color:rgba(233,174,40,.4);background:rgba(233,174,40,.08)"
+                     data-in="234.6" data-anim="right" data-dur="0.6"><span class="step gold">04</span>
+                    <div><b style="font-size:23px" class="gold">Timelock — 48 hours</b>
+                        <div class="small" style="margin-top:5px">A window for the network to react before the change lands</div></div></div>
+            </div>
+
+            <div style="display:flex;gap:18px;margin-top:26px">
+                <div class="card" style="flex:1;padding:20px 22px" data-in="239.4" data-anim="rise" data-dur="0.7">
+                    <div style="font-size:23px;font-weight:700">TPIX Wallet</div>
+                    <div class="small" style="margin-top:6px">Android &amp; iOS · HD wallet · node control</div></div>
+                <div class="card" style="flex:1;padding:20px 22px" data-in="240.0" data-anim="rise" data-dur="0.7">
+                    <div style="font-size:23px;font-weight:700">Master Node UI</div>
+                    <div class="small" style="margin-top:6px">Windows desktop · multi-node dashboard</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ F · outro  253.7 → 263.6 ══════ -->
+<div class="act" data-in="253.7" data-anim="fade" data-dur="0.8">
+    <div class="title-wrap">
+        <img src="../assets/tpix-logo.webp" style="width:108px;height:108px;object-fit:contain;opacity:.9;
+             filter:drop-shadow(0 0 30px rgba(233,174,40,.4))" data-in="253.9" data-anim="pop" data-dur="1.0">
+        <div class="label" style="margin-top:28px;letter-spacing:.4em" data-in="254.3" data-dur="0.8">End of Part Four</div>
+        <div class="h1" style="margin-top:16px" data-in="254.6" data-anim="rise" data-dur="0.9">Master Nodes</div>
+        <div style="width:180px;height:1px;background:var(--line-2);margin-top:30px" data-in="255.2" data-anim="wipe" data-dur="0.8"></div>
+        <div class="body" style="margin-top:28px;font-size:27px;text-align:center" data-in="255.5" data-dur="0.9">
+            Next — <span class="cyan">Part Five: The Trading Layer.</span>
+            The exchange, the token factory, and the bridge.
+        </div>
+    </div>
+</div>
+
+</div><!-- /frame -->
+</div><!-- /stage -->
+
+<script src="_engine.js"></script>
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const sv = (n, at) => { const e = document.createElementNS(NS, n);
+    for (const k in at) e.setAttribute(k, at[k]); return e; };
+
+/* ---------- ตารางการปล่อยรางวัลรายปี ---------- */
+(function emission() {
+    const svg = document.getElementById('emission');
+    const X0 = 78, X1 = 700, Y0 = 268, YTOP = 34;
+    const MAX = 600e6;
+    const bars = [
+        { y: 'Year 1', sub: '2025–2026', v: 600e6, pb: '~38.3', pct: '42.9%', c: '#E9AE28', at: 114.6 },
+        { y: 'Year 2', sub: '2026–2027', v: 500e6, pb: '~31.9', pct: '35.7%', c: '#22D3EE', at: 117.4 },
+        { y: 'Year 3', sub: '2027–2028', v: 300e6, pb: '~19.1', pct: '21.4%', c: '#8B5CF6', at: 120.2 },
+    ];
+    const base = sv('line', { x1: X0, y1: Y0, x2: X1, y2: Y0, stroke: 'rgba(255,255,255,.16)' });
+    base.dataset.in = '114.1'; base.dataset.anim = 'fade'; base.dataset.dur = '0.5';
+    svg.appendChild(base);
+
+    const W = 132, GAP = 74;
+    bars.forEach((b, i) => {
+        const x = X0 + 44 + i * (W + GAP);
+        const h = (b.v / MAX) * (Y0 - YTOP);
+        const r = sv('rect', { x, y: Y0 - h, width: W, height: h, rx: 8, fill: b.c, opacity: 0.88 });
+        r.dataset.in = b.at.toFixed(2); r.dataset.anim = 'wipeUp'; r.dataset.dur = '0.9';
+        svg.appendChild(r);
+
+        const v = sv('text', { x: x + W / 2, y: Y0 - h - 16, 'text-anchor': 'middle', fill: b.c,
+            'font-size': 25, 'font-weight': 800 }); v.textContent = (b.v / 1e6) + 'M';
+        v.dataset.in = (b.at + 0.5).toFixed(2); v.dataset.anim = 'fade'; v.dataset.dur = '0.5';
+        svg.appendChild(v);
+
+        const y1 = sv('text', { x: x + W / 2, y: Y0 + 26, 'text-anchor': 'middle', fill: '#EDF2F9',
+            'font-size': 20, 'font-weight': 700 }); y1.textContent = b.y;
+        const y2 = sv('text', { x: x + W / 2, y: Y0 + 48, 'text-anchor': 'middle', fill: '#5F7089',
+            'font-size': 16, 'font-weight': 600 }); y2.textContent = b.sub;
+        const y3 = sv('text', { x: x + W / 2, y: Y0 + 76, 'text-anchor': 'middle', fill: '#A6B6CC',
+            'font-family': 'JetBrains Mono, monospace', 'font-size': 17 });
+        y3.textContent = b.pb + ' / blk';
+        [y1, y2, y3].forEach((t) => {
+            t.dataset.in = (b.at + 0.3).toFixed(2); t.dataset.anim = 'fade'; t.dataset.dur = '0.5';
+            svg.appendChild(t);
+        });
+    });
+
+    const ax = sv('text', { x: X0 - 10, y: YTOP + 12, 'text-anchor': 'end', fill: '#5F7089',
+        'font-size': 15, 'font-weight': 650 }); ax.textContent = 'TPIX';
+    ax.dataset.in = '114.2'; ax.dataset.anim = 'fade'; ax.dataset.dur = '0.5';
+    svg.appendChild(ax);
+})();
+
+/* ---------- cue track ---------- */
+fetch('../tmp/ep04/timing.json').then(r => r.json()).then(d => {
+    TPIX.init({ duration: d.duration, chapter: 'Part Four · Master Nodes', cues: d.lines });
+    window.__ready = true;
+});
+</script>
+</html>

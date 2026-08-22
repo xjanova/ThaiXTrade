@@ -16,6 +16,8 @@ import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 // ภาษาปัจจุบัน — เริ่มต้นภาษาอังกฤษ
+import SectionVideo from '@/Components/Whitepaper/SectionVideo.vue';
+
 const lang = ref('en');
 const toggleLang = () => { lang.value = lang.value === 'en' ? 'th' : 'en'; };
 
@@ -30,18 +32,19 @@ const sections = computed(() => [
     { id: 'tokenomics', title: t.value.toc[3] },
     { id: 'use-cases', title: t.value.toc[4] },
     { id: 'dex-protocol', title: t.value.toc[5] },
-    { id: 'token-sale', title: t.value.toc[6] },
-    { id: 'masternode', title: t.value.toc[7] },
-    { id: 'living-identity', title: t.value.toc[8] },
-    { id: 'governance', title: t.value.toc[9] },
-    { id: 'bridge', title: t.value.toc[10] },
-    { id: 'ecosystem', title: t.value.toc[11] },
-    { id: 'integrations', title: t.value.toc[12] },
-    { id: 'roadmap', title: t.value.toc[13] },
-    { id: 'tech-stack', title: t.value.toc[14] },
-    { id: 'team', title: t.value.toc[15] },
-    { id: 'security', title: t.value.toc[16] },
-    { id: 'legal', title: t.value.toc[17] },
+    { id: 'ai-trade', title: t.value.toc[6] },
+    { id: 'token-sale', title: t.value.toc[7] },
+    { id: 'masternode', title: t.value.toc[8] },
+    { id: 'living-identity', title: t.value.toc[9] },
+    { id: 'governance', title: t.value.toc[10] },
+    { id: 'bridge', title: t.value.toc[11] },
+    { id: 'ecosystem', title: t.value.toc[12] },
+    { id: 'integrations', title: t.value.toc[13] },
+    { id: 'roadmap', title: t.value.toc[14] },
+    { id: 'tech-stack', title: t.value.toc[15] },
+    { id: 'team', title: t.value.toc[16] },
+    { id: 'security', title: t.value.toc[17] },
+    { id: 'legal', title: t.value.toc[18] },
 ]);
 
 // Section ที่กำลังดูอยู่
@@ -66,9 +69,9 @@ onMounted(() => {
         { threshold: 0.2, rootMargin: '-80px 0px -50% 0px' }
     );
 
-    // observe ทั้ง 18 sections
+    // observe ทั้ง 19 sections
     const ids = ['executive-summary','problem-solution','tpix-chain','tokenomics','use-cases',
-        'dex-protocol','token-sale','masternode','living-identity','governance','bridge',
+        'dex-protocol','ai-trade','token-sale','masternode','living-identity','governance','bridge',
         'ecosystem','integrations','roadmap','tech-stack','team','security','legal'];
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -454,18 +457,19 @@ const content = {
             '4. Tokenomics',
             '5. Use Cases & Applications',
             '6. DEX Protocol',
-            '7. Token Sale Details',
-            '8. Master Node & Rewards',
-            '9. Living Identity — Seedless Recovery',
-            '10. Validator Governance',
-            '11. Cross-Chain Bridge',
-            '12. Ecosystem & Affiliate',
-            '13. Platform Integrations',
-            '14. Roadmap',
-            '15. Technology Stack',
-            '16. Team & Partners',
-            '17. Security & Audits',
-            '18. Legal Disclaimer',
+            '7. AI TRADE — Non-Custodial Strategy Engine',
+            '8. Token Sale Details',
+            '9. Master Node & Rewards',
+            '10. Living Identity — Seedless Recovery',
+            '11. Validator Governance',
+            '12. Cross-Chain Bridge',
+            '13. Ecosystem & Affiliate',
+            '14. Platform Integrations',
+            '15. Roadmap',
+            '16. Technology Stack',
+            '17. Team & Partners',
+            '18. Security & Audits',
+            '19. Legal Disclaimer',
         ],
         execSummary: {
             p1: 'TPIX Chain is a next-generation EVM-compatible blockchain built on Polygon Edge technology, designed specifically for the Thai and Southeast Asian digital economy. With gasless transactions, 2-second block times, and IBFT Proof-of-Authority consensus, TPIX Chain provides an unmatched platform for decentralized applications, DeFi, and real-world asset tokenization.',
@@ -579,6 +583,47 @@ const content = {
                 ['WTPIX', 'Wrapped TPIX for ERC-20 compatibility within the DEX'],
             ],
         },
+        aiTrade: {
+            lead: 'Automated trading assistants are common in marketing and rare in practice. The obstacle is structural, not technical — and TPIX removes both halves of it.',
+            barriers: [
+                { title: 'Cost', desc: 'On a fee-charging chain, a strategy that evaluates the market every minute pays gas on every evaluation and every rebalance. The fee floor eliminates most short-horizon strategies before they begin.' },
+                { title: 'Conflict of Interest', desc: 'A centralised exchange is the counterparty to its own users. Any bot it operates sits on the wrong side of the table: it sees the order book, it holds the deposits, and its revenue rises when its users lose.' },
+            ],
+            answer: 'TPIX Chain removes the first constraint — gas is zero, so a strategy may evaluate as often as it needs to. TPIX TRADE removes the second: it is a genuine DEX. User coins never leave the user\'s wallet, and the platform never holds a private key. AI TRADE is therefore honest by construction — the platform cannot trade against the user, front-run the user, or profit from the user\'s loss.',
+            principle: 'The decision engine is a deterministic rule ensemble, not a large language model. A decision that puts real money at risk must be reproducible and auditable: given the same market data the engine returns the same answer, and every answer carries a written reason. An optional LLM advisor exists for commentary on past performance — its interface exposes no method capable of placing a trade.',
+            strategies: [
+                { name: 'Grid Trading', code: 'grid', desc: 'Buys when price dips inside its range, sells one grid step higher. One position at a time.', risk: 'Low', tier: 'Free' },
+                { name: 'Smart DCA', code: 'dca', desc: 'Buys on a fixed schedule, and buys bigger when price is below its moving average.', risk: 'Low', tier: 'Free' },
+                { name: 'Momentum Trend', code: 'momentum', desc: 'Rides trends using an EMA crossover confirmed by volume expansion.', risk: 'Medium', tier: 'Basic' },
+                { name: 'RSI Mean Reversion', code: 'mean_reversion', desc: 'Buys statistical oversold and sells overbought around a rolling mean.', risk: 'Medium', tier: 'Pro' },
+                { name: 'Volatility Breakout', code: 'breakout', desc: 'Enters when price closes above the Donchian channel, with an ATR-scaled stop.', risk: 'High', tier: 'Pro' },
+                { name: 'Micro Scalper', code: 'scalping', desc: 'High-frequency micro trades on order-book imbalance. Needs tight spreads.', risk: 'High', tier: 'Pro' },
+                { name: 'Spread Arbitrage', code: 'arbitrage', desc: 'Captures the price gap between the TPIX DEX pool and the reference CEX price. Only viable because gas is zero.', risk: 'Medium', tier: 'VIP' },
+                { name: 'TPIX AI Signal', code: 'ai_signal', desc: 'Weighted ensemble of EMA trend, momentum, RSI mean reversion and Bollinger position, re-weighted by market regime.', risk: 'Medium', tier: 'VIP' },
+            ],
+            ensemble: [
+                { view: 'EMA trend', weight: '30%', q: 'Which way is the market actually going?' },
+                { view: 'Momentum (ROC)', weight: '25%', q: 'How much force is behind the current move?' },
+                { view: 'RSI mean reversion', weight: '25%', q: 'Is price cheap or expensive against its own centre?' },
+                { view: 'Bollinger position', weight: '20%', q: 'Where in its range is price sitting?' },
+            ],
+            ensembleNote: 'The blend is re-weighted by market regime: a directional market leans on trend and momentum, a ranging market leans on mean reversion and band position. The score must exceed a user-set confidence threshold (55–95%, default 65%) before the engine acts. The floor is 55% rather than 50% because at 50% the buy and sell gates meet exactly, the hold band vanishes, and the bot flips every tick — measured at −5.6% across 201 ticks from fees alone.',
+            risk: 'Before any strategy acts, a risk gate combines two independent signals: price behaviour, which detects a break before the news reports it, and market news, which explains why. The gate takes the higher of the two readings, never the average — averaging lets one calm signal mask an alarming one. Its output is a full-size entry, a reduced size, a pause on new entries, or a forced exit of everything held. News is ingested from public RSS feeds and scored by weighted keyword, so any decision can be replayed afterwards.',
+            custody: [
+                { mode: 'Paper trading (default)', does: 'Runs the full engine against live prices in a simulated portfolio. No funds involved.', signs: 'Nobody' },
+                { mode: 'Live', does: 'Records a signal awaiting confirmation.', signs: 'The user, in their own wallet' },
+            ],
+            custodyNote: 'The system holds no private key in either mode. Even with live trading enabled, AI TRADE never submits a transaction on the user\'s behalf — it produces a recommendation the user executes themselves. Live trading ships disabled so every user can observe a strategy\'s real behaviour on real prices before any capital is exposed.',
+            constraints: [
+                'One position per bot — no pyramiding; a buy signal while already holding becomes hold.',
+                'Tiered access — Free, Basic, Pro and VIP differ in strategy access and concurrent bot count.',
+                'Work credits are denominated in TPIX only, so every bot rental is direct buy-side demand for the native coin.',
+                'Cloud execution — dedicated workers evaluate strategies on a fixed cadence; no browser needs to stay open.',
+                'Reproducibility harness — aibot:probe fires every strategy at known conditions and asserts decisions do not drift.',
+            ],
+            scope: 'Stated plainly, so the boundary is not inferred from marketing: the user selects the trading pair. The engine decides buy, sell or hold on that pair; it does not scan the market and choose an asset on the user\'s behalf. Automatic pair selection is a roadmap item, not a shipped capability.',
+            closing: 'A centralised exchange can build a faster bot. It cannot build an honest one, because it is the counterparty. AI TRADE is positioned where the incentives line up: the user keeps custody, the platform holds no other side of the trade, and the engine\'s only route to revenue is being worth renting again.',
+        },
         salePhases: [
             { phase: 'Private Sale', price: '$0.05', alloc: '100M TPIX', tge: '10%', vesting: '30d cliff, 180d linear', color: 'text-purple-400' },
             { phase: 'Pre-Sale', price: '$0.08', alloc: '200M TPIX', tge: '15%', vesting: '14d cliff, 120d linear', color: 'text-blue-400' },
@@ -650,18 +695,19 @@ const content = {
             '4. โทเคโนมิกส์',
             '5. กรณีการใช้งานและแอปพลิเคชัน',
             '6. โปรโตคอล DEX',
-            '7. รายละเอียดการขายโทเคน',
-            '8. Master Node และรางวัล',
-            '9. Living Identity — กู้กระเป๋าไม่ต้องใช้ Seed Phrase',
-            '10. Validator Governance — การปกครองแบบกระจายอำนาจ',
-            '11. Cross-Chain Bridge',
-            '12. ระบบนิเวศและ Affiliate',
-            '13. การเชื่อมต่อแพลตฟอร์ม',
-            '14. แผนงาน (Roadmap)',
-            '15. เทคโนโลยีที่ใช้',
-            '16. ทีมงานและพาร์ทเนอร์',
-            '17. ความปลอดภัยและการตรวจสอบ',
-            '18. ข้อจำกัดความรับผิดชอบ',
+            '7. AI TRADE — บอทกลยุทธ์ที่ไม่ถือเหรียญผู้ใช้',
+            '8. รายละเอียดการขายโทเคน',
+            '9. Master Node และรางวัล',
+            '10. Living Identity — กู้กระเป๋าไม่ต้องใช้ Seed Phrase',
+            '11. Validator Governance — การปกครองแบบกระจายอำนาจ',
+            '12. Cross-Chain Bridge',
+            '13. ระบบนิเวศและ Affiliate',
+            '14. การเชื่อมต่อแพลตฟอร์ม',
+            '15. แผนงาน (Roadmap)',
+            '16. เทคโนโลยีที่ใช้',
+            '17. ทีมงานและพาร์ทเนอร์',
+            '18. ความปลอดภัยและการตรวจสอบ',
+            '19. ข้อจำกัดความรับผิดชอบ',
         ],
         execSummary: {
             p1: 'TPIX Chain เป็นบล็อกเชนที่รองรับ EVM สร้างบนเทคโนโลยี Polygon Edge ออกแบบมาโดยเฉพาะสำหรับเศรษฐกิจดิจิทัลไทยและอาเซียน ด้วยการทำธุรกรรมไม่เสียค่า Gas, เวลาสร้างบล็อก 2 วินาที และ IBFT Proof-of-Authority consensus ทำให้ TPIX Chain เป็นแพลตฟอร์มที่เหนือกว่าสำหรับแอปพลิเคชันกระจายอำนาจ, DeFi และการโทเคไนซ์สินทรัพย์ในโลกจริง',
@@ -774,6 +820,47 @@ const content = {
                 ['TPIXDEXPair', 'สระสภาพคล่อง พร้อม ERC-20 LP tokens'],
                 ['WTPIX', 'Wrapped TPIX สำหรับใช้ใน DEX'],
             ],
+        },
+        aiTrade: {
+            lead: 'บอทช่วยเทรดอัตโนมัติมีให้เห็นในโฆษณาบ่อย แต่ใช้ได้จริงน้อยมาก อุปสรรคเป็นเรื่องเชิงโครงสร้าง ไม่ใช่เชิงเทคนิค และ TPIX ปลดออกได้ทั้งสองข้อ',
+            barriers: [
+                { title: 'ต้นทุน', desc: 'บนเชนที่เก็บค่าแก๊ส กลยุทธ์ที่ต้องประเมินตลาดทุกนาทีจะเสียค่าแก๊สทุกครั้งที่คิดและทุกครั้งที่ปรับพอร์ต พื้นค่าธรรมเนียมจึงฆ่ากลยุทธ์ระยะสั้นเกือบทั้งหมดตั้งแต่ยังไม่เริ่ม' },
+                { title: 'ผลประโยชน์ทับซ้อน', desc: 'กระดานเทรดแบบรวมศูนย์เป็นคู่สัญญาของผู้ใช้เอง บอทที่มันทำขึ้นจึงนั่งอยู่ผิดฝั่งโต๊ะ — มันเห็นสมุดคำสั่ง ถือเงินฝากของผู้ใช้ และรายได้ของมันเพิ่มขึ้นเมื่อผู้ใช้ขาดทุน' },
+            ],
+            answer: 'TPIX Chain ปลดข้อแรก เพราะค่าแก๊สเป็นศูนย์ กลยุทธ์จึงประเมินตลาดถี่เท่าที่ต้องการได้ ส่วน TPIX TRADE ปลดข้อที่สอง เพราะเป็น DEX แท้ — เหรียญของผู้ใช้ไม่เคยออกจากกระเป๋าตัวเอง และแพลตฟอร์มไม่เคยถือกุญแจส่วนตัว AI TRADE จึงซื่อสัตย์โดยโครงสร้าง แพลตฟอร์มเทรดสวนผู้ใช้ไม่ได้ ตัดหน้าไม่ได้ และไม่ได้กำไรจากการที่ผู้ใช้ขาดทุน',
+            principle: 'ตัวตัดสินใจเป็นโมเดลกฎรวมคะแนนที่ให้ผลแน่นอน ไม่ใช่โมเดลภาษาขนาดใหญ่ เพราะการตัดสินใจที่เอาเงินจริงไปเสี่ยงต้องย้อนตรวจได้และให้ผลเดิมเมื่อข้อมูลเดิม ทุกคำตอบมีเหตุผลเขียนกำกับไว้ ระบบมีที่ปรึกษา AI เสริมไว้ให้ความเห็นเรื่องผลงานย้อนหลังเท่านั้น และอินเทอร์เฟซของมันไม่มีเมธอดใดที่สั่งเทรดได้เลย',
+            strategies: [
+                { name: 'Grid Trading', code: 'grid', desc: 'ซื้อเมื่อราคาย่อในกรอบ แล้วขายเมื่อขึ้นครบหนึ่งชั้น ถือครั้งละหนึ่งไม้', risk: 'ต่ำ', tier: 'ฟรี' },
+                { name: 'Smart DCA', code: 'dca', desc: 'ทยอยซื้อตามรอบเวลา และซื้อหนักขึ้นเมื่อราคาต่ำกว่าค่าเฉลี่ยเคลื่อนที่', risk: 'ต่ำ', tier: 'ฟรี' },
+                { name: 'Momentum Trend', code: 'momentum', desc: 'เข้าตามเทรนด์เมื่อเส้น EMA ตัดกันและมีวอลุ่มยืนยัน', risk: 'กลาง', tier: 'Basic' },
+                { name: 'RSI Mean Reversion', code: 'mean_reversion', desc: 'ซื้อตอน oversold ขายตอน overbought รอบค่าเฉลี่ยเคลื่อนที่', risk: 'กลาง', tier: 'Pro' },
+                { name: 'Volatility Breakout', code: 'breakout', desc: 'เข้าเมื่อราคาปิดทะลุกรอบ Donchian พร้อมจุดตัดขาดทุนอิง ATR', risk: 'สูง', tier: 'Pro' },
+                { name: 'Micro Scalper', code: 'scalping', desc: 'เก็บกำไรถี่จากความไม่สมดุลของสมุดคำสั่ง ต้องการสเปรดแคบ', risk: 'สูง', tier: 'Pro' },
+                { name: 'Spread Arbitrage', code: 'arbitrage', desc: 'เก็บส่วนต่างราคาระหว่างพูล DEX ของ TPIX กับราคาอ้างอิงจาก CEX ทำได้เพราะค่าแก๊สเป็นศูนย์เท่านั้น', risk: 'กลาง', tier: 'VIP' },
+                { name: 'TPIX AI Signal', code: 'ai_signal', desc: 'รวมสี่มุมมองแบบถ่วงน้ำหนัก — เทรนด์ EMA โมเมนตัม RSI สวนค่าเฉลี่ย และตำแหน่งในกรอบ Bollinger แล้วปรับน้ำหนักตามสภาพตลาด', risk: 'กลาง', tier: 'VIP' },
+            ],
+            ensemble: [
+                { view: 'เทรนด์ EMA', weight: '30%', q: 'ตลาดกำลังไปทางไหนจริง ๆ' },
+                { view: 'โมเมนตัม (ROC)', weight: '25%', q: 'แรงส่งของการเคลื่อนไหวนี้มีแค่ไหน' },
+                { view: 'RSI สวนค่าเฉลี่ย', weight: '25%', q: 'ราคาถูกหรือแพงเมื่อเทียบกับค่ากลางของตัวเอง' },
+                { view: 'ตำแหน่งในกรอบ Bollinger', weight: '20%', q: 'ตอนนี้ราคาอยู่ตรงไหนของช่วง' },
+            ],
+            ensembleNote: 'น้ำหนักถูกปรับตามสภาพตลาด ตลาดที่มีทิศทางจะให้น้ำหนักเทรนด์และโมเมนตัมมากขึ้น ส่วนตลาดออกข้างจะให้น้ำหนักการสวนค่าเฉลี่ยและตำแหน่งในกรอบมากขึ้น คะแนนรวมต้องเกินระดับความมั่นใจที่ผู้ใช้ตั้งไว้ (55–95% ค่าเริ่มต้น 65%) จึงจะลงมือ เหตุที่ขั้นต่ำเป็น 55% ไม่ใช่ 50% เพราะที่ 50% ประตูซื้อกับประตูขายชนกันพอดี ช่วงถือหายไปทั้งหมด และบอทจะสลับไปมาทุกติ๊ก วัดจริงได้ −5.6% ใน 201 ติ๊ก จากค่าธรรมเนียมล้วน ๆ',
+            risk: 'ก่อนกลยุทธ์ใดจะลงมือ มีด่านความเสี่ยงที่รวมสองสัญญาณอิสระเข้าด้วยกัน — พฤติกรรมราคา ซึ่งจับได้ก่อนข่าวออกเสมอ และข่าวตลาด ซึ่งบอกได้ว่าทำไม ด่านนี้ใช้ค่าที่สูงกว่าระหว่างสองฝั่ง ไม่ใช่ค่าเฉลี่ย เพราะการเฉลี่ยจะทำให้สัญญาณที่นิ่งกลบสัญญาณอันตราย ผลลัพธ์มีสี่แบบคือ เข้าเต็มไม้ ลดขนาดไม้ หยุดเข้าไม้ใหม่ หรือเทออกทั้งหมด ข่าวดึงจากฟีด RSS สาธารณะแล้วให้คะแนนด้วยคำสำคัญถ่วงน้ำหนัก ทุกการตัดสินใจจึงย้อนดูได้ว่าทำไม',
+            custody: [
+                { mode: 'โหมดทดลอง (ค่าเริ่มต้น)', does: 'รันเครื่องยนต์เต็มรูปแบบกับราคาจริง ในพอร์ตจำลอง ไม่มีเงินจริงเกี่ยวข้อง', signs: 'ไม่มีใครต้องเซ็น' },
+                { mode: 'โหมดจริง', does: 'บันทึกเป็นสัญญาณรอการยืนยัน', signs: 'ผู้ใช้เซ็นในกระเป๋าของตัวเอง' },
+            ],
+            custodyNote: 'ระบบไม่ถือกุญแจส่วนตัวในทั้งสองโหมด ต่อให้เปิดโหมดจริงแล้ว AI TRADE ก็ไม่ส่งธุรกรรมแทนผู้ใช้ มันสร้างเป็นข้อเสนอให้ผู้ใช้ไปกดทำเอง และโหมดจริงถูกปิดมาตั้งแต่ต้น เพื่อให้ทุกคนได้ดูพฤติกรรมจริงของกลยุทธ์บนราคาจริงก่อน แล้วค่อยตัดสินใจเอาเงินเข้า',
+            constraints: [
+                'หนึ่งบอทถือได้ครั้งละหนึ่งไม้ ไม่มีการเติมไม้ สัญญาณซื้อระหว่างที่ถือของอยู่จะถูกแปลงเป็นถือ',
+                'แบ่งระดับการเข้าถึง — Free, Basic, Pro และ VIP ต่างกันที่กลยุทธ์ที่ปลดล็อกและจำนวนบอทที่รันพร้อมกันได้',
+                'เครดิตการทำงานคิดเป็น TPIX เท่านั้น ทุกการเช่าบอทจึงเป็นแรงซื้อเหรียญหลักโดยตรง',
+                'รันบนคลาวด์ — มีวอร์กเกอร์เฉพาะคอยประเมินกลยุทธ์ตามรอบ ไม่ต้องเปิดเบราว์เซอร์ค้างไว้',
+                'มีชุดทดสอบความคงเส้นคงวา — aibot:probe ยิงทุกกลยุทธ์ใส่สภาพตลาดที่รู้คำตอบ แล้วยืนยันว่าการตัดสินใจไม่แกว่ง',
+            ],
+            scope: 'เขียนไว้ตรง ๆ เพื่อไม่ให้ต้องเดาขอบเขตจากคำโฆษณา — ผู้ใช้เป็นคนเลือกคู่เทรดเอง เครื่องยนต์ตัดสินใจว่าจะซื้อ ขาย หรือถือ บนคู่นั้น มันไม่ได้กวาดตลาดแล้วเลือกเหรียญให้ การเลือกคู่เทรดอัตโนมัติอยู่ในแผนงาน ยังไม่ใช่ความสามารถที่ส่งมอบแล้ว',
+            closing: 'กระดานเทรดแบบรวมศูนย์สร้างบอทที่เร็วกว่าได้ แต่สร้างบอทที่ซื่อสัตย์ไม่ได้ เพราะตัวมันเองคือคู่สัญญา AI TRADE ยืนอยู่ในจุดที่แรงจูงใจตรงกันหมด — ผู้ใช้ถือเหรียญเอง แพลตฟอร์มไม่ได้ถืออีกฝั่งของดีล และทางเดียวที่เครื่องยนต์นี้จะมีรายได้คือมันต้องดีพอให้คนอยากเช่าอีกครั้ง',
         },
         salePhases: [
             { phase: 'Private Sale', price: '$0.05', alloc: '100M TPIX', tge: '10%', vesting: '30 วัน cliff, 180 วัน linear', color: 'text-purple-400' },
@@ -899,6 +986,7 @@ const content = {
                     <!-- 1. Executive Summary -->
                     <section id="executive-summary" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[0] }}</h2>
+                        <SectionVideo file="ep01-foundation.mp4" part="Part One — Foundation" :start="19.3" :duration="195" :lang="lang" />
                         <p class="wp-text">{{ t.execSummary.p1 }}</p>
                         <p class="wp-text">{{ t.execSummary.p2 }}</p>
                         <p class="wp-text font-medium text-white/90">{{ t.execSummary.p3 }}</p>
@@ -917,6 +1005,7 @@ const content = {
                     <!-- 2. Problem & Solution -->
                     <section id="problem-solution" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[1] }}</h2>
+                        <SectionVideo file="ep01-foundation.mp4" part="Part One — Foundation" :start="98.8" :duration="195" :lang="lang" />
 
                         <h3 class="wp-subheading text-trading-red">{{ lang === 'en' ? '⚠️ The Problems' : '⚠️ ปัญหา' }}</h3>
                         <div class="grid sm:grid-cols-2 gap-4 mb-8">
@@ -938,6 +1027,7 @@ const content = {
                     <!-- 3. TPIX Chain Architecture -->
                     <section id="tpix-chain" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[2] }}</h2>
+                        <SectionVideo file="ep02-the-chain.mp4" part="Part Two — The Chain" :start="9.1" :duration="230" :lang="lang" />
 
                         <!-- Architecture Diagram — แผนภูมิสถาปัตยกรรม -->
                         <div class="wp-highlight mb-6">
@@ -1001,6 +1091,7 @@ const content = {
                     <!-- 4. Tokenomics — โทเคโนมิกส์ -->
                     <section id="tokenomics" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[3] }}</h2>
+                        <SectionVideo file="ep03-economics.mp4" part="Part Three — Economics" :start="21.4" :duration="195" :lang="lang" />
 
                         <div class="grid lg:grid-cols-2 gap-8 items-start">
                             <!-- Donut Chart — แผนภูมิโดนัท -->
@@ -1058,6 +1149,7 @@ const content = {
                     <!-- 5. Use Cases — กรณีการใช้งาน -->
                     <section id="use-cases" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[4] }}</h2>
+                        <SectionVideo file="ep08-real-world.mp4" part="Part Eight — Real World" :start="19.1" :duration="272" :lang="lang" />
                         <p class="wp-text">
                             {{ lang === 'en'
                                 ? 'TPIX is the backbone of a comprehensive digital economy with 10+ real-world applications spanning agriculture, food safety, logistics, AI, e-commerce, and hospitality.'
@@ -1085,6 +1177,7 @@ const content = {
                     <!-- 6. DEX Protocol -->
                     <section id="dex-protocol" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[5] }}</h2>
+                        <SectionVideo file="ep05-the-trading-layer.mp4" part="Part Five — The Trading Layer" :start="10.6" :duration="263" :lang="lang" />
                         <p class="wp-text">{{ t.dex.desc }}</p>
 
                         <!-- DEX Flow Diagram -->
@@ -1121,9 +1214,111 @@ const content = {
                         </div>
                     </section>
 
-                    <!-- 7. Token Sale Details -->
-                    <section id="token-sale" class="wp-section">
+
+                    <!-- 7. AI TRADE -->
+                    <section id="ai-trade" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[6] }}</h2>
+                        <SectionVideo file="ep06-ai-trade.mp4" part="Part Six — AI TRADE" :start="11.4" :duration="457" :lang="lang" />
+                        <p class="wp-text">{{ t.aiTrade.lead }}</p>
+
+                        <!-- ทำไมมันเกิดบน CEX ไม่ได้ -->
+                        <div class="grid md:grid-cols-2 gap-4 mb-6">
+                            <div v-for="b in t.aiTrade.barriers" :key="b.title"
+                                 class="p-4 rounded-xl border border-red-500/25 bg-red-500/5">
+                                <h4 class="font-bold text-red-300 mb-2">{{ b.title }}</h4>
+                                <p class="text-sm text-gray-300 leading-relaxed">{{ b.desc }}</p>
+                            </div>
+                        </div>
+
+                        <div class="wp-highlight mb-6">
+                            <h4 class="text-sm font-bold text-green-300 mb-2 uppercase tracking-wider">
+                                {{ lang === 'en' ? 'Why a true DEX changes the answer' : 'ทำไม DEX แท้ถึงเปลี่ยนคำตอบ' }}
+                            </h4>
+                            <p class="text-sm text-gray-300 leading-relaxed">{{ t.aiTrade.answer }}</p>
+                        </div>
+
+                        <h3 class="wp-subheading">{{ lang === 'en' ? 'Explainable, Not Oracular' : 'อธิบายได้ ไม่ใช่กล่องดำ' }}</h3>
+                        <p class="wp-text">{{ t.aiTrade.principle }}</p>
+
+                        <h3 class="wp-subheading">{{ lang === 'en' ? 'Eight Strategies' : 'แปดกลยุทธ์' }}</h3>
+                        <div class="wp-table mb-6">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b border-white/10">
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Strategy' : 'กลยุทธ์' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Behaviour' : 'พฤติกรรม' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Risk' : 'ความเสี่ยง' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Tier' : 'ระดับ' }}</th>
+                                </tr></thead>
+                                <tbody>
+                                    <tr v-for="(s, i) in t.aiTrade.strategies" :key="s.code"
+                                        :class="i < t.aiTrade.strategies.length - 1 ? 'border-b border-white/5' : ''">
+                                        <td class="py-2 px-3">
+                                            <span class="text-white font-medium">{{ s.name }}</span>
+                                            <span class="block text-xs text-primary-400 font-mono">{{ s.code }}</span>
+                                        </td>
+                                        <td class="py-2 px-3 text-gray-300">{{ s.desc }}</td>
+                                        <td class="py-2 px-3 text-gray-400">{{ s.risk }}</td>
+                                        <td class="py-2 px-3 text-yellow-400 font-medium">{{ s.tier }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <h3 class="wp-subheading">{{ lang === 'en' ? 'TPIX AI Signal — The Ensemble' : 'TPIX AI Signal — โมเดลรวมสัญญาณ' }}</h3>
+                        <div class="grid md:grid-cols-4 gap-3 mb-4">
+                            <div v-for="e in t.aiTrade.ensemble" :key="e.view"
+                                 class="p-4 rounded-xl border border-primary-500/25 bg-primary-500/5">
+                                <div class="text-2xl font-bold text-primary-300">{{ e.weight }}</div>
+                                <div class="text-sm font-semibold text-white mt-1">{{ e.view }}</div>
+                                <div class="text-xs text-gray-400 mt-2 leading-relaxed">{{ e.q }}</div>
+                            </div>
+                        </div>
+                        <p class="wp-text">{{ t.aiTrade.ensembleNote }}</p>
+
+                        <h3 class="wp-subheading">{{ lang === 'en' ? 'Risk Gate — Price and News' : 'ด่านความเสี่ยง — ราคาและข่าว' }}</h3>
+                        <p class="wp-text">{{ t.aiTrade.risk }}</p>
+
+                        <h3 class="wp-subheading">{{ lang === 'en' ? 'Custody Model — The Part That Matters' : 'ใครถือเหรียญ — จุดที่สำคัญที่สุด' }}</h3>
+                        <div class="wp-table mb-4">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b border-white/10">
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Mode' : 'โหมด' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'What the system does' : 'ระบบทำอะไร' }}</th>
+                                    <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Who signs' : 'ใครเซ็น' }}</th>
+                                </tr></thead>
+                                <tbody>
+                                    <tr v-for="(c, i) in t.aiTrade.custody" :key="c.mode"
+                                        :class="i < t.aiTrade.custody.length - 1 ? 'border-b border-white/5' : ''">
+                                        <td class="py-2 px-3 text-white font-medium">{{ c.mode }}</td>
+                                        <td class="py-2 px-3 text-gray-300">{{ c.does }}</td>
+                                        <td class="py-2 px-3 text-green-400 font-medium">{{ c.signs }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="wp-highlight mb-6">
+                            <p class="text-sm text-gray-300 leading-relaxed">{{ t.aiTrade.custodyNote }}</p>
+                        </div>
+
+                        <h3 class="wp-subheading">{{ lang === 'en' ? 'Operational Constraints' : 'ข้อจำกัดในการทำงาน' }}</h3>
+                        <ul class="wp-list mb-6">
+                            <li v-for="c in t.aiTrade.constraints" :key="c">{{ c }}</li>
+                        </ul>
+
+                        <div class="p-4 rounded-xl border border-yellow-500/25 bg-yellow-500/5 mb-6">
+                            <h4 class="text-sm font-bold text-yellow-300 mb-2 uppercase tracking-wider">
+                                {{ lang === 'en' ? 'Scope — what the engine does not do' : 'ขอบเขต — สิ่งที่เครื่องยนต์นี้ยังไม่ทำ' }}
+                            </h4>
+                            <p class="text-sm text-gray-300 leading-relaxed">{{ t.aiTrade.scope }}</p>
+                        </div>
+
+                        <p class="wp-text">{{ t.aiTrade.closing }}</p>
+                    </section>
+
+                    <!-- 8. Token Sale Details -->
+                    <section id="token-sale" class="wp-section">
+                        <h2 class="wp-heading">{{ t.toc[7] }}</h2>
+                        <SectionVideo file="ep03-economics.mp4" part="Part Three — Economics" :start="92.8" :duration="195" :lang="lang" />
                         <p class="wp-text">
                             {{ lang === 'en'
                                 ? 'The TPIX token sale is conducted in 3 phases, accepting BNB and USDT on BSC. Purchased tokens are allocated with a vesting schedule and can be claimed as wTPIX (BEP-20) or native TPIX once the bridge is live.'
@@ -1146,7 +1341,8 @@ const content = {
 
                     <!-- 8. Master Node & Rewards -->
                     <section id="masternode" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[7] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[8] }}</h2>
+                        <SectionVideo file="ep04-master-nodes.mp4" part="Part Four — Master Nodes" :start="9.4" :duration="264" :lang="lang" />
                         <p class="wp-text">{{ t.masternodeDesc }}</p>
 
                         <!-- Master Node Tiers -->
@@ -1238,7 +1434,8 @@ const content = {
 
                     <!-- 9. Living Identity — Seedless Recovery -->
                     <section id="living-identity" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[8] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[9] }}</h2>
+                        <SectionVideo file="ep07-living-identity.mp4" part="Part Seven — Living Identity" :start="8.1" :duration="273" :lang="lang" />
                         <div class="glass-dark p-6 rounded-2xl border border-accent-500/20 mb-6">
                             <p class="text-lg font-bold text-accent-400 mb-2">{{ lang === 'en' ? "World's First On-Chain Seedless Wallet Recovery" : 'ระบบกู้คืนกระเป๋าแบบไม่ต้องใช้ Seed Phrase ตัวแรกของโลก' }}</p>
                             <p class="text-gray-300 text-sm">{{ lang === 'en' ? 'No more seed phrases. No more lost funds. Your identity is your key.' : 'ไม่ต้องจำ Seed Phrase อีกต่อไป ไม่มีเงินหาย ตัวตนของคุณคือกุญแจ' }}</p>
@@ -1283,7 +1480,8 @@ const content = {
 
                     <!-- 10. Validator Governance -->
                     <section id="governance" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[9] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[10] }}</h2>
+                        <SectionVideo file="ep04-master-nodes.mp4" part="Part Four — Master Nodes" :start="184.5" :duration="264" :lang="lang" />
                         <p class="wp-text">{{ lang === 'en' ? 'The ValidatorGovernance smart contract enables on-chain governance exclusively for Validator-tier nodes (10M TPIX stake + KYC-approved). Validators act as the chain\'s decision-making body for protocol upgrades, parameter changes, and membership.' : 'ValidatorGovernance smart contract เปิดให้การปกครองบนเชนเฉพาะ Validator-tier (stake 10M TPIX + ผ่าน KYC) ทำหน้าที่เป็นคณะกรรมการตัดสินใจของเชน' }}</p>
 
                         <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4 mb-6">
@@ -1332,7 +1530,8 @@ const content = {
 
                     <!-- 11. Cross-Chain Bridge -->
                     <section id="bridge" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[10] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[11] }}</h2>
+                        <SectionVideo file="ep05-the-trading-layer.mp4" part="Part Five — The Trading Layer" :start="202.5" :duration="263" :lang="lang" />
                         <p class="wp-text">{{ lang === 'en' ? 'The TPIX Bridge enables seamless asset transfer between TPIX Chain (native TPIX) and BNB Smart Chain (wTPIX, BEP-20). This allows TPIX holders to access BSC\'s DeFi ecosystem while maintaining the ability to bridge back.' : 'TPIX Bridge เชื่อมต่อ TPIX Chain (TPIX ดั้งเดิม) กับ BNB Smart Chain (wTPIX, BEP-20) ช่วยให้ผู้ถือ TPIX เข้าถึง DeFi บน BSC ได้' }}</p>
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
@@ -1364,7 +1563,8 @@ const content = {
 
                     <!-- 12. Ecosystem & Affiliate -->
                     <section id="ecosystem" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[11] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[12] }}</h2>
+                        <SectionVideo file="ep08-real-world.mp4" part="Part Eight — Real World" :start="19.1" :duration="272" :lang="lang" />
                         <p class="wp-text">
                             {{ lang === 'en'
                                 ? 'The TPIX ecosystem includes a comprehensive affiliate/referral program and a token factory allowing anyone to create ERC-20 tokens on TPIX Chain.'
@@ -1439,7 +1639,8 @@ const content = {
 
                     <!-- 13. Platform Integrations -->
                     <section id="integrations" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[12] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[13] }}</h2>
+                        <SectionVideo file="ep08-real-world.mp4" part="Part Eight — Real World" :start="209.7" :duration="272" :lang="lang" />
                         <div class="grid sm:grid-cols-2 gap-4">
                             <div v-for="int in t.integrations" :key="int.name" class="p-5 rounded-xl bg-white/5 border border-white/10">
                                 <h4 class="font-semibold text-white mb-1">{{ int.name }}</h4>
@@ -1456,7 +1657,8 @@ const content = {
 
                     <!-- 14. Roadmap -->
                     <section id="roadmap" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[13] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[14] }}</h2>
+                        <SectionVideo file="ep09-the-road-ahead.mp4" part="Part Nine — The Road Ahead" :start="9.3" :duration="388" :lang="lang" />
                         <div class="space-y-4">
                             <div v-for="r in t.roadmap" :key="r.q" class="flex gap-4">
                                 <div class="flex-shrink-0 w-28">
@@ -1487,7 +1689,8 @@ const content = {
 
                     <!-- 15. Technology Stack -->
                     <section id="tech-stack" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[14] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[15] }}</h2>
+                        <SectionVideo file="ep02-the-chain.mp4" part="Part Two — The Chain" :start="172.9" :duration="230" :lang="lang" />
                         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             <div v-for="(items, category) in t.techStack" :key="category" class="p-4 rounded-xl bg-white/5 border border-white/10">
                                 <h4 class="font-semibold text-white mb-3 capitalize">{{ category === 'smartContracts' ? 'Smart Contracts' : category }}</h4>
@@ -1501,7 +1704,8 @@ const content = {
 
                     <!-- 16. Team & Partners -->
                     <section id="team" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[15] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[16] }}</h2>
+                        <SectionVideo file="ep09-the-road-ahead.mp4" part="Part Nine — The Road Ahead" :start="205.8" :duration="388" :lang="lang" />
                         <p class="wp-text">{{ t.teamDesc }}</p>
                         <div class="wp-highlight">
                             <h4 class="font-semibold text-white mb-3">{{ lang === 'en' ? 'Key Highlights' : 'จุดเด่น' }}</h4>
@@ -1516,7 +1720,8 @@ const content = {
 
                     <!-- 17. Security & Audits -->
                     <section id="security" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[16] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[17] }}</h2>
+                        <SectionVideo file="ep09-the-road-ahead.mp4" part="Part Nine — The Road Ahead" :start="257.8" :duration="388" :lang="lang" />
                         <div class="grid sm:grid-cols-2 gap-4">
                             <div v-for="item in t.securityItems" :key="item.title" class="p-4 rounded-xl bg-white/5 border border-white/10">
                                 <h4 class="font-semibold text-white mb-2">🔒 {{ item.title }}</h4>
@@ -1527,7 +1732,8 @@ const content = {
 
                     <!-- 18. Legal Disclaimer -->
                     <section id="legal" class="wp-section">
-                        <h2 class="wp-heading">{{ t.toc[17] }}</h2>
+                        <h2 class="wp-heading">{{ t.toc[18] }}</h2>
+                        <SectionVideo file="ep09-the-road-ahead.mp4" part="Part Nine — The Road Ahead" :start="326.6" :duration="388" :lang="lang" />
                         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
                             <p class="text-sm text-gray-500 mb-3">
                                 {{ lang === 'en'
