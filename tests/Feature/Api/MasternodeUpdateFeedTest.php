@@ -126,6 +126,46 @@ class MasternodeUpdateFeedTest extends TestCase
         $this->get('/updates/masternode/latest.yml')->assertNotFound();
     }
 
+    /**
+     * ช่วงเปลี่ยนผ่าน — repo ไพรเวทยังไม่มี release แต่เครื่องที่อัปเดตมาแล้ว
+     * ยิงมาที่นี่ทันที ต้องถอยไปหยิบจาก repo เชนให้ ไม่ใช่ตอบ 404
+     */
+    public function test_falls_back_to_chain_repo_while_new_repo_is_empty(): void
+    {
+        config(['services.github.chain_repo' => 'TPIX-Coin']);
+
+        Http::fake([
+            '*/TPIX-Masternode/releases?per_page=30' => Http::response([]),
+            '*/TPIX-Coin/releases?per_page=30' => Http::response([
+                $this->release('v1.13.13', ['latest.yml', 'TPIX-Master-Node-1.13.13.exe']),
+            ]),
+            '*/releases/assets/latest.yml' => Http::response("version: 1.13.13\n"),
+        ]);
+
+        $response = $this->get('/updates/masternode/latest.yml');
+
+        $response->assertOk();
+        $this->assertStringContainsString('1.13.13', $response->getContent());
+    }
+
+    /** repo ใหม่มีของแล้ว ต้องไม่ไปแตะ repo เชนอีก */
+    public function test_does_not_touch_chain_repo_once_new_repo_has_a_release(): void
+    {
+        Http::fake([
+            '*/TPIX-Masternode/releases?per_page=30' => Http::response([
+                $this->release('v1.7.2', ['latest.yml', 'TPIX-Master-Node-1.7.2.exe']),
+            ]),
+            '*/releases/assets/latest.yml' => Http::response("version: 1.7.2\n"),
+        ]);
+
+        $this->get('/updates/masternode/latest.yml')->assertOk();
+
+        $touchedChain = collect(Http::recorded())
+            ->contains(fn ($pair) => str_contains($pair[0]->url(), 'TPIX-Coin'));
+
+        $this->assertFalse($touchedChain, 'ไม่ควรยิงไป repo เชนเมื่อ repo ใหม่มีของแล้ว');
+    }
+
     public function test_rejects_path_traversal_attempt(): void
     {
         Http::fake(['*/releases?per_page=30' => Http::response([])]);

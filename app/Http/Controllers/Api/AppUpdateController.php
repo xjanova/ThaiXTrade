@@ -499,11 +499,16 @@ class AppUpdateController extends Controller
                 && str_ends_with(strtolower($a['name']), '.apk')
         );
 
-        $masternode = $this->pickReleaseAsset(
-            $this->masternodeRepo,
-            $masternodeTag,
-            fn (array $a) => str_ends_with(strtolower($a['name']), '.exe')
-        );
+        $isInstaller = fn (array $a) => str_ends_with(strtolower($a['name']), '.exe');
+
+        $masternode = $this->pickReleaseAsset($this->masternodeRepo, $masternodeTag, $isInstaller);
+
+        // ช่วงเปลี่ยนผ่าน — repo ใหม่ยังไม่มี release ให้ถอยไปหยิบจาก repo เชนไปก่อน
+        // ไม่งั้นการ์ดดาวน์โหลดบนหน้าเว็บจะว่างทันทีที่ deploy ทั้งที่ยังไม่มีอะไรเสีย
+        // ถอดบล็อกนี้ออกได้เมื่อ TPIX-Masternode ปล่อยรุ่นแรกเรียบร้อยแล้ว
+        if (! $masternode && $this->masternodeRepo !== $this->chainRepo) {
+            $masternode = $this->pickReleaseAsset($this->chainRepo, $masternodeTag, $isInstaller);
+        }
 
         if ($wallet) {
             $result['wallet'] = $wallet['asset'];
@@ -632,6 +637,26 @@ class AppUpdateController extends Controller
             return $cached;
         }
 
+        $assets = $this->scanFeedAssets($this->masternodeRepo, $pinnedTag);
+
+        // ช่วงเปลี่ยนผ่าน — รุ่นเปลี่ยนผ่านยังถูกปล่อยจาก repo เชนอยู่
+        // เครื่องที่อัปเดตมาแล้วต้องหาไฟล์เจอทันที ไม่ใช่รอ repo ใหม่ปล่อยรุ่นแรกก่อน
+        // ถอดบล็อกนี้ออกได้เมื่อ TPIX-Masternode ปล่อยรุ่นแรกเรียบร้อยแล้ว
+        if (! $assets && $this->masternodeRepo !== $this->chainRepo) {
+            $assets = $this->scanFeedAssets($this->chainRepo, $pinnedTag);
+        }
+
+        Cache::put($key, $assets, $assets ? 1800 : 60);
+
+        return $assets;
+    }
+
+    /**
+     * สแกน release ของ repo หนึ่งตัว หาตัวล่าสุดที่ไฟล์อัปเดตครบ
+     * แล้วคืนไฟล์ทั้งหมดของ release นั้น (คีย์ = ชื่อไฟล์).
+     */
+    private function scanFeedAssets(string $repo, ?string $pinnedTag): array
+    {
         $assets = [];
 
         try {
@@ -646,11 +671,11 @@ class AppUpdateController extends Controller
 
             $response = Http::withHeaders($headers)
                 ->timeout(10)
-                ->get("https://api.github.com/repos/{$this->githubOwner}/{$this->masternodeRepo}/releases?per_page=30");
+                ->get("https://api.github.com/repos/{$this->githubOwner}/{$repo}/releases?per_page=30");
 
             if (! $response->successful()) {
                 Log::warning('masternode feed: releases fetch failed', [
-                    'repo' => $this->masternodeRepo,
+                    'repo' => $repo,
                     'status' => $response->status(),
                     'has_token' => (bool) $this->githubToken,
                 ]);
@@ -683,10 +708,8 @@ class AppUpdateController extends Controller
                 }
             }
         } catch (\Exception $e) {
-            Log::error('masternode feed: fetch failed', ['error' => $e->getMessage()]);
+            Log::error('masternode feed: fetch failed', ['repo' => $repo, 'error' => $e->getMessage()]);
         }
-
-        Cache::put($key, $assets, $assets ? 1800 : 60);
 
         return $assets;
     }
