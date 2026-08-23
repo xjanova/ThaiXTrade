@@ -312,6 +312,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/wallet-update-check', [AppUpdateController::class, 'walletUpdateCheck']);
         Route::get('/chain-download', [AppUpdateController::class, 'chainDownload']);
         Route::get('/download-stats', [AppUpdateController::class, 'downloadStats']);
+        // แอปถามตอนเปิดว่ารุ่นที่ถืออยู่ยังใช้ได้ไหม — ใช้บังคับให้ย้ายไปรุ่นใหม่
+        Route::get('/support-status', [AppUpdateController::class, 'supportStatus']);
         // CI webhook — auto-set active release after build (protected by deploy secret)
         Route::post('/notify-release', [AppUpdateController::class, 'notifyRelease'])
             ->middleware('throttle:10,1');

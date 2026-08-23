@@ -134,7 +134,8 @@ class AppUpdateController extends Controller
                 'current_version' => $currentVersion,
                 'release_name' => $releaseInfo['name'],
                 'release_notes' => $releaseInfo['notes'],
-                'download_url' => $isNewer ? url('/api/v1/app/download') : null,
+                // ติด source=app มาเลย แอปไม่ต้องรู้เรื่อง แต่สถิติแยกออกจากกันได้
+                'download_url' => $isNewer ? url('/api/v1/app/download?source=app') : null,
                 'published_at' => $releaseInfo['published_at'],
                 'mandatory' => $latestMajor > $currentMajor,
                 'file_size' => $releaseInfo['file_size'],
@@ -211,8 +212,8 @@ class AppUpdateController extends Controller
             ], 502);
         }
 
-        // Step 2: นับสถิติดาวน์โหลด
-        $this->incrementDownloadCount('trade_apk');
+        // Step 2: นับสถิติ — แยกคนกดโหลดจากเว็บ ออกจากแอปที่อัปเดตตัวเอง
+        $this->incrementDownloadCount($this->isAppSelfUpdate(request()) ? 'trade_update' : 'trade_apk');
 
         // Step 3: Redirect ไป S3 โดยตรง (เร็วมาก ไม่ผ่าน server)
         return redirect()->away($s3Url);
@@ -446,6 +447,49 @@ class AppUpdateController extends Controller
     }
 
     /**
+     * แอปถามว่า "รุ่นที่เครื่องนี้ถืออยู่ ยังใช้ได้อยู่ไหม".
+     *
+     * GET /api/v1/app/support-status?product=trade|wallet|masternode&version=1.2.3
+     *
+     * ใช้บังคับให้ผู้ใช้ย้ายไปรุ่นใหม่ — แอปที่ได้ supported=false ต้องขึ้นจอปิดกั้น
+     * แล้วพาไปโหลดใหม่ ไม่ปล่อยให้ใช้งานต่อ
+     *
+     * ค่าเริ่มต้นของเวอร์ชันขั้นต่ำคือ 0.0.0 = ทุกรุ่นผ่าน ตั้งใจให้เป็นแบบนี้
+     * จะได้ไม่มีใครถูกตัดโดยไม่ตั้งใจ ต้องไปตั้งค่าเองเมื่อพร้อมจะบังคับจริง
+     *
+     * ⚠️ มีผลเฉพาะรุ่นที่ "มีโค้ดถามข้อนี้" เท่านั้น รุ่นเก่าที่แจกไปแล้วไม่เคยถาม
+     * จึงบังคับย้อนหลังไม่ได้ ทางเดียวที่ไปถึงรุ่นเก่าคือช่องอัปเดตของมันเอง
+     */
+    public function supportStatus(Request $request): JsonResponse
+    {
+        $product = $request->query('product', 'trade');
+        $version = (string) $request->query('version', '0.0.0');
+
+        $settingKey = match ($product) {
+            'wallet' => 'min_supported_wallet',
+            'masternode' => 'min_supported_masternode',
+            default => 'min_supported_trade',
+        };
+
+        $minVersion = (string) SiteSetting::get('app_release', $settingKey, '0.0.0');
+        $supported = version_compare($version, $minVersion, '>=');
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'product' => $product,
+                'supported' => $supported,
+                'current_version' => $version,
+                'min_version' => $minVersion,
+                'download_url' => $supported ? null : url('/download'),
+                'message' => $supported
+                    ? null
+                    : 'รุ่นนี้เลิกให้บริการแล้ว กรุณาดาวน์โหลดรุ่นใหม่จาก tpix.online/download',
+            ],
+        ]);
+    }
+
+    /**
      * เช็กอัปเดตของ TPIX Wallet — รูปแบบผลลัพธ์เดียวกับ /app/update-check.
      *
      * มีไว้เพราะ /app/chain-latest บอกแค่ว่า release ล่าสุดคืออะไร ไม่ได้บอกว่า
@@ -481,7 +525,7 @@ class AppUpdateController extends Controller
                 'current_version' => $currentVersion,
                 'release_name' => $wallet['name'] ?? null,
                 'release_notes' => $wallet['notes'] ?? null,
-                'download_url' => $isNewer ? url('/api/v1/app/chain-download?type=wallet') : null,
+                'download_url' => $isNewer ? url('/api/v1/app/chain-download?type=wallet&source=app') : null,
                 'published_at' => $wallet['published_at'],
                 'mandatory' => $latestMajor > $currentMajor,
                 'file_size' => $wallet['file_size'],
@@ -544,8 +588,12 @@ class AppUpdateController extends Controller
             ], 502);
         }
 
-        // นับสถิติดาวน์โหลด
-        $this->incrementDownloadCount($type === 'wallet' ? 'wallet_apk' : 'masternode_exe');
+        // นับสถิติ — แยกคนกดโหลดจากเว็บ ออกจากแอปที่อัปเดตตัวเอง
+        $base = $type === 'wallet' ? 'wallet' : 'masternode';
+        $suffix = $type === 'wallet' ? 'apk' : 'exe';
+        $this->incrementDownloadCount(
+            $this->isAppSelfUpdate($request) ? "{$base}_update" : "{$base}_{$suffix}"
+        );
 
         return redirect()->away($s3Url);
     }
@@ -564,9 +612,17 @@ class AppUpdateController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
+                // ยอดคนกดโหลดจากหน้าเว็บ
                 'trade_apk' => (int) SiteSetting::get('downloads', 'trade_apk', '0'),
                 'wallet_apk' => (int) SiteSetting::get('downloads', 'wallet_apk', '0'),
                 'masternode_exe' => (int) SiteSetting::get('downloads', 'masternode_exe', '0'),
+
+                // ยอดที่แอปอัปเดตตัวเอง — คนละเรื่องกับยอดดาวน์โหลด
+                'trade_update' => (int) SiteSetting::get('downloads', 'trade_update', '0'),
+                'wallet_update' => (int) SiteSetting::get('downloads', 'wallet_update', '0'),
+                'masternode_update' => (int) SiteSetting::get('downloads', 'masternode_update', '0'),
+
+                // total ยังหมายถึงยอดดาวน์โหลดเหมือนเดิม เพื่อไม่ให้ตัวเลขบนหน้าเว็บกระโดด
                 'total' => (int) SiteSetting::get('downloads', 'trade_apk', '0')
                     + (int) SiteSetting::get('downloads', 'wallet_apk', '0')
                     + (int) SiteSetting::get('downloads', 'masternode_exe', '0'),
@@ -577,6 +633,18 @@ class AppUpdateController extends Controller
     /**
      * นับจำนวนดาวน์โหลด.
      */
+    /**
+     * คำขอนี้มาจากแอปที่กำลังอัปเดตตัวเอง ไม่ใช่คนกดโหลดจากหน้าเว็บ.
+     *
+     * ตั้งแต่ย้ายมาให้เซิร์ฟเวอร์เป็นตัวกลาง การอัปเดตในแอปก็วิ่งผ่านทางเดียวกับ
+     * ปุ่มดาวน์โหลดบนเว็บ ถ้าไม่แยกจะนับรวมกันจนตัวเลข "ยอดดาวน์โหลด" เฟ้อ
+     * โดยไม่มีใครรู้ว่าเฟ้อเพราะอะไร
+     */
+    private function isAppSelfUpdate(Request $request): bool
+    {
+        return $request->query('source') === 'app';
+    }
+
     private function incrementDownloadCount(string $type): void
     {
         $current = (int) SiteSetting::get('downloads', $type, '0');
@@ -942,9 +1010,10 @@ class AppUpdateController extends Controller
             ], 502);
         }
 
+        // ทางนี้คือ electron-updater มาดึงไปอัปเดต ไม่ใช่คนกดโหลดจากหน้าเว็บ
         // นับเฉพาะตัวติดตั้งจริง ไม่นับ .blockmap ที่ตัวอัปเดตดึงประกอบ
         if (str_ends_with(strtolower($file), '.exe')) {
-            $this->incrementDownloadCount('masternode_exe');
+            $this->incrementDownloadCount('masternode_update');
         }
 
         return redirect()->away($signed);
