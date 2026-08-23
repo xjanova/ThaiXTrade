@@ -219,12 +219,9 @@ jobs:
           echo "apk_size=${APK_SIZE_MB}MB" >> $GITHUB_OUTPUT
           echo "=== APK: $APK_NAME ($APK_SIZE_MB MB) ==="
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: TPIX-TRADE-v${{ steps.version.outputs.version }}
-          path: mobile-flutter/${{ steps.apk.outputs.apk_path }}
-          retention-days: 90
+      # ถอด upload-artifact ออกแล้ว — APK ถูกแนบเข้า Release ทุกรอบอยู่แล้ว
+      # เก็บเป็น artifact ซ้ำอีกชุดคือกินโควต้าพื้นที่เปล่า ๆ (เคยค้างไว้ 424 MB)
+      # ไฟล์ใน Release อยู่คนละถังกับ Actions storage จึงไม่นับโควต้า
 
       # ══════════════════════════════════════════════════
       # Commit version bump กลับ repo
