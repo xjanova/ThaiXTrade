@@ -50,16 +50,7 @@ class AppReleaseController extends Controller
     public function refresh()
     {
         Cache::forget('admin_app_releases');
-        Cache::forget('app_update_android');
-        // Clear all chain release caches (key includes md5 of active tags)
-        Cache::forget('chain_releases');
-        // Also clear tag-specific caches
-        $walletTag = SiteSetting::get('app_release', 'wallet_active_tag') ?? '';
-        $masternodeTag = SiteSetting::get('app_release', 'masternode_active_tag') ?? '';
-        Cache::forget('chain_releases_'.md5($walletTag.$masternodeTag));
-        Cache::forget('chain_s3_url_wallet');
-        Cache::forget('chain_s3_url_masternode');
-        Cache::forget('apk_s3_url');
+        $this->clearReleaseCaches();
 
         // ดึงใหม่ทันทีเพื่อเช็ค error
         $result = $this->fetchAllReleases();
@@ -84,6 +75,25 @@ class AppReleaseController extends Controller
 
         $tag = $request->input('tag');
         $app = $request->input('app');
+
+        // "auto" = เลิกล็อก กลับไปใช้ release ล่าสุดที่ไฟล์ครบ
+        //
+        // เดิมหน้านี้ล็อกได้อย่างเดียว ปลดไม่ได้ ล็อกครั้งเดียวแล้วค้างตลอดไป
+        // เจอจริง 2026-08-23: แอปเทรดค้างที่ v1.1.66 ทั้งที่ปล่อยถึง v1.1.141
+        // วอลเล็ตค้าง v1.13.12 มาสเตอร์โหนดค้าง v1.12.0 — เว็บโฆษณารุ่นเก่า
+        // ให้ผู้ใช้ทุกคนอยู่เป็นเดือนโดยไม่มีใครรู้
+        if ($tag === 'auto') {
+            $key = match ($app) {
+                'wallet' => 'wallet_active_tag',
+                'masternode' => 'masternode_active_tag',
+                default => 'active_tag',
+            };
+
+            SiteSetting::set('app_release', $key, '');
+            $this->clearReleaseCaches();
+
+            return back()->with('success', 'กลับไปใช้รุ่นล่าสุดอัตโนมัติแล้ว');
+        }
 
         // หา release ที่ตรงกับ tag จาก cache
         $result = Cache::get('admin_app_releases', ['releases' => [], 'error' => null]);
@@ -143,12 +153,22 @@ class AppReleaseController extends Controller
     {
         Cache::forget('app_update_android');
         Cache::forget('chain_releases');
-        $walletTag = SiteSetting::get('app_release', 'wallet_active_tag') ?? '';
-        $masternodeTag = SiteSetting::get('app_release', 'masternode_active_tag') ?? '';
-        Cache::forget('chain_releases_'.md5($walletTag.$masternodeTag));
         Cache::forget('chain_s3_url_wallet');
         Cache::forget('chain_s3_url_masternode');
         Cache::forget('apk_s3_url');
+
+        $walletTag = (string) SiteSetting::get('app_release', 'wallet_active_tag');
+        $masternodeTag = (string) SiteSetting::get('app_release', 'masternode_active_tag');
+
+        // ตัวคั่น '|' ต้องตรงกับ AppUpdateController::chainCacheKey() เป๊ะ ๆ
+        // เดิมที่นี่ต่อสตริงเฉย ๆ ไม่มีตัวคั่น = คนละคีย์กับที่ API เขียนไว้
+        // ปุ่มรีเฟรชจึงไม่เคยล้างแคชจริงเลยสักครั้ง หน้าเว็บค้างรุ่นเก่าแบบหาสาเหตุไม่เจอ
+        Cache::forget('chain_releases_'.md5($walletTag.'|'.$masternodeTag));
+
+        // ฟีดของ electron-updater มีคีย์ของตัวเอง ลืมข้อนี้แล้วโปรแกรมมาสเตอร์โหนด
+        // จะยังเห็นรุ่นเก่าไปอีกครึ่งชั่วโมงทั้งที่หน้าเว็บอัปเดตแล้ว
+        Cache::forget('masternode_feed_assets_'.md5($masternodeTag));
+        Cache::forget('masternode_feed_assets_'.md5(''));
     }
 
     /**

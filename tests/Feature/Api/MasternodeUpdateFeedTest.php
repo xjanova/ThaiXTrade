@@ -214,6 +214,41 @@ class MasternodeUpdateFeedTest extends TestCase
         $this->assertGreaterThan(1, $listCalls, 'หลัง webhook ต้องไปถาม GitHub ใหม่ ไม่ใช้ของเก่าในแคช');
     }
 
+    /**
+     * webhook ต้องไม่ล็อก tag ให้เอง
+     *
+     * เดิมล็อกทุกครั้ง พอ CI แจ้งไม่สำเร็จสักรอบ ค่าที่ล็อกก็ค้างแล้วไม่มีอะไรมาปลด
+     * เว็บโฆษณารุ่นเก่าให้ทุกคนอยู่เป็นเดือนโดยไม่มีใครรู้ (เจอจริง 2026-08-23)
+     */
+    public function test_release_webhook_does_not_pin_by_default(): void
+    {
+        config(['services.github.deploy_secret' => 'test-secret']);
+        Http::fake(['*/releases?per_page=30' => Http::response([])]);
+
+        $this->postJson('/api/v1/app/notify-release?secret=test-secret&type=masternode&tag=v1.7.3')
+            ->assertOk();
+
+        $this->assertEmpty(
+            \App\Models\SiteSetting::get('app_release', 'masternode_active_tag'),
+            'ห้ามล็อก tag ให้เองเด็ดขาด'
+        );
+    }
+
+    /** ล็อกได้อยู่ แต่ต้องสั่งมาอย่างจงใจ */
+    public function test_release_webhook_pins_only_when_asked(): void
+    {
+        config(['services.github.deploy_secret' => 'test-secret']);
+        Http::fake(['*/releases?per_page=30' => Http::response([])]);
+
+        $this->postJson('/api/v1/app/notify-release?secret=test-secret&type=masternode&tag=v1.7.3&pin=1')
+            ->assertOk();
+
+        $this->assertSame(
+            'v1.7.3',
+            \App\Models\SiteSetting::get('app_release', 'masternode_active_tag')
+        );
+    }
+
     /** webhook ต้องปฏิเสธคนที่ไม่มีรหัส */
     public function test_release_webhook_rejects_wrong_secret(): void
     {

@@ -63,6 +63,13 @@ const setActive = (tag, app) => {
     router.post('/admin/app-releases/set-active', { tag, app }, { preserveScroll: true });
 };
 
+// เลิกล็อกรุ่น กลับไปใช้ตัวล่าสุดที่ไฟล์ครบเสมอ
+// เดิมหน้านี้ล็อกได้อย่างเดียว ปลดไม่ได้ ล็อกครั้งเดียวแล้วค้างตลอดไป
+const setAuto = (app, label) => {
+    if (!confirm(`ให้ ${label} ใช้รุ่นล่าสุดอัตโนมัติ เลิกล็อกที่รุ่นเดิม?`)) return;
+    router.post('/admin/app-releases/set-active', { tag: 'auto', app }, { preserveScroll: true });
+};
+
 // หา asset types ที่ release มีสำหรับแสดง set-active buttons
 const getAvailableApps = (release) => {
     const apps = [];
@@ -173,16 +180,28 @@ const typeBadge = (release) => {
                         <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400">TPIX TRADE</span>
                         <span class="text-white text-xs font-mono">{{ activeTags?.trade || '—' }}</span>
                         <span v-if="activeVersions?.trade" class="text-dark-500 text-xs">(v{{ activeVersions.trade }})</span>
+                        <span v-if="!activeTags?.trade" class="text-trading-green text-[10px]">อัตโนมัติ</span>
+                        <button v-else type="button" @click="setAuto('trade', 'TPIX TRADE')"
+                                class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-dark-300 hover:bg-white/10 hover:text-white"
+                                title="เลิกล็อก กลับไปใช้รุ่นล่าสุดอัตโนมัติ">ปลดล็อก</button>
                     </div>
                     <div class="flex items-center gap-1.5">
                         <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-400">Wallet</span>
                         <span class="text-white text-xs font-mono">{{ activeTags?.wallet || '—' }}</span>
                         <span v-if="activeVersions?.wallet" class="text-dark-500 text-xs">(v{{ activeVersions.wallet }})</span>
+                        <span v-if="!activeTags?.wallet" class="text-trading-green text-[10px]">อัตโนมัติ</span>
+                        <button v-else type="button" @click="setAuto('wallet', 'Wallet')"
+                                class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-dark-300 hover:bg-white/10 hover:text-white"
+                                title="เลิกล็อก กลับไปใช้รุ่นล่าสุดอัตโนมัติ">ปลดล็อก</button>
                     </div>
                     <div class="flex items-center gap-1.5">
                         <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400">Master Node</span>
                         <span class="text-white text-xs font-mono">{{ activeTags?.masternode || '—' }}</span>
                         <span v-if="activeVersions?.masternode" class="text-dark-500 text-xs">(v{{ activeVersions.masternode }})</span>
+                        <span v-if="!activeTags?.masternode" class="text-trading-green text-[10px]">อัตโนมัติ</span>
+                        <button v-else type="button" @click="setAuto('masternode', 'Master Node')"
+                                class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-dark-300 hover:bg-white/10 hover:text-white"
+                                title="เลิกล็อก กลับไปใช้รุ่นล่าสุดอัตโนมัติ">ปลดล็อก</button>
                     </div>
                 </div>
             </div>
