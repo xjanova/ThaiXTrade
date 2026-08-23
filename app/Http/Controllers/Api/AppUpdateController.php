@@ -267,20 +267,52 @@ class AppUpdateController extends Controller
         }
 
         $tag = $request->query('tag', '');
+
+        // trade = APK ของแอปเทรด · wallet = APK วอลเล็ต · masternode = ตัวติดตั้ง Windows
+        // ค่าเริ่มต้นเป็น trade เพื่อให้ workflow เดิมที่ไม่ส่ง type มายังทำงานเหมือนเดิม
+        $type = $request->query('type', 'trade');
+
+        $settingKey = match ($type) {
+            'wallet' => 'wallet_active_tag',
+            'masternode' => 'masternode_active_tag',
+            default => 'active_tag',
+        };
+
+        // ล้างแคชด้วยคีย์ "ก่อนเปลี่ยน tag" ก่อน ไม่งั้นของเก่าค้างอยู่คนละคีย์แล้วลบไม่โดน
+        $this->forgetReleaseCaches();
+
         if ($tag) {
-            SiteSetting::set('app_release', 'active_tag', $tag);
+            SiteSetting::set('app_release', $settingKey, $tag);
         }
 
-        // เคลียร์แคช update เพื่อให้ดึง release ใหม่ทันที
+        // แล้วล้างซ้ำด้วยคีย์ "หลังเปลี่ยน tag"
+        $this->forgetReleaseCaches();
+
+        Log::info('Release notified via CI', ['type' => $type, 'tag' => $tag]);
+
+        return response()->json([
+            'success' => true,
+            'data' => ['type' => $type, 'active_tag' => $tag],
+        ]);
+    }
+
+    /**
+     * ล้างแคชที่เกี่ยวกับ release ทั้งหมด เพื่อให้เว็บเห็นรุ่นใหม่ทันทีที่ CI ปล่อยเสร็จ
+     * ไม่ต้องรอ TTL 30 นาที.
+     */
+    private function forgetReleaseCaches(): void
+    {
         Cache::forget('app_update_android');
         Cache::forget('apk_s3_url');
         Cache::forget($this->chainCacheKey());
         Cache::forget('chain_s3_url_wallet');
         Cache::forget('chain_s3_url_masternode');
 
-        Log::info('Release notified via CI', ['tag' => $tag]);
-
-        return response()->json(['success' => true, 'data' => ['active_tag' => $tag]]);
+        // ฟีดของ electron-updater มีคีย์ของตัวเอง ลืมข้อนี้แล้วโปรแกรมมาสเตอร์โหนด
+        // จะยังเห็นรุ่นเก่าไปอีกครึ่งชั่วโมงทั้งที่หน้าเว็บอัปเดตแล้ว
+        $pinned = SiteSetting::get('app_release', 'masternode_active_tag');
+        Cache::forget('masternode_feed_assets_'.md5((string) $pinned));
+        Cache::forget('masternode_feed_assets_'.md5(''));
     }
 
     private function fetchLatestRelease(): ?array
@@ -414,7 +446,7 @@ class AppUpdateController extends Controller
     }
 
     /**
-     * เช็กอัปเดตของ TPIX Wallet — รูปแบบผลลัพธ์เดียวกับ /app/update-check
+     * เช็กอัปเดตของ TPIX Wallet — รูปแบบผลลัพธ์เดียวกับ /app/update-check.
      *
      * มีไว้เพราะ /app/chain-latest บอกแค่ว่า release ล่าสุดคืออะไร ไม่ได้บอกว่า
      * "ใหม่กว่าที่เครื่องนี้ถืออยู่ไหม" ซึ่งเป็นสิ่งที่แอปต้องรู้ และการเทียบเวอร์ชัน
@@ -603,7 +635,7 @@ class AppUpdateController extends Controller
      * @param  string  $repo  ชื่อ repo ไม่รวม owner
      * @param  string|null  $pinnedTag  tag ที่แอดมินล็อกไว้ — null = เอาตัวล่าสุดที่มีไฟล์นั้นจริง
      * @param  callable  $matches  fn(array $asset): bool — เงื่อนไขคัดไฟล์
-     * @return array|null  null เมื่อดึงไม่ได้ หรือไม่เจอไฟล์ที่ตรงเงื่อนไข
+     * @return array|null null เมื่อดึงไม่ได้ หรือไม่เจอไฟล์ที่ตรงเงื่อนไข
      */
     private function pickReleaseAsset(string $repo, ?string $pinnedTag, callable $matches): ?array
     {
@@ -633,47 +665,61 @@ class AppUpdateController extends Controller
                 return null;
             }
 
-            foreach ($response->json() as $release) {
-                if ($release['draft'] || $release['prerelease']) {
-                    continue;
-                }
+            $releases = $response->json();
 
-                if ($pinnedTag && $release['tag_name'] !== $pinnedTag) {
-                    continue;
-                }
+            // รอบแรกใช้ tag ที่ล็อกไว้ รอบสองไม่สนใจ tag
+            // tag ที่ล็อกไว้อาจถูกลบหรือแก้ทีหลัง ถ้ายึดตายตัวหน้าเว็บจะว่างเปล่า
+            // ทั้งที่มี release ใหม่ที่ใช้ได้อยู่
+            foreach ($pinnedTag ? [$pinnedTag, null] : [null] as $wantTag) {
+                foreach ($releases as $release) {
+                    if ($release['draft'] || $release['prerelease']) {
+                        continue;
+                    }
 
-                $asset = collect($release['assets'] ?? [])->first($matches);
+                    if ($wantTag && $release['tag_name'] !== $wantTag) {
+                        continue;
+                    }
 
-                if (! $asset) {
-                    continue;
-                }
+                    $asset = collect($release['assets'] ?? [])->first($matches);
 
-                preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $tagVer);
-                $version = $tagVer[1] ?? $release['tag_name'];
+                    if (! $asset) {
+                        continue;
+                    }
 
-                // เลขรุ่นจากชื่อไฟล์เชื่อถือได้กว่าชื่อ tag เช่น TPIX-Master-Node-1.7.1.exe
-                preg_match('/(\d+\.\d+\.\d+)/', $asset['name'], $fileVer);
+                    preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $tagVer);
+                    $version = $tagVer[1] ?? $release['tag_name'];
 
-                return [
-                    'asset' => [
-                        'file_name' => $asset['name'],
-                        'file_size' => $asset['size'],
-                        'download_url' => $asset['url'],
-                        'downloads' => $asset['download_count'],
-                        'version' => $fileVer[1] ?? $version,
+                    // เลขรุ่นจากชื่อไฟล์เชื่อถือได้กว่าชื่อ tag เช่น TPIX-Master-Node-1.7.1.exe
+                    preg_match('/(\d+\.\d+\.\d+)/', $asset['name'], $fileVer);
+
+                    return [
+                        'asset' => [
+                            'file_name' => $asset['name'],
+                            'file_size' => $asset['size'],
+                            'download_url' => $asset['url'],
+                            'downloads' => $asset['download_count'],
+                            'version' => $fileVer[1] ?? $version,
+                            'tag' => $release['tag_name'],
+                            'published_at' => $release['published_at'],
+
+                            // ติดมากับไฟล์แต่ละตัว ไม่งั้นวอลเล็ตจะไปได้ notes ของมาสเตอร์โหนด
+                            'name' => $release['name'] ?: "v{$version}",
+                            'notes' => $release['body'] ?? '',
+                        ],
                         'tag' => $release['tag_name'],
-                        'published_at' => $release['published_at'],
-
-                        // ติดมากับไฟล์แต่ละตัว ไม่งั้นวอลเล็ตจะไปได้ notes ของมาสเตอร์โหนด
+                        'version' => $version,
                         'name' => $release['name'] ?: "v{$version}",
+                        'published_at' => $release['published_at'],
                         'notes' => $release['body'] ?? '',
-                    ],
-                    'tag' => $release['tag_name'],
-                    'version' => $version,
-                    'name' => $release['name'] ?: "v{$version}",
-                    'published_at' => $release['published_at'],
-                    'notes' => $release['body'] ?? '',
-                ];
+                    ];
+                }
+
+                if ($wantTag) {
+                    Log::info('pinned tag not usable, falling back to latest', [
+                        'repo' => $repo,
+                        'tag' => $wantTag,
+                    ]);
+                }
             }
 
             return null;
@@ -749,31 +795,47 @@ class AppUpdateController extends Controller
                     'has_token' => (bool) $this->githubToken,
                 ]);
             } else {
-                foreach ($response->json() as $release) {
-                    if ($release['draft'] || $release['prerelease']) {
-                        continue;
+                $releases = $response->json();
+
+                // เหตุผลเดียวกับ pickReleaseAsset — tag ที่ล็อกไว้เป็นความชอบ ไม่ใช่กรงขัง
+                foreach ($pinnedTag ? [$pinnedTag, null] : [null] as $wantTag) {
+                    foreach ($releases as $release) {
+                        if ($release['draft'] || $release['prerelease']) {
+                            continue;
+                        }
+
+                        if ($wantTag && $release['tag_name'] !== $wantTag) {
+                            continue;
+                        }
+
+                        // ข้าม release ที่ไฟล์ไม่ครบ — เคยพลาดมาแล้วเมื่อ 2026-08-22
+                        // (ชี้ไป release ที่ไม่มี latest.yml → ตัวอัปเดตเด้ง 404 ใส่หน้าผู้ใช้)
+                        $names = array_column($release['assets'] ?? [], 'name');
+
+                        if (! in_array('latest.yml', $names, true) || ! preg_grep('/\.exe$/i', $names)) {
+                            continue;
+                        }
+
+                        foreach ($release['assets'] as $asset) {
+                            $assets[$asset['name']] = [
+                                'url' => $asset['url'],
+                                'size' => $asset['size'],
+                            ];
+                        }
+
+                        break;
                     }
 
-                    if ($pinnedTag && $release['tag_name'] !== $pinnedTag) {
-                        continue;
+                    if ($assets) {
+                        break;
                     }
 
-                    // ข้าม release ที่ไฟล์ไม่ครบ — เคยพลาดมาแล้วเมื่อ 2026-08-22
-                    // (ชี้ไป release ที่ไม่มี latest.yml → ตัวอัปเดตเด้ง 404 ใส่หน้าผู้ใช้)
-                    $names = array_column($release['assets'] ?? [], 'name');
-
-                    if (! in_array('latest.yml', $names, true) || ! preg_grep('/\.exe$/i', $names)) {
-                        continue;
+                    if ($wantTag) {
+                        Log::info('masternode feed: pinned tag not usable, falling back', [
+                            'repo' => $repo,
+                            'tag' => $wantTag,
+                        ]);
                     }
-
-                    foreach ($release['assets'] as $asset) {
-                        $assets[$asset['name']] = [
-                            'url' => $asset['url'],
-                            'size' => $asset['size'],
-                        ];
-                    }
-
-                    break;
                 }
             }
         } catch (\Exception $e) {

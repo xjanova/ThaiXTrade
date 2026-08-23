@@ -166,6 +166,63 @@ class MasternodeUpdateFeedTest extends TestCase
         $this->assertFalse($touchedChain, 'ไม่ควรยิงไป repo เชนเมื่อ repo ใหม่มีของแล้ว');
     }
 
+    /**
+     * tag ที่แอดมินล็อกไว้อาจถูกลบหรือแก้ทีหลัง — ถ้ายึดตายตัวฟีดจะว่างเปล่า
+     * ทั้งที่มี release ใหม่ที่ใช้ได้อยู่ ต้องถอยไปตัวล่าสุดที่ไฟล์ครบแทน
+     */
+    public function test_falls_back_when_pinned_tag_no_longer_exists(): void
+    {
+        \App\Models\SiteSetting::set('app_release', 'masternode_active_tag', 'v9.9.9');
+
+        Http::fake([
+            '*/TPIX-Masternode/releases?per_page=30' => Http::response([
+                $this->release('v1.7.2', ['latest.yml', 'TPIX-Master-Node-1.7.2.exe']),
+            ]),
+            '*/releases/assets/latest.yml' => Http::response("version: 1.7.2\n"),
+        ]);
+
+        $response = $this->get('/updates/masternode/latest.yml');
+
+        $response->assertOk();
+        $this->assertStringContainsString('1.7.2', $response->getContent());
+    }
+
+    /** CI ปล่อยรุ่นเสร็จแล้วเว็บต้องเห็นทันที ไม่ใช่รอแคชหมดอายุครึ่งชั่วโมง */
+    public function test_release_webhook_busts_the_feed_cache(): void
+    {
+        config(['services.github.deploy_secret' => 'test-secret']);
+
+        Http::fake([
+            '*/releases?per_page=30' => Http::response([
+                $this->release('v1.7.2', ['latest.yml', 'TPIX-Master-Node-1.7.2.exe']),
+            ]),
+            '*/releases/assets/latest.yml' => Http::response("version: 1.7.2\n"),
+        ]);
+
+        $this->get('/updates/masternode/latest.yml')->assertOk();
+
+        $this->postJson('/api/v1/app/notify-release?secret=test-secret&type=masternode&tag=v1.7.3')
+            ->assertOk()
+            ->assertJsonPath('data.type', 'masternode');
+
+        $this->get('/updates/masternode/latest.yml')->assertOk();
+
+        $listCalls = collect(Http::recorded())
+            ->filter(fn ($pair) => str_contains($pair[0]->url(), 'releases?per_page=30'))
+            ->count();
+
+        $this->assertGreaterThan(1, $listCalls, 'หลัง webhook ต้องไปถาม GitHub ใหม่ ไม่ใช้ของเก่าในแคช');
+    }
+
+    /** webhook ต้องปฏิเสธคนที่ไม่มีรหัส */
+    public function test_release_webhook_rejects_wrong_secret(): void
+    {
+        config(['services.github.deploy_secret' => 'test-secret']);
+
+        $this->postJson('/api/v1/app/notify-release?secret=wrong&type=masternode&tag=v1.7.3')
+            ->assertForbidden();
+    }
+
     public function test_rejects_path_traversal_attempt(): void
     {
         Http::fake(['*/releases?per_page=30' => Http::response([])]);
