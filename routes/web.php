@@ -208,6 +208,18 @@ Route::get('/staking', fn () => redirect()->route('masternode'))->name('staking'
 Route::get('/validators', [ValidatorController::class, 'index'])->name('validators');
 Route::get('/validators/apply', [ValidatorController::class, 'apply'])->name('validators.apply');
 
+// ฟีดอัปเดตโปรแกรมมาสเตอร์โหนด — electron-updater (generic provider) มาอ่านที่นี่
+//
+// URL นี้ห้ามเปลี่ยนตลอดไป เพราะถูกฝังอยู่ในไฟล์ .exe ที่แจกออกไปแล้ว
+// เปลี่ยนเมื่อไหร่ = ทุกเครื่องที่ติดตั้งไปแล้วอัปเดตไม่ได้อีกเลย และไม่มีทางรู้ตัว
+//
+// เซิร์ฟเวอร์เป็นคนถือ GITHUB_TOKEN ไปดึงจาก repo ไพรเวทแทนผู้ใช้
+// ตัวแอปจึงไม่ต้องมีความลับใด ๆ ติดไปกับไฟล์ที่แจก
+Route::get('/updates/masternode/{file}', [AppUpdateController::class, 'masternodeUpdateFile'])
+    ->where('file', '[A-Za-z0-9._-]+')
+    ->middleware('throttle:60,1')
+    ->name('updates.masternode');
+
 // Download — ดาวน์โหลดแอป TPIX TRADE (ดึง release ล่าสุดจาก API ของเราเอง)
 Route::get('/download', function () {
     $release = null;

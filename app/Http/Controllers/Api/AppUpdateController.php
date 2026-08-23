@@ -25,12 +25,20 @@ class AppUpdateController extends Controller
 
     private string $githubRepo;
 
+    /** repo เชน (สาธารณะ) — ที่มาของ TPIX Wallet APK */
+    private string $chainRepo;
+
+    /** repo โปรแกรมมาสเตอร์โหนด (ไพรเวท) — แยกออกจาก repo เชนแล้ว */
+    private string $masternodeRepo;
+
     private ?string $githubToken;
 
     public function __construct()
     {
         $this->githubOwner = config('services.github.owner', 'xjanova');
         $this->githubRepo = config('services.github.repo', 'ThaiXTrade');
+        $this->chainRepo = config('services.github.chain_repo', 'TPIX-Coin');
+        $this->masternodeRepo = config('services.github.masternode_repo', 'TPIX-Masternode');
         $this->githubToken = config('services.github.token');
     }
 
@@ -482,6 +490,150 @@ class AppUpdateController extends Controller
     {
         $result = ['wallet' => null, 'masternode' => null, 'tag' => null];
 
+        // wallet ยังอยู่ repo เชน (สาธารณะ) — masternode ย้ายไป repo ไพรเวทของตัวเองแล้ว
+        // จึงต้องยิงคนละที่ และตัวไหนล่มอีกตัวต้องยังขึ้นได้ ไม่ใช่ดับทั้งหน้าดาวน์โหลด
+        $wallet = $this->pickReleaseAsset(
+            $this->chainRepo,
+            $walletTag,
+            fn (array $a) => str_contains(strtolower($a['name']), 'wallet')
+                && str_ends_with(strtolower($a['name']), '.apk')
+        );
+
+        $masternode = $this->pickReleaseAsset(
+            $this->masternodeRepo,
+            $masternodeTag,
+            fn (array $a) => str_ends_with(strtolower($a['name']), '.exe')
+        );
+
+        if ($wallet) {
+            $result['wallet'] = $wallet['asset'];
+        }
+
+        if ($masternode) {
+            $result['masternode'] = $masternode['asset'];
+        }
+
+        // ฟิลด์ระดับบนคงไว้เพื่อความเข้ากันได้กับของเดิม — ยึด masternode ก่อน ไม่มีค่อยใช้ wallet
+        $headline = $masternode ?: $wallet;
+
+        if ($headline) {
+            $result['tag'] = $headline['tag'];
+            $result['version'] = $headline['version'];
+            $result['name'] = $headline['name'];
+            $result['published_at'] = $headline['published_at'];
+            $result['notes'] = $headline['notes'];
+        }
+
+        return $result;
+    }
+
+    /**
+     * ดึง release ของ repo หนึ่งตัวแล้วคัดไฟล์แนบที่ต้องการ (ไล่จากใหม่ไปเก่า).
+     *
+     * @param  string  $repo  ชื่อ repo ไม่รวม owner
+     * @param  string|null  $pinnedTag  tag ที่แอดมินล็อกไว้ — null = เอาตัวล่าสุดที่มีไฟล์นั้นจริง
+     * @param  callable  $matches  fn(array $asset): bool — เงื่อนไขคัดไฟล์
+     * @return array|null  null เมื่อดึงไม่ได้ หรือไม่เจอไฟล์ที่ตรงเงื่อนไข
+     */
+    private function pickReleaseAsset(string $repo, ?string $pinnedTag, callable $matches): ?array
+    {
+        try {
+            $headers = [
+                'Accept' => 'application/vnd.github.v3+json',
+                'User-Agent' => 'TPIX-TRADE-Server',
+            ];
+
+            // repo ไพรเวทต้องมี token ถึงจะเห็น — ถ้าไม่มี GitHub ตอบ 404 (ไม่ใช่ 403)
+            // จึงต้อง log has_token ไว้ ไม่งั้นจะแยกไม่ออกว่า "ยังไม่มี release" หรือ "token หาย"
+            if ($this->githubToken) {
+                $headers['Authorization'] = "Bearer {$this->githubToken}";
+            }
+
+            $response = Http::withHeaders($headers)
+                ->timeout(10)
+                ->get("https://api.github.com/repos/{$this->githubOwner}/{$repo}/releases?per_page=30");
+
+            if (! $response->successful()) {
+                Log::warning('GitHub releases fetch failed', [
+                    'repo' => $repo,
+                    'status' => $response->status(),
+                    'has_token' => (bool) $this->githubToken,
+                ]);
+
+                return null;
+            }
+
+            foreach ($response->json() as $release) {
+                if ($release['draft'] || $release['prerelease']) {
+                    continue;
+                }
+
+                if ($pinnedTag && $release['tag_name'] !== $pinnedTag) {
+                    continue;
+                }
+
+                $asset = collect($release['assets'] ?? [])->first($matches);
+
+                if (! $asset) {
+                    continue;
+                }
+
+                preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $tagVer);
+                $version = $tagVer[1] ?? $release['tag_name'];
+
+                // เลขรุ่นจากชื่อไฟล์เชื่อถือได้กว่าชื่อ tag เช่น TPIX-Master-Node-1.7.1.exe
+                preg_match('/(\d+\.\d+\.\d+)/', $asset['name'], $fileVer);
+
+                return [
+                    'asset' => [
+                        'file_name' => $asset['name'],
+                        'file_size' => $asset['size'],
+                        'download_url' => $asset['url'],
+                        'downloads' => $asset['download_count'],
+                        'version' => $fileVer[1] ?? $version,
+                        'tag' => $release['tag_name'],
+                        'published_at' => $release['published_at'],
+                    ],
+                    'tag' => $release['tag_name'],
+                    'version' => $version,
+                    'name' => $release['name'] ?: "v{$version}",
+                    'published_at' => $release['published_at'],
+                    'notes' => $release['body'] ?? '',
+                ];
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            Log::error('GitHub release fetch failed', ['repo' => $repo, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    // =====================================================================
+    //  ฟีดอัปเดตโปรแกรมมาสเตอร์โหนด (electron-updater แบบ generic provider)
+    //
+    //  ตัวแอปห้ามยิง GitHub ตรง ๆ เพราะ repo เป็นไพรเวท = ต้องฝัง token ลงไฟล์
+    //  .exe ที่แจกผู้ใช้ ซึ่งใครก็แกะออกมาได้ เซิร์ฟเวอร์จึงเป็นคนถือ token
+    //  ไปดึงแทน แล้วส่งต่อให้แอป — ไม่มีความลับอยู่ในเครื่องผู้ใช้เลย
+    // =====================================================================
+
+    /**
+     * ไฟล์ทั้งหมดของ release มาสเตอร์โหนดที่ใช้งานอยู่ (คีย์ = ชื่อไฟล์).
+     * แคช 30 นาทีเมื่อเจอ, 60 วิเมื่อไม่เจอ (กัน negative-caching ค้างนาน).
+     */
+    private function masternodeReleaseAssets(): array
+    {
+        $pinnedTag = SiteSetting::get('app_release', 'masternode_active_tag');
+        $key = 'masternode_feed_assets_'.md5((string) $pinnedTag);
+
+        $cached = Cache::get($key);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $assets = [];
+
         try {
             $headers = [
                 'Accept' => 'application/vnd.github.v3+json',
@@ -494,82 +646,153 @@ class AppUpdateController extends Controller
 
             $response = Http::withHeaders($headers)
                 ->timeout(10)
-                ->get("https://api.github.com/repos/{$this->githubOwner}/TPIX-Coin/releases?per_page=30");
+                ->get("https://api.github.com/repos/{$this->githubOwner}/{$this->masternodeRepo}/releases?per_page=30");
 
             if (! $response->successful()) {
-                Log::warning('TPIX-Coin releases fetch failed', [
+                Log::warning('masternode feed: releases fetch failed', [
+                    'repo' => $this->masternodeRepo,
                     'status' => $response->status(),
                     'has_token' => (bool) $this->githubToken,
                 ]);
+            } else {
+                foreach ($response->json() as $release) {
+                    if ($release['draft'] || $release['prerelease']) {
+                        continue;
+                    }
 
-                return $result;
-            }
+                    if ($pinnedTag && $release['tag_name'] !== $pinnedTag) {
+                        continue;
+                    }
 
-            foreach ($response->json() as $release) {
-                if ($release['draft'] || $release['prerelease']) {
-                    continue;
-                }
+                    // ข้าม release ที่ไฟล์ไม่ครบ — เคยพลาดมาแล้วเมื่อ 2026-08-22
+                    // (ชี้ไป release ที่ไม่มี latest.yml → ตัวอัปเดตเด้ง 404 ใส่หน้าผู้ใช้)
+                    $names = array_column($release['assets'] ?? [], 'name');
 
-                $assets = collect($release['assets'] ?? []);
-                preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $matches);
-                $version = $matches[1] ?? $release['tag_name'];
+                    if (! in_array('latest.yml', $names, true) || ! preg_grep('/\.exe$/i', $names)) {
+                        continue;
+                    }
 
-                $walletApk = $assets->first(fn ($a) => str_contains(strtolower($a['name']), 'wallet') && str_ends_with(strtolower($a['name']), '.apk'));
-                $masternodeExe = $assets->first(fn ($a) => str_ends_with(strtolower($a['name']), '.exe'));
+                    foreach ($release['assets'] as $asset) {
+                        $assets[$asset['name']] = [
+                            'url' => $asset['url'],
+                            'size' => $asset['size'],
+                        ];
+                    }
 
-                $result['tag'] = $release['tag_name'];
-                $result['version'] = $version;
-                $result['name'] = $release['name'] ?: "v{$version}";
-                $result['published_at'] = $release['published_at'];
-                $result['notes'] = $release['body'] ?? '';
-
-                // เก็บ wallet — ถ้า admin เลือก tag → ใช้เฉพาะ tag นั้น, ถ้าไม่ → ใช้ล่าสุด
-                $walletMatch = ! $walletTag || $release['tag_name'] === $walletTag;
-                if ($walletApk && ! $result['wallet'] && $walletMatch) {
-                    // parse version จากชื่อไฟล์ เช่น TPIX-Wallet-v1.1.1.apk → 1.1.1
-                    preg_match('/v?(\d+\.\d+\.\d+)/', $walletApk['name'], $fileVer);
-                    $walletVersion = $fileVer[1] ?? $version;
-
-                    $result['wallet'] = [
-                        'file_name' => $walletApk['name'],
-                        'file_size' => $walletApk['size'],
-                        'download_url' => $walletApk['url'],
-                        'downloads' => $walletApk['download_count'],
-                        'version' => $walletVersion,
-                        'tag' => $release['tag_name'],
-                        'published_at' => $release['published_at'],
-                    ];
-                }
-
-                // เก็บ masternode — ถ้า admin เลือก tag → ใช้เฉพาะ tag นั้น, ถ้าไม่ → ใช้ล่าสุด
-                $masternodeMatch = ! $masternodeTag || $release['tag_name'] === $masternodeTag;
-                if ($masternodeExe && ! $result['masternode'] && $masternodeMatch) {
-                    // parse version จากชื่อไฟล์ เช่น TPIX-Master-Node-1.0.0.exe → 1.0.0
-                    preg_match('/(\d+\.\d+\.\d+)/', $masternodeExe['name'], $fileVer);
-                    $mnVersion = $fileVer[1] ?? $version;
-
-                    $result['masternode'] = [
-                        'file_name' => $masternodeExe['name'],
-                        'file_size' => $masternodeExe['size'],
-                        'download_url' => $masternodeExe['url'],
-                        'downloads' => $masternodeExe['download_count'],
-                        'version' => $mnVersion,
-                        'tag' => $release['tag_name'],
-                        'published_at' => $release['published_at'],
-                    ];
-                }
-
-                // หยุดเมื่อเจอทั้ง wallet + masternode แล้ว
-                if ($result['wallet'] && $result['masternode']) {
                     break;
                 }
             }
-
-            return $result;
         } catch (\Exception $e) {
-            Log::error('TPIX-Coin release fetch failed', ['error' => $e->getMessage()]);
-
-            return $result;
+            Log::error('masternode feed: fetch failed', ['error' => $e->getMessage()]);
         }
+
+        Cache::put($key, $assets, $assets ? 1800 : 60);
+
+        return $assets;
+    }
+
+    /**
+     * ขอ URL ปลายทางที่เซ็นแล้วจาก GitHub (ใช้ได้ชั่วคราวโดยไม่ต้องมี token).
+     */
+    private function signedAssetUrl(string $apiUrl): ?string
+    {
+        $headers = [
+            'Accept: application/octet-stream',
+            'User-Agent: TPIX-TRADE-Server',
+        ];
+
+        if ($this->githubToken) {
+            $headers[] = "Authorization: Bearer {$this->githubToken}";
+        }
+
+        $ch = curl_init($apiUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_NOBODY => true,
+            CURLOPT_HEADER => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+        ]);
+
+        curl_exec($ch);
+        $redirectUrl = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+        curl_close($ch);
+
+        return $redirectUrl ?: null;
+    }
+
+    /**
+     * เสิร์ฟไฟล์ให้ electron-updater — latest.yml, *.exe, *.blockmap.
+     *
+     * GET /updates/masternode/{file}
+     */
+    public function masternodeUpdateFile(string $file): mixed
+    {
+        // ด่านที่ 1: รูปแบบชื่อไฟล์ (กัน path traversal และการยิงมั่ว)
+        // ด่านที่ 2 อยู่ข้างล่าง: ต้องตรงกับชื่อไฟล์จริงใน release เท่านั้น
+        if (! preg_match('/^[A-Za-z0-9._-]{1,120}$/', $file) || str_contains($file, '..')) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'BAD_REQUEST', 'message' => 'Invalid file name'],
+            ], 400);
+        }
+
+        $assets = $this->masternodeReleaseAssets();
+
+        if (! isset($assets[$file])) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NOT_FOUND', 'message' => 'File not available'],
+            ], 404);
+        }
+
+        // latest.yml เล็กและต้องอ่านเนื้อได้ตรง ๆ — ส่งเนื้อไฟล์เลย ไม่ redirect
+        // (URL ที่เซ็นแล้วมีอายุจำกัด ถ้าโดนแคชกลางทางจะพังแบบหาสาเหตุยาก)
+        if (str_ends_with(strtolower($file), '.yml')) {
+            $headers = [
+                'Accept' => 'application/octet-stream',
+                'User-Agent' => 'TPIX-TRADE-Server',
+            ];
+
+            if ($this->githubToken) {
+                $headers['Authorization'] = "Bearer {$this->githubToken}";
+            }
+
+            $response = Http::withHeaders($headers)->timeout(10)->get($assets[$file]['url']);
+
+            if (! $response->successful()) {
+                Log::warning('masternode feed: yml fetch failed', [
+                    'file' => $file,
+                    'status' => $response->status(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'error' => ['code' => 'UPSTREAM_FAILED', 'message' => 'Unable to read update feed'],
+                ], 502);
+            }
+
+            return response($response->body(), 200, [
+                'Content-Type' => 'text/yaml; charset=utf-8',
+                'Cache-Control' => 'public, max-age=300',
+            ]);
+        }
+
+        $signed = $this->signedAssetUrl($assets[$file]['url']);
+
+        if (! $signed) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'DOWNLOAD_FAILED', 'message' => 'Unable to prepare download'],
+            ], 502);
+        }
+
+        // นับเฉพาะตัวติดตั้งจริง ไม่นับ .blockmap ที่ตัวอัปเดตดึงประกอบ
+        if (str_ends_with(strtolower($file), '.exe')) {
+            $this->incrementDownloadCount('masternode_exe');
+        }
+
+        return redirect()->away($signed);
     }
 }

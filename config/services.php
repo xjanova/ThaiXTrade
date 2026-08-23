@@ -45,6 +45,15 @@ return [
     'github' => [
         'owner' => env('GITHUB_OWNER', 'xjanova'),
         'repo' => env('GITHUB_REPO', 'ThaiXTrade'),
+
+        // repo เชน (สาธารณะ) — ที่มาของ TPIX Wallet APK
+        'chain_repo' => env('GITHUB_CHAIN_REPO', 'TPIX-Coin'),
+
+        // repo โปรแกรมมาสเตอร์โหนด (ไพรเวท) — แยกออกจาก repo เชนแล้ว
+        // เป็นไพรเวทได้เพราะเซิร์ฟเวอร์เป็นคนถือ token ไปดึงไฟล์แทนผู้ใช้
+        // ห้ามให้ตัวแอปยิง GitHub ตรงๆ เด็ดขาด (ต้องฝัง token ในไฟล์ .exe ที่แจก)
+        'masternode_repo' => env('GITHUB_MASTERNODE_REPO', 'TPIX-Masternode'),
+
         'token' => env('GITHUB_TOKEN'),
         'deploy_secret' => env('GITHUB_DEPLOY_SECRET'),
     ],
