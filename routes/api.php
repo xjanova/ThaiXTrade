@@ -308,6 +308,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/download', [AppUpdateController::class, 'download']);
         Route::get('/latest', [AppUpdateController::class, 'latest']);
         Route::get('/chain-latest', [AppUpdateController::class, 'chainLatest']);
+        // แอปวอลเล็ตถามผ่านนี่แทนการยิง GitHub เอง (repo เชนกำลังจะเป็นไพรเวท)
+        Route::get('/wallet-update-check', [AppUpdateController::class, 'walletUpdateCheck']);
         Route::get('/chain-download', [AppUpdateController::class, 'chainDownload']);
         Route::get('/download-stats', [AppUpdateController::class, 'downloadStats']);
         // CI webhook — auto-set active release after build (protected by deploy secret)

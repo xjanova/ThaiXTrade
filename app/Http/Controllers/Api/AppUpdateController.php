@@ -138,6 +138,12 @@ class AppUpdateController extends Controller
                 'published_at' => $releaseInfo['published_at'],
                 'mandatory' => $latestMajor > $currentMajor,
                 'file_size' => $releaseInfo['file_size'],
+
+                // มี tag ใหม่กว่าที่ผู้ใช้ถืออยู่ แต่ไฟล์ APK ยังไม่ถูกแนบ = CI ยังบิลด์ไม่เสร็จ
+                'pending_build' => ! empty($releaseInfo['newest_version'])
+                    && version_compare($releaseInfo['newest_version'], $releaseInfo['version'], '>')
+                    && version_compare($releaseInfo['newest_version'], $currentVersion, '>'),
+                'newest_version' => $releaseInfo['newest_version'] ?? null,
             ],
         ]);
     }
@@ -323,12 +329,27 @@ class AppUpdateController extends Controller
             }
 
             // Pass 2: ใช้ release ล่าสุดที่มี APK
+            //
+            // ระหว่างทางเก็บเลขรุ่นของ tag ใหม่สุดไว้ด้วย แม้ตัวนั้นจะยังไม่มี APK แนบ
+            // (CI ยังบิลด์ไม่เสร็จ) เพื่อให้แอปบอกผู้ใช้ได้ว่า "รุ่นใหม่กำลังบิลด์อยู่"
+            // แทนที่จะบอกว่าเป็นรุ่นล่าสุดแล้วทั้งที่ไม่ใช่
+            $newestVersion = null;
+
             foreach ($releases as $release) {
                 if ($release['draft'] || $release['prerelease']) {
                     continue;
                 }
+
+                if ($newestVersion === null) {
+                    preg_match('/v?(\d+\.\d+\.\d+)/', $release['tag_name'], $newest);
+                    $newestVersion = $newest[1] ?? null;
+                }
+
                 $result = $this->parseRelease($release);
+
                 if ($result) {
+                    $result['newest_version'] = $newestVersion;
+
                     return $result;
                 }
             }
@@ -389,6 +410,50 @@ class AppUpdateController extends Controller
         return response()->json([
             'success' => true,
             'data' => $data,
+        ]);
+    }
+
+    /**
+     * เช็กอัปเดตของ TPIX Wallet — รูปแบบผลลัพธ์เดียวกับ /app/update-check
+     *
+     * มีไว้เพราะ /app/chain-latest บอกแค่ว่า release ล่าสุดคืออะไร ไม่ได้บอกว่า
+     * "ใหม่กว่าที่เครื่องนี้ถืออยู่ไหม" ซึ่งเป็นสิ่งที่แอปต้องรู้ และการเทียบเวอร์ชัน
+     * ควรอยู่ฝั่งเซิร์ฟเวอร์ที่แก้ทีเดียวมีผลทุกเครื่อง ไม่ต้องรอผู้ใช้อัปเดตแอปก่อน
+     *
+     * GET /api/v1/app/wallet-update-check?version=1.2.3
+     */
+    public function walletUpdateCheck(Request $request): JsonResponse
+    {
+        $currentVersion = $request->query('version', '0.0.0');
+        $wallet = $this->cachedChainReleases()['wallet'] ?? null;
+
+        if (! $wallet) {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'available' => false,
+                    'current_version' => $currentVersion,
+                ],
+            ]);
+        }
+
+        $isNewer = version_compare($wallet['version'], $currentVersion, '>');
+        $currentMajor = (int) explode('.', $currentVersion)[0];
+        $latestMajor = (int) explode('.', $wallet['version'])[0];
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'available' => $isNewer,
+                'latest_version' => $wallet['version'],
+                'current_version' => $currentVersion,
+                'release_name' => $wallet['name'] ?? null,
+                'release_notes' => $wallet['notes'] ?? null,
+                'download_url' => $isNewer ? url('/api/v1/app/chain-download?type=wallet') : null,
+                'published_at' => $wallet['published_at'],
+                'mandatory' => $latestMajor > $currentMajor,
+                'file_size' => $wallet['file_size'],
+            ],
         ]);
     }
 
@@ -598,6 +663,10 @@ class AppUpdateController extends Controller
                         'version' => $fileVer[1] ?? $version,
                         'tag' => $release['tag_name'],
                         'published_at' => $release['published_at'],
+
+                        // ติดมากับไฟล์แต่ละตัว ไม่งั้นวอลเล็ตจะไปได้ notes ของมาสเตอร์โหนด
+                        'name' => $release['name'] ?: "v{$version}",
+                        'notes' => $release['body'] ?? '',
                     ],
                     'tag' => $release['tag_name'],
                     'version' => $version,
