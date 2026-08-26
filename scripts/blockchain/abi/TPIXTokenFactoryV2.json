@@ -1,0 +1,744 @@
+{
+  "contractName": "TPIXTokenFactoryV2",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "erc20V2Creator_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "utilityCreator_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "rewardCreator_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "governanceCreator_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "stablecoinCreator_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableInvalidOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "tokenAddress",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "symbol",
+          "type": "string"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "tokenOwner",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "category",
+          "type": "uint8"
+        }
+      ],
+      "name": "TokenCreated",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "name_",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "symbol_",
+          "type": "string"
+        },
+        {
+          "internalType": "uint8",
+          "name": "decimals_",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalSupply_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "mintable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "burnable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "pausable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "blacklistEnabled_",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "mintCap_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "autoBurnEnabled_",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint16",
+          "name": "autoBurnRateBps_",
+          "type": "uint16"
+        },
+        {
+          "internalType": "uint256",
+          "name": "burnFloor_",
+          "type": "uint256"
+        }
+      ],
+      "name": "createERC20V2",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "name_",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "symbol_",
+          "type": "string"
+        },
+        {
+          "internalType": "uint8",
+          "name": "decimals_",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalSupply_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "mintable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "burnable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "pausable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "blacklistEnabled_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "delegationEnabled_",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "mintCap_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "proposalThreshold_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint16",
+          "name": "quorumBps_",
+          "type": "uint16"
+        },
+        {
+          "internalType": "uint256",
+          "name": "votingPeriod_",
+          "type": "uint256"
+        }
+      ],
+      "name": "createGovernanceToken",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "name_",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "symbol_",
+          "type": "string"
+        },
+        {
+          "internalType": "uint8",
+          "name": "decimals_",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalSupply_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "mintable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "burnable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "pausable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "blacklistEnabled_",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint8",
+          "name": "rewardType_",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint16",
+          "name": "rewardRateBps_",
+          "type": "uint16"
+        },
+        {
+          "internalType": "uint256",
+          "name": "minHoldForReward_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "vestingCliff_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "vestingDuration_",
+          "type": "uint256"
+        }
+      ],
+      "name": "createRewardToken",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "name_",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "symbol_",
+          "type": "string"
+        },
+        {
+          "internalType": "uint8",
+          "name": "decimals_",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalSupply_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "reserveWallet_",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "pausable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "freezeEnabled_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "kycRequired_",
+          "type": "bool"
+        }
+      ],
+      "name": "createStablecoinToken",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "name_",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "symbol_",
+          "type": "string"
+        },
+        {
+          "internalType": "uint8",
+          "name": "decimals_",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalSupply_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "mintable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "burnable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "pausable_",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "blacklistEnabled_",
+          "type": "bool"
+        },
+        {
+          "components": [
+            {
+              "internalType": "uint16",
+              "name": "buyTaxBps",
+              "type": "uint16"
+            },
+            {
+              "internalType": "uint16",
+              "name": "sellTaxBps",
+              "type": "uint16"
+            },
+            {
+              "internalType": "uint16",
+              "name": "transferTaxBps",
+              "type": "uint16"
+            },
+            {
+              "internalType": "address",
+              "name": "taxWallet",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "marketingWallet",
+              "type": "address"
+            },
+            {
+              "internalType": "uint16",
+              "name": "marketingShareBps",
+              "type": "uint16"
+            }
+          ],
+          "internalType": "struct TaxConfig",
+          "name": "taxConfig_",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "uint16",
+              "name": "maxWalletBps",
+              "type": "uint16"
+            },
+            {
+              "internalType": "uint16",
+              "name": "maxTxBps",
+              "type": "uint16"
+            },
+            {
+              "internalType": "uint256",
+              "name": "antiBotDuration",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "tradingCooldown",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct ProtectionConfig",
+          "name": "protectionConfig_",
+          "type": "tuple"
+        }
+      ],
+      "name": "createUtilityToken",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "deployedTokens",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "erc20V2Creator",
+      "outputs": [
+        {
+          "internalType": "contract IERC20V2Creator",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "index",
+          "type": "uint256"
+        }
+      ],
+      "name": "getToken",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "governanceCreator",
+      "outputs": [
+        {
+          "internalType": "contract IGovernanceTokenCreator",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "nonce",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "rewardCreator",
+      "outputs": [
+        {
+          "internalType": "contract IRewardTokenCreator",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "stablecoinCreator",
+      "outputs": [
+        {
+          "internalType": "contract IStablecoinTokenCreator",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "tokenRecords",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "symbol",
+          "type": "string"
+        },
+        {
+          "internalType": "address",
+          "name": "tokenOwner",
+          "type": "address"
+        },
+        {
+          "internalType": "uint8",
+          "name": "category",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "createdAt",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "totalTokens",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "utilityCreator",
+      "outputs": [
+        {
+          "internalType": "contract IUtilityTokenCreator",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+}

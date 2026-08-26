@@ -1,0 +1,18 @@
+{
+  "_doc": "ABI ของแฟกทอรีสร้างเหรียญ — generate จาก TPIX-Coin/contracts/artifacts อย่าแก้ด้วยมือ",
+  "_generated": "2026-08-26",
+  "contracts": {
+    "TPIXTokenFactoryV2": {
+      "file": "TPIXTokenFactoryV2.json",
+      "functions": 18
+    },
+    "TPIXTokenFactory": {
+      "file": "TPIXTokenFactory.json",
+      "functions": 9
+    },
+    "TPIXNFTFactory": {
+      "file": "TPIXNFTFactory.json",
+      "functions": 12
+    }
+  }
+}

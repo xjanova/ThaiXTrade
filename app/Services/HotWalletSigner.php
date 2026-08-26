@@ -81,7 +81,7 @@ class HotWalletSigner
 
         // นามสกุล .cjs ไม่ใช่ .js โดยตั้งใจ — package.json ตั้ง "type": "module"
         // ไฟล์ .js จึงถูกมองเป็น ES module แล้ว require() ใช้ไม่ได้
-        // (สคริปต์เดิม create-token.js กับ bridge-transfer.js ติดปัญหานี้อยู่)
+        // (สคริปต์เดิม create-token / bridge-transfer เคยติดปัญหานี้ แก้แล้วโดยเปลี่ยนเป็น .cjs)
         $script = base_path('scripts/blockchain/treasury-payout.cjs');
 
         if (! is_readable($script)) {

@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Process;
  * Deploys tokens via TPIX Factory contracts on TPIX Chain.
  * Phase 2: รองรับ ERC-20 ทุกประเภท + ERC-721 (NFT)
  *
- * Calls Node.js script (scripts/blockchain/create-token.js) which
+ * Calls Node.js script (scripts/blockchain/create-token.cjs) which
  * uses ethers.js to sign and broadcast the transaction.
  *
  * Developed by Xman Studio
@@ -35,14 +35,24 @@ class Web3DeploymentService
     public function deployToken(array $params): array
     {
         $nodePath = config('blockchain.node_path', 'node');
-        $scriptPath = base_path('scripts/blockchain/create-token.js');
+        $scriptPath = base_path('scripts/blockchain/create-token.cjs');
 
         $tokenType = $params['token_type'] ?? 'standard';
         $subOptions = $params['sub_options'] ?? [];
 
         // Convert human-readable supply to wei
-        $decimals = $params['decimals'] ?? 18;
-        $totalSupplyWei = $this->toWei($params['total_supply'], $decimals);
+        //
+        // NFT นับเป็น "จำนวนใบ" ไม่ใช่ยอดที่คูณทศนิยม — ถ้าคูณไปด้วยจะได้เพดาน
+        // จำนวนใบเป็นเลข 10^18 เท่าของที่ผู้ใช้ตั้ง ทำให้เพดานไร้ความหมาย
+        // หน้าเว็บตั้ง decimals = 0 ให้เองตอนเลือกหมวด NFT แต่ห้ามพึ่งฝั่งหน้าเว็บอย่างเดียว
+        // (เรียก API ตรง ๆ หรือผู้ใช้แก้ decimals เองก็ทะลุมาได้)
+        $decimals = (int) ($params['decimals'] ?? 18);
+        $isNft = in_array($params['token_type'] ?? '', ['nft', 'nft_collection'], true)
+            || ($params['token_category'] ?? '') === 'nft';
+
+        $totalSupplyWei = $isNft
+            ? $this->toWholeNumber($params['total_supply'])
+            : $this->toWei($params['total_supply'], $decimals);
 
         // Build input JSON for Node.js script
         // Phase 2: ส่ง tokenType เป็น string + subOptions เต็ม
@@ -81,12 +91,14 @@ class Web3DeploymentService
             return ['success' => false, 'error' => 'No factory address configured'];
         }
 
-        $command = sprintf(
-            '%s %s %s',
-            escapeshellarg($nodePath),
-            escapeshellarg($scriptPath),
-            escapeshellarg($input)
-        );
+        // ส่ง payload ทาง stdin ไม่ใช่ argv
+        //
+        // escapeshellarg() บน Windows **ถอดเครื่องหมาย " ออกจากสตริง** JSON จึงเละตั้งแต่ยังไม่ออกจาก PHP
+        // (ลองแล้ว: {"a":1} กลายเป็น "{ a :1 }") บน Linux ยังรอด แต่ก็ยังเสี่ยงกับชื่อเหรียญ
+        // ที่มีอัญประกาศ อีโมจิ หรืออักษรนอก ASCII
+        //
+        // ใช้รูปแบบ array ของ Process ด้วย เพื่อไม่ต้องผ่าน shell เลย
+        $command = [$nodePath, $scriptPath];
 
         Log::info('Deploying token via factory', [
             'name' => $params['name'],
@@ -99,6 +111,7 @@ class Web3DeploymentService
         try {
             $result = Process::timeout(120)
                 ->env($env)
+                ->input($input)
                 ->run($command);
 
             $output = trim($result->output());
@@ -146,6 +159,18 @@ class Web3DeploymentService
 
             return ['success' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    /**
+     * ตัดเป็นจำนวนเต็ม — ใช้กับจำนวนใบของ NFT ที่ไม่มีทศนิยม
+     */
+    private function toWholeNumber(string $amount): string
+    {
+        $integer = explode('.', trim($amount))[0];
+        $integer = preg_replace('/\D/', '', $integer) ?? '';
+        $integer = ltrim($integer, '0');
+
+        return $integer === '' ? '0' : $integer;
     }
 
     /**

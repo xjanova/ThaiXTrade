@@ -64,6 +64,9 @@ class DeployTokenJob implements ShouldQueue
                     'block_number' => $result['blockNumber'] ?? null,
                     'deployed_at' => now()->toIso8601String(),
                     'deploy_attempts' => $this->attempts(),
+                    // ออฟชั่นที่ผู้ใช้เลือกไว้แต่สัญญายังทำให้ไม่ได้
+                    // เก็บไว้ให้หน้าเว็บแจ้งเจ้าของเหรียญได้ ไม่ใช่กลืนเงียบแล้วปล่อยให้เข้าใจว่าได้ครบ
+                    'unsupported_options' => $result['unsupportedOptions'] ?? [],
                 ]),
             ]);
 
@@ -71,6 +74,13 @@ class DeployTokenJob implements ShouldQueue
                 'contract' => $result['contractAddress'],
                 'tx' => $result['txHash'],
             ]);
+
+            if (! empty($result['unsupportedOptions'])) {
+                Log::warning("DeployTokenJob: {$this->token->symbol} มีออฟชั่นที่สัญญายังทำไม่ได้", [
+                    'contract' => $result['contractAddress'],
+                    'options' => $result['unsupportedOptions'],
+                ]);
+            }
 
             // Auto-verify contract บน Blockscout Explorer
             try {

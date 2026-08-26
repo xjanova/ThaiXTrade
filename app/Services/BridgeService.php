@@ -381,7 +381,7 @@ class BridgeService
             'amount' => $receiveAmount,
         ]);
 
-        $scriptPath = base_path('scripts/blockchain/bridge-transfer.js');
+        $scriptPath = base_path('scripts/blockchain/bridge-transfer.cjs');
 
         $env = [
             'BRIDGE_SIGNER_PRIVATE_KEY' => config('services.bridge.signer_private_key'),
