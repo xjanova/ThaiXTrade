@@ -87,17 +87,16 @@ const steps = computed(() => isTH.value ? [
         img: 'step-fund',
     },
     {
-        title: 'เลือกระดับโหนดและตั้งค่า',
-        desc: 'เลือก tier ที่ต้องการและกรอกชื่อโหนด',
+        title: 'ลงทะเบียนโหนดบนเชน (วางเงินค้ำ)',
+        desc: 'ทำที่หน้า tpix.online/masternode — ขั้นนี้คือขั้นที่เงินถูกล็อกเข้าสัญญาจริง',
         details: [
-            'คลิกแท็บ "ตั้งค่าโหนด" (Run a Node)',
-            'เลือกระดับที่ต้องการ: Light / Sentinel / Guardian / Validator',
-            'ระบบจะแสดงรางวัลโดยประมาณที่จะได้รับ',
-            'คลิก "ถัดไป" เพื่อยืนยัน wallet',
-            'กรอกชื่อโหนดของคุณ (เช่น "my-tpix-node")',
-            'ตรวจสอบข้อมูลทั้งหมดในหน้าสรุป',
+            'เปิด tpix.online/masternode แล้วเชื่อมกระเป๋าที่ถือ TPIX อยู่',
+            'กรอก "ที่อยู่เครื่องที่จะรันโหนด" เป็น IP:port เช่น 203.0.113.10:8545 — ที่อยู่นี้ถูกบันทึกลงเชนถาวร',
+            'เลือกระดับ: Light / Sentinel / Guardian / Validator (Validator ต้องผ่าน KYC ก่อน)',
+            'กดปุ่มวางค้ำแล้วเซ็นในกระเป๋า เงินจะถูกล็อกไว้ในสัญญาตามระยะล็อกของระดับนั้น',
+            'รอ tx ยืนยัน (~2-4 วินาที) แล้วการ์ด "โหนดของฉัน" จะขึ้นพร้อมวันปลดล็อก',
         ],
-        tip: 'เริ่มจาก Light Node ก่อนก็ได้ สามารถอัปเกรดเป็น tier สูงกว่าได้ทีหลัง',
+        tip: 'เริ่มจาก Light Node ก่อนได้ แต่การเปลี่ยนชั้นต้องปิดโหนดเดิม รอพ้นระยะล็อก แล้วลงทะเบียนใหม่ — สัญญาไม่มีปุ่มอัปเกรดในตัว',
         img: 'step-tier',
     },
     {
@@ -167,17 +166,16 @@ const steps = computed(() => isTH.value ? [
         img: 'step-fund',
     },
     {
-        title: 'Choose Tier & Configure',
-        desc: 'Select your node tier and enter your node name',
+        title: 'Register On-Chain (Lock Your Stake)',
+        desc: 'Done at tpix.online/masternode — this is the step where your TPIX is actually locked into the contract',
         details: [
-            'Click the "Run a Node" tab',
-            'Choose your tier: Light / Sentinel / Guardian / Validator',
-            'The app will show estimated rewards for each tier',
-            'Click "Next" to confirm your wallet',
-            'Enter your node name (e.g., "my-tpix-node")',
-            'Review all details on the summary page',
+            'Open tpix.online/masternode and connect the wallet holding your TPIX',
+            'Enter your node endpoint as IP:port, e.g. 203.0.113.10:8545 — this is written to the chain permanently',
+            'Choose a tier: Light / Sentinel / Guardian / Validator (Validator requires KYC approval first)',
+            'Click stake and sign in your wallet — the TPIX is locked for the tier lock period',
+            'Wait for the tx (~2-4 seconds); your node card appears with its unlock date',
         ],
-        tip: 'Start with a Light Node — you can upgrade to a higher tier later.',
+        tip: 'You can start with a Light Node, but changing tier means deregistering, waiting out the lock period, then registering again — the contract has no in-place upgrade.',
         img: 'step-tier',
     },
     {
@@ -254,7 +252,7 @@ const stepDiagrams = {
                     <Link href="/masternode" class="btn-primary px-6 py-2.5 rounded-xl text-sm font-semibold">
                         {{ isTH ? 'ตั้งค่าโหนดตอนนี้' : 'Set Up Node Now' }}
                     </Link>
-                    <a href="https://github.com/xjanova/TPIX-Coin/releases" target="_blank"
+                    <a href="/api/v1/app/chain-download?type=masternode"
                         class="px-6 py-2.5 rounded-xl text-sm font-semibold border border-white/10 text-dark-300 hover:bg-white/5 transition">
                         📥 {{ isTH ? 'ดาวน์โหลดโปรแกรม' : 'Download App' }}
                     </a>
@@ -408,7 +406,7 @@ const stepDiagrams = {
             <!-- Reward Economics -->
             <div class="glass-card p-6 rounded-2xl border border-white/10 mb-12">
                 <h2 class="text-xl font-bold text-white mb-4">
-                    {{ isTH ? '📊 ระบบรางวัล (Reward Pool 1.4 พันล้าน TPIX)' : '📊 Reward System (1.4 Billion TPIX Pool)' }}
+                    {{ isTH ? '📊 ระบบรางวัล (พูลรางวัล 1.4 พันล้าน TPIX ปล่อยใน 3 ปี)' : '📊 Reward System (1.4 Billion TPIX over 3 years)' }}
                 </h2>
 
                 <div class="overflow-x-auto">
@@ -421,11 +419,9 @@ const stepDiagrams = {
                             </tr>
                         </thead>
                         <tbody class="text-dark-300">
-                            <tr class="border-b border-white/3"><td class="py-3 px-4">{{ isTH ? 'ปีที่' : 'Year' }} 1</td><td class="text-right px-4 text-cyan-400 font-semibold">400,000,000</td><td class="text-right px-4">~25.4 TPIX</td></tr>
-                            <tr class="border-b border-white/3"><td class="py-3 px-4">{{ isTH ? 'ปีที่' : 'Year' }} 2</td><td class="text-right px-4">350,000,000</td><td class="text-right px-4">~22.2 TPIX</td></tr>
-                            <tr class="border-b border-white/3"><td class="py-3 px-4">{{ isTH ? 'ปีที่' : 'Year' }} 3</td><td class="text-right px-4">300,000,000</td><td class="text-right px-4">~19.0 TPIX</td></tr>
-                            <tr class="border-b border-white/3"><td class="py-3 px-4">{{ isTH ? 'ปีที่' : 'Year' }} 4</td><td class="text-right px-4">200,000,000</td><td class="text-right px-4">~12.7 TPIX</td></tr>
-                            <tr class="border-b border-white/5"><td class="py-3 px-4">{{ isTH ? 'ปีที่' : 'Year' }} 5</td><td class="text-right px-4">150,000,000</td><td class="text-right px-4">~9.5 TPIX</td></tr>
+                            <tr class="border-b border-white/3"><td class="py-3 px-4">{{ isTH ? 'ปีที่' : 'Year' }} 1</td><td class="text-right px-4 text-cyan-400 font-semibold">600,000,000</td><td class="text-right px-4">~38.0 TPIX</td></tr>
+                            <tr class="border-b border-white/3"><td class="py-3 px-4">{{ isTH ? 'ปีที่' : 'Year' }} 2</td><td class="text-right px-4">500,000,000</td><td class="text-right px-4">~31.7 TPIX</td></tr>
+                            <tr class="border-b border-white/5"><td class="py-3 px-4">{{ isTH ? 'ปีที่' : 'Year' }} 3</td><td class="text-right px-4">300,000,000</td><td class="text-right px-4">~19.0 TPIX</td></tr>
                             <tr class="font-bold text-yellow-400"><td class="py-3 px-4">{{ isTH ? 'รวม' : 'Total' }}</td><td class="text-right px-4">1,400,000,000 TPIX</td><td class="text-right px-4">—</td></tr>
                         </tbody>
                     </table>
@@ -433,8 +429,8 @@ const stepDiagrams = {
 
                 <p class="text-xs text-dark-500 mt-4 leading-relaxed">
                     {{ isTH
-                        ? '* รางวัลแจกตามสัดส่วน stake + uptime ของคุณ Validator 20%, Guardian 35%, Sentinel 30%, Light 15%'
-                        : '* Rewards distributed by stake + uptime proportion. Validators: 20%, Guardians: 35%, Sentinels: 30%, Light: 15%' }}
+                        ? '* แต่ละชั้นได้ส่วนแบ่งของรางวัลต่อบล็อก (Validator 20%, Guardian 35%, Sentinel 30%, Light 15%) แล้วส่วนแบ่งนั้นถูก หารเท่า ๆ กันในหมู่โหนดที่ทำงานอยู่ของชั้นนั้น จากนั้นคูณด้วยคะแนน uptime ของโหนดคุณ — การวางค้ำเกินขั้นต่ำไม่ทำให้ได้รางวัลเพิ่ม และยิ่งมีโหนดในชั้นเดียวกันมาก รางวัลต่อโหนดยิ่งลดลง'
+                        : '* Each tier receives a share of the block reward (Validator 20%, Guardian 35%, Sentinel 30%, Light 15%). That share is split EQUALLY among the active nodes in the tier, then multiplied by your node uptime — staking above the minimum earns nothing extra, and the more nodes in a tier, the less each one earns.' }}
                 </p>
             </div>
 
@@ -503,7 +499,7 @@ const stepDiagrams = {
                         : 'Download the app, create a wallet, fund it with TPIX, and start running!' }}
                 </p>
                 <div class="flex gap-3 justify-center flex-wrap">
-                    <a href="https://github.com/xjanova/TPIX-Coin/releases" target="_blank"
+                    <a href="/api/v1/app/chain-download?type=masternode"
                         class="btn-primary px-8 py-3 rounded-xl font-semibold">
                         📥 {{ isTH ? 'ดาวน์โหลดโปรแกรม' : 'Download App' }}
                     </a>

@@ -52,20 +52,39 @@ return [
     */
 
     'registry' => [
-        'address' => env('NODE_REGISTRY_ADDRESS'),
+        // ตัวแปรเดียวคือ MASTERNODE_REGISTRY_ADDRESS
+        // NODE_REGISTRY_ADDRESS รับไว้เป็นชื่อเก่าเพื่อไม่ให้ .env ที่ตั้งไว้แล้วพัง
+        //
+        // เดิมไฟล์นี้อ่าน NODE_REGISTRY_ADDRESS ส่วน config/blockchain.php อ่าน
+        // MASTERNODE_REGISTRY_ADDRESS → ตั้งตัวไหนตัวเดียวก็มีอีกครึ่งระบบที่ยัง
+        // คิดว่า "สัญญายังไม่ deploy" อยู่ดี
+        'address' => env('MASTERNODE_REGISTRY_ADDRESS', env('NODE_REGISTRY_ADDRESS')),
         'rpc_url' => env('TPIX_RPC_URL', 'https://rpc.tpix.online'),
         'chain_id' => 4289,
-        'fallback_min_balance_tpix' => env('MASTERNODE_FALLBACK_MIN_BALANCE', 100000), // 100K TPIX (Light tier)
+        'fallback_min_balance_tpix' => env('MASTERNODE_FALLBACK_MIN_BALANCE', 100000), // 100K TPIX (Sentinel tier)
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Tier Min Stakes (ถ้า NodeRegistry ยังไม่ deploy ใช้ balance check)
+    | Tier Min Stakes
     |--------------------------------------------------------------------------
+    | ต้องตรงกับ constructor ของ NodeRegistryV2 (tiers[] ใน src/masternode/NodeRegistryV2.sol)
+    | ลำดับ index สำคัญ: enum NodeTier { Guardian=0, Sentinel=1, Light=2, Validator=3 }
+    | (Guardian=0 เพื่อความเข้ากันได้กับ V1 ที่ index 0 เคยชื่อ Validator)
+    |
+    | ค่าที่นี่ใช้ตอนสัญญายังไม่ deploy เท่านั้น — ถ้า deploy แล้ว ระบบอ่าน
+    | getTierInfo() จากเชนเป็นหลักเสมอ
     */
 
+    'tier_index' => [
+        'Guardian' => 0,
+        'Sentinel' => 1,
+        'Light' => 2,
+        'Validator' => 3,
+    ],
+
     'tiers' => [
-        'Validator' => 10_000_000,   // 10M TPIX
+        'Validator' => 10_000_000,   // 10M TPIX — IBFT2 sealer, ต้องผ่าน KYC
         'Guardian' => 1_000_000,    // 1M TPIX
         'Sentinel' => 100_000,      // 100K TPIX
         'Light' => 10_000,       // 10K TPIX
@@ -114,4 +133,13 @@ return [
     */
 
     'log_channel' => env('MASTERNODE_LOG_CHANNEL', 'daily'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Explorer
+    |--------------------------------------------------------------------------
+    | ใช้ทำลิงก์ tx / address ให้ผู้ใช้กดดูหลักฐานบนเชนได้เอง
+    */
+
+    'explorer_url' => env('BLOCKSCOUT_URL', 'https://explorer.tpix.online'),
 ];

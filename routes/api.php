@@ -268,6 +268,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     // Master Node — network stats (public, read-only)
     Route::prefix('masternode')->group(function () {
         Route::get('/stats', [MasterNodeController::class, 'stats']);
+        // ค่าคอนฟิกแต่ละชั้นตามที่อยู่บนเชนจริง — หน้าเว็บใช้เช็กโควตาก่อนให้กดซื้อ
+        Route::get('/tiers', [MasterNodeController::class, 'tiers']);
     });
 
     // Validators — network dashboard + applications (public)

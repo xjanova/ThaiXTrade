@@ -54,7 +54,8 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    'masternode_registry' => env('MASTERNODE_REGISTRY_ADDRESS', ''),
+    // ต้อง resolve เหมือน config/masternode.php ทุกประการ ไม่งั้นครึ่งระบบเห็นสัญญา อีกครึ่งไม่เห็น
+    'masternode_registry' => env('MASTERNODE_REGISTRY_ADDRESS', env('NODE_REGISTRY_ADDRESS', '')),
 
     /*
     |--------------------------------------------------------------------------

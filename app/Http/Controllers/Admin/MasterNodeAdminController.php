@@ -4,34 +4,35 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
+use App\Services\MasterNode\NodeRegistryContract;
 use App\Support\Wei;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 /**
- * MasterNodeAdminController — Admin dashboard สำหรับจัดการ MasterNode.
+ * MasterNodeAdminController — แดชบอร์ดหลังบ้านของ MasterNode.
  *
- * แสดงสถานะ on-chain จริงจาก NodeRegistry contract บน TPIX Chain.
+ * อ่านสถานะจริงจาก NodeRegistryV2 ผ่าน NodeRegistryContract ตัวเดียวกับหน้าเว็บ
+ * (เดิมไฟล์นี้ hardcode selector เองแล้วผิด: totalRewardsDistributed ใช้ 0x0e15561a
+ *  ทั้งที่ของจริงคือ 0xee172546 และไม่ส่ง User-Agent จึงโดน Cloudflare 403 ทุกครั้ง)
+ *
  * Developed by Xman Studio.
  */
 class MasterNodeAdminController extends Controller
 {
+    public function __construct(private NodeRegistryContract $registry) {}
+
     /**
      * MasterNode admin dashboard page.
      */
     public function index(): InertiaResponse
     {
-        $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online');
-        $registryAddress = config('blockchain.masternode_registry', '');
-
         return Inertia::render('Admin/MasterNode/Index', [
-            'stats' => $this->getNetworkStats($rpcUrl, $registryAddress),
-            'registryAddress' => $registryAddress,
-            'rpcUrl' => $rpcUrl,
+            'stats' => $this->getNetworkStats(),
+            'registryAddress' => $this->registry->address() ?? '',
+            'rpcUrl' => $this->registry->rpcUrl(),
             'chainId' => config('blockchain.tpix_chain_id', 4289),
             'settings' => [
                 'masternode_enabled' => (bool) SiteSetting::get('trading', 'masternode_enabled', true),
@@ -44,12 +45,9 @@ class MasterNodeAdminController extends Controller
      */
     public function stats(): JsonResponse
     {
-        $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online');
-        $registryAddress = config('blockchain.masternode_registry', '');
-
         return response()->json([
             'success' => true,
-            'data' => $this->getNetworkStats($rpcUrl, $registryAddress),
+            'data' => $this->getNetworkStats(),
         ]);
     }
 
@@ -68,7 +66,7 @@ class MasterNodeAdminController extends Controller
     }
 
     /**
-     * Update MasterNode config (registry address, etc).
+     * Update MasterNode config (registry address note).
      */
     public function updateConfig(Request $request): JsonResponse
     {
@@ -76,13 +74,13 @@ class MasterNodeAdminController extends Controller
             'registry_address' => ['nullable', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
         ]);
 
-        // Note: registry address ควรตั้งผ่าน .env เพราะเป็น config
-        // แต่บันทึก note ไว้ใน SiteSetting สำหรับ reference
+        // registry address ตั้งผ่าน .env เท่านั้น (MASTERNODE_REGISTRY_ADDRESS)
+        // ที่เก็บใน SiteSetting เป็นแค่บันทึกช่วยจำ ไม่มีผลกับระบบ
         SiteSetting::set('trading', 'masternode_registry_note', $request->input('registry_address', ''));
 
         return response()->json([
             'success' => true,
-            'message' => 'Config saved. Update MASTERNODE_REGISTRY_ADDRESS in .env for actual deployment.',
+            'message' => 'บันทึกแล้ว — ต้องตั้ง MASTERNODE_REGISTRY_ADDRESS ใน .env จึงจะมีผลจริง',
         ]);
     }
 
@@ -90,96 +88,67 @@ class MasterNodeAdminController extends Controller
     // Private Methods
     // =========================================================================
 
-    private function getNetworkStats(string $rpcUrl, string $registryAddress): array
+    private function getNetworkStats(): array
     {
-        return cache()->remember('admin:masternode:stats', 30, function () use ($rpcUrl, $registryAddress) {
-            $blockHeight = $this->getBlockHeight($rpcUrl);
+        return cache()->remember('admin:masternode:stats', 30, function () {
+            $blockHeight = $this->registry->blockNumber();
+            $address = $this->registry->address();
+            $deployed = $this->registry->isDeployed();
 
-            if (empty($registryAddress)) {
-                return [
-                    'total_nodes' => 0,
-                    'validator_nodes' => 0,
-                    'sentinel_nodes' => 0,
-                    'light_nodes' => 0,
-                    'total_staked' => '0',
-                    'total_rewards_distributed' => '0',
-                    'remaining_rewards' => '1,400,000,000',
-                    'block_height' => $blockHeight,
-                    'registry_deployed' => false,
-                    'rpc_connected' => $blockHeight > 0,
-                ];
+            $base = [
+                'total_nodes' => 0,
+                'guardian_nodes' => 0,
+                'sentinel_nodes' => 0,
+                'light_nodes' => 0,
+                'validator_nodes' => 0,
+                'total_staked' => '0',
+                'total_rewards_distributed' => '0',
+                'remaining_rewards' => '1400000000',
+                'reward_pool_funded' => '0',
+                'reward_pool_available' => '0',
+                'reward_schedule_cap' => '1400000000',
+                'current_year' => 1,
+                'block_height' => $blockHeight,
+                'rpc_connected' => $blockHeight > 0,
+                'registry_deployed' => $deployed,
+                // แยกให้ชัดว่า "ยังไม่ได้ตั้ง address" ต่างจาก "ตั้งแล้วแต่ไม่มีโค้ดที่ address นั้น"
+                // กรณีหลังเกิดตอนเชน regenesis แล้ว .env ยังค้างที่อยู่เก่าไว้
+                'registry_address_set' => $address !== null,
+                'registry_code_missing' => $address !== null && ! $deployed,
+                'kyc_contract' => null,
+            ];
+
+            if (! $deployed) {
+                return $base;
             }
 
-            try {
-                $totalStaked = $this->ethCallUint256($rpcUrl, $registryAddress, '0x817b1cd2'); // totalStaked()
-                $totalRewards = $this->ethCallUint256($rpcUrl, $registryAddress, '0x0e15561a'); // totalRewardsDistributed()
-
-                return [
-                    'total_nodes' => 0,
-                    'validator_nodes' => 0,
-                    'sentinel_nodes' => 0,
-                    'light_nodes' => 0,
-                    'total_staked' => $totalStaked,
-                    'total_rewards_distributed' => $totalRewards,
-                    'remaining_rewards' => number_format(1_400_000_000 - (float) $totalRewards, 0),
-                    'block_height' => $blockHeight,
-                    'registry_deployed' => true,
-                    'rpc_connected' => true,
-                ];
-            } catch (\Throwable $e) {
-                Log::error('Admin MasterNode stats query failed', ['error' => $e->getMessage()]);
-
-                return [
-                    'total_nodes' => 0,
-                    'validator_nodes' => 0,
-                    'sentinel_nodes' => 0,
-                    'light_nodes' => 0,
-                    'total_staked' => '0',
-                    'total_rewards_distributed' => '0',
-                    'remaining_rewards' => '1,400,000,000',
-                    'block_height' => $blockHeight,
-                    'registry_deployed' => ! empty($registryAddress),
-                    'rpc_connected' => $blockHeight > 0,
-                ];
+            $stats = $this->registry->networkStats();
+            if ($stats === null) {
+                return $base;
             }
-        });
-    }
 
-    private function getBlockHeight(string $rpcUrl): int
-    {
-        try {
-            $response = Http::timeout(5)->post($rpcUrl, [
-                'jsonrpc' => '2.0',
-                'method' => 'eth_blockNumber',
-                'params' => [],
-                'id' => 1,
+            $tierCounts = [];
+            foreach ($this->registry->allTierInfo() as $tier) {
+                $tierCounts[strtolower((string) $tier['name']).'_nodes'] = (int) $tier['active_nodes'];
+            }
+
+            $pool = $this->registry->rewardPoolStatus();
+
+            return array_merge($base, $tierCounts, [
+                'total_nodes' => $stats['total_active_nodes'],
+                'total_staked' => Wei::format($stats['total_staked_wei']),
+                'total_rewards_distributed' => Wei::format($stats['total_rewards_distributed_wei']),
+                'remaining_rewards' => Wei::format($stats['remaining_rewards_wei']),
+                'reward_per_second' => Wei::format($stats['reward_per_second_wei']),
+                'current_year' => min(3, $stats['current_year_index'] + 1),
+                'reward_year_ended' => $stats['current_year_index'] >= 3,
+                'reward_pool_funded' => $pool ? Wei::format($pool['total_funded_wei']) : '0',
+                'reward_schedule_cap' => $pool ? Wei::format($pool['schedule_cap_wei']) : '1400000000',
+                // เงินที่พูลจ่ายได้จริง = balance - เงินต้นผู้วางค้ำ
+                // ถ้าเป็น 0 ทั้งที่มีโหนดทำงานอยู่ = ยังไม่ได้เติมพูล ผู้ใช้กดรับรางวัลไม่ได้
+                'reward_pool_available' => Wei::format($this->registry->availableRewardFunds() ?? '0'),
+                'kyc_contract' => $this->registry->kycContract(),
             ]);
-
-            if ($response->successful()) {
-                return (int) hexdec($response->json('result', '0x0'));
-            }
-        } catch (\Throwable) {
-        }
-
-        return 0;
-    }
-
-    private function ethCallUint256(string $rpcUrl, string $to, string $data): string
-    {
-        $response = Http::timeout(5)->post($rpcUrl, [
-            'jsonrpc' => '2.0',
-            'method' => 'eth_call',
-            'params' => [['to' => $to, 'data' => $data], 'latest'],
-            'id' => 1,
-        ]);
-
-        if ($response->successful() && ! $response->json('error')) {
-            $hex = $response->json('result', '0x0');
-
-            // เดิมใช้ gmp_* ซึ่งเซิร์ฟเวอร์ไม่มี ext-gmp → โยน \Error ที่ catch ไม่ติด
-            return Wei::hexToWholeUnits($hex);
-        }
-
-        return '0';
+        });
     }
 }

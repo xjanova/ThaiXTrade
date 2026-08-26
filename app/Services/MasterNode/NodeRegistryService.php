@@ -2,202 +2,170 @@
 
 namespace App\Services\MasterNode;
 
+use App\Support\Wei;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * NodeRegistryService — ตรวจสอบว่า wallet เป็น masternode/validator ที่ active บน chain มั้ย.
+ * NodeRegistryService — ตรวจว่า wallet เป็น masternode/validator ที่ active อยู่จริงไหม
+ * (ใช้ตัดสินว่าจะให้ IP ของ operator เข้า Cloudflare allowlist หรือไม่).
  *
- * Resolution order:
- *   1. ถ้ามี genesis_operators ใน config → match wallet กับ tier ที่ระบุ (Phase 1 fallback)
- *   2. ถ้า NodeRegistry contract deployed (config('masternode.registry.address') !== null) → eth_call isActiveNode + getTier
- *   3. Fallback: เรียก eth_getBalance — ถ้า balance >= tier minimum → allow
+ * ลำดับการตัดสิน:
+ *   1. genesis_operators ใน config → ผ่านทันที (โหนดตั้งต้นของทีม)
+ *   2. สัญญา NodeRegistry deploy แล้ว → **ถือเป็นคำตอบสุดท้าย**
+ *      ลงทะเบียนอยู่และ status = Active ถึงจะผ่าน ไม่ผ่าน = ปฏิเสธ (ไม่ตกไปข้อ 3)
+ *   3. สัญญายังไม่ deploy → fallback ดู balance (Phase 1)
+ *
+ * ⚠️ ข้อ 2 ต้องตัดจบ ไม่ตกไปข้อ 3
+ *    ของเดิมเรียกเมธอด `isActiveNode()` / `getTier()` ซึ่ง **ไม่มีอยู่ใน V2 เลย**
+ *    eth_call จึงคืน null ทุกครั้งแล้วไหลไปข้อ 3 เสมอ ผลคือใครก็ตามที่ *ถือ* TPIX
+ *    ครบขั้นต่ำ (ไม่ต้องวางค้ำสักบาท) ก็ขอ allowlist ได้ — ยืมเหรียญมาถือแป๊บเดียวก็พอ
  *
  * Developed by Xman Studio
  */
 class NodeRegistryService
 {
-    /**
-     * eth_call selector สำหรับ NodeRegistry.isActiveNode(address)
-     * keccak256("isActiveNode(address)") → 0x???????? (4 bytes).
-     */
-    private const SELECTOR_IS_ACTIVE = '0xfb7a7c81';
-
-    /**
-     * eth_call selector สำหรับ NodeRegistry.getTier(address).
-     */
-    private const SELECTOR_GET_TIER = '0x6e9960c3';
+    public function __construct(private NodeRegistryContract $registry) {}
 
     /**
      * Lookup operator status — return null ถ้าไม่ใช่ masternode.
      *
-     * @return array{tier:string, source:string}|null source = 'genesis'|'registry'|'balance'
+     * @return array{tier:string, source:string, status?:string}|null
+     *                                                                source = 'genesis'|'registry'|'balance'
      */
     public function lookup(string $walletAddress): ?array
     {
         $wallet = strtolower($walletAddress);
 
-        // 1. Genesis operators (hardcoded — Phase 1)
-        $genesis = config('masternode.genesis_operators', []);
-        $genesisLower = array_change_key_case($genesis, CASE_LOWER);
-        if (isset($genesisLower[$wallet])) {
+        if (! preg_match('/^0x[a-f0-9]{40}$/', $wallet)) {
+            return null;
+        }
+
+        // 1. Genesis operators (โหนดตั้งต้นของทีม — ไม่ต้องวางค้ำ)
+        $genesis = array_change_key_case(config('masternode.genesis_operators', []), CASE_LOWER);
+        if (isset($genesis[$wallet])) {
             return [
-                'tier' => $genesisLower[$wallet],
+                'tier' => $genesis[$wallet],
                 'source' => 'genesis',
+                'status' => 'active',
             ];
         }
 
-        // 2. NodeRegistry contract (Phase 2 — when deployed)
-        $registryAddress = config('masternode.registry.address');
-        if ($registryAddress) {
-            $tierFromRegistry = $this->queryRegistry($wallet, $registryAddress);
-            if ($tierFromRegistry !== null) {
-                return [
-                    'tier' => $tierFromRegistry,
-                    'source' => 'registry',
-                ];
-            }
+        // 2. สัญญา deploy แล้ว → คำตอบสุดท้าย
+        if ($this->registry->isDeployed()) {
+            return $this->lookupFromRegistry($wallet);
         }
 
-        // 3. Fallback: balance check (any wallet with enough TPIX)
+        // 3. สัญญายังไม่ deploy → fallback ดู balance
         $tierFromBalance = $this->tierByBalance($wallet);
-        if ($tierFromBalance !== null) {
-            return [
-                'tier' => $tierFromBalance,
-                'source' => 'balance',
-            ];
+
+        return $tierFromBalance === null ? null : [
+            'tier' => $tierFromBalance,
+            'source' => 'balance',
+        ];
+    }
+
+    /**
+     * อ่านสถานะโหนดจากสัญญาจริง — ผ่านเฉพาะ status = Active.
+     *
+     * @return array{tier:string, source:string, status:string}|null
+     */
+    private function lookupFromRegistry(string $wallet): ?array
+    {
+        $cacheKey = "masternode:registry:lookup:{$wallet}";
+
+        $cached = Cache::remember($cacheKey, 60, function () use ($wallet) {
+            $node = $this->registry->nodeInfo($wallet);
+
+            // แยก "อ่านไม่ได้" ออกจาก "ไม่ได้ลงทะเบียน" ไม่ได้จาก nodeInfo() ตัวเดียว
+            // แต่ทั้งสองกรณีต้องปฏิเสธเหมือนกัน — fail closed
+            if ($node === null) {
+                return ['result' => null];
+            }
+
+            // Active เท่านั้น: slashed / exited / inactive ไม่ควรได้ allowlist
+            if ($node['status'] !== 'active') {
+                Log::info('Masternode allowlist ปฏิเสธ — โหนดไม่ได้อยู่ในสถานะทำงาน', [
+                    'wallet' => $wallet,
+                    'status' => $node['status'],
+                ]);
+
+                return ['result' => null];
+            }
+
+            return ['result' => [
+                'tier' => $node['tier'],
+                'source' => 'registry',
+                'status' => $node['status'],
+            ]];
+        });
+
+        return $cached['result'] ?? null;
+    }
+
+    /**
+     * Fallback ตอนสัญญายังไม่ deploy — ใช้ balance เป็นตัวแทนของ stake.
+     *
+     * เป็นการอนุโลมชั่วคราวเท่านั้น: ถือเหรียญ ≠ วางค้ำ พอ deploy สัญญาแล้ว
+     * เส้นทางนี้จะไม่ถูกเรียกอีกเลย
+     */
+    private function tierByBalance(string $wallet): ?string
+    {
+        $balanceWei = Cache::remember(
+            "masternode:balance:{$wallet}",
+            60,
+            fn () => $this->getBalanceWei($wallet)
+        );
+
+        if ($balanceWei === null) {
+            return null;
+        }
+
+        // เทียบเป็นสตริงจำนวนเต็มด้วย bcmath — 1 TPIX = 1e18 wei เกิน PHP_INT_MAX ตั้งแต่ 10 TPIX
+        $balanceTpix = Wei::format($balanceWei);
+
+        $tiers = config('masternode.tiers', []);
+        arsort($tiers);
+
+        foreach ($tiers as $name => $minStake) {
+            if (bccomp($balanceTpix, (string) $minStake, 0) >= 0) {
+                return $name;
+            }
         }
 
         return null;
     }
 
     /**
-     * Phase 2: query NodeRegistry contract via eth_call.
+     * eth_getBalance → wei เป็นสตริง (ห้ามผ่าน float).
+     *
+     * ⚠️ ต้องส่ง User-Agent — rpc.tpix.online อยู่หลัง Cloudflare bot rule ที่ตอบ 403 ให้ client ที่ไม่มี UA
      */
-    private function queryRegistry(string $wallet, string $registryAddress): ?string
-    {
-        $cacheKey = "masternode:registry:{$wallet}";
-
-        return Cache::remember($cacheKey, 60, function () use ($wallet, $registryAddress) {
-            try {
-                // eth_call isActiveNode(wallet)
-                $isActive = $this->ethCall($registryAddress, self::SELECTOR_IS_ACTIVE.$this->padAddress($wallet));
-                if ($isActive === null || hexdec(substr($isActive, -2)) === 0) {
-                    return null;
-                }
-
-                // eth_call getTier(wallet) → uint8 (0=Light, 1=Sentinel, 2=Guardian, 3=Validator)
-                $tierHex = $this->ethCall($registryAddress, self::SELECTOR_GET_TIER.$this->padAddress($wallet));
-                if ($tierHex === null) {
-                    return null;
-                }
-
-                $tierIdx = hexdec(substr($tierHex, -64));
-                $tiers = ['Light', 'Sentinel', 'Guardian', 'Validator'];
-
-                return $tiers[$tierIdx] ?? 'Light';
-            } catch (\Throwable $e) {
-                Log::warning('NodeRegistry queryRegistry failed', [
-                    'wallet' => $wallet,
-                    'error' => $e->getMessage(),
-                ]);
-
-                return null;
-            }
-        });
-    }
-
-    /**
-     * Phase 1 fallback: ดู balance — ถ้าพอตามขั้น tier ก็ allow
-     * เป็น proxy สำหรับ stake (assumption: wallet ที่ run masternode ควรมี TPIX อย่างน้อย minStake).
-     */
-    private function tierByBalance(string $wallet): ?string
-    {
-        $cacheKey = "masternode:balance:{$wallet}";
-        $balanceWei = Cache::remember($cacheKey, 60, fn () => $this->getBalance($wallet));
-
-        if ($balanceWei === null) {
-            return null;
-        }
-
-        $balanceTpix = (int) ($balanceWei / 1e18);
-        $tiers = config('masternode.tiers', []);
-
-        // เลือก tier สูงสุดที่ผ่านเกณฑ์
-        arsort($tiers);
-        foreach ($tiers as $name => $minStake) {
-            if ($balanceTpix >= $minStake) {
-                return $name;
-            }
-        }
-
-        // ต่ำกว่า Light minimum → ไม่ allow
-        $minBalance = (int) config('masternode.registry.fallback_min_balance_tpix', 100000);
-
-        return $balanceTpix >= $minBalance ? 'Light' : null;
-    }
-
-    /**
-     * eth_getBalance via JSON-RPC.
-     */
-    private function getBalance(string $wallet): ?float
+    private function getBalanceWei(string $wallet): ?string
     {
         try {
-            $response = Http::timeout(10)->post(config('masternode.registry.rpc_url'), [
-                'jsonrpc' => '2.0',
-                'method' => 'eth_getBalance',
-                'params' => [$wallet, 'latest'],
-                'id' => 1,
-            ]);
+            $response = Http::timeout(10)
+                ->withHeaders(['User-Agent' => 'TPIX-TRADE-Server/1.0 (+https://tpix.online)'])
+                ->asJson()
+                ->post(config('masternode.registry.rpc_url'), [
+                    'jsonrpc' => '2.0',
+                    'method' => 'eth_getBalance',
+                    'params' => [$wallet, 'latest'],
+                    'id' => 1,
+                ]);
 
-            if (! $response->successful()) {
+            if (! $response->successful() || $response->json('error')) {
                 return null;
             }
 
             $hex = $response->json('result');
-            if (! $hex || ! is_string($hex)) {
-                return null;
-            }
 
-            return (float) hexdec($hex);
+            return is_string($hex) ? Wei::hexToInt($hex) : null;
         } catch (\Throwable $e) {
             Log::warning('eth_getBalance failed', ['wallet' => $wallet, 'error' => $e->getMessage()]);
 
             return null;
         }
-    }
-
-    /**
-     * Generic eth_call.
-     */
-    private function ethCall(string $to, string $data): ?string
-    {
-        try {
-            $response = Http::timeout(10)->post(config('masternode.registry.rpc_url'), [
-                'jsonrpc' => '2.0',
-                'method' => 'eth_call',
-                'params' => [
-                    ['to' => $to, 'data' => $data],
-                    'latest',
-                ],
-                'id' => 1,
-            ]);
-
-            return $response->successful() ? $response->json('result') : null;
-        } catch (\Throwable $e) {
-            return null;
-        }
-    }
-
-    private function padAddress(string $address): string
-    {
-        // อย่าใช้ ltrim('0x') — มัน strip char '0'/'x' ทุกตัว ไม่ใช่แค่ prefix
-        $addr = strtolower($address);
-        if (str_starts_with($addr, '0x')) {
-            $addr = substr($addr, 2);
-        }
-
-        return str_pad($addr, 64, '0', STR_PAD_LEFT);
     }
 }
