@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string $name
  * @property string $slug
  * @property int $phase_order
+ * @property int|null $duration_days
  * @property string $price_usd
  * @property string $allocation
  * @property string $sold
@@ -49,6 +50,7 @@ class SalePhase extends Model
         'name',
         'slug',
         'phase_order',
+        'duration_days',
         'price_usd',
         'allocation',
         'sold',

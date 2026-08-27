@@ -212,6 +212,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/', [TokenSaleController::class, 'store'])->name('store');
             Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
 
+            /*
+             * เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด
+             * "พร้อมจำหน่ายเมื่อไหร่ ก็เริ่มเฟสการขายใหม่แต่แรกวันนั้น"
+             */
+            Route::post('/launch', [TokenSaleController::class, 'launch'])->name('launch');
+            Route::post('/auto-launch', [TokenSaleController::class, 'autoLaunch'])->name('auto-launch');
+
             // Whitelist management
             Route::get('/whitelist/{phaseId}', [TokenSaleController::class, 'whitelist'])->name('whitelist');
             Route::post('/whitelist', [TokenSaleController::class, 'whitelistAdd'])->name('whitelist.add');

@@ -42,8 +42,17 @@ class TpixEcosystemSeeder extends Seeder
             'accept_chain_id' => 56,
             'sale_wallet_address' => '0xF1CD82550E1145664a86f238AcC8AC67D0d68B4f',
             'status' => 'active',
-            'starts_at' => now(),
-            'ends_at' => now()->addMonths(6),
+            /*
+             * ★ ไม่ตั้งวันไว้ล่วงหน้าโดยตั้งใจ
+             *
+             * เดิม seed ใส่ now() → now()+6 เดือนไว้ตายตัว แล้วระบบไม่เคยพร้อมขาย
+             * ตามวันนั้น เฟสแรกจึงหมดอายุไปเงียบ ๆ โดยยังไม่เคยขายได้เลยสักบาท
+             *
+             * ตอนนี้วันจริงถูกคำนวณตอนกด "เปิดรอบขาย" ที่ /admin/token-sales
+             * (หรือ `php artisan sale:launch`) จากความยาวเฟสด้านล่าง
+             */
+            'starts_at' => null,
+            'ends_at' => null,
         ]);
 
         // Phase 1: Private Sale — กำลังขายอยู่
@@ -61,9 +70,11 @@ class TpixEcosystemSeeder extends Seeder
             'vesting_duration_days' => 180,
             'vesting_tge_percent' => 20,
             'whitelist_only' => false,
-            'status' => 'active',
-            'starts_at' => now(),
-            'ends_at' => now()->addMonths(2),
+            // ทุกเฟสรอคิวไว้ก่อน — เฟสแรกจะถูกเปิดตอนกด "เปิดรอบขาย"
+            'status' => 'upcoming',
+            'duration_days' => 60,
+            'starts_at' => null,
+            'ends_at' => null,
         ]);
 
         // Phase 2: Pre-Sale — ยังไม่เริ่ม
@@ -82,8 +93,9 @@ class TpixEcosystemSeeder extends Seeder
             'vesting_tge_percent' => 30,
             'whitelist_only' => false,
             'status' => 'upcoming',
-            'starts_at' => now()->addMonths(2),
-            'ends_at' => now()->addMonths(4),
+            'duration_days' => 60,
+            'starts_at' => null,
+            'ends_at' => null,
         ]);
 
         // Phase 3: Public Sale — ยังไม่เริ่ม
@@ -102,11 +114,13 @@ class TpixEcosystemSeeder extends Seeder
             'vesting_tge_percent' => 50,
             'whitelist_only' => false,
             'status' => 'upcoming',
-            'starts_at' => now()->addMonths(4),
-            'ends_at' => now()->addMonths(6),
+            'duration_days' => 60,
+            'starts_at' => null,
+            'ends_at' => null,
         ]);
 
         $this->command->info('✅ Token Sale created: '.$sale->name.' with 3 phases');
+        $this->command->warn('   ยังไม่ได้ตั้งวัน — กด "เปิดรอบขาย" ที่ /admin/token-sales หรือรัน php artisan sale:launch');
     }
 
     /**

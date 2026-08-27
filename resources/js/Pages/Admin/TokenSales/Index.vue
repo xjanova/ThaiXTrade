@@ -9,12 +9,15 @@
 import { ref, computed } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import SaleLaunchPanel from '@/Components/Admin/SaleLaunchPanel.vue';
 
 const props = defineProps({
     sales: { type: Array, default: () => [] },
     transactions: { type: Object, default: () => ({ data: [] }) },
     walletInfo: { type: Object, default: () => ({}) },
     stats: { type: Object, default: () => ({}) },
+    // ความพร้อม + ตารางที่จะได้ถ้ากดเปิดรอบขายวันนี้
+    launch: { type: Object, default: () => ({}) },
 });
 
 // Tab ปัจจุบัน
@@ -50,6 +53,8 @@ const phaseForm = useForm({
     token_sale_id: null,
     name: '',
     phase_order: 1,
+    // ความยาวเฟสเป็นวัน — ตอนกด "เปิดรอบขาย" วันจริงถูกคำนวณจากค่านี้
+    duration_days: 60,
     price_usd: 0.05,
     allocation: 100000000,
     min_purchase: 100,
@@ -135,6 +140,7 @@ function openEditPhase(sale, phase) {
     phaseForm.token_sale_id = sale.id;
     phaseForm.name = phase.name;
     phaseForm.phase_order = phase.phase_order;
+    phaseForm.duration_days = Number(phase.duration_days) || 60;
     phaseForm.price_usd = Number(phase.price_usd);
     phaseForm.allocation = Number(phase.allocation);
     phaseForm.min_purchase = Number(phase.min_purchase);
@@ -311,6 +317,9 @@ function statusBadge(s) {
 
             <!-- ==================== TAB: Sales & Phases ==================== -->
             <div v-if="activeTab === 'sales'">
+                <!-- เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด ไม่ใช่วันที่ตั้งไว้ล่วงหน้า -->
+                <SaleLaunchPanel :launch="launch" />
+
                 <div class="flex justify-end mb-4">
                     <button class="btn-primary px-4 py-2 text-sm font-semibold" @click="openCreateSale">+ New Sale</button>
                 </div>
@@ -569,6 +578,13 @@ function statusBadge(s) {
                                 <div>
                                     <label class="block text-sm text-gray-400 mb-1">Order</label>
                                     <input v-model.number="phaseForm.phase_order" type="number" class="trading-input w-full" />
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm text-gray-400 mb-1">ความยาวเฟส (วัน)</label>
+                                    <input v-model.number="phaseForm.duration_days" type="number" min="1" class="trading-input w-full" />
+                                    <p class="text-xs text-gray-500 mt-1">ใช้คำนวณวันจริงตอนกด "เปิดรอบขาย"</p>
                                 </div>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

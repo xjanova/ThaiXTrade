@@ -54,6 +54,7 @@ class TokenSale extends Model
         'status',
         'starts_at',
         'ends_at',
+        'launched_at',
         'metadata',
     ];
 
@@ -67,6 +68,7 @@ class TokenSale extends Model
             'metadata' => 'array',
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
+            'launched_at' => 'datetime',
         ];
     }
 

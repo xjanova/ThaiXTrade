@@ -9,7 +9,9 @@ use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
 use App\Services\BankTransferSaleService;
+use App\Services\SaleLaunchService;
 use App\Support\Wei;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -60,7 +62,109 @@ class TokenSaleController extends Controller
             'transactions' => $transactions,
             'walletInfo' => $walletInfo,
             'stats' => $stats,
+            'launch' => $this->launchPanel(app(SaleLaunchService::class)),
         ]);
+    }
+
+    /**
+     * ข้อมูลกล่อง "เปิดรอบขาย" — ความพร้อม + ตารางที่จะได้ถ้ากดเปิดวันนี้.
+     *
+     * ส่งตารางตัวอย่างไปด้วยเสมอ เพราะคนกดต้องเห็นก่อนว่ากดแล้วเฟสไหนเปิดถึงวันไหน
+     * ปุ่มที่ไม่บอกผลลัพธ์ล่วงหน้าคือปุ่มที่คนไม่กล้ากด — แล้วรอบขายก็ไม่เคยเปิด
+     *
+     * @return array<string,mixed>
+     */
+    private function launchPanel(SaleLaunchService $launcher): array
+    {
+        $sale = $launcher->targetSale();
+
+        if ($sale === null) {
+            return [
+                'sale_id' => null,
+                'armed' => $launcher->autoLaunchArmed(),
+                'launched_at' => null,
+                'readiness' => $launcher->readiness(null),
+                'preview' => [],
+            ];
+        }
+
+        $plan = $launcher->plan($sale, now());
+
+        return [
+            'sale_id' => $sale->id,
+            'sale_name' => $sale->name,
+            'armed' => $launcher->autoLaunchArmed(),
+            'launched_at' => $sale->launched_at?->toIso8601String(),
+            'readiness' => $launcher->readiness($sale),
+            'preview' => collect($plan['rows'])->map(fn ($r) => [
+                'order' => $r['phase']->phase_order,
+                'name' => $r['phase']->name,
+                'price_usd' => (string) $r['phase']->price_usd,
+                'days' => $r['days'],
+                'status' => $r['status'],
+                'starts_at' => $r['starts_at']->toIso8601String(),
+                'ends_at' => $r['ends_at']->toIso8601String(),
+            ])->all(),
+            'skipped' => collect($plan['skipped'])->map(fn ($s) => [
+                'name' => $s['phase']->name,
+                'reason' => $s['reason'],
+            ])->all(),
+        ];
+    }
+
+    /**
+     * เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด (หรือวันที่ระบุ).
+     *
+     * ⚠️ จุดเดียวบนหน้าเว็บที่ทำให้รอบขายเริ่มเดิน
+     *    ตรรกะการตั้งวันอยู่ที่ SaleLaunchService ที่เดียว ห้ามเขียนซ้ำที่นี่
+     */
+    public function launch(Request $request, SaleLaunchService $launcher)
+    {
+        $validated = $request->validate([
+            'sale_id' => 'nullable|integer|exists:token_sales,id',
+            'start_at' => 'nullable|date',
+            // ข้ามด่านความพร้อม — ต้องส่งมาอย่างตั้งใจเท่านั้น
+            'force' => 'nullable|boolean',
+        ]);
+
+        $sale = $launcher->targetSale(isset($validated['sale_id']) ? (int) $validated['sale_id'] : null);
+
+        if ($sale === null) {
+            return redirect()->back()->with('error', 'ไม่พบรอบขายที่จะเปิด');
+        }
+
+        $result = $launcher->launch(
+            $sale,
+            isset($validated['start_at']) ? Carbon::parse($validated['start_at']) : null,
+            null,
+            (bool) ($validated['force'] ?? false)
+        );
+
+        $this->forgetSaleCache();
+
+        return $result['ok']
+            ? redirect()->back()->with('success', $result['message'])
+            : redirect()->back()->with('error', $result['message']);
+    }
+
+    /**
+     * เปิด/ปิดสวิตช์ "เปิดขายอัตโนมัติเมื่อระบบพร้อม".
+     *
+     * ปิดไว้เป็นค่าเริ่มต้น — ระบบที่เปิดรับเงินตัวเองโดยไม่มีคนกดเป็นสิ่งที่
+     * ต้องเลือกเอง ไม่ใช่สิ่งที่ได้มาฟรีจากการอัปเดตโค้ด
+     */
+    public function autoLaunch(Request $request, SaleLaunchService $launcher)
+    {
+        $validated = $request->validate(['armed' => 'required|boolean']);
+
+        $launcher->setAutoLaunch((bool) $validated['armed']);
+
+        return redirect()->back()->with(
+            'success',
+            $validated['armed']
+                ? 'เปิดขายอัตโนมัติแล้ว — ระบบจะเริ่มรอบขายเองภายใน 1 ชั่วโมงหลังพร้อมครบทุกข้อ'
+                : 'ปิดการเปิดขายอัตโนมัติแล้ว — ต้องกดเปิดเอง'
+        );
     }
 
     /**
@@ -106,6 +210,9 @@ class TokenSaleController extends Controller
             'token_sale_id' => 'required|exists:token_sales,id',
             'name' => 'required|string|max:255',
             'phase_order' => 'required|integer|min:1',
+            // ความยาวเฟสเป็นวัน — แหล่งความจริงของตาราง เมื่อกด "เปิดรอบขาย"
+            // วันที่จริงถูกคำนวณจากค่านี้ ไม่ใช่จาก starts_at/ends_at ที่กรอกไว้
+            'duration_days' => 'nullable|integer|min:1|max:3650',
             'price_usd' => 'required|numeric|min:0.001',
             'allocation' => 'required|numeric|min:0',
             'min_purchase' => 'nullable|numeric|min:0',
