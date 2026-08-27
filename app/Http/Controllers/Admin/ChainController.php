@@ -179,7 +179,8 @@ class ChainController extends Controller
 
             // logo = URL ข้อความ (ทางเลือกสำรอง) · logo_file = ไฟล์ที่อัปโหลด
             'logo' => ['nullable', 'string', 'max:500'],
-            'logo_file' => ['nullable', 'file', 'image', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048'],
+            // ไม่รับ svg — เหตุผลเดียวกับ TokenFactoryApiController::uploadLogo()
+            'logo_file' => ['nullable', 'file', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
 
             'is_testnet' => ['boolean'],
             'is_active' => ['boolean'],

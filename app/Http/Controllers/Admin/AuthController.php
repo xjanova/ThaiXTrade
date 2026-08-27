@@ -85,7 +85,7 @@ class AuthController extends Controller
     /**
      * Authenticate an admin user.
      *
-     * Rate limited to 5 attempts per 15 minutes per email + IP combination.
+     * ด่านกันเดารหัส 3 ชั้น (ดูเหตุผลของแต่ละชั้นในตัวฟังก์ชัน).
      *
      * @throws ValidationException
      */
@@ -97,14 +97,32 @@ class AuthController extends Controller
             'cf-turnstile-response' => ['nullable', 'string'],
         ]);
 
-        $throttleKey = 'admin-login:'.$validated['email'].'|'.$request->ip();
+        /*
+         * เดิมมีคีย์เดียวคือ email|IP ซึ่งกันได้แค่ "คนเดิม เครื่องเดิม"
+         * แต่กันสองท่าที่ใช้เจาะจริงไม่ได้เลย:
+         *   1. บอทเน็ตสลับ IP ยิงอีเมลแอดมินเดิม → ทุก IP ได้โควตาใหม่ 5 ครั้ง
+         *   2. เครื่องเดียวไล่ยิงทีละอีเมล → ทุกอีเมลได้บัคเก็ตใหม่ ไม่มีเพดานรวม
+         * จึงเติมคีย์คุมที่ "บัญชี" และ "ต้นทาง" ตรง ๆ อีกสองชั้น
+         * (Turnstile กัน bot ธรรมดาได้ แต่มีบริการรับ solve ราคาหลักสตางค์ต่อครั้ง
+         *  จึงนับเป็นด่านชะลอ ไม่ใช่ด่านกันเดารหัส)
+         */
+        $ip = (string) $request->ip();
+        $email = strtolower($validated['email']);
 
-        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
-            $seconds = RateLimiter::availableIn($throttleKey);
+        $gates = [
+            ['admin-login:'.$email.'|'.$ip, 5],   // คนเดิม เครื่องเดิม
+            ['admin-login-acct:'.$email, 20],     // บัญชีเดียว ทุกเครื่องรวมกัน
+            ['admin-login-ip:'.$ip, 20],          // เครื่องเดียว ทุกบัญชีรวมกัน
+        ];
 
-            throw ValidationException::withMessages([
-                'email' => "Too many login attempts. Please try again in {$seconds} seconds.",
-            ]);
+        foreach ($gates as [$key, $max]) {
+            if (RateLimiter::tooManyAttempts($key, $max)) {
+                $seconds = RateLimiter::availableIn($key);
+
+                throw ValidationException::withMessages([
+                    'email' => "Too many login attempts. Please try again in {$seconds} seconds.",
+                ]);
+            }
         }
 
         $credentials = [
@@ -113,7 +131,9 @@ class AuthController extends Controller
         ];
 
         if (! Auth::guard('admin')->attempt($credentials, $request->boolean('remember'))) {
-            RateLimiter::hit($throttleKey, 900); // 15 minutes
+            foreach ($gates as [$key]) {
+                RateLimiter::hit($key, 900); // 15 นาที
+            }
 
             throw ValidationException::withMessages([
                 'email' => 'The provided credentials do not match our records.',
@@ -133,7 +153,11 @@ class AuthController extends Controller
             ]);
         }
 
-        RateLimiter::clear($throttleKey);
+        // ล้างทุกชั้นตอนล็อกอินสำเร็จ — ไม่งั้นแอดมินตัวจริงที่พิมพ์ผิดหลายรอบ
+        // จะโดนด่าน "ต้นทาง" ล็อกตัวเองออกจากระบบ
+        foreach ($gates as [$key]) {
+            RateLimiter::clear($key);
+        }
 
         $request->session()->regenerate();
 

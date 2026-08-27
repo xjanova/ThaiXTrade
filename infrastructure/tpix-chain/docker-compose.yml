@@ -1,5 +1,17 @@
+# ⛔ ไฟล์นี้ไม่ใช่ของจริงที่รันอยู่ — อย่าเอาไป apply กับเซิร์ฟเวอร์
+#
+# ตัวจริงคือ TPIX-Coin/infrastructure/single-host/docker-compose.yml
+# (สำเนาที่ใช้งานจริงอยู่ที่ /opt/tpix/docker-compose.yml บนเครื่อง tpixserver)
+#
+# ไฟล์นี้ล้าหลังอย่างน้อย 3 เรื่อง:
+#   - image เป็น :latest ไม่ปักรุ่น (ตัวจริงปัก 0.9.0 เพราะ genesis เปิด fork แค่ london)
+#   - ไม่มี GOGC/GOMEMLIMIT ที่กัน GC pause จนพลาดรอบ propose (ต้นเหตุเชนค้าง 38 ชม.)
+#   - ไม่มี --max-enqueued และ block-gas-target ที่ปรับตอนทำด่านกันยิงถล่ม mempool
+#
+# เก็บไว้เป็นเอกสารอ้างอิงเท่านั้น ถ้าจะแก้ค่าเชนจริงให้ไปแก้ที่ TPIX-Coin
+# แล้ว apply ด้วย infrastructure/single-host/apply-rolling.sh (ห้าม compose down)
+
 # TPIX Chain — Polygon Edge (IBFT PoA, 4 validators)
-# docker-compose up -d เพื่อเริ่ม chain
 # Developed by Xman Studio
 
 version: '3.8'

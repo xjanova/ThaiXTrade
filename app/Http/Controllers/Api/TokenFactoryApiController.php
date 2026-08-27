@@ -9,9 +9,13 @@ use App\Models\SiteSetting;
 use App\Services\TokenFactoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class TokenFactoryApiController extends Controller
 {
+    /** โลโก้ที่ยังไม่ผูกกับเหรียญ เก็บได้กี่ไฟล์ต่อกระเป๋า */
+    private const LOGO_KEEP_PER_WALLET = 3;
+
     public function __construct(
         private TokenFactoryService $tokenFactoryService,
     ) {}
@@ -228,11 +232,48 @@ class TokenFactoryApiController extends Controller
      */
     public function uploadLogo(Request $request): JsonResponse
     {
-        $request->validate([
-            'logo' => ['required', 'image', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048'],
+        /*
+         * ⛔ ห้ามรับ svg เด็ดขาด
+         * SVG ไม่ใช่รูปภาพเฉย ๆ — มันคือ XML ที่ฝัง <script> ได้ พอเก็บลง disk
+         * "public" แล้วคืน /storage/... ออกไป = ผู้ใช้คนไหนก็ฝัง JS ลงบนโดเมนเราเอง
+         * CSP ใน public_html/.htaccess เป็น script-src 'self' 'unsafe-inline'
+         * จึงกันไม่ได้ ทางเดียวคือไม่รับไฟล์ชนิดนี้ตั้งแต่ต้นทาง
+         */
+        $validated = $request->validate([
+            'logo' => ['required', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
+            /*
+             * ต้องบังคับที่นี่ ไม่ใช่พึ่ง VerifyWalletOwnership อย่างเดียว
+             * middleware ตัวนั้น "ปล่อยผ่าน" เมื่อหาที่อยู่กระเป๋าในคำขอไม่เจอ
+             * และหน้าเว็บเดิมไม่เคยส่งฟิลด์นี้มาเลย = ด่านกระเป๋าไม่เคยทำงานกับ
+             * route นี้สักครั้ง ใครโหลดหน้าเว็บได้ก็อัปไฟล์ขึ้นโดเมนได้
+             */
+            'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
         ]);
 
-        $path = $request->file('logo')->store('token-logos', 'public');
+        /*
+         * แยกโฟลเดอร์ตามกระเป๋า แล้วเก็บย้อนหลังแค่ LOGO_KEEP_PER_WALLET ไฟล์
+         *
+         * เดิมกองรวมใน token-logos/ ไม่ผูกกับใคร ไม่มีใครลบ → อัปกี่ไฟล์ก็ค้างถาวร
+         * เครื่องนี้เป็นเว็บเซิร์ฟเวอร์รวมที่มีเว็บอื่นอีกหลายสิบเว็บ ดิสก์เต็ม =
+         * ล่มทั้งเครื่อง ไม่ใช่แค่ TPIX
+         *
+         * ⚠️ ด่าน kyc:token_factory ที่ route ยังไม่กันอะไรจนกว่าจะเปิด KYC ที่
+         *    /admin/kyc (KycGate::requires() คืน false เมื่อสวิตช์ใหญ่ปิด)
+         *    เพดานต่อกระเป๋าตรงนี้จึงเป็นตัวจำกัดดิสก์ตัวเดียวที่ทำงานอยู่ตอนนี้
+         */
+        $wallet = strtolower($validated['wallet_address']);
+        $dir = 'token-logos/'.$wallet;
+        $disk = Storage::disk('public');
+
+        $stale = collect($disk->files($dir))
+            ->sortByDesc(fn (string $file) => $disk->lastModified($file))
+            ->slice(self::LOGO_KEEP_PER_WALLET - 1);
+
+        foreach ($stale as $file) {
+            $disk->delete($file);
+        }
+
+        $path = $request->file('logo')->store($dir, 'public');
 
         return response()->json([
             'success' => true,

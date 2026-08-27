@@ -39,6 +39,18 @@
 
     # Permissions Policy
     Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+    # -- ตาข่ายกันพลาดชั้นสุดท้ายของไฟล์อัปโหลด: ห้าม SVG รันสคริปต์ --
+    # SVG ไม่ใช่รูปภาพ มันคือ XML ที่ฝัง <script> ได้ ถ้าหลุดขึ้นโดเมนนี้เมื่อไหร่
+    # สคริปต์จะรันด้วยสิทธิ์ origin เดียวกับหน้าเทรด (อ่าน session, สลับที่อยู่
+    # ปลายทางในหน้าต่างที่ผู้ใช้กำลังจะเซ็น) -- CSP ด้านบนกันไม่ได้เพราะเป็น
+    # script-src 'self' 'unsafe-inline' ซึ่ง SVG จากโดเมนตัวเองเข้าเงื่อนไขทั้งคู่
+    # ด่านจริงอยู่ที่ validate ฝั่ง PHP (ไม่รับ svg) ชั้นนี้ไว้กันของเก่า/ทางที่ลืม
+    # sandbox ไม่กระทบ <img src="*.svg"> เพราะ CSP ของ subresource ไม่ถูกบังคับใช้
+    <FilesMatch ".svg$">
+        Header always set Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+        Header always set X-Content-Type-Options "nosniff"
+    </FilesMatch>
 </IfModule>
 
 # Compression

@@ -754,6 +754,8 @@ async function handleLogoSelect(event) {
     try {
         const formData = new FormData();
         formData.append('logo', file);
+        // หลังบ้านผูกไฟล์กับกระเป๋าเพื่อจำกัดจำนวนไฟล์ต่อคน — ไม่ส่งมาจะถูกปฏิเสธ
+        formData.append('wallet_address', walletStore.address || '');
         const res = await fetch('/api/v1/token-factory/upload-logo', {
             method: 'POST',
             body: formData,

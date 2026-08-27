@@ -35,7 +35,14 @@ class VerifyWalletOwnership
         $walletAddress = $request->input('wallet_address')
             ?? $request->query('wallet_address')
             ?? $request->route('walletAddress')
-            ?? $request->route('wallet_address');
+            ?? $request->route('wallet_address')
+            /*
+             * ⚠️ token factory ตั้งชื่อฟิลด์ว่า creator_address ไม่ใช่ wallet_address
+             *    middleware จึงหาไม่เจอ แล้วตกเส้นทาง fail-open ด้านล่างทุกครั้ง
+             *    ผลคือ POST /api/v1/token-factory/create ยิงได้โดยไม่ต้องพิสูจน์อะไร
+             *    และใส่กระเป๋าของคนอื่นเป็นเจ้าของเหรียญได้ด้วย
+             */
+            ?? $request->input('creator_address');
 
         // If no wallet address in request, let the controller handle it
         if (! $walletAddress) {

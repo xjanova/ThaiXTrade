@@ -110,7 +110,9 @@ class TokenController extends Controller
             'contract_address' => ['required', 'string', 'max:255'],
             'decimals' => ['required', 'integer', 'min:0', 'max:36'],
             'logo' => ['nullable', 'string', 'max:500'],
-            'logo_file' => ['nullable', 'file', 'image', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048'],
+            // ไม่รับ svg — เหตุผลเดียวกับ TokenFactoryApiController::uploadLogo()
+            // แอดมินที่ถูกยึดบัญชี = ฝัง JS ลงโดเมนได้เหมือนกัน
+            'logo_file' => ['nullable', 'file', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
             'coingecko_id' => ['nullable', 'string', 'max:100'],
             'is_active' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],
