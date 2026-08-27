@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Process;
  */
 class Web3DeploymentService
 {
+    public function __construct(private ContractRegistry $contracts) {}
+
     /**
      * Deploy a new token via the factory contract.
      *
@@ -69,11 +71,13 @@ class Web3DeploymentService
 
         // Environment variables (secrets passed via env, not CLI args)
         // Phase 2: ส่ง V2 factory addresses ด้วย
+        // ที่อยู่แฟกทอรีมาจาก ContractRegistry (SiteSetting ที่สคริปต์ deploy ลงทะเบียนเอง → .env)
+        // จะได้ไม่ต้อง ssh เข้าไปแก้ .env แล้ว config:cache ทุกครั้งที่ deploy ใหม่
         $env = [
             'DEPLOYER_PRIVATE_KEY' => config('blockchain.deployer_private_key'),
-            'TOKEN_FACTORY_ADDRESS' => config('blockchain.factory_address'),
-            'TOKEN_FACTORY_V2_ADDRESS' => config('blockchain.factory_v2_address'),
-            'NFT_FACTORY_ADDRESS' => config('blockchain.nft_factory_address'),
+            'TOKEN_FACTORY_ADDRESS' => $this->contracts->address('token_factory_v1') ?? '',
+            'TOKEN_FACTORY_V2_ADDRESS' => $this->contracts->address('token_factory_v2') ?? '',
+            'NFT_FACTORY_ADDRESS' => $this->contracts->address('nft_factory') ?? '',
             'TPIX_RPC_URL' => config('blockchain.tpix_rpc_url'),
         ];
 

@@ -2,6 +2,7 @@
 
 namespace App\Services\MasterNode;
 
+use App\Services\ContractRegistry;
 use App\Support\Wei;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -66,12 +67,19 @@ class NodeRegistryContract
     private const USER_AGENT = 'TPIX-TRADE-Server/1.0 (+https://tpix.online)';
 
     /**
-     * ที่อยู่สัญญา — อ่านจาก config เดียว
-     * (config/masternode.php resolve ให้แล้วว่าจะเอาจาก MASTERNODE_REGISTRY_ADDRESS
-     *  หรือ NODE_REGISTRY_ADDRESS ตัวไหนก็ได้ที่ตั้งไว้).
+     * ที่อยู่สัญญา — ผ่าน ContractRegistry ที่เดียว.
+     *
+     * ลำดับ: SiteSetting (สคริปต์ deploy ลงทะเบียนเอง) → .env
+     * ทำแบบนี้เพื่อให้หลัง deploy ไม่ต้อง ssh เข้าไปแก้ .env แล้ว config:cache อีก
      */
     public function address(): ?string
     {
+        $fromRegistry = app(ContractRegistry::class)->address('masternode_registry');
+        if ($fromRegistry !== null) {
+            return $fromRegistry;
+        }
+
+        // เผื่อคนตั้ง NODE_REGISTRY_ADDRESS ไว้ (ชื่อเก่า) ซึ่ง config/masternode.php resolve ให้
         $addr = trim((string) config('masternode.registry.address', ''));
 
         return preg_match('/^0x[a-fA-F0-9]{40}$/', $addr) ? $addr : null;

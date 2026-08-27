@@ -8,6 +8,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import AwaitingDeployNotice from '@/Components/AwaitingDeployNotice.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenFactoryStore } from '@/Stores/tokenFactoryStore';
 import { useTranslation } from '@/Composables/useTranslation';
@@ -546,6 +547,13 @@ const stepValid = computed(() => {
     }
 });
 
+/** issues จากหลังบ้านมาได้ทั้ง array และ object — ทำให้เป็น array เสมอ */
+const factoryIssues = computed(() => {
+    const raw = props.factoryConfig.issues;
+    if (Array.isArray(raw)) return raw.filter(Boolean);
+    return Object.values(raw || {}).filter(Boolean);
+});
+
 const canCreate = computed(() => {
     return walletStore.isConnected
         && form.value.name
@@ -1038,15 +1046,24 @@ function getTypeLabel(type) {
             </div>
         </section>
 
-        <!-- Factory Not Ready Warning -->
-        <div v-if="props.factoryConfig.ready === false" class="max-w-4xl mx-auto px-4 sm:px-6 mb-6">
+        <!-- รอติดตั้งสัญญาบนเชน — คนละเรื่องกับ "ตั้งค่ายังไม่ครบ" จึงแยกป้ายกัน -->
+        <div v-if="props.factoryConfig.awaiting_deploy" class="max-w-4xl mx-auto px-4 sm:px-6 mb-6">
+            <AwaitingDeployNotice
+                action="create"
+                :issues="factoryIssues"
+                :show-details="factoryIssues.length > 0"
+            />
+        </div>
+
+        <!-- ตั้งค่ายังไม่ครบ (สัญญาพร้อมแล้วแต่ติดอย่างอื่น) -->
+        <div v-else-if="props.factoryConfig.ready === false" class="max-w-4xl mx-auto px-4 sm:px-6 mb-6">
             <div class="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 flex items-start gap-3">
                 <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                 </svg>
                 <div>
-                    <p class="font-medium text-sm">Token Factory is not available yet</p>
-                    <p class="text-xs text-yellow-400/70 mt-1">{{ Array.isArray(props.factoryConfig.issues) ? props.factoryConfig.issues.join('. ') : Object.values(props.factoryConfig.issues || {}).join('. ') || 'System configuration pending.' }}</p>
+                    <p class="font-medium text-sm">ยังสร้างเหรียญไม่ได้ในตอนนี้</p>
+                    <p class="text-xs text-yellow-400/70 mt-1">{{ factoryIssues.join(' · ') || 'ระบบยังตั้งค่าไม่ครบ' }}</p>
                 </div>
             </div>
         </div>

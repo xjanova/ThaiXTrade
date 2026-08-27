@@ -18,12 +18,12 @@ class TokenFactoryController extends Controller
         $config = $this->tokenFactoryService->getFactoryConfig();
         $readiness = $this->tokenFactoryService->isFactoryReady();
 
+        // ส่งผลตรวจความพร้อมไปทั้งก้อน
+        // เดิมหยิบไปแค่ ready กับ issues ทำให้หน้าเว็บแยกไม่ออกว่า "รอติดตั้งสัญญา"
+        // กับ "ตั้งค่ายังไม่ครบ" ต่างกัน ทั้งที่ผู้ใช้ต้องทำคนละอย่าง (อย่างแรกรอเฉย ๆ ได้)
         return Inertia::render('TokenFactory', [
             'tokens' => $tokens,
-            'factoryConfig' => array_merge($config, [
-                'ready' => $readiness['ready'],
-                'issues' => $readiness['issues'],
-            ]),
+            'factoryConfig' => array_merge($config, $readiness),
         ]);
     }
 }

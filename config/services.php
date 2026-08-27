@@ -67,6 +67,15 @@ return [
 
     // Infra Alerts — watchdog เซิร์ฟเวอร์เชนยิง heartbeat/เหตุวิกฤตเข้าคาดแดงหลังบ้าน
     // token ต้องตรงกับ TPIX_ALERT_TOKEN ใน /etc/tpix-watchdog.env บนเครื่องเชน
+    /*
+    | ให้สคริปต์ deploy ลงทะเบียนที่อยู่สัญญาเข้ามาเองหลัง deploy เสร็จ
+    | ยังไม่ตั้ง = ปิดระบบ (503) ไม่ใช่เปิดโล่ง
+    | สร้าง token: php artisan tinker --execute="echo bin2hex(random_bytes(32));"
+    */
+    'contract_registry' => [
+        'token' => env('CONTRACT_REGISTRY_TOKEN', ''),
+    ],
+
     'infra_alerts' => [
         'token' => env('TPIX_INFRA_ALERT_TOKEN', ''),
         'stale_minutes' => env('TPIX_INFRA_STALE_MINUTES', 3),

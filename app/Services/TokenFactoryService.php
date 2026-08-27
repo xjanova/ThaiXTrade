@@ -284,14 +284,43 @@ class TokenFactoryService
         $needsWallet = $feeMethod !== 'free' && $feeTpix > 0;
         $walletConfigured = ! empty($feeWallet);
 
+        // ── แฟกทอรีบนเชนพร้อมหรือยัง ──────────────────────────────
+        //
+        // เดิมด่านนี้ไม่มีเลย — หน้าเว็บบอก "พร้อม" ทั้งที่ยังไม่มีแฟกทอรีบนเชนสักตัว
+        // ผู้ใช้กรอกฟอร์ม จ่ายค่าธรรมเนียม แล้วงานไป fail ตอน deploy โดยไม่มีใครบอกล่วงหน้า
+        //
+        // ต้องเช็ก eth_getCode ด้วย ไม่ใช่แค่ดูว่ามีที่อยู่ในคอนฟิกไหม
+        // เพราะเชน TPIX เคย regenesis (6 ส.ค. 2026) แล้วสัญญาหายเกลี้ยงทั้งที่ address ยังค้างอยู่
+        $contracts = app(ContractRegistry::class);
+        $erc20Ready = $contracts->isLive('token_factory_v2') || $contracts->isLive('token_factory_v1');
+        $nftReady = $contracts->isLive('nft_factory');
+        $chainReady = $erc20Ready || $nftReady;
+
+        $deployerConfigured = ! empty(config('blockchain.deployer_private_key'));
+
         return [
-            'ready' => $creationEnabled && (! $needsWallet || $walletConfigured),
+            'ready' => $creationEnabled
+                && (! $needsWallet || $walletConfigured)
+                && $chainReady
+                && $deployerConfigured,
             'creation_enabled' => $creationEnabled,
             'fee_wallet_configured' => $walletConfigured,
             'fee_wallet_needed' => $needsWallet,
+
+            // แยกให้ชัดว่าติดที่ "รอ deploy" หรือติดที่ตั้งค่าอย่างอื่น
+            // หน้าเว็บใช้ตัวนี้ตัดสินว่าจะขึ้นป้าย "กำลังรอติดตั้งสัญญา" หรือป้ายอื่น
+            'awaiting_deploy' => ! $chainReady,
+            'erc20_factory_ready' => $erc20Ready,
+            'nft_factory_ready' => $nftReady,
+            'deployer_configured' => $deployerConfigured,
+
             'issues' => array_values(array_filter([
-                ! $creationEnabled ? 'Token creation is disabled' : null,
-                $needsWallet && ! $walletConfigured ? 'Fee wallet not configured' : null,
+                ! $creationEnabled ? 'ผู้ดูแลปิดระบบสร้างเหรียญไว้' : null,
+                $needsWallet && ! $walletConfigured ? 'ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม' : null,
+                ! $chainReady ? 'ยังไม่ได้ติดตั้งสัญญาแฟกทอรีบนเชน' : null,
+                $chainReady && ! $erc20Ready ? 'แฟกทอรี ERC-20 ยังไม่พร้อม (สร้างได้เฉพาะ NFT)' : null,
+                $chainReady && ! $nftReady ? 'แฟกทอรี NFT ยังไม่พร้อม (สร้างได้เฉพาะเหรียญ ERC-20)' : null,
+                ! $deployerConfigured ? 'ยังไม่ได้ตั้งกระเป๋าที่ใช้ส่งธุรกรรม (DEPLOYER_PRIVATE_KEY)' : null,
             ])),
         ];
     }

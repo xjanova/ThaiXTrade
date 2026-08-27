@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\CarbonCreditApiController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\CmcController;
+use App\Http\Controllers\Api\ContractRegistryController;
 use App\Http\Controllers\Api\FeeConfigController;
 use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\InfraAlertController;
@@ -113,6 +114,16 @@ Route::prefix('v1/node')->middleware(['throttle:'.config('masternode.heartbeat.r
 Route::prefix('infra')->middleware(['throttle:30,1'])->group(function () {
     Route::post('heartbeat', [InfraAlertController::class, 'heartbeat'])->name('infra.heartbeat');
     Route::post('alert', [InfraAlertController::class, 'alert'])->name('infra.alert');
+
+    /*
+     * ที่อยู่สัญญา — สคริปต์ deploy ยิงมาลงทะเบียนเองหลัง deploy เสร็จ
+     * เพื่อให้เหลือขั้นตอนเดียวคือ "deploy" ไม่ต้อง ssh ไปแก้ .env แล้ว config:cache อีก
+     *
+     * Auth: Bearer token = CONTRACT_REGISTRY_TOKEN (.env) เทียบ hash_equals ใน controller
+     * ที่อยู่ทุกตัวถูกตรวจ eth_getCode กับเชนจริงก่อนรับ
+     */
+    Route::get('contracts', [ContractRegistryController::class, 'show'])->name('infra.contracts.show');
+    Route::post('contracts', [ContractRegistryController::class, 'store'])->name('infra.contracts.store');
 });
 
 // Public Routes (No Auth Required) — rate limited

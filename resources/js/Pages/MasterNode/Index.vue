@@ -13,6 +13,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import AwaitingDeployNotice from '@/Components/AwaitingDeployNotice.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { addTPIXChainToWallet } from '@/utils/web3';
 
@@ -547,6 +548,25 @@ const poolUnfunded = computed(() =>
 const canRegister = computed(() => !myNode.value || myNode.value.statusId !== 1);
 
 /**
+ * สิ่งที่ยังขาดก่อนระบบจะเปิดใช้ได้ — โชว์ในป้าย "รอติดตั้งสัญญา"
+ * แยก "ยังไม่ได้ตั้งที่อยู่" ออกจาก "ตั้งแล้วแต่ไม่มีโค้ดที่ address นั้น" เพราะแก้คนละแบบ
+ */
+const deployIssues = computed(() => {
+    if (props.registryLive) return [];
+
+    const out = [];
+    if (!props.registryAddress) {
+        out.push('ยังไม่ได้ลงทะเบียนที่อยู่สัญญา NodeRegistry — สคริปต์ deploy จะลงทะเบียนให้เองเมื่อรันเสร็จ');
+    } else {
+        out.push(`ตั้งที่อยู่ไว้ที่ ${props.registryAddress} แต่ eth_getCode คืน 0x — ไม่มีสัญญาอยู่ที่นั่น`);
+    }
+    if (!networkStats.value.rpc_connected) {
+        out.push('เชื่อมต่อ RPC ของเชน TPIX ไม่ได้');
+    }
+    return out;
+});
+
+/**
  * โชว์การ์ด "โหนดของฉัน" เมื่อยังมีอะไรให้จัดการจริง ๆ เท่านั้น
  * หลังปิดโหนดสำเร็จ struct ยังอยู่บนเชน (status=Inactive, stake=0) — ถ้าไม่กรอง
  * ผู้ใช้จะเห็นการ์ดเปล่าเขียนว่า "ยังไม่ลงทะเบียน · วางค้ำ 0 TPIX" ค้างอยู่
@@ -608,19 +628,13 @@ function fmtNum(n) {
                 <!-- ============================================================ -->
                 <!--  แถบเตือนสถานะระบบ — ต้องบอกความจริงว่าตอนนี้ซื้อได้หรือยัง    -->
                 <!-- ============================================================ -->
-                <div v-if="!registryLive" class="glass rounded-2xl p-5 border-l-4 border-yellow-500 flex items-start gap-4">
-                    <div class="w-11 h-11 rounded-xl bg-yellow-500/20 flex items-center justify-center text-2xl shrink-0">🚧</div>
-                    <div class="flex-1">
-                        <div class="text-yellow-400 font-bold">ระบบยังไม่เปิดให้ลงทะเบียน</div>
-                        <p class="text-xs text-gray-400 mt-1">
-                            สัญญา NodeRegistry ยังไม่ถูกติดตั้งบนเชน (หรือที่อยู่ที่ตั้งไว้ไม่มีโค้ดอยู่จริง)
-                            ตัวเลขด้านล่างจึงเป็นค่าตั้งต้น ยังกดซื้อไม่ได้
-                        </p>
-                        <p v-if="!networkStats.rpc_connected" class="text-xs text-red-400 mt-1">
-                            เชื่อมต่อ RPC ของเชนไม่ได้ในตอนนี้
-                        </p>
-                    </div>
-                </div>
+                <AwaitingDeployNotice
+                    v-if="!registryLive"
+                    action="buy"
+                    :rpc-connected="!!networkStats.rpc_connected"
+                    :issues="deployIssues"
+                    :show-details="deployIssues.length > 0"
+                />
 
                 <!-- ============================================================ -->
                 <!--  HERO: ยังไม่เชื่อมกระเป๋า                                    -->
