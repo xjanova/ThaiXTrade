@@ -2,6 +2,7 @@
 
 namespace App\Services\Trading;
 
+use App\Models\AiBotSubscription;
 use App\Models\SiteSetting;
 use App\Models\TradingFeeTier;
 use App\Services\FeeCalculationService;
@@ -55,6 +56,30 @@ class TradingFeeQuoteService
     public function quote(?string $wallet, float $orderValueUsd, int $chainId, ?int $tradingPairId = null): array
     {
         $orderValueUsd = max(0.0, $orderValueUsd);
+
+        /*
+         * เช่าบอทอยู่ = ไม่เก็บค่าวางไม้เลย (เจ้าของสั่ง 28 ส.ค. 2026)
+         *
+         * "เหมาไปเลย ไม่ต้องเอามาคิดอีก เพื่อจะได้คิดกำไรได้เต็มที่ ง่ายกว่าเดิม
+         *  ไม่ซับซ้อน ตรงไปตรงมา" — ค่าวางไม้ถูกรวมอยู่ในค่าเช่าแล้ว
+         *
+         * ครอบคลุมทุกไม้ของกระเป๋านั้น ไม่ใช่เฉพาะไม้ที่บอทสั่ง — เพราะคำว่า "เหมา"
+         * แปลว่าจ่ายครั้งเดียวจบ ถ้ายังเก็บไม้ที่ผู้ใช้กดเองอยู่ เขาจะต้องมานั่งแยก
+         * ว่ากำไรก้อนไหนโดนหักค่าอะไรไปบ้าง ซึ่งตรงข้ามกับที่สั่งมา
+         *
+         * ⚠️ นับเฉพาะแพลนที่ "เซิร์ฟเวอร์รันบอทให้" (`runsInCloud`) ไม่ใช่ดูที่ราคา
+         *
+         *    ตอนแรกเช็คว่าแพลนเสียเงินไหม แต่พลาดกรณีจริงบน prod: แพลน `admin`
+         *    ของเจ้าของเป็น tier vip ทำงานบนคลาวด์ แต่ราคา 0 → ถูกมองเป็นแพลนฟรี
+         *    แล้วยังโดนเก็บค่าวางไม้ ทั้งที่เป็นบอทคลาวด์เต็มรูปแบบ
+         *
+         *    `execution` เป็นเส้นแบ่งที่ระบบใช้อยู่แล้ว: ฟรี = เบราว์เซอร์ (ปิดจอแล้วหยุด)
+         *    ส่วนการเช่าจริง = คลาวด์ ซึ่งตรงกับคำว่า "เช่าบอท" พอดี และเป็นตัวเดียวกับ
+         *    ที่ aibot:tick ใช้กรองว่าบอทตัวไหนได้รันบนเซิร์ฟเวอร์
+         */
+        if ($wallet && $this->hasCloudBotRental($wallet)) {
+            return $this->waived($orderValueUsd);
+        }
 
         // อัตราเดิมที่หักจากเหรียญที่เทรด — คำนวณด้วยตัวเดียวกับที่หักจริงเสมอ
         $onchainFee = $this->fees->calculateSwapFee($orderValueUsd, $chainId, $tradingPairId);
@@ -125,6 +150,65 @@ class TradingFeeQuoteService
             // ไม่มี TPIX ก็ยังวางไม้ได้ แค่จ่ายแพงกว่า — ไม่ปิดประตูใส่ผู้ใช้ใหม่
             'can_place' => true,
             'reason' => null,
+        ];
+    }
+
+    /**
+     * กระเป๋านี้เช่าบอทคลาวด์อยู่ไหม.
+     *
+     * ถามฐานข้อมูลตรงๆ ไม่ผ่าน AiBotService เพราะบริการนั้นดึงของอีกหลายชั้นตามมา
+     * ขณะที่ตรงนี้ต้องตอบเร็ว — ถูกเรียกทุกครั้งที่ผู้ใช้พิมพ์จำนวนในฟอร์มวางไม้
+     *
+     * อ่านไม่ได้ = ถือว่าไม่ได้เช่า (เก็บค่าบริการตามปกติ) ไม่ใช่ยกเว้นให้ฟรี —
+     * ฐานข้อมูลสะดุดครั้งเดียวต้องไม่กลายเป็นการเปิดให้เทรดฟรีทั้งเว็บ
+     */
+    public function hasCloudBotRental(string $wallet): bool
+    {
+        try {
+            $subscription = AiBotSubscription::with('plan')
+                ->where('wallet_address', strtolower(trim($wallet)))
+                ->live()
+                ->latest('expires_at')
+                ->first();
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return (bool) $subscription?->plan?->runsInCloud();
+    }
+
+    /** ค่าบริการเป็นศูนย์ทุกทาง — รูปร่างเหมือน quote() ปกติเพื่อให้หน้าเว็บไม่ต้องแยกเคส */
+    private function waived(float $orderValueUsd): array
+    {
+        $note = 'เช่าบอท AI อยู่ — ค่าวางไม้รวมอยู่ในค่าเช่าแล้ว';
+
+        return [
+            'enabled' => true,
+            'waived' => true,
+            'waived_reason' => $note,
+            'order_value_usd' => $orderValueUsd,
+            'balance' => 0.0,
+            'tpix' => [
+                'available' => true,
+                'fee_tpix' => 0.0,
+                'tier_id' => null,
+                'tier_label' => 'ฟรี (เช่าบอทอยู่)',
+                'tier_range' => '—',
+                'has_enough' => true,
+                'shortfall' => 0.0,
+                'refund_full' => true,
+                'refund_note' => 'ไม่ได้เก็บค่าบริการ จึงไม่มีอะไรต้องคืน',
+            ],
+            'onchain' => [
+                'available' => true,
+                'fee_rate' => 0.0,
+                'fee_usd' => 0.0,
+                'refund_full' => true,
+                'refund_note' => 'ไม่ได้เก็บค่าบริการ จึงไม่มีอะไรต้องคืน',
+            ],
+            'recommended' => 'tpix_credit',
+            'can_place' => true,
+            'reason' => $note,
         ];
     }
 

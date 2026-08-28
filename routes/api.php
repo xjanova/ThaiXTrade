@@ -335,6 +335,15 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     // AI Trade (Cloud Bot) — แคตตาล็อกแพลน/กลยุทธ์/แพ็กเครดิต
     // public เพื่อให้เว็บ + แอพแสดงราคาได้ก่อนเชื่อม wallet (ไม่มีข้อมูลส่วนตัว)
     Route::get('/ai-bot/catalog', [AiBotController::class, 'catalog']);
+
+    /*
+     * มุมมองตลาดของ AI — เปิดสาธารณะเหมือน catalog
+     *
+     * ตั้งใจให้คนที่ยังไม่ได้เช่าดูได้ด้วย: เป็นหลักฐานว่าระบบคิดอะไรอยู่จริง
+     * ก่อนตัดสินใจจ่ายเงิน ดีกว่าให้เห็นแค่คำโฆษณาว่า "มี AI"
+     * (ไม่มีข้อมูลส่วนตัวของใครอยู่ในนั้น — เป็นภาพตลาดล้วน)
+     */
+    Route::get('/ai-bot/market-view', [AiBotController::class, 'marketView']);
     // ความเสี่ยงของคู่เทรด + พาดหัวข่าวที่ทำให้บอทตัดสินใจ — เป็นข้อมูลตลาด ไม่ใช่ข้อมูลส่วนตัว
     Route::get('/ai-bot/risk', [AiBotController::class, 'risk']);
 

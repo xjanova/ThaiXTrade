@@ -9,6 +9,7 @@ use App\Models\AiBotDemoAccount;
 use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
 use App\Models\AiBotTrade;
+use App\Models\AiMarketView;
 use App\Services\AiBot\Advisor\AdvisorFactory;
 use App\Services\AiBot\BotRunner;
 use App\Services\AiBot\MarketRiskService;
@@ -94,6 +95,18 @@ class AiBotController extends Controller
                 'rental_days' => config('aibot.credits.rental_days', [1, 7, 30]),
                 'timeframes' => config('aibot.timeframes', []),
                 'limits' => config('aibot.limits', []),
+
+                /*
+                 * สวิตช์ที่ทุกกลยุทธ์มีเหมือนกัน (ให้ AI เลือกเหรียญ · ด่านข่าว)
+                 *
+                 * ต้องส่งแยกจาก strategies.*.params เพราะหน้าเว็บวาดฟอร์มจากรายการ
+                 * ของกลยุทธ์ที่เลือกเท่านั้น — ไม่ส่งตัวนี้ไป สวิตช์จะไม่มีวันโผล่
+                 * ให้ผู้ใช้เห็น ทั้งที่ฝั่งเซิร์ฟเวอร์รองรับแล้ว
+                 */
+                'common_params' => config('aibot.common_params', []),
+
+                /* ให้หน้าเว็บรู้ว่าจะโชว์แผงมุมมองตลาดของ AI ไหม */
+                'analyst_enabled' => (bool) config('aibot_analyst.enabled', false),
                 /*
                  * ธงบอกว่าอะไร "เปิดใช้จริงแล้ว" — ส่งจากที่เดียวให้ทั้งเว็บและแอพ
                  *
@@ -655,6 +668,62 @@ class AiBotController extends Controller
             $this->wallet($request),
             $validated['mode'] ?? 'demo',
         )]);
+    }
+
+    /**
+     * มุมมองตลาดล่าสุดที่ AI สรุปไว้ — ตัวที่บอทใช้ตัดสินใจจริง.
+     *
+     * ต่างจาก advice() ตรงที่อันนั้นเป็นคำแนะนำให้ "คน" อ่านเฉยๆ ส่วนอันนี้คือ
+     * สิ่งที่มีผลต่อการเทรดจริง ผู้ใช้จึงควรเห็นได้ว่าตอนนี้บอทกำลังคิดอะไรอยู่
+     * และเห็นเวลาที่ประเมินไว้ด้วย — มุมมองเก่าค้างอยู่คือสัญญาณว่ารอบวิเคราะห์ตาย
+     *
+     * ไม่ส่ง prompt กับคำตอบดิบออกไป: ยาวมาก และเป็นรายละเอียดภายในที่ผู้ใช้
+     * ไม่ต้องเห็น (ยังเก็บครบในฐานข้อมูลสำหรับย้อนตรวจ)
+     */
+    public function marketView(): JsonResponse
+    {
+        if (! config('aibot_analyst.enabled', false)) {
+            return response()->json(['success' => true, 'data' => [
+                'enabled' => false,
+                'view' => null,
+                'reason' => 'ยังไม่ได้เปิดใช้การวิเคราะห์ตลาดด้วย AI',
+            ]]);
+        }
+
+        $view = AiMarketView::latestFor(AiMarketView::SCOPE_TACTICAL)
+            ?? AiMarketView::latestFor(AiMarketView::SCOPE_STRATEGIC);
+
+        if (! $view) {
+            /*
+             * ไม่มีมุมมองที่ยังไม่หมดอายุ — บอกตรงๆ ว่ากำลังใช้กฎล้วน
+             *
+             * เงียบไว้แล้วผู้ใช้จะเข้าใจว่า AI ทำงานอยู่ตลอด ทั้งที่จริงอาจเป็น
+             * ช่วงที่รอบวิเคราะห์ล่มหรือโควตาหมด — ต้องเห็นความต่างนี้
+             */
+            return response()->json(['success' => true, 'data' => [
+                'enabled' => true,
+                'view' => null,
+                'reason' => 'ยังไม่มีมุมมองล่าสุด — บอทกำลังตัดสินใจจากกฎล้วน',
+            ]]);
+        }
+
+        return response()->json(['success' => true, 'data' => [
+            'enabled' => true,
+            'shadow' => (bool) config('aibot_analyst.shadow_mode', false),
+            'view' => [
+                'scope' => $view->scope,
+                'regime' => $view->regime,
+                'confidence' => (float) $view->confidence,
+                'size_multiplier' => (float) $view->size_multiplier,
+                'summary' => $view->summary,
+                'coins' => $view->coins ?? [],
+                'shortlist' => $view->shortlistPairs(),
+                'headlines' => array_slice($view->headlines ?? [], 0, 6),
+                'model' => $view->model,
+                'created_at' => $view->created_at?->toIso8601String(),
+                'expires_at' => $view->expires_at?->toIso8601String(),
+            ],
+        ]]);
     }
 
     /**

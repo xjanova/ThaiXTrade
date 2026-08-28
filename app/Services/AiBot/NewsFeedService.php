@@ -23,9 +23,11 @@ class NewsFeedService
     /**
      * ดึงทุกฟีดแล้วบันทึกข่าวใหม่.
      *
-     * @return array{fetched: int, stored: int, failed: list<string>}
+     * @param  list<string>  $priorityCoins  เหรียญที่ต้องดึงข่าวทุกรอบไม่ว่าจะถึงคิวหรือไม่
+     *                                       (เหรียญที่บอทถือของอยู่ + ที่ AI คัดไว้)
+     * @return array{fetched: int, stored: int, failed: list<string>, coins: list<string>}
      */
-    public function sync(): array
+    public function sync(array $priorityCoins = []): array
     {
         $fetched = 0;
         $stored = 0;
@@ -51,9 +53,100 @@ class NewsFeedService
             }
         }
 
+        $coins = $this->coinsThisRound($priorityCoins);
+
+        foreach ($coins as $symbol) {
+            $result = $this->syncCoin($symbol);
+
+            $fetched += $result['fetched'];
+            $stored += $result['stored'];
+
+            if ($result['failed']) {
+                $failed[] = "coin:{$symbol}";
+            }
+        }
+
         $this->prune();
 
-        return ['fetched' => $fetched, 'stored' => $stored, 'failed' => $failed];
+        return ['fetched' => $fetched, 'stored' => $stored, 'failed' => $failed, 'coins' => $coins];
+    }
+
+    /**
+     * ดึงข่าวของเหรียญเดียวจากฟีดรายเหรียญ.
+     *
+     * ข่าวจากฟีดนี้ถูก **แท็กเป็นเหรียญนั้นตรงๆ** ไม่ต้องเดาจากพาดหัว —
+     * เพราะเรารู้อยู่แล้วว่ายิงคำค้นอะไรไป แม่นกว่าการอ่านพาดหัวมาก
+     * และเป็นทางเดียวที่เหรียญอย่าง OP / NEAR / ETC จะมีข่าวได้เลย
+     * (ตัวย่อเป็นคำอังกฤษปกติ จับจากพาดหัวไม่ได้ — ดู config/aibot_coins.php)
+     *
+     * @return array{fetched: int, stored: int, failed: bool}
+     */
+    public function syncCoin(string $symbol): array
+    {
+        $coin = config("aibot_coins.coins.{$symbol}");
+        $query = $coin['query'] ?? null;
+
+        if (! $query) {
+            // เหรียญที่ไม่มีคำค้น (เช่น TPIX ที่ไม่มีสำนักข่าวไหนเขียนถึง)
+            return ['fetched' => 0, 'stored' => 0, 'failed' => false];
+        }
+
+        $url = sprintf((string) config('aibot_coins.coin_feed_url'), urlencode($query));
+
+        try {
+            $items = $this->fetchFeed($url);
+        } catch (\Throwable $e) {
+            Log::warning('AI bot coin feed failed', ['coin' => $symbol, 'error' => $e->getMessage()]);
+
+            return ['fetched' => 0, 'stored' => 0, 'failed' => true];
+        }
+
+        $items = array_slice($items, 0, (int) config('aibot_coins.items_per_coin', 8));
+
+        $feed = [
+            'source' => 'gnews:'.mb_strtolower($symbol),
+            'weight' => (float) config('aibot_coins.coin_feed_weight', 0.75),
+        ];
+
+        $stored = 0;
+
+        foreach ($items as $item) {
+            if ($this->store($item, $feed, [$symbol])) {
+                $stored++;
+            }
+        }
+
+        return ['fetched' => count($items), 'stored' => $stored, 'failed' => false];
+    }
+
+    /**
+     * เหรียญที่ถึงคิวดึงข่าวรอบนี้.
+     *
+     * แบ่งเป็นชุดตาม "นาฬิกา" ไม่ใช่ตัวนับที่เก็บไว้ที่ไหนสักแห่ง — ตัวนับใน cache
+     * จะถูกล้างทุกครั้งที่ deploy (`config:cache` + `cache:clear` อยู่ในสคริปต์ deploy)
+     * แล้วการหมุนจะรีเซ็ตกลับไปชุดแรกเสมอ เหรียญท้ายรายการจะไม่มีวันถูกดึงเลย
+     *
+     * คิดจากเวลาแทน → ไม่มีสถานะให้หาย หมุนครบทุกชุดแน่นอน และย้อนตรวจได้ว่า
+     * เวลาไหนควรได้เหรียญชุดใด
+     *
+     * @param  list<string>  $priorityCoins
+     * @return list<string>
+     */
+    public function coinsThisRound(array $priorityCoins = []): array
+    {
+        $known = array_keys((array) config('aibot_coins.coins', []));
+
+        // เหรียญสำคัญมาก่อนเสมอ และไม่กินโควตาการหมุนของรอบนี้
+        $priority = array_values(array_intersect($known, array_map('strtoupper', $priorityCoins)));
+        $rest = array_values(array_diff($known, $priority));
+
+        $size = max(1, (int) config('aibot_coins.rotation_size', 12));
+        $slices = (int) max(1, ceil(count($rest) / $size));
+
+        // ชุดที่เท่าไหร่ — คิดจากจำนวนช่วง 15 นาทีนับจาก epoch
+        $slice = intdiv((int) floor(now()->getTimestamp() / 900), 1) % $slices;
+
+        return array_values(array_merge($priority, array_slice($rest, $slice * $size, $size)));
     }
 
     /**
@@ -122,8 +215,13 @@ class NewsFeedService
         }
     }
 
-    /** @return bool true = เป็นข่าวใหม่ที่เพิ่งบันทึก */
-    private function store(array $item, array $feed): bool
+    /**
+     * @param  list<string>  $forceSymbols  แท็กเหรียญที่รู้จากต้นทางแล้ว (ฟีดรายเหรียญ)
+     *                                      รวมกับที่จับได้จากพาดหัว ไม่ใช่แทนที่ —
+     *                                      ข่าว "Solana ETF ดัน Bitcoin" ควรติดทั้งสองเหรียญ
+     * @return bool true = เป็นข่าวใหม่ที่เพิ่งบันทึก
+     */
+    private function store(array $item, array $feed, array $forceSymbols = []): bool
     {
         $hash = hash('sha256', $item['url']);
 
@@ -132,6 +230,10 @@ class NewsFeedService
         }
 
         $scored = $this->score($item['title']);
+
+        if ($forceSymbols !== []) {
+            $scored['symbols'] = array_values(array_unique(array_merge($scored['symbols'], $forceSymbols)));
+        }
 
         MarketNews::create([
             'source' => $feed['source'],
@@ -212,23 +314,19 @@ class NewsFeedService
         $haystack = mb_strtolower($title);
         $found = [];
 
-        $names = [
-            'BTC' => ['bitcoin', 'btc'],
-            'ETH' => ['ethereum', 'ether', 'eth'],
-            'BNB' => ['binance coin', 'bnb'],
-            'SOL' => ['solana', 'sol'],
-            'XRP' => ['ripple', 'xrp'],
-            'ADA' => ['cardano', 'ada'],
-            'DOGE' => ['dogecoin', 'doge'],
-            'AVAX' => ['avalanche', 'avax'],
-            'DOT' => ['polkadot'],
-            'LINK' => ['chainlink'],
-            'SHIB' => ['shiba inu', 'shib'],
-            'PEPE' => ['pepe'],
-            'USDT' => ['tether', 'usdt'],
-        ];
+        /*
+         * พจนานุกรมย้ายไป config/aibot_coins.php แล้ว
+         *
+         * เดิมฝังไว้ในเมธอดนี้ 13 เหรียญ ขณะที่ระบบเปิดเทรดจริง 70 คู่ — ข่าว 52%
+         * ไม่ถูกแท็กเลยสักเหรียญ (วัดบน prod 28 ส.ค.: 247 จาก 478 แถว) และ 8 เหรียญ
+         * ที่เปิดเทรดอยู่มีข่าว 0 ข่าวตลอด 14 วัน ด่านข่าวจึงตาบอดสำหรับเหรียญพวกนั้น
+         *
+         * ที่ย้ายออกมาไม่ใช่แค่เรื่องความยาว — คู่เทรดเพิ่มได้จากหลังบ้าน แต่พจนานุกรม
+         * แก้ได้เฉพาะตอน deploy การเอามาไว้ที่ config ทำให้เห็นช่องว่างและเติมได้ทันที
+         */
+        foreach ((array) config('aibot_coins.coins', []) as $symbol => $coin) {
+            $aliases = $coin['aliases'] ?? [];
 
-        foreach ($names as $symbol => $aliases) {
             foreach ($aliases as $alias) {
                 // ขอบคำ — กัน "sol" ไปแมตช์กับ "solution" หรือ "sold"
                 if (preg_match('/\b'.preg_quote($alias, '/').'\b/u', $haystack)) {

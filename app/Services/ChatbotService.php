@@ -15,7 +15,7 @@ class ChatbotService
     private string $systemPrompt;
 
     public function __construct(
-        private GroqService $groq,
+        private AiTextService $groq,
     ) {
         $this->systemPrompt = $this->buildSystemPrompt();
     }

@@ -84,6 +84,14 @@ class AdvisorSettings
             // Gemini ตัวเดียวใช้ได้ทั้งสร้างรูปและที่ปรึกษา — ถ้าแอดมินกรอกช่องสร้างรูป
             // ไว้แล้วก็ไม่ต้องกรอกซ้ำ (ประกาศไว้ในคำอธิบายใต้ช่องกรอกด้วย)
             $provider === 'gemini' ? ($stored['ai_gemini_api_key'] ?? null) : null,
+            /*
+             * OpenAI ก็ใช้ใบเดียวกันได้ทั้งผู้ช่วย AI และรอบวิเคราะห์ของบอท
+             *
+             * คีย์มาจากพูลของ Thaiprompt ใบเดียว (ดู ai:pull-pool-key) การบังคับ
+             * ให้กรอกสองช่องแปลว่าหมุนคีย์ทีต้องไปแก้สองที่ แล้วลืมที่หนึ่งเมื่อไหร่
+             * ก็จะมีระบบหนึ่งตายเงียบโดยไม่มีอะไรฟ้อง
+             */
+            $provider === 'openai' ? ($stored['ai_openai_api_key'] ?? null) : null,
             $base['api_key'] ?? null,
         );
 
@@ -139,6 +147,7 @@ class AdvisorSettings
         try {
             $advisor = SiteSetting::getGroup(self::GROUP)->all();
             $sharedGemini = SiteSetting::get('ai', 'gemini_api_key');
+            $sharedOpenAi = SiteSetting::get('ai', 'openai_api_key');
         } catch (\Throwable $e) {
             Log::warning('อ่านค่าที่ปรึกษา AI จากฐานข้อมูลไม่ได้ ใช้ค่าจาก .env แทน', [
                 'error' => $e->getMessage(),
@@ -147,7 +156,10 @@ class AdvisorSettings
             return $this->stored = [];
         }
 
-        return $this->stored = $advisor + ['ai_gemini_api_key' => $sharedGemini];
+        return $this->stored = $advisor + [
+            'ai_gemini_api_key' => $sharedGemini,
+            'ai_openai_api_key' => $sharedOpenAi,
+        ];
     }
 
     /** ค่าแรกที่ไม่ว่าง (0 กับ '0' ถือว่ามีค่า ต่างจาก ?? ที่ดูแค่ null) */

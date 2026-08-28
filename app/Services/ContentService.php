@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
 class ContentService
 {
     public function __construct(
-        private GroqService $groq,
+        private AiTextService $groq,
     ) {}
 
     /**

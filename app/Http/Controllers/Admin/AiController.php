@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AiAnalysis;
 use App\Models\AiNews;
-use App\Services\GroqService;
+use App\Services\AiTextService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,7 +14,7 @@ use Inertia\Response;
 class AiController extends Controller
 {
     public function __construct(
-        private GroqService $groqService,
+        private AiTextService $groqService,
     ) {}
 
     /**

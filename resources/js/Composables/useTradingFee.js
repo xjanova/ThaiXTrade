@@ -231,13 +231,22 @@ export function useTradingFee() {
     /** ขาดอีกเท่าไรถึงจะจ่ายด้วย TPIX ได้ */
     const creditShortfall = computed(() => currentQuote.value?.tpix?.shortfall ?? 0);
 
+    /*
+     * ไม้นี้ไม่เก็บค่าบริการเลย เพราะกระเป๋านี้เช่าบอทอยู่
+     *
+     * ฝั่งเซิร์ฟเวอร์ตั้ง fee_tpix = 0 พร้อม has_enough = true มาให้อยู่แล้ว
+     * เส้นทางวางไม้จึงเดินตามปกติได้โดยไม่ต้องแยกเคส — ตัวนี้มีไว้ให้หน้าจอ
+     * "บอกผู้ใช้" ว่าทำไมถึงไม่โดนเก็บ ไม่ใช่ปล่อยให้เห็นเลข 0 แล้วสงสัยเอง
+     */
+    const feeWaived = computed(() => currentQuote.value?.waived === true);
+
     return {
         // state
         tiers, topupInfo, refundGasFee, ticketTtlMinutes, feeEnabled,
         balance, minimumTopup, history,
         currentQuote, activeTicket, isWorking, error,
         // derived
-        recommended, canPayWithCredit, creditShortfall,
+        recommended, canPayWithCredit, creditShortfall, feeWaived,
         // actions
         loadTiers, loadBalance, quote,
         issueTicket, consumeTicket, refundTicket, confirmTopup,

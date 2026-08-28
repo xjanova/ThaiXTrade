@@ -29,6 +29,15 @@ const props = defineProps({
 const emit = defineEmits(['select-method', 'topup']);
 
 const enabled = computed(() => props.quote?.enabled === true);
+
+/*
+ * เช่าบอทอยู่ = ไม่เก็บค่าวางไม้เลย (เจ้าของสั่ง 28 ส.ค. 2026 ให้เหมารวมในค่าเช่า)
+ *
+ * ต้องขึ้นเป็นแผงของตัวเอง ไม่ใช่โชว์ "0 TPIX" ในตัวเลือกเดิมสองปุ่ม —
+ * ปุ่มให้เลือกทางจ่ายทั้งที่ไม่ต้องจ่ายอะไรเลยคือความสับสนที่ไม่จำเป็น
+ * และผู้ใช้ที่จ่ายค่าเช่าไปแล้วควรเห็นชัดว่าได้อะไรกลับมา
+ */
+const waived = computed(() => props.quote?.waived === true);
 const tpix = computed(() => props.quote?.tpix ?? null);
 const onchain = computed(() => props.quote?.onchain ?? null);
 const tpixUsable = computed(() => tpix.value?.available === true);
@@ -46,8 +55,24 @@ function fmt(value, maxDecimals = 8) {
 </script>
 
 <template>
+    <!-- เช่าบอทอยู่ = ไม่มีอะไรให้เลือก บอกให้จบในบรรทัดเดียว -->
+    <div
+        v-if="waived"
+        class="rounded-lg border border-trading-green/30 bg-trading-green/10 px-2.5 py-2 flex items-center gap-2"
+    >
+        <svg class="w-4 h-4 text-trading-green shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+        </svg>
+        <div class="min-w-0">
+            <p class="text-[11px] font-semibold text-trading-green leading-tight">ค่าวางไม้ 0 — รวมอยู่ในค่าเช่าบอทแล้ว</p>
+            <p class="text-[10px] text-dark-400 leading-tight mt-0.5">
+                วางไม้ได้ไม่จำกัดจำนวนครั้งตลอดอายุการเช่า คิดกำไรได้เต็มจำนวน
+            </p>
+        </div>
+    </div>
+
     <!-- ปิดระบบค่าบริการ TPIX ไว้ = ไม่ต้องรบกวนผู้ใช้ด้วยตัวเลือกที่ยังไม่มี -->
-    <div v-if="enabled" class="rounded-lg border border-white/10 bg-black/25 p-2.5 space-y-2">
+    <div v-else-if="enabled" class="rounded-lg border border-white/10 bg-black/25 p-2.5 space-y-2">
         <div class="flex items-center justify-between gap-2">
             <span class="text-[11px] text-dark-400">ค่าบริการวางไม้</span>
             <span class="text-[10px] text-dark-500">เก็บตอนวางไม้</span>

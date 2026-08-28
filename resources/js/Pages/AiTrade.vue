@@ -14,6 +14,7 @@ import PageArt from '@/Components/PageArt.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import AiDemoPanel from '@/Components/Trading/AiDemoPanel.vue';
 import AiRiskPanel from '@/Components/Trading/AiRiskPanel.vue';
+import AiMarketViewPanel from '@/Components/Trading/AiMarketViewPanel.vue';
 import { useAiBot } from '@/Composables/useAiBot';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTranslation } from '@/Composables/useTranslation';
@@ -77,6 +78,25 @@ const unlocked = computed(() => bot.status.value?.unlocked_strategies ?? []);
 const selectedStrategy = computed(() => bot.strategyByCode(form.value.strategy));
 const limits = computed(() => bot.catalog.value?.limits ?? {});
 const timeframes = computed(() => selectedStrategy.value?.timeframes ?? bot.catalog.value?.timeframes ?? ['1h']);
+
+/*
+ * ช่องที่ต้องวาดในฟอร์ม = สวิตช์ร่วม + พารามิเตอร์ของกลยุทธ์ที่เลือก
+ *
+ * สวิตช์ร่วม (ให้ AI เลือกเหรียญ · ด่านข่าว) ไม่ได้อยู่ในรายการของกลยุทธ์ใด
+ * กลยุทธ์หนึ่ง ถ้าวาดจาก selectedStrategy.params อย่างเดียวมันจะไม่โผล่เลย
+ * ทั้งที่ฝั่งเซิร์ฟเวอร์รับค่าได้แล้ว — ผู้ใช้จะไม่มีทางเปิดใช้ได้
+ *
+ * กลยุทธ์ที่ประกาศคีย์ชื่อเดียวกันไว้เองต้องชนะ (มันรู้ช่วงค่าที่ถูกต้องกว่า)
+ * จึงวางรายการร่วมไว้ก่อนแล้วให้ของกลยุทธ์เขียนทับ
+ */
+const paramSpecs = computed(() => {
+    const merged = new Map();
+
+    (bot.catalog.value?.common_params ?? []).forEach((spec) => merged.set(spec.key, spec));
+    (selectedStrategy.value?.params ?? []).forEach((spec) => merged.set(spec.key, spec));
+
+    return [...merged.values()];
+});
 
 const quotaFull = computed(() => {
     const q = bot.status.value?.quota;
@@ -211,7 +231,7 @@ function syncParamDefaults() {
     if (!strategy) return;
 
     const next = {};
-    (strategy.params || []).forEach((spec) => {
+    paramSpecs.value.forEach((spec) => {
         next[spec.key] = form.value.params[spec.key] ?? spec.default;
     });
     form.value.params = next;
@@ -416,6 +436,8 @@ async function removeBot(item) {
 onMounted(() => {
     bot.loadCatalog().then(syncRiskDefaults);
     loadPairs();
+    // มุมมองตลาดเป็นภาพรวม ไม่ผูกกับกระเป๋า — โหลดได้เลยไม่ต้องรอเชื่อมกระเป๋า
+    bot.loadMarketView();
 
     if (walletStore.isConnected) {
         bot.loadStatus();
@@ -985,7 +1007,7 @@ onUnmounted(() => bot.stopBrowserLoop());
                             </select>
                         </label>
 
-                        <label v-for="spec in selectedStrategy?.params || []" :key="spec.key" class="block">
+                        <label v-for="spec in paramSpecs" :key="spec.key" class="block">
                             <span class="block text-[11px] text-dark-400 mb-1">{{ paramLabel(spec) }}</span>
 
                             <input
@@ -1046,6 +1068,13 @@ onUnmounted(() => bot.stopBrowserLoop());
             </template>
 
             <!-- ที่ปรึกษา AI — อ่านสถิติของบอทแล้วให้ความเห็น สั่งเทรดเองไม่ได้ -->
+            <!-- มุมมองที่มีผลต่อการเทรดจริง วางก่อนคำแนะนำที่อ่านประกอบเฉยๆ -->
+            <AiMarketViewPanel
+                :data="bot.marketView.value"
+                :loading="bot.isLoadingMarketView.value"
+                @refresh="bot.loadMarketView()"
+            />
+
             <section class="rounded-2xl border border-white/10 bg-dark-900/50 p-4 sm:p-5">
                 <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
                     <div class="min-w-0">

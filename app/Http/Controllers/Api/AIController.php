@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\GroqService;
+use App\Services\AiTextService;
 use App\Services\MarketDataService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Validator;
 class AIController extends Controller
 {
     public function __construct(
-        private GroqService $groqService,
+        private AiTextService $groqService,
         private MarketDataService $marketDataService,
     ) {}
 

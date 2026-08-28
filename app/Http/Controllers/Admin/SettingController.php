@@ -42,6 +42,14 @@ class SettingController extends Controller
             'together_api_key',
             'huggingface_api_key',
             'gemini_api_key',
+            /*
+             * คีย์ OpenAI ที่ดึงมาจากพูลของ Thaiprompt (ai:pull-pool-key)
+             *
+             * ⚠️ ต้องอยู่ในรายการนี้ ไม่งั้นหน้าตั้งค่าจะส่งคีย์ตัวจริงลงไปในเบราว์เซอร์
+             *    ของแอดมิน — และคีย์ใบนี้เป็นของ OpenAI org เดียวกับที่ Thaiprompt ใช้
+             *    หลุดใบเดียวคือกระทบทุกโปรเจกต์ที่ใช้พูลร่วมกัน ไม่ใช่แค่เว็บนี้
+             */
+            'openai_api_key',
             ...AdvisorSettings::SECRET_KEYS,
         ];
 

@@ -32,6 +32,16 @@ const advice = ref(null);
 const isAskingAdvice = ref(false);
 
 /*
+ * มุมมองตลาดของ AI — เก็บระดับโมดูลเหมือน catalog
+ *
+ * หน้าเทรดกับหน้า /ai-trade เรียก composable นี้พร้อมกันได้ ถ้าเก็บแยกในแต่ละ
+ * คอมโพเนนต์จะยิง API ซ้ำสองรอบเพื่อข้อมูลชุดเดียวกัน (เป็นภาพตลาดรวม
+ * ไม่ได้ผูกกับกระเป๋าใคร จึงใช้ร่วมกันได้ปลอดภัย)
+ */
+const marketView = ref(null);
+const isLoadingMarketView = ref(false);
+
+/*
  * ตัวเดินบอทของแพลนฟรี
  *
  * แพลนฟรีไม่ได้ซื้อการรันบนคลาวด์ ตัวจับเวลาฝั่งเซิร์ฟเวอร์จึงข้ามบอทพวกนี้ไป
@@ -461,9 +471,31 @@ export function useAiBot() {
         return Array.isArray(chosen) ? chosen : [];
     }
 
+    /**
+     * มุมมองตลาดล่าสุดที่ AI สรุปไว้ — ตัวที่มีผลต่อการเทรดจริง
+     *
+     * ต่างจาก askAdvice() ที่เป็นคำแนะนำให้คนอ่านเฉยๆ · ล้มแล้วไม่ throw
+     * เพราะแผงนี้เป็นข้อมูลประกอบ ไม่ควรทำให้ทั้งหน้าพัง
+     */
+    async function loadMarketView() {
+        isLoadingMarketView.value = true;
+
+        try {
+            const { data } = await axios.get('/api/v1/ai-bot/market-view');
+            if (data?.success) marketView.value = data.data;
+        } catch {
+            marketView.value = null;
+        } finally {
+            isLoadingMarketView.value = false;
+        }
+
+        return marketView.value;
+    }
+
     return {
         // state
         catalog, status, error, needsVerification,
+        marketView, isLoadingMarketView,
         isLoadingCatalog, isLoadingStatus, isWorking,
         wallet, isConnected,
         demo, isLoadingDemo,
@@ -478,7 +510,7 @@ export function useAiBot() {
         // actions
         loadCatalog, loadStatus, subscribe, cancel, claimWelcome, requestTopup,
         createBot, updateBot, setBotState, setBotMode, deleteBot,
-        loadDemo, resetDemo, loadRisk, askAdvice,
+        loadDemo, resetDemo, loadRisk, askAdvice, loadMarketView,
         startBrowserLoop, stopBrowserLoop, tickBot,
         costOf, canAfford, strategyByCode,
         // ป้ายชื่อตามภาษา

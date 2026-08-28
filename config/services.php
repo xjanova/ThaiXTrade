@@ -24,7 +24,17 @@ return [
 
     'groq' => [
         'api_key' => env('GROQ_API_KEY', ''),
-        'default_model' => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+        // ⚠️ Llama ถูก Groq ถอดออกหมดแล้ว (~18 ส.ค. 2026) — ค่าปริยายเดิมทำให้
+        //    ผู้ช่วย AI ตอบ 404 เงียบๆ ทุกครั้ง รายชื่อที่ใช้ได้อยู่ใน config/ai_text.php
+        'default_model' => env('GROQ_MODEL', 'openai/gpt-oss-120b'),
+    ],
+
+    /*
+     * OpenAI — คีย์ปกติมาจากหลังบ้าน (site_settings กลุ่ม ai) ซึ่งดึงมาจากพูล
+     * ของ Thaiprompt ด้วย `php artisan ai:pull-pool-key` · ตรงนี้เป็นทางสำรอง
+     */
+    'openai' => [
+        'api_key' => env('OPENAI_API_KEY', ''),
     ],
 
     // Turnstile config จัดการผ่าน SiteSetting (DB) ไม่ใช้ .env แล้ว

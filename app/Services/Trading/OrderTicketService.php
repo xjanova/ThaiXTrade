@@ -87,13 +87,22 @@ class OrderTicketService
                 'expires_at' => now()->addMinutes($this->ttlMinutes()),
             ]);
 
-            // หักหลังสร้างตั๋ว เพื่อให้ reference ผูกกับ uuid ของตั๋วใบนี้ได้
-            // ทั้งคู่อยู่ใน transaction เดียวกัน — หักไม่ผ่านแล้วตั๋วไม่เกิด
-            $this->credits->charge($wallet, $fee, $ticket->uuid, [
-                'pair' => $ticket->pair,
-                'side' => $side,
-                'order_value_usd' => $orderValueUsd,
-            ]);
+            /*
+             * ค่าบริการเป็นศูนย์ = ไม่แตะบัญชีเครดิตเลย
+             *
+             * เกิดขึ้นเมื่อกระเป๋านั้นเช่าบอทอยู่ (ค่าวางไม้เหมารวมในค่าเช่าแล้ว)
+             * ถ้าปล่อยให้เรียก charge() ต่อ จะได้แถวเดินบัญชี -0 หนึ่งแถวต่อหนึ่งไม้
+             * ซึ่งไม่ได้บอกอะไรเลยแต่ทำให้ประวัติที่ผู้ใช้เปิดดูรกจนหาแถวจริงไม่เจอ
+             */
+            if ($fee > 0) {
+                // หักหลังสร้างตั๋ว เพื่อให้ reference ผูกกับ uuid ของตั๋วใบนี้ได้
+                // ทั้งคู่อยู่ใน transaction เดียวกัน — หักไม่ผ่านแล้วตั๋วไม่เกิด
+                $this->credits->charge($wallet, $fee, $ticket->uuid, [
+                    'pair' => $ticket->pair,
+                    'side' => $side,
+                    'order_value_usd' => $orderValueUsd,
+                ]);
+            }
 
             return $ticket;
         });
@@ -183,7 +192,11 @@ class OrderTicketService
             $fee = (float) $ticket->fee_amount;
 
             if ($ticket->refundsInFull()) {
-                $this->credits->refund($wallet, $fee, $ticket->uuid, ['reason' => $reason]);
+                // ตั๋วที่ไม่ได้เก็บค่าบริการ (กระเป๋าที่เช่าบอทอยู่) ไม่ต้องคืนอะไร —
+                // เรียก refund() ด้วยยอด 0 จะได้แถวเดินบัญชีเปล่าที่อ่านแล้วสับสน
+                if ($fee > 0) {
+                    $this->credits->refund($wallet, $fee, $ticket->uuid, ['reason' => $reason]);
+                }
 
                 $ticket->update([
                     'status' => TradingOrderTicket::STATUS_REFUNDED,

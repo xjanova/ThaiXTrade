@@ -5,6 +5,8 @@ namespace App\Services\AiBot;
 use App\Models\AiBotConfig;
 use App\Models\AiBotDecision;
 use App\Models\AiBotPosition;
+use App\Services\AiBot\Analyst\AiViewGate;
+use App\Services\AiBot\Analyst\AutoPairResolver;
 use App\Services\AiBotService;
 use App\Services\MarketDataService;
 use Illuminate\Support\Facades\Log;
@@ -44,6 +46,8 @@ class BotRunner
         private readonly StrategyRegistry $registry,
         private readonly PaperBroker $broker,
         private readonly AiBotService $bots,
+        private readonly AiViewGate $aiGate,
+        private readonly AutoPairResolver $autoPair,
     ) {}
 
     /**
@@ -88,6 +92,26 @@ class BotRunner
             $bot->update(['status' => 'paused', 'last_reason' => $reason]);
 
             return $this->record($bot, 'stopped', $reason);
+        }
+
+        /*
+         * 1.2) ให้ AI เลือกเหรียญ (เฉพาะบอทที่เปิดโหมดนี้)
+         *
+         * ต้องมาก่อนการดึงแท่งเทียน เพราะการย้ายเหรียญเปลี่ยนว่าจะดึงข้อมูลของคู่ไหน
+         * ถ้าย้ายทีหลังจะได้แท่งเทียนของคู่เก่ามาตัดสินใจให้คู่ใหม่
+         *
+         * ถามสถานะการถือครองก่อนตรงนี้เพราะตัวเลือกเหรียญต้องรู้ว่าถือของอยู่ไหม
+         * (ห้ามย้ายตอนถือของ ไม่งั้นไม้เดิมจะค้างอยู่บนคู่ที่ไม่มีใครดูแลต่อ)
+         */
+        $holding = AiBotPosition::where('ai_bot_config_id', $bot->id)
+            ->where('mode', $bot->mode)
+            ->where('quantity', '>', 0)
+            ->exists();
+
+        $autoPair = $this->autoPair->resolve($bot, $subscription->plan, $holding);
+
+        if ($autoPair['switched']) {
+            $bot->refresh();
         }
 
         // 2) ข้อมูลตลาดจริง — ดึงให้พอกับที่กลยุทธ์นั้นต้องใช้จริงๆ
@@ -153,6 +177,46 @@ class BotRunner
             ]);
         }
 
+        /*
+         * 3.5) มุมมองตลาดของ AI (รอบ 4 ชม. / 15 นาที ตามแพลน)
+         *
+         * วางไว้ "หลัง" ด่านความเสี่ยงแบบกฎ ไม่ใช่แทนที่ — สองชั้นนี้มองคนละมุม
+         * และต้องผ่านทั้งคู่ ด่านกฎจับเหตุการณ์เฉียบพลันที่วัดจากราคาและคำสำคัญ
+         * ส่วน AI อ่านบริบทกว้างที่กฎจับไม่ได้ (นโยบายการเงิน ท่าทีหน่วยงานกำกับ
+         * ข่าวที่ต้องตีความ) มุมไหนบอกให้เบา ต้องเบาตามมุมนั้น
+         *
+         * ⚠️ ไม่มีมุมมอง = เดินต่อด้วยกฎล้วน ไม่ใช่หยุดเทรด
+         *    OpenAI ล่ม / โควตาหมด / cron ตาย ต้องไม่ทำให้บอททุกตัวหยุดพร้อมกัน
+         */
+        $ai = $this->aiGate->evaluate($bot, $subscription->plan, (bool) $position);
+
+        if ($ai['force_exit'] && $position) {
+            $reason = 'AI สั่งปิดไม้: '.(implode(' · ', array_slice($ai['reasons'], 0, 2)) ?: 'ความเสี่ยงสูงขึ้น');
+            $this->execute($bot, 'sell', $price, 0, $reason, $risk);
+
+            return $this->record($bot, 'sell', $reason, $risk['level'], [
+                'price' => $price,
+                'has_position' => true,
+                'meta' => ['ai' => $ai],
+            ]);
+        }
+
+        if ($ai['block_entry'] && ! $position) {
+            $reason = implode(' · ', array_slice($ai['reasons'], 0, 2)) ?: 'AI ไม่แนะนำเหรียญนี้รอบนี้';
+
+            return $this->record($bot, 'hold', $reason, $risk['level'], [
+                'price' => $price,
+                'has_position' => false,
+                'meta' => ['ai' => $ai],
+            ]);
+        }
+
+        /*
+         * ตัวคูณสองชั้นคูณกัน ไม่ใช่เลือกอันใดอันหนึ่ง — ตลาดผันผวน (กฎลดเหลือ 0.5)
+         * บวกกับ AI มองขาลง (ลดเหลือ 0.6) ต้องได้ 0.3 ไม่ใช่ 0.5 หรือ 0.6
+         */
+        $sizeMultiplier = (float) $risk['size_multiplier'] * $ai['size_multiplier'];
+
         // 4) กรอบความเสี่ยงของผู้ใช้เอง (มาก่อนกลยุทธ์ — stop ต้องชนะสัญญาณเสมอ)
         if ($position) {
             $guard = $this->checkUserRiskLimits($bot, $position, $price);
@@ -180,12 +244,28 @@ class BotRunner
 
         // 5) ถามกลยุทธ์
         $params = $this->paramsFor($bot, $candles, $position);
+
+        /*
+         * AI ผ่อนเกณฑ์ความมั่นใจได้ แต่ "สร้างสัญญาณเองไม่ได้"
+         *
+         * ผ่อนได้สูงสุด 8 จุดจาก 100 (config aibot_analyst.limits) — พอให้สัญญาณ
+         * ที่เกือบผ่านได้ผ่าน แต่ไม่พอให้สัญญาณอ่อนๆ ทะลุ ถ้าให้ AI สั่งซื้อตรงๆ
+         * เราจะย้อนตรวจไม่ได้เลยว่าทำไมถึงเสียเงิน เพราะคำตอบมันไม่คงที่
+         *
+         * บีบพื้นไว้ที่ 50 กันกรณีผู้ใช้ตั้งเกณฑ์ต่ำอยู่แล้ว แล้วถูกผ่อนจนกลายเป็น
+         * "ซื้อทุกครั้งที่คะแนนไม่ติดลบ" ซึ่งไม่ใช่สิ่งที่การผ่อนเกณฑ์ควรทำได้
+         */
+        if ($ai['confidence_relief'] > 0 && isset($params['confidence_min'])) {
+            $params['confidence_min'] = max(50.0, (float) $params['confidence_min'] - $ai['confidence_relief']);
+        }
+
         $signal = $strategy->decide($candles, $params, $positionArray);
 
         $logContext = [
             'price' => $price,
             'has_position' => (bool) $position,
             'params' => $params,
+            'ai' => $ai,
         ];
 
         if (! $signal->isActionable()) {
@@ -197,7 +277,7 @@ class BotRunner
         }
 
         // 6) ลงมือ
-        $budget = $this->budgetFor($bot, $signal->strength, $risk['size_multiplier'], $params);
+        $budget = $this->budgetFor($bot, $signal->strength, $sizeMultiplier, $params);
         $result = $this->execute($bot, $signal->action, $price, $budget, $signal->reason, $risk, $signal->meta);
 
         if (! ($result['ok'] ?? false)) {
