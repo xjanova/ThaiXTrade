@@ -155,7 +155,34 @@ class MarketAnalyst
             'expires_at' => now()->addMinutes($ttl),
         ]);
 
+        $this->prune();
+
         return ['ok' => true, 'view' => $view];
+    }
+
+    /**
+     * ลบมุมมองเก่าทิ้งตามนโยบายเก็บข้อมูล.
+     *
+     * ทำท้ายรอบที่สำเร็จ ไม่ใช่ตั้ง schedule แยก — รอบวิเคราะห์คือที่เดียวที่
+     * สร้างแถวพวกนี้ ตัวลบจึงควรอยู่ที่เดียวกัน ไม่มีทางที่ตัวสร้างเดินแต่
+     * ตัวลบตายโดยไม่มีใครรู้ (ซึ่งเป็นสิ่งที่เกิดกับ cron แยกเสมอ)
+     *
+     * ล้มแล้วไม่ throw — มุมมองรอบนี้บันทึกสำเร็จไปแล้ว การลบของเก่าไม่ได้
+     * ต้องไม่ทำให้รอบที่สำเร็จกลายเป็นล้มเหลว
+     */
+    private function prune(): void
+    {
+        $days = (int) config('aibot_analyst.retention_days', 30);
+
+        if ($days <= 0) {
+            return;
+        }
+
+        try {
+            AiMarketView::where('created_at', '<', now()->subDays($days))->delete();
+        } catch (\Throwable $e) {
+            Log::warning('AI analyst: ลบมุมมองเก่าไม่สำเร็จ', ['error' => $e->getMessage()]);
+        }
     }
 
     /**

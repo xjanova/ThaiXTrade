@@ -110,6 +110,39 @@ class MarketAnalystTest extends TestCase
     }
 
     #[Test]
+    public function old_views_are_pruned_but_the_evaluation_window_survives(): void
+    {
+        /*
+         * เจ้าของขอเก็บข้อมูล 4 วันก่อนตัดสิน — นโยบายลบต้องยาวกว่านั้นมาก
+         * ตัดสั้นกว่าหน้าต่างประเมินเมื่อไหร่ รายงานจะคิดจากข้อมูลไม่ครบเงียบๆ
+         */
+        config()->set('aibot_analyst.retention_days', 30);
+
+        $old = $this->makeStoredView(now()->subDays(31));
+        $withinWindow = $this->makeStoredView(now()->subDays(4));
+
+        $this->fakeOpenAi(['regime' => 'neutral', 'confidence' => 0.8, 'size_multiplier' => 1, 'coins' => [], 'shortlist' => []]);
+
+        $this->assertTrue(app(MarketAnalyst::class)->run(AiMarketView::SCOPE_STRATEGIC)['ok']);
+
+        $this->assertNull(AiMarketView::find($old->id), 'มุมมองเกินอายุต้องถูกลบ');
+        $this->assertNotNull(AiMarketView::find($withinWindow->id), 'มุมมองในหน้าต่างประเมินห้ามหาย');
+    }
+
+    #[Test]
+    public function pruning_can_be_turned_off(): void
+    {
+        config()->set('aibot_analyst.retention_days', 0);
+
+        $ancient = $this->makeStoredView(now()->subDays(400));
+
+        $this->fakeOpenAi(['regime' => 'neutral', 'confidence' => 0.8, 'size_multiplier' => 1, 'coins' => [], 'shortlist' => []]);
+        app(MarketAnalyst::class)->run(AiMarketView::SCOPE_STRATEGIC);
+
+        $this->assertNotNull(AiMarketView::find($ancient->id));
+    }
+
+    #[Test]
     public function a_clean_answer_is_stored_as_a_view(): void
     {
         $this->fakeOpenAi([
@@ -275,6 +308,27 @@ class MarketAnalystTest extends TestCase
     }
 
     // ── ตัวช่วย ───────────────────────────────────────────────────────────────
+
+    /** มุมมองเก่าที่บันทึกไว้แล้ว ณ เวลาที่กำหนด */
+    private function makeStoredView(\Illuminate\Support\Carbon $at): AiMarketView
+    {
+        $view = AiMarketView::create([
+            'scope' => AiMarketView::SCOPE_STRATEGIC,
+            'provider' => 'openai',
+            'model' => 'gpt-4o-mini',
+            'regime' => 'neutral',
+            'confidence' => 0.7,
+            'size_multiplier' => 1.0,
+            'coins' => [],
+            'shortlist' => [],
+            'expires_at' => $at->copy()->addHours(5),
+        ]);
+
+        // created_at ถูก Eloquent ตั้งเป็น now() เสมอ — ต้องเขียนทับตรงๆ
+        $view->forceFill(['created_at' => $at])->saveQuietly();
+
+        return $view;
+    }
 
     private function fakeOpenAi(array $answer): void
     {

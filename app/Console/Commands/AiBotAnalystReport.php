@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 /**
  * TPIX TRADE — ให้คะแนน "ความฉลาด" ของ AI จากผลที่เกิดขึ้นจริง.
  *
- *   php artisan aibot:analyst-report --days=2
+ *   php artisan aibot:analyst-report --days=4
  *
  * ═══ ทำไมต้องมีคำสั่งนี้ ═══
  *
@@ -31,7 +31,7 @@ use Illuminate\Console\Command;
 class AiBotAnalystReport extends Command
 {
     protected $signature = 'aibot:analyst-report
-        {--days=2 : ย้อนหลังกี่วัน}
+        {--days=4 : ย้อนหลังกี่วัน}
         {--horizon=4 : วัดผลที่กี่ชั่วโมงหลังให้ความเห็น}';
 
     protected $description = 'ให้คะแนนคำตัดสินของ AI เทียบกับราคาที่เกิดขึ้นจริง';
@@ -59,7 +59,7 @@ class AiBotAnalystReport extends Command
         $this->line('ต้นทุนเข้า-ออกหนึ่งรอบ '.round($costBps, 1).' bps — คำทายที่ราคาขยับน้อยกว่านี้ถือว่าไม่มีค่า');
         $this->newLine();
 
-        $calls = $this->scoreCalls($views, $market, $horizon, $costBps);
+        $calls = $this->scoreCalls($views, $market, $horizon, $costBps, $days);
 
         if ($calls === []) {
             $this->warn('มีมุมมองอยู่ แต่ยังไม่ถึงเวลาวัดผล (ต้องรออย่างน้อย '.$horizon.' ชม. หลังแต่ละรอบ)');
@@ -82,8 +82,23 @@ class AiBotAnalystReport extends Command
      *
      * @return list<array{stance: string, confidence: float, score: float, symbol: string, move_bps: float, shortlisted: bool}>
      */
-    private function scoreCalls($views, MarketDataService $market, int $horizon, float $costBps): array
+    private function scoreCalls($views, MarketDataService $market, int $horizon, float $costBps, int $days): array
     {
+        /*
+         * ความลึกของแท่งเทียนต้องคลุมหน้าต่างที่ขอ ไม่ใช่เลขคงที่
+         *
+         * เดิมฮาร์ดโค้ด 200 แท่ง (~8 วัน) ซึ่งพอสำหรับ 2-4 วัน แต่พอใครสั่ง
+         * --days=14 มุมมองช่วงต้นจะหาราคาไม่เจอแล้ว **ถูกข้ามไปเงียบๆ**
+         * รายงานยังออกปกติแต่คิดจากข้อมูลไม่ครบ ซึ่งอ่านไม่ออกเลยว่าขาด
+         *
+         * +48 เผื่อ horizon กับช่วงที่ตลาดไม่มีแท่ง (คู่ที่วอลุ่มบาง)
+         */
+        $bars = min(500, $days * 24 + $horizon + 48);
+
+        if ($days * 24 + $horizon > 500) {
+            $this->warn("หน้าต่าง {$days} วันเกินข้อมูลราคาที่ดึงได้ (500 แท่ง) — มุมมองช่วงต้นจะถูกข้าม");
+        }
+
         $symbols = collect($views)
             ->flatMap(fn (AiMarketView $v) => array_keys((array) $v->coins))
             ->unique()
@@ -94,7 +109,7 @@ class AiBotAnalystReport extends Command
         $prices = [];
 
         foreach ($symbols as $symbol) {
-            $prices[$symbol] = $this->priceSeries($market, $symbol);
+            $prices[$symbol] = $this->priceSeries($market, $symbol, $bars);
         }
 
         $calls = [];
@@ -131,10 +146,10 @@ class AiBotAnalystReport extends Command
     }
 
     /** @return array<int, float> timestamp(วินาที) => ราคาปิด */
-    private function priceSeries(MarketDataService $market, string $symbol): array
+    private function priceSeries(MarketDataService $market, string $symbol, int $bars): array
     {
         try {
-            $klines = $market->getKlines("{$symbol}/USDT", '1h', 200);
+            $klines = $market->getKlines("{$symbol}/USDT", '1h', $bars);
         } catch (\Throwable) {
             return [];
         }
