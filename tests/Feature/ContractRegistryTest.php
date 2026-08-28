@@ -262,4 +262,100 @@ class ContractRegistryTest extends TestCase
                     ->where('registryAddress', self::ADDRESS)
             );
     }
+
+    /**
+     * เชนตอบ bytecode ต่างกันตามที่อยู่ที่ถาม — ใช้ทดสอบด่านลายนิ้วมือ.
+     *
+     * @param  array<string,string>  $byAddress  address (ตัวพิมพ์เล็ก) => bytecode
+     */
+    private function fakeChainCodePerAddress(array $byAddress, string $default = '0x60806040'): void
+    {
+        $map = array_change_key_case($byAddress, CASE_LOWER);
+
+        Http::fake(function ($request) use ($map, $default) {
+            $body = json_decode($request->body(), true) ?: [];
+            $asked = strtolower($body['params'][0] ?? '');
+
+            return Http::response([
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'result' => $map[$asked] ?? $default,
+            ]);
+        });
+    }
+
+    private function registerWithForce(array $contracts)
+    {
+        return $this->withHeaders(['Authorization' => 'Bearer '.self::TOKEN])
+            ->postJson('/api/infra/contracts', ['contracts' => $contracts, 'force' => true]);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  ด่านลายนิ้วมือ bytecode — กันคนสวมสัญญาปลอมถ้า token รั่ว
+    // ═══════════════════════════════════════════════════════════
+
+    public function test_records_the_bytecode_fingerprint_on_first_registration(): void
+    {
+        $this->fakeChainWithCode();
+
+        $this->register(['masternode_registry' => self::ADDRESS])->assertOk();
+
+        $this->assertNotNull(
+            SiteSetting::get(ContractRegistry::GROUP, 'masternode_registry__codehash'),
+            'ต้องจดลายนิ้วมือไว้ตั้งแต่ครั้งแรก ไม่งั้นครั้งต่อไปไม่มีอะไรให้เทียบ'
+        );
+    }
+
+    public function test_allows_moving_to_a_new_address_with_identical_bytecode(): void
+    {
+        // redeploy สัญญาตัวเดิม = bytecode เท่าเดิม ต้องไม่ถูกขวาง
+        $this->fakeChainWithCode();
+        $this->register(['masternode_registry' => self::ADDRESS])->assertOk();
+
+        $redeployed = '0xAAAA567890abcdef1234567890ABCDEF12345678';
+        $this->register(['masternode_registry' => $redeployed])->assertOk();
+
+        $this->assertSame($redeployed, app(ContractRegistry::class)->address('masternode_registry'));
+    }
+
+    public function test_rejects_swapping_in_a_contract_with_different_bytecode(): void
+    {
+        // นี่คือท่าโจมตีจริง: token รั่ว → deploy สัญญาปลอม (ฟรีเพราะแก๊ส 0)
+        // → ชี้ทะเบียนมาที่ตัวปลอม → เว็บพาเงินผู้ใช้ไปเข้าสัญญาของผู้โจมตี
+        $imposter = '0xBBBB567890abcdef1234567890ABCDEF12345678';
+
+        $this->fakeChainCodePerAddress([self::ADDRESS => '0x6080aaaa']);
+        $this->register(['masternode_registry' => self::ADDRESS])->assertOk();
+
+        $this->fakeChainCodePerAddress([
+            self::ADDRESS => '0x6080aaaa',
+            $imposter => '0x6080bbbb',
+        ]);
+        $response = $this->register(['masternode_registry' => $imposter]);
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('bytecode', $response->json('rejected.masternode_registry'));
+        $this->assertSame(
+            self::ADDRESS,
+            app(ContractRegistry::class)->address('masternode_registry'),
+            'ที่อยู่เดิมต้องไม่ถูกเปลี่ยน'
+        );
+    }
+
+    public function test_force_allows_a_genuine_upgrade_to_different_bytecode(): void
+    {
+        // อัปเกรดเป็นสัญญาเวอร์ชันใหม่จริง ๆ ต้องทำได้ แต่ต้องตั้งใจส่ง force มา
+        $upgraded = '0xCCCC567890abcdef1234567890ABCDEF12345678';
+
+        $this->fakeChainCodePerAddress([self::ADDRESS => '0x6080aaaa']);
+        $this->register(['masternode_registry' => self::ADDRESS])->assertOk();
+
+        $this->fakeChainCodePerAddress([
+            self::ADDRESS => '0x6080aaaa',
+            $upgraded => '0x6080cccc',
+        ]);
+        $this->registerWithForce(['masternode_registry' => $upgraded])->assertOk();
+
+        $this->assertSame($upgraded, app(ContractRegistry::class)->address('masternode_registry'));
+    }
 }

@@ -87,7 +87,7 @@ class ContractRegistry
      *
      * @return array{ok:bool, previous:?string, message:?string}
      */
-    public function set(string $key, string $address): array
+    public function set(string $key, string $address, bool $force = false): array
     {
         if (! isset(self::CONTRACTS[$key])) {
             return ['ok' => false, 'previous' => null, 'message' => "ไม่รู้จักสัญญาชื่อ {$key}"];
@@ -99,17 +99,104 @@ class ContractRegistry
         }
 
         $previous = $this->address($key);
+        $previousHash = $this->storedCodeHash($key);
+        $newHash = $this->codeHash($address);
+
+        /*
+         * ── ด่านลายนิ้วมือ bytecode ────────────────────────────────────────────
+         *
+         * เดิมตรวจแค่ `eth_getCode !== 0x` ซึ่งพิสูจน์ได้แค่ว่า "มีสัญญาสักตัวอยู่"
+         * ไม่ได้พิสูจน์ว่าเป็น "สัญญาตัวจริงของเรา" ถ้า CONTRACT_REGISTRY_TOKEN รั่ว
+         * ผู้โจมตี deploy สัญญาปลอม (ฟรี เพราะเชนค่าแก๊ส 0) แล้ว POST ที่อยู่ปลอมเข้ามา
+         * หน้าเว็บก็จะพาเงินผู้ใช้ไปเข้าสัญญาของเขา โดยไม่ต้องแฮ็กเชนเลย
+         *
+         * ใช้แบบ trust-on-first-use ไม่ใช่รายการ hash ตายตัว เพราะตอนนี้ยังไม่มี
+         * สัญญาไหน deploy ขึ้นเชนได้เลย (deployed-contracts.json ยังว่าง) จึงไม่มี
+         * hash ที่ "รู้ว่าถูก" ให้ใส่ล่วงหน้า
+         *
+         * กติกา: จดลายนิ้วมือตอนลงทะเบียนครั้งแรก หลังจากนั้นถ้าจะย้ายไปที่อยู่ใหม่
+         * bytecode ต้องเหมือนเดิม (redeploy สัญญาตัวเดิม = hash เท่ากัน ผ่านได้)
+         * ถ้าต่างต้องส่ง force มาโดยตั้งใจ ซึ่งจะถูกบันทึกเป็น warning
+         */
+        if (! $force && $previous !== null && $previousHash !== null) {
+            if ($newHash === null) {
+                return [
+                    'ok' => false,
+                    'previous' => $previous,
+                    'message' => "ที่อยู่ {$address} ไม่มี bytecode อยู่บนเชน",
+                ];
+            }
+
+            if (! hash_equals($previousHash, $newHash)) {
+                Log::warning('ContractRegistry: ปฏิเสธการย้ายไปสัญญาที่ bytecode ไม่ตรงของเดิม', [
+                    'contract' => $key,
+                    'previous' => $previous,
+                    'attempted' => $address,
+                ]);
+
+                return [
+                    'ok' => false,
+                    'previous' => $previous,
+                    'message' => 'bytecode ไม่ตรงกับสัญญาที่ลงทะเบียนไว้เดิม '
+                        .'ถ้าตั้งใจเปลี่ยนเป็นสัญญาคนละตัวจริง ให้ส่ง force=true',
+                ];
+            }
+        }
 
         SiteSetting::set(self::GROUP, $key, $address);
+        if ($newHash !== null) {
+            SiteSetting::set(self::GROUP, $this->codeHashKey($key), $newHash);
+        }
         $this->forget($key);
 
-        Log::info('ContractRegistry: ตั้งที่อยู่สัญญาใหม่', [
-            'contract' => $key,
-            'previous' => $previous,
-            'address' => $address,
-        ]);
+        $forcedOverDifferentCode = $force
+            && $previousHash !== null
+            && $newHash !== null
+            && ! hash_equals($previousHash, $newHash);
+
+        if ($forcedOverDifferentCode) {
+            Log::warning('ContractRegistry: บังคับเปลี่ยนไปสัญญาที่ bytecode ต่างจากเดิม', [
+                'contract' => $key,
+                'previous' => $previous,
+                'address' => $address,
+            ]);
+        } else {
+            Log::info('ContractRegistry: ตั้งที่อยู่สัญญาใหม่', [
+                'contract' => $key,
+                'previous' => $previous,
+                'address' => $address,
+            ]);
+        }
 
         return ['ok' => true, 'previous' => $previous, 'message' => null];
+    }
+
+    /**
+     * ลายนิ้วมือของ bytecode ที่อยู่นั้น — null ถ้าไม่มีสัญญาอยู่.
+     *
+     * ใช้ sha256 ไม่ใช่ keccak เพราะต้องการแค่ตัวเปรียบเทียบ ไม่ได้เอาไปใช้บนเชน
+     */
+    public function codeHash(string $address): ?string
+    {
+        $code = $this->rpc('eth_getCode', [$address, 'latest']);
+
+        if (! is_string($code) || strlen($code) <= 2) {
+            return null;
+        }
+
+        return hash('sha256', strtolower($code));
+    }
+
+    private function codeHashKey(string $key): string
+    {
+        return $key.'__codehash';
+    }
+
+    private function storedCodeHash(string $key): ?string
+    {
+        $stored = SiteSetting::get(self::GROUP, $this->codeHashKey($key));
+
+        return is_string($stored) && $stored !== '' ? $stored : null;
     }
 
     /**

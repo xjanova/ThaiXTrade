@@ -55,7 +55,15 @@ class ContractRegistryController extends Controller
         $validated = $request->validate([
             'contracts' => ['required', 'array', 'min:1'],
             'contracts.*' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            /*
+             * ต้องส่งมาโดยตั้งใจเมื่อจะย้ายไปสัญญาที่ bytecode ต่างจากตัวที่ลงทะเบียนไว้
+             * (เช่นอัปเกรดเป็นสัญญาเวอร์ชันใหม่จริง ๆ) — สคริปต์ deploy ปกติไม่ต้องส่ง
+             * ตัวที่ redeploy สัญญาตัวเดิมจะมี bytecode เท่าเดิม จึงผ่านได้เองอยู่แล้ว
+             */
+            'force' => ['sometimes', 'boolean'],
         ]);
+
+        $force = (bool) ($validated['force'] ?? false);
 
         $applied = [];
         $rejected = [];
@@ -74,7 +82,7 @@ class ContractRegistryController extends Controller
                 continue;
             }
 
-            $result = $this->registry->set($key, $address);
+            $result = $this->registry->set($key, $address, $force);
 
             if ($result['ok']) {
                 $applied[$key] = ['address' => $address, 'previous' => $result['previous']];
