@@ -92,7 +92,16 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    final visible = TickerMode.valuesOf(context).enabled;
+    /*
+     * ใช้ `TickerMode.of` ไม่ใช่ `TickerMode.valuesOf`
+     *
+     * valuesOf เพิ่งมีใน Flutter รุ่นใหม่ — CI พินรุ่น 3.38.5 ไว้ซึ่งยังไม่มีเมธอดนี้
+     * แล้ว analyze ล้มด้วย undefined_method ทั้งที่บนเครื่องนักพัฒนา (3.41) ผ่าน
+     * ตัว `of` ถูกประกาศ deprecated ในรุ่นใหม่แต่ยังทำงานถูก และเป็นตัวเดียว
+     * ที่คอมไพล์ผ่านทั้งสองรุ่น
+     */
+    // ignore: deprecated_member_use
+    final visible = TickerMode.of(context);
     if (visible == _visible) return;
 
     // ครั้งแรกปล่อยให้ initState เป็นคนเริ่ม — ไม่งั้นยิงซ้อนกันตั้งแต่เฟรมแรก
