@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AiBotConfig;
 use App\Models\AiBotCredit;
+use App\Models\AiBotDecision;
 use App\Models\AiBotDemoAccount;
 use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
@@ -34,6 +35,9 @@ use RuntimeException;
  */
 class AiBotController extends Controller
 {
+    /** ข้อมูลประกอบของกลยุทธ์จาก config — อ่านครั้งเดียวต่อหนึ่ง request */
+    private ?array $strategyMetaCache = null;
+
     /** ข้อความที่ผู้ใช้เห็นเมื่อทำรายการไม่ผ่าน (ไม่เปิดเผยรายละเอียดภายใน) */
     private const ERROR_MESSAGES = [
         AiBotService::ERR_INSUFFICIENT_CREDITS => 'เครดิตการทำงานไม่พอ กรุณาเติมเครดิตก่อนเริ่มใช้งานบอท',
@@ -210,6 +214,123 @@ class AiBotController extends Controller
                 'entries' => $entries,
             ],
         ]);
+    }
+
+    /**
+     * ประวัติการตัดสินใจของบอทในกระเป๋านี้ — ให้เจ้าของบอทเห็นว่า "AI คิดอะไรอยู่".
+     *
+     * ⚠️ เดิมตาราง ai_bot_decisions เปิดอ่านได้เฉพาะหลังบ้าน (AiBotAdminController)
+     *    เจ้าของบอทเห็นได้แค่ `last_reason` ของรอบล่าสุดรอบเดียว ซึ่งถูกเขียนทับ
+     *    ทุกครั้งที่บอทคิด — คนที่จ่ายเงินเช่าจึงมอนิเตอร์อะไรไม่ได้เลย ทั้งที่เหตุผล
+     *    ที่บอท "ไม่ทำอะไร" คือสิ่งที่บอกได้ว่าบอททำงานถูกหรือเปล่า และเกิดบ่อยกว่า
+     *    การเข้าไม้หลายสิบเท่า
+     *
+     * ผูกกับ wallet ของผู้เรียกเสมอผ่าน scopeForWallet — ส่ง bot_id ของคนอื่นมาก็ได้ผลว่าง
+     */
+    public function decisions(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'bot_id' => ['nullable', 'integer', 'min:1'],
+            'mode' => ['nullable', 'string', 'in:demo,live'],
+            'acted_only' => ['nullable', 'boolean'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            // เลื่อนหน้าแบบ cursor — ส่ง id ของแถวสุดท้ายที่ได้ไปแล้ว
+            'before_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $wallet = $this->wallet($request);
+        $limit = (int) ($validated['limit'] ?? 50);
+
+        $query = AiBotDecision::forWallet($wallet)->orderByDesc('id');
+
+        if (! empty($validated['bot_id'])) {
+            $query->where('ai_bot_config_id', (int) $validated['bot_id']);
+        }
+
+        if (! empty($validated['mode'])) {
+            $query->where('mode', $validated['mode']);
+        }
+
+        if ($request->boolean('acted_only')) {
+            $query->acted();
+        }
+
+        if (! empty($validated['before_id'])) {
+            $query->where('id', '<', (int) $validated['before_id']);
+        }
+
+        /*
+         * ดึงเกินมาหนึ่งแถวเพื่อรู้ว่ายังมีต่อไหม แทนการ count() ทั้งตาราง
+         * ตารางนี้โตวันละหลายพันแถว — count ทุกครั้งคือจ่ายแพงเพื่อข้อมูลชิ้นเดียว
+         */
+        $rows = $query->with('bot:id,name')->limit($limit + 1)->get();
+        $hasMore = $rows->count() > $limit;
+        $rows = $rows->take($limit);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'decisions' => $rows->map(fn (AiBotDecision $d) => $this->presentDecision($d))->values(),
+                'next_cursor' => $hasMore ? $rows->last()?->id : null,
+                'has_more' => $hasMore,
+            ],
+        ]);
+    }
+
+    /**
+     * แปลงหนึ่งรอบความคิดของบอทให้หน้าจออ่านได้.
+     *
+     * ไม่ส่ง `params` ออกไป — เป็นค่าตั้งบอทที่หน้าจอมีอยู่แล้วจาก /bots
+     * ส่งซ้ำทุกแถวคือถ่วงคำตอบให้ใหญ่ขึ้นหลายเท่าโดยไม่ได้อะไรเพิ่ม
+     */
+    private function presentDecision(AiBotDecision $decision): array
+    {
+        $meta = $this->strategyMetaFor($decision->strategy);
+
+        return [
+            'id' => $decision->id,
+            'bot_id' => $decision->ai_bot_config_id,
+            'bot_name' => $decision->bot?->name,
+            'pair' => $decision->pair,
+            'strategy' => $decision->strategy,
+            'strategy_name' => $meta['name'] ?? $decision->strategy,
+            'strategy_name_th' => $meta['name_th'] ?? ($meta['name'] ?? $decision->strategy),
+            'timeframe' => $decision->timeframe,
+            'mode' => $decision->mode,
+            'action' => $decision->action,
+            'reason' => $decision->reason,
+            'risk_level' => $decision->risk_level,
+            /*
+             * decimal cast ของ Laravel คืนค่าเป็น string ("0.00000000")
+             * ส่งดิบไปฝั่งแอพต้องเดาชนิดเอง แล้วเผลอเทียบ string กับตัวเลข
+             */
+            'price' => $decision->price === null ? null : (float) $decision->price,
+            'budget' => $decision->budget === null ? null : (float) $decision->budget,
+            'has_position' => (bool) $decision->has_position,
+            'signal_meta' => $decision->signal_meta ?: null,
+            'created_at' => $decision->created_at->toIso8601String(),
+        ];
+    }
+
+    /** ข้อมูลประกอบของกลยุทธ์จาก config (โค้ด → meta) */
+    private function strategyMetaFor(?string $code): ?array
+    {
+        if ($code === null || $code === '') {
+            return null;
+        }
+
+        if ($this->strategyMetaCache === null) {
+            $map = [];
+            foreach (config('aibot.strategies', []) as $strategy) {
+                $key = $strategy['code'] ?? null;
+                if ($key !== null) {
+                    $map[$key] = $strategy;
+                }
+            }
+            $this->strategyMetaCache = $map;
+        }
+
+        return $this->strategyMetaCache[$code] ?? null;
     }
 
     /** รับโบนัสต้อนรับ (ครั้งเดียวต่อ wallet) */

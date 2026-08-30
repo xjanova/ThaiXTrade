@@ -12,7 +12,7 @@ import 'providers/market_provider.dart';
 import 'providers/update_provider.dart';
 import 'providers/config_provider.dart';
 import 'providers/accent_provider.dart';
-import 'providers/ai_trade_provider.dart';
+import 'providers/ai_bot_provider.dart';
 import 'core/locale/locale_provider.dart';
 
 Future<void> main() async {
@@ -37,7 +37,15 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => UpdateProvider()),
         ChangeNotifierProvider(create: (_) => ConfigProvider()),
         ChangeNotifierProvider<AccentProvider>.value(value: accent),
-        ChangeNotifierProvider(create: (_) => AiTradeProvider()),
+        // AI TRADE (บอทคลาวด์) — ตัวเดียวทั้งแอพ ห้ามสร้างใหม่ต่อหน้าจอ
+        // ไม่งั้นลูปเดินบอทของแพลนฟรีจะซ้อนกันแล้วกินโควตาคำขอจนโดน 429
+        //
+        // ใช้ ProxyProvider เพื่อฉีด WalletProvider ให้เอง — หน้าจอจึงไม่ต้อง
+        // จำว่าต้อง bind() และการสลับกระเป๋าจะล้างข้อมูลของกระเป๋าเก่าทันที
+        ChangeNotifierProxyProvider<WalletProvider, AiBotProvider>(
+          create: (_) => AiBotProvider(),
+          update: (_, wallet, bot) => (bot ?? AiBotProvider())..bind(wallet),
+        ),
       ],
       child: const TpixTradeApp(),
     ),

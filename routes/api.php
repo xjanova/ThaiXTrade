@@ -504,6 +504,17 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
 
         // โหมดทดลอง — พอร์ตกระดาษที่ใช้ราคาจริง ให้ลองก่อนตัดสินใจเช่า
         // สถิติย้อนหลังของกลยุทธ์ + คำแนะนำจากที่ปรึกษา AI (ตามแพลน)
+        /*
+         * ประวัติการตัดสินใจของบอท — หัวใจของการมอนิเตอร์ ใช้ร่วมกันทั้งเว็บและแอพ
+         *
+         * ตาราง ai_bot_decisions เก็บ "ทุกครั้งที่บอทคิด" รวมรอบที่ตัดสินใจไม่ทำอะไร
+         * ซึ่งเดิมเปิดอ่านได้เฉพาะหลังบ้าน เจ้าของบอทเห็นแค่เหตุผลรอบล่าสุดรอบเดียว
+         *
+         * throttle สูงกว่ากลุ่มเพราะหน้ามอนิเตอร์เลื่อนดูย้อนหลังทีละหน้า
+         */
+        Route::get('/decisions', [AiBotController::class, 'decisions'])
+            ->middleware('throttle:60,1');
+
         Route::get('/analytics', [AiBotController::class, 'analytics']);
         Route::post('/advice', [AiBotController::class, 'advice'])->middleware('throttle:10,1');
 

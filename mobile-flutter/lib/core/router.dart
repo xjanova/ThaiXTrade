@@ -14,7 +14,7 @@ import '../screens/markets/markets_screen.dart';
 import '../screens/trade/trade_screen.dart';
 import '../screens/portfolio/portfolio_screen.dart';
 import '../screens/settings/settings_screen.dart';
-import '../screens/ai_trade/ai_trade_screen.dart';
+import '../screens/ai_trade/ai_bot_screen.dart';
 import '../screens/swap/swap_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/bridge/bridge_screen.dart';
@@ -64,7 +64,7 @@ final GoRouter appRouter = GoRouter(
           routes: [
             GoRoute(
               path: '/ai',
-              builder: (context, state) => const AiTradeScreen(),
+              builder: (context, state) => const AiBotScreen(),
             ),
           ],
         ),
