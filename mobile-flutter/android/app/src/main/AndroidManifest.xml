@@ -16,11 +16,21 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/provider_paths"/>
         </provider>
+        <!--
+            singleTask (ไม่ใช่ singleTop) และไม่ตั้ง taskAffinity ว่าง — สำคัญกับโปรโตคอลเซ็นข้ามแอป
+
+            เดิม singleTop + taskAffinity="" ทำให้ตอน TPIX Wallet เปิด tpixtrade://sign-result
+            กลับมา Android สร้าง MainActivity "ตัวใหม่" ซ้อนอยู่ใน task ของกระเป๋า
+            (ตัวเดิมไม่ได้อยู่บนสุดของ task นั้น) = Flutter engine ใหม่ สถานะที่รอลายเซ็นหาย
+            ผู้ใช้เห็นแอปเด้ง/รีสตาร์ต และการยืนยันกระเป๋าไม่มีวันจบ
+
+            singleTask = ส่ง intent เข้า instance เดิมผ่าน onNewIntent (app_links รับทาง uriLinkStream)
+            และดึง task ของเราขึ้นหน้าแทนการซ้อนใน task คนอื่น
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
-            android:taskAffinity=""
+            android:launchMode="singleTask"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"

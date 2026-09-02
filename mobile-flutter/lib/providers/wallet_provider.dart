@@ -537,31 +537,69 @@ class WalletProvider extends ChangeNotifier {
       final nonce = signData['nonce'] as String?;
       if (message == null || nonce == null) return false;
 
-      final signature = await signMessage(message);
+      // Linked wallet: จดคำขอไว้บนดิสก์ด้วย — ถ้าแอปถูกเปิดใหม่ระหว่างไปเซ็นใน
+      // TPIX Wallet, DeepLinkService จะเรียก completeVerificationFromCallback ให้จบเอง
+      final signature = _kind == WalletKind.linked
+          ? await LinkedWalletSigner().requestSignature(
+              message,
+              tag: 'verify',
+              meta: {'nonce': nonce, 'address': _address},
+            )
+          : await signMessage(message);
       if (signature == null) return false;
 
-      final verifyData = await ApiService().walletVerifySignature(
-        walletAddress: _address!,
-        signature: signature,
-        nonce: nonce,
-      );
-
-      _isVerified = verifyData?['verified'] == true;
-      notifyListeners();
-
-      // Auto-fetch profile after successful verification (non-blocking)
-      // เพื่อ sync settings/preferences จาก backend (cross-device)
-      if (_isVerified) {
-        loadProfile().catchError((_) => false);
-      }
-
-      return _isVerified;
+      return _submitVerification(signature: signature, nonce: nonce);
     } catch (e) {
       debugPrint('verifyWithBackend error: ${e.runtimeType}');
       _isVerified = false;
       notifyListeners();
       return false;
     }
+  }
+
+  /// ทำการยืนยันต่อจาก callback ของกระเป๋า เมื่อแอปถูกเปิดใหม่ระหว่างรอลายเซ็น.
+  ///
+  /// [meta] คือสิ่งที่ verifyWithBackend จดไว้: nonce ฝั่งเซิร์ฟเวอร์ + address
+  /// ต้องเป็นกระเป๋าเดียวกับที่โหลดกลับมาจากดิสก์ ไม่งั้นไม่รับ (กันลายเซ็นข้ามกระเป๋า)
+  Future<bool> completeVerificationFromCallback({
+    required String signature,
+    Map<String, dynamic>? meta,
+  }) async {
+    final nonce = meta?['nonce']?.toString();
+    final address = meta?['address']?.toString();
+    if (nonce == null || nonce.isEmpty || address == null) return false;
+    if (_address == null || _address!.toLowerCase() != address.toLowerCase()) {
+      return false;
+    }
+
+    try {
+      return await _submitVerification(signature: signature, nonce: nonce);
+    } catch (e) {
+      debugPrint('completeVerificationFromCallback error: ${e.runtimeType}');
+      return false;
+    }
+  }
+
+  Future<bool> _submitVerification({
+    required String signature,
+    required String nonce,
+  }) async {
+    final verifyData = await ApiService().walletVerifySignature(
+      walletAddress: _address!,
+      signature: signature,
+      nonce: nonce,
+    );
+
+    _isVerified = verifyData?['verified'] == true;
+    notifyListeners();
+
+    // Auto-fetch profile after successful verification (non-blocking)
+    // เพื่อ sync settings/preferences จาก backend (cross-device)
+    if (_isVerified) {
+      loadProfile().catchError((_) => false);
+    }
+
+    return _isVerified;
   }
 
   // ── Profile Sync (cross-device) ──

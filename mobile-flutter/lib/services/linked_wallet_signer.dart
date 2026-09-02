@@ -26,6 +26,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class LinkedWalletSigner {
@@ -36,6 +37,17 @@ class LinkedWalletSigner {
   /// Pending sign requests — nonce → Completer
   /// Cleared when callback arrives or timeout fires.
   final Map<String, Completer<String?>> _pending = {};
+
+  /// คำขอที่ "จดไว้บนดิสก์" — nonce → { tag, meta, at }
+  ///
+  /// ระหว่างที่ผู้ใช้ไปเซ็นใน TPIX Wallet Android อาจฆ่าโปรเซสของเรา (หน่วยความจำ
+  /// ต่ำ หรือ launchMode ผิดในรุ่นเก่า) พอ callback มาถึงจะเป็นแอปที่เพิ่งเปิดใหม่
+  /// ไม่มี Completer ให้ resolve — ผลลัพธ์จะถูกทิ้งเงียบๆ และผู้ใช้ต้องเซ็นซ้ำ
+  /// จดไว้บนดิสก์แล้ว DeepLinkService ใช้ [takePersisted] ทำงานต่อให้จบได้
+  static const _persistKey = 'linked_sign_pending_v1';
+
+  /// อายุสูงสุดของคำขอที่จดไว้ — nonce ฝั่งเซิร์ฟเวอร์อายุ 5 นาที จดนานกว่านั้นไร้ประโยชน์
+  static const _persistTtl = Duration(minutes: 5);
 
   /// Pending TRANSACTION requests — nonce → Completer(tx hash)
   /// แยกจาก _pending เพราะรูปแบบผลลัพธ์ต่างกัน (hash 66 ตัว vs signature 132)
@@ -81,11 +93,20 @@ class LinkedWalletSigner {
   ///
   /// Returns the 0x-prefixed hex signature, or null if the user rejected,
   /// the wallet app didn't respond, or the request timed out.
-  Future<String?> requestSignature(String message) async {
+  ///
+  /// [tag] + [meta] = จดคำขอไว้บนดิสก์ เพื่อให้แอปที่ถูกเปิดใหม่ทำงานต่อจาก
+  /// callback ได้ (เช่น tag 'verify' + meta {nonce ฝั่งเซิร์ฟเวอร์, address})
+  Future<String?> requestSignature(
+    String message, {
+    String? tag,
+    Map<String, dynamic>? meta,
+  }) async {
     final nonce = _generateNonce();
     final completer = Completer<String?>();
     _pending[nonce] = completer;
     _updateCount();
+
+    if (tag != null) await _persist(nonce, tag: tag, meta: meta);
 
     // Build sign URL — message + callback are URL-encoded
     final uri = Uri(
@@ -106,24 +127,96 @@ class LinkedWalletSigner {
       );
       if (!launched) {
         _removePending(nonce);
+        await _forgetPersisted(nonce);
         return null;
       }
     } catch (e) {
       debugPrint('LinkedWalletSigner.requestSignature: ${e.runtimeType}');
       _removePending(nonce);
+      await _forgetPersisted(nonce);
       return null;
     }
 
     // Wait for callback OR timeout
     try {
-      return await completer.future.timeout(_timeout);
+      final result = await completer.future.timeout(_timeout);
+      await _forgetPersisted(nonce);
+      return result;
     } on TimeoutException {
       _removePending(nonce);
+      // ไม่ลบที่จดไว้ — โปรเซสนี้หมดเวลาแล้ว แต่ callback อาจมาถึงแอปที่เปิดใหม่ทีหลัง
       return null;
     } catch (_) {
       _removePending(nonce);
+      await _forgetPersisted(nonce);
       return null;
     }
+  }
+
+  // ── คำขอที่จดไว้บนดิสก์ ─────────────────────────────────────────
+
+  Future<Map<String, dynamic>> _readPersisted() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_persistKey);
+      if (raw == null || raw.isEmpty) return {};
+      final decoded = jsonDecode(raw);
+      return decoded is Map<String, dynamic> ? decoded : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _writePersisted(Map<String, dynamic> all) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (all.isEmpty) {
+        await prefs.remove(_persistKey);
+      } else {
+        await prefs.setString(_persistKey, jsonEncode(all));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persist(
+    String nonce, {
+    required String tag,
+    Map<String, dynamic>? meta,
+  }) async {
+    final all = await _readPersisted();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // ทิ้งของเก่าที่หมดอายุไปด้วย ไม่ให้กองสะสม
+    all.removeWhere((_, v) =>
+        v is! Map || now - ((v['at'] as num?)?.toInt() ?? 0) > _persistTtl.inMilliseconds);
+    all[nonce] = {'tag': tag, 'meta': meta ?? const {}, 'at': now};
+    await _writePersisted(all);
+  }
+
+  Future<void> _forgetPersisted(String nonce) async {
+    final all = await _readPersisted();
+    if (all.remove(nonce) != null) await _writePersisted(all);
+  }
+
+  /// หยิบคำขอที่จดไว้ของ nonce นี้ (แล้วลบทิ้ง) — null ถ้าไม่มีหรือหมดอายุ
+  ///
+  /// ใช้เมื่อ callback มาถึงแต่ไม่มี Completer ในหน่วยความจำ (แอปถูกเปิดใหม่)
+  Future<Map<String, dynamic>?> takePersisted(String nonce) async {
+    final all = await _readPersisted();
+    final entry = all.remove(nonce);
+    await _writePersisted(all);
+    if (entry is! Map) return null;
+
+    final at = (entry['at'] as num?)?.toInt() ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch - at > _persistTtl.inMilliseconds) {
+      return null;
+    }
+
+    return {
+      'tag': entry['tag']?.toString() ?? '',
+      'meta': entry['meta'] is Map
+          ? Map<String, dynamic>.from(entry['meta'] as Map)
+          : <String, dynamic>{},
+    };
   }
 
   /// Ask the linked wallet app to sign an EIP-712 typed-data structure.
@@ -310,7 +403,10 @@ class LinkedWalletSigner {
   ///   - nonce + signature → success
   ///   - nonce + error     → failure (returns null)
   ///   - unknown nonce     → ignore (could be stale or spoofed)
-  void completeSignature({
+  ///
+  /// คืน true เมื่อมีคำขอในหน่วยความจำรออยู่จริง — false = ไม่รู้จัก nonce
+  /// (ผู้เรียกไปดู [takePersisted] ต่อได้ว่าเป็นคำขอของแอปที่ถูกเปิดใหม่ไหม)
+  bool completeSignature({
     required String nonce,
     String? signature,
     String? error,
@@ -320,9 +416,9 @@ class LinkedWalletSigner {
     if (completer == null) {
       // Unknown nonce — either timed out already or spoofed. Ignore.
       debugPrint('LinkedWalletSigner: callback for unknown nonce');
-      return;
+      return false;
     }
-    if (completer.isCompleted) return;
+    if (completer.isCompleted) return true;
 
     if (signature != null && _isValidSignature(signature)) {
       completer.complete(signature);
@@ -331,7 +427,10 @@ class LinkedWalletSigner {
       debugPrint('LinkedWalletSigner: sign failed (error=$error)');
       completer.complete(null);
     }
+    return true;
   }
+
+  bool isValidSignature(String s) => _isValidSignature(s);
 
   /// 16 random bytes → 32 hex chars (collision-free for our use case)
   String _generateNonce() {

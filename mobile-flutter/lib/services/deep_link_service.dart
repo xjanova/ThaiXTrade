@@ -147,15 +147,54 @@ class DeepLinkService {
 
   /// `tpixtrade://sign-result?nonce=<n>&signature=0x...` หรือ `&error=user_rejected`
   /// ส่งต่อให้ LinkedWalletSigner resolve pending Future
-  void _handleSignResult(Uri uri) {
+  ///
+  /// ถ้าไม่มี Future รออยู่ (แอปถูกเปิดใหม่ระหว่างที่ผู้ใช้ไปเซ็นในกระเป๋า) ดูคำขอที่
+  /// จดไว้บนดิสก์ — เป็นการยืนยันกระเป๋าก็ทำต่อให้จบตรงนี้ ไม่ทิ้งลายเซ็นที่ผู้ใช้
+  /// อุตส่าห์กดยืนยันมาแล้วให้หายไปเฉยๆ
+  Future<void> _handleSignResult(Uri uri) async {
     final nonce = uri.queryParameters['nonce'];
     if (nonce == null || nonce.isEmpty) return;
 
-    LinkedWalletSigner().completeSignature(
+    final signature = uri.queryParameters['signature'];
+    final signer = LinkedWalletSigner();
+
+    final handled = signer.completeSignature(
       nonce: nonce,
-      signature: uri.queryParameters['signature'],
+      signature: signature,
       error: uri.queryParameters['error'],
     );
+    if (handled) return;
+
+    final persisted = await signer.takePersisted(nonce);
+    if (persisted == null) return;
+
+    if (signature == null || !signer.isValidSignature(signature)) {
+      debugPrint('DeepLink: persisted sign request ended without signature');
+      return;
+    }
+
+    final ctx = _navKey?.currentContext;
+    if (ctx == null) return;
+
+    if (persisted['tag'] == 'verify') {
+      final wallet = ctx.read<WalletProvider>();
+      final ok = await wallet.completeVerificationFromCallback(
+        signature: signature,
+        meta: persisted['meta'] as Map<String, dynamic>?,
+      );
+
+      final ctx2 = _navKey?.currentContext;
+      if (ctx2 == null) return;
+      _showSnack(
+        ctx2,
+        ok
+            ? (_isThai(ctx2) ? 'ยืนยันกระเป๋าแล้ว' : 'Wallet verified')
+            : (_isThai(ctx2)
+                ? 'ยืนยันกระเป๋าไม่สำเร็จ — ลองกดยืนยันใหม่อีกครั้ง'
+                : 'Wallet verification failed — please try again'),
+        isSuccess: ok,
+      );
+    }
   }
 
   /// `tpixtrade://tx-result?kind=tx&nonce=<n>&txhash=0x...` หรือ `&error=...`
