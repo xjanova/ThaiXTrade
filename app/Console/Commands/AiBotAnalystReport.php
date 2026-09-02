@@ -69,7 +69,7 @@ class AiBotAnalystReport extends Command
 
         $this->reportStances($calls, $costBps);
         $this->reportCalibration($calls);
-        $this->reportCoinPicking($views, $calls);
+        $this->reportCoinPicking($calls);
         $this->reportVerdict($calls, $costBps);
 
         return self::SUCCESS;
@@ -276,7 +276,7 @@ class AiBotAnalystReport extends Command
         $this->table(['ช่วงความมั่นใจ', 'จำนวน', 'ทายถูก', 'ขยับเฉลี่ย (bps)'], $rows);
     }
 
-    private function reportCoinPicking(array $views, array $calls): void
+    private function reportCoinPicking(array $calls): void
     {
         /*
          * "เลือกเหรียญได้เองจริงไหม" วัดด้วยการเทียบเหรียญที่มันคัด กับเหรียญ
