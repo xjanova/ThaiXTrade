@@ -34,6 +34,7 @@ import '../../providers/ai_bot_provider.dart';
 import '../../providers/market_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../widgets/ai_bot/ai_monitor.dart';
+import '../../widgets/ai_bot/bot_wallet_card.dart';
 import '../../widgets/common/app_background.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
@@ -732,6 +733,9 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
                           status: bot.status,
                           demo: bot.demo,
                         )),
+
+                // ── กระเป๋าบอท — กระเป๋าแยกสำหรับโหมดจริง (โอนเข้า / ยอด / ถอนกลับหาตัวเอง) ──
+                if (ready && !loadingCore) _block(BotWalletCard(th: th)),
 
                 // ── บอทของฉัน ───────────────────────────────────────────
                 if (ready) ...[
@@ -1837,12 +1841,16 @@ class _BotRow extends StatelessWidget {
             ),
           ] else if (stale) ...[
             const SizedBox(height: 10),
+            // เซิร์ฟเวอร์บอกเหตุผลจริงจากสัญญาณชีพ (วอร์กเกอร์เงียบ / ไม่ได้รอบคิด)
+            // และยืนยันว่าระบบกู้คืนเองอยู่ — ไม่ต้องให้ผู้ใช้กดเริ่มใหม่หรือแจ้งทีมงาน
             _RowNote(
               icon: Icons.warning_amber_rounded,
               color: accent.g2,
-              text: th
-                  ? 'บอทไม่ได้เดินมา ${bot.minutesSinceRun} นาที — ระบบประมวลผลอาจมีปัญหา แจ้งทีมงานได้เลย'
-                  : 'No cycle for ${bot.minutesSinceRun} minutes — the execution service may be down',
+              text: bot.isOffline
+                  ? bot.offlineText(th)
+                  : (th
+                      ? 'บอทไม่ได้เดินมา ${bot.minutesSinceRun} นาที — ระบบประมวลผลอาจมีปัญหา แจ้งทีมงานได้เลย'
+                      : 'No cycle for ${bot.minutesSinceRun} minutes — the execution service may be down'),
             ),
           ],
 
@@ -3570,6 +3578,13 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
   /// ช่องที่เซิร์ฟเวอร์บอกว่าผิด (จาก 422) — แปะใต้ช่องนั้นตรงๆ
   Map<String, List<String>> _serverErrors = const {};
 
+  /// ช่องตัวเลขของพารามิเตอร์กลยุทธ์ — สร้างตามคีย์เมื่อถูกวาดครั้งแรก
+  /// (ทุกกลยุทธ์มีชุดคีย์ต่างกัน สร้างล่วงหน้าทั้งหมดไม่ได้)
+  final Map<String, TextEditingController> _paramCtrls = {};
+
+  /// กางส่วน "ตั้งค่าขั้นสูง" อยู่ไหม — ปิดไว้ก่อน ผู้ใช้ทั่วไปเห็นเฉพาะช่องหลัก
+  bool _showAdvanced = false;
+
   @override
   void initState() {
     super.initState();
@@ -3607,6 +3622,9 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
     _stopLoss.dispose();
     _takeProfit.dispose();
     _dailyLoss.dispose();
+    for (final c in _paramCtrls.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -3632,21 +3650,152 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
         : widget.catalog.timeframes;
   }
 
-  bool _flag(String key, bool fallback) =>
-      _draft.params[key] as bool? ?? fallback;
+  /// ค่าสวิตช์ — บอทเก่าอาจเก็บเป็น 1/0 หรือไม่มีคีย์ (เซิร์ฟเวอร์รุ่นก่อน) ต้องอ่านให้รอด
+  bool _flag(String key, bool fallback) {
+    final v = _draft.params[key];
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    return fallback;
+  }
 
-  void _setFlag(String key, bool value) {
+  /// แก้ค่าเอง = ไม่ใช่เทมเพลตเป๊ะแล้ว (ชิปเทมเพลตเลิกไฮไลต์ แต่ค่าที่แก้ไม่หาย)
+  void _setParam(String key, dynamic value) {
     setState(() {
       _draft = _draft.copyWith(
         params: <String, dynamic>{..._draft.params, key: value},
+        clearTemplate: true,
       );
     });
+  }
+
+  /// ชุดช่องของกลยุทธ์ที่เลือก — สวิตช์ร่วม (ข่าว/AI เลือกเหรียญ/AI ร่วมตัดสิน) รวมอยู่ด้วย
+  List<StrategyParam> _specs() {
+    final s = widget.catalog.strategy(_draft.strategy);
+    if (s == null) return widget.catalog.commonParams;
+    return s.formSpecs(widget.catalog.commonParams);
+  }
+
+  String _paramText(StrategyParam spec) {
+    final v = _draft.params[spec.key] ?? spec.defaultValue;
+    if (v is num) return _plain(v.toDouble());
+    return v?.toString() ?? '';
+  }
+
+  TextEditingController _ctrlFor(StrategyParam spec) =>
+      _paramCtrls.putIfAbsent(spec.key, () {
+        final c = TextEditingController(text: _paramText(spec));
+        // พิมพ์ค่าต่างจากที่เทมเพลตให้ = ตั้งเองแล้ว (ชิปเทมเพลตต้องเลิกไฮไลต์)
+        c.addListener(() {
+          if (_draft.template != null && c.text != _paramText(spec) && mounted) {
+            setState(() => _draft = _draft.copyWith(clearTemplate: true));
+          }
+        });
+        return c;
+      });
+
+  /// draft เปลี่ยนจากข้างนอก (เปลี่ยนกลยุทธ์/กดเทมเพลต) → ช่องตัวเลขต้องตามให้ทัน
+  void _syncParamCtrls() {
+    for (final spec in _specs()) {
+      if (!spec.isNumber) continue;
+      final c = _paramCtrls[spec.key];
+      if (c != null && c.text != _paramText(spec)) c.text = _paramText(spec);
+    }
+  }
+
+  void _applyTemplate(StrategyTemplate t) {
+    final s = widget.catalog.strategy(_draft.strategy);
+    if (s == null) return;
+    setState(() {
+      _draft = _draft.applyTemplate(t, s, widget.catalog);
+      _maxPosition.text = _plain(_draft.maxPositionUsd);
+      _stopLoss.text = _plain(_draft.stopLossPct);
+      _takeProfit.text = _plain(_draft.takeProfitPct);
+      _dailyLoss.text = _plain(_draft.maxDailyLossUsd);
+    });
+    _syncParamCtrls();
+  }
+
+  /// อ่านช่องตัวเลขทุกช่องกลับเข้า draft ก่อนบันทึก — clamp ตาม min/max ของแคตตาล็อก
+  /// (เซิร์ฟเวอร์ clamp ซ้ำอยู่แล้ว แต่ผู้ใช้ควรเห็นค่าที่จะถูกใช้จริงตั้งแต่ก่อนกด)
+  Map<String, dynamic> _collectParams() {
+    final out = <String, dynamic>{..._draft.params};
+    for (final spec in _specs()) {
+      if (!spec.isNumber) continue;
+      final c = _paramCtrls[spec.key];
+      if (c == null) continue;
+      var v = double.tryParse(c.text.trim().replaceAll(',', ''));
+      if (v == null) {
+        final d = spec.defaultValue;
+        v = d is num ? d.toDouble() : 0.0;
+      }
+      final lo = spec.min;
+      final hi = spec.max;
+      if (lo != null && v < lo) v = lo;
+      if (hi != null && v > hi) v = hi;
+      out[spec.key] = v;
+    }
+    return out;
+  }
+
+  /// ช่องพารามิเตอร์ตามชนิด — สวิตช์ / ตัวเลือก / ตัวเลข — แยกกลุ่มหลัก/ขั้นสูง
+  List<Widget> _paramWidgets(bool th, {required bool advanced}) {
+    final out = <Widget>[];
+    for (final spec in _specs()) {
+      if (spec.isAdvanced != advanced) continue;
+      if (spec.isBool) {
+        out.add(_SwitchRow(
+          title: spec.labelFor(th),
+          value: _flag(spec.key, spec.defaultValue == true),
+          onChanged: (v) => _setParam(spec.key, v),
+        ));
+      } else if (spec.isSelect) {
+        final current = _draft.params[spec.key]?.toString() ??
+            spec.defaultValue?.toString();
+        out.add(Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _FieldLabel(spec.labelFor(th)),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: spec.options
+                    .map((o) => _SmallChip(
+                          label: o,
+                          selected: o == current,
+                          onTap: () => _setParam(spec.key, o),
+                        ))
+                    .toList(),
+              ),
+            ],
+          ),
+        ));
+      } else if (spec.isNumber) {
+        out.add(Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: _NumberField(
+            label: spec.labelFor(th),
+            controller: _ctrlFor(spec),
+            suffix: spec.unit,
+          ),
+        ));
+      }
+    }
+    return out;
   }
 
   /// เปลี่ยนกลยุทธ์ = พารามิเตอร์ชุดเดิมใช้ไม่ได้ ต้องรีเซ็ตพร้อมดันกรอบเวลา
   /// ให้อยู่ในชุดที่กลยุทธ์ใหม่รองรับ (ไม่งั้นโดน 422 ตอนกดบันทึก)
   void _pickStrategy(AiBotStrategy s) {
-    setState(() => _draft = _draft.withStrategy(s, widget.catalog));
+    setState(() {
+      _draft = _draft.withStrategy(s, widget.catalog);
+      _maxPosition.text = _plain(_draft.maxPositionUsd);
+      _stopLoss.text = _plain(_draft.stopLossPct);
+      _takeProfit.text = _plain(_draft.takeProfitPct);
+      _dailyLoss.text = _plain(_draft.maxDailyLossUsd);
+    });
+    _syncParamCtrls();
   }
 
   double? _read(TextEditingController c) =>
@@ -3680,6 +3829,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
 
     final draft = _draft.copyWith(
       name: name,
+      params: _collectParams(),
       maxPositionUsd: _clamp(pos, limits.maxPositionUsd),
       stopLossPct: _clamp(sl, limits.stopLossPct),
       takeProfitPct: _clamp(tp, limits.takeProfitPct),
@@ -3912,6 +4062,35 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                             .toList(),
                       ),
 
+                      // เทมเพลตที่ทีมงาน backtest ไว้ — กดครั้งเดียวได้ทั้งกรอบเวลา พารามิเตอร์ กรอบเสี่ยง
+                      if (selected != null && selected.templates.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        _FieldLabel(th ? 'เทมเพลตที่ทีมงานตั้งให้' : 'Team presets'),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: selected.templates
+                              .map((t) => _SmallChip(
+                                    label: t.label(th),
+                                    selected: t.code == _draft.template,
+                                    onTap: () => _applyTemplate(t),
+                                  ))
+                              .toList(),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          selected.template(_draft.template)?.tagline(th) ??
+                              (th
+                                  ? 'ตั้งค่าเอง — แก้ช่องไหนก็ได้ด้านล่าง'
+                                  : 'Custom — tweak any field below'),
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: AppColors.textTertiary,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+
                       const SizedBox(height: 18),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
@@ -3985,21 +4164,56 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                       ),
                       _fieldIssue('max_daily_loss_usd'),
 
+                      /*
+                       * พารามิเตอร์ของกลยุทธ์ — วาดจากแคตตาล็อก ไม่ฮาร์ดโค้ด
+                       *
+                       * เดิมมีแค่สองสวิตช์ตายตัว ช่องอื่นทั้งหมด (รวม "ให้ AI ร่วมตัดสินใจ")
+                       * ถูกส่งเป็นค่าปริยายเงียบๆ โดยผู้ใช้ไม่รู้ว่ามีให้ตั้ง — ต่างจากหน้าเว็บ
+                       * ตอนนี้กลุ่มหลักโชว์เสมอ กลุ่มขั้นสูงซ่อนใต้ปุ่มกาง เหมือนเว็บทุกช่อง
+                       */
                       const SizedBox(height: 16),
-                      _SwitchRow(
-                        title: th
-                            ? 'หยุดเทรดช่วงข่าวแรง'
-                            : 'Pause on high-impact news',
-                        value: _flag('news_filter', true),
-                        onChanged: (v) => _setFlag('news_filter', v),
+                      Text(
+                        th ? 'พารามิเตอร์กลยุทธ์' : 'Strategy parameters',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                      _SwitchRow(
-                        title: th
-                            ? 'ให้ AI เลือกเหรียญให้'
-                            : 'Let AI pick the coin',
-                        value: _flag('auto_pair', false),
-                        onChanged: (v) => _setFlag('auto_pair', v),
-                      ),
+                      const SizedBox(height: 4),
+                      ..._paramWidgets(th, advanced: false),
+                      if (_specs().any((s) => s.isAdvanced)) ...[
+                        const SizedBox(height: 10),
+                        GestureDetector(
+                          onTap: () =>
+                              setState(() => _showAdvanced = !_showAdvanced),
+                          behavior: HitTestBehavior.opaque,
+                          child: Row(
+                            children: [
+                              Icon(
+                                _showAdvanced
+                                    ? Icons.expand_less_rounded
+                                    : Icons.expand_more_rounded,
+                                size: 18,
+                                color: AppColors.textTertiary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                th ? 'ตั้งค่าขั้นสูง' : 'Advanced settings',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (_showAdvanced) ...[
+                          const SizedBox(height: 4),
+                          ..._paramWidgets(th, advanced: true),
+                        ],
+                      ],
 
                       if (_formError != null) ...[
                         const SizedBox(height: 12),

@@ -132,6 +132,9 @@ class StrategyParam {
   final double? step;
   final List<String> options;
 
+  /// `basic` = โชว์เสมอ · `advanced` = ซ่อนไว้ใต้ "ตั้งค่าขั้นสูง" (ตรงกับหน้าเว็บ)
+  final String group;
+
   const StrategyParam({
     required this.key,
     required this.label,
@@ -142,6 +145,7 @@ class StrategyParam {
     this.max,
     this.step,
     this.options = const [],
+    this.group = 'basic',
   });
 
   factory StrategyParam.fromJson(Map<String, dynamic> json) {
@@ -157,14 +161,71 @@ class StrategyParam {
       max: _dn(json['max']),
       step: _dn(json['step']),
       options: _strList(json['options']),
+      group: _s(json['group'], 'basic'),
     );
   }
 
   bool get isNumber => type == 'number';
   bool get isBool => type == 'bool';
   bool get isSelect => type == 'select';
+  bool get isAdvanced => group == 'advanced';
 
   String labelFor(bool isThai) => isThai ? label : labelEn;
+
+  /// หน่วยที่แสดงท้ายช่องตัวเลข — เดาจากชื่อคีย์ตามแบบแผนของแคตตาล็อก
+  String get unit {
+    if (key.endsWith('_pct')) return '%';
+    if (key.endsWith('_usd')) return 'USD';
+    if (key.endsWith('_bps')) return 'bps';
+    if (key.endsWith('_hours')) return 'h';
+    if (key.endsWith('_bars')) return 'bars';
+    return '';
+  }
+}
+
+/// ชุดตั้งค่าที่ทีมงาน backtest ไว้ให้ (conservative / balanced / aggressive)
+///
+/// ส่ง `template` ไปกับคำขอสร้าง/แก้บอทได้เลย — เซิร์ฟเวอร์ใช้เป็นฐานแล้วให้
+/// `params`/`risk` ที่ส่งไปทับ จึงส่งทั้งคู่ได้โดยไม่ขัดกัน
+class StrategyTemplate {
+  final String code;
+  final String name;
+  final String nameTh;
+  final String taglineEn;
+  final String taglineTh;
+  final String timeframe;
+  final Map<String, dynamic> params;
+  final Map<String, dynamic> risk;
+
+  const StrategyTemplate({
+    required this.code,
+    required this.name,
+    required this.nameTh,
+    required this.taglineEn,
+    required this.taglineTh,
+    required this.timeframe,
+    required this.params,
+    required this.risk,
+  });
+
+  factory StrategyTemplate.fromJson(Map<String, dynamic> json) {
+    final code = _s(json['code']);
+    final name = _s(json['name'], code);
+    return StrategyTemplate(
+      code: code,
+      name: name,
+      nameTh: _s(json['name_th'], name),
+      taglineEn: _s(json['tagline_en'], _s(json['tagline_th'])),
+      taglineTh: _s(json['tagline_th'], _s(json['tagline_en'])),
+      timeframe: _s(json['timeframe'], '1h'),
+      params: _map(json['params']) ?? const {},
+      risk: _map(json['risk']) ?? const {},
+    );
+  }
+
+  String label(bool isThai) => isThai ? nameTh : name;
+
+  String tagline(bool isThai) => isThai ? taglineTh : taglineEn;
 }
 
 /// หนึ่งกลยุทธ์
@@ -187,6 +248,15 @@ class AiBotStrategy {
   final String? unavailableReason;
   final String? unavailableReasonEn;
 
+  /// เทมเพลตที่ทีมงาน backtest ไว้ — ว่างได้สำหรับกลยุทธ์ที่ยังไม่มี
+  final List<StrategyTemplate> templates;
+
+  /// กรอบเวลาที่ backtest แล้วชนะต้นทุน — ค่าตั้งต้นของฟอร์ม (null = ใช้ตัวแรกในรายการ)
+  final String? defaultTimeframe;
+
+  /// ถอดออกจากการขายแล้ว (วัดจริงแล้วแพ้) — สร้างใหม่ไม่ได้ แต่บอทเก่ายังอ่านชื่อได้
+  final bool retired;
+
   const AiBotStrategy({
     required this.code,
     required this.name,
@@ -201,6 +271,9 @@ class AiBotStrategy {
     required this.available,
     this.unavailableReason,
     this.unavailableReasonEn,
+    this.templates = const [],
+    this.defaultTimeframe,
+    this.retired = false,
   });
 
   factory AiBotStrategy.fromJson(Map<String, dynamic> json) {
@@ -223,7 +296,28 @@ class AiBotStrategy {
       available: json['available'] != false,
       unavailableReason: _sn(json['unavailable_reason']),
       unavailableReasonEn: _sn(json['unavailable_reason_en']),
+      templates: _mapList(
+        json['templates'],
+      ).map(StrategyTemplate.fromJson).toList(growable: false),
+      defaultTimeframe: _sn(json['default_timeframe']),
+      retired: json['retired'] == true,
     );
+  }
+
+  StrategyTemplate? template(String? code) {
+    if (code == null) return null;
+    for (final t in templates) {
+      if (t.code == code) return t;
+    }
+    return null;
+  }
+
+  /// กรอบเวลาที่ควรเริ่มด้วย — ของที่ backtest แล้ว ไม่ใช่ตัวแรกในรายการเฉยๆ
+  String preferredTimeframe(List<String> fallback) {
+    final d = defaultTimeframe;
+    if (d != null && timeframes.contains(d)) return d;
+    if (timeframes.isNotEmpty) return timeframes.first;
+    return fallback.isNotEmpty ? fallback.first : '1h';
   }
 
   String label(bool isThai) => isThai ? nameTh : name;
@@ -675,6 +769,13 @@ class AiBot {
   final BotPosition? position;
   final DateTime? createdAt;
 
+  /// "ออนไลน์จริง" ตามที่เซิร์ฟเวอร์ตัดสินจากสัญญาณชีพของวอร์กเกอร์
+  /// (null = เซิร์ฟเวอร์รุ่นเก่ายังไม่ส่งมา → ถอยไปดู [isStale] จากเวลาแทน)
+  final bool? online;
+
+  /// worker_silent · bot_stale · not_running · banned — null เมื่อออนไลน์
+  final String? offlineReason;
+
   const AiBot({
     required this.id,
     required this.name,
@@ -696,6 +797,8 @@ class AiBot {
     this.lastReason,
     this.position,
     this.createdAt,
+    this.online,
+    this.offlineReason,
   });
 
   factory AiBot.fromJson(Map<String, dynamic> json) {
@@ -723,10 +826,31 @@ class AiBot {
       lastReason: _sn(json['last_reason']),
       position: pos == null ? null : BotPosition.fromJson(pos),
       createdAt: _dt(json['created_at']),
+      online: json['online'] is bool ? json['online'] as bool : null,
+      offlineReason: _sn(json['offline_reason']),
     );
   }
 
   bool get isRunning => status == 'running';
+
+  /// running แต่วอร์กเกอร์ไม่ได้เดินให้ — เซิร์ฟเวอร์ดับ/ล็อกค้าง ไม่ใช่ผู้ใช้กดพัก
+  bool get isOffline => isRunning && online == false;
+
+  /// เหตุผลที่ออฟไลน์ในภาษาคน — ใช้ตอน [isOffline] เท่านั้น
+  String offlineText(bool isThai) {
+    switch (offlineReason) {
+      case 'worker_silent':
+        return isThai
+            ? 'วอร์กเกอร์เงียบ — ระบบกำลังกู้คืนให้เอง ไม่ต้องกดเริ่มใหม่'
+            : 'Worker silent — recovering automatically, no restart needed';
+      case 'bot_stale':
+        return isThai
+            ? 'ไม่ได้รอบคิดตามกำหนด — ระบบกำลังตรวจสอบ'
+            : 'Missed its scheduled cycles — being checked';
+      default:
+        return isThai ? 'ออฟไลน์' : 'Offline';
+    }
+  }
   bool get isPaused => status == 'paused';
   bool get isStopped => status == 'stopped';
   bool get isLive => mode == 'live';
@@ -755,6 +879,8 @@ class AiBot {
   /// ไฟเขียวต้องหมายถึง "เดินอยู่จริง" ไม่ใช่ "ผู้ใช้กดเปิดไว้" —
   /// ตัวจับเวลาฝั่งเซิร์ฟเวอร์เคยตายเงียบมาแล้ว
   bool get isStale {
+    // เซิร์ฟเวอร์ตัดสินให้แล้วจากสัญญาณชีพ — เชื่อถือกว่าการนับนาทีบนเครื่อง
+    if (isOffline) return true;
     final m = minutesSinceRun;
     return m != null && m >= 10;
   }
@@ -793,6 +919,8 @@ class AiBot {
     lastReason: lastReason,
     position: position,
     createdAt: createdAt,
+    online: online,
+    offlineReason: offlineReason,
   );
 }
 
@@ -2014,6 +2142,9 @@ class AiBotDraft {
   final double takeProfitPct;
   final double maxDailyLossUsd;
 
+  /// รหัสเทมเพลตที่ใช้เป็นฐาน (null = ตั้งเอง) — ส่งไปให้เซิร์ฟเวอร์รู้ที่มาด้วย
+  final String? template;
+
   const AiBotDraft({
     required this.name,
     required this.pair,
@@ -2024,9 +2155,11 @@ class AiBotDraft {
     required this.stopLossPct,
     required this.takeProfitPct,
     required this.maxDailyLossUsd,
+    this.template,
   });
 
-  /// ฟอร์มเปล่าสำหรับบอทตัวใหม่ — ค่าเริ่มต้นทั้งหมดมาจากแคตตาล็อก
+  /// ฟอร์มเปล่าสำหรับบอทตัวใหม่ — เริ่มจากเทมเพลต `balanced` ถ้ากลยุทธ์มี
+  /// (ชุดที่ทีมงาน backtest แล้ว) ไม่งั้นค่าเริ่มต้นจากแคตตาล็อก
   factory AiBotDraft.blank({
     required AiBotCatalog catalog,
     required AiBotStrategy strategy,
@@ -2034,20 +2167,51 @@ class AiBotDraft {
     required String pair,
   }) {
     final limits = catalog.limits;
-    final tf = strategy.timeframes.isNotEmpty
-        ? strategy.timeframes.first
-        : (catalog.timeframes.isNotEmpty ? catalog.timeframes.first : '1h');
 
-    return AiBotDraft(
+    final base = AiBotDraft(
       name: name,
       pair: pair,
       strategy: strategy.code,
-      timeframe: tf,
+      timeframe: strategy.preferredTimeframe(catalog.timeframes),
       params: strategy.defaultParams(catalog.commonParams),
       maxPositionUsd: limits.maxPositionUsd.defaultValue,
       stopLossPct: limits.stopLossPct.defaultValue,
       takeProfitPct: limits.takeProfitPct.defaultValue,
       maxDailyLossUsd: limits.maxDailyLossUsd.defaultValue,
+    );
+
+    final balanced = strategy.template('balanced');
+    return balanced == null ? base : base.applyTemplate(balanced, strategy, catalog);
+  }
+
+  /// ใช้เทมเพลตเป็นฐาน: กรอบเวลา + พารามิเตอร์ + กรอบเสี่ยงของเทมเพลตทับค่าเดิม
+  /// (คีย์ที่เทมเพลตไม่ได้ระบุยังใช้ค่าปริยายของกลยุทธ์ เหมือนที่เซิร์ฟเวอร์ทำ)
+  AiBotDraft applyTemplate(
+    StrategyTemplate t,
+    AiBotStrategy strategy,
+    AiBotCatalog catalog,
+  ) {
+    final merged = <String, dynamic>{
+      ...strategy.defaultParams(catalog.commonParams),
+      ...t.params,
+      // สวิตช์ร่วมที่ผู้ใช้ตั้งไว้แล้ว (ข่าว/AI เลือกเหรียญ/AI ร่วมตัดสิน) ไม่ควรหายเพราะกดเทมเพลต
+      for (final p in catalog.commonParams)
+        if (params.containsKey(p.key) && !t.params.containsKey(p.key)) p.key: params[p.key],
+    };
+
+    double pick(String key, double current) {
+      final v = t.risk[key];
+      return v is num ? v.toDouble() : current;
+    }
+
+    return copyWith(
+      timeframe: strategy.timeframes.contains(t.timeframe) ? t.timeframe : timeframe,
+      params: merged,
+      maxPositionUsd: pick('max_position_usd', maxPositionUsd),
+      stopLossPct: pick('stop_loss_pct', stopLossPct),
+      takeProfitPct: pick('take_profit_pct', takeProfitPct),
+      maxDailyLossUsd: pick('max_daily_loss_usd', maxDailyLossUsd),
+      template: t.code,
     );
   }
 
@@ -2066,6 +2230,7 @@ class AiBotDraft {
     stopLossPct: bot.risk.stopLossPct,
     takeProfitPct: bot.risk.takeProfitPct,
     maxDailyLossUsd: bot.risk.maxDailyLossUsd,
+    // บอทเดิม = ค่าที่ผู้ใช้ตั้งไว้แล้ว ไม่ผูกกับเทมเพลตใด จนกว่าจะกดเลือกใหม่
   );
 
   AiBotDraft copyWith({
@@ -2078,6 +2243,8 @@ class AiBotDraft {
     double? stopLossPct,
     double? takeProfitPct,
     double? maxDailyLossUsd,
+    String? template,
+    bool clearTemplate = false,
   }) => AiBotDraft(
     name: name ?? this.name,
     pair: pair ?? this.pair,
@@ -2088,20 +2255,21 @@ class AiBotDraft {
     stopLossPct: stopLossPct ?? this.stopLossPct,
     takeProfitPct: takeProfitPct ?? this.takeProfitPct,
     maxDailyLossUsd: maxDailyLossUsd ?? this.maxDailyLossUsd,
+    template: clearTemplate ? null : (template ?? this.template),
   );
 
-  /// เปลี่ยนกลยุทธ์ = พารามิเตอร์ชุดเดิมใช้ไม่ได้แล้ว ต้องรีเซ็ตเป็นค่าเริ่มต้น
-  /// ของกลยุทธ์ใหม่ และดันกรอบเวลาให้อยู่ในชุดที่กลยุทธ์นั้นรองรับ
+  /// เปลี่ยนกลยุทธ์ = พารามิเตอร์ชุดเดิมใช้ไม่ได้แล้ว — เริ่มจากเทมเพลต balanced
+  /// ของกลยุทธ์ใหม่ (ถ้ามี) และดันกรอบเวลาให้อยู่ในชุดที่กลยุทธ์นั้นรองรับ
   /// (ไม่งั้นผู้ใช้เลือก dca + 1m แล้วโดน 422 ตอนกดบันทึก)
   AiBotDraft withStrategy(AiBotStrategy next, AiBotCatalog catalog) {
-    final tf = next.timeframes.contains(timeframe)
-        ? timeframe
-        : (next.timeframes.isNotEmpty ? next.timeframes.first : timeframe);
-    return copyWith(
+    final reset = copyWith(
       strategy: next.code,
-      timeframe: tf,
+      timeframe: next.preferredTimeframe(catalog.timeframes),
       params: next.defaultParams(catalog.commonParams),
+      clearTemplate: true,
     );
+    final balanced = next.template('balanced');
+    return balanced == null ? reset : reset.applyTemplate(balanced, next, catalog);
   }
 
   /// คู่เทรดในรูปที่เซิร์ฟเวอร์ยอมรับ (ต้องมี `/` ไม่ใช่ `-`)
@@ -2123,6 +2291,8 @@ class AiBotDraft {
     'pair': normalizedPair,
     'strategy': strategy,
     'timeframe': timeframe,
+    // เทมเพลตเป็นฐาน แล้ว params/risk ด้านล่างทับ — ตรงกับที่เซิร์ฟเวอร์ประกอบ
+    if (template != null) 'template': template,
     'params': params,
     'risk': BotRisk.payload(
       maxPositionUsd: maxPositionUsd,
@@ -2131,6 +2301,207 @@ class AiBotDraft {
       maxDailyLossUsd: maxDailyLossUsd,
     ),
   };
+}
+
+// ══════════════════════════════════════════════════════════════════
+// กระเป๋าบอท — กระเป๋าแยกที่บอทใช้ในโหมดจริง (GET/POST /ai-bot/wallet)
+// ══════════════════════════════════════════════════════════════════
+
+/// สินทรัพย์หนึ่งตัวในกระเป๋าบอท พร้อมยอดล่าสุด
+class BotWalletAsset {
+  final String symbol;
+  final String type; // native | erc20
+  final String? address;
+  final int decimals;
+  final double minWithdraw;
+  final double balance;
+
+  const BotWalletAsset({
+    required this.symbol,
+    required this.type,
+    this.address,
+    required this.decimals,
+    required this.minWithdraw,
+    required this.balance,
+  });
+
+  factory BotWalletAsset.fromJson(Map<String, dynamic> json) => BotWalletAsset(
+    symbol: _s(json['symbol']),
+    type: _s(json['type'], 'erc20'),
+    address: _sn(json['address']),
+    decimals: _i(json['decimals'], 18),
+    minWithdraw: _dn(json['min_withdraw']) ?? 0,
+    balance: _dn(json['balance']) ?? 0,
+  );
+
+  bool get isNative => type == 'native';
+}
+
+/// กระเป๋าบอทของผู้ใช้ — ที่อยู่ให้โอนเข้า + ยอด + กฎถอน
+class BotWalletInfo {
+  final String address;
+  final int chainId;
+  final String chainName;
+  final String? explorerUrl;
+  final String status; // active | locked
+  final Map<String, double> balances;
+  final DateTime? balancesAt;
+  final List<BotWalletAsset> assets;
+  final String nativeSymbol;
+  final double gasReserve;
+  final double withdrawDailyCap;
+  final bool hasPendingWithdraw;
+
+  const BotWalletInfo({
+    required this.address,
+    required this.chainId,
+    required this.chainName,
+    this.explorerUrl,
+    required this.status,
+    required this.balances,
+    this.balancesAt,
+    required this.assets,
+    required this.nativeSymbol,
+    required this.gasReserve,
+    required this.withdrawDailyCap,
+    required this.hasPendingWithdraw,
+  });
+
+  factory BotWalletInfo.fromJson(Map<String, dynamic> json) {
+    final raw = _map(json['balances']) ?? const {};
+    return BotWalletInfo(
+      address: _s(json['address']),
+      chainId: _i(json['chain_id'], 56),
+      chainName: _s(json['chain_name'], 'BSC'),
+      explorerUrl: _sn(json['explorer_url']),
+      status: _s(json['status'], 'active'),
+      balances: {
+        for (final e in raw.entries) e.key: _dn(e.value) ?? 0,
+      },
+      balancesAt: _dt(json['balances_at']),
+      assets: _mapList(json['assets'])
+          .map(BotWalletAsset.fromJson)
+          .toList(growable: false),
+      nativeSymbol: _s(json['native_symbol'], 'BNB'),
+      gasReserve: _dn(json['gas_reserve']) ?? 0,
+      withdrawDailyCap: _dn(json['withdraw_daily_cap']) ?? 0,
+      hasPendingWithdraw: json['has_pending_withdraw'] == true,
+    );
+  }
+
+  bool get isActive => status == 'active';
+
+  double balanceOf(String symbol) => balances[symbol.toUpperCase()] ?? 0;
+}
+
+/// รายการโอนของกระเป๋าบอท (ถอนกลับหาเจ้าของ / ฝากที่ตรวจพบ)
+class BotWalletTransfer {
+  final int id;
+  final String direction; // withdraw | deposit
+  final String asset;
+  final double amount;
+  final String toAddress;
+  final String status; // queued | signing | broadcasting | confirmed | failed | cancelled
+  final String? txHash;
+  final String? txUrl;
+  final int confirmations;
+  final String? failureReason;
+  final bool cancellable;
+  final DateTime? createdAt;
+
+  const BotWalletTransfer({
+    required this.id,
+    required this.direction,
+    required this.asset,
+    required this.amount,
+    required this.toAddress,
+    required this.status,
+    this.txHash,
+    this.txUrl,
+    required this.confirmations,
+    this.failureReason,
+    required this.cancellable,
+    this.createdAt,
+  });
+
+  factory BotWalletTransfer.fromJson(Map<String, dynamic> json) =>
+      BotWalletTransfer(
+        id: _i(json['id'], 0),
+        direction: _s(json['direction'], 'withdraw'),
+        asset: _s(json['asset']),
+        amount: _dn(json['amount']) ?? 0,
+        toAddress: _s(json['to_address']),
+        status: _s(json['status'], 'queued'),
+        txHash: _sn(json['tx_hash']),
+        txUrl: _sn(json['tx_url']),
+        confirmations: _i(json['confirmations'], 0),
+        failureReason: _sn(json['failure_reason']),
+        cancellable: json['cancellable'] == true,
+        createdAt: _dt(json['created_at']),
+      );
+
+  String statusLabel(bool isThai) {
+    switch (status) {
+      case 'queued':
+        return isThai ? 'รอส่ง' : 'Queued';
+      case 'signing':
+        return isThai ? 'กำลังเซ็น' : 'Signing';
+      case 'broadcasting':
+        return isThai ? 'รอยืนยันบนเชน' : 'Awaiting confirmation';
+      case 'confirmed':
+        return isThai ? 'สำเร็จ' : 'Confirmed';
+      case 'failed':
+        return isThai ? 'ล้มเหลว' : 'Failed';
+      case 'cancelled':
+        return isThai ? 'ยกเลิกแล้ว' : 'Cancelled';
+      default:
+        return status;
+    }
+  }
+
+  bool get isDone => status == 'confirmed';
+  bool get isFailed => status == 'failed';
+}
+
+/// สถานะรวมของกระเป๋าบอท — `wallet` เป็น null จนกว่าผู้ใช้จะกดสร้าง
+class BotWalletState {
+  final bool enabled;
+  final int chainId;
+  final BotWalletInfo? wallet;
+  final List<BotWalletTransfer> transfers;
+
+  const BotWalletState({
+    required this.enabled,
+    required this.chainId,
+    this.wallet,
+    this.transfers = const [],
+  });
+
+  factory BotWalletState.fromJson(Map<String, dynamic> json) {
+    final w = _map(json['wallet']);
+    return BotWalletState(
+      enabled: json['enabled'] == true,
+      chainId: _i(json['chain_id'], 56),
+      wallet: w == null ? null : BotWalletInfo.fromJson(w),
+      transfers: _mapList(json['transfers'])
+          .map(BotWalletTransfer.fromJson)
+          .toList(growable: false),
+    );
+  }
+
+  /// endpoint สร้าง/รีเฟรช/ถอน คืน { wallet?, transfers? } บางส่วน — รวมเข้าของเดิม
+  BotWalletState merge(Map<String, dynamic> payload) {
+    final w = _map(payload['wallet']);
+    final t = payload['transfers'];
+    return BotWalletState(
+      enabled: enabled,
+      chainId: chainId,
+      wallet: w == null ? wallet : BotWalletInfo.fromJson(w),
+      transfers: t is List
+          ? _mapList(t).map(BotWalletTransfer.fromJson).toList(growable: false)
+          : transfers,
+    );
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════

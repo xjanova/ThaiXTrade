@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\AiBotConfig;
 use App\Models\AiBotPlan;
 use App\Services\AiBot\BotRunner;
+use App\Services\AiBot\WorkerHealth;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -28,8 +29,17 @@ class AiBotTick extends Command
 
     protected $description = 'รันบอท AI TRADE ที่กำลังทำงานหนึ่งรอบ';
 
-    public function handle(BotRunner $runner): int
+    public function handle(BotRunner $runner, WorkerHealth $health): int
     {
+        /*
+         * เต้นก่อนทำอะไรทั้งนั้น — แม้รอบนี้จะไม่มีบอทถึงคิวเลยก็ตาม
+         *
+         * สัญญาณชีพต้องบอกว่า "วอร์กเกอร์ยังถูกเรียกอยู่" ไม่ใช่ "มีบอทเดิน" สองอย่างนี้
+         * ต่างกัน: cron ตาย = เงียบสนิท · cron เดินแต่ไม่มีบอท = ยังเต้นปกติ
+         * ถ้าเต้นเฉพาะตอนมีบอท ยามเฝ้า (aibot:health) จะแยกสองกรณีนี้ไม่ออก
+         */
+        $health->beat($this->option('strategy') ?: null);
+
         /*
          * เรียงตามระดับแพลน — VIP ได้คิวก่อน ตามที่หน้าเช่าโฆษณาไว้
          *
@@ -81,6 +91,12 @@ class AiBotTick extends Command
                 Log::error('AI bot tick failed', ['bot' => $bot->id, 'error' => $e->getMessage()]);
                 $this->error("#{$bot->id} ล้มเหลว: {$e->getMessage()}");
             }
+
+            /*
+             * เต้นหลังบอทแต่ละตัว — รอบที่ยาว (บอทหลายสิบตัว ตลาดตอบช้า) จึงยังเต้น
+             * ต่อเนื่อง ยามเฝ้าจะไม่เข้าใจผิดว่าตายแล้วไปปลดล็อกกันซ้อนทั้งที่ยังเดินอยู่
+             */
+            $health->beat($this->option('strategy') ?: null);
         }
 
         $this->info(sprintf(

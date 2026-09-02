@@ -194,7 +194,64 @@ function applyData(candles) {
   maSeries.setData(calculateMA(candles, 20));
   emaSeries.setData(calculateEMA(candles, 12));
 
+  // ป้ายไม้และเส้นราคาของบอทต้องกลับมาหลังโหลดข้อมูลใหม่ (สลับ timeframe/คู่)
+  applyMarkers();
+  applyPriceLines();
+
   chart.timeScale().fitContent();
+}
+
+// ── ป้ายเข้า/ออกไม้ + เส้นราคาของบอท (ตั้งค่าจาก Flutter) ──
+//
+// เก็บไว้ในตัวแปรระดับหน้าเพื่อให้ applyData() วาดซ้ำได้หลัง setData
+// สีตามที่ตกลงไว้กับหน้าเว็บ: บอท = ฟ้า/ม่วง · ของผู้ใช้ = เขียว/แดง
+
+let botMarkers = [];
+let botPriceLines = [];
+let priceLineRefs = [];
+
+function applyMarkers() {
+  if (!candleSeries) return;
+  const list = botMarkers
+    .filter(m => m && Number.isFinite(Number(m.time)))
+    .sort((a, b) => Number(a.time) - Number(b.time))
+    .map(m => {
+      const isBuy = String(m.side).toLowerCase() === 'buy';
+      const isBot = m.source === 'bot';
+      const emphasize = isBot && m.emphasize === true;
+      return {
+        time: Math.floor(Number(m.time)),
+        position: isBuy ? 'belowBar' : 'aboveBar',
+        shape: isBuy ? 'arrowUp' : 'arrowDown',
+        color: isBot ? (isBuy ? '#38bdf8' : '#c084fc') : (isBuy ? '#00C853' : '#FF1744'),
+        text: emphasize ? (m.label || (isBuy ? 'BOT BUY' : 'BOT SELL')) : (isBot ? '' : (m.label || '')),
+        size: emphasize ? 2 : 1,
+      };
+    });
+  candleSeries.setMarkers(list);
+}
+
+function applyPriceLines() {
+  if (!candleSeries) return;
+  priceLineRefs.forEach(ref => { try { candleSeries.removePriceLine(ref); } catch (e) { /* ซีรีส์ถูกล้างไปแล้ว */ } });
+  priceLineRefs = [];
+  const styles = {
+    dashed: LightweightCharts.LineStyle.Dashed,
+    dotted: LightweightCharts.LineStyle.Dotted,
+    solid: LightweightCharts.LineStyle.Solid,
+  };
+  botPriceLines.forEach(line => {
+    const price = Number(line.price);
+    if (!Number.isFinite(price) || price <= 0) return;
+    priceLineRefs.push(candleSeries.createPriceLine({
+      price,
+      color: line.color || '#38bdf8',
+      lineWidth: line.lineWidth || 1,
+      lineStyle: styles[line.style] ?? LightweightCharts.LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: line.title || '',
+    }));
+  });
 }
 
 function connectWebSocket(symbol, interval) {
@@ -277,8 +334,19 @@ window.setIndicators = function(indicators) {
   emaSeries.applyOptions({ visible: arr.includes('EMA') });
 };
 
+window.setMarkers = function(markers) {
+  botMarkers = typeof markers === 'string' ? JSON.parse(markers) : (markers || []);
+  applyMarkers();
+};
+
+window.setPriceLines = function(lines) {
+  botPriceLines = typeof lines === 'string' ? JSON.parse(lines) : (lines || []);
+  applyPriceLines();
+};
+
 window.dispose = function() {
   disconnectWS();
+  priceLineRefs = [];
   if (chart) { chart.remove(); chart = null; }
 };
 

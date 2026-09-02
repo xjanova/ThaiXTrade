@@ -51,6 +51,13 @@ class AiBotEndpoints {
   static const String analytics = '/ai-bot/analytics';
   static const String advice = '/ai-bot/advice';
   static const String decisions = '/ai-bot/decisions';
+  static const String trades = '/ai-bot/trades';
+
+  // ── กระเป๋าบอท (กระเป๋าแยกสำหรับโหมดจริง) ──
+  static const String wallet = '/ai-bot/wallet';
+  static const String walletRefresh = '/ai-bot/wallet/refresh';
+  static const String walletWithdraw = '/ai-bot/wallet/withdraw';
+  static String walletCancel(int id) => '/ai-bot/wallet/withdraw/$id/cancel';
 
   static String bot(int id) => '/ai-bot/bots/$id';
   static String botState(int id) => '/ai-bot/bots/$id/state';
@@ -600,6 +607,102 @@ class AiBotApi {
       body: {'wallet_address': _normalize(wallet)},
     );
     return _asMap(res, AiBotDemo.fromJson);
+  }
+
+  /// ไม้ของบอททุกโหมดในคู่ที่ระบุ — เรียงเก่า→ใหม่ พร้อมปักบนกราฟ
+  ///
+  /// ต่างจาก `/demo` ที่ให้เฉพาะไม้กระดาษ 60 ไม้ล่าสุด — พอมีโหมดจริง กราฟต้องเห็นครบ
+  Future<ApiResult<List<DemoTrade>>> fetchTrades({
+    required String wallet,
+    String? pair,
+    int limit = 300,
+  }) async {
+    final guard = _wallet<List<DemoTrade>>(wallet);
+    if (guard != null) return guard;
+    final res = await _raw(
+      'GET',
+      AiBotEndpoints.trades,
+      query: {
+        'wallet_address': _normalize(wallet),
+        if (pair != null && pair.isNotEmpty) 'pair': pair,
+        'limit': '$limit',
+      },
+    );
+    return _asList(res, DemoTrade.fromJson);
+  }
+
+  // ── กระเป๋าบอท ────────────────────────────────────────────────
+
+  /// สถานะกระเป๋าบอท: เปิดฟีเจอร์ไหม · กระเป๋า (null = ยังไม่สร้าง) · รายการโอน
+  Future<ApiResult<BotWalletState>> fetchBotWallet(String wallet) async {
+    final guard = _wallet<BotWalletState>(wallet);
+    if (guard != null) return guard;
+    final res = await _raw(
+      'GET',
+      AiBotEndpoints.wallet,
+      query: {'wallet_address': _normalize(wallet)},
+    );
+    return _asMap(res, BotWalletState.fromJson);
+  }
+
+  /// สร้างกระเป๋าบอท (หนึ่งใบต่อกระเป๋าเจ้าของ — เรียกซ้ำได้ใบเดิม)
+  /// คืน payload บางส่วน { wallet, transfers } — ผู้เรียก merge เข้าของเดิม
+  Future<ApiResult<Map<String, dynamic>>> createBotWallet(String wallet) async {
+    final guard = _wallet<Map<String, dynamic>>(wallet);
+    if (guard != null) return guard;
+    final res = await _raw(
+      'POST',
+      AiBotEndpoints.wallet,
+      body: {'wallet_address': _normalize(wallet)},
+    );
+    return _asMap(res, (json) => json);
+  }
+
+  /// อ่านยอดจากเชนใหม่ตอนนี้
+  Future<ApiResult<Map<String, dynamic>>> refreshBotWallet(String wallet) async {
+    final guard = _wallet<Map<String, dynamic>>(wallet);
+    if (guard != null) return guard;
+    final res = await _raw(
+      'POST',
+      AiBotEndpoints.walletRefresh,
+      body: {'wallet_address': _normalize(wallet)},
+    );
+    return _asMap(res, (json) => json);
+  }
+
+  /// ขอถอนกลับกระเป๋าของตัวเอง — ไม่มีช่องปลายทางโดยตั้งใจ (เซิร์ฟเวอร์ก็ไม่รับ)
+  Future<ApiResult<Map<String, dynamic>>> withdrawBotWallet({
+    required String wallet,
+    required String asset,
+    required double amount,
+  }) async {
+    final guard = _wallet<Map<String, dynamic>>(wallet);
+    if (guard != null) return guard;
+    final res = await _raw(
+      'POST',
+      AiBotEndpoints.walletWithdraw,
+      body: {
+        'wallet_address': _normalize(wallet),
+        'asset': asset,
+        'amount': amount,
+      },
+    );
+    return _asMap(res, (json) => json);
+  }
+
+  /// ยกเลิกรายการถอนที่ยังไม่ถูกส่ง
+  Future<ApiResult<Map<String, dynamic>>> cancelBotWalletWithdraw({
+    required String wallet,
+    required int transferId,
+  }) async {
+    final guard = _wallet<Map<String, dynamic>>(wallet);
+    if (guard != null) return guard;
+    final res = await _raw(
+      'POST',
+      AiBotEndpoints.walletCancel(transferId),
+      body: {'wallet_address': _normalize(wallet)},
+    );
+    return _asMap(res, (json) => json);
   }
 
   /// สถิติย้อนหลัง (รวม · รายกลยุทธ์ · รายคู่ · รายระดับความเสี่ยงตอนเข้าไม้)

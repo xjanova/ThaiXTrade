@@ -248,9 +248,15 @@ watch(() => walletStore.address, (address) => {
                 <!-- บอทของฉัน — ยืดตามพื้นที่ที่การ์ดได้รับ แล้วเลื่อนข้างในเอง -->
                 <div v-if="bot.bots.value.length" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-1.5 mb-2.5 pr-0.5">
                     <div v-for="item in bot.bots.value" :key="item.id" class="ai-bot-row">
-                        <span :class="['w-1.5 h-1.5 rounded-full shrink-0',
-                            item.status === 'running' ? 'bg-trading-green animate-pulse'
-                                : item.status === 'paused' ? 'bg-amber-400' : 'bg-dark-600']"></span>
+                        <!-- เขียวเฉพาะเมื่อ "ออนไลน์จริง" (วอร์กเกอร์เต้น + ได้รอบคิด) ไม่ใช่แค่สถานะ running
+                             เซิร์ฟเวอร์ดับแล้วสถานะยัง running อยู่ ต้องเห็นเป็นแดง ไม่ใช่เขียวกะพริบต่อ -->
+                        <span
+                            :title="item.status === 'running' && item.online === false ? t('aiTrade.offline') : ''"
+                            :class="['w-1.5 h-1.5 rounded-full shrink-0',
+                                item.status === 'running'
+                                    ? (item.online === false ? 'bg-trading-red' : 'bg-trading-green animate-pulse')
+                                    : item.status === 'paused' ? 'bg-amber-400' : 'bg-dark-600']"
+                        ></span>
                         <span class="min-w-0 flex-1">
                             <span class="block text-[11px] text-white font-medium truncate">{{ item.name }}</span>
                             <span class="block text-[9px] text-dark-500 font-mono truncate">

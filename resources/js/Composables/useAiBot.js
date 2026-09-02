@@ -26,6 +26,21 @@ const needsVerification = ref(false);
 const demo = ref(null);
 const isLoadingDemo = ref(false);
 
+/*
+ * ไม้ของบอททุกโหมดสำหรับปักบนกราฟ — แยกจาก demo.trades เพราะ /demo ให้เฉพาะ
+ * ไม้กระดาษและตัดจำนวนไว้ พอเปิดโหมดจริงกราฟจะเห็นไม่ครบ
+ * เก็บเป็น { pair, items } เพื่อไม่เอาไม้ของคู่เก่าไปปักบนกราฟคู่ใหม่ระหว่างรอโหลด
+ */
+const trades = ref({ pair: null, items: [] });
+const isLoadingTrades = ref(false);
+
+/*
+ * กระเป๋าบอท — กระเป๋าแยกที่บอทใช้ในโหมดจริง { enabled, chain_id, wallet, transfers }
+ * เก็บระดับโมดูลเหมือนตัวอื่น: หน้า /ai-trade กับการ์ดในหน้าเทรดเห็นยอดเดียวกัน
+ */
+const botWallet = ref(null);
+const isLoadingBotWallet = ref(false);
+
 // คำแนะนำล่าสุดจากที่ปรึกษา AI { ok, provider, text, reason }
 // เก็บระดับโมดูลเพราะฝั่งเซิร์ฟเวอร์แคชไว้ 15 นาทีอยู่แล้ว — สลับหน้าไม่ควรยิงซ้ำ
 const advice = ref(null);
@@ -227,6 +242,100 @@ export function useAiBot() {
         return result;
     }
 
+    /** ไม้ของบอทในคู่ที่ระบุ (ทุกโหมด) — เรียงเก่าไปใหม่พร้อมปักกราฟได้ทันที */
+    async function loadTrades(pair, { limit = 300 } = {}) {
+        if (!wallet.value || !pair) return [];
+
+        isLoadingTrades.value = true;
+
+        try {
+            const { data } = await axios.get('/api/v1/ai-bot/trades', {
+                params: { wallet_address: wallet.value, pair, limit },
+            });
+            const items = Array.isArray(data?.data) ? data.data : [];
+            trades.value = { pair, items };
+            return items;
+        } catch (err) {
+            if (err?.response?.status === 403) needsVerification.value = true;
+            return [];
+        } finally {
+            isLoadingTrades.value = false;
+        }
+    }
+
+    // ── กระเป๋าบอท ───────────────────────────────────────────────────────────
+
+    /** สถานะกระเป๋าบอท + ยอด + รายการโอน (wallet = null ถ้ายังไม่ได้สร้าง) */
+    async function loadBotWallet() {
+        if (!wallet.value) return null;
+
+        isLoadingBotWallet.value = true;
+
+        try {
+            const { data } = await axios.get('/api/v1/ai-bot/wallet', {
+                params: { wallet_address: wallet.value },
+            });
+            botWallet.value = data?.data ?? null;
+            return botWallet.value;
+        } catch (err) {
+            if (err?.response?.status === 403) needsVerification.value = true;
+            return null;
+        } finally {
+            isLoadingBotWallet.value = false;
+        }
+    }
+
+    /** ผลจาก endpoint ของกระเป๋าบอทมีรูป { wallet?, transfers? } — รวมเข้า state โดยไม่ทับส่วนที่ไม่ได้ส่งมา */
+    function mergeBotWallet(payload) {
+        if (!payload) return;
+        botWallet.value = {
+            ...(botWallet.value || {}),
+            ...(payload.wallet ? { wallet: payload.wallet } : {}),
+            ...(Array.isArray(payload.transfers) ? { transfers: payload.transfers } : {}),
+        };
+    }
+
+    async function createBotWallet() {
+        const result = await mutate(address =>
+            axios.post('/api/v1/ai-bot/wallet', { wallet_address: address }),
+        { refresh: false });
+
+        if (result.ok) mergeBotWallet(result.data);
+
+        return result;
+    }
+
+    async function refreshBotWallet() {
+        const result = await mutate(address =>
+            axios.post('/api/v1/ai-bot/wallet/refresh', { wallet_address: address }),
+        { refresh: false });
+
+        if (result.ok) mergeBotWallet(result.data);
+
+        return result;
+    }
+
+    /** ขอถอนกลับกระเป๋าของตัวเอง — ไม่มีช่องปลายทางโดยตั้งใจ */
+    async function withdrawBotWallet(asset, amount) {
+        const result = await mutate(address =>
+            axios.post('/api/v1/ai-bot/wallet/withdraw', { wallet_address: address, asset, amount }),
+        { refresh: false });
+
+        if (result.ok) mergeBotWallet(result.data);
+
+        return result;
+    }
+
+    async function cancelBotWalletWithdraw(id) {
+        const result = await mutate(address =>
+            axios.post(`/api/v1/ai-bot/wallet/withdraw/${id}/cancel`, { wallet_address: address }),
+        { refresh: false });
+
+        if (result.ok) mergeBotWallet(result.data);
+
+        return result;
+    }
+
     // ── ตัวเดินบอทของแพลนฟรี ────────────────────────────────────────────────
 
     /** แพลนที่ถืออยู่ให้เซิร์ฟเวอร์เดินบอทให้ไหม */
@@ -378,6 +487,9 @@ export function useAiBot() {
 
     /** เกินสองเท่าของรอบที่ช้าที่สุด (5 นาที) = ผิดปกติพอที่จะเตือน */
     function isStale(item) {
+        // เซิร์ฟเวอร์ตัดสินให้แล้วจากสัญญาณชีพของวอร์กเกอร์ — เชื่อถือกว่าการนับนาทีฝั่งเบราว์เซอร์
+        if (item?.status === 'running' && item?.online === false) return true;
+
         const minutes = minutesSinceRun(item);
 
         return minutes !== null && minutes >= 10;
@@ -499,6 +611,8 @@ export function useAiBot() {
         isLoadingCatalog, isLoadingStatus, isWorking,
         wallet, isConnected,
         demo, isLoadingDemo,
+        trades, isLoadingTrades,
+        botWallet, isLoadingBotWallet,
         advice, isAskingAdvice,
         browserLoopActive, lastBrowserTick, browserTickLog,
         // derived
@@ -511,6 +625,8 @@ export function useAiBot() {
         loadCatalog, loadStatus, subscribe, cancel, claimWelcome, requestTopup,
         createBot, updateBot, setBotState, setBotMode, deleteBot,
         loadDemo, resetDemo, loadRisk, askAdvice, loadMarketView,
+        loadTrades,
+        loadBotWallet, createBotWallet, refreshBotWallet, withdrawBotWallet, cancelBotWalletWithdraw,
         startBrowserLoop, stopBrowserLoop, tickBot,
         costOf, canAfford, strategyByCode,
         // ป้ายชื่อตามภาษา

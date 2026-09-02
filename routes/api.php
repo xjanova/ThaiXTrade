@@ -520,6 +520,26 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
 
         Route::get('/demo', [AiBotController::class, 'demo']);
         Route::post('/demo/reset', [AiBotController::class, 'resetDemo']);
+
+        /*
+         * ไม้ของบอททุกโหมด — ป้ายเข้า/ออกบนกราฟของหน้าเทรดและแอพ
+         *
+         * /demo ให้เฉพาะไม้กระดาษและตัดจำนวนไว้ พอมีโหมดจริง กราฟจะเห็นไม่ครบ
+         * throttle สูงกว่ากลุ่มเพราะหน้าเทรดยิงซ้ำทุกครั้งที่สลับคู่
+         */
+        Route::get('/trades', [AiBotController::class, 'trades'])->middleware('throttle:60,1');
+
+        /*
+         * กระเป๋าบอท — กระเป๋าแยกที่บอทใช้ในโหมดจริง (ผู้ใช้โอนเข้า / ถอนกลับหาตัวเองเท่านั้น)
+         *
+         * สร้าง/ถอนอยู่หลังด่าน KYC เหมือนของที่ "ได้ของ" ตัวอื่น — กระเป๋าที่ถือเงินจริง
+         * ต้องรู้ว่าเป็นของใคร · ถอนจำกัด 5 ครั้ง/นาที เพราะทุกครั้งอ่านยอดจากเชน
+         */
+        Route::get('/wallet', [\App\Http\Controllers\Api\AiBotWalletController::class, 'show']);
+        Route::post('/wallet', [\App\Http\Controllers\Api\AiBotWalletController::class, 'store'])->middleware('kyc:ai_bot');
+        Route::post('/wallet/refresh', [\App\Http\Controllers\Api\AiBotWalletController::class, 'refresh'])->middleware('throttle:10,1');
+        Route::post('/wallet/withdraw', [\App\Http\Controllers\Api\AiBotWalletController::class, 'withdraw'])->middleware(['kyc:ai_bot', 'throttle:5,1']);
+        Route::post('/wallet/withdraw/{id}/cancel', [\App\Http\Controllers\Api\AiBotWalletController::class, 'cancel'])->where('id', '[0-9]+');
     });
 
     /*

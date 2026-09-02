@@ -90,18 +90,92 @@ const layout = useTradeLayout();
 const bot = useAiBot();
 const myTrades = useMyTrades();
 
+/*
+ * โหมดบอท — เจ้าของสั่ง "การเข้าไม้ ออกไม้ ต้องแสดงชัดเจนในเส้นกราฟเมื่อเปิดโหมดบอท"
+ *
+ * เปิด = ป้ายของบอทใหญ่ขึ้นพร้อมข้อความ + เส้นต้นทุน/SL/TP ของไม้ที่บอทถืออยู่
+ * จำไว้ต่อเครื่อง (localStorage) เปิดครั้งเดียวไม่ต้องเปิดใหม่ทุกครั้งที่เข้าหน้า
+ * ค่าปริยายเปิด — คนที่ไม่มีบอทไม่เห็นอะไรต่างอยู่แล้ว (ไม่มีไม้ของบอทให้วาด)
+ *
+ * โหมดบอทไม่แตะฟอร์มซื้อ/ขาย — ผู้ใช้ยังวางไม้เองได้ตามปกติ บอทใช้พอร์ต/กระเป๋าของมันเอง
+ */
+const BOT_MODE_KEY = 'tpix.trade.botMode';
+const botMode = ref((() => {
+    try {
+        const stored = localStorage.getItem(BOT_MODE_KEY);
+        return stored === null ? true : stored === '1';
+    } catch (_) {
+        return true;
+    }
+})());
+watch(botMode, (value) => {
+    try { localStorage.setItem(BOT_MODE_KEY, value ? '1' : '0'); } catch (_) { /* โหมดส่วนตัว */ }
+});
+
+/** ข้อความบนป้าย — ซื้อบอกเงินที่ใช้ ขายบอกกำไร/ขาดทุนที่ปิดได้ */
+function botMarkerLabel(trade) {
+    const side = String(trade.side || '').toLowerCase();
+    const pnl = Number(trade.realized_pnl);
+
+    if (side === 'sell' && Number.isFinite(pnl)) {
+        return `${t('aiTrade.botSell')} ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}`;
+    }
+
+    const usd = Number(trade.gross_value);
+    const word = t(side === 'buy' ? 'aiTrade.botBuy' : 'aiTrade.botSell');
+
+    return Number.isFinite(usd) && usd > 0 ? `${word} $${usd.toFixed(0)}` : word;
+}
+
 const botMarkers = computed(() => {
     const wanted = currentPair.value.toUpperCase();
 
-    return (bot.demo.value?.trades ?? [])
+    /*
+     * แหล่งหลักคือ /ai-bot/trades ของคู่นี้ (ทุกโหมด ครบ 300 ไม้ล่าสุด)
+     * ระหว่างที่ยังโหลดไม่เสร็จหรือเป็นของคู่เก่า ใช้ไม้จากพอร์ตทดลองไปพลางก่อน
+     */
+    const loaded = bot.trades.value;
+    const source = loaded?.pair?.toUpperCase() === wanted
+        ? loaded.items
+        : (bot.demo.value?.trades ?? []);
+
+    return source
         .filter(t => String(t.pair || '').replace('-', '/').toUpperCase() === wanted)
         .map(t => ({
             time: Math.floor(new Date(t.created_at).getTime() / 1000),
             side: String(t.side || '').toLowerCase(),
             price: Number(t.price),
             source: 'bot',
+            label: botMarkerLabel(t),
         }))
         .filter(m => Number.isFinite(m.time));
+});
+
+/**
+ * เส้นราคาของไม้ที่บอทถืออยู่ในคู่นี้ — ต้นทุนเฉลี่ย + SL/TP ที่คิดจากกรอบเสี่ยงของบอท
+ *
+ * SL/TP คำนวณจาก entry × (1 ∓ %) เหมือนที่ BotRunner ใช้ตัดสินจริง จึงเป็นเส้นที่บอท
+ * จะลงมือเมื่อราคาแตะ ไม่ใช่ตัวเลขประมาณ
+ */
+const botPriceLines = computed(() => {
+    const wanted = currentPair.value.toUpperCase();
+    const lines = [];
+
+    for (const item of (bot.bots.value ?? [])) {
+        if (String(item.pair || '').replace('-', '/').toUpperCase() !== wanted || !item.position) continue;
+
+        const entry = Number(item.position.entry_price);
+        if (!Number.isFinite(entry) || entry <= 0) continue;
+
+        const sl = Number(item.risk?.stop_loss_pct);
+        const tp = Number(item.risk?.take_profit_pct);
+
+        lines.push({ price: entry, color: '#38bdf8', style: 'dashed', title: `${t('aiTrade.botEntryLine')} · ${item.name}` });
+        if (sl > 0) lines.push({ price: entry * (1 - sl / 100), color: '#FF1744', style: 'dotted', title: t('aiTrade.botSlLine') });
+        if (tp > 0) lines.push({ price: entry * (1 + tp / 100), color: '#00C853', style: 'dotted', title: t('aiTrade.botTpLine') });
+    }
+
+    return lines;
 });
 
 const chartMarkers = computed(() => [
@@ -803,6 +877,7 @@ onMounted(async () => {
  */
 function loadChartMarkerSources() {
     bot.loadDemo();
+    bot.loadTrades(currentPair.value);
     myTrades.load();
 }
 
@@ -842,6 +917,8 @@ watch([dataError, tradeFormMode, () => layout.fitScreen.value], () => {
 watch(currentPair, () => {
     selectedPrice.value = null;
     isChartFullscreen.value = false;
+    // ไม้ของบอทผูกกับคู่ — สลับคู่แล้วต้องโหลดชุดใหม่ ไม่งั้นป้ายของคู่เก่าค้างจนรอบรีเฟรชถัดไป
+    bot.loadTrades(currentPair.value);
 });
 
 onUnmounted(() => {
@@ -1003,7 +1080,10 @@ onUnmounted(() => {
                                 :ticker="ticker"
                                 :is-tpix="isTPIXPair"
                                 :markers="chartMarkers"
+                                :price-lines="botPriceLines"
+                                :bot-mode="botMode"
                                 class="flex-1 relative z-10"
+                                @update:bot-mode="botMode = $event"
                             />
                         </DraggableCard>
 
