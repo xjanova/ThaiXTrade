@@ -307,6 +307,42 @@ class MarketAnalystTest extends TestCase
         Http::assertNothingSent();
     }
 
+    /** ความน่าจะเป็นที่ AI ให้ต้องถูกบีบอยู่ใน 0..1 และเก็บไว้ให้คะแนนด้วย Brier ได้ */
+    #[Test]
+    public function a_probability_is_clamped_and_kept_beside_the_stance(): void
+    {
+        $this->fakeOpenAi([
+            'regime' => 'risk_on', 'confidence' => 0.7, 'size_multiplier' => 1,
+            'coins' => [
+                'BTC' => ['score' => 0.5, 'stance' => 'buy', 'p_up_24h' => 0.66],
+                'ETH' => ['score' => -0.2, 'stance' => 'hold', 'p_up_24h' => 7],
+            ],
+            'shortlist' => ['BTC/USDT'],
+        ]);
+
+        $result = app(MarketAnalyst::class)->run(AiMarketView::SCOPE_STRATEGIC);
+
+        $this->assertTrue($result['ok'], $result['reason'] ?? '');
+        $coins = (array) $result['view']->coins;
+        // JSON ในฐานข้อมูลคืน 1.0 กลับมาเป็น 1 — เทียบเป็นตัวเลข ไม่ใช่ชนิด
+        $this->assertEqualsWithDelta(0.66, (float) $coins['BTC']['p_up'], 1e-9);
+        $this->assertEqualsWithDelta(1.0, (float) $coins['ETH']['p_up'], 1e-9, 'เกิน 1 ต้องถูกบีบ');
+    }
+
+    /** prompt ต้องอธิบายเครื่องมือใหม่ให้ AI และขอความน่าจะเป็น */
+    #[Test]
+    public function the_prompt_explains_the_new_tools_and_asks_for_a_probability(): void
+    {
+        $this->fakeOpenAi(['regime' => 'neutral', 'confidence' => 0.6, 'size_multiplier' => 1, 'coins' => [], 'shortlist' => []]);
+
+        $result = app(MarketAnalyst::class)->run(AiMarketView::SCOPE_STRATEGIC);
+        $prompt = (string) $result['view']->prompt;
+
+        foreach (['Fear & Greed', 'from_30d_high_pct', 'funding_rate_pct', 'sentiment_avg', 'p_up_24h', 'ผลของคำตัดสินรอบก่อน'] as $expected) {
+            $this->assertStringContainsString($expected, $prompt);
+        }
+    }
+
     // ── ตัวช่วย ───────────────────────────────────────────────────────────────
 
     /** มุมมองเก่าที่บันทึกไว้แล้ว ณ เวลาที่กำหนด */

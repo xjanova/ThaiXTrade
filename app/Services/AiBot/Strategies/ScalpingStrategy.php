@@ -35,6 +35,17 @@ class ScalpingStrategy implements Strategy
         return false;
     }
 
+    public function acceptsAiExit(): bool
+    {
+        return true;
+    }
+
+    /** ถอดออกจากการขายแล้ว — ไม่มีอะไรให้ผ่อน */
+    public function withAiRelief(array $params, float $reliefPoints): array
+    {
+        return $params;
+    }
+
     public function decide(array $candles, array $params, ?array $position): Signal
     {
         if (count($candles) < $this->minCandles($params)) {

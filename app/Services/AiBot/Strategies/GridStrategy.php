@@ -34,6 +34,18 @@ class GridStrategy implements Strategy
         return false;
     }
 
+    /** กริดถือรอเด้งโดยออกแบบ — ให้ AI ปิดกลางทางคือทำลายกลไก (stop/ด่านความเสี่ยงยังทำงาน) */
+    public function acceptsAiExit(): bool
+    {
+        return false;
+    }
+
+    /** กริดไม่มี "เกณฑ์ความมั่นใจ" ให้ผ่อน — ชั้นซื้อคือชั้นซื้อ */
+    public function withAiRelief(array $params, float $reliefPoints): array
+    {
+        return $params;
+    }
+
     public function decide(array $candles, array $params, ?array $position): Signal
     {
         if (count($candles) < $this->minCandles($params)) {

@@ -35,9 +35,32 @@ interface Strategy
     public function allowsPyramiding(): bool;
 
     /**
+     * ยอมให้ "มุมมองตลาดของ AI" สั่งปิดไม้ของกลยุทธ์นี้ไหม.
+     *
+     * กลยุทธ์ที่ออกแบบมาให้ "ถือผ่านขาลง" (DCA ทยอยสะสม · กริดรอเด้ง) ต้องตอบ false —
+     * คำสั่ง exit ใบเดียวจากรอบวิเคราะห์เคยมีสิทธิ์ปิดไม้ทุกกลยุทธ์พร้อมกัน ทั้งที่
+     * exit 4 ครั้งแรกบน prod ผิด 75% (ราคาขึ้นต่อ +17 bps) ด่านความเสี่ยงแบบกฎ
+     * (ตลาดพัง/ข่าวร้าย) และ stop ของผู้ใช้ยังทำงานตามปกติไม่ว่าตอบอะไร
+     */
+    public function acceptsAiExit(): bool;
+
+    /**
+     * ให้ AI "ผ่อนเกณฑ์" ของกลยุทธ์นี้ในหน่วยของมันเอง.
+     *
+     * $reliefPoints = 0..8 (จาก AiViewGate) — เดิม BotRunner ผ่อนได้แค่ confidence_min
+     * ของ ai_signal ตัวเดียว อีก 6 กลยุทธ์ไม่มีคีย์นั้น AI จึงเหลือแต่อำนาจ "เบรก"
+     * แต่ละกลยุทธ์รู้เองว่า "ผ่อน 8 จุด" แปลว่าอะไรในภาษาของมัน (RSI +4 · ATR −0.2 ·
+     * วอลุ่ม −0.4 เท่า) และกลยุทธ์ที่ไม่ควรถูกผ่อน (DCA/กริด) คืน $params เดิม
+     *
+     * @param  array<string, mixed>  $params  พารามิเตอร์ที่ผ่าน sanitize แล้ว
+     * @return array<string, mixed>
+     */
+    public function withAiRelief(array $params, float $reliefPoints): array;
+
+    /**
      * @param  list<array>  $candles  เรียงจากเก่า → ใหม่ แท่งสุดท้ายคือปัจจุบัน
      * @param  array<string, mixed>  $params  พารามิเตอร์ที่ผ่านการ clamp แล้ว
-     * @param  array{qty: float, entry: float}|null  $position  สถานะที่ถืออยู่ (null = ยังไม่มีของ)
+     * @param  array{qty: float, entry: float, entry_market?: float, bars_held?: int}|null  $position  สถานะที่ถืออยู่ (null = ยังไม่มีของ)
      */
     public function decide(array $candles, array $params, ?array $position): Signal;
 }

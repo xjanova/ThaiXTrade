@@ -247,6 +247,8 @@ return [
                 ['key' => 'fast_ema', 'label' => 'EMA เร็ว', 'label_en' => 'Fast EMA', 'type' => 'number', 'default' => 12, 'min' => 2, 'max' => 100, 'step' => 1],
                 ['key' => 'slow_ema', 'label' => 'EMA ช้า', 'label_en' => 'Slow EMA', 'type' => 'number', 'default' => 26, 'min' => 3, 'max' => 400, 'step' => 1],
                 ['key' => 'volume_filter', 'label' => 'กรองด้วยวอลุ่ม', 'label_en' => 'Volume filter', 'type' => 'bool', 'default' => true],
+                // วอลุ่มแท่งที่ตัดขึ้นต้องไม่น้อยกว่ากี่เท่าของค่าเฉลี่ย 20 แท่ง — AI ผ่อนลงได้ถึง 0.5 (withAiRelief)
+                ['key' => 'volume_ratio', 'label' => 'วอลุ่มขั้นต่ำ (เท่าของค่าเฉลี่ย)', 'label_en' => 'Minimum volume (× 20-bar average)', 'type' => 'number', 'default' => 1.0, 'min' => 0.5, 'max' => 3, 'step' => 0.05, 'group' => 'advanced'],
                 /*
                  * backtest 180 วัน (2 ก.ย. 2026): momentum 1h บน BTC edge 36 bps = เท่าทุนพอดี
                  * ชนะ 36% ถือเฉลี่ย 33 แท่ง — ไม้ที่ "ตัดขึ้นแล้วไปไม่ถึงไหน" คือส่วนที่กินกำไร

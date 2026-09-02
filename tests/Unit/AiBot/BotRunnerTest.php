@@ -759,6 +759,38 @@ class BotRunnerTest extends TestCase
         $this->assertSame('buy', $free['action'], 'ปิด ai_gate → กฎล้วนต้องเข้าไม้ได้');
     }
 
+    /**
+     * ⭐ AI สั่งปิดไม้ แต่ DCA ถือผ่านขาลงโดยออกแบบ → ไม่ขาย และไม่เติมไม้ใหม่รอบนี้.
+     */
+    #[Test]
+    public function an_ai_exit_is_ignored_by_strategies_that_hold_through_dips(): void
+    {
+        config(['aibot_analyst.enabled' => true, 'aibot_analyst.shadow_mode' => false]);
+
+        \App\Models\AiMarketView::create([
+            'scope' => 'strategic', 'provider' => 'openai', 'model' => 'test',
+            'regime' => 'risk_off', 'confidence' => 0.95, 'size_multiplier' => 1.0,
+            'coins' => ['BTC' => ['score' => -0.9, 'stance' => 'exit', 'why' => 'ทดสอบ']],
+            'shortlist' => [], 'summary' => '', 'headlines' => [], 'prompt' => '', 'raw_response' => '',
+            'tokens_used' => 0, 'latency_ms' => 0, 'expires_at' => now()->addHour(),
+        ]);
+
+        $dca = $this->makeBot([
+            'strategy' => 'dca',
+            'params' => ['interval_hours' => 1, 'budget_usd' => 25, 'dip_boost_pct' => 3],
+            'risk' => ['max_position_usd' => 1000],
+        ]);
+        $this->candles = $this->flatCandles();
+        $this->giveBotAPosition($dca, 100.0, 0.5);
+
+        $result = $this->runner->tick($dca);
+
+        $this->assertSame('hold', $result['action']);
+        $this->assertStringContainsString('ถือผ่านขาลง', $result['reason']);
+        $this->assertSame(1, AiBotPosition::count(), 'ของต้องยังอยู่');
+        $this->assertSame(0, AiBotTrade::count(), 'ไม่ขาย และไม่เติมไม้ใหม่ระหว่างที่ AI ไม่ชอบเหรียญนี้');
+    }
+
     // ─────────────────────── 8.5) เพดานทุนคุมยอดรวมของกลยุทธ์ที่เติมไม้ ───────────────────────
 
     /**

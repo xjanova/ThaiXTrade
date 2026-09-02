@@ -33,6 +33,21 @@ class MeanReversionStrategy implements Strategy
         return false;
     }
 
+    public function acceptsAiExit(): bool
+    {
+        return true;
+    }
+
+    /** ผ่อน = ยอมให้ RSI สูงกว่าเกณฑ์ oversold ได้เล็กน้อย (8 จุด → +4 RSI) แต่ไม่ทะลุ 49 */
+    public function withAiRelief(array $params, float $reliefPoints): array
+    {
+        if ($reliefPoints > 0) {
+            $params['oversold'] = min(49.0, (float) ($params['oversold'] ?? 30) + $reliefPoints / 2);
+        }
+
+        return $params;
+    }
+
     public function decide(array $candles, array $params, ?array $position): Signal
     {
         if (count($candles) < $this->minCandles($params)) {

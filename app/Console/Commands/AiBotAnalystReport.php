@@ -3,8 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\AiMarketView;
+use App\Services\AiBot\Analyst\AnalystCalibration;
+use App\Services\AiBot\Analyst\AnalystScorer;
 use App\Services\AiBotService;
-use App\Services\MarketDataService;
 use Illuminate\Console\Command;
 
 /**
@@ -26,6 +27,9 @@ use Illuminate\Console\Command;
  *    แต่ขาดทุนจริงเพราะต้นทุนไป-กลับ 0.36% กินหมด — การทายถูกที่ราคาขยับ
  *    น้อยกว่าต้นทุนจึงไม่มีค่าอะไรเลย รายงานนี้แยกสองอย่างนี้ออกจากกันเสมอ
  *
+ * การให้คะแนนอยู่ใน AnalystScorer (ใช้ร่วมกับ calibration และส่วน "ความจำ" ใน prompt)
+ * — สามที่นี้ต้องได้เลขชุดเดียวกัน
+ *
  * Developed by Xman Studio.
  */
 class AiBotAnalystReport extends Command
@@ -36,7 +40,7 @@ class AiBotAnalystReport extends Command
 
     protected $description = 'ให้คะแนนคำตัดสินของ AI เทียบกับราคาที่เกิดขึ้นจริง';
 
-    public function handle(MarketDataService $market, AiBotService $bots): int
+    public function handle(AnalystScorer $scorer, AiBotService $bots): int
     {
         $days = max(1, (int) $this->option('days'));
         $horizon = max(1, (int) $this->option('horizon'));
@@ -57,9 +61,14 @@ class AiBotAnalystReport extends Command
 
         $this->components->info("รายงานความแม่นของ AI — {$views->count()} มุมมอง · วัดผลที่ +{$horizon} ชม.");
         $this->line('ต้นทุนเข้า-ออกหนึ่งรอบ '.round($costBps, 1).' bps — คำทายที่ราคาขยับน้อยกว่านี้ถือว่าไม่มีค่า');
+
+        if ($days * 24 + $horizon > 500) {
+            $this->warn("หน้าต่าง {$days} วันเกินข้อมูลราคาที่ดึงได้ (500 แท่ง) — มุมมองช่วงต้นจะถูกข้าม");
+        }
+
         $this->newLine();
 
-        $calls = $this->scoreCalls($views, $market, $horizon, $costBps, $days);
+        $calls = $scorer->score($views, $horizon);
 
         if ($calls === []) {
             $this->warn('มีมุมมองอยู่ แต่ยังไม่ถึงเวลาวัดผล (ต้องรออย่างน้อย '.$horizon.' ชม. หลังแต่ละรอบ)');
@@ -67,7 +76,7 @@ class AiBotAnalystReport extends Command
             return self::FAILURE;
         }
 
-        $this->reportStances($calls, $costBps);
+        $this->reportStances($scorer, $calls);
         $this->reportCalibration($calls);
         $this->reportCoinPicking($calls);
         $this->reportVerdict($calls, $costBps);
@@ -75,159 +84,32 @@ class AiBotAnalystReport extends Command
         return self::SUCCESS;
     }
 
-    // ── ให้คะแนน ─────────────────────────────────────────────────────────────
-
-    /**
-     * จับคู่ทุกคำตัดสินกับราคาที่เกิดขึ้นจริงหลังจากนั้น.
-     *
-     * @return list<array{stance: string, confidence: float, score: float, symbol: string, move_bps: float, shortlisted: bool}>
-     */
-    private function scoreCalls($views, MarketDataService $market, int $horizon, float $costBps, int $days): array
-    {
-        /*
-         * ความลึกของแท่งเทียนต้องคลุมหน้าต่างที่ขอ ไม่ใช่เลขคงที่
-         *
-         * เดิมฮาร์ดโค้ด 200 แท่ง (~8 วัน) ซึ่งพอสำหรับ 2-4 วัน แต่พอใครสั่ง
-         * --days=14 มุมมองช่วงต้นจะหาราคาไม่เจอแล้ว **ถูกข้ามไปเงียบๆ**
-         * รายงานยังออกปกติแต่คิดจากข้อมูลไม่ครบ ซึ่งอ่านไม่ออกเลยว่าขาด
-         *
-         * +48 เผื่อ horizon กับช่วงที่ตลาดไม่มีแท่ง (คู่ที่วอลุ่มบาง)
-         */
-        $bars = min(500, $days * 24 + $horizon + 48);
-
-        if ($days * 24 + $horizon > 500) {
-            $this->warn("หน้าต่าง {$days} วันเกินข้อมูลราคาที่ดึงได้ (500 แท่ง) — มุมมองช่วงต้นจะถูกข้าม");
-        }
-
-        $symbols = collect($views)
-            ->flatMap(fn (AiMarketView $v) => array_keys((array) $v->coins))
-            ->unique()
-            ->values();
-
-        $this->line('กำลังดึงราคาย้อนหลังของ '.$symbols->count().' เหรียญ...');
-
-        $prices = [];
-
-        foreach ($symbols as $symbol) {
-            $prices[$symbol] = $this->priceSeries($market, $symbol, $bars);
-        }
-
-        $calls = [];
-
-        foreach ($views as $view) {
-            $shortlist = array_map(
-                fn (string $pair) => AiMarketView::baseOf($pair),
-                $view->shortlistPairs(),
-            );
-
-            foreach ((array) $view->coins as $symbol => $entry) {
-                $series = $prices[$symbol] ?? [];
-
-                $at = $this->priceAt($series, $view->created_at->getTimestamp());
-                $later = $this->priceAt($series, $view->created_at->addHours($horizon)->getTimestamp());
-
-                // ยังไม่ถึงเวลาวัด หรือไม่มีข้อมูลราคาของเหรียญนี้
-                if ($at === null || $later === null || $at <= 0) {
-                    continue;
-                }
-
-                $calls[] = [
-                    'symbol' => $symbol,
-                    'stance' => (string) ($entry['stance'] ?? 'hold'),
-                    'score' => (float) ($entry['score'] ?? 0),
-                    'confidence' => (float) $view->confidence,
-                    'move_bps' => (($later - $at) / $at) * 10000,
-                    'shortlisted' => in_array($symbol, $shortlist, true),
-                ];
-            }
-        }
-
-        return $calls;
-    }
-
-    /** @return array<int, float> timestamp(วินาที) => ราคาปิด */
-    private function priceSeries(MarketDataService $market, string $symbol, int $bars): array
-    {
-        try {
-            $klines = $market->getKlines("{$symbol}/USDT", '1h', $bars);
-        } catch (\Throwable) {
-            return [];
-        }
-
-        $series = [];
-
-        foreach ($klines as $bar) {
-            $series[(int) (((int) ($bar['time'] ?? 0)) / 1000)] = (float) ($bar['close'] ?? 0);
-        }
-
-        ksort($series);
-
-        return $series;
-    }
-
-    /**
-     * ราคา ณ เวลาที่ใกล้ที่สุด "ก่อนหรือเท่ากับ" ที่ขอ.
-     *
-     * ต้องไม่ใช้แท่งอนาคต — ใช้แท่งที่ยังไม่เกิด ณ เวลาที่ AI ตัดสิน จะกลายเป็น
-     * การให้คะแนนด้วยข้อมูลที่มันไม่มีทางเห็น แล้วผลจะสวยเกินจริงทุกครั้ง
-     */
-    private function priceAt(array $series, int $timestamp): ?float
-    {
-        $best = null;
-
-        foreach ($series as $ts => $price) {
-            if ($ts > $timestamp) {
-                break;
-            }
-
-            $best = $price;
-        }
-
-        return $best;
-    }
-
     // ── รายงาน ───────────────────────────────────────────────────────────────
 
-    private function reportStances(array $calls, float $costBps): void
+    private function reportStances(AnalystScorer $scorer, array $calls): void
     {
         $this->components->twoColumnDetail('<fg=cyan>ท่าทีที่ให้ไว้</>', '<fg=cyan>ผลที่เกิดขึ้นจริง</>');
 
         $rows = [];
 
-        foreach (['buy', 'avoid', 'exit', 'hold'] as $stance) {
-            $group = array_values(array_filter($calls, fn ($c) => $c['stance'] === $stance));
-
-            if ($group === []) {
-                continue;
-            }
-
-            $moves = array_column($group, 'move_bps');
-            $avg = array_sum($moves) / count($moves);
-
-            // ทายถูกไหม — buy ควรขึ้น · avoid/exit ควรลง · hold ไม่ตัดสิน
-            $correct = match ($stance) {
-                'buy' => count(array_filter($moves, fn ($m) => $m > 0)),
-                'avoid', 'exit' => count(array_filter($moves, fn ($m) => $m < 0)),
-                default => null,
-            };
-
-            // ชนะต้นทุนไหม — เกณฑ์ที่แพงกว่าและสำคัญกว่า
-            $beatCost = match ($stance) {
-                'buy' => count(array_filter($moves, fn ($m) => $m > $costBps)),
-                'avoid', 'exit' => count(array_filter($moves, fn ($m) => $m < -$costBps)),
-                default => null,
-            };
-
+        foreach ($scorer->summarizeByStance($calls) as $stance => $s) {
             $rows[] = [
                 $stance,
-                count($group),
-                $correct === null ? '—' : sprintf('%.0f%%', $correct / count($group) * 100),
-                $beatCost === null ? '—' : sprintf('%.0f%%', $beatCost / count($group) * 100),
-                sprintf('%+.1f', $avg),
+                $s['n'],
+                $s['correct_pct'] === null ? '—' : sprintf('%.0f%%', $s['correct_pct']),
+                $s['beat_cost_pct'] === null ? '—' : sprintf('%.0f%%', $s['beat_cost_pct']),
+                sprintf('%+.1f', $s['avg_move_bps']),
             ];
         }
 
         $this->table(['ท่าที', 'จำนวน', 'ทายถูก', 'ชนะต้นทุน', 'ราคาขยับเฉลี่ย (bps)'], $rows);
+
+        $brier = AnalystScorer::brier($calls);
+
+        if ($brier !== null) {
+            // 0.25 = โยนเหรียญ · ต่ำกว่า = ความน่าจะเป็นที่ให้มีความหมาย · สูงกว่า = มั่นใจผิดทาง
+            $this->line(sprintf('  Brier score ของ p_up: %.3f (0.25 = โยนเหรียญ · ยิ่งต่ำยิ่งดี)', $brier));
+        }
     }
 
     private function reportCalibration(array $calls): void
@@ -238,37 +120,28 @@ class AiBotAnalystReport extends Command
          * AI ที่ให้น้ำหนักเป็นควรทายถูกบ่อยขึ้นเมื่อมันบอกว่ามั่นใจมากขึ้น
          * ถ้าอัตราทายถูกเท่ากันทุกช่วงความมั่นใจ แปลว่าตัวเลขความมั่นใจของมัน
          * ไม่มีความหมาย — ซึ่งอันตรายกว่าทายผิด เพราะเราเอาไปคูณขนาดไม้
+         *
+         * ตารางเดียวกับที่ AiViewGate ใช้ (AnalystCalibration::tabulate) — ที่นี่แค่พิมพ์
          */
-        $buckets = [
-            'ต่ำ (< 0.6)' => fn ($c) => $c['confidence'] < 0.6,
-            'กลาง (0.6-0.8)' => fn ($c) => $c['confidence'] >= 0.6 && $c['confidence'] < 0.8,
-            'สูง (≥ 0.8)' => fn ($c) => $c['confidence'] >= 0.8,
-        ];
-
+        $labels = ['low' => 'ต่ำ (< 0.6)', 'mid' => 'กลาง (0.6-0.8)', 'high' => 'สูง (≥ 0.8)'];
+        $table = AnalystCalibration::tabulate($calls);
         $rows = [];
 
-        foreach ($buckets as $label => $filter) {
-            $group = array_values(array_filter($calls, fn ($c) => $filter($c) && $c['stance'] !== 'hold'));
+        foreach ($labels as $bucket => $label) {
+            $n = 0;
+            $hits = 0.0;
+            $move = 0.0;
 
-            if ($group === []) {
-                $rows[] = [$label, 0, '—', '—'];
-
-                continue;
+            foreach (['buy', 'avoid', 'exit'] as $stance) {
+                $cell = $table[$stance][$bucket];
+                $n += $cell['n'];
+                $hits += ($cell['hit_rate'] ?? 0) * $cell['n'];
+                $move += ($cell['avg_move_bps'] ?? 0) * $cell['n'];
             }
 
-            $correct = count(array_filter(
-                $group,
-                fn ($c) => $c['stance'] === 'buy' ? $c['move_bps'] > 0 : $c['move_bps'] < 0,
-            ));
-
-            $moves = array_column($group, 'move_bps');
-
-            $rows[] = [
-                $label,
-                count($group),
-                sprintf('%.0f%%', $correct / count($group) * 100),
-                sprintf('%+.1f', array_sum($moves) / count($moves)),
-            ];
+            $rows[] = $n === 0
+                ? [$label, 0, '—', '—']
+                : [$label, $n, sprintf('%.0f%%', $hits / $n * 100), sprintf('%+.1f', $move / $n)];
         }
 
         $this->newLine();

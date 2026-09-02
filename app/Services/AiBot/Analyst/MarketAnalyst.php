@@ -242,6 +242,8 @@ class MarketAnalyst
             ? 'มองภาพ 4-24 ชั่วโมงข้างหน้า เน้นแนวโน้มหลักและการจัดอันดับเหรียญ'
             : 'มองภาพ 15-60 นาทีข้างหน้า เน้นข่าวที่เพิ่งเข้าและการปรับท่าทีระยะสั้น';
 
+        $fearGreed = $context['macro']['fear_greed'] ?? null;
+
         $lines = [
             "รอบวิเคราะห์: {$scope} — {$horizon}",
             'เวลาที่ประเมิน: '.$context['generated_at'],
@@ -250,11 +252,23 @@ class MarketAnalyst
             "การเข้าและออกหนึ่งรอบมีต้นทุนจริง {$context['cost_bps']} bps (ค่าธรรมเนียม + slippage)",
             'อย่าแนะนำให้สลับเหรียญหรือปิดไม้ ถ้าส่วนต่างที่คาดว่าจะได้ไม่ชนะต้นทุนนี้อย่างชัดเจน',
             '',
+            '## ภาพรวมตลาด',
+            $fearGreed
+                ? "Fear & Greed index: {$fearGreed['value']}/100 ({$fearGreed['label']}) — ต่ำ = กลัว (มักเป็นจุดที่ราคาถูกเกิน) · สูง = โลภ (มักร้อนเกิน)"
+                : 'Fear & Greed index: ไม่มีข้อมูลรอบนี้',
+            '',
             '## เหรียญที่พิจารณาได้',
-            'ตัวเลข change_24h_pct เป็นเปอร์เซ็นต์ · worst_panic 0-1 (ยิ่งสูงยิ่งข่าวร้าย) · held = บอทถือของอยู่',
+            'ความหมายของตัวเลข:',
+            '- change_24h_pct / change_7d_pct / change_30d_pct = เปอร์เซ็นต์การเปลี่ยนแปลงราคา',
+            '- from_30d_high_pct (≤ 0) = ห่างจากจุดสูงสุด 30 วันกี่ % · from_30d_low_pct (≥ 0) = เหนือจุดต่ำสุด 30 วันกี่ %',
+            '- trend = up/down เทียบ EMA 200 บนแท่ง 4 ชม. · er = efficiency ratio 0-1 (ใกล้ 1 = เดินทางเดียวไม่ย้อน, ใกล้ 0 = ออกข้าง)',
+            '- rsi_4h = RSI(14) บนแท่ง 4 ชม. · atr_pct_4h = ความผันผวนต่อแท่ง 4 ชม. (%) เทียบกับต้นทุน '.$context['cost_bps'].' bps',
+            '- funding_rate_pct = อัตรา funding ของสัญญา perpetual (บวกมาก = ฝั่ง long แน่นและจ่ายแพง)',
+            '- news_count = ข่าวใน 24 ชม. · sentiment_avg = อารมณ์ข่าวเฉลี่ยต่อชิ้น −1..1 (ไม่ใช่ผลรวม) · worst_panic 0-1',
+            '- held = บอทถือของอยู่ · ค่าที่หายไป = ไม่มีข้อมูล ห้ามเดา',
             json_encode($context['coins'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             '',
-            '## พาดหัวข่าวล่าสุด',
+            '## พาดหัวข่าว (ผสม: ล่าสุด · สุดขั้วทั้งสองทาง · น่ากลัวที่สุด)',
             json_encode($context['headlines'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             '',
             '## ของที่ถืออยู่ตอนนี้',
@@ -262,18 +276,26 @@ class MarketAnalyst
                 ? 'ยังไม่มีไม้ค้างอยู่'
                 : json_encode($context['holdings'], JSON_UNESCAPED_UNICODE),
             '',
+            '## ผลของคำตัดสินรอบก่อนของคุณ (วัดที่ +'.($context['track_record']['horizon_hours'] ?? 4).' ชม.)',
+            ($context['track_record'] ?? null)
+                ? json_encode($context['track_record'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                : 'ยังไม่มีคำตัดสินที่วัดผลได้',
+            'ใช้ประวัตินี้ปรับความมั่นใจ: ถ้าท่าทีไหนถูกน้อยกว่าครึ่ง ให้ลด confidence และ p_up_24h ของท่าทีนั้นลง อย่ามั่นใจเท่าเดิมทั้งที่เพิ่งผิด',
+            '',
             '## รูปแบบคำตอบ (JSON เท่านั้น)',
             '{',
             '  "regime": "risk_on" | "neutral" | "risk_off",',
             '  "confidence": 0.0-1.0,',
             '  "size_multiplier": 0.0-1.3,',
             '  "summary": "สรุปภาษาไทย 2-4 ประโยค ให้ผู้ใช้ทั่วไปอ่านเข้าใจ",',
-            '  "coins": { "BTC": {"score": -1.0..1.0, "stance": "buy|hold|avoid|exit", "why": "เหตุผลสั้นๆ ภาษาไทย"} },',
+            '  "coins": { "BTC": {"score": -1.0..1.0, "stance": "buy|hold|avoid|exit", "p_up_24h": 0.0-1.0, "why": "เหตุผลสั้นๆ ภาษาไทย"} },',
             '  "shortlist": ["BTC/USDT", "ETH/USDT"]',
             '}',
             '',
             'กติกา:',
             '- ใส่ coins เฉพาะเหรียญที่คุณมีความเห็นจริงๆ ไม่ต้องครบทุกตัว',
+            '- p_up_24h = ความน่าจะเป็นที่ราคาจะสูงกว่าตอนนี้ใน 24 ชม. — 0.5 คือไม่รู้ อย่าให้เกิน 0.75 หรือต่ำกว่า 0.25 ถ้าไม่มีหลักฐานชัด',
+            '- stance ต้องสอดคล้องกับ p_up_24h (buy ต้อง > 0.55 · avoid/exit ต้อง < 0.45)',
             '- stance = "exit" ใช้เฉพาะเมื่อมีเหตุผลหนักพอที่จะยอมจ่ายต้นทุนออกจากตลาด',
             '- shortlist เรียงจากน่าสนใจที่สุด ไม่เกิน '.(int) config('aibot_analyst.auto_pair.shortlist_size', 5).' คู่ ใช้รูปแบบ BASE/USDT',
             '- ถ้าข้อมูลไม่พอจะสรุป ให้ confidence ต่ำและ regime = "neutral" อย่าเดา',
@@ -344,6 +366,10 @@ class MarketAnalyst
             $coins[$symbol] = [
                 'score' => round($this->clamp((float) ($entry['score'] ?? 0), -1.0, 1.0), 3),
                 'stance' => $stance,
+                // ความน่าจะเป็นที่ราคาจะสูงขึ้นใน 24 ชม. — ให้คะแนนด้วย Brier ได้ (AnalystScorer)
+                'p_up' => isset($entry['p_up_24h']) && is_numeric($entry['p_up_24h'])
+                    ? round($this->clamp((float) $entry['p_up_24h'], 0.0, 1.0), 3)
+                    : null,
                 'why' => mb_substr(trim((string) ($entry['why'] ?? '')), 0, 300),
             ];
         }

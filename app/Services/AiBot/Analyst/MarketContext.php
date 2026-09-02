@@ -3,6 +3,7 @@
 namespace App\Services\AiBot\Analyst;
 
 use App\Models\AiBotPosition;
+use App\Models\AiMarketView;
 use App\Models\MarketNews;
 use App\Models\TradingPair;
 use App\Services\AiBotService;
@@ -26,6 +27,8 @@ class MarketContext
     public function __construct(
         private readonly MarketDataService $market,
         private readonly AiBotService $bots,
+        private readonly CoinSnapshot $snapshot,
+        private readonly AnalystScorer $scorer,
     ) {}
 
     /**
@@ -58,6 +61,7 @@ class MarketContext
          */
         $coins = $this->rankCoins($universe, $tickers, $newsStats, $held);
         $coins = array_slice($coins, 0, (int) ($config['max_coins'] ?? 40));
+        $coins = $this->withSnapshots($coins);
 
         return [
             'coins' => $coins,
@@ -66,8 +70,100 @@ class MarketContext
                 (int) ($config['max_headlines'] ?? 20),
             ),
             'holdings' => array_values($held),
+            'macro' => $this->macro(),
+            'track_record' => $this->trackRecord(),
             'cost_bps' => round($this->bots->roundTripCostBps(), 2),
             'generated_at' => now()->toDateTimeString(),
+        ];
+    }
+
+    /**
+     * เติมภาพราคาให้เหรียญที่สำคัญที่สุด N ตัว — เทรนด์ใหญ่ ระยะจากจุดสูง/ต่ำ RSI ความผันผวน funding.
+     *
+     * ทำหลังจัดอันดับและตัดแล้ว เพื่อให้คำขอ (1 ต่อเหรียญ) ไปลงที่เหรียญที่ AI จะได้
+     * เห็นจริง ล้มเหลวรายเหรียญ = ช่องว่าง ไม่ใช่ล้มทั้งรอบ
+     *
+     * @param  list<array>  $coins
+     * @return list<array>
+     */
+    private function withSnapshots(array $coins): array
+    {
+        $max = (int) config('aibot_analyst.snapshots.max_coins', 40);
+
+        foreach ($coins as $i => $coin) {
+            if ($i >= $max) {
+                break;
+            }
+
+            try {
+                $coins[$i] += $this->snapshot->for($coin['symbol']);
+            } catch (\Throwable) {
+                // เหรียญนี้ไม่มีภาพราคา — AI จะเห็น key หายไป ซึ่งซื่อสัตย์กว่าเลขปลอม
+            }
+        }
+
+        return $coins;
+    }
+
+    /** ภาพรวมที่ไม่ผูกกับเหรียญใด — ตอนนี้คือดัชนี Fear & Greed */
+    private function macro(): array
+    {
+        try {
+            return ['fear_greed' => $this->market->getFearGreedIndex()];
+        } catch (\Throwable) {
+            return ['fear_greed' => null];
+        }
+    }
+
+    /**
+     * ผลของคำตัดสินรอบก่อนของ AI เอง — ให้มันเห็นว่าที่ผ่านมาถูกหรือผิด.
+     *
+     * LLM ไม่มีความจำข้ามรอบ ทุกรอบมันมั่นใจเท่าเดิมไม่ว่าจะเพิ่งผิดมากี่ครั้ง
+     * ออดิท 2 ก.ย. 2026: buy 21 ครั้ง ถูก 38% — ถ้าตัวมันเองได้เห็นตัวเลขนี้ในบริบท
+     * อย่างน้อยก็มีโอกาสปรับความมั่นใจลง (และเราวัดได้ว่าปรับจริงไหมด้วย Brier score)
+     *
+     * @return array{window_days: int, by_stance: array, recent: list<array>}|null
+     */
+    private function trackRecord(): ?array
+    {
+        $days = (int) config('aibot_analyst.track_record.days', 3);
+        $horizon = (int) config('aibot_analyst.calibration.horizon_hours', 4);
+
+        try {
+            $views = AiMarketView::query()
+                ->where('created_at', '>=', now()->subDays($days))
+                ->where('created_at', '<=', now()->subHours($horizon))
+                ->orderBy('created_at')
+                ->get();
+
+            if ($views->isEmpty()) {
+                return null;
+            }
+
+            $calls = $this->scorer->score($views, $horizon);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($calls === []) {
+            return null;
+        }
+
+        $actionable = array_values(array_filter($calls, fn ($c) => $c['correct'] !== null));
+        $recent = array_slice(array_reverse($actionable), 0, (int) config('aibot_analyst.track_record.recent_calls', 6));
+
+        return [
+            'window_days' => $days,
+            'horizon_hours' => $horizon,
+            'by_stance' => $this->scorer->summarizeByStance($calls),
+            'recent' => array_map(fn ($c) => [
+                'at' => $c['at'],
+                'symbol' => $c['symbol'],
+                'stance' => $c['stance'],
+                'confidence' => $c['confidence'],
+                'move_bps' => $c['move_bps'],
+                'correct' => $c['correct'],
+            ], $recent),
         ];
     }
 
@@ -162,7 +258,7 @@ class MarketContext
             ->recent($minutes)
             ->get(['symbols', 'panic_score', 'sentiment']);
 
-        $stats = array_fill_keys($universe, ['count' => 0, 'panic' => 0.0, 'sentiment' => 0.0]);
+        $stats = array_fill_keys($universe, ['count' => 0, 'panic' => 0.0, 'sentiment_sum' => 0.0, 'sentiment_avg' => null]);
 
         foreach ($rows as $row) {
             foreach ((array) $row->symbols as $symbol) {
@@ -172,8 +268,17 @@ class MarketContext
 
                 $stats[$symbol]['count']++;
                 $stats[$symbol]['panic'] = max($stats[$symbol]['panic'], (float) $row->panic_score);
-                $stats[$symbol]['sentiment'] += (float) $row->sentiment;
+                $stats[$symbol]['sentiment_sum'] += (float) $row->sentiment;
             }
+        }
+
+        /*
+         * ค่าเฉลี่ย ไม่ใช่ผลรวม — BTC มีข่าว 41 ข่าว/วัน ผลรวมได้ ±10 ขณะที่เหรียญอื่น ±1
+         * โดยไม่มีสเกลบอกใน prompt (ออดิท 2 ก.ย. 2026) AI จึงอ่าน "BTC ลบมาก" ทั้งที่
+         * ข่าวแต่ละชิ้นแค่ลบนิดหน่อยแต่มีเยอะ ค่าเฉลี่ยอยู่ใน −1..1 เสมอ เทียบข้ามเหรียญได้
+         */
+        foreach ($stats as $symbol => $s) {
+            $stats[$symbol]['sentiment_avg'] = $s['count'] > 0 ? round($s['sentiment_sum'] / $s['count'], 2) : null;
         }
 
         return $stats;
@@ -214,7 +319,7 @@ class MarketContext
 
         foreach ($universe as $symbol) {
             $ticker = $tickers[$symbol] ?? null;
-            $news = $newsStats[$symbol] ?? ['count' => 0, 'panic' => 0.0, 'sentiment' => 0.0];
+            $news = $newsStats[$symbol] ?? ['count' => 0, 'panic' => 0.0, 'sentiment_avg' => null];
             $isHeld = isset($held[$symbol]);
 
             $rows[] = [
@@ -225,7 +330,7 @@ class MarketContext
                 'volume_24h_usd' => $ticker ? round($ticker['volume']) : null,
                 'news_count' => $news['count'],
                 'worst_panic' => round($news['panic'], 3),
-                'sentiment' => round($news['sentiment'], 3),
+                'sentiment_avg' => $news['sentiment_avg'],
                 'held' => $isHeld,
 
                 /* ไว้เรียงอย่างเดียว ไม่ส่งให้ AI (ไม่ใช่ข้อมูล เป็นวิธีการของเรา) */
@@ -252,40 +357,63 @@ class MarketContext
      */
     private function headlines(array $symbols, int $limit): array
     {
-        $rows = MarketNews::query()
-            ->recent(24 * 60)
-            ->orderByDesc('panic_score')
-            ->orderByDesc('published_at')
-            ->limit($limit * 3)
-            ->get(['title', 'source', 'symbols', 'panic_score', 'published_at']);
+        /*
+         * ผสมสามมุม ไม่ใช่เรียงตามความน่ากลัวอย่างเดียว
+         *
+         * ⚠️ เดิม orderByDesc('panic_score') → AI เห็น 30 ข่าวที่น่ากลัวที่สุดของวัน
+         *    เสมอ ไม่ว่าวันนั้นตลาดจะเป็นยังไง ผล: regime = risk_off 19 ใน 30 รอบ
+         *    และลดขนาดไม้ทั้งฝูงในช่วงที่ BTC ขึ้น 21% (ออดิท 2 ก.ย. 2026)
+         *
+         *   ครึ่งหนึ่ง = ล่าสุด (สิ่งที่กำลังเกิด ไม่ว่าจะดีหรือร้าย)
+         *   หนึ่งในสี่ = สุดขั้วทั้งสองทาง (|sentiment| สูงสุด — ข่าวดีมากก็ต้องเห็น)
+         *   หนึ่งในสี่ = ตื่นตระหนกสูงสุด (สิ่งที่ห้ามพลาดจริงๆ)
+         */
+        $quarter = max(1, (int) ceil($limit / 4));
+        $half = max(1, $limit - 2 * $quarter);
+        $fields = ['id', 'title', 'source', 'symbols', 'panic_score', 'sentiment', 'published_at'];
+
+        $recent = MarketNews::query()->recent(24 * 60)->orderByDesc('published_at')->limit($half * 3)->get($fields);
+        $polar = MarketNews::query()->recent(24 * 60)->orderByRaw('ABS(sentiment) DESC')->orderByDesc('published_at')->limit($quarter * 3)->get($fields);
+        $panic = MarketNews::query()->recent(24 * 60)->orderByDesc('panic_score')->orderByDesc('published_at')->limit($quarter * 3)->get($fields);
 
         $picked = [];
+        $seen = [];
 
-        foreach ($rows as $row) {
-            $tagged = array_values(array_intersect((array) $row->symbols, $symbols));
+        foreach ([[$recent, $half], [$polar, $quarter], [$panic, $quarter]] as [$rows, $quota]) {
+            $taken = 0;
 
-            /*
-             * ข่าวที่ไม่ได้แท็กเหรียญไหนเลยก็ยังมีค่า — ข่าวมหภาค (เฟด ดอกเบี้ย
-             * กฎหมาย) ลากทั้งตลาดโดยไม่เอ่ยชื่อเหรียญสักตัว ซึ่งเป็นข่าวประเภทที่
-             * AI อ่านได้ดีกว่าตัวจับคำสำคัญของเราเสียอีก
-             */
-            if ($tagged === [] && (array) $row->symbols !== []) {
-                continue;
-            }
+            foreach ($rows as $row) {
+                if ($taken >= $quota || isset($seen[$row->id])) {
+                    continue;
+                }
 
-            $picked[] = [
-                'title' => (string) $row->title,
-                'source' => (string) $row->source,
-                'symbols' => $tagged,
-                'panic' => round((float) $row->panic_score, 3),
-                'at' => $row->published_at?->toDateTimeString() ?? '',
-            ];
+                $tagged = array_values(array_intersect((array) $row->symbols, $symbols));
 
-            if (count($picked) >= $limit) {
-                break;
+                /*
+                 * ข่าวที่ไม่ได้แท็กเหรียญไหนเลยก็ยังมีค่า — ข่าวมหภาค (เฟด ดอกเบี้ย
+                 * กฎหมาย) ลากทั้งตลาดโดยไม่เอ่ยชื่อเหรียญสักตัว ซึ่งเป็นข่าวประเภทที่
+                 * AI อ่านได้ดีกว่าตัวจับคำสำคัญของเราเสียอีก
+                 */
+                if ($tagged === [] && (array) $row->symbols !== []) {
+                    continue;
+                }
+
+                $seen[$row->id] = true;
+                $taken++;
+                $picked[] = [
+                    'title' => (string) $row->title,
+                    'source' => (string) $row->source,
+                    'symbols' => $tagged,
+                    'panic' => round((float) $row->panic_score, 3),
+                    'sentiment' => round((float) $row->sentiment, 2),
+                    'at' => $row->published_at?->toDateTimeString() ?? '',
+                ];
             }
         }
 
-        return $picked;
+        // เรียงตามเวลาให้ AI อ่านเป็นลำดับเหตุการณ์ ไม่ใช่ตามว่าเราหยิบจากถังไหนก่อน
+        usort($picked, fn ($a, $b) => strcmp($b['at'], $a['at']));
+
+        return array_slice($picked, 0, $limit);
     }
 }

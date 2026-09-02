@@ -42,6 +42,26 @@ class AiSignalStrategy implements Strategy
         return false;
     }
 
+    public function acceptsAiExit(): bool
+    {
+        return true;
+    }
+
+    /**
+     * ผ่อน = ลดเกณฑ์ความมั่นใจลงตามจุดที่ AI ให้ (ย้ายมาจาก BotRunner).
+     *
+     * บีบพื้นไว้ที่ 50 กันกรณีผู้ใช้ตั้งเกณฑ์ต่ำอยู่แล้ว แล้วถูกผ่อนจนกลายเป็น
+     * "ซื้อทุกครั้งที่คะแนนไม่ติดลบ" ซึ่งไม่ใช่สิ่งที่การผ่อนเกณฑ์ควรทำได้
+     */
+    public function withAiRelief(array $params, float $reliefPoints): array
+    {
+        if ($reliefPoints > 0 && isset($params['confidence_min'])) {
+            $params['confidence_min'] = max(50.0, (float) $params['confidence_min'] - $reliefPoints);
+        }
+
+        return $params;
+    }
+
     public function decide(array $candles, array $params, ?array $position): Signal
     {
         if (count($candles) < $this->minCandles($params)) {

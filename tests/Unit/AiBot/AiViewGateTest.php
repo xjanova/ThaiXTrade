@@ -213,6 +213,78 @@ class AiViewGateTest extends TestCase
         $this->assertFalse($result['applied']);
     }
 
+    // ── calibration: ประวัติจริงชนะความมั่นใจที่รายงานเอง ─────────────────────
+
+    /**
+     * ⭐ AI มั่นใจ 0.95 แต่ประวัติ exit ที่ระดับนี้ถูกแค่ 30% → ห้ามขาย (แค่ห้ามเติมไม้).
+     *
+     * ออดิท 2 ก.ย. 2026: ความมั่นใจ ≥ 0.8 ทายถูก 35% — ตัวเลขที่ AI รายงานเองกลับหัว
+     */
+    #[Test]
+    public function a_bad_exit_track_record_overrides_high_reported_confidence(): void
+    {
+        $this->seedCalibration(['exit' => ['high' => ['n' => 20, 'hit_rate' => 0.30, 'avg_move_bps' => 40.0]]]);
+        $this->makeView(['BTC' => ['score' => -0.9, 'stance' => 'exit', 'why' => 'ข่าวร้าย']], confidence: 0.95);
+
+        $result = $this->gate->evaluate($this->bot(), $this->plan('vip'), true);
+
+        $this->assertFalse($result['force_exit']);
+        $this->assertTrue($result['block_entry']);
+        $this->assertStringContainsString('ประวัติ', implode(' ', $result['reasons']));
+    }
+
+    /** ประวัติ exit ดี → ขายได้แม้ความมั่นใจต่ำกว่าเกณฑ์ดิบ 0.75 */
+    #[Test]
+    public function a_good_exit_track_record_allows_the_exit_below_the_raw_bar(): void
+    {
+        $this->seedCalibration(['exit' => ['mid' => ['n' => 20, 'hit_rate' => 0.70, 'avg_move_bps' => -60.0]]]);
+        $this->makeView(['BTC' => ['score' => -0.6, 'stance' => 'exit']], confidence: 0.65);
+
+        $result = $this->gate->evaluate($this->bot(), $this->plan('vip'), true);
+
+        $this->assertTrue($result['force_exit']);
+    }
+
+    /** ประวัติ buy แพ้มากกว่าชนะ → ไม่ผ่อนเกณฑ์ให้กลยุทธ์ */
+    #[Test]
+    public function buy_relief_is_withheld_when_history_says_buys_lose(): void
+    {
+        $this->seedCalibration(['buy' => ['high' => ['n' => 21, 'hit_rate' => 0.38, 'avg_move_bps' => -44.0]]]);
+        $this->makeView(['BTC' => ['score' => 1.0, 'stance' => 'buy']], confidence: 0.9);
+
+        $result = $this->gate->evaluate($this->bot(), $this->plan('vip'), false);
+
+        $this->assertSame(0.0, $result['confidence_relief']);
+        $this->assertStringContainsString('ไม่ผ่อนเกณฑ์', implode(' ', $result['reasons']));
+    }
+
+    /** ตัวอย่างไม่พอ → ใช้เกณฑ์ดิบตามเดิม (พฤติกรรมก่อนมี calibration) */
+    #[Test]
+    public function thin_history_falls_back_to_the_raw_thresholds(): void
+    {
+        $this->seedCalibration(['exit' => ['high' => ['n' => 3, 'hit_rate' => 0.0, 'avg_move_bps' => 90.0]]]);
+        $this->makeView(['BTC' => ['score' => -0.9, 'stance' => 'exit']], confidence: 0.9);
+
+        $result = $this->gate->evaluate($this->bot(), $this->plan('vip'), true);
+
+        $this->assertTrue($result['force_exit'], '3 ตัวอย่างคือความบังเอิญ — ยังต้องเชื่อเกณฑ์ดิบ');
+    }
+
+    /** ตารางที่ AnalystCalibration ให้ค่า — เขียนตรงๆ ลง cache ไม่ต้องดึงราคา */
+    private function seedCalibration(array $buckets): void
+    {
+        $table = [];
+        foreach (['buy', 'avoid', 'exit'] as $stance) {
+            foreach (['low', 'mid', 'high'] as $bucket) {
+                $table[$stance][$bucket] = $buckets[$stance][$bucket] ?? ['n' => 0, 'hit_rate' => null, 'avg_move_bps' => null];
+            }
+        }
+
+        \Illuminate\Support\Facades\Cache::put(\App\Services\AiBot\Analyst\AnalystCalibration::CACHE_KEY, [
+            'built_at' => now()->toIso8601String(), 'days' => 14, 'horizon' => 4, 'samples' => 40, 'brier' => null, 'buckets' => $table,
+        ], now()->addHour());
+    }
+
     // ── ตัวช่วย ───────────────────────────────────────────────────────────────
 
     private function bot(string $pair = 'BTC/USDT'): AiBotConfig

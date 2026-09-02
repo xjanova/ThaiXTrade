@@ -183,6 +183,64 @@ class MarketDataService
     }
 
     /**
+     * funding rate ล่าสุดของสัญญา perpetual (%) — บอกว่าฝั่งไหน "จ่ายเงินเพื่อถือ".
+     *
+     * บวกมาก = ฝั่ง long แน่นและจ่ายแพง (มักเป็นจุดที่ตลาดร้อนเกิน) · ลบ = ฝั่ง short จ่าย
+     * เป็นข้อมูลที่นักวิเคราะห์คนดูก่อนเสมอแต่ AI ของเราไม่เคยได้เห็น
+     * มาจาก Binance futures สาธารณะ ไม่ต้องมีคีย์ · ไม่มีสัญญาของเหรียญนี้ = null
+     */
+    public function getFundingRate(string $symbol): ?float
+    {
+        $cacheKey = "market:funding:{$symbol}";
+
+        return Cache::remember($cacheKey, 1800, function () use ($symbol) {
+            try {
+                $response = Http::timeout(8)->get('https://fapi.binance.com/fapi/v1/premiumIndex', [
+                    'symbol' => $this->toBinanceSymbol($symbol),
+                ]);
+
+                if ($response->failed()) {
+                    return null;
+                }
+
+                $rate = $response->json('lastFundingRate');
+
+                return is_numeric($rate) ? round((float) $rate * 100, 4) : null;
+            } catch (\Throwable) {
+                return null;
+            }
+        });
+    }
+
+    /**
+     * ดัชนี Fear & Greed (0 = กลัวสุดขีด · 100 = โลภสุดขีด) จาก alternative.me — ฟรี ไม่ต้องมีคีย์.
+     *
+     * @return array{value: int, label: string}|null
+     */
+    public function getFearGreedIndex(): ?array
+    {
+        return Cache::remember('market:fear-greed', 3600, function () {
+            try {
+                $response = Http::timeout(8)->get('https://api.alternative.me/fng/', ['limit' => 1]);
+
+                if ($response->failed()) {
+                    return null;
+                }
+
+                $row = $response->json('data.0');
+
+                if (! is_array($row) || ! isset($row['value'])) {
+                    return null;
+                }
+
+                return ['value' => (int) $row['value'], 'label' => (string) ($row['value_classification'] ?? '')];
+            } catch (\Throwable) {
+                return null;
+            }
+        });
+    }
+
+    /**
      * แท่งเทียนย้อนหลังในช่วงเวลาที่กำหนด — ไล่ดึงทีละหน้าจนครบ (สำหรับ backtest).
      *
      * getKlines() ให้ได้มากสุด 500 แท่งล่าสุดเท่านั้น ซึ่งพอสำหรับบอทที่เดินสด

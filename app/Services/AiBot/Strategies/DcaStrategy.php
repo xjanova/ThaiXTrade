@@ -36,6 +36,18 @@ class DcaStrategy implements Strategy
         return true;
     }
 
+    /** DCA ถือผ่านขาลงโดยนิยาม — AI ขอปิดไม้ = ยกเลิกกลยุทธ์ที่ผู้ใช้เลือก (stop ของผู้ใช้ยังทำงาน) */
+    public function acceptsAiExit(): bool
+    {
+        return false;
+    }
+
+    /** ตารางเวลาไม่มีอะไรให้ผ่อน */
+    public function withAiRelief(array $params, float $reliefPoints): array
+    {
+        return $params;
+    }
+
     public function decide(array $candles, array $params, ?array $position): Signal
     {
         if (count($candles) < $this->minCandles($params)) {

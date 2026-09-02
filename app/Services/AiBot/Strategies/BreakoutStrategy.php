@@ -34,6 +34,21 @@ class BreakoutStrategy implements Strategy
         return false;
     }
 
+    public function acceptsAiExit(): bool
+    {
+        return true;
+    }
+
+    /** ผ่อน = ยอมรับการทะลุที่เล็กลง (8 จุด → −0.2 ATR) แต่ไม่ต่ำกว่า 0 */
+    public function withAiRelief(array $params, float $reliefPoints): array
+    {
+        if ($reliefPoints > 0) {
+            $params['min_breakout_atr'] = max(0.0, (float) ($params['min_breakout_atr'] ?? 0.1) - $reliefPoints / 40);
+        }
+
+        return $params;
+    }
+
     public function decide(array $candles, array $params, ?array $position): Signal
     {
         if (count($candles) < $this->minCandles($params)) {

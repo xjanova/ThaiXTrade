@@ -644,6 +644,58 @@ class StrategiesTest extends TestCase
         $this->assertGreaterThan($conservative->strength, $aggressive->strength);
     }
 
+    // ── อำนาจของ AI ต่อกลยุทธ์ ───────────────────────────────────────────────
+
+    /** กลยุทธ์ที่ถือผ่านขาลงโดยออกแบบ (DCA/กริด) ไม่รับคำสั่งปิดไม้จาก AI */
+    public function test_only_hold_through_strategies_refuse_ai_exits(): void
+    {
+        foreach ($this->registry->all() as $code => $strategy) {
+            $this->assertSame(
+                ! in_array($code, ['dca', 'grid'], true),
+                $strategy->acceptsAiExit(),
+                "{$code} ประกาศการรับ AI exit ไม่ตรงกับที่ออกแบบ"
+            );
+        }
+    }
+
+    /** "ผ่อน 8 จุด" แปลเป็นหน่วยของแต่ละกลยุทธ์ และกลยุทธ์ที่ไม่ควรถูกผ่อนต้องคืนค่าเดิม */
+    public function test_ai_relief_loosens_each_strategy_in_its_own_units(): void
+    {
+        $r = $this->registry;
+
+        $this->assertEqualsWithDelta(34.0, $r->find('mean_reversion')->withAiRelief(['oversold' => 30], 8.0)['oversold'], 1e-9);
+        $this->assertEqualsWithDelta(49.0, $r->find('mean_reversion')->withAiRelief(['oversold' => 48], 8.0)['oversold'], 1e-9, 'ไม่ทะลุ 49');
+
+        $this->assertEqualsWithDelta(0.6, $r->find('momentum')->withAiRelief(['volume_ratio' => 1.0], 8.0)['volume_ratio'], 1e-9);
+        $this->assertEqualsWithDelta(0.5, $r->find('momentum')->withAiRelief(['volume_ratio' => 0.55], 8.0)['volume_ratio'], 1e-9, 'ไม่ต่ำกว่า 0.5');
+
+        $this->assertEqualsWithDelta(0.0, $r->find('breakout')->withAiRelief(['min_breakout_atr' => 0.1], 8.0)['min_breakout_atr'], 1e-9);
+
+        $this->assertEqualsWithDelta(57.0, $r->find('ai_signal')->withAiRelief(['confidence_min' => 65], 8.0)['confidence_min'], 1e-9);
+        $this->assertEqualsWithDelta(50.0, $r->find('ai_signal')->withAiRelief(['confidence_min' => 52], 8.0)['confidence_min'], 1e-9, 'พื้น 50');
+
+        $this->assertSame(['grid_levels' => 8], $r->find('grid')->withAiRelief(['grid_levels' => 8], 8.0));
+        $this->assertSame(['budget_usd' => 25], $r->find('dca')->withAiRelief(['budget_usd' => 25], 8.0));
+
+        // ศูนย์จุด = ไม่แตะอะไร
+        $this->assertSame(['oversold' => 30], $r->find('mean_reversion')->withAiRelief(['oversold' => 30], 0.0));
+    }
+
+    /** ผ่อนวอลุ่มแล้ว momentum ต้องยอมรับการตัดขึ้นที่วอลุ่มบางลงจริง */
+    public function test_momentum_volume_relief_actually_admits_a_thinner_bar(): void
+    {
+        $market = $this->risingMarket(60, 1);
+        $market[count($market) - 1]['volume'] = 70.0;   // 0.7 เท่าของค่าเฉลี่ย 100
+
+        $strict = $this->registry->find('momentum')
+            ->decide($market, ['fast_ema' => 12, 'slow_ema' => 26, 'volume_filter' => true, 'volume_ratio' => 1.0, 'htf_confirm' => false, 'min_atr_pct' => 0], null);
+        $relaxed = $this->registry->find('momentum')
+            ->decide($market, ['fast_ema' => 12, 'slow_ema' => 26, 'volume_filter' => true, 'volume_ratio' => 0.6, 'htf_confirm' => false, 'min_atr_pct' => 0], null);
+
+        $this->assertSame(Signal::HOLD, $strict->action);
+        $this->assertSame(Signal::BUY, $relaxed->action);
+    }
+
     // ── helper ──────────────────────────────────────────────────────────────
 
     /** ค่าเริ่มต้นจาก config จริง — เทสต์จึงใช้ค่าชุดเดียวกับที่ผู้ใช้ได้ */

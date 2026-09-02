@@ -140,6 +140,19 @@ Schedule::command('aibot:analyze', ['--scope' => 'tactical'])
     ->name('aibot:analyze:tactical');
 
 /*
+ * AI TRADE — ตาราง calibration ของคำตัดสิน AI (วันละครั้ง หลังรอบใหญ่ 00:05 จบ)
+ *
+ * ออดิท 2 ก.ย. 2026: ความมั่นใจที่ AI รายงานเองกลับหัวกับผลจริง — AiViewGate จึงถาม
+ * ตารางนี้ ("ที่ผ่านมาถูกกี่ครั้ง") แทนตัวเลขดิบ ตารางอยู่ใน cache 36 ชม. ถ้า cron
+ * พลาดหนึ่งวันด่านยังมีตารางเมื่อวานใช้ พลาดสองวันจึงถอยไปใช้เกณฑ์ดิบ (ปลอดภัยกว่าเดาต่อ)
+ */
+Schedule::command('aibot:calibrate')
+    ->dailyAt('00:40')
+    ->withoutOverlapping(30)
+    ->onOneServer()
+    ->name('aibot:calibrate');
+
+/*
  * AI TRADE — เรียกทุกนาที แล้วให้แต่ละบอทตัดสินเองว่าถึงรอบหรือยัง
  *
  * ⚠️ ทุกนาทีไม่ได้แปลว่าบอททุกตัวเดินทุกนาที — `AiBotTick::isDue()` กรองตามระดับ

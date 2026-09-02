@@ -253,14 +253,26 @@ class BotRunner
             : $this->aiGate->evaluate($bot, $subscription->plan, (bool) $position);
 
         if ($ai['force_exit'] && $position) {
-            $reason = 'AI สั่งปิดไม้: '.(implode(' · ', array_slice($ai['reasons'], 0, 2)) ?: 'ความเสี่ยงสูงขึ้น');
-            $this->execute($bot, 'sell', $price, 0, $reason, $risk);
+            /*
+             * กลยุทธ์ที่ "ถือผ่านขาลง" โดยออกแบบ (DCA/กริด) ไม่รับคำสั่งปิดไม้จาก AI
+             * — คำสั่งใบเดียวจากรอบวิเคราะห์เคยมีสิทธิ์ปิดทุกกลยุทธ์พร้อมกัน ทั้งที่ exit
+             * 4 ครั้งแรกบน prod ผิด 75% แต่ยัง "ห้ามเติมไม้ใหม่" ระหว่างที่ AI ไม่ชอบเหรียญนี้
+             * (ด่านความเสี่ยงแบบกฎและ stop ของผู้ใช้ยังปิดไม้ได้ตามปกติ ไม่เกี่ยวกับตรงนี้)
+             */
+            if (! $strategy->acceptsAiExit()) {
+                $ai['force_exit'] = false;
+                $ai['block_entry'] = true;
+                $ai['reasons'][] = 'กลยุทธ์นี้ถือผ่านขาลงโดยออกแบบ — ไม่ปิดไม้ตาม AI แต่ไม่เติมไม้ใหม่';
+            } else {
+                $reason = 'AI สั่งปิดไม้: '.(implode(' · ', array_slice($ai['reasons'], 0, 2)) ?: 'ความเสี่ยงสูงขึ้น');
+                $this->execute($bot, 'sell', $price, 0, $reason, $risk);
 
-            return $this->record($bot, 'sell', $reason, $risk['level'], [
-                'price' => $price,
-                'has_position' => true,
-                'meta' => ['ai' => $ai],
-            ]);
+                return $this->record($bot, 'sell', $reason, $risk['level'], [
+                    'price' => $price,
+                    'has_position' => true,
+                    'meta' => ['ai' => $ai],
+                ]);
+            }
         }
 
         if ($ai['block_entry'] && ! $position) {
@@ -311,17 +323,16 @@ class BotRunner
         $params = $this->paramsFor($bot, $candles, $position);
 
         /*
-         * AI ผ่อนเกณฑ์ความมั่นใจได้ แต่ "สร้างสัญญาณเองไม่ได้"
+         * AI ผ่อนเกณฑ์ของกลยุทธ์ได้ แต่ "สร้างสัญญาณเองไม่ได้"
          *
-         * ผ่อนได้สูงสุด 8 จุดจาก 100 (config aibot_analyst.limits) — พอให้สัญญาณ
-         * ที่เกือบผ่านได้ผ่าน แต่ไม่พอให้สัญญาณอ่อนๆ ทะลุ ถ้าให้ AI สั่งซื้อตรงๆ
-         * เราจะย้อนตรวจไม่ได้เลยว่าทำไมถึงเสียเงิน เพราะคำตอบมันไม่คงที่
-         *
-         * บีบพื้นไว้ที่ 50 กันกรณีผู้ใช้ตั้งเกณฑ์ต่ำอยู่แล้ว แล้วถูกผ่อนจนกลายเป็น
-         * "ซื้อทุกครั้งที่คะแนนไม่ติดลบ" ซึ่งไม่ใช่สิ่งที่การผ่อนเกณฑ์ควรทำได้
+         * ผ่อนได้สูงสุด 8 จุดจาก 100 (config aibot_analyst.limits) — แต่ละกลยุทธ์แปล
+         * "8 จุด" เป็นหน่วยของตัวเอง (RSI +4 · ATR −0.2 · วอลุ่ม −0.4 เท่า) ใน
+         * withAiRelief() — เดิมผ่อนได้แค่ confidence_min ของ ai_signal ตัวเดียว
+         * อีก 6 กลยุทธ์ไม่มีคีย์นั้น AI จึงเหลือแต่อำนาจ "เบรก" ตลอด 5 วันแรกบน prod
+         * ถ้าให้ AI สั่งซื้อตรงๆ เราจะย้อนตรวจไม่ได้เลยว่าทำไมถึงเสียเงิน เพราะคำตอบมันไม่คงที่
          */
-        if ($ai['confidence_relief'] > 0 && isset($params['confidence_min'])) {
-            $params['confidence_min'] = max(50.0, (float) $params['confidence_min'] - $ai['confidence_relief']);
+        if ($ai['confidence_relief'] > 0) {
+            $params = $strategy->withAiRelief($params, (float) $ai['confidence_relief']);
         }
 
         $signal = $strategy->decide($candles, $params, $positionArray);
@@ -339,6 +350,17 @@ class BotRunner
 
         if ($signal->action === Signal::BUY && $position && ! $strategy->allowsPyramiding()) {
             return $this->record($bot, 'hold', 'ถือของอยู่แล้ว กลยุทธ์นี้ไม่เติมไม้', $risk['level'], $logContext);
+        }
+
+        /*
+         * AI ห้ามเข้าไม้ = ห้าม "เติมไม้" ด้วย — ด่านข้างบน (3.5) กันเฉพาะตอนไม่มีของ
+         * เคสที่หลุด: DCA ถือของอยู่ AI ขอปิดไม้แต่กลยุทธ์ไม่รับ (ถือผ่านขาลง) แล้วรอบ
+         * เดียวกัน DCA ครบรอบสะสม → เติมไม้ในเหรียญที่ AI เพิ่งบอกว่าให้ออก
+         */
+        if ($signal->action === Signal::BUY && $position && $ai['block_entry']) {
+            $why = $ai['reasons'] !== [] ? end($ai['reasons']) : 'AI ไม่แนะนำเติมไม้ในเหรียญนี้รอบนี้';
+
+            return $this->record($bot, 'hold', $why, $risk['level'], $logContext);
         }
 
         // 6) ลงมือ

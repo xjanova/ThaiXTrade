@@ -25,6 +25,8 @@ use App\Models\AiMarketView;
  */
 class AiViewGate
 {
+    public function __construct(private readonly AnalystCalibration $calibration) {}
+
     /**
      * ประเมินอิทธิพลของ AI ต่อบอทตัวนี้ในรอบนี้.
      *
@@ -113,16 +115,28 @@ class AiViewGate
              * เกณฑ์การสั่งขายสูงกว่าเกณฑ์ทั่วไป เพราะการออกจากตลาดมีต้นทุนจริง
              * 0.36% ต่อรอบ ถ้าให้สั่งขายง่ายๆ ค่าธรรมเนียมจะกินพอร์ตมากกว่าที่
              * มันช่วยหนีทัน — เหตุผลเดียวกับเกณฑ์เทออกของด่านข่าว
+             *
+             * ถ้ามีประวัติพอ ใช้ "อัตราทายถูกจริงของ exit ที่ความมั่นใจระดับนี้" แทน
+             * ตัวเลขที่ AI รายงานเอง (ซึ่งออดิทพบว่ากลับหัว) — ประวัติแย่ = ห้ามขาย
+             * แม้มันจะมั่นใจ 0.95 · ประวัติดี = ขายได้แม้ต่ำกว่าเกณฑ์ดิบ
              */
             $exitConfidence = (float) ($limits['exit_confidence'] ?? 0.75);
+            $history = $this->calibration->hitRate('exit', (float) $view->confidence);
 
-            if ((float) $view->confidence >= $exitConfidence) {
+            $allowed = $history === null
+                ? (float) $view->confidence >= $exitConfidence
+                : $history >= (float) ($limits['calibrated_exit_min'] ?? 0.55);
+
+            if ($allowed) {
                 $forceExit = true;
-                $reasons[] = 'AI สั่งปิดไม้: '.($coin['why'] ?: 'ความเสี่ยงสูงขึ้นชัดเจน');
+                $reasons[] = 'AI สั่งปิดไม้: '.($coin['why'] ?: 'ความเสี่ยงสูงขึ้นชัดเจน')
+                    .($history === null ? '' : sprintf(' (ประวัติถูก %.0f%%)', $history * 100));
             } else {
-                // มั่นใจไม่พอจะจ่ายค่าออก — แต่พอจะห้ามเติมไม้ใหม่
+                // มั่นใจไม่พอจะจ่ายค่าออก (หรือประวัติบอกว่าไม่คุ้ม) — แต่พอจะห้ามเติมไม้ใหม่
                 $blockEntry = true;
-                $reasons[] = 'AI เริ่มไม่ชอบเหรียญนี้ แต่ยังมั่นใจไม่พอจะสั่งปิดไม้';
+                $reasons[] = $history === null
+                    ? 'AI เริ่มไม่ชอบเหรียญนี้ แต่ยังมั่นใจไม่พอจะสั่งปิดไม้'
+                    : sprintf('AI ขอปิดไม้ แต่ประวัติ exit ที่ความมั่นใจระดับนี้ถูกแค่ %.0f%% — ไม่จ่ายค่าออก', $history * 100);
             }
         }
 
@@ -131,12 +145,22 @@ class AiViewGate
              * ช่วยกลยุทธ์ได้ แต่ช่วยเองไม่ได้ — ลดเกณฑ์ความมั่นใจลงตามส่วน
              * ของคะแนนที่ AI ให้ ทำให้สัญญาณที่ "เกือบผ่าน" ได้ผ่าน
              * แต่สัญญาณอ่อนๆ ยังไม่ทะลุ (เพดาน 8 จุดจาก 100)
+             *
+             * ประวัติ buy ที่ความมั่นใจระดับนี้แพ้มากกว่าชนะ = ไม่ผ่อนเกณฑ์ให้เลย
+             * (ออดิท: buy 21 ครั้ง ถูก 38% ขยับ −44 bps — การผ่อนเกณฑ์ตามคำแนะนำ
+             *  แบบนั้นคือการช่วยให้บอทเข้าไม้ที่แพ้บ่อยขึ้น)
              */
-            $max = (float) ($limits['confidence_relief_max'] ?? 8.0);
-            $relief = round($max * max(0.0, (float) ($coin['score'] ?? 0)) * (float) $view->confidence, 2);
+            $history = $this->calibration->hitRate('buy', (float) $view->confidence);
 
-            if ($relief > 0) {
-                $reasons[] = "AI เห็นด้วยกับฝั่งซื้อ — ผ่อนเกณฑ์ความมั่นใจลง {$relief} จุด";
+            if ($history !== null && $history < (float) ($limits['calibrated_relief_min'] ?? 0.5)) {
+                $reasons[] = sprintf('AI เห็นด้วยกับฝั่งซื้อ แต่ประวัติ buy ที่ความมั่นใจระดับนี้ถูกแค่ %.0f%% — ไม่ผ่อนเกณฑ์', $history * 100);
+            } else {
+                $max = (float) ($limits['confidence_relief_max'] ?? 8.0);
+                $relief = round($max * max(0.0, (float) ($coin['score'] ?? 0)) * (float) $view->confidence, 2);
+
+                if ($relief > 0) {
+                    $reasons[] = "AI เห็นด้วยกับฝั่งซื้อ — ผ่อนเกณฑ์ความมั่นใจลง {$relief} จุด";
+                }
             }
         }
 

@@ -36,6 +36,16 @@ class ArbitrageStrategy implements Strategy
         return false;
     }
 
+    public function acceptsAiExit(): bool
+    {
+        return true;
+    }
+
+    public function withAiRelief(array $params, float $reliefPoints): array
+    {
+        return $params;
+    }
+
     public function decide(array $candles, array $params, ?array $position): Signal
     {
         if ($position) {

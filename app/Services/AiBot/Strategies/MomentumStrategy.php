@@ -36,6 +36,21 @@ class MomentumStrategy implements Strategy
         return false;
     }
 
+    public function acceptsAiExit(): bool
+    {
+        return true;
+    }
+
+    /** ผ่อน = ยอมรับวอลุ่มที่บางลง (8 จุด → ต้องการแค่ 0.6 เท่าของค่าเฉลี่ย แทน 1.0) */
+    public function withAiRelief(array $params, float $reliefPoints): array
+    {
+        if ($reliefPoints > 0) {
+            $params['volume_ratio'] = max(0.5, (float) ($params['volume_ratio'] ?? 1.0) - $reliefPoints / 20);
+        }
+
+        return $params;
+    }
+
     public function decide(array $candles, array $params, ?array $position): Signal
     {
         if (count($candles) < $this->minCandles($params)) {
@@ -127,7 +142,11 @@ class MomentumStrategy implements Strategy
             $meta['volume'] = round($currentVolume, 4);
             $meta['avg_volume'] = round((float) $avgVolume, 4);
 
-            if ($avgVolume !== null && $currentVolume < $avgVolume) {
+            // volume_ratio: วอลุ่มแท่งนี้ต้องไม่น้อยกว่ากี่เท่าของค่าเฉลี่ย (AI ผ่อนลงได้ถึง 0.5)
+            $ratio = (float) ($params['volume_ratio'] ?? 1.0);
+            $meta['volume_ratio'] = $ratio;
+
+            if ($avgVolume !== null && $currentVolume < $avgVolume * $ratio) {
                 return Signal::hold('EMA ตัดขึ้นแต่วอลุ่มไม่ยืนยัน', $meta);
             }
         }
