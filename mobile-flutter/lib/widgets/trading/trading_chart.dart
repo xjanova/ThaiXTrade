@@ -4,6 +4,8 @@
 ///
 /// Developed by Xman Studio
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -36,6 +38,11 @@ class TradingChartState extends State<TradingChart> {
   bool _isLoading = true;
   String? _htmlContent;
 
+  /// ป้าย/เส้นชุดล่าสุดที่ parent ส่งมา — เก็บไว้ยิงซ้ำตอน WebView พร้อม
+  /// (parent มักส่งมาก่อน `ready` ไม่กี่ร้อยมิลลิวินาที ถ้าทิ้งไปกราฟจะว่างจนกว่าจะรีเฟรช)
+  List<Map<String, dynamic>> _pendingMarkers = const [];
+  List<Map<String, dynamic>> _pendingLines = const [];
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +74,7 @@ class TradingChartState extends State<TradingChart> {
       // ส่งมาเป็น JSON string
       if (msg.message.contains('ready')) {
         if (mounted) setState(() => _isReady = true);
+        _flushOverlay();
       }
       if (msg.message.contains('priceUpdate') && widget.onPriceUpdate != null) {
         final priceMatch = RegExp(r'"price":([\d.]+)').firstMatch(msg.message);
@@ -101,6 +109,37 @@ class TradingChartState extends State<TradingChart> {
   /// เปลี่ยน indicators
   void setIndicators(List<String> indicators) {
     _controller.runJavaScript("setIndicators('${indicators.join(',')}')");
+  }
+
+  /// ป้ายเข้า/ออกไม้บนกราฟ (ของบอทและที่ผู้ใช้วางเอง)
+  ///
+  /// รูปแบบต่อป้าย: { time (วินาที), side: 'buy'|'sell', source: 'bot'|'mine',
+  /// label?, emphasize? } — ฝั่ง HTML แปลงเป็น marker ของ lightweight-charts
+  /// และเรียงตามเวลาให้เอง (ปลั๊กอินต้องการลำดับน้อย→มาก ไม่งั้นทิ้งทั้งชุด)
+  ///
+  /// ส่งเป็น JSON string literal (jsonEncode ซ้อน) — กัน quote ในป้ายทำ JS พัง
+  void setMarkers(List<Map<String, dynamic>> markers) {
+    _pendingMarkers = markers;
+    if (!_isReady) return;
+    _controller.runJavaScript('setMarkers(${jsonEncode(jsonEncode(markers))})');
+  }
+
+  /// เส้นราคาแนวนอนของบอท — ต้นทุน / SL / TP ของไม้ที่ถืออยู่
+  /// รูปแบบ: { price, color, title, style: 'dashed'|'dotted'|'solid' }
+  void setPriceLines(List<Map<String, dynamic>> lines) {
+    _pendingLines = lines;
+    if (!_isReady) return;
+    _controller.runJavaScript('setPriceLines(${jsonEncode(jsonEncode(lines))})');
+  }
+
+  void _flushOverlay() {
+    if (!_isReady) return;
+    _controller.runJavaScript(
+      'setMarkers(${jsonEncode(jsonEncode(_pendingMarkers))})',
+    );
+    _controller.runJavaScript(
+      'setPriceLines(${jsonEncode(jsonEncode(_pendingLines))})',
+    );
   }
 
   @override

@@ -7,8 +7,9 @@
  */
 
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, LineStyle, createSeriesMarkers } from 'lightweight-charts';
 import { getPairLogo, getBaseSymbol } from '@/utils/cryptoLogos';
+import { useTranslation } from '@/Composables/useTranslation';
 
 const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
@@ -21,7 +22,23 @@ const props = defineProps({
      * ตัวกราฟไม่รู้ว่าไม้มาจากไหน ผู้เรียกเป็นคนรวมรายการมาให้ครบแล้ว
      */
     markers: { type: Array, default: () => [] },
+    /**
+     * เส้นราคาแนวนอนของบอท — ต้นทุน / SL / TP ของไม้ที่บอทถืออยู่ในคู่นี้
+     *
+     * รูปแบบ: { price, color, title, style: 'dashed'|'dotted'|'solid', lineWidth? }
+     * วาดเฉพาะตอนเปิดโหมดบอท ไม่งั้นกราฟรกสำหรับคนที่เทรดเองอย่างเดียว
+     */
+    priceLines: { type: Array, default: () => [] },
+    /**
+     * โหมดบอท — เจ้าของสั่ง "การเข้าไม้ ออกไม้ ต้องแสดงชัดเจนในเส้นกราฟเมื่อเปิดโหมดบอท"
+     * เปิดแล้วป้ายของบอทใหญ่ขึ้นและมีข้อความ (ซื้อ $20 / ขาย +0.35) + วาดเส้นราคาของบอท
+     * ปิดแล้วป้ายบอทยังอยู่แต่เล็กเงียบ เพื่อไม่บังไม้ที่ผู้ใช้วางเอง
+     */
+    botMode: { type: Boolean, default: false },
 });
+
+const emit = defineEmits(['update:botMode']);
+const { t } = useTranslation();
 
 const BINANCE_REST = 'https://api.binance.com/api/v3';
 
@@ -46,6 +63,7 @@ let klineWs = null;
 let reconnectTimer = null;
 let storedCandleData = [];
 let markersApi = null;
+let priceLineRefs = [];
 
 const binanceSymbol = computed(() => props.symbol.replace('/', ''));
 
@@ -329,6 +347,7 @@ async function initChart() {
      * ผูกไว้กับซีรีส์เดียวตายตัวเพื่อไม่ให้ป้ายหายตอนผู้ใช้สลับ candle/line
      */
     markersApi = createSeriesMarkers(candleSeriesRef, buildMarkers());
+    applyPriceLines();
 
     // Toggle visibility
     candleSeriesRef.applyOptions({ visible: chartType.value === 'candle' });
@@ -377,6 +396,8 @@ function buildMarkers() {
         .map((m) => {
             const isBuy = String(m.side).toLowerCase() === 'buy';
             const isBot = m.source === 'bot';
+            // โหมดบอท: ป้ายของบอทต้องอ่านออกจากระยะไกล — ใหญ่ขึ้นและบอกว่าซื้อ/ขายเท่าไหร่
+            const emphasize = isBot && props.botMode;
 
             return {
                 time: Math.floor(Number(m.time)),
@@ -385,8 +406,10 @@ function buildMarkers() {
                 color: isBot
                     ? (isBuy ? '#38bdf8' : '#c084fc')
                     : (isBuy ? '#00C853' : '#FF1744'),
-                text: m.label || '',
-                size: 1,
+                text: emphasize
+                    ? (m.label || t(isBuy ? 'aiTrade.botBuy' : 'aiTrade.botSell'))
+                    : (isBot ? '' : (m.label || '')),
+                size: emphasize ? 2 : 1,
             };
         });
 }
@@ -395,8 +418,43 @@ function refreshMarkers() {
     if (markersApi) markersApi.setMarkers(buildMarkers());
 }
 
+/**
+ * เส้นราคาของบอท — ต้นทุน / SL / TP ของไม้ที่ถืออยู่.
+ *
+ * ลบของเก่าทิ้งก่อนวาดใหม่ทุกครั้ง ไม่งั้นทุกครั้งที่รายการบอทรีเฟรช (ทุก ~30 วิ)
+ * เส้นจะซ้อนทับกันเพิ่มขึ้นเรื่อยๆ จนกราฟทึบ
+ */
+function applyPriceLines() {
+    if (!candleSeriesRef) return;
+
+    priceLineRefs.forEach((ref) => {
+        try { candleSeriesRef.removePriceLine(ref); } catch (_) { /* ซีรีส์ถูกสร้างใหม่ไปแล้ว */ }
+    });
+    priceLineRefs = [];
+
+    if (!props.botMode) return;
+
+    const styles = { dashed: LineStyle.Dashed, dotted: LineStyle.Dotted, solid: LineStyle.Solid };
+
+    (props.priceLines || []).forEach((line) => {
+        const price = Number(line.price);
+        if (!Number.isFinite(price) || price <= 0) return;
+
+        priceLineRefs.push(candleSeriesRef.createPriceLine({
+            price,
+            color: line.color || '#38bdf8',
+            lineWidth: line.lineWidth || 1,
+            lineStyle: styles[line.style] ?? LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: line.title || '',
+        }));
+    });
+}
+
 // ไม้ใหม่เข้ามา (บอทเพิ่งวาง หรือเราเพิ่งกดเอง) ต้องโผล่บนกราฟทันที
 watch(() => props.markers, refreshMarkers, { deep: true });
+watch(() => props.priceLines, applyPriceLines, { deep: true });
+watch(() => props.botMode, () => { refreshMarkers(); applyPriceLines(); });
 
 watch(chartType, (newType) => {
     if (candleSeriesRef) candleSeriesRef.applyOptions({ visible: newType === 'candle' });
@@ -414,6 +472,7 @@ onMounted(() => {
 
 onUnmounted(() => {
     markersApi = null;
+    priceLineRefs = [];
     disconnectKlineWS();
     if (chart) { chart.remove(); chart = null; }
 });
@@ -471,6 +530,18 @@ onUnmounted(() => {
             <div class="ml-auto flex items-center gap-1.5 flex-shrink-0">
                 <span v-if="isLoading" class="text-[10px] text-dark-500 animate-pulse">Loading…</span>
 
+                <!-- โหมดบอท — เน้นป้ายเข้า/ออกไม้ของบอท + เส้นต้นทุน/SL/TP ของไม้ที่ถืออยู่ -->
+                <button
+                    type="button"
+                    :title="t('aiTrade.botModeHint')"
+                    :aria-pressed="botMode ? 'true' : 'false'"
+                    :class="['px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-all flex items-center gap-1',
+                        botMode ? 'bg-sky-500/20 text-sky-300' : 'text-dark-400 hover:text-white hover:bg-white/5']"
+                    @click="emit('update:botMode', !botMode)"
+                >
+                    <span aria-hidden="true">🤖</span>{{ t('aiTrade.botMode') }}
+                </button>
+
                 <!-- Indicators -->
                 <button
                     v-for="indicator in indicators"
@@ -515,5 +586,14 @@ onUnmounted(() => {
 
         <!-- Chart Area -->
         <div ref="chartContainer" class="flex-1 relative overflow-hidden" style="min-height: 0;"></div>
+
+        <!-- คำอธิบายสัญลักษณ์ของบอท — โผล่เฉพาะโหมดบอท ไม่รับคลิกจึงไม่บังการลากกราฟ
+             (รูทของคอมโพเนนต์เป็น relative จากการ์ดที่ครอบอยู่) -->
+        <div
+            v-if="botMode"
+            class="absolute left-2 bottom-7 z-10 pointer-events-none px-2 py-1 rounded-md bg-dark-900/75 border border-white/5 text-[10px] text-dark-300 font-mono"
+        >
+            {{ t('aiTrade.legendBot') }}
+        </div>
     </div>
 </template>

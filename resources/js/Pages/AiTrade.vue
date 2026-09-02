@@ -13,6 +13,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import PageArt from '@/Components/PageArt.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import AiDemoPanel from '@/Components/Trading/AiDemoPanel.vue';
+import AiBotWalletPanel from '@/Components/Trading/AiBotWalletPanel.vue';
 import AiRiskPanel from '@/Components/Trading/AiRiskPanel.vue';
 import AiMarketViewPanel from '@/Components/Trading/AiMarketViewPanel.vue';
 import { useAiBot } from '@/Composables/useAiBot';
@@ -75,6 +76,12 @@ function tierText(tier) {
 }
 
 const unlocked = computed(() => bot.status.value?.unlocked_strategies ?? []);
+
+/** เหตุผลที่บอทออฟไลน์ทั้งที่สถานะ running — แปลรหัสจากเซิร์ฟเวอร์เป็นคำที่คนอ่านรู้เรื่อง */
+function offlineReasonText(item) {
+    const key = { worker_silent: 'aiTrade.offlineWorkerSilent', bot_stale: 'aiTrade.offlineBotStale' }[item?.offline_reason];
+    return key ? t(key) : t('aiTrade.offline');
+}
 const selectedStrategy = computed(() => bot.strategyByCode(form.value.strategy));
 const limits = computed(() => bot.catalog.value?.limits ?? {});
 const timeframes = computed(() => selectedStrategy.value?.timeframes ?? bot.catalog.value?.timeframes ?? ['1h']);
@@ -890,6 +897,9 @@ onUnmounted(() => bot.stopBrowserLoop());
                     />
                     <AiRiskPanel :risk="risk" :pair="riskPair" />
                 </section>
+
+                <!-- กระเป๋าบอท — กระเป๋าแยกสำหรับโหมดจริง (โอนเข้า / ดูยอด / ถอนกลับหาตัวเอง) -->
+                <AiBotWalletPanel />
             </template>
 
             <!-- ด่านความเสี่ยงยังดูได้แม้ยังไม่เชื่อมกระเป๋า (เป็นข้อมูลตลาด) -->
@@ -927,12 +937,22 @@ onUnmounted(() => bot.stopBrowserLoop());
                                 ทางรู้เลยว่ากำลังจ่ายค่าบอทที่ไม่ได้ทำงาน
                             -->
                             <span :class="['w-2 h-2 rounded-full shrink-0',
-                                bot.isStale(item) ? 'bg-amber-400'
-                                    : item.status === 'running' ? 'bg-trading-green animate-pulse'
-                                        : item.status === 'paused' ? 'bg-amber-400' : 'bg-dark-600']"></span>
+                                item.status === 'running' && item.online === false ? 'bg-trading-red'
+                                    : bot.isStale(item) ? 'bg-amber-400'
+                                        : item.status === 'running' ? 'bg-trading-green animate-pulse'
+                                            : item.status === 'paused' ? 'bg-amber-400' : 'bg-dark-600']"></span>
 
                             <div class="min-w-0 flex-1">
-                                <p class="text-sm font-semibold text-white truncate">{{ item.name }}</p>
+                                <p class="text-sm font-semibold text-white truncate flex items-center gap-1.5">
+                                    <span class="truncate">{{ item.name }}</span>
+                                    <!-- ออฟไลน์ทั้งที่สถานะ running = เซิร์ฟเวอร์/วอร์กเกอร์มีปัญหา ไม่ใช่ผู้ใช้กดพัก
+                                         บอกให้รู้ว่าระบบกู้คืนเองอยู่ ไม่ต้องกดเริ่มใหม่ (กดแล้วก็ไม่ช่วยอะไร) -->
+                                    <span
+                                        v-if="item.status === 'running' && item.online === false"
+                                        class="shrink-0 px-1.5 py-px rounded text-[9px] font-medium bg-trading-red/15 text-trading-red"
+                                        :title="offlineReasonText(item)"
+                                    >{{ t('aiTrade.offline') }}</span>
+                                </p>
                                 <p class="text-[11px] text-dark-400 font-mono truncate">
                                     {{ item.pair }} · {{ bot.strategyLabel(item) }} · {{ item.timeframe }} ·
                                     SL {{ item.risk.stop_loss_pct }}% / TP {{ item.risk.take_profit_pct }}%

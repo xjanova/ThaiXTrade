@@ -17,6 +17,7 @@ use App\Services\AiBot\MarketRiskService;
 use App\Services\AiBot\PaperBroker;
 use App\Services\AiBot\StrategyAnalytics;
 use App\Services\AiBot\StrategyAvailability;
+use App\Services\AiBot\WorkerHealth;
 use App\Services\AiBotService;
 use App\Services\MarketDataService;
 use Illuminate\Http\JsonResponse;
@@ -54,6 +55,7 @@ class AiBotController extends Controller
         private readonly AiBotService $bots,
         private readonly PaperBroker $broker,
         private readonly StrategyAvailability $availability,
+        private readonly WorkerHealth $health,
     ) {}
 
     // =========================================================================
@@ -185,8 +187,63 @@ class AiBotController extends Controller
                  */
                 'is_admin' => $this->bots->isAdminWallet($wallet),
                 'bots' => $this->botList($wallet),
+                /*
+                 * สัญญาณชีพของวอร์กเกอร์ — ให้หน้าจอบอกได้ว่า "ออนไลน์จริง" หรือแค่
+                 * สถานะเขียน running ค้างไว้ตอนเซิร์ฟเวอร์ดับ (aibot:health เป็นคนเก็บ)
+                 */
+                'worker' => $this->health->summary(),
             ],
         ]);
+    }
+
+    /**
+     * ไม้ที่บอทลงมือไปแล้ว — ทุกโหมด ทุกบอทของกระเป๋านี้.
+     *
+     * หน้าเทรดใช้ปักป้ายเข้า/ออกบนกราฟ จึงรับ `pair` มากรองและส่งกลับเรียงตามเวลา
+     * จากเก่าไปใหม่ (ปลั๊กอิน marker ของกราฟต้องการลำดับนั้น) ไม่ใช่เรียงล่าสุดก่อน
+     * แบบหน้าประวัติ — เรียงผิดแล้วป้ายหายทั้งชุดโดยไม่มี error ให้เห็น
+     */
+    public function trades(Request $request): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+
+        $validated = $request->validate([
+            'pair' => ['nullable', 'string', 'max:20'],
+            'mode' => ['nullable', 'string', 'in:demo,live'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:500'],
+        ]);
+
+        $pair = isset($validated['pair']) ? strtoupper(str_replace('-', '/', $validated['pair'])) : null;
+        $limit = (int) ($validated['limit'] ?? 300);
+
+        $trades = AiBotTrade::with('bot:id,name,strategy')
+            ->where('wallet_address', $wallet)
+            ->when($pair, fn ($q) => $q->where('pair', $pair))
+            ->when($validated['mode'] ?? null, fn ($q, $mode) => $q->where('mode', $mode))
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->reverse()
+            ->values()
+            ->map(fn (AiBotTrade $t) => [
+                'id' => $t->id,
+                'bot_id' => $t->ai_bot_config_id,
+                'bot_name' => $t->bot?->name,
+                'strategy' => $t->strategy,
+                'pair' => $t->pair,
+                'mode' => $t->mode,
+                'side' => $t->side,
+                'price' => (float) $t->price,
+                'quantity' => (float) $t->quantity,
+                'gross_value' => (float) $t->gross_value,
+                'fee' => (float) $t->fee,
+                'realized_pnl' => $t->realized_pnl !== null ? (float) $t->realized_pnl : null,
+                'reason' => $t->reason,
+                'created_at' => $t->created_at?->toIso8601String(),
+            ])
+            ->all();
+
+        return response()->json(['success' => true, 'data' => $trades]);
     }
 
     /** ประวัติเครดิตล่าสุด (ใช้ในหน้า /ai-trade) */
@@ -963,6 +1020,28 @@ class AiBotController extends Controller
             if (! $this->bots->activeSubscription($wallet)) {
                 return $this->failure('NO_SUBSCRIPTION', 'ต้องเช่าบอทก่อนถึงจะใช้โหมดจริงได้');
             }
+
+            /*
+             * โหมดจริงเดินจากกระเป๋าบอทเท่านั้น — คนละใบกับกระเป๋าที่ผู้ใช้เทรดเอง
+             *
+             * ต้องมีกระเป๋าบอทและมีเงินของบอทอยู่ในนั้นก่อน ไม่งั้นบอทเปิดโหมดจริงได้
+             * แต่ไม่มีทุนให้ลงมือ แล้วผู้ใช้จะเข้าใจว่า "บอทไม่ทำงาน" ทั้งที่แค่ยังไม่ได้โอน
+             */
+            $botWallet = app(\App\Services\AiBot\Wallet\BotWalletService::class);
+
+            // ด่านนี้มีผลเฉพาะเมื่อเปิดฟีเจอร์กระเป๋าบอทแล้ว — ก่อนหน้านั้นโหมดจริงยังเป็น
+            // "สัญญาณรอยืนยัน" แบบ non-custodial ตามเดิม ไม่มีกระเป๋าให้เรียกหา
+            if ($botWallet->enabled()) {
+                $funded = $botWallet->find($wallet);
+
+                if (! $funded) {
+                    return $this->failure('BOT_WALLET_REQUIRED', 'โหมดจริงใช้กระเป๋าบอทแยก — สร้างกระเป๋าบอทและโอนทุนเข้าก่อน');
+                }
+
+                if ($funded->balanceOf('USDT') <= 0) {
+                    return $this->failure('BOT_WALLET_EMPTY', 'กระเป๋าบอทยังไม่มี USDT — โอนทุนของบอทเข้ากระเป๋าบอทก่อนเปิดโหมดจริง');
+                }
+            }
         }
 
         // ของที่ถืออยู่ในโหมดเดิมต้องไม่ตามข้ามโหมดไป — คนละบัญชีคนละความหมาย
@@ -1095,16 +1174,27 @@ class AiBotController extends Controller
 
     private function botList(string $wallet): array
     {
+        $interval = $this->tickIntervalFor($wallet);
+
         return AiBotConfig::forWallet($wallet)
             ->orderByDesc('id')
             ->get()
-            ->map(fn (AiBotConfig $bot) => $this->presentBot($bot))
+            ->map(fn (AiBotConfig $bot) => $this->presentBot($bot, $interval))
             ->all();
     }
 
-    private function presentBot(AiBotConfig $bot): array
+    /** รอบคิดที่แพลนของกระเป๋านี้สัญญาไว้ (นาที) — ใช้ตัดสินว่าบอท "เงียบผิดปกติ" หรือยัง */
+    private function tickIntervalFor(string $wallet): int
+    {
+        $tier = $this->bots->activeSubscription($wallet)?->plan?->tier ?? 'free';
+
+        return max(1, (int) (config('aibot.tick_interval_minutes.'.$tier) ?? 5));
+    }
+
+    private function presentBot(AiBotConfig $bot, ?int $intervalMinutes = null): array
     {
         $meta = $bot->strategyMeta();
+        $liveness = $this->health->botStatus($bot, $intervalMinutes ?? $this->tickIntervalFor($bot->wallet_address));
 
         return [
             'id' => $bot->id,
@@ -1128,6 +1218,15 @@ class AiBotController extends Controller
             'banned_reason' => $bot->banned_reason,
             'mode' => $bot->mode,
             'stats' => $bot->stats ?? [],
+            /*
+             * "ออนไลน์" คนละเรื่องกับ status = running
+             *
+             * running คือสิ่งที่ผู้ใช้ตั้งไว้ ออนไลน์คือวอร์กเกอร์เดินให้จริงและบอทได้รอบคิด
+             * ตามที่แพลนสัญญา — เซิร์ฟเวอร์ดับแล้วสถานะยัง running อยู่ แต่ต้องไม่โชว์เขียว
+             */
+            'online' => $liveness['online'],
+            'offline_reason' => $liveness['reason'],
+            'worker_last_beat_at' => $liveness['worker_last_beat_at'],
             'last_run_at' => $bot->last_run_at?->toIso8601String(),
             'last_signal_at' => $bot->last_signal_at?->toIso8601String(),
             'last_reason' => $bot->last_reason,

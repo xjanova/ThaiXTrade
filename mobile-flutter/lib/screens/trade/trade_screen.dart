@@ -7,6 +7,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ import '../../providers/accent_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/market_provider.dart';
 import '../../providers/config_provider.dart';
+import '../../providers/ai_bot_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/bsc_swap_service.dart';
 import '../../models/bsc_trade_tokens.dart';
@@ -49,6 +51,14 @@ class _TradeScreenState extends State<TradeScreen>
   bool _isSubmitting = false;
   String _timeframe = '1h';
   String _chartType = 'candle';
+
+  /// โหมดบอท — เจ้าของสั่ง "การเข้าไม้ ออกไม้ ต้องแสดงชัดเจนในเส้นกราฟเมื่อเปิดโหมดบอท"
+  /// เปิด = ป้ายของบอทพร้อมข้อความ + เส้นต้นทุน/SL/TP ของไม้ที่บอทถืออยู่ในคู่นี้
+  /// ไม่แตะฟอร์มซื้อ/ขาย — ผู้ใช้ยังเทรดเองได้ตามปกติ บอทใช้กระเป๋า/พอร์ตของมันเอง
+  bool _botMode = true;
+  String _lastMarkersJson = '';
+  String _lastLinesJson = '';
+  String? _lastTradesPair;
   final _priceController = TextEditingController();
   final _amountController = TextEditingController();
   final _triggerPriceController = TextEditingController();
@@ -426,10 +436,88 @@ class _TradeScreenState extends State<TradeScreen>
     );
   }
 
+  // ── ป้าย/เส้นของบอทบนกราฟ ──
+
+  /// ประกอบป้ายเข้า/ออกไม้ + เส้นต้นทุน/SL/TP ของบอทในคู่นี้ แล้วส่งให้ WebView
+  ///
+  /// เรียกจาก build ทุกครั้ง แต่ยิงเข้ากราฟเฉพาะเมื่อชุดข้อมูลเปลี่ยนจริง (เทียบ JSON)
+  /// และทำหลังเฟรม — สั่ง provider/WebView ระหว่าง build ไม่ได้
+  void _syncBotOverlay(AiBotProvider aiBot, String pair, bool th) {
+    final wanted = pair.replaceAll('-', '/').toUpperCase();
+    final markers = <Map<String, dynamic>>[];
+    final lines = <Map<String, dynamic>>[];
+
+    if (_botMode) {
+      for (final t in aiBot.tradesFor(wanted)) {
+        final at = t.createdAt;
+        if (at == null) continue;
+        final isBuy = t.side.toLowerCase() == 'buy';
+        final pnl = t.realizedPnl;
+        final String label;
+        if (!isBuy && pnl != null) {
+          label = '${th ? 'บอทขาย' : 'Bot sell'} ${pnl >= 0 ? '+' : ''}${pnl.toStringAsFixed(2)}';
+        } else {
+          final word = th ? (isBuy ? 'บอทซื้อ' : 'บอทขาย') : (isBuy ? 'Bot buy' : 'Bot sell');
+          label = t.grossValue > 0 ? '$word \$${t.grossValue.toStringAsFixed(0)}' : word;
+        }
+        markers.add({
+          'time': at.toUtc().millisecondsSinceEpoch ~/ 1000,
+          'side': isBuy ? 'buy' : 'sell',
+          'source': 'bot',
+          'label': label,
+          'emphasize': true,
+        });
+      }
+
+      // เส้นราคาจาก entry × (1 ∓ %) เหมือนที่ BotRunner ใช้ตัดสินจริง
+      for (final b in aiBot.bots) {
+        if (b.pair.replaceAll('-', '/').toUpperCase() != wanted) continue;
+        final pos = b.position;
+        if (pos == null || pos.entryPrice <= 0) continue;
+        final entry = pos.entryPrice;
+        lines.add({'price': entry, 'color': '#38bdf8', 'style': 'dashed', 'title': '${th ? 'ต้นทุนบอท' : 'Bot cost'} · ${b.name}'});
+        if (b.risk.stopLossPct > 0) {
+          lines.add({'price': entry * (1 - b.risk.stopLossPct / 100), 'color': '#FF1744', 'style': 'dotted', 'title': th ? 'SL บอท' : 'Bot SL'});
+        }
+        if (b.risk.takeProfitPct > 0) {
+          lines.add({'price': entry * (1 + b.risk.takeProfitPct / 100), 'color': '#00C853', 'style': 'dotted', 'title': th ? 'TP บอท' : 'Bot TP'});
+        }
+      }
+    }
+
+    final markersJson = jsonEncode(markers);
+    final linesJson = jsonEncode(lines);
+    final pairChanged = _lastTradesPair != wanted;
+
+    if (!pairChanged && markersJson == _lastMarkersJson && linesJson == _lastLinesJson) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (pairChanged) {
+        _lastTradesPair = wanted;
+        // ข้อมูลบอทอาจยังไม่เคยโหลดถ้าผู้ใช้ไม่ได้เปิดหน้า AI TRADE มาก่อน
+        if (aiBot.isWalletConnected) {
+          if (aiBot.status == null) unawaited(aiBot.bootstrap());
+          unawaited(aiBot.loadTrades(wanted));
+        }
+      }
+      if (markersJson != _lastMarkersJson) {
+        _lastMarkersJson = markersJson;
+        _chartKey.currentState?.setMarkers(markers);
+      }
+      if (linesJson != _lastLinesJson) {
+        _lastLinesJson = linesJson;
+        _chartKey.currentState?.setPriceLines(lines);
+      }
+    });
+  }
+
   // ── Chart card (gilded hero) ──
 
   Widget _buildChartCard(
       MarketProvider market, LocaleProvider locale, bool isTpix) {
+    _syncBotOverlay(context.watch<AiBotProvider>(), market.selectedPair, locale.isThai);
+
     return GlassCard(
       variant: GlassVariant.hero,
       borderRadius: AppTheme.radiusHero,
@@ -468,6 +556,13 @@ class _TradeScreenState extends State<TradeScreen>
                   _chartKey.currentState?.setChartType(type);
                 },
               ),
+              const SizedBox(width: 8),
+              // โหมดบอท — เน้นป้ายเข้า/ออกไม้ของบอท + เส้นต้นทุน/SL/TP
+              _TimeframePill(
+                label: locale.isThai ? '🤖 บอท' : '🤖 Bot',
+                active: _botMode,
+                onTap: () => setState(() => _botMode = !_botMode),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -482,6 +577,18 @@ class _TradeScreenState extends State<TradeScreen>
               height: 300,
             ),
           ),
+          if (_botMode) ...[
+            const SizedBox(height: 8),
+            Text(
+              locale.isThai
+                  ? '▲ บอทซื้อ · ▼ บอทขาย · เส้นประ = ต้นทุน / SL / TP'
+                  : '▲ bot buy · ▼ bot sell · dashed = cost / SL / TP',
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ],
         ],
       ),
     );

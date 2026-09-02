@@ -63,6 +63,15 @@ class AiBotProvider extends ChangeNotifier {
   AiBotCatalog? _catalog;
   AiBotStatus? _status;
   AiBotDemo? _demo;
+
+  /// ไม้ของบอทในคู่ที่หน้าเทรดกำลังดู (ทุกโหมด) — เก็บคู่ไว้ด้วยกันเพื่อไม่เอาไม้ของ
+  /// คู่เก่าไปปักบนกราฟคู่ใหม่ระหว่างรอโหลด
+  String? _tradesPair;
+  List<DemoTrade> _trades = const [];
+
+  /// กระเป๋าบอท — กระเป๋าแยกสำหรับโหมดจริง (null = ยังไม่เคยโหลด)
+  BotWalletState? _botWallet;
+  bool _loadingBotWallet = false;
   AiMarketView? _marketView;
   AiRiskView? _risk;
   AiBotAnalytics? _analytics;
@@ -121,6 +130,20 @@ class AiBotProvider extends ChangeNotifier {
   AiBotCatalog? get catalog => _catalog;
   AiBotStatus? get status => _status;
   AiBotDemo? get demo => _demo;
+
+  /// ไม้ของบอทสำหรับปักบนกราฟของคู่นี้ — ใช้ชุดที่โหลดจาก /trades ถ้าเป็นคู่เดียวกัน
+  /// ระหว่างรอ ใช้ไม้จากพอร์ตทดลองไปพลางก่อน (เหมือนหน้าเว็บ)
+  List<DemoTrade> tradesFor(String pair) {
+    final wanted = pair.replaceAll('-', '/').toUpperCase();
+    if (_tradesPair == wanted) return _trades;
+    return (_demo?.trades ?? const [])
+        .where((t) => t.pair.replaceAll('-', '/').toUpperCase() == wanted)
+        .toList(growable: false);
+  }
+
+  BotWalletState? get botWallet => _botWallet;
+  bool get isLoadingBotWallet => _loadingBotWallet;
+  static const String botWalletKey = 'bot-wallet';
   AiMarketView? get marketView => _marketView;
   AiRiskView? get risk => _risk;
   AiBotAnalytics? get analytics => _analytics;
@@ -301,6 +324,9 @@ class AiBotProvider extends ChangeNotifier {
   void _resetWalletScopedState() {
     _status = null;
     _demo = null;
+    _tradesPair = null;
+    _trades = const [];
+    _botWallet = null;
     _analytics = null;
     _credits = null;
     _advice = null;
@@ -1081,6 +1107,83 @@ class AiBotProvider extends ChangeNotifier {
         return false;
     }
   }
+
+  // ══════════════════════════════════════════════════════════
+  // ไม้ของบอทสำหรับกราฟ + กระเป๋าบอท
+  // ══════════════════════════════════════════════════════════
+
+  /// ไม้ของบอทในคู่นี้ (ทุกโหมด) — หน้าเทรดเรียกตอนสลับคู่และตามรอบรีเฟรช
+  /// เงียบเมื่อยังไม่ยืนยันกระเป๋า — ป้ายบนกราฟไม่ใช่เรื่องที่ต้องเด้งเตือน
+  Future<void> loadTrades(String pair) async {
+    final wanted = pair.replaceAll('-', '/').toUpperCase();
+    final res = await _run((wallet) => _api.fetchTrades(wallet: wallet, pair: wanted));
+    switch (res) {
+      case ApiOk(:final data):
+        _tradesPair = wanted;
+        _trades = data;
+        notifyListeners();
+      case ApiErr():
+        break;
+    }
+  }
+
+  /// สถานะกระเป๋าบอท — โหลดตอนเปิดการ์ด และหลังทุกการกระทำ
+  Future<void> loadBotWallet() async {
+    if (_loadingBotWallet) return;
+    _loadingBotWallet = true;
+    notifyListeners();
+
+    final res = await _run((wallet) => _api.fetchBotWallet(wallet));
+    _loadingBotWallet = false;
+
+    switch (res) {
+      case ApiOk(:final data):
+        _botWallet = data;
+      case ApiErr():
+        // 403 ยังไม่ยืนยันกระเป๋า — ปล่อยให้เส้นทางยืนยันปกติจัดการ ไม่เด้งเตือนซ้ำ
+        break;
+    }
+    notifyListeners();
+  }
+
+  /// สร้าง / รีเฟรชยอด / ถอน / ยกเลิก — ทุกตัวคืน { wallet?, transfers? } บางส่วน
+  Future<bool> _botWalletAction(
+    Future<ApiResult<Map<String, dynamic>>> Function(String wallet) request,
+  ) async {
+    if (!_beginTask(botWalletKey)) return false;
+
+    final res = await _run(request);
+    _endTask(botWalletKey);
+
+    switch (res) {
+      case ApiOk(:final data):
+        final current = _botWallet ??
+            BotWalletState(enabled: true, chainId: 56);
+        _botWallet = current.merge(data);
+        _clearErrorSilently();
+        notifyListeners();
+        return true;
+      case ApiErr():
+        _recordFailure(res.errorOrNull!);
+        notifyListeners();
+        return false;
+    }
+  }
+
+  Future<bool> createBotWallet() =>
+      _botWalletAction((wallet) => _api.createBotWallet(wallet));
+
+  Future<bool> refreshBotWallet() =>
+      _botWalletAction((wallet) => _api.refreshBotWallet(wallet));
+
+  /// ถอนกลับกระเป๋าของตัวเองเท่านั้น — ไม่มีพารามิเตอร์ปลายทางโดยตั้งใจ
+  Future<bool> withdrawBotWallet(String asset, double amount) =>
+      _botWalletAction((wallet) =>
+          _api.withdrawBotWallet(wallet: wallet, asset: asset, amount: amount));
+
+  Future<bool> cancelBotWalletWithdraw(int transferId) =>
+      _botWalletAction((wallet) =>
+          _api.cancelBotWalletWithdraw(wallet: wallet, transferId: transferId));
 
   /// ขอคำแนะนำจากที่ปรึกษา AI
   ///

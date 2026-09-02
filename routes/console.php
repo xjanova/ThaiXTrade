@@ -191,6 +191,31 @@ foreach (config('aibot.strategies', []) as $strategy) {
 }
 
 /*
+ * ยามเฝ้าวอร์กเกอร์ — บอทต้อง "กลับมาออนไลน์ได้เอง" หลังเซิร์ฟเวอร์ดับ
+ *
+ * cron กลับมาเองหลังรีบูตอยู่แล้ว แต่ล็อกกันซ้อนของรอบที่ตายกลางคันจะค้างในแคช
+ * ได้ถึง 10 นาที และไม่มีใครรู้ว่าบอทนิ่ง ตัวนี้ปลดล็อกที่ค้าง บันทึกช่วงดับ/ฟื้น
+ * และเก็บสรุปให้ API บอกผู้ใช้ตรงๆ ว่าบอทออนไลน์จริงหรือแค่สถานะเขียน running
+ *
+ * ต้องไม่ใช้ withoutOverlapping ตัวเอง — ถ้ายามค้างล็อกเสียเอง จะไม่มีใครมาปลดให้
+ */
+Schedule::command('aibot:health')
+    ->everyTwoMinutes()
+    ->onOneServer()
+    ->name('aibot:health');
+
+/*
+ * คิวถอนของกระเป๋าบอท — เซ็นได้เฉพาะ CLI จึงต้องเป็น cron ไม่ใช่ request
+ * withoutOverlapping จำเป็น: สองรอบซ้อนกันจะเซ็น nonce เดียวกันสองครั้ง
+ * (คำสั่งจบเองทันทีเมื่อ AIBOT_BOT_WALLET_ENABLED=false — ไม่มีต้นทุนตอนยังไม่เปิด)
+ */
+Schedule::command('aibot:wallet-transfers')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer()
+    ->name('aibot:wallet-transfers');
+
+/*
  * คืนค่าบริการของใบอนุญาตวางไม้ที่หมดอายุ
  *
  * ⚠️ ตั๋วค้างสถานะ issued = เงินที่หักจากคลังผู้ใช้ไปแล้วแต่ไม่มีใครได้อะไร
