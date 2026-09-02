@@ -58,7 +58,9 @@ class AiBotBacktest extends Command
             return self::FAILURE;
         }
 
-        $timeframe = (string) ($this->option('tf') ?: ($spec['timeframes'][0] ?? '1h'));
+        // ค่าปริยาย = timeframe ที่แคตตาล็อกแนะนำ ไม่ใช่ตัวแรกในรายการ (ตัวแรกมักเป็นแท่งสั้น
+        // ที่ backtest แล้วแพ้ต้นทุน — เคยทำให้ snapshot ทั้งชุดวัดบน 5m/15m โดยไม่รู้ตัว)
+        $timeframe = (string) ($this->option('tf') ?: ($spec['default_timeframe'] ?? $spec['timeframes'][0] ?? '1h'));
 
         if (! Timeframe::isKnown($timeframe)) {
             $this->error("ไม่รู้จัก timeframe '{$timeframe}'");

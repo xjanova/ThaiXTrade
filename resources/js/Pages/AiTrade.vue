@@ -98,6 +98,63 @@ const paramSpecs = computed(() => {
     return [...merged.values()];
 });
 
+/*
+ * พื้นฐาน vs ขั้นสูง — backend ติดป้าย group ให้ตัวกรอง/ด่านที่จูนจาก backtest
+ * ซ่อนไว้ก่อนเพื่อไม่ให้ฟอร์มมี 10 ช่องตั้งแต่แรก ผู้ใช้ที่อยากละเอียดกดเปิดเอง
+ * (ค่าปริยายของช่องขั้นสูงคือชุดที่ผ่านการทดสอบแล้ว — ไม่กดเปิดก็ได้ของดี)
+ */
+const basicSpecs = computed(() => paramSpecs.value.filter((spec) => (spec.group ?? 'basic') !== 'advanced'));
+const advancedSpecs = computed(() => paramSpecs.value.filter((spec) => (spec.group ?? 'basic') === 'advanced'));
+const showAdvanced = ref(false);
+
+/** เทมเพลตของกลยุทธ์ที่เลือก (conservative / balanced / aggressive) — ทีมงานตั้งค่าและ backtest ไว้ */
+const templates = computed(() => selectedStrategy.value?.templates ?? []);
+
+/**
+ * เทมเพลตที่ "ตรงกับค่าในฟอร์มตอนนี้" — คำนวณจากค่าจริง ไม่ใช่จำว่ากดอะไรไว้
+ *
+ * ผู้ใช้กดเทมเพลตแล้วแก้ช่องหนึ่ง ป้ายต้องหลุดทันที ไม่งั้นจะเข้าใจผิดว่ายังใช้ชุด
+ * ของทีมงานอยู่ทั้งที่แก้ไปแล้ว การเทียบค่าจริงทำให้ไม่มีสถานะให้ลืมรีเซ็ต
+ */
+const activeTemplate = computed(() => templates.value.find((tpl) =>
+    (!tpl.timeframe || tpl.timeframe === form.value.timeframe)
+    && Object.entries(tpl.params ?? {}).every(([key, value]) => String(form.value.params[key]) === String(value))
+    && Object.entries(tpl.risk ?? {}).every(([key, value]) => Number(form.value.risk[key]) === Number(value)),
+)?.code ?? null);
+
+function templateLabel(tpl) {
+    return (locale.value === 'th' ? tpl.name_th : tpl.name) || tpl.name || tpl.code;
+}
+
+function templateTagline(tpl) {
+    return (locale.value === 'th' ? tpl.tagline_th : tpl.tagline_en) || '';
+}
+
+/** ใส่ค่าจากเทมเพลตลงฟอร์ม — เป็นจุดตั้งต้น แก้ต่อได้ทุกช่อง */
+function applyTemplate(tpl) {
+    if (tpl.timeframe && timeframes.value.includes(tpl.timeframe)) {
+        form.value.timeframe = tpl.timeframe;
+    }
+
+    const params = {};
+    paramSpecs.value.forEach((spec) => {
+        params[spec.key] = tpl.params?.[spec.key] ?? form.value.params[spec.key] ?? spec.default;
+    });
+    form.value.params = params;
+    form.value.risk = { ...form.value.risk, ...(tpl.risk ?? {}) };
+}
+
+/** ชุด "สมดุล" ของกลยุทธ์นี้ (ถ้ามี) — จุดเริ่มของบอทใหม่ทุกตัว */
+function applyBalancedTemplate() {
+    const balanced = templates.value.find((tpl) => tpl.code === 'balanced') ?? templates.value[0];
+
+    if (balanced) {
+        applyTemplate(balanced);
+    } else if (selectedStrategy.value?.default_timeframe && timeframes.value.includes(selectedStrategy.value.default_timeframe)) {
+        form.value.timeframe = selectedStrategy.value.default_timeframe;
+    }
+}
+
 const quotaFull = computed(() => {
     const q = bot.status.value?.quota;
     return !!q && !editingId.value && q.used_bots >= q.max_bots;
@@ -250,7 +307,18 @@ function syncRiskDefaults() {
     });
 }
 
-watch(() => form.value.strategy, syncParamDefaults);
+watch(() => form.value.strategy, () => {
+    syncParamDefaults();
+
+    /*
+     * บอทใหม่ที่เปลี่ยนกลยุทธ์ = เริ่มจากชุดสมดุลของกลยุทธ์นั้น
+     * แต่ตอน "แก้บอทเดิม" ห้ามทับค่าที่ผู้ใช้ตั้งไว้ (ฟอร์มถูกแทนที่ทั้งก้อนตอนเปิดแก้
+     * ซึ่งทำให้ watcher นี้ยิงด้วย — ถ้าไม่เช็ก editingId ค่าของบอทเดิมจะหายทุกครั้งที่กดแก้)
+     */
+    if (!editingId.value) {
+        applyBalancedTemplate();
+    }
+});
 watch(limits, syncRiskDefaults);
 
 // ── การเช่า ─────────────────────────────────────────────────────────────────
@@ -357,8 +425,11 @@ function openBuilder(existing = null) {
         };
         syncParamDefaults();
         syncRiskDefaults();
+        // เริ่มจากชุดสมดุลที่ทีมงาน backtest ไว้ — ผู้ใช้ใหม่ไม่ต้องเดาค่า 8 ช่อง
+        applyBalancedTemplate();
     }
 
+    showAdvanced.value = false;
     showBuilder.value = true;
 }
 
@@ -368,7 +439,8 @@ async function saveBot() {
         return;
     }
 
-    const payload = { ...form.value, name: form.value.name.trim() };
+    // ส่งรหัสเทมเพลตไปด้วย (ถ้ายังตรงอยู่) — เซิร์ฟเวอร์ใช้เป็นฐาน ค่าในฟอร์มทับอีกที
+    const payload = { ...form.value, name: form.value.name.trim(), template: activeTemplate.value };
     const result = editingId.value
         ? await bot.updateBot(editingId.value, payload)
         : await bot.createBot(payload);
@@ -998,16 +1070,43 @@ onUnmounted(() => bot.stopBrowserLoop());
                         </div>
                     </div>
 
-                    <!-- Timeframe + พารามิเตอร์ของกลยุทธ์ -->
+                    <!-- เทมเพลต — ชุดตั้งค่าที่ทีมงาน backtest ไว้ กดแล้วแก้ต่อได้ -->
+                    <div v-if="templates.length">
+                        <p class="text-[11px] text-dark-400 mb-2">
+                            {{ t('aiTrade.templates') }}
+                            <span class="text-dark-500">— {{ t('aiTrade.templateHint') }}</span>
+                        </p>
+                        <div class="grid gap-2 sm:grid-cols-3">
+                            <button
+                                v-for="tpl in templates"
+                                :key="tpl.code"
+                                type="button"
+                                :class="['text-left p-3 rounded-xl border transition-all',
+                                    activeTemplate === tpl.code ? 'border-primary-500/60 bg-primary-500/10' : 'border-white/10 bg-white/5 hover:border-white/25']"
+                                @click="applyTemplate(tpl)"
+                            >
+                                <span class="flex items-center gap-1.5 mb-1">
+                                    <span class="text-xs font-bold text-white">{{ templateLabel(tpl) }}</span>
+                                    <span class="text-[9px] px-1 rounded bg-dark-600 text-dark-300 font-mono shrink-0">{{ tpl.timeframe }}</span>
+                                </span>
+                                <span class="block text-[10px] text-dark-400 leading-relaxed">{{ templateTagline(tpl) }}</span>
+                            </button>
+                        </div>
+                        <p v-if="!activeTemplate" class="mt-1.5 text-[10px] text-dark-500">{{ t('aiTrade.customSettings') }}</p>
+                    </div>
+
+                    <!-- Timeframe + พารามิเตอร์พื้นฐานของกลยุทธ์ -->
                     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         <label class="block">
                             <span class="block text-[11px] text-dark-400 mb-1">{{ t('aiTrade.timeframe') }}</span>
                             <select v-model="form.timeframe" class="trading-input text-sm">
-                                <option v-for="tf in timeframes" :key="tf" :value="tf">{{ tf }}</option>
+                                <option v-for="tf in timeframes" :key="tf" :value="tf">
+                                    {{ tf }}{{ tf === selectedStrategy?.default_timeframe ? ` · ${t('aiTrade.defaultTfBadge')}` : '' }}
+                                </option>
                             </select>
                         </label>
 
-                        <label v-for="spec in paramSpecs" :key="spec.key" class="block">
+                        <label v-for="spec in basicSpecs" :key="spec.key" class="block">
                             <span class="block text-[11px] text-dark-400 mb-1">{{ paramLabel(spec) }}</span>
 
                             <input
@@ -1031,6 +1130,46 @@ onUnmounted(() => bot.stopBrowserLoop());
                                 <span class="text-xs text-dark-300">{{ form.params[spec.key] ? t('aiTrade.on') : t('aiTrade.off') }}</span>
                             </span>
                         </label>
+                    </div>
+
+                    <!-- ตั้งค่าขั้นสูง — ตัวกรอง/ด่านที่จูนจาก backtest ซ่อนไว้จนกว่าจะกดเปิด -->
+                    <div v-if="advancedSpecs.length">
+                        <button
+                            type="button"
+                            class="text-[11px] text-primary-300 hover:text-primary-200 transition-colors"
+                            @click="showAdvanced = !showAdvanced"
+                        >
+                            {{ showAdvanced ? '▾' : '▸' }} {{ t('aiTrade.advanced') }} ({{ advancedSpecs.length }})
+                        </button>
+                        <template v-if="showAdvanced">
+                            <p class="text-[10px] text-dark-500 mt-1 mb-2">{{ t('aiTrade.advancedHint') }}</p>
+                            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <label v-for="spec in advancedSpecs" :key="spec.key" class="block">
+                                    <span class="block text-[11px] text-dark-400 mb-1">{{ paramLabel(spec) }}</span>
+
+                                    <input
+                                        v-if="spec.type === 'number'"
+                                        v-model.number="form.params[spec.key]"
+                                        type="number"
+                                        :min="spec.min"
+                                        :max="spec.max"
+                                        :step="spec.step"
+                                        class="trading-input text-sm font-mono"
+                                    >
+                                    <select v-else-if="spec.type === 'select'" v-model="form.params[spec.key]" class="trading-input text-sm">
+                                        <option v-for="opt in spec.options" :key="opt" :value="opt">{{ opt }}</option>
+                                    </select>
+                                    <span v-else class="flex items-center gap-2 h-[46px]">
+                                        <input
+                                            v-model="form.params[spec.key]"
+                                            type="checkbox"
+                                            class="rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500 w-4 h-4"
+                                        >
+                                        <span class="text-xs text-dark-300">{{ form.params[spec.key] ? t('aiTrade.on') : t('aiTrade.off') }}</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </template>
                     </div>
 
                     <!-- ความเสี่ยง -->

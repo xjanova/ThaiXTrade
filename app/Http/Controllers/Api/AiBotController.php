@@ -430,6 +430,8 @@ class AiBotController extends Controller
             );
         }
 
+        [$params, $riskInput] = $this->applyTemplate($validated, $request);
+
         $bot = AiBotConfig::create([
             'wallet_address' => $wallet,
             'ai_bot_subscription_id' => $subscription->id,
@@ -437,8 +439,8 @@ class AiBotController extends Controller
             'pair' => strtoupper($validated['pair']),
             'strategy' => $validated['strategy'],
             'timeframe' => $validated['timeframe'],
-            'params' => $this->bots->sanitizeParams($validated['strategy'], $request->input('params', [])),
-            'risk' => $this->bots->sanitizeRisk($request->input('risk', []), $subscription->plan),
+            'params' => $this->bots->sanitizeParams($validated['strategy'], $params),
+            'risk' => $this->bots->sanitizeRisk($riskInput, $subscription->plan),
             'status' => 'paused',
         ]);
 
@@ -463,16 +465,44 @@ class AiBotController extends Controller
             return $this->failure($e->getMessage(), null, 403);
         }
 
+        [$params, $riskInput] = $this->applyTemplate($validated, $request);
+
         $bot->update([
             'name' => $validated['name'],
             'pair' => strtoupper($validated['pair']),
             'strategy' => $validated['strategy'],
             'timeframe' => $validated['timeframe'],
-            'params' => $this->bots->sanitizeParams($validated['strategy'], $request->input('params', [])),
-            'risk' => $this->bots->sanitizeRisk($request->input('risk', []), $subscription->plan),
+            'params' => $this->bots->sanitizeParams($validated['strategy'], $params),
+            'risk' => $this->bots->sanitizeRisk($riskInput, $subscription->plan),
         ]);
 
         return response()->json(['success' => true, 'data' => $this->presentBot($bot->fresh())]);
+    }
+
+    /**
+     * เทมเพลต (ชุดตั้งค่าที่ทีมงาน backtest ไว้) เป็นฐาน แล้วค่าที่ผู้ใช้ส่งมาทับ.
+     *
+     * รับที่ API ไม่ใช่แค่หน้าเว็บ — แอพมือถือส่ง `template: "balanced"` มาเฉยๆ ก็ได้
+     * ชุดที่ถูกต้องโดยไม่ต้องรู้จักพารามิเตอร์ทุกตัว (และเมื่อทีมงานปรับเทมเพลต
+     * แอพเก่าได้ค่าใหม่อัตโนมัติ) รหัสที่ไม่มีอยู่ต้องแจ้ง ไม่ใช่เงียบแล้วใช้ค่าปริยาย
+     *
+     * @return array{0: array, 1: array} [params, risk] ที่ยังไม่ผ่าน sanitize
+     */
+    private function applyTemplate(array $validated, Request $request): array
+    {
+        $template = $this->bots->templateFor($validated['strategy'], $validated['template'] ?? null);
+
+        if (($validated['template'] ?? null) && ! $template) {
+            abort(response()->json([
+                'success' => false,
+                'error' => ['code' => 'TEMPLATE_NOT_FOUND', 'message' => 'ไม่พบเทมเพลตนี้ของกลยุทธ์ที่เลือก'],
+            ], 422));
+        }
+
+        return [
+            array_merge($template['params'] ?? [], (array) $request->input('params', [])),
+            array_merge($template['risk'] ?? [], (array) $request->input('risk', [])),
+        ];
     }
 
     /** เริ่ม/พัก/หยุดบอท — start ต้องมีการเช่าที่ยังไม่หมดอายุเสมอ */
@@ -997,6 +1027,8 @@ class AiBotController extends Controller
             'timeframe' => ['required', 'string', 'in:'.implode(',', $timeframes)],
             'params' => ['sometimes', 'array'],
             'risk' => ['sometimes', 'array'],
+            // เทมเพลตของกลยุทธ์ (conservative/balanced/aggressive) — ค่าที่ส่งมาทับเทมเพลตได้
+            'template' => ['sometimes', 'nullable', 'string', 'max:40'],
         ], [
             // ข้อความปริยาย ("The selected strategy is invalid") ทำให้ผู้ใช้คิดว่าตัวเอง
             // กรอกผิด ทั้งที่กลยุทธ์นั้นมีอยู่จริงแค่ยังเปิดใช้ไม่ได้

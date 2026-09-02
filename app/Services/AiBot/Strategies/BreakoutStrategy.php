@@ -3,6 +3,7 @@
 namespace App\Services\AiBot\Strategies;
 
 use App\Services\AiBot\Indicators;
+use App\Services\AiBot\MarketRegime;
 use App\Services\AiBot\Signal;
 
 /**
@@ -77,6 +78,15 @@ class BreakoutStrategy implements Strategy
                 return Signal::sell(1.0, 'ราคาปิดหลุดขอบล่างของกรอบ', $meta);
             }
 
+            // time stop: ทะลุแล้วไม่ไปต่อจนครบเวลาที่ให้ = สัญญาณหลอก ปิดคืนทุนก่อนถึง stop
+            $maxHold = (int) ($params['max_hold_bars'] ?? 0);
+            $barsHeld = (int) ($position['bars_held'] ?? 0);
+            $meta['bars_held'] = $barsHeld;
+
+            if ($maxHold > 0 && $barsHeld >= $maxHold && $close <= $base) {
+                return Signal::sell(1.0, "ถือครบ {$maxHold} แท่งแล้วยังไม่กำไร — ปิดไม้คืนทุน (time stop)", $meta);
+            }
+
             return Signal::hold('ถือต่อ ยังไม่หลุดกรอบและยังไม่ถึง stop', $meta);
         }
 
@@ -90,8 +100,28 @@ class BreakoutStrategy implements Strategy
 
         // ทะลุแรงแค่ไหนเทียบกับความผันผวนปกติ — ทะลุนิดเดียวมักเป็นสัญญาณหลอก
         $breakoutSize = $atr > 0 ? ($close - $upper) / $atr : 0.0;
-        $strength = min(1.0, 0.45 + $breakoutSize);
         $meta['breakout_atr'] = round($breakoutSize, 4);
+
+        /*
+         * backtest 180 วัน (2 ก.ย. 2026): แท่ง 4 ชม. edge +315 bps PF 3.5 แต่แท่ง 1 ชม. PF 0.64
+         * — ทะลุกรอบบนแท่งสั้นส่วนใหญ่คือหลอก สองด่านนี้ตัดการทะลุที่ "ไม่ชัด"
+         */
+        $minBreakout = (float) ($params['min_breakout_atr'] ?? 0);
+
+        if ($minBreakout > 0 && $breakoutSize < $minBreakout) {
+            return Signal::hold(sprintf('ทะลุขอบบนแค่ %.2f ATR (ต้องการ ≥ %.2f) — ทะลุนิดเดียวหลอกบ่อย', $breakoutSize, $minBreakout), $meta);
+        }
+
+        if (filter_var($params['htf_confirm'] ?? true, FILTER_VALIDATE_BOOL)) {
+            $regime = MarketRegime::assess($candles);
+            $meta['trend'] = $regime['trend'];
+
+            if ($regime['trend'] === 'down') {
+                return Signal::hold('ทะลุขอบบนแต่ราคายังอยู่ใต้เส้นเทรนด์ใหญ่ (EMA 200) — เด้งในขาลง ไม่ใช่เบรกเอาต์', $meta);
+            }
+        }
+
+        $strength = min(1.0, 0.45 + $breakoutSize);
 
         return Signal::buy($strength, 'ราคาปิดทะลุขอบบนของกรอบราคา', $meta);
     }

@@ -189,6 +189,10 @@ class BotRunner
             'qty' => (float) $position->quantity,
             'entry' => (float) $position->entry_price,
             'entry_market' => (float) $position->entry_price / $entryCostFactor,
+            // ถือมากี่แท่งแล้ว — กลยุทธ์ใช้ทำ time stop (ถือครบแล้วไม่ไปไหน = ปิดคืนทุน)
+            'bars_held' => $position->opened_at
+                ? (int) floor($position->opened_at->diffInMinutes(now()) / Timeframe::minutes($bot->timeframe))
+                : 0,
         ] : null;
 
         /*

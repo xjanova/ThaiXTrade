@@ -775,7 +775,13 @@
         "browserBotWarning": "Keep this tab open — closing it stops the bot immediately",
         "browserBotStopped": "The bot stopped because you left this page",
         "upgradeForCloud": "Upgrade to keep it running with your browser closed",
-        "lastTickAt": "Last cycle"
+        "lastTickAt": "Last cycle",
+        "templates": "Templates",
+        "templateHint": "Presets our team backtested — pick one, then tweak anything",
+        "customSettings": "Custom — current values do not match any preset",
+        "advanced": "Advanced settings",
+        "advancedHint": "Filters and guards tuned on 180 days of backtests — the defaults are the tested set; switch any off only if you understand the effect",
+        "defaultTfBadge": "recommended"
     },
     "walletProfile": {
         "title": "Wallet profile",

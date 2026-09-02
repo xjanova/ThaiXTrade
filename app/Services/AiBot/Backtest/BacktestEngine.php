@@ -99,6 +99,7 @@ class BacktestEngine
                 'qty' => $broker->position['qty'],
                 'entry' => $broker->entryPrice(),
                 'entry_market' => $broker->entryPrice() / $entryCostFactor,
+                'bars_held' => $i - $broker->position['opened_index'],
             ] : null;
 
             // 3) ด่านความเสี่ยงจากราคา (ไม่มีข่าวใน backtest)

@@ -3,6 +3,7 @@
 namespace App\Services\AiBot\Strategies;
 
 use App\Services\AiBot\Indicators;
+use App\Services\AiBot\MarketRegime;
 use App\Services\AiBot\Signal;
 
 /**
@@ -84,6 +85,22 @@ class GridStrategy implements Strategy
 
         if ($close < $lowerBound) {
             return Signal::hold('ราคาหลุดกรอบล่าง ตลาดไม่ sideway แล้ว — หยุดเข้าใหม่', $meta);
+        }
+
+        /*
+         * กริดชนะเฉพาะตลาดออกข้าง — ในตลาดที่มีทิศทาง "ราคาลงถึงชั้นซื้อ" เกิดทุกแท่ง
+         * แล้วกลายเป็นรับมีดตกทีละชั้น (backtest 180 วัน: ช่วงขาลง edge +20 bps
+         * ช่วงออกข้าง +107 bps) ใช้ efficiency ratio วัด: ต่ำกว่า er_max = ออกข้าง
+         */
+        if (filter_var($params['regime_filter'] ?? true, FILTER_VALIDATE_BOOL)) {
+            $erMax = (float) ($params['er_max'] ?? MarketRegime::DEFAULT_ER_TRENDING);
+            $regime = MarketRegime::assess($candles, 20, 200, $erMax);
+            $meta['er'] = $regime['er'];
+            $meta['regime'] = $regime['regime'];
+
+            if ($regime['regime'] !== MarketRegime::RANGING) {
+                return Signal::hold(sprintf('ตลาดกำลังมีทิศทาง (ER %.2f ≥ %.2f) — กริดใช้ได้เฉพาะตลาดออกข้าง', $regime['er'], $erMax), $meta);
+            }
         }
 
         if ($close > $center - $step) {

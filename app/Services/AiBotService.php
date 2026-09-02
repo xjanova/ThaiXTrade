@@ -728,6 +728,31 @@ class AiBotService
         return (bool) ($this->strategy($code)['retired'] ?? false);
     }
 
+    /**
+     * เทมเพลตของกลยุทธ์ — ชุดตั้งค่าเบื้องต้นที่ทีมงาน backtest ไว้ (conservative/balanced/aggressive).
+     *
+     * @return list<array{code: string, name: string, name_th: string, timeframe: string, params: array, risk: array}>
+     */
+    public function templatesFor(string $code): array
+    {
+        return array_values((array) ($this->strategy($code)['templates'] ?? []));
+    }
+
+    public function templateFor(string $code, ?string $template): ?array
+    {
+        if ($template === null || $template === '') {
+            return null;
+        }
+
+        foreach ($this->templatesFor($code) as $candidate) {
+            if (($candidate['code'] ?? null) === $template) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     public function normalize(string $wallet): string
     {
         return strtolower(trim($wallet));

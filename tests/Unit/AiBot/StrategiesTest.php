@@ -207,6 +207,47 @@ class StrategiesTest extends TestCase
         $this->assertSame(Signal::SELL, $signal->action);
     }
 
+    /**
+     * ⭐ ตัดขึ้นใต้เส้นเทรนด์ใหญ่ = เด้งสั้นในขาลง ค่าปริยายต้องไม่ซื้อ (ปิดตัวกรองแล้วซื้อ).
+     */
+    public function test_momentum_refuses_a_cross_up_below_the_long_trend_unless_told_to(): void
+    {
+        // ลงยาวจาก 200 → 100 แล้วนิ่ง 40 แท่ง (EMA เร็ว/ช้าเข้าใกล้กัน) แล้วดีดขึ้น 4% แท่งเดียว
+        $closes = [];
+        for ($i = 0; $i < 260; $i++) {
+            $closes[] = 200.0 - $i * (100.0 / 259);
+        }
+        $closes = array_merge($closes, array_fill(0, 40, 100.0), [104.0]);
+        $market = $this->candles($closes);
+
+        $guarded = $this->registry->find('momentum')
+            ->decide($market, $this->defaultParams('momentum'), null);
+
+        $this->assertSame(Signal::HOLD, $guarded->action);
+        $this->assertStringContainsString('ขาลง', $guarded->reason);
+
+        $unguarded = $this->registry->find('momentum')
+            ->decide($market, ['fast_ema' => 12, 'slow_ema' => 26, 'volume_filter' => false, 'htf_confirm' => false, 'min_atr_pct' => 0], null);
+
+        $this->assertSame(Signal::BUY, $unguarded->action, 'ปิดตัวกรองแล้วการตัดขึ้นต้องยังเป็นสัญญาณซื้อ');
+    }
+
+    /** time stop: ถือครบแล้วยังไม่กำไร = ปิดคืนทุน · ยังไม่ครบ = ถือต่อ */
+    public function test_momentum_time_stop_closes_a_trade_going_nowhere(): void
+    {
+        $flat = $this->candles(array_fill(0, 80, 100.0));
+        $params = ['fast_ema' => 12, 'slow_ema' => 26, 'max_hold_bars' => 48];
+
+        $stale = $this->registry->find('momentum')
+            ->decide($flat, $params, ['qty' => 1.0, 'entry' => 100.18, 'entry_market' => 100.0, 'bars_held' => 100]);
+        $fresh = $this->registry->find('momentum')
+            ->decide($flat, $params, ['qty' => 1.0, 'entry' => 100.18, 'entry_market' => 100.0, 'bars_held' => 10]);
+
+        $this->assertSame(Signal::SELL, $stale->action);
+        $this->assertStringContainsString('time stop', $stale->reason);
+        $this->assertSame(Signal::HOLD, $fresh->action);
+    }
+
     public function test_momentum_refuses_an_inverted_configuration(): void
     {
         $signal = $this->registry->find('momentum')
@@ -218,13 +259,46 @@ class StrategiesTest extends TestCase
 
     // ── mean reversion ──────────────────────────────────────────────────────
 
-    public function test_mean_reversion_buys_when_oversold(): void
+    /**
+     * ⭐ RSI ต่ำในขาลงใหญ่ = มีดตก ไม่ใช่ของถูก — ค่าปริยายต้องไม่ซื้อ.
+     *
+     * backtest 180 วัน: สวนค่าเฉลี่ยบน SOL (ใต้ EMA 200 เกือบตลอด) edge −66 bps
+     * ผู้ใช้ปิดตัวกรองได้เอง ถ้าปิดต้องซื้อเหมือนเดิม
+     */
+    public function test_mean_reversion_refuses_to_buy_oversold_in_a_major_downtrend_unless_told_to(): void
     {
+        $market = $this->fallingMarket();
+
+        $guarded = $this->registry->find('mean_reversion')
+            ->decide($market, $this->defaultParams('mean_reversion'), null);
+
+        $this->assertSame(Signal::HOLD, $guarded->action);
+        $this->assertLessThan(30, $guarded->meta['rsi'], 'RSI ต้องต่ำจริง — ที่ไม่ซื้อเป็นเพราะเทรนด์ ไม่ใช่ RSI');
+        $this->assertStringContainsString('มีดตก', $guarded->reason);
+        $this->assertSame('down', $guarded->meta['trend']);
+
+        $unguarded = $this->registry->find('mean_reversion')
+            ->decide($market, ['rsi_period' => 14, 'oversold' => 30, 'overbought' => 70, 'regime_filter' => false], null);
+
+        $this->assertSame(Signal::BUY, $unguarded->action);
+    }
+
+    /** ย่อ "ในขาขึ้น" ยังต้องซื้อ — นั่นคือฉากที่กลยุทธ์นี้ทำเงินจริง */
+    public function test_mean_reversion_still_buys_a_dip_inside_an_uptrend(): void
+    {
+        $closes = [];
+        for ($i = 0; $i < 280; $i++) {
+            $closes[] = 100.0 + $i * 0.2;
+        }
+        for ($i = 1; $i <= 12; $i++) {
+            $closes[] = 156.0 - $i;
+        }
+
         $signal = $this->registry->find('mean_reversion')
-            ->decide($this->fallingMarket(), $this->defaultParams('mean_reversion'), null);
+            ->decide($this->candles($closes), $this->defaultParams('mean_reversion'), null);
 
         $this->assertSame(Signal::BUY, $signal->action);
-        $this->assertLessThan(30, $signal->meta['rsi']);
+        $this->assertSame('up', $signal->meta['trend']);
     }
 
     public function test_mean_reversion_sells_when_overbought(): void
@@ -306,6 +380,23 @@ class StrategiesTest extends TestCase
         $this->assertSame(Signal::SELL, $signal->action);
     }
 
+    /** ทะลุนิดเดียว (เทียบ ATR) หลอกบ่อย — ค่าขั้นต่ำที่ตั้งต้องกันได้ */
+    public function test_breakout_ignores_a_tiny_breakout_when_a_minimum_size_is_set(): void
+    {
+        $closes = array_fill(0, 60, 100.0);
+        $closes[] = 100.25;   // ขอบบน = 100.2 → ทะลุ 0.05 ≈ 0.12 ATR
+        $market = $this->candles($closes);
+
+        $strict = $this->registry->find('breakout')
+            ->decide($market, ['channel_period' => 20, 'atr_multiple' => 2, 'min_breakout_atr' => 0.3], null);
+        $loose = $this->registry->find('breakout')
+            ->decide($market, ['channel_period' => 20, 'atr_multiple' => 2, 'min_breakout_atr' => 0.05], null);
+
+        $this->assertSame(Signal::HOLD, $strict->action);
+        $this->assertStringContainsString('นิดเดียว', $strict->reason);
+        $this->assertSame(Signal::BUY, $loose->action);
+    }
+
     public function test_breakout_refuses_short_only_configuration(): void
     {
         $signal = $this->registry->find('breakout')->decide(
@@ -339,6 +430,28 @@ class StrategiesTest extends TestCase
 
         $this->assertSame(Signal::HOLD, $signal->action);
         $this->assertStringContainsString('หลุดกรอบล่าง', $signal->reason);
+    }
+
+    /**
+     * ⭐ กริดในตลาดที่มีทิศทาง = รับมีดตกทีละชั้น — ค่าปริยายต้องไม่เข้า (ปิดตัวกรองแล้วเข้า).
+     */
+    public function test_grid_refuses_to_enter_a_trending_market_unless_told_to(): void
+    {
+        // ลงช้าๆ ไม่ย้อนเลย 100 แท่ง: ยังอยู่ในกรอบและต่ำกว่าชั้นซื้อ แต่ ER = 1
+        $closes = [];
+        for ($i = 0; $i < 100; $i++) {
+            $closes[] = 110.0 - $i * 0.1;
+        }
+        $market = $this->candles($closes);
+
+        $guarded = $this->registry->find('grid')
+            ->decide($market, $this->defaultParams('grid'), null);
+        $unguarded = $this->registry->find('grid')
+            ->decide($market, ['grid_levels' => 10, 'range_pct' => 6, 'regime_filter' => false], null);
+
+        $this->assertSame(Signal::HOLD, $guarded->action);
+        $this->assertStringContainsString('ทิศทาง', $guarded->reason);
+        $this->assertSame(Signal::BUY, $unguarded->action, 'ปิดตัวกรองแล้วต้องซื้อที่ชั้นซื้อเหมือนเดิม');
     }
 
     public function test_grid_takes_profit_one_level_up(): void

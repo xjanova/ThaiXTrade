@@ -3,6 +3,7 @@
 namespace App\Services\AiBot\Strategies;
 
 use App\Services\AiBot\Indicators;
+use App\Services\AiBot\MarketRegime;
 use App\Services\AiBot\Signal;
 
 /**
@@ -62,6 +63,36 @@ class MeanReversionStrategy implements Strategy
 
         if ($rsi > $oversold) {
             return Signal::hold('RSI ยังไม่ต่ำพอที่จะเข้าซื้อ', $meta);
+        }
+
+        /*
+         * RSI ต่ำในขาลงใหญ่คือ "มีดตก" ไม่ใช่ของถูก
+         *
+         * backtest 180 วัน (2 ก.ย. 2026): กลยุทธ์นี้บน SOL ที่อยู่ใต้ EMA 200 เกือบตลอด
+         * ได้ edge −66 bps · บน ETH ที่ออกข้าง/ขาขึ้น +70 bps — สิ่งที่ต่างกันคือ
+         * ทิศของเทรนด์ใหญ่ ไม่ใช่ RSI ส่วนการย่อ "ในขาขึ้น" ยังซื้อได้ตามปกติ
+         * เพราะนั่นคือฉากที่กลยุทธ์นี้ทำเงินจริง
+         */
+        if (filter_var($params['regime_filter'] ?? true, FILTER_VALIDATE_BOOL)) {
+            $regime = MarketRegime::assess($candles);
+            $tolerance = (float) ($params['max_below_ema_pct'] ?? 5);
+            $meta['trend'] = $regime['trend'];
+            $meta['above_ema_pct'] = $regime['above_ema_pct'];
+
+            /*
+             * ใช้ "ระยะ" ใต้เส้น ไม่ใช่แค่ "อยู่ใต้เส้น" — การย่อที่ RSI < 30 มักพาราคา
+             * ลงไปใต้ EMA 200 นิดหน่อยเสมอ ถ้าห้ามทันทีที่ต่ำกว่าเส้น backtest 180 วัน
+             * เหลือไม้ 26 → 5 (BTC) และ 28 → 2 (ETH) คือฆ่ากลยุทธ์ทิ้ง สิ่งที่ต้องกัน
+             * คือ "ลึกใต้เส้นหลายเปอร์เซ็นต์" แบบ SOL ที่ทำ edge −66 bps
+             */
+            if ($regime['above_ema_pct'] !== null && $regime['above_ema_pct'] < -$tolerance) {
+                return Signal::hold(sprintf(
+                    'RSI %s ต่ำ แต่ราคาอยู่ใต้เส้นเทรนด์ใหญ่ (EMA 200) ถึง %.1f%% (ยอมได้ %.1f%%) — ไม่รับมีดตก',
+                    $meta['rsi'],
+                    abs($regime['above_ema_pct']),
+                    $tolerance,
+                ), $meta);
+            }
         }
 
         // ต่ำกว่าเกณฑ์ 0 จุด = แรง 0.5, ต่ำกว่า 20 จุดขึ้นไป = แรงเต็ม
