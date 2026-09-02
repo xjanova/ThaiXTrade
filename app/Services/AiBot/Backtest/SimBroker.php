@@ -67,16 +67,20 @@ final class SimBroker
         }
 
         $this->cash -= $budget;
+        $buyCost = $fee + ($fillPrice - $marketPrice) * $quantity;
 
         if ($this->position) {
             // เติมไม้ → ต้นทุนเฉลี่ยใหม่จากเงินที่จ่ายไปทั้งหมด
             $this->position['qty'] += $quantity;
             $this->position['cost'] += $budget;
+            $this->position['costs'] += $buyCost;
             $this->position['entries']++;
         } else {
             $this->position = [
                 'qty' => $quantity,
                 'cost' => $budget,
+                // ค่าธรรมเนียม + slippage ขาซื้อสะสม — ไว้คิด edge ก่อนหักต้นทุนตอนปิด
+                'costs' => $buyCost,
                 'entries' => 1,
                 'opened_index' => $index,
                 'opened_time' => $time,
@@ -130,6 +134,8 @@ final class SimBroker
             'slippage_cost' => ($marketPrice - $fillPrice) * $quantity,
             'realized_pnl' => $pnl,
             'cost_basis' => $this->position['cost'],
+            'buy_costs' => $this->position['costs'],
+            'entries' => $this->position['entries'],
             'held_bars' => $index - $this->position['opened_index'],
             'reason' => $reason,
         ];

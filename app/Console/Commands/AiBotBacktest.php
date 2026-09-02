@@ -146,7 +146,7 @@ class AiBotBacktest extends Command
             ['edge/ไม้', ($s['edge_bps'] ?? '—').' bps', 'ต้นทุนไป-กลับ '.$s['cost_bps'].' bps — '.$this->edgeVerdict($s)],
             ['profit factor', $s['profit_factor'] ?? '—', 'expectancy '.($s['expectancy'] ?? '—').'/ไม้ · ชนะเฉลี่ย '.$s['avg_win'].' · แพ้เฉลี่ย '.$s['avg_loss']],
             ['max drawdown', $s['max_drawdown'].' ('.$s['max_drawdown_pct'].'%)', 'อยู่ในตลาด '.$s['exposure_pct'].'% ของเวลา'],
-            ['ผลตอบแทนพอร์ต', $s['return_pct'].'%', 'ถือเฉยๆ '.($s['buy_hold_pct'] ?? '—').'%'],
+            ['ผลตอบแทนต่อทุนที่ให้ใช้', ($s['capital_return_pct'] ?? '—').'%', 'ถือเฉยๆ '.($s['buy_hold_pct'] ?? '—').'% · ทั้งพอร์ต '.$s['return_pct'].'% · ลงสูงสุด '.$s['max_deployed']],
             ['รอบคิด', implode(' · ', array_map(fn ($k, $v) => "{$k} {$v}", array_keys($s['decisions']), $s['decisions'])), ''],
         ]);
 
@@ -270,7 +270,7 @@ class AiBotBacktest extends Command
             return '❌ ชนะต้นทุนต่อไม้ แต่ expectancy ติดลบ — ไม้แพ้ใหญ่กว่าไม้ชนะมากเกินไป (ดู stop)';
         }
 
-        $vsHold = $s['buy_hold_pct'] === null ? '' : ' · ถือเฉยๆ ได้ '.$s['buy_hold_pct'].'% เทียบพอร์ต '.$s['return_pct'].'%';
+        $vsHold = $s['buy_hold_pct'] === null ? '' : ' · ต่อทุนที่ให้ใช้ '.($s['capital_return_pct'] ?? '—').'% เทียบถือเฉยๆ '.$s['buy_hold_pct'].'%';
 
         return '✅ ชนะต้นทุนและ expectancy บวก'.$vsHold.' — ยืนยันด้วย --walk-forward และ forward test ก่อนเปิดขาย';
     }

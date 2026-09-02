@@ -754,6 +754,41 @@ class BotRunnerTest extends TestCase
         $this->assertSame('buy', $free['action'], 'ปิด ai_gate → กฎล้วนต้องเข้าไม้ได้');
     }
 
+    // ─────────────────────── 8.5) เพดานทุนคุมยอดรวมของกลยุทธ์ที่เติมไม้ ───────────────────────
+
+    /**
+     * ⭐ DCA เติมไม้ได้ แต่ต้นทุนสะสมต้องไม่ทะลุ "ทุนสูงสุดต่อไม้" ที่ผู้ใช้ตั้ง.
+     *
+     * backtest 90 วันเปิดโปงว่าเดิมไม่มีด่านนี้ — เพดาน $100 แต่เติม $25 ทุกวันไม่มีหยุด
+     */
+    #[Test]
+    public function a_pyramiding_strategy_stops_adding_once_the_position_cap_is_reached(): void
+    {
+        $bot = $this->makeBot([
+            'strategy' => 'dca',
+            'params' => ['interval_hours' => 1, 'budget_usd' => 25, 'dip_boost_pct' => 3],
+            'risk' => ['max_position_usd' => 60],
+        ]);
+        $this->candles = $this->flatCandles();
+        $this->giveBotAPosition($bot, 100.0, 0.5);   // ต้นทุนสะสม 50 → เหลือช่อง 10
+
+        $first = $this->runner->tick($bot);
+        $trade = AiBotTrade::where('side', 'buy')->first();
+
+        $this->assertSame('buy', $first['action']);
+        $this->assertNotNull($trade);
+        $this->assertLessThanOrEqual(10.0 + 1e-6, (float) $trade->gross_value + (float) $trade->fee, 'ไม้ต้องถูกตัดให้พอดีช่องที่เหลือ');
+
+        // ช่องเต็มแล้ว → รอบถัดไป (ครบรอบ DCA แล้ว) ต้องถือ พร้อมบอกว่าชนเพดาน
+        $this->travel(2)->hours();
+        $this->candles = $this->flatCandles(81);
+        $second = $this->runner->tick($bot->fresh());
+
+        $this->assertSame('hold', $second['action']);
+        $this->assertStringContainsString('เพดานทุน', $second['reason']);
+        $this->assertSame(1, AiBotTrade::where('side', 'buy')->count());
+    }
+
     // ─────────────────────── 9) กลยุทธ์ที่ถูกถอดออกจากการขาย ───────────────────────
 
     /**

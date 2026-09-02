@@ -81,6 +81,7 @@ class BacktestEngine
         $dailyPnl = [];             // realized ต่อวัน สำหรับเพดานขาดทุน
         $equity = [];
         $barsInMarket = 0;
+        $maxDeployed = 0.0;         // ต้นทุนสะสมสูงสุดที่เคยถือ — เทียบกับเพดานทุนที่ตั้ง
         $decisionCounts = ['buy' => 0, 'sell' => 0, 'hold' => 0, 'blocked' => 0];
 
         for ($i = $start; $i < $total; $i++) {
@@ -192,10 +193,29 @@ class BacktestEngine
             if ($signal->action === Signal::BUY) {
                 $budget = PositionSizer::budget($strategyCode, $riskCfg, $clean, $signal->strength, $sizeMultiplier, $params);
 
+                /*
+                 * เพดานทุนต่อไม้คุม "ยอดรวมที่ถืออยู่" — เหมือน BotRunner
+                 * (backtest ของ DCA คือตัวที่เปิดโปงว่าเดิมไม่มีเพดานนี้: อยู่ในตลาด
+                 *  98% ของเวลา ต้นทุนสะสมทะลุเพดานที่ผู้ใช้ตั้งไปหลายเท่า)
+                 */
+                if ($broker->position) {
+                    $room = (float) ($riskCfg['max_position_usd'] ?? 100) - $broker->position['cost'];
+
+                    if ($room < 1.0) {
+                        $decisionCounts['blocked']++;
+                        $equity[] = ['time' => $time, 'equity' => $broker->equity($price), 'price' => $price];
+
+                        continue;
+                    }
+
+                    $budget = min($budget, round($room, 2));
+                }
+
                 if ($broker->buy($i, $time, $price, $budget, $signal->reason)) {
                     $lastBuyIndex = $i;
                     $lastTradeIndex = $i;
                     $decisionCounts['buy']++;
+                    $maxDeployed = max($maxDeployed, $broker->position['cost']);
                 }
             } elseif ($signal->action === Signal::SELL && $broker->position) {
                 $this->sell($broker, $i, $time, $price, $signal->reason, $dailyPnl, $day);
@@ -210,7 +230,7 @@ class BacktestEngine
         $firstPrice = $total > $start ? (float) $candles[$start]['close'] : 0.0;
 
         return [
-            'summary' => $this->summarize($broker, $equity, $starting, $firstPrice, $lastPrice, $total - $start, $barsInMarket, $decisionCounts, $minutesPerBar),
+            'summary' => $this->summarize($broker, $equity, $starting, $firstPrice, $lastPrice, $total - $start, $barsInMarket, $decisionCounts, $minutesPerBar, $riskCfg, $maxDeployed),
             'trades' => $broker->trades,
             'equity' => $equity,
             'warmup' => $start,
@@ -266,7 +286,7 @@ class BacktestEngine
     /**
      * ตัวเลขที่ตัดสินได้ว่า "เล่นต่อแล้วคุ้มไหม" — สูตรเดียวกับ StrategyAnalytics.
      */
-    private function summarize(SimBroker $broker, array $equity, float $starting, float $firstPrice, float $lastPrice, int $bars, int $barsInMarket, array $counts, int $minutesPerBar): array
+    private function summarize(SimBroker $broker, array $equity, float $starting, float $firstPrice, float $lastPrice, int $bars, int $barsInMarket, array $counts, int $minutesPerBar, array $riskCfg = [], float $maxDeployed = 0.0): array
     {
         $sells = array_values(array_filter($broker->trades, fn ($t) => $t['side'] === 'sell'));
         $closed = count($sells);
@@ -285,20 +305,23 @@ class BacktestEngine
         $avgLoss = $losses !== [] ? $grossLoss / count($losses) : 0.0;
 
         /*
-         * edge ต่อไม้ (bps) = กำไรก่อนหักต้นทุน ÷ เงินที่ลงไป
-         * ตัวเลขนี้เทียบตรงๆ กับต้นทุนไป-กลับ (36 bps) ได้ — ต่ำกว่า = กลยุทธ์ที่แพ้
-         * โดยโครงสร้าง ไม่ว่าจะจูนยังไง (บทเรียนสแกลป์)
+         * edge (bps) = กำไรก่อนหักต้นทุนของไม้ที่ปิดแล้ว ÷ เงินที่ลงไปทั้งหมด × 10,000
+         *
+         * ถ่วงด้วยเงิน ไม่ใช่เฉลี่ยรายไม้ — ไม้ที่ลงเงินต่างกันมาก (DCA เติมไม้จน
+         * ต้นทุนเป็นสิบเท่าของไม้เดี่ยว) ทำให้ค่าเฉลี่ยรายไม้ติดลบทั้งที่กำไรรวมเป็นบวก
+         * ตัวเลขนี้จึงตอบตรงๆ ว่า "ทุกดอลลาร์ที่ลงไป ได้กลับมากี่ bps ก่อนจ่ายตลาด"
+         * และเทียบกับต้นทุนไป-กลับ (36 bps) ได้ตรงๆ — ต่ำกว่า = แพ้โดยโครงสร้าง
+         * ไม่ว่าจะจูนยังไง (บทเรียนสแกลป์: edge 0.2 bps บน 2,242 ไม้)
+         *
+         * ต้นทุนขาซื้อมาจากที่ SimBroker สะสมไว้ในไม้นั้นจริงๆ ไม่ใช่ประมาณ
          */
-        $edges = [];
+        $deployed = 0.0;
+        $grossOnClosed = 0.0;
         foreach ($sells as $t) {
-            $cost = (float) ($t['cost_basis'] ?? 0);
-            if ($cost > 0) {
-                $tradeCost = (float) $t['fee'] + (float) $t['slippage_cost'];
-                // ต้นทุนขาซื้อของไม้นี้อยู่ใน cost_basis แล้ว — ประมาณจากสัดส่วนเดียวกับขาขาย
-                $edges[] = (($t['realized_pnl'] + $tradeCost * 2) / $cost) * 10000;
-            }
+            $deployed += (float) ($t['cost_basis'] ?? 0);
+            $grossOnClosed += (float) $t['realized_pnl'] + (float) $t['fee'] + (float) $t['slippage_cost'] + (float) ($t['buy_costs'] ?? 0);
         }
-        $edgeBps = $edges !== [] ? array_sum($edges) / count($edges) : null;
+        $edgeBps = $deployed > 0 ? ($grossOnClosed / $deployed) * 10000 : null;
 
         // max drawdown จากเส้นมูลค่าพอร์ต (ไม่ใช่แค่ realized) — คือสิ่งที่คนเลิกใช้บอทเพราะมัน
         $peak = $starting;
@@ -341,6 +364,15 @@ class BacktestEngine
             'max_drawdown_pct' => round($maxDdPct, 2),
             'exposure_pct' => $bars > 0 ? round($barsInMarket / $bars * 100, 1) : 0.0,
             'return_pct' => $starting > 0 ? round(($finalEquity - $starting) / $starting * 100, 3) : 0.0,
+            /*
+             * ผลตอบแทนต่อ "ทุนที่ให้บอทใช้" (max_position_usd) — ตัวเลขที่เทียบกับ
+             * ถือเฉยๆ ได้จริง: พอร์ตทดลอง 10,000 แต่บอทถูกจำกัดไม้ละ 100 ผลตอบแทน
+             * ทั้งพอร์ตจึงดูเป็นศูนย์เสมอ ไม่ได้บอกว่ากลยุทธ์ดีหรือแย่
+             */
+            'capital_return_pct' => ($riskCfg['max_position_usd'] ?? 0) > 0
+                ? round(($realized + $unrealized) / (float) $riskCfg['max_position_usd'] * 100, 2)
+                : null,
+            'max_deployed' => round($maxDeployed, 2),
             'buy_hold_pct' => $firstPrice > 0 ? round(($lastPrice / $firstPrice - 1) * 100, 2) : null,
             'trades_per_day' => round($closed / $days, 2),
             'avg_hold_bars' => $sells !== [] ? round(array_sum(array_column($sells, 'held_bars')) / count($sells), 1) : null,

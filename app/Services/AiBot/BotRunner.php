@@ -339,6 +339,27 @@ class BotRunner
 
         // 6) ลงมือ
         $budget = $this->budgetFor($bot, $signal->strength, $sizeMultiplier, $params);
+
+        /*
+         * เพดานทุนต่อไม้ต้องคุม "ยอดรวมที่ถืออยู่" ไม่ใช่แค่ไม้ใหม่ทีละไม้
+         *
+         * ⚠️ backtest ของ DCA (2 ก.ย. 2026) เปิดโปงว่าเดิมไม่มีด่านนี้: ผู้ใช้ตั้งเพดาน
+         *    $100 แล้ว DCA เติม $25 ทุกวันโดยไม่มีอะไรหยุด — 90 วันอยู่ในตลาด 98%
+         *    ต้นทุนสะสมทะลุเพดานหลายเท่า ช่อง "ทุนสูงสุดต่อไม้" จึงเป็นป้ายหลอก
+         *    สำหรับกลยุทธ์ที่เติมไม้ได้ ทั้งที่ผู้ใช้ตั้งไว้เพื่อจำกัดความเสียหาย
+         *
+         * เหลือช่องน้อยกว่า $1 = ถือ (โบรกเกอร์ปฏิเสธไม้เล็กกว่านั้นอยู่แล้ว)
+         */
+        if ($signal->action === Signal::BUY && $position) {
+            $room = (float) (($bot->risk ?? [])['max_position_usd'] ?? 100) - (float) $position->cost_basis;
+
+            if ($room < 1.0) {
+                return $this->record($bot, 'hold', 'ถึงเพดานทุนต่อไม้แล้ว — ไม่เติมไม้จนกว่าจะปิดไม้เดิม', $risk['level'], $logContext);
+            }
+
+            $budget = min($budget, round($room, 2));
+        }
+
         $result = $this->execute($bot, $signal->action, $price, $budget, $signal->reason, $risk, $signal->meta);
 
         if (! ($result['ok'] ?? false)) {

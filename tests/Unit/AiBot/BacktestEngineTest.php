@@ -139,8 +139,26 @@ class BacktestEngineTest extends TestCase
         $this->assertGreaterThan(1, count($buys), 'DCA ต้องซื้อหลายรอบ');
         $this->assertSame(0, $result['summary']['closed'], 'ตลาดนิ่ง DCA ไม่มีจุดขายเอง');
         $this->assertGreaterThan(0, $result['summary']['exposure_pct']);
-        // ต้นทุนรวมของที่ถือ = งบทุกรอบรวมกัน (ค่าธรรมเนียมอยู่ในงบแล้ว)
-        $this->assertEqualsWithDelta(count($buys) * 20.0, -$result['summary']['unrealized_pnl'] + array_sum(array_map(fn ($t) => $t['quantity'], $buys)) * 100.0, 0.5);
+
+        // ⭐ เพดานทุน $100 ต้องคุมยอดรวม: งบ $20 → เติมได้ 5 ไม้แล้วหยุด ไม่ใช่เติมไปเรื่อยๆ
+        $this->assertCount(5, $buys, 'ต้องหยุดเติมเมื่อต้นทุนสะสมชนเพดานทุน');
+        $this->assertLessThanOrEqual(100.0 + 1e-6, $result['summary']['max_deployed']);
+        $this->assertGreaterThan(0, $result['summary']['decisions']['blocked'], 'รอบที่ชนเพดานต้องถูกนับว่าถูกกัน');
+    }
+
+    #[Test]
+    public function edge_ถ่วงด้วยเงิน_เท่ากับกำไรก่อนหักต้นทุนของไม้ที่ปิดหารเงินที่ลง(): void
+    {
+        $result = $this->engine->run('momentum', $this->trendRoundTrip(), '1h', [], ['max_position_usd' => 1000, 'stop_loss_pct' => 50, 'take_profit_pct' => 200]);
+
+        $sells = array_values(array_filter($result['trades'], fn ($t) => $t['side'] === 'sell'));
+        $this->assertNotEmpty($sells);
+
+        $deployed = array_sum(array_column($sells, 'cost_basis'));
+        $gross = array_sum(array_map(fn ($t) => $t['realized_pnl'] + $t['fee'] + $t['slippage_cost'] + $t['buy_costs'], $sells));
+
+        $this->assertEqualsWithDelta($gross / $deployed * 10000, $result['summary']['edge_bps'], 0.06);
+        $this->assertGreaterThan(0, $result['summary']['capital_return_pct']);
     }
 
     #[Test]
