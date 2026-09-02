@@ -38,9 +38,28 @@ class StrategyAvailabilityTest extends TestCase
     #[Test]
     public function กลยุทธ์ที่ไม่พึ่ง_dex_ใช้ได้ตามปกติ(): void
     {
-        foreach (['grid', 'dca', 'momentum', 'mean_reversion', 'breakout', 'scalping', 'ai_signal'] as $code) {
+        foreach (['grid', 'dca', 'momentum', 'mean_reversion', 'breakout', 'ai_signal'] as $code) {
             $this->assertTrue($this->availability->isAvailable($code), "{$code} ควรใช้ได้");
         }
+    }
+
+    /**
+     * ⭐ สแกลป์ถูกถอดออกจากการขาย 2 ก.ย. 2026 — วัดจริง 608 ไม้แล้วแพ้โดยโครงสร้าง.
+     *
+     * ต้อง "ไม่พร้อมใช้" พร้อมเหตุผลที่บอกตัวเลขจริง ไม่ใช่หายไปจากแคตตาล็อกเฉยๆ
+     * (บอทเก่ายังต้องอ่านชื่อและประวัติของตัวเองได้)
+     */
+    #[Test]
+    public function กลยุทธ์ที่ถูกถอดออกจากการขายต้องไม่พร้อมใช้พร้อมเหตุผล(): void
+    {
+        $status = $this->availability->check('scalping');
+
+        $this->assertFalse($status['available']);
+        $this->assertStringContainsString('ถอด', $status['reason']);
+        $this->assertStringContainsString('608', $status['reason'], 'เหตุผลต้องอ้างการวัดจริง ไม่ใช่ความเห็น');
+        $this->assertNotEmpty($status['reason_en']);
+
+        $this->assertNotContains('scalping', $this->availability->availableCodes());
     }
 
     /** ปิดแล้วต้องบอกเหตุผลด้วย ไม่ใช่ปุ่มเทาเปล่าๆ ที่ผู้ใช้เดาเองว่าทำไม */
@@ -82,6 +101,9 @@ class StrategyAvailabilityTest extends TestCase
 
         $this->assertNotContains('arbitrage', $codes);
         $this->assertContains('grid', $codes);
-        $this->assertCount(count(config('aibot.strategies')) - 1, $codes);
+
+        // หายไปสองตัว: อาร์บิทราจ (รอ DEX) + สแกลป์ (ถอดออกจากการขาย)
+        $retired = collect(config('aibot.strategies'))->where('retired', true)->count();
+        $this->assertCount(count(config('aibot.strategies')) - 1 - $retired, $codes);
     }
 }

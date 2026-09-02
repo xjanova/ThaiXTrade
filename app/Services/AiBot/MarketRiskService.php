@@ -25,7 +25,10 @@ class MarketRiskService
     /** หนึ่งแท่งกินเวลากี่นาที — ใช้แปลงเกณฑ์ที่ตั้งเป็นชั่วโมงให้เป็นจำนวนแท่ง */
     private const MINUTES_PER_BAR = ['1m' => 1, '5m' => 5, '15m' => 15, '1h' => 60, '4h' => 240, '1d' => 1440];
 
-    public function __construct(private readonly MarketDataService $market) {}
+    public function __construct(
+        private readonly MarketDataService $market,
+        private readonly NewsFeedService $news,
+    ) {}
 
     /**
      * ประเมินความเสี่ยงของคู่เทรดหนึ่ง.
@@ -215,9 +218,10 @@ class MarketRiskService
             foreach ($news as $item) {
                 $symbols = $item->symbols ?? [];
                 $mentionsThisCoin = in_array($base, $symbols, true);
-                $isMarketWide = $symbols === [] || in_array('BTC', $symbols, true);
+                $mentionsBitcoin = in_array('BTC', $symbols, true);
+                $untagged = $symbols === [];
 
-                if (! $mentionsThisCoin && ! $isMarketWide) {
+                if (! $mentionsThisCoin && ! $mentionsBitcoin && ! $untagged) {
                     continue; // ข่าวของเหรียญอื่นไม่เกี่ยวกับคู่นี้
                 }
 
@@ -225,14 +229,33 @@ class MarketRiskService
                 $ageMinutes = max(0, $since->diffInMinutes($item->published_at, false) * -1 + $minutes);
                 $freshness = max(0.2, 1 - ($ageMinutes / max(1, $minutes)));
 
-                // ข่าวที่พูดถึงเหรียญนี้ตรงๆ หนักกว่าข่าวตลาดรวม
-                // (ดูเหตุผลของตัวเลขใน config/aibot_risk.php — มันกำหนดว่าข่าวแบบไหน
-                //  "แรงพอจะสั่งเทออกได้เอง" ซึ่งเป็นการตัดสินใจเรื่องเงินโดยตรง)
-                $relevance = (float) config(
-                    $mentionsThisCoin ? 'aibot_risk.news_relevance.direct' : 'aibot_risk.news_relevance.market_wide',
-                    $mentionsThisCoin ? 1.0 : 0.85,
-                );
-                $weighted = (float) $item->panic_score * $freshness * $relevance;
+                /*
+                 * ความเกี่ยวข้องกับคู่นี้ — สามระดับ ไม่ใช่สอง
+                 *
+                 *   เอ่ยชื่อเหรียญนี้ตรงๆ          → direct (เต็ม)
+                 *   ข่าว BTC หรือข่าวระดับตลาด     → market_wide (ลากทุกเหรียญ)
+                 *   ไม่แท็กใคร และเป็นเรื่องเฉพาะ  → untagged_local (แค่ระวัง)
+                 *
+                 * ⚠️ เดิมข่าวไม่แท็กทุกข่าวถูกนับเป็นระดับตลาด — "Cronos halts blockchain
+                 *    after exploit" สั่งเทออกบอท BTC ทั้งฝูง (11 ไม้ บน prod)
+                 *    ระดับที่สามจึงมีเพดานใต้เกณฑ์ panic เสมอ: ข่าวโปรโตคอลเดียว
+                 *    ทำให้เบามือได้ แต่สั่งหนีไม่ได้ (ดู config/aibot_risk.php)
+                 */
+                $localOnly = $untagged && ! $mentionsBitcoin
+                    && $this->news->scopeOf((string) $item->title) === 'local';
+
+                if ($mentionsThisCoin) {
+                    $relevance = (float) config('aibot_risk.news_relevance.direct', 1.0);
+                    $cap = 1.0;
+                } elseif ($localOnly) {
+                    $relevance = (float) config('aibot_risk.news_relevance.untagged_local', 0.45);
+                    $cap = (float) config('aibot_risk.news_relevance.untagged_local_cap', 0.79);
+                } else {
+                    $relevance = (float) config('aibot_risk.news_relevance.market_wide', 0.85);
+                    $cap = 1.0;
+                }
+
+                $weighted = min($cap, (float) $item->panic_score * $freshness * $relevance);
 
                 if ($weighted > $score) {
                     $score = $weighted;

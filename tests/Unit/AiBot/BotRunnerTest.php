@@ -3,6 +3,7 @@
 namespace Tests\Unit\AiBot;
 
 use App\Models\AiBotConfig;
+use App\Models\AiBotDecision;
 use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
 use App\Models\AiBotSubscription;
@@ -640,5 +641,135 @@ class BotRunnerTest extends TestCase
         }
 
         return $candles;
+    }
+
+    // ─────────────────────── 7) ไม่คิดซ้ำบนแท่งเดิม · ไม่บันทึกซ้ำ ───────────────────────
+
+    /**
+     * ⭐ แท่งปิดเดิม + ไม่มีของ = ข้าม ไม่ประเมินซ้ำ ไม่บันทึกซ้ำ.
+     *
+     * บอท VIP ถูกปลุกทุกนาทีบนแท่ง 1 ชั่วโมง → เห็นภาพเดิม 60 รอบ วัดบน prod:
+     * 81,105 แถวใน 13 วัน จน aibot:harvest ตายด้วย memory limit
+     */
+    #[Test]
+    public function it_skips_re_evaluating_the_same_closed_candle_while_flat(): void
+    {
+        $bot = $this->makeBot();
+        $this->candles = $this->flatCandles();
+
+        $first = $this->runner->tick($bot);
+        $second = $this->runner->tick($bot->fresh());
+
+        $this->assertSame('hold', $first['action']);
+        $this->assertArrayNotHasKey('skipped', $first);
+        $this->assertTrue($second['skipped'] ?? false, 'รอบสองบนแท่งเดิมต้องถูกข้าม');
+        $this->assertSame(1, AiBotDecision::count(), 'ต้องมีบันทึกแค่รอบเดียว');
+        $this->assertNotNull($bot->fresh()->last_run_at, 'ยังต้องขยับ last_run_at ให้ตัวจับเวลานับรอบถูก');
+
+        // แท่งปิดใหม่มาถึง → ต้องคิดใหม่
+        $this->candles = $this->flatCandles(81);
+        $third = $this->runner->tick($bot->fresh());
+
+        $this->assertArrayNotHasKey('skipped', $third);
+    }
+
+    /**
+     * ถือของอยู่ต้องประเมินทุกรอบ (ข่าว/AI เปลี่ยนได้ระหว่างแท่ง) แต่สภาพเดิมนับซ้ำในแถวเดิม.
+     */
+    #[Test]
+    public function while_holding_it_keeps_evaluating_but_folds_identical_decisions_into_one_row(): void
+    {
+        $bot = $this->makeBot();
+        // ขาขึ้นที่เพิ่งตัดขึ้น — momentum ถือต่อแน่นอน (ตลาดนิ่งๆ EMA ตัดกันไปมาแล้วขายทิ้ง)
+        $this->candles = $this->risingCandles();
+        $this->giveBotAPosition($bot, $this->candles[count($this->candles) - 2]['close']);
+
+        $this->runner->tick($bot);
+        $second = $this->runner->tick($bot->fresh());
+        $this->runner->tick($bot->fresh());
+
+        $this->assertSame(1, AiBotPosition::count(), 'ฉากนี้ต้องยังถือของอยู่ตลอด');
+        $this->assertArrayNotHasKey('skipped', $second, 'ถือของอยู่ห้ามข้าม');
+        $this->assertSame(1, AiBotDecision::count(), 'สภาพเดิมสามรอบ = แถวเดียว');
+
+        $row = AiBotDecision::first();
+        $this->assertSame(3, $row->repeat_count);
+        $this->assertNotNull($row->last_seen_at);
+        $this->assertNotNull($row->price, 'ราคาต้องติดไปกับบันทึกเสมอ');
+    }
+
+    /**
+     * ไม้ที่ด่านความเสี่ยงสั่งปิด ต้องบันทึกราคาไว้ — ไม่งั้นรายงานให้คะแนนไม้นั้นไม่ได้.
+     */
+    #[Test]
+    public function forced_exits_record_the_price_they_sold_at(): void
+    {
+        $bot = $this->makeBot();
+        $this->giveBotAPosition($bot);
+        $this->candles = $this->risingCandles();
+        $this->panicNews();
+
+        $this->runner->tick($bot);
+
+        $decision = AiBotDecision::where('action', 'sell')->first();
+        $this->assertNotNull($decision);
+        $this->assertNotNull($decision->price);
+        $this->assertTrue($decision->has_position);
+    }
+
+    // ─────────────────────── 8) สวิตช์ AI รายบอท (กลุ่มควบคุม) ───────────────────────
+
+    /**
+     * ⭐ ปิด ai_gate = กฎล้วน — มุมมอง AI ที่ห้ามเข้าไม้ต้องไม่มีผลกับบอทตัวนี้.
+     *
+     * นี่คือกลุ่มควบคุมของการทดลอง: ไม่มีมัน แยกไม่ได้เลยว่าผลมาจาก AI หรือจากตลาด
+     */
+    #[Test]
+    public function a_bot_with_the_ai_gate_off_ignores_the_market_view(): void
+    {
+        config(['aibot_analyst.enabled' => true, 'aibot_analyst.shadow_mode' => false]);
+
+        \App\Models\AiMarketView::create([
+            'scope' => 'strategic', 'provider' => 'openai', 'model' => 'test',
+            'regime' => 'risk_on', 'confidence' => 0.9, 'size_multiplier' => 1.0,
+            'coins' => ['BTC' => ['score' => -0.8, 'stance' => 'avoid', 'why' => 'ทดสอบ']],
+            'shortlist' => [], 'summary' => '', 'headlines' => [], 'prompt' => '', 'raw_response' => '',
+            'tokens_used' => 0, 'latency_ms' => 0, 'expires_at' => now()->addHour(),
+        ]);
+
+        $this->candles = $this->risingCandles();
+
+        $gated = $this->makeBot();
+        $blocked = $this->runner->tick($gated);
+
+        $control = AiBotConfig::create([
+            'wallet_address' => self::WALLET, 'name' => 'กลุ่มควบคุม', 'pair' => 'BTC/USDT',
+            'strategy' => 'momentum', 'timeframe' => '1h', 'status' => 'running', 'mode' => 'demo',
+            'params' => ['ai_gate' => false], 'risk' => ['max_position_usd' => 1000],
+        ]);
+        $free = $this->runner->tick($control);
+
+        $this->assertSame('hold', $blocked['action'], 'AI สั่ง avoid → บอทปกติต้องไม่เข้าไม้');
+        $this->assertStringContainsString('AI', $blocked['reason']);
+        $this->assertSame('buy', $free['action'], 'ปิด ai_gate → กฎล้วนต้องเข้าไม้ได้');
+    }
+
+    // ─────────────────────── 9) กลยุทธ์ที่ถูกถอดออกจากการขาย ───────────────────────
+
+    /**
+     * บอทที่ยังเดินอยู่ด้วยกลยุทธ์ที่ถูกถอด ต้องถูกพักพร้อมเหตุผล ไม่ใช่เทรดต่อเงียบๆ.
+     */
+    #[Test]
+    public function a_running_bot_on_a_retired_strategy_is_paused_with_the_reason(): void
+    {
+        $bot = $this->makeBot(['strategy' => 'scalping', 'timeframe' => '5m']);
+        $this->candles = $this->risingCandles();
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('stopped', $result['action']);
+        $this->assertSame('paused', $bot->fresh()->status);
+        $this->assertStringContainsString('ถอด', $bot->fresh()->last_reason);
+        $this->assertSame(0, AiBotTrade::count(), 'ห้ามเทรดด้วยกลยุทธ์ที่ถอดแล้ว');
     }
 }

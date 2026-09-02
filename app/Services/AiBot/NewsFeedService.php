@@ -287,7 +287,30 @@ class NewsFeedService
             'sentiment' => round($positive - $panic, 3),
             'symbols' => $this->detectSymbols($title),
             'terms' => $terms,
+            'scope' => $this->scopeOf($title),
         ];
+    }
+
+    /**
+     * ข่าวนี้เป็นเรื่อง "ระดับตลาด" หรือ "โปรโตคอลเดียว".
+     *
+     * ใช้ตัดสินข่าวที่ไม่ได้แท็กเหรียญไหนเลย — ด่านความเสี่ยงต้องรู้ว่าจะให้
+     * ข่าวนั้นลากทุกเหรียญ (exchange ล่ม) หรือแค่ทำให้ระวัง (แอปเดียวโดนแฮก)
+     * ดูเหตุผลและตัวอย่างจริงใน config/aibot_risk.php → market_scope_terms
+     *
+     * @return 'market'|'local'
+     */
+    public function scopeOf(string $title): string
+    {
+        $haystack = mb_strtolower($title);
+
+        foreach ((array) config('aibot_risk.market_scope_terms', []) as $term) {
+            if ($this->mentions($haystack, (string) $term)) {
+                return 'market';
+            }
+        }
+
+        return 'local';
     }
 
     /**

@@ -41,6 +41,9 @@ class AiBotService
     /** ยังไม่เปิดขายให้คนทั่วไป — อยู่ระหว่างทดสอบ */
     public const ERR_SALES_CLOSED = 'SALES_CLOSED';
 
+    /** กลยุทธ์ถูกถอดออกจากการขายแล้ว (ธง retired ใน config/aibot.php) */
+    public const ERR_STRATEGY_RETIRED = 'STRATEGY_RETIRED';
+
     // =========================================================================
     // เครดิต
     // =========================================================================
@@ -530,6 +533,17 @@ class AiBotService
             throw new RuntimeException(self::ERR_STRATEGY_LOCKED);
         }
 
+        /*
+         * ถอดออกจากการขายแล้ว = สร้างใหม่ไม่ได้ และ "เริ่ม" ตัวเก่าก็ไม่ได้
+         *
+         * เช็คที่นี่เพราะทั้ง store/update/setState('start') ของ API ผ่านเมธอดนี้
+         * ทั้งหมด — กันที่ปุ่มบนหน้าเว็บอย่างเดียวไม่พอ แอพมือถือไม่เห็นปุ่มเรา
+         * (ดูเหตุผลที่ถอดในรายการของกลยุทธ์นั้นใน config/aibot.php)
+         */
+        if ($this->isRetired($strategyCode)) {
+            throw new RuntimeException(self::ERR_STRATEGY_RETIRED);
+        }
+
         $limit = min((int) $plan->max_bots, (int) config('aibot.limits.max_bots_hard_cap', 25));
 
         $used = AiBotConfig::forWallet($wallet)
@@ -706,6 +720,12 @@ class AiBotService
         }
 
         return null;
+    }
+
+    /** กลยุทธ์นี้ถูกถอดออกจากการขายแล้วไหม (ธง retired ในแคตตาล็อก) */
+    public function isRetired(string $code): bool
+    {
+        return (bool) ($this->strategy($code)['retired'] ?? false);
     }
 
     public function normalize(string $wallet): string

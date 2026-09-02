@@ -204,7 +204,8 @@ class MarketRiskServiceTest extends TestCase
     #[Test]
     public function the_higher_of_price_and_news_risk_wins_instead_of_the_average(): void
     {
-        $this->news(['panic_score' => 0.95]);
+        // ข่าวระดับตลาด (exchange) — ข่าวโปรโตคอลเดียวที่ไม่แท็กเหรียญถูกลดน้ำหนักโดยตั้งใจ
+        $this->news(['title' => 'Major exchange hack drains user funds', 'panic_score' => 0.95]);
 
         $result = $this->risk->assess('BTC/USDT', $this->calmCandles());
 
@@ -290,6 +291,51 @@ class MarketRiskServiceTest extends TestCase
         $result = $this->risk->assess('SOL/USDT', $this->calmCandles());
 
         $this->assertGreaterThan(0.0, $result['news']['score'], 'BTC ร่วงกระทบทุกเหรียญ');
+    }
+
+    /**
+     * ⭐ ข่าวโปรโตคอลเดียวที่ไม่ได้แท็กเหรียญ ทำให้ระวังได้ แต่สั่งเทออกไม่ได้.
+     *
+     * บทเรียนจาก prod 21 ส.ค. – 2 ก.ย. 2026: "Cronos halts blockchain after
+     * Tectonic exploit" และ "crypto card hack crashed a neobank's token" ถูกนับเป็น
+     * ข่าวทั้งตลาด → บังคับขาย 11 ไม้ของบอท BTC ทั้ง 7 ตัว ทั้งที่ไม่เกี่ยวกับ BTC
+     */
+    #[Test]
+    public function untagged_news_about_a_single_protocol_worries_the_bot_but_never_forces_an_exit(): void
+    {
+        $this->news([
+            'title' => 'Cronos halts blockchain after $75 million lending exploit hits lending app Tectonic',
+            'symbols' => [],
+            'panic_score' => 0.95,
+            'matched_terms' => ['exploit'],
+        ]);
+
+        $result = $this->risk->assess('BTC/USDT', $this->calmCandles());
+
+        $this->assertGreaterThan(0.0, $result['news']['score'], 'ข่าวแฮกยังต้องทำให้ระวัง');
+        $this->assertLessThan(0.8, $result['news']['score'], 'แต่ต้องไม่ถึงเกณฑ์ panic ด้วยตัวเอง');
+        $this->assertNotSame('panic', $result['level']);
+        $this->assertFalse($result['force_exit'], 'เชนอื่นโดนแฮก ไม่ใช่เหตุให้เทบิตคอยน์ทิ้ง');
+        $this->assertLessThan(1.0, $result['size_multiplier'], 'ลดขนาดไม้ได้ — นั่นคือ "ระวัง"');
+    }
+
+    /**
+     * ข่าวไม่แท็กเหรียญแต่เป็นเรื่องระดับตลาด (exchange ล่ม) ยังต้องสั่งเทออกได้.
+     */
+    #[Test]
+    public function untagged_news_about_the_whole_market_still_forces_an_exit(): void
+    {
+        $this->news([
+            'title' => 'Major exchange halts withdrawals after hack',
+            'symbols' => [],
+            'panic_score' => 1.0,
+            'matched_terms' => ['hack', 'halts withdrawals'],
+        ]);
+
+        $result = $this->risk->assess('BTC/USDT', $this->calmCandles());
+
+        $this->assertSame('panic', $result['level']);
+        $this->assertTrue($result['force_exit']);
     }
 
     /**

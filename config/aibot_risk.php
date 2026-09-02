@@ -59,6 +59,45 @@ return [
     'news_relevance' => [
         'direct' => 1.0,
         'market_wide' => 0.9,
+
+        /*
+         * ข่าวที่ "ไม่ได้แท็กเหรียญไหนเลย" และไม่ใช่เรื่องระดับตลาด
+         *
+         * ⚠️ บทเรียนจาก prod 21 ส.ค. – 2 ก.ย. 2026: ข่าวไม่แท็กเคยถูกนับเป็น
+         *    "ทั้งตลาด" น้ำหนัก 0.9 → พาดหัว "Cronos halts blockchain after
+         *    Tectonic exploit" และ "crypto card hack crashed a neobank's token"
+         *    (โปรโตคอล/แอปเดียว ไม่เกี่ยวกับ BTC เลย) สั่งเทออก **11 ไม้** ของบอท
+         *    BTC ทั้ง 7 ตัวพร้อมกัน — บังเอิญได้กำไร แต่กลไกผิด
+         *
+         * ข่าวแบบนี้ควรทำให้บอท "ระวัง" (ลดขนาดไม้) ไม่ใช่ "หนี" — จึงลดน้ำหนักลง
+         * และตั้งเพดานไว้ใต้เกณฑ์ panic (0.80) เพื่อให้ข่าวโปรโตคอลเดียว
+         * ไม่มีทางสั่งเทออกได้ด้วยตัวเอง ไม่ว่าคำในพาดหัวจะแรงแค่ไหน
+         *
+         * ข่าวไม่แท็กที่เป็นเรื่องระดับตลาด (exchange ล่ม · stablecoin หลุด ·
+         * หน่วยงานกำกับ) ยังใช้ market_wide ตามเดิม — ดู market_scope_terms
+         */
+        'untagged_local' => 0.45,
+        'untagged_local_cap' => 0.79,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | คำที่บอกว่าข่าวเป็น "เรื่องระดับตลาด" แม้ไม่ได้เอ่ยชื่อเหรียญ
+    |--------------------------------------------------------------------------
+    | exchange ใหญ่ล่ม / stablecoin หลุด / หน่วยงานกำกับขยับ ลากทุกเหรียญจริง
+    | ส่วนแอปหรือเชนเล็กโดนแฮก กระทบเฉพาะเหรียญของมันเอง
+    |
+    | ตั้งใจไม่ใส่คำกว้างอย่าง "crypto" หรือ "token" — พาดหัวข่าวคริปโตแทบทุกข่าว
+    | มีคำพวกนี้ ใส่แล้วทุกข่าวกลายเป็นระดับตลาด กลับไปเป็นบั๊กเดิม
+    | เทียบแบบ "ทั้งคำ" เหมือน panic_terms (ดู NewsFeedService::mentions)
+    */
+    'market_scope_terms' => [
+        'exchange', 'exchanges', 'binance', 'coinbase', 'kraken', 'okx', 'bybit', 'bitget',
+        'kucoin', 'htx', 'huobi', 'gemini', 'bitfinex', 'upbit', 'bithumb',
+        'tether', 'usdt', 'usdc', 'stablecoin', 'stablecoins',
+        'sec', 'cftc', 'fed', 'federal reserve', 'fomc', 'etf', 'etfs', 'regulator', 'regulators',
+        'treasury', 'white house', 'congress', 'senate', 'lawmakers',
+        'liquidations', 'market crash', 'crypto market', 'markets',
     ],
 
     /*

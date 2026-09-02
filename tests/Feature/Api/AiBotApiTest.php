@@ -594,18 +594,36 @@ class AiBotApiTest extends TestCase
      */
     public function test_a_scalping_target_below_the_round_trip_cost_is_raised(): void
     {
+        // กฎข้ามพารามิเตอร์ยังอยู่ (บอทเก่าที่ยังมีอยู่ต้องได้เป้าที่ไม่ขาดทุนตั้งแต่ป้าย)
+        $clean = app(AiBotService::class)->sanitizeParams('scalping', ['target_bps' => 3]);
+
+        $this->assertGreaterThan(app(AiBotService::class)->roundTripCostBps(), $clean['target_bps']);
+    }
+
+    /**
+     * ⭐ สแกลป์ถูกถอดออกจากการขาย 2 ก.ย. 2026 — API ต้องปฏิเสธพร้อมเหตุผล ไม่ใช่สร้างให้แล้วเงียบ.
+     *
+     * วัดจริง 608 ไม้: ต้นทุนไป-กลับ 0.36% สูงกว่าการเคลื่อนไหวของแท่ง 5 นาที (0.08%)
+     * กันที่ API ไม่ใช่แค่ปุ่ม — แอพมือถือกับคนยิงตรงไม่เห็นปุ่มเรา
+     */
+    public function test_a_retired_strategy_cannot_be_created_and_the_reason_is_explained(): void
+    {
         $this->subscribeTo('pro');
 
         $response = $this->postJson('/api/v1/ai-bot/bots', array_merge($this->botPayload('Scalper'), [
             'strategy' => 'scalping',
             'timeframe' => '5m',
-            'params' => ['target_bps' => 3],
-        ]))->assertStatus(201);
+        ]));
 
-        $this->assertGreaterThan(
-            app(AiBotService::class)->roundTripCostBps(),
-            $response->json('data.params.target_bps'),
-        );
+        $response->assertStatus(422);
+        $this->assertStringContainsString('ถอด', (string) json_encode($response->json(), JSON_UNESCAPED_UNICODE));
+
+        // แคตตาล็อกต้องบอกสถานะเดียวกัน ให้หน้าเว็บ/แอพปิดปุ่มได้ก่อนผู้ใช้กด
+        $catalog = $this->getJson('/api/v1/ai-bot/catalog')->assertOk()->json('data.strategies');
+        $scalping = collect($catalog)->firstWhere('code', 'scalping');
+
+        $this->assertFalse($scalping['available']);
+        $this->assertStringContainsString('608', $scalping['unavailable_reason']);
     }
 
     // ── ด่านเปิด-ปิดการขาย + สิทธิ์ทีมงาน ────────────────────────────────────

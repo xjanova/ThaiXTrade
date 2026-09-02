@@ -33,6 +33,23 @@ class StrategyAvailability
      */
     public function check(string $code): array
     {
+        /*
+         * กลยุทธ์ที่ถูก "ถอดออกจากการขาย" — ธง retired ใน config/aibot.php
+         *
+         * ต่างจาก "ยังไม่พร้อม" (อาร์บิทราจรอ DEX): ตัวนี้เคยขายแล้ววัดผลจริงแล้ว
+         * ว่าแพ้โดยโครงสร้าง (ดูสแกลป์) รายการยังอยู่ในแคตตาล็อกเพื่อให้บอทเก่า
+         * อ่านชื่อ/ประวัติได้ แต่ห้ามสร้างหรือเริ่มตัวใหม่ และเหตุผลต้องไปถึงผู้ใช้
+         */
+        $spec = collect(config('aibot.strategies', []))->firstWhere('code', $code);
+
+        if ($spec && ($spec['retired'] ?? false)) {
+            return [
+                'available' => false,
+                'reason' => (string) ($spec['retired_reason'] ?? 'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว'),
+                'reason_en' => (string) ($spec['retired_reason_en'] ?? 'This strategy has been retired.'),
+            ];
+        }
+
         if ($code === 'arbitrage' && ! $this->dexDeployed()) {
             return [
                 'available' => false,

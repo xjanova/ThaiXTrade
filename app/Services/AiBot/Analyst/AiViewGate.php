@@ -43,17 +43,7 @@ class AiViewGate
      */
     public function evaluate(AiBotConfig $bot, ?AiBotPlan $plan, bool $hasPosition): array
     {
-        $idle = [
-            'applied' => false,
-            'view_id' => null,
-            'scope' => null,
-            'size_multiplier' => 1.0,
-            'block_entry' => false,
-            'force_exit' => false,
-            'confidence_relief' => 0.0,
-            'stance' => null,
-            'reasons' => [],
-        ];
+        $idle = self::idle();
 
         if (! config('aibot_analyst.enabled', false)) {
             return $idle;
@@ -160,6 +150,30 @@ class AiViewGate
             'confidence_relief' => $relief,
             'stance' => $stance,
             'reasons' => $reasons,
+        ];
+    }
+
+    /**
+     * "AI ไม่มีผลกับรอบนี้" — รูปแบบเดียวกับผลของ evaluate() ทุกประการ.
+     *
+     * แยกออกมาเพราะมีผู้เรียกมากกว่าหนึ่งที่ต้องการค่านี้: ตัวประเมินเองเมื่อ
+     * ระบบปิด/ไม่มีมุมมอง และ BotRunner เมื่อเจ้าของบอทปิดสวิตช์ `ai_gate`
+     * (บอทกลุ่มควบคุมของการทดลอง A/B — ต้องได้ค่าเดียวกันเป๊ะ ไม่ใช่โครงสร้างคล้ายๆ)
+     *
+     * @return array{applied: bool, view_id: null, scope: null, size_multiplier: float, block_entry: bool, force_exit: bool, confidence_relief: float, stance: null, reasons: list<string>}
+     */
+    public static function idle(): array
+    {
+        return [
+            'applied' => false,
+            'view_id' => null,
+            'scope' => null,
+            'size_multiplier' => 1.0,
+            'block_entry' => false,
+            'force_exit' => false,
+            'confidence_relief' => 0.0,
+            'stance' => null,
+            'reasons' => [],
         ];
     }
 

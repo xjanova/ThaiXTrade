@@ -73,6 +73,21 @@ class BotRunner
         }
 
         /*
+         * 1.05) กลยุทธ์ที่ถูกถอดออกจากการขายแล้ว (ธง retired ใน config/aibot.php)
+         *
+         * API กันไม่ให้สร้าง/เริ่มตัวใหม่แล้ว แต่บอทที่ "กำลังเดินอยู่" ตอนที่ถอด
+         * ต้องถูกจับพักที่นี่ — ไม่งั้นมันจะเทรดต่อด้วยกลยุทธ์ที่เราเพิ่งพิสูจน์ว่า
+         * ขาดทุนโดยโครงสร้าง จนกว่าเจ้าของจะบังเอิญเปิดหน้าเว็บมาเห็น
+         */
+        if ($this->bots->isRetired($bot->strategy)) {
+            $why = (string) ($this->bots->strategy($bot->strategy)['retired_reason'] ?? '');
+            $reason = 'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว — บอทถูกพักไว้'.($why !== '' ? ': '.$why : '');
+            $bot->update(['status' => 'paused', 'last_reason' => $reason]);
+
+            return $this->record($bot, 'stopped', $reason);
+        }
+
+        /*
          * 1.1) กลยุทธ์ต้องอยู่ในสิทธิ์ของแพลน "ปัจจุบัน" ไม่ใช่แพลนตอนที่สร้างบอท
          *
          * เดิมเช็คแค่ว่า "มีการเช่าอยู่ไหม" ซึ่งผ่านเสมอ เพราะพอแพลนเสียเงินหมดอายุ
@@ -123,6 +138,38 @@ class BotRunner
 
         $price = (float) $candles[count($candles) - 1]['close'];
         $position = AiBotPosition::where('ai_bot_config_id', $bot->id)->where('mode', $bot->mode)->first();
+
+        /*
+         * 2.5) แท่งปิดเดิม + ไม่มีของ = ไม่มีอะไรใหม่ให้คิด
+         *
+         * ตัวจับเวลาปลุกบอท VIP ทุกนาที แต่บอทส่วนใหญ่ตัดสินใจจากแท่ง 1 ชั่วโมง
+         * ที่ปิดแล้ว (ตัดแท่งสดทิ้งใน candles()) — ข้อมูลที่กลยุทธ์เห็นจึงเหมือนเดิม
+         * เป๊ะ 60 รอบต่อแท่ง วัดบน prod: 81,105 รอบใน 13 วัน โดย 99% เป็นคำตอบเดิม
+         *
+         * ข้ามได้เฉพาะตอน "ไม่มีของ": ถือของอยู่ต้องประเมินทุกรอบ เพราะด่านข่าว
+         * และมุมมอง AI เปลี่ยนได้ระหว่างแท่ง แล้วอาจต้องสั่งปิดไม้ทันที
+         * (ราคาที่ใช้ยังเป็นราคาปิดของแท่งเดิม — แต่เหตุให้ออกไม่ได้มาจากราคาอย่างเดียว)
+         *
+         * ไม่มีของแล้วข้าม = อย่างแย่เข้าไม้ช้าไปหนึ่งแท่ง ซึ่งเท่ากับความละเอียด
+         * ของกลยุทธ์นั้นอยู่แล้ว
+         */
+        $lastCandleTime = (int) $candles[count($candles) - 1]['time'];
+        $seenCandleTime = (int) (($bot->stats ?? [])['last_candle_time'] ?? 0);
+
+        if (! $position && $seenCandleTime === $lastCandleTime) {
+            // ยังต้องขยับ last_run_at ให้ isDue() ของตัวจับเวลานับรอบถูก
+            $bot->update(['last_run_at' => now()]);
+
+            return [
+                'action' => 'hold',
+                'reason' => 'ยังไม่มีแท่งปิดใหม่ตั้งแต่รอบก่อน',
+                'risk' => (string) (($bot->stats ?? [])['last_risk'] ?? 'calm'),
+                'skipped' => true,
+            ];
+        }
+
+        // ให้ record() บันทึกเวลาแท่งนี้ลง stats พร้อมผลรอบนี้ (ไม่ save แยกเพื่อไม่เขียนสองรอบ)
+        $bot->stats = array_merge($bot->stats ?? [], ['last_candle_time' => $lastCandleTime]);
         /*
          * `entry` = ต้นทุนจริงต่อหน่วย (รวมค่าธรรมเนียม + slippage ขาซื้อแล้ว)
          *           ถูกต้องสำหรับคิดกำไร/ขาดทุน เพราะต้องชนะต้นทุนจริงถึงจะได้กำไร
@@ -164,7 +211,12 @@ class BotRunner
             $reason = 'ตลาดเข้าภาวะตื่นตระหนก — เทออกทั้งหมด: '.implode(' · ', array_slice($risk['reasons'], 0, 2));
             $this->execute($bot, 'sell', $price, 0, $reason, $risk);
 
-            return $this->record($bot, 'sell', $reason, $risk['level']);
+            // ราคาต้องติดไปด้วย — ไม่งั้น analyst-report/harvest ให้คะแนนไม้ที่ด่านนี้สั่งไม่ได้
+            return $this->record($bot, 'sell', $reason, $risk['level'], [
+                'price' => $price,
+                'has_position' => true,
+                'meta' => ['risk' => $risk['reasons'] ?? []],
+            ]);
         }
 
         if ($risk['size_multiplier'] <= 0 && ! $position) {
@@ -188,7 +240,13 @@ class BotRunner
          * ⚠️ ไม่มีมุมมอง = เดินต่อด้วยกฎล้วน ไม่ใช่หยุดเทรด
          *    OpenAI ล่ม / โควตาหมด / cron ตาย ต้องไม่ทำให้บอททุกตัวหยุดพร้อมกัน
          */
-        $ai = $this->aiGate->evaluate($bot, $subscription->plan, (bool) $position);
+        /*
+         * `ai_gate` = false คือบอทกลุ่มควบคุม — ได้กฎล้วน ไม่ต่างจากตอนที่ยังไม่มี AI
+         * ต้องคืนโครงสร้างเดียวกับ evaluate() เป๊ะ (idle) เพราะโค้ดด้านล่างอ่านทุกคีย์
+         */
+        $ai = (($bot->params ?? [])['ai_gate'] ?? true) === false
+            ? AiViewGate::idle()
+            : $this->aiGate->evaluate($bot, $subscription->plan, (bool) $position);
 
         if ($ai['force_exit'] && $position) {
             $reason = 'AI สั่งปิดไม้: '.(implode(' · ', array_slice($ai['reasons'], 0, 2)) ?: 'ความเสี่ยงสูงขึ้น');
@@ -224,7 +282,10 @@ class BotRunner
             if ($guard !== null) {
                 $this->execute($bot, 'sell', $price, 0, $guard, $risk);
 
-                return $this->record($bot, 'sell', $guard, $risk['level']);
+                return $this->record($bot, 'sell', $guard, $risk['level'], [
+                    'price' => $price,
+                    'has_position' => true,
+                ]);
             }
         }
 
@@ -239,7 +300,7 @@ class BotRunner
             $reason = 'ขาดทุนสะสมวันนี้ถึงเพดานแล้ว — พักบอทไว้จนถึงวันถัดไป';
             $bot->update(['status' => 'paused']);
 
-            return $this->record($bot, 'stopped', $reason, $risk['level']);
+            return $this->record($bot, 'stopped', $reason, $risk['level'], ['price' => $price]);
         }
 
         // 5) ถามกลยุทธ์
@@ -586,22 +647,45 @@ class BotRunner
         ]);
 
         try {
-            AiBotDecision::create([
-                'ai_bot_config_id' => $bot->id,
-                'wallet_address' => $bot->wallet_address,
-                'strategy' => $bot->strategy,
-                'pair' => $bot->pair,
-                'timeframe' => $bot->timeframe,
-                'mode' => $bot->mode,
-                'action' => $action,
-                'reason' => $reason,
-                'risk_level' => $riskLevel,
-                'price' => $context['price'] ?? null,
-                'budget' => $context['budget'] ?? null,
-                'has_position' => (bool) ($context['has_position'] ?? false),
-                'signal_meta' => $context['meta'] ?? null,
-                'params' => $context['params'] ?? null,
-            ]);
+            $price = isset($context['price']) ? (float) $context['price'] : null;
+            $hasPosition = (bool) ($context['has_position'] ?? false);
+
+            /*
+             * สภาพเดิมเป๊ะจากรอบก่อน = นับซ้ำในแถวเดิม ไม่แทรกแถวใหม่
+             *
+             * ดูเหตุผลที่ AiBotDecision::isSameSituation() — 81k แถวเหมือนกันใน 13 วัน
+             * จำกัดไว้ที่ 15 นาทีย้อนหลัง: บอทที่ถูกพักแล้วกลับมาเจอสภาพเดิมในอีกสัปดาห์
+             * ต้องได้แถวใหม่ ไม่ใช่ไปต่อตัวนับของแถวเก่าจนอ่านเหมือนว่าคิดต่อเนื่องมาตลอด
+             */
+            $latest = AiBotDecision::where('ai_bot_config_id', $bot->id)->latest('id')->first();
+
+            if ($latest
+                && ($latest->last_seen_at ?? $latest->created_at)?->gt(now()->subMinutes(15))
+                && $latest->isSameSituation($action, $reason, $riskLevel, $price, $hasPosition)) {
+                $latest->update([
+                    'repeat_count' => (int) $latest->repeat_count + 1,
+                    'last_seen_at' => now(),
+                ]);
+            } else {
+                AiBotDecision::create([
+                    'ai_bot_config_id' => $bot->id,
+                    'wallet_address' => $bot->wallet_address,
+                    'strategy' => $bot->strategy,
+                    'pair' => $bot->pair,
+                    'timeframe' => $bot->timeframe,
+                    'mode' => $bot->mode,
+                    'action' => $action,
+                    'reason' => $reason,
+                    'risk_level' => $riskLevel,
+                    'price' => $price,
+                    'budget' => $context['budget'] ?? null,
+                    'has_position' => $hasPosition,
+                    'signal_meta' => $context['meta'] ?? null,
+                    'params' => $context['params'] ?? null,
+                    'repeat_count' => 1,
+                    'last_seen_at' => now(),
+                ]);
+            }
         } catch (\Throwable $e) {
             /*
              * บันทึกไม่ลงต้องไม่ทำให้บอทหยุดเทรด

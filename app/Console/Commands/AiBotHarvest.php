@@ -6,6 +6,7 @@ use App\Models\AiBotDecision;
 use App\Models\AiBotDemoAccount;
 use App\Models\AiBotTrade;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 
 /**
@@ -68,48 +69,79 @@ class AiBotHarvest extends Command
      * นับ "ทุกครั้งที่คิด" ไม่ใช่เฉพาะตอนลงมือ — สัดส่วนของการถือเทียบกับการลงมือ
      * คือตัวเลขที่บอกได้เร็วที่สุดว่ากลยุทธ์ไหนเงียบเกินไปจนลูกค้าจ่ายแล้วไม่ได้อะไร
      */
-    private function summariseDecisions(?\DateTimeInterface $since, ?string $wallet)
+    private function summariseDecisions(?\DateTimeInterface $since, ?string $wallet): Collection
     {
-        return AiBotDecision::query()
+        /*
+         * รวมในฐานข้อมูล ไม่ใช่โหลดทุกแถวขึ้นมา groupBy ในหน่วยความจำ
+         *
+         * ⚠️ เดิม ->get() ทั้งตาราง — 81,105 แถวบน prod (2 ก.ย. 2026) ทำให้คำสั่งนี้
+         *    ตายด้วย "Allowed memory size of 134217728 bytes exhausted" ก่อนจะพิมพ์
+         *    ตารางแรก คำสั่งเก็บผลที่ใช้ไม่ได้ตอนข้อมูลเยอะ คือคำสั่งที่ใช้ไม่ได้ตอน
+         *    ที่ต้องการมันที่สุด
+         *
+         * repeat_count: หนึ่งแถวแทนหลายรอบที่สภาพเหมือนเดิม (ดู AiBotDecision) —
+         * "รอบคิด" จึงต้องบวกตัวนับ ไม่ใช่นับแถว ส่วน buy/sell/stopped เกิดรอบละครั้ง
+         */
+        $base = AiBotDecision::query()
             ->when($since, fn ($q) => $q->where('created_at', '>=', $since))
-            ->when($wallet, fn ($q) => $q->forWallet($wallet))
+            ->when($wallet, fn ($q) => $q->forWallet($wallet));
+
+        $rows = (clone $base)
+            ->selectRaw(implode(', ', [
+                'strategy',
+                'SUM(COALESCE(repeat_count, 1)) AS ticks',
+                "SUM(CASE WHEN action = 'buy' THEN 1 ELSE 0 END) AS buy",
+                "SUM(CASE WHEN action = 'sell' THEN 1 ELSE 0 END) AS sell",
+                "SUM(CASE WHEN action = 'hold' THEN COALESCE(repeat_count, 1) ELSE 0 END) AS hold",
+                "SUM(CASE WHEN action IN ('stopped', 'error') THEN 1 ELSE 0 END) AS stopped",
+            ]))
+            ->groupBy('strategy')
+            ->get();
+
+        // เหตุผลที่พบบ่อยที่สุดตอนไม่ลงมือ = จุดที่ควรไปแก้ก่อนเพื่อน
+        $topReasons = (clone $base)
+            ->where('action', 'hold')
+            ->selectRaw('strategy, reason, SUM(COALESCE(repeat_count, 1)) AS n')
+            ->groupBy('strategy', 'reason')
+            ->orderByDesc('n')
             ->get()
             ->groupBy('strategy')
-            ->map(fn ($rows) => [
-                'ticks' => $rows->count(),
-                'buy' => $rows->where('action', 'buy')->count(),
-                'sell' => $rows->where('action', 'sell')->count(),
-                'hold' => $rows->where('action', 'hold')->count(),
-                'stopped' => $rows->whereIn('action', ['stopped', 'error'])->count(),
-                // เหตุผลที่พบบ่อยที่สุดตอนไม่ลงมือ = จุดที่ควรไปแก้ก่อนเพื่อน
-                'top_hold_reason' => $rows->where('action', 'hold')
-                    ->groupBy('reason')
-                    ->sortByDesc(fn ($g) => $g->count())
-                    ->keys()
-                    ->first(),
-            ]);
+            ->map(fn ($group) => (string) $group->first()->reason);
+
+        return $rows->keyBy('strategy')->map(fn ($r) => [
+            'ticks' => (int) $r->ticks,
+            'buy' => (int) $r->buy,
+            'sell' => (int) $r->sell,
+            'hold' => (int) $r->hold,
+            'stopped' => (int) $r->stopped,
+            'top_hold_reason' => $topReasons[$r->strategy] ?? null,
+        ]);
     }
 
     /** ไม้ที่ปิดแล้วเท่านั้น — ไม้ที่ยังไม่ปิดยังไม่รู้ผล เอามานับปนกันไม่ได้ */
-    private function summariseTrades(?\DateTimeInterface $since, ?string $wallet)
+    private function summariseTrades(?\DateTimeInterface $since, ?string $wallet): Collection
     {
         return AiBotTrade::query()
             ->where('mode', 'demo')
             ->whereNotNull('realized_pnl')
             ->when($since, fn ($q) => $q->where('created_at', '>=', $since))
             ->when($wallet, fn ($q) => $q->where('wallet_address', $wallet))
-            ->get()
+            ->selectRaw(implode(', ', [
+                'strategy',
+                'COUNT(*) AS closed',
+                'SUM(realized_pnl) AS pnl',
+                'SUM(fee) AS fees',
+                'SUM(CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END) AS wins',
+            ]))
             ->groupBy('strategy')
-            ->map(function ($rows) {
-                $wins = $rows->where('realized_pnl', '>', 0)->count();
-
-                return [
-                    'closed' => $rows->count(),
-                    'pnl' => round((float) $rows->sum('realized_pnl'), 2),
-                    'fees' => round((float) $rows->sum('fee'), 2),
-                    'win_rate' => $rows->count() > 0 ? round($wins / $rows->count() * 100, 1) : null,
-                ];
-            });
+            ->get()
+            ->keyBy('strategy')
+            ->map(fn ($r) => [
+                'closed' => (int) $r->closed,
+                'pnl' => round((float) $r->pnl, 2),
+                'fees' => round((float) $r->fees, 2),
+                'win_rate' => (int) $r->closed > 0 ? round((int) $r->wins / (int) $r->closed * 100, 1) : null,
+            ]);
     }
 
     private function renderTable($decisions, $trades): void
@@ -162,25 +194,40 @@ class AiBotHarvest extends Command
 
     private function export(string $path, ?\DateTimeInterface $since, ?string $wallet, $decisions, $trades): void
     {
-        $payload = [
+        $header = [
             // เวลาที่เก็บ + ช่วงข้อมูล — ต้องมี ไม่งั้นไฟล์ที่เก็บคนละรอบแยกกันไม่ออก
             'harvested_at' => now()->toIso8601String(),
             'since' => $since?->format(DATE_ATOM),
             'wallet' => $wallet,
             'by_strategy' => $decisions->map(fn (array $d, string $s) => $d + ($trades[$s] ?? []))->all(),
-            'decisions' => AiBotDecision::query()
-                ->when($since, fn ($q) => $q->where('created_at', '>=', $since))
-                ->when($wallet, fn ($q) => $q->forWallet($wallet))
-                ->orderBy('id')
-                ->get()
-                ->toArray(),
         ];
 
         File::ensureDirectoryExists(dirname($path));
-        File::put($path, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        /*
+         * สตรีมทีละแถว ไม่ประกอบอาเรย์ทั้งก้อนแล้ว json_encode — เหตุผลเดียวกับ
+         * summariseDecisions(): ข้อมูลดิบคือส่วนที่โตไม่หยุด และมันคือส่วนที่คนขอ export
+         */
+        $handle = fopen($path, 'w');
+        $json = json_encode($header, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        fwrite($handle, rtrim(substr($json, 0, -1)).",\n  \"decisions\": [\n");
+
+        $count = 0;
+        $query = AiBotDecision::query()
+            ->when($since, fn ($q) => $q->where('created_at', '>=', $since))
+            ->when($wallet, fn ($q) => $q->forWallet($wallet))
+            ->orderBy('id');
+
+        foreach ($query->cursor() as $row) {
+            fwrite($handle, ($count > 0 ? ",\n" : '').'    '.json_encode($row->toArray(), JSON_UNESCAPED_UNICODE));
+            $count++;
+        }
+
+        fwrite($handle, "\n  ]\n}\n");
+        fclose($handle);
 
         $this->newLine();
-        $this->info('เขียนข้อมูลดิบลง '.$path.' ('.count($payload['decisions']).' รอบการตัดสินใจ)');
+        $this->info('เขียนข้อมูลดิบลง '.$path.' ('.$count.' รอบการตัดสินใจ)');
     }
 
     private function money(float $value): string
