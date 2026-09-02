@@ -183,6 +183,70 @@ class MarketDataService
     }
 
     /**
+     * แท่งเทียนย้อนหลังในช่วงเวลาที่กำหนด — ไล่ดึงทีละหน้าจนครบ (สำหรับ backtest).
+     *
+     * getKlines() ให้ได้มากสุด 500 แท่งล่าสุดเท่านั้น ซึ่งพอสำหรับบอทที่เดินสด
+     * แต่ backtest 90 วันบน 1h ต้องการ 2,160 แท่ง และต้องเป็นช่วงที่ "เลือกได้"
+     * Binance ให้หน้าละ 1,000 แท่งพร้อม startTime — จึงวนหน้าจนเลย endTime
+     *
+     * ไม่แคช: ผู้เรียก (KlineArchive) เก็บลงไฟล์เองเป็นคลังถาวร ซึ่งเหมาะกว่าแคช
+     * ที่หมดอายุ เพราะแท่งที่ปิดแล้วไม่มีวันเปลี่ยน
+     *
+     * @return list<array{time:int,open:string,high:string,low:string,close:string,volume:string,closeTime:int}>
+     *
+     * @throws \RuntimeException เมื่อตลาดตอบไม่สำเร็จ — backtest บนข้อมูลไม่ครบต้องล้ม ไม่ใช่เงียบ
+     */
+    public function getKlinesBetween(string $symbol, string $interval, int $startMs, int $endMs): array
+    {
+        $stepMs = \App\Services\AiBot\Timeframe::milliseconds($interval);
+        $out = [];
+        $cursor = $startMs;
+
+        while ($cursor < $endMs) {
+            $response = Http::timeout(15)->get("{$this->baseUrl}/klines", [
+                'symbol' => $this->toBinanceSymbol($symbol),
+                'interval' => $interval,
+                'startTime' => $cursor,
+                'endTime' => $endMs,
+                'limit' => 1000,
+            ]);
+
+            if ($response->failed()) {
+                throw new \RuntimeException("ดึงแท่งเทียน {$symbol} {$interval} ไม่สำเร็จ: HTTP {$response->status()}");
+            }
+
+            $rows = $response->json();
+
+            if (! is_array($rows) || $rows === []) {
+                break;
+            }
+
+            foreach ($rows as $k) {
+                $out[] = [
+                    'time' => (int) $k[0],
+                    'open' => $k[1],
+                    'high' => $k[2],
+                    'low' => $k[3],
+                    'close' => $k[4],
+                    'volume' => $k[5],
+                    'closeTime' => (int) $k[6],
+                ];
+            }
+
+            $last = (int) $rows[count($rows) - 1][0];
+
+            // กันวนไม่รู้จบถ้าปลายทางคืนหน้าเดิม
+            if ($last < $cursor || count($rows) < 1000) {
+                break;
+            }
+
+            $cursor = $last + $stepMs;
+        }
+
+        return $out;
+    }
+
+    /**
      * Get compact close-price series for many symbols at once (mini sparklines).
      *
      * The web pair lists render one tiny trend line per row. Letting the browser

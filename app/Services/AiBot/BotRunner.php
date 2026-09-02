@@ -462,8 +462,12 @@ class BotRunner
         return ($todayPnl + $openPnl) <= -$maxDailyLoss;
     }
 
-    /** งบของไม้นี้ = ขนาดไม้ที่ตั้งไว้ × ความแรงสัญญาณ × ตัวคูณความเสี่ยง */
     /**
+     * งบของไม้นี้ = ขนาดไม้ที่ตั้งไว้ × ความแรงสัญญาณ × ตัวคูณความเสี่ยง.
+     *
+     * สูตรอยู่ใน PositionSizer (pure) เพื่อให้ backtester คิดขนาดไม้ "เป๊ะ" เท่าของจริง
+     * — เหตุผลของแต่ละบรรทัดอยู่ที่นั่น
+     *
      * @param  array  $params  พารามิเตอร์ที่ผ่าน sanitizeParams แล้ว
      *                         ⚠️ ห้ามอ่าน $bot->params ดิบ — บอทที่สร้างไว้ก่อนกติกา
      *                         เปลี่ยน (หรือสร้างด้วย params ว่าง) จะไม่มีค่าปริยายอยู่เลย
@@ -473,54 +477,14 @@ class BotRunner
      */
     private function budgetFor(AiBotConfig $bot, float $strength, float $riskMultiplier, array $params = []): float
     {
-        $maxPosition = (float) (($bot->risk ?? [])['max_position_usd'] ?? 100);
-
-        /*
-         * "ขนาดต่อไม้" ของกริดกับ "งบต่อรอบ" ของ DCA เป็นช่องที่ฟอร์มให้ตั้งมาตลอด
-         * แต่ไม่มีโค้ดอ่านเลยสักบรรทัด — ผู้ใช้ตั้ง $20 แล้วบอทเข้าไม้ตามเพดานทุน
-         * (ค่าปริยาย $100) ห้าเท่าของที่สั่ง ยิ่งสับสนเพราะป้ายไทยเกือบเหมือนกัน
-         * กับ "ทุนสูงสุดต่อไม้" ที่ใช้ได้จริง และวางห่างกันแค่แถวเดียว
-         *
-         * ใช้เป็นเพดานซ้อนอีกชั้น ไม่ใช่แทนที่ — กรอบความเสี่ยงต้องชนะเสมอ
-         */
-        $perOrder = $this->orderSizeFor($bot, $params);
-
-        /*
-         * ⚠️ ค่าที่ผู้ใช้กรอกเป็น "จำนวนเงิน" ไม่ใช่ "เพดาน" — ต้องใช้เต็มจำนวน
-         *
-         * ป้ายในฟอร์มเขียนว่า "งบต่อรอบ (USD)" กับ "ขนาดต่อไม้ (USD)" ซึ่งเป็น
-         * จำนวนเงินตรงๆ ส่วนช่องที่เป็นเพดานมีแยกอยู่แล้วคือ "ทุนสูงสุดต่อไม้"
-         *
-         * เอาไปคูณความแรงสัญญาณทำให้ตั้ง $25 แล้วลงจริง $12.50 ทุกรอบ (DCA คืน
-         * strength 0.5 ในรอบปกติซึ่งเป็นรอบส่วนใหญ่) = ลูกค้าได้ครึ่งเดียวของที่สั่ง
-         * ตลอดอายุการใช้งาน โดยไม่มีอะไรบอก
-         *
-         * ตัวคูณความเสี่ยงยังคูณอยู่ เพราะนั่นคือด่านความปลอดภัยที่ต้องชนะเสมอ
-         * (ตลาดอันตราย = ลดขนาดไม้ ไม่ว่าผู้ใช้สั่งเท่าไหร่)
-         */
-        if ($perOrder !== null) {
-            return round(min($perOrder, $maxPosition) * $riskMultiplier, 2);
-        }
-
-        return round($maxPosition * $strength * $riskMultiplier, 2);
-    }
-
-    /** ขนาดไม้ที่ผู้ใช้ตั้งไว้ในพารามิเตอร์ของกลยุทธ์ (null = กลยุทธ์นั้นไม่มีช่องนี้) */
-    private function orderSizeFor(AiBotConfig $bot, array $params = []): ?float
-    {
-        $key = match ($bot->strategy) {
-            'grid' => 'order_size_usd',
-            'dca' => 'budget_usd',
-            default => null,
-        };
-
-        if ($key === null) {
-            return null;
-        }
-
-        $value = $params[$key] ?? ($bot->params ?? [])[$key] ?? null;
-
-        return is_numeric($value) && (float) $value > 0 ? (float) $value : null;
+        return PositionSizer::budget(
+            $bot->strategy,
+            $bot->risk ?? [],
+            $params,
+            $strength,
+            $riskMultiplier,
+            $bot->params ?? [],
+        );
     }
 
     /** พารามิเตอร์ที่กลยุทธ์ต้องใช้ + ตัวช่วยที่ engine เป็นคนรู้ (เช่นรอบของ DCA) */
