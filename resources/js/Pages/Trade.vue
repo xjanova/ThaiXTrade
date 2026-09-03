@@ -212,6 +212,15 @@ function syncBreakpoint() {
     isNarrow.value = !wideQuery.matches;
 }
 
+/**
+ * ความสูงต่ำสุดของกระดาน — ต่ำกว่านี้การ์ดเหลือแค่หัวจนอ่านอะไรไม่ได้
+ *
+ * ⚠️ ห้ามตั้งสูงกว่านี้ (เดิม 520): บนจอเตี้ยที่เหลือที่จริงแค่ 480px การบังคับ 520
+ *    ทำให้กระดานสูงเกินจอ หน้าเลื่อนได้ → ผู้ใช้เห็นเป็น "โหมดพอดีหน้าจอไม่พอดี"
+ *    คอลัมน์มี overflow-y-auto อยู่แล้ว ให้คอลัมน์เลื่อนข้างในดีกว่าให้ทั้งหน้าเลื่อน
+ */
+const MIN_BOARD_HEIGHT = 360;
+
 function measureBoard() {
     syncBreakpoint();
 
@@ -219,7 +228,60 @@ function measureBoard() {
     // rect.top เป็นระยะจากขอบบนของ viewport อยู่แล้ว จึงลบออกจากความสูงจอได้ตรงๆ
     // (ในโหมดพอดีจอหน้าไม่เลื่อน ค่านี้จึงคงที่)
     const viewportTop = board.value.getBoundingClientRect().top;
-    boardHeight.value = Math.max(520, window.innerHeight - viewportTop - 14);
+    boardHeight.value = Math.max(MIN_BOARD_HEIGHT, window.innerHeight - viewportTop - 14);
+}
+
+/**
+ * ⭐ ต้นเหตุ "บางครั้งเปิดมาพอดี บางครั้งไม่พอดี"
+ *
+ * ความสูงกระดานคิดจากขอบบนของมัน ซึ่งถูกดันโดยทุกอย่างที่อยู่เหนือมัน —
+ * โดยเฉพาะ <BannerAd> ใน AppLayout ที่ยิง API แล้วค่อย v-if โผล่มาทีหลัง
+ * ถ้า API ตอบก่อน nextTick ก็พอดี ตอบช้ากว่านั้นก็เกินไปเท่าความสูงแบนเนอร์
+ * และไม่มีอะไรวัดซ้ำ เพราะ window resize ไม่ยิง (ขนาดหน้าต่างไม่ได้เปลี่ยน)
+ *
+ * แก้ด้วยการเฝ้าดู "พี่ที่อยู่ก่อนหน้า" ของทุกชั้นตั้งแต่กระดานไล่ขึ้นไปถึง body
+ * = เซตของกล่องที่ความสูงของมันกำหนดตำแหน่งบนสุดของกระดานพอดี
+ * ไม่มีตัวไหนขึ้นกับความสูงของกระดานเอง จึงไม่เกิดลูปวัด→เปลี่ยน→วัด
+ */
+let topObserver = null;
+let topMutations = null;
+
+/**
+ * ⚠️ ResizeObserver อย่างเดียวไม่พอ — และนี่คือกรณีของแบนเนอร์เป๊ะๆ
+ *
+ * ตอน v-if ยังเป็นเท็จ Vue วาง comment node ไว้แทน ไม่ใช่ element
+ * previousElementSibling จึงข้ามมันไป = ตอน mount ไม่มีใครเฝ้าแบนเนอร์เลย
+ * พอ API ตอบแล้วกล่องจริงโผล่มาแทน comment ก็ยังไม่มีใครเฝ้าอยู่ดี
+ * ต้องมี MutationObserver คอยดูการเพิ่ม/ลบลูก แล้วผูกตัวเฝ้าขนาดใหม่ทุกครั้ง
+ */
+function attachTopObservers() {
+    for (let node = board.value; node && node !== document.body; node = node.parentElement) {
+        if (node.parentElement) topMutations?.observe(node.parentElement, { childList: true });
+
+        for (let sib = node.previousElementSibling; sib; sib = sib.previousElementSibling) {
+            topObserver?.observe(sib);
+        }
+    }
+}
+
+function observeAbove() {
+    if (!board.value || typeof window === 'undefined') return;
+
+    topObserver?.disconnect();
+    topMutations?.disconnect();
+
+    if (typeof ResizeObserver !== 'undefined') {
+        topObserver = new ResizeObserver(() => measureBoard());
+    }
+
+    if (typeof MutationObserver !== 'undefined') {
+        topMutations = new MutationObserver(() => {
+            attachTopObservers();
+            measureBoard();
+        });
+    }
+
+    attachTopObservers();
 }
 
 const boardStyle = computed(() => {
@@ -841,8 +903,11 @@ const handleConnectWallet = () => {
 
 onMounted(async () => {
     measureBoard();
+    observeAbove();
     wideQuery?.addEventListener('change', measureBoard);
     window.addEventListener('resize', measureBoard);
+    // ฟอนต์ไทยโหลดเสร็จทีหลัง แล้วความสูงของแถบหัวเปลี่ยน — วัดใหม่อีกรอบ
+    document.fonts?.ready.then(measureBoard).catch(() => {});
 
     if (isTPIXPair.value) {
         // TPIX pair: fetch from internal API + auto-refresh
@@ -931,6 +996,10 @@ onUnmounted(() => {
     clearTimeout(toastTimer);
     wideQuery?.removeEventListener('change', measureBoard);
     window.removeEventListener('resize', measureBoard);
+    topObserver?.disconnect();
+    topMutations?.disconnect();
+    topObserver = null;
+    topMutations = null;
     stopMarkerRefresh();
 });
 </script>
