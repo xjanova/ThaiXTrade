@@ -101,6 +101,16 @@ class WalletProvider extends ChangeNotifier {
   /// true ถ้าเชื่อมผ่าน deep link จากแอป wallet ภายนอก (TPIX Wallet ฯลฯ)
   bool get isLinkedWallet => _kind == WalletKind.linked;
 
+  /// ชื่อชนิดกระเป๋าตามที่เซิร์ฟเวอร์รู้จัก — WalletController ตรวจรายการนี้ (ค่าอื่น = 422)
+  ///
+  /// ⚠️ เดิมส่ง 'tpix_embedded' ทุกชนิดตอนเซิร์ฟเวอร์ยังไม่รับค่านี้ → /wallet/connect
+  ///    ล้ม 422 เงียบๆ ทุกครั้ง (รายงานบั๊ก 3536) การเชื่อมต่อจากแอปจึงไม่เคยถูกบันทึกเลย
+  String get _backendWalletType => switch (_kind) {
+    WalletKind.linked => 'tpix_wallet',
+    WalletKind.walletConnect => 'walletconnect',
+    WalletKind.embedded => 'tpix_embedded',
+  };
+
   /// ชื่อ external wallet (ถ้าเชื่อมผ่าน WalletConnect)
   String? get externalWalletName => _externalWalletName;
 
@@ -313,13 +323,20 @@ class WalletProvider extends ChangeNotifier {
     }
 
     try {
+      /*
+       * กระเป๋าเดิมที่ยังถือโทเคนเซสชัน 30 วันอยู่ = ยังยืนยันอยู่ ห้ามกระพริบเป็น
+       * "รอยืนยัน" (เดิมตั้ง false ทุกครั้ง → สถานะเด้งไปมา และหน้าที่ดูอยู่ยิงคำขอ
+       * ไป 403 เป็นชุดระหว่างรอผล) กระเป๋าใหม่/ไม่มีโทเคน → รอผลยืนยันด้านล่าง
+       */
+      final hasSession = WalletSession.isFor(address);
+
       _kind = WalletKind.linked;
       _address = address;
       _externalWalletName = walletName ?? 'TPIX Wallet';
       _activeChainId = chainId;
       _mnemonic = null;
       _pendingMnemonic = null;
-      _isVerified = false; // ต้อง verify ก่อนเทรด — แต่ browse balance/markets ได้
+      _isVerified = hasSession;
       _isConnecting = false;
       _error = null;
       notifyListeners();
@@ -336,14 +353,25 @@ class WalletProvider extends ChangeNotifier {
           signature != null &&
           RegExp(r'^0x[a-fA-F0-9]{130}$').hasMatch(signature);
 
-      // Register address กับ backend (best effort) — ได้ user record
+      // บันทึกการเชื่อมต่อกับ backend (best effort) — ถ้าไม่มีลายเซ็นแนบมาและยังไม่มี
+      // เซสชัน ตัวนี้จะเป็นคนขอลายเซ็นผ่าน deep link ตามเส้นทางเดิม
       _registerWithBackend(address, verify: !signed);
 
       if (signed) {
-        unawaited(
-          _submitVerification(signature: signature, nonce: nonce)
-              .catchError((_) => false),
-        );
+        /*
+         * รอผลยืนยันให้จบก่อนโหลดพอร์ต — โทเคนเซสชันใหม่ต้องพร้อมก่อนยิงคำขอที่ต้อง
+         * ยืนยัน ไม่งั้น balances/orders ไป 403 เป็นชุด ผู้ใช้เห็นพอร์ตว่างทั้งที่เพิ่ง
+         * เชื่อม และข้อความ "เชื่อมและยืนยันแล้ว" ที่ขึ้นก็ยังไม่จริง
+         * (เดิม unawaited → คืน true ทันทีทั้งที่ยังไม่รู้ผล)
+         * ล้มเหลว (nonce หมดอายุ/ลายเซ็นไม่ตรง) = ยังเชื่อมอยู่ แต่สถานะเป็นรอยืนยัน
+         */
+        try {
+          await _submitVerification(signature: signature, nonce: nonce);
+        } catch (e) {
+          debugPrint('linkFromDeepLink verify: ${e.runtimeType}');
+          _isVerified = WalletSession.isFor(address);
+          notifyListeners();
+        }
       }
 
       // โหลด portfolio (read-only)
@@ -610,13 +638,21 @@ class WalletProvider extends ChangeNotifier {
       walletAddress: _address!,
       signature: signature,
       nonce: nonce,
+      // เชน + ชนิดกระเป๋าจริง — ไม่ส่ง เซิร์ฟเวอร์บันทึกเป็น BSC/metamask ผิดๆ ทุกครั้ง
+      chainId: _activeChainId,
+      walletType: _backendWalletType,
     );
 
-    _isVerified = verifyData?['verified'] == true;
+    final verified = verifyData?['verified'] == true;
+    // ลายเซ็นรอบนี้ไม่ผ่านแต่ยังถือโทเคนเซสชันของกระเป๋านี้อยู่ = ยังยืนยันอยู่
+    // (เซิร์ฟเวอร์ไม่ได้เพิกถอนโทเคนเดิม จะล้างเฉพาะเมื่อ probe โดน 403)
+    _isVerified = verified || WalletSession.isFor(_address);
     notifyListeners();
 
-    BugReporter.I.breadcrumb('verify → ${_isVerified ? 'ok' : 'failed'} session=${WalletSession.hasToken}');
-    if (!_isVerified) {
+    BugReporter.I.breadcrumb(
+      'verify → ${verified ? 'ok' : 'failed'} session=${WalletSession.hasToken}',
+    );
+    if (!verified) {
       BugReporter.I.report(
         title: 'ยืนยันกระเป๋ากับเซิร์ฟเวอร์ไม่ผ่าน',
         description: 'walletVerifySignature ไม่คืน verified=true (nonce หมดอายุ ลายเซ็นไม่ตรง หรือเซิร์ฟเวอร์ตอบผิดพลาด)',
@@ -626,11 +662,11 @@ class WalletProvider extends ChangeNotifier {
 
     // Auto-fetch profile after successful verification (non-blocking)
     // เพื่อ sync settings/preferences จาก backend (cross-device)
-    if (_isVerified) {
+    if (verified) {
       loadProfile().catchError((_) => false);
     }
 
-    return _isVerified;
+    return verified;
   }
 
   // ── Profile Sync (cross-device) ──
@@ -1003,6 +1039,7 @@ class WalletProvider extends ChangeNotifier {
         .walletConnect(
           walletAddress: address,
           chainId: _activeChainId,
+          walletType: _backendWalletType,
         )
         .then((_) async {
           if (!verify) return false;

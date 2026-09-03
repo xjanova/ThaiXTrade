@@ -219,6 +219,9 @@ class ApiService {
 
   // ── Wallet ──
 
+  /// [walletType] ต้องเป็นค่าที่เซิร์ฟเวอร์รับ (ดู WalletController::WALLET_TYPES)
+  /// ⚠️ เดิมส่ง 'tpix_embedded' ตอนเซิร์ฟเวอร์ยังไม่รู้จัก → 422 ทุกครั้ง
+  ///    การเชื่อมต่อจากแอปไม่เคยถูกบันทึกเลย (รายงานบั๊ก 3536)
   Future<Map<String, dynamic>?> walletConnect({
     required String walletAddress,
     required int chainId,
@@ -250,6 +253,8 @@ class ApiService {
     required String walletAddress,
     required String signature,
     required String nonce,
+    int? chainId,
+    String? walletType,
   }) async {
     final res = await _post(ApiConstants.walletVerify, data: {
       'wallet_address': walletAddress,
@@ -257,6 +262,9 @@ class ApiService {
       'nonce': nonce,
       // ประกาศตัวว่าเป็นแอป → เซิร์ฟเวอร์ออกโทเคนเซสชัน 30 วันให้ (เว็บไม่ได้)
       'client': 'mobile',
+      // เชน + ชนิดกระเป๋าจริง — ไม่ส่ง เซิร์ฟเวอร์จะบันทึกเป็น BSC/metamask ผิดๆ ทุกครั้ง
+      'chain_id': ?chainId,
+      'wallet_type': ?walletType,
     });
     if (res == null || res['success'] != true) return null;
     // Save token

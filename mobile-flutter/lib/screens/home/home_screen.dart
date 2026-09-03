@@ -37,16 +37,25 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  /// จับตัว provider ไว้ตั้งแต่ initState — ห้าม context.read ใน dispose
+  ///
+  /// ⚠️ ตอน dispose element ถูกถอด widget ออกไปแล้ว (Element.unmount ทำก่อน
+  ///    State.dispose) context.read จึงระเบิด "Null check operator used on a null value"
+  ///    แล้วทำให้การรื้อต้นไม้ widget ค้างกลางทาง → หน้าจอค้างทั้งแอป
+  ///    (รายงานบั๊ก 3535/3537 วันที่ 2026-09-03 พังตรงนี้ทุกครั้งที่ shell ถูกรื้อ)
+  late final MarketProvider _market;
+
   @override
   void initState() {
     super.initState();
-    context.read<MarketProvider>().startAutoRefresh();
+    _market = context.read<MarketProvider>();
+    _market.startAutoRefresh();
   }
 
   @override
   void dispose() {
     // L3: หยุด auto-refresh เมื่อออกจาก Home tab — ประหยัด battery
-    context.read<MarketProvider>().stopAutoRefresh();
+    _market.stopAutoRefresh();
     super.dispose();
   }
 

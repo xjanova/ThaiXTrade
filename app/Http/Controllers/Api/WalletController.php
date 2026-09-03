@@ -7,6 +7,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\UserWalletService;
 use App\Services\WalletIdentityService;
+use App\Services\WalletSessionService;
 use App\Services\Web3BalanceService;
 use Elliptic\EC;
 use Illuminate\Http\JsonResponse;
@@ -27,6 +28,23 @@ use Throwable;
  */
 class WalletController extends Controller
 {
+    /**
+     * ชนิดกระเป๋าที่รู้จัก — แอปมือถือส่ง tpix_wallet (เชื่อมจาก TPIX Wallet) และ
+     * tpix_embedded (กระเป๋าในแอป Trade เอง) · เว็บส่ง metamask/trustwallet/… ตาม walletStore.
+     *
+     * ⚠️ เดิมไม่มี tpix_embedded ในรายการ แอปจึงโดน 422 ที่ /wallet/connect ทุกครั้ง
+     *    (รายงานบั๊ก 3536: "api POST /wallet/connect → 422") การเชื่อมต่อจากแอปไม่เคยถูกบันทึก
+     */
+    public const WALLET_TYPES = [
+        'metamask',
+        'trustwallet',
+        'coinbase',
+        'walletconnect',
+        'okx',
+        'tpix_wallet',
+        'tpix_embedded',
+    ];
+
     /** เหตุผลที่ผูกกระเป๋าไม่ได้ — เขียนให้ผู้ใช้อ่านแล้วรู้ว่าต้องทำอะไรต่อ */
     private const LINK_ERRORS = [
         WalletIdentityService::ERR_WALLET_TAKEN => 'กระเป๋าใบนี้ผูกกับบัญชีอื่นอยู่แล้ว — เข้าสู่ระบบด้วยบัญชีนั้น หรือติดต่อทีมงานเพื่อรวมบัญชี',
@@ -52,7 +70,7 @@ class WalletController extends Controller
         $validator = Validator::make($request->all(), [
             'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'chain_id' => ['required', 'integer'],
-            'wallet_type' => ['nullable', 'string', 'in:metamask,trustwallet,coinbase,walletconnect,okx,tpix_wallet'],
+            'wallet_type' => ['nullable', 'string', Rule::in(self::WALLET_TYPES)],
         ]);
 
         if ($validator->fails()) {
@@ -114,8 +132,8 @@ class WalletController extends Controller
             Cache::forget("wallet_verified:{$walletAddress}");
 
             // แอปมือถือ: เพิกถอนโทเคนเซสชัน 30 วันของคำขอนี้ด้วย — ตัดแล้วต้องตัดจริง
-            app(\App\Services\WalletSessionService::class)
-                ->revoke($request->headers->get(\App\Services\WalletSessionService::HEADER));
+            app(WalletSessionService::class)
+                ->revoke($request->headers->get(WalletSessionService::HEADER));
 
             /*
              * ถอดกระเป๋าที่เป็นตัวพาเข้าระบบ = ออกจากระบบด้วย
@@ -460,7 +478,13 @@ class WalletController extends Controller
         Cache::forget("wallet_active_nonce:{$walletAddress}");
 
         $chainId = (int) $request->input('chain_id', 56);
+
+        // รับเฉพาะชนิดที่รู้จัก — คอลัมน์ยาว 20 ตัว ค่าประหลาดจะทำให้บันทึกล้มหลังเซ็นผ่านไปแล้ว
+        // (ไม่ตอบ 422 ตรงนี้ เพราะลายเซ็นถูกใช้ไปแล้ว ผู้ใช้จะต้องเซ็นใหม่ทั้งที่ตัวเองไม่ผิด)
         $walletType = $request->input('wallet_type', 'metamask');
+        if (! is_string($walletType) || ! in_array($walletType, self::WALLET_TYPES, true)) {
+            $walletType = 'metamask';
+        }
 
         /*
          * ตรงนี้คือจุดเดียวที่ระบบรู้แน่ว่า "คนที่ยิงมาถือกุญแจของกระเป๋าใบนี้จริง"
@@ -535,7 +559,7 @@ class WalletController extends Controller
          */
         $session = null;
         if ($request->input('client') === 'mobile') {
-            $session = app(\App\Services\WalletSessionService::class)->issue($walletAddress, $chainId, $request->ip());
+            $session = app(WalletSessionService::class)->issue($walletAddress, $chainId, $request->ip());
         }
 
         return response()->json([

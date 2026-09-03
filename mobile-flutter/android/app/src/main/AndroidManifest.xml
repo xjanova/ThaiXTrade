@@ -43,6 +43,19 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!--
+                ปิด deep link ในตัวของ Flutter — ให้ app_links เป็นทางเข้าทางเดียว
+
+                Flutter รุ่นนี้ถือว่า flutter_deeplinking_enabled=true เมื่อไม่ระบุ: ทุก intent
+                tpixtrade://... ถูกยัดเข้า go_router เป็น "/?address=..." อีกทางหนึ่ง (นอกจาก
+                app_links) → redirect ของ router พาไป /splash ทั้งที่แอปเปิดอยู่ = รื้อทั้งแอป
+                ทุกครั้งที่กระเป๋าส่งผลกลับมา: HomeScreen ถูก dispose แล้วพัง ต้นไม้ widget เสียหาย
+                จนหน้าค้าง ถ้าเปิดไบโอเมตริกไว้ก็โดนถามซ้ำแล้วถูกตัดการเชื่อมต่อ
+                รายงานบั๊ก 3535–3537 (2026-09-03) เกิดจากตรงนี้ทั้งหมด
+            -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

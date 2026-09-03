@@ -22,105 +22,128 @@ import '../services/deep_link_service.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
-final GoRouter appRouter = GoRouter(
-  navigatorKey: rootNavigatorKey,
-  initialLocation: '/splash',
-  redirect: (context, state) {
-    // Deep-link fallback — Android intent ส่ง tpixtrade://connect?address=...
-    // Flutter framework parse แล้ว host หาย เหลือแค่ path "/" + query
-    // → ส่งให้ DeepLinkService infer host จาก query keys + handle เอง
-    // → redirect ไป /splash ไม่ให้ router throw "no routes for location"
-    final uri = state.uri;
-    if (uri.path == '/' && uri.queryParameters.isNotEmpty) {
-      DeepLinkService().handleRouterFallback(uri);
-      return '/splash';
-    }
-    return null;
-  },
-  routes: [
-    // Splash screen
-    GoRoute(
-      path: '/splash',
-      builder: (context, state) => const SplashScreen(),
-    ),
+final GoRouter appRouter = _buildRouter();
 
-    // Main shell with floating bottom navigation
-    StatefulShellRoute.indexedStack(
-      builder: (context, state, navigationShell) =>
-          ShellScreen(navigationShell: navigationShell),
-      branches: [
-        // Tab 0: Home
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/home',
-              builder: (context, state) => const HomeScreen(),
-            ),
-          ],
-        ),
+/// สร้าง router — แยกเป็นฟังก์ชันเพื่อให้ redirect อ้างถึงตัว router เองได้
+/// (ต้องรู้ว่าตอนนี้อยู่หน้าไหน ถึงจะ "อยู่หน้าเดิม" ได้เวลา deep link หลุดเข้ามาทางนี้)
+GoRouter _buildRouter() {
+  late final GoRouter router;
+  router = GoRouter(
+    navigatorKey: rootNavigatorKey,
+    initialLocation: '/splash',
+    redirect: (context, state) {
+      // Deep-link fallback — ถ้า Flutter ยัด intent tpixtrade://connect?address=...
+      // เข้า router เอง จะเหลือแค่ path "/" + query (host หาย)
+      // → ส่งให้ DeepLinkService infer host จาก query keys + handle เอง
+      //
+      // ปกติจะไม่มาถึงตรงนี้อีกแล้ว: AndroidManifest ปิด flutter_deeplinking_enabled
+      // ให้ app_links เป็นทางเข้าทางเดียว เส้นทางนี้เหลือไว้เป็นกันเหนียว (iOS/รุ่นเก่า)
+      final uri = state.uri;
+      if (uri.path == '/' && uri.queryParameters.isNotEmpty) {
+        DeepLinkService().handleRouterFallback(uri);
 
-        // Tab 1: AI Trade
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/ai',
-              builder: (context, state) => const AiBotScreen(),
-            ),
-          ],
-        ),
+        /*
+         * ⚠️ ห้ามพาไป /splash ถ้าแอปเปิดอยู่แล้ว — ต้อง "อยู่หน้าเดิม"
+         *
+         * เดิม return '/splash' เสมอ = รีสตาร์ตทั้งแอปทุกครั้งที่กระเป๋าส่งผลกลับมา
+         * (connect / sign-result): shell ถูกรื้อ, HomeScreen.dispose พัง, ต้นไม้ widget
+         * เสียหายจนหน้าค้าง, ถ้าเปิดไบโอเมตริกไว้ก็โดนถามซ้ำแล้วถูกตัดการเชื่อมต่อ
+         * — รายงานบั๊ก 3535–3537 (2026-09-03) ทั้งหมดเกิดจากตรงนี้
+         *
+         * ยังไม่มีหน้าไหนเลย (เปิดแอปด้วย deep link) ค่อยเริ่มที่ /splash ตามปกติ
+         */
+        final current = router.routerDelegate.currentConfiguration.uri;
+        final booting = current.path.isEmpty || current.path == '/';
+        return booting ? '/splash' : current.toString();
+      }
+      return null;
+    },
+    routes: [
+      // Splash screen
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const SplashScreen(),
+      ),
 
-        // Tab 2: Market (center button). Trade lives in this branch so the
-        // floating tab bar stays visible and the center stays active.
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/markets',
-              builder: (context, state) => const MarketsScreen(),
-            ),
-            GoRoute(
-              path: '/trade',
-              builder: (context, state) => const TradeScreen(),
-            ),
-          ],
-        ),
+      // Main shell with floating bottom navigation
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            ShellScreen(navigationShell: navigationShell),
+        branches: [
+          // Tab 0: Home
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/home',
+                builder: (context, state) => const HomeScreen(),
+              ),
+            ],
+          ),
 
-        // Tab 3: Swap
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/swap',
-              builder: (context, state) => const SwapScreen(),
-            ),
-          ],
-        ),
+          // Tab 1: AI Trade
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/ai',
+                builder: (context, state) => const AiBotScreen(),
+              ),
+            ],
+          ),
 
-        // Tab 4: Wallet (Portfolio)
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/portfolio',
-              builder: (context, state) => const PortfolioScreen(),
-            ),
-          ],
-        ),
-      ],
-    ),
+          // Tab 2: Market (center button). Trade lives in this branch so the
+          // floating tab bar stays visible and the center stays active.
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/markets',
+                builder: (context, state) => const MarketsScreen(),
+              ),
+              GoRoute(
+                path: '/trade',
+                builder: (context, state) => const TradeScreen(),
+              ),
+            ],
+          ),
 
-    // ── Detail / full-screen routes (pushed over the shell) ──
-    GoRoute(
-      path: '/settings',
-      parentNavigatorKey: rootNavigatorKey,
-      builder: (context, state) => const SettingsScreen(),
-    ),
-    GoRoute(
-      path: '/profile',
-      parentNavigatorKey: rootNavigatorKey,
-      builder: (context, state) => const ProfileScreen(),
-    ),
-    GoRoute(
-      path: '/bridge',
-      parentNavigatorKey: rootNavigatorKey,
-      builder: (context, state) => const BridgeScreen(),
-    ),
-  ],
-);
+          // Tab 3: Swap
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/swap',
+                builder: (context, state) => const SwapScreen(),
+              ),
+            ],
+          ),
+
+          // Tab 4: Wallet (Portfolio)
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/portfolio',
+                builder: (context, state) => const PortfolioScreen(),
+              ),
+            ],
+          ),
+        ],
+      ),
+
+      // ── Detail / full-screen routes (pushed over the shell) ──
+      GoRoute(
+        path: '/settings',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: '/profile',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/bridge',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const BridgeScreen(),
+      ),
+    ],
+  );
+  return router;
+}

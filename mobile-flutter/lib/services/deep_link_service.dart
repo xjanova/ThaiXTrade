@@ -27,6 +27,9 @@ class DeepLinkService {
   StreamSubscription<Uri>? _sub;
   GlobalKey<NavigatorState>? _navKey;
 
+  // subscribe stream + อ่าน initial link ไปแล้วหรือยัง (ครั้งเดียวต่อโปรเซส)
+  bool _initialized = false;
+
   // Buffer สำหรับ deep-link ที่มาก่อน init() เสร็จ (router redirect ส่งเข้ามา)
   Uri? _pendingFromRouter;
 
@@ -49,6 +52,14 @@ class DeepLinkService {
       _pendingFromRouter = null;
       WidgetsBinding.instance.addPostFrameCallback((_) => _handle(pending));
     }
+
+    /*
+     * เรียกซ้ำได้ (splash ถูกสร้างใหม่ก็เรียกมาอีก) แต่ subscribe stream + อ่าน
+     * initial link แค่ครั้งเดียวต่อโปรเซส — ไม่งั้นทุก link ถูก handle สองรอบ และ
+     * initial link ของโปรเซสถูกเล่นซ้ำ (nonce ที่ใช้ไปแล้ว → ยืนยันล้มโดยไม่มีเหตุ)
+     */
+    if (_initialized) return;
+    _initialized = true;
 
     // จัดการ link ที่เปิดแอพตอนแรก
     try {
@@ -107,6 +118,7 @@ class DeepLinkService {
   void dispose() {
     _sub?.cancel();
     _sub = null;
+    _initialized = false;
   }
 
   void _handle(Uri uri) {
@@ -254,7 +266,11 @@ class DeepLinkService {
     // กระเป๋ารุ่นใหม่แนบลายเซ็นยืนยันมาด้วย → เชื่อม+ยืนยันจบในฮอปเดียว
     final nonce = uri.queryParameters['nonce'];
     final signature = uri.queryParameters['signature'];
-    final signed = nonce != null && signature != null;
+    // นับว่า "แนบลายเซ็นมา" ด้วยเกณฑ์เดียวกับ WalletProvider — ลายเซ็นรูปแบบผิดไม่นับ
+    final signed = nonce != null &&
+        nonce.isNotEmpty &&
+        signature != null &&
+        RegExp(r'^0x[a-fA-F0-9]{130}$').hasMatch(signature);
 
     // Auto-link โดยไม่ต้องเปิด picker — wallet app ส่ง address มาแล้ว trust
     final wallet = context.read<WalletProvider>();
@@ -266,7 +282,11 @@ class DeepLinkService {
       signature: signature,
     );
 
-    BugReporter.I.breadcrumb('connect ok=$ok signed=$signed chain=$chain wallet=${walletName ?? '-'}');
+    // linkFromDeepLink รอผลยืนยันลายเซ็นให้จบก่อนคืนค่า → isVerified ตรงนี้คือของจริง
+    final verified = wallet.isVerified;
+    BugReporter.I.breadcrumb(
+      'connect ok=$ok signed=$signed verified=$verified chain=$chain wallet=${walletName ?? '-'}',
+    );
     if (!ok) {
       BugReporter.I.report(
         title: 'เชื่อมกระเป๋าจาก deep link ไม่สำเร็จ',
@@ -278,17 +298,23 @@ class DeepLinkService {
 
     if (ok) {
       final short = '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
-      _showSnack(
-        context,
-        _isThai(context)
-            ? (signed
-                ? 'เชื่อมและยืนยัน ${walletName ?? 'TPIX Wallet'} แล้ว — $short'
-                : 'เชื่อม ${walletName ?? 'TPIX Wallet'} แล้ว — $short')
-            : (signed
-                ? 'Linked and verified ${walletName ?? 'TPIX Wallet'} — $short'
-                : 'Linked ${walletName ?? 'TPIX Wallet'} — $short'),
-        isSuccess: true,
-      );
+      final name = walletName ?? 'TPIX Wallet';
+      final th = _isThai(context);
+      // บอกตามจริง: เชื่อม+ยืนยันจบ / เชื่อมแล้วแต่ลายเซ็นที่แนบมาไม่ผ่าน / เชื่อมอย่างเดียว
+      // (เดิมขึ้น "เชื่อมและยืนยันแล้ว" ทันทีที่เห็นลายเซ็น ทั้งที่เซิร์ฟเวอร์ยังไม่ได้ตอบ)
+      final String msg;
+      if (verified) {
+        msg = th
+            ? 'เชื่อมและยืนยัน $name แล้ว — $short'
+            : 'Linked and verified $name — $short';
+      } else if (signed) {
+        msg = th
+            ? 'เชื่อม $name แล้ว แต่ยืนยันลายเซ็นไม่ผ่าน — กดยืนยันอีกครั้งตอนเทรด'
+            : 'Linked $name, but the signature could not be verified — verify again when trading';
+      } else {
+        msg = th ? 'เชื่อม $name แล้ว — $short' : 'Linked $name — $short';
+      }
+      _showSnack(context, msg, isSuccess: verified || !signed);
       // ไปหน้า portfolio เพื่อให้ user เห็น balance ทันที
       try {
         GoRouter.of(context).go('/portfolio');
