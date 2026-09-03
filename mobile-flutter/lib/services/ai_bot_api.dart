@@ -28,6 +28,7 @@ import 'package:flutter/foundation.dart';
 import '../core/constants/api_constants.dart';
 import '../models/ai_bot_models.dart';
 import 'api_result.dart';
+import 'wallet_session.dart';
 
 /// เส้นทางทั้งหมดของกลุ่ม ai-bot (ไม่เขียน path ดิบตามที่เรียกใช้)
 class AiBotEndpoints {
@@ -271,6 +272,15 @@ class AiBotApi {
       headers: const {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+      },
+    ));
+
+    // เซสชันกระเป๋าแบบยาว — ทุกคำขอของบอทอยู่หลัง VerifyWalletOwnership
+    // ไม่แนบหัวนี้ = โดน 403 ทุกครั้งที่แคช 4 ชั่วโมงหมดหรือ IP เปลี่ยน
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        options.headers.addAll(WalletSession.headers());
+        return handler.next(options);
       },
     ));
   }

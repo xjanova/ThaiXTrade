@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../core/constants/api_constants.dart';
 import '../models/api_models.dart';
+import 'wallet_session.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._();
@@ -32,6 +33,8 @@ class ApiService {
         if (_authToken != null) {
           options.headers['Authorization'] = 'Bearer $_authToken';
         }
+        // เซสชันกระเป๋าแบบยาว — ใช้แทนการเซ็นซ้ำทุกครั้งที่เปิดแอป
+        options.headers.addAll(WalletSession.headers());
         return handler.next(options);
       },
       onError: (error, handler) {
@@ -247,13 +250,35 @@ class ApiService {
       'wallet_address': walletAddress,
       'signature': signature,
       'nonce': nonce,
+      // ประกาศตัวว่าเป็นแอป → เซิร์ฟเวอร์ออกโทเคนเซสชัน 30 วันให้ (เว็บไม่ได้)
+      'client': 'mobile',
     });
     if (res == null || res['success'] != true) return null;
     // Save token
     if (res['data']?['token'] != null) {
       setToken(res['data']['token'] as String);
     }
+    final session = res['data']?['session_token'];
+    if (session is String && session.isNotEmpty) {
+      await WalletSession.save(session, walletAddress);
+    }
     return res['data'] as Map<String, dynamic>?;
+  }
+
+  /// เซสชันที่เก็บไว้ยังใช้ได้ไหม — คืน HTTP status ของคำขอที่ต้องยืนยัน
+  /// (200 = ใช้ได้ · 403 = หมดอายุ/ถูกเพิกถอน · null = ต่อเซิร์ฟเวอร์ไม่ได้ อย่าเพิ่งล้าง)
+  Future<int?> probeWalletSession(String walletAddress) async {
+    try {
+      final response = await _dio.get(
+        ApiConstants.walletProfile,
+        queryParameters: {'wallet_address': walletAddress},
+        options: Options(validateStatus: (_) => true),
+      );
+      return response.statusCode;
+    } on DioException catch (e) {
+      debugPrint('[API] probeWalletSession: ${e.type.name}');
+      return null;
+    }
   }
 
   /// ดึง user profile (name, email, avatar, preferences) — sync จาก backend

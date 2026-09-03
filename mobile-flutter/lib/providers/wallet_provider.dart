@@ -7,6 +7,7 @@
 ///
 /// Developed by Xman Studio
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:bip39/bip39.dart' as bip39;
@@ -22,6 +23,7 @@ import '../models/chain_config.dart';
 import '../services/api_service.dart';
 import '../services/external_wallet_service.dart';
 import '../services/linked_wallet_signer.dart';
+import '../services/wallet_session.dart';
 
 /// ประเภทของ wallet ที่ user เลือกเชื่อม
 enum WalletKind {
@@ -299,6 +301,8 @@ class WalletProvider extends ChangeNotifier {
     required String address,
     required int chainId,
     String? walletName,
+    String? nonce,
+    String? signature,
   }) async {
     // Defense in depth — validate address อีกครั้ง
     if (!RegExp(r'^0x[a-fA-F0-9]{40}$').hasMatch(address)) {
@@ -321,8 +325,25 @@ class WalletProvider extends ChangeNotifier {
 
       await _saveWalletState();
 
+      /*
+       * TPIX Wallet รุ่นใหม่เซ็นข้อความยืนยันมาให้พร้อมกับการเชื่อมเลย (nonce+signature)
+       * → ยืนยันกับเซิร์ฟเวอร์ได้ทันทีในฮอปเดียว ไม่ต้องเด้งกลับไปขอลายเซ็นอีกรอบ
+       * กระเป๋ารุ่นเก่าไม่ส่งมา → เดินเส้นทางเดิม (ขอลายเซ็นผ่าน deep link)
+       */
+      final signed = nonce != null &&
+          nonce.isNotEmpty &&
+          signature != null &&
+          RegExp(r'^0x[a-fA-F0-9]{130}$').hasMatch(signature);
+
       // Register address กับ backend (best effort) — ได้ user record
-      _registerWithBackend(address);
+      _registerWithBackend(address, verify: !signed);
+
+      if (signed) {
+        unawaited(
+          _submitVerification(signature: signature, nonce: nonce)
+              .catchError((_) => false),
+        );
+      }
 
       // โหลด portfolio (read-only)
       loadPortfolio();
@@ -707,6 +728,9 @@ class WalletProvider extends ChangeNotifier {
 
   Future<void> loadSavedWallet() async {
     try {
+      // โทเคนเซสชัน 30 วัน — ต้องมีก่อนตัดสินใจว่าจะขอลายเซ็นใหม่ไหม
+      await WalletSession.load();
+
       final prefs = await SharedPreferences.getInstance();
       final savedAddress = prefs.getString(_keyWalletState);
       final savedKindStr = prefs.getString(_keyWalletKind);
@@ -732,7 +756,17 @@ class WalletProvider extends ChangeNotifier {
             prefs.getString(_keyExternalWalletName) ?? 'TPIX Wallet';
         _activeChainId = prefs.getInt('tpix_trade_chain_id') ?? 4289;
         notifyListeners();
-        // ไม่ auto-register — ต้องรอ user ทำ explicit verify ผ่าน wallet app callback
+
+        /*
+         * เชื่อมค้างไว้ได้เลย — ถ้าเคยเซ็นผ่านแล้วมีโทเคน 30 วันของกระเป๋านี้
+         * ถือว่ายืนยันแล้วทันที (ตรวจกับเซิร์ฟเวอร์เบื้องหลัง ล้างเฉพาะเมื่อโดน 403)
+         * ไม่มีโทเคน = รอผู้ใช้กดยืนยันเอง ไม่เด้งไปกระเป๋าตั้งแต่เปิดแอป
+         */
+        if (WalletSession.isFor(_address)) {
+          _isVerified = true;
+          notifyListeners();
+          unawaited(_probeSession());
+        }
       } else if (savedKind == WalletKind.walletConnect) {
         // External wallet — Reown AppKit เก็บ session เองใน storage
         // เราต้อง resume session แล้วเช็คว่า address ตรงกับที่บันทึกไว้
@@ -816,6 +850,7 @@ class WalletProvider extends ChangeNotifier {
     }
 
     ApiService().clearToken();
+    await WalletSession.clear();
 
     _address = null;
     _mnemonic = null;
@@ -941,14 +976,46 @@ class WalletProvider extends ChangeNotifier {
     }
   }
 
-  void _registerWithBackend(String address) {
+  void _registerWithBackend(String address, {bool verify = true}) {
     ApiService()
         .walletConnect(
           walletAddress: address,
           chainId: _activeChainId,
         )
-        .then((_) => verifyWithBackend())
+        .then((_) async {
+          if (!verify) return false;
+
+          // มีเซสชัน 30 วันของกระเป๋านี้อยู่แล้ว → ไม่ต้องขอลายเซ็นใหม่ทุกครั้งที่เปิดแอป
+          if (WalletSession.isFor(address)) {
+            _isVerified = true;
+            notifyListeners();
+            return _probeSession();
+          }
+
+          return verifyWithBackend();
+        })
         .catchError((_) => false);
+  }
+
+  /// เซสชันที่เก็บไว้ยังใช้ได้ไหม — ล้างเฉพาะเมื่อเซิร์ฟเวอร์ปฏิเสธชัดๆ (403)
+  /// ต่อเน็ตไม่ได้ไม่ถือว่าหมดอายุ ไม่งั้นออฟไลน์แป๊บเดียวก็ต้องไปเซ็นใหม่
+  Future<bool> _probeSession() async {
+    final address = _address;
+    if (address == null) return false;
+
+    final status = await ApiService().probeWalletSession(address);
+    if (status == 403) {
+      await WalletSession.clear();
+      _isVerified = false;
+      notifyListeners();
+      return false;
+    }
+
+    if (status == 200 && _profile == null) {
+      loadProfile().catchError((_) => false);
+    }
+
+    return true;
   }
 
   Future<void> _saveSettings() async {

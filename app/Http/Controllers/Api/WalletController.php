@@ -113,6 +113,10 @@ class WalletController extends Controller
             $walletAddress = strtolower($walletAddress);
             Cache::forget("wallet_verified:{$walletAddress}");
 
+            // แอปมือถือ: เพิกถอนโทเคนเซสชัน 30 วันของคำขอนี้ด้วย — ตัดแล้วต้องตัดจริง
+            app(\App\Services\WalletSessionService::class)
+                ->revoke($request->headers->get(\App\Services\WalletSessionService::HEADER));
+
             /*
              * ถอดกระเป๋าที่เป็นตัวพาเข้าระบบ = ออกจากระบบด้วย
              *
@@ -525,6 +529,15 @@ class WalletController extends Controller
             ]);
         }
 
+        /*
+         * แอปมือถือได้โทเคนเซสชันแบบยาวเพิ่ม (30 วัน) — เชื่อมครั้งเดียวแล้วค้างไว้ได้
+         * ออกให้เฉพาะคำขอที่ประกาศตัวว่าเป็นแอป เว็บใช้ session ปกติอยู่แล้วไม่ต้องมี
+         */
+        $session = null;
+        if ($request->input('client') === 'mobile') {
+            $session = app(\App\Services\WalletSessionService::class)->issue($walletAddress, $chainId, $request->ip());
+        }
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -532,6 +545,8 @@ class WalletController extends Controller
                 'verified' => true,
                 'expires_in' => $verificationTtl,
                 'signed_in' => $signedIn,
+                'session_token' => $session['token'] ?? null,
+                'session_expires_at' => $session['expires_at'] ?? null,
                 'link_result' => $identity['result'],
                 'user_id' => $identity['user']?->id,
             ],

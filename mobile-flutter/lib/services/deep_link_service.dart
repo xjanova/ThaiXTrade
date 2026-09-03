@@ -30,7 +30,13 @@ class DeepLinkService {
   Uri? _pendingFromRouter;
 
   // Dedupe — กัน handle URI เดียวกัน 2 ครั้ง (router-fallback + getInitialLink)
+  //
+  // ⚠️ ต้องมีกรอบเวลา — เดิมจำคีย์ล่าสุดไว้ตลอดอายุโปรเซส ผู้ใช้กด "เปิด TPIX Trade"
+  //    จากกระเป๋าซ้ำด้วยที่อยู่เดิม (URL เหมือนเดิมทุกตัวอักษร) จึงถูกเมินเงียบๆ
+  //    แอปเปิดขึ้นมาแล้วไม่ทำอะไร = "ค้าง" ในสายตาผู้ใช้
   String? _lastHandledKey;
+  DateTime? _lastHandledAt;
+  static const _dedupeWindow = Duration(seconds: 3);
 
   /// เรียกครั้งเดียวใน splash / main
   Future<void> init(GlobalKey<NavigatorState> navKey) async {
@@ -109,11 +115,15 @@ class DeepLinkService {
     // Dedupe — กัน handle URI เดียวกัน 2 ครั้ง (router-fallback + getInitialLink
     // อาจส่ง deep-link เดียวกันมาทั้งคู่ตอนเปิดแอพจาก wallet)
     final key = '${uri.host}:${uri.query}';
-    if (key == _lastHandledKey) {
+    final now = DateTime.now();
+    if (key == _lastHandledKey &&
+        _lastHandledAt != null &&
+        now.difference(_lastHandledAt!) < _dedupeWindow) {
       debugPrint('DeepLink: dedup ${uri.host}');
       return;
     }
     _lastHandledKey = key;
+    _lastHandledAt = now;
 
     // Log เฉพาะ scheme + host (ไม่ log query params ที่มี address/signature)
     debugPrint('DeepLink: ${uri.scheme}://${uri.host}');
@@ -230,12 +240,19 @@ class DeepLinkService {
 
     final walletName = uri.queryParameters['wallet']; // optional source app name
 
+    // กระเป๋ารุ่นใหม่แนบลายเซ็นยืนยันมาด้วย → เชื่อม+ยืนยันจบในฮอปเดียว
+    final nonce = uri.queryParameters['nonce'];
+    final signature = uri.queryParameters['signature'];
+    final signed = nonce != null && signature != null;
+
     // Auto-link โดยไม่ต้องเปิด picker — wallet app ส่ง address มาแล้ว trust
     final wallet = context.read<WalletProvider>();
     final ok = await wallet.linkFromDeepLink(
       address: address,
       chainId: chain,
       walletName: walletName,
+      nonce: nonce,
+      signature: signature,
     );
 
     if (!context.mounted) return;
@@ -245,8 +262,12 @@ class DeepLinkService {
       _showSnack(
         context,
         _isThai(context)
-            ? 'เชื่อม ${walletName ?? 'TPIX Wallet'} แล้ว — $short'
-            : 'Linked ${walletName ?? 'TPIX Wallet'} — $short',
+            ? (signed
+                ? 'เชื่อมและยืนยัน ${walletName ?? 'TPIX Wallet'} แล้ว — $short'
+                : 'เชื่อม ${walletName ?? 'TPIX Wallet'} แล้ว — $short')
+            : (signed
+                ? 'Linked and verified ${walletName ?? 'TPIX Wallet'} — $short'
+                : 'Linked ${walletName ?? 'TPIX Wallet'} — $short'),
         isSuccess: true,
       );
       // ไปหน้า portfolio เพื่อให้ user เห็น balance ทันที

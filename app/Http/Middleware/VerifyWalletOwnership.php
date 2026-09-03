@@ -64,6 +64,20 @@ class VerifyWalletOwnership
         $normalizedAddress = strtolower($walletAddress);
         $request->merge(['wallet_address' => $normalizedAddress]);
 
+        /*
+         * แอปมือถือ: โทเคนเซสชันแบบยาว (ออกให้หลังเซ็นผ่าน ดู WalletSessionService)
+         *
+         * ใช้แทนแคช 4 ชั่วโมง + IP ได้ทั้งอ่านและเขียน — มือถือเปลี่ยน IP ตลอดและ
+         * เปิดแอปวันละหลายรอบ ถ้าบังคับเงื่อนไขของเบราว์เซอร์ ผู้ใช้ต้องไปเซ็นที่
+         * TPIX Wallet ใหม่ทุกครั้ง โทเคนต้องเป็นของกระเป๋าเดียวกับที่ขอเท่านั้น
+         * โทเคนผิด/หมดอายุไม่ปฏิเสธทันที — ตกไปตรวจแคชตามปกติ (แล้วค่อย 403 ที่นั่น)
+         */
+        $sessionToken = $request->headers->get(\App\Services\WalletSessionService::HEADER);
+
+        if ($sessionToken && app(\App\Services\WalletSessionService::class)->authorizes($sessionToken, $normalizedAddress)) {
+            return $next($request);
+        }
+
         // SECURITY FIX: GET requests ก็ต้องตรวจ verified session
         // เพราะ route group นี้มีข้อมูลส่วนตัว (orders, balances, transactions)
         // ป้องกัน attacker query wallet_address ของคนอื่น
