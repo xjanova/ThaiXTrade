@@ -135,8 +135,24 @@ jobs:
             else
               echo "✅ ไม่มี migration ค้าง"
             fi
+            # ── seeders ──────────────────────────────────────────────────────
+            # seeder ที่ล้มไม่ทำให้ deploy ล้ม (แถวเดิมยังอยู่ครบ) แต่ต้อง "มองเห็น" ใน Actions
+            # ที่ผ่านมา `|| echo "warning"` กลืน exception ไว้ → BaseTokensSeeder ล้มเงียบ
+            # ทุกรอบ deploy ตั้งแต่ 2026-08-21 ถึง 2026-09-03 (1062 Duplicate entry หลัง
+            # Polygon เปลี่ยน MATIC → POL) โดยเห็นได้แค่ใน storage/logs/laravel-*.log บนเซิร์ฟ
+            # ชื่อ seeder ใส่แบบไม่มี namespace ได้ — artisan db:seed เติม Database\Seeders\ ให้เอง
+            SEEDERS_FAILED=0
+            run_seeder() {
+              if php artisan db:seed --class="$1" --force 2>&1; then
+                echo "✅ seeder $1"
+              else
+                SEEDERS_FAILED=$((SEEDERS_FAILED + 1))
+                echo "::error::SEEDER FAILED: $1 — ดู exception ข้างบน (แถวเดิมยังอยู่ แต่ข้อมูลใหม่ของ seeder นี้ไม่ถูกใส่)"
+              fi
+            }
+
             echo "🌱 Running ecosystem seeder..."
-            php artisan db:seed --class=TpixEcosystemSeeder --force 2>&1 || echo "⚠️ Seeder warnings (non-fatal)"
+            run_seeder TpixEcosystemSeeder
 
             # Clear and rebuild caches
             echo "⚡ Optimizing application..."
@@ -162,18 +178,25 @@ jobs:
             mkdir -p storage/app/public/logos storage/app/public/favicons storage/app/public/seo storage/app/public/articles 2>/dev/null || true
 
             # รัน seeders ตามลำดับ: chains → tokens → trading pairs (idempotent)
-            php artisan db:seed --class=Database\\Seeders\\AllChainsSeeder --force 2>&1 || echo "⚠️ Chains seeder warning"
-            php artisan db:seed --class=Database\\Seeders\\BaseTokensSeeder --force 2>&1 || echo "⚠️ Tokens seeder warning"
-            php artisan db:seed --class=Database\\Seeders\\TpixTradingPairSeeder --force 2>&1 || echo "⚠️ TpixPair seeder warning"
+            run_seeder AllChainsSeeder
+            run_seeder BaseTokensSeeder
+            run_seeder TpixTradingPairSeeder
             # คู่เทรดหลักบน BSC (เชนที่ execute จริงผ่าน PancakeSwap) + ปิด placeholder เก่าบน TPIX
-            php artisan db:seed --class=Database\\Seeders\\BscMajorPairsSeeder --force 2>&1 || echo "⚠️ BscMajorPairs seeder warning"
+            run_seeder BscMajorPairsSeeder
+            run_seeder PopularMarketPairsSeeder
             # Token logos — update existing tokens ที่ logo=null (TPIX, USDT จาก TpixPair)
-            php artisan db:seed --class=Database\\Seeders\\PopularMarketPairsSeeder --force 2>&1 || echo "PopularMarketPairs seeder warning"
-            php artisan db:seed --class=Database\\Seeders\\TokenLogosSeeder --force 2>&1 || echo "⚠️ TokenLogos seeder warning"
+            run_seeder TokenLogosSeeder
             # BSC swap tokens + PancakeSwap V2 config — ให้ /swap/quote รู้จักทุก token ในหน้า Swap
-            php artisan db:seed --class=Database\\Seeders\\BscSwapTokensSeeder --force 2>&1 || echo "⚠️ BscSwapTokens seeder warning"
+            run_seeder BscSwapTokensSeeder
             # แพลนเช่าบอท AI TRADE (คลาวด์) — ใช้ร่วมกันระหว่างเว็บและแอพ
-            php artisan db:seed --class=Database\\Seeders\\AiBotPlanSeeder --force 2>&1 || echo "⚠️ AiBotPlan seeder warning"
+            run_seeder AiBotPlanSeeder
+
+            # สรุปให้เห็นในหน้า Actions — ตัวเลขนี้ต้องเป็น 0 ทุกรอบ
+            if [ "$SEEDERS_FAILED" -gt 0 ]; then
+              echo "::error::seeder ล้ม ${SEEDERS_FAILED} ตัว — เปิด storage/logs/laravel-$(date +%F).log บนเซิร์ฟเวอร์ (แถวเดิมยังอยู่ ไม่ต้อง rollback)"
+            else
+              echo "✅ seeders ทั้งหมดผ่าน"
+            fi
 
             # Fix permissions
             chmod -R 775 storage bootstrap/cache 2>/dev/null || true
