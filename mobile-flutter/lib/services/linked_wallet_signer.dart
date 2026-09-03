@@ -29,6 +29,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'bug_reporter.dart';
+
 class LinkedWalletSigner {
   LinkedWalletSigner._();
   static final LinkedWalletSigner _instance = LinkedWalletSigner._();
@@ -107,6 +109,7 @@ class LinkedWalletSigner {
     _updateCount();
 
     if (tag != null) await _persist(nonce, tag: tag, meta: meta);
+    BugReporter.I.breadcrumb('sign request → wallet tag=${tag ?? '-'}');
 
     // Build sign URL — message + callback are URL-encoded
     final uri = Uri(
@@ -128,6 +131,10 @@ class LinkedWalletSigner {
       if (!launched) {
         _removePending(nonce);
         await _forgetPersisted(nonce);
+        BugReporter.I.report(
+          title: 'เปิด TPIX Wallet เพื่อขอลายเซ็นไม่ได้',
+          description: 'launchUrl(tpixwallet://sign) คืน false — กระเป๋าไม่ได้ติดตั้ง หรือระบบไม่ยอมเปิด',
+        );
         return null;
       }
     } catch (e) {
@@ -145,6 +152,11 @@ class LinkedWalletSigner {
     } on TimeoutException {
       _removePending(nonce);
       // ไม่ลบที่จดไว้ — โปรเซสนี้หมดเวลาแล้ว แต่ callback อาจมาถึงแอปที่เปิดใหม่ทีหลัง
+      BugReporter.I.report(
+        title: 'รอลายเซ็นจาก TPIX Wallet เกิน ${_timeout.inSeconds} วินาที',
+        description: 'กระเป๋าไม่ส่ง sign-result กลับมาในเวลา — ผู้ใช้ไม่ได้กดยืนยัน หรือ callback ไปไม่ถึงแอป',
+        metadata: {'tag': tag},
+      );
       return null;
     } catch (_) {
       _removePending(nonce);
@@ -416,15 +428,18 @@ class LinkedWalletSigner {
     if (completer == null) {
       // Unknown nonce — either timed out already or spoofed. Ignore.
       debugPrint('LinkedWalletSigner: callback for unknown nonce');
+      BugReporter.I.breadcrumb('sign-result unknown nonce (pending=${_pending.length})');
       return false;
     }
     if (completer.isCompleted) return true;
 
     if (signature != null && _isValidSignature(signature)) {
+      BugReporter.I.breadcrumb('sign-result ok');
       completer.complete(signature);
     } else {
       // User rejected, error, or invalid signature format
       debugPrint('LinkedWalletSigner: sign failed (error=$error)');
+      BugReporter.I.breadcrumb('sign-result failed error=${error ?? 'invalid-signature'}');
       completer.complete(null);
     }
     return true;

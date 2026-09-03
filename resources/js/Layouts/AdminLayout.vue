@@ -222,6 +222,8 @@ const navigationSections = computed(() => [
             { name: t('common.all') === 'ทั้งหมด' ? 'ผู้ดูแลระบบ' : 'Admins', href: '/admin/users', icon: 'users' },
             { name: t('common.all') === 'ทั้งหมด' ? 'การแจ้งเตือน' : 'Notifications', href: '/admin/notifications', icon: 'notification' },
             { name: t('common.all') === 'ทั้งหมด' ? 'อัพเดทแอพ' : 'App Releases', href: '/admin/app-releases', icon: 'download' },
+            // รายงานบั๊กจากแอปมือถือ/เว็บ/โปรแกรม — เห็นก่อนพังเกิดอะไร ไม่ต้องเดา
+            { name: t('common.all') === 'ทั้งหมด' ? 'รายงานบั๊ก' : 'Bug Reports', href: '/admin/bug-reports', icon: 'audit' },
         ],
     },
 ]);

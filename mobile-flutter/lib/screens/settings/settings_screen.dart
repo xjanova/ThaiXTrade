@@ -21,6 +21,7 @@ import '../../providers/accent_provider.dart';
 import '../../services/biometric_service.dart';
 import '../../services/update_service.dart';
 import '../../widgets/common/app_background.dart';
+import '../../widgets/common/bug_report_sheet.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
 import '../../widgets/wallet/profile_edit_sheet.dart';
@@ -1002,6 +1003,17 @@ class _AboutCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         children: [
+          // รายงานปัญหา — ส่งสภาพแอป + เหตุการณ์ล่าสุดเข้าระบบรายงานบั๊กกลางทันที
+          _SettingsTile(
+            icon: Icons.bug_report_outlined,
+            title: locale.isThai ? 'รายงานปัญหา' : 'Report a problem',
+            trailing: const Icon(Icons.chevron_right_rounded,
+                color: AppColors.textTertiary, size: 20),
+            onTap: () => showBugReportSheet(context, isThai: locale.isThai),
+          ),
+
+          const Divider(color: AppColors.divider, height: 1, indent: 52),
+
           // Bridge
           _SettingsTile(
             icon: Icons.swap_horiz_rounded,

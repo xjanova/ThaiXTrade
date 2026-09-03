@@ -22,6 +22,7 @@ import '../models/api_models.dart';
 import '../models/chain_config.dart';
 import '../services/api_service.dart';
 import '../services/external_wallet_service.dart';
+import '../services/bug_reporter.dart';
 import '../services/linked_wallet_signer.dart';
 import '../services/wallet_session.dart';
 
@@ -614,6 +615,15 @@ class WalletProvider extends ChangeNotifier {
     _isVerified = verifyData?['verified'] == true;
     notifyListeners();
 
+    BugReporter.I.breadcrumb('verify → ${_isVerified ? 'ok' : 'failed'} session=${WalletSession.hasToken}');
+    if (!_isVerified) {
+      BugReporter.I.report(
+        title: 'ยืนยันกระเป๋ากับเซิร์ฟเวอร์ไม่ผ่าน',
+        description: 'walletVerifySignature ไม่คืน verified=true (nonce หมดอายุ ลายเซ็นไม่ตรง หรือเซิร์ฟเวอร์ตอบผิดพลาด)',
+        metadata: {'response_keys': verifyData?.keys.toList()},
+      );
+    }
+
     // Auto-fetch profile after successful verification (non-blocking)
     // เพื่อ sync settings/preferences จาก backend (cross-device)
     if (_isVerified) {
@@ -730,6 +740,18 @@ class WalletProvider extends ChangeNotifier {
     try {
       // โทเคนเซสชัน 30 วัน — ต้องมีก่อนตัดสินใจว่าจะขอลายเซ็นใหม่ไหม
       await WalletSession.load();
+
+      // สภาพกระเป๋าที่แนบไปกับทุกรายงานบั๊ก — เฉพาะสิ่งที่ช่วยไล่ปัญหา ไม่มีความลับ
+      BugReporter.I.snapshot = () => {
+            'wallet_kind': _kind.name,
+            'connected': isConnected,
+            'verified': _isVerified,
+            'address': shortAddress,
+            'chain': _activeChainId,
+            'external_wallet': _externalWalletName,
+            'has_session_token': WalletSession.hasToken,
+            'pending_signs': LinkedWalletSigner().pendingCount.value,
+          };
 
       final prefs = await SharedPreferences.getInstance();
       final savedAddress = prefs.getString(_keyWalletState);
@@ -1004,6 +1026,7 @@ class WalletProvider extends ChangeNotifier {
     if (address == null) return false;
 
     final status = await ApiService().probeWalletSession(address);
+    BugReporter.I.breadcrumb('session probe → ${status ?? 'offline'}');
     if (status == 403) {
       await WalletSession.clear();
       _isVerified = false;

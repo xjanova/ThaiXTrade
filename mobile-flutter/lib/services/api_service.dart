@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../core/constants/api_constants.dart';
 import '../models/api_models.dart';
+import 'bug_reporter.dart';
 import 'wallet_session.dart';
 
 class ApiService {
@@ -39,6 +40,10 @@ class ApiService {
       },
       onError: (error, handler) {
         debugPrint('[API] ${error.type.name}: ${error.response?.statusCode ?? '?'}');
+        // path อย่างเดียว ไม่เอา query (มี wallet_address) — พอให้รู้ว่าคำขอไหนล้ม
+        BugReporter.I.breadcrumb(
+          'api ${error.requestOptions.method} ${error.requestOptions.path} → ${error.response?.statusCode ?? error.type.name}',
+        );
         return handler.next(error);
       },
     ));

@@ -3,10 +3,13 @@
 ///
 /// Developed by Xman Studio
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'app.dart';
+import 'services/bug_reporter.dart';
 import 'providers/wallet_provider.dart';
 import 'providers/market_provider.dart';
 import 'providers/update_provider.dart';
@@ -16,7 +19,19 @@ import 'providers/ai_bot_provider.dart';
 import 'core/locale/locale_provider.dart';
 
 Future<void> main() async {
+  /*
+   * ทุกอย่างอยู่ใน zone เดียวกัน — error ที่หลุดจาก async ใดๆ ถูกส่งเข้าระบบรายงานบั๊ก
+   * (ensureInitialized ต้องอยู่ใน zone เดียวกับ runApp ไม่งั้น Flutter เตือน)
+   */
+  await runZonedGuarded(
+    _boot,
+    (error, stack) => BugReporter.I.reportError(error, stack, context: 'zone', fatal: true),
+  );
+}
+
+Future<void> _boot() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await BugReporter.I.install(product: 'tpix-trade');
 
   // Lock portrait orientation
   await SystemChrome.setPreferredOrientations([

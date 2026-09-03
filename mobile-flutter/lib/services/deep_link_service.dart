@@ -14,6 +14,7 @@ import '../core/locale/locale_provider.dart';
 import '../core/theme/app_colors.dart';
 import '../providers/market_provider.dart';
 import '../providers/wallet_provider.dart';
+import 'bug_reporter.dart';
 import 'linked_wallet_signer.dart';
 import 'package:provider/provider.dart';
 
@@ -127,6 +128,7 @@ class DeepLinkService {
 
     // Log เฉพาะ scheme + host (ไม่ log query params ที่มี address/signature)
     debugPrint('DeepLink: ${uri.scheme}://${uri.host}');
+    BugReporter.I.breadcrumb('deeplink ${uri.host} keys=${uri.queryParameters.keys.join(',')}');
 
     // sign-result / tx-result ไม่ต้องใช้ context — route ตรงไปที่ signer
     if (uri.host == 'sign-result') {
@@ -176,7 +178,16 @@ class DeepLinkService {
     if (handled) return;
 
     final persisted = await signer.takePersisted(nonce);
-    if (persisted == null) return;
+    if (persisted == null) {
+      // นี่คือเคสที่เคยต้องเดา — callback มาถึงแต่ไม่มีใครรอ รายงานพร้อม breadcrumb ให้เห็นทันที
+      BugReporter.I.report(
+        title: 'sign-result มาถึงแต่ไม่มีคำขอรออยู่',
+        description: 'callback จากกระเป๋ามาถึงแอปที่ไม่มี Completer ในหน่วยความจำ และไม่มีคำขอที่จดไว้บนดิสก์ (nonce ไม่รู้จักหรือหมดอายุ)',
+        metadata: {'has_signature': signature != null, 'error': uri.queryParameters['error']},
+      );
+      return;
+    }
+    BugReporter.I.breadcrumb('sign-result recovered from disk tag=${persisted['tag']}');
 
     if (signature == null || !signer.isValidSignature(signature)) {
       debugPrint('DeepLink: persisted sign request ended without signature');
@@ -254,6 +265,14 @@ class DeepLinkService {
       nonce: nonce,
       signature: signature,
     );
+
+    BugReporter.I.breadcrumb('connect ok=$ok signed=$signed chain=$chain wallet=${walletName ?? '-'}');
+    if (!ok) {
+      BugReporter.I.report(
+        title: 'เชื่อมกระเป๋าจาก deep link ไม่สำเร็จ',
+        description: 'linkFromDeepLink คืน false — chain=$chain signed=$signed',
+      );
+    }
 
     if (!context.mounted) return;
 

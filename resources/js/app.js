@@ -8,6 +8,7 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { createPinia } from 'pinia';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { initAudio } from '@/Composables/useSounds';
+import { installBugReporter } from '@/utils/bugReporter';
 
 import '../css/app.css';
 
@@ -36,10 +37,8 @@ createInertiaApp({
         // Global properties
         app.config.globalProperties.$appName = appName;
 
-        // Global error handler
-        app.config.errorHandler = (err, instance, info) => {
-            console.error('[TPIX] Vue Error:', err, info);
-        };
+        // Global error handler + รายงานบั๊กเข้าระบบกลาง (window.error / promise / Vue)
+        installBugReporter(app);
 
         // Mount app
         app.mount(el);

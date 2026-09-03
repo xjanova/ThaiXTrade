@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\AppReleaseController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BannerController;
+use App\Http\Controllers\Admin\BugReportAdminController;
 use App\Http\Controllers\Admin\CarbonCreditController as AdminCarbonCreditController;
 use App\Http\Controllers\Admin\ChainController;
 use App\Http\Controllers\Admin\ContentController;
@@ -95,6 +96,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
          * ศูนย์เฝ้าดูบอทเทรด — เห็นบอททุกตัวของทุกกระเป๋า ทั้งคลาวด์และแพลนฟรี
          * พร้อมสั่งหยุด/ระงับได้ (ทุกคำสั่งลง AuditLog)
          */
+        // รายงานบั๊กจากแอป/เว็บ/โปรแกรมทั้งหมด — อ่านจากระบบกลาง xman studio
+        Route::get('bug-reports', [BugReportAdminController::class, 'index'])->name('bug-reports.index');
+        Route::post('bug-reports/refresh', [BugReportAdminController::class, 'refresh'])->name('bug-reports.refresh');
+
         Route::get('ai-bots', [AiBotAdminController::class, 'index'])->name('ai-bots.index');
         Route::post('ai-bots/{bot}/pause', [AiBotAdminController::class, 'pause'])->name('ai-bots.pause');
         Route::post('ai-bots/{bot}/resume', [AiBotAdminController::class, 'resume'])->name('ai-bots.resume');

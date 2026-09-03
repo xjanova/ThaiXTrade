@@ -361,6 +361,10 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         ->withoutMiddleware([VerifyCsrfToken::class, 'throttle:60,1'])
         ->middleware('throttle:300,1');
 
+    // รายงานบั๊กจากหน้าเว็บ → ส่งต่อระบบกลาง xman studio (สาธารณะ จำกัด 20/นาที/IP)
+    Route::post('/bug-reports', [\App\Http\Controllers\Api\BugReportRelayController::class, 'store'])
+        ->middleware('throttle:20,1');
+
     // Wallet Bootstrap — connect/sign/verify must be PUBLIC (before wallet is verified)
     // นับสองชั้น: ต่อกระเป๋า (กันกดรัว) + ต่อ IP (กันเดาลายเซ็นด้วยการหมุนเลขกระเป๋า)
     // ดู RateLimiter::for('wallet-bootstrap') ใน AppServiceProvider
