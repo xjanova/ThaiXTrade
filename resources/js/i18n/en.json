@@ -105,7 +105,7 @@
         },
         "layout": {
             "customize": "Layout",
-            "hint": "Drag the handle on a card header to rearrange",
+            "hint": "Drag the grip on a card header to move it · drop on another card left or right edge to place them side by side",
             "wideOnly": "(dragging needs a screen 1280px or wider)",
             "showCards": "Show cards",
             "reset": "Reset to default",
@@ -122,7 +122,10 @@
             "hide": "Hide this card",
             "fullscreen": "Expand chart to full screen",
             "exitFullscreen": "Exit full screen",
-            "settings": "Settings"
+            "settings": "Settings",
+            "splitWidth": "Drag to resize left and right",
+            "splitHeight": "Drag to resize top and bottom",
+            "resetSplit": "Double-click to reset"
         },
         "market": {
             "search": "Search coin...",

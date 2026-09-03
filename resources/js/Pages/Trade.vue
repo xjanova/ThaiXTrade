@@ -1,12 +1,17 @@
 <script setup>
 /**
  * TPIX TRADE - Trading Dashboard Page
- * กระดานเทรด 3 คอลัมน์ ที่ผู้ใช้จัดผังการ์ดเองได้
+ * กระดานเทรด 4 คอลัมน์ ที่ผู้ใช้จัดผังการ์ดเองได้
  *   ซ้าย  = รายการคู่เทรด + AI TRADE
- *   กลาง  = กราฟ + ฟอร์มซื้อขาย + คำสั่งของฉัน
- *   ขวา   = สมุดคำสั่ง + เทรดล่าสุด
+ *   กลาง  = กราฟ + ฟอร์มซื้อขาย
+ *   ขวา   = สมุดคำสั่ง
+ *   ท้าย  = คำสั่งของฉัน + เทรดล่าสุด
  *
- * โหมด "พอดีหน้าจอ": การ์ดยืด/หดแบ่งความสูงที่เหลือกันเอง (ตาม CARD_FLEX)
+ * แต่ละคอลัมน์ประกอบด้วย "แถว" และแถวหนึ่งวางการ์ดเคียงกันได้ 2 ใบ (บนจอ xl ขึ้นไป)
+ * เช่น กราฟเต็มความกว้างด้านบน แล้วใต้กราฟแบ่งเป็นฟอร์มซื้อขาย | สมุดคำสั่ง
+ * ต่ำกว่า xl แถวยุบเป็น display:contents แล้วการ์ดเรียงลงมาทีละใบตามคลาส order-*
+ *
+ * โหมด "พอดีหน้าจอ": แถวยืด/หดแบ่งความสูงที่เหลือกันเอง (ตาม CARD_FLEX)
  * โดยมีความสูงต่ำสุดของแต่ละใบ ถ้าใส่ไม่ลงจริงๆ คอลัมน์จะเลื่อนแทนการบีบจนอ่านไม่ออก
  *
  * ข้อมูล: คู่ TPIX ใช้ order book ภายใน · คู่อื่นใช้ Binance + execute บน PancakeSwap
@@ -26,6 +31,8 @@ import PairSelector from '@/Components/Trading/PairSelector.vue';
 import MarketListPanel from '@/Components/Trading/MarketListPanel.vue';
 import AiTradeCard from '@/Components/Trading/AiTradeCard.vue';
 import DraggableCard from '@/Components/Trading/DraggableCard.vue';
+import RowSplitter from '@/Components/Trading/RowSplitter.vue';
+import RowResizer from '@/Components/Trading/RowResizer.vue';
 import PageArt from '@/Components/PageArt.vue';
 import { useBinanceData } from '@/Composables/useBinanceData';
 import { useSwap } from '@/Composables/useSwap';
@@ -342,22 +349,42 @@ const chartColumn = computed(() =>
  * กราฟจะไปอยู่ในรางแคบแล้วโดนบีบ ส่วนคอลัมน์ที่ไม่มีกราฟกลับได้ที่ว่างทั้งหมด
  */
 const gridTemplate = computed(() => renderedColumns.value.map((col) => {
-    if (col === chartColumn.value) return 'minmax(0,1fr)';
-
-    const cards = layout.visible.value[col];
+    const rows = layout.visibleRows.value[col];
 
     // คอลัมน์ว่างระหว่างลาก = แถบบางๆ ให้เล็งวางได้ ไม่กินที่มาก
-    if (!cards.length) return '96px';
+    if (!rows.length) return '96px';
 
-    // เผื่อจากค่า min ของการ์ดที่กว้างสุดในคอลัมน์ แล้วคุมเพดานไม่ให้เบียดกราฟ
-    const min = layout.columnMinWidth(cards);
+    // เผื่อจากแถวที่ต้องการกว้างที่สุด — แถวคู่ต้องพอสำหรับการ์ดทั้งสองใบบวกช่องไฟ
+    const min = layout.columnMinWidth(rows);
 
-    return `minmax(${min}px, ${Math.min(min + 80, 340)}px)`;
+    // รางของกราฟเป็นตัวยืด แต่ห้ามหดต่ำกว่าที่แถวข้างในต้องการจริง
+    // (เดิมเป็น minmax(0,1fr) — พอผู้ใช้แบ่งคอลัมน์ย่อยใต้กราฟ รางจะบี้จนการ์ดล้น)
+    if (col === chartColumn.value) return `minmax(${min}px, 1fr)`;
+
+    // ⚠️ เพดานต้องไม่ต่ำกว่า min: minmax(472px, 340px) จะทำให้เบราว์เซอร์ทิ้งค่า max
+    //    เงียบๆ แล้วรางจะกว้างค้างที่ min โดยไม่มีใครรู้ว่าเพดานไม่ทำงาน
+    const max = Math.max(min, Math.min(min + 80, 340));
+
+    return `minmax(${min}px, ${max}px)`;
 }).join(' '));
 
-/** ความสูงของการ์ดหนึ่งใบ — โหมดพอดีจอใช้ flex, โหมดเลื่อนหน้าใช้ px */
-function styleFor(cardId) {
+/**
+ * แถวยุบเป็น display:contents ต่ำกว่า xl — การ์ดไหลเรียงลงมาทีละใบตามคลาส order-*
+ * (จอแคบวางเคียงกันแล้วเหลือใบละ ~180px ซึ่งอ่านตัวเลขไม่ออก)
+ */
+const rowClass = ['contents xl:flex xl:flex-row xl:gap-3 xl:min-w-0 xl:min-h-0'];
+
+/** ความสูงของแถว — บนจอกว้างแถวเป็นตัวถือความสูง ไม่ใช่การ์ด */
+function rowStyleFor(row) {
+    // ต่ำกว่า xl แถวเป็น display:contents สไตล์ไม่มีผล การ์ดคุมความสูงเอง
+    return isNarrow.value ? {} : layout.rowStyle(row, packed.value);
+}
+
+/** สไตล์ของการ์ดหนึ่งใบ — บนจอกว้างคุมแค่ความกว้างในแถว, จอแคบคุมความสูง */
+function styleFor(cardId, row = null) {
     if (cardId === 'chart' && isChartFullscreen.value) return {};
+    if (!isNarrow.value && row) return layout.cardStyleInRow(cardId, row);
+
     return layout.cardStyle(cardId, packed.value);
 }
 
@@ -1102,14 +1129,28 @@ onUnmounted(() => {
                         {{ t('trade.layout.dropHere') }}
                     </div>
 
-                    <template v-for="cardId in layout.visible.value[col]" :key="cardId">
+                    <!--
+                        แถว = ชั้นกลางระหว่างคอลัมน์กับการ์ด
+
+                        data-trade-row ให้ RowResizer หากล่องของทุกแถวในคอลัมน์เจอ
+                        เพื่อวัดความสูงจริงตอนเริ่มลาก (querySelectorAll ที่พ่อของมัน)
+                    -->
+                    <template
+                        v-for="(row, rowIndex) in layout.visibleRows.value[col]"
+                        :key="row.join('+')"
+                    >
+                        <div data-trade-row :class="rowClass" :style="rowStyleFor(row)">
+                            <template v-for="(cardId, cardIndex) in row" :key="cardId">
+                                <!-- เส้นแบ่งซ้าย/ขวา — คั่นระหว่างการ์ดสองใบในแถวเดียวกัน -->
+                                <RowSplitter v-if="cardIndex > 0" :row="row" />
+
                         <!-- คู่เทรด -->
                         <DraggableCard
                             v-if="cardId === 'market'"
                             card-id="market"
                             :locked="isNarrow"
                             :class="layout.stackClass('market')"
-                            :style="styleFor('market')"
+                            :style="styleFor('market', row)"
                         >
                             <MarketListPanel :current-pair="currentPair" />
                         </DraggableCard>
@@ -1123,7 +1164,7 @@ onUnmounted(() => {
                             card-id="chart"
                             :locked="isNarrow"
                             :class="[layout.stackClass('chart'), isChartFullscreen ? '!fixed inset-3 z-[55]' : '']"
-                            :style="styleFor('chart')"
+                            :style="styleFor('chart', row)"
                         >
                             <template #actions>
                                 <button
@@ -1162,7 +1203,7 @@ onUnmounted(() => {
                             card-id="form"
                             :locked="isNarrow"
                             :class="layout.stackClass('form')"
-                            :style="styleFor('form')"
+                            :style="styleFor('form', row)"
                             body-class="overflow-y-auto custom-scrollbar"
                         >
                             <TradeForm
@@ -1187,7 +1228,7 @@ onUnmounted(() => {
                             card-id="orders"
                             :locked="isNarrow"
                             :class="layout.stackClass('orders')"
-                            :style="styleFor('orders')"
+                            :style="styleFor('orders', row)"
                         >
                             <template #actions>
                                 <div class="flex items-center gap-0.5">
@@ -1239,7 +1280,7 @@ onUnmounted(() => {
                             card-id="book"
                             :locked="isNarrow"
                             :class="layout.stackClass('book')"
-                            :style="styleFor('book')"
+                            :style="styleFor('book', row)"
                         >
                             <OrderBook
                                 :symbol="currentPair"
@@ -1257,7 +1298,7 @@ onUnmounted(() => {
                             card-id="ai"
                             :locked="isNarrow"
                             :class="layout.stackClass('ai')"
-                            :style="styleFor('ai')"
+                            :style="styleFor('ai', row)"
                             :art-opacity="10"
                         >
                             <template #actions>
@@ -1278,7 +1319,7 @@ onUnmounted(() => {
                             card-id="trades"
                             :locked="isNarrow"
                             :class="layout.stackClass('trades')"
-                            :style="styleFor('trades')"
+                            :style="styleFor('trades', row)"
                         >
                             <RecentTrades
                                 :symbol="currentPair"
@@ -1287,6 +1328,19 @@ onUnmounted(() => {
                                 @select-price="handleSelectPrice"
                             />
                         </DraggableCard>
+                            </template>
+                        </div>
+
+                        <!--
+                            เส้นแบ่งบน/ล่าง — มีเฉพาะโหมดพอดีหน้าจอ
+                            โหมดเลื่อนหน้าความสูงมาจากค่าคงที่ของการ์ดกับปุ่มเลือกขนาดกราฟ
+                            ลากตรงนี้จะไม่มีความสูงให้สองแถวแย่งกัน
+                        -->
+                        <RowResizer
+                            v-if="packed && rowIndex < layout.visibleRows.value[col].length - 1"
+                            :rows="layout.visibleRows.value[col]"
+                            :index="rowIndex"
+                        />
                     </template>
 
                     <!-- พื้นที่รับการ์ดตอนคอลัมน์ว่าง -->

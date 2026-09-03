@@ -8,7 +8,7 @@
  *
  * Developed by Xman Studio
  */
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import PageArt from '@/Components/PageArt.vue';
 import { useTradeLayout } from '@/Composables/useTradeLayout';
 import { useTranslation } from '@/Composables/useTranslation';
@@ -35,7 +35,7 @@ const isDragging = computed(() => layout.draggingId.value === props.cardId);
 
 // draggable ต้องเป็น true ก่อน dragstart จะยิง — ติดอาวุธตอนกด grip แล้วปลดตอนจบ
 const armed = ref(false);
-const hint = ref(null); // 'before' | 'after'
+const hint = ref(null); // 'before' | 'after' | 'left' | 'right'
 
 /** ปรับแต่งการ์ดได้ไหม (ย่อ/ซ่อน) — ใช้ได้ทั้งเมาส์และนิ้ว */
 const canDrag = computed(() => !props.locked);
@@ -73,12 +73,47 @@ function onDragEnd() {
     layout.endDrag();
 }
 
+/**
+ * ⭐ ล้างเส้นบอกจุดวางของ "ทุกใบ" เมื่อการลากจบลง
+ *
+ * dragend ยิงที่ใบที่ถูกลากใบเดียว ส่วนใบที่เป็นเป้าหมายอาศัย dragleave ล้างตัวเอง
+ * ซึ่งไม่ยิงเลยถ้าผู้ใช้ปล่อยมือนอกการ์ด (พื้นที่ว่างของคอลัมน์ / นอกหน้าต่าง)
+ * ผลคือเส้นเรืองแสงค้างอยู่บนการ์ดจนกว่าจะลากผ่านมันอีกครั้ง
+ */
+watch(() => layout.draggingId.value, id => {
+    if (!id) hint.value = null;
+});
+
+/**
+ * การ์ดหนึ่งใบมีจุดวาง 4 จุด
+ *   ขอบซ้าย/ขวา → เข้าไปอยู่ "แถวเดียวกัน" เคียงข้างใบนี้
+ *   ครึ่งบน/ล่าง → เป็นแถวใหม่เหนือ/ใต้แถวนี้
+ *
+ * แถบขอบกว้าง 28% แต่ไม่เกิน 72px — บนการ์ดกว้างๆ อย่างกราฟ ถ้าใช้ % ล้วน
+ * แถบขอบจะกินเข้ามาเกือบครึ่งใบ แล้วผู้ใช้จะเล็ง "วางเป็นแถวใหม่" ไม่ได้เลย
+ */
 function onDragOver(e) {
     if (!layout.draggingId.value || layout.draggingId.value === props.cardId) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
 
     const rect = e.currentTarget.getBoundingClientRect();
+
+    // เสนอ "วางเคียงกัน" เฉพาะตอนที่แถวนี้ยังรับได้อีกใบ ไม่งั้นเป็นเส้นหลอก
+    if (layout.canJoinRow(props.cardId, layout.draggingId.value)) {
+        const edge = Math.min(72, rect.width * 0.28);
+
+        if (e.clientX < rect.left + edge) {
+            hint.value = 'left';
+            return;
+        }
+
+        if (e.clientX > rect.right - edge) {
+            hint.value = 'right';
+            return;
+        }
+    }
+
     hint.value = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
 }
 
@@ -113,6 +148,8 @@ function onDrop(e) {
             isDragging && 'opacity-40',
             hint === 'before' && 'trade-card--drop-before',
             hint === 'after' && 'trade-card--drop-after',
+            hint === 'left' && 'trade-card--drop-left',
+            hint === 'right' && 'trade-card--drop-right',
         ]"
         :draggable="armed"
         @dragstart="onDragStart"
@@ -299,5 +336,30 @@ function onDrop(e) {
 
 .trade-card--drop-after::after {
     bottom: -8px;
+}
+
+/*
+ * เส้นแนวตั้ง = วางเคียงกันในแถวเดียวกัน (คนละความหมายกับเส้นแนวนอน)
+ * ต้องต่างทิศกันชัดๆ ไม่งั้นผู้ใช้แยกไม่ออกว่ากำลังจะได้แถวใหม่หรือคอลัมน์ย่อย
+ */
+.trade-card--drop-left::before,
+.trade-card--drop-right::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    border-radius: 9999px;
+    background: linear-gradient(180deg, #8b5cf6, #06b6d4, #f97316);
+    box-shadow: 0 0 12px rgba(6, 182, 212, 0.7);
+    z-index: 20;
+}
+
+.trade-card--drop-left::before {
+    left: -8px;
+}
+
+.trade-card--drop-right::after {
+    right: -8px;
 }
 </style>
