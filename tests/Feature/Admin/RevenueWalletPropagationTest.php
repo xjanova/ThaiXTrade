@@ -65,8 +65,10 @@ class RevenueWalletPropagationTest extends TestCase
         $this->saveRevenue();
 
         // ค่าธรรมเนียมเทรดเกิดบนเชนที่ซื้อขาย wTPIX จึงต้องเป็นกระเป๋าใบนั้น
+        // เก็บพิมพ์เล็กเสมอ — ที่อยู่นี้ checksum EIP-55 ไม่ตรง ethers ฝั่งเบราว์เซอร์จะปฏิเสธ
+        // ตอนโอนค่าธรรมเนียม (isAddress() = false) ถ้าส่งแบบตัวพิมพ์ปนไป
         $this->assertSame(
-            self::WTPIX_WALLET,
+            strtolower(self::WTPIX_WALLET),
             (string) SiteSetting::get('trading', 'fee_collector_wallet', ''),
         );
     }
@@ -92,7 +94,7 @@ class RevenueWalletPropagationTest extends TestCase
         $this->saveRevenue(['wtpix_wallet' => '']);
 
         $this->assertSame(
-            self::TPIX_WALLET,
+            strtolower(self::TPIX_WALLET),
             (string) SiteSetting::get('trading', 'fee_collector_wallet', ''),
         );
     }
