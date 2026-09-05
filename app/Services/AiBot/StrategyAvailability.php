@@ -2,6 +2,7 @@
 
 namespace App\Services\AiBot;
 
+use App\Services\ContractRegistry;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -93,10 +94,11 @@ class StrategyAvailability
     /**
      * DEX บน TPIX Chain deploy แล้วหรือยัง.
      *
-     * อ่านไฟล์เดียวกับที่หน้าเว็บใช้ (dexContracts.json ซึ่ง deploy-dex.js เขียนทับ
-     * ตอน deploy จริง) — ถ้าแยกกันเก็บ สองฝั่งจะไม่ตรงกันวันใดวันหนึ่งแน่นอน
+     * ถามทะเบียนสัญญา (ContractRegistry) ตัวเดียวกับที่หน้าเทรดใช้ — ไม่อ่านไฟล์ JSON
+     * ที่ build ติดไปกับหน้าเว็บอีกแล้ว เพราะสคริปต์ deploy ลงทะเบียนที่อยู่เข้ามาที่
+     * ทะเบียนโดยตรง ไฟล์นั้นจะล้าหลังทันทีที่ deploy โดยไม่มีใครรู้
      *
-     * อ่านไม่ได้ = ถือว่ายังไม่ deploy กลยุทธ์ที่พึ่งมันจะถูกปิดไว้ ซึ่งเป็นฝั่งที่
+     * ตอบไม่ได้ = ถือว่ายังไม่ deploy กลยุทธ์ที่พึ่งมันจะถูกปิดไว้ ซึ่งเป็นฝั่งที่
      * ปลอดภัยกว่าการเดาว่าพร้อมแล้วปล่อยให้ผู้ใช้เสียเครดิตทิ้ง
      */
     public function dexDeployed(): bool
@@ -105,28 +107,12 @@ class StrategyAvailability
             return $this->dexDeployed;
         }
 
-        $path = resource_path('js/Config/dexContracts.json');
-
-        if (! is_readable($path)) {
-            return $this->dexDeployed = false;
-        }
-
         try {
-            $deployed = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
-        } catch (\JsonException $e) {
-            Log::warning('อ่าน dexContracts.json ไม่ได้ ถือว่า DEX ยังไม่ deploy', ['error' => $e->getMessage()]);
+            return $this->dexDeployed = app(ContractRegistry::class)->dexReady();
+        } catch (\Throwable $e) {
+            Log::warning('ตรวจความพร้อม DEX ไม่ได้ ถือว่ายังไม่ deploy', ['error' => $e->getMessage()]);
 
             return $this->dexDeployed = false;
         }
-
-        foreach (['WTPIX', 'USDT', 'FACTORY', 'ROUTER'] as $key) {
-            $address = strtolower(trim((string) ($deployed[$key] ?? '')));
-
-            if ($address === '' || $address === self::ZERO_ADDRESS) {
-                return $this->dexDeployed = false;
-            }
-        }
-
-        return $this->dexDeployed = true;
     }
 }

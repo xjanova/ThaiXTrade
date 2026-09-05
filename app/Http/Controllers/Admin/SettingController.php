@@ -395,7 +395,8 @@ class SettingController extends Controller
         $tradingWallet = $wtpixWallet !== '' ? $wtpixWallet : $tpixWallet;
 
         if ($tradingWallet !== '') {
-            SiteSetting::set('trading', 'fee_collector_wallet', $tradingWallet, 'string');
+            // เก็บพิมพ์เล็ก — ที่อยู่ที่ checksum ไม่ตรงทำ ethers ฝั่งเบราว์เซอร์โยน error ตอนโอนค่าธรรมเนียม
+            SiteSetting::set('trading', 'fee_collector_wallet', strtolower($tradingWallet), 'string');
         }
 
         if ($tpixWallet !== '') {

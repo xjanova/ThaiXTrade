@@ -214,11 +214,21 @@ class SwapApiController extends Controller
             // ใช้ DB chain PK สำหรับ query downstream
             $validated['chain_id'] = $chain->id;
 
+            /*
+             * ค่าธรรมเนียมบน TPIX DEX อยู่ "ในพูล" (0.3% เข้า LP + ส่วนแบ่งโปรโตคอลผ่าน feeTo)
+             * ไม่มีธุรกรรมโอนค่าธรรมเนียมแยกให้ผู้ใช้กดปฏิเสธได้แบบฝั่ง BSC
+             * จึงคาดหวัง fee_amount = 0 สำหรับเชน TPIX — ถ้าไปเทียบกับอัตราของ BSC
+             * ทุกสวอปบนเชนเราจะถูกตีตก FEE_MISMATCH แล้วไม่มีประวัติเทรดให้ใครดูเลย
+             */
+            $inPoolFee = (int) $chain->chain_id === (int) config('blockchain.tpix_chain_id', 4289);
+
             // Verify the fee amount is reasonable
-            $expectedFee = $this->feeCalculationService->calculateSwapFee(
-                (float) $validated['from_amount'],
-                (int) $validated['chain_id'],
-            );
+            $expectedFee = $inPoolFee
+                ? ['fee_amount' => 0.0, 'fee_rate' => 0.0, 'fee_type' => 'in_pool']
+                : $this->feeCalculationService->calculateSwapFee(
+                    (float) $validated['from_amount'],
+                    (int) $validated['chain_id'],
+                );
 
             // SECURITY FIX: ใช้ bcmath เปรียบเทียบ ป้องกัน floating-point precision loss
             // ลด tolerance 5% → 1% ป้องกัน fee manipulation
@@ -268,7 +278,8 @@ class SwapApiController extends Controller
                 'status' => 'confirmed', // Frontend already verified tx receipt before calling this endpoint
                 'metadata' => [
                     'fee_rate' => $expectedFee['fee_rate'],
-                    'fee_collector' => SiteSetting::get('trading', 'fee_collector_wallet', ''),
+                    'fee_model' => $inPoolFee ? 'in_pool' : 'transfer',
+                    'fee_collector' => $inPoolFee ? null : SiteSetting::get('trading', 'fee_collector_wallet', ''),
                 ],
             ]));
 

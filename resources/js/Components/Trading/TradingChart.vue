@@ -16,6 +16,11 @@ const props = defineProps({
     ticker: { type: Object, default: () => ({}) },
     isTpix: { type: Boolean, default: false },
     /**
+     * URL แท่งเทียนจากเซิร์ฟเวอร์ของเราเอง (คู่บน TPIX DEX) — ถ้าตั้งไว้จะไม่ไปถาม Binance
+     * รับ ?interval=&limit= ต่อท้ายให้เอง และไม่เปิด WebSocket ของ Binance
+     */
+    klinesUrl: { type: String, default: '' },
+    /**
      * ไม้ที่ต้องปักบนกราฟ — ทั้งของบอทและที่ผู้ใช้วางเอง
      *
      * รูปแบบ: { time (วินาที), side: 'buy'|'sell', price, source: 'bot'|'mine', label? }
@@ -156,7 +161,14 @@ async function fetchKlines() {
     try {
         let data;
 
-        if (props.isTpix) {
+        if (props.klinesUrl) {
+            // คู่บน TPIX DEX: แท่งจากราคาพูลที่เซิร์ฟเวอร์เก็บทุกนาที
+            const sep = props.klinesUrl.includes('?') ? '&' : '?';
+            const res = await fetch(`${props.klinesUrl}${sep}interval=${interval}&limit=300`);
+            if (!res.ok) throw new Error('Failed to fetch DEX klines');
+            const json = await res.json();
+            data = json.data || [];
+        } else if (props.isTpix) {
             // TPIX pair: use our internal kline API
             const res = await fetch(`/api/v1/tpix/klines?interval=${interval}&limit=300`);
             if (!res.ok) throw new Error('Failed to fetch TPIX klines');
@@ -359,8 +371,37 @@ async function initChart() {
     chart.timeScale().fitContent();
     isLoading.value = false;
 
-    // Connect WebSocket for real-time kline updates
-    connectKlineWS();
+    // Connect WebSocket for real-time kline updates — เฉพาะคู่ที่ราคามาจาก Binance
+    // คู่บน TPIX DEX / TPIX ภายใน ไม่มีสตรีมของ Binance → รีเฟรชแท่งจากเซิร์ฟเวอร์เป็นรอบแทน
+    if (props.klinesUrl || props.isTpix) {
+        startInternalPolling();
+    } else {
+        connectKlineWS();
+    }
+}
+
+let internalPollTimer = null;
+
+function startInternalPolling() {
+    stopInternalPolling();
+    internalPollTimer = setInterval(async () => {
+        if (!candleSeriesRef) return;
+        const data = await fetchKlines();
+        if (!data.length) return;
+        const last = data[data.length - 1];
+        try {
+            candleSeriesRef.update(chartType.value === 'candle'
+                ? last
+                : { time: last.time, value: last.close });
+        } catch {
+            // แท่งย้อนเวลากว่าตัวสุดท้ายที่วาดไว้ — ปล่อยรอบหน้า
+        }
+    }, 30_000);
+}
+
+function stopInternalPolling() {
+    if (internalPollTimer) clearInterval(internalPollTimer);
+    internalPollTimer = null;
 }
 
 function updateIndicators(data) {
@@ -462,6 +503,8 @@ watch(chartType, (newType) => {
 });
 
 // Watch timeframe changes - re-fetch real data
+watch(() => props.klinesUrl, () => { initChart(); });
+
 watch(selectedTimeframe, () => {
     if (chart) initChart();
 });
@@ -474,6 +517,7 @@ onUnmounted(() => {
     markersApi = null;
     priceLineRefs = [];
     disconnectKlineWS();
+    stopInternalPolling();
     if (chart) { chart.remove(); chart = null; }
 });
 </script>

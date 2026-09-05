@@ -9,6 +9,7 @@ use App\Models\SiteSetting;
 use App\Models\TradingPair;
 use App\Services\OrderMatchingService;
 use App\Services\SupplyService;
+use App\Services\TpixDexService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -36,6 +37,7 @@ class TpixPriceController extends Controller
     public function __construct(
         private OrderMatchingService $matchingService,
         private SupplyService $supplyService,
+        private TpixDexService $dex,
     ) {}
 
     /**
@@ -228,6 +230,34 @@ class TpixPriceController extends Controller
         return Cache::remember('tpix_price_data', 10, function () {
             $pair = $this->getTpixPair();
 
+            /*
+             * 0. ราคากลางจากพูล WTPIX/USDT บน TPIX DEX — แหล่งที่ "จริง" ที่สุด
+             *    เพราะเป็นราคาที่สวอปได้จริง ณ วินาทีนี้ ไม่ใช่ราคาที่ใครตั้งไว้
+             *    มีก็ต่อเมื่อ DEX deploy แล้วและพูลมีสภาพคล่อง — ไม่มีก็ตกไปขั้นถัดไป
+             */
+            $dexPrice = $this->dex->tpixUsdPrice();
+            if ($dexPrice !== null && $dexPrice > 0) {
+                $circulatingSupply = $this->getCirculatingSupply();
+                $stats = $this->dexStats24h($pair);
+
+                return [
+                    'symbol' => 'TPIX',
+                    'name' => 'TPIX Token',
+                    'price' => round($dexPrice, 8),
+                    'change_24h' => $stats['change_24h'],
+                    'volume_24h' => $stats['volume_24h'],
+                    'high_24h' => $stats['high_24h'] ?? round($dexPrice, 8),
+                    'low_24h' => $stats['low_24h'] ?? round($dexPrice, 8),
+                    'market_cap' => round($dexPrice * $circulatingSupply, 2),
+                    'total_supply' => 7_000_000_000,
+                    'circulating_supply' => $circulatingSupply,
+                    'logo' => url('/tpixlogo.webp'),
+                    'chain_id' => 4289,
+                    'source' => 'dex',
+                    'updated_at' => now()->toIso8601String(),
+                ];
+            }
+
             // 1. Real trade data (highest priority)
             if ($pair) {
                 $ticker = $this->matchingService->getTicker24h($pair->id);
@@ -312,6 +342,39 @@ class TpixPriceController extends Controller
                 'updated_at' => now()->toIso8601String(),
             ];
         });
+    }
+
+    /**
+     * สถิติ 24 ชม. ของคู่ TPIX-USDT จากแท่ง 1 นาทีที่ dex:sync บันทึกไว้.
+     *
+     * @return array{change_24h:float, volume_24h:float, high_24h:?float, low_24h:?float}
+     */
+    private function dexStats24h(?TradingPair $pair): array
+    {
+        $empty = ['change_24h' => 0.0, 'volume_24h' => 0.0, 'high_24h' => null, 'low_24h' => null];
+        if (! $pair) {
+            return $empty;
+        }
+
+        $since = now()->subDay();
+        $rows = Kline::forPair($pair->id)->forInterval('1m')->where('open_time', '>=', $since);
+        $first = (clone $rows)->orderBy('open_time')->first(['open']);
+        $agg = (clone $rows)->selectRaw('MAX(high) as high, MIN(low) as low, SUM(volume) as volume')->first();
+        $last = (clone $rows)->orderByDesc('open_time')->first(['close']);
+
+        if (! $first || ! $last) {
+            return $empty;
+        }
+
+        $open = (float) $first->open;
+        $close = (float) $last->close;
+
+        return [
+            'change_24h' => $open > 0 ? round((($close - $open) / $open) * 100, 2) : 0.0,
+            'volume_24h' => round((float) ($agg->volume ?? 0), 2),
+            'high_24h' => $agg?->high !== null ? round((float) $agg->high, 8) : null,
+            'low_24h' => $agg?->low !== null ? round((float) $agg->low, 8) : null,
+        ];
     }
 
     private function getTpixPair(): ?TradingPair

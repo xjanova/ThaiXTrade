@@ -21,7 +21,8 @@
         "language": "ภาษา",
         "signIn": "เข้าสู่ระบบ",
         "profile": "โปรไฟล์",
-        "linkAccount": "ผูกบัญชีอีเมล"
+        "linkAccount": "ผูกบัญชีอีเมล",
+        "liquidity": "สภาพคล่อง"
     },
     "home": {
         "hero": "แพลตฟอร์มเทรดแบบกระจายศูนย์",
@@ -213,7 +214,9 @@
             "onchain": "คำสั่งราคาตลาดทำรายการจริงบน BSC ผ่าน PancakeSwap — เหรียญเข้ากระเป๋าคุณทันที คำสั่งตั้งราคาจะเปิดพร้อม TPIX Chain",
             "tpixSoon": "TPIX/USDT เปิดเทรดพร้อมกับ TPIX Chain — เร็วๆ นี้",
             "dataError": "โหลดข้อมูลตลาดไม่สำเร็จ กำลังลองใหม่...",
-            "connectError": "เชื่อมต่อข้อมูลตลาดไม่ได้ กรุณารีเฟรชหน้า"
+            "connectError": "เชื่อมต่อข้อมูลตลาดไม่ได้ กรุณารีเฟรชหน้า",
+            "onchainTpix": "คำสั่งทำรายการจริงบน TPIX Chain ผ่านพูล DEX — เหรียญเข้ากระเป๋าคุณทันที ค่าธรรมเนียมพูล 0.3% รวมอยู่ในราคาแล้ว",
+            "tpixDexPending": "คู่นี้จะเทรดบน TPIX Chain เมื่อติดตั้งสัญญา DEX เสร็จ — เร็วๆ นี้"
         },
         "status": {
             "viewTx": "ดูธุรกรรม",
@@ -234,7 +237,12 @@
             "failed": "ทำรายการไม่สำเร็จ กรุณาลองใหม่",
             "orderPlaced": "ส่งคำสั่ง{side} {type} ที่ราคา ${price} แล้ว",
             "orderFilled": "คำสั่ง{side}จับคู่สำเร็จ {count} รายการ",
-            "orderPartial": "คำสั่ง{side}จับคู่บางส่วน ({filled}/{amount})"
+            "orderPartial": "คำสั่ง{side}จับคู่บางส่วน ({filled}/{amount})",
+            "switchingChainTpix": "กำลังสลับกระเป๋าไป TPIX Chain",
+            "switchToTpix": "กรุณาสลับกระเป๋าไป TPIX Chain เพื่อเทรด",
+            "switchCancelledTpix": "ยกเลิกการสลับเครือข่าย — คู่นี้เทรดบน TPIX Chain",
+            "boughtTpix": "ซื้อได้ประมาณ {amount} {symbol} บน TPIX Chain",
+            "priceImpact": "คำสั่งนี้ดันราคาพูลไป {impact}% ลองลดจำนวนลง"
         }
     },
     "swap": {
@@ -846,5 +854,35 @@
         "botTitle": "สถานะ AI TRADE",
         "currentPlan": "แพลนปัจจุบัน",
         "disconnectHint": "ตัดการเชื่อมต่อกระเป๋าออกจากเบราว์เซอร์นี้ ข้อมูลของคุณยังอยู่ครบ"
+    },
+    "liquidity": {
+        "title": "สภาพคล่อง",
+        "subtitle": "เติมเหรียญ + TPIX เข้าพูลบน TPIX Chain แล้วรับส่วนแบ่งค่าธรรมเนียม 0.3% จากทุกการสวอป",
+        "pending": "ยังไม่ได้ติดตั้งสัญญา TPIX DEX — พูลจะเปิดทันทีที่ติดตั้งเสร็จ",
+        "wrongChain": "สลับกระเป๋าไป TPIX Chain (4289) เพื่อจัดการสภาพคล่อง",
+        "token": "เหรียญ",
+        "tokenPlaceholder": "เลือกเหรียญ หรือวางที่อยู่ ERC-20 บน TPIX Chain",
+        "noPools": "ยังไม่มีพูล — สร้างพูลแรกได้เลย",
+        "add": "เติมสภาพคล่อง",
+        "remove": "ถอนสภาพคล่อง",
+        "amountToken": "จำนวน {symbol}",
+        "amountTpix": "จำนวน TPIX",
+        "newPool": "พูลใหม่ — อัตราส่วนที่ใส่จะเป็นราคาเปิด",
+        "poolPrice": "ราคาพูล",
+        "reserves": "เงินในพูล",
+        "yourShare": "ส่วนแบ่งของคุณ",
+        "yourPosition": "สถานะของคุณ",
+        "noPosition": "คุณยังไม่มีสภาพคล่องในพูลนี้",
+        "slippage": "ค่าเผื่อราคาเลื่อน",
+        "balance": "ยอดคงเหลือ",
+        "approve": "อนุมัติ {symbol}",
+        "confirmAdd": "ยืนยันในกระเป๋าของคุณ",
+        "added": "เติมสภาพคล่องแล้ว",
+        "removed": "ถอนสภาพคล่องแล้ว",
+        "withdraw": "ถอน {percent}%",
+        "viewTx": "ดูธุรกรรม",
+        "connect": "เชื่อมกระเป๋า",
+        "invalidToken": "ที่อยู่นี้ไม่ใช่เหรียญ ERC-20 บน TPIX Chain",
+        "tradeIt": "เทรด {pair}"
     }
 }

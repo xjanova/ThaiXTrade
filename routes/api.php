@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\CmcController;
 use App\Http\Controllers\Api\ContractRegistryController;
+use App\Http\Controllers\Api\DexApiController;
 use App\Http\Controllers\Api\FeeConfigController;
 use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\InfraAlertController;
@@ -154,6 +155,19 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         // เส้นกราฟย่อ (sparkline) หลายคู่ในคำขอเดียว — ใช้ในรายการคู่เทรด
         Route::get('/sparklines', [MarketController::class, 'sparklines']);
         Route::get('/pairs', [MarketController::class, 'pairs']);
+    });
+
+    /*
+     * TPIX DEX (AMM บนเชน 4289) — อ่านอย่างเดียว
+     * config บอกที่อยู่สัญญา + ready; หน้าเว็บ/แอปต้อง fail-closed ถ้าไม่ ready
+     */
+    Route::prefix('dex')->group(function () {
+        Route::get('/config', [DexApiController::class, 'config']);
+        Route::get('/pairs', [DexApiController::class, 'pairs']);
+        Route::get('/ticker/{symbol}', [DexApiController::class, 'ticker']);
+        Route::get('/klines/{symbol}', [DexApiController::class, 'klines']);
+        Route::get('/orderbook/{symbol}', [DexApiController::class, 'orderbook']);
+        Route::get('/trades/{symbol}', [DexApiController::class, 'trades']);
     });
 
     // TPIX Token — price feed, order book, trades, klines, info

@@ -595,7 +595,13 @@ class TradingController extends Controller
             'swap',
             $chain?->id,
         );
-        $feeCollector = SiteSetting::get('trading', 'fee_collector_wallet', '');
+        /*
+         * ส่งเป็นตัวพิมพ์เล็กเสมอ — ค่าที่แอดมินพิมพ์ไว้ในหลังบ้านมี checksum (EIP-55) ไม่ตรง
+         * (ตรวจ prod 2026-09-05: `0x0B263D…0220` isAddress() = false) ethers v6 จะโยน
+         * "bad address checksum" ตอน transfer ค่าธรรมเนียม → สวอปสำเร็จแต่เก็บค่าธรรมเนียม
+         * ไม่ได้เลยสักครั้ง โดยหน้าเว็บแค่ warn เงียบ ๆ ที่อยู่พิมพ์เล็กล้วนไม่ถูกตรวจ checksum
+         */
+        $feeCollector = strtolower(trim((string) SiteSetting::get('trading', 'fee_collector_wallet', '')));
 
         return response()->json([
             'success' => true,

@@ -35,6 +35,8 @@ const props = defineProps({
     //  'disabled' = คู่เทรดยังไม่เปิด (เช่น TPIX รอเชน TPIX พร้อม) — โชว์ Coming soon
     //  'internal' = order book ภายใน (พฤติกรรมเดิม — ใช้เมื่อ TPIX Chain เปิด)
     mode: { type: String, default: 'internal' },
+    // เชนที่ไม้จะลงจริง — ใช้ขอใบเสนอราคาค่าบริการให้ตรงเชน (56 = BSC, 4289 = TPIX Chain)
+    chainId: { type: Number, default: 56 },
     // ตัวเลข preview จาก quote จริงของ router (parent format มาให้พร้อมแสดง)
     marketPreview: { type: Object, default: null },
     /**
@@ -360,7 +362,7 @@ watch([orderValueUsd, () => props.symbol, () => props.walletAddress], () => {
         tradingFee.quote({
             wallet: props.walletAddress,
             orderValueUsd: orderValueUsd.value,
-            chainId: 56,
+            chainId: props.chainId,
             pair: props.symbol,
         });
     }, 400);
@@ -712,7 +714,7 @@ const submitOrder = () => {
                 v-if="showTopup"
                 :show="showTopup"
                 @close="showTopup = false"
-                @credited="tradingFee.quote({ wallet: walletAddress, orderValueUsd, chainId: 56, pair: symbol })"
+                @credited="tradingFee.quote({ wallet: walletAddress, orderValueUsd, chainId: chainId, pair: symbol })"
             />
 
             <!-- TP/SL — ยังไม่มีจริงในโหมด onchain (AMM) จึงซ่อนไว้ -->

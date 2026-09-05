@@ -56,6 +56,7 @@ class TradingPair extends Model
         'symbol',
         'is_active',
         'execution_mode',
+        'dex_pair_address',
         'min_trade_amount',
         'max_trade_amount',
         'price_precision',

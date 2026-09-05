@@ -21,7 +21,8 @@
         "language": "Language",
         "signIn": "Sign In",
         "profile": "Profile",
-        "linkAccount": "Link an email account"
+        "linkAccount": "Link an email account",
+        "liquidity": "Liquidity"
     },
     "home": {
         "hero": "Decentralized Exchange Platform",
@@ -213,7 +214,9 @@
             "onchain": "Market orders execute for real on BSC via PancakeSwap — tokens settle in your wallet. Limit orders open with TPIX Chain.",
             "tpixSoon": "TPIX/USDT trading opens with the TPIX Chain launch — coming soon.",
             "dataError": "Failed to load market data. Retrying...",
-            "connectError": "Failed to connect to market data. Please refresh."
+            "connectError": "Failed to connect to market data. Please refresh.",
+            "onchainTpix": "Orders execute for real on TPIX Chain through the DEX pool — tokens settle in your wallet. The 0.3% pool fee is already in the price.",
+            "tpixDexPending": "This pair trades on TPIX Chain once the DEX contracts are deployed — coming soon."
         },
         "status": {
             "viewTx": "View tx",
@@ -234,7 +237,12 @@
             "failed": "Trade failed. Please try again.",
             "orderPlaced": "{side} {type} order placed at ${price}",
             "orderFilled": "{side} order filled with {count} trade(s)",
-            "orderPartial": "{side} order partially filled ({filled}/{amount})"
+            "orderPartial": "{side} order partially filled ({filled}/{amount})",
+            "switchingChainTpix": "Switching wallet to TPIX Chain",
+            "switchToTpix": "Please switch your wallet to TPIX Chain to trade.",
+            "switchCancelledTpix": "Network switch was cancelled — this pair trades on TPIX Chain.",
+            "boughtTpix": "Bought about {amount} {symbol} on TPIX Chain",
+            "priceImpact": "This order moves the pool price by {impact}%. Try a smaller amount."
         }
     },
     "swap": {
@@ -846,5 +854,35 @@
         "botTitle": "AI TRADE status",
         "currentPlan": "Current plan",
         "disconnectHint": "Disconnects the wallet from this browser. Your data stays intact."
+    },
+    "liquidity": {
+        "title": "Liquidity",
+        "subtitle": "Provide TOKEN + TPIX to a pool on TPIX Chain and earn the 0.3% fee on every swap.",
+        "pending": "The TPIX DEX contracts are not deployed yet — pools open as soon as they are.",
+        "wrongChain": "Switch your wallet to TPIX Chain (4289) to manage liquidity.",
+        "token": "Token",
+        "tokenPlaceholder": "Choose a token or paste an ERC-20 address on TPIX Chain",
+        "noPools": "No pools yet — be the first to create one.",
+        "add": "Add liquidity",
+        "remove": "Remove liquidity",
+        "amountToken": "{symbol} amount",
+        "amountTpix": "TPIX amount",
+        "newPool": "New pool — the ratio you enter sets the opening price.",
+        "poolPrice": "Pool price",
+        "reserves": "Pool reserves",
+        "yourShare": "Your share",
+        "yourPosition": "Your position",
+        "noPosition": "You have no liquidity in this pool.",
+        "slippage": "Slippage tolerance",
+        "balance": "Balance",
+        "approve": "Approve {symbol}",
+        "confirmAdd": "Confirm in your wallet",
+        "added": "Liquidity added",
+        "removed": "Liquidity removed",
+        "withdraw": "Withdraw {percent}%",
+        "viewTx": "View tx",
+        "connect": "Connect wallet",
+        "invalidToken": "That address is not an ERC-20 token on TPIX Chain.",
+        "tradeIt": "Trade {pair}"
     }
 }

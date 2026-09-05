@@ -110,7 +110,7 @@ class MarketController extends Controller
     public function pairs(): JsonResponse
     {
         $dbPairs = TradingPair::active()
-            ->with(['baseToken:id,symbol,logo', 'quoteToken:id,symbol,logo'])
+            ->with(['baseToken:id,symbol,logo,contract_address,decimals', 'quoteToken:id,symbol,logo,contract_address,decimals', 'chain:id,chain_id'])
             ->orderBy('sort_order')
             ->orderBy('symbol')
             ->get()
@@ -137,8 +137,20 @@ class MarketController extends Controller
                  */
                 'fee_rate' => $this->fees->calculateSwapFee(100.0, (int) $p->chain_id, $p->id)['fee_rate'],
                 'chain_id' => $p->chain_id,
+                /*
+                 * chain id จริงของบล็อกเชน (56, 4289) — `chain_id` ด้านบนคือ PK ของตาราง chains
+                 * ซึ่งหน้าเว็บ/แอปเอาไปเทียบกับเชนของกระเป๋าไม่ได้ (เลขทับกัน: id 10 คือ zkSync
+                 * แต่ chain id 10 คือ Optimism) — คงคีย์เดิมไว้เพราะมีคนอ่านอยู่ แล้วเพิ่มตัวจริงคู่กัน
+                 */
+                'network_chain_id' => (int) ($p->chain?->chain_id ?? 0),
                 // onchain = ส่งคำสั่งได้จริง · index = ดูราคา/กราฟอย่างเดียว
                 'execution_mode' => $p->execution_mode,
+                // ที่อยู่/decimals ให้หน้าเว็บส่งสวอปบน TPIX DEX ได้โดยไม่ต้องมีทะเบียน JS แยก
+                'base_address' => $p->baseToken?->contract_address,
+                'quote_address' => $p->quoteToken?->contract_address,
+                'base_decimals' => (int) ($p->baseToken?->decimals ?? 18),
+                'quote_decimals' => (int) ($p->quoteToken?->decimals ?? 18),
+                'dex_pair_address' => $p->dex_pair_address,
                 'is_active' => true,
             ])
             ->all();

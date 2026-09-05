@@ -47,6 +47,26 @@ return [
 
     'tpix_rpc_url' => env('TPIX_RPC_URL', 'https://rpc.tpix.online'),
     'tpix_chain_id' => 4289,
+    // RPC ที่ส่งให้เบราว์เซอร์/แอปใช้อ่านราคา DEX (เบราว์เซอร์มี User-Agent อยู่แล้ว ผ่าน Cloudflare ได้)
+    'tpix_public_rpc_url' => env('TPIX_PUBLIC_RPC_URL', 'https://rpc.tpix.online'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | TPIX DEX (AMM แบบ Uniswap V2 บนเชน 4289)
+    |--------------------------------------------------------------------------
+    |
+    | ค่าสำรองเมื่อไม่มีในทะเบียน SiteSetting กลุ่ม contracts (สคริปต์ deploy-dex.js
+    | ลงทะเบียนให้เองผ่าน /api/infra/contracts) — ทางนี้ไว้สำหรับคนที่อยากตั้งใน .env
+    | ที่อยู่ทั้งหมดอ่านผ่าน App\Services\ContractRegistry ที่เดียว ห้ามอ่าน env ตรง
+    |
+    */
+
+    'dex' => [
+        'wtpix' => env('TPIX_DEX_WTPIX_ADDRESS', ''),
+        'usdt' => env('TPIX_DEX_USDT_ADDRESS', ''),
+        'factory' => env('TPIX_DEX_FACTORY_ADDRESS', ''),
+        'router' => env('TPIX_DEX_ROUTER_ADDRESS', ''),
+    ],
 
     /*
     |--------------------------------------------------------------------------

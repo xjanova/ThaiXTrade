@@ -36,6 +36,8 @@ import RowResizer from '@/Components/Trading/RowResizer.vue';
 import PageArt from '@/Components/PageArt.vue';
 import { useBinanceData } from '@/Composables/useBinanceData';
 import { useSwap } from '@/Composables/useSwap';
+import { useTpixDex, toDexAddress } from '@/Composables/useTpixDex';
+import { loadDexConfig, isDexConfigured } from '@/Config/dexContracts';
 import { useTradingFee } from '@/Composables/useTradingFee';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useWalletBalance } from '@/Composables/useWalletBalance';
@@ -77,10 +79,59 @@ const isBscTradable = computed(() =>
     && !!getBscTradeToken(quoteSymbol.value)
 );
 
+/*
+ * ข้อมูลคู่จากเซิร์ฟเวอร์ (/api/v1/market/pairs) — บอกว่าคู่นี้อยู่เชนไหน ที่อยู่โทเคนอะไร
+ * คู่บนเชน TPIX ไม่ได้มาจากทะเบียน JS แต่มาจากพูลจริงบน TPIXDEXFactory (dex:sync สร้างให้)
+ * จึงต้องถามเซิร์ฟเวอร์ ไม่ใช่เดาจากชื่อคู่
+ */
+const pairMeta = ref(null);
+const pairMetaLoaded = ref(false);
+
+async function loadPairMeta() {
+    try {
+        const { data } = await axios.get('/api/v1/market/pairs');
+        const wanted = props.pair.toUpperCase();
+        pairMeta.value = (data?.data || []).find((p) => String(p.symbol).toUpperCase() === wanted) || null;
+    } catch {
+        pairMeta.value = null;
+    } finally {
+        pairMetaLoaded.value = true;
+    }
+}
+
+// คู่ที่อยู่บนเชน TPIX (ไม่ว่าจะ deploy DEX แล้วหรือยัง)
+const isTpixChainPair = computed(() =>
+    Number(pairMeta.value?.network_chain_id) === TPIX_CHAIN_ID || (isTPIXPair.value && !pairMeta.value)
+);
+
+// คู่ที่เทรดจริงบน TPIX DEX ได้ — พูลมีอยู่จริง + เซิร์ฟเวอร์ยืนยันว่าสัญญา DEX มีโค้ดบนเชน
+const isDexPair = computed(() =>
+    Number(pairMeta.value?.network_chain_id) === TPIX_CHAIN_ID
+    && pairMeta.value?.execution_mode === 'onchain'
+    && isDexConfigured()
+);
+
+// เชนที่ไม้จะลงจริง — ส่งให้ฟอร์มขอใบเสนอราคาค่าบริการให้ตรงเชน
+const tradeChainId = computed(() => (isDexPair.value ? TPIX_CHAIN_ID : BSC_CHAIN_ID));
+
 // โหมดของ TradeForm:
-//  onchain  = market order execute จริงผ่าน PancakeSwap บน BSC
-//  disabled = TPIX pair (รอเชน TPIX) หรือคู่ที่ไม่มี token บน BSC — เห็นไว้ก่อน กดไม่ได้
-const tradeFormMode = computed(() => (isBscTradable.value ? 'onchain' : 'disabled'));
+//  onchain  = market order execute จริง (PancakeSwap บน BSC หรือพูล TPIX DEX บนเชน TPIX)
+//  disabled = คู่บนเชน TPIX ที่ DEX ยังไม่ deploy หรือคู่ที่ไม่มี token บน BSC — เห็นไว้ก่อน กดไม่ได้
+const tradeFormMode = computed(() => ((isBscTradable.value || isDexPair.value) ? 'onchain' : 'disabled'));
+
+/** โทเคนของคู่บน TPIX DEX ในรูปที่ useTpixDex ใช้ — สร้างจากข้อมูลเซิร์ฟเวอร์ ไม่เดา */
+function dexToken(side) {
+    const m = pairMeta.value;
+    if (!m) return null;
+    const isBase = side === 'base';
+    const address = toDexAddress(isBase ? m.base_address : m.quote_address);
+    return {
+        symbol: isBase ? baseSymbol.value : quoteSymbol.value,
+        address,
+        decimals: Number(isBase ? m.base_decimals : m.quote_decimals) || 18,
+        native: address === 'native',
+    };
+}
 
 // ── ผังการ์ด ────────────────────────────────────────────────────────────────
 const layout = useTradeLayout();
@@ -458,6 +509,66 @@ function normalizeDepth(rows) {
 }
 
 /**
+ * ฟีดของคู่บน TPIX DEX — ราคากลางจากพูล, ความลึกสังเคราะห์, สวอปล่าสุด
+ * (รูปแบบเดียวกับ fetchTpixData เพื่อให้การ์ดทุกใบใช้ต่อได้โดยไม่ต้องรู้ว่ามาจากไหน)
+ */
+let dexRefreshInterval = null;
+const dexKlinesUrl = computed(() => (isDexPair.value ? `/api/v1/dex/klines/${props.pair}` : ''));
+
+async function fetchDexData() {
+    const symbol = props.pair;
+    try {
+        const [tickerRes, bookRes, tradesRes] = await Promise.all([
+            axios.get(`/api/v1/dex/ticker/${symbol}`).catch(() => ({ data: { success: false } })),
+            axios.get(`/api/v1/dex/orderbook/${symbol}`).catch(() => ({ data: { success: false } })),
+            axios.get(`/api/v1/dex/trades/${symbol}`).catch(() => ({ data: { success: false } })),
+        ]);
+
+        if (tickerRes.data.success) {
+            const p = tickerRes.data.data;
+            ticker.value = {
+                price: p.price,
+                lastPrice: p.price,
+                change: p.change_24h,
+                priceChange: p.change_24h,
+                priceChangePercent: p.change_24h,
+                changePercent: p.change_24h,
+                high: p.high_24h,
+                highPrice: p.high_24h,
+                low: p.low_24h,
+                lowPrice: p.low_24h,
+                volume: p.volume_24h,
+                reserveBase: p.reserve_base,
+                reserveQuote: p.reserve_quote,
+                hasLiquidity: p.has_liquidity,
+            };
+        }
+
+        if (bookRes.data.success) {
+            const bookData = bookRes.data.data;
+            asks.value = normalizeDepth(bookData.asks).sort((a, b) => a.price - b.price);
+            bids.value = normalizeDepth(bookData.bids).sort((a, b) => b.price - a.price);
+        }
+
+        if (tradesRes.data.success) {
+            trades.value = (tradesRes.data.data || []).map((tr, i) => ({
+                id: tr.id ?? `${tr.time}-${i}`,
+                price: parseFloat(tr.price) || 0,
+                amount: parseFloat(tr.amount) || 0,
+                time: new Date(tr.time).toLocaleTimeString('en-US', { hour12: false }),
+                isBuy: tr.side === 'buy',
+            }));
+        }
+
+        isLoading.value = false;
+        dataError.value = null;
+    } catch {
+        isLoading.value = false;
+        dataError.value = t('trade.notice.dataError');
+    }
+}
+
+/**
  * Fetch all TPIX data: price, order book, recent trades.
  */
 async function fetchTpixData() {
@@ -516,6 +627,7 @@ async function fetchTpixData() {
 const walletStore = useWalletStore();
 const { balances, fetchBalances } = useWalletBalance();
 const swap = useSwap();
+const dex = useTpixDex();
 const tradingFee = useTradingFee();
 
 // ── เทรดจริงบน BSC (market order → PancakeSwap) ─────────────────────────────
@@ -544,10 +656,36 @@ async function fetchBscFormBalances() {
     }
 }
 
-// ฟอร์มโหมด onchain ใช้ยอดจาก BSC, โหมดอื่นใช้ยอดจาก wallet chain ปัจจุบัน (เดิม)
-const formBalances = computed(() =>
-    tradeFormMode.value === 'onchain' ? bscFormBalances.value : balances.value
-);
+// ยอดคงเหลือของคู่บน TPIX DEX — อ่านตรงจาก RPC ของเชน TPIX (ถูกต้องไม่ว่ากระเป๋าอยู่เชนไหน)
+const dexFormBalances = ref([]);
+
+async function fetchDexFormBalances() {
+    if (!walletStore.isConnected || !isDexPair.value) {
+        dexFormBalances.value = [];
+        return;
+    }
+    try {
+        const baseTok = dexToken('base');
+        const quoteTok = dexToken('quote');
+        if (!baseTok || !quoteTok) return;
+        const [baseBal, quoteBal] = await Promise.all([
+            dex.getBalance(baseTok.address),
+            dex.getBalance(quoteTok.address),
+        ]);
+        dexFormBalances.value = [
+            { symbol: baseSymbol.value, balance: baseBal },
+            { symbol: quoteSymbol.value, balance: quoteBal },
+        ];
+    } catch {
+        // อ่านไม่ได้ก็คงค่าเดิมไว้ — executeSwap เช็คยอดจริงอีกที
+    }
+}
+
+// ฟอร์มโหมด onchain ใช้ยอดจากเชนที่เทรดจริง (BSC หรือ TPIX), โหมดอื่นใช้ยอดจาก wallet chain ปัจจุบัน (เดิม)
+const formBalances = computed(() => {
+    if (tradeFormMode.value !== 'onchain') return balances.value;
+    return isDexPair.value ? dexFormBalances.value : bscFormBalances.value;
+});
 
 // จัดรูปตัวเลขจำนวนเหรียญสำหรับแสดงผล
 function fmtQty(n) {
@@ -589,12 +727,19 @@ async function refreshMarketPreview(form, inputAmount) {
     try {
         const fromSym = form.side === 'buy' ? quoteSymbol.value : baseSymbol.value;
         const toSym = form.side === 'buy' ? baseSymbol.value : quoteSymbol.value;
-        // ใช้ token ที่ตรวจ decimals จาก on-chain แล้ว — กัน preview เพี้ยนถ้าค่า static ผิด
-        const [fromTok, toTok] = await Promise.all([
-            getVerifiedTradeToken(fromSym),
-            getVerifiedTradeToken(toSym),
-        ]);
-        const q = await swap.getQuote(fromTok, toTok, inputAmount);
+        let q;
+        if (isDexPair.value) {
+            const fromTok = dexToken(form.side === 'buy' ? 'quote' : 'base');
+            const toTok = dexToken(form.side === 'buy' ? 'base' : 'quote');
+            q = await dex.getTradeQuote(fromTok, toTok, inputAmount, Number(form.slippage) || 0.5);
+        } else {
+            // ใช้ token ที่ตรวจ decimals จาก on-chain แล้ว — กัน preview เพี้ยนถ้าค่า static ผิด
+            const [fromTok, toTok] = await Promise.all([
+                getVerifiedTradeToken(fromSym),
+                getVerifiedTradeToken(toSym),
+            ]);
+            q = await swap.getQuote(fromTok, toTok, inputAmount);
+        }
         if (seq !== previewSeq) return; // มี request ใหม่กว่าแล้ว — ทิ้งผลนี้
         if (!q) {
             marketPreview.value = null;
@@ -654,7 +799,11 @@ const handleSubmitOrder = async (order) => {
     if (tradeFormMode.value === 'disabled') return;
 
     if (tradeFormMode.value === 'onchain') {
-        await executeBscMarketOrder(order);
+        if (isDexPair.value) {
+            await executeDexMarketOrder(order);
+        } else {
+            await executeBscMarketOrder(order);
+        }
         return;
     }
 
@@ -838,6 +987,139 @@ async function executeBscMarketOrder(order) {
 }
 
 /**
+ * Market order เทรดจริงบนเชน TPIX ผ่านพูล TPIX DEX
+ * ลำดับ: สลับเชนเป็น TPIX → quote จริงจาก router → กันไม้ที่ดันราคาพูลเกินไป
+ * → approve (ถ้าจำเป็น) → ใบอนุญาตวางไม้ → swap → refresh ยอด
+ *
+ * ต่างจาก BSC: ค่าธรรมเนียม 0.3% อยู่ในพูลแล้ว ไม่มีธุรกรรมโอนค่าธรรมเนียมแยก
+ * และไม่เทียบกับราคา Binance เพราะพูลนี้เองคือตลาดของคู่นี้
+ */
+async function executeDexMarketOrder(order) {
+    if (order.type !== 'market') {
+        showOrderError(t('trade.status.limitSoon'));
+        return;
+    }
+
+    const amountVal = parseFloat(order.amount) || 0;
+    const totalVal = parseFloat(String(order.total).replace(/,/g, '')) || 0;
+    const inputAmount = order.side === 'buy' ? totalVal : amountVal;
+    if (inputAmount <= 0) {
+        showOrderError(t('trade.enterAmount'));
+        return;
+    }
+
+    const fromTok = dexToken(order.side === 'buy' ? 'quote' : 'base');
+    const toTok = dexToken(order.side === 'buy' ? 'base' : 'quote');
+    if (!fromTok || !toTok) {
+        showOrderError(t('trade.status.failed'));
+        return;
+    }
+
+    isSubmitting.value = true;
+    orderStatus.value = 'executing';
+    orderMessage.value = t('trade.status.preparing');
+    orderTxUrl.value = null;
+
+    let ticket = null;
+
+    try {
+        // 1) กระเป๋าต้องอยู่บนเชน TPIX — สลับให้ (ผู้ใช้กดยืนยันในกระเป๋า)
+        if (Number(walletStore.chainId) !== TPIX_CHAIN_ID) {
+            orderMessage.value = t('trade.status.switchingChainTpix');
+            try {
+                await walletStore.switchChain(TPIX_CHAIN_ID);
+            } catch {
+                throw friendly(t('trade.status.switchCancelledTpix'));
+            }
+            if (Number(walletStore.chainId) !== TPIX_CHAIN_ID) {
+                throw friendly(t('trade.status.switchToTpix'));
+            }
+        }
+
+        // 2) Quote จริงจาก router ของพูล
+        const slippage = Number.isFinite(Number(order.slippage)) && order.slippage !== null
+            ? Number(order.slippage)
+            : 0.5;
+        const quote = await dex.getTradeQuote(fromTok, toTok, inputAmount, slippage);
+        if (!quote) {
+            throw friendly(dex.error.value || t('trade.status.noLiquidity'));
+        }
+
+        // 3) กันไม้ที่ดันราคาพูลเกิน 10% — พูลบางเกินกว่าจะรับไม้ขนาดนี้
+        if (quote.priceImpact > 10) {
+            throw friendly(t('trade.status.priceImpact', { impact: quote.priceImpact.toFixed(1) }));
+        }
+
+        // 4) Approve router ถ้า allowance ไม่พอ (เฉพาะโทเคน ไม่ใช่ TPIX)
+        if (!fromTok.native) {
+            const needs = await dex.needsApproval(fromTok.address, inputAmount, fromTok.decimals);
+            if (needs) {
+                orderMessage.value = t('trade.status.approving', { symbol: fromTok.symbol });
+                const ok = await dex.approveToken(fromTok.address, inputAmount, fromTok.decimals);
+                if (!ok) throw friendly(dex.error.value || t('trade.status.failed'));
+            }
+        }
+
+        // 5) ใบอนุญาตวางไม้ — ค่าบริการถูกเก็บตรงนี้ (คืนใน finally ถ้าไม้ไม่ได้ลง)
+        const feeQuoteEnabled = tradingFee.currentQuote.value?.enabled === true;
+        const orderValueUsd = Number(order.orderValueUsd) > 0 ? Number(order.orderValueUsd) : totalVal;
+        if (feeQuoteEnabled && orderValueUsd > 0) {
+            orderMessage.value = t('trade.status.preparing');
+            ticket = await tradingFee.issueTicket({
+                wallet: walletStore.address,
+                pair: currentPair.value,
+                side: order.side,
+                orderValueUsd,
+                chainId: TPIX_CHAIN_ID,
+                method: order.feeMethod === 'onchain' ? 'onchain' : 'tpix_credit',
+            });
+            if (!ticket) {
+                throw friendly(tradingFee.error.value || 'ขอใบอนุญาตวางไม้ไม่สำเร็จ');
+            }
+        }
+
+        // 6) ส่ง swap จริง — บันทึกประวัติฝั่งเซิร์ฟเวอร์ให้แล้ว
+        orderMessage.value = order.side === 'buy' ? t('trade.status.confirmBuy') : t('trade.status.confirmSell');
+        const result = await dex.executeTradeSwap(fromTok, toTok, inputAmount, quote, slippage);
+
+        if (ticket) {
+            await tradingFee.consumeTicket(walletStore.address, ticket.uuid, result?.hash || null);
+            ticket = null;
+        }
+
+        orderStatus.value = 'success';
+        orderMessage.value = order.side === 'buy'
+            ? t('trade.status.boughtTpix', { amount: fmtQty(quote.netOutput), symbol: toTok.symbol })
+            : t('trade.status.sold', { amount: fmtQty(inputAmount), from: fromTok.symbol, out: fmtQty(quote.netOutput), to: toTok.symbol });
+        orderTxUrl.value = result?.url || null;
+
+        playTradeSound();
+        fetchDexFormBalances();
+        fetchBalances();
+        fetchDexData();
+        myTrades.load(true);
+    } catch (err) {
+        orderStatus.value = 'error';
+        orderMessage.value = err?.isFriendly ? err.message : (dex.error.value || t('trade.status.failed'));
+        playErrorSound();
+    } finally {
+        if (ticket) {
+            await tradingFee.refundTicket(walletStore.address, ticket.uuid, 'ไม้ไม่ได้ลง');
+            ticket = null;
+        }
+
+        isSubmitting.value = false;
+        clearTimeout(toastTimer);
+        const holdMs = orderStatus.value === 'success' && orderTxUrl.value ? 10000 : 4000;
+        toastTimer = setTimeout(() => {
+            orderStatus.value = null;
+            orderMessage.value = '';
+            orderTxUrl.value = null;
+        }, holdMs);
+    }
+}
+
+/**
  * Internal order book (path เดิม) — ใช้เมื่อ TPIX Chain เปิดเทรด
  * ป้องกันกดซ้ำ (debounce) + timeout
  */
@@ -928,17 +1210,15 @@ const handleConnectWallet = () => {
     walletStore.openConnectModal();
 };
 
-onMounted(async () => {
-    measureBoard();
-    observeAbove();
-    wideQuery?.addEventListener('change', measureBoard);
-    window.addEventListener('resize', measureBoard);
-    // ฟอนต์ไทยโหลดเสร็จทีหลัง แล้วความสูงของแถบหัวเปลี่ยน — วัดใหม่อีกรอบ
-    document.fonts?.ready.then(measureBoard).catch(() => {});
-
-    if (isTPIXPair.value) {
+/** เลือกฟีดตามชนิดคู่ — TPIX DEX / TPIX ภายใน (ก่อน DEX) / Binance */
+async function startFeeds() {
+    stopFeeds();
+    isLoading.value = true;
+    if (isDexPair.value) {
+        await fetchDexData();
+        dexRefreshInterval = setInterval(fetchDexData, 5000);
+    } else if (isTPIXPair.value) {
         // TPIX pair: fetch from internal API + auto-refresh
-        isLoading.value = true;
         await fetchTpixData();
         tpixRefreshInterval = setInterval(fetchTpixData, 5000); // 5s refresh
     } else {
@@ -951,10 +1231,32 @@ onMounted(async () => {
             isLoading.value = false;
         }
     }
+}
+
+function stopFeeds() {
+    if (dexRefreshInterval) clearInterval(dexRefreshInterval);
+    if (tpixRefreshInterval) clearInterval(tpixRefreshInterval);
+    dexRefreshInterval = null;
+    tpixRefreshInterval = null;
+    disconnectWebSocket();
+}
+
+onMounted(async () => {
+    measureBoard();
+    observeAbove();
+    wideQuery?.addEventListener('change', measureBoard);
+    window.addEventListener('resize', measureBoard);
+    // ฟอนต์ไทยโหลดเสร็จทีหลัง แล้วความสูงของแถบหัวเปลี่ยน — วัดใหม่อีกรอบ
+    document.fonts?.ready.then(measureBoard).catch(() => {});
+
+    // ต้องรู้ก่อนว่าคู่นี้อยู่เชนไหนและ DEX พร้อมไหม ถึงจะเลือกฟีดได้ถูก
+    await Promise.all([loadDexConfig(), loadPairMeta()]);
+    await startFeeds();
 
     if (walletStore.isConnected) {
         fetchBalances();
         fetchBscFormBalances();
+        fetchDexFormBalances();
         loadChartMarkerSources();
     }
 
@@ -996,6 +1298,7 @@ function stopMarkerRefresh() {
 // เชื่อม wallet ทีหลัง / สลับ address → โหลดยอด BSC สำหรับฟอร์มเทรดใหม่
 watch(() => walletStore.address, () => {
     fetchBscFormBalances();
+    fetchDexFormBalances();
     // ป้ายบนกราฟผูกกับกระเป๋า — สลับกระเป๋าแล้วต้องไม่ค้างไม้ของคนก่อน
     loadChartMarkerSources();
 });
@@ -1006,19 +1309,19 @@ watch([dataError, tradeFormMode, () => layout.fitScreen.value], () => {
 });
 
 // เปลี่ยนคู่เทรด → ราคาที่เคยคลิกไว้เป็นของคู่เดิม ต้องล้างทิ้ง
-watch(currentPair, () => {
+watch(currentPair, async () => {
     selectedPrice.value = null;
     isChartFullscreen.value = false;
+    // คู่ใหม่อาจอยู่คนละเชน — โหลดข้อมูลคู่ใหม่แล้วสลับฟีดให้ตรง
+    await loadPairMeta();
+    await startFeeds();
+    fetchDexFormBalances();
     // ไม้ของบอทผูกกับคู่ — สลับคู่แล้วต้องโหลดชุดใหม่ ไม่งั้นป้ายของคู่เก่าค้างจนรอบรีเฟรชถัดไป
     bot.loadTrades(currentPair.value);
 });
 
 onUnmounted(() => {
-    if (isTPIXPair.value) {
-        if (tpixRefreshInterval) clearInterval(tpixRefreshInterval);
-    } else {
-        disconnectWebSocket();
-    }
+    stopFeeds();
     clearTimeout(previewTimer);
     clearTimeout(toastTimer);
     wideQuery?.removeEventListener('change', measureBoard);
@@ -1086,13 +1389,13 @@ onUnmounted(() => {
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                <span>{{ t('trade.notice.onchain') }}</span>
+                <span>{{ t(isDexPair ? 'trade.notice.onchainTpix' : 'trade.notice.onchain') }}</span>
             </div>
-            <div v-else-if="isTPIXPair" class="relative mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
+            <div v-else-if="isTpixChainPair && pairMetaLoaded" class="relative mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span>{{ t('trade.notice.tpixSoon') }}</span>
+                <span>{{ t('trade.notice.tpixDexPending') }}</span>
             </div>
 
             <!-- ── ผัง 4 คอลัมน์ ────────────────────────────────────────────────
@@ -1188,7 +1491,8 @@ onUnmounted(() => {
                             <TradingChart
                                 :symbol="currentPair"
                                 :ticker="ticker"
-                                :is-tpix="isTPIXPair"
+                                :is-tpix="isTPIXPair && !isDexPair"
+                                :klines-url="dexKlinesUrl"
                                 :markers="chartMarkers"
                                 :price-lines="botPriceLines"
                                 :bot-mode="botMode"
@@ -1215,6 +1519,7 @@ onUnmounted(() => {
                                 :is-submitting="isSubmitting"
                                 :balances="formBalances"
                                 :mode="tradeFormMode"
+                                :chain-id="tradeChainId"
                                 :market-preview="marketPreview"
                                 @submit-order="handleSubmitOrder"
                                 @connect-wallet="handleConnectWallet"

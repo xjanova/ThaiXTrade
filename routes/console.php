@@ -40,6 +40,17 @@ Schedule::command('masternode:cleanup')
 // ต้องมีตัวนี้ ไม่งั้นพอมีใครโอนเงินออกจากคลังผ่าน Masternode UI (ทางเดียวที่โอนได้
 // เพราะระบบเว็บไม่มีคีย์ของคลัง) สมุดจะไม่รู้เรื่อง แล้วตัวกระทบยอดจะฟ้องว่า
 // ไม่ตรงทั้งที่เป็นการโอนที่ถูกต้อง — เคสแรกที่จะเจอคือตอนเติมเงินกระเป๋าร้อน
+// TPIX DEX: ทุกเหรียญบนเชน TPIX เทรดได้โดยไม่ต้องมีใครมาเพิ่มคู่เอง
+//
+// ทุกนาทีอ่านพูลจาก TPIXDEXFactory → สร้าง/อัปเดตคู่เทรด + เก็บแท่ง 1 นาที
+// และเปิดเชน 4289 เป็น live เองเมื่อสัญญาครบ 4 ตัว (ถอยกลับเป็น coming_soon ถ้าสัญญาหาย)
+// ตอน DEX ยังไม่ deploy คำสั่งนี้จบใน 1 คำขอ (ถามทะเบียนแล้วข้าม) จึงตั้งไว้ได้เลย
+Schedule::command('dex:sync')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer()
+    ->name('dex:sync');
+
 Schedule::command('tpix:treasury-sync')
     ->everyFiveMinutes()
     ->withoutOverlapping(10)

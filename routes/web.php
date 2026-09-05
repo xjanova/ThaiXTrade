@@ -119,6 +119,11 @@ Route::get('/swap', function () {
     return Inertia::render('Swap');
 })->name('swap');
 
+// Liquidity — เติม/ถอนสภาพคล่องพูล TOKEN/TPIX บน TPIX DEX (ทุกเหรียญบนเชนเทรดได้เมื่อมีพูล)
+Route::get('/liquidity', function () {
+    return Inertia::render('Liquidity');
+})->name('liquidity');
+
 // Markets
 Route::prefix('markets')->group(function () {
     Route::get('/', function () {

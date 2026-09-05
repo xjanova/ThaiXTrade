@@ -54,7 +54,31 @@ class ContractRegistry
             'label' => 'TPIXTokenFactory (ตัวเก่า)',
             'config' => 'blockchain.factory_address',
         ],
+        /*
+         * ── TPIX DEX (AMM แบบ Uniswap V2 บนเชน 4289) ──────────────────────────
+         * สี่ตัวนี้ต้องครบและมีโค้ดอยู่บนเชนจริง หน้าเทรดคู่บนเชน TPIX ถึงจะเปิด
+         * (ดู dexReady()) — ขาดตัวเดียว = ยังถือว่า "รอ deploy" ทั้งชุด
+         */
+        'wtpix' => [
+            'label' => 'WTPIX (TPIX ห่อเป็น ERC-20 สำหรับ DEX)',
+            'config' => 'blockchain.dex.wtpix',
+        ],
+        'usdt_tpix' => [
+            'label' => 'USDT_TPIX (USDT บนเชน TPIX)',
+            'config' => 'blockchain.dex.usdt',
+        ],
+        'dex_factory' => [
+            'label' => 'TPIXDEXFactory (ทะเบียนพูลสภาพคล่อง)',
+            'config' => 'blockchain.dex.factory',
+        ],
+        'dex_router' => [
+            'label' => 'TPIXDEXRouter02 (สวอป + เติม/ถอนสภาพคล่อง)',
+            'config' => 'blockchain.dex.router',
+        ],
     ];
+
+    /** คีย์ของสัญญาที่ประกอบกันเป็น DEX — ครบทุกตัวถึงเปิดเทรดบนเชน TPIX ได้ */
+    public const DEX_KEYS = ['wtpix', 'usdt_tpix', 'dex_factory', 'dex_router'];
 
     private const USER_AGENT = 'TPIX-TRADE-Server/1.0 (+https://tpix.online)';
 
@@ -255,11 +279,58 @@ class ContractRegistry
         return $out;
     }
 
+    /**
+     * ที่อยู่ชุด DEX พร้อมธง ready — หน้าเทรด/สวอปบนเชน TPIX และ AI TRADE ใช้ตัวเดียวกัน.
+     *
+     * ready = ทั้ง 4 ตัวมีที่อยู่ **และ** เชนยืนยันว่ามี bytecode อยู่จริง
+     * (เชนเคย regenesis แล้วสัญญาหายทั้งที่ที่อยู่ยังค้างในคอนฟิก — ตั้งไว้เฉย ๆ ไม่พอ)
+     *
+     * @return array{ready:bool, chainId:int, rpc:string, WTPIX:?string, USDT:?string, FACTORY:?string, ROUTER:?string, missing:string[]}
+     */
+    public function dexConfig(): array
+    {
+        $map = [
+            'WTPIX' => 'wtpix',
+            'USDT' => 'usdt_tpix',
+            'FACTORY' => 'dex_factory',
+            'ROUTER' => 'dex_router',
+        ];
+
+        $out = [
+            'ready' => true,
+            'chainId' => (int) config('blockchain.tpix_chain_id', 4289),
+            'rpc' => (string) config('blockchain.tpix_public_rpc_url', config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online')),
+            'missing' => [],
+        ];
+
+        foreach ($map as $field => $key) {
+            $address = $this->address($key);
+            $out[$field] = $address;
+
+            if ($address === null || ! $this->isLive($key)) {
+                $out['ready'] = false;
+                $out['missing'][] = $key;
+            }
+        }
+
+        return $out;
+    }
+
+    /** DEX บนเชน TPIX พร้อมให้เทรดจริงหรือยัง (ครบ 4 สัญญาและมีโค้ดบนเชน). */
+    public function dexReady(): bool
+    {
+        return $this->dexConfig()['ready'];
+    }
+
     public function forget(string $key): void
     {
         $address = $this->address($key);
         if ($address !== null) {
             Cache::forget("contracts:live:{$key}:".strtolower($address));
+        }
+        if (in_array($key, self::DEX_KEYS, true)) {
+            Cache::forget('dex:config:public');
+            Cache::forget('dex:pairs:public');
         }
         Cache::forget('masternode:stats');
         Cache::forget('admin:masternode:stats');
