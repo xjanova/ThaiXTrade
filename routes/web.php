@@ -105,8 +105,13 @@ Route::get('/', function () {
 
 // Trading
 Route::prefix('trade')->group(function () {
-    Route::get('/', function () {
-        return Inertia::render('Trade', ['pair' => 'BTC-USDT']);
+    /*
+     * คู่ปริยายเดินตามเชนปริยาย — เชน TPIX พร้อมเมื่อไหร่ คนเปิด /trade เฉย ๆ
+     * ต้องเจอกระดานของเราก่อน ไม่ใช่ BTC ของ Binance
+     * (เจ้าของสั่ง 2026-09-05: ปริยายเป็นเชน TPIX ทุกคน หลังส่วนหน้าและหลังบ้านต้องตรงกัน)
+     */
+    Route::get('/', function (\App\Services\ChainResolver $chains) {
+        return Inertia::render('Trade', ['pair' => \App\Support\DefaultMarket::pair($chains)]);
     })->name('trade');
 
     Route::get('/{pair}', function ($pair) {

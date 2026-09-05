@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Chain;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * แปลง "chain id จริงของบล็อกเชน" (56, 4289, ...) ให้เป็นแถวในตาราง chains.
@@ -56,6 +57,35 @@ class ChainResolver
     public function isLive(int $chainId): bool
     {
         return $this->resolveActive($chainId)?->status === Chain::STATUS_LIVE;
+    }
+
+    /**
+     * เชนปริยายของทั้งระบบ — เชนที่ผู้ใช้ควรอยู่เมื่อเปิดเว็บ/แอปมาเฉย ๆ.
+     *
+     * เจ้าของสั่ง (2026-09-05): "เมื่อเปิดใช้เชนได้แล้ว ให้ดีฟอลต์ไว้เชน TPIX แทน BSC ทุกคน"
+     * จึงไม่ hardcode — คืน TPIX ทันทีที่เชนเราพร้อมจริง (status = live ซึ่ง dex:sync ตั้งให้
+     * ก็ต่อเมื่อสัญญา DEX ครบและมีโค้ดอยู่บนเชน) ถ้ายังไม่พร้อมค่อยตกไปใช้ค่าใน config
+     *
+     * ทำแบบนี้แทนการแก้ DEFAULT_CHAIN_ID ใน .env เพราะการแก้ .env ต้อง config:cache
+     * แล้วลืมง่าย — และถ้าเชนเรามีปัญหาจนถูกปิด ผู้ใช้จะถูกส่งไปเชนที่ใช้งานไม่ได้
+     */
+    public function defaultChainId(): int
+    {
+        $tpixChainId = (int) config('blockchain.tpix_chain_id', 4289);
+
+        return Cache::remember(
+            'chains:default-id',
+            60,
+            fn () => $this->isLive($tpixChainId)
+                ? $tpixChainId
+                : (int) config('chains.default', 56)
+        );
+    }
+
+    /** ล้างแคชเชนปริยาย — เรียกเมื่อสถานะเชนเปลี่ยน */
+    public function forgetDefault(): void
+    {
+        Cache::forget('chains:default-id');
     }
 
     /**

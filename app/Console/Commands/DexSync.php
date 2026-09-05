@@ -120,6 +120,8 @@ class DexSync extends Command
         $chain->status = $target;
         $chain->save();
         Cache::forget('chains:supported');
+        // เชนปริยายผูกกับสถานะนี้โดยตรง — ไม่ล้างแคช ผู้ใช้จะยังถูกส่งไป BSC อีกนาน
+        $this->chains->forgetDefault();
     }
 
     /** TPIX native ในฐานข้อมูลคือ address 0x0 บนเชน TPIX */

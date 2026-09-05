@@ -371,7 +371,9 @@
         "riskOneWay": "This is a one-way purchase. TPIX bought here cannot be sold back or bridged to BSC yet — the return path opens only after the bridge and DEX go live.",
         "riskVesting": "You do not receive all tokens at once. A portion unlocks at TGE, the rest unlocks gradually over the vesting period shown for each phase.",
         "riskNetwork": "Pay only in the accepted currency to the official sale wallet on BNB Smart Chain. Sending from an exchange account or on the wrong network will lose your funds permanently.",
-        "riskFinal": "All purchases are final. There are no refunds once a payment is confirmed on-chain."
+        "riskFinal": "All purchases are final. There are no refunds once a payment is confirmed on-chain.",
+        "tradeNow": "Trade now",
+        "tradeNowBody": "Your unlocked TPIX is in your wallet on TPIX Chain — trade it right away."
     },
     "tokenFactory": {
         "title": "Token Factory",

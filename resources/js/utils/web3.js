@@ -12,9 +12,26 @@ import axios from 'axios';
 // =============================================================================
 
 /**
- * Default chain ID (BSC). Must match config/chains.php 'default'.
+ * เชน BSC — ใช้ตรงจุดที่หมายถึง "BSC จริง ๆ" (PancakeSwap swap, คู่เทรด major)
+ * อย่าเอาไปใช้แทน "เชนปริยาย" เพราะสองอย่างนี้แยกจากกันแล้ว
+ */
+export const BSC_CHAIN_ID = 56;
+
+/**
+ * เชนปริยายก่อนที่รายการเชนจากเซิร์ฟเวอร์จะโหลดเสร็จ
+ *
+ * ⚠️ ค่าจริงมาจาก `/api/v1/chains` → `meta.default_chain_id` (getDefaultChainId())
+ * ซึ่งเป็น TPIX Chain ทันทีที่เชนเราพร้อม (status = live) ตามที่เจ้าของสั่งไว้
+ * ค่านี้เป็นแค่ค่าตั้งต้นระหว่างรอโหลด — ห้ามใช้ตัดสินใจอะไรที่ส่งธุรกรรมออกไป
  */
 export const DEFAULT_CHAIN_ID = 56;
+
+let _defaultChainId = DEFAULT_CHAIN_ID;
+
+/** เชนปริยายล่าสุดที่รู้ (ซิงก์จาก fetchSupportedChains) */
+export function getDefaultChainId() {
+    return _defaultChainId;
+}
 
 /**
  * BSC config (kept for backward compatibility).
@@ -77,6 +94,11 @@ export async function fetchSupportedChains() {
                 _chainCache = data.data;
             } else {
                 _chainCache = [];
+            }
+            // เชนปริยายตามที่เซิร์ฟเวอร์บอก (TPIX เมื่อเชนเราพร้อม) — ไม่เดาเองฝั่ง client
+            const fromServer = Number(data?.meta?.default_chain_id);
+            if (Number.isFinite(fromServer) && fromServer > 0) {
+                _defaultChainId = fromServer;
             }
             return _chainCache;
         })
@@ -313,7 +335,7 @@ export async function switchToChain(injectedProvider, targetChainId, chainConfig
  */
 export async function switchToBSC() {
     if (!window.ethereum) throw new Error('No wallet detected');
-    await switchToChain(window.ethereum, DEFAULT_CHAIN_ID, BSC_CHAIN_CONFIG);
+    await switchToChain(window.ethereum, BSC_CHAIN_ID, BSC_CHAIN_CONFIG);
 }
 
 /**

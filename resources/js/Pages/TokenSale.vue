@@ -7,8 +7,9 @@
  */
 
 import { ref, onMounted, watch } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import axios from 'axios';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenSaleStore } from '@/Stores/tokenSaleStore';
 import { useTokenSale } from '@/Composables/useTokenSale';
@@ -74,6 +75,7 @@ const tokenomicsData = [
 ];
 
 onMounted(async () => {
+    loadTradablePair();
     // โหลดข้อมูล real-time จาก API
     await tokenSaleStore.loadAll(walletStore.address);
 
@@ -107,6 +109,29 @@ function handlePurchaseComplete() {
     if (walletStore.address) {
         tokenSaleStore.fetchPurchases(walletStore.address);
         tokenSaleStore.fetchVesting(walletStore.address);
+    }
+    // เหรียญที่ปลดล็อกแล้วอยู่ในกระเป๋าบนเชน TPIX — เอาไปเทรดต่อได้เลยถ้ากระดานเปิด
+    justPurchased.value = true;
+}
+
+/*
+ * ปุ่ม "เทรดเลย" — ขึ้นเฉพาะตอนกระดาน TPIX บนเชนเราเปิดจริง
+ *
+ * ต้องถามเซิร์ฟเวอร์ว่าคู่นี้ส่งคำสั่งได้จริงไหม (execution_mode = onchain)
+ * ไม่ใช่เดาจากชื่อคู่ ไม่งั้นผู้ใช้กดแล้วไปเจอหน้าที่เขียนว่า "เร็ว ๆ นี้" ทันทีหลังจ่ายเงิน
+ */
+const justPurchased = ref(false);
+const tradablePair = ref(null);
+
+async function loadTradablePair() {
+    try {
+        const { data } = await axios.get('/api/v1/dex/pairs');
+        const pair = (data?.data || []).find(
+            (p) => String(p.symbol).toUpperCase() === 'TPIX-USDT' && p.is_active,
+        );
+        tradablePair.value = pair ? pair.symbol : null;
+    } catch {
+        tradablePair.value = null;
     }
 }
 </script>
@@ -199,6 +224,17 @@ function handlePurchaseComplete() {
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <!-- ฟอร์มซื้อ -->
                 <BuyForm @purchase-complete="handlePurchaseComplete" />
+
+                <!-- ซื้อแล้วเทรดต่อได้ทันที — ขึ้นเฉพาะตอนกระดานบนเชน TPIX เปิดจริง -->
+                <div
+                    v-if="justPurchased && tradablePair"
+                    class="glass-dark p-4 rounded-xl border border-trading-green/30 bg-trading-green/5 flex items-center gap-3"
+                >
+                    <span class="text-sm text-white">{{ t('tokenSale.tradeNowBody') }}</span>
+                    <Link :href="`/trade/${tradablePair}`" class="btn-success ml-auto whitespace-nowrap px-4 py-2 text-sm">
+                        {{ t('tokenSale.tradeNow') }}
+                    </Link>
+                </div>
 
                 <!-- How to Buy -->
                 <div class="glass-dark p-6 rounded-xl border border-white/10">

@@ -17,6 +17,8 @@ import { playConnectSound, playDisconnectSound, playErrorSound } from '@/Composa
 import {
     BSC_CHAIN_CONFIG,
     DEFAULT_CHAIN_ID,
+    BSC_CHAIN_ID,
+    getDefaultChainId,
     TPIX_CHAIN_CONFIG,
     switchToChain,
     fetchSupportedChains,
@@ -121,7 +123,9 @@ export const useWalletStore = defineStore('wallet', () => {
     const shortAddress = computed(() => formatAddress(address.value));
 
     // ตรวจสอบว่าอยู่บน chain หลัก (BSC) หรือไม่
-    const isBSC = computed(() => chainId.value === DEFAULT_CHAIN_ID);
+    // อยู่บน BSC จริง ๆ ไหม (หน้า Swap ใช้ PancakeSwap ซึ่งอยู่บน BSC เท่านั้น)
+    // — จงใจไม่ผูกกับ "เชนปริยาย" อีกต่อไป เพราะปริยายเป็น TPIX แล้ว
+    const isBSC = computed(() => chainId.value === BSC_CHAIN_ID);
 
     /*
      * อยู่บนเชน TPIX (4289) หรือยัง
@@ -655,7 +659,7 @@ export const useWalletStore = defineStore('wallet', () => {
      * ถ้าไม่ระบุ targetChainId จะสลับไป chain หลัก (BSC)
      * @param {number} targetChainId - Chain ID เป้าหมาย
      */
-    async function switchChain(targetChainId = DEFAULT_CHAIN_ID) {
+    async function switchChain(targetChainId = getDefaultChainId()) {
         error.value = null;
 
         /*
@@ -738,7 +742,7 @@ export const useWalletStore = defineStore('wallet', () => {
                     wallet_address: walletAddress,
                     signature,
                     nonce,
-                    chain_id: chainId.value || DEFAULT_CHAIN_ID,
+                    chain_id: chainId.value || getDefaultChainId(),
                     wallet_type: walletType.value || 'metamask',
                 }),
                 VERIFY_TIMEOUT_MS,

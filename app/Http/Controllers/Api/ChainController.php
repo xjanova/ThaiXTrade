@@ -50,6 +50,13 @@ class ChainController extends Controller
         return response()->json([
             'success' => true,
             'data' => $chains,
+            /*
+             * เชนที่ผู้ใช้ควรอยู่เมื่อเปิดมาเฉย ๆ — เว็บและแอปต้องอ่านค่านี้
+             * ห้าม hardcode 56 ฝั่ง client อีก (เจ้าของสั่งให้ปริยายเป็น TPIX เมื่อเชนเราพร้อม)
+             */
+            'meta' => [
+                'default_chain_id' => $this->chains->defaultChainId(),
+            ],
         ]);
     }
 

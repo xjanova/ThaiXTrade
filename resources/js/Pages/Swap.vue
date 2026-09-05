@@ -12,7 +12,7 @@ import CoinIcon from '@/Components/CoinIcon.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useSwap } from '@/Composables/useSwap';
 import { usePlatformReadiness } from '@/Composables/usePlatformReadiness';
-import { getTxUrl, BSC_CHAIN_CONFIG } from '@/utils/web3';
+import { getTxUrl, BSC_CHAIN_CONFIG, BSC_CHAIN_ID } from '@/utils/web3';
 import WalletModal from '@/Components/Wallet/WalletModal.vue';
 
 const walletStore = useWalletStore();
@@ -206,7 +206,9 @@ async function executeSwap() {
     try {
         // Swaps run on BSC — switch first (throws if the user rejects).
         if (!isOnBSC.value) {
-            await walletStore.switchChain();
+            // ระบุ 56 ตรง ๆ — สวอปหน้านี้วิ่งบน PancakeSwap ซึ่งอยู่บน BSC เท่านั้น
+            // (เชนปริยายของระบบเป็น TPIX แล้ว การเรียกแบบไม่ใส่พารามิเตอร์จะพาไปผิดเชน)
+            await walletStore.switchChain(BSC_CHAIN_ID);
         }
 
         await swap.executeSwap(
@@ -273,7 +275,7 @@ onMounted(async () => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
                     </svg>
                     <span>Please switch to BSC network.</span>
-                    <button @click="walletStore.switchChain()" class="ml-auto px-3 py-1 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-medium transition-colors">
+                    <button @click="walletStore.switchChain(BSC_CHAIN_ID)" class="ml-auto px-3 py-1 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-medium transition-colors">
                         Switch
                     </button>
                 </div>

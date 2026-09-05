@@ -147,6 +147,35 @@ class TreasuryService
             'ok' => $keystore['ok'],
         ];
 
+        /*
+         * 2b) keystore ต้องเป็นของ "กระเป๋าที่ระบบจะจ่ายเหรียญออก" ใบเดียวกัน
+         *
+         * ที่อยู่กระเป๋าจ่ายเหรียญอ่านจากหลังบ้าน (revenue.tpix_wallet) แต่ keystore
+         * เป็นไฟล์ที่วางไว้เอง — สองอย่างนี้หลุดจากกันได้ง่ายมาก และเคยหลุดมาแล้ว
+         * (prod ตั้ง 0x2112b98e… ขณะที่ค่าปริยายในโค้ดเป็น 0x78B81dF…)
+         *
+         * ไม่ตรง = HotWalletSigner ปฏิเสธการเซ็นตอนจ่ายจริง ซึ่งไปรู้เอาตอนลูกค้าจ่ายเงินแล้ว
+         * ด่านนี้ทำให้รู้ตั้งแต่ตอนตรวจความพร้อม โดยไม่ต้องถอดรหัส keystore
+         * (อ่านแค่ฟิลด์ address ในไฟล์ ไม่ต้องใช้ passphrase)
+         */
+        $payoutWallet = TreasuryWallet::address();
+        $keystoreOwner = $keystore['ok'] ? $this->keystoreAddress($keystorePath) : null;
+        $sameWallet = $keystoreOwner !== null
+            && $payoutWallet !== ''
+            && strtolower($keystoreOwner) === strtolower($payoutWallet);
+
+        $checks[] = [
+            'key' => 'keystore_matches_wallet',
+            'label' => 'keystore เป็นกระเป๋าใบเดียวกับที่จ่ายเหรียญ',
+            'hint' => match (true) {
+                ! $keystore['ok'] => 'ยังไม่มี keystore ให้ตรวจ',
+                $keystoreOwner === null => 'อ่านที่อยู่จากไฟล์ keystore ไม่ได้',
+                $sameWallet => $payoutWallet,
+                default => "keystore เป็นของ {$keystoreOwner} แต่ระบบจ่ายจาก {$payoutWallet} — เซ็นไม่ผ่านแน่นอน",
+            },
+            'ok' => $sameWallet,
+        ];
+
         // 3) passphrase ต้องอยู่ใน .env (ไม่ใช่ใน database)
         $passOk = filled(config('treasury.hot_wallet.passphrase'));
         $checks[] = [
@@ -240,6 +269,45 @@ class TreasuryService
             'ok' => $readable,
             'hint' => $readable ? $path : $path.' — ยังไม่พบไฟล์หรืออ่านไม่ได้',
         ];
+    }
+
+    /**
+     * ที่อยู่ที่ไฟล์ keystore เป็นเจ้าของ — อ่านจากฟิลด์ address ในไฟล์ (ไม่ต้องใช้ passphrase).
+     *
+     * keystore V3 เก็บ address แบบไม่มี 0x นำหน้า และบางตัวสร้างมาไม่มีฟิลด์นี้เลย
+     * (ยังใช้เซ็นได้ แต่เราตรวจล่วงหน้าไม่ได้) — คืน null ให้ผู้เรียกไปบอกผู้ใช้ตามจริง
+     */
+    private function keystoreAddress(string $path): ?string
+    {
+        set_error_handler(static fn () => true);
+
+        try {
+            $raw = file_get_contents($path);
+        } catch (\Throwable) {
+            $raw = false;
+        } finally {
+            restore_error_handler();
+        }
+
+        if (! is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        try {
+            $json = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        $address = trim((string) ($json['address'] ?? ''));
+
+        if ($address === '') {
+            return null;
+        }
+
+        $address = str_starts_with($address, '0x') ? $address : '0x'.$address;
+
+        return preg_match('/^0x[a-fA-F0-9]{40}$/', $address) === 1 ? $address : null;
     }
 
     /**
