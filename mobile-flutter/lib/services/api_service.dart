@@ -120,6 +120,14 @@ class ApiService {
         .toList();
   }
 
+  /// ที่อยู่สัญญา TPIX DEX + ธง ready จากทะเบียนบนเซิร์ฟเวอร์
+  /// (แอปห้าม hardcode ที่อยู่ — deploy ใหม่แล้วแอปเก่าจะชี้ไปที่ตายทันที)
+  Future<Map<String, dynamic>?> getDexConfig() async {
+    final res = await _get(ApiConstants.dexConfig);
+    if (res == null || res['success'] != true) return null;
+    return res['data'] as Map<String, dynamic>?;
+  }
+
   Future<List<TradingPairInfo>> getPairs() async {
     final res = await _get(ApiConstants.pairs);
     if (res == null || res['success'] != true) return [];

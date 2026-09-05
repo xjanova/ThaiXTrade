@@ -415,7 +415,25 @@ class TradingPairInfo {
   final int amountPrecision;
   final double? feeRateOverride;
   final String? baseLogo; // โลโก้จริงจาก Token DB (มี/ไม่มีก็ได้)
-  final int? chainId; // chain ที่ pair นี้อยู่ — สำหรับ pre-submit validation
+  final int? chainId; // ⚠️ นี่คือ PK ของตาราง chains ไม่ใช่ chain id ของบล็อกเชน
+
+  /// chain id จริงของบล็อกเชน (56 = BSC, 4289 = TPIX) — ใช้ตัวนี้เทียบกับกระเป๋า
+  /// เลขสองชุดนี้ทับกันได้ (chains.id 10 = zkSync แต่ chain id 10 = Optimism)
+  final int? networkChainId;
+
+  /// onchain = ส่งคำสั่งได้จริง · index = ดูราคา/กราฟอย่างเดียว
+  final String executionMode;
+
+  /// ที่อยู่โทเคนบนเชน — คู่บนเชน TPIX ใช้ยิงเข้า router โดยตรง (0x0 = เหรียญเนทีฟ)
+  final String? baseAddress;
+  final String? quoteAddress;
+  final int baseDecimals;
+  final int quoteDecimals;
+
+  /// ที่อยู่พูล AMM (เฉพาะคู่บนเชน TPIX)
+  final String? dexPairAddress;
+
+  bool get isOnchain => executionMode == 'onchain';
 
   const TradingPairInfo({
     required this.symbol,
@@ -428,6 +446,13 @@ class TradingPairInfo {
     this.feeRateOverride,
     this.baseLogo,
     this.chainId,
+    this.networkChainId,
+    this.executionMode = 'index',
+    this.baseAddress,
+    this.quoteAddress,
+    this.baseDecimals = 18,
+    this.quoteDecimals = 18,
+    this.dexPairAddress,
   });
 
   factory TradingPairInfo.fromJson(Map<String, dynamic> json) {
@@ -447,6 +472,13 @@ class TradingPairInfo {
           json['fee_rate'] != null ? _toDouble(json['fee_rate']) : null,
       baseLogo: json['base_logo'] as String?,
       chainId: (json['chain_id'] as num?)?.toInt(),
+      networkChainId: (json['network_chain_id'] as num?)?.toInt(),
+      executionMode: (json['execution_mode'] as String?) ?? 'index',
+      baseAddress: json['base_address'] as String?,
+      quoteAddress: json['quote_address'] as String?,
+      baseDecimals: (json['base_decimals'] as num?)?.toInt() ?? 18,
+      quoteDecimals: (json['quote_decimals'] as num?)?.toInt() ?? 18,
+      dexPairAddress: json['dex_pair_address'] as String?,
     );
   }
 }

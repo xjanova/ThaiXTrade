@@ -434,6 +434,20 @@ class WalletProvider extends ChangeNotifier {
     Uint8List? data,
     BigInt? value,
     String? summary,
+  }) =>
+      sendChainTransaction(
+          chainId: 56, to: to, data: data, value: value, summary: summary);
+
+  /// ส่งธุรกรรมบนเชนที่ระบุ — รองรับทั้งกระเป๋าฝัง, WalletConnect และ TPIX Wallet
+  ///
+  /// เดิมทุกเส้นทาง hardcode 56 ไว้ ทำให้เทรดบนเชน TPIX ไม่ได้เลยแม้สัญญาจะพร้อม
+  /// (เชน TPIX ค่าแก๊สเป็น 0 — ตัวเซ็นต้องไม่ไปคาดว่าต้องมีเหรียญจ่ายแก๊ส)
+  Future<String?> sendChainTransaction({
+    required int chainId,
+    required String to,
+    Uint8List? data,
+    BigInt? value,
+    String? summary,
   }) async {
     if (_address == null) {
       _error = 'Wallet not connected';
@@ -443,20 +457,27 @@ class WalletProvider extends ChangeNotifier {
 
     if (_kind == WalletKind.linked) {
       return _sendViaLinkedWallet(
-          to: to, data: data, value: value, summary: summary);
+          chainId: chainId,
+          to: to,
+          data: data,
+          value: value,
+          summary: summary);
     }
 
     if (_kind == WalletKind.walletConnect) {
-      return _sendViaWalletConnect(to: to, data: data, value: value);
+      return _sendViaWalletConnect(
+          chainId: chainId, to: to, data: data, value: value);
     }
 
-    return _sendViaEmbedded(to: to, data: data, value: value);
+    return _sendViaEmbedded(
+        chainId: chainId, to: to, data: data, value: value);
   }
 
   /// Linked wallet (TPIX Wallet) — ส่งคำขอธุรกรรมข้ามแอพ ผู้ใช้ยืนยันใน
   /// TPIX Wallet ซึ่งเป็นผู้ถือ key แล้ว broadcast เอง คืน hash ผ่าน callback
   Future<String?> _sendViaLinkedWallet({
     required String to,
+    required int chainId,
     Uint8List? data,
     BigInt? value,
     String? summary,
@@ -465,7 +486,7 @@ class WalletProvider extends ChangeNotifier {
       to: to,
       valueHex: value != null ? '0x${value.toRadixString(16)}' : null,
       dataHex: data != null ? '0x${HEX.encode(data)}' : null,
-      chainId: 56,
+      chainId: chainId,
       summary: summary,
     );
     if (hash == null) {
@@ -478,19 +499,21 @@ class WalletProvider extends ChangeNotifier {
   /// External wallet — เชนของ wallet ต้องเป็น BSC ก่อนส่ง (ขอสลับให้อัตโนมัติ)
   Future<String?> _sendViaWalletConnect({
     required String to,
+    required int chainId,
     Uint8List? data,
     BigInt? value,
   }) async {
     final svc = ExternalWalletService();
 
-    if (svc.selectedChainId != 56) {
-      await svc.switchChain(56);
-      if (svc.selectedChainId != 56) {
-        _error = 'กรุณาสลับ wallet ไปเชน BSC เพื่อเทรด';
+    if (svc.selectedChainId != chainId) {
+      await svc.switchChain(chainId);
+      if (svc.selectedChainId != chainId) {
+        final name = ChainConfig.byId(chainId).shortName;
+        _error = 'กรุณาสลับ wallet ไปเชน $name เพื่อเทรด';
         notifyListeners();
         return null;
       }
-      _activeChainId = 56;
+      _activeChainId = chainId;
       notifyListeners();
     }
 
@@ -511,6 +534,7 @@ class WalletProvider extends ChangeNotifier {
   /// gas: estimate จากเชนจริง + buffer 30% (swap บน Pancake ~200k ประมาณเองไม่ได้)
   Future<String?> _sendViaEmbedded({
     required String to,
+    required int chainId,
     Uint8List? data,
     BigInt? value,
   }) async {
@@ -526,7 +550,8 @@ class WalletProvider extends ChangeNotifier {
     final etherValue =
         value != null ? EtherAmount.inWei(value) : null;
 
-    final rpcs = [ChainConfig.bsc.rpcUrl, ...ChainConfig.bsc.fallbackRpcs];
+    final chain = ChainConfig.byId(chainId);
+    final rpcs = [chain.rpcUrl, ...chain.fallbackRpcs];
     for (final rpc in rpcs) {
       final client = Web3Client(rpc, http.Client());
       try {
@@ -540,7 +565,9 @@ class WalletProvider extends ChangeNotifier {
             value: etherValue,
           );
         } catch (_) {
-          _error = 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือ/ค่า gas (BNB)';
+          _error = chain.isGasless
+              ? 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือและค่า slippage'
+              : 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือ/ค่า gas (${chain.symbol})';
           notifyListeners();
           return null;
         }
@@ -558,18 +585,18 @@ class WalletProvider extends ChangeNotifier {
             gasPrice: gasPrice,
             maxGas: maxGas,
           ),
-          chainId: 56,
+          chainId: chainId,
         );
         return hash;
       } catch (e) {
-        debugPrint('sendBscTransaction rpc failed: ${e.runtimeType}');
+        debugPrint('sendChainTransaction rpc failed: ${e.runtimeType}');
         // RPC ตัวนี้ล่ม — ลองตัวถัดไป
       } finally {
         client.dispose();
       }
     }
 
-    _error = 'ส่งธุรกรรมไม่สำเร็จ — เครือข่าย BSC ขัดข้อง ลองใหม่';
+    _error = 'ส่งธุรกรรมไม่สำเร็จ — เครือข่าย ${chain.shortName} ขัดข้อง ลองใหม่';
     notifyListeners();
     return null;
   }

@@ -25,6 +25,7 @@ import '../../providers/config_provider.dart';
 import '../../providers/ai_bot_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/bsc_swap_service.dart';
+import '../../services/tpix_dex_service.dart';
 import '../../models/bsc_trade_tokens.dart';
 import '../../utils/crypto_logos.dart';
 import '../../widgets/common/app_background.dart';
@@ -70,6 +71,17 @@ class _TradeScreenState extends State<TradeScreen>
   double? _bscBaseBalance;
   double? _bscQuoteBalance;
   String? _bscBalanceKey; // pair|address ล่าสุดที่โหลดไว้ — กันโหลดซ้ำ
+  // ── เทรดจริงบนเชน TPIX (AMM ของเราเอง) ──
+  final _dexService = TpixDexService();
+  // ยอดคงเหลือของ base/quote อ่านตรงจาก RPC ของเชน TPIX (null = ยังไม่โหลด)
+  double? _dexBaseBalance;
+  double? _dexQuoteBalance;
+  String? _dexBalanceKey;
+  TpixDexQuote? _dexQuote;
+  // ที่อยู่สัญญาโหลดจากทะเบียนบนเซิร์ฟเวอร์แล้วหรือยัง — ก่อนโหลดเสร็จอย่าเพิ่งตัดสินว่า
+  // "ยังไม่เปิด" ไม่งั้นผู้ใช้จะเห็น Coming Soon แว้บหนึ่งทั้งที่กระดานเปิดอยู่
+  bool _dexConfigLoaded = false;
+
   // Preview ราคาจริงจาก PancakeSwap router (debounce)
   BscSwapQuote? _marketQuote;
   bool _quotingPreview = false;
@@ -111,6 +123,13 @@ class _TradeScreenState extends State<TradeScreen>
       if (wallet.isConnected) {
         config.setActiveChain(wallet.activeChainId);
       }
+      // ที่อยู่สัญญา DEX มาจากเซิร์ฟเวอร์ — โหลดก่อนตัดสินว่าคู่ TPIX เทรดได้ไหม
+      _dexService.loadConfig().then((_) {
+        if (!mounted) return;
+        setState(() => _dexConfigLoaded = true);
+        _maybeReloadDexBalances(
+            context.read<MarketProvider>(), context.read<WalletProvider>());
+      });
     });
   }
 
@@ -136,10 +155,91 @@ class _TradeScreenState extends State<TradeScreen>
       CryptoLogos.isTpix(_baseOf(market));
 
   /// คู่นี้ execute จริงบน BSC ได้ไหม — base+quote ต้องอยู่ใน registry
-  /// (ตรรกะเดียวกับเว็บ: TPIX pair = รอเชน TPIX, คู่แปลก = ยังไม่เปิด)
+  /// (ตรรกะเดียวกับเว็บ: คู่แปลก = ยังไม่เปิด)
   bool _isBscTradableNow(MarketProvider market) =>
       !_isTpixPairNow(market) &&
       isBscTradablePair(_baseOf(market), _quoteOf(market));
+
+  /// คู่นี้อยู่บนเชน TPIX และส่งคำสั่งได้จริงไหม
+  ///
+  /// ถามเซิร์ฟเวอร์ล้วน ๆ — ไม่เดาจากชื่อคู่เหมือนเดิม เพราะคู่บนเชน TPIX
+  /// เกิดจากพูลที่มีคนเติมจริง (dex:sync สร้างให้) แอปจึงรู้ล่วงหน้าไม่ได้
+  /// ต้องเข้าเงื่อนไขครบสามข้อ: เป็นเชน 4289 · execution_mode = onchain ·
+  /// เซิร์ฟเวอร์ยืนยันว่าสัญญา DEX มีโค้ดอยู่บนเชนจริง
+  TradingPairInfo? _dexPairFor(MarketProvider market) {
+    if (!_dexService.ready) return null;
+    final symbol = market.selectedPair.toUpperCase();
+    final config = context.read<ConfigProvider>();
+    for (final p in config.pairs) {
+      if (p.symbol.toUpperCase() == symbol &&
+          p.networkChainId == TpixDexService().lastConfig.chainId &&
+          p.isOnchain) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  bool _isDexTradableNow(MarketProvider market) =>
+      _dexPairFor(market) != null;
+
+  /// โหลดยอด base/quote จากเชน TPIX — เรียกซ้ำได้ (กันโหลดซ้ำด้วย key)
+  void _maybeReloadDexBalances(MarketProvider market, WalletProvider wallet) {
+    if (!_isDexTradableNow(market)) return;
+    final key = '${market.selectedPair}|${wallet.address ?? ''}';
+    if (key == _dexBalanceKey) return;
+    _dexBalanceKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDexBalances());
+  }
+
+  Future<void> _loadDexBalances() async {
+    final market = context.read<MarketProvider>();
+    final wallet = context.read<WalletProvider>();
+    final pair = _dexPairFor(market);
+    if (!wallet.isConnected || pair == null) {
+      if (mounted) {
+        setState(() {
+          _dexBaseBalance = null;
+          _dexQuoteBalance = null;
+        });
+      }
+      return;
+    }
+    final address = wallet.address!;
+    final results = await Future.wait([
+      _dexService.getBalance(
+        address: pair.baseAddress ?? TpixDexService.nativeAddress,
+        walletAddress: address,
+        decimals: pair.baseDecimals,
+      ),
+      _dexService.getBalance(
+        address: pair.quoteAddress ?? TpixDexService.nativeAddress,
+        walletAddress: address,
+        decimals: pair.quoteDecimals,
+      ),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _dexBaseBalance = results[0];
+      _dexQuoteBalance = results[1];
+    });
+  }
+
+  /// โทเคนสองฝั่งของคู่บนเชน TPIX — decimals ยืนยันกับเชนก่อนใช้เสมอ
+  Future<(VerifiedToken, VerifiedToken)> _dexTokens(
+      TradingPairInfo pair, MarketProvider market) async {
+    final base = await _dexService.verifyToken(
+      symbol: _baseOf(market),
+      address: pair.baseAddress ?? TpixDexService.nativeAddress,
+      fallbackDecimals: pair.baseDecimals,
+    );
+    final quote = await _dexService.verifyToken(
+      symbol: _quoteOf(market),
+      address: pair.quoteAddress ?? TpixDexService.nativeAddress,
+      fallbackDecimals: pair.quoteDecimals,
+    );
+    return (base, quote);
+  }
 
   /// โหลดยอด base/quote จาก BSC RPC — เรียกซ้ำได้ (กันโหลดซ้ำด้วย key)
   void _maybeReloadBscBalances(MarketProvider market, WalletProvider wallet) {
@@ -188,10 +288,14 @@ class _TradeScreenState extends State<TradeScreen>
     final market = context.read<MarketProvider>();
     final wallet = context.read<WalletProvider>();
 
-    if (!_isBscTradableNow(market) || !_isMarket) {
-      if (_marketQuote != null || _quotingPreview) {
+    final dexPair = _dexPairFor(market);
+    final onchain = _isBscTradableNow(market) || dexPair != null;
+
+    if (!onchain || !_isMarket) {
+      if (_marketQuote != null || _dexQuote != null || _quotingPreview) {
         setState(() {
           _marketQuote = null;
+          _dexQuote = null;
           _quotingPreview = false;
         });
       }
@@ -203,9 +307,10 @@ class _TradeScreenState extends State<TradeScreen>
     // buy: input จริงคือยอด quote (USDT) = amount × ราคาตลาด
     final input = _isBuy ? amount * price : amount;
     if (amount <= 0 || input <= 0) {
-      if (_marketQuote != null || _quotingPreview) {
+      if (_marketQuote != null || _dexQuote != null || _quotingPreview) {
         setState(() {
           _marketQuote = null;
+          _dexQuote = null;
           _quotingPreview = false;
         });
       }
@@ -215,6 +320,23 @@ class _TradeScreenState extends State<TradeScreen>
     final seq = ++_previewSeq;
     setState(() => _quotingPreview = true);
     try {
+      if (dexPair != null) {
+        final (baseTok, quoteTok) = await _dexTokens(dexPair, market);
+        final quote = await _dexService.getQuote(
+          fromToken: _isBuy ? quoteTok : baseTok,
+          toToken: _isBuy ? baseTok : quoteTok,
+          amount: input,
+          slippage: wallet.slippage,
+        );
+        if (!mounted || seq != _previewSeq) return;
+        setState(() {
+          _dexQuote = quote;
+          _marketQuote = null;
+          _quotingPreview = false;
+        });
+        return;
+      }
+
       final fromSym = _isBuy ? _quoteOf(market) : _baseOf(market);
       final toSym = _isBuy ? _baseOf(market) : _quoteOf(market);
       final quote = await _swapService.getQuote(
@@ -226,12 +348,14 @@ class _TradeScreenState extends State<TradeScreen>
       if (!mounted || seq != _previewSeq) return;
       setState(() {
         _marketQuote = quote;
+        _dexQuote = null;
         _quotingPreview = false;
       });
     } catch (_) {
       if (!mounted || seq != _previewSeq) return;
       setState(() {
         _marketQuote = null;
+        _dexQuote = null;
         _quotingPreview = false;
       });
     }
@@ -281,6 +405,7 @@ class _TradeScreenState extends State<TradeScreen>
 
     // คู่ major → โหลดยอดจาก BSC สำหรับฟอร์มเทรด (โหลดครั้งเดียวต่อ pair/wallet)
     _maybeReloadBscBalances(market, wallet);
+    _maybeReloadDexBalances(market, wallet);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -734,19 +859,25 @@ class _TradeScreenState extends State<TradeScreen>
     final ticker = market.selectedTicker;
     final baseAsset = ticker?.baseAsset ?? 'BTC';
     final quoteAsset = ticker?.quoteAsset ?? 'USDT';
-    final tradable = _isBscTradableNow(market);
+    final onDex = _isDexTradableNow(market);
+    final tradable = _isBscTradableNow(market) || onDex;
 
-    // คู่ที่ยังเทรดจริงไม่ได้ (TPIX รอเชน / คู่ไม่มี token บน BSC)
+    // คู่ที่ยังเทรดจริงไม่ได้ (พูลบนเชน TPIX ยังไม่มี / คู่ไม่มี token บน BSC)
     // → โชว์ Coming Soon แทนฟอร์ม (เห็นไว้ก่อน กดไม่ได้ — ตรงกับเว็บ)
     if (!tradable) {
-      return _buildComingSoonCard(locale, market);
+      // ยังไม่รู้ว่าเชนเราเปิดหรือยัง (ทะเบียนสัญญายังโหลดไม่เสร็จ) — อย่าเพิ่งตัดสิน
+      // ไม่งั้นคนเปิดหน้ามาจะเห็น "ยังไม่เปิด" แว้บหนึ่งทั้งที่กระดานเปิดอยู่จริง
+      return _buildComingSoonCard(locale, market,
+          checking: !_dexConfigLoaded && _isTpixPairNow(market));
     }
 
-    // Available balance — คู่ major อ่านยอดจริงจาก BSC RPC โดยตรง
-    // (ไม่ใช่ portfolio off-chain เดิม เพราะเทรด settle บน BSC จริง)
+    // Available balance — อ่านยอดจริงจากเชนที่ไม้จะลงจริง
+    // (ไม่ใช่ portfolio off-chain เดิม เพราะเทรด settle บนเชนจริง)
     final availAsset = _isBuy ? quoteAsset : baseAsset;
-    final bscBalance = _isBuy ? _bscQuoteBalance : _bscBaseBalance;
-    final availBalance = bscBalance ?? 0.0;
+    final chainBalance = onDex
+        ? (_isBuy ? _dexQuoteBalance : _dexBaseBalance)
+        : (_isBuy ? _bscQuoteBalance : _bscBaseBalance);
+    final availBalance = chainBalance ?? 0.0;
 
     return GlassCard(
       variant: GlassVariant.elevated,
@@ -930,7 +1061,8 @@ class _TradeScreenState extends State<TradeScreen>
 
           // Market preview — ตัวเลขจริงจาก PancakeSwap router
           // (แทน fee summary เดิมเมื่อมี quote เพราะ fee ใน quote คือของจริง)
-          if (_isMarket && (_marketQuote != null || _quotingPreview))
+          if (_isMarket &&
+              (_marketQuote != null || _dexQuote != null || _quotingPreview))
             _buildMarketPreview(locale, market)
           else
             _buildFeeSummary(locale, market),
@@ -1120,7 +1252,8 @@ class _TradeScreenState extends State<TradeScreen>
   }
 
   /// คู่ที่ยังไม่เปิดเทรด (TPIX รอเชน) — แผง Coming Soon แทนฟอร์ม
-  Widget _buildComingSoonCard(LocaleProvider locale, MarketProvider market) {
+  Widget _buildComingSoonCard(LocaleProvider locale, MarketProvider market,
+      {bool checking = false}) {
     final pair = market.selectedTicker?.displaySymbol ?? market.selectedPair;
     return GlassCard(
       variant: GlassVariant.elevated,
@@ -1136,12 +1269,22 @@ class _TradeScreenState extends State<TradeScreen>
               shape: BoxShape.circle,
               border: Border.all(color: AppColors.goldBorder, width: 1),
             ),
-            child: Icon(Icons.lock_clock_rounded,
-                size: 24, color: AppColors.gold2),
+            child: checking
+                ? Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.gold2),
+                  )
+                : Icon(Icons.lock_clock_rounded,
+                    size: 24, color: AppColors.gold2),
           ),
           const SizedBox(height: 12),
           Text(
-            '$pair — Coming Soon',
+            checking
+                ? (locale.isThai
+                    ? 'กำลังตรวจสอบกระดาน...'
+                    : 'Checking market...')
+                : '$pair — Coming Soon',
             style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -1150,9 +1293,13 @@ class _TradeScreenState extends State<TradeScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            locale.isThai
-                ? 'เปิดเทรดพร้อม TPIX Chain เร็วๆ นี้\nระหว่างนี้เทรดคู่เหรียญหลักได้จริงบน BSC'
-                : 'Trading opens with TPIX Chain launch.\nMeanwhile, trade major pairs live on BSC.',
+            checking
+                ? (locale.isThai
+                    ? 'กำลังอ่านสถานะสัญญาบนเชน TPIX'
+                    : 'Reading contract status on TPIX Chain')
+                : (locale.isThai
+                    ? 'คู่นี้ยังไม่มีสภาพคล่องให้เทรด\nระหว่างนี้เทรดคู่เหรียญหลักได้จริงบน BSC'
+                    : 'This pair has no liquidity to trade yet.\nMeanwhile, trade major pairs live on BSC.'),
             textAlign: TextAlign.center,
             style: GoogleFonts.inter(
               fontSize: 11.5,
@@ -1168,7 +1315,7 @@ class _TradeScreenState extends State<TradeScreen>
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              'TPIX Chain — Coming Soon',
+              checking ? 'TPIX Chain' : 'TPIX Chain — Coming Soon',
               style: GoogleFonts.inter(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
@@ -1183,7 +1330,14 @@ class _TradeScreenState extends State<TradeScreen>
 
   /// Preview ตัวเลขจริงจาก router — You receive / Min received / Fee
   Widget _buildMarketPreview(LocaleProvider locale, MarketProvider market) {
-    final q = _marketQuote;
+    // ไม้ลงได้สองเชน — หยิบตัวเลขจาก quote ที่ตรงกับเชนของคู่นี้
+    final dq = _dexQuote;
+    final bq = _marketQuote;
+    final netOutput = dq?.netOutput ?? bq?.netOutput;
+    final minReceived = dq?.minReceived ?? bq?.minReceived;
+    final feeAmount = dq?.feeAmount ?? bq?.feeAmount;
+    final feeRate = dq?.feeRate ?? bq?.feeRate;
+    final hasQuote = dq != null || bq != null;
     final toSym = _isBuy ? _baseOf(market) : _quoteOf(market);
     final fromSym = _isBuy ? _quoteOf(market) : _baseOf(market);
 
@@ -1225,28 +1379,41 @@ class _TradeScreenState extends State<TradeScreen>
         children: [
           row(
             locale.isThai ? 'จะได้รับ ≈' : 'You receive ≈',
-            q == null ? null : '${_fmtAmount(q.netOutput)} $toSym',
+            hasQuote ? '${_fmtAmount(netOutput!)} $toSym' : null,
             valueColor: AppColors.textPrimary,
           ),
           row(
             locale.isThai ? 'ขั้นต่ำที่ได้รับ' : 'Min received',
-            q == null ? null : '${_fmtAmount(q.minReceived)} $toSym',
+            hasQuote ? '${_fmtAmount(minReceived!)} $toSym' : null,
           ),
           row(
             locale.isThai
-                ? 'ค่าธรรมเนียม (${q?.feeRate.toStringAsFixed(2) ?? '—'}%)'
-                : 'Fee (${q?.feeRate.toStringAsFixed(2) ?? '—'}%)',
-            q == null ? null : '${_fmtAmount(q.feeAmount)} $fromSym',
+                ? 'ค่าธรรมเนียม (${feeRate?.toStringAsFixed(2) ?? '—'}%)'
+                : 'Fee (${feeRate?.toStringAsFixed(2) ?? '—'}%)',
+            hasQuote ? '${_fmtAmount(feeAmount!)} $fromSym' : null,
           ),
+          // ไม้ใหญ่เทียบกับพูลจะดันราคาเอง — บอกก่อนกด ไม่ใช่ให้ไปเห็นตอนได้ของน้อย
+          if (dq != null && dq.priceImpact >= 0.5)
+            row(
+              locale.isThai ? 'ผลต่อราคาพูล' : 'Price impact',
+              '${dq.priceImpact.toStringAsFixed(2)}%',
+              valueColor: dq.priceImpact > 5
+                  ? AppColors.tradingRed
+                  : AppColors.textSecondary,
+            ),
           const SizedBox(height: 4),
           Row(
             children: [
               Icon(Icons.verified_rounded, size: 10, color: AppColors.gold2),
               const SizedBox(width: 4),
               Text(
-                locale.isThai
-                    ? 'ราคาจริงจาก PancakeSwap (BSC)'
-                    : 'Live price from PancakeSwap (BSC)',
+                dq != null
+                    ? (locale.isThai
+                        ? 'ราคาจริงจากพูล TPIX DEX (เชน TPIX) — ค่าธรรมเนียมรวมในราคาแล้ว'
+                        : 'Live pool price on TPIX Chain — fee already in the price')
+                    : (locale.isThai
+                        ? 'ราคาจริงจาก PancakeSwap (BSC)'
+                        : 'Live price from PancakeSwap (BSC)'),
                 style: GoogleFonts.inter(
                     fontSize: 9, color: AppColors.textTertiary),
               ),
@@ -1448,11 +1615,17 @@ class _TradeScreenState extends State<TradeScreen>
       return;
     }
 
+    final dexPair = _dexPairFor(market);
+    if (dexPair != null) {
+      await _executeDexMarketOrder(wallet, market, locale, dexPair);
+      return;
+    }
+
     if (_isTpixPairNow(market)) {
-      // กันไว้อีกชั้น — ฟอร์ม TPIX ถูกแทนด้วย Coming Soon card อยู่แล้ว
+      // กันไว้อีกชั้น — ฟอร์มถูกแทนด้วย Coming Soon card อยู่แล้ว
       _showSnack(locale.isThai
-          ? 'คู่ TPIX เปิดเทรดพร้อม TPIX Chain — เร็วๆ นี้'
-          : 'TPIX pairs open with TPIX Chain — coming soon');
+          ? 'คู่นี้ยังไม่มีพูลบนเชน TPIX — เติมสภาพคล่องที่หน้าเว็บก่อน'
+          : 'This pair has no pool on TPIX Chain yet');
       return;
     }
 
@@ -1701,6 +1874,153 @@ class _TradeScreenState extends State<TradeScreen>
       if (mounted) {
         _showSnack(wallet.error ?? locale.t('common.error'));
       }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  /// Market order เทรดจริงบนเชน TPIX ผ่านพูลของ TPIX DEX
+  ///
+  /// ต่างจากฝั่ง BSC สองเรื่อง:
+  ///   1. ค่าธรรมเนียม 0.3% อยู่ในพูลแล้ว ไม่มีธุรกรรมโอนค่าธรรมเนียมใบที่สอง
+  ///   2. ไม่เทียบกับราคา Binance เพราะพูลนี้เองคือตลาดของคู่นี้
+  ///      — ใช้ price impact แทน (ไม้ใหญ่เกินพูลจะดันราคาเอง)
+  Future<void> _executeDexMarketOrder(
+    WalletProvider wallet,
+    MarketProvider market,
+    LocaleProvider locale,
+    TradingPairInfo pair,
+  ) async {
+    if (!_isMarket) {
+      _showSnack(locale.isThai
+          ? 'คำสั่งตั้งราคายังไม่เปิดบนเชน TPIX — ตอนนี้ใช้ Market'
+          : 'Limit orders are not open on TPIX Chain yet — use Market');
+      return;
+    }
+
+    final amount = double.tryParse(_amountController.text.trim());
+    if (amount == null || amount <= 0) {
+      _showSnack(locale.t('trade.invalid_amount'));
+      return;
+    }
+
+    final base = _baseOf(market);
+    final quoteSym = _quoteOf(market);
+
+    // buy: จ่าย quote เท่ากับ จำนวน base × ราคาตลาดของพูล, sell: จ่าย base ตรง ๆ
+    final poolPrice = market.selectedTicker?.lastPrice ?? 0;
+    if (_isBuy && poolPrice <= 0) {
+      _showSnack(locale.isThai
+          ? 'ราคาพูลยังไม่พร้อม ลองใหม่อีกครั้ง'
+          : 'Pool price unavailable — try again.');
+      return;
+    }
+    final inputAmount = _isBuy ? amount * poolPrice : amount;
+
+    setState(() => _isSubmitting = true);
+
+    final chainId = _dexService.lastConfig.chainId;
+
+    try {
+      final (baseTok, quoteTok) = await _dexTokens(pair, market);
+      final fromTok = _isBuy ? quoteTok : baseTok;
+      final toTok = _isBuy ? baseTok : quoteTok;
+
+      // 1) Quote จริงจาก router ของพูล
+      final swapQuote = await _dexService.getQuote(
+        fromToken: fromTok,
+        toToken: toTok,
+        amount: inputAmount,
+        slippage: wallet.slippage,
+      );
+
+      // 2) กันไม้ที่ดันราคาพูลเกิน 10% — พูลบางเกินกว่าจะรับไม้ขนาดนี้
+      if (swapQuote.priceImpact > 10) {
+        throw SwapException(
+          'This order moves the pool price by ${swapQuote.priceImpact.toStringAsFixed(1)}%. Try a smaller amount.',
+          'คำสั่งนี้ดันราคาพูลไป ${swapQuote.priceImpact.toStringAsFixed(1)}% ลองจำนวนน้อยลง',
+        );
+      }
+
+      // 3) Approve router ถ้า allowance ไม่พอ (เฉพาะโทเคน ไม่ใช่ TPIX เนทีฟ)
+      if (!fromTok.native) {
+        final ok = await _dexService.hasAllowance(
+            fromTok, wallet.address!, swapQuote.amountInWei);
+        if (!ok) {
+          if (mounted) {
+            _showSnack(locale.isThai
+                ? 'กำลังขอ approve ${fromTok.symbol} — ยืนยันในกระเป๋า'
+                : 'Approving ${fromTok.symbol} — confirm in your wallet');
+          }
+          final approveHash = await wallet.sendChainTransaction(
+            chainId: chainId,
+            to: fromTok.address,
+            data: await _dexService.approveCalldata(fromTok.address),
+            summary: 'Approve ${fromTok.symbol} for TPIX DEX router',
+          );
+          if (approveHash == null) {
+            throw const SwapException(
+                'Approval rejected.', 'การ approve ถูกปฏิเสธ');
+          }
+          final approved = await _dexService.waitConfirmed(approveHash);
+          if (!approved) {
+            throw const SwapException(
+              'Approval not confirmed — try again.',
+              'การ approve ยังไม่ยืนยัน ลองใหม่อีกครั้ง',
+            );
+          }
+        }
+      }
+
+      // 4) ส่ง swap จริง — service บันทึกฝั่งเซิร์ฟเวอร์ให้แล้ว
+      final actionText =
+          '${_isBuy ? 'Buy' : 'Sell'} $base — TPIX Trade (TPIX Chain)';
+      final result = await _dexService.executeMarketSwap(
+        quote: swapQuote,
+        walletAddress: wallet.address!,
+        sendTx: ({required String to, Uint8List? data, BigInt? value}) =>
+            wallet.sendChainTransaction(
+          chainId: chainId,
+          to: to,
+          data: data,
+          value: value,
+          summary: actionText,
+        ),
+      );
+
+      if (!mounted) return;
+
+      _amountController.clear();
+      _dexQuote = null;
+      final received =
+          '${_fmtAmount(swapQuote.netOutput)} ${toTok.symbol}';
+      _showSnack(
+        result.confirmed
+            ? (locale.isThai
+                ? '${_isBuy ? 'ซื้อ' : 'ขาย'}สำเร็จ ≈ $received บนเชน TPIX'
+                : '${_isBuy ? 'Bought' : 'Sold'} ≈ $received on TPIX Chain')
+            : (locale.isThai
+                ? 'ส่งธุรกรรมแล้ว กำลังรอยืนยันบนเชน'
+                : 'Transaction sent — awaiting confirmation'),
+        isSuccess: result.confirmed,
+        actionLabel: locale.isThai ? 'ดู tx' : 'View tx',
+        onAction: () => launchUrl(
+          Uri.parse(result.explorerUrl),
+          mode: LaunchMode.externalApplication,
+        ),
+      );
+
+      // Refresh ยอดจริงจากเชน + ฟีดของคู่
+      _dexBalanceKey = null;
+      _loadDexBalances();
+      market.loadOrderBook();
+      wallet.loadPortfolio();
+      // ป้องกันคนอ่านตัวเลขเก่า — quoteSym ใช้เฉพาะข้อความ ไม่ได้ใช้คำนวณ
+      debugPrint('TPIX DEX order done: $base/$quoteSym');
+    } on SwapException catch (e) {
+      if (mounted) _showSnack(e.message(locale.isThai));
+    } catch (_) {
+      if (mounted) _showSnack(wallet.error ?? locale.t('common.error'));
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }

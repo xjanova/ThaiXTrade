@@ -17,6 +17,15 @@ class ApiConstants {
   // ── Trading Pairs ──
   static const String pairs = '/market/pairs';
 
+  // ── TPIX DEX (AMM บนเชน 4289) ──
+  // config บอกที่อยู่สัญญา + ready — แอปต้อง fail-closed เมื่อ ready = false
+  static const String dexConfig = '/dex/config';
+  static const String dexPairs = '/dex/pairs';
+  static String dexTicker(String symbol) => '/dex/ticker/$symbol';
+  static String dexKlines(String symbol) => '/dex/klines/$symbol';
+  static String dexOrderbook(String symbol) => '/dex/orderbook/$symbol';
+  static String dexTrades(String symbol) => '/dex/trades/$symbol';
+
   // ── Wallet ──
   static const String walletConnect = '/wallet/connect';
   static const String walletSign = '/wallet/sign';
