@@ -819,7 +819,11 @@
 /* แถบบนสุดของหน้า = โครงหน้าต่าง เตี้ยพอที่จะเป็นโลหะได้ทั้งแถบ */
 [data-theme='xp-silver'] .sticky.top-0.glass-dark {
     background: var(--xp-bar) !important;
+    /* แถบติดขอบจอ: ขอบเฉพาะด้านล่าง — กฎ .glass-dark ด้านบนใส่ขอบรอบ 4 ด้าน
+       และมุมมน พอมาอยู่ที่ขอบจอจะเห็นเป็น "การ์ดลอย" ไม่ใช่แถบหัวหน้าต่าง */
+    border: 0 !important;
     border-bottom: 1px solid #9494ab !important;
+    border-radius: 0 !important;
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.95),
         inset 0 -1px 0 rgba(255, 255, 255, 0.5),

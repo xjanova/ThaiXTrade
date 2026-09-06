@@ -158,7 +158,10 @@ const handleDisconnect = () => {
 </script>
 
 <template>
-    <nav class="sticky top-0 z-40 glass-dark border-b border-white/5">
+    <!-- rounded-none: .glass-dark ในระบบออกแบบใส่ rounded-2xl มาให้ทุกที่
+         แต่แถบนี้เต็มความกว้างและติดขอบบนจอ มุมมนจะเห็นเป็นมุมที่ซ้าย-ขวาบน
+         (ชัดมากบนธีมสว่าง และตอนเลื่อนหน้าจะเห็นเนื้อหาลอดมุม) แถบติดขอบต้องเหลี่ยม -->
+    <nav class="sticky top-0 z-40 glass-dark border-b border-white/5 rounded-none">
         <div class="max-w-[1920px] mx-auto px-4 lg:px-6">
             <div class="flex items-center justify-between h-16">
                 <!-- Left: Logo & Toggle -->
