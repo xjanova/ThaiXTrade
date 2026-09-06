@@ -733,3 +733,206 @@
 [data-theme='xp-silver'] .page-art__media {
     opacity: 0.035 !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   XP Silver — ผิวโลหะ
+   
+   สิ่งที่ทำให้ XP ดู "เป็นโลหะ" ไม่ใช่แค่สีเทา แต่เป็นสองอย่างนี้:
+   
+   1) ไล่เฉด "หลายสต็อป" ไม่ใช่สองสี — มีแถบสว่างเด้งที่ราว 8% จากบน
+      แล้วจบด้วยเส้นเข้มคมที่ก้นสุด นั่นคือแสงที่ตกบนแผ่นโลหะโค้ง
+   2) บีเวลสองชั้นด้วย inset shadow — ขอบบน-ซ้ายสว่าง ขอบล่าง-ขวาเข้ม
+      ซ้อนอีกวงที่ระยะ 2px ทำให้ขอบดูหนาเป็นวัตถุจริง ไม่ใช่เส้นวาด
+   
+   ค่าที่ใช้ตั้งจากโครงสร้างนั้น ปรับโทนให้เข้ากับเงินอมน้ำเงินของธีมนี้
+   ════════════════════════════════════════════════════════════════════ */
+
+[data-theme='xp-silver'] {
+    /* แผ่นโลหะ — ใช้ซ้ำทุกพื้นผิว */
+    --xp-plate: linear-gradient(180deg,
+        #fdfdff 0%, #f4f4f9 8%, #eaeaf2 55%, #dedee9 94%, #cbcbd9 100%);
+    /* แถบหัว — เข้มกว่าแผ่น ให้อ่านเป็นคนละระนาบ */
+    --xp-bar: linear-gradient(180deg,
+        #f9f9fd 0%, #eaeaf3 10%, #d8d8e5 60%, #c6c6d6 92%, #adadc2 100%);
+    /* ปุ่ม — สังเกตว่า "บนสุด" เข้มกว่าแถบถัดมา นั่นคือขอบในของ XP */
+    --xp-button: linear-gradient(180deg,
+        #ccccd8 0%, #f6f6fa 8%, #ececf4 55%, #e3e3ed 94%, #f4f4f9 100%);
+    --xp-button-active: linear-gradient(180deg,
+        #b9b9c9 0%, #d5d5e2 10%, #e2e2ec 90%, #eaeaf2 100%);
+    /* ปุ่มหลัก — ฟ้าไฮไลต์ ไล่เฉดแบบเดียวกัน */
+    --xp-accent-plate: linear-gradient(180deg,
+        #6f9ce4 0%, #3f7ad0 9%, #2f66b8 55%, #275aa5 94%, #1e4a8c 100%);
+
+    /* บีเวลนูน 2 ชั้น */
+    --xp-bevel:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        inset 1px 0 0 rgba(255, 255, 255, 0.7),
+        inset 0 2px 0 rgba(255, 255, 255, 0.45),
+        inset -1px 0 0 rgba(92, 92, 120, 0.22),
+        inset 0 -1px 0 rgba(92, 92, 120, 0.38),
+        inset 0 -2px 0 rgba(92, 92, 120, 0.14);
+    /* บีเวลกลับด้าน = กดลงไป */
+    --xp-bevel-in:
+        inset 0 1px 0 rgba(92, 92, 120, 0.45),
+        inset 1px 0 0 rgba(92, 92, 120, 0.3),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.85);
+    /* ช่องกรอกของ XP เป็นร่องจม ไม่ใช่ปุ่มนูน */
+    --xp-sunken:
+        inset 1px 1px 0 rgba(92, 92, 120, 0.5),
+        inset -1px -1px 0 rgba(255, 255, 255, 0.95);
+
+    --xp-edge: #a3a3b8;
+}
+
+/* ── พื้นผิวการ์ด/แผง ───────────────────────────────────────
+   สำคัญ: แสงสะท้อนถูก "ตรึงความสูง" ไว้ 30px ไม่ยืดตามกล่อง
+   เพราะโลหะของ XP อยู่บนโครงที่เตี้ย (แถบหัว 25px, ปุ่ม 23px)
+   ถ้าปล่อยให้ไล่เฉดยาวทั้งการ์ดสูง 400px มันจะจืดจนไม่เหลือความเป็นโลหะ
+   ผลลัพธ์: การ์ดได้แถบโลหะด้านบน + ตัวกล่องเรียบ = หน้าต่าง XP จริง ๆ   */
+
+[data-theme='xp-silver'] .glass,
+[data-theme='xp-silver'] .glass-sm,
+[data-theme='xp-silver'] .glass-card,
+[data-theme='xp-silver'] .glass-dark,
+[data-theme='xp-silver'] .glass-brand,
+[data-theme='xp-silver'] .trade-card__shell {
+    background:
+        linear-gradient(180deg,
+            #ffffff 0%, #f7f7fc 30%, #ebebf4 72%, #dedeea 100%)
+            top / 100% 30px no-repeat,
+        #f4f4f9 !important;
+    border: 1px solid var(--xp-edge) !important;
+    box-shadow: var(--xp-bevel), 0 1px 2px rgba(30, 30, 50, 0.14) !important;
+    backdrop-filter: none !important;
+}
+
+/* แถบบนสุดของหน้า = โครงหน้าต่าง เตี้ยพอที่จะเป็นโลหะได้ทั้งแถบ */
+[data-theme='xp-silver'] .sticky.top-0.glass-dark {
+    background: var(--xp-bar) !important;
+    border-bottom: 1px solid #9494ab !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.5),
+        0 1px 3px rgba(30, 30, 50, 0.18) !important;
+}
+
+/* หัวการ์ดในหน้าเทรด = แถบหัวหน้าต่าง */
+[data-theme='xp-silver'] .trade-card__head,
+[data-theme='xp-silver'] .trade-card__title-row {
+    background: var(--xp-bar) !important;
+    border-bottom: 1px solid var(--xp-edge) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+/* ── ปุ่ม — ทรงเดียวกับปุ่ม Start ของ XP ────────────────────────
+   ลายเซ็นของปุ่ม Start ไม่ใช่สีเขียว แต่เป็น "เจล" 3 อย่างนี้:
+     1) รอยแบ่งมันวาวคมกลางปุ่ม — ครึ่งบนฉาบขาวโปร่ง ครึ่งล่างคล้ำลง
+        ตัดกันตรง ๆ ที่ 50% ไม่ไล่ค่อย ๆ นั่นคือเงาสะท้อนบนผิวโค้ง
+     2) ทรงแคปซูล มนจนสุด
+     3) ขอบบนสว่างจ้า ขอบล่างจมเงา ทำให้ดูอวบขึ้นมาจากพื้น
+   สีไม่ใช้เขียวของ XP — อิงโทนของเราเอง (ฟ้าไฮไลต์สำหรับปุ่มหลัก
+   เงินสำหรับปุ่มรอง) ให้เป็นของ TPIX ไม่ใช่ของวินโดวส์               */
+
+[data-theme='xp-silver'] .btn,
+[data-theme='xp-silver'] .btn-secondary,
+[data-theme='xp-silver'] .btn-ghost,
+[data-theme='xp-silver'] .btn-icon,
+[data-theme='xp-silver'] .btn-primary,
+[data-theme='xp-silver'] .btn-brand,
+[data-theme='xp-silver'] .btn-success,
+[data-theme='xp-silver'] .btn-danger {
+    border-radius: 999px !important;
+    background-image:
+        linear-gradient(180deg,
+            rgba(255, 255, 255, 0.52) 0%,
+            rgba(255, 255, 255, 0.16) 49.9%,
+            rgba(0, 0, 0, 0.05) 50%,
+            rgba(0, 0, 0, 0.17) 100%),
+        var(--xp-gel-tone) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.85),
+        inset 0 -2px 3px rgba(20, 20, 40, 0.28),
+        0 1px 2px rgba(20, 20, 40, 0.3) !important;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.28);
+}
+
+/* ปุ่มรอง — เจลเงิน ตัวหนังสือเข้ม จึงไม่ต้องมีเงาตัวอักษร */
+[data-theme='xp-silver'] .btn,
+[data-theme='xp-silver'] .btn-secondary,
+[data-theme='xp-silver'] .btn-ghost,
+[data-theme='xp-silver'] .btn-icon {
+    --xp-gel-tone: linear-gradient(180deg, #f2f2f7 0%, #dcdce8 50%, #c3c3d4 100%);
+    border: 1px solid var(--xp-edge) !important;
+    color: rgb(var(--c-dark-100)) !important;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+/* ปุ่มหลัก — เจลฟ้าไฮไลต์ */
+[data-theme='xp-silver'] .btn-primary,
+[data-theme='xp-silver'] .btn-brand {
+    --xp-gel-tone: linear-gradient(180deg, #5f92e0 0%, #316ac5 50%, #22508f 100%);
+    border: 1px solid #1b4380 !important;
+    color: #fff !important;
+}
+
+[data-theme='xp-silver'] .btn-success {
+    --xp-gel-tone: linear-gradient(180deg, #35b06d 0%, #12874e 50%, #0b6038 100%);
+    border: 1px solid #0a5231 !important;
+    color: #fff !important;
+}
+
+[data-theme='xp-silver'] .btn-danger {
+    --xp-gel-tone: linear-gradient(180deg, #dc5f55 0%, #c4342a 50%, #92251d 100%);
+    border: 1px solid #7d1e17 !important;
+    color: #fff !important;
+}
+
+/* เรืองอำพันตอนชี้ — ลายเซ็นอีกอย่างของ XP ที่บอกว่า "กดได้" */
+[data-theme='xp-silver'] .btn:hover,
+[data-theme='xp-silver'] .btn-secondary:hover,
+[data-theme='xp-silver'] .btn-ghost:hover,
+[data-theme='xp-silver'] .btn-icon:hover,
+[data-theme='xp-silver'] .btn-primary:hover,
+[data-theme='xp-silver'] .btn-brand:hover {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        inset 0 0 0 1px rgba(253, 216, 137, 0.85),
+        inset 0 0 10px 2px rgba(251, 199, 97, 0.5),
+        inset 0 -2px 3px rgba(20, 20, 40, 0.24),
+        0 1px 3px rgba(20, 20, 40, 0.32) !important;
+}
+
+/* กดแล้วจมลงไป — รอยมันวาวหายไปด้วย เพราะผิวไม่โค้งรับแสงแล้ว */
+[data-theme='xp-silver'] .btn:active,
+[data-theme='xp-silver'] .btn-secondary:active,
+[data-theme='xp-silver'] .btn-primary:active,
+[data-theme='xp-silver'] .btn-brand:active,
+[data-theme='xp-silver'] .btn-success:active,
+[data-theme='xp-silver'] .btn-danger:active {
+    background-image:
+        linear-gradient(180deg, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0.04) 100%),
+        var(--xp-gel-tone) !important;
+    box-shadow:
+        inset 0 2px 3px rgba(20, 20, 40, 0.38),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+
+/* ── ช่องกรอก = ร่องจม ─────────────────────────────────────── */
+[data-theme='xp-silver'] .trading-input,
+[data-theme='xp-silver'] input[type='text'],
+[data-theme='xp-silver'] input[type='number'],
+[data-theme='xp-silver'] input[type='search'],
+[data-theme='xp-silver'] input[type='url'],
+[data-theme='xp-silver'] textarea,
+[data-theme='xp-silver'] select {
+    background: #ffffff !important;
+    border: 1px solid #8f8fa6 !important;
+    box-shadow: var(--xp-sunken) !important;
+}
+
+/* ── แถบเมนู/นำทาง ─────────────────────────────────────────── */
+[data-theme='xp-silver'] .nav-link:hover,
+[data-theme='xp-silver'] .nav-link.active {
+    background: var(--xp-bar) !important;
+    box-shadow: var(--xp-bevel) !important;
+}
