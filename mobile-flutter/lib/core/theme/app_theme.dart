@@ -170,9 +170,13 @@ class AppTheme {
           foregroundColor: AppColors.goldTextOn,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusLg),
-          ),
+          // ธีมโลหะใช้ทรงแคปซูลตามปุ่ม Start ของ XP — ลายเซ็นของปุ่มนั้น
+          // คือรูปทรงกับผิวเจล ไม่ใช่สีเขียว สีจึงยังอิงโทนของเราเอง
+          shape: AppColors.palette.metal
+              ? const StadiumBorder()
+              : RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(radiusLg),
+                ),
           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
       ),

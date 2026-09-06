@@ -36,16 +36,32 @@ class AppGradients {
 
   /// Metallic glass card fill — base hero card
   /// linear(158deg white8% → white1.5% @44% → black28%)
-  static LinearGradient get glassCard => LinearGradient(
-    colors: [
-      AppColors.cardBaseTop,
-      AppColors.cardBaseMid,
-      AppColors.cardBaseBottom,
-    ],
-    stops: [0.0, 0.44, 1.0],
-    begin: Alignment(-0.6, -1.0), // ~158deg
-    end: Alignment(0.6, 1.0),
-  );
+  static LinearGradient get glassCard => AppColors.palette.metal
+      // แผ่นโลหะ: แสงมาตามแนวตั้ง สว่างเกือบทั้งแผ่น แล้ว "ตกวูบ" ที่ 86%
+      // เป็นขอบเข้มคมด้านล่าง — จังหวะตกที่ท้ายสุดนี่แหละที่ทำให้ตาอ่านว่า
+      // เป็นโลหะ ถ้าไล่เฉลี่ยทั้งแผ่นจะได้แค่เทาไล่สี
+      ? LinearGradient(
+          colors: [
+            AppColors.insetHighlight,
+            AppColors.cardBaseTop,
+            AppColors.cardBaseMid,
+            AppColors.cardBaseBottom,
+          ],
+          stops: const [0.0, 0.10, 0.86, 1.0],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        )
+      // กระจกฝ้า: รับแสงเฉียงทั้งแผ่น
+      : LinearGradient(
+          colors: [
+            AppColors.cardBaseTop,
+            AppColors.cardBaseMid,
+            AppColors.cardBaseBottom,
+          ],
+          stops: const [0.0, 0.44, 1.0],
+          begin: const Alignment(-0.6, -1.0), // ~158deg
+          end: const Alignment(0.6, 1.0),
+        );
 
   /// Subtle list-row fill — linear(160deg white4.5% → black20%)
   static LinearGradient get cardSubtle => LinearGradient(

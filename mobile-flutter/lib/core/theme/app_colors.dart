@@ -32,6 +32,13 @@ class TradePalette {
   /// ใช้ตั้ง Brightness ของ ThemeData + สีไอคอนแถบสถานะ
   final bool isDark;
 
+  /// ผิวการ์ดเป็นแผ่นโลหะ (ไล่แสงแนวตั้ง จบด้วยขอบเข้มคม) ไม่ใช่กระจกฝ้า
+  ///
+  /// แยกเป็นธงเพราะรูปทรงของแสงต่างกันคนละเรื่อง ไม่ใช่แค่เปลี่ยนสี:
+  /// กระจกรับแสงเฉียง ๆ ทั้งแผ่น ส่วนโลหะรับแสงเป็นแถบตามแนวนอน
+  /// แล้วตัดจบที่ขอบล่าง — สลับสีอย่างเดียวไม่มีทางได้ความรู้สึกนั้น
+  final bool metal;
+
   // ── พื้นหลัง ───────────────────────────────────
   final Color bgPrimary;
   final Color bgSecondary;
@@ -91,6 +98,7 @@ class TradePalette {
     required this.taglineTh,
     required this.taglineEn,
     required this.isDark,
+    this.metal = false,
     required this.bgPrimary,
     required this.bgSecondary,
     required this.bgTertiary,
@@ -200,6 +208,7 @@ const TradePalette kXpSilverPalette = TradePalette(
   taglineTh: 'โครเมียมเงิน ขอบนูน 3 มิติ',
   taglineEn: 'Silver chrome · 3D bevels',
   isDark: false,
+  metal: true,
 
   bgPrimary: Color(0xFFF1F1F5),
   bgSecondary: Color(0xFFE8E8F0),
