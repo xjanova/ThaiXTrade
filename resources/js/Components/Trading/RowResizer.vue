@@ -161,8 +161,8 @@ onBeforeUnmount(() => {
 .row-resizer--active .row-resizer__grip {
     @apply w-28;
     height: 3px;
-    background: linear-gradient(90deg, #8b5cf6, #06b6d4);
-    box-shadow: 0 0 10px rgba(6, 182, 212, 0.65);
+    background: linear-gradient(90deg, rgb(var(--c-accent-500)), rgb(var(--c-primary-500)));
+    box-shadow: 0 0 10px rgb(var(--c-primary-500) / 0.65);
 }
 
 .row-resizer:focus-visible {

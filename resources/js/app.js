@@ -8,6 +8,7 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { createPinia } from 'pinia';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { initAudio } from '@/Composables/useSounds';
+import { useTheme } from '@/Composables/useTheme';
 import { installBugReporter } from '@/utils/bugReporter';
 
 import '../css/app.css';
@@ -20,6 +21,10 @@ const appName = import.meta.env.VITE_APP_NAME || 'TPIX TRADE';
 
 // Initialize audio on first user interaction
 initAudio();
+
+// ธีมถูกติดไปแล้วโดยสคริปต์ใน <head> — ตรงนี้แค่ sync ค่าเข้าสถานะของ Vue
+// ให้ปุ่มเลือกธีมรู้ว่าตอนนี้เลือกอันไหนอยู่
+useTheme().init();
 
 createInertiaApp({
     title: (title) => title ? `${title} - ${appName}` : appName,

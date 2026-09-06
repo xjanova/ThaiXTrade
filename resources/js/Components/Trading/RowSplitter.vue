@@ -143,8 +143,8 @@ onBeforeUnmount(() => {
 .row-splitter--active .row-splitter__grip {
     @apply h-16;
     width: 3px;
-    background: linear-gradient(180deg, #8b5cf6, #06b6d4);
-    box-shadow: 0 0 10px rgba(6, 182, 212, 0.65);
+    background: linear-gradient(180deg, rgb(var(--c-accent-500)), rgb(var(--c-primary-500)));
+    box-shadow: 0 0 10px rgb(var(--c-primary-500) / 0.65);
 }
 
 .row-splitter:focus-visible {

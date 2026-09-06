@@ -511,14 +511,14 @@ const formatDate = (iso) => {
 }
 
 .alert-success {
-    background: rgba(0, 200, 83, 0.12);
-    border: 1px solid rgba(0, 200, 83, 0.3);
+    background: rgb(var(--c-trading-green) / 0.12);
+    border: 1px solid rgb(var(--c-trading-green) / 0.3);
     color: #6ee7a8;
 }
 
 .alert-error {
-    background: rgba(255, 23, 68, 0.12);
-    border: 1px solid rgba(255, 23, 68, 0.3);
+    background: rgb(var(--c-trading-red) / 0.12);
+    border: 1px solid rgb(var(--c-trading-red) / 0.3);
     color: #ff8a9b;
 }
 
@@ -528,8 +528,8 @@ const formatDate = (iso) => {
 }
 
 .status-card.status-pending { border-left-color: #f59e0b; }
-.status-card.status-approved { border-left-color: #00c853; }
-.status-card.status-rejected { border-left-color: #ff1744; }
+.status-card.status-approved { border-left-color: rgb(var(--c-trading-green)); }
+.status-card.status-rejected { border-left-color: rgb(var(--c-trading-red)); }
 
 .status-head {
     display: flex;
@@ -570,8 +570,8 @@ const formatDate = (iso) => {
     margin-top: 0.85rem;
     padding: 0.85rem;
     border-radius: 12px;
-    background: rgba(255, 23, 68, 0.08);
-    border: 1px solid rgba(255, 23, 68, 0.25);
+    background: rgb(var(--c-trading-red) / 0.08);
+    border: 1px solid rgb(var(--c-trading-red) / 0.25);
 }
 
 .reject-box strong {
@@ -619,7 +619,7 @@ const formatDate = (iso) => {
 }
 
 .feature-check--on {
-    background: rgba(0, 200, 83, 0.18);
+    background: rgb(var(--c-trading-green) / 0.18);
     color: #6ee7a8;
 }
 
@@ -774,7 +774,7 @@ const formatDate = (iso) => {
 
 .doc-drop--filled {
     border-style: solid;
-    border-color: rgba(0, 200, 83, 0.4);
+    border-color: rgb(var(--c-trading-green) / 0.4);
 }
 
 .doc-input {
@@ -879,8 +879,8 @@ const formatDate = (iso) => {
 .btn-danger-ghost {
     padding: 0.65rem 1rem;
     border-radius: 10px;
-    background: rgba(255, 23, 68, 0.1);
-    border: 1px solid rgba(255, 23, 68, 0.3);
+    background: rgb(var(--c-trading-red) / 0.1);
+    border: 1px solid rgb(var(--c-trading-red) / 0.3);
     color: #ff8a9b;
     font-size: 0.87rem;
     cursor: pointer;
@@ -911,8 +911,8 @@ const formatDate = (iso) => {
     font-size: 0.75rem;
 }
 
-.history-status.status-approved { background: rgba(0, 200, 83, 0.15); color: #6ee7a8; }
-.history-status.status-rejected { background: rgba(255, 23, 68, 0.15); color: #ff8a9b; }
+.history-status.status-approved { background: rgb(var(--c-trading-green) / 0.15); color: #6ee7a8; }
+.history-status.status-rejected { background: rgb(var(--c-trading-red) / 0.15); color: #ff8a9b; }
 .history-status.status-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
 
 .history-date {

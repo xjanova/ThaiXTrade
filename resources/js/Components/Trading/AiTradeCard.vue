@@ -525,10 +525,10 @@ watch(() => walletStore.address, (address) => {
     inset: -60% -30%;
     background: conic-gradient(
         from 0deg,
-        rgba(139, 92, 246, 0.22),
-        rgba(6, 182, 212, 0.22),
+        rgb(var(--c-accent-500) / 0.22),
+        rgb(var(--c-primary-500) / 0.22),
         rgba(249, 115, 22, 0.16),
-        rgba(139, 92, 246, 0.22)
+        rgb(var(--c-accent-500) / 0.22)
     );
     filter: blur(42px);
     animation: aiSpin 18s linear infinite;
@@ -561,8 +561,8 @@ watch(() => walletStore.address, (address) => {
 
 .ai-orb {
     @apply w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0;
-    background: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 55%, #f97316 100%);
-    box-shadow: 0 0 22px rgba(6, 182, 212, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    background: linear-gradient(135deg, rgb(var(--c-accent-500)) 0%, rgb(var(--c-primary-500)) 55%, #f97316 100%);
+    box-shadow: 0 0 22px rgb(var(--c-primary-500) / 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .ai-orb--sm {

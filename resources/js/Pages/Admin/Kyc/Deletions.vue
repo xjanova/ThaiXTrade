@@ -201,8 +201,8 @@ const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateS
 }
 
 .alert-success {
-    background: rgba(0, 200, 83, 0.12);
-    border: 1px solid rgba(0, 200, 83, 0.3);
+    background: rgb(var(--c-trading-green) / 0.12);
+    border: 1px solid rgb(var(--c-trading-green) / 0.3);
     color: #6ee7a8;
 }
 
@@ -260,8 +260,8 @@ const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateS
 }
 
 .badge-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
-.badge-completed { background: rgba(0, 200, 83, 0.15); color: #6ee7a8; }
-.badge-rejected { background: rgba(255, 23, 68, 0.15); color: #ff8a9b; }
+.badge-completed { background: rgb(var(--c-trading-green) / 0.15); color: #6ee7a8; }
+.badge-rejected { background: rgb(var(--c-trading-red) / 0.15); color: #ff8a9b; }
 
 .files-count {
     display: block;
@@ -290,7 +290,7 @@ const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateS
 }
 
 .reject-row td {
-    background: rgba(255, 23, 68, 0.04);
+    background: rgb(var(--c-trading-red) / 0.04);
 }
 
 .reject-row label {
@@ -324,7 +324,7 @@ const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateS
 .btn-delete {
     padding: 0.4rem 0.85rem;
     border-radius: 8px;
-    background: rgba(255, 23, 68, 0.85);
+    background: rgb(var(--c-trading-red) / 0.85);
     color: #fff;
     font-size: 0.8rem;
     font-weight: 600;
@@ -335,7 +335,7 @@ const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateS
 .btn-reject {
     padding: 0.5rem 1rem;
     border-radius: 8px;
-    background: rgba(255, 23, 68, 0.85);
+    background: rgb(var(--c-trading-red) / 0.85);
     color: #fff;
     font-size: 0.83rem;
     border: none;

@@ -103,7 +103,7 @@ async function toggle() {
     display: flex; align-items: center; gap: 0.9rem; width: 100%;
     padding: 0.85rem 1.1rem; text-align: left; cursor: pointer;
     border: 1px solid rgba(233, 174, 40, 0.28);
-    background: linear-gradient(90deg, rgba(233, 174, 40, 0.09), rgba(34, 211, 238, 0.05));
+    background: linear-gradient(90deg, rgba(233, 174, 40, 0.09), rgb(var(--c-primary-400) / 0.05));
     border-radius: 0.85rem;
     transition: border-color 0.2s, background 0.2s;
 }

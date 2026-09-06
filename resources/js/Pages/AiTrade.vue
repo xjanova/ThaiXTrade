@@ -1325,10 +1325,10 @@ onUnmounted(() => bot.stopBrowserLoop());
     inset: -80% -20%;
     background: conic-gradient(
         from 0deg,
-        rgba(139, 92, 246, 0.20),
-        rgba(6, 182, 212, 0.20),
+        rgb(var(--c-accent-500) / 0.20),
+        rgb(var(--c-primary-500) / 0.20),
         rgba(249, 115, 22, 0.14),
-        rgba(139, 92, 246, 0.20)
+        rgb(var(--c-accent-500) / 0.20)
     );
     filter: blur(70px);
     animation: aiHeroSpin 26s linear infinite;

@@ -10,9 +10,11 @@ import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTranslation } from '@/Composables/useTranslation';
+import { useTheme } from '@/Composables/useTheme';
 import { isMobile, openTpixApp, downloadTpixApp, TPIX_APP } from '@/utils/mobileWallet';
 
-const { t } = useTranslation();
+const { t, locale } = useTranslation();
+const { themes, current: currentTheme, setTheme } = useTheme();
 const walletStore = useWalletStore();
 const mobile = isMobile();
 const isConnected = computed(() => walletStore.isConnected);
@@ -109,6 +111,49 @@ onMounted(() => {
             <div class="mb-8">
                 <h1 class="text-3xl font-bold text-white mb-2">{{ t('settings.title') }}</h1>
                 <p class="text-dark-400">{{ t('settings.subtitle') }}</p>
+            </div>
+
+            <!-- ธีม -->
+            <div class="glass-dark rounded-2xl p-6 mb-6">
+                <h2 class="text-lg font-semibold text-white mb-2">{{ locale === 'th' ? 'ธีม' : 'Theme' }}</h2>
+                <p class="text-dark-400 text-sm mb-5">
+                    {{ locale === 'th' ? 'เปลี่ยนหน้าตาทั้งเว็บ จำไว้ในเครื่องนี้' : 'Changes the whole site. Remembered on this device.' }}
+                </p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <button
+                        v-for="th in themes"
+                        :key="th.id"
+                        type="button"
+                        @click="setTheme(th.id)"
+                        :class="[
+                            'text-left rounded-xl p-4 border transition-all',
+                            currentTheme === th.id
+                                ? 'border-primary-500 bg-primary-500/10'
+                                : 'border-white/10 hover:border-white/25 hover:bg-white/5',
+                        ]"
+                    >
+                        <div class="flex items-center gap-3 mb-3">
+                            <!-- ตัวอย่างสี: พื้น / สีเน้น / ขึ้น / ลง -->
+                            <span class="flex rounded-lg overflow-hidden border border-white/15 shrink-0">
+                                <span v-for="c in th.swatch" :key="c"
+                                      class="w-5 h-8 block" :style="{ backgroundColor: c }"></span>
+                            </span>
+                            <span class="min-w-0">
+                                <span class="block text-white font-semibold truncate">
+                                    {{ locale === 'th' ? th.nameTh : th.nameEn }}
+                                </span>
+                                <span class="block text-dark-400 text-xs truncate">
+                                    {{ locale === 'th' ? th.taglineTh : th.taglineEn }}
+                                </span>
+                            </span>
+                            <svg v-if="currentTheme === th.id" class="w-5 h-5 text-primary-400 ml-auto shrink-0"
+                                 fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                    </button>
+                </div>
             </div>
 
             <!-- Transaction Settings -->

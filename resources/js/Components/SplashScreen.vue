@@ -99,7 +99,7 @@ onMounted(() => {
     align-items: center;
     justify-content: center;
     /* transparent dark — ไม่มี solid background */
-    background: radial-gradient(ellipse at center, rgba(6, 182, 212, 0.03) 0%, rgba(2, 6, 23, 0.98) 70%);
+    background: radial-gradient(ellipse at center, rgb(var(--c-primary-500) / 0.03) 0%, rgb(var(--c-dark-950) / 0.98) 70%);
 }
 
 .splash-glow {
@@ -107,7 +107,7 @@ onMounted(() => {
     width: 300px;
     height: 300px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, rgba(139, 92, 246, 0.08) 40%, transparent 70%);
+    background: radial-gradient(circle, rgb(var(--c-primary-500) / 0.15) 0%, rgb(var(--c-accent-500) / 0.08) 40%, transparent 70%);
     filter: blur(60px);
     animation: splash-glow-pulse 2s ease-in-out infinite;
 }
@@ -151,7 +151,7 @@ onMounted(() => {
     width: 80px;
     height: 80px;
     object-fit: contain;
-    filter: drop-shadow(0 0 20px rgba(6, 182, 212, 0.4)) drop-shadow(0 0 40px rgba(139, 92, 246, 0.2));
+    filter: drop-shadow(0 0 20px rgb(var(--c-primary-500) / 0.4)) drop-shadow(0 0 40px rgb(var(--c-accent-500) / 0.2));
     /* ไม่มี background — transparent */
 }
 
@@ -160,7 +160,7 @@ onMounted(() => {
     inset: -8px;
     border-radius: 50%;
     border: 2px solid transparent;
-    background: conic-gradient(from 0deg, rgba(6, 182, 212, 0.6), rgba(139, 92, 246, 0.4), rgba(249, 115, 22, 0.3), rgba(6, 182, 212, 0.6)) border-box;
+    background: conic-gradient(from 0deg, rgb(var(--c-primary-500) / 0.6), rgb(var(--c-accent-500) / 0.4), rgba(249, 115, 22, 0.3), rgb(var(--c-primary-500) / 0.6)) border-box;
     -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
@@ -188,7 +188,7 @@ onMounted(() => {
     font-size: 1.5rem;
     font-weight: 700;
     letter-spacing: 0.15em;
-    background: linear-gradient(135deg, #22d3ee 0%, #a78bfa 50%, #f97316 100%);
+    background: linear-gradient(135deg, rgb(var(--c-primary-400)) 0%, rgb(var(--c-accent-400)) 50%, #f97316 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -196,7 +196,7 @@ onMounted(() => {
 
 .splash-subtitle {
     font-size: 0.75rem;
-    color: rgba(148, 163, 184, 0.7);
+    color: rgb(var(--c-dark-400) / 0.7);
     margin-top: 4px;
     letter-spacing: 0.2em;
     text-transform: uppercase;
@@ -225,7 +225,7 @@ onMounted(() => {
 .splash-loader-fill {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #06b6d4, #8b5cf6, #f97316);
+    background: linear-gradient(90deg, rgb(var(--c-primary-500)), rgb(var(--c-accent-500)), #f97316);
     border-radius: 2px;
     animation: splash-load 2s ease-in-out forwards;
 }
@@ -241,7 +241,7 @@ onMounted(() => {
     position: absolute;
     bottom: 32px;
     font-size: 0.65rem;
-    color: rgba(100, 116, 139, 0.5);
+    color: rgb(var(--c-dark-500) / 0.5);
     letter-spacing: 0.1em;
     opacity: 0;
     transform: translateY(8px);

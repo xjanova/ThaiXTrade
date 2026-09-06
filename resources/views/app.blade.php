@@ -56,7 +56,17 @@
     @inertiaHead
 
     <!-- Google Translate removed: caused visual glitches (empty floating box) -->
-</head>
+        {{-- ติดธีมก่อนวาดเฟรมแรก ไม่งั้นหน้าเว็บจะวาดธีมเดิมแวบหนึ่งแล้วกระพริบ
+             เป็นธีมที่ผู้ใช้เลือกไว้ (flash of wrong theme) --}}
+        <script>
+            (function () {
+                try {
+                    var t = localStorage.getItem('tpix_theme');
+                    if (t && t !== 'classic') document.documentElement.setAttribute('data-theme', t);
+                } catch (e) {}
+            })();
+        </script>
+    </head>
 <body class="font-sans antialiased bg-dark-950 text-white">
     @inertia
 

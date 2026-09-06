@@ -133,7 +133,7 @@ onMounted(async () => {
                 <div class="absolute inset-y-0 left-0 w-48 bg-gradient-to-r from-dark-950/70 to-transparent" />
                 <div class="absolute inset-y-0 right-0 w-48 bg-gradient-to-l from-dark-950/70 to-transparent" />
                 <!-- Radial vignette for depth -->
-                <div class="absolute inset-0" style="background: radial-gradient(ellipse at center, transparent 40%, rgba(2,6,23,0.6) 100%)" />
+                <div class="absolute inset-0" style="background: radial-gradient(ellipse at center, transparent 40%, rgb(var(--c-dark-950) / 0.6) 100%)" />
             </div>
 
             <div class="relative max-w-6xl mx-auto text-center">

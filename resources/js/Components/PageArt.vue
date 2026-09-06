@@ -47,7 +47,7 @@ const failed = ref(false);
             :loading="loading"
             fetchpriority="low"
             decoding="async"
-            class="w-full h-full object-cover"
+            class="page-art__media w-full h-full object-cover"
             :style="{ opacity: alpha, objectPosition: position }"
             @error="failed = true"
         />
@@ -60,7 +60,7 @@ const failed = ref(false);
         <div
             v-else-if="fade === 'radial'"
             class="absolute inset-0"
-            style="background: radial-gradient(ellipse at center, rgba(2,6,23,0.15) 0%, rgba(2,6,23,0.85) 70%, rgb(2,6,23) 100%)"
+            style="background: radial-gradient(ellipse at center, rgb(var(--c-dark-950) / 0.15) 0%, rgb(var(--c-dark-950) / 0.85) 70%, rgb(var(--c-dark-950)) 100%)"
         />
         <div v-else-if="fade === 'edges'" class="absolute inset-0">
             <div class="absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-dark-950 to-transparent" />

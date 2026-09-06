@@ -238,7 +238,7 @@ function onDrop(e) {
 /* เปลือกการ์ด — ขอบสว่างด้านบน + เงาซ้อนสองชั้น ให้รู้สึกลอยขึ้นมาจากพื้น */
 .trade-card__shell {
     @apply relative flex flex-col h-full overflow-hidden rounded-2xl;
-    background: linear-gradient(180deg, rgba(30, 41, 59, 0.72) 0%, rgba(15, 23, 42, 0.82) 100%);
+    background: linear-gradient(180deg, rgb(var(--c-dark-800) / 0.72) 0%, rgb(var(--c-dark-900) / 0.82) 100%);
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     border: 1px solid rgba(255, 255, 255, 0.07);
@@ -283,8 +283,8 @@ function onDrop(e) {
     height: 1px;
     background: linear-gradient(
         90deg,
-        rgba(139, 92, 246, 0.45),
-        rgba(6, 182, 212, 0.45),
+        rgb(var(--c-accent-500) / 0.45),
+        rgb(var(--c-primary-500) / 0.45),
         rgba(249, 115, 22, 0.28),
         transparent 85%
     );
@@ -293,8 +293,8 @@ function onDrop(e) {
 /* จุดไฟเล็กๆ หน้าชื่อการ์ด — จุดเดียวแต่ทำให้หัวการ์ดดูเป็นแผงเครื่องมือจริง */
 .trade-card__dot {
     @apply w-1.5 h-1.5 rounded-full flex-shrink-0;
-    background: linear-gradient(135deg, #22d3ee, #8b5cf6);
-    box-shadow: 0 0 6px rgba(6, 182, 212, 0.8);
+    background: linear-gradient(135deg, rgb(var(--c-primary-400)), rgb(var(--c-accent-500)));
+    box-shadow: 0 0 6px rgb(var(--c-primary-500) / 0.8);
 }
 
 .trade-card__title {
@@ -325,8 +325,8 @@ function onDrop(e) {
     right: 0;
     height: 3px;
     border-radius: 9999px;
-    background: linear-gradient(90deg, #8b5cf6, #06b6d4, #f97316);
-    box-shadow: 0 0 12px rgba(6, 182, 212, 0.7);
+    background: linear-gradient(90deg, rgb(var(--c-accent-500)), rgb(var(--c-primary-500)), #f97316);
+    box-shadow: 0 0 12px rgb(var(--c-primary-500) / 0.7);
     z-index: 20;
 }
 
@@ -350,8 +350,8 @@ function onDrop(e) {
     bottom: 0;
     width: 3px;
     border-radius: 9999px;
-    background: linear-gradient(180deg, #8b5cf6, #06b6d4, #f97316);
-    box-shadow: 0 0 12px rgba(6, 182, 212, 0.7);
+    background: linear-gradient(180deg, rgb(var(--c-accent-500)), rgb(var(--c-primary-500)), #f97316);
+    box-shadow: 0 0 12px rgb(var(--c-primary-500) / 0.7);
     z-index: 20;
 }
 

@@ -430,6 +430,6 @@ async function switchChain() {
 <style scoped>
 .launch-page {
     background: radial-gradient(ellipse at top, rgba(59, 130, 246, 0.05), transparent 60%),
-                radial-gradient(ellipse at bottom, rgba(139, 92, 246, 0.05), transparent 60%);
+                radial-gradient(ellipse at bottom, rgb(var(--c-accent-500) / 0.05), transparent 60%);
 }
 </style>

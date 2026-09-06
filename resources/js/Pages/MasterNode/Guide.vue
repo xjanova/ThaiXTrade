@@ -536,7 +536,7 @@ const stepDiagrams = {
     backdrop-filter: blur(12px);
 }
 .btn-primary {
-    background: linear-gradient(135deg, #06b6d4, #0891b2);
+    background: linear-gradient(135deg, rgb(var(--c-primary-500)), rgb(var(--c-primary-600)));
     color: white;
     display: inline-flex;
     align-items: center;
@@ -546,6 +546,6 @@ const stepDiagrams = {
 .btn-primary:hover {
     filter: brightness(1.15);
     transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(6, 182, 212, 0.3);
+    box-shadow: 0 6px 20px rgb(var(--c-primary-500) / 0.3);
 }
 </style>

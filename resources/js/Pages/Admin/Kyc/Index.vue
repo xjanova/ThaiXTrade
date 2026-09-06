@@ -287,8 +287,8 @@ const shortWallet = (w) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : '—');
 }
 
 .alert-success {
-    background: rgba(0, 200, 83, 0.12);
-    border: 1px solid rgba(0, 200, 83, 0.3);
+    background: rgb(var(--c-trading-green) / 0.12);
+    border: 1px solid rgb(var(--c-trading-green) / 0.3);
     color: #6ee7a8;
 }
 
@@ -412,8 +412,8 @@ const shortWallet = (w) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : '—');
 }
 
 .badge-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
-.badge-approved { background: rgba(0, 200, 83, 0.15); color: #6ee7a8; }
-.badge-rejected { background: rgba(255, 23, 68, 0.15); color: #ff8a9b; }
+.badge-approved { background: rgb(var(--c-trading-green) / 0.15); color: #6ee7a8; }
+.badge-rejected { background: rgb(var(--c-trading-red) / 0.15); color: #ff8a9b; }
 .badge-neutral { background: rgba(255, 255, 255, 0.07); color: rgba(255, 255, 255, 0.55); }
 
 /* ── แท็บ ── */

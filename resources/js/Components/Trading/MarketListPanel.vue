@@ -466,7 +466,7 @@ onUnmounted(() => {
 
 .quote-tab--active {
     @apply bg-primary-500 text-white ring-primary-400/60;
-    box-shadow: 0 0 12px rgba(6, 182, 212, 0.35);
+    box-shadow: 0 0 12px rgb(var(--c-primary-500) / 0.35);
 }
 
 .scrollbar-none::-webkit-scrollbar { display: none; }

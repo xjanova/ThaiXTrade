@@ -349,8 +349,8 @@ const formatSize = (bytes) => {
 }
 
 .alert-success {
-    background: rgba(0, 200, 83, 0.12);
-    border: 1px solid rgba(0, 200, 83, 0.3);
+    background: rgb(var(--c-trading-green) / 0.12);
+    border: 1px solid rgb(var(--c-trading-green) / 0.3);
     color: #6ee7a8;
 }
 
@@ -373,8 +373,8 @@ const formatSize = (bytes) => {
 }
 
 .badge-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
-.badge-approved { background: rgba(0, 200, 83, 0.15); color: #6ee7a8; }
-.badge-rejected { background: rgba(255, 23, 68, 0.15); color: #ff8a9b; }
+.badge-approved { background: rgb(var(--c-trading-green) / 0.15); color: #6ee7a8; }
+.badge-rejected { background: rgb(var(--c-trading-red) / 0.15); color: #ff8a9b; }
 .badge-cancelled,
 .badge-expired { background: rgba(255, 255, 255, 0.07); color: rgba(255, 255, 255, 0.55); }
 
@@ -430,8 +430,8 @@ const formatSize = (bytes) => {
 }
 
 .prior-reject {
-    background: rgba(255, 23, 68, 0.08);
-    border: 1px solid rgba(255, 23, 68, 0.2);
+    background: rgb(var(--c-trading-red) / 0.08);
+    border: 1px solid rgb(var(--c-trading-red) / 0.2);
 }
 
 .prior-note {
@@ -588,7 +588,7 @@ const formatSize = (bytes) => {
     margin-top: 0.6rem;
     padding: 0.6rem 1.4rem;
     border-radius: 10px;
-    background: linear-gradient(135deg, #00c853, #00a844);
+    background: linear-gradient(135deg, rgb(var(--c-trading-green)), #00a844);
     color: #fff;
     font-weight: 600;
     font-size: 0.9rem;
@@ -599,8 +599,8 @@ const formatSize = (bytes) => {
 .btn-reject-open {
     padding: 0.6rem 1.2rem;
     border-radius: 10px;
-    background: rgba(255, 23, 68, 0.1);
-    border: 1px solid rgba(255, 23, 68, 0.35);
+    background: rgb(var(--c-trading-red) / 0.1);
+    border: 1px solid rgb(var(--c-trading-red) / 0.35);
     color: #ff8a9b;
     font-size: 0.9rem;
     cursor: pointer;
@@ -639,8 +639,8 @@ const formatSize = (bytes) => {
 }
 
 .chip--on {
-    background: rgba(255, 23, 68, 0.15);
-    border-color: rgba(255, 23, 68, 0.4);
+    background: rgb(var(--c-trading-red) / 0.15);
+    border-color: rgb(var(--c-trading-red) / 0.4);
     color: #ff8a9b;
 }
 
@@ -663,7 +663,7 @@ const formatSize = (bytes) => {
 .btn-reject {
     padding: 0.6rem 1.2rem;
     border-radius: 10px;
-    background: rgba(255, 23, 68, 0.85);
+    background: rgb(var(--c-trading-red) / 0.85);
     color: #fff;
     font-weight: 600;
     font-size: 0.88rem;
