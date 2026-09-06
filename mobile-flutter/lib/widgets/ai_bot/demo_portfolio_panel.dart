@@ -279,7 +279,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
             ],
           ),
           const SizedBox(height: 10),
-          const Divider(color: AppColors.divider, height: 1),
+          Divider(color: AppColors.divider, height: 1),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -554,7 +554,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
           child: widget.resetting
-              ? const SizedBox(
+              ? SizedBox(
                   width: 14,
                   height: 14,
                   child: CircularProgressIndicator(

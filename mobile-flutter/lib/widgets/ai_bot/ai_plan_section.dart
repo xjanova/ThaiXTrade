@@ -1298,7 +1298,7 @@ class _CancelRentalRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.report_gmailerrorred_rounded,
                 size: 18,
                 color: AppColors.tradingRed,
@@ -1333,7 +1333,7 @@ class _CancelRentalRow extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: busy ? null : onCancel,
               icon: cancelling
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
@@ -1391,7 +1391,7 @@ Future<bool?> showAiRentConfirmDialog(
       backgroundColor: AppColors.bgElevated,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: AppColors.bgCardBorder),
+        side: BorderSide(color: AppColors.bgCardBorder),
       ),
       title: Text(
         th ? 'ยืนยันการเช่าบอท' : 'Confirm rental',
@@ -1461,7 +1461,7 @@ Future<bool?> showAiRentConfirmDialog(
           onPressed: () => Navigator.pop(dialogContext, false),
           child: Text(
             th ? 'ยกเลิก' : 'Cancel',
-            style: const TextStyle(color: AppColors.textTertiary),
+            style: TextStyle(color: AppColors.textTertiary),
           ),
         ),
         ElevatedButton(
@@ -1538,7 +1538,7 @@ Future<bool?> showAiCancelRentalDialog(
           onPressed: () => Navigator.pop(dialogContext, false),
           child: Text(
             th ? 'ไม่ยกเลิก' : 'Keep it',
-            style: const TextStyle(color: AppColors.textTertiary),
+            style: TextStyle(color: AppColors.textTertiary),
           ),
         ),
         ElevatedButton(

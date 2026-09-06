@@ -15,6 +15,7 @@ import 'providers/market_provider.dart';
 import 'providers/update_provider.dart';
 import 'providers/config_provider.dart';
 import 'providers/accent_provider.dart';
+import 'providers/theme_provider.dart';
 import 'providers/ai_bot_provider.dart';
 import 'core/locale/locale_provider.dart';
 
@@ -43,6 +44,11 @@ Future<void> _boot() async {
   final accent = AccentProvider();
   await accent.ready;
 
+  // โหลดชุดสีที่ผู้ใช้เลือกไว้ก่อนเฟรมแรก ด้วยเหตุผลเดียวกับโทนโลหะข้างบน —
+  // ไม่งั้นแอปจะวาดธีมปริยายแวบหนึ่งแล้วค่อยกระพริบเป็นธีมจริง
+  final themeProvider = ThemeProvider();
+  await themeProvider.init();
+
   runApp(
     MultiProvider(
       providers: [
@@ -52,6 +58,7 @@ Future<void> _boot() async {
         ChangeNotifierProvider(create: (_) => UpdateProvider()),
         ChangeNotifierProvider(create: (_) => ConfigProvider()),
         ChangeNotifierProvider<AccentProvider>.value(value: accent),
+        ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
         // AI TRADE (บอทคลาวด์) — ตัวเดียวทั้งแอพ ห้ามสร้างใหม่ต่อหน้าจอ
         // ไม่งั้นลูปเดินบอทของแพลนฟรีจะซ้อนกันแล้วกินโควตาคำขอจนโดน 429
         //

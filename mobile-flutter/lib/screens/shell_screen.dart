@@ -288,7 +288,7 @@ class _MarketButton extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.candlestick_chart_rounded,
               size: 24,
               color: AppColors.goldTextOn,
@@ -296,7 +296,7 @@ class _MarketButton extends StatelessWidget {
             const SizedBox(height: 1),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 8.5,
                 fontWeight: FontWeight.w800,
                 color: AppColors.goldTextOn,

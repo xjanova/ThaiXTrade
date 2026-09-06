@@ -231,7 +231,7 @@ class _ProfileEditSheetState extends State<ProfileEditSheet> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.error_outline,
+                        Icon(Icons.error_outline,
                             color: AppColors.tradingRed, size: 16),
                         const SizedBox(width: 8),
                         Expanded(
@@ -345,7 +345,7 @@ class _TextField extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.brandCyan, width: 1.5),
+          borderSide: BorderSide(color: AppColors.brandCyan, width: 1.5),
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -406,7 +406,7 @@ class _ReadOnlyRow extends StatelessWidget {
                   ),
                 );
               },
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 4),
                 child: Icon(Icons.copy_rounded,
                     size: 14, color: AppColors.brandCyan),

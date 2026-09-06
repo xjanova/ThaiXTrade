@@ -270,7 +270,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.lock_outline_rounded,
+            Icon(Icons.lock_outline_rounded,
                 size: 13, color: AppColors.textTertiary),
             const SizedBox(width: 6),
             Flexible(
@@ -328,7 +328,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
         backgroundColor: AppColors.bgElevated,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: AppColors.bgCardBorder),
+          side: BorderSide(color: AppColors.bgCardBorder),
         ),
         title: Text(th ? 'ยังไม่ได้ติดตั้ง TPIX Wallet' : 'TPIX Wallet not installed',
             style: GoogleFonts.inter(
@@ -343,7 +343,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: Text(th ? 'ภายหลัง' : 'Later',
-                style: const TextStyle(color: AppColors.textTertiary)),
+                style: TextStyle(color: AppColors.textTertiary)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -706,11 +706,11 @@ class _EmblemPlaceholder extends StatelessWidget {
         data: 'tpixtrade://connect',
         version: QrVersions.auto,
         size: 108,
-        eyeStyle: const QrEyeStyle(
+        eyeStyle: QrEyeStyle(
           eyeShape: QrEyeShape.square,
           color: AppColors.bgPrimary,
         ),
-        dataModuleStyle: const QrDataModuleStyle(
+        dataModuleStyle: QrDataModuleStyle(
           dataModuleShape: QrDataModuleShape.square,
           color: AppColors.bgPrimary,
         ),
@@ -897,7 +897,7 @@ class _TpixWalletTile extends StatelessWidget {
                 ),
               ],
             ),
-            child: const DecoratedBox(
+            child: DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: AppColors.bgGradBottom,
@@ -1220,7 +1220,7 @@ class _ErrorBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline_rounded,
+          Icon(Icons.error_outline_rounded,
               color: AppColors.tradingRed, size: 18),
           const SizedBox(width: 8),
           Expanded(
@@ -1255,7 +1255,7 @@ class _BackButton extends StatelessWidget {
           color: AppColors.bgCard,
           border: Border.all(color: AppColors.bgCardBorder, width: 1),
         ),
-        child: const Icon(Icons.arrow_back_rounded,
+        child: Icon(Icons.arrow_back_rounded,
             color: AppColors.textSecondary, size: 19),
       ),
     );

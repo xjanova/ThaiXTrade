@@ -1156,7 +1156,7 @@ class _BotBuilderSheetState extends State<BotBuilderSheet> {
   Widget _buildFooter(bool th, AccentProvider accent) {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
           top: BorderSide(color: AppColors.bgCardBorder, width: 1),
         ),
@@ -1576,7 +1576,7 @@ class _NumberField extends StatelessWidget {
                         : AppColors.textDisabled,
                   ),
                   cursorColor: accent.g2,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
                     hintText: '0',
@@ -1879,7 +1879,7 @@ class _StrategyTile extends StatelessWidget {
                       Icon(Icons.check_circle_rounded,
                           size: 14, color: accent.g2)
                     else if (!selectable)
-                      const Icon(Icons.lock_outline_rounded,
+                      Icon(Icons.lock_outline_rounded,
                           size: 13, color: AppColors.textTertiary),
                   ],
                 ),
@@ -2012,7 +2012,7 @@ class _ErrorLine extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(Icons.error_outline_rounded,
+        Icon(Icons.error_outline_rounded,
             size: 12, color: AppColors.tradingRed),
         const SizedBox(width: 5),
         Expanded(
@@ -2052,7 +2052,7 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.error_outline_rounded,
+          Icon(Icons.error_outline_rounded,
               size: 15, color: AppColors.tradingRed),
           const SizedBox(width: 9),
           Expanded(
@@ -2168,12 +2168,12 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                         borderSide:
-                            const BorderSide(color: AppColors.bgCardBorder),
+                            BorderSide(color: AppColors.bgCardBorder),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                         borderSide:
-                            const BorderSide(color: AppColors.bgCardBorder),
+                            BorderSide(color: AppColors.bgCardBorder),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -2188,7 +2188,7 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                           padding: const EdgeInsets.fromLTRB(18, 24, 18, 40),
                           child: Column(
                             children: [
-                              const Icon(Icons.search_off_rounded,
+                              Icon(Icons.search_off_rounded,
                                   color: AppColors.textTertiary, size: 40),
                               const SizedBox(height: 10),
                               Text(

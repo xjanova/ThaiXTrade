@@ -359,7 +359,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
                               border: InputBorder.none,
                               isDense: true,
                               hintText: th ? 'จำนวน' : 'Amount',
-                              hintStyle: const TextStyle(color: AppColors.textDisabled),
+                              hintStyle: TextStyle(color: AppColors.textDisabled),
                               contentPadding: const EdgeInsets.symmetric(vertical: 12),
                             ),
                           ),

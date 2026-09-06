@@ -18,6 +18,7 @@ import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../providers/accent_provider.dart';
+import '../../providers/theme_provider.dart';
 import '../../services/biometric_service.dart';
 import '../../services/update_service.dart';
 import '../../widgets/common/app_background.dart';
@@ -49,7 +50,7 @@ class SettingsScreen extends StatelessWidget {
                   child: Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                        icon: Icon(Icons.arrow_back_ios_new_rounded,
                             color: AppColors.textPrimary, size: 18),
                         onPressed: () =>
                             context.canPop() ? context.pop() : context.go('/home'),
@@ -183,6 +184,33 @@ class _AppearanceCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(
+            icon: Icons.style_rounded,
+            title: th ? 'ธีม' : 'Theme',
+          ),
+          const SizedBox(height: 14),
+
+          // ชุดสีทั้งใบ (พื้นหลัง+ตัวอักษร) ต่างจาก "พื้นผิวโลหะ" ข้างล่าง
+          // ที่สลับแค่โทนของขอบทองบนฐานเดิม
+          Row(
+            children: [
+              for (final p in context.watch<ThemeProvider>().available) ...[
+                Expanded(
+                  child: _PaletteSwatch(
+                    palette: p,
+                    selected: context.watch<ThemeProvider>().id == p.id,
+                    isThai: th,
+                    onTap: () =>
+                        context.read<ThemeProvider>().setPalette(p.id),
+                  ),
+                ),
+                if (p.id != kTradePalettes.last.id) const SizedBox(width: 10),
+              ],
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          _SectionHeader(
             icon: Icons.palette_rounded,
             title: th ? 'พื้นผิวโลหะ' : 'Metal Finish',
           ),
@@ -223,7 +251,7 @@ class _AppearanceCard extends StatelessWidget {
             accent: accent,
           ),
 
-          const Divider(color: AppColors.divider, height: 22),
+          Divider(color: AppColors.divider, height: 22),
 
           // Reduce Motion toggle
           _ToggleRow(
@@ -241,6 +269,101 @@ class _AppearanceCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// ตัวอย่างชุดสีหนึ่งชุด — โชว์พื้นหลังจริง + สีเน้น + สีขึ้น/ลง
+/// เพราะสามอย่างนี้คือสิ่งที่เปลี่ยนแล้วผู้ใช้รู้สึกได้ทันที
+class _PaletteSwatch extends StatelessWidget {
+  final TradePalette palette;
+  final bool selected;
+  final bool isThai;
+  final VoidCallback onTap;
+
+  const _PaletteSwatch({
+    required this.palette,
+    required this.selected,
+    required this.isThai,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        children: [
+          AspectRatio(
+            aspectRatio: 1.55,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                // ใช้พื้นหลังจริงของชุดนั้น ไม่ใช่สีตัวแทน
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [palette.bgSecondary, palette.bgPrimary],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected
+                      ? palette.accentMid
+                      : AppColors.white.withValues(alpha: 0.12),
+                  width: selected ? 2.5 : 1,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 8,
+                    width: 34,
+                    decoration: BoxDecoration(
+                      color: palette.accentMid,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  Row(children: [
+                    _Dot(palette.tradingGreen),
+                    const SizedBox(width: 4),
+                    _Dot(palette.tradingRed),
+                    const Spacer(),
+                    if (selected)
+                      Icon(Icons.check_circle_rounded,
+                          size: 15, color: palette.accentMid),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            isThai ? palette.nameTh : palette.nameEn,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? AppColors.textPrimary : AppColors.textTertiary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  final Color color;
+  const _Dot(this.color);
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      );
 }
 
 class _MetalSwatch extends StatelessWidget {
@@ -327,11 +450,11 @@ class _CheckBadge extends StatelessWidget {
     return Container(
       width: 18,
       height: 18,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: AppColors.goldTextOn, // dark chip on the bright gold swatch
       ),
-      child: const Icon(Icons.check_rounded,
+      child: Icon(Icons.check_rounded,
           color: AppColors.gold1, size: 13),
     );
   }
@@ -430,7 +553,7 @@ class _WalletCard extends StatelessWidget {
                   gradient: AppGradients.gold,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.account_balance_wallet_rounded,
+                child: Icon(Icons.account_balance_wallet_rounded,
                     color: AppColors.goldTextOn, size: 20),
               ),
               const SizedBox(width: 12),
@@ -545,23 +668,23 @@ class _WalletCard extends StatelessWidget {
         backgroundColor: AppColors.bgElevated,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.bgCardBorder),
+          side: BorderSide(color: AppColors.bgCardBorder),
         ),
         title: Text(
           locale.t('settings.disconnect'),
-          style: const TextStyle(color: AppColors.textPrimary),
+          style: TextStyle(color: AppColors.textPrimary),
         ),
         content: Text(
           locale.isThai
               ? 'คุณต้องการยกเลิกการเชื่อมต่อกระเป๋าหรือไม่?'
               : 'Are you sure you want to disconnect your wallet?',
-          style: const TextStyle(color: AppColors.textSecondary),
+          style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text(locale.t('common.cancel'),
-                style: const TextStyle(color: AppColors.textTertiary)),
+                style: TextStyle(color: AppColors.textTertiary)),
           ),
           TextButton(
             onPressed: () async {
@@ -569,7 +692,7 @@ class _WalletCard extends StatelessWidget {
               if (ctx.mounted) Navigator.pop(ctx);
             },
             child: Text(locale.t('common.confirm'),
-                style: const TextStyle(color: AppColors.tradingRed)),
+                style: TextStyle(color: AppColors.tradingRed)),
           ),
         ],
       ),
@@ -639,7 +762,7 @@ class _ProfileCard extends StatelessWidget {
               color: AppColors.goldTint,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.edit_rounded,
+            child: Icon(Icons.edit_rounded,
                 color: AppColors.gold2, size: 16),
           ),
         ],
@@ -727,7 +850,7 @@ class _ConnectWalletCard extends StatelessWidget {
               gradient: AppGradients.gold,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Icon(Icons.account_balance_wallet_rounded,
+            child: Icon(Icons.account_balance_wallet_rounded,
                 color: AppColors.goldTextOn, size: 28),
           ),
           const SizedBox(height: 14),
@@ -876,7 +999,7 @@ class _ChainSelector extends StatelessWidget {
                           ),
                           if (!chain.supported) ...[
                             const SizedBox(width: 4),
-                            const Icon(Icons.access_time_rounded,
+                            Icon(Icons.access_time_rounded,
                                 size: 10, color: AppColors.textTertiary),
                           ],
                         ],
@@ -922,7 +1045,7 @@ class _PreferencesCard extends StatelessWidget {
             onTap: () => locale.toggle(),
           ),
 
-          const Divider(color: AppColors.divider, height: 1, indent: 52),
+          Divider(color: AppColors.divider, height: 1, indent: 52),
 
           // Currency
           _SettingsTile(
@@ -938,7 +1061,7 @@ class _PreferencesCard extends StatelessWidget {
             },
           ),
 
-          const Divider(color: AppColors.divider, height: 1, indent: 52),
+          Divider(color: AppColors.divider, height: 1, indent: 52),
 
           // Biometric — S8: ต้อง authenticate ก่อนปิด
           _SettingsTile(
@@ -965,7 +1088,7 @@ class _PreferencesCard extends StatelessWidget {
             ),
           ),
 
-          const Divider(color: AppColors.divider, height: 1, indent: 52),
+          Divider(color: AppColors.divider, height: 1, indent: 52),
 
           // Notifications
           _SettingsTile(
@@ -1007,33 +1130,33 @@ class _AboutCard extends StatelessWidget {
           _SettingsTile(
             icon: Icons.bug_report_outlined,
             title: locale.isThai ? 'รายงานปัญหา' : 'Report a problem',
-            trailing: const Icon(Icons.chevron_right_rounded,
+            trailing: Icon(Icons.chevron_right_rounded,
                 color: AppColors.textTertiary, size: 20),
             onTap: () => showBugReportSheet(context, isThai: locale.isThai),
           ),
 
-          const Divider(color: AppColors.divider, height: 1, indent: 52),
+          Divider(color: AppColors.divider, height: 1, indent: 52),
 
           // Bridge
           _SettingsTile(
             icon: Icons.swap_horiz_rounded,
             title: locale.t('bridge.title'),
-            trailing: const Icon(Icons.chevron_right_rounded,
+            trailing: Icon(Icons.chevron_right_rounded,
                 color: AppColors.textTertiary, size: 20),
             onTap: () => context.push('/bridge'),
           ),
 
-          const Divider(color: AppColors.divider, height: 1, indent: 52),
+          Divider(color: AppColors.divider, height: 1, indent: 52),
 
           _SettingsTile(
             icon: Icons.system_update_rounded,
             title: locale.t('settings.check_update'),
-            trailing: const Icon(Icons.chevron_right_rounded,
+            trailing: Icon(Icons.chevron_right_rounded,
                 color: AppColors.textTertiary, size: 20),
             onTap: () => _checkUpdate(context),
           ),
 
-          const Divider(color: AppColors.divider, height: 1, indent: 52),
+          Divider(color: AppColors.divider, height: 1, indent: 52),
 
           _SettingsTile(
             icon: Icons.info_outline_rounded,
@@ -1048,7 +1171,7 @@ class _AboutCard extends StatelessWidget {
             ),
           ),
 
-          const Divider(color: AppColors.divider, height: 1, indent: 52),
+          Divider(color: AppColors.divider, height: 1, indent: 52),
 
           _SettingsTile(
             icon: Icons.code_rounded,
@@ -1184,7 +1307,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       backgroundColor: AppColors.bgElevated,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: AppColors.bgCardBorder),
+        side: BorderSide(color: AppColors.bgCardBorder),
       ),
       title: Row(
         children: [
@@ -1194,11 +1317,11 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               color: AppColors.goldTint,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.system_update_rounded,
+            child: Icon(Icons.system_update_rounded,
                 color: AppColors.gold2, size: 20),
           ),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text('Update Available',
                 style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
           ),
@@ -1231,7 +1354,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               child: LinearProgressIndicator(
                 value: _progress > 0 ? _progress : null,
                 backgroundColor: AppColors.bgTertiary,
-                valueColor: const AlwaysStoppedAnimation(AppColors.gold2),
+                valueColor: AlwaysStoppedAnimation(AppColors.gold2),
                 minHeight: 5,
               ),
             ),
@@ -1246,13 +1369,13 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         if (!_downloading) ...[
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Later',
+            child: Text('Later',
                 style: TextStyle(color: AppColors.textTertiary)),
           ),
           ElevatedButton.icon(
-            icon: const Icon(Icons.download_rounded,
+            icon: Icon(Icons.download_rounded,
                 color: AppColors.goldTextOn, size: 16),
-            label: const Text('Download',
+            label: Text('Download',
                 style: TextStyle(color: AppColors.goldTextOn)),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.gold2,

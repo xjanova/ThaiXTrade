@@ -53,7 +53,7 @@ class _BridgeScreenState extends State<BridgeScreen> {
         elevation: 0,
       ),
       body: Container(
-        decoration: const BoxDecoration(gradient: AppGradients.darkBg),
+        decoration: BoxDecoration(gradient: AppGradients.darkBg),
         child: SafeArea(
           bottom: false,
           child: SingleChildScrollView(
@@ -84,7 +84,7 @@ class _BridgeScreenState extends State<BridgeScreen> {
                       ),
                       const SizedBox(height: 8),
                       IconButton(
-                        icon: const Icon(Icons.swap_vert_rounded,
+                        icon: Icon(Icons.swap_vert_rounded,
                             color: AppColors.brandCyan),
                         // Disable swap เมื่อ chain ซ้ำ (ไม่มีอะไรให้สลับ)
                         onPressed: _fromChainId == _toChainId
@@ -184,7 +184,7 @@ class _BridgeScreenState extends State<BridgeScreen> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.warning_amber_rounded,
+                              Icon(Icons.warning_amber_rounded,
                                   size: 14, color: AppColors.tradingRed),
                               const SizedBox(width: 6),
                               Expanded(
@@ -313,7 +313,7 @@ class _BridgeScreenState extends State<BridgeScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.warning_amber_rounded,
+          Icon(Icons.warning_amber_rounded,
               color: AppColors.tradingRed, size: 20),
           const SizedBox(width: 10),
           Expanded(

@@ -88,7 +88,7 @@ class _PeerAppCardState extends State<PeerAppCard>
               gradient: AppGradients.brand,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.account_balance_wallet_rounded,
+            child: Icon(Icons.account_balance_wallet_rounded,
                 color: AppColors.goldTextOn, size: 18),
           ),
           const SizedBox(width: 12),
@@ -114,7 +114,7 @@ class _PeerAppCardState extends State<PeerAppCard>
               ],
             ),
           ),
-          const Icon(Icons.arrow_forward_rounded,
+          Icon(Icons.arrow_forward_rounded,
               color: AppColors.brandCyan, size: 18),
           const SizedBox(width: 4),
         ],
@@ -170,7 +170,7 @@ class _PeerAppCardState extends State<PeerAppCard>
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.account_balance_wallet_rounded,
+                  child: Icon(Icons.account_balance_wallet_rounded,
                       color: AppColors.goldTextOn, size: 24),
                 ),
                 const SizedBox(width: 14),
@@ -208,7 +208,7 @@ class _PeerAppCardState extends State<PeerAppCard>
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.download_rounded,
+                      Icon(Icons.download_rounded,
                           color: AppColors.goldTextOn, size: 14),
                       const SizedBox(width: 4),
                       Text(

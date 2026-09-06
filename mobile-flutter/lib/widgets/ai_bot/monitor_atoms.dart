@@ -543,7 +543,7 @@ class MonitorNotice extends StatelessWidget {
                         ),
                       ),
                       child: busy
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 16,
                               height: 16,
                               child: CircularProgressIndicator(

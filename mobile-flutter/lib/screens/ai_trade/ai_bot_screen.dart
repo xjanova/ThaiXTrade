@@ -221,7 +221,7 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
             onPressed: () => Navigator.pop(context, false),
             child: Text(
               th ? 'ยกเลิก' : 'Cancel',
-              style: const TextStyle(color: AppColors.textTertiary),
+              style: TextStyle(color: AppColors.textTertiary),
             ),
           ),
           ElevatedButton(
@@ -2249,7 +2249,7 @@ class _EmptyBots extends StatelessWidget {
                 ),
               ],
             ),
-            child: const Icon(Icons.smart_toy_rounded,
+            child: Icon(Icons.smart_toy_rounded,
                 color: AppColors.goldTextOn, size: 30),
           ),
           const SizedBox(height: 16),
@@ -3478,7 +3478,7 @@ class _HeroSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const GlassCard(
+    return GlassCard(
       variant: GlassVariant.hero,
       borderRadius: 22,
       padding: EdgeInsets.all(20),
@@ -4314,7 +4314,7 @@ class _PickerBox extends StatelessWidget {
             isExpanded: true,
             dropdownColor: AppColors.bgElevated,
             borderRadius: BorderRadius.circular(12),
-            icon: const Icon(Icons.expand_more_rounded,
+            icon: Icon(Icons.expand_more_rounded,
                 color: AppColors.textTertiary, size: 20),
             style: AppTheme.mono(
               fontSize: 13.5,
@@ -4493,7 +4493,7 @@ class _NumberField extends StatelessWidget {
               style: AppTheme.mono(fontSize: 14),
               textAlign: TextAlign.right,
               cursorColor: accent.g2,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
                 hintText: '0',

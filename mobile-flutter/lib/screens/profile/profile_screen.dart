@@ -99,7 +99,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: Text(th ? 'ยกเลิก' : 'Cancel',
-                style: const TextStyle(color: AppColors.textTertiary)),
+                style: TextStyle(color: AppColors.textTertiary)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -242,7 +242,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             for (int i = 0; i < items.length; i++) ...[
               _MenuRow(item: items[i]),
               if (i != items.length - 1)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(horizontal: 14),
                   child: Divider(height: 1, color: AppColors.divider),
                 ),
@@ -324,7 +324,7 @@ class _GoldRingAvatar extends StatelessWidget {
     final hasAvatar = avatarUrl != null && avatarUrl!.trim().isNotEmpty;
 
     Widget inner = DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: AppColors.bgGradBottom,
       ),
@@ -335,12 +335,12 @@ class _GoldRingAvatar extends StatelessWidget {
                 fit: BoxFit.cover,
                 width: 74,
                 height: 74,
-                errorWidget: (_, __, ___) => const Icon(
+                errorWidget: (_, __, ___) => Icon(
                     Icons.person_rounded, color: AppColors.gold1, size: 40),
-                placeholder: (_, __) => const Icon(
+                placeholder: (_, __) => Icon(
                     Icons.person_rounded, color: AppColors.gold1, size: 40),
               )
-            : const Icon(Icons.person_rounded, color: AppColors.gold1, size: 40),
+            : Icon(Icons.person_rounded, color: AppColors.gold1, size: 40),
       ),
     );
 
@@ -376,7 +376,7 @@ class _GoldRingAvatar extends StatelessWidget {
                 gradient: accent.goldGradient,
                 border: Border.all(color: AppColors.bgPrimary, width: 2),
               ),
-              child: const Icon(Icons.photo_camera_rounded,
+              child: Icon(Icons.photo_camera_rounded,
                   size: 13, color: AppColors.goldTextOn),
             ),
         ],
@@ -619,7 +619,7 @@ class _MenuRow extends StatelessWidget {
                   ),
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded,
+              Icon(Icons.chevron_right_rounded,
                   size: 20, color: AppColors.textTertiary),
             ],
           ),
@@ -805,7 +805,7 @@ class _AvatarPickerSheetState extends State<AvatarPickerSheet> {
                 keyboardType: TextInputType.url,
                 onChanged: (v) => setState(() => _selected = v.trim().isEmpty ? null : v.trim()),
                 style: AppTheme.mono(fontSize: 13, color: AppColors.textPrimary),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: 'https://…',
                   hintStyle: TextStyle(color: AppColors.textDisabled, fontSize: 13),
                   border: InputBorder.none,
@@ -860,12 +860,12 @@ class _AvatarOption extends StatelessWidget {
           child: CachedNetworkImage(
             imageUrl: url,
             fit: BoxFit.cover,
-            placeholder: (_, __) => const ColoredBox(
+            placeholder: (_, __) => ColoredBox(
               color: AppColors.bgTertiary,
               child: Icon(Icons.person_rounded,
                   color: AppColors.textTertiary, size: 22),
             ),
-            errorWidget: (_, __, ___) => const ColoredBox(
+            errorWidget: (_, __, ___) => ColoredBox(
               color: AppColors.bgTertiary,
               child: Icon(Icons.broken_image_rounded,
                   color: AppColors.textTertiary, size: 18),

@@ -276,7 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     gradient: AppGradients.gold,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.system_update_rounded,
+                  child: Icon(Icons.system_update_rounded,
                       color: AppColors.goldTextOn, size: 18),
                 ),
                 const SizedBox(width: 12),
@@ -303,7 +303,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded,
+                  icon: Icon(Icons.close_rounded,
                       color: AppColors.textTertiary, size: 18),
                   onPressed: () => update.dismiss(),
                 ),
@@ -463,7 +463,7 @@ class _GoldAvatar extends StatelessWidget {
           ),
         ],
       ),
-      child: const DecoratedBox(
+      child: DecoratedBox(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: AppColors.bgGradBottom,
@@ -614,7 +614,7 @@ class _BalanceHero extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.account_balance_wallet_rounded,
+                      Icon(Icons.account_balance_wallet_rounded,
                           size: 16, color: AppColors.goldTextOn),
                       const SizedBox(width: 8),
                       Text(
@@ -1098,7 +1098,7 @@ class _HomeUpdateDialogState extends State<_HomeUpdateDialog> {
       backgroundColor: AppColors.bgElevated,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: AppColors.bgCardBorder),
+        side: BorderSide(color: AppColors.bgCardBorder),
       ),
       title: Row(
         children: [
@@ -1108,13 +1108,13 @@ class _HomeUpdateDialogState extends State<_HomeUpdateDialog> {
               color: AppColors.gold2.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.system_update_rounded,
+            child: Icon(Icons.system_update_rounded,
                 color: AppColors.gold2, size: 20),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(locale.t('update.available'),
-                style: const TextStyle(
+                style: TextStyle(
                     color: AppColors.textPrimary, fontSize: 16)),
           ),
         ],
@@ -1146,7 +1146,7 @@ class _HomeUpdateDialogState extends State<_HomeUpdateDialog> {
               child: LinearProgressIndicator(
                 value: _progress > 0 ? _progress : null,
                 backgroundColor: AppColors.bgTertiary,
-                valueColor: const AlwaysStoppedAnimation(AppColors.gold2),
+                valueColor: AlwaysStoppedAnimation(AppColors.gold2),
                 minHeight: 5,
               ),
             ),
@@ -1162,13 +1162,13 @@ class _HomeUpdateDialogState extends State<_HomeUpdateDialog> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(locale.t('common.later'),
-                style: const TextStyle(color: AppColors.textTertiary)),
+                style: TextStyle(color: AppColors.textTertiary)),
           ),
           ElevatedButton.icon(
-            icon: const Icon(Icons.download_rounded,
+            icon: Icon(Icons.download_rounded,
                 color: AppColors.goldTextOn, size: 16),
             label: Text(locale.t('common.download'),
-                style: const TextStyle(color: AppColors.goldTextOn)),
+                style: TextStyle(color: AppColors.goldTextOn)),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.gold2,
               foregroundColor: AppColors.goldTextOn,

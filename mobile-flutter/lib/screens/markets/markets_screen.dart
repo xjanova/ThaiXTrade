@@ -102,7 +102,7 @@ class _MarketsScreenState extends State<MarketsScreen>
                         color: accent.g2, size: 20),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
-                            icon: const Icon(Icons.clear_rounded,
+                            icon: Icon(Icons.clear_rounded,
                                 color: AppColors.textTertiary, size: 18),
                             onPressed: () {
                               _searchController.clear();
@@ -116,7 +116,7 @@ class _MarketsScreenState extends State<MarketsScreen>
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide:
-                          const BorderSide(color: AppColors.bgCardBorder),
+                          BorderSide(color: AppColors.bgCardBorder),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -125,7 +125,7 @@ class _MarketsScreenState extends State<MarketsScreen>
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide:
-                          const BorderSide(color: AppColors.bgCardBorder),
+                          BorderSide(color: AppColors.bgCardBorder),
                     ),
                   ),
                 ),
@@ -286,7 +286,7 @@ class _TickerList extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.search_off_rounded,
+            Icon(Icons.search_off_rounded,
                 color: AppColors.textTertiary, size: 48),
             const SizedBox(height: 12),
             Text(

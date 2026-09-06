@@ -21,9 +21,9 @@ class AppBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: const BoxDecoration(gradient: AppGradients.appBackgroundBase),
+      decoration: BoxDecoration(gradient: AppGradients.appBackgroundBase),
       child: DecoratedBox(
-        decoration: const BoxDecoration(gradient: AppGradients.appBackgroundGlow),
+        decoration: BoxDecoration(gradient: AppGradients.appBackgroundGlow),
         child: fireflies
             ? Stack(
                 children: [

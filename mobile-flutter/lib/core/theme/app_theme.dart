@@ -33,10 +33,14 @@ class AppTheme {
   // ── Signature gilded edge ──────────────────────
   static const double goldBorderWidth = 1.6;
 
-  /// Dark theme — glass morphism style
+  /// ธีมของแอป — สีมาจากชุดที่ผู้ใช้เลือกไว้ใน AppColors
+  ///
+  /// ยังชื่อ darkTheme เพื่อไม่ให้จุดเรียกใช้ต้องแก้ แต่ไม่ได้มืดเสมอไปแล้ว
+  /// ทุกอย่างข้างในอ่านผ่าน getter จึงได้สีของชุดปัจจุบันทุกครั้งที่ build
   static ThemeData get darkTheme {
+    final isDark = AppColors.palette.isDark;
     final textTheme = GoogleFonts.interTextTheme(
-      const TextTheme(
+      TextTheme(
         // Headings
         headlineLarge: TextStyle(
           fontSize: 32, fontWeight: FontWeight.w700,
@@ -93,11 +97,12 @@ class AppTheme {
     );
 
     return ThemeData(
-      brightness: Brightness.dark,
+      brightness: isDark ? Brightness.dark : Brightness.light,
       useMaterial3: true,
       scaffoldBackgroundColor: AppColors.bgPrimary,
       primaryColor: AppColors.gold2,
-      colorScheme: const ColorScheme.dark(
+      colorScheme: (isDark ? const ColorScheme.dark() : const ColorScheme.light())
+          .copyWith(
         primary: AppColors.gold2,
         secondary: AppColors.gold3,
         surface: AppColors.bgSecondary,
@@ -108,16 +113,20 @@ class AppTheme {
         onError: AppColors.white,
       ),
       textTheme: textTheme,
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.light,
+          // ไอคอนแถบสถานะต้องตรงข้ามกับพื้น ไม่งั้นบนพื้นสว่างจะขาวบนขาว มองไม่เห็น
+          statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+          statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+          systemNavigationBarIconBrightness:
+              isDark ? Brightness.light : Brightness.dark,
           systemNavigationBarColor: AppColors.bgPrimary,
         ),
       ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: Colors.transparent,
         selectedItemColor: AppColors.brandCyan,
         unselectedItemColor: AppColors.textTertiary,
@@ -129,10 +138,10 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusLg),
-          side: const BorderSide(color: AppColors.bgCardBorder),
+          side: BorderSide(color: AppColors.bgCardBorder),
         ),
       ),
-      dividerTheme: const DividerThemeData(
+      dividerTheme: DividerThemeData(
         color: AppColors.divider,
         thickness: 1,
         space: 0,
@@ -142,17 +151,17 @@ class AppTheme {
         fillColor: AppColors.bgInput,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusLg),
-          borderSide: const BorderSide(color: AppColors.bgCardBorder),
+          borderSide: BorderSide(color: AppColors.bgCardBorder),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusLg),
-          borderSide: const BorderSide(color: AppColors.bgCardBorder),
+          borderSide: BorderSide(color: AppColors.bgCardBorder),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusLg),
-          borderSide: const BorderSide(color: AppColors.brandCyan, width: 1.5),
+          borderSide: BorderSide(color: AppColors.brandCyan, width: 1.5),
         ),
-        hintStyle: const TextStyle(color: AppColors.textDisabled, fontSize: 14),
+        hintStyle: TextStyle(color: AppColors.textDisabled, fontSize: 14),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -169,7 +178,7 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.bgElevated,
-        contentTextStyle: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+        contentTextStyle: TextStyle(color: AppColors.textPrimary, fontSize: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusMd),
         ),
@@ -182,12 +191,14 @@ class AppTheme {
   static TextStyle mono({
     double fontSize = 15,
     FontWeight fontWeight = FontWeight.w600,
-    Color color = AppColors.textPrimary,
+    Color? color,
   }) {
     return GoogleFonts.jetBrainsMono(
       fontSize: fontSize,
       fontWeight: fontWeight,
-      color: color,
+      // ค่าปริยายย้ายมาอยู่ตรงนี้ เพราะพารามิเตอร์รับค่าที่ไม่ใช่ const ไม่ได้
+      // ปล่อย null ผ่านไปไม่ได้ — ตัวอักษร 107 จุดที่เรียก mono() โดยไม่ส่งสีจะเสียสี
+      color: color ?? AppColors.textPrimary,
     );
   }
 

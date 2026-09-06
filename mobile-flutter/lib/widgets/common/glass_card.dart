@@ -66,7 +66,7 @@ class GlassCard extends StatelessWidget {
                   widthFactor: 0.58,
                   heightFactor: 1,
                   child: DecoratedBox(
-                    decoration: const BoxDecoration(gradient: AppGradients.metalSheen),
+                    decoration: BoxDecoration(gradient: AppGradients.metalSheen),
                   ),
                 ),
               ),

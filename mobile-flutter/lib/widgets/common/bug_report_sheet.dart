@@ -72,7 +72,7 @@ class _BugReportSheetState extends State<_BugReportSheet> {
     final crumbs = BugReporter.I.breadcrumbs;
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.bgCard,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -118,11 +118,11 @@ class _BugReportSheetState extends State<_BugReportSheet> {
               hintStyle: GoogleFonts.inter(color: AppColors.textDisabled, fontSize: 13),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.bgCardBorder),
+                borderSide: BorderSide(color: AppColors.bgCardBorder),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.bgCardBorder),
+                borderSide: BorderSide(color: AppColors.bgCardBorder),
               ),
             ),
           ),

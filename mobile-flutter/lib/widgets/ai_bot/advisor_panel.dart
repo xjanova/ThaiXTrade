@@ -104,7 +104,7 @@ class AiAdvisorPanel extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
+              Icon(
                 Icons.info_outline_rounded,
                 size: 13,
                 color: AppColors.textTertiary,
@@ -245,7 +245,7 @@ class _AskButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (busy)
-                const SizedBox(
+                SizedBox(
                   width: 12,
                   height: 12,
                   child: CircularProgressIndicator(

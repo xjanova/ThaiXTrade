@@ -181,7 +181,7 @@ class _BotCardState extends State<BotCard> with SingleTickerProviderStateMixin {
             const SizedBox(height: 8),
             _buildIdentityLine(th, accent),
             const SizedBox(height: 10),
-            const Divider(color: AppColors.divider, height: 1),
+            Divider(color: AppColors.divider, height: 1),
             const SizedBox(height: 10),
             _buildVitals(th),
             ..._buildAlerts(th),

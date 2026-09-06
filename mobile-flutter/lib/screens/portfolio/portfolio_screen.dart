@@ -257,7 +257,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                   ),
                 ],
               ),
-              child: const Icon(Icons.pie_chart_rounded,
+              child: Icon(Icons.pie_chart_rounded,
                   color: AppColors.goldTextOn, size: 36),
             ),
             const SizedBox(height: 24),

@@ -182,7 +182,7 @@ class AiMarketViewPanel extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(top: 5, right: 7),
                     child: SizedBox(
                       width: 4,

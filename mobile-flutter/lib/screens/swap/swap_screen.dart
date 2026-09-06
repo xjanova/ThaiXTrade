@@ -667,7 +667,7 @@ class _SwapScreenState extends State<SwapScreen> {
               ),
               const Spacer(),
               if (_quoting)
-                const SizedBox(
+                SizedBox(
                   width: 13,
                   height: 13,
                   child: CircularProgressIndicator(
@@ -688,7 +688,7 @@ class _SwapScreenState extends State<SwapScreen> {
           ...rows,
           if (routeStr != null) ...[
             const SizedBox(height: 10),
-            const Divider(color: AppColors.divider, height: 1),
+            Divider(color: AppColors.divider, height: 1),
             const SizedBox(height: 10),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1115,7 +1115,7 @@ class _TokenPill extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 2),
-            const Icon(Icons.keyboard_arrow_down_rounded,
+            Icon(Icons.keyboard_arrow_down_rounded,
                 size: 18, color: AppColors.textSecondary),
           ],
         ),
@@ -1152,7 +1152,7 @@ class _FlipButton extends StatelessWidget {
             ),
           ],
         ),
-        child: const Center(
+        child: Center(
           child: Icon(Icons.swap_vert_rounded,
               color: AppColors.goldTextOn, size: 22),
         ),
@@ -1250,7 +1250,7 @@ class _TokenPickerSheetState extends State<_TokenPickerSheet> {
       margin: EdgeInsets.only(
         top: MediaQuery.of(context).padding.top + 60,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.bgElevated,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         border: Border(
@@ -1283,7 +1283,7 @@ class _TokenPickerSheetState extends State<_TokenPickerSheet> {
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded,
+                  icon: Icon(Icons.close_rounded,
                       color: AppColors.textTertiary, size: 20),
                   onPressed: () => Navigator.pop(context),
                 ),
@@ -1301,7 +1301,7 @@ class _TokenPickerSheetState extends State<_TokenPickerSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Row(
                 children: [
-                  const Icon(Icons.search_rounded,
+                  Icon(Icons.search_rounded,
                       size: 18, color: AppColors.textTertiary),
                   const SizedBox(width: 8),
                   Expanded(
@@ -1371,7 +1371,7 @@ class _TokenPickerSheetState extends State<_TokenPickerSheet> {
                                 )
                               : null,
                           trailing: isSelected
-                              ? const Icon(Icons.check_circle_rounded,
+                              ? Icon(Icons.check_circle_rounded,
                                   color: AppColors.gold2, size: 20)
                               : null,
                         ),
@@ -1431,7 +1431,7 @@ class _SlippageDialogState extends State<_SlippageDialog> {
       backgroundColor: AppColors.bgElevated,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: AppColors.goldBorder),
+        side: BorderSide(color: AppColors.goldBorder),
       ),
       title: Text(
         locale.isThai ? 'ตั้งค่าความคลาดเคลื่อน' : 'Slippage tolerance',
@@ -1540,7 +1540,7 @@ class _SlippageDialogState extends State<_SlippageDialog> {
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: Text(locale.t('common.cancel'),
-              style: const TextStyle(color: AppColors.textTertiary)),
+              style: TextStyle(color: AppColors.textTertiary)),
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
@@ -1553,7 +1553,7 @@ class _SlippageDialogState extends State<_SlippageDialog> {
               ? () => Navigator.pop(context, _value)
               : null,
           child: Text(locale.t('common.save'),
-              style: const TextStyle(color: AppColors.goldTextOn)),
+              style: TextStyle(color: AppColors.goldTextOn)),
         ),
       ],
     );
@@ -1598,7 +1598,7 @@ class _ReviewSheet extends StatelessWidget {
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.bgElevated,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           border: Border(

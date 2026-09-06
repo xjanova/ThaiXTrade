@@ -502,7 +502,7 @@ class _TradeScreenState extends State<TradeScreen>
                           ),
                         ),
                         const SizedBox(width: 4),
-                        const Icon(Icons.keyboard_arrow_down_rounded,
+                        Icon(Icons.keyboard_arrow_down_rounded,
                             color: AppColors.textTertiary, size: 20),
                       ],
                     ),
@@ -829,7 +829,7 @@ class _TradeScreenState extends State<TradeScreen>
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
                 child: Text(locale.t('common.loading'),
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppColors.textTertiary, fontSize: 12)),
               ),
             ),
@@ -1504,7 +1504,7 @@ class _TradeScreenState extends State<TradeScreen>
             const SizedBox(height: 6),
             Row(
               children: [
-                const Icon(Icons.warning_amber_rounded,
+                Icon(Icons.warning_amber_rounded,
                     size: 12, color: AppColors.tradingRed),
                 const SizedBox(width: 6),
                 Text(
@@ -2214,7 +2214,7 @@ class _TradeInput extends StatelessWidget {
               style: AppTheme.mono(fontSize: 14),
               textAlign: TextAlign.right,
               cursorColor: accent.g2,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
                 hintText: '0.00',
@@ -2450,7 +2450,7 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                           .t('common.search_pairs'),
                       hintStyle: GoogleFonts.inter(
                           fontSize: 14, color: AppColors.textDisabled),
-                      prefixIcon: const Icon(Icons.search_rounded,
+                      prefixIcon: Icon(Icons.search_rounded,
                           color: AppColors.textTertiary, size: 20),
                       border: InputBorder.none,
                       contentPadding:
