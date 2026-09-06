@@ -416,8 +416,18 @@
        ============================================ */
 
     .nav-link {
-        @apply flex items-center gap-2 px-4 py-2 rounded-xl text-dark-300;
+        /* shrink-0 + nowrap: ป้ายเมนูห้ามตัดบรรทัดหรือถูกบีบจนเสียรูป
+           ถ้าที่ไม่พอให้ซ่อนข้อความเหลือไอคอน (ดู .nav-label) ไม่ใช่บีบ */
+        @apply flex items-center gap-2 px-4 py-2 rounded-xl text-dark-300 whitespace-nowrap shrink-0;
         @apply hover:text-white hover:bg-white/5 transition-all duration-200;
+    }
+
+    /* ข้อความในเมนูโผล่เฉพาะตอนจอกว้างพอ ไม่งั้นเหลือแค่ไอคอน
+       จุดตัดวัดจากของจริงในเบราว์เซอร์ ไม่ได้เดา: ที่ 1280px ป้ายพอดีไม่ล้น
+       (เมนูจบที่ 791px จาก 1280px ยังเหลือที่ให้ปุ่มฝั่งขวา) ต่ำกว่านั้นเริ่มเบียด
+       จึงเหลือแค่ไอคอน ซึ่งยังกดถึงทุกเมนู ไม่ได้ซ่อนหาย */
+    .nav-label {
+        @apply hidden xl:inline;
     }
 
     .nav-link.active {
