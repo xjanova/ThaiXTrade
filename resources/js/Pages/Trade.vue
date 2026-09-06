@@ -368,7 +368,23 @@ function setColRef(col, el) {
     else colEls.delete(col);
 }
 
-/** วัดตำแหน่งด้าม — ขอบขวาของทุกคอลัมน์ ยกเว้นใบสุดท้าย (ไม่มีอะไรให้แบ่ง) */
+/**
+ * จับคู่ด้ามกับคอลัมน์ที่มันปรับ
+ *
+ * ⚠️ รอบแรกทำผิด: วางด้ามที่ขอบขวาของทุกคอลัมน์ยกเว้นใบสุดท้าย แล้วให้ด้าม
+ * ปรับ "คอลัมน์ทางซ้าย" เสมอ ผลคือคอลัมน์ขวาสุดไม่มีด้ามเลย ปรับไม่ได้ถาวร
+ * และด้ามที่ติดกราฟก็ไปพยายามปรับกราฟ ซึ่งเป็นรางยืดที่ปรับไม่ได้อยู่แล้ว
+ *
+ * กติกาใหม่: เดินจากซ้ายไปขวา แต่ละด้ามเลือก "คอลัมน์ที่ยังไม่มีใครดูแล"
+ * โดยเอาฝั่งซ้ายก่อน ถ้าฝั่งซ้ายเป็นกราฟหรือมีคนดูแลแล้วค่อยเอาฝั่งขวา
+ * ด้วยกติกานี้ทุกคอลัมน์ที่ปรับได้จะมีด้ามของตัวเองพอดีหนึ่งอัน
+ *
+ *   [คู่เทรด | กราฟ | สมุดคำสั่ง | ประวัติ]
+ *      ด้าม1 ปรับคู่เทรด · ด้าม2 ปรับสมุดคำสั่ง · ด้าม3 ปรับประวัติ
+ *
+ * side บอกว่าด้ามอยู่ฝั่งไหนของคอลัมน์ที่มันปรับ ซึ่งกำหนดทิศทางการลาก:
+ * ด้ามที่ขอบขวา ลากขวา = กว้างขึ้น · ด้ามที่ขอบซ้าย ลากขวา = แคบลง
+ */
 function measureHandles() {
     if (isNarrow.value || !board.value) {
         colHandles.value = [];
@@ -376,29 +392,61 @@ function measureHandles() {
     }
     const base = board.value.getBoundingClientRect();
     const cols = renderedColumns.value;
-    colHandles.value = cols.slice(0, -1).map((col) => {
+    const chart = chartColumn.value;
+    const taken = new Set();
+    const out = [];
+
+    for (let i = 0; i < cols.length - 1; i++) {
+        const leftCol = cols[i];
+        const rightCol = cols[i + 1];
+
+        let col = null;
+        let side = null;
+        if (leftCol !== chart && !taken.has(leftCol)) {
+            col = leftCol; side = 'right';   // ด้ามอยู่ขอบขวาของคอลัมน์นี้
+        } else if (rightCol !== chart && !taken.has(rightCol)) {
+            col = rightCol; side = 'left';   // ด้ามอยู่ขอบซ้ายของคอลัมน์นี้
+        }
+        if (!col) continue;
+
         const el = colEls.get(col);
-        if (!el) return null;
+        if (!el) continue;
+        taken.add(col);
+
         const r = el.getBoundingClientRect();
-        return { col, x: Math.round(r.right - base.left + 6), width: Math.round(r.width) };
-    }).filter(Boolean);
+        const edge = side === 'right' ? r.right : r.left;
+        out.push({
+            col,
+            side,
+            x: Math.round(edge - base.left + (side === 'right' ? 6 : -6)),
+            width: Math.round(r.width),
+        });
+    }
+
+    colHandles.value = out;
 }
 
 let resizing = null;
 
-function startColumnResize(e, col) {
+function startColumnResize(e, handle) {
     // คอลัมน์กราฟเป็นรางยืดที่กินที่เหลือ ตรึงเป็นพิกเซลแล้วจะมีที่ว่างค้างข้างขวา
-    if (col === chartColumn.value) return;
-    const el = colEls.get(col);
+    if (handle.col === chartColumn.value) return;
+    const el = colEls.get(handle.col);
     if (!el) return;
-    resizing = { col, startX: e.clientX, startW: el.getBoundingClientRect().width };
+    resizing = {
+        col: handle.col,
+        // ด้ามที่ขอบซ้ายต้องกลับทิศ: ลากขวา = ขอบซ้ายขยับเข้ามา = คอลัมน์แคบลง
+        dir: handle.side === 'right' ? 1 : -1,
+        startX: e.clientX,
+        startW: el.getBoundingClientRect().width,
+    };
     e.currentTarget.setPointerCapture?.(e.pointerId);
     e.preventDefault();
 }
 
 function onColumnResizeMove(e) {
     if (!resizing) return;
-    layout.setColumnWidth(resizing.col, resizing.startW + (e.clientX - resizing.startX));
+    layout.setColumnWidth(resizing.col, resizing.startW + (e.clientX - resizing.startX) * resizing.dir);
     // วัดใหม่ทันทีเพื่อให้ด้ามวิ่งตามนิ้ว ไม่ใช่กระตุกตามรอบ observer
     nextTick(measureHandles);
 }
@@ -1775,7 +1823,7 @@ onUnmounted(() => {
                         :style="{ left: `${h.x}px` }"
                         :title="t('trade.layout.resizeColumn')"
                         :aria-label="t('trade.layout.resizeColumn')"
-                        @pointerdown="startColumnResize($event, h.col)"
+                        @pointerdown="startColumnResize($event, h)"
                         @pointermove="onColumnResizeMove"
                         @pointerup="endColumnResize"
                         @pointercancel="endColumnResize"
