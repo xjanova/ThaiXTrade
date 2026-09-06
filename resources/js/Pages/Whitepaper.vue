@@ -668,7 +668,7 @@ const content = {
             smartContracts: [['Solidity ^0.8.20', 'Smart contract language'], ['Hardhat', 'Development & testing framework'], ['OpenZeppelin', 'Audited security libraries'], ['ethers.js', 'Web3 interaction library']],
             backend: [['Laravel 11', 'Enterprise PHP framework'], ['PHP 8.2+', 'Server-side language'], ['MySQL 8.0+', 'Relational database'], ['Redis', 'Caching & queue management']],
             frontend: [['Vue.js 3', 'Reactive frontend framework'], ['Inertia.js', 'SPA without API'], ['TailwindCSS', 'Utility-first styling'], ['Chart.js', 'Data visualization']],
-            infra: [['Docker', 'Container orchestration'], ['Blockscout', 'Open-source block explorer'], ['Prometheus + Grafana', 'Metrics & monitoring'], ['GitHub Actions', 'CI/CD pipeline']],
+            infra: [['Docker', 'Container orchestration'], ['Blockscout', 'Open-source block explorer'], ['Prometheus + Grafana', 'Metrics & monitoring'], ['Automated CI/CD', 'Build & deploy pipeline']],
         },
         teamDesc: 'TPIX Chain is developed by Xman Studio, an experienced blockchain development team specializing in DeFi, Web3, and enterprise applications for the Southeast Asian market. The team brings deep expertise in Solidity smart contracts, EVM chain deployment, full-stack Web3 development, and integration with real-world business systems.',
         teamHighlights: ['500,000+ platform users on Thaiprompt Affiliate', '389 Eloquent models, 294 controllers, 500,000+ lines of production code', '20+ integrated business modules (MLM, e-commerce, AI, IoT, hotel booking)', 'Live blockchain infrastructure with Blockscout explorer'],
@@ -906,7 +906,7 @@ const content = {
             smartContracts: [['Solidity ^0.8.20', 'ภาษา smart contract'], ['Hardhat', 'เฟรมเวิร์กพัฒนาและทดสอบ'], ['OpenZeppelin', 'ไลบรารีความปลอดภัย'], ['ethers.js', 'ไลบรารี Web3']],
             backend: [['Laravel 11', 'เฟรมเวิร์ก PHP ระดับ Enterprise'], ['PHP 8.2+', 'ภาษาฝั่งเซิร์ฟเวอร์'], ['MySQL 8.0+', 'ฐานข้อมูลเชิงสัมพันธ์'], ['Redis', 'แคชและจัดการคิว']],
             frontend: [['Vue.js 3', 'เฟรมเวิร์ก frontend แบบ reactive'], ['Inertia.js', 'SPA ไม่ต้องสร้าง API'], ['TailwindCSS', 'Utility-first styling'], ['Chart.js', 'แสดงข้อมูลเชิงภาพ']],
-            infra: [['Docker', 'จัดการ container'], ['Blockscout', 'Block explorer โอเพนซอร์ส'], ['Prometheus + Grafana', 'ตรวจสอบและแดชบอร์ด'], ['GitHub Actions', 'CI/CD pipeline']],
+            infra: [['Docker', 'จัดการ container'], ['Blockscout', 'Block explorer โอเพนซอร์ส'], ['Prometheus + Grafana', 'ตรวจสอบและแดชบอร์ด'], ['Automated CI/CD', 'สายพานบิลด์และ deploy']],
         },
         teamDesc: 'TPIX Chain พัฒนาโดย Xman Studio ทีมพัฒนาบล็อกเชนที่มีประสบการณ์ เชี่ยวชาญด้าน DeFi, Web3 และแอปพลิเคชันระดับองค์กรสำหรับตลาดเอเชียตะวันออกเฉียงใต้ ทีมมีความเชี่ยวชาญลึกซึ้งในด้าน Solidity smart contracts, การ deploy เชน EVM, การพัฒนา Web3 full-stack และการเชื่อมต่อกับระบบธุรกิจในโลกจริง',
         teamHighlights: ['ผู้ใช้แพลตฟอร์ม 500,000+ คนบน Thaiprompt Affiliate', '389 Eloquent models, 294 controllers, โค้ด 500,000+ บรรทัด', '20+ โมดูลธุรกิจ (MLM, อีคอมเมิร์ซ, AI, IoT, จองโรงแรม)', 'โครงสร้างบล็อกเชนพร้อม Blockscout explorer'],
@@ -1422,11 +1422,11 @@ const content = {
                             <h4 class="text-lg font-bold text-white mb-2">{{ lang === 'en' ? 'Run a Master Node' : 'รัน Master Node' }}</h4>
                             <p class="text-sm text-gray-300 mb-3">{{ lang === 'en' ? 'Download the TPIX Node software and start earning rewards today.' : 'ดาวน์โหลดซอฟต์แวร์ TPIX Node และเริ่มรับรางวัลวันนี้' }}</p>
                             <div class="flex justify-center gap-3 flex-wrap">
-                                <a href="https://github.com/xjanova/TPIX-Coin/releases" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:bg-purple-500/30 transition text-sm font-semibold">
+                                <a href="/download" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:bg-purple-500/30 transition text-sm font-semibold">
                                     Download for Windows / Linux
                                 </a>
-                                <a href="https://github.com/xjanova/TPIX-Coin" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition text-sm">
-                                    GitHub Source Code
+                                <a href="/masternode/guide" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition text-sm">
+                                    {{ lang === 'en' ? 'Setup Guide' : 'คู่มือติดตั้ง' }}
                                 </a>
                             </div>
                         </div>

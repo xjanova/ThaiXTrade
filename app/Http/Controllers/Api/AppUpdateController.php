@@ -325,6 +325,82 @@ class AppUpdateController extends Controller
         Cache::forget('masternode_feed_assets_'.md5(''));
     }
 
+    // =====================================================================
+    //  ล้างร่องรอย GitHub ก่อนส่งออกจากเซิร์ฟเวอร์
+    // =====================================================================
+
+    /**
+     * โดเมนของ GitHub ทุกตัวที่อาจโผล่มาในบันทึกรุ่น.
+     */
+    private const GITHUB_HOSTS = '(?:[\w-]+\.)*(?:github\.com|githubusercontent\.com|github\.io)';
+
+    /**
+     * ล้างลิงก์และการเอ่ยถึง GitHub ออกจากบันทึกรุ่น ก่อนส่งให้ผู้ใช้.
+     *
+     * เจอจริง 2026-09-06: กล่อง "มีเวอร์ชันใหม่" ในแอปเทรดโชว์
+     * "Full Changelog: github.com/<owner>/<repo>/compare/..." เต็ม ๆ สองรอบ
+     * เพราะ CI ใส่ generate_release_notes มาให้ แล้วเราส่ง body ดิบต่อไปเลย
+     *
+     * และ repo นี้เปิดสาธารณะ ลิงก์จึงกดได้จริง — ใครกดในกล่องอัปเดตก็ไปโผล่
+     * ที่ซอร์สโค้ดกับประวัติ commit ทั้งโปรเจกต์ ไม่ใช่แค่ชื่อ repo ที่หลุด
+     *
+     * ล้างที่ฝั่งเซิร์ฟเวอร์เพราะมีผลกับเครื่องที่ลงแอปไปแล้วทุกเครื่องทันทีที่ deploy
+     * ไม่ต้องรอผู้ใช้อัปเดตแอปก่อน — ซึ่งเป็นไปไม่ได้อยู่แล้ว เพราะกล่องที่รั่ว
+     * คือกล่องที่ใช้ชวนให้อัปเดต
+     */
+    private function sanitizeNotes(?string $notes): string
+    {
+        if (! is_string($notes) || trim($notes) === '') {
+            return '';
+        }
+
+        $linkPattern = '#<?https?://'.self::GITHUB_HOSTS.'[^\s<>)\]"\']*>?#i';
+
+        // ลิงก์แบบมาร์กดาวน์ [ข้อความ](ลิงก์) → เหลือแค่ข้อความ ไม่ให้ที่อยู่หลุดไปด้วย
+        $notes = preg_replace(
+            '#\[([^\]\n]*)\]\(\s*https?://'.self::GITHUB_HOSTS.'[^)\s]*\s*\)#i',
+            '$1',
+            $notes
+        );
+
+        $kept = [];
+
+        foreach (preg_split('/\R/', $notes) as $line) {
+            $hadLink = (bool) preg_match($linkPattern, $line);
+
+            // ลบลิงก์เปล่า ๆ ออกก่อน แล้วค่อยตัดสินว่าอะไรเหลือรอด
+            $line = preg_replace($linkPattern, '', $line);
+
+            // ยังเอ่ยชื่อ GitHub อยู่ เช่น "- Auto-update from GitHub Releases" → ทิ้งทั้งบรรทัด
+            if (preg_match('/\bgithub\b/i', $line)) {
+                continue;
+            }
+
+            if ($hadLink) {
+                // ตัดคำเชื่อมที่ห้อยอยู่หลังลิงก์ที่เพิ่งลบไป ("... by @user in", "ดูที่ :")
+                $line = preg_replace('/\s*(?:\bby\s+@[\w-]+)?\s*(?:\b(?:in|at|from|ที่)\b)?\s*[:：]?\s*$/iu', '', $line);
+
+                // บรรทัดที่มีไว้แบกลิงก์อย่างเดียว (ป้ายสั้น ๆ ตามด้วยลิงก์) ตายไปพร้อมลิงก์
+                if (preg_match('/^[\s>#*_-]*(?:\*\*)?[\p{L}\p{N} \t\'’-]{0,30}(?:\*\*)?\s*$/u', $line)) {
+                    continue;
+                }
+            }
+
+            $kept[] = rtrim($line);
+        }
+
+        $clean = implode("\n", $kept);
+
+        // ยุบบรรทัดว่างที่เหลือจากของที่ลบไป ให้เหลือคั่นละบรรทัดเดียว
+        $clean = preg_replace('/\n{3,}/', "\n\n", $clean);
+
+        // เส้นคั่นที่ห้อยหัวห้อยท้าย เพราะของที่มันคั่นอยู่ถูกลบไปหมดแล้ว
+        $clean = preg_replace('/^(?:\s*[-*_]{3,}\s*\n)+/', '', $clean);
+        $clean = preg_replace('/(?:\n\s*[-*_]{3,}\s*)+$/', '', $clean);
+
+        return trim($clean);
+    }
+
     private function fetchLatestRelease(): ?array
     {
         // เช็ค admin-selected release ก่อน
@@ -428,7 +504,7 @@ class AppUpdateController extends Controller
         return [
             'version' => $version,
             'name' => $release['name'] ?: "v{$version}",
-            'notes' => $release['body'] ?? '',
+            'notes' => $this->sanitizeNotes($release['body'] ?? ''),
             'download_url' => $apkAsset['url'],
             'published_at' => $release['published_at'],
             'file_size' => $apkAsset['size'],
@@ -448,6 +524,21 @@ class AppUpdateController extends Controller
     public function chainLatest(): JsonResponse
     {
         $data = $this->cachedChainReleases();
+
+        // ที่อยู่ไฟล์บน GitHub เป็นเรื่องภายใน — ตอบออกไปเป็นทางของเราเสมอ
+        //
+        // เดิมคืน api.github.com/repos/<owner>/<repo>/releases/assets/<id> ออกไปดิบ ๆ
+        // ทั้งที่หน้าดาวน์โหลดไม่เคยใช้ค่านี้ (มันชี้ /api/v1/app/chain-download เองอยู่แล้ว)
+        // ผลคือ endpoint สาธารณะนี้แจกชื่อ repo วอลเล็ตกับมาสเตอร์โหนดให้ใครก็ได้ที่เปิดดู
+        foreach (['wallet', 'masternode'] as $type) {
+            if (! isset($data[$type]) || ! is_array($data[$type])) {
+                continue;
+            }
+
+            $data[$type]['download_url'] = ! empty($data[$type]['download_url'])
+                ? url("/api/v1/app/chain-download?type={$type}")
+                : null;
+        }
 
         return response()->json([
             'success' => true,
@@ -781,13 +872,13 @@ class AppUpdateController extends Controller
 
                             // ติดมากับไฟล์แต่ละตัว ไม่งั้นวอลเล็ตจะไปได้ notes ของมาสเตอร์โหนด
                             'name' => $release['name'] ?: "v{$version}",
-                            'notes' => $release['body'] ?? '',
+                            'notes' => $this->sanitizeNotes($release['body'] ?? ''),
                         ],
                         'tag' => $release['tag_name'],
                         'version' => $version,
                         'name' => $release['name'] ?: "v{$version}",
                         'published_at' => $release['published_at'],
-                        'notes' => $release['body'] ?? '',
+                        'notes' => $this->sanitizeNotes($release['body'] ?? ''),
                     ];
                 }
 

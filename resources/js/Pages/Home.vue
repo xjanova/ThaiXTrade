@@ -227,10 +227,10 @@ onMounted(async () => {
                                 <Link href="/masternode/guide" class="px-6 py-3 text-sm font-semibold border border-cyan-500/30 text-cyan-400 rounded-xl hover:bg-cyan-500/10 transition">
                                     📖 {{ t('home.nodeGuide') }}
                                 </Link>
-                                <a href="https://github.com/xjanova/TPIX-Coin/releases/latest" target="_blank"
+                                <Link href="/download"
                                     class="px-6 py-3 text-sm font-semibold border border-white/10 text-gray-400 rounded-xl hover:bg-white/5 transition">
                                     📥 {{ t('home.nodeDownload') }}
-                                </a>
+                                </Link>
                             </div>
                         </div>
 

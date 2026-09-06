@@ -200,7 +200,6 @@ const socialForm = useForm({
     twitter_url: props.settings.twitter_url || '',
     telegram_url: props.settings.telegram_url || '',
     discord_url: props.settings.discord_url || '',
-    github_url: props.settings.github_url || '',
 });
 
 const saveSocial = () => {
@@ -1016,10 +1015,6 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 <div>
                     <label :class="labelClass">Discord</label>
                     <input v-model="socialForm.discord_url" type="url" :class="inputClass" placeholder="https://discord.gg/tpixtrade" />
-                </div>
-                <div>
-                    <label :class="labelClass">GitHub</label>
-                    <input v-model="socialForm.github_url" type="url" :class="inputClass" placeholder="https://github.com/tpixtrade" />
                 </div>
 
                 <div class="pt-4">

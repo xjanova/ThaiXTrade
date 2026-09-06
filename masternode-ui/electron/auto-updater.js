@@ -1,13 +1,18 @@
 /**
  * TPIX Master Node — Auto Updater
- * Downloads updates from GitHub Releases (xjanova/TPIX-Coin)
+ * Downloads updates from the TPIX update feed (tpix.online).
  * Uses electron-updater for seamless background updates.
  * Developed by Xman Studio
  */
 
 const { autoUpdater } = require('electron-updater');
 const { ipcMain, BrowserWindow } = require('electron');
-// GitHub repo: xjanova/TPIX-Coin
+
+// ฟีดอัปเดตของเราเอง — เซิร์ฟเวอร์เป็นคนไปหยิบไฟล์มาให้ (ดู AppUpdateController
+// ฝั่ง ThaiXTrade: route /updates/masternode/{file}) ตัวโปรแกรมจึงไม่ต้องรู้ว่า
+// ไฟล์จริงอยู่ที่ไหน และไม่ต้องฝัง token อะไรลงในไฟล์ .exe ที่แจกผู้ใช้
+const UPDATE_FEED_URL = 'https://tpix.online/updates/masternode';
+
 const UPDATE_CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
 class AppUpdater {
@@ -33,13 +38,12 @@ class AppUpdater {
         autoUpdater.autoInstallOnAppQuit = true;
         autoUpdater.allowDowngrade = false;
 
-        // GitHub provider config (reads from package.json "build.publish")
-        // Can also set manually:
+        // ตั้งฟีดเองเสมอ — ทับค่าที่ electron-builder ฝัง app-update.yml มาให้
+        // ไม่งั้นโปรแกรมจะวิ่งไปหาที่เก็บไฟล์ต้นทางตรง ๆ แล้วบอกที่อยู่นั้นกับทุกคน
+        // ที่แกะไฟล์ .exe ดู
         autoUpdater.setFeedURL({
-            provider: 'github',
-            owner: 'xjanova',
-            repo: 'TPIX-Coin',
-            releaseType: 'release',
+            provider: 'generic',
+            url: UPDATE_FEED_URL,
         });
 
         // Use simple logger
@@ -128,7 +132,7 @@ class AppUpdater {
     }
 
     /**
-     * Check for updates from GitHub Releases.
+     * Check for updates from the TPIX update feed.
      */
     async checkForUpdates() {
         try {

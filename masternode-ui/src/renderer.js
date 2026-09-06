@@ -374,7 +374,6 @@ const app = createApp({
                 links: [
                     { icon: '📃', name: 'Whitepaper', desc: lang.value === 'th' ? 'เอกสาร Whitepaper ของ TPIX' : 'TPIX Whitepaper document', url: 'https://tpix.online/whitepaper' },
                     { icon: '📚', name: 'API Docs', desc: lang.value === 'th' ? 'เอกสาร API สำหรับนักพัฒนา' : 'API documentation for developers', url: 'https://tpix.online/api-docs' },
-                    { icon: '💻', name: 'GitHub', desc: lang.value === 'th' ? 'ซอร์สโค้ดโอเพนซอร์ส' : 'Open source code', url: 'https://github.com/xjanova/ThaiXTrade' },
                 ],
             },
             {

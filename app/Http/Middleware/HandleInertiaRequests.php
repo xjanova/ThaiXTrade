@@ -50,7 +50,6 @@ class HandleInertiaRequests extends Middleware
                 'twitter' => $socialLinks['twitter_url'] ?? null,
                 'telegram' => $socialLinks['telegram_url'] ?? null,
                 'discord' => $socialLinks['discord_url'] ?? null,
-                'github' => $socialLinks['github_url'] ?? null,
             ],
             /*
              * ผู้ใช้ที่เข้าระบบด้วยการเซ็นกระเป๋าจะไม่มีชื่อและไม่มีอีเมล

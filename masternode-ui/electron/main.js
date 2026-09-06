@@ -433,7 +433,7 @@ app.whenReady().then(() => {
     createWindow();
     createTray();
 
-    // Auto-updater: check GitHub releases for new versions
+    // Auto-updater: check the TPIX update feed for new versions
     appUpdater = new AppUpdater();
     appUpdater.startAutoCheck();
 });

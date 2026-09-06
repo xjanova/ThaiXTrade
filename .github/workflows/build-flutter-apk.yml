@@ -289,7 +289,7 @@ jobs:
             ### Highlights
             - Glass morphism dark theme matching web
             - BIP39/BIP32 native wallet (instant connect)
-            - Auto-update from GitHub Releases
+            - Auto-update in-app (no store needed)
             - Thai/English language support
 
             ### Install

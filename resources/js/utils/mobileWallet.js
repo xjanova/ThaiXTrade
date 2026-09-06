@@ -206,9 +206,12 @@ export const TPIX_APP = {
         intent: `intent://#Intent;scheme=tpixtrade;package=com.xmanstudio.tpixtrade;end`,
     },
     download: {
-        // APK อยู่ใน GitHub Releases — ดาวน์โหลดเวอร์ชันล่าสุดได้ตลอด
-        android: 'https://github.com/xjanova/ThaiXTrade/releases/latest',
-        ios: 'https://github.com/xjanova/ThaiXTrade/releases/latest',
+        // หน้าดาวน์โหลดของเราเอง — เสิร์ฟ APK ผ่าน /api/v1/app/download
+        //
+        // เดิมชี้ไปหน้า releases ของ repo ตรง ๆ ซึ่งเปิดสาธารณะอยู่ = ปุ่ม "ดาวน์โหลดแอป"
+        // พาผู้ใช้ออกไปดูซอร์สโค้ดทั้งโปรเจกต์ แถมยังต้องไปหาไฟล์ APK เอาเองในหน้านั้น
+        android: '/download',
+        ios: '/download',
     },
 };
 

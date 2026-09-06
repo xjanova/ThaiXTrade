@@ -40,10 +40,8 @@
     "forceCodeSigning": false,
     "publish": [
       {
-        "provider": "github",
-        "owner": "xjanova",
-        "repo": "TPIX-Coin",
-        "releaseType": "release"
+        "provider": "generic",
+        "url": "https://tpix.online/updates/masternode"
       }
     ],
     "files": [

@@ -52,7 +52,7 @@ const steps = computed(() => isTH.value ? [
         title: 'ดาวน์โหลดโปรแกรม',
         desc: 'ดาวน์โหลด TPIX Master Node สำหรับ Windows',
         details: [
-            'ไปที่หน้า TPIX Download หรือ GitHub Releases',
+            'ไปที่หน้า TPIX Download ที่ tpix.online/download',
             'ดาวน์โหลดไฟล์ "TPIX Master Node.exe" (Portable — ไม่ต้องติดตั้ง)',
             'หรือดาวน์โหลด Installer (.exe) สำหรับติดตั้งถาวร',
             'วางไว้ที่ใดก็ได้ เช่น Desktop หรือ Documents',
@@ -118,7 +118,7 @@ const steps = computed(() => isTH.value ? [
         desc: 'ติดตามรางวัลและให้โปรแกรมอัปเดตอัตโนมัติ',
         details: [
             'ดูรางวัลสะสมในหน้า Dashboard',
-            'โปรแกรมจะตรวจสอบอัปเดตจาก GitHub อัตโนมัติทุก 30 นาที',
+            'โปรแกรมจะตรวจสอบอัปเดตจากเซิร์ฟเวอร์ TPIX อัตโนมัติทุก 30 นาที',
             'เมื่อมีเวอร์ชันใหม่ จะแจ้งเตือนให้ดาวน์โหลด + ติดตั้งอัตโนมัติ',
             'ดูประวัติรางวัลและ claim ได้เมื่อ contract พร้อม',
             'หน้า "เครือข่าย" แสดง validators ทั้งหมดและสถานะ chain',
@@ -131,7 +131,7 @@ const steps = computed(() => isTH.value ? [
         title: 'Download the App',
         desc: 'Download TPIX Master Node for Windows',
         details: [
-            'Go to TPIX Download page or GitHub Releases',
+            'Go to the TPIX Download page at tpix.online/download',
             'Download "TPIX Master Node.exe" (Portable — no installation needed)',
             'Or download the Installer (.exe) for permanent installation',
             'Place it anywhere — Desktop, Documents, etc.',
@@ -197,7 +197,7 @@ const steps = computed(() => isTH.value ? [
         desc: 'Monitor rewards and let the app auto-update',
         details: [
             'View accumulated rewards on the Dashboard',
-            'The app checks for updates from GitHub every 30 minutes',
+            'The app checks the TPIX server for updates every 30 minutes',
             'When a new version is available, it notifies you to download + install',
             'View reward history and claim when the contract is ready',
             'The "Network" tab shows all validators and chain health',
@@ -219,7 +219,7 @@ const stepScreenshots = {
 
 // Step diagram data (overlay info on screenshots)
 const stepDiagrams = {
-    'step-download': { icon: '📥', color: '#06b6d4', items: ['GitHub Release', 'TPIX Download Page', 'Portable .exe'] },
+    'step-download': { icon: '📥', color: '#06b6d4', items: ['TPIX Download Page', 'Installer .exe', 'Portable .exe'] },
     'step-wallet': { icon: '🔐', color: '#a855f7', items: ['Create New', 'Import Key', 'Save Backup'] },
     'step-fund': { icon: '💰', color: '#f59e0b', items: ['Copy Address', 'Send TPIX', 'Verify Balance'] },
     'step-tier': { icon: '⚙️', color: '#06b6d4', items: ['Choose Tier', 'Set Name', 'Review Config'] },
@@ -446,14 +446,14 @@ const stepDiagrams = {
                         { q: 'ถ้าเน็ตหลุดจะเป็นอย่างไร?', a: 'โหนดจะหยุดชั่วคราว เมื่อเน็ตกลับมาจะเชื่อมต่อใหม่อัตโนมัติ ไม่โดนลงโทษสำหรับ Light Node' },
                         { q: 'Validator กับ Guardian ต่างกันอย่างไร?', a: 'Validator คือ IBFT2 block sealer ตัวจริง ต้อง stake 10M TPIX + KYC บริษัท มีสิทธิ์โหวต governance Guardian คือ premium masternode ต้อง stake 1M TPIX' },
                         { q: 'ยิ่งมีโหนดเยอะ เชนยิ่งเสถียรจริงไหม?', a: 'ใช่! IBFT2 ต้องการ 2/3 ของ validators ออนไลน์ ยิ่งมีเยอะ ยิ่งทนทานต่อการล่ม' },
-                        { q: 'โปรแกรมอัปเดตยังไง?', a: 'อัปเดตอัตโนมัติจาก GitHub! เมื่อมีเวอร์ชันใหม่จะแจ้งเตือนในแอป คลิกเดียวอัปเดตได้เลย' },
+                        { q: 'โปรแกรมอัปเดตยังไง?', a: 'อัปเดตอัตโนมัติในตัวโปรแกรม! เมื่อมีเวอร์ชันใหม่จะแจ้งเตือนในแอป คลิกเดียวอัปเดตได้เลย' },
                     ] : [
                         { q: 'Do I need to keep my computer running 24/7?', a: 'Higher uptime = more rewards. Recommended 24/7 or use a VPS/Cloud Server.' },
                         { q: 'Can I run multiple nodes?', a: 'Yes, but each node needs its own wallet and separate stake.' },
                         { q: 'What happens if my internet disconnects?', a: 'The node pauses temporarily. It reconnects automatically when internet returns. Light Nodes are not penalized.' },
                         { q: 'What is the difference between Validator and Guardian?', a: 'Validators are real IBFT2 block sealers requiring 10M TPIX + company KYC, with governance voting power. Guardians are premium masternodes requiring 1M TPIX.' },
                         { q: 'More nodes = more stable chain?', a: 'Yes! IBFT2 requires 2/3 of validators online. More validators = more fault tolerance.' },
-                        { q: 'How does the app update?', a: 'Auto-updates from GitHub! When a new version is available, you get notified in-app. One click to update.' },
+                        { q: 'How does the app update?', a: 'Auto-updates in-app! When a new version is available, you get notified in-app. One click to update.' },
                     ])" :key="i"
                         class="glass-card p-5 rounded-xl border border-white/10">
                         <h3 class="font-semibold text-white text-sm mb-2">{{ faq.q }}</h3>

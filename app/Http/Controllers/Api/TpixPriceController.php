@@ -213,7 +213,8 @@ class TpixPriceController extends Controller
                     'twitter' => 'https://twitter.com/tpixchain',
                     'telegram' => 'https://t.me/tpixchain',
                     'discord' => '',
-                    'github' => 'https://github.com/xjanova/TPIX-Coin',
+                    // ไม่บอกที่อยู่ repo — endpoint นี้เปิดสาธารณะให้เว็บจัดอันดับเหรียญมาดึง
+                    'github' => '',
                     'website' => 'https://tpix.online',
                     'whitepaper' => 'https://tpix.online/whitepaper',
                 ],
