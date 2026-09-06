@@ -1428,6 +1428,14 @@ const content = {
                                 <a href="/masternode/guide" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition text-sm">
                                     {{ lang === 'en' ? 'Setup Guide' : 'คู่มือติดตั้ง' }}
                                 </a>
+                                <!--
+                                    ข้อยกเว้นเดียวที่เปิดเผยที่อยู่บน GitHub ได้ — เฉพาะสัญญาอัจฉริยะ
+                                    (เจ้าของกำหนด 2026-09-06) โครงการเชนต้องให้คนตรวจสัญญาเองได้
+                                    ส่วนซอร์สของเว็บ/แอป/โปรแกรมโหนด ห้ามชี้ทางไปเด็ดขาด
+                                -->
+                                <a href="https://github.com/xjanova/TPIX-Coin/tree/main/contracts/src" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition text-sm">
+                                    {{ lang === 'en' ? 'Smart Contracts' : 'สัญญาอัจฉริยะ' }}
+                                </a>
                             </div>
                         </div>
                     </section>

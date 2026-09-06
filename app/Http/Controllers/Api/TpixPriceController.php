@@ -213,8 +213,9 @@ class TpixPriceController extends Controller
                     'twitter' => 'https://twitter.com/tpixchain',
                     'telegram' => 'https://t.me/tpixchain',
                     'discord' => '',
-                    // ไม่บอกที่อยู่ repo — endpoint นี้เปิดสาธารณะให้เว็บจัดอันดับเหรียญมาดึง
-                    'github' => '',
+                    // เปิดได้เฉพาะโฟลเดอร์สัญญาอัจฉริยะ ไม่ใช่ตัว repo (เจ้าของกำหนด 2026-09-06)
+                    // เว็บจัดอันดับเหรียญเอาไปให้คนตรวจสัญญาเองได้ โดยไม่เห็นซอร์สเว็บ/แอป
+                    'github' => 'https://github.com/xjanova/TPIX-Coin/tree/main/contracts/src',
                     'website' => 'https://tpix.online',
                     'whitepaper' => 'https://tpix.online/whitepaper',
                 ],

@@ -39,6 +39,21 @@ class RepoLocationNotExposedTest extends TestCase
     ];
 
     /**
+     * ข้อยกเว้นเดียวที่เปิดเผยได้ — โฟลเดอร์สัญญาอัจฉริยะของ TPIX (เจ้าของกำหนด 2026-09-06).
+     *
+     * โครงการเชนต้องให้คนตรวจสัญญาเองได้ ไม่งั้นไม่มีใครกล้าเอาเงินมาวาง
+     * แต่เปิดได้แค่ path นี้ — ลิงก์ที่ชี้ระดับ repo (`/xjanova/TPIX-Coin` เปล่า ๆ)
+     * ยังต้องโดนจับ เพราะมันพาไปดูซอร์สทั้งโปรเจกต์ ไม่ใช่แค่สัญญา
+     */
+    private const ALLOWED_CONTRACTS_URL = 'https://github.com/xjanova/TPIX-Coin/tree/main/contracts/src';
+
+    /** ตัดข้อยกเว้นออกก่อน แล้วที่เหลือคือของที่ไม่ควรมี */
+    private function withoutAllowedLinks(string $text): string
+    {
+        return str_replace(self::ALLOWED_CONTRACTS_URL, '', $text);
+    }
+
+    /**
      * ทุกพื้นผิวที่คนนอกเข้าถึงได้.
      *
      * ไม่ใช่แค่หน้าเว็บ — โปรแกรมมาสเตอร์โหนดเป็นไฟล์ .exe ที่แจกให้คนนอกติดตั้ง
@@ -133,7 +148,7 @@ class RepoLocationNotExposedTest extends TestCase
         $offenders = [];
 
         foreach ($this->userFacingFiles() as $relative) {
-            $contents = file_get_contents(base_path($relative));
+            $contents = $this->withoutAllowedLinks(file_get_contents(base_path($relative)));
 
             foreach (self::FORBIDDEN as $needle) {
                 if (stripos($contents, $needle) === false) {
@@ -171,6 +186,19 @@ class RepoLocationNotExposedTest extends TestCase
     }
 
     /**
+     * ข้อยกเว้นต้องแคบจริง — ลิงก์ระดับ repo ยังต้องโดนจับ ไม่ใช่ผ่านเพราะขึ้นต้นเหมือนกัน.
+     */
+    public function test_the_exception_is_only_the_contracts_folder(): void
+    {
+        // ตัดข้อยกเว้นออกแล้ว ลิงก์ระดับ repo ต้องยังเหลือให้จับได้
+        $repoLevel = 'https://github.com/xjanova/TPIX-Coin';
+        $this->assertStringContainsString('github.com', $this->withoutAllowedLinks($repoLevel));
+
+        // ส่วนลิงก์สัญญาเต็ม ๆ ต้องถูกตัดจนไม่เหลืออะไรให้จับ
+        $this->assertSame('', $this->withoutAllowedLinks(self::ALLOWED_CONTRACTS_URL));
+    }
+
+    /**
      * ข้อมูลเหรียญสาธารณะ — เว็บจัดอันดับเหรียญมาดึงไปแสดง เคยแจก
      * social.github = ที่อยู่ repo ไปพร้อมกับข้อมูลราคา.
      */
@@ -180,15 +208,22 @@ class RepoLocationNotExposedTest extends TestCase
 
         // ตรวจ "ที่อยู่" ไม่ใช่คำว่า github เฉย ๆ — ชื่อช่องที่ว่างอยู่ไม่ได้บอกอะไรใคร
         // แต่ค่าข้างในต้องไม่มีทั้ง github.com และชื่อเจ้าของ
+        // เข้ารหัสใหม่แบบไม่ escape slash ก่อน — ไม่งั้น JSON เขียน https:\/\/... แล้ว
+        // การตัดข้อยกเว้นออกจะไม่แมตช์ กลายเป็นด่านแดงทั้งที่ลิงก์ถูกต้อง
+        $body = $this->withoutAllowedLinks(
+            json_encode($response->json(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
+
         foreach (self::FORBIDDEN as $needle) {
             $this->assertStringNotContainsString(
                 $needle,
-                strtolower($response->getContent()),
+                strtolower($body),
                 "ข้อมูลเหรียญสาธารณะยังแจก '{$needle}' ออกไป"
             );
         }
 
-        $response->assertJsonPath('data.social.github', '');
+        // ชี้ที่โฟลเดอร์สัญญาเท่านั้น เว็บจัดอันดับเหรียญเอาไปให้คนตรวจสัญญาได้
+        $response->assertJsonPath('data.social.github', self::ALLOWED_CONTRACTS_URL);
 
         // ช่องอื่นต้องยังอยู่ครบ — ตัดแค่ที่อยู่ repo ไม่ใช่ตัดทั้งบล็อก social
         $response->assertJsonPath('data.social.website', 'https://tpix.online');
