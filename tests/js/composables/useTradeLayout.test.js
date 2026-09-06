@@ -15,6 +15,11 @@ function flatten(layout) {
     return COLUMNS.flatMap(col => layout.columns.value[col].flat());
 }
 
+/** ตัวเลข px ใน min-height ของแถว — ตอนนี้อยู่ในรูป calc(Npx * var(--row-min-scale, 1)) */
+function pxOf(value) {
+    return Number(String(value).match(/(\d+(?:\.\d+)?)px/)?.[1]);
+}
+
 /** ย้ายการ์ดหนึ่งใบด้วยท่าลากจริง — startDrag → drop → endDrag */
 function move(layout, id, targetId, position) {
     layout.startDrag(id);
@@ -231,10 +236,10 @@ describe('useTradeLayout', () => {
     it('gives growing rows a flex weight and a readable minimum height', () => {
         const chart = layout.rowStyle(['chart'], true);
         expect(chart.flex).toBe('8 1 0%');
-        expect(chart.minHeight).toBe('240px');
+        expect(chart.minHeight).toBe('calc(240px * var(--row-min-scale, 1))');
 
         const trades = layout.rowStyle(['trades'], true);
-        expect(parseInt(trades.minHeight, 10)).toBeGreaterThanOrEqual(120);
+        expect(pxOf(trades.minHeight, 10)).toBeGreaterThanOrEqual(120);
     });
 
     it('sizes the trade form to its content but caps it so the chart is not starved', () => {
@@ -249,7 +254,7 @@ describe('useTradeLayout', () => {
         // ฟอร์ม (0) + สมุดคำสั่ง (5) → แถวยืดได้ เพราะมีใบที่ยืดเป็นเพื่อน
         expect(layout.rowStyle(['form', 'book'], true)).toEqual({
             flex: '5 1 0%',
-            minHeight: '200px',
+            minHeight: 'calc(200px * var(--row-min-scale, 1))',
         });
     });
 
@@ -329,6 +334,66 @@ describe('useTradeLayout', () => {
         expect(layout.rowGrow.value.chart).toBeUndefined();
         expect(layout.rowGrow.value.form).toBeUndefined();
         expect(layout.rowGrow.value.orders).toBeCloseTo(50);
+    });
+
+    // ── ทุกการ์ดต้องอยู่ในจอเมื่อผู้ใช้ลากมารวมกันหลายใบ ────────────────────
+
+    /** ยัดการ์ดหลายใบลงคอลัมน์เดียวด้วยท่าลากจริง */
+    function stack(layout, ids, column) {
+        ids.forEach((id) => {
+            layout.startDrag(id);
+            layout.dropOnColumn(column);
+            layout.endDrag();
+        });
+    }
+
+    it('min-height ของแถวผูกกับสัดส่วนย่อของคอลัมน์ ไม่ใช่ตัวเลขตายตัว', () => {
+        expect(layout.rowStyle(['market'], true).minHeight).toBe('calc(220px * var(--row-min-scale, 1))');
+    });
+
+    it('คอลัมน์ที่พอดีอยู่แล้วไม่ถูกย่อ', () => {
+        // left ตั้งต้น = [market, ai] : 220 + 180 + รอยต่อ 24 = 424 < 900
+        expect(layout.columnMinScale('left', 900)).toBe(1);
+    });
+
+    it('การ์ด 5 ใบบนกระดาน 550px ถูกย่อพร้อมกันจนพอดี (กรณีที่วัดล้นจริง 466px)', () => {
+        stack(layout, ['trades', 'orders', 'book'], 'left');
+        expect(layout.visible.value.left).toEqual(['market', 'ai', 'trades', 'orders', 'book']);
+
+        // ต้องการ 220+180+150+170+200 = 920 · เหลือให้ 550 - 4 รอยต่อ × 24 = 454
+        expect(layout.columnMinScale('left', 550)).toBeCloseTo(454 / 920, 2);
+    });
+
+    it('ย่อได้ต่ำสุด 0.3 — ต่ำกว่านั้นการ์ดเหลือแค่หัว ยอมให้คอลัมน์เลื่อนแทน', () => {
+        stack(layout, ['chart', 'book', 'orders', 'trades', 'form'], 'left');
+        expect(layout.columnMinScale('left', 300)).toBe(0.3);
+    });
+
+    it('แถวที่ย่อแล้วกินแค่แถบหัว ไม่ถูกนับเป็นความสูงขั้นต่ำ', () => {
+        stack(layout, ['trades'], 'left'); // [market, ai, trades]
+
+        // ยังไม่ย่อ: ต้องการ 550 · เหลือ 500 - 2×24 = 452 → ต้องย่อ
+        expect(layout.columnMinScale('left', 500)).toBeLessThan(1);
+
+        // ย่อ ai แล้ว: ต้องการ 370 · เหลือ 452 - 44 = 408 → พอดี
+        layout.toggleCollapsed('ai');
+        expect(layout.columnMinScale('left', 500)).toBe(1);
+    });
+
+    it('น้ำหนักแถวที่ลากตั้งไว้ถูกลืมเมื่อย้ายข้ามคอลัมน์ แต่คงไว้เมื่อย้ายในคอลัมน์เดิม', () => {
+        layout.pinRowHeights([['market'], ['ai']], [400, 100]);
+        expect(layout.rowGrow.value).toEqual({ market: 80, ai: 20 });
+
+        // ย้ายในคอลัมน์เดิม (สลับขึ้นไปก่อน market) — เปอร์เซ็นต์ยังเทียบกับเพื่อนกลุ่มเดิม
+        move(layout, 'ai', 'market', 'before');
+        expect(layout.rowGrow.value.ai).toBe(20);
+
+        // ย้ายข้ามคอลัมน์ — เปอร์เซ็นต์นั้นไม่มีความหมายกับเพื่อนกลุ่มใหม่ ต้องทิ้ง
+        layout.startDrag('ai');
+        layout.dropOnColumn('right');
+        layout.endDrag();
+        expect(layout.rowGrow.value.ai).toBeUndefined();
+        expect(layout.rowGrow.value.market).toBe(80);
     });
 });
 

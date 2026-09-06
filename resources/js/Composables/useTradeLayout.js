@@ -361,6 +361,9 @@ function dropOnCard(targetId, position = 'before') {
     const target = locate(targetId);
     if (!target) return;
 
+    const from = locate(id);
+    if (from && from.col !== target.col) forgetRowGrow(id);
+
     const beside = position === 'left' || position === 'right';
     const targetRow = columns.value[target.col][target.rowIndex];
 
@@ -396,6 +399,7 @@ function dropOnColumn(column) {
     // อยู่ท้ายคอลัมน์นั้นลำพังอยู่แล้ว → ไม่ต้องขยับ
     if (at?.col === column && at.rowIndex === rows.length - 1 && rows[at.rowIndex].length === 1) return;
 
+    if (at && at.col !== column) forgetRowGrow(id);
     removeCard(id);
     columns.value[column].push([id]);
     prune();
@@ -454,6 +458,20 @@ function rowFlex(row) {
 /** น้ำหนักความสูงที่ใช้จริงของแถว (ค่าที่ผู้ใช้ลากไว้ ถ้าไม่มีก็ค่าตั้งต้น) */
 function growOf(row) {
     return rowGrow.value[rowKey(row)] ?? rowFlex(row).grow;
+}
+
+/**
+ * ลืมน้ำหนักแถวที่ผู้ใช้เคยลากตั้งไว้ของการ์ดใบนี้ — เรียกตอนย้ายข้ามคอลัมน์
+ *
+ * เปอร์เซ็นต์นั้นคิดเทียบกับเพื่อนร่วมคอลัมน์เดิม (pinRowHeights) พอเอาไปใช้
+ * ในคอลัมน์ใหม่ที่เพื่อนมีน้ำหนักตั้งต้น 2-5 แถวนี้จะกินที่เกือบทั้งคอลัมน์
+ * แล้วดันใบอื่นจนเหลือแค่ min — ผู้ใช้ไม่ได้ตั้งใจแบบนั้น
+ */
+function forgetRowGrow(id) {
+    if (!(id in rowGrow.value)) return;
+    const next = { ...rowGrow.value };
+    delete next[id];
+    rowGrow.value = next;
 }
 
 /**
@@ -554,6 +572,46 @@ export function useTradeLayout() {
 
     const allCollapsed = row => row.every(id => collapsed.value.includes(id));
 
+    /** แถวที่ย่อแล้วเหลือแค่แถบหัว — ใช้หักออกจากพื้นที่ก่อนแบ่งให้แถวอื่น */
+    const COLLAPSED_ROW_HEIGHT = 44;
+    /** ย่อได้ต่ำสุดแค่นี้ ต่ำกว่านั้นการ์ดเหลือแค่หัวจนไร้ประโยชน์ ยอมให้คอลัมน์เลื่อนแทน */
+    const MIN_ROW_SCALE = 0.3;
+
+    /**
+     * สัดส่วนย่อ min-height ของทุกแถวในคอลัมน์ ให้รวมกันแล้วพอดีความสูงกระดาน
+     *
+     * คืน 1 = พอดีอยู่แล้วไม่ต้องย่อ · น้อยกว่า 1 = ย่อทุกแถวด้วยสัดส่วนเดียวกัน
+     * ที่ย่อ "ทุกแถวเท่ากัน" ไม่ใช่ตัดเฉพาะใบล่างสุด เพราะผู้ใช้ตั้งใจให้ทุกใบอยู่ในจอ
+     * ไม่ใช่ให้ใบท้ายหายไปคนเดียว
+     *
+     * @param {string} col
+     * @param {number} colHeight ความสูงคอลัมน์จริง (= ความสูงกระดานในโหมดพอดีจอ)
+     */
+    function columnMinScale(col, colHeight) {
+        const rows = visibleRows.value[col] || [];
+        if (!colHeight || rows.length < 2) return 1;
+
+        let needMin = 0;
+        let fixed = 0;
+        rows.forEach((row) => {
+            if (allCollapsed(row)) {
+                fixed += COLLAPSED_ROW_HEIGHT;
+                return;
+            }
+            // แถวที่ grow = 0 (ฟอร์ม) หดได้ถึง 0 อยู่แล้ว ไม่ต้องนับ
+            if (growOf(row) > 0) needMin += rowFlex(row).min;
+        });
+
+        // รอยต่อระหว่างแถวในโหมดพอดีจอกิน 2 ช่องไฟ ไม่ใช่ช่องเดียว — RowResizer
+        // แทรกเป็นสมาชิก flex ระหว่างแถว (ช่องไฟ · เส้นลาก · ช่องไฟ) วัดจริงได้ 24px
+        // นับแค่ช่องเดียวแล้วจะเหลือล้นเท่ากับ 12px × จำนวนรอยต่อ พอดีเป๊ะ
+        const seam = ROW_GAP * 2;
+        const available = colHeight - (rows.length - 1) * seam - fixed;
+        if (needMin <= 0 || available >= needMin) return 1;
+
+        return Math.max(MIN_ROW_SCALE, Math.round((available / needMin) * 1000) / 1000);
+    }
+
     /**
      * สไตล์ความสูงของ "แถว" — บนจอกว้างแถวเป็นตัวถือความสูง ไม่ใช่การ์ด
      * @param {string[]} row
@@ -574,7 +632,16 @@ export function useTradeLayout() {
         const flex = rowFlex(row);
         const grow = growOf(row);
 
-        if (grow > 0) return { flex: `${grow} 1 0%`, minHeight: `${flex.min}px` };
+        // ⚠️ min ต้องคูณสัดส่วนย่อของคอลัมน์ (--row-min-scale ตั้งโดยหน้าเทรด)
+        // ไม่งั้นพอผู้ใช้ลากการ์ดมารวมกันหลายใบ ผลรวม min จะเกินความสูงกระดาน
+        // แล้ว flex หดต่ำกว่านั้นไม่ได้ → การ์ดทะลุขอบล่างจอ (วัดจริง: 5 ใบบน
+        // กระดาน 550px ล้น 466px) จึงย่อ min ทุกแถวพร้อมกันแทน ให้เนื้อหาเลื่อนข้างใน
+        if (grow > 0) {
+            return {
+                flex: `${grow} 1 0%`,
+                minHeight: `calc(${flex.min}px * var(--row-min-scale, 1))`,
+            };
+        }
 
         // สูงตามเนื้อหา แต่ยอมให้หดได้ถ้าคอลัมน์ไม่พอ (เนื้อหาข้างในเลื่อนเอง)
         return flex.maxPct
@@ -664,6 +731,7 @@ export function useTradeLayout() {
         resetRowHeights,
         // helpers
         rowStyle,
+        columnMinScale,
         cardStyle,
         cardStyleInRow,
         rowOf,

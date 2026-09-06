@@ -571,6 +571,18 @@ const gridTemplate = computed(() => renderedColumns.value.map((col) => {
  */
 const rowClass = ['contents xl:flex xl:flex-row xl:gap-3 xl:min-w-0 xl:min-h-0'];
 
+/**
+ * สัดส่วนย่อ min ของแถวในคอลัมน์ — ให้ทุกการ์ดอยู่ในจอเมื่อผู้ใช้ลากมารวมหลายใบ
+ *
+ * ตั้งเป็นตัวแปร CSS บนคอลัมน์แล้วให้ rowStyle เอาไปคูณ เพราะแถวไม่รู้ความสูง
+ * คอลัมน์ของตัวเอง ส่วนหน้านี้รู้ (boardHeight) จึงเป็นคนบอก
+ */
+function columnStyle(col) {
+    if (!packed.value || !boardHeight.value) return undefined;
+    const scale = layout.columnMinScale(col, boardHeight.value);
+    return scale < 1 ? { '--row-min-scale': String(scale) } : undefined;
+}
+
 /** ความสูงของแถว — บนจอกว้างแถวเป็นตัวถือความสูง ไม่ใช่การ์ด */
 function rowStyleFor(row) {
     // ต่ำกว่า xl แถวเป็น display:contents สไตล์ไม่มีผล การ์ดคุมความสูงเอง
@@ -1560,6 +1572,7 @@ onUnmounted(() => {
                     v-for="col in renderedColumns"
                     :key="col"
                     :ref="el => setColRef(col, el)"
+                    :style="columnStyle(col)"
                     :class="[
                         'contents lg:flex lg:flex-col lg:gap-3 lg:min-w-0',
                         packed && 'lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden custom-scrollbar',
