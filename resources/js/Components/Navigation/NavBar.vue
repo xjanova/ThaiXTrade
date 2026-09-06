@@ -178,7 +178,14 @@ const handleDisconnect = () => {
                         <img src="/logo.webp" alt="TPIX TRADE" class="w-10 h-10 object-contain" />
                         <div class="hidden sm:block">
                             <h1 class="text-xl font-bold text-white">TPIX <span class="text-gradient">TRADE</span></h1>
-                            <p class="text-xs text-dark-400">by Xman Studio</p>
+                            <!-- สโลแกนยาวกว่าชื่อสตูดิโอเดิมราว 3 เท่า วัดแล้วที่ 1280px
+                                 ถ้าโผล่พร้อมป้ายเมนูจะดันปุ่มฝั่งขวาตกขอบจอ (overflow จริง)
+                                 ต้องเลือกอย่างเดียว — เลือกป้ายเมนูเพราะเป็นทางใช้งาน
+                                 ส่วนสโลแกนเป็นข้อความแบรนด์ จึงรอจนจอกว้างพอทั้งคู่
+                                 nowrap กันไม่ให้ตัดสองบรรทัดซึ่งจะดันแถบบนสูงขึ้น -->
+                            <p class="hidden 2xl:block text-xs text-dark-400 whitespace-nowrap">
+                                Decentralized trading &amp; trustworthy AI trading.
+                            </p>
                         </div>
                     </Link>
                 </div>

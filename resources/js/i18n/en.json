@@ -126,7 +126,8 @@
             "settings": "Settings",
             "splitWidth": "Drag to resize left and right",
             "splitHeight": "Drag to resize top and bottom",
-            "resetSplit": "Double-click to reset"
+            "resetSplit": "Double-click to reset",
+            "resizeColumn": "Drag to resize · double-click to reset"
         },
         "market": {
             "search": "Search coin...",

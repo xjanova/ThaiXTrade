@@ -22,7 +22,9 @@ const STORAGE_KEY = 'tpix.tradeLayout.v4';
 const LEGACY_STORAGE_KEY = 'tpix.tradeLayout.v3';
 
 /** คอลัมน์ที่รองรับ — ลำดับนี้คือลำดับที่แสดงบนจอกว้าง */
-export const COLUMNS = ['left', 'center', 'right', 'far'];
+// คอลัมน์ที่ 5 มีไว้สำหรับจอกว้างมากโดยเฉพาะ — ปกติจะว่างและไม่ถูก render
+// (คอลัมน์ว่างไม่กินที่อยู่แล้ว) จะโผล่เป็นที่วางตอนลากเมื่อกระดานกว้างพอ
+export const COLUMNS = ['left', 'center', 'right', 'far', 'extra'];
 
 /**
  * การ์ดที่วางเคียงกันได้สูงสุดต่อแถว
@@ -160,6 +162,9 @@ const collapsed = ref([]);
 const rowSplit = ref({});
 /** น้ำหนักความสูงที่ผู้ใช้ลากปรับเอง — คีย์ = id ของใบแรกในแถว */
 const rowGrow = ref({});
+// ความกว้างคอลัมน์ที่ผู้ใช้ลากตั้งเอง (พิกเซล) — { left: 380, right: 420, ... }
+// ว่าง = ให้ระบบคิดเองตามความกว้างจอ ผู้ใช้ที่ไม่เคยลากจะไม่ถูกล็อกค่าไว้
+const columnWidth = ref({});
 const chartHeight = ref('md');
 const fitScreen = ref(true);
 
@@ -230,6 +235,11 @@ function load() {
         collapsed.value = (raw?.collapsed || []).filter(id => CARD_IDS.includes(id));
         rowSplit.value = pickLiveKeys(raw?.rowSplit);
         rowGrow.value = pickLiveKeys(raw?.rowGrow);
+        // กรองเฉพาะชื่อคอลัมน์ที่มีจริง กันค่าค้างจากผังรุ่นก่อนมากวน
+        columnWidth.value = Object.fromEntries(
+            Object.entries(raw?.columnWidth || {})
+                .filter(([col, w]) => COLUMNS.includes(col) && Number.isFinite(w) && w > 0),
+        );
         if (CHART_HEIGHTS.some(h => h.id === raw?.chartHeight)) chartHeight.value = raw.chartHeight;
         if (typeof raw?.fitScreen === 'boolean') fitScreen.value = raw.fitScreen;
     } catch {
@@ -247,6 +257,7 @@ function persist() {
             collapsed: collapsed.value,
             rowSplit: rowSplit.value,
             rowGrow: rowGrow.value,
+            columnWidth: columnWidth.value,
             chartHeight: chartHeight.value,
             fitScreen: fitScreen.value,
         }));
@@ -256,10 +267,38 @@ function persist() {
 }
 
 let persistTimer = null;
-watch([columns, hidden, collapsed, rowSplit, rowGrow, chartHeight, fitScreen], () => {
+watch([columns, hidden, collapsed, rowSplit, rowGrow, columnWidth, chartHeight, fitScreen], () => {
     clearTimeout(persistTimer);
     persistTimer = setTimeout(persist, 150);
 }, { deep: true });
+
+// ── ความกว้างคอลัมน์ที่ลากปรับเอง ────────────────────────────────────────────
+
+/** ขอบเขตความกว้างคอลัมน์ — แคบกว่านี้อ่านตัวเลขไม่ออก กว้างกว่านี้กินที่กราฟ */
+const MIN_COL_WIDTH = 240;
+const MAX_COL_WIDTH = 720;
+
+/**
+ * ตั้งความกว้างคอลัมน์จากการลาก
+ *
+ * คอลัมน์ของกราฟไม่รับค่า เพราะมันเป็นรางยืด (1fr) ที่กินที่เหลือ
+ * ถ้าตรึงเป็นพิกเซลด้วย จะไม่มีใครยืดแล้วกระดานจะมีที่ว่างค้างข้างขวา
+ */
+function setColumnWidth(col, px) {
+    if (!COLUMNS.includes(col)) return;
+    const w = Math.round(px);
+    columnWidth.value = {
+        ...columnWidth.value,
+        [col]: Math.min(MAX_COL_WIDTH, Math.max(MIN_COL_WIDTH, w)),
+    };
+}
+
+/** คืนคอลัมน์กลับไปให้ระบบคิดความกว้างเอง (ดับเบิลคลิกที่ด้ามลาก) */
+function resetColumnWidth(col) {
+    const next = { ...columnWidth.value };
+    delete next[col];
+    columnWidth.value = next;
+}
 
 // ── การค้นหา/ย้ายการ์ด ───────────────────────────────────────────────────────
 
@@ -472,6 +511,7 @@ function reset() {
     collapsed.value = [];
     rowSplit.value = {};
     rowGrow.value = {};
+    columnWidth.value = {};
     chartHeight.value = 'md';
     fitScreen.value = true;
 }
@@ -602,6 +642,9 @@ export function useTradeLayout() {
         collapsed,
         rowSplit,
         rowGrow,
+        columnWidth,
+        setColumnWidth,
+        resetColumnWidth,
         chartHeight,
         chartHeightPx,
         fitScreen,

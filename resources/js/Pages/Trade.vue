@@ -244,6 +244,9 @@ const isChartFullscreen = ref(false);
 
 const board = useTemplateRef('board');
 const boardHeight = ref(0);
+// ความกว้างจริงของกระดาน ใช้ตัดสินว่าคอลัมน์ข้างขยายได้แค่ไหน
+// อ่านจากกล่องจริง ไม่ใช่ innerWidth เพราะแถบข้าง/สกรอลบาร์กินที่ไปแล้ว
+const boardWidth = ref(0);
 
 /** จอเล็กกว่า xl วางการ์ดเรียงลงมา — ลาก DnD ด้วยนิ้วไม่เสถียร จึงล็อกไว้ */
 const isNarrow = ref(false);
@@ -285,8 +288,13 @@ function measureBoard() {
     if (!board.value || typeof window === 'undefined') return;
     // rect.top เป็นระยะจากขอบบนของ viewport อยู่แล้ว จึงลบออกจากความสูงจอได้ตรงๆ
     // (ในโหมดพอดีจอหน้าไม่เลื่อน ค่านี้จึงคงที่)
-    const viewportTop = board.value.getBoundingClientRect().top;
+    const rect = board.value.getBoundingClientRect();
+    const viewportTop = rect.top;
     boardHeight.value = Math.max(MIN_BOARD_HEIGHT, window.innerHeight - viewportTop - 14);
+    // วัดความกว้างในรอบเดียวกัน — ตัวสังเกตตัวเดิมยิงอยู่แล้วทุกครั้งที่ผังขยับ
+    // จึงไม่ต้องตั้ง ResizeObserver อีกตัวมาซ้อนให้เสี่ยงลูปวัด-วาด-วัด
+    boardWidth.value = Math.round(rect.width);
+    nextTick(measureHandles);
 }
 
 /**
@@ -342,6 +350,65 @@ function observeAbove() {
     attachTopObservers();
 }
 
+/**
+ * ── ด้ามลากปรับความกว้างคอลัมน์ (เฉพาะจอกว้าง) ──────────────────────────────
+ *
+ * ทำเป็น "ชั้นซ้อน" ที่วัดตำแหน่งจากคอลัมน์จริง ไม่ใช่แทรกเป็นลูกของกริด
+ * เพราะคอลัมน์เป็นลูกโดยตรงของ grid — ถ้าแทรกด้ามเข้าไปอีกใบ มันจะกลายเป็น
+ * ราง (track) เพิ่มขึ้นมา แล้ว gridTemplateColumns ที่คำนวณไว้จะเลื่อนผิดทั้งแถบ
+ *
+ * และไม่วางด้ามไว้ในคอลัมน์ด้วย เพราะโหมดพอดีจอทำให้คอลัมน์เป็นกล่องเลื่อน
+ * (overflow-y-auto) ลูกที่ absolute จะเลื่อนหนีตามเนื้อหาไปด้วย
+ */
+const colEls = new Map();
+const colHandles = ref([]);
+
+function setColRef(col, el) {
+    if (el) colEls.set(col, el);
+    else colEls.delete(col);
+}
+
+/** วัดตำแหน่งด้าม — ขอบขวาของทุกคอลัมน์ ยกเว้นใบสุดท้าย (ไม่มีอะไรให้แบ่ง) */
+function measureHandles() {
+    if (isNarrow.value || !board.value) {
+        colHandles.value = [];
+        return;
+    }
+    const base = board.value.getBoundingClientRect();
+    const cols = renderedColumns.value;
+    colHandles.value = cols.slice(0, -1).map((col) => {
+        const el = colEls.get(col);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { col, x: Math.round(r.right - base.left + 6), width: Math.round(r.width) };
+    }).filter(Boolean);
+}
+
+let resizing = null;
+
+function startColumnResize(e, col) {
+    // คอลัมน์กราฟเป็นรางยืดที่กินที่เหลือ ตรึงเป็นพิกเซลแล้วจะมีที่ว่างค้างข้างขวา
+    if (col === chartColumn.value) return;
+    const el = colEls.get(col);
+    if (!el) return;
+    resizing = { col, startX: e.clientX, startW: el.getBoundingClientRect().width };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+}
+
+function onColumnResizeMove(e) {
+    if (!resizing) return;
+    layout.setColumnWidth(resizing.col, resizing.startW + (e.clientX - resizing.startX));
+    // วัดใหม่ทันทีเพื่อให้ด้ามวิ่งตามนิ้ว ไม่ใช่กระตุกตามรอบ observer
+    nextTick(measureHandles);
+}
+
+function endColumnResize() {
+    if (!resizing) return;
+    resizing = null;
+    nextTick(measureHandles);
+}
+
 const boardStyle = computed(() => {
     const style = packed.value && boardHeight.value ? { height: `${boardHeight.value}px` } : {};
 
@@ -367,6 +434,7 @@ const columnClass = {
     center: 'lg:order-1 xl:order-2',
     right: 'lg:order-2 xl:order-3',
     far: 'lg:order-4 lg:col-span-2 xl:order-4 xl:col-span-1',
+    extra: 'lg:order-5 lg:col-span-2 xl:order-5 xl:col-span-1',
 };
 
 /**
@@ -385,7 +453,22 @@ const filledColumns = computed(() => COLUMNS.filter(col => layout.visible.value[
  */
 const isDragging = computed(() => !!layout.draggingId.value);
 
-const renderedColumns = computed(() => (isDragging.value ? COLUMNS : filledColumns.value));
+/**
+ * กระดานต้องกว้างเท่าไรถึงจะเสนอคอลัมน์ที่ 5
+ *
+ * ต่ำกว่านี้ 5 คอลัมน์จะเหลือใบละไม่ถึง 300px ซึ่งอ่านสมุดคำสั่งไม่ออก
+ * จึงไม่เสนอให้ตอนลาก แต่ถ้าผู้ใช้เคยจัดไว้ตอนจอกว้างแล้วมาเปิดบนจอเล็ก
+ * ยังต้อง render ตามปกติ ไม่งั้นการ์ดที่เขาย้ายไปจะหายไปเฉยๆ
+ */
+const WIDE_FOR_EXTRA = 1800;
+
+const renderedColumns = computed(() => {
+    if (!isDragging.value) return filledColumns.value;
+    const roomy = boardWidth.value >= WIDE_FOR_EXTRA;
+    return COLUMNS.filter(col =>
+        col !== 'extra' || roomy || layout.visible.value.extra.length > 0
+    );
+});
 
 /** คอลัมน์ที่ถือกราฟอยู่ — รางนี้เป็นตัวยืด ส่วนคอลัมน์อื่นกว้างคงที่ */
 const chartColumn = computed(() =>
@@ -412,9 +495,24 @@ const gridTemplate = computed(() => renderedColumns.value.map((col) => {
     // (เดิมเป็น minmax(0,1fr) — พอผู้ใช้แบ่งคอลัมน์ย่อยใต้กราฟ รางจะบี้จนการ์ดล้น)
     if (col === chartColumn.value) return `minmax(${min}px, 1fr)`;
 
+    // ผู้ใช้ลากปรับความกว้างคอลัมน์นี้เองแล้ว — เคารพค่าที่ตั้งไว้
+    const manual = layout.columnWidth.value[col];
+    if (manual) return `${Math.max(min, manual)}px`;
+
+    // เพดานยืดตามที่ว่างจริง: จอยิ่งกว้าง คอลัมน์ข้างยิ่งหายใจได้
+    // เดิมตัน 340px เสมอ พอจอ 2560px กราฟเลยกินที่เหลือทั้งหมดคนเดียว
+    // จนสมุดคำสั่งกับฟอร์มยังแคบเท่าจอโน้ตบุ๊ก ทั้งที่มีที่เหลือเฟือ
+    //
+    // ⭐ ตัวจำกัดจริงคือ "ส่วนเผื่อจาก min" ไม่ใช่เพดาน — วัดบนจอ 2400px แล้ว
+    //    ได้ราง 300/280/280 ทั้งที่เพดานตั้งไว้ 460 เพราะ min+80 มาก่อนเสมอ
+    //    ฉะนั้นต้องขยายส่วนเผื่อไปพร้อมกัน ไม่งั้นแก้เพดานอย่างเดียวไม่มีผลอะไร
+    const wide = boardWidth.value;
+    const slack = wide >= 2200 ? 240 : wide >= 1800 ? 160 : 80;
+    const ceiling = wide >= 2200 ? 460 : wide >= 1800 ? 400 : 340;
+
     // ⚠️ เพดานต้องไม่ต่ำกว่า min: minmax(472px, 340px) จะทำให้เบราว์เซอร์ทิ้งค่า max
     //    เงียบๆ แล้วรางจะกว้างค้างที่ min โดยไม่มีใครรู้ว่าเพดานไม่ทำงาน
-    const max = Math.max(min, Math.min(min + 80, 340));
+    const max = Math.max(min, Math.min(min + slack, ceiling));
 
     return `minmax(${min}px, ${max}px)`;
 }).join(' '));
@@ -1338,7 +1436,10 @@ onUnmounted(() => {
     <Head :title="`Trade ${currentPair}`" />
 
     <AppLayout :hide-sidebar="true" :hide-ticker="true">
-        <div class="max-w-[1920px] mx-auto">
+        <!-- ไม่มีเพดานความกว้างแล้ว — จอ 2560px เดิมใช้ได้จริงแค่ 1920px
+             เหลือขอบดำข้างละ 320px ทิ้งเปล่า ทั้งที่หน้านี้เป็นกระดานตัวเลข
+             ยิ่งกว้างยิ่งอ่านง่าย ไม่ใช่บทความที่ต้องคุมความยาวบรรทัด -->
+        <div class="w-full">
             <!-- บรรยากาศพื้นหลังหน้าเทรด — จางมากเพื่อไม่แย่งสายตาจากตัวเลข -->
             <div class="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
                 <img src="/images/art/trade-desk.webp" alt="" loading="eager" fetchpriority="low" decoding="async"
@@ -1410,6 +1511,7 @@ onUnmounted(() => {
                 <div
                     v-for="col in renderedColumns"
                     :key="col"
+                    :ref="el => setColRef(col, el)"
                     :class="[
                         'contents lg:flex lg:flex-col lg:gap-3 lg:min-w-0',
                         packed && 'lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden custom-scrollbar',
@@ -1656,6 +1758,33 @@ onUnmounted(() => {
                         {{ t('trade.layout.dropHere') }}
                     </div>
                 </div>
+
+                <!-- ── ด้ามลากปรับความกว้างคอลัมน์ ─────────────────────────────
+                     absolute จึงไม่นับเป็นรางของกริด ผังคอลัมน์จึงไม่เพี้ยน
+                     ดับเบิลคลิก = คืนให้ระบบคิดความกว้างเอง                     -->
+                <div
+                    v-if="!isNarrow && colHandles.length"
+                    class="pointer-events-none absolute inset-y-0 left-0 right-0 z-20"
+                    aria-hidden="false"
+                >
+                    <button
+                        v-for="h in colHandles"
+                        :key="`grip-${h.col}`"
+                        type="button"
+                        class="pointer-events-auto group absolute top-0 h-full w-3 -ml-1.5 flex items-center justify-center cursor-col-resize focus:outline-none"
+                        :style="{ left: `${h.x}px` }"
+                        :title="t('trade.layout.resizeColumn')"
+                        :aria-label="t('trade.layout.resizeColumn')"
+                        @pointerdown="startColumnResize($event, h.col)"
+                        @pointermove="onColumnResizeMove"
+                        @pointerup="endColumnResize"
+                        @pointercancel="endColumnResize"
+                        @dblclick="layout.resetColumnWidth(h.col); nextTick(measureHandles)"
+                    >
+                        <span class="block h-16 w-1 rounded-full bg-white/10 group-hover:bg-primary-400/80 group-focus-visible:bg-primary-400 transition-colors"></span>
+                    </button>
+                </div>
+
             </div>
         </div>
     </AppLayout>

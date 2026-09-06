@@ -416,4 +416,68 @@ describe('useTradeLayout — restoring a saved layout', () => {
         expect(layout.columns.value.center).toEqual([['chart'], ['form']]);
         expect(flatten(layout).sort()).toEqual([...ALL_IDS].sort());
     });
+
+    // ── ความกว้างคอลัมน์ที่ผู้ใช้ลากตั้งเอง ────────────────────────────────
+
+    it('เก็บความกว้างคอลัมน์ที่ลากไว้ และคุมไม่ให้แคบหรือกว้างเกินอ่านได้', async () => {
+        const mod = await import('@/Composables/useTradeLayout');
+        const layout = mod.useTradeLayout();
+
+        layout.setColumnWidth('left', 380);
+        expect(layout.columnWidth.value.left).toBe(380);
+
+        // แคบกว่า 240 อ่านตัวเลขในสมุดคำสั่งไม่ออก จึงถูกดันขึ้นมา
+        layout.setColumnWidth('left', 40);
+        expect(layout.columnWidth.value.left).toBe(240);
+
+        // กว้างเกิน 720 ก็เบียดกราฟจนเสียประโยชน์ของการมีกราฟ
+        layout.setColumnWidth('left', 5000);
+        expect(layout.columnWidth.value.left).toBe(720);
+
+        // ชื่อคอลัมน์ที่ไม่มีจริงต้องไม่ถูกเก็บ ไม่งั้นค่าขยะค้างในผังถาวร
+        layout.setColumnWidth('nowhere', 300);
+        expect(layout.columnWidth.value.nowhere).toBeUndefined();
+    });
+
+    it('ดับเบิลคลิกด้ามแล้วคืนคอลัมน์ให้ระบบคิดความกว้างเอง', async () => {
+        const mod = await import('@/Composables/useTradeLayout');
+        const layout = mod.useTradeLayout();
+
+        layout.setColumnWidth('right', 400);
+        layout.resetColumnWidth('right');
+        expect(layout.columnWidth.value.right).toBeUndefined();
+    });
+
+    it('ทิ้งความกว้างที่เสียรูปหรือชี้คอลัมน์ที่ไม่มีอยู่ ตอนอ่านผังเก่า', async () => {
+        const layout = await restore('tpix.tradeLayout.v4', {
+            columnWidth: { left: 360, right: 'wide', far: -20, ghost: 300, extra: 0 },
+        });
+
+        expect(layout.columnWidth.value).toEqual({ left: 360 });
+    });
+
+    // ── คอลัมน์ที่ 5 สำหรับจอกว้างมาก ─────────────────────────────────────
+
+    it('ผังเก่าที่บันทึกไว้ตอนมี 4 คอลัมน์ ต้องไม่ทำให้การ์ดหายหลังเพิ่มคอลัมน์ที่ 5', async () => {
+        const layout = await restore('tpix.tradeLayout.v4', {
+            columns: { left: [['market']], center: [['chart'], ['form']], right: [['book']], far: [['orders'], ['trades']] },
+        });
+
+        // การ์ดครบทุกใบ และคอลัมน์ใหม่ว่างเปล่า (ว่าง = ไม่ถูก render ไม่กินที่)
+        expect(flatten(layout).sort()).toEqual([...ALL_IDS].sort());
+        expect(layout.columns.value.extra).toEqual([]);
+    });
+
+    it('ย้ายการ์ดไปคอลัมน์ที่ 5 ได้ และค่ายังอยู่หลังโหลดใหม่', async () => {
+        const mod = await import('@/Composables/useTradeLayout');
+        const layout = mod.useTradeLayout();
+
+        // ลากจริงต้องเริ่มด้วย startDrag ไม่งั้น dropOnColumn ไม่รู้ว่ากำลังย้ายใบไหน
+        layout.startDrag('book');
+        layout.dropOnColumn('extra');
+        layout.endDrag();
+
+        expect(layout.columns.value.extra.flat()).toContain('book');
+        expect(flatten(layout).sort()).toEqual([...ALL_IDS].sort());
+    });
 });
