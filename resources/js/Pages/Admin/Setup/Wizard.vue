@@ -53,7 +53,7 @@ function submitSetup() {
         <div class="relative w-full max-w-lg">
             <!-- Logo + Title -->
             <div class="text-center mb-8">
-                <img src="/logo.webp" alt="TPIX TRADE" class="w-20 h-20 mx-auto mb-4 object-contain" />
+                <img src="/logo.webp?v=2" alt="TPIX TRADE" class="w-20 h-20 mx-auto mb-4 object-contain" />
                 <h1 class="text-3xl font-black text-white">TPIX <span class="text-cyan-400">TRADE</span></h1>
                 <p class="text-gray-500 mt-1">Super Admin Setup Wizard</p>
             </div>

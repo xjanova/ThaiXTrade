@@ -175,7 +175,12 @@ const handleDisconnect = () => {
 
                     <!-- Logo -->
                     <Link href="/" class="flex items-center gap-3">
-                        <img src="/logo.webp" alt="TPIX TRADE" class="w-10 h-10 object-contain" />
+                        <!-- ?v=2 ไม่ใช่ของประดับ — logo.webp ถูกเสิร์ฟด้วย
+                             Cache-Control: max-age=31536000 (หนึ่งปี) และชื่อไฟล์
+                             ไม่มีแฮช พอแก้ภาพแล้ว Cloudflare ยังจ่ายตัวเก่าต่อ
+                             (วัดได้จริง: cf-cache-status HIT, Age 114741 วิ
+                              ทั้งที่ต้นทางเปลี่ยนแล้ว) ต้องบวกเลขทุกครั้งที่แก้รูป -->
+                        <img src="/logo.webp?v=2" alt="TPIX TRADE" class="w-10 h-10 object-contain" />
                         <div class="hidden sm:block">
                             <h1 class="text-xl font-bold text-white">TPIX <span class="text-gradient">TRADE</span></h1>
                             <!-- สโลแกนยาวกว่าชื่อสตูดิโอเดิมราว 3 เท่า วัดแล้วที่ 1280px

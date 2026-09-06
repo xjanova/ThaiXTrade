@@ -221,7 +221,7 @@ onMounted(async () => {
             <div class="relative max-w-[1920px] mx-auto px-6 py-10">
                 <!-- แบรนด์ + คำโปรย -->
                 <div class="flex items-start gap-3 mb-8 max-w-md">
-                    <img src="/logo.webp" alt="TPIX TRADE" class="w-9 h-9 object-contain flex-shrink-0" />
+                    <img src="/logo.webp?v=2" alt="TPIX TRADE" class="w-9 h-9 object-contain flex-shrink-0" />
                     <div class="min-w-0">
                         <p class="text-sm font-bold text-white leading-tight">TPIX TRADE</p>
                         <p class="text-xs text-dark-400 leading-relaxed mt-1">{{ t('footer.tagline') }}</p>
