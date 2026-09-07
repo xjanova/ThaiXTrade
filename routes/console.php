@@ -15,6 +15,10 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::command('content:generate-scheduled')->everyThirtyMinutes();
 
 // Bridge: ตรวจ pending/processing tx ที่ค้าง > 2 นาที → re-dispatch job
+//
+// withoutOverlapping ต้องเรียก "หลัง" name() เสมอสำหรับงานแบบ closure (CallbackEvent)
+// เพราะไม่มีชื่อคำสั่งให้ใช้ตั้งชื่อ mutex เอง สลับลำดับแล้ว Laravel โยน LogicException
+// ทันทีตอนโหลด schedule = artisan ทุกคำสั่งพังรวมถึง package:discover ตอน composer install
 Schedule::call(function () {
     $stuck = BridgeTransaction::whereIn('status', ['processing', 'pending'])
         ->whereNotNull('source_tx_hash')
@@ -26,7 +30,7 @@ Schedule::call(function () {
         ProcessBridgeJob::dispatch($tx);
         Log::info('Bridge: re-dispatched stuck tx', ['id' => $tx->id]);
     }
-})->everyMinute()->withoutOverlapping(5)->name('bridge:process-stuck');
+})->everyMinute()->name('bridge:process-stuck')->withoutOverlapping(5);
 
 // Masternode allowlist: ลบ entries ที่หมดอายุ + cleanup CF rules ทุก 5 นาที
 Schedule::command('masternode:cleanup')
