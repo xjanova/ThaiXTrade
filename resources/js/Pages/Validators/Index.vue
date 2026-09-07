@@ -247,6 +247,14 @@ async function initMap() {
     vectorPane.style.zIndex = 190;
     vectorPane.style.pointerEvents = 'none';
 
+    // เครดิตแหล่งข้อมูล — ต้องสร้างก่อน addTileLayer() ด้านล่าง ไม่งั้นตอนไปเพิ่ม
+    // เครดิต CARTO ตัวแปรยังเป็น null แล้วเงื่อนไขจะ false เงียบ ๆ (เคยพลาดมาแล้ว)
+    // — CARTO บังคับว่าชื่อ CARTO + OpenStreetMap ต้องเห็นบนแผนที่
+    // ตลอดเวลาที่ใช้ไทล์ของเขา จึงใช้ตัวควบคุมตัวเดียวแล้วเพิ่ม/ถอดข้อความตามชั้นที่เปิด
+    attribControl = L.control.attribution({ prefix: false, position: 'bottomright' })
+        .addAttribution(NATURAL_EARTH_CREDIT)
+        .addTo(leafletMap);
+
     // interactive: false ทุกชั้น — ไม่ให้ฐานแผนที่ดักคลิกทับหมุดโหนด
     worldLayer = L.geoJSON(base.countries, { style: countryStyle, interactive: false, pane: 'vectorBase' }).addTo(leafletMap);
     L.geoJSON(base.lakes, {
@@ -277,12 +285,6 @@ async function initMap() {
     }));
     leafletMap.on('zoomend', syncCityLabels);
     syncCityLabels();
-
-    // เครดิตแหล่งข้อมูล — CARTO บังคับว่าชื่อ CARTO + OpenStreetMap ต้องเห็นบนแผนที่
-    // ตลอดเวลาที่ใช้ไทล์ของเขา จึงใช้ตัวควบคุมตัวเดียวแล้วเพิ่ม/ถอดข้อความตามชั้นที่เปิด
-    attribControl = L.control.attribution({ prefix: false, position: 'bottomright' })
-        .addAttribution(NATURAL_EARTH_CREDIT)
-        .addTo(leafletMap);
 
     markerGroup = L.layerGroup().addTo(leafletMap);
     addMarkers();
