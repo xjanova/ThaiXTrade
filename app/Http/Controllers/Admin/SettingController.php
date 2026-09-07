@@ -50,6 +50,8 @@ class SettingController extends Controller
              *    หลุดใบเดียวคือกระทบทุกโปรเจกต์ที่ใช้พูลร่วมกัน ไม่ใช่แค่เว็บนี้
              */
             'openai_api_key',
+            // คีย์ไทล์แผนที่ของหน้า /validators (ดู config/map.php)
+            'map_tile_key',
             ...AdvisorSettings::SECRET_KEYS,
         ];
 
@@ -78,6 +80,16 @@ class SettingController extends Controller
             // สถานะจริงของที่ปรึกษา AI — หน้าเว็บใช้บอกว่า "พร้อมใช้" หรือ "ยังไม่ได้ตั้งคีย์"
             // คำนวณฝั่งเซิร์ฟเวอร์เพราะค่าที่ส่งไปถูก mask แล้ว ดูจาก frontend ไม่ออก
             'advisorStatus' => $this->advisorStatus(app(AdvisorSettings::class)),
+            /*
+             * สถานะชั้นไทล์แผนที่ — ต้องคำนวณฝั่งเซิร์ฟเวอร์เหมือน advisorStatus
+             * เพราะค่าคีย์ที่ส่งไปถูก mask แล้ว หน้าเว็บดูเองไม่ออกว่าตั้งไว้หรือยัง
+             */
+            'mapStatus' => [
+                'hasKey' => SiteSetting::get('map', 'map_tile_key', '') !== ''
+                    || config('map.tile_url', '') !== '',
+                'source' => SiteSetting::get('map', 'map_tile_key', '') !== '' ? 'admin'
+                    : (config('map.tile_url', '') !== '' ? 'env' : 'none'),
+            ],
         ]);
     }
 
@@ -292,7 +304,7 @@ class SettingController extends Controller
          *   ผลคือกดบันทึกแท็บการชำระเงินแล้วเด้งกลับพร้อม "Invalid settings tab."
          *   — แก้คีย์ Stripe จากหลังบ้านไม่ได้เลยสักครั้ง
          */
-        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced', 'ai', 'factory', 'revenue', 'advisor', 'payment'];
+        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced', 'ai', 'factory', 'revenue', 'advisor', 'payment', 'map'];
         $tab = last(explode('/', $request->path()));
 
         if (! in_array($tab, $allowedTabs, true)) {
@@ -319,6 +331,9 @@ class SettingController extends Controller
                 'together_api_key', 'huggingface_api_key', 'gemini_api_key'],
             // ที่ปรึกษา AI ของบอทเทรด — คีย์ทั้งชุดสร้างได้ตอนบันทึกครั้งแรก
             'advisor' => AdvisorSettings::KEYS,
+            // ชั้นไทล์แผนที่ — เผื่อ migration ยังไม่ได้รันบนเครื่องนั้น
+            'map' => ['map_tile_url', 'map_tile_key', 'map_tile_subdomains',
+                'map_tile_max_zoom', 'map_tile_attribution'],
         ];
 
         foreach ($request->except('_method') as $key => $value) {

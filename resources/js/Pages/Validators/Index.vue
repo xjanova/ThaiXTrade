@@ -1,7 +1,8 @@
 <script setup>
 /**
  * TPIX Validator Network — Interactive Map + Dashboard
- * Leaflet.js map with CARTO dark tiles, validator filtering, reward checking
+ * Leaflet.js สองชั้น: ไทล์จากผู้ให้บริการ (ซูมลึก) ทับบนแผนที่ประเทศที่เก็บไว้ในโปรเจกต์
+ * ไทล์ล่มเมื่อไหร่ก็ถอดชั้นบนออกเอง เหลือแผนที่ในเครื่อง หน้าไม่เคยเป็นจอเปล่า
  * Developed by Xman Studio
  */
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
@@ -14,6 +15,8 @@ const props = defineProps({
     validators: { type: Array, default: () => [] },
     stats: { type: Object, default: () => ({}) },
     applications: { type: Array, default: () => [] },
+    // ค่าตั้งชั้นไทล์จาก config/map.php — ว่างได้ ถ้าว่างจะใช้แผนที่ในโปรเจกต์อย่างเดียว
+    map: { type: Object, default: () => ({}) },
 });
 
 // ============================================================
@@ -30,6 +33,13 @@ const networkStats = ref(props.stats || {});
 // Map state
 let leafletMap = null;
 let markerGroup = null;
+let worldLayer = null;
+let tileLayer = null;
+let tileErrors = 0;
+let labelLayer = null;
+let cityLabels = [];
+let mapLoading = false;
+let isUnmounted = false;
 
 // Reward check
 const rewardAddress = ref('');
@@ -99,36 +109,183 @@ function fmtNum(n) {
 
 // ============================================================
 //  Leaflet Map
+//  ฐานแผนที่เป็นไฟล์รูปร่างประเทศที่เก็บไว้ในโปรเจกต์ (Natural Earth — public domain)
+//  ไม่ได้ต่อบริการไทล์ของใคร จึงไม่มีคีย์ ไม่มีโควตา และไม่มีวันหมดอายุ
 // ============================================================
-function initMap() {
-    if (leafletMap || typeof L === 'undefined') return;
+const MAP_ZOOM = { min: 2, vectorMax: 5, tileFocus: 8 };
+
+// ซูมตอนกดโหนด: มีไทล์ก็เข้าไปได้ลึกเหมือนเดิม ไม่มีไทล์หยุดที่ระดับประเทศ
+function focusZoom() {
+    return tileLayer ? MAP_ZOOM.tileFocus : MAP_ZOOM.vectorMax;
+}
+
+// true เมื่อชั้นไทล์ใช้ไม่ได้ แล้วเหลือแผนที่ในเครื่องอย่างเดียว
+const tilesDown = ref(false);
+
+// จานสีเดียวกับแผนที่ไทล์เดิม (CARTO dark) — พื้นดินเทาเข้มบนทะเลเกือบดำ
+const PALETTE = {
+    sea: '#0f1113',
+    land: '#26292e',
+    border: '#3c4147',
+    lake: '#0f1113',
+    lakeEdge: '#333940',
+    river: '#2f353d',
+    landActive: '#2a3644',
+    borderActive: '#38bdf8',
+};
+
+// ประเทศที่มีโหนดอยู่จริง — ระบายให้เห็นการกระจายตัวโดยไม่ต้องซูมหาหมุด
+const activeCountries = computed(() => new Set(
+    filteredValidators.value
+        .map(v => String(v.country_code || '').toUpperCase())
+        .filter(Boolean)
+));
+
+function countryStyle(feature) {
+    const on = activeCountries.value.has(feature?.properties?.iso);
+    return {
+        fillColor: on ? PALETTE.landActive : PALETTE.land,
+        fillOpacity: 1,
+        color: on ? PALETTE.borderActive : PALETTE.border,
+        weight: on ? 1 : 0.5,
+        opacity: on ? 0.85 : 0.8,
+    };
+}
+
+// ป้ายชื่อเมืองโผล่ตามระดับซูม เหมือนแผนที่ไทล์เดิม ไม่งั้นซูมออกแล้วป้ายทับกันมั่ว
+function syncCityLabels() {
+    if (!leafletMap || !labelLayer) return;
+    labelLayer.clearLayers();
+    // ไทล์มีชื่อเมืองมาในภาพอยู่แล้ว ติดป้ายของเราทับจะกลายเป็นชื่อซ้อนกันสองชุด
+    if (tileLayer) return;
+    const z = leafletMap.getZoom();
+    cityLabels.forEach(({ z: minZoom, marker }) => {
+        if (minZoom <= z) labelLayer.addLayer(marker);
+    });
+}
+
+// ── ชั้นไทล์ (ภาพแผนที่ละเอียด ซูมได้ลึก) ───────────────────
+// URL + คีย์มาจาก config/map.php บนเซิร์ฟเวอร์ ไม่ได้อยู่ในโค้ด — repo นี้เป็นสาธารณะ
+// ถ้ายังไม่ได้ตั้งค่า หน้าเว็บจะใช้แผนที่ในโปรเจกต์อย่างเดียว ไม่พัง
+function addTileLayer() {
+    const url = props.map?.tileUrl;
+    if (!url || !leafletMap) return;
+
+    const maxZoom = Number(props.map.tileMaxZoom) || 15;
+    tileLayer = L.tileLayer(url, {
+        subdomains: props.map.tileSubdomains || 'abcd',
+        maxZoom,
+    });
+
+    // ไทล์หายใบสองใบเป็นเรื่องปกติ (เน็ตสะดุด) — ต้องพังต่อเนื่องถึงจะถือว่าใช้ไม่ได้
+    tileLayer.on('tileerror', () => {
+        tileErrors += 1;
+        if (tileErrors >= 8) dropTileLayer();
+    });
+
+    tileLayer.addTo(leafletMap);
+    leafletMap.setMaxZoom(maxZoom);
+
+    if (props.map.tileAttribution) {
+        L.control.attribution({ prefix: false, position: 'bottomright' })
+            .addAttribution(props.map.tileAttribution)
+            .addTo(leafletMap);
+    }
+}
+
+// ไทล์ใช้ไม่ได้ (คีย์หมดอายุ โควตาเต็ม ผู้ให้บริการปิด เน็ตล่ม)
+// ถอดชั้นไทล์ออกแล้วเหลือแผนที่ในเครื่อง ดีกว่าปล่อยให้เป็นจอเปล่า
+function dropTileLayer() {
+    if (!tileLayer || !leafletMap) return;
+    leafletMap.removeLayer(tileLayer);
+    tileLayer = null;
+    tilesDown.value = true;
+
+    // ข้อมูลในเครื่องละเอียดถึงระดับประเทศ ซูมลึกกว่านี้จะเห็นเป็นรูปเหลี่ยม ๆ
+    leafletMap.setMaxZoom(MAP_ZOOM.vectorMax);
+    if (leafletMap.getZoom() > MAP_ZOOM.vectorMax) leafletMap.setZoom(MAP_ZOOM.vectorMax);
+    syncCityLabels();
+}
+
+async function initMap() {
+    if (leafletMap || mapLoading || typeof L === 'undefined') return;
+    mapLoading = true;
+
+    // แยกเป็นชังก์ต่างหาก หน้าอื่นจะได้ไม่ต้องแบกไฟล์แผนที่ไปด้วย
+    let base;
+    try {
+        base = (await import('@/Data/world-basemap.json')).default;
+    } catch {
+        mapLoading = false;
+        return;
+    }
+    // ผู้ใช้อาจออกจากหน้านี้ไปแล้วระหว่างรอไฟล์
+    if (isUnmounted || leafletMap) { mapLoading = false; return; }
 
     leafletMap = L.map('validator-map', {
         center: [20, 100],
         zoom: 3,
-        minZoom: 2,
-        maxZoom: 15,
+        minZoom: MAP_ZOOM.min,
+        maxZoom: MAP_ZOOM.vectorMax,
         zoomControl: true,
         attributionControl: false,
+        worldCopyJump: false,
+        maxBounds: [[-85, -180], [85, 180]],
+        maxBoundsViscosity: 0.8,
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 19,
+    // แผนที่ในเครื่องต้องอยู่ "ใต้" ชั้นไทล์ ไม่งั้นรูปประเทศจะทับภาพไทล์
+    // (Leaflet วางเส้น/รูปไว้ overlayPane z-index 400 ซึ่งสูงกว่า tilePane 200)
+    leafletMap.createPane('vectorBase');
+    const vectorPane = leafletMap.getPane('vectorBase');
+    vectorPane.style.zIndex = 190;
+    vectorPane.style.pointerEvents = 'none';
+
+    // interactive: false ทุกชั้น — ไม่ให้ฐานแผนที่ดักคลิกทับหมุดโหนด
+    worldLayer = L.geoJSON(base.countries, { style: countryStyle, interactive: false, pane: 'vectorBase' }).addTo(leafletMap);
+    L.geoJSON(base.lakes, {
+        style: { fillColor: PALETTE.lake, fillOpacity: 1, color: PALETTE.lakeEdge, weight: 0.4, opacity: 0.5 },
+        interactive: false,
+        pane: 'vectorBase',
+    }).addTo(leafletMap);
+    L.geoJSON(base.rivers, {
+        style: { color: PALETTE.river, weight: 0.7, opacity: 0.9, fill: false },
+        interactive: false,
+        pane: 'vectorBase',
     }).addTo(leafletMap);
 
-    // Attribution (required by CARTO)
+    addTileLayer();
+
+    labelLayer = L.layerGroup().addTo(leafletMap);
+    cityLabels = (base.places || []).map(p => ({
+        z: p.z,
+        marker: L.marker([p.y, p.x], {
+            interactive: false,
+            icon: L.divIcon({
+                className: 'city-label' + (p.c ? ' is-capital' : ''),
+                html: escHtml(p.n),
+                iconSize: null,
+                iconAnchor: [-4, 5],
+            }),
+        }),
+    }));
+    leafletMap.on('zoomend', syncCityLabels);
+    syncCityLabels();
+
     L.control.attribution({ prefix: false, position: 'bottomright' })
-        .addAttribution('&copy; <a href="https://carto.com">CARTO</a> &copy; <a href="https://osm.org">OSM</a>')
+        .addAttribution('Map data: <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a>')
         .addTo(leafletMap);
 
     markerGroup = L.layerGroup().addTo(leafletMap);
     addMarkers();
+    mapLoading = false;
 }
 
 function addMarkers() {
     if (!markerGroup) return;
     markerGroup.clearLayers();
+    // ระบายประเทศใหม่ให้ตรงกับตัวกรองปัจจุบัน
+    if (worldLayer) worldLayer.setStyle(countryStyle);
 
     filteredValidators.value.forEach(v => {
         if (!v.latitude || !v.longitude) return;
@@ -190,9 +347,9 @@ function addMarkers() {
             .map(v => [v.latitude, v.longitude]);
         if (coords.length === 1 && leafletMap) {
             // Single marker — setView works better than fitBounds
-            leafletMap.setView(coords[0], 7);
+            leafletMap.setView(coords[0], focusZoom());
         } else if (coords.length > 1 && leafletMap) {
-            leafletMap.fitBounds(coords, { padding: [40, 40], maxZoom: 8 });
+            leafletMap.fitBounds(coords, { padding: [40, 40], maxZoom: focusZoom() });
         }
     }
 }
@@ -206,7 +363,7 @@ function escHtml(str) {
 
 function focusNode(v) {
     if (!leafletMap || !v.latitude || !v.longitude) return;
-    leafletMap.flyTo([v.latitude, v.longitude], 8, { duration: 1.5 });
+    leafletMap.flyTo([v.latitude, v.longitude], focusZoom(), { duration: 1.5 });
 }
 
 // Watch filter changes → update markers
@@ -267,14 +424,22 @@ async function checkRewards() {
 //  Lifecycle
 // ============================================================
 onMounted(() => {
-    // Leaflet is now bundled via npm — no CDN needed
+    // Leaflet มาจาก npm และรูปร่างประเทศอยู่ในโปรเจกต์ — ไม่ต้องต่อ CDN ใด ๆ
+    isUnmounted = false;
     setTimeout(initMap, 100);
     pollInterval = setInterval(refreshData, 30000);
 });
 
 onUnmounted(() => {
+    isUnmounted = true;
     if (pollInterval) clearInterval(pollInterval);
     if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    worldLayer = null;
+    tileLayer = null;
+    tileErrors = 0;
+    labelLayer = null;
+    cityLabels = [];
+    markerGroup = null;
 });
 </script>
 
@@ -427,7 +592,13 @@ onUnmounted(() => {
                     <div class="relative group">
                         <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/20 via-purple-500/10 to-yellow-500/20 rounded-2xl blur opacity-40 group-hover:opacity-70 transition-opacity duration-500" />
                         <div class="relative rounded-2xl overflow-hidden border border-white/10">
-                            <div id="validator-map" class="w-full h-[500px] md:h-[600px] bg-[#0a0f1e]"></div>
+                            <div id="validator-map" class="w-full h-[500px] md:h-[600px] bg-[#0f1113]"></div>
+                            <!-- ขึ้นเมื่อชั้นไทล์ใช้ไม่ได้ แผนที่ยังใช้งานได้แต่ซูมได้ตื้นกว่า -->
+                            <div v-if="tilesDown"
+                                 class="absolute bottom-3 left-3 z-[500] px-2.5 py-1 rounded-lg text-[10px] font-medium
+                                        bg-black/60 border border-white/10 text-gray-400 backdrop-blur-sm pointer-events-none">
+                                แผนที่สำรอง (ออฟไลน์)
+                            </div>
                         </div>
                     </div>
 
@@ -768,6 +939,39 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* ============================================================
+   Leaflet — พื้นทะเล
+   ต้องบังคับสีเอง เพราะ leaflet.css ตั้ง background: #ddd ไว้
+   สมัยใช้ไทล์มีภาพทับจนไม่เห็น แต่แผนที่เวกเตอร์จะเห็นพื้นเป็นสีทะเล
+   ============================================================ */
+:deep(.leaflet-container) {
+    background: #0f1113;
+    outline: none;
+}
+
+/* ป้ายชื่อเมือง — เลียนแบบป้ายบนแผนที่ไทล์เดิม
+   เงาซ้อน 3 ชั้นแทนขอบ ให้อ่านออกทั้งบนพื้นดินและบนทะเล */
+:deep(.city-label) {
+    color: #79818b;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    pointer-events: none;
+    text-shadow: 0 0 3px #0f1113, 0 0 3px #0f1113, 0 0 3px #0f1113;
+}
+
+:deep(.city-label.is-capital)::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 3px;
+    margin-right: 4px;
+    border-radius: 50%;
+    background: #79818b;
+    vertical-align: middle;
+}
+
 /* ============================================================
    Leaflet — Cyberpunk dark popup (from TPIX-Coin renderer.js)
    ============================================================ */

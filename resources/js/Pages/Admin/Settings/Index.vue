@@ -22,6 +22,11 @@ const props = defineProps({
         type: Object,
         default: () => ({ enabled: true, providers: {} }),
     },
+    // สถานะชั้นไทล์แผนที่ — เหตุผลเดียวกับ advisorStatus คือคีย์ถูก mask
+    mapStatus: {
+        type: Object,
+        default: () => ({ hasKey: false, source: 'none' }),
+    },
 });
 
 const activeTab = ref('general');
@@ -37,6 +42,7 @@ const tabs = [
     { key: 'email', label: 'Email', icon: 'mail' },
     { key: 'security', label: 'Security', icon: 'shield' },
     { key: 'social', label: 'Social', icon: 'share' },
+    { key: 'map', label: 'แผนที่', icon: 'settings' },
 ];
 
 // General form
@@ -216,6 +222,18 @@ const paymentForm = useForm({
 
 const savePayment = () => {
     paymentForm.put('/admin/settings/payment', { preserveScroll: true });
+};
+
+// Map tile form — คีย์ไทล์แผนที่หน้า /validators (โปรแกรมมาสเตอร์โหนดดึงไปใช้ด้วย)
+const mapForm = useForm({
+    map_tile_key: props.settings.map_tile_key || '',
+    map_tile_url: props.settings.map_tile_url || 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    map_tile_subdomains: props.settings.map_tile_subdomains || 'abcd',
+    map_tile_max_zoom: props.settings.map_tile_max_zoom || '15',
+});
+
+const saveMap = () => {
+    mapForm.put('/admin/settings/map', { preserveScroll: true });
 };
 
 // AI form
@@ -1054,6 +1072,78 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <button type="submit" :disabled="paymentForm.processing" class="btn-primary px-6 py-2.5">
                         <span v-if="paymentForm.processing">Saving...</span>
                         <span v-else>Save Payment Settings</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Map Tab -->
+        <div v-show="activeTab === 'map'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+            <h3 class="text-lg font-semibold text-white mb-2">🗺️ แผนที่ (หน้ารายงานตำแหน่งมาสเตอร์โหนด)</h3>
+            <p class="text-dark-400 text-sm mb-6 max-w-2xl leading-relaxed">
+                แผนที่วาดสองชั้น ชั้นล่างเป็นรูปประเทศที่เก็บไว้ในระบบ ใช้ได้ตลอดไปไม่มีวันหมดอายุ
+                ชั้นบนเป็นภาพไทล์จากผู้ให้บริการ ซึ่งทำให้ซูมได้ลึกและเห็นถนน/เมืองละเอียด
+                ใส่คีย์ตรงนี้เพื่อเปิดชั้นบน ทั้งหน้าเว็บและโปรแกรมมาสเตอร์โหนดจะดึงค่านี้ไปใช้ทันที
+            </p>
+
+            <!-- สถานะจริงจากเซิร์ฟเวอร์ — ค่าคีย์ในช่องถูกปิดไว้ ดูจากช่องไม่ออก -->
+            <div class="mb-6 flex flex-wrap items-center gap-2 text-sm">
+                <span v-if="mapStatus.source === 'admin'"
+                      class="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                    ✅ ตั้งคีย์แล้ว (จากหน้านี้)
+                </span>
+                <span v-else-if="mapStatus.source === 'env'"
+                      class="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                    ⚠️ ใช้คีย์จากไฟล์ .env อยู่ — กรอกที่นี่แล้วจะใช้ของที่นี่แทน
+                </span>
+                <span v-else
+                      class="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-dark-300">
+                    ยังไม่ได้ตั้งคีย์ — ตอนนี้ใช้แผนที่ในระบบอย่างเดียว (ซูมได้ถึงระดับประเทศ)
+                </span>
+            </div>
+
+            <form @submit.prevent="saveMap" class="space-y-6 max-w-2xl">
+                <div>
+                    <label :class="labelClass">API Key ของผู้ให้บริการแผนที่</label>
+                    <input v-model="mapForm.map_tile_key" type="password" :class="inputClass"
+                           placeholder="วางคีย์ที่ได้จาก CARTO ที่นี่" autocomplete="off" />
+                    <p class="text-dark-500 text-xs mt-1 leading-relaxed">
+                        ขอคีย์ฟรีได้ที่
+                        <a href="https://carto.com/basemaps/apikey" target="_blank" rel="noopener"
+                           class="text-primary-400 hover:underline">carto.com/basemaps/apikey</a>
+                        — ฟรี 5 ล้านครั้ง/เดือน<br>
+                        ปล่อยว่าง = ปิดชั้นไทล์ ใช้แผนที่ในระบบแทน (ดีกว่าโชว์ภาพที่มีลายน้ำ
+                        “API KEY REQUIRED” พาดทั้งแผนที่ ซึ่งเป็นสิ่งที่เกิดเมื่อเรียกโดยไม่มีคีย์)
+                    </p>
+                </div>
+
+                <div>
+                    <label :class="labelClass">แม่แบบ URL ไทล์</label>
+                    <input v-model="mapForm.map_tile_url" type="text" :class="inputClass"
+                           placeholder="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+                    <p class="text-dark-500 text-xs mt-1">
+                        ไม่ต้องใส่คีย์ในช่องนี้ ระบบจะต่อ <code class="text-dark-400">?key=…</code> ให้เอง ·
+                        เปลี่ยนผู้ให้บริการรายอื่นได้โดยไม่ต้องแก้โค้ด
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label :class="labelClass">Subdomains</label>
+                        <input v-model="mapForm.map_tile_subdomains" type="text" :class="inputClass" placeholder="abcd" />
+                        <p class="text-dark-500 text-xs mt-1">ตัวอักษรที่ใช้แทน {s} ใน URL</p>
+                    </div>
+                    <div>
+                        <label :class="labelClass">ซูมได้ลึกสุด</label>
+                        <input v-model="mapForm.map_tile_max_zoom" type="number" min="5" max="20" :class="inputClass" placeholder="15" />
+                        <p class="text-dark-500 text-xs mt-1">ไม่มีคีย์จะถูกจำกัดที่ 5 โดยอัตโนมัติ</p>
+                    </div>
+                </div>
+
+                <div class="pt-4">
+                    <button type="submit" :disabled="mapForm.processing" class="btn-primary px-6 py-2.5">
+                        <span v-if="mapForm.processing">กำลังบันทึก...</span>
+                        <span v-else>บันทึกค่าแผนที่</span>
                     </button>
                 </div>
             </form>

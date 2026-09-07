@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\SiteSetting;
 use App\Models\ValidatorApplication;
 use App\Support\Wei;
 use Illuminate\Http\JsonResponse;
@@ -28,6 +29,60 @@ class ValidatorController extends Controller
             'validators' => $this->getValidatorList(),
             'rpcUrl' => config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online'),
             'chainId' => config('blockchain.tpix_chain_id', 4289),
+            'map' => $this->mapConfig(),
+        ]);
+    }
+
+    /**
+     * ค่าตั้งชั้นไทล์ของแผนที่ (ดู config/map.php).
+     *
+     * คีย์อยู่ใน .env ไม่ได้อยู่ในโค้ด — repo นี้เป็นสาธารณะ
+     * ถ้ายังไม่ได้ตั้ง จะส่ง tileUrl ว่าง แล้วหน้าเว็บวาดแค่แผนที่ประเทศในเครื่อง
+     */
+    private function mapConfig(): array
+    {
+        // คีย์ตั้งจากหลังบ้าน /admin/settings แท็บ "แผนที่" (ตาราง site_settings กลุ่ม map)
+        $key = trim((string) SiteSetting::get('map', 'map_tile_key', ''));
+        $template = trim((string) SiteSetting::get('map', 'map_tile_url', ''));
+
+        if ($key !== '' && $template !== '') {
+            // ต่อคีย์ให้เอง แอดมินจะได้กรอกแค่คีย์ ไม่ต้องรู้รูปแบบ URL
+            $tileUrl = $template.(str_contains($template, '?') ? '&' : '?').'key='.rawurlencode($key);
+
+            return [
+                'tileUrl' => $tileUrl,
+                'tileSubdomains' => (string) SiteSetting::get('map', 'map_tile_subdomains', 'abcd'),
+                'tileMaxZoom' => (int) SiteSetting::get('map', 'map_tile_max_zoom', 15),
+                'tileAttribution' => (string) SiteSetting::get('map', 'map_tile_attribution', ''),
+            ];
+        }
+
+        /*
+         * ยังไม่ได้ตั้งคีย์ในหลังบ้าน — ถอยไปใช้ค่าใน .env (config/map.php)
+         *
+         * ถ้าว่างทั้งคู่จะส่ง tileUrl ว่าง แล้วหน้าเว็บ/โปรแกรมวาดแค่แผนที่ประเทศ
+         * ที่เก็บไว้ในโปรเจกต์ — ตั้งใจให้เป็นแบบนี้ ดีกว่าโชว์ไทล์ที่มีลายน้ำ
+         * "API KEY REQUIRED" พาดทั้งแผนที่ (CARTO บังคับคีย์ตั้งแต่ ส.ค. 2026)
+         */
+        return [
+            'tileUrl' => (string) config('map.tile_url', ''),
+            'tileSubdomains' => (string) config('map.tile_subdomains', 'abcd'),
+            'tileMaxZoom' => (int) config('map.tile_max_zoom', 15),
+            'tileAttribution' => (string) config('map.tile_attribution', ''),
+        ];
+    }
+
+    /**
+     * API: ค่าตั้งแผนที่ (public) — โปรแกรมมาสเตอร์โหนดบนเดสก์ท็อปเรียกใช้
+     *
+     * แยกออกมาเป็น endpoint เพื่อให้เปลี่ยนผู้ให้บริการไทล์หรือหมุนคีย์ได้
+     * โดยไม่ต้องปล่อยโปรแกรมรุ่นใหม่ และไม่ต้องฝังคีย์ลงไฟล์ .exe
+     */
+    public function mapSettings(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->mapConfig(),
         ]);
     }
 

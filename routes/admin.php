@@ -76,6 +76,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::put('settings/ai', [SettingController::class, 'updateTab'])->name('settings.ai');
         Route::put('settings/factory', [SettingController::class, 'updateTab'])->name('settings.factory');
         Route::put('settings/revenue', [SettingController::class, 'updateTab'])->name('settings.revenue');
+        // ชั้นไทล์แผนที่หน้า /validators — โปรแกรมมาสเตอร์โหนดดึงค่านี้ไปใช้ด้วย
+        Route::put('settings/map', [SettingController::class, 'updateTab'])->name('settings.map');
         Route::put('settings/content', [SettingController::class, 'updateTab'])->name('settings.content');
         Route::put('settings/email', [SettingController::class, 'updateEmail'])->name('settings.email');
         Route::post('settings/email/test', [SettingController::class, 'sendTestEmail'])->name('settings.email.test');

@@ -303,6 +303,9 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/list', [ValidatorController::class, 'list']);
         Route::get('/rewards', [ValidatorController::class, 'checkRewards']);
         Route::post('/apply', [ValidatorController::class, 'submitApplication'])->middleware('throttle:5,60');
+        // ค่าตั้งชั้นไทล์แผนที่ — โปรแกรมมาสเตอร์โหนดบนเดสก์ท็อปอ่านตอนเปิดหน้าแผนที่
+        // แยกไว้ที่นี่เพื่อหมุนคีย์/เปลี่ยนผู้ให้บริการได้โดยไม่ต้องปล่อยโปรแกรมรุ่นใหม่
+        Route::get('/map-config', [ValidatorController::class, 'mapSettings']);
     });
 
     // Articles / Blog — บทความ (public)
