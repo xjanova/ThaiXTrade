@@ -43,8 +43,14 @@ jobs:
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
+      # (2026-09-07) ตัด `|| composer update` ที่ต่อท้ายออก
+      #   1. CI ต้องติดตั้งจาก composer.lock เท่านั้น ไม่งั้นเทสต์รันบนชุด dependency
+      #      คนละชุดกับที่ prod ใช้จริง = CI เขียวไม่ได้แปลว่า prod รอด
+      #   2. มันกลืน error ตัวจริง — schedule พังทำ package:discover ล้ม ⇒ composer install ล้ม
+      #      แล้ว fallback ไปชน security advisory ของ laravel/framework ^11 ทุกเวอร์ชัน
+      #      ข้อความที่ออกมาเลยเป็นเรื่อง advisory ทั้งที่ต้นตอคือโค้ดเราเอง (run 34093657742)
       - name: Install Composer dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress || composer update --prefer-dist --no-interaction --no-progress
+        run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -112,8 +118,14 @@ jobs:
           php-version: '8.3'
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
 
+      # (2026-09-07) ตัด `|| composer update` ที่ต่อท้ายออก
+      #   1. CI ต้องติดตั้งจาก composer.lock เท่านั้น ไม่งั้นเทสต์รันบนชุด dependency
+      #      คนละชุดกับที่ prod ใช้จริง = CI เขียวไม่ได้แปลว่า prod รอด
+      #   2. มันกลืน error ตัวจริง — schedule พังทำ package:discover ล้ม ⇒ composer install ล้ม
+      #      แล้ว fallback ไปชน security advisory ของ laravel/framework ^11 ทุกเวอร์ชัน
+      #      ข้อความที่ออกมาเลยเป็นเรื่อง advisory ทั้งที่ต้นตอคือโค้ดเราเอง (run 34093657742)
       - name: Install Composer dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress || composer update --prefer-dist --no-interaction --no-progress
+        run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Run Laravel Pint (Code Style — auto-fix)
         run: |
