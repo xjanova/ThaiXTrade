@@ -36,6 +36,7 @@ let markerGroup = null;
 let worldLayer = null;
 let tileLayer = null;
 let tileErrors = 0;
+let attribControl = null;
 let labelLayer = null;
 let cityLabels = [];
 let mapLoading = false;
@@ -113,6 +114,7 @@ function fmtNum(n) {
 //  ไม่ได้ต่อบริการไทล์ของใคร จึงไม่มีคีย์ ไม่มีโควตา และไม่มีวันหมดอายุ
 // ============================================================
 const MAP_ZOOM = { min: 2, vectorMax: 5, tileFocus: 8 };
+const NATURAL_EARTH_CREDIT = 'Map data: <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a>';
 
 // ซูมตอนกดโหนด: มีไทล์ก็เข้าไปได้ลึกเหมือนเดิม ไม่มีไทล์หยุดที่ระดับประเทศ
 function focusZoom() {
@@ -186,10 +188,9 @@ function addTileLayer() {
     tileLayer.addTo(leafletMap);
     leafletMap.setMaxZoom(maxZoom);
 
-    if (props.map.tileAttribution) {
-        L.control.attribution({ prefix: false, position: 'bottomright' })
-            .addAttribution(props.map.tileAttribution)
-            .addTo(leafletMap);
+    // ⚠️ เงื่อนไขการใช้งานของ CARTO: ชื่อ CARTO + OpenStreetMap ต้องเห็นบนแผนที่เสมอ
+    if (props.map.tileAttribution && attribControl) {
+        attribControl.addAttribution(props.map.tileAttribution);
     }
 }
 
@@ -200,6 +201,11 @@ function dropTileLayer() {
     leafletMap.removeLayer(tileLayer);
     tileLayer = null;
     tilesDown.value = true;
+
+    // ไม่ได้ใช้ไทล์ของเขาแล้ว เครดิตต้องหายไปด้วย ไม่งั้นกลายเป็นอ้างแหล่งที่ไม่ได้ใช้
+    if (props.map.tileAttribution && attribControl) {
+        attribControl.removeAttribution(props.map.tileAttribution);
+    }
 
     // ข้อมูลในเครื่องละเอียดถึงระดับประเทศ ซูมลึกกว่านี้จะเห็นเป็นรูปเหลี่ยม ๆ
     leafletMap.setMaxZoom(MAP_ZOOM.vectorMax);
@@ -272,8 +278,10 @@ async function initMap() {
     leafletMap.on('zoomend', syncCityLabels);
     syncCityLabels();
 
-    L.control.attribution({ prefix: false, position: 'bottomright' })
-        .addAttribution('Map data: <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a>')
+    // เครดิตแหล่งข้อมูล — CARTO บังคับว่าชื่อ CARTO + OpenStreetMap ต้องเห็นบนแผนที่
+    // ตลอดเวลาที่ใช้ไทล์ของเขา จึงใช้ตัวควบคุมตัวเดียวแล้วเพิ่ม/ถอดข้อความตามชั้นที่เปิด
+    attribControl = L.control.attribution({ prefix: false, position: 'bottomright' })
+        .addAttribution(NATURAL_EARTH_CREDIT)
         .addTo(leafletMap);
 
     markerGroup = L.layerGroup().addTo(leafletMap);
@@ -437,6 +445,7 @@ onUnmounted(() => {
     worldLayer = null;
     tileLayer = null;
     tileErrors = 0;
+    attribControl = null;
     labelLayer = null;
     cityLabels = [];
     markerGroup = null;
