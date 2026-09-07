@@ -26,7 +26,7 @@ Schedule::call(function () {
         ProcessBridgeJob::dispatch($tx);
         Log::info('Bridge: re-dispatched stuck tx', ['id' => $tx->id]);
     }
-})->everyMinute()->name('bridge:process-stuck');
+})->everyMinute()->withoutOverlapping(5)->name('bridge:process-stuck');
 
 // Masternode allowlist: ลบ entries ที่หมดอายุ + cleanup CF rules ทุก 5 นาที
 Schedule::command('masternode:cleanup')
@@ -255,3 +255,29 @@ Schedule::command('kyc:purge')
     ->withoutOverlapping(30)
     ->onOneServer()
     ->name('kyc:purge');
+
+/*
+ * ตัวรันคิว — ปลุกจาก scheduler ทุกนาที
+ *
+ * ทำไมต้องปลุกจากตรงนี้แทนที่จะเป็น systemd: เครื่องนี้แชร์กับเว็บอื่นและเราไม่มีสิทธิ์
+ * ตั้ง service ใหม่ ตัวเดียวกันนี้คือวิธีที่ netwix บนเครื่องเดียวกันใช้อยู่แล้ว
+ *
+ * ทำไมต้องมี: QUEUE_CONNECTION เคยเป็น sync ⇒ ProcessBridgeJob กับ DeployTokenJob
+ * รันคาอยู่ในรีเควสต์เว็บ ทั้งที่ทั้งคู่ยิง RPC ขึ้นเชนซึ่งกินเวลาเป็นนาที
+ * ฝั่ง API เขียนมาแบบ async อยู่แล้ว — /bridge คืน estimated_time เป็น 2-5 minutes
+ * ส่วน approve() เซ็ต status เป็น deploying ก่อนปล่อยงาน — แต่ sync ทำให้ผู้ใช้ต้องรอจริง
+ * และเสี่ยงโดน Cloudflare หรือ php-fpm ตัดกลางคันจนงานขาดครึ่ง
+ *
+ * --stop-when-empty = คิวว่างแล้วออกทันที ไม่เผา CPU ทิ้งทั้งวัน
+ * --max-time=55     = ออกก่อนรอบถัดไปมาถึง (cron ทุกนาที) — งานที่รันอยู่ไม่ถูกฆ่า
+ *                     เพราะ Laravel เช็คเวลานี้ระหว่างงาน ไม่ใช่กลางงาน
+ * --timeout=280     = สั้นกว่าอายุล็อก withoutOverlapping ข้างล่าง
+ * --tries=3         = งานบนเชนล้มชั่วคราวได้ (งานที่ตั้ง $tries เองจะใช้ค่าของตัวเอง)
+ * runInBackground   = ไม่หน่วงงาน schedule ตัวอื่นในรอบเดียวกัน
+ * withoutOverlapping(10) = กัน worker ซ้อน และตั้งเพดาน 10 นาทีกันล็อกค้างถ้า worker ตาย
+ */
+Schedule::command('queue:work --stop-when-empty --max-time=55 --timeout=280 --tries=3 --memory=256')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->runInBackground()
+    ->name('queue:work-default');
