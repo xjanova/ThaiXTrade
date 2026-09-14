@@ -38,6 +38,9 @@ class DiscordPermissions
 
     public const MANAGE_MESSAGES = 1 << 13;
 
+    /** ปักหมุดข้อความ — Discord แยกออกจาก Manage Messages แล้ว (มี Manage Messages อย่างเดียวปักไม่ได้ เจอจริง 2026-09-14) */
+    public const PIN_MESSAGES = 1 << 51;
+
     /** สิทธิ์ที่ระบบดูแลห้องต้องใช้ (ตั้งกฎ AutoMod · อ่านบันทึก · ปิดเสียง · เตะ · แบน · ลบ/ปักหมุดข้อความ) */
     public const MODERATION = [
         'Manage Server (ตั้งกฎ AutoMod)' => self::MANAGE_GUILD,
@@ -45,7 +48,8 @@ class DiscordPermissions
         'Timeout Members (ปิดเสียง)' => self::MODERATE_MEMBERS,
         'Kick Members (เตะ)' => self::KICK_MEMBERS,
         'Ban Members (แบน)' => self::BAN_MEMBERS,
-        'Manage Messages (ลบข้อความจากการ์ดรายงาน · ปักหมุดคู่มือ)' => self::MANAGE_MESSAGES,
+        'Manage Messages (ลบข้อความจากการ์ดรายงาน)' => self::MANAGE_MESSAGES,
+        'Pin Messages (ปักหมุดคู่มือ · การ์ดราคา)' => self::PIN_MESSAGES,
     ];
 
     /** ทีมงานในห้องนั้นมีสิทธิ์นี้ไหม (bitfield ที่ Discord คำนวณมาให้ใน interaction แล้ว) — Administrator ผ่านทุกข้อ */

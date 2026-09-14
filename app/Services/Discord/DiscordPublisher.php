@@ -45,7 +45,7 @@ class DiscordPublisher
         'guide_intro' => ['intro', 'guideIntro'],
     ];
 
-    /** ข้อความประจำห้องที่ปักหมุดตอนสร้าง — สมาชิกหาเจอจากปุ่มหมุด แม้แชทไหลไปไกลแล้ว */
+    /** ข้อความประจำห้องที่ต้องปักหมุด — สมาชิกหาเจอจากปุ่มหมุด แม้แชทไหลไปไกลแล้ว (ปักไม่ติด = รอบหน้าลองใหม่ ดู pinned_at) */
     private const PIN_ON_CREATE = ['price_card', 'dex_pairs', 'guide_help', 'guide_dex', 'guide_bugs', 'guide_ideas', 'guide_intro'];
 
     /** เว้นจังหวะระหว่างโพสต์ใหม่ — เพดานของ Discord ราว 5 ข้อความ / 5 วินาทีต่อห้อง */
@@ -323,6 +323,10 @@ class DiscordPublisher
         $sameMessage = $record !== null && $record->message_id !== null && $record->channel_id === $channel;
 
         if ($sameMessage && $record->content_hash === $hash) {
+            if (! $dryRun) {
+                $this->ensurePinned($record);
+            }
+
             return $this->result($kind, $ref, 'unchanged');
         }
 
@@ -335,6 +339,7 @@ class DiscordPublisher
 
             if ($response['ok']) {
                 $record->update(['content_hash' => $hash, 'last_error' => null]);
+                $this->ensurePinned($record);
 
                 return $this->result($kind, $ref, 'edited', null, $channel);
             }
@@ -390,22 +395,38 @@ class DiscordPublisher
             return $this->result($kind, $ref, 'error', $response['error'] ?? 'ไม่ได้รับ ID ข้อความ', $channel);
         }
 
-        DiscordPost::updateOrCreate(
+        // ข้อความใหม่ = ยังไม่ได้ปัก (ข้อความเก่าที่ถูกลบไปแล้วอาจเคยปักไว้)
+        $record = DiscordPost::updateOrCreate(
             ['kind' => $kind, 'ref_key' => $ref],
-            ['channel_id' => $channel, 'message_id' => $messageId, 'content_hash' => $hash, 'last_error' => null, 'posted_at' => now()],
+            ['channel_id' => $channel, 'message_id' => $messageId, 'content_hash' => $hash, 'last_error' => null, 'posted_at' => now(), 'pinned_at' => null],
         );
 
-        // ปักหมุดไม่สำเร็จ (ยังไม่ได้สิทธิ์ Manage Messages / หมุดเต็ม 50) ไม่ใช่เหตุให้ถือว่าโพสต์พัง
-        if (in_array($kind, self::PIN_ON_CREATE, true)) {
-            $pinned = $this->client->pinMessage($channel, $messageId);
-            if (! $pinned['ok']) {
-                Log::info('Discord: ปักหมุดไม่สำเร็จ', ['kind' => $kind, 'error' => $pinned['error']]);
-            }
-        }
+        $this->ensurePinned($record);
 
         Sleep::for(self::PAUSE_MS)->milliseconds();
 
         return $this->result($kind, $ref, 'created', null, $channel);
+    }
+
+    /**
+     * ปักหมุดข้อความประจำห้องที่ยังไม่ได้ปัก — ปักไม่ติด (ยังไม่ได้สิทธิ์ Pin Messages / หมุดเต็ม 50)
+     * ไม่ใช่เหตุให้ถือว่าโพสต์พัง แค่ปล่อย pinned_at ว่างไว้ให้รอบถัดไปลองใหม่.
+     */
+    private function ensurePinned(DiscordPost $record): void
+    {
+        if (! in_array($record->kind, self::PIN_ON_CREATE, true) || $record->message_id === null || $record->pinned_at !== null) {
+            return;
+        }
+
+        $pinned = $this->client->pinMessage($record->channel_id, $record->message_id);
+
+        if ($pinned['ok']) {
+            $record->update(['pinned_at' => now()]);
+
+            return;
+        }
+
+        Log::info('Discord: ปักหมุดไม่สำเร็จ รอบหน้าลองใหม่', ['kind' => $record->kind, 'error' => $pinned['error']]);
     }
 
     /**

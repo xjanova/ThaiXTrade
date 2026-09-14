@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $content_hash
  * @property string|null $last_error
  * @property Carbon|null $posted_at
+ * @property Carbon|null $pinned_at ปักหมุดสำเร็จเมื่อไหร่ (ข้อความประจำห้องที่ต้องปัก — null = รอบหน้าลองปักใหม่)
  *
  * Developed by Xman Studio.
  */
@@ -29,12 +30,14 @@ class DiscordPost extends Model
         'content_hash',
         'last_error',
         'posted_at',
+        'pinned_at',
     ];
 
     protected function casts(): array
     {
         return [
             'posted_at' => 'datetime',
+            'pinned_at' => 'datetime',
         ];
     }
 }

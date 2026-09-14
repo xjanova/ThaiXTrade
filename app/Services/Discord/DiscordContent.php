@@ -279,7 +279,7 @@ class DiscordContent
     /** @param  array{product: string, label: string, version: string, name: string, notes: string, published_at: ?string}  $release */
     public function release(array $release): array
     {
-        $notes = trim($this->onlyOurLinks($release['notes']));
+        $notes = trim($this->onlyOurLinks($this->releaseNotes($release['notes'])));
 
         return $this->message(embed: array_filter([
             'title' => Str::limit("🚀 {$release['label']} เวอร์ชัน {$release['version']}", 250),
@@ -514,8 +514,13 @@ class DiscordContent
             $fields[] = ['name' => 'สูง / ต่ำ 24 ชม.', 'value' => $this->usd((float) ($p['high_24h'] ?? 0)).' / '.$this->usd((float) ($p['low_24h'] ?? 0)), 'inline' => true];
         }
 
-        $fields[] = ['name' => 'มูลค่าตามราคาตลาด', 'value' => '$'.$this->compact((float) ($p['market_cap'] ?? 0)), 'inline' => true];
-        $fields[] = ['name' => 'อุปทานหมุนเวียน', 'value' => $this->compact((float) ($p['circulating_supply'] ?? 0)).' TPIX', 'inline' => true];
+        // อ่านอุปทานจากเชนไม่ได้ API ให้ 0 มา — "มูลค่า $0.00" ในนามบอททางการชวนเข้าใจผิด ไม่แสดงดีกว่า (เจอจริง 2026-09-14)
+        if ((float) ($p['market_cap'] ?? 0) > 0) {
+            $fields[] = ['name' => 'มูลค่าตามราคาตลาด', 'value' => '$'.$this->compact((float) $p['market_cap']), 'inline' => true];
+        }
+        if ((float) ($p['circulating_supply'] ?? 0) > 0) {
+            $fields[] = ['name' => 'อุปทานหมุนเวียน', 'value' => $this->compact((float) $p['circulating_supply']).' TPIX', 'inline' => true];
+        }
 
         return [
             'title' => '📈 ราคา TPIX',
@@ -529,6 +534,20 @@ class DiscordContent
                 default => 'ราคาอ้างอิง — ยังไม่มีการซื้อขายจริงบนตลาด',
             }.' · ไม่ใช่คำแนะนำการลงทุน'],
         ];
+    }
+
+    /**
+     * บันทึกรุ่นจาก GitHub เขียนไว้ให้คนเปิดหน้า release — ใน Discord ตาราง markdown ขึ้นเป็นขีด | ดิบ ๆ
+     * และ "ดาวน์โหลดไฟล์ด้านล่าง" ไม่มีไฟล์ให้กด → ตัดสองอย่างนี้ทิ้ง ที่เหลือคือรายการฟีเจอร์.
+     */
+    private function releaseNotes(string $notes): string
+    {
+        $lines = array_filter(
+            preg_split('/\R/u', $notes) ?: [],
+            fn (string $line) => ! preg_match('/^\s*\|/u', $line) && ! preg_match('/\b(?:below|attached|assets?)\b|ด้านล่าง|\.(?:apk|exe)\b/iu', $line),
+        );
+
+        return trim(preg_replace('/\n{3,}/u', "\n\n", implode("\n", $lines)) ?? '');
     }
 
     /** $0.1800 · $0.000123 · $1,234.56 — ปัดให้คงที่ (กันการ์ดถูกแก้ทุกรอบเพราะเศษทศนิยม) */
