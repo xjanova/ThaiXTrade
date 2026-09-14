@@ -27,13 +27,26 @@ use Illuminate\Support\Sleep;
  */
 class DiscordPublisher
 {
-    /** ข้อความประจำห้อง: kind => [บทบาทห้อง, เมธอดสร้างเนื้อหา] */
+    /**
+     * ข้อความประจำห้อง: kind => [บทบาทห้อง, เมธอดสร้างเนื้อหา]
+     * เมธอดคืน null = อ่านข้อมูลไม่ได้รอบนี้ → ปล่อยข้อความเดิมไว้ ไม่ทับด้วยข้อความ error.
+     */
     private const PINNED = [
         'rules' => ['rules', 'rules'],
         'whitepaper' => ['whitepaper', 'whitepaper'],
         'sale_status' => ['sale', 'saleStatus'],
         'ask_hint' => ['ask', 'askHint'],
+        'price_card' => ['price', 'priceCard'],
+        'dex_pairs' => ['listings', 'pairsCard'],
+        'guide_help' => ['help', 'guideHelp'],
+        'guide_dex' => ['dex', 'guideDex'],
+        'guide_bugs' => ['bugs', 'guideBugs'],
+        'guide_ideas' => ['ideas', 'guideIdeas'],
+        'guide_intro' => ['intro', 'guideIntro'],
     ];
+
+    /** ข้อความประจำห้องที่ปักหมุดตอนสร้าง — สมาชิกหาเจอจากปุ่มหมุด แม้แชทไหลไปไกลแล้ว */
+    private const PIN_ON_CREATE = ['price_card', 'dex_pairs', 'guide_help', 'guide_dex', 'guide_bugs', 'guide_ideas', 'guide_intro'];
 
     /** เว้นจังหวะระหว่างโพสต์ใหม่ — เพดานของ Discord ราว 5 ข้อความ / 5 วินาทีต่อห้อง */
     private const PAUSE_MS = 400;
@@ -43,6 +56,7 @@ class DiscordPublisher
         private readonly DiscordClient $client,
         private readonly DiscordContent $content,
         private readonly DiscordChannelPlanner $planner,
+        private readonly DiscordLiveData $live,
     ) {}
 
     /**
@@ -89,6 +103,11 @@ class DiscordPublisher
                 continue;
             }
 
+            // การ์ด/คู่มือเสริมเป็นแบบเลือกเปิด: ยังไม่ได้เลือกห้อง = ข้ามเงียบ ๆ (ไม่ขึ้น "ยังไม่มีห้อง" สีแดงทุกรอบ)
+            if (in_array($kind, self::PIN_ON_CREATE, true) && ! isset($map[$role])) {
+                continue;
+            }
+
             $results[] = $this->upsert($kind, 'main', $map[$role] ?? null, fn () => $this->content->{$builder}(), $dryRun);
         }
 
@@ -111,6 +130,29 @@ class DiscordPublisher
             $result = $this->postOnce('video', $video['code'], $map['videos'] ?? null, fn () => $this->content->video($video), $dryRun);
             $results[] = $result;
             $budget -= in_array($result['action'], ['created', 'would_create', 'error'], true) ? 1 : 0;
+        }
+
+        // แอปรุ่นใหม่ / คู่เทรดใหม่ — ยังไม่ได้เลือกห้อง = ข้ามเงียบ ๆ (ไม่รกผลซิงก์ด้วย "ยังไม่มีห้อง" ทุกรอบ)
+        if (isset($map['dev'])) {
+            foreach ($this->live->releases() as $release) {
+                if ($budget <= 0) {
+                    break;
+                }
+                $result = $this->postOnce('release', "{$release['product']}:{$release['version']}", $map['dev'], fn () => $this->content->release($release), $dryRun);
+                $results[] = $result;
+                $budget -= in_array($result['action'], ['created', 'would_create', 'error'], true) ? 1 : 0;
+            }
+        }
+
+        if (isset($map['listings'])) {
+            foreach ($this->newPairs($dryRun) as $symbol) {
+                if ($budget <= 0) {
+                    break;
+                }
+                $result = $this->postOnce('dex_pair', $symbol, $map['listings'], fn () => $this->content->newPair($symbol), $dryRun);
+                $results[] = $result;
+                $budget -= in_array($result['action'], ['created', 'would_create', 'error'], true) ? 1 : 0;
+            }
         }
 
         if (! $dryRun) {
@@ -197,9 +239,23 @@ class DiscordPublisher
                 'ref' => 'main',
                 'role' => $role,
                 'channel_id' => $channel,
-                'status' => $status($kind, 'main', $channel, DiscordContent::hash($payload)),
+                'status' => $payload === null ? 'unavailable' : $status($kind, 'main', $channel, DiscordContent::hash($payload)),
                 'error' => $posted["{$kind}:main"]->last_error ?? null,
-                'payload' => $payload,
+                'payload' => $payload ?? ['content' => '⚠️ อ่านข้อมูลสดไม่ได้ตอนนี้ — ในห้องจะยังเป็นข้อความเดิม', 'components' => []],
+            ];
+        }
+
+        foreach (array_slice($this->live->releases(), 0, $upcoming) as $release) {
+            $channel = $map['dev'] ?? null;
+            $ref = "{$release['product']}:{$release['version']}";
+            $items[] = [
+                'kind' => 'release',
+                'ref' => $ref,
+                'role' => 'dev',
+                'channel_id' => $channel,
+                'status' => $status('release', $ref, $channel, null),
+                'error' => $posted['release:'.$ref]->last_error ?? null,
+                'payload' => $this->content->release($release),
             ];
         }
 
@@ -257,6 +313,10 @@ class DiscordPublisher
         }
 
         $payload = $build();
+        if ($payload === null) {
+            return $this->result($kind, $ref, 'skipped', 'อ่านข้อมูลสดไม่ได้รอบนี้ — คงข้อความเดิมไว้ รอบหน้าลองใหม่', $channel);
+        }
+
         $hash = DiscordContent::hash($payload);
         $record = DiscordPost::where('kind', $kind)->where('ref_key', $ref)->first();
 
@@ -335,9 +395,40 @@ class DiscordPublisher
             ['channel_id' => $channel, 'message_id' => $messageId, 'content_hash' => $hash, 'last_error' => null, 'posted_at' => now()],
         );
 
+        // ปักหมุดไม่สำเร็จ (ยังไม่ได้สิทธิ์ Manage Messages / หมุดเต็ม 50) ไม่ใช่เหตุให้ถือว่าโพสต์พัง
+        if (in_array($kind, self::PIN_ON_CREATE, true)) {
+            $pinned = $this->client->pinMessage($channel, $messageId);
+            if (! $pinned['ok']) {
+                Log::info('Discord: ปักหมุดไม่สำเร็จ', ['kind' => $kind, 'error' => $pinned['error']]);
+            }
+        }
+
         Sleep::for(self::PAUSE_MS)->milliseconds();
 
         return $this->result($kind, $ref, 'created', null, $channel);
+    }
+
+    /**
+     * คู่เทรดที่เพิ่งมีสภาพคล่อง — เทียบกับ "ชุดตั้งต้น" ที่จดไว้ตอนเปิดฟีดครั้งแรก
+     * คู่ที่มีอยู่แล้วตอนนั้นอยู่ในการ์ดรายการคู่เทรดอยู่แล้ว ไม่ประกาศว่า "ใหม่" ย้อนหลัง
+     * (เทียบกับชุดตั้งต้น ไม่ใช่ created_at — คู่ที่สร้างไว้นานแต่เพิ่งมีสภาพคล่องก็นับเป็นคู่ใหม่ได้).
+     *
+     * @return list<string>
+     */
+    private function newPairs(bool $dryRun): array
+    {
+        $active = $this->live->dexPairs()->pluck('symbol')->map(fn ($s) => (string) $s)->all();
+        $baseline = $this->settings->state()['dex_pairs_baseline'] ?? null;
+
+        if (! is_array($baseline)) {
+            if (! $dryRun) {
+                $this->settings->mergeState(['dex_pairs_baseline' => $active]);
+            }
+
+            return [];
+        }
+
+        return array_values(array_diff($active, $baseline));
     }
 
     /** @return list<array{code: string, file: string, title: string, part: string}> */

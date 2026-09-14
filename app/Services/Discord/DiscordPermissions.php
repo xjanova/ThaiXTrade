@@ -36,14 +36,29 @@ class DiscordPermissions
 
     public const MODERATE_MEMBERS = 1 << 40;
 
-    /** สิทธิ์ที่ระบบดูแลห้องต้องใช้ (ตั้งกฎ AutoMod · อ่านบันทึก · ปิดเสียง · เตะ · แบน) */
+    public const MANAGE_MESSAGES = 1 << 13;
+
+    /** สิทธิ์ที่ระบบดูแลห้องต้องใช้ (ตั้งกฎ AutoMod · อ่านบันทึก · ปิดเสียง · เตะ · แบน · ลบ/ปักหมุดข้อความ) */
     public const MODERATION = [
         'Manage Server (ตั้งกฎ AutoMod)' => self::MANAGE_GUILD,
         'View Audit Log (อ่านผลของ AutoMod)' => self::VIEW_AUDIT_LOG,
         'Timeout Members (ปิดเสียง)' => self::MODERATE_MEMBERS,
         'Kick Members (เตะ)' => self::KICK_MEMBERS,
         'Ban Members (แบน)' => self::BAN_MEMBERS,
+        'Manage Messages (ลบข้อความจากการ์ดรายงาน · ปักหมุดคู่มือ)' => self::MANAGE_MESSAGES,
     ];
+
+    /** ทีมงานในห้องนั้นมีสิทธิ์นี้ไหม (bitfield ที่ Discord คำนวณมาให้ใน interaction แล้ว) — Administrator ผ่านทุกข้อ */
+    public static function allows(string $bitfield, int $permission): bool
+    {
+        if (! ctype_digit($bitfield)) {
+            return false;
+        }
+
+        $bits = (int) $bitfield;
+
+        return ($bits & self::ADMINISTRATOR) === self::ADMINISTRATOR || ($bits & $permission) === $permission;
+    }
 
     /** สิทธิ์ทั้งหมดของบอท = โพสต์ (84992) + ดูแลห้อง — ใช้สร้างลิงก์ "ให้สิทธิ์เพิ่ม" */
     public static function inviteBits(): int

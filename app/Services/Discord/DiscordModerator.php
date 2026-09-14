@@ -101,7 +101,7 @@ class DiscordModerator
      *
      * @return array{ok: bool, message: string}
      */
-    public function manual(string $userId, string $action, string $reason): array
+    public function manual(string $userId, string $action, string $reason, bool $announce = true): array
     {
         $guildId = $this->settings->guildId();
 
@@ -118,7 +118,11 @@ class DiscordModerator
 
         $result = $this->apply($guildId, $userId, $action, 'แอดมิน: '.$reason);
         $this->record($userId, $action, 'manual', $this->score($userId), $result['ok'] ? 'done' : 'failed', $reason, $result['error']);
-        $this->announce($userId, $action, 'manual', $this->score($userId), $reason, $result['ok']);
+
+        // กดจากการ์ดรายงาน: การ์ดเดิมถูกแก้เป็นผลตัดสินอยู่แล้ว ไม่ต้องโพสต์ซ้ำอีกข้อความ
+        if ($announce) {
+            $this->announce($userId, $action, 'manual', $this->score($userId), $reason, $result['ok']);
+        }
 
         return [
             'ok' => $result['ok'],

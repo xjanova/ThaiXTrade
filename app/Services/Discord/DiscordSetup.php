@@ -9,6 +9,9 @@ namespace App\Services\Discord;
  */
 class DiscordSetup
 {
+    /** ชื่อคำสั่งเมนูคลิกขวา (Discord ส่งชื่อนี้กลับมาใน interaction ไม่ว่าแอปผู้ใช้ภาษาอะไร) */
+    public const REPORT_COMMAND = 'Report to admins';
+
     public function __construct(
         private readonly DiscordSettings $settings,
         private readonly DiscordClient $client,
@@ -78,7 +81,8 @@ class DiscordSetup
     }
 
     /**
-     * ลงทะเบียน /ถาม และ /ขายเหรียญ เป็นคำสั่งของเซิร์ฟเวอร์ (มีผลทันที ต่างจากคำสั่ง global ที่รอได้ถึงชั่วโมง).
+     * ลงทะเบียนคำสั่งทั้งชุดเป็นคำสั่งของเซิร์ฟเวอร์ (มีผลทันที ต่างจากคำสั่ง global ที่รอได้ถึงชั่วโมง)
+     * ⚠️ PUT แทนที่ทั้งชุด — คำสั่งที่ไม่อยู่ใน commands() จะหายจากเซิร์ฟเวอร์.
      *
      * @return array{ok: bool, message: string}
      */
@@ -99,7 +103,7 @@ class DiscordSetup
 
         $this->settings->mergeState(['commands_registered_at' => now()->toIso8601String()]);
 
-        return ['ok' => true, 'message' => 'ลงทะเบียนคำสั่ง /ถาม และ /ขายเหรียญ แล้ว — ใช้ในเซิร์ฟเวอร์ได้ทันที'];
+        return ['ok' => true, 'message' => 'ลงทะเบียนคำสั่งแล้ว — /ถาม /ขายเหรียญ /ราคา /เชน /ลิงก์ และคลิกขวาข้อความ → Apps → รายงานให้แอดมิน · ใช้ในเซิร์ฟเวอร์ได้ทันที'];
     }
 
     /** @return list<array<string, mixed>> */
@@ -128,6 +132,33 @@ class DiscordSetup
                 'description' => 'Current TPIX token sale status',
                 'description_localizations' => ['th' => 'สถานะการขายเหรียญ TPIX ตอนนี้'],
                 'type' => 1,
+            ],
+            [
+                'name' => 'price',
+                'name_localizations' => ['th' => 'ราคา'],
+                'description' => 'Live TPIX price',
+                'description_localizations' => ['th' => 'ราคา TPIX ล่าสุด (ชุดเดียวกับหน้าเว็บ)'],
+                'type' => 1,
+            ],
+            [
+                'name' => 'chain',
+                'name_localizations' => ['th' => 'เชน'],
+                'description' => 'TPIX Chain network status',
+                'description_localizations' => ['th' => 'สถานะเครือข่าย TPIX Chain — บล็อก · validator · มาสเตอร์โหนด'],
+                'type' => 1,
+            ],
+            [
+                'name' => 'links',
+                'name_localizations' => ['th' => 'ลิงก์'],
+                'description' => 'Official TPIX links and contract addresses',
+                'description_localizations' => ['th' => 'ลิงก์ทางการและที่อยู่สัญญา — กันลิงก์ปลอม'],
+                'type' => 1,
+            ],
+            [
+                // คลิกขวาที่ข้อความ → Apps → รายงานให้แอดมิน (คำสั่งแบบเมนูไม่มีคำอธิบาย)
+                'name' => self::REPORT_COMMAND,
+                'name_localizations' => ['th' => 'รายงานให้แอดมิน'],
+                'type' => 3,
             ],
         ];
     }
