@@ -197,6 +197,8 @@ const navigationSections = computed(() => [
             { name: t('common.all') === 'ทั้งหมด' ? 'บทความ AI' : 'AI Articles', href: '/admin/content', icon: 'content' },
             { name: t('common.all') === 'ทั้งหมด' ? 'ภาษา' : 'Languages', href: '/admin/languages', icon: 'language' },
             { name: t('common.all') === 'ทั้งหมด' ? 'แบนเนอร์' : 'Banners', href: '/admin/banners', icon: 'banner' },
+            // บอท Discord ส่งข่าว/วิดีโอ/กฎ/สถานะการขายเข้าเซิร์ฟเวอร์ชุมชน + ตอบ /ถาม
+            { name: t('common.all') === 'ทั้งหมด' ? 'บอท Discord' : 'Discord Bot', href: '/admin/discord', icon: 'notification' },
         ],
     },
     {

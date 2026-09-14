@@ -16,12 +16,19 @@ class ChatbotService
 
     public function __construct(
         private AiTextService $groq,
+        private SiteKnowledgeService $knowledge,
     ) {
         $this->systemPrompt = $this->buildSystemPrompt();
     }
 
     /**
-     * ตอบคำถามจากผู้ใช้.
+     * ตอบคำถามจากผู้ใช้ — ใช้ทั้งผู้ช่วยบนหน้าเว็บและคำสั่ง /ถาม ใน Discord.
+     *
+     * ⚠️ (2026-09-14) เดิมบังคับ 'model' => 'llama-3.3-70b-versatile' ทับค่าตั้ง
+     *    ซึ่งทั้ง OpenAI และ Groq ไม่มีแล้ว → ผู้ช่วยตอบ "ขออภัย ระบบไม่สามารถตอบได้" ทุกคำถาม
+     *    (API ยังคืน success=true จึงไม่มีใครรู้) ตอนนี้ปล่อยให้ AiTextService ใช้โมเดลตามค่าตั้ง
+     *
+     * @return array{message: string, navigation: ?string, success: bool}
      */
     public function chat(string $message, string $language = 'th'): array
     {
@@ -31,8 +38,7 @@ class ChatbotService
 
         $prompt = "{$langInstruction}\n\nUser: {$message}";
 
-        $result = $this->groq->chat($prompt, $this->systemPrompt, [
-            'model' => 'llama-3.3-70b-versatile',
+        $result = $this->groq->chat($prompt, $this->systemPrompt."\n\n".$this->knowledge->liveFacts(), [
             'temperature' => 0.6,
             'max_tokens' => 1024,
         ]);
@@ -45,6 +51,7 @@ class ChatbotService
                     ? 'ขออภัย ระบบไม่สามารถตอบได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง'
                     : 'Sorry, I cannot respond right now. Please try again.',
                 'navigation' => null,
+                'success' => false,
             ];
         }
 
@@ -54,6 +61,7 @@ class ChatbotService
         return [
             'message' => $this->cleanResponse($result['content']),
             'navigation' => $navigation,
+            'success' => true,
         ];
     }
 
@@ -107,8 +115,8 @@ You are TPIX AI Assistant — a helpful, knowledgeable chatbot for TPIX TRADE de
 - Flexible: 5% | 30 days: 25% | 90 days: 60% | 180 days: 100% | 365 days: 200%
 
 ## ICO/Token Sale
-- Accepts USDT only (no cash withdrawal)
-- 3 phases: Private ($0.05), Pre-Sale ($0.08), Public ($0.10)
+- Status, phases, prices, dates and payment methods: use ONLY the LIVE DATA section below
+- Never say the sale is open, or that people can buy now, unless LIVE DATA says it is open
 - Website: /token-sale
 
 ## Pages (use ONLY these exact URLs for navigation)

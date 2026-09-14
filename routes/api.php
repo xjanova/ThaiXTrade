@@ -6,17 +6,20 @@
  */
 
 use App\Http\Controllers\Api\AiBotController;
+use App\Http\Controllers\Api\AiBotWalletController;
 use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\BannerController as ApiBannerController;
 use App\Http\Controllers\Api\BridgeApiController;
+use App\Http\Controllers\Api\BugReportRelayController;
 use App\Http\Controllers\Api\CarbonCreditApiController;
 use App\Http\Controllers\Api\ChainController;
 use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\CmcController;
 use App\Http\Controllers\Api\ContractRegistryController;
 use App\Http\Controllers\Api\DexApiController;
+use App\Http\Controllers\Api\DiscordInteractionController;
 use App\Http\Controllers\Api\FeeConfigController;
 use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\InfraAlertController;
@@ -378,8 +381,15 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         ->withoutMiddleware([VerifyCsrfToken::class, 'throttle:60,1'])
         ->middleware('throttle:300,1');
 
+    // บอท Discord — คำสั่ง /ถาม · /ขายเหรียญ (ตรวจลายเซ็น Ed25519 ของ Discord ทุกคำขอ)
+    // คำขอทั้งหมดมาจาก IP ของ Discord ชุดเดียว → ถ้าโดน throttle:60,1 ต่อ IP สมาชิกทั้งเซิร์ฟเวอร์จะถูกนับรวมกัน
+    // เพดานต่อคน/ต่อวันอยู่ในตัวควบคุมแทน
+    Route::post('/discord/interactions', [DiscordInteractionController::class, 'handle'])
+        ->withoutMiddleware([VerifyCsrfToken::class, 'throttle:60,1'])
+        ->middleware('throttle:600,1');
+
     // รายงานบั๊กจากหน้าเว็บ → ส่งต่อระบบกลาง xman studio (สาธารณะ จำกัด 20/นาที/IP)
-    Route::post('/bug-reports', [\App\Http\Controllers\Api\BugReportRelayController::class, 'store'])
+    Route::post('/bug-reports', [BugReportRelayController::class, 'store'])
         ->middleware('throttle:20,1');
 
     // Wallet Bootstrap — connect/sign/verify must be PUBLIC (before wallet is verified)
@@ -556,11 +566,11 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
          * สร้าง/ถอนอยู่หลังด่าน KYC เหมือนของที่ "ได้ของ" ตัวอื่น — กระเป๋าที่ถือเงินจริง
          * ต้องรู้ว่าเป็นของใคร · ถอนจำกัด 5 ครั้ง/นาที เพราะทุกครั้งอ่านยอดจากเชน
          */
-        Route::get('/wallet', [\App\Http\Controllers\Api\AiBotWalletController::class, 'show']);
-        Route::post('/wallet', [\App\Http\Controllers\Api\AiBotWalletController::class, 'store'])->middleware('kyc:ai_bot');
-        Route::post('/wallet/refresh', [\App\Http\Controllers\Api\AiBotWalletController::class, 'refresh'])->middleware('throttle:10,1');
-        Route::post('/wallet/withdraw', [\App\Http\Controllers\Api\AiBotWalletController::class, 'withdraw'])->middleware(['kyc:ai_bot', 'throttle:5,1']);
-        Route::post('/wallet/withdraw/{id}/cancel', [\App\Http\Controllers\Api\AiBotWalletController::class, 'cancel'])->where('id', '[0-9]+');
+        Route::get('/wallet', [AiBotWalletController::class, 'show']);
+        Route::post('/wallet', [AiBotWalletController::class, 'store'])->middleware('kyc:ai_bot');
+        Route::post('/wallet/refresh', [AiBotWalletController::class, 'refresh'])->middleware('throttle:10,1');
+        Route::post('/wallet/withdraw', [AiBotWalletController::class, 'withdraw'])->middleware(['kyc:ai_bot', 'throttle:5,1']);
+        Route::post('/wallet/withdraw/{id}/cancel', [AiBotWalletController::class, 'cancel'])->where('id', '[0-9]+');
     });
 
     /*

@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\CarbonCreditController as AdminCarbonCreditContro
 use App\Http\Controllers\Admin\ChainController;
 use App\Http\Controllers\Admin\ContentController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\DiscordController;
 use App\Http\Controllers\Admin\FeeController;
 use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\FoodPassportController;
@@ -384,6 +385,16 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('audit-logs', [AuditLogController::class, 'index'])
             ->name('audit-logs.index')
             ->middleware('admin.role:super_admin');
+
+        // บอท Discord ของชุมชน — โทเค็นบอท = โพสต์ในนามทีมงานถึงสมาชิกทั้งเซิร์ฟเวอร์ จึงเฉพาะ super_admin
+        Route::prefix('discord')->name('discord.')->middleware('admin.role:super_admin')->group(function () {
+            Route::get('/', [DiscordController::class, 'index'])->name('index');
+            Route::put('/', [DiscordController::class, 'update'])->name('update');
+            Route::post('/connect', [DiscordController::class, 'connect'])->middleware('throttle:10,1')->name('connect');
+            Route::post('/replan', [DiscordController::class, 'replan'])->middleware('throttle:10,1')->name('replan');
+            Route::post('/commands', [DiscordController::class, 'registerCommands'])->middleware('throttle:10,1')->name('commands');
+            Route::post('/sync', [DiscordController::class, 'sync'])->middleware('throttle:6,1')->name('sync');
+        });
 
         // App Releases — ดูรายการ releases จาก GitHub
         Route::get('app-releases', [AppReleaseController::class, 'index'])->name('app-releases.index');

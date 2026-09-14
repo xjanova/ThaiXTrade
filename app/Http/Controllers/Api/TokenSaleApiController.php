@@ -8,6 +8,7 @@ use App\Models\SaleTransaction;
 use App\Models\TreasuryPayout;
 use App\Services\BankTransferSaleService;
 use App\Services\PriceFeedService;
+use App\Services\SaleStatusService;
 use App\Services\StripePaymentService;
 use App\Services\TokenSaleService;
 use App\Support\Wei;
@@ -41,7 +42,7 @@ class TokenSaleApiController extends Controller
     /**
      * ดึงข้อมูลรอบขายที่ active พร้อม phases.
      */
-    public function index(BankTransferSaleService $bank, StripePaymentService $stripe): JsonResponse
+    public function index(SaleStatusService $status): JsonResponse
     {
         $sale = $this->saleService->getActiveSale();
 
@@ -82,18 +83,17 @@ class TokenSaleApiController extends Controller
                  * แต่ยังตั้งค่าไม่ครบ (เช่น ยังไม่ใส่เลขบัญชี หรือยังไม่มีคีย์ Stripe)
                  * ถ้าโชว์ปุ่มทั้งที่ใช้ไม่ได้ ผู้ซื้อจะกดแล้วเจอ error เปล่าๆ
                  */
-                'payment_methods' => [
-                    /*
-                     * ★ ต้องผ่าน "สองด่าน" ทั้งคู่: รอบขายประกาศรับช่องทางนี้ไหม
-                     *   และช่องทางนั้นตั้งค่าครบจนใช้ได้จริงหรือยัง
-                     *
-                     * ถ้าดูแค่ว่าตั้งค่าครบ (เช่น มีเลขบัญชี) ช่องทางที่เจ้าของ
-                     * ตั้งใจปิดจะกลับมาเปิดเองเงียบๆ ทันทีที่มีใครเผลอกรอกค่า
-                     * — นโยบายต้องมาจาก accept_currencies เสมอ ไม่ใช่จากผลข้างเคียง
-                     */
-                    'card' => in_array('CARD', $accepted, true) && $stripe->isEnabled(),
-                    'bank' => in_array('BANK', $accepted, true) && $bank->isConfigured(),
-                ],
+                /*
+                 * ★ ต้องผ่าน "สองด่าน" ทั้งคู่: รอบขายประกาศรับช่องทางนี้ไหม
+                 *   และช่องทางนั้นตั้งค่าครบจนใช้ได้จริงหรือยัง
+                 *
+                 * ถ้าดูแค่ว่าตั้งค่าครบ (เช่น มีเลขบัญชี) ช่องทางที่เจ้าของ
+                 * ตั้งใจปิดจะกลับมาเปิดเองเงียบๆ ทันทีที่มีใครเผลอกรอกค่า
+                 * — นโยบายต้องมาจาก accept_currencies เสมอ ไม่ใช่จากผลข้างเคียง
+                 *
+                 * ตรรกะอยู่ใน SaleStatusService ที่เดียว — บอท Discord กับผู้ช่วย AI ใช้ตัวเดียวกัน
+                 */
+                'payment_methods' => $status->paymentMethods($sale),
 
                 'sale_wallet_address' => $sale->sale_wallet_address,
                 'starts_at' => $sale->starts_at?->toIso8601String(),
