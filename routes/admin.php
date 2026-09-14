@@ -394,6 +394,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/replan', [DiscordController::class, 'replan'])->middleware('throttle:10,1')->name('replan');
             Route::post('/commands', [DiscordController::class, 'registerCommands'])->middleware('throttle:10,1')->name('commands');
             Route::post('/sync', [DiscordController::class, 'sync'])->middleware('throttle:6,1')->name('sync');
+            // ทดสอบผ่านหน้าเว็บ — ไม่ส่งอะไรเข้า Discord (ถามทดสอบกินโควตา OpenAI จริง จึงจำกัดความถี่)
+            Route::post('/test-ask', [DiscordController::class, 'testAsk'])->middleware('throttle:20,1')->name('test-ask');
+            Route::get('/preview', [DiscordController::class, 'preview'])->middleware('throttle:30,1')->name('preview');
+            Route::get('/permissions', [DiscordController::class, 'permissions'])->middleware('throttle:20,1')->name('permissions');
         });
 
         // App Releases — ดูรายการ releases จาก GitHub

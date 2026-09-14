@@ -155,6 +155,81 @@ class DiscordPublisher
         return ['ok' => true, 'map' => $map];
     }
 
+    /**
+     * ตัวอย่างสิ่งที่บอทจะโพสต์ในแต่ละห้อง พร้อมเนื้อหาจริง — ไม่ส่งอะไรไป Discord และไม่แตะฐานข้อมูล
+     * (หน้าทดสอบในหลังบ้าน: เจ้าของอยาก "ทดสอบบอทผ่านหน้าเว็บ" ก่อนให้ขึ้นห้องจริง).
+     *
+     * status: new = ยังไม่เคยโพสต์ · update = จะแก้ข้อความเดิม · current = ในห้องตรงกับนี้แล้ว
+     *         no_channel = ยังไม่มีห้อง · failed = เคยโพสต์ไม่สำเร็จ (จะลองใหม่รอบหน้า)
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function preview(int $upcoming = 3): array
+    {
+        $map = $this->settings->channelMap();
+        $posted = DiscordPost::all()->keyBy(fn (DiscordPost $p) => $p->kind.':'.$p->ref_key);
+        $items = [];
+
+        $status = function (string $kind, string $ref, ?string $channel, ?string $hash) use ($posted): string {
+            $record = $posted["{$kind}:{$ref}"] ?? null;
+
+            return match (true) {
+                $channel === null => 'no_channel',
+                $record === null => 'new',
+                $record->message_id === null => 'failed',
+                $record->channel_id !== $channel => 'new',
+                $hash !== null && $record->content_hash !== $hash => 'update',
+                default => 'current',
+            };
+        };
+
+        foreach (self::PINNED as $kind => [$role, $builder]) {
+            if ($kind === 'ask_hint' && ! $this->settings->askEnabled()) {
+                continue;
+            }
+
+            $payload = $this->content->{$builder}();
+            $channel = $map[$role] ?? null;
+            $items[] = [
+                'kind' => $kind,
+                'ref' => 'main',
+                'role' => $role,
+                'channel_id' => $channel,
+                'status' => $status($kind, 'main', $channel, DiscordContent::hash($payload)),
+                'error' => $posted["{$kind}:main"]->last_error ?? null,
+                'payload' => $payload,
+            ];
+        }
+
+        foreach (array_slice($this->pendingArticles(true), 0, $upcoming) as $article) {
+            $channel = $map['news'] ?? null;
+            $items[] = [
+                'kind' => 'article',
+                'ref' => (string) $article->id,
+                'role' => 'news',
+                'channel_id' => $channel,
+                'status' => $status('article', (string) $article->id, $channel, null),
+                'error' => $posted['article:'.$article->id]->last_error ?? null,
+                'payload' => $this->content->article($article),
+            ];
+        }
+
+        foreach (array_slice($this->pendingVideos(), 0, $upcoming) as $video) {
+            $channel = $map['videos'] ?? null;
+            $items[] = [
+                'kind' => 'video',
+                'ref' => $video['code'],
+                'role' => 'videos',
+                'channel_id' => $channel,
+                'status' => $status('video', $video['code'], $channel, null),
+                'error' => $posted['video:'.$video['code']]->last_error ?? null,
+                'payload' => $this->content->video($video),
+            ];
+        }
+
+        return $items;
+    }
+
     // ── ภายใน ────────────────────────────────────────────────────────────────
 
     /** @return array<string, string> */

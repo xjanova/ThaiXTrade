@@ -11,7 +11,9 @@
  */
 import { computed, ref } from 'vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
+import axios from 'axios';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import DiscordMessagePreview from '@/Components/Discord/DiscordMessagePreview.vue';
 
 const props = defineProps({
     settings: { type: Object, required: true },
@@ -100,6 +102,70 @@ const ready = computed(() => ({
     guild: !!props.status.guild_name,
     commands: !!props.status.commands_registered_at,
 }));
+
+// ── ทดสอบบอทผ่านหน้าเว็บ (ไม่มีอะไรถูกส่งเข้า Discord) ─────────────────────
+// เจ้าของสั่ง: "ต้องทดสอบบอทผ่านหน้าเว็บได้เลย"
+const testTab = ref('ask');
+const testQuestion = ref('ตอนนี้เปิดขายเหรียญ TPIX หรือยัง ราคาเท่าไหร่');
+const testAnswer = ref(null);
+const testNote = ref('');
+const previewItems = ref(null);
+const rooms = ref(null);
+const testLoading = ref(null);
+const testError = ref('');
+
+/** ข้อความ error ภาษาไทยเสมอ — ไม่โชว์ข้อความดิบจากเซิร์ฟเวอร์ ("Too Many Attempts." ฯลฯ) */
+function explain(e) {
+    const res = e?.response;
+    if (res?.status === 422) return res.data?.errors?.question?.[0] || res.data?.message || 'ข้อมูลไม่ครบ';
+    if (res?.status === 429) return 'ทดสอบถี่เกินไป รอสักครู่แล้วลองใหม่';
+    if (res?.status === 403) return 'หน้านี้ใช้ได้เฉพาะ super_admin';
+    return 'ทดสอบไม่สำเร็จ ลองใหม่อีกครั้ง';
+}
+
+async function runTest(kind, request) {
+    if (testLoading.value) return;
+    testLoading.value = kind;
+    testError.value = '';
+    try {
+        return (await request()).data;
+    } catch (e) {
+        testError.value = explain(e);
+        return null;
+    } finally {
+        testLoading.value = null;
+    }
+}
+
+async function askTest() {
+    if (!testQuestion.value.trim()) {
+        testError.value = 'พิมพ์คำถามก่อน';
+        return;
+    }
+    testAnswer.value = null;
+    const data = await runTest('ask', () => axios.post('/admin/discord/test-ask', { question: testQuestion.value }));
+    if (!data) return;
+    testAnswer.value = data.message;
+    testNote.value = data.success ? '' : 'ผู้ช่วย AI ตอบไม่สำเร็จ — ตรวจคีย์ OpenAI ที่ /admin/settings (แท็บ AI)';
+}
+
+async function loadPreview() {
+    const data = await runTest('preview', () => axios.get('/admin/discord/preview'));
+    if (data) previewItems.value = data.items;
+}
+
+async function checkRooms() {
+    const data = await runTest('permissions', () => axios.get('/admin/discord/permissions'));
+    if (data) rooms.value = data.rooms;
+}
+
+const previewStatus = (s) => ({
+    new: ['ยังไม่ได้โพสต์ — รอบถัดไปจะโพสต์', 'bg-primary-500/20 text-primary-300'],
+    update: ['ข้อมูลเปลี่ยน — จะแก้ข้อความเดิม', 'bg-amber-400/15 text-amber-300'],
+    current: ['อยู่ในห้องแล้ว ตรงกับนี้', 'bg-trading-green/15 text-trading-green'],
+    no_channel: ['ยังไม่ได้เลือกห้อง', 'bg-white/10 text-dark-300'],
+    failed: ['เคยโพสต์ไม่สำเร็จ — จะลองใหม่', 'bg-trading-red/15 text-trading-red'],
+}[s] || [s, 'bg-white/10 text-dark-300']);
 </script>
 
 <template>
@@ -151,6 +217,79 @@ const ready = computed(() => ({
                 <div class="glass-dark rounded-xl p-3">
                     <p class="text-[11px] text-dark-400">ซิงก์ล่าสุด</p>
                     <p class="text-sm font-semibold text-white">{{ when(status.last_sync_at) }}</p>
+                </div>
+            </div>
+
+            <!-- ทดสอบบอทผ่านหน้าเว็บ -->
+            <div class="glass-dark rounded-xl p-4 space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h2 class="text-sm font-semibold text-white">🧪 ทดสอบบอทผ่านหน้าเว็บ</h2>
+                        <p class="text-[11px] text-dark-400">ไม่มีอะไรถูกส่งเข้า Discord — เห็นผลแบบเดียวกับที่สมาชิกจะเห็น</p>
+                    </div>
+                    <div class="flex gap-1 text-xs">
+                        <button v-for="t in [['ask', 'ลองถาม /ถาม'], ['preview', 'ตัวอย่างโพสต์'], ['permissions', 'ตรวจสิทธิ์ห้อง']]" :key="t[0]" type="button"
+                                class="px-3 py-1.5 rounded-lg" :class="testTab === t[0] ? 'bg-primary-500/30 text-primary-200' : 'bg-white/5 text-dark-300 hover:bg-white/10'"
+                                @click="testTab = t[0]; testError = ''">{{ t[1] }}</button>
+                    </div>
+                </div>
+
+                <p v-if="testError" class="text-xs text-trading-red">{{ testError }}</p>
+
+                <!-- ลองถาม -->
+                <div v-if="testTab === 'ask'" class="space-y-3">
+                    <form class="flex flex-col sm:flex-row gap-2" @submit.prevent="askTest">
+                        <input v-model="testQuestion" type="text" maxlength="500" class="trading-input flex-1" placeholder="พิมพ์คำถามแบบที่สมาชิกจะถามใน Discord" />
+                        <button type="submit" class="btn-primary whitespace-nowrap" :disabled="testLoading === 'ask'">
+                            {{ testLoading === 'ask' ? 'ผู้ช่วยกำลังคิด…' : 'ถามเลย' }}
+                        </button>
+                    </form>
+                    <p v-if="testNote" class="text-xs text-amber-300">{{ testNote }}</p>
+                    <DiscordMessagePreview v-if="testAnswer" :payload="testAnswer" :bot-name="status.bot_name || 'TPIX TRADE'" />
+                    <p class="text-[11px] text-dark-500">ใช้สมองตัวเดียวกับผู้ช่วยบนหน้าเว็บและคำสั่ง /ถาม ใน Discord · ลิงก์ที่ไม่ใช่ tpix.online ถูกซ่อนเหมือนของจริง · กินโควตา AI จริง (จำกัด 20 ครั้ง/นาที)</p>
+                </div>
+
+                <!-- ตัวอย่างโพสต์ -->
+                <div v-else-if="testTab === 'preview'" class="space-y-3">
+                    <button type="button" class="px-3 py-1.5 rounded-lg text-xs bg-white/5 text-dark-200 hover:bg-white/10 disabled:opacity-50" :disabled="testLoading === 'preview'" @click="loadPreview">
+                        {{ testLoading === 'preview' ? 'กำลังเตรียมตัวอย่าง…' : (previewItems ? 'โหลดใหม่' : 'ดูตัวอย่างสิ่งที่บอทจะโพสต์') }}
+                    </button>
+                    <p v-if="previewItems && !previewItems.length" class="text-xs text-dark-400">ไม่มีอะไรรอโพสต์</p>
+                    <div v-for="item in previewItems || []" :key="item.kind + item.ref" class="space-y-1.5">
+                        <div class="flex flex-wrap items-center gap-2 text-xs">
+                            <span class="text-white font-semibold">{{ kindLabel(item.kind) }}</span>
+                            <span class="text-dark-400">→ {{ item.channel_name ? '#' + item.channel_name : 'ยังไม่มีห้อง' }}</span>
+                            <span class="px-2 py-0.5 rounded" :class="previewStatus(item.status)[1]">{{ previewStatus(item.status)[0] }}</span>
+                            <span v-if="item.error" class="text-amber-300">ครั้งก่อน: {{ item.error }}</span>
+                        </div>
+                        <DiscordMessagePreview :payload="item.payload" :bot-name="status.bot_name || 'TPIX TRADE'" />
+                    </div>
+                </div>
+
+                <!-- ตรวจสิทธิ์ห้อง -->
+                <div v-else class="space-y-3">
+                    <button type="button" class="px-3 py-1.5 rounded-lg text-xs bg-white/5 text-dark-200 hover:bg-white/10 disabled:opacity-50" :disabled="testLoading === 'permissions'" @click="checkRooms">
+                        {{ testLoading === 'permissions' ? 'กำลังตรวจ…' : 'ตรวจว่าบอทโพสต์ได้ในทุกห้องที่ใช้' }}
+                    </button>
+                    <div v-if="rooms" class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-dark-400">
+                                <tr><th class="text-left py-1">ห้อง</th><th class="text-left">ใช้ลง</th><th>มองเห็น</th><th>ส่งข้อความ</th><th>การ์ด</th><th class="text-left">ต้องทำ</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="r in rooms" :key="r.channel_id" class="border-t border-white/5">
+                                    <td class="py-1.5 text-white">#{{ r.name || r.channel_id }}</td>
+                                    <td class="text-dark-300">{{ r.roles.join(', ') }}</td>
+                                    <td class="text-center">{{ r.view ? '✅' : '❌' }}</td>
+                                    <td class="text-center">{{ r.send ? '✅' : '❌' }}</td>
+                                    <td class="text-center">{{ r.embed ? '✅' : '❌' }}</td>
+                                    <td :class="r.ok ? 'text-trading-green' : 'text-amber-300'">
+                                        {{ r.ok ? 'พร้อมโพสต์' : `คลิกขวาห้อง → Edit Channel → Permissions → เพิ่มยศ ${status.bot_name || 'ของบอท'} → ✅ ${r.missing.join(', ')}` }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 

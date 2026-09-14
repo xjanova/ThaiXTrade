@@ -152,6 +152,16 @@ class DiscordContent
         return $this->message(content: $head."\n\n".$body, button: $button);
     }
 
+    /** ถามเป็นภาษาไทย = ตอบไทย ไม่งั้นดูภาษาของแอป Discord ผู้ถาม (/ถาม และหน้าทดสอบในหลังบ้านใช้ร่วมกัน) */
+    public static function languageOf(string $question, string $locale = ''): string
+    {
+        if (preg_match('/\p{Thai}/u', $question)) {
+            return 'th';
+        }
+
+        return str_starts_with(strtolower($locale), 'th') ? 'th' : 'en';
+    }
+
     /** hash ของ payload — ใช้ตัดสินว่าต้องแก้ข้อความเดิมไหม */
     public static function hash(array $payload): string
     {
@@ -168,7 +178,12 @@ class DiscordContent
         $payload = ['allowed_mentions' => ['parse' => []]];
 
         $payload['content'] = $content ?? '';
-        $payload['embeds'] = $embed !== null ? [$embed] : [];
+
+        // ⚠️ ข้อความที่ไม่มีการ์ด ห้ามส่ง embeds: [] — Discord ถือว่า "ไม่เอา embed" แล้วไม่สร้างตัวเล่น/พรีวิวให้ลิงก์
+        //    (เจอจริง 2026-09-14: ลิงก์วิดีโอ mp4 ขึ้นเป็นลิงก์เปล่า พอตัดช่องนี้ออก Discord ทำตัวเล่นให้ในไม่กี่วินาที)
+        if ($embed !== null) {
+            $payload['embeds'] = [$embed];
+        }
         $payload['components'] = $button !== null
             ? [['type' => 1, 'components' => [['type' => 2, 'style' => 5, 'label' => $button[0], 'url' => $button[1]]]]]
             : [];

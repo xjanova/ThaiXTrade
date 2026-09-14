@@ -134,7 +134,7 @@ class DiscordInteractionController extends Controller
 
         $applicationId = (string) ($interaction['application_id'] ?? '');
         $token = (string) ($interaction['token'] ?? '');
-        $language = $this->language($question, (string) ($interaction['locale'] ?? ''));
+        $language = DiscordContent::languageOf($question, (string) ($interaction['locale'] ?? ''));
 
         defer(function () use ($question, $language, $applicationId, $token) {
             $reply = app(ChatbotService::class)->chat($question, $language);
@@ -151,16 +151,6 @@ class DiscordInteractionController extends Controller
         });
 
         return response()->json(['type' => self::RESPOND_DEFERRED]);
-    }
-
-    /** ถามเป็นภาษาไทย = ตอบไทย ไม่งั้นดูภาษาของแอป Discord ผู้ถาม */
-    private function language(string $question, string $locale): string
-    {
-        if (preg_match('/\p{Thai}/u', $question)) {
-            return 'th';
-        }
-
-        return str_starts_with(strtolower($locale), 'th') ? 'th' : 'en';
     }
 
     private function ephemeral(string $message): JsonResponse
