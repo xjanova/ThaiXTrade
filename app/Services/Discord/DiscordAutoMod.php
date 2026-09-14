@@ -59,6 +59,12 @@ class DiscordAutoMod
             $payload = $this->payload($definition, $staffRoles);
             $current = $byName[$definition['name']] ?? null;
 
+            if ($payload['actions'] === []) {
+                $results[] = ['key' => $key, 'name' => $definition['name'], 'ok' => true, 'note' => 'ข้าม — กฎนี้แจ้งแอดมินอย่างเดียว ต้องเลือกห้องแจ้งเตือนก่อนแล้วกดติดตั้งอีกครั้ง'];
+
+                continue;
+            }
+
             // มีได้กฎเดียวต่อเซิร์ฟเวอร์ (สแปม / preset) — ถ้าแอดมินตั้งไว้เองแล้วด้วยชื่ออื่น ใช้ของแอดมินต่อไป
             if ($current === null && in_array($definition['trigger_type'], [3, 4], true)) {
                 $theirs = collect((array) $existing['data'])->first(fn ($r) => (int) $r['trigger_type'] === $definition['trigger_type']);
@@ -136,21 +142,26 @@ class DiscordAutoMod
     /** @param  list<string>  $staffRoles */
     private function payload(array $definition, array $staffRoles): array
     {
-        // custom_message ยาวได้ไม่เกิน 150 ตัวอักษร (ข้อจำกัดของ Discord)
-        $block = ['type' => self::ACTION_BLOCK];
-        if (! empty($definition['block_message'])) {
-            $block['metadata'] = ['custom_message' => mb_substr($definition['block_message'], 0, 150)];
-        }
-        $actions = [$block];
-
         $alertChannel = $this->settings->get('discord_mod_log_channel');
-        if (is_string($alertChannel) && preg_match(DiscordSettings::SNOWFLAKE, $alertChannel)) {
-            $actions[] = ['type' => self::ACTION_ALERT, 'metadata' => ['channel_id' => $alertChannel]];
-        }
+        $alert = is_string($alertChannel) && preg_match(DiscordSettings::SNOWFLAKE, $alertChannel)
+            ? ['type' => self::ACTION_ALERT, 'metadata' => ['channel_id' => $alertChannel]]
+            : null;
 
-        // ปิดเสียงทันทีใช้ได้เฉพาะกฎ keyword / mention spam (ข้อจำกัดของ Discord)
-        if (isset($definition['timeout_seconds']) && in_array($definition['trigger_type'], [1, 5], true)) {
-            $actions[] = ['type' => self::ACTION_TIMEOUT, 'metadata' => ['duration_seconds' => (int) $definition['timeout_seconds']]];
+        if (! empty($definition['alert_only'])) {
+            // แจ้งแอดมินอย่างเดียว: ไม่บล็อก ไม่ลงบันทึก "บล็อก" ใน audit log จึงไม่นับคะแนน · ไม่มีห้องแจ้งเตือน = ไม่มี action (ข้ามกฎ)
+            $actions = $alert !== null ? [$alert] : [];
+        } else {
+            // custom_message ยาวได้ไม่เกิน 150 ตัวอักษร (ข้อจำกัดของ Discord)
+            $block = ['type' => self::ACTION_BLOCK];
+            if (! empty($definition['block_message'])) {
+                $block['metadata'] = ['custom_message' => mb_substr($definition['block_message'], 0, 150)];
+            }
+            $actions = array_values(array_filter([$block, $alert]));
+
+            // ปิดเสียงทันทีใช้ได้เฉพาะกฎ keyword / mention spam (ข้อจำกัดของ Discord)
+            if (isset($definition['timeout_seconds']) && in_array($definition['trigger_type'], [1, 5], true)) {
+                $actions[] = ['type' => self::ACTION_TIMEOUT, 'metadata' => ['duration_seconds' => (int) $definition['timeout_seconds']]];
+            }
         }
 
         $metadata = match ($definition['trigger_type']) {

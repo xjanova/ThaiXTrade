@@ -143,6 +143,7 @@ RULES,
         /*
          * กฎ AutoMod ที่บอทติดตั้ง — ชื่อขึ้นต้น "TPIX •" เสมอ (ใช้หาของเราเจอ และไม่แตะกฎที่แอดมินตั้งเอง)
          * weight = คะแนนความผิดต่อหนึ่งครั้ง · timeout_seconds = ให้ AutoMod ปิดเสียงทันที (ใช้ได้กับ keyword/mention เท่านั้น)
+         * alert_only = ไม่บล็อก แค่แจ้งห้องแอดมิน (ไม่นับคะแนน) — ใช้กับวลีกำกวมที่คนดีก็พิมพ์ตอนเตือนเพื่อน
          */
         'rules' => [
             'scam' => [
@@ -151,15 +152,14 @@ RULES,
                 'weight' => 5,
                 'timeout_seconds' => 3600,
                 'block_message' => 'ข้อความถูกบล็อก: เข้าข่ายหลอกขอข้อมูลกระเป๋า/ชวนรับของฟรี — ทีมงาน TPIX ไม่มีวันขอ seed phrase',
+                // เฉพาะประโยคที่ "คนหลอกพูด" — ห้ามใส่วลีที่อยู่ในคำเตือนได้ด้วย ("อย่าส่งวลีกู้คืนให้ใคร", "never share your seed phrase with anyone")
+                // วลีกำกวมไปอยู่กฎ scam_watch (แจ้งแอดมินอย่างเดียว) — ถ้าบล็อก+นับคะแนน คนดีที่เตือนเพื่อนจะโดนปิดเสียง/แบน
                 'keywords' => [
                     '*free nitro*', '*nitro giveaway*', '*free discord nitro*', '*steam gift card*',
                     '*claim your airdrop*', '*claim airdrop now*', '*airdrop is live*', '*validate your wallet*', '*wallet validation*',
-                    '*rectify your wallet*', '*sync your wallet*', '*connect your wallet to claim*',
-                    '*send me your seed*', '*dm me your seed*', '*send your seed phrase*', '*enter your seed phrase*', '*share your seed phrase with*',
-                    '*send me your private key*', '*dm me for support*', '*check your dm*', '*i will double your*', '*guaranteed profit*',
-                    '*ส่งseedมา*', '*ส่ง seed มา*', '*ขอseed*', '*ขอ seed*', '*ส่งวลีกู้คืน*', '*ขอวลีกู้คืน*', '*ส่งคีย์ส่วนตัว*', '*ขอคีย์ส่วนตัว*',
-                    '*ยืนยันกระเป๋าเพื่อรับ*', '*ซิงค์กระเป๋า*', '*เคลมแอร์ดรอป*', '*รับแอร์ดรอปฟรี*', '*แจกเหรียญฟรี*', '*แจก nitro*',
-                    '*ทักแชทส่วนตัว*', '*ทักinbox*', '*ทัก inbox*', '*การันตีกำไร*', '*กำไรการันตี*', '*ลงทุนน้อยได้เยอะ*', '*ปันผลรายวัน*',
+                    '*rectify your wallet*', '*connect your wallet to claim*',
+                    '*send me your seed*', '*dm me your seed*', '*send me your private key*', '*dm me for support*', '*i will double your*',
+                    '*ส่งseedมา*', '*ส่ง seed มา*', '*ส่งวลีกู้คืนมา*', '*ส่งคีย์ส่วนตัวมา*', '*แจก nitro*',
                 ],
                 // โดเมนสะกดเลียน Discord/Steam ที่ใช้หลอกแจก nitro (ไม่จับ discord.com / discord.gg ของจริง)
                 'regex' => [
@@ -167,6 +167,19 @@ RULES,
                     '(?i)\b(?:discord|nitro)-(?:gift|nitro|drop|promo|airdrop)[a-z0-9-]*\.[a-z]{2,}',
                     '(?i)\bsteamcommun[1il]ty[a-z0-9-]*\.[a-z]{2,}',
                 ],
+            ],
+            'scam_watch' => [
+                'name' => 'TPIX • ส่อหลอกลวง (แจ้งแอดมิน)',
+                'trigger_type' => 1,
+                'weight' => 0, // ไม่บล็อก ไม่นับคะแนน — ข้อความผ่านไป แอดมินได้แจ้งเตือนในห้องแจ้งเตือนให้ตัดสินเอง
+                'alert_only' => true,
+                'keywords' => [
+                    '*ขอseed*', '*ขอ seed*', '*วลีกู้คืน*', '*คีย์ส่วนตัว*', '*seed phrase*', '*private key*', '*recovery phrase*',
+                    '*ทักแชทส่วนตัว*', '*ทักinbox*', '*ทัก inbox*', '*check your dm*', '*sync your wallet*', '*ซิงค์กระเป๋า*',
+                    '*ยืนยันกระเป๋าเพื่อรับ*', '*เคลมแอร์ดรอป*', '*รับแอร์ดรอปฟรี*', '*แจกเหรียญฟรี*',
+                    '*การันตีกำไร*', '*กำไรการันตี*', '*guaranteed profit*', '*ลงทุนน้อยได้เยอะ*', '*ปันผลรายวัน*',
+                ],
+                'regex' => [],
             ],
             'invite' => [
                 'name' => 'TPIX • ลิงก์เชิญเซิร์ฟเวอร์อื่น',

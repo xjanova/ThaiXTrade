@@ -492,7 +492,7 @@ const previewStatus = (s) => ({
                         <p class="text-[11px] text-dark-500">แบนสูงสุด/วัน = 0 คือบอทไม่แบนเอง แจ้งแอดมินตัดสินทุกครั้ง · เปิดระบบแล้วเริ่มนับความผิดจากตอนนั้น ไม่ย้อนลงโทษของเก่า</p>
                         <div class="text-[11px] text-dark-500 space-y-0.5">
                             <p>คะแนนต่อความผิดหนึ่งครั้ง:</p>
-                            <p v-for="w in moderation.weights || []" :key="w.name">· {{ w.name }} = {{ w.weight }}</p>
+                            <p v-for="w in moderation.weights || []" :key="w.name">· {{ w.name }} = {{ w.weight > 0 ? w.weight : 'ไม่บล็อก ไม่นับคะแนน — แจ้งแอดมินให้ตัดสินเอง' }}</p>
                         </div>
                         <button type="submit" class="btn-primary w-full" :disabled="modForm.processing">{{ modForm.processing ? 'กำลังบันทึก…' : 'บันทึกการดูแลห้อง' }}</button>
                     </form>

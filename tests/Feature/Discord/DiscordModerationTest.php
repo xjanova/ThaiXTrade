@@ -408,6 +408,132 @@ class DiscordModerationTest extends TestCase
         $this->assertSame(1, $automod->weightFor(null, 'กฎของแอดมิน'));
     }
 
+    /**
+     * จำลองการจับคำของ AutoMod: *คำ* = อยู่ตรงไหนก็ได้ · คำ* / *คำ = ต้นคำ/ท้ายคำ · คำ = ทั้งคำ · ไม่สนตัวพิมพ์.
+     *
+     * @return string|null ชื่อกฎที่ "บล็อก" ข้อความนี้ (กฎแจ้งแอดมินอย่างเดียวไม่นับ)
+     */
+    private function blockedBy(string $message): ?string
+    {
+        $text = mb_strtolower($message);
+
+        foreach ((array) config('discord.moderation.rules') as $rule) {
+            if ($rule['trigger_type'] !== 1 || ! empty($rule['alert_only'])) {
+                continue;
+            }
+            foreach ($rule['keywords'] ?? [] as $keyword) {
+                $word = preg_quote(mb_strtolower(trim($keyword, '*')), '/');
+                $pattern = match (true) {
+                    str_starts_with($keyword, '*') && str_ends_with($keyword, '*') => "/{$word}/u",
+                    str_ends_with($keyword, '*') => "/(?<![\\p{L}\\p{N}]){$word}/u",
+                    str_starts_with($keyword, '*') => "/{$word}(?![\\p{L}\\p{N}])/u",
+                    default => "/(?<![\\p{L}\\p{N}]){$word}(?![\\p{L}\\p{N}])/u",
+                };
+                if (preg_match($pattern, $text)) {
+                    return $rule['name'];
+                }
+            }
+            foreach ($rule['regex'] ?? [] as $regex) {
+                if (preg_match('/'.str_replace('/', '\/', $regex).'/u', $message)) {
+                    return $rule['name'];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    public function test_good_members_warning_each_other_are_never_blocked_or_scored(): void
+    {
+        $warnings = [
+            'อย่าส่งวลีกู้คืนให้ใครเด็ดขาดนะครับ',
+            'ทีมงานไม่มีวันขอ seed หรือคีย์ส่วนตัวของคุณ ใครขอคือมิจฉาชีพ',
+            'ระวังมิจฉาชีพทักแชทส่วนตัวมาหลอกให้ซิงค์กระเป๋า',
+            'Never share your seed phrase with anyone, even staff',
+            "Don't send your seed phrase to anyone. Never enter your seed phrase on a website.",
+            'There is no guaranteed profit in crypto',
+            'มีปันผลรายวันไหมครับ แล้วมีการันตีกำไรหรือเปล่า',
+            'วิธีเคลมแอร์ดรอป TPIX ทำยังไงครับ',
+            'สัดส่วนโทเคนของทีมเท่าไหร่ครับ',
+            'ส่งหีบห่อไปแล้ว',
+            'ซื้อควายมาหนึ่งตัว',
+            'ดูรายละเอียดที่ https://tpix.online/token-sale',
+            'ใครเจอลิงก์ discord.com/channels/1/2 แปลก ๆ แจ้งแอดมินนะ',
+        ];
+
+        foreach ($warnings as $message) {
+            $this->assertNull($this->blockedBy($message), "ข้อความปกติถูกบล็อก: {$message}");
+        }
+    }
+
+    public function test_real_scam_and_spam_messages_are_blocked(): void
+    {
+        $scams = [
+            'FREE NITRO giveaway click here' => self::SCAM,
+            'Airdrop is live! Connect your wallet to claim' => self::SCAM,
+            'ส่ง seed มาให้แอดมินตรวจสอบครับ' => self::SCAM,
+            'dm me for support, I can fix your wallet' => self::SCAM,
+            'claim now: dlscord.gift/abc' => self::SCAM,
+            'steamcommunlty.com/gift/123' => self::SCAM,
+            'join us discord.gg/freecoins' => 'TPIX • ลิงก์เชิญเซิร์ฟเวอร์อื่น',
+            'ไอ้สัตว์ ไปตายซะ' => self::PROFANITY,
+        ];
+
+        foreach ($scams as $message => $rule) {
+            $this->assertSame($rule, $this->blockedBy($message), "ต้องบล็อก: {$message}");
+        }
+    }
+
+    public function test_the_rule_set_fits_discord_limits(): void
+    {
+        $rules = collect((array) config('discord.moderation.rules'));
+
+        $this->assertLessThanOrEqual(6, $rules->where('trigger_type', 1)->count(), 'Discord ให้กฎคำต้องห้ามได้ 6 กฎ');
+        $this->assertLessThanOrEqual(1, $rules->where('trigger_type', 3)->count());
+        $this->assertLessThanOrEqual(1, $rules->where('trigger_type', 4)->count());
+        foreach ($rules as $key => $rule) {
+            $this->assertStringStartsWith(DiscordAutoMod::PREFIX, $rule['name'], $key);
+            $this->assertLessThanOrEqual(100, mb_strlen($rule['name']), $key);
+            $this->assertLessThanOrEqual(10, count($rule['regex'] ?? []), $key);
+            $this->assertLessThanOrEqual(1000, count($rule['keywords'] ?? []), $key);
+            $this->assertLessThanOrEqual(150, mb_strlen($rule['block_message'] ?? ''), $key);
+            foreach ($rule['keywords'] ?? [] as $keyword) {
+                $this->assertLessThanOrEqual(60, mb_strlen($keyword), $keyword);
+            }
+            foreach ($rule['regex'] ?? [] as $regex) {
+                $this->assertLessThanOrEqual(260, mb_strlen($regex), $regex);
+                $this->assertNotFalse(@preg_match('/'.str_replace('/', '\/', $regex).'/u', ''), "regex เสีย: {$regex}");
+            }
+        }
+    }
+
+    public function test_the_suspicious_phrase_rule_only_alerts_admins_and_needs_a_log_channel(): void
+    {
+        Http::fake([
+            'discord.com/api/v10/guilds/'.self::GUILD.'/auto-moderation/rules' => fn (Request $r) => $r->method() === 'GET'
+                ? Http::response([])
+                : Http::response(['id' => (string) $this->auditSeq++]),
+            'discord.com/api/v10/guilds/'.self::GUILD.'/roles' => Http::response([]),
+        ]);
+
+        app(DiscordAutoMod::class)->install();
+
+        $watch = $this->sent()->first(fn (Request $r) => $r->method() === 'POST' && $r['name'] === 'TPIX • ส่อหลอกลวง (แจ้งแอดมิน)');
+        $this->assertSame([['type' => 2, 'metadata' => ['channel_id' => self::LOG]]], $watch['actions'], 'ต้องไม่บล็อก ไม่ปิดเสียง — แจ้งแอดมินอย่างเดียว');
+        $this->assertContains('*ขอ seed*', $watch['trigger_metadata']['keyword_filter']);
+
+        // ยังไม่เลือกห้องแจ้งเตือน → ข้ามกฎนี้ (Discord ไม่รับกฎที่ไม่มี action) แต่กฎอื่นติดตั้งได้ปกติ
+        app(DiscordSettings::class)->set('discord_mod_log_channel', '');
+        $before = count(Http::recorded());
+        $result = app(DiscordAutoMod::class)->install();
+
+        $this->assertTrue($result['ok'], $result['message']);
+        $names = $this->sent()->slice($before)->filter(fn (Request $r) => $r->method() === 'POST')->map(fn (Request $r) => $r['name'])->all();
+        $this->assertNotContains('TPIX • ส่อหลอกลวง (แจ้งแอดมิน)', $names);
+        $this->assertContains(self::SCAM, $names);
+        $this->assertStringContainsString('เลือกห้องแจ้งเตือน', collect($result['rules'])->firstWhere('key', 'scam_watch')['note']);
+    }
+
     // ── หน้าหลังบ้าน ───────────────────────────────────────────────────────
 
     private function owner(): AdminUser
