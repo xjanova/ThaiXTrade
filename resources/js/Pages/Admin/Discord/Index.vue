@@ -24,7 +24,45 @@ const props = defineProps({
     posts: { type: Array, default: () => [] },
     salePreview: { type: Object, default: () => ({}) },
     interactionsUrl: { type: String, default: '' },
+    moderation: { type: Object, default: () => ({}) },
 });
+
+// ── ดูแลห้องอัตโนมัติ (เจ้าของ: "แบน เตะ คนได้หากมีแนวโน้มไม่ดี") ─────────────
+const modForm = useForm({
+    mode: props.moderation.mode || 'off',
+    log_channel: props.moderation.log_channel || '',
+    timeout_at: props.moderation.timeout_at,
+    kick_at: props.moderation.kick_at,
+    ban_at: props.moderation.ban_at,
+    max_bans_per_day: props.moderation.max_bans_per_day,
+});
+const memberForm = useForm({ user_id: '', action: 'timeout', reason: '' });
+const modPerm = ref(null);
+
+function saveModeration() {
+    if (modForm.mode === 'enforce' && props.moderation.mode !== 'enforce'
+        && !window.confirm('เปิด "ลงโทษจริง" — บอทจะปิดเสียง/เตะ/แบนสมาชิกที่ AutoMod จับได้ซ้ำ ตามเกณฑ์นี้โดยอัตโนมัติ (ไม่แตะทีมงาน) ยืนยัน?')) return;
+    modForm.put('/admin/discord/moderation', { preserveScroll: true });
+}
+
+function submitMember() {
+    const label = { timeout: 'ปิดเสียง', kick: 'เตะ', ban: 'แบน', unban: 'ยกเลิกแบน' }[memberForm.action];
+    if (!window.confirm(`${label} สมาชิก ${memberForm.user_id} — เหตุผล: ${memberForm.reason}\nยืนยัน?`)) return;
+    memberForm.post('/admin/discord/moderation/member', { preserveScroll: true, onSuccess: () => memberForm.reset() });
+}
+
+async function checkModPermissions() {
+    const data = await runTest('mod-perm', () => axios.get('/admin/discord/moderation/permissions'));
+    if (data) modPerm.value = data;
+}
+
+const modActionLabel = (a) => ({ timeout: 'ปิดเสียง', kick: 'เตะ', ban: 'แบน', unban: 'ยกเลิกแบน' }[a] || a);
+const modStatusLabel = (s, mode) => ({
+    done: ['ทำแล้ว', 'text-trading-green'],
+    failed: ['ไม่สำเร็จ', 'text-trading-red'],
+    capped: ['ติดเพดานต่อวัน', 'text-amber-300'],
+    skipped: [mode === 'observe' ? 'แจ้งเตือนอย่างเดียว' : 'ข้าม (ทีมงาน/บอท)', 'text-dark-300'],
+}[s] || [s, 'text-dark-300']);
 
 const form = useForm({
     enabled: props.settings.enabled,
@@ -412,6 +450,125 @@ const previewStatus = (s) => ({
                         <p class="text-[11px] text-dark-500">
                             "เปิดขาย" จะขึ้นเองเมื่อ: มีเฟสอยู่ในช่วงเวลา + มีช่องทางจ่ายเงินที่ใช้ได้ + ระบบจ่ายเหรียญพร้อม (ด่านเดียวกับ /admin/token-sales)
                         </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ดูแลห้องอัตโนมัติ -->
+            <div class="glass-dark rounded-xl p-4 space-y-4">
+                <div>
+                    <h2 class="text-sm font-semibold text-white">🛡️ ดูแลห้องอัตโนมัติ — บล็อก · ปิดเสียง · เตะ · แบน</h2>
+                    <p class="text-[11px] text-dark-400 mt-1">
+                        ชั้นที่ 1: AutoMod ของ Discord บล็อกข้อความหลอกเอา seed/ลิงก์ฟิชชิง/สแปม/คำหยาบทันทีตลอด 24 ชม.
+                        · ชั้นที่ 2: ทุก 5 นาทีบอทนับความผิดของแต่ละคนใน {{ moderation.window_days }} วัน แล้วไล่ระดับโทษ · ทีมงานไม่ถูกลงโทษอัตโนมัติ
+                    </p>
+                </div>
+
+                <div class="grid lg:grid-cols-2 gap-4">
+                    <form class="space-y-3" @submit.prevent="saveModeration">
+                        <div>
+                            <label class="text-xs text-dark-400">โหมด</label>
+                            <select v-model="modForm.mode" class="trading-input w-full text-sm">
+                                <option value="off">ปิด (AutoMod ที่ติดตั้งแล้วยังบล็อกข้อความอยู่)</option>
+                                <option value="observe">แจ้งเตือนอย่างเดียว — บอกในห้องแอดมินว่าจะลงโทษใคร</option>
+                                <option value="enforce">ลงโทษจริง — ปิดเสียง/เตะ/แบนอัตโนมัติ</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-dark-400">ห้องแจ้งเตือนแอดมิน (ควรเป็นห้องที่เห็นเฉพาะทีมงาน)</label>
+                            <select v-model="modForm.log_channel" class="trading-input w-full text-sm">
+                                <option value="">— ยังไม่เลือก —</option>
+                                <option v-for="c in channels" :key="c.id" :value="c.id">{{ channelLabel(c) }}</option>
+                            </select>
+                            <p v-if="modForm.errors.log_channel" class="text-xs text-trading-red mt-1">{{ modForm.errors.log_channel }}</p>
+                        </div>
+                        <div class="grid grid-cols-4 gap-2">
+                            <div><label class="text-[11px] text-dark-400">ปิดเสียงที่คะแนน</label><input v-model.number="modForm.timeout_at" type="number" min="1" class="trading-input w-full" /></div>
+                            <div><label class="text-[11px] text-dark-400">เตะที่คะแนน</label><input v-model.number="modForm.kick_at" type="number" min="1" class="trading-input w-full" /></div>
+                            <div><label class="text-[11px] text-dark-400">แบนที่คะแนน</label><input v-model.number="modForm.ban_at" type="number" min="1" class="trading-input w-full" /></div>
+                            <div><label class="text-[11px] text-dark-400">แบนสูงสุด/วัน</label><input v-model.number="modForm.max_bans_per_day" type="number" min="0" class="trading-input w-full" /></div>
+                        </div>
+                        <p v-for="k in ['mode', 'log_channel', 'timeout_at', 'kick_at', 'ban_at', 'max_bans_per_day']" v-show="modForm.errors[k]" :key="k" class="text-xs text-trading-red">{{ modForm.errors[k] }}</p>
+                        <p class="text-[11px] text-dark-500">แบนสูงสุด/วัน = 0 คือบอทไม่แบนเอง แจ้งแอดมินตัดสินทุกครั้ง · เปิดระบบแล้วเริ่มนับความผิดจากตอนนั้น ไม่ย้อนลงโทษของเก่า</p>
+                        <div class="text-[11px] text-dark-500 space-y-0.5">
+                            <p>คะแนนต่อความผิดหนึ่งครั้ง:</p>
+                            <p v-for="w in moderation.weights || []" :key="w.name">· {{ w.name }} = {{ w.weight }}</p>
+                        </div>
+                        <button type="submit" class="btn-primary w-full" :disabled="modForm.processing">{{ modForm.processing ? 'กำลังบันทึก…' : 'บันทึกการดูแลห้อง' }}</button>
+                    </form>
+
+                    <div class="space-y-3">
+                        <div class="rounded-lg border border-white/10 p-3 space-y-2">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <p class="text-xs text-white font-semibold">สิทธิ์ของบอทสำหรับดูแลห้อง</p>
+                                <button type="button" class="px-2.5 py-1 rounded-lg text-[11px] bg-white/5 text-dark-200 hover:bg-white/10" :disabled="testLoading === 'mod-perm'" @click="checkModPermissions">
+                                    {{ testLoading === 'mod-perm' ? 'กำลังตรวจ…' : 'ตรวจสิทธิ์' }}
+                                </button>
+                            </div>
+                            <template v-if="modPerm">
+                                <p v-if="!modPerm.missing.length" class="text-xs text-trading-green">✅ สิทธิ์ครบ</p>
+                                <p v-else class="text-xs text-amber-300">ยังขาด: {{ modPerm.missing.join(' · ') }}</p>
+                                <p v-if="modPerm.above_bot.length" class="text-[11px] text-amber-300">
+                                    ยศที่อยู่สูงกว่าบอท (บอทลงโทษคนที่มียศเหล่านี้ไม่ได้): {{ modPerm.above_bot.join(', ') }} — ลากยศ {{ status.bot_name || 'ของบอท' }} ขึ้นไว้ใต้ยศทีมงานที่ Server Settings → Roles
+                                </p>
+                            </template>
+                            <a v-if="moderation.upgrade_url" :href="moderation.upgrade_url" target="_blank" rel="noopener noreferrer"
+                               class="inline-block px-3 py-1.5 rounded-lg text-xs bg-[#5865f2] text-white hover:bg-[#4752c4]">ให้สิทธิ์ดูแลห้องแก่บอท (เปิด Discord) ↗</a>
+                        </div>
+
+                        <div class="rounded-lg border border-white/10 p-3 space-y-2">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <p class="text-xs text-white font-semibold">กฎ AutoMod ของบอท</p>
+                                <button type="button" class="px-2.5 py-1 rounded-lg text-[11px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 disabled:opacity-50" :disabled="!!busy" @click="action('moderation/automod', 'automod')">
+                                    {{ busy === 'automod' ? 'กำลังติดตั้ง…' : (moderation.installed_at ? 'อัปเดตกฎ' : 'ติดตั้งกฎ') }}
+                                </button>
+                            </div>
+                            <p v-if="!(moderation.rules || []).length" class="text-[11px] text-dark-400">ยังไม่ได้ติดตั้ง</p>
+                            <div v-for="r in moderation.rules || []" :key="r.key" class="flex justify-between gap-2 text-xs">
+                                <span class="text-dark-200">{{ r.name }}</span>
+                                <span :class="r.ok ? 'text-trading-green' : 'text-trading-red'">{{ r.note }}</span>
+                            </div>
+                            <p class="text-[11px] text-dark-500">แตะเฉพาะกฎที่ชื่อขึ้นต้น "TPIX •" — กฎที่แอดมินตั้งเองไม่ถูกแก้</p>
+                        </div>
+
+                        <form class="rounded-lg border border-white/10 p-3 space-y-2" @submit.prevent="submitMember">
+                            <p class="text-xs text-white font-semibold">ลงโทษเอง</p>
+                            <input v-model="memberForm.user_id" type="text" inputmode="numeric" class="trading-input w-full text-xs" placeholder="User ID (คลิกขวาที่ชื่อสมาชิก → Copy User ID)" />
+                            <p v-if="memberForm.errors.user_id" class="text-xs text-trading-red">{{ memberForm.errors.user_id }}</p>
+                            <div class="flex gap-2">
+                                <select v-model="memberForm.action" class="trading-input text-xs">
+                                    <option value="timeout">ปิดเสียง</option>
+                                    <option value="kick">เตะ</option>
+                                    <option value="ban">แบน</option>
+                                    <option value="unban">ยกเลิกแบน</option>
+                                </select>
+                                <input v-model="memberForm.reason" type="text" maxlength="200" class="trading-input flex-1 text-xs" placeholder="เหตุผล (บันทึกใน audit log)" />
+                            </div>
+                            <p v-if="memberForm.errors.reason" class="text-xs text-trading-red">{{ memberForm.errors.reason }}</p>
+                            <button type="submit" class="px-3 py-1.5 rounded-lg text-xs bg-trading-red/20 text-trading-red hover:bg-trading-red/30 disabled:opacity-50" :disabled="memberForm.processing || !memberForm.user_id || !memberForm.reason">ดำเนินการ</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="grid lg:grid-cols-2 gap-4 text-xs">
+                    <div>
+                        <p class="text-dark-400 mb-1">ความผิดล่าสุดที่ AutoMod จับได้ · ตรวจล่าสุด {{ when(moderation.last_run_at) }}</p>
+                        <p v-if="!(moderation.strikes || []).length" class="text-dark-500">ยังไม่มี</p>
+                        <div v-for="(s, i) in moderation.strikes || []" :key="i" class="flex justify-between gap-2 border-t border-white/5 py-1">
+                            <span class="text-white font-mono">{{ s.user_id }}</span>
+                            <span class="text-dark-300 truncate">{{ s.rule_name || '-' }} (+{{ s.weight }})</span>
+                            <span class="text-dark-400 whitespace-nowrap">{{ when(s.occurred_at) }}</span>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-dark-400 mb-1">การลงโทษล่าสุด</p>
+                        <p v-if="!(moderation.actions || []).length" class="text-dark-500">ยังไม่มี</p>
+                        <div v-for="(a, i) in moderation.actions || []" :key="i" class="flex flex-wrap justify-between gap-2 border-t border-white/5 py-1">
+                            <span class="text-white font-mono">{{ a.user_id }}</span>
+                            <span class="text-dark-200">{{ modActionLabel(a.action) }} · คะแนน {{ a.score }}</span>
+                            <span :class="modStatusLabel(a.status, a.mode)[1]">{{ modStatusLabel(a.status, a.mode)[0] }}<template v-if="a.error && a.status === 'failed'"> — {{ a.error }}</template></span>
+                            <span class="text-dark-400 whitespace-nowrap">{{ when(a.created_at) }}</span>
+                        </div>
                     </div>
                 </div>
             </div>

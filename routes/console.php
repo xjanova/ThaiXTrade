@@ -130,6 +130,18 @@ Schedule::command('discord:sync')
     ->name('discord:sync');
 
 /*
+ * บอท Discord — ดูแลห้อง: อ่านผลของ AutoMod แล้วไล่ระดับโทษ ปิดเสียง → เตะ → แบน ทุก 5 นาที
+ *
+ * เจ้าของสั่ง: "แบน เตะ คนได้หากมีแนวโน้มไม่ดี" — โหมดปิด/แจ้งเตือน/ลงโทษจริง ตั้งที่ /admin/discord
+ * ตัว AutoMod เองบล็อกข้อความได้ทันทีตลอดเวลา รอบนี้แค่ตัดสินคนที่ทำผิดซ้ำ จึง 5 นาทีพอ
+ */
+Schedule::command('discord:moderate')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('discord:moderate');
+
+/*
  * AI TRADE — ดึงข่าวตลาดทุก 15 นาที
  *
  * ความถี่นี้ตั้งใจ: ข่าวแพนิค (แฮก ล้มละลาย ถอนเงินไม่ได้) ราคาไหลภายในไม่กี่สิบนาที

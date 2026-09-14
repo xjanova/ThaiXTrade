@@ -26,6 +26,69 @@ class DiscordPermissions
 
     public const READ_MESSAGE_HISTORY = 1 << 16;
 
+    public const KICK_MEMBERS = 1 << 1;
+
+    public const BAN_MEMBERS = 1 << 2;
+
+    public const MANAGE_GUILD = 1 << 5;
+
+    public const VIEW_AUDIT_LOG = 1 << 7;
+
+    public const MODERATE_MEMBERS = 1 << 40;
+
+    /** สิทธิ์ที่ระบบดูแลห้องต้องใช้ (ตั้งกฎ AutoMod · อ่านบันทึก · ปิดเสียง · เตะ · แบน) */
+    public const MODERATION = [
+        'Manage Server (ตั้งกฎ AutoMod)' => self::MANAGE_GUILD,
+        'View Audit Log (อ่านผลของ AutoMod)' => self::VIEW_AUDIT_LOG,
+        'Timeout Members (ปิดเสียง)' => self::MODERATE_MEMBERS,
+        'Kick Members (เตะ)' => self::KICK_MEMBERS,
+        'Ban Members (แบน)' => self::BAN_MEMBERS,
+    ];
+
+    /** สิทธิ์ทั้งหมดของบอท = โพสต์ (84992) + ดูแลห้อง — ใช้สร้างลิงก์ "ให้สิทธิ์เพิ่ม" */
+    public static function inviteBits(): int
+    {
+        return self::VIEW_CHANNEL | self::SEND_MESSAGES | self::EMBED_LINKS | self::READ_MESSAGE_HISTORY | array_sum(self::MODERATION);
+    }
+
+    /**
+     * สิทธิ์ระดับเซิร์ฟเวอร์ที่ระบบดูแลห้องยังขาด.
+     *
+     * @return array{ok: bool, error?: string, missing?: list<string>, above_bot?: list<string>}
+     */
+    public function moderationCheck(): array
+    {
+        $guildId = $this->settings->guildId();
+
+        if ($guildId === null || ! $this->settings->hasBotToken()) {
+            return ['ok' => false, 'error' => 'ยังตั้งค่าไม่ครบ (โทเค็นบอท / Guild ID)'];
+        }
+
+        $me = $this->client->me();
+        $roles = $this->client->request('GET', "/guilds/{$guildId}/roles");
+
+        if (! $me['ok'] || ! $roles['ok']) {
+            return ['ok' => false, 'error' => ($me['ok'] ? $roles : $me)['error']];
+        }
+
+        $member = $this->client->request('GET', "/guilds/{$guildId}/members/".($me['data']['id'] ?? ''));
+        if (! $member['ok']) {
+            return ['ok' => false, 'error' => $member['error']];
+        }
+
+        $byId = collect((array) $roles['data'])->keyBy(fn ($r) => (string) $r['id']);
+        $mine = array_map('strval', (array) ($member['data']['roles'] ?? []));
+        $base = $this->compute((array) $roles['data'], $mine, $guildId, (string) $me['data']['id'], []);
+
+        $missing = array_keys(array_filter(self::MODERATION, fn ($bit) => ! $this->has($base, $bit)));
+
+        // Discord ห้ามบอทลงโทษคนที่มียศ "สูงกว่า" ยศของบอท — บอกให้แอดมินลากยศบอทขึ้น
+        $top = max(array_map(fn ($id) => (int) ($byId[$id]['position'] ?? 0), $mine ?: ['0']));
+        $above = $byId->filter(fn ($r) => (int) $r['position'] > $top && ! ($r['managed'] ?? false))->pluck('name')->values()->all();
+
+        return ['ok' => true, 'missing' => $missing, 'above_bot' => $above];
+    }
+
     public function __construct(
         private readonly DiscordSettings $settings,
         private readonly DiscordClient $client,

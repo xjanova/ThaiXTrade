@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\DiscordModAction;
+use App\Models\DiscordModStrike;
 use App\Models\DiscordPost;
 use App\Services\ChatbotService;
+use App\Services\Discord\DiscordAutoMod;
 use App\Services\Discord\DiscordContent;
+use App\Services\Discord\DiscordModerator;
 use App\Services\Discord\DiscordPermissions;
 use App\Services\Discord\DiscordPublisher;
 use App\Services\Discord\DiscordSettings;
@@ -35,7 +39,7 @@ class DiscordController extends Controller
         private readonly DiscordSettings $settings,
     ) {}
 
-    public function index(SaleStatusService $sale, DiscordContent $content): Response
+    public function index(SaleStatusService $sale, DiscordModerator $moderator): Response
     {
         $state = $this->settings->state();
 
@@ -67,7 +71,104 @@ class DiscordController extends Controller
             'posts' => DiscordPost::orderByDesc('updated_at')->limit(30)->get(['kind', 'ref_key', 'channel_id', 'message_id', 'last_error', 'posted_at', 'updated_at']),
             'salePreview' => $sale->snapshot(),
             'interactionsUrl' => rtrim((string) config('app.url'), '/').'/api/v1/discord/interactions',
+            'moderation' => [
+                'mode' => $moderator->mode(),
+                'log_channel' => (string) $this->settings->get('discord_mod_log_channel', ''),
+                'timeout_at' => $moderator->threshold('timeout_at'),
+                'kick_at' => $moderator->threshold('kick_at'),
+                'ban_at' => $moderator->threshold('ban_at'),
+                'max_bans_per_day' => $moderator->threshold('max_bans_per_day'),
+                'window_days' => (int) config('discord.moderation.window_days'),
+                'rules' => $state['automod_results'] ?? [],
+                'installed_at' => $state['automod_installed_at'] ?? null,
+                'last_run_at' => $state['mod_last_run_at'] ?? null,
+                'weights' => collect((array) config('discord.moderation.rules'))->map(fn ($r) => ['name' => $r['name'], 'weight' => $r['weight']])->values(),
+                'strikes' => DiscordModStrike::latest('occurred_at')->limit(20)->get(['user_id', 'rule_name', 'weight', 'occurred_at']),
+                'actions' => DiscordModAction::latest()->limit(20)->get(['user_id', 'action', 'mode', 'score', 'status', 'reason', 'error', 'created_at']),
+                // ลิงก์ให้สิทธิ์เพิ่ม — เปิดแล้วกด Authorize บอทจะได้สิทธิ์ดูแลห้องครบในครั้งเดียว
+                'upgrade_url' => $this->settings->applicationId() !== null
+                    ? 'https://discord.com/oauth2/authorize?client_id='.$this->settings->applicationId().'&scope=bot+applications.commands&permissions='.DiscordPermissions::inviteBits()
+                    : null,
+            ],
         ]);
+    }
+
+    /** บันทึกค่าตั้งของระบบดูแลห้อง */
+    public function updateModeration(Request $request, DiscordAutoMod $automod, DiscordModerator $moderator): RedirectResponse
+    {
+        $known = array_column($this->settings->state()['channels'] ?? [], 'id');
+
+        $validated = $request->validate([
+            'mode' => ['required', Rule::in([DiscordModerator::MODE_OFF, DiscordModerator::MODE_OBSERVE, DiscordModerator::MODE_ENFORCE])],
+            'log_channel' => ['nullable', 'string', Rule::in($known)],
+            'timeout_at' => ['required', 'integer', 'min:1', 'max:100'],
+            'kick_at' => ['required', 'integer', 'min:1', 'max:100', 'gte:timeout_at'],
+            'ban_at' => ['required', 'integer', 'min:1', 'max:100', 'gte:kick_at'],
+            'max_bans_per_day' => ['required', 'integer', 'min:0', 'max:50'],
+        ], [
+            'kick_at.gte' => 'คะแนนที่เตะต้องไม่น้อยกว่าคะแนนที่ปิดเสียง',
+            'ban_at.gte' => 'คะแนนที่แบนต้องไม่น้อยกว่าคะแนนที่เตะ',
+            'log_channel.in' => 'ห้องที่เลือกไม่อยู่ในเซิร์ฟเวอร์ — กด "ทดสอบการเชื่อมต่อ" เพื่อดึงรายชื่อห้องใหม่',
+        ]);
+
+        $channelChanged = (string) ($validated['log_channel'] ?? '') !== (string) $this->settings->get('discord_mod_log_channel', '');
+
+        // เปิดจากปิด → เริ่มนับความผิดใหม่จากตอนนี้ ไม่ย้อนลงโทษของเก่าที่เกิดตอนระบบปิดอยู่
+        if ($moderator->mode() === DiscordModerator::MODE_OFF && $validated['mode'] !== DiscordModerator::MODE_OFF) {
+            $moderator->startCounting();
+        }
+
+        $this->settings->set('discord_mod_mode', $validated['mode']);
+        $this->settings->set('discord_mod_log_channel', (string) ($validated['log_channel'] ?? ''));
+        foreach (['timeout_at', 'kick_at', 'ban_at', 'max_bans_per_day'] as $key) {
+            $this->settings->set("discord_mod_{$key}", (int) $validated[$key], 'number');
+        }
+
+        // ห้องแจ้งเตือนเปลี่ยน → กฎ AutoMod ที่ติดตั้งไว้ต้องชี้ห้องใหม่ด้วย
+        if ($channelChanged && ! empty($this->settings->state()['automod_installed_at'])) {
+            $automod->install();
+        }
+
+        return back()->with('success', match ($validated['mode']) {
+            DiscordModerator::MODE_ENFORCE => 'บันทึกแล้ว — บอทจะลงโทษจริงตามเกณฑ์',
+            DiscordModerator::MODE_OBSERVE => 'บันทึกแล้ว — โหมดแจ้งเตือนอย่างเดียว ยังไม่ลงโทษใคร',
+            default => 'บันทึกแล้ว — ปิดระบบดูแลห้อง (กฎ AutoMod ที่ติดตั้งไว้ยังบล็อกข้อความอยู่)',
+        });
+    }
+
+    /** ติดตั้ง/อัปเดตกฎ AutoMod (ชื่อขึ้นต้น "TPIX •" เท่านั้น — ไม่แตะกฎที่แอดมินตั้งเอง) */
+    public function installAutoMod(DiscordAutoMod $automod): RedirectResponse
+    {
+        $result = $automod->install();
+
+        return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
+    }
+
+    /** ลงโทษเอง (หน้าเว็บถามยืนยันก่อน) — ไม่ลงโทษทีมงาน/เจ้าของเซิร์ฟเวอร์ */
+    public function moderateMember(Request $request, DiscordModerator $moderator): RedirectResponse
+    {
+        $validated = $request->validate([
+            'user_id' => ['required', 'string', 'regex:'.DiscordSettings::SNOWFLAKE],
+            'action' => ['required', Rule::in(['timeout', 'kick', 'ban', 'unban'])],
+            'reason' => ['required', 'string', 'max:200'],
+        ], [
+            'user_id.regex' => 'User ID ต้องเป็นตัวเลข 17-20 หลัก (เปิด Developer Mode แล้วคลิกขวาที่ชื่อสมาชิก → Copy User ID)',
+            'reason.required' => 'ใส่เหตุผลก่อน — จะบันทึกไว้ใน audit log ของ Discord',
+        ]);
+
+        $result = $moderator->manual($validated['user_id'], $validated['action'], $validated['reason']);
+
+        return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
+    }
+
+    /** สิทธิ์ระดับเซิร์ฟเวอร์ที่ระบบดูแลห้องยังขาด (ไม่แตะอะไรใน Discord) */
+    public function moderationPermissions(DiscordPermissions $permissions): JsonResponse
+    {
+        $result = $permissions->moderationCheck();
+
+        return $result['ok']
+            ? response()->json(['success' => true, 'missing' => $result['missing'], 'above_bot' => $result['above_bot']])
+            : response()->json(['success' => false, 'message' => $result['error']], 422);
     }
 
     public function update(Request $request, SiteKnowledgeService $knowledge): RedirectResponse

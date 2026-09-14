@@ -68,9 +68,10 @@ class DiscordClient
     }
 
     /**
+     * @param  string|null  $auditReason  เหตุผลที่ขึ้นใน audit log ของเซิร์ฟเวอร์ (เตะ/แบน/ปิดเสียง ต้องมีเสมอ)
      * @return array{ok: bool, status: int, data: mixed, error: ?string, code: ?int}
      */
-    public function request(string $method, string $path, array $payload = [], ?string $token = null): array
+    public function request(string $method, string $path, array $payload = [], ?string $token = null, ?string $auditReason = null): array
     {
         $token ??= $this->settings->botToken();
 
@@ -83,7 +84,7 @@ class DiscordClient
             return $this->failure(0, 'รูปแบบโทเค็นบอทไม่ถูกต้อง');
         }
 
-        return $this->send($method, $path, $payload, $token, [$token]);
+        return $this->send($method, $path, $payload, $token, [$token], $auditReason);
     }
 
     // ── ภายใน ────────────────────────────────────────────────────────────────
@@ -91,7 +92,7 @@ class DiscordClient
     /**
      * @param  list<string>  $secrets
      */
-    private function send(string $method, string $path, array $payload, ?string $token, array $secrets): array
+    private function send(string $method, string $path, array $payload, ?string $token, array $secrets, ?string $auditReason = null): array
     {
         $url = rtrim((string) config('discord.api_base'), '/').$path;
 
@@ -101,6 +102,8 @@ class DiscordClient
                     ->withHeaders(array_filter([
                         'User-Agent' => (string) config('discord.user_agent'),
                         'Authorization' => $token !== null ? 'Bot '.$token : null,
+                        // Discord ต้องการ UTF-8 ที่ URL-encode แล้ว (ภาษาไทยส่งตรง ๆ ไม่ได้) · รับได้ 512 ตัว เราตัดไว้ 120
+                        'X-Audit-Log-Reason' => $auditReason !== null ? rawurlencode(mb_substr($auditReason, 0, 120)) : null,
                     ]))
                     ->acceptJson();
 
@@ -109,6 +112,7 @@ class DiscordClient
                     'POST' => $request->asJson()->post($url, $payload),
                     'PATCH' => $request->asJson()->patch($url, $payload),
                     'PUT' => $request->asJson()->put($url, $payload),
+                    'DELETE' => $request->delete($url),
                     default => throw new \InvalidArgumentException("unsupported method {$method}"),
                 };
             } catch (\Throwable $e) {

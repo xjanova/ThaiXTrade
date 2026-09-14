@@ -398,6 +398,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/test-ask', [DiscordController::class, 'testAsk'])->middleware('throttle:20,1')->name('test-ask');
             Route::get('/preview', [DiscordController::class, 'preview'])->middleware('throttle:30,1')->name('preview');
             Route::get('/permissions', [DiscordController::class, 'permissions'])->middleware('throttle:20,1')->name('permissions');
+            // ดูแลห้อง — AutoMod + ไล่ระดับโทษ ปิดเสียง/เตะ/แบน
+            Route::put('/moderation', [DiscordController::class, 'updateModeration'])->name('moderation.update');
+            Route::post('/moderation/automod', [DiscordController::class, 'installAutoMod'])->middleware('throttle:6,1')->name('moderation.automod');
+            Route::post('/moderation/member', [DiscordController::class, 'moderateMember'])->middleware('throttle:20,1')->name('moderation.member');
+            Route::get('/moderation/permissions', [DiscordController::class, 'moderationPermissions'])->middleware('throttle:20,1')->name('moderation.permissions');
         });
 
         // App Releases — ดูรายการ releases จาก GitHub

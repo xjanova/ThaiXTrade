@@ -110,4 +110,103 @@ return [
 7. ห้ามเผยแพร่ข้อมูลส่วนตัวของผู้อื่น
 8. ทำผิดกฎ แอดมินอาจลบข้อความ ปิดเสียง หรือแบนได้โดยไม่ต้องแจ้งล่วงหน้า
 RULES,
+
+    /*
+    |--------------------------------------------------------------------------
+    | ดูแลห้องอัตโนมัติ (เจ้าของ: "แบน เตะ คนได้หากมีแนวโน้มไม่ดี")
+    |--------------------------------------------------------------------------
+    | ชั้นที่ 1 — AutoMod ของ Discord (ทำงานบนฝั่ง Discord 24 ชม. ไม่ต้องให้บอทออนไลน์)
+    |            บล็อกข้อความทันที + ปิดเสียงชั่วคราวสำหรับเคสร้ายแรง + แจ้งเตือนเข้าห้องแอดมิน
+    | ชั้นที่ 2 — discord:moderate ทุก 5 นาที อ่าน audit log ของ AutoMod แล้วไล่ระดับโทษตามคะแนน
+    |
+    | ⚠️ คำที่ใส่ในกฎต้อง "จับคนหลอก ไม่จับคนเตือน": ห้ามใส่ "private key" / "seed phrase" เฉย ๆ
+    |    เพราะคนดีพิมพ์ "อย่าบอก seed phrase ใคร" บ่อยกว่าคนหลอก — ใส่เฉพาะประโยคที่ขอ/ชวนส่ง
+    | ⚠️ คำไทยไม่มีเว้นวรรค ต้องใช้ *คำ* (จับกลางประโยค) — และห้ามใส่คำที่เป็นส่วนของคำปกติ
+    |    ("สัด" อยู่ใน "สัดส่วน", "หี" อยู่ใน "หีบห่อ") ไม่งั้นบล็อกคนคุยเรื่องโทเคโนมิกส์
+    */
+    'moderation' => [
+        'window_days' => 7,
+
+        /* คะแนนสะสมในช่วง window_days → ระดับโทษ */
+        'timeout_at' => 3,
+        'timeout_minutes' => 24 * 60,
+        'kick_at' => 6,
+        'ban_at' => 10,
+
+        /* กันกฎทำงานผิดแล้วลงโทษคนดีรัว ๆ — เกินเพดาน = แจ้งเตือนแอดมินแทน */
+        'max_bans_per_day' => 5,
+        'max_kicks_per_day' => 10,
+
+        /* ยศที่มีสิทธิ์พวกนี้ = ทีมงาน ไม่ถูกลงโทษอัตโนมัติและไม่โดน AutoMod ของเรา */
+        'staff_permissions' => (1 << 3) | (1 << 5) | (1 << 13) | (1 << 40), // Administrator · Manage Server · Manage Messages · Moderate Members
+
+        /*
+         * กฎ AutoMod ที่บอทติดตั้ง — ชื่อขึ้นต้น "TPIX •" เสมอ (ใช้หาของเราเจอ และไม่แตะกฎที่แอดมินตั้งเอง)
+         * weight = คะแนนความผิดต่อหนึ่งครั้ง · timeout_seconds = ให้ AutoMod ปิดเสียงทันที (ใช้ได้กับ keyword/mention เท่านั้น)
+         */
+        'rules' => [
+            'scam' => [
+                'name' => 'TPIX • กันมิจฉาชีพ',
+                'trigger_type' => 1,
+                'weight' => 5,
+                'timeout_seconds' => 3600,
+                'block_message' => 'ข้อความถูกบล็อก: เข้าข่ายหลอกขอข้อมูลกระเป๋า/ชวนรับของฟรี — ทีมงาน TPIX ไม่มีวันขอ seed phrase',
+                'keywords' => [
+                    '*free nitro*', '*nitro giveaway*', '*free discord nitro*', '*steam gift card*',
+                    '*claim your airdrop*', '*claim airdrop now*', '*airdrop is live*', '*validate your wallet*', '*wallet validation*',
+                    '*rectify your wallet*', '*sync your wallet*', '*connect your wallet to claim*',
+                    '*send me your seed*', '*dm me your seed*', '*send your seed phrase*', '*enter your seed phrase*', '*share your seed phrase with*',
+                    '*send me your private key*', '*dm me for support*', '*check your dm*', '*i will double your*', '*guaranteed profit*',
+                    '*ส่งseedมา*', '*ส่ง seed มา*', '*ขอseed*', '*ขอ seed*', '*ส่งวลีกู้คืน*', '*ขอวลีกู้คืน*', '*ส่งคีย์ส่วนตัว*', '*ขอคีย์ส่วนตัว*',
+                    '*ยืนยันกระเป๋าเพื่อรับ*', '*ซิงค์กระเป๋า*', '*เคลมแอร์ดรอป*', '*รับแอร์ดรอปฟรี*', '*แจกเหรียญฟรี*', '*แจก nitro*',
+                    '*ทักแชทส่วนตัว*', '*ทักinbox*', '*ทัก inbox*', '*การันตีกำไร*', '*กำไรการันตี*', '*ลงทุนน้อยได้เยอะ*', '*ปันผลรายวัน*',
+                ],
+                // โดเมนสะกดเลียน Discord/Steam ที่ใช้หลอกแจก nitro (ไม่จับ discord.com / discord.gg ของจริง)
+                'regex' => [
+                    '(?i)\b(?:dlscord|disc0rd|d1scord|discorcl|dicsord|discrod|disocrd|discorb)\.[a-z]{2,}',
+                    '(?i)\b(?:discord|nitro)-(?:gift|nitro|drop|promo|airdrop)[a-z0-9-]*\.[a-z]{2,}',
+                    '(?i)\bsteamcommun[1il]ty[a-z0-9-]*\.[a-z]{2,}',
+                ],
+            ],
+            'invite' => [
+                'name' => 'TPIX • ลิงก์เชิญเซิร์ฟเวอร์อื่น',
+                'trigger_type' => 1,
+                'weight' => 2,
+                'block_message' => 'ห้ามโพสต์ลิงก์เชิญเข้าเซิร์ฟเวอร์อื่นในห้องนี้',
+                'keywords' => [],
+                'regex' => ['(?i)(?:discord\.gg|discord(?:app)?\.com/invite)/[a-z0-9-]+'],
+            ],
+            'profanity_th' => [
+                'name' => 'TPIX • คำหยาบภาษาไทย',
+                'trigger_type' => 1,
+                'weight' => 1,
+                'block_message' => 'ข้อความถูกบล็อก: มีคำหยาบ — คุยกันสุภาพนะครับ',
+                'keywords' => [
+                    '*เหี้ย*', '*สัส*', '*ควย*', '*เย็ดแม่*', '*แม่มึงตาย*', '*พ่อมึงตาย*', '*อีดอก*',
+                    '*ไอ้สัตว์*', '*ไอสัตว์*', '*ส้นตีน*', '*ระยำ*',
+                ],
+                'regex' => [],
+            ],
+            'profanity_preset' => [
+                'name' => 'TPIX • คำไม่เหมาะสม (อังกฤษ)',
+                'trigger_type' => 4, // KEYWORD_PRESET — มีได้กฎเดียวต่อเซิร์ฟเวอร์
+                'weight' => 1,
+                'presets' => [1, 2, 3], // profanity · sexual content · slurs
+                'block_message' => 'ข้อความถูกบล็อก: มีคำไม่เหมาะสม',
+            ],
+            'mention_spam' => [
+                'name' => 'TPIX • แท็กคนรัว',
+                'trigger_type' => 5, // MENTION_SPAM
+                'weight' => 3,
+                'timeout_seconds' => 3600,
+                'mention_limit' => 5,
+                'block_message' => 'ข้อความถูกบล็อก: แท็กคนมากเกินไป',
+            ],
+            'spam' => [
+                'name' => 'TPIX • สแปม',
+                'trigger_type' => 3, // SPAM (ตัวจับสแปมของ Discord) — มีได้กฎเดียวต่อเซิร์ฟเวอร์
+                'weight' => 2,
+            ],
+        ],
+    ],
 ];
