@@ -73,6 +73,9 @@ class DiscordBotUpgradeTest extends TestCase
 
     private int $messageSeq = 1549100000000000000;
 
+    /** บอทยังไม่มีสิทธิ์ Pin Messages */
+    private bool $pinFails = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -115,7 +118,7 @@ class DiscordBotUpgradeTest extends TestCase
     {
         Http::fake([
             'discord.com/api/v10/webhooks/*' => Http::response(['id' => '1']),
-            'discord.com/api/v10/channels/*/pins/*' => Http::response([], 204),
+            'discord.com/api/v10/channels/*/pins/*' => fn () => $this->pinFails ? Http::response(['message' => 'Missing Permissions', 'code' => 50013], 403) : Http::response([], 204),
             'discord.com/api/v10/channels/*/messages/*' => fn (Request $r) => $r->method() === 'DELETE' ? Http::response([], 204) : Http::response(['id' => 'edited']),
             'discord.com/api/v10/channels/*/messages' => fn () => Http::response(['id' => (string) $this->messageSeq++]),
             'discord.com/api/v10/guilds/'.self::GUILD.'/members/*' => function (Request $r) {
@@ -491,6 +494,53 @@ class DiscordBotUpgradeTest extends TestCase
         $this->assertSame('', $pins->first()->body(), 'ปักหมุดไม่มี body');
         $this->assertFalse($this->sent()->slice($before)->contains(fn (Request $r) => str_contains($r->url(), 'discord.com')), 'รอบสองข้อมูลเท่าเดิม = ไม่แตะ Discord');
         $this->assertTrue(DiscordPost::where('kind', 'guide_help')->whereNotNull('message_id')->exists());
+    }
+
+    public function test_a_pin_that_failed_is_retried_on_the_next_sync_until_it_sticks(): void
+    {
+        $this->pinFails = true; // Discord ย้ายการปักหมุดไปสิทธิ์ใหม่ บอทยังไม่ได้สิทธิ์นั้น
+        $this->fakeLive();
+        $this->fakeDiscord();
+        $this->mapRooms(['help']);
+        $pins = fn () => $this->sent()->filter(fn (Request $r) => $r->method() === 'PUT' && str_contains($r->url(), '/messages/pins/'))->count();
+
+        $this->sync();
+        $this->assertSame(1, $pins());
+        $this->assertNull(DiscordPost::where('kind', 'guide_help')->value('pinned_at'), 'ปักไม่ติดต้องไม่จดว่าปักแล้ว');
+
+        $this->pinFails = false; // เจ้าของให้สิทธิ์แล้ว
+        $this->sync();
+        $this->assertSame(2, $pins(), 'รอบถัดไปต้องปักข้อความเดิมให้ แม้เนื้อหาไม่เปลี่ยน');
+        $this->assertNotNull(DiscordPost::where('kind', 'guide_help')->value('pinned_at'));
+
+        $this->sync();
+        $this->assertSame(2, $pins(), 'ปักแล้วไม่ปักซ้ำทุกรอบ');
+        $this->assertSame(1, $this->sent()->filter(fn (Request $r) => $r->method() === 'POST' && str_contains($r->url(), '/channels/'))->count(), 'ไม่โพสต์คู่มือซ้ำ');
+    }
+
+    public function test_the_price_card_hides_numbers_it_could_not_read(): void
+    {
+        $this->live['price'] = ['price' => 0.18, 'change_24h' => 0, 'high_24h' => 0.1836, 'low_24h' => 0.1764, 'market_cap' => 0, 'circulating_supply' => 0, 'source' => 'admin'];
+        $this->fakeLive();
+
+        $names = array_column(app(DiscordContent::class)->priceCard()['embeds'][0]['fields'], 'name');
+
+        $this->assertNotContains('มูลค่าตามราคาตลาด', $names, 'อ่านอุปทานไม่ได้ = ห้ามประกาศมูลค่า $0.00');
+        $this->assertNotContains('อุปทานหมุนเวียน', $names);
+    }
+
+    public function test_release_notes_drop_github_tables_and_missing_download_hints(): void
+    {
+        $this->fakeLive();
+
+        $embed = app(DiscordContent::class)->release([
+            'product' => 'trade', 'label' => 'แอป TPIX TRADE (Android)', 'version' => '1.1.169', 'name' => 'v1.1.169', 'published_at' => null,
+            'notes' => "Android APK (Flutter)\n| | |\n|---|---|\n| Version | v1.1.169 |\n\nHighlights\n- Thai/English language support\n\nInstall\n- Download TPIX-TRADE-v1.1.169.apk below\n- Open on Android device",
+        ])['embeds'][0];
+
+        $this->assertStringNotContainsString('|', $embed['description']);
+        $this->assertStringNotContainsString('below', $embed['description']);
+        $this->assertStringContainsString('Thai/English language support', $embed['description']);
     }
 
     public function test_optional_cards_without_a_room_are_skipped_quietly(): void

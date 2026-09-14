@@ -53,10 +53,13 @@ class DiscordClient
         return $this->guarded([$channelId, $messageId], fn () => $this->request('DELETE', "/channels/{$channelId}/messages/{$messageId}", [], null, $auditReason));
     }
 
-    /** ปักหมุดข้อความ (คู่มือประจำห้อง / การ์ดราคา) — ต้องมีสิทธิ์ Manage Messages */
+    /**
+     * ปักหมุดข้อความ (คู่มือประจำห้อง / การ์ดราคา) — ต้องมีสิทธิ์ Pin Messages
+     * ใช้ endpoint ใหม่ /messages/pins/{id} (ตัวเก่า /pins/{id} Discord ประกาศเลิกใช้แล้ว).
+     */
     public function pinMessage(string $channelId, string $messageId): array
     {
-        return $this->guarded([$channelId, $messageId], fn () => $this->request('PUT', "/channels/{$channelId}/pins/{$messageId}"));
+        return $this->guarded([$channelId, $messageId], fn () => $this->request('PUT', "/channels/{$channelId}/messages/pins/{$messageId}"));
     }
 
     public function putGuildCommands(string $applicationId, string $guildId, array $commands): array
