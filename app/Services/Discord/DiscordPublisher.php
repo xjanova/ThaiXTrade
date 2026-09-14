@@ -148,8 +148,10 @@ class DiscordPublisher
         $current = $this->settings->channelMap();
         $known = array_column($plan['postable'], 'id');
 
-        // เก็บค่าที่แอดมินเลือกเองไว้ ถ้าห้องนั้นยังอยู่ — วางผังใหม่ทับเฉพาะเมื่อสั่ง
-        $map = $replan ? $plan['map'] : array_merge($plan['map'], array_intersect($current, $known));
+        // มีผังอยู่แล้ว = แอดมินเลือก/ยืนยันไว้ รวมถึงเรื่องที่ตั้งใจ "ไม่ลงห้องไหน" (ไม่มี key)
+        // ดึงรายชื่อห้องใหม่ห้ามเติมเรื่องพวกนั้นกลับ — เคยทำให้บอทโพสต์กฎซ้ำกับกฎที่เจ้าของเขียนไว้เองในห้อง #rules
+        // วางผังใหม่ทั้งหมดเฉพาะครั้งแรก (ยังไม่มีผัง) หรือเมื่อแอดมินกด "จัดห้องใหม่อัตโนมัติ"
+        $map = $replan || $current === [] ? $plan['map'] : array_intersect($current, $known);
         $this->settings->saveChannelMap($map);
 
         return ['ok' => true, 'map' => $map];
