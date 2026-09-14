@@ -617,7 +617,7 @@ class DiscordModerationTest extends TestCase
 
         $json = $this->actingAs($owner, 'admin')->getJson('/admin/discord/moderation/permissions')->assertOk()->json();
 
-        $this->assertSame(['Timeout Members (ปิดเสียง)', 'Kick Members (เตะ)', 'Ban Members (แบน)'], $json['missing']);
+        $this->assertSame(['Timeout Members (ปิดเสียง)', 'Kick Members (เตะ)', 'Ban Members (แบน)', 'Manage Messages (ลบข้อความจากการ์ดรายงาน · ปักหมุดคู่มือ)'], $json['missing']);
         $this->assertSame(['Admin'], $json['above_bot'], 'ยศบอทอยู่ต่ำกว่า Admin — ต้องบอกให้ลากขึ้น');
     }
 }

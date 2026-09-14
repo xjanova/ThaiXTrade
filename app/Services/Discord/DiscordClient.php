@@ -47,6 +47,18 @@ class DiscordClient
         return $this->guarded([$channelId, $messageId], fn () => $this->request('PATCH', "/channels/{$channelId}/messages/{$messageId}", $payload));
     }
 
+    /** ลบข้อความของคนอื่น (ปุ่ม "ลบข้อความ" บนการ์ดรายงาน) — ต้องมีสิทธิ์ Manage Messages */
+    public function deleteMessage(string $channelId, string $messageId, string $auditReason): array
+    {
+        return $this->guarded([$channelId, $messageId], fn () => $this->request('DELETE', "/channels/{$channelId}/messages/{$messageId}", [], null, $auditReason));
+    }
+
+    /** ปักหมุดข้อความ (คู่มือประจำห้อง / การ์ดราคา) — ต้องมีสิทธิ์ Manage Messages */
+    public function pinMessage(string $channelId, string $messageId): array
+    {
+        return $this->guarded([$channelId, $messageId], fn () => $this->request('PUT', "/channels/{$channelId}/pins/{$messageId}"));
+    }
+
     public function putGuildCommands(string $applicationId, string $guildId, array $commands): array
     {
         return $this->guarded([$applicationId, $guildId], fn () => $this->request('PUT', "/applications/{$applicationId}/guilds/{$guildId}/commands", $commands));
@@ -111,7 +123,8 @@ class DiscordClient
                     'GET' => $request->get($url),
                     'POST' => $request->asJson()->post($url, $payload),
                     'PATCH' => $request->asJson()->patch($url, $payload),
-                    'PUT' => $request->asJson()->put($url, $payload),
+                    // ปักหมุดไม่มี body — ส่ง "[]" ไปกับ PUT บาง endpoint ของ Discord ถูกปฏิเสธ
+                    'PUT' => $payload === [] ? $request->send('PUT', $url) : $request->asJson()->put($url, $payload),
                     'DELETE' => $request->delete($url),
                     default => throw new \InvalidArgumentException("unsupported method {$method}"),
                 };

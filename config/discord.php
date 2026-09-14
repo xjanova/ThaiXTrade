@@ -54,6 +54,43 @@ return [
             'label' => 'ถาม-ตอบ',
             'keywords' => ['ถาม', 'faq', 'help', 'support', 'ask', 'ช่วยเหลือ', 'q-a', 'qa'],
         ],
+
+        // ── การ์ดข้อมูลสดและฟีดอัตโนมัติ (เจ้าของ: "บอทเราเซ็ทให้เทพเลย" 2026-09-14) ──
+        'price' => [
+            'label' => 'ราคา TPIX (การ์ดสด)',
+            'keywords' => ['price', 'ราคา', 'chart', 'กราฟ', 'market', 'ตลาด'],
+        ],
+        'listings' => [
+            'label' => 'คู่เทรดบน TPIX DEX',
+            'keywords' => ['listing', 'ลิสต์', 'เหรียญใหม่', 'new-token', 'new-pair', 'pairs'],
+        ],
+        'dev' => [
+            'label' => 'แอปออกเวอร์ชันใหม่',
+            'keywords' => ['dev-update', 'devlog', 'changelog', 'release', 'developer', 'dev', 'github', 'อัปเดตแอป'],
+        ],
+
+        // ── คู่มือประจำห้อง ──
+        'help' => [
+            'label' => 'คู่มือ: ขอความช่วยเหลือ',
+            // ไม่ใส่ "support" — ชนกับ #dex-support แล้วคู่มือขอความช่วยเหลือจะไปลงห้อง DEX
+            'keywords' => ['help-desk', 'helpdesk', 'แจ้งปัญหา', 'ช่วยเหลือ', 'help'],
+        ],
+        'dex' => [
+            'label' => 'คู่มือ: ใช้ TPIX DEX',
+            'keywords' => ['dex-support', 'dex', 'swap', 'สวอป'],
+        ],
+        'bugs' => [
+            'label' => 'คู่มือ: แจ้งบั๊ก',
+            'keywords' => ['bug', 'บั๊ก', 'บัค', 'issue'],
+        ],
+        'ideas' => [
+            'label' => 'คู่มือ: เสนอไอเดีย',
+            'keywords' => ['feature', 'idea', 'ไอเดีย', 'suggest', 'ข้อเสนอ', 'request', 'feedback'],
+        ],
+        'intro' => [
+            'label' => 'คู่มือ: แนะนำตัว',
+            'keywords' => ['introduc', 'แนะนำตัว', 'intro'],
+        ],
     ],
 
     /*

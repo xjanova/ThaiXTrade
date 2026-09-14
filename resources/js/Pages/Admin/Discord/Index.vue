@@ -128,10 +128,16 @@ const saleTone = computed(() => ({
 
 const kindLabel = (k) => ({
     sale_status: 'สถานะการขาย', rules: 'กฎ', whitepaper: 'Whitepaper', ask_hint: 'วิธีถาม', article: 'บทความ', video: 'วิดีโอ',
+    price_card: 'การ์ดราคา TPIX', dex_pairs: 'รายการคู่เทรด DEX', release: 'แอปเวอร์ชันใหม่', dex_pair: 'คู่เทรดใหม่',
+    guide_help: 'คู่มือขอความช่วยเหลือ', guide_dex: 'คู่มือ DEX', guide_bugs: 'แบบฟอร์มแจ้งบั๊ก', guide_ideas: 'แบบฟอร์มเสนอไอเดีย', guide_intro: 'แบบฟอร์มแนะนำตัว',
 }[k] || k);
+
+// ชิ้นที่มีหลายตัวต่อเรื่อง (บทความ/วิดีโอ/แอปรุ่นใหม่/คู่เทรดใหม่) โชว์รหัสต่อท้ายให้แยกออก
+const showsRef = (k) => ['article', 'video', 'release', 'dex_pair'].includes(k);
 
 const actionLabel = (a) => ({
     created: 'โพสต์ใหม่', edited: 'แก้ข้อความเดิม', unchanged: 'ไม่เปลี่ยน', error: 'ผิดพลาด', no_channel: 'ยังไม่มีห้อง',
+    skipped: 'อ่านข้อมูลไม่ได้ — คงข้อความเดิม',
 }[a] || a);
 
 const ready = computed(() => ({
@@ -203,6 +209,7 @@ const previewStatus = (s) => ({
     current: ['อยู่ในห้องแล้ว ตรงกับนี้', 'bg-trading-green/15 text-trading-green'],
     no_channel: ['ยังไม่ได้เลือกห้อง', 'bg-white/10 text-dark-300'],
     failed: ['เคยโพสต์ไม่สำเร็จ — จะลองใหม่', 'bg-trading-red/15 text-trading-red'],
+    unavailable: ['อ่านข้อมูลสดไม่ได้ตอนนี้ — คงข้อความเดิม', 'bg-amber-400/15 text-amber-300'],
 }[s] || [s, 'bg-white/10 text-dark-300']);
 </script>
 
@@ -579,8 +586,8 @@ const previewStatus = (s) => ({
                 <p v-if="!status.last_sync?.length && !posts.length" class="text-xs text-dark-400">ยังไม่เคยโพสต์</p>
                 <div v-if="status.last_sync?.length" class="mb-4 space-y-1">
                     <div v-for="(r, i) in status.last_sync" :key="i" class="flex flex-wrap gap-2 text-xs">
-                        <span class="text-white">{{ kindLabel(r.kind) }} {{ r.kind === 'article' || r.kind === 'video' ? '#' + r.ref : '' }}</span>
-                        <span :class="r.action === 'error' || r.action === 'no_channel' ? 'text-trading-red' : 'text-trading-green'">{{ actionLabel(r.action) }}</span>
+                        <span class="text-white">{{ kindLabel(r.kind) }} {{ showsRef(r.kind) ? '#' + r.ref : '' }}</span>
+                        <span :class="r.action === 'error' || r.action === 'no_channel' ? 'text-trading-red' : (r.action === 'skipped' ? 'text-amber-300' : 'text-trading-green')">{{ actionLabel(r.action) }}</span>
                         <span v-if="r.channel_id" class="text-dark-400">{{ channelName(r.channel_id) }}</span>
                         <span v-if="r.error" class="text-amber-300">{{ r.error }}</span>
                     </div>
@@ -592,7 +599,7 @@ const previewStatus = (s) => ({
                         </thead>
                         <tbody>
                             <tr v-for="p in posts" :key="p.kind + p.ref_key" class="border-t border-white/5">
-                                <td class="py-1.5 text-white">{{ kindLabel(p.kind) }} {{ p.kind === 'article' || p.kind === 'video' ? '#' + p.ref_key : '' }}</td>
+                                <td class="py-1.5 text-white">{{ kindLabel(p.kind) }} {{ showsRef(p.kind) ? '#' + p.ref_key : '' }}</td>
                                 <td class="text-dark-300">{{ channelName(p.channel_id) }}</td>
                                 <td class="text-dark-300">{{ when(p.posted_at) }}</td>
                                 <td :class="p.last_error ? 'text-amber-300' : 'text-trading-green'">{{ p.last_error || (p.message_id ? 'อยู่ในห้องแล้ว' : 'รอโพสต์') }}</td>
