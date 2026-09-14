@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\DiscordPost;
+use App\Services\ChatbotService;
 use App\Services\Discord\DiscordContent;
+use App\Services\Discord\DiscordPermissions;
 use App\Services\Discord\DiscordPublisher;
 use App\Services\Discord\DiscordSettings;
 use App\Services\Discord\DiscordSetup;
 use App\Services\SaleStatusService;
 use App\Services\SiteKnowledgeService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -153,6 +156,52 @@ class DiscordController extends Controller
         $result = $setup->registerCommands();
 
         return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
+    }
+
+    /**
+     * ถามทดสอบผ่านหน้าเว็บ — ผ่านสมองตัวเดียวกับ /ถาม และจัดหน้าแบบเดียวกับที่บอทจะตอบใน Discord
+     * ไม่ส่งอะไรเข้า Discord (เจ้าของสั่ง: "ต้องทดสอบบอทผ่านหน้าเว็บได้เลย").
+     */
+    public function testAsk(Request $request, ChatbotService $chatbot, DiscordContent $content): JsonResponse
+    {
+        $max = (int) config('discord.ask.max_question_length', 500);
+        $validated = $request->validate(
+            ['question' => ['required', 'string', "max:{$max}"]],
+            ['question.required' => 'พิมพ์คำถามก่อน', 'question.max' => "คำถามยาวเกิน {$max} ตัวอักษร"],
+        );
+
+        $question = trim($validated['question']);
+        $reply = $chatbot->chat($question, DiscordContent::languageOf($question));
+        $message = $content->answer($question, $reply['message'], $reply['navigation'] ?? null);
+
+        return response()->json([
+            'success' => (bool) ($reply['success'] ?? false),
+            'message' => $message,
+        ]);
+    }
+
+    /** ตัวอย่างสิ่งที่บอทจะโพสต์ในแต่ละห้อง (เนื้อหาจริง ไม่ส่งไป Discord) */
+    public function preview(DiscordPublisher $publisher): JsonResponse
+    {
+        $channels = collect($this->settings->state()['channels'] ?? [])->keyBy('id');
+        $labels = collect((array) config('discord.roles'))->map(fn ($r) => $r['label']);
+
+        $items = array_map(fn (array $item) => $item + [
+            'channel_name' => $item['channel_id'] !== null ? ($channels[$item['channel_id']]['name'] ?? $item['channel_id']) : null,
+            'role_label' => $labels[$item['role']] ?? $item['role'],
+        ], $publisher->preview());
+
+        return response()->json(['success' => true, 'items' => $items]);
+    }
+
+    /** ตรวจว่าบอทส่งข้อความได้ในทุกห้องที่ผังห้องใช้ — คำนวณจากยศ/ข้อยกเว้นของห้อง ไม่ลองโพสต์จริง */
+    public function permissions(DiscordPermissions $permissions): JsonResponse
+    {
+        $result = $permissions->checkMappedRooms();
+
+        return $result['ok']
+            ? response()->json(['success' => true, 'rooms' => $result['rooms']])
+            : response()->json(['success' => false, 'message' => $result['error']], 422);
     }
 
     /** โพสต์/อัปเดตเข้า Discord ทันที (หน้าเว็บถามยืนยันก่อนกด เพราะเป็นการโพสต์ถึงสมาชิกจริง) */

@@ -143,8 +143,10 @@ class DiscordPublisherTest extends TestCase
         $this->assertTrue($posts->contains(fn (Request $r) => str_contains($r->url(), '/channels/'.self::SALE.'/messages')
             && str_contains($r['embeds'][0]['title'], 'การขายเหรียญ')
             && str_contains($r['embeds'][0]['description'], 'ยังไม่มีรอบขายเหรียญ')));
+        // ห้ามมี embeds (แม้แต่ว่าง) — ไม่งั้น Discord ไม่ทำตัวเล่นวิดีโอให้ลิงก์ mp4
         $this->assertTrue($posts->contains(fn (Request $r) => str_contains($r->url(), '/channels/'.self::VIDEOS.'/messages')
-            && str_contains($r['content'], '/videos/whitepaper/ep01-foundation.mp4')));
+            && str_contains($r['content'], '/videos/whitepaper/ep01-foundation.mp4')
+            && ! array_key_exists('embeds', $r->data())));
 
         // ทุกข้อความปิดการปิง และมีโทเค็นอยู่ใน header เท่านั้น
         foreach ($posts as $request) {
