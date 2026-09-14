@@ -168,6 +168,38 @@ class DiscordAdminPageTest extends TestCase
         $this->assertSame('100000000000000002', $settings->channelFor('news'));
     }
 
+    public function test_reconnecting_keeps_the_owners_room_map_and_topics_left_unassigned(): void
+    {
+        // เจ้าของเขียนกฎเองใน #กฎ แล้วเว้นเรื่อง "กฎ" ไว้ไม่ให้บอทลง (ไม่งั้นกฎซ้ำสองชุด) · ย้ายข่าวไปห้องขายเหรียญเอง
+        $settings = app(DiscordSettings::class);
+        $settings->saveBotToken(self::TOKEN);
+        $settings->set('discord_guild_id', self::GUILD);
+        $settings->saveChannelMap(['sale' => '100000000000000002', 'news' => '100000000000000003']);
+
+        $this->mock(DiscordGateway::class, fn ($mock) => $mock->shouldReceive('identify')->andReturn(['ok' => true, 'username' => 'TPIX', 'guilds' => 1]));
+        Http::fake([
+            'discord.com/api/v10/users/@me' => Http::response(['id' => '777777777777777777', 'username' => 'TPIX Bot']),
+            'discord.com/api/v10/guilds/'.self::GUILD.'/channels' => Http::response([
+                ['id' => '100000000000000001', 'name' => '📜กฎ', 'type' => 0, 'position' => 1],
+                ['id' => '100000000000000002', 'name' => '📢ประกาศ', 'type' => 5, 'position' => 2],
+                ['id' => '100000000000000003', 'name' => 'ขายเหรียญ', 'type' => 0, 'position' => 3],
+                ['id' => '100000000000000004', 'name' => 'mod-log', 'type' => 0, 'position' => 4],
+            ]),
+            'discord.com/api/v10/guilds/'.self::GUILD => Http::response(['id' => self::GUILD, 'name' => 'TPIX Community']),
+        ]);
+
+        $this->asOwner()->post('/admin/discord/connect')->assertSessionHas('success');
+
+        $fresh = app(DiscordSettings::class);
+        $this->assertSame(['sale' => '100000000000000002', 'news' => '100000000000000003'], $fresh->channelMap(), 'ทดสอบการเชื่อมต่อต้องไม่แตะผังที่เจ้าของจัดไว้');
+        $this->assertNull($fresh->channelFor('rules'), 'เรื่องที่ตั้งใจเว้นไว้ต้องไม่ถูกเติมกลับ');
+        $this->assertContains('100000000000000004', array_column($fresh->state()['channels'], 'id'), 'ห้องใหม่ต้องขึ้นในรายชื่อให้เลือก');
+
+        // กด "จัดห้องใหม่อัตโนมัติ" เอง = ตั้งใจวางผังใหม่ทั้งหมดตามชื่อห้อง
+        $this->asOwner()->post('/admin/discord/replan')->assertSessionHas('success');
+        $this->assertSame('100000000000000001', app(DiscordSettings::class)->channelFor('rules'));
+    }
+
     public function test_registering_commands_creates_the_thai_slash_commands_in_the_server(): void
     {
         app(DiscordSettings::class)->saveBotToken(self::TOKEN);
