@@ -110,8 +110,17 @@ return [
     /* โพสต์ข่าว/วิดีโอใหม่ได้ไม่เกินกี่ชิ้นต่อรอบ — กันชนเพดานความถี่ของ Discord */
     'max_new_posts_per_run' => 6,
 
-    /* ภาษาบทความที่ส่งเข้า Discord (เว็บมีทั้งไทยและอังกฤษ) */
+    /* ภาษาบทความที่ผู้ช่วย AI บนเว็บยกมาเป็น "บทความล่าสุด" */
     'article_language' => 'th',
+
+    /*
+     * บทความที่ส่งเข้า Discord — ภาษาอังกฤษเป็นหลัก (เจ้าของ 2026-09-15)
+     * บทความอังกฤษที่มีคู่ภาษาไทย (สร้างจากหัวข้อเดียวกันในรอบเดียว) ออกเป็นข้อความเดียว มีปุ่มอ่านภาษาไทย
+     */
+    'article_languages' => ['en', 'th'],
+
+    /* แก้ข้อความเก่า (ข่าว/วิดีโอ/แอปรุ่นใหม่) ให้เป็นรูปแบบล่าสุดได้ไม่เกินกี่ชิ้นต่อรอบ */
+    'max_edits_per_run' => 6,
 
     /* ถามตอบด้วย /ถาม — กินโควตา OpenAI ก้อนเดียวกับทั้ง org (ดู ai:pull-pool-key) */
     'ask' => [
@@ -188,7 +197,7 @@ RULES,
                 'trigger_type' => 1,
                 'weight' => 5,
                 'timeout_seconds' => 3600,
-                'block_message' => 'ข้อความถูกบล็อก: เข้าข่ายหลอกขอข้อมูลกระเป๋า/ชวนรับของฟรี — ทีมงาน TPIX ไม่มีวันขอ seed phrase',
+                'block_message' => 'Blocked: looks like a scam. TPIX staff never ask for seed phrases. · บล็อก: เข้าข่ายหลอกลวง ทีมงานไม่มีวันขอ seed phrase',
                 // เฉพาะประโยคที่ "คนหลอกพูด" — ห้ามใส่วลีที่อยู่ในคำเตือนได้ด้วย ("อย่าส่งวลีกู้คืนให้ใคร", "never share your seed phrase with anyone")
                 // วลีกำกวมไปอยู่กฎ scam_watch (แจ้งแอดมินอย่างเดียว) — ถ้าบล็อก+นับคะแนน คนดีที่เตือนเพื่อนจะโดนปิดเสียง/แบน
                 'keywords' => [
@@ -222,7 +231,7 @@ RULES,
                 'name' => 'TPIX • ลิงก์เชิญเซิร์ฟเวอร์อื่น',
                 'trigger_type' => 1,
                 'weight' => 2,
-                'block_message' => 'ห้ามโพสต์ลิงก์เชิญเข้าเซิร์ฟเวอร์อื่นในห้องนี้',
+                'block_message' => 'No invite links to other servers here. · ห้ามโพสต์ลิงก์เชิญเข้าเซิร์ฟเวอร์อื่น',
                 'keywords' => [],
                 'regex' => ['(?i)(?:discord\.gg|discord(?:app)?\.com/invite)/[a-z0-9-]+'],
             ],
@@ -230,7 +239,7 @@ RULES,
                 'name' => 'TPIX • คำหยาบภาษาไทย',
                 'trigger_type' => 1,
                 'weight' => 1,
-                'block_message' => 'ข้อความถูกบล็อก: มีคำหยาบ — คุยกันสุภาพนะครับ',
+                'block_message' => 'Blocked: offensive language — please keep it civil. · ข้อความถูกบล็อก: มีคำหยาบ คุยกันสุภาพนะครับ',
                 'keywords' => [
                     '*เหี้ย*', '*สัส*', '*ควย*', '*เย็ดแม่*', '*แม่มึงตาย*', '*พ่อมึงตาย*', '*อีดอก*',
                     '*ไอ้สัตว์*', '*ไอสัตว์*', '*ส้นตีน*', '*ระยำ*',
@@ -242,7 +251,7 @@ RULES,
                 'trigger_type' => 4, // KEYWORD_PRESET — มีได้กฎเดียวต่อเซิร์ฟเวอร์
                 'weight' => 1,
                 'presets' => [1, 2, 3], // profanity · sexual content · slurs
-                'block_message' => 'ข้อความถูกบล็อก: มีคำไม่เหมาะสม',
+                'block_message' => 'Blocked: inappropriate language. · ข้อความถูกบล็อก: มีคำไม่เหมาะสม',
             ],
             'mention_spam' => [
                 'name' => 'TPIX • แท็กคนรัว',
@@ -250,7 +259,7 @@ RULES,
                 'weight' => 3,
                 'timeout_seconds' => 3600,
                 'mention_limit' => 5,
-                'block_message' => 'ข้อความถูกบล็อก: แท็กคนมากเกินไป',
+                'block_message' => 'Blocked: too many mentions. · ข้อความถูกบล็อก: แท็กคนมากเกินไป',
             ],
             'spam' => [
                 'name' => 'TPIX • สแปม',

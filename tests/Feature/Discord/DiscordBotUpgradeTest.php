@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Discord;
 
+use App\Models\Article;
 use App\Models\Chain;
 use App\Models\DiscordModAction;
 use App\Models\DiscordPost;
@@ -15,6 +16,7 @@ use App\Services\Discord\DiscordPermissions;
 use App\Services\Discord\DiscordPublisher;
 use App\Services\Discord\DiscordSettings;
 use App\Services\Discord\DiscordSetup;
+use App\Services\SaleStatusService;
 use App\Services\TpixDexService;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
@@ -231,8 +233,8 @@ class DiscordBotUpgradeTest extends TestCase
         $embed = $this->editedOriginal()['embeds'][0];
         $this->assertSame('## $0.1800', $embed['description']);
         $fields = collect($embed['fields'])->pluck('value', 'name');
-        $this->assertSame('🔴 -3.46%', $fields['เปลี่ยนแปลง 24 ชม.']);
-        $this->assertSame('$1.26B', $fields['มูลค่าตามราคาตลาด']);
+        $this->assertSame('🔴 -3.46%', $fields['24h change · 24 ชม.']);
+        $this->assertSame('$1.26B', $fields['Market cap · มูลค่าตามราคาตลาด']);
         $this->assertStringContainsString('TPIX DEX', $embed['footer']['text']);
         $this->assertNotEmpty($embed['timestamp'], '/ราคา ต้องบอกเวลาของข้อมูล');
     }
@@ -245,7 +247,7 @@ class DiscordBotUpgradeTest extends TestCase
         $embed = app(DiscordContent::class)->priceCard()['embeds'][0];
 
         $this->assertSame('## $0.0001200', $embed['description']);
-        $this->assertNotContains('สูง / ต่ำ 24 ชม.', array_column($embed['fields'], 'name'), 'สูง/ต่ำของราคาอ้างอิงเป็นเลข ±2% ที่คำนวณขึ้น ห้ามโชว์');
+        $this->assertNotContains('24h high / low · สูง/ต่ำ', array_column($embed['fields'], 'name'), 'สูง/ต่ำของราคาอ้างอิงเป็นเลข ±2% ที่คำนวณขึ้น ห้ามโชว์');
         $this->assertStringContainsString('ยังไม่มีการซื้อขายจริง', $embed['footer']['text']);
         $this->assertArrayNotHasKey('timestamp', $embed, 'การ์ดประจำห้องห้ามมีเวลาปัจจุบัน ไม่งั้นถูกแก้ทุกรอบ');
     }
@@ -280,11 +282,11 @@ class DiscordBotUpgradeTest extends TestCase
         $this->interact($this->command('chain'))->assertOk()->assertExactJson(['type' => 5]);
 
         $embed = $this->editedOriginal()['embeds'][0];
-        $this->assertStringContainsString('🟢 เชนทำงานปกติ', $embed['description']);
+        $this->assertStringContainsString('🟢 Network is running · เชนทำงานปกติ', $embed['description']);
         $fields = collect($embed['fields'])->pluck('value', 'name');
-        $this->assertSame('1,234,567', $fields['บล็อกล่าสุด']);
-        $this->assertSame('4', $fields['Validator ที่ทำงาน']);
-        $this->assertSame('12 (Validator 4 · Guardian 3 · Sentinel 5)', $fields['มาสเตอร์โหนดที่ทำงาน']);
+        $this->assertSame('1,234,567', $fields['Latest block · บล็อกล่าสุด']);
+        $this->assertSame('4', $fields['Active validators']);
+        $this->assertSame('12 (Validator 4 · Guardian 3 · Sentinel 5)', $fields['Active master nodes · มาสเตอร์โหนด']);
     }
 
     public function test_chain_is_honest_when_the_chain_cannot_be_read(): void
@@ -312,7 +314,7 @@ class DiscordBotUpgradeTest extends TestCase
         $this->interact($this->command('links'))->assertOk()->assertExactJson(['type' => 5]);
 
         $embed = $this->editedOriginal()['embeds'][0];
-        $contracts = collect($embed['fields'])->firstWhere('name', 'ที่อยู่สัญญาบนเชน TPIX (ตรวจแล้วว่ามีอยู่จริง)')['value'];
+        $contracts = collect($embed['fields'])->firstWhere('name', 'Contracts on TPIX Chain (verified on-chain) · ที่อยู่สัญญาที่มีอยู่จริง')['value'];
         $this->assertStringContainsString($live, $contracts);
         $this->assertStringNotContainsString($dead, $contracts, 'สัญญาที่ไม่มีโค้ดบนเชน = ห้ามแจกที่อยู่ (โอนเข้าแล้วหาย)');
         $this->assertStringContainsString('/swap', $embed['description']);
@@ -357,7 +359,7 @@ class DiscordBotUpgradeTest extends TestCase
         $this->fakeDiscord();
 
         $this->interact($this->report())->assertOk();
-        $this->interact($this->report(reporter: '900000000000000005'))->assertJsonPath('data.content', 'มีคนรายงานข้อความนี้แล้ว แอดมินกำลังดูอยู่ ขอบคุณครับ');
+        $this->interact($this->report(reporter: '900000000000000005'))->assertJsonPath('data.content', "Someone already reported this message — admins are on it. Thank you!\nมีคนรายงานข้อความนี้แล้ว แอดมินกำลังดูอยู่ ขอบคุณครับ");
         $this->interact($this->report(reporter: self::AUTHOR))->assertJsonPath('data.flags', 64);
 
         $this->assertCount(1, $this->sent()->filter(fn (Request $r) => str_ends_with($r->url(), '/channels/'.self::LOG.'/messages')));
@@ -525,8 +527,8 @@ class DiscordBotUpgradeTest extends TestCase
 
         $names = array_column(app(DiscordContent::class)->priceCard()['embeds'][0]['fields'], 'name');
 
-        $this->assertNotContains('มูลค่าตามราคาตลาด', $names, 'อ่านอุปทานไม่ได้ = ห้ามประกาศมูลค่า $0.00');
-        $this->assertNotContains('อุปทานหมุนเวียน', $names);
+        $this->assertNotContains('Market cap · มูลค่าตามราคาตลาด', $names, 'อ่านอุปทานไม่ได้ = ห้ามประกาศมูลค่า $0.00');
+        $this->assertNotContains('Circulating supply · อุปทานหมุนเวียน', $names);
     }
 
     public function test_release_notes_drop_github_tables_and_missing_download_hints(): void
@@ -541,6 +543,112 @@ class DiscordBotUpgradeTest extends TestCase
         $this->assertStringNotContainsString('|', $embed['description']);
         $this->assertStringNotContainsString('below', $embed['description']);
         $this->assertStringContainsString('Thai/English language support', $embed['description']);
+    }
+
+    // ── ภาษาอังกฤษเป็นหลัก (เจ้าของ 2026-09-15: "ให้มีภาษาอังกฤษด้วย เป็นภาษาหลัก") ──────
+
+    public function test_room_cards_lead_in_english_and_keep_thai_underneath(): void
+    {
+        $this->fakeLive();
+        $content = app(DiscordContent::class);
+
+        foreach (['priceCard', 'pairsCard', 'guideHelp', 'guideDex', 'guideBugs', 'guideIdeas', 'guideIntro', 'whitepaper', 'askHint'] as $builder) {
+            $embed = $content->{$builder}()['embeds'][0];
+            $this->assertMatchesRegularExpression('/^\P{Thai}+/u', $embed['title'], "{$builder}: หัวข้อต้องขึ้นต้นภาษาอังกฤษ");
+            // ตัวอักษรตัวแรกของเนื้อหา (ข้ามเครื่องหมาย/ตัวเลข เช่น "## $0.18" หรือ ``` ของแบบฟอร์ม) ต้องเป็นภาษาอังกฤษ
+            if (preg_match('/\p{L}/u', $embed['description'], $first)) {
+                $this->assertDoesNotMatchRegularExpression('/\p{Thai}/u', $first[0], "{$builder}: เนื้อหาต้องเริ่มด้วยภาษาอังกฤษ");
+            }
+            $this->assertMatchesRegularExpression('/\p{Thai}/u', json_encode($embed, JSON_UNESCAPED_UNICODE), "{$builder}: ต้องมีภาษาไทยด้วย");
+        }
+    }
+
+    public function test_sale_status_speaks_english_first_from_the_same_truth(): void
+    {
+        $this->mock(SaleStatusService::class, fn ($mock) => $mock->shouldReceive('snapshot')->andReturn([
+            'state' => 'open', 'headline' => 'เปิดขายแล้ว — Phase 1 ราคา $0.1 ต่อ TPIX', 'detail' => 'ซื้อได้ที่หน้าเว็บ',
+            'sale' => ['name' => 'Sale', 'launched_at' => '2026-09-01T00:00:00+07:00'], 'current_phase' => 'Phase 1',
+            'phases' => [[
+                'name' => 'Phase 1', 'price' => '$0.1', 'sold_text' => '1M / 10M TPIX', 'window' => '1 ก.ย. 2026 – 30 ก.ย. 2026',
+                'status_label' => '🟢 เปิดขายอยู่', 'status' => 'open', 'duration_days' => 30,
+                'starts_at' => '2026-09-01T00:00:00+07:00', 'ends_at' => '2026-09-30T00:00:00+07:00',
+            ]],
+            'payment_methods' => ['card' => true, 'bank' => false], 'url' => 'https://tpix.online/token-sale',
+        ]));
+        $this->fakeLive();
+
+        $embed = app(DiscordContent::class)->saleStatus()['embeds'][0];
+
+        $this->assertStringStartsWith('**Sale is open — Phase 1 at $0.1 per TPIX**', $embed['description']);
+        $this->assertStringContainsString('🇹🇭 **เปิดขายแล้ว', $embed['description']);
+        $this->assertStringContainsString('🟢 Open now · 🟢 เปิดขายอยู่', $embed['fields'][0]['value']);
+        $this->assertStringContainsString('Sep 1, 2026 – Sep 30, 2026', $embed['fields'][0]['value']);
+        $this->assertStringContainsString('Credit/debit card', collect($embed['fields'])->firstWhere('name', 'Payment · ช่องทางชำระ')['value']);
+    }
+
+    public function test_an_english_article_and_its_thai_twin_go_out_as_one_message(): void
+    {
+        $this->fakeLive();
+        $this->fakeDiscord();
+        $this->mapRooms(['news']);
+        app(DiscordSettings::class)->mergeState(['articles_floor' => '2026-09-01 00:00:00']);
+        $make = fn (string $title, string $lang, string $at) => Article::create(['title' => $title, 'summary' => "สรุป {$title}", 'content' => '<p>x</p>', 'language' => $lang, 'category' => 'news', 'status' => 'published', 'published_at' => $at]);
+        $thai = $make('หัวข้อภาษาไทย', 'th', '2026-09-14 10:00:00');
+        $english = $make('English headline', 'en', '2026-09-14 10:00:05');
+        $solo = $make('บทความไทยล้วน', 'th', '2026-09-14 12:00:00');
+
+        $this->sync();
+        $this->sync();
+
+        $posts = $this->sent()->filter(fn (Request $r) => $r->method() === 'POST' && str_contains($r->url(), '/channels/'))->values();
+        $this->assertCount(2, $posts, 'คู่ภาษาเป็นข้อความเดียว + บทความไทยล้วนอีกหนึ่ง');
+        $this->assertSame('English headline', $posts[0]['embeds'][0]['title']);
+        $this->assertSame(['Read · อ่าน', 'อ่านภาษาไทย'], array_column($posts[0]['components'][0]['components'], 'label'));
+        $this->assertStringContainsString('New article (in Thai)', $posts[1]['embeds'][0]['description']);
+        $this->assertSame(
+            DiscordPost::where('ref_key', (string) $english->id)->value('message_id'),
+            DiscordPost::where('ref_key', (string) $thai->id)->value('message_id'),
+            'คู่ภาษาไทยต้องถูกจดว่าอยู่ในข้อความเดียวกัน ไม่ออกซ้ำ',
+        );
+        $this->assertNotNull(DiscordPost::where('ref_key', (string) $solo->id)->value('message_id'));
+    }
+
+    public function test_posts_in_the_old_format_are_edited_in_place_a_few_at_a_time(): void
+    {
+        config(['discord.max_edits_per_run' => 2, 'discord.videos' => [
+            ['code' => 'ep01', 'file' => 'ep01.mp4', 'title' => 'ตอนที่ 1', 'part' => 'Part One'],
+            ['code' => 'ep02', 'file' => 'ep02.mp4', 'title' => 'ตอนที่ 2', 'part' => 'Part Two'],
+            ['code' => 'ep03', 'file' => 'ep03.mp4', 'title' => 'ตอนที่ 3', 'part' => 'Part Three'],
+        ]]);
+        $this->fakeLive();
+        $this->fakeDiscord();
+        $this->mapRooms(['videos']);
+        foreach (['ep01', 'ep02', 'ep03'] as $i => $code) {
+            DiscordPost::create(['kind' => 'video', 'ref_key' => $code, 'channel_id' => '1485600000000000000', 'message_id' => (string) (1549300000000000000 + $i), 'content_hash' => 'old-thai-only-format', 'posted_at' => now()]);
+        }
+
+        $this->sync();
+        $firstRound = $this->sent()->filter(fn (Request $r) => $r->method() === 'PATCH')->count();
+        $this->sync();
+        $this->sync();
+
+        $edits = $this->sent()->filter(fn (Request $r) => $r->method() === 'PATCH')->values();
+        $this->assertSame(2, $firstRound, 'แก้ไม่เกินเพดานต่อรอบ');
+        $this->assertCount(3, $edits, 'ครบทั้งชุดแล้วหยุด ไม่แก้ซ้ำ');
+        $this->assertStringStartsWith('🎬 **Part One**', $edits[0]['content']);
+        $this->assertFalse($this->sent()->contains(fn (Request $r) => $r->method() === 'POST' && str_contains($r->url(), '/channels/')), 'แก้ของเดิม ห้ามโพสต์วิดีโอซ้ำ');
+    }
+
+    public function test_automod_block_notices_lead_in_english_within_discords_limit(): void
+    {
+        foreach ((array) config('discord.moderation.rules') as $key => $rule) {
+            if (empty($rule['block_message'])) {
+                continue;
+            }
+            $this->assertMatchesRegularExpression('/^[A-Za-z]/', $rule['block_message'], $key);
+            $this->assertMatchesRegularExpression('/\p{Thai}/u', $rule['block_message'], $key);
+            $this->assertLessThanOrEqual(150, mb_strlen($rule['block_message']), $key);
+        }
     }
 
     public function test_optional_cards_without_a_room_are_skipped_quietly(): void
@@ -600,10 +708,10 @@ class DiscordBotUpgradeTest extends TestCase
 
         $posts = $this->sent()->filter(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/channels/1485600000000000000/messages'))->values();
         $this->assertCount(2, $posts);
-        $this->assertStringContainsString('เวอร์ชัน 1.2.3', $posts[0]['embeds'][0]['title']);
-        $this->assertStringContainsString('[ลิงก์ภายนอกถูกซ่อน]', $posts[0]['embeds'][0]['description'], 'ลิงก์นอกเว็บในบันทึกรุ่นห้ามหลุดไปในนามบอท');
+        $this->assertStringContainsString('version 1.2.3', $posts[0]['embeds'][0]['title']);
+        $this->assertStringContainsString('[external link hidden · ลิงก์ภายนอกถูกซ่อน]', $posts[0]['embeds'][0]['description'], 'ลิงก์นอกเว็บในบันทึกรุ่นห้ามหลุดไปในนามบอท');
         $this->assertStringEndsWith('/download', $posts[0]['components'][0]['components'][0]['url']);
-        $this->assertStringContainsString('เวอร์ชัน 1.2.4', $posts[1]['embeds'][0]['title']);
+        $this->assertStringContainsString('version 1.2.4', $posts[1]['embeds'][0]['title']);
     }
 
     public function test_the_bot_never_promotes_unverified_or_lookalike_tokens(): void

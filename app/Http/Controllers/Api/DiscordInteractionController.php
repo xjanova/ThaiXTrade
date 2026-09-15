@@ -87,7 +87,7 @@ class DiscordInteractionController extends Controller
         }
 
         if ($type !== self::APPLICATION_COMMAND) {
-            return $this->ephemeral('ยังไม่รองรับคำสั่งแบบนี้');
+            return $this->ephemeral("This action isn't supported yet.\nยังไม่รองรับคำสั่งแบบนี้");
         }
 
         return match ((string) ($interaction['data']['name'] ?? '')) {
@@ -97,7 +97,7 @@ class DiscordInteractionController extends Controller
             'chain' => $this->later($interaction, '/เชน', fn () => $this->content->chainStatus()),
             'links' => $this->later($interaction, '/ลิงก์', fn () => $this->content->officialLinks()),
             DiscordSetup::REPORT_COMMAND => $this->report($interaction),
-            default => $this->ephemeral('ไม่รู้จักคำสั่งนี้'),
+            default => $this->ephemeral("Unknown command.\nไม่รู้จักคำสั่งนี้"),
         };
     }
 
@@ -131,12 +131,12 @@ class DiscordInteractionController extends Controller
     {
         $guildId = $this->settings->guildId();
         if ($guildId === null || (string) ($interaction['guild_id'] ?? '') !== $guildId) {
-            return $this->ephemeral('รายงานได้เฉพาะในเซิร์ฟเวอร์ TPIX');
+            return $this->ephemeral("Reports only work inside the TPIX server.\nรายงานได้เฉพาะในเซิร์ฟเวอร์ TPIX");
         }
 
         $logChannel = (string) $this->settings->get('discord_mod_log_channel', '');
         if (! preg_match(DiscordSettings::SNOWFLAKE, $logChannel)) {
-            return $this->ephemeral('ยังไม่ได้เปิดระบบรายงาน — แจ้งแอดมินโดยตรงก่อนนะครับ');
+            return $this->ephemeral("Reporting isn't set up yet — please message an admin directly.\nยังไม่ได้เปิดระบบรายงาน — แจ้งแอดมินโดยตรงก่อนนะครับ");
         }
 
         $messageId = (string) ($interaction['data']['target_id'] ?? '');
@@ -147,20 +147,20 @@ class DiscordInteractionController extends Controller
 
         foreach ([$messageId, $reporterId, $authorId, $channelId] as $id) {
             if (! preg_match(DiscordSettings::SNOWFLAKE, $id)) {
-                return $this->ephemeral('อ่านข้อความที่รายงานไม่ได้ ลองใหม่อีกครั้ง');
+                return $this->ephemeral("Couldn't read that message — please try again.\nอ่านข้อความที่รายงานไม่ได้ ลองใหม่อีกครั้ง");
             }
         }
 
         if ($authorId === $reporterId) {
-            return $this->ephemeral('รายงานข้อความของตัวเองไม่ได้ — ลบหรือแก้ข้อความเองได้เลย');
+            return $this->ephemeral("You can't report your own message — just edit or delete it.\nรายงานข้อความของตัวเองไม่ได้ — ลบหรือแก้ข้อความเองได้เลย");
         }
 
         // กันคนเดียวรายงานรัว (ใช้ป่วนห้องแอดมิน) · ข้อความเดียวกันรายงานซ้ำไม่สร้างการ์ดใหม่
         if (RateLimiter::tooManyAttempts("discord-report:{$reporterId}", 10)) {
-            return $this->ephemeral('รายงานถี่เกินไป — แอดมินกำลังดูรายงานก่อนหน้าของคุณอยู่');
+            return $this->ephemeral("Too many reports — admins are still reviewing your earlier ones.\nรายงานถี่เกินไป — แอดมินกำลังดูรายงานก่อนหน้าของคุณอยู่");
         }
         if (! Cache::add("discord-report:msg:{$messageId}", $reporterId, now()->addDay())) {
-            return $this->ephemeral('มีคนรายงานข้อความนี้แล้ว แอดมินกำลังดูอยู่ ขอบคุณครับ');
+            return $this->ephemeral("Someone already reported this message — admins are on it. Thank you!\nมีคนรายงานข้อความนี้แล้ว แอดมินกำลังดูอยู่ ขอบคุณครับ");
         }
         RateLimiter::hit("discord-report:{$reporterId}", 3600);
 
@@ -189,8 +189,8 @@ class DiscordInteractionController extends Controller
 
             $this->client->editOriginalResponse($applicationId, $token, [
                 'content' => $posted['ok']
-                    ? '✅ ส่งให้แอดมินตรวจแล้ว ขอบคุณที่ช่วยดูแลชุมชน — ผู้เขียนไม่เห็นว่าใครรายงาน'
-                    : '⚠️ ส่งรายงานไม่สำเร็จ ลองใหม่อีกครั้ง หรือแจ้งแอดมินโดยตรง',
+                    ? "✅ Sent to the admins — thanks for keeping the community safe. The author can't see who reported it.\nส่งให้แอดมินตรวจแล้ว ขอบคุณที่ช่วยดูแลชุมชน — ผู้เขียนไม่เห็นว่าใครรายงาน"
+                    : "⚠️ Couldn't send the report — try again or message an admin directly.\nส่งรายงานไม่สำเร็จ ลองใหม่อีกครั้ง หรือแจ้งแอดมินโดยตรง",
                 'allowed_mentions' => ['parse' => []],
             ]);
         });
@@ -310,7 +310,7 @@ class DiscordInteractionController extends Controller
     private function ask(array $interaction): JsonResponse
     {
         if (! $this->settings->askEnabled()) {
-            return $this->ephemeral('ปิดการถามตอบกับผู้ช่วย AI ชั่วคราว — ดูข้อมูลได้ที่ '.config('app.url'));
+            return $this->ephemeral('The AI assistant is paused for now — see '.config('app.url')."\nปิดการถามตอบกับผู้ช่วย AI ชั่วคราว");
         }
 
         $question = '';
@@ -322,7 +322,7 @@ class DiscordInteractionController extends Controller
 
         $maxLength = (int) config('discord.ask.max_question_length', 500);
         if ($question === '' || mb_strlen($question) > $maxLength) {
-            return $this->ephemeral("พิมพ์คำถามหลังคำสั่ง /ถาม (ไม่เกิน {$maxLength} ตัวอักษร)");
+            return $this->ephemeral("Type your question after /ask (up to {$maxLength} characters).\nพิมพ์คำถามหลังคำสั่ง /ถาม (ไม่เกิน {$maxLength} ตัวอักษร)");
         }
 
         $userId = (string) ($interaction['member']['user']['id'] ?? $interaction['user']['id'] ?? 'unknown');
@@ -332,7 +332,7 @@ class DiscordInteractionController extends Controller
         if (RateLimiter::tooManyAttempts("discord-ask:{$userId}", $perHour)) {
             $minutes = (int) ceil(RateLimiter::availableIn("discord-ask:{$userId}") / 60);
 
-            return $this->ephemeral("ถามถี่เกินไปแล้ว ลองใหม่ได้ในอีก {$minutes} นาที");
+            return $this->ephemeral("You're asking too often — try again in {$minutes} min.\nถามถี่เกินไปแล้ว ลองใหม่ได้ในอีก {$minutes} นาที");
         }
 
         $dailyCap = max(1, (int) $this->settings->get('discord_ask_daily_cap', config('discord.ask.daily_cap', 200)));
@@ -340,7 +340,7 @@ class DiscordInteractionController extends Controller
         Cache::add($dayKey, 0, now()->addDay());
 
         if ((int) Cache::get($dayKey, 0) >= $dailyCap) {
-            return $this->ephemeral('วันนี้ผู้ช่วยตอบครบโควตาแล้ว ลองใหม่พรุ่งนี้ หรือดูข้อมูลที่ '.config('app.url'));
+            return $this->ephemeral("The assistant has hit today's limit — try again tomorrow or see ".config('app.url')."\nวันนี้ผู้ช่วยตอบครบโควตาแล้ว ลองใหม่พรุ่งนี้");
         }
 
         RateLimiter::hit("discord-ask:{$userId}", 3600);

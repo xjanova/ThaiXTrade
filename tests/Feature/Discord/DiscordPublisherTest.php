@@ -215,6 +215,7 @@ class DiscordPublisherTest extends TestCase
         $this->article('เก่า', '2026-08-01 10:00:00');
         $this->article('ล่าสุดก่อนเปิดบอท 1', '2026-09-10 10:00:00');
         $this->article('ล่าสุดก่อนเปิดบอท 2', '2026-09-11 10:00:00');
+        // ภาษาอังกฤษเป็นภาษาหลักของห้อง (เจ้าของ 2026-09-15) — บทความอังกฤษนับรวมในย้อนหลังด้วย
         $this->article('English only', '2026-09-12 10:00:00', 'en');
         $this->fakeDiscord();
 
@@ -225,7 +226,7 @@ class DiscordPublisherTest extends TestCase
             ->map(fn (Request $r) => $r['embeds'][0]['title'])
             ->values()
             ->all();
-        $this->assertSame(['ล่าสุดก่อนเปิดบอท 1', 'ล่าสุดก่อนเปิดบอท 2'], $titles);
+        $this->assertSame(['ล่าสุดก่อนเปิดบอท 2', 'English only'], $titles);
 
         $new = $this->article('ข่าวใหม่หลังเปิดบอท', now()->subMinute()->toDateTimeString());
         $this->publisher()->sync();
