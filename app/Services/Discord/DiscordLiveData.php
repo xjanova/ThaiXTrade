@@ -75,7 +75,7 @@ class DiscordLiveData
         $base = rtrim((string) config('app.url'), '/');
 
         $contracts = [];
-        foreach (['wtpix' => 'WTPIX', 'usdt_tpix' => 'USDT (บนเชน TPIX)', 'dex_router' => 'TPIX DEX Router', 'dex_factory' => 'TPIX DEX Factory', 'masternode_registry' => 'ทะเบียนมาสเตอร์โหนด'] as $key => $label) {
+        foreach (['wtpix' => 'WTPIX', 'usdt_tpix' => 'USDT (on TPIX Chain)', 'dex_router' => 'TPIX DEX Router', 'dex_factory' => 'TPIX DEX Factory', 'masternode_registry' => 'Master node registry · ทะเบียนมาสเตอร์โหนด'] as $key => $label) {
             try {
                 $address = $this->contracts->address($key);
                 if ($address !== null && $this->contracts->isLive($key)) {
@@ -90,13 +90,13 @@ class DiscordLiveData
 
         return [
             'pages' => [
-                ['🌐 เว็บไซต์หลัก', $base],
-                ['💱 เทรด TPIX/USDT', $base.'/trade/TPIX-USDT'],
-                ['🔄 สวอปเหรียญ', $base.'/swap'],
-                ['💰 ซื้อเหรียญ TPIX', $base.'/token-sale'],
-                ['🖥️ มาสเตอร์โหนด', $base.'/masternode'],
-                ['🌉 บริดจ์ข้ามเชน', $base.'/bridge'],
-                ['📱 ดาวน์โหลดแอป / วอลเล็ต', $base.'/download'],
+                ['🌐 Website · เว็บไซต์', $base],
+                ['💱 Trade TPIX/USDT · เทรด', $base.'/trade/TPIX-USDT'],
+                ['🔄 Swap · สวอป', $base.'/swap'],
+                ['💰 Buy TPIX · ซื้อเหรียญ', $base.'/token-sale'],
+                ['🖥️ Master nodes · มาสเตอร์โหนด', $base.'/masternode'],
+                ['🌉 Bridge · บริดจ์ข้ามเชน', $base.'/bridge'],
+                ['📱 Apps & wallet · ดาวน์โหลดแอป', $base.'/download'],
                 ['📘 Whitepaper', $base.'/whitepaper'],
                 ['🔍 Explorer', $this->explorer()],
             ],
@@ -111,7 +111,7 @@ class DiscordLiveData
     /**
      * แอปรุ่นล่าสุดที่หน้าดาวน์โหลดแจกอยู่ (ข้อมูลเดียวกับ /api/v1/app/latest และ /chain-latest).
      *
-     * @return list<array{product: string, label: string, version: string, name: string, notes: string, published_at: ?string}>
+     * @return list<array{product: string, label: string, label_th: string, version: string, name: string, notes: string, published_at: ?string}>
      */
     public function releases(): array
     {
@@ -119,13 +119,13 @@ class DiscordLiveData
 
         $trade = $this->fromApi(fn () => app(AppUpdateController::class)->latest(), 'app');
         if (is_array($trade) && ! empty($trade['version'])) {
-            $out[] = $this->release('trade', 'แอป TPIX TRADE (Android)', $trade);
+            $out[] = $this->release('trade', 'TPIX TRADE app (Android)', 'แอป TPIX TRADE (Android)', $trade);
         }
 
         $chain = $this->fromApi(fn () => app(AppUpdateController::class)->chainLatest(), 'chain') ?? [];
-        foreach (['wallet' => 'TPIX Wallet (Android)', 'masternode' => 'โปรแกรมมาสเตอร์โหนด (Windows)'] as $product => $label) {
+        foreach (['wallet' => ['TPIX Wallet (Android)', 'TPIX Wallet (Android)'], 'masternode' => ['Master node app (Windows)', 'โปรแกรมมาสเตอร์โหนด (Windows)']] as $product => [$label, $labelTh]) {
             if (is_array($chain[$product] ?? null) && ! empty($chain[$product]['version'])) {
-                $out[] = $this->release($product, $label, $chain[$product]);
+                $out[] = $this->release($product, $label, $labelTh, $chain[$product]);
             }
         }
 
@@ -192,11 +192,12 @@ class DiscordLiveData
     }
 
     /** @param  array<string, mixed>  $data */
-    private function release(string $product, string $label, array $data): array
+    private function release(string $product, string $label, string $labelTh, array $data): array
     {
         return [
             'product' => $product,
             'label' => $label,
+            'label_th' => $labelTh,
             'version' => (string) $data['version'],
             'name' => (string) ($data['name'] ?? ''),
             'notes' => (string) ($data['notes'] ?? ''),

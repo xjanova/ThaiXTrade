@@ -199,13 +199,20 @@ class SaleStatusService
             : "ยาว {$days} วัน · เริ่มนับเมื่อเปิดขายจริง";
 
         // ป้ายสถานะคิดจากของจริง ไม่ใช่ค่า status ในตาราง (ค้างได้ถึงชั่วโมงก่อน sale:advance-phases รัน)
-        $label = match (true) {
-            $open !== null && $open->is($phase) => '🟢 เปิดขายอยู่',
-            $soldOut => 'ขายหมดแล้ว',
-            $launched && $phase->ends_at !== null && $phase->ends_at->isPast() => 'จบเฟสแล้ว',
-            $launched => 'รอเปิด',
-            default => 'รอเปิดขาย',
+        $status = match (true) {
+            $open !== null && $open->is($phase) => 'open',
+            $soldOut => 'sold_out',
+            $launched && $phase->ends_at !== null && $phase->ends_at->isPast() => 'ended',
+            $launched => 'waiting',
+            default => 'upcoming',
         };
+        $label = [
+            'open' => '🟢 เปิดขายอยู่',
+            'sold_out' => 'ขายหมดแล้ว',
+            'ended' => 'จบเฟสแล้ว',
+            'waiting' => 'รอเปิด',
+            'upcoming' => 'รอเปิดขาย',
+        ][$status];
 
         return [
             'name' => $phase->name,
@@ -217,6 +224,10 @@ class SaleStatusService
             'window' => $window,
             'duration_days' => $days,
             'status_label' => $label,
+            // ข้อมูลดิบ — ให้ที่อื่นแต่งเป็นภาษาอื่นเองได้ (บอท Discord ใช้ทำข้อความภาษาอังกฤษ)
+            'status' => $status,
+            'starts_at' => $launched ? $phase->starts_at?->toIso8601String() : null,
+            'ends_at' => $launched ? $phase->ends_at?->toIso8601String() : null,
         ];
     }
 

@@ -4,6 +4,7 @@ namespace App\Services\Discord;
 
 use App\Models\Article;
 use App\Models\DiscordPost;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Sleep;
@@ -114,13 +115,22 @@ class DiscordPublisher
         // ข่าวก่อนวิดีโอ — ข่าวใหม่มีอายุ ส่วนวิดีโอเป็นชุดเดิมที่ทยอยลงจนครบก็พอ
         $budget = max(1, (int) config('discord.max_new_posts_per_run', 6));
 
-        foreach ($this->pendingArticles($dryRun) as $article) {
+        foreach ($this->pendingArticles($dryRun) as [$article, $thai]) {
             if ($budget <= 0) {
                 break;
             }
-            $result = $this->postOnce('article', (string) $article->id, $map['news'] ?? null, fn () => $this->content->article($article), $dryRun);
+            $result = $this->postOnce('article', (string) $article->id, $map['news'] ?? null, fn () => $this->content->article($article, $thai), $dryRun);
             $results[] = $result;
             $budget -= in_array($result['action'], ['created', 'would_create', 'error'], true) ? 1 : 0;
+
+            // คู่ภาษาไทยอยู่ในข้อความเดียวกันแล้ว (ปุ่มอ่านภาษาไทย) — จดไว้ว่าโพสต์แล้ว จะได้ไม่ออกซ้ำอีกข้อความ
+            if ($thai !== null && $result['action'] === 'created') {
+                $posted = DiscordPost::where('kind', 'article')->where('ref_key', (string) $article->id)->first();
+                DiscordPost::updateOrCreate(
+                    ['kind' => 'article', 'ref_key' => (string) $thai->id],
+                    ['channel_id' => $posted->channel_id, 'message_id' => $posted->message_id, 'content_hash' => $posted->content_hash, 'last_error' => null, 'posted_at' => now()],
+                );
+            }
         }
 
         foreach ($this->pendingVideos() as $video) {
@@ -156,6 +166,8 @@ class DiscordPublisher
         }
 
         if (! $dryRun) {
+            $results = array_merge($results, $this->refreshPosted($map));
+
             $this->settings->mergeState([
                 'last_sync_at' => now()->toIso8601String(),
                 'last_sync' => array_values(array_filter($results, fn ($r) => $r['action'] !== 'unchanged')),
@@ -163,6 +175,82 @@ class DiscordPublisher
         }
 
         return ['ran' => true, 'results' => $results];
+    }
+
+    /**
+     * ข่าว/วิดีโอ/แอปรุ่นใหม่ที่โพสต์ไปแล้ว — รูปแบบข้อความเปลี่ยน (เช่นเพิ่มภาษาอังกฤษเป็นภาษาหลัก 2026-09-15)
+     * หรือบทความถูกแก้บนเว็บ → แก้ข้อความเดิมทีละไม่กี่ชิ้นต่อรอบ ไม่โพสต์ใหม่ (สมาชิกไม่โดนแจ้งเตือนซ้ำ).
+     *
+     * ดูเฉพาะชุดที่ยังสร้างเนื้อหาได้: วิดีโอทั้งชุด · แอปรุ่นล่าสุด · บทความ 20 ข้อความล่าสุด
+     *
+     * @param  array<string, string>  $map
+     * @return list<array<string, mixed>>
+     */
+    private function refreshPosted(array $map): array
+    {
+        $budget = max(1, (int) config('discord.max_edits_per_run', 6));
+        $jobs = [];
+
+        $videos = collect((array) config('discord.videos', []))->keyBy('code');
+        foreach (DiscordPost::where('kind', 'video')->whereNotNull('message_id')->get() as $post) {
+            if (isset($videos[$post->ref_key])) {
+                $video = $videos[$post->ref_key];
+                $jobs[] = [$post, fn () => $this->content->video($video), collect([$post])];
+            }
+        }
+
+        if (isset($map['dev'])) {
+            $releases = collect($this->live->releases())->keyBy(fn ($r) => "{$r['product']}:{$r['version']}");
+            foreach (DiscordPost::where('kind', 'release')->whereNotNull('message_id')->whereIn('ref_key', $releases->keys()->all())->get() as $post) {
+                $release = $releases[$post->ref_key];
+                $jobs[] = [$post, fn () => $this->content->release($release), collect([$post])];
+            }
+        }
+
+        // ข้อความหนึ่งอาจเป็นของบทความคู่ภาษา (อังกฤษ + ปุ่มภาษาไทย) — สร้างจากฝั่งอังกฤษเสมอ
+        $groups = DiscordPost::where('kind', 'article')->whereNotNull('message_id')->latest('posted_at')->limit(20)->get()->groupBy('message_id');
+        $articles = Article::whereIn('id', $groups->flatten()->pluck('ref_key')->map(fn ($id) => (int) $id))->get()->keyBy('id');
+        foreach ($groups as $group) {
+            $inGroup = $group->map(fn (DiscordPost $p) => $articles[(int) $p->ref_key] ?? null)->filter();
+            $main = $inGroup->sortBy(fn (Article $a) => $a->language === 'en' ? 0 : 1)->first();
+            if ($main === null) {
+                continue; // บทความถูกลบจากเว็บ — ปล่อยข้อความเดิมไว้
+            }
+            $thai = $main->language === 'en' ? $inGroup->firstWhere('language', 'th') : null;
+            $record = $group->first(fn (DiscordPost $p) => (int) $p->ref_key === $main->id);
+            $jobs[] = [$record, fn () => $this->content->article($main, $thai), $group];
+        }
+
+        $results = [];
+        foreach ($jobs as [$record, $build, $sharing]) {
+            if ($budget <= 0) {
+                break;
+            }
+
+            $payload = $build();
+            $hash = DiscordContent::hash($payload);
+            if ($record->content_hash === $hash) {
+                continue;
+            }
+
+            $budget--;
+            $response = $this->client->editMessage($record->channel_id, $record->message_id, $payload);
+
+            // ข้อความถูกลบไปแล้ว = จำ hash ไว้ด้วย ไม่งั้นพยายามแก้ข้อความที่ไม่มีอยู่ทุกรอบ (ไม่โพสต์ข่าวเก่าซ้ำ)
+            $gone = ! $response['ok'] && (($response['code'] ?? null) === 10008 || $response['status'] === 404);
+
+            if ($response['ok'] || $gone) {
+                DiscordPost::whereIn('id', $sharing->pluck('id'))->update(['content_hash' => $hash, 'last_error' => $gone ? 'ข้อความถูกลบไปแล้ว' : null]);
+                $results[] = $this->result($record->kind, $record->ref_key, $response['ok'] ? 'edited' : 'unchanged', null, $record->channel_id);
+            } else {
+                $record->update(['last_error' => $response['error']]);
+                $results[] = $this->result($record->kind, $record->ref_key, 'error', $response['error'], $record->channel_id);
+            }
+
+            Sleep::for(self::PAUSE_MS)->milliseconds();
+        }
+
+        return $results;
     }
 
     /**
@@ -259,7 +347,7 @@ class DiscordPublisher
             ];
         }
 
-        foreach (array_slice($this->pendingArticles(true), 0, $upcoming) as $article) {
+        foreach (array_slice($this->pendingArticles(true), 0, $upcoming) as [$article, $thai]) {
             $channel = $map['news'] ?? null;
             $items[] = [
                 'kind' => 'article',
@@ -268,7 +356,7 @@ class DiscordPublisher
                 'channel_id' => $channel,
                 'status' => $status('article', (string) $article->id, $channel, null),
                 'error' => $posted['article:'.$article->id]->last_error ?? null,
-                'payload' => $this->content->article($article),
+                'payload' => $this->content->article($article, $thai),
             ];
         }
 
@@ -470,19 +558,19 @@ class DiscordPublisher
      * แล้วทุกรอบโพสต์ทุกชิ้นตั้งแต่เส้นนั้นที่ยังไม่มีใน discord_posts
      * → ชิ้นที่ส่งไม่สำเร็จ หรือโควตาต่อรอบหมดก่อน จะถูกหยิบใหม่รอบหน้าเอง ไม่หลุดหาย
      *
-     * @return list<Article>
+     * @return list<array{0: Article, 1: ?Article}> [บทความที่จะโพสต์, คู่ภาษาไทยที่ใส่เป็นปุ่มในข้อความเดียวกัน]
      */
     private function pendingArticles(bool $dryRun): array
     {
-        $language = (string) config('discord.article_language', 'th');
+        $languages = (array) config('discord.article_languages', ['en', 'th']);
         $floor = $this->settings->state()['articles_floor'] ?? null;
 
         if ($floor === null) {
             $backfill = max(0, (int) config('discord.article_backfill', 5));
             $nth = $backfill > 0
-                ? Article::published()->where('language', $language)->orderByDesc('published_at')->skip($backfill - 1)->value('published_at')
+                ? Article::published()->whereIn('language', $languages)->orderByDesc('published_at')->skip($backfill - 1)->value('published_at')
                 : null;
-            $oldest = Article::published()->where('language', $language)->min('published_at');
+            $oldest = Article::published()->whereIn('language', $languages)->min('published_at');
 
             $floor = (string) ($nth ?? ($backfill > 0 && $oldest ? $oldest : now()->toDateTimeString()));
 
@@ -492,18 +580,60 @@ class DiscordPublisher
         }
 
         $candidates = Article::published()
-            ->where('language', $language)
+            ->whereIn('language', $languages)
             ->where('published_at', '>=', $floor)
             ->orderBy('published_at')
             ->orderBy('id')
             ->limit(50)
             ->get();
 
-        $posted = DiscordPost::where('kind', 'article')->whereNotNull('message_id')
+        $posted = array_flip(DiscordPost::where('kind', 'article')->whereNotNull('message_id')
             ->whereIn('ref_key', $candidates->pluck('id')->map(fn ($id) => (string) $id))
-            ->pluck('ref_key')->all();
+            ->pluck('ref_key')->all());
 
-        return $candidates->reject(fn (Article $a) => in_array((string) $a->id, $posted, true))->values()->all();
+        $out = [];
+        $claimed = [];
+        foreach ($candidates as $article) {
+            $id = (string) $article->id;
+            if (isset($posted[$id]) || isset($claimed[$id])) {
+                continue;
+            }
+
+            if ($article->language === 'en') {
+                $thai = $this->sibling($article, 'th', $candidates);
+                if ($thai !== null && ! isset($posted[(string) $thai->id])) {
+                    $claimed[(string) $thai->id] = true;
+                } else {
+                    $thai = null;
+                }
+                $out[] = [$article, $thai];
+
+                continue;
+            }
+
+            // บทความไทยที่มีคู่ภาษาอังกฤษรออยู่ → ออกพร้อมฝั่งอังกฤษ (ภาษาหลัก) ไม่ออกแยก
+            $english = $this->sibling($article, 'en', $candidates);
+            if ($english !== null && ! isset($posted[(string) $english->id])) {
+                continue;
+            }
+            $out[] = [$article, null];
+        }
+
+        return $out;
+    }
+
+    /**
+     * บทความคู่ภาษา — เว็บสร้างแต่ละภาษาแยกกันจากหัวข้อเดียวในรอบเดียว (GenerateScheduledContent)
+     * ไม่มีคอลัมน์ผูกกัน จึงจับคู่จากหมวดเดียวกันที่เผยแพร่ห่างกันไม่เกิน 15 นาที.
+     *
+     * @param  Collection<int, Article>  $pool
+     */
+    private function sibling(Article $article, string $language, Collection $pool): ?Article
+    {
+        return $pool->first(fn (Article $other) => $other->language === $language
+            && $other->category === $article->category
+            && $other->published_at !== null && $article->published_at !== null
+            && abs($other->published_at->diffInSeconds($article->published_at)) <= 900);
     }
 
     private function result(string $kind, string $ref, string $action, ?string $error = null, ?string $channel = null): array
