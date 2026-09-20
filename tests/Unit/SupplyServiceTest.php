@@ -175,6 +175,58 @@ class SupplyServiceTest extends TestCase
         $this->assertSame($first['updated_at'], $second['updated_at'], 'ยังอยู่ใน TTL ต้องไม่ถาม RPC ซ้ำ');
     }
 
+    /**
+     * หัวใจของการแก้ 2026-09-20: cache หมดอายุแล้วห้ามให้ผู้ใช้เป็นคนยืนรอ RPC
+     *
+     * ของเดิมพอ cache หมด ผู้ใช้คนแรกที่เข้ามาต้องรอครบทุกที่อยู่ (วัดบน prod ได้
+     * 11-20 วินาทีตอนเชนตอบช้า) ตอนนี้ถ้ามีคำขออื่นกำลัง build อยู่ ต้องได้สำเนา
+     * สำรองกลับไปทันทีโดยไม่แตะ RPC เลย
+     */
+    public function test_stale_copy_is_served_immediately_while_another_request_rebuilds(): void
+    {
+        Http::fake([
+            '*' => Http::sequence()
+                ->push(['jsonrpc' => '2.0', 'id' => 1, 'result' => $this->weiHex('500')])
+                ->push(['jsonrpc' => '2.0', 'id' => 1, 'result' => $this->weiHex('200')]),
+        ]);
+
+        $service = new SupplyService();
+        $service->snapshot();          // รอบแรก: สร้างทั้ง cache สดและสำเนาสำรอง (locked 700)
+        Http::assertSentCount(2);
+
+        $this->travel(120)->seconds(); // cache สดหมดอายุ (60s) แต่สำเนาสำรองยังอยู่ (24h)
+
+        // จำลองว่ามีอีกคำขอหนึ่งถือ lock อยู่ = กำลังคุย RPC
+        $lock = Cache::lock('tpix:supply:rebuild', 60);
+        $this->assertTrue($lock->get());
+
+        try {
+            $served = $service->snapshot();
+        } finally {
+            $lock->release();
+        }
+
+        $this->assertSame('300', $served['circulating'], 'ต้องได้ตัวเลขจากสำเนาสำรอง');
+        Http::assertSentCount(2); // ห้ามมี request ใหม่ — ผู้ใช้ไม่ควรเป็นคนจ่ายค่ารอ
+    }
+
+    /**
+     * ตัวเลขที่ดึงมาไม่ครบห้ามกลายเป็นสำเนาสำรอง ไม่งั้นค่าที่เพี้ยนจะถูกเสิร์ฟ
+     * ต่อให้ CoinGecko / CMC ยาวถึง 24 ชม. แทนที่จะหายไปใน 15 วินาทีตามเจตนาเดิม
+     */
+    public function test_degraded_snapshot_never_becomes_the_stale_copy(): void
+    {
+        Http::fake(['*' => Http::response(null, 500)]);
+
+        $service = new SupplyService();
+        $this->assertTrue($service->snapshot()['degraded']);
+
+        $this->assertNull(
+            Cache::get('tpix:supply:snapshot:stale'),
+            'ชุดที่ไม่สมบูรณ์ต้องไม่ถูกเก็บเป็นสำเนาสำรอง'
+        );
+    }
+
     // =========================================================================
     // manual strategy
     // =========================================================================

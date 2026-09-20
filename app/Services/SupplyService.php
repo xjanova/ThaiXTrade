@@ -31,6 +31,21 @@ class SupplyService
     private const DEGRADED_CACHE_TTL = 15;
 
     /**
+     * สำเนาสำรองอายุยาว — ใช้ตอบทันทีเมื่อ cache สดหมดอายุ
+     *
+     * ก่อนหน้านี้ cache หมดอายุเมื่อไหร่ ผู้ใช้คนแรกที่เข้ามาต้องยืนรอ RPC ครบ
+     * ทั้ง 10 ที่อยู่ (2026-09-20 วัดได้ 11-20 วินาทีบน prod ตอน RPC สะดุด)
+     * ส่วนคนถัดไปเร็วปกติ — อาการเลยจับไม่ติดและถูกมองว่า "เว็บช้าเป็นบางครั้ง"
+     */
+    private const STALE_KEY = 'tpix:supply:snapshot:stale';
+
+    /** เก็บสำเนาสำรองไว้ 24 ชม. — ยอด genesis-locked แทบไม่ขยับอยู่แล้ว */
+    private const STALE_TTL = 86400;
+
+    /** ให้มีคำขอเดียวที่ไปคุย RPC ส่วนคนอื่นรับสำเนาสำรองไปก่อน */
+    private const REBUILD_LOCK_KEY = 'tpix:supply:rebuild';
+
+    /**
      * Get full supply snapshot (human-readable TPIX units, not wei).
      *
      * `degraded` = true แปลว่าอย่างน้อยหนึ่งที่อยู่ดึงยอดจาก RPC ไม่สำเร็จ และใช้
@@ -55,14 +70,76 @@ class SupplyService
             return $cached;
         }
 
-        $snapshot = $this->build();
+        $lock = Cache::lock(self::REBUILD_LOCK_KEY, 60);
+        $acquired = $lock->get();
 
+        if (! $acquired) {
+            // มีคำขออื่นกำลังคุย RPC อยู่แล้ว — ส่งสำเนาสำรองกลับไปทันที
+            // ตัวเลขช้ากว่าของจริงไม่กี่นาที ดีกว่าให้ผู้ใช้ยืนรอหน้าขาว
+            $stale = Cache::get(self::STALE_KEY);
+            if (is_array($stale)) {
+                return $stale;
+            }
+        }
+
+        try {
+            // อ่านซ้ำหลังได้ lock — คำขอก่อนหน้าอาจเพิ่ง build เสร็จไปแล้ว
+            $cached = Cache::get(self::CACHE_KEY);
+            if (is_array($cached)) {
+                return $cached;
+            }
+
+            return $this->store($this->build());
+        } finally {
+            if ($acquired) {
+                $lock->release();
+            }
+        }
+    }
+
+    /**
+     * สร้าง snapshot ใหม่แล้วเขียนทับ cache — ให้ scheduler เรียกอุ่นไว้ล่วงหน้า
+     * ผู้ใช้จะได้ไม่ต้องเป็นคนไปกระตุ้น RPC เอง.
+     */
+    public function refresh(): array
+    {
+        $lock = Cache::lock(self::REBUILD_LOCK_KEY, 60);
+
+        if (! $lock->get()) {
+            // มีคำขอของผู้ใช้กำลัง build อยู่แล้ว — ไม่ต้องยิง RPC ซ้ำอีกชุด
+            // cache จะสดจากฝั่งนั้นอยู่ดี ตัวที่มีอยู่ถือว่าดีพอสำหรับรอบนี้
+            $current = Cache::get(self::CACHE_KEY) ?? Cache::get(self::STALE_KEY);
+
+            return is_array($current) ? $current : $this->build();
+        }
+
+        try {
+            return $this->store($this->build());
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * เขียน snapshot ลง cache สด และ (เฉพาะชุดที่ครบถ้วน) ลงสำเนาสำรองอายุยาว.
+     *
+     * @param  array{total:string,max:string,circulating:string,locked:string,breakdown:list<array{address:string,label:string,category:string,balance:string}>,strategy:string,rpc:string,degraded:bool,updated_at:string}  $snapshot
+     * @return array{total:string,max:string,circulating:string,locked:string,breakdown:list<array{address:string,label:string,category:string,balance:string}>,strategy:string,rpc:string,degraded:bool,updated_at:string}
+     */
+    private function store(array $snapshot): array
+    {
         $ttl = (int) config('supply.cache_ttl', 60);
         if ($snapshot['degraded']) {
             $ttl = min($ttl, self::DEGRADED_CACHE_TTL);
         }
 
         Cache::put(self::CACHE_KEY, $snapshot, $ttl);
+
+        // สำรองเฉพาะชุดที่ดึงครบทุกที่อยู่ — ไม่งั้นตัวเลขที่เพี้ยนเพราะ RPC สะดุด
+        // จะถูกเสิร์ฟต่อให้ CoinGecko / CMC ยาวถึง 24 ชม.
+        if (! $snapshot['degraded']) {
+            Cache::put(self::STALE_KEY, $snapshot, self::STALE_TTL);
+        }
 
         return $snapshot;
     }

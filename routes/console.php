@@ -2,6 +2,7 @@
 
 use App\Jobs\ProcessBridgeJob;
 use App\Models\BridgeTransaction;
+use App\Services\SupplyService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
@@ -60,6 +61,26 @@ Schedule::command('tpix:treasury-sync')
     ->withoutOverlapping(10)
     ->onOneServer()
     ->name('treasury:sync');
+
+// ยอดหมุนเวียน: อุ่น cache ไว้ล่วงหน้าทุก 2 นาที
+//
+// ก่อนหน้านี้ไม่มีใครอุ่นให้ — พอ cache หมดอายุ "ผู้ใช้คนแรกที่เปิดหน้าแรก" กลายเป็น
+// คนไปกระตุ้น RPC เอง แล้วยืนรอครบทั้ง 10 ที่อยู่ (วัดบน prod 2026-09-20 ได้ 11-20
+// วินาที ตอนเชนตอบช้า) ส่วนคนถัดไปเร็วปกติ อาการเลยจับไม่ติดและถูกมองว่า
+// "เว็บช้าเป็นบางครั้ง" ตัวนี้ทำให้ cache สดตลอด ผู้ใช้จึงไม่ใช่คนจ่ายค่ารออีกต่อไป
+//
+// name() ต้องมาก่อน withoutOverlapping() เสมอสำหรับ closure — ดูคำเตือนด้านบนไฟล์
+Schedule::call(function (SupplyService $supply) {
+    $snapshot = $supply->refresh();
+
+    if ($snapshot['degraded']) {
+        Log::warning('supply:warm — ดึงยอดจาก RPC ไม่ครบ ใช้ยอด genesis แทนบางที่อยู่');
+    }
+})
+    ->everyTwoMinutes()
+    ->onOneServer()
+    ->name('supply:warm')
+    ->withoutOverlapping(5);
 
 // คาดแดง: ตรวจ heartbeat ของเครื่องโครงสร้างพื้นฐาน (เซิร์ฟเวอร์เชน) ทุกนาที
 //
