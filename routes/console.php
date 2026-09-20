@@ -69,7 +69,10 @@ Schedule::command('tpix:treasury-sync')
 // วินาที ตอนเชนตอบช้า) ส่วนคนถัดไปเร็วปกติ อาการเลยจับไม่ติดและถูกมองว่า
 // "เว็บช้าเป็นบางครั้ง" ตัวนี้ทำให้ cache สดตลอด ผู้ใช้จึงไม่ใช่คนจ่ายค่ารออีกต่อไป
 //
-// name() ต้องมาก่อน withoutOverlapping() เสมอสำหรับ closure — ดูคำเตือนด้านบนไฟล์
+// สำหรับ closure (CallbackEvent) name() ต้องมาก่อนทั้ง onOneServer() และ
+// withoutOverlapping() — ทั้งคู่ใช้ description เป็นชื่อ mutex สลับลำดับแล้ว
+// Laravel โยน LogicException ตอนโหลด schedule = artisan ทุกคำสั่งพัง
+// (CI จับไว้ได้ตอน package:discover เมื่อ 2026-09-20 — ดูคำเตือนด้านบนไฟล์ด้วย)
 Schedule::call(function (SupplyService $supply) {
     $snapshot = $supply->refresh();
 
@@ -78,8 +81,8 @@ Schedule::call(function (SupplyService $supply) {
     }
 })
     ->everyTwoMinutes()
-    ->onOneServer()
     ->name('supply:warm')
+    ->onOneServer()
     ->withoutOverlapping(5);
 
 // คาดแดง: ตรวจ heartbeat ของเครื่องโครงสร้างพื้นฐาน (เซิร์ฟเวอร์เชน) ทุกนาที
