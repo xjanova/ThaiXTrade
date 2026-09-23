@@ -280,6 +280,37 @@ class AiBotApiTest extends TestCase
             ->assertJsonPath('error.code', AiBotService::ERR_BOT_LIMIT);
     }
 
+    /**
+     * บอทใหม่ที่ไม่ระบุเทมเพลตต้องได้ชุด "สมดุล" ที่ผ่าน backtest — ไม่ใช่ค่าปริยายดิบ.
+     *
+     * เจ้าของสั่ง 2026-09-23: "มีค่าปริยายที่เหมาะสมมาให้เลยตั้งแต่แรก" — หน้าเว็บทำอยู่แล้ว
+     * แต่แอป/ลูกค้าที่เรียก API ตรงเคยได้ค่าดิบ (กริดขาย +10% ตัด −5% ไม่ใช่ +15/−6 ของชุดแนะนำ)
+     */
+    public function test_a_new_bot_without_a_template_starts_from_the_balanced_set(): void
+    {
+        $this->subscribeTo('starter');
+
+        $balanced = app(AiBotService::class)->templateFor('grid', 'balanced');
+
+        $this->postJson('/api/v1/ai-bot/bots', $this->botPayload('Bot A'))
+            ->assertStatus(201)
+            ->assertJsonPath('data.params.grid_levels', $balanced['params']['grid_levels'])
+            ->assertJsonPath('data.params.er_max', $balanced['params']['er_max'])
+            ->assertJsonPath('data.risk.take_profit_pct', $balanced['risk']['take_profit_pct'])
+            ->assertJsonPath('data.risk.stop_loss_pct', $balanced['risk']['stop_loss_pct']);
+
+        // ค่าที่ผู้ใช้ตั้งเองชนะชุดแนะนำทุกช่อง (แพลน starter มีได้บอทเดียว — ลบตัวแรกก่อน)
+        AiBotConfig::query()->delete();
+
+        $this->postJson('/api/v1/ai-bot/bots', array_merge($this->botPayload('Bot B'), [
+            'params' => ['grid_levels' => 5],
+            'risk' => ['take_profit_pct' => 12],
+        ]))
+            ->assertStatus(201)
+            ->assertJsonPath('data.params.grid_levels', 5)
+            ->assertJsonPath('data.risk.take_profit_pct', 12);
+    }
+
     public function test_params_are_clamped_to_the_strategy_schema(): void
     {
         $this->subscribeTo('starter');

@@ -105,7 +105,16 @@ class AiMarketViewEndpointTest extends TestCase
             ->pluck('key');
 
         $this->assertContains('auto_pair', $keys);
-        $this->assertContains('news_filter', $keys);
+        $this->assertContains('news_mode', $keys);
+        $this->assertContains('ai_gate', $keys);
+        $this->assertContains('macro_filter', $keys);
+
+        // ตัวเลือกต้องมีป้ายภาษาคนครบทุกตัว — หน้าเว็บ/แอปจะได้ไม่โชว์ค่าดิบอย่าง "confirm_exit"
+        $news = collect($this->getJson('/api/v1/ai-bot/catalog')->json('data.common_params'))->firstWhere('key', 'news_mode');
+        foreach ($news['options'] as $option) {
+            $this->assertNotEmpty($news['option_labels'][$option]['th'] ?? null, "ตัวเลือก {$option} ไม่มีป้ายไทย");
+            $this->assertNotEmpty($news['option_labels'][$option]['en'] ?? null, "ตัวเลือก {$option} ไม่มีป้ายอังกฤษ");
+        }
     }
 
     private function makeView(

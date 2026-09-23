@@ -132,6 +132,10 @@ class StrategyParam {
   final double? step;
   final List<String> options;
 
+  /// ป้ายภาษาคนของแต่ละตัวเลือก `{option: {th, en}}` — เช่น news_mode
+  /// "confirm_exit" → "งดเปิดไม้ + ขายเมื่อราคายืนยัน (แนะนำ)" · ไม่มีป้าย = แสดงค่าดิบ
+  final Map<String, Map<String, String>> optionLabels;
+
   /// `basic` = โชว์เสมอ · `advanced` = ซ่อนไว้ใต้ "ตั้งค่าขั้นสูง" (ตรงกับหน้าเว็บ)
   final String group;
 
@@ -145,6 +149,7 @@ class StrategyParam {
     this.max,
     this.step,
     this.options = const [],
+    this.optionLabels = const {},
     this.group = 'basic',
   });
 
@@ -161,8 +166,31 @@ class StrategyParam {
       max: _dn(json['max']),
       step: _dn(json['step']),
       options: _strList(json['options']),
+      optionLabels: _optionLabels(json['option_labels']),
       group: _s(json['group'], 'basic'),
     );
+  }
+
+  /// `{opt: {th: .., en: ..}}` จาก API — รูปแบบผิดทิ้งเงียบๆ (แสดงค่าดิบแทน ไม่ทำให้ฟอร์มพัง)
+  static Map<String, Map<String, String>> _optionLabels(dynamic raw) {
+    if (raw is! Map) return const {};
+    final out = <String, Map<String, String>>{};
+    raw.forEach((opt, labels) {
+      if (labels is Map) {
+        out[opt.toString()] = {
+          for (final e in labels.entries)
+            if (e.value != null) e.key.toString(): e.value.toString(),
+        };
+      }
+    });
+    return out;
+  }
+
+  /// ป้ายของตัวเลือกตามภาษา — ไม่มีป้ายก็คืนค่าดิบ
+  String optionLabel(String opt, bool isThai) {
+    final labels = optionLabels[opt];
+    if (labels == null) return opt;
+    return (isThai ? labels['th'] : labels['en']) ?? labels['th'] ?? opt;
   }
 
   bool get isNumber => type == 'number';

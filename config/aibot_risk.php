@@ -188,10 +188,10 @@ return [
     | caution ขึ้นไป หรือแท่งล่าสุดที่ปิดแล้ว / ราคาสดของแท่งที่กำลังวิ่ง ร่วงเกิน
     | confirm_change_1h_pct (ราคาสดคือทางหลัก — ข่าวแรงอยู่ระดับ panic แค่ราวครึ่งชั่วโมง)
     |
-    | ปิดสวิตช์ (false) = กลับไปพฤติกรรมเดิม ข่าวคำเดียวสั่งเทออกทั้งฝูงได้
+    | ใช้กับบอทที่ตั้ง news_mode = confirm_exit (ค่าปริยาย) — ผู้ใช้เลือกโหมดอื่นได้รายบอท
+    | (off / block_entries / immediate_exit — ดู config/aibot.php common_params)
     */
     'news_exit' => [
-        'require_price_confirmation' => (bool) env('AIBOT_NEWS_EXIT_REQUIRES_PRICE', true),
         'confirm_market_score' => 0.35,
         'confirm_change_1h_pct' => -1.5,
     ],

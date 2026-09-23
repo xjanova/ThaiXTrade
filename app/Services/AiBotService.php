@@ -584,6 +584,19 @@ class AiBotService
          * รวมรายการก่อนวน ไม่ใช่ต่อท้ายทีหลัง — ถ้ากลยุทธ์ไหนประกาศคีย์ชื่อเดียวกัน
          * ไว้เอง ค่าของกลยุทธ์ต้องชนะ (มันรู้ช่วงค่าที่ถูกต้องของตัวเองดีกว่า)
          */
+        /*
+         * สวิตช์ข่าวรุ่นเดิม (news_filter: bool) → news_mode (เลือกได้ 4 ระดับ)
+         *
+         * บอทที่ผู้ใช้เคย "ปิดข่าว" ไว้ต้องยังปิดอยู่หลังอัปเกรด — ไม่งั้นค่าที่ผู้ใช้ตั้งเอง
+         * หายเงียบๆ แล้วกลับไปใช้ค่าปริยาย (ความล้มเหลวแบบที่ไฟล์นี้ระวังมาตลอด)
+         * แอปรุ่นเก่าที่ยังส่ง news_filter มาก็ใช้ได้ผ่านทางนี้ · ส่ง news_mode มาเอง = ชนะเสมอ
+         */
+        if (! array_key_exists('news_mode', $input)
+            && array_key_exists('news_filter', $input)
+            && filter_var($input['news_filter'], FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) === false) {
+            $input['news_mode'] = 'off';
+        }
+
         $specs = collect((array) config('aibot.common_params', []))
             ->concat($strategy['params'] ?? [])
             ->keyBy('key');

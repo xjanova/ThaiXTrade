@@ -78,10 +78,14 @@ class BotRunnerTest extends TestCase
         {
             public ?bool $up = null;
 
+            public ?int $askedPeriod = null;
+
             public function __construct() {}
 
-            public function current(): array
+            public function current(?int $period = null): array
             {
+                $this->askedPeriod = $period;
+
                 return [
                     'up' => $this->up, 'close' => null, 'ema' => null,
                     'above_pct' => $this->up === null ? null : ($this->up ? 3.0 : -4.2),
@@ -354,6 +358,23 @@ class BotRunnerTest extends TestCase
         $this->assertSame(1, AiBotPosition::count());
     }
 
+    /** ความไวของตัวกรองที่ผู้ใช้เลือก (EMA 50/100/200) ต้องถูกส่งไปถามจริง ไม่ใช่ใช้ค่าปริยายเงียบๆ */
+    #[Test]
+    public function the_chosen_macro_speed_is_what_gets_asked(): void
+    {
+        $this->candles = $this->risingCandles();
+
+        $this->runner->tick($this->makeBot(['params' => ['macro_ema' => '200']]));
+        $this->assertSame(200, $this->macro->askedPeriod);
+
+        AiBotConfig::query()->delete();
+        AiBotSubscription::query()->delete();
+        AiBotPlan::query()->delete();
+
+        $this->runner->tick($this->makeBot());
+        $this->assertSame(50, $this->macro->askedPeriod, 'ไม่ได้เลือก = ค่าแนะนำ 50');
+    }
+
     /** ผู้ใช้ปิดตัวกรองได้ (คนที่ตั้งใจสะสมผ่านขาลงเอง) */
     #[Test]
     public function the_macro_filter_can_be_switched_off_per_bot(): void
@@ -426,6 +447,52 @@ class BotRunnerTest extends TestCase
         $this->assertSame('sell', $result['action']);
         $this->assertSame('panic', $result['risk']);
         $this->assertSame(0, AiBotPosition::count());
+    }
+
+    /**
+     * ⭐ ตัวเลือก "ข่าวมีผลแค่ไหน" ของบอททำงานจริงทุกโหมด — ข่าวแรง + ราคาสดร่วง 3%.
+     *
+     * เจ้าของสั่ง 2026-09-23: "เลือกได้ว่าจะนำข่าวมามีผลในการซื้อขายหรือไม่" และต้องใช้งานได้จริง
+     */
+    #[Test]
+    public function each_news_mode_changes_what_the_bot_actually_does(): void
+    {
+        $candles = $this->risingCandles();
+        $candles[count($candles) - 1]['close'] = 102.0 * 0.97;
+
+        $run = function (string $mode) use ($candles): array {
+            AiBotTrade::query()->delete();
+            AiBotPosition::query()->delete();
+            AiBotConfig::query()->delete();
+            AiBotSubscription::query()->delete();
+            AiBotPlan::query()->delete();
+            Cache::flush();
+
+            $bot = $this->makeBot(['params' => ['news_mode' => $mode]]);
+            $this->giveBotAPosition($bot);
+            $this->candles = $candles;
+
+            return $this->runner->tick($bot);
+        };
+
+        $this->panicNews();
+
+        $this->assertSame('sell', $run('confirm_exit')['action'], 'ปริยาย: ราคายืนยันแล้ว = ขาย');
+        $this->assertSame('sell', $run('immediate_exit')['action']);
+        $this->assertNotSame('sell', $run('block_entries')['action'], 'ตั้งไว้ไม่ให้ข่าวสั่งขาย = ต้องไม่ขาย');
+        $this->assertNotSame('panic', $run('off')['risk'], 'ปิดข่าว = ข่าวไม่มีผลต่อระดับความเสี่ยงเลย');
+    }
+
+    /** ขายทันที (พฤติกรรมเดิม) ไม่รอราคายืนยัน — สำหรับคนที่อยากให้ข่าวมีอำนาจเต็ม */
+    #[Test]
+    public function immediate_exit_mode_sells_on_news_without_waiting_for_price(): void
+    {
+        $bot = $this->makeBot(['params' => ['news_mode' => 'immediate_exit']]);
+        $this->giveBotAPosition($bot);
+        $this->candles = $this->risingCandles();   // ราคานิ่งสนิท
+        $this->panicNews();
+
+        $this->assertSame('sell', $this->runner->tick($bot)['action']);
     }
 
     /**

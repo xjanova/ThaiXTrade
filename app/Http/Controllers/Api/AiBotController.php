@@ -488,7 +488,7 @@ class AiBotController extends Controller
             );
         }
 
-        [$params, $riskInput] = $this->applyTemplate($validated, $request);
+        [$params, $riskInput] = $this->applyTemplate($validated, $request, isNew: true);
 
         $bot = AiBotConfig::create([
             'wallet_address' => $wallet,
@@ -546,7 +546,7 @@ class AiBotController extends Controller
      *
      * @return array{0: array, 1: array} [params, risk] ที่ยังไม่ผ่าน sanitize
      */
-    private function applyTemplate(array $validated, Request $request): array
+    private function applyTemplate(array $validated, Request $request, bool $isNew = false): array
     {
         $template = $this->bots->templateFor($validated['strategy'], $validated['template'] ?? null);
 
@@ -555,6 +555,19 @@ class AiBotController extends Controller
                 'success' => false,
                 'error' => ['code' => 'TEMPLATE_NOT_FOUND', 'message' => 'ไม่พบเทมเพลตนี้ของกลยุทธ์ที่เลือก'],
             ], 422));
+        }
+
+        /*
+         * บอทใหม่ที่ไม่ระบุเทมเพลต = ใช้ชุด "สมดุล" (ชุดที่ผ่าน backtest 2 ปี) เป็นฐาน
+         *
+         * เจ้าของสั่ง 2026-09-23: "มีค่าปริยายการตั้งค่าที่เหมาะสมมาให้เลยตั้งแต่แรก" — หน้าเว็บ
+         * ตั้งชุดสมดุลให้อยู่แล้ว แต่ API ไม่ทำ: แอป/ลูกค้าที่ไม่ส่ง template เคยได้ค่าปริยายดิบ
+         * ของกลยุทธ์ (เช่น DCA ไม่พักช่วงขาลง ขาย +10% ตัด −5%) ไม่ใช่ชุดที่ทีมงานแนะนำ
+         * ค่าที่ผู้ใช้ส่งมาเองยังชนะทุกช่อง (array_merge ข้างล่าง) · แก้บอทเดิมไม่ใช้ทางนี้
+         * — ไม่งั้นช่องที่ไม่ได้ส่งมาจะถูกรีเซ็ตทับค่าที่ผู้ใช้ตั้งไว้
+         */
+        if (! $template && $isNew) {
+            $template = $this->bots->templateFor($validated['strategy'], 'balanced');
         }
 
         return [

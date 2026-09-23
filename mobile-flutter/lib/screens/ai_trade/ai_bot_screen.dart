@@ -3762,7 +3762,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                 runSpacing: 8,
                 children: spec.options
                     .map((o) => _SmallChip(
-                          label: o,
+                          label: spec.optionLabel(o, th),
                           selected: o == current,
                           onTap: () => _setParam(spec.key, o),
                         ))

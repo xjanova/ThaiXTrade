@@ -412,17 +412,55 @@ class MarketRiskServiceTest extends TestCase
         $this->assertTrue($result['news_unconfirmed']);
     }
 
-    /** ปิดสวิตช์ = กลับไปพฤติกรรมเดิม (ข่าวอย่างเดียวสั่งเทออกได้) — เจ้าของย้อนได้ทันที */
+    /**
+     * ⭐ ผู้ใช้เลือกได้ว่าข่าวมีผลแค่ไหน (news_mode) — ทุกโหมดต้องทำงานตามป้ายจริง.
+     *
+     * เจ้าของสั่ง 2026-09-23: "เลือกได้ว่าจะนำข่าวมามีผลในการซื้อขายหรือไม่" + ต้องใช้งานได้จริง
+     */
     #[Test]
-    public function the_price_confirmation_rule_can_be_switched_off(): void
+    public function every_news_mode_does_what_its_label_says(): void
     {
-        config(['aibot_risk.news_exit.require_price_confirmation' => false]);
+        $this->exchangeCollapseNews();
+        $candles = $this->calmCandles();
+        $crash = $candles[count($candles) - 1]['close'] * 0.97;   // ราคาสดร่วง 3% หลังข่าว
+
+        $assess = function (string $mode, ?float $live = null) use ($candles) {
+            Cache::flush();
+
+            return $this->risk->assess('BTC/USDT', $candles, '1h', $mode, $live);
+        };
+
+        // ไม่ใช้ข่าว = ข่าวไม่มีผลเลย
+        $off = $assess(MarketRiskService::NEWS_OFF, $crash);
+        $this->assertSame('calm', $off['level']);
+        $this->assertSame(1.0, $off['size_multiplier']);
+        $this->assertFalse($off['force_exit']);
+
+        // งดเปิดไม้ใหม่อย่างเดียว = ไม่ขายแม้ราคาร่วงตามข่าวแล้ว
+        $block = $assess(MarketRiskService::NEWS_BLOCK_ENTRIES, $crash);
+        $this->assertSame(0.0, $block['size_multiplier']);
+        $this->assertFalse($block['force_exit'], 'โหมดนี้ข่าวไม่มีสิทธิ์สั่งขาย');
+
+        // ปริยาย: ขายเมื่อราคายืนยันเท่านั้น
+        $this->assertFalse($assess(MarketRiskService::NEWS_CONFIRM_EXIT)['force_exit']);
+        $this->assertTrue($assess(MarketRiskService::NEWS_CONFIRM_EXIT, $crash)['force_exit']);
+
+        // ขายทันที (พฤติกรรมเดิม) = ไม่รอราคา
+        $now = $assess(MarketRiskService::NEWS_IMMEDIATE_EXIT);
+        $this->assertTrue($now['force_exit']);
+        $this->assertSame('panic', $now['level']);
+    }
+
+    /** ผู้เรียกรุ่นเก่าที่ส่ง true/false ยังได้ความหมายเดิม */
+    #[Test]
+    public function legacy_boolean_news_switch_still_works(): void
+    {
         $this->exchangeCollapseNews();
 
-        $result = $this->risk->assess('BTC/USDT', $this->calmCandles());
+        $this->assertSame('calm', $this->risk->assess('BTC/USDT', $this->calmCandles(), '1h', false)['level']);
 
-        $this->assertSame('panic', $result['level']);
-        $this->assertTrue($result['force_exit']);
+        Cache::flush();
+        $this->assertSame(MarketRiskService::NEWS_CONFIRM_EXIT, $this->risk->assess('BTC/USDT', $this->calmCandles(), '1h', true)['news_mode']);
     }
 
     /** ตลาดพังเองโดยไม่มีข่าว ยังเทออกเหมือนเดิม — กติกาใหม่แตะเฉพาะฝั่งข่าว */

@@ -214,19 +214,27 @@ class AutoPairResolverTest extends TestCase
          * อะไรบอกว่าทำไม — เป็นรูปแบบความล้มเหลวเดียวกับที่โปรเจกต์นี้เจอซ้ำๆ
          */
         $clean = app(AiBotService::class)
-            ->sanitizeParams('grid', ['auto_pair' => true, 'news_filter' => false]);
+            ->sanitizeParams('grid', ['auto_pair' => true, 'news_mode' => 'off']);
 
         $this->assertTrue($clean['auto_pair'], 'สวิตช์ให้ AI เลือกเหรียญถูกตัดทิ้ง');
-        $this->assertFalse($clean['news_filter'], 'กลยุทธ์ที่ไม่ได้ประกาศ news_filter ต้องปิดด่านข่าวได้ด้วย');
+        $this->assertSame('off', $clean['news_mode'], 'ทุกกลยุทธ์ต้องปิดด่านข่าวได้ด้วย');
     }
 
+    /**
+     * สวิตช์ข่าวรุ่นเดิม (news_filter) → news_mode — บอทที่เจ้าของเคยปิดข่าวต้องยังปิดอยู่.
+     */
     #[Test]
-    public function a_strategy_owned_param_still_wins_over_the_common_one(): void
+    public function the_legacy_news_switch_maps_onto_the_news_mode(): void
     {
-        // กลยุทธ์รู้ช่วงค่าที่ถูกต้องของตัวเองดีกว่า รายการร่วมต้องไม่ไปทับ
-        $clean = app(AiBotService::class)->sanitizeParams('ai_signal', ['news_filter' => false]);
+        $bots = app(AiBotService::class);
 
-        $this->assertFalse($clean['news_filter']);
+        foreach (['grid', 'ai_signal', 'momentum'] as $strategy) {
+            $this->assertSame('off', $bots->sanitizeParams($strategy, ['news_filter' => false])['news_mode'], $strategy);
+            $this->assertSame('confirm_exit', $bots->sanitizeParams($strategy, ['news_filter' => true])['news_mode']);
+            $this->assertSame('confirm_exit', $bots->sanitizeParams($strategy, [])['news_mode'], 'ค่าปริยาย = แนะนำ');
+            $this->assertSame('immediate_exit', $bots->sanitizeParams($strategy, ['news_filter' => false, 'news_mode' => 'immediate_exit'])['news_mode'], 'ค่าใหม่ที่ส่งมาเองชนะเสมอ');
+            $this->assertSame('confirm_exit', $bots->sanitizeParams($strategy, ['news_mode' => 'มั่ว'])['news_mode'], 'ค่าที่ไม่รู้จัก = ปริยาย');
+        }
     }
 
     // ── ตัวช่วย ───────────────────────────────────────────────────────────────

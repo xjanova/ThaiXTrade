@@ -29,7 +29,7 @@ use App\Services\AiBotService;
  *
  * ═══ สิ่งที่ไม่มี (บอกไว้ให้ชัด) ═══
  *   - ด่านข่าว และมุมมอง AI — ไม่มีประวัติย้อนหลังให้เล่นซ้ำ ผลจึงเป็น "กฎล้วน"
- *     ซึ่งตรงกับบอทที่ปิด news_filter และ ai_gate
+ *     ซึ่งตรงกับบอทที่ตั้ง news_mode = off และปิด ai_gate
  *   - ราคาระหว่างแท่ง — stop ทำงานที่ราคาปิดของแท่ง เหมือนบอทจริงที่ดูราคาปิดเช่นกัน
  *
  * Developed by Xman Studio.
@@ -78,8 +78,10 @@ class BacktestEngine
          * ผู้เรียกส่งแท่งรายวันที่ปิดแล้วมาทาง options.macro_daily (ไม่ส่ง = ไม่กรอง เหมือน
          * บอทจริงตอนดึงข้อมูลไม่ได้) · ถามด้วยเวลาปิดของแท่งที่กำลังตัดสิน ไม่ใช่เวลาเปิด
          */
+        // ความไวของตัวกรอง: ตัวเลือก macro_ema ของบอท → options.macro_period → ค่าปริยาย (เหมือน MacroTrendService)
+        $macroPeriod = (int) ($clean['macro_ema'] ?? $options['macro_period'] ?? config('aibot.macro.ema_period', 50));
         $macroSeries = ! empty($options['macro_daily'])
-            ? MacroTrend::series($options['macro_daily'], (int) ($options['macro_period'] ?? config('aibot.macro.ema_period', 50)))
+            ? MacroTrend::series($options['macro_daily'], $macroPeriod)
             : null;
         $macroCursor = 0;
         $stepMs = $minutesPerBar * 60_000;
@@ -118,7 +120,7 @@ class BacktestEngine
             $sizeMultiplier = 1.0;
 
             if ($useRiskGate) {
-                $gate = $this->risk->assess('BACKTEST/USDT', array_slice($slice, -120), $timeframe, false);
+                $gate = $this->risk->assess('BACKTEST/USDT', array_slice($slice, -120), $timeframe, MarketRiskService::NEWS_OFF);
 
                 if ($gate['force_exit'] && $broker->position) {
                     $reason = 'ตลาดเข้าภาวะตื่นตระหนก — เทออกทั้งหมด: '.implode(' · ', array_slice($gate['reasons'], 0, 2));

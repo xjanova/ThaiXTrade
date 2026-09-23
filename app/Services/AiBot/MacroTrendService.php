@@ -26,10 +26,13 @@ class MacroTrendService
     /**
      * @return array{up: bool|null, close: float|null, ema: float|null, above_pct: float|null, symbol: string, period: int}
      */
-    public function current(): array
+    /**
+     * @param  int|null  $period  EMA รายวันกี่วัน — ตัวเลือก macro_ema ของบอท (null = ค่าปริยายใน config)
+     */
+    public function current(?int $period = null): array
     {
         $symbol = (string) config('aibot.macro.symbol', 'BTC/USDT');
-        $period = (int) config('aibot.macro.ema_period', 50);
+        $period = in_array($period, [50, 100, 200], true) ? $period : (int) config('aibot.macro.ema_period', 50);
         $key = "aibot:macro:{$symbol}:{$period}";
 
         $cached = Cache::get($key);

@@ -206,14 +206,18 @@ class BotRunner
          * ส่ง timeframe ไปด้วยเพราะด่านนี้พูดเป็น "ชั่วโมง" แต่คิดจากจำนวนแท่ง —
          * ไม่บอกว่าหนึ่งแท่งกินเวลาเท่าไหร่ บอท 1d จะอ่าน "24 ชั่วโมง" เป็น 24 วัน
          *
-         * news_filter เป็นสวิตช์ที่ผู้ใช้ตั้งได้จริงในฟอร์ม (ไม่ใช่ป้ายลอยๆ) —
-         * ปิดแล้วต้องข้ามด่านข่าวจริง ไม่ใช่เก็บค่าไว้เฉยๆ
+         * news_mode เป็นตัวเลือกที่ผู้ใช้ตั้งได้จริงในฟอร์ม (ไม่ใช่ป้ายลอยๆ) — อ่านจากค่าที่ผ่าน
+         * sanitize แล้ว: บอทเก่าที่ตั้ง news_filter = false ถูกแปลงเป็น off ให้ที่นั่น
+         * (อ่าน params ดิบแล้วจะพลาดทั้งค่าปริยายและการแปลงของรุ่นเดิม)
          */
+        $newsMode = (string) ($this->bots->sanitizeParams($bot->strategy, $bot->params ?? [])['news_mode']
+            ?? MarketRiskService::NEWS_CONFIRM_EXIT);
+
         $risk = $this->risk->assess(
             $bot->pair,
             $candles,
             $bot->timeframe,
-            ($bot->params['news_filter'] ?? true) !== false,
+            $newsMode,
             $livePrice,
         );
 
@@ -339,9 +343,10 @@ class BotRunner
          * ข้อมูลไม่พอ/ดึงไม่ได้ (up = null) = ไม่กรอง ถอยไปกฎเดิม · ผู้ใช้ปิดได้ที่ macro_filter
          */
         $macro = null;
+        $macroEma = (int) ($params['macro_ema'] ?? 50);   // ความไวที่ผู้ใช้เลือก (50/100/200)
 
         if (! $position && ($params['macro_filter'] ?? true)) {
-            $macro = $this->macro->current();
+            $macro = $this->macro->current($macroEma);
 
             if ($macro['up'] === false) {
                 $reason = sprintf(
@@ -361,7 +366,7 @@ class BotRunner
 
         // DCA: "พักสะสมช่วงขาลงใหญ่" ต้องรู้แนวโน้มใหญ่ด้วย — engine เป็นคนรู้ ไม่ใช่กลยุทธ์
         if ($bot->strategy === 'dca' && ($params['pause_in_downtrend'] ?? false)) {
-            $params['_macro_up'] = ($macro ?? $this->macro->current())['up'];
+            $params['_macro_up'] = ($macro ?? $this->macro->current($macroEma))['up'];
         }
 
         /*

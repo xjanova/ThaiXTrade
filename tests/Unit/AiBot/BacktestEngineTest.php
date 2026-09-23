@@ -181,6 +181,25 @@ class BacktestEngineTest extends TestCase
         $this->assertSame($none['summary']['trades'], $off['summary']['trades'], 'ผู้ใช้ปิดตัวกรอง = ไม่กรอง');
     }
 
+    /** ความไวของตัวกรอง (macro_ema) มีผลจริงใน backtest — ขาลงสั้นๆ: EMA 50 เห็น แต่ EMA 200 ยังไม่เห็น */
+    #[Test]
+    public function the_macro_speed_choice_changes_the_backtest(): void
+    {
+        $market = $this->trendRoundTrip();
+        $risk = ['max_position_usd' => 1000, 'stop_loss_pct' => 50, 'take_profit_pct' => 200];
+
+        // ขึ้นยาว 385 วัน แล้วร่วงวันละ 2 ตั้งแต่ 20 วันก่อนช่วงทดสอบ: ใต้ EMA 50 แล้ว (EMA 50 ตามทัน
+        // ขาขึ้นเร็ว) แต่ยังเหนือ EMA 200 ตลอดช่วงทดสอบ (EMA 200 ยังค้างต่ำจากขาขึ้นยาว)
+        $closes = array_merge(array_map(fn ($i) => 100.0 + $i, range(0, 384)), array_map(fn ($i) => 484.0 - $i * 2, range(1, 41)));
+        $daily = array_map(fn ($i) => ['time' => 1_700_000_000_000 - 405 * 86_400_000 + $i * 86_400_000, 'close' => $closes[$i]], array_keys($closes));
+
+        $fast = $this->engine->run('momentum', $market, '1h', ['macro_ema' => '50'], $risk, ['macro_daily' => $daily]);
+        $slow = $this->engine->run('momentum', $market, '1h', ['macro_ema' => '200'], $risk, ['macro_daily' => $daily]);
+
+        $this->assertSame(0, $fast['summary']['trades'], 'EMA 50 เห็นขาลงแล้ว = งดเปิดไม้');
+        $this->assertGreaterThan(0, $slow['summary']['trades'], 'EMA 200 ยังเห็นขาขึ้น = เปิดไม้ได้');
+    }
+
     #[Test]
     public function edge_ถ่วงด้วยเงิน_เท่ากับกำไรก่อนหักต้นทุนของไม้ที่ปิดหารเงินที่ลง(): void
     {

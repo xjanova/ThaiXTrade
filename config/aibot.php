@@ -374,7 +374,7 @@ return [
                  * บอทเก่าที่บันทึก 'both'/'short' ไว้จะถูก sanitizeParams ยกมาเป็น
                  * 'long' ให้เองตอนรัน (select ที่ค่าไม่อยู่ใน options → ใช้ default)
                  */
-                ['key' => 'direction', 'label' => 'ทิศทาง', 'label_en' => 'Direction', 'type' => 'select', 'default' => 'long', 'options' => ['long']],
+                ['key' => 'direction', 'label' => 'ทิศทาง', 'label_en' => 'Direction', 'type' => 'select', 'default' => 'long', 'options' => ['long'], 'option_labels' => ['long' => ['th' => 'ซื้อตอนขึ้นเท่านั้น (spot)', 'en' => 'Long only (spot)']]],
                 /*
                  * backtest 180 วัน (2 ก.ย. 2026): breakout บนแท่ง 4 ชม. edge +315 bps PF 3.5
                  * แต่บนแท่ง 1 ชม. PF 0.64 — ทะลุกรอบบนแท่งสั้นส่วนใหญ่เป็นสัญญาณหลอก
@@ -492,14 +492,19 @@ return [
                  * 201 ติ๊กได้ −5.6% จากค่าธรรมเนียมล้วนโดยไม่ได้เดาทิศผิดสักครั้ง
                  */
                 ['key' => 'confidence_min', 'label' => 'ความมั่นใจขั้นต่ำ (%)', 'label_en' => 'Min confidence (%)', 'type' => 'number', 'default' => 65, 'min' => 55, 'max' => 95, 'step' => 1],
-                ['key' => 'mode', 'label' => 'สไตล์', 'label_en' => 'Style', 'type' => 'select', 'default' => 'balanced', 'options' => ['conservative', 'balanced', 'aggressive']],
-                ['key' => 'news_filter', 'label' => 'หยุดเทรดช่วงข่าวแรง', 'label_en' => 'Pause on high-impact news', 'type' => 'bool', 'default' => true],
+                ['key' => 'mode', 'label' => 'สไตล์', 'label_en' => 'Style', 'type' => 'select', 'default' => 'balanced', 'options' => ['conservative', 'balanced', 'aggressive'],
+                    'option_labels' => [
+                        'conservative' => ['th' => 'ระมัดระวัง (ไม้เล็ก)', 'en' => 'Conservative (smaller size)'],
+                        'balanced' => ['th' => 'สมดุล', 'en' => 'Balanced'],
+                        'aggressive' => ['th' => 'ดุดัน (ไม้ใหญ่)', 'en' => 'Aggressive (bigger size)'],
+                    ]],
+                // ด่านข่าวย้ายไปเป็น news_mode ในรายการร่วมแล้ว (ใช้ได้ทุกกลยุทธ์ เลือกได้ 4 ระดับ)
             ],
             'default_timeframe' => '1h',
             'templates' => [
-                ['code' => 'conservative', 'name' => 'High conviction', 'name_th' => 'มั่นใจสูงเท่านั้น', 'tagline_th' => 'ความมั่นใจ ≥ 75% บนแท่ง 4 ชม. เข้าน้อยครั้ง ไม้เล็ก — 2 ปี 5 เหรียญหลัก (เปิดตัวกรองตลาดใหญ่) ต่อทุน +15.8% · ปีขาขึ้น +13.7% · ปีขาลง +2.2%', 'tagline_en' => 'Confidence ≥ 75% on 4h, few entries, small size — 2y on BTC/ETH/SOL/BNB/XRP with the market-trend filter: +15.8% on capital (up-year +13.7%, down-year +2.2%)', 'timeframe' => '4h', 'params' => ['confidence_min' => 75, 'mode' => 'conservative', 'news_filter' => true], 'risk' => ['max_position_usd' => 100, 'stop_loss_pct' => 5, 'take_profit_pct' => 12, 'max_daily_loss_usd' => 50]],
-                ['code' => 'balanced', 'name' => 'Balanced', 'name_th' => 'สมดุล', 'tagline_th' => 'ความมั่นใจ ≥ 65% บนแท่ง 1 ชม. — 2 ปี 5 เหรียญหลัก (เปิดตัวกรองตลาดใหญ่) ต่อทุน +32.9% · ปีขาขึ้น +22.8% · ปีขาลง +10.2%', 'tagline_en' => 'Confidence ≥ 65% on 1h — 2y on BTC/ETH/SOL/BNB/XRP with the market-trend filter: +32.9% on capital (up-year +22.8%, down-year +10.2%)', 'timeframe' => '1h', 'params' => ['confidence_min' => 65, 'mode' => 'balanced', 'news_filter' => true], 'risk' => ['max_position_usd' => 100, 'stop_loss_pct' => 5, 'take_profit_pct' => 10, 'max_daily_loss_usd' => 50]],
-                ['code' => 'aggressive', 'name' => 'Active', 'name_th' => 'ลุย', 'tagline_th' => 'ความมั่นใจ ≥ 58% บนแท่ง 1 ชม. ไม้ใหญ่ขึ้น ผิดบ่อยขึ้น — ⚠️ 2 ปี 5 เหรียญหลัก (เปิดตัวกรองตลาดใหญ่) ขาดทุน −6.4% (ปีขาขึ้น +5.9% · ปีขาลง −12.4%) — ไม่ชนะต้นทุนเข้า-ออก', 'tagline_en' => 'Confidence ≥ 58% on 1h, bigger size, more mistakes — ⚠️ 2y on BTC/ETH/SOL/BNB/XRP with the market-trend filter: −6.4% on capital (up-year +5.9%, down-year −12.4%) — does not beat trading costs', 'timeframe' => '1h', 'params' => ['confidence_min' => 58, 'mode' => 'aggressive', 'news_filter' => true], 'risk' => ['max_position_usd' => 100, 'stop_loss_pct' => 6, 'take_profit_pct' => 15, 'max_daily_loss_usd' => 80]],
+                ['code' => 'conservative', 'name' => 'High conviction', 'name_th' => 'มั่นใจสูงเท่านั้น', 'tagline_th' => 'ความมั่นใจ ≥ 75% บนแท่ง 4 ชม. เข้าน้อยครั้ง ไม้เล็ก — 2 ปี 5 เหรียญหลัก (เปิดตัวกรองตลาดใหญ่) ต่อทุน +15.8% · ปีขาขึ้น +13.7% · ปีขาลง +2.2%', 'tagline_en' => 'Confidence ≥ 75% on 4h, few entries, small size — 2y on BTC/ETH/SOL/BNB/XRP with the market-trend filter: +15.8% on capital (up-year +13.7%, down-year +2.2%)', 'timeframe' => '4h', 'params' => ['confidence_min' => 75, 'mode' => 'conservative'], 'risk' => ['max_position_usd' => 100, 'stop_loss_pct' => 5, 'take_profit_pct' => 12, 'max_daily_loss_usd' => 50]],
+                ['code' => 'balanced', 'name' => 'Balanced', 'name_th' => 'สมดุล', 'tagline_th' => 'ความมั่นใจ ≥ 65% บนแท่ง 1 ชม. — 2 ปี 5 เหรียญหลัก (เปิดตัวกรองตลาดใหญ่) ต่อทุน +32.9% · ปีขาขึ้น +22.8% · ปีขาลง +10.2%', 'tagline_en' => 'Confidence ≥ 65% on 1h — 2y on BTC/ETH/SOL/BNB/XRP with the market-trend filter: +32.9% on capital (up-year +22.8%, down-year +10.2%)', 'timeframe' => '1h', 'params' => ['confidence_min' => 65, 'mode' => 'balanced'], 'risk' => ['max_position_usd' => 100, 'stop_loss_pct' => 5, 'take_profit_pct' => 10, 'max_daily_loss_usd' => 50]],
+                ['code' => 'aggressive', 'name' => 'Active', 'name_th' => 'ลุย', 'tagline_th' => 'ความมั่นใจ ≥ 58% บนแท่ง 1 ชม. ไม้ใหญ่ขึ้น ผิดบ่อยขึ้น — ⚠️ 2 ปี 5 เหรียญหลัก (เปิดตัวกรองตลาดใหญ่) ขาดทุน −6.4% (ปีขาขึ้น +5.9% · ปีขาลง −12.4%) — ไม่ชนะต้นทุนเข้า-ออก', 'tagline_en' => 'Confidence ≥ 58% on 1h, bigger size, more mistakes — ⚠️ 2y on BTC/ETH/SOL/BNB/XRP with the market-trend filter: −6.4% on capital (up-year +5.9%, down-year −12.4%) — does not beat trading costs', 'timeframe' => '1h', 'params' => ['confidence_min' => 58, 'mode' => 'aggressive'], 'risk' => ['max_position_usd' => 100, 'stop_loss_pct' => 6, 'take_profit_pct' => 15, 'max_daily_loss_usd' => 80]],
             ],
         ],
     ],
@@ -518,9 +523,31 @@ return [
     | ⚠️ `news_filter` เคยประกาศไว้ที่ ai_signal ตัวเดียว ขณะที่ BotRunner อ่านมัน
     |    กับทุกกลยุทธ์ — บอทกลยุทธ์อื่นจึงตกไปใช้ค่าปริยาย `true` เสมอ ปิดไม่ได้เลย
     |    แม้จะส่งค่ามา ย้ายมาตรงนี้แล้วทุกกลยุทธ์ตั้งได้จริงตามที่ป้ายบอก
+    |
+    | ทุกช่องที่ประกาศที่นี่ต้อง "เปลี่ยนแล้วพฤติกรรมเปลี่ยนจริง" — มีเทสต์ไล่ทุกช่องใน
+    | SettingsEffectTest (เจ้าของสั่ง 2026-09-23: ตั้งค่ายืดหยุ่น + ค่าปริยายดี + ใช้งานได้จริง)
+    | `option_labels` = ป้ายภาษาคนของแต่ละตัวเลือก (หน้าเว็บ/แอปแสดงแทนค่าดิบ)
     */
     'common_params' => [
-        ['key' => 'news_filter', 'label' => 'หยุดเทรดช่วงข่าวแรง', 'label_en' => 'Pause on high-impact news', 'type' => 'bool', 'default' => true],
+        /*
+         * ข่าวมีผลต่อการซื้อขายแค่ไหน — เลือกได้รายบอท (เดิมเป็นสวิตช์เปิด/ปิด news_filter)
+         *
+         *   off             ไม่ใช้ข่าวเลย
+         *   block_entries   ข่าวแรงห้ามเปิดไม้ใหม่ แต่ไม่สั่งขายของที่ถืออยู่
+         *   confirm_exit    ห้ามเปิดไม้ใหม่ + ขายเมื่อราคายืนยันข่าว (ปริยาย — ออดิท R3: ข่าวคำเดียว
+         *                   สั่งเทออกทั้งฝูง 3 ครั้ง ราคานิ่งทุกครั้ง กินกำไรไป 41%)
+         *   immediate_exit  ข่าวแรงขายทันทีไม่รอราคา (พฤติกรรมเดิมก่อน 2026-09-23)
+         *
+         * บอทเก่าที่ตั้ง news_filter = false ไว้ถูกแปลงเป็น off อัตโนมัติ (AiBotService::sanitizeParams)
+         */
+        ['key' => 'news_mode', 'label' => 'ข่าวมีผลต่อการซื้อขายแค่ไหน', 'label_en' => 'How news affects trading', 'type' => 'select',
+            'default' => 'confirm_exit', 'options' => ['off', 'block_entries', 'confirm_exit', 'immediate_exit'],
+            'option_labels' => [
+                'off' => ['th' => 'ไม่ใช้ข่าว', 'en' => 'Ignore news'],
+                'block_entries' => ['th' => 'ข่าวแรง = งดเปิดไม้ใหม่ (ไม่ขายของที่ถือ)', 'en' => 'Bad news pauses new entries only'],
+                'confirm_exit' => ['th' => 'งดเปิดไม้ + ขายเมื่อราคายืนยัน (แนะนำ)', 'en' => 'Pause entries + sell once price confirms (recommended)'],
+                'immediate_exit' => ['th' => 'ข่าวแรง = ขายทันที ไม่รอราคา', 'en' => 'Sell immediately on bad news'],
+            ]],
         ['key' => 'auto_pair', 'label' => 'ให้ AI เลือกเหรียญให้', 'label_en' => 'Let AI pick the coin', 'type' => 'bool', 'default' => false],
         /*
          * ให้มุมมองตลาดของ AI มีผลกับบอทตัวนี้ไหม
@@ -531,7 +558,7 @@ return [
          * ถึงจะพูดได้ว่า AI ช่วยหรือทำร้าย
          *
          * ปิดแล้ว = กฎล้วน ไม่ต่างจากตอนที่ยังไม่มี AI ในระบบ (ด่านความเสี่ยงแบบกฎ
-         * ยังทำงานตามปกติ — สวิตช์นี้ไม่ได้ปิดด่านข่าว นั่นคือ news_filter)
+         * ยังทำงานตามปกติ — สวิตช์นี้ไม่ได้ปิดด่านข่าว นั่นคือ news_mode)
          */
         ['key' => 'ai_gate', 'label' => 'ให้ AI ร่วมตัดสินใจ', 'label_en' => 'Let the AI market view weigh in', 'type' => 'bool', 'default' => true],
         /*
@@ -543,6 +570,18 @@ return [
          * ตั้งใจสะสมผ่านขาลงเอง ไม้ที่ถืออยู่ไม่ถูกแตะไม่ว่าจะเปิดหรือปิด
          */
         ['key' => 'macro_filter', 'label' => 'เปิดไม้เฉพาะตอนตลาดใหญ่เป็นขาขึ้น', 'label_en' => 'Only open trades while the market trend is up', 'type' => 'bool', 'default' => true],
+        /*
+         * ความไวของตัวกรองตลาดใหญ่ — EMA รายวันของ BTC กี่วัน
+         * backtest 2 ปี: 50/100/200 ดีกว่าไม่กรองทุกค่า · 50 ดีสุดโดยรวม (ออกไวตอนตลาดพลิก)
+         * 200 = ช้า เหมาะกับคนที่อยากอยู่ในตลาดนานกว่าแม้ย่อลึก
+         */
+        ['key' => 'macro_ema', 'label' => 'ความไวของตัวกรองตลาดใหญ่', 'label_en' => 'Market-trend filter speed', 'type' => 'select',
+            'default' => '50', 'options' => ['50', '100', '200'], 'group' => 'advanced',
+            'option_labels' => [
+                '50' => ['th' => 'ไว — EMA 50 วัน (แนะนำ)', 'en' => 'Fast — 50-day EMA (recommended)'],
+                '100' => ['th' => 'กลาง — EMA 100 วัน', 'en' => 'Medium — 100-day EMA'],
+                '200' => ['th' => 'ช้า — EMA 200 วัน', 'en' => 'Slow — 200-day EMA'],
+            ]],
     ],
 
     /*

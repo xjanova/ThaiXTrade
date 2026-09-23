@@ -167,6 +167,16 @@ const quotaFull = computed(() => {
     return !!q && !editingId.value && q.used_bots >= q.max_bots;
 });
 
+/**
+ * ป้ายภาษาคนของตัวเลือก (option_labels จาก config) — ไม่มีป้ายก็แสดงค่าดิบเหมือนเดิม
+ * เช่น news_mode: "confirm_exit" → "งดเปิดไม้ + ขายเมื่อราคายืนยัน (แนะนำ)"
+ */
+function optionLabel(spec, opt) {
+    const labels = spec.option_labels?.[opt];
+
+    return (locale.value === 'th' ? labels?.th : labels?.en) || labels?.th || opt;
+}
+
 /** ป้ายพารามิเตอร์ของกลยุทธ์ — config ส่ง label (ไทย) กับ label_en มาให้ทั้งคู่ */
 function paramLabel(spec) {
     return (locale.value === 'th' ? spec.label : spec.label_en || spec.label) || spec.key;
@@ -1139,7 +1149,7 @@ onUnmounted(() => bot.stopBrowserLoop());
                                 class="trading-input text-sm font-mono"
                             >
                             <select v-else-if="spec.type === 'select'" v-model="form.params[spec.key]" class="trading-input text-sm">
-                                <option v-for="opt in spec.options" :key="opt" :value="opt">{{ opt }}</option>
+                                <option v-for="opt in spec.options" :key="opt" :value="opt">{{ optionLabel(spec, opt) }}</option>
                             </select>
                             <span v-else class="flex items-center gap-2 h-[46px]">
                                 <input
@@ -1177,7 +1187,7 @@ onUnmounted(() => bot.stopBrowserLoop());
                                         class="trading-input text-sm font-mono"
                                     >
                                     <select v-else-if="spec.type === 'select'" v-model="form.params[spec.key]" class="trading-input text-sm">
-                                        <option v-for="opt in spec.options" :key="opt" :value="opt">{{ opt }}</option>
+                                        <option v-for="opt in spec.options" :key="opt" :value="opt">{{ optionLabel(spec, opt) }}</option>
                                     </select>
                                     <span v-else class="flex items-center gap-2 h-[46px]">
                                         <input

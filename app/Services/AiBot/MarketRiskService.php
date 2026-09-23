@@ -25,6 +25,15 @@ class MarketRiskService
     /** หนึ่งแท่งกินเวลากี่นาที — ใช้แปลงเกณฑ์ที่ตั้งเป็นชั่วโมงให้เป็นจำนวนแท่ง */
     private const MINUTES_PER_BAR = ['1m' => 1, '5m' => 5, '15m' => 15, '1h' => 60, '4h' => 240, '1d' => 1440];
 
+    /** ข่าวมีผลแค่ไหน — ตัวเลือก news_mode ของบอท (ดู config/aibot.php common_params) */
+    public const NEWS_OFF = 'off';
+
+    public const NEWS_BLOCK_ENTRIES = 'block_entries';
+
+    public const NEWS_CONFIRM_EXIT = 'confirm_exit';
+
+    public const NEWS_IMMEDIATE_EXIT = 'immediate_exit';
+
     public function __construct(
         private readonly MarketDataService $market,
         private readonly NewsFeedService $news,
@@ -33,6 +42,8 @@ class MarketRiskService
     /**
      * ประเมินความเสี่ยงของคู่เทรดหนึ่ง.
      *
+     * @param  string|bool  $newsMode  โหมดข่าวของบอท (true/false รุ่นเก่า = confirm_exit/off)
+     * @param  float|null  $livePrice  ราคาสดของแท่งที่กำลังวิ่ง — ใช้ยืนยันข่าวร้ายเท่านั้น
      * @return array{
      *     level: string, score: float, size_multiplier: float, force_exit: bool,
      *     market: array, news: array, reasons: list<string>
@@ -42,9 +53,14 @@ class MarketRiskService
         string $pair,
         ?array $candles = null,
         string $timeframe = '1h',
-        bool $includeNews = true,
+        string|bool $newsMode = self::NEWS_CONFIRM_EXIT,
         ?float $livePrice = null,
     ): array {
+        if (is_bool($newsMode)) {
+            $newsMode = $newsMode ? self::NEWS_CONFIRM_EXIT : self::NEWS_OFF;
+        }
+
+        $includeNews = $newsMode !== self::NEWS_OFF;
         $marketRisk = $this->assessMarket($pair, $candles, $timeframe);
 
         /*
@@ -57,7 +73,7 @@ class MarketRiskService
             : null;
 
         /*
-         * ผู้ใช้ปิดด่านข่าวได้จริง (ช่อง "หยุดเทรดช่วงข่าวแรง" ในฟอร์ม)
+         * ผู้ใช้ปิดด่านข่าวได้จริง (news_mode = off ในฟอร์ม)
          * ปิดแล้วต้องได้คะแนนศูนย์จริงๆ ไม่ใช่เก็บค่าไว้แล้วยังใช้ตัดสินอยู่ดี
          */
         $newsRisk = $includeNews
@@ -87,19 +103,26 @@ class MarketRiskService
          *
          * ตลาดพังจริงราคาตอบรับภายในไม่กี่นาทีเสมอ (หลักเดิมของไฟล์นี้: "ตลาดพังก่อนข่าวออก")
          * ข่าวแรงที่ราคายังนิ่งจึงควรทำให้ "หยุดซื้อ" (ถูก ไม่เสียอะไร) ไม่ใช่ "ขายทิ้ง"
-         * (จ่ายต้นทุนไป-กลับ 36 bps + ตกรถ) — ปิดสวิตช์ได้ที่ AIBOT_NEWS_EXIT_REQUIRES_PRICE
+         * (จ่ายต้นทุนไป-กลับ 36 bps + ตกรถ)
+         *
+         * ผู้ใช้เลือกเองได้รายบอท (news_mode):
+         *   confirm_exit   (ปริยาย) ขายเมื่อราคายืนยัน
+         *   block_entries  ข่าวไม่มีสิทธิ์สั่งขายเลย — แค่งดเปิดไม้ใหม่
+         *   immediate_exit ขายทันทีเมื่อข่าวถึงขั้น panic (พฤติกรรมเดิม)
          */
-        if ($forceExit
-            && $newsRisk['score'] > $marketRisk['score']
-            && (bool) config('aibot_risk.news_exit.require_price_confirmation', true)
-            && ! $this->priceConfirmsNews($marketRisk)) {
+        $newsDriven = $forceExit && $newsRisk['score'] > $marketRisk['score'];
+
+        if ($newsDriven && $newsMode !== self::NEWS_IMMEDIATE_EXIT
+            && ($newsMode === self::NEWS_BLOCK_ENTRIES || ! $this->priceConfirmsNews($marketRisk))) {
             $newsUnconfirmed = true;
             $forceExit = false;
             $sizeMultiplier = 0.0;
             $level = 'elevated';
             // ต่ำกว่าเกณฑ์ panic เสมอ — ระดับกับคะแนนต้องไม่ขัดกันเวลาหน้าเว็บวาดแถบ
             $score = min($score, (float) config('aibot_risk.levels.panic.min_score', 0.8) - 0.01);
-            $reasons[] = 'ข่าวแรงแต่ราคายังไม่ตอบรับ — งดเข้าไม้ใหม่ แต่ไม่เทของที่ถืออยู่';
+            $reasons[] = $newsMode === self::NEWS_BLOCK_ENTRIES
+                ? 'ข่าวแรง — งดเปิดไม้ใหม่ (ตั้งค่าไว้ไม่ให้ข่าวสั่งขาย)'
+                : 'ข่าวแรงแต่ราคายังไม่ตอบรับ — งดเข้าไม้ใหม่ แต่ไม่เทของที่ถืออยู่';
         }
 
         return [
@@ -107,8 +130,9 @@ class MarketRiskService
             'score' => round($score, 3),
             'size_multiplier' => $sizeMultiplier,
             'force_exit' => $forceExit,
-            // ข่าวถึงขั้นเทออกได้ แต่ราคายังไม่ยืนยัน — หน้าเว็บ/บันทึกต้องแยกกรณีนี้ออกได้
+            // ข่าวถึงขั้นเทออกได้ แต่ราคายังไม่ยืนยัน (หรือตั้งไม่ให้ข่าวสั่งขาย) — หน้าเว็บ/บันทึกแยกกรณีนี้ได้
             'news_unconfirmed' => $newsUnconfirmed,
+            'news_mode' => $newsMode,
             /*
              * ประเมินจากราคาได้จริงไหม — ยกขึ้นมาระดับบนสุดให้ผู้เรียกเห็นง่าย
              *
