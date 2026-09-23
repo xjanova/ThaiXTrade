@@ -27,8 +27,7 @@
         "socialiteproviders/line": "^4.1",
         "stripe/stripe-php": "^20.0",
         "kornrunner/keccak": "^1.1",
-        "simplito/elliptic-php": "^1.0",
-        "web3p/web3.php": "^0.3.2"
+        "simplito/elliptic-php": "^1.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
