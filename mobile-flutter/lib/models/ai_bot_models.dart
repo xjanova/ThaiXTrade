@@ -198,6 +198,31 @@ class StrategyParam {
   bool get isSelect => type == 'select';
   bool get isAdvanced => group == 'advanced';
 
+  /// ค่าเดิมยังใช้กับช่องนี้ได้ไหม — คืนค่าที่ใช้ได้ หรือ null ถ้าต้องกลับไปใช้ค่าปริยาย
+  ///
+  /// ใช้ตอนเปลี่ยนกลยุทธ์: ช่องชื่อเดียวกันของกลยุทธ์ใหม่อาจมีตัวเลือก/ช่วงค่าต่างจากเดิม
+  /// ค่าที่หลุดกรอบต้องกลับไปใช้ค่าปริยาย ไม่ใช่ติดมาแล้วโดนเซิร์ฟเวอร์ดัดเงียบๆ ตอนบันทึก
+  dynamic carryOver(dynamic value) {
+    if (value == null) return null;
+    if (isSelect) {
+      final s = value.toString();
+      return options.contains(s) ? s : null;
+    }
+    if (isBool) {
+      if (value is bool) return value;
+      if (value is num) return value != 0; // บอทเก่าเก็บ 1/0 (ดู _flag ในหน้าฟอร์ม)
+      return null;
+    }
+    if (isNumber) {
+      final n = value is num ? value.toDouble() : double.tryParse(value.toString());
+      if (n == null) return null;
+      if (min != null && n < min!) return null;
+      if (max != null && n > max!) return null;
+      return value is num ? value : n;
+    }
+    return value;
+  }
+
   String labelFor(bool isThai) => isThai ? label : labelEn;
 
   /// หน่วยที่แสดงท้ายช่องตัวเลข — เดาจากชื่อคีย์ตามแบบแผนของแคตตาล็อก
@@ -2286,14 +2311,25 @@ class AiBotDraft {
     template: clearTemplate ? null : (template ?? this.template),
   );
 
-  /// เปลี่ยนกลยุทธ์ = พารามิเตอร์ชุดเดิมใช้ไม่ได้แล้ว — เริ่มจากเทมเพลต balanced
+  /// เปลี่ยนกลยุทธ์ — ยกค่าที่กลยุทธ์ใหม่ยังใช้ได้ข้ามมา แล้วเริ่มจากเทมเพลต balanced
   /// ของกลยุทธ์ใหม่ (ถ้ามี) และดันกรอบเวลาให้อยู่ในชุดที่กลยุทธ์นั้นรองรับ
   /// (ไม่งั้นผู้ใช้เลือก dca + 1m แล้วโดน 422 ตอนกดบันทึก)
+  ///
+  /// ⚠️ เดิมรีเซ็ตทุกช่องเป็นค่าปริยายก่อนเรียก [applyTemplate] — ตัวที่ "เก็บสวิตช์ร่วม
+  ///    ที่ผู้ใช้ตั้งไว้" ใน [applyTemplate] จึงเห็นแต่ค่าที่เพิ่งถูกรีเซ็ต ผู้ใช้ที่ปิดข่าวไว้
+  ///    สลับกลยุทธ์แล้วได้ "ขายเมื่อราคายืนยัน" คืนมาเงียบๆ ขณะที่หน้าเว็บเก็บไว้
+  ///    ตอนนี้ทำแบบเดียวกับ `syncParamDefaults()` ของหน้าเว็บ: ช่องที่กลยุทธ์ใหม่ประกาศ
+  ///    (ช่องร่วมทุกช่อง + ช่องของกลยุทธ์ที่ชื่อซ้ำ) ใช้ค่าเดิมถ้ายังอยู่ในกรอบของช่องใหม่
+  ///    ช่องที่กลยุทธ์ใหม่ไม่มี = ทิ้ง · ช่องที่ขาด = ค่าปริยายของกลยุทธ์ใหม่
   AiBotDraft withStrategy(AiBotStrategy next, AiBotCatalog catalog) {
+    final carried = <String, dynamic>{
+      for (final spec in next.formSpecs(catalog.commonParams))
+        spec.key: spec.carryOver(params[spec.key]) ?? spec.defaultValue,
+    };
     final reset = copyWith(
       strategy: next.code,
       timeframe: next.preferredTimeframe(catalog.timeframes),
-      params: next.defaultParams(catalog.commonParams),
+      params: carried,
       clearTemplate: true,
     );
     final balanced = next.template('balanced');
