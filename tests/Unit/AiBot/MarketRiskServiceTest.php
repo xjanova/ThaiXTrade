@@ -319,11 +319,18 @@ class MarketRiskServiceTest extends TestCase
         $this->assertLessThan(1.0, $result['size_multiplier'], 'ลดขนาดไม้ได้ — นั่นคือ "ระวัง"');
     }
 
-    /**
-     * ข่าวไม่แท็กเหรียญแต่เป็นเรื่องระดับตลาด (exchange ล่ม) ยังต้องสั่งเทออกได้.
-     */
-    #[Test]
-    public function untagged_news_about_the_whole_market_still_forces_an_exit(): void
+    /** ราคานิ่งแล้วแท่งปิดล่าสุดร่วง 2% — ยังไม่ถึงเกณฑ์ caution ของด่านราคา (−3%) */
+    private function candlesWithFreshDrop(float $dropPct = 2.0): array
+    {
+        $candles = $this->calmCandles();
+        $last = count($candles) - 1;
+        $candles[$last]['close'] = $candles[$last - 1]['close'] * (1 - $dropPct / 100);
+        $candles[$last]['low'] = $candles[$last]['close'] - 0.3;
+
+        return $candles;
+    }
+
+    private function exchangeCollapseNews(): void
     {
         $this->news([
             'title' => 'Major exchange halts withdrawals after hack',
@@ -331,11 +338,83 @@ class MarketRiskServiceTest extends TestCase
             'panic_score' => 1.0,
             'matched_terms' => ['hack', 'halts withdrawals'],
         ]);
+    }
+
+    /**
+     * ⭐ ข่าวระดับตลาดที่ราคายังไม่ตอบรับ = งดเข้าไม้ใหม่ แต่ไม่สั่งเทออก.
+     *
+     * ออดิท R3 (2 → 23 ก.ย. 2026): ข่าวคำเดียวสั่งเทออกทั้งฝูง 3 ครั้ง ราคานิ่งทุกครั้ง
+     * หลังเทออก BTC ขึ้นต่อ +801/+129 bps — ด่านข่าวกินกำไรช่วงนั้นไป ~41%
+     */
+    #[Test]
+    public function panic_grade_news_without_a_price_reaction_blocks_entries_but_does_not_force_an_exit(): void
+    {
+        $this->exchangeCollapseNews();
+
+        $result = $this->risk->assess('BTC/USDT', $this->calmCandles());
+
+        $this->assertFalse($result['force_exit'], 'ข่าวอย่างเดียวห้ามสั่งเทออก');
+        $this->assertSame(0.0, $result['size_multiplier'], 'แต่ต้องงดเข้าไม้ใหม่');
+        $this->assertTrue($result['news_unconfirmed']);
+        $this->assertSame('elevated', $result['level']);
+        $this->assertLessThan(0.8, $result['score'], 'ระดับกับคะแนนต้องไม่ขัดกัน');
+        $this->assertStringContainsString('ราคายังไม่ตอบรับ', implode(' ', $result['reasons']));
+    }
+
+    /**
+     * ข่าวระดับตลาด + ราคาเริ่มร่วงจริง = เทออกได้ (ตลาดยืนยันแล้ว).
+     */
+    #[Test]
+    public function panic_grade_news_confirmed_by_a_fresh_price_drop_forces_an_exit(): void
+    {
+        $this->exchangeCollapseNews();
+
+        $result = $this->risk->assess('BTC/USDT', $this->candlesWithFreshDrop(2.0));
+
+        $this->assertSame(0.0, $result['market']['score'], 'ด่านราคาอย่างเดียวยังไม่ถึงเกณฑ์');
+        $this->assertSame('panic', $result['level']);
+        $this->assertTrue($result['force_exit']);
+        $this->assertFalse($result['news_unconfirmed']);
+    }
+
+    /** ร่วงเล็กน้อยระดับปกติของตลาด ยังไม่นับเป็นการยืนยัน */
+    #[Test]
+    public function a_normal_wiggle_does_not_confirm_panic_news(): void
+    {
+        $this->exchangeCollapseNews();
+
+        $result = $this->risk->assess('BTC/USDT', $this->candlesWithFreshDrop(0.5));
+
+        $this->assertFalse($result['force_exit']);
+        $this->assertTrue($result['news_unconfirmed']);
+    }
+
+    /** ปิดสวิตช์ = กลับไปพฤติกรรมเดิม (ข่าวอย่างเดียวสั่งเทออกได้) — เจ้าของย้อนได้ทันที */
+    #[Test]
+    public function the_price_confirmation_rule_can_be_switched_off(): void
+    {
+        config(['aibot_risk.news_exit.require_price_confirmation' => false]);
+        $this->exchangeCollapseNews();
 
         $result = $this->risk->assess('BTC/USDT', $this->calmCandles());
 
         $this->assertSame('panic', $result['level']);
         $this->assertTrue($result['force_exit']);
+    }
+
+    /** ตลาดพังเองโดยไม่มีข่าว ยังเทออกเหมือนเดิม — กติกาใหม่แตะเฉพาะฝั่งข่าว */
+    #[Test]
+    public function a_price_crash_forces_an_exit_with_or_without_news(): void
+    {
+        $candles = $this->calmCandles();
+        $candles[count($candles) - 1]['close'] = 90.0;
+
+        $this->assertTrue($this->risk->assess('BTC/USDT', $candles)['force_exit']);
+
+        Cache::flush();
+        $this->exchangeCollapseNews();
+
+        $this->assertTrue($this->risk->assess('BTC/USDT', $candles)['force_exit']);
     }
 
     /**

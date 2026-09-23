@@ -94,6 +94,49 @@ class NewsFeedServiceTest extends TestCase
     }
 
     /**
+     * ⭐ ข่าวหลังเหตุการณ์ (กู้คืน / ชดเชย / จับคนร้าย / คดีของปีเก่า) ลดเหลือแค่ "ระวัง".
+     *
+     * พาดหัวจริงจากออดิท R3 (2 → 23 ก.ย. 2026) — สองอันแรกสั่งเทออกบอททั้งฝูงไปแล้วจริงๆ
+     * (คะแนน 1.00) หลังเทออก BTC ขึ้นต่อ +129 และ +801 bps
+     */
+    #[Test]
+    #[DataProvider('aftermathHeadlines')]
+    public function aftermath_stories_are_downgraded_to_caution(string $headline): void
+    {
+        $result = $this->service->score($headline);
+
+        $this->assertGreaterThan(0.0, $result['panic'], 'ยังเป็นข่าวที่ควรระวัง ไม่ใช่ศูนย์');
+        $this->assertLessThanOrEqual(0.5, $result['panic'], "ข่าวหลังเหตุการณ์ต้องไม่ถึงขั้นเทออก: {$headline}");
+        $this->assertNotEmpty(
+            array_filter($result['terms'], fn (string $t) => str_starts_with($t, '~')),
+            'ต้องย้อนดูได้ว่าคะแนนถูกลดเพราะคำไหน',
+        );
+    }
+
+    /** @return array<string, array{string}> */
+    public static function aftermathHeadlines(): array
+    {
+        return [
+            'กู้คืน — เทออกจริง 22 ก.ย.' => ['Whitehats move 52 bitcoin from the Coldcard hack to a recovery trust'],
+            'คดีของปี 2020 — เทออกจริง 17 ก.ย.' => ['Celsius sues BitMEX for $495 million over 2020 crash liquidations'],
+            'ได้เงินคืน + ค่าหัว' => ['Symbiosis says recovered 15 BTC from bridge hack, offers 20% bounty'],
+            'หลายเดือนหลังเหตุ' => ['Five Months After the Kelp Hack, Aave Is Still Down $8 Billion'],
+            'ชดเชยผู้เสียหาย' => ['Thorchain Opens $10M Compensation Portal After Multichain Exploit Drains Four Networks'],
+            'คนร้ายรับสารภาพ' => ['Singaporean 22-year old pleads guilty to being the ringleader in $245 million crypto fraud case'],
+        ];
+    }
+
+    /** เหตุร้ายที่ "กำลังเกิด" ต้องได้น้ำหนักเต็มเหมือนเดิม — ปีปัจจุบันไม่นับเป็นข่าวเก่า */
+    #[Test]
+    public function a_live_incident_keeps_its_full_weight(): void
+    {
+        $this->assertSame(1.0, $this->service->score('Major exchange hack drains user funds')['panic']);
+
+        $year = now()->year;
+        $this->assertSame(1.0, $this->service->score("Biggest exchange hack of {$year} drains user funds")['panic']);
+    }
+
+    /**
      * ข่าวดีต้องได้ sentiment บวก ไม่ใช่แค่ panic เป็นศูนย์.
      */
     #[Test]

@@ -275,6 +275,21 @@ class NewsFeedService
             $panic = min(1.0, $panic + (count($terms) - 1) * 0.08);
         }
 
+        /*
+         * ข่าว "หลังเหตุการณ์" (กู้เงินคืน ชดเชย จับคนร้าย X เดือนหลังเหตุ ปีเก่า)
+         * — คำร้ายยังอยู่ในพาดหัวแต่เงินไม่ได้หายเพิ่มในวันนี้ ลดคะแนนลงเหลือแค่ "ระวัง"
+         *
+         * ⚠️ ออดิท R3: "Whitehats move 52 bitcoin from the Coldcard hack to a recovery
+         *    trust" ได้ 1.00 และสั่งเทออกบอททั้งฝูง ทั้งที่เป็นข่าวดี (ดู config
+         *    aibot_risk.aftermath_terms) — คูณที่นี่เพราะเป็นคุณสมบัติของ "ข่าว"
+         *    ไม่ใช่ของคู่เทรด ด่านความเสี่ยงทุกคู่จึงได้ค่าเดียวกัน
+         */
+        $aftermath = $panic > 0 ? $this->aftermathTerms($haystack) : [];
+
+        if ($aftermath !== []) {
+            $panic *= (float) config('aibot_risk.aftermath_multiplier', 0.5);
+        }
+
         $positive = 0.0;
         foreach (config('aibot_risk.positive_terms', []) as $term => $weight) {
             if ($this->mentions($haystack, $term)) {
@@ -286,9 +301,39 @@ class NewsFeedService
             'panic' => round($panic, 3),
             'sentiment' => round($positive - $panic, 3),
             'symbols' => $this->detectSymbols($title),
-            'terms' => $terms,
+            // คำที่ทำให้ลดคะแนนติด "~" นำหน้า — ย้อนดูได้ว่าทำไมข่าวคำแรงถึงได้คะแนนต่ำ
+            'terms' => array_merge($terms, array_map(fn (string $t) => '~'.$t, $aftermath)),
             'scope' => $this->scopeOf($title),
         ];
+    }
+
+    /**
+     * คำที่บอกว่าพาดหัวเล่าเหตุการณ์ที่จบไปแล้ว.
+     *
+     * รวม "ปีที่ผ่านมาแล้ว" ในพาดหัว — "over 2020 crash liquidations" คือคดีของ
+     * เหตุการณ์ 6 ปีก่อน ไม่ใช่ตลาดพังวันนี้ (ปีปัจจุบันไม่นับ: "2026 high")
+     *
+     * @return list<string>
+     */
+    private function aftermathTerms(string $haystack): array
+    {
+        $found = [];
+
+        foreach ((array) config('aibot_risk.aftermath_terms', []) as $term) {
+            if ($this->mentions($haystack, (string) $term)) {
+                $found[] = (string) $term;
+            }
+        }
+
+        if (preg_match_all('/\b(20[0-9]{2})\b/', $haystack, $years)) {
+            foreach (array_unique($years[1]) as $year) {
+                if ((int) $year < (int) now()->year) {
+                    $found[] = $year;
+                }
+            }
+        }
+
+        return $found;
     }
 
     /**

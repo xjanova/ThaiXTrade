@@ -8,6 +8,7 @@ use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
 use App\Models\AiBotSubscription;
 use App\Models\AiBotTrade;
+use App\Models\AiMarketView;
 use App\Models\MarketNews;
 use App\Services\AiBot\BotRunner;
 use App\Services\AiBot\NewsFeedService;
@@ -197,10 +198,35 @@ class BotRunnerTest extends TestCase
         ]);
     }
 
-    /** ข่าวระดับ "เงินหายแล้ว" — แรงพอจะสั่งเทออกได้เอง */
+    /** ข่าวระดับ "เงินหายแล้ว" — แรงพอจะสั่งเทออก ถ้าราคายืนยัน */
     private function panicNews(): void
     {
         $this->newsFrom('Major exchange hack drains user funds');
+    }
+
+    /**
+     * ราคานิ่งแล้วร่วง 2% ในแท่งที่ปิดล่าสุด — ปฏิกิริยาสดของตลาดต่อข่าวร้าย.
+     *
+     * ร่วงไม่ถึงเกณฑ์ caution ของด่านราคา (−3%) โดยตั้งใจ: ด่านราคาอย่างเดียวยังไม่สั่ง
+     * อะไร แต่พอเป็น "ราคายืนยันข่าว" ได้ (confirm_change_1h_pct = −1.5%)
+     */
+    private function droppingCandles(int $flat = 60): array
+    {
+        $closes = array_fill(0, $flat, 100.0);
+        $closes[] = 98.0;
+        $closes[] = 98.0; // แท่งที่กำลังวิ่ง — BotRunner ตัดทิ้ง
+
+        $candles = [];
+
+        foreach ($closes as $i => $close) {
+            $candles[] = [
+                'time' => 1_700_000_000_000 + $i * 3_600_000,
+                'open' => $i === $flat ? 100.0 : $close * 0.999, 'high' => $close * 1.002, 'low' => $close * 0.998,
+                'close' => $close, 'volume' => 1000.0,
+            ];
+        }
+
+        return $candles;
     }
 
     // ─────────────────────────── 1) การเช่า ───────────────────────────
@@ -240,17 +266,17 @@ class BotRunnerTest extends TestCase
     // ─────────────────────── 2) ด่านความเสี่ยงมาก่อนกลยุทธ์ ───────────────────────
 
     /**
-     * ⭐ ข่าวร้ายแรงต้องสั่งเทออก แม้กลยุทธ์จะยังไม่บอกให้ขาย.
+     * ⭐ ข่าวร้ายแรงที่ราคายืนยันแล้ว ต้องสั่งเทออก แม้กลยุทธ์จะยังไม่บอกให้ขาย.
      *
-     * นี่คือสิ่งที่ผู้ใช้ขอโดยตรง — "มีข่าวที่จะทำให้แพนิค แล้วให้บอทประเมินว่า save
-     * หรือเทได้" ราคายังไต่ขึ้นอยู่ แต่ข่าวบอกว่าอันตราย บอทต้องออกก่อน
+     * คำขอเดิมของผู้ใช้ — "มีข่าวที่จะทำให้แพนิค แล้วให้บอทประเมินว่า save หรือเทได้"
+     * ยังเป็นจริง แต่ต้องผ่านการยืนยันด้วยราคา (ดูเทสต์ถัดไปว่าทำไม)
      */
     #[Test]
-    public function severe_news_forces_an_exit_even_while_the_price_is_still_rising(): void
+    public function severe_news_confirmed_by_a_price_drop_forces_an_exit(): void
     {
         $bot = $this->makeBot();
         $this->giveBotAPosition($bot);
-        $this->candles = $this->risingCandles();
+        $this->candles = $this->droppingCandles();
         $this->panicNews();
 
         $result = $this->runner->tick($bot);
@@ -263,6 +289,50 @@ class BotRunnerTest extends TestCase
         $this->assertNotNull($trade, 'ต้องมีไม้ขายจริงเกิดขึ้น');
         $this->assertSame('sell', $trade->side);
         $this->assertSame(0, AiBotPosition::count(), 'ต้องไม่เหลือของค้างหลังเทออก');
+    }
+
+    /**
+     * ⭐ ข่าวแรงที่ราคายังไม่ตอบรับ = ถือต่อ ไม่เทของทิ้ง.
+     *
+     * ออดิท R3 (2 → 23 ก.ย. 2026): ข่าวคำเดียวสั่งเทออกทั้งฝูง 3 ครั้ง ทั้งสามครั้งราคานิ่ง
+     * ("Whitehats ... recovery trust" คือข่าวดีด้วยซ้ำ) หลังเทออก BTC ขึ้นต่อ +801/+129 bps
+     * และเล่นซ้ำช่วงเดียวกันพบว่าด่านข่าวกินกำไรไป ~41%
+     */
+    #[Test]
+    public function severe_news_alone_does_not_dump_a_position_while_the_price_is_calm(): void
+    {
+        $bot = $this->makeBot();
+        $this->giveBotAPosition($bot);
+        $this->candles = $this->risingCandles();
+        $this->panicNews();
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertNotSame('sell', $result['action'], 'ข่าวอย่างเดียวห้ามสั่งขาย');
+        $this->assertSame(0, AiBotTrade::where('side', 'sell')->count());
+        $this->assertSame(1, AiBotPosition::count(), 'ของที่ถืออยู่ต้องยังอยู่');
+    }
+
+    /**
+     * ข่าวแรงที่ราคายังไม่ยืนยัน ต้องกัน "การเติมไม้" ด้วย ไม่ใช่แค่ไม้แรก — และบอกเหตุผลที่ถูก.
+     *
+     * DCA ถือของอยู่แล้วครบรอบซื้อพอดี: ถ้าไม่กัน จะไปคำนวณงบได้ 0 แล้วโบรกเกอร์ตอบ
+     * "ทุนต่อไม้ที่ตั้งไว้น้อยเกินไป" ซึ่งพาผู้ใช้ไปแก้ของที่ไม่ได้เสีย
+     */
+    #[Test]
+    public function unconfirmed_panic_news_stops_a_dca_bot_from_adding_to_its_position(): void
+    {
+        $bot = $this->makeBot(['strategy' => 'dca', 'params' => ['interval_hours' => 1, 'budget_usd' => 25]]);
+        $this->giveBotAPosition($bot, 100.0, 0.25);
+        $this->candles = $this->risingCandles();
+        $this->panicNews();
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('hold', $result['action']);
+        $this->assertStringContainsString('หยุดเข้าไม้ใหม่ชั่วคราว', $result['reason']);
+        $this->assertSame(0, AiBotTrade::count(), 'ห้ามเติมไม้ระหว่างข่าวแรง');
+        $this->assertSame(1, AiBotPosition::count(), 'แต่ก็ห้ามเทของที่ถืออยู่');
     }
 
     /**
@@ -711,7 +781,7 @@ class BotRunnerTest extends TestCase
     {
         $bot = $this->makeBot();
         $this->giveBotAPosition($bot);
-        $this->candles = $this->risingCandles();
+        $this->candles = $this->droppingCandles();
         $this->panicNews();
 
         $this->runner->tick($bot);
@@ -734,7 +804,7 @@ class BotRunnerTest extends TestCase
     {
         config(['aibot_analyst.enabled' => true, 'aibot_analyst.shadow_mode' => false]);
 
-        \App\Models\AiMarketView::create([
+        AiMarketView::create([
             'scope' => 'strategic', 'provider' => 'openai', 'model' => 'test',
             'regime' => 'risk_on', 'confidence' => 0.9, 'size_multiplier' => 1.0,
             'coins' => ['BTC' => ['score' => -0.8, 'stance' => 'avoid', 'why' => 'ทดสอบ']],
@@ -767,7 +837,7 @@ class BotRunnerTest extends TestCase
     {
         config(['aibot_analyst.enabled' => true, 'aibot_analyst.shadow_mode' => false]);
 
-        \App\Models\AiMarketView::create([
+        AiMarketView::create([
             'scope' => 'strategic', 'provider' => 'openai', 'model' => 'test',
             'regime' => 'risk_off', 'confidence' => 0.95, 'size_multiplier' => 1.0,
             'coins' => ['BTC' => ['score' => -0.9, 'stance' => 'exit', 'why' => 'ทดสอบ']],

@@ -320,8 +320,14 @@ class AiBotDemoApiTest extends TestCase
 
         $response = $this->getJson('/api/v1/ai-bot/risk?pair=BTC/USDT')->assertOk();
 
-        $this->assertSame('panic', $response->json('data.level'));
-        $this->assertTrue($response->json('data.force_exit'));
+        /*
+         * ข่าวแรงที่ราคายังไม่ยืนยัน = งดเข้าไม้ใหม่ (ขนาด 0) แต่ไม่สั่งเทออก
+         * (ออดิท R3: ข่าวคำเดียวเคยเทออกทั้งฝูง 3 ครั้ง ราคานิ่งทุกครั้ง — ดู MarketRiskService)
+         * หน้าเว็บต้องได้ธง news_unconfirmed ไปบอกผู้ใช้ว่าทำไมถึง "ระวัง" แต่ยังถือของ
+         */
+        $this->assertSame('elevated', $response->json('data.level'));
+        $this->assertFalse($response->json('data.force_exit'));
+        $this->assertTrue($response->json('data.news_unconfirmed'));
         $this->assertSame(0, $response->json('data.size_multiplier'));
         $this->assertSame(
             'Major exchange hack drains user funds',

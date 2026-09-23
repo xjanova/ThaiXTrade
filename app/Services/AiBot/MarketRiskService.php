@@ -58,11 +58,47 @@ class MarketRiskService
         $level = $this->levelFor($score);
         $config = config("aibot_risk.levels.{$level}");
 
+        $sizeMultiplier = (float) $config['size_multiplier'];
+        $forceExit = (bool) $config['force_exit'];
+        $reasons = array_merge($marketRisk['reasons'], $newsRisk['reasons']);
+        $newsUnconfirmed = false;
+
+        /*
+         * ข่าวสั่ง "ห้ามซื้อเพิ่ม" ได้เอง แต่สั่ง "เทออก" ได้เฉพาะเมื่อราคายืนยัน
+         *
+         * ⚠️ ออดิทกองบอท R3 (2 → 23 ก.ย. 2026, 15 บอท): ด่านข่าวสั่งเทออกทั้งฝูง 3 ครั้ง
+         *    จากคำในพาดหัวคำเดียว — ทั้งสามครั้งราคาไม่มีอาการเลย (1 ชม. ก่อนข่าว −3 ถึง −6 bps)
+         *      "Celsius sues BitMEX ... over 2020 crash liquidations"  (คดีของปี 2020)
+         *      "Whitehats move 52 bitcoin from the Coldcard hack to a recovery trust" (ข่าวกู้คืน)
+         *    หลังเทออก BTC ขึ้นต่อ +801 และ +129 bps ใน 72/24 ชม. และบอทที่ถูกเตะออก
+         *    กลับเข้าไม่ได้จนกว่ากลยุทธ์จะให้สัญญาณใหม่ — เล่นซ้ำช่วงเดียวกันด้วย backtester
+         *    (เข้าไม้ตรงกับของจริงทุกไม้) ได้กำไรรวม +19.83 เทียบกับของจริง +11.64:
+         *    ด่านข่าวกินกำไรไป ~41% และ DCA เสียมากสุด (+4.45 แทน +10.20)
+         *
+         * ตลาดพังจริงราคาตอบรับภายในไม่กี่นาทีเสมอ (หลักเดิมของไฟล์นี้: "ตลาดพังก่อนข่าวออก")
+         * ข่าวแรงที่ราคายังนิ่งจึงควรทำให้ "หยุดซื้อ" (ถูก ไม่เสียอะไร) ไม่ใช่ "ขายทิ้ง"
+         * (จ่ายต้นทุนไป-กลับ 36 bps + ตกรถ) — ปิดสวิตช์ได้ที่ AIBOT_NEWS_EXIT_REQUIRES_PRICE
+         */
+        if ($forceExit
+            && $newsRisk['score'] > $marketRisk['score']
+            && (bool) config('aibot_risk.news_exit.require_price_confirmation', true)
+            && ! $this->priceConfirmsNews($marketRisk)) {
+            $newsUnconfirmed = true;
+            $forceExit = false;
+            $sizeMultiplier = 0.0;
+            $level = 'elevated';
+            // ต่ำกว่าเกณฑ์ panic เสมอ — ระดับกับคะแนนต้องไม่ขัดกันเวลาหน้าเว็บวาดแถบ
+            $score = min($score, (float) config('aibot_risk.levels.panic.min_score', 0.8) - 0.01);
+            $reasons[] = 'ข่าวแรงแต่ราคายังไม่ตอบรับ — งดเข้าไม้ใหม่ แต่ไม่เทของที่ถืออยู่';
+        }
+
         return [
             'level' => $level,
             'score' => round($score, 3),
-            'size_multiplier' => (float) $config['size_multiplier'],
-            'force_exit' => (bool) $config['force_exit'],
+            'size_multiplier' => $sizeMultiplier,
+            'force_exit' => $forceExit,
+            // ข่าวถึงขั้นเทออกได้ แต่ราคายังไม่ยืนยัน — หน้าเว็บ/บันทึกต้องแยกกรณีนี้ออกได้
+            'news_unconfirmed' => $newsUnconfirmed,
             /*
              * ประเมินจากราคาได้จริงไหม — ยกขึ้นมาระดับบนสุดให้ผู้เรียกเห็นง่าย
              *
@@ -73,8 +109,32 @@ class MarketRiskService
             'available' => (bool) ($marketRisk['available'] ?? true),
             'market' => $marketRisk,
             'news' => $newsRisk,
-            'reasons' => array_merge($marketRisk['reasons'], $newsRisk['reasons']),
+            'reasons' => $reasons,
         ];
+    }
+
+    /**
+     * ราคาตอบรับข่าวร้ายแล้วหรือยัง — เงื่อนไขที่ข่าวต้องมีก่อนจะสั่งเทออกได้.
+     *
+     * ยืนยันได้สองทาง (อย่างใดอย่างหนึ่ง):
+     *   1. ด่านราคาเองเห็นความเสี่ยงถึงระดับ caution แล้ว (ย่อ 1 ชม./24 ชม.,
+     *      ความผันผวนพุ่ง, วอลุ่มพุ่งพร้อมราคาลง)
+     *   2. แท่งล่าสุดร่วงเกิน confirm_change_1h_pct — ปฏิกิริยาสดต่อข่าวที่เพิ่งออก
+     *      ซึ่งมักยังไม่ถึงเกณฑ์ caution (−3%) ในนาทีแรกๆ
+     *
+     * ไม่มีข้อมูลราคา = ยืนยันไม่ได้ (บอทที่ไม่มีแท่งเทียนก็ไม่ได้เทรดอยู่แล้ว)
+     */
+    private function priceConfirmsNews(array $marketRisk): bool
+    {
+        if (! ($marketRisk['available'] ?? false)) {
+            return false;
+        }
+
+        $minScore = (float) config('aibot_risk.news_exit.confirm_market_score', 0.35);
+        $maxChange1h = (float) config('aibot_risk.news_exit.confirm_change_1h_pct', -1.5);
+
+        return (float) $marketRisk['score'] >= $minScore
+            || (float) ($marketRisk['change_1h'] ?? 0.0) <= $maxChange1h;
     }
 
     /**

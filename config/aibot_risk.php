@@ -142,6 +142,53 @@ return [
         'fraud' => 0.8,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | คำที่บอกว่าเป็น "ข่าวหลังเหตุการณ์" — ลดคะแนนตื่นตระหนกลง
+    |--------------------------------------------------------------------------
+    | พาดหัวที่มีคำร้าย (hack/exploit/crash) แต่เล่าเรื่องที่จบไปแล้ว: กู้เงินคืน
+    | ชดเชยผู้เสียหาย จับคนร้ายได้ หรือ "X เดือนหลังจากเหตุ..." — เงินไม่ได้หายเพิ่ม
+    | ในวันนี้ ตลาดไม่มีเหตุให้เทขาย
+    |
+    | ⚠️ ออดิท R3 (2 → 23 ก.ย. 2026) พาดหัวที่สั่งเทออกทั้งฝูงจริง:
+    |      "Whitehats move 52 bitcoin from the Coldcard hack to a recovery trust"   (1.00)
+    |      "Celsius sues BitMEX for $495 million over 2020 crash liquidations"     (1.00)
+    |    และข่าวแบบเดียวกันที่ได้ 0.71–0.90 อีกหลายสิบข่าว เช่น "Symbiosis says
+    |    recovered 15 BTC from bridge hack, offers 20% bounty" · "Five Months After
+    |    the Kelp Hack, Aave Is Still Down" · "Thorchain Opens $10M Compensation Portal"
+    |
+    | ปีที่ผ่านมาแล้วในพาดหัว (เช่น "2020 crash") นับเป็นข่าวหลังเหตุการณ์ด้วย
+    | (ตรวจใน NewsFeedService::score) · ตั้งใจไม่ใส่ sues/lawsuit/court/charged —
+    | คดีของหน่วยงานกำกับต่อ exchange ใหญ่ขยับตลาดได้จริง (SEC sues Binance, 2023)
+    */
+    'aftermath_terms' => [
+        'recovered', 'recovery', 'recovers', 'recover', 'returned', 'refund', 'refunds', 'refunded',
+        'reimburse', 'reimburses', 'reimbursed', 'reimbursement', 'compensation', 'compensate',
+        'compensates', 'bounty', 'whitehat', 'whitehats', 'white hat', 'white hats', 'white-hat',
+        'pleads guilty', 'pleaded guilty', 'sentenced', 'convicted', 'arrested', 'extradited',
+        'jailed', 'months after', 'years after', 'weeks after', 'anniversary', 'still down',
+        'patched', 'patches', 'resumes', 'reopens', 'restored',
+    ],
+
+    /* คะแนนตื่นตระหนกของข่าวหลังเหตุการณ์ถูกคูณด้วยค่านี้ (1.00 → 0.50 = แค่ระวัง) */
+    'aftermath_multiplier' => 0.5,
+
+    /*
+    |--------------------------------------------------------------------------
+    | ข่าวสั่งเทออกได้เมื่อ "ราคายืนยัน" เท่านั้น
+    |--------------------------------------------------------------------------
+    | ข่าวแรงที่ราคายังนิ่ง = งดเข้าไม้ใหม่ แต่ไม่ขายของที่ถืออยู่ (ดูเหตุผลและตัวเลข
+    | จากออดิท R3 ที่ MarketRiskService::assess) — ยืนยันเมื่อด่านราคาเห็นระดับ
+    | caution ขึ้นไป หรือแท่งล่าสุดร่วงเกิน confirm_change_1h_pct
+    |
+    | ปิดสวิตช์ (false) = กลับไปพฤติกรรมเดิม ข่าวคำเดียวสั่งเทออกทั้งฝูงได้
+    */
+    'news_exit' => [
+        'require_price_confirmation' => (bool) env('AIBOT_NEWS_EXIT_REQUIRES_PRICE', true),
+        'confirm_market_score' => 0.35,
+        'confirm_change_1h_pct' => -1.5,
+    ],
+
     /* คำที่บ่งชี้ข่าวดี — ใช้คำนวณ sentiment ไม่ได้ลดคะแนนตื่นตระหนก */
     'positive_terms' => [
         'approval' => 0.8, 'approved' => 0.8, 'etf approval' => 1.0, 'partnership' => 0.6,

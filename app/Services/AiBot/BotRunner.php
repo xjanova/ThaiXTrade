@@ -365,6 +365,20 @@ class BotRunner
             return $this->record($bot, 'hold', $why, $risk['level'], $logContext);
         }
 
+        /*
+         * ด่านความเสี่ยงสั่งงดเข้าไม้ (ขนาด 0) ต้องกัน "การเติมไม้" ด้วย
+         *
+         * เดิมขนาด 0 เกิดได้เฉพาะระดับ panic ซึ่งเทของทิ้งไปก่อนถึงตรงนี้เสมอ — ตอนนี้ข่าวแรง
+         * ที่ราคายังไม่ยืนยันให้ขนาด 0 โดยไม่เทออก (ดู MarketRiskService::assess)
+         * ไม่กันตรงนี้ DCA/กริดจะคำนวณงบได้ 0 แล้วโบรกเกอร์ตอบ "ทุนต่อไม้ที่ตั้งไว้น้อยเกินไป"
+         * ซึ่งพาผู้ใช้ไปแก้กรอบความเสี่ยงของตัวเองทั้งที่ไม่ใช่ต้นเหตุ
+         */
+        if ($signal->action === Signal::BUY && $sizeMultiplier <= 0) {
+            $why = 'หยุดเข้าไม้ใหม่ชั่วคราว: '.(implode(' · ', array_slice($risk['reasons'], 0, 2)) ?: 'ความเสี่ยงสูง');
+
+            return $this->record($bot, 'hold', $why, $risk['level'], $logContext);
+        }
+
         // 6) ลงมือ
         $budget = $this->budgetFor($bot, $signal->strength, $sizeMultiplier, $params);
 
