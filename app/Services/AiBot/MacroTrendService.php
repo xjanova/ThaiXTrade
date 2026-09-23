@@ -40,13 +40,23 @@ class MacroTrendService
 
         $result = $this->compute($symbol, $period) + ['symbol' => $symbol, 'period' => $period];
 
-        $ttl = $result['up'] === null
-            ? 60
-            : max(60, min(1800, now('UTC')->copy()->addDay()->startOfDay()->diffInSeconds(now('UTC'), true)));
-
-        Cache::put($key, $result, $ttl);
+        Cache::put($key, $result, self::ttlSeconds($result['up'] !== null));
 
         return $result;
+    }
+
+    /**
+     * อายุแคช — ห้ามข้ามรอยต่อวัน UTC (แท่งรายวันปิด 00:00 UTC).
+     *
+     * รีวิว 2026-09-23: เดิมตั้งขั้นต่ำ 60 วิ → คำนวณตอน 23:59:30 ค่าเก่าค้างถึง 00:00:30
+     * บอทที่ตัดสินแท่งแรกหลังเที่ยงคืนเห็นแนวโน้มของเมื่อวาน (ต่างจาก backtest ที่เห็นทันที)
+     * ดึงไม่ได้ = แคชสั้น 60 วิ แล้วลองใหม่ แต่ก็ต้องไม่ข้ามรอยต่อวันเช่นกัน
+     */
+    public static function ttlSeconds(bool $ok): int
+    {
+        $untilMidnight = (int) ceil(now('UTC')->copy()->addDay()->startOfDay()->diffInSeconds(now('UTC'), true));
+
+        return max(1, min($ok ? 1800 : 60, $untilMidnight));
     }
 
     private function compute(string $symbol, int $period): array

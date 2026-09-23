@@ -126,6 +126,33 @@ class NewsFeedServiceTest extends TestCase
         ];
     }
 
+    /**
+     * ⭐ ข่าววิกฤตที่กำลังเกิดต้องไม่ถูกลดคะแนนเพราะเลขที่ "ดูเหมือนปี" หรือคำกำกวม.
+     *
+     * รีวิว 2026-09-23 เจอ regex ปีเก่าจับราคา ($2000) และจำนวนเหรียญ (2025 BTC) —
+     * ข่าวแฮกจริงถูกหารครึ่ง แล้วบอทยังเปิดไม้ใหม่ได้กลางวิกฤต
+     */
+    #[Test]
+    #[DataProvider('liveCrisisHeadlines')]
+    public function a_live_crisis_is_not_mistaken_for_an_aftermath_story(string $headline): void
+    {
+        $result = $this->service->score($headline);
+
+        $this->assertGreaterThanOrEqual(0.9, $result['panic'], "ข่าวที่กำลังเกิดต้องได้น้ำหนักเต็ม: {$headline}");
+        $this->assertEmpty(array_filter($result['terms'], fn (string $t) => str_starts_with($t, '~')));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function liveCrisisHeadlines(): array
+    {
+        return [
+            'ราคา $2000 ไม่ใช่ปี 2000' => ['Ethereum crashes below $2000 as exchange hack drains funds'],
+            'จำนวนเหรียญ 2025 BTC' => ['Exchange hacked: attackers take 2025 BTC from hot wallet'],
+            'ระบบยังล่มอยู่' => ['Binance still down after exploit hits withdrawals'],
+            'ฟื้นไม่ขึ้น' => ['Bitcoin fails to recover as hack losses mount'],
+        ];
+    }
+
     /** เหตุร้ายที่ "กำลังเกิด" ต้องได้น้ำหนักเต็มเหมือนเดิม — ปีปัจจุบันไม่นับเป็นข่าวเก่า */
     #[Test]
     public function a_live_incident_keeps_its_full_weight(): void

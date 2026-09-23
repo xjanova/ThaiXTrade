@@ -17,6 +17,7 @@ use App\Services\AiBot\MarketRiskService;
 use App\Services\AiBot\PaperBroker;
 use App\Services\AiBot\StrategyAnalytics;
 use App\Services\AiBot\StrategyAvailability;
+use App\Services\AiBot\Wallet\BotWalletService;
 use App\Services\AiBot\WorkerHealth;
 use App\Services\AiBotService;
 use App\Services\MarketDataService;
@@ -677,7 +678,8 @@ class AiBotController extends Controller
         // กันหน้าเว็บยิงรัวเกินจำเป็น — คิดหนึ่งรอบต่อช่วงเวลาที่กำหนดก็พอ
         $minSeconds = (int) config('aibot.browser_tick_min_seconds', 30);
 
-        if ($bot->last_run_at && $bot->last_run_at->diffInSeconds(now()) < $minSeconds) {
+        // last_run_at ในอนาคต (นาฬิกา/โซนเวลาเลื่อน — ดู config/app.php) = ถึงรอบ ไม่ใช่ติดลบแล้วรอเป็นชั่วโมง
+        if ($bot->last_run_at && ! $bot->last_run_at->isFuture() && $bot->last_run_at->diffInSeconds(now()) < $minSeconds) {
             return response()->json(['success' => true, 'data' => [
                 'skipped' => true,
                 'reason' => 'ยังไม่ถึงรอบถัดไป',
@@ -1027,7 +1029,7 @@ class AiBotController extends Controller
              * ต้องมีกระเป๋าบอทและมีเงินของบอทอยู่ในนั้นก่อน ไม่งั้นบอทเปิดโหมดจริงได้
              * แต่ไม่มีทุนให้ลงมือ แล้วผู้ใช้จะเข้าใจว่า "บอทไม่ทำงาน" ทั้งที่แค่ยังไม่ได้โอน
              */
-            $botWallet = app(\App\Services\AiBot\Wallet\BotWalletService::class);
+            $botWallet = app(BotWalletService::class);
 
             // ด่านนี้มีผลเฉพาะเมื่อเปิดฟีเจอร์กระเป๋าบอทแล้ว — ก่อนหน้านั้นโหมดจริงยังเป็น
             // "สัญญาณรอยืนยัน" แบบ non-custodial ตามเดิม ไม่มีกระเป๋าให้เรียกหา

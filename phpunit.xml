@@ -41,5 +41,7 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
+        <!-- ไม่เก็บสำเนาตาราง calibration ลงดิสก์ระหว่างเทสต์ (เทสต์ที่ทดสอบการเก็บตั้ง path เอง) -->
+        <env name="AIBOT_CALIBRATION_STORE" value="(empty)"/>
     </php>
 </phpunit>

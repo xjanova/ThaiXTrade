@@ -108,18 +108,31 @@ class AiBotBacktest extends Command
          * เผื่อย้อนหลัง MacroTrend::WINDOW วันให้ EMA อุ่นเครื่องเต็มตั้งแต่แท่งแรกของช่วงที่ทดสอบ
          * ดึงไม่ได้ = รันต่อแบบไม่กรอง พร้อมเตือน (บอทจริงก็ถอยแบบเดียวกัน)
          */
-        if (! $this->option('no-macro')) {
-            try {
-                $options['macro_daily'] = $archive->range(
-                    (string) config('aibot.macro.symbol', 'BTC/USDT'),
-                    '1d',
-                    $fromMs - $warmupMs - MacroTrend::WINDOW * 86_400_000,
-                    $toMs,
-                    (bool) $this->option('offline'),
-                );
-            } catch (\Throwable $e) {
-                $this->warn('ดึงแท่งรายวันของตัวกรองแนวโน้มใหญ่ไม่ได้ — รันแบบไม่กรอง: '.$e->getMessage());
-            }
+        /*
+         * --no-macro = "ผู้ใช้ปิดสวิตช์ macro_filter" ไม่ใช่ "ไม่มีข้อมูลแนวโน้ม" — ยังโหลดแท่งรายวัน
+         * ให้ DCA pause_in_downtrend ใช้ต่อเหมือนบอทจริงที่ปิดสวิตช์ (รีวิว 2026-09-23: เดิมไม่โหลด
+         * เลย ผลเทียบของ DCA จึงปิดการพักขาลงไปด้วยโดยไม่ตั้งใจ)
+         */
+        if ($this->option('no-macro')) {
+            $params['macro_filter'] = false;
+        }
+
+        try {
+            $options['macro_daily'] = $archive->range(
+                (string) config('aibot.macro.symbol', 'BTC/USDT'),
+                '1d',
+                $fromMs - $warmupMs - MacroTrend::WINDOW * 86_400_000,
+                $toMs,
+                (bool) $this->option('offline'),
+            );
+        } catch (\Throwable $e) {
+            $options['macro_daily'] = [];
+            $this->warn('ดึงแท่งรายวันของตัวกรองแนวโน้มใหญ่ไม่ได้: '.$e->getMessage());
+        }
+
+        if (($options['macro_daily'] ?? []) === []) {
+            // --offline กับคลังที่ไม่มีแท่งรายวัน BTC ได้ [] เงียบๆ — ต้องบอกว่าผลนี้ "ไม่ได้กรอง"
+            $this->warn('ไม่มีแท่งรายวันของ BTC — ผลนี้ไม่ได้ใช้ตัวกรองแนวโน้มใหญ่ (ต่างจากบอทจริง)');
         }
         $sweeps = $this->sweeps();
 

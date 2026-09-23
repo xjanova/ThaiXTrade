@@ -151,6 +151,18 @@ class AutoPairResolverTest extends TestCase
         $this->assertSame('ETH/USDT', $result['pair']);
     }
 
+    /** เวลาย้ายที่อยู่ในอนาคต (นาฬิกา/โซนเวลาเลื่อน) ต้องไม่ทำให้ค้างอยู่ในช่วงพักเป็นชั่วโมง */
+    #[Test]
+    public function a_future_switch_time_does_not_freeze_the_cooldown(): void
+    {
+        $this->makeView(['ETH/USDT']);
+
+        $bot = $this->bot('BTC/USDT', auto: true);
+        $bot->update(['stats' => ['auto_pair_switched_at' => now()->addHours(7)->toDateTimeString()]]);
+
+        $this->assertTrue($this->resolver->resolve($bot, $this->plan(), false)['switched']);
+    }
+
     #[Test]
     public function a_delisted_pair_is_skipped_for_the_next_one(): void
     {

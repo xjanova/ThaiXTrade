@@ -406,6 +406,29 @@ class BotRunnerTest extends TestCase
     }
 
     /**
+     * ข่าวแรง + ราคาสดของแท่งที่กำลังวิ่งร่วงแล้ว = เทออกทันที ไม่ต้องรอแท่งปิด.
+     *
+     * แท่งที่ปิดแล้วยังขึ้นอยู่ (ด่านราคาไม่เห็นอะไร) แต่ราคาสดร่วง 3% หลังข่าวออก —
+     * บอทแท่ง 4 ชม. ที่รอแท่งปิดจะเห็นช้าไปหลายชั่วโมง ขณะที่คะแนนข่าวลดลงภายในครึ่งชั่วโมง
+     */
+    #[Test]
+    public function severe_news_confirmed_by_the_live_price_forces_an_exit_before_the_bar_closes(): void
+    {
+        $bot = $this->makeBot();
+        $this->giveBotAPosition($bot);
+        $candles = $this->risingCandles();
+        $candles[count($candles) - 1]['close'] = 102.0 * 0.97;   // แท่งที่กำลังวิ่ง = ราคาสด
+        $this->candles = $candles;
+        $this->panicNews();
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('sell', $result['action']);
+        $this->assertSame('panic', $result['risk']);
+        $this->assertSame(0, AiBotPosition::count());
+    }
+
+    /**
      * ⭐ ข่าวแรงที่ราคายังไม่ตอบรับ = ถือต่อ ไม่เทของทิ้ง.
      *
      * ออดิท R3 (2 → 23 ก.ย. 2026): ข่าวคำเดียวสั่งเทออกทั้งฝูง 3 ครั้ง ทั้งสามครั้งราคานิ่ง

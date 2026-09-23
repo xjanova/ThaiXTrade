@@ -158,4 +158,28 @@ class AiBotHarvestCommandTest extends TestCase
         $this->assertEqualsWithDelta(1047.0, $r['edge_bps'], 0.1);
         $this->assertSame(25.0, $r['open_cost'], 'ไม้ของรอบที่ยังไม่ปิดต้องไม่ถูกนับใน edge');
     }
+
+    /**
+     * --days: รอบที่ปิดในช่วงแต่ซื้อก่อนช่วง ต้องได้ต้นทุนขาซื้อครบ — รอบที่ปิดก่อนช่วงไม่นับ.
+     *
+     * รีวิว 2026-09-23: เดิมกรองไม้ด้วยเวลาก่อนประกอบรอบ ขาซื้อที่อยู่ก่อนช่วงหายไป
+     * แต่ขาขายยังนับ → edge และต้นทุนเพี้ยนทุกครั้งที่ใช้ --days
+     */
+    #[Test]
+    public function ช่วงเวลานับตามเวลาปิดรอบ_แต่ต้นทุนขาซื้อยังครบ(): void
+    {
+        $leg = fn (string $side, string $at, ?float $pnl = null) => [
+            'side' => $side, 'pair' => 'BTC/USDT', 'gross_value' => $side === 'buy' ? 24.975 : 26.0,
+            'fee' => 0.025, 'slippage_cost' => 0.02, 'realized_pnl' => $pnl, 'created_at' => $at,
+        ];
+
+        $r = AiBotHarvest::summariseRounds([
+            $leg('buy', '2026-09-01T00:00:00Z'), $leg('sell', '2026-09-02T00:00:00Z', 0.5),   // ปิดก่อนช่วง — ไม่นับ
+            $leg('buy', '2026-09-09T00:00:00Z'), $leg('sell', '2026-09-12T00:00:00Z', 1.0),   // ซื้อก่อนช่วง ปิดในช่วง — นับเต็ม
+        ], strtotime('2026-09-10T00:00:00Z'));
+
+        $this->assertSame(1, $r['closed']);
+        $this->assertSame(1.0, $r['realized']);
+        $this->assertSame(0.09, $r['costs'], 'ต้นทุนขาซื้อ (0.045) ที่เกิดก่อนช่วงต้องถูกนับด้วย');
+    }
 }

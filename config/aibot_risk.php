@@ -162,12 +162,18 @@ return [
     | คดีของหน่วยงานกำกับต่อ exchange ใหญ่ขยับตลาดได้จริง (SEC sues Binance, 2023)
     */
     'aftermath_terms' => [
-        'recovered', 'recovery', 'recovers', 'recover', 'returned', 'refund', 'refunds', 'refunded',
+        'recovered', 'recovery', 'recovers', 'returned', 'refund', 'refunds', 'refunded',
         'reimburse', 'reimburses', 'reimbursed', 'reimbursement', 'compensation', 'compensate',
         'compensates', 'bounty', 'whitehat', 'whitehats', 'white hat', 'white hats', 'white-hat',
-        'pleads guilty', 'pleaded guilty', 'sentenced', 'convicted', 'arrested', 'extradited',
-        'jailed', 'months after', 'years after', 'weeks after', 'anniversary', 'still down',
+        'pleads guilty', 'pleaded guilty', 'sentenced', 'convicted', 'extradited', 'jailed',
+        'months after', 'years after', 'weeks after', 'anniversary',
         'patched', 'patches', 'resumes', 'reopens', 'restored',
+        /*
+         * ตั้งใจไม่ใส่ (รีวิว 2026-09-23 — กำกวม ลดคะแนนข่าววิกฤตจริงได้):
+         *   recover     "Bitcoin fails to recover as hack losses mount"
+         *   still down  "Binance still down after exploit" (ระบบยังล่มอยู่ = กำลังเกิด)
+         *   arrested    "Exchange founder arrested, withdrawals halted" (เหตุใหม่ได้)
+         */
     ],
 
     /* คะแนนตื่นตระหนกของข่าวหลังเหตุการณ์ถูกคูณด้วยค่านี้ (1.00 → 0.50 = แค่ระวัง) */
@@ -179,7 +185,8 @@ return [
     |--------------------------------------------------------------------------
     | ข่าวแรงที่ราคายังนิ่ง = งดเข้าไม้ใหม่ แต่ไม่ขายของที่ถืออยู่ (ดูเหตุผลและตัวเลข
     | จากออดิท R3 ที่ MarketRiskService::assess) — ยืนยันเมื่อด่านราคาเห็นระดับ
-    | caution ขึ้นไป หรือแท่งล่าสุดร่วงเกิน confirm_change_1h_pct
+    | caution ขึ้นไป หรือแท่งล่าสุดที่ปิดแล้ว / ราคาสดของแท่งที่กำลังวิ่ง ร่วงเกิน
+    | confirm_change_1h_pct (ราคาสดคือทางหลัก — ข่าวแรงอยู่ระดับ panic แค่ราวครึ่งชั่วโมง)
     |
     | ปิดสวิตช์ (false) = กลับไปพฤติกรรมเดิม ข่าวคำเดียวสั่งเทออกทั้งฝูงได้
     */

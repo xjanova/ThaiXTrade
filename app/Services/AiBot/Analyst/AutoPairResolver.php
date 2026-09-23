@@ -63,7 +63,8 @@ class AutoPairResolver
         $cooldown = (int) config('aibot_analyst.auto_pair.min_hold_minutes', 240);
         $switchedAt = $this->switchedAt($bot);
 
-        if ($switchedAt && $switchedAt->diffInMinutes(now()) < $cooldown) {
+        // เวลาย้ายในอนาคต (นาฬิกา/โซนเวลาเลื่อน) = ถือว่าพ้นเวลาพักแล้ว ไม่ใช่ติดลบแล้วค้างเป็นชั่วโมง
+        if ($switchedAt && ! $switchedAt->isFuture() && $switchedAt->diffInMinutes(now()) < $cooldown) {
             $wait = $cooldown - (int) $switchedAt->diffInMinutes(now());
 
             return $stay("เพิ่งย้ายเหรียญไปเมื่อไม่นาน — รออีก {$wait} นาที");

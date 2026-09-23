@@ -43,8 +43,18 @@ class MarketRiskService
         ?array $candles = null,
         string $timeframe = '1h',
         bool $includeNews = true,
+        ?float $livePrice = null,
     ): array {
         $marketRisk = $this->assessMarket($pair, $candles, $timeframe);
+
+        /*
+         * ราคาสดเทียบราคาปิดของแท่งล่าสุดที่ปิดแล้ว — ใช้ยืนยันข่าวร้ายเท่านั้น (ไม่เข้าคะแนนราคา
+         * เพราะด่านราคาตั้งใจดูเฉพาะแท่งที่ปิดแล้ว ดูเหตุผลที่ BotRunner::candles)
+         */
+        $lastClose = $candles !== null && $candles !== [] ? (float) $candles[count($candles) - 1]['close'] : 0.0;
+        $marketRisk['live_change_pct'] = ($livePrice !== null && $lastClose > 0)
+            ? round(($livePrice - $lastClose) / $lastClose * 100, 3)
+            : null;
 
         /*
          * ผู้ใช้ปิดด่านข่าวได้จริง (ช่อง "หยุดเทรดช่วงข่าวแรง" ในฟอร์ม)
@@ -116,11 +126,14 @@ class MarketRiskService
     /**
      * ราคาตอบรับข่าวร้ายแล้วหรือยัง — เงื่อนไขที่ข่าวต้องมีก่อนจะสั่งเทออกได้.
      *
-     * ยืนยันได้สองทาง (อย่างใดอย่างหนึ่ง):
+     * ยืนยันได้สามทาง (อย่างใดอย่างหนึ่ง):
      *   1. ด่านราคาเองเห็นความเสี่ยงถึงระดับ caution แล้ว (ย่อ 1 ชม./24 ชม.,
      *      ความผันผวนพุ่ง, วอลุ่มพุ่งพร้อมราคาลง)
-     *   2. แท่งล่าสุดร่วงเกิน confirm_change_1h_pct — ปฏิกิริยาสดต่อข่าวที่เพิ่งออก
-     *      ซึ่งมักยังไม่ถึงเกณฑ์ caution (−3%) ในนาทีแรกๆ
+     *   2. แท่งล่าสุดที่ปิดแล้วร่วงเกิน confirm_change_1h_pct
+     *   3. ⭐ ราคาสดร่วงจากราคาปิดล่าสุดเกิน confirm_change_1h_pct — ทางหลักของข่าวที่เพิ่งออก
+     *      (รีวิว 2026-09-23: ข่าวแรงอยู่ระดับ panic แค่ ~10–36 นาทีก่อนความสดลด
+     *       บอท 4h/1d ไม่มีแท่งปิดใหม่ในช่วงนั้น ถ้ายืนยันด้วยแท่งปิดอย่างเดียว ข่าวแทบ
+     *       ไม่มีทางสั่งปิดไม้ได้เลยแม้ราคาร่วง 5% กลางแท่ง)
      *
      * ไม่มีข้อมูลราคา = ยืนยันไม่ได้ (บอทที่ไม่มีแท่งเทียนก็ไม่ได้เทรดอยู่แล้ว)
      */
@@ -131,10 +144,12 @@ class MarketRiskService
         }
 
         $minScore = (float) config('aibot_risk.news_exit.confirm_market_score', 0.35);
-        $maxChange1h = (float) config('aibot_risk.news_exit.confirm_change_1h_pct', -1.5);
+        $maxDrop = (float) config('aibot_risk.news_exit.confirm_change_1h_pct', -1.5);
+        $live = $marketRisk['live_change_pct'] ?? null;
 
         return (float) $marketRisk['score'] >= $minScore
-            || (float) ($marketRisk['change_1h'] ?? 0.0) <= $maxChange1h;
+            || (float) ($marketRisk['change_1h'] ?? 0.0) <= $maxDrop
+            || ($live !== null && (float) $live <= $maxDrop);
     }
 
     /**

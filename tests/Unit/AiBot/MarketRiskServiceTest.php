@@ -377,6 +377,29 @@ class MarketRiskServiceTest extends TestCase
         $this->assertFalse($result['news_unconfirmed']);
     }
 
+    /**
+     * ⭐ ราคาสด (แท่งที่กำลังวิ่ง) ร่วงแล้ว = ยืนยันได้ทันที ไม่ต้องรอแท่งปิด.
+     *
+     * รีวิว 2026-09-23: ข่าวแรงอยู่ระดับ panic แค่ ~10–36 นาที บอท 4h/1d ไม่มีแท่งปิดใหม่ในช่วงนั้น
+     * ถ้ายืนยันด้วยแท่งปิดอย่างเดียว ข่าวแทบไม่มีทางสั่งปิดไม้ได้แม้ราคาร่วง 5% กลางแท่ง
+     */
+    #[Test]
+    public function a_live_price_drop_confirms_panic_news_before_the_bar_closes(): void
+    {
+        $this->exchangeCollapseNews();
+        $candles = $this->calmCandles();
+        $lastClose = $candles[count($candles) - 1]['close'];
+
+        $dropped = $this->risk->assess('BTC/USDT', $candles, '4h', true, $lastClose * 0.975);
+        $this->assertTrue($dropped['force_exit'], 'ราคาสดร่วง 2.5% หลังข่าว = ตลาดยืนยันแล้ว');
+        $this->assertSame('panic', $dropped['level']);
+
+        Cache::flush();
+        $flat = $this->risk->assess('BTC/USDT', $candles, '4h', true, $lastClose * 0.998);
+        $this->assertFalse($flat['force_exit'], 'ราคาสดขยับนิดเดียว = ยังไม่ยืนยัน');
+        $this->assertTrue($flat['news_unconfirmed']);
+    }
+
     /** ร่วงเล็กน้อยระดับปกติของตลาด ยังไม่นับเป็นการยืนยัน */
     #[Test]
     public function a_normal_wiggle_does_not_confirm_panic_news(): void

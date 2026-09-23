@@ -325,7 +325,18 @@ class NewsFeedService
             }
         }
 
-        if (preg_match_all('/\b(20[0-9]{2})\b/', $haystack, $years)) {
+        /*
+         * "ปี" ต้องเป็นปีจริง ไม่ใช่ราคาหรือจำนวนที่บังเอิญเป็นเลข 20xx
+         *
+         * ⚠️ รีวิว 2026-09-23: regex เดิมจับ "Ethereum crashes below $2000 as exchange hack
+         *    drains funds" ว่าเป็นข่าวของปี 2000 → ข่าวแฮกที่กำลังเกิดถูกหารครึ่ง
+         *    ตัดเลขที่มีสกุลเงินนำหน้า เป็นส่วนของตัวเลขที่ยาวกว่า หรือมีหน่วยตามหลัง
+         *    ("2025 BTC", "2000 ETH", "2020%", "2,025")
+         */
+        $pattern = '/(?<![\$€£\d,.])\b(20[0-9]{2})\b(?![,.]\d)'
+            .'(?!\s*(?:k|m|b|bn|%|usd|usdt|usdc|dollars?|btc|bitcoins?|eth|ether|sol|xrp|bnb|coins?|tokens?)\b)/u';
+
+        if (preg_match_all($pattern, $haystack, $years)) {
             foreach (array_unique($years[1]) as $year) {
                 if ((int) $year < (int) now()->year) {
                     $found[] = $year;

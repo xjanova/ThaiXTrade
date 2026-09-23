@@ -226,19 +226,30 @@ class AiBotHarvest extends Command
         $results = [];
 
         foreach ($bots as $bot) {
+            /*
+             * ดึงทุกไม้ของบอท ไม่กรองด้วย --days — รอบที่ "ขายในช่วง" แต่ "ซื้อก่อนช่วง" ต้องได้ต้นทุน
+             * ขาซื้อครบ (รีวิว 2026-09-23: เดิมตัดขาซื้อทิ้งแต่นับขาขาย edge/ต้นทุนเพี้ยน)
+             * การนับเฉพาะรอบที่ปิดในช่วงทำใน summariseRounds
+             */
             $trades = AiBotTrade::query()
                 ->where('ai_bot_config_id', $bot->id)
                 ->where('mode', 'demo')
-                ->when($since, fn ($q) => $q->where('created_at', '>=', $since))
                 ->orderBy('id')
-                ->get(['side', 'pair', 'gross_value', 'fee', 'slippage_cost', 'realized_pnl']);
+                ->get(['side', 'pair', 'gross_value', 'fee', 'slippage_cost', 'realized_pnl', 'created_at']);
 
-            $r = self::summariseRounds($trades->map(fn ($t) => $t->toArray())->all());
+            $r = self::summariseRounds(
+                $trades->map(fn ($t) => $t->toArray())->all(),
+                $since ? $since->getTimestamp() : null,
+            );
             $cap = (float) (($bot->risk ?? [])['max_position_usd'] ?? 100);
             $gate = (($bot->params ?? [])['ai_gate'] ?? true) !== false;
             $auto = (($bot->params ?? [])['auto_pair'] ?? false) === true;
 
-            $results[$bot->id] = $r + ['strategy' => $bot->strategy, 'gate' => $gate, 'auto' => $auto];
+            $results[$bot->id] = $r + [
+                'strategy' => $bot->strategy, 'gate' => $gate, 'auto' => $auto,
+                // คู่ทดลองต้องต่างกันแค่ ai_gate — กลยุทธ์ + timeframe + คู่เหรียญต้องตรงกัน
+                'group' => "{$bot->strategy} {$bot->timeframe} {$bot->pair}",
+            ];
 
             $rows[] = [
                 "#{$bot->id}",
@@ -261,11 +272,11 @@ class AiBotHarvest extends Command
         $this->components->info('ผลรายบอท (ไม้ปิดแล้ว)');
         $this->table(['บอท', 'กลยุทธ์', 'tf', 'AI', '', 'คู่', 'ปิด', 'ชนะ', 'realized', 'ต้นทุน', 'edge bps', 'ทุน%', 'ถือค้าง'], $rows);
 
-        // คู่ทดลอง: กลยุทธ์เดียวกัน ไม่เลือกเหรียญเอง ต่างกันแค่ ai_gate
+        // คู่ทดลอง: กลยุทธ์ + timeframe + คู่เหรียญเดียวกัน ไม่เลือกเหรียญเอง ต่างกันแค่ ai_gate
         $pairs = [];
         foreach ($results as $id => $r) {
             if (! $r['auto']) {
-                $pairs[$r['strategy']][$r['gate'] ? 'on' : 'off'][] = $id;
+                $pairs[$r['group']][$r['gate'] ? 'on' : 'off'][] = $id;
             }
         }
 
@@ -290,10 +301,11 @@ class AiBotHarvest extends Command
      *
      * ต้นทุนขาซื้อของรอบที่ยังไม่ปิดไม่ถูกนับใน edge (ยังไม่รู้ผล)
      *
-     * @param  list<array{side: string, pair?: string, gross_value: mixed, fee: mixed, slippage_cost: mixed, realized_pnl: mixed}>  $trades  เรียงตามเวลา
+     * @param  list<array{side: string, pair?: string, gross_value: mixed, fee: mixed, slippage_cost: mixed, realized_pnl: mixed, created_at?: mixed}>  $trades  ทุกไม้ของบอท เรียงตามเวลา
+     * @param  int|null  $sinceTs  นับเฉพาะรอบที่ "ปิด" ตั้งแต่เวลานี้ (ต้นทุนขาซื้อที่เกิดก่อนหน้ายังนับครบ)
      * @return array{closed: int, wins: int, realized: float, costs: float, edge_bps: float|null, open_cost: float, pairs: list<string>}
      */
-    public static function summariseRounds(array $trades): array
+    public static function summariseRounds(array $trades, ?int $sinceTs = null): array
     {
         $closed = 0;
         $wins = 0;
@@ -316,12 +328,17 @@ class AiBotHarvest extends Command
                 continue;
             }
 
-            $pnl = (float) $t['realized_pnl'];
-            $closed++;
-            $wins += $pnl > 0 ? 1 : 0;
-            $realized += $pnl;
-            $closedCosts += $openCosts + $cost;
-            $deployed += $openCost;
+            $closedAt = isset($t['created_at']) ? strtotime((string) $t['created_at']) : null;
+
+            if ($sinceTs === null || $closedAt === null || $closedAt >= $sinceTs) {
+                $pnl = (float) $t['realized_pnl'];
+                $closed++;
+                $wins += $pnl > 0 ? 1 : 0;
+                $realized += $pnl;
+                $closedCosts += $openCosts + $cost;
+                $deployed += $openCost;
+            }
+
             $openCost = 0.0;
             $openCosts = 0.0;
         }

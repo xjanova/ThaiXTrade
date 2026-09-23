@@ -131,7 +131,9 @@ class BotRunner
         }
 
         // 2) ข้อมูลตลาดจริง — ดึงให้พอกับที่กลยุทธ์นั้นต้องใช้จริงๆ
-        $candles = $this->candles($bot, $strategy->minCandles($bot->params ?? []));
+        // $livePrice = ราคาสดของแท่งที่กำลังวิ่ง (กลยุทธ์ไม่ใช้ — ใช้แค่ยืนยันข่าวร้ายในขั้น 3)
+        $livePrice = null;
+        $candles = $this->candles($bot, $strategy->minCandles($bot->params ?? []), $livePrice);
 
         if (count($candles) < 30) {
             return $this->record($bot, 'hold', 'ยังดึงแท่งเทียนของคู่นี้ไม่ได้');
@@ -212,6 +214,7 @@ class BotRunner
             $candles,
             $bot->timeframe,
             ($bot->params['news_filter'] ?? true) !== false,
+            $livePrice,
         );
 
         if ($risk['force_exit'] && $position) {
@@ -411,7 +414,10 @@ class BotRunner
          * ซึ่งพาผู้ใช้ไปแก้กรอบความเสี่ยงของตัวเองทั้งที่ไม่ใช่ต้นเหตุ
          */
         if ($signal->action === Signal::BUY && $sizeMultiplier <= 0) {
-            $why = 'หยุดเข้าไม้ใหม่ชั่วคราว: '.(implode(' · ', array_slice($risk['reasons'], 0, 2)) ?: 'ความเสี่ยงสูง');
+            // บอกต้นเหตุให้ถูกตัว — ขนาด 0 มาได้ทั้งจากด่านความเสี่ยงและจากตัวคูณของ AI
+            $why = (float) $risk['size_multiplier'] <= 0
+                ? 'หยุดเข้าไม้ใหม่ชั่วคราว: '.(implode(' · ', array_slice($risk['reasons'], 0, 2)) ?: 'ความเสี่ยงสูง')
+                : 'AI ลดขนาดไม้เหลือศูนย์รอบนี้: '.(implode(' · ', array_slice($ai['reasons'], 0, 2)) ?: 'ภาพรวมตลาดไม่เอื้อ');
 
             return $this->record($bot, 'hold', $why, $risk['level'], $logContext);
         }
@@ -636,9 +642,12 @@ class BotRunner
 
     /**
      * @param  int  $needed  จำนวนแท่งที่กลยุทธ์ต้องใช้อย่างน้อย
+     * @param  float|null  $livePrice  (ออก) ราคาปิดสดของแท่งที่กำลังวิ่ง — แท่งนี้ถูกตัดทิ้งจากชุดที่คืน
+     *                                 แต่ด่านข่าวต้องใช้ยืนยันว่า "ราคาตอบรับข่าวแล้วหรือยัง" ภายในนาที
+     *                                 (ข่าวแรงอยู่ระดับ panic แค่ ~10–36 นาที บอท 4h/1d รอแท่งปิดไม่ทัน)
      * @return list<array> แท่งเทียนจริงในรูปแบบตัวเลข
      */
-    private function candles(AiBotConfig $bot, int $needed = 0): array
+    private function candles(AiBotConfig $bot, int $needed = 0, ?float &$livePrice = null): array
     {
         /*
          * เดิมฮาร์ดโค้ด 150 แท่งเสมอ ทั้งที่ฟอร์มให้ตั้งค่าที่ต้องใช้มากกว่านั้น —
@@ -678,6 +687,7 @@ class BotRunner
          * ซึ่งช้ากว่าตลาดจริงไม่เกินหนึ่งแท่ง — แลกกับสัญญาณที่เชื่อถือได้ คุ้มกว่ามาก
          */
         $closed = count($raw) > 1 ? array_slice($raw, 0, -1) : $raw;
+        $livePrice = count($raw) > 1 ? (float) $raw[count($raw) - 1]['close'] : null;
 
         return array_map(fn ($c) => [
             'time' => (int) $c['time'],
@@ -717,6 +727,21 @@ class BotRunner
             $hasPosition = (bool) ($context['has_position'] ?? false);
 
             /*
+             * มุมมอง AI ที่มีผล (หรือถูกลดสิทธิ์) ติดไปกับบันทึกด้วย — ย้อนดูได้ว่ารอบนั้น AI พูดอะไร
+             * และทำไมคู่ทดลอง +AI กับ −AI ถึงเทรดเหมือน/ต่างกัน (เดิมเก็บแค่ meta ของกลยุทธ์)
+             */
+            $meta = $context['meta'] ?? null;
+            $ai = $context['ai'] ?? null;
+
+            if (is_array($ai) && (($ai['applied'] ?? false) || ($ai['demoted'] ?? false))) {
+                $meta = (is_array($meta) ? $meta : []) + ['ai' => array_filter([
+                    'stance' => $ai['stance'] ?? null,
+                    'demoted' => $ai['demoted'] ?? null,
+                    'reasons' => array_slice((array) ($ai['reasons'] ?? []), 0, 2),
+                ], fn ($v) => $v !== null && $v !== [])];
+            }
+
+            /*
              * สภาพเดิมเป๊ะจากรอบก่อน = นับซ้ำในแถวเดิม ไม่แทรกแถวใหม่
              *
              * ดูเหตุผลที่ AiBotDecision::isSameSituation() — 81k แถวเหมือนกันใน 13 วัน
@@ -746,7 +771,7 @@ class BotRunner
                     'price' => $price,
                     'budget' => $context['budget'] ?? null,
                     'has_position' => $hasPosition,
-                    'signal_meta' => $context['meta'] ?? null,
+                    'signal_meta' => $meta,
                     'params' => $context['params'] ?? null,
                     'repeat_count' => 1,
                     'last_seen_at' => now(),

@@ -176,6 +176,8 @@ return [
         'enabled' => (bool) env('AIBOT_ANALYST_EARN_AUTHORITY', true),
         'min_samples' => 60,
         'max_brier' => 0.25,
+        // ถูกลดสิทธิ์แล้วต้องได้ Brier < max_brier − regain_margin ถึงได้อำนาจคืน (กันสลับทุกวัน)
+        'regain_margin' => 0.01,
     ],
 
     /*
@@ -211,6 +213,8 @@ return [
         'horizon_hours' => 24,
         'min_samples' => 15,      // ต่อช่อง (ท่าที × ช่วงความมั่นใจ) — น้อยกว่านี้คือความบังเอิญ
         'ttl_hours' => 36,        // ยาวกว่ารอบสร้าง (24 ชม.) เผื่อ cron พลาดหนึ่งวัน
+        // สำเนาบนดิสก์ — cache ถูกล้างทุก deploy · ว่าง = ไม่เก็บ (ชุดเทสต์ตั้งเป็นว่าง)
+        'store' => env('AIBOT_CALIBRATION_STORE', storage_path('app/aibot/calibration.json')),
     ],
 
     /*

@@ -271,6 +271,22 @@ class AiBotTierTest extends TestCase
             ->assertJsonPath('data.skipped', true);
     }
 
+    /**
+     * เวลารอบก่อน "อยู่ในอนาคต" (โซนเวลาเคยเลื่อนตอนอัป Laravel 12) ต้องไม่ทำให้รอเป็นชั่วโมง.
+     */
+    #[Test]
+    public function a_future_last_run_does_not_throttle_the_browser_tick(): void
+    {
+        config(['aibot.browser_tick_min_seconds' => 30]);
+
+        $this->subscribeTo('free');
+        $bot = $this->makeBot(['last_run_at' => now()->addHours(7)]);
+
+        $this->postJson("/api/v1/ai-bot/bots/{$bot->id}/tick", ['wallet_address' => self::WALLET])
+            ->assertOk()
+            ->assertJsonPath('data.skipped', false);
+    }
+
     #[Test]
     public function another_wallet_cannot_tick_your_bot(): void
     {

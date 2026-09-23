@@ -3,7 +3,9 @@
 namespace App\Services\AiBot\Analyst;
 
 use App\Models\AiMarketView;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 
 /**
  * TPIX TRADE — "AI มั่นใจเท่านี้ แล้วทายถูกจริงกี่เปอร์เซ็นต์" วัดจากประวัติของมันเอง.
@@ -49,6 +51,9 @@ class AnalystCalibration
         $calls = $this->scorer->score($views, $horizon);
         $table = self::tabulate($calls);
 
+        $brier = AnalystScorer::brier($calls);
+        $brierSamples = count(array_filter($calls, fn ($c) => $c['p_up'] !== null));
+
         $result = [
             'built_at' => now()->toIso8601String(),
             'days' => $days,
@@ -59,14 +64,51 @@ class AnalystCalibration
              * ขอ (p_up_24h) · เดิมตารางวัดที่ 4 ชม. จึงเอาความน่าจะเป็นของ 24 ชม. ไปเทียบกับ
              * ผลของ 4 ชม. (คนละคำถามกัน)
              */
-            'brier' => AnalystScorer::brier($calls),
-            'brier_samples' => count(array_filter($calls, fn ($c) => $c['p_up'] !== null)),
+            'brier' => $brier,
+            'brier_samples' => $brierSamples,
+            // คำตัดสินอำนาจคิดตอนสร้างตาราง เพื่อให้ hysteresis เห็นคำตัดสินรอบก่อน (ดู verdictFor)
+            'verdict' => self::verdictFor($brier, $brierSamples, $this->table()['verdict'] ?? null),
             'buckets' => $table,
         ];
 
         Cache::put(self::CACHE_KEY, $result, now()->addHours((int) config('aibot_analyst.calibration.ttl_hours', 36)));
 
+        /*
+         * เก็บลงไฟล์ด้วย — cache ถูกล้างทุกครั้งที่ deploy (post-deploy สั่ง cache:clear)
+         * ถ้าอยู่ใน cache อย่างเดียว AI ที่ถูกลดสิทธิ์จะได้อำนาจคืนทุกครั้งที่ deploy
+         * ไปจนถึงรอบ calibrate ถัดไป (รีวิว 2026-09-23)
+         */
+        $store = (string) config('aibot_analyst.calibration.store', '');
+
+        if ($store !== '') {
+            File::ensureDirectoryExists(dirname($store));
+            File::put($store, json_encode($result, JSON_UNESCAPED_UNICODE));
+        }
+
         return $result;
+    }
+
+    /**
+     * คำตัดสินอำนาจแบบมี hysteresis — ถูกลดสิทธิ์แล้วต้องดีขึ้น "ชัดเจน" ถึงจะได้คืน.
+     *
+     * รีวิว 2026-09-23: เกณฑ์เดียว 0.25 + ตัวอย่างรายเหรียญที่ขยับตามกัน → AI ที่ Brier วนรอบ
+     * 0.25 จะได้/เสียอำนาจสลับไปมาทุกวัน ซึ่งแย่กว่าการตัดสินอย่างใดอย่างหนึ่งไปเลย
+     */
+    public static function verdictFor(?float $brier, int $samples, ?string $previous): string
+    {
+        $minSamples = (int) config('aibot_analyst.authority.min_samples', 60);
+        $maxBrier = (float) config('aibot_analyst.authority.max_brier', 0.25);
+        $margin = (float) config('aibot_analyst.authority.regain_margin', 0.01);
+
+        if ($brier === null || $samples < $minSamples) {
+            return 'unproven';
+        }
+
+        if ($previous === 'no_skill') {
+            return $brier < $maxBrier - $margin ? 'skilled' : 'no_skill';
+        }
+
+        return $brier >= $maxBrier ? 'no_skill' : 'skilled';
     }
 
     /**
@@ -111,12 +153,44 @@ class AnalystCalibration
         return $table;
     }
 
-    /** ตารางล่าสุดจาก cache (null = ยังไม่เคยสร้าง / หมดอายุ) */
+    /**
+     * ตารางล่าสุด — cache ก่อน ถ้าหาย (deploy สั่ง cache:clear) อ่านจากไฟล์ที่ rebuild เก็บไว้
+     * แล้วอุ่น cache กลับ · null = ยังไม่เคยสร้าง หรือเก่าเกิน ttl_hours (cron ตายเกิน 1 รอบครึ่ง).
+     */
     public function table(): ?array
     {
         $cached = Cache::get(self::CACHE_KEY);
 
-        return is_array($cached) ? $cached : null;
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $store = (string) config('aibot_analyst.calibration.store', '');
+
+        if ($store === '' || ! File::exists($store)) {
+            return null;
+        }
+
+        $stored = json_decode((string) File::get($store), true);
+
+        if (! is_array($stored) || empty($stored['built_at'])) {
+            return null;
+        }
+
+        try {
+            $expires = Carbon::parse((string) $stored['built_at'])
+                ->addHours((int) config('aibot_analyst.calibration.ttl_hours', 36));
+        } catch (\Throwable) {
+            return null;   // ไฟล์เสียต้องไม่ทำให้บอทหยุด — ถือว่ายังไม่มีตาราง
+        }
+
+        if ($expires->isPast()) {
+            return null;
+        }
+
+        Cache::put(self::CACHE_KEY, $stored, $expires);
+
+        return $stored;
     }
 
     /**
@@ -163,7 +237,10 @@ class AnalystCalibration
         $minSamples = (int) config('aibot_analyst.authority.min_samples', 60);
         $maxBrier = (float) config('aibot_analyst.authority.max_brier', 0.25);
 
-        if ($brier === null || $samples < $minSamples) {
+        // ตารางรุ่นใหม่มีคำตัดสินที่ผ่าน hysteresis แล้ว — ตารางรุ่นเก่าคิดสดจากตัวเลข
+        $verdict = (string) ($table['verdict'] ?? self::verdictFor($brier, $samples, null));
+
+        if ($verdict === 'unproven') {
             return [
                 'verdict' => 'unproven',
                 'brier' => $brier,
@@ -172,7 +249,7 @@ class AnalystCalibration
             ];
         }
 
-        if ($brier >= $maxBrier) {
+        if ($verdict === 'no_skill') {
             return [
                 'verdict' => 'no_skill',
                 'brier' => $brier,

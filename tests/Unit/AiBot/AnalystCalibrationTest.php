@@ -229,6 +229,51 @@ class AnalystCalibrationTest extends TestCase
         $this->assertSame('skilled', $calibration->skill()['verdict']);
     }
 
+    /**
+     * ⭐ ตารางต้องรอด cache:clear ของ deploy — ไม่งั้น AI ที่ถูกลดสิทธิ์ได้อำนาจคืนทุกครั้งที่ deploy.
+     */
+    #[Test]
+    public function ตารางรอด_cache_clear_เพราะมีสำเนาบนดิสก์(): void
+    {
+        $store = sys_get_temp_dir().'/aibot-calibration-'.uniqid().'.json';
+        config(['aibot_analyst.calibration.store' => $store]);
+
+        try {
+            $this->fakeMarket();
+            $this->storedView(['BTC' => ['stance' => 'buy', 'p_up' => 0.9]], 0.7, 30);
+            app(AnalystCalibration::class)->rebuild(days: 14, horizon: 24);
+
+            Cache::flush();   // สิ่งที่ post-deploy ทำทุกครั้ง
+
+            $table = app(AnalystCalibration::class)->table();
+            $this->assertNotNull($table, 'ต้องอ่านกลับจากไฟล์ได้');
+            $this->assertSame(1, $table['brier_samples']);
+            $this->assertNotNull(Cache::get(AnalystCalibration::CACHE_KEY), 'อ่านจากไฟล์แล้วต้องอุ่น cache กลับ');
+
+            // ไฟล์เก่าเกินอายุตาราง = ไม่ใช้ (cron ตายนาน ต้องถอยไปกติกาเดิม ไม่ใช่เชื่อข้อมูลเก่า)
+            Cache::flush();
+            $this->travel(37)->hours();
+            $this->assertNull(app(AnalystCalibration::class)->table());
+        } finally {
+            @unlink($store);
+        }
+    }
+
+    /**
+     * hysteresis — ถูกลดสิทธิ์แล้วต้องดีขึ้นชัดเจนถึงได้คืน ไม่สลับไปมาทุกวันรอบ 0.25.
+     */
+    #[Test]
+    public function ถูกลดสิทธิ์แล้วต้องดีขึ้นชัดเจนถึงจะได้อำนาจคืน(): void
+    {
+        config(['aibot_analyst.authority.min_samples' => 60, 'aibot_analyst.authority.max_brier' => 0.25, 'aibot_analyst.authority.regain_margin' => 0.01]);
+
+        $this->assertSame('no_skill', AnalystCalibration::verdictFor(0.25, 100, 'skilled'));
+        $this->assertSame('skilled', AnalystCalibration::verdictFor(0.249, 100, 'skilled'));
+        $this->assertSame('no_skill', AnalystCalibration::verdictFor(0.245, 100, 'no_skill'), 'ดีขึ้นนิดเดียวยังไม่พอ');
+        $this->assertSame('skilled', AnalystCalibration::verdictFor(0.235, 100, 'no_skill'), 'ดีขึ้นชัดเจน = ได้คืน');
+        $this->assertSame('unproven', AnalystCalibration::verdictFor(0.40, 59, 'no_skill'), 'ตัวอย่างไม่พอ = ยังไม่ตัดสิน');
+    }
+
     #[Test]
     public function brier_ให้_0_เมื่อความน่าจะเป็นถูกต้องสมบูรณ์(): void
     {
