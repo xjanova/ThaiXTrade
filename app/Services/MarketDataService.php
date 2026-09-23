@@ -61,19 +61,30 @@ class MarketDataService
                 $data = null;
 
                 if (! empty($adminPairs)) {
+                    // ถามได้เฉพาะคู่ที่ Binance เปิดเทรดจริง — มีตัวที่มันไม่รู้จัก
+                    // ปนไปแม้ตัวเดียว มันปฏิเสธทั้งคำขอด้วย 400
+                    // ตาราง TradingPair มีทั้ง TPIXUSDT (เหรียญเราเอง ราคามาจาก DEX
+                    // ไม่ใช่ Binance) และเหรียญที่ถูก delist ไปแล้วอย่าง EOS/MKR
+                    $known = $this->binanceTradingSymbols();
+
+                    $askPairs = empty($known)
+                        ? $adminPairs
+                        : array_values(array_filter($adminPairs, fn ($p) => isset($known[$p])));
+
                     // Binance รับ symbols เป็น "สตริง JSON" เท่านั้น ส่ง array ตรง ๆ
                     // Guzzle จะแปลงเป็น symbols[]=... ซึ่งฝั่งโน้นไม่รู้จัก
-                    $response = Http::timeout(10)->get($url, ['symbols' => json_encode($adminPairs)]);
+                    $response = empty($askPairs)
+                        ? null
+                        : Http::timeout(10)->get($url, ['symbols' => json_encode($askPairs)]);
 
-                    if ($response->successful()) {
+                    if ($response?->successful()) {
                         $data = $response->json();
-                    } else {
-                        // มีคู่ไหนที่ Binance ไม่รู้จักแม้ตัวเดียว มันปฏิเสธทั้งคำขอ
-                        // (เช่นแอดมินเพิ่มเหรียญที่ Binance ยังไม่ลิสต์) — ถอยไปทาง
-                        // เดิมแทนที่จะปล่อยหน้าตลาดว่างเปล่า
+                    } elseif ($response !== null) {
+                        // ยังปฏิเสธอยู่ทั้งที่กรองแล้ว — ถอยไปทางเดิมแทนที่จะปล่อย
+                        // หน้าตลาดว่างเปล่า
                         Log::warning('Market tickers: ขอเป็นรายคู่ไม่สำเร็จ ถอยไปดึงทั้งตลาด', [
                             'status' => $response->status(),
-                            'pairs' => count($adminPairs),
+                            'pairs' => count($askPairs),
                         ]);
                     }
                 }
@@ -107,6 +118,41 @@ class MarketDataService
                     ->all();
             } catch (\Exception $e) {
                 Log::warning('Market tickers fetch failed', ['error' => $e->getMessage()]);
+
+                return [];
+            }
+        });
+    }
+
+    /**
+     * รายชื่อคู่ที่ Binance เปิดเทรดอยู่จริง — เก็บ cache ยาวเพราะเปลี่ยนไม่บ่อย
+     *
+     * ใช้กรองก่อนส่ง symbols= เท่านั้น ไม่ได้ใช้ตัดสินว่าจะแสดงคู่ไหนบนหน้าเว็บ
+     * (อันนั้นยังเป็นหน้าที่ของ allowlist จาก TradingPair เหมือนเดิม)
+     *
+     * @return array<string,int> symbol => 1 (flip ไว้ให้ isset() เร็ว)
+     */
+    private function binanceTradingSymbols(): array
+    {
+        return Cache::remember('market:binance:trading-symbols', 21600, function () {
+            try {
+                $response = Http::timeout(15)->get("{$this->baseUrl}/exchangeInfo", ['permissions' => 'SPOT']);
+
+                if ($response->failed()) {
+                    return [];
+                }
+
+                // อ่านจาก body ด้วย regex ไม่ json_decode ทั้งก้อน — payload นี้หลาย
+                // MB และเคยทำ memory_limit 128M แตกมาแล้วตอนลองบน prod
+                preg_match_all('/"symbol":"([A-Z0-9]+)","status":"TRADING"/', $response->body(), $matches);
+
+                return array_fill_keys($matches[1] ?? [], 1);
+            } catch (\Exception $e) {
+                // ดึงไม่ได้ก็คืนว่าง — ฝั่งผู้เรียกจะส่งคู่ทั้งหมดไปตามเดิม
+                // แล้วมีทางถอยดึงทั้งตลาดรออยู่แล้ว
+                Log::warning('Market tickers: ดึงรายชื่อคู่ที่ Binance เทรดไม่สำเร็จ', [
+                    'error' => $e->getMessage(),
+                ]);
 
                 return [];
             }
