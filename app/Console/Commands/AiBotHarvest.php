@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AiBotConfig;
 use App\Models\AiBotDecision;
 use App\Models\AiBotDemoAccount;
 use App\Models\AiBotTrade;
@@ -29,6 +30,8 @@ class AiBotHarvest extends Command
 {
     protected $signature = 'aibot:harvest {--days= : ดูเฉพาะ N วันล่าสุด (ไม่ระบุ = ทั้งหมด)}
                             {--wallet= : เจาะจงกระเป๋าเดียว}
+                            {--by-bot : สรุปรายบอท + เทียบคู่ทดลอง ai_gate เปิด/ปิด}
+                            {--from-bot= : นับเฉพาะบอทรหัสนี้ขึ้นไป (แยกกองทดลองรอบใหม่ออกจากกองเก่า)}
                             {--export= : เขียนข้อมูลดิบเป็น JSON ลงไฟล์ที่ระบุ}';
 
     protected $description = 'สรุปผลการทดลองของบอท AI TRADE รายกลยุทธ์ (อ่านอย่างเดียว)';
@@ -55,6 +58,10 @@ class AiBotHarvest extends Command
 
         $this->renderTable($decisions, $trades);
         $this->renderPortfolios($wallet);
+
+        if ($this->option('by-bot')) {
+            $this->renderByBot($since, $wallet, (int) ($this->option('from-bot') ?? 0));
+        }
 
         if ($path = $this->option('export')) {
             $this->export($path, $since, $wallet, $decisions, $trades);
@@ -190,6 +197,144 @@ class AiBotHarvest extends Command
                 $this->money((float) $a->balance - (float) $a->starting_balance),
             ])->values()->all(),
         );
+    }
+
+    /**
+     * ผลรายบอท + เทียบคู่ทดลอง (กลยุทธ์เดียวกัน ai_gate เปิด/ปิด).
+     *
+     * ⚠️ ทำไมต้องมี: พอร์ตทดลองผูกกับ (กระเป๋า, กลยุทธ์) ไม่ใช่ตัวบอท — บอทคู่ +AI/−AI
+     *    ใช้บัญชีเดียวกัน ตารางรายกลยุทธ์ข้างบนจึงรวมทั้งคู่ไว้ในแถวเดียว ออดิท R3
+     *    (2 → 23 ก.ย. 2026) ต้องดึงข้อมูลดิบไปแยกเองนอกระบบถึงจะเห็นว่าทั้งสองกลุ่ม
+     *    เทรดเหมือนกันทุกไม้ (AI ไม่มีผลตลอด 20 วัน) — คำถามที่การทดลองนี้ตั้งมาตอบ
+     *
+     * edge (bps) = กำไรก่อนหักต้นทุน ÷ เงินที่ลงในไม้ที่ปิดแล้ว — ต้องชนะ 36 bps ชัดเจน
+     * ทุน% = realized ÷ ทุนต่อไม้ที่ตั้งไว้ (max_position_usd) — เทียบกับถือเฉยๆ ได้ตรง
+     */
+    private function renderByBot(?\DateTimeInterface $since, ?string $wallet, int $fromBot): void
+    {
+        $bots = AiBotConfig::query()
+            ->when($wallet, fn ($q) => $q->where('wallet_address', $wallet))
+            ->when($fromBot > 0, fn ($q) => $q->where('id', '>=', $fromBot))
+            ->orderBy('id')
+            ->get();
+
+        if ($bots->isEmpty()) {
+            return;
+        }
+
+        $rows = [];
+        $results = [];
+
+        foreach ($bots as $bot) {
+            $trades = AiBotTrade::query()
+                ->where('ai_bot_config_id', $bot->id)
+                ->where('mode', 'demo')
+                ->when($since, fn ($q) => $q->where('created_at', '>=', $since))
+                ->orderBy('id')
+                ->get(['side', 'pair', 'gross_value', 'fee', 'slippage_cost', 'realized_pnl']);
+
+            $r = self::summariseRounds($trades->map(fn ($t) => $t->toArray())->all());
+            $cap = (float) (($bot->risk ?? [])['max_position_usd'] ?? 100);
+            $gate = (($bot->params ?? [])['ai_gate'] ?? true) !== false;
+            $auto = (($bot->params ?? [])['auto_pair'] ?? false) === true;
+
+            $results[$bot->id] = $r + ['strategy' => $bot->strategy, 'gate' => $gate, 'auto' => $auto];
+
+            $rows[] = [
+                "#{$bot->id}",
+                $bot->strategy,
+                $bot->timeframe,
+                $gate ? '+AI' : '−AI',
+                $auto ? 'auto' : '',
+                implode(',', $r['pairs']) ?: $bot->pair,
+                $r['closed'],
+                $r['closed'] > 0 ? round($r['wins'] / $r['closed'] * 100).'%' : '—',
+                $this->money($r['realized']),
+                $this->money($r['costs']),
+                $r['edge_bps'] === null ? '—' : $r['edge_bps'],
+                $cap > 0 ? round($r['realized'] / $cap * 100, 2).'%' : '—',
+                $r['open_cost'] > 0 ? '$'.number_format($r['open_cost'], 2) : '',
+            ];
+        }
+
+        $this->newLine();
+        $this->components->info('ผลรายบอท (ไม้ปิดแล้ว)');
+        $this->table(['บอท', 'กลยุทธ์', 'tf', 'AI', '', 'คู่', 'ปิด', 'ชนะ', 'realized', 'ต้นทุน', 'edge bps', 'ทุน%', 'ถือค้าง'], $rows);
+
+        // คู่ทดลอง: กลยุทธ์เดียวกัน ไม่เลือกเหรียญเอง ต่างกันแค่ ai_gate
+        $pairs = [];
+        foreach ($results as $id => $r) {
+            if (! $r['auto']) {
+                $pairs[$r['strategy']][$r['gate'] ? 'on' : 'off'][] = $id;
+            }
+        }
+
+        $ab = [];
+        foreach ($pairs as $strategy => $groups) {
+            if (empty($groups['on']) || empty($groups['off'])) {
+                continue;
+            }
+
+            $on = array_sum(array_map(fn ($id) => $results[$id]['realized'], $groups['on']));
+            $off = array_sum(array_map(fn ($id) => $results[$id]['realized'], $groups['off']));
+            $ab[] = [$strategy, $this->money($on), $this->money($off), $this->money($on - $off)];
+        }
+
+        if ($ab !== []) {
+            $this->table(['คู่ทดลอง', '+AI', '−AI', 'AI ช่วย/เสีย'], $ab);
+        }
+    }
+
+    /**
+     * ประกอบไม้เป็น "รอบ" (ซื้อสะสมจนถึงขาย) แล้วสรุป — pure ทดสอบได้โดยไม่ต้องมีฐานข้อมูล.
+     *
+     * ต้นทุนขาซื้อของรอบที่ยังไม่ปิดไม่ถูกนับใน edge (ยังไม่รู้ผล)
+     *
+     * @param  list<array{side: string, pair?: string, gross_value: mixed, fee: mixed, slippage_cost: mixed, realized_pnl: mixed}>  $trades  เรียงตามเวลา
+     * @return array{closed: int, wins: int, realized: float, costs: float, edge_bps: float|null, open_cost: float, pairs: list<string>}
+     */
+    public static function summariseRounds(array $trades): array
+    {
+        $closed = 0;
+        $wins = 0;
+        $realized = 0.0;
+        $closedCosts = 0.0;
+        $deployed = 0.0;
+        $openCost = 0.0;
+        $openCosts = 0.0;
+        $pairs = [];
+
+        foreach ($trades as $t) {
+            $cost = (float) $t['fee'] + (float) $t['slippage_cost'];
+            $pairs[$t['pair'] ?? ''] = true;
+
+            if ($t['side'] === 'buy') {
+                // เงินที่จ่ายจริงของขาซื้อ = มูลค่าที่ได้เหรียญ + ค่าธรรมเนียม (เหมือน cost_basis ของ PaperBroker)
+                $openCost += (float) $t['gross_value'] + (float) $t['fee'];
+                $openCosts += $cost;
+
+                continue;
+            }
+
+            $pnl = (float) $t['realized_pnl'];
+            $closed++;
+            $wins += $pnl > 0 ? 1 : 0;
+            $realized += $pnl;
+            $closedCosts += $openCosts + $cost;
+            $deployed += $openCost;
+            $openCost = 0.0;
+            $openCosts = 0.0;
+        }
+
+        return [
+            'closed' => $closed,
+            'wins' => $wins,
+            'realized' => round($realized, 2),
+            'costs' => round($closedCosts, 2),
+            'edge_bps' => $deployed > 0 ? round(($realized + $closedCosts) / $deployed * 10000, 1) : null,
+            'open_cost' => round($openCost, 2),
+            'pairs' => array_values(array_filter(array_keys($pairs))),
+        ];
     }
 
     private function export(string $path, ?\DateTimeInterface $since, ?string $wallet, $decisions, $trades): void
