@@ -31,19 +31,16 @@ class MarketDataService
         return Cache::remember($cacheKey, $ttl, function () use ($symbol) {
             try {
                 $url = "{$this->baseUrl}/ticker/24hr";
-                $params = $symbol ? ['symbol' => $this->toBinanceSymbol($symbol)] : [];
-
-                $response = Http::timeout(10)->get($url, $params);
-
-                if ($response->failed()) {
-                    return [];
-                }
-
-                $data = $response->json();
 
                 // Single symbol returns object, multiple returns array
                 if ($symbol) {
-                    return [$this->formatTicker($data)];
+                    $response = Http::timeout(10)->get($url, ['symbol' => $this->toBinanceSymbol($symbol)]);
+
+                    if ($response->failed()) {
+                        return [];
+                    }
+
+                    return [$this->formatTicker($response->json())];
                 }
 
                 // Build allowlist of admin-configured pairs from DB.
@@ -57,6 +54,39 @@ class MarketDataService
                     ->unique()
                     ->values()
                     ->all();
+
+                // ขอเฉพาะคู่ที่เปิดใช้จริง — ของเดิมดึงรายการทั้งตลาด (~1.9MB ทุก 10
+                // วินาทีตอน cache หมด) แล้วค่อยมากรองทิ้งเกือบหมดในฝั่ง PHP
+                // วัดบน prod 2026-09-23: endpoint นี้กินเวลา 0.75-1.5 วินาที
+                $data = null;
+
+                if (! empty($adminPairs)) {
+                    // Binance รับ symbols เป็น "สตริง JSON" เท่านั้น ส่ง array ตรง ๆ
+                    // Guzzle จะแปลงเป็น symbols[]=... ซึ่งฝั่งโน้นไม่รู้จัก
+                    $response = Http::timeout(10)->get($url, ['symbols' => json_encode($adminPairs)]);
+
+                    if ($response->successful()) {
+                        $data = $response->json();
+                    } else {
+                        // มีคู่ไหนที่ Binance ไม่รู้จักแม้ตัวเดียว มันปฏิเสธทั้งคำขอ
+                        // (เช่นแอดมินเพิ่มเหรียญที่ Binance ยังไม่ลิสต์) — ถอยไปทาง
+                        // เดิมแทนที่จะปล่อยหน้าตลาดว่างเปล่า
+                        Log::warning('Market tickers: ขอเป็นรายคู่ไม่สำเร็จ ถอยไปดึงทั้งตลาด', [
+                            'status' => $response->status(),
+                            'pairs' => count($adminPairs),
+                        ]);
+                    }
+                }
+
+                if ($data === null) {
+                    $response = Http::timeout(10)->get($url);
+
+                    if ($response->failed()) {
+                        return [];
+                    }
+
+                    $data = $response->json();
+                }
 
                 $collection = collect($data)
                     ->filter(fn ($t) => str_ends_with($t['symbol'], 'USDT'));
