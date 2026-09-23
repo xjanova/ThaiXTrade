@@ -48,6 +48,7 @@ class BotRunner
         private readonly AiBotService $bots,
         private readonly AiViewGate $aiGate,
         private readonly AutoPairResolver $autoPair,
+        private readonly MacroTrendService $macro,
     ) {}
 
     /**
@@ -323,6 +324,42 @@ class BotRunner
 
         // 5) ถามกลยุทธ์
         $params = $this->paramsFor($bot, $candles, $position);
+
+        /*
+         * 4.2) แนวโน้มใหญ่ของตลาด (BTC รายวันใต้ EMA 50) = งดเปิดไม้ใหม่ — ไม่แตะไม้ที่ถืออยู่
+         *
+         * backtest 2 ปี 5 เหรียญ: ไม่มีกลยุทธ์ไหนมี edge ในปีขาลง ตัวแปรที่ตัดสินผลมากที่สุด
+         * คือ "ตลาดใหญ่เป็นขาขึ้นไหมตอนเปิดไม้" (ตัวเลขเต็มอยู่ที่ MacroTrend) — ไม้ที่ถืออยู่
+         * ปล่อยให้กลยุทธ์กับ stop ของผู้ใช้ปิดตามปกติ ไม่สั่งเทออก (การเทออกมีต้นทุน
+         * และด่านนี้วัดแค่ตอนเปิดไม้)
+         *
+         * ข้อมูลไม่พอ/ดึงไม่ได้ (up = null) = ไม่กรอง ถอยไปกฎเดิม · ผู้ใช้ปิดได้ที่ macro_filter
+         */
+        $macro = null;
+
+        if (! $position && ($params['macro_filter'] ?? true)) {
+            $macro = $this->macro->current();
+
+            if ($macro['up'] === false) {
+                $reason = sprintf(
+                    'แนวโน้มใหญ่ของตลาดเป็นขาลง (%s รายวันต่ำกว่า EMA %d อยู่ %.1f%%) — งดเปิดไม้ใหม่',
+                    explode('/', $macro['symbol'])[0],
+                    $macro['period'],
+                    abs((float) $macro['above_pct']),
+                );
+
+                return $this->record($bot, 'hold', $reason, $risk['level'], [
+                    'price' => $price,
+                    'has_position' => false,
+                    'meta' => ['macro' => $macro],
+                ]);
+            }
+        }
+
+        // DCA: "พักสะสมช่วงขาลงใหญ่" ต้องรู้แนวโน้มใหญ่ด้วย — engine เป็นคนรู้ ไม่ใช่กลยุทธ์
+        if ($bot->strategy === 'dca' && ($params['pause_in_downtrend'] ?? false)) {
+            $params['_macro_up'] = ($macro ?? $this->macro->current())['up'];
+        }
 
         /*
          * AI ผ่อนเกณฑ์ของกลยุทธ์ได้ แต่ "สร้างสัญญาณเองไม่ได้"

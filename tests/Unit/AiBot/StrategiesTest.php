@@ -508,6 +508,22 @@ class StrategiesTest extends TestCase
         $this->assertGreaterThan($normal->strength, $onDip->strength);
     }
 
+    /** "พักสะสมช่วงขาลงใหญ่" — เดิมเป็นสวิตช์ที่ไม่มีโค้ดไหนอ่านค่า (เปิด/ปิดได้ผลเท่ากันทุกตัวเลข) */
+    public function test_dca_pauses_in_a_major_downtrend_only_when_asked(): void
+    {
+        $candles = $this->candles(array_fill(0, 40, 100.0));
+        $due = ['dip_boost_pct' => 3, '_bars_since_entry' => 30, '_interval_bars' => 24];
+        $dca = $this->registry->find('dca');
+
+        $paused = $dca->decide($candles, $due + ['pause_in_downtrend' => true, '_macro_up' => false], null);
+        $this->assertSame(Signal::HOLD, $paused->action);
+        $this->assertStringContainsString('พักการสะสม', $paused->reason);
+
+        $this->assertSame(Signal::BUY, $dca->decide($candles, $due + ['pause_in_downtrend' => false, '_macro_up' => false], null)->action, 'ไม่ได้เปิดสวิตช์ = สะสมตามปกติ');
+        $this->assertSame(Signal::BUY, $dca->decide($candles, $due + ['pause_in_downtrend' => true, '_macro_up' => null], null)->action, 'ไม่รู้แนวโน้ม = ไม่เดาว่าขาลง');
+        $this->assertSame(Signal::BUY, $dca->decide($candles, $due + ['pause_in_downtrend' => true, '_macro_up' => true], null)->action);
+    }
+
     // ── scalping ────────────────────────────────────────────────────────────
 
     public function test_scalping_takes_profit_at_its_target(): void

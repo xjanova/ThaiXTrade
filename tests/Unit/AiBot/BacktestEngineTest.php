@@ -112,7 +112,10 @@ class BacktestEngineTest extends TestCase
             $closes[] = 100.0 - $i * 0.5;
         }
 
-        $result = $this->engine->run('dca', $this->candles($closes), '1h',
+        $result = $this->engine->run(
+            'dca',
+            $this->candles($closes),
+            '1h',
             ['interval_hours' => 1, 'budget_usd' => 50, 'dip_boost_pct' => 3],
             ['max_position_usd' => 100, 'stop_loss_pct' => 3, 'take_profit_pct' => 200, 'max_daily_loss_usd' => 100000],
             ['risk_gate' => false],
@@ -128,7 +131,10 @@ class BacktestEngineTest extends TestCase
     {
         $closes = array_fill(0, 160, 100.0);
 
-        $result = $this->engine->run('dca', $this->candles($closes), '1h',
+        $result = $this->engine->run(
+            'dca',
+            $this->candles($closes),
+            '1h',
             ['interval_hours' => 1, 'budget_usd' => 20, 'dip_boost_pct' => 3],
             ['max_position_usd' => 100, 'stop_loss_pct' => 50, 'take_profit_pct' => 200, 'max_daily_loss_usd' => 100000],
             ['risk_gate' => false],
@@ -144,6 +150,35 @@ class BacktestEngineTest extends TestCase
         $this->assertCount(5, $buys, 'ต้องหยุดเติมเมื่อต้นทุนสะสมชนเพดานทุน');
         $this->assertLessThanOrEqual(100.0 + 1e-6, $result['summary']['max_deployed']);
         $this->assertGreaterThan(0, $result['summary']['decisions']['blocked'], 'รอบที่ชนเพดานต้องถูกนับว่าถูกกัน');
+    }
+
+    /**
+     * ⭐ ตัวกรองแนวโน้มใหญ่ใน backtest ต้องทำงานเหมือนบอทจริง (BotRunner ขั้น 4.2).
+     *
+     * แท่งรายวันของ BTC ขาลงตลอดช่วง → ห้ามเปิดไม้เลย · ขาขึ้น → ได้ไม้เท่ากับไม่กรอง
+     */
+    #[Test]
+    public function ตัวกรองแนวโน้มใหญ่งดเปิดไม้ตอนตลาดใหญ่เป็นขาลง(): void
+    {
+        $market = $this->trendRoundTrip();
+        $risk = ['max_position_usd' => 1000, 'stop_loss_pct' => 50, 'take_profit_pct' => 200];
+
+        // แท่งรายวันครอบคลุมตั้งแต่ก่อนช่วงทดสอบ 400 วัน ถึงหลังจบ
+        $daily = fn (callable $closeAt) => array_map(fn ($i) => [
+            'time' => 1_700_000_000_000 - 400 * 86_400_000 + $i * 86_400_000,
+            'close' => $closeAt($i),
+        ], range(0, 420));
+
+        $down = $this->engine->run('momentum', $market, '1h', [], $risk, ['macro_daily' => $daily(fn ($i) => 1000.0 - $i)]);
+        $up = $this->engine->run('momentum', $market, '1h', [], $risk, ['macro_daily' => $daily(fn ($i) => 100.0 + $i)]);
+        $none = $this->engine->run('momentum', $market, '1h', [], $risk);
+        $off = $this->engine->run('momentum', $market, '1h', ['macro_filter' => false], $risk, ['macro_daily' => $daily(fn ($i) => 1000.0 - $i)]);
+
+        $this->assertSame(0, $down['summary']['trades'], 'ตลาดใหญ่ขาลง = ห้ามเปิดไม้');
+        $this->assertGreaterThan(0, $down['summary']['decisions']['blocked']);
+        $this->assertGreaterThan(0, $none['summary']['trades']);
+        $this->assertSame($none['summary']['trades'], $up['summary']['trades'], 'ขาขึ้นต้องไม่ต่างจากไม่กรอง');
+        $this->assertSame($none['summary']['trades'], $off['summary']['trades'], 'ผู้ใช้ปิดตัวกรอง = ไม่กรอง');
     }
 
     #[Test]

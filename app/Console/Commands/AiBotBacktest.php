@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\AiBot\Backtest\BacktestEngine;
 use App\Services\AiBot\Backtest\KlineArchive;
+use App\Services\AiBot\MacroTrend;
 use App\Services\AiBot\Timeframe;
 use App\Services\AiBotService;
 use Illuminate\Console\Command;
@@ -42,6 +43,7 @@ class AiBotBacktest extends Command
         {--sweep=* : จูนหลายค่า key=v1,v2,v3 (ใส่ซ้ำได้หลายคีย์ = ทุกชุดผสม)}
         {--walk-forward : จูนบน 60% แรก วัดบน 40% หลัง}
         {--no-risk-gate : ปิดด่านความเสี่ยงจากราคา (ดูกลยุทธ์ล้วนๆ)}
+        {--no-macro : ไม่ใช้ตัวกรองแนวโน้มใหญ่ (BTC รายวัน) — ไว้เทียบว่าตัวกรองช่วยแค่ไหน}
         {--offline : ห้ามยิงตลาด ใช้เฉพาะแท่งที่มีในคลัง}
         {--json : พิมพ์ผลเป็น JSON แทนตาราง}';
 
@@ -100,6 +102,25 @@ class AiBotBacktest extends Command
         }
 
         $options = ['risk_gate' => ! $this->option('no-risk-gate'), 'start_index' => $startIndex];
+
+        /*
+         * แท่งรายวันของ BTC สำหรับตัวกรองแนวโน้มใหญ่ (กติกาเดียวกับ BotRunner ขั้น 4.2)
+         * เผื่อย้อนหลัง MacroTrend::WINDOW วันให้ EMA อุ่นเครื่องเต็มตั้งแต่แท่งแรกของช่วงที่ทดสอบ
+         * ดึงไม่ได้ = รันต่อแบบไม่กรอง พร้อมเตือน (บอทจริงก็ถอยแบบเดียวกัน)
+         */
+        if (! $this->option('no-macro')) {
+            try {
+                $options['macro_daily'] = $archive->range(
+                    (string) config('aibot.macro.symbol', 'BTC/USDT'),
+                    '1d',
+                    $fromMs - $warmupMs - MacroTrend::WINDOW * 86_400_000,
+                    $toMs,
+                    (bool) $this->option('offline'),
+                );
+            } catch (\Throwable $e) {
+                $this->warn('ดึงแท่งรายวันของตัวกรองแนวโน้มใหญ่ไม่ได้ — รันแบบไม่กรอง: '.$e->getMessage());
+            }
+        }
         $sweeps = $this->sweeps();
 
         if ($sweeps === null) {

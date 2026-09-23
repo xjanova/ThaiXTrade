@@ -70,6 +70,19 @@ final class PositionSizer
         $maxPosition = (float) ($risk['max_position_usd'] ?? 100);
         $perOrder = self::orderSizeFor($strategy, $params, $rawParams);
 
+        /*
+         * DCA "เพิ่มไม้เมื่อราคาย่อ" (dip_boost_pct) — ความแรงสัญญาณคือขนาดไม้ที่ต้องได้จริง
+         *
+         * กลยุทธ์ให้ strength 0.5 ตอนซื้อตามรอบปกติ และ 0.7–1.0 ตอนราคาย่อต่ำกว่า SMA20
+         * เกินเกณฑ์ พร้อมเหตุผล "ราคาย่อ — เพิ่มไม้" แต่เดิมที่นี่ใช้งบคงที่เสมอ ไม้ตอนย่อจึง
+         * เท่ากับไม้ปกติทุกครั้ง (R3: DCA ทุกไม้ $24.98) ฟีเจอร์ที่เทมเพลตโฆษณาไว้ไม่เคยเกิดขึ้น
+         * ตอนนี้: ปกติ = งบที่ตั้ง (×1) · ย่อ = ×1.4 ถึง ×2 — ยังถูกเพดานทุนต่อไม้คุมเหมือนเดิม
+         * (กริดยังใช้ขนาดคงที่ต่อชั้น — ชั้นของกริดคือตัวกำหนดขนาดอยู่แล้ว)
+         */
+        if ($perOrder !== null && $strategy === 'dca') {
+            $perOrder *= max(1.0, $strength / 0.5);
+        }
+
         if ($perOrder !== null) {
             return round(min($perOrder, $maxPosition) * $riskMultiplier, 2);
         }

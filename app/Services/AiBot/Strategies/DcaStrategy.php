@@ -81,6 +81,16 @@ class DcaStrategy implements Strategy
             return Signal::hold('ยังไม่ครบรอบเข้าซื้อถัดไป', $meta);
         }
 
+        /*
+         * "พักสะสมช่วงขาลงใหญ่" — สวิตช์ที่อยู่ในฟอร์มและเทมเพลตมาตั้งแต่แรก แต่ไม่เคยมี
+         * โค้ดไหนอ่านค่าเลย (พบตอน backtest 2 ปี 23 ก.ย. 2026: เปิด/ปิดได้ผลเหมือนกันทุกตัวเลข)
+         * แนวโน้มใหญ่มาจาก engine (`_macro_up` — BTC รายวันเทียบ EMA ดู MacroTrend)
+         * null = ไม่รู้ → สะสมตามปกติ ไม่เดาว่าเป็นขาลง
+         */
+        if (($params['pause_in_downtrend'] ?? false) && ($params['_macro_up'] ?? null) === false) {
+            return Signal::hold('แนวโน้มใหญ่เป็นขาลง — พักการสะสมไว้ก่อน', $meta);
+        }
+
         // ย่อลึก = ซื้อหนักขึ้น (แต่ไม่เกินเต็มไม้) · ไม่ย่อก็ยังซื้อตามรอบปกติ
         $strength = $dipPct >= $boostThreshold
             ? min(1.0, 0.7 + ($dipPct - $boostThreshold) / 20)

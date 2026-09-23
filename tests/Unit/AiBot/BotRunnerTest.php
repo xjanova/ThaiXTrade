@@ -11,6 +11,7 @@ use App\Models\AiBotTrade;
 use App\Models\AiMarketView;
 use App\Models\MarketNews;
 use App\Services\AiBot\BotRunner;
+use App\Services\AiBot\MacroTrendService;
 use App\Services\AiBot\NewsFeedService;
 use App\Services\AiBot\PaperBroker;
 use App\Services\MarketDataService;
@@ -37,6 +38,8 @@ class BotRunnerTest extends TestCase
     private const WALLET = '0x3333333333333333333333333333333333333333';
 
     private BotRunner $runner;
+
+    private MacroTrendService $macro;
 
     /** @var list<array<string, float|int>> แท่งเทียนที่ MarketDataService ปลอมจะคืนกลับมา */
     private array $candles = [];
@@ -65,6 +68,28 @@ class BotRunnerTest extends TestCase
                 }
             };
         });
+
+        /*
+         * แนวโน้มใหญ่ปลอม — ค่าปริยาย "ไม่รู้" (ไม่กรอง) ให้เทสต์ลำดับการตัดสินใจเดิมไม่ขึ้นกับ
+         * ตัวกรองนี้ (ตลาดปลอมคืนแท่งชุดเดียวกันทุก timeframe รวมรายวัน) — เทสต์ที่ต้องการ
+         * ขาขึ้น/ขาลงตั้ง $this->macro->up เอง
+         */
+        $this->macro = new class() extends MacroTrendService
+        {
+            public ?bool $up = null;
+
+            public function __construct() {}
+
+            public function current(): array
+            {
+                return [
+                    'up' => $this->up, 'close' => null, 'ema' => null,
+                    'above_pct' => $this->up === null ? null : ($this->up ? 3.0 : -4.2),
+                    'symbol' => 'BTC/USDT', 'period' => 50,
+                ];
+            }
+        };
+        $this->app->instance(MacroTrendService::class, $this->macro);
 
         $this->runner = app(BotRunner::class);
     }
@@ -289,6 +314,95 @@ class BotRunnerTest extends TestCase
         $this->assertNotNull($trade, 'ต้องมีไม้ขายจริงเกิดขึ้น');
         $this->assertSame('sell', $trade->side);
         $this->assertSame(0, AiBotPosition::count(), 'ต้องไม่เหลือของค้างหลังเทออก');
+    }
+
+    // ─────────────────────── 2.5) แนวโน้มใหญ่ของตลาด (BTC รายวัน) ───────────────────────
+
+    /**
+     * ⭐ ตลาดใหญ่เป็นขาลง = งดเปิดไม้ใหม่ แม้กลยุทธ์จะให้สัญญาณซื้อ.
+     *
+     * backtest 2 ปี 5 เหรียญ: ปีขาลงทุกกลยุทธ์ขาดทุน กรองตัวนี้แล้ว 2 ปีรวมดีขึ้นเกือบทุกตัว
+     * (ai_signal +11.6% → +39.2% · dca −0.7% → +20.7%) — ดู MacroTrend
+     */
+    #[Test]
+    public function a_major_downtrend_blocks_new_entries(): void
+    {
+        $this->macro->up = false;
+        $bot = $this->makeBot();
+        $this->candles = $this->risingCandles();
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('hold', $result['action']);
+        $this->assertStringContainsString('แนวโน้มใหญ่ของตลาดเป็นขาลง', $result['reason']);
+        $this->assertSame(0, AiBotTrade::count());
+    }
+
+    /** ไม่แตะไม้ที่ถืออยู่ — ด่านนี้วัดแค่ตอนเปิดไม้ การเทออกมีต้นทุนและไม่ใช่หน้าที่ของมัน */
+    #[Test]
+    public function a_major_downtrend_leaves_an_open_position_to_the_strategy(): void
+    {
+        $this->macro->up = false;
+        $bot = $this->makeBot();
+        $this->giveBotAPosition($bot);
+        $this->candles = $this->risingCandles();
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertNotSame('sell', $result['action']);
+        $this->assertStringNotContainsString('แนวโน้มใหญ่', $result['reason']);
+        $this->assertSame(1, AiBotPosition::count());
+    }
+
+    /** ผู้ใช้ปิดตัวกรองได้ (คนที่ตั้งใจสะสมผ่านขาลงเอง) */
+    #[Test]
+    public function the_macro_filter_can_be_switched_off_per_bot(): void
+    {
+        $this->macro->up = false;
+        $bot = $this->makeBot(['params' => ['macro_filter' => false]]);
+        $this->candles = $this->risingCandles();
+
+        $this->assertSame('buy', $this->runner->tick($bot)['action']);
+    }
+
+    /** ขาขึ้น หรือ "ไม่รู้" (ดึงข้อมูลไม่ได้) = ไม่กรอง — ตลาดตอบช้าต้องไม่หยุดบอททั้งระบบ */
+    #[Test]
+    public function an_unknown_or_up_trend_does_not_block(): void
+    {
+        $this->candles = $this->risingCandles();
+
+        foreach ([true, null] as $state) {
+            AiBotTrade::query()->delete();
+            AiBotPosition::query()->delete();
+            AiBotConfig::query()->delete();
+            AiBotSubscription::query()->delete();
+            AiBotPlan::query()->delete();
+            $this->macro->up = $state;
+
+            $result = $this->runner->tick($this->makeBot());
+            $this->assertSame('buy', $result['action'], 'สถานะ '.var_export($state, true).': '.$result['reason']);
+        }
+    }
+
+    /**
+     * "พักสะสมช่วงขาลงใหญ่" ของ DCA ทำงานจริง — เดิมเป็นสวิตช์ที่ไม่มีโค้ดไหนอ่านค่าเลย.
+     */
+    #[Test]
+    public function dca_pause_in_downtrend_stops_adding_while_the_market_is_down(): void
+    {
+        $bot = $this->makeBot(['strategy' => 'dca', 'params' => ['interval_hours' => 1, 'budget_usd' => 25, 'pause_in_downtrend' => true]]);
+        $this->giveBotAPosition($bot, 100.0, 0.25);
+        $this->candles = $this->risingCandles();
+
+        $this->macro->up = false;
+        $paused = $this->runner->tick($bot);
+
+        $this->assertSame('hold', $paused['action']);
+        $this->assertStringContainsString('พักการสะสม', $paused['reason']);
+        $this->assertSame(0, AiBotTrade::count());
+
+        $this->macro->up = true;
+        $this->assertSame('buy', $this->runner->tick($bot->fresh())['action'], 'ขาขึ้นกลับมาต้องสะสมต่อ');
     }
 
     /**

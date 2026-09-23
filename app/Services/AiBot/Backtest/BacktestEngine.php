@@ -2,6 +2,7 @@
 
 namespace App\Services\AiBot\Backtest;
 
+use App\Services\AiBot\MacroTrend;
 use App\Services\AiBot\MarketRiskService;
 use App\Services\AiBot\PositionSizer;
 use App\Services\AiBot\Signal;
@@ -45,7 +46,7 @@ class BacktestEngine
      * @param  list<array{time:int,open:float,high:float,low:float,close:float,volume:float}>  $candles  แท่งปิดแล้ว เก่า→ใหม่ (รวมช่วงอุ่นเครื่อง)
      * @param  array  $params  พารามิเตอร์ดิบของกลยุทธ์ (จะถูก sanitize ให้)
      * @param  array  $risk  กรอบความเสี่ยงดิบ (จะถูก sanitize ให้)
-     * @param  array{starting_balance?: float, fee_rate?: float, slippage_bps?: float, risk_gate?: bool, start_index?: int}  $options
+     * @param  array{starting_balance?: float, fee_rate?: float, slippage_bps?: float, risk_gate?: bool, start_index?: int, macro_daily?: list<array>, macro_period?: int}  $options
      * @return array{summary: array, trades: list<array>, equity: list<array{time:int,equity:float,price:float}>, warmup: int, bars: int}
      */
     public function run(string $strategyCode, array $candles, string $timeframe, array $params = [], array $risk = [], array $options = []): array
@@ -71,6 +72,17 @@ class BacktestEngine
 
         $broker = new SimBroker($starting, $feeRate, $slippage);
         $entryCostFactor = 1 + ($this->bots->roundTripCostBps() / 2) / 10000;
+
+        /*
+         * แนวโน้มใหญ่ (BTC รายวันเทียบ EMA) — กติกาเดียวกับ BotRunner ขั้น 4.2
+         * ผู้เรียกส่งแท่งรายวันที่ปิดแล้วมาทาง options.macro_daily (ไม่ส่ง = ไม่กรอง เหมือน
+         * บอทจริงตอนดึงข้อมูลไม่ได้) · ถามด้วยเวลาปิดของแท่งที่กำลังตัดสิน ไม่ใช่เวลาเปิด
+         */
+        $macroSeries = ! empty($options['macro_daily'])
+            ? MacroTrend::series($options['macro_daily'], (int) ($options['macro_period'] ?? config('aibot.macro.ema_period', 50)))
+            : null;
+        $macroCursor = 0;
+        $stepMs = $minutesPerBar * 60_000;
 
         $total = count($candles);
         $start = max((int) ($options['start_index'] ?? 0), min($window, $total) - 1);
@@ -160,8 +172,22 @@ class BacktestEngine
                 }
             }
 
+            // 4.2) แนวโน้มใหญ่เป็นขาลง = งดเปิดไม้ใหม่ (ไม่แตะไม้ที่ถืออยู่) — เหมือน BotRunner
+            $macroUp = $macroSeries !== null ? MacroTrend::upAt($macroSeries, $time + $stepMs, $macroCursor) : null;
+
+            if (! $broker->position && ($clean['macro_filter'] ?? true) && $macroUp === false) {
+                $decisionCounts['blocked']++;
+                $equity[] = ['time' => $time, 'equity' => $broker->equity($price), 'price' => $price];
+
+                continue;
+            }
+
             // 5) ถามกลยุทธ์ — พร้อมตัวช่วยที่ engine เป็นคนรู้ (เหมือน BotRunner::paramsFor)
             $runParams = $clean;
+
+            if ($strategyCode === 'dca' && ($clean['pause_in_downtrend'] ?? false)) {
+                $runParams['_macro_up'] = $macroUp;
+            }
 
             if ($strategyCode === 'dca') {
                 $runParams['_interval_bars'] = max(1, (int) round(((float) ($clean['interval_hours'] ?? 24)) * 60 / $minutesPerBar));
