@@ -38,12 +38,17 @@ class MarketAnalyst
     /**
      * รันรอบวิเคราะห์หนึ่งรอบ.
      *
-     * @return array{ok: bool, view?: AiMarketView, reason?: string}
+     * `skipped` = ไม่ได้ยิงโดยตั้งใจ (ปิดไว้ / ไม่มีบอทต้องใช้) — ไม่ใช่ความล้มเหลว
+     * ผู้เรียกต้องแยกสองอย่างนี้ออกจากกัน: ตัวจับเวลาของ Laravel 12 บันทึก ERROR
+     * ทุกครั้งที่คำสั่งตามตารางคืนรหัส ≠ 0 → รอบ tactical ที่ปิดไว้เขียน ERROR
+     * ลง log ทุก 15 นาที (96 บรรทัด/วัน) จนกลบ error จริงที่ต้องเห็น (2026-09-23)
+     *
+     * @return array{ok: bool, skipped?: bool, view?: AiMarketView, reason?: string}
      */
     public function run(string $scope): array
     {
         if (! $this->enabled()) {
-            return ['ok' => false, 'reason' => 'ปิดระบบวิเคราะห์ด้วย AI ไว้ (AIBOT_ANALYST_ENABLED=false)'];
+            return ['ok' => false, 'skipped' => true, 'reason' => 'ปิดระบบวิเคราะห์ด้วย AI ไว้ (AIBOT_ANALYST_ENABLED=false)'];
         }
 
         if (! array_key_exists($scope, (array) config('aibot_analyst.scopes', []))) {
@@ -53,7 +58,7 @@ class MarketAnalyst
         if (! config("aibot_analyst.scopes.{$scope}.enabled", true)) {
             // ปิดรายรอบได้โดยไม่ต้องแตะ schedule — ตัว schedule ยังเดินแต่จบทันที
             // ที่ทำแบบนี้เพราะแก้ .env ง่ายกว่าแก้ crontab และย้อนกลับได้ทันที
-            return ['ok' => false, 'reason' => "รอบ {$scope} ถูกปิดไว้"];
+            return ['ok' => false, 'skipped' => true, 'reason' => "รอบ {$scope} ถูกปิดไว้"];
         }
 
         $provider = (string) config('aibot_analyst.provider', 'openai');
@@ -76,7 +81,7 @@ class MarketAnalyst
              * พูลของ Thaiprompt ที่ **บิลรวมกัน** กับบอทดูดวง (ราว 20M tokens/เดือน)
              * รอบเปล่าจึงไม่ได้แค่เปลืองของเรา แต่ไปเบียดงบก้อนเดียวกับงานอื่น
              */
-            return ['ok' => false, 'reason' => "ยังไม่มีบอทที่ใช้รอบ {$scope} ได้ — ข้ามรอบนี้"];
+            return ['ok' => false, 'skipped' => true, 'reason' => "ยังไม่มีบอทที่ใช้รอบ {$scope} ได้ — ข้ามรอบนี้"];
         }
 
         $model = (string) config('aibot_analyst.model');

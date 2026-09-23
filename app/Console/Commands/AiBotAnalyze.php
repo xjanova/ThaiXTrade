@@ -43,6 +43,14 @@ class AiBotAnalyze extends Command
 
         $result = $analyst->run($scope);
 
+        if ($result['skipped'] ?? false) {
+            // ข้ามโดยตั้งใจ (ปิดไว้ / ไม่มีบอทต้องใช้) ไม่ใช่ความล้มเหลว — ห้ามคืน FAILURE
+            // ไม่งั้นตัวจับเวลาเขียน ERROR ลง log ทุกรอบจนกลบ error จริง
+            $this->info($result['reason'] ?? 'ข้ามรอบนี้');
+
+            return self::SUCCESS;
+        }
+
         if (! ($result['ok'] ?? false)) {
             $this->error($result['reason'] ?? 'วิเคราะห์ไม่สำเร็จ');
 

@@ -12,6 +12,7 @@ use App\Models\TradingPair;
 use App\Services\AiBot\Advisor\AdvisorSettings;
 use App\Services\AiBot\Analyst\MarketAnalyst;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
@@ -65,6 +66,7 @@ class MarketAnalystTest extends TestCase
         $result = app(MarketAnalyst::class)->run(AiMarketView::SCOPE_STRATEGIC);
 
         $this->assertFalse($result['ok']);
+        $this->assertTrue($result['skipped'] ?? false, 'ไม่มีบอทต้องใช้ = ข้ามโดยตั้งใจ');
         Http::assertNotSent(fn ($request) => str_contains($request->url(), 'chat/completions'));
     }
 
@@ -94,8 +96,34 @@ class MarketAnalystTest extends TestCase
         $result = app(MarketAnalyst::class)->run(AiMarketView::SCOPE_TACTICAL);
 
         $this->assertFalse($result['ok']);
+        $this->assertTrue($result['skipped'] ?? false, 'ปิดไว้โดยตั้งใจ = ข้าม ไม่ใช่ล้มเหลว');
         $this->assertStringContainsString('ถูกปิดไว้', $result['reason']);
         Http::assertNotSent(fn ($request) => str_contains($request->url(), 'chat/completions'));
+    }
+
+    #[Test]
+    public function a_deliberately_skipped_round_does_not_fail_the_scheduled_command(): void
+    {
+        /*
+         * Laravel 12 บันทึก ERROR ทุกครั้งที่คำสั่งตามตารางคืนรหัส ≠ 0 —
+         * รอบ tactical ที่เจ้าของสั่งปิดไว้เคยคืน FAILURE จึงเขียน ERROR ลง log
+         * ทุก 15 นาทีหลังอัปเกรด (2026-09-23) จนกลบ error จริงที่ต้องเห็น
+         */
+        config()->set('aibot_analyst.scopes.tactical.enabled', false);
+
+        $this->artisan('aibot:analyze', ['--scope' => 'tactical'])
+            ->expectsOutputToContain('ถูกปิดไว้')
+            ->assertSuccessful();
+    }
+
+    #[Test]
+    public function a_real_problem_still_fails_the_command(): void
+    {
+        // ไม่มีคีย์ = ปัญหาจริงที่เจ้าของต้องเห็นใน log — ห้ามกลืนเป็น "ข้ามรอบ"
+        config()->set('aibot_advisor.providers.openai.api_key', '');
+        app(AdvisorSettings::class)->forget();
+
+        $this->artisan('aibot:analyze', ['--scope' => 'strategic'])->assertFailed();
     }
 
     #[Test]
@@ -346,7 +374,7 @@ class MarketAnalystTest extends TestCase
     // ── ตัวช่วย ───────────────────────────────────────────────────────────────
 
     /** มุมมองเก่าที่บันทึกไว้แล้ว ณ เวลาที่กำหนด */
-    private function makeStoredView(\Illuminate\Support\Carbon $at): AiMarketView
+    private function makeStoredView(Carbon $at): AiMarketView
     {
         $view = AiMarketView::create([
             'scope' => AiMarketView::SCOPE_STRATEGIC,

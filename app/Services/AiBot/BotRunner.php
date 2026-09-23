@@ -190,8 +190,10 @@ class BotRunner
             'entry' => (float) $position->entry_price,
             'entry_market' => (float) $position->entry_price / $entryCostFactor,
             // ถือมากี่แท่งแล้ว — กลยุทธ์ใช้ทำ time stop (ถือครบแล้วไม่ไปไหน = ปิดคืนทุน)
+            // max(0) กันเวลาเปิดไม้ที่ "อยู่ในอนาคต" (โซนเวลาเคยเลื่อน — ดู config/app.php)
+            // Carbon 3 คืนค่าติดลบได้ แล้ว time stop จะไม่มีวันถึงจนกว่านาฬิกาจะตามทัน
             'bars_held' => $position->opened_at
-                ? (int) floor($position->opened_at->diffInMinutes(now()) / Timeframe::minutes($bot->timeframe))
+                ? max(0, (int) floor($position->opened_at->diffInMinutes(now()) / Timeframe::minutes($bot->timeframe)))
                 : 0,
         ] : null;
 
@@ -559,8 +561,10 @@ class BotRunner
              * รอบ 720 ชั่วโมงบน 1h ต้องการ 720 แท่ง แต่หน้าต่างให้ได้มากสุด 500
              * ตัวนับจึงไม่มีวันถึงเกณฑ์ บอทซื้อครั้งแรกครั้งเดียวแล้วเงียบตลอดกาล
              */
+            // max(0): ไม้ล่าสุดที่เวลา "อยู่ในอนาคต" (โซนเวลาเคยเลื่อน) นับเป็นเพิ่งซื้อ
+            // ไม่ใช่ค่าติดลบ — ปลอดภัยกว่าการเดาว่าครบรอบแล้วซื้อซ้ำ
             $params['_bars_since_entry'] = $lastBuy
-                ? (int) floor($lastBuy->created_at->diffInMinutes(now()) / $minutesPerBar)
+                ? max(0, (int) floor($lastBuy->created_at->diffInMinutes(now()) / $minutesPerBar))
                 : PHP_INT_MAX;
         }
 
@@ -572,7 +576,7 @@ class BotRunner
             $lastTrade = $bot->trades()->where('mode', $bot->mode)->latest('created_at')->first();
 
             $params['_seconds_since_trade'] = $lastTrade
-                ? (int) $lastTrade->created_at->diffInSeconds(now())
+                ? max(0, (int) $lastTrade->created_at->diffInSeconds(now()))
                 : PHP_INT_MAX;
         }
 

@@ -126,6 +126,22 @@ class AiBotTick extends Command
             return true;
         }
 
+        /*
+         * เวลารอบก่อน "อยู่ในอนาคต" = นาฬิกาหรือโซนเวลาถูกเปลี่ยน ไม่ใช่บอทเพิ่งเดิน
+         *
+         * ⚠️ 2026-09-23 อัป Laravel 12 แล้วแอปเปลี่ยนจากเวลาไทยเป็น UTC เงียบๆ —
+         *    last_run_at ที่เขียนเป็นเวลาไทยถูกอ่านเป็น UTC จึงล้ำหน้าไป 7 ชม.
+         *    diffInMinutes() ของ Carbon 3 ติดลบได้ → เงื่อนไขข้างล่างเป็นเท็จ
+         *    จนกว่านาฬิกาจะตามทัน บอททุกตัวหยุดเดินเงียบๆ ~7 ชม. โดยไม่มีอะไรฟ้อง
+         *
+         * ถือว่าถึงรอบทันทีดีกว่า — รอบนี้จะเขียน last_run_at ที่ถูกทับให้เอง
+         * บอทเดินเกินหนึ่งรอบไม่เสียหายอะไร (แท่งเดิมถูกข้ามด้วย last_candle_time)
+         * แต่บอทที่หยุดเงียบๆ คือไม้ที่ไม่มีใครปิดให้
+         */
+        if ($bot->last_run_at->isFuture()) {
+            return true;
+        }
+
         $intervals = config('aibot.tick_interval_minutes', []);
         $rank = (int) ($bot->plan_rank ?? 0);
         $tier = array_search($rank, AiBotPlan::TIER_RANK, true) ?: 'free';
