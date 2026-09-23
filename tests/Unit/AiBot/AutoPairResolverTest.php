@@ -229,12 +229,69 @@ class AutoPairResolverTest extends TestCase
         $bots = app(AiBotService::class);
 
         foreach (['grid', 'ai_signal', 'momentum'] as $strategy) {
-            $this->assertSame('off', $bots->sanitizeParams($strategy, ['news_filter' => false])['news_mode'], $strategy);
+            // ค่าที่ระบบเดิมเก็บ/แอปเก่าส่งมาได้ทุกรูปแบบ
+            foreach ([false, 'false', '0', 0, 'off', 'no'] as $off) {
+                $this->assertSame('off', $bots->sanitizeParams($strategy, ['news_filter' => $off])['news_mode'], "{$strategy}: ".var_export($off, true));
+            }
+
             $this->assertSame('confirm_exit', $bots->sanitizeParams($strategy, ['news_filter' => true])['news_mode']);
             $this->assertSame('confirm_exit', $bots->sanitizeParams($strategy, [])['news_mode'], 'ค่าปริยาย = แนะนำ');
+            // ระบบเดิม null = "ใช้ค่าปริยาย" (ข่าวเปิด) ไม่ใช่ปิดข่าว
+            $this->assertSame('confirm_exit', $bots->sanitizeParams($strategy, ['news_filter' => null])['news_mode'], 'null ต้องไม่กลายเป็นปิดข่าว');
             $this->assertSame('immediate_exit', $bots->sanitizeParams($strategy, ['news_filter' => false, 'news_mode' => 'immediate_exit'])['news_mode'], 'ค่าใหม่ที่ส่งมาเองชนะเสมอ');
+            $this->assertSame('off', $bots->sanitizeParams($strategy, ['news_filter' => false, 'news_mode' => null])['news_mode'], 'news_mode ว่าง = ยังไม่เลือก ใช้ค่าเดิม');
+            $this->assertSame('off', $bots->sanitizeParams($strategy, ['news_filter' => false, 'news_mode' => ''])['news_mode'], 'ข้อความว่างก็คือยังไม่เลือก');
             $this->assertSame('confirm_exit', $bots->sanitizeParams($strategy, ['news_mode' => 'มั่ว'])['news_mode'], 'ค่าที่ไม่รู้จัก = ปริยาย');
         }
+    }
+
+    /**
+     * กลยุทธ์ประกาศช่องชื่อเดียวกับช่องร่วม = ค่าของกลยุทธ์ชนะ (มันรู้ช่วงค่าที่ถูกของตัวเองดีกว่า).
+     *
+     * ตอนนี้ไม่มีกลยุทธ์ไหนใช้ชื่อซ้ำ (เดิมคือ news_filter ของ ai_signal) — จำลองขึ้นมาเพื่อยึดกติกาไว้
+     * ไม่งั้นวันที่มีคนเพิ่มช่องชื่อซ้ำ ช่องร่วมจะทับช่วงค่าของกลยุทธ์เงียบๆ
+     */
+    #[Test]
+    public function a_strategy_owned_param_still_wins_over_the_common_one(): void
+    {
+        $strategies = config('aibot.strategies');
+
+        foreach ($strategies as &$strategy) {
+            if ($strategy['code'] === 'grid') {
+                $strategy['params'][] = ['key' => 'macro_ema', 'label' => 'x', 'type' => 'select', 'default' => '200', 'options' => ['200']];
+            }
+        }
+        unset($strategy);
+        config(['aibot.strategies' => $strategies]);
+
+        $bots = app(AiBotService::class);
+
+        $this->assertSame('200', $bots->sanitizeParams('grid', [])['macro_ema'], 'ค่าปริยายของกลยุทธ์ต้องชนะ');
+        $this->assertSame('200', $bots->sanitizeParams('grid', ['macro_ema' => '50'])['macro_ema'], 'ช่วงค่าของกลยุทธ์ต้องชนะ');
+        $this->assertSame('50', $bots->sanitizeParams('momentum', [])['macro_ema'], 'กลยุทธ์อื่นยังใช้ช่องร่วม');
+    }
+
+    /**
+     * ตัวเลือกที่ส่งมาเป็นตัวเลขต้องไม่ถูกรีเซ็ตเงียบๆ (JSON / --sweep ส่ง 200 ไม่ใช่ '200').
+     *
+     * รีวิว 2026-09-23: เดิมเทียบแบบเข้ม macro_ema = 200 กลายเป็น '50' — sweep EMA 50/100/200
+     * ของ aibot:backtest ได้ผลเท่ากันสามแถวเพราะรัน 50 ทั้งหมด
+     */
+    #[Test]
+    public function a_numeric_choice_is_matched_to_its_declared_option(): void
+    {
+        $bots = app(AiBotService::class);
+
+        $this->assertSame('200', $bots->sanitizeParams('grid', ['macro_ema' => 200])['macro_ema']);
+        $this->assertSame('100', $bots->sanitizeParams('grid', ['macro_ema' => 100.0])['macro_ema']);
+        $this->assertSame('200', $bots->sanitizeParams('grid', ['macro_ema' => '200'])['macro_ema']);
+        // ตัวเลขที่เขียนต่างรูปก็คือตัวเลือกเดียวกัน
+        $this->assertSame('100', $bots->sanitizeParams('grid', ['macro_ema' => '100.0'])['macro_ema']);
+        $this->assertSame('200', $bots->sanitizeParams('grid', ['macro_ema' => '0200'])['macro_ema']);
+        $this->assertSame('50', $bots->sanitizeParams('grid', ['macro_ema' => 75])['macro_ema'], 'ค่าที่ไม่มีในตัวเลือก = ปริยาย');
+        $this->assertSame('50', $bots->sanitizeParams('grid', ['macro_ema' => 200.5])['macro_ema'], 'ใกล้เคียงไม่นับ');
+        $this->assertSame('50', $bots->sanitizeParams('grid', ['macro_ema' => true])['macro_ema'], 'bool ไม่ใช่ตัวเลือก');
+        $this->assertSame('50', $bots->sanitizeParams('grid', ['macro_ema' => ['200']])['macro_ema'], 'ค่าไม่ใช่ scalar = ปริยาย');
     }
 
     // ── ตัวช่วย ───────────────────────────────────────────────────────────────

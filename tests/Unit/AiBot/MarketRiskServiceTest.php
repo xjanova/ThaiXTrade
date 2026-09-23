@@ -463,19 +463,34 @@ class MarketRiskServiceTest extends TestCase
         $this->assertSame(MarketRiskService::NEWS_CONFIRM_EXIT, $this->risk->assess('BTC/USDT', $this->calmCandles(), '1h', true)['news_mode']);
     }
 
-    /** ตลาดพังเองโดยไม่มีข่าว ยังเทออกเหมือนเดิม — กติกาใหม่แตะเฉพาะฝั่งข่าว */
+    /**
+     * ⭐ ตลาดพังเอง = เทออกทุกโหมดข่าว ทั้งมีและไม่มีข่าวร้ายซ้อน — โหมดข่าวคุมได้แค่ส่วนที่ข่าวเพิ่มเข้ามา.
+     *
+     * รีวิว 2026-09-23: เดิม block_entries ถือว่า "ข่าวคะแนนสูงกว่า = ข่าวเป็นตัวสั่ง" แล้วระงับการขาย
+     * ตลาดร่วง 10% ในชั่วโมงเดียว + ข่าวร้าย จึงไม่ขายหนีเลย ขณะที่โหมด off ยังขาย
+     */
     #[Test]
-    public function a_price_crash_forces_an_exit_with_or_without_news(): void
+    public function a_price_crash_forces_an_exit_in_every_news_mode_with_or_without_news(): void
     {
         $candles = $this->calmCandles();
         $candles[count($candles) - 1]['close'] = 90.0;
+        $modes = [MarketRiskService::NEWS_OFF, MarketRiskService::NEWS_BLOCK_ENTRIES, MarketRiskService::NEWS_CONFIRM_EXIT, MarketRiskService::NEWS_IMMEDIATE_EXIT];
 
-        $this->assertTrue($this->risk->assess('BTC/USDT', $candles)['force_exit']);
+        foreach ($modes as $mode) {
+            Cache::flush();
+            $this->assertTrue($this->risk->assess('BTC/USDT', $candles, '1h', $mode)['force_exit'], "{$mode}: ตลาดพังเอง ไม่มีข่าว");
+        }
 
-        Cache::flush();
         $this->exchangeCollapseNews();
 
-        $this->assertTrue($this->risk->assess('BTC/USDT', $candles)['force_exit']);
+        foreach ($modes as $mode) {
+            Cache::flush();
+            $result = $this->risk->assess('BTC/USDT', $candles, '1h', $mode);
+
+            $this->assertTrue($result['force_exit'], "{$mode}: ตลาดพัง + ข่าวร้ายซ้อน ต้องยังขายหนี");
+            $this->assertSame('panic', $result['level'], $mode);
+            $this->assertFalse($result['news_unconfirmed'], $mode);
+        }
     }
 
     /**

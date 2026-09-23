@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
  * สิ่งที่ต้องยืน:
  *   1. ข้อมูลไม่พอ = "ไม่รู้" (null) ไม่ใช่ "ขาลง" — ไม่งั้นบอทหยุดเปิดไม้ทั้งระบบเพราะตลาดตอบช้า
  *   2. ถามได้เฉพาะแท่งที่ "ปิดแล้ว" ก่อนเวลาที่ถาม — ห้ามรู้ราคาปิดของวันที่ยังไม่จบ
- *   3. บอทจริงกับ backtest ต้องได้คำตอบเดียวกัน (หน้าต่าง 300 แท่งเท่ากัน)
+ *   3. บอทจริงกับ backtest ต้องได้คำตอบเดียวกัน (หน้าต่าง MacroTrend::WINDOW แท่งเท่ากัน)
  *
  * Developed by Xman Studio.
  */
@@ -45,14 +45,32 @@ class MacroTrendTest extends TestCase
     }
 
     #[Test]
-    public function ใช้แค่_300_แท่งล่าสุด_บอทจริงกับ_backtest_จึงได้คำตอบเดียวกัน(): void
+    public function ใช้แค่หน้าต่างล่าสุด_บอทจริงกับ_backtest_จึงได้คำตอบเดียวกัน(): void
     {
-        // ประวัติยาวมากที่ต้นทางต่างกัน แต่ 300 แท่งท้ายเหมือนกัน → ผลต้องเท่ากันเป๊ะ
-        $tail = array_map(fn ($i) => 100 + sin($i / 7) * 10, range(0, 299));
+        // ประวัติยาวมากที่ต้นทางต่างกัน แต่แท่งท้ายเท่าหน้าต่างเหมือนกัน → ผลต้องเท่ากันเป๊ะ ทุกคาบ
+        $tail = array_map(fn ($i) => 100 + sin($i / 7) * 10, range(0, MacroTrend::WINDOW - 1));
         $a = $this->daily(array_merge(array_fill(0, 400, 50.0), $tail));
         $b = $this->daily(array_merge(array_fill(0, 100, 500.0), $tail));
 
-        $this->assertSame(MacroTrend::assess($a, 50), MacroTrend::assess($b, 50));
+        foreach ([50, 100, 200] as $period) {
+            $this->assertSame(MacroTrend::assess($a, $period), MacroTrend::assess($b, $period), "EMA {$period}");
+        }
+    }
+
+    /**
+     * หน้าต่างต้องยาวพอให้ "EMA 200" เป็น EMA จริง ไม่ใช่ SMA ของเมื่อหลายเดือนก่อน.
+     *
+     * รีวิว 2026-09-23: หน้าต่าง 300 แท่ง → ค่าเริ่ม (SMA 200 แท่งแรก) ยังหนัก ~37%
+     * และต้องไม่เกินที่ตัวดึงราคาให้ได้ (MarketDataService::getKlines ตัดที่ 500 แท่ง
+     * ตัดแท่งของวันที่ยังวิ่งทิ้ง 1) — เกินแล้วบอทจริงได้หน้าต่างสั้นกว่า backtest เงียบๆ
+     */
+    #[Test]
+    public function หน้าต่างยาวพอให้_ema_200_เป็น_ema_จริง_และไม่เกินที่ดึงได้(): void
+    {
+        $seedWeight = (1 - 2 / 201) ** (MacroTrend::WINDOW - 200);
+
+        $this->assertLessThan(0.06, $seedWeight, 'ค่าเริ่มของ EMA 200 ยังหนักเกิน');
+        $this->assertLessThanOrEqual(499, MacroTrend::WINDOW, 'บอทจริงดึงได้มากสุด 500 แท่ง รวมแท่งที่ยังวิ่ง');
     }
 
     #[Test]

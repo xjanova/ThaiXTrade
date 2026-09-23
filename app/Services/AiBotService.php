@@ -575,28 +575,32 @@ class AiBotService
         $clean = [];
 
         /*
-         * สวิตช์ร่วมต้องรอดจากการล้างค่าด้วย
-         *
-         * เดิมวนเฉพาะ params ของกลยุทธ์ คีย์อื่นถูกตัดทิ้งเงียบๆ — `auto_pair`
-         * (ให้ AI เลือกเหรียญ) จึงไม่เคยถูกบันทึกลงฐานข้อมูลเลยแม้ผู้ใช้จะเปิดไว้
-         * และ `news_filter` ก็ปิดไม่ได้จริงในกลยุทธ์ที่ไม่ได้ประกาศคีย์นี้ไว้
-         *
-         * รวมรายการก่อนวน ไม่ใช่ต่อท้ายทีหลัง — ถ้ากลยุทธ์ไหนประกาศคีย์ชื่อเดียวกัน
-         * ไว้เอง ค่าของกลยุทธ์ต้องชนะ (มันรู้ช่วงค่าที่ถูกต้องของตัวเองดีกว่า)
-         */
-        /*
          * สวิตช์ข่าวรุ่นเดิม (news_filter: bool) → news_mode (เลือกได้ 4 ระดับ)
          *
          * บอทที่ผู้ใช้เคย "ปิดข่าว" ไว้ต้องยังปิดอยู่หลังอัปเกรด — ไม่งั้นค่าที่ผู้ใช้ตั้งเอง
          * หายเงียบๆ แล้วกลับไปใช้ค่าปริยาย (ความล้มเหลวแบบที่ไฟล์นี้ระวังมาตลอด)
          * แอปรุ่นเก่าที่ยังส่ง news_filter มาก็ใช้ได้ผ่านทางนี้ · ส่ง news_mode มาเอง = ชนะเสมอ
+         *
+         * ใช้ isset ไม่ใช่ array_key_exists: news_filter = null ในระบบเดิมแปลว่า "ใช้ค่าปริยาย"
+         * (ข่าวเปิด) แต่ filter_var(null) ได้ false → ถ้าเช็คแค่ว่ามีคีย์ จะกลายเป็นปิดข่าว
          */
-        if (! array_key_exists('news_mode', $input)
-            && array_key_exists('news_filter', $input)
+        // news_mode ว่าง ('' / null) = ยังไม่ได้เลือก → ใช้ค่ารุ่นเดิมถ้ามี
+        if (($input['news_mode'] ?? '') === ''
+            && isset($input['news_filter'])
             && filter_var($input['news_filter'], FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) === false) {
             $input['news_mode'] = 'off';
         }
 
+        /*
+         * สวิตช์ร่วมต้องรอดจากการล้างค่าด้วย
+         *
+         * เดิมวนเฉพาะ params ของกลยุทธ์ คีย์อื่นถูกตัดทิ้งเงียบๆ — `auto_pair`
+         * (ให้ AI เลือกเหรียญ) จึงไม่เคยถูกบันทึกลงฐานข้อมูลเลยแม้ผู้ใช้จะเปิดไว้
+         * และสวิตช์ข่าวก็ปิดไม่ได้จริงในกลยุทธ์ที่ไม่ได้ประกาศคีย์นี้ไว้
+         *
+         * รวมรายการก่อนวน ไม่ใช่ต่อท้ายทีหลัง — ถ้ากลยุทธ์ไหนประกาศคีย์ชื่อเดียวกัน
+         * ไว้เอง ค่าของกลยุทธ์ต้องชนะ (มันรู้ช่วงค่าที่ถูกต้องของตัวเองดีกว่า)
+         */
         $specs = collect((array) config('aibot.common_params', []))
             ->concat($strategy['params'] ?? [])
             ->keyBy('key');
@@ -608,14 +612,35 @@ class AiBotService
             $clean[$key] = match ($spec['type']) {
                 'number' => $this->clampNumber($value, $spec),
                 'bool' => filter_var($value, FILTER_VALIDATE_BOOL),
-                'select' => in_array($value, $spec['options'] ?? [], true)
-                    ? $value
-                    : ($spec['default'] ?? ($spec['options'][0] ?? null)),
+                'select' => $this->pickOption($value, $spec),
                 default => null,
             };
         }
 
         return $this->applyCrossParamRules($strategyCode, $clean);
+    }
+
+    /**
+     * ตัวเลือกที่ตรงกับค่าที่ส่งมา — คืนค่าตามที่ config ประกาศ ไม่ใช่ค่าดิบ.
+     *
+     * ⚠️ เทียบแบบข้อความ: ตัวเลือกอย่าง macro_ema ประกาศเป็น '50'/'100'/'200' แต่ JSON
+     *    ส่ง 200 มาเป็นตัวเลขได้ และ --sweep ของ aibot:backtest แปลงเป็นตัวเลขเสมอ
+     *    เดิมเทียบแบบเข้ม (200 !== '200') ค่าที่ถูกต้องจึงถูกรีเซ็ตเป็นค่าปริยายเงียบๆ
+     *    (รีวิว 2026-09-23: sweep EMA 50/100/200 ได้ผลเท่ากันสามแถว เพราะรัน 50 ทั้งหมด)
+     */
+    private function pickOption(mixed $value, array $spec): mixed
+    {
+        if (is_scalar($value) && ! is_bool($value)) {
+            foreach ($spec['options'] ?? [] as $option) {
+                // ตัวเลขที่เขียนต่างรูป ('100.0', '0200', 1e2) ก็คือตัวเลือกเดียวกัน
+                if ((string) $option === (string) $value
+                    || (is_numeric($option) && is_numeric($value) && (float) $option === (float) $value)) {
+                    return $option;
+                }
+            }
+        }
+
+        return $spec['default'] ?? ($spec['options'][0] ?? null);
     }
 
     /**

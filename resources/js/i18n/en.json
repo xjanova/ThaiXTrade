@@ -763,6 +763,7 @@
         "riskPanic": "Panic",
         "riskSizeMultiplier": "Allowed position size",
         "riskForceExit": "Forced exit",
+        "riskModeNote": "Shown for the recommended news mode (sell when price confirms) — bots set to another news mode decide differently",
         "riskWhy": "Why",
         "riskNoReason": "Market is calm, no danger signals",
         "newsHeadlines": "News the bot is watching",

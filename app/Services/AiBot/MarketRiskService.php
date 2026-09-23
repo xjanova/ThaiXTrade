@@ -109,8 +109,14 @@ class MarketRiskService
          *   confirm_exit   (ปริยาย) ขายเมื่อราคายืนยัน
          *   block_entries  ข่าวไม่มีสิทธิ์สั่งขายเลย — แค่งดเปิดไม้ใหม่
          *   immediate_exit ขายทันทีเมื่อข่าวถึงขั้น panic (พฤติกรรมเดิม)
+         *
+         * ⚠️ "ข่าวเป็นตัวสั่งขาย" = ราคาอย่างเดียวยังไม่ถึงขั้นสั่งขาย — ไม่ใช่ "คะแนนข่าวสูงกว่า"
+         *    รีวิว 2026-09-23: นิยามเดิม (ข่าว > ราคา) ทำให้ตลาดร่วง 10% ในชั่วโมงเดียว + ข่าวร้าย
+         *    ในโหมด block_entries ไม่ขายหนีเลย = ปลอดภัยน้อยกว่าปิดข่าวทิ้ง (off ยังขาย)
+         *    ทุกโหมดคุมได้แค่ส่วนที่ข่าวเพิ่มเข้ามา ห้ามลบการขายหนีที่ราคาสั่งเอง
          */
-        $newsDriven = $forceExit && $newsRisk['score'] > $marketRisk['score'];
+        $marketForcesExit = (bool) config('aibot_risk.levels.'.$this->levelFor($marketRisk['score']).'.force_exit', false);
+        $newsDriven = $forceExit && ! $marketForcesExit;
 
         if ($newsDriven && $newsMode !== self::NEWS_IMMEDIATE_EXIT
             && ($newsMode === self::NEWS_BLOCK_ENTRIES || ! $this->priceConfirmsNews($marketRisk))) {

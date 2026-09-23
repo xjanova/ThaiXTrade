@@ -1220,7 +1220,14 @@ class AiBotController extends Controller
             'strategy_name_th' => $meta['name_th'] ?? ($meta['name'] ?? $bot->strategy),
             'risk_level' => $meta['risk'] ?? 'medium',
             'timeframe' => $bot->timeframe,
-            'params' => $bot->params ?? [],
+            /*
+             * ค่าที่บอท "ใช้จริง" (ล้างค่าแบบเดียวกับ BotRunner) ไม่ใช่ค่าดิบในฐานข้อมูล
+             *
+             * รีวิว 2026-09-23: บอทเก่าเก็บ news_filter=false ไว้ ไม่มี news_mode — ฟอร์มแก้ไขบนเว็บ
+             * เติมค่าปริยาย "ขายเมื่อราคายืนยัน" ให้ แล้วกดบันทึกก็ทับการปิดข่าวที่ผู้ใช้ตั้งไว้เงียบๆ
+             * (แอปไฮไลต์ตัวเลือก "แนะนำ" ทั้งที่บอทรันแบบปิดข่าว) · กลยุทธ์ที่ไม่มีใน config แล้ว = ค่าดิบ
+             */
+            'params' => $this->bots->sanitizeParams($bot->strategy, $bot->params ?? []) ?: ($bot->params ?? []),
             'risk' => $bot->risk ?? [],
             'status' => $bot->status,
             /*

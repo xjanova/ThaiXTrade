@@ -311,6 +311,37 @@ class AiBotApiTest extends TestCase
             ->assertJsonPath('data.risk.take_profit_pct', 12);
     }
 
+    /**
+     * บอทเก่าที่เก็บ news_filter=false (ปิดข่าว) ต้องถูกส่งออกเป็น news_mode = off — ค่าที่บอทใช้จริง.
+     *
+     * รีวิว 2026-09-23: API เคยส่ง params ดิบ (มีแต่ news_filter ไม่มี news_mode) ฟอร์มแก้ไขบนเว็บ
+     * จึงเติมค่าปริยาย "ขายเมื่อราคายืนยัน" ให้ แล้วกดบันทึกก็ทับการปิดข่าวของผู้ใช้เงียบๆ
+     * แอปก็ไฮไลต์ตัวเลือก "แนะนำ" ทั้งที่บอทรันแบบปิดข่าว
+     */
+    public function test_a_legacy_bot_with_news_switched_off_is_presented_as_news_off(): void
+    {
+        $this->subscribeTo('starter');
+
+        AiBotConfig::create([
+            'wallet_address' => $this->wallet,
+            'name' => 'Legacy',
+            'pair' => 'BTC/USDT',
+            'strategy' => 'grid',
+            'timeframe' => '4h',
+            'status' => 'paused',
+            'params' => ['grid_levels' => 5, 'range_pct' => 10, 'news_filter' => false],
+        ]);
+
+        $params = $this->getJson('/api/v1/ai-bot/bots?wallet_address='.$this->wallet)
+            ->assertOk()
+            ->json('data.0.params');
+
+        $this->assertSame('off', $params['news_mode'], 'ผู้ใช้ปิดข่าวไว้ ฟอร์มต้องเห็นว่าปิด');
+        $this->assertArrayNotHasKey('news_filter', $params, 'คีย์รุ่นเก่าไม่ต้องส่งออกไปให้หน้าจอสับสน');
+        $this->assertEquals(5, $params['grid_levels'], 'ค่าที่ผู้ใช้ตั้งไว้ต้องอยู่ครบ');
+        $this->assertSame('50', $params['macro_ema'], 'ช่องที่บอทเก่าไม่เคยมี = ค่าปริยายที่บอทใช้จริง');
+    }
+
     public function test_params_are_clamped_to_the_strategy_schema(): void
     {
         $this->subscribeTo('starter');

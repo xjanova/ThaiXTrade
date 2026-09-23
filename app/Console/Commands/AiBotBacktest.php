@@ -49,8 +49,29 @@ class AiBotBacktest extends Command
 
     protected $description = 'ทดสอบกลยุทธ์ AI TRADE กับแท่งเทียนย้อนหลังจริง (กติกาเดียวกับบอทที่เดินสด)';
 
+    /**
+     * คำเตือนที่ต้องไปถึงผู้อ่านผล.
+     *
+     * โหมด --json เก็บไว้ในผล (warnings) แทนการพิมพ์ — พิมพ์แทรกแล้วเครื่องที่อ่านต่อ
+     * decode ไม่ได้ทั้งก้อน และถ้าเงียบไปเลย ผลที่ "ไม่ได้กรอง" จะดูเหมือนผลปกติ
+     *
+     * @var list<string>
+     */
+    private array $warnings = [];
+
+    private function caution(string $message): void
+    {
+        $this->warnings[] = $message;
+
+        if (! $this->option('json')) {
+            $this->warn($message);
+        }
+    }
+
     public function handle(BacktestEngine $engine, KlineArchive $archive, AiBotService $bots): int
     {
+        // อินสแตนซ์คำสั่งถูกใช้ซ้ำได้ในโปรเซสเดียว (Artisan::call หลายครั้ง) — คำเตือนต้องไม่ค้างข้ามรอบ
+        $this->warnings = [];
         $code = (string) $this->argument('strategy');
         $spec = $bots->strategy($code);
 
@@ -127,12 +148,25 @@ class AiBotBacktest extends Command
             );
         } catch (\Throwable $e) {
             $options['macro_daily'] = [];
-            $this->warn('ดึงแท่งรายวันของตัวกรองแนวโน้มใหญ่ไม่ได้: '.$e->getMessage());
+            $this->caution('ดึงแท่งรายวันของตัวกรองแนวโน้มใหญ่ไม่ได้: '.$e->getMessage());
         }
+
+        $needDailyFrom = $fromMs - MacroTrend::WINDOW * 86_400_000;
+        $firstDaily = $options['macro_daily'][0]['time'] ?? null;
 
         if (($options['macro_daily'] ?? []) === []) {
             // --offline กับคลังที่ไม่มีแท่งรายวัน BTC ได้ [] เงียบๆ — ต้องบอกว่าผลนี้ "ไม่ได้กรอง"
-            $this->warn('ไม่มีแท่งรายวันของ BTC — ผลนี้ไม่ได้ใช้ตัวกรองแนวโน้มใหญ่ (ต่างจากบอทจริง)');
+            $this->caution('ไม่มีแท่งรายวันของ BTC — ผลนี้ไม่ได้ใช้ตัวกรองแนวโน้มใหญ่ (ต่างจากบอทจริง)');
+        } elseif ($firstDaily !== null && (int) $firstDaily > $needDailyFrom + 86_400_000) {
+            /*
+             * มีข้อมูลแต่สั้นกว่าหน้าต่าง — ช่วงแรกของผลใช้ EMA จากหน้าต่างสั้นกว่าบอทจริง
+             * (รีวิว 2026-09-23: หน้าต่าง 499 วัน + --offline + --days ยาว = เพี้ยนเงียบๆ)
+             */
+            $this->caution(sprintf(
+                'แท่งรายวันของ BTC ในคลังเริ่ม %s (ต้องมีตั้งแต่ %s) — ช่วงแรกของผลนี้ใช้หน้าต่าง EMA สั้นกว่าบอทจริง',
+                gmdate('Y-m-d', intdiv((int) $firstDaily, 1000)),
+                gmdate('Y-m-d', intdiv($needDailyFrom, 1000)),
+            ));
         }
         $sweeps = $this->sweeps();
 
@@ -163,7 +197,7 @@ class AiBotBacktest extends Command
             $this->line(json_encode([
                 'strategy' => $code, 'pair' => $pair, 'timeframe' => $timeframe,
                 'params' => $result['params'], 'risk' => $result['risk'],
-                'summary' => $result['summary'], 'trades' => $result['trades'],
+                'summary' => $result['summary'], 'trades' => $result['trades'], 'warnings' => $this->warnings,
             ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
             return self::SUCCESS;
@@ -200,9 +234,14 @@ class AiBotBacktest extends Command
         foreach ($combos as $combo) {
             $result = $engine->run($code, $candles, $timeframe, $combo, $risk, $options);
             $s = $result['summary'];
-            $results[] = ['params' => $combo, 'summary' => $s];
+            /*
+             * แสดงค่าที่ "รันจริง" หลังล้างค่า (clamp / ตัวเลือกที่รับได้) ไม่ใช่ค่าที่พิมพ์มา
+             * ค่าที่ถูกดัดจะได้ไม่ดูเหมือนคนละชุดทั้งที่รันชุดเดียวกัน (เคยเจอ: EMA 50/100/200 รัน 50 หมด)
+             */
+            $ran = array_intersect_key($result['params'] ?? $combo, $combo);
+            $results[] = ['params' => $ran, 'summary' => $s];
             $rows[] = [
-                json_encode($combo, JSON_UNESCAPED_UNICODE),
+                json_encode($ran, JSON_UNESCAPED_UNICODE),
                 $s['closed'], ($s['win_rate'] ?? '—').'%', $this->money($s['gross_pnl']), $this->money($s['realized_pnl']),
                 $s['edge_bps'] ?? '—', $s['profit_factor'] ?? '—', $s['max_drawdown_pct'].'%', $s['return_pct'].'%',
             ];
@@ -211,7 +250,7 @@ class AiBotBacktest extends Command
         usort($results, fn ($a, $b) => ($b['summary']['expectancy'] ?? -INF) <=> ($a['summary']['expectancy'] ?? -INF));
 
         if ($this->option('json')) {
-            $this->line(json_encode(['strategy' => $code, 'pair' => $pair, 'timeframe' => $timeframe, 'results' => $results], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $this->line(json_encode(['strategy' => $code, 'pair' => $pair, 'timeframe' => $timeframe, 'results' => $results, 'warnings' => $this->warnings], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
             return self::SUCCESS;
         }
@@ -244,8 +283,9 @@ class AiBotBacktest extends Command
         $ranked = [];
 
         foreach ($combos as $combo) {
-            $summary = $engine->run($code, $train, $timeframe, $combo, $risk, $options)['summary'];
-            $ranked[] = ['params' => $combo, 'train' => $summary];
+            $result = $engine->run($code, $train, $timeframe, $combo, $risk, $options);
+            // ran = ค่าที่รันจริงหลังล้างค่า ใช้เป็นป้าย (เหมือน sweepReport) — params เดิมเก็บไว้รันช่วงทดสอบ
+            $ranked[] = ['params' => $combo, 'ran' => array_intersect_key($result['params'] ?? $combo, $combo), 'train' => $result['summary']];
         }
 
         usort($ranked, fn ($a, $b) => ($b['train']['expectancy'] ?? -INF) <=> ($a['train']['expectancy'] ?? -INF));
@@ -259,7 +299,7 @@ class AiBotBacktest extends Command
         if ($this->option('json')) {
             $this->line(json_encode([
                 'strategy' => $code, 'pair' => $pair, 'timeframe' => $timeframe,
-                'best_params' => $best['params'], 'train' => $best['train'], 'test' => $bestTest, 'default_on_test' => $defaultTest,
+                'best_params' => $best['ran'], 'train' => $best['train'], 'test' => $bestTest, 'default_on_test' => $defaultTest, 'warnings' => $this->warnings,
             ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
             return self::SUCCESS;
@@ -267,7 +307,7 @@ class AiBotBacktest extends Command
 
         $this->components->info("walk-forward {$code} · {$pair} · {$timeframe} — จูน ".($split - $startIndex).' แท่ง · ทดสอบ '.(count($candles) - $split).' แท่ง');
         $this->table(['ชุด', 'params', 'ไม้', 'ชนะ', 'gross', 'edge bps', 'PF', 'return', 'ถือเฉยๆ'], [
-            ['จูน (train)', json_encode($best['params'], JSON_UNESCAPED_UNICODE), $best['train']['closed'], ($best['train']['win_rate'] ?? '—').'%', $this->money($best['train']['gross_pnl']), $best['train']['edge_bps'] ?? '—', $best['train']['profit_factor'] ?? '—', $best['train']['return_pct'].'%', ($best['train']['buy_hold_pct'] ?? '—').'%'],
+            ['จูน (train)', json_encode($best['ran'], JSON_UNESCAPED_UNICODE), $best['train']['closed'], ($best['train']['win_rate'] ?? '—').'%', $this->money($best['train']['gross_pnl']), $best['train']['edge_bps'] ?? '—', $best['train']['profit_factor'] ?? '—', $best['train']['return_pct'].'%', ($best['train']['buy_hold_pct'] ?? '—').'%'],
             ['ทดสอบ (test)', 'เหมือนข้างบน', $bestTest['closed'], ($bestTest['win_rate'] ?? '—').'%', $this->money($bestTest['gross_pnl']), $bestTest['edge_bps'] ?? '—', $bestTest['profit_factor'] ?? '—', $bestTest['return_pct'].'%', ($bestTest['buy_hold_pct'] ?? '—').'%'],
             ['ค่าปริยายบน test', 'default', $defaultTest['closed'], ($defaultTest['win_rate'] ?? '—').'%', $this->money($defaultTest['gross_pnl']), $defaultTest['edge_bps'] ?? '—', $defaultTest['profit_factor'] ?? '—', $defaultTest['return_pct'].'%', ''],
         ]);

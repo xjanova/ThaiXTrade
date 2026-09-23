@@ -52,14 +52,17 @@ class SettingsEffectTest extends TestCase
         return $out;
     }
 
-    /** โค้ดทั้งหมดที่ตัดสินใจเรื่องบอท — ช่องตั้งค่าต้องถูกอ่านที่ใดที่หนึ่งในนี้ */
+    /**
+     * โค้ดที่ตัดสินใจเรื่องบอท — ช่องตั้งค่าต้องถูกอ่านที่ใดที่หนึ่งในนี้.
+     *
+     * ไม่รวม AiBotService (ตัวล้างค่า): มันวนทุกช่องแบบไม่เจาะชื่อ และเอ่ยชื่อบางช่องตอนแปลงค่ารุ่นเก่า
+     * ถ้านับด้วย ช่องที่เอนจินเลิกอ่านไปแล้วก็ยังผ่าน
+     */
     private function engineSource(): string
     {
-        $files = collect(File::allFiles(app_path('Services/AiBot')))
+        return collect(File::allFiles(app_path('Services/AiBot')))
             ->map(fn ($file) => $file->getContents())
             ->implode("\n");
-
-        return $files."\n".File::get(app_path('Services/AiBotService.php'));
     }
 
     #[Test]
@@ -68,12 +71,17 @@ class SettingsEffectTest extends TestCase
         $source = $this->engineSource();
 
         foreach ($this->allSpecs(usableOnly: true) as [$owner, $spec]) {
-            $key = $spec['key'];
+            $key = preg_quote($spec['key'], '/');
 
+            /*
+             * นับเฉพาะรูปแบบที่เป็น "การอ่านค่า": $params['key'] หรืออ้างเป็นค่าในตารางจับคู่
+             * (PositionSizer: 'grid' => 'order_size_usd') — ไม่นับการใช้ชื่อเดียวกันเป็นคีย์ของ
+             * ข้อมูลอื่น เช่น 'mode' => $bot->mode ที่เคยทำให้ช่อง mode ผ่านทั้งที่ไม่เกี่ยวกัน
+             */
             $this->assertMatchesRegularExpression(
-                '/[\'"]'.preg_quote($key, '/').'[\'"]/',
+                "/\\[\\s*['\"]{$key}['\"]\\s*\\]|=>\\s*['\"]{$key}['\"]/",
                 $source,
-                "ช่อง {$key} ({$owner}) อยู่ในฟอร์ม แต่ไม่มีโค้ดไหนในเอนจินอ่านค่า = ป้ายหลอก",
+                "ช่อง {$spec['key']} ({$owner}) อยู่ในฟอร์ม แต่ไม่มีโค้ดไหนในเอนจินอ่านค่า = ป้ายหลอก",
             );
         }
     }
@@ -107,10 +115,12 @@ class SettingsEffectTest extends TestCase
             }
 
             foreach ($spec['options'] as $option) {
-                $this->assertNotEmpty(
-                    $spec['option_labels'][$option]['th'] ?? null,
-                    "ตัวเลือก {$option} ของช่อง {$spec['key']} ({$owner}) ไม่มีป้ายไทย — ผู้ใช้จะเห็นค่าดิบ",
-                );
+                foreach (['th' => 'ไทย', 'en' => 'อังกฤษ'] as $lang => $name) {
+                    $this->assertNotEmpty(
+                        $spec['option_labels'][$option][$lang] ?? null,
+                        "ตัวเลือก {$option} ของช่อง {$spec['key']} ({$owner}) ไม่มีป้าย{$name} — ผู้ใช้จะเห็นค่าดิบ",
+                    );
+                }
             }
         }
     }

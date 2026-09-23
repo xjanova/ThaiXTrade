@@ -24,15 +24,13 @@ class MacroTrendService
     public function __construct(private readonly MarketDataService $market) {}
 
     /**
+     * @param  int|null  $period  EMA รายวันกี่วัน — ตัวเลือก macro_ema ของบอท (null / ค่าที่ไม่มีในตัวเลือก = ค่าปริยายใน config)
      * @return array{up: bool|null, close: float|null, ema: float|null, above_pct: float|null, symbol: string, period: int}
-     */
-    /**
-     * @param  int|null  $period  EMA รายวันกี่วัน — ตัวเลือก macro_ema ของบอท (null = ค่าปริยายใน config)
      */
     public function current(?int $period = null): array
     {
         $symbol = (string) config('aibot.macro.symbol', 'BTC/USDT');
-        $period = in_array($period, [50, 100, 200], true) ? $period : (int) config('aibot.macro.ema_period', 50);
+        $period = in_array($period, self::periods(), true) ? $period : (int) config('aibot.macro.ema_period', 50);
         $key = "aibot:macro:{$symbol}:{$period}";
 
         $cached = Cache::get($key);
@@ -46,6 +44,21 @@ class MacroTrendService
         Cache::put($key, $result, self::ttlSeconds($result['up'] !== null));
 
         return $result;
+    }
+
+    /**
+     * คาบ EMA ที่ผู้ใช้เลือกได้ — อ่านจากตัวเลือก macro_ema ใน config ที่เดียว.
+     *
+     * เดิมฝัง [50, 100, 200] ไว้ที่นี่ซ้ำกับ config — เพิ่มตัวเลือกในฟอร์มแล้วลืมแก้ที่นี่
+     * บอทที่เลือกค่าใหม่จะถูกดัดกลับเป็นค่าปริยายเงียบๆ (ป้ายหลอกแบบที่ไล่ปิดมาทั้งรอบ)
+     *
+     * @return list<int>
+     */
+    public static function periods(): array
+    {
+        $spec = collect((array) config('aibot.common_params', []))->firstWhere('key', 'macro_ema');
+
+        return array_values(array_map('intval', (array) ($spec['options'] ?? [config('aibot.macro.ema_period', 50)])));
     }
 
     /**

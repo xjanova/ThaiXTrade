@@ -376,8 +376,8 @@ class AiBotStrategy {
 
   /// ชุดช่องที่ต้องวาดในฟอร์ม — สวิตช์ร่วมก่อน แล้วของกลยุทธ์เขียนทับ
   ///
-  /// ถ้าวาดจาก [params] อย่างเดียว สวิตช์ "หยุดเทรดช่วงข่าวแรง" กับ
-  /// "ให้ AI เลือกเหรียญให้" จะไม่มีวันโผล่บนจอ
+  /// ถ้าวาดจาก [params] อย่างเดียว ช่อง "ข่าวมีผลกับการซื้อขายแค่ไหน" (news_mode)
+  /// "ให้ AI เลือกเหรียญให้" และ "ตัวกรองตลาดใหญ่" จะไม่มีวันโผล่บนจอ
   List<StrategyParam> formSpecs(List<StrategyParam> commonParams) {
     final merged = <String, StrategyParam>{};
     for (final p in commonParams) {

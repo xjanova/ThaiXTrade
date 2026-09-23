@@ -374,7 +374,7 @@ return [
                  * บอทเก่าที่บันทึก 'both'/'short' ไว้จะถูก sanitizeParams ยกมาเป็น
                  * 'long' ให้เองตอนรัน (select ที่ค่าไม่อยู่ใน options → ใช้ default)
                  */
-                ['key' => 'direction', 'label' => 'ทิศทาง', 'label_en' => 'Direction', 'type' => 'select', 'default' => 'long', 'options' => ['long'], 'option_labels' => ['long' => ['th' => 'ซื้อตอนขึ้นเท่านั้น (spot)', 'en' => 'Long only (spot)']]],
+                ['key' => 'direction', 'label' => 'ทิศทาง', 'label_en' => 'Direction', 'type' => 'select', 'default' => 'long', 'options' => ['long'], 'option_labels' => ['long' => ['th' => 'ฝั่งซื้ออย่างเดียว (spot)', 'en' => 'Long only (spot)']]],
                 /*
                  * backtest 180 วัน (2 ก.ย. 2026): breakout บนแท่ง 4 ชม. edge +315 bps PF 3.5
                  * แต่บนแท่ง 1 ชม. PF 0.64 — ทะลุกรอบบนแท่งสั้นส่วนใหญ่เป็นสัญญาณหลอก

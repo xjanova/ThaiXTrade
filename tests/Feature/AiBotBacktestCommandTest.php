@@ -19,7 +19,7 @@ class AiBotBacktestCommandTest extends TestCase
         parent::setUp();
 
         // คลังปลอม: นิ่ง 400 แท่ง → ขึ้น 60 → ลง 60 → นิ่ง 100 (มีรอบให้ momentum เข้า-ออก)
-        $this->app->instance(KlineArchive::class, new class extends KlineArchive
+        $this->app->instance(KlineArchive::class, new class() extends KlineArchive
         {
             public function __construct() {}
 
@@ -67,6 +67,27 @@ class AiBotBacktestCommandTest extends TestCase
         $this->assertArrayHasKey('edge_bps', $payload['summary']);
         $this->assertArrayHasKey('cost_bps', $payload['summary']);
         $this->assertIsArray($payload['trades']);
+        $this->assertIsArray($payload['warnings']);
+    }
+
+    /**
+     * คำเตือนต้องไปถึงผู้อ่าน JSON ในผล — ไม่พิมพ์แทรก (decode ไม่ได้) และไม่เงียบหาย.
+     *
+     * คลังปลอมมีแท่งรายวันไม่ถึง MacroTrend::WINDOW วันก่อนช่วงทดสอบ = ช่วงแรกใช้หน้าต่าง EMA
+     * สั้นกว่าบอทจริง (รีวิว 2026-09-23) ผลแบบนี้ต้องติดป้ายเสมอ
+     */
+    #[Test]
+    public function คำเตือนไปอยู่ในผล_json_ไม่พิมพ์แทรก(): void
+    {
+        Artisan::call('aibot:backtest', ['strategy' => 'momentum', '--days' => 10, '--json' => true]);
+        $payload = json_decode(Artisan::output(), true);
+
+        $this->assertIsArray($payload, 'ผล JSON ต้อง decode ได้ทั้งก้อน');
+        $this->assertStringContainsString('หน้าต่าง EMA สั้นกว่าบอทจริง', implode(' ', $payload['warnings']));
+
+        // โหมดตารางยังพิมพ์คำเตือนให้คนเห็นเหมือนเดิม
+        Artisan::call('aibot:backtest', ['strategy' => 'momentum', '--days' => 10]);
+        $this->assertStringContainsString('หน้าต่าง EMA สั้นกว่าบอทจริง', Artisan::output());
     }
 
     #[Test]
