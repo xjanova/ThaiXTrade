@@ -16,18 +16,18 @@
         "barryvdh/laravel-dompdf": "^3.1",
         "guzzlehttp/guzzle": "^7.8",
         "inertiajs/inertia-laravel": "^2.0",
-        "laravel/framework": "^11.0",
+        "kornrunner/keccak": "^1.1",
+        "laravel/framework": "^12.0",
         "laravel/octane": "^2.3",
         "laravel/reverb": "^1.0",
         "laravel/sanctum": "^4.0",
-        "laravel/socialite": "^5.12",
+        "laravel/socialite": "^5.16",
         "laravel/tinker": "^3.0",
         "predis/predis": "^3.4",
         "resend/resend-php": "^1.1.1",
+        "simplito/elliptic-php": "^1.0",
         "socialiteproviders/line": "^4.1",
-        "stripe/stripe-php": "^20.0",
-        "kornrunner/keccak": "^1.1",
-        "simplito/elliptic-php": "^1.0"
+        "stripe/stripe-php": "^20.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
