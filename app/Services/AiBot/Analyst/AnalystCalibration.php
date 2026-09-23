@@ -54,7 +54,13 @@ class AnalystCalibration
             'days' => $days,
             'horizon' => $horizon,
             'samples' => count(array_filter($calls, fn ($c) => $c['correct'] !== null)),
+            /*
+             * Brier ของ p_up วัดที่ horizon เดียวกับตาราง — ค่าปริยาย 24 ชม. ตรงกับที่ prompt
+             * ขอ (p_up_24h) · เดิมตารางวัดที่ 4 ชม. จึงเอาความน่าจะเป็นของ 24 ชม. ไปเทียบกับ
+             * ผลของ 4 ชม. (คนละคำถามกัน)
+             */
             'brier' => AnalystScorer::brier($calls),
+            'brier_samples' => count(array_filter($calls, fn ($c) => $c['p_up'] !== null)),
             'buckets' => $table,
         ];
 
@@ -126,6 +132,66 @@ class AnalystCalibration
         }
 
         return $cell['hit_rate'];
+    }
+
+    /**
+     * AI มีฝีมือที่วัดได้พอจะได้รับอำนาจเหนือเงินไหม.
+     *
+     * ═══ ทำไมต้องมี ═══
+     * ออดิทกองบอท R3 (2 → 23 ก.ย. 2026, 123 รอบ · 270 คำตัดสิน วัดที่ 24 ชม.):
+     *   p_up Brier 0.292 — แย่กว่าตอบ 0.5 ทุกครั้ง (0.250) · p_up ≥ 0.75 → ขึ้นจริง 33%
+     *   buy มัธยฐาน −83 bps · avoid ขึ้น 79% (+101 bps) · เหรียญที่ AI ให้ buy แพ้ BTC −98 bps/วัน
+     * ความเห็นที่ "ทำนายกลับข้าง" ยังได้สิทธิ์ห้ามเข้าไม้ ลดขนาดไม้ และย้ายเหรียญอยู่ครบ —
+     * อำนาจต้องมาจากผลงานที่วัดได้ ไม่ใช่มาพร้อมการเปิดสวิตช์
+     *
+     * ═══ คำตัดสิน ═══
+     *   unproven — ยังมีตัวอย่างไม่พอ (หรือยังไม่เคยสร้างตาราง) → ใช้กติกาเดิมรายช่อง
+     *   no_skill — Brier ≥ max_brier บนตัวอย่างพอแล้ว → AI ไม่มีสิทธิ์แตะเงินเลย
+     *   skilled  — ดีกว่าโยนเหรียญ → ใช้อำนาจตามกติกาเดิม (ยังถูกคุมรายช่องด้วยตาราง)
+     *
+     * AI ยังวิเคราะห์และถูกให้คะแนนต่อทุกรอบ — ฝีมือดีขึ้นเมื่อไหร่ ได้อำนาจคืนเองในรอบ
+     * calibrate ถัดไป โดยไม่ต้องมีคนมาเปิดสวิตช์
+     *
+     * @return array{verdict: string, brier: float|null, samples: int, reason: string}
+     */
+    public function skill(): array
+    {
+        $table = $this->table();
+        $brier = isset($table['brier']) ? (float) $table['brier'] : null;
+        $samples = (int) ($table['brier_samples'] ?? 0);
+
+        $minSamples = (int) config('aibot_analyst.authority.min_samples', 60);
+        $maxBrier = (float) config('aibot_analyst.authority.max_brier', 0.25);
+
+        if ($brier === null || $samples < $minSamples) {
+            return [
+                'verdict' => 'unproven',
+                'brier' => $brier,
+                'samples' => $samples,
+                'reason' => "ยังวัดฝีมือ AI ไม่ได้ (ตัวอย่าง {$samples}/{$minSamples})",
+            ];
+        }
+
+        if ($brier >= $maxBrier) {
+            return [
+                'verdict' => 'no_skill',
+                'brier' => $brier,
+                'samples' => $samples,
+                'reason' => sprintf(
+                    'AI ยังทายไม่ดีกว่าโยนเหรียญ (Brier %.3f ≥ %.2f จาก %d คำตัดสิน) — ดูได้อย่างเดียว ไม่มีสิทธิ์แตะเงิน',
+                    $brier,
+                    $maxBrier,
+                    $samples,
+                ),
+            ];
+        }
+
+        return [
+            'verdict' => 'skilled',
+            'brier' => $brier,
+            'samples' => $samples,
+            'reason' => sprintf('AI ทายดีกว่าโยนเหรียญ (Brier %.3f จาก %d คำตัดสิน)', $brier, $samples),
+        ];
     }
 
     /** ช่วงความมั่นใจ — ช่วงเดียวกับที่รายงาน aibot:analyst-report ใช้ */

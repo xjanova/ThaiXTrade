@@ -141,6 +141,94 @@ class AnalystCalibrationTest extends TestCase
         $this->assertArrayHasKey('built_at', $calibration->table());
     }
 
+    /**
+     * ⭐ ราคา "ณ เวลาตัดสิน" ต้องเป็นราคาปิดของแท่งที่ปิดแล้ว — ห้ามแอบใช้แท่งที่ยังวิ่งอยู่.
+     *
+     * เดิมคีย์ราคาด้วยเวลาเปิดแท่ง → คำตัดสินตอน 12:00 ได้ราคาปิดของแท่ง 12:00–13:00
+     * (ราคาในอนาคต 1 ชม.) ฉากนี้ราคากระโดดในแท่งที่เปิดตรงเวลาตัดสินพอดี:
+     * แบบเดิมได้ move 0 (ทั้งสองขาเห็นราคาหลังกระโดดแล้ว) · แบบถูกต้องได้ +1000 bps
+     */
+    #[Test]
+    public function ราคา_ณ_เวลาตัดสินต้องมาจากแท่งที่ปิดแล้วเท่านั้น(): void
+    {
+        $at = now()->subHours(12)->startOfHour();
+
+        $this->app->bind(MarketDataService::class, fn () => new class($at->getTimestamp()) extends MarketDataService
+        {
+            public function __construct(private int $jumpOpensAt) {}
+
+            public function getKlines(string $symbol, string $interval = '1h', int $limit = 100): array
+            {
+                $out = [];
+                $start = now()->subHours($limit)->startOfHour();
+
+                for ($i = 0; $i < $limit; $i++) {
+                    $open = $start->copy()->addHours($i)->getTimestamp();
+                    $out[] = ['time' => $open * 1000, 'close' => $open >= $this->jumpOpensAt ? 110.0 : 100.0];
+                }
+
+                return $out;
+            }
+        });
+
+        $this->storedView(['BTC' => ['stance' => 'buy']], 0.9, hoursAgo: 12);
+
+        $calls = app(AnalystScorer::class)->score(AiMarketView::all(), 4);
+
+        $this->assertCount(1, $calls);
+        $this->assertEqualsWithDelta(1000, $calls[0]['move_bps'], 1, 'ราคาเริ่มต้องเป็นของก่อนกระโดด (100) ไม่ใช่หลังกระโดด');
+        $this->assertTrue($calls[0]['correct']);
+    }
+
+    #[Test]
+    public function ตารางเก็บจำนวนตัวอย่างของ_brier_ไว้ตัดสินอำนาจ(): void
+    {
+        $this->fakeMarket();
+
+        foreach ([30, 40, 50] as $h) {
+            $this->storedView(['BTC' => ['stance' => 'buy', 'p_up' => 0.9]], 0.7, $h);
+        }
+        $this->storedView(['ETH' => ['stance' => 'buy']], 0.7, 60);   // รุ่นเก่า ไม่มี p_up
+
+        $table = app(AnalystCalibration::class)->rebuild(days: 14, horizon: 24);
+
+        $this->assertSame(24, $table['horizon']);
+        $this->assertSame(3, $table['brier_samples'], 'นับเฉพาะคำตัดสินที่มี p_up');
+        $this->assertEqualsWithDelta(0.01, $table['brier'], 0.0001, 'ขาขึ้นทุกครั้ง p_up 0.9 → (0.9−1)² = 0.01');
+    }
+
+    /**
+     * ⭐ อำนาจของ AI มาจากฝีมือที่วัดได้ — ยังวัดไม่ได้ · แย่กว่าโยนเหรียญ · ดีกว่าโยนเหรียญ.
+     */
+    #[Test]
+    public function คำตัดสินฝีมือ_ai_สามระดับ(): void
+    {
+        config(['aibot_analyst.authority.min_samples' => 60, 'aibot_analyst.authority.max_brier' => 0.25]);
+        $calibration = app(AnalystCalibration::class);
+
+        $this->assertSame('unproven', $calibration->skill()['verdict'], 'ยังไม่เคยสร้างตาราง = ยังไม่รู้');
+
+        $seed = fn (?float $brier, int $n) => Cache::put(AnalystCalibration::CACHE_KEY, [
+            'built_at' => now()->toIso8601String(), 'days' => 14, 'horizon' => 24, 'samples' => $n,
+            'brier' => $brier, 'brier_samples' => $n, 'buckets' => [],
+        ], now()->addHour());
+
+        $seed(0.40, 59);
+        $this->assertSame('unproven', $calibration->skill()['verdict'], 'แย่แค่ไหนแต่ตัวอย่างไม่พอ = ยังไม่ตัดสิน');
+
+        // ตัวเลขจริงของออดิท R3: Brier 0.292 จาก 260 คำตัดสิน
+        $seed(0.292, 260);
+        $skill = $calibration->skill();
+        $this->assertSame('no_skill', $skill['verdict']);
+        $this->assertStringContainsString('โยนเหรียญ', $skill['reason']);
+
+        $seed(0.25, 100);
+        $this->assertSame('no_skill', $calibration->skill()['verdict'], 'เท่ากับตอบ 0.5 ทุกครั้ง = ไม่มีฝีมือ');
+
+        $seed(0.21, 100);
+        $this->assertSame('skilled', $calibration->skill()['verdict']);
+    }
+
     #[Test]
     public function brier_ให้_0_เมื่อความน่าจะเป็นถูกต้องสมบูรณ์(): void
     {

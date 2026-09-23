@@ -36,7 +36,7 @@ class AiBotAnalystReport extends Command
 {
     protected $signature = 'aibot:analyst-report
         {--days=4 : ย้อนหลังกี่วัน}
-        {--horizon=4 : วัดผลที่กี่ชั่วโมงหลังให้ความเห็น}';
+        {--horizon=24 : วัดผลที่กี่ชั่วโมงหลังให้ความเห็น (24 = ช่วงเดียวกับ p_up_24h และ calibration)}';
 
     protected $description = 'ให้คะแนนคำตัดสินของ AI เทียบกับราคาที่เกิดขึ้นจริง';
 

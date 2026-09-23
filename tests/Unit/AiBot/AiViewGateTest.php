@@ -6,7 +6,9 @@ use App\Models\AiBotConfig;
 use App\Models\AiBotPlan;
 use App\Models\AiMarketView;
 use App\Services\AiBot\Analyst\AiViewGate;
+use App\Services\AiBot\Analyst\AnalystCalibration;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -37,6 +39,7 @@ class AiViewGateTest extends TestCase
 
         config()->set('aibot_analyst.enabled', true);
         config()->set('aibot_analyst.shadow_mode', false);
+        Cache::flush();
 
         $this->gate = app(AiViewGate::class);
     }
@@ -270,8 +273,81 @@ class AiViewGateTest extends TestCase
         $this->assertTrue($result['force_exit'], '3 ตัวอย่างคือความบังเอิญ — ยังต้องเชื่อเกณฑ์ดิบ');
     }
 
+    // ── อำนาจต้องมาจากฝีมือที่วัดได้ (ออดิท R3) ─────────────────────────────────
+
+    /**
+     * ⭐ AI ที่ทายแย่กว่าโยนเหรียญ = ดูได้อย่างเดียว แม้จะมั่นใจเต็มและสั่งออกแรงแค่ไหน.
+     *
+     * ออดิท R3 (2 → 23 ก.ย. 2026): Brier 0.292 จาก 260 คำตัดสิน · avoid ขึ้นต่อ 79% ·
+     * buy แพ้ BTC −98 bps/วัน — ความเห็นแบบนี้ต้องไม่ได้ห้ามเข้าไม้ ลดขนาด หรือสั่งปิด
+     */
+    #[Test]
+    public function an_ai_that_forecasts_worse_than_a_coin_flip_loses_its_authority(): void
+    {
+        $this->seedCalibration([], brier: 0.292, brierSamples: 260);
+
+        AiMarketView::create([
+            'scope' => AiMarketView::SCOPE_STRATEGIC, 'provider' => 'openai', 'model' => 'gpt-4o-mini',
+            'regime' => 'risk_off', 'confidence' => 0.95, 'size_multiplier' => 0.3,
+            'coins' => ['BTC' => ['score' => -1.0, 'stance' => 'exit', 'why' => 'ข่าวร้าย']],
+            'shortlist' => [], 'summary' => '', 'expires_at' => now()->addHour(),
+        ]);
+
+        $holding = $this->gate->evaluate($this->bot(), $this->plan('vip'), true);
+        $flat = $this->gate->evaluate($this->bot(), $this->plan('vip'), false);
+
+        foreach ([$holding, $flat] as $result) {
+            $this->assertFalse($result['applied']);
+            $this->assertTrue($result['demoted'] ?? false);
+            $this->assertFalse($result['force_exit'], 'ห้ามสั่งปิดไม้');
+            $this->assertFalse($result['block_entry'], 'ห้ามห้ามเข้าไม้');
+            $this->assertSame(1.0, $result['size_multiplier'], 'ห้ามลดขนาดไม้');
+            $this->assertNotNull($result['view_id'], 'ยังต้องบันทึกได้ว่ามุมมองไหนถูกเมิน');
+            $this->assertStringContainsString('โยนเหรียญ', implode(' ', $result['reasons']));
+        }
+    }
+
+    /** ฝีมือยังวัดไม่ได้ (ตัวอย่างไม่พอ) = ใช้กติกาเดิม ไม่ลงโทษล่วงหน้า */
+    #[Test]
+    public function an_unproven_ai_keeps_the_per_bucket_rules(): void
+    {
+        $this->seedCalibration([], brier: 0.40, brierSamples: 10);
+        $this->makeView(['BTC' => ['score' => -0.8, 'stance' => 'avoid', 'why' => 'ทดสอบ']]);
+
+        $result = $this->gate->evaluate($this->bot(), $this->plan('vip'), false);
+
+        $this->assertTrue($result['applied']);
+        $this->assertTrue($result['block_entry']);
+    }
+
+    /** เจ้าของปิดกติกานี้ได้ (AIBOT_ANALYST_EARN_AUTHORITY=false) — กลับไปพฤติกรรมเดิม */
+    #[Test]
+    public function the_earned_authority_rule_can_be_switched_off(): void
+    {
+        config()->set('aibot_analyst.authority.enabled', false);
+        $this->seedCalibration([], brier: 0.292, brierSamples: 260);
+        $this->makeView(['BTC' => ['score' => -0.8, 'stance' => 'avoid', 'why' => 'ทดสอบ']]);
+
+        $result = $this->gate->evaluate($this->bot(), $this->plan('vip'), false);
+
+        $this->assertTrue($result['block_entry']);
+    }
+
+    /** avoid ต้องผ่านประวัติจริงเหมือน buy/exit — ประวัติแย่ = ไม่ห้ามเข้าไม้ */
+    #[Test]
+    public function a_bad_avoid_track_record_does_not_block_entries(): void
+    {
+        $this->seedCalibration(['avoid' => ['high' => ['n' => 33, 'hit_rate' => 0.21, 'avg_move_bps' => 101.0]]]);
+        $this->makeView(['BTC' => ['score' => -0.8, 'stance' => 'avoid', 'why' => 'ทดสอบ']], confidence: 0.9);
+
+        $result = $this->gate->evaluate($this->bot(), $this->plan('vip'), false);
+
+        $this->assertFalse($result['block_entry']);
+        $this->assertStringContainsString('ไม่ห้ามเข้าไม้', implode(' ', $result['reasons']));
+    }
+
     /** ตารางที่ AnalystCalibration ให้ค่า — เขียนตรงๆ ลง cache ไม่ต้องดึงราคา */
-    private function seedCalibration(array $buckets): void
+    private function seedCalibration(array $buckets, ?float $brier = null, int $brierSamples = 0): void
     {
         $table = [];
         foreach (['buy', 'avoid', 'exit'] as $stance) {
@@ -280,8 +356,9 @@ class AiViewGateTest extends TestCase
             }
         }
 
-        \Illuminate\Support\Facades\Cache::put(\App\Services\AiBot\Analyst\AnalystCalibration::CACHE_KEY, [
-            'built_at' => now()->toIso8601String(), 'days' => 14, 'horizon' => 4, 'samples' => 40, 'brier' => null, 'buckets' => $table,
+        Cache::put(AnalystCalibration::CACHE_KEY, [
+            'built_at' => now()->toIso8601String(), 'days' => 14, 'horizon' => 24, 'samples' => 40,
+            'brier' => $brier, 'brier_samples' => $brierSamples, 'buckets' => $table,
         ], now()->addHour());
     }
 

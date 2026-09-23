@@ -8,8 +8,11 @@ use App\Models\AiMarketView;
 use App\Models\Chain;
 use App\Models\Token;
 use App\Models\TradingPair;
+use App\Services\AiBot\Analyst\AnalystCalibration;
 use App\Services\AiBot\Analyst\AutoPairResolver;
+use App\Services\AiBotService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -66,6 +69,30 @@ class AutoPairResolverTest extends TestCase
         $this->assertTrue($result['switched']);
         $this->assertSame('ETH/USDT', $result['pair']);
         $this->assertSame('ETH/USDT', $bot->fresh()->pair);
+    }
+
+    /**
+     * ⭐ AI ที่ทายแย่กว่าโยนเหรียญ ไม่มีสิทธิ์ย้ายเหรียญให้บอท.
+     *
+     * ออดิท R3: เหรียญที่ AI ให้ buy แพ้ BTC เฉลี่ย −98 bps ใน 24 ชม. — ถ้าลดขั้นเฉพาะด่าน
+     * เข้า/ออกไม้ AI ที่ไม่มีฝีมือยังพาเงินไปเหรียญที่แย่กว่าได้ผ่านทางนี้
+     */
+    #[Test]
+    public function a_demoted_ai_cannot_move_the_bot(): void
+    {
+        Cache::put(AnalystCalibration::CACHE_KEY, [
+            'built_at' => now()->toIso8601String(), 'days' => 14, 'horizon' => 24, 'samples' => 260,
+            'brier' => 0.292, 'brier_samples' => 260, 'buckets' => [],
+        ], now()->addHour());
+
+        $this->makeView(['ETH/USDT', 'BTC/USDT']);
+        $bot = $this->bot('BTC/USDT', auto: true);
+
+        $result = $this->resolver->resolve($bot, $this->plan(), false);
+
+        $this->assertFalse($result['switched']);
+        $this->assertSame('BTC/USDT', $bot->fresh()->pair);
+        $this->assertStringContainsString('โยนเหรียญ', $result['reason']);
     }
 
     #[Test]
@@ -174,7 +201,7 @@ class AutoPairResolverTest extends TestCase
          * แต่ค่าไม่เคยลงฐานข้อมูล ตัวเลือกเหรียญจึงไม่ทำงานเลยสักครั้งและไม่มี
          * อะไรบอกว่าทำไม — เป็นรูปแบบความล้มเหลวเดียวกับที่โปรเจกต์นี้เจอซ้ำๆ
          */
-        $clean = app(\App\Services\AiBotService::class)
+        $clean = app(AiBotService::class)
             ->sanitizeParams('grid', ['auto_pair' => true, 'news_filter' => false]);
 
         $this->assertTrue($clean['auto_pair'], 'สวิตช์ให้ AI เลือกเหรียญถูกตัดทิ้ง');
@@ -185,7 +212,7 @@ class AutoPairResolverTest extends TestCase
     public function a_strategy_owned_param_still_wins_over_the_common_one(): void
     {
         // กลยุทธ์รู้ช่วงค่าที่ถูกต้องของตัวเองดีกว่า รายการร่วมต้องไม่ไปทับ
-        $clean = app(\App\Services\AiBotService::class)->sanitizeParams('ai_signal', ['news_filter' => false]);
+        $clean = app(AiBotService::class)->sanitizeParams('ai_signal', ['news_filter' => false]);
 
         $this->assertFalse($clean['news_filter']);
     }

@@ -26,7 +26,19 @@ class AiBotCalibrate extends Command
         $days = $this->option('days') !== null ? max(1, (int) $this->option('days')) : null;
         $table = $calibration->rebuild($days);
 
-        $this->components->info(sprintf('calibration %d วัน · %d คำตัดสินที่วัดได้ · Brier %s', $table['days'], $table['samples'], $table['brier'] ?? '—'));
+        $this->components->info(sprintf(
+            'calibration %d วัน · วัดที่ +%d ชม. · %d คำตัดสินที่วัดได้ · Brier %s',
+            $table['days'],
+            $table['horizon'],
+            $table['samples'],
+            $table['brier'] ?? '—',
+        ));
+
+        // คำตัดสินเรื่องอำนาจ — บรรทัดที่เจ้าของต้องเห็นก่อนตาราง (AI แตะเงินได้หรือไม่)
+        $skill = $calibration->skill();
+        $skill['verdict'] === 'no_skill'
+            ? $this->warn('อำนาจของ AI: ไม่มี — '.$skill['reason'])
+            : $this->line('อำนาจของ AI: '.($skill['verdict'] === 'skilled' ? 'มี — ' : 'ตามกติการายช่อง — ').$skill['reason']);
 
         $rows = [];
         foreach ($table['buckets'] as $stance => $buckets) {

@@ -131,7 +131,8 @@ class MarketContextTest extends TestCase
     {
         $this->assertNull(app(MarketContext::class)->build(AiMarketView::SCOPE_STRATEGIC)['track_record'], 'ยังไม่มีมุมมอง = ไม่มีประวัติ');
 
-        $at = now()->subHours(12)->startOfHour();
+        // ประวัติวัดที่ horizon เดียวกับ calibration (24 ชม. — ตรงกับ p_up_24h) มุมมองต้องเก่ากว่านั้น
+        $at = now()->subHours(30)->startOfHour();
         $view = AiMarketView::create([
             'scope' => AiMarketView::SCOPE_STRATEGIC, 'provider' => 'openai', 'model' => 'test',
             'regime' => 'neutral', 'confidence' => 0.8, 'size_multiplier' => 1.0,

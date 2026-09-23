@@ -186,7 +186,14 @@ class AnalystScorer
         return round($sum / count($scored), 4);
     }
 
-    /** @return array<int, float> timestamp(วินาที) => ราคาปิด */
+    /**
+     * @return array<int, float> เวลาปิดแท่ง (วินาที) => ราคาปิด
+     *
+     * ⚠️ คีย์ต้องเป็น "เวลาปิด" ของแท่ง ไม่ใช่เวลาเปิดที่ตลาดส่งมา
+     *    เดิมใช้เวลาเปิด → priceAt(12:05) ได้แท่งที่เปิด 12:00 ซึ่ง "ปิด 13:00" = ราคาในอนาคต
+     *    ราว 1 ชม. ทั้งขาเริ่มและขาวัด ขัดกับกติกาของไฟล์นี้เอง (ห้ามใช้แท่งอนาคต)
+     *    และทำให้ชั่วโมงแรกหลังคำตัดสินหายไปจากการให้คะแนนทุกครั้ง (พบตอนออดิท R3)
+     */
     public function priceSeries(string $symbol, int $bars): array
     {
         try {
@@ -202,7 +209,8 @@ class AnalystScorer
                 continue;
             }
 
-            $series[(int) (((int) ($bar['time'] ?? 0)) / 1000)] = (float) ($bar['close'] ?? 0);
+            $closedAt = (int) (((int) ($bar['time'] ?? 0)) / 1000) + 3600;
+            $series[$closedAt] = (float) ($bar['close'] ?? 0);
         }
 
         ksort($series);

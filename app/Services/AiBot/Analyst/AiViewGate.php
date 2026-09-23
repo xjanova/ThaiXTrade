@@ -40,7 +40,8 @@ class AiViewGate
      *     force_exit: bool,
      *     confidence_relief: float,
      *     stance: string|null,
-     *     reasons: list<string>
+     *     reasons: list<string>,
+     *     demoted?: bool
      * }
      */
     public function evaluate(AiBotConfig $bot, ?AiBotPlan $plan, bool $hasPosition): array
@@ -83,7 +84,19 @@ class AiViewGate
         if ((float) $view->confidence < $minConfidence) {
             // AI เองยังไม่มั่นใจ — เอาความเห็นที่มันไม่มั่นใจมาถ่วงการตัดสินใจ
             // เรื่องเงินไม่คุ้ม ปล่อยให้กฎทำงานตามปกติ
-            return $idle + ['view_id' => $view->id];
+            // (array_merge ไม่ใช่ + : idle มีคีย์ view_id = null อยู่แล้ว ใช้ + แล้วค่าใหม่หายเงียบ)
+            return array_merge($idle, ['view_id' => $view->id]);
+        }
+
+        /*
+         * อำนาจต้องมาจากฝีมือที่วัดได้ — ดูตัวเลขออดิท R3 ที่ AnalystCalibration::skill()
+         * (Brier 0.292 แย่กว่าโยนเหรียญ · avoid ถูกแค่ 21% ที่ 24 ชม.) ไม่ผ่าน = ดูได้อย่างเดียว
+         * บันทึกเหตุผลไว้ในรอบคิดของบอททุกตัว ย้อนดูได้ว่าทำไม +AI กับ −AI ถึงเทรดเหมือนกัน
+         */
+        $demotion = $this->demotion();
+
+        if ($demotion !== null) {
+            return array_merge($idle, ['view_id' => $view->id, 'demoted' => true, 'reasons' => [$demotion]]);
         }
 
         $coin = $view->forPair($bot->pair);
@@ -106,8 +119,19 @@ class AiViewGate
         }
 
         if ($stance === AiMarketView::STANCE_AVOID) {
-            $blockEntry = true;
-            $reasons[] = 'AI ไม่แนะนำเหรียญนี้รอบนี้: '.($coin['why'] ?: 'ไม่ระบุเหตุผล');
+            /*
+             * avoid ต้องผ่านประวัติจริงเหมือน buy/exit — เดิมเป็นท่าทีเดียวที่ใช้ได้เสมอ
+             * ออดิท R3: เหรียญที่ AI บอก avoid ขึ้นต่อ 79% ของครั้ง (+101 bps ใน 24 ชม.)
+             * การห้ามเข้าไม้ตามคำนั้นคือการพลาดขาขึ้นที่ AI ทายกลับข้างให้เองซ้ำๆ
+             */
+            $history = $this->calibration->hitRate('avoid', (float) $view->confidence);
+
+            if ($history !== null && $history < (float) ($limits['calibrated_avoid_min'] ?? 0.5)) {
+                $reasons[] = sprintf('AI ไม่แนะนำเหรียญนี้ แต่ประวัติ avoid ที่ความมั่นใจระดับนี้ถูกแค่ %.0f%% — ไม่ห้ามเข้าไม้', $history * 100);
+            } else {
+                $blockEntry = true;
+                $reasons[] = 'AI ไม่แนะนำเหรียญนี้รอบนี้: '.($coin['why'] ?: 'ไม่ระบุเหตุผล');
+            }
         }
 
         if ($stance === AiMarketView::STANCE_EXIT && $hasPosition) {
@@ -199,6 +223,24 @@ class AiViewGate
             'stance' => null,
             'reasons' => [],
         ];
+    }
+
+    /**
+     * เหตุผลที่ AI "ไม่มีสิทธิ์" แตะการตัดสินใจเรื่องเงินตอนนี้ — null = มีสิทธิ์ตามกติกาปกติ.
+     *
+     * ใช้ร่วมกันทุกจุดที่ AI มีอำนาจ (ด่านเข้า/ออกไม้ที่นี่ และการย้ายเหรียญใน
+     * AutoPairResolver) — ถ้าเช็กที่เดียว AI ที่ถูกลดขั้นยังย้ายบอทไปเหรียญที่มันเลือกได้
+     * ซึ่งออดิท R3 วัดว่าแพ้ BTC เฉลี่ย −98 bps ต่อวัน
+     */
+    public function demotion(): ?string
+    {
+        if (! (bool) config('aibot_analyst.authority.enabled', true)) {
+            return null;
+        }
+
+        $skill = $this->calibration->skill();
+
+        return $skill['verdict'] === 'no_skill' ? $skill['reason'] : null;
     }
 
     /**
