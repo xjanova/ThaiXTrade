@@ -33,12 +33,18 @@ class SystemAlert extends Model
     /**
      * เหตุที่ heartbeat (= "ทุก check ฝั่งเชนผ่าน") ถือว่าจบแล้ว ปิดให้อัตโนมัติ —
      * ส่วน chain_restarted (warning) ค้างไว้ให้แอดมินกดรับทราบเอง จะได้รู้ว่าเคยเกิด.
+     *
+     * validator_forked / validator_lagging เป็นเหตุแบบแจ้งเตือนอย่างเดียว: ระหว่างเกิดเหตุ
+     * เชนหลักยังเดินด้วย 3/4 watchdog จึงยังยิง heartbeat ทุกนาที และแนบ active_keys มาบอกว่า
+     * ยังไม่จบ — heartbeat ที่ไม่มี key นั้นแล้วแปลว่าซ่อมเสร็จ ปิดได้
      */
     public const AUTO_RESOLVE_KEYS = [
         'chain_stalled',
         'chain_down',
         'chain_restart_blocked',
         'heartbeat_missing',
+        'validator_forked',
+        'validator_lagging',
     ];
 
     protected $fillable = [

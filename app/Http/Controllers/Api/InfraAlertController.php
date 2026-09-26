@@ -28,6 +28,9 @@ class InfraAlertController extends Controller
      *
      * นอกจากบันทึกชีพ ยังปิดเหตุร้ายที่ระบบปิดเองได้ของ node นั้น
      * (chain_stalled ฯลฯ) เพราะ heartbeat ยิงเฉพาะตอนเชนกลับมาปกติแล้ว
+     *
+     * ยกเว้น key ใน active_keys — เหตุแบบแจ้งเตือนอย่างเดียวที่ watchdog ยังเห็นอยู่ในรอบนี้
+     * (validator แยกเชน/ตามไม่ทัน) ถ้าปิดทิ้ง รอบหน้าจะยกเป็นแถวใหม่ + เด้งกระดิ่งแอดมินทุกนาที
      */
     public function heartbeat(Request $request): JsonResponse
     {
@@ -38,6 +41,8 @@ class InfraAlertController extends Controller
         $validated = $request->validate([
             'node' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9._-]+$/'],
             'block' => ['nullable', 'integer', 'min:0'],
+            'active_keys' => ['sometimes', 'array', 'max:20'],
+            'active_keys.*' => ['string', 'max:64', 'regex:/^[a-z0-9_]+$/'],
         ]);
 
         InfraHeartbeat::updateOrCreate(
@@ -47,7 +52,7 @@ class InfraAlertController extends Controller
 
         $resolved = SystemAlert::resolveKeys(
             $validated['node'],
-            SystemAlert::AUTO_RESOLVE_KEYS,
+            array_values(array_diff(SystemAlert::AUTO_RESOLVE_KEYS, $validated['active_keys'] ?? [])),
             'auto:heartbeat',
         );
 

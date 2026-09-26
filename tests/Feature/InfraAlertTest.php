@@ -108,6 +108,45 @@ class InfraAlertTest extends TestCase
         $this->assertSame('active', SystemAlert::where('node', 'chain-2')->first()->status);
     }
 
+    public function test_heartbeat_keeps_alerts_the_watchdog_still_sees(): void
+    {
+        // validator แยกเชน: เชนหลักยังเดินด้วย 3/4 heartbeat จึงยังมาทุกนาที แต่เหตุต้องไม่ถูกปิด
+        SystemAlert::raise('chain-1', 'validator_forked', 'critical', 'tpix-validator-3 แยกเชน');
+        SystemAlert::raise('chain-1', 'chain_stalled', 'critical', 'เชนสะดุด');
+
+        $this->postJson('/api/infra/heartbeat', [
+            'node' => 'chain-1',
+            'block' => 200,
+            'active_keys' => ['validator_forked'],
+        ], $this->authed())->assertOk()->assertJson(['auto_resolved' => 1]);
+
+        $this->assertSame('active', SystemAlert::where('alert_key', 'validator_forked')->first()->status);
+        $this->assertSame('resolved', SystemAlert::where('alert_key', 'chain_stalled')->first()->status);
+
+        // watchdog ยกซ้ำรอบถัดไป → รวมแถวเดิม ไม่เปิดแถวใหม่ (แถวใหม่ = กระดิ่งแอดมินเด้งซ้ำ)
+        SystemAlert::raise('chain-1', 'validator_forked', 'critical', 'tpix-validator-3 แยกเชน');
+        $this->assertSame(1, SystemAlert::where('alert_key', 'validator_forked')->count());
+        $this->assertSame(2, SystemAlert::where('alert_key', 'validator_forked')->first()->occurrences);
+
+        // ซ่อมเสร็จ: heartbeat ไม่แนบ key แล้ว → ปิดเอง
+        $this->postJson('/api/infra/heartbeat', ['node' => 'chain-1', 'block' => 300], $this->authed())
+            ->assertOk();
+        $this->assertSame('resolved', SystemAlert::where('alert_key', 'validator_forked')->first()->status);
+    }
+
+    public function test_heartbeat_validates_active_keys(): void
+    {
+        $this->postJson('/api/infra/heartbeat', [
+            'node' => 'chain-1',
+            'active_keys' => ['BAD KEY!'],
+        ], $this->authed())->assertStatus(422);
+
+        $this->postJson('/api/infra/heartbeat', [
+            'node' => 'chain-1',
+            'active_keys' => 'validator_forked',
+        ], $this->authed())->assertStatus(422);
+    }
+
     // =========================================================================
     // Alert lifecycle
     // =========================================================================
