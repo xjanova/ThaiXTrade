@@ -58,6 +58,22 @@ class User extends Authenticatable
     }
 
     /**
+     * รหัสผ่านที่ระบบล็อกอินใช้เทียบ — สมาชิกที่สมัครผ่าน Google/Social หรือกระเป๋า
+     * ไม่มีรหัสผ่าน (คอลัมน์เป็น null) จึงคืนสตริงว่างแทน.
+     *
+     * Laravel 12 เอาค่านี้ไปเทียบคุกกี้ "จำฉันไว้" ด้วย hash_equals() ซึ่งรับ null ไม่ได้
+     * (TypeError) — พอ session หมดแล้วคุกกี้จำฉันไว้ทำงานแทน ทุกหน้าตอบ 500 รวมหน้า login
+     * เพราะ HandleInertiaRequests เรียก user() ทุก request ผู้ใช้จึงออกจากวงนี้เองไม่ได้
+     * จนกว่าจะล้างคุกกี้ (เจอบน production 2026-09-26)
+     *
+     * สตริงว่างไม่ได้เปิดช่องล็อกอินด้วยรหัสว่าง: Hasher::check() ตีตก hash ว่างก่อนเทียบเสมอ
+     */
+    public function getAuthPassword(): string
+    {
+        return $this->{$this->getAuthPasswordName()} ?? '';
+    }
+
+    /**
      * Auto-generate referral code เมื่อสร้าง user.
      */
     protected static function booted(): void
