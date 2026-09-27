@@ -9,6 +9,7 @@
  *
  * ประวัติแชทอยู่ใน useChatbot (ใช้ร่วมกับบับเบิ้ลของน้องบนหน้าแรก 3D)
  * หน้าที่มีตัวน้องยืนอยู่บนจอ: ซ่อนปุ่มลอย (ตัวน้องคือทางเข้าแชทแทน)
+ * หน้าที่มีตัวน้องแต่ผู้ใช้กดซ่อนไว้: มีปุ่ม "เรียกน้องกลับมา" เหนือปุ่มแชท + ในหัวหน้าต่างแชท ตลอดเวลา
  *
  * Developed by Xman Studio
  */
@@ -31,6 +32,13 @@ const isOpen = chat.isOpen;
 const isLoading = chat.isLoading;
 // ตัวน้องยืนอยู่บนจอแล้ว (หน้าแรก 3D) → ไม่ต้องมีปุ่มลอยซ้ำ
 const mascotOnScreen = computed(() => mascot.active.value);
+// หน้านี้มีน้องแต่ถูกซ่อน → ต้องมีทางเรียกกลับเสมอ
+const canRecall = computed(() => mascot.present.value && mascot.hidden.value);
+
+function recallMascot() {
+    chat.close();
+    mascot.recall();
+}
 
 // เลื่อน scroll ลงล่างสุด
 function scrollBottom() {
@@ -99,6 +107,27 @@ function sendQuick(msg) {
         </span>
     </button>
 
+    <!-- เรียกน้องกลับมา (ซ่อนน้องไว้บนหน้าที่มีน้อง) -->
+    <Transition name="tpix-recall">
+        <button
+            v-if="canRecall && !isOpen"
+            type="button"
+            class="tpix-recall group fixed right-[30px] bottom-[100px] z-50 w-12 h-12 rounded-full p-[2px] bg-gradient-to-br from-warm-400 via-accent-500 to-primary-400 shadow-lg shadow-accent-500/30 hover:scale-110 transition-transform"
+            :aria-label="t('mascot.recall')"
+            :title="t('mascot.recall')"
+            @click="recallMascot"
+        >
+            <span class="block w-full h-full rounded-full overflow-hidden bg-dark-900">
+                <img v-if="!faceBroken" :src="FACE_SRC" alt="" class="w-full h-full object-cover" @error="faceBroken = true" />
+                <span v-else class="flex w-full h-full items-center justify-center text-lg">💙</span>
+            </span>
+            <span class="tpix-recall__spark" aria-hidden="true">✨</span>
+            <span class="pointer-events-none absolute right-full top-1/2 -translate-y-1/2 mr-3 whitespace-nowrap rounded-full bg-dark-900/90 border border-white/10 px-3 py-1.5 text-xs font-semibold text-white opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all">
+                {{ t('mascot.recall') }}
+            </span>
+        </button>
+    </Transition>
+
     <!-- Chat Window -->
     <div v-if="isOpen"
         class="fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[550px] max-h-[calc(100vh-3rem)] bg-dark-800 border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
@@ -116,11 +145,21 @@ function sendQuick(msg) {
                     <p class="text-trading-green text-[10px]">● Online · AI</p>
                 </div>
             </div>
+            <div class="flex items-center gap-1">
+            <button
+                v-if="canRecall"
+                type="button"
+                class="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-primary-200 bg-primary-500/15 border border-primary-500/30 hover:bg-primary-500/25 transition-colors"
+                @click="recallMascot"
+            >
+                ✨ {{ t('mascot.recallShort') }}
+            </button>
             <button type="button" @click="chat.close()" :aria-label="t('chatbot.close')" class="text-dark-400 hover:text-white transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
             </button>
+            </div>
         </div>
 
         <!-- Chat Messages -->
@@ -187,3 +226,37 @@ function sendQuick(msg) {
         </div>
     </div>
 </template>
+
+<style scoped>
+/* ประกายวิบวับบนปุ่มเรียกน้องกลับมา — ให้รู้ว่ากดได้ */
+.tpix-recall__spark {
+    position: absolute;
+    top: -6px;
+    right: -4px;
+    font-size: 13px;
+    filter: drop-shadow(0 0 6px rgb(251 191 36 / 0.9));
+    animation: tpix-recall-twinkle 1.8s ease-in-out infinite;
+}
+
+@keyframes tpix-recall-twinkle {
+    0%, 100% { opacity: 0.5; transform: scale(0.8) rotate(0deg); }
+    50% { opacity: 1; transform: scale(1.15) rotate(20deg); }
+}
+
+.tpix-recall-enter-active,
+.tpix-recall-leave-active {
+    transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tpix-recall-enter-from,
+.tpix-recall-leave-to {
+    opacity: 0;
+    transform: translateY(12px) scale(0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tpix-recall__spark {
+        animation: none;
+    }
+}
+</style>

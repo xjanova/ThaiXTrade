@@ -98,6 +98,7 @@ let bubbleHover = false;
 let currentSection = null;
 let sectionObserver = null;
 let pendingTour = false;
+let pendingRecall = false;
 const spoken = new Set();
 const pointer = { x: 0, y: 0, at: 0 };
 // ท่าว่าง: ผู้ใช้เงียบนานแค่ไหน น้องทำอะไร
@@ -149,6 +150,11 @@ async function boot() {
         if (pendingTour) {
             pendingTour = false;
             startTour();
+        } else if (pendingRecall) {
+            // ผู้ใช้กดเรียกกลับมา → โบกมือทักก่อน (บทแนะนำส่วนนี้ค่อยพูดรอบหน้า)
+            pendingRecall = false;
+            sfx.chime();
+            showLine({ kind: 'line', lineKey: 'mascot.backLine', chips: [{ label: 'mascot.chips.tour', action: 'start-tour' }], pose: 'wave' });
         } else if (currentSection) {
             say(currentSection);
         }
@@ -660,6 +666,7 @@ function onResize() {
 
 // ── วงจรชีวิต ────────────────────────────────────────────────────────────
 onMounted(() => {
+    mascot.present.value = true;
     window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('resize', onResize, { passive: true });
     ACTIVITY_EVENTS.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
@@ -668,6 +675,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     alive = false;
+    mascot.present.value = false;
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('resize', onResize);
     ACTIVITY_EVENTS.forEach((ev) => window.removeEventListener(ev, onActivity));
@@ -690,6 +698,16 @@ watch(
         say(key);
     },
 );
+
+watch(mascot.recallRequests, () => {
+    if (animator) {
+        // เรียกซ้ำตอนน้องอยู่บนจออยู่แล้ว = ทักเลย
+        showLine({ kind: 'line', lineKey: 'mascot.backLine', chips: [{ label: 'mascot.chips.tour', action: 'start-tour' }], pose: 'wave' });
+        expand();
+    } else {
+        pendingRecall = true;
+    }
+});
 
 watch(mascot.tourRequests, () => {
     if (animator) startTour();

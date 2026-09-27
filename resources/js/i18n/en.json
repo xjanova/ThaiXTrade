@@ -543,7 +543,10 @@
             "3": "Fun fact: transfers on TPIX Chain have zero gas fees ✨",
             "4": "Not sure where to start? Let me give you a tour!"
         },
-        "wakeLine": "Yaaawn~ sorry, I dozed off for a sec 😴 I'm back! What can I help you with?"
+        "wakeLine": "Yaaawn~ sorry, I dozed off for a sec 😴 I'm back! What can I help you with?",
+        "recall": "Call TPIX back",
+        "recallShort": "Call TPIX out",
+        "backLine": "Yay, I'm back! 💙 Just tell me what you need — or I can give you a tour~"
     },
     "settings": {
         "title": "Settings",

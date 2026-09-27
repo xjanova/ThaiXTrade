@@ -4,6 +4,9 @@
  * - active: น้องอยู่บนจอจริง (โหลด 3D สำเร็จและไม่ได้ถูกซ่อน)
  *   → หน้าต่างแชทลอยซ่อนปุ่มเปิดของตัวเอง ใช้น้องเป็นทางเข้าแชทแทน และคุยด้วยบุคลิกของน้อง
  * - hidden: ผู้ใช้กดซ่อนน้อง (จำไว้ในเครื่อง)
+ * - present: หน้านี้มีตัวน้อง (หน้าแรก 3D) — ซ่อนอยู่ก็ต้องมีปุ่ม "เรียกน้องกลับมา" ให้กดได้ตลอด
+ *   (เจ้าของสั่ง: "ตัวอวาต้าไม่มีหนทางกลับมาได้ย่อแล้ว ต้องมีทางเรียกเธอกลับมาได้ตลอด")
+ * - recallRequests: ผู้ใช้เรียกน้องกลับมา → น้องโบกมือทักว่ากลับมาแล้ว
  * - supported: false เมื่อเครื่องนี้แสดง 3D ไม่ได้ → ปุ่มทัวร์เปิดหน้าต่างแชทแทน
  * - tourRequests: ปุ่ม "ทัวร์กับน้อง TPIX" บนหน้าแรกเพิ่มตัวนับนี้ คอมโพเนนต์น้องคอยฟัง
  *
@@ -33,15 +36,19 @@ function writeHidden(on) {
 
 const hidden = ref(typeof window === 'undefined' ? false : readHidden());
 const active = ref(false);
+const present = ref(false);
 const supported = ref(true);
 const tourRequests = ref(0);
+const recallRequests = ref(0);
 
 export function useMascot() {
     return {
         hidden,
         active,
+        present,
         supported,
         tourRequests,
+        recallRequests,
         hide() {
             hidden.value = true;
             active.value = false;
@@ -50,6 +57,12 @@ export function useMascot() {
         show() {
             hidden.value = false;
             writeHidden(false);
+        },
+        /** ปุ่ม "เรียกน้องกลับมา" — แสดงตัว + ทักทาย */
+        recall() {
+            hidden.value = false;
+            writeHidden(false);
+            recallRequests.value += 1;
         },
         requestTour() {
             hidden.value = false;
