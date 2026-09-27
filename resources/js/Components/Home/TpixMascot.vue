@@ -10,6 +10,7 @@
  * - ไม่มีจุดยืน (เช่นเลื่อนถึง footer) → จอดมุมขวาล่าง
  * - บับเบิ้ลคำพูดมีช่องถาม → ส่งไปบอท AI ตัวเดียวกับหน้าต่างแชท (ประวัติร่วมกัน)
  * - ปุ่ม "ทัวร์" พาไล่ดูทุกส่วนทีละขั้น ผู้ใช้กด "ถัดไป" เอง ไม่แย่งการเลื่อนจอ
+ * - ผู้ใช้เงียบไป น้องขยับเล่น → หาว → สัปหงก → หลับ (มี Zzz) · ขยับเมาส์/เลื่อน/แตะ = ตื่น (mascotIdle.js)
  *
  * ภาพหลักโหลดไม่ได้ → น้องหายไปเงียบๆ และปุ่มแชทลอยแบบเดิมกลับมาทำหน้าที่แทน
  *
@@ -26,6 +27,7 @@ import {
     dockHeight, placeBubble, graphemes, mouthFor, typeSpeed, cleanReply,
 } from './mascotGuide';
 import { STAGE_W, STAGE_H, POSES, CLIPS, FACE_SRC, createSpriteStage, canPlayAlphaVideo } from './spriteStage';
+import { createIdleDirector, IDLE_TIMING } from './mascotIdle';
 
 const props = defineProps({
     // จุดยืนของน้อง (กล่องว่างในหน้า) — ใส่ data-face="left|right" บอกว่าเนื้อหาอยู่ฝั่งไหนของน้อง
@@ -98,6 +100,12 @@ let sectionObserver = null;
 let pendingTour = false;
 const spoken = new Set();
 const pointer = { x: 0, y: 0, at: 0 };
+// ท่าว่าง: ผู้ใช้เงียบนานแค่ไหน น้องทำอะไร
+const idle = createIdleDirector();
+let wokeAt = 0;
+let warmedFidgets = false;
+let warmedSleep = false;
+let zzzAcc = 0;
 const headPt = { x: 0, y: 0 };
 
 const NAV_TOP = 64;
@@ -128,7 +136,7 @@ async function boot() {
 
     animator = stage.animator;
     // ช่องทางดีบักตอนพัฒนาเท่านั้น (build จริงตัดทิ้ง)
-    if (import.meta.env.DEV) window.__tpixMascot = { stage, animator, say, startTour, bubble, spoken, isBusy, get section() { return currentSection; } };
+    if (import.meta.env.DEV) window.__tpixMascot = { stage, animator, idle, say, startTour, bubble, spoken, isBusy, get section() { return currentSection; } };
     mode = null;
     box = null;
     ready.value = true;
@@ -245,6 +253,77 @@ function onFrame(dt) {
 
     stepTyping(dt);
     positionBubble(hx, hy, w, vw, vh);
+    stepIdle(dt, hx, hy, s);
+}
+
+// ── ท่าว่าง (หาว/หลับ/ขยับเล่น) ─────────────────────────────────────────
+const SLEEPING = new Set(['doze', 'sleep']);
+
+function stepIdle(dt, hx, hy, scale) {
+    const cur = animator.current();
+    // ถูกปลุกด้วยอย่างอื่น (เปลี่ยนส่วน → บิน/พูด) ระหว่างหลับ → ถือว่าตื่นแล้ว ไม่ต้องเล่นท่าตื่นซ้ำ
+    if (idle.asleep && !SLEEPING.has(cur) && cur !== 'wake') idle.activity();
+    const busy = !!flight || bubble.typing || tourIndex.value >= 0 || chat.isOpen.value || isBusy();
+    const next = idle.update(dt, { busy, acting: cur !== 'idle' });
+    if (next) playIdle(next);
+
+    // คลิปท่าว่างโหลดเมื่อผู้ใช้เริ่มเงียบ (คนที่ไม่เคยอยู่นิ่งไม่ต้องเสียเน็ต)
+    if (useClips.value && stage) {
+        if (!warmedFidgets && idle.quiet > 5) {
+            warmedFidgets = true;
+            stage.warm(['look', 'stretch', 'twirl']);
+        }
+        if (!warmedSleep && idle.quiet > IDLE_TIMING.yawnAt - 15) {
+            warmedSleep = true;
+            stage.warm(['yawn', 'doze', 'sleep', 'wake']);
+        }
+    }
+
+    if (SLEEPING.has(cur) && !reduced) zzz(dt, hx, hy, scale);
+}
+
+function playIdle(name) {
+    lastPose = null;
+    if (name === 'doze') {
+        // จะหลับแล้ว: เก็บบับเบิ้ลบทแนะนำ ไม่ให้ค้างบังจอทั้งที่น้องหลับ
+        if (bubble.visible && !collapsed.value && bubble.kind === 'line') collapse();
+    }
+    if (name === 'yawn') sfx.yawn();
+    animator.setAction(name);
+}
+
+/** ผู้ใช้กลับมา (ขยับเมาส์/เลื่อน/แตะ/กดคีย์) */
+function onActivity() {
+    if (idle.activity() !== 'wake' || !animator) return;
+    wokeAt = performance.now();
+    zzzAcc = 0;
+    sfx.wake();
+    animator.setAction('wake');
+}
+
+// Zzz ลอยจากหัวตอนหลับ — สร้าง/ลบเอง (Web Animations API) เหมือนประกายตอนบิน
+function zzz(dt, hx, hy, scale) {
+    zzzAcc += dt;
+    if (zzzAcc < 1.25) return;
+    zzzAcc = 0;
+    const el = document.createElement('i');
+    const big = Math.random() < 0.5;
+    const dir = facing > 0 ? 1 : -1;
+    el.textContent = big ? 'Z' : 'z';
+    el.setAttribute('aria-hidden', 'true');
+    el.style.cssText =
+        `position:fixed;left:${(hx - dir * 26 * scale).toFixed(0)}px;top:${(hy - 30 * scale).toFixed(0)}px;` +
+        `font:italic 800 ${Math.round((big ? 26 : 18) * Math.max(0.6, scale))}px/1 ui-rounded,system-ui,sans-serif;` +
+        'color:#bfeaff;text-shadow:0 0 10px rgb(34 211 238 / 0.9);pointer-events:none;z-index:46';
+    document.body.appendChild(el);
+    el.animate(
+        [
+            { transform: 'translate(-50%,-50%) scale(0.5) rotate(-12deg)', opacity: 0 },
+            { transform: `translate(${-50 - dir * 40}%, -140%) scale(1) rotate(0deg)`, opacity: 1, offset: 0.3 },
+            { transform: `translate(${-50 - dir * 130}%, -330%) scale(1.15) rotate(10deg)`, opacity: 0 },
+        ],
+        { duration: 2400, easing: 'ease-out' },
+    ).onfinish = () => el.remove();
 }
 
 // ประกายวิ่งตามหลังตอนบิน — สร้าง/ลบเอง ไม่ต้องมี CSS (Web Animations API)
@@ -502,6 +581,13 @@ function onChip(chip) {
 
 function onPoke() {
     if (!animator) return;
+    onActivity();
+    // เพิ่งถูกปลุก (แตะตัวน้องตอนหลับ) → งัวเงียขอโทษ แทนบทจิ้มปกติ
+    if (performance.now() - wokeAt < 900) {
+        showLine({ kind: 'line', lineKey: 'mascot.wakeLine', chips: [{ label: 'mascot.chips.tour', action: 'start-tour' }] });
+        expand(true);
+        return;
+    }
     sfx.poke();
     animator.poke();
     lastPose = { name: 'poke', opts: {}, at: performance.now() };
@@ -558,7 +644,10 @@ function onPointerMove(e) {
     pointer.x = e.clientX;
     pointer.y = e.clientY;
     pointer.at = performance.now();
+    onActivity();
 }
+
+const ACTIVITY_EVENTS = ['scroll', 'wheel', 'keydown', 'touchstart'];
 
 function onResize() {
     bubbleDirty = true;
@@ -573,6 +662,7 @@ function onResize() {
 onMounted(() => {
     window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('resize', onResize, { passive: true });
+    ACTIVITY_EVENTS.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
     if (!mascot.hidden.value) requestAnimationFrame(() => boot());
 });
 
@@ -580,6 +670,7 @@ onBeforeUnmount(() => {
     alive = false;
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('resize', onResize);
+    ACTIVITY_EVENTS.forEach((ev) => window.removeEventListener(ev, onActivity));
     teardown();
 });
 
@@ -655,11 +746,12 @@ function hideMascot() {
                             :data-clip="key"
                             :data-src="c.src"
                             muted
-                            loop
+                            :loop="!c.once"
                             playsinline
                             disablepictureinpicture
                             preload="none"
                             class="tpix-mascot__pose"
+                            :class="{ 'is-pad': c.pad }"
                         ></video>
                     </template>
                 </div>
@@ -835,6 +927,15 @@ function hideMascot() {
 
 .tpix-mascot__pose.is-on {
     opacity: 1;
+}
+
+/* คลิปที่มีขอบเผื่อ 8% ทุกด้าน: ขยายกล่องออก 8% ให้ตัวน้องในคลิปทับภาพนิ่งพอดี */
+.tpix-mascot__pose.is-pad {
+    left: -8%;
+    top: -8%;
+    width: 116%;
+    height: 116%;
+    max-width: none; /* Tailwind preflight ล็อก video ไว้ที่ max-width:100% */
 }
 
 /* พื้นที่กดตัวน้อง: ครึ่งกลางของภาพ แล้วย่อตามด้วย scale */

@@ -149,6 +149,37 @@ describe('sprite animator', () => {
         expect(a.update(0.016).mirror).toBe(false);
     });
 
+    it('dozes into a sleep that lasts until someone wakes her', () => {
+        const a = createSpriteAnimator();
+        a.setAction('doze');
+        run(a, ACTION_TIME.doze + 0.1);
+        expect(a.current()).toBe('sleep');
+        expect(a.update(0.05).pose).toBe('sleep');
+        run(a, 120);
+        expect(a.current()).toBe('sleep');
+        a.setAction('wake');
+        run(a, ACTION_TIME.wake + 0.1);
+        expect(a.current()).toBe('idle');
+    });
+
+    it('lets a play-once clip finish instead of cutting it at the default time', () => {
+        const a = createSpriteAnimator({ hasClip: (k) => k === 'yawn', clipDuration: () => 6 });
+        a.setAction('yawn');
+        run(a, ACTION_TIME.yawn + 0.5);
+        expect(a.current()).toBe('yawn');
+        expect(a.update(0.016).clip).toBe('yawn');
+        run(a, 6);
+        expect(a.current()).toBe('idle');
+    });
+
+    it('falls back to the still pose for idle moves when there is no clip', () => {
+        const a = createSpriteAnimator();
+        a.setAction('stretch');
+        expect(a.update(0.016)).toMatchObject({ clip: null, pose: 'stretch' });
+        a.setAction('look');
+        expect(a.update(0.016)).toMatchObject({ clip: null, pose: 'idle' });
+    });
+
     it('skips transparent video on Safari and iOS (they draw a black box)', () => {
         const safari = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15' };
         const ios = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0 Mobile/15E148 Safari/604.1' };

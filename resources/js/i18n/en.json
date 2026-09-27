@@ -542,7 +542,8 @@
             "2": "I can answer anything about TPIX — just type your question below.",
             "3": "Fun fact: transfers on TPIX Chain have zero gas fees ✨",
             "4": "Not sure where to start? Let me give you a tour!"
-        }
+        },
+        "wakeLine": "Yaaawn~ sorry, I dozed off for a sec 😴 I'm back! What can I help you with?"
     },
     "settings": {
         "title": "Settings",

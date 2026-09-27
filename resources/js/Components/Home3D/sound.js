@@ -273,6 +273,20 @@ export const sfx = {
         tone({ freq: 720, glide: 480, gain: 0.05, attack: 0.005, decay: 0.16, when: 0.11 });
     },
 
+    /** หาว: เสียงนุ่มไหลลง (ตอนหลับไม่มีเสียงเลย — คนอาจกำลังอ่านเงียบๆ) */
+    yawn() {
+        if (!live() || throttle('yawn', 2000)) return;
+        tone({ freq: midi(81), glide: midi(69), gain: 0.045, attack: 0.25, decay: 0.9, send: 0.5 });
+        tone({ freq: midi(88), glide: midi(76), gain: 0.02, attack: 0.3, decay: 0.8, send: 0.5 });
+    },
+
+    /** สะดุ้งตื่น: โน้ตสั้นไต่ขึ้นสองตัว */
+    wake() {
+        if (!live() || throttle('wake', 800)) return;
+        tone({ freq: midi(79), type: 'triangle', gain: 0.05, decay: 0.08 });
+        tone({ freq: midi(86), type: 'triangle', gain: 0.05, decay: 0.16, when: 0.07, send: 0.4 });
+    },
+
     /** จังหวะพูด (เบามาก ไม่เกิน ~12 ครั้ง/วินาที) */
     pip(level = 1) {
         if (!live() || level <= 0 || throttle('pip', 85)) return;

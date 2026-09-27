@@ -15,7 +15,7 @@
 export const STAGE_W = 320;
 export const STAGE_H = 480;
 
-const V = 1; // เปลี่ยนภาพชื่อเดิมเมื่อไหร่ให้บวกเลขนี้ (Cloudflare แคชไฟล์ใน public_html 1 ปี)
+const V = 2; // เปลี่ยนภาพชื่อเดิมเมื่อไหร่ให้บวกเลขนี้ (Cloudflare แคชไฟล์ใน public_html 1 ปี) · 2 = idle/talk ทำใหม่ให้วนเนียน
 
 /** ท่านิ่ง: head = ตำแหน่งหัว (สัดส่วนของภาพ) ไว้วางบับเบิ้ลและทิศมอง */
 export const POSES = {
@@ -26,22 +26,49 @@ export const POSES = {
     cheer: { src: `/images/mascot/cheer.webp?v=${V}`, head: [0.5, 0.14] },
     think: { src: `/images/mascot/think.webp?v=${V}`, head: [0.46, 0.16] },
     fly: { src: `/images/mascot/fly.webp?v=${V}`, head: [0.36, 0.26] },
+    // ท่าว่าง (เครื่องที่ไม่เล่นคลิป เช่นมือถือ/Safari ก็ยังเห็นน้องหาว/บิดตัว/หลับได้)
+    yawn: { src: `/images/mascot/yawn.webp?v=${V}`, head: [0.49, 0.16] },
+    stretch: { src: `/images/mascot/stretch.webp?v=${V}`, head: [0.51, 0.2] },
+    sleep: { src: `/images/mascot/sleep.webp?v=${V}`, head: [0.47, 0.13] },
 };
 
 /** ภาพหน้าน้อง (อวาตาร์ในบับเบิ้ล/หน้าต่างแชท) */
 export const FACE_SRC = `/images/mascot/face.webp?v=${V}`;
 
-/** คลิปวนลูป (จาก Grok) — ไม่มีไฟล์ก็ไม่เป็นไร ใช้ภาพนิ่งของท่านั้นแทน */
+/**
+ * คลิป (จาก Grok) — ไม่มีไฟล์ก็ไม่เป็นไร ใช้ภาพนิ่งของท่านั้นแทน
+ * once = เล่นรอบเดียวแล้วจบ (ท่าจบตามความยาวคลิป) · ไม่ใส่ = วนลูป
+ * lazy = ไม่โหลดล่วงหน้า รอให้ผู้ใช้เงียบไปก่อนค่อยโหลด (warm) — คนที่ไม่เคยอยู่นิ่งไม่ต้องเสียเน็ต
+ * pad = คลิปทำจากภาพที่มีขอบเขียวเผื่อ 8% ทุกด้าน (Grok จะได้ไม่ซูมตัดแขนขา) → วาดใหญ่กว่าภาพนิ่ง 8% ทุกด้าน
+ * คลิปวน/ท่าว่างทำด้วยบทบาท "Loop" ของ Grok (ภาพเดียวเป็นทั้งเฟรมแรกและเฟรมสุดท้าย) → จบที่ท่ายืนเป๊ะ ต่อกันไม่สะดุด
+ * สัปหงก = ยืน→หลับ · ตื่น = หลับ→ยืน (กำหนดเฟรมแรก/เฟรมสุดท้ายคนละภาพ)
+ */
 export const CLIPS = {
-    idle: { src: `/videos/mascot/idle.webm?v=${V}`, pose: 'idle' },
-    talk: { src: `/videos/mascot/talk.webm?v=${V}`, pose: 'idle' },
+    idle: { src: `/videos/mascot/idle.webm?v=${V}`, pose: 'idle', pad: true },
+    talk: { src: `/videos/mascot/talk.webm?v=${V}`, pose: 'idle', pad: true },
     wave: { src: `/videos/mascot/wave.webm?v=${V}`, pose: 'welcome' },
+    look: { src: `/videos/mascot/look.webm?v=${V}`, pose: 'idle', pad: true, once: true, lazy: true },
+    stretch: { src: `/videos/mascot/stretch.webm?v=${V}`, pose: 'idle', pad: true, once: true, lazy: true },
+    twirl: { src: `/videos/mascot/twirl.webm?v=${V}`, pose: 'idle', pad: true, once: true, lazy: true },
+    yawn: { src: `/videos/mascot/yawn.webm?v=${V}`, pose: 'idle', pad: true, once: true, lazy: true },
+    doze: { src: `/videos/mascot/doze.webm?v=${V}`, pose: 'idle', pad: true, once: true, lazy: true },
+    sleep: { src: `/videos/mascot/sleep.webm?v=${V}`, pose: 'sleep', pad: true, lazy: true },
+    wake: { src: `/videos/mascot/wake.webm?v=${V}`, pose: 'sleep', pad: true, once: true, lazy: true },
 };
 
-export const ACTIONS = ['idle', 'talk', 'wave', 'point', 'present', 'cheer', 'think', 'fly', 'surprised', 'poke'];
+export const ACTIONS = [
+    'idle', 'talk', 'wave', 'point', 'present', 'cheer', 'think', 'fly', 'surprised', 'poke',
+    'look', 'stretch', 'twirl', 'yawn', 'doze', 'sleep', 'wake',
+];
 
-/** ท่าที่จบเองตามเวลา (วินาที) */
-export const ACTION_TIME = { wave: 2.8, point: 3.8, present: 4.5, cheer: 2.2, surprised: 1.6, poke: 1.3 };
+/** ท่าที่จบเองตามเวลา (วินาที) — ท่าที่มีคลิปแบบ once ใช้ความยาวคลิปแทนเมื่อคลิปพร้อม */
+export const ACTION_TIME = {
+    wave: 2.8, point: 3.8, present: 4.5, cheer: 2.2, surprised: 1.6, poke: 1.3,
+    look: 3.4, stretch: 3, twirl: 3.2, yawn: 2.8, doze: 3.2, wake: 1.6,
+};
+
+/** ท่าที่จบแล้วต้องต่อด้วยท่าอื่น (ไม่ใช่กลับไปยืน) — สัปหงกจบ = หลับ (หลับไม่มีเวลาจบ ค้างจนมีคนปลุก) */
+export const ACTION_NEXT = { doze: 'sleep' };
 
 /** การกระทำ → ภาพนิ่งที่ใช้ */
 export const ACTION_POSE = {
@@ -55,10 +82,23 @@ export const ACTION_POSE = {
     fly: 'fly',
     surprised: 'think',
     poke: 'cheer',
+    look: 'idle',
+    stretch: 'stretch',
+    twirl: 'idle',
+    yawn: 'yawn',
+    doze: 'sleep',
+    sleep: 'sleep',
+    wake: 'idle',
 };
 
 /** การกระทำ → คลิป (ถ้ามี) */
-export const ACTION_CLIP = { idle: 'idle', talk: 'talk', wave: 'wave' };
+export const ACTION_CLIP = {
+    idle: 'idle', talk: 'talk', wave: 'wave',
+    look: 'look', stretch: 'stretch', twirl: 'twirl', yawn: 'yawn', doze: 'doze', sleep: 'sleep', wake: 'wake',
+};
+
+/** ท่าง่วง/หลับ — ตัวลอยช้าลง เอียงคอ หายใจลึก */
+const SLEEPY = new Set(['doze', 'sleep']);
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const damp = (cur, target, k, dt) => cur + (target - cur) * (1 - Math.exp(-k * dt));
@@ -83,6 +123,7 @@ export function createSpriteAnimator(opts = {}) {
     const reduced = !!opts.reduced;
     const calm = reduced ? 0 : 1;
     const hasClip = opts.hasClip || (() => false);
+    const clipDuration = opts.clipDuration || (() => 0);
 
     const s = {
         action: 'idle',
@@ -111,7 +152,7 @@ export function createSpriteAnimator(opts = {}) {
         s.actionOpts = o;
         s.actionT = 0;
         s.until = o.hold ?? ACTION_TIME[name] ?? 0;
-        if (name === 'cheer' || name === 'poke') s.hop = 1;
+        if (name === 'cheer' || name === 'poke' || name === 'wake') s.hop = 1;
         if (changed) s.pop = 1;
     }
 
@@ -142,7 +183,7 @@ export function createSpriteAnimator(opts = {}) {
             dt = Math.min(dt, 0.1);
             s.time += dt;
             s.actionT += dt;
-            if (s.until && s.actionT >= s.until) setAction(s.speaking ? 'talk' : 'idle');
+            if (s.until && s.actionT >= s.until) setAction(ACTION_NEXT[s.action] || (s.speaking ? 'talk' : 'idle'));
             if (s.speaking && s.action === 'idle') setAction('talk');
             if (!s.speaking && s.action === 'talk') setAction('idle');
 
@@ -150,6 +191,16 @@ export function createSpriteAnimator(opts = {}) {
             const clipKey = calm ? ACTION_CLIP[s.action] : null;
             s.clip = clipKey && hasClip(clipKey) ? clipKey : null;
             s.pose = s.clip ? CLIPS[s.clip].pose : ACTION_POSE[s.action];
+            // คลิปเล่นรอบเดียว: ท่าจบพร้อมคลิป (ความยาวจริงของไฟล์) ไม่ตัดกลางคลิป
+            if (s.clip && CLIPS[s.clip].once) {
+                const d = clipDuration(s.clip);
+                if (d > 0.5) s.until = d - 0.04;
+            }
+            // มองซ้ายทีขวาที (คลิปมีท่ามองอยู่แล้วก็เอียงตามเบาๆ ให้ดูมีมิติ)
+            if (s.action === 'look') {
+                s.look.x = Math.sin(s.actionT * 2.1) * 0.9;
+                s.look.y = -0.12;
+            }
             // ภาพทุกท่าหัน/ชี้ไปทางซ้าย → เนื้อหาอยู่ขวามือของน้อง (หรือบินไปทางขวา) ต้องพลิก
             s.mirror = s.action === 'fly' ? (s.actionOpts.dir ?? -1) > 0 : s.facing > 0;
 
@@ -166,11 +217,32 @@ export function createSpriteAnimator(opts = {}) {
             const t = s.time;
             const hop = s.hop > 0 ? Math.sin((1 - s.hop) * Math.PI) * 22 : 0;
             const talkBob = s.clip === 'talk' ? 0 : s.mouth * 3;
+            const a = s.action;
+            // ท่าว่างที่ไม่มีคลิป (ภาพนิ่ง) ต้องขยับเองให้รู้ว่ากำลังทำอะไร · มีคลิปแล้วขยับน้อยลง ไม่แย่งคลิป
+            const k = s.clip ? 0.35 : 1;
+            const arc = Math.sin(clamp(s.actionT / (s.until || 1), 0, 1) * Math.PI); // 0 → 1 → 0 ตลอดท่า
+            let y = Math.sin(t * 1.6) * 7;
+            let rot = Math.sin(t * 1.1) * 1.3;
+            let sx = 0;
+            let sy = Math.sin(t * 2.3) * 0.008;
+            if (SLEEPY.has(a)) {
+                // ลอยช้า หายใจลึก คอเอียงไปทางเนื้อหา · สัปหงก = หัวตกเป็นจังหวะ
+                y = Math.sin(t * 0.8) * 4;
+                sy = Math.sin(t * 1.25) * 0.018;
+                rot = s.facing * 4 * (a === 'sleep' ? 1 : clamp(s.actionT / 2, 0, 1)) + Math.sin(t * 0.6) * 0.8;
+                if (a === 'doze') rot += Math.max(0, Math.sin(s.actionT * 4.2)) * 3 * k;
+            } else if (a === 'yawn' || a === 'stretch') {
+                sy += arc * (a === 'stretch' ? 0.05 : 0.03) * k;
+                sx -= arc * 0.02 * k;
+                y -= arc * 8 * k;
+            } else if (a === 'twirl') {
+                rot += Math.sin(s.actionT * 3.4) * 3.5 * k;
+            }
             return {
-                y: (Math.sin(t * 1.6) * 7 - hop - talkBob) * (calm || 0),
-                rot: (Math.sin(t * 1.1) * 1.3 + s.lean * 7) * (calm || 0),
-                scaleX: 1 + s.pop * 0.05 * calm,
-                scaleY: 1 + (Math.sin(t * 2.3) * 0.008 + s.pop * 0.05 + s.mouth * 0.012) * (calm || 0),
+                y: (y - hop - talkBob) * (calm || 0),
+                rot: (rot + s.lean * 7) * (calm || 0),
+                scaleX: 1 + (s.pop * 0.05 + sx) * calm,
+                scaleY: 1 + (sy + s.pop * 0.05 + s.mouth * 0.012) * (calm || 0),
                 tiltY: s.lookSmooth.x * 10 * (calm || 0.4),
                 tiltX: -s.lookSmooth.y * 6 * (calm || 0.4),
             };
@@ -214,11 +286,24 @@ export function createSpriteStage(spriteEl, opts = {}) {
     }
     if (opts.clips) attachClips();
 
-    const animator = createSpriteAnimator({ reduced, hasClip: (k) => ready.has(k) });
+    const animator = createSpriteAnimator({
+        reduced,
+        hasClip: (k) => ready.has(k),
+        clipDuration: (k) => (Number.isFinite(vids[k]?.duration) ? vids[k].duration : 0),
+    });
 
     function load(el) {
         if (el && !el.getAttribute('src') && el.dataset.src) el.src = el.dataset.src;
     }
+
+    /** โหลดคลิป (ครั้งเดียวต่อคลิป) */
+    function loadClip(v) {
+        if (!v || v.getAttribute('src')) return;
+        load(v);
+        v.load?.();
+    }
+    /** คลิปหลัก (ไม่ใช่ lazy) — ท่าว่างรอโหลดตอนผู้ใช้เงียบไปก่อน */
+    const eagerClips = () => Object.entries(vids).filter(([k]) => !CLIPS[k]?.lazy).map(([, v]) => v);
 
     /** โหลดล่วงหน้า: ภาพ/คลิปหลักทันที ที่เหลือตอนเครื่องว่าง */
     function preload() {
@@ -227,10 +312,7 @@ export function createSpriteStage(spriteEl, opts = {}) {
         // ท่าอื่น + คลิป (~1 MB ต่อคลิป) โหลดตอนเครื่องว่าง ไม่แย่งเน็ตกับการเปิดหน้า
         const rest = () => {
             Object.values(imgs).forEach(load);
-            Object.values(vids).forEach((v) => {
-                load(v);
-                v.load?.();
-            });
+            eagerClips().forEach(loadClip);
         };
         if ('requestIdleCallback' in window) window.requestIdleCallback(rest, { timeout: 2500 });
         else setTimeout(rest, 1500);
@@ -331,12 +413,13 @@ export function createSpriteStage(spriteEl, opts = {}) {
     return {
         animator,
         head,
+        /** เริ่มโหลดคลิป lazy ที่ระบุ (เรียกซ้ำได้ โหลดครั้งเดียว) */
+        warm(keys) {
+            keys.forEach((k) => loadClip(vids[k]));
+        },
         attachClips() {
             attachClips();
-            const rest = () => Object.values(vids).forEach((v) => {
-                load(v);
-                v.load?.();
-            });
+            const rest = () => eagerClips().forEach(loadClip);
             if ('requestIdleCallback' in window) window.requestIdleCallback(rest, { timeout: 2500 });
             else setTimeout(rest, 1500);
         },
