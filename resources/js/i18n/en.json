@@ -63,7 +63,45 @@
         "supportedChains": "Supported Chains",
         "tradingPairs": "Trading Pairs",
         "dexProtocol": "DEX Protocol",
-        "network": "Network"
+        "network": "Network",
+        "tourWithMascot": "Tour with Nong TPIX",
+        "liveChartBadge": "Live {pair} · 1H",
+        "loadingLive": "Loading live data...",
+        "ecosystemDesc": "Explore the complete TPIX ecosystem. From token sale to master node, everything in one place.",
+        "eco": {
+            "tokenSale": "Token Sale",
+            "tokenSaleDesc": "See the latest TPIX sale price and status.",
+            "whitepaper": "Whitepaper",
+            "whitepaperDesc": "Learn about TPIX vision, tokenomics, and roadmap.",
+            "explorer": "Explorer",
+            "explorerDesc": "Browse TPIX Chain blocks, transactions, and addresses.",
+            "masternode": "Master Node",
+            "masternodeDesc": "Run a TPIX Master Node and earn staking rewards."
+        },
+        "whyTpixDesc": "Built by traders, for traders. Experience the future of decentralized trading.",
+        "saleTitle": "Buy",
+        "saleDesc": "Join the TPIX ecosystem. See the current price, sale round and payment options on the sale page.",
+        "saleCta": "Buy TPIX Now",
+        "ctaTitle": "Ready to Start Trading?",
+        "ctaDesc": "Connect your wallet and start trading in seconds. No registration required.",
+        "launchApp": "Launch App"
+    },
+    "home3d": {
+        "switchTo3d": "Open the 3D home page",
+        "switchToLite": "Lite mode",
+        "loading": "Building the 3D world...",
+        "scrollHint": "Scroll to travel with Nong TPIX",
+        "stationsLabel": "Home page stations",
+        "ecoHint": "Click a card in the 3D scene to open that page",
+        "nav": {
+            "hero": "Start",
+            "node": "Master Node",
+            "markets": "Markets",
+            "sale": "Token sale",
+            "ecosystem": "Ecosystem",
+            "features": "Why TPIX",
+            "cta": "Start trading"
+        }
     },
     "trade": {
         "title": "Trading Dashboard",
@@ -438,7 +476,59 @@
         "q2": "💰 Buy TPIX tokens",
         "q3": "📊 How to trade",
         "q4": "🌱 Carbon Credit",
-        "goToPage": "Go to page →"
+        "goToPage": "Go to page →",
+        "open": "Open AI assistant chat",
+        "close": "Close chat",
+        "send": "Send message"
+    },
+    "mascot": {
+        "name": "Nong TPIX",
+        "talkTo": "Talk to Nong TPIX",
+        "askPlaceholder": "Ask Nong TPIX anything...",
+        "askPill": "Ask Nong TPIX",
+        "send": "Send question",
+        "thinking": "Let me think for a second...",
+        "error": "Sorry, I can't reach the AI right now. Please try again in a moment.",
+        "openChat": "Open chat window",
+        "minimize": "Minimize bubble",
+        "hide": "Hide Nong TPIX",
+        "goThere": "Take me there →",
+        "chatGreeting": "Hi, I'm Nong TPIX 💙 Ask me about trading, the TPIX coin or any feature on this site!",
+        "lines": {
+            "hero": "Hi there! I'm Nong TPIX ✨ Welcome to TPIX TRADE — trade straight from your own wallet. Want to start trading, or shall I give you a quick tour first?",
+            "node": "Looking for passive income? Run a Master Node, stake TPIX to help secure the network, and rewards land in your wallet automatically.",
+            "markets": "These are the top gainers and the most traded coins right now, refreshed live every 15 seconds. Open the full market or jump into the trading board!",
+            "sale": "Want to hold TPIX early? Check the latest sale status and read the whitepaper before you decide 💛",
+            "ecosystem": "The whole TPIX ecosystem in one place — track every on-chain transaction in the Explorer, swap tokens, and plenty more.",
+            "features": "Why TPIX TRADE? You keep your own keys — no custodian holding your funds — plus AI TRADE helps you read the market.",
+            "cta": "Ready? Connect your wallet and start trading in seconds. Remember, crypto is risky — trade wisely 💪"
+        },
+        "chips": {
+            "startTrading": "Start trading",
+            "tour": "Give me a tour",
+            "masternode": "Master Node",
+            "nodeGuide": "Node setup guide",
+            "markets": "All markets",
+            "tokenSale": "TPIX sale",
+            "whitepaper": "Whitepaper",
+            "explorer": "Explorer",
+            "swap": "Swap",
+            "aiTrade": "AI TRADE",
+            "bridge": "Cross-chain bridge",
+            "download": "Download apps"
+        },
+        "tour": {
+            "next": "Next ({n}/{total})",
+            "end": "End tour",
+            "finish": "Finish tour 🎉",
+            "bye": "Thanks for touring with me! Type a question any time — I am right here 💙"
+        },
+        "poke": {
+            "1": "Hehe, that tickles! 😆 Need a hand with anything?",
+            "2": "I can answer anything about TPIX — just type your question below.",
+            "3": "Fun fact: transfers on TPIX Chain have zero gas fees ✨",
+            "4": "Not sure where to start? Let me give you a tour!"
+        }
     },
     "settings": {
         "title": "Settings",
