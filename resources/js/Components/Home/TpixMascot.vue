@@ -39,6 +39,9 @@ const props = defineProps({
 const { t, locale } = useTranslation();
 const chat = useChatbot();
 const mascot = useMascot();
+// เข้าหน้าที่มีน้อง (รวมกลับมาจากหน้าอื่น) = น้องกลับมาเองเสมอ การซ่อนมีผลแค่รอบที่ดูอยู่
+// ตั้งก่อน watch(mascot.hidden) ข้างล่าง → ไม่ไปกระตุ้นตัวเฝ้าดู แค่เริ่มต้นแบบแสดงตัว
+mascot.hidden.value = false;
 
 const bodyEl = ref(null);
 const spriteEl = ref(null);
