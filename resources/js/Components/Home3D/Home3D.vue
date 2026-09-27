@@ -33,6 +33,7 @@ import { hooks, keep, takeKept, discard, hasKept } from './keeper';
 import { useMarketData } from '@/Composables/useMarketData';
 import { useTranslation } from '@/Composables/useTranslation';
 import { useMascot } from '@/Composables/useMascot';
+import { FACE_SRC } from '@/Components/Home/spriteStage';
 
 const emit = defineEmits(['fallback', 'lite']);
 
@@ -749,6 +750,11 @@ function fmtTime(ms) {
         </button>
 
         <div class="h3d-corner">
+            <!-- กดปิดน้องแล้วน้องหายไปเลย — เรียกคืนได้ตรงนี้ (โผล่เฉพาะตอนน้องถูกปิดอยู่) -->
+            <button v-if="mascot.hidden.value" type="button" class="h3d-pill h3d-pill--mascot" @click="mascot.recall()">
+                <img :src="FACE_SRC" alt="" class="w-5 h-5 rounded-full object-cover" />
+                {{ t('mascot.recall') }}
+            </button>
             <button type="button" class="h3d-pill" @click="goLite">
                 <span aria-hidden="true">⚡</span> {{ t('home3d.switchToLite') }}
             </button>
@@ -1030,6 +1036,8 @@ function fmtTime(ms) {
     bottom: 16px;
     z-index: 20;
     display: flex;
+    flex-wrap: wrap; /* จอแคบ (320px) + ปุ่มเรียกน้อง → ขึ้นบรรทัดใหม่ ไม่ล้นจอ */
+    max-width: calc(100vw - 32px);
     gap: 8px;
 }
 
@@ -1055,6 +1063,13 @@ function fmtTime(ms) {
 
 .h3d-pill--icon {
     padding: 7px 10px;
+}
+
+.h3d-pill--mascot {
+    padding: 4px 14px 4px 5px;
+    color: #fff;
+    border-color: rgb(var(--c-primary-500) / 0.45);
+    box-shadow: 0 0 18px rgb(var(--c-primary-500) / 0.18);
 }
 
 .h3d-next {

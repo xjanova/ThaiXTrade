@@ -9,7 +9,8 @@
  *
  * ประวัติแชทอยู่ใน useChatbot (ใช้ร่วมกับบับเบิ้ลของน้องบนหน้าแรก 3D)
  * หน้าที่มีตัวน้องยืนอยู่บนจอ: ซ่อนปุ่มลอย (ตัวน้องคือทางเข้าแชทแทน)
- * หน้าที่มีตัวน้องแต่ผู้ใช้กดซ่อนไว้: มีปุ่ม "เรียกน้องกลับมา" เหนือปุ่มแชท + ในหัวหน้าต่างแชท ตลอดเวลา
+ * หน้าที่มีตัวน้องแต่ผู้ใช้กดปิดไว้: น้องหายไปเลย (ไม่มีปุ่มลอยค้าง) — เรียกคืนได้ที่แถบปุ่มมุมหน้าแรก
+ * และที่หัวหน้าต่างแชท (เจ้าของสั่ง: "ทำให้ปิดหายไปเลยแต่จะเรียกคืนได้หน้าแรก")
  *
  * Developed by Xman Studio
  */
@@ -106,27 +107,6 @@ function sendQuick(msg) {
             {{ t('mascot.askPill') }}
         </span>
     </button>
-
-    <!-- เรียกน้องกลับมา (ซ่อนน้องไว้บนหน้าที่มีน้อง) -->
-    <Transition name="tpix-recall">
-        <button
-            v-if="canRecall && !isOpen"
-            type="button"
-            class="tpix-recall group fixed right-[30px] bottom-[100px] z-50 w-12 h-12 rounded-full p-[2px] bg-gradient-to-br from-warm-400 via-accent-500 to-primary-400 shadow-lg shadow-accent-500/30 hover:scale-110 transition-transform"
-            :aria-label="t('mascot.recall')"
-            :title="t('mascot.recall')"
-            @click="recallMascot"
-        >
-            <span class="block w-full h-full rounded-full overflow-hidden bg-dark-900">
-                <img v-if="!faceBroken" :src="FACE_SRC" alt="" class="w-full h-full object-cover" @error="faceBroken = true" />
-                <span v-else class="flex w-full h-full items-center justify-center text-lg">💙</span>
-            </span>
-            <span class="tpix-recall__spark" aria-hidden="true">✨</span>
-            <span class="pointer-events-none absolute right-full top-1/2 -translate-y-1/2 mr-3 whitespace-nowrap rounded-full bg-dark-900/90 border border-white/10 px-3 py-1.5 text-xs font-semibold text-white opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all">
-                {{ t('mascot.recall') }}
-            </span>
-        </button>
-    </Transition>
 
     <!-- Chat Window -->
     <div v-if="isOpen"
@@ -226,37 +206,3 @@ function sendQuick(msg) {
         </div>
     </div>
 </template>
-
-<style scoped>
-/* ประกายวิบวับบนปุ่มเรียกน้องกลับมา — ให้รู้ว่ากดได้ */
-.tpix-recall__spark {
-    position: absolute;
-    top: -6px;
-    right: -4px;
-    font-size: 13px;
-    filter: drop-shadow(0 0 6px rgb(251 191 36 / 0.9));
-    animation: tpix-recall-twinkle 1.8s ease-in-out infinite;
-}
-
-@keyframes tpix-recall-twinkle {
-    0%, 100% { opacity: 0.5; transform: scale(0.8) rotate(0deg); }
-    50% { opacity: 1; transform: scale(1.15) rotate(20deg); }
-}
-
-.tpix-recall-enter-active,
-.tpix-recall-leave-active {
-    transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.tpix-recall-enter-from,
-.tpix-recall-leave-to {
-    opacity: 0;
-    transform: translateY(12px) scale(0.6);
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .tpix-recall__spark {
-        animation: none;
-    }
-}
-</style>
