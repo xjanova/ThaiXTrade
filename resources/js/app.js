@@ -10,6 +10,7 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { initAudio } from '@/Composables/useSounds';
 import { useTheme } from '@/Composables/useTheme';
 import { installBugReporter } from '@/utils/bugReporter';
+import { installDevtoolsGuard } from '@/utils/devtoolsGuard';
 
 import '../css/app.css';
 
@@ -21,6 +22,9 @@ const appName = import.meta.env.VITE_APP_NAME || 'TPIX TRADE';
 
 // Initialize audio on first user interaction
 initAudio();
+
+// กัน DevTools / F12 / คลิกขวา / คัดลอกแบบปกติ (เฉพาะ build จริง ไม่กันหลังบ้าน) — ดู utils/devtoolsGuard.js
+installDevtoolsGuard();
 
 // ธีมถูกติดไปแล้วโดยสคริปต์ใน <head> — ตรงนี้แค่ sync ค่าเข้าสถานะของ Vue
 // ให้ปุ่มเลือกธีมรู้ว่าตอนนี้เลือกอันไหนอยู่
