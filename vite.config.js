@@ -44,6 +44,12 @@ export default defineConfig({
                     if (id.includes('node_modules/ethers/') || id.includes('node_modules/web3/')) {
                         return 'web3';
                     }
+                    // three.js (~170 KB gzip) แยกก้อนของตัวเอง: แก้โค้ดหน้าแรก 3D แล้ว deploy
+                    // ผู้ใช้โหลดใหม่แค่ก้อนโค้ดเรา ส่วน three.js ใช้ที่แคชไว้ต่อ (ชื่อไฟล์ไม่เปลี่ยนจนกว่าจะอัปเดตเวอร์ชัน three)
+                    // ยังโหลดเฉพาะเครื่องที่ได้หน้า 3D เหมือนเดิม — ไม่มีใครนำเข้าแบบ static จากหน้าอื่น
+                    if (id.includes('node_modules/three/')) {
+                        return 'three';
+                    }
                 },
             },
         },
