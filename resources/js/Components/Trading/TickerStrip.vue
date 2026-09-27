@@ -8,6 +8,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import axios from 'axios';
+import { getTickers } from '@/utils/tickerFeed';
 
 const tickers = ref([]);
 const tpixFixed = ref({ symbol: 'TPIX', price: '$0.18', change: '+0.00%', isUp: true });
@@ -29,7 +30,7 @@ async function fetchTickers() {
             }
         } catch { /* keep default */ }
 
-        const { data } = await axios.get('/api/v1/market/tickers');
+        const { data } = await getTickers();
         const binanceTickers = (data.success && data.data.length > 0)
             ? data.data.slice(0, 14).map(t => {
                 const price = parseFloat(t.price);

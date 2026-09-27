@@ -2,7 +2,7 @@
  * TPIX TRADE — เสียงประกอบหน้าแรก 3D (สังเคราะห์สดด้วย Web Audio ไม่มีไฟล์เสียงให้โหลด)
  *
  * เอฟเฟกต์ล้วน ไม่มีเพลง (แนวที่เจ้าของเลือกไว้กับ Thaiprompt: "ไม่ต้องมีเสียงดนตรี แต่มีเอฟเฟคในการเลือก")
- *   wind    ลมเบาๆ ดังตามความเร็วกล้องตอนบินระหว่างสถานี
+ *   swoosh  เสียง "วูบ" แบบมีโน้ตตอนเริ่มบินไปสถานีอื่น (เดิมเป็นลมจาก noise — เจ้าของบอกว่าเป็นเสียงซ่า จึงเลิกใช้ noise)
  *   arrive  ระฆังแก้ว + เสียงทุ้มสั้นๆ เมื่อกล้องถึงสถานี (โน้ตคนละตัวต่อสถานี)
  *   hover   ติ๊กสั้นตามตำแหน่งเมาส์ (ซ้าย/ขวา = แพนเสียง, สูง/ต่ำ = ระดับเสียง)
  *   click / chime / reply / card / tick (แท่งเทียนขึ้น-ลง) / coin (เหรียญร่วงลงกอง)
@@ -35,9 +35,6 @@ const enabled = ref(typeof window === 'undefined' ? false : readPref());
 let ctx = null;
 let master = null;
 let reverbIn = null;
-let windGain = null;
-let windFilter = null;
-let noiseBuffer = null;
 const last = {};
 
 function AC() {
@@ -85,22 +82,8 @@ function build() {
     const wet = ctx.createGain();
     wet.gain.value = 0.35;
     reverbIn.connect(reverb).connect(wet).connect(master);
-
-    // ลม: noise วนลูป → bandpass → gain (คุมด้วยความเร็วกล้อง)
-    noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-    const nd = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-    const noise = ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    noise.loop = true;
-    windFilter = ctx.createBiquadFilter();
-    windFilter.type = 'bandpass';
-    windFilter.frequency.value = 400;
-    windFilter.Q.value = 0.8;
-    windGain = ctx.createGain();
-    windGain.gain.value = 0;
-    noise.connect(windFilter).connect(windGain).connect(master);
-    noise.start();
+    // เดิมมีเสียง "ลม" จาก white noise ดังตามความเร็วกล้อง — เจ้าของฟังแล้วเป็น "เสียงซ่า" จึงถอดออก
+    // (เลื่อนทีละซีนทำให้กล้องบินเร็วตลอด noise เลยดังแทบทุกครั้ง) → ใช้ swoosh() แบบมีโน้ตแทน
 }
 
 /** เรียกจากการคลิก/แตะ/กดคีย์ของผู้ใช้เท่านั้น */
@@ -155,16 +138,12 @@ export const sfx = {
             // จำไม่ได้ก็ไม่เป็นไร ใช้ได้เฉพาะรอบนี้
         }
         if (on) unlock();
-        else if (ctx) {
-            windGain?.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
-            ctx.suspend().catch(() => {});
-        }
+        else if (ctx) ctx.suspend().catch(() => {});
     },
 
     /** ออกจากหน้า / ซ่อนแท็บ: หยุดทุกเสียง */
     pause() {
         if (!ctx) return;
-        windGain?.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
         ctx.suspend().catch(() => {});
     },
 
@@ -172,12 +151,16 @@ export const sfx = {
         if (ctx && enabled.value) ctx.resume().catch(() => {});
     },
 
-    /** ลมตามความเร็วกล้อง (0..1) — เรียกทุกเฟรมได้ */
-    wind(speed) {
-        if (!live()) return;
-        const s = Math.max(0, Math.min(1, speed));
-        windGain.gain.setTargetAtTime(Math.pow(s, 1.4) * 0.16, ctx.currentTime, 0.12);
-        windFilter.frequency.setTargetAtTime(320 + s * 1700, ctx.currentTime, 0.15);
+    /**
+     * เริ่มบินไปสถานีอื่น: เสียง "วูบ" นุ่มๆ สองเสียงห่างคู่ห้า ไต่ขึ้น (ไปข้างหน้า) หรือไต่ลง (ย้อนกลับ)
+     * เป็นโน้ตล้วน ไม่มี noise — ไม่ซ่า
+     */
+    swoosh(dir = 1) {
+        if (!live() || throttle('swoosh', 300)) return;
+        const from = midi(dir > 0 ? 67 : 79);
+        const to = midi(dir > 0 ? 79 : 67);
+        tone({ freq: from, glide: to, gain: 0.035, attack: 0.12, decay: 0.5, send: 0.7 });
+        tone({ freq: from * 1.5, glide: to * 1.5, gain: 0.018, attack: 0.15, decay: 0.45, send: 0.7, when: 0.03 });
     },
 
     /** ถึงสถานีที่ i: ระฆังแก้ว (โน้ตตามสถานี) + ทุ้มสั้น */

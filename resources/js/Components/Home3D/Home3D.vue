@@ -10,6 +10,10 @@
  *
  * ถอยกลับหน้าเดิม (emit 'fallback') เมื่อ: บูตไม่ขึ้นใน 15 วิ · GPU หลุด · FPS ต่ำจนลดคุณภาพแล้วยังไม่ไหว
  *
+ * โหลดเร็ว:
+ * - ออกไปหน้าอื่นแล้วกลับมา = ใช้โลกเดิมที่พักไว้ (keeper.js) ไม่ต้องสร้างฉาก/คอมไพล์ใหม่ ไม่มีจอโหลด
+ * - เปิดครั้งแรก = ข้อความฮีโร่ขึ้นทันที ฉาก 3D ค่อยจางเข้ามาเมื่อพร้อม (จอโหลดเป็นแค่ป้ายเล็กด้านล่าง)
+ *
  * Developed by Xman Studio
  */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
@@ -25,6 +29,7 @@ import { createEngine } from './engine';
 import { buildWorld } from './world/index';
 import { sfx, useHomeSound } from './sound';
 import { createSnapScroll } from './snapScroll';
+import { hooks, keep, takeKept, discard, hasKept } from './keeper';
 import { useMarketData } from '@/Composables/useMarketData';
 import { useTranslation } from '@/Composables/useTranslation';
 import { useMascot } from '@/Composables/useMascot';
@@ -36,8 +41,11 @@ const mascot = useMascot();
 const sound = useHomeSound();
 const { tickers, topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
 
+// canvas สร้างด้วยโค้ด (ไม่ใช่ใน template) เพื่อให้เก็บตัวเดิมไว้ใช้ข้ามการเปลี่ยนหน้าได้
+const canvasHost = ref(null);
 const canvasEl = ref(null);
-const loading = ref(true);
+// กลับมาจากหน้าอื่นแล้วมีโลกเก็บไว้ = ไม่ต้องโชว์ป้ายกำลังโหลดเลย แม้แวบเดียว
+const loading = ref(!hasKept());
 const current = ref('hero');
 const tip = reactive({ show: false, x: 0, y: 0, candle: null });
 // ป้าย "ไปหน้า … →" ข้างเมาส์เมื่อชี้วัตถุที่กดได้
@@ -109,6 +117,7 @@ const btcPrice = computed(() => {
 let engine = null;
 let world = null;
 let alive = true;
+let failed = false; // ถอยไปหน้าเดิมแล้ว — ห้ามเก็บโลกนี้ไว้ใช้ต่อ
 let bootTimer = 0;
 let klineTimer = 0;
 let depthTimer = 0;
@@ -123,6 +132,7 @@ const lastVis = new Map();
 // เลื่อน/ปัด 1 ครั้ง = 1 สถานี
 const snap = createSnapScroll({
     getCenters: () => centers,
+    onSnap: (i) => sfx.swoosh(i >= Math.round(f) ? 1 : -1),
     reduced: typeof window !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false),
 });
 
@@ -153,7 +163,21 @@ function tick(dt, time) {
     if (Math.abs(y - smooth) > window.innerHeight * 4) smooth = y;
     f = journeyF(smooth, centers);
     world.update(dt, time, f);
+    syncPanels();
 
+    // เสียง: ระฆังตอนถึงสถานี (เสียงตอนออกบินอยู่ที่ snap.onSnap)
+    const n = STATIONS.length;
+    const d = Math.abs(f - Math.round(f));
+    if (d < 0.06 && Math.round(f) !== arrivedAt && Math.round(f) >= 0 && Math.round(f) < n) {
+        arrivedAt = Math.round(f);
+        sfx.arrive(arrivedAt);
+    } else if (d > 0.35) {
+        arrivedAt = -1;
+    }
+}
+
+/** แผงข้อความ + จุดยืนน้อง ตามตำแหน่งกล้อง (เรียกได้ก่อนฉาก 3D พร้อม — ข้อความไม่ต้องรอ GPU) */
+function syncPanels() {
     // แผงข้อความเริ่มใต้แถบนำทาง (แถบราคา/ป้ายโฆษณาด้านบนเลื่อนหายไปได้)
     const nav = document.querySelector('nav');
     const nb = nav ? Math.max(0, Math.round(nav.getBoundingClientRect().bottom)) : 64;
@@ -184,16 +208,6 @@ function tick(dt, time) {
         Object.entries(spotEls).forEach(([k, el]) => el.classList.toggle('is-active', k === key));
     }
     if (key && key !== current.value) current.value = key;
-
-    // เสียง: ลมตามความเร็วกล้อง + ระฆังตอนถึงสถานี
-    sfx.wind(world.speed / 30);
-    const d = Math.abs(f - Math.round(f));
-    if (d < 0.06 && Math.round(f) !== arrivedAt && Math.round(f) >= 0 && Math.round(f) < n) {
-        arrivedAt = Math.round(f);
-        sfx.arrive(arrivedAt);
-    } else if (d > 0.35) {
-        arrivedAt = -1;
-    }
 }
 
 // ── ข้อมูลตลาดจริง ────────────────────────────────────────────────────────
@@ -264,6 +278,37 @@ function onPointerOut(e) {
     lastHoverEl = null;
 }
 
+/** ถอยไปหน้าเดิม — โลกนี้ใช้ไม่ได้แล้ว ห้ามเก็บไว้ */
+function fail(reason) {
+    failed = true;
+    emit('fallback', reason);
+}
+
+function goLite() {
+    failed = true; // ผู้ใช้เลือกหน้าเดิมเอง ไม่ต้องกัน GPU ไว้ให้
+    emit('lite');
+}
+
+// GPU หลุด: ถ้าหน้านี้ยังอยู่ = ถอยไปหน้าเดิม · ถ้าเป็นโลกที่พักไว้ (ผู้ใช้อยู่หน้าอื่น) = แค่ทิ้งของเก็บ
+function onLost() {
+    if (!alive) {
+        discard();
+        return;
+    }
+    fail('context');
+}
+
+/** เสียบ canvas เข้าหน้า (ตัวใหม่ หรือตัวเดิมจากที่เก็บ) */
+function mountCanvas(canvas) {
+    canvas.classList.add('h3d-canvas');
+    canvas.setAttribute('aria-hidden', 'true');
+    // style ของคอมโพเนนต์เป็น scoped → ต้องมี data-v-xxx เดียวกับ element ใน template
+    for (const a of canvasHost.value.attributes) if (a.name.startsWith('data-v-')) canvas.setAttribute(a.name, '');
+    canvasHost.value.appendChild(canvas);
+    canvas.addEventListener('click', onCanvasClick);
+    canvasEl.value = canvas;
+}
+
 function onCanvasClick(e) {
     if (!world) return;
     const href = world.hrefAt(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
@@ -316,6 +361,16 @@ function onUiClick(e) {
     if (e.target.closest?.('.h3d-panel a[href], .h3d-panel button, .h3d-dots button, .h3d-corner button')) sfx.click();
 }
 
+/** หลังได้โลก (สร้างใหม่หรือเอาของเก่ามา): วางผัง + ตำแหน่งกล้องตาม scroll ตอนนี้ */
+function placeWorld() {
+    layout();
+    smooth = window.scrollY;
+    f = journeyF(smooth, centers);
+    updateChartHeader();
+    lastVis.clear();
+    syncPanels();
+}
+
 const onResize = () => {
     layout();
     lastVis.clear();
@@ -333,49 +388,72 @@ function armBootTimer() {
     if (!loading.value) return;
     if (document.hidden) return;
     bootTimer = setTimeout(() => {
-        if (loading.value && !document.hidden) emit('fallback', 'boot-timeout');
+        if (loading.value && !document.hidden) fail('boot-timeout');
     }, 15000);
 }
 const onBootVisibility = () => (document.hidden ? clearTimeout(bootTimer) : armBootTimer());
 
 onMounted(async () => {
-    armBootTimer();
-    document.addEventListener('visibilitychange', onBootVisibility);
-    try {
-        const phone = Math.min(window.innerWidth, window.innerHeight) < 700;
-        engine = createEngine(canvasEl.value, {
-            startLevel: phone ? 1 : 0,
-            onSlow: () => emit('fallback', 'slow'),
-            onLost: () => emit('fallback', 'context'),
-        });
-        world = buildWorld(engine, {
-            ecosystem: ecoCards(),
-            features: FEATURES,
-            resolveTarget,
-            onTarget,
-            onCandleHover,
-            onCoinLand: () => sfx.coin(),
-        });
-        layout();
-        smooth = window.scrollY;
-        f = journeyF(smooth, centers);
-        updateChartHeader();
-        engine.step(1 / 60);
-        // คอมไพล์ล่วงหน้าช่วยกันกระตุก แต่ไม่ยอมรอเกิน 4 วิ (บางเครื่อง/แท็บเบื้องหลังรอไม่จบ)
-        await Promise.race([engine.compile().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
-        if (!alive) return;
+    // ฉาก/เอนจินเรียก callback ผ่าน hooks → ชี้มาที่คอมโพเนนต์ตัวนี้
+    Object.assign(hooks, {
+        resolveTarget,
+        onTarget,
+        onCandleHover,
+        onCoinLand: () => sfx.coin(),
+        onSlow: () => fail('slow'),
+        onLost,
+    });
+
+    const reuse = takeKept();
+    if (reuse) {
+        // กลับมาจากหน้าอื่น: ใช้โลกเดิมทันที ไม่มีจอโหลด
+        engine = reuse.engine;
+        world = reuse.world;
+        mountCanvas(reuse.canvas);
+        engine.resize();
+        if (reuse.locale !== locale.value) world.relabel(ecoCards()); // ระหว่างไปหน้าอื่นสลับภาษา → วาดป้ายใหม่
+        placeWorld();
         engine.start(tick);
         loading.value = false;
-        clearTimeout(bootTimer);
-        document.removeEventListener('visibilitychange', onBootVisibility);
-        // ช่องทางดีบักตอนพัฒนาเท่านั้น (build จริงตัดทิ้ง)
-        if (import.meta.env.DEV) window.__tpixHome3d = { engine, world, get f() { return f; }, centers: () => centers };
-    } catch {
-        clearTimeout(bootTimer);
-        document.removeEventListener('visibilitychange', onBootVisibility);
-        emit('fallback', 'boot');
-        return;
+    } else {
+        armBootTimer();
+        document.addEventListener('visibilitychange', onBootVisibility);
+        try {
+            const phone = Math.min(window.innerWidth, window.innerHeight) < 700;
+            mountCanvas(document.createElement('canvas'));
+            engine = createEngine(canvasEl.value, {
+                startLevel: phone ? 1 : 0,
+                onSlow: () => hooks.onSlow?.(),
+                onLost: () => hooks.onLost?.(),
+            });
+            world = buildWorld(engine, {
+                ecosystem: ecoCards(),
+                features: FEATURES,
+                resolveTarget: (k) => hooks.resolveTarget?.(k) ?? null,
+                onTarget: (info) => hooks.onTarget?.(info),
+                onCandleHover: (info) => hooks.onCandleHover?.(info),
+                onCoinLand: () => hooks.onCoinLand?.(),
+            });
+            // ข้อความฮีโร่ขึ้นทันที ไม่ต้องรอฉาก 3D
+            placeWorld();
+            engine.step(1 / 60);
+            // คอมไพล์ล่วงหน้าช่วยกันกระตุก แต่ไม่ยอมรอเกิน 4 วิ (บางเครื่อง/แท็บเบื้องหลังรอไม่จบ)
+            await Promise.race([engine.compile().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
+            if (!alive) return;
+            engine.start(tick);
+            loading.value = false;
+            clearTimeout(bootTimer);
+            document.removeEventListener('visibilitychange', onBootVisibility);
+        } catch {
+            clearTimeout(bootTimer);
+            document.removeEventListener('visibilitychange', onBootVisibility);
+            fail('boot');
+            return;
+        }
     }
+    canvasEl.value.classList.add('is-ready');
+    // ช่องทางดีบักตอนพัฒนาเท่านั้น (build จริงตัดทิ้ง)
+    if (import.meta.env.DEV) window.__tpixHome3d = { engine, world, reused: !!reuse, get f() { return f; }, centers: () => centers };
 
     detachUnlock = sfx.attachUnlock();
     snap.attach();
@@ -412,8 +490,20 @@ onBeforeUnmount(() => {
     window.removeEventListener('resize', onResize);
     window.removeEventListener('pointermove', onPointerMove);
     document.documentElement.style.removeProperty('--h3d-top');
-    world?.dispose();
-    engine?.dispose();
+    const canvas = canvasEl.value;
+    canvas?.removeEventListener('click', onCanvasClick);
+    if (engine && world && canvas && !failed && !loading.value && !engine.lost) {
+        // ไปหน้าอื่น: พักไว้ กลับมาจะได้ไม่ต้องสร้างใหม่ (keeper ทิ้งเองถ้าไม่กลับมาใน 5 นาที)
+        engine.park();
+        world.pointer(0, 0, false);
+        canvas.style.cursor = '';
+        canvas.remove();
+        keep({ engine, world, canvas, locale: locale.value });
+    } else {
+        world?.dispose();
+        engine?.dispose();
+        canvas?.remove();
+    }
     world = null;
     engine = null;
 });
@@ -435,13 +525,13 @@ function fmtTime(ms) {
 
     <AppLayout :hide-sidebar="true">
         <div class="h3d -mx-4 -mt-4 lg:-mx-6 lg:-mt-6">
-            <canvas ref="canvasEl" class="h3d-canvas" :class="{ 'is-ready': !loading }" aria-hidden="true" @click="onCanvasClick" />
+            <div ref="canvasHost" class="h3d-canvas-host"></div>
             <div class="h3d-shade" aria-hidden="true"></div>
 
             <Transition name="h3d-fade">
                 <div v-if="loading" class="h3d-loader" role="status">
                     <span class="h3d-loader__ring" aria-hidden="true"></span>
-                    <p class="text-sm text-dark-300">{{ t('home3d.loading') }}</p>
+                    <p class="text-xs text-dark-300">{{ t('home3d.loading') }}</p>
                 </div>
             </Transition>
 
@@ -659,7 +749,7 @@ function fmtTime(ms) {
         </button>
 
         <div class="h3d-corner">
-            <button type="button" class="h3d-pill" @click="emit('lite')">
+            <button type="button" class="h3d-pill" @click="goLite">
                 <span aria-hidden="true">⚡</span> {{ t('home3d.switchToLite') }}
             </button>
             <button
@@ -730,23 +820,29 @@ function fmtTime(ms) {
         linear-gradient(to bottom, rgb(2 6 23 / 0.55), transparent 18%);
 }
 
+/* ป้ายเล็กด้านล่างระหว่างฉากกำลังสร้าง — ไม่บังข้อความ (ข้อความฮีโร่อ่าน/กดได้ตั้งแต่แรก) */
 .h3d-loader {
     position: fixed;
-    inset: 0;
+    left: 50%;
+    bottom: 22px;
+    translate: -50% 0;
     z-index: 30;
-    display: flex;
-    flex-direction: column;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 16px;
-    background: #050b1a;
+    gap: 10px;
+    padding: 8px 16px 8px 10px;
+    border-radius: 999px;
+    background: rgb(var(--c-dark-900) / 0.72);
+    border: 1px solid rgb(34 211 238 / 0.25);
+    backdrop-filter: blur(10px);
+    pointer-events: none;
 }
 
 .h3d-loader__ring {
-    width: 48px;
-    height: 48px;
+    width: 18px;
+    height: 18px;
     border-radius: 999px;
-    border: 3px solid rgb(34 211 238 / 0.2);
+    border: 2px solid rgb(34 211 238 / 0.2);
     border-top-color: #22d3ee;
     animation: h3d-spin 0.9s linear infinite;
 }

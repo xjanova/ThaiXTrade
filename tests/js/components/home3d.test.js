@@ -272,7 +272,7 @@ describe('sound effects', async () => {
             sfx.hover(0.5, 0.5);
             sfx.click();
             sfx.arrive(2);
-            sfx.wind(0.8);
+            sfx.swoosh(1);
             sfx.coin();
             sfx.fly(1);
             sfx.pip(1);

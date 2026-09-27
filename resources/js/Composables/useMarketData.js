@@ -5,7 +5,7 @@
  */
 
 import { ref, onMounted, onUnmounted } from 'vue';
-import axios from 'axios';
+import { getTickers } from '@/utils/tickerFeed';
 
 const REFRESH_INTERVAL = 15000; // 15 seconds
 
@@ -20,7 +20,7 @@ export function useMarketData() {
 
     async function fetchTickers() {
         try {
-            const { data } = await axios.get('/api/v1/market/tickers');
+            const { data } = await getTickers();
             if (data.success && data.data.length > 0) {
                 tickers.value = data.data;
 

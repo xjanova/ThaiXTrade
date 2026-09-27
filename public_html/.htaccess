@@ -71,6 +71,9 @@
     ExpiresByType application/javascript "access plus 1 month"
     ExpiresByType application/font-woff "access plus 1 year"
     ExpiresByType application/font-woff2 "access plus 1 year"
+    # คลิปน้อง TPIX (webm) ติด ?v=N ทุกไฟล์ → แคชยาวได้ (เดิมได้แค่ 4 ชม. แล้วต้องถามเซิร์ฟเวอร์ใหม่)
+    # mp4 ไม่ใส่ — ไฟล์เก่าหลายตัวไม่มีเลขเวอร์ชัน แก้ไฟล์แล้วคนจะไม่เห็นของใหม่
+    ExpiresByType video/webm "access plus 1 year"
 </IfModule>
 
 # Disable directory listing

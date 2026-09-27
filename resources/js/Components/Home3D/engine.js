@@ -102,6 +102,8 @@ export function createEngine(canvas, opts = {}) {
 
     let raf = 0;
     let running = false;
+    let parked = false; // พักไว้ตอนผู้ใช้ไปหน้าอื่น (keeper.js) — ห้ามกลับมาวาดเองแม้แท็บกลับมาเห็น
+    let lost = false;
     let last = 0;
     let time = 0;
     let tick = null;
@@ -129,6 +131,7 @@ export function createEngine(canvas, opts = {}) {
 
     function start(fn) {
         if (fn) tick = fn;
+        parked = false;
         if (running) return;
         running = true;
         last = 0;
@@ -141,11 +144,16 @@ export function createEngine(canvas, opts = {}) {
         cancelAnimationFrame(raf);
     }
 
-    const onVisibility = () => (document.hidden ? stop() : start());
+    // แท็บกลับมาเห็น = วาดต่อ เฉพาะตอนเอนจินทำงานอยู่จริง (บูตเสร็จแล้ว และไม่ได้พักไว้)
+    const onVisibility = () => {
+        if (document.hidden) stop();
+        else if (!parked && tick) start();
+    };
     document.addEventListener('visibilitychange', onVisibility);
 
     const onLost = (e) => {
         e.preventDefault();
+        lost = true;
         stop();
         opts.onLost?.();
     };
@@ -159,6 +167,14 @@ export function createEngine(canvas, opts = {}) {
         start,
         stop,
         resize,
+        /** หยุดวาดแบบพักไว้ (ของใน GPU อยู่ครบ) — start() อีกครั้งเพื่อวาดต่อ */
+        park() {
+            parked = true;
+            stop();
+        },
+        get lost() {
+            return lost;
+        },
         get level() {
             return level;
         },
