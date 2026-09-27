@@ -92,6 +92,76 @@ function priceTag() {
 }
 
 /**
+ * ป้ายหัวกราฟ: บอกชัดว่าเป็นกราฟเหรียญอะไร กรอบเวลาไหน ราคาตอนนี้เท่าไร
+ * (เจ้าของทัก: "กราฟอันแรกบอกด้วยว่ากราฟเหรียญอะไร")
+ */
+function chartHeader() {
+    const W = 900;
+    const H = 210;
+    const t = canvasTexture(W, H);
+    const mat = new THREE.SpriteMaterial({ map: t.tex, transparent: true, depthWrite: false, fog: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(7.4, (7.4 * H) / W, 1);
+    sprite.renderOrder = 9;
+    sprite.raycast = () => {};
+    const font = 'ui-sans-serif, system-ui, "Noto Sans Thai", "Leelawadee UI", sans-serif';
+    function draw({ base = 'BTC', quote = 'USDT', sub = '', price = null, change = null }) {
+        const { ctx } = t;
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = 'rgba(6, 14, 34, 0.78)';
+        ctx.beginPath();
+        ctx.moveTo(30, 8);
+        ctx.arcTo(W - 8, 8, W - 8, H - 8, 26);
+        ctx.arcTo(W - 8, H - 8, 8, H - 8, 26);
+        ctx.arcTo(8, H - 8, 8, 8, 26);
+        ctx.arcTo(8, 8, W - 8, 8, 26);
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.55)';
+        ctx.stroke();
+        // โลโก้เหรียญ
+        ctx.fillStyle = '#f7931a';
+        ctx.beginPath();
+        ctx.arc(95, H / 2, 58, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `800 70px ${font}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(base === 'BTC' ? '₿' : base.slice(0, 1), 95, H / 2 + 4);
+        // ชื่อคู่
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `800 64px ${font}`;
+        ctx.fillText(base, 180, 98);
+        const bw = ctx.measureText(base).width;
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = `600 40px ${font}`;
+        ctx.fillText(` / ${quote}`, 180 + bw, 98);
+        ctx.fillStyle = '#7dd3fc';
+        ctx.font = `600 30px ${font}`;
+        ctx.fillText(sub, 182, 152);
+        // ราคา + เปลี่ยนแปลง 24 ชม.
+        if (Number.isFinite(price)) {
+            ctx.textAlign = 'right';
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `700 50px ui-monospace, Menlo, monospace`;
+            ctx.fillText(`$${formatPrice(price)}`, W - 40, 98);
+            if (Number.isFinite(change)) {
+                const up = change >= 0;
+                ctx.fillStyle = up ? '#00e676' : '#ff5252';
+                ctx.font = `700 36px ui-monospace, Menlo, monospace`;
+                ctx.fillText(`${up ? '▲ +' : '▼ '}${change.toFixed(2)}%`, W - 40, 150);
+            }
+        }
+        t.tex.needsUpdate = true;
+    }
+    return { sprite, draw, dispose: () => (t.tex.dispose(), mat.dispose()) };
+}
+
+/**
  * @param {{ onHover?: (info:object|null)=>void }} opts
  */
 export function buildCandleWall(opts = {}) {
@@ -126,6 +196,14 @@ export function buildCandleWall(opts = {}) {
     const tag = priceTag();
     tag.sprite.visible = false;
     chart.add(tag.sprite);
+
+    const header = chartHeader();
+    // ครึ่งขวาของกราฟ (ครึ่งซ้ายโดนแผงข้อความทับ) และต่ำกว่าแถบนำทาง
+    header.sprite.position.set(0.9, Y1 + 0.35, 0.3);
+    header.draw({});
+    chart.add(header.sprite);
+    let headerInfo = { base: 'BTC', quote: 'USDT', sub: '', change: null };
+    let headerAt = 0;
 
     const pulseTex = glowTexture();
     const pulse = new THREE.Sprite(new THREE.SpriteMaterial({ map: pulseTex, color: C.green, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -236,6 +314,12 @@ export function buildCandleWall(opts = {}) {
         tag.sprite.position.set(xOf(candles.length - 1) + 1.8, y, 0.1);
         tag.sprite.visible = true;
         tag.draw(formatPrice(last.close), up);
+        // ป้ายหัวกราฟวาดใหม่ไม่เกิน 4 ครั้ง/วินาที (ระหว่างราคาไหลจะเปลี่ยนทุกเฟรม)
+        const now = performance.now();
+        if (now - headerAt > 250) {
+            headerAt = now;
+            header.draw({ ...headerInfo, price: last.close });
+        }
         pulse.position.set(xOf(candles.length - 1), y, 0.35);
         pulse.material.color.copy(up ? C.green : C.red);
         pulse.visible = true;
@@ -257,6 +341,12 @@ export function buildCandleWall(opts = {}) {
         buildEma();
         updateLive();
         return true;
+    }
+
+    /** ข้อมูลหัวกราฟ: คู่เหรียญ, คำอธิบายกรอบเวลา, % เปลี่ยนแปลง 24 ชม. */
+    function setHeader(info) {
+        headerInfo = { ...headerInfo, ...info };
+        header.draw({ ...headerInfo, price: hasData ? candles[candles.length - 1].close : info.price ?? null });
     }
 
     function setLivePrice(price) {
@@ -361,6 +451,7 @@ export function buildCandleWall(opts = {}) {
         object: group,
         setCandles,
         setLivePrice,
+        setHeader,
         setDepth,
         pick,
         clearHover,
@@ -369,6 +460,7 @@ export function buildCandleWall(opts = {}) {
             return hasData;
         },
         dispose() {
+            header.dispose();
             tag.dispose();
             pulseTex.dispose();
         },

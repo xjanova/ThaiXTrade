@@ -89,6 +89,18 @@ class ChatbotApiTest extends TestCase
         $this->assertStringEndsWith('User: แล้วอันนั้นล่ะ', $user);
     }
 
+    public function test_the_chat_window_speaks_as_the_mascot_without_the_bubble_length_limit(): void
+    {
+        $this->fakeAnswer('ได้เลยค่ะ');
+
+        $this->postJson('/api/v1/chatbot', ['message' => 'สอนเทรดหน่อย', 'persona' => 'mascot-chat'])->assertOk();
+
+        $system = $this->openAiRequest()['messages'][0]['content'];
+        $this->assertStringContainsString('น้อง TPIX', $system);
+        $this->assertStringContainsString('chat window', $system);
+        $this->assertStringNotContainsString('speech bubble', $system);
+    }
+
     public function test_the_default_assistant_does_not_get_the_mascot_persona(): void
     {
         $this->fakeAnswer('TPIX Chain คือบล็อกเชน EVM');

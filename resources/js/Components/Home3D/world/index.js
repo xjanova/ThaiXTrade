@@ -3,7 +3,9 @@
  *
  * วางวัตถุของทุกสถานี + พื้นกริด + เมืองแท่งกราฟ แล้วคุมกล้องตามความคืบหน้าการเลื่อน (f)
  * กล้องบินตามเส้นโค้ง CatmullRom ผ่านมุมกล้องของแต่ละสถานี ค้างที่สถานีช่วงกลางให้อ่านแผงได้
- * เมาส์ขยับกล้องเล็กน้อย (parallax) · ชี้แท่งเทียน/การ์ดระบบนิเวศได้
+ *
+ * ทุกวัตถุหลักกดได้: ชี้แล้วเน้น (ขยาย/เรืองแสง) + แจ้งป้าย "ไปหน้า … →" ให้หน้าเว็บแสดง
+ * กด/แตะ → hrefAt(x, y) ยิง raycast ณ จุดนั้นทันที (มือถือไม่มี hover มาก่อน)
  *
  * Developed by Xman Studio
  */
@@ -19,7 +21,8 @@ const at = (st, dx = 0, dy = 0, dz = 0) => new THREE.Vector3(st.pos[0] + dx, st.
 
 /**
  * @param {ReturnType<import('../engine.js').createEngine>} engine
- * @param {{ ecosystem: object[], features: object[], onCandleHover?: Function, onCursor?: (c:string)=>void }} opts
+ * @param {{ ecosystem: object[], features: object[], resolveTarget: (key:string)=>({href:string,label:string}|null),
+ *           onCandleHover?: Function, onTarget?: (info:object|null)=>void, onCoinLand?: Function }} opts
  */
 export function buildWorld(engine, opts) {
     const { scene, camera } = engine;
@@ -36,15 +39,21 @@ export function buildWorld(engine, opts) {
         piece.object.position.copy(at(st, ...offset));
         piece.object.rotation.y = rotY;
         scene.add(piece.object);
-        pieces.push({ piece, i });
+        pieces.push({ piece, i, key });
         return piece;
     };
 
     const wall = place('hero', buildCandleWall({ onHover: opts.onCandleHover }), [1.5, 0, -3], -0.12);
+    // กำแพงกราฟทั้งแผงกดได้ → กระดานเทรด BTC/USDT
+    wall.object.traverse((o) => {
+        o.userData.hitKey = 'chart';
+    });
+    wall.targets = [{ object: wall.object, key: 'chart' }];
+    wall.setHover = () => {};
     place('hero', buildCoin({ radius: 3.2, thickness: 0.42 }), [4.5, 10.6, -17]);
     place('node', buildNodes(), [0, 0, -1]);
     const tickers = place('markets', buildTickers(), [0, 0, -3]);
-    place('sale', buildSale(), [0, 0, -1]);
+    place('sale', buildSale({ onCoinLand: opts.onCoinLand }), [0, 0, -1]);
     const eco = place('ecosystem', buildEcosystem(opts.ecosystem), [0, 0, -4]);
     place('features', buildFeatures(opts.features), [0, 0, -1]);
     place('cta', buildGate(), [0, 0, -4]);
@@ -59,12 +68,13 @@ export function buildWorld(engine, opts) {
     }
     layout({ portrait: window.innerWidth / window.innerHeight < 0.9 });
 
-    // ── เมาส์ ───────────────────────────────────────────────────────────────
+    // ── ชี้/กด ─────────────────────────────────────────────────────────────
     const ndc = new THREE.Vector2(10, 10);
     const par = { x: 0, y: 0, tx: 0, ty: 0 };
     const raycaster = new THREE.Raycaster();
     let pointerIn = false;
-    let hoverHref = null;
+    let hover = null; // { key, href, label, owner, hit }
+    let lastF = 0;
 
     function pointer(x, y, inside = true) {
         ndc.set(x * 2 - 1, -(y * 2 - 1));
@@ -73,22 +83,67 @@ export function buildWorld(engine, opts) {
         pointerIn = inside;
     }
 
-    /** คลิกบนฉาก → href ของการ์ดที่ชี้อยู่ (ให้หน้าเว็บพาไป) */
-    function clickHref() {
-        return hoverHref;
+    /** ชิ้นที่กดได้ของสถานีที่ยืนอยู่ ณ จุด ndc */
+    function pickAt(point) {
+        const near = Math.round(lastF);
+        if (Math.abs(lastF - near) > 0.3) return null;
+        const stationPieces = pieces.filter((p) => p.i === near && p.piece.targets?.length);
+        if (!stationPieces.length) return null;
+        raycaster.setFromCamera(point, camera);
+        const objects = stationPieces.flatMap((p) => p.piece.targets.map((tg) => tg.object));
+        for (const hit of raycaster.intersectObjects(objects, true)) {
+            let o = hit.object;
+            while (o && !o.userData.hitKey) o = o.parent;
+            const key = o?.userData.hitKey;
+            if (!key) continue;
+            const res = opts.resolveTarget(key);
+            if (!res?.href) continue;
+            let owner = null;
+            for (const p of stationPieces) {
+                let inside = false;
+                p.piece.object.traverse((c) => {
+                    if (c === hit.object) inside = true;
+                });
+                if (inside) {
+                    owner = p.piece;
+                    break;
+                }
+            }
+            return { key, hit, owner, ...res };
+        }
+        return null;
+    }
+
+    /** กด/แตะที่จุด (x, y สัดส่วนของจอ) → ลิงก์ หรือ null */
+    function hrefAt(x, y) {
+        return pickAt(new THREE.Vector2(x * 2 - 1, -(y * 2 - 1)))?.href ?? null;
+    }
+
+    function setHover(next) {
+        const changed = (next?.key ?? null) !== (hover?.key ?? null);
+        if (changed && hover) hover.owner?.setHover?.(null);
+        hover = next;
+        if (hover) hover.owner?.setHover?.(hover.key, hover.hit);
+        if (changed) opts.onTarget?.(hover ? { key: hover.key, href: hover.href, label: hover.label } : null);
     }
 
     const look = new THREE.Vector3();
+    const prevCam = new THREE.Vector3();
     const n = STATIONS.length;
     const fogBase = scene.fog.density;
+    let speed = 0;
 
     function update(dt, t, f) {
+        lastF = f;
         const s = pathParam(f, n);
         const u = s / (n - 1);
+        prevCam.copy(camera.position);
         posCurve.getPoint(u, camera.position);
         lookCurve.getPoint(u, look);
+        // ความเร็วกล้องบนเส้นทาง (ก่อนบวก parallax) — ใช้คุมเสียงลม
+        speed = dt > 0 ? prevCam.distanceTo(camera.position) / dt : 0;
 
-        // ลอยเบาๆ + ตามเมาส์ (ไม่ขยับตอนกำลังบินเร็ว)
+        // ลอยเบาๆ + ตามเมาส์
         const k = 1 - Math.exp(-3 * dt);
         par.x += (par.tx - par.x) * k;
         par.y += (par.ty - par.y) * k;
@@ -102,31 +157,20 @@ export function buildWorld(engine, opts) {
         floor.update(t, dim);
 
         for (const { piece, i } of pieces) {
-            const focus = 1 - smoothstep(0, 1.1, Math.abs(f - i));
-            // วัตถุไกลเกิน 2 สถานีไม่ต้องคำนวณแอนิเมชัน (ยังวาดได้ถ้าอยู่ในภาพ)
             if (Math.abs(f - i) > 2.2) continue;
-            piece.update?.(t, dt, focus);
+            piece.update?.(t, dt, 1 - smoothstep(0, 1.1, Math.abs(f - i)));
         }
 
-        // ชี้วัตถุ: เฉพาะสถานีที่ยืนอยู่
-        hoverHref = null;
-        let cursor = '';
+        // ชี้วัตถุ (เมาส์เท่านั้น — นิ้วใช้ hrefAt ตอนแตะ)
         if (pointerIn) {
-            raycaster.setFromCamera(ndc, camera);
+            setHover(pickAt(ndc));
             const near = Math.round(f);
             if (near === byKey.hero.i && Math.abs(f - near) < 0.3) wall.pick(raycaster, camera);
             else wall.clearHover();
-            if (near === byKey.ecosystem.i && Math.abs(f - near) < 0.3) {
-                hoverHref = eco.pick(raycaster);
-                if (hoverHref) cursor = 'pointer';
-            } else {
-                eco.clearHover();
-            }
         } else {
+            setHover(null);
             wall.clearHover();
-            eco.clearHover();
         }
-        opts.onCursor?.(cursor);
     }
 
     return {
@@ -135,7 +179,14 @@ export function buildWorld(engine, opts) {
         layout,
         pointer,
         update,
-        clickHref,
+        hrefAt,
+        /** สลับภาษา: วาดข้อความบนการ์ดระบบนิเวศใหม่ */
+        relabel(ecosystem) {
+            eco.relabel(ecosystem);
+        },
+        get speed() {
+            return speed;
+        },
         dispose() {
             pieces.forEach(({ piece }) => piece.dispose?.());
         },

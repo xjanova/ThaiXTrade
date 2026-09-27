@@ -1,14 +1,26 @@
 /**
  * TPIX TRADE — วัตถุ 3D ของแต่ละสถานี (นอกจากกำแพงแท่งเทียน)
  *
- * ทุกฟังก์ชันคืน { object, update(t, dt, focus), ... }
- * focus = 0..1 ความใกล้ของกล้อง (1 = อยู่ที่สถานีนี้) ใช้เปิดแอนิเมชันเฉพาะตอนดูอยู่
+ * ทุกฟังก์ชันคืน { object, update(t, dt, focus), targets, setHover(key, hit) }
+ *   focus    0..1 ความใกล้ของกล้อง (1 = อยู่ที่สถานีนี้) ใช้เปิดแอนิเมชันเฉพาะตอนดูอยู่
+ *   targets  [{ object, key }] ชิ้นที่ "กดได้" — world/index.js ยิง raycast ใส่แล้วแปลง key เป็นลิงก์
+ *   setHover เน้นชิ้นที่เมาส์ชี้อยู่ (ขยาย/เรืองแสง) · key = null คือเลิกชี้
  *
  * Developed by Xman Studio
  */
 
 import * as THREE from 'three';
-import { C, clamp, smoothstep, glowTexture, coinFaceTexture, createLabel, loadTexture } from './common.js';
+import { C, clamp, smoothstep, glowTexture, coinFaceTexture, createLabel, loadTexture, canvasTexture } from './common.js';
+
+const approach = (cur, target, k, dt) => cur + (target - cur) * (1 - Math.exp(-k * dt));
+
+/** ติดป้าย key ให้วัตถุ (และลูกทุกชิ้น) — raycast โดนลูกชิ้นไหนก็ย้อนหา key ได้ */
+function tag(object, key) {
+    object.traverse((o) => {
+        o.userData.hitKey = key;
+    });
+    return { object, key };
+}
 
 // ── เหรียญ TPIX ทอง (โลหะจริง สะท้อน environment) ─────────────────────────
 export function buildCoin({ radius = 2.6, thickness = 0.36 } = {}) {
@@ -18,8 +30,7 @@ export function buildCoin({ radius = 2.6, thickness = 0.36 } = {}) {
     const geo = new THREE.CylinderGeometry(radius, radius, thickness, 96);
     const coin = new THREE.Mesh(geo, [side, faceMat, faceMat]);
     coin.rotation.x = Math.PI / 2;
-    const rimGeo = new THREE.TorusGeometry(radius, thickness * 0.16, 10, 96);
-    const rim = new THREE.Mesh(rimGeo, side);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(radius, thickness * 0.16, 10, 96), side);
     coin.add(rim);
     rim.rotation.x = Math.PI / 2;
 
@@ -30,12 +41,22 @@ export function buildCoin({ radius = 2.6, thickness = 0.36 } = {}) {
     halo.scale.setScalar(radius * 4.2);
     group.add(halo);
 
+    let hover = 0;
+    let hovered = false;
+    let spin = 0;
     return {
         object: group,
-        update(t) {
-            coin.rotation.z = t * 0.6;
+        targets: [tag(coin, 'coin')],
+        setHover(key) {
+            hovered = key === 'coin';
+        },
+        update(t, dt) {
+            hover = approach(hover, hovered ? 1 : 0, 8, dt);
+            spin += dt * (0.6 + hover * 2.4);
+            coin.rotation.z = spin;
+            coin.scale.setScalar(1 + hover * 0.08);
             group.position.y = Math.sin(t * 1.1) * 0.25;
-            halo.material.opacity = 0.28 + Math.sin(t * 2) * 0.07;
+            halo.material.opacity = 0.28 + Math.sin(t * 2) * 0.07 + hover * 0.35;
         },
     };
 }
@@ -66,6 +87,7 @@ export function buildNodes() {
                 const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: tier.color, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
                 halo.position.copy(v);
                 halo.scale.setScalar(tier.size * 7);
+                halo.raycast = () => {};
                 group.add(halo);
             }
         }
@@ -84,41 +106,55 @@ export function buildNodes() {
     vals.forEach((n, i) => edges.push([n, vals[(i + 1) % vals.length]]));
 
     const pos = new Float32Array(edges.length * 6);
-    edges.forEach(([a, b], i) => {
-        pos.set([a.v.x, a.v.y, a.v.z, b.v.x, b.v.y, b.v.z], i * 6);
-    });
+    edges.forEach(([a, b], i) => pos.set([a.v.x, a.v.y, a.v.z, b.v.x, b.v.y, b.v.z], i * 6));
     const lineGeo = new THREE.BufferGeometry();
     lineGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    group.add(new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: '#5ee7ff', transparent: true, opacity: 0.4 })));
+    const lineMat = new THREE.LineBasicMaterial({ color: '#5ee7ff', transparent: true, opacity: 0.4 });
+    const lines = new THREE.LineSegments(lineGeo, lineMat);
+    lines.raycast = () => {};
+    group.add(lines);
 
     // บล็อก (จุดเรืองแสง) วิ่งจากขอบเข้าหา validator
     const PULSES = 36;
     const pulsePos = new Float32Array(PULSES * 3);
     const pulseGeo = new THREE.BufferGeometry();
     pulseGeo.setAttribute('position', new THREE.BufferAttribute(pulsePos, 3));
-    const pulseTex = glowTexture();
-    const pulses = new THREE.Points(pulseGeo, new THREE.PointsMaterial({ map: pulseTex, color: '#fff3b0', size: 0.55, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const pulses = new THREE.Points(pulseGeo, new THREE.PointsMaterial({ map: glowTexture(), color: '#fff3b0', size: 0.55, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    pulses.raycast = () => {};
     group.add(pulses);
     const seeds = Array.from({ length: PULSES }, (_, i) => ({ e: (i * 7) % edges.length, o: (i * 0.137) % 1 }));
 
     // แกนกลาง = บล็อกเชนหมุน
-    const core = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(0.8, 1),
-        new THREE.MeshStandardMaterial({ color: '#f6bd35', emissive: '#f6bd35', emissiveIntensity: 0.6, metalness: 0.8, roughness: 0.25, flatShading: true }),
-    );
+    const coreMat = new THREE.MeshStandardMaterial({ color: '#f6bd35', emissive: '#f6bd35', emissiveIntensity: 0.6, metalness: 0.8, roughness: 0.25, flatShading: true });
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.8, 1), coreMat);
     core.position.y = 4.6;
     core.scale.setScalar(0.8);
     group.add(core);
 
+    // พื้นที่กดทั้งเครือข่าย (ลูกบอลใสครอบ) — จุดเล็กๆ กดโดนยาก
+    const hitBall = new THREE.Mesh(new THREE.SphereGeometry(6, 16, 12), new THREE.MeshBasicMaterial({ visible: false }));
+    hitBall.position.y = 3.8;
+    group.add(hitBall);
+
+    let hover = 0;
+    let hovered = false;
     return {
         object: group,
+        targets: [tag(hitBall, 'nodes')],
+        setHover(key) {
+            hovered = key === 'nodes';
+        },
         update(t, dt, focus) {
-            group.rotation.y = t * 0.08;
+            hover = approach(hover, hovered ? 1 : 0, 8, dt);
+            group.rotation.y = t * (0.08 + hover * 0.25);
             core.rotation.set(t * 0.4, t * 0.6, 0);
+            core.scale.setScalar(0.8 + hover * 0.35);
+            coreMat.emissiveIntensity = 0.6 + hover * 0.9;
+            lineMat.opacity = 0.4 + hover * 0.35;
             if (focus <= 0) return;
             seeds.forEach((sd, i) => {
                 const [a, b] = edges[sd.e];
-                const k = (t * 0.35 + sd.o) % 1;
+                const k = (t * (0.35 + hover * 0.5) + sd.o) % 1;
                 pulsePos[i * 3] = a.v.x + (b.v.x - a.v.x) * k;
                 pulsePos[i * 3 + 1] = a.v.y + (b.v.y - a.v.y) * k;
                 pulsePos[i * 3 + 2] = a.v.z + (b.v.z - a.v.z) * k;
@@ -128,7 +164,7 @@ export function buildNodes() {
     };
 }
 
-// ── ตลาด: เสาราคาเหรียญยอดนิยม (ข้อมูลจริง) ─────────────────────────────
+// ── ตลาด: เสาราคาเหรียญยอดนิยม (ข้อมูลจริง) กดแล้วไปกระดานเหรียญนั้น ────
 export function buildTickers() {
     const group = new THREE.Group();
     const geo = new THREE.BoxGeometry(1, 1, 1);
@@ -146,7 +182,7 @@ export function buildTickers() {
         const label = createLabel({ width: 420, height: 170, scale: 2.5 });
         label.sprite.position.set(x, 1, z);
         group.add(mesh, label.sprite);
-        pillars.push({ mesh, mat, label, h: 1, target: 1, x, z });
+        pillars.push({ mesh, mat, label, h: 1, target: 1, x, z, symbol: null, hover: 0 });
     }
 
     function setTickers(list) {
@@ -155,6 +191,10 @@ export function buildTickers() {
         const maxVol = Math.max(1, ...rows.map((r) => r.rawVolume || 0));
         pillars.forEach((pl, i) => {
             const r = rows[i];
+            pl.symbol = r?.symbol ?? null;
+            const key = pl.symbol ? `pair:${pl.symbol}` : null;
+            pl.mesh.userData.hitKey = key;
+            pl.label.sprite.userData.hitKey = key;
             if (!r) {
                 pl.target = 0.01;
                 pl.label.sprite.visible = false;
@@ -177,22 +217,34 @@ export function buildTickers() {
         });
     }
 
+    let hovered = null;
     return {
         object: group,
+        // key ของเสาเปลี่ยนตามข้อมูล (pair:BTC) — ตั้งใน setTickers
+        targets: pillars.flatMap((pl) => [{ object: pl.mesh, key: null }, { object: pl.label.sprite, key: null }]),
         setTickers,
+        setHover(key) {
+            hovered = key;
+        },
         update(t, dt, focus) {
             pillars.forEach((pl, i) => {
+                const on = hovered && pl.symbol && hovered === `pair:${pl.symbol}`;
+                pl.hover = approach(pl.hover, on ? 1 : 0, 10, dt);
                 const goal = pl.target * (0.25 + 0.75 * smoothstep(0, 0.8, focus));
-                pl.h += (goal - pl.h) * (1 - Math.exp(-4 * dt));
-                pl.mesh.scale.y = Math.max(0.01, pl.h);
-                pl.label.sprite.position.y = pl.h + 1.1 + Math.sin(t * 1.4 + i) * 0.1;
+                pl.h = approach(pl.h, goal, 4, dt);
+                const w = 1.1 + pl.hover * 0.35;
+                pl.mesh.scale.set(w, Math.max(0.01, pl.h + pl.hover * 0.4), w);
+                pl.mat.emissiveIntensity = 0.22 + pl.hover * 0.6;
+                pl.label.sprite.position.y = pl.h + pl.hover * 0.4 + 1.1 + Math.sin(t * 1.4 + i) * 0.1;
+                const s = 2.5 * (1 + pl.hover * 0.18);
+                pl.label.sprite.scale.set(s, (s * 170) / 420, 1);
             });
         },
     };
 }
 
 // ── รอบขาย: กองเหรียญทอง 3 กอง (Private / Pre-Sale / Public) ────────────
-export function buildSale() {
+export function buildSale({ onCoinLand } = {}) {
     const group = new THREE.Group();
     const stacks = [
         { label: 'Private', price: '$0.05', n: 7, x: -4.8 },
@@ -201,14 +253,16 @@ export function buildSale() {
     ];
     const total = stacks.reduce((a, s) => a + s.n, 0);
     const coinGeo = new THREE.CylinderGeometry(1.25, 1.25, 0.26, 48);
-    const coinMat = new THREE.MeshStandardMaterial({ color: '#f0b429', metalness: 1, roughness: 0.3 });
+    const coinMat = new THREE.MeshStandardMaterial({ color: '#f0b429', metalness: 1, roughness: 0.3, emissive: '#000000' });
     const mesh = new THREE.InstancedMesh(coinGeo, coinMat, total);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.frustumCulled = false;
     group.add(mesh);
     const coins = [];
+    const labels = [];
     stacks.forEach((s) => {
         for (let i = 0; i < s.n; i++) {
-            coins.push({ x: s.x + (Math.random() - 0.5) * 0.14, y: 0.13 + i * 0.28, z: (Math.random() - 0.5) * 0.14, rot: Math.random() * 6, delay: i * 0.05 + Math.abs(s.x) * 0.02 });
+            coins.push({ x: s.x + (Math.random() - 0.5) * 0.14, y: 0.13 + i * 0.28, z: (Math.random() - 0.5) * 0.14, rot: Math.random() * 6, delay: i * 0.05 + Math.abs(s.x) * 0.02, landed: false });
         }
         const label = createLabel({ width: 420, height: 150, scale: 3 });
         label.set([
@@ -217,23 +271,48 @@ export function buildSale() {
         ], { border: '#f6bd35' });
         label.sprite.position.set(s.x, 0.4 + s.n * 0.28 + 1.3, 0);
         group.add(label.sprite);
+        labels.push(label.sprite);
     });
+    // พื้นที่กด: กล่องใสครอบทั้งสามกอง
+    const hitBox = new THREE.Mesh(new THREE.BoxGeometry(14, 6.5, 3.5), new THREE.MeshBasicMaterial({ visible: false }));
+    hitBox.position.y = 3;
+    group.add(hitBox);
+
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
     const v = new THREE.Vector3();
     const one = new THREE.Vector3();
     let built = 0; // 0..1 เหรียญร่วงลงมาเรียงกอง
+    let hover = 0;
+    let hovered = false;
 
     return {
         object: group,
+        targets: [tag(hitBox, 'sale')],
+        setHover(key) {
+            hovered = key === 'sale';
+        },
         update(t, dt, focus) {
             if (focus > 0.3) built = Math.min(1, built + dt / 2.2);
+            hover = approach(hover, hovered ? 1 : 0, 8, dt);
+            coinMat.emissive.setRGB(0.35 * hover, 0.22 * hover, 0);
+            labels.forEach((sp, i) => {
+                const s = 3 * (1 + hover * 0.12);
+                sp.scale.set(s, (s * 150) / 420, 1);
+                sp.position.y = 0.4 + stacks[i].n * 0.28 + 1.3 + hover * 0.25 + Math.sin(t * 2 + i) * 0.06 * hover;
+            });
             coins.forEach((c, i) => {
                 const k = clamp((built * 1.6 - c.delay) / 0.6, 0, 1);
+                if (k >= 1 && !c.landed) {
+                    c.landed = true;
+                    onCoinLand?.();
+                }
                 const drop = (1 - k) * (1 - k) * 9;
-                v.set(c.x, c.y + drop, c.z);
-                e.set(0, c.rot + (1 - k) * 6 + t * 0.05, (1 - k) * 1.2);
+                // ชี้อยู่: เหรียญบนสุดของแต่ละกองเด้งเบาๆ
+                const bounce = hover * Math.max(0, Math.sin(t * 6 + i * 0.7)) * 0.05 * (c.y / 4);
+                v.set(c.x, c.y + drop + bounce, c.z);
+                e.set(0, c.rot + (1 - k) * 6 + t * (0.05 + hover * 0.6), (1 - k) * 1.2);
                 q.setFromEuler(e);
                 const sz = k > 0 ? 1 : 0.0001;
                 mesh.setMatrixAt(i, m.compose(v, q, one.set(sz, sz, sz)));
@@ -243,58 +322,184 @@ export function buildSale() {
     };
 }
 
-// ── ระบบนิเวศ: การ์ดภาพลอยเป็นโค้ง กดแล้วพาไปหน้านั้น ───────────────────
+// ── ระบบนิเวศ: การ์ดลอยเป็นโค้ง — ภาพ + ชื่อ + คำอธิบาย + ปุ่มในตัวการ์ด ──
+
+const CARD_W = 512;
+const CARD_H = 704;
+
+/** ตัดบรรทัดภาษาไทยตามคำ (Intl.Segmenter) ไม่ให้ขาดกลางคำ */
+function wrapLines(ctx, text, maxWidth, maxLines) {
+    const seg = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter('th', { granularity: 'word' }) : null;
+    const words = seg ? Array.from(seg.segment(String(text)), (s) => s.segment) : String(text).split(/(\s+)/);
+    const lines = [];
+    let line = '';
+    for (const w of words) {
+        const next = line + w;
+        if (ctx.measureText(next).width > maxWidth && line.trim()) {
+            lines.push(line.trim());
+            line = w.trimStart();
+            if (lines.length === maxLines) break;
+        } else {
+            line = next;
+        }
+    }
+    if (lines.length < maxLines && line.trim()) lines.push(line.trim());
+    if (lines.length === maxLines && words.join('').length > lines.join('').length + 1) {
+        lines[maxLines - 1] = lines[maxLines - 1].replace(/.{1,2}$/, '') + '…';
+    }
+    return lines;
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+}
+
+function paintCard(ctx, card, img) {
+    const W = CARD_W;
+    const H = CARD_H;
+    const font = 'ui-sans-serif, system-ui, "Noto Sans Thai", "Leelawadee UI", sans-serif';
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    roundRectPath(ctx, 6, 6, W - 12, H - 12, 34);
+    ctx.clip();
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#0e1a36');
+    bg.addColorStop(1, '#070d1f');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    // ภาพหัวการ์ด (ครอปแบบ cover)
+    const imgH = H * 0.54;
+    if (img) {
+        const s = Math.max(W / img.width, imgH / img.height);
+        const w = img.width * s;
+        const h = img.height * s;
+        ctx.drawImage(img, (W - w) / 2, (imgH - h) / 2, w, h);
+    }
+    const fade = ctx.createLinearGradient(0, imgH * 0.45, 0, imgH + 4);
+    fade.addColorStop(0, 'rgba(7,13,31,0)');
+    fade.addColorStop(1, 'rgba(7,13,31,1)');
+    ctx.fillStyle = fade;
+    ctx.fillRect(0, imgH * 0.45, W, imgH * 0.56);
+    // แถบสีประจำการ์ด
+    ctx.fillStyle = card.color;
+    ctx.fillRect(40, imgH + 18, 64, 6);
+    // ชื่อ
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `800 46px ${font}`;
+    ctx.textBaseline = 'top';
+    wrapLines(ctx, card.title, W - 80, 1).forEach((l) => ctx.fillText(l, 40, imgH + 40));
+    // คำอธิบาย
+    ctx.fillStyle = '#b8c4d8';
+    ctx.font = `500 27px ${font}`;
+    wrapLines(ctx, card.desc, W - 80, 2).forEach((l, i) => ctx.fillText(l, 40, imgH + 104 + i * 38));
+    // ปุ่ม
+    const bw = 230;
+    const bh = 58;
+    const bx = 40;
+    const by = H - bh - 36;
+    roundRectPath(ctx, bx, by, bw, bh, 29);
+    const btn = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+    btn.addColorStop(0, card.color);
+    btn.addColorStop(1, '#8b5cf6');
+    ctx.fillStyle = btn;
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `700 26px ${font}`;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(card.cta, bx + 26, by + bh / 2 + 1);
+    ctx.restore();
+    // ขอบการ์ด
+    roundRectPath(ctx, 6, 6, W - 12, H - 12, 34);
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = card.color;
+    ctx.globalAlpha = 0.85;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+}
+
+/**
+ * @param {{ key:string, title:string, desc:string, cta:string, image:string, color:string }[]} cards
+ */
 export function buildEcosystem(cards) {
     const group = new THREE.Group();
     const items = [];
-    const geo = new THREE.PlaneGeometry(3.4, 4.4);
+    const geo = new THREE.PlaneGeometry(3.7, (3.7 * CARD_H) / CARD_W);
+    const glowTex = glowTexture();
     cards.forEach((card, i) => {
         const a = -0.66 + (i / Math.max(1, cards.length - 1)) * 1.32;
-        const x = Math.sin(a) * 8.5;
-        const z = -Math.cos(a) * 8.5 + 7;
-        const mat = new THREE.MeshBasicMaterial({ color: '#1e293b', transparent: true, opacity: 0.96, side: THREE.DoubleSide });
+        const x = Math.sin(a) * 8.8;
+        const z = -Math.cos(a) * 8.8 + 7;
+        const t = canvasTexture(CARD_W, CARD_H);
+        const mat = new THREE.MeshBasicMaterial({ map: t.tex, transparent: true, side: THREE.DoubleSide, toneMapped: false });
+        const pivot = new THREE.Group();
+        pivot.position.set(x, 3.6, z);
+        pivot.lookAt(0, 3.6, 18);
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(x, 3.4, z);
-        mesh.lookAt(0, 3.4, 18);
-        mesh.userData.href = card.href;
-        const frame = new THREE.LineSegments(
-            new THREE.EdgesGeometry(geo),
-            new THREE.LineBasicMaterial({ color: card.color || '#22d3ee', transparent: true, opacity: 0.8 }),
-        );
-        mesh.add(frame);
-        const label = createLabel({ width: 480, height: 110, scale: 3.2, accent: card.color });
-        label.set([{ text: card.title, size: 46 }], { border: card.color });
-        label.sprite.position.set(0, -2.75, 0.05);
-        mesh.add(label.sprite);
-        group.add(mesh);
-        items.push({ mesh, mat, frame, label, base: mesh.position.clone(), hover: 0, i });
-        loadTexture(card.image).then((tex) => {
-            if (!tex) return;
-            mat.map = tex;
-            mat.color.set('#ffffff');
-            mat.needsUpdate = true;
-        });
+        pivot.add(mesh);
+        const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: card.color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+        glow.scale.set(7, 8.5, 1);
+        glow.position.z = -0.2;
+        glow.raycast = () => {};
+        pivot.add(glow);
+        group.add(pivot);
+        const item = { card, pivot, mesh, glow, tex: t, img: null, hover: 0, tiltX: 0, tiltY: 0, tx: 0, ty: 0, i };
+        items.push(item);
+        tag(mesh, `eco:${card.key}`);
+        paintCard(t.ctx, card, null);
+        t.tex.needsUpdate = true;
+        const img = new Image();
+        img.decoding = 'async';
+        img.onload = () => {
+            item.img = img;
+            paintCard(t.ctx, item.card, img);
+            t.tex.needsUpdate = true;
+        };
+        img.src = card.image;
     });
 
     let hovered = null;
     return {
         object: group,
-        meshes: items.map((it) => it.mesh),
-        /** คืน href ของการ์ดที่ชี้อยู่ (หรือ null) */
-        pick(raycaster) {
-            const hit = raycaster.intersectObjects(items.map((it) => it.mesh), false)[0];
-            hovered = hit ? items.find((it) => it.mesh === hit.object) : null;
-            return hovered?.mesh.userData.href ?? null;
+        targets: items.map((it) => ({ object: it.mesh, key: `eco:${it.card.key}` })),
+        /** hit.uv = จุดบนการ์ดที่เมาส์ชี้ → เอียงการ์ดเข้าหาจุดนั้น */
+        setHover(key, hit) {
+            hovered = key;
+            const it = items.find((x) => `eco:${x.card.key}` === key);
+            if (it && hit?.uv) {
+                it.ty = (hit.uv.x - 0.5) * 0.5;
+                it.tx = -(hit.uv.y - 0.5) * 0.4;
+            }
         },
-        clearHover() {
-            hovered = null;
+        /** สลับภาษา: วาดข้อความบนการ์ดใหม่ */
+        relabel(next) {
+            next.forEach((c) => {
+                const it = items.find((x) => x.card.key === c.key);
+                if (!it) return;
+                it.card = { ...it.card, ...c };
+                paintCard(it.tex.ctx, it.card, it.img);
+                it.tex.tex.needsUpdate = true;
+            });
         },
         update(t, dt) {
             items.forEach((it) => {
-                it.hover += ((hovered === it ? 1 : 0) - it.hover) * (1 - Math.exp(-10 * dt));
-                it.mesh.position.y = it.base.y + Math.sin(t * 1.2 + it.i) * 0.18 + it.hover * 0.35;
-                it.mesh.scale.setScalar(1 + it.hover * 0.08);
-                it.frame.material.opacity = 0.55 + it.hover * 0.45;
+                const on = hovered === `eco:${it.card.key}`;
+                it.hover = approach(it.hover, on ? 1 : 0, 10, dt);
+                if (!on) {
+                    it.tx = 0;
+                    it.ty = 0;
+                }
+                it.tiltX = approach(it.tiltX, it.tx, 10, dt);
+                it.tiltY = approach(it.tiltY, it.ty, 10, dt);
+                it.mesh.position.set(0, Math.sin(t * 1.2 + it.i) * 0.16 + it.hover * 0.35, it.hover * 1.1);
+                it.mesh.rotation.set(it.tiltX, it.tiltY, 0);
+                it.mesh.scale.setScalar(1 + it.hover * 0.06);
+                it.glow.material.opacity = 0.12 + it.hover * 0.55;
             });
         },
     };
@@ -310,26 +515,35 @@ export function buildFeatures(features) {
     features.forEach((f, i) => {
         const x = (i - (features.length - 1) / 2) * 3.9;
         const z = Math.abs(i - (features.length - 1) / 2) * -1.2;
+        const unit = new THREE.Group();
+        unit.position.set(x, 0, z);
         const base = new THREE.Mesh(baseGeo, new THREE.MeshStandardMaterial({ color: '#0f1d3a', metalness: 0.7, roughness: 0.35 }));
-        base.position.set(x, 0.2, z);
-        const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: f.color }));
+        base.position.y = 0.2;
+        const ringMat = new THREE.MeshBasicMaterial({ color: f.color, transparent: true, opacity: 0.85 });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
         ring.rotation.x = Math.PI / 2;
-        ring.position.set(x, 0.42, z);
+        ring.position.y = 0.42;
         const beam = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: f.color, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
         beam.scale.set(3.4, 3.4, 1);
-        beam.position.set(x, 1.1, z);
+        beam.position.y = 1.1;
+        beam.raycast = () => {};
         // ของสำรองระหว่างรอภาพ (หรือถ้าภาพหาย): ทรงเรขาคณิตเรืองแสง
         const fallback = new THREE.Mesh(
             new THREE.OctahedronGeometry(0.9, 0),
             new THREE.MeshStandardMaterial({ color: f.color, emissive: f.color, emissiveIntensity: 0.6, metalness: 0.6, roughness: 0.25, flatShading: true }),
         );
-        fallback.position.set(x, 2.6, z);
+        fallback.position.y = 2.6;
         const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
         icon.scale.set(3, 3, 1);
-        icon.position.set(x, 2.8, z);
+        icon.position.y = 2.8;
         icon.visible = false;
-        group.add(base, ring, beam, fallback, icon);
-        items.push({ icon, fallback, ring, x, z, i });
+        // พื้นที่กดทั้งแท่น+ไอคอน
+        const hit = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 4.6, 16), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.y = 2.2;
+        unit.add(base, ring, beam, fallback, icon, hit);
+        group.add(unit);
+        tag(hit, `feature:${f.key}`);
+        items.push({ key: `feature:${f.key}`, icon, fallback, ring, ringMat, beam, hover: 0, i });
         loadTexture(f.image).then((tex) => {
             if (!tex) return;
             icon.material.map = tex;
@@ -338,15 +552,27 @@ export function buildFeatures(features) {
             fallback.visible = false;
         });
     });
+    let hovered = null;
     return {
         object: group,
-        update(t) {
+        targets: items.map((it) => ({ object: group, key: it.key })).slice(0, 0).concat(
+            group.children.map((unit, i) => ({ object: unit.children[unit.children.length - 1], key: items[i].key })),
+        ),
+        setHover(key) {
+            hovered = key;
+        },
+        update(t, dt) {
             items.forEach((it) => {
-                const bob = Math.sin(t * 1.5 + it.i * 0.9) * 0.22;
+                it.hover = approach(it.hover, hovered === it.key ? 1 : 0, 10, dt);
+                const bob = Math.sin(t * 1.5 + it.i * 0.9) * 0.22 + it.hover * 0.45;
+                const s = 3 * (1 + it.hover * 0.22);
+                it.icon.scale.set(s, s, 1);
                 it.icon.position.y = 2.8 + bob;
                 it.fallback.position.y = 2.6 + bob;
-                it.fallback.rotation.y = t * 0.8 + it.i;
-                it.ring.scale.setScalar(1 + Math.sin(t * 2 + it.i) * 0.04);
+                it.fallback.rotation.y = t * (0.8 + it.hover * 3) + it.i;
+                it.ring.scale.setScalar(1 + Math.sin(t * 2 + it.i) * 0.04 + it.hover * 0.12);
+                it.ringMat.opacity = 0.85;
+                it.beam.material.opacity = 0.5 + it.hover * 0.4;
             });
         },
     };
@@ -355,10 +581,8 @@ export function buildFeatures(features) {
 // ── ปิดท้าย: ประตูเหรียญทอง + ลำแสง + ประกายทองลอยขึ้น ───────────────────
 export function buildGate() {
     const group = new THREE.Group();
-    const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(5.2, 0.42, 24, 128),
-        new THREE.MeshStandardMaterial({ color: '#f0b429', metalness: 1, roughness: 0.25 }),
-    );
+    const ringMat = new THREE.MeshStandardMaterial({ color: '#f0b429', metalness: 1, roughness: 0.25, emissive: '#000000' });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.42, 24, 128), ringMat);
     ring.position.y = 5.8;
     group.add(ring);
     const disc = new THREE.Mesh(
@@ -372,6 +596,7 @@ export function buildGate() {
         new THREE.MeshBasicMaterial({ color: '#5ee7ff', transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }),
     );
     beam.position.y = 20;
+    beam.raycast = () => {};
     group.add(beam);
 
     const N = 220;
@@ -384,19 +609,27 @@ export function buildGate() {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const tex = glowTexture();
-    const sparks = new THREE.Points(geo, new THREE.PointsMaterial({ map: tex, color: '#ffd76a', size: 0.35, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const sparks = new THREE.Points(geo, new THREE.PointsMaterial({ map: glowTexture(), color: '#ffd76a', size: 0.35, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    sparks.raycast = () => {};
     group.add(sparks);
 
+    let hover = 0;
+    let hovered = false;
     return {
         object: group,
+        targets: [tag(disc, 'gate'), tag(ring, 'gate')],
+        setHover(key) {
+            hovered = key === 'gate';
+        },
         update(t, dt, focus) {
-            ring.rotation.z = t * 0.25;
-            disc.material.opacity = 0.12 + Math.sin(t * 2) * 0.05 + focus * 0.1;
+            hover = approach(hover, hovered ? 1 : 0, 8, dt);
+            ring.rotation.z = t * (0.25 + hover * 1.2);
+            ringMat.emissive.setRGB(0.3 * hover, 0.2 * hover, 0);
+            disc.material.opacity = 0.12 + Math.sin(t * 2) * 0.05 + focus * 0.1 + hover * 0.25;
             if (focus <= 0) return;
             seeds.forEach((sd, i) => {
                 pos[i * 3] = sd.x;
-                pos[i * 3 + 1] = (t * sd.s + sd.o) % 14;
+                pos[i * 3 + 1] = (t * sd.s * (1 + hover * 1.5) + sd.o) % 14;
                 pos[i * 3 + 2] = sd.z;
             });
             geo.attributes.position.needsUpdate = true;

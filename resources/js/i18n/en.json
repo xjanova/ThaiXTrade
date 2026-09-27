@@ -22,7 +22,8 @@
         "signIn": "Sign In",
         "profile": "Profile",
         "linkAccount": "Link an email account",
-        "liquidity": "Liquidity"
+        "liquidity": "Liquidity",
+        "backHome": "Back to home"
     },
     "home": {
         "hero": "Decentralized Exchange Platform",
@@ -90,7 +91,7 @@
         "switchTo3d": "Open the 3D home page",
         "switchToLite": "Lite mode",
         "loading": "Building the 3D world...",
-        "scrollHint": "Scroll to travel with Nong TPIX",
+        "scrollHint": "Scroll or swipe once for the next stop with Nong TPIX",
         "stationsLabel": "Home page stations",
         "ecoHint": "Click a card in the 3D scene to open that page",
         "nav": {
@@ -101,7 +102,20 @@
             "ecosystem": "Ecosystem",
             "features": "Why TPIX",
             "cta": "Start trading"
-        }
+        },
+        "chartSub": "1H chart · live prices from Binance",
+        "soundOn": "Turn sound effects on",
+        "soundOff": "Turn sound effects off",
+        "go": {
+            "chart": "Open the {pair} trading board →",
+            "sale": "Go to the TPIX sale →",
+            "masternode": "Go to Master Node →",
+            "pair": "Trade {symbol}/USDT →",
+            "open": "Open {name} →",
+            "openShort": "Open page →",
+            "trade": "Start trading →"
+        },
+        "nextLabel": "Next stop: {name}"
     },
     "trade": {
         "title": "Trading Dashboard",

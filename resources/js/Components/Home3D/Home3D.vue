@@ -6,6 +6,7 @@
  *   hero (กำแพงแท่งเทียนจริง + เหรียญ TPIX) → Master Node → ตลาด → รอบขาย → ระบบนิเวศ → จุดเด่น → เริ่มเทรด
  * แผงข้อความแต่ละสถานีเป็น HTML จริง (ลิงก์/ปุ่ม/อ่านด้วยโปรแกรมอ่านจอได้) ลอยทับฉาก
  * น้อง TPIX ยืนที่จุดยืนของสถานีที่ดูอยู่ แล้วบินไปสถานีถัดไปพร้อมพูดแนะนำ
+ * วัตถุ 3D ทุกชิ้นกดได้ (ชี้แล้วมีป้าย "ไปหน้า … →") · เสียงประกอบสังเคราะห์สด ปิดได้
  *
  * ถอยกลับหน้าเดิม (emit 'fallback') เมื่อ: บูตไม่ขึ้นใน 15 วิ · GPU หลุด · FPS ต่ำจนลดคุณภาพแล้วยังไม่ไหว
  *
@@ -22,20 +23,28 @@ import { vTilt } from '@/Components/Home/directives';
 import { STATIONS, journeyF, panelVisibility } from './stations';
 import { createEngine } from './engine';
 import { buildWorld } from './world/index';
+import { sfx, useHomeSound } from './sound';
+import { createSnapScroll } from './snapScroll';
 import { useMarketData } from '@/Composables/useMarketData';
 import { useTranslation } from '@/Composables/useTranslation';
 import { useMascot } from '@/Composables/useMascot';
 
 const emit = defineEmits(['fallback', 'lite']);
 
-const { t } = useTranslation();
+const { t, locale } = useTranslation();
 const mascot = useMascot();
+const sound = useHomeSound();
 const { tickers, topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
 
 const canvasEl = ref(null);
 const loading = ref(true);
 const current = ref('hero');
 const tip = reactive({ show: false, x: 0, y: 0, candle: null });
+// ป้าย "ไปหน้า … →" ข้างเมาส์เมื่อชี้วัตถุที่กดได้
+const hint = reactive({ show: false, x: 0, y: 0, label: '' });
+
+// สถานีที่ยืนอยู่ (ลำดับ) — ใช้กับปุ่ม "ถัดไป"
+const currentIndex = computed(() => Math.max(0, STATIONS.findIndex((st) => st.key === current.value)));
 
 const sectionEls = {};
 const panelEls = {};
@@ -44,32 +53,56 @@ const setRef = (bag, key) => (el) => {
     if (el) bag[key] = el;
 };
 
+// สถิติบนฮีโร่ — กดแล้วไปหน้าที่เกี่ยวข้อง
 const stats = computed(() => [
-    { label: t('home.supportedChains'), value: '9' },
-    { label: t('home.tradingPairs'), value: '100+' },
-    { label: t('home.dexProtocol'), value: 'PancakeSwap' },
-    { label: t('home.network'), value: 'TPIX Chain + BSC' },
+    { label: t('home.supportedChains'), value: '9', href: '/bridge' },
+    { label: t('home.tradingPairs'), value: '100+', href: '/markets' },
+    { label: t('home.dexProtocol'), value: 'PancakeSwap', href: '/swap' },
+    { label: t('home.network'), value: 'TPIX Chain + BSC', href: '/explorer' },
 ]);
 
 // การ์ดระบบนิเวศ: ใช้ทั้งในฉาก 3D (คลิกได้) และในแผง HTML
 const ECO = [
-    { key: 'tokenSale', title: 'Token Sale', href: '/token-sale', image: '/images/art/card-tokensale.webp', color: '#22d3ee' },
-    { key: 'whitepaper', title: 'Whitepaper', href: '/whitepaper', image: '/images/art/card-whitepaper.webp', color: '#a78bfa' },
-    { key: 'explorer', title: 'Explorer', href: '/explorer', image: '/images/art/card-explorer.webp', color: '#00c853' },
-    { key: 'masternode', title: 'Master Node', href: '/masternode', image: '/images/art/card-masternode.webp', color: '#f6bd35' },
+    { key: 'tokenSale', href: '/token-sale', image: '/images/art/card-tokensale.webp', color: '#22d3ee' },
+    { key: 'whitepaper', href: '/whitepaper', image: '/images/art/card-whitepaper.webp', color: '#a78bfa' },
+    { key: 'explorer', href: '/explorer', image: '/images/art/card-explorer.webp', color: '#00c853' },
+    { key: 'masternode', href: '/masternode', image: '/images/art/card-masternode.webp', color: '#f6bd35' },
 ];
+// ข้อความบนการ์ด 3D ตามภาษาปัจจุบัน
+const ecoCards = () => ECO.map((c) => ({ ...c, title: t(`home.eco.${c.key}`), desc: t(`home.eco.${c.key}Desc`), cta: t('home3d.go.openShort') }));
 
-// จุดเด่น: ไอคอน 3D เจนจาก ChatGPT (ไม่มีไฟล์ = ฉากใช้ทรงเรขาคณิตแทน)
+// จุดเด่น: ไอคอน 3D เจนจาก ChatGPT (ไม่มีไฟล์ = ฉากใช้ทรงเรขาคณิตแทน) — กดได้ทุกอัน
 const FEATURES = [
-    { key: 'feature3', image: '/images/home3d/feature-shield.webp', color: '#22d3ee' },
-    { key: 'feature4', image: '/images/home3d/feature-network.webp', color: '#a78bfa' },
-    { key: 'feature2', image: '/images/home3d/feature-speed.webp', color: '#f6bd35' },
-    { key: 'feature1', image: '/images/home3d/feature-gas.webp', color: '#00c853' },
+    { key: 'feature3', image: '/images/home3d/feature-shield.webp', color: '#22d3ee', href: '/whitepaper' },
+    { key: 'feature4', image: '/images/home3d/feature-network.webp', color: '#a78bfa', href: '/bridge' },
+    { key: 'feature2', image: '/images/home3d/feature-speed.webp', color: '#f6bd35', href: '/explorer' },
+    { key: 'feature1', image: '/images/home3d/feature-gas.webp', color: '#00c853', href: '/swap' },
 ];
 
+/** ชิ้นที่ชี้/กดในฉาก → ลิงก์ + ป้าย */
+function resolveTarget(key) {
+    if (key === 'chart') return { href: '/trade/BTC-USDT', label: t('home3d.go.chart', { pair: 'BTC/USDT' }) };
+    if (key === 'coin' || key === 'sale') return { href: '/token-sale', label: t('home3d.go.sale') };
+    if (key === 'nodes') return { href: '/masternode', label: t('home3d.go.masternode') };
+    if (key === 'gate') return { href: '/trade', label: t('home3d.go.trade') };
+    if (key.startsWith('pair:')) {
+        const sym = key.slice(5);
+        return /^[A-Z0-9]{2,15}$/.test(sym) ? { href: `/trade/${sym}-USDT`, label: t('home3d.go.pair', { symbol: sym }) } : null;
+    }
+    if (key.startsWith('eco:')) {
+        const card = ECO.find((c) => `eco:${c.key}` === key);
+        return card ? { href: card.href, label: t('home3d.go.open', { name: t(`home.eco.${card.key}`) }) } : null;
+    }
+    if (key.startsWith('feature:')) {
+        const ft = FEATURES.find((x) => `feature:${x.key}` === key);
+        return ft ? { href: ft.href, label: `${t(`home.${ft.key}`)} →` } : null;
+    }
+    return null;
+}
+
+const btcRow = computed(() => tickers.value.find((r) => r.baseAsset === 'BTC') || null);
 const btcPrice = computed(() => {
-    const row = tickers.value.find((r) => r.baseAsset === 'BTC');
-    const p = row ? parseFloat(row.price) : NaN;
+    const p = btcRow.value ? parseFloat(btcRow.value.price) : NaN;
     return Number.isFinite(p) ? p : null;
 });
 
@@ -83,7 +116,15 @@ let centers = [];
 let smooth = 0;
 let f = 0;
 let navBottom = 64;
+let arrivedAt = -1;
+let detachUnlock = null;
+let lastHoverEl = null;
 const lastVis = new Map();
+// เลื่อน/ปัด 1 ครั้ง = 1 สถานี
+const snap = createSnapScroll({
+    getCenters: () => centers,
+    reduced: typeof window !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false),
+});
 
 // ── วางผัง: ตำแหน่ง scroll ของกลางแต่ละสถานี ───────────────────────────
 function layout() {
@@ -101,11 +142,12 @@ function layout() {
 }
 
 function goTo(i) {
-    window.scrollTo({ top: centers[i] ?? 0, behavior: 'smooth' });
+    snap.go(i);
 }
 
-// ── ทุกเฟรม: scroll → กล้อง → แผง → จุดยืนน้อง ─────────────────────────
+// ── ทุกเฟรม: scroll → กล้อง → แผง → จุดยืนน้อง → เสียง ──────────────────
 function tick(dt, time) {
+    snap.step();
     const y = window.scrollY;
     smooth += (y - smooth) * (1 - Math.exp(-7 * dt));
     if (Math.abs(y - smooth) > window.innerHeight * 4) smooth = y;
@@ -142,6 +184,16 @@ function tick(dt, time) {
         Object.entries(spotEls).forEach(([k, el]) => el.classList.toggle('is-active', k === key));
     }
     if (key && key !== current.value) current.value = key;
+
+    // เสียง: ลมตามความเร็วกล้อง + ระฆังตอนถึงสถานี
+    sfx.wind(world.speed / 30);
+    const d = Math.abs(f - Math.round(f));
+    if (d < 0.06 && Math.round(f) !== arrivedAt && Math.round(f) >= 0 && Math.round(f) < n) {
+        arrivedAt = Math.round(f);
+        sfx.arrive(arrivedAt);
+    } else if (d > 0.35) {
+        arrivedAt = -1;
+    }
 }
 
 // ── ข้อมูลตลาดจริง ────────────────────────────────────────────────────────
@@ -151,6 +203,7 @@ async function loadCandles() {
         if (alive && world && data?.success) {
             world.wall.setCandles(data.data);
             if (btcPrice.value) world.wall.setLivePrice(btcPrice.value);
+            updateChartHeader();
         }
     } catch {
         // ไม่มีกราฟ = กำแพงว่าง แต่ฉากที่เหลือยังใช้ได้ รอบหน้าลองใหม่
@@ -166,38 +219,109 @@ async function loadDepth() {
     }
 }
 
+/** ป้ายหัวกราฟ: BTC / USDT · กราฟ 1 ชม. · ราคา + % 24 ชม. */
+function updateChartHeader() {
+    const change = btcRow.value ? parseFloat(btcRow.value.priceChangePercent) : NaN;
+    world?.wall.setHeader({ base: 'BTC', quote: 'USDT', sub: t('home3d.chartSub'), change: Number.isFinite(change) ? change : null });
+}
+
 watch([topGainers, topVolume], () => {
     world?.tickers.setTickers([...topGainers.value, ...topVolume.value]);
 });
 
 watch(btcPrice, (p) => {
     if (p) world?.wall.setLivePrice(p);
+    updateChartHeader();
+});
+
+// สลับภาษา: ข้อความที่วาดในฉาก (การ์ด/ป้ายหัวกราฟ) ต้องเปลี่ยนตาม
+watch(locale, () => {
+    world?.relabel(ecoCards());
+    updateChartHeader();
+    hint.show = false;
 });
 
 // ── เมาส์/แตะ ───────────────────────────────────────────────────────────
 function onPointerMove(e) {
     if (!world) return;
-    world.pointer(e.clientX / window.innerWidth, e.clientY / window.innerHeight, e.target === canvasEl.value);
-    if (e.target !== canvasEl.value) tip.show = false;
+    const onCanvas = e.target === canvasEl.value;
+    // นิ้วไม่มี hover — ชี้แล้วค้างป้ายไว้จะดูเหมือนบั๊ก
+    world.pointer(e.clientX / window.innerWidth, e.clientY / window.innerHeight, onCanvas && e.pointerType !== 'touch');
+    hint.x = e.clientX;
+    hint.y = e.clientY;
+    if (!onCanvas) {
+        tip.show = false;
+        hint.show = false;
+    }
 }
 
-function onCanvasClick() {
-    const href = world?.clickHref();
-    if (href) router.visit(href);
+// เมาส์ออกนอกหน้าต่าง → ป้าย/ไฮไลต์ต้องหาย ไม่ค้าง (และไม่มีเสียงชี้ตอนกล้องบินผ่าน)
+function onPointerOut(e) {
+    if (e.relatedTarget || !world) return;
+    world.pointer(0, 0, false);
+    tip.show = false;
+    hint.show = false;
+    lastHoverEl = null;
 }
 
+function onCanvasClick(e) {
+    if (!world) return;
+    const href = world.hrefAt(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
+    if (!href) return;
+    sfx.click();
+    router.visit(href);
+}
+
+function onTarget(info) {
+    hint.show = !!info;
+    hint.label = info?.label ?? '';
+    if (canvasEl.value) canvasEl.value.style.cursor = info ? 'pointer' : '';
+    if (info) {
+        if (info.key.startsWith('eco:')) sfx.card(hint.x / window.innerWidth);
+        else sfx.hover(hint.x / window.innerWidth, hint.y / window.innerHeight);
+    }
+}
+
+let lastCandle = null;
 function onCandleHover(info) {
     tip.show = !!info;
-    if (!info) return;
+    if (!info) {
+        lastCandle = null;
+        return;
+    }
     tip.x = info.x;
     tip.y = info.y;
     tip.candle = info.candle;
+    if (info.candle !== lastCandle) {
+        lastCandle = info.candle;
+        sfx.tick(info.candle.close >= info.candle.open);
+    }
+}
+
+// เสียงชี้/กดปุ่มและลิงก์ในแผง (น้อง TPIX มีเสียงของตัวเอง ไม่ซ้อน)
+function onUiPointerOver(e) {
+    if (e.pointerType !== 'mouse') return;
+    const el = e.target.closest?.('.h3d-panel a[href], .h3d-panel button, .h3d-dots button, .h3d-corner button');
+    if (!el) {
+        lastHoverEl = null; // ออกจากปุ่มแล้วกลับมาปุ่มเดิม = มีเสียงอีก
+        return;
+    }
+    if (el === lastHoverEl) return;
+    lastHoverEl = el;
+    const r = el.getBoundingClientRect();
+    sfx.hover((r.left + r.width / 2) / window.innerWidth, (r.top + r.height / 2) / window.innerHeight);
+}
+
+function onUiClick(e) {
+    if (e.target.closest?.('.h3d-panel a[href], .h3d-panel button, .h3d-dots button, .h3d-corner button')) sfx.click();
 }
 
 const onResize = () => {
     layout();
     lastVis.clear();
 };
+
+const onVisibility = () => (document.hidden ? sfx.pause() : sfx.resume());
 
 /**
  * จับเวลาบูตเฉพาะตอนแท็บมองเห็นอยู่
@@ -225,16 +349,17 @@ onMounted(async () => {
             onLost: () => emit('fallback', 'context'),
         });
         world = buildWorld(engine, {
-            ecosystem: ECO,
+            ecosystem: ecoCards(),
             features: FEATURES,
+            resolveTarget,
+            onTarget,
             onCandleHover,
-            onCursor: (c) => {
-                if (canvasEl.value && canvasEl.value.style.cursor !== c) canvasEl.value.style.cursor = c;
-            },
+            onCoinLand: () => sfx.coin(),
         });
         layout();
         smooth = window.scrollY;
         f = journeyF(smooth, centers);
+        updateChartHeader();
         engine.step(1 / 60);
         // คอมไพล์ล่วงหน้าช่วยกันกระตุก แต่ไม่ยอมรอเกิน 4 วิ (บางเครื่อง/แท็บเบื้องหลังรอไม่จบ)
         await Promise.race([engine.compile().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
@@ -252,12 +377,21 @@ onMounted(async () => {
         return;
     }
 
+    detachUnlock = sfx.attachUnlock();
+    snap.attach();
     window.addEventListener('resize', onResize);
     window.addEventListener('pointermove', onPointerMove, { passive: true });
+    document.addEventListener('pointerover', onUiPointerOver, { passive: true });
+    document.addEventListener('pointerout', onPointerOut, { passive: true });
+    document.addEventListener('click', onUiClick, true);
+    document.addEventListener('visibilitychange', onVisibility);
 
+    // ออกจากหน้าก่อนข้อมูลมา → ห้ามตั้งตัวจับเวลาหลัง unmount (ไม่มีใครเคลียร์ ยิง API ซ้อนไปเรื่อยๆ)
     await fetchTickers();
+    if (!alive) return;
     startAutoRefresh();
     await Promise.all([loadCandles(), loadDepth()]);
+    if (!alive) return;
     klineTimer = setInterval(() => !document.hidden && loadCandles(), 5 * 60 * 1000);
     depthTimer = setInterval(() => !document.hidden && loadDepth(), 30 * 1000);
 });
@@ -266,6 +400,13 @@ onBeforeUnmount(() => {
     alive = false;
     clearTimeout(bootTimer);
     document.removeEventListener('visibilitychange', onBootVisibility);
+    document.removeEventListener('visibilitychange', onVisibility);
+    document.removeEventListener('pointerover', onUiPointerOver);
+    document.removeEventListener('pointerout', onPointerOut);
+    document.removeEventListener('click', onUiClick, true);
+    detachUnlock?.();
+    snap.detach();
+    sfx.pause();
     clearInterval(klineTimer);
     clearInterval(depthTimer);
     window.removeEventListener('resize', onResize);
@@ -337,10 +478,11 @@ function fmtTime(ms) {
                                 </button>
                             </div>
                             <div class="grid grid-cols-2 gap-2.5">
-                                <div v-for="s in stats" :key="s.label" v-tilt="{ max: 10 }" class="h3d-chip">
+                                <Link v-for="s in stats" :key="s.label" v-tilt="{ max: 10 }" :href="s.href" class="h3d-chip h3d-chip--link">
                                     <p class="text-base xl:text-lg font-bold text-white leading-tight">{{ s.value }}</p>
                                     <p class="text-[11px] text-dark-400">{{ s.label }}</p>
-                                </div>
+                                    <span class="h3d-chip__go" aria-hidden="true">→</span>
+                                </Link>
                             </div>
                             <p class="h3d-hint mt-6 hidden sm:flex">
                                 <span class="h3d-hint__mouse" aria-hidden="true"></span>{{ t('home3d.scrollHint') }}
@@ -356,21 +498,21 @@ function fmtTime(ms) {
                             <h2 class="text-3xl lg:text-4xl font-black text-white mb-3">{{ t('home.nodeTitle') }}</h2>
                             <p class="text-dark-300 mb-5">{{ t('home.nodeDesc') }}</p>
                             <div class="grid grid-cols-3 gap-2 mb-5">
-                                <div v-tilt class="h3d-chip text-center">
+                                <Link v-tilt href="/masternode" class="h3d-chip h3d-chip--link text-center">
                                     <div class="text-[11px] text-dark-400">Light</div>
                                     <div class="text-lg font-black text-cyan-400">10K</div>
                                     <div class="text-[11px] text-trading-green">4-6% APY</div>
-                                </div>
-                                <div v-tilt class="h3d-chip text-center !border-purple-500/30">
+                                </Link>
+                                <Link v-tilt href="/masternode" class="h3d-chip h3d-chip--link text-center !border-purple-500/30">
                                     <div class="text-[11px] text-dark-400">Sentinel</div>
                                     <div class="text-lg font-black text-purple-400">100K</div>
                                     <div class="text-[11px] text-trading-green">7-10% APY</div>
-                                </div>
-                                <div v-tilt class="h3d-chip text-center !border-red-500/30">
+                                </Link>
+                                <Link v-tilt href="/masternode" class="h3d-chip h3d-chip--link text-center !border-red-500/30">
                                     <div class="text-[11px] text-dark-400">Validator</div>
                                     <div class="text-lg font-black text-red-400">10M</div>
                                     <div class="text-[11px] text-trading-green">15-20% APY</div>
-                                </div>
+                                </Link>
                             </div>
                             <div class="flex flex-wrap gap-2">
                                 <Link href="/masternode" class="btn-primary px-5 py-2.5 text-sm font-bold">⚡ {{ t('home.nodeStake') }}</Link>
@@ -417,9 +559,9 @@ function fmtTime(ms) {
                             <h2 class="text-3xl lg:text-4xl font-bold text-white mb-3">{{ t('home.saleTitle') }} <span class="text-gradient">TPIX</span></h2>
                             <p class="text-dark-300 mb-5">{{ t('home.saleDesc') }}</p>
                             <div class="grid grid-cols-3 gap-2 mb-5">
-                                <div v-tilt class="h3d-chip text-center"><p class="text-[11px] text-dark-400">Private</p><p class="text-lg font-bold text-white">$0.05</p></div>
-                                <div v-tilt class="h3d-chip text-center !border-primary-500/40"><p class="text-[11px] text-primary-400">Pre-Sale</p><p class="text-lg font-bold text-white">$0.08</p></div>
-                                <div v-tilt class="h3d-chip text-center"><p class="text-[11px] text-dark-400">Public</p><p class="text-lg font-bold text-white">$0.10</p></div>
+                                <Link v-tilt href="/token-sale" class="h3d-chip h3d-chip--link text-center"><p class="text-[11px] text-dark-400">Private</p><p class="text-lg font-bold text-white">$0.05</p></Link>
+                                <Link v-tilt href="/token-sale" class="h3d-chip h3d-chip--link text-center !border-primary-500/40"><p class="text-[11px] text-primary-400">Pre-Sale</p><p class="text-lg font-bold text-white">$0.08</p></Link>
+                                <Link v-tilt href="/token-sale" class="h3d-chip h3d-chip--link text-center"><p class="text-[11px] text-dark-400">Public</p><p class="text-lg font-bold text-white">$0.10</p></Link>
                             </div>
                             <div class="flex flex-wrap gap-2">
                                 <Link href="/token-sale" class="btn-primary px-5 py-2.5 text-sm">{{ t('home.saleCta') }}</Link>
@@ -448,11 +590,12 @@ function fmtTime(ms) {
                             <h2 class="text-3xl lg:text-4xl font-bold text-white mb-3">{{ t('home.whyTpix') }}</h2>
                             <p class="text-dark-300 mb-4">{{ t('home.whyTpixDesc') }}</p>
                             <div class="grid grid-cols-2 gap-2.5">
-                                <div v-for="ft in FEATURES" :key="ft.key" v-tilt class="h3d-chip">
+                                <Link v-for="ft in FEATURES" :key="ft.key" v-tilt :href="ft.href" class="h3d-chip h3d-chip--link">
                                     <img :src="ft.image" alt="" loading="lazy" class="w-10 h-10 object-contain mb-1.5" @error="$event.target.style.display = 'none'" />
                                     <p class="font-semibold text-white text-sm">{{ t(`home.${ft.key}`) }}</p>
                                     <p class="text-[11px] text-dark-400 leading-snug">{{ t(`home.${ft.key}Desc`) }}</p>
-                                </div>
+                                    <span class="h3d-chip__go" aria-hidden="true">→</span>
+                                </Link>
                             </div>
                         </template>
 
@@ -502,9 +645,40 @@ function fmtTime(ms) {
             </button>
         </nav>
 
-        <button type="button" class="h3d-lite" @click="emit('lite')">
-            <span aria-hidden="true">⚡</span> {{ t('home3d.switchToLite') }}
+        <!-- บอกว่ายังมีต่อ: เลื่อน/ปัดทีเดียวก็ไปสถานีถัดไป -->
+        <button
+            v-if="!loading && currentIndex < STATIONS.length - 1"
+            type="button"
+            class="h3d-next"
+            :aria-label="t('home3d.nextLabel', { name: t(`home3d.nav.${STATIONS[currentIndex + 1].key}`) })"
+            @click="snap.next()"
+        >
+            <span class="h3d-next__label">{{ t(`home3d.nav.${STATIONS[currentIndex + 1].key}`) }}</span>
+            <span class="h3d-next__count">{{ currentIndex + 2 }}/{{ STATIONS.length }}</span>
+            <svg class="h3d-next__chev" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 9l6 6 6-6"/></svg>
         </button>
+
+        <div class="h3d-corner">
+            <button type="button" class="h3d-pill" @click="emit('lite')">
+                <span aria-hidden="true">⚡</span> {{ t('home3d.switchToLite') }}
+            </button>
+            <button
+                type="button"
+                class="h3d-pill h3d-pill--icon"
+                :aria-pressed="sound.enabled.value ? 'true' : 'false'"
+                :aria-label="sound.enabled.value ? t('home3d.soundOff') : t('home3d.soundOn')"
+                :title="sound.enabled.value ? t('home3d.soundOff') : t('home3d.soundOn')"
+                @click="sound.toggle()"
+            >
+                <svg v-if="sound.enabled.value" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5L6 9H3v6h3l5 4V5zM15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/></svg>
+                <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5L6 9H3v6h3l5 4V5zM16 9l5 6M21 9l-5 6"/></svg>
+            </button>
+        </div>
+
+        <!-- ป้ายบอกว่ากดวัตถุนี้แล้วจะไปไหน -->
+        <div v-if="hint.show && hint.label" class="h3d-goto" :style="{ left: `${hint.x}px`, top: `${hint.y}px` }" aria-hidden="true">
+            {{ hint.label }}
+        </div>
 
         <!-- ค่า OHLC ของแท่งที่ชี้ -->
         <div
@@ -589,8 +763,10 @@ function fmtTime(ms) {
     opacity: 0;
 }
 
+/* กล่องสถานีเป็นแค่ระยะเลื่อน — ต้องไม่รับเมาส์ ไม่งั้นบัง canvas ทั้งจอ (เคยทำให้กดการ์ด 3D ไม่ได้) */
 .h3d-st {
     position: relative;
+    pointer-events: none;
 }
 
 /* ชั้นแผงของแต่ละสถานี: ตรึงกับจอ ความชัดคุมด้วย JS ตามตำแหน่งกล้อง */
@@ -752,11 +928,16 @@ function fmtTime(ms) {
     translate: 0 0;
 }
 
-.h3d-lite {
+.h3d-corner {
     position: fixed;
     left: 16px;
     bottom: 16px;
     z-index: 20;
+    display: flex;
+    gap: 8px;
+}
+
+.h3d-pill {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -771,9 +952,96 @@ function fmtTime(ms) {
     transition: color 0.2s ease, border-color 0.2s ease;
 }
 
-.h3d-lite:hover {
+.h3d-pill:hover {
     color: #fff;
     border-color: rgb(var(--c-primary-500) / 0.5);
+}
+
+.h3d-pill--icon {
+    padding: 7px 10px;
+}
+
+.h3d-next {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    translate: -50% 0;
+    z-index: 20;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px 8px 16px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    background: rgb(var(--c-dark-900) / 0.72);
+    border: 1px solid rgb(var(--c-primary-500) / 0.45);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.45), 0 0 24px rgb(var(--c-primary-500) / 0.2);
+    backdrop-filter: blur(10px);
+    animation: h3d-bob 2.2s ease-in-out infinite;
+}
+
+.h3d-next:hover {
+    border-color: rgb(var(--c-primary-400));
+}
+
+.h3d-next__count {
+    color: rgb(var(--c-primary-300));
+    font-family: ui-monospace, Menlo, monospace;
+}
+
+.h3d-next__chev {
+    width: 16px;
+    height: 16px;
+    color: rgb(var(--c-primary-300));
+}
+
+@keyframes h3d-bob {
+    0%, 100% { translate: -50% 0; }
+    50% { translate: -50% 5px; }
+}
+
+.h3d-goto {
+    position: fixed;
+    z-index: 26;
+    transform: translate(14px, 14px);
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    pointer-events: none;
+    white-space: nowrap;
+    background: linear-gradient(135deg, rgb(var(--c-primary-500) / 0.95), rgb(var(--c-accent-500) / 0.95));
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+}
+
+.h3d-chip--link {
+    position: relative;
+    display: block;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.h3d-chip--link:hover {
+    border-color: rgb(var(--c-primary-400) / 0.6);
+    background: rgb(var(--c-primary-500) / 0.1);
+}
+
+.h3d-chip__go {
+    position: absolute;
+    right: 10px;
+    top: 8px;
+    font-size: 12px;
+    color: rgb(var(--c-primary-300));
+    opacity: 0;
+    transition: opacity 0.2s ease, translate 0.2s ease;
+    translate: -4px 0;
+}
+
+.h3d-chip--link:hover .h3d-chip__go {
+    opacity: 1;
+    translate: 0 0;
 }
 
 .h3d-tip {
@@ -828,10 +1096,16 @@ function fmtTime(ms) {
         display: none;
     }
 
-    .h3d-lite {
+    .h3d-corner {
         bottom: auto;
         top: calc(var(--h3d-top, 64px) + 8px);
         left: 10px;
+    }
+
+    /* มือถือ: แผงข้อมูลกินครึ่งล่าง → ปุ่มถัดไปลอยอยู่เหนือแผง */
+    .h3d-next {
+        bottom: auto;
+        top: calc(var(--h3d-top, 64px) + 8px + 38vh);
     }
 }
 
@@ -842,7 +1116,8 @@ function fmtTime(ms) {
         transition: none;
     }
     .h3d-hint__mouse::after,
-    .h3d-loader__ring {
+    .h3d-loader__ring,
+    .h3d-next {
         animation: none;
     }
 }

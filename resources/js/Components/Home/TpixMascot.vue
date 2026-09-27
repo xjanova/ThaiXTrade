@@ -20,7 +20,7 @@ import { router } from '@inertiajs/vue3';
 import { useTranslation } from '@/Composables/useTranslation';
 import { useChatbot } from '@/Composables/useChatbot';
 import { useMascot } from '@/Composables/useMascot';
-import { playClickSound, playNotificationSound } from '@/Composables/useSounds';
+import { sfx } from '@/Components/Home3D/sound';
 import {
     SECTIONS, TOUR_ORDER, POKE_LINES,
     dockHeight, placeBubble, graphemes, mouthFor, typeSpeed, cleanReply,
@@ -200,6 +200,7 @@ function onFrame(dt) {
             flight = { t: 0, dur: 0.95, from: { ...box } };
             flying.value = true;
             animator.setAction('fly', { dir: target.x >= box.x ? 1 : -1, hold: 60 });
+            sfx.fly(target.x >= box.x ? 1 : -1);
         }
     }
 
@@ -293,6 +294,7 @@ function positionBubble(hx, hy, w, vw, vh) {
 }
 
 function onLanded() {
+    sfx.land();
     if (lastPose && (bubble.typing || performance.now() - lastPose.at < 6000)) {
         animator.setAction(lastPose.name, lastPose.opts);
     } else {
@@ -342,7 +344,11 @@ function stepTyping(dt) {
     typedF += speed * dt;
     const n = Math.min(glyphs.length, Math.floor(typedF));
     if (n > typed) {
-        for (let i = typed; i < n; i++) animator.pulseMouth(mouthFor(glyphs[i]));
+        for (let i = typed; i < n; i++) {
+            const m = mouthFor(glyphs[i]);
+            animator.pulseMouth(m);
+            sfx.pip(m);
+        }
         typed = n;
         bubble.shown = glyphs.slice(0, n).join('');
         bubbleDirty = true;
@@ -471,7 +477,8 @@ function onChip(chip) {
     const now = performance.now();
     if (now - lastChipAt < 400) return;
     lastChipAt = now;
-    playClickSound();
+    if (chip.action === 'tour-next') sfx.chime();
+    else sfx.click();
     if (chip.href) {
         router.visit(chip.href);
         return;
@@ -495,7 +502,7 @@ function onChip(chip) {
 
 function onPoke() {
     if (!animator) return;
-    playClickSound();
+    sfx.poke();
     animator.poke();
     lastPose = { name: 'poke', opts: {}, at: performance.now() };
     const chatting = bubble.kind !== 'line' && Date.now() - lastChatAt < 25000;
@@ -544,7 +551,7 @@ async function ask() {
         question: text,
         pose: reply.failed ? 'surprised' : reply.navUrl ? 'point' : 'idle',
     });
-    if (!reply.failed) playNotificationSound();
+    if (!reply.failed) sfx.reply();
 }
 
 function onPointerMove(e) {
@@ -617,7 +624,7 @@ watch(collapsed, () => {
 });
 
 function hideMascot() {
-    playClickSound();
+    sfx.click();
     mascot.hide();
 }
 </script>

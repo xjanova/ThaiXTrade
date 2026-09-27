@@ -149,11 +149,13 @@ onMounted(async () => {
         <!-- แถบแจ้งเตือนลอย — วางที่เดียวทั้งเว็บ ทุกหน้าเรียก showToast() ได้เลย -->
         <ToastStack />
 
-        <!-- Ticker Strip -->
-        <TickerStrip v-if="!hideTicker" />
+        <!-- Ticker Strip
+             relative + z: ต้องอยู่เหนือฉากที่ตรึงเต็มจอ (canvas ของหน้าแรก 3D เป็น position:fixed
+             ถ้าแถบนี้ไม่จัดชั้น จะถูก canvas ทับหายทั้งแถบ — เจอจริง 2026-09-27) -->
+        <TickerStrip v-if="!hideTicker" class="relative z-[3]" />
 
         <!-- ป้ายโฆษณาด้านบนทุกหน้า (จัดการจาก Admin) -->
-        <BannerAd placement="all_pages_top" class="px-4 py-2" />
+        <BannerAd placement="all_pages_top" class="px-4 py-2 relative z-[3]" />
 
         <!-- Navigation Bar -->
         <NavBar
@@ -184,7 +186,7 @@ onMounted(async () => {
                         leave-to-class="-translate-x-full"
                     >
                         <div v-if="showMobileMenu" class="relative w-72 h-full overflow-y-auto thin-scrollbar" @click.stop>
-                            <Sidebar />
+                            <Sidebar @navigate="showMobileMenu = false" />
                         </div>
                     </Transition>
                 </div>

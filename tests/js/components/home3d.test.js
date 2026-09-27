@@ -158,3 +158,102 @@ describe('sprite animator', () => {
         expect(canPlayAlphaVideo(saveData)).toBe(false);
     });
 });
+
+describe('snap scroll (one scroll or swipe = one stop)', async () => {
+    const { snapTarget } = await import('@/Components/Home3D/snapScroll');
+    const centers = [0, 1000, 2000, 3000];
+    const vh = 900;
+
+    it('goes to the next or previous stop from a stop', () => {
+        expect(snapTarget({ scroll: 0, centers, dir: 1, vh })).toBe(1);
+        expect(snapTarget({ scroll: 1000, centers, dir: 1, vh })).toBe(2);
+        expect(snapTarget({ scroll: 2000, centers, dir: -1, vh })).toBe(1);
+    });
+
+    it('never bounces back when left between two stops (e.g. dragged the scrollbar)', () => {
+        expect(snapTarget({ scroll: 1400, centers, dir: 1, vh })).toBe(2);
+        expect(snapTarget({ scroll: 1400, centers, dir: -1, vh })).toBe(1);
+        expect(snapTarget({ scroll: 1700, centers, dir: -1, vh })).toBe(1);
+    });
+
+    it('lets the last stop scroll on into the footer, and pulls back up near it', () => {
+        expect(snapTarget({ scroll: 3000, centers, dir: 1, vh })).toBeNull();
+        expect(snapTarget({ scroll: 3300, centers, dir: -1, vh })).toBe(3);
+        expect(snapTarget({ scroll: 4200, centers, dir: -1, vh })).toBeNull();
+    });
+
+    it('does nothing at the very top when scrolling up', () => {
+        expect(snapTarget({ scroll: 0, centers, dir: -1, vh })).toBeNull();
+    });
+
+    describe('wheel handling', async () => {
+        const { createSnapScroll } = await import('@/Components/Home3D/snapScroll');
+
+        // jsdom ไม่มีการเลื่อนจริง → จำลอง scrollY + scrollTo
+        function setup({ reduced = false } = {}) {
+            let y = 0;
+            Object.defineProperty(window, 'scrollY', { configurable: true, get: () => y });
+            window.scrollTo = vi.fn((o) => {
+                y = o.top;
+            });
+            const snap = createSnapScroll({ getCenters: () => centers, reduced });
+            snap.attach();
+            const wheel = (deltaY, deltaX = 0) => {
+                const e = new WheelEvent('wheel', { deltaY, deltaX, cancelable: true, bubbles: true });
+                window.dispatchEvent(e);
+                return e;
+            };
+            return { snap, wheel, y: () => y };
+        }
+
+        it('with reduced motion, a trackpad flick (burst of wheel events) moves only one stop', () => {
+            const { snap, wheel, y } = setup({ reduced: true });
+            for (let i = 0; i < 30; i++) wheel(8);
+            expect(y()).toBe(1000);
+            snap.detach();
+        });
+
+        it('ignores horizontal swipes that carry a little vertical delta', () => {
+            const { snap, wheel, y } = setup({ reduced: true });
+            const e = wheel(3, 40);
+            expect(y()).toBe(0);
+            expect(e.defaultPrevented).toBe(false);
+            snap.detach();
+        });
+
+        it('lets a pinch-zoomed visitor scroll freely', () => {
+            const { snap, wheel, y } = setup({ reduced: true });
+            Object.defineProperty(window, 'visualViewport', { configurable: true, value: { scale: 2 } });
+            const e = wheel(40);
+            expect(y()).toBe(0);
+            expect(e.defaultPrevented).toBe(false);
+            delete window.visualViewport;
+            snap.detach();
+        });
+    });
+});
+
+describe('sound effects', async () => {
+    const { sfx, __soundState } = await import('@/Components/Home3D/sound');
+
+    it('is safe to call before any user gesture and without Web Audio', () => {
+        expect(() => {
+            sfx.hover(0.5, 0.5);
+            sfx.click();
+            sfx.arrive(2);
+            sfx.wind(0.8);
+            sfx.coin();
+            sfx.fly(1);
+            sfx.pip(1);
+            sfx.unlock();
+        }).not.toThrow();
+        expect(__soundState().hasContext).toBe(false);
+    });
+
+    it('remembers the mute switch', () => {
+        sfx.setEnabled(false);
+        expect(localStorage.getItem('tpix_home_sound')).toBe('off');
+        sfx.setEnabled(true);
+        expect(localStorage.getItem('tpix_home_sound')).toBe('on');
+    });
+});

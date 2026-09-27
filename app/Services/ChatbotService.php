@@ -69,12 +69,14 @@ class ChatbotService
      *    (API ยังคืน success=true จึงไม่มีใครรู้) ตอนนี้ปล่อยให้ AiTextService ใช้โมเดลตามค่าตั้ง
      *
      * @param  array<int, array{role?: string, text?: string}>  $history  บทสนทนาก่อนหน้า (เก่า → ใหม่)
-     * @param  string  $persona  'assistant' = ผู้ช่วยทั่วไป · 'mascot' = น้อง TPIX บนหน้าแรก (ตอบสั้นลงบับเบิ้ล)
+     * @param  string  $persona  'assistant' = ผู้ช่วยทั่วไป · 'mascot' = น้อง TPIX ในบับเบิ้ล (ตอบสั้น) · 'mascot-chat' = น้อง TPIX ในหน้าต่างแชท
      * @return array{message: string, navigation: ?string, success: bool}
      */
     public function chat(string $message, string $language = 'th', array $history = [], string $persona = 'assistant'): array
     {
-        $mascot = $persona === 'mascot';
+        // หน้าต่างแชททุกหน้าเป็นน้อง TPIX แล้ว (เจ้าของสั่งให้ใช้รูปน้องเป็นอวาตาร์บอท) — เสียงต้องตรงกับรูป
+        $mascot = in_array($persona, ['mascot', 'mascot-chat'], true);
+        $bubble = $persona === 'mascot';
 
         $langInstruction = match (true) {
             $mascot && $language === 'th' => 'ตอบเป็นภาษาไทย น้ำเสียงผู้หญิงสดใส สุภาพเป็นกันเอง ลงท้ายด้วย "ค่ะ/นะคะ"',
@@ -84,11 +86,11 @@ class ChatbotService
 
         $prompt = "{$langInstruction}\n\n".$this->transcript($history)."User: {$message}";
 
-        $system = $this->systemPrompt.($mascot ? "\n\n".$this->mascotPersona() : '');
+        $system = $this->systemPrompt.($mascot ? "\n\n".$this->mascotPersona($bubble) : '');
 
         $result = $this->groq->chat($prompt, $system."\n\n".$this->knowledge->liveFacts(), [
             'temperature' => 0.6,
-            'max_tokens' => $mascot ? 600 : 1024,
+            'max_tokens' => $bubble ? 600 : 1024,
         ]);
 
         if (! $result['success']) {
@@ -143,19 +145,22 @@ class ChatbotService
     /**
      * บุคลิกน้อง TPIX — คำตอบไปโผล่ในบับเบิ้ลคำพูดเล็กๆ ต้องสั้นและไม่มี markdown.
      */
-    private function mascotPersona(): string
+    private function mascotPersona(bool $bubble = true): string
     {
-        return <<<'PERSONA'
+        $length = $bubble
+            ? "- Your reply appears inside a small speech bubble: keep it under 70 words, plain text only\n  (no markdown headings, tables or bullet lists), at most one or two emoji"
+            : "- Your reply appears in the chat window: clear and complete but no longer than needed (under 200 words),\n  short paragraphs, simple lists are fine, at most two emoji";
+
+        return str_replace('{{LENGTH}}', $length, <<<'PERSONA'
 ## Persona: น้อง TPIX (Nong TPIX)
 You are speaking as "น้อง TPIX", the cute 3D mascot guide on the TPIX TRADE home page:
 a cheerful young woman trader with cyan twin-tails and a headset.
 - Thai: warm and bright, polite female particles (ค่ะ / นะคะ), call yourself "น้อง TPIX" or "น้อง"
 - English: friendly, upbeat, concise
-- Your reply appears inside a small speech bubble: keep it under 70 words, plain text only
-  (no markdown headings, tables or bullet lists), at most one or two emoji
+{{LENGTH}}
 - Suggest at most ONE page with [NAV:/path] when it clearly helps
 - Stay honest about risks — cheerful never means promising profit
-PERSONA;
+PERSONA);
     }
 
     /**

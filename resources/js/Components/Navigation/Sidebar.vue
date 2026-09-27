@@ -9,8 +9,22 @@ import { Link } from '@inertiajs/vue3';
 import { getBaseSymbol } from '@/utils/cryptoLogos';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import { useTranslation } from '@/Composables/useTranslation';
+// ดึงแค่เลขเวอร์ชัน (ไม่ให้ changelog ทั้งไฟล์ติดไปใน bundle ทุกหน้า)
+import { version } from '../../../../version.json';
 
 const { t } = useTranslation();
+const emit = defineEmits(['navigate']);
+
+// โลโก้ท้ายเมนู: กดแล้วกลับหน้าแรก "บนสุด"
+// อยู่หน้าแรกอยู่แล้ว → เลื่อนขึ้นเอง ห้ามให้ Inertia โหลดหน้าใหม่ (หน้าแรก 3D จะบูตโลกใหม่ทั้งหมด)
+// ผูกแบบ capture เพื่อ preventDefault ก่อน handler ของ <Link> (มันเช็ก defaultPrevented)
+function goHomeTop(e) {
+    if (window.location.pathname === '/') {
+        e.preventDefault();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        emit('navigate'); // ให้เมนูมือถือปิดตัวเอง
+    }
+}
 
 const favoritesPairs = ref([
     { symbol: 'BTC/USDT', price: '67,234.50', change: '+2.45%', isUp: true },
@@ -197,10 +211,102 @@ const recentTrades = ref([
                         <p class="text-xs text-dark-400">Smart analysis</p>
                     </div>
                 </div>
-                <button class="w-full btn-primary text-sm">
+                <Link href="/ai-trade" class="w-full btn-primary text-sm justify-center">
                     Get AI Insights
-                </button>
+                </Link>
             </div>
         </div>
+
+        <!-- แบรนด์ท้ายเมนู: โลโก้กดกลับหน้าแรกบนสุด + เวอร์ชันมีประกายวิบวับ -->
+        <Link href="/" class="sidebar-brand group" :aria-label="t('nav.backHome')" @click.capture="goHomeTop">
+            <span class="sidebar-brand__logo">
+                <img src="/logo.webp?v=2" alt="TPIX TRADE" class="w-full h-full object-contain" />
+            </span>
+            <span class="min-w-0">
+                <span class="block text-sm font-bold text-white leading-tight">TPIX <span class="text-primary-400">TRADE</span></span>
+                <span class="sidebar-brand__ver">
+                    <span class="sidebar-brand__star sidebar-brand__star--a" aria-hidden="true">✦</span>
+                    v{{ version }}
+                    <span class="sidebar-brand__star sidebar-brand__star--b" aria-hidden="true">✦</span>
+                </span>
+            </span>
+            <svg class="w-4 h-4 ml-auto text-dark-400 group-hover:text-primary-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+        </Link>
     </aside>
 </template>
+
+<style scoped>
+.sidebar-brand {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 16px;
+    border: 1px solid rgb(255 255 255 / 0.08);
+    background: rgb(255 255 255 / 0.03);
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.sidebar-brand:hover {
+    border-color: rgb(var(--c-primary-500) / 0.4);
+    background: rgb(var(--c-primary-500) / 0.08);
+}
+
+.sidebar-brand__logo {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 10px rgb(246 189 53 / 0.35));
+}
+
+/* เวอร์ชัน: ตัวอักษรทองไล่แสงวิ่ง + ดาวกะพริบสองดวง */
+.sidebar-brand__ver {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: ui-monospace, Menlo, monospace;
+    letter-spacing: 0.02em;
+    background: linear-gradient(100deg, #b7791f 0%, #f6bd35 30%, #fff6c9 45%, #f6bd35 60%, #22d3ee 100%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: sidebar-shimmer 2.8s linear infinite;
+}
+
+.sidebar-brand__star {
+    display: inline-block;
+    font-size: 9px;
+    color: #fff3b0;
+    -webkit-text-fill-color: #fff3b0;
+    text-shadow: 0 0 6px #fcd34d, 0 0 12px #22d3ee;
+    animation: sidebar-twinkle 1.6s ease-in-out infinite;
+}
+
+.sidebar-brand__star--b {
+    animation-delay: 0.8s;
+}
+
+@keyframes sidebar-shimmer {
+    from { background-position: 120% 0; }
+    to { background-position: -120% 0; }
+}
+
+@keyframes sidebar-twinkle {
+    0%, 100% { opacity: 0.25; transform: scale(0.6) rotate(0deg); }
+    50% { opacity: 1; transform: scale(1.25) rotate(45deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar-brand__ver,
+    .sidebar-brand__star {
+        animation: none;
+    }
+}
+</style>

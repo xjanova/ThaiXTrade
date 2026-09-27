@@ -14,6 +14,8 @@ import axios from 'axios';
 /** ส่งประวัติให้บอทกี่ข้อความล่าสุด (ต้องไม่เกิน max ฝั่ง ChatbotController) */
 export const HISTORY_LIMIT = 6;
 const REQUEST_TIMEOUT_MS = 45000;
+/** assistant = ผู้ช่วยทั่วไป · mascot = น้อง TPIX ในบับเบิ้ล (ตอบสั้น) · mascot-chat = น้อง TPIX ในหน้าต่างแชท */
+const PERSONAS = ['assistant', 'mascot', 'mascot-chat'];
 const MAX_LEN = 1000;
 
 const messages = ref([]);
@@ -36,7 +38,7 @@ function historyForApi() {
 /**
  * ส่งคำถาม
  * @param {string} text
- * @param {{ language?: string, persona?: 'assistant'|'mascot', errorText?: string }} opts
+ * @param {{ language?: string, persona?: 'assistant'|'mascot'|'mascot-chat', errorText?: string }} opts
  * @returns {Promise<object|null>} ข้อความตอบกลับ (null = ไม่ได้ส่ง เพราะว่างหรือกำลังรออยู่)
  */
 async function send(text, opts = {}) {
@@ -52,7 +54,7 @@ async function send(text, opts = {}) {
         const { data } = await axios.post('/api/v1/chatbot', {
             message: msg,
             language: opts.language === 'en' ? 'en' : 'th',
-            persona: opts.persona === 'mascot' ? 'mascot' : 'assistant',
+            persona: PERSONAS.includes(opts.persona) ? opts.persona : 'assistant',
             history,
         }, {
             // AI ค้าง/เน็ตหลุด ต้องไม่ล็อกช่องถามไว้ที่ "กำลังคิด" ตลอดไป

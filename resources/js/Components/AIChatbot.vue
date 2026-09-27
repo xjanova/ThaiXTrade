@@ -1,12 +1,14 @@
 <script setup>
 /**
- * TPIX TRADE — AI Chatbot Widget
+ * TPIX TRADE — AI Chatbot Widget ("น้อง TPIX" ทุกหน้า)
  * บอทลอยหน้าเว็บ ตอบเรื่อง TPIX Chain + Trade + นำทางอัตโนมัติ
  * ห้ามเปิดเผยข้อมูล sensitive ของระบบ
  *
- * ประวัติแชทอยู่ใน useChatbot (ใช้ร่วมกับบับเบิ้ลของน้อง TPIX บนหน้าแรก)
- * หน้าที่มีน้อง TPIX อยู่บนจอ: ซ่อนปุ่มลอยของตัวเอง (น้องคือทางเข้าแชทแทน)
- * และคุยด้วยบุคลิกของน้อง ให้บทสนทนาต่อเนื่องไม่สลับเสียง
+ * เจ้าของสั่ง: อวาตาร์บอทแชทต้องเป็นรูปน้อง TPIX → ปุ่มลอย หัวหน้าต่าง และข้างข้อความบอท
+ * ใช้รูปหน้าน้อง (ภาพเจนจาก ChatGPT) และตอบด้วยน้ำเสียงของน้องทุกหน้า
+ *
+ * ประวัติแชทอยู่ใน useChatbot (ใช้ร่วมกับบับเบิ้ลของน้องบนหน้าแรก 3D)
+ * หน้าที่มีตัวน้องยืนอยู่บนจอ: ซ่อนปุ่มลอย (ตัวน้องคือทางเข้าแชทแทน)
  *
  * Developed by Xman Studio
  */
@@ -23,10 +25,12 @@ const mascot = useMascot();
 
 const message = ref('');
 const chatContainer = ref(null);
+const faceBroken = ref(false);
 
 const isOpen = chat.isOpen;
 const isLoading = chat.isLoading;
-const asMascot = computed(() => mascot.active.value);
+// ตัวน้องยืนอยู่บนจอแล้ว (หน้าแรก 3D) → ไม่ต้องมีปุ่มลอยซ้ำ
+const mascotOnScreen = computed(() => mascot.active.value);
 
 // เลื่อน scroll ลงล่างสุด
 function scrollBottom() {
@@ -47,7 +51,8 @@ async function sendMessage() {
     scrollBottom();
     await chat.send(msg, {
         language: locale.value,
-        persona: asMascot.value ? 'mascot' : 'assistant',
+        // น้ำเสียงน้อง TPIX แต่ตอบยาวได้ตามหน้าต่างแชท (บับเบิ้ลบนหน้าแรกใช้ 'mascot' ที่ตอบสั้น)
+        persona: 'mascot-chat',
         errorText: t('chatbot.error'),
     });
 }
@@ -72,14 +77,26 @@ function sendQuick(msg) {
 </script>
 
 <template>
-    <!-- ปุ่มเปิด Chatbot (หน้าที่มีน้อง TPIX ใช้น้องเป็นปุ่มแทน) -->
-    <button v-if="!isOpen && !asMascot" type="button" @click="chat.open()"
+    <!-- ปุ่มเปิดแชท = หน้าน้อง TPIX (หน้าที่มีตัวน้องอยู่แล้วใช้ตัวน้องเป็นปุ่มแทน) -->
+    <button
+        v-if="!isOpen && !mascotOnScreen"
+        type="button"
         :aria-label="t('chatbot.open')"
-        class="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 shadow-lg shadow-primary-500/30 flex items-center justify-center hover:scale-110 transition-transform">
-        <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
-        </svg>
-        <span class="absolute -top-1 -right-1 w-3 h-3 bg-trading-green rounded-full animate-pulse"></span>
+        :title="t('mascot.talkTo')"
+        class="tpix-chat-launcher group fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full p-[3px] bg-gradient-to-br from-primary-400 via-accent-500 to-warm-500 shadow-lg shadow-primary-500/30 hover:scale-110 transition-transform"
+        @click="chat.open()"
+    >
+        <span class="block w-full h-full rounded-full overflow-hidden bg-dark-900">
+            <img v-if="!faceBroken" :src="FACE_SRC" alt="" class="w-full h-full object-cover" @error="faceBroken = true" />
+            <svg v-else class="w-7 h-7 m-auto mt-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+            </svg>
+        </span>
+        <span class="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-trading-green rounded-full ring-2 ring-dark-950 animate-pulse"></span>
+        <!-- ป้ายเล็กชวนคุย (โผล่ตอนชี้) -->
+        <span class="pointer-events-none absolute right-full top-1/2 -translate-y-1/2 mr-3 whitespace-nowrap rounded-full bg-dark-900/90 border border-white/10 px-3 py-1.5 text-xs font-semibold text-white opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all">
+            {{ t('mascot.askPill') }}
+        </span>
     </button>
 
     <!-- Chat Window -->
@@ -88,14 +105,15 @@ function sendQuick(msg) {
 
         <!-- Header -->
         <div class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-primary-500/20 to-accent-500/20 border-b border-white/10">
-            <div class="flex items-center gap-2">
-                <div class="w-8 h-8 rounded-full bg-primary-500/30 flex items-center justify-center overflow-hidden">
-                    <img v-if="asMascot" :src="FACE_SRC" alt="" class="w-8 h-8 object-cover" />
-                    <span v-else class="text-sm">🤖</span>
+            <div class="flex items-center gap-2.5">
+                <div class="relative w-10 h-10 rounded-full p-[2px] bg-gradient-to-br from-primary-400 to-accent-500">
+                    <img v-if="!faceBroken" :src="FACE_SRC" alt="" class="w-full h-full rounded-full object-cover bg-dark-900" @error="faceBroken = true" />
+                    <span v-else class="w-full h-full rounded-full bg-dark-900 flex items-center justify-center text-sm">💙</span>
+                    <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-trading-green ring-2 ring-dark-800"></span>
                 </div>
                 <div>
-                    <p class="text-white text-sm font-semibold">{{ asMascot ? t('mascot.name') : 'TPIX AI Assistant' }}</p>
-                    <p class="text-trading-green text-[10px]">● Online</p>
+                    <p class="text-white text-sm font-semibold">{{ t('mascot.name') }}</p>
+                    <p class="text-trading-green text-[10px]">● Online · AI</p>
                 </div>
             </div>
             <button type="button" @click="chat.close()" :aria-label="t('chatbot.close')" class="text-dark-400 hover:text-white transition-colors">
@@ -108,16 +126,18 @@ function sendQuick(msg) {
         <!-- Chat Messages -->
         <div ref="chatContainer" class="flex-1 overflow-y-auto p-4 space-y-3">
             <!-- คำทักทาย: ไม่เก็บลงประวัติ จึงสลับภาษาได้และไม่ถูกส่งให้บอท -->
-            <div class="flex justify-start">
-                <div class="max-w-[85%] px-3 py-2 rounded-xl text-sm bg-white/5 text-dark-200 rounded-bl-sm">
-                    <p class="whitespace-pre-wrap">{{ asMascot ? t('mascot.chatGreeting') : t('chatbot.greeting') }}</p>
+            <div class="flex items-end gap-2 justify-start">
+                <img v-if="!faceBroken" :src="FACE_SRC" alt="" class="w-7 h-7 rounded-full object-cover shrink-0 bg-dark-900" />
+                <div class="max-w-[82%] px-3 py-2 rounded-xl text-sm bg-white/5 text-dark-200 rounded-bl-sm">
+                    <p class="whitespace-pre-wrap">{{ t('mascot.chatGreeting') }}</p>
                 </div>
             </div>
 
             <div v-for="msg in chat.messages.value" :key="msg.id"
-                :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
+                :class="['flex items-end gap-2', msg.role === 'user' ? 'justify-end' : 'justify-start']">
+                <img v-if="msg.role !== 'user' && !faceBroken" :src="FACE_SRC" alt="" class="w-7 h-7 rounded-full object-cover shrink-0 bg-dark-900" />
                 <div :class="[
-                    'max-w-[85%] px-3 py-2 rounded-xl text-sm',
+                    'max-w-[82%] px-3 py-2 rounded-xl text-sm',
                     msg.role === 'user'
                         ? 'bg-primary-500/20 text-white rounded-br-sm'
                         : 'bg-white/5 text-dark-200 rounded-bl-sm'
@@ -131,9 +151,10 @@ function sendQuick(msg) {
             </div>
 
             <!-- Loading -->
-            <div v-if="isLoading" class="flex justify-start">
+            <div v-if="isLoading" class="flex items-end gap-2 justify-start">
+                <img v-if="!faceBroken" :src="FACE_SRC" alt="" class="w-7 h-7 rounded-full object-cover shrink-0 bg-dark-900" />
                 <div class="bg-white/5 px-4 py-2 rounded-xl text-sm text-dark-400">
-                    <span class="animate-pulse">{{ t('chatbot.thinking') }}</span>
+                    <span class="animate-pulse">{{ t('mascot.thinking') }}</span>
                 </div>
             </div>
 
@@ -152,8 +173,8 @@ function sendQuick(msg) {
         <!-- Input -->
         <div class="p-3 border-t border-white/10">
             <form @submit.prevent="sendMessage" class="flex gap-2">
-                <input v-model="message" type="text" maxlength="1000" :placeholder="t('chatbot.placeholder')"
-                    :aria-label="t('chatbot.placeholder')"
+                <input v-model="message" type="text" maxlength="1000" :placeholder="t('mascot.askPlaceholder')"
+                    :aria-label="t('mascot.askPlaceholder')"
                     class="flex-1 bg-dark-700 border border-dark-600 rounded-xl px-4 py-2.5 text-white text-sm placeholder-dark-500 focus:border-primary-500 outline-none"
                     :disabled="isLoading" />
                 <button type="submit" :disabled="isLoading || !message.trim()" :aria-label="t('chatbot.send')"
