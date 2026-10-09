@@ -33,6 +33,8 @@ import '../../providers/accent_provider.dart';
 import '../../providers/ai_bot_provider.dart';
 import '../../providers/market_provider.dart';
 import '../../providers/wallet_provider.dart';
+import '../../services/ai_bot_api.dart';
+import '../../utils/kyc_nav.dart';
 import '../../widgets/ai_bot/ai_monitor.dart';
 import '../../widgets/ai_bot/bot_wallet_card.dart';
 import '../../widgets/common/app_background.dart';
@@ -158,11 +160,30 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
 
   void _snack(String message, {bool ok = false}) {
     if (!mounted) return;
+    final th = context.read<LocaleProvider>().isThai;
+
+    /*
+     * ด่าน KYC ต้องมีปุ่มพาไปยืนยันตัวตนติดมากับข้อความ (AiBotErrorAction.openKyc)
+     *
+     * เทียบกับข้อความของความล้มเหลวล่าสุดด้วย ไม่ใช่ดูแค่ errorCode — รหัสอาจค้าง
+     * จากรอบก่อน แล้วปุ่ม "ไปยืนยันตัวตน" จะไปโผล่บนข้อความเรื่องอื่น (เช่น เครดิตไม่พอ)
+     */
+    final kyc = !ok &&
+        _bot.errorCode == AiBotErrorCodes.kycRequired &&
+        message == _failure(th);
+
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           content: Text(message),
+          action: kyc
+              ? SnackBarAction(
+                  label: AiBotRecovery.label(AiBotErrorAction.openKyc, th)!,
+                  textColor: AppColors.gold1,
+                  onPressed: _openKyc,
+                )
+              : null,
           /*
            * ⚠️ ไม่ใช้ tradingGreen ตรงนี้
            *
@@ -171,10 +192,14 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
            * สัญญาณสีที่ผู้ใช้เรียนรู้มาทั้งแอพเจือจาง — ใช้ทองซึ่งเป็นสีของแบรนด์แทน
            */
           backgroundColor: ok ? AppColors.gold3 : null,
-          duration: Duration(seconds: ok ? 2 : 4),
+          // มีปุ่มให้กด = ให้เวลาอ่านและเอื้อมนิ้วไปกดนานขึ้น
+          duration: Duration(seconds: ok ? 2 : (kyc ? 6 : 4)),
         ),
       );
   }
+
+  /// ไปหน้ายืนยันตัวตนในแอพ (เดิมพาออกไปหน้าเว็บที่ผู้ใช้ไม่ได้ล็อกอินไว้)
+  void _openKyc() => KycNav.open(context);
 
   /// เหตุผลความล้มเหลวล่าสุด แปลเป็นสองภาษาผ่านตารางกลางของโมเดล
   /// ข้อความไทยจากเซิร์ฟเวอร์เป็นทางลงสุดท้ายเมื่อเจอรหัสที่ยังไม่รู้จัก
@@ -691,7 +716,22 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
                  * ไม่โชว์ทับเคสที่มีแบนเนอร์เฉพาะทางอยู่แล้ว (ยังไม่เซ็นยืนยัน)
                  * เพราะอันนั้นบอกทางแก้ที่ตรงกว่า
                  */
-                if (bot.hasError && !bot.needsVerification)
+                //
+                // ยกเว้น KYC_REQUIRED — ไม่ใช่ "ข้อมูลไม่อัปเดต" และปุ่มลองใหม่ไม่ช่วยอะไร
+                // ต้องพาไปหน้ายืนยันตัวตนในแอพแทน
+                if (bot.hasError &&
+                    !bot.needsVerification &&
+                    bot.errorCode == AiBotErrorCodes.kycRequired)
+                  _block(_NoticeCard(
+                    tone: _NoticeTone.action,
+                    icon: Icons.badge_rounded,
+                    title: locale.t('kyc.required.title'),
+                    body: bot.errorText(th),
+                    actionLabel: AiBotRecovery.label(AiBotErrorAction.openKyc, th),
+                    actionIcon: Icons.verified_user_rounded,
+                    onAction: _openKyc,
+                  ))
+                else if (bot.hasError && !bot.needsVerification)
                   _block(_NoticeCard(
                     tone: _NoticeTone.problem,
                     icon: Icons.cloud_off_rounded,
@@ -3572,6 +3612,10 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
   late final List<String> _pairs;
   String? _formError;
 
+  /// เซิร์ฟเวอร์ปฏิเสธด้วย KYC_REQUIRED — วางปุ่มพาไปยืนยันตัวตนไว้ใต้ข้อความ
+  /// (สร้างบอทคือจุดแรกที่ผู้ใช้ส่วนใหญ่ชนด่านนี้ บอกแค่ "ต้องยืนยัน" ไม่พอ)
+  bool _formNeedsKyc = false;
+
   /// กำลังยิงบันทึกอยู่ — ใช้กันกดรัวและเปลี่ยนปุ่มเป็นสถานะรอ
   bool _saving = false;
 
@@ -3839,6 +3883,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
     setState(() {
       _saving = true;
       _formError = null;
+      _formNeedsKyc = false;
       _serverErrors = const {};
     });
 
@@ -3856,6 +3901,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
       _saving = false;
       _serverErrors = provider.fieldErrors;
       _formError = provider.errorText(th);
+      _formNeedsKyc = provider.errorCode == AiBotErrorCodes.kycRequired;
     });
   }
 
@@ -4222,6 +4268,17 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                           color: AppColors.tradingRed,
                           text: _formError!,
                         ),
+                        // แผ่นนี้ไม่ถูกปิด — ยืนยันตัวตนเสร็จแล้วกดย้อนกลับมา ค่าที่กรอกยังอยู่ครบ
+                        if (_formNeedsKyc) ...[
+                          const SizedBox(height: 10),
+                          GradientButton(
+                            text: AiBotRecovery.label(AiBotErrorAction.openKyc, th)!,
+                            icon: Icons.verified_user_rounded,
+                            variant: ButtonVariant.outline,
+                            height: 44,
+                            onPressed: () => KycNav.open(context),
+                          ),
+                        ],
                       ],
 
                       const SizedBox(height: 18),

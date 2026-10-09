@@ -100,6 +100,15 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="tpixwallet"/>
         </intent>
+        <!-- หน้ายืนยันตัวตน (/kyc): ปุ่ม "เปิดแอป Thaiprompt" เปิด thaiprompt://ekyc
+             Android 11+ ไม่ประกาศไว้ตรงนี้ = launchUrl/canLaunchUrl มองไม่เห็นแอป
+             แล้วตอบว่าไม่ได้ติดตั้งทั้งที่มีอยู่ในเครื่อง
+             (ขากลับ tpixtrade://kyc ใช้ intent-filter ของ MainActivity ด้านบน
+             ซึ่งไม่จำกัด host อยู่แล้ว) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="thaiprompt"/>
+        </intent>
         <!-- External Wallets (WalletConnect v2 / Reown AppKit detection)
              Android 11+ requires declaring queryable schemes ในรายการเพื่อให้
              AppKit รู้ว่ามี wallet ตัวไหนติดตั้งบนเครื่อง -->

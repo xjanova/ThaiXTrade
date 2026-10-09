@@ -2,6 +2,8 @@
 /// go_router + StatefulShellRoute. Tab bar: Home · AI · Market · Swap · Wallet.
 /// Trade lives in the Market branch (tab bar stays, center active).
 /// Settings & Profile are pushed detail routes (back chevron).
+/// KYC (`/kyc`) is a pushed detail route too — opened from the profile menu,
+/// from AI TRADE's KYC_REQUIRED notice, and by the `tpixtrade://kyc` deep link.
 ///
 /// Developed by Xman Studio
 
@@ -18,6 +20,7 @@ import '../screens/ai_trade/ai_bot_screen.dart';
 import '../screens/swap/swap_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/bridge/bridge_screen.dart';
+import '../screens/kyc/kyc_screen.dart';
 import '../services/deep_link_service.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -142,6 +145,13 @@ GoRouter _buildRouter() {
         path: '/bridge',
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) => const BridgeScreen(),
+      ),
+      // ยืนยันตัวตน — ทางเข้าทั้งหมดผ่าน KycNav.open() (กัน push ซ้อนตอน deep link
+      // จาก Thaiprompt กลับมาขณะหน้านี้เปิดค้างอยู่)
+      GoRoute(
+        path: '/kyc',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const KycScreen(),
       ),
     ],
   );

@@ -652,7 +652,8 @@ class LocaleProvider extends ChangeNotifier {
           'การยืนยันกระเป๋าหมดอายุแล้ว — เซ็นข้อความอีกครั้งเพื่อดูข้อมูลบอท',
       'aiTrade.err.WALLET_IP_MISMATCH':
           'เครือข่ายเปลี่ยนระหว่างใช้งาน — กรุณายืนยันกระเป๋าอีกครั้ง',
-      'aiTrade.err.KYC_REQUIRED': 'ต้องยืนยันตัวตนก่อนใช้เช่าบอทเทรด AI',
+      'aiTrade.err.KYC_REQUIRED':
+          'ต้องยืนยันตัวตนก่อนใช้เช่าบอทเทรด AI — กดเพื่อยืนยันตัวตนในแอพได้เลย',
       'aiTrade.err.PLAN_NOT_FOUND': 'ไม่พบแพลนนี้แล้ว — โหลดรายการแพลนใหม่',
       'aiTrade.err.INSUFFICIENT_CREDITS':
           'เครดิตการทำงานไม่พอ — เติมเครดิตก่อนเริ่มใช้งานบอท',
@@ -684,6 +685,147 @@ class LocaleProvider extends ChangeNotifier {
       'aiTrade.err.BAD_PAYLOAD': 'เซิร์ฟเวอร์ตอบรูปแบบที่อ่านไม่ได้',
       'aiTrade.err.REQUEST_FAILED': 'ทำรายการไม่สำเร็จ — ลองใหม่อีกครั้ง',
       'aiTrade.err.UNKNOWN': 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ',
+
+      // ── ยืนยันตัวตน (KYC) — หน้า /kyc ──
+      'kyc.title': 'ยืนยันตัวตน (KYC)',
+      'kyc.subtitle': 'ยืนยันครั้งเดียว ใช้ได้กับทุกบริการที่ต้องยืนยันตัวตน',
+      'kyc.menu': 'ยืนยันตัวตน (KYC)',
+      'kyc.required.title': 'ต้องยืนยันตัวตนก่อน',
+      'kyc.badge.approved': 'ยืนยันแล้ว',
+      'kyc.badge.pending': 'รอตรวจ',
+      'kyc.badge.rejected': 'ไม่ผ่าน',
+      'kyc.badge.none': 'ยังไม่ยืนยัน',
+
+      'kyc.noWallet.title': 'เชื่อมกระเป๋าก่อนยืนยันตัวตน',
+      'kyc.noWallet.body':
+          'ผลยืนยันตัวตนผูกกับบัญชีของกระเป๋าที่คุณใช้ในแอป — เชื่อมกระเป๋าแล้วกลับมาที่หน้านี้',
+      'kyc.connectWallet': 'เชื่อมกระเป๋า',
+
+      'kyc.sign.title': 'ยืนยันกระเป๋าก่อน',
+      'kyc.sign.body':
+          'เซ็นข้อความสั้นๆ เพื่อยืนยันว่าเป็นเจ้าของกระเป๋านี้ ก่อนดูหรือส่งผลยืนยันตัวตน — ไม่เสียค่าแก๊ส',
+      'kyc.sign.bodyIp':
+          'เครือข่ายเปลี่ยนระหว่างใช้งาน (สลับ WiFi หรือเน็ตมือถือ) — เซ็นยืนยันกระเป๋าอีกครั้ง',
+      'kyc.sign.button': 'ยืนยันกระเป๋า',
+      'kyc.sign.waiting': 'รอเซ็นในกระเป๋า…',
+      'kyc.sign.ok': 'ยืนยันกระเป๋าแล้ว',
+      'kyc.sign.failed': 'ยืนยันกระเป๋าไม่สำเร็จ — ลองกดยืนยันอีกครั้ง',
+
+      'kyc.loadFailed.title': 'โหลดสถานะยืนยันตัวตนไม่สำเร็จ',
+      'kyc.retry': 'ลองใหม่',
+
+      'kyc.approved.title': 'ยืนยันตัวตนแล้ว',
+      'kyc.approved.viaThaiprompt': 'ผ่านบัญชี Thaiprompt',
+      'kyc.approved.viaDocuments': 'ผ่านการตรวจเอกสาร',
+      'kyc.approved.on': 'เมื่อ {date}',
+      'kyc.level.basic': 'ระดับพื้นฐาน',
+      'kyc.level.enhanced': 'ระดับสูง',
+
+      'kyc.features.unlocked': 'บริการที่ปลดล็อกแล้ว',
+      'kyc.features.required': 'บริการที่ต้องยืนยันตัวตน',
+      'kyc.features.none': 'ตอนนี้ยังไม่มีบริการไหนบังคับยืนยันตัวตน',
+      'kyc.features.needsEnhanced': 'ต้องยืนยันระดับสูง',
+      'kyc.feature.ai_bot': 'เช่าบอทเทรด AI',
+      'kyc.feature.trading': 'เทรด / สวอป',
+      'kyc.feature.token_sale': 'ซื้อเหรียญในรอบขาย',
+      'kyc.feature.token_factory': 'สร้างเหรียญ',
+      'kyc.feature.bridge': 'สะพานข้ามเชน',
+      'kyc.feature.masternode': 'มาสเตอร์โหนด / สเตค',
+
+      'kyc.tp.title': 'ยืนยันตัวตนด้วยบัญชี Thaiprompt',
+      'kyc.tp.recommended': 'แนะนำ',
+      'kyc.tp.caseVerified.title': 'เคยยืนยันตัวตนใน Thaiprompt แล้ว',
+      'kyc.tp.caseVerified.body':
+          'กดอนุญาตที่หน้า Thaiprompt แล้วผ่านทันที ไม่ต้องส่งเอกสารซ้ำ',
+      'kyc.tp.caseNew.title': 'ยังไม่เคยยืนยันตัวตนใน Thaiprompt',
+      'kyc.tp.caseNew.body':
+          'ทำ eKYC ในแอป Thaiprompt (ใช้เวลาไม่กี่นาที) แล้วกลับมาที่หน้านี้ ระบบปลดล็อกให้อัตโนมัติ',
+      'kyc.tp.consent':
+          'ฉันยินยอมให้ Thaiprompt ส่งผลการยืนยันตัวตนของฉัน (ยืนยันแล้วหรือไม่ และวันที่ยืนยัน) ให้ TPIX TRADE เพื่อปลดล็อกบริการที่ต้องยืนยันตัวตน — ไม่รวมเลขบัตรประชาชน ชื่อ วันเกิด หรือรูปถ่ายของฉัน',
+      'kyc.tp.consentRequired': 'ติ๊กยินยอมก่อนจึงจะกดยืนยันได้',
+      'kyc.tp.start': 'ยืนยันด้วย Thaiprompt',
+      'kyc.tp.starting': 'กำลังเปิด Thaiprompt…',
+      'kyc.tp.browserNote':
+          'ระบบจะเปิดหน้า Thaiprompt ในเบราว์เซอร์ เข้าสู่ระบบแล้วกดอนุญาต จากนั้นจะกลับเข้าแอปนี้เอง',
+      'kyc.tp.reconnect':
+          'สิทธิ์ที่เชื่อมกับ Thaiprompt หมดอายุแล้ว — กดยืนยันด้วย Thaiprompt อีกครั้ง',
+      'kyc.browserFailed': 'เปิดเบราว์เซอร์ไม่ได้ — ลองใหม่อีกครั้ง',
+
+      'kyc.wait.title': 'รอผลยืนยันตัวตนจาก Thaiprompt',
+      'kyc.wait.status.none': 'คุณยังไม่ได้ยืนยันตัวตนในแอป Thaiprompt',
+      'kyc.wait.status.pending': 'Thaiprompt กำลังตรวจสอบข้อมูลของคุณ',
+      'kyc.wait.status.rejected':
+          'ยืนยันตัวตนที่ Thaiprompt ไม่ผ่าน — ทำใหม่อีกครั้งในแอป Thaiprompt',
+      'kyc.wait.status.approved': 'Thaiprompt ยืนยันแล้ว — กำลังอัปเดตสถานะ…',
+      'kyc.wait.step1': 'เปิดแอป Thaiprompt',
+      'kyc.wait.step2': 'ไปที่เมนูยืนยันตัวตน (eKYC)',
+      'kyc.wait.step3': 'ถ่ายบัตรประชาชนและสแกนใบหน้า',
+      'kyc.wait.step4': 'กลับมาที่หน้านี้ ระบบปลดล็อกให้อัตโนมัติ',
+      'kyc.wait.openApp': 'เปิดแอป Thaiprompt',
+      'kyc.wait.check': 'ตรวจสอบอีกครั้ง',
+      'kyc.wait.checking': 'กำลังตรวจสอบ…',
+      'kyc.wait.lastChecked': 'ตรวจล่าสุด {time}',
+      'kyc.wait.autoCheck': 'ระบบตรวจให้อัตโนมัติทุก 20 วินาทีระหว่างเปิดหน้านี้',
+      'kyc.wait.autoStopped':
+          'หยุดตรวจอัตโนมัติแล้ว — ทำเสร็จเมื่อไหร่กด "ตรวจสอบอีกครั้ง"',
+      'kyc.appMissing': 'เปิดแอป Thaiprompt ไม่ได้ — เครื่องนี้อาจยังไม่ได้ติดตั้ง',
+      'kyc.downloadApp': 'ดาวน์โหลดแอป Thaiprompt',
+
+      'kyc.web.title': 'ส่งเอกสารยืนยันตัวตนที่หน้าเว็บ',
+      'kyc.web.body':
+          'ตอนนี้การยืนยันด้วย Thaiprompt ยังไม่เปิด — ส่งเอกสารยืนยันตัวตนได้ที่หน้าเว็บ TPIX TRADE',
+      'kyc.fallback.title': 'ไม่มีบัญชี Thaiprompt / ชาวต่างชาติ',
+      'kyc.fallback.body': 'ส่งเอกสารยืนยันตัวตนได้ที่หน้าเว็บ',
+      'kyc.fallback.button': 'ส่งเอกสารที่หน้าเว็บ',
+
+      'kyc.sub.pending': 'เอกสารที่ส่งทางเว็บกำลังรอทีมงานตรวจ',
+      'kyc.sub.rejected': 'เอกสารที่ส่งไม่ผ่านการตรวจ — ส่งใหม่ได้ หรือยืนยันด้วย Thaiprompt',
+      'kyc.sub.reason': 'เหตุผล: {reason}',
+
+      'kyc.completing': 'กำลังเชื่อมบัญชี Thaiprompt…',
+      'kyc.privacy':
+          'TPIX TRADE ได้รับแค่ผลว่ายืนยันแล้วหรือไม่และวันที่ยืนยัน — ไม่ได้รับเลขบัตร ชื่อ วันเกิด หรือรูปถ่ายของคุณ',
+
+      // ผลจากลิงก์ที่ Thaiprompt ส่งกลับเข้าแอป (tpixtrade://kyc)
+      'kyc.link.approved': 'ยืนยันตัวตนสำเร็จ',
+      'kyc.link.linked':
+          'เชื่อมบัญชี Thaiprompt แล้ว — ยืนยันตัวตนในแอป Thaiprompt ให้เสร็จ',
+      'kyc.link.expired': 'ลิงก์หมดอายุ กดยืนยันด้วย Thaiprompt ใหม่',
+      'kyc.link.denied':
+          'คุณยังไม่ได้อนุญาตให้ Thaiprompt ส่งผลยืนยันตัวตน — กดยืนยันด้วย Thaiprompt ใหม่เมื่อพร้อม',
+      'kyc.link.needsSign':
+          'ยืนยันกระเป๋าก่อน แล้วระบบจะเชื่อมบัญชี Thaiprompt ให้ต่อเอง',
+      'kyc.link.noWallet':
+          'เชื่อมกระเป๋าก่อน แล้วระบบจะเชื่อมบัญชี Thaiprompt ให้ต่อเอง',
+      'kyc.link.failed':
+          'เชื่อมบัญชี Thaiprompt ยังไม่สำเร็จ — ดึงหน้าลงเพื่อลองใหม่',
+
+      // ข้อความตามรหัสข้อผิดพลาดของ /kyc/*
+      'kyc.err.NO_WALLET': 'กรุณาเชื่อมกระเป๋าก่อน',
+      'kyc.err.INVALID_WALLET':
+          'ที่อยู่กระเป๋าไม่ถูกต้อง — ลองเชื่อมกระเป๋าใหม่อีกครั้ง',
+      'kyc.err.WALLET_NOT_VERIFIED':
+          'ต้องยืนยันกระเป๋าก่อน — กด "ยืนยันกระเป๋า" ไม่เสียค่าแก๊ส',
+      'kyc.err.WALLET_IP_MISMATCH':
+          'เครือข่ายเปลี่ยนระหว่างใช้งาน — ยืนยันกระเป๋าอีกครั้ง',
+      'kyc.err.THAIPROMPT_UNAVAILABLE':
+          'ติดต่อ Thaiprompt ไม่ได้ชั่วคราว — ลองใหม่อีกสักครู่ หรือส่งเอกสารที่หน้าเว็บ',
+      'kyc.err.THAIPROMPT_TAKEN':
+          'บัญชี Thaiprompt นี้ใช้ยืนยันตัวตนกับบัญชี TPIX TRADE อื่นไปแล้ว',
+      'kyc.err.THAIPROMPT_LINK_FAILED': 'ลิงก์หมดอายุ กดยืนยันด้วย Thaiprompt ใหม่',
+      'kyc.err.THAIPROMPT_RECONNECT':
+          'สิทธิ์ที่เชื่อมกับ Thaiprompt หมดอายุแล้ว — กดยืนยันด้วย Thaiprompt อีกครั้ง',
+      'kyc.err.THAIPROMPT_NOT_LINKED': 'ยังไม่ได้เชื่อมบัญชี Thaiprompt',
+      'kyc.err.INVALID_COMPLETION':
+          'ลิงก์ยืนยันตัวตนไม่ถูกต้อง — กดยืนยันด้วย Thaiprompt ใหม่',
+      'kyc.err.VALIDATION_ERROR': 'ข้อมูลที่ส่งไม่ถูกต้อง — ลองใหม่อีกครั้ง',
+      'kyc.err.RATE_LIMITED': 'ทำรายการถี่เกินไป — รอสักครู่แล้วลองใหม่',
+      'kyc.err.waitSeconds': 'ทำรายการถี่เกินไป — รออีก {s} วินาทีแล้วลองใหม่',
+      'kyc.err.NETWORK': 'ต่ออินเทอร์เน็ตไม่ได้ — ตรวจสัญญาณแล้วลองใหม่',
+      'kyc.err.TIMEOUT': 'เซิร์ฟเวอร์ตอบช้าเกินไป — ลองใหม่อีกครั้ง',
+      'kyc.err.BAD_PAYLOAD': 'เซิร์ฟเวอร์ตอบรูปแบบที่อ่านไม่ได้ — ลองใหม่ภายหลัง',
+      'kyc.err.SERVER': 'เซิร์ฟเวอร์ขัดข้องชั่วคราว — ลองใหม่อีกครั้ง',
+      'kyc.err.UNKNOWN': 'ทำรายการไม่สำเร็จ — ลองใหม่อีกครั้ง',
     },
     'en': {
       // Navigation
@@ -1280,7 +1422,8 @@ class LocaleProvider extends ChangeNotifier {
           'Wallet verification expired — sign again to load your bots',
       'aiTrade.err.WALLET_IP_MISMATCH':
           'Your network changed — please verify your wallet again',
-      'aiTrade.err.KYC_REQUIRED': 'Identity verification is required to rent AI bots',
+      'aiTrade.err.KYC_REQUIRED':
+          'Identity verification is required to rent AI bots — tap to verify your identity in the app',
       'aiTrade.err.PLAN_NOT_FOUND': 'That plan is gone — reload the plan list',
       'aiTrade.err.INSUFFICIENT_CREDITS':
           'Not enough work credits — top up before starting a bot',
@@ -1312,6 +1455,156 @@ class LocaleProvider extends ChangeNotifier {
       'aiTrade.err.BAD_PAYLOAD': 'The server returned something we cannot read',
       'aiTrade.err.REQUEST_FAILED': 'That did not go through — please try again',
       'aiTrade.err.UNKNOWN': 'Something went wrong',
+
+      // ── Identity verification (KYC) — /kyc screen ──
+      'kyc.title': 'Identity verification (KYC)',
+      'kyc.subtitle':
+          'Verify once — it unlocks every service that needs identity verification',
+      'kyc.menu': 'Identity verification (KYC)',
+      'kyc.required.title': 'Identity verification needed',
+      'kyc.badge.approved': 'Verified',
+      'kyc.badge.pending': 'Pending',
+      'kyc.badge.rejected': 'Rejected',
+      'kyc.badge.none': 'Not verified',
+
+      'kyc.noWallet.title': 'Connect a wallet first',
+      'kyc.noWallet.body':
+          'Your verification is tied to the account of the wallet you use in the app — connect it, then come back here.',
+      'kyc.connectWallet': 'Connect wallet',
+
+      'kyc.sign.title': 'Verify your wallet first',
+      'kyc.sign.body':
+          'Sign a short message to prove you own this wallet before viewing or sharing your verification — no gas needed.',
+      'kyc.sign.bodyIp':
+          'Your network changed mid-session (WiFi to mobile data) — please sign to verify your wallet again.',
+      'kyc.sign.button': 'Verify wallet',
+      'kyc.sign.waiting': 'Waiting for signature…',
+      'kyc.sign.ok': 'Wallet verified',
+      'kyc.sign.failed': 'Wallet verification failed — please try again',
+
+      'kyc.loadFailed.title': 'Could not load your verification status',
+      'kyc.retry': 'Try again',
+
+      'kyc.approved.title': 'Identity verified',
+      'kyc.approved.viaThaiprompt': 'via your Thaiprompt account',
+      'kyc.approved.viaDocuments': 'via document review',
+      'kyc.approved.on': 'on {date}',
+      'kyc.level.basic': 'Basic level',
+      'kyc.level.enhanced': 'Enhanced level',
+
+      'kyc.features.unlocked': 'Unlocked services',
+      'kyc.features.required': 'Services that need verification',
+      'kyc.features.none': 'No service requires verification right now',
+      'kyc.features.needsEnhanced': 'Needs enhanced level',
+      'kyc.feature.ai_bot': 'AI trading bot',
+      'kyc.feature.trading': 'Trading & swap',
+      'kyc.feature.token_sale': 'Token sale',
+      'kyc.feature.token_factory': 'Token factory',
+      'kyc.feature.bridge': 'Bridge',
+      'kyc.feature.masternode': 'Masternode & staking',
+
+      'kyc.tp.title': 'Verify with your Thaiprompt account',
+      'kyc.tp.recommended': 'Recommended',
+      'kyc.tp.caseVerified.title': 'Already verified on Thaiprompt',
+      'kyc.tp.caseVerified.body':
+          'Approve on the Thaiprompt page and you pass right away — no documents to send again.',
+      'kyc.tp.caseNew.title': 'Not verified on Thaiprompt yet',
+      'kyc.tp.caseNew.body':
+          'Do the eKYC in the Thaiprompt app (takes a few minutes), then come back here — we unlock automatically.',
+      'kyc.tp.consent':
+          'I consent to Thaiprompt sending my verification result (whether I am verified, and the date) to TPIX TRADE to unlock services that require identity verification — not including my ID number, name, birth date or photos.',
+      'kyc.tp.consentRequired': 'Tick the consent box to continue',
+      'kyc.tp.start': 'Verify with Thaiprompt',
+      'kyc.tp.starting': 'Opening Thaiprompt…',
+      'kyc.tp.browserNote':
+          'Thaiprompt opens in your browser — sign in, tap Allow, and you will be brought back to this app.',
+      'kyc.tp.reconnect':
+          'Your Thaiprompt connection has expired — tap Verify with Thaiprompt again.',
+      'kyc.browserFailed': 'Could not open the browser — please try again',
+
+      'kyc.wait.title': 'Waiting for your Thaiprompt verification',
+      'kyc.wait.status.none':
+          'You have not verified your identity in the Thaiprompt app yet',
+      'kyc.wait.status.pending': 'Thaiprompt is reviewing your verification',
+      'kyc.wait.status.rejected':
+          'Your Thaiprompt verification did not pass — please redo it in the Thaiprompt app',
+      'kyc.wait.status.approved':
+          'Verified by Thaiprompt — updating your status…',
+      'kyc.wait.step1': 'Open the Thaiprompt app',
+      'kyc.wait.step2': 'Go to identity verification (eKYC)',
+      'kyc.wait.step3': 'Scan your ID card and your face',
+      'kyc.wait.step4': 'Come back here — we unlock automatically',
+      'kyc.wait.openApp': 'Open Thaiprompt app',
+      'kyc.wait.check': 'Check again',
+      'kyc.wait.checking': 'Checking…',
+      'kyc.wait.lastChecked': 'Last checked {time}',
+      'kyc.wait.autoCheck':
+          'We check automatically every 20 seconds while this page is open',
+      'kyc.wait.autoStopped':
+          'Auto-check stopped — tap "Check again" once you are done',
+      'kyc.appMissing':
+          'Could not open the Thaiprompt app — it may not be installed on this phone',
+      'kyc.downloadApp': 'Download Thaiprompt app',
+
+      'kyc.web.title': 'Send your documents on the website',
+      'kyc.web.body':
+          'Verifying with Thaiprompt is not open right now — you can send your documents on the TPIX TRADE website.',
+      'kyc.fallback.title': 'No Thaiprompt account / foreign national',
+      'kyc.fallback.body': 'Send your verification documents on the website',
+      'kyc.fallback.button': 'Send documents on the web',
+
+      'kyc.sub.pending': 'The documents you sent on the web are waiting for review',
+      'kyc.sub.rejected':
+          'Your documents were not approved — send them again or verify with Thaiprompt',
+      'kyc.sub.reason': 'Reason: {reason}',
+
+      'kyc.completing': 'Linking your Thaiprompt account…',
+      'kyc.privacy':
+          'TPIX TRADE only receives whether you are verified and when — never your ID number, name, birth date or photos.',
+
+      // Results of the link Thaiprompt sends back into the app (tpixtrade://kyc)
+      'kyc.link.approved': 'Identity verified',
+      'kyc.link.linked':
+          'Thaiprompt account linked — finish verifying in the Thaiprompt app',
+      'kyc.link.expired':
+          'The link has expired — tap Verify with Thaiprompt again',
+      'kyc.link.denied':
+          'You did not allow Thaiprompt to share your verification — tap Verify with Thaiprompt again when ready',
+      'kyc.link.needsSign':
+          'Verify your wallet first — we will finish linking Thaiprompt for you',
+      'kyc.link.noWallet':
+          'Connect your wallet first — we will finish linking Thaiprompt for you',
+      'kyc.link.failed':
+          'Could not link your Thaiprompt account yet — pull down to try again',
+
+      // Error codes of /kyc/*
+      'kyc.err.NO_WALLET': 'Connect a wallet first',
+      'kyc.err.INVALID_WALLET':
+          'Wallet address is invalid — try reconnecting your wallet',
+      'kyc.err.WALLET_NOT_VERIFIED':
+          'Verify your wallet first — tap "Verify wallet", no gas needed',
+      'kyc.err.WALLET_IP_MISMATCH':
+          'Your network changed mid-session — please verify your wallet again',
+      'kyc.err.THAIPROMPT_UNAVAILABLE':
+          'Thaiprompt cannot be reached right now — try again shortly, or send documents on the web',
+      'kyc.err.THAIPROMPT_TAKEN':
+          'This Thaiprompt account is already used by another TPIX TRADE account',
+      'kyc.err.THAIPROMPT_LINK_FAILED':
+          'The link has expired — tap Verify with Thaiprompt again',
+      'kyc.err.THAIPROMPT_RECONNECT':
+          'Your Thaiprompt connection has expired — tap Verify with Thaiprompt again',
+      'kyc.err.THAIPROMPT_NOT_LINKED': 'Your Thaiprompt account is not linked yet',
+      'kyc.err.INVALID_COMPLETION':
+          'The verification link is invalid — tap Verify with Thaiprompt again',
+      'kyc.err.VALIDATION_ERROR': 'Something was not valid — please try again',
+      'kyc.err.RATE_LIMITED': 'Too many attempts — wait a moment and try again',
+      'kyc.err.waitSeconds': 'Too many attempts — wait {s} seconds and try again',
+      'kyc.err.NETWORK': 'No internet connection — check your signal and retry',
+      'kyc.err.TIMEOUT': 'The server took too long — please try again',
+      'kyc.err.BAD_PAYLOAD':
+          'The server returned something we cannot read — try again later',
+      'kyc.err.SERVER': 'The server is having trouble — please try again',
+      'kyc.err.UNKNOWN': 'That did not go through — please try again',
     },
   };
 }

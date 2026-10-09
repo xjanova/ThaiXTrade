@@ -2000,9 +2000,11 @@ class AiBotErrorText {
       'เครือข่ายเปลี่ยนระหว่างใช้งาน (สลับ WiFi หรือเน็ตมือถือ) — เซ็นยืนยันกระเป๋าอีกครั้ง',
       'Your network changed mid-session (WiFi to mobile data) — please verify your wallet again',
     ],
+    // ไม่ชี้ไปหน้าเว็บแล้ว — แอพมีหน้ายืนยันตัวตน (/kyc) เอง และทุกที่ที่โชว์ข้อความนี้
+    // มีปุ่ม "ไปยืนยันตัวตน" ติดมาด้วย (AiBotErrorAction.openKyc)
     'KYC_REQUIRED': [
-      'ต้องยืนยันตัวตนก่อนใช้ฟีเจอร์นี้ — ทำได้ที่หน้าเว็บ tpix.online/kyc',
-      'Identity verification is required first — complete it at tpix.online/kyc',
+      'ต้องยืนยันตัวตนก่อนใช้ฟีเจอร์นี้ — กดเพื่อยืนยันตัวตนในแอพได้เลย',
+      'Identity verification is required first — tap to verify your identity',
     ],
     'PLAN_NOT_FOUND': [
       'ไม่พบแพลนนี้แล้ว — ดึงรายการแพลนใหม่อีกครั้ง',

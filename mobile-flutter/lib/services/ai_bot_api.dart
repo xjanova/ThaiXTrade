@@ -128,7 +128,11 @@ enum AiBotErrorAction {
   /// เซ็นข้อความยืนยันกระเป๋าใหม่ (แคชฝั่งเซิร์ฟเวอร์อายุ 4 ชั่วโมง)
   verifyWallet,
 
-  /// ไปยืนยันตัวตนที่หน้าเว็บ (แอพยังไม่มีหน้ายื่น KYC)
+  /// ไปหน้ายืนยันตัวตนในแอพ (`/kyc` — ยืนยันด้วยบัญชี Thaiprompt ได้ในแอพเลย)
+  ///
+  /// เดิมพาออกไปหน้าเว็บ tpix.online/kyc ซึ่งผู้ใช้ไม่ได้ล็อกอินค้างไว้ในเบราว์เซอร์
+  /// ต้องเชื่อมกระเป๋าใหม่บนเว็บอีกรอบ — ส่วนใหญ่เลิกกลางทาง ใช้ `KycNav.open()`
+  /// ซึ่งจะถอยไปเปิดเว็บเองเฉพาะตอนที่หา navigator ของแอพไม่เจอเท่านั้น
   openKyc,
 
   /// ไปหน้าเติมเครดิต — ใช้กับ INSUFFICIENT_CREDITS เท่านั้น
@@ -1069,6 +1073,7 @@ class AiBotApi {
         retryAfterSeconds: err.retryAfterSeconds,
         kycFeature: err.kycFeature,
         kycLevel: err.kycLevel,
+        payload: err.payload,
       );
 
   static String? _str(dynamic value) {

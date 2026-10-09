@@ -6,12 +6,14 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
+import '../../utils/kyc_nav.dart';
 import '../common/gradient_button.dart';
 
 class ProfileEditSheet extends StatefulWidget {
@@ -38,6 +40,17 @@ class _ProfileEditSheetState extends State<ProfileEditSheet> {
     _nameCtrl = TextEditingController(text: p?.name ?? '');
     _emailCtrl = TextEditingController(text: p?.email ?? '');
     _avatarCtrl = TextEditingController(text: p?.avatar ?? '');
+  }
+
+  /// ปิดแผ่นนี้แล้วไปหน้า /kyc
+  ///
+  /// จับ router ไว้ก่อนปิด — context ของแผ่นนี้หายไปทันทีที่ pop
+  void _openKyc() {
+    final router = GoRouter.maybeOf(context);
+    Navigator.pop(context);
+    if (router != null && !KycNav.isShowing(router)) {
+      router.push(KycNav.route);
+    }
   }
 
   @override
@@ -216,6 +229,8 @@ class _ProfileEditSheetState extends State<ProfileEditSheet> {
                         child: _StatChip(
                           label: locale.t('profile.kyc_status'),
                           value: p.kycStatus.toUpperCase(),
+                          // แตะแล้วไปหน้ายืนยันตัวตน — สถานะอย่างเดียวไม่บอกว่าต้องทำอะไรต่อ
+                          onTap: _saving ? null : _openKyc,
                         ),
                       ),
                     ],
@@ -422,33 +437,51 @@ class _StatChip extends StatelessWidget {
   final String label;
   final String value;
 
-  const _StatChip({required this.label, required this.value});
+  /// null = อ่านอย่างเดียว · มีค่า = แตะได้ (โชว์ลูกศรบอกว่าไปต่อได้)
+  final VoidCallback? onTap;
+
+  const _StatChip({required this.label, required this.value, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.bgTertiary.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              color: AppColors.textTertiary,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: AppTheme.mono(fontSize: 13, color: AppColors.brandCyan),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: AppTheme.mono(fontSize: 13, color: AppColors.brandCyan),
-          ),
+          if (onTap != null)
+            Icon(Icons.chevron_right_rounded,
+                size: 18, color: AppColors.textTertiary),
         ],
       ),
+    );
+    if (onTap == null) return chip;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: chip,
     );
   }
 }

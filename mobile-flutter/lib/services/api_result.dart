@@ -59,6 +59,13 @@ final class ApiErr<T> extends ApiResult<T> {
   final String? kycFeature;
   final String? kycLevel;
 
+  /// เนื้อ `data` ที่เซิร์ฟเวอร์แนบมากับซองล้มเหลว (แปลงเป็นโมเดลแล้ว) — ส่วนใหญ่ null
+  ///
+  /// บางเส้นตอบ "ล้มเหลว + สถานะล่าสุด" ในซองเดียว เช่น 422 ของ
+  /// `/kyc/thaiprompt/refresh` แนบสถานะ KYC ที่บอกว่าต้องเชื่อมใหม่มาด้วย
+  /// ทิ้งไปคือต้องยิงอีกคำขอเพื่อถามสิ่งที่เซิร์ฟเวอร์บอกมาแล้ว
+  final Object? payload;
+
   const ApiErr(
     this.code,
     this.message, {
@@ -67,6 +74,7 @@ final class ApiErr<T> extends ApiResult<T> {
     this.retryAfterSeconds,
     this.kycFeature,
     this.kycLevel,
+    this.payload,
   });
 
   /// ต้องให้ผู้ใช้เซ็นกระเป๋าใหม่

@@ -12,7 +12,8 @@
 ///     แนบไปกับทุกรายงาน → คนอ่านเห็นว่า "ก่อนพังเกิดอะไรขึ้นบ้าง" ไม่ต้องเดา
 ///  3. ผู้ใช้กด "รายงานปัญหา" เอง → ส่งข้อความ + สภาพแอปตอนนั้น + breadcrumb
 ///
-/// ความปลอดภัย: ล้างข้อมูลลับก่อนส่งเสมอ (กุญแจ 64 hex, ลายเซ็น, mnemonic, โทเคน)
+/// ความปลอดภัย: ล้างข้อมูลลับก่อนส่งเสมอ (กุญแจ 64 hex, ลายเซ็น, mnemonic, โทเคน,
+/// รหัสรับผล KYC จาก Thaiprompt)
 /// คิวออฟไลน์ใน SharedPreferences · กันซ้ำด้วย fingerprint 1 ชั่วโมง · ไม่บล็อก UI
 ///
 /// Developed by Xman Studio
@@ -257,6 +258,12 @@ class BugReporter {
   static final _sessionHeader = RegExp(r'(X-Wallet-Session[":\s]+)[0-9a-f]{64}', caseSensitive: false);
   // 12+ คำภาษาอังกฤษตัวเล็กติดกัน = น่าจะเป็น mnemonic ไม่เสี่ยงปล่อยผ่าน
   static final _mnemonic = RegExp(r'\b(?:[a-z]{3,8}\s+){11,23}[a-z]{3,8}\b');
+  // รหัสรับผล KYC (tpixtrade://kyc?completion=<48 ตัว>) แลกผลยืนยันตัวตนได้ภายใน 8 นาที
+  // ไม่ใช่ hex จึงไม่โดนกฎ 64 hex ข้างบน — ต้องจับจากชื่อพารามิเตอร์ (URL / JSON / key=value)
+  static final _completion = RegExp(
+    r'''(completion["']?\s*[=:]\s*["']?)[A-Za-z0-9]{8,}''',
+    caseSensitive: false,
+  );
 
   static String _scrub(String input) {
     var out = input;
@@ -265,6 +272,7 @@ class BugReporter {
     out = out.replaceAllMapped(_bearer, (m) => '${m.group(1)}[token]');
     out = out.replaceAllMapped(_sessionHeader, (m) => '${m.group(1)}[token]');
     out = out.replaceAll(_mnemonic, '[mnemonic?]');
+    out = out.replaceAllMapped(_completion, (m) => '${m.group(1)}[redacted]');
     return out;
   }
 
@@ -272,7 +280,11 @@ class BugReporter {
     final out = <String, dynamic>{};
     map.forEach((k, v) {
       final key = k.toLowerCase();
-      if (key.contains('mnemonic') || key.contains('private') || key.contains('secret') || key.contains('pin')) {
+      if (key.contains('mnemonic') ||
+          key.contains('private') ||
+          key.contains('secret') ||
+          key.contains('pin') ||
+          key.contains('completion')) {
         out[k] = '[redacted]';
       } else if (v is String) {
         out[k] = _scrub(v);

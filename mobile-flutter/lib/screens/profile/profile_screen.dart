@@ -15,11 +15,14 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
+import '../../providers/kyc_store.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/accent_provider.dart';
+import '../../utils/kyc_nav.dart';
 import '../../widgets/common/app_background.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
+import '../../widgets/common/kyc_status_badge.dart';
 import '../../widgets/wallet/profile_edit_sheet.dart';
 import '../../widgets/wallet/wallet_connect_sheet.dart';
 
@@ -153,7 +156,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: _StatRow(wallet: wallet, locale: locale),
                   ),
                 ),
-                SliverToBoxAdapter(child: _buildMenu(th)),
+                SliverToBoxAdapter(child: _buildMenu(th, locale, wallet)),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
@@ -212,7 +215,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildMenu(bool th) {
+  Widget _buildMenu(bool th, LocaleProvider locale, WalletProvider wallet) {
+    // ยืนยันตัวตนอยู่บนสุด — เป็นเรื่องของ "บัญชี" ที่ปลดล็อกบริการอื่น และป้ายสถานะ
+    // ต้องเห็นได้ทันทีโดยไม่ต้องกดเข้าไปดู
+    // ฟัง KycStore ด้วย: ยืนยันผ่านจากหน้า /kyc (หรือ deep link) แล้วกลับมา ป้ายต้องเปลี่ยนเอง
+    final kycItem = ListenableBuilder(
+      listenable: KycStore.I,
+      builder: (context, _) => _MenuRow(
+        item: _MenuItem(
+          icon: Icons.verified_user_outlined,
+          label: locale.t('kyc.menu'),
+          trailing: KycStatusBadge(
+            state: kycBadgeStateOf(
+              status: KycStore.I.statusFor(wallet.address),
+              profileKycStatus: wallet.profile?.kycStatus,
+            ),
+          ),
+          onTap: () => KycNav.open(context),
+        ),
+      ),
+    );
+
     final items = <_MenuItem>[
       _MenuItem(
         icon: Icons.account_balance_wallet_outlined,
@@ -239,6 +262,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Column(
           children: [
+            kycItem,
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14),
+              child: Divider(height: 1, color: AppColors.divider),
+            ),
             for (int i = 0; i < items.length; i++) ...[
               _MenuRow(item: items[i]),
               if (i != items.length - 1)
@@ -578,8 +606,15 @@ class _MenuItem {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const _MenuItem(
-      {required this.icon, required this.label, required this.onTap});
+
+  /// ป้ายสถานะท้ายแถว (เช่น สถานะยืนยันตัวตน) — null = ไม่มี
+  final Widget? trailing;
+  const _MenuItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.trailing,
+  });
 }
 
 class _MenuRow extends StatelessWidget {
@@ -619,6 +654,11 @@ class _MenuRow extends StatelessWidget {
                   ),
                 ),
               ),
+              if (item.trailing != null) ...[
+                const SizedBox(width: 8),
+                item.trailing!,
+                const SizedBox(width: 4),
+              ],
               Icon(Icons.chevron_right_rounded,
                   size: 20, color: AppColors.textTertiary),
             ],

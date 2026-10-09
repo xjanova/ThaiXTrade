@@ -1,6 +1,7 @@
 /// TPIX TRADE — Deep Link Service
 /// รับ tpixtrade://connect?address=... จาก Wallet → auto-link wallet
 /// รับ tpixtrade://trade?pair=BTC-USDT → เปิดหน้า trade pair นั้น
+/// รับ tpixtrade://kyc?result=ok&completion=... → แลกผล KYC จาก Thaiprompt แล้วเปิดหน้า /kyc
 ///
 /// Developed by Xman Studio
 
@@ -12,9 +13,13 @@ import 'package:go_router/go_router.dart';
 
 import '../core/locale/locale_provider.dart';
 import '../core/theme/app_colors.dart';
+import '../models/kyc_models.dart';
+import '../providers/kyc_store.dart';
 import '../providers/market_provider.dart';
 import '../providers/wallet_provider.dart';
+import '../utils/kyc_nav.dart';
 import 'bug_reporter.dart';
+import 'kyc_api.dart';
 import 'linked_wallet_signer.dart';
 import 'package:provider/provider.dart';
 
@@ -83,20 +88,7 @@ class DeepLinkService {
   /// เรียกจาก go_router redirect ตอน path="/" + มี query
   void handleRouterFallback(Uri uri) {
     final qp = uri.queryParameters;
-    String? host;
-    if (qp.containsKey('address') && qp.containsKey('chain')) {
-      host = 'connect';
-    } else if (qp['kind'] == 'tx') {
-      // tx-result ฝัง kind=tx ไว้ใน callback URL — ต้องเช็คก่อน sign-result
-      // เพราะ error case มี nonce+error เหมือนกัน (แยกไม่ออกถ้าไม่มี kind)
-      host = 'tx-result';
-    } else if (qp.containsKey('nonce') && qp.containsKey('signature')) {
-      host = 'sign-result';
-    } else if (qp.containsKey('nonce') && qp.containsKey('error')) {
-      host = 'sign-result';
-    } else if (qp.containsKey('pair')) {
-      host = 'trade';
-    }
+    final host = inferHostFromQuery(qp);
     if (host == null) return;
 
     final reconstructed = Uri(
@@ -113,6 +105,27 @@ class DeepLinkService {
 
     // Defer 1 frame เพื่อรอ navigator settle หลัง redirect
     WidgetsBinding.instance.addPostFrameCallback((_) => _handle(reconstructed));
+  }
+
+  /// เดา host ของ deep link จากชื่อคีย์ใน query (host หายไประหว่างทาง)
+  ///
+  /// แยกเป็นฟังก์ชันเพียวไว้ทดสอบ — ลำดับการเช็คคือสัญญา: ลิงก์ที่มีอยู่ก่อนต้องได้
+  /// สิทธิ์ก่อนเสมอ การเพิ่ม host ใหม่ต้องไม่ทำให้ลิงก์เดิมถูกเดาผิด
+  static String? inferHostFromQuery(Map<String, String> qp) {
+    if (qp.containsKey('address') && qp.containsKey('chain')) return 'connect';
+    // tx-result ฝัง kind=tx ไว้ใน callback URL — ต้องเช็คก่อน sign-result
+    // เพราะ error case มี nonce+error เหมือนกัน (แยกไม่ออกถ้าไม่มี kind)
+    if (qp['kind'] == 'tx') return 'tx-result';
+    if (qp.containsKey('nonce') && qp.containsKey('signature')) {
+      return 'sign-result';
+    }
+    if (qp.containsKey('nonce') && qp.containsKey('error')) return 'sign-result';
+    if (qp.containsKey('pair')) return 'trade';
+    // ผลจาก Thaiprompt (tpixtrade://kyc?result=…&completion=…) — คีย์สองตัวนี้
+    // ไม่มีลิงก์ไหนใช้ (connect/sign-result/tx-result/trade) จึงไม่ชนกัน
+    // วางไว้ท้ายสุดให้ลิงก์เดิมทุกตัวได้สิทธิ์ก่อนเสมอ
+    if (qp.containsKey('completion') || qp.containsKey('result')) return 'kyc';
+    return null;
   }
 
   void dispose() {
@@ -161,6 +174,9 @@ class DeepLinkService {
         break;
       case 'trade':
         _handleTrade(ctx, uri);
+        break;
+      case 'kyc':
+        _handleKyc(ctx, uri);
         break;
       case 'open':
       default:
@@ -323,6 +339,63 @@ class DeepLinkService {
       _showSnack(context, _isThai(context)
           ? 'เชื่อม wallet ไม่สำเร็จ'
           : 'Failed to link wallet');
+    }
+  }
+
+  /// `tpixtrade://kyc?result=ok&completion=<48 ตัว>` — Thaiprompt ส่งผลการอนุญาตกลับมา
+  ///
+  /// เปิดหน้า /kyc ก่อนเลย (ผู้ใช้เห็นแถบ "กำลังเชื่อมบัญชี Thaiprompt…" ทันที ไม่ใช่
+  /// แอปเปิดมาเฉยๆ แล้วรอ) จากนั้นแลกรหัสผ่าน [KycStore] ซึ่งหน้า /kyc ฟังอยู่ —
+  /// หน้าที่เปิดค้างไว้ก่อนแล้วจึงอัปเดตเองโดยไม่ต้องโหลดใหม่
+  ///
+  /// ⚠️ ห้าม log ค่า completion — _handle พิมพ์แค่ host + ชื่อคีย์ และ
+  ///    KycReturnLink.toString() ไม่พิมพ์รหัส
+  Future<void> _handleKyc(BuildContext context, Uri uri) async {
+    final link = KycReturnLink.parse(uri);
+    if (link == null) return;
+
+    // อ่านกระเป๋าก่อน await — ใช้ context ข้ามช่วงรอไม่ได้
+    String? wallet;
+    try {
+      wallet = context.read<WalletProvider>().address;
+    } catch (_) {}
+
+    await KycNav.open(context);
+    BugReporter.I.breadcrumb('kyc return ${link.result.name}');
+
+    switch (link.result) {
+      case KycReturnResult.ok:
+        final outcome = await KycStore.I.complete(
+          api: KycApi(),
+          wallet: wallet,
+          completion: link.completion!,
+        );
+        BugReporter.I.breadcrumb('kyc complete → ${outcome.name}');
+
+        final key = outcome.messageKey;
+        if (key != null) _snackKey(key, isSuccess: outcome.isSuccess);
+      case KycReturnResult.denied:
+        _snackKey('kyc.link.denied');
+      case KycReturnResult.expired:
+      case KycReturnResult.error:
+      case KycReturnResult.invalid:
+        _snackKey('kyc.link.expired');
+    }
+  }
+
+  /// แจ้งผลหลังช่วงรอ — ใช้ context ล่าสุดของ navigator เสมอ (ตัวที่ได้ก่อนรออาจหายไปแล้ว)
+  void _snackKey(String key, {bool isSuccess = false}) {
+    final ctx = _navKey?.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    _showSnack(ctx, _t(ctx, key), isSuccess: isSuccess);
+  }
+
+  /// ข้อความจาก locale — ไม่มี LocaleProvider (ไม่น่าเกิด) ก็ยังต้องมีข้อความให้ผู้ใช้
+  String _t(BuildContext context, String key) {
+    try {
+      return context.read<LocaleProvider>().t(key);
+    } catch (_) {
+      return key;
     }
   }
 
