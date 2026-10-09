@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * โลโก้เหรียญ TPIX → ตราใหม่ของแบรนด์.
  *
  * เจ้าของสั่ง (2026-10-10): "โลโก้เหรียญเปลี่ยนให้หมดทุกจุด" — เหรียญ TPIX ใช้ตราเดียวกับแพลตฟอร์ม (ตัวย่อ)
@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * Developed by Xman Studio.
  */
-return new class extends Migration
+return new class() extends Migration
 {
     private const OLD = '/tpixlogo.webp';
 

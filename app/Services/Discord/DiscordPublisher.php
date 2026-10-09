@@ -144,9 +144,15 @@ class DiscordPublisher
 
         // แอปรุ่นใหม่ / คู่เทรดใหม่ — ยังไม่ได้เลือกห้อง = ข้ามเงียบ ๆ (ไม่รกผลซิงก์ด้วย "ยังไม่มีห้อง" ทุกรอบ)
         if (isset($map['dev'])) {
+            $announced = $this->announcedVersions();
             foreach ($this->live->releases() as $release) {
                 if ($budget <= 0) {
                     break;
+                }
+                // รุ่นต่ำกว่าที่เคยประกาศ = ข้อมูลถอยหลัง ไม่ใช่รุ่นใหม่ — เกิดจริง 2026-10-04: repo มาสเตอร์โหนด
+                // ตอบไม่ได้ ระบบถอยไปหยิบไฟล์เก่าจาก repo เชน (1.14.0) บอทประกาศ "ออกแล้ว" ทั้งที่ประกาศ 1.14.4 ไปก่อนแล้ว
+                if ($this->olderThanAnnounced($release, $announced)) {
+                    continue;
                 }
                 $result = $this->postOnce('release', "{$release['product']}:{$release['version']}", $map['dev'], fn () => $this->content->release($release), $dryRun);
                 $results[] = $result;
@@ -200,9 +206,23 @@ class DiscordPublisher
         }
 
         if (isset($map['dev'])) {
-            $releases = collect($this->live->releases())->keyBy(fn ($r) => "{$r['product']}:{$r['version']}");
-            foreach (DiscordPost::where('kind', 'release')->whereNotNull('message_id')->whereIn('ref_key', $releases->keys()->all())->get() as $post) {
-                $release = $releases[$post->ref_key];
+            // ทุกโพสต์รุ่นแอปที่เคยส่ง ไม่ใช่แค่รุ่นล่าสุด — ของเก่าเคยลงรายการฟีเจอร์แม่แบบว่าเป็นของใหม่
+            // รุ่นล่าสุดใช้บันทึกรุ่นจริงจาก API · รุ่นก่อน ๆ ใช้ข้อความกลาง ๆ (ไม่มีบันทึกรุ่นเหลือให้)
+            // โพสต์ที่ประกาศรุ่นต่ำกว่ารุ่นที่ประกาศไปก่อนหน้า = ส่งผิด → แก้เป็นคำชี้แจง
+            $current = collect($this->live->releases())->keyBy(fn ($r) => "{$r['product']}:{$r['version']}");
+            $announced = $this->announcedVersions();
+            $highest = [];
+            foreach (DiscordPost::where('kind', 'release')->whereNotNull('message_id')->orderBy('id')->get() as $post) {
+                $release = $current[$post->ref_key] ?? DiscordLiveData::pastRelease($post->ref_key);
+                if ($release === null) {
+                    continue;
+                }
+                $product = $release['product'];
+                if (isset($highest[$product]) && version_compare($release['version'], $highest[$product], '<')) {
+                    $release['mistaken_for'] = $announced[$product] ?? $highest[$product];
+                } else {
+                    $highest[$product] = $release['version'];
+                }
                 $jobs[] = [$post, fn () => $this->content->release($release), collect([$post])];
             }
         }
@@ -333,7 +353,9 @@ class DiscordPublisher
             ];
         }
 
-        foreach (array_slice($this->live->releases(), 0, $upcoming) as $release) {
+        $announced = $this->announcedVersions();
+        $releases = array_filter($this->live->releases(), fn (array $r) => ! $this->olderThanAnnounced($r, $announced));
+        foreach (array_slice($releases, 0, $upcoming) as $release) {
             $channel = $map['dev'] ?? null;
             $ref = "{$release['product']}:{$release['version']}";
             $items[] = [
@@ -379,6 +401,32 @@ class DiscordPublisher
     // ── ภายใน ────────────────────────────────────────────────────────────────
 
     /** @return array<string, string> */
+    /**
+     * เลขรุ่นสูงสุดที่เคยประกาศของแต่ละแอป (จาก ref_key "product:version").
+     *
+     * @return array<string, string>
+     */
+    private function announcedVersions(): array
+    {
+        $max = [];
+        foreach (DiscordPost::where('kind', 'release')->pluck('ref_key') as $ref) {
+            [$product, $version] = array_pad(explode(':', (string) $ref, 2), 2, '');
+            if ($version !== '' && (! isset($max[$product]) || version_compare($version, $max[$product], '>'))) {
+                $max[$product] = $version;
+            }
+        }
+
+        return $max;
+    }
+
+    /** @param  array<string, string>  $announced */
+    private function olderThanAnnounced(array $release, array $announced): bool
+    {
+        $top = $announced[$release['product']] ?? null;
+
+        return $top !== null && version_compare((string) $release['version'], $top, '<');
+    }
+
     private function ensureChannelMap(): array
     {
         $map = $this->settings->channelMap();

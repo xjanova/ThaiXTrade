@@ -531,18 +531,87 @@ class DiscordBotUpgradeTest extends TestCase
         $this->assertNotContains('Circulating supply · อุปทานหมุนเวียน', $names);
     }
 
-    public function test_release_notes_drop_github_tables_and_missing_download_hints(): void
+    /**
+     * เจ้าของแจ้ง 2026-10-10: "ข่าวอัปเดตที่ discord ไม่ตรงความจริง" — body ของ release มี "Highlights"
+     * แม่แบบตายตัวซ้ำทุกรุ่น บอทเอาไปประกาศเหมือนเป็นของใหม่ → เหลือเฉพาะหัวข้อ What's new (จากคอมมิตจริง).
+     */
+    public function test_release_news_is_only_the_whats_new_section_never_the_template(): void
+    {
+        $this->fakeLive();
+        $template = "## Android APK (Flutter)\n| | |\n|---|---|\n| Version | v1.1.213 |\n\n### Highlights\n- Thai/English language support\n\n### Install\n1. Download TPIX-TRADE-v1.1.213.apk below\n2. Open on Android device";
+
+        $embed = app(DiscordContent::class)->release([
+            'product' => 'trade', 'label' => 'TPIX TRADE app (Android)', 'version' => '1.1.213', 'name' => 'v1.1.213', 'published_at' => null,
+            'notes' => "## What's new\n- stop sending users to the web for KYC\n- new launcher icon\n\n---\n".$template,
+        ])['embeds'][0];
+
+        $this->assertStringContainsString("**What's new**", $embed['description']);
+        $this->assertStringContainsString('- stop sending users to the web for KYC', $embed['description']);
+        $this->assertStringContainsString('- new launcher icon', $embed['description']);
+        $this->assertStringNotContainsString('Thai/English language support', $embed['description'], 'รายการแม่แบบไม่ใช่ของใหม่ในรุ่นนี้');
+        $this->assertStringNotContainsString('|', $embed['description']);
+        $this->assertStringNotContainsString('Open on Android device', $embed['description']);
+    }
+
+    public function test_release_without_whats_new_claims_nothing_beyond_the_version(): void
     {
         $this->fakeLive();
 
+        // บันทึกรุ่นของวอลเล็ต (อีก repo) เป็นรายการฟีเจอร์ทั้งแอป ไม่ใช่สิ่งที่เปลี่ยนในรุ่นนั้น
         $embed = app(DiscordContent::class)->release([
-            'product' => 'trade', 'label' => 'แอป TPIX TRADE (Android)', 'version' => '1.1.169', 'name' => 'v1.1.169', 'published_at' => null,
-            'notes' => "Android APK (Flutter)\n| | |\n|---|---|\n| Version | v1.1.169 |\n\nHighlights\n- Thai/English language support\n\nInstall\n- Download TPIX-TRADE-v1.1.169.apk below\n- Open on Android device",
+            'product' => 'wallet', 'label' => 'TPIX Wallet (Android)', 'version' => '1.13.30', 'name' => 'v1.13.30', 'published_at' => null,
+            'notes' => "## TPIX Wallet v1.13.30\n\n### 📱 TPIX Wallet\n- 🔐 Multi-wallet support (up to 128 wallets)\n- 🌓 Light / Dark theme",
         ])['embeds'][0];
 
-        $this->assertStringNotContainsString('|', $embed['description']);
-        $this->assertStringNotContainsString('below', $embed['description']);
-        $this->assertStringContainsString('Thai/English language support', $embed['description']);
+        $this->assertStringStartsWith('A new version is ready to download.', $embed['description']);
+        $this->assertStringNotContainsString('Multi-wallet', $embed['description']);
+        $this->assertStringContainsString('1.13.30', $embed['title']);
+    }
+
+    /** เกิดจริง 2026-10-04: repo มาสเตอร์โหนดตอบไม่ได้ ระบบถอยไปหยิบไฟล์เก่า 1.14.0 แล้วบอทประกาศว่า "ออกแล้ว" */
+    public function test_an_older_build_is_never_announced_as_new(): void
+    {
+        $this->live['releases'] = [['product' => 'masternode', 'label' => 'Master node app (Windows)', 'version' => '1.14.4', 'name' => 'v1.14.4', 'notes' => '', 'published_at' => null]];
+        $this->fakeLive();
+        $this->fakeDiscord();
+        $this->mapRooms(['dev']);
+
+        $this->sync();
+        $this->live['releases'][0]['version'] = '1.14.0';
+        $this->sync();
+        $this->live['releases'][0]['version'] = '1.14.5';
+        $this->sync();
+
+        $posts = $this->sent()->filter(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/channels/1485600000000000000/messages'))->values();
+        $this->assertCount(2, $posts);
+        $this->assertStringContainsString('version 1.14.4', $posts[0]['embeds'][0]['title']);
+        $this->assertStringContainsString('version 1.14.5', $posts[1]['embeds'][0]['title']);
+        $this->assertFalse(DiscordPost::where('kind', 'release')->where('ref_key', 'masternode:1.14.0')->exists());
+    }
+
+    public function test_past_release_posts_are_rewritten_truthfully(): void
+    {
+        $this->fakeLive();
+        $this->fakeDiscord();
+        $this->mapRooms(['dev']);
+        $dev = '1485600000000000000';
+
+        // ของที่ส่งไปแล้วด้วยกฎเดิม: รุ่นเก่าที่ลง Highlights แม่แบบ + รุ่นถอยหลังที่ประกาศผิด
+        $old = DiscordPost::create(['kind' => 'release', 'ref_key' => 'trade:1.1.196', 'channel_id' => $dev, 'message_id' => '1549200000000000001', 'content_hash' => 'old', 'posted_at' => now()]);
+        DiscordPost::create(['kind' => 'release', 'ref_key' => 'masternode:1.14.4', 'channel_id' => $dev, 'message_id' => '1549200000000000002', 'content_hash' => 'old', 'posted_at' => now()]);
+        $mistake = DiscordPost::create(['kind' => 'release', 'ref_key' => 'masternode:1.14.0', 'channel_id' => $dev, 'message_id' => '1549200000000000003', 'content_hash' => 'old', 'posted_at' => now()]);
+
+        $this->sync();
+
+        $edits = $this->sent()->filter(fn (Request $r) => $r->method() === 'PATCH')->keyBy(fn (Request $r) => basename($r->url()));
+
+        $this->assertStringStartsWith('A new version is ready to download.', $edits['1549200000000000001']['embeds'][0]['description']);
+        $this->assertStringContainsString('version 1.1.196', $edits['1549200000000000001']['embeds'][0]['title']);
+        $this->assertStringContainsString('posted by mistake', $edits['1549200000000000003']['embeds'][0]['title']);
+        $this->assertStringContainsString('**1.14.4**', $edits['1549200000000000003']['embeds'][0]['description']);
+        $this->assertStringNotContainsString('posted by mistake', $edits['1549200000000000002']['embeds'][0]['title']);
+        $this->assertNotSame('old', $old->fresh()->content_hash);
+        $this->assertNotSame('old', $mistake->fresh()->content_hash);
     }
 
     // ── ภาษาอังกฤษเป็นหลัก (เจ้าของ 2026-09-15: "ให้มีภาษาอังกฤษด้วย เป็นภาษาหลัก") ──────
@@ -696,7 +765,7 @@ class DiscordBotUpgradeTest extends TestCase
 
     public function test_each_app_version_is_announced_once(): void
     {
-        $this->live['releases'] = [['product' => 'trade', 'label' => 'แอป TPIX TRADE (Android)', 'version' => '1.2.3', 'name' => 'v1.2.3', 'notes' => 'แก้บั๊ก ดู https://evil.example/x', 'published_at' => '2026-09-14T10:00:00Z']];
+        $this->live['releases'] = [['product' => 'trade', 'label' => 'แอป TPIX TRADE (Android)', 'version' => '1.2.3', 'name' => 'v1.2.3', 'notes' => "## What's new\n- แก้บั๊ก ดู https://evil.example/x", 'published_at' => '2026-09-14T10:00:00Z']];
         $this->fakeLive();
         $this->fakeDiscord();
         $this->mapRooms(['dev']);

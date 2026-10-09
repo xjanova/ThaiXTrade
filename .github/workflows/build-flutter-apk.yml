@@ -53,6 +53,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # ประวัติ + tag ครบ — ขั้น "What's new" ต้องหา tag รุ่นก่อนแล้วไล่คอมมิตตั้งแต่ตรงนั้น
+          fetch-depth: 0
 
       - name: Setup Node.js (for version.json)
         uses: actions/setup-node@v6
@@ -170,6 +172,43 @@ jobs:
           echo "build=$BUILD" >> $GITHUB_OUTPUT
 
       # ══════════════════════════════════════════════════
+      # What's new — ของที่เปลี่ยนจริงในรุ่นนี้ (คอมมิตของแอปตั้งแต่ tag รุ่นก่อน)
+      #
+      # บอท Discord ประกาศ "แอปรุ่นใหม่" จากหัวข้อนี้เท่านั้น (DiscordContent::release)
+      # เดิม body มีแต่ "Highlights" แม่แบบตายตัวซ้ำทุกรุ่น → ข่าวอัปเดตไม่ตรงความจริง (เจ้าของแจ้ง 2026-10-10)
+      # ข้ามคอมมิตที่ผู้ใช้ไม่เห็น: chore (bump เวอร์ชัน) ci build test docs style · ตัด "type(scope): " ออก
+      # ไม่มีอะไรเหลือ = ไม่เขียนหัวข้อ → บอทบอกแค่ว่ามีรุ่นใหม่ ไม่เดา
+      # ══════════════════════════════════════════════════
+      - name: Collect what's new
+        id: whatsnew
+        working-directory: .
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude "v$VERSION" HEAD 2>/dev/null || true)
+          RANGE="HEAD"
+          [ -n "$PREV" ] && RANGE="$PREV..HEAD"
+          echo "Changes since ${PREV:-<first release>}"
+
+          git log "$RANGE" --no-merges --pretty=format:'%s' -- mobile-flutter \
+            | grep -Ev '^(chore|ci|build|test|tests|docs|style)(\(|:|!)' \
+            | grep -Eiv 'skip ci|bump (flutter )?app' \
+            | sed -E 's/^[a-zA-Z]+(\([^)]*\))?!?:[[:space:]]*//' \
+            | awk 'NF && !seen[$0]++' \
+            | head -15 \
+            | sed 's/^/- /' > whatsnew.md || true
+
+          {
+            echo 'notes<<WHATSNEW_EOF'
+            if [ -s whatsnew.md ]; then
+              echo "## What's new"
+              cat whatsnew.md
+              echo
+            fi
+            echo 'WHATSNEW_EOF'
+          } >> "$GITHUB_OUTPUT"
+          cat whatsnew.md
+
+      # ══════════════════════════════════════════════════
       # Build
       # ══════════════════════════════════════════════════
       - name: Install dependencies
@@ -276,6 +315,7 @@ jobs:
           append_body: true
           body: |
 
+            ${{ steps.whatsnew.outputs.notes }}
             ---
             ## Android APK (Flutter)
 
@@ -285,12 +325,6 @@ jobs:
             | **Size** | ${{ steps.apk.outputs.apk_size }} |
             | **Min Android** | 7.0 (API 24) |
             | **Framework** | Flutter 3.38 |
-
-            ### Highlights
-            - Glass morphism dark theme matching web
-            - BIP39/BIP32 native wallet (instant connect)
-            - Auto-update in-app (no store needed)
-            - Thai/English language support
 
             ### Install
             1. Download **${{ steps.apk.outputs.apk_name }}** below

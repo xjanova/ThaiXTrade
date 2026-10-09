@@ -314,16 +314,44 @@ class DiscordContent
         ], button: ['Open tpix.online · เปิดเว็บไซต์', $this->url('/')]);
     }
 
-    /** @param  array{product: string, label: string, label_th?: string, version: string, name: string, notes: string, published_at: ?string}  $release */
+    /**
+     * ประกาศแอปรุ่นใหม่ในห้องพัฒนา.
+     *
+     * ⚠️ เจ้าของแจ้ง 2026-10-10: "ข่าวอัปเดตที่ discord ไม่ตรงความจริง" — บันทึกรุ่นจาก GitHub
+     *    เป็นแม่แบบตายตัว (Highlights: Glass morphism, BIP39 wallet, …) ซ้ำทุกรุ่น / ของวอลเล็ตเป็นรายการ
+     *    ฟีเจอร์ทั้งแอป บอทเอาไปโพสต์เหมือนเป็นของใหม่ในรุ่นนั้น → ใช้เฉพาะหัวข้อ "What's new"
+     *    (CI เขียนจากคอมมิตจริงของรุ่นนั้น ดู .github/workflows/build-flutter-apk.yml) ไม่มี = บอกแค่ว่ามีรุ่นใหม่
+     *
+     * mistaken_for = โพสต์นี้ประกาศรุ่นที่เก่ากว่ารุ่นที่เคยประกาศไปแล้ว (ข้อมูลถอยหลังตอน GitHub ตอบสะดุด)
+     *                → แก้ข้อความเป็นคำชี้แจงว่าส่งผิด พร้อมบอกรุ่นล่าสุดจริง
+     *
+     * @param  array{product: string, label: string, label_th?: string, version: string, name: string, notes: string, published_at: ?string, mistaken_for?: string}  $release
+     */
     public function release(array $release): array
     {
-        $notes = trim($this->onlyOurLinks($this->releaseNotes($release['notes'])));
-        $thai = ($release['label_th'] ?? $release['label'])." เวอร์ชัน {$release['version']} ออกแล้ว — ดาวน์โหลดได้ที่ปุ่มด้านล่าง";
+        $label = $release['label'];
+        $labelTh = $release['label_th'] ?? $label;
+
+        if (! empty($release['mistaken_for'])) {
+            $latest = $release['mistaken_for'];
+
+            return $this->message(embed: [
+                'title' => Str::limit("↩️ {$label} — version {$release['version']} (posted by mistake)", 250),
+                'url' => $this->url('/download'),
+                'description' => "This announcement was sent by mistake — {$release['version']} is an older build, not a new release. The current version is **{$latest}**."
+                    .self::THAI."ประกาศนี้ส่งผิด — {$release['version']} เป็นรุ่นเก่า ไม่ใช่รุ่นใหม่ · รุ่นล่าสุดคือ **{$latest}**",
+                'color' => self::COLOR_CLOSED,
+                'footer' => ['text' => 'Download only from the official website · ดาวน์โหลดจากเว็บทางการเท่านั้น'],
+            ], button: ['Download · ดาวน์โหลด', $this->url('/download')]);
+        }
+
+        $notes = trim($this->onlyOurLinks($this->releaseNotes($this->whatsNew($release['notes']))));
+        $thai = "{$labelTh} เวอร์ชัน {$release['version']} ออกแล้ว — ดาวน์โหลดได้ที่ปุ่มด้านล่าง";
 
         return $this->message(embed: array_filter([
-            'title' => Str::limit("🚀 {$release['label']} — version {$release['version']}", 250),
+            'title' => Str::limit("🚀 {$label} — version {$release['version']}", 250),
             'url' => $this->url('/download'),
-            'description' => Str::limit($notes !== '' ? $notes : 'A new version is ready to download.', 1500).self::THAI.$thai,
+            'description' => Str::limit($notes !== '' ? "**What's new**\n{$notes}" : 'A new version is ready to download.', 1500).self::THAI.$thai,
             'color' => self::COLOR_BRAND,
             'footer' => ['text' => 'Download only from the official website — files from elsewhere may carry wallet-stealing malware · ดาวน์โหลดจากเว็บทางการเท่านั้น'],
             'timestamp' => $release['published_at'],
@@ -648,6 +676,34 @@ class DiscordContent
      * บันทึกรุ่นจาก GitHub เขียนไว้ให้คนเปิดหน้า release — ใน Discord ตาราง markdown ขึ้นเป็นขีด | ดิบ ๆ
      * และ "ดาวน์โหลดไฟล์ด้านล่าง" ไม่มีไฟล์ให้กด → ตัดสองอย่างนี้ทิ้ง ที่เหลือคือรายการฟีเจอร์.
      */
+    /**
+     * เฉพาะหัวข้อ "What's new" / "มีอะไรใหม่" ของบันทึกรุ่น — ส่วนอื่นเป็นแม่แบบหรือรายการฟีเจอร์ทั้งแอป ไม่ใช่ของใหม่.
+     */
+    private function whatsNew(string $notes): string
+    {
+        $heading = '/^\s*#{1,6}\s*(?:what(?:\'|’)?s\s+new|มีอะไรใหม่)\s*:?\s*$/iu';
+        $lines = preg_split('/\R/u', $notes) ?: [];
+        $out = [];
+        $inside = false;
+
+        foreach ($lines as $line) {
+            if (preg_match($heading, $line)) {
+                $inside = true;
+
+                continue;
+            }
+            // หัวข้อถัดไป (ระดับใดก็ได้) หรือเส้นคั่น = จบหัวข้อ
+            if ($inside && (preg_match('/^\s*#{1,6}\s/u', $line) || preg_match('/^\s*[-*_]{3,}\s*$/u', $line))) {
+                break;
+            }
+            if ($inside) {
+                $out[] = $line;
+            }
+        }
+
+        return trim(implode("\n", $out));
+    }
+
     private function releaseNotes(string $notes): string
     {
         $lines = array_filter(

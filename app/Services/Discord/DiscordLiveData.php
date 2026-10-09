@@ -27,7 +27,35 @@ use Illuminate\Support\Facades\Log;
  */
 class DiscordLiveData
 {
+    /** แอปที่ประกาศในห้องพัฒนา — product => [ชื่ออังกฤษ, ชื่อไทย] */
+    public const PRODUCTS = [
+        'trade' => ['TPIX TRADE app (Android)', 'แอป TPIX TRADE (Android)'],
+        'wallet' => ['TPIX Wallet (Android)', 'TPIX Wallet (Android)'],
+        'masternode' => ['Master node app (Windows)', 'โปรแกรมมาสเตอร์โหนด (Windows)'],
+    ];
+
     public function __construct(private readonly ContractRegistry $contracts) {}
+
+    /**
+     * รุ่นที่เคยประกาศไปแล้วแต่ไม่ใช่รุ่นล่าสุด (รู้แค่ ref_key "product:version") — ใช้แก้ข้อความเก่าในห้อง.
+     *
+     * ไม่มีบันทึกรุ่นของรุ่นเก่าให้ (API ส่งแค่รุ่นล่าสุด) → notes ว่าง = ข้อความกลาง ๆ "รุ่นนี้ออกแล้ว"
+     * ซึ่งจริงเสมอ ดีกว่าค้างรายการฟีเจอร์แม่แบบที่ไม่ได้เปลี่ยนในรุ่นนั้น
+     *
+     * @return array{product: string, label: string, label_th: string, version: string, name: string, notes: string, published_at: null}|null
+     */
+    public static function pastRelease(string $ref): ?array
+    {
+        [$product, $version] = array_pad(explode(':', $ref, 2), 2, '');
+
+        if (! isset(self::PRODUCTS[$product]) || $version === '') {
+            return null;
+        }
+
+        [$label, $labelTh] = self::PRODUCTS[$product];
+
+        return ['product' => $product, 'label' => $label, 'label_th' => $labelTh, 'version' => $version, 'name' => "v{$version}", 'notes' => '', 'published_at' => null];
+    }
 
     /**
      * ราคา TPIX — source: dex (พูลบนเชน สวอปได้จริง) · trades (กระดานเทรด) · admin (ราคาอ้างอิง ยังไม่มีตลาดจริง).
@@ -119,13 +147,13 @@ class DiscordLiveData
 
         $trade = $this->fromApi(fn () => app(AppUpdateController::class)->latest(), 'app');
         if (is_array($trade) && ! empty($trade['version'])) {
-            $out[] = $this->release('trade', 'TPIX TRADE app (Android)', 'แอป TPIX TRADE (Android)', $trade);
+            $out[] = $this->release('trade', ...self::PRODUCTS['trade'], data: $trade);
         }
 
         $chain = $this->fromApi(fn () => app(AppUpdateController::class)->chainLatest(), 'chain') ?? [];
-        foreach (['wallet' => ['TPIX Wallet (Android)', 'TPIX Wallet (Android)'], 'masternode' => ['Master node app (Windows)', 'โปรแกรมมาสเตอร์โหนด (Windows)']] as $product => [$label, $labelTh]) {
+        foreach (['wallet', 'masternode'] as $product) {
             if (is_array($chain[$product] ?? null) && ! empty($chain[$product]['version'])) {
-                $out[] = $this->release($product, $label, $labelTh, $chain[$product]);
+                $out[] = $this->release($product, ...self::PRODUCTS[$product], data: $chain[$product]);
             }
         }
 
