@@ -5,6 +5,7 @@ namespace App\Services\Kyc;
 use App\Models\AdminUser;
 use App\Models\KycDeletionRequest;
 use App\Models\KycSubmission;
+use App\Models\ThaipromptKycLink;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -99,6 +100,12 @@ class KycPurgeService
         foreach ($submissions as $submission) {
             $deleted += $this->purgeSubmission($submission, $reason);
         }
+
+        // ตัดการเชื่อมกับ Thaiprompt ด้วย (token + การยินยอมให้ส่งผล KYC มา)
+        //
+        // ⚠️ ถ้าเหลือไว้ คำสั่ง kyc:thaiprompt-sync จะถามผลรอบถัดไปแล้วออกใบ "อนุมัติ" ให้ใหม่เอง
+        //    = คำขอลบข้อมูลถูกย้อนกลับเงียบๆ โดยที่เจ้าของไม่ได้ยินยอมใหม่
+        ThaipromptKycLink::query()->where('user_id', $user->id)->delete();
 
         // ล้างข้อมูลแล้วสิทธิที่ได้จากการตรวจต้องหายไปด้วย
         //
@@ -232,10 +239,13 @@ class KycPurgeService
                 'wallet_address' => $user->wallet_address,
                 'kyc_status' => $user->kyc_status,
             ],
+            // การเชื่อมกับ Thaiprompt — ไม่ส่ง token ออกไป (เป็นกุญแจ ไม่ใช่ข้อมูลของเขา)
+            'thaiprompt' => ThaipromptKycLink::query()->where('user_id', $user->id)->first()?->toOwnerArray(),
             'submissions' => $submissions->map(function (KycSubmission $s) {
                 return [
                     'uuid' => $s->uuid,
                     'level' => $s->level,
+                    'source' => $s->source ?? KycSubmission::SOURCE_MANUAL,
                     'status' => $s->status,
                     'full_name' => $s->full_name,
                     'full_name_en' => $s->full_name_en,

@@ -310,6 +310,19 @@ Schedule::command('kyc:purge')
     ->name('kyc:purge');
 
 /*
+ * ถามผลยืนยันตัวตนจาก Thaiprompt ของบัญชีที่ผูกไว้ — ทุก 10 นาที
+ *
+ * ลูกค้ากดเชื่อมแล้วไปทำ eKYC ในแอป Thaiprompt มักไม่กลับมาเปิดหน้าเว็บเรา
+ * ไม่มีตัวนี้ = ผ่านที่ Thaiprompt แล้วแต่ฝั่งเรายังล็อกอยู่จนกว่าเขาจะกลับมาเอง
+ * (ไม่ได้ตั้งค่า client = คำสั่งจบทันที ไม่ยิงอะไร)
+ */
+Schedule::command('kyc:thaiprompt-sync')
+    ->everyTenMinutes()
+    ->withoutOverlapping(15)
+    ->onOneServer()
+    ->name('kyc:thaiprompt-sync');
+
+/*
  * ตัวรันคิว — ปลุกจาก scheduler ทุกนาที
  *
  * ทำไมต้องปลุกจากตรงนี้แทนที่จะเป็น systemd: เครื่องนี้แชร์กับเว็บอื่นและเราไม่มีสิทธิ์

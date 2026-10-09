@@ -112,6 +112,12 @@ class User extends Authenticatable
         return $this->hasMany(KycSubmission::class);
     }
 
+    /** บัญชี Thaiprompt ที่ผูกไว้เพื่อใช้ผลยืนยันตัวตนของที่นั่น */
+    public function thaipromptKycLink(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ThaipromptKycLink::class);
+    }
+
     public function kycDeletionRequests(): HasMany
     {
         return $this->hasMany(KycDeletionRequest::class);

@@ -37,6 +37,26 @@ return [
         'api_key' => env('OPENAI_API_KEY', ''),
     ],
 
+    /*
+     * Thaiprompt — ใช้ผลยืนยันตัวตน (KYC) ของ Thaiprompt แทนการส่งเอกสารซ้ำ
+     *
+     * client สร้างที่ฝั่ง Thaiprompt ด้วย:
+     *   php artisan oauth:provision-tpix-trade-client --redirect=https://<โดเมนนี้>/kyc/thaiprompt/callback
+     * ยังไม่ตั้ง client_id/secret = ปุ่ม "ยืนยันด้วย Thaiprompt" ไม่โผล่ ระบบส่งเอกสารเดิมยังใช้ได้ปกติ
+     */
+    'thaiprompt' => [
+        'base_url' => rtrim((string) env('THAIPROMPT_BASE_URL', 'https://main.thaiprompt.online'), '/'),
+        'oauth_client_id' => env('THAIPROMPT_OAUTH_CLIENT_ID'),
+        'oauth_client_secret' => env('THAIPROMPT_OAUTH_CLIENT_SECRET'),
+        // ปกติไม่ต้องตั้ง — ใช้ route('kyc.thaiprompt.callback') ตาม APP_URL
+        // ตั้งเมื่อโดเมนที่ลงทะเบียนไว้ที่ Thaiprompt ต่างจากที่แอปคำนวณได้ (ต้องตรงทุกตัวอักษร)
+        'oauth_redirect' => env('THAIPROMPT_OAUTH_REDIRECT'),
+        // เปิดหน้า eKYC ในแอป Thaiprompt ตรงๆ (scheme ของแอป: thaiprompt://)
+        'app_ekyc_link' => env('THAIPROMPT_APP_EKYC_LINK', 'thaiprompt://ekyc?from=profile'),
+        'app_download_url' => env('THAIPROMPT_APP_DOWNLOAD_URL', 'https://main.thaiprompt.online/app/download'),
+        'timeout' => (int) env('THAIPROMPT_TIMEOUT', 10),
+    ],
+
     // Turnstile config จัดการผ่าน SiteSetting (DB) ไม่ใช้ .env แล้ว
 
     // Stripe — ระบบชำระเงินสำหรับ ICO Token Sale

@@ -9,12 +9,19 @@
  *
  * ข้อ 3 ไม่ใช่ของแถม กฎหมายบังคับให้ใช้สิทธิได้จริง ไม่ใช่แค่เขียนไว้ในนโยบาย
  *
+ * ทางหลัก = ยืนยันด้วยบัญชี Thaiprompt (เจ้าของสั่ง: "ให้ไปยืนยันใน thaiprompt app
+ *   ถ้าผ่านก็บันทึกว่าผ่านแล้ว ถ้าเคยยืนยันแล้วก็ผ่านเลย ไม่ต้องยืนยันอีก")
+ *   ฟอร์มส่งเอกสารเดิมยังอยู่ เป็นทางสำรองสำหรับคนที่ไม่มีบัญชี Thaiprompt / ชาวต่างชาติ
+ *
  * Developed by Xman Studio
  */
 
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Head, useForm, usePage, router } from '@inertiajs/vue3';
+import axios from 'axios';
+import QRCode from 'qrcode';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { isMobile } from '@/utils/mobileWallet';
 
 const props = defineProps({
     submission: { type: Object, default: null },
@@ -25,9 +32,13 @@ const props = defineProps({
     uploads: { type: Object, default: () => ({}) },
     consent: { type: Object, default: () => ({}) },
     deletionRequest: { type: Object, default: null },
+    thaiprompt: { type: Object, default: () => ({ available: false, link: null }) },
 });
 
 const page = usePage();
+
+// error มาได้สองทาง: ฟอร์มส่งเอกสาร (useForm) กับ redirect กลับจาก Thaiprompt (page.props.errors)
+const kycError = computed(() => form.errors.kyc || page.props.errors?.kyc || '');
 
 // ─── สถานะปัจจุบัน ────────────────────────────────────────────────────────
 
@@ -167,6 +178,124 @@ const formatDate = (iso) => {
         timeStyle: 'short',
     });
 };
+
+// ─── ยืนยันด้วย Thaiprompt ────────────────────────────────────────────────
+
+const tpLink = ref(props.thaiprompt?.link ?? null);
+const tpConsent = ref(false);
+const tpConnecting = ref(false);
+const tpChecking = ref(false);
+const tpMessage = ref('');
+const mobile = isMobile();
+const appQr = ref(null);
+
+const isThaipromptSubmission = computed(() => props.submission?.source === 'thaiprompt');
+
+// การ์ดโผล่เมื่อยังไม่ผ่าน — ผ่านแล้ว (ทางไหนก็ตาม) การ์ดสถานะด้านบนบอกอยู่แล้ว
+const showThaipromptCard = computed(() =>
+    !isApproved.value && (props.thaiprompt?.available || !!tpLink.value)
+);
+
+const tpApproved = computed(() => tpLink.value?.status === 'approved');
+const tpNeedsReconnect = computed(() => !!tpLink.value?.needs_reconnect);
+// ผูกแล้วแต่ยังไม่ผ่าน = รอลูกค้าทำ eKYC ในแอป
+const tpWaiting = computed(() => !!tpLink.value && !tpApproved.value && !tpNeedsReconnect.value);
+
+const TP_STATUS_TEXT = {
+    none: 'ยังไม่ได้ยืนยันตัวตนในแอป Thaiprompt',
+    pending: 'Thaiprompt กำลังตรวจผลยืนยันตัวตนของคุณ',
+    rejected: 'การยืนยันตัวตนที่ Thaiprompt ยังไม่ผ่าน — ทำใหม่ในแอปได้เลย',
+    approved: 'ยืนยันตัวตนผ่าน Thaiprompt แล้ว',
+};
+
+// ฟอร์มส่งเอกสารพับไว้เมื่อมีทาง Thaiprompt — คนส่วนใหญ่ไม่ต้องใช้
+const showManualForm = ref(!props.thaiprompt?.available);
+
+function connectThaiprompt() {
+    if (!tpConsent.value || tpConnecting.value) return;
+    tpConnecting.value = true;
+    // ฝั่งเซิร์ฟเวอร์ตอบ Inertia::location → เบราว์เซอร์ไปหน้าอนุญาตของ Thaiprompt เอง
+    router.post('/kyc/thaiprompt/connect', { consent: true }, {
+        preserveScroll: true,
+        onFinish: () => { tpConnecting.value = false; },
+    });
+}
+
+/**
+ * ถามผลล่าสุดจาก Thaiprompt
+ * ผ่านแล้วโหลดหน้าใหม่ — ใบ KYC และสิทธิ์ทุกด่านมาจากเซิร์ฟเวอร์ ไม่ประกอบเองฝั่งหน้าเว็บ
+ */
+async function checkThaiprompt(manual = false) {
+    if (tpChecking.value) return;
+    tpChecking.value = true;
+    if (manual) tpMessage.value = '';
+
+    try {
+        const { data } = await axios.post('/kyc/thaiprompt/refresh');
+        tpLink.value = data.thaiprompt;
+
+        if (data.thaiprompt?.status === 'approved') {
+            stopPolling();
+            router.reload({ preserveScroll: true });
+        } else if (manual) {
+            tpMessage.value = TP_STATUS_TEXT[data.thaiprompt?.status] ?? '';
+        }
+    } catch (err) {
+        const body = err?.response?.data;
+        if (body?.thaiprompt) tpLink.value = body.thaiprompt;
+        if (manual || tpLink.value?.needs_reconnect) {
+            tpMessage.value = body?.message || 'ตรวจสอบไม่สำเร็จ ลองใหม่อีกครั้ง';
+        }
+        if (tpLink.value?.needs_reconnect || err?.response?.status === 429) stopPolling();
+    } finally {
+        tpChecking.value = false;
+    }
+}
+
+// ถามซ้ำทุก 20 วิ ระหว่างที่ลูกค้าไปทำ eKYC ในแอป — นานสุด 15 นาที (หลังจากนั้นเซิร์ฟเวอร์ถามให้เองทุก 10 นาที)
+const POLL_EVERY_MS = 20000;
+const POLL_FOR_MS = 15 * 60 * 1000;
+let pollTimer = null;
+let pollStartedAt = 0;
+
+function stopPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+}
+
+function startPolling() {
+    stopPolling();
+    if (!tpWaiting.value) return;
+    pollStartedAt = Date.now();
+    pollTimer = setInterval(() => {
+        if (Date.now() - pollStartedAt > POLL_FOR_MS) return stopPolling();
+        if (document.hidden) return;   // แท็บพื้นหลังไม่ต้องยิง
+        checkThaiprompt();
+    }, POLL_EVERY_MS);
+}
+
+// กลับจากแอป Thaiprompt (แท็บกลับมาเห็น) → ถามทันที ไม่ต้องรอรอบถัดไป
+function onVisibility() {
+    if (!document.hidden && tpWaiting.value) checkThaiprompt();
+}
+
+onMounted(async () => {
+    if (tpWaiting.value) {
+        checkThaiprompt();
+        startPolling();
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // คอมพิวเตอร์: QR ให้สแกนด้วยมือถือเพื่อเปิดหน้ายืนยันตัวตนในแอป
+    if (!mobile && props.thaiprompt?.app_link && showThaipromptCard.value) {
+        appQr.value = await QRCode.toDataURL(props.thaiprompt.app_link, { width: 168, margin: 1 }).catch(() => null);
+    }
+});
+
+onUnmounted(() => {
+    stopPolling();
+    document.removeEventListener('visibilitychange', onVisibility);
+});
 </script>
 
 <template>
@@ -185,9 +314,88 @@ const formatDate = (iso) => {
             <div v-if="page.props.flash?.success" class="alert alert-success">
                 {{ page.props.flash.success }}
             </div>
-            <div v-if="form.errors.kyc" class="alert alert-error">
-                {{ form.errors.kyc }}
+            <div v-if="kycError" class="alert alert-error">
+                {{ kycError }}
             </div>
+
+            <!-- ── ยืนยันด้วย Thaiprompt (ทางหลัก) ───────────────────────────── -->
+            <section v-if="showThaipromptCard" class="glass-card tp-card">
+                <div class="tp-head">
+                    <span class="tp-logo" aria-hidden="true">TP</span>
+                    <div>
+                        <h2 class="section-title tp-title">ยืนยันตัวตนด้วยบัญชี Thaiprompt</h2>
+                        <p class="tp-sub">แนะนำ · ไม่ต้องส่งเอกสาร</p>
+                    </div>
+                </div>
+
+                <!-- ยังไม่ได้ผูก หรือสิทธิ์หมดอายุ → ขอความยินยอมแล้วไปหน้าอนุญาตของ Thaiprompt -->
+                <template v-if="!tpLink || tpNeedsReconnect">
+                    <p v-if="tpNeedsReconnect" class="tp-warn">
+                        สิทธิ์เชื่อมกับ Thaiprompt หมดอายุแล้ว กดเชื่อมใหม่อีกครั้งเพื่อรับผลล่าสุด
+                    </p>
+                    <ul class="tp-points">
+                        <li><strong>เคยยืนยันตัวตนกับ Thaiprompt แล้ว</strong> — ผ่านทันที ไม่ต้องยืนยันซ้ำ</li>
+                        <li><strong>ยังไม่เคย</strong> — ยืนยันในแอป Thaiprompt (สแกนบัตร + ถ่ายหน้า ไม่กี่นาที) แล้วกลับมาที่นี่ ระบบอัปเดตให้เอง</li>
+                    </ul>
+
+                    <label class="consent-box tp-consent">
+                        <input v-model="tpConsent" type="checkbox" />
+                        <span>
+                            ข้าพเจ้ายินยอมให้ Thaiprompt ส่งผลการยืนยันตัวตนของข้าพเจ้า
+                            (ผ่านหรือยัง และวันที่ผ่าน) มาให้ TPIX TRADE เพื่อใช้ปลดล็อกบริการที่ต้องยืนยันตัวตน
+                            — ไม่รวมเลขบัตรประชาชน ชื่อ วันเกิด หรือรูปถ่าย
+                        </span>
+                    </label>
+
+                    <button
+                        type="button"
+                        class="btn-primary btn-submit"
+                        :disabled="!tpConsent || tpConnecting"
+                        @click="connectThaiprompt"
+                    >
+                        {{ tpConnecting ? 'กำลังไปที่ Thaiprompt…' : 'ยืนยันด้วย Thaiprompt' }}
+                    </button>
+                    <p class="tp-note">จะพาไปเข้าสู่ระบบ Thaiprompt และกด "อนุญาต" แล้วกลับมาที่หน้านี้</p>
+                </template>
+
+                <!-- ผูกแล้ว รอลูกค้าทำ eKYC ในแอป -->
+                <template v-else-if="tpWaiting">
+                    <p class="tp-status" :class="{ 'tp-status--bad': tpLink.status === 'rejected' }">
+                        {{ TP_STATUS_TEXT[tpLink.status] ?? TP_STATUS_TEXT.none }}
+                    </p>
+
+                    <ol class="tp-steps">
+                        <li>เปิดแอป Thaiprompt แล้วไปที่ <strong>ยืนยันตัวตน</strong></li>
+                        <li>สแกนบัตรประชาชนและถ่ายใบหน้าตามขั้นตอนในแอป</li>
+                        <li>กลับมาที่หน้านี้ — ผ่านเมื่อไหร่ระบบปลดล็อกให้อัตโนมัติ</li>
+                    </ol>
+
+                    <div class="tp-actions">
+                        <a v-if="mobile" :href="thaiprompt.app_link" class="btn-primary tp-open">
+                            เปิดแอป Thaiprompt
+                        </a>
+                        <div v-else-if="appQr" class="tp-qr">
+                            <img :src="appQr" alt="QR เปิดหน้ายืนยันตัวตนในแอป Thaiprompt" width="168" height="168" />
+                            <span>สแกนด้วยมือถือที่มีแอป Thaiprompt</span>
+                        </div>
+
+                        <button type="button" class="btn-ghost" :disabled="tpChecking" @click="checkThaiprompt(true)">
+                            {{ tpChecking ? 'กำลังตรวจ…' : 'ตรวจสอบอีกครั้ง' }}
+                        </button>
+                    </div>
+
+                    <p class="tp-note">
+                        ยังไม่มีแอป?
+                        <a :href="thaiprompt.download_url" target="_blank" rel="noopener" class="tp-link">ดาวน์โหลดแอป Thaiprompt</a>
+                        <template v-if="tpLink.last_checked_at"> · ตรวจล่าสุด {{ formatDate(tpLink.last_checked_at) }}</template>
+                    </p>
+                    <p v-if="tpMessage" class="tp-message">{{ tpMessage }}</p>
+                </template>
+
+                <p v-else-if="tpApproved" class="tp-status tp-status--ok">
+                    {{ TP_STATUS_TEXT.approved }} — กำลังอัปเดตสิทธิ์…
+                </p>
+            </section>
 
             <!-- ── สถานะปัจจุบัน ─────────────────────────────────────────── -->
             <section v-if="submission" class="glass-card status-card" :class="currentStatus.cls">
@@ -195,7 +403,10 @@ const formatDate = (iso) => {
                     <span class="status-icon">{{ currentStatus.icon }}</span>
                     <div>
                         <h2>{{ currentStatus.label }}</h2>
-                        <p class="status-sub">
+                        <p v-if="isThaipromptSubmission" class="status-sub">
+                            ยืนยันผ่านบัญชี Thaiprompt · บันทึกเมื่อ {{ formatDate(submission.reviewed_at || submission.submitted_at) }}
+                        </p>
+                        <p v-else class="status-sub">
                             ยื่นเมื่อ {{ formatDate(submission.submitted_at) }}
                             <template v-if="submission.reviewed_at">
                                 · ตรวจเมื่อ {{ formatDate(submission.reviewed_at) }}
@@ -250,7 +461,13 @@ const formatDate = (iso) => {
                     {{ submission ? 'ยื่นใหม่' : 'ส่งเอกสารยืนยันตัวตน' }}
                 </h2>
 
-                <form @submit.prevent="submit">
+                <!-- มีทาง Thaiprompt แล้ว ฟอร์มนี้เป็นทางสำรอง — พับไว้ก่อน -->
+                <div v-if="!showManualForm" class="manual-toggle">
+                    <p>ไม่มีบัญชี Thaiprompt หรือเป็นชาวต่างชาติ? ส่งเอกสารให้ทีมงาน TPIX TRADE ตรวจแทนได้ (1–3 วันทำการ)</p>
+                    <button type="button" class="btn-ghost" @click="showManualForm = true">ส่งเอกสารกับ TPIX TRADE</button>
+                </div>
+
+                <form v-else @submit.prevent="submit">
                     <!-- ระดับ -->
                     <div class="level-picker">
                         <label class="level-option" :class="{ 'level-option--active': form.level === 'basic' }">
@@ -986,6 +1203,162 @@ const formatDate = (iso) => {
 }
 
 .deletion-buttons .btn-ghost {
+    margin-top: 0;
+}
+
+/* ── ยืนยันด้วย Thaiprompt ── */
+.tp-card {
+    border: 1px solid rgb(var(--c-trading-green) / 0.3);
+    background: linear-gradient(160deg, rgb(var(--c-trading-green) / 0.08), rgba(255, 255, 255, 0.03));
+}
+
+.tp-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+}
+
+.tp-logo {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    font-size: 0.85rem;
+    color: #fff;
+    background: linear-gradient(135deg, #16a34a, #0ea5e9);
+    flex-shrink: 0;
+}
+
+.tp-title {
+    margin-bottom: 0.1rem;
+}
+
+.tp-sub {
+    font-size: 0.78rem;
+    color: #6ee7a8;
+}
+
+.tp-points,
+.tp-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    font-size: 0.88rem;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.55;
+    margin-bottom: 1rem;
+}
+
+.tp-points {
+    list-style: disc;
+    padding-left: 1.2rem;
+}
+
+.tp-steps {
+    list-style: decimal;
+    padding-left: 1.2rem;
+}
+
+.tp-points strong,
+.tp-steps strong {
+    color: #fff;
+    font-weight: 600;
+}
+
+.tp-consent {
+    margin-top: 0;
+}
+
+.tp-note {
+    margin-top: 0.6rem;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.tp-link {
+    color: #6ee7a8;
+    text-decoration: underline;
+}
+
+.tp-warn {
+    margin-bottom: 0.85rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.tp-status {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #fbbf24;
+    margin-bottom: 0.85rem;
+}
+
+.tp-status--ok {
+    color: #6ee7a8;
+    margin-bottom: 0;
+}
+
+.tp-status--bad {
+    color: #ff8a9b;
+}
+
+.tp-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.85rem;
+}
+
+.tp-actions .btn-ghost {
+    margin-top: 0;
+}
+
+.tp-open {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.7rem 1.4rem;
+}
+
+.tp-qr {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.tp-qr img {
+    border-radius: 12px;
+    background: #fff;
+    padding: 6px;
+}
+
+.tp-message {
+    margin-top: 0.6rem;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.manual-toggle {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    font-size: 0.88rem;
+    color: rgba(255, 255, 255, 0.65);
+    line-height: 1.55;
+}
+
+.manual-toggle .btn-ghost {
+    align-self: flex-start;
     margin-top: 0;
 }
 </style>

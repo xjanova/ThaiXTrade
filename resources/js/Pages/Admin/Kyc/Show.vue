@@ -159,6 +159,14 @@ const formatSize = (bytes) => {
                             <dd>{{ submission.level === 'enhanced' ? 'เพิ่มเติม' : 'ปกติ' }}</dd>
                         </div>
                         <div class="field-row">
+                            <dt>ที่มา</dt>
+                            <dd>
+                                {{ submission.source === 'thaiprompt'
+                                    ? 'ผลยืนยันตัวตนจาก Thaiprompt (ลูกค้าอนุญาตให้ส่งมา — ไม่มีข้อมูลบัตร/เอกสารในใบนี้)'
+                                    : 'ส่งเอกสารกับ TPIX TRADE' }}
+                            </dd>
+                        </div>
+                        <div class="field-row">
                             <dt>ยื่นเมื่อ</dt>
                             <dd>{{ formatDate(submission.submitted_at) }}</dd>
                         </div>

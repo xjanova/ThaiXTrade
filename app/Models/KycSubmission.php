@@ -53,10 +53,18 @@ class KycSubmission extends Model
 
     public const LEVEL_ENHANCED = 'enhanced';
 
+    /** ส่งเอกสารให้ทีมงานเราตรวจ */
+    public const SOURCE_MANUAL = 'manual';
+
+    /** ผลยืนยันตัวตนจาก Thaiprompt (ลูกค้ากดอนุญาตให้ส่งผลมา) — ไม่มีข้อมูลบัตรในใบ */
+    public const SOURCE_THAIPROMPT = 'thaiprompt';
+
     protected $fillable = [
         'uuid',
         'user_id',
         'level',
+        'source',
+        'external_ref',
         'status',
         'full_name',
         'full_name_en',
@@ -209,6 +217,7 @@ class KycSubmission extends Model
         return [
             'uuid' => $this->uuid,
             'level' => $this->level,
+            'source' => $this->source ?? self::SOURCE_MANUAL,
             'status' => $this->status,
             'full_name' => $this->full_name,
             'id_type' => $this->id_type,

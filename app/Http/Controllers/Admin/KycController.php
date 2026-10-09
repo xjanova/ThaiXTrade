@@ -66,6 +66,8 @@ class KycController extends Controller
             'submissions' => $submissions->through(fn (KycSubmission $s) => [
                 'uuid' => $s->uuid,
                 'level' => $s->level,
+                // thaiprompt = ผลจาก Thaiprompt ไม่มีชื่อ/เอกสารในใบ — หน้าจอต้องบอกที่มาแทน
+                'source' => $s->source ?? KycSubmission::SOURCE_MANUAL,
                 'status' => $s->status,
                 // ชื่ออยู่ในคอลัมน์ที่เข้ารหัส — ถอดตรงนี้เพราะทีมงานต้องเห็นเพื่อคัดคิว
                 'full_name' => $s->purged_at ? null : $s->full_name,
@@ -106,6 +108,7 @@ class KycController extends Controller
             'submission' => [
                 'uuid' => $submission->uuid,
                 'level' => $submission->level,
+                'source' => $submission->source ?? KycSubmission::SOURCE_MANUAL,
                 'status' => $submission->status,
                 'purged_at' => $submission->purged_at?->toIso8601String(),
                 'purge_after' => $submission->purge_after?->toIso8601String(),

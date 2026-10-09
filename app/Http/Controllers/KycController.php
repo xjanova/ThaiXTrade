@@ -8,6 +8,7 @@ use App\Models\KycSubmission;
 use App\Services\Kyc\KycGate;
 use App\Services\Kyc\KycPurgeService;
 use App\Services\Kyc\KycService;
+use App\Services\Kyc\ThaipromptKycService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -30,6 +31,7 @@ class KycController extends Controller
         private readonly KycService $kyc,
         private readonly KycGate $gate,
         private readonly KycPurgeService $purge,
+        private readonly ThaipromptKycService $thaiprompt,
     ) {}
 
     /**
@@ -79,6 +81,8 @@ class KycController extends Controller
                 'retention_days' => $this->kyc->retentionDays(),
             ],
             'deletionRequest' => $pendingDeletion?->toOwnerArray(),
+            // ยืนยันด้วยบัญชี Thaiprompt (ทางหลัก) — ไม่ได้ตั้งค่า client = การ์ดไม่โผล่
+            'thaiprompt' => $this->thaiprompt->ownerPayload($user),
         ]);
     }
 

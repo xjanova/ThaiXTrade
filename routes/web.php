@@ -13,6 +13,7 @@ use App\Http\Controllers\CarbonCreditController;
 use App\Http\Controllers\FoodPassportController;
 use App\Http\Controllers\KycController;
 use App\Http\Controllers\KycDocumentController;
+use App\Http\Controllers\ThaipromptKycController;
 use App\Http\Controllers\LaunchController;
 use App\Http\Controllers\MasterNodeController;
 use App\Http\Controllers\ProfileController;
@@ -95,6 +96,24 @@ Route::middleware('auth')->group(function () {
 
         // เจ้าของเปิดดูเอกสารตัวเองเพื่อตรวจทานว่าส่งรูปถูกใบ
         Route::get('/documents/{document}', [KycDocumentController::class, 'owner'])->name('document');
+
+        /*
+         * ยืนยันตัวตนด้วยบัญชี Thaiprompt — ใช้ผล KYC ที่นั่นแทนการส่งเอกสารซ้ำ
+         * refresh ถูกหน้าเว็บเรียกเป็นระยะระหว่างรอลูกค้าทำ eKYC ในแอป จึงให้โควตามากกว่า
+         *
+         * ⚠️ ต้องมีพารามิเตอร์ที่สาม (prefix) ทุกตัว — throttle แบบไม่มีชื่อทุกตัวในเว็บใช้
+         *    ตัวนับเดียวกัน (คีย์ = ผู้ใช้/IP) ถ้าไม่แยก หน้าเว็บที่ถามสถานะถี่ๆ จะไปกินโควตา
+         *    ของ POST /kyc (10 ครั้ง/ชม.) จนลูกค้าส่งเอกสารไม่ได้
+         */
+        Route::post('/thaiprompt/connect', [ThaipromptKycController::class, 'connect'])
+            ->name('thaiprompt.connect')
+            ->middleware('throttle:10,10,kyc-tp-connect');
+        Route::get('/thaiprompt/callback', [ThaipromptKycController::class, 'callback'])
+            ->name('thaiprompt.callback')
+            ->middleware('throttle:20,10,kyc-tp-callback');
+        Route::post('/thaiprompt/refresh', [ThaipromptKycController::class, 'refresh'])
+            ->name('thaiprompt.refresh')
+            ->middleware('throttle:20,1,kyc-tp-refresh');
     });
 });
 
@@ -114,7 +133,22 @@ Route::prefix('trade')->group(function () {
         return Inertia::render('Trade', ['pair' => \App\Support\DefaultMarket::pair($chains)]);
     })->name('trade');
 
-    Route::get('/{pair}', function ($pair) {
+    Route::get('/{pair}', function (\Illuminate\Http\Request $request, string $pair) {
+        /*
+         * URL มีชื่อคู่เดียว: ตัวพิมพ์ใหญ่ — Binance REST ปฏิเสธ "btcusdt" (-1121)
+         * /trade/btc-usdt เคยเปิดได้แต่กราฟ/สมุดคำสั่งว่างทั้งหน้า
+         * ส่งต่อแบบถาวร (301) ให้ลิงก์/บุ๊กมาร์กเก่ายังใช้ได้ และเก็บ query string ไว้ด้วย
+         */
+        $canonical = strtoupper($pair);
+        if ($pair !== $canonical) {
+            $query = $request->getQueryString();
+
+            return redirect()->to(
+                route('trade.pair', ['pair' => $canonical]).($query ? '?'.$query : ''),
+                301
+            );
+        }
+
         return Inertia::render('Trade', ['pair' => $pair]);
     })->where('pair', '[A-Za-z0-9]+-[A-Za-z0-9]+')->name('trade.pair');
 });

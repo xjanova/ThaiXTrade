@@ -200,6 +200,7 @@ const shortWallet = (w) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : '—');
                             </td>
                             <td>
                                 <span v-if="s.purged_at" class="purged-tag">ลบข้อมูลแล้ว</span>
+                                <span v-else-if="s.source === 'thaiprompt'" class="purged-tag">ยืนยันผ่าน Thaiprompt</span>
                                 <template v-else>{{ s.full_name || '—' }}</template>
                             </td>
                             <td>{{ s.level === 'enhanced' ? 'เพิ่มเติม' : 'ปกติ' }}</td>
