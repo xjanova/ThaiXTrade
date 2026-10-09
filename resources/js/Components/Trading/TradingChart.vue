@@ -10,6 +10,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, LineStyle, createSeriesMarkers } from 'lightweight-charts';
 import { getPairLogo, getBaseSymbol } from '@/utils/cryptoLogos';
 import { useTranslation } from '@/Composables/useTranslation';
+import { createLiveSocket, decimalsForPrice, formatMarketPrice, restTimeoutSignal, MAX_PRICE_DECIMALS } from '@/Composables/useBinanceData';
 
 const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
@@ -40,20 +41,30 @@ const props = defineProps({
      * ปิดแล้วป้ายบอทยังอยู่แต่เล็กเงียบ เพื่อไม่บังไม้ที่ผู้ใช้วางเอง
      */
     botMode: { type: Boolean, default: false },
+    /**
+     * ทศนิยมของราคา (ไม่บังคับ) — ไม่ส่งมา = คำนวณจากขนาดของราคาเอง
+     * กันเหรียญราคาจิ๋ว (SHIB, PEPE) แกนราคาขึ้น 0.00 ทั้งแกน
+     */
+    pricePrecision: { type: Number, default: null },
 });
 
 const emit = defineEmits(['update:botMode']);
 const { t } = useTranslation();
 
 const BINANCE_REST = 'https://api.binance.com/api/v3';
+const BINANCE_WS = 'wss://stream.binance.com:9443/ws';
 
 const chartContainer = ref(null);
 const selectedTimeframe = ref('1H');
 const chartType = ref('candle');
 const isLoading = ref(false);
+/** โหลดแท่งไม่ได้ (คู่ที่ Binance ไม่มี / เน็ตล่ม) → โชว์ข้อความแทนกราฟปลอม */
+const chartUnavailable = ref(false);
 
 const timeframes = ['1m', '5m', '15m', '1H', '4H', '1D', '1W'];
 const binanceIntervals = { '1m': '1m', '5m': '5m', '15m': '15m', '1H': '1h', '4H': '4h', '1D': '1d', '1W': '1w' };
+/** ความยาวแท่ง (วินาที) — ใช้จับว่าสตรีมข้ามแท่งไป (หลับ/เน็ตหลุด) แล้วต้องเติมช่องว่างจาก REST */
+const intervalSeconds = { '1m': 60, '5m': 300, '15m': 900, '1H': 3600, '4H': 14400, '1D': 86400, '1W': 604800 };
 
 const indicators = ref(['MA', 'EMA']);
 const activeIndicators = ref(['MA']);
@@ -64,19 +75,56 @@ let lineSeriesRef = null;
 let volumeSeriesRef = null;
 let maSeriesRef = null;
 let emaSeriesRef = null;
-let klineWs = null;
-let reconnectTimer = null;
 let storedCandleData = [];
 let markersApi = null;
 let priceLineRefs = [];
 
-const binanceSymbol = computed(() => props.symbol.replace('/', ''));
+/*
+ * ลำดับการสร้างกราฟ — กด timeframe รัวๆ แล้วผลโหลดกลับมาสลับลำดับกัน
+ * ของเดิมสร้างกราฟสองตัวซ้อนในกล่องเดียว หรือได้ประวัติ 1h แต่สตรีม 5m
+ * ทุกรอบจด seq ไว้ ผลที่กลับมาไม่ตรงกับ seq ล่าสุด = ทิ้ง
+ */
+let initSeq = 0;
+let disposed = false;
+/** timeframe ของกราฟที่วาดอยู่จริง — สตรีม/โพล/เติมช่องว่างต้องใช้ค่านี้ ไม่ใช่ปุ่มที่เพิ่งกด */
+let activeTimeframe = null;
+let klineStream = '';
+let refreshingKlines = false;
+
+/*
+ * lightweight-charts แสดงเวลาเป็น UTC เสมอ ขณะที่รายการเทรดล่าสุดใช้เวลาเครื่อง
+ * → แกนเวลาเหลื่อม 7 ชม. สำหรับคนไทย วิธีที่เอกสารของไลบรารีแนะนำคือเลื่อนเวลาทุกจุดด้วย offset ของเครื่อง
+ * ใช้ offset เดียวตลอดอายุคอมโพเนนต์ ไม่คำนวณรายแท่ง — ช่วงเปลี่ยน DST เวลารายแท่งจะซ้ำ/ถอยหลัง
+ * แล้ว setData โยน error ทั้งกราฟ
+ */
+const TZ_SHIFT_SEC = -new Date().getTimezoneOffset() * 60;
+const toChartTime = (utcSeconds) => utcSeconds + TZ_SHIFT_SEC;
+
+const binanceSymbol = computed(() => props.symbol.replace('/', '').toUpperCase());
+
+/** คู่ที่แท่งมาจากเซิร์ฟเวอร์ของเราเอง (TPIX DEX / TPIX ภายใน) — ไม่มีสตรีมของ Binance */
+const isInternalFeed = () => !!(props.klinesUrl || props.isTpix);
+
+/** ทศนิยมของแกนราคา: ค่าที่ส่งมา (ถ้ามี) หรือตามขนาดของราคา */
+function precisionFor(price) {
+    if (props.pricePrecision !== null && props.pricePrecision !== undefined) {
+        const explicit = Math.trunc(Number(props.pricePrecision));
+        if (Number.isFinite(explicit) && explicit >= 0) return Math.min(MAX_PRICE_DECIMALS, explicit);
+    }
+    return decimalsForPrice(price);
+}
+
+/** priceFormat ของซีรีส์ราคา — ไม่ตั้ง = ค่าปริยาย 2 ตำแหน่ง → PEPE ทั้งแกนเป็น 0.00 */
+function priceFormatFor(candles) {
+    const precision = precisionFor(candles.at(-1)?.close || props.ticker?.price);
+    return { type: 'price', precision, minMove: Number(`1e-${precision}`) };
+}
 
 // Ticker display (from parent via props)
 const displayPrice = computed(() => {
-    const p = props.ticker?.price;
+    const p = Number(props.ticker?.price);
     if (!p) return '—';
-    return p >= 1 ? p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : p.toFixed(8);
+    return formatMarketPrice(p, precisionFor(p));
 });
 const displayChange = computed(() => {
     const pct = props.ticker?.priceChangePercent;
@@ -114,7 +162,7 @@ function compactNumber(value) {
 
 function priceLabel(value) {
     if (value === null) return '—';
-    return '$' + value.toLocaleString('en-US', { maximumFractionDigits: value >= 1 ? 2 : 6 });
+    return '$' + formatMarketPrice(value, precisionFor(value));
 }
 
 const pairName = computed(() => {
@@ -131,17 +179,19 @@ const toggleIndicator = (indicator) => {
 };
 
 // Calculate Moving Average
+// ไม่ปัดทศนิยม — ของเดิม toFixed(2) ทำให้ MA ของ SHIB/PEPE เป็น 0 ทั้งเส้น
+// แล้วแกนราคาต้องยืดลงไปถึง 0 จนแท่งเทียนแบนเป็นเส้นตรง (ซีรีส์ปัดตาม priceFormat เองตอนแสดง)
 function calculateMA(data, period = 20) {
     const result = [];
     for (let i = period - 1; i < data.length; i++) {
         let sum = 0;
         for (let j = 0; j < period; j++) sum += data[i - j].close;
-        result.push({ time: data[i].time, value: parseFloat((sum / period).toFixed(2)) });
+        result.push({ time: data[i].time, value: sum / period });
     }
     return result;
 }
 
-// Calculate EMA
+// Calculate EMA (ไม่ปัดทศนิยม — เหตุผลเดียวกับ MA)
 function calculateEMA(data, period = 12) {
     if (!data.length) return [];
     const result = [];
@@ -149,14 +199,15 @@ function calculateEMA(data, period = 12) {
     let ema = data[0].close;
     for (let i = 0; i < data.length; i++) {
         ema = data[i].close * k + ema * (1 - k);
-        if (i >= period - 1) result.push({ time: data[i].time, value: parseFloat(ema.toFixed(2)) });
+        if (i >= period - 1) result.push({ time: data[i].time, value: ema });
     }
     return result;
 }
 
 // Fetch klines — from internal API for TPIX, from Binance for other tokens
-async function fetchKlines() {
-    const interval = binanceIntervals[selectedTimeframe.value] || '1h';
+// รับ timeframe เป็นอาร์กิวเมนต์ ไม่อ่านปุ่มเอง — ผู้ใช้อาจกดปุ่มใหม่ระหว่างที่รอผลอยู่
+async function fetchKlines(timeframe) {
+    const interval = binanceIntervals[timeframe] || '1h';
 
     try {
         let data;
@@ -176,118 +227,170 @@ async function fetchKlines() {
             data = json.data || [];
         } else {
             // Other pairs: use Binance API
-            const symbol = binanceSymbol.value;
-            const res = await fetch(`${BINANCE_REST}/klines?symbol=${symbol}&interval=${interval}&limit=300`);
+            const symbol = encodeURIComponent(binanceSymbol.value);
+            const res = await fetch(`${BINANCE_REST}/klines?symbol=${symbol}&interval=${interval}&limit=300`, { signal: restTimeoutSignal() });
             if (!res.ok) throw new Error('Failed to fetch klines');
             data = await res.json();
         }
 
-        return data.map(k => ({
-            time: Math.floor((Array.isArray(k) ? k[0] : k.time) / 1000),
-            open: parseFloat(Array.isArray(k) ? k[1] : k.open),
-            high: parseFloat(Array.isArray(k) ? k[2] : k.high),
-            low: parseFloat(Array.isArray(k) ? k[3] : k.low),
-            close: parseFloat(Array.isArray(k) ? k[4] : k.close),
-            volume: parseFloat(Array.isArray(k) ? k[5] : k.volume),
-        }));
+        return (Array.isArray(data) ? data : [])
+            .map(k => ({
+                time: toChartTime(Math.floor((Array.isArray(k) ? k[0] : k.time) / 1000)),
+                open: parseFloat(Array.isArray(k) ? k[1] : k.open),
+                high: parseFloat(Array.isArray(k) ? k[2] : k.high),
+                low: parseFloat(Array.isArray(k) ? k[3] : k.low),
+                close: parseFloat(Array.isArray(k) ? k[4] : k.close),
+                volume: parseFloat(Array.isArray(k) ? k[5] : k.volume),
+            }))
+            // แถวพัง (เวลา/ราคาไม่ใช่ตัวเลข) แถวเดียวทำให้ setData โยน error ทั้งกราฟ
+            .filter(c => Number.isFinite(c.time) && Number.isFinite(c.close));
     } catch (err) {
         return [];
     }
 }
 
+/** แท่งล่าสุดจากสตรีม kline ของ Binance → อัปเดตแท่งปัจจุบันบนกราฟ */
+function applyKlineMessage(msg) {
+    const k = msg?.k;
+    if (!k || !candleSeriesRef) return;
+
+    const candle = {
+        time: toChartTime(Math.floor(k.t / 1000)),
+        open: parseFloat(k.o),
+        high: parseFloat(k.h),
+        low: parseFloat(k.l),
+        close: parseFloat(k.c),
+        volume: parseFloat(k.v),
+    };
+
+    const last = storedCandleData.at(-1);
+    // ข้ามไปเกินหนึ่งแท่ง = พลาดแท่งระหว่างหลับ/เน็ตหลุด → เติมช่องว่างจาก REST แทนการลากเส้นข้ามไปเฉยๆ
+    if (last && candle.time > last.time + (intervalSeconds[activeTimeframe] || 3600)) {
+        refreshKlines();
+    }
+    // แท่งเก่ากว่าตัวสุดท้ายที่วาดไว้ (ข้อความค้างในท่อ) — update() จะโยน error ข้ามไปเลย
+    if (last && candle.time < last.time) return;
+
+    // Update chart series
+    candleSeriesRef.update(candle);
+    if (lineSeriesRef) lineSeriesRef.update({ time: candle.time, value: candle.close });
+    if (volumeSeriesRef) volumeSeriesRef.update({
+        time: candle.time,
+        value: candle.volume,
+        color: candle.close >= candle.open ? 'rgba(0, 200, 83, 0.3)' : 'rgba(255, 23, 68, 0.3)',
+    });
+
+    // Update stored data for indicator recalculation
+    if (storedCandleData.length > 0) {
+        const lastIdx = storedCandleData.length - 1;
+        if (storedCandleData[lastIdx].time === candle.time) {
+            storedCandleData[lastIdx] = candle;
+        } else {
+            storedCandleData.push(candle);
+        }
+    }
+}
+
+// สายเดียวตลอดอายุคอมโพเนนต์ — ต่อใหม่เองเฉพาะตอนหลุดโดยไม่ตั้งใจ (ดู createLiveSocket)
+const klineSocket = createLiveSocket({
+    url: () => (klineStream ? `${BINANCE_WS}/${klineStream}` : ''),
+    onMessage: applyKlineMessage,
+});
+
 // Connect kline WebSocket for real-time candle updates
-function connectKlineWS() {
+// interval มาจากกราฟที่เพิ่งวาดเสร็จ — สตรีมจึงตรงกับประวัติที่แสดงอยู่เสมอ
+function connectKlineWS(timeframe) {
     disconnectKlineWS();
-    const interval = binanceIntervals[selectedTimeframe.value] || '1h';
-    const stream = `${binanceSymbol.value.toLowerCase()}@kline_${interval}`;
-
-    klineWs = new WebSocket(`wss://stream.binance.com:9443/ws/${stream}`);
-
-    klineWs.onmessage = (event) => {
-        try {
-            const msg = JSON.parse(event.data);
-            const k = msg.k;
-            if (!k) return;
-
-            const candle = {
-                time: Math.floor(k.t / 1000),
-                open: parseFloat(k.o),
-                high: parseFloat(k.h),
-                low: parseFloat(k.l),
-                close: parseFloat(k.c),
-                volume: parseFloat(k.v),
-            };
-
-            // Update chart series
-            if (candleSeriesRef) candleSeriesRef.update(candle);
-            if (lineSeriesRef) lineSeriesRef.update({ time: candle.time, value: candle.close });
-            if (volumeSeriesRef) volumeSeriesRef.update({
-                time: candle.time,
-                value: candle.volume,
-                color: candle.close >= candle.open ? 'rgba(0, 200, 83, 0.3)' : 'rgba(255, 23, 68, 0.3)',
-            });
-
-            // Update stored data for indicator recalculation
-            if (storedCandleData.length > 0) {
-                const lastIdx = storedCandleData.length - 1;
-                if (storedCandleData[lastIdx].time === candle.time) {
-                    storedCandleData[lastIdx] = candle;
-                } else {
-                    storedCandleData.push(candle);
-                }
-            }
-        } catch { /* ignore */ }
-    };
-
-    klineWs.onclose = () => {
-        reconnectTimer = setTimeout(connectKlineWS, 5000);
-    };
-    klineWs.onerror = () => { try { klineWs?.close(); } catch { /* */ } };
+    if (disposed) return;
+    const interval = binanceIntervals[timeframe] || '1h';
+    klineStream = `${binanceSymbol.value.toLowerCase()}@kline_${interval}`;
+    klineSocket.start();
 }
 
 function disconnectKlineWS() {
-    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    if (klineWs) { try { klineWs.close(); } catch { /* */ } klineWs = null; }
+    klineSocket.stop();
+    klineStream = '';
 }
 
-async function initChart() {
-    if (!chartContainer.value) return;
-
-    // Clean up
-    if (chart) { chart.remove(); chart = null; }
+/** ถอดกราฟเดิมทิ้งทั้งชุด — ทุกอ้างอิงของซีรีส์ต้องเป็น null ด้วย ไม่งั้นสตรีมเขียนใส่กราฟที่ถูกลบแล้ว */
+function destroyChart() {
+    markersApi = null;
+    priceLineRefs = [];
     candleSeriesRef = null;
     lineSeriesRef = null;
     volumeSeriesRef = null;
     maSeriesRef = null;
     emaSeriesRef = null;
+    if (chart) {
+        try { chart.remove(); } catch { /* ถูกถอดไปแล้ว */ }
+        chart = null;
+    }
+}
 
+/** เส้นราบที่ราคาปัจจุบัน — ใช้เฉพาะคู่ TPIX ตอนเซิร์ฟเวอร์ยังไม่มีแท่ง (พฤติกรรมเดิม) */
+function flatTpixCandles() {
+    const basePrice = props.ticker?.price || props.ticker?.lastPrice || 0.18;
+    const now = Math.floor(Date.now() / 1000);
+    const candles = [];
+    for (let i = 299; i >= 0; i--) {
+        candles.push({
+            time: toChartTime(now - (i * 3600)),
+            open: basePrice,
+            high: basePrice,
+            low: basePrice,
+            close: basePrice,
+            volume: 0,
+        });
+    }
+    return candles;
+}
+
+async function initChart() {
+    const seq = ++initSeq;
+    const timeframe = selectedTimeframe.value;
+
+    // หยุดสตรีม/โพลของรอบก่อนทันที — แท่งของ timeframe เก่าต้องไม่ไหลเข้ากราฟระหว่างรอ
+    disconnectKlineWS();
+    stopInternalPolling();
+
+    if (disposed || !chartContainer.value) return;
     isLoading.value = true;
 
-    // Fetch real data
-    const candleData = await fetchKlines();
-    storedCandleData = candleData;
+    // Fetch real data — กราฟเดิมยังโชว์อยู่ระหว่างรอ (ไม่วูบเป็นจอดำ) ค่อยถอดหลังได้ข้อมูลใหม่
+    const fetched = await fetchKlines(timeframe);
 
-    if (!chartContainer.value) {
-        isLoading.value = false;
-        return;
-    }
+    // มีรอบใหม่กว่าเริ่มไปแล้ว (กด timeframe รัว / สลับคู่) หรือคอมโพเนนต์ถูกถอด → ทิ้งผลนี้
+    if (seq !== initSeq || disposed) return;
+    isLoading.value = false;
+    if (!chartContainer.value) return;
 
-    // No data: generate flat line at current price (or $0.18 default for TPIX)
+    let candleData = fetched;
+
     if (!candleData.length) {
-        const basePrice = props.ticker?.price || props.ticker?.lastPrice || 0.18;
-        const now = Math.floor(Date.now() / 1000);
-        for (let i = 299; i >= 0; i--) {
-            candleData.push({
-                time: now - (i * 3600),
-                open: basePrice,
-                high: basePrice,
-                low: basePrice,
-                close: basePrice,
-                volume: 0,
-            });
+        if (!isInternalFeed()) {
+            /*
+             * คู่ที่ Binance ไม่มี (พิมพ์ผิด / ถูกถอดแล้ว) หรือโหลดไม่ขึ้น
+             * ห้ามวาดแท่งปลอม — ของเดิมวาดเส้นราบที่ ~$0.18 ให้ทุกคู่ ดูเหมือนราคาจริงจนคนเข้าใจผิด
+             * และไม่เปิดสตรีม เพราะคู่ที่ไม่มีอยู่จริงสายเปิดได้แต่ไม่มีข้อมูลสักไบต์
+             */
+            destroyChart();
+            storedCandleData = [];
+            activeTimeframe = null;
+            chartUnavailable.value = true;
+            return;
         }
-        storedCandleData = candleData;
+        // No data: generate flat line at current price (or $0.18 default for TPIX)
+        candleData = flatTpixCandles();
     }
+
+    chartUnavailable.value = false;
+    storedCandleData = candleData;
+    activeTimeframe = timeframe;
+
+    // ถอดกราฟเดิม "หลัง" await เท่านั้น — สองรอบที่ทับกันจะไม่สร้างกราฟสองตัวในกล่องเดียว
+    destroyChart();
+
+    const priceFormat = priceFormatFor(candleData);
 
     chart = createChart(chartContainer.value, {
         autoSize: true,
@@ -326,6 +429,7 @@ async function initChart() {
         borderDownColor: '#FF1744',
         wickUpColor: '#00C853',
         wickDownColor: '#FF1744',
+        priceFormat,
     });
     candleSeriesRef.setData(candleData);
 
@@ -334,6 +438,7 @@ async function initChart() {
         color: '#0ea5e9',
         lineWidth: 2,
         visible: chartType.value === 'line',
+        priceFormat,
     });
     lineSeriesRef.setData(candleData.map(d => ({ time: d.time, value: d.close })));
 
@@ -369,14 +474,42 @@ async function initChart() {
     updateIndicators(candleData);
 
     chart.timeScale().fitContent();
-    isLoading.value = false;
 
     // Connect WebSocket for real-time kline updates — เฉพาะคู่ที่ราคามาจาก Binance
     // คู่บน TPIX DEX / TPIX ภายใน ไม่มีสตรีมของ Binance → รีเฟรชแท่งจากเซิร์ฟเวอร์เป็นรอบแทน
-    if (props.klinesUrl || props.isTpix) {
+    if (isInternalFeed()) {
         startInternalPolling();
     } else {
-        connectKlineWS();
+        connectKlineWS(timeframe);
+    }
+}
+
+/**
+ * เติมแท่งที่พลาดไปจาก REST โดยไม่สร้างกราฟใหม่ (ผู้ใช้ซูม/เลื่อนค้างไว้ก็ไม่เด้งกลับ)
+ * เรียกเมื่อสตรีมข้ามแท่ง หรือกลับมาที่แท็บหลังหายไปนาน
+ */
+async function refreshKlines() {
+    if (refreshingKlines || !chart || isInternalFeed() || !activeTimeframe) return;
+
+    const seq = initSeq;
+    const timeframe = activeTimeframe;
+    refreshingKlines = true;
+    try {
+        const candles = await fetchKlines(timeframe);
+        // ระหว่างรอ อาจเปลี่ยน timeframe / สลับคู่ / ถอดคอมโพเนนต์ไปแล้ว
+        if (seq !== initSeq || disposed || !chart || !candleSeriesRef || !candles.length) return;
+
+        storedCandleData = candles;
+        candleSeriesRef.setData(candles);
+        lineSeriesRef?.setData(candles.map(d => ({ time: d.time, value: d.close })));
+        volumeSeriesRef?.setData(candles.map(d => ({
+            time: d.time,
+            value: d.volume,
+            color: d.close >= d.open ? 'rgba(0, 200, 83, 0.3)' : 'rgba(255, 23, 68, 0.3)',
+        })));
+        updateIndicators(candles);
+    } finally {
+        refreshingKlines = false;
     }
 }
 
@@ -386,8 +519,10 @@ function startInternalPolling() {
     stopInternalPolling();
     internalPollTimer = setInterval(async () => {
         if (!candleSeriesRef) return;
-        const data = await fetchKlines();
-        if (!data.length) return;
+        const seq = initSeq;
+        const data = await fetchKlines(activeTimeframe);
+        // ระหว่างรอ กราฟอาจถูกสร้างใหม่/ถอดไปแล้ว — แท่งชุดนี้ไม่ใช่ของกราฟปัจจุบัน
+        if (seq !== initSeq || !candleSeriesRef || !data.length) return;
         const last = data[data.length - 1];
         try {
             candleSeriesRef.update(chartType.value === 'candle'
@@ -407,15 +542,18 @@ function stopInternalPolling() {
 function updateIndicators(data) {
     if (!chart || !data?.length) return;
 
+    // ทศนิยมเดียวกับแท่งเทียน ไม่งั้นป้ายค่า MA/EMA ของเหรียญราคาจิ๋วขึ้น 0.00
+    const priceFormat = priceFormatFor(data);
+
     if (maSeriesRef) { chart.removeSeries(maSeriesRef); maSeriesRef = null; }
     if (activeIndicators.value.includes('MA')) {
-        maSeriesRef = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1, title: 'MA 20' });
+        maSeriesRef = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1, title: 'MA 20', priceFormat });
         maSeriesRef.setData(calculateMA(data, 20));
     }
 
     if (emaSeriesRef) { chart.removeSeries(emaSeriesRef); emaSeriesRef = null; }
     if (activeIndicators.value.includes('EMA')) {
-        emaSeriesRef = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 1, title: 'EMA 12' });
+        emaSeriesRef = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 1, title: 'EMA 12', priceFormat });
         emaSeriesRef.setData(calculateEMA(data, 12));
     }
 }
@@ -441,7 +579,8 @@ function buildMarkers() {
             const emphasize = isBot && props.botMode;
 
             return {
-                time: Math.floor(Number(m.time)),
+                // เลื่อนเวลาเท่ากับแท่งเทียน (เวลาเครื่อง) ไม่งั้นป้ายไปตกผิดแท่ง
+                time: toChartTime(Math.floor(Number(m.time))),
                 position: isBuy ? 'belowBar' : 'aboveBar',
                 shape: isBuy ? 'arrowUp' : 'arrowDown',
                 color: isBot
@@ -502,23 +641,47 @@ watch(chartType, (newType) => {
     if (lineSeriesRef) lineSeriesRef.applyOptions({ visible: newType === 'line' });
 });
 
-// Watch timeframe changes - re-fetch real data
-watch(() => props.klinesUrl, () => { initChart(); });
+// สลับคู่ / แหล่งแท่งเปลี่ยน (คู่ TPIX รู้ตัวหลังโหลดข้อมูลคู่เสร็จ) → วาดใหม่ทั้งกราฟ
+watch([() => props.symbol, () => props.isTpix, () => props.klinesUrl], () => { initChart(); });
 
-watch(selectedTimeframe, () => {
-    if (chart) initChart();
+// Watch timeframe changes - re-fetch real data
+// วาดใหม่เสมอ — ของเดิมเช็ค `if (chart)` ทำให้คลิกระหว่างโหลดครั้งแรกหายเงียบ (ประวัติ 1h แต่ปุ่มเป็น 5m)
+watch(selectedTimeframe, () => { initChart(); });
+
+// ทศนิยมที่ส่งมาทีหลัง (ข้อมูลคู่โหลดเสร็จหลังกราฟ) — ปรับแกนเดิมได้เลยไม่ต้องโหลดแท่งใหม่
+watch(() => props.pricePrecision, () => {
+    if (!chart) return;
+    const priceFormat = priceFormatFor(storedCandleData);
+    [candleSeriesRef, lineSeriesRef, maSeriesRef, emaSeriesRef].forEach(s => s?.applyOptions({ priceFormat }));
 });
 
+/*
+ * กลับมาที่แท็บ (ตื่นจากหลับ / สลับแท็บกลับมา)
+ * สายที่เงียบไปนาน → ต่อใหม่ทันทีไม่รอ watchdog · กราฟที่เคยโหลดไม่ขึ้น → ลองใหม่เอง
+ * แท่งที่พลาดไประหว่างนั้น applyKlineMessage จับได้เองจากช่องว่างของเวลาแล้วเติมจาก REST
+ */
+function onVisibilityChange() {
+    if (disposed || document.visibilityState !== 'visible') return;
+    if (chartUnavailable.value) {
+        if (!isLoading.value) initChart();
+        return;
+    }
+    if (klineSocket.isStale()) klineSocket.reconnectNow();
+}
+
 onMounted(() => {
+    document.addEventListener('visibilitychange', onVisibilityChange);
     nextTick(() => initChart());
 });
 
 onUnmounted(() => {
-    markersApi = null;
-    priceLineRefs = [];
+    // ปิดทุกทางที่งานค้างจะเขียนกลับเข้ามา: โหลดที่รออยู่ (seq), สตรีม, โพล, listener
+    disposed = true;
+    initSeq += 1;
+    document.removeEventListener('visibilitychange', onVisibilityChange);
     disconnectKlineWS();
     stopInternalPolling();
-    if (chart) { chart.remove(); chart = null; }
+    destroyChart();
 });
 </script>
 
@@ -572,7 +735,7 @@ onUnmounted(() => {
             </div>
 
             <div class="ml-auto flex items-center gap-1.5 flex-shrink-0">
-                <span v-if="isLoading" class="text-[10px] text-dark-500 animate-pulse">Loading…</span>
+                <span v-if="isLoading" class="text-[10px] text-dark-500 animate-pulse">{{ t('trade.chart.loading') }}</span>
 
                 <!-- โหมดบอท — เน้นป้ายเข้า/ออกไม้ของบอท + เส้นต้นทุน/SL/TP ของไม้ที่ถืออยู่ -->
                 <button
@@ -628,8 +791,32 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- Chart Area -->
-        <div ref="chartContainer" class="flex-1 relative overflow-hidden" style="min-height: 0;"></div>
+        <!-- Chart Area — ห่ออีกชั้นเพื่อวางข้อความ "ไม่มีข้อมูล" ทับได้
+             (ห้ามใส่ลูกของ Vue ในกล่องกราฟเอง lightweight-charts ยัด DOM ของมันลงไปในนั้น) -->
+        <div class="flex-1 relative flex flex-col min-h-0">
+            <div ref="chartContainer" class="flex-1 relative overflow-hidden" style="min-height: 0;"></div>
+
+            <!-- โหลดแท่งไม่ได้ (คู่ที่ Binance ไม่มี / เน็ตล่ม) — บอกตรงๆ แทนการวาดแท่งปลอม -->
+            <div
+                v-if="chartUnavailable"
+                class="absolute inset-0 z-10 flex flex-col items-center justify-center px-4 text-center"
+                role="status"
+            >
+                <svg class="w-10 h-10 text-dark-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                </svg>
+                <p class="text-dark-400 text-sm font-medium">{{ t('trade.chart.noData') }}</p>
+                <p class="text-dark-500 text-xs mt-1 max-w-xs">{{ t('trade.chart.noDataSub') }}</p>
+                <button
+                    type="button"
+                    class="mt-3 px-3 py-1 rounded-md text-[11px] font-medium text-primary-400 hover:text-primary-300 hover:bg-white/5 transition-colors disabled:opacity-50"
+                    :disabled="isLoading"
+                    @click="initChart"
+                >
+                    {{ t('trade.chart.retry') }}
+                </button>
+            </div>
+        </div>
 
         <!-- คำอธิบายสัญลักษณ์ของบอท — โผล่เฉพาะโหมดบอท ไม่รับคลิกจึงไม่บังการลากกราฟ
              (รูทของคอมโพเนนต์เป็น relative จากการ์ดที่ครอบอยู่) -->

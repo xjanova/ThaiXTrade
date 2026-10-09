@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\AiBotConfig;
+use App\Models\AiBotDemoAccount;
 use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
 use App\Models\AiBotSubscription;
@@ -201,6 +202,9 @@ class AiBotDemoApiTest extends TestCase
     #[Test]
     public function resetting_too_often_is_blocked_with_a_clear_message(): void
     {
+        // กระเป๋าที่มีบอท = มีพอร์ตให้ล้าง (กระเป๋าเปล่าไม่มีอะไรให้ล้าง ดูเทสต์ด้านล่าง)
+        $this->makeBot();
+
         for ($i = 0; $i < 3; $i++) {
             $this->postJson('/api/v1/ai-bot/demo/reset', ['wallet_address' => self::WALLET])->assertOk();
         }
@@ -208,6 +212,116 @@ class AiBotDemoApiTest extends TestCase
         $this->postJson('/api/v1/ai-bot/demo/reset', ['wallet_address' => self::WALLET])
             ->assertStatus(422)
             ->assertJsonPath('error.code', 'RESET_LIMIT');
+    }
+
+    /**
+     * ⭐ กระเป๋าใหม่ บอทกริดซื้อไป $100 — ตัวเลขทั้งสามต้องมาจากพอร์ตชุดเดียวกัน.
+     *
+     * เดิมหน้านี้สร้างพอร์ตรวม (bucket = null) ให้ตอนเปิดดูครั้งแรก ซึ่งไม่มีบอทตัวไหนเทรด
+     * แล้วบอทกริดเปิดพอร์ตของตัวเองอีกใบ — ผู้ใช้เห็น เงินสด $19,900 · ทุน $20,000
+     * · มูลค่าพอร์ต $10,100 (มูลค่าใช้เงินสดของพอร์ตแรกใบเดียว) ดูเหมือนขาดทุนครึ่งพอร์ต
+     */
+    #[Test]
+    public function a_new_wallets_first_trade_shows_consistent_cash_capital_and_equity(): void
+    {
+        $this->priceIs(100.0);
+
+        // เปิดดูพอร์ตก่อนบอทเทรด — เส้นทางที่เคยสร้างพอร์ตรวมทิ้งไว้
+        $this->getJson('/api/v1/ai-bot/demo?'.$this->query())->assertOk();
+        $this->assertSame(0, AiBotDemoAccount::where('wallet_address', self::WALLET)->count(), 'การเปิดดูต้องไม่สร้างพอร์ตเปล่าทิ้งไว้');
+
+        $bot = $this->makeBot(['strategy' => 'grid']);
+        app(PaperBroker::class)->buy($bot, 100.0, 100.0, ['reason' => 'ชั้นกริด']);
+
+        $data = $this->getJson('/api/v1/ai-bot/demo?'.$this->query())->assertOk()->json('data');
+
+        $this->assertEquals(9900, $data['account']['balance']);
+        $this->assertEquals(10000, $data['account']['starting_balance'], 'ทุนตั้งต้นต้องเป็นของพอร์ตที่บอทใช้จริงพอร์ตเดียว');
+
+        // มูลค่าพอร์ต = เงินสดของพอร์ตชุดเดียวกัน + ของที่ถือ (ไม่ใช่ $10,100)
+        $this->assertEqualsWithDelta(
+            $data['account']['balance'] + $data['summary']['positions_value'],
+            $data['summary']['equity'],
+            0.01,
+        );
+        $this->assertEqualsWithDelta(10000, $data['summary']['equity'], 1.0, 'ซื้อ $100 ที่ราคาตลาด ต้องเสียแค่ค่าธรรมเนียม/slippage ไม่ใช่ครึ่งพอร์ต');
+        $this->assertCount(1, $data['portfolios']);
+    }
+
+    /**
+     * พอร์ตรวมรุ่นเดิมที่ค้างอยู่ในฐานข้อมูลและไม่เคยถูกเทรด ต้องไม่ถูกนับซ้ำ — แต่ก็ต้องไม่ถูกลบ.
+     */
+    #[Test]
+    public function an_untouched_legacy_combined_portfolio_is_not_double_counted_nor_deleted(): void
+    {
+        $this->priceIs(100.0);
+
+        AiBotDemoAccount::create([
+            'wallet_address' => self::WALLET, 'bucket' => null,
+            'balance' => 10000, 'starting_balance' => 10000,
+        ]);
+
+        $bot = $this->makeBot(['strategy' => 'grid']);
+        app(PaperBroker::class)->buy($bot, 100.0, 100.0, ['reason' => 'ชั้นกริด']);
+
+        $data = $this->getJson('/api/v1/ai-bot/demo?'.$this->query())->assertOk()->json('data');
+
+        $this->assertEquals(10000, $data['account']['starting_balance']);
+        $this->assertEquals(9900, $data['account']['balance']);
+        $this->assertEqualsWithDelta(10000, $data['summary']['equity'], 1.0);
+        $this->assertNotContains(null, array_column($data['portfolios'], 'strategy'));
+
+        $this->assertSame(1, AiBotDemoAccount::where('wallet_address', self::WALLET)->whereNull('bucket')->count(), 'ข้อมูลเดิมของผู้ใช้ห้ามหาย');
+    }
+
+    /**
+     * พอร์ตรวมรุ่นเก่าที่ "เคยเทรดจริง" (ก่อนแยกพอร์ต) ยังนับครบทั้งเงินสด ทุน และมูลค่า.
+     *
+     * ไม่นับ = กำไร/ขาดทุนรวมเพี้ยน (ไม้เก่าที่ซื้อจากพอร์ตนี้ถูกขายเข้าพอร์ตของกลยุทธ์ไปแล้ว)
+     */
+    #[Test]
+    public function a_legacy_portfolio_that_was_traded_still_counts_once_in_every_total(): void
+    {
+        AiBotDemoAccount::create([
+            'wallet_address' => self::WALLET, 'bucket' => null,
+            'balance' => 9500, 'starting_balance' => 10000,
+        ]);
+        AiBotDemoAccount::create([
+            'wallet_address' => self::WALLET, 'bucket' => 'grid',
+            'balance' => 10400, 'starting_balance' => 10000,
+        ]);
+
+        $data = $this->getJson('/api/v1/ai-bot/demo?'.$this->query())->assertOk()->json('data');
+
+        $this->assertEquals(19900, $data['account']['balance']);
+        $this->assertEquals(20000, $data['account']['starting_balance']);
+        $this->assertEquals(19900, $data['summary']['equity']);
+    }
+
+    /** ล้างพอร์ตต้องไม่สร้างพอร์ตรวมเปล่า — เปิดพอร์ตของกลยุทธ์ที่บอทใช้จริงแทน (ไว้เก็บโควตา) */
+    #[Test]
+    public function resetting_opens_the_bots_own_portfolio_instead_of_an_unused_combined_one(): void
+    {
+        $this->makeBot(['strategy' => 'grid']);
+
+        $this->postJson('/api/v1/ai-bot/demo/reset', ['wallet_address' => self::WALLET])
+            ->assertOk()
+            ->assertJsonPath('data.account.starting_balance', 10000)
+            ->assertJsonPath('data.account.resets_used_today', 1);
+
+        $this->assertSame(0, AiBotDemoAccount::whereNull('bucket')->count());
+        $this->assertSame(1, AiBotDemoAccount::where('bucket', 'grid')->count());
+    }
+
+    /** กระเป๋าที่ยังไม่มีบอทเลย = ไม่มีอะไรให้ล้าง ตอบผ่านโดยไม่สร้างแถวทิ้งไว้ */
+    #[Test]
+    public function resetting_a_wallet_without_bots_is_a_harmless_no_op(): void
+    {
+        $this->postJson('/api/v1/ai-bot/demo/reset', ['wallet_address' => self::WALLET])
+            ->assertOk()
+            ->assertJsonPath('data.account.balance', 10000);
+
+        $this->assertSame(0, AiBotDemoAccount::count());
     }
 
     // ─────────────────────────── สลับโหมด ───────────────────────────

@@ -17,6 +17,21 @@ use Illuminate\Support\Facades\DB;
  */
 class AiBotConfig extends Model
 {
+    /*
+     * รหัสเหตุผลที่ระบบพักบอทเอง — เก็บใน stats.pause_reason คู่กับ last_reason (ข้อความ)
+     *
+     * last_reason เป็นข้อความไทยที่ถูกเขียนทับทุกรอบคิด หน้าเว็บ/แอพแปลภาษาจากมันไม่ได้
+     * และแยกไม่ออกว่า "พักเพราะแพลนหมด" กับ "ผู้ใช้กดพักเอง" ต่างกันตรงไหน
+     * รหัสนี้ทำให้จอบอกได้ตรงตัวว่าต้องทำอะไรต่อ (ต่ออายุแพลน · ลบบอทให้เหลือตามโควตา)
+     */
+    public const PAUSE_PLAN_EXPIRED = 'plan_expired';
+
+    public const PAUSE_PLAN_LOCKED = 'plan_locked';
+
+    public const PAUSE_PLAN_QUOTA = 'plan_quota';
+
+    public const PAUSE_STRATEGY_RETIRED = 'strategy_retired';
+
     protected $fillable = [
         'wallet_address',
         'ai_bot_subscription_id',
@@ -76,6 +91,44 @@ class AiBotConfig extends Model
         return $this->banned_at !== null;
     }
 
+    /**
+     * ระบบพักบอทเองพร้อมเหตุผล (ทั้งข้อความให้คนอ่าน และรหัสให้หน้าจอแปลภาษา).
+     *
+     * เขียน stats ผ่านตัวแปรในหน่วยความจำ — BotRunner::record() รวม stats จากตัวแปรเดียวกัน
+     * ต่อท้ายอีกรอบ ถ้าเขียนลงฐานข้อมูลตรงๆ รหัสนี้จะถูกทับหายในบรรทัดถัดไป
+     */
+    public function pauseBecause(string $code, string $reason): void
+    {
+        $this->update([
+            'status' => 'paused',
+            'last_reason' => $reason,
+            'stats' => array_merge($this->stats ?? [], ['pause_reason' => $code]),
+        ]);
+    }
+
+    /** รหัสเหตุผลที่ระบบพักบอทไว้ — null เมื่อไม่ได้พัก หรือผู้ใช้กดพักเอง */
+    public function pauseReason(): ?string
+    {
+        if ($this->status !== 'paused') {
+            return null;
+        }
+
+        $code = ($this->stats ?? [])['pause_reason'] ?? null;
+
+        return is_string($code) && $code !== '' ? $code : null;
+    }
+
+    /** ล้างรหัสเหตุผลการพัก — เรียกตอนเจ้าของกดเริ่มใหม่ (เหตุผลเดิมไม่จริงแล้ว) */
+    public function clearPauseReason(): void
+    {
+        $stats = $this->stats ?? [];
+
+        if (array_key_exists('pause_reason', $stats)) {
+            unset($stats['pause_reason']);
+            $this->stats = $stats;
+        }
+    }
+
     public function scopeForWallet(Builder $query, string $wallet): Builder
     {
         return $query->where('wallet_address', strtolower($wallet));
@@ -99,6 +152,23 @@ class AiBotConfig extends Model
                 ->where('ai_bot_subscriptions.status', 'active')
                 ->where('ai_bot_subscriptions.expires_at', '>', now())
                 ->where('ai_bot_plans.execution', 'cloud');
+        });
+    }
+
+    /**
+     * บอทของกระเป๋าที่ไม่มีการเช่าที่ยังไม่หมดอายุเหลืออยู่เลย (ทั้งแพลนเสียเงินและแพลนฟรี).
+     *
+     * ใช้หาบอทที่ค้างสถานะ running หลังแพลนหมดอายุ — cloudExecuted() มองไม่เห็นพวกนี้
+     * (เลือกเฉพาะกระเป๋าที่มีแพลนคลาวด์ที่ยังไม่หมดอายุ) ด่านพักบอทใน BotRunner จึงไม่เคยได้ทำงาน
+     */
+    public function scopeWithoutLiveSubscription(Builder $query): Builder
+    {
+        return $query->whereNotExists(function ($sub) {
+            $sub->selectRaw('1')
+                ->from('ai_bot_subscriptions')
+                ->whereColumn('ai_bot_subscriptions.wallet_address', 'ai_bot_configs.wallet_address')
+                ->where('ai_bot_subscriptions.status', 'active')
+                ->where('ai_bot_subscriptions.expires_at', '>', now());
         });
     }
 

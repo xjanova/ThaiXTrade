@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\SiteSetting;
+use App\Models\Token;
 use App\Models\Trade;
 use App\Models\TradingPair;
 use App\Models\Transaction;
@@ -13,6 +14,7 @@ use App\Services\FeeCalculationService;
 use App\Services\OrderMatchingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
@@ -437,7 +439,9 @@ class TradingController extends Controller
                 'created_at' => $tx->created_at->toIso8601String(),
             ]);
 
-        $allOrders = $internalOrders->merge($legacyOrders)
+        // toBase() ก่อนรวม — กับดักเดียวกับ getHistory (Eloquent::merge เรียก getKey() กับ array → 500)
+        $allOrders = $internalOrders->toBase()
+            ->concat($legacyOrders->toBase())
             ->sortByDesc('created_at')
             ->values();
 
@@ -552,32 +556,155 @@ class TradingController extends Controller
             ]);
 
         // Legacy trades (ใช้ lowercase เหมือน internal)
-        $legacyTrades = Transaction::where('wallet_address', $walletLower)
+        $transactions = Transaction::where('wallet_address', $walletLower)
             ->whereIn('status', ['confirmed', 'completed'])
+            ->with('chain:id,chain_id,native_currency_symbol')
             ->orderByDesc('created_at')
             ->limit(50)
-            ->get()
-            ->map(fn ($tx) => [
+            ->get();
+
+        $symbols = $this->tokenSymbols($transactions);
+
+        $legacyTrades = $transactions->map(function (Transaction $tx) use ($symbols) {
+            $row = $tx->type === 'swap' ? $this->describeSwap($tx, $symbols) : null;
+
+            return [
                 'id' => $tx->uuid,
                 'type' => $tx->type,
-                'pair' => $tx->metadata['pair'] ?? ($tx->from_token.'/'.$tx->to_token),
-                'side' => $tx->metadata['side'] ?? $tx->type,
-                'price' => $tx->metadata['price'] ?? '0',
-                'amount' => $tx->from_amount,
-                'total' => $tx->to_amount,
+                'pair' => $row['pair'] ?? $tx->metadata['pair'] ?? ($tx->from_token.'/'.$tx->to_token),
+                'side' => $row['side'] ?? $tx->metadata['side'] ?? $tx->type,
+                'price' => $row['price'] ?? $tx->metadata['price'] ?? '0',
+                'amount' => $row['amount'] ?? $tx->from_amount,
+                'total' => $row['total'] ?? $tx->to_amount,
                 'fee' => $tx->fee_amount,
                 'role' => 'taker',
                 'status' => $tx->status,
                 'tx_hash' => $tx->tx_hash,
+                // เลขเชนจริง (56 / 4289) ให้หน้าเว็บสร้างลิงก์ explorer ถูกเชน — ไม่ใช่ PK ของตาราง
+                'chain_id' => $tx->chain?->chain_id,
                 'source' => 'legacy',
                 'created_at' => $tx->created_at->toIso8601String(),
-            ]);
+            ];
+        });
 
-        $allTrades = $internalTrades->merge($legacyTrades)
+        /*
+         * ⚠️ ต้อง toBase() ก่อนรวม — ห้าม merge ตรงๆ
+         *
+         * ไม่มีไม้ภายในเลย (ผู้ใช้ BSC ทุกคน) → map() ของ Eloquent คืน Eloquent Collection ว่าง
+         * แล้ว Eloquent::merge() เรียก getKey() กับแถวที่เป็น array → Error → 500
+         * แท็บประวัติจึงตอบ 500 ให้ทุกคนที่มีไม้ BSC มาตลอด (หน้าเว็บกลืนเป็น "ยังไม่มีประวัติ")
+         */
+        $allTrades = $internalTrades->toBase()
+            ->concat($legacyTrades->toBase())
             ->sortByDesc('created_at')
             ->values();
 
         return response()->json(['success' => true, 'data' => $allTrades]);
+    }
+
+    /** quote ที่ใช้ตัดสินว่าไม้สวอปเป็น "ซื้อ" หรือ "ขาย" (จ่ายสเตเบิล = ซื้อ) */
+    private const QUOTE_SYMBOLS = ['USDT', 'USDC', 'BUSD', 'FDUSD', 'DAI', 'TUSD'];
+
+    private const NATIVE_SENTINELS = [
+        '0x0000000000000000000000000000000000000000',
+        '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    ];
+
+    /**
+     * ชื่อเหรียญของที่อยู่สัญญาทุกตัวในชุดไม้ — ยิงคิวรีครั้งเดียว ไม่ใช่ทีละแถว
+     *
+     * @return array<string, string> คีย์ "{chain PK}:{address พิมพ์เล็ก}" → สัญลักษณ์
+     */
+    private function tokenSymbols($transactions): array
+    {
+        $swaps = $transactions->where('type', 'swap');
+        if ($swaps->isEmpty()) {
+            return [];
+        }
+
+        $addresses = $swaps
+            ->flatMap(fn ($tx) => [strtolower((string) $tx->from_token), strtolower((string) $tx->to_token)])
+            ->unique()
+            ->values()
+            ->all();
+
+        return Token::query()
+            ->whereIn('chain_id', $swaps->pluck('chain_id')->unique()->all())
+            ->where(function ($q) use ($addresses) {
+                // ตารางเก็บได้ทั้ง checksum และพิมพ์เล็ก — เทียบแบบไม่สนตัวพิมพ์
+                foreach (array_chunk($addresses, 50) as $chunk) {
+                    $q->orWhereIn(DB::raw('LOWER(contract_address)'), $chunk);
+                }
+            })
+            ->get(['chain_id', 'contract_address', 'symbol'])
+            ->mapWithKeys(fn ($t) => [$t->chain_id.':'.strtolower($t->contract_address) => strtoupper($t->symbol)])
+            ->all();
+    }
+
+    /**
+     * แปลงไม้สวอปหนึ่งแถวเป็นภาษาของกระดานเทรด: คู่ · ฝั่ง · ราคา · จำนวน(base) · มูลค่า(quote)
+     *
+     * เดิมส่งที่อยู่สัญญาเป็นชื่อคู่ ฝั่งเป็น "swap" ราคา 0 และจำนวน = เงินที่จ่ายออก
+     * ซึ่งสำหรับไม้ซื้อคือ USDT ไม่ใช่จำนวนเหรียญ — ตารางประวัติอ่านไม่รู้เรื่อง
+     * และกราฟจับคู่ป้ายไม่ได้เลย
+     *
+     * ไม้ใหม่มี pair/side/price ใน metadata อยู่แล้ว (ส่งมาจากกระดานเทรด)
+     * ไม้เก่า/ไม้จากหน้า Swap อนุมานจากชื่อเหรียญ: ฝั่งที่เป็นสเตเบิลคือ quote
+     *
+     * @return array{pair: string, side: string, price: string, amount: mixed, total: mixed}|null
+     */
+    private function describeSwap(Transaction $tx, array $symbols): ?array
+    {
+        $meta = $tx->metadata ?? [];
+
+        $symbolOf = function (?string $address) use ($tx, $symbols): ?string {
+            $address = strtolower((string) $address);
+            if (in_array($address, self::NATIVE_SENTINELS, true)) {
+                return $tx->chain?->native_currency_symbol ? strtoupper($tx->chain->native_currency_symbol) : null;
+            }
+
+            return $symbols[$tx->chain_id.':'.$address] ?? null;
+        };
+
+        $from = $symbolOf($tx->from_token);
+        $to = $symbolOf($tx->to_token);
+
+        $side = $meta['side'] ?? null;
+        if (! in_array($side, ['buy', 'sell'], true)) {
+            $side = match (true) {
+                $from && in_array($from, self::QUOTE_SYMBOLS, true) => 'buy',
+                $to && in_array($to, self::QUOTE_SYMBOLS, true) => 'sell',
+                default => null,
+            };
+        }
+
+        // ไม่รู้ฝั่ง = ไม่รู้ว่าเหรียญไหนคือ base — ปล่อยให้ผู้เรียกใช้ค่าดิบ ดีกว่าเดาผิด
+        if (! $side) {
+            return ($from && $to) ? ['pair' => "{$from}/{$to}", 'side' => 'swap', 'price' => '0',
+                'amount' => $tx->from_amount, 'total' => $tx->to_amount] : null;
+        }
+
+        $isBuy = $side === 'buy';
+        $amount = $isBuy ? $tx->to_amount : $tx->from_amount;   // จำนวนเหรียญ base
+        $total = $isBuy ? $tx->from_amount : $tx->to_amount;     // มูลค่าฝั่ง quote
+
+        $pair = $meta['pair'] ?? (($from && $to) ? ($isBuy ? "{$to}/{$from}" : "{$from}/{$to}") : null);
+        if (! $pair) {
+            return null;
+        }
+
+        $price = $meta['price'] ?? null;
+        if ($price === null && (float) $amount > 0) {
+            $price = FeeCalculationService::decimal((float) $total / (float) $amount, 12);
+        }
+
+        return [
+            'pair' => strtoupper(str_replace('-', '/', $pair)),
+            'side' => $side,
+            'price' => $price ?? '0',
+            'amount' => $amount,
+            'total' => $total,
+        ];
     }
 
     /**

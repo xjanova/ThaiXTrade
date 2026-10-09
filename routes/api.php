@@ -503,9 +503,18 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     /*
      * AI Trade (Cloud Bot) — เช่าบอท, เครดิตการทำงาน, ตั้งค่ากลยุทธ์
      * ทุก endpoint ผูกกับ wallet ของผู้เรียก (VerifyWalletOwnership ตรวจลายเซ็นแล้ว)
-     * throttle แยก 30/นาที — หน้าเทรด poll สถานะทุก 60 วิ + การกดเช่า/แก้บอท
+     *
+     * โควตาของกลุ่มนี้เป็นตัวนับ "มีชื่อ" ของตัวเอง (ai-bot*) นับต่อกระเป๋า + IP
+     * — ดู AppServiceProvider::aiBotLimits() ว่าทำไมห้ามกลับไปใช้ throttle แบบไม่มีชื่อ
+     *
+     * withoutMiddleware ถอดตัวนับสองตัวที่ไหลลงมาจากข้างนอกออก:
+     *   throttle:60,1   (throttleApi ของทั้ง API) — ตัวนับเดียวกับ API สาธารณะทุกตัวจาก IP นั้น
+     *                    หน้าคู่ TPIX/DEX ที่ถามราคาถี่ๆ กินโควตาของบอทไปหมด
+     *   throttle:trading (กลุ่มที่ต้องยืนยันกระเป๋า 30/นาที) — เพดานซ้อนที่ทำให้ตัวเลขของ
+     *                    กลุ่มนี้ไม่มีผล ตัวนับ ai-bot นับต่อกระเป๋าอยู่แล้ว
+     * VerifyWalletOwnership ของกลุ่มข้างนอกยังทำงานครบเหมือนเดิม
      */
-    Route::prefix('ai-bot')->middleware(['throttle:30,1'])->group(function () {
+    Route::prefix('ai-bot')->withoutMiddleware(['throttle:60,1', 'throttle:trading'])->middleware(['throttle:ai-bot'])->group(function () {
         Route::get('/status', [AiBotController::class, 'status']);
         Route::get('/credits', [AiBotController::class, 'credits']);
         /*
@@ -527,10 +536,11 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::put('/bots/{id}', [AiBotController::class, 'update'])->where('id', '[0-9]+');
         Route::post('/bots/{id}/state', [AiBotController::class, 'setState'])->where('id', '[0-9]+');
         Route::post('/bots/{id}/mode', [AiBotController::class, 'setMode'])->where('id', '[0-9]+');
-        // แพลนฟรีเดินบอทจากหน้าเว็บ — throttle สูงกว่ากลุ่มอื่นเพราะหน้าเว็บเรียกเป็นระยะ
+        // แพลนฟรีเดินบอทจากหน้าเว็บ — งบแยก (ai-bot-poll) เพราะหน้าเว็บเรียกเป็นระยะ
         Route::post('/bots/{id}/tick', [AiBotController::class, 'tickFromBrowser'])
             ->where('id', '[0-9]+')
-            ->middleware('throttle:60,1');
+            ->withoutMiddleware('throttle:ai-bot')
+            ->middleware('throttle:ai-bot-poll');
         Route::delete('/bots/{id}', [AiBotController::class, 'destroy'])->where('id', '[0-9]+');
 
         // โหมดทดลอง — พอร์ตกระดาษที่ใช้ราคาจริง ให้ลองก่อนตัดสินใจเช่า
@@ -541,13 +551,14 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
          * ตาราง ai_bot_decisions เก็บ "ทุกครั้งที่บอทคิด" รวมรอบที่ตัดสินใจไม่ทำอะไร
          * ซึ่งเดิมเปิดอ่านได้เฉพาะหลังบ้าน เจ้าของบอทเห็นแค่เหตุผลรอบล่าสุดรอบเดียว
          *
-         * throttle สูงกว่ากลุ่มเพราะหน้ามอนิเตอร์เลื่อนดูย้อนหลังทีละหน้า
+         * งบแยก (ai-bot-poll) เพราะหน้ามอนิเตอร์เลื่อนดูย้อนหลังทีละหน้า
          */
         Route::get('/decisions', [AiBotController::class, 'decisions'])
-            ->middleware('throttle:60,1');
+            ->withoutMiddleware('throttle:ai-bot')
+            ->middleware('throttle:ai-bot-poll');
 
         Route::get('/analytics', [AiBotController::class, 'analytics']);
-        Route::post('/advice', [AiBotController::class, 'advice'])->middleware('throttle:10,1');
+        Route::post('/advice', [AiBotController::class, 'advice'])->middleware('throttle:ai-bot-advice');
 
         Route::get('/demo', [AiBotController::class, 'demo']);
         Route::post('/demo/reset', [AiBotController::class, 'resetDemo']);
@@ -556,9 +567,11 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
          * ไม้ของบอททุกโหมด — ป้ายเข้า/ออกบนกราฟของหน้าเทรดและแอพ
          *
          * /demo ให้เฉพาะไม้กระดาษและตัดจำนวนไว้ พอมีโหมดจริง กราฟจะเห็นไม่ครบ
-         * throttle สูงกว่ากลุ่มเพราะหน้าเทรดยิงซ้ำทุกครั้งที่สลับคู่
+         * งบแยก (ai-bot-poll) เพราะหน้าเทรดยิงซ้ำทุกครั้งที่สลับคู่
          */
-        Route::get('/trades', [AiBotController::class, 'trades'])->middleware('throttle:60,1');
+        Route::get('/trades', [AiBotController::class, 'trades'])
+            ->withoutMiddleware('throttle:ai-bot')
+            ->middleware('throttle:ai-bot-poll');
 
         /*
          * กระเป๋าบอท — กระเป๋าแยกที่บอทใช้ในโหมดจริง (ผู้ใช้โอนเข้า / ถอนกลับหาตัวเองเท่านั้น)
@@ -568,8 +581,8 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
          */
         Route::get('/wallet', [AiBotWalletController::class, 'show']);
         Route::post('/wallet', [AiBotWalletController::class, 'store'])->middleware('kyc:ai_bot');
-        Route::post('/wallet/refresh', [AiBotWalletController::class, 'refresh'])->middleware('throttle:10,1');
-        Route::post('/wallet/withdraw', [AiBotWalletController::class, 'withdraw'])->middleware(['kyc:ai_bot', 'throttle:5,1']);
+        Route::post('/wallet/refresh', [AiBotWalletController::class, 'refresh'])->middleware('throttle:ai-bot-wallet-sync');
+        Route::post('/wallet/withdraw', [AiBotWalletController::class, 'withdraw'])->middleware(['kyc:ai_bot', 'throttle:ai-bot-withdraw']);
         Route::post('/wallet/withdraw/{id}/cancel', [AiBotWalletController::class, 'cancel'])->where('id', '[0-9]+');
     });
 

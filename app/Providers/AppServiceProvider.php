@@ -19,6 +19,26 @@ use SocialiteProviders\Manager\SocialiteWasCalled;
 class AppServiceProvider extends ServiceProvider
 {
     /**
+     * โควตาของ AI TRADE (/api/v1/ai-bot/*) — ครั้งต่อนาที ต่อ "กระเป๋า + IP".
+     *
+     *   ai-bot              ทุก endpoint ของกลุ่ม (สถานะ · พอร์ตทดลอง · ตั้งค่าบอท ฯลฯ)
+     *   ai-bot-poll         endpoint ที่หน้าเว็บเรียกเป็นระยะ (สั่งบอทฟรีเดิน · ไม้บนกราฟ · ประวัติการคิด)
+     *                       แยกงบออกมาเพราะเรียกถี่กว่าตัวอื่นโดยธรรมชาติ
+     *   ai-bot-advice       ขอคำแนะนำ AI (ยิง LLM จริง)
+     *   ai-bot-wallet-sync  อ่านยอดกระเป๋าบอทจากเชน
+     *   ai-bot-withdraw     ขอถอนจากกระเป๋าบอท
+     *
+     * ตัวเลขเท่าของเดิมที่ตั้งไว้ใน routes/api.php — ต่างกันที่ตอนนี้ "มีผลจริง" แล้ว (ดู aiBotLimits)
+     */
+    private const AI_BOT_RATE_LIMITS = [
+        'ai-bot' => 60,
+        'ai-bot-poll' => 120,
+        'ai-bot-advice' => 10,
+        'ai-bot-wallet-sync' => 10,
+        'ai-bot-withdraw' => 5,
+    ];
+
+    /**
      * Register any application services.
      */
     public function register(): void
@@ -73,8 +93,41 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        foreach (self::AI_BOT_RATE_LIMITS as $name => $perMinute) {
+            RateLimiter::for($name, fn (Request $request) => $this->aiBotLimits($request, $perMinute));
+        }
+
         // Configure mail from database settings
         $this->configureMailFromDatabase();
+    }
+
+    /**
+     * โควตาของกลุ่ม AI TRADE — นับต่อ "กระเป๋า + IP" บนตัวนับของตัวเอง.
+     *
+     * ⚠️ เดิมกลุ่มนี้ใช้ `throttle:30,1` แบบไม่มีชื่อ ซึ่งทุกตัวที่ไม่มีชื่อในเว็บใช้ "ตัวนับเดียวกัน"
+     *    (คีย์ = โดเมน|IP) — คำขอของบอทหนึ่งครั้งถูกนับสองรอบ (กลุ่ม 30 + throttleApi 60 ของทั้ง API)
+     *    และนับรวมกับ API สาธารณะทุกตัวจาก IP นั้น หน้าคู่ TPIX/DEX ถามราคา 3 ตัวทุก 5 วิ
+     *    (36 ครั้ง/นาที) ก็กินโควตาหมดแล้ว — /status ได้ 429 → การ์ดพลิกเป็น "ยังไม่ได้เช่า"
+     *    ส่วน `throttle:60,1` รายเส้นทาง (/tick · /trades · /decisions) ก็ไม่มีความหมาย เพราะ
+     *    ตัวนับเดียวกันโดนเพดาน 30 ของกลุ่มตัดไปก่อนเสมอ
+     *
+     * กระเป๋าที่ส่งมาแปลงเป็นตัวเล็ก — ที่อยู่แบบ checksum (ตัวใหญ่ปน) กับตัวเล็กคือกระเป๋าเดียวกัน
+     * ถ้านับแยก ผู้ใช้คนเดียวได้โควตาสองเท่า · เพดานต่อ IP (10 เท่า) กันหมุนเลขกระเป๋า
+     * แต่สูงพอสำหรับผู้ใช้มือถือหลายคนที่ออกเน็ตด้วย IP เดียวกัน (NAT)
+     *
+     * @return list<Limit>
+     */
+    private function aiBotLimits(Request $request, int $perMinute): array
+    {
+        // ไม่ใช่สตริง (ส่ง array มา) = ถือว่าไม่ได้ระบุกระเป๋า — ห้าม cast ตรงๆ จะกลายเป็น 500
+        $raw = $request->input('wallet_address');
+        $wallet = is_string($raw) ? strtolower(trim($raw)) : '';
+        $ip = (string) $request->ip();
+
+        return [
+            Limit::perMinute($perMinute)->by(($wallet !== '' ? $wallet : '-').'|'.$ip),
+            Limit::perMinute($perMinute * 10)->by('ip|'.$ip),
+        ];
     }
 
     /**

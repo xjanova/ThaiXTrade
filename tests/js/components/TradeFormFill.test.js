@@ -129,4 +129,68 @@ describe('TradeForm — slippage', () => {
 
         expect(wrapper.emitted('submit-order')[0][0].slippage).toBeNull();
     });
+
+    it('starts from the slippage saved on the settings page', () => {
+        localStorage.setItem('tpix_trade_settings', JSON.stringify({ slippageTolerance: '1.0' }));
+        try {
+            const wrapper = mount(TradeForm, { props: { ...baseProps, mode: 'onchain' } });
+            expect(wrapper.text()).toContain('1%');
+            const submit = wrapper.findAll('button').find(b => b.text().includes('Buy BTC'));
+            return submit.trigger('click').then(() => {
+                expect(wrapper.emitted('submit-order')[0][0].slippage).toBe(1);
+            });
+        } finally {
+            localStorage.removeItem('tpix_trade_settings');
+        }
+    });
+
+    it('tells the page when the slippage changes so the preview can re-quote', async () => {
+        const wrapper = mount(TradeForm, { props: { ...baseProps, mode: 'onchain' } });
+
+        await wrapper.findAll('button').find(b => b.text().trim() === '5%').trigger('click');
+
+        expect(wrapper.emitted('form-change').at(-1)[0].slippage).toBe(5);
+    });
+});
+
+/**
+ * ปุ่ม 100% ต้องไม่เกินยอดจริง — เดิม toFixed() ปัดขึ้น
+ * ยอด 1.2345675 กลายเป็น 1.234568 / Total ปัด 2 ตำแหน่งขึ้นจนเกินยอด USDT
+ * แล้วฟอร์มขึ้นเตือน "เกินยอด" ทั้งที่ผู้ใช้กด 100% เอง
+ */
+describe('TradeForm — 100% never exceeds the real balance', () => {
+    const percentButton = (wrapper, p) => wrapper.findAll('button').find(b => b.text().trim() === `${p}%`);
+
+    it('buy 100% spends at most the quote balance', async () => {
+        const wrapper = mount(TradeForm, {
+            props: { ...baseProps, mode: 'onchain', balances: [{ symbol: 'USDT', balance: '100.009' }] },
+        });
+
+        await percentButton(wrapper, 100).trigger('click');
+
+        expect(totalInput(wrapper).element.value).toBe('100.00');
+        expect(wrapper.text()).not.toContain('Above your balance');
+    });
+
+    it('sell 100% truncates instead of rounding up', async () => {
+        const wrapper = mount(TradeForm, {
+            props: { ...baseProps, mode: 'onchain', balances: [{ symbol: 'BTC', balance: '1.2345675' }] },
+        });
+
+        await wrapper.findAll('button').find(b => b.text().trim() === 'Sell').trigger('click');
+        await percentButton(wrapper, 100).trigger('click');
+
+        expect(amountInput(wrapper).element.value).toBe('1.234567');
+    });
+
+    it('keeps some BNB for gas when selling BNB', async () => {
+        const wrapper = mount(TradeForm, {
+            props: { ...baseProps, symbol: 'BNB/USDT', tickerPrice: 600, mode: 'onchain', balances: [{ symbol: 'BNB', balance: '1' }] },
+        });
+
+        await wrapper.findAll('button').find(b => b.text().trim() === 'Sell').trigger('click');
+        await percentButton(wrapper, 100).trigger('click');
+
+        expect(amountInput(wrapper).element.value).toBe('0.997000');
+    });
 });

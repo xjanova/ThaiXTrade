@@ -158,6 +158,32 @@ class AiBotApiTest extends TestCase
         $this->assertDatabaseCount('ai_bot_credits', 1);
     }
 
+    /**
+     * ⭐ กดรับซ้ำต้องบอกว่า "ครั้งนี้ไม่ได้อะไรเพิ่ม" — ไม่ใช่ตอบเหมือนได้รับทุกครั้ง.
+     *
+     * เดิมทั้งสองครั้งตอบ success เหมือนกันเป๊ะ หน้าเว็บจึงขึ้น "รับเครดิตต้อนรับเรียบร้อย"
+     * ซ้ำทุกครั้งที่กด (และปุ่มโผล่กลับมาทุกครั้งที่เครดิตเหลือศูนย์) ผู้ใช้งงว่าเครดิตหายไปไหน
+     */
+    public function test_a_second_welcome_claim_reports_that_nothing_was_granted(): void
+    {
+        $this->getJson('/api/v1/ai-bot/status?wallet_address='.$this->wallet)
+            ->assertOk()
+            ->assertJsonPath('data.welcome_claimed', false);
+
+        $this->postJson('/api/v1/ai-bot/welcome', ['wallet_address' => $this->wallet])
+            ->assertOk()
+            ->assertJsonPath('data.granted', true);
+
+        $this->postJson('/api/v1/ai-bot/welcome', ['wallet_address' => $this->wallet])
+            ->assertOk()
+            ->assertJsonPath('data.granted', false);
+
+        // หน้าเว็บซ่อนปุ่มรับจากธงนี้ — ใช้เครดิตหมดแล้วปุ่มก็ต้องไม่กลับมา
+        $this->getJson('/api/v1/ai-bot/status?wallet_address='.$this->wallet)
+            ->assertOk()
+            ->assertJsonPath('data.welcome_claimed', true);
+    }
+
     public function test_subscribe_charges_credits_and_activates_the_plan(): void
     {
         $this->service->record($this->wallet, 'topup', 500, 'test:topup');
@@ -686,6 +712,81 @@ class AiBotApiTest extends TestCase
 
         $this->assertFalse($scalping['available']);
         $this->assertStringContainsString('608', $scalping['unavailable_reason']);
+    }
+
+    /**
+     * บอทเดิมของกลยุทธ์ที่ถูกถอดแล้ว ยังเปลี่ยนชื่อ/ลดความเสี่ยงได้ — ไม่ใช่บังคับให้ลบทิ้งอย่างเดียว.
+     *
+     * validateBot() ตั้งใจปล่อยกลยุทธ์เดิมของบอทให้ผ่าน แต่ assertCanRunBot() ปฏิเสธทุกกรณี
+     * ด้วยรหัสที่ไม่มีข้อความ ผู้ใช้จึงเห็นแค่ "ทำรายการไม่สำเร็จ" ทุกครั้งที่กดบันทึก
+     */
+    public function test_a_retired_strategy_bot_can_still_be_renamed_and_its_risk_lowered(): void
+    {
+        $this->subscribeTo('pro');
+        $bot = $this->retiredBot('paused');
+
+        $this->putJson("/api/v1/ai-bot/bots/{$bot->id}", [
+            'wallet_address' => $this->wallet,
+            'name' => 'สแกลป์เก่า (เก็บไว้ดูประวัติ)',
+            'pair' => 'BTC/USDT',
+            'strategy' => 'scalping',
+            'timeframe' => '5m',
+            'risk' => ['max_position_usd' => 20],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'สแกลป์เก่า (เก็บไว้ดูประวัติ)')
+            ->assertJsonPath('data.status', 'paused');
+
+        $this->assertEquals(20, $bot->fresh()->risk['max_position_usd']);
+    }
+
+    /** แก้ได้ แต่ห้ามกลับมาเทรด — บอทที่ยังค้าง running ถูกพักทันทีพร้อมเหตุผล */
+    public function test_editing_a_running_retired_bot_pauses_it_instead_of_letting_it_trade(): void
+    {
+        $this->subscribeTo('pro');
+        $bot = $this->retiredBot('running');
+
+        $this->putJson("/api/v1/ai-bot/bots/{$bot->id}", [
+            'wallet_address' => $this->wallet,
+            'name' => 'ชื่อใหม่',
+            'pair' => 'BTC/USDT',
+            'strategy' => 'scalping',
+            'timeframe' => '5m',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'paused')
+            ->assertJsonPath('data.pause_reason', AiBotConfig::PAUSE_STRATEGY_RETIRED);
+    }
+
+    /** ⭐ เริ่มบอทกลยุทธ์ที่ถอดแล้วไม่ได้ — และต้องบอกเหตุผลจริง ไม่ใช่ "ทำรายการไม่สำเร็จ" */
+    public function test_a_retired_strategy_bot_cannot_be_started_again_and_says_why(): void
+    {
+        $this->subscribeTo('pro');
+        $bot = $this->retiredBot('paused');
+
+        $response = $this->postJson("/api/v1/ai-bot/bots/{$bot->id}/state", [
+            'wallet_address' => $this->wallet,
+            'action' => 'start',
+        ]);
+
+        $response->assertStatus(403)->assertJsonPath('error.code', AiBotService::ERR_STRATEGY_RETIRED);
+        $this->assertStringContainsString('ถอด', $response->json('error.message'));
+        $this->assertSame('paused', $bot->fresh()->status);
+    }
+
+    private function retiredBot(string $status): AiBotConfig
+    {
+        return AiBotConfig::create([
+            'wallet_address' => $this->wallet,
+            'name' => 'สแกลป์',
+            'pair' => 'BTC/USDT',
+            'strategy' => 'scalping',
+            'timeframe' => '5m',
+            'status' => $status,
+            'mode' => 'demo',
+            'params' => [],
+            'risk' => ['max_position_usd' => 100],
+        ]);
     }
 
     // ── ด่านเปิด-ปิดการขาย + สิทธิ์ทีมงาน ────────────────────────────────────

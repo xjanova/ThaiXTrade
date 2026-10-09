@@ -8,6 +8,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTradeLayout, TRADE_CARDS } from '@/Composables/useTradeLayout';
+import { useAssistantPref, isTradeUrl } from '@/Composables/useAssistantPref';
 import ChainSelector from '@/Components/Navigation/ChainSelector.vue';
 import LanguageSwitcher from '@/Components/Navigation/LanguageSwitcher.vue';
 import { useTranslation } from '@/Composables/useTranslation';
@@ -40,8 +41,10 @@ const page = usePage();
  */
 const tradeLayout = useTradeLayout();
 const showLayoutMenu = ref(false);
+// ผู้ช่วย AI (แชทน้อง TPIX) บนหน้าเทรด — ค่าเดียวกับปุ่มในหน้าต่างแชทและหน้าตั้งค่า
+const assistantPref = useAssistantPref();
 
-const isTradePage = computed(() => (page.url || '').startsWith('/trade'));
+const isTradePage = computed(() => isTradeUrl(page.url));
 
 const hideableCards = computed(() =>
     TRADE_CARDS.filter(c => !c.essential).map(c => ({ id: c.id, label: t(c.titleKey) }))
@@ -329,6 +332,19 @@ const handleDisconnect = () => {
                                 <span class="min-w-0">
                                     <span class="block text-xs text-white">{{ t('trade.layout.fitScreen') }}</span>
                                     <span class="block text-[10px] text-dark-500 leading-snug">{{ t('trade.layout.fitScreenHint') }}</span>
+                                </span>
+                            </label>
+
+                            <label class="flex items-start gap-2 py-1.5 cursor-pointer border-b border-white/5 mb-2">
+                                <input
+                                    type="checkbox"
+                                    class="mt-0.5 rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500 w-3.5 h-3.5"
+                                    :checked="assistantPref.showOnTrade.value"
+                                    @change="assistantPref.setShowOnTrade(!assistantPref.showOnTrade.value)"
+                                >
+                                <span class="min-w-0">
+                                    <span class="block text-xs text-white">{{ t('assistant.toggle') }}</span>
+                                    <span class="block text-[10px] text-dark-500 leading-snug">{{ t('assistant.toggleHint') }}</span>
                                 </span>
                             </label>
 

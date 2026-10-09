@@ -12,18 +12,25 @@
  * หน้าที่มีตัวน้องแต่ผู้ใช้กดปิดไว้: น้องหายไปเลย (ไม่มีปุ่มลอยค้าง) — เรียกคืนได้ที่แถบปุ่มมุมหน้าแรก
  * และที่หัวหน้าต่างแชท (เจ้าของสั่ง: "ทำให้ปิดหายไปเลยแต่จะเรียกคืนได้หน้าแรก")
  *
+ * หน้าเทรด: ผู้ใช้ปิดผู้ช่วยได้ (เจ้าของสั่ง: "หน้าเว็บเทรดตั้งค่าเปิดปิดผู้ช่วยเอไอได้")
+ * ปุ่มลอยทับมุมกระดานเทรดพอดี ปิดแล้วหายทั้งปุ่มและหน้าต่าง เฉพาะหน้าเทรด — ดู useAssistantPref
+ *
  * Developed by Xman Studio
  */
 import { ref, computed, nextTick, watch } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
 import { useTranslation } from '@/Composables/useTranslation';
 import { useChatbot } from '@/Composables/useChatbot';
 import { useMascot } from '@/Composables/useMascot';
+import { useAssistantPref, isTradeUrl } from '@/Composables/useAssistantPref';
+import { showToast } from '@/Composables/useToasts';
 import { FACE_SRC } from '@/Components/Home/spriteStage';
 
 const { t, locale } = useTranslation();
 const chat = useChatbot();
 const mascot = useMascot();
+const page = usePage();
+const assistantPref = useAssistantPref();
 
 const message = ref('');
 const chatContainer = ref(null);
@@ -35,6 +42,21 @@ const isLoading = chat.isLoading;
 const mascotOnScreen = computed(() => mascot.active.value);
 // หน้านี้มีน้องแต่ถูกซ่อน → ต้องมีทางเรียกกลับเสมอ
 const canRecall = computed(() => mascot.present.value && mascot.hidden.value);
+
+const onTradePage = computed(() => isTradeUrl(page?.url));
+// ผู้ใช้ปิดผู้ช่วยบนหน้าเทรดไว้ → ไม่มีทั้งปุ่มลอยและหน้าต่างแชท
+const suppressed = computed(() => onTradePage.value && !assistantPref.showOnTrade.value);
+
+// ปิดตอนหน้าต่างเปิดค้างอยู่ หรือมีใครเรียก chat.open() ระหว่างที่ปิดไว้ → ต้องไม่ค้าง isOpen
+// ไม่งั้นพอเปลี่ยนไปหน้าอื่น หน้าต่างแชทจะเด้งขึ้นมาเองโดยที่ผู้ใช้ไม่ได้กด
+watch([suppressed, isOpen], ([off, open]) => {
+    if (off && open) chat.close();
+}, { immediate: true });
+
+function hideOnTrade() {
+    assistantPref.setShowOnTrade(false);
+    showToast({ text: t('assistant.hiddenToast'), type: 'info' });
+}
 
 function recallMascot() {
     chat.close();
@@ -88,7 +110,7 @@ function sendQuick(msg) {
 <template>
     <!-- ปุ่มเปิดแชท = หน้าน้อง TPIX (หน้าที่มีตัวน้องอยู่แล้วใช้ตัวน้องเป็นปุ่มแทน) -->
     <button
-        v-if="!isOpen && !mascotOnScreen"
+        v-if="!isOpen && !mascotOnScreen && !suppressed"
         type="button"
         :aria-label="t('chatbot.open')"
         :title="t('mascot.talkTo')"
@@ -109,7 +131,7 @@ function sendQuick(msg) {
     </button>
 
     <!-- Chat Window -->
-    <div v-if="isOpen"
+    <div v-if="isOpen && !suppressed"
         class="fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[550px] max-h-[calc(100vh-3rem)] bg-dark-800 border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
 
         <!-- Header -->
@@ -133,6 +155,16 @@ function sendQuick(msg) {
                 @click="recallMascot"
             >
                 ✨ {{ t('mascot.recallShort') }}
+            </button>
+            <!-- หน้าเทรด: ปิดผู้ช่วยได้ตรงนี้เลยทุกขนาดจอ (เมนูปรับผังมีแค่จอกว้าง) -->
+            <button
+                v-if="onTradePage"
+                type="button"
+                class="px-2 py-1 rounded-lg text-[11px] font-medium text-dark-300 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
+                :title="t('assistant.hideOnTradeHint')"
+                @click="hideOnTrade"
+            >
+                {{ t('assistant.hideOnTrade') }}
             </button>
             <button type="button" @click="chat.close()" :aria-label="t('chatbot.close')" class="text-dark-400 hover:text-white transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

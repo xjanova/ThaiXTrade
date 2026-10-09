@@ -12,10 +12,20 @@
 import { ref } from 'vue';
 import axios from 'axios';
 import { useWalletStore } from '@/Stores/walletStore';
+import { flushPendingSwapRecords } from '@/Composables/useSwap';
 
 /** รายการดิบจาก API — ผู้เรียกแต่ละที่ค่อยแปลงเป็นรูปแบบที่ตัวเองใช้ */
 const trades = ref([]);
 const isLoading = ref(false);
+/**
+ * true เมื่อ backend ตอบ 403 (กระเป๋ายังไม่เซ็นยืนยัน / ลายเซ็นหมดอายุ 4 ชม.)
+ *
+ * เดิม 403 ถูกกลืนเป็น "ยังไม่มีประวัติ" — ผู้ใช้ที่เพิ่งเทรดไปเห็นตารางว่างแล้วคิดว่าไม้หาย
+ * ตารางต้องบอกตรงๆ ว่าต้องเซ็นยืนยันก่อน พร้อมปุ่มให้กด
+ */
+const needsVerification = ref(false);
+/** โหลดไม่สำเร็จด้วยเหตุอื่น (เน็ต/เซิร์ฟเวอร์) — ต่างจาก "ยังไม่มีไม้" */
+const loadFailed = ref(false);
 
 let inFlight = null;
 let loadedFor = null;
@@ -34,33 +44,53 @@ export function useMyTrades() {
         if (!address) {
             trades.value = [];
             loadedFor = null;
+            needsVerification.value = false;
+            loadFailed.value = false;
             return [];
         }
 
         if (!force && loadedFor === address) return trades.value;
 
         // กันยิงซ้อน — หลายคอมโพเนนต์เรียกพร้อมกันตอนหน้าโหลดเสร็จ
-        if (inFlight) return inFlight;
+        // (ยกเว้นคำขอที่ค้างอยู่เป็นของกระเป๋าใบก่อน — ผลนั้นใช้ไม่ได้แล้ว)
+        if (inFlight && inFlight.address === address) return inFlight;
+
+        // สลับกระเป๋า: ห้ามโชว์ไม้ของใบก่อนระหว่างรอ
+        if (loadedFor !== address) trades.value = [];
 
         isLoading.value = true;
-        inFlight = axios
-            .get('/api/v1/trading/history', { params: { wallet_address: address } })
+        // ส่งบันทึกไม้ที่ค้างในเครื่องก่อน (สวอปสำเร็จแต่บันทึกล้ม) แล้วค่อยอ่านประวัติ
+        // → หลังผู้ใช้เซ็นยืนยันกระเป๋าใหม่ ไม้ที่เคยหายจะกลับมาในรอบโหลดนี้เลย
+        const request = flushPendingSwapRecords(address)
+            .catch(() => 0)
+            .then(() => axios.get('/api/v1/trading/history', { params: { wallet_address: address } }))
             .then(({ data }) => {
+                if (walletStore.address !== address) return trades.value;   // สลับกระเป๋าระหว่างรอ
                 trades.value = data?.success ? (data.data ?? []) : [];
                 loadedFor = address;
+                needsVerification.value = false;
+                loadFailed.value = false;
                 return trades.value;
             })
-            .catch(() => {
-                // 403 = ยังไม่ได้เซ็นยืนยันกระเป๋า ไม่ใช่ error ที่ต้องเด้งเตือน
+            .catch((err) => {
+                if (walletStore.address !== address) return trades.value;
                 trades.value = [];
+                // 403 = ยังไม่ได้เซ็นยืนยันกระเป๋า — ตารางต้องบอกให้เซ็น ไม่ใช่โชว์ว่าว่าง
+                needsVerification.value = err?.response?.status === 403;
+                loadFailed.value = !needsVerification.value;
                 return [];
             })
             .finally(() => {
-                isLoading.value = false;
-                inFlight = null;
+                if (inFlight === request) {
+                    isLoading.value = false;
+                    inFlight = null;
+                }
             });
 
-        return inFlight;
+        request.address = address;
+        inFlight = request;
+
+        return request;
     }
 
     /**
@@ -88,5 +118,5 @@ export function useMyTrades() {
             .filter((m) => Number.isFinite(m.time) && (m.side === 'buy' || m.side === 'sell'));
     }
 
-    return { trades, isLoading, load, markersFor };
+    return { trades, isLoading, needsVerification, loadFailed, load, markersFor };
 }

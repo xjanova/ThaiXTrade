@@ -101,4 +101,63 @@ class AiBotTickCommandTest extends TestCase
         $this->assertSame(1, AiBotDecision::where('ai_bot_config_id', $bot->id)->count(), 'บอทต้องได้คิดหนึ่งรอบ');
         $this->assertTrue($bot->fresh()->last_run_at->lte(now()), 'รอบนี้ต้องเขียนเวลาที่ถูกทับของเก่า');
     }
+
+    /**
+     * ⭐ แพลนคลาวด์หมดอายุ → บอทที่ค้าง running ต้องถูกพักพร้อมเหตุผล "แพลนหมดอายุ".
+     *
+     * เดิม query หลักใช้ cloudExecuted() ซึ่งเลือกเฉพาะกระเป๋าที่ยังมีแพลนคลาวด์ — บอทของแพลน
+     * ที่หมดอายุจึงไม่เคยถูกหยิบมาอีกเลย ด่านพักบอทใน BotRunner ไม่มีวันได้ทำงาน
+     * บอทค้าง running ตลอดกาล และหน้าจอโชว์ "ระบบกำลังตรวจสอบ" แทนที่จะบอกให้ต่ออายุ
+     */
+    #[Test]
+    public function บอทของแพลนคลาวด์ที่หมดอายุถูกพักพร้อมเหตุผล(): void
+    {
+        $bot = $this->cloudBot(['last_run_at' => now()->subMinutes(10)]);
+        AiBotSubscription::where('wallet_address', self::WALLET)->update(['expires_at' => now()->subMinute()]);
+
+        $this->artisan('aibot:tick', ['--strategy' => 'momentum'])->assertSuccessful();
+
+        $bot->refresh();
+        $this->assertSame('paused', $bot->status);
+        $this->assertSame(AiBotConfig::PAUSE_PLAN_EXPIRED, $bot->pauseReason());
+        $this->assertStringContainsString('หมดอายุ', (string) $bot->last_reason);
+    }
+
+    /**
+     * แพลนฟรีต่ออายุตัวเองเมื่อผู้ใช้เปิดหน้าเว็บ — ตัวจับเวลาคลาวด์ห้ามไปพักบอทของเขา.
+     *
+     * ถ้าเขาเปิดหน้าอยู่ ตัวเดินบนเบราว์เซอร์ลงแพลนฟรีใบใหม่ให้ในรอบถัดไปเอง
+     */
+    #[Test]
+    public function บอทแพลนฟรีที่แถวการเช่าหมดอายุไม่ถูกตัวจับเวลาคลาวด์พัก(): void
+    {
+        AiBotSubscription::create([
+            'wallet_address' => self::WALLET,
+            'ai_bot_plan_id' => AiBotPlan::where('code', 'free')->firstOrFail()->id,
+            'status' => 'active', 'started_at' => now()->subYear(), 'expires_at' => now()->subMinute(),
+        ]);
+
+        $bot = AiBotConfig::create([
+            'wallet_address' => self::WALLET, 'name' => 'ฟรี', 'pair' => 'BTC/USDT',
+            'strategy' => 'momentum', 'timeframe' => '1h', 'status' => 'running', 'mode' => 'demo',
+        ]);
+
+        $this->artisan('aibot:tick', ['--strategy' => 'momentum'])->assertSuccessful();
+
+        $this->assertSame('running', $bot->fresh()->status);
+    }
+
+    /** บอทของกลยุทธ์อื่นไม่ใช่งานของวอร์กเกอร์นี้ — แยกวอร์กเกอร์ต่อกลยุทธ์ต้องแยกจริง */
+    #[Test]
+    public function การพักบอทที่แพลนหมดอายุเคารพตัวเลือกกลยุทธ์(): void
+    {
+        $bot = $this->cloudBot(['strategy' => 'grid']);
+        AiBotSubscription::where('wallet_address', self::WALLET)->update(['expires_at' => now()->subMinute()]);
+
+        $this->artisan('aibot:tick', ['--strategy' => 'momentum'])->assertSuccessful();
+        $this->assertSame('running', $bot->fresh()->status);
+
+        $this->artisan('aibot:tick', ['--strategy' => 'grid'])->assertSuccessful();
+        $this->assertSame('paused', $bot->fresh()->status);
+    }
 }

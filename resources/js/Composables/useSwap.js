@@ -30,10 +30,75 @@ import {
     getBscReadProvider,
     getTxUrl,
 } from '@/utils/web3';
+import { txDeadlineSeconds } from '@/utils/tradeSettings';
+import { t } from '@/Composables/useTranslation';
 import axios from 'axios';
 
 // Swaps run on BSC only.
 const SWAP_CHAIN_ID = 56;
+
+/**
+ * คิวบันทึกไม้ที่ส่งไม่สำเร็จ — สวอปลงเชนไปแล้ว แต่ /swap/execute ล้ม
+ * (ลายเซ็นกระเป๋าหมดอายุ 4 ชม. → 403, เน็ตหลุด, เซิร์ฟเวอร์ล่ม)
+ *
+ * เดิม console.warn แล้วจบ = ไม้จริงหายจากประวัติถาวร ทั้งที่ผู้ใช้เห็น "สำเร็จ"
+ * เก็บไว้ในเครื่องแล้วลองใหม่ตอนโหลดประวัติครั้งถัดไป (useMyTrades เรียก flushPendingSwapRecords)
+ * 422 ไม่เก็บ — ข้อมูลผิดรูป/ซ้ำ ลองกี่ครั้งก็ไม่ผ่าน
+ */
+export const PENDING_RECORDS_KEY = 'tpix.pendingSwapRecords';
+const MAX_PENDING_RECORDS = 20;
+
+function readPendingRecords() {
+    try {
+        const list = JSON.parse(localStorage.getItem(PENDING_RECORDS_KEY) || '[]');
+        return Array.isArray(list) ? list : [];
+    } catch {
+        return [];
+    }
+}
+
+function writePendingRecords(list) {
+    try {
+        if (list.length) localStorage.setItem(PENDING_RECORDS_KEY, JSON.stringify(list.slice(-MAX_PENDING_RECORDS)));
+        else localStorage.removeItem(PENDING_RECORDS_KEY);
+    } catch {
+        // เก็บไม่ได้ (โหมดส่วนตัว) — ยอมเสียประวัติไม้นี้ ไม่กระทบตัวสวอป
+    }
+}
+
+/** ส่งบันทึกหนึ่งรายการ — true = เซิร์ฟเวอร์รับแล้ว (หรือปฏิเสธถาวร ไม่ต้องลองอีก) */
+async function postSwapRecord(payload) {
+    try {
+        await axios.post('/api/v1/swap/execute', payload);
+        return true;
+    } catch (err) {
+        return err?.response?.status === 422;
+    }
+}
+
+/**
+ * ลองส่งบันทึกที่ค้างของกระเป๋านี้อีกรอบ
+ * @returns {Promise<number>} จำนวนที่ส่งสำเร็จ
+ */
+export async function flushPendingSwapRecords(walletAddress) {
+    const wallet = String(walletAddress || '').toLowerCase();
+    const pending = readPendingRecords();
+    if (!wallet || !pending.length) return 0;
+
+    const keep = [];
+    let sent = 0;
+    for (const record of pending) {
+        if (String(record.wallet_address).toLowerCase() !== wallet) {
+            keep.push(record);
+            continue;
+        }
+        if (await postSwapRecord(record)) sent += 1;
+        else keep.push(record);
+    }
+    writePendingRecords(keep);
+
+    return sent;
+}
 
 /**
  * Convert a human float amount to wei. Fractional precision is capped to avoid
@@ -50,18 +115,25 @@ function toWei(value, decimals) {
  * Never surface raw exception strings (project rule).
  */
 function friendlyError(err) {
-    if (err?.code === 4001 || err?.code === 'ACTION_REJECTED') return 'Transaction rejected by user.';
+    // ข้อความผ่าน i18n — เดิมเป็นอังกฤษล้วน ผู้ใช้ภาษาไทยเห็น "Swap failed" ในหน้าไทย
+    if (err?.code === 4001 || err?.code === 'ACTION_REJECTED') return t('swapError.rejected');
     const msg = (err?.reason || err?.shortMessage || err?.message || '').toString().toLowerCase();
-    if (msg.includes('no liquidity')) return 'No liquidity available for this token pair.';
-    if (msg.includes('insufficient_output_amount')) return 'Price moved too much — increase slippage and try again.';
-    if (msg.includes('insufficient_a_amount') || msg.includes('insufficient_b_amount')) return 'Price moved too much — please try again.';
-    if (msg.includes('expired')) return 'The swap expired before confirming. Please try again.';
-    if (msg.includes('transfer_from_failed') || msg.includes('transferfrom')) return 'Token transfer failed — check your balance and approval.';
-    if (msg.includes('insufficient')) return 'Insufficient balance for this swap.';
-    if (msg.includes('missing revert data') || msg.includes('call_exception')) return 'Swap failed on-chain. Try a smaller amount or higher slippage.';
-    if (msg.includes('user rejected') || msg.includes('user denied')) return 'Transaction rejected by user.';
-    if (msg.includes('timeout') || msg.includes('timed out')) return 'Network timed out. Please try again.';
-    return 'Swap failed. Please try again.';
+    if (msg.includes('no liquidity')) return t('swapError.noLiquidity');
+    if (msg.includes('insufficient_output_amount')) return t('swapError.priceMovedSlippage');
+    if (msg.includes('insufficient_a_amount') || msg.includes('insufficient_b_amount')) return t('swapError.priceMoved');
+    if (msg.includes('expired')) return t('swapError.expired');
+    if (msg.includes('transfer_from_failed') || msg.includes('transferfrom')) return t('swapError.transferFailed');
+    if (msg.includes('insufficient')) return t('swapError.insufficient');
+    if (msg.includes('missing revert data') || msg.includes('call_exception')) return t('swapError.onchainFailed');
+    if (msg.includes('user rejected') || msg.includes('user denied')) return t('swapError.rejected');
+    if (msg.includes('timeout') || msg.includes('timed out')) return t('swapError.timeout');
+    return t('swapError.failed');
+}
+
+function friendlyThrow(message) {
+    const err = new Error(message);
+    err.isFriendly = true;   // ข้อความนี้แสดงต่อ user ได้เลย — อย่าให้ friendlyError ทับ
+    return err;
 }
 
 export function useSwap() {
@@ -77,7 +149,7 @@ export function useSwap() {
      * plus the platform fee taken from the input side. Returns null (no quote) on
      * any failure — never a fabricated rate.
      */
-    async function getQuote(fromToken, toToken, amount) {
+    async function getQuote(fromToken, toToken, amount, opts = {}) {
         error.value = null;
 
         const grossAmount = parseFloat(amount);
@@ -107,20 +179,28 @@ export function useSwap() {
                 console.warn('Backend quote unavailable:', apiErr.message);
             }
             const feeRate = backendQuote?.fee_rate ?? 0.3;
-            const slippage = backendQuote?.slippage ?? 0.5;
+            /*
+             * slippage ที่ผู้ใช้เลือก (ถ้าส่งมา) ต้องชนะค่าจาก backend
+             * เดิม "ได้รับอย่างน้อย" บนจอคิดจากค่า backend แต่ minOut ที่ส่งเข้า router
+             * ใช้ค่าที่ผู้ใช้เลือก — เลือก 3% จอบอก ×0.995 แต่บนเชนยอมรับ ×0.97
+             */
+            const chosen = Number(opts.slippage);
+            const slippage = opts.slippage != null && Number.isFinite(chosen) && chosen > 0
+                ? chosen
+                : (backendQuote?.slippage ?? 0.5);
             const priceImpact = backendQuote?.price_impact ?? 0;
 
             // 2) Platform fee is taken from the INPUT token; only (amount - fee) is swapped.
             const feeAmount = grossAmount * (feeRate / 100);
             const swapInput = grossAmount - feeAmount;
             if (swapInput <= 0) {
-                error.value = 'Amount is too small after fees.';
+                error.value = t('swapError.tooSmallAfterFee');
                 return null;
             }
             const grossWei = toWei(grossAmount, fromDecimals);
             const amountInSwapWei = toWei(swapInput, fromDecimals);
             if (amountInSwapWei <= 0n) {
-                error.value = 'Amount is too small to swap.';
+                error.value = t('swapError.tooSmall');
                 return null;
             }
             // Fee = the remainder, so (swap + fee) sums EXACTLY to the gross the user
@@ -226,7 +306,9 @@ export function useSwap() {
             const tx = await approveTokenUtil(tokenAddress, PANCAKE_ROUTER_ADDRESS, walletStore.signer);
             return tx;
         } catch (err) {
-            error.value = err.code === 4001 ? 'Approval rejected by user.' : 'Failed to approve token.';
+            // ethers v6 ส่ง ACTION_REJECTED ไม่ใช่ 4001 — เดิมกดปฏิเสธแล้วขึ้นว่า "อนุมัติล้มเหลว"
+            const rejected = err?.code === 4001 || err?.code === 'ACTION_REJECTED';
+            error.value = rejected ? t('swapError.approveRejected') : t('swapError.approveFailed');
             throw err;
         } finally {
             isApproving.value = false;
@@ -236,24 +318,30 @@ export function useSwap() {
     /**
      * Execute the swap on PancakeSwap (BSC). The caller must already have switched
      * the wallet to BSC. Swaps (amount - fee), then transfers the reserved fee.
+     *
+     * @param {object} [meta] ไม้จากกระดานเทรด: { pair: 'BTC/USDT', side: 'buy'|'sell', price }
+     *   ส่งต่อไปบันทึก ให้ประวัติและป้ายบนกราฟรู้ว่าเป็นคู่/ฝั่งไหน (หน้า Swap ไม่ต้องส่ง)
      */
-    async function executeSwap(fromToken, toToken, amount, quote, slippage = 0.5) {
+    async function executeSwap(fromToken, toToken, amount, quote, slippage = 0.5, meta = {}) {
         const walletStore = useWalletStore();
 
         if (!walletStore.signer || !walletStore.address) {
-            error.value = 'Please connect your wallet first.';
-            throw new Error(error.value);
+            error.value = t('swapError.connectFirst');
+            throw friendlyThrow(error.value);
         }
         // Safety: never execute against a missing/ fabricated quote.
         if (!quote || quote.rawAmountOut == null || quote.amountInSwapWei == null) {
-            error.value = 'Price quote unavailable — please re-enter the amount.';
-            throw new Error(error.value);
+            error.value = t('swapError.quoteUnavailable');
+            throw friendlyThrow(error.value);
         }
         // Defensive: swaps must run on BSC (caller switches before calling).
         if (walletStore.chainId !== SWAP_CHAIN_ID) {
-            error.value = 'Please switch to BSC to swap.';
-            throw new Error(error.value);
+            error.value = t('swapError.switchBsc');
+            throw friendlyThrow(error.value);
         }
+
+        // จำกระเป๋าไว้ตั้งแต่ต้น — ผู้ใช้สลับบัญชีกลางทางแล้วบันทึกต้องยังเป็นของคนที่สวอปจริง
+        const owner = walletStore.address;
 
         isExecuting.value = true;
         error.value = null;
@@ -281,10 +369,8 @@ export function useSwap() {
                     && feeCollectorAddress.startsWith('0x')
                     && feeCollectorAddress.length === 42;
                 if (!isValidCollector) {
-                    error.value = 'Swap is temporarily unavailable. Please try again later.';
-                    const abortErr = new Error(error.value);
-                    abortErr.isFriendly = true; // ข้อความนี้แสดงต่อ user ได้เลย — อย่าให้ friendlyError ทับ
-                    throw abortErr;
+                    error.value = t('swapError.unavailable');
+                    throw friendlyThrow(error.value);
                 }
             }
 
@@ -292,14 +378,13 @@ export function useSwap() {
             const slipFactorBps = BigInt(Math.max(0, Math.floor((1 - slippage / 100) * 10000)));
             const minOut = (quote.rawAmountOut * slipFactorBps) / 10000n;
             if (minOut <= 0n) {
-                error.value = 'Slippage too high — please adjust and retry.';
-                const slipErr = new Error(error.value);
-                slipErr.isFriendly = true;
-                throw slipErr;
+                error.value = t('swapError.slippageTooHigh');
+                throw friendlyThrow(error.value);
             }
 
             const path = quote.path;
-            const deadline = Math.floor(Date.now() / 1000) + 1200; // 20 minutes
+            // ระยะเวลาจำกัดจากหน้าตั้งค่า (ไม่เคยตั้ง = 20 นาที)
+            const deadline = Math.floor(Date.now() / 1000) + txDeadlineSeconds();
             const router = new Contract(PANCAKE_ROUTER_ADDRESS, PANCAKE_ROUTER_ABI, walletStore.signer);
 
             let tx;
@@ -322,14 +407,47 @@ export function useSwap() {
             }
 
             txHash.value = tx.hash;
-            const receipt = await tx.wait();
-            txStatus.value = receipt.status === 1 ? 'confirmed' : 'failed';
+            let finalHash = tx.hash;
+            let receipt;
+            try {
+                receipt = await tx.wait();
+            } catch (waitErr) {
+                /*
+                 * ⚠️ กด "Speed up" ใน MetaMask = ธุรกรรมใหม่มาแทนตัวเดิม
+                 *    ethers v6 โยน TRANSACTION_REPLACED แม้แค่เปลี่ยนค่าแก๊ส (repriced)
+                 *    เดิมหน้าจอขึ้น "สวอปล้มเหลว" ทั้งที่สวอปลงเชนแล้ว → ไม่เก็บค่าธรรมเนียม
+                 *    ไม่บันทึกประวัติ และผู้ใช้กดซ้ำจนเทรดสองรอบ
+                 */
+                if (waitErr?.code === 'TRANSACTION_REPLACED' && !waitErr.cancelled && waitErr.receipt) {
+                    receipt = waitErr.receipt;
+                    finalHash = waitErr.replacement?.hash || waitErr.receipt.hash || tx.hash;
+                    txHash.value = finalHash;
+                } else if (waitErr?.code === 'TRANSACTION_REPLACED' && waitErr.cancelled) {
+                    throw friendlyThrow(t('swapError.cancelledInWallet'));
+                } else if (waitErr?.code === 'CALL_EXCEPTION') {
+                    throw waitErr;   // revert จริงบนเชน — friendlyError แปลให้
+                } else {
+                    /*
+                     * ส่งธุรกรรมไปแล้วแต่รอผลไม่สำเร็จ (RPC สะดุด/เน็ตหลุด) — อาจสำเร็จอยู่ก็ได้
+                     * ห้ามบอกว่า "ล้มเหลว ลองใหม่" เฉยๆ ผู้ใช้จะกดซ้ำแล้วเทรดสองรอบ
+                     * ให้ไปดูผลที่ BscScan ก่อน (ผู้เรียกแนบลิงก์จาก txUrl)
+                     */
+                    const pendingErr = friendlyThrow(t('swapError.unconfirmed'));
+                    pendingErr.txUrl = getTxUrl(tx.hash, SWAP_CHAIN_ID);
+                    pendingErr.txSent = true;
+                    throw pendingErr;
+                }
+            }
+            if (receipt?.status !== 1) {
+                throw friendlyThrow(t('swapError.onchainFailed'));
+            }
+            txStatus.value = 'confirmed';
 
             // Collect the RESERVED platform fee — the user still holds it because
             // we only swapped (amount - fee), so this transfer cannot run dry.
             // (fee collector ถูก validate ไว้แล้วก่อนส่ง swap ด้านบน)
             let feeCollected = false;
-            if (receipt.status === 1 && feeWei > 0n && feeCollectorAddress) {
+            if (feeWei > 0n && feeCollectorAddress) {
                 try {
                     if (isNativeToken(fromToken.address)) {
                         const feeTx = await walletStore.signer.sendTransaction({
@@ -351,26 +469,31 @@ export function useSwap() {
                 }
             }
 
-            // Record on backend (best-effort).
-            try {
-                await axios.post('/api/v1/swap/execute', {
-                    from_token: fromToken.address,
-                    to_token: toToken.address,
-                    from_amount: quote.amountIn,
-                    to_amount: quote.netOutput,
-                    fee_amount: feeCollected ? quote.feeAmount : 0,
-                    tx_hash: tx.hash,
-                    chain_id: SWAP_CHAIN_ID,
-                    wallet_address: walletStore.address,
-                });
-            } catch (apiErr) {
-                console.warn('Failed to record swap on backend:', apiErr.message);
-            }
+            // Record on backend — ล้มแล้วเก็บเข้าคิวไว้ลองใหม่ (ดู flushPendingSwapRecords)
+            const record = {
+                from_token: fromToken.address,
+                to_token: toToken.address,
+                from_amount: quote.amountIn,
+                to_amount: quote.netOutput,
+                fee_amount: feeCollected ? quote.feeAmount : 0,
+                // บอกตรงๆ ว่าไม่ได้โอนค่าธรรมเนียม — เดิมส่ง 0 เฉยๆ แล้วโดน FEE_MISMATCH ไม้หายจากประวัติ
+                fee_collected: feeWei > 0n ? feeCollected : true,
+                tx_hash: finalHash,
+                chain_id: SWAP_CHAIN_ID,
+                wallet_address: owner,
+            };
+            if (meta?.pair) record.pair = String(meta.pair).replace('-', '/');
+            if (meta?.side === 'buy' || meta?.side === 'sell') record.side = meta.side;
+            if (Number(meta?.price) > 0) record.price = Number(meta.price);
+
+            const recorded = await postSwapRecord(record);
+            if (!recorded) writePendingRecords([...readPendingRecords(), record]);
 
             return {
-                hash: tx.hash,
+                hash: finalHash,
                 status: txStatus.value,
-                url: getTxUrl(tx.hash, SWAP_CHAIN_ID),
+                url: getTxUrl(finalHash, SWAP_CHAIN_ID),
+                recorded,
             };
         } catch (err) {
             txStatus.value = 'failed';

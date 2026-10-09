@@ -7,11 +7,17 @@
 
 import { ref, computed } from 'vue';
 import { useTranslation } from '@/Composables/useTranslation';
+import { decimalsForPrices, formatMarketPrice } from '@/Composables/useBinanceData';
 
 const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
     trades: { type: Array, default: () => [] },
     isLoading: { type: Boolean, default: false },
+    /**
+     * สตรีมกำลังส่งข้อมูลจริงอยู่ไหม — จุด "ข้อมูลสด" เคยเขียวกะพริบตลอดแม้สายหลุดไปแล้ว
+     * ค่าปริยาย true เพื่อให้ผู้เรียกเดิมที่ยังไม่ส่งค่านี้แสดงผลเหมือนเดิม
+     */
+    live: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['select-price']);
@@ -28,12 +34,13 @@ const filtered = computed(() => {
     return props.trades;
 });
 
-const formatPrice = (price) => {
-    if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (price >= 1) return price.toFixed(2);
-    if (price >= 0.01) return price.toFixed(4);
-    return price.toFixed(8);
-};
+/*
+ * ทศนิยมเดียวทั้งคอลัมน์ ละเอียดเท่าที่ข้อมูลมีจริง
+ * กฎเดิม "≥1 แสดง 2 ตำแหน่ง" ทำให้เทรด XRP ที่ 1.4035 กับ 1.4037 ขึ้นเป็น 1.40 เหมือนกัน
+ */
+const priceDecimals = computed(() => decimalsForPrices(props.trades.map(tr => tr.price)));
+
+const formatPrice = (price) => formatMarketPrice(price, priceDecimals.value);
 
 const formatAmount = (amount) => (amount >= 1 ? amount.toFixed(4) : amount.toFixed(6));
 
@@ -60,7 +67,12 @@ function pick(trade) {
             >
                 {{ t(f.key) }}
             </button>
-            <span class="ml-auto w-2 h-2 rounded-full bg-trading-green animate-pulse" :title="t('trade.recent.live')" :aria-label="t('trade.recent.live')"></span>
+            <span
+                :class="['ml-auto w-2 h-2 rounded-full', live ? 'bg-trading-green animate-pulse' : 'bg-dark-500']"
+                :title="live ? t('trade.recent.live') : t('trade.recent.connecting')"
+                :aria-label="live ? t('trade.recent.live') : t('trade.recent.connecting')"
+                data-testid="live-dot"
+            ></span>
         </div>
 
         <!-- หัวคอลัมน์ -->

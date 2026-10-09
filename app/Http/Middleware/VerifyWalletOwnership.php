@@ -50,7 +50,8 @@ class VerifyWalletOwnership
         }
 
         // Validate wallet address format
-        if (! preg_match('/^0x[a-fA-F0-9]{40}$/', $walletAddress)) {
+        // is_string ก่อน — ?wallet_address[]=x ส่งมาเป็น array แล้ว preg_match โยน TypeError = 500
+        if (! is_string($walletAddress) || ! preg_match('/^0x[a-fA-F0-9]{40}$/', $walletAddress)) {
             return response()->json([
                 'success' => false,
                 'error' => [

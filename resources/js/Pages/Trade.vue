@@ -27,7 +27,6 @@ import TradeForm from '@/Components/Trading/TradeForm.vue';
 import RecentTrades from '@/Components/Trading/RecentTrades.vue';
 import OpenOrders from '@/Components/Trading/OpenOrders.vue';
 import TradeHistory from '@/Components/Trading/TradeHistory.vue';
-import PairSelector from '@/Components/Trading/PairSelector.vue';
 import MarketListPanel from '@/Components/Trading/MarketListPanel.vue';
 import AiTradeCard from '@/Components/Trading/AiTradeCard.vue';
 import DraggableCard from '@/Components/Trading/DraggableCard.vue';
@@ -625,6 +624,8 @@ const {
     bids,
     trades,
     isLoading,
+    errorCode: binanceErrorCode,
+    isLive: binanceLive,
     fetchInitialData,
     connectWebSocket,
     disconnectWebSocket,
@@ -783,7 +784,25 @@ async function fetchTpixData() {
 }
 
 const walletStore = useWalletStore();
-const { balances, fetchBalances } = useWalletBalance();
+// แท็บ Funds ต้องโชว์ยอดบน BSC ซึ่งเป็นเชนที่ไม้ลงจริง — เดิมใช้เชนที่กระเป๋าอยู่ตอนนั้น
+// MetaMask เริ่มที่ Ethereum เลยเห็นยอด ETH ทั้งที่จะเทรดบน BSC (จนกว่าจะเทรดครั้งแรกแล้วสลับเชน)
+const { balances, fetchBalances, needsVerification: fundsNeedVerify } = useWalletBalance({ chainId: BSC_CHAIN_ID });
+const isVerifyingFunds = ref(false);
+
+async function verifyForFunds() {
+    if (isVerifyingFunds.value) return;   // กันป๊อปอัพขอลายเซ็นซ้อน
+    isVerifyingFunds.value = true;
+    try {
+        const hasSigner = await walletStore.verifyOwnership();
+        if (!hasSigner) {
+            walletStore.openConnectModal();
+            return;
+        }
+        await fetchBalances();
+    } finally {
+        isVerifyingFunds.value = false;
+    }
+}
 const swap = useSwap();
 const dex = useTpixDex();
 const tradingFee = useTradingFee();
@@ -845,6 +864,16 @@ const formBalances = computed(() => {
     return isDexPair.value ? dexFormBalances.value : bscFormBalances.value;
 });
 
+/**
+ * ตัวเลขจากช่องกรอก — ตัดจุลภาคก่อนแปลงเสมอ
+ *
+ * ⚠️ เดิมใช้ parseFloat ตรงๆ: พิมพ์ "1,500" (เหรียญราคาจิ๋วอย่าง PEPE/SHIB) ได้ 1
+ *    ฟอร์มคิด Total และค่าบริการจาก 1,500 แต่ขายจริงแค่ 1 เหรียญ
+ */
+function num(value) {
+    return parseFloat(String(value ?? '').replace(/,/g, '')) || 0;
+}
+
 // จัดรูปตัวเลขจำนวนเหรียญสำหรับแสดงผล
 function fmtQty(n) {
     const num = Number(n) || 0;
@@ -863,12 +892,17 @@ let previewTimer = null;
 let previewSeq = 0;
 
 function handleFormChange(form) {
+    // ยกเลิก preview ที่รออยู่ทุกครั้ง — เดิม return ก่อน clearTimeout ตอนล้างช่องจำนวน
+    // แล้ว timer เดิมยังยิงไปวาดตัวเลขของจำนวนเก่ากลับขึ้นมา
+    clearTimeout(previewTimer);
+    ++previewSeq;
+
     if (tradeFormMode.value !== 'onchain' || form.type !== 'market') {
         marketPreview.value = null;
         return;
     }
-    const amountNum = parseFloat(form.amount) || 0;
-    const totalNum = parseFloat(String(form.total).replace(/,/g, '')) || 0;
+    const amountNum = num(form.amount);
+    const totalNum = num(form.total);
     // buy ใช้ยอด quote (USDT) เป็น input จริง, sell ใช้ยอด base
     const inputAmount = form.side === 'buy' ? totalNum : amountNum;
     if (inputAmount <= 0) {
@@ -876,7 +910,6 @@ function handleFormChange(form) {
         return;
     }
     marketPreview.value = { loading: true };
-    clearTimeout(previewTimer);
     previewTimer = setTimeout(() => refreshMarketPreview(form, inputAmount), 400);
 }
 
@@ -885,18 +918,20 @@ async function refreshMarketPreview(form, inputAmount) {
     try {
         const fromSym = form.side === 'buy' ? quoteSymbol.value : baseSymbol.value;
         const toSym = form.side === 'buy' ? baseSymbol.value : quoteSymbol.value;
+        // slippage ที่เลือกในฟอร์ม (null = ใช้ค่าปริยาย) — ต้องตรงกับที่จะส่งเข้า router จริง
+        const chosenSlippage = form.slippage != null && Number(form.slippage) > 0 ? Number(form.slippage) : null;
         let q;
         if (isDexPair.value) {
             const fromTok = dexToken(form.side === 'buy' ? 'quote' : 'base');
             const toTok = dexToken(form.side === 'buy' ? 'base' : 'quote');
-            q = await dex.getTradeQuote(fromTok, toTok, inputAmount, Number(form.slippage) || 0.5);
+            q = await dex.getTradeQuote(fromTok, toTok, inputAmount, chosenSlippage ?? 0.5);
         } else {
             // ใช้ token ที่ตรวจ decimals จาก on-chain แล้ว — กัน preview เพี้ยนถ้าค่า static ผิด
             const [fromTok, toTok] = await Promise.all([
                 getVerifiedTradeToken(fromSym),
                 getVerifiedTradeToken(toSym),
             ]);
-            q = await swap.getQuote(fromTok, toTok, inputAmount);
+            q = await swap.getQuote(fromTok, toTok, inputAmount, { slippage: chosenSlippage });
         }
         if (seq !== previewSeq) return; // มี request ใหม่กว่าแล้ว — ทิ้งผลนี้
         if (!q) {
@@ -990,8 +1025,8 @@ async function executeBscMarketOrder(order) {
         return;
     }
 
-    const amountVal = parseFloat(order.amount) || 0;
-    const totalVal = parseFloat(String(order.total).replace(/,/g, '')) || 0;
+    const amountVal = num(order.amount);
+    const totalVal = num(order.total);
     // buy จ่าย quote token (USDT) ตามช่อง Total, sell จ่าย base token ตามช่อง Amount
     const inputAmount = order.side === 'buy' ? totalVal : amountVal;
     if (inputAmount <= 0) {
@@ -999,10 +1034,15 @@ async function executeBscMarketOrder(order) {
         return;
     }
 
+    // timer ของ toast ครั้งก่อนต้องไม่มาลบ toast "กำลังทำรายการ" ของรอบนี้กลางทาง
+    clearTimeout(toastTimer);
     isSubmitting.value = true;
     orderStatus.value = 'executing';
     orderMessage.value = t('trade.status.preparing');
     orderTxUrl.value = null;
+
+    // จำกระเป๋าไว้ตั้งแต่ต้น — สลับบัญชีกลางทางแล้ว consume/refund ต้องยังหาใบอนุญาตเจอ
+    const owner = walletStore.address;
 
     // ใบอนุญาตวางไม้ที่ขอไว้ — ต้องคืนเงินถ้าไม้ไม่ได้ลง (ดู finally)
     let ticket = null;
@@ -1074,7 +1114,7 @@ async function executeBscMarketOrder(order) {
         if (feeQuoteEnabled && orderValueUsd > 0) {
             orderMessage.value = t('trade.status.preparing');
             ticket = await tradingFee.issueTicket({
-                wallet: walletStore.address,
+                wallet: owner,
                 pair: currentPair.value,
                 side: order.side,
                 orderValueUsd,
@@ -1094,11 +1134,21 @@ async function executeBscMarketOrder(order) {
         const slippage = Number.isFinite(Number(order.slippage)) && order.slippage !== null
             ? Number(order.slippage)
             : quote.slippage;
-        const result = await swap.executeSwap(fromTok, toTok, inputAmount, quote, slippage);
+
+        // ราคาที่ได้จริงของไม้นี้ (quote ต่อ base) — ให้ประวัติและป้ายบนกราฟวางถูกที่
+        const fillPrice = order.side === 'buy'
+            ? (quote.netOutput > 0 ? quote.amountIn / quote.netOutput : null)
+            : (quote.amountIn > 0 ? quote.netOutput / quote.amountIn : null);
+
+        const result = await swap.executeSwap(fromTok, toTok, inputAmount, quote, slippage, {
+            pair: currentPair.value,
+            side: order.side,
+            price: fillPrice,
+        });
 
         // ไม้ลงจริงแล้ว — ปิดใบอนุญาต (ตั้งค่า null กัน finally คืนเงินซ้ำ)
         if (ticket) {
-            await tradingFee.consumeTicket(walletStore.address, ticket.uuid, result?.hash || null);
+            await tradingFee.consumeTicket(owner, ticket.uuid, result?.hash || null);
             ticket = null;
         }
 
@@ -1116,6 +1166,10 @@ async function executeBscMarketOrder(order) {
         orderStatus.value = 'error';
         // error ที่ตั้งใจ throw เองมีข้อความพร้อมแสดง — นอกนั้น useSwap map ให้แล้ว
         orderMessage.value = err?.isFriendly ? err.message : (swap.error.value || t('trade.status.failed'));
+        // ส่งธุรกรรมไปแล้วแต่ยืนยันผลไม่ได้ — แนบลิงก์ BscScan ให้ตรวจก่อนสั่งซ้ำ
+        if (err?.txUrl) orderTxUrl.value = err.txUrl;
+        // ธุรกรรมอาจลงเชนแล้ว — ห้ามคืนค่าบริการทันที ปล่อยให้ตัวเก็บกวาดฝั่งเซิร์ฟเวอร์ตัดสินตามจริง
+        if (err?.txSent) ticket = null;
         playErrorSound();
     } finally {
         /*
@@ -1128,14 +1182,14 @@ async function executeBscMarketOrder(order) {
          * ไม่ให้ผู้ใช้ต้องรอเห็นยอดหายไป 15 นาทีแล้วค่อยกลับมา
          */
         if (ticket) {
-            await tradingFee.refundTicket(walletStore.address, ticket.uuid, 'ไม้ไม่ได้ลง');
+            await tradingFee.refundTicket(owner, ticket.uuid, 'ไม้ไม่ได้ลง');
             ticket = null;
         }
 
         isSubmitting.value = false;
         clearTimeout(toastTimer);
-        // สำเร็จค้าง toast ไว้นานขึ้นให้กดดู tx ได้
-        const holdMs = orderStatus.value === 'success' && orderTxUrl.value ? 10000 : 4000;
+        // มีลิงก์ tx (สำเร็จ หรือรอยืนยันผล) ค้าง toast ไว้นานขึ้นให้กดดูได้
+        const holdMs = orderTxUrl.value ? 10000 : 4000;
         toastTimer = setTimeout(() => {
             orderStatus.value = null;
             orderMessage.value = '';
@@ -1158,14 +1212,15 @@ async function executeDexMarketOrder(order) {
         return;
     }
 
-    const amountVal = parseFloat(order.amount) || 0;
-    const totalVal = parseFloat(String(order.total).replace(/,/g, '')) || 0;
+    const amountVal = num(order.amount);
+    const totalVal = num(order.total);
     const inputAmount = order.side === 'buy' ? totalVal : amountVal;
     if (inputAmount <= 0) {
         showOrderError(t('trade.enterAmount'));
         return;
     }
 
+    clearTimeout(toastTimer);
     const fromTok = dexToken(order.side === 'buy' ? 'quote' : 'base');
     const toTok = dexToken(order.side === 'buy' ? 'base' : 'quote');
     if (!fromTok || !toTok) {
@@ -1282,8 +1337,8 @@ async function executeDexMarketOrder(order) {
  * ป้องกันกดซ้ำ (debounce) + timeout
  */
 const submitInternalOrder = async (order) => {
-    const priceVal = parseFloat(String(order.price).replace(/,/g, '')) || 0;
-    const amountVal = parseFloat(order.amount) || 0;
+    const priceVal = num(order.price);
+    const amountVal = num(order.amount);
 
     if (amountVal <= 0) {
         showOrderError(t('trade.enterAmount'));
@@ -1385,8 +1440,13 @@ async function startFeeds() {
             await fetchInitialData();
             connectWebSocket();
         } catch {
-            dataError.value = t('trade.notice.connectError');
+            // Binance ไม่มีคู่นี้ (รีเฟรชก็ไม่หาย) ต่างจากเน็ตสะดุด — บอกให้ตรงกับที่เกิดจริง
+            dataError.value = binanceErrorCode.value === 'invalid-symbol'
+                ? t('trade.notice.pairUnavailable')
+                : t('trade.notice.connectError');
             isLoading.value = false;
+            // เน็ตสะดุดตอนโหลด: เปิดสายสดไว้ให้ฟื้นเอง (คู่ที่ไม่มีจริง connectWebSocket ไม่เปิดให้อยู่แล้ว)
+            if (binanceErrorCode.value !== 'invalid-symbol') connectWebSocket();
         }
     }
 }
@@ -1399,17 +1459,31 @@ function stopFeeds() {
     disconnectWebSocket();
 }
 
+/**
+ * หน้าถูกปิดแล้วหรือยัง — onMounted มี await หลายจังหวะ
+ *
+ * ⚠️ ผู้ใช้กดเปลี่ยนคู่ระหว่างที่ยังโหลดไม่เสร็จ (เปลี่ยนคู่ = Inertia สร้างหน้าใหม่ทั้งหน้า)
+ *    เดิม connectWebSocket() และ interval 60 วิ ยังถูกเปิดต่อหลังหน้าปิดไปแล้ว
+ *    ได้ socket ที่ไม่มีใครปิดและ timer ที่วิ่งตลอดไป สะสมทุกครั้งที่สลับคู่
+ */
+let disposed = false;
+
 onMounted(async () => {
     measureBoard();
     observeAbove();
     wideQuery?.addEventListener('change', measureBoard);
     window.addEventListener('resize', measureBoard);
     // ฟอนต์ไทยโหลดเสร็จทีหลัง แล้วความสูงของแถบหัวเปลี่ยน — วัดใหม่อีกรอบ
-    document.fonts?.ready.then(measureBoard).catch(() => {});
+    document.fonts?.ready.then(() => { if (!disposed) measureBoard(); }).catch(() => {});
 
     // ต้องรู้ก่อนว่าคู่นี้อยู่เชนไหนและ DEX พร้อมไหม ถึงจะเลือกฟีดได้ถูก
     await Promise.all([loadDexConfig(), loadPairMeta()]);
+    if (disposed) return;
     await startFeeds();
+    if (disposed) {
+        stopFeeds();   // ฟีดเพิ่งเปิดระหว่างที่หน้าปิดไปแล้ว — ปิดทิ้งทันที
+        return;
+    }
 
     if (walletStore.isConnected) {
         fetchBalances();
@@ -1472,13 +1546,19 @@ watch(currentPair, async () => {
     isChartFullscreen.value = false;
     // คู่ใหม่อาจอยู่คนละเชน — โหลดข้อมูลคู่ใหม่แล้วสลับฟีดให้ตรง
     await loadPairMeta();
+    if (disposed) return;
     await startFeeds();
+    if (disposed) {
+        stopFeeds();
+        return;
+    }
     fetchDexFormBalances();
     // ไม้ของบอทผูกกับคู่ — สลับคู่แล้วต้องโหลดชุดใหม่ ไม่งั้นป้ายของคู่เก่าค้างจนรอบรีเฟรชถัดไป
     bot.loadTrades(currentPair.value);
 });
 
 onUnmounted(() => {
+    disposed = true;
     stopFeeds();
     clearTimeout(previewTimer);
     clearTimeout(toastTimer);
@@ -1534,7 +1614,7 @@ onUnmounted(() => {
                     </svg>
                     <span>{{ orderMessage }}</span>
                     <a
-                        v-if="orderStatus === 'success' && orderTxUrl"
+                        v-if="orderTxUrl && (orderStatus === 'success' || orderStatus === 'error')"
                         :href="orderTxUrl"
                         target="_blank"
                         rel="noopener"
@@ -1714,10 +1794,23 @@ onUnmounted(() => {
                             </template>
 
                             <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4">
-                                <OpenOrders v-if="activeTab === 'openOrders'" />
+                                <OpenOrders v-if="activeTab === 'openOrders'" :current-pair="currentPair" />
                                 <TradeHistory v-else-if="activeTab === 'history'" />
                                 <div v-else class="text-center text-dark-400 text-sm">
-                                    <div v-if="walletStore.isConnected && balances.length > 0">
+                                    <!-- กระเป๋ายังไม่เซ็นยืนยัน — บอกตรงๆ แทนที่จะโชว์ว่าไม่มีเหรียญ -->
+                                    <div v-if="walletStore.isConnected && fundsNeedVerify" class="py-8">
+                                        <p class="text-dark-400 mb-3">{{ t('trade.tabs.verifyForFunds') }}</p>
+                                        <button
+                                            type="button"
+                                            class="btn-primary text-sm px-6 py-2 disabled:opacity-50"
+                                            :disabled="isVerifyingFunds"
+                                            @click="verifyForFunds"
+                                        >
+                                            {{ isVerifyingFunds ? t('history.verifying') : t('history.verifyNow') }}
+                                        </button>
+                                    </div>
+                                    <div v-else-if="walletStore.isConnected && balances.length > 0">
+                                        <p class="text-[11px] text-dark-500 mb-2 text-left">{{ t('trade.tabs.fundsOnBsc') }}</p>
                                         <div v-for="bal in balances" :key="bal.token_address" class="flex items-center justify-between py-2 border-b border-white/5">
                                             <span class="text-white font-medium">{{ bal.symbol }}</span>
                                             <span class="font-mono text-white">{{ parseFloat(bal.balance).toFixed(6) }}</span>
@@ -1789,10 +1882,12 @@ onUnmounted(() => {
                             :class="layout.stackClass('trades')"
                             :style="styleFor('trades', row)"
                         >
+                            <!-- คู่ TPIX/DEX ใช้ polling ไม่มี WS ของ Binance — "สด" = โหลดล่าสุดไม่ error -->
                             <RecentTrades
                                 :symbol="currentPair"
                                 :trades="trades"
                                 :is-loading="isLoading"
+                                :live="(isDexPair || isTPIXPair) ? !dataError : binanceLive"
                                 @select-price="handleSelectPrice"
                             />
                         </DraggableCard>

@@ -62,7 +62,8 @@ class BotRunner
         $subscription = $this->bots->activeSubscription($bot->wallet_address);
 
         if (! $subscription) {
-            $bot->update(['status' => 'paused', 'last_reason' => 'การเช่าหมดอายุ — บอทถูกพักอัตโนมัติ']);
+            // ติดรหัสเหตุผลไปด้วย — หน้าจอต้องบอกว่า "แพลนหมดอายุ" ไม่ใช่ "ระบบกำลังตรวจสอบ"
+            $bot->pauseBecause(AiBotConfig::PAUSE_PLAN_EXPIRED, 'การเช่าหมดอายุ — บอทถูกพักอัตโนมัติ');
 
             return $this->record($bot, 'stopped', 'การเช่าหมดอายุ — บอทถูกพักอัตโนมัติ');
         }
@@ -83,7 +84,7 @@ class BotRunner
         if ($this->bots->isRetired($bot->strategy)) {
             $why = (string) ($this->bots->strategy($bot->strategy)['retired_reason'] ?? '');
             $reason = 'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว — บอทถูกพักไว้'.($why !== '' ? ': '.$why : '');
-            $bot->update(['status' => 'paused', 'last_reason' => $reason]);
+            $bot->pauseBecause(AiBotConfig::PAUSE_STRATEGY_RETIRED, $reason);
 
             return $this->record($bot, 'stopped', $reason);
         }
@@ -105,7 +106,7 @@ class BotRunner
 
         if (! in_array($bot->strategy, $unlocked, true)) {
             $reason = 'แพลนปัจจุบันไม่รวมกลยุทธ์นี้แล้ว — บอทถูกพักไว้ ต่ออายุแพลนเพื่อใช้ต่อ';
-            $bot->update(['status' => 'paused', 'last_reason' => $reason]);
+            $bot->pauseBecause(AiBotConfig::PAUSE_PLAN_LOCKED, $reason);
 
             return $this->record($bot, 'stopped', $reason);
         }

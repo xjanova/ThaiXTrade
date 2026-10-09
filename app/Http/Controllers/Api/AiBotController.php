@@ -9,6 +9,7 @@ use App\Models\AiBotDecision;
 use App\Models\AiBotDemoAccount;
 use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
+use App\Models\AiBotSubscription;
 use App\Models\AiBotTrade;
 use App\Models\AiMarketView;
 use App\Services\AiBot\Advisor\AdvisorFactory;
@@ -23,6 +24,7 @@ use App\Services\AiBotService;
 use App\Services\MarketDataService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
@@ -49,8 +51,31 @@ class AiBotController extends Controller
         AiBotService::ERR_SUBSCRIBE_BUSY => 'กำลังทำรายการเช่าของกระเป๋านี้อยู่ กรุณารอสักครู่แล้วลองใหม่',
         AiBotService::ERR_TOPUP_CLOSED => 'ยังไม่เปิดให้เติมเครดิต — รอประกาศเปิดระบบชำระเงินก่อน ระหว่างนี้ใช้เครดิตต้อนรับทดลองได้',
         AiBotService::ERR_SALES_CLOSED => 'AI TRADE ยังอยู่ระหว่างทดสอบ ยังไม่เปิดให้เช่า — ระหว่างนี้ทดลองใช้โหมดทดลองได้เต็มที่ ไม่มีค่าใช้จ่าย',
+        // เดิมไม่มีข้อความ — ผู้ใช้เห็นแค่ "ทำรายการไม่สำเร็จ" แล้วไม่รู้ว่าต้องเปลี่ยนกลยุทธ์
+        AiBotService::ERR_STRATEGY_RETIRED => 'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว — สร้างหรือเริ่มบอทด้วยกลยุทธ์นี้ไม่ได้ (บอทเดิมยังแก้ชื่อ ลดความเสี่ยง หรือลบได้)',
         'INVALID_PACK' => 'ไม่พบแพ็กเกจเครดิตที่เลือก',
     ];
+
+    /**
+     * ด่านสิทธิ์ที่ไม่ผ่านตอนสั่งเดินจากเบราว์เซอร์ → รหัสเหตุผลการพัก + ข้อความที่เก็บไว้ในบอท.
+     *
+     * ทุกรหัสในนี้คือ "แพลนปัจจุบันไม่ให้บอทตัวนี้เดินแล้ว" — ไม่ใช่ปัญหาชั่วคราว
+     * จึงต้องพักบอทพร้อมบอกเหตุผล ไม่ใช่ตอบ 403 แล้วปล่อยสถานะ running ค้างไว้
+     */
+    private const PLAN_PAUSES = [
+        AiBotService::ERR_NO_SUBSCRIPTION => [AiBotConfig::PAUSE_PLAN_EXPIRED, 'การเช่าหมดอายุ — บอทถูกพักอัตโนมัติ ต่ออายุแพลนแล้วกดเริ่มใหม่ได้'],
+        AiBotService::ERR_STRATEGY_LOCKED => [AiBotConfig::PAUSE_PLAN_LOCKED, 'แพลนปัจจุบันไม่รวมกลยุทธ์นี้ (แพลนเดิมอาจหมดอายุ) — บอทถูกพักไว้ ต่ออายุหรืออัปเกรดแพลนเพื่อใช้ต่อ'],
+        AiBotService::ERR_BOT_LIMIT => [AiBotConfig::PAUSE_PLAN_QUOTA, 'จำนวนบอทเกินโควตาของแพลนปัจจุบัน — บอทถูกพักไว้ ลบบอทที่ไม่ใช้ให้เหลือตามโควตาก่อน'],
+        AiBotService::ERR_STRATEGY_RETIRED => [AiBotConfig::PAUSE_STRATEGY_RETIRED, 'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว — บอทถูกพักไว้'],
+    ];
+
+    /**
+     * ยอมให้เวลาเบราว์เซอร์คลาดได้กี่วินาทีจากรอบขั้นต่ำ.
+     *
+     * ตัวจับเวลาของเบราว์เซอร์กับเวลาเดินทางของคำขอแกว่งได้หลายร้อยมิลลิวินาที — ไม่เผื่อไว้เลย
+     * คำขอที่มาถึงเร็วไป 0.2 วิจะถูกข้าม แล้วรอบที่ตั้งไว้ 30 วิกลายเป็น 60 วิ (ช้าลงครึ่งหนึ่ง)
+     */
+    private const BROWSER_TICK_SLACK_SECONDS = 5;
 
     public function __construct(
         private readonly AiBotService $bots,
@@ -187,7 +212,15 @@ class AiBotController extends Controller
                  * (สิทธิ์จริงบังคับที่เซิร์ฟเวอร์อยู่แล้ว ธงนี้มีไว้ให้จอแสดงผลถูก)
                  */
                 'is_admin' => $this->bots->isAdminWallet($wallet),
-                'bots' => $this->botList($wallet),
+                /*
+                 * โบนัสต้อนรับรับไปแล้วหรือยัง — หน้าเว็บซ่อนปุ่มรับจากธงนี้
+                 *
+                 * เดิมหน้าเว็บโชว์ปุ่มเมื่อ "เครดิตเป็นศูนย์" ซึ่งเป็นจริงอีกครั้งหลังใช้เครดิตหมด
+                 * ผู้ใช้กดรับซ้ำแล้วเห็นว่า "รับเรียบร้อย" ทั้งที่ไม่ได้อะไรเพิ่มเลย
+                 */
+                'welcome_bonus' => (float) config('aibot.credits.welcome_bonus', 0),
+                'welcome_claimed' => $this->bots->welcomeClaimed($wallet),
+                'bots' => $this->botList($wallet, $subscription),
                 /*
                  * สัญญาณชีพของวอร์กเกอร์ — ให้หน้าจอบอกได้ว่า "ออนไลน์จริง" หรือแค่
                  * สถานะเขียน running ค้างไว้ตอนเซิร์ฟเวอร์ดับ (aibot:health เป็นคนเก็บ)
@@ -391,14 +424,20 @@ class AiBotController extends Controller
         return $this->strategyMetaCache[$code] ?? null;
     }
 
-    /** รับโบนัสต้อนรับ (ครั้งเดียวต่อ wallet) */
+    /**
+     * รับโบนัสต้อนรับ (ครั้งเดียวต่อ wallet).
+     *
+     * กดซ้ำยังตอบ success (ไม่ใช่ข้อผิดพลาดของผู้ใช้) แต่ `granted = false` บอกว่าครั้งนี้
+     * ไม่ได้เครดิตเพิ่ม — หน้าเว็บ/แอพต้องไม่ขึ้นว่า "รับเรียบร้อย" ซ้ำทุกครั้งที่กด
+     */
     public function claimWelcome(Request $request): JsonResponse
     {
         $wallet = $this->wallet($request);
+        $result = $this->bots->grantWelcomeBonus($wallet);
 
         return response()->json([
             'success' => true,
-            'data' => ['credits' => $this->bots->grantWelcomeBonus($wallet)],
+            'data' => ['credits' => $result['credits'], 'granted' => $result['granted']],
         ]);
     }
 
@@ -518,14 +557,15 @@ class AiBotController extends Controller
         $validated = $this->validateBot($request, $bot);
 
         try {
-            $subscription = $this->bots->assertCanRunBot($wallet, $validated['strategy'], $bot);
+            // editingOnly: แก้ชื่อ/ลดความเสี่ยงของบอทกลยุทธ์ที่ถูกถอดแล้วได้ (ตามที่ validateBot ตั้งใจ)
+            $subscription = $this->bots->assertCanRunBot($wallet, $validated['strategy'], $bot, editingOnly: true);
         } catch (RuntimeException $e) {
             return $this->failure($e->getMessage(), null, 403);
         }
 
         [$params, $riskInput] = $this->applyTemplate($validated, $request);
 
-        $bot->update([
+        $bot->fill([
             'name' => $validated['name'],
             'pair' => strtoupper($validated['pair']),
             'strategy' => $validated['strategy'],
@@ -533,6 +573,18 @@ class AiBotController extends Controller
             'params' => $this->bots->sanitizeParams($validated['strategy'], $params),
             'risk' => $this->bots->sanitizeRisk($riskInput, $subscription->plan),
         ]);
+
+        /*
+         * แก้ได้ แต่ห้ามเดินต่อ — บอทกลยุทธ์ที่ถูกถอดซึ่งยังค้าง running อยู่ถูกพักไว้ตรงนี้เลย
+         * ไม่ต้องรอให้ BotRunner เจอในรอบถัดไป (เส้นทางเริ่มบอทใหม่ยังถูกด่านเต็มกันไว้เหมือนเดิม)
+         */
+        if ($bot->status === 'running' && $this->bots->isRetired($bot->strategy)) {
+            $bot->status = 'paused';
+            $bot->last_reason = self::PLAN_PAUSES[AiBotService::ERR_STRATEGY_RETIRED][1];
+            $bot->stats = array_merge($bot->stats ?? [], ['pause_reason' => AiBotConfig::PAUSE_STRATEGY_RETIRED]);
+        }
+
+        $bot->save();
 
         return response()->json(['success' => true, 'data' => $this->presentBot($bot->fresh())]);
     }
@@ -612,6 +664,9 @@ class AiBotController extends Controller
             'pause' => 'paused',
             default => 'stopped',
         };
+
+        // เหตุผลที่ระบบเคยพักไว้ (เช่นแพลนหมดอายุ) ไม่จริงแล้ว — ผู้ใช้กดเองครั้งนี้
+        $bot->clearPauseReason();
         $bot->save();
 
         return response()->json(['success' => true, 'data' => $this->presentBot($bot)]);
@@ -685,27 +740,96 @@ class AiBotController extends Controller
         try {
             $this->bots->assertCanRunBot($wallet, $bot->strategy, $bot);
         } catch (RuntimeException $e) {
+            /*
+             * แพลนปัจจุบันไม่ให้บอทตัวนี้เดินแล้ว = พักพร้อมเหตุผล
+             *
+             * เดิมตอบ 403 เฉยๆ บอทจึงค้าง running ตลอดกาล (เช่น VIP หมดอายุ → ระบบลงแพลนฟรีให้
+             * → กลยุทธ์ VIP ถูกล็อก) หน้าจอโชว์เขียวอยู่พักหนึ่งแล้วกลายเป็นแดง "กำลังตรวจสอบ"
+             * โดยไม่มีใครบอกผู้ใช้ว่าแค่ต้องต่ออายุแพลน
+             */
+            if ($pause = self::PLAN_PAUSES[$e->getMessage()] ?? null) {
+                $bot->pauseBecause($pause[0], $pause[1]);
+            }
+
             return $this->failure($e->getMessage(), null, 403);
         }
 
         // กันหน้าเว็บยิงรัวเกินจำเป็น — คิดหนึ่งรอบต่อช่วงเวลาที่กำหนดก็พอ
-        $minSeconds = (int) config('aibot.browser_tick_min_seconds', 30);
+        $minSeconds = max(1, (int) config('aibot.browser_tick_min_seconds', 30));
 
-        // last_run_at ในอนาคต (นาฬิกา/โซนเวลาเลื่อน — ดู config/app.php) = ถึงรอบ ไม่ใช่ติดลบแล้วรอเป็นชั่วโมง
-        if ($bot->last_run_at && ! $bot->last_run_at->isFuture() && $bot->last_run_at->diffInSeconds(now()) < $minSeconds) {
+        /*
+         * ล็อกต่อบอท — ตรวจรอบ + บันทึกเวลาเริ่ม + เดินบอท ต้องเป็นก้อนเดียวกัน
+         *
+         * เดิมเป็น "เช็คแล้วค่อยทำ" ไม่มีล็อก: เปิดสองแท็บ (หรือการ์ดในหน้าเทรดกับหน้า /ai-trade
+         * คนละแท็บ) คำขอสองใบเห็นว่าถึงรอบพร้อมกัน แล้วเดินบอทซ้อนกัน = ซื้อซ้ำสองไม้
+         * ใบที่มาทีหลังได้ "ข้าม" ไปแทน — บอทเดินแค่ครั้งเดียวต่อรอบเสมอ
+         */
+        $lock = Cache::lock('aibot:browser-tick:'.$bot->id, 120);
+
+        if (! $lock->get()) {
             return response()->json(['success' => true, 'data' => [
                 'skipped' => true,
-                'reason' => 'ยังไม่ถึงรอบถัดไป',
-                'next_in_seconds' => $minSeconds - (int) $bot->last_run_at->diffInSeconds(now()),
+                'reason' => 'บอทตัวนี้กำลังคิดรอบนี้อยู่จากอีกหน้าต่าง',
+                'next_in_seconds' => $minSeconds,
             ]]);
         }
 
-        $result = $runner->tick($bot);
+        try {
+            $lastStart = $this->lastBrowserRunStart($bot);
+
+            // เวลาในอนาคต (นาฬิกา/โซนเวลาเลื่อน — ดู config/app.php) = ถึงรอบ ไม่ใช่ติดลบแล้วรอเป็นชั่วโมง
+            if ($lastStart && ! $lastStart->isFuture()) {
+                $elapsed = (int) floor($lastStart->diffInSeconds(now()));
+
+                if ($elapsed < $minSeconds - self::BROWSER_TICK_SLACK_SECONDS) {
+                    return response()->json(['success' => true, 'data' => [
+                        'skipped' => true,
+                        'reason' => 'ยังไม่ถึงรอบถัดไป',
+                        'next_in_seconds' => max(1, $minSeconds - $elapsed),
+                    ]]);
+                }
+            }
+
+            /*
+             * นับรอบจาก "เวลาเริ่ม" ไม่ใช่เวลาจบ
+             *
+             * last_run_at ถูกเขียนตอนจบรอบ (BotRunner::record) — เดิมเทียบกับค่านั้น
+             * หน้าเว็บสั่งทุก 30 วิเท่ากับขั้นต่ำพอดี รอบที่ใช้เวลา 2 วิจึงทำให้คำขอถัดไป
+             * เห็นว่าผ่านไปแค่ 28 วิ → ข้ามทุกรอบเว้นรอบ บอทเดินจริงทุก 60 วิ
+             */
+            Cache::put($this->browserRunStartKey($bot), now()->getTimestamp(), now()->addHour());
+
+            $result = $runner->tick($bot);
+        } finally {
+            $lock->release();
+        }
 
         return response()->json(['success' => true, 'data' => array_merge($result, [
             'skipped' => false,
             'bot' => $this->presentBot($bot->fresh()),
         ])]);
+    }
+
+    private function browserRunStartKey(AiBotConfig $bot): string
+    {
+        return 'aibot:browser-tick-start:'.$bot->id;
+    }
+
+    /**
+     * เวลาที่รอบล่าสุดจากเบราว์เซอร์ "เริ่ม" เดิน.
+     *
+     * ไม่มีในแคช (แคชถูกล้างตอน deploy / บอทเพิ่งย้ายมาเดินจากเบราว์เซอร์) = ใช้ last_run_at
+     * แทน ซึ่งเป็นเวลาจบรอบ — ช้ากว่าเวลาเริ่มเล็กน้อย จึงพลาดไปทางรอนานขึ้น ไม่ใช่เดินรัว
+     */
+    private function lastBrowserRunStart(AiBotConfig $bot): ?Carbon
+    {
+        $startedAt = Cache::get($this->browserRunStartKey($bot));
+
+        if (is_numeric($startedAt)) {
+            return Carbon::createFromTimestamp((int) $startedAt);
+        }
+
+        return $bot->last_run_at;
     }
 
     // =========================================================================
@@ -732,13 +856,34 @@ class AiBotController extends Controller
          * `account` ที่ส่งออกยังเป็นภาพรวมรวมทุกพอร์ต เพื่อไม่ให้หน้าจอเดิมพัง
          * ส่วน `portfolios` คือรายพอร์ตสำหรับหน้าที่อยากเทียบกลยุทธ์
          */
-        $accounts = AiBotDemoAccount::where('wallet_address', $wallet)->get();
+        $allAccounts = AiBotDemoAccount::where('wallet_address', $wallet)->get();
 
-        if ($accounts->isEmpty()) {
-            $accounts = collect([$this->broker->account($wallet)]);
-        }
+        /*
+         * ⚠️ ตัวเลขทุกตัว (เงินสด · ทุนตั้งต้น · มูลค่าพอร์ต) ต้องมาจากพอร์ตชุดเดียวกัน
+         *
+         * เดิมเงินสดกับทุนตั้งต้นรวมทุกพอร์ต แต่มูลค่าพอร์ตใช้เงินสดของ "พอร์ตแรก" ใบเดียว
+         * บวกกับที่หน้านี้เคยสร้างพอร์ตรวม (bucket = null) ให้กระเป๋าใหม่ ซึ่งไม่เคยถูกเทรด
+         * (PaperBroker::accountFor ผูกกับกลยุทธ์เสมอ) — กระเป๋าใหม่ที่บอทกริดซื้อไป $100
+         * จึงเห็น เงินสด $19,900 · ทุน $20,000 · มูลค่าพอร์ต $10,100 (ดูเหมือนขาดทุนครึ่งพอร์ต)
+         *
+         * พอร์ตรวมเดิมที่ไม่เคยขยับเลย = ที่เก็บโควตาการล้างเปล่าๆ ไม่ใช่เงินทดลอง → ไม่นับ
+         * (ไม่ลบทิ้ง — ยังใช้เก็บโควตาการล้างของวันนี้อยู่) ส่วนพอร์ตรวมรุ่นเก่าที่เคยเทรดจริง
+         * ยังนับครบทั้งสามตัวเลข เพื่อให้กำไร/ขาดทุนรวมถูกต้อง
+         */
+        $accounts = $allAccounts
+            ->reject(fn (AiBotDemoAccount $a) => $this->isPlaceholderDemoAccount($a))
+            ->values();
 
-        $account = $accounts->first();
+        $startingEach = (float) config('aibot_risk.demo.starting_balance', 10000);
+
+        // ยังไม่มีพอร์ตไหนถูกใช้ = โชว์ทุนตั้งต้นหนึ่งก้อน โดยไม่สร้างแถวทิ้งไว้ (GET ต้องไม่เขียนข้อมูล)
+        $cash = $accounts->isEmpty() ? $startingEach : (float) $accounts->sum(fn ($a) => (float) $a->balance);
+        $startingTotal = $accounts->isEmpty() ? $startingEach : (float) $accounts->sum(fn ($a) => (float) $a->starting_balance);
+
+        // โควตาการล้างนับรวมทั้งกระเป๋า (ดู PaperBroker::reset) — รวมพอร์ตที่ไม่นับเงินด้วย
+        $resetsUsedToday = (int) $allAccounts
+            ->filter(fn (AiBotDemoAccount $a) => $a->last_reset_at?->isToday())
+            ->max('reset_count');
 
         $botIds = AiBotConfig::forWallet($wallet)->pluck('id');
 
@@ -830,9 +975,9 @@ class AiBotController extends Controller
         return response()->json(['success' => true, 'data' => [
             'account' => [
                 // รวมทุกพอร์ต — ตัวเลขที่ผู้ใช้เห็นเป็นภาพรวมของการทดลองทั้งหมด
-                'balance' => round((float) $accounts->sum(fn ($a) => (float) $a->balance), 2),
-                'starting_balance' => round((float) $accounts->sum(fn ($a) => (float) $a->starting_balance), 2),
-                'resets_used_today' => $account->last_reset_at?->isToday() ? $account->reset_count : 0,
+                'balance' => round($cash, 2),
+                'starting_balance' => round($startingTotal, 2),
+                'resets_used_today' => $resetsUsedToday,
                 'resets_per_day' => (int) config('aibot_risk.demo.max_resets_per_day', 3),
                 'fee_rate' => (float) config('aibot_risk.demo.fee_rate', 0.1),
                 'slippage_bps' => (int) config('aibot_risk.demo.slippage_bps', 8),
@@ -863,7 +1008,8 @@ class AiBotController extends Controller
                  */
                 'unrealized_pnl' => round(collect($positions)->sum('unrealized_pnl'), 2),
                 'positions_value' => round(collect($positions)->sum('market_value'), 2),
-                'equity' => round((float) $account->balance + collect($positions)->sum('market_value'), 2),
+                // เงินสดของ "ทุกพอร์ตที่นับ" + ของที่ถือ — ชุดเดียวกับ balance/starting_balance ด้านบน
+                'equity' => round($cash + collect($positions)->sum('market_value'), 2),
                 'total_fees' => round((float) AiBotTrade::whereIn('ai_bot_config_id', $botIds)->where('mode', 'demo')->sum('fee'), 2),
                 'trade_count' => AiBotTrade::whereIn('ai_bot_config_id', $botIds)->where('mode', 'demo')->count(),
                 'closed_count' => $closedCount,
@@ -1187,29 +1333,90 @@ class AiBotController extends Controller
         return AiBotConfig::forWallet($wallet)->where('id', $id)->first();
     }
 
-    private function botList(string $wallet): array
+    /**
+     * พอร์ตรวมรุ่นเดิม (bucket = null) ที่ไม่เคยขยับเลย — ที่เก็บโควตาการล้าง ไม่ใช่เงินทดลอง.
+     *
+     * ไม่มีบอทตัวไหนเทรดจากพอร์ตนี้แล้ว (PaperBroker::accountFor ผูกกับกลยุทธ์เสมอ)
+     * นับเข้าไปเท่ากับเสกทุนตั้งต้นเพิ่มอีกก้อนที่ไม่มีอยู่จริง
+     */
+    private function isPlaceholderDemoAccount(AiBotDemoAccount $account): bool
     {
-        $interval = $this->tickIntervalFor($wallet);
+        return ($account->bucket === null || $account->bucket === '')
+            && abs((float) $account->balance - (float) $account->starting_balance) < 0.000001;
+    }
+
+    /**
+     * @param  AiBotSubscription|null|false  $subscription  การเช่าของกระเป๋านี้ ถ้าผู้เรียกมีอยู่แล้ว
+     *                                                      (false = ยังไม่ได้ถาม ให้ถามเอง)
+     */
+    private function botList(string $wallet, AiBotSubscription|null|false $subscription = false): array
+    {
+        $plan = $this->planContext($wallet, $subscription);
 
         return AiBotConfig::forWallet($wallet)
             ->orderByDesc('id')
             ->get()
-            ->map(fn (AiBotConfig $bot) => $this->presentBot($bot, $interval))
+            ->map(fn (AiBotConfig $bot) => $this->presentBot($bot, $plan))
             ->all();
     }
 
-    /** รอบคิดที่แพลนของกระเป๋านี้สัญญาไว้ (นาที) — ใช้ตัดสินว่าบอท "เงียบผิดปกติ" หรือยัง */
-    private function tickIntervalFor(string $wallet): int
+    /**
+     * สิ่งที่แพลนปัจจุบันของกระเป๋านี้ให้ — คิดครั้งเดียวต่อคำขอ ไม่ใช่ทีละบอท.
+     *
+     *  - interval = รอบคิดที่แพลนสัญญาไว้ (นาที) ใช้ตัดสินว่าบอท "เงียบผิดปกติ" หรือยัง
+     *  - unlocked = กลยุทธ์ที่แพลนปลดล็อก (null = ไม่มีการเช่าที่ยังไม่หมดอายุเหลือเลย)
+     *
+     * @param  AiBotSubscription|null|false  $subscription  false = ยังไม่ได้ถาม
+     * @return array{interval: int, unlocked: list<string>|null}
+     */
+    private function planContext(string $wallet, AiBotSubscription|null|false $subscription = false): array
     {
-        $tier = $this->bots->activeSubscription($wallet)?->plan?->tier ?? 'free';
+        if ($subscription === false) {
+            $subscription = $this->bots->activeSubscription($wallet);
+        }
 
-        return max(1, (int) (config('aibot.tick_interval_minutes.'.$tier) ?? 5));
+        $plan = $subscription?->plan;
+        $tier = $plan?->tier ?? 'free';
+
+        return [
+            'interval' => max(1, (int) (config('aibot.tick_interval_minutes.'.$tier) ?? 5)),
+            'unlocked' => $plan ? $plan->unlockedStrategies() : null,
+        ];
     }
 
-    private function presentBot(AiBotConfig $bot, ?int $intervalMinutes = null): array
+    /**
+     * บอทที่ผู้ใช้เปิดไว้แต่แพลนปัจจุบันไม่ให้เดินแล้ว — รหัสเหตุผล หรือ null ถ้าเดินได้ตามปกติ.
+     *
+     * แยกจาก "ออฟไลน์เพราะวอร์กเกอร์เงียบ" ให้ชัด: อย่างแรกผู้ใช้ต้องต่ออายุแพลน
+     * อย่างหลังระบบกู้คืนเอง — โชว์ข้อความเดียวกันแล้วผู้ใช้จะนั่งรอสิ่งที่ไม่มีวันเกิด
+     */
+    private function planBlock(AiBotConfig $bot, array $plan): ?string
     {
+        if ($plan['unlocked'] === null) {
+            return AiBotConfig::PAUSE_PLAN_EXPIRED;
+        }
+
+        if (! in_array($bot->strategy, $plan['unlocked'], true)) {
+            return AiBotConfig::PAUSE_PLAN_LOCKED;
+        }
+
+        return $this->bots->isRetired($bot->strategy) ? AiBotConfig::PAUSE_STRATEGY_RETIRED : null;
+    }
+
+    /**
+     * @param  array{interval: int, unlocked: list<string>|null}|null  $plan  จาก planContext() — null = คิดเอง
+     */
+    private function presentBot(AiBotConfig $bot, ?array $plan = null): array
+    {
+        $plan ??= $this->planContext($bot->wallet_address);
         $meta = $bot->strategyMeta();
-        $liveness = $this->health->botStatus($bot, $intervalMinutes ?? $this->tickIntervalFor($bot->wallet_address));
+        $liveness = $this->health->botStatus($bot, $plan['interval']);
+
+        // เปิดไว้แต่แพลนไม่ให้เดิน = ออฟไลน์ด้วยเหตุผลของแพลน ไม่ใช่ "ระบบกำลังตรวจสอบ"
+        if ($bot->status === 'running' && ! $bot->isBanned() && ($block = $this->planBlock($bot, $plan)) !== null) {
+            $liveness['online'] = false;
+            $liveness['reason'] = $block;
+        }
 
         return [
             'id' => $bot->id,
@@ -1248,6 +1455,11 @@ class AiBotController extends Controller
              */
             'online' => $liveness['online'],
             'offline_reason' => $liveness['reason'],
+            /*
+             * ระบบพักบอทไว้เพราะอะไร (plan_expired · plan_locked · plan_quota · strategy_retired)
+             * null = ไม่ได้พัก หรือผู้ใช้กดพักเอง — หน้าจอใช้บอกว่าต้องทำอะไรต่อ
+             */
+            'pause_reason' => $bot->pauseReason(),
             'worker_last_beat_at' => $liveness['worker_last_beat_at'],
             'last_run_at' => $bot->last_run_at?->toIso8601String(),
             'last_signal_at' => $bot->last_signal_at?->toIso8601String(),

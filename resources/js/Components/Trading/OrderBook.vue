@@ -11,6 +11,7 @@
 
 import { ref, computed, watch, nextTick, onMounted, useTemplateRef } from 'vue';
 import { useTranslation } from '@/Composables/useTranslation';
+import { decimalsUsed, decimalsForPrices, formatMarketPrice, MAX_PRICE_DECIMALS } from '@/Composables/useBinanceData';
 
 const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
@@ -30,29 +31,54 @@ const groupIndex = ref(0);    // ดัชนีใน groupSteps (0 = ละเ
 const quoteSymbol = computed(() => props.symbol.split('/')[1] || 'USDT');
 const baseSymbol = computed(() => props.symbol.split('/')[0] || '');
 
+/** ราคาอ้างอิงของคู่นี้ — ใช้กำหนดขั้นราคาและทศนิยมตอนยังไม่มีแถวให้ดู */
+const refPrice = computed(() => Math.abs(props.tickerPrice || props.bids[0]?.price || props.asks[0]?.price || 1) || 1);
+
 /**
  * ขั้นราคาที่เลือกได้ — อิงจากขนาดของราคาเอง
  * ราคา 70,000 → 0.01 / 0.1 / 1 / 10 (เหมือนกระดานใหญ่)
  * ราคา 0.1     → 0.0000001 ขึ้นไป
+ *
+ * ⚠️ ขั้นต้องไม่หยาบเกิน 1/10 ของราคา — ของเดิมตันขั้นต่ำไว้ที่ 1e-8 แล้วคูณขึ้นไป
+ *    PEPE 0.00000394 จึงได้ขั้น 0.00001 ที่ใหญ่กว่าราคาเอง ฝั่งซื้อถูกปัดลงเป็น 0 ทั้งหมด
+ *    คลิกแถวแล้วส่งราคา 0 เข้าฟอร์มเทรด
+ * สร้างจากเลขชี้กำลังตรงๆ (1e-8) ไม่คูณ 10 ซ้ำๆ — 1e-8 * 10 ได้ 1.0000000000000001e-7
  */
 const groupSteps = computed(() => {
-    const price = props.tickerPrice || props.bids[0]?.price || props.asks[0]?.price || 1;
-    const magnitude = Math.floor(Math.log10(Math.abs(price) || 1));
-    const base = Math.max(10 ** (magnitude - 6), 1e-8);
+    const price = refPrice.value;
+    const magnitude = Math.floor(Math.log10(price));
+    const ceiling = price / 10;
 
-    return [base, base * 10, base * 100, base * 1000];
+    // ละเอียดสุด ≈ 6 หลักนัยสำคัญ แต่ไม่ละเอียดกว่า 1e-8 (tick เล็กสุดของ Binance)...
+    let exponent = Math.max(magnitude - 6, -8);
+    // ...เว้นแต่ราคาจิ๋วจน 1e-8 ยังหยาบเกิน → ลงไปตามขนาดจริง (ไม่เกินทศนิยมที่แสดงได้)
+    if (Number(`1e${exponent}`) > ceiling) exponent = Math.max(magnitude - 6, -MAX_PRICE_DECIMALS);
+
+    const steps = [0, 1, 2, 3]
+        .map(i => Number(`1e${exponent + i}`))
+        .filter(s => s <= ceiling * (1 + 1e-9));
+
+    return steps.length ? steps : [Number(`1e${exponent}`)];
 });
 
 const step = computed(() => groupSteps.value[groupIndex.value] ?? groupSteps.value[0]);
 
 // เปลี่ยนคู่เทรด → ขนาดราคาเปลี่ยน ขั้นเดิมอาจหยาบ/ละเอียดเกินไป กลับไปค่าเริ่มต้น
 watch(() => props.symbol, () => { groupIndex.value = 0; });
+// ราคาร่วงจนขั้นที่เลือกไว้หายไปจากรายการ → กลับไปขั้นละเอียดสุด (ไม่งั้นไม่มีปุ่มไหนถูกเลือก)
+watch(() => groupSteps.value.length, (len) => { if (groupIndex.value >= len) groupIndex.value = 0; });
 
 /** ปัดราคาให้ลงช่องเดียวกัน — asks ปัดขึ้น, bids ปัดลง (ฝั่งที่เสียเปรียบผู้ตั้งคำสั่ง) */
 function bucket(price, up) {
     const s = step.value;
     if (!s || !Number.isFinite(price)) return price;
-    const n = up ? Math.ceil(price / s) : Math.floor(price / s);
+    // ราคาที่ลงขั้นพอดีอยู่แล้วต้องไม่ถูกปัดข้ามช่อง — 0.00000393 / 1e-8 ได้ 392.99999999999994
+    // floor ตรงๆ จะกลายเป็น 0.00000392 (ราคาผิดหนึ่ง tick ทั้งที่แสดงและที่ส่งเข้าฟอร์ม)
+    const q = price / s;
+    const nearest = Math.round(q);
+    const n = Math.abs(q - nearest) <= 1e-9 * Math.max(1, Math.abs(q))
+        ? nearest
+        : (up ? Math.ceil(q) : Math.floor(q));
     // ปัดทศนิยมทิ้งเศษ floating point (0.1*3 = 0.30000000000000004)
     return parseFloat((n * s).toPrecision(12));
 }
@@ -102,14 +128,36 @@ function depthPct(row) {
 const displayAsks = computed(() => [...groupedAsks.value].reverse());
 
 // ── สเปรด ───────────────────────────────────────────────────────────────────
-// ask ที่ดีที่สุด = ราคาต่ำสุด = แถวแรกหลังจัดเรียงแล้ว
-// (โค้ดเดิมหยิบแถวสุดท้าย = ask ที่แพงที่สุด ทำให้สเปรดกว้างเกินจริงหลายเท่า)
-const bestAsk = computed(() => groupedAsks.value[0]?.price || 0);
-const bestBid = computed(() => groupedBids.value[0]?.price || 0);
+// ใช้ราคาดิบ ไม่ใช่ราคาที่รวมช่องแล้ว — เลือกขั้น 10 แล้ว ask ถูกปัดขึ้น bid ถูกปัดลง
+// สเปรดจะพองเป็นอย่างน้อยหนึ่งขั้นทั้งที่ตลาดจริงห่างกันแค่ 0.01
+// (และไม่หยิบแถวสุดท้ายแบบโค้ดรุ่นแรก ที่ได้ ask แพงสุด สเปรดกว้างเกินจริงหลายเท่า)
+function bestOf(rows, pick) {
+    const prices = rows.map(r => Number(r.price)).filter(p => Number.isFinite(p) && p > 0);
+    return prices.length ? pick(...prices) : 0;
+}
+const bestAsk = computed(() => bestOf(props.asks, Math.min));
+const bestBid = computed(() => bestOf(props.bids, Math.max));
+
+/**
+ * ทศนิยมที่ข้อมูลใช้จริง (≈ tick size ของคู่) — อ่านจากแถวดิบ
+ * ใช้กับราคากลาง สเปรด และเป็นเพดานของคอลัมน์ราคา
+ */
+const dataDecimals = computed(() => decimalsForPrices(
+    [...props.asks, ...props.bids].map(r => r.price),
+    refPrice.value,
+));
+
+/**
+ * ทศนิยมของคอลัมน์ราคา = ละเอียดเท่าขั้นที่เลือก แต่ไม่เกินที่ข้อมูลมีจริง
+ * XRP ขั้น 0.000001 → 4 ตำแหน่ง (1.4035 / 1.4036 แยกกันได้ ไม่ใช่ 1.40 ทั้งคู่)
+ * BTC ขั้น 10 → 0 ตำแหน่ง (70,010)
+ */
+const rowDecimals = computed(() => Math.min(decimalsUsed(step.value), dataDecimals.value));
 
 const spreadAmount = computed(() => {
     if (!bestAsk.value || !bestBid.value) return '0.00';
-    return (bestAsk.value - bestBid.value).toFixed(2);
+    // ของเดิม toFixed(2) → เหรียญราคาต่ำกว่าเซ็นต์ได้ "$0.00" ทุกครั้ง
+    return formatMarketPrice(bestAsk.value - bestBid.value, dataDecimals.value);
 });
 
 const spreadPercent = computed(() => {
@@ -126,18 +174,21 @@ const buyPressure = computed(() => {
 });
 
 const priceIsUp = computed(() => {
-    if (!groupedBids.value.length) return true;
-    return props.tickerPrice >= groupedBids.value[0].price;
+    if (!bestBid.value) return true;
+    return props.tickerPrice >= bestBid.value;
 });
 
 const hasData = computed(() => groupedAsks.value.length > 0 || groupedBids.value.length > 0);
 
 // ── การแสดงผล ───────────────────────────────────────────────────────────────
+/** ราคาในตาราง — ทศนิยมเท่ากันทั้งคอลัมน์ */
 function formatPrice(price) {
-    if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (price >= 1) return price.toFixed(2);
-    if (price >= 0.01) return price.toFixed(4);
-    return price.toFixed(8);
+    return formatMarketPrice(price, rowDecimals.value);
+}
+
+/** ราคากลาง — ละเอียดเต็มที่ข้อมูลมี ไม่ขึ้นกับขั้นที่เลือก */
+function formatMidPrice(price) {
+    return formatMarketPrice(price, dataDecimals.value);
 }
 
 function formatAmount(amount) {
@@ -149,7 +200,7 @@ function formatAmount(amount) {
 function formatStep(value) {
     if (value >= 1) return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
     // ตัด 0 ท้ายทิ้ง แต่เหลืออย่างน้อย 1 ตำแหน่ง
-    return value.toFixed(Math.min(8, Math.max(1, -Math.floor(Math.log10(value)))));
+    return value.toFixed(Math.min(MAX_PRICE_DECIMALS, Math.max(1, decimalsUsed(value))));
 }
 
 // ── การเลื่อนฝั่งขาย ────────────────────────────────────────────────────────
@@ -175,6 +226,8 @@ onMounted(pinAsks);
 
 /** ส่งราคา + ปริมาณสะสมถึงระดับที่คลิกไปให้ฟอร์มเทรด */
 function pick(row, side) {
+    // ราคา 0 / ติดลบ ห้ามหลุดเข้าฟอร์มเด็ดขาด — ด่านสุดท้ายเผื่อการปัดช่องพลาดในอนาคต
+    if (!(Number(row?.price) > 0)) return;
     emit('select-price', {
         price: row.price,
         amount: row.cumulative,
@@ -290,7 +343,7 @@ function pick(row, side) {
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-1.5">
                         <span :class="['text-base font-bold font-mono', priceIsUp ? 'text-trading-green' : 'text-trading-red']">
-                            ${{ formatPrice(tickerPrice) }}
+                            ${{ formatMidPrice(tickerPrice) }}
                         </span>
                         <svg v-if="priceIsUp" class="w-3.5 h-3.5 text-trading-green" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />

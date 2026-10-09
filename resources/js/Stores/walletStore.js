@@ -108,6 +108,14 @@ export const useWalletStore = defineStore('wallet', () => {
      * เป็นคนละเรื่องกับเชื่อมไม่ติด — ใช้งานกระเป๋าต่อได้ปกติ แค่ยังไม่รวมเป็นบัญชีเดียว
      */
     const linkError = ref(null);
+    /*
+     * เวลาที่เซ็นยืนยันความเป็นเจ้าของผ่านล่าสุด (ms) — null = ยังไม่เคยผ่านในหน้านี้
+     *
+     * address ถูกตั้งก่อนลายเซ็นเสร็จ หน้าจอที่ดู address จึงยิง API ไปก่อนแล้วเจอ 403
+     * พอผู้ใช้เซ็นผ่านก็ไม่มีอะไรบอกให้โหลดใหม่ — การ์ดค้างที่ "ยืนยันกระเป๋า" ให้เซ็นซ้ำอีกรอบ
+     * หน้าจอดูค่านี้แทน แล้วโหลดของที่ผูกกับกระเป๋าใหม่เองหลังเซ็นผ่าน
+     */
+    const verifiedAt = ref(null);
     const walletType = ref(null); // 'metamask', 'trustwallet', 'coinbase', 'okx', 'tpix_wallet'
     const tpixBalance = ref(null); // TPIX balance สำหรับ embedded wallet
     const isEmbedded = computed(() => walletType.value === 'tpix_wallet');
@@ -749,6 +757,9 @@ export const useWalletStore = defineStore('wallet', () => {
                 'Verification timed out'
             );
 
+            // เซ็นผ่านแล้ว — ปลุกหน้าจอที่เคยเจอ 403 ให้โหลดใหม่ (ดู verifiedAt ด้านบน)
+            if (verifyRes.data?.success) verifiedAt.value = Date.now();
+
             /*
              * เซ็นผ่านแล้วเซิร์ฟเวอร์เปิด session ให้ — ต้องดึง props ใหม่
              *
@@ -900,6 +911,7 @@ export const useWalletStore = defineStore('wallet', () => {
         isConnecting,
         error,
         linkError,
+        verifiedAt,
         walletType,
         supportedChains,
         showConnectModal,

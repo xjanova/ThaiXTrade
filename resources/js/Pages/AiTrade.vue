@@ -6,7 +6,7 @@
  * ระบบเดียวกับการ์ด AI TRADE ในหน้าเทรดและในแอพ TPIX (state มาจาก /api/v1/ai-bot/*)
  * Developed by Xman Studio
  */
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -77,8 +77,16 @@ function tierText(tier) {
 
 const unlocked = computed(() => bot.status.value?.unlocked_strategies ?? []);
 
-/** เหตุผลที่บอทออฟไลน์ทั้งที่สถานะ running — แปลรหัสจากเซิร์ฟเวอร์เป็นคำที่คนอ่านรู้เรื่อง */
+/**
+ * เหตุผลที่บอทออฟไลน์ทั้งที่สถานะ running — แปลรหัสจากเซิร์ฟเวอร์เป็นคำที่คนอ่านรู้เรื่อง
+ *
+ * เรื่องแพลน (หมดอายุ · ไม่รวมกลยุทธ์นี้) มาก่อน — เดิมตกไปเป็น "ระบบกำลังตรวจสอบ"
+ * ผู้ใช้จึงนั่งรอให้ระบบกู้คืนเอง ทั้งที่สิ่งที่ต้องทำคือต่ออายุแพลน
+ */
 function offlineReasonText(item) {
+    const planReason = bot.planReasonText(item);
+    if (planReason) return planReason;
+
     const key = { worker_silent: 'aiTrade.offlineWorkerSilent', bot_stale: 'aiTrade.offlineBotStale' }[item?.offline_reason];
     return key ? t(key) : t('aiTrade.offline');
 }
@@ -403,10 +411,20 @@ async function topup(code) {
     else flash('error', result.error.message);
 }
 
+/**
+ * รับเครดิตต้อนรับ — เซิร์ฟเวอร์บอกว่าครั้งนี้ได้จริงไหม (`granted`).
+ *
+ * เดิมขึ้น "รับเรียบร้อย" ทุกครั้งที่ตอบ success ซึ่งรวมกรณีเคยรับไปแล้วด้วย
+ * ผู้ใช้กดซ้ำแล้วเห็นว่าได้ แต่เครดิตไม่เพิ่ม — งงว่าหายไปไหน
+ */
 async function claimWelcome() {
+    playClickSound();
+
     const result = await bot.claimWelcome();
-    if (result.ok) flash('success', t('aiTrade.welcomeOk'));
-    else flash('error', result.error.message);
+
+    if (!result.ok) flash('error', result.error.message);
+    else if (result.data?.granted === false) showToast({ text: t('aiTrade.welcomeAlreadyClaimed'), type: 'info' });
+    else flash('success', t('aiTrade.welcomeOk'));
 }
 
 // ── บอท ─────────────────────────────────────────────────────────────────────
@@ -554,20 +572,11 @@ watch(() => walletStore.address, (address) => {
 /*
  * แพลนฟรี = หน้าเว็บนี้เป็นคนเดินบอท
  *
- * เริ่มลูปเมื่อมีบอทฟรีที่กำลังทำงาน และหยุดทันทีที่ออกจากหน้านี้
- * onUnmounted สำคัญมาก — ถ้าลืม ลูปจะเดินต่อหลังผู้ใช้ไปหน้าอื่นแล้ว
- * กลายเป็นบอทเดินอยู่เบื้องหลังโดยที่ผู้ใช้ไม่เห็นและไม่ได้ตั้งใจ
+ * ขอให้ตัวเดินบอทฟรีทำงานระหว่างที่หน้านี้อยู่บนจอ — เริ่มเองเมื่อมีบอทฟรีที่เปิดไว้
+ * และคืนสิทธิ์เองเมื่อออกจากหน้า (ถ้าลืม ลูปจะเดินต่อเบื้องหลังโดยที่ผู้ใช้ไม่ได้ตั้งใจ)
+ * ตัวจับเวลามีตัวเดียวทั้งแท็บ — การ์ดในหน้าเทรดขอแบบเดียวกัน ไม่มีทางเดินซ้อนกันสองตัว
  */
-watch(
-    () => bot.browserBots.value.length,
-    (count) => {
-        if (count > 0) bot.startBrowserLoop();
-        else bot.stopBrowserLoop();
-    },
-    { immediate: true }
-);
-
-onUnmounted(() => bot.stopBrowserLoop());
+bot.keepBrowserBotsRunning();
 </script>
 
 <template>
@@ -672,10 +681,12 @@ onUnmounted(() => bot.stopBrowserLoop());
                         <p class="text-2xl font-black font-mono text-white leading-none">
                             {{ bot.credits.value.toLocaleString() }}
                         </p>
+                        <!-- ซ่อนเมื่อรับไปแล้ว (เซิร์ฟเวอร์บอก) — ไม่ใช่โผล่กลับมาทุกครั้งที่เครดิตเป็นศูนย์ -->
                         <button
-                            v-if="bot.credits.value === 0"
+                            v-if="bot.welcomeAvailable.value"
                             type="button"
-                            class="mt-2 text-[11px] text-primary-400 hover:text-primary-300"
+                            class="mt-2 text-[11px] text-primary-400 hover:text-primary-300 disabled:opacity-50"
+                            :disabled="bot.isWorking.value"
                             @click="claimWelcome"
                         >
                             {{ t('aiTrade.welcomeFree') }} →
@@ -880,13 +891,17 @@ onUnmounted(() => bot.stopBrowserLoop());
                 <div class="min-w-0 flex-1">
                     <p class="text-sm font-semibold text-amber-300">
                         {{ t('aiTrade.browserBotRunning') }}
-                        <span class="text-dark-400 font-normal">· {{ bot.browserBots.value.length }} {{ t('aiTrade.botsUnit') }}</span>
+                        <span class="text-dark-400 font-normal">· {{ t('aiTrade.botsUnit', { count: bot.browserBots.value.length }) }}</span>
                     </p>
                     <p class="text-[11px] text-dark-300 mt-0.5">
                         {{ t('aiTrade.browserBotWarning') }}
                         <span v-if="bot.lastBrowserTick.value" class="text-dark-500 font-mono ml-1">
                             · {{ t('aiTrade.lastTickAt') }} {{ new Date(bot.lastBrowserTick.value).toLocaleTimeString() }}
                         </span>
+                    </p>
+                    <!-- รอบล่าสุดถูกปฏิเสธ — ต้องเห็น ไม่ใช่ปล่อยให้ดูเหมือนบอทเดินปกติ -->
+                    <p v-if="bot.browserTickError.value" class="text-[11px] text-trading-red mt-0.5">
+                        {{ t('aiTrade.tickFailed', { bot: bot.browserTickError.value.bot, message: bot.browserTickError.value.message }) }}
                     </p>
                 </div>
 
@@ -967,7 +982,11 @@ onUnmounted(() => bot.stopBrowserLoop());
                                     {{ item.pair }} · {{ bot.strategyLabel(item) }} · {{ item.timeframe }} ·
                                     SL {{ item.risk.stop_loss_pct }}% / TP {{ item.risk.take_profit_pct }}%
                                 </p>
-                                <p v-if="bot.isStale(item)" class="text-[11px] text-amber-300 mt-0.5">
+                                <!-- แพลนไม่ให้เดินแล้ว (หมดอายุ · ไม่รวมกลยุทธ์นี้ · เกินโควตา) — บอกว่าต้องทำอะไร -->
+                                <p v-if="bot.planReasonText(item)" class="text-[11px] text-amber-300 mt-0.5">
+                                    {{ bot.planReasonText(item) }}
+                                </p>
+                                <p v-else-if="bot.isStale(item)" class="text-[11px] text-amber-300 mt-0.5">
                                     {{ t('aiTrade.botStale', { n: bot.minutesSinceRun(item) }) }}
                                 </p>
 

@@ -8,10 +8,10 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed } from 'vue';
+import { ref, computed, watch, effectScope, getCurrentScope, onScopeDispose } from 'vue';
 import axios from 'axios';
 import { useWalletStore } from '@/Stores/walletStore';
-import { useTranslation } from '@/Composables/useTranslation';
+import { useTranslation, t } from '@/Composables/useTranslation';
 
 const catalog = ref(null);          // { plans, strategies, packs, rental_days, timeframes, limits }
 const status = ref(null);           // { credits, is_active, subscription, quota, bots, unlocked_strategies }
@@ -19,7 +19,15 @@ const isLoadingCatalog = ref(false);
 const isLoadingStatus = ref(false);
 const isWorking = ref(false);       // มี action ที่เขียนข้อมูลกำลังทำงาน
 const error = ref(null);
-/** true เมื่อ backend ตอบ WALLET_NOT_VERIFIED — ต้องเซ็นข้อความยืนยันกระเป๋าก่อน */
+/*
+ * โหลดสถานะครั้งล่าสุดล้มเหลว { code, message } — null เมื่อครั้งล่าสุดสำเร็จ
+ *
+ * แยกจาก `status` โดยตั้งใจ: เดิมโหลดพลาดครั้งเดียว (เช่นโดน 429) status กลายเป็น null
+ * แล้วการ์ดพลิกไปโชว์ "ยังไม่ได้เช่า" ทั้งที่ผู้ใช้เช่าอยู่ — ตอนนี้เก็บสถานะล่าสุดไว้
+ * แล้วบอกว่าโหลดใหม่ไม่สำเร็จพร้อมปุ่มลองใหม่แทน
+ */
+const statusError = ref(null);
+/** true เมื่อ backend ตอบ WALLET_NOT_VERIFIED / WALLET_IP_MISMATCH — ต้องเซ็นข้อความยืนยันกระเป๋าก่อน */
 const needsVerification = ref(false);
 
 // โหมดทดลอง — พอร์ตกระดาษที่ใช้ราคาจริง { account, positions, trades, summary }
@@ -63,25 +71,525 @@ const isLoadingMarketView = ref(false);
  * หน้าเว็บที่เปิดค้างอยู่เป็นคนสั่งให้บอทคิดทีละรอบแทน — ปิดแท็บแล้วหยุดจริงๆ
  * ซึ่งตรงกับที่โฆษณาไว้บนหน้าเช่า ไม่ใช่แค่คำพูด
  *
- * เก็บ interval ไว้ระดับโมดูล (ไม่ใช่ในคอมโพเนนต์) เพราะหน้าเทรดกับหน้า /ai-trade
- * เรียก composable นี้พร้อมกันได้ ถ้าเก็บแยกจะเดินบอทซ้อนกันสองตัว
+ * ตัวจับเวลามีได้ตัวเดียวทั้งแท็บ (ระดับโมดูล) — การ์ดในหน้าเทรดกับหน้า /ai-trade
+ * ต่างขอให้เดินผ่าน keepBrowserBotsRunning() แล้วนับจำนวนผู้ขอไว้ ถ้าต่างคนต่างเปิด
+ * ตัวจับเวลาเอง บอทจะถูกสั่งเดินซ้อนกันสองตัว · ถ้าต่างคนต่างปิด ฝ่ายที่ออกจากจอก่อน
+ * จะไปหยุดบอทของอีกฝ่ายที่ยังเปิดอยู่
  */
-const browserLoopId = ref(null);
 const browserLoopActive = ref(false);
 const lastBrowserTick = ref(null);
 const browserTickLog = ref([]);
+/** ข้อผิดพลาดล่าสุดของการสั่งบอทเดินจากหน้าเว็บ แยกรายบอท { [botId]: { code, message, bot, at } } */
+const browserTickErrors = ref({});
+const loopHolders = ref(0);
+let loopTimer = null;
+let cycleInFlight = false;
+
+/** รอบที่หน้าเว็บสั่งบอทฟรีเดิน (วินาที) — เท่ากับขั้นต่ำฝั่งเซิร์ฟเวอร์ (aibot.browser_tick_min_seconds) */
+const BROWSER_TICK_SECONDS = 30;
 
 let catalogPromise = null;
 
-function readError(err, fallback = 'ทำรายการไม่สำเร็จ') {
-    const payload = err?.response?.data?.error;
-    if (payload?.code === 'WALLET_NOT_VERIFIED') needsVerification.value = true;
+// ── ค่าที่ตัวเดินบอทใช้ร่วม — ต้องอยู่ระดับโมดูล ไม่ผูกกับคอมโพเนนต์ตัวไหน ───────────
+const bots = computed(() => status.value?.bots ?? []);
 
-    return { code: payload?.code || 'REQUEST_FAILED', message: payload?.message || fallback };
+/** แพลนที่ถืออยู่ให้เซิร์ฟเวอร์เดินบอทให้ไหม */
+const runsInCloud = computed(() => status.value?.subscription?.execution === 'cloud');
+
+/** บอทที่ต้องให้หน้าเว็บสั่งเดินเอง (แพลนฟรี + สถานะกำลังทำงาน) */
+const browserBots = computed(() =>
+    runsInCloud.value ? [] : bots.value.filter(b => b.status === 'running')
+);
+
+// ── กระเป๋าที่กำลังคุยด้วย ─────────────────────────────────────────────────────
+let walletStoreRef = null;
+let backgroundScope = null;
+
+function normalizeAddress(address) {
+    return address ? String(address).toLowerCase() : null;
 }
+
+function currentAddress() {
+    return walletStoreRef?.address || null;
+}
+
+/** คำตอบนี้ยังเป็นของกระเป๋าที่เปิดอยู่ไหม (ที่อยู่แบบ checksum กับตัวเล็กคือใบเดียวกัน) */
+function isCurrentWallet(address) {
+    return !!address && normalizeAddress(address) === normalizeAddress(currentAddress());
+}
+
+/*
+ * คำขอที่ผูกกับกระเป๋า — กันสามเรื่องในที่เดียว
+ *
+ *  1) คำตอบของกระเป๋าเดิมที่มาถึงหลังสลับกระเป๋า/ตัดการเชื่อมต่อ ต้องทิ้ง ไม่ใช่เขียนทับ
+ *     (เดิมหน้าเทรดปักไม้และเส้นทุน/SL/TP ของกระเป๋าก่อนหน้าค้างอยู่บนกราฟ)
+ *  2) คำขอเก่าที่ช้ากว่าคำขอใหม่ต้องไม่ทับผลที่ใหม่กว่า — นับเลขรอบต่อชนิด ใบล่าสุดชนะเสมอ
+ *  3) หลายจอขอข้อมูลชุดเดียวกันพร้อมกัน = ยิงครั้งเดียว (ไม่เผาโควตา rate limit เปล่าๆ)
+ *     ยกเว้น force — หลังเขียนข้อมูลต้องได้ของใหม่จริง ไม่ใช่ผลของคำขอที่ยิงไปก่อนเขียน
+ */
+const requestSeq = { status: 0, demo: 0, trades: 0, botWallet: 0 };
+const inflight = new Map();
+/** ข้อมูลชุดไหนที่หน้าจอเคยขอไว้แล้ว — หลังเซ็นยืนยันผ่านจะโหลดชุดเหล่านี้ใหม่ให้เอง */
+const requested = { demo: false, trades: null, botWallet: false };
+
+function track(kind, key, run, { force = false } = {}) {
+    const current = inflight.get(kind);
+    if (!force && current && current.key === key) return current.promise;
+
+    const seq = ++requestSeq[kind];
+    const isLatest = () => requestSeq[kind] === seq;
+
+    const promise = run(isLatest).finally(() => {
+        if (inflight.get(kind)?.promise === promise) inflight.delete(kind);
+    });
+
+    inflight.set(kind, { key, promise });
+
+    return promise;
+}
+
+/**
+ * แปลงข้อผิดพลาดจาก API เป็น { code, message } ที่ผู้ใช้อ่านได้.
+ *
+ * WALLET_IP_MISMATCH คือการยืนยันกระเป๋าที่ใช้ไม่ได้แล้ว (เปลี่ยนเน็ต/สลับ Wi-Fi เป็นมือถือ)
+ * แก้ด้วยการเซ็นใหม่เหมือน WALLET_NOT_VERIFIED ทุกอย่าง — เดิมไม่ถูกนับ ผู้ใช้จึงไม่เห็นปุ่มเซ็น
+ * เห็นแต่ข้อความผิดพลาดที่ไม่บอกว่าต้องทำอะไร
+ */
+function readError(err, fallback = null) {
+    const response = err?.response;
+    const payload = response?.data?.error;
+    const code = payload?.code;
+
+    if (code === 'WALLET_NOT_VERIFIED' || code === 'WALLET_IP_MISMATCH') needsVerification.value = true;
+
+    // ตัวจำกัดอัตราของ Laravel ไม่ได้ส่งรหัสของเรามา — ต้องดูจาก HTTP status เอง
+    if (response?.status === 429) return { code: 'RATE_LIMITED', message: t('aiTrade.errRateLimited') };
+    if (!response && err?.request) return { code: 'NETWORK', message: t('aiTrade.errNetwork') };
+
+    return { code: code || 'REQUEST_FAILED', message: payload?.message || fallback || t('aiTrade.errGeneric') };
+}
+
+/**
+ * สลับกระเป๋า/ตัดการเชื่อมต่อ = ล้างทุกอย่างที่ผูกกับกระเป๋าเดิมทันที.
+ *
+ * เดิม loadDemo/loadTrades แค่ return ออกไปเมื่อไม่มีกระเป๋า ของเดิมจึงค้างอยู่ — หน้าเทรด
+ * ยังวาดไม้ของบอทและเส้นทุน/SL/TP ของคนก่อนหน้า ผู้ใช้ที่ยืมเครื่องกันเห็นพอร์ตของอีกคน
+ */
+function resetWalletState() {
+    Object.keys(requestSeq).forEach((kind) => { requestSeq[kind]++; });
+    inflight.clear();
+    requested.demo = false;
+    requested.trades = null;
+    requested.botWallet = false;
+
+    status.value = null;
+    statusError.value = null;
+    error.value = null;
+    needsVerification.value = false;
+    demo.value = null;
+    trades.value = { pair: null, items: [] };
+    botWallet.value = null;
+    advice.value = null;
+    lastBrowserTick.value = null;
+    browserTickLog.value = [];
+    browserTickErrors.value = {};
+
+    // คำขอที่ค้างของกระเป๋าเดิมจะไม่ปลดธงพวกนี้ให้ (ไม่ใช่ใบล่าสุดแล้ว) — ปลดเองที่นี่
+    isLoadingStatus.value = false;
+    isLoadingDemo.value = false;
+    isLoadingTrades.value = false;
+    isLoadingBotWallet.value = false;
+}
+
+// ── โหลดข้อมูลที่ผูกกับกระเป๋า ─────────────────────────────────────────────────
+
+function loadStatus({ force = false } = {}) {
+    const address = currentAddress();
+
+    if (!address) {
+        status.value = null;
+        statusError.value = null;
+        return Promise.resolve(null);
+    }
+
+    return track('status', normalizeAddress(address), async (isLatest) => {
+        isLoadingStatus.value = true;
+
+        try {
+            const { data } = await axios.get('/api/v1/ai-bot/status', {
+                params: { wallet_address: address },
+            });
+
+            if (!isLatest()) return status.value;
+
+            if (data?.success) {
+                status.value = data.data;
+                statusError.value = null;
+                needsVerification.value = false;
+            }
+
+            return status.value;
+        } catch (err) {
+            if (!isLatest()) return status.value;
+
+            // 403 = ยังไม่ได้เซ็นยืนยันกระเป๋า (readError ตั้งธงให้) — ไม่ใช่ error ที่ต้องเด้งให้ผู้ใช้ตกใจ
+            // สถานะเดิมเก็บไว้ ไม่ล้างเป็น null (ดู statusError ด้านบน)
+            const parsed = readError(err, t('aiTrade.errLoadStatus'));
+            statusError.value = parsed;
+            error.value = parsed;
+
+            return null;
+        } finally {
+            if (isLatest()) isLoadingStatus.value = false;
+        }
+    }, { force });
+}
+
+/** โหลดพอร์ตทดลอง — เงิน ของที่ถือ ประวัติไม้ และสรุปผล */
+function loadDemo({ force = false } = {}) {
+    const address = currentAddress();
+
+    if (!address) {
+        demo.value = null;
+        return Promise.resolve(null);
+    }
+
+    requested.demo = true;
+
+    return track('demo', normalizeAddress(address), async (isLatest) => {
+        isLoadingDemo.value = true;
+
+        try {
+            const { data } = await axios.get('/api/v1/ai-bot/demo', {
+                params: { wallet_address: address },
+            });
+
+            if (!isLatest()) return demo.value;
+
+            demo.value = data?.data ?? null;
+            return demo.value;
+        } catch (err) {
+            // 403 = ยังไม่ได้เซ็นยืนยันกระเป๋า ไม่ใช่ error ที่ต้องเด้งเตือน (readError ตั้งธงให้)
+            if (isLatest()) readError(err);
+            return null;
+        } finally {
+            if (isLatest()) isLoadingDemo.value = false;
+        }
+    }, { force });
+}
+
+/** ไม้ของบอทในคู่ที่ระบุ (ทุกโหมด) — เรียงเก่าไปใหม่พร้อมปักกราฟได้ทันที */
+function loadTrades(pair, { limit = 300, force = false } = {}) {
+    const address = currentAddress();
+
+    if (!address || !pair) {
+        // ไม่มีกระเป๋า = ต้องไม่เหลือไม้ของใครค้างบนกราฟ
+        trades.value = { pair: null, items: [] };
+        return Promise.resolve([]);
+    }
+
+    requested.trades = { pair, limit };
+
+    return track('trades', `${normalizeAddress(address)}|${pair}|${limit}`, async (isLatest) => {
+        isLoadingTrades.value = true;
+
+        try {
+            const { data } = await axios.get('/api/v1/ai-bot/trades', {
+                params: { wallet_address: address, pair, limit },
+            });
+            const items = Array.isArray(data?.data) ? data.data : [];
+
+            if (isLatest()) trades.value = { pair, items };
+
+            return items;
+        } catch (err) {
+            if (isLatest()) readError(err);
+            return [];
+        } finally {
+            if (isLatest()) isLoadingTrades.value = false;
+        }
+    }, { force });
+}
+
+/** สถานะกระเป๋าบอท + ยอด + รายการโอน (wallet = null ถ้ายังไม่ได้สร้าง) */
+function loadBotWallet({ force = false } = {}) {
+    const address = currentAddress();
+
+    if (!address) {
+        botWallet.value = null;
+        return Promise.resolve(null);
+    }
+
+    requested.botWallet = true;
+
+    return track('botWallet', normalizeAddress(address), async (isLatest) => {
+        isLoadingBotWallet.value = true;
+
+        try {
+            const { data } = await axios.get('/api/v1/ai-bot/wallet', {
+                params: { wallet_address: address },
+            });
+
+            if (!isLatest()) return botWallet.value;
+
+            botWallet.value = data?.data ?? null;
+            return botWallet.value;
+        } catch (err) {
+            if (isLatest()) readError(err);
+            return null;
+        } finally {
+            if (isLatest()) isLoadingBotWallet.value = false;
+        }
+    }, { force });
+}
+
+/** ยิง action ที่เขียนข้อมูล แล้ว sync status กลับมา */
+async function mutate(request, { refresh = true } = {}) {
+    const address = currentAddress();
+    if (!address) return { ok: false, error: { code: 'NO_WALLET', message: t('aiTrade.connectPrompt') } };
+
+    isWorking.value = true;
+    error.value = null;
+
+    try {
+        const { data } = await request(address);
+
+        // สลับกระเป๋าระหว่างรอ — ผลนี้เป็นของกระเป๋าเดิม ห้ามเอาไปวาดทับของกระเป๋าใหม่
+        if (!isCurrentWallet(address)) {
+            return { ok: false, error: { code: 'WALLET_CHANGED', message: t('aiTrade.errWalletChanged') } };
+        }
+
+        // endpoint ที่คืน status เต็มอยู่แล้ว (subscribe/cancel) ใช้ค่านั้นเลย
+        if (data?.data?.bots && data?.data?.quota) {
+            // คำขอสถานะที่ยิงไปก่อนเขียนต้องไม่ทับค่าที่ใหม่กว่านี้
+            requestSeq.status++;
+            inflight.delete('status');
+            isLoadingStatus.value = false;
+            status.value = data.data;
+            statusError.value = null;
+        } else if (refresh) {
+            await loadStatus({ force: true });
+        }
+
+        return { ok: true, data: data?.data ?? null };
+    } catch (err) {
+        const parsed = readError(err);
+        error.value = parsed;
+        return { ok: false, error: parsed };
+    } finally {
+        isWorking.value = false;
+    }
+}
+
+// ── ตัวเดินบอทของแพลนฟรี ──────────────────────────────────────────────────────
+
+/** สั่งบอทตัวหนึ่งคิดหนึ่งรอบ — คืน { error: { code, message } } เมื่อเซิร์ฟเวอร์ปฏิเสธ */
+async function tickBot(id, address = currentAddress()) {
+    if (!address) return null;
+
+    try {
+        const { data } = await axios.post(`/api/v1/ai-bot/bots/${id}/tick`, {
+            wallet_address: address,
+        });
+        return data?.data ?? null;
+    } catch (err) {
+        // บอทตัวเดียวพังต้องไม่หยุดลูปทั้งหมด
+        return { error: readError(err, t('aiTrade.errTick')) };
+    }
+}
+
+function pushTickLog(entry) {
+    browserTickLog.value = [entry, ...browserTickLog.value].slice(0, 20);
+}
+
+function recordTickError(item, failure) {
+    const at = new Date().toISOString();
+
+    browserTickErrors.value = {
+        ...browserTickErrors.value,
+        [item.id]: { ...failure, bot: item.name, at },
+    };
+    pushTickLog({ at, bot: item.name, error: failure.message });
+}
+
+function clearTickError(id) {
+    if (!(id in browserTickErrors.value)) return;
+
+    const next = { ...browserTickErrors.value };
+    delete next[id];
+    browserTickErrors.value = next;
+}
+
+/** เอาข้อมูลบอทที่เซิร์ฟเวอร์คืนมาหลังเดินรอบ แทนแถวเดิมในสถานะ (ไฟออนไลน์/เหตุผลล่าสุดสดทันที) */
+function mergeBot(updated) {
+    if (!updated?.id || !Array.isArray(status.value?.bots)) return;
+
+    status.value = {
+        ...status.value,
+        bots: status.value.bots.map(b => (b.id === updated.id ? updated : b)),
+    };
+}
+
+/** เดินบอทฟรีทุกตัวหนึ่งรอบ */
+async function runBrowserCycle() {
+    // รอบก่อนยังไม่จบ (เน็ตช้า/ตลาดตอบช้า) — ไม่ซ้อนรอบ
+    if (cycleInFlight) return;
+
+    const address = currentAddress();
+    const targets = browserBots.value;
+
+    if (!address || !targets.length) return;
+
+    cycleInFlight = true;
+    let needsStatus = false;
+
+    try {
+        for (const item of targets) {
+            const result = await tickBot(item.id, address);
+
+            // สลับกระเป๋ากลางรอบ — ผลของกระเป๋าเดิมทิ้งทั้งหมด
+            if (!isCurrentWallet(address)) return;
+            if (!result) continue;
+
+            /*
+             * ⚠️ ต้องเช็ค error ก่อน skipped
+             *
+             * tickBot คืน { error } เมื่อพลาด ซึ่ง `!result.skipped` เป็นจริงเสมอ — เดิมจึงนับเป็น
+             * "เดินสำเร็จ" ทั้ง STRATEGY_LOCKED / BOT_LIMIT / BOT_BANNED / 429 / IP เปลี่ยน
+             * หน้าจอโชว์เวลาเดินรอบล่าสุดสดใหม่ทุก 30 วิ ทั้งที่บอทไม่ได้คิดเลยสักรอบ
+             */
+            if (result.error) {
+                recordTickError(item, result.error);
+
+                // โดนจำกัดอัตรา/เน็ตหลุด = ยิงต่อก็พลาดอีก รอรอบหน้า
+                if (result.error.code === 'RATE_LIMITED' || result.error.code === 'NETWORK') break;
+
+                // อย่างอื่น (แพลนหมด · โควตาเกิน · ถูกแบน) เซิร์ฟเวอร์อาจพักบอทไปแล้ว — ดึงสถานะใหม่
+                needsStatus = true;
+                continue;
+            }
+
+            clearTickError(item.id);
+
+            if (result.skipped) continue;
+
+            lastBrowserTick.value = new Date().toISOString();
+            pushTickLog({ at: lastBrowserTick.value, bot: item.name, action: result.action, reason: result.reason });
+            mergeBot(result.bot);
+        }
+    } finally {
+        cycleInFlight = false;
+    }
+
+    if (!isCurrentWallet(address)) return;
+
+    if (needsStatus) await loadStatus({ force: true });
+
+    // สถานะบอทเปลี่ยนหลังเดินรอบ — ดึงพอร์ตทดลองใหม่ให้ตัวเลขตรง
+    await loadDemo();
+}
+
+function startLoopTimer() {
+    if (loopTimer !== null) return;
+
+    browserLoopActive.value = true;
+    runBrowserCycle();
+    loopTimer = window.setInterval(runBrowserCycle, BROWSER_TICK_SECONDS * 1000);
+}
+
+function stopLoopTimer() {
+    if (loopTimer !== null) {
+        window.clearInterval(loopTimer);
+        loopTimer = null;
+    }
+    browserLoopActive.value = false;
+}
+
+/**
+ * ขอให้ตัวเดินบอทฟรีทำงานตราบที่คอมโพเนนต์นี้ยังอยู่บนจอ — เรียกใน setup.
+ *
+ * ตัวจับเวลามีตัวเดียวทั้งแท็บ เดินเมื่อ "มีคนขอ" และ "มีบอทฟรีที่เปิดไว้" เท่านั้น
+ * คอมโพเนนต์ถูกถอดออกจากจอแล้วคืนสิทธิ์ให้เอง — ถ้าลืม ลูปจะเดินต่อหลังผู้ใช้ไปหน้าอื่น
+ * กลายเป็นบอทเดินอยู่เบื้องหลังโดยที่ผู้ใช้ไม่เห็นและไม่ได้ตั้งใจ
+ *
+ * เดิมมีแค่หน้า /ai-trade ที่เดินบอท — บอทแพลนฟรีที่กดเริ่มจากการ์ดในหน้าเทรดจึงไม่เคย
+ * ได้คิดเลย การ์ดโชว์เขียวราว 20 นาทีแล้วกลายเป็นแดง "ออฟไลน์" โดยไม่มีเหตุผล
+ *
+ * @returns {Function} คืนสิทธิ์ก่อนเวลา (ไม่จำเป็นต้องเรียกถ้าอยู่ใน setup)
+ */
+function keepBrowserBotsRunning() {
+    loopHolders.value += 1;
+    let released = false;
+
+    const release = () => {
+        if (released) return;
+        released = true;
+        loopHolders.value = Math.max(0, loopHolders.value - 1);
+    };
+
+    if (getCurrentScope()) onScopeDispose(release);
+
+    return release;
+}
+
+/** หลังเซ็นยืนยันผ่าน — โหลดทุกชุดที่หน้าจอเคยขอแล้วโดน 403 ใหม่ */
+function refreshAfterVerification() {
+    if (!currentAddress()) return;
+
+    loadStatus();
+    if (requested.demo) loadDemo();
+    if (requested.trades) loadTrades(requested.trades.pair, { limit: requested.trades.limit });
+    if (requested.botWallet) loadBotWallet();
+}
+
+/**
+ * ตัวเฝ้าระดับโมดูล — ติดตั้งครั้งเดียวต่อแท็บ ไม่ผูกกับคอมโพเนนต์ตัวไหน.
+ *
+ * ถ้าให้แต่ละคอมโพเนนต์เฝ้าเอง: การ์ด + หน้า + แผงย่อยเฝ้าซ้อนกันหลายชุด ยิงคำขอซ้ำ
+ * และตัวที่ถูกถอดออกจากจอไปแล้วจะพาตัวเฝ้าหายไปด้วย
+ */
+function installBackgroundWatchers(store) {
+    walletStoreRef = store;
+
+    if (backgroundScope) return;
+
+    backgroundScope = effectScope(true);
+    backgroundScope.run(() => {
+        // สลับกระเป๋า/ตัดการเชื่อมต่อ → ล้างของเดิม "ทันที" ก่อนตัวเฝ้าของคอมโพเนนต์จะโหลดของใหม่
+        watch(
+            () => normalizeAddress(store.address),
+            (next, prev) => { if (next !== prev) resetWalletState(); },
+            { flush: 'sync' }
+        );
+
+        /*
+         * เซ็นยืนยันผ่าน → โหลดใหม่เอง
+         *
+         * address ถูกตั้งก่อนลายเซ็นเสร็จ ตอนเชื่อมกระเป๋าครั้งแรกทุกจอจึงยิงไปก่อนแล้วได้ 403
+         * เดิมเซ็นผ่านแล้วไม่มีใครโหลดใหม่ การ์ดค้างที่ "ยืนยันกระเป๋า" — ผู้ใช้ต้องเซ็นซ้ำอีกรอบ
+         */
+        watch(() => store.verifiedAt, (at) => { if (at) refreshAfterVerification(); });
+
+        watch(
+            () => loopHolders.value > 0 && browserBots.value.length > 0 && !!normalizeAddress(store.address),
+            (shouldRun) => (shouldRun ? startLoopTimer() : stopLoopTimer()),
+            { immediate: true }
+        );
+    });
+}
+
+/** ข้อความของรหัสเหตุผลที่แพลนไม่ให้บอทเดิน (จาก pause_reason / offline_reason) */
+const PLAN_REASON_KEYS = {
+    plan_expired: 'aiTrade.planReasonExpired',
+    plan_locked: 'aiTrade.planReasonLocked',
+    plan_quota: 'aiTrade.planReasonQuota',
+    strategy_retired: 'aiTrade.planReasonRetired',
+};
 
 export function useAiBot() {
     const walletStore = useWalletStore();
+    installBackgroundWatchers(walletStore);
+
     const { locale } = useTranslation();
 
     /**
@@ -118,59 +626,6 @@ export function useAiBot() {
         return catalogPromise;
     }
 
-    async function loadStatus() {
-        if (!wallet.value) {
-            status.value = null;
-            return null;
-        }
-
-        isLoadingStatus.value = true;
-        try {
-            const { data } = await axios.get('/api/v1/ai-bot/status', {
-                params: { wallet_address: wallet.value },
-            });
-            if (data?.success) {
-                status.value = data.data;
-                needsVerification.value = false;
-            }
-            return status.value;
-        } catch (err) {
-            // 403 = ยังไม่ได้เซ็นยืนยันกระเป๋า — ไม่ใช่ error ที่ต้องเด้งให้ผู้ใช้ตกใจ
-            error.value = readError(err, 'โหลดสถานะบอทไม่สำเร็จ');
-            status.value = null;
-            return null;
-        } finally {
-            isLoadingStatus.value = false;
-        }
-    }
-
-    /** ยิง action ที่เขียนข้อมูล แล้ว sync status กลับมา */
-    async function mutate(request, { refresh = true } = {}) {
-        if (!wallet.value) return { ok: false, error: { code: 'NO_WALLET', message: 'กรุณาเชื่อมกระเป๋าก่อน' } };
-
-        isWorking.value = true;
-        error.value = null;
-
-        try {
-            const { data } = await request(wallet.value);
-
-            // endpoint ที่คืน status เต็มอยู่แล้ว (subscribe/cancel) ใช้ค่านั้นเลย
-            if (data?.data?.bots && data?.data?.quota) {
-                status.value = data.data;
-            } else if (refresh) {
-                await loadStatus();
-            }
-
-            return { ok: true, data: data?.data ?? null };
-        } catch (err) {
-            const parsed = readError(err);
-            error.value = parsed;
-            return { ok: false, error: parsed };
-        } finally {
-            isWorking.value = false;
-        }
-    }
-
     const subscribe = (planCode, days) => mutate(address =>
         axios.post('/api/v1/ai-bot/subscribe', { wallet_address: address, plan_code: planCode, days })
     );
@@ -179,6 +634,7 @@ export function useAiBot() {
         axios.post('/api/v1/ai-bot/cancel', { wallet_address: address })
     );
 
+    /** รับโบนัสต้อนรับ — ผลมี `granted` (false = เคยรับไปแล้ว ครั้งนี้ไม่ได้เพิ่ม) */
     const claimWelcome = () => mutate(address =>
         axios.post('/api/v1/ai-bot/welcome', { wallet_address: address })
     );
@@ -210,80 +666,24 @@ export function useAiBot() {
 
     // ── โหมดทดลอง ────────────────────────────────────────────────────────────
 
-    /** โหลดพอร์ตทดลอง — เงิน ของที่ถือ ประวัติไม้ และสรุปผล */
-    async function loadDemo() {
-        if (!wallet.value) return null;
-
-        isLoadingDemo.value = true;
-
-        try {
-            const { data } = await axios.get('/api/v1/ai-bot/demo', {
-                params: { wallet_address: wallet.value },
-            });
-            demo.value = data?.data ?? null;
-            return demo.value;
-        } catch (err) {
-            // 403 = ยังไม่ได้เซ็นยืนยันกระเป๋า ไม่ใช่ error ที่ต้องเด้งเตือน
-            if (err?.response?.status === 403) needsVerification.value = true;
-            return null;
-        } finally {
-            isLoadingDemo.value = false;
-        }
-    }
-
     /** ล้างพอร์ตทดลองกลับไปตั้งต้น (จำกัดจำนวนครั้งต่อวันที่ฝั่งเซิร์ฟเวอร์) */
     async function resetDemo() {
         const result = await mutate(address =>
             axios.post('/api/v1/ai-bot/demo/reset', { wallet_address: address }),
         { refresh: false });
 
-        if (result.ok) demo.value = result.data;
+        if (result.ok) {
+            // คำขอพอร์ตที่ยิงไปก่อนล้างต้องไม่ทับพอร์ตที่เพิ่งล้าง
+            requestSeq.demo++;
+            inflight.delete('demo');
+            isLoadingDemo.value = false;
+            demo.value = result.data;
+        }
 
         return result;
     }
 
-    /** ไม้ของบอทในคู่ที่ระบุ (ทุกโหมด) — เรียงเก่าไปใหม่พร้อมปักกราฟได้ทันที */
-    async function loadTrades(pair, { limit = 300 } = {}) {
-        if (!wallet.value || !pair) return [];
-
-        isLoadingTrades.value = true;
-
-        try {
-            const { data } = await axios.get('/api/v1/ai-bot/trades', {
-                params: { wallet_address: wallet.value, pair, limit },
-            });
-            const items = Array.isArray(data?.data) ? data.data : [];
-            trades.value = { pair, items };
-            return items;
-        } catch (err) {
-            if (err?.response?.status === 403) needsVerification.value = true;
-            return [];
-        } finally {
-            isLoadingTrades.value = false;
-        }
-    }
-
     // ── กระเป๋าบอท ───────────────────────────────────────────────────────────
-
-    /** สถานะกระเป๋าบอท + ยอด + รายการโอน (wallet = null ถ้ายังไม่ได้สร้าง) */
-    async function loadBotWallet() {
-        if (!wallet.value) return null;
-
-        isLoadingBotWallet.value = true;
-
-        try {
-            const { data } = await axios.get('/api/v1/ai-bot/wallet', {
-                params: { wallet_address: wallet.value },
-            });
-            botWallet.value = data?.data ?? null;
-            return botWallet.value;
-        } catch (err) {
-            if (err?.response?.status === 403) needsVerification.value = true;
-            return null;
-        } finally {
-            isLoadingBotWallet.value = false;
-        }
-    }
 
     /** ผลจาก endpoint ของกระเป๋าบอทมีรูป { wallet?, transfers? } — รวมเข้า state โดยไม่ทับส่วนที่ไม่ได้ส่งมา */
     function mergeBotWallet(payload) {
@@ -295,113 +695,56 @@ export function useAiBot() {
         };
     }
 
-    async function createBotWallet() {
-        const result = await mutate(address =>
-            axios.post('/api/v1/ai-bot/wallet', { wallet_address: address }),
-        { refresh: false });
+    /**
+     * รวมผลเข้า state แล้วโหลดกระเป๋าใหม่ถ้าเซิร์ฟเวอร์ไม่ได้ส่งตัวกระเป๋ามา.
+     *
+     * ถอน/ยกเลิกถอนคืนแค่รายการโอน ไม่มี `wallet` — เดิม has_pending_withdraw กับยอดจึงค้าง
+     * ค่าก่อนถอน ปุ่มถอนยังกดได้ทั้งที่มีคำขอค้างอยู่ จนกว่าผู้ใช้จะรีเฟรชหน้าเอง
+     */
+    async function applyBotWalletResult(result) {
+        if (!result.ok) return result;
 
-        if (result.ok) mergeBotWallet(result.data);
+        mergeBotWallet(result.data);
+        if (!result.data?.wallet) await loadBotWallet({ force: true });
 
         return result;
     }
 
+    async function createBotWallet() {
+        return applyBotWalletResult(await mutate(address =>
+            axios.post('/api/v1/ai-bot/wallet', { wallet_address: address }),
+        { refresh: false }));
+    }
+
     async function refreshBotWallet() {
-        const result = await mutate(address =>
+        return applyBotWalletResult(await mutate(address =>
             axios.post('/api/v1/ai-bot/wallet/refresh', { wallet_address: address }),
-        { refresh: false });
-
-        if (result.ok) mergeBotWallet(result.data);
-
-        return result;
+        { refresh: false }));
     }
 
     /** ขอถอนกลับกระเป๋าของตัวเอง — ไม่มีช่องปลายทางโดยตั้งใจ */
     async function withdrawBotWallet(asset, amount) {
-        const result = await mutate(address =>
+        return applyBotWalletResult(await mutate(address =>
             axios.post('/api/v1/ai-bot/wallet/withdraw', { wallet_address: address, asset, amount }),
-        { refresh: false });
-
-        if (result.ok) mergeBotWallet(result.data);
-
-        return result;
+        { refresh: false }));
     }
 
     async function cancelBotWalletWithdraw(id) {
-        const result = await mutate(address =>
+        return applyBotWalletResult(await mutate(address =>
             axios.post(`/api/v1/ai-bot/wallet/withdraw/${id}/cancel`, { wallet_address: address }),
-        { refresh: false });
-
-        if (result.ok) mergeBotWallet(result.data);
-
-        return result;
+        { refresh: false }));
     }
 
-    // ── ตัวเดินบอทของแพลนฟรี ────────────────────────────────────────────────
+    /** ข้อผิดพลาดล่าสุดของตัวเดินบอทฟรี (ตัวที่ใหม่สุด) — null เมื่อทุกตัวเดินผ่าน */
+    const browserTickError = computed(() => {
+        const list = Object.values(browserTickErrors.value);
+        if (!list.length) return null;
+        return list.reduce((latest, item) => (item.at > latest.at ? item : latest));
+    });
 
-    /** แพลนที่ถืออยู่ให้เซิร์ฟเวอร์เดินบอทให้ไหม */
-    const runsInCloud = computed(() => status.value?.subscription?.execution === 'cloud');
-
-    /** บอทที่ต้องให้หน้าเว็บสั่งเดินเอง (แพลนฟรี + สถานะกำลังทำงาน) */
-    const browserBots = computed(() =>
-        runsInCloud.value ? [] : bots.value.filter(b => b.status === 'running')
-    );
-
-    /** สั่งบอทตัวหนึ่งคิดหนึ่งรอบ */
-    async function tickBot(id) {
-        if (!wallet.value) return null;
-
-        try {
-            const { data } = await axios.post(`/api/v1/ai-bot/bots/${id}/tick`, {
-                wallet_address: wallet.value,
-            });
-            return data?.data ?? null;
-        } catch (err) {
-            // บอทตัวเดียวพังต้องไม่หยุดลูปทั้งหมด
-            return { error: readError(err).message };
-        }
-    }
-
-    /** เดินบอทฟรีทุกตัวหนึ่งรอบ */
-    async function runBrowserCycle() {
-        const targets = browserBots.value;
-
-        if (!targets.length) return;
-
-        for (const bot of targets) {
-            const result = await tickBot(bot.id);
-
-            if (result && !result.skipped) {
-                lastBrowserTick.value = new Date().toISOString();
-                browserTickLog.value = [
-                    { at: lastBrowserTick.value, bot: bot.name, action: result.action, reason: result.reason },
-                    ...browserTickLog.value,
-                ].slice(0, 20);
-            }
-        }
-
-        // สถานะบอทเปลี่ยนหลังเดินรอบ — ดึงพอร์ตทดลองใหม่ให้ตัวเลขตรง
-        await loadDemo();
-    }
-
-    /**
-     * เริ่มเดินบอทฟรีจากหน้าเว็บ.
-     *
-     * ปลอดภัยที่จะเรียกซ้ำ — ถ้าเดินอยู่แล้วจะไม่สร้างตัวจับเวลาใหม่
-     */
-    function startBrowserLoop(intervalSeconds = 30) {
-        if (browserLoopId.value !== null) return;
-
-        browserLoopActive.value = true;
-        runBrowserCycle();
-        browserLoopId.value = window.setInterval(runBrowserCycle, Math.max(15, intervalSeconds) * 1000);
-    }
-
-    function stopBrowserLoop() {
-        if (browserLoopId.value !== null) {
-            window.clearInterval(browserLoopId.value);
-            browserLoopId.value = null;
-        }
-        browserLoopActive.value = false;
+    /** ข้อผิดพลาดของการสั่งบอทตัวนี้เดินจากหน้าเว็บรอบล่าสุด (null = ผ่าน) */
+    function tickErrorFor(id) {
+        return browserTickErrors.value[id] ?? null;
     }
 
     /** ความเสี่ยงล่าสุดของคู่เทรด + พาดหัวข่าวที่ทำให้บอทตัดสินใจแบบนั้น */
@@ -424,15 +767,15 @@ export function useAiBot() {
      */
     async function askAdvice() {
         if (!wallet.value) {
-            return { ok: false, reason: 'กรุณาเชื่อมกระเป๋าก่อน' };
+            return { ok: false, reason: t('aiTrade.advisorNeedWallet') };
         }
 
         isAskingAdvice.value = true;
         try {
             const { data } = await axios.post('/api/v1/ai-bot/advice', { wallet_address: wallet.value });
-            advice.value = data?.data ?? { ok: false, reason: 'ไม่ได้รับคำตอบจากเซิร์ฟเวอร์' };
+            advice.value = data?.data ?? { ok: false, reason: t('aiTrade.errNoResponse') };
         } catch (err) {
-            const { message } = readError(err, 'ขอคำแนะนำไม่สำเร็จ');
+            const { message } = readError(err, t('aiTrade.errAdvice'));
             advice.value = { ok: false, reason: message };
         } finally {
             isAskingAdvice.value = false;
@@ -445,7 +788,6 @@ export function useAiBot() {
     const credits = computed(() => status.value?.credits ?? 0);
     const isActive = computed(() => !!status.value?.is_active);
     const subscription = computed(() => status.value?.subscription ?? null);
-    const bots = computed(() => status.value?.bots ?? []);
     const runningBots = computed(() => bots.value.filter(b => b.status === 'running'));
     const plans = computed(() => catalog.value?.plans ?? []);
     const strategies = computed(() => catalog.value?.strategies ?? []);
@@ -469,6 +811,19 @@ export function useAiBot() {
 
     /** เช่าได้ไหมในตอนนี้ — ปิดขายอยู่และไม่ใช่ทีมงาน = ยังเช่าไม่ได้ */
     const canRent = computed(() => salesOpen.value || isAdminWallet.value);
+
+    /**
+     * ยังรับโบนัสต้อนรับได้ไหม — เซิร์ฟเวอร์บอกว่ารับไปแล้วหรือยัง
+     *
+     * เดิมดูแค่ "เครดิตเป็นศูนย์" ซึ่งจริงอีกครั้งหลังใช้เครดิตหมด ปุ่มจึงโผล่กลับมาให้กดรับซ้ำ
+     * (สถานะจากเซิร์ฟเวอร์รุ่นเก่าที่ยังไม่มีธงนี้ ถอยไปใช้เกณฑ์เดิม)
+     */
+    const welcomeAvailable = computed(() => {
+        const s = status.value;
+        if (!s) return false;
+        if (typeof s.welcome_claimed !== 'boolean') return credits.value === 0;
+        return !s.welcome_claimed && Number(s.welcome_bonus ?? 0) > 0;
+    });
 
     /**
      * บอทตัวนี้เงียบไปนานผิดปกติไหม (นาที) — null เมื่อยังไม่เคยเดินหรือไม่ได้เปิดอยู่
@@ -495,8 +850,23 @@ export function useAiBot() {
         return minutes !== null && minutes >= 10;
     }
 
-    // มูลค่าพอร์ตทดลอง = เงินสด + ต้นทุนของที่ถืออยู่
-    // ใช้ต้นทุน ไม่ใช่ราคาตลาด เพราะราคาตลาดเปลี่ยนทุกวินาทีและยังไม่ใช่เงินจริง
+    /**
+     * ทำไมแพลนไม่ให้บอทตัวนี้เดิน — ข้อความตามภาษา หรือ '' เมื่อไม่ใช่เรื่องของแพลน
+     *
+     * ดูทั้งบอทที่ระบบพักไว้ (pause_reason) และบอทที่ยังเปิดอยู่แต่แพลนไม่ให้เดินแล้ว
+     * (offline_reason) — แยกให้ออกจาก "วอร์กเกอร์เงียบ" ที่ระบบกู้คืนเอง ผู้ใช้ต้องรู้ว่า
+     * ครั้งนี้ต้องต่ออายุแพลน ไม่ใช่นั่งรอ
+     */
+    function planReasonText(item) {
+        if (!item) return '';
+
+        const code = item.status === 'paused' ? item.pause_reason
+            : item.status === 'running' ? item.offline_reason : null;
+        const key = PLAN_REASON_KEYS[code];
+
+        return key ? t(key) : '';
+    }
+
     /*
      * มูลค่าพอร์ตทดลอง = เงินสด + ของที่ถืออยู่ "ตีด้วยราคาตลาด"
      *
@@ -522,7 +892,6 @@ export function useAiBot() {
     /** กำไร/ขาดทุนของไม้ที่ยังไม่ปิด — ส่วนที่เคยถูกซ่อนไว้ทั้งหมด */
     const demoUnrealized = computed(() => Number(demo.value?.summary?.unrealized_pnl ?? 0));
 
-    /** กำไรขาดทุนสะสมของพอร์ตทดลองเทียบทุนตั้งต้น (เฉพาะไม้ที่ปิดแล้ว) */
     /** กำไร/ขาดทุนที่ปิดไม้แล้ว (ตัวเลขที่ "เกิดขึ้นจริง" ในพอร์ตทดลอง) */
     const demoPnl = computed(() => Number(demo.value?.summary?.realized_pnl ?? 0));
 
@@ -606,7 +975,7 @@ export function useAiBot() {
 
     return {
         // state
-        catalog, status, error, needsVerification,
+        catalog, status, statusError, error, needsVerification,
         marketView, isLoadingMarketView,
         isLoadingCatalog, isLoadingStatus, isWorking,
         wallet, isConnected,
@@ -614,11 +983,12 @@ export function useAiBot() {
         trades, isLoadingTrades,
         botWallet, isLoadingBotWallet,
         advice, isAskingAdvice,
-        browserLoopActive, lastBrowserTick, browserTickLog,
+        browserLoopActive, lastBrowserTick, browserTickLog, browserTickError,
         // derived
         credits, isActive, subscription, bots, runningBots,
         plans, strategies, packs, rentalDays, quotaText,
-        liveEnabled, topupEnabled, salesOpen, isAdminWallet, canRent, minutesSinceRun, isStale,
+        liveEnabled, topupEnabled, salesOpen, isAdminWallet, canRent, welcomeAvailable,
+        minutesSinceRun, isStale, planReasonText, tickErrorFor,
         demoEquity, demoPnl, demoPnlPct, demoResetsLeft, demoUnrealized, demoTotalPnl,
         runsInCloud, browserBots,
         // actions
@@ -627,7 +997,7 @@ export function useAiBot() {
         loadDemo, resetDemo, loadRisk, askAdvice, loadMarketView,
         loadTrades,
         loadBotWallet, createBotWallet, refreshBotWallet, withdrawBotWallet, cancelBotWalletWithdraw,
-        startBrowserLoop, stopBrowserLoop, tickBot,
+        keepBrowserBotsRunning, tickBot,
         costOf, canAfford, strategyByCode,
         // ป้ายชื่อตามภาษา
         planLabel, planDescription, planFeatures, strategyLabel, strategyDescription,

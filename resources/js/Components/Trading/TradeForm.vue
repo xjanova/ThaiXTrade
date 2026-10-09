@@ -17,6 +17,7 @@ import axios from 'axios';
 import OrderFeeNotice from '@/Components/Trading/OrderFeeNotice.vue';
 import TpixTopupModal from '@/Components/Trading/TpixTopupModal.vue';
 import { useTradingFee } from '@/Composables/useTradingFee';
+import { preferredSlippage } from '@/utils/tradeSettings';
 
 const props = defineProps({
     symbol: { type: String, default: 'BTC/USDT' },
@@ -82,9 +83,12 @@ const total = ref('');
 const sliderValue = ref(0);
 const priceFlash = ref(false);
 
-/** slippage ที่ผู้ใช้เลือกเอง สำหรับ market order บน BSC (null = ใช้ค่าจาก backend) */
+/**
+ * slippage ที่ผู้ใช้เลือกเอง สำหรับ market order บน BSC (null = ใช้ค่าจาก backend)
+ * ค่าเริ่มต้นมาจากหน้าตั้งค่า ถ้าผู้ใช้เคยตั้งไว้ — เดิมตั้งแล้วไม่มีผลอะไรเลย
+ */
 const slippageOptions = [0.5, 1, 2, 5];
-const slippage = ref(null);
+const slippage = ref(preferredSlippage());
 
 let flashTimer = null;
 
@@ -111,12 +115,14 @@ watch(() => props.mode, (m) => {
 }, { immediate: true });
 
 // แจ้ง parent เมื่อค่าในฟอร์มเปลี่ยน — ใช้ขอ quote จริงจาก router (parent debounce เอง)
-watch([activeTab, orderType, amount, total], () => {
+// ส่ง slippage ด้วย: "ได้รับอย่างน้อย" ต้องคิดจากค่าที่เลือก ไม่ใช่ค่าปริยายของ backend
+watch([activeTab, orderType, amount, total, slippage], () => {
     emit('form-change', {
         side: activeTab.value,
         type: orderType.value,
         amount: amount.value,
         total: total.value,
+        slippage: slippage.value,
     });
 });
 
@@ -125,14 +131,47 @@ const sliderPercentages = [0, 25, 50, 75, 100];
 const baseSymbol = computed(() => props.symbol.split('/')[0] || 'BTC');
 const quoteSymbol = computed(() => props.symbol.split('/')[1] || 'USDT');
 
+const toNumber = (v) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0;
+
+/**
+ * ตัดทศนิยมทิ้ง ไม่ปัดขึ้น
+ *
+ * ⚠️ เดิมใช้ toFixed() ซึ่งปัดขึ้น — ยอด 1.2345675 กลายเป็น 1.234568 แล้วปุ่ม 100%
+ *    ขายเกินยอดจริง หรือ Total ปัด 2 ตำแหน่งขึ้นจนเกินยอด USDT → ขึ้นเตือนยอดไม่พอ
+ *    ทั้งที่กด 100% เอง และธุรกรรมโอนค่าธรรมเนียมรอบสอง revert เงียบ
+ */
+const truncDecimals = (value, decimals) => {
+    // ตัดจาก "ตัวหนังสือ" ของตัวเลข ไม่ใช่จากค่า float — 1.234567 เก็บจริงเป็น 1.2345669999…
+    // ตัดจาก float จะหายไป 1 หน่วยทุกครั้ง (String() ของ JS ให้รูปทศนิยมที่สั้นและตรงที่สุดอยู่แล้ว)
+    let text = String(value ?? '').replace(/,/g, '').trim();
+    if (!/^\d+(\.\d+)?$/.test(text)) {
+        const n = Number(text);
+        if (!Number.isFinite(n) || n <= 0) return 0;
+        text = n.toFixed(12);   // รูป 1e-7 → ทศนิยมธรรมดา
+    }
+    const [int, frac = ''] = text.split('.');
+    return Number(`${int}.${frac.slice(0, decimals)}`) || 0;
+};
+
+/**
+ * กันเหรียญหลักของเชนไว้จ่ายค่าแก๊ส — ขาย BNB 100% แล้วไม่เหลือค่าแก๊ส
+ * ธุรกรรมสวอปและธุรกรรมโอนค่าธรรมเนียมจะล้ม (หน้า Swap กันไว้แบบเดียวกัน)
+ */
+const GAS_RESERVE = { BNB: 0.003 };
+
 const availableBalance = computed(() => {
     if (!props.balances || props.balances.length === 0) return '0';
     const tokenSymbol = activeTab.value === 'buy' ? quoteSymbol.value : baseSymbol.value;
     const found = props.balances.find(b => b.symbol?.toUpperCase() === tokenSymbol.toUpperCase());
-    return found ? parseFloat(found.balance).toFixed(6) : '0';
+    return found ? truncDecimals(found.balance, 6).toFixed(6) : '0';
 });
 
-const toNumber = (v) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0;
+/** ยอดที่ใช้ได้จริงเมื่อกดเปอร์เซ็นต์ (หักค่าแก๊สที่ต้องกันไว้แล้ว) */
+const spendableBalance = computed(() => {
+    const tokenSymbol = (activeTab.value === 'buy' ? quoteSymbol.value : baseSymbol.value).toUpperCase();
+    const reserve = props.mode === 'onchain' ? (GAS_RESERVE[tokenSymbol] || 0) : 0;
+    return Math.max(0, (parseFloat(availableBalance.value) || 0) - reserve);
+});
 
 /** ราคาที่ใช้คำนวณ — โหมด market ใช้ราคาตลาดถ้าผู้ใช้ยังไม่ได้เลือกราคาเอง */
 const effectivePrice = computed(() => toNumber(price.value) || props.tickerPrice || 0);
@@ -316,16 +355,23 @@ const setSliderValue = (percent) => {
         return;
     }
 
-    const balance = parseFloat(availableBalance.value) || 0;
+    const balance = spendableBalance.value;
     if (balance <= 0) return;
 
     const priceNum = effectivePrice.value;
     if (priceNum <= 0) return;
 
-    amount.value = activeTab.value === 'buy'
-        ? ((balance * (percent / 100)) / priceNum).toFixed(6)
-        : (balance * (percent / 100)).toFixed(6);
+    if (activeTab.value === 'buy') {
+        // ซื้อ: สิ่งที่จ่ายจริงคือช่อง Total (เงิน quote) — ตั้งจากยอดโดยตัดทศนิยมลง
+        // แล้วค่อยถอยไปหาจำนวนเหรียญ ไม่ใช่คิดจำนวนแล้วปัด Total ขึ้นจนเกินยอด
+        const spend = truncDecimals(balance * (percent / 100), 2);
+        if (spend <= 0) return;
+        total.value = spend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        amount.value = truncDecimals(spend / priceNum, 6).toFixed(6);
+        return;
+    }
 
+    amount.value = truncDecimals(balance * (percent / 100), 6).toFixed(6);
     calculateTotal();
 };
 

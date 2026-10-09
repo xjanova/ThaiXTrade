@@ -172,6 +172,18 @@ class SwapApiController extends Controller
             // chain_id = blockchain chainId (56, 4289) — แปลงเป็น DB PK ภายใน
             'chain_id' => 'required|integer|min:1',
             'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            /*
+             * ไม้ที่วางจากกระดานเทรด — บอกว่าเป็นคู่ไหน ฝั่งไหน ราคาเท่าไร
+             *
+             * เดิมไม่มีสามช่องนี้ ประวัติจึงโชว์คู่เป็นที่อยู่สัญญายาวๆ ฝั่งเป็น "SWAP"
+             * ราคา $0 และกราฟไม่เคยมีป้ายไม้ BSC เลย (markersFor จับคู่ชื่อคู่ไม่ได้)
+             * ไม่บังคับ — หน้า Swap ไม่มีแนวคิด "คู่/ฝั่ง" ฝั่งเซิร์ฟเวอร์อนุมานให้เองตอนอ่าน
+             */
+            'pair' => ['nullable', 'string', 'regex:/^[A-Za-z0-9]{1,15}[\/-][A-Za-z0-9]{1,15}$/'],
+            'side' => 'nullable|in:buy,sell',
+            'price' => 'nullable|numeric|gt:0',
+            // ผู้ใช้ปฏิเสธ/โอนค่าธรรมเนียมไม่ผ่าน — สวอปสำเร็จไปแล้ว ต้องบันทึกไม้ไว้ ไม่ใช่ปัดตก
+            'fee_collected' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -223,25 +235,51 @@ class SwapApiController extends Controller
             $inPoolFee = (int) $chain->chain_id === (int) config('blockchain.tpix_chain_id', 4289);
 
             // Verify the fee amount is reasonable
+            // คิดแบบเดียวกับตอนขอราคา (รวมอัตราพิเศษรายคู่) — ดู calculateSwapFeeForTokens
             $expectedFee = $inPoolFee
                 ? ['fee_amount' => 0.0, 'fee_rate' => 0.0, 'fee_type' => 'in_pool']
-                : $this->feeCalculationService->calculateSwapFee(
+                : $this->feeCalculationService->calculateSwapFeeForTokens(
                     (float) $validated['from_amount'],
+                    $validated['from_token'],
+                    $validated['to_token'],
                     (int) $validated['chain_id'],
                 );
 
             // SECURITY FIX: ใช้ bcmath เปรียบเทียบ ป้องกัน floating-point precision loss
             // ลด tolerance 5% → 1% ป้องกัน fee manipulation
-            $submittedFeeStr = (string) $validated['fee_amount'];
-            $expectedFeeStr = (string) $expectedFee['fee_amount'];
+            // ⚠️ ห้าม (string) ตรงๆ — float เล็กกลายเป็น "3.0E-5" แล้ว bccomp โยน ValueError (500)
+            $submittedFeeStr = FeeCalculationService::decimal($validated['fee_amount']);
+            $expectedFeeStr = FeeCalculationService::decimal($expectedFee['fee_amount']);
+
+            /*
+             * ผู้ใช้กดปฏิเสธธุรกรรมค่าธรรมเนียม (หรือโอนไม่ผ่าน) หลังสวอปสำเร็จแล้ว
+             * เดิมโดน FEE_MISMATCH แล้วหน้าเว็บกลืน error เงียบ = ไม้จริงหายจากประวัติ
+             * การปัดตกไม่ได้เงินค่าธรรมเนียมคืนมา — บันทึกไว้พร้อมธงให้แอดมินเห็นดีกว่า
+             */
+            $feeNotCollected = ($validated['fee_collected'] ?? null) === false
+                && bccomp($submittedFeeStr, '0', 18) === 0;
+
+            if ($feeNotCollected && bccomp($expectedFeeStr, '0', 18) > 0) {
+                Log::warning('Swap recorded without platform fee (user skipped the fee transfer)', [
+                    'expected_fee' => $expectedFeeStr,
+                    'wallet' => $validated['wallet_address'],
+                    'tx_hash' => $validated['tx_hash'],
+                ]);
+            }
 
             $feeMismatch = false;
-            if (bccomp($expectedFeeStr, '0', 18) > 0) {
+            if ($feeNotCollected) {
+                // บันทึกไว้แล้วด้านบน — ไม่ใช่การปลอมค่าธรรมเนียม
+            } elseif (bccomp($expectedFeeStr, '0', 18) > 0) {
                 $diff = bcsub($submittedFeeStr, $expectedFeeStr, 18);
                 if (bccomp($diff, '0', 18) < 0) {
                     $diff = bcsub($expectedFeeStr, $submittedFeeStr, 18);
                 }
                 $tolerance = bcmul($expectedFeeStr, '0.01', 18); // 1% tolerance
+                // ฝั่งเซิร์ฟเวอร์ปัดค่าธรรมเนียมที่ 8 ตำแหน่ง — ไม้จิ๋วระดับ 1e-8 จะต่างเกิน 1% เพราะการปัดล้วนๆ
+                if (bccomp($tolerance, '0.00000001', 18) < 0) {
+                    $tolerance = '0.00000001';
+                }
                 $feeMismatch = bccomp($diff, $tolerance, 18) > 0;
             } elseif (bccomp($submittedFeeStr, '0.00000001', 18) > 0) {
                 $feeMismatch = true;
@@ -276,11 +314,16 @@ class SwapApiController extends Controller
                 'fee_amount' => $validated['fee_amount'],
                 'tx_hash' => $validated['tx_hash'],
                 'status' => 'confirmed', // Frontend already verified tx receipt before calling this endpoint
-                'metadata' => [
+                'metadata' => array_filter([
                     'fee_rate' => $expectedFee['fee_rate'],
                     'fee_model' => $inPoolFee ? 'in_pool' : 'transfer',
                     'fee_collector' => $inPoolFee ? null : SiteSetting::get('trading', 'fee_collector_wallet', ''),
-                ],
+                    'fee_collected' => ! $feeNotCollected,
+                    // คู่/ฝั่ง/ราคา จากกระดานเทรด — ประวัติและป้ายบนกราฟอ่านจากตรงนี้
+                    'pair' => isset($validated['pair']) ? strtoupper(str_replace('-', '/', $validated['pair'])) : null,
+                    'side' => $validated['side'] ?? null,
+                    'price' => isset($validated['price']) ? FeeCalculationService::decimal($validated['price']) : null,
+                ], fn ($value) => $value !== null),
             ]));
 
             return response()->json([
@@ -297,9 +340,12 @@ class SwapApiController extends Controller
                     'created_at' => $transaction->created_at->toIso8601String(),
                 ],
             ], 201);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // Throwable ไม่ใช่ Exception — ValueError ของ bcmath / TypeError ต้องตกมาที่นี่
+            // ไม่งั้นผู้ใช้ได้หน้า 500 ดิบแทนข้อความที่อ่านรู้เรื่อง
             Log::error('Swap execution error', [
                 'error' => 'Operation failed. Please try again.',
+                'exception' => get_class($e),
                 'params' => $validated,
             ]);
 

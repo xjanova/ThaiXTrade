@@ -8,6 +8,10 @@
  *  2) เชื่อมแล้วแต่ยังไม่เช่า   → กดแล้วเด้งเตือนให้เติมเครดิต/เลือกแพลน
  *  3) เช่าอยู่                → เห็นแพลน วันคงเหลือ เครดิต และบอทของตัวเอง สั่งเริ่ม/พักได้
  *  4) กระเป๋ายังไม่เซ็นยืนยัน   → กดเซ็นยืนยันได้จากในการ์ดเลย (ลายเซ็นหมดอายุ 4 ชม.)
+ *  5) โหลดสถานะไม่สำเร็จ      → บอกตรงๆ พร้อมปุ่มลองใหม่ (ไม่ใช่พลิกไปโชว์ว่า "ยังไม่ได้เช่า")
+ *
+ * บอทแพลนฟรีเดินจากหน้าเว็บ — การ์ดนี้ขอให้ตัวเดินบอทฟรีทำงานตราบที่ยังอยู่บนจอ
+ * (เดิมมีแค่หน้า /ai-trade ที่เดินให้ บอทที่กดเริ่มจากหน้าเทรดจึงไม่เคยได้คิดเลย)
  *
  * ย่อตัวเองตามความกว้างของการ์ด — ย้ายไปคอลัมน์ซ้าย (276px) ก็ยังอ่านครบ
  * ระบบเดียวกับในแอพ TPIX (คลาวด์) — ข้อมูลมาจาก /api/v1/ai-bot/*
@@ -19,6 +23,7 @@ import { useElementSize } from '@vueuse/core';
 import { useAiBot } from '@/Composables/useAiBot';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTranslation } from '@/Composables/useTranslation';
+import { showToast } from '@/Composables/useToasts';
 import { playClickSound, playErrorSound, playNotificationSound } from '@/Composables/useSounds';
 
 const props = defineProps({
@@ -29,6 +34,13 @@ const props = defineProps({
 const walletStore = useWalletStore();
 const bot = useAiBot();
 const { t } = useTranslation();
+
+/*
+ * บอทแพลนฟรีเดินจากแท็บที่เปิดอยู่ — ขอให้ตัวเดินทำงานระหว่างที่การ์ดอยู่บนจอ
+ * ตัวจับเวลามีตัวเดียวทั้งแท็บ (useAiBot นับผู้ขอ) เปิดหน้า /ai-trade ซ้อนอยู่ก็ไม่เดินซ้ำ
+ * และคืนสิทธิ์เองเมื่อการ์ดถูกถอดออกจากจอ
+ */
+bot.keepBrowserBotsRunning();
 
 const root = useTemplateRef('root');
 const { width } = useElementSize(root);
@@ -67,6 +79,36 @@ const suggestedPack = computed(() => {
 const runningCount = computed(() => bot.runningBots.value.length);
 const settingsHref = computed(() => `/ai-trade?pair=${encodeURIComponent(props.pair)}`);
 
+/*
+ * ยังไม่เปิดให้เช่า (และไม่ใช่กระเป๋าทีมงาน) — แพลนที่ต้องจ่ายเช่าไม่ได้
+ *
+ * เดิมป๊อปอัพนี้ไม่ดูธงนี้เลย บอกผู้ใช้ให้ "เติมเครดิตก่อน" ทั้งที่การเติมก็ปิดอยู่
+ * และเติมไปก็เช่าไม่ได้อยู่ดี (เซิร์ฟเวอร์ปฏิเสธด้วย SALES_CLOSED)
+ * แพลนราคา 0 ยังผ่านได้ — เซิร์ฟเวอร์ปิดเฉพาะรายการที่มีเงินเปลี่ยนมือ
+ */
+const rentBlocked = computed(() => !bot.canRent.value && cost.value > 0);
+
+/** สถานะโหลดไม่สำเร็จตั้งแต่ครั้งแรก = ยังไม่รู้เลยว่าเช่าอยู่ไหม ห้ามเดาว่า "ยังไม่ได้เช่า" */
+const statusUnknown = computed(() => !bot.status.value);
+
+function retryStatus() {
+    playClickSound();
+    bot.loadStatus({ force: true });
+}
+
+/** บรรทัดบอกเหตุผลใต้ชื่อบอท — เรื่องแพลนก่อน (ผู้ใช้ต้องทำอะไรสักอย่าง) แล้วค่อยข้อผิดพลาดของรอบล่าสุด */
+function botNotice(item) {
+    const planReason = bot.planReasonText(item);
+    if (planReason) return planReason;
+
+    if (item.status === 'running') {
+        const failure = bot.tickErrorFor(item.id);
+        if (failure) return failure.message;
+    }
+
+    return '';
+}
+
 function openGate() {
     playClickSound();
     gateNotice.value = null;
@@ -92,6 +134,13 @@ function closeGate() {
 
 async function confirmRent() {
     if (!selectedPlan.value) return;
+
+    // ยังไม่เปิดขาย — บอกเหตุผลจริง ไม่ใช่ "เครดิตไม่พอ" (แบบเดียวกับหน้า /ai-trade)
+    if (rentBlocked.value) {
+        playErrorSound();
+        gateNotice.value = { type: 'error', text: t('aiTrade.salesClosed') };
+        return;
+    }
 
     if (!affordable.value) {
         playErrorSound();
@@ -121,9 +170,21 @@ async function requestPack(code) {
         : { type: 'error', text: result.error.message };
 }
 
+/**
+ * เริ่ม/พักบอท — ไม่ผ่านต้องบอกผู้ใช้ แบบเดียวกับหน้า /ai-trade.
+ *
+ * เดิมทิ้งผลลัพธ์ไปเฉยๆ กดเริ่มบอทที่แพลนไม่รองรับ (STRATEGY_LOCKED / BOT_LIMIT / ถูกแบน)
+ * แล้วไม่มีอะไรเกิดขึ้นเลย ผู้ใช้กดซ้ำไปเรื่อยๆ โดยไม่รู้ว่าทำไม
+ */
 async function toggleBot(item) {
     playClickSound();
-    await bot.setBotState(item.id, item.status === 'running' ? 'pause' : 'start');
+
+    const result = await bot.setBotState(item.id, item.status === 'running' ? 'pause' : 'start');
+
+    if (!result.ok) {
+        playErrorSound();
+        showToast({ text: result.error?.message || t('aiTrade.errGeneric'), type: 'error' });
+    }
 }
 
 /**
@@ -176,6 +237,17 @@ watch(() => walletStore.address, (address) => {
         <div class="ai-grid" aria-hidden="true"></div>
 
         <div class="relative h-full flex flex-col" :class="isCompact ? 'p-2.5' : 'p-3.5'">
+            <!-- โหลดสถานะรอบล่าสุดไม่สำเร็จ แต่ยังมีข้อมูลเดิม — โชว์ของเดิมต่อ แล้วบอกว่าอาจไม่สด -->
+            <p
+                v-if="walletStore.isConnected && !bot.needsVerification.value && bot.status.value && bot.statusError.value"
+                class="flex items-center gap-2 mb-2 px-2 py-1 rounded-lg bg-amber-500/10 text-[10px] text-amber-200/90 flex-shrink-0"
+            >
+                <span class="min-w-0 flex-1 truncate" :title="bot.statusError.value.message">{{ bot.statusError.value.message }}</span>
+                <button type="button" class="shrink-0 font-medium text-amber-300 hover:text-amber-200" @click="retryStatus">
+                    {{ t('aiTrade.retry') }}
+                </button>
+            </p>
+
             <!-- ── 1) ยังไม่เชื่อมกระเป๋า ───────────────────────────────────── -->
             <template v-if="!walletStore.isConnected">
                 <div class="text-center py-2 flex-1 flex flex-col justify-center">
@@ -208,6 +280,26 @@ watch(() => walletStore.address, (address) => {
                         <span v-if="isVerifying" class="spinner !w-3 !h-3 !border-white/30 !border-t-white"></span>
                         {{ isVerifying ? t('aiTrade.verifying') : t('aiTrade.verifyNow') }}
                     </button>
+                </div>
+            </template>
+
+            <!--
+                ── 5) ยังไม่รู้สถานะ — กำลังโหลด หรือโหลดไม่สำเร็จ ──────────────────
+                ห้ามตกไปที่ "ยังไม่ได้เช่า" — ผู้ใช้ที่เช่าอยู่จะคิดว่าแพลนหายแล้วกดเช่าซ้ำ
+            -->
+            <template v-else-if="statusUnknown">
+                <div class="text-center py-3 flex-1 flex flex-col justify-center">
+                    <template v-if="bot.statusError.value && !bot.isLoadingStatus.value">
+                        <p class="text-sm font-semibold text-white mb-1">{{ t('aiTrade.statusUnavailable') }}</p>
+                        <p class="text-[11px] text-dark-400 leading-relaxed mb-3">{{ bot.statusError.value.message }}</p>
+                        <button type="button" class="w-full btn-secondary py-2 text-xs justify-center" @click="retryStatus">
+                            {{ t('aiTrade.retry') }}
+                        </button>
+                    </template>
+                    <p v-else class="flex items-center justify-center gap-2 text-[11px] text-dark-400">
+                        <span class="spinner !w-3 !h-3"></span>
+                        {{ t('aiTrade.loadingStatus') }}
+                    </p>
                 </div>
             </template>
 
@@ -251,10 +343,10 @@ watch(() => walletStore.address, (address) => {
                         <!-- เขียวเฉพาะเมื่อ "ออนไลน์จริง" (วอร์กเกอร์เต้น + ได้รอบคิด) ไม่ใช่แค่สถานะ running
                              เซิร์ฟเวอร์ดับแล้วสถานะยัง running อยู่ ต้องเห็นเป็นแดง ไม่ใช่เขียวกะพริบต่อ -->
                         <span
-                            :title="item.status === 'running' && item.online === false ? t('aiTrade.offline') : ''"
+                            :title="item.status === 'running' && item.online === false ? (bot.planReasonText(item) || t('aiTrade.offline')) : ''"
                             :class="['w-1.5 h-1.5 rounded-full shrink-0',
                                 item.status === 'running'
-                                    ? (item.online === false ? 'bg-trading-red' : 'bg-trading-green animate-pulse')
+                                    ? (item.online === false || bot.tickErrorFor(item.id) ? 'bg-trading-red' : 'bg-trading-green animate-pulse')
                                     : item.status === 'paused' ? 'bg-amber-400' : 'bg-dark-600']"
                         ></span>
                         <span class="min-w-0 flex-1">
@@ -262,6 +354,12 @@ watch(() => walletStore.address, (address) => {
                             <span class="block text-[9px] text-dark-500 font-mono truncate">
                                 {{ item.pair }} · {{ bot.strategyLabel(item) }} · {{ item.timeframe }}
                             </span>
+                            <!-- เหตุผลที่บอทไม่เดิน (แพลนหมด · รอบล่าสุดถูกปฏิเสธ) — เดิมเห็นแค่ไฟแดงไม่มีคำอธิบาย -->
+                            <span
+                                v-if="botNotice(item)"
+                                class="block text-[9px] text-amber-300/90 leading-snug truncate"
+                                :title="botNotice(item)"
+                            >{{ botNotice(item) }}</span>
                         </span>
                         <button
                             type="button"
@@ -276,6 +374,14 @@ watch(() => walletStore.address, (address) => {
 
                 <p v-else class="flex-1 min-h-0 flex items-center justify-center text-[11px] text-dark-400 text-center py-3 mb-2 rounded-lg bg-white/5 leading-relaxed px-2">
                     {{ t('aiTrade.noBots') }}
+                </p>
+
+                <!-- บอทแพลนฟรีเดินจากแท็บนี้ — ต้องบอกให้รู้ว่าปิดแท็บแล้วหยุด -->
+                <p
+                    v-if="bot.browserBots.value.length"
+                    class="mb-2 px-2 py-1 rounded-lg bg-amber-500/[0.08] text-[10px] text-amber-200/90 leading-snug flex-shrink-0"
+                >
+                    {{ t('aiTrade.browserBotCardHint') }}
                 </p>
 
                 <Link :href="settingsHref" class="block w-full btn-brand py-2 text-xs text-center flex-shrink-0">
@@ -410,6 +516,13 @@ watch(() => walletStore.address, (address) => {
                             >
                                 {{ t('aiTrade.demoOnlyNotice') }}
                             </p>
+                            <!-- ยังไม่เปิดให้เช่า — เหตุผลจริงที่กดเช่าไม่ได้ (ไม่ใช่เรื่องเครดิต) -->
+                            <p
+                                v-if="!bot.canRent.value"
+                                class="text-[10px] leading-relaxed px-3 py-2 rounded-lg bg-amber-500/10 text-amber-200/90 ring-1 ring-amber-500/20"
+                            >
+                                {{ t('aiTrade.salesClosed') }}
+                            </p>
                             <p
                                 v-if="!bot.topupEnabled.value"
                                 class="text-[10px] leading-relaxed px-3 py-2 rounded-lg bg-dark-800/60 text-dark-300 ring-1 ring-white/10"
@@ -452,8 +565,8 @@ watch(() => walletStore.address, (address) => {
                                 </button>
                             </div>
 
-                            <!-- เติมเครดิต (โผล่เมื่อเครดิตไม่พอ) -->
-                            <div v-if="!affordable && selectedPlan" class="p-3 rounded-xl border border-trading-red/25 bg-trading-red/5 space-y-2">
+                            <!-- เติมเครดิต (โผล่เมื่อเครดิตไม่พอ — ยังไม่เปิดให้เช่าก็ไม่ต้องชวนเติม เติมไปก็เช่าไม่ได้) -->
+                            <div v-if="!affordable && selectedPlan && !rentBlocked" class="p-3 rounded-xl border border-trading-red/25 bg-trading-red/5 space-y-2">
                                 <p class="text-[11px] text-trading-red font-medium">
                                     {{ t('aiTrade.notEnough', { n: shortfall.toLocaleString() }) }}
                                 </p>
@@ -503,11 +616,14 @@ watch(() => walletStore.address, (address) => {
                                 <button
                                     type="button"
                                     class="flex-1 btn-brand py-2.5 text-xs justify-center disabled:opacity-50"
-                                    :disabled="bot.isWorking.value || !selectedPlan"
+                                    :disabled="bot.isWorking.value || !selectedPlan || rentBlocked"
+                                    :title="rentBlocked ? t('aiTrade.salesClosed') : ''"
                                     @click="confirmRent"
                                 >
                                     <span v-if="bot.isWorking.value" class="spinner !w-3.5 !h-3.5 !border-white/30 !border-t-white"></span>
-                                    {{ affordable ? t('aiTrade.rentFor', { days: selectedDays }) : t('aiTrade.topupFirst') }}
+                                    {{ rentBlocked
+                                        ? t('aiTrade.rentClosedShort')
+                                        : (affordable ? t('aiTrade.rentFor', { days: selectedDays }) : t('aiTrade.topupFirst')) }}
                                 </button>
                             </div>
                         </div>

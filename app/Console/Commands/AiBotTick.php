@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\AiBotConfig;
 use App\Models\AiBotPlan;
+use App\Models\AiBotSubscription;
 use App\Services\AiBot\BotRunner;
 use App\Services\AiBot\WorkerHealth;
 use Illuminate\Console\Command;
@@ -39,6 +40,12 @@ class AiBotTick extends Command
          * ถ้าเต้นเฉพาะตอนมีบอท ยามเฝ้า (aibot:health) จะแยกสองกรณีนี้ไม่ออก
          */
         $health->beat($this->option('strategy') ?: null);
+
+        $expired = $this->pauseBotsOfExpiredCloudRentals();
+
+        if ($expired > 0) {
+            $this->line("พักบอท {$expired} ตัวที่แพลนคลาวด์หมดอายุ");
+        }
 
         /*
          * เรียงตามระดับแพลน — VIP ได้คิวก่อน ตามที่หน้าเช่าโฆษณาไว้
@@ -109,6 +116,64 @@ class AiBotTick extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * พักบอทที่ยังค้าง running หลังแพลนคลาวด์หมดอายุ.
+     *
+     * ⚠️ ต้องทำที่นี่ ไม่ใช่รอให้ BotRunner พักเอง — query หลักข้างล่างใช้ cloudExecuted()
+     *    ซึ่งเลือกเฉพาะกระเป๋าที่ "ยังมี" แพลนคลาวด์อยู่ บอทของแพลนที่หมดอายุจึงไม่เคยถูกหยิบ
+     *    มาเดินอีกเลย ด่าน "การเช่าหมดอายุ → พักบอท" ใน BotRunner ไม่มีวันได้ทำงาน
+     *    บอทค้าง running ตลอดกาล หน้าจอโชว์เขียวอยู่พักหนึ่งแล้วกลายเป็นแดง "กำลังตรวจสอบ"
+     *    โดยไม่มีใครบอกผู้ใช้ว่าแค่ต้องต่ออายุแพลน
+     *
+     * เลือกเฉพาะกระเป๋าที่ "ไม่มีการเช่าที่ยังไม่หมดอายุเหลือเลย" และการเช่าล่าสุดเป็นแพลนคลาวด์
+     * — แพลนฟรี (browser) ต่ออายุตัวเองเมื่อผู้ใช้เปิดหน้าเว็บ ห้ามไปพักบอทของเขาจากตรงนี้
+     *   (ถ้าเขาเปิดหน้าอยู่ ตัวเดินบนเบราว์เซอร์ต่ออายุแพลนฟรีให้ในรอบถัดไปเอง)
+     *
+     * @return int จำนวนบอทที่ถูกพัก
+     */
+    private function pauseBotsOfExpiredCloudRentals(): int
+    {
+        $query = AiBotConfig::runnable()->withoutLiveSubscription();
+
+        if ($botId = $this->option('bot')) {
+            $query->where('id', $botId);
+        }
+
+        if ($strategy = $this->option('strategy')) {
+            $query->where('strategy', $strategy);
+        }
+
+        $bots = $query->get();
+
+        if ($bots->isEmpty()) {
+            return 0;
+        }
+
+        // การเช่าล่าสุดของแต่ละกระเป๋า — ดึงทีเดียว ไม่ยิงทีละบอท
+        $latest = AiBotSubscription::with('plan')
+            ->whereIn('wallet_address', $bots->pluck('wallet_address')->unique()->values())
+            ->orderByDesc('expires_at')
+            ->get()
+            ->unique('wallet_address')
+            ->keyBy('wallet_address');
+
+        $paused = 0;
+
+        foreach ($bots as $bot) {
+            if (! $latest->get($bot->wallet_address)?->plan?->runsInCloud()) {
+                continue;
+            }
+
+            $bot->pauseBecause(
+                AiBotConfig::PAUSE_PLAN_EXPIRED,
+                'แพลนคลาวด์หมดอายุ — บอทถูกพักอัตโนมัติ ต่ออายุแพลนแล้วกดเริ่มใหม่ได้ทันที'
+            );
+            $paused++;
+        }
+
+        return $paused;
     }
 
     /**

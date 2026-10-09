@@ -11,47 +11,53 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTranslation } from '@/Composables/useTranslation';
 import { useTheme } from '@/Composables/useTheme';
+import { useAssistantPref } from '@/Composables/useAssistantPref';
+import {
+    TRADE_SETTINGS_KEY,
+    readTradeSettings,
+    parseSlippage,
+    DEADLINE_MIN,
+    DEADLINE_MAX,
+} from '@/utils/tradeSettings';
 import { isMobile, openTpixApp, downloadTpixApp, TPIX_APP } from '@/utils/mobileWallet';
 
 const { t, locale } = useTranslation();
 const { themes, current: currentTheme, setTheme } = useTheme();
+// ผู้ช่วย AI บนหน้าเทรด — บนมือถือหน้านี้คือทางเปิดคืนหลังกดปิดจากหน้าต่างแชท
+const assistantPref = useAssistantPref();
 const walletStore = useWalletStore();
 const mobile = isMobile();
 const isConnected = computed(() => walletStore.isConnected);
 
 // === Transaction Settings (persisted to localStorage) ===
-const SETTINGS_KEY = 'tpix_trade_settings';
-
-function loadSettings() {
-    try {
-        const saved = localStorage.getItem(SETTINGS_KEY);
-        if (saved) return JSON.parse(saved);
-    } catch { /* ignore corrupt data */ }
-    return null;
-}
+// อ่านไปใช้จริงที่ฟอร์มเทรด หน้า Swap และ router ผ่าน utils/tradeSettings
+// (เดิมบันทึกไว้เฉยๆ ไม่มีใครอ่าน — ตั้งเท่าไรก็ไม่มีผล)
 
 function saveSettings() {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-        slippageTolerance: slippageTolerance.value,
-        txDeadline: txDeadline.value,
-        gasOption: gasOption.value,
-    }));
+    try {
+        localStorage.setItem(TRADE_SETTINGS_KEY, JSON.stringify({
+            slippageTolerance: slippageTolerance.value,
+            txDeadline: txDeadline.value,
+        }));
+    } catch {
+        // โหมดส่วนตัว/โควตาเต็ม — ใช้ได้ในหน้านี้ แค่ไม่ถูกจำไว้
+    }
 }
 
-const saved = loadSettings();
-const slippageTolerance = ref(saved?.slippageTolerance || '0.5');
-const txDeadline = ref(saved?.txDeadline || '20');
-const gasOption = ref(saved?.gasOption || 'standard');
+const saved = readTradeSettings();
+const slippageTolerance = ref(String(saved?.slippageTolerance || '0.5'));
+const txDeadline = ref(String(saved?.txDeadline || '20'));
 
 // Auto-save เมื่อค่าเปลี่ยน
-watch([slippageTolerance, txDeadline, gasOption], saveSettings);
+watch([slippageTolerance, txDeadline], saveSettings);
 
 const slippageOptions = ['0.1', '0.5', '1.0'];
-const gasOptions = [
-    { id: 'low', labelKey: 'settings.gasLow', descKey: 'settings.gasLowDesc' },
-    { id: 'standard', labelKey: 'settings.gasStandard', descKey: 'settings.gasStandardDesc' },
-    { id: 'fast', labelKey: 'settings.gasFast', descKey: 'settings.gasFastDesc' },
-];
+
+/** ระยะเวลาจำกัดที่ใช้ไม่ได้ → บอกผู้ใช้ (ระบบจะใช้ 20 นาทีแทน) */
+const deadlineInvalid = computed(() => {
+    const num = Number(String(txDeadline.value).trim());
+    return !Number.isFinite(num) || num < DEADLINE_MIN || num > DEADLINE_MAX;
+});
 
 // === Wallet ===
 const addressCopied = ref(false);
@@ -85,10 +91,10 @@ const walletTypeDisplay = computed(() => {
     return names[walletStore.walletType] || walletStore.walletType || '';
 });
 
-// Slippage warning
+// Slippage warning — ใช้ตัวตรวจเดียวกับที่ฟอร์มเทรดใช้อ่านค่า (ค่าที่ขึ้น invalid จะถูกข้ามจริง)
 const slippageWarning = computed(() => {
-    const val = parseFloat(slippageTolerance.value);
-    if (isNaN(val) || val <= 0) return 'invalid';
+    const val = parseSlippage(slippageTolerance.value);
+    if (val === null) return 'invalid';
     if (val > 5) return 'high';
     if (val < 0.05) return 'low';
     return null;
@@ -156,6 +162,38 @@ onMounted(() => {
                 </div>
             </div>
 
+            <!-- ผู้ช่วย AI -->
+            <div class="glass-dark rounded-2xl p-6 mb-6">
+                <h2 class="text-lg font-semibold text-white mb-2">{{ t('assistant.title') }}</h2>
+                <p class="text-dark-400 text-sm mb-5">{{ t('assistant.settingsDesc') }}</p>
+
+                <div class="flex items-center justify-between gap-4 p-4 rounded-xl bg-white/5">
+                    <div class="min-w-0">
+                        <p class="text-white text-sm font-medium">{{ t('assistant.toggle') }}</p>
+                        <p class="text-dark-400 text-xs mt-0.5">{{ t('assistant.toggleHint') }}</p>
+                    </div>
+                    <button
+                        type="button"
+                        role="switch"
+                        data-test="assistant-trade-switch"
+                        :aria-checked="assistantPref.showOnTrade.value ? 'true' : 'false'"
+                        :aria-label="t('assistant.toggle')"
+                        :class="[
+                            'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border border-white/10 transition-colors',
+                            assistantPref.showOnTrade.value ? 'bg-primary-500' : 'bg-dark-700',
+                        ]"
+                        @click="assistantPref.setShowOnTrade(!assistantPref.showOnTrade.value)"
+                    >
+                        <span
+                            :class="[
+                                'absolute top-0.5 left-0.5 h-[18px] w-[18px] rounded-full bg-white shadow transition-transform',
+                                assistantPref.showOnTrade.value ? 'translate-x-5' : 'translate-x-0',
+                            ]"
+                        ></span>
+                    </button>
+                </div>
+            </div>
+
             <!-- Transaction Settings -->
             <div class="glass-dark rounded-2xl p-6 mb-6">
                 <h2 class="text-lg font-semibold text-white mb-6">{{ t('settings.txSettings') }}</h2>
@@ -204,30 +242,15 @@ onMounted(() => {
                         />
                         <span class="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 text-sm">{{ t('settings.minutes') }}</span>
                     </div>
-                    <p class="text-xs text-dark-500 mt-2">{{ t('settings.txDeadlineDesc') }}</p>
+                    <p v-if="deadlineInvalid" class="text-xs text-amber-400 mt-2">{{ t('settings.txDeadlineInvalid') }}</p>
+                    <p v-else class="text-xs text-dark-500 mt-2">{{ t('settings.txDeadlineDesc') }}</p>
                 </div>
 
-                <!-- Gas Price -->
+                <!-- ค่าแก๊ส — เดิมเป็นปุ่ม ต่ำ/มาตรฐาน/เร็ว ที่ไม่มีผลกับธุรกรรมจริงเลย
+                     กระเป๋า (MetaMask ฯลฯ) เป็นคนกำหนดค่าแก๊สตอนผู้ใช้กดยืนยัน จึงบอกตามจริงแทน -->
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-3">{{ t('settings.gasPrice') }}</label>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <button
-                            v-for="option in gasOptions"
-                            :key="option.id"
-                            @click="gasOption = option.id"
-                            :class="[
-                                'p-3 rounded-xl text-center transition-all',
-                                gasOption === option.id
-                                    ? 'bg-primary-500/20 border border-primary-500/30'
-                                    : 'glass-sm border border-white/5 hover:border-white/10'
-                            ]"
-                        >
-                            <p :class="['font-medium text-sm', gasOption === option.id ? 'text-primary-400' : 'text-white']">
-                                {{ t(option.labelKey) }}
-                            </p>
-                            <p class="text-xs text-dark-400 mt-1">{{ t(option.descKey) }}</p>
-                        </button>
-                    </div>
+                    <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('settings.gasPrice') }}</label>
+                    <p class="text-xs text-dark-500">{{ t('settings.gasByWallet') }}</p>
                 </div>
             </div>
 

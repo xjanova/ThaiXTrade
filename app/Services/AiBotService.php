@@ -44,6 +44,9 @@ class AiBotService
     /** กลยุทธ์ถูกถอดออกจากการขายแล้ว (ธง retired ใน config/aibot.php) */
     public const ERR_STRATEGY_RETIRED = 'STRATEGY_RETIRED';
 
+    /** reference คงที่ของโบนัสต้อนรับ — unique ต่อ wallet จึงรับได้ครั้งเดียวเสมอ */
+    private const WELCOME_REFERENCE = 'welcome';
+
     // =========================================================================
     // เครดิต
     // =========================================================================
@@ -111,16 +114,36 @@ class AiBotService
         });
     }
 
-    /** โบนัสต้อนรับครั้งเดียวต่อ wallet (idempotent ด้วย reference คงที่) */
-    public function grantWelcomeBonus(string $wallet): float
+    /**
+     * โบนัสต้อนรับครั้งเดียวต่อ wallet (idempotent ด้วย reference คงที่).
+     *
+     * ต้องบอกด้วยว่า "ครั้งนี้ได้จริงไหม" ไม่ใช่คืนแค่ยอดคงเหลือ — เดิมกดรับซ้ำแล้วหน้าเว็บ
+     * ขึ้น "รับเครดิตต้อนรับเรียบร้อย" ทุกครั้ง ทั้งที่ไม่ได้อะไรเพิ่ม ผู้ใช้จึงงงว่าเครดิตหายไปไหน
+     *
+     * ตัดสินจาก wasRecentlyCreated ของแถวที่ record() คืนมา ไม่ใช่เช็คก่อนแล้วค่อยเขียน
+     * — สองคำขอพร้อมกันจะเห็น "ยังไม่เคยรับ" ทั้งคู่ แต่มีแถวเดียวที่ถูกสร้างจริง
+     *
+     * @return array{granted: bool, credits: float}
+     */
+    public function grantWelcomeBonus(string $wallet): array
     {
         $bonus = (float) config('aibot.credits.welcome_bonus', 0);
+        $granted = false;
 
         if ($bonus > 0) {
-            $this->record($wallet, 'bonus', $bonus, 'welcome', ['note' => 'welcome bonus']);
+            $row = $this->record($wallet, 'bonus', $bonus, self::WELCOME_REFERENCE, ['note' => 'welcome bonus']);
+            $granted = $row->wasRecentlyCreated;
         }
 
-        return $this->balanceFor($wallet);
+        return ['granted' => $granted, 'credits' => $this->balanceFor($wallet)];
+    }
+
+    /** กระเป๋านี้รับโบนัสต้อนรับไปแล้วหรือยัง — หน้าเว็บใช้ซ่อนปุ่มรับ */
+    public function welcomeClaimed(string $wallet): bool
+    {
+        return AiBotCredit::where('wallet_address', $this->normalize($wallet))
+            ->where('reference', self::WELCOME_REFERENCE)
+            ->exists();
     }
 
     /**
@@ -516,9 +539,15 @@ class AiBotService
      * ตรวจว่า wallet สร้าง/เปิดบอทตัวนี้ได้ไหม — โยน RuntimeException ถ้าไม่ได้.
      *
      * @param  AiBotConfig|null  $existing  บอทที่กำลังแก้ (ไม่ให้นับซ้ำในโควตา)
+     * @param  bool  $editingOnly  แค่แก้ค่าตั้งของบอทเดิม (ชื่อ/ความเสี่ยง) ไม่ได้สั่งเริ่ม —
+     *                             กลยุทธ์ที่ถูกถอดแล้วผ่านได้ "เฉพาะเมื่อยังเป็นกลยุทธ์เดิมของบอท"
      */
-    public function assertCanRunBot(string $wallet, string $strategyCode, ?AiBotConfig $existing = null): AiBotSubscription
-    {
+    public function assertCanRunBot(
+        string $wallet,
+        string $strategyCode,
+        ?AiBotConfig $existing = null,
+        bool $editingOnly = false,
+    ): AiBotSubscription {
         // ยังไม่เคยเช่า → ลงแพลนฟรีให้อัตโนมัติ แทนที่จะปฏิเสธไปเลย
         // (ฟรีก็สร้างบอทได้ แค่บอทจะเดินเฉพาะตอนเปิดหน้าเว็บทิ้งไว้)
         $subscription = $this->activeSubscription($wallet) ?? $this->ensureFreeSubscription($wallet);
@@ -540,7 +569,16 @@ class AiBotService
          * ทั้งหมด — กันที่ปุ่มบนหน้าเว็บอย่างเดียวไม่พอ แอพมือถือไม่เห็นปุ่มเรา
          * (ดูเหตุผลที่ถอดในรายการของกลยุทธ์นั้นใน config/aibot.php)
          */
-        if ($this->isRetired($strategyCode)) {
+        /*
+         * ยกเว้นเดียว: แก้บอทเดิมที่ใช้กลยุทธ์นั้นอยู่แล้ว (เปลี่ยนชื่อ · ลดความเสี่ยง)
+         *
+         * validateBot() ตั้งใจปล่อยให้แก้ได้ แต่ด่านนี้ปฏิเสธทุกกรณี — เจ้าของบอทสแกลป์ที่ค้างอยู่
+         * จึงทำได้อย่างเดียวคือลบทิ้ง การแก้ไม่ได้เริ่มบอท (setState/tick ยังผ่านด่านนี้แบบเต็ม)
+         * จึงไม่มีทางที่กลยุทธ์ที่ถอดแล้วจะกลับมาเทรดได้จากช่องนี้
+         */
+        $keepsRetiredStrategy = $editingOnly && $existing && $existing->strategy === $strategyCode;
+
+        if ($this->isRetired($strategyCode) && ! $keepsRetiredStrategy) {
             throw new RuntimeException(self::ERR_STRATEGY_RETIRED);
         }
 

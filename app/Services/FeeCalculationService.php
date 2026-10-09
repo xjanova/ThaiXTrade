@@ -55,8 +55,10 @@ class FeeCalculationService
         $feeRate = min($feeRate, $maxFeeRate);
 
         // Use bcmath for precise fee calculation
-        $feeAmount = (float) bcmul((string) $amount, bcdiv((string) $feeRate, '100', 12), 8);
-        $netAmount = (float) bcsub((string) $amount, (string) $feeAmount, 8);
+        // ⚠️ ห้ามใช้ (string) กับ float — PHP เขียนเลขเล็กเป็น "1.0E-5" แล้ว bcmath โยน ValueError
+        //    (ขาย BTC 0.00001 / ETH 0.01 → ค่าธรรมเนียมต่ำกว่า 0.0001 → 500 ทั้งตอนขอราคาและตอนบันทึกไม้)
+        $feeAmount = (float) bcmul(self::decimal($amount), bcdiv(self::decimal($feeRate), '100', 12), 8);
+        $netAmount = (float) bcsub(self::decimal($amount), self::decimal($feeAmount), 8);
 
         return [
             'fee_amount' => $feeAmount,
@@ -126,6 +128,40 @@ class FeeCalculationService
      *     slippage: float
      * }
      */
+    /**
+     * ค่าธรรมเนียมสวอปของคู่โทเคนหนึ่ง — ใช้ลำดับอัตราเดียวกับ getSwapQuote ทุกประการ
+     *
+     * ตอนบันทึกไม้ (/swap/execute) ต้องคิดเหมือนตอนขอราคา ไม่งั้นคู่ที่แอดมินตั้ง
+     * taker_fee_override ไว้จะโดน FEE_MISMATCH ทุกไม้ (ขอราคาคิดอัตราพิเศษ
+     * แต่ตอนบันทึกคิดอัตรากลาง) แล้วไม้ทั้งคู่นั้นไม่มีประวัติให้ใครดูเลย
+     *
+     * @return array{fee_amount: float, net_amount: float, fee_rate: float, fee_type: string}
+     */
+    public function calculateSwapFeeForTokens(float $amount, string $fromToken, string $toToken, int $chainId): array
+    {
+        return $this->calculateSwapFee($amount, $chainId, $this->findTradingPairId($fromToken, $toToken, $chainId));
+    }
+
+    /**
+     * ตัวเลขเป็นสตริงทศนิยมธรรมดาที่ bcmath รับได้เสมอ (ไม่มีรูป 1.0E-5)
+     */
+    public static function decimal(float|int|string $value, int $scale = 18): string
+    {
+        if (is_string($value) && preg_match('/^-?\d+(\.\d+)?$/', $value)) {
+            return $value;
+        }
+
+        $formatted = number_format((float) $value, $scale, '.', '');
+
+        if (! str_contains($formatted, '.')) {
+            return $formatted;
+        }
+
+        $trimmed = rtrim(rtrim($formatted, '0'), '.');
+
+        return ($trimmed === '' || $trimmed === '-0') ? '0' : $trimmed;
+    }
+
     public function getSwapQuote(float $fromAmount, string $fromToken, string $toToken, int $chainId): array
     {
         // Find matching trading pair for potential fee override

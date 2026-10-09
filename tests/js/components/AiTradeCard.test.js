@@ -10,12 +10,16 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, computed } from 'vue';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 
 // ── ตัวปลอมของ store/composable (ควบคุมสถานะได้จากในเทสต์) ──────────────────
 const wallet = { isConnected: false, address: null, openConnectModal: vi.fn() };
 
 const state = {
+    // สถานะที่โหลดได้แล้ว — การ์ดไม่ตกไป "ยังไม่ได้เช่า" ถ้ายังไม่รู้สถานะ (ดูเทสต์ด้านล่าง)
+    status: ref({ is_active: false }),
+    statusError: ref(null),
+    isLoadingStatus: ref(false),
     credits: ref(0),
     isActive: ref(false),
     subscription: ref(null),
@@ -46,11 +50,23 @@ const state = {
      */
     liveEnabled: ref(false),
     topupEnabled: ref(false),
+    // เทสต์กลไกการเช่าเดิมทั้งหมดถือว่าเปิดขายแล้ว — ด่านปิดขายมีเทสต์แยก
+    canRent: ref(true),
+    browserBots: ref([]),
 };
+
+/** เหตุผลที่แพลนไม่ให้บอทเดิน แยกรายบอท (ตัวปลอมของ planReasonText) */
+const planReasons = {};
+const tickErrors = {};
 
 const subscribe = vi.fn(() => Promise.resolve({ ok: true }));
 const requestTopup = vi.fn(() => Promise.resolve({ ok: true }));
 const setBotState = vi.fn(() => Promise.resolve({ ok: true }));
+const loadStatus = vi.fn(() => Promise.resolve());
+const keepBrowserBotsRunning = vi.fn();
+const showToast = vi.fn();
+
+vi.mock('@/Composables/useToasts', () => ({ showToast: (...args) => showToast(...args) }));
 
 vi.mock('@/Stores/walletStore', () => ({ useWalletStore: () => wallet }));
 
@@ -65,7 +81,10 @@ vi.mock('@/Composables/useAiBot', () => ({
         ...state,
         runningBots: computed(() => state.bots.value.filter(b => b.status === 'running')),
         loadCatalog: vi.fn(() => Promise.resolve()),
-        loadStatus: vi.fn(() => Promise.resolve()),
+        loadStatus,
+        keepBrowserBotsRunning,
+        planReasonText: item => planReasons[item?.id] ?? '',
+        tickErrorFor: id => tickErrors[id] ?? null,
         subscribe,
         requestTopup,
         setBotState,
@@ -102,9 +121,20 @@ function reset() {
     // ค่าปริยายตรงกับที่เซิร์ฟเวอร์ส่งจริงตอนนี้ — ทั้งสองอย่างยังไม่เปิด
     state.liveEnabled.value = false;
     state.topupEnabled.value = false;
+    state.status.value = { is_active: false };
+    state.statusError.value = null;
+    state.isLoadingStatus.value = false;
+    state.canRent.value = true;
+    state.browserBots.value = [];
+    Object.keys(planReasons).forEach(k => delete planReasons[k]);
+    Object.keys(tickErrors).forEach(k => delete tickErrors[k]);
     subscribe.mockClear();
     requestTopup.mockClear();
-    setBotState.mockClear();
+    setBotState.mockReset();
+    setBotState.mockImplementation(() => Promise.resolve({ ok: true }));
+    loadStatus.mockClear();
+    keepBrowserBotsRunning.mockClear();
+    showToast.mockClear();
     document.body.innerHTML = '';
 }
 
@@ -289,5 +319,118 @@ describe('AiTradeCard', () => {
 
         const wrapper = mount(AiTradeCard, { attachTo: document.body });
         expect(wrapper.text()).toContain('Wallet needs verifying');
+    });
+
+    /**
+     * ⭐ เริ่มบอทไม่ผ่านต้องบอกเหตุผล — เดิมการ์ดทิ้งผลลัพธ์ไปเฉยๆ กดแล้วไม่มีอะไรเกิดขึ้นเลย.
+     */
+    it('shows the server reason when starting a bot fails', async () => {
+        wallet.isConnected = true;
+        state.isActive.value = true;
+        state.subscription.value = { plan_code: 'free', plan_name: 'Free', tier: 'free', days_remaining: 300 };
+        state.bots.value = [{ id: 9, name: 'Grid', pair: 'BTC/USDT', strategy_name: 'Grid', timeframe: '1h', status: 'paused' }];
+        setBotState.mockImplementation(() => Promise.resolve({ ok: false, error: { code: 'STRATEGY_LOCKED', message: 'Needs a higher plan' } }));
+
+        const wrapper = mount(AiTradeCard, { attachTo: document.body });
+        await wrapper.findAll('button').find(b => b.text().trim() === 'Start').trigger('click');
+        await flushPromises();
+
+        expect(showToast).toHaveBeenCalledWith({ text: 'Needs a higher plan', type: 'error' });
+    });
+
+    /**
+     * ⭐ โหลดสถานะครั้งแรกไม่สำเร็จ (เช่นโดน 429) ต้องไม่พลิกไปเป็น "ยังไม่ได้เช่า".
+     *
+     * ผู้ใช้ที่เช่าอยู่เห็นปุ่มเช่าโผล่มา แล้วคิดว่าแพลนหายไป — ต้องเห็นว่าโหลดไม่สำเร็จ + ลองใหม่ได้
+     */
+    it('offers a retry instead of claiming the user has no plan when the status cannot load', async () => {
+        wallet.isConnected = true;
+        state.status.value = null;
+        state.statusError.value = { code: 'RATE_LIMITED', message: 'Too many requests' };
+
+        const wrapper = mount(AiTradeCard, { attachTo: document.body });
+
+        expect(wrapper.text()).toContain('Could not load AI TRADE status');
+        expect(wrapper.text()).toContain('Too many requests');
+        expect(wrapper.text()).not.toContain('Activate AI TRADE');
+
+        loadStatus.mockClear();
+        await wrapper.findAll('button').find(b => b.text().trim() === 'Retry').trigger('click');
+        expect(loadStatus).toHaveBeenCalledWith({ force: true });
+    });
+
+    /** โหลดรอบใหม่ไม่สำเร็จแต่มีข้อมูลเดิม — โชว์แพลนเดิมต่อ พร้อมบอกว่ารีเฟรชไม่สำเร็จ */
+    it('keeps showing the last known plan when a refresh fails', () => {
+        wallet.isConnected = true;
+        state.isActive.value = true;
+        state.status.value = { is_active: true };
+        state.subscription.value = { plan_code: 'vip', plan_name: 'VIP Cloud', tier: 'vip', days_remaining: 12 };
+        state.statusError.value = { code: 'RATE_LIMITED', message: 'Too many requests' };
+
+        const wrapper = mount(AiTradeCard, { attachTo: document.body });
+
+        expect(wrapper.text()).toContain('VIP Cloud');
+        expect(wrapper.text()).toContain('Too many requests');
+        expect(wrapper.text()).not.toContain('Activate AI TRADE');
+    });
+
+    /** ยังไม่เปิดขาย — ห้ามชวนให้ "เติมเครดิตก่อน" เพราะเติมไปก็เช่าไม่ได้ */
+    it('explains that renting is closed instead of asking for a top-up', async () => {
+        wallet.isConnected = true;
+        state.canRent.value = false;
+
+        const wrapper = mount(AiTradeCard, { attachTo: document.body });
+        await wrapper.findAll('button').find(b => b.text().includes('Activate AI TRADE')).trigger('click');
+
+        const gate = document.body.textContent;
+        expect(gate).toContain('renting is not open yet');
+        expect(gate).not.toContain('Top up first');
+        expect(gate).not.toContain('Not enough credits');
+
+        const cta = [...document.querySelectorAll('button')].find(b => b.textContent.includes('Renting not open yet'));
+        expect(cta.disabled).toBe(true);
+        expect(subscribe).not.toHaveBeenCalled();
+    });
+
+    /** บอทแพลนฟรีที่กดเริ่มจากการ์ดต้องได้เดินจริง — การ์ดขอให้ตัวเดินบอทฟรีทำงานตอนอยู่บนจอ */
+    it('keeps free-plan bots running while the card is on screen', () => {
+        wallet.isConnected = true;
+        state.isActive.value = true;
+        state.subscription.value = { plan_code: 'free', plan_name: 'Free', tier: 'free', days_remaining: 300 };
+        state.bots.value = [{ id: 3, name: 'Grid', pair: 'BTC/USDT', strategy_name: 'Grid', timeframe: '1h', status: 'running' }];
+        state.browserBots.value = state.bots.value;
+
+        const wrapper = mount(AiTradeCard, { attachTo: document.body });
+
+        expect(keepBrowserBotsRunning).toHaveBeenCalledTimes(1);
+        expect(wrapper.text()).toContain('closing the tab stops them');
+    });
+
+    /** บอทที่แพลนไม่ให้เดินแล้ว ต้องบอกว่าเพราะแพลน — ไม่ใช่ไฟแดงเฉยๆ */
+    it('says why a bot is not running when the plan no longer covers it', () => {
+        wallet.isConnected = true;
+        state.isActive.value = true;
+        state.subscription.value = { plan_code: 'free', plan_name: 'Free', tier: 'free', days_remaining: 300 };
+        state.bots.value = [{ id: 4, name: 'Signal', pair: 'BTC/USDT', strategy_name: 'AI Signal', timeframe: '1h', status: 'paused', pause_reason: 'plan_locked' }];
+        planReasons[4] = 'Your current plan does not include this strategy';
+
+        const wrapper = mount(AiTradeCard, { attachTo: document.body });
+
+        expect(wrapper.text()).toContain('Your current plan does not include this strategy');
+    });
+
+    /** รอบล่าสุดถูกเซิร์ฟเวอร์ปฏิเสธ — ต้องเห็นข้อความ ไม่ใช่ไฟเขียวกะพริบเหมือนเดินปกติ */
+    it('shows the last rejected cycle of a running bot', () => {
+        wallet.isConnected = true;
+        state.isActive.value = true;
+        state.subscription.value = { plan_code: 'free', plan_name: 'Free', tier: 'free', days_remaining: 300 };
+        state.bots.value = [{ id: 5, name: 'Grid', pair: 'BTC/USDT', strategy_name: 'Grid', timeframe: '1h', status: 'running' }];
+        tickErrors[5] = { code: 'BOT_BANNED', message: 'Suspended by the team' };
+
+        const wrapper = mount(AiTradeCard, { attachTo: document.body });
+
+        expect(wrapper.text()).toContain('Suspended by the team');
+        expect(wrapper.find('.ai-bot-row .bg-trading-green').exists()).toBe(false);
+        expect(wrapper.find('.ai-bot-row .bg-trading-red').exists()).toBe(true);
     });
 });

@@ -86,7 +86,11 @@ const statusClass = (status) => ({
 }[status] || 'text-dark-300 bg-white/5');
 
 onMounted(() => { if (bot.isConnected.value) bot.loadBotWallet(); });
-watch(() => bot.wallet.value, (v) => { if (v) bot.loadBotWallet(); });
+// สลับกระเป๋า = ข้อความผลลัพธ์ของกระเป๋าเดิมไม่เกี่ยวแล้ว
+watch(() => bot.wallet.value, (v) => {
+    message.value = null;
+    if (v) bot.loadBotWallet();
+});
 watch(assets, (list) => { if (list.length && !list.some(a => a.symbol === asset.value)) asset.value = list[0].symbol; });
 </script>
 
@@ -192,5 +196,13 @@ watch(assets, (list) => { if (list.length && !list.some(a => a.symbol === asset.
                 </div>
             </div>
         </template>
+
+        <!--
+            ผลของปุ่มในสถานะที่ยังไม่มีกระเป๋า (สร้างกระเป๋าไม่ผ่าน — KYC / ปิดอยู่ / เน็ตหลุด)
+            เดิมข้อความอยู่เฉพาะในสถานะที่มีกระเป๋าแล้ว กดสร้างไม่ผ่านจึงเงียบสนิท
+        -->
+        <p v-if="message && !wallet" :class="['text-[11px] rounded-lg px-3 py-2', message.ok ? 'bg-trading-green/10 text-trading-green' : 'bg-trading-red/10 text-trading-red']">
+            {{ message.text }}
+        </p>
     </section>
 </template>
