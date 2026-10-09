@@ -127,18 +127,34 @@ export function glowingStandard({ boost = 0.45, ...params } = {}) {
     return mat;
 }
 
+/**
+ * โหลดภาพธรรมดา (ไว้วาดลง canvas) — ไม่มีไฟล์ = คืน null
+ * รายงานเข้า THREE.DefaultLoadingManager แบบเดียวกับ TextureLoader → หลอดดาวน์โหลดหน้าแรก
+ * นับรูปทุกใบของฉากได้จากที่เดียว (Composables/useHomeSplash.js · trackLoads)
+ */
+export function loadImage(url) {
+    const manager = THREE.DefaultLoadingManager;
+    manager?.itemStart(url);
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.decoding = 'async';
+        img.onload = () => {
+            manager?.itemEnd(url);
+            resolve(img);
+        };
+        img.onerror = () => {
+            manager?.itemError(url);
+            manager?.itemEnd(url);
+            resolve(null);
+        };
+        img.src = url;
+    });
+}
+
 let logoPromise = null;
 /** โลโก้ TPIX (ใช้บนหน้าเหรียญ) */
 export function loadLogo() {
-    if (!logoPromise) {
-        logoPromise = new Promise((resolve) => {
-            const img = new Image();
-            img.decoding = 'async';
-            img.onload = () => resolve(img);
-            img.onerror = () => resolve(null);
-            img.src = '/tpixlogo.webp';
-        });
-    }
+    if (!logoPromise) logoPromise = loadImage('/tpixlogo.webp');
     return logoPromise;
 }
 

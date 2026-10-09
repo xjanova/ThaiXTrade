@@ -10,7 +10,7 @@
  */
 
 import * as THREE from 'three';
-import { C, clamp, smoothstep, glowTexture, coinFaceTexture, createLabel, loadTexture, canvasTexture } from './common.js';
+import { C, clamp, smoothstep, glowTexture, coinFaceTexture, createLabel, loadTexture, loadImage, canvasTexture } from './common.js';
 
 const approach = (cur, target, k, dt) => cur + (target - cur) * (1 - Math.exp(-k * dt));
 
@@ -453,14 +453,13 @@ export function buildEcosystem(cards) {
         tag(mesh, `eco:${card.key}`);
         paintCard(t.ctx, card, null);
         t.tex.needsUpdate = true;
-        const img = new Image();
-        img.decoding = 'async';
-        img.onload = () => {
+        // ผ่าน loadImage → นับในหลอดดาวน์โหลดหน้าแรก · ภาพเสีย = การ์ดไม่มีรูป (ข้อความยังอยู่)
+        loadImage(card.image).then((img) => {
+            if (!img) return;
             item.img = img;
             paintCard(t.ctx, item.card, img);
             t.tex.needsUpdate = true;
-        };
-        img.src = card.image;
+        });
     });
 
     let hovered = null;

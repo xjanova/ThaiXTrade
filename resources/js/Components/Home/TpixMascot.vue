@@ -21,6 +21,7 @@ import { router } from '@inertiajs/vue3';
 import { useTranslation } from '@/Composables/useTranslation';
 import { useChatbot } from '@/Composables/useChatbot';
 import { useMascot } from '@/Composables/useMascot';
+import { whenSplashGone } from '@/Composables/useHomeSplash';
 import { sfx } from '@/Components/Home3D/sound';
 import {
     SECTIONS, TOUR_ORDER, POKE_LINES,
@@ -149,19 +150,27 @@ async function boot() {
     if (props.section === null) observeSections();
     else currentSection = props.section;
 
-    greetTimer = setTimeout(() => {
-        if (pendingTour) {
-            pendingTour = false;
-            startTour();
-        } else if (pendingRecall) {
-            // ผู้ใช้กดเรียกกลับมา → โบกมือทักก่อน (บทแนะนำส่วนนี้ค่อยพูดรอบหน้า)
-            pendingRecall = false;
-            sfx.chime();
-            showLine({ kind: 'line', lineKey: 'mascot.backLine', chips: [{ label: 'mascot.chips.tour', action: 'start-tour' }], pose: 'wave' });
-        } else if (currentSection) {
-            say(currentSection);
-        }
-    }, 650);
+    // จอโหลดหน้าแรกยังบังอยู่ → เริ่มนับเวลาทักหลังจอหาย ไม่งั้นน้องพูดประโยคแรกจบใต้จอโหลด ผู้ใช้ไม่เห็น
+    // (ไม่มีจอโหลด = ทักตามเวลาเดิม) · ผูกกับ stage รอบนี้ — ถูกซ่อน/บูตใหม่ระหว่างรอ ห้ามทักซ้อนสองรอบ
+    const bootedStage = stage;
+    whenSplashGone().then(() => {
+        if (!alive || stage !== bootedStage) return;
+        greetTimer = setTimeout(greet, 650);
+    });
+}
+
+function greet() {
+    if (pendingTour) {
+        pendingTour = false;
+        startTour();
+    } else if (pendingRecall) {
+        // ผู้ใช้กดเรียกกลับมา → โบกมือทักก่อน (บทแนะนำส่วนนี้ค่อยพูดรอบหน้า)
+        pendingRecall = false;
+        sfx.chime();
+        showLine({ kind: 'line', lineKey: 'mascot.backLine', chips: [{ label: 'mascot.chips.tour', action: 'start-tour' }], pose: 'wave' });
+    } else if (currentSection) {
+        say(currentSection);
+    }
 }
 
 function markFailed() {

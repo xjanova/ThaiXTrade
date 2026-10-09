@@ -1,0 +1,438 @@
+/*
+ * TPIX TRADE — จอโหลดหน้าแรก (ฝัง inline ใน <head> ผ่าน head.blade.php)
+ *
+ * ทุกสีอ้าง design token ของ app.css (--c-*, --color-*) พร้อมค่าสำรอง
+ * → ธีม XP Silver ได้จอโหลดโทนเงินเอง และถ้า app.css โหลดไม่ขึ้นก็ยังเป็นธีมมืดปกติ
+ * การเคลื่อนไหวทั้งหมดเป็น transform/opacity (GPU วาดเอง ไม่แย่งเธรดหลักที่กำลังบูต Vue/three.js)
+ *
+ * Developed by Xman Studio
+ */
+
+.tpix-splash {
+    --sp-cyan: var(--c-primary-400, 34 211 238);
+    --sp-violet: var(--c-accent-400, 167 139 250);
+    --sp-warm: var(--color-warm, 249 115 22);
+    --sp-ink: var(--c-white, 255 255 255);
+    /* ความสูงน้อง: จอแคบ/จอเตี้ย (มือถือแนวนอน) ย่อเอง */
+    --sp-rider-h: clamp(92px, min(28vw, 24vh), 176px);
+    --sp-fade: 340ms;
+    position: fixed;
+    inset: 0;
+    /* เหนือทุกอย่างของแอป แต่ต่ำกว่าป้ายของ devtoolsGuard (2147483000+) */
+    z-index: 2147481000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    overflow: hidden;
+    background-color: rgb(var(--c-dark-950, 2 6 23));
+    color: rgb(var(--sp-ink));
+    font-family: Inter, 'Noto Sans Thai', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    opacity: 1;
+    transition: opacity var(--sp-fade) ease;
+}
+
+/* ไม่มี JS (หรือสคริปต์พัง) = ไม่โชว์เลย — จอโหลดที่ไม่มีวันหายแย่กว่าไม่มีจอโหลด */
+.tpix-splash[hidden] {
+    display: none;
+}
+
+.tpix-splash.is-leaving {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* ── ฉากหลัง: แสงฟุ้งสามสีแบรนด์ + พื้นกริดวิ่งเข้าหาจอ (เหมือนพื้นโลก 3D ที่กำลังโหลด) ── */
+.tpix-splash__glow {
+    position: absolute;
+    inset: -25%;
+    pointer-events: none;
+    background:
+        radial-gradient(30% 26% at 30% 36%, rgb(var(--sp-cyan) / 0.2), transparent),
+        radial-gradient(28% 26% at 70% 42%, rgb(var(--sp-violet) / 0.18), transparent),
+        radial-gradient(34% 24% at 52% 74%, rgb(var(--sp-warm) / 0.13), transparent);
+    animation: tpix-splash-drift 16s ease-in-out infinite alternate;
+    will-change: transform;
+}
+
+.tpix-splash__horizon {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 42%;
+    overflow: hidden;
+    pointer-events: none;
+    perspective: 420px;
+    perspective-origin: 50% 0;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 55%);
+    mask-image: linear-gradient(to bottom, transparent, #000 55%);
+    opacity: 0.75;
+}
+
+.tpix-splash__grid {
+    position: absolute;
+    left: -60%;
+    width: 220%;
+    /* เกินขึ้นไปหนึ่งช่อง → เลื่อนวนแล้วขอบบนไม่โหว่ */
+    top: -48px;
+    height: calc(100% + 48px);
+    transform-origin: 50% 0;
+    transform: rotateX(62deg);
+    background-image:
+        linear-gradient(rgb(var(--sp-cyan) / 0.22) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(var(--sp-cyan) / 0.16) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: 50% 0;
+    animation: tpix-splash-grid 1.6s linear infinite;
+    will-change: transform;
+}
+
+/* ── กองกลางจอ ─────────────────────────────────────────────────────────── */
+.tpix-splash__inner {
+    position: relative;
+    width: min(520px, 100%);
+    margin-top: -5vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* backwards (ไม่ใช่ both) — จบแล้วต้องปล่อย transform ให้จังหวะจางออกใช้ต่อ */
+    animation: tpix-splash-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    transition: transform var(--sp-fade) ease;
+}
+
+.is-leaving .tpix-splash__inner {
+    transform: translate3d(0, -8px, 0) scale(1.02);
+}
+
+.tpix-splash__brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+/* ตราเต็ม (ลายละเอียด) ใช้ที่ ≥ 64px ตามแนวทางของ BrandLogo.vue */
+.tpix-splash__mark {
+    display: block;
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 14px rgb(var(--sp-cyan) / 0.4));
+}
+
+/* จอเตี้ย (มือถือแนวนอน) — เก็บที่ให้น้องกับหลอด ตัวอักษรแบรนด์ยังอยู่ */
+@media (max-height: 560px) {
+    .tpix-splash__mark {
+        display: none;
+    }
+}
+
+.tpix-splash__word {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.32em;
+    /* letter-spacing เติมช่องหลังตัวสุดท้าย → ดึงกลับให้คำอยู่กลางจริง */
+    margin-right: -0.32em;
+    background: linear-gradient(90deg, rgb(var(--sp-cyan)), rgb(var(--sp-violet)) 55%, rgb(var(--sp-warm)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* ── หลอด + น้อง ───────────────────────────────────────────────────────── */
+.tpix-splash__stage {
+    position: relative;
+    width: 100%;
+    /* บน: ที่ว่างให้น้อง (ท่าเชียร์สูงสุด + เด้ง) · ข้าง: น้องยื่นเลยหัว/ท้ายหลอดได้ไม่ล้นจอ */
+    padding: calc(var(--sp-rider-h) * 0.96 + 18px) clamp(44px, 13vw, 84px) 0;
+}
+
+.tpix-splash__track {
+    position: relative;
+    height: 12px;
+    border-radius: 999px;
+    background: rgb(var(--sp-ink) / 0.07);
+    box-shadow:
+        inset 0 1px 3px rgb(0 0 0 / 0.5),
+        0 0 0 1px rgb(var(--sp-ink) / 0.07),
+        0 0 32px rgb(var(--sp-cyan) / 0.14);
+}
+
+.tpix-splash__clip {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    overflow: hidden;
+}
+
+.tpix-splash__fill {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    overflow: hidden;
+    transform: translate3d(-97%, 0, 0);
+    will-change: transform;
+}
+
+.tpix-splash__fill-bg {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgb(var(--sp-cyan)), rgb(var(--sp-violet)) 55%, rgb(var(--sp-warm)));
+    transform: translate3d(97%, 0, 0);
+    will-change: transform;
+}
+
+/* แสงวาบวิ่งผ่านเนื้อหลอด */
+.tpix-splash__shimmer {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 30%;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+    transform: translate3d(-100%, 0, 0);
+    animation: tpix-splash-shimmer 1.8s ease-in-out infinite;
+}
+
+/* หัวหลอดสว่างจ้า = แสงที่เหรียญลากตามมา */
+.tpix-splash__head {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 72px;
+    border-radius: inherit;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.7));
+}
+
+.tpix-splash__rider {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 100%;
+    height: 0;
+    transform: translate3d(3%, 0, 0);
+    will-change: transform;
+    pointer-events: none;
+}
+
+.tpix-splash__tip {
+    position: absolute;
+    left: -20px;
+    top: -20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: radial-gradient(
+        circle,
+        rgb(255 255 255 / 0.95) 0 12%,
+        rgb(var(--sp-cyan) / 0.8) 28%,
+        rgb(var(--sp-cyan) / 0.22) 52%,
+        transparent 70%
+    );
+    animation: tpix-splash-pulse 1.1s ease-in-out infinite;
+}
+
+.tpix-splash__bob {
+    position: absolute;
+    left: 0;
+    top: 0;
+    animation: tpix-splash-bob 1.9s ease-in-out infinite;
+}
+
+/* แสงฟุ้งหลังตัวน้อง ให้ตัวละครเด่นจากพื้นมืด */
+.tpix-splash__aura {
+    position: absolute;
+    left: calc(var(--sp-rider-h) * -0.55);
+    top: calc(var(--sp-rider-h) * -1.02);
+    width: calc(var(--sp-rider-h) * 1.1);
+    height: calc(var(--sp-rider-h) * 1.1);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgb(var(--sp-cyan) / 0.22), rgb(var(--sp-violet) / 0.1) 45%, transparent 70%);
+}
+
+.tpix-splash__pose {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: block;
+    width: calc(var(--sp-rider-h) * 2 / 3);
+    height: var(--sp-rider-h);
+    max-width: none;
+    transition: opacity 140ms ease;
+}
+
+/*
+ * ท่าบิน: ภาพต้นฉบับหันซ้าย → พลิกให้บินไปทางขวาตามหลอด
+ * หลังพลิก กลางเหรียญอยู่ที่ 37% ของความกว้าง ขอบล่างเหรียญอยู่ที่ ~88% ของความสูง
+ * → เลื่อนให้กลางเหรียญอยู่ที่หัวหลอด ขอบล่างแตะเส้นกลางหลอด (น้อง "ขี่" หลอด)
+ * ตัดหางแสงส่วนที่ห้อยต่ำกว่าเหรียญทิ้ง 9% — เนื้อหลอดเรืองแสงทำหน้าที่เป็นหางแทน
+ */
+.tpix-splash__pose--fly {
+    transform: translate(-37%, -88%) scaleX(-1);
+    clip-path: inset(0 0 9% 0);
+}
+
+/* ท่าเชียร์: เหรียญอยู่กลางภาพ (52%) ขอบล่างที่ ~95% */
+.tpix-splash__pose--cheer {
+    opacity: 0;
+    transform: translate(-52%, -95%);
+    transform-origin: 52% 95%;
+}
+
+.tpix-splash.is-cheer .tpix-splash__pose--fly {
+    opacity: 0;
+}
+
+.tpix-splash.is-cheer .tpix-splash__pose--cheer {
+    opacity: 1;
+    animation: tpix-splash-cheer 0.55s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+
+.tpix-splash.is-done .tpix-splash__bob {
+    animation: none;
+}
+
+.tpix-splash__sparks {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
+.tpix-splash__spark {
+    position: absolute;
+    left: -7px;
+    top: -7px;
+    width: 14px;
+    height: 14px;
+    background: linear-gradient(135deg, #fff7c2, rgb(var(--sp-warm)));
+    clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+    opacity: 0;
+    transform: translate3d(var(--x, 0), var(--y, 0), 0) scale(0);
+}
+
+.tpix-splash__spark:nth-child(1) { --x: calc(var(--sp-rider-h) * -0.5); --y: calc(var(--sp-rider-h) * -0.95); --d: 0s; }
+.tpix-splash__spark:nth-child(2) { --x: calc(var(--sp-rider-h) * 0.42); --y: calc(var(--sp-rider-h) * -1.02); --d: 0.06s; }
+.tpix-splash__spark:nth-child(3) { --x: calc(var(--sp-rider-h) * -0.62); --y: calc(var(--sp-rider-h) * -0.48); --d: 0.12s; }
+.tpix-splash__spark:nth-child(4) { --x: calc(var(--sp-rider-h) * 0.58); --y: calc(var(--sp-rider-h) * -0.58); --d: 0.03s; background: linear-gradient(135deg, #fff, rgb(var(--sp-cyan))); }
+.tpix-splash__spark:nth-child(5) { --x: calc(var(--sp-rider-h) * -0.08); --y: calc(var(--sp-rider-h) * -1.14); --d: 0.16s; background: linear-gradient(135deg, #fff, rgb(var(--sp-violet))); }
+.tpix-splash__spark:nth-child(6) { --x: calc(var(--sp-rider-h) * 0.3); --y: calc(var(--sp-rider-h) * -0.22); --d: 0.09s; }
+
+.tpix-splash.is-done .tpix-splash__spark {
+    animation: tpix-splash-spark 0.7s ease-out var(--d, 0s) both;
+}
+
+/* ── ตัวเลข + ประโยคสถานะ ─────────────────────────────────────────────── */
+.tpix-splash__pct {
+    margin: 22px 0 0;
+    font-size: clamp(28px, 8vw, 36px);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    /* ตัวเลขกว้างเท่ากันทุกตัว — ไม่สั่นตอนนับขึ้น */
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 24px rgb(var(--sp-cyan) / 0.35);
+}
+
+.tpix-splash.is-done .tpix-splash__pct {
+    animation: tpix-splash-pop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.tpix-splash__label {
+    margin: 10px 0 0;
+    min-height: 1.6em;
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgb(var(--c-dark-300, 203 213 225));
+}
+
+@media (max-width: 400px) {
+    .tpix-splash__label {
+        font-size: 13px;
+    }
+}
+
+/* ── keyframes ─────────────────────────────────────────────────────────── */
+@keyframes tpix-splash-in {
+    from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.98); }
+}
+
+@keyframes tpix-splash-drift {
+    from { transform: translate3d(-2%, -1%, 0) rotate(0deg) scale(1); }
+    to { transform: translate3d(2%, 1.5%, 0) rotate(8deg) scale(1.06); }
+}
+
+/* เลื่อนพอดีหนึ่งช่องกริด → วนต่อกันไม่เห็นรอยต่อ */
+@keyframes tpix-splash-grid {
+    from { transform: rotateX(62deg) translate3d(0, 0, 0); }
+    to { transform: rotateX(62deg) translate3d(0, 48px, 0); }
+}
+
+@keyframes tpix-splash-shimmer {
+    0% { transform: translate3d(-100%, 0, 0); }
+    70%, 100% { transform: translate3d(340%, 0, 0); }
+}
+
+@keyframes tpix-splash-pulse {
+    0%, 100% { transform: scale(0.85); opacity: 0.85; }
+    50% { transform: scale(1.15); opacity: 1; }
+}
+
+@keyframes tpix-splash-bob {
+    0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+    50% { transform: translate3d(0, -6px, 0) rotate(-1.5deg); }
+}
+
+@keyframes tpix-splash-cheer {
+    0% { transform: translate(-52%, -95%) scale(0.84, 0.9); }
+    45% { transform: translate(-52%, calc(-95% - 16px)) scale(1.04, 1.03); }
+    75% { transform: translate(-52%, -95%) scale(0.99, 1); }
+    100% { transform: translate(-52%, -95%) scale(1); }
+}
+
+@keyframes tpix-splash-spark {
+    0% { opacity: 0; transform: translate3d(var(--x, 0), var(--y, 0), 0) scale(0) rotate(0deg); }
+    35% { opacity: 1; transform: translate3d(var(--x, 0), var(--y, 0), 0) scale(1.15) rotate(45deg); }
+    100% { opacity: 0; transform: translate3d(var(--x, 0), calc(var(--y, 0px) - 12px), 0) scale(0.3) rotate(120deg); }
+}
+
+@keyframes tpix-splash-pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.14); }
+    100% { transform: scale(1); }
+}
+
+/* ผู้ใช้ขอลดการเคลื่อนไหว: ไม่ลอย ไม่วาบ ไม่เด้ง ไม่มีประกาย — หลอดยังเดินตามจริง แล้วจางออกเฉย ๆ */
+@media (prefers-reduced-motion: reduce) {
+    .tpix-splash__glow,
+    .tpix-splash__grid,
+    .tpix-splash__shimmer,
+    .tpix-splash__tip,
+    .tpix-splash__bob,
+    .tpix-splash__inner,
+    .tpix-splash.is-cheer .tpix-splash__pose--cheer,
+    .tpix-splash.is-done .tpix-splash__pct {
+        animation: none;
+    }
+
+    .tpix-splash__shimmer,
+    .tpix-splash__sparks {
+        display: none;
+    }
+
+    .tpix-splash__inner,
+    .tpix-splash__pose {
+        transition: none;
+    }
+
+    .is-leaving .tpix-splash__inner {
+        transform: none;
+    }
+}

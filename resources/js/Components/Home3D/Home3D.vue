@@ -13,6 +13,8 @@
  * โหลดเร็ว:
  * - ออกไปหน้าอื่นแล้วกลับมา = ใช้โลกเดิมที่พักไว้ (keeper.js) ไม่ต้องสร้างฉาก/คอมไพล์ใหม่ ไม่มีจอโหลด
  * - เปิดครั้งแรก = ข้อความฮีโร่ขึ้นทันที ฉาก 3D ค่อยจางเข้ามาเมื่อพร้อม (จอโหลดเป็นแค่ป้ายเล็กด้านล่าง)
+ * - เปิดแบบเต็มหน้า (พิมพ์ URL/รีเฟรช) มีจอโหลดเต็มจอ + น้องขี่หลอดบังไว้ก่อน — ไฟล์นี้รายงานขั้นตอนจริง
+ *   (สร้างฉาก → รูปประกอบ → คอมไพล์ shader → พร้อม) ผ่าน useHomeSplash
  *
  * Developed by Xman Studio
  */
@@ -33,12 +35,16 @@ import { hooks, keep, takeKept, discard, hasKept } from './keeper';
 import { useMarketData } from '@/Composables/useMarketData';
 import { useTranslation } from '@/Composables/useTranslation';
 import { useMascot } from '@/Composables/useMascot';
+import { useHomeSplash } from '@/Composables/useHomeSplash';
 import { FACE_SRC } from '@/Components/Home/spriteStage';
 
 const emit = defineEmits(['fallback', 'lite']);
 
 const { t, locale } = useTranslation();
 const mascot = useMascot();
+// จอโหลดหน้าแรก (เปิดแบบเต็มหน้าเท่านั้น) — ตัวเดียวกับที่ Pages/Home.vue สร้าง · ไม่มีจอโหลด = ไม่ทำอะไร
+const splash = useHomeSplash();
+let stopLoadTracking = null;
 const sound = useHomeSound();
 const { tickers, topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
 
@@ -416,17 +422,22 @@ onMounted(async () => {
         placeWorld();
         engine.start(tick);
         loading.value = false;
+        splash.ready();
     } else {
         armBootTimer();
         document.addEventListener('visibilitychange', onBootVisibility);
         try {
             const phone = Math.min(window.innerWidth, window.innerHeight) < 700;
+            splash.start('world');
             mountCanvas(document.createElement('canvas'));
             engine = createEngine(canvasEl.value, {
                 startLevel: phone ? 1 : 0,
                 onSlow: () => hooks.onSlow?.(),
                 onLost: () => hooks.onLost?.(),
             });
+            // รูปที่ฉากโหลด (โลโก้เหรียญ/การ์ด/ไอคอน) รายงานผ่าน DefaultLoadingManager ของ three
+            // ต้องผูกก่อน buildWorld — ฉากสั่งโหลดทุกรูปตอนสร้าง
+            stopLoadTracking = splash.trackLoads(engine.THREE.DefaultLoadingManager);
             world = buildWorld(engine, {
                 ecosystem: ecoCards(),
                 features: FEATURES,
@@ -435,16 +446,21 @@ onMounted(async () => {
                 onCandleHover: (info) => hooks.onCandleHover?.(info),
                 onCoinLand: () => hooks.onCoinLand?.(),
             });
+            splash.complete('world');
             // ข้อความฮีโร่ขึ้นทันที ไม่ต้องรอฉาก 3D
             placeWorld();
             engine.step(1 / 60);
+            splash.start('compile');
             // คอมไพล์ล่วงหน้าช่วยกันกระตุก แต่ไม่ยอมรอเกิน 4 วิ (บางเครื่อง/แท็บเบื้องหลังรอไม่จบ)
             await Promise.race([engine.compile().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
             if (!alive) return;
+            splash.complete('compile');
             engine.start(tick);
             loading.value = false;
             clearTimeout(bootTimer);
             document.removeEventListener('visibilitychange', onBootVisibility);
+            // ฉากวาดได้แล้ว → หลอดครบ 100% (รูปประกอบที่ยังค้างรอได้อีกนิดเดียว ไม่กั้นผู้ใช้)
+            splash.ready();
         } catch {
             clearTimeout(bootTimer);
             document.removeEventListener('visibilitychange', onBootVisibility);
@@ -477,6 +493,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
     alive = false;
+    stopLoadTracking?.();
     clearTimeout(bootTimer);
     document.removeEventListener('visibilitychange', onBootVisibility);
     document.removeEventListener('visibilitychange', onVisibility);

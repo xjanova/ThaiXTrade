@@ -51,6 +51,13 @@
     <!-- Default Locale จาก admin settings — frontend ใช้เป็น fallback ถ้า user ยังไม่เลือก -->
     <meta name="default-locale" content="{{ \App\Models\Language::where('is_default', true)->value('code') ?? 'th' }}">
 
+    {{-- จอโหลดหน้าแรก (หลอดดาวน์โหลด + น้อง TPIX) — เฉพาะเปิด / แบบเต็มหน้า
+         Inertia เปลี่ยนหน้ากลับมาหน้าแรกไม่ผ่าน Blade นี้อยู่แล้ว (โลก 3D ถูกเก็บไว้ ขึ้นทันที ไม่ต้องมีจอโหลด) --}}
+    @php($tpixHomeSplash = request()->routeIs('home'))
+    @if ($tpixHomeSplash)
+        @include('partials.home-splash.head')
+    @endif
+
     <!-- Scripts -->
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @inertiaHead
@@ -68,6 +75,10 @@
         </script>
     </head>
 <body class="font-sans antialiased bg-dark-950 text-white">
+    @if ($tpixHomeSplash)
+        @include('partials.home-splash.body')
+    @endif
+
     @inertia
 
     <!-- Noscript Fallback -->

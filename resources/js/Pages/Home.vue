@@ -9,15 +9,25 @@
  * Home3D โหลดแยก chunk (รวม three.js) — เครื่องที่ได้หน้าเดิมไม่ต้องดาวน์โหลดเลย
  * วิธีเลือกอยู่ใน Composables/useHomeMode.js
  *
+ * จอโหลด (หลอดดาวน์โหลด + น้อง TPIX) ขึ้นเฉพาะเปิดหน้านี้แบบเต็มหน้า — ไฟล์นี้คือจุดส่งไม้จากช่วง A (ก่อน JS)
+ * ไปช่วง B (ความคืบหน้าจริง) ดู Composables/useHomeSplash.js
+ *
  * Developed by Xman Studio
  */
-import { defineAsyncComponent } from 'vue';
+import { defineAsyncComponent, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import HomeClassic from '@/Components/Home/HomeClassic.vue';
 import { useHomeMode } from '@/Composables/useHomeMode';
 import { useTranslation } from '@/Composables/useTranslation';
+import { useHomeSplash } from '@/Composables/useHomeSplash';
+
+const home = useHomeMode();
+const { t } = useTranslation();
+// สร้างตอนนี้ = จับค่าที่หลอดคืบมาได้ในช่วง A เป็นจุดตั้งต้นของช่วง B
+const splash = useHomeSplash();
 
 const Home3D = defineAsyncComponent({
-    loader: () => import('@/Components/Home3D/Home3D.vue'),
+    // ก้อนโค้ด 3D + three.js คืองานใหญ่สุดของการเปิดหน้าแรก → นับเป็นช่วงแรกของหลอด
+    loader: () => splash.track('chunk', import('@/Components/Home3D/Home3D.vue')),
     // โหลดโค้ด 3D ไม่สำเร็จ (เน็ตหลุด/ไฟล์หาย) → หน้าเดิม ไม่ปล่อยจอว่าง
     onError(error, retry, fail) {
         fail();
@@ -25,8 +35,26 @@ const Home3D = defineAsyncComponent({
     },
 });
 
-const home = useHomeMode();
-const { t } = useTranslation();
+// ฟอนต์เว็บ (Inter/Noto Sans Thai) — รอให้ครบก่อนจอโหลดจาง ข้อความจะได้ไม่กระโดดต่อหน้าผู้ใช้
+if (typeof document !== 'undefined' && document.fonts?.ready) {
+    splash.track('fonts', document.fonts.ready).catch(() => {});
+}
+
+onMounted(() => {
+    // หน้าเดิม (เครื่องไม่รองรับ 3D / ผู้ใช้เลือกเอง / ?view=classic) ไม่มีอะไรต้องรอ — เนื้อหาวาดเสร็จแล้วตอนนี้
+    if (home.mode.value !== '3d') splash.finish();
+});
+
+// 3D ล้มกลางทาง (โหลดโค้ดไม่ได้ / GPU ไม่ไหว / บูตไม่ขึ้น) → หน้าเดิมขึ้นแทนทันที จอโหลดจบตาม ไม่รอหมดเวลา
+watch(
+    () => home.mode.value,
+    (mode) => {
+        if (mode !== '3d') nextTick(() => splash.finish());
+    },
+);
+
+// ผู้ใช้เปลี่ยนหน้าไปก่อนโหลดเสร็จ → ปิดจอโหลดทันที ไม่ให้ค้างบังหน้าใหม่
+onBeforeUnmount(() => splash.dismiss());
 </script>
 
 <template>
