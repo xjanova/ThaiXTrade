@@ -472,7 +472,7 @@ export const useWalletStore = defineStore('wallet', () => {
             }).then((res) => {
                 // เซิร์ฟเวอร์ปิด session ให้ด้วย (ผู้ใช้ที่เข้ามาด้วยกระเป๋าล้วน)
                 // ต้องดึง props ใหม่ ไม่งั้นเมนูบัญชียังค้างอยู่ทั้งที่ออกไปแล้ว
-                if (res?.data?.data?.signed_out) router.reload({ only: ['auth'] });
+                if (res?.data?.data?.signed_out) router.reload({ only: ['auth', 'kyc'] });
             }).catch(() => {});
         }
         linkError.value = null;
@@ -768,7 +768,9 @@ export const useWalletStore = defineStore('wallet', () => {
              * "เข้าสู่ระบบ" ทั้งที่เข้าไปแล้ว
              */
             if (verifyRes.data?.data?.signed_in) {
-                router.reload({ only: ['auth'] });
+                // kyc ด้วย — สถานะยืนยันตัวตนผูกกับบัญชีนี้ ไม่ดึงใหม่ปุ่ม "ยืนยันตัวตนก่อนเทรด"
+                // ค้างอยู่ทั้งที่บัญชีของกระเป๋ายืนยันในแอปผ่านแล้ว
+                router.reload({ only: ['auth', 'kyc'] });
             }
         } catch (err) {
             /*

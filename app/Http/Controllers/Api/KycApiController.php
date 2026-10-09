@@ -137,7 +137,8 @@ class KycApiController extends Controller
                 'reject_reason' => $latest->reject_reason,
             ] : null,
             'thaiprompt' => $this->thaiprompt->ownerPayload($user),
-            // ส่งเอกสารเองยังทำได้ที่หน้าเว็บ (แอปยังไม่มีหน้าอัปโหลดบัตร)
+            // แอปตั้งแต่ v1.1.211 ไม่ใช้แล้ว (หน้าเว็บเลิกรับเอกสาร ยืนยันตัวตนทำในแอปเท่านั้น)
+            // คงไว้ให้แอปรุ่นเก่าที่ยังมีปุ่ม "ส่งเอกสารที่หน้าเว็บ" — เปิดไปเจอขั้นตอนในแอปแทน
             'web_kyc_url' => url('/kyc'),
         ];
     }

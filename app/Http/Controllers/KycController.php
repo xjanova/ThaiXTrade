@@ -3,12 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\KycDeletionRequest;
-use App\Models\KycDocument;
 use App\Models\KycSubmission;
 use App\Services\Kyc\KycGate;
 use App\Services\Kyc\KycPurgeService;
 use App\Services\Kyc\KycService;
-use App\Services\Kyc\ThaipromptKycService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,58 +29,57 @@ class KycController extends Controller
         private readonly KycService $kyc,
         private readonly KycGate $gate,
         private readonly KycPurgeService $purge,
-        private readonly ThaipromptKycService $thaiprompt,
     ) {}
 
     /**
-     * หน้าสถานะ + ฟอร์มยื่น.
+     * หน้าสถานะ + ขั้นตอนยืนยันตัวตนในแอป.
+     *
+     * เปิดได้โดยไม่ต้องล็อกอิน — ยืนยันตัวตนทำในแอป TPIX TRADE เท่านั้น หน้านี้จึงต้องอธิบาย
+     * ให้ทุกคนได้ เดิมอยู่หลัง 'auth' ผู้ใช้กระเป๋าล้วน (ไม่มีรหัสผ่าน) กดปุ่ม "ยืนยันตัวตนก่อนเทรด"
+     * แล้วเด้งไปหน้าเข้าสู่ระบบที่เขาเข้าไม่ได้ ไปต่อไม่ได้เลย
+     * ไม่รู้ว่าเป็นใคร = ไม่มีใบ ไม่มีประวัติ — ข้อมูลส่วนตัวยังออกเฉพาะเจ้าของเหมือนเดิม
      */
     public function index(Request $request): InertiaResponse
     {
         $user = $request->user();
 
-        $latest = $user->kycSubmissions()
+        $latest = $user?->kycSubmissions()
             ->with('documents')
             ->latest('id')
             ->first();
 
-        $pendingDeletion = KycDeletionRequest::query()
-            ->where('user_id', $user->id)
-            ->where('status', KycDeletionRequest::STATUS_PENDING)
-            ->first();
+        $pendingDeletion = $user
+            ? KycDeletionRequest::query()
+                ->where('user_id', $user->id)
+                ->where('status', KycDeletionRequest::STATUS_PENDING)
+                ->first()
+            : null;
 
         return Inertia::render('Kyc/Index', [
             'submission' => $latest?->toOwnerArray(),
-            'history' => $user->kycSubmissions()
-                ->latest('id')
-                ->limit(10)
-                ->get()
-                ->map(fn (KycSubmission $s) => [
-                    'uuid' => $s->uuid,
-                    'level' => $s->level,
-                    'status' => $s->status,
-                    'submitted_at' => $s->submitted_at?->toIso8601String(),
-                    'reviewed_at' => $s->reviewed_at?->toIso8601String(),
-                    'reject_reason' => $s->reject_reason,
-                ])
-                ->all(),
+            'history' => $user
+                ? $user->kycSubmissions()
+                    ->latest('id')
+                    ->limit(10)
+                    ->get()
+                    ->map(fn (KycSubmission $s) => [
+                        'uuid' => $s->uuid,
+                        'level' => $s->level,
+                        'status' => $s->status,
+                        'submitted_at' => $s->submitted_at?->toIso8601String(),
+                        'reviewed_at' => $s->reviewed_at?->toIso8601String(),
+                        'reject_reason' => $s->reject_reason,
+                    ])
+                    ->all()
+                : [],
             'gate' => $this->gate->statusFor($user),
             'features' => $this->gate->features(),
-            'requirements' => [
-                'basic' => KycDocument::REQUIRED_BY_LEVEL[KycSubmission::LEVEL_BASIC],
-                'enhanced' => KycDocument::REQUIRED_BY_LEVEL[KycSubmission::LEVEL_ENHANCED],
-            ],
-            'uploads' => [
-                'max_size_kb' => (int) config('kyc.uploads.max_size_kb', 8192),
-                'extensions' => (array) config('kyc.uploads.extensions', []),
-            ],
-            'consent' => [
-                'version' => $this->kyc->consentVersion(),
-                'retention_days' => $this->kyc->retentionDays(),
-            ],
             'deletionRequest' => $pendingDeletion?->toOwnerArray(),
-            // ยืนยันด้วยบัญชี Thaiprompt (ทางหลัก) — ไม่ได้ตั้งค่า client = การ์ดไม่โผล่
-            'thaiprompt' => $this->thaiprompt->ownerPayload($user),
+            // ยืนยันตัวตนทำในแอป — ปุ่มเปิดแอป (มือถือ) และ QR ไปหน้าดาวน์โหลด (คอมพิวเตอร์)
+            'app' => [
+                'deep_link' => 'tpixtrade://kyc',
+                'download_url' => route('download'),
+            ],
         ]);
     }
 

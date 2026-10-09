@@ -84,7 +84,7 @@ Route::middleware('auth')->group(function () {
      * และการตรวจต้องใช้คนจริง — ยิงรัวๆ ได้เท่ากับถล่มคิวทีมงาน
      */
     Route::prefix('kyc')->name('kyc.')->group(function () {
-        Route::get('/', [KycController::class, 'index'])->name('index');
+        // GET /kyc (หน้าสถานะ) อยู่นอก 'auth' ด้านล่าง — ยืนยันตัวตนทำในแอป หน้านี้ต้องอธิบายให้ทุกคน
         Route::post('/', [KycController::class, 'store'])->name('store')->middleware('throttle:10,60');
         Route::post('/{uuid}/cancel', [KycController::class, 'cancel'])->name('cancel');
 
@@ -122,6 +122,15 @@ Route::middleware('auth')->group(function () {
 Route::get('kyc/thaiprompt/callback', [ThaipromptKycController::class, 'callback'])
     ->name('kyc.thaiprompt.callback')
     ->middleware('throttle:20,10,kyc-tp-callback');
+
+/*
+ * หน้ายืนยันตัวตน — เปิดได้โดยไม่ต้องล็อกอิน
+ *
+ * ยืนยันตัวตนทำในแอป TPIX TRADE เท่านั้น (เว็บทำไม่ได้) หน้านี้บอกขั้นตอน + สถานะของบัญชี
+ * เดิมอยู่หลัง 'auth' ผู้ใช้กระเป๋าล้วนกด "ยืนยันตัวตนก่อนเทรด" แล้วเด้งไปหน้าเข้าสู่ระบบ
+ * ส่วนที่แตะข้อมูลส่วนตัว (export / ลบ / เปิดเอกสาร / ยกเลิก) ยังอยู่หลัง 'auth' ครบ
+ */
+Route::get('kyc', [KycController::class, 'index'])->name('kyc.index');
 
 // Home
 Route::get('/', function () {

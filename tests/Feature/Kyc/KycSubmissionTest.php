@@ -7,6 +7,7 @@ use App\Models\KycSubmission;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -289,9 +290,38 @@ class KycSubmissionTest extends TestCase
     }
 
     #[Test]
-    public function ยังไม่ล็อกอินเปิดหน้ายืนยันตัวตนไม่ได้(): void
+    public function ยังไม่ล็อกอินเห็นหน้าขั้นตอนในแอปแต่ไม่เห็นข้อมูลใคร_และยื่นเองไม่ได้(): void
     {
-        $this->get('/kyc')->assertRedirect();
+        // มีใบของคนอื่นอยู่ในระบบ — คนที่ไม่ได้ล็อกอินต้องไม่เห็นอะไรของใครเลย
+        $this->actingAs($this->user)->post('/kyc', $this->payload())->assertSessionHasNoErrors();
+        Auth::forgetGuards();
+
+        // ยืนยันตัวตนทำในแอป — หน้าเว็บต้องเปิดได้ ไม่ใช่เด้งไปหน้าเข้าสู่ระบบ
+        $this->get('/kyc')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Kyc/Index')
+                ->where('submission', null)
+                ->where('history', [])
+                ->where('deletionRequest', null)
+                ->where('app.deep_link', 'tpixtrade://kyc')
+                ->where('app.download_url', route('download')));
+
         $this->post('/kyc', $this->payload())->assertRedirect();
+        $this->get('/kyc/export')->assertRedirect();
+    }
+
+    #[Test]
+    public function เจ้าของเห็นสถานะใบของตัวเองบนหน้ายืนยันตัวตน(): void
+    {
+        $this->actingAs($this->user)->post('/kyc', $this->payload())->assertSessionHasNoErrors();
+
+        $this->actingAs($this->user)->get('/kyc')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('submission.status', KycSubmission::STATUS_PENDING)
+                ->has('history', 1)
+                ->missing('requirements')
+                ->missing('thaiprompt'));
     }
 }

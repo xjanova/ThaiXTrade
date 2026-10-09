@@ -242,7 +242,7 @@
             "buySymbol": "ซื้อ {symbol}",
             "sellSymbol": "ขาย {symbol}",
             "verifyIdentity": "ยืนยันตัวตนก่อนเทรด",
-            "kycHint": "การเทรดต้องยืนยันตัวตนก่อน — ทำครั้งเดียว ใช้บัญชี Thaiprompt ที่ยืนยันแล้วได้ทันที",
+            "kycHint": "การเทรดต้องยืนยันตัวตนก่อน — ทำครั้งเดียวในแอป TPIX TRADE ใช้บัญชี Thaiprompt ที่ยืนยันแล้วผ่านทันที",
             "tpsl": "TP/SL",
             "advanced": "ตัวเลือกขั้นสูง",
             "comingSoon": "{pair} — เปิดเร็วๆ นี้",

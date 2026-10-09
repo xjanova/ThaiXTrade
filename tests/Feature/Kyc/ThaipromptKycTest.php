@@ -318,13 +318,9 @@ class ThaipromptKycTest extends TestCase
     }
 
     #[Test]
-    public function ยังไม่ได้ตั้งค่า_client_การ์ดไม่โผล่และเชื่อมไม่ได้(): void
+    public function ยังไม่ได้ตั้งค่า_client_เชื่อมไม่ได้(): void
     {
         config(['services.thaiprompt.oauth_client_id' => null]);
-
-        $this->actingAs($this->user)->get('/kyc')
-            ->assertOk()
-            ->assertInertia(fn ($page) => $page->where('thaiprompt.available', false));
 
         $this->actingAs($this->user)->post('/kyc/thaiprompt/connect', ['consent' => true])
             ->assertSessionHasErrors(['kyc' => ThaipromptKycService::ERR_NOT_CONFIGURED]);
