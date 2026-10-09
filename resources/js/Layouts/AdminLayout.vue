@@ -9,6 +9,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
 import { useTranslation } from '@/Composables/useTranslation';
 import LanguageSwitcher from '@/Components/Navigation/LanguageSwitcher.vue';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const { t } = useTranslation();
 
@@ -292,7 +293,7 @@ onMounted(() => {
         >
             <!-- Logo -->
             <div class="flex items-center gap-3 px-5 py-5 border-b border-white/5">
-                <img src="/logo.webp?v=2" alt="TPIX TRADE" class="w-10 h-10 flex-shrink-0 object-contain" />
+                <BrandLogo variant="icon" class="w-10 h-10 flex-shrink-0" />
                 <div v-if="sidebarOpen" class="overflow-hidden">
                     <p class="font-bold text-white text-sm whitespace-nowrap">TPIX <span class="text-gradient">TRADE</span></p>
                     <p class="text-xs text-dark-400 whitespace-nowrap">Admin Panel</p>

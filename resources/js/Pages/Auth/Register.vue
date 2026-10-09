@@ -8,6 +8,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import SocialLoginButtons from '@/Components/Auth/SocialLoginButtons.vue';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const props = defineProps({
     turnstileEnabled: {
@@ -166,7 +167,7 @@ const submit = () => {
             <!-- Logo -->
             <div class="text-center mb-8">
                 <Link href="/">
-                    <img src="/logo.webp?v=2" alt="TPIX TRADE" class="w-20 h-20 mx-auto mb-4 shadow-glow-brand object-contain" />
+                    <BrandLogo variant="mark" class="w-20 h-20 mx-auto mb-4 rounded-full shadow-glow-brand" />
                 </Link>
                 <h1 class="text-2xl font-bold text-white">TPIX <span class="text-gradient">TRADE</span></h1>
                 <p class="text-dark-400 text-sm mt-1">Create your trading account</p>

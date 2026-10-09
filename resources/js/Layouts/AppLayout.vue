@@ -17,6 +17,7 @@ import PageArt from '@/Components/PageArt.vue';
 import ToastStack from '@/Components/ToastStack.vue';
 import { useTranslation } from '@/Composables/useTranslation';
 import versionData from '../../../version.json';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const props = defineProps({
     title: String,
@@ -223,7 +224,7 @@ onMounted(async () => {
             <div class="relative max-w-[1920px] mx-auto px-6 py-10">
                 <!-- แบรนด์ + คำโปรย -->
                 <div class="flex items-start gap-3 mb-8 max-w-md">
-                    <img src="/logo.webp?v=2" alt="TPIX TRADE" class="w-9 h-9 object-contain flex-shrink-0" />
+                    <BrandLogo variant="icon" class="w-9 h-9 flex-shrink-0" />
                     <div class="min-w-0">
                         <p class="text-sm font-bold text-white leading-tight">TPIX TRADE</p>
                         <p class="text-xs text-dark-400 leading-relaxed mt-1">{{ t('footer.tagline') }}</p>

@@ -8,6 +8,7 @@
 import { computed, ref, onMounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { useTranslation } from '@/Composables/useTranslation';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const props = defineProps({
     status: { type: Number, default: 404 },
@@ -174,7 +175,7 @@ const quickLinks = [
 
                 <!-- Logo -->
                 <Link href="/" class="inline-flex items-center gap-3 mb-10 group">
-                    <img src="/logo.webp?v=2" alt="TPIX TRADE" class="w-10 h-10 object-contain group-hover:scale-110 transition-transform" />
+                    <BrandLogo variant="icon" class="w-10 h-10 group-hover:scale-110 transition-transform" />
                     <div class="text-left">
                         <span class="text-lg font-bold text-white">TPIX <span class="text-primary-400">TRADE</span></span>
                         <span class="block text-[10px] text-dark-400 -mt-0.5">by Xman Studio</span>
@@ -300,7 +301,7 @@ const quickLinks = [
         <!-- Footer -->
         <footer class="relative z-10 py-4 text-center border-t border-white/5">
             <div class="flex items-center justify-center gap-2">
-                <img src="/logo.webp?v=2" alt="TPIX" class="w-4 h-4 object-contain opacity-50" />
+                <BrandLogo variant="icon" alt="TPIX" class="w-4 h-4 opacity-50" />
                 <span class="text-[10px] text-dark-500">&copy; {{ new Date().getFullYear() }} Xman Studio. All rights reserved.</span>
             </div>
         </footer>

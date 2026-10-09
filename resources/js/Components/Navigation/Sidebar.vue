@@ -11,6 +11,7 @@ import CoinIcon from '@/Components/CoinIcon.vue';
 import { useTranslation } from '@/Composables/useTranslation';
 // ดึงแค่เลขเวอร์ชัน (ไม่ให้ changelog ทั้งไฟล์ติดไปใน bundle ทุกหน้า)
 import { version } from '../../../../version.json';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const { t } = useTranslation();
 const emit = defineEmits(['navigate']);
@@ -220,7 +221,7 @@ const recentTrades = ref([
         <!-- แบรนด์ท้ายเมนู: โลโก้กดกลับหน้าแรกบนสุด + เวอร์ชันมีประกายวิบวับ -->
         <Link href="/" class="sidebar-brand group" :aria-label="t('nav.backHome')" @click.capture="goHomeTop">
             <span class="sidebar-brand__logo">
-                <img src="/logo.webp?v=2" alt="TPIX TRADE" class="w-full h-full object-contain" />
+                <BrandLogo variant="icon" class="w-full h-full" />
             </span>
             <span class="min-w-0">
                 <span class="block text-sm font-bold text-white leading-tight">TPIX <span class="text-primary-400">TRADE</span></span>
