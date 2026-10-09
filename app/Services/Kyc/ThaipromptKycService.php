@@ -10,6 +10,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -116,6 +117,12 @@ class ThaipromptKycService
             'expires_at' => now()->addMinutes(self::STATE_TTL_MINUTES)->getTimestamp(),
         ]);
 
+        return $this->authorizeUrl($state, $verifier);
+    }
+
+    /** URL หน้าอนุญาตของ Thaiprompt (ใช้ร่วมทั้งทางเว็บและทางแอป) */
+    private function authorizeUrl(string $state, string $verifier): string
+    {
         $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
 
         return $this->baseUrl().'/oauth/authorize?'.http_build_query([
@@ -158,7 +165,17 @@ class ThaipromptKycService
             throw new RuntimeException(self::ERR_STATE);
         }
 
-        $tokens = $this->exchangeCode($code, (string) $pending['verifier']);
+        return $this->finishAuthorization($user, $code, (string) $pending['verifier'], $pending['ip'] ?? null);
+    }
+
+    /**
+     * ขั้นสุดท้ายร่วมของทางเว็บและทางแอป: แลก code → ถามสถานะ → ผูก → ลงผล.
+     *
+     * @throws RuntimeException
+     */
+    private function finishAuthorization(User $user, string $code, string $verifier, ?string $consentIp = null): ThaipromptKycLink
+    {
+        $tokens = $this->exchangeCode($code, $verifier);
 
         try {
             $status = $this->fetchStatus($tokens['access_token']);
@@ -169,7 +186,109 @@ class ThaipromptKycService
 
         $link = $this->bind($user, $status['sub'], $tokens);
 
-        return $this->apply($link, $status, $pending['ip'] ?? null);
+        return $this->apply($link, $status, $consentIp);
+    }
+
+    // =========================================================================
+    // ทางแอปมือถือ (ไม่มี session เว็บ — พิสูจน์ตัวด้วยกระเป๋า)
+    // =========================================================================
+
+    /** state ของทางแอปขึ้นต้นแบบนี้ — callback ใช้แยกว่ามาจากแอปหรือเว็บ */
+    public const APP_STATE_MARK = 'app.';
+
+    /** ปลายทางในแอปหลังได้ผลจาก Thaiprompt (DeepLinkService ของแอปรับ host `kyc`) */
+    public const APP_RETURN_URI = 'tpixtrade://kyc';
+
+    private const APP_STATE_CACHE = 'thaiprompt_kyc_app_state:';
+
+    private const APP_COMPLETION_CACHE = 'thaiprompt_kyc_app_completion:';
+
+    /**
+     * เริ่มจากแอป — state ผูกกับบัญชีไว้ในแคช (แอปไม่มี session เว็บให้ผูก).
+     *
+     * @throws RuntimeException
+     */
+    public function beginAppAuthorization(User $user): string
+    {
+        if (! $this->isConfigured()) {
+            throw new RuntimeException(self::ERR_NOT_CONFIGURED);
+        }
+
+        $state = self::APP_STATE_MARK.Str::random(40);
+        $verifier = Str::random(96);
+
+        Cache::put(self::APP_STATE_CACHE.hash('sha256', $state), [
+            'verifier' => $verifier,
+            'user_id' => $user->id,
+        ], now()->addMinutes(self::STATE_TTL_MINUTES));
+
+        return $this->authorizeUrl($state, $verifier);
+    }
+
+    public function isAppState(mixed $state): bool
+    {
+        return is_string($state) && str_starts_with($state, self::APP_STATE_MARK);
+    }
+
+    /**
+     * Thaiprompt ส่งลูกค้ากลับมา (ในเบราว์เซอร์ของมือถือ) — **ยังไม่ผูกบัญชีตรงนี้**.
+     *
+     * ⚠️ ทำไมไม่ผูกทันทีเหมือนทางเว็บ: ทางเว็บพิสูจน์ได้ว่า "คนที่กลับมาคือคนที่กดเริ่ม"
+     *    ด้วย session ของเบราว์เซอร์เดียวกัน แต่ทางแอปไม่มี — ถ้าผูกทันที คนร้ายเริ่มคำขอ
+     *    จากบัญชีตัวเอง แล้วส่งลิงก์หน้าอนุญาตให้เหยื่อกด → ผล KYC ของเหยื่อไปติดบัญชีคนร้าย
+     *
+     *    จึงฝาก code ไว้ใต้ "รหัสรับผล" ใบใหม่ แล้วส่งรหัสนั้นกลับเข้าแอปทาง deep link
+     *    แอปต้องเอามาแลกเองด้วยกระเป๋าของ "บัญชีเดียวกับที่เริ่ม" (completeAppAuthorization)
+     *    ลิงก์ที่ไปโผล่ในมือถือของเหยื่อ = แอปของเหยื่อ (บัญชีคนละใบ) แลกไม่ผ่าน
+     *
+     * @param  array<string, mixed>  $query
+     * @return string deep link กลับเข้าแอป
+     */
+    public function captureAppCallback(array $query): string
+    {
+        $state = (string) ($query['state'] ?? '');
+        $pending = $state !== '' ? Cache::pull(self::APP_STATE_CACHE.hash('sha256', $state)) : null;
+
+        if (! is_array($pending)) {
+            return self::APP_RETURN_URI.'?result=expired';
+        }
+
+        if (($query['error'] ?? null) === 'access_denied') {
+            return self::APP_RETURN_URI.'?result=denied';
+        }
+
+        $code = $query['code'] ?? null;
+        if (! is_string($code) || $code === '') {
+            return self::APP_RETURN_URI.'?result=error';
+        }
+
+        $completion = Str::random(48);
+
+        // code ของ Passport อยู่ได้ 10 นาที — รหัสรับผลต้องหมดก่อน
+        Cache::put(self::APP_COMPLETION_CACHE.hash('sha256', $completion), [
+            'code' => $code,
+            'verifier' => $pending['verifier'],
+            'user_id' => $pending['user_id'],
+        ], now()->addMinutes(8));
+
+        return self::APP_RETURN_URI.'?result=ok&completion='.$completion;
+    }
+
+    /**
+     * แอปเอารหัสรับผลมาแลก — ต้องเป็นบัญชีเดียวกับที่เริ่มคำขอ.
+     *
+     * @throws RuntimeException
+     */
+    public function completeAppAuthorization(User $user, string $completion): ThaipromptKycLink
+    {
+        // ใช้ครั้งเดียว — ดึงออกก่อนเช็คเจ้าของ แลกผิดบัญชีแล้วรหัสก็ตายไปด้วย
+        $pending = Cache::pull(self::APP_COMPLETION_CACHE.hash('sha256', $completion));
+
+        if (! is_array($pending) || (int) ($pending['user_id'] ?? 0) !== (int) $user->id) {
+            throw new RuntimeException(self::ERR_STATE);
+        }
+
+        return $this->finishAuthorization($user, (string) $pending['code'], (string) $pending['verifier']);
     }
 
     // =========================================================================

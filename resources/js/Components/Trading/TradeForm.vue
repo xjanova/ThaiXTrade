@@ -47,9 +47,16 @@ const props = defineProps({
      * โดยไม่ต้องตั้ง Pinia และรับสถานะกระเป๋าทาง prop อยู่แล้ว (isWalletConnected)
      */
     walletAddress: { type: String, default: null },
+    /**
+     * แอดมินเปิดด่าน KYC ของ "เทรด/สวอป" และบัญชีนี้ยังไม่ผ่าน
+     *
+     * ต้องรู้ "ก่อนกด" — เหรียญบน BSC สวอปตรงจากกระเป๋า ด่านที่เซิร์ฟเวอร์จึงไปโผล่ตอนบันทึกไม้
+     * (หลังเงินออกไปแล้ว) ไม้จริงจะหายจากประวัติ ผู้ใช้ต้องถูกพาไปยืนยันตัวตนก่อนวางไม้
+     */
+    kycBlocked: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['submit-order', 'connect-wallet', 'form-change']);
+const emit = defineEmits(['submit-order', 'connect-wallet', 'form-change', 'need-kyc']);
 
 const { t } = useTranslation();
 
@@ -448,6 +455,12 @@ const submitOrder = () => {
         return;
     }
 
+    // ยังไม่ผ่านด่านยืนยันตัวตนของการเทรด — พาไปยืนยันก่อน ไม่ปล่อยให้เงินออกแล้วบันทึกไม่ได้
+    if (props.kycBlocked) {
+        emit('need-kyc');
+        return;
+    }
+
     // เครดิตไม่พอสำหรับทางที่เลือก — พาไปเติมแทนที่จะปล่อยให้กดแล้วพัง
     if (feeBlocked.value) {
         showTopup.value = true;
@@ -733,7 +746,7 @@ const submitOrder = () => {
                     isSubmitting ? 'opacity-60 cursor-not-allowed' : '',
                     !isConnected
                         ? 'bg-primary-500 hover:bg-primary-600 text-white'
-                        : feeBlocked
+                        : (kycBlocked || feeBlocked)
                             ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
                             : activeTab === 'buy'
                                 ? 'btn-success'
@@ -745,6 +758,7 @@ const submitOrder = () => {
                 {{
                     isSubmitting ? t('trade.form.processing')
                     : !isConnected ? t('trade.form.connectWallet')
+                    : kycBlocked ? t('trade.form.verifyIdentity')
                     : feeBlocked ? 'เติมเครดิต TPIX เพื่อวางไม้'
                     : activeTab === 'buy' ? t('trade.form.buySymbol', { symbol: baseSymbol })
                     : t('trade.form.sellSymbol', { symbol: baseSymbol })
@@ -752,7 +766,10 @@ const submitOrder = () => {
             </button>
 
             <!-- ปุ่มไม่ได้ตายเฉยๆ — บอกว่าขาดอะไรและกดแล้วไปไหนต่อ -->
-            <p v-if="feeBlocked" class="mt-1.5 text-[11px] text-amber-300/90 text-center leading-relaxed">
+            <p v-if="isConnected && kycBlocked" class="mt-1.5 text-[11px] text-amber-300/90 text-center leading-relaxed">
+                {{ t('trade.form.kycHint') }}
+            </p>
+            <p v-else-if="feeBlocked" class="mt-1.5 text-[11px] text-amber-300/90 text-center leading-relaxed">
                 {{ feeBlockedReason }}
             </p>
 

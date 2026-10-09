@@ -9,7 +9,9 @@ use App\Models\User;
 use App\Services\Kyc\KycGate;
 use App\Services\Kyc\KycPurgeService;
 use App\Services\Kyc\ThaipromptKycService;
+use App\Services\WalletSessionService;
 use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -326,6 +328,133 @@ class ThaipromptKycTest extends TestCase
 
         $this->actingAs($this->user)->post('/kyc/thaiprompt/connect', ['consent' => true])
             ->assertSessionHasErrors(['kyc' => ThaipromptKycService::ERR_NOT_CONFIGURED]);
+    }
+
+    // =========================================================================
+    // ทางแอปมือถือ (พิสูจน์ตัวด้วยโทเคนกระเป๋า ไม่มี session เว็บ)
+    // =========================================================================
+
+    /** หัวโทเคนของแอปสำหรับกระเป๋าของผู้ใช้คนนั้น */
+    private function appHeaders(User $user): array
+    {
+        $issued = app(WalletSessionService::class)->issue($user->wallet_address, 56);
+
+        return [WalletSessionService::HEADER => $issued['token']];
+    }
+
+    /** แอปกดเริ่ม → คืน state ที่ฝังใน URL หน้าอนุญาต */
+    private function appStart(User $user): string
+    {
+        $url = $this->withHeaders($this->appHeaders($user))
+            ->postJson('/api/v1/kyc/thaiprompt/start', ['wallet_address' => $user->wallet_address, 'consent' => true])
+            ->assertOk()
+            ->json('data.authorize_url');
+
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $q);
+        $this->assertStringStartsWith(ThaipromptKycService::APP_STATE_MARK, $q['state']);
+
+        return $q['state'];
+    }
+
+    /** เบราว์เซอร์บนมือถือกลับมาจาก Thaiprompt → ได้ deep link ที่ฝังรหัสรับผล */
+    private function appCallback(string $state, string $extra = 'code=abc'): string
+    {
+        $html = $this->get("/kyc/thaiprompt/callback?{$extra}&state={$state}")->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('#tpixtrade://kyc\?result=[a-z]+#', $html);
+        preg_match('#tpixtrade://kyc\?result=ok&amp;completion=([A-Za-z0-9]{48})#', $html, $m);
+
+        return $m[1] ?? '';
+    }
+
+    #[Test]
+    public function แอป_เคยผ่านที่_thaiprompt_แล้ว_กลับเข้าแอปแล้วผ่านทันที(): void
+    {
+        $state = $this->appStart($this->user);
+        $completion = $this->appCallback($state);
+        $this->assertNotSame('', $completion);
+
+        // callback ทางแอปยังไม่ผูกอะไร — รอแอปของเจ้าของคำขอมาแลกเอง
+        $this->assertSame(0, ThaipromptKycLink::count());
+
+        $this->withHeaders($this->appHeaders($this->user))
+            ->postJson('/api/v1/kyc/thaiprompt/complete', ['wallet_address' => $this->user->wallet_address, 'completion' => $completion])
+            ->assertOk()
+            ->assertJsonPath('data.gate.features.ai_bot.passed', true)
+            ->assertJsonPath('data.submission.source', 'thaiprompt')
+            ->assertJsonPath('data.thaiprompt.link.status', 'approved');
+
+        $this->assertTrue($this->gatePasses());
+    }
+
+    #[Test]
+    public function แอป_คนร้ายส่งลิงก์หน้าอนุญาตให้เหยื่อกด_ผล_kyc_ต้องไม่ไปติดบัญชีคนร้าย(): void
+    {
+        $attacker = User::create([
+            'email' => 'attacker@tpix.test',
+            'password' => bcrypt('x-secret-123'),
+            'wallet_address' => '0x2222222222222222222222222222222222222222',
+        ]);
+
+        // คนร้ายเริ่มคำขอจากบัญชีตัวเอง แล้วส่งลิงก์ให้เหยื่อกดอนุญาต — deep link ไปโผล่ในมือถือของเหยื่อ
+        $state = $this->appStart($attacker);
+        $completion = $this->appCallback($state);
+
+        // แอปของเหยื่อ (บัญชีคนละใบ) เอารหัสรับผลไปแลก → ต้องไม่ผ่าน
+        $this->withHeaders($this->appHeaders($this->user))
+            ->postJson('/api/v1/kyc/thaiprompt/complete', ['wallet_address' => $this->user->wallet_address, 'completion' => $completion])
+            ->assertStatus(422);
+
+        // รหัสตายไปแล้ว คนร้ายเอามาแลกต่อก็ไม่ได้
+        $this->withHeaders($this->appHeaders($attacker))
+            ->postJson('/api/v1/kyc/thaiprompt/complete', ['wallet_address' => $attacker->wallet_address, 'completion' => $completion])
+            ->assertStatus(422);
+
+        $this->assertSame(0, ThaipromptKycLink::count());
+        $this->assertFalse(app(KycGate::class)->passes($attacker->fresh(), 'ai_bot'));
+    }
+
+    #[Test]
+    public function แอป_กดไม่อนุญาตที่_thaiprompt_กลับเข้าแอปพร้อมบอกว่าไม่อนุญาต(): void
+    {
+        $state = $this->appStart($this->user);
+
+        $this->get('/kyc/thaiprompt/callback?error=access_denied&state='.$state)
+            ->assertOk()
+            ->assertSee('tpixtrade://kyc?result=denied', false);
+    }
+
+    #[Test]
+    public function แอป_ดูสถานะได้ด้วยโทเคนกระเป๋า_และด่าน_kyc_จำผู้ใช้แอปได้(): void
+    {
+        // ผ่าน KYC ทางเว็บไว้แล้ว — ฝั่งแอปต้องเห็นว่าผ่านด้วยโทเคนอย่างเดียว (ไม่มีแคชลายเซ็น 4 ชม.)
+        $state = $this->startConnect();
+        $this->get('/kyc/thaiprompt/callback?code=abc&state='.$state);
+
+        Cache::forget('wallet_verified:'.strtolower($this->user->wallet_address));
+
+        $this->withHeaders($this->appHeaders($this->user))
+            ->getJson('/api/v1/kyc/status?wallet_address='.$this->user->wallet_address)
+            ->assertOk()
+            ->assertJsonPath('data.gate.features.ai_bot.passed', true)
+            ->assertJsonPath('data.thaiprompt.available', true);
+
+        $request = Request::create('/api/v1/ai-bot/status', 'GET', ['wallet_address' => $this->user->wallet_address]);
+        $request->headers->set(WalletSessionService::HEADER, $this->appHeaders($this->user)[WalletSessionService::HEADER]);
+        $this->assertSame($this->user->id, app(KycGate::class)->resolveUser($request)?->id);
+    }
+
+    #[Test]
+    public function แอป_โทเคนของกระเป๋าอื่นใช้แทนไม่ได้(): void
+    {
+        $other = User::create([
+            'email' => 'other-wallet@tpix.test',
+            'password' => bcrypt('x-secret-123'),
+            'wallet_address' => '0x3333333333333333333333333333333333333333',
+        ]);
+
+        $this->withHeaders($this->appHeaders($other))
+            ->getJson('/api/v1/kyc/status?wallet_address='.$this->user->wallet_address)
+            ->assertForbidden();
     }
 
     #[Test]

@@ -5,6 +5,7 @@ namespace App\Services\Kyc;
 use App\Models\KycSubmission;
 use App\Models\SiteSetting;
 use App\Models\User;
+use App\Services\WalletSessionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -208,9 +209,21 @@ class KycGate
 
         $normalized = strtolower($wallet);
 
+        /*
+         * แอปมือถือพิสูจน์ตัวด้วยโทเคนเซสชันยาว (X-Wallet-Session) ไม่ใช่แคช 4 ชั่วโมง
+         *
+         * ⚠️ เดิมดูแค่แคช — VerifyWalletOwnership ให้ผ่านด้วยโทเคน แต่ด่าน KYC หาเจ้าของไม่เจอ
+         *    ผู้ใช้แอปที่ยืนยันตัวตนผ่านแล้ว พอแคชลายเซ็นหมดอายุ (4 ชม.) ก็ติดด่าน
+         *    "ต้องเข้าสู่ระบบและยืนยันตัวตน" ทุกฟีเจอร์ทั้งที่ยืนยันไปแล้ว
+         *    โทเคนต้องเป็นของกระเป๋าเดียวกับที่ขอเท่านั้น (authorizes เทียบให้)
+         */
+        $sessionToken = $request->headers->get(WalletSessionService::HEADER);
+        $bySession = $sessionToken !== null
+            && app(WalletSessionService::class)->authorizes($sessionToken, $normalized);
+
         $verified = Cache::get("wallet_verified:{$normalized}");
 
-        if (! $verified || ! is_array($verified)) {
+        if (! $bySession && (! $verified || ! is_array($verified))) {
             return null;
         }
 

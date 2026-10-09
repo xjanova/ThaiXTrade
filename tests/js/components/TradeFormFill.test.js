@@ -153,6 +153,19 @@ describe('TradeForm — slippage', () => {
     });
 });
 
+describe('TradeForm — identity verification gate', () => {
+    it('asks the page to open the KYC screen instead of placing the order', async () => {
+        const wrapper = mount(TradeForm, { props: { ...baseProps, mode: 'onchain', kycBlocked: true } });
+
+        const button = wrapper.findAll('button').find(b => b.text().includes('Verify identity to trade'));
+        await button.trigger('click');
+
+        expect(wrapper.emitted('need-kyc')).toHaveLength(1);
+        expect(wrapper.emitted('submit-order')).toBeUndefined();
+        expect(wrapper.text()).toContain('Trading requires identity verification');
+    });
+});
+
 /**
  * ปุ่ม 100% ต้องไม่เกินยอดจริง — เดิม toFixed() ปัดขึ้น
  * ยอด 1.2345675 กลายเป็น 1.234568 / Total ปัด 2 ตำแหน่งขึ้นจนเกินยอด USDT

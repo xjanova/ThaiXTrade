@@ -241,6 +241,8 @@
             "connectWallet": "Connect Wallet",
             "buySymbol": "Buy {symbol}",
             "sellSymbol": "Sell {symbol}",
+            "verifyIdentity": "Verify identity to trade",
+            "kycHint": "Trading requires identity verification — one time only; a verified Thaiprompt account passes instantly",
             "tpsl": "TP/SL",
             "advanced": "Advanced Options",
             "comingSoon": "{pair} — Coming Soon",

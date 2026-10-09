@@ -241,6 +241,8 @@
             "connectWallet": "เชื่อมกระเป๋า",
             "buySymbol": "ซื้อ {symbol}",
             "sellSymbol": "ขาย {symbol}",
+            "verifyIdentity": "ยืนยันตัวตนก่อนเทรด",
+            "kycHint": "การเทรดต้องยืนยันตัวตนก่อน — ทำครั้งเดียว ใช้บัญชี Thaiprompt ที่ยืนยันแล้วได้ทันที",
             "tpsl": "TP/SL",
             "advanced": "ตัวเลือกขั้นสูง",
             "comingSoon": "{pair} — เปิดเร็วๆ นี้",

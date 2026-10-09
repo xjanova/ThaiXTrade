@@ -59,7 +59,14 @@ vi.mock('@/Composables/usePlatformReadiness', () => ({
     }),
 }));
 
-vi.mock('@inertiajs/vue3', () => ({ Head: { template: '<div />' } }));
+// ด่าน KYC ของการเทรดมากับ page.props.kyc — แต่ละเทสต์ตั้งเองได้
+const inertiaPage = { props: { kyc: { features: {} } } };
+const routerVisit = vi.fn();
+vi.mock('@inertiajs/vue3', () => ({
+    Head: { template: '<div />' },
+    usePage: () => inertiaPage,
+    router: { visit: (...a) => routerVisit(...a) },
+}));
 vi.mock('@/Layouts/AppLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }));
 vi.mock('@/Components/CoinIcon.vue', () => ({ default: { template: '<span />' } }));
 vi.mock('@/Components/Wallet/WalletModal.vue', () => ({ default: { template: '<div />' } }));
@@ -133,6 +140,33 @@ describe('Swap page', () => {
     afterEach(() => {
         mounted.splice(0).forEach(w => w.unmount());
         vi.useRealTimers();
+        inertiaPage.props.kyc = { features: {} };
+        routerVisit.mockReset();
+    });
+
+    describe('identity verification gate', () => {
+        it('sends the user to verify instead of swapping when trading needs KYC', async () => {
+            inertiaPage.props.kyc = { features: { trading: { required: true, passed: false } } };
+
+            const wrapper = await mountSwap();
+            await typeAmount(wrapper, '1');
+
+            expect(swapButton(wrapper).exists()).toBe(false);
+            await wrapper.find('[data-test="kyc-button"]').trigger('click');
+
+            expect(routerVisit).toHaveBeenCalledWith('/kyc');
+            expect(executeSwap).not.toHaveBeenCalled();
+        });
+
+        it('swaps normally once the account has passed', async () => {
+            inertiaPage.props.kyc = { features: { trading: { required: true, passed: true } } };
+
+            const wrapper = await mountSwap();
+            await typeAmount(wrapper, '1');
+
+            expect(wrapper.find('[data-test="kyc-button"]').exists()).toBe(false);
+            expect(swapButton(wrapper).exists()).toBe(true);
+        });
     });
 
     describe('approve', () => {

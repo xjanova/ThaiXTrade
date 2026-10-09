@@ -6,7 +6,7 @@
  */
 
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, usePage, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import { useWalletStore } from '@/Stores/walletStore';
@@ -60,6 +60,13 @@ const currentQuote = ref(null);
 
 // Computed
 const isWalletConnected = computed(() => walletStore.isConnected);
+
+// ด่านยืนยันตัวตนของ "เทรด/สวอป" (แอดมินเปิด/ปิดได้) — สถานะมากับทุกหน้า
+const page = usePage();
+const kycBlocked = computed(() => {
+    const gate = page.props.kyc?.features?.trading;
+    return !!gate?.required && !gate?.passed;
+});
 const isOnBSC = computed(() => walletStore.isBSC);
 
 // ── Slippage ────────────────────────────────────────────────────────────────
@@ -385,6 +392,12 @@ async function executeSwap() {
 
     if (!isWalletConnected.value) {
         showWalletModal.value = true;
+        return;
+    }
+
+    // ยังไม่ผ่านด่านยืนยันตัวตนของการเทรด — ห้ามปล่อยให้เงินออกแล้วบันทึกไม่ได้ (ปุ่มเปลี่ยนแล้ว — กันอีกชั้น)
+    if (kycBlocked.value) {
+        router.visit('/kyc');
         return;
     }
 
@@ -745,6 +758,20 @@ onMounted(async () => {
                             </svg>
                             {{ t('wallet.connect') }}
                         </button>
+
+                        <!-- ด่านยืนยันตัวตนของการเทรด/สวอปเปิดอยู่และยังไม่ผ่าน — พาไปยืนยันก่อน
+                             (สวอปออกจากกระเป๋าตรง ด่านฝั่งเซิร์ฟเวอร์ไปโผล่ตอนบันทึก ซึ่งเงินออกไปแล้ว) -->
+                        <template v-else-if="kycBlocked">
+                            <button
+                                type="button"
+                                data-test="kyc-button"
+                                class="w-full mt-4 py-3.5 rounded-xl text-base font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-colors"
+                                @click="router.visit('/kyc')"
+                            >
+                                {{ t('trade.form.verifyIdentity') }}
+                            </button>
+                            <p class="mt-2 text-xs text-amber-300/90 text-center">{{ t('trade.form.kycHint') }}</p>
+                        </template>
 
                         <button
                             v-else-if="needsApproval && fromAmount && currentQuote"

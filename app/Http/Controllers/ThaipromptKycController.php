@@ -44,8 +44,34 @@ class ThaipromptKycController extends Controller
         return Inertia::location($url);
     }
 
-    public function callback(Request $request): RedirectResponse
+    /**
+     * กลับมาจากหน้าอนุญาตของ Thaiprompt — รับทั้งทางเว็บและทางแอปมือถือ.
+     *
+     * ⚠️ เส้นนี้อยู่นอก 'auth' โดยตั้งใจ: ทางแอปเปิดในเบราว์เซอร์ของมือถือที่ไม่มี session เว็บ
+     *    ทางเว็บยังบังคับล็อกอินเองด้านล่าง (และ state ผูกกับ session อยู่แล้ว)
+     */
+    public function callback(Request $request): RedirectResponse|Response
     {
+        if ($this->thaiprompt->isAppState($request->query('state'))) {
+            $deepLink = $this->thaiprompt->captureAppCallback($request->query());
+
+            // หน้าเล็กๆ พาเด้งกลับเข้าแอป — เบราว์เซอร์บางตัวไม่ยอมเด้ง custom scheme เองโดยไม่มีคนกด
+            return response()
+                ->view('kyc.thaiprompt-return', [
+                    'deepLink' => $deepLink,
+                    'ok' => str_contains($deepLink, 'result=ok'),
+                    'denied' => str_contains($deepLink, 'result=denied'),
+                ])
+                ->header('Cache-Control', 'no-store, private')
+                ->header('Referrer-Policy', 'no-referrer');
+        }
+
+        if (! $request->user()) {
+            return redirect()->route('login')->withErrors([
+                'kyc' => 'เซสชันหมดอายุระหว่างไปยืนยันที่ Thaiprompt — เข้าสู่ระบบแล้วกดเชื่อมใหม่อีกครั้ง',
+            ]);
+        }
+
         try {
             $link = $this->thaiprompt->completeAuthorization(
                 $request->user(),

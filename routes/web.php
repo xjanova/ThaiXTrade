@@ -108,14 +108,20 @@ Route::middleware('auth')->group(function () {
         Route::post('/thaiprompt/connect', [ThaipromptKycController::class, 'connect'])
             ->name('thaiprompt.connect')
             ->middleware('throttle:10,10,kyc-tp-connect');
-        Route::get('/thaiprompt/callback', [ThaipromptKycController::class, 'callback'])
-            ->name('thaiprompt.callback')
-            ->middleware('throttle:20,10,kyc-tp-callback');
         Route::post('/thaiprompt/refresh', [ThaipromptKycController::class, 'refresh'])
             ->name('thaiprompt.refresh')
             ->middleware('throttle:20,1,kyc-tp-refresh');
     });
 });
+
+/*
+ * กลับจากหน้าอนุญาตของ Thaiprompt — อยู่นอก 'auth' เพราะทางแอปมือถือกลับมาในเบราว์เซอร์
+ * ที่ไม่มี session เว็บ (controller บังคับล็อกอินเองสำหรับทางเว็บ) · ชื่อ route ต้องคงเดิม
+ * เพราะเป็น redirect_uri ที่ลงทะเบียนไว้ที่ Thaiprompt
+ */
+Route::get('kyc/thaiprompt/callback', [ThaipromptKycController::class, 'callback'])
+    ->name('kyc.thaiprompt.callback')
+    ->middleware('throttle:20,10,kyc-tp-callback');
 
 // Home
 Route::get('/', function () {

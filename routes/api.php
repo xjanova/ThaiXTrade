@@ -7,6 +7,7 @@
 
 use App\Http\Controllers\Api\AiBotController;
 use App\Http\Controllers\Api\AiBotWalletController;
+use App\Http\Controllers\Api\KycApiController;
 use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Api\ArticleController;
@@ -424,6 +425,18 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         // Profile sync — name/email/avatar/preferences across mobile ↔ web
         Route::get('/profile', [WalletController::class, 'getProfile']);
         Route::put('/profile', [WalletController::class, 'updateProfile']);
+    });
+
+    /*
+     * ยืนยันตัวตนจากแอปมือถือ — ใช้ผล KYC ของ Thaiprompt (เหมือนหน้าเว็บ /kyc)
+     * throttle มี prefix ทุกตัว: แบบไม่มีชื่อใช้ตัวนับเดียวกันทั้งระบบ แอปที่ถามผลถี่ๆ
+     * จะไปกินโควตาของ endpoint อื่น
+     */
+    Route::prefix('kyc')->group(function () {
+        Route::get('/status', [KycApiController::class, 'status']);
+        Route::post('/thaiprompt/start', [KycApiController::class, 'start'])->middleware('throttle:10,10,kyc-app-start');
+        Route::post('/thaiprompt/complete', [KycApiController::class, 'complete'])->middleware('throttle:20,10,kyc-app-complete');
+        Route::post('/thaiprompt/refresh', [KycApiController::class, 'refresh'])->middleware('throttle:20,1,kyc-app-refresh');
     });
 
     // Swap Operations

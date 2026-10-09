@@ -19,7 +19,7 @@
  */
 
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, useTemplateRef } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, usePage, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TradingChart from '@/Components/Trading/TradingChart.vue';
 import OrderBook from '@/Components/Trading/OrderBook.vue';
@@ -112,6 +112,17 @@ const isDexPair = computed(() =>
 
 // เชนที่ไม้จะลงจริง — ส่งให้ฟอร์มขอใบเสนอราคาค่าบริการให้ตรงเชน
 const tradeChainId = computed(() => (isDexPair.value ? TPIX_CHAIN_ID : BSC_CHAIN_ID));
+
+/*
+ * ด่านยืนยันตัวตนของ "เทรด/สวอป" (แอดมินเปิด/ปิดได้) — สถานะมากับทุกหน้า (HandleInertiaRequests)
+ * ต้องบอกก่อนกด: สวอปบน BSC ออกจากกระเป๋าตรง ด่านฝั่งเซิร์ฟเวอร์จึงไปโผล่ตอนบันทึกไม้
+ * ซึ่งเงินออกไปแล้ว — ไม้จริงจะหายจากประวัติ
+ */
+const page = usePage();
+const kycBlocked = computed(() => {
+    const gate = page.props.kyc?.features?.trading;
+    return !!gate?.required && !gate?.passed;
+});
 
 // โหมดของ TradeForm:
 //  onchain  = market order execute จริง (PancakeSwap บน BSC หรือพูล TPIX DEX บนเชน TPIX)
@@ -991,6 +1002,12 @@ const handleSubmitOrder = async (order) => {
 
     if (tradeFormMode.value === 'disabled') return;
 
+    // กันอีกชั้น (ฟอร์มพาไปหน้ายืนยันอยู่แล้ว) — ห้ามปล่อยให้เงินออกแล้วบันทึกไม้ไม่ได้
+    if (kycBlocked.value) {
+        router.visit('/kyc');
+        return;
+    }
+
     if (tradeFormMode.value === 'onchain') {
         if (isDexPair.value) {
             await executeDexMarketOrder(order);
@@ -1763,6 +1780,8 @@ onUnmounted(() => {
                                 :balances="formBalances"
                                 :mode="tradeFormMode"
                                 :chain-id="tradeChainId"
+                                :kyc-blocked="kycBlocked"
+                                @need-kyc="router.visit('/kyc')"
                                 :market-preview="marketPreview"
                                 @submit-order="handleSubmitOrder"
                                 @connect-wallet="handleConnectWallet"
