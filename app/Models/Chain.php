@@ -123,7 +123,7 @@ class Chain extends Model
      * Logo URL — แปลงค่าในคอลัมน์ logo ให้เป็น URL ที่เบราว์เซอร์โหลดได้จริง.
      *
      * — URL เต็ม (http/https)        → คืนตรงๆ
-     * — ขึ้นต้นด้วย /                → ไฟล์ใน public_html เช่น "/tpixlogo.webp"
+     * — ขึ้นต้นด้วย /                → ไฟล์ใน public_html เช่น "/images/brand/tpix-coin.png"
      * — path เปล่า                   → ไฟล์ที่แอดมินอัปโหลด เช่น "chains/tpix.webp"
      *                                  ต้องผ่าน storage symlink
      *

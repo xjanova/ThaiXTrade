@@ -1,21 +1,18 @@
 <script>
 /**
- * TPIX TRADE — โลโก้แบรนด์ (เวกเตอร์) จุดเดียวของทั้งเว็บ
+ * TPIX TRADE — โลโก้แบรนด์ (เวกเตอร์) จุดเดียวของทั้งเว็บ — ใช้กับโลโก้เหรียญ TPIX ด้วย
  *
- *   variant="icon"    ตัวย่อ: โมโนแกรม TP + วงแหวน — ใช้ที่ขนาด ≤ 48px (แถบเมนู ไซด์บาร์ ท้ายหน้า)
- *   variant="mark"    ตราเต็ม: วงแหวนลายประจำยาม + ลายวงจร + ใบไม้ — ใช้ที่ขนาด ≥ 64px
- *   variant="lockup"  ตราเต็ม + ตัวอักษร TPIX TRADE
+ *   variant="icon"    ตัวย่อ: โมโนแกรม TP + วงแหวน — ใช้ที่ขนาด ≤ 48px (ไอคอนเหรียญ ไซด์บาร์ กระเป๋า)
+ *   variant="mark"    ตราเต็ม: วงแหวนลายประจำยาม + ลายวงจร + ใบไม้ — ใช้ที่ขนาด ≥ 56px
+ *   variant="lockup"  ตราเต็ม + ตัวอักษร TPIX / TRADE (หัวเว็บ ท้ายเว็บ) — กำหนดแค่ความสูง กว้างตามสัดส่วน
  *
- * ต้นฉบับอยู่ public_html/images/brand/*.svg
- * ⚠️ BRAND_VERSION ต้องบวกทุกครั้งที่แก้ไฟล์ภาพ — รูปใน public_html เสิร์ฟด้วย max-age หนึ่งปี
- *    และชื่อไฟล์ไม่มีแฮช Cloudflare จะจ่ายตัวเก่าต่อ (เคยวัดได้ cf-cache-status HIT ทั้งที่ต้นทางเปลี่ยนแล้ว)
+ * ที่อยู่ไฟล์ + เลขกันแคช Cloudflare อยู่ใน utils/brand.js (BRAND_VERSION)
  *
- * ค่าคงที่อยู่ใน <script> ธรรมดา ไม่ใช่ <script setup> — defineProps ถูกยกออกไปนอก setup()
+ * FILES อยู่ใน <script> ธรรมดา ไม่ใช่ <script setup> — defineProps ถูกยกออกไปนอก setup()
  * จึงอ้างตัวแปรที่ประกาศใน setup ไม่ได้ (validator ใช้ FILES)
  *
  * Developed by Xman Studio
  */
-const BRAND_VERSION = 1;
 const FILES = {
     icon: 'tpix-trade-icon.svg',
     mark: 'tpix-trade-mark.svg',
@@ -25,13 +22,14 @@ const FILES = {
 
 <script setup>
 import { computed } from 'vue';
+import { brandAsset } from '@/utils/brand';
 
 const props = defineProps({
     variant: { type: String, default: 'icon', validator: v => v in FILES },
     alt: { type: String, default: 'TPIX TRADE' },
 });
 
-const src = computed(() => `/images/brand/${FILES[props.variant] ?? FILES.icon}?v=${BRAND_VERSION}`);
+const src = computed(() => brandAsset(FILES[props.variant] ?? FILES.icon));
 </script>
 
 <template>

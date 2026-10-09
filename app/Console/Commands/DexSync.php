@@ -142,7 +142,7 @@ class DexSync extends Command
             'contract_address' => TpixDexService::ZERO,
             'decimals' => 18,
             'is_active' => true,
-            'logo' => '/tpixlogo.webp',
+            'logo' => '/images/brand/tpix-coin.png',
             'sort_order' => 1,
         ]);
 

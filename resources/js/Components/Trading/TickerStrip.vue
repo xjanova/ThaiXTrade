@@ -9,6 +9,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import axios from 'axios';
 import { getTickers } from '@/utils/tickerFeed';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const tickers = ref([]);
 const tpixFixed = ref({ symbol: 'TPIX', price: '$0.18', change: '+0.00%', isUp: true });
@@ -74,7 +75,7 @@ onUnmounted(() => {
     <div class="ticker-strip overflow-hidden flex items-center">
         <!-- TPIX Fixed on Left (ไม่วิ่ง) -->
         <div class="flex-shrink-0 px-4 py-1 border-r border-white/10 bg-dark-950/80 z-10 flex items-center gap-2">
-            <img src="/tpixlogo.webp" alt="TPIX" class="w-5 h-5 object-contain" />
+            <BrandLogo variant="icon" alt="TPIX" class="w-5 h-5" />
             <span class="text-cyan-400 font-bold text-sm">TPIX</span>
             <span :class="['font-mono text-sm font-semibold', tpixFixed.isUp ? 'text-trading-green' : 'text-trading-red']">
                 {{ tpixFixed.price }}

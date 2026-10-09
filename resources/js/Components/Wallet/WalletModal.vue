@@ -12,7 +12,8 @@ import { ref, computed } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import EmbeddedWalletSetup from './EmbeddedWalletSetup.vue';
 import { isWalletStored, getStoredAddress } from '@/utils/embeddedWallet';
-import { playClickSound, playErrorSound } from '@/Composables/useSounds';
+import { playClickSound, playErrorSound } from '@/Composables/useSounds';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 import {
     isMobile,
     detectInAppBrowser,
@@ -338,7 +339,7 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                 <div class="space-y-4">
                     <div class="text-center">
                         <div class="w-12 h-12 mx-auto rounded-xl bg-primary-500/20 flex items-center justify-center mb-3">
-                            <img src="/tpixlogo.webp" class="w-8 h-8" alt="TPIX" />
+                            <BrandLogo variant="icon" alt="TPIX" class="w-8 h-8" />
                         </div>
                         <h3 class="text-lg font-bold text-white">Unlock TPIX Wallet</h3>
                         <p class="text-dark-500 text-xs font-mono mt-1">{{ storedAddress }}</p>
@@ -401,7 +402,7 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                     <!-- Wallet Icon -->
                     <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" :style="{ background: wallet.color + '20' }">
                         <!-- TPIX Wallet -->
-                        <img v-if="wallet.id === 'tpix_wallet'" src="/tpixlogo.webp" class="w-6 h-6" alt="TPIX" />
+                        <BrandLogo v-if="wallet.id === 'tpix_wallet'" variant="icon" alt="TPIX" class="w-6 h-6" />
                         <!-- MetaMask -->
                         <svg v-else-if="wallet.id === 'metamask'" class="w-6 h-6" viewBox="0 0 35 33">
                             <path d="M32.96 1l-13.14 9.72 2.45-5.73L32.96 1z" fill="#E2761B" stroke="#E2761B" stroke-width=".25"/>
@@ -469,7 +470,7 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                             <rect x="22" y="22" width="10" height="10" rx="1" fill="white"/>
                         </svg>
                         <!-- TPIX Wallet App -->
-                        <img v-else-if="wallet.id === 'tpix_wallet_app'" src="/tpixlogo.webp" class="w-5 h-5" alt="TPIX" />
+                        <BrandLogo v-else-if="wallet.id === 'tpix_wallet_app'" variant="icon" alt="TPIX" class="w-5 h-5" />
                         <!-- WalletConnect -->
                         <svg v-else-if="wallet.id === 'walletconnect'" class="w-5 h-5" viewBox="0 0 40 40">
                             <circle cx="20" cy="20" r="18" fill="#3B99FC"/>
@@ -529,7 +530,7 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
             >
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-gradient-to-br from-primary-500/20 to-accent-500/20 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:from-primary-500/30 group-hover:to-accent-500/30 transition-all">
-                        <img src="/tpixlogo.webp" class="w-6 h-6" alt="TPIX" />
+                        <BrandLogo variant="icon" alt="TPIX" class="w-6 h-6" />
                     </div>
                     <div class="flex-1 text-left">
                         <p class="font-medium text-white text-sm">ยังไม่มีกระเป๋า?</p>

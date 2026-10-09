@@ -18,6 +18,7 @@ import CoinIcon from '@/Components/CoinIcon.vue';
 import Sparkline from '@/Components/Trading/Sparkline.vue';
 import { useSparklines } from '@/Composables/useSparklines';
 import { useTranslation } from '@/Composables/useTranslation';
+import { TPIX_COIN_ICON } from '@/utils/brand';
 
 const props = defineProps({
     /** คู่ปัจจุบันในรูปแบบ BTC/USDT */
@@ -129,7 +130,7 @@ async function fetchTickers({ silent = false } = {}) {
         if (!tickers.value.find(t => t.base === 'TPIX')) {
             tickers.value.unshift({
                 symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', quote: 'USDT',
-                logo: meta.TPIX?.logo || '/tpixlogo.webp',
+                logo: meta.TPIX?.logo || TPIX_COIN_ICON,
                 price: 0.10, change: 0, volume: 0, isTpix: true,
             });
         }
@@ -149,7 +150,7 @@ async function fetchTickers({ silent = false } = {}) {
         if (tickers.value.length === 0) {
             tickers.value = [{
                 symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX',
-                logo: '/tpixlogo.webp', price: 0.10, change: 0, volume: 0, isTpix: true,
+                logo: TPIX_COIN_ICON, price: 0.10, change: 0, volume: 0, isTpix: true,
             }];
         }
     } finally {
@@ -392,7 +393,7 @@ onUnmounted(() => {
                         <CoinIcon
                             :symbol="row.base"
                             size="sm"
-                            :src="row.logo || (row.isTpix ? '/tpixlogo.webp' : undefined)"
+                            :src="row.logo || (row.isTpix ? TPIX_COIN_ICON : undefined)"
                         />
 
                         <!--

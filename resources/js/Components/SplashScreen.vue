@@ -8,6 +8,7 @@
 
 import { ref, onMounted } from 'vue';
 import { playSplashSound } from '@/Composables/useSounds';
+import { TPIX_COIN_ICON } from '@/utils/brand';
 
 const emit = defineEmits(['done']);
 
@@ -53,7 +54,7 @@ onMounted(() => {
                 <!-- TPIX Logo — transparent, no background -->
                 <div class="splash-logo" :class="{ 'splash-logo-in': phase !== 'logo' || true }">
                     <img
-                        src="/tpixlogo.webp"
+                        :src="TPIX_COIN_ICON"
                         alt="TPIX"
                         class="splash-logo-img"
                     />

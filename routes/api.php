@@ -68,7 +68,8 @@ Route::get('/', function () {
  * Use in MetaMask: "Add Token" → paste contract + this URL as icon
  */
 Route::get('v1/token-icon', function () {
-    $path = public_path('tpixlogo.webp');
+    // ตราเดียวกับแพลตฟอร์ม (ตัวย่อ) — ไฟล์เดียวกับที่หน้าเว็บใช้ ดู resources/js/utils/brand.js
+    $path = public_path('images/brand/tpix-coin.webp');
     if (file_exists($path)) {
         return response()->file($path, [
             'Content-Type' => 'image/webp',
@@ -80,13 +81,12 @@ Route::get('v1/token-icon', function () {
     return response()->json(['error' => 'Token icon not found'], 404);
 });
 
-// Also serve as PNG for wallets that don't support WebP
+// PNG จริง สำหรับกระเป๋าที่ไม่รับ WebP (เดิมส่ง webp ใต้ชื่อ .png)
 Route::get('v1/token-icon.png', function () {
-    $path = public_path('tpixlogo.webp');
+    $path = public_path('images/brand/tpix-coin.png');
     if (file_exists($path)) {
-        // Browsers/wallets will accept webp even with .png extension
         return response()->file($path, [
-            'Content-Type' => 'image/webp',
+            'Content-Type' => 'image/png',
             'Cache-Control' => 'public, max-age=86400',
             'Access-Control-Allow-Origin' => '*',
         ]);

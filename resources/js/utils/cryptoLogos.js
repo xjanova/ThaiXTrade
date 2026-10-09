@@ -12,6 +12,8 @@
  * Developed by Xman Studio
  */
 
+import { TPIX_COIN_ICON } from '@/utils/brand';
+
 // CDN sources
 const COINCAP_CDN = 'https://assets.coincap.io/assets/icons';
 const CRYPTOLOGOS = 'https://cryptologos.cc/logos';
@@ -121,13 +123,13 @@ const BSC_TOKEN_ADDRESSES = {
 /**
  * โลโก้ในเครื่องของเหรียญในระบบนิเวศ TPIX
  *
- * ⚠️ ต้องเป็น "โลโก้เหรียญ" (/tpixlogo.webp) ไม่ใช่โลโก้แพลตฟอร์ม (/logo.png)
+ * โลโก้เหรียญ TPIX = ตราเดียวกับแพลตฟอร์ม (ตัวย่อ) — ที่อยู่ไฟล์อยู่ใน utils/brand.js
  *    ของเดิมชี้ /logo.png ซึ่งเป็นโลโก้แบรนด์ TPIX TRADE ขนาด 333KB — ผิดทั้งภาพ
  *    และหนักเกินไปสำหรับไอคอนขนาด 24px ในตาราง
  */
 const LOCAL_LOGOS = {
-    TPIX: '/tpixlogo.webp',
-    WTPIX: '/tpixlogo.webp',
+    TPIX: TPIX_COIN_ICON,
+    WTPIX: TPIX_COIN_ICON,
 };
 
 /**

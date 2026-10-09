@@ -23,6 +23,7 @@ import { useTokenSaleStore } from '@/Stores/tokenSaleStore';
 import { useTokenSale } from '@/Composables/useTokenSale';
 import { isMobile, downloadTpixApp } from '@/utils/mobileWallet';
 import { TPIX_CHAIN_CONFIG } from '@/utils/web3';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const walletStore = useWalletStore();
 const tokenSaleStore = useTokenSaleStore();
@@ -209,7 +210,7 @@ function formatNumber(n) {
         -->
         <div v-else-if="!isOnReceiveChain" class="text-center py-8 space-y-4">
             <div class="w-14 h-14 rounded-2xl bg-primary-500/20 flex items-center justify-center mx-auto">
-                <img src="/tpixlogo.webp" alt="TPIX Chain" class="w-9 h-9 object-contain" />
+                <BrandLogo variant="icon" alt="TPIX Chain" class="w-9 h-9" />
             </div>
             <div>
                 <p class="text-white font-semibold mb-1">สลับไปเครือข่าย TPIX Chain ก่อน</p>

@@ -348,7 +348,7 @@ class ChainManagementTest extends TestCase
     public function tpix_chain_ต้องมีไอคอนของตัวเอง(): void
     {
         // เชนหลักของโปรเจกต์เองเคยเป็นหนึ่งใน 8 แถวที่ logo = NULL
-        $this->assertSame('/tpixlogo.webp', $this->tpix()->logo);
+        $this->assertSame('/images/brand/tpix-coin.png', $this->tpix()->logo);
         $this->assertNotNull($this->tpix()->logo_url);
     }
 }

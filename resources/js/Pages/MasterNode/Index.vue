@@ -16,6 +16,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import AwaitingDeployNotice from '@/Components/AwaitingDeployNotice.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { addTPIXChainToWallet } from '@/utils/web3';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const walletStore = useWalletStore();
 
@@ -649,7 +650,7 @@ function fmtNum(n) {
 
                         <div class="relative inline-block mb-6">
                             <div class="absolute -inset-4 bg-gradient-to-r from-accent-500/30 via-primary-500/30 to-warm-500/30 rounded-full blur-2xl animate-glow-brand" />
-                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-24 h-24 shadow-2xl ring-2 ring-white/10" />
+                            <BrandLogo variant="mark" alt="TPIX" class="relative w-24 h-24 rounded-full shadow-2xl ring-2 ring-white/10" />
                         </div>
 
                         <h1 class="text-4xl md:text-5xl font-black mb-3">
@@ -709,7 +710,7 @@ function fmtNum(n) {
                             <div class="flex items-center gap-4">
                                 <div class="relative">
                                     <div class="absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full blur-sm opacity-50" />
-                                    <img src="/tpixlogo.webp" alt="TPIX" class="relative w-12 h-12 ring-2 ring-white/20" />
+                                    <BrandLogo variant="icon" alt="TPIX" class="relative w-12 h-12 rounded-full ring-2 ring-white/20" />
                                 </div>
                                 <div>
                                     <div class="font-mono text-sm text-cyan-400 font-semibold">{{ walletStore.shortAddress }}</div>
@@ -782,7 +783,7 @@ function fmtNum(n) {
 
                                 <div class="flex flex-wrap items-start justify-between gap-4">
                                     <div class="flex items-center gap-4">
-                                        <img src="/tpixlogo.webp" alt="TPIX" class="w-14 h-14 ring-1 ring-white/10" />
+                                        <BrandLogo variant="mark" alt="TPIX" class="w-14 h-14 rounded-full ring-1 ring-white/10" />
                                         <div>
                                             <div class="flex items-center gap-2 flex-wrap">
                                                 <h3 class="text-xl font-bold text-white">{{ myTierSkin?.name }}</h3>
@@ -1004,7 +1005,7 @@ function fmtNum(n) {
                                         <div class="flex items-start justify-between mb-4">
                                             <div class="relative">
                                                 <div :class="['absolute -inset-2 rounded-xl blur-lg opacity-40', tier.gradient]" />
-                                                <img src="/tpixlogo.webp" alt="TPIX" class="relative w-14 h-14 ring-1 ring-white/10" />
+                                                <BrandLogo variant="mark" alt="TPIX" class="relative w-14 h-14 rounded-full ring-1 ring-white/10" />
                                             </div>
                                             <div :class="['px-3 py-1 rounded-full text-xs font-black border', tier.badge]">
                                                 {{ tier.apy }} APY
@@ -1112,7 +1113,7 @@ function fmtNum(n) {
                         <!-- พูลรางวัล — แยก "เพดานตามตาราง" ออกจาก "เงินที่มีอยู่จริง" -->
                         <div class="glass rounded-2xl p-6 space-y-4">
                             <div class="flex items-center gap-3 flex-wrap">
-                                <img src="/tpixlogo.webp" alt="TPIX" class="w-8 h-8 ring-1 ring-white/10" />
+                                <BrandLogo variant="icon" alt="TPIX" class="w-8 h-8 rounded-full ring-1 ring-white/10" />
                                 <div>
                                     <h3 class="text-sm font-bold text-white">พูลรางวัล</h3>
                                     <p class="text-xs text-gray-400">เพดานปล่อยรางวัลตามตาราง 1,400,000,000 TPIX ใน 3 ปี</p>
@@ -1192,7 +1193,7 @@ function fmtNum(n) {
                         <div class="relative group">
                             <div class="absolute -inset-1 bg-gradient-to-r from-accent-500/20 via-primary-500/20 to-warm-500/20 rounded-3xl blur-xl opacity-60 group-hover:opacity-100 transition-opacity" />
                             <div class="glass-brand relative rounded-2xl p-8 text-center">
-                                <img src="/tpixlogo.webp" alt="TPIX" class="w-16 h-16 mx-auto mb-4 ring-2 ring-white/10" />
+                                <BrandLogo variant="mark" alt="TPIX" class="w-16 h-16 mx-auto mb-4 rounded-full ring-2 ring-white/10" />
                                 <h3 class="text-xl font-bold text-white mb-2">รันโหนดของคุณเอง</h3>
                                 <p class="text-sm text-gray-400 mb-5">ดาวน์โหลดโปรแกรม TPIX Master Node สำหรับ Windows</p>
                                 <div class="flex justify-center gap-3 flex-wrap">

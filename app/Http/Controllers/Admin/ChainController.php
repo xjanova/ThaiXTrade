@@ -302,7 +302,7 @@ class ChainController extends Controller
         }
 
         /*
-         * ไอคอนที่ชี้ไปยังไฟล์ใน public_html (เช่น /tpixlogo.webp) ไม่ใช่ของที่เราอัปโหลด
+         * ไอคอนที่ชี้ไปยังไฟล์ใน public_html (เช่น /images/brand/tpix-coin.png) ไม่ใช่ของที่เราอัปโหลด
          * ห้ามลบเด็ดขาด — เป็นทรัพย์สินของเว็บที่หน้าอื่นใช้ร่วมกันอยู่
          */
         if (! str_starts_with($path, 'chains/')) {

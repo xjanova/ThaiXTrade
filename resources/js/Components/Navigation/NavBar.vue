@@ -181,20 +181,19 @@ const handleDisconnect = () => {
                     </button>
 
                     <!-- Logo -->
-                    <Link href="/" class="flex items-center gap-3">
-                        <!-- เวอร์ชันกันแคช Cloudflare อยู่ใน BrandLogo (BRAND_VERSION) — แก้รูปแล้วบวกเลขที่นั่น -->
-                        <BrandLogo variant="icon" class="w-10 h-10" />
-                        <div class="hidden sm:block">
-                            <h1 class="text-xl font-bold text-white">TPIX <span class="text-gradient">TRADE</span></h1>
-                            <!-- สโลแกนยาวกว่าชื่อสตูดิโอเดิมราว 3 เท่า วัดแล้วที่ 1280px
-                                 ถ้าโผล่พร้อมป้ายเมนูจะดันปุ่มฝั่งขวาตกขอบจอ (overflow จริง)
-                                 ต้องเลือกอย่างเดียว — เลือกป้ายเมนูเพราะเป็นทางใช้งาน
-                                 ส่วนสโลแกนเป็นข้อความแบรนด์ จึงรอจนจอกว้างพอทั้งคู่
-                                 nowrap กันไม่ให้ตัดสองบรรทัดซึ่งจะดันแถบบนสูงขึ้น -->
-                            <p class="hidden 2xl:block text-xs text-dark-400 whitespace-nowrap">
-                                Decentralized trading &amp; trustworthy AI trading.
-                            </p>
-                        </div>
+                    <!-- ตรา + ตัวอักษร TPIX / TRADE แบบเดียวกับภาพแบรนด์ (เจ้าของสั่ง: "logo หัวเว็บควรใช้แบบในภาพ")
+                         เวอร์ชันกันแคช Cloudflare อยู่ใน utils/brand.js (BRAND_VERSION) — แก้รูปแล้วบวกเลขที่นั่น
+                         จอแคบ (< sm): ตราเดี่ยว — ล็อกอัพกว้าง ~100px จะดันปุ่มกระเป๋าฝั่งขวาตกขอบ -->
+                    <Link href="/" class="flex items-center gap-4">
+                        <h1 class="sr-only">TPIX TRADE</h1>
+                        <BrandLogo variant="mark" alt="" class="w-10 h-10 sm:hidden" />
+                        <BrandLogo variant="lockup" alt="" class="hidden sm:block h-11 w-auto" />
+                        <!-- สโลแกนวางข้างตรา ไม่ใช่ใต้ชื่อแบบเดิม (ตรามีสองบรรทัดอยู่แล้ว) จึงกินความกว้างเพิ่ม
+                             เดิมวัดได้ว่าที่ 1280px สโลแกน + ป้ายเมนูดันปุ่มฝั่งขวาตกขอบจอ → รอจอกว้างมากจริงๆ
+                             nowrap กันไม่ให้ตัดสองบรรทัดซึ่งจะดันแถบบนสูงขึ้น -->
+                        <p class="hidden min-[1760px]:block pl-4 border-l border-white/10 text-xs text-dark-400 whitespace-nowrap">
+                            Decentralized trading &amp; trustworthy AI trading.
+                        </p>
                     </Link>
                 </div>
 

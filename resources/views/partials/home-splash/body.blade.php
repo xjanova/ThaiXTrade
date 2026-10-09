@@ -8,7 +8,7 @@
     - เริ่มแบบ hidden: สคริปต์ข้างล่างเป็นคนเปิด → ไม่มี JS/สคริปต์พัง = ไม่มีจอโหลดค้างบังเว็บ
     - Vue mount ลง #app ตามปกติ ไม่ต้องรอจอนี้ (จอนี้อยู่นอก #app Vue ไม่แตะ)
     - ข้อความไทย/อังกฤษเลือกใน splash.js ตาม tpix_locale — ตรงนี้ไม่มีข้อความให้แปล
-    - ตราแบรนด์: ?v= ต้องตรงกับ BRAND_VERSION ใน Components/Brand/BrandLogo.vue (Cloudflare แคชรูป 1 ปี)
+    - ตราแบรนด์: ?v= ต้องตรงกับ BRAND_VERSION ใน resources/js/utils/brand.js (Cloudflare แคชรูป 1 ปี)
       ไฟล์ยังไม่มี/โหลดไม่ได้ → splash.js เอารูปออก เหลือตัวอักษร TPIX TRADE
 --}}
 @php
@@ -22,7 +22,7 @@
     <div class="tpix-splash__horizon" aria-hidden="true"><div class="tpix-splash__grid"></div></div>
     <div class="tpix-splash__inner">
         <div class="tpix-splash__brand">
-            <img class="tpix-splash__mark" src="/images/brand/tpix-trade-mark.svg?v=1" alt="" width="64" height="64" decoding="async" data-splash-mark>
+            <img class="tpix-splash__mark" src="/images/brand/tpix-trade-mark.svg?v=2" alt="" width="64" height="64" decoding="async" data-splash-mark>
             <span class="tpix-splash__word">TPIX TRADE</span>
         </div>
         <div class="tpix-splash__stage">

@@ -10,6 +10,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const props = defineProps({
     validators: { type: Array, default: () => [] },
@@ -485,7 +486,7 @@ onUnmounted(() => {
                         <!-- TPIX Logo with radial glow -->
                         <div class="relative inline-block mb-5">
                             <div class="absolute -inset-4 bg-gradient-to-r from-cyan-500/30 via-purple-500/30 to-yellow-500/30 rounded-full blur-2xl animate-glow-brand" />
-                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-20 h-20 ring-2 ring-white/10" />
+                            <BrandLogo variant="mark" alt="TPIX" class="relative w-20 h-20 rounded-full ring-2 ring-white/10" />
                         </div>
 
                         <h1 class="text-4xl md:text-5xl font-black mb-3">
@@ -822,7 +823,7 @@ onUnmounted(() => {
                     <!-- ============================================================ -->
                     <div class="glass rounded-2xl p-6">
                         <div class="flex items-center gap-3 mb-4">
-                            <img src="/tpixlogo.webp" alt="TPIX" class="w-8 h-8 ring-1 ring-white/10" />
+                            <BrandLogo variant="icon" alt="TPIX" class="w-8 h-8 rounded-full ring-1 ring-white/10" />
                             <div>
                                 <h3 class="text-sm font-bold text-white">Emission Schedule</h3>
                                 <p class="text-xs text-gray-400">1,400,000,000 TPIX distributed over 5 years</p>
@@ -860,7 +861,7 @@ onUnmounted(() => {
                     <!-- ============================================================ -->
                     <div class="glass rounded-2xl p-6 space-y-5">
                         <div class="flex items-center gap-3">
-                            <img src="/tpixlogo.webp" alt="TPIX" class="w-8 h-8 ring-1 ring-white/10" />
+                            <BrandLogo variant="icon" alt="TPIX" class="w-8 h-8 rounded-full ring-1 ring-white/10" />
                             <div>
                                 <h3 class="text-sm font-bold text-white uppercase tracking-wide">How Rewards Work</h3>
                                 <p class="text-xs text-gray-400">Reward share by tier &amp; minimum stake</p>
@@ -884,7 +885,7 @@ onUnmounted(() => {
                                         <div class="relative">
                                             <div :style="{ background: 'radial-gradient(circle, ' + tierConfig[info.tier].dot + '40, transparent 70%)' }"
                                                  class="absolute -inset-1.5 rounded-xl blur-lg" />
-                                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-10 h-10 ring-1 ring-white/10" />
+                                            <BrandLogo variant="icon" alt="TPIX" class="relative w-10 h-10 rounded-full ring-1 ring-white/10" />
                                         </div>
                                         <div :class="['px-2 py-0.5 rounded-full text-[10px] font-black border', tierConfig[info.tier].bg]">
                                             <span :class="tierConfig[info.tier].color">{{ info.share }}</span>
@@ -921,7 +922,7 @@ onUnmounted(() => {
                         <!-- Logo with radial glow (matches MasterNode hero treatment) -->
                         <div class="relative inline-block mb-4">
                             <div class="absolute -inset-3 bg-gradient-to-r from-cyan-500/30 via-purple-500/30 to-yellow-500/30 rounded-full blur-2xl animate-glow-brand" />
-                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-16 h-16 ring-2 ring-white/10" />
+                            <BrandLogo variant="mark" alt="TPIX" class="relative w-16 h-16 rounded-full ring-2 ring-white/10" />
                         </div>
 
                         <h3 class="text-xl md:text-2xl font-bold text-white mb-2">Become a TPIX Validator</h3>

@@ -29,10 +29,10 @@ class TokenLogosSeeder extends Seeder
      * symbol → logo URL (canonical default).
      *
      * Logos จาก trustwallet/assets — public CDN ที่เสถียร
-     * TPIX ใช้ logo ภายใน /tpixlogo.webp (admin upload override ได้)
+     * TPIX ใช้ logo ภายใน /images/brand/tpix-coin.png — ตราเดียวกับแพลตฟอร์ม (admin upload override ได้)
      */
     private const LOGOS = [
-        'TPIX' => '/tpixlogo.webp',
+        'TPIX' => '/images/brand/tpix-coin.png',
         'USDT' => 'https://assets-cdn.trustwallet.com/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png',
         'BTC' => 'https://assets-cdn.trustwallet.com/blockchains/bitcoin/info/logo.png',
         'ETH' => 'https://assets-cdn.trustwallet.com/blockchains/ethereum/info/logo.png',
@@ -76,6 +76,7 @@ class TokenLogosSeeder extends Seeder
                 $isAdminUpload = $token->logo
                     && ! str_starts_with($token->logo, 'http')
                     && ! str_starts_with($token->logo, '/tpixlogo')
+                    && ! str_starts_with($token->logo, '/images/brand/')
                     && ! str_starts_with($token->logo, '/logo');
 
                 if ($isAdminUpload) {

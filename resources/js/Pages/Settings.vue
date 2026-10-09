@@ -20,6 +20,7 @@ import {
     DEADLINE_MAX,
 } from '@/utils/tradeSettings';
 import { isMobile, openTpixApp, downloadTpixApp, TPIX_APP } from '@/utils/mobileWallet';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const { t, locale } = useTranslation();
 const { themes, current: currentTheme, setTheme } = useTheme();
@@ -355,7 +356,7 @@ onMounted(() => {
                 <div class="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-primary-500/10 to-accent-500/10 border border-primary-500/20">
                     <!-- App Icon -->
                     <div class="w-14 h-14 bg-gradient-to-br from-primary-500 to-accent-500 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20">
-                        <img src="/tpixlogo.webp" class="w-9 h-9" alt="TPIX Wallet" />
+                        <BrandLogo variant="icon" alt="TPIX Wallet" class="w-9 h-9" />
                     </div>
                     <div class="flex-1 min-w-0">
                         <p class="font-semibold text-white">TPIX Wallet</p>

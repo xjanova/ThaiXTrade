@@ -17,19 +17,21 @@ import {
     getPairLogo,
 } from '@/utils/cryptoLogos';
 import { BSC_TRADE_TOKENS } from '@/Config/bscTradeTokens';
+import { TPIX_COIN_ICON } from '@/utils/brand';
 
 /** เหรียญที่หน้าเทรดเปิดให้เทรดจริง (แหล่งความจริงเดียวกับที่ใช้ส่งธุรกรรม) */
 const TRADABLE = Object.keys(BSC_TRADE_TOKENS);
 
 describe('getCoinLogo', () => {
-    it('uses the TPIX coin logo, not the 333KB platform brand logo', () => {
-        // ของเดิมชี้ /logo.png ซึ่งเป็นโลโก้แบรนด์ TPIX TRADE คนละภาพกับเหรียญ
-        expect(getCoinLogo('TPIX')).toBe('/tpixlogo.webp');
-        expect(getCoinLogo('tpix')).toBe('/tpixlogo.webp');
+    it('uses the compact brand mark for the TPIX coin, not the 333KB platform raster', () => {
+        // ของเดิมชี้ /logo.png (ภาพใหญ่) — ไอคอนเหรียญต้องเป็นตัวย่อแบบเวกเตอร์ที่อ่านออกที่ 20px
+        expect(getCoinLogo('TPIX')).toBe(TPIX_COIN_ICON);
+        expect(getCoinLogo('tpix')).toBe(TPIX_COIN_ICON);
+        expect(TPIX_COIN_ICON).toMatch(/^\/images\/brand\/tpix-trade-icon\.svg\?v=\d+$/);
     });
 
     it('maps wrapped TPIX to the same local asset', () => {
-        expect(getCoinLogo('WTPIX')).toBe('/tpixlogo.webp');
+        expect(getCoinLogo('WTPIX')).toBe(TPIX_COIN_ICON);
     });
 
     it('maps wrapped tokens to their base coin', () => {

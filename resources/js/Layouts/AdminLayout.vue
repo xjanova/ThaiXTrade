@@ -293,11 +293,12 @@ onMounted(() => {
         >
             <!-- Logo -->
             <div class="flex items-center gap-3 px-5 py-5 border-b border-white/5">
-                <BrandLogo variant="icon" class="w-10 h-10 flex-shrink-0" />
-                <div v-if="sidebarOpen" class="overflow-hidden">
-                    <p class="font-bold text-white text-sm whitespace-nowrap">TPIX <span class="text-gradient">TRADE</span></p>
-                    <p class="text-xs text-dark-400 whitespace-nowrap">Admin Panel</p>
-                </div>
+                <!-- พับแถบ (72px) = ตัวย่อ · เปิดเต็ม = ตรา + ตัวอักษรแบบหัวเว็บ -->
+                <template v-if="sidebarOpen">
+                    <BrandLogo variant="lockup" class="h-10 w-auto flex-shrink-0" />
+                    <span class="ml-auto self-start text-[10px] font-semibold uppercase tracking-wider text-dark-400 whitespace-nowrap">Admin</span>
+                </template>
+                <BrandLogo v-else variant="icon" class="w-10 h-10 flex-shrink-0" />
             </div>
 
             <!-- Navigation -->

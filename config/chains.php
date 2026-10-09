@@ -45,7 +45,7 @@ return [
                 'symbol' => 'TPIX',
                 'decimals' => 18,
             ],
-            'icon' => '/tpixlogo.webp',
+            'icon' => '/images/brand/tpix-coin.png',
             'color' => '#06B6D4',
             'enabled' => true,
             // เชนหลักของเรา — เปิดเทรดเมื่อ DEX บนเชน deploy เสร็จ (ตอนนี้โชว์ไว้ก่อน กดไม่ได้)

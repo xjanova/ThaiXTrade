@@ -5,6 +5,7 @@
  */
 
 import * as THREE from 'three';
+import { TPIX_MARK_PNG } from '@/utils/brand';
 
 export const C = {
     green: new THREE.Color('#00c853'),
@@ -154,7 +155,7 @@ export function loadImage(url) {
 let logoPromise = null;
 /** โลโก้ TPIX (ใช้บนหน้าเหรียญ) */
 export function loadLogo() {
-    if (!logoPromise) logoPromise = loadImage('/tpixlogo.webp');
+    if (!logoPromise) logoPromise = loadImage(TPIX_MARK_PNG);
     return logoPromise;
 }
 

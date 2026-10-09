@@ -300,12 +300,12 @@ describe('home splash — what Blade ships', () => {
         expect(readSplashFile('splash.css')).not.toMatch(/<\/style/i);
     });
 
-    it('asks for the brand mark with the same cache-busting version as BrandLogo.vue', () => {
+    it('asks for the brand mark with the same cache-busting version as utils/brand.js', () => {
         const markup = readSplashFile('body.blade.php');
         const used = markup.match(/\/images\/brand\/tpix-trade-mark\.svg\?v=(\d+)/);
         expect(used).not.toBeNull();
         // อ่านเป็นข้อความ (ไม่ import) — ไฟล์ของอีกทีมอาจกำลังแก้อยู่ ไม่ให้เทสต์นี้ล้มตาม
-        const logoPath = resolve(process.cwd(), 'resources/js/Components/Brand/BrandLogo.vue');
+        const logoPath = resolve(process.cwd(), 'resources/js/utils/brand.js');
         if (!existsSync(logoPath)) return;
         const version = readFileSync(logoPath, 'utf8').match(/BRAND_VERSION\s*=\s*(\d+)/);
         if (version) expect(used[1]).toBe(version[1]);

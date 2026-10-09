@@ -174,12 +174,9 @@ const quickLinks = [
             <div class="max-w-lg w-full text-center">
 
                 <!-- Logo -->
-                <Link href="/" class="inline-flex items-center gap-3 mb-10 group">
-                    <BrandLogo variant="icon" class="w-10 h-10 group-hover:scale-110 transition-transform" />
-                    <div class="text-left">
-                        <span class="text-lg font-bold text-white">TPIX <span class="text-primary-400">TRADE</span></span>
-                        <span class="block text-[10px] text-dark-400 -mt-0.5">by Xman Studio</span>
-                    </div>
+                <Link href="/" class="inline-flex flex-col items-center gap-1.5 mb-10 group">
+                    <BrandLogo variant="lockup" class="h-12 w-auto group-hover:scale-105 transition-transform" />
+                    <span class="block text-[10px] text-dark-400">by Xman Studio</span>
                 </Link>
 
                 <!-- Error Code (large) -->

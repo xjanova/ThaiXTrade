@@ -20,6 +20,7 @@ import BuyForm from '@/Components/TokenSale/BuyForm.vue';
 import TokenomicsChart from '@/Components/TokenSale/TokenomicsChart.vue';
 import VestingSchedule from '@/Components/TokenSale/VestingSchedule.vue';
 import { useTranslation } from '@/Composables/useTranslation';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const { t } = useTranslation();
 
@@ -150,7 +151,7 @@ async function loadTradablePair() {
 
             <div class="relative max-w-6xl mx-auto px-4 sm:px-6 text-center">
                 <!-- Logo -->
-                <img src="/tpixlogo.webp" alt="TPIX" class="w-20 h-20 mx-auto mb-6" />
+                <BrandLogo variant="mark" alt="TPIX" class="w-20 h-20 mx-auto mb-6" />
 
                 <h1 class="text-4xl sm:text-5xl font-bold text-white mb-3">
                     {{ t('tokenSale.title') }}

@@ -10,6 +10,7 @@ import CoinIcon from '@/Components/CoinIcon.vue';
 import Sparkline from '@/Components/Trading/Sparkline.vue';
 import { useSparklines } from '@/Composables/useSparklines';
 import axios from 'axios';
+import { TPIX_COIN_ICON } from '@/utils/brand';
 
 const props = defineProps({
     currentPair: { type: String, default: 'BTC/USDT' },
@@ -95,13 +96,13 @@ async function fetchTickers() {
         if (!tickers.value.find(t => t.base === 'TPIX')) {
             tickers.value.unshift({
                 symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX',
-                logo: logoMap['TPIX'] || '/tpixlogo.webp',
+                logo: logoMap['TPIX'] || TPIX_COIN_ICON,
                 price: 0.10, change: 0, volume: 0, isTpix: true,
             });
         }
     } catch {
         // Fallback — แค่ TPIX
-        tickers.value = [{ symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', logo: '/tpixlogo.webp', price: 0.10, change: 0, volume: 0, isTpix: true }];
+        tickers.value = [{ symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', logo: TPIX_COIN_ICON, price: 0.10, change: 0, volume: 0, isTpix: true }];
     } finally {
         isLoading.value = false;
     }
@@ -273,7 +274,7 @@ onUnmounted(() => {
                             {{ favorites.includes(t.pair) ? '★' : '☆' }}
                         </button>
 
-                        <CoinIcon :symbol="t.base" size="sm" :src="t.logo || (t.isTpix ? '/tpixlogo.webp' : undefined)" />
+                        <CoinIcon :symbol="t.base" size="sm" :src="t.logo || (t.isTpix ? TPIX_COIN_ICON : undefined)" />
 
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-1.5">

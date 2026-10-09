@@ -6,7 +6,8 @@
 import { ref, computed } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { useWalletStore } from '@/Stores/walletStore';
+import { useWalletStore } from '@/Stores/walletStore';
+import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const walletStore = useWalletStore();
 
@@ -216,7 +217,7 @@ async function submitApplication() {
                         <!-- TPIX Logo with radial glow -->
                         <div class="relative inline-block mb-5">
                             <div class="absolute -inset-3 bg-gradient-to-r from-yellow-500/30 via-amber-500/30 to-cyan-500/30 rounded-full blur-2xl animate-glow-brand" />
-                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-20 h-20 ring-2 ring-white/10" />
+                            <BrandLogo variant="mark" alt="TPIX" class="relative w-20 h-20 rounded-full ring-2 ring-white/10" />
                         </div>
 
                         <h1 class="text-3xl md:text-4xl font-black mb-3">
@@ -304,7 +305,7 @@ async function submitApplication() {
                                     <div class="flex items-center justify-between mb-2">
                                         <div class="relative">
                                             <div :class="['absolute -inset-1.5 rounded-xl blur-lg opacity-40', tier.gradient]" />
-                                            <img src="/tpixlogo.webp" alt="TPIX" class="relative w-9 h-9 ring-1 ring-white/10" />
+                                            <BrandLogo variant="icon" alt="TPIX" class="relative w-9 h-9 rounded-full ring-1 ring-white/10" />
                                         </div>
                                         <div :class="['px-2 py-0.5 rounded-full text-[10px] font-black border', tier.badge]">
                                             {{ tier.apy }}

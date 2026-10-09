@@ -14,6 +14,7 @@ import { BrowserProvider, JsonRpcProvider, parseEther } from 'ethers';
 import { router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { playConnectSound, playDisconnectSound, playErrorSound } from '@/Composables/useSounds';
+import { TPIX_COIN_PNG } from '@/utils/brand';
 import {
     BSC_CHAIN_CONFIG,
     DEFAULT_CHAIN_ID,
@@ -584,7 +585,7 @@ export const useWalletStore = defineStore('wallet', () => {
                         name: 'TPIX TRADE',
                         description: 'Decentralized Exchange on TPIX Chain',
                         url: window.location.origin,
-                        icons: [`${window.location.origin}/tpixlogo.webp`],
+                        icons: [`${window.location.origin}${TPIX_COIN_PNG}`],
                     },
                     // สั่ง wallet เพิ่ม TPIX Chain อัตโนมัติถ้ายังไม่มี (EIP-3085)
                     rpcMap: {

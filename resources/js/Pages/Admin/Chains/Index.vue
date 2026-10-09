@@ -348,12 +348,12 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     </div>
                     <p v-if="form.errors.logo_file" class="mt-1 text-sm text-red-400">{{ form.errors.logo_file }}</p>
 
-                    <!-- ทางเลือกสำรอง: ชี้ไปยัง URL ภายนอก หรือไฟล์ใน public_html เช่น /tpixlogo.webp -->
+                    <!-- ทางเลือกสำรอง: ชี้ไปยัง URL ภายนอก หรือไฟล์ใน public_html เช่น /images/brand/tpix-coin.png -->
                     <input
                         v-model="form.logo"
                         type="text"
                         :class="[inputClass, 'mt-2']"
-                        placeholder="หรือใส่ URL / path เช่น /tpixlogo.webp"
+                        placeholder="หรือใส่ URL / path เช่น /images/brand/tpix-coin.png"
                     />
                     <p v-if="form.errors.logo" class="mt-1 text-sm text-red-400">{{ form.errors.logo }}</p>
                     <p class="mt-1 text-xs text-dark-500">เว้นว่างทั้งสองช่อง = คงไอคอนเดิมไว้ (ไม่ลบทิ้ง)</p>
