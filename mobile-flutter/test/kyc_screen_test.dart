@@ -205,8 +205,8 @@ void main() {
 
     expect(find.text('เชื่อมกระเป๋าก่อนยืนยันตัวตน'), findsOneWidget);
     expect(find.text('เชื่อมกระเป๋า'), findsOneWidget);
-    expect(find.text('ส่งเอกสารที่หน้าเว็บ'), findsOneWidget,
-        reason: 'ทางสำรองต้องมีเสมอเมื่อยังไม่ผ่าน');
+    expect(find.textContaining('หน้าเว็บ'), findsNothing,
+        reason: 'หน้าเว็บเลิกรับเอกสารแล้ว — พาไปก็วนกลับมาที่แอป');
     expect(h.api.statusCalls, 0);
     await _unmount(tester);
   });
@@ -242,8 +242,8 @@ void main() {
     expect(find.text('เช่าบอทเทรด AI'), findsOneWidget);
     expect(find.text('สะพานข้ามเชน'), findsNothing,
         reason: 'ฟีเจอร์ที่ไม่บังคับไม่ต้องโชว์');
-    expect(find.text('ส่งเอกสารที่หน้าเว็บ'), findsNothing,
-        reason: 'ผ่านแล้วไม่ต้องมีทางสำรอง');
+    expect(find.text('ยังไม่มีบัญชี Thaiprompt?'), findsNothing,
+        reason: 'ผ่านแล้วไม่ต้องชวนสมัคร Thaiprompt');
     await _unmount(tester);
   });
 
@@ -264,7 +264,7 @@ void main() {
     expect(find.text('ยืนยันตัวตนด้วยบัญชี Thaiprompt'), findsOneWidget);
     expect(find.text('เคยยืนยันตัวตนใน Thaiprompt แล้ว'), findsOneWidget);
     expect(find.text('ยังไม่เคยยืนยันตัวตนใน Thaiprompt'), findsOneWidget);
-    expect(find.text('ส่งเอกสารที่หน้าเว็บ'), findsOneWidget);
+    expect(find.text('ยังไม่มีบัญชี Thaiprompt?'), findsOneWidget);
 
     // ยังไม่ยินยอม = กดไม่ได้
     await tester.tap(find.text('ยืนยันด้วย Thaiprompt'));
@@ -387,15 +387,31 @@ void main() {
     await _unmount(tester);
   });
 
-  testWidgets('Thaiprompt ปิดอยู่ → เหลือแค่ส่งเอกสารที่หน้าเว็บ', (tester) async {
+  testWidgets('Thaiprompt ปิดอยู่ → บอกว่ายังไม่เปิดให้บริการ ไม่พาไปหน้าเว็บ',
+      (tester) async {
     final api = _FakeKycApi()..status = ApiOk(_status(available: false));
     final h = await _pump(tester, api: api);
 
-    expect(find.text('ส่งเอกสารยืนยันตัวตนที่หน้าเว็บ'), findsOneWidget);
+    expect(find.text('ยืนยันตัวตนยังไม่เปิดให้บริการชั่วคราว'), findsOneWidget);
     expect(find.text('ยืนยันตัวตนด้วยบัญชี Thaiprompt'), findsNothing);
-    await tester.tap(find.text('ส่งเอกสารที่หน้าเว็บ'));
+
+    // ลองใหม่ = ถามสถานะซ้ำ ไม่ใช่เปิดลิงก์ออกไปข้างนอก
+    await tester.tap(find.text('ลองใหม่'));
     await tester.pump();
-    expect(h.opened.single.toString(), 'https://tpix.online/kyc');
+    await tester.pump();
+    expect(h.api.statusCalls, 2);
+    expect(h.opened, isEmpty);
+    await _unmount(tester);
+  });
+
+  testWidgets('ยังไม่มีบัญชี Thaiprompt → ดาวน์โหลดแอป Thaiprompt',
+      (tester) async {
+    final h = await _pump(tester);
+
+    await tester.tap(find.text('ดาวน์โหลด'));
+    await tester.pump();
+    expect(h.opened.single.toString(),
+        'https://main.thaiprompt.online/app/download');
     await _unmount(tester);
   });
 

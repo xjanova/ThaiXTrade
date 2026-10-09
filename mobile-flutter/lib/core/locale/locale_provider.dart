@@ -771,15 +771,16 @@ class LocaleProvider extends ChangeNotifier {
       'kyc.appMissing': 'เปิดแอป Thaiprompt ไม่ได้ — เครื่องนี้อาจยังไม่ได้ติดตั้ง',
       'kyc.downloadApp': 'ดาวน์โหลดแอป Thaiprompt',
 
-      'kyc.web.title': 'ส่งเอกสารยืนยันตัวตนที่หน้าเว็บ',
-      'kyc.web.body':
-          'ตอนนี้การยืนยันด้วย Thaiprompt ยังไม่เปิด — ส่งเอกสารยืนยันตัวตนได้ที่หน้าเว็บ TPIX TRADE',
-      'kyc.fallback.title': 'ไม่มีบัญชี Thaiprompt / ชาวต่างชาติ',
-      'kyc.fallback.body': 'ส่งเอกสารยืนยันตัวตนได้ที่หน้าเว็บ',
-      'kyc.fallback.button': 'ส่งเอกสารที่หน้าเว็บ',
+      'kyc.unavailable.title': 'ยืนยันตัวตนยังไม่เปิดให้บริการชั่วคราว',
+      'kyc.unavailable.body':
+          'ระบบยืนยันด้วย Thaiprompt กำลังปิดปรับปรุง — ลองใหม่อีกครั้งภายหลัง',
+      'kyc.fallback.title': 'ยังไม่มีบัญชี Thaiprompt?',
+      'kyc.fallback.body':
+          'สมัครฟรีในแอป Thaiprompt แล้วยืนยันตัวตนที่นั่น จากนั้นกลับมากด "ยืนยันด้วย Thaiprompt"',
+      'kyc.fallback.button': 'ดาวน์โหลด',
 
       'kyc.sub.pending': 'เอกสารที่ส่งทางเว็บกำลังรอทีมงานตรวจ',
-      'kyc.sub.rejected': 'เอกสารที่ส่งไม่ผ่านการตรวจ — ส่งใหม่ได้ หรือยืนยันด้วย Thaiprompt',
+      'kyc.sub.rejected': 'เอกสารที่ส่งไม่ผ่านการตรวจ — ยืนยันด้วย Thaiprompt ได้เลย ไม่ต้องส่งเอกสาร',
       'kyc.sub.reason': 'เหตุผล: {reason}',
 
       'kyc.completing': 'กำลังเชื่อมบัญชี Thaiprompt…',
@@ -809,7 +810,7 @@ class LocaleProvider extends ChangeNotifier {
       'kyc.err.WALLET_IP_MISMATCH':
           'เครือข่ายเปลี่ยนระหว่างใช้งาน — ยืนยันกระเป๋าอีกครั้ง',
       'kyc.err.THAIPROMPT_UNAVAILABLE':
-          'ติดต่อ Thaiprompt ไม่ได้ชั่วคราว — ลองใหม่อีกสักครู่ หรือส่งเอกสารที่หน้าเว็บ',
+          'ติดต่อ Thaiprompt ไม่ได้ชั่วคราว — ลองใหม่อีกสักครู่',
       'kyc.err.THAIPROMPT_TAKEN':
           'บัญชี Thaiprompt นี้ใช้ยืนยันตัวตนกับบัญชี TPIX TRADE อื่นไปแล้ว',
       'kyc.err.THAIPROMPT_LINK_FAILED': 'ลิงก์หมดอายุ กดยืนยันด้วย Thaiprompt ใหม่',
@@ -1546,16 +1547,17 @@ class LocaleProvider extends ChangeNotifier {
           'Could not open the Thaiprompt app — it may not be installed on this phone',
       'kyc.downloadApp': 'Download Thaiprompt app',
 
-      'kyc.web.title': 'Send your documents on the website',
-      'kyc.web.body':
-          'Verifying with Thaiprompt is not open right now — you can send your documents on the TPIX TRADE website.',
-      'kyc.fallback.title': 'No Thaiprompt account / foreign national',
-      'kyc.fallback.body': 'Send your verification documents on the website',
-      'kyc.fallback.button': 'Send documents on the web',
+      'kyc.unavailable.title': 'Identity verification is temporarily unavailable',
+      'kyc.unavailable.body':
+          'Verifying with Thaiprompt is under maintenance — please try again later.',
+      'kyc.fallback.title': 'No Thaiprompt account yet?',
+      'kyc.fallback.body':
+          'Sign up free in the Thaiprompt app and verify there, then come back and tap "Verify with Thaiprompt"',
+      'kyc.fallback.button': 'Download',
 
       'kyc.sub.pending': 'The documents you sent on the web are waiting for review',
       'kyc.sub.rejected':
-          'Your documents were not approved — send them again or verify with Thaiprompt',
+          'Your documents were not approved — verify with Thaiprompt instead, no documents needed',
       'kyc.sub.reason': 'Reason: {reason}',
 
       'kyc.completing': 'Linking your Thaiprompt account…',
@@ -1586,7 +1588,7 @@ class LocaleProvider extends ChangeNotifier {
       'kyc.err.WALLET_IP_MISMATCH':
           'Your network changed mid-session — please verify your wallet again',
       'kyc.err.THAIPROMPT_UNAVAILABLE':
-          'Thaiprompt cannot be reached right now — try again shortly, or send documents on the web',
+          'Thaiprompt cannot be reached right now — please try again shortly',
       'kyc.err.THAIPROMPT_TAKEN':
           'This Thaiprompt account is already used by another TPIX TRADE account',
       'kyc.err.THAIPROMPT_LINK_FAILED':

@@ -376,6 +376,9 @@ class DeepLinkService {
         if (key != null) _snackKey(key, isSuccess: outcome.isSuccess);
       case KycReturnResult.denied:
         _snackKey('kyc.link.denied');
+      case KycReturnResult.open:
+        // ลิงก์เปล่าจากหน้าเว็บ — เปิดหน้ายืนยันตัวตนให้แล้วด้านบน ไม่มีผลอะไรต้องแจ้ง
+        break;
       case KycReturnResult.expired:
       case KycReturnResult.error:
       case KycReturnResult.invalid:

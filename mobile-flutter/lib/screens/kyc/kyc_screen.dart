@@ -14,8 +14,9 @@
 ///      Thaiprompt แล้วถามผลซ้ำทุก 20 วินาทีระหว่างเปิดหน้า (สูงสุด 15 นาที)
 ///      และทันทีที่กลับเข้าแอป
 ///
-/// ทางสำรองเสมอ (ยกเว้นผ่านแล้ว): ส่งเอกสารที่หน้าเว็บ — สำหรับคนไม่มีบัญชี
-/// Thaiprompt และชาวต่างชาติ (แอปยังไม่มีหน้าอัปโหลดบัตร)
+/// ยืนยันตัวตนทำในแอปนี้เท่านั้น — หน้าเว็บ /kyc เลิกรับเอกสารแล้วและพากลับมาที่นี่
+/// (ปุ่ม "เปิดแอป TPIX TRADE" = ลิงก์เปล่า `tpixtrade://kyc`) ยังไม่มีบัญชี Thaiprompt
+/// → การ์ดชวนดาวน์โหลดแอป Thaiprompt ไปสมัครและยืนยันที่นั่นก่อน
 ///
 /// Developed by Xman Studio
 library;
@@ -536,20 +537,6 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
     if (!ok) _snack(context.read<LocaleProvider>().t('kyc.appMissing'));
   }
 
-  Future<void> _openWebKyc(KycStatus? status) async {
-    if (_openingLink) return;
-    final uri = status?.webKycUri ?? Uri.parse(KycStatus.defaultWebKycUrl);
-    _openingLink = true;
-    _awaitingReturn = true;
-    final ok = await _openExternal(uri);
-    _openingLink = false;
-    if (!mounted) return;
-    if (!ok) {
-      _awaitingReturn = false;
-      _snack(context.read<LocaleProvider>().t('kyc.browserFailed'));
-    }
-  }
-
   Future<void> _openDownload(Uri uri) async {
     if (_openingLink) return;
     _openingLink = true;
@@ -687,7 +674,6 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
             actionIcon: Icons.link_rounded,
             onAction: _openConnectSheet,
           )),
-          _block(_fallback(status, locale)),
         ];
 
       case KycView.needsWalletSign:
@@ -703,7 +689,6 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
             isLoading: _verifying,
             onAction: _verifying ? null : _verifyWallet,
           )),
-          _block(_fallback(status, locale)),
         ];
 
       case KycView.loading:
@@ -723,7 +708,6 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
             isLoading: _loadFuture != null,
             onAction: _loadFuture != null ? null : _load,
           )),
-          _block(_fallback(status, locale)),
         ];
 
       case KycView.approved:
@@ -747,21 +731,20 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
           ..._submissionNotice(status!, locale),
           _block(_waitingCard(status, locale)),
           _block(_FeatureList(status: status, locale: locale, approved: false)),
-          _block(_fallback(status, locale)),
           _block(_PrivacyNote(text: locale.t('kyc.privacy'))),
         ];
 
-      case KycView.webOnly:
+      case KycView.unavailable:
+        // เดิมพาไปส่งเอกสารที่หน้าเว็บ — หน้าเว็บเลิกรับแล้ว พาไปก็วนกลับมาที่นี่
         return [
           ..._submissionNotice(status!, locale),
           _block(_Notice(
-            tone: _NoticeTone.action,
-            icon: Icons.upload_file_rounded,
-            title: locale.t('kyc.web.title'),
-            body: locale.t('kyc.web.body'),
-            actionLabel: locale.t('kyc.fallback.button'),
-            actionIcon: Icons.open_in_new_rounded,
-            onAction: () => _openWebKyc(status),
+            icon: Icons.schedule_rounded,
+            title: locale.t('kyc.unavailable.title'),
+            body: locale.t('kyc.unavailable.body'),
+            actionLabel: locale.t('kyc.retry'),
+            actionIcon: Icons.refresh_rounded,
+            onAction: _load,
           )),
           _block(_FeatureList(status: status, locale: locale, approved: false)),
         ];
@@ -991,15 +974,19 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _fallback(KycStatus? status, LocaleProvider locale) {
+  /// ยังไม่มีบัญชี Thaiprompt → ไปสมัครและยืนยันในแอป Thaiprompt ก่อน
+  /// (เดิมพาไปส่งเอกสารที่หน้าเว็บ — หน้าเว็บเลิกรับแล้ว)
+  Widget _fallback(KycStatus status, LocaleProvider locale) {
     final accent = context.watch<AccentProvider>();
+    final download = status.thaiprompt.downloadUri;
     return GlassCard(
       variant: GlassVariant.standard,
       borderRadius: 16,
       padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
       child: Row(
         children: [
-          Icon(Icons.public_rounded, size: 20, color: AppColors.textTertiary),
+          Icon(Icons.person_add_alt_1_rounded,
+              size: 20, color: AppColors.textTertiary),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1025,17 +1012,18 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
               ],
             ),
           ),
-          TextButton(
-            onPressed: () => _openWebKyc(status),
-            child: Text(
-              locale.t('kyc.fallback.button'),
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: accent.g2,
+          if (download != null)
+            TextButton(
+              onPressed: () => _openDownload(download),
+              child: Text(
+                locale.t('kyc.fallback.button'),
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: accent.g2,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

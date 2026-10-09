@@ -330,8 +330,9 @@ enum KycView {
   /// เชื่อม Thaiprompt แล้ว รอผู้ใช้ทำ eKYC ในแอป Thaiprompt / รอผลตรวจ
   waitingThaiprompt,
 
-  /// เซิร์ฟเวอร์ยังไม่เปิดทาง Thaiprompt — เหลือแค่ส่งเอกสารทางเว็บ
-  webOnly,
+  /// เซิร์ฟเวอร์ยังไม่เปิดทาง Thaiprompt — ยืนยันตัวตนยังทำไม่ได้ชั่วคราว
+  /// (เดิมพาไปส่งเอกสารที่หน้าเว็บ แต่หน้าเว็บเลิกรับแล้ว — ยืนยันตัวตนทำในแอปเท่านั้น)
+  unavailable,
 }
 
 /// ตัดสินว่าหน้าจอควรอยู่สถานะไหน
@@ -349,7 +350,7 @@ KycView resolveKycView({
   if (needsWalletSign) return KycView.needsWalletSign;
   if (status == null) return loadFailed ? KycView.loadFailed : KycView.loading;
   if (status.isApproved) return KycView.approved;
-  if (!status.thaiprompt.available) return KycView.webOnly;
+  if (!status.thaiprompt.available) return KycView.unavailable;
   final link = status.thaiprompt.link;
   if (link == null || link.needsReconnect) return KycView.connectThaiprompt;
   return KycView.waitingThaiprompt;
@@ -374,6 +375,10 @@ enum KycReturnResult {
 
   /// ลิงก์ผิดรูป (ไม่มี result หรือรหัสรับผลไม่ผ่านการตรวจ)
   invalid,
+
+  /// ลิงก์เปล่า `tpixtrade://kyc` — ปุ่ม "เปิดแอป TPIX TRADE" บนหน้าเว็บ /kyc
+  /// (ยืนยันตัวตนทำในแอปเท่านั้น) แค่พามาหน้ายืนยันตัวตน ไม่ใช่ผลจาก Thaiprompt
+  open,
 }
 
 /// ผลจาก deep link `tpixtrade://kyc?result=ok&completion=…`
@@ -396,6 +401,8 @@ class KycReturnLink {
   static KycReturnLink? parse(Uri uri) {
     if (uri.scheme != 'tpixtrade' || uri.host != 'kyc') return null;
     final qp = uri.queryParameters;
+    // ไม่มีพารามิเตอร์เลย = มาจากปุ่มบนหน้าเว็บ ไม่ใช่ลิงก์ผลที่เสียรูป — อย่าขึ้นว่า "ลิงก์หมดอายุ"
+    if (qp.isEmpty) return const KycReturnLink._(KycReturnResult.open);
     final result = qp['result']?.trim().toLowerCase();
     final completion = qp['completion']?.trim();
     final validCompletion =

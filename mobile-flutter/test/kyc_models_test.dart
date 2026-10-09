@@ -265,7 +265,7 @@ void main() {
         expect(view(status(link: {'status': st})), KycView.waitingThaiprompt,
             reason: 'link.status=$st');
       }
-      expect(view(status(available: false)), KycView.webOnly);
+      expect(view(status(available: false)), KycView.unavailable);
     });
   });
 
@@ -302,6 +302,11 @@ void main() {
       expect(KycReturnLink.parse(link('result=whatever'))!.result,
           KycReturnResult.invalid);
       expect(KycReturnLink.parse(link('foo=bar'))!.result, KycReturnResult.invalid);
+      // ลิงก์เปล่าจากปุ่มบนหน้าเว็บ = แค่เปิดหน้า ไม่ใช่ลิงก์ผลที่เสียรูป
+      expect(KycReturnLink.parse(Uri.parse('tpixtrade://kyc'))!.result,
+          KycReturnResult.open);
+      expect(KycReturnLink.parse(Uri.parse('tpixtrade://kyc/'))!.result,
+          KycReturnResult.open);
     });
 
     test('ไม่มี result แต่รหัสถูกรูป = ยังแลกได้ (ไม่ทิ้งสิ่งที่ผู้ใช้อนุญาตมาแล้ว)', () {
