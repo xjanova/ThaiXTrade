@@ -112,8 +112,10 @@ class SaleStatusServiceTest extends TestCase
     {
         $this->everythingReady();
         $sale = $this->sale(['launched_at' => now()->subDays(10)]);
-        $this->phase($sale, 1, ['status' => 'active', 'starts_at' => '2026-09-04 00:00:00', 'ends_at' => '2026-10-04 00:00:00']);
-        $this->phase($sale, 2, ['starts_at' => '2026-10-04 00:00:00', 'ends_at' => '2026-11-04 00:00:00']);
+        // วันที่ต้องสัมพัทธ์กับวันนี้ — เดิมตายตัว 2026-09-04 → 2026-10-04 แล้วเทสต์ตกเองตั้งแต่ 5 ต.ค.
+        // เพราะเฟส 1 "จบไปแล้ว" ตามนาฬิกาจริง ทั้งที่โค้ดไม่ได้เปลี่ยน
+        $this->phase($sale, 1, ['status' => 'active', 'starts_at' => now()->subDays(10), 'ends_at' => now()->addDays(20)]);
+        $this->phase($sale, 2, ['starts_at' => now()->addDays(20), 'ends_at' => now()->addDays(51)]);
 
         $snapshot = app(SaleStatusService::class)->snapshot();
 
