@@ -26,7 +26,7 @@ class ReownConfig {
         name: 'TPIX TRADE',
         description: 'Decentralized Exchange — TPIX Chain',
         url: 'https://tpix.online',
-        icons: ['https://tpix.online/tpixlogo.webp'],
+        icons: ['https://tpix.online/images/brand/tpix-coin.png'],
         redirect: Redirect(
           native: 'tpixtrade://',
           universal: 'https://tpix.online/app',

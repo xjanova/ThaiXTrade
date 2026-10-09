@@ -63,12 +63,12 @@ class _CoinLogoState extends State<CoinLogo> {
 
   @override
   Widget build(BuildContext context) {
-    // TPIX ecosystem → local asset
+    // TPIX ecosystem → local asset (ตราย่อของแบรนด์ — เหรียญใช้ตราเดียวกับแพลตฟอร์ม อ่านออกที่ 20px)
     if (CryptoLogos.isTpix(widget.symbol)) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(widget.borderRadius),
         child: Image.asset(
-          'assets/images/logo.webp',
+          'assets/images/tpix_coin.webp',
           width: widget.size,
           height: widget.size,
           fit: BoxFit.cover,

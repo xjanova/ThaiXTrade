@@ -76,7 +76,8 @@ flutter_launcher_icons:
   ios: false  # iOS folder ยังไม่มี — Android only
   image_path: "logotpixdextrade.png"
   adaptive_icon_background: "#0A0E1A"
-  adaptive_icon_foreground: "logotpixdextrade.png"
+  # ตราอยู่ในวงปลอดภัย 66% ของไอคอน adaptive — ใช้ไฟล์เดียวกับ image_path แล้วขอบวงแหวนโดนตัด
+  adaptive_icon_foreground: "logotpix_adaptive_fg.png"
   min_sdk_android: 21
 
 flutter:
