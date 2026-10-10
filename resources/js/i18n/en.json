@@ -805,6 +805,7 @@
         "downloadApp": "Download App",
         "allMarkets": "All Markets",
         "chainId": "TPIX Chain ID: 4289",
+        "registeredOn": "TPIX Chain (ID 4289) is listed on",
         "rights": "All rights reserved.",
         "xmanStudio": "Xman Studio"
     },

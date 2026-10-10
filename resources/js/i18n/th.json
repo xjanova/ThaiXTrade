@@ -805,6 +805,7 @@
         "downloadApp": "ดาวน์โหลดแอป",
         "allMarkets": "ตลาดทั้งหมด",
         "chainId": "TPIX Chain ID: 4289",
+        "registeredOn": "TPIX Chain (ID 4289) ลงทะเบียนอยู่บน",
         "rights": "สงวนลิขสิทธิ์",
         "xmanStudio": "Xman Studio"
     },
