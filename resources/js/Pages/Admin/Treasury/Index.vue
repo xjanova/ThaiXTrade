@@ -1,12 +1,15 @@
 <script setup>
 /**
  * TPIX TRADE - ชั้นคลัง / Treasury Dashboard
- * ยอดกระเป๋าคลัง 6 ใบสดจากเชน + กระเป๋าร้อน + สถานะความพร้อมจ่ายเงิน
+ * ยอดกระเป๋าคลังทุกใบสดจากเชน + กระเป๋าร้อน + สถานะความพร้อมจ่ายเงิน
+ * รับ (QR) และโอนออก (เซ็นในเบราว์เซอร์แอดมิน — เซิร์ฟเวอร์ไม่มีคีย์คลัง)
  * Developed by Xman Studio
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import ColdSendModal from '@/Components/Admin/Treasury/ColdSendModal.vue';
+import ReceiveModal from '@/Components/Admin/Treasury/ReceiveModal.vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -68,8 +71,27 @@ const poolColors = {
     amber: { bar: 'bg-amber-500', text: 'text-amber-400', ring: 'border-amber-500/30 bg-amber-500/5' },
     blue: { bar: 'bg-blue-500', text: 'text-blue-400', ring: 'border-blue-500/30 bg-blue-500/5' },
     rose: { bar: 'bg-rose-500', text: 'text-rose-400', ring: 'border-rose-500/30 bg-rose-500/5' },
+    teal: { bar: 'bg-teal-500', text: 'text-teal-400', ring: 'border-teal-500/30 bg-teal-500/5' },
+    slate: { bar: 'bg-slate-500', text: 'text-slate-300', ring: 'border-slate-500/30 bg-slate-500/5' },
 };
 const colorOf = (key) => poolColors[key] ?? poolColors.cyan;
+
+/* หน้าต่างรับ/โอน — เก็บแค่ "key/ที่อยู่" ที่เลือก แล้วดึง object สดจาก pools ทุกครั้ง
+ * ยอดที่หน้าต่างโอนใช้ตรวจจึงตามการรีเฟรช 30 วิไปด้วย */
+const sendKey = ref(null);
+const receiveAddress = ref(null);
+const sendWallet = computed(() => pools.value.find((p) => p.key === sendKey.value) ?? null);
+const receiveWallet = computed(() => {
+    if (!receiveAddress.value) return null;
+    if (hotWallet.value?.address === receiveAddress.value) {
+        return { address: hotWallet.value.address, role_th: 'กระเป๋าร้อน' };
+    }
+    return pools.value.find((p) => p.address === receiveAddress.value) ?? null;
+});
+
+function onSent() {
+    refresh();
+}
 
 async function refresh() {
     if (isRefreshing.value) return;
@@ -190,8 +212,12 @@ onUnmounted(() => clearInterval(pollInterval));
                             <span v-if="copied === hotWallet.address" class="ml-1 text-emerald-400">คัดลอกแล้ว</span>
                         </button>
                         <p class="text-xs text-gray-600 mt-2">
-                            คีย์สุ่มอิสระ ไม่ derive จาก mnemonic ของคลัง — คลัง 6 ใบไม่ได้อยู่ในระบบนี้
+                            คีย์สุ่มอิสระ ไม่ derive จาก mnemonic ของคลัง · จ่ายออกผ่านคิวจ่ายเงินเท่านั้น
                         </p>
+                        <button v-if="hotWallet.address" @click="receiveAddress = hotWallet.address"
+                                class="mt-3 px-3 py-1.5 text-xs font-medium rounded-lg bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all">
+                            รับเข้า (QR)
+                        </button>
                     </div>
                     <div class="text-right">
                         <div v-if="hotWallet.readable" class="text-3xl font-black text-white">
@@ -217,7 +243,7 @@ onUnmounted(() => clearInterval(pollInterval));
             <!-- กระเป๋าคลัง 6 ใบ -->
             <div>
                 <div class="flex items-baseline justify-between mb-3">
-                    <h3 class="text-sm font-bold text-white uppercase tracking-wide">กระเป๋าคลัง 6 ใบ</h3>
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wide">กระเป๋าคลัง {{ pools.length }} ใบ</h3>
                     <span class="text-xs text-gray-500">
                         รวม {{ totalSharePct }}% ของ {{ fmtTpix(totalSupply) }} TPIX
                     </span>
@@ -276,19 +302,36 @@ onUnmounted(() => clearInterval(pollInterval));
                             </div>
                             <div class="text-gray-700 font-mono pt-0.5">{{ pool.path }}</div>
                         </div>
+
+                        <div class="mt-4 grid grid-cols-2 gap-2">
+                            <button @click="receiveAddress = pool.address"
+                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all">
+                                รับเข้า
+                            </button>
+                            <button @click="sendKey = pool.key" :disabled="!pool.readable"
+                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                                โอนออก
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- หมายเหตุความปลอดภัย -->
             <div class="rounded-xl border border-white/10 bg-white/[0.02] p-5 text-sm">
-                <h3 class="text-white font-bold mb-2">ทำไมคลัง 6 ใบถึงโอนจากหน้านี้ไม่ได้</h3>
+                <h3 class="text-white font-bold mb-2">โอนออกจากคลังทำงานอย่างไร</h3>
                 <p class="text-gray-400 leading-relaxed">
-                    ระบบนี้ไม่มีคีย์ของกระเป๋าคลัง และจะไม่มี — เก็บไว้แค่ที่อยู่สำหรับอ่านยอดกับกระทบยอด
-                    การเคลื่อนย้ายเงินจากคลังต้องเซ็นจากข้างนอกด้วย Masternode UI ที่เข้ารหัสด้วย AES-256-GCM
-                    การจ่ายเงินอัตโนมัติทำผ่านกระเป๋าร้อนเท่านั้น ซึ่งถือเงินเท่าที่จำเป็นและมีวงเงินจำกัดกำกับอยู่
+                    เซิร์ฟเวอร์ไม่มีคีย์ของกระเป๋าคลัง และจะไม่มี — เก็บไว้แค่ที่อยู่สำหรับอ่านยอดกับกระทบยอด
+                    ปุ่ม "โอนออก" ให้คุณเลือกไฟล์ keystore จากเครื่องตัวเองแล้วใส่รหัสผ่าน หน้านี้ถอดรหัสและเซ็น
+                    ในเบราว์เซอร์ แล้วส่งตรงไปที่เชน ไฟล์และรหัสผ่านไม่ผ่านเซิร์ฟเวอร์ของเรา
+                    การจ่ายเงินอัตโนมัติยังทำผ่านกระเป๋าร้อนเท่านั้น ซึ่งถือเงินเท่าที่จำเป็นและมีวงเงินจำกัดกำกับอยู่
                 </p>
             </div>
         </div>
+
+        <ColdSendModal :show="!!sendWallet" :wallet="sendWallet" :explorer-url="explorerUrl"
+                       @close="sendKey = null" @sent="onSent" />
+        <ReceiveModal :show="!!receiveWallet" :wallet="receiveWallet" :explorer-url="explorerUrl"
+                      @close="receiveAddress = null" />
     </AdminLayout>
 </template>

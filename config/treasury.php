@@ -9,9 +9,11 @@
 | TPIX-Coin/infrastructure/chain/alloc.env และชื่อบทบาทยึดตาม
 | docs/WHITEPAPER.md §Distribution (ชุดเดียวกับการ์ดใน explorer)
 |
-| คลัง 6 ใบนี้ **ดูอย่างเดียว** — ระบบไม่มีคีย์ของมันและจะไม่มีวันมี
-| การเคลื่อนย้ายเงินจากคลังต้องเซ็นจากข้างนอก (Masternode UI ที่มี AES-256-GCM)
-| ที่นี่เก็บแค่ที่อยู่ไว้อ่านยอดกับกระทบยอดเท่านั้น
+| กระเป๋าทุกใบที่แตกจาก master wallet (BIP-44 m/44'/60'/0'/0/0..10)
+| เซิร์ฟเวอร์ **ไม่มีคีย์ของมันและจะไม่มีวันมี** — เก็บแค่ที่อยู่ไว้อ่านยอดกับกระทบยอด
+| การโอนออกเซ็นจากข้างนอกเท่านั้น: Masternode UI, send-tpix.ps1 ใน TPIX-Coin
+| หรือหน้า /admin/treasury ที่ถอดรหัส keystore ในเบราว์เซอร์ของแอดมินเอง
+| (ไฟล์ keystore กับรหัสผ่านไม่ถูกส่งมาที่เซิร์ฟเวอร์)
 |
 | กระเป๋าร้อนเป็นคีย์สุ่มอิสระ ไม่ derive จาก mnemonic ของคลัง เพราะ path
 | m/44'/60'/0'/0/N เป็น non-hardened ถ้าคีย์ลูกหลุดพร้อม xpub ของแม่
@@ -22,11 +24,23 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | กระเป๋าคลัง 6 ใบ (ดูอย่างเดียว)
+    | กระเป๋าคลังทั้ง 11 ใบ — 6 ใบตาม tokenomics + กระเป๋าหลัก + stake ของ validator 4 ใบ
     |--------------------------------------------------------------------------
+    |
+    | genesis รวมกัน = 7,000,000,000 พอดี (6.96B + 4 × 10M) ตัวกระทบยอดจึงครอบทั้งเชน
+    |
     */
 
     'pools' => [
+        [
+            'key' => 'main',
+            'role' => 'Main (reward receiver)',
+            'role_th' => 'กระเป๋าหลัก',
+            'address' => '0x18A4076b9B107121280a4373cD8474f9858D5D3f',
+            'path' => "m/44'/60'/0'/0/0",
+            'genesis' => '0',
+            'color' => 'slate',
+        ],
         [
             'key' => 'masternode_rewards',
             'role' => 'Master Node Rewards',
@@ -80,6 +94,42 @@ return [
             'path' => "m/44'/60'/0'/0/6",
             'genesis' => '1400000000',
             'color' => 'rose',
+        ],
+        [
+            'key' => 'validator_1_stake',
+            'role' => 'Validator 1 Stake',
+            'role_th' => 'stake ผู้ตรวจสอบบล็อก 1',
+            'address' => '0x24CD5d5A6B5EcC6520c76f5427DB06F81BcC61C5',
+            'path' => "m/44'/60'/0'/0/7",
+            'genesis' => '10000000',
+            'color' => 'teal',
+        ],
+        [
+            'key' => 'validator_2_stake',
+            'role' => 'Validator 2 Stake',
+            'role_th' => 'stake ผู้ตรวจสอบบล็อก 2',
+            'address' => '0x394418d33641D967C3553e45Af0646d565F51Ba7',
+            'path' => "m/44'/60'/0'/0/8",
+            'genesis' => '10000000',
+            'color' => 'teal',
+        ],
+        [
+            'key' => 'validator_3_stake',
+            'role' => 'Validator 3 Stake',
+            'role_th' => 'stake ผู้ตรวจสอบบล็อก 3',
+            'address' => '0x9D6Fc1cf3C17b495057356B95e995834248993F0',
+            'path' => "m/44'/60'/0'/0/9",
+            'genesis' => '10000000',
+            'color' => 'teal',
+        ],
+        [
+            'key' => 'validator_4_stake',
+            'role' => 'Validator 4 Stake',
+            'role_th' => 'stake ผู้ตรวจสอบบล็อก 4',
+            'address' => '0xec91028198E8cC55B284c018aBB4B2A87c6f3F12',
+            'path' => "m/44'/60'/0'/0/10",
+            'genesis' => '10000000',
+            'color' => 'teal',
         ],
     ],
 
