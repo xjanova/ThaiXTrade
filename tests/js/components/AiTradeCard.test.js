@@ -8,9 +8,18 @@
  * Developed by Xman Studio
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref, computed } from 'vue';
-import { mount, flushPromises } from '@vue/test-utils';
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils';
+
+/*
+ * ถอดการ์ดทุกใบหลังจบแต่ละเทสต์ — ก่อน reset() ล้าง document.body
+ *
+ * การ์ดที่ค้างจากเทสต์ก่อนยังเฝ้า state ตัวเดียวกันทั้งไฟล์ และป๊อปอัพของมัน
+ * teleport ไปอยู่ใน body ที่ถูกล้างทิ้งแล้ว พอมันวาดใหม่ (เช่นตัวจับเวลาปิดป๊อปอัพ
+ * หลังเช่าสำเร็จ) Vue หา parent ไม่เจอ → Unhandled Rejection ตอนรันทั้งชุด
+ */
+enableAutoUnmount(afterEach);
 
 // ── ตัวปลอมของ store/composable (ควบคุมสถานะได้จากในเทสต์) ──────────────────
 const wallet = { isConnected: false, address: null, openConnectModal: vi.fn() };
@@ -209,6 +218,37 @@ describe('AiTradeCard', () => {
         await wrapper.vm.$nextTick();
 
         expect(subscribe).toHaveBeenCalledWith('starter', 7);
+    });
+
+    /** เช่าเสร็จ ปิดเอง แล้วเปิดใหม่ก่อนตัวปิดอัตโนมัติถึงเวลา — ป๊อปอัพที่เปิดใหม่ต้องไม่หายไปต่อหน้า */
+    it('keeps a re-opened gate open when the post-rent auto-close comes due', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        try {
+            wallet.isConnected = true;
+            state.credits.value = 5000;
+
+            // ตัด Transition ออก — ป๊อปอัพหายจาก DOM ทันทีที่ปิด จะได้ตรวจได้ตรงๆ
+            const wrapper = mount(AiTradeCard, { attachTo: document.body, global: { stubs: { transition: true } } });
+            const activate = () => wrapper.findAll('button').find(b => b.text().includes('Activate AI TRADE')).trigger('click');
+            const dialog = () => document.querySelector('[role="dialog"]');
+
+            await activate();
+            [...document.querySelectorAll('button')].find(b => b.textContent.includes('Rent 7 days')).click();
+            await flushPromises();
+            expect(subscribe).toHaveBeenCalled();
+
+            dialog().querySelector('button[aria-label]').click();
+            await wrapper.vm.$nextTick();
+            expect(dialog()).toBeNull();
+
+            await activate();
+            vi.advanceTimersByTime(1500);
+            await wrapper.vm.$nextTick();
+
+            expect(dialog()).not.toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('creates a top-up request when a credit pack is picked', async () => {

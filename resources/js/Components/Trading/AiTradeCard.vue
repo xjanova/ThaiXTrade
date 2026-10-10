@@ -17,7 +17,7 @@
  * ระบบเดียวกับในแอพ TPIX (คลาวด์) — ข้อมูลมาจาก /api/v1/ai-bot/*
  * Developed by Xman Studio
  */
-import { ref, computed, onMounted, watch, useTemplateRef } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, useTemplateRef } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import { useElementSize } from '@vueuse/core';
 import { useAiBot } from '@/Composables/useAiBot';
@@ -109,8 +109,22 @@ function botNotice(item) {
     return '';
 }
 
+/**
+ * ตัวจับเวลาปิดป๊อปอัพเองหลังเช่าสำเร็จ — ต้องยกเลิกได้
+ *
+ * ปล่อยค้างไว้ = ปิดแล้วเปิดใหม่ภายใน 1.4 วิ ป๊อปอัพจะหายไปเองต่อหน้าผู้ใช้
+ * และถ้าการ์ดถูกถอดออกไปแล้ว มันยังสั่งวาดป๊อปอัพที่ไม่มีที่อยู่แล้ว
+ */
+let autoCloseTimer = null;
+
+function cancelAutoClose() {
+    clearTimeout(autoCloseTimer);
+    autoCloseTimer = null;
+}
+
 function openGate() {
     playClickSound();
+    cancelAutoClose();
     gateNotice.value = null;
 
     if (!walletStore.isConnected) {
@@ -128,6 +142,7 @@ function openGate() {
 }
 
 function closeGate() {
+    cancelAutoClose();
     showGate.value = false;
     gateNotice.value = null;
 }
@@ -156,7 +171,8 @@ async function confirmRent() {
     if (result.ok) {
         playNotificationSound();
         gateNotice.value = { type: 'success', text: t('aiTrade.activated') };
-        setTimeout(closeGate, 1400);
+        cancelAutoClose();   // เช่าซ้ำระหว่างรอปิด — อย่าให้ตัวเก่าหลุด handle
+        autoCloseTimer = setTimeout(closeGate, 1400);
     } else {
         playErrorSound();
         gateNotice.value = { type: 'error', text: result.error.message };
@@ -223,6 +239,8 @@ onMounted(() => {
     bot.loadCatalog();
     if (walletStore.isConnected) bot.loadStatus();
 });
+
+onBeforeUnmount(cancelAutoClose);
 
 // เชื่อมกระเป๋าทีหลัง / สลับ address → ต้องโหลดสถานะของ wallet ใหม่
 watch(() => walletStore.address, (address) => {
