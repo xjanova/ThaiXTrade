@@ -95,11 +95,11 @@ const footerColumns = [
  * ลงผ่าน ethereum-lists/chains PR #8148 (merge 2026-04-20) แล้วเว็บอื่นดึงต่อจากที่นั่น
  * โลโก้ต้องอยู่บนโดเมนตัวเอง เพราะ CSP img-src ไม่อนุญาตรูปจากโดเมนอื่น
  * chainid.network ไม่มีไฟล์โลโก้ทางการ จึงแสดงเป็นป้ายชื่อแทน (ห้ามวาดโลโก้ปลอมขึ้นเอง)
+ * ไม่ลิงก์ไฟล์ต้นทางบน GitHub — หน้าผู้ใช้ห้ามมีลิงก์ GitHub (RepoLocationNotExposedTest)
  */
 const chainRegistries = [
     { name: 'Chainlist', href: 'https://chainlist.org/chain/4289', logo: '/images/registries/chainlist.svg' },
-    { name: 'chainid.network', href: 'https://chainid.network/chain/4289/', icon: 'link' },
-    { name: 'ethereum-lists', href: 'https://github.com/ethereum-lists/chains/blob/master/_data/chains/eip155-4289.json', icon: 'github' },
+    { name: 'chainid.network', href: 'https://chainid.network/chain/4289/' },
 ];
 
 // Wallet state from Pinia store (reactive)
@@ -293,8 +293,7 @@ onMounted(async () => {
                         >
                             <img v-if="registry.logo" :src="registry.logo" :alt="registry.name" class="h-5 w-auto" loading="lazy" />
                             <template v-else>
-                                <svg v-if="registry.icon === 'github'" class="w-4 h-4 text-gray-900" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-                                <svg v-else class="w-4 h-4 text-gray-900" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/></svg>
+                                <svg class="w-4 h-4 text-gray-900" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/></svg>
                                 <span class="text-xs font-semibold text-gray-900">{{ registry.name }}</span>
                             </template>
                         </a>
