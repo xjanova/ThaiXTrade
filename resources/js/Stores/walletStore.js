@@ -26,7 +26,13 @@ import {
     getAddressUrl,
     formatAddress,
     addTPIXChainToWallet,
+    addTokenToWallet,
 } from '@/utils/web3';
+import {
+    fetchTpixChainTokens,
+    wasAssetSuggestionShown,
+    markAssetSuggestionShown,
+} from '@/utils/walletAssets';
 import {
     generateWallet,
     importFromMnemonic,
@@ -42,6 +48,12 @@ import {
 } from '@/utils/embeddedWallet';
 
 const STORAGE_KEY = 'tpix_wallet';
+/*
+ * กระเป๋าที่รับคำขอ wallet_addEthereumChain / wallet_watchAsset จากหน้าเว็บได้จริง
+ * ไม่รวม tpix_wallet (กระเป๋าฝัง ไม่มีรายการเหรียญให้เพิ่ม) และ walletconnect
+ * (แอปปลายทางแต่ละตัวรองรับไม่เท่ากัน — กดแล้วเงียบดีกว่าบอกว่าสำเร็จทั้งที่ไม่เกิดอะไร)
+ */
+const ASSET_CAPABLE_WALLETS = ['metamask', 'trustwallet', 'coinbase', 'okx'];
 const CONNECT_TIMEOUT_MS = 30000; // 30 วินาที timeout สำหรับ wallet connection
 const VERIFY_TIMEOUT_MS = 15000;  // 15 วินาที timeout สำหรับ signature verification
 
@@ -145,6 +157,9 @@ export const useWalletStore = defineStore('wallet', () => {
      *   แล้วคิดว่าโดนโกง — เป็นปัญหาความเชื่อมั่นที่แก้ทีหลังยากมาก
      */
     const isTpixChain = computed(() => chainId.value === TPIX_CHAIN_CONFIG.chainIdNum);
+
+    /** กระเป๋านี้รับคำขอ "เพิ่มเหรียญ/เพิ่มเครือข่าย" จากหน้าเว็บได้ไหม (ปุ่มในเมนูกระเป๋าดูค่านี้) */
+    const canAddTpixAssets = computed(() => isConnected.value && ASSET_CAPABLE_WALLETS.includes(walletType.value));
 
     // ตรวจสอบว่าอยู่บน chain ที่รองรับหรือไม่
     const isOnSupportedChain = computed(() => {
@@ -282,7 +297,12 @@ export const useWalletStore = defineStore('wallet', () => {
             _registerWalletToBackend(address.value, chainId.value, type);
 
             // ยืนยัน wallet ownership ด้วย signature (ไม่ block connection — ใช้ timeout)
-            _verifyWalletOwnership(ethSigner, address.value).catch(() => {});
+            // แล้วค่อยเสนอเพิ่มเหรียญ — ต่อคิวหลังป๊อปอัพเซ็น ไม่ให้สองหน้าต่างแย่งกันโผล่
+            const owner = address.value;
+            _verifyWalletOwnership(ethSigner, owner)
+                .catch(() => {})
+                .then(() => _autoSuggestTpixAssets(owner))
+                .catch(() => {});
 
             // ตั้งค่า event listeners สำหรับ chain/account changes
             _setupListeners();
@@ -818,6 +838,79 @@ export const useWalletStore = defineStore('wallet', () => {
     }
 
     /**
+     * ปุ่ม "เพิ่ม TPIX ลงกระเป๋า" — เครือข่าย TPIX Chain (= เหรียญ TPIX) + USDT บนเชน TPIX
+     *
+     * TPIX เป็นเหรียญเนทีฟ เพิ่มเป็นโทเคนไม่ได้ (ดู utils/walletAssets.js) จึงเพิ่ม/สลับเครือข่ายให้
+     * แล้วกระเป๋าจะโชว์ TPIX เอง · USDT ต้องเพิ่มตอนอยู่บนเชน TPIX เพราะกระเป๋าผูกโทเคน
+     * เข้ากับเครือข่ายที่เลือกอยู่ขณะนั้น
+     *
+     * @returns {Promise<{ok: boolean, reason?: string, added: string[], skipped: string[]}>}
+     *   reason: 'unsupported' กระเป๋าไม่รองรับ · 'chain' ผู้ใช้ไม่สลับเชน
+     *           'no_tokens' ดึงรายการเหรียญไม่ได้ · 'account_changed' สลับบัญชีกลางทาง
+     */
+    async function addTpixAssetsToWallet() {
+        const empty = { added: [], skipped: [] };
+        if (!canAddTpixAssets.value) return { ok: false, reason: 'unsupported', ...empty };
+
+        const injected = _rawProvider || _getProvider(walletType.value);
+        if (!injected?.request) return { ok: false, reason: 'unsupported', ...empty };
+
+        const owner = address.value;
+
+        // 1) เครือข่าย TPIX Chain — ยังไม่มีในกระเป๋าก็เพิ่มให้ในขั้นนี้ (พร้อมโลโก้ใหม่)
+        if (chainId.value !== TPIX_CHAIN_CONFIG.chainIdNum) {
+            try {
+                await switchChain(TPIX_CHAIN_CONFIG.chainIdNum);
+            } catch {
+                return { ok: false, reason: 'chain', ...empty };
+            }
+            if (chainId.value !== TPIX_CHAIN_CONFIG.chainIdNum) {
+                return { ok: false, reason: 'chain', ...empty };
+            }
+        }
+
+        // 2) โทเคนบนเชน TPIX
+        const tokens = await fetchTpixChainTokens();
+        if (tokens.length === 0) return { ok: false, reason: 'no_tokens', ...empty };
+
+        const result = { ok: true, added: [], skipped: [] };
+        for (const token of tokens) {
+            // ผู้ใช้สลับบัญชีในกระเป๋าระหว่างรอ — หยุด ไม่เพิ่มเหรียญให้บัญชีที่ไม่ได้กด
+            if (address.value !== owner) return { ...result, ok: false, reason: 'account_changed' };
+            const ok = await addTokenToWallet(token, injected);
+            (ok ? result.added : result.skipped).push(token.symbol);
+        }
+
+        markAssetSuggestionShown(owner);
+        return result;
+    }
+
+    /**
+     * เสนอเพิ่มเหรียญอัตโนมัติหลังเชื่อมกระเป๋า — ครั้งเดียวต่อกระเป๋า
+     *
+     * ไม่สลับเชนเพิ่มอีกรอบ: connect() สลับให้แล้วถ้าเชน TPIX เปิดใช้จริง ถ้าผู้ใช้ไม่ยอมสลับ
+     * ก็ไม่ตามรบเร้า (ปุ่มในเมนูกระเป๋าทำให้ได้ทุกเมื่อ)
+     * จดว่า "ถามแล้ว" ก่อนเด้งป๊อปอัพ — กดปฏิเสธแล้วต้องไม่โดนถามซ้ำทุกครั้งที่รีเฟรช/เชื่อมใหม่
+     */
+    async function _autoSuggestTpixAssets(owner) {
+        if (!canAddTpixAssets.value || address.value !== owner) return;
+        if (chainId.value !== TPIX_CHAIN_CONFIG.chainIdNum) return;
+        if (wasAssetSuggestionShown(owner)) return;
+
+        const tokens = await fetchTpixChainTokens();
+        if (tokens.length === 0 || address.value !== owner) return;
+
+        const injected = _rawProvider || _getProvider(walletType.value);
+        if (!injected?.request) return;
+
+        markAssetSuggestionShown(owner);
+        for (const token of tokens) {
+            if (address.value !== owner) return;
+            await addTokenToWallet(token, injected);
+        }
+    }
+
+    /**
      * แจ้ง backend เมื่อ wallet connect — สร้าง user อัตโนมัติ + บันทึก connection
      * ไม่ block flow — fire and forget
      */
@@ -923,6 +1016,7 @@ export const useWalletStore = defineStore('wallet', () => {
         shortAddress,
         isBSC,
         isTpixChain,
+        canAddTpixAssets,
         isOnSupportedChain,
         currentChain,
         explorerAddressUrl,
@@ -931,6 +1025,7 @@ export const useWalletStore = defineStore('wallet', () => {
         disconnect,
         tryReconnect,
         verifyOwnership,
+        addTpixAssetsToWallet,
         switchChain,
         loadSupportedChains,
         // Embedded TPIX Wallet

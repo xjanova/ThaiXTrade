@@ -13,6 +13,7 @@ import ChainSelector from '@/Components/Navigation/ChainSelector.vue';
 import LanguageSwitcher from '@/Components/Navigation/LanguageSwitcher.vue';
 import { useTranslation } from '@/Composables/useTranslation';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
+import { showToast } from '@/Composables/useToasts';
 
 const { t } = useTranslation();
 
@@ -158,6 +159,37 @@ const handleLogout = () => {
 const handleDisconnect = () => {
     walletStore.disconnect();
     showWalletMenu.value = false;
+};
+
+/*
+ * เพิ่ม TPIX (เครือข่าย TPIX Chain) + USDT บนเชน TPIX ลงกระเป๋า
+ * กดซ้ำระหว่างที่กระเป๋ายังเปิดหน้าต่างค้างอยู่ = ไม่ทำอะไร (กันป๊อปอัพซ้อน)
+ */
+const addingAssets = ref(false);
+const handleAddTpixAssets = async () => {
+    showWalletMenu.value = false;
+    showUserMenu.value = false;
+    if (addingAssets.value) return;
+
+    addingAssets.value = true;
+    try {
+        const res = await walletStore.addTpixAssetsToWallet();
+        if (res.ok && res.added.length > 0) {
+            showToast({ type: 'success', text: t('wallet.assetsAdded', { tokens: res.added.join(', ') }) });
+        } else if (res.ok) {
+            showToast({ type: 'info', text: t('wallet.assetsDeclined') });
+        } else if (res.reason === 'chain') {
+            showToast({ type: 'error', text: t('wallet.assetsNeedTpixChain') });
+        } else if (res.reason === 'no_tokens') {
+            showToast({ type: 'info', text: t('wallet.assetsChainOnly') });
+        } else if (res.reason === 'unsupported') {
+            showToast({ type: 'info', text: t('wallet.assetsUnsupported') });
+        }
+    } catch {
+        showToast({ type: 'error', text: t('wallet.assetsFailed') });
+    } finally {
+        addingAssets.value = false;
+    }
 };
 </script>
 
@@ -503,6 +535,17 @@ const handleDisconnect = () => {
                                     {{ t('nav.viewOnExplorer') }}
                                 </a>
 
+                                <button
+                                    v-if="sameIdentity && walletStore.canAddTpixAssets"
+                                    type="button"
+                                    :disabled="addingAssets"
+                                    class="add-tpix-assets w-full flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
+                                    @click="handleAddTpixAssets"
+                                >
+                                    <BrandLogo variant="icon" alt="" class="w-4 h-4 rounded-full" />
+                                    {{ t('nav.addTpixToWallet') }}
+                                </button>
+
                                 <div v-if="sameIdentity" class="border-t border-white/5 my-1"></div>
 
                                 <!--
@@ -610,6 +653,16 @@ const handleDisconnect = () => {
                                     </svg>
                                     {{ t('nav.viewOnExplorer') }}
                                 </a>
+                                <button
+                                    v-if="walletStore.canAddTpixAssets"
+                                    type="button"
+                                    :disabled="addingAssets"
+                                    class="add-tpix-assets w-full flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
+                                    @click="handleAddTpixAssets"
+                                >
+                                    <BrandLogo variant="icon" alt="" class="w-4 h-4 rounded-full" />
+                                    {{ t('nav.addTpixToWallet') }}
+                                </button>
                                 <!-- ทางเข้าโปรไฟล์ของผู้ใช้ที่ใช้กระเป๋าเป็นไอดี
                                      (เดิมโปรไฟล์เข้าได้ทางเดียวคือเมนูของผู้ที่ล็อกอินอีเมล) -->
                                 <Link

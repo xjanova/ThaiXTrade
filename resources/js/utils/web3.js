@@ -6,6 +6,7 @@
 
 import { Contract, formatUnits, parseUnits, MaxUint256, JsonRpcProvider } from 'ethers';
 import axios from 'axios';
+import { TPIX_COIN_PNG } from '@/utils/brand';
 
 // =============================================================================
 // Chain Configuration Registry
@@ -51,10 +52,13 @@ export const BSC_CHAIN_CONFIG = {
 
 /**
  * URL โลโก้ TPIX Chain — ใช้ใน iconUrls ของ wallet_addEthereumChain (EIP-3085)
- * IPFS pin: bafybeiby5mwnwdi53fye4iurjxlddfzonsj67ejl4sjy7qda53za6jlgo4 (512x512 PNG)
- * Rabby, OKX, Trust อ่านฟิลด์นี้และแสดงโลโก้เชน — MetaMask ปัจจุบัน ignore (bug มายาวนาน)
+ * Rabby, OKX, Trust, Coinbase อ่านฟิลด์นี้และแสดงโลโก้เชน — MetaMask ไม่อ่าน (โชว์ตัวอักษรย่อแทน)
+ *
+ * ⚠️ ต้องเป็นโลโก้เหรียญชุดใหม่จาก brand.js (พร้อม ?v=) ไม่ใช่ไฟล์ตายตัว
+ *    เดิมชี้ /images/tpix-logo-512.png (ตราทองเก่า) ทั้งที่ทั้งเว็บเปลี่ยนโลโก้ไปแล้ว
+ *    กระเป๋าจึงได้โลโก้เก่าทุกครั้งที่เว็บเพิ่มเชนให้ · ที่อยู่ต้องเต็ม (https://) กระเป๋าดึงเองจากภายนอก
  */
-export const TPIX_CHAIN_LOGO_URL = 'https://tpix.online/images/tpix-logo-512.png';
+export const TPIX_CHAIN_LOGO_URL = `https://tpix.online${TPIX_COIN_PNG}`;
 
 /**
  * TPIX Chain config — Polygon Edge, IBFT PoA, Chain ID 4289, gasless.
@@ -183,7 +187,9 @@ export function buildAddChainParams(chain) {
     const explorerUrls = chain.blockExplorerUrls || (chain.explorer ? [chain.explorer] : []);
 
     // iconUrls: frontend config → backend config → known fallback for TPIX
-    let iconUrls = chain.iconUrls || (chain.icon_url ? [chain.icon_url] : []);
+    // /api/v1/chains ส่งชื่อฟิลด์ว่า `icon` — กระเป๋ารับเฉพาะที่อยู่เต็ม https:// ที่ดึงได้จากภายนอก
+    const backendIcon = [chain.icon_url, chain.icon].find(u => typeof u === 'string' && u.startsWith('https://'));
+    let iconUrls = chain.iconUrls || (backendIcon ? [backendIcon] : []);
     if (iconUrls.length === 0 && (chain.chainId === 4289 || chain.chainId === '0x10C1')) {
         iconUrls = [TPIX_CHAIN_LOGO_URL];
     }
