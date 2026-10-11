@@ -17,6 +17,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import axios from 'axios';
 import { Contract, JsonRpcProvider } from 'ethers';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import WtpixBridgePanel from '@/Components/Bridge/WtpixBridgePanel.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTranslation } from '@/Composables/useTranslation';
 import {
@@ -39,6 +40,29 @@ import {
 
 const { t } = useTranslation();
 const walletStore = useWalletStore();
+
+/*
+ * สองสะพานในหน้าเดียว: USDT (หลายเชน → USDT_TPIX) | TPIX ⇄ wTPIX (BSC)
+ * จำไว้ใน URL (?asset=tpix) ให้แชร์ลิงก์ตรงไปฝั่ง TPIX ได้ — ไม่โหลดหน้าใหม่ตอนสลับ
+ */
+function initialAsset() {
+    try {
+        return new URLSearchParams(window.location.search).get('asset') === 'tpix' ? 'tpix' : 'usdt';
+    } catch {
+        return 'usdt';
+    }
+}
+const asset = ref(initialAsset());
+
+function setAsset(next) {
+    asset.value = next;
+    try {
+        const url = new URL(window.location.href);
+        if (next === 'tpix') url.searchParams.set('asset', 'tpix');
+        else url.searchParams.delete('asset');
+        window.history.replaceState(window.history.state, '', url.toString());
+    } catch { /* เบราว์เซอร์ไม่ให้แก้ URL ก็แค่ไม่จำ */ }
+}
 
 const info = ref(null);
 const loadError = ref(false);
@@ -352,15 +376,26 @@ watch(selectedChainId, () => {
 </script>
 
 <template>
-    <Head :title="t('bridge.title')" />
+    <Head :title="asset === 'tpix' ? t('bridge.wtpix.title') : t('bridge.title')" />
     <AppLayout>
         <div class="max-w-3xl mx-auto space-y-6 px-1">
             <div class="text-center">
-                <h1 class="text-2xl md:text-3xl font-bold text-white mb-2">🌉 {{ t('bridge.title') }}</h1>
-                <p class="text-dark-400 text-sm">{{ t('bridge.subtitle') }}</p>
-                <Link href="/bridge/reserves" class="inline-block mt-2 text-xs text-primary-400 hover:underline">🛡️ {{ t('bridge.reservesLink') }} →</Link>
+                <h1 class="text-2xl md:text-3xl font-bold text-white mb-2">🌉 {{ asset === 'tpix' ? t('bridge.wtpix.title') : t('bridge.title') }}</h1>
+                <p class="text-dark-400 text-sm">{{ asset === 'tpix' ? t('bridge.wtpix.subtitle') : t('bridge.subtitle') }}</p>
+                <Link :href="asset === 'tpix' ? '/bridge/reserves?asset=tpix' : '/bridge/reserves'" class="inline-block mt-2 text-xs text-primary-400 hover:underline">🛡️ {{ t('bridge.reservesLink') }} →</Link>
             </div>
 
+            <!-- เลือกสินทรัพย์ — สองสะพานแยกกันทุกอย่าง (สวิตช์ · คิว · กุญแจ) -->
+            <div class="grid grid-cols-2 gap-2 p-1 rounded-xl bg-dark-800/60 border border-white/10" role="tablist">
+                <button v-for="a in ['usdt', 'tpix']" :key="a" type="button" role="tab" :aria-selected="asset === a" @click="setAsset(a)" :data-test="`asset-${a}`"
+                    :class="['py-2.5 rounded-lg text-sm font-semibold transition-all', asset === a ? 'bg-primary-500/25 text-white' : 'text-dark-400 hover:text-white']">
+                    {{ a === 'usdt' ? t('bridge.wtpix.assetUsdt') : t('bridge.wtpix.assetTpix') }}
+                </button>
+            </div>
+
+            <WtpixBridgePanel v-if="asset === 'tpix'" />
+
+            <template v-else>
             <!-- ยังไม่เปิด / หยุดชั่วคราว — บอกตรง ๆ ดีกว่าโชว์ปุ่มที่กดแล้วเงินไปค้าง -->
             <div v-if="info && !isOpen" class="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4 flex gap-3">
                 <span class="text-lg shrink-0">🚧</span>
@@ -623,6 +658,7 @@ watch(selectedChainId, () => {
                     </div>
                 </div>
             </div>
+            </template>
         </div>
 
         <!-- ยืนยันการถอน — เผาแล้วยกเลิกไม่ได้ -->

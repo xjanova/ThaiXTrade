@@ -886,6 +886,20 @@ export const useWalletStore = defineStore('wallet', () => {
     }
 
     /**
+     * เพิ่มโทเคน ERC-20 หนึ่งตัวลงกระเป๋า (EIP-747) บนเชนที่กระเป๋าอยู่ตอนนี้ — เช่น wTPIX บน BSC หลังสะพาน mint ให้
+     * ผู้เรียกต้องสลับเชนให้ถูกก่อน (wallet_watchAsset ผูกกับเครือข่ายที่เลือกอยู่)
+     * กระเป๋าที่ไม่รองรับ (กระเป๋าฝัง/WalletConnect) = false เงียบ ๆ ไม่โยน error
+     *
+     * @param {{address: string, symbol: string, decimals: number, image?: string}} token
+     */
+    async function watchAsset(token) {
+        if (!canAddTpixAssets.value) return false;
+        const injected = _rawProvider || _getProvider(walletType.value);
+        if (!injected?.request) return false;
+        return addTokenToWallet(token, injected);
+    }
+
+    /**
      * เสนอเพิ่มเหรียญอัตโนมัติหลังเชื่อมกระเป๋า — ครั้งเดียวต่อกระเป๋า
      *
      * ไม่สลับเชนเพิ่มอีกรอบ: connect() สลับให้แล้วถ้าเชน TPIX เปิดใช้จริง ถ้าผู้ใช้ไม่ยอมสลับ
@@ -1026,6 +1040,7 @@ export const useWalletStore = defineStore('wallet', () => {
         tryReconnect,
         verifyOwnership,
         addTpixAssetsToWallet,
+        watchAsset,
         switchChain,
         loadSupportedChains,
         // Embedded TPIX Wallet
