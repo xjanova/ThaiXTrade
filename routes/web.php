@@ -213,6 +213,12 @@ Route::get('/ai-trade', function () {
     return Inertia::render('AiTrade');
 })->name('ai-trade');
 
+// TPIX Stability Reserve — หน้าความโปร่งใสของกองทุนพยุงราคา
+// ข้อมูลทั้งหมดมาจาก /api/v1/stability ฝั่ง client (เชนช้า/ล่มต้องไม่ทำให้หน้านี้เปิดไม่ขึ้น)
+Route::get('/stability', function () {
+    return Inertia::render('Stability');
+})->name('stability');
+
 // Blog — บทความ AI-generated + content marketing
 Route::get('/blog', function () {
     return Inertia::render('Blog/Index');

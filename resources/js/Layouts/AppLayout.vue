@@ -65,6 +65,8 @@ const footerColumns = [
             { href: '/food-passport', labelKey: 'footer.foodPassport' },
             { href: '/masternode', labelKey: 'nav.masternode' },
             { href: '/validators', labelKey: 'footer.validators' },
+            // กองทุนพยุงราคา — หน้าความโปร่งใส (กฎ กระเป๋า ทุกไม้ รายงานรายวัน)
+            { href: '/stability', labelKey: 'footer.stability' },
         ],
     },
     {

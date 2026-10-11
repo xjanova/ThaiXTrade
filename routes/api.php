@@ -26,6 +26,7 @@ use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\InfraAlertController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\NodeHeartbeatController;
+use App\Http\Controllers\Api\StabilityController;
 use App\Http\Controllers\Api\StakingApiController;
 use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\SupplyController;
@@ -173,6 +174,13 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/orderbook/{symbol}', [DexApiController::class, 'orderbook']);
         Route::get('/trades/{symbol}', [DexApiController::class, 'trades']);
     });
+
+    /*
+     * TPIX Stability Reserve — ข้อมูลสาธารณะ อ่านอย่างเดียว (กฎ กระเป๋า ทุกไม้ ทุกการตัดสินใจ รายงาน)
+     * ใช้ throttle:60,1 ของกลุ่มนี้ + แคชฝั่งเซิร์ฟเวอร์ 30 วินาที
+     * (ห้ามซ้อน throttle:60,1 อีกตัว — ตัวนับใช้คีย์เดียวกัน จะนับคำขอเดียวเป็นสองครั้ง)
+     */
+    Route::get('/stability', [StabilityController::class, 'show'])->name('api.stability');
 
     // TPIX Token — price feed, order book, trades, klines, info
     Route::prefix('tpix')->group(function () {

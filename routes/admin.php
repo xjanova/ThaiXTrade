@@ -33,6 +33,7 @@ use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\SetupWizardController;
+use App\Http\Controllers\Admin\StabilizerController;
 use App\Http\Controllers\Admin\SupportController;
 use App\Http\Controllers\Admin\SwapController;
 use App\Http\Controllers\Admin\SystemAlertController;
@@ -392,6 +393,18 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 // สมุดบัญชี + กระทบยอด
                 Route::get('/ledger', [TreasuryController::class, 'ledger'])->name('ledger');
                 Route::get('/reconcile', [TreasuryController::class, 'reconcile'])->name('reconcile');
+            });
+
+        // TPIX Stability Reserve — กองทุนพยุงราคาแบบกฎตายตัว (เงินของกองทุนที่ประกาศสาธารณะ → super_admin เท่านั้น)
+        // หน้าเว็บเซ็นธุรกรรมไม่ได้ — ทำได้แค่ตั้งค่า/เปิดปิด/บันทึกเงินฝาก การเซ็นอยู่ใน scheduler ฝั่ง CLI
+        Route::prefix('stabilizer')->name('stabilizer.')
+            ->middleware('admin.role:super_admin')
+            ->group(function () {
+                Route::get('/', [StabilizerController::class, 'index'])->name('index');
+                Route::put('/params', [StabilizerController::class, 'updateParams'])->name('params');
+                Route::post('/switch', [StabilizerController::class, 'toggle'])->middleware('throttle:10,1')->name('switch');
+                Route::post('/deposits', [StabilizerController::class, 'storeDeposit'])->middleware('throttle:10,1')->name('deposits.store');
+                Route::get('/preview', [StabilizerController::class, 'preview'])->middleware('throttle:20,1')->name('preview');
             });
 
         // Audit Logs (super_admin only)

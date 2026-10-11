@@ -814,7 +814,8 @@
         "chainId": "TPIX Chain ID: 4289",
         "registeredOn": "TPIX Chain (ID 4289) is listed on",
         "rights": "All rights reserved.",
-        "xmanStudio": "Xman Studio"
+        "xmanStudio": "Xman Studio",
+        "stability": "Stability Reserve"
     },
     "download": {
         "title": "TPIX TRADE Mobile",
@@ -1170,5 +1171,155 @@
         "connect": "Connect wallet",
         "invalidToken": "That address is not an ERC-20 token on TPIX Chain.",
         "tradeIt": "Trade {pair}"
+    },
+    "stability": {
+        "title": "TPIX Stability Reserve",
+        "subtitle": "A fund run by the TPIX project. It follows fixed, published rules to soften sharp TPIX price moves on TPIX DEX. Every decision and every trade is public.",
+        "aiNote": "All decisions come from the rules below. AI only writes the daily summary. It does not trade and does not control the price.",
+        "loading": "Loading reserve data…",
+        "loadError": "Could not load reserve data right now. Please try again shortly.",
+        "api": "Same data as JSON:",
+        "status": {
+            "active": "Active",
+            "paused": "Paused",
+            "off": "Not live yet",
+            "pausedBecause": "Paused: {reason}",
+            "offHint": "The reserve is switched off. It will start only after its wallet is funded and it is switched on.",
+            "lastRun": "Last check: {time}"
+        },
+        "disclaimer": {
+            "title": "Please read",
+            "body": "There is no price guarantee. The reserve has a limited budget, can be paused at any time, and the market can move past its band. It is run by the TPIX project, not by an independent party. This page is not investment advice."
+        },
+        "market": {
+            "title": "Market now",
+            "poolPrice": "Pool price",
+            "reference": "Reference price",
+            "band": "Band",
+            "position": "Position",
+            "inside": "Inside the band (no action)",
+            "below": "Below the band (may buy)",
+            "above": "Above the band (may sell)",
+            "noData": "No pool data yet.",
+            "poolDepth": "Pool depth",
+            "coverage": "Price history coverage"
+        },
+        "chart": {
+            "title": "Price, reference and band (hourly, last 7 days)",
+            "price": "Pool price",
+            "reference": "Reference",
+            "band": "Band",
+            "empty": "The chart fills in once the reserve starts checking the market."
+        },
+        "rules": {
+            "title": "The rules (current values)",
+            "reference": "Reference price = the average pool price over the last {days} days, sampled every minute. It follows the market slowly. It is not a fixed target.",
+            "band": "Band = reference ± {pct}%. Inside the band, the reserve does nothing.",
+            "below": "Below the band: buy TPIX with USDT, pushing back toward the lower edge and never above it.",
+            "above": "Above the band: sell TPIX for USDT, pushing back toward the upper edge and never below it.",
+            "impact": "Price impact: at most {pct}% per trade.",
+            "size": "Trade size: at most {usdt} USDT or {tpix} TPIX per trade (minimum {minUsdt} USDT or {minTpix} TPIX).",
+            "daily": "Daily limits: {usdt} USDT spent and {tpix} TPIX sold.",
+            "timing": "Timing: at most one trade every {minutes} minutes, and at least {hours} hours between a buy and a sell.",
+            "safety": "Safety stops: no action if the pool holds less than {usdt} USDT or {tpix} TPIX, if data is older than {minutes} minutes, or if price history covers less than {coverage}% of the period.",
+            "slippage": "Each swap sets a minimum output {bps} basis points below the expected amount.",
+            "schedule": "Runs every {minutes} minutes on a fixed schedule and reads only confirmed blockchain data. It never looks at pending user transactions. Days are counted in {tz}.",
+            "failsafe": "If a transaction fails, the reserve pauses itself until a person checks it."
+        },
+        "wallet": {
+            "title": "Reserve wallet",
+            "viewOnExplorer": "View on explorer",
+            "notSet": "The wallet address will be published here before the reserve is switched on.",
+            "balances": "Balances",
+            "backing": "USDT backing",
+            "modeDeposits": "Bridge proof of reserves is not available yet, so the reserve can spend only USDT that the project deposited and recorded below.",
+            "modeBridge": "Bridge proof of reserves is live. USDT_TPIX is spent only while it is fully backed.",
+            "deposited": "Recorded USDT deposits",
+            "spent": "Spent on buys",
+            "remaining": "Remaining",
+            "deposits": "Deposits",
+            "noDeposits": "No deposits recorded yet."
+        },
+        "budget": {
+            "title": "Today's budget",
+            "usdt": "USDT spent",
+            "tpix": "TPIX sold"
+        },
+        "trades": {
+            "title": "Every transaction",
+            "empty": "No transactions yet.",
+            "time": "Time",
+            "type": "Type",
+            "amountIn": "Amount in",
+            "received": "Received",
+            "status": "Status",
+            "tx": "Transaction",
+            "buy": "Buy TPIX",
+            "sell": "Sell TPIX",
+            "approve": "Allow router to use USDT",
+            "statuses": {
+                "signed": "Signed",
+                "broadcast": "Sent",
+                "confirmed": "Confirmed",
+                "failed": "Failed",
+                "dropped": "Dropped"
+            }
+        },
+        "decisions": {
+            "title": "Latest decisions",
+            "empty": "No decisions yet.",
+            "actions": {
+                "none": "No action",
+                "buy": "Buy",
+                "sell": "Sell",
+                "approve": "Approve",
+                "wait": "Wait"
+            }
+        },
+        "reasons": {
+            "dex_not_ready": "The DEX contracts are not ready.",
+            "chain_unreadable": "Could not read the blockchain, so nothing was done.",
+            "chain_stale": "The chain has not produced a recent block, so nothing was done.",
+            "pool_thin": "The pool is too small to trade safely, so nothing was done.",
+            "history_insufficient": "Not enough price history yet for a fair reference price.",
+            "price_data_stale": "Price data is too old, so nothing was done.",
+            "in_band": "Price is inside the band. No action needed.",
+            "interval_wait": "Too soon after the last trade. Waiting.",
+            "cooldown_opposite": "Waiting out the cooldown between a buy and a sell (no wash trading).",
+            "usdt_unbacked": "Bridge reserves do not fully back USDT_TPIX, so no USDT was spent.",
+            "budget_daily_exhausted": "Today's limit is used up.",
+            "budget_deposits_exhausted": "All recorded USDT deposits are spent.",
+            "insufficient_balance": "The reserve wallet has no balance of the needed token.",
+            "too_small": "The allowed trade size is below the minimum, so nothing was done.",
+            "approve_needed": "Allowing the router to use USDT before a buy.",
+            "below_band": "Price is below the band. Buying TPIX within the limits.",
+            "above_band": "Price is above the band. Selling TPIX within the limits.",
+            "not_configured": "The reserve is not fully set up yet.",
+            "pending_tx": "Waiting for the previous transaction to finish.",
+            "signer_unavailable": "Signing is not available in this environment.",
+            "nonce_unreadable": "Could not read the wallet nonce, so nothing was sent.",
+            "nonce_behind": "The chain has not caught up with the last transaction yet.",
+            "sign_failed": "Signing failed. The reserve paused itself."
+        },
+        "pauseReasons": {
+            "manual_pause": "paused by the team",
+            "tx_reverted": "a transaction failed on-chain",
+            "sign_failed": "signing failed",
+            "stuck_tx": "a transaction is stuck"
+        },
+        "reports": {
+            "title": "Daily reports",
+            "empty": "The first report appears the day after the reserve starts.",
+            "aiWritten": "AI-written summary",
+            "facts": "Computed figures",
+            "noAi": "No AI summary for this day. The figures below are computed directly."
+        },
+        "contracts": {
+            "title": "Contracts",
+            "router": "Router",
+            "pair": "TPIX/USDT pool",
+            "usdt": "USDT_TPIX",
+            "wtpix": "WTPIX"
+        }
     }
 }
