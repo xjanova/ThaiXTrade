@@ -739,11 +739,12 @@ class _AdBannerSliderState extends State<_AdBannerSlider> {
 
   List<_BannerData> _banners(bool th) => [
         _BannerData(
-          tag: th ? 'ฟรีค่าธรรมเนียม' : 'ZERO FEE',
+          // ไม่มีค่าแก๊ส ≠ ไม่มีค่าธรรมเนียม — พูลเก็บ 0.3% ต่อไม้ (เดิมป้ายเขียนว่า "ฟรีค่าธรรมเนียม")
+          tag: th ? 'ไม่มีค่าแก๊ส' : 'ZERO GAS',
           title: th ? 'สลับเหรียญไม่มีค่าแก๊ส' : 'Zero-gas swaps',
           sub: th
-              ? 'เทรดบน TPIX Chain ไม่มีค่าธรรมเนียมเครือข่าย'
-              : 'Trade on TPIX Chain with no network fees',
+              ? 'เทรดบน TPIX Chain ไม่มีค่าแก๊ส (ค่าธรรมเนียมพูล 0.3%)'
+              : 'No gas on TPIX Chain (0.3% pool fee per trade)',
           emblem: '⚡',
         ),
         _BannerData(

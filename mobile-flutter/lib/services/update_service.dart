@@ -49,15 +49,23 @@ class UpdateService {
 
       final data = body['data'] as Map<String, dynamic>;
 
+      // กำลัง build: latest_version = รุ่นล่าสุดที่มี APK (มักเป็นรุ่นที่ผู้ใช้ถืออยู่)
+      // รุ่นที่กำลัง build จริงอยู่ใน newest_version — เดิมโชว์ "1.1.223 กำลัง build"
+      // ให้คนที่ใช้ 1.1.223 อยู่แล้ว
+      final available = data['available'] == true;
+      final pending = data['pending_build'] == true;
+      final newest = data['newest_version'];
       return UpdateResult(
-        available: data['available'] == true,
+        available: available,
         currentVersion: currentVersion,
-        latestVersion: data['latest_version'] as String?,
+        latestVersion: (!available && pending && newest is String)
+            ? newest
+            : data['latest_version'] as String?,
         releaseNotes: data['release_notes'] as String?,
         releaseDate: data['published_at'] as String?,
         apkDownloadUrl: data['download_url'] as String?,
         apkSize: data['file_size'] as int?,
-        pendingApkBuild: data['pending_build'] == true,
+        pendingApkBuild: pending,
       );
     } catch (e) {
       debugPrint('Update check failed: ${e.runtimeType}');
