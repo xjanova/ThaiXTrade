@@ -3,6 +3,8 @@
 ///
 /// Developed by Xman Studio
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_colors.dart';
@@ -38,12 +40,19 @@ class PriceText extends StatelessWidget {
   }
 
   String _formatPrice(double value) {
+    // ไม่รู้ราคา (ยังโหลดไม่เสร็จ / พูลว่าง) = — ไม่ใช่ราคา 0 จริง
+    if (!value.isFinite || value <= 0) return '—';
     if (value >= 1000) {
       return value.toStringAsFixed(decimals);
     } else if (value >= 1) {
       return value.toStringAsFixed(decimals + 2);
-    } else {
+    } else if (value >= 0.01) {
       return value.toStringAsFixed(decimals + 4);
+    } else {
+      // เหรียญลูกราคาต่อหน่วยเล็กมาก (เช่น 0.0000015 USDT) — เดิมปัด 6 ตำแหน่งเหลือ 0.000002
+      // แสดง 4 หลักที่มีนัยสำคัญแทน (สูงสุด 18 ตำแหน่ง)
+      final lead = -(math.log(value) / math.ln10).floor();
+      return value.toStringAsFixed(math.min(18, lead + 3));
     }
   }
 }

@@ -74,19 +74,26 @@ class _MiniSparklineState extends State<MiniSparkline> {
   }
 
   Future<void> _load() async {
+    // จับชื่อคู่ไว้ตั้งแต่เริ่ม — แถวในรายการถูกนำกลับมาใช้กับคู่อื่นได้ระหว่างรอ
+    // (รายการเรียงใหม่ทุกติ๊ก) เดิมเก็บผลไว้ใต้ชื่อ "ปัจจุบัน" หลัง await
+    // → เหรียญหนึ่งโชว์กราฟของอีกเหรียญค้างอยู่ได้ถึง 5 นาที
+    final symbol = widget.symbol;
+
     // ใช้ cache ถ้ามี
-    final cached = _SparklineCache.get(widget.symbol);
+    final cached = _SparklineCache.get(symbol);
     if (cached != null) {
       setState(() => _prices = cached);
       return;
     }
 
-    if (_loading) return;
+    // ระหว่างโหลดคู่ใหม่ ห้ามโชว์เส้นของคู่เดิม
+    if (_prices != null) setState(() => _prices = null);
+    if (_loading) return; // คำขอเดิมจบแล้วจะโหลดคู่ล่าสุดต่อให้เอง
     _loading = true;
 
     try {
       // Binance format: BTCUSDT
-      final binSymbol = widget.symbol.replaceAll('-', '').toUpperCase();
+      final binSymbol = symbol.replaceAll('-', '').toUpperCase();
       final url =
           'https://api.binance.com/api/v3/klines?symbol=$binSymbol&interval=1h&limit=24';
       final res = await _dio.get(url);
@@ -98,15 +105,19 @@ class _MiniSparklineState extends State<MiniSparkline> {
             .toList();
 
         if (prices.isNotEmpty) {
-          _SparklineCache.set(widget.symbol, prices);
-          if (mounted) setState(() => _prices = prices);
+          _SparklineCache.set(symbol, prices);
+          if (mounted && widget.symbol == symbol) {
+            setState(() => _prices = prices);
+          }
         }
       }
     } catch (e) {
-      debugPrint('Sparkline ${widget.symbol}: ${e.runtimeType}');
+      debugPrint('Sparkline $symbol: ${e.runtimeType}');
     }
 
     _loading = false;
+    // คู่เปลี่ยนไประหว่างรอ — โหลดของคู่ปัจจุบันต่อ
+    if (mounted && widget.symbol != symbol) _load();
   }
 
   @override

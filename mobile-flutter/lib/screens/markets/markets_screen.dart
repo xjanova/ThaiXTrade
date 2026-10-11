@@ -305,6 +305,9 @@ class _TickerList extends StatelessWidget {
       itemBuilder: (context, index) {
         final ticker = tickers[index];
         return _MarketRow(
+          // ผูกแถวกับคู่ — รายการเรียงใหม่ทุกติ๊ก ไม่มี key แล้ว state ของแถว (sparkline)
+          // ไปติดกับคู่อื่น
+          key: ValueKey(ticker.symbol),
           ticker: ticker,
           isFavorite: market.favorites.contains(ticker.symbol),
           onTap: () {
@@ -328,6 +331,7 @@ class _MarketRow extends StatelessWidget {
   final VoidCallback onFavorite;
 
   const _MarketRow({
+    super.key,
     required this.ticker,
     required this.isFavorite,
     required this.onTap,
@@ -417,8 +421,9 @@ class _MarketRow extends StatelessWidget {
                   ),
                 ),
 
-                // Mini sparkline (24h trend) — TPIX has no Binance feed
-                if (!isTpix) ...[
+                // Mini sparkline (24h trend) — คู่บนเชน TPIX ไม่มีฟีด Binance
+                // (ชื่อบังเอิญตรงกับเหรียญบน Binance จะได้กราฟของอีกเหรียญ)
+                if (!isTpix && !ticker.isDex) ...[
                   MiniSparkline(
                     symbol: '${ticker.baseAsset}-${ticker.quoteAsset}',
                     width: 52,

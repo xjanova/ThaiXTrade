@@ -352,7 +352,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ));
     }
 
-    final tickers = market.tickers.take(8).toList();
+    // รายการเต็ม เรียงตามปริมาณ — ไม่ใช่รายการที่ถูกกรองด้วยคำค้นในหน้า Markets
+    final tickers = market.homeTickers.take(8).toList();
     if (tickers.isEmpty && market.isLoading) {
       return const Padding(
         padding: EdgeInsets.fromLTRB(18, 0, 18, 0),
@@ -375,7 +376,8 @@ class _HomeScreenState extends State<HomeScreen> {
         price: t.lastPrice,
         changePercent: t.priceChangePercent,
         sparklineSymbol: '${t.baseAsset}-${t.quoteAsset}',
-        showSparkline: true,
+        // คู่บนเชน TPIX ไม่มีฟีด Binance — ห้ามดึงกราฟจากชื่อที่อาจซ้ำเหรียญอื่น
+        showSparkline: !t.isDex,
         onTap: () {
           market.selectPair(t.symbol);
           context.go('/trade');
