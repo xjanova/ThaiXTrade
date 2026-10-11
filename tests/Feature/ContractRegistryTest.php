@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\SiteSetting;
 use App\Services\ContractRegistry;
 use App\Services\TokenFactory\TokenFactoryChain;
+use App\Services\TokenFactory\TokenFactoryPolicy;
 use App\Services\TokenFactoryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -192,7 +193,7 @@ class ContractRegistryTest extends TestCase
         // ผู้ใช้กรอกฟอร์ม จ่ายค่าธรรมเนียม แล้วงานไป fail ตอน deploy
         $this->fakeEmptyChain();
         config(['blockchain.deployer_private_key' => '0x'.str_repeat('1', 64)]);
-        SiteSetting::set('factory', 'fee_wallet', '0x'.str_repeat('9', 40));
+        SiteSetting::set(TokenFactoryPolicy::GROUP, TokenFactoryPolicy::KEY, json_encode(['fee_wallet' => '0x'.str_repeat('9', 40)]), 'json');
 
         $readiness = app(TokenFactoryService::class)->isFactoryReady();
 
@@ -214,7 +215,7 @@ class ContractRegistryTest extends TestCase
                 ? '0x'.str_pad(substr($deployer, 2), 64, '0', STR_PAD_LEFT)
                 : '0x60806040',
         ]));
-        SiteSetting::set('factory', 'fee_wallet', '0x'.str_repeat('9', 40));
+        SiteSetting::set(TokenFactoryPolicy::GROUP, TokenFactoryPolicy::KEY, json_encode(['fee_wallet' => '0x'.str_repeat('9', 40)]), 'json');
 
         $this->register([
             'token_factory_v2' => self::ADDRESS,
@@ -233,7 +234,7 @@ class ContractRegistryTest extends TestCase
         // มีแฟกทอรีบนเชนแล้วแต่เซิร์ฟเวอร์ไม่มีกระเป๋าส่ง tx = ยังสร้างไม่ได้อยู่ดี
         $this->fakeChainWithCode();
         config(['blockchain.deployer_private_key' => null]);
-        SiteSetting::set('factory', 'fee_wallet', '0x'.str_repeat('9', 40));
+        SiteSetting::set(TokenFactoryPolicy::GROUP, TokenFactoryPolicy::KEY, json_encode(['fee_wallet' => '0x'.str_repeat('9', 40)]), 'json');
 
         $this->register(['token_factory_v2' => self::ADDRESS])->assertOk();
 

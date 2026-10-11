@@ -252,6 +252,21 @@ class TokenFactoryPolicy
 
     private const URI_KEYS = ['metadata_uri', 'base_uri', 'placeholder_uri'];
 
+    /**
+     * จำนวนเงิน/เหรียญที่สคริปต์แปลงด้วย parseUnits — ต้องเป็นทศนิยมปกติ (ไม่มี e-notation)
+     * ค่า = จำนวนทศนิยมสูงสุด (null = ใช้ทศนิยมของเหรียญ)
+     *
+     * ⚠️ เดิมสคริปต์ทำ String(Number(x)) — ราคา mint 0.0000001 กลายเป็น "1e-7" แล้ว parseEther โยน
+     *    หลังผู้ใช้จ่ายค่าธรรมเนียมไปแล้ว
+     */
+    private const UNIT_KEYS = [
+        'mint_price' => 18,       // TPIX native
+        'mint_cap' => 0,          // จำนวนเต็มเท่านั้น
+        'burn_floor' => null,
+        'proposal_threshold' => null,
+        'min_hold_for_reward' => null,
+    ];
+
     private const SELECT_CHOICES = [
         'ownership_type' => ['ownable', 'renounced'],
         'mint_type' => ['public', 'whitelist', 'free_claim', 'free'],
@@ -297,42 +312,29 @@ class TokenFactoryPolicy
         $this->cached = null;
     }
 
+    /**
+     * สวิตช์ใหญ่ของการสร้างเหรียญ — อยู่ในนโยบายที่เดียว (super_admin).
+     *
+     * ⚠️ ห้ามกลับไปอ่าน factory.creation_enabled — คีย์นั้นแอดมินทุกระดับแก้ได้จากแท็บ factory
+     *    ของหน้าตั้งค่า ถ้าเอามาเป็น fallback = ข้ามด่าน super_admin ได้
+     */
     public function creationEnabled(): bool
     {
-        $value = $this->effective()['creation_enabled'];
-
-        // null = ยังไม่เคยตั้งในนโยบาย → ใช้สวิตช์เดิมในหน้าตั้งค่า (factory.creation_enabled)
-        if ($value === null) {
-            return filter_var(SiteSetting::get('factory', 'creation_enabled', true), FILTER_VALIDATE_BOOLEAN);
-        }
-
-        return (bool) $value;
+        return (bool) $this->effective()['creation_enabled'];
     }
 
     /**
-     * กระเป๋ารับค่าธรรมเนียมบนเชน 4289.
+     * กระเป๋ารับค่าธรรมเนียมบนเชน 4289 — ต้องตั้งในนโยบายเท่านั้น (super_admin).
      *
-     * ลำดับ: ค่าในนโยบาย → factory.fee_wallet (หน้าตั้งค่า / กระจายมาจาก revenue.tpix_wallet)
-     *        → revenue.tpix_wallet → revenue.wallet_address
-     * ไม่ใช้ trading.fee_collector_wallet เพราะนั่นคือกระเป๋าบน BSC (wTPIX) ไม่ใช่บนเชน TPIX
+     * ⚠️ เดิมตกไปใช้ factory.fee_wallet / revenue.tpix_wallet ซึ่งแอดมินทุกระดับแก้ได้จากหน้าตั้งค่า
+     *    = แอดมินระดับล่างเปลี่ยนปลายทางเงินค่าธรรมเนียมได้ ตอนนี้ไม่ตั้ง = ระบบบอก "ยังไม่ได้ตั้งกระเป๋า"
+     *    (ไม่ใช้ trading.fee_collector_wallet ด้วย เพราะนั่นคือกระเป๋าบน BSC)
      */
     public function feeWallet(): string
     {
-        $candidates = [
-            $this->effective()['fee_wallet'] ?? '',
-            SiteSetting::get('factory', 'fee_wallet', ''),
-            SiteSetting::get('revenue', 'tpix_wallet', ''),
-            SiteSetting::get('revenue', 'wallet_address', ''),
-        ];
+        $wallet = strtolower(trim((string) ($this->effective()['fee_wallet'] ?? '')));
 
-        foreach ($candidates as $wallet) {
-            $wallet = strtolower(trim((string) $wallet));
-            if (preg_match('/^0x[a-f0-9]{40}$/', $wallet)) {
-                return $wallet;
-            }
-        }
-
-        return '';
+        return preg_match('/^0x[a-f0-9]{40}$/', $wallet) ? $wallet : '';
     }
 
     public function chainId(): int
@@ -584,7 +586,7 @@ class TokenFactoryPolicy
         }
 
         // ── ค่าของตัวเลือกย่อย ─────────────────────────────────────────────
-        foreach ($this->validateSubOptionValues($type, $sub, $supply, $typeConfig) as $field => $message) {
+        foreach ($this->validateSubOptionValues($type, $sub, $supply, $typeConfig, $decimals) as $field => $message) {
             $errors[$field] = $message;
         }
 
@@ -666,6 +668,9 @@ class TokenFactoryPolicy
                 $value = $this->truthy([$key => $value], $key);
             } elseif (is_array($value) || is_object($value)) {
                 continue;
+            } elseif (array_key_exists($key, self::UNIT_KEYS) && $value !== null && $value !== '') {
+                // ส่งเป็นทศนิยมปกติเสมอ — สคริปต์ไม่ต้องผ่าน Number (กัน "1e-7" / เลขใหญ่เพี้ยน)
+                $value = self::plainDecimal($value);
             }
 
             $clean[$key] = $value;
@@ -1066,7 +1071,7 @@ class TokenFactoryPolicy
     {
         $out = [
             'creation_enabled' => array_key_exists('creation_enabled', $policy) && $policy['creation_enabled'] !== null
-                ? (bool) $policy['creation_enabled'] : null,
+                ? (bool) $policy['creation_enabled'] : true,
             'fee_wallet' => strtolower(trim((string) ($policy['fee_wallet'] ?? ''))),
             'required_confirmations' => max(1, (int) ($policy['required_confirmations'] ?? 2)),
             'quote_ttl_minutes' => max(5, (int) ($policy['quote_ttl_minutes'] ?? 30)),
@@ -1128,7 +1133,7 @@ class TokenFactoryPolicy
      *
      * @return array<string,string>
      */
-    private function validateSubOptionValues(string $type, array $sub, string $supply, array $typeConfig): array
+    private function validateSubOptionValues(string $type, array $sub, string $supply, array $typeConfig, int $tokenDecimals = 18): array
     {
         $errors = [];
         $allowed = self::SUB_OPTION_KEYS[$type] ?? [];
@@ -1175,6 +1180,22 @@ class TokenFactoryPolicy
                 continue;
             }
 
+            if (array_key_exists($key, self::UNIT_KEYS)) {
+                $plain = self::plainDecimal($value);
+                $maxDecimals = self::UNIT_KEYS[$key] ?? $tokenDecimals;
+                $fraction = $plain !== null && str_contains($plain, '.') ? strlen(explode('.', $plain)[1]) : 0;
+
+                if ($plain === null) {
+                    $errors[$field] = "ค่าของ {$key} ต้องเป็นตัวเลขไม่ติดลบ";
+                } elseif ($fraction > $maxDecimals) {
+                    $errors[$field] = $maxDecimals === 0
+                        ? "ค่าของ {$key} ต้องเป็นจำนวนเต็ม"
+                        : "ค่าของ {$key} มีทศนิยมได้ไม่เกิน {$maxDecimals} ตำแหน่ง";
+                }
+
+                continue;
+            }
+
             $number = (float) $value;
             if ($number < 0) {
                 $errors[$field] = "ค่าของ {$key} ติดลบไม่ได้";
@@ -1192,7 +1213,7 @@ class TokenFactoryPolicy
 
         // เพดาน mint ต้องไม่ต่ำกว่าจำนวนที่ออกตอนแรก และไม่เกินเพดานที่แอดมินตั้ง
         if ($this->truthy($sub, 'mint_cap_enabled') && in_array('mint_cap', $allowed, true)) {
-            $cap = trim((string) ($sub['mint_cap'] ?? ''));
+            $cap = (string) (self::plainDecimal($sub['mint_cap'] ?? null) ?? '');
             if (! ctype_digit($cap) || $cap === '' || bccomp($cap, '0', 0) <= 0) {
                 $errors['sub_options.mint_cap'] = 'ต้องระบุเพดาน mint เป็นจำนวนเต็มบวก';
             } elseif ($supply !== '' && ctype_digit($supply) && bccomp($cap, $supply, 0) < 0) {
@@ -1209,6 +1230,52 @@ class TokenFactoryPolicy
         }
 
         return $errors;
+    }
+
+    /**
+     * ตัวเลขไม่ติดลบ → ทศนิยมแบบ string ไม่มี e-notation ("1.0E-7" → "0.0000001") — null = ไม่ใช่ตัวเลขที่ใช้ได้.
+     *
+     * float จาก JSON แปลงจากรูปสั้นสุดที่ PHP พิมพ์ (ไม่ใช่ sprintf %.18F ที่ได้ 0.1000000000000000055)
+     */
+    public static function plainDecimal(mixed $value): ?string
+    {
+        if (is_int($value)) {
+            return $value < 0 ? null : (string) $value;
+        }
+
+        if (is_float($value)) {
+            if (! is_finite($value) || $value < 0) {
+                return null;
+            }
+            $value = (string) $value;
+        }
+
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $text = strtolower(trim($value));
+
+        if (preg_match('/^(\d+)(?:\.(\d*))?e([+-]?\d+)$/', $text, $m)) {
+            $digits = $m[1].($m[2] ?? '');
+            $point = strlen($m[1]) + (int) $m[3];
+            if ($point <= 0) {
+                $text = '0.'.str_repeat('0', -$point).$digits;
+            } elseif ($point >= strlen($digits)) {
+                $text = $digits.str_repeat('0', $point - strlen($digits));
+            } else {
+                $text = substr($digits, 0, $point).'.'.substr($digits, $point);
+            }
+        }
+
+        if (! preg_match('/^(\d+)(?:\.(\d+))?$/', $text, $m)) {
+            return null;
+        }
+
+        $integer = ltrim($m[1], '0');
+        $fraction = rtrim($m[2] ?? '', '0');
+
+        return ($integer === '' ? '0' : $integer).($fraction !== '' ? '.'.$fraction : '');
     }
 
     /** ตีความสวิตช์แบบเดียวกับสคริปต์ deploy (true, 'true', 1, '1') */

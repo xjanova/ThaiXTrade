@@ -46,6 +46,9 @@ return [
     */
 
     'tpix_rpc_url' => env('TPIX_RPC_URL', 'https://rpc.tpix.online'),
+    // RPC สำรองของสคริปต์ deploy (คั่นด้วย ,) — null = ใช้ค่าในสคริปต์ (rpc1) · '' = ไม่มีสำรอง
+    // ต้องผ่าน config เพราะหลัง config:cache สคริปต์อ่าน .env เองไม่ได้
+    'tpix_rpc_fallback_urls' => env('TPIX_RPC_FALLBACK_URLS'),
     'tpix_chain_id' => 4289,
     // RPC ที่ส่งให้เบราว์เซอร์/แอปใช้อ่านราคา DEX (เบราว์เซอร์มี User-Agent อยู่แล้ว ผ่าน Cloudflare ได้)
     'tpix_public_rpc_url' => env('TPIX_PUBLIC_RPC_URL', 'https://rpc.tpix.online'),
@@ -121,9 +124,9 @@ return [
     */
 
     'token_factory_policy' => [
-        // null = ใช้สวิตช์เดิม factory.creation_enabled จนกว่าแอดมินจะบันทึกหน้านโยบาย
-        'creation_enabled' => null,
-        // ว่าง = ใช้ factory.fee_wallet → revenue.tpix_wallet → revenue.wallet_address
+        // สวิตช์ใหญ่และกระเป๋ารับค่าธรรมเนียมอยู่ในนโยบายที่เดียว (super_admin) — ไม่อ่านคีย์ factory.* เดิม
+        'creation_enabled' => true,
+        // ว่าง = ยังไม่พร้อมรับคำขอที่มีค่าธรรมเนียม (หน้าเว็บบอก "ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม")
         'fee_wallet' => '',
         'required_confirmations' => (int) env('TOKEN_FACTORY_FEE_CONFIRMATIONS', 2),
         'quote_ttl_minutes' => 30,

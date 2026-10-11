@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\SiteSetting;
 use App\Services\TokenFactory\TokenFactoryPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,8 @@ class TokenFactoryPolicyController extends Controller
         return Inertia::render('Admin/TokenFactory/Policy', [
             'policy' => $policy->adminConfig(),
             'resolvedFeeWallet' => $policy->feeWallet(),
+            // ไว้ให้กดคัดลอกมาใส่ได้เท่านั้น — ระบบไม่ใช้ค่านี้เองแล้ว (แอดมินทุกระดับแก้แท็บรายได้ได้)
+            'revenueTpixWallet' => strtolower(trim((string) SiteSetting::get('revenue', 'tpix_wallet', ''))),
         ]);
     }
 

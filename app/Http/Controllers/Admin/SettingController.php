@@ -8,7 +8,6 @@ use App\Models\AuditLog;
 use App\Models\SiteSetting;
 use App\Services\AiBot\Advisor\AdvisorFactory;
 use App\Services\AiBot\Advisor\AdvisorSettings;
-use App\Services\TokenFactory\TokenFactoryPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -25,6 +24,14 @@ use Inertia\Response as InertiaResponse;
  */
 class SettingController extends Controller
 {
+    /**
+     * กลุ่มที่ปลายทางรวม PUT /admin/settings เขียนได้ — ข้อความหน้าเว็บเท่านั้น.
+     *
+     * กลุ่มที่มีผลกับเงิน/สิทธิ์ (token_factory_policy, contracts, kyc, trading, revenue, factory,
+     * payment, sale ...) แก้ผ่านปลายทางเฉพาะของมันที่ตรวจค่าและจำกัดสิทธิ์เองเท่านั้น
+     */
+    private const BULK_WRITABLE_GROUPS = ['general', 'seo', 'social', 'content'];
+
     /**
      * แสดงหน้า Settings — แปลง settings เป็น flat format สำหรับ Vue.
      */
@@ -193,10 +200,18 @@ class SettingController extends Controller
             }
 
             /*
-             * นโยบาย Token Factory แก้ได้ทางเดียวคือหน้าของมันเอง (super_admin + ตรวจค่า + audit รายช่อง)
-             * ปลายทางรวมนี้เปิดให้แอดมินทุกระดับและเขียน group.key อะไรก็ได้ — ปล่อยไว้ = ข้ามด่านได้
+             * ปลายทางรวมนี้เปิดให้แอดมินทุกระดับ — เขียนได้เฉพาะกลุ่มในรายการอนุญาต
+             *
+             * ⚠️ ต้อง normalize ก่อนเทียบ: MySQL (utf8mb4_unicode_ci) มองว่า 'TOKEN_FACTORY_POLICY',
+             *    'token_factory_policy ' (มีช่องว่างท้าย) หรืออักษรเต็มความกว้าง คือแถวเดียวกับของจริง
+             *    เทียบแบบ === กับชื่อจริงอย่างเดียว = เขียนทับนโยบาย/ที่อยู่สัญญา/ด่าน KYC ได้
+             *    บังคับรูป [a-z0-9_] ด้วย เพื่อตัดตัวอักษรที่ collation ตีเป็นตัวเดียวกันทิ้งหมด
              */
-            if ($group === TokenFactoryPolicy::GROUP) {
+            $group = strtolower(trim((string) $group));
+            $key = strtolower(trim((string) $key));
+
+            if (! preg_match('/^[a-z0-9_]{1,64}$/', $group) || ! preg_match('/^[a-z0-9_]{1,100}$/', $key)
+                || ! in_array($group, self::BULK_WRITABLE_GROUPS, true)) {
                 continue;
             }
 
@@ -214,7 +229,7 @@ class SettingController extends Controller
                 $value = $path;
             }
 
-            SiteSetting::set($group, $key, $value, $existing?->type ?? 'string');
+                SiteSetting::set($group, $key, $value, $existing?->type ?? 'string');
         }
 
         SiteSetting::clearCache();

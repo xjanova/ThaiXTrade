@@ -17,6 +17,7 @@ import AdminLayout from '@/Layouts/AdminLayout.vue';
 const props = defineProps({
     policy: { type: Object, required: true },
     resolvedFeeWallet: { type: String, default: '' },
+    revenueTpixWallet: { type: String, default: '' },
 });
 
 const page = usePage();
@@ -191,10 +192,14 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
 
                 <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div class="sm:col-span-2 lg:col-span-3">
-                        <label :class="labelClass">กระเป๋ารับค่าธรรมเนียม (TPIX บนเชน 4289)</label>
-                        <input v-model="form.fee_wallet" type="text" :class="inputClass" placeholder="ว่าง = ใช้กระเป๋ารับรายได้ TPIX จากหน้าตั้งค่า" />
+                        <label :class="labelClass">กระเป๋ารับค่าธรรมเนียม (TPIX บนเชน 4289) — จำเป็นถ้ามีค่าธรรมเนียม</label>
+                        <input v-model="form.fee_wallet" type="text" :class="inputClass" placeholder="0x..." data-test="fee-wallet" />
                         <p class="text-[11px] text-dark-500 mt-1">
-                            ที่ใช้อยู่ตอนนี้: <span class="font-mono text-dark-300">{{ resolvedFeeWallet || 'ยังไม่ได้ตั้ง' }}</span>
+                            ที่ใช้อยู่ตอนนี้: <span class="font-mono text-dark-300">{{ resolvedFeeWallet || 'ยังไม่ได้ตั้ง — ยังรับคำขอที่มีค่าธรรมเนียมไม่ได้' }}</span>
+                        </p>
+                        <p v-if="revenueTpixWallet && revenueTpixWallet !== form.fee_wallet" class="text-[11px] text-dark-500 mt-1">
+                            กระเป๋ารายได้ TPIX ในหน้าตั้งค่า: <span class="font-mono">{{ revenueTpixWallet }}</span>
+                            <button type="button" class="ml-2 text-primary-300 hover:text-primary-200" @click="form.fee_wallet = revenueTpixWallet">ใช้ที่อยู่นี้</button>
                         </p>
                         <p v-if="errors.fee_wallet" class="text-xs text-red-400 mt-1">{{ errors.fee_wallet }}</p>
                     </div>

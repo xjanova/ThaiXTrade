@@ -52,7 +52,8 @@ trait FakesTokenFactory
 
         SiteSetting::set(ContractRegistry::GROUP, 'token_factory_v2', $this->erc20Factory);
         SiteSetting::set(ContractRegistry::GROUP, 'nft_factory', $this->nftFactory);
-        SiteSetting::set('factory', 'fee_wallet', $this->feeWallet);
+        // กระเป๋ารับค่าธรรมเนียมอยู่ในนโยบายที่เดียว (ไม่อ่าน factory.fee_wallet แล้ว)
+        $this->setPolicy(['fee_wallet' => $this->feeWallet]);
 
         $this->fakeChain();
         $this->verifyWallet($this->creator);

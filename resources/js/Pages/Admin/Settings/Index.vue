@@ -523,7 +523,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                                     <span v-else class="text-red-400 text-xs">Invalid</span>
                                 </div>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1.5">รายได้จาก Trading Fees, Swap Fees, Token Factory (ที่จ่ายด้วย TPIX) จะเข้ากระเป๋านี้</p>
+                            <p class="text-xs text-gray-500 mt-1.5">รายได้จาก Trading Fees และ Swap Fees จะเข้ากระเป๋านี้ (ค่าสร้างเหรียญตั้งกระเป๋าแยกที่หน้า ตั้งค่า Token Factory)</p>
                         </div>
 
                         <!-- TPIX Revenue Sources -->
@@ -537,10 +537,6 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                                 <div class="flex items-center gap-1.5 text-gray-300">
                                     <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
                                     Swap Fees
-                                </div>
-                                <div class="flex items-center gap-1.5 text-gray-300">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                                    Token Factory
                                 </div>
                             </div>
                         </div>
@@ -759,7 +755,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 และกระเป๋ารับค่าธรรมเนียม ย้ายไปอยู่ที่หน้า <span class="text-white font-medium">ตั้งค่า Token Factory</span> แล้ว (เฉพาะ super admin)
             </p>
             <p class="text-xs text-dark-500 mt-2">
-                ถ้าไม่ได้ระบุกระเป๋าในหน้านั้น ระบบใช้กระเป๋า TPIX จากแท็บ Revenue Wallet
+                กระเป๋ารับค่าธรรมเนียมสร้างเหรียญต้องตั้งในหน้านั้นเท่านั้น — ระบบไม่ดึงจากแท็บ Revenue Wallet
             </p>
             <a href="/admin/token-factory/policy" class="btn-primary inline-block mt-5 px-6 py-2.5">ไปที่ ตั้งค่า Token Factory</a>
         </div>
