@@ -294,18 +294,37 @@ class TpixPrice {
   final double volume24h;
   final double marketCap;
 
+  /// ราคานี้มาจากไหน — `dex` (พูลบนเชน) · `trades` (ไม้ที่เกิดจริง) · `pool` (แอปอ่านพูลเอง)
+  /// · `admin` (เซิร์ฟเวอร์ไม่มีราคาตลาด เลยตกไปใช้ค่าที่แอดมินตั้ง/รอบขาย/ค่าเริ่มต้น 0.18)
+  final String source;
+
   const TpixPrice({
     required this.price,
     required this.change24h,
     required this.volume24h,
     required this.marketCap,
+    this.source = 'unknown',
   });
+
+  /// เป็นราคาที่ซื้อขายได้จริงหรือไม่ — ราคาที่ตั้งไว้เฉย ๆ ห้ามเอาไปคิดมูลค่าพอร์ต
+  bool get isMarket =>
+      source == 'dex' || source == 'trades' || source == 'pool';
 
   factory TpixPrice.fromJson(Map<String, dynamic> json) => TpixPrice(
         price: _toDouble(json['price']),
         change24h: _toDouble(json['change_24h']),
         volume24h: _toDouble(json['volume_24h']),
         marketCap: _toDouble(json['market_cap']),
+        source: (json['source'] as String?)?.trim().toLowerCase() ?? 'unknown',
+      );
+
+  /// ราคากลางที่แอปอ่านจาก reserve ของพูล WTPIX/USDT เอง (ไม่มีสถิติ 24 ชม.)
+  factory TpixPrice.fromPool(double price) => TpixPrice(
+        price: price,
+        change24h: 0,
+        volume24h: 0,
+        marketCap: 0,
+        source: 'pool',
       );
 }
 
@@ -568,7 +587,12 @@ class UserProfile {
         referralCode: json['referral_code'] as String?,
         totalTrades: (json['total_trades'] as num?)?.toInt() ?? 0,
         totalVolumeUsd: _toDouble(json['total_volume_usd']),
-        preferences: (json['preferences'] as Map?)?.cast<String, dynamic>() ?? {},
+        // ⚠️ เซิร์ฟเวอร์ส่ง `[]` (list ว่างของ PHP) เมื่อผู้ใช้ยังไม่เคยตั้งค่า — เดิม cast เป็น Map
+        //    ตรง ๆ แล้วโยน TypeError → โหลดโปรไฟล์ผู้ใช้ใหม่ไม่ได้ และบันทึกชื่อ/รูปขึ้นว่าล้มเหลว
+        //    ทั้งที่เซิร์ฟเวอร์บันทึกไปแล้ว
+        preferences: json['preferences'] is Map
+            ? (json['preferences'] as Map).cast<String, dynamic>()
+            : const <String, dynamic>{},
         createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
         lastActiveAt: DateTime.tryParse(json['last_active_at'] as String? ?? ''),
       );
