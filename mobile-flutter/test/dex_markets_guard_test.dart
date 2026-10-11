@@ -59,6 +59,27 @@ void main() {
     });
   });
 
+  group('pickUnambiguous', () {
+    const fakeIdtc = '0xfa4efa4efa4efa4efa4efa4efa4efa4efa4efa4e';
+    final real = _pair('IDTC', _idtc, 'USDT', _usdt);
+    final fake = _pair('IDTC', fakeIdtc, 'USDT', _usdt);
+
+    test('ชื่อซ้ำ: เลือกตัวที่อยู่ใน token list', () {
+      final m = MarketProvider.pickUnambiguous(
+          [fake, real], (a) => a.toLowerCase() == _idtc);
+      expect(m['IDTC-USDT']!.baseAddress, _idtc);
+    });
+
+    test('ชื่อซ้ำและไม่มีตัวไหนรับรอง = ไม่แสดงเลย (ไม่เดาตัวแรก)', () {
+      expect(MarketProvider.pickUnambiguous([fake, real], (_) => false), isEmpty);
+    });
+
+    test('ชื่อไม่ซ้ำแสดงตามปกติ', () {
+      expect(MarketProvider.pickUnambiguous([real], (_) => false).keys,
+          ['IDTC-USDT']);
+    });
+  });
+
   group('genuineLegs', () {
     test('IDTC-USDT / IDTC-TPIX ตัวจริงผ่าน', () {
       expect(MarketProvider.genuineLegs(_pair('IDTC', _idtc, 'USDT', _usdt), _usdt),

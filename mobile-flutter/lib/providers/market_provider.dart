@@ -125,13 +125,25 @@ class MarketProvider extends ChangeNotifier {
     return TokenListService().logoFor(p.baseAddress) ?? p.baseLogo;
   }
 
-  /// เหรียญนี้เป็นเหรียญบนเชน TPIX (ห้ามเดาโลโก้จากชื่อบน CDN — ชื่อซ้ำเหรียญดังได้)
-  bool isChainAsset(String baseAsset) {
-    final b = baseAsset.toUpperCase();
-    for (final p in _dexPairs.values) {
-      if (p.baseAsset == b) return true;
+  /// ชื่อคู่ซ้ำกันบนเชน (เหรียญหน้าเหมือนเปิดพูลชื่อเดียวกัน) — เลือกตัวที่อยู่ใน token list
+  /// ที่แอดมินรับรอง ถ้าเลือกไม่ได้ชัดเจน = ไม่แสดงชื่อนั้นเลย (ห้ามเดาว่าตัวแรกคือของจริง)
+  @visibleForTesting
+  static Map<String, DexPairInfo> pickUnambiguous(
+      List<DexPairInfo> pairs, bool Function(String address) approved) {
+    final bySymbol = <String, List<DexPairInfo>>{};
+    for (final p in pairs) {
+      bySymbol.putIfAbsent(p.symbol, () => []).add(p);
     }
-    return false;
+    final out = <String, DexPairInfo>{};
+    bySymbol.forEach((symbol, list) {
+      if (list.length == 1) {
+        out[symbol] = list.single;
+        return;
+      }
+      final listed = list.where((p) => approved(p.baseAddress)).toList();
+      if (listed.length == 1) out[symbol] = listed.single;
+    });
+    return out;
   }
 
   Future<void> _refreshDexMarkets() async {
@@ -142,14 +154,16 @@ class MarketProvider extends ChangeNotifier {
         final list = await _api.getDexPairs();
         final cfg = await _dex.loadConfig();
         if (list != null) {
-          final next = <String, DexPairInfo>{};
+          final candidates = <DexPairInfo>[];
           for (final raw in list) {
             final p = DexPairInfo.tryParse(raw);
-            // พูลว่าง/ถูกเลิกลิสต์ (is_active = false) ไม่ขึ้นตลาด — ชื่อซ้ำเอาตัวแรก
+            // พูลว่าง/ถูกเลิกลิสต์ (is_active = false) ไม่ขึ้นตลาด
             if (p == null || !p.isActive || p.chainId != 4289) continue;
             if (!genuineLegs(p, cfg.usdt)) continue;
-            next.putIfAbsent(p.symbol, () => p);
+            candidates.add(p);
           }
+          final next = pickUnambiguous(
+              candidates, (a) => TokenListService().byAddress(a) != null);
           _dexPairs = next;
           _dexPairsAt = DateTime.now();
           _dexTickers.removeWhere((k, _) => !next.containsKey(k));
