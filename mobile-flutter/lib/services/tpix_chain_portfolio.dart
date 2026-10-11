@@ -6,6 +6,7 @@
 ///   ผลคือผู้ใช้ที่ถือ TPIX/USDT บนเชน 4289 เห็น "ยังไม่มีสินทรัพย์" และมูลค่ารวม $0
 ///
 /// ตอนนี้: อ่าน TPIX (native) + WTPIX + USDT ของเชน TPIX + โทเคนในคู่ของ /dex/pairs
+/// + โทเคนใน token list ที่แอดมินรับรอง (เช่น IDTC ที่ซื้อจากรอบขายก่อนจะมีพูล)
 /// ตรงจาก RPC เสมอ (เชน 4289 ไม่ว่าแอปเลือกเชนไหน) แล้วค่อยรวมกับข้อมูลเซิร์ฟเวอร์ถ้ามี
 ///
 /// กติกา "ห้ามโชว์ 0 เพราะอ่านพลาด": อ่านเหรียญไหนไม่สำเร็จ = คงยอดที่อ่านได้ล่าสุดไว้
@@ -19,6 +20,7 @@ import 'package:flutter/foundation.dart';
 import '../models/api_models.dart';
 import '../models/chain_config.dart';
 import 'api_service.dart';
+import 'token_list_service.dart';
 import 'tpix_dex_service.dart';
 
 /// เหรียญนี้คิดมูลค่าเป็น USD อย่างไร
@@ -60,9 +62,13 @@ class TpixChainPortfolio {
   final TpixDexService _dex;
   final ApiService _api;
 
-  TpixChainPortfolio({TpixDexService? dex, ApiService? api})
+  final TokenListService _approved;
+
+  TpixChainPortfolio(
+      {TpixDexService? dex, ApiService? api, TokenListService? tokenList})
       : _dex = dex ?? TpixDexService(),
-        _api = api ?? ApiService();
+        _api = api ?? ApiService(),
+        _approved = tokenList ?? TokenListService();
 
   String? _owner;
   Map<String, TokenBalance> _last = {};
@@ -108,10 +114,12 @@ class TpixChainPortfolio {
     return ordered(_last);
   }
 
-  /// เหรียญที่จะอ่าน: TPIX → USDT → WTPIX → โทเคนอื่นในคู่บนเชน (ไม่ซ้ำ)
+  /// เหรียญที่จะอ่าน: TPIX → USDT → WTPIX → โทเคนอื่นในคู่บนเชน → token list (ไม่ซ้ำ)
   Future<List<TpixChainToken>> _tokenList() async {
     final cfg = await _dex.loadConfig();
     final pairs = await _dexPairs();
+    // รายการที่แอดมินรับรอง — ยังไม่เปิด (404) = ว่าง ไม่ทำให้พอร์ตล้ม
+    await _approved.refresh();
 
     final tokens = <String, TpixChainToken>{};
     void add(TpixChainToken t) {
@@ -130,7 +138,7 @@ class TpixChainPortfolio {
     final wtpix = cfg.wtpix;
     if (cfg.ready && usdt != null) {
       final tok = await _verified(usdt, 'USDT', 6, TpixPriceKind.usd,
-          logo: _logoFor(pairs, usdt));
+          logo: _approved.logoFor(usdt) ?? _logoFor(pairs, usdt));
       if (tok != null) add(tok);
     }
     if (cfg.ready && wtpix != null) {
@@ -149,15 +157,31 @@ class TpixChainPortfolio {
         final kind = (usdt != null && addr.toLowerCase() == usdt.toLowerCase())
             ? TpixPriceKind.usd
             : TpixPriceKind.unknown;
+        // ชื่อจากเชนใครก็ตั้งได้ — ชื่อแปลก (โค้ด/ช่องว่าง/อักษรคล้าย) ไม่อ่าน
+        if (!DexPairInfo.isSafeAsset(sym.toUpperCase())) continue;
         final tok = await _verified(
           addr,
           sym,
           (p['${side}_decimals'] as num?)?.toInt() ?? 18,
           kind,
-          logo: p['${side}_logo'] as String?,
+          // โลโก้: token list ที่แอดมินรับรอง → เซิร์ฟเวอร์ (https เท่านั้น)
+          logo: _approved.logoFor(addr) ??
+              TokenListService.httpsOnly(p['${side}_logo']),
         );
         if (tok != null) add(tok);
       }
+    }
+
+    // เหรียญที่แอดมินรับรองแต่ยังไม่มีพูล (เช่นได้จากรอบขาย) — ผู้ถือต้องเห็นยอดของตัวเอง
+    for (final e in _approved.tokens) {
+      if (tokens.containsKey(e.address.toLowerCase())) continue;
+      final kind =
+          (usdt != null && e.address.toLowerCase() == usdt.toLowerCase())
+              ? TpixPriceKind.usd
+              : TpixPriceKind.unknown;
+      final tok = await _verified(e.address, e.symbol, e.decimals, kind,
+          logo: e.logoUri);
+      if (tok != null) add(tok);
     }
     return tokens.values.toList();
   }
@@ -190,10 +214,10 @@ class TpixChainPortfolio {
     final a = address.toLowerCase();
     for (final p in pairs) {
       if ((p['quote_address'] as String?)?.toLowerCase() == a) {
-        return p['quote_logo'] as String?;
+        return TokenListService.httpsOnly(p['quote_logo']);
       }
       if ((p['base_address'] as String?)?.toLowerCase() == a) {
-        return p['base_logo'] as String?;
+        return TokenListService.httpsOnly(p['base_logo']);
       }
     }
     return null;

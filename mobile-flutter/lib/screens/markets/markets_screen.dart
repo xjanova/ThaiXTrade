@@ -341,10 +341,10 @@ class _MarketRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = context.watch<AccentProvider>();
-    final logoUrl = context
-        .read<ConfigProvider>()
-        .pairBySymbol(ticker.symbol)
-        ?.baseLogo;
+    // คู่บนเชน TPIX: token list → โลโก้จากเซิร์ฟเวอร์ → ตัวอักษร (ไม่เดาจากชื่อบน CDN)
+    final logoUrl = ticker.isDex
+        ? context.read<MarketProvider>().dexBaseLogo(ticker.symbol)
+        : context.read<ConfigProvider>().pairBySymbol(ticker.symbol)?.baseLogo;
     final isTpix = ticker.baseAsset == 'TPIX';
 
     return Padding(
@@ -384,6 +384,7 @@ class _MarketRow extends StatelessWidget {
                   symbol: ticker.baseAsset,
                   size: 38,
                   logoUrl: logoUrl,
+                  chainToken: ticker.isDex,
                 ),
                 const SizedBox(width: 12),
 

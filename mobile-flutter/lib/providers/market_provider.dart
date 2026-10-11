@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/api_models.dart';
 import '../services/api_service.dart';
 import '../services/binance_ws.dart';
+import '../services/token_list_service.dart';
 import '../services/tpix_dex_service.dart';
 
 class MarketProvider extends ChangeNotifier {
@@ -106,8 +107,13 @@ class MarketProvider extends ChangeNotifier {
   DexPairInfo? dexPairInfo(String symbol) => _dexPairs[symbol.toUpperCase()];
 
   /// โลโก้ของเหรียญฝั่ง base ในคู่บนเชน TPIX (https เท่านั้น) — null = ใช้ตัวอักษรแทน
-  String? dexBaseLogo(String symbol) =>
-      _dexPairs[symbol.toUpperCase()]?.baseLogo;
+  ///
+  /// ลำดับ: token list ที่แอดมินรับรอง (logoURI) → โลโก้จากเซิร์ฟเวอร์ (/dex/pairs) → ตัวอักษร
+  String? dexBaseLogo(String symbol) {
+    final p = _dexPairs[symbol.toUpperCase()];
+    if (p == null) return null;
+    return TokenListService().logoFor(p.baseAddress) ?? p.baseLogo;
+  }
 
   /// เหรียญนี้เป็นเหรียญบนเชน TPIX (ห้ามเดาโลโก้จากชื่อบน CDN — ชื่อซ้ำเหรียญดังได้)
   bool isChainAsset(String baseAsset) {
@@ -207,6 +213,13 @@ class MarketProvider extends ChangeNotifier {
       _isLoading = true;
       notifyListeners();
     }
+
+    // token list (โลโก้ที่แอดมินรับรอง) — ยังไม่เปิด/ล้ม = ข้ามไป ไม่ถ่วงรายการ
+    final tokenList = TokenListService();
+    final hadList = tokenList.loaded;
+    unawaited(tokenList.refresh().then((_) {
+      if (!_disposed && !hadList && tokenList.loaded) notifyListeners();
+    }));
 
     try {
       final serverFuture = _api.getTickers();

@@ -18,11 +18,15 @@ class CoinChip extends StatelessWidget {
   final double size;
   final String? logoUrl;
 
+  /// เหรียญบนเชน TPIX — โลโก้จาก [logoUrl] หรือตัวอักษรเท่านั้น (ดู CoinLogo)
+  final bool chainToken;
+
   const CoinChip({
     super.key,
     required this.symbol,
     this.size = 38,
     this.logoUrl,
+    this.chainToken = false,
   });
 
   @override
@@ -56,6 +60,7 @@ class CoinChip extends StatelessWidget {
             size: inner,
             borderRadius: inner / 2,
             logoUrl: logoUrl,
+            chainToken: chainToken,
           ),
         ),
       ),

@@ -2,12 +2,18 @@
 /// แสดงโลโก้เหรียญจาก CDN พร้อม 3-tier fallback:
 /// CoinCap CDN → CryptoLogos.cc → ตัวอักษรใน circle
 ///
+/// เหรียญบนเชน TPIX ([chainToken]) ไม่เดาโลโก้จากชื่อบน CDN เด็ดขาด:
+/// ใครก็สร้างเหรียญชื่อ ETH/USDC บนเชนได้ → ได้โลโก้ของเหรียญดังไปแอบอ้าง
+/// ลำดับ: logoUrl (token list → โลโก้จากเซิร์ฟเวอร์ ผู้เรียกเลือกมาให้) → ตัวอักษร
+/// URL ทุกตัวต้องเป็น https — อย่างอื่นถือว่าไม่มีโลโก้ (รูปเสีย/โหลดไม่ได้ = ตัวอักษร ไม่ crash)
+///
 /// Developed by Xman Studio
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_colors.dart';
+import '../../services/token_list_service.dart';
 import '../../utils/crypto_logos.dart';
 
 class CoinLogo extends StatefulWidget {
@@ -19,12 +25,16 @@ class CoinLogo extends StatefulWidget {
   /// สำคัญสำหรับ custom token จาก Token Factory ที่ CDN ไม่มี
   final String? logoUrl;
 
+  /// เหรียญบนเชน TPIX — ใช้ [logoUrl] หรือตัวอักษรเท่านั้น ไม่ค้นโลโก้จากชื่อ
+  final bool chainToken;
+
   const CoinLogo({
     super.key,
     required this.symbol,
     this.size = 36,
     this.borderRadius = 18,
     this.logoUrl,
+    this.chainToken = false,
   });
 
   @override
@@ -38,17 +48,20 @@ class _CoinLogoState extends State<CoinLogo> {
   @override
   void didUpdateWidget(CoinLogo old) {
     super.didUpdateWidget(old);
-    if (old.symbol != widget.symbol || old.logoUrl != widget.logoUrl) {
+    if (old.symbol != widget.symbol ||
+        old.logoUrl != widget.logoUrl ||
+        old.chainToken != widget.chainToken) {
       _tier = 0;
     }
   }
 
   String? _urlForTier(int tier) {
+    // เหรียญบนเชน TPIX: ไม่มีโลโก้ที่ยืนยันแล้ว = ตัวอักษร (ห้ามเดาจากชื่อ)
+    if (widget.chainToken && tier > 0) return null;
     switch (tier) {
       case 0:
-        // Tier 0: โลโก้จาก backend DB (ถ้ามี) — priority สูงสุด
-        final u = widget.logoUrl;
-        return (u != null && u.isNotEmpty) ? u : null;
+        // Tier 0: โลโก้จาก backend DB (ถ้ามี) — priority สูงสุด · https เท่านั้น
+        return TokenListService.httpsOnly(widget.logoUrl);
       case 1:
         final u = CryptoLogos.getLogoUrl(widget.symbol);
         return u.isEmpty ? null : u;
@@ -78,6 +91,7 @@ class _CoinLogoState extends State<CoinLogo> {
     }
 
     // หา URL ของ tier ปัจจุบัน — ถ้าไม่มีก็ข้าม tier ไป
+    // (เหรียญบนเชน TPIX มีแค่ tier 0 → หมดแล้วเป็นตัวอักษร)
     String? url;
     int tier = _tier;
     while (tier < 4) {
@@ -97,8 +111,8 @@ class _CoinLogoState extends State<CoinLogo> {
         fit: BoxFit.cover,
         placeholder: (_, __) => _shimmerPlaceholder(),
         errorWidget: (_, __, ___) {
-          // Downgrade → tier ถัดไป
-          if (tier < 3) {
+          // Downgrade → tier ถัดไป (เหรียญบนเชน TPIX ไม่มี tier ถัดไป)
+          if (tier < 3 && !widget.chainToken) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) setState(() => _tier = tier + 1);
             });

@@ -378,6 +378,8 @@ class _HomeScreenState extends State<HomeScreen> {
         sparklineSymbol: '${t.baseAsset}-${t.quoteAsset}',
         // คู่บนเชน TPIX ไม่มีฟีด Binance — ห้ามดึงกราฟจากชื่อที่อาจซ้ำเหรียญอื่น
         showSparkline: !t.isDex,
+        logoUrl: t.isDex ? market.dexBaseLogo(t.symbol) : null,
+        chainToken: t.isDex,
         onTap: () {
           market.selectPair(t.symbol);
           context.go('/trade');
@@ -913,6 +915,8 @@ class _MarketRow extends StatelessWidget {
   final String? sparklineSymbol;
   final bool showSparkline;
   final VoidCallback? onTap;
+  final String? logoUrl;
+  final bool chainToken;
 
   const _MarketRow({
     required this.symbol,
@@ -923,6 +927,8 @@ class _MarketRow extends StatelessWidget {
     this.sparklineSymbol,
     this.showSparkline = true,
     this.onTap,
+    this.logoUrl,
+    this.chainToken = false,
   });
 
   @override
@@ -941,7 +947,12 @@ class _MarketRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CoinChip(symbol: symbol, size: 38),
+          CoinChip(
+            symbol: symbol,
+            size: 38,
+            logoUrl: logoUrl,
+            chainToken: chainToken,
+          ),
           const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,

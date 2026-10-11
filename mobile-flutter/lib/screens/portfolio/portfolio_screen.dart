@@ -16,6 +16,7 @@ import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/accent_provider.dart';
+import '../../services/token_list_service.dart';
 import '../../widgets/common/app_background.dart';
 import '../../widgets/common/coin_chip.dart';
 import '../../widgets/common/glass_card.dart';
@@ -586,7 +587,17 @@ class _AssetTile extends StatelessWidget {
         children: [
           Row(
             children: [
-              CoinChip(symbol: token.symbol, size: 38, logoUrl: token.logo),
+              // เหรียญบนเชน TPIX (ไม่ใช่ TPIX เนทีฟ): โลโก้จาก token list → เซิร์ฟเวอร์ → ตัวอักษร
+              // ห้ามเดาจากชื่อ — เหรียญปลอมชื่อ USDC จะได้โลโก้ USDC จริงไปแอบอ้าง
+              CoinChip(
+                symbol: token.symbol,
+                size: 38,
+                logoUrl: token.chainId == 4289 && !token.isNative
+                    ? (TokenListService().logoFor(token.contractAddress) ??
+                        token.logo)
+                    : token.logo,
+                chainToken: token.chainId == 4289 && !token.isNative,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

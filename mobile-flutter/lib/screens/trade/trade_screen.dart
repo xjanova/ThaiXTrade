@@ -224,6 +224,12 @@ class _TradeScreenState extends State<TradeScreen>
   bool _isDexTradableNow(MarketProvider market) =>
       _dexPairFor(market) != null;
 
+  /// โลโก้ของ base — คู่บนเชน TPIX: token list → เซิร์ฟเวอร์ → ตัวอักษร (ไม่เดาจากชื่อ)
+  String? _logoFor(MarketProvider market, String symbol) =>
+      market.isDexPair(symbol)
+          ? market.dexBaseLogo(symbol)
+          : context.read<ConfigProvider>().pairBySymbol(symbol)?.baseLogo;
+
   /// โหลดยอด base/quote จากเชน TPIX — เรียกซ้ำได้ (กันโหลดซ้ำด้วย key)
   void _maybeReloadDexBalances(MarketProvider market, WalletProvider wallet) {
     if (!_isDexTradableNow(market)) return;
@@ -583,12 +589,8 @@ class _TradeScreenState extends State<TradeScreen>
                   symbol: ticker?.baseAsset ??
                       CryptoLogos.baseSymbol(market.selectedPair),
                   size: 40,
-                  logoUrl: ticker == null
-                      ? null
-                      : context
-                          .read<ConfigProvider>()
-                          .pairBySymbol(ticker.symbol)
-                          ?.baseLogo,
+                  logoUrl: _logoFor(market, market.selectedPair),
+                  chainToken: market.isDexPair(market.selectedPair),
                 ),
                 const SizedBox(width: 11),
                 Column(
@@ -2811,10 +2813,13 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                         symbol: t.baseAsset,
                         size: 28,
                         borderRadius: 8,
-                        logoUrl: context
-                            .read<ConfigProvider>()
-                            .pairBySymbol(t.symbol)
-                            ?.baseLogo,
+                        logoUrl: t.isDex
+                            ? widget.market.dexBaseLogo(t.symbol)
+                            : context
+                                .read<ConfigProvider>()
+                                .pairBySymbol(t.symbol)
+                                ?.baseLogo,
+                        chainToken: t.isDex,
                       ),
                       title: Text(
                         t.displaySymbol,
