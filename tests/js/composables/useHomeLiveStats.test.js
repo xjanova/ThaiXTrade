@@ -133,6 +133,29 @@ describe('useHomeLiveStats', () => {
         expect(api().failed.value.price).toBe(false);
     });
 
+    it('reports an unfunded reward pool only when the pool was actually read as empty', async () => {
+        const stats = (extra) => () => ok({ registry_deployed: true, rpc_connected: true, ...extra });
+        vi.stubGlobal('fetch', routes({ '/api/v1/masternode/stats': stats({ reward_pool_known: true, reward_pool_available: '0' }) }));
+        let m = mountStats();
+        await flushPromises();
+        expect(m.api().node.value.pool_unfunded).toBe(true);
+        m.wrapper.unmount();
+
+        // อ่านยอดไม่ได้ ≠ พูลว่าง
+        vi.stubGlobal('fetch', routes({ '/api/v1/masternode/stats': stats({ reward_pool_known: false, reward_pool_available: '0' }) }));
+        m = mountStats();
+        await flushPromises();
+        expect(m.api().node.value.pool_unfunded).toBe(false);
+    });
+
+    it('keeps "RPC down" apart from "not deployed"', async () => {
+        vi.stubGlobal('fetch', routes({ '/api/v1/masternode/stats': () => ok({ registry_deployed: false, rpc_connected: false }) }));
+        const { api } = mountStats();
+        await flushPromises();
+        expect(api().node.value.registry_deployed).toBe(false);
+        expect(api().node.value.rpc_connected).toBe(false);
+    });
+
     it('treats a missing token sale as "no sale", not as an error', async () => {
         vi.stubGlobal('fetch', routes({ '/api/v1/token-sale': () => ok(null) }));
         const { api } = mountStats();

@@ -102,8 +102,12 @@ export function useHomeLiveStats() {
             ]);
             node.value = {
                 registry_deployed: !!stats.registry_deployed,
+                // RPC ล้ม → API ตอบ registry_deployed=false ทั้งที่สัญญามีอยู่ — หน้าแรกต้องไม่ประกาศว่า "ยังไม่เปิด"
+                rpc_connected: stats.rpc_connected !== false,
                 registry_address: stats.registry_address || null,
                 explorer_url: stats.explorer_url || 'https://explorer.tpix.online',
+                // อ่านยอดกองรางวัลได้จริงและเป็นศูนย์ = ยังไม่เติมเงิน (อ่านไม่ได้ ≠ ว่าง)
+                pool_unfunded: stats.reward_pool_known === true && Number(stats.reward_pool_available) === 0,
             };
             if (Array.isArray(tierList) && tierList.length) {
                 // API โหมด config (สัญญายังไม่ deploy) ไม่ส่งเพดาน APR — เติมจากค่าคงที่ของสัญญาตามชื่อระดับ

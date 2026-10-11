@@ -100,6 +100,9 @@ const heroStats = computed(() => [
 
 // ── Masternode ───────────────────────────────────────────────
 const registryLive = computed(() => !!node.value?.registry_deployed);
+// อ่านเชนไม่ได้ (RPC สะดุด) = ไม่รู้สถานะ → ป้ายกลาง ๆ ไม่บอกว่า "เปิดเร็ว ๆ นี้"
+const registryUnknown = computed(() => !!node.value && !registryLive.value && !node.value.rpc_connected);
+const poolUnfunded = computed(() => registryLive.value && !!node.value?.pool_unfunded);
 const registryLink = computed(() => (
     node.value?.registry_address ? `${node.value.explorer_url}/address/${node.value.registry_address}` : null
 ));
@@ -358,7 +361,7 @@ const whyItems = computed(() => [
                     <div class="max-w-xl">
                         <div :class="['hc-eyebrow mb-5', !registryLive && 'hc-eyebrow--muted']">
                             <span :class="['hc-dot', !registryLive && 'hc-dot--idle']"></span>
-                            {{ registryLive ? t('homeClassic.nodeLive') : t('homeClassic.nodeSoon') }}
+                            {{ registryLive ? t('homeClassic.nodeLive') : (!node || registryUnknown) ? t('homeClassic.nodeEyebrow') : t('homeClassic.nodeSoon') }}
                         </div>
                         <h2 class="text-3xl md:text-5xl font-bold text-white leading-tight mb-4">
                             {{ t('homeClassic.nodeTitle1') }}
@@ -427,7 +430,9 @@ const whyItems = computed(() => [
                         </div>
                     </div>
 
-                    <p class="text-xs text-dark-400 leading-relaxed mt-4 max-w-3xl">{{ t('homeClassic.aprNote') }}</p>
+                    <p class="text-xs text-dark-400 leading-relaxed mt-4 max-w-3xl">
+                        <span v-if="poolUnfunded" class="text-amber-300/90 font-semibold">{{ t('homeClassic.poolUnfunded') }} </span>{{ t('homeClassic.aprNote') }}
+                    </p>
 
                     <div class="flex flex-wrap gap-3 mt-8">
                         <Link href="/masternode" class="hc-btn hc-btn--primary">{{ t('homeClassic.nodeStake') }}</Link>

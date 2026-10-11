@@ -149,6 +149,7 @@
             "Validator": "Block producer"
         },
         "fromChain": "Read from the contract",
+        "poolUnfunded": "The reward pool has not been funded yet.",
         "aprNote": "APR is the maximum set in the contract, not a guarantee. Actual rewards depend on how many nodes are active and on the funded reward pool.",
         "nodeStake": "Stake now",
         "nodeGuide": "Setup guide",
