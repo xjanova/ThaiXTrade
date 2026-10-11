@@ -9,6 +9,16 @@
  *   Guardian อยู่ที่ 0 ไม่ใช่ Validator — สัญญาคงลำดับนี้ไว้ให้เข้ากันได้กับ V1
  *   เดิมหน้านี้ส่ง index ของ array บนหน้าจอ (Validator=0) ไปตรง ๆ ผลคือ
  *   คนกดซื้อ Validator 10M ได้ Guardian, คนกดซื้อ Light 10K โดน revert ทิ้ง
+ *
+ *   registerNode ต้องส่ง msg.value == minStake "เป๊ะ" (น้อยกว่า = Insufficient stake,
+ *   มากกว่า = Stake must equal tier minimum) → ส่ง min_stake_wei เป็น BigInt ตรง ๆ
+ *   ห้ามผ่าน float / parseUnits ของตัวเลขที่ปัดแล้ว
+ *
+ * กติกาการเขียนธุรกรรม (เคยพังมาแล้วทั้งหมดในหน้าอื่น):
+ *   - ทุกปุ่มที่ส่ง tx กดซ้ำระหว่างรายการเดิมยังไม่จบ = ไม่ทำอะไร
+ *   - จับกระเป๋าไว้ตั้งแต่เริ่ม ถ้าผู้ใช้สลับบัญชีกลางทาง → หยุด ไม่เอาผลไปแปะให้บัญชีใหม่
+ *   - ส่ง tx แล้วแต่ต่อเชนไม่ได้ตอนรอผล ≠ ล้มเหลว → โชว์ hash "รอการยืนยัน" แล้วตรวจซ้ำเอง
+ *   - อ่านเชนไม่ได้ ≠ "ไม่มีโหนด" → บอกตรง ๆ พร้อมปุ่มลองใหม่ และปิดปุ่มซื้อไว้ก่อน
  */
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
@@ -27,6 +37,8 @@ const props = defineProps({
     registryAddress: { type: String, default: '' },
     registryLive: { type: Boolean, default: false },
     kycContract: { type: String, default: null },
+    // null = ไม่ทราบ (ยังไม่ deploy / RPC ล้ม / สัญญารุ่นเก่า) — ไม่ตีความว่า "เปิดรับ" หรือ "ปิดรับ"
+    registrationPaused: { type: Boolean, default: null },
     rpcUrl: { type: String, default: 'https://rpc.tpix.online' },
     chainId: { type: Number, default: 4289 },
     explorerUrl: { type: String, default: 'https://explorer.tpix.online' },
@@ -34,59 +46,85 @@ const props = defineProps({
 
 // ============================================================
 //  หน้าตาของแต่ละชั้น — key คือ "tier index บนสัญญา" เท่านั้น
-//  ตัวเลขจริง (min stake / lock / โควตา) มาจากเชน ไม่ hardcode ที่นี่
+//  ตัวเลขจริง (min stake / lock / โควตา / เพดาน APR) มาจากเชน ไม่ hardcode ที่นี่
+//  apyHint ใช้แสดง "เฉพาะ" ตอนอ่านเพดาน APR จากเชน/คอนฟิกไม่ได้เลย และติดป้ายว่าประมาณการ
 // ============================================================
 const TIER_SKIN = {
     3: {
         name: 'Validator Node', short: 'Validator',
-        apy: '15-20%', hardware: '16 CPU · 32GB · 1TB SSD',
+        apyHint: '15-20%', hardware: '16 CPU · 32GB · 1TB SSD',
         desc: 'ผู้ปิดบล็อก IBFT2 ตัวจริง มีสิทธิ์โหวตธรรมาภิบาล — ต้องผ่าน KYC นิติบุคคล',
         gradient: 'from-red-500/30 via-rose-500/20 to-pink-500/10',
         border: 'border-red-500/30', glow: 'shadow-[0_0_40px_rgba(239,68,68,0.15)]',
         badge: 'bg-red-500/20 text-red-300 border-red-500/40', accent: 'text-red-400',
+        bar: 'from-red-500 to-rose-500 text-white',
     },
     0: {
         name: 'Guardian Node', short: 'Guardian',
-        apy: '10-12%', hardware: '8 CPU · 16GB · 500GB SSD',
+        apyHint: '10-12%', hardware: '8 CPU · 16GB · 500GB SSD',
         desc: 'โหนดระดับพรีเมียม ส่วนแบ่งรางวัลสูงสุดในระบบ',
         gradient: 'from-yellow-500/30 via-amber-500/20 to-orange-500/10',
         border: 'border-yellow-500/30', glow: 'shadow-[0_0_40px_rgba(245,158,11,0.15)]',
         badge: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40', accent: 'text-yellow-400',
+        bar: 'from-yellow-500 to-amber-500 text-black',
     },
     1: {
         name: 'Sentinel Node', short: 'Sentinel',
-        apy: '7-9%', hardware: '4 CPU · 8GB · 200GB SSD',
+        apyHint: '7-9%', hardware: '4 CPU · 8GB · 200GB SSD',
         desc: 'โหนดมาตรฐานสำหรับดูแลความสมบูรณ์ของเครือข่าย',
         gradient: 'from-purple-500/30 via-violet-500/20 to-fuchsia-500/10',
         border: 'border-purple-500/30', glow: 'shadow-[0_0_40px_rgba(139,92,246,0.15)]',
         badge: 'bg-purple-500/20 text-purple-300 border-purple-500/40', accent: 'text-purple-400',
+        bar: 'from-purple-500 to-violet-500 text-white',
     },
     2: {
         name: 'Light Node', short: 'Light',
-        apy: '4-6%', hardware: '2 CPU · 4GB · 100GB SSD',
+        apyHint: '4-6%', hardware: '2 CPU · 4GB · 100GB SSD',
         desc: 'เริ่มง่ายที่สุด ช่วยค้ำเครือข่ายแล้วรับรางวัล',
         gradient: 'from-cyan-500/30 via-blue-500/20 to-teal-500/10',
         border: 'border-cyan-500/30', glow: 'shadow-[0_0_40px_rgba(6,182,212,0.15)]',
         badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40', accent: 'text-cyan-400',
+        bar: 'from-cyan-500 to-blue-500 text-white',
     },
 };
 
 /** ลำดับที่แสดงบนหน้าจอ (แพงสุด → ถูกสุด) — ไม่เกี่ยวกับ index บนสัญญา */
 const DISPLAY_ORDER = [3, 0, 1, 2];
 
+const WEI_PER_TPIX = 10n ** 18n;
+
+/** ชื่อรายการภาษาคน — ใช้ในการ์ด "รอการยืนยัน" และข้อความหลังสลับกระเป๋า */
+const TX_LABEL = {
+    stake: 'ลงทะเบียนโหนด',
+    claim: 'รับรางวัล',
+    deregister: 'ปิดโหนดและถอนเงินต้น',
+    withdraw: 'ถอนเงินต้นที่เหลือ',
+    consent: 'ให้ความยินยอม KYC',
+};
+
+/** รอผล tx ที่ส่งไปแล้วแต่ wait() ล้ม — ทุก 5 วิ นานสุด 10 นาที แล้วให้ไปดูบนเอ็กซ์พลอเรอร์เอง */
+const RECEIPT_POLL_MS = 5000;
+const RECEIPT_POLL_MAX = 120;
+
 // ============================================================
 //  State
 // ============================================================
-const tpixBalance = ref(0);
+// ยอดเป็น wei (BigInt) เท่านั้น — null = ยังไม่รู้ (กำลังอ่าน / อ่านไม่ได้) ไม่ใช่ 0
+// เดิมเก็บเป็น float แล้วเทียบกับขั้นต่ำ ยอด 9,999.9999999 อาจถูกปัดเป็น 10,000 แล้วปล่อยให้กดซื้อ
+const tpixBalanceWei = ref(null);
+const balanceError = ref(false);
 const isLoadingBalance = ref(false);
 const selectedTier = ref(null);
 const isStaking = ref(false);
 const stakeTxHash = ref('');
 const stakeError = ref('');
+const flowNotice = ref('');        // ข้อความระดับหน้า (เช่น สลับกระเป๋ากลางรายการ) — ไม่ผูกกับการ์ดใด
 const activeTab = ref('setup'); // setup | network
 
 const myNode = ref(null);          // struct จากเชน (null = ยังไม่เคยลงทะเบียน)
+const nodeLoaded = ref(false);     // อ่านโหนดของกระเป๋าปัจจุบันสำเร็จอย่างน้อยหนึ่งครั้งแล้ว
 const isLoadingNode = ref(false);
+const chainReadError = ref(false); // อ่านเชนไม่ได้ = ไม่รู้ว่ามีโหนดหรือไม่ (ห้ามสรุปว่า "ไม่มีโหนด")
 const chainTiers = ref(props.tiers || []);
 
 const endpoint = ref('');
@@ -97,11 +135,29 @@ const kycRejectReason = ref('');
 const isGivingConsent = ref(false);
 const kycError = ref('');
 
+const isClaiming = ref(false);
+const isDeregistering = ref(false);
+const isWithdrawing = ref(false);
+const claimMessage = ref('');
+const claimIsError = ref(false);
+
+/** tx ที่ส่งแล้วแต่ยังไม่รู้ผล — { hash, kind, owner, gaveUp? } */
+const pendingTx = ref(null);
+
+/** สัญญาณชีพจากโปรแกรม PC — null = ไม่ทราบ (ซ่อนบรรทัด) */
+const heartbeat = ref(null);
+
 const isOnTPIXChain = computed(() => Number(walletStore.chainId) === props.chainId);
 
 const networkStats = ref({ ...props.stats });
 
 const MAX_ENDPOINT_LEN = 100;      // ตรงกับ MAX_ENDPOINT_LEN ในสัญญา
+
+/** แสดงผลเท่านั้น — ห้ามเอาไปเทียบยอด/ส่งเป็นจำนวนเงิน */
+const tpixBalance = computed(() => (tpixBalanceWei.value === null ? 0 : weiToNumber(tpixBalanceWei.value)));
+
+/** แอดมินปิดรับลงทะเบียนใหม่ — ค่าจาก stats ที่ poll ทุก 30 วิ ชนะค่าตอนโหลดหน้า */
+const isRegistrationPaused = computed(() => (networkStats.value.registration_paused ?? props.registrationPaused) === true);
 
 // ============================================================
 //  ABI — ชื่อและลำดับพารามิเตอร์ต้องตรงกับ NodeRegistryV2 เป๊ะ ๆ
@@ -114,6 +170,7 @@ const NODE_REGISTRY_ABI = [
     'function pendingReward(address _operator) view returns (uint256)',
     'function claimableNow(address _operator) view returns (uint256)',
     'function availableRewardFunds() view returns (uint256)',
+    'function registrationPaused() view returns (bool)',
     'function getNodeInfo(address _operator) view returns (tuple(address operator, uint8 tier, uint8 status, uint256 stakedAmount, uint256 registeredAt, uint256 unlockAt, uint256 lastRewardAt, uint256 totalRewards, uint256 uptime, bytes32 nodeId, string endpoint, uint256 rewardDebt, uint256 pendingUnclaimed))',
     'function getTierInfo(uint8 _tier) view returns (tuple(uint256 minStake, uint256 maxNodes, uint256 activeNodes, uint256 lockDays, uint256 slashPercent, uint256 rewardShare))',
 ];
@@ -149,22 +206,90 @@ const STATUS_LABEL = {
 };
 
 // ============================================================
+//  ตัวช่วยเรื่องจำนวนเงิน — wei เป็น BigInt ตลอดทาง
+// ============================================================
+function sameAddress(a, b) {
+    return !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
+}
+
+function shortAddr(a) {
+    return a ? `${String(a).slice(0, 6)}…${String(a).slice(-4)}` : '';
+}
+
+/** สตริงจำนวนเต็ม wei จากเซิร์ฟเวอร์ → BigInt (null ถ้าไม่ใช่ตัวเลขล้วน) */
+function parseWei(v) {
+    if (v === null || v === undefined) return null;
+    const s = String(v).trim();
+    return /^\d+$/.test(s) ? BigInt(s) : null;
+}
+
+/** จำนวน TPIX ทศนิยม ('1234.5') → wei แบบตัดทิ้ง ไม่ปัดขึ้น */
+function decimalToWei(v) {
+    const m = String(v ?? '').trim().match(/^(\d+)(?:\.(\d+))?$/);
+    if (!m) return null;
+    const frac = (m[2] || '').slice(0, 18).padEnd(18, '0');
+    return BigInt(m[1]) * WEI_PER_TPIX + BigInt(frac);
+}
+
+/**
+ * wei → number สำหรับแสดงผล — แยกส่วนเต็ม/เศษ เพื่อให้จำนวน TPIX เต็ม ๆ ออกมาตรงตัว
+ * (Number(25000n * 10n**18n) / 1e18 อาจได้ 25000.000000000004) และเศษ wei เล็ก ๆ ไม่หายเป็น 0
+ */
+function weiToNumber(wei) {
+    const w = BigInt(wei);
+    return Number(w / 10n ** 12n) / 1e6 + Number(w % 10n ** 12n) / 1e18;
+}
+
+function numOrNull(v) {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
+/** basis points → "12%" / "6.25%" */
+function fmtBps(bps) {
+    if (bps === null || bps === undefined) return '—';
+    return `${Number((Number(bps) / 100).toFixed(2)).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+}
+
+function codeError(code) {
+    const e = new Error(code);
+    e.code = code;
+    return e;
+}
+
+function isUserRejection(e) {
+    return e?.code === 'ACTION_REJECTED' || e?.code === 4001
+        || e?.info?.error?.code === 4001 || e?.error?.code === 4001;
+}
+
+// ============================================================
 //  Provider สำหรับ "อ่าน" — ยิงตรงไปที่ RPC ของเชนเสมอ
 //  ไม่ใช้ provider ของกระเป๋า เพราะถ้าผู้ใช้อยู่คนละเชนจะอ่านได้ค่าของเชนอื่น
 // ============================================================
+// โหลด ethers ครั้งเดียวแล้วใช้ซ้ำ — ทุกฟังก์ชันอ่าน/เขียนวิ่งพร้อมกันตอนเชื่อมกระเป๋า ไม่ต้องสั่ง import ซ้อนกัน
+// โหลดไม่สำเร็จ (เน็ตหลุดตอนดึงชังก์) → ล้างทิ้ง ให้ปุ่ม "ลองใหม่" โหลดใหม่ได้ ไม่ค้าง promise ที่ reject ไว้ตลอดไป
+let ethersPromise = null;
+function loadEthers() {
+    if (!ethersPromise) {
+        ethersPromise = import('ethers').catch((e) => { ethersPromise = null; throw e; });
+    }
+    return ethersPromise;
+}
+
 let readProviderPromise = null;
 async function getReadProvider() {
     if (!readProviderPromise) {
-        readProviderPromise = import('ethers').then(({ JsonRpcProvider, Network }) =>
+        readProviderPromise = loadEthers().then(({ JsonRpcProvider, Network }) =>
             new JsonRpcProvider(props.rpcUrl, Network.from(props.chainId), { staticNetwork: true })
-        );
+        ).catch((e) => { readProviderPromise = null; throw e; });
     }
     return readProviderPromise;
 }
 
 async function getReadContract() {
     if (!props.registryAddress) return null;
-    const { Contract } = await import('ethers');
+    const { Contract } = await loadEthers();
     return new Contract(props.registryAddress, NODE_REGISTRY_ABI, await getReadProvider());
 }
 
@@ -177,111 +302,213 @@ async function ensureTPIXChain() {
     if (Number(walletStore.chainId) === props.chainId) return;
     try {
         await walletStore.switchChain(props.chainId);
-    } catch {
-        if (walletStore.provider) {
-            await addTPIXChainToWallet(walletStore.provider);
-            await walletStore.switchChain(props.chainId);
-        }
+    } catch (e) {
+        // ผู้ใช้กดปฏิเสธเอง → ห้ามเด้งกล่อง "เพิ่มเครือข่าย" ซ้ำอีกรอบ
+        // ไม่มี provider → เดิมกลืน error แล้วเดินต่อบนเชนผิด ตอนนี้โยนต่อให้ผู้เรียกบอกผู้ใช้
+        if (isUserRejection(e) || !walletStore.provider) throw e;
+        await addTPIXChainToWallet(walletStore.provider);
+        await walletStore.switchChain(props.chainId);
     }
 }
 
+/** ปุ่ม "สลับเครือข่าย" บนหน้า — ห้ามปล่อย promise reject ลอยเมื่อผู้ใช้กดยกเลิก */
+async function switchNetwork() {
+    try {
+        await ensureTPIXChain();
+    } catch (e) {
+        flowNotice.value = humanError(e);
+    }
+}
+
+class WalletSwitchedError extends Error {
+    constructor(owner) {
+        super('WALLET_SWITCHED');
+        this.code = 'WALLET_SWITCHED';
+        this.owner = owner;
+    }
+}
+
+/**
+ * จับกระเป๋าที่เริ่มรายการไว้ — เรียก check() หลังทุก await ก่อนส่ง tx
+ * walletStore อัปเดต address ทันทีที่ผู้ใช้สลับบัญชี แต่ signer ตามมาทีหลังแบบ async
+ * ถ้าไม่จับไว้ รายการที่เริ่มจากบัญชี A อาจถูกเซ็น/แสดงผลเป็นของบัญชี B
+ */
+function walletGuard() {
+    const owner = walletStore.address;
+    return {
+        owner,
+        check() {
+            if (!sameAddress(owner, walletStore.address)) throw new WalletSwitchedError(owner);
+        },
+    };
+}
+
+/** เตรียม signer ที่ "เป็นบัญชีเดียวกับตอนกดปุ่ม" และอยู่บน TPIX Chain จริง */
+async function signerFor(guard) {
+    await ensureTPIXChain();
+    guard.check();
+    if (Number(walletStore.chainId) !== props.chainId) throw codeError('WRONG_CHAIN');
+
+    const signer = walletStore.signer;
+    if (!signer) throw codeError('NO_SIGNER');
+
+    const signerAddress = await signer.getAddress();
+    guard.check();
+    if (!sameAddress(signerAddress, guard.owner)) throw new WalletSwitchedError(guard.owner);
+    return signer;
+}
+
+// ============================================================
+//  อ่านข้อมูลของกระเป๋า — ทุกตัว race-safe
+//  ผลที่กลับมาช้าของกระเป๋าเดิม (หรือคำขอรุ่นก่อน) ต้องไม่เขียนทับสถานะของกระเป๋าปัจจุบัน
+// ============================================================
+let balanceReq = 0;
 async function fetchBalance() {
-    if (!walletStore.isConnected || !walletStore.address) return;
+    const addr = walletStore.address;
+    const req = ++balanceReq;
+    if (!walletStore.isConnected || !addr) return;
+    const stale = () => req !== balanceReq || !sameAddress(addr, walletStore.address);
+
     isLoadingBalance.value = true;
     try {
         // อ่านจาก RPC ของเชนโดยตรง — ได้ยอดของ TPIX Chain เสมอ
         // ต่อให้กระเป๋ายังชี้เชนอื่นอยู่ ตัวเลขบนการ์ดก็ยังถูก
         const provider = await getReadProvider();
-        const bal = await provider.getBalance(walletStore.address);
-        tpixBalance.value = Number(bal) / 1e18;
+        const bal = await provider.getBalance(addr);
+        if (stale()) return;
+        tpixBalanceWei.value = BigInt(bal);
+        balanceError.value = false;
     } catch {
         try {
-            const resp = await fetch(`/api/v1/wallet/balances?wallet_address=${walletStore.address}&chain_id=${props.chainId}`);
-            if (resp.ok) {
-                const d = await resp.json();
-                if (d.success && d.data?.native) tpixBalance.value = parseFloat(d.data.native.balance || 0);
+            const resp = await fetch(`/api/v1/wallet/balances?wallet_address=${encodeURIComponent(addr)}&chain_id=${props.chainId}`);
+            const d = resp.ok ? await resp.json() : null;
+            if (stale()) return;
+            const wei = d?.success ? decimalToWei(d.data?.native?.balance) : null;
+            if (wei !== null) {
+                tpixBalanceWei.value = wei;
+                balanceError.value = false;
+            } else {
+                // ปล่อยยอดเดิม (ของกระเป๋าเดียวกัน) ไว้ ดีกว่าโชว์ 0 ทั้งที่มีเงิน
+                balanceError.value = true;
             }
-        } catch { /* ปล่อยยอดเดิมไว้ ดีกว่าโชว์ 0 ทั้งที่มีเงิน */ }
-    } finally { isLoadingBalance.value = false; }
+        } catch {
+            if (!stale()) balanceError.value = true;
+        }
+    } finally {
+        if (req === balanceReq) isLoadingBalance.value = false;
+    }
 }
 
-// ============================================================
-//  อ่านสถานะโหนดของตัวเองจากเชนตรง ๆ
-// ============================================================
+let nodeReq = 0;
 async function fetchMyNode() {
-    if (!walletStore.address || !props.registryAddress) { myNode.value = null; return; }
+    const addr = walletStore.address;
+    const req = ++nodeReq;
+    if (!addr || !props.registryAddress || !props.registryLive) {
+        // ยังไม่มีสัญญา = ไม่มีอะไรให้อ่าน (ไม่ใช่อ่านไม่ได้)
+        myNode.value = null;
+        chainReadError.value = false;
+        nodeLoaded.value = true;
+        isLoadingNode.value = false;
+        return;
+    }
+    const stale = () => req !== nodeReq || !sameAddress(addr, walletStore.address);
+
     isLoadingNode.value = true;
     try {
         const c = await getReadContract();
-        if (!c) return;
-        const [info, pending, claimable] = await Promise.all([
-            c.getNodeInfo(walletStore.address),
-            c.pendingReward(walletStore.address).catch(() => 0n),
-            c.claimableNow(walletStore.address).catch(() => 0n),
+        const provider = await getReadProvider();
+        // pendingReward/claimableNow ล้ม = อ่านไม่ได้ทั้งก้อน ไม่แอบเติม 0 ให้ (0 แปลว่า "ไม่มีรางวัล")
+        const [info, pending, claimable, block] = await Promise.all([
+            c.getNodeInfo(addr),
+            c.pendingReward(addr),
+            c.claimableNow(addr),
+            provider.getBlock('latest').catch(() => null),
         ]);
+        if (stale()) return;
+
+        chainReadError.value = false;
+        nodeLoaded.value = true;
 
         // ไม่เคยลงทะเบียน = operator เป็น 0x0
         // ห้ามดูจาก tier เพราะ tier 0 (Guardian) เป็นค่าที่ถูกต้อง
         if (!info || /^0x0{40}$/i.test(info.operator)) { myNode.value = null; return; }
 
-        const now = Math.floor(Date.now() / 1000);
+        // ล็อกเทียบกับ "เวลาของเชน" ไม่ใช่นาฬิกาเครื่องผู้ใช้ (เครื่องเวลาเพี้ยน = ปุ่มถอนเปิดก่อนเวลาแล้ว revert)
+        const now = block?.timestamp ? Number(block.timestamp) : Math.floor(Date.now() / 1000);
+        const claimableWei = BigInt(claimable);
         myNode.value = {
             operator: info.operator,
             tierId: Number(info.tier),
             statusId: Number(info.status),
-            stake: Number(info.stakedAmount) / 1e18,
+            stake: weiToNumber(info.stakedAmount),
             registeredAt: Number(info.registeredAt),
             unlockAt: Number(info.unlockAt),
-            totalRewards: Number(info.totalRewards) / 1e18,
+            totalRewards: weiToNumber(info.totalRewards),
             uptime: Number(info.uptime) / 100,
             nodeId: info.nodeId,
             endpoint: info.endpoint,
-            pendingUnclaimed: Number(info.pendingUnclaimed) / 1e18,
-            pending: Number(pending) / 1e18,
-            claimable: Number(claimable) / 1e18,
+            pendingUnclaimed: weiToNumber(info.pendingUnclaimed),
+            pending: weiToNumber(pending),
+            claimable: weiToNumber(claimableWei),
+            claimableWei,
             isLocked: Number(info.unlockAt) > now,
             unlockInSeconds: Math.max(0, Number(info.unlockAt) - now),
         };
     } catch (e) {
+        if (stale()) return;
+        // เก็บข้อมูลเดิม (ของกระเป๋าเดียวกัน) ไว้ให้ดู แต่ติดธงว่าอ่านล่าสุดไม่สำเร็จ
+        chainReadError.value = true;
         console.warn('[masternode] อ่านสถานะโหนดไม่สำเร็จ', e);
-    } finally { isLoadingNode.value = false; }
+    } finally {
+        if (req === nodeReq) isLoadingNode.value = false;
+    }
 }
 
+let kycReq = 0;
 /** ชั้น Validator ลงทะเบียนไม่ได้ถ้ายังไม่ผ่าน KYC — ตรวจก่อนให้กด ไม่ใช่ปล่อยให้ revert */
 async function fetchKycStatus() {
-    if (!props.kycContract || !walletStore.address) { kycApproved.value = null; kycStatusId.value = null; return; }
+    const addr = walletStore.address;
+    const req = ++kycReq;
+    if (!props.kycContract || !addr) { kycApproved.value = null; kycStatusId.value = null; kycRejectReason.value = ''; return; }
+    const stale = () => req !== kycReq || !sameAddress(addr, walletStore.address);
+
     try {
-        const { Contract } = await import('ethers');
+        const { Contract } = await loadEthers();
         const kyc = new Contract(props.kycContract, KYC_ABI, await getReadProvider());
         const [approved, record] = await Promise.all([
-            kyc.isApproved(walletStore.address),
-            kyc.getRecord(walletStore.address).catch(() => null),
+            kyc.isApproved(addr),
+            kyc.getRecord(addr).catch(() => null),
         ]);
+        if (stale()) return;
         kycApproved.value = approved;
         kycStatusId.value = record ? Number(record.status) : null;
         kycRejectReason.value = record?.rejectReason || '';
-    } catch { kycApproved.value = null; kycStatusId.value = null; }
+    } catch {
+        if (stale()) return;
+        kycApproved.value = null;
+        kycStatusId.value = null;
+    }
 }
 
-/** ขั้นที่ 1 ของ KYC — ผู้สมัครต้องเซ็นเอง กฎหมาย PDPA ให้ทีมงานกดแทนไม่ได้ */
-async function giveKycConsent() {
-    if (!walletStore.isConnected || !props.kycContract) return;
-    isGivingConsent.value = true; kycError.value = '';
+let hbReq = 0;
+/**
+ * สัญญาณชีพล่าสุดจากโปรแกรม TPIX Master Node บน PC (GET /api/v1/node/status/{wallet})
+ * fail-soft: อ่านไม่ได้ = ซ่อนบรรทัด ไม่ขึ้น error — เป็นข้อมูลเสริม ไม่ใช่สถานะบนเชน
+ */
+async function fetchHeartbeat() {
+    const addr = walletStore.address;
+    const req = ++hbReq;
+    if (!addr) { heartbeat.value = null; return; }
     try {
-        await ensureTPIXChain();
-        const signer = walletStore.signer;
-        if (!signer) throw new Error('ไม่พบตัวเซ็นในกระเป๋า');
-
-        const { Contract } = await import('ethers');
-        const kyc = new Contract(props.kycContract, KYC_ABI, signer);
-        const tx = await kyc.giveConsent({ gasPrice: 0 });
-        await tx.wait();
-        await fetchKycStatus();
-    } catch (e) {
-        kycError.value = /Consent already active/.test(e?.message || '')
-            ? 'ให้ความยินยอมไว้แล้ว'
-            : humanError(e);
-    } finally { isGivingConsent.value = false; }
+        const r = await fetch(`/api/v1/node/status/${addr}`, { headers: { Accept: 'application/json' } });
+        const d = r?.ok ? await r.json() : null;
+        if (req !== hbReq || !sameAddress(addr, walletStore.address)) return;
+        heartbeat.value = d && typeof d.exists === 'boolean'
+            ? { exists: d.exists, lastHeartbeat: Number(d.last_heartbeat) || null, isActive: !!d.is_active }
+            : null;
+    } catch {
+        if (req === hbReq) heartbeat.value = null;
+    }
 }
 
 async function refreshTiers() {
@@ -300,33 +527,78 @@ const tierCards = computed(() => {
     return DISPLAY_ORDER.map(idx => {
         const chain = byIndex.get(idx) || {};
         const skin = TIER_SKIN[idx];
-        const minStake = Number(chain.min_stake ?? 0);
+        // จำนวนที่ต้องส่งจริง — min_stake_wei จากเชนตรง ๆ (สำรองด้วยจำนวนเต็ม TPIX × 1e18)
+        const minStakeWei = parseWei(chain.min_stake_wei)
+            ?? (/^\d+$/.test(String(chain.min_stake ?? '').trim()) ? BigInt(String(chain.min_stake).trim()) * WEI_PER_TPIX : null);
+        const minStake = minStakeWei === null ? 0 : weiToNumber(minStakeWei);
         const maxNodes = Number(chain.max_nodes ?? 0);
         const activeNodes = Number(chain.active_nodes ?? 0);
         const isFull = maxNodes > 0 && activeNodes >= maxNodes;
         const needsKyc = idx === 3;
+        const fromChain = chain.source === 'chain';
+        const aprCapBps = numOrNull(chain.apr_cap_bps);
+        const projectedAprBps = fromChain ? numOrNull(chain.projected_apr_bps) : null;
 
         return {
             id: idx,
             ...skin,
             minStake,
+            minStakeWei,
             lockDays: Number(chain.lock_days ?? 0),
             maxNodes,
             activeNodes,
             slotsLeft: maxNodes > 0 ? Math.max(0, maxNodes - activeNodes) : null,
+            rewardShareBps: Number(chain.reward_share ?? 0),
             rewardShare: `${(Number(chain.reward_share ?? 0) / 100).toFixed(0)}%`,
             slashPercent: Number(chain.slash_percent ?? 0) / 100,
+            aprCapBps,
+            projectedAprBps,
+            // ป้ายหัวการ์ด: เพดานจริงจากเชน > ค่าเริ่มต้นของสัญญา (ติดป้าย) > ช่วงประมาณการ (ติดป้าย)
+            apyBadge: aprCapBps !== null ? `สูงสุด ${fmtBps(aprCapBps)} ต่อปี` : `${skin.apyHint} ต่อปี`,
+            apyNote: fromChain && aprCapBps !== null
+                ? ''
+                : (aprCapBps !== null ? 'ค่าตั้งต้นของสัญญา — ยังไม่ได้อ่านจากเชน' : 'ประมาณการ — ยังไม่ได้อ่านจากเชน'),
             isFull,
             needsKyc,
-            canAfford: minStake > 0 && tpixBalance.value >= minStake,
+            canAfford: minStakeWei !== null && minStakeWei > 0n
+                && tpixBalanceWei.value !== null && tpixBalanceWei.value >= minStakeWei,
             source: chain.source || 'config',
         };
     });
 });
 
+/** หัวหน้าเว็บ "ผลตอบแทนสูงสุดต่อปี" = เพดานสูงสุดในทุกชั้น (ไม่ใช่เลข 20% ที่เขียนตายตัว) */
+const heroMaxApr = computed(() => {
+    const caps = tierCards.value.map(t => t.aprCapBps).filter(v => v !== null);
+    return caps.length ? fmtBps(Math.max(...caps)) : '20%';
+});
+
+/** ตัวอย่างในคำอธิบายการแบ่งรางวัล — ใช้เพดานของชั้น Light จริง */
+const lightCapText = computed(() => {
+    const light = tierCards.value.find(t => t.id === 2);
+    return light?.aprCapBps != null ? fmtBps(light.aprCapBps) : '6%';
+});
+
+/** แถบสัดส่วน emission ต่อชั้น — จาก reward_share บนเชน ไม่ใช่ 20/35/30/15 ที่เขียนตายตัว */
+const shareBar = computed(() => tierCards.value
+    .filter(t => t.rewardShareBps > 0)
+    .map(t => ({ id: t.id, short: t.short, bar: t.bar, pct: t.rewardShareBps / 100 })));
+
+const busy = computed(() => isStaking.value || isClaiming.value || isDeregistering.value
+    || isWithdrawing.value || isGivingConsent.value);
+
+/** ยังมี tx ที่ส่งไปแล้วแต่ไม่รู้ผล — ห้ามส่งรายการใหม่ซ้อนจนกว่าจะรู้ */
+const txAwaiting = computed(() => !!pendingTx.value && !pendingTx.value.gaveUp);
+
 /** ปุ่มซื้อกดได้ไหม + ถ้ากดไม่ได้ เพราะอะไร (ตอบเป็นภาษาคน ไม่ใช่ revert string) */
 function blockReason(tier) {
     if (!props.registryLive) return 'สัญญายังไม่ได้ติดตั้งบนเชน — เปิดขายเมื่อระบบพร้อม';
+    if (isRegistrationPaused.value) {
+        return 'ผู้ดูแลระบบปิดรับลงทะเบียนโหนดใหม่ชั่วคราว — โหนดที่มีอยู่ยังรับรางวัล ปิดโหนด และถอนเงินต้นได้ตามปกติ';
+    }
+    if (chainReadError.value) return 'อ่านข้อมูลจากเชนไม่ได้ — กด "ลองใหม่" ก่อน (ยังไม่รู้ว่ากระเป๋านี้มีโหนดอยู่แล้วหรือไม่)';
+    if (walletStore.isConnected && !nodeLoaded.value) return 'กำลังอ่านสถานะโหนดของคุณจากเชน...';
+    if (txAwaiting.value) return 'มีรายการก่อนหน้ารอการยืนยันบนเชนอยู่ — รอให้จบก่อน';
     if (myNode.value && myNode.value.statusId === 1) return 'คุณมีโหนดที่ทำงานอยู่แล้ว 1 ตัวต่อ 1 กระเป๋า';
     // สัญญาบังคับ status == Inactive เท่านั้น — โหนดที่ถูกปรับ (2/4) หรือออกไปแล้ว (3)
     // ยังไม่ใช่ Inactive ต้องถอนเงินต้นที่เหลือให้จบก่อน ไม่งั้น registerNode revert "Already registered"
@@ -335,7 +607,16 @@ function blockReason(tier) {
     }
     if (myNode.value && myNode.value.pendingUnclaimed > 0) return 'ต้องกดรับรางวัลค้างให้หมดก่อนลงทะเบียนใหม่';
     if (tier.isFull) return `ชั้นนี้เต็มแล้ว (${tier.activeNodes}/${tier.maxNodes})`;
-    if (!tier.canAfford) return `ต้องมีอีก ${fmtNum(Math.max(0, tier.minStake - Math.floor(tpixBalance.value)))} TPIX`;
+    if (tier.minStakeWei === null || tier.minStakeWei <= 0n) return 'ยังไม่ทราบจำนวนวางค้ำของชั้นนี้จากเชน';
+    if (tpixBalanceWei.value === null) {
+        return balanceError.value ? 'อ่านยอด TPIX ของคุณไม่ได้ — กดลองใหม่อีกครั้ง' : 'กำลังอ่านยอด TPIX ของคุณ...';
+    }
+    // เทียบเป็น wei (BigInt) — ส่วนต่างปัดขึ้นเป็น TPIX เต็ม ให้เติมครั้งเดียวพอ
+    if (tpixBalanceWei.value < tier.minStakeWei) {
+        const shortWei = tier.minStakeWei - tpixBalanceWei.value;
+        const shortTpix = (shortWei + WEI_PER_TPIX - 1n) / WEI_PER_TPIX;
+        return `ต้องมีอีก ${fmtNum(Number(shortTpix))} TPIX`;
+    }
     if (tier.needsKyc && !props.kycContract) return 'ชั้น Validator ยังไม่เปิด — ผู้ดูแลยังไม่ผูกสัญญา KYC';
     if (tier.needsKyc && kycApproved.value === false) return 'ชั้น Validator ต้องผ่าน KYC ก่อน';
     if (!endpointValid.value) return 'กรอกที่อยู่โหนด (IP:port) ให้ถูกต้องก่อน';
@@ -372,12 +653,16 @@ const endpointError = computed(() => {
 const REVERT_MAP = {
     'Already registered': 'กระเป๋านี้มีโหนดที่ทำงานอยู่แล้ว',
     'Claim pending rewards first': 'ต้องกดรับรางวัลค้างให้หมดก่อนลงทะเบียนใหม่',
-    'Insufficient stake': 'จำนวน TPIX ที่ส่งไปน้อยกว่าขั้นต่ำของชั้นนี้',
+    'Registration paused': 'ผู้ดูแลระบบปิดรับลงทะเบียนโหนดใหม่ชั่วคราว — ยังไม่มีการโอนเงิน',
+    // สองข้อความนี้มาจากกติกา msg.value == minStake เป๊ะ (ส่งเกิน / ส่งขาด)
+    'Stake must equal tier minimum': 'ต้องวางค้ำเท่ากับขั้นต่ำของชั้นนี้พอดี (รางวัลแบ่งเท่ากันทุกโหนด วางเกินไม่ได้อะไรเพิ่ม) — ระบบโหลดขั้นต่ำล่าสุดให้แล้ว ลองอีกครั้ง',
+    'Insufficient stake': 'จำนวน TPIX ที่ส่งไปน้อยกว่าขั้นต่ำของชั้นนี้ — ระบบโหลดขั้นต่ำล่าสุดให้แล้ว ลองอีกครั้ง',
     'Endpoint required': 'ต้องกรอกที่อยู่โหนด',
     'Endpoint too long': `ที่อยู่โหนดยาวเกิน ${MAX_ENDPOINT_LEN} ตัวอักษร`,
     'Tier full': 'ชั้นนี้เต็มโควตาแล้ว',
     'KYC contract not configured': 'ชั้น Validator ยังไม่เปิด — ผู้ดูแลยังไม่ผูกสัญญา KYC',
     'KYC not approved': 'ชั้น Validator ต้องผ่าน KYC ก่อน',
+    'Consent already active': 'ให้ความยินยอมไว้แล้ว',
     'Not active': 'โหนดนี้ไม่ได้อยู่ในสถานะทำงาน',
     'Still locked': 'ยังไม่พ้นระยะล็อก ถอนเงินต้นไม่ได้',
     'Not slashed': 'โหนดนี้ไม่ได้อยู่ในสถานะถูกปรับ',
@@ -385,9 +670,22 @@ const REVERT_MAP = {
     'Transfer failed': 'โอนเงินไม่สำเร็จ — สัญญามีเงินไม่พอในตอนนี้',
 };
 
+const CODE_MESSAGE = {
+    WRONG_CHAIN: 'กระเป๋ายังไม่ได้อยู่บน TPIX Chain — สลับเครือข่ายแล้วลองใหม่',
+    NO_SIGNER: 'ไม่พบตัวเซ็นในกระเป๋า — เชื่อมกระเป๋าใหม่อีกครั้ง',
+    TX_CANCELLED: 'รายการถูกยกเลิกในกระเป๋า — ไม่มีเงินออกจากกระเป๋า',
+    NO_WALLET_PROVIDER: 'ไม่พบกระเป๋าที่เชื่อมอยู่ — เชื่อมกระเป๋าก่อนทำรายการ',
+};
+
+const POOL_EMPTY_MSG = 'ตอนนี้ยังไม่มีรางวัลที่กดรับได้ — ถ้าพูลรางวัลยังไม่ถูกเติมเงิน รางวัลของคุณไม่หาย สะสมรอไว้เคลมเมื่อพูลมีเงิน';
+
 function humanError(e) {
     if (!e) return 'ทำรายการไม่สำเร็จ';
-    if (e.code === 'ACTION_REJECTED' || e.code === 4001) return 'คุณยกเลิกการเซ็นในกระเป๋า';
+    if (e.code === 'WALLET_SWITCHED') {
+        return `คุณสลับกระเป๋าระหว่างทำรายการ — หยุดไว้ก่อนและยังไม่ได้ส่งรายการใด ๆ (รายการนี้เริ่มจาก ${shortAddr(e.owner)}) ตรวจสอบแล้วกดใหม่อีกครั้ง`;
+    }
+    if (isUserRejection(e)) return 'คุณยกเลิกการเซ็นในกระเป๋า — ยังไม่มีการโอนเงินใด ๆ';
+    if (CODE_MESSAGE[e.code]) return CODE_MESSAGE[e.code];
     if (e.code === 'INSUFFICIENT_FUNDS') return 'ยอด TPIX ในกระเป๋าไม่พอ';
 
     const blob = [e.reason, e.shortMessage, e.info?.error?.message, e.data?.message, e.message]
@@ -396,60 +694,161 @@ function humanError(e) {
     for (const [key, msg] of Object.entries(REVERT_MAP)) {
         if (blob.includes(key)) return msg;
     }
-    if (/user rejected|User denied/i.test(blob)) return 'คุณยกเลิกการเซ็นในกระเป๋า';
-    if (/network|timeout|could not detect/i.test(blob)) return 'ต่อกับเชนไม่ได้ — ลองใหม่อีกครั้ง';
+    if (/user rejected|User denied/i.test(blob)) return 'คุณยกเลิกการเซ็นในกระเป๋า — ยังไม่มีการโอนเงินใด ๆ';
+    if (/network|timeout|could not detect|failed to fetch/i.test(blob)) return 'ต่อกับเชนไม่ได้ — ลองใหม่อีกครั้ง';
 
-    return e.shortMessage || e.reason || 'ทำรายการไม่สำเร็จ';
+    // reason คือข้อความ revert สั้น ๆ จากสัญญา (ไม่ใช่ก้อน JSON) — ส่วนที่เหลือไม่โชว์ดิบ
+    return e.reason ? `ทำรายการไม่สำเร็จ: ${e.reason}` : 'ทำรายการไม่สำเร็จ — ลองใหม่อีกครั้ง';
+}
+
+/** สลับกระเป๋ากลางรายการ → ข้อความระดับหน้า (การ์ดโหนดของกระเป๋าเดิมถูกซ่อนไปแล้ว) */
+function reportError(e, setLocal) {
+    const msg = humanError(e);
+    if (e?.code === 'WALLET_SWITCHED') { flowNotice.value = msg; return; }
+    setLocal(msg);
+}
+
+function isStakeAmountRevert(e) {
+    const blob = [e?.reason, e?.shortMessage, e?.message].filter(Boolean).join(' | ');
+    return /Insufficient stake|Stake must equal tier minimum/.test(blob);
+}
+
+// ============================================================
+//  ส่ง tx + รอผล — แยก "ยืนยันแล้ว" / "revert บนเชน" / "ยังไม่รู้ผล" ออกจากกัน
+// ============================================================
+let receiptTimer = null;
+let receiptPolls = 0;
+let checkingReceipt = false;
+
+function stopReceiptPoll() {
+    if (receiptTimer) { clearInterval(receiptTimer); receiptTimer = null; }
+}
+
+function startReceiptPoll() {
+    stopReceiptPoll();
+    receiptPolls = 0;
+    receiptTimer = setInterval(checkPendingTx, RECEIPT_POLL_MS);
+}
+
+/**
+ * @returns {Promise<{status:'confirmed'|'pending', hash:string}>}
+ *   throw = รายการไม่สำเร็จแน่นอน (ยกเลิก / revert บนเชน)
+ */
+async function sendAndWait(guard, kind, send) {
+    const tx = await send();
+    pendingTx.value = { hash: tx.hash, kind, owner: guard.owner };
+    try {
+        await tx.wait();
+        pendingTx.value = null;
+        return { status: 'confirmed', hash: tx.hash };
+    } catch (e) {
+        if (e?.code === 'TRANSACTION_REPLACED') {
+            // ผู้ใช้กด speed up / cancel ในกระเป๋า — ethers บอกผลของตัวที่มาแทนให้แล้ว
+            pendingTx.value = null;
+            if (e.cancelled) throw codeError('TX_CANCELLED');
+            return { status: 'confirmed', hash: e.replacement?.hash || tx.hash };
+        }
+        if (e?.code === 'CALL_EXCEPTION' || e?.receipt) {
+            // ขุดแล้วแต่ revert — จบแน่นอน ไม่ต้องรอต่อ (เชนนี้แก๊ส 0 จึงไม่มีเงินออก)
+            pendingTx.value = null;
+            throw e;
+        }
+        // ต่อเชนไม่ได้ระหว่างรอ — tx อาจผ่านไปแล้วก็ได้ ห้ามบอกว่า "ล้มเหลว"
+        startReceiptPoll();
+        return { status: 'pending', hash: tx.hash };
+    }
+}
+
+/** ตรวจผล tx ที่ค้างอยู่ — เรียกจาก timer หรือปุ่ม "ตรวจอีกครั้ง" */
+async function checkPendingTx() {
+    const p = pendingTx.value;
+    if (!p || checkingReceipt) return;
+    checkingReceipt = true;
+    try {
+        const provider = await getReadProvider();
+        const receipt = await provider.getTransactionReceipt(p.hash);
+        if (pendingTx.value?.hash !== p.hash) return;
+        if (!receipt) {
+            if (++receiptPolls >= RECEIPT_POLL_MAX) {
+                stopReceiptPoll();
+                pendingTx.value = { ...p, gaveUp: true };
+            }
+            return;
+        }
+
+        stopReceiptPoll();
+        pendingTx.value = null;
+        if (Number(receipt.status) === 1) {
+            await afterConfirmed({ owner: p.owner }, p.kind, p.hash);
+        } else {
+            // ข้อความระดับหน้า — การ์ดเดิมของรายการนี้อาจถูกซ่อนไปแล้ว (เช่น สลับกระเป๋า)
+            const who = sameAddress(p.owner, walletStore.address) ? '' : `ของกระเป๋า ${shortAddr(p.owner)} `;
+            flowNotice.value = `${TX_LABEL[p.kind] || 'รายการ'}${who}ไม่สำเร็จบนเชน — ไม่มีเงินออกจากกระเป๋า`;
+        }
+    } catch { /* RPC ยังล่ม — รอบหน้าลองใหม่ */ } finally {
+        checkingReceipt = false;
+    }
+}
+
+/** หลังเชนยืนยัน — ถ้าผู้ใช้สลับกระเป๋าไปแล้ว ห้ามแสดงผลเป็นของกระเป๋าใหม่ */
+async function afterConfirmed(guard, kind, hash) {
+    if (!sameAddress(guard.owner, walletStore.address)) {
+        flowNotice.value = `${TX_LABEL[kind] || 'รายการ'}ของกระเป๋า ${shortAddr(guard.owner)} สำเร็จบนเชนแล้ว — ตอนนี้หน้าจอแสดงกระเป๋าที่คุณสลับมา`;
+        return;
+    }
+    if (kind === 'stake') { stakeTxHash.value = hash; activeTab.value = 'setup'; }
+    if (kind === 'claim') { claimIsError.value = false; claimMessage.value = 'รับรางวัลเรียบร้อย'; }
+
+    const jobs = kind === 'consent'
+        ? [fetchKycStatus()]
+        : [fetchBalance(), fetchMyNode()];
+    if (kind === 'stake' || kind === 'deregister') jobs.push(refreshTiers());
+    await Promise.all(jobs);
 }
 
 // ============================================================
 //  ซื้อ / ลงทะเบียนโหนด
 // ============================================================
-const isClaiming = ref(false);
-const isDeregistering = ref(false);
-const isWithdrawing = ref(false);
-const claimMessage = ref('');
-const claimIsError = ref(false);
-
 async function stakeAndRegister(tier) {
     if (!walletStore.isConnected) return connectWallet();
+    // กดซ้ำ (ดับเบิลคลิก / กดรัว) ระหว่างรายการเดิมยังไม่จบ = ไม่ทำอะไร
+    if (busy.value || txAwaiting.value) return;
 
     endpointTouched.value = true;
     stakeError.value = '';
     stakeTxHash.value = '';
+    flowNotice.value = '';
 
     const blocked = blockReason(tier);
     if (blocked) { stakeError.value = blocked; return; }
 
+    // ตั้งธงก่อน await แรกเสมอ — คลิกที่สองที่เข้ามาระหว่างนี้จะเจอ busy แล้วถอยออก
     isStaking.value = true;
     selectedTier.value = tier.id;
+    const guard = walletGuard();
+    // ส่ง "ตัวเลขชั้นบนสัญญา" (tier.id) ไม่ใช่ลำดับการ์ดบนหน้าจอ
+    // และส่ง minStake เป็น wei ตรง ๆ — สัญญาบังคับ msg.value == minStake เป๊ะ
+    const value = tier.minStakeWei;
+    const ep = endpoint.value.trim();
     try {
-        await ensureTPIXChain();
-        const signer = walletStore.signer;
-        if (!signer) throw new Error('ไม่พบตัวเซ็นในกระเป๋า');
-
-        const { Contract, parseUnits } = await import('ethers');
+        const signer = await signerFor(guard);
+        const { Contract } = await loadEthers();
+        guard.check();
         const registry = new Contract(props.registryAddress, NODE_REGISTRY_ABI, signer);
 
-        // ส่ง "ตัวเลขชั้นบนสัญญา" (tier.id) ไม่ใช่ลำดับการ์ดบนหน้าจอ
-        const stakeWei = parseUnits(String(tier.minStake), 18);
-
-        // ลองยิงแห้งก่อน — จับ revert ตั้งแต่ยังไม่เสียเวลาผู้ใช้เซ็น
-        await registry.registerNode.staticCall(tier.id, endpoint.value.trim(), { value: stakeWei });
+        // ลองยิงแห้งก่อน — จับ revert (ปิดรับ / ชั้นเต็ม / ขั้นต่ำเปลี่ยน) ตั้งแต่ยังไม่เสียเวลาผู้ใช้เซ็น
+        await registry.registerNode.staticCall(tier.id, ep, { value });
+        guard.check();
 
         // เชนนี้ค่าแก๊สเป็น 0 (ตั้งใน genesis) จึงต้องบังคับ gasPrice = 0
         // ไม่งั้นกระเป๋าจะประเมินราคาแก๊สเองแล้วฟ้องว่ายอดไม่พอ
-        const tx = await registry.registerNode(tier.id, endpoint.value.trim(), {
-            value: stakeWei,
-            gasPrice: 0,
-        });
-        stakeTxHash.value = tx.hash;
-        await tx.wait();
-
-        await Promise.all([fetchBalance(), fetchMyNode(), refreshTiers()]);
-        activeTab.value = 'setup';
+        const result = await sendAndWait(guard, 'stake', () => registry.registerNode(tier.id, ep, { value, gasPrice: 0 }));
+        if (result.status === 'pending') return; // การ์ด "รอการยืนยัน" ดูแลต่อ
+        await afterConfirmed(guard, 'stake', result.hash);
     } catch (e) {
-        stakeError.value = humanError(e);
+        // ขั้นต่ำบนเชนเปลี่ยนระหว่างเปิดหน้าค้างไว้ → โหลดใหม่ให้ปุ่มถัดไปส่งจำนวนที่ถูก
+        if (isStakeAmountRevert(e)) refreshTiers();
+        reportError(e, (m) => { stakeError.value = m; });
     } finally {
         isStaking.value = false;
         selectedTier.value = null;
@@ -457,68 +856,98 @@ async function stakeAndRegister(tier) {
 }
 
 async function claimRewards() {
-    if (!walletStore.isConnected || !props.registryAddress) return;
-    isClaiming.value = true; claimMessage.value = ''; claimIsError.value = false;
-    try {
-        await ensureTPIXChain();
-        const signer = walletStore.signer;
-        if (!signer) throw new Error('ไม่พบตัวเซ็นในกระเป๋า');
+    if (!walletStore.isConnected || !props.registryAddress || !myNode.value) return;
+    if (busy.value || txAwaiting.value) return;
 
-        const { Contract } = await import('ethers');
-        const registry = new Contract(props.registryAddress, NODE_REGISTRY_ABI, signer);
-        const tx = await registry.claimRewards({ gasPrice: 0 });
-        await tx.wait();
-
-        claimMessage.value = 'รับรางวัลเรียบร้อย';
-        await Promise.all([fetchBalance(), fetchMyNode()]);
-    } catch (e) {
+    claimMessage.value = ''; claimIsError.value = false; flowNotice.value = '';
+    // พูลยังไม่ถูกเติม = เคลมได้ 0 → ไม่ปล่อยให้เซ็น tx ที่ได้ศูนย์
+    if (!(Number(myNode.value.claimable) > 0)) {
         claimIsError.value = true;
-        claimMessage.value = humanError(e);
+        claimMessage.value = POOL_EMPTY_MSG;
+        return;
+    }
+
+    isClaiming.value = true;
+    const guard = walletGuard();
+    try {
+        const signer = await signerFor(guard);
+        const { Contract } = await loadEthers();
+        guard.check();
+        const registry = new Contract(props.registryAddress, NODE_REGISTRY_ABI, signer);
+        const result = await sendAndWait(guard, 'claim', () => registry.claimRewards({ gasPrice: 0 }));
+        if (result.status === 'pending') return;
+        await afterConfirmed(guard, 'claim', result.hash);
+    } catch (e) {
+        reportError(e, (m) => { claimIsError.value = true; claimMessage.value = m; });
     } finally { isClaiming.value = false; }
 }
 
 async function deregisterNode() {
     if (!walletStore.isConnected || !props.registryAddress || !myNode.value) return;
+    if (busy.value || txAwaiting.value) return;
     if (myNode.value.isLocked) {
         stakeError.value = `ยังไม่พ้นระยะล็อก — ถอนได้ ${unlockDateText.value}`;
         return;
     }
+    const guard = walletGuard();
     const warn = myNode.value.pending > myNode.value.claimable
         ? '\n\nหมายเหตุ: รางวัลที่พูลจ่ายได้ตอนนี้น้อยกว่าที่คุณสะสมไว้ ส่วนที่เหลือจะค้างไว้เคลมทีหลังได้'
         : '';
     if (!confirm(`ยืนยันปิดโหนดและถอนเงินต้น ${fmtNum(myNode.value.stake)} TPIX?${warn}`)) return;
+    if (busy.value || txAwaiting.value) return;
 
-    isDeregistering.value = true; stakeError.value = '';
+    isDeregistering.value = true; stakeError.value = ''; flowNotice.value = '';
     try {
-        await ensureTPIXChain();
-        const signer = walletStore.signer;
-        if (!signer) throw new Error('ไม่พบตัวเซ็นในกระเป๋า');
-
-        const { Contract } = await import('ethers');
+        const signer = await signerFor(guard);
+        const { Contract } = await loadEthers();
+        guard.check();
         const registry = new Contract(props.registryAddress, NODE_REGISTRY_ABI, signer);
-        const tx = await registry.deregisterNode({ gasPrice: 0 });
-        await tx.wait();
-
-        await Promise.all([fetchBalance(), fetchMyNode(), refreshTiers()]);
-    } catch (e) { stakeError.value = humanError(e); } finally { isDeregistering.value = false; }
+        const result = await sendAndWait(guard, 'deregister', () => registry.deregisterNode({ gasPrice: 0 }));
+        if (result.status === 'pending') return;
+        await afterConfirmed(guard, 'deregister', result.hash);
+    } catch (e) {
+        reportError(e, (m) => { stakeError.value = m; });
+    } finally { isDeregistering.value = false; }
 }
 
 /** โหนดที่ถูกปรับ (slashed) ถอนเงินต้นที่เหลือด้วยฟังก์ชันคนละตัว */
 async function withdrawSlashedStake() {
     if (!walletStore.isConnected || !props.registryAddress) return;
-    isWithdrawing.value = true; stakeError.value = '';
+    if (busy.value || txAwaiting.value) return;
+
+    isWithdrawing.value = true; stakeError.value = ''; flowNotice.value = '';
+    const guard = walletGuard();
     try {
-        await ensureTPIXChain();
-        const signer = walletStore.signer;
-        if (!signer) throw new Error('ไม่พบตัวเซ็นในกระเป๋า');
-
-        const { Contract } = await import('ethers');
+        const signer = await signerFor(guard);
+        const { Contract } = await loadEthers();
+        guard.check();
         const registry = new Contract(props.registryAddress, NODE_REGISTRY_ABI, signer);
-        const tx = await registry.withdrawSlashedStake({ gasPrice: 0 });
-        await tx.wait();
+        const result = await sendAndWait(guard, 'withdraw', () => registry.withdrawSlashedStake({ gasPrice: 0 }));
+        if (result.status === 'pending') return;
+        await afterConfirmed(guard, 'withdraw', result.hash);
+    } catch (e) {
+        reportError(e, (m) => { stakeError.value = m; });
+    } finally { isWithdrawing.value = false; }
+}
 
-        await Promise.all([fetchBalance(), fetchMyNode()]);
-    } catch (e) { stakeError.value = humanError(e); } finally { isWithdrawing.value = false; }
+/** ขั้นที่ 1 ของ KYC — ผู้สมัครต้องเซ็นเอง กฎหมาย PDPA ให้ทีมงานกดแทนไม่ได้ */
+async function giveKycConsent() {
+    if (!walletStore.isConnected || !props.kycContract) return;
+    if (busy.value || txAwaiting.value) return;
+
+    isGivingConsent.value = true; kycError.value = ''; flowNotice.value = '';
+    const guard = walletGuard();
+    try {
+        const signer = await signerFor(guard);
+        const { Contract } = await loadEthers();
+        guard.check();
+        const kyc = new Contract(props.kycContract, KYC_ABI, signer);
+        const result = await sendAndWait(guard, 'consent', () => kyc.giveConsent({ gasPrice: 0 }));
+        if (result.status === 'pending') return;
+        await afterConfirmed(guard, 'consent', result.hash);
+    } catch (e) {
+        reportError(e, (m) => { kycError.value = m; });
+    } finally { isGivingConsent.value = false; }
 }
 
 // ============================================================
@@ -548,9 +977,24 @@ const poolUnfunded = computed(() =>
 
 const canRegister = computed(() => !myNode.value || myNode.value.statusId !== 1);
 
+/** เหตุผลที่ปุ่ม "รับรางวัล" กดไม่ได้ — โชว์ใต้ปุ่ม ไม่ใช่ปล่อยให้งงว่าทำไมปุ่มเทา */
+const claimHint = computed(() => {
+    const n = myNode.value;
+    // pending > claimable มีคำอธิบายของตัวเองอยู่แล้วใต้ยอด — ไม่พูดซ้ำ
+    if (!n || Number(n.claimable) > 0 || Number(n.pending) > Number(n.claimable)) return '';
+    return poolUnfunded.value ? 'พูลรางวัลยังไม่ถูกเติมเงิน — รางวัลที่สะสมได้จะไม่หาย กดรับได้เมื่อพูลมีเงิน' : '';
+});
+
+const heartbeatText = computed(() => {
+    const ts = heartbeat.value?.lastHeartbeat;
+    return ts ? new Date(ts * 1000).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+});
+
 /**
  * สิ่งที่ยังขาดก่อนระบบจะเปิดใช้ได้ — โชว์ในป้าย "รอติดตั้งสัญญา"
  * แยก "ยังไม่ได้ตั้งที่อยู่" ออกจาก "ตั้งแล้วแต่ไม่มีโค้ดที่ address นั้น" เพราะแก้คนละแบบ
+ * (สถานะ RPC มาจาก eth_blockNumber ฝั่งเซิร์ฟเวอร์ ไม่ใช่ eth_getCode — getCode ของที่อยู่
+ *  ที่ไม่ใช่สัญญาบน polygon-edge ตอบ error ซึ่งไม่ได้แปลว่า RPC ล่ม)
  */
 const deployIssues = computed(() => {
     if (props.registryLive) return [];
@@ -559,7 +1003,7 @@ const deployIssues = computed(() => {
     if (!props.registryAddress) {
         out.push('ยังไม่ได้ลงทะเบียนที่อยู่สัญญา NodeRegistry — สคริปต์ deploy จะลงทะเบียนให้เองเมื่อรันเสร็จ');
     } else {
-        out.push(`ตั้งที่อยู่ไว้ที่ ${props.registryAddress} แต่ eth_getCode คืน 0x — ไม่มีสัญญาอยู่ที่นั่น`);
+        out.push(`ตั้งที่อยู่ไว้ที่ ${props.registryAddress} แต่ไม่พบโค้ดสัญญาที่ที่อยู่นั้น`);
     }
     if (!networkStats.value.rpc_connected) {
         out.push('เชื่อมต่อ RPC ของเชน TPIX ไม่ได้');
@@ -585,11 +1029,25 @@ function reloadWalletState() {
     fetchBalance();
     fetchMyNode();
     fetchKycStatus();
+    fetchHeartbeat();
 }
 
-watch(() => walletStore.address, (a) => {
+/** ปุ่ม "ลองใหม่" ของการ์ดอ่านเชนไม่ได้ */
+function retryChainRead() {
+    reloadWalletState();
+    refreshTiers();
+}
+
+watch(() => walletStore.address, (a, prev) => {
+    if (sameAddress(a, prev)) return;
+    // สลับ/ตัดกระเป๋า → ล้างของกระเป๋าเดิมทันที ไม่ให้ยอด/โหนด/ข้อความของคนเก่าค้างบนจอคนใหม่
+    // (tx ที่ค้างรอผลยังเก็บไว้ — การ์ดบอกชัดว่าเป็นของกระเป๋าไหน)
+    tpixBalanceWei.value = null; balanceError.value = false;
+    myNode.value = null; nodeLoaded.value = false; chainReadError.value = false;
+    kycApproved.value = null; kycStatusId.value = null; kycRejectReason.value = '';
+    stakeError.value = ''; stakeTxHash.value = ''; claimMessage.value = ''; claimIsError.value = false;
+    kycError.value = ''; flowNotice.value = ''; heartbeat.value = null;
     if (a) reloadWalletState();
-    else { tpixBalance.value = 0; myNode.value = null; kycApproved.value = null; }
 });
 
 let pollInterval;
@@ -602,9 +1060,14 @@ onMounted(() => {
             if (r.ok) { const d = await r.json(); if (d.success) networkStats.value = d.data; }
         } catch { /* เชนล่มชั่วคราว — คงตัวเลขเดิมไว้ */ }
         if (walletStore.isConnected) fetchMyNode();
+        // endpoint สัญญาณชีพจำกัด 10 ครั้ง/นาที/IP ร่วมกับโปรแกรม PC — ถามเฉพาะตอนมีการ์ดโหนดให้ดู
+        if (walletStore.isConnected && showNodeCard.value) fetchHeartbeat();
     }, 30000);
 });
-onUnmounted(() => clearInterval(pollInterval));
+onUnmounted(() => {
+    clearInterval(pollInterval);
+    stopReceiptPoll();
+});
 
 function fmtNum(n) {
     const v = Number(n);
@@ -665,8 +1128,8 @@ function fmtNum(n) {
 
                         <div class="grid grid-cols-3 gap-3 sm:gap-4 max-w-md mx-auto mb-8">
                             <div class="glass-sm rounded-xl p-3">
-                                <div class="text-xs text-gray-400">APY สูงสุด</div>
-                                <div class="text-xl font-black text-trading-green">20%</div>
+                                <div class="text-xs text-gray-400">สูงสุดต่อปี</div>
+                                <div class="text-xl font-black text-trading-green">{{ heroMaxApr }}</div>
                             </div>
                             <div class="glass-sm rounded-xl p-3">
                                 <div class="text-xs text-gray-400">โหนดที่ทำงานอยู่</div>
@@ -722,7 +1185,7 @@ function fmtNum(n) {
                                         <span v-else class="text-yellow-400 flex items-center gap-1">
                                             <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
                                             อยู่ผิดเครือข่าย
-                                            <button @click="ensureTPIXChain" class="underline hover:text-yellow-300 ml-1">สลับ</button>
+                                            <button @click="switchNetwork" class="underline hover:text-yellow-300 ml-1">สลับ</button>
                                         </span>
                                     </div>
                                 </div>
@@ -731,7 +1194,8 @@ function fmtNum(n) {
                             <div class="text-right">
                                 <div class="text-[10px] text-gray-400 uppercase tracking-widest">TPIX ของคุณ</div>
                                 <div class="text-3xl font-black leading-tight" :class="tpixBalance > 0 ? 'text-gradient' : 'text-gray-600'">
-                                    <span v-if="isLoadingBalance" class="animate-pulse text-gray-500">···</span>
+                                    <span v-if="tpixBalanceWei === null && isLoadingBalance" class="animate-pulse text-gray-500">···</span>
+                                    <span v-else-if="tpixBalanceWei === null" class="text-gray-600" :title="balanceError ? 'อ่านยอดไม่ได้' : ''">—</span>
                                     <span v-else>{{ fmtNum(Math.floor(tpixBalance)) }}</span>
                                 </div>
                             </div>
@@ -756,7 +1220,7 @@ function fmtNum(n) {
                             <div class="text-yellow-400 font-bold">สลับไป TPIX Chain</div>
                             <div class="text-xs text-gray-400">ถ้ายังไม่มีในกระเป๋า ระบบจะเพิ่มให้อัตโนมัติ</div>
                         </div>
-                        <button @click="ensureTPIXChain" class="btn-primary px-6 py-2.5 rounded-xl font-bold shrink-0">
+                        <button @click="switchNetwork" class="btn-primary px-6 py-2.5 rounded-xl font-bold shrink-0">
                             สลับเครือข่าย
                         </button>
                     </div>
@@ -775,6 +1239,64 @@ function fmtNum(n) {
                     <!--  TAB: โหนดของฉัน                                             -->
                     <!-- ============================================================ -->
                     <div v-show="activeTab === 'setup'" class="space-y-6">
+
+                        <!-- ข้อความระดับหน้า เช่น สลับกระเป๋ากลางรายการ / ผลของ tx ที่ตรวจซ้ำ -->
+                        <div v-if="flowNotice" data-test="flow-notice"
+                             class="glass rounded-2xl p-4 border-l-4 border-yellow-500 flex items-start gap-3">
+                            <div class="flex-1 text-sm text-yellow-300">{{ flowNotice }}</div>
+                            <button @click="flowNotice = ''" class="text-xs text-gray-500 hover:text-white shrink-0">ปิด</button>
+                        </div>
+
+                        <!-- ส่ง tx แล้วแต่ยังไม่รู้ผล — ห้ามบอกว่าล้มเหลว เพราะอาจผ่านไปแล้ว -->
+                        <div v-if="pendingTx" data-test="pending-tx"
+                             class="glass rounded-2xl p-5 border-l-4 border-cyan-500 space-y-2">
+                            <div class="flex items-center gap-2 text-cyan-300 font-bold text-sm">
+                                <span v-if="!pendingTx.gaveUp" class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                                {{ TX_LABEL[pendingTx.kind] || 'รายการ' }} — {{ pendingTx.gaveUp ? 'ยังไม่พบผลบนเชน' : 'รอการยืนยัน' }}
+                            </div>
+                            <p class="text-xs text-gray-400">
+                                <template v-if="pendingTx.gaveUp">
+                                    ตรวจซ้ำครบ 10 นาทีแล้วยังไม่พบผล — ดูสถานะจริงบนเอ็กซ์พลอเรอร์ หรือกดตรวจอีกครั้ง
+                                </template>
+                                <template v-else>
+                                    ส่งรายการเข้าเชนแล้วแต่ยังเชื่อมต่อเพื่อรอผลไม่ได้ ระบบกำลังตรวจซ้ำให้อัตโนมัติ — ไม่ต้องกดส่งใหม่
+                                </template>
+                                <span v-if="!sameAddress(pendingTx.owner, walletStore.address)" class="block mt-1">
+                                    รายการนี้เป็นของกระเป๋า {{ shortAddr(pendingTx.owner) }}
+                                </span>
+                            </p>
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <a :href="`${explorerUrl}/tx/${pendingTx.hash}`" target="_blank" rel="noopener"
+                                   class="text-xs text-cyan-400 hover:text-cyan-300 font-mono break-all">{{ pendingTx.hash }}</a>
+                                <button @click="checkPendingTx" class="text-xs font-semibold text-white underline">ตรวจอีกครั้ง</button>
+                                <button v-if="pendingTx.gaveUp" @click="pendingTx = null" class="text-xs text-gray-500 hover:text-white">ซ่อน</button>
+                            </div>
+                        </div>
+
+                        <!-- อ่านเชนไม่ได้ ≠ ไม่มีโหนด — บอกตรง ๆ แล้วให้ลองใหม่ ไม่ใช่เงียบแล้วโชว์ฟอร์มซื้อ -->
+                        <div v-if="chainReadError" data-test="chain-read-error"
+                             class="glass rounded-2xl p-5 border-l-4 border-yellow-500 flex flex-wrap items-center gap-4">
+                            <div class="flex-1 min-w-[200px]">
+                                <div class="text-yellow-400 font-bold">อ่านข้อมูลจากเชนไม่ได้</div>
+                                <div class="text-xs text-gray-400 mt-0.5">
+                                    ยังไม่รู้ว่ากระเป๋านี้มีโหนดอยู่แล้วหรือไม่ จึงปิดปุ่มลงทะเบียนไว้ก่อน
+                                    — ข้อมูลที่เห็นด้านล่างอาจไม่เป็นปัจจุบัน
+                                </div>
+                            </div>
+                            <button @click="retryChainRead" :disabled="isLoadingNode" data-test="retry-chain-read"
+                                    class="btn-primary px-6 py-2.5 rounded-xl font-bold shrink-0 disabled:opacity-50">
+                                {{ isLoadingNode ? 'กำลังลองใหม่...' : 'ลองใหม่' }}
+                            </button>
+                        </div>
+
+                        <!-- แอดมินปิดรับลงทะเบียนใหม่ — เงินของคนที่อยู่ในระบบแล้วยังออกได้เสมอ -->
+                        <div v-if="registryLive && isRegistrationPaused" data-test="registration-paused"
+                             class="glass rounded-2xl p-5 border-l-4 border-red-500/60">
+                            <div class="text-red-300 font-bold text-sm">ปิดรับลงทะเบียนโหนดใหม่ชั่วคราว</div>
+                            <div class="text-xs text-gray-400 mt-1">
+                                โหนดที่ลงทะเบียนไว้แล้วยังรับรางวัล ปิดโหนด และถอนเงินต้นได้ตามปกติ
+                            </div>
+                        </div>
 
                         <!-- ─── โหนดที่มีอยู่แล้ว ─── -->
                         <div v-if="showNodeCard" class="relative">
@@ -829,6 +1351,22 @@ function fmtNum(n) {
                                     </div>
                                 </div>
 
+                                <!-- สัญญาณชีพจากโปรแกรม PC — ข้อมูลเสริม อ่านไม่ได้ก็ซ่อน -->
+                                <div v-if="heartbeat" data-test="heartbeat" class="flex items-start gap-2 text-[11px]">
+                                    <span :class="['w-2 h-2 rounded-full mt-1 shrink-0', heartbeat.isActive ? 'bg-trading-green animate-pulse' : 'bg-gray-500']" />
+                                    <div>
+                                        <span v-if="heartbeat.exists && heartbeat.lastHeartbeat" class="text-gray-300">
+                                            โปรแกรม Master Node ส่งสัญญาณล่าสุด {{ heartbeatText }}
+                                        </span>
+                                        <span v-else class="text-yellow-400/90">
+                                            ยังไม่ได้รับสัญญาณจากโปรแกรม — เปิดโปรแกรม TPIX Master Node เวอร์ชันล่าสุดด้วยกระเป๋าเดียวกัน
+                                        </span>
+                                        <span class="block text-gray-500">
+                                            คะแนน uptime บนเชนทีมงานเป็นผู้บันทึก ไม่ได้อัปเดตอัตโนมัติจากสัญญาณนี้
+                                        </span>
+                                    </div>
+                                </div>
+
                                 <!-- รางวัล: แยก "สะสมได้" ออกจาก "เคลมได้จริงตอนนี้" -->
                                 <div class="p-4 rounded-xl bg-trading-green/5 border border-trading-green/20 space-y-3">
                                     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -844,7 +1382,8 @@ function fmtNum(n) {
                                         </div>
                                         <button
                                             @click="claimRewards"
-                                            :disabled="isClaiming || myNode.claimable <= 0"
+                                            :disabled="busy || txAwaiting || !(myNode.claimable > 0)"
+                                            :title="myNode.claimable > 0 ? '' : 'ยังไม่มีรางวัลที่กดรับได้ตอนนี้'"
                                             class="px-5 py-2.5 rounded-xl text-sm font-bold transition-all bg-trading-green/20 text-trading-green border border-trading-green/30 hover:bg-trading-green/30 disabled:opacity-40 disabled:cursor-not-allowed"
                                         >
                                             {{ isClaiming ? 'กำลังรับ...' : 'รับรางวัล' }}
@@ -854,6 +1393,7 @@ function fmtNum(n) {
                                         พูลรางวัลมีเงินไม่พอจ่ายเต็มจำนวนในตอนนี้ ส่วนที่เหลือไม่หาย — ค้างไว้เคลมได้เมื่อพูลถูกเติม
                                         (เงินต้นของผู้วางค้ำถูกกันไว้ ไม่ถูกนำมาจ่ายรางวัล)
                                     </p>
+                                    <p v-if="claimHint" class="text-[11px] text-yellow-400/90">{{ claimHint }}</p>
                                 </div>
 
                                 <div v-if="claimMessage"
@@ -867,7 +1407,7 @@ function fmtNum(n) {
                                     <div class="text-xs text-trading-red">
                                         โหนดนี้ถูกปรับจากการทำงานผิดกติกา — ถอนเงินต้นส่วนที่เหลือได้
                                     </div>
-                                    <button @click="withdrawSlashedStake" :disabled="isWithdrawing"
+                                    <button @click="withdrawSlashedStake" :disabled="busy || txAwaiting"
                                             class="px-5 py-2 rounded-xl text-sm font-bold bg-trading-red/20 text-trading-red border border-trading-red/30 hover:bg-trading-red/30 disabled:opacity-40">
                                         {{ isWithdrawing ? 'กำลังถอน...' : 'ถอนเงินต้นที่เหลือ' }}
                                     </button>
@@ -877,7 +1417,7 @@ function fmtNum(n) {
                                 <button
                                     v-if="myNode.statusId === 1"
                                     @click="deregisterNode"
-                                    :disabled="isDeregistering || myNode.isLocked"
+                                    :disabled="busy || txAwaiting || myNode.isLocked"
                                     :title="myNode.isLocked ? `ถอนได้ ${unlockDateText}` : ''"
                                     class="w-full py-2.5 rounded-xl text-xs font-medium border transition-all
                                            text-gray-500 border-white/5 hover:text-trading-red hover:border-trading-red/30
@@ -894,7 +1434,7 @@ function fmtNum(n) {
                                     <ol class="text-[11px] text-gray-400 space-y-1 list-decimal list-inside">
                                         <li>ดาวน์โหลดโปรแกรม TPIX Master Node แล้วติดตั้งบนเครื่องที่ IP ตรงกับ <span class="font-mono text-cyan-400">{{ myNode.endpoint || '—' }}</span></li>
                                         <li>ในโปรแกรม ใส่กระเป๋า <span class="font-mono text-cyan-400">{{ walletStore.shortAddress }}</span> เพื่อผูกกับโหนดที่ลงทะเบียนไว้</li>
-                                        <li>ปล่อยให้โปรแกรมส่งสัญญาณชีพต่อเนื่อง — คะแนน uptime มีผลกับรางวัลโดยตรง</li>
+                                        <li>ปล่อยให้โปรแกรมส่งสัญญาณชีพต่อเนื่อง — คะแนน uptime มีผลกับรางวัลโดยตรง (ทีมงานเป็นผู้บันทึกขึ้นเชน)</li>
                                     </ol>
                                     <div class="flex gap-3 pt-1 flex-wrap">
                                         <a href="/api/v1/app/chain-download?type=masternode"
@@ -912,7 +1452,12 @@ function fmtNum(n) {
                             <div class="text-center">
                                 <h2 class="text-2xl font-bold text-white">เลือกชั้นของโหนด</h2>
                                 <p class="text-sm text-gray-400 mt-1">
-                                    คุณมี <span class="text-gradient font-bold">{{ fmtNum(Math.floor(tpixBalance)) }} TPIX</span>
+                                    คุณมี <span class="text-gradient font-bold">{{ tpixBalanceWei === null ? '—' : fmtNum(Math.floor(tpixBalance)) }} TPIX</span>
+                                </p>
+                                <p class="text-[11px] text-gray-500 mt-2 max-w-2xl mx-auto">
+                                    วางค้ำเท่ากับขั้นต่ำของชั้นพอดี (รางวัลแบ่งเท่ากันทุกโหนด วางเกินไม่ได้อะไรเพิ่ม)
+                                    · "คาดการณ์ถ้าเข้าตอนนี้" คิดที่ uptime 100% และพูลมีเงินพอจ่าย
+                                    ถ้ามีโหนดเข้ามาเพิ่ม ส่วนแบ่งต่อโหนดจะลดลง แต่ไม่เกินเพดานของชั้นเสมอ
                                 </p>
                             </div>
 
@@ -976,7 +1521,7 @@ function fmtNum(n) {
                                     <button
                                         v-if="kycStatusId === null || kycStatusId === 0 || kycStatusId === 5"
                                         @click="giveKycConsent"
-                                        :disabled="isGivingConsent"
+                                        :disabled="busy || txAwaiting"
                                         class="px-5 py-2.5 rounded-xl text-sm font-bold bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30 disabled:opacity-40">
                                         {{ isGivingConsent ? 'กำลังเซ็น...' : 'ให้ความยินยอม PDPA' }}
                                     </button>
@@ -1007,8 +1552,11 @@ function fmtNum(n) {
                                                 <div :class="['absolute -inset-2 rounded-xl blur-lg opacity-40', tier.gradient]" />
                                                 <BrandLogo variant="mark" alt="TPIX" class="relative w-14 h-14 rounded-full ring-1 ring-white/10" />
                                             </div>
-                                            <div :class="['px-3 py-1 rounded-full text-xs font-black border', tier.badge]">
-                                                {{ tier.apy }} APY
+                                            <div class="text-right">
+                                                <div :class="['px-3 py-1 rounded-full text-xs font-black border inline-block', tier.badge]">
+                                                    {{ tier.apyBadge }}
+                                                </div>
+                                                <div v-if="tier.apyNote" class="text-[9px] text-gray-500 mt-1">{{ tier.apyNote }}</div>
                                             </div>
                                         </div>
 
@@ -1032,6 +1580,13 @@ function fmtNum(n) {
                                             </div>
                                             <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                             <div class="flex justify-between items-center">
+                                                <span class="text-xs text-gray-500">คาดการณ์ถ้าเข้าตอนนี้</span>
+                                                <span class="text-sm" :class="tier.projectedAprBps !== null && !tier.isFull ? 'text-trading-green font-bold' : 'text-gray-500'">
+                                                    {{ tier.projectedAprBps !== null && !tier.isFull ? `${fmtBps(tier.projectedAprBps)} ต่อปี` : '—' }}
+                                                </span>
+                                            </div>
+                                            <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                                            <div class="flex justify-between items-center">
                                                 <span class="text-xs text-gray-500">โควตาที่เหลือ</span>
                                                 <span class="text-sm" :class="tier.isFull ? 'text-trading-red' : 'text-gray-300'">
                                                     {{ tier.maxNodes > 0 ? `${tier.slotsLeft} / ${tier.maxNodes}` : 'ไม่จำกัด' }}
@@ -1051,10 +1606,10 @@ function fmtNum(n) {
                                         </div>
 
                                         <button @click="stakeAndRegister(tier)"
-                                                :disabled="!!blockReason(tier) || isStaking"
+                                                :disabled="!!blockReason(tier) || busy || txAwaiting"
                                                 :class="[
                                                     'w-full py-3 rounded-xl font-bold text-sm transition-all duration-300',
-                                                    !blockReason(tier) && !isStaking
+                                                    !blockReason(tier) && !busy && !txAwaiting
                                                         ? 'btn-brand hover:shadow-lg hover:scale-[1.02]'
                                                         : 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
                                                 ]">
@@ -1170,23 +1725,22 @@ function fmtNum(n) {
                         <!-- สัดส่วนรางวัลต่อชั้น -->
                         <div class="glass rounded-2xl p-6">
                             <h3 class="text-sm font-bold text-white mb-4">สัดส่วนรางวัลต่อชั้น</h3>
+                            <!-- สัดส่วน emission ต่อชั้นตาม reward_share บนเชน (ไม่ใช่ตัวเลขเขียนตายตัว) -->
                             <div class="flex rounded-xl overflow-hidden h-8 sm:h-10 mb-3">
-                                <div class="bg-gradient-to-r from-red-500 to-rose-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white" style="width:20%">
-                                    <span class="hidden sm:inline">20% Validator</span><span class="sm:hidden">20%</span>
-                                </div>
-                                <div class="bg-gradient-to-r from-yellow-500 to-amber-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-black" style="width:35%">
-                                    <span class="hidden sm:inline">35% Guardian</span><span class="sm:hidden">35%</span>
-                                </div>
-                                <div class="bg-gradient-to-r from-purple-500 to-violet-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white" style="width:30%">
-                                    <span class="hidden sm:inline">30% Sentinel</span><span class="sm:hidden">30%</span>
-                                </div>
-                                <div class="bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white" style="width:15%">
-                                    <span class="hidden sm:inline">15% Light</span><span class="sm:hidden">15%</span>
+                                <div v-for="seg in shareBar" :key="seg.id"
+                                     :class="['bg-gradient-to-r flex items-center justify-center text-[8px] sm:text-[10px] font-bold', seg.bar]"
+                                     :style="{ width: `${seg.pct}%` }">
+                                    <span class="hidden sm:inline">{{ seg.pct }}% {{ seg.short }}</span><span class="sm:hidden">{{ seg.pct }}%</span>
                                 </div>
                             </div>
-                            <p class="text-xs text-gray-400">
-                                รางวัลของแต่ละชั้นถูกหารเท่า ๆ กันในหมู่โหนดที่ทำงานอยู่ของชั้นนั้น
-                                แล้วคูณด้วยคะแนน uptime ของโหนดคุณอีกที
+                            <p class="text-xs text-gray-400 leading-relaxed" data-test="reward-explainer">
+                                รางวัลของแต่ละชั้นแบ่ง <span class="text-white">เท่ากันทุกโหนด</span> ในชั้นนั้น
+                                (ทุกโหนดวางค้ำเท่ากับขั้นต่ำพอดี จึงได้ส่วนเท่ากัน)
+                                แต่หนึ่งโหนดได้ <span class="text-white">ไม่เกินเพดาน APR ของชั้น</span>
+                                เช่น Light สูงสุด {{ lightCapText }} ต่อปีของเงินวางค้ำ — กันไม่ให้โหนดชุดแรกไม่กี่ตัวดึงพูลรางวัลไปจนหมด
+                                ส่วนที่เกินเพดานไม่ถูกจ่ายออก
+                                จากนั้นคูณด้วย <span class="text-white">คะแนน uptime</span> ของโหนดคุณ
+                                และจ่ายได้เท่าที่พูลรางวัลมีเงินจริงเท่านั้น
                             </p>
                         </div>
 
