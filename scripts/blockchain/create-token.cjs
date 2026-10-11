@@ -557,9 +557,13 @@ const EXPECTED_CHAIN_ID = Number(process.env.TPIX_CHAIN_ID || 4289);
  */
 async function connect() {
     // rpc.tpix.online อยู่หลัง Cloudflare bot rule ส่วน rpc1 ไม่มีด่านนั้น
+    // TPIX_RPC_FALLBACK_URLS ตั้งเป็นค่าว่างได้ (เทสต์/เครื่องนักพัฒนา) — กันสคริปต์วิ่งไปหาเชนจริงเอง
+    const fallbacks = process.env.TPIX_RPC_FALLBACK_URLS === undefined
+        ? ['https://rpc1.tpix.online']
+        : process.env.TPIX_RPC_FALLBACK_URLS.split(',').map((u) => u.trim()).filter(Boolean);
     const rpcUrls = [
         process.env.TPIX_RPC_URL || 'https://rpc.tpix.online',
-        'https://rpc1.tpix.online',
+        ...fallbacks,
     ].filter((v, i, a) => v && a.indexOf(v) === i);
 
     function makeProvider(url) {
@@ -648,7 +652,7 @@ async function findExistingToken(provider, factoryAddress, iface, input) {
 /**
  * อ่าน receipt → หาที่อยู่เหรียญจาก event → ยืนยันว่ามีโค้ดจริง → ผลสุดท้าย
  */
-async function finishFromReceipt(provider, receipt, input) {
+async function finishFromReceipt(provider, receipt, input, extra = {}) {
     const txHash = receipt.hash;
 
     if (receipt.status !== 1) {
@@ -708,6 +712,7 @@ async function finishFromReceipt(provider, receipt, input) {
         codeSize: (tokenCode.length - 2) / 2,
         // ออฟชั่นที่ผู้ใช้เลือกไว้แต่สัญญายังทำให้ไม่ได้ — ส่งกลับให้หลังบ้านบันทึก/แจ้งผู้ใช้
         unsupportedOptions: collectUnsupported(input.subOptions || {}, input.tokenType),
+        ...extra,
     });
 }
 
@@ -852,9 +857,7 @@ async function deployMode(provider, input) {
     if (existing) {
         const receipt = await provider.getTransactionReceipt(existing.txHash);
         if (receipt) {
-            const result = await finishFromReceipt(provider, receipt, deployInput);
-            if (result.success) result.alreadyExisted = true;
-            return result;
+            return finishFromReceipt(provider, receipt, deployInput, { alreadyExisted: true });
         }
     }
 
