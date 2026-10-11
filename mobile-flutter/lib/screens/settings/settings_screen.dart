@@ -674,10 +674,15 @@ class _WalletCard extends StatelessWidget {
           locale.t('settings.disconnect'),
           style: TextStyle(color: AppColors.textPrimary),
         ),
+        // กระเป๋าในแอป: disconnect ลบกุญแจในเครื่องจริง — ต้องเตือนเรื่องวลีกู้คืนก่อนยืนยัน
         content: Text(
-          locale.isThai
-              ? 'คุณต้องการยกเลิกการเชื่อมต่อกระเป๋าหรือไม่?'
-              : 'Are you sure you want to disconnect your wallet?',
+          wallet.kind == WalletKind.embedded
+              ? (locale.isThai
+                  ? 'กุญแจของกระเป๋านี้จะถูกลบออกจากเครื่อง — กู้คืนได้ด้วยวลีกู้คืน 12 คำเท่านั้น ถ้ายังไม่ได้จดไว้ เงินในกระเป๋าจะเข้าถึงไม่ได้อีก'
+                  : 'This wallet\'s keys will be deleted from this phone. Only your 12-word recovery phrase can restore it — without it the funds are lost.')
+              : (locale.isThai
+                  ? 'คุณต้องการยกเลิกการเชื่อมต่อกระเป๋าหรือไม่?'
+                  : 'Are you sure you want to disconnect your wallet?'),
           style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [

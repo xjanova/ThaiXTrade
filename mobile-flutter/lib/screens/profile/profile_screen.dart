@@ -81,6 +81,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _disconnect(bool th) async {
+    // กระเป๋าในแอป (embedded): disconnect ลบ private key + วลีกู้คืนในเครื่องทิ้งจริง
+    // เดิมข้อความบอกว่า "ไม่ถูกลบ" — ผู้ใช้ที่ไม่ได้จดวลีกู้คืนเสียกระเป๋าไปเพราะเชื่อข้อความนี้
+    final embedded =
+        context.read<WalletProvider>().kind == WalletKind.embedded;
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -93,9 +97,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: GoogleFonts.inter(
                 color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
         content: Text(
-          th
-              ? 'จะออกจากระบบกระเป๋านี้ในแอป (กุญแจ/วลีกู้คืนของคุณไม่ถูกลบ)'
-              : 'You will be signed out of this wallet in the app (your keys / recovery phrase are not deleted).',
+          embedded
+              ? (th
+                  ? 'กุญแจของกระเป๋านี้จะถูกลบออกจากเครื่อง — กู้คืนได้ด้วยวลีกู้คืน 12 คำเท่านั้น ถ้ายังไม่ได้จดไว้ เงินในกระเป๋าจะเข้าถึงไม่ได้อีก'
+                  : 'This wallet\'s keys will be deleted from this phone. Only your 12-word recovery phrase can restore it — without it the funds are lost.')
+              : (th
+                  ? 'จะออกจากระบบกระเป๋านี้ในแอป (กุญแจอยู่ในแอปกระเป๋าของคุณ ไม่ถูกลบ)'
+                  : 'You will be signed out of this wallet in the app (your keys stay in your wallet app).'),
           style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
         ),
         actions: [
