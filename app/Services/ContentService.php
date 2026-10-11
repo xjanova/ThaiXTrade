@@ -104,6 +104,11 @@ class ContentService
             $options['model'] = $brief['model'];
         }
 
+        // ภาษาต้องอยู่ท้ายคำสั่งหลักเสมอ — ข้อมูลสดเป็นภาษาไทย ฉบับอังกฤษเคยออกมาเป็นไทยทั้งบทความ (prod 2026-10-11 id 281)
+        $prompt .= "\n\n".($language === 'th'
+            ? 'LANGUAGE: Thai. Write every JSON field (title, summary, content, tags, seo_title, seo_description) in Thai. Product and token names stay in English.'
+            : 'LANGUAGE: English. Write every JSON field (title, summary, content, tags, seo_title, seo_description) in English only. Some reference notes above are in Thai — translate what you use, never copy Thai text.');
+
         $result = $this->groq->chat($prompt, $this->systemPrompt($language), $options);
 
         if (! $result['success']) {
@@ -117,6 +122,10 @@ class ContentService
         // เคยหลุดขึ้นเว็บเป็นบทความชื่อ "Untitled" (id 258, 2026-08-06) — JSON โดนตัดกลางทาง ระบบเก็บข้อความดิบไว้แล้ว publish
         if ($title === '' || $title === 'Untitled' || mb_strlen(strip_tags($content)) < self::MIN_CONTENT_CHARS) {
             throw new \RuntimeException('AI ตอบกลับไม่ครบ (ไม่มีหัวข้อ หรือเนื้อหาถูกตัดกลางทาง) — ไม่ได้บันทึกบทความ ลองใหม่อีกครั้ง');
+        }
+
+        if (! $this->inLanguage($title, $content, $language)) {
+            throw new \RuntimeException('AI เขียนผิดภาษา (ขอ'.($language === 'th' ? 'ภาษาไทย' : 'ภาษาอังกฤษ').') — ไม่ได้บันทึกบทความ ลองใหม่อีกครั้ง');
         }
 
         $addresses = $brief['addresses'] ?? [];
@@ -186,6 +195,21 @@ class ContentService
             'Respond with valid JSON only (no markdown, no code fences):',
             '{"title":"...","summary":"1-2 sentences","content":"<p>HTML</p>","tags":["tag1","tag2"],"seo_title":"...","seo_description":"..."}',
         ]);
+    }
+
+    /**
+     * ภาษาตรงกับที่ขอไหม — นับสัดส่วนอักษรไทยในตัวอักษรทั้งหมด.
+     * ไทย: อย่างน้อย 20% (ชื่อสินค้า/เหรียญเป็นอังกฤษได้) · อังกฤษ: หัวข้อไม่มีอักษรไทยเลย และเนื้อหาไทยไม่เกิน 2%.
+     */
+    private function inLanguage(string $title, string $content, string $language): bool
+    {
+        $text = $title.' '.strip_tags($content);
+        $thai = preg_match_all('/\p{Thai}/u', $text);
+        $ratio = $thai / max(1, preg_match_all('/\p{L}/u', $text));
+
+        return $language === 'th'
+            ? $ratio >= 0.2
+            : $ratio < 0.02 && ! preg_match('/\p{Thai}/u', $title);
     }
 
     /** ที่อยู่ที่ AI พิมพ์เองเชื่อไม่ได้ (ผิดตัวเดียว = เงินผู้ใช้หาย) — ลบทิ้งแล้วชี้ไปรายการทางการท้ายบทความ */

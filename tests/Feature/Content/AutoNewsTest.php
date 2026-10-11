@@ -54,6 +54,9 @@ class AutoNewsTest extends TestCase
     /** @var list<string> */
     private array $pairs = ['TPIX-USDT'];
 
+    /** จำลอง AI ที่ตอบภาษาไทยแม้ขอภาษาอังกฤษ (เกิดจริงบน prod 2026-10-11) */
+    private bool $thaiOnly = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -70,7 +73,9 @@ class AutoNewsTest extends TestCase
             $mock->shouldReceive('chat')->andReturnUsing(function (string $message, string $system) {
                 $this->prompts[] = ['message' => $message, 'system' => $system];
 
-                return ['success' => true, 'content' => $this->aiReply ?? $this->articleJson(count($this->prompts)), 'model' => 'gpt-test', 'provider' => 'openai'];
+                $english = str_contains($message, 'LANGUAGE: English');
+
+                return ['success' => true, 'content' => $this->aiReply ?? $this->articleJson(count($this->prompts), $english && ! $this->thaiOnly), 'model' => 'gpt-test', 'provider' => 'openai'];
             });
         });
 
@@ -85,8 +90,19 @@ class AutoNewsTest extends TestCase
         SiteSetting::set('content', 'content_auto_publish', '1', 'boolean');
     }
 
-    private function articleJson(int $n): string
+    private function articleJson(int $n, bool $english = false): string
     {
+        if ($english) {
+            return json_encode([
+                'title' => "TPIX DEX is live! #{$n}",
+                'summary' => 'Trade TPIX on its own chain today at '.self::HALLUCINATED,
+                'content' => '<p>'.str_repeat('TPIX DEX is now open for trading on TPIX Chain with zero gas fees. ', 8).'</p><p>The router lives at '.self::HALLUCINATED.'</p>',
+                'tags' => ['TPIX DEX', 'launch'],
+                'seo_title' => 'TPIX DEX is live',
+                'seo_description' => 'Trade TPIX on TPIX Chain',
+            ]);
+        }
+
         return json_encode([
             'title' => "TPIX DEX เปิดแล้ว! #{$n}",
             'summary' => 'เทรด TPIX บนเชนของตัวเองได้แล้ววันนี้ ที่ '.self::HALLUCINATED,
@@ -135,6 +151,7 @@ class AutoNewsTest extends TestCase
         // ไทย/อังกฤษเผยแพร่เวลาเดียวกัน — บอท Discord รวมเป็นข้อความเดียว
         $this->assertEquals($articles[0]->published_at, $articles[1]->published_at);
         $this->assertStringContainsString('ดูที่อยู่ทางการท้ายบทความ', $articles->firstWhere('language', 'th')->content);
+        $this->assertStringStartsWith('TPIX DEX is live!', $articles->firstWhere('language', 'en')->title);
 
         // AI ได้ข้อเท็จจริงของเหตุการณ์ + สถานะสด + กติกาห้ามแต่งตัวเลข/ที่อยู่
         $this->assertCount(2, $this->prompts);
@@ -187,6 +204,26 @@ class AutoNewsTest extends TestCase
         $this->aiReply = null;
         $this->run_();
         $this->assertSame(2, Article::count());
+    }
+
+    public function test_an_english_story_written_in_thai_is_rejected_and_retried(): void
+    {
+        $this->registerDex();
+        $this->thaiOnly = true;
+
+        $this->run_();
+
+        // ไทยผ่าน อังกฤษที่ออกมาเป็นไทยไม่ถูกบันทึก — คำสั่งภาษาอยู่ท้ายคำสั่งหลักทั้งสองภาษา
+        $this->assertSame(['th'], Article::pluck('language')->all());
+        $this->assertStringContainsString('LANGUAGE: Thai', $this->prompts[0]['message']);
+        $this->assertStringContainsString('LANGUAGE: English', $this->prompts[1]['message']);
+
+        // รอบหน้าเขียนเฉพาะภาษาที่ขาด
+        $this->thaiOnly = false;
+        $this->run_();
+        $this->assertSame(['en', 'th'], Article::orderBy('language')->pluck('language')->all());
+        $this->assertCount(3, $this->prompts);
+        $this->assertStringContainsString('LANGUAGE: English', $this->prompts[2]['message']);
     }
 
     public function test_an_event_story_the_admin_deleted_is_not_written_again(): void
