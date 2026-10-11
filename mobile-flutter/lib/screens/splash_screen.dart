@@ -3,6 +3,8 @@
 ///
 /// Developed by Xman Studio
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -34,11 +36,14 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _initialize() async {
+    // ราคา TPIX เริ่มก่อนเพื่อน และไม่รอ — มีลองซ้ำในตัว (รอแล้ว splash จะค้างนานตอนเน็ตช้า)
+    // เสร็จเมื่อไรก็เขียนลงแถว TPIX-USDT เอง ไม่ว่า tickers จะมาก่อนหรือหลัง
+    unawaited(context.read<MarketProvider>().loadTpixPrice());
+
     // โหลดข้อมูลพื้นฐานพร้อมกัน
     await Future.wait([
       context.read<WalletProvider>().loadSavedWallet(),
       context.read<MarketProvider>().loadTickers(),
-      context.read<MarketProvider>().loadTpixPrice(),
       context.read<MarketProvider>().loadFavorites(),
       context.read<LocaleProvider>().init(),
       context.read<ConfigProvider>().loadAll(), // fees + chains + pairs (global)

@@ -93,6 +93,7 @@ class MarketProvider extends ChangeNotifier {
   /// ให้ TPIX-USDT อยู่ต้นสุดเสมอ (ตรงกับเว็บที่ force-prepend TPIX)
   void _ensureTpixFirst() {
     final hasTpix = _tickers.any((t) => t.symbol == 'TPIX-USDT');
+    if (hasTpix) _patchTpixTicker();
     if (!hasTpix) {
       _tickers.insert(
         0,
@@ -126,7 +127,11 @@ class MarketProvider extends ChangeNotifier {
     _tickerTimer?.cancel();
     _tickerTimer = Timer.periodic(
       const Duration(seconds: 30),
-      (_) => loadTickers(silent: true),
+      (_) {
+        loadTickers(silent: true);
+        // TPIX ไม่อยู่ใน tickers ของเซิร์ฟเวอร์ — ราคามาจากพูลผ่าน /tpix/price แยก
+        loadTpixPrice(retries: 0);
+      },
     );
 
     // WebSocket real-time tickers
@@ -319,17 +324,69 @@ class MarketProvider extends ChangeNotifier {
 
   // ── TPIX Price ──
 
-  Future<void> loadTpixPrice() async {
-    try {
-      _tpixPrice = await _api.getTpixPrice();
-      notifyListeners();
-    } catch (e) {
-      debugPrint('loadTpixPrice error: ${e.runtimeType}');
+  Future<void>? _tpixPriceInFlight;
+  bool _disposed = false;
+
+  /// โหลดราคา TPIX แล้วเขียนลงแถว TPIX-USDT ทันที
+  ///
+  /// ⚠️ เดิมราคานี้โหลดแข่งกับ loadTickers ตอนเปิดแอป — ถ้า tickers มาก่อน แถว TPIX
+  ///    ถูกสร้างด้วยราคา 0 แล้วค้างอยู่อย่างนั้นจนรอบรีเฟรช 30 วิถัดไป (ปุ่มซื้อใช้ไม่ได้)
+  ///    ตอนนี้ใครเสร็จทีหลังก็เขียนราคาลงแถวให้ถูกเสมอ + ลองซ้ำเมื่อพลาด
+  /// เรียกซ้อนกันได้ — ได้คำขอเดียว
+  Future<void> loadTpixPrice({int retries = 2}) {
+    return _tpixPriceInFlight ??= _loadTpixPrice(retries).whenComplete(() {
+      _tpixPriceInFlight = null;
+    });
+  }
+
+  Future<void> _loadTpixPrice(int retries) async {
+    for (var attempt = 0; attempt <= retries; attempt++) {
+      try {
+        final price = await _api.getTpixPrice();
+        if (_disposed) return;
+        if (price != null && price.price > 0) {
+          _tpixPrice = price;
+          _patchTpixTicker();
+          _applyFilter();
+          notifyListeners();
+          return;
+        }
+      } catch (e) {
+        debugPrint('loadTpixPrice error: ${e.runtimeType}');
+      }
+      if (attempt < retries) {
+        // เน็ตสะดุดตอนเปิดแอปบ่อย — รอสั้น ๆ แล้วลองใหม่ (2 วิ, 4 วิ)
+        await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
+        if (_disposed) return;
+      }
     }
+  }
+
+  /// เขียนราคา TPIX ล่าสุดลงแถว TPIX-USDT (ถ้ามีแถวและรู้ราคาแล้ว)
+  void _patchTpixTicker() {
+    final p = _tpixPrice;
+    if (p == null || p.price <= 0) return;
+    final idx = _tickers.indexWhere((t) => t.symbol == 'TPIX-USDT');
+    if (idx < 0) return;
+    final t = _tickers[idx];
+    // /tpix/price อ่านจากพูลบนเชน (source: dex) — เป็นราคาจริงของคู่นี้ ทับได้เสมอ
+    _tickers[idx] = Ticker(
+      symbol: t.symbol,
+      baseAsset: t.baseAsset,
+      quoteAsset: t.quoteAsset,
+      lastPrice: p.price,
+      priceChange: t.priceChange,
+      priceChangePercent: p.change24h,
+      high24h: t.high24h,
+      low24h: t.low24h,
+      volume24h: t.volume24h,
+      quoteVolume24h: p.volume24h,
+    );
   }
 
   @override
   void dispose() {
+    _disposed = true;
     stopAutoRefresh();
     _depthSub?.cancel();
     super.dispose();

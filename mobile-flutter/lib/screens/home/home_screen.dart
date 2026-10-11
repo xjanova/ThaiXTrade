@@ -87,7 +87,8 @@ class _HomeScreenState extends State<HomeScreen> {
               // U5: silent mode — ไม่ให้ shimmer flash เมื่อ pull-to-refresh
               await Future.wait([
                 market.loadTickers(silent: true),
-                market.loadTpixPrice(),
+                // ไม่ลองซ้ำตอนดึงรีเฟรช — ไม่ให้วงหมุนค้างหลายวินาทีตอนเน็ตไม่ดี
+                market.loadTpixPrice(retries: 0),
               ]);
             },
             child: CustomScrollView(
