@@ -36,6 +36,8 @@ const props = defineProps({
     nodes: { type: Array, default: () => [] },
     registryAddress: { type: String, default: '' },
     registryLive: { type: Boolean, default: false },
+    // true = ตั้งที่อยู่สัญญาไว้แต่อ่านเชนไม่ได้ตอนโหลดหน้า — ไม่รู้ว่า deploy แล้วหรือยัง
+    registryUnknown: { type: Boolean, default: false },
     kycContract: { type: String, default: null },
     // null = ไม่ทราบ (ยังไม่ deploy / RPC ล้ม / สัญญารุ่นเก่า) — ไม่ตีความว่า "เปิดรับ" หรือ "ปิดรับ"
     registrationPaused: { type: Boolean, default: null },
@@ -150,6 +152,27 @@ const heartbeat = ref(null);
 const isOnTPIXChain = computed(() => Number(walletStore.chainId) === props.chainId);
 
 const networkStats = ref({ ...props.stats });
+
+/**
+ * ตัวเลขใน stats อ่านมาจากเชนจริงไหม — false = เซิร์ฟเวอร์ส่งค่าตั้งต้นมา (RPC ล้ม / ยังไม่ deploy)
+ * ต้องโชว์ "—" ไม่ใช่ "0 โหนด" เหมือนอ่านมาแล้ว (เซิร์ฟเวอร์รุ่นเก่าไม่มีธงนี้ = ถือว่าอ่านได้)
+ */
+const statsKnown = computed(() => networkStats.value.stats_available !== false);
+
+/**
+ * สถานะพูลรางวัล: 'funded' | 'unfunded' | 'unknown'
+ * อ่านยอดพูลไม่ได้ ≠ พูลว่าง — ห้ามประกาศว่า "ยังไม่เติมเงิน" ตอนที่จริง ๆ แค่อ่านไม่ได้
+ */
+const poolState = computed(() => {
+    const s = networkStats.value;
+    if (!props.registryLive || s.stats_available === false || s.reward_pool_known === false) return 'unknown';
+    return parseFloat(s.reward_pool_available || '0') > 0 ? 'funded' : 'unfunded';
+});
+
+/** ตัวเลขสถิติ — อ่านเชนไม่ได้ = "—" */
+function statNum(v) {
+    return statsKnown.value ? fmtNum(v || 0) : '—';
+}
 
 const MAX_ENDPOINT_LEN = 100;      // ตรงกับ MAX_ENDPOINT_LEN ในสัญญา
 
@@ -539,6 +562,21 @@ const tierCards = computed(() => {
         const aprCapBps = numOrNull(chain.apr_cap_bps);
         const projectedAprBps = fromChain ? numOrNull(chain.projected_apr_bps) : null;
 
+        // "คาดการณ์ถ้าเข้าตอนนี้" คิดจากอัตราปล่อยรางวัลของสัญญา ไม่ได้ดูว่าพูลมีเงินจริงไหม
+        // พูลยังไม่ถูกเติมเงิน = ตอนนี้จ่ายได้ 0 ห้ามโชว์เลข % สีเขียวเหมือนได้แน่
+        let projectedText = '—';
+        let projectedTone = 'muted';
+        if (projectedAprBps !== null && !isFull) {
+            if (poolState.value === 'unfunded') {
+                projectedText = 'จ่ายได้ 0 — พูลยังไม่เติมเงิน';
+                projectedTone = 'warn';
+            } else {
+                projectedText = `${fmtBps(projectedAprBps)} ต่อปี`;
+                // อ่านยอดพูลไม่ได้ = ไม่เน้นสีเขียว (ยังไม่รู้ว่าจ่ายได้จริงหรือเปล่า)
+                projectedTone = poolState.value === 'funded' ? 'good' : 'muted';
+            }
+        }
+
         return {
             id: idx,
             ...skin,
@@ -553,6 +591,8 @@ const tierCards = computed(() => {
             slashPercent: Number(chain.slash_percent ?? 0) / 100,
             aprCapBps,
             projectedAprBps,
+            projectedText,
+            projectedTone,
             // ป้ายหัวการ์ด: เพดานจริงจากเชน > ค่าเริ่มต้นของสัญญา (ติดป้าย) > ช่วงประมาณการ (ติดป้าย)
             apyBadge: aprCapBps !== null ? `สูงสุด ${fmtBps(aprCapBps)} ต่อปี` : `${skin.apyHint} ต่อปี`,
             apyNote: fromChain && aprCapBps !== null
@@ -579,6 +619,14 @@ const lightCapText = computed(() => {
     return light?.aprCapBps != null ? fmtBps(light.aprCapBps) : '6%';
 });
 
+/** ขั้นต่ำของชั้นที่ถูกที่สุด (หัวหน้าเว็บ) — จาก min stake บนเชน ไม่ใช่ "10K" ที่เขียนตายตัว */
+const minEntryText = computed(() => {
+    const stakes = tierCards.value.map(t => t.minStake).filter(v => v > 0);
+    if (!stakes.length) return '—';
+    const min = Math.min(...stakes);
+    return min >= 1000 && min % 1000 === 0 ? `${fmtNum(min / 1000)}K` : fmtNum(min);
+});
+
 /** แถบสัดส่วน emission ต่อชั้น — จาก reward_share บนเชน ไม่ใช่ 20/35/30/15 ที่เขียนตายตัว */
 const shareBar = computed(() => tierCards.value
     .filter(t => t.rewardShareBps > 0)
@@ -592,6 +640,7 @@ const txAwaiting = computed(() => !!pendingTx.value && !pendingTx.value.gaveUp);
 
 /** ปุ่มซื้อกดได้ไหม + ถ้ากดไม่ได้ เพราะอะไร (ตอบเป็นภาษาคน ไม่ใช่ revert string) */
 function blockReason(tier) {
+    if (!props.registryLive && props.registryUnknown) return 'อ่านสถานะสัญญาจากเชนไม่ได้ชั่วคราว — รีเฟรชหน้าอีกครั้งในอีกสักครู่';
     if (!props.registryLive) return 'สัญญายังไม่ได้ติดตั้งบนเชน — เปิดขายเมื่อระบบพร้อม';
     if (isRegistrationPaused.value) {
         return 'ผู้ดูแลระบบปิดรับลงทะเบียนโหนดใหม่ชั่วคราว — โหนดที่มีอยู่ยังรับรางวัล ปิดโหนด และถอนเงินต้นได้ตามปกติ';
@@ -971,9 +1020,7 @@ const unlockCountdown = computed(() => {
 });
 
 /** พูลรางวัลยังไม่ถูกเติมเงิน = กดเคลมได้ 0 ต้องบอกล่วงหน้าไม่ใช่ให้เสียเที่ยว */
-const poolUnfunded = computed(() =>
-    props.registryLive && parseFloat(networkStats.value.reward_pool_available || '0') <= 0
-);
+const poolUnfunded = computed(() => poolState.value === 'unfunded');
 
 const canRegister = computed(() => !myNode.value || myNode.value.statusId !== 1);
 
@@ -1002,6 +1049,8 @@ const deployIssues = computed(() => {
     const out = [];
     if (!props.registryAddress) {
         out.push('ยังไม่ได้ลงทะเบียนที่อยู่สัญญา NodeRegistry — สคริปต์ deploy จะลงทะเบียนให้เองเมื่อรันเสร็จ');
+    } else if (props.registryUnknown) {
+        out.push(`ตั้งที่อยู่ไว้ที่ ${props.registryAddress} แต่ตรวจโค้ดสัญญาไม่ได้ (RPC ไม่ตอบ) — ยังไม่รู้ว่ามีสัญญาหรือไม่`);
     } else {
         out.push(`ตั้งที่อยู่ไว้ที่ ${props.registryAddress} แต่ไม่พบโค้ดสัญญาที่ที่อยู่นั้น`);
     }
@@ -1093,12 +1142,33 @@ function fmtNum(n) {
                 <!--  แถบเตือนสถานะระบบ — ต้องบอกความจริงว่าตอนนี้ซื้อได้หรือยัง    -->
                 <!-- ============================================================ -->
                 <AwaitingDeployNotice
-                    v-if="!registryLive"
+                    v-if="!registryLive && !registryUnknown"
                     action="buy"
                     :rpc-connected="!!networkStats.rpc_connected"
                     :issues="deployIssues"
                     :show-details="deployIssues.length > 0"
                 />
+
+                <!-- อ่านสถานะสัญญาไม่ได้ ≠ ยังไม่ติดตั้ง — อาจมีคนวางค้ำอยู่แล้ว ห้ามบอกว่า "รอติดตั้ง" -->
+                <div v-if="!registryLive && registryUnknown" data-test="registry-unknown"
+                     class="glass rounded-2xl p-5 border-l-4 border-yellow-500">
+                    <div class="text-yellow-400 font-bold text-sm">อ่านสถานะสัญญามาสเตอร์โหนดจากเชนไม่ได้ชั่วคราว</div>
+                    <div class="text-xs text-gray-400 mt-1">
+                        ปิดปุ่มวางค้ำไว้ก่อนจนกว่าจะอ่านเชนได้ — เงินที่วางค้ำไว้แล้วอยู่ในสัญญาบนเชนตามเดิม รีเฟรชหน้าอีกครั้งในอีกสักครู่
+                    </div>
+                </div>
+
+                <!-- สัญญาเปิดแล้วแต่พูลรางวัลยังไม่มีเงิน — ต้องบอกก่อนที่ผู้ใช้จะเห็นตัวเลข % ใด ๆ -->
+                <div v-if="registryLive && poolUnfunded" data-test="pool-unfunded"
+                     class="glass rounded-2xl p-5 border-l-4 border-yellow-500">
+                    <div class="text-yellow-400 font-bold text-sm">พูลรางวัลยังไม่ถูกเติมเงิน — ตอนนี้ยังไม่มีรางวัลให้รับ</div>
+                    <div class="text-xs text-gray-400 mt-1 leading-relaxed">
+                        สัญญาจ่ายรางวัลได้เท่าที่พูลมีเงินจริงเท่านั้น ตอนนี้จ่ายได้ 0 TPIX
+                        ตัวเลข % บนหน้านี้คือเพดานตามสัญญา ไม่ใช่ผลตอบแทนที่รับประกัน
+                        รางวัลที่สะสมระหว่างนี้จะกดรับได้เมื่อพูลมีเงิน
+                        ส่วนเงินต้นที่วางค้ำถูกกันไว้ต่างหากและถอนคืนได้เมื่อพ้นระยะล็อก
+                    </div>
+                </div>
 
                 <!-- ============================================================ -->
                 <!--  HERO: ยังไม่เชื่อมกระเป๋า                                    -->
@@ -1127,17 +1197,22 @@ function fmtNum(n) {
                         </p>
 
                         <div class="grid grid-cols-3 gap-3 sm:gap-4 max-w-md mx-auto mb-8">
-                            <div class="glass-sm rounded-xl p-3">
-                                <div class="text-xs text-gray-400">สูงสุดต่อปี</div>
-                                <div class="text-xl font-black text-trading-green">{{ heroMaxApr }}</div>
+                            <!-- พูลยังว่าง = ไม่โชว์ % สีเขียวเป็นตัวชูโรง (จะอ่านเป็นผลตอบแทนที่ได้แน่) -->
+                            <div v-if="poolUnfunded" class="glass-sm rounded-xl p-3" data-test="hero-pool-unfunded">
+                                <div class="text-xs text-gray-400">พูลรางวัล</div>
+                                <div class="text-base font-black text-yellow-400 leading-7">ยังไม่เติมเงิน</div>
+                            </div>
+                            <div v-else class="glass-sm rounded-xl p-3">
+                                <div class="text-xs text-gray-400">เพดานต่อปี</div>
+                                <div class="text-xl font-black" :class="poolState === 'funded' ? 'text-trading-green' : 'text-gray-300'">{{ heroMaxApr }}</div>
                             </div>
                             <div class="glass-sm rounded-xl p-3">
                                 <div class="text-xs text-gray-400">โหนดที่ทำงานอยู่</div>
-                                <div class="text-xl font-black text-gradient">{{ fmtNum(networkStats.total_nodes || 0) }}</div>
+                                <div class="text-xl font-black text-gradient">{{ statNum(networkStats.total_nodes) }}</div>
                             </div>
                             <div class="glass-sm rounded-xl p-3">
                                 <div class="text-xs text-gray-400">ขั้นต่ำ</div>
-                                <div class="text-xl font-black text-cyan-400">10K</div>
+                                <div class="text-xl font-black text-cyan-400">{{ minEntryText }}</div>
                             </div>
                         </div>
 
@@ -1581,8 +1656,13 @@ function fmtNum(n) {
                                             <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                             <div class="flex justify-between items-center">
                                                 <span class="text-xs text-gray-500">คาดการณ์ถ้าเข้าตอนนี้</span>
-                                                <span class="text-sm" :class="tier.projectedAprBps !== null && !tier.isFull ? 'text-trading-green font-bold' : 'text-gray-500'">
-                                                    {{ tier.projectedAprBps !== null && !tier.isFull ? `${fmtBps(tier.projectedAprBps)} ต่อปี` : '—' }}
+                                                <span class="text-sm text-right" data-test="tier-projection"
+                                                      :class="{
+                                                          'text-trading-green font-bold': tier.projectedTone === 'good',
+                                                          'text-yellow-400 text-xs': tier.projectedTone === 'warn',
+                                                          'text-gray-400': tier.projectedTone === 'muted',
+                                                      }">
+                                                    {{ tier.projectedText }}
                                                 </span>
                                             </div>
                                             <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
@@ -1652,12 +1732,12 @@ function fmtNum(n) {
 
                         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                             <div v-for="stat in [
-                                { label: 'โหนดทั้งหมด', value: fmtNum(networkStats.total_nodes || 0), color: 'text-white' },
-                                { label: 'Validator', value: networkStats.validator_nodes || 0, color: 'text-red-400' },
-                                { label: 'Guardian', value: networkStats.guardian_nodes || 0, color: 'text-yellow-400' },
-                                { label: 'Sentinel', value: networkStats.sentinel_nodes || 0, color: 'text-purple-400' },
-                                { label: 'Light', value: networkStats.light_nodes || 0, color: 'text-cyan-400' },
-                                { label: 'บล็อกล่าสุด', value: fmtNum(networkStats.block_height || 0), color: 'text-white' },
+                                { label: 'โหนดทั้งหมด', value: statNum(networkStats.total_nodes), color: 'text-white' },
+                                { label: 'Validator', value: statNum(networkStats.validator_nodes), color: 'text-red-400' },
+                                { label: 'Guardian', value: statNum(networkStats.guardian_nodes), color: 'text-yellow-400' },
+                                { label: 'Sentinel', value: statNum(networkStats.sentinel_nodes), color: 'text-purple-400' },
+                                { label: 'Light', value: statNum(networkStats.light_nodes), color: 'text-cyan-400' },
+                                { label: 'บล็อกล่าสุด', value: networkStats.rpc_connected ? fmtNum(networkStats.block_height || 0) : '—', color: 'text-white' },
                             ]" :key="stat.label"
                                class="glass-card rounded-xl p-4 text-center group hover:scale-105 transition-transform">
                                 <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{{ stat.label }}</div>
@@ -1681,17 +1761,18 @@ function fmtNum(n) {
                             <div class="grid sm:grid-cols-3 gap-3">
                                 <div class="glass-sm rounded-xl p-3">
                                     <div class="text-[10px] text-gray-500 uppercase">เติมเข้าพูลแล้ว</div>
-                                    <div class="text-lg font-bold text-white">{{ fmtNum(networkStats.reward_pool_funded || 0) }}</div>
+                                    <div class="text-lg font-bold text-white">{{ statNum(networkStats.reward_pool_funded) }}</div>
                                 </div>
                                 <div class="glass-sm rounded-xl p-3">
                                     <div class="text-[10px] text-gray-500 uppercase">จ่ายได้จริงตอนนี้</div>
-                                    <div class="text-lg font-bold" :class="poolUnfunded ? 'text-yellow-400' : 'text-trading-green'">
-                                        {{ fmtNum(networkStats.reward_pool_available || 0) }}
+                                    <div class="text-lg font-bold"
+                                         :class="poolState === 'funded' ? 'text-trading-green' : (poolUnfunded ? 'text-yellow-400' : 'text-gray-400')">
+                                        {{ poolState === 'unknown' ? '—' : fmtNum(networkStats.reward_pool_available || 0) }}
                                     </div>
                                 </div>
                                 <div class="glass-sm rounded-xl p-3">
                                     <div class="text-[10px] text-gray-500 uppercase">จ่ายออกไปแล้ว</div>
-                                    <div class="text-lg font-bold text-white">{{ fmtNum(networkStats.total_rewards_distributed || 0) }}</div>
+                                    <div class="text-lg font-bold text-white">{{ statNum(networkStats.total_rewards_distributed) }}</div>
                                 </div>
                             </div>
 

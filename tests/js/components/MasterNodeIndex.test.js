@@ -113,6 +113,12 @@ const CHAIN_TIERS = [
     { tier: 3, name: 'Validator', min_stake: '10000000', min_stake_wei: tpix(10_000_000).toString(), max_nodes: 21, active_nodes: 0, lock_days: 180, slash_percent: 1500, reward_share: 2000, apr_cap_bps: 2000, projected_apr_bps: 2000, source: 'chain' },
 ];
 
+/** stats ที่อ่านจากเชนได้ครบและพูลรางวัลมีเงินจริง */
+const FUNDED_STATS = {
+    total_nodes: 3, block_height: 814177, rpc_connected: true, registry_deployed: true,
+    stats_available: true, reward_pool_known: true, reward_pool_available: '5000000', reward_pool_funded: '5000000',
+};
+
 const mounted = [];
 
 function mountPage(props = {}) {
@@ -316,12 +322,14 @@ describe('MasterNode — การซื้อโหนด', () => {
 
 describe('MasterNode — เพดาน APR', () => {
     it('ป้ายผลตอบแทนมาจากเพดานบนเชน + คาดการณ์ของโหนดใหม่', async () => {
-        const wrapper = mountPage();
+        // พูลมีเงินจริง — คาดการณ์ถึงจะขึ้นเป็นตัวเลข % (พูลว่างดูเทสต์ "พูลรางวัลยังไม่ถูกเติมเงิน")
+        const wrapper = mountPage({ stats: { ...FUNDED_STATS } });
         const light = wrapper.vm.tierCards.find(t => t.short === 'Light');
 
         expect(light.apyBadge).toBe('สูงสุด 6% ต่อปี');
         expect(light.apyNote).toBe('');
         expect(light.projectedAprBps).toBe(550);
+        expect(light.projectedTone).toBe('good');
 
         await connect();
         expect(wrapper.text()).toContain('สูงสุด 6% ต่อปี');
@@ -366,6 +374,78 @@ describe('MasterNode — เพดาน APR', () => {
         expect(text).toContain('เพดาน');
         expect(text).toContain('6%');
         expect(text).toContain('uptime');
+    });
+});
+
+describe('MasterNode — พูลรางวัลยังไม่ถูกเติมเงิน / อ่านเชนไม่ได้', () => {
+    // สถานะจริงบน production (2026-10-11): สัญญา deploy แล้ว ไม่มีโหนด พูลรางวัล 0
+    const UNFUNDED_STATS = {
+        total_nodes: 0, block_height: 814177, rpc_connected: true, registry_deployed: true,
+        stats_available: true, reward_pool_known: true, reward_pool_available: '0', reward_pool_funded: '0',
+    };
+
+    it('พูลว่าง → ป้ายเตือนตั้งแต่ยังไม่เชื่อมกระเป๋า และไม่โชว์ % สีเขียวเป็นตัวชูโรง', () => {
+        const wrapper = mountPage({ stats: UNFUNDED_STATS });
+
+        const banner = wrapper.find('[data-test="pool-unfunded"]');
+        expect(banner.exists()).toBe(true);
+        expect(banner.text()).toContain('จ่ายได้ 0 TPIX');
+        expect(banner.text()).toContain('ไม่ใช่ผลตอบแทนที่รับประกัน');
+
+        // หัวหน้าเว็บ: แทนที่ "สูงสุดต่อปี 20%" ด้วยสถานะพูล
+        expect(wrapper.find('[data-test="hero-pool-unfunded"]').text()).toContain('ยังไม่เติมเงิน');
+        expect(wrapper.text()).not.toContain('สูงสุดต่อปี');
+    });
+
+    it('พูลว่าง → คาดการณ์ถ้าเข้าตอนนี้ = จ่ายได้ 0 ไม่ใช่เลข %', async () => {
+        const wrapper = mountPage({ stats: UNFUNDED_STATS });
+        await connect();
+
+        const light = wrapper.vm.tierCards.find(t => t.short === 'Light');
+        expect(light.projectedAprBps).toBe(550); // ค่าจากสัญญายังเก็บไว้
+        expect(light.projectedTone).toBe('warn');
+        expect(light.projectedText).toContain('จ่ายได้ 0');
+
+        const projections = wrapper.findAll('[data-test="tier-projection"]').map(n => n.text());
+        expect(projections.some(t => t.includes('5.5% ต่อปี'))).toBe(false);
+    });
+
+    it('stats อ่านเชนไม่ได้ → "—" ไม่ใช่ "0 โหนด" และไม่ประกาศว่าพูลว่าง', () => {
+        const wrapper = mountPage({
+            stats: { ...UNFUNDED_STATS, stats_available: false, reward_pool_known: false },
+        });
+        const vm = wrapper.vm;
+
+        expect(vm.poolState).toBe('unknown');
+        expect(vm.poolUnfunded).toBe(false);
+        expect(wrapper.find('[data-test="pool-unfunded"]').exists()).toBe(false);
+        expect(vm.statNum(0)).toBe('—');
+
+        // ไม่รู้ว่าพูลมีเงินไหม = โชว์คาดการณ์ได้ แต่ไม่เน้นสีเขียว
+        const light = vm.tierCards.find(t => t.short === 'Light');
+        expect(light.projectedTone).toBe('muted');
+    });
+
+    it('ตรวจสัญญาไม่ได้ตอนโหลดหน้า → ไม่ขึ้น "รอติดตั้งสัญญา" และปิดปุ่มพร้อมเหตุผล', async () => {
+        const wrapper = mountPage({ registryLive: false, registryUnknown: true });
+        const vm = wrapper.vm;
+        vm.tpixBalanceWei = tpix(20_000_000);
+        vm.endpoint = EP;
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.find('[data-test="registry-unknown"]').exists()).toBe(true);
+        expect(wrapper.text()).not.toContain('ระบบรอติดตั้งสัญญาบนเชน');
+        for (const tier of vm.tierCards) {
+            expect(vm.blockReason(tier)).toMatch(/อ่านสถานะสัญญาจากเชนไม่ได้/);
+        }
+    });
+
+    it('ขั้นต่ำบนหัวหน้าเว็บมาจากชั้นที่ถูกที่สุดบนเชน ไม่ใช่ "10K" ที่เขียนตายตัว', () => {
+        const vm = mountPage({
+            tiers: CHAIN_TIERS.map(t => (t.tier === 2 ? { ...t, min_stake: '25000', min_stake_wei: tpix(25_000).toString() } : t)),
+        }).vm;
+
+        expect(vm.minEntryText).toBe('25K');
     });
 });
 
