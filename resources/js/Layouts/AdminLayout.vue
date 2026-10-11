@@ -175,6 +175,8 @@ const navigationSections = computed(() => [
             { name: t('common.all') === 'ทั้งหมด' ? 'กองทุนพยุงราคา' : 'Stability Reserve', href: '/admin/stabilizer', icon: 'swap' },
             // สะพาน USDT หลายเชน → TPIX Chain — ยอดเงินหนุน คิวฝาก/ถอน และรายการรอตรวจ
             { name: t('common.all') === 'ทั้งหมด' ? 'สะพาน USDT' : 'USDT Bridge', href: '/admin/bridge', icon: 'swap' },
+            // สะพาน TPIX ⇄ wTPIX (BSC) — คลังล็อก TPIX · minter บน BSC · คิวสองทิศ
+            { name: t('common.all') === 'ทั้งหมด' ? 'สะพาน TPIX⇄wTPIX' : 'TPIX⇄wTPIX Bridge', href: '/admin/bridge/wtpix', icon: 'swap' },
             { name: t('common.all') === 'ทั้งหมด' ? 'รายงานการเงิน' : 'Finance Dashboard', href: '/admin/finance', icon: 'transaction' },
             { name: t('common.all') === 'ทั้งหมด' ? 'ค่าธรรมเนียม' : 'Fees', href: '/admin/fees', icon: 'fee' },
             { name: t('common.all') === 'ทั้งหมด' ? 'ค่าบริการวางไม้' : 'Order Fees', href: '/admin/trading-fees', icon: 'fee' },

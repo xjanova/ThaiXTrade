@@ -47,6 +47,7 @@ use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
 use App\Http\Controllers\Admin\TreasuryController;
 use App\Http\Controllers\Admin\ValidatorAdminController;
+use App\Http\Controllers\Admin\WtpixBridgeAdminController;
 use App\Http\Controllers\KycDocumentController;
 use App\Models\WalletConnection;
 use App\Services\UserWalletService;
@@ -434,6 +435,19 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::post('/deposits/{id}/reject', [BridgeAdminController::class, 'rejectDeposit'])->whereNumber('id')->name('deposits.reject');
                 Route::post('/withdrawals/{id}/approve', [BridgeAdminController::class, 'approveWithdrawal'])->whereNumber('id')->name('withdrawals.approve');
                 Route::post('/withdrawals/{id}/reject', [BridgeAdminController::class, 'rejectWithdrawal'])->whereNumber('id')->name('withdrawals.reject');
+
+                /*
+                 * สะพาน TPIX (4289) ⇄ wTPIX (BSC) — แยกหน้า แยกสวิตช์ แยกคิว จากสะพาน USDT
+                 * การเซ็นจริงอยู่ที่ bridge:wtpix-relay ฝั่ง CLI เหมือนกัน
+                 */
+                Route::prefix('wtpix')->name('wtpix.')->group(function () {
+                    Route::get('/', [WtpixBridgeAdminController::class, 'index'])->name('index');
+                    Route::get('/measure', [WtpixBridgeAdminController::class, 'measure'])->middleware('throttle:6,1')->name('measure');
+                    Route::post('/toggle', [WtpixBridgeAdminController::class, 'toggle'])->middleware('throttle:20,1')->name('toggle');
+                    Route::put('/settings', [WtpixBridgeAdminController::class, 'updateSettings'])->middleware('throttle:20,1')->name('settings');
+                    Route::post('/transfers/{id}/approve', [WtpixBridgeAdminController::class, 'approve'])->whereNumber('id')->middleware('throttle:30,1')->name('transfers.approve');
+                    Route::post('/transfers/{id}/reject', [WtpixBridgeAdminController::class, 'reject'])->whereNumber('id')->middleware('throttle:30,1')->name('transfers.reject');
+                });
             });
 
         // Audit Logs (super_admin only)

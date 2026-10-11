@@ -58,6 +58,33 @@ Schedule::command('bridge:reconcile')
     ->onOneServer()
     ->name('bridge:reconcile');
 
+/*
+ * สะพาน TPIX (4289) ⇄ wTPIX (BSC) — config/wtpix_bridge.php · หลังบ้าน /admin/bridge/wtpix
+ *
+ * wtpix-scan      ทุกนาที — Locked บนเชน TPIX + เผา wTPIX บน BSC และเฝ้า mint/ปล่อย/เพิ่ม minter ที่ระบบไม่ได้สั่ง
+ * wtpix-relay     ทุกนาที — mint wTPIX บน BSC · release TPIX จากคลังบนเชน TPIX (กุญแจ relayer)
+ * wtpix-reconcile ทุก 5 นาที — wTPIX supply เทียบ TPIX ในคลัง ขาดสองรอบติด = guardian pause ทั้งสองฝั่ง
+ *
+ * สวิตช์แยกจากสะพาน USDT (WTPIX_BRIDGE_ENABLED) — ทุกตัวจบเองทันทีเมื่อปิด
+ */
+Schedule::command('bridge:wtpix-scan')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('bridge:wtpix-scan');
+
+Schedule::command('bridge:wtpix-relay')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('bridge:wtpix-relay');
+
+Schedule::command('bridge:wtpix-reconcile')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('bridge:wtpix-reconcile');
+
 // Masternode allowlist: ลบ entries ที่หมดอายุ + cleanup CF rules ทุก 5 นาที
 Schedule::command('masternode:cleanup')
     ->everyFiveMinutes()

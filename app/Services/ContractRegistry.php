@@ -85,6 +85,16 @@ class ContractRegistry
             'label' => 'TPIXBridgeMinter (ด่าน mint ของสะพาน USDT)',
             'config' => 'bridge.minter_address',
         ],
+        /*
+         * ── สะพาน TPIX ⇄ wTPIX (BSC) ─────────────────────────────────────────────
+         * คลังล็อก TPIX (contracts/scripts/deploy-bridge-vault.js ลงทะเบียนให้เอง)
+         * ⚠️ สะพานไม่เชื่อค่าในทะเบียนนี้ — เชื่อ WTPIX_BRIDGE_VAULT_ADDRESS ใน .env เท่านั้น
+         *    ค่าที่นี่ใช้เทียบ: ไม่ตรงกับ .env = สะพานหยุด (ทะเบียนแก้ได้ด้วย bearer token)
+         */
+        'wtpix_bridge_vault' => [
+            'label' => 'TPIXBridgeVault (คลังล็อก TPIX ของสะพาน wTPIX)',
+            'config' => 'wtpix_bridge.vault_address',
+        ],
     ];
 
     /** คีย์ของสัญญาที่ประกอบกันเป็น DEX — ครบทุกตัวถึงเปิดเทรดบนเชน TPIX ได้ */

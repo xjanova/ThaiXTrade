@@ -34,16 +34,34 @@ class BridgeSigner
      */
     public function sign(string $role, EvmRpc $rpc, string $to, string $data, array $options = []): array
     {
-        $expect = $this->config->signerAddress($role);
+        return $this->signWithKey([
+            'label' => $role,
+            'keystore' => $this->config->keystorePath($role),
+            'passphrase' => config("bridge.signers.{$role}.passphrase"),
+            'address' => $this->config->signerAddress($role),
+        ], $rpc, $to, $data, $options);
+    }
 
-        if ($expect === null || ! $this->config->hasPassphrase($role)) {
+    /**
+     * เซ็นด้วยกุญแจที่ผู้เรียกระบุเอง — สะพาน wTPIX ใช้ keystore ชุดของตัวเอง (WTPIX_BRIDGE_*)
+     * แต่ใช้สคริปต์และวินัย "เซ็นก่อน บันทึก แล้วค่อยส่ง" ชุดเดียวกับสะพาน USDT.
+     *
+     * @param  array{label: string, keystore: string, passphrase: ?string, address: ?string}  $key
+     */
+    public function signWithKey(array $key, EvmRpc $rpc, string $to, string $data, array $options = []): array
+    {
+        $role = (string) ($key['label'] ?? 'signer');
+        $expect = $key['address'] ?? null;
+        $passphrase = (string) ($key['passphrase'] ?? '');
+
+        if ($expect === null || $passphrase === '' || trim((string) ($key['keystore'] ?? '')) === '') {
             return ['ok' => false, 'code' => 'signer_not_configured', 'error' => "ยังไม่ได้ตั้ง keystore/passphrase ของ {$role}"];
         }
 
         return $this->runNode([
             'BRIDGE_ACTION' => 'sign',
-            'BRIDGE_KEYSTORE_PATH' => $this->config->keystorePath($role),
-            'BRIDGE_KEYSTORE_PASS' => (string) config("bridge.signers.{$role}.passphrase"),
+            'BRIDGE_KEYSTORE_PATH' => (string) $key['keystore'],
+            'BRIDGE_KEYSTORE_PASS' => $passphrase,
             'BRIDGE_EXPECT_ADDRESS' => $expect,
             'BRIDGE_TO' => $to,
             'BRIDGE_DATA' => $data,

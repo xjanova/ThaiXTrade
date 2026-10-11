@@ -216,7 +216,10 @@ const readinessLabel = {
                     <h1 class="text-2xl font-bold text-white">สะพาน USDT → TPIX Chain</h1>
                     <p class="text-sm text-gray-400 mt-1">ฝาก USDT จาก 6 เชน → mint USDT_TPIX · ถอนกลับจากกระเป๋าจ่าย · กระทบยอดทุก 5 นาที</p>
                 </div>
-                <a href="/bridge/reserves" target="_blank" class="px-4 py-2 text-sm rounded-xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10">หน้า Proof of Reserves ↗</a>
+                <div class="flex flex-wrap gap-2">
+                    <a href="/admin/bridge/wtpix" class="px-4 py-2 text-sm rounded-xl bg-primary-500/10 text-primary-300 border border-primary-500/30 hover:bg-primary-500/20">สะพาน TPIX⇄wTPIX →</a>
+                    <a href="/bridge/reserves" target="_blank" class="px-4 py-2 text-sm rounded-xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10">หน้า Proof of Reserves ↗</a>
+                </div>
             </div>
 
             <div v-if="notice" :class="['rounded-xl border p-4 text-sm', notice.type === 'success' ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-red-500/30 bg-red-500/5 text-red-300']">
