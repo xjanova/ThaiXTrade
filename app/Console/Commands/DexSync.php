@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Chain;
+use App\Models\FactoryToken;
 use App\Models\Kline;
 use App\Models\SiteSetting;
 use App\Models\Token;
@@ -206,16 +207,30 @@ class DexSync extends Command
         if ($usdtIn) {
             $quote = $usdt;
             $baseAddress = $t0 === strtolower($usdt->contract_address) ? $t1 : $t0;
-            $base = $this->dex->isWtpix($baseAddress) ? $tpix : $this->ensureToken($chain, $baseAddress);
         } elseif ($wtpixIn) {
             $quote = $tpix;
             $baseAddress = $this->dex->isWtpix($t0) ? $t1 : $t0;
-            $base = $this->ensureToken($chain, $baseAddress);
         } else {
             $this->line("  {$pairAddress} ไม่มีสกุลอ้างอิง (WTPIX/USDT) — ข้าม");
 
             return false;
         }
+
+        /*
+         * เหรียญจาก Token Factory ที่แอดมินยังไม่ลิสต์ → ไม่สร้าง/ไม่เปิดคู่เทรด (และปิดคู่ที่มีอยู่)
+         *
+         * เดิม dex:sync เปิดคู่ให้ทุกพูลบนเชน ปุ่ม List/Delist ในหลังบ้านจึงไม่มีผลอะไรเลย
+         * เหรียญหลอกที่เพิ่งสร้างแล้วเติมพูลเองก็ขึ้นหน้าเทรดทันที
+         * เหรียญที่ไม่ได้มาจากโรงงาน (WTPIX, USDT, เหรียญที่ deploy เอง) ทำงานเหมือนเดิม
+         */
+        if (! $this->dex->isWtpix($baseAddress) && $this->unlistedFactoryToken($baseAddress)) {
+            $this->line("  {$pairAddress} เหรียญจากโรงงานที่ยังไม่ลิสต์ — ไม่เปิดคู่เทรด");
+            $this->deactivatePairFor($chain, $baseAddress, $quote);
+
+            return false;
+        }
+
+        $base = $this->dex->isWtpix($baseAddress) ? $tpix : $this->ensureToken($chain, $baseAddress);
 
         if ($base === null) {
             return false;
@@ -284,6 +299,39 @@ class DexSync extends Command
         }
 
         return true;
+    }
+
+    /** ที่อยู่นี้เป็นเหรียญจาก Token Factory ที่ยังไม่ได้ลิสต์หรือไม่ */
+    private function unlistedFactoryToken(string $address): bool
+    {
+        $token = FactoryToken::query()
+            ->where('chain_id', (int) config('blockchain.tpix_chain_id', 4289))
+            ->whereRaw('LOWER(contract_address) = ?', [strtolower($address)])
+            ->first(['id', 'is_listed']);
+
+        return $token !== null && ! $token->is_listed;
+    }
+
+    /** ปิดคู่เทรดของเหรียญที่ถูกเลิกลิสต์ (ถ้ามี) — ไม่ลบ ประวัติราคายังอยู่ */
+    private function deactivatePairFor(Chain $chain, string $baseAddress, Token $quote): void
+    {
+        $base = Token::where('chain_id', $chain->id)
+            ->whereRaw('LOWER(contract_address) = ?', [strtolower($baseAddress)])
+            ->first();
+
+        if (! $base || ! $quote->exists) {
+            return;
+        }
+
+        $pair = TradingPair::where('base_token_id', $base->id)
+            ->where('quote_token_id', $quote->id)
+            ->where('chain_id', $chain->id)
+            ->first();
+
+        if ($pair && $pair->is_active && ! $this->dryRun) {
+            $pair->is_active = false;
+            $pair->save();
+        }
     }
 
     /**

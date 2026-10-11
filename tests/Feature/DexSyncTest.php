@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Chain;
+use App\Models\FactoryToken;
 use App\Models\Kline;
 use App\Models\SiteSetting;
 use App\Models\Token;
@@ -173,5 +174,54 @@ class DexSyncTest extends TestCase
         $this->artisan('dex:sync')->assertSuccessful();
 
         $this->assertSame(Chain::STATUS_MAINTENANCE, $chain->fresh()->status);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  เหรียญจาก Token Factory — ปุ่ม List/Delist ของแอดมินต้องมีผลจริง
+    // ═══════════════════════════════════════════════════════════
+
+    private function factoryToken(bool $listed): FactoryToken
+    {
+        return FactoryToken::create([
+            'name' => 'Abc Coin', 'symbol' => 'ABC', 'total_supply' => '1000', 'creator_address' => '0x'.str_repeat('7', 40),
+            'chain_id' => 4289, 'token_type' => 'standard', 'status' => 'deployed',
+            'contract_address' => strtolower($this->abc), 'is_listed' => $listed,
+        ]);
+    }
+
+    public function test_unlisted_factory_token_gets_no_trading_pair(): void
+    {
+        $this->factoryToken(listed: false);
+        $this->registerDex();
+        $this->fakeChain([
+            $this->pairAbcTpix => [$this->abc, $this->wtpix, self::units('1000'), self::units('500')],
+            $this->pairTpixUsdt => [$this->wtpix, $this->usdt, self::units('2000000'), self::units('400000', 6)],
+        ]);
+
+        $this->artisan('dex:sync')->assertSuccessful();
+
+        $this->assertNull(TradingPair::where('symbol', 'ABC-TPIX')->first(), 'เหรียญที่ยังไม่ลิสต์ต้องไม่มีคู่เทรด');
+        // เหรียญที่ไม่ได้มาจากโรงงานทำงานเหมือนเดิม
+        $this->assertNotNull(TradingPair::where('chain_id', $this->tpixChain()->id)->where('symbol', 'TPIX-USDT')->first());
+    }
+
+    public function test_listed_factory_token_is_synced_and_delisting_deactivates_the_pair(): void
+    {
+        $token = $this->factoryToken(listed: true);
+        $this->registerDex();
+        $this->fakeChain([
+            $this->pairAbcTpix => [$this->abc, $this->wtpix, self::units('1000'), self::units('500')],
+        ]);
+
+        $this->artisan('dex:sync')->assertSuccessful();
+        $pair = TradingPair::where('symbol', 'ABC-TPIX')->first();
+        $this->assertNotNull($pair);
+        $this->assertTrue((bool) $pair->is_active);
+
+        $token->update(['is_listed' => false]);
+        Cache::flush();
+        $this->artisan('dex:sync')->assertSuccessful();
+
+        $this->assertFalse((bool) $pair->fresh()->is_active, 'เลิกลิสต์แล้วคู่เทรดต้องถูกปิด');
     }
 }
