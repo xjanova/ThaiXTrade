@@ -431,7 +431,7 @@ const whyItems = computed(() => [
                     </div>
 
                     <p class="text-xs text-dark-400 leading-relaxed mt-4 max-w-3xl">
-                        <span v-if="poolUnfunded" class="text-amber-300/90 font-semibold">{{ t('homeClassic.poolUnfunded') }} </span>{{ t('homeClassic.aprNote') }}
+                        <span v-if="poolUnfunded" class="text-amber-300/90 font-semibold mr-1.5">{{ t('homeClassic.poolUnfunded') }}</span>{{ t('homeClassic.aprNote') }}
                     </p>
 
                     <div class="flex flex-wrap gap-3 mt-8">
