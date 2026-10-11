@@ -251,6 +251,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::post('/{id}/approve', [TokenFactoryController::class, 'approve'])->name('approve')->whereNumber('id');
                 Route::post('/{id}/reject', [TokenFactoryController::class, 'reject'])->name('reject')->whereNumber('id');
                 Route::post('/{id}/retry', [TokenFactoryController::class, 'retry'])->name('retry')->whereNumber('id');
+                Route::post('/{id}/recheck', [TokenFactoryController::class, 'recheck'])->name('recheck')->whereNumber('id');
                 Route::patch('/{id}/verify', [TokenFactoryController::class, 'toggleVerified'])->name('verify')->whereNumber('id');
                 Route::patch('/{id}/list', [TokenFactoryController::class, 'toggleListed'])->name('list')->whereNumber('id');
             });

@@ -2,66 +2,64 @@
 
 namespace App\Services;
 
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
 /**
  * Web3DeploymentService.
  *
- * Deploys tokens via TPIX Factory contracts on TPIX Chain.
- * Phase 2: รองรับ ERC-20 ทุกประเภท + ERC-721 (NFT)
+ * เรียกสคริปต์ node (scripts/blockchain/create-token.cjs) ที่เซ็นและส่งธุรกรรมสร้างเหรียญ
+ * ผ่านแฟกทอรีบน TPIX Chain (4289)
  *
- * Calls Node.js script (scripts/blockchain/create-token.cjs) which
- * uses ethers.js to sign and broadcast the transaction.
+ * ⚠️ อ่าน stdout "ระหว่างที่สคริปต์ยังรันอยู่" ไม่ใช่รอจบ
+ *    สคริปต์พิมพ์ {"event":"signed","txHash":...} ก่อนส่งธุรกรรมขึ้นเชน
+ *    ตัวนี้เรียก $onSigned ทันที → DeployTokenJob บันทึก hash ลง DB
+ *    ต่อให้ worker ตายระหว่างรอ receipt งานถัดไปก็รู้ว่ามีธุรกรรมแล้ว และไม่ส่งซ้ำ
+ *    (เดิมได้ hash ตอนสคริปต์จบเท่านั้น — timeout กลางทาง = ไม่รู้ว่าส่งไปแล้ว = ส่งใหม่ = เหรียญซ้ำ)
  *
  * Developed by Xman Studio
  */
 class Web3DeploymentService
 {
+    /** ต้องน้อยกว่า DeployTokenJob::$timeout และมากกว่า DEPLOY_WAIT_SECONDS + เวลาต่อ RPC */
+    public const PROCESS_TIMEOUT = 150;
+
+    /** สคริปต์รอ receipt นานสุดเท่านี้ แล้วรายงาน pending (งานตรวจผลรับช่วงต่อ) */
+    public const DEPLOY_WAIT_SECONDS = 90;
+
     public function __construct(private ContractRegistry $contracts) {}
 
     /**
-     * Deploy a new token via the factory contract.
+     * Deploy เหรียญใหม่ผ่านแฟกทอรี.
      *
-     * @param  array  $params  Token parameters:
-     *                         - name: string
-     *                         - symbol: string
-     *                         - decimals: int (0-18)
-     *                         - total_supply: string (human-readable, e.g. "1000000")
-     *                         - creator_address: string (0x... wallet that receives tokens)
-     *                         - token_type: string (standard|mintable|...|utility|reward|governance|stablecoin|nft|nft_collection)
-     *                         - token_category: string (fungible|nft|special)
-     *                         - sub_options: array (optional, Phase 2 advanced features)
-     * @return array ['success' => bool, 'contractAddress' => ?string, 'txHash' => ?string, 'error' => ?string]
+     * @param  array  $params  name, symbol, decimals, total_supply (หน่วยเต็ม), creator_address,
+     *                         token_type, token_category, sub_options, logo_url
+     * @param  callable|null  $onSigned  fn(string $txHash, ?int $nonce, ?string $rawTx): void
+     *                                   ถูกเรียกก่อนธุรกรรมถูกส่งขึ้นเชน
+     * @return array ['success' => bool, 'pending' => bool, 'reverted' => bool, 'contractAddress' => ?string,
+     *               'txHash' => ?string, 'signed' => ?array, 'error' => ?string, ...]
      */
-    public function deployToken(array $params): array
+    public function deployToken(array $params, ?callable $onSigned = null): array
     {
-        $nodePath = config('blockchain.node_path', 'node');
-        $scriptPath = base_path('scripts/blockchain/create-token.cjs');
-
         $tokenType = $params['token_type'] ?? 'standard';
         $subOptions = $params['sub_options'] ?? [];
 
-        // Convert human-readable supply to wei
-        //
         // NFT นับเป็น "จำนวนใบ" ไม่ใช่ยอดที่คูณทศนิยม — ถ้าคูณไปด้วยจะได้เพดาน
         // จำนวนใบเป็นเลข 10^18 เท่าของที่ผู้ใช้ตั้ง ทำให้เพดานไร้ความหมาย
-        // หน้าเว็บตั้ง decimals = 0 ให้เองตอนเลือกหมวด NFT แต่ห้ามพึ่งฝั่งหน้าเว็บอย่างเดียว
-        // (เรียก API ตรง ๆ หรือผู้ใช้แก้ decimals เองก็ทะลุมาได้)
         $decimals = (int) ($params['decimals'] ?? 18);
         $isNft = in_array($params['token_type'] ?? '', ['nft', 'nft_collection'], true)
             || ($params['token_category'] ?? '') === 'nft';
 
         $totalSupplyWei = $isNft
-            ? $this->toWholeNumber($params['total_supply'])
-            : $this->toWei($params['total_supply'], $decimals);
+            ? $this->toWholeNumber((string) $params['total_supply'])
+            : $this->toWei((string) $params['total_supply'], $decimals);
 
-        // Build input JSON for Node.js script
-        // Phase 2: ส่ง tokenType เป็น string + subOptions เต็ม
         $input = json_encode([
+            'mode' => 'deploy',
             'name' => $params['name'],
             'symbol' => $params['symbol'],
-            'decimals' => (int) $decimals,
+            'decimals' => $decimals,
             'totalSupply' => $totalSupplyWei,
             'tokenOwner' => $params['creator_address'],
             'tokenType' => $tokenType,
@@ -69,40 +67,15 @@ class Web3DeploymentService
             'logoUrl' => $params['logo_url'] ?? '',
         ]);
 
-        // Environment variables (secrets passed via env, not CLI args)
-        // Phase 2: ส่ง V2 factory addresses ด้วย
-        // ที่อยู่แฟกทอรีมาจาก ContractRegistry (SiteSetting ที่สคริปต์ deploy ลงทะเบียนเอง → .env)
-        // จะได้ไม่ต้อง ssh เข้าไปแก้ .env แล้ว config:cache ทุกครั้งที่ deploy ใหม่
-        $env = [
-            'DEPLOYER_PRIVATE_KEY' => config('blockchain.deployer_private_key'),
-            'TOKEN_FACTORY_ADDRESS' => $this->contracts->address('token_factory_v1') ?? '',
-            'TOKEN_FACTORY_V2_ADDRESS' => $this->contracts->address('token_factory_v2') ?? '',
-            'NFT_FACTORY_ADDRESS' => $this->contracts->address('nft_factory') ?? '',
-            'TPIX_RPC_URL' => config('blockchain.tpix_rpc_url'),
-        ];
+        $env = $this->environment();
 
-        // Validate config
         if (empty($env['DEPLOYER_PRIVATE_KEY'])) {
             return ['success' => false, 'error' => 'DEPLOYER_PRIVATE_KEY not configured'];
         }
 
-        // ต้องมี factory address อย่างน้อย 1 ตัว
-        $hasFactory = ! empty($env['TOKEN_FACTORY_ADDRESS'])
-            || ! empty($env['TOKEN_FACTORY_V2_ADDRESS'])
-            || ! empty($env['NFT_FACTORY_ADDRESS']);
-
-        if (! $hasFactory) {
+        if (empty($env['TOKEN_FACTORY_ADDRESS']) && empty($env['TOKEN_FACTORY_V2_ADDRESS']) && empty($env['NFT_FACTORY_ADDRESS'])) {
             return ['success' => false, 'error' => 'No factory address configured'];
         }
-
-        // ส่ง payload ทาง stdin ไม่ใช่ argv
-        //
-        // escapeshellarg() บน Windows **ถอดเครื่องหมาย " ออกจากสตริง** JSON จึงเละตั้งแต่ยังไม่ออกจาก PHP
-        // (ลองแล้ว: {"a":1} กลายเป็น "{ a :1 }") บน Linux ยังรอด แต่ก็ยังเสี่ยงกับชื่อเหรียญ
-        // ที่มีอัญประกาศ อีโมจิ หรืออักษรนอก ASCII
-        //
-        // ใช้รูปแบบ array ของ Process ด้วย เพื่อไม่ต้องผ่าน shell เลย
-        $command = [$nodePath, $scriptPath];
 
         Log::info('Deploying token via factory', [
             'name' => $params['name'],
@@ -112,57 +85,177 @@ class Web3DeploymentService
             'has_sub_options' => ! empty($subOptions),
         ]);
 
-        try {
-            $result = Process::timeout(120)
-                ->env($env)
-                ->input($input)
-                ->run($command);
+        return $this->runScript($input, $env, $onSigned);
+    }
 
-            $output = trim($result->output());
+    /**
+     * ตรวจผลธุรกรรมที่ส่งไปแล้ว — ไม่เซ็นธุรกรรมใหม่เด็ดขาด.
+     *
+     * ถ้าโหนดลืมธุรกรรมไปแล้วและ nonce ยังว่าง สคริปต์ส่ง rawTx เดิมซ้ำ (hash เดิม)
+     */
+    public function checkDeployment(string $txHash, ?string $rawTx, string $tokenType, array $subOptions = [], int $waitSeconds = 20): array
+    {
+        $input = json_encode([
+            'mode' => 'receipt',
+            'txHash' => $txHash,
+            'rawTx' => $rawTx,
+            'tokenType' => $tokenType,
+            'subOptions' => $subOptions,
+            'waitSeconds' => $waitSeconds,
+        ]);
 
-            if (! $result->successful()) {
-                $errorOutput = $result->errorOutput();
-                Log::error('Token deployment script failed', [
-                    'exit_code' => $result->exitCode(),
-                    'stderr' => $errorOutput,
-                    'stdout' => $output,
-                ]);
+        return $this->runScript($input, $this->environment(withKey: false));
+    }
 
-                $decoded = json_decode($output, true);
-                if ($decoded && isset($decoded['error'])) {
-                    return ['success' => false, 'error' => $decoded['error']];
+    /**
+     * รันสคริปต์แล้วอ่านผลทีละบรรทัด.
+     */
+    private function runScript(string $input, array $env, ?callable $onSigned = null): array
+    {
+        $command = [config('blockchain.node_path', 'node'), base_path('scripts/blockchain/create-token.cjs')];
+
+        $buffer = '';
+        $signed = null;
+        $final = null;
+        $callbackError = null;
+
+        $handleLine = function (string $line) use (&$signed, &$final, &$callbackError, $onSigned): void {
+            $line = trim($line);
+            if ($line === '' || $line[0] !== '{') {
+                return;
+            }
+
+            $decoded = json_decode($line, true);
+            if (! is_array($decoded)) {
+                return;
+            }
+
+            if (($decoded['event'] ?? null) === 'signed' && $signed === null) {
+                $signed = $decoded;
+                if ($onSigned && is_string($decoded['txHash'] ?? null)) {
+                    try {
+                        $onSigned(
+                            strtolower($decoded['txHash']),
+                            isset($decoded['nonce']) ? (int) $decoded['nonce'] : null,
+                            $decoded['rawTx'] ?? null,
+                        );
+                    } catch (\Throwable $e) {
+                        $callbackError = $e;
+                        Log::critical('บันทึก tx hash ของการสร้างเหรียญไม่สำเร็จ', [
+                            'tx' => $decoded['txHash'],
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
 
-                return ['success' => false, 'error' => $errorOutput ?: 'Deployment script failed'];
+                return;
             }
 
-            $decoded = json_decode($output, true);
+            if (array_key_exists('success', $decoded)) {
+                $final = $decoded;
+            }
+        };
 
-            if (! $decoded || ! isset($decoded['success'])) {
-                Log::error('Invalid deployment script output', ['output' => $output]);
-
-                return ['success' => false, 'error' => 'Invalid script output'];
+        $handler = function (string $type, string $output) use (&$buffer, $handleLine): void {
+            if ($type !== 'out') {
+                return;
             }
 
-            if ($decoded['success']) {
-                Log::info('Token deployed successfully', [
-                    'symbol' => $params['symbol'],
-                    'contract' => $decoded['contractAddress'],
-                    'txHash' => $decoded['txHash'],
-                    'factoryVersion' => $decoded['factoryVersion'] ?? 'unknown',
-                    'category' => $decoded['category'] ?? 'unknown',
-                ]);
+            $buffer .= $output;
+            while (($pos = strpos($buffer, "\n")) !== false) {
+                $handleLine(substr($buffer, 0, $pos));
+                $buffer = substr($buffer, $pos + 1);
             }
+        };
 
-            return $decoded;
-        } catch (\Exception $e) {
-            Log::error('Token deployment exception', [
+        try {
+            $process = Process::timeout(self::PROCESS_TIMEOUT)
+                ->env($env)
+                ->input($input)
+                ->start($command, $handler);
+
+            $result = $process->wait();
+        } catch (ProcessTimedOutException $e) {
+            $handleLine($buffer);
+            Log::error('Token deployment script timed out', ['signed' => $signed['txHash'] ?? null]);
+
+            return [
+                'success' => false,
+                'pending' => $signed !== null,
+                'txHash' => $signed['txHash'] ?? null,
+                'signed' => $signed,
+                'error' => 'สคริปต์ deploy ทำงานเกินเวลา',
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Token deployment exception', ['error' => $e->getMessage()]);
+
+            return [
+                'success' => false,
+                'txHash' => $signed['txHash'] ?? null,
+                'signed' => $signed,
                 'error' => $e->getMessage(),
-                'symbol' => $params['symbol'],
+            ];
+        }
+
+        $handleLine($buffer);
+
+        if ($final === null) {
+            // บางกรณี (เช่น fake ในเทสต์ หรือ stdout ไม่มีขึ้นบรรทัดใหม่) — ลองอ่านทั้งก้อน
+            $decoded = json_decode(trim($result->output()), true);
+            $final = is_array($decoded) && array_key_exists('success', $decoded) ? $decoded : null;
+        }
+
+        if ($final === null) {
+            Log::error('Invalid deployment script output', [
+                'exit_code' => $result->exitCode(),
+                'stderr' => mb_substr($result->errorOutput(), 0, 2000),
             ]);
 
-            return ['success' => false, 'error' => $e->getMessage()];
+            return [
+                'success' => false,
+                'txHash' => $signed['txHash'] ?? null,
+                'signed' => $signed,
+                'error' => 'สคริปต์ deploy ไม่ได้รายงานผล'.($result->errorOutput() !== '' ? ' (ดู log)' : ''),
+            ];
         }
+
+        $final['signed'] = $signed;
+        $final['callback_failed'] = $callbackError !== null;
+        $final['pending'] = (bool) ($final['pending'] ?? false);
+        $final['reverted'] = (bool) ($final['reverted'] ?? false);
+        $final['dropped'] = (bool) ($final['dropped'] ?? false);
+        if (empty($final['txHash']) && $signed !== null) {
+            $final['txHash'] = $signed['txHash'];
+        }
+
+        if ($final['success']) {
+            Log::info('Token deployed successfully', [
+                'contract' => $final['contractAddress'] ?? null,
+                'txHash' => $final['txHash'] ?? null,
+                'factoryVersion' => $final['factoryVersion'] ?? 'unknown',
+                'already_existed' => $final['alreadyExisted'] ?? false,
+            ]);
+        }
+
+        return $final;
+    }
+
+    /**
+     * ตัวแปรแวดล้อมของสคริปต์ — คีย์ส่งทาง env เท่านั้น ไม่เคยอยู่ใน argv/stdin/log.
+     *
+     * ที่อยู่แฟกทอรีมาจาก ContractRegistry (SiteSetting ที่สคริปต์ deploy ลงทะเบียนเอง → .env)
+     */
+    private function environment(bool $withKey = true): array
+    {
+        return [
+            'DEPLOYER_PRIVATE_KEY' => $withKey ? (string) config('blockchain.deployer_private_key') : '',
+            'TOKEN_FACTORY_ADDRESS' => $this->contracts->address('token_factory_v1') ?? '',
+            'TOKEN_FACTORY_V2_ADDRESS' => $this->contracts->address('token_factory_v2') ?? '',
+            'NFT_FACTORY_ADDRESS' => $this->contracts->address('nft_factory') ?? '',
+            'TPIX_RPC_URL' => (string) config('blockchain.tpix_rpc_url'),
+            'TPIX_CHAIN_ID' => (string) config('blockchain.tpix_chain_id', 4289),
+            'DEPLOY_WAIT_SECONDS' => (string) self::DEPLOY_WAIT_SECONDS,
+        ];
     }
 
     /**
@@ -188,8 +281,6 @@ class Web3DeploymentService
 
         $fraction = str_pad(substr($fraction, 0, $decimals), $decimals, '0');
 
-        $wei = ltrim($integer.$fraction, '0') ?: '0';
-
-        return $wei;
+        return ltrim($integer.$fraction, '0') ?: '0';
     }
 }

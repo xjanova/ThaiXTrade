@@ -7,8 +7,18 @@
  *   ERC-20: standard, mintable, burnable, mintable_burnable, utility, reward, governance, stablecoin
  *   ERC-721: nft, nft_collection
  *
- * Input: Environment variables + CLI args as JSON
- * Output: JSON to stdout
+ * Input: Environment variables + payload JSON ทาง stdin (หรือ argv[2] ไว้ดีบัก)
+ * Output: JSON ทีละบรรทัด (NDJSON) ทาง stdout — บรรทัดสุดท้ายคือผลลัพธ์ ({"success": ...})
+ *
+ *   {"event":"signed","txHash":"0x..","nonce":12,"from":"0x..","rawTx":"0x.."}
+ *       พิมพ์ "ก่อน" ส่งขึ้นเชน — PHP บันทึก hash ลง DB ทันที แถวที่มี hash แล้วจะไม่ถูกส่งซ้ำอีก
+ *   {"event":"broadcast","txHash":"0x.."}
+ *   {"success":true,"contractAddress":"0x..",...}                 สำเร็จ (exit 0)
+ *   {"success":false,"pending":true,"txHash":"0x.."}              รอเกินเวลาที่กำหนด (exit 3)
+ *   {"success":false,"reverted":true,...} / {"dropped":true,...}   ล้มเหลวแน่นอน (exit 1)
+ *
+ * โหมด receipt ({"mode":"receipt","txHash":"0x..","rawTx":"0x.."}) — ไม่เซ็นอะไรใหม่
+ *   อ่านผลธุรกรรมเดิม ถ้าโหนดลืมธุรกรรมไปแล้วส่ง rawTx เดิมซ้ำ (hash เดิม = ไม่มีทางได้สองสัญญา)
  *
  * Env vars:
  *   DEPLOYER_PRIVATE_KEY       - Wallet private key for signing
@@ -16,8 +26,11 @@
  *   TOKEN_FACTORY_V2_ADDRESS   - V2 ERC-20 factory
  *   NFT_FACTORY_ADDRESS        - NFT factory
  *   TPIX_RPC_URL               - RPC endpoint
+ *   TPIX_CHAIN_ID              - เชนที่ต้องเป็น (ค่าตั้งต้น 4289) — RPC ชี้ผิดเชน = ไม่ส่งอะไรเลย
+ *   DEPLOY_WAIT_SECONDS        - รอ receipt นานสุดกี่วินาที (ค่าตั้งต้น 90) ต้องน้อยกว่า timeout ของ PHP
+ *   DEDUPE_LOOKBACK_BLOCKS     - ย้อนหา TokenCreated ของเจ้าของ+ชื่อ+สัญลักษณ์เดียวกันกี่บล็อกก่อนส่ง (ค่าตั้งต้น 43200)
  *
- * CLI: node create-token.js '{"name":"My Token","symbol":"MTK",...}'
+ * CLI: node create-token.cjs '{"name":"My Token","symbol":"MTK",...}'
  *
  * Developed by Xman Studio
  */
@@ -160,6 +173,21 @@ function num(sub, fallback, ...keys) {
     return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * จำนวนเหรียญแบบหน่วยเต็ม → หน่วยเล็กสุด โดยไม่ผ่าน Number
+ *
+ * เดิมใช้ String(num(...)) — เลขใหญ่อย่างเพดาน 1.1 ล้านล้านล้าน กลายเป็น "1.1e+21"
+ * แล้ว parseUnits โยน error ทั้งที่ค่าถูกต้อง (เหรียญ supply ใหญ่สร้างไม่ได้เลย)
+ */
+function unitsOf(sub, decimals, ...keys) {
+    const raw = pick(sub, ...keys);
+    if (raw === undefined) return 0n;
+    const text = String(raw).trim();
+    if (!/^\d+(\.\d+)?$/.test(text)) return 0n;
+    if (Number(text) <= 0) return 0n;
+    return ethers.parseUnits(text, decimals);
+}
+
 /** เปอร์เซ็นต์ → basis points (3% → 300) */
 function pctToBps(value) {
     const n = Number(value);
@@ -220,6 +248,14 @@ function normalizeNftCount(totalSupply, decimals, fallback) {
 // ═══════════════════════════════════════════
 //  DEPLOY FUNCTIONS
 // ═══════════════════════════════════════════
+//
+// แต่ละตัวคืน "ชื่อฟังก์ชัน + อาร์กิวเมนต์" ไม่ได้ส่งธุรกรรมเอง — main() เป็นคนเซ็น
+// แล้วพิมพ์ hash ออกไปให้ PHP บันทึกก่อน ค่อยส่งขึ้นเชน (ดู signAndBroadcast)
+
+/** คำสั่งเรียกแฟกทอรี — ชื่อฟังก์ชัน + อาร์กิวเมนต์ตามลำดับใน ABI */
+function call(method, args) {
+    return { method, args };
+}
 
 /**
  * Deploy basic ERC-20 via V2 factory (standard/mintable/burnable)
@@ -231,7 +267,7 @@ async function deployERC20V2(factory, input) {
     const mintable = tokenTypeInt === 1 || tokenTypeInt === 3;
     const burnable = tokenTypeInt === 2 || tokenTypeInt === 3;
 
-    const tx = await factory.createERC20V2(
+    return call('createERC20V2', [
         input.name,
         input.symbol,
         input.decimals,
@@ -242,19 +278,12 @@ async function deployERC20V2(factory, input) {
         bool(sub, 'pausable'),
         bool(sub, 'blacklist_enabled', 'blacklist'),
         // เพดาน mint มีผลเฉพาะเมื่อเปิดสวิตช์ไว้ ไม่งั้นค่า default ที่ติดมาจะกลายเป็นเพดานจริง
-        bool(sub, 'mint_cap_enabled') && num(sub, 0, 'mint_cap') > 0
-            ? ethers.parseUnits(String(num(sub, 0, 'mint_cap')), input.decimals)
-            : 0n,
+        bool(sub, 'mint_cap_enabled') ? unitsOf(sub, input.decimals, 'mint_cap') : 0n,
         bool(sub, 'auto_burn_enabled', 'auto_burn'),
         // หน้าเว็บส่งมาเป็นเปอร์เซ็นต์ (0.1–10) สัญญารับเป็น basis points
         bool(sub, 'auto_burn_enabled', 'auto_burn') ? pctToBps(num(sub, 0, 'auto_burn_rate')) : 0,
-        num(sub, 0, 'burn_floor') > 0
-            ? ethers.parseUnits(String(num(sub, 0, 'burn_floor')), input.decimals)
-            : 0n,
-        { gasPrice: 0 }
-    );
-
-    return tx;
+        unitsOf(sub, input.decimals, 'burn_floor')
+    ]);
 }
 
 /**
@@ -263,17 +292,14 @@ async function deployERC20V2(factory, input) {
 async function deployERC20V1(factory, input) {
     const tokenTypeInt = { standard: 0, mintable: 1, burnable: 2, mintable_burnable: 3 }[input.tokenType] || 0;
 
-    const tx = await factory.createToken(
+    return call('createToken', [
         input.name,
         input.symbol,
         input.decimals,
         input.totalSupply,
         input.tokenOwner,
-        tokenTypeInt,
-        { gasPrice: 0 }
-    );
-
-    return tx;
+        tokenTypeInt
+    ]);
 }
 
 /**
@@ -307,7 +333,7 @@ async function deployUtilityToken(factory, input) {
         tradingCooldown: botOn ? Math.round(num(sub, 0, 'trading_cooldown')) : 0,
     };
 
-    const tx = await factory.createUtilityToken(
+    return call('createUtilityToken', [
         input.name,
         input.symbol,
         input.decimals,
@@ -318,11 +344,8 @@ async function deployUtilityToken(factory, input) {
         bool(sub, 'pausable'),
         bool(sub, 'blacklist_enabled', 'blacklist'),
         taxConfig,
-        protectionConfig,
-        { gasPrice: 0 }
-    );
-
-    return tx;
+        protectionConfig
+    ]);
 }
 
 /**
@@ -345,7 +368,7 @@ async function deployRewardToken(factory, input) {
 
     const vestingOn = bool(sub, 'vesting_enabled');
 
-    const tx = await factory.createRewardToken(
+    return call('createRewardToken', [
         input.name,
         input.symbol,
         input.decimals,
@@ -357,15 +380,10 @@ async function deployRewardToken(factory, input) {
         bool(sub, 'blacklist_enabled', 'blacklist'),
         rewardType,
         rewardRateBps,
-        num(sub, 0, 'min_hold_for_reward') > 0
-            ? ethers.parseUnits(String(num(sub, 0, 'min_hold_for_reward')), input.decimals)
-            : 0n,
+        unitsOf(sub, input.decimals, 'min_hold_for_reward'),
         vestingOn ? Math.round(num(sub, 0, 'vesting_cliff_days') * 86400) : 0,
-        vestingOn ? Math.round(num(sub, 0, 'vesting_duration_days') * 86400) : 0,
-        { gasPrice: 0 }
-    );
-
-    return tx;
+        vestingOn ? Math.round(num(sub, 0, 'vesting_duration_days') * 86400) : 0
+    ]);
 }
 
 /**
@@ -374,7 +392,7 @@ async function deployRewardToken(factory, input) {
 async function deployGovernanceToken(factory, input) {
     const sub = input.subOptions || {};
 
-    const tx = await factory.createGovernanceToken(
+    return call('createGovernanceToken', [
         input.name,
         input.symbol,
         input.decimals,
@@ -388,18 +406,11 @@ async function deployGovernanceToken(factory, input) {
         pick(sub, 'delegation_enabled', 'delegation') === undefined
             ? true
             : bool(sub, 'delegation_enabled', 'delegation'),
-        bool(sub, 'mint_cap_enabled') && num(sub, 0, 'mint_cap') > 0
-            ? ethers.parseUnits(String(num(sub, 0, 'mint_cap')), input.decimals)
-            : 0n,
-        num(sub, 0, 'proposal_threshold') > 0
-            ? ethers.parseUnits(String(num(sub, 0, 'proposal_threshold')), input.decimals)
-            : 0n,
+        bool(sub, 'mint_cap_enabled') ? unitsOf(sub, input.decimals, 'mint_cap') : 0n,
+        unitsOf(sub, input.decimals, 'proposal_threshold'),
         pctToBps(num(sub, 4, 'quorum_percent')),
-        Math.round(num(sub, 3, 'voting_period_days') * 86400),
-        { gasPrice: 0 }
-    );
-
-    return tx;
+        Math.round(num(sub, 3, 'voting_period_days') * 86400)
+    ]);
 }
 
 /**
@@ -408,7 +419,7 @@ async function deployGovernanceToken(factory, input) {
 async function deployStablecoinToken(factory, input) {
     const sub = input.subOptions || {};
 
-    const tx = await factory.createStablecoinToken(
+    return call('createStablecoinToken', [
         input.name,
         input.symbol,
         input.decimals,
@@ -417,11 +428,8 @@ async function deployStablecoinToken(factory, input) {
         pick(sub, 'reserve_wallet') || input.tokenOwner,
         bool(sub, 'pausable'),
         bool(sub, 'freeze_enabled', 'freeze'),
-        bool(sub, 'kyc_required', 'kyc'),
-        { gasPrice: 0 }
-    );
-
-    return tx;
+        bool(sub, 'kyc_required', 'kyc')
+    ]);
 }
 
 /**
@@ -435,7 +443,7 @@ async function deployNFT(factory, input) {
     // maxSupply จะกลายเป็นเลขมหาศาลจนเพดานไม่มีความหมาย
     const nftMaxSupply = normalizeNftCount(input.totalSupply, input.decimals, 1n);
 
-    const tx = await factory.createNFT(
+    return call('createNFT', [
         input.name,
         input.symbol,
         input.tokenOwner,
@@ -445,11 +453,8 @@ async function deployNFT(factory, input) {
         bool(sub, 'soulbound'),
         bool(sub, 'royalty_enabled', 'royalty'),
         pick(sub, 'royalty_wallet', 'royalty_recipient') || input.tokenOwner,
-        bool(sub, 'royalty_enabled', 'royalty') ? pctToBps(num(sub, 0, 'royalty_rate')) : 0,
-        { gasPrice: 0 }
-    );
-
-    return tx;
+        bool(sub, 'royalty_enabled', 'royalty') ? pctToBps(num(sub, 0, 'royalty_rate')) : 0
+    ]);
 }
 
 /**
@@ -470,7 +475,7 @@ async function deployNFTCollection(factory, input) {
 
     const collectionMaxSupply = normalizeNftCount(input.totalSupply, input.decimals, 10000n);
 
-    const tx = await factory.createNFTCollection(
+    return call('createNFTCollection', [
         input.name,
         input.symbol,
         input.tokenOwner,
@@ -488,11 +493,8 @@ async function deployNFTCollection(factory, input) {
         bool(sub, 'delayed_reveal'),
         bool(sub, 'royalty_enabled', 'royalty'),
         pick(sub, 'royalty_wallet', 'royalty_recipient') || input.tokenOwner,
-        bool(sub, 'royalty_enabled', 'royalty') ? pctToBps(num(sub, 0, 'royalty_rate')) : 0,
-        { gasPrice: 0 }
-    );
-
-    return tx;
+        bool(sub, 'royalty_enabled', 'royalty') ? pctToBps(num(sub, 0, 'royalty_rate')) : 0
+    ]);
 }
 
 // ═══════════════════════════════════════════
@@ -515,17 +517,275 @@ function readPayload() {
     }
 }
 
-async function main() {
-    const raw = readPayload().trim();
-    if (!raw) throw new Error('payload ว่างเปล่า');
+// ═══════════════════════════════════════════
+//  OUTPUT
+// ═══════════════════════════════════════════
 
-    let input;
-    try {
-        input = JSON.parse(raw);
-    } catch (e) {
-        throw new Error(`payload ไม่ใช่ JSON ที่ถูกต้อง: ${e.message}`);
+/** พิมพ์ JSON หนึ่งบรรทัด — PHP อ่านทีละบรรทัดระหว่างที่สคริปต์ยังรันอยู่ */
+function emit(obj) {
+    process.stdout.write(JSON.stringify(obj) + '\n');
+}
+
+/** พิมพ์ผลสุดท้ายแล้วจบ — exit 0 สำเร็จ · 3 ยังรอผล · 1 ล้มเหลว */
+function finish(result) {
+    emit(result);
+    process.exitCode = result.success ? 0 : (result.pending ? 3 : 1);
+    return result;
+}
+
+function errorText(e) {
+    return String((e && (e.shortMessage || e.reason || e.message)) || e || 'unknown error');
+}
+
+// ═══════════════════════════════════════════
+//  CHAIN
+// ═══════════════════════════════════════════
+
+const EXPECTED_CHAIN_ID = Number(process.env.TPIX_CHAIN_ID || 4289);
+
+/**
+ * เชื่อมต่อ TPIX Chain — ยืนยันว่าคุยได้จริง และเป็นเชนที่ถูกต้อง
+ *
+ * ⚠️ ต้องส่ง User-Agent เสมอ — rpc.tpix.online อยู่หลัง Cloudflare bot rule
+ *    ที่ตอบ 403 ให้ client ที่ไม่มี UA (ยืนยันสด 2026-08-27)
+ *
+ *    ethers ไม่ได้ล้มทันทีเมื่อโดน 403 แต่จะวน "failed to detect network, retry in 1s"
+ *    ไปเรื่อย ๆ จนกว่า timeout ของ PHP จะฆ่าทิ้ง
+ *
+ * ⚠️ ต้องเช็ก eth_chainId เอง — staticNetwork ทำให้ ethers ไม่ถาม
+ *    ถ้า TPIX_RPC_URL ชี้ผิดเชน ธุรกรรมจะถูกเซ็นด้วย chainId 4289 แต่ส่งไปเชนอื่น
+ */
+async function connect() {
+    // rpc.tpix.online อยู่หลัง Cloudflare bot rule ส่วน rpc1 ไม่มีด่านนั้น
+    const rpcUrls = [
+        process.env.TPIX_RPC_URL || 'https://rpc.tpix.online',
+        'https://rpc1.tpix.online',
+    ].filter((v, i, a) => v && a.indexOf(v) === i);
+
+    function makeProvider(url) {
+        const req = new ethers.FetchRequest(url);
+        req.setHeader('User-Agent', 'Mozilla/5.0 (compatible; TPIX-TRADE-TokenFactory/1.0; +https://tpix.online)');
+        req.setHeader('Content-Type', 'application/json');
+        req.timeout = 15000;
+        return new ethers.JsonRpcProvider(req, { chainId: EXPECTED_CHAIN_ID, name: 'tpix' }, { staticNetwork: true });
     }
 
+    const rpcErrors = [];
+    for (const url of rpcUrls) {
+        try {
+            const candidate = makeProvider(url);
+            const chainId = Number(BigInt(await candidate.send('eth_chainId', [])));
+            if (chainId !== EXPECTED_CHAIN_ID) {
+                rpcErrors.push(`${url}: chainId ${chainId} ไม่ใช่ ${EXPECTED_CHAIN_ID}`);
+                continue;
+            }
+            return candidate;
+        } catch (e) {
+            rpcErrors.push(`${url}: ${errorText(e).slice(0, 60)}`);
+        }
+    }
+
+    throw new Error(`ต่อ RPC ของเชนไม่ได้เลยสักตัว — ${rpcErrors.join(' · ')}`);
+}
+
+/** แฟกทอรีทุกตัวที่ตั้งไว้ — โหมด receipt ไม่รู้ล่วงหน้าว่าธุรกรรมไปที่แฟกทอรีไหน */
+function knownFactories() {
+    const out = [];
+    const add = (envKey, abiName, version) => {
+        const address = (process.env[envKey] || '').toLowerCase();
+        if (address) out.push({ address, iface: new ethers.Interface(loadABI(abiName)), version, envKey });
+    };
+    add('TOKEN_FACTORY_V2_ADDRESS', 'TPIXTokenFactoryV2', 'v2');
+    add('TOKEN_FACTORY_ADDRESS', 'TPIXTokenFactory', 'v1');
+    add('NFT_FACTORY_ADDRESS', 'TPIXNFTFactory', 'nft');
+    return out;
+}
+
+/** event ตอนสร้างของแฟกทอรีนั้น (TokenCreated หรือ NFTCreated) */
+function creationEvent(iface) {
+    return iface.getEvent('TokenCreated') || iface.getEvent('NFTCreated');
+}
+
+/**
+ * ด่านกันสร้างซ้ำบนเชน — เคยสร้างเหรียญชื่อ+สัญลักษณ์นี้ให้เจ้าของคนนี้ไปแล้วหรือยัง
+ *
+ * ฐานข้อมูลกันซ้ำไว้หลายชั้นแล้ว แต่ถ้า worker ตายหลังส่งธุรกรรมก่อนบันทึก hash
+ * (หน้าต่างเวลาสั้นมากแต่มีจริง) งานถัดไปจะมองไม่เห็น — ถามเชนตรง ๆ ก่อนส่งทุกครั้ง
+ */
+async function findExistingToken(provider, factoryAddress, iface, input) {
+    const lookback = Number(process.env.DEDUPE_LOOKBACK_BLOCKS ?? 43200);
+    if (!lookback || lookback < 0) return null;
+
+    const event = creationEvent(iface);
+    if (!event) return null;
+
+    const latest = await provider.getBlockNumber();
+    const ownerTopic = ethers.zeroPadValue(String(input.tokenOwner).toLowerCase(), 32);
+
+    for (const span of [lookback, 5000]) {
+        try {
+            const logs = await provider.getLogs({
+                address: factoryAddress,
+                topics: [event.topicHash, null, ownerTopic],
+                fromBlock: Math.max(0, latest - span),
+                toBlock: latest,
+            });
+            for (const log of logs) {
+                const parsed = iface.parseLog({ topics: log.topics, data: log.data });
+                if (parsed && parsed.args.name === input.name && parsed.args.symbol === input.symbol) {
+                    return { tokenAddress: parsed.args[0], txHash: log.transactionHash, blockNumber: log.blockNumber };
+                }
+            }
+            return null;
+        } catch (e) {
+            process.stderr.write(`dedupe getLogs (${span} blocks) ไม่สำเร็จ: ${errorText(e)}\n`);
+        }
+    }
+
+    return null;
+}
+
+/**
+ * อ่าน receipt → หาที่อยู่เหรียญจาก event → ยืนยันว่ามีโค้ดจริง → ผลสุดท้าย
+ */
+async function finishFromReceipt(provider, receipt, input) {
+    const txHash = receipt.hash;
+
+    if (receipt.status !== 1) {
+        return finish({
+            success: false,
+            reverted: true,
+            txHash,
+            blockNumber: receipt.blockNumber,
+            error: 'ธุรกรรมสร้างเหรียญ revert บนเชน — ไม่มีเหรียญถูกสร้าง',
+        });
+    }
+
+    const to = (receipt.to || '').toLowerCase();
+    const factory = knownFactories().find((f) => f.address === to);
+    if (!factory) {
+        return finish({ success: false, txHash, error: `ธุรกรรม ${txHash} ไม่ได้ส่งไปที่แฟกทอรีของระบบ (${to})` });
+    }
+
+    let tokenAddress = null;
+    for (const log of receipt.logs) {
+        if ((log.address || '').toLowerCase() !== to) continue;
+        try {
+            const parsed = factory.iface.parseLog({ topics: log.topics, data: log.data });
+            if (parsed && (parsed.name === 'TokenCreated' || parsed.name === 'NFTCreated')) {
+                tokenAddress = parsed.args.tokenAddress || parsed.args.nftAddress || parsed.args[0];
+                break;
+            }
+        } catch {
+            // log ของสัญญาอื่น
+        }
+    }
+
+    if (!tokenAddress) {
+        return finish({ success: false, txHash, error: 'ไม่พบ event ตอนสร้างเหรียญใน receipt — สัญญาอาจไม่ได้สร้างอะไรขึ้นมาจริง' });
+    }
+
+    // event บอกแค่ว่ามีการ emit ไม่ได้บอกว่าเหรียญมีโค้ดอยู่จริง
+    const tokenCode = await provider.getCode(tokenAddress);
+    if (tokenCode === '0x') {
+        return finish({ success: false, txHash, error: `สร้างแล้วแต่ไม่มีโค้ดที่ ${tokenAddress} — การสร้างล้มเหลว` });
+    }
+
+    let category = null;
+    try {
+        category = input.tokenType ? getFactoryInfo(input.tokenType).category : null;
+    } catch {
+        category = null;
+    }
+
+    return finish({
+        success: true,
+        contractAddress: tokenAddress,
+        txHash,
+        blockNumber: receipt.blockNumber,
+        factoryVersion: factory.version,
+        category,
+        codeSize: (tokenCode.length - 2) / 2,
+        // ออฟชั่นที่ผู้ใช้เลือกไว้แต่สัญญายังทำให้ไม่ได้ — ส่งกลับให้หลังบ้านบันทึก/แจ้งผู้ใช้
+        unsupportedOptions: collectUnsupported(input.subOptions || {}, input.tokenType),
+    });
+}
+
+/** รอ receipt ไม่เกินเวลาที่กำหนด — null = ยังไม่ขึ้นเชน */
+async function waitReceipt(provider, txHash, seconds) {
+    try {
+        return await provider.waitForTransaction(txHash, 1, Math.max(1, seconds) * 1000);
+    } catch (e) {
+        if (e && e.code === 'TIMEOUT') return null;
+        throw e;
+    }
+}
+
+const ALREADY_KNOWN = /already known|known transaction|already exists|ALREADY_EXISTS/i;
+
+// ═══════════════════════════════════════════
+//  MODES
+// ═══════════════════════════════════════════
+
+/**
+ * โหมด receipt — ตรวจผลธุรกรรมเดิม ห้ามเซ็นธุรกรรมใหม่เด็ดขาด
+ *
+ * โหนดลืมธุรกรรม (ไม่อยู่ใน mempool และไม่มี receipt):
+ *   - nonce ของธุรกรรมนั้นถูกใช้ไปแล้ว → ธุรกรรมนี้จะไม่มีวันขึ้นเชน (dropped) ปลอดภัยที่จะส่งใหม่
+ *   - nonce ยังว่าง → ส่ง rawTx เดิมซ้ำ (hash เดิม — ได้เหรียญได้แค่ตัวเดียวแน่นอน)
+ */
+async function receiptMode(provider, input) {
+    const txHash = String(input.txHash || '').toLowerCase();
+    if (!/^0x[0-9a-f]{64}$/.test(txHash)) throw new Error('txHash ไม่ถูกต้อง');
+
+    const waitSeconds = Number(input.waitSeconds || 20);
+
+    let receipt = await provider.getTransactionReceipt(txHash);
+    if (receipt) return finishFromReceipt(provider, receipt, input);
+
+    const pendingTx = await provider.getTransaction(txHash);
+
+    if (!pendingTx && input.rawTx) {
+        const parsed = ethers.Transaction.from(input.rawTx);
+        if (parsed.hash.toLowerCase() !== txHash) {
+            throw new Error('rawTx ไม่ตรงกับ txHash — ไม่ส่งซ้ำ');
+        }
+
+        const confirmedNonce = await provider.getTransactionCount(parsed.from, 'latest');
+        if (confirmedNonce > parsed.nonce) {
+            receipt = await provider.getTransactionReceipt(txHash);
+            if (receipt) return finishFromReceipt(provider, receipt, input);
+
+            return finish({
+                success: false,
+                dropped: true,
+                txHash,
+                error: `nonce ${parsed.nonce} ถูกธุรกรรมอื่นใช้ไปแล้ว — ธุรกรรมนี้จะไม่ขึ้นเชน`,
+            });
+        }
+
+        try {
+            await provider.broadcastTransaction(input.rawTx);
+            emit({ event: 'rebroadcast', txHash });
+        } catch (e) {
+            if (!ALREADY_KNOWN.test(errorText(e))) {
+                return finish({ success: false, pending: true, txHash, error: `ส่งธุรกรรมเดิมซ้ำไม่สำเร็จ: ${errorText(e)}` });
+            }
+        }
+    }
+
+    receipt = await waitReceipt(provider, txHash, waitSeconds);
+    if (!receipt) {
+        return finish({ success: false, pending: true, txHash, error: 'ธุรกรรมยังไม่ขึ้นเชน' });
+    }
+
+    return finishFromReceipt(provider, receipt, input);
+}
+
+/**
+ * โหมด deploy — เซ็น → พิมพ์ hash → ส่ง → รอไม่เกิน DEPLOY_WAIT_SECONDS
+ */
+async function deployMode(provider, input) {
     const {
         name,
         symbol,
@@ -541,49 +801,8 @@ async function main() {
         throw new Error('Missing required fields: name, symbol, tokenOwner');
     }
 
-    // Read config from environment
     const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
-
-    // rpc.tpix.online อยู่หลัง Cloudflare bot rule ส่วน rpc1 ไม่มีด่านนั้น
-    // ใส่ UA แล้วตัวแรกใช้ได้ แต่ถ้าวันไหนกฎรัดขึ้นก็ยังมีตัวสำรองให้สลับ
-    const rpcUrls = [
-        process.env.TPIX_RPC_URL || 'https://rpc.tpix.online',
-        'https://rpc1.tpix.online',
-    ].filter((v, i, a) => v && a.indexOf(v) === i);
-
     if (!privateKey) throw new Error('DEPLOYER_PRIVATE_KEY not set');
-
-    // ── เชื่อมต่อ TPIX Chain ───────────────────────────────────────
-    //
-    // ⚠️ ต้องส่ง User-Agent เสมอ — rpc.tpix.online อยู่หลัง Cloudflare bot rule
-    //    ที่ตอบ 403 ให้ client ที่ไม่มี UA (ยืนยันสด 2026-08-27)
-    //
-    //    ethers ไม่ได้ล้มทันทีเมื่อโดน 403 แต่จะวน "failed to detect network, retry in 1s"
-    //    ไปเรื่อย ๆ จนกว่า Process::timeout(120) ของ PHP จะฆ่าทิ้ง ผู้ใช้เห็นแค่
-    //    "Deployment script failed" โดยไม่มีทางรู้ว่าติดที่ด่านบอทของ Cloudflare
-    function makeProvider(url) {
-        const req = new ethers.FetchRequest(url);
-        req.setHeader('User-Agent', 'TPIX-TRADE-TokenFactory/1.0 (+https://tpix.online)');
-        req.setHeader('Content-Type', 'application/json');
-        req.timeout = 15000;
-        return new ethers.JsonRpcProvider(req, { chainId: 4289, name: 'tpix' }, { staticNetwork: true });
-    }
-
-    let provider = null;
-    const rpcErrors = [];
-    for (const url of rpcUrls) {
-        try {
-            const candidate = makeProvider(url);
-            await candidate.getBlockNumber();   // ยืนยันว่าคุยได้จริงก่อนใช้
-            provider = candidate;
-            break;
-        } catch (e) {
-            rpcErrors.push(`${url}: ${(e.shortMessage || e.message || '').slice(0, 60)}`);
-        }
-    }
-    if (!provider) {
-        throw new Error(`ต่อ RPC ของเชนไม่ได้เลยสักตัว — ${rpcErrors.join(' · ')}`);
-    }
 
     const wallet = new ethers.Wallet(privateKey, provider);
 
@@ -602,24 +821,21 @@ async function main() {
         throw new Error(`Factory address not configured (${factoryInfo.envKey})`);
     }
 
-    // Load factory ABI
-    const abiPath = useV1 ? factoryInfo.fallbackAbiPath : factoryInfo.abiPath;
-    const factoryABI = loadABI(abiPath);
+    const factoryABI = loadABI(useV1 ? factoryInfo.fallbackAbiPath : factoryInfo.abiPath);
 
     // แฟกทอรีต้องมีโค้ดอยู่ที่ address นั้นจริง
     // เชน TPIX เคย regenesis (6 ส.ค. 2026) แล้วสัญญาหายเกลี้ยงทั้งที่ address ยังค้างใน .env
-    // ถ้าไม่เช็ก tx จะถูกส่งไปหา address ว่างเปล่าแล้ว "สำเร็จ" โดยไม่มีเหรียญเกิดขึ้น
     const factoryCode = await provider.getCode(factoryAddress);
     if (factoryCode === '0x') {
         throw new Error(
-            `ไม่มีสัญญาอยู่ที่ ${factoryAddress} บนเชน 4289 — ` +
-            `แฟกทอรียังไม่ได้ deploy หรือหายไปตอน regenesis (ตรวจ ${factoryInfo.envKey} ใน .env)`
+            `ไม่มีสัญญาอยู่ที่ ${factoryAddress} บนเชน ${EXPECTED_CHAIN_ID} — ` +
+            `แฟกทอรียังไม่ได้ deploy หรือหายไปตอน regenesis (ตรวจ ${factoryInfo.envKey})`
         );
     }
 
     const factory = new ethers.Contract(factoryAddress, factoryABI, wallet);
+    const iface = new ethers.Interface(factoryABI);
 
-    // Build deploy input
     const deployInput = {
         name,
         symbol,
@@ -631,91 +847,83 @@ async function main() {
         logoUrl,
     };
 
-    // Route to correct deploy function
-    let tx;
+    // เคยสร้างให้คนนี้ไปแล้ว → รายงานตัวเดิม ไม่ส่งธุรกรรมใหม่
+    const existing = await findExistingToken(provider, factoryAddress, iface, deployInput);
+    if (existing) {
+        const receipt = await provider.getTransactionReceipt(existing.txHash);
+        if (receipt) {
+            const result = await finishFromReceipt(provider, receipt, deployInput);
+            if (result.success) result.alreadyExisted = true;
+            return result;
+        }
+    }
 
+    let callSpec;
     if (useV1) {
-        tx = await deployERC20V1(factory, deployInput);
+        callSpec = await deployERC20V1(factory, deployInput);
     } else {
         switch (factoryInfo.category) {
-            case 'erc20v2':
-                tx = await deployERC20V2(factory, deployInput);
-                break;
-            case 'utility':
-                tx = await deployUtilityToken(factory, deployInput);
-                break;
-            case 'reward':
-                tx = await deployRewardToken(factory, deployInput);
-                break;
-            case 'governance':
-                tx = await deployGovernanceToken(factory, deployInput);
-                break;
-            case 'stablecoin':
-                tx = await deployStablecoinToken(factory, deployInput);
-                break;
-            case 'nft':
-                tx = await deployNFT(factory, deployInput);
-                break;
-            case 'nft_collection':
-                tx = await deployNFTCollection(factory, deployInput);
-                break;
-            default:
-                throw new Error(`No deploy handler for category: ${factoryInfo.category}`);
+            case 'erc20v2': callSpec = await deployERC20V2(factory, deployInput); break;
+            case 'utility': callSpec = await deployUtilityToken(factory, deployInput); break;
+            case 'reward': callSpec = await deployRewardToken(factory, deployInput); break;
+            case 'governance': callSpec = await deployGovernanceToken(factory, deployInput); break;
+            case 'stablecoin': callSpec = await deployStablecoinToken(factory, deployInput); break;
+            case 'nft': callSpec = await deployNFT(factory, deployInput); break;
+            case 'nft_collection': callSpec = await deployNFTCollection(factory, deployInput); break;
+            default: throw new Error(`No deploy handler for category: ${factoryInfo.category}`);
         }
     }
 
-    // Wait for confirmation
-    const receipt = await tx.wait();
+    // ── เซ็นก่อน ─────────────────────────────────────────────────────────
+    // estimateGas อยู่ในขั้นนี้ — ถ้าสัญญาจะ revert (เช่นกระเป๋าเราไม่ใช่ owner) จะล้มตรงนี้
+    // ก่อนมีธุรกรรมใด ๆ เกิดขึ้น ฝั่ง PHP จึงรู้ได้แน่ว่ายังไม่ได้ส่งอะไร
+    const populated = await factory[callSpec.method].populateTransaction(...callSpec.args, { gasPrice: 0 });
+    const request = await wallet.populateTransaction(populated);
+    const rawTx = await wallet.signTransaction(request);
+    const txHash = ethers.keccak256(rawTx);
 
-    // Parse TokenCreated / NFTCreated event from logs
-    const iface = new ethers.Interface(factoryABI);
-    let tokenAddress = null;
+    // ── บอก PHP ก่อนส่ง ───────────────────────────────────────────────────
+    emit({ event: 'signed', txHash, nonce: Number(request.nonce), from: wallet.address.toLowerCase(), rawTx });
 
-    for (const log of receipt.logs) {
-        try {
-            const parsed = iface.parseLog({ topics: log.topics, data: log.data });
-            if (parsed && (parsed.name === 'TokenCreated' || parsed.name === 'NFTCreated')) {
-                tokenAddress = parsed.args.tokenAddress || parsed.args.nftAddress || parsed.args[0];
-                break;
-            }
-        } catch {
-            // Skip logs from other contracts
+    try {
+        await provider.broadcastTransaction(rawTx);
+    } catch (e) {
+        if (!ALREADY_KNOWN.test(errorText(e))) {
+            // ไม่แน่ใจว่าถึง mempool หรือไม่ — PHP มี hash แล้ว จะไปตรวจผลต่อ (ไม่ส่งซ้ำด้วยธุรกรรมใหม่)
+            return finish({ success: false, stage: 'broadcast', txHash, error: `ส่งธุรกรรมไม่สำเร็จ: ${errorText(e)}` });
         }
     }
 
-    if (!tokenAddress) {
-        throw new Error('ไม่พบ event ตอนสร้างเหรียญใน receipt — สัญญาอาจไม่ได้สร้างอะไรขึ้นมาจริง');
+    emit({ event: 'broadcast', txHash });
+
+    const receipt = await waitReceipt(provider, txHash, Number(process.env.DEPLOY_WAIT_SECONDS || 90));
+    if (!receipt) {
+        return finish({ success: false, pending: true, txHash, error: 'รอ receipt เกินเวลา — ธุรกรรมยังอยู่ระหว่างรอขึ้นเชน' });
     }
 
-    // event บอกแค่ว่ามีการ emit ไม่ได้บอกว่าเหรียญมีโค้ดอยู่จริง
-    // ถามเชนตรง ๆ ก่อนบอกผู้ใช้ว่าสำเร็จ ไม่งั้นเราไปบันทึกลง DB ว่ามีเหรียญที่ไม่มีอยู่
-    const tokenCode = await provider.getCode(tokenAddress);
-    if (tokenCode === '0x') {
-        throw new Error(`สร้างแล้วแต่ไม่มีโค้ดที่ ${tokenAddress} — การสร้างล้มเหลว`);
+    return finishFromReceipt(provider, receipt, deployInput);
+}
+
+async function main() {
+    const raw = readPayload().trim();
+    if (!raw) throw new Error('payload ว่างเปล่า');
+
+    let input;
+    try {
+        input = JSON.parse(raw);
+    } catch (e) {
+        throw new Error(`payload ไม่ใช่ JSON ที่ถูกต้อง: ${e.message}`);
     }
 
-    // Output result
-    const result = {
-        success: true,
-        contractAddress: tokenAddress,
-        txHash: receipt.hash,
-        blockNumber: receipt.blockNumber,
-        factoryVersion: useV1 ? 'v1' : 'v2',
-        category: factoryInfo.category,
-        codeSize: (tokenCode.length - 2) / 2,
-        // ออฟชั่นที่ผู้ใช้เลือกไว้แต่สัญญายังทำให้ไม่ได้ — ส่งกลับให้หลังบ้านบันทึก/แจ้งผู้ใช้
-        // ห้ามกลืนเงียบ ๆ ไม่งั้นผู้ใช้จ่ายค่าออฟชั่นแล้วเข้าใจว่าได้ของครบ
-        unsupportedOptions: collectUnsupported(subOptions, tokenType),
-    };
+    const provider = await connect();
 
-    process.stdout.write(JSON.stringify(result));
+    if (input.mode === 'receipt') {
+        return receiptMode(provider, input);
+    }
+
+    return deployMode(provider, input);
 }
 
 main().catch((error) => {
-    const result = {
-        success: false,
-        error: error.message || String(error),
-    };
-    process.stdout.write(JSON.stringify(result));
-    process.exit(1);
+    finish({ success: false, error: errorText(error) });
 });

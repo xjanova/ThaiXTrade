@@ -50,7 +50,9 @@ function createToken(input) {
         err.stdout = e.stdout;
         throw err;
     }
-    const result = JSON.parse(out);
+    // สคริปต์พิมพ์ทีละบรรทัด (signed → broadcast → ผลสุดท้าย) — ผลอยู่บรรทัดสุดท้าย
+    const lines = out.trim().split('\n');
+    const result = JSON.parse(lines[lines.length - 1]);
     if (!result.success) throw new Error(result.error);
     return result;
 }
