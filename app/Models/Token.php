@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\TokenList\TokenListService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Collection;
@@ -26,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $logo
  * @property string|null $coingecko_id
  * @property bool $is_active
+ * @property bool $is_verified
  * @property int $sort_order
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -58,6 +60,7 @@ class Token extends Model
         'logo',
         'coingecko_id',
         'is_active',
+        'is_verified',
         'sort_order',
     ];
 
@@ -75,7 +78,18 @@ class Token extends Model
     {
         return [
             'is_active' => 'boolean',
+            'is_verified' => 'boolean',
         ];
+    }
+
+    /**
+     * แถว tokens เป็นแหล่งของ /tokenlist.json — แก้เมื่อไหร่ล้างแคชรายการทันที
+     * (ไม่งั้น explorer/wallet เห็นโลโก้หรือสถานะเก่าอีกถึง 5 นาที).
+     */
+    protected static function booted(): void
+    {
+        static::saved(fn () => TokenListService::forget());
+        static::deleted(fn () => TokenListService::forget());
     }
 
     // =========================================================================

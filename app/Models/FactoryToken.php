@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\TokenList\TokenListService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -51,6 +52,16 @@ class FactoryToken extends Model
         'metadata' => 'array',
         'deploy_started_at' => 'datetime',
     ];
+
+    /**
+     * เหรียญที่ลิสต์แล้วอยู่ใน /tokenlist.json — ลิสต์/เลิกลิสต์/เปลี่ยนโลโก้ ต้องล้างแคชรายการทันที.
+     * (ทางที่อัปเดตด้วย query builder ตรง ๆ เช่น FactoryDeploymentFinalizer::markDeployed ล้างเอง)
+     */
+    protected static function booted(): void
+    {
+        static::saved(fn () => TokenListService::forget());
+        static::deleted(fn () => TokenListService::forget());
+    }
 
     public function chain()
     {

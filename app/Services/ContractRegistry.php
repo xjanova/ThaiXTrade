@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\SiteSetting;
+use App\Services\TokenList\TokenListService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -340,6 +341,8 @@ class ContractRegistry
         if (in_array($key, self::DEX_KEYS, true)) {
             Cache::forget('dex:config:public');
             Cache::forget('dex:pairs:public');
+            // WTPIX / USDT_TPIX อยู่ใน /tokenlist.json
+            TokenListService::forget();
         }
         Cache::forget('masternode:stats');
         Cache::forget('admin:masternode:stats');

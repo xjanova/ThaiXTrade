@@ -32,6 +32,7 @@ use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\SupplyController;
 use App\Http\Controllers\Api\SwapApiController;
 use App\Http\Controllers\Api\TokenFactoryApiController;
+use App\Http\Controllers\Api\TokenListController;
 use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TpixPriceController;
 use App\Http\Controllers\Api\TradingController;
@@ -240,6 +241,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
 
     // Token Info
     Route::prefix('tokens')->group(function () {
+        // รายการโทเคน TPIX Chain (Uniswap Token List) = /tokenlist.json — ต้องอยู่ก่อน /{address}
+        Route::get('/list', [TokenListController::class, 'show'])->name('api.tokens.list');
         Route::get('/{address}', [MarketController::class, 'tokenInfo']);
         Route::get('/{address}/price', [MarketController::class, 'tokenPrice']);
     });

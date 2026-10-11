@@ -366,6 +366,12 @@ class DexSync extends Command
             'contract_address' => $address,
             'decimals' => $meta['decimals'],
             'is_active' => true,
+            /*
+             * ไม่รับรองให้เอง — factory ของ DEX ใครก็เปิดพูลได้ (เชนค่าแก๊ส 0)
+             * deploy เหรียญชื่อ "Tether USD" แล้วเปิดพูลกับ WTPIX = ได้แถวนี้ทันที
+             * /tokenlist.json (ที่ explorer/wallet ถือเป็นรายการของจริง) จึงรอแอดมินกดรับรองที่ /admin/tokens
+             */
+            'is_verified' => false,
             'sort_order' => 100,
         ]);
 

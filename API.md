@@ -507,6 +507,56 @@ Returns the current gas price for the specified chain.
 
 Public endpoints for token information.
 
+### TPIX Chain Token List
+
+```
+GET /tokenlist.json
+GET /api/v1/tokens/list
+```
+
+Both URLs return the same document in the [Uniswap Token List](https://uniswap.org/tokenlist.schema.json) format. It is **not** wrapped in the `{success, data}` envelope. The block explorer and the TPIX Wallet read it and treat its entries as verified, so a token is included only when:
+
+- it is WTPIX or USDT_TPIX from the contract registry, or
+- it is an active `tokens` row on chain 4289 that an admin has marked **Verified** (`is_verified`), or
+- it is a Token Factory token that is `deployed` on chain 4289 **and** listed by an admin (`is_listed`).
+
+Any address that belongs to a Token Factory token that is not deployed and listed is excluded, whatever its source. Zero and placeholder addresses are excluded too. Native TPIX is not an ERC-20, so it appears only under `extensions.nativeCurrency`.
+
+| Field | Rule |
+|-------|------|
+| `address` | EIP-55 checksum |
+| `logoURI` | absolute `https://` only; relative paths are prefixed with `APP_URL`, and a missing file means no `logoURI` |
+| `decimals` / `symbol` / `name` | 0–36 / ≤ 20 chars without spaces / ≤ 60 chars; a token that breaks a rule is left out |
+| `version` | `major` 1 · `minor` = token count · `patch` = number derived from a sha256 of the content |
+| `timestamp` | the first time this exact content was served |
+
+**Headers:** `Content-Type: application/json`, `Access-Control-Allow-Origin: *` (these two routes only, no credentials), `Cache-Control: public, max-age=300`, `ETag`, `Last-Modified`. `If-None-Match` (weak, or with a `-gzip` suffix) and `If-Modified-Since` return `304`. The server cache lasts 5 minutes and is cleared as soon as an admin changes a token, its logo or its listing.
+
+```json
+{
+    "name": "TPIX Chain",
+    "timestamp": "2026-10-11T09:00:00.000Z",
+    "version": { "major": 1, "minor": 2, "patch": 48213765 },
+    "logoURI": "https://tpix.online/images/brand/tpix-coin.png",
+    "keywords": ["tpix", "tpix chain", "tpix trade"],
+    "tokens": [
+        {
+            "chainId": 4289,
+            "address": "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+            "name": "Tether USD",
+            "symbol": "USDT",
+            "decimals": 6,
+            "logoURI": "https://tpix.online/storage/token-logos/4289/0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed-1a2b3c4d5e6f7a8b.png"
+        }
+    ],
+    "extensions": {
+        "nativeCurrency": { "chainId": 4289, "name": "TPIX", "symbol": "TPIX", "decimals": 18, "logoURI": "https://tpix.online/images/brand/tpix-coin.png" }
+    }
+}
+```
+
+Admins set logos at `/admin/tokens` (core tokens) and `/admin/token-factory` (factory tokens). Only the `admin` and `super_admin` roles can do this. The file must be a square PNG or WebP of at least 128×128 px (256×256 or larger is better) and no more than 512 KB. Each change is written to the audit log.
+
 ### Get Token Info
 
 ```

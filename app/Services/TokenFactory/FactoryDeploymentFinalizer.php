@@ -5,6 +5,7 @@ namespace App\Services\TokenFactory;
 use App\Jobs\CheckFactoryDeployReceiptJob;
 use App\Jobs\VerifyFactoryTokenOnExplorerJob;
 use App\Models\FactoryToken;
+use App\Services\TokenList\TokenListService;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -170,6 +171,10 @@ class FactoryDeploymentFinalizer
         if ($updated !== 1) {
             return false;
         }
+
+        // อัปเดตผ่าน query builder → model event ไม่ทำงาน ล้างแคช /tokenlist.json เอง
+        // (ถ้านโยบาย auto_list_on_deploy เปิด เหรียญนี้เข้ารายการทันที)
+        TokenListService::forget();
 
         Log::info("Token {$token->symbol} deployed", [
             'token_id' => $token->id,

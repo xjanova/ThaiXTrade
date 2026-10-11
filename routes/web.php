@@ -6,6 +6,7 @@
  */
 
 use App\Http\Controllers\Api\AppUpdateController;
+use App\Http\Controllers\Api\TokenListController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\SocialController;
@@ -21,7 +22,14 @@ use App\Http\Controllers\TokenFactoryController;
 use App\Http\Controllers\TokenSaleController;
 use App\Http\Controllers\ValidatorController;
 use App\Http\Controllers\WalletProfileController;
+use App\Http\Middleware\HandleInertiaRequests;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Inertia\Inertia;
 
 /*
@@ -287,6 +295,26 @@ Route::get('/updates/masternode/{file}', [AppUpdateController::class, 'masternod
     ->where('file', '[A-Za-z0-9._-]+')
     ->middleware('throttle:60,1')
     ->name('updates.masternode');
+
+/*
+ * รายการโทเคน TPIX Chain (Uniswap Token List) — explorer + TPIX Wallet ดึงไปใช้
+ * เนื้อหาเดียวกับ GET /api/v1/tokens/list · ดู App\Services\TokenList\TokenListService
+ *
+ * ถอด middleware ของ session/คุกกี้ออก — คำตอบสาธารณะที่แคชได้ต้องไม่มี Set-Cookie
+ * (Cloudflare ไม่แคชคำตอบที่มีคุกกี้ และทุกครั้งที่ cron ดึงจะได้ session ใหม่ทิ้งไว้)
+ */
+Route::get('/tokenlist.json', [TokenListController::class, 'show'])
+    ->withoutMiddleware([
+        EncryptCookies::class,
+        AddQueuedCookiesToResponse::class,
+        StartSession::class,
+        ShareErrorsFromSession::class,
+        ValidateCsrfToken::class,
+        HandleInertiaRequests::class,
+        AddLinkHeadersForPreloadedAssets::class,
+    ])
+    ->middleware('throttle:60,1')
+    ->name('tokenlist');
 
 // Download — ดาวน์โหลดแอป TPIX TRADE (ดึง release ล่าสุดจาก API ของเราเอง)
 Route::get('/download', function () {

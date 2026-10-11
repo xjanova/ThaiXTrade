@@ -8,6 +8,7 @@ use App\Services\Stabilizer\NodeStabilizerSigner;
 use App\Services\Stabilizer\NullBridgeReserveSource;
 use App\Services\Stabilizer\StabilizerTxSigner;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
@@ -71,6 +72,13 @@ class AppServiceProvider extends ServiceProvider
 
         // Register Line Socialite provider
         Event::listen(SocialiteWasCalled::class, [LineExtendSocialite::class, 'handle']);
+
+        /*
+         * รายการโทเคนสาธารณะ (/api/v1/tokens/list) ต้องตอบ Access-Control-Allow-Origin: *
+         * HandleCors ของ /api/* ตั้ง origin เดียวของเว็บ + credentials ทับทุกคำตอบ
+         * จึงข้ามเฉพาะ path นี้ — controller ใส่ header เอง (ไม่มีคุกกี้/ข้อมูลส่วนตัว)
+         */
+        HandleCors::skipWhen(fn (Request $request) => $request->is('api/v1/tokens/list'));
 
         // Rate limiters for API routes
         RateLimiter::for('trading', function (Request $request) {
