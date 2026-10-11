@@ -341,7 +341,7 @@ class _SwapScreenState extends State<SwapScreen> {
           }
           final approveHash = await wallet.sendBscTransaction(
             to: quote.fromToken.address,
-            data: _swapService.approveCalldata(),
+            data: _swapService.approveCalldata(quote.amountInSwapWei),
             summary: 'Approve $_fromToken for PancakeSwap router',
           );
           if (approveHash == null) {

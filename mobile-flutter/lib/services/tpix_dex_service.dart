@@ -292,6 +292,36 @@ class TpixDexService {
   static double fromWei(BigInt wei, int decimals) =>
       wei.toDouble() / math.pow(10, decimals);
 
+  /// แปลงจำนวนที่ผู้ใช้พิมพ์ (ข้อความทศนิยม) เป็นหน่วยเล็กสุดแบบตรงตัว — ไม่ผ่าน double
+  ///
+  /// double มีความละเอียด ~15–16 หลัก: เหรียญลูกที่ถือกันหลักร้อยล้าน (IDTC 666,666,666.67)
+  /// ปัดแล้วเกินยอดจริงได้ → กด "ขาย 100%" แล้วเจอ "ยอดไม่พอ" / ธุรกรรม revert
+  /// คืน null เมื่อรูปแบบผิด · ทศนิยมเกิน [decimals] ตำแหน่งถูกตัดทิ้ง (ปัดลงเสมอ)
+  static BigInt? parseUnits(String text, int decimals) {
+    final t = text.trim().replaceAll(',', '');
+    if (t.isEmpty || t == '.' || !RegExp(r'^\d*\.?\d*$').hasMatch(t)) {
+      return null;
+    }
+    final parts = t.split('.');
+    final whole = parts[0].isEmpty ? BigInt.zero : BigInt.parse(parts[0]);
+    var frac = parts.length > 1 ? parts[1] : '';
+    if (frac.length > decimals) frac = frac.substring(0, decimals);
+    frac = frac.padRight(decimals, '0');
+    final fracValue = frac.isEmpty ? BigInt.zero : BigInt.parse(frac);
+    return whole * BigInt.from(10).pow(decimals) + fracValue;
+  }
+
+  /// หน่วยเล็กสุด → ข้อความทศนิยมเต็มความละเอียด (ตัดศูนย์ท้าย) — ใช้เติมช่องจำนวนแบบตรงตัว
+  static String formatUnits(BigInt wei, int decimals) {
+    if (wei <= BigInt.zero) return '0';
+    if (decimals == 0) return wei.toString();
+    final s = wei.toString().padLeft(decimals + 1, '0');
+    final whole = s.substring(0, s.length - decimals);
+    final frac =
+        s.substring(s.length - decimals).replaceFirst(RegExp(r'0+$'), '');
+    return frac.isEmpty ? whole : '$whole.$frac';
+  }
+
   /// native TPIX ในฐานข้อมูลคือ 0x0 — ตรงนี้ถือว่าเป็น native ทุกกรณีที่ตรงกัน
   static bool isNative(String address) {
     final a = address.toLowerCase();
@@ -428,11 +458,25 @@ class TpixDexService {
     required String walletAddress,
     int decimals = 18,
   }) async {
+    final wei =
+        await getBalanceWei(address: address, walletAddress: walletAddress);
+    if (wei == null) return null;
+    final dec = isNative(address)
+        ? 18
+        : (_decimalsCache[address.toLowerCase()] ?? decimals);
+    return fromWei(wei, dec);
+  }
+
+  /// ยอดคงเหลือเป็นหน่วยเล็กสุด (ตรงตัว) — null เมื่ออ่านไม่ได้
+  Future<BigInt?> getBalanceWei({
+    required String address,
+    required String walletAddress,
+  }) async {
     try {
       final owner = EthereumAddress.fromHex(walletAddress);
       if (isNative(address)) {
         final amount = await _withClient((client) => client.getBalance(owner));
-        return fromWei(amount.getInWei, 18);
+        return amount.getInWei;
       }
       final contract = _erc20At(address);
       final result = await _withClient((client) => client.call(
@@ -440,8 +484,7 @@ class TpixDexService {
             function: contract.function('balanceOf'),
             params: [owner],
           ));
-      final dec = _decimalsCache[address.toLowerCase()] ?? decimals;
-      return fromWei(result.first as BigInt, dec);
+      return result.first as BigInt;
     } catch (e) {
       debugPrint('TPIX DEX getBalance failed: ${e.runtimeType}');
       return null;
@@ -543,19 +586,24 @@ class TpixDexService {
       [direct.first, EthereumAddress.fromHex(cfg.wtpix!), direct.last];
 
   /// ขอ quote จริงจาก router — จ่าย [amount] ของ fromToken (exact-in)
+  ///
+  /// [amountInWei] (ถ้าให้มา) ใช้แทน [amount] แบบตรงตัว — ควรส่งเสมอเมื่อจำนวนมาจาก
+  /// ข้อความที่ผู้ใช้พิมพ์ ([parseUnits]) หรือยอดคงเหลือบนเชน ไม่ให้ double ปัดเกินยอดจริง
   Future<TpixDexQuote> getQuote({
     required VerifiedToken fromToken,
     required VerifiedToken toToken,
     required double amount,
     double slippage = 0.5,
+    BigInt? amountInWei,
   }) async {
-    if (amount <= 0) {
+    if (amountInWei == null && amount <= 0) {
       throw const SwapException('Enter an amount.', 'กรุณาระบุจำนวน');
     }
+    checkSlippage(slippage);
 
     final cfg = await _requireReady();
 
-    final amountInWei = toWei(amount, fromToken.decimals);
+    amountInWei ??= toWei(amount, fromToken.decimals);
     if (amountInWei <= BigInt.zero) {
       throw const SwapException(
           'Amount is too small.', 'จำนวนน้อยเกินไป');
@@ -574,13 +622,15 @@ class TpixDexService {
     required VerifiedToken toToken,
     required double amountOut,
     double slippage = 0.5,
+    BigInt? amountOutWei,
   }) async {
-    if (amountOut <= 0) {
+    if (amountOutWei == null && amountOut <= 0) {
       throw const SwapException('Enter an amount.', 'กรุณาระบุจำนวน');
     }
+    checkSlippage(slippage);
 
     final cfg = await _requireReady();
-    final outWei = toWei(amountOut, toToken.decimals);
+    final outWei = amountOutWei ?? toWei(amountOut, toToken.decimals);
     if (outWei <= BigInt.zero) {
       throw const SwapException(
           'Amount is too small.', 'จำนวนน้อยเกินไป');
@@ -745,6 +795,19 @@ class TpixDexService {
     return s;
   }
 
+  /// เพดาน slippage — ค่าจากการตั้งค่า (ซิงก์จากเซิร์ฟเวอร์/เก็บในเครื่อง) อาจผิดรูปหรือถูกแก้
+  /// slippage 99% = minOut แทบเป็น 0 → โดน sandwich ได้ทั้งไม้ จึงปฏิเสธก่อนถึงกระเป๋า
+  static const double kMaxSlippagePct = 50;
+
+  static void checkSlippage(double slippage) {
+    if (!slippage.isFinite || slippage <= 0 || slippage > kMaxSlippagePct) {
+      throw const SwapException(
+        'Slippage must be between 0.01% and 50%.',
+        'slippage ต้องอยู่ระหว่าง 0.01% ถึง 50%',
+      );
+    }
+  }
+
   // ── Allowance / Approve ──
 
   Future<bool> hasAllowance(
@@ -769,14 +832,19 @@ class TpixDexService {
     }
   }
 
-  /// Calldata approve router แบบไม่จำกัด (pattern เดียวกับเว็บและฝั่ง BSC)
-  Future<Uint8List> approveCalldata(String tokenAddress) async {
+  /// Calldata approve router **เท่ากับยอดของไม้นี้พอดี** (ไม่ใช่ไม่จำกัด)
+  ///
+  /// เดิม approve 2^256−1 ทิ้งไว้ตลอด — ถ้า router/กุญแจฝั่งไหนมีปัญหาในวันหน้า
+  /// ยอดทั้งกระเป๋าของเหรียญนั้นเปิดให้ดึงได้ทันที ยอมเซ็นเพิ่มทีละไม้ปลอดภัยกว่า
+  Future<Uint8List> approveCalldata(String tokenAddress, BigInt amount) async {
+    if (amount <= BigInt.zero) {
+      throw const SwapException('Enter an amount.', 'กรุณาระบุจำนวน');
+    }
     final cfg = await _requireReady();
     final contract = _erc20At(tokenAddress);
-    final maxUint = (BigInt.one << 256) - BigInt.one;
     return contract.function('approve').encodeCall([
       EthereumAddress.fromHex(cfg.router!),
-      maxUint,
+      amount,
     ]);
   }
 

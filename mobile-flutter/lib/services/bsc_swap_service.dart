@@ -444,13 +444,13 @@ class BscSwapService {
     }
   }
 
-  /// Calldata สำหรับ approve router แบบไม่จำกัด (pattern เดียวกับเว็บ)
-  Uint8List approveCalldata() {
+  /// Calldata approve router **เท่ากับยอดที่จะ swap พอดี** (ไม่ใช่ไม่จำกัด)
+  /// เดิม approve 2^256−1 ค้างไว้ตลอด — router มีปัญหาวันไหน ยอดทั้งกระเป๋าเปิดให้ดึง
+  Uint8List approveCalldata(BigInt amount) {
     final contract = _erc20At(kWbnbAddress); // ABI ใช้ร่วมกันทุก ERC20
-    final maxUint = (BigInt.one << 256) - BigInt.one;
     return contract.function('approve').encodeCall([
       EthereumAddress.fromHex(kPancakeRouterAddress),
-      maxUint,
+      amount,
     ]);
   }
 

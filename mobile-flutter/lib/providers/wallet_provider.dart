@@ -167,7 +167,12 @@ class WalletProvider extends ChangeNotifier {
   String get currency => _currency;
   String get defaultPair => _defaultPair;
   String get defaultOrderType => _defaultOrderType;
-  double get slippage => _slippage;
+  /// slippage ที่ใช้เทรดจริง — ค่าที่เก็บไว้/ซิงก์จากเซิร์ฟเวอร์อาจผิดรูปหรือถูกแก้
+  /// นอกช่วง 0.01–50% = ใช้ค่าปลอดภัย 0.5% (99% = minOut แทบเป็น 0 โดน sandwich ทั้งไม้)
+  double get slippage =>
+      _slippage.isFinite && _slippage >= 0.01 && _slippage <= 50
+          ? _slippage
+          : 0.5;
   bool get biometricEnabled => _biometricEnabled;
   bool get pushNotifications => _pushNotifications;
 

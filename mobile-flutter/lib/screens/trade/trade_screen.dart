@@ -76,6 +76,11 @@ class _TradeScreenState extends State<TradeScreen>
   // ยอดคงเหลือของ base/quote อ่านตรงจาก RPC ของเชน TPIX (null = ยังไม่โหลด)
   double? _dexBaseBalance;
   double? _dexQuoteBalance;
+  // ยอดเดียวกันแบบหน่วยเล็กสุด (ตรงตัว) + decimals ที่ยืนยันกับเชนแล้ว
+  // ใช้กับปุ่ม % และด่านยอดไม่พอ — double ปัดเกินยอดจริงได้เมื่อถือหลักร้อยล้านเหรียญ
+  BigInt? _dexBaseBalanceWei;
+  BigInt? _dexQuoteBalanceWei;
+  int? _dexBaseDecimals;
   String? _dexBalanceKey;
   // ยอดสองตัวบนเป็นของคู่/กระเป๋าไหน — อ่านพลาดรอบถัดไปจะคงค่านี้ไว้ (ห้ามโชว์ 0 แทน)
   // แต่ห้ามเอายอดของคู่/กระเป๋าอื่นมาโชว์
@@ -260,16 +265,22 @@ class _TradeScreenState extends State<TradeScreen>
     }
     final address = wallet.address!;
     final key = _dexKeyNow(market, wallet);
+    // decimals ต้องมาจากเชน (ค่าจาก API ผิดทีเดียวยอดเพี้ยนเป็นล้านเท่า) — ตรวจไม่ได้ใช้ค่าจาก API
+    var baseDec = pair.baseDecimals;
+    var quoteDec = pair.quoteDecimals;
+    try {
+      final (b, q) = await _dexTokens(pair, market);
+      baseDec = b.decimals;
+      quoteDec = q.decimals;
+    } catch (_) {}
     final results = await Future.wait([
-      _dexService.getBalance(
+      _dexService.getBalanceWei(
         address: pair.baseAddress ?? TpixDexService.nativeAddress,
         walletAddress: address,
-        decimals: pair.baseDecimals,
       ),
-      _dexService.getBalance(
+      _dexService.getBalanceWei(
         address: pair.quoteAddress ?? TpixDexService.nativeAddress,
         walletAddress: address,
-        decimals: pair.quoteDecimals,
       ),
     ]);
     if (!mounted) return;
@@ -282,8 +293,15 @@ class _TradeScreenState extends State<TradeScreen>
     final same = _dexBalancesFor == key;
     setState(() {
       // อ่านพลาด (null) = คงยอดเดิมของคู่/กระเป๋านี้ ไม่ใช่ตั้งเป็น 0
-      _dexBaseBalance = results[0] ?? (same ? _dexBaseBalance : null);
-      _dexQuoteBalance = results[1] ?? (same ? _dexQuoteBalance : null);
+      _dexBaseBalanceWei = results[0] ?? (same ? _dexBaseBalanceWei : null);
+      _dexQuoteBalanceWei = results[1] ?? (same ? _dexQuoteBalanceWei : null);
+      _dexBaseDecimals = baseDec;
+      _dexBaseBalance = _dexBaseBalanceWei == null
+          ? null
+          : TpixDexService.fromWei(_dexBaseBalanceWei!, baseDec);
+      _dexQuoteBalance = _dexQuoteBalanceWei == null
+          ? null
+          : TpixDexService.fromWei(_dexQuoteBalanceWei!, quoteDec);
       _dexBalancesFor = key;
     });
   }
@@ -389,21 +407,29 @@ class _TradeScreenState extends State<TradeScreen>
     final seq = ++_previewSeq;
     final isBuy = _isBuy;
     final th = context.read<LocaleProvider>().isThai;
+    final amountText = _amountController.text;
     setState(() => _quotingPreview = true);
     try {
       if (dexPair != null) {
         final (baseTok, quoteTok) = await _dexTokens(dexPair, market);
+        // จำนวน (หน่วย base) แปลงจากข้อความตรงตัว — ไม่ผ่าน double
+        final amountWei = TpixDexService.parseUnits(amountText, baseTok.decimals);
+        if (amountWei == null || amountWei <= BigInt.zero) {
+          throw const SwapException('Amount is too small.', 'จำนวนน้อยเกินไป');
+        }
         final quote = isBuy
             ? await _dexService.getQuoteForOutput(
                 fromToken: quoteTok,
                 toToken: baseTok,
                 amountOut: amount,
+                amountOutWei: amountWei,
                 slippage: wallet.slippage,
               )
             : await _dexService.getQuote(
                 fromToken: baseTok,
                 toToken: quoteTok,
                 amount: amount,
+                amountInWei: amountWei,
                 slippage: wallet.slippage,
               );
         if (!mounted || seq != _previewSeq) return;
@@ -1339,7 +1365,29 @@ class _TradeScreenState extends State<TradeScreen>
     if (wallet.isConnected && availBalance > 0) {
       // ซื้อบนเชน TPIX: แปลง USDT เป็นจำนวน TPIX ด้วย router (ไม่พึ่งราคา ticker ที่อาจยังเป็น 0)
       if (_isBuy && onDex && _isMarket) {
-        _quickFillDexBuy(availBalance * factor, market, wallet);
+        final pctInt = (factor * 100).round();
+        final quoteWei = _dexBalancesFor == _dexKeyNow(market, wallet)
+            ? _dexQuoteBalanceWei
+            : null;
+        _quickFillDexBuy(
+          availBalance * factor,
+          market,
+          wallet,
+          spendWei: quoteWei == null
+              ? null
+              : quoteWei * BigInt.from(pctInt) ~/ BigInt.from(100),
+        );
+        return;
+      }
+      // ขายบนเชน TPIX: เติมจากยอดหน่วยเล็กสุดแบบตรงตัว (100% = ยอดทั้งหมดพอดี ไม่ปัดเกิน)
+      final baseWei = _dexBalancesFor == _dexKeyNow(market, wallet)
+          ? _dexBaseBalanceWei
+          : null;
+      if (!_isBuy && onDex && baseWei != null && _dexBaseDecimals != null) {
+        final pctInt = (factor * 100).round();
+        _amountController.text = TpixDexService.formatUnits(
+            baseWei * BigInt.from(pctInt) ~/ BigInt.from(100),
+            _dexBaseDecimals!);
         return;
       }
       // For Buy, available is in quote → convert to base amount via price.
@@ -1370,9 +1418,11 @@ class _TradeScreenState extends State<TradeScreen>
   /// เติมจำนวน TPIX ที่จะได้ถ้าจ่าย [spend] USDT — ถาม router ตรง ๆ
   /// ปัดลง 4 ตำแหน่ง (ปัดขึ้นแล้วยอดที่ต้องจ่ายจะเกินที่มี)
   Future<void> _quickFillDexBuy(
-      double spend, MarketProvider market, WalletProvider wallet) async {
+      double spend, MarketProvider market, WalletProvider wallet,
+      {BigInt? spendWei}) async {
     final pair = _dexPairFor(market);
-    if (pair == null || spend <= 0) return;
+    if (pair == null || (spend <= 0 && spendWei == null)) return;
+    if (spendWei != null && spendWei <= BigInt.zero) return;
     final seq = ++_quickFillSeq;
     final pairAtStart = market.selectedPair;
     try {
@@ -1381,6 +1431,7 @@ class _TradeScreenState extends State<TradeScreen>
         fromToken: quoteTok,
         toToken: baseTok,
         amount: spend,
+        amountInWei: spendWei,
         slippage: wallet.slippage,
       );
       if (!mounted || seq != _quickFillSeq || !_isBuy) return;
@@ -2104,7 +2155,7 @@ class _TradeScreenState extends State<TradeScreen>
           }
           final approveHash = await wallet.sendBscTransaction(
             to: swapQuote.fromToken.address,
-            data: _swapService.approveCalldata(),
+            data: _swapService.approveCalldata(swapQuote.amountInSwapWei),
             summary: 'Approve $fromSym for PancakeSwap router',
           );
           if (approveHash == null) {
@@ -2191,7 +2242,8 @@ class _TradeScreenState extends State<TradeScreen>
       return;
     }
 
-    final amount = double.tryParse(_amountController.text.trim());
+    final amountText = _amountController.text;
+    final amount = double.tryParse(amountText.trim());
     if (amount == null || amount <= 0) {
       _showSnack(locale.t('trade.invalid_amount'));
       return;
@@ -2213,6 +2265,12 @@ class _TradeScreenState extends State<TradeScreen>
       final (baseTok, quoteTok) = await _dexTokens(pair, market);
       final fromTok = isBuy ? quoteTok : baseTok;
       final toTok = isBuy ? baseTok : quoteTok;
+      // จำนวน (หน่วย base) จากข้อความตรงตัว — ไม่ผ่าน double (ดู TpixDexService.parseUnits)
+      final amountWei = TpixDexService.parseUnits(amountText, baseTok.decimals);
+      if (amountWei == null || amountWei <= BigInt.zero) {
+        throw SwapException(locale.t('trade.invalid_amount'),
+            locale.t('trade.invalid_amount'));
+      }
 
       // 1) Quote จริงจาก router ของพูล — ยอดที่จะจ่าย/ได้มาจาก router ทั้งหมด
       //    buy: ใส่จำนวน TPIX ที่อยากได้ → getAmountsIn บอกยอด USDT ที่ต้องจ่าย
@@ -2222,12 +2280,14 @@ class _TradeScreenState extends State<TradeScreen>
               fromToken: fromTok,
               toToken: toTok,
               amountOut: amount,
+              amountOutWei: amountWei,
               slippage: wallet.slippage,
             )
           : await _dexService.getQuote(
               fromToken: fromTok,
               toToken: toTok,
               amount: amount,
+              amountInWei: amountWei,
               slippage: wallet.slippage,
             );
 
@@ -2245,10 +2305,13 @@ class _TradeScreenState extends State<TradeScreen>
       }
 
       // ยอดที่จะจ่ายต้องไม่เกินที่มีจริงบนเชน (อ่านได้แล้วเท่านั้น — ไม่รู้ยอดก็ปล่อยให้เชนตัดสิน)
+      // เทียบเป็นหน่วยเล็กสุด — double ทำให้ "ขาย 100%" ของยอดหลักร้อยล้านเด้งว่าไม่พอ
       final have = isBuy ? _dexQuoteBalance : _dexBaseBalance;
+      final haveWei = isBuy ? _dexQuoteBalanceWei : _dexBaseBalanceWei;
       if (_dexBalancesFor == '$pairSymbol|$address' &&
           have != null &&
-          swapQuote.amountIn > have + 1e-12) {
+          haveWei != null &&
+          swapQuote.amountInWei > haveWei) {
         throw SwapException(
           'Insufficient ${fromTok.symbol} — need ${_fmtAmount(swapQuote.amountIn)}, have ${_fmtAmount(have)}.',
           '${fromTok.symbol} ไม่พอ — ต้องใช้ ${_fmtAmount(swapQuote.amountIn)} มี ${_fmtAmount(have)}',
@@ -2269,7 +2332,9 @@ class _TradeScreenState extends State<TradeScreen>
           final approveHash = await wallet.sendChainTransaction(
             chainId: chainId,
             to: fromTok.address,
-            data: await _dexService.approveCalldata(fromTok.address),
+            // approve เท่ายอดของไม้นี้พอดี ไม่เปิดสิทธิ์ไม่จำกัดค้างไว้
+            data: await _dexService.approveCalldata(
+                fromTok.address, swapQuote.amountInWei),
             summary: 'Approve ${fromTok.symbol} for TPIX DEX router',
           );
           if (approveHash == null) {
