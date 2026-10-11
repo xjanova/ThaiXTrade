@@ -3,213 +3,169 @@
 namespace App\Services;
 
 use App\Models\FactoryToken;
+use App\Services\TokenFactory\TpixRpcClient;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * BlockscoutVerifyService.
+ * BlockscoutVerifyService — ยืนยันซอร์สของเหรียญที่แฟกทอรีสร้าง บน Blockscout ด้วย standard JSON input.
  *
- * Auto-verify deployed contracts บน Blockscout Explorer
- * Phase 2: รองรับ contract ทุกประเภท (ERC-20, NFT, Governance, etc.)
+ * ทำไมเปลี่ยนจาก flattened-code:
+ *   ของเดิมส่ง evm "cancun" ไม่มี viaIR และใช้ไฟล์ flatten ใน build/flat ที่คอมไพล์กับ
+ *   OpenZeppelin คนละรุ่น — bytecode ไม่มีวันตรง ยืนยันไม่ผ่านสักเหรียญ
+ *   standard JSON input คือ "อินพุตของ solc ทั้งก้อน" (ซอร์ส + settings ครบ evmVersion/viaIR/optimizer)
+ *   ที่ใช้คอมไพล์จริงใน TPIX-Coin → ตรงแน่นอน
  *
- * ใช้ Blockscout API v2 สำหรับ flattened-code verification.
+ * ไฟล์อินพุตอยู่ที่ resources/contracts/verify/<ContractName>.json (ทีมสัญญาเป็นคน generate ดู README ในโฟลเดอร์)
+ * ไม่มีไฟล์ = บันทึกว่า "skipped: missing standard input" — ไม่ทำให้การ deploy ล้ม
  *
  * Developed by Xman Studio
  */
 class BlockscoutVerifyService
 {
+    /** token_type → ชื่อสัญญา (ชื่อไฟล์ใน resources/contracts/verify) */
+    public const CONTRACTS = [
+        'standard' => 'FactoryERC20V2',
+        'mintable' => 'FactoryERC20V2',
+        'burnable' => 'FactoryERC20V2',
+        'mintable_burnable' => 'FactoryERC20V2',
+        'utility' => 'UtilityToken',
+        'reward' => 'RewardToken',
+        'governance' => 'GovernanceToken',
+        'stablecoin' => 'StablecoinToken',
+        'nft' => 'FactoryERC721',
+        'nft_collection' => 'NFTCollection',
+    ];
+
+    public const SKIPPED_MISSING_INPUT = 'skipped: missing standard input';
+
     private string $apiUrl;
 
     private bool $enabled;
 
-    public function __construct()
+    public function __construct(private ContractRegistry $contracts)
     {
-        $this->apiUrl = rtrim(config('blockchain.explorer_api_url', 'https://explorer.tpix.online/api'), '/');
-        $this->enabled = (bool) config('blockchain.explorer_verify_enabled', true);
+        $this->apiUrl = rtrim((string) config('blockchain.explorer_api_url', 'https://explorer.tpix.online/api'), '/');
+        $this->enabled = filter_var(config('blockchain.explorer_verify_enabled', true), FILTER_VALIDATE_BOOLEAN);
     }
 
     /**
-     * Phase 2: Contract type → info mapping
-     * แต่ละ type ใช้ contract name + flattened file ต่างกัน.
-     */
-    private function getContractInfo(string $tokenType): array
-    {
-        return match ($tokenType) {
-            'standard', 'mintable', 'burnable', 'mintable_burnable' => [
-                'name' => $this->hasV2Contract() ? 'FactoryERC20V2' : 'FactoryERC20',
-                'flat' => $this->hasV2Contract() ? 'FactoryERC20V2.flat.sol' : 'FactoryERC20.flat.sol',
-                'compiler' => $this->hasV2Contract() ? 'v0.8.24+commit.e11b9ed9' : 'v0.8.20+commit.a1b79de6',
-                'evm' => $this->hasV2Contract() ? 'cancun' : 'paris',
-            ],
-            'utility' => [
-                'name' => 'UtilityToken',
-                'flat' => 'UtilityToken.flat.sol',
-                'compiler' => 'v0.8.24+commit.e11b9ed9',
-                'evm' => 'cancun',
-            ],
-            'reward' => [
-                'name' => 'RewardToken',
-                'flat' => 'RewardToken.flat.sol',
-                'compiler' => 'v0.8.24+commit.e11b9ed9',
-                'evm' => 'cancun',
-            ],
-            'governance' => [
-                'name' => 'GovernanceToken',
-                'flat' => 'GovernanceToken.flat.sol',
-                'compiler' => 'v0.8.24+commit.e11b9ed9',
-                'evm' => 'cancun',
-            ],
-            'stablecoin' => [
-                'name' => 'StablecoinToken',
-                'flat' => 'StablecoinToken.flat.sol',
-                'compiler' => 'v0.8.24+commit.e11b9ed9',
-                'evm' => 'cancun',
-            ],
-            'nft' => [
-                'name' => 'FactoryERC721',
-                'flat' => 'FactoryERC721.flat.sol',
-                'compiler' => 'v0.8.24+commit.e11b9ed9',
-                'evm' => 'cancun',
-            ],
-            'nft_collection' => [
-                'name' => 'NFTCollection',
-                'flat' => 'NFTCollection.flat.sol',
-                'compiler' => 'v0.8.24+commit.e11b9ed9',
-                'evm' => 'cancun',
-            ],
-            default => [
-                'name' => 'FactoryERC20',
-                'flat' => 'FactoryERC20.flat.sol',
-                'compiler' => 'v0.8.20+commit.a1b79de6',
-                'evm' => 'paris',
-            ],
-        };
-    }
-
-    /**
-     * Check ว่ามี V2 contract deploy แล้วหรือยัง.
-     */
-    private function hasV2Contract(): bool
-    {
-        return ! empty(config('blockchain.factory_v2_address'));
-    }
-
-    /**
-     * Verify factory-deployed token/NFT บน Blockscout.
+     * ชื่อสัญญาของเหรียญนี้.
      *
-     * @return array ['success' => bool, 'error' => ?string]
+     * ERC-20 ที่สร้างจากแฟกทอรี V1 (ตัวเก่า) เป็นสัญญา FactoryERC20 ไม่ใช่ V2
+     * ดูจากที่สคริปต์บันทึกไว้ก่อน ถ้าไม่มีให้ดูทะเบียนสัญญา (ไม่ใช่ config อย่างเดียว)
      */
-    public function verifyFactoryToken(string $contractAddress, FactoryToken $token): array
+    public function contractNameFor(FactoryToken $token): ?string
+    {
+        $name = self::CONTRACTS[$token->token_type] ?? null;
+
+        if ($name === 'FactoryERC20V2') {
+            $version = $token->metadata['factory_version'] ?? null;
+            $usedV1 = $version === 'v1'
+                || ($version === null && $this->contracts->address('token_factory_v2') === null
+                    && $this->contracts->address('token_factory_v1') !== null);
+
+            return $usedV1 ? 'FactoryERC20' : 'FactoryERC20V2';
+        }
+
+        return $name;
+    }
+
+    public function standardInputPath(string $contractName): string
+    {
+        $dir = (string) config('blockchain.explorer_standard_input_dir', resource_path('contracts/verify'));
+
+        return rtrim($dir, '/\\').DIRECTORY_SEPARATOR.$contractName.'.json';
+    }
+
+    /**
+     * ส่งคำขอยืนยันซอร์ส.
+     *
+     * @return array{status: string, message: ?string, contract_name: ?string}
+     *               status: submitted | already_verified | skipped | error
+     */
+    public function submit(FactoryToken $token): array
     {
         if (! $this->enabled) {
-            return ['success' => false, 'error' => 'Verification disabled'];
+            return ['status' => 'skipped', 'message' => 'skipped: verification disabled', 'contract_name' => null];
         }
 
-        // รอให้ Blockscout index contract ก่อน
-        sleep(5);
+        $address = strtolower((string) $token->contract_address);
+        if (! preg_match('/^0x[a-f0-9]{40}$/', $address)) {
+            return ['status' => 'error', 'message' => 'ไม่มีที่อยู่สัญญา', 'contract_name' => null];
+        }
+
+        $contractName = $this->contractNameFor($token);
+        if ($contractName === null) {
+            return ['status' => 'skipped', 'message' => 'skipped: unknown contract type', 'contract_name' => null];
+        }
+
+        $path = $this->standardInputPath($contractName);
+        $spec = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+
+        if (! is_array($spec) || empty($spec['compiler_version']) || empty($spec['contract_name']) || ! is_array($spec['input'] ?? null)) {
+            Log::warning('BlockscoutVerifyService: ไม่มี standard input ของสัญญา', ['contract' => $contractName, 'path' => $path]);
+
+            return ['status' => 'skipped', 'message' => self::SKIPPED_MISSING_INPUT, 'contract_name' => $contractName];
+        }
+
+        if ($this->isVerified($address) === true) {
+            return ['status' => 'already_verified', 'message' => null, 'contract_name' => $contractName];
+        }
+
+        $url = "{$this->apiUrl}/v2/smart-contracts/{$address}/verification/via/standard-input";
 
         try {
-            return $this->verifyViaApiV2($contractAddress, $token);
+            $response = Http::timeout(60)
+                ->withHeaders(['User-Agent' => TpixRpcClient::USER_AGENT, 'Accept' => 'application/json'])
+                ->asMultipart()
+                ->attach('files[0]', json_encode($spec['input'], JSON_UNESCAPED_SLASHES), $contractName.'.json', ['Content-Type' => 'application/json'])
+                ->post($url, [
+                    'compiler_version' => (string) $spec['compiler_version'],
+                    'contract_name' => (string) $spec['contract_name'],
+                    'autodetect_constructor_args' => 'true',
+                    'license_type' => 'mit',
+                ]);
         } catch (\Throwable $e) {
-            Log::error('BlockscoutVerifyService: verification exception', [
-                'contract' => $contractAddress,
-                'token_type' => $token->token_type,
-                'error' => $e->getMessage(),
+            return ['status' => 'error', 'message' => 'ติดต่อ explorer ไม่ได้: '.$e->getMessage(), 'contract_name' => $contractName];
+        }
+
+        if (! $response->successful()) {
+            $message = $response->json('message') ?? mb_substr($response->body(), 0, 300);
+
+            Log::warning('BlockscoutVerifyService: explorer ปฏิเสธคำขอ', [
+                'status' => $response->status(),
+                'contract' => $address,
+                'message' => $message,
             ]);
 
-            return ['success' => false, 'error' => $e->getMessage()];
+            return ['status' => 'error', 'message' => "HTTP {$response->status()}: {$message}", 'contract_name' => $contractName];
         }
+
+        return ['status' => 'submitted', 'message' => $response->json('message'), 'contract_name' => $contractName];
     }
 
     /**
-     * Verify contract ผ่าน Blockscout API v2.
+     * explorer ยืนยันซอร์สแล้วหรือยัง — null = ถามไม่ได้.
      */
-    private function verifyViaApiV2(string $contractAddress, FactoryToken $token): array
+    public function isVerified(string $address): ?bool
     {
-        $url = "{$this->apiUrl}/v2/smart-contracts/{$contractAddress}/verification/via/flattened-code";
-
-        // Phase 2: ดึง contract info ตาม token_type
-        $contractInfo = $this->getContractInfo($token->token_type);
-        $sourceCode = $this->loadFlattenedSource($contractInfo['flat']);
-
-        if (empty($sourceCode)) {
-            return ['success' => false, 'error' => "Flattened source not found: {$contractInfo['flat']}"];
+        try {
+            $response = Http::timeout(15)
+                ->withHeaders(['User-Agent' => TpixRpcClient::USER_AGENT, 'Accept' => 'application/json'])
+                ->get("{$this->apiUrl}/v2/smart-contracts/".strtolower($address));
+        } catch (\Throwable) {
+            return null;
         }
 
-        $payload = [
-            'compiler_version' => $contractInfo['compiler'],
-            'source_code' => $sourceCode,
-            'is_optimization_enabled' => true,
-            'optimization_runs' => 200,
-            'contract_name' => $contractInfo['name'],
-            'evm_version' => $contractInfo['evm'],
-            'autodetect_constructor_args' => true,
-            'constructor_args' => '',
-        ];
-
-        Log::info('BlockscoutVerifyService: submitting verification', [
-            'url' => $url,
-            'contract' => $contractAddress,
-            'contract_name' => $contractInfo['name'],
-            'token_type' => $token->token_type,
-        ]);
-
-        $response = Http::timeout(60)
-            ->post($url, $payload);
-
-        if ($response->successful()) {
-            $data = $response->json();
-
-            if (isset($data['is_verified']) && $data['is_verified']) {
-                return ['success' => true];
-            }
-
-            if (isset($data['message'])) {
-                Log::info('BlockscoutVerifyService: response', ['message' => $data['message']]);
-
-                return ['success' => true, 'message' => $data['message']];
-            }
-
-            return ['success' => true];
+        if ($response->status() === 404) {
+            return false;
         }
 
-        $errorBody = $response->json() ?? [];
-        $errorMsg = $errorBody['message'] ?? $response->body();
-
-        Log::warning('BlockscoutVerifyService: API returned error', [
-            'status' => $response->status(),
-            'error' => $errorMsg,
-            'contract' => $contractAddress,
-            'contract_name' => $contractInfo['name'],
-        ]);
-
-        return ['success' => false, 'error' => "HTTP {$response->status()}: {$errorMsg}"];
-    }
-
-    /**
-     * Load flattened source code ของ contract.
-     * Phase 2: รองรับหลาย contract types.
-     */
-    private function loadFlattenedSource(string $filename): string
-    {
-        // Flat files อยู่ใน build/flat/ (ย้ายออกจาก contracts/ เพื่อไม่กวน compilation)
-        $flattenedPath = base_path("build/flat/{$filename}");
-
-        if (file_exists($flattenedPath)) {
-            return file_get_contents($flattenedPath);
+        if (! $response->successful()) {
+            return null;
         }
 
-        // Fallback: ลองหาใน contracts/factory/
-        $buildPath = base_path("contracts/factory/{$filename}");
-        if (file_exists($buildPath)) {
-            return file_get_contents($buildPath);
-        }
-
-        Log::warning('BlockscoutVerifyService: flattened source not found', [
-            'file' => $filename,
-            'tried' => [$flattenedPath, $buildPath],
-        ]);
-
-        return '';
+        return (bool) ($response->json('is_verified') ?? false);
     }
 }
