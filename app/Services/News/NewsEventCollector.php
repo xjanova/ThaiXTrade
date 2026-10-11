@@ -34,6 +34,11 @@ class NewsEventCollector
     /** เหตุการณ์ที่เก่ากว่านี้ไม่นับเป็นข่าวแล้ว */
     public const LOOKBACK_HOURS = 72;
 
+    /**
+     * AI เคยเรียกว่า "Tether on TPIX Chain" (prod 2026-10-11) — ชวนเข้าใจว่า Tether เป็นผู้ออก ซึ่งไม่จริง.
+     */
+    private const USDT_NOTE = 'USDT on TPIX Chain is a USDT token deployed on TPIX Chain by the TPIX team. It is NOT issued by Tether — never call it "Tether".';
+
     /** คู่เทรดที่เห็นแล้ว — symbol => เวลาที่เห็นครั้งแรก (null = มีอยู่ก่อนเปิดระบบข่าว ไม่ใช่ของใหม่) */
     public const PAIRS_SEEN_KEY = 'news_pairs_seen';
 
@@ -130,6 +135,7 @@ class NewsEventCollector
                 $pairs = $this->pairSymbols();
                 $lines[] = '- TPIX DEX (our own AMM exchange on TPIX Chain) is LIVE — users can swap now at '.$this->url('/swap')
                     .($pairs !== [] ? '. Official pairs: '.implode(', ', $pairs) : '');
+                $lines[] = '- '.self::USDT_NOTE;
             } else {
                 $lines[] = '- TPIX DEX on TPIX Chain is NOT live yet — do not tell readers they can trade on it.';
             }
@@ -170,6 +176,7 @@ class NewsEventCollector
             'BREAKING: TPIX DEX — TPIX Chain\'s own decentralized exchange (an automated market maker in the Uniswap V2 style) — is now live on TPIX Chain mainnet (chain ID 4289).',
             'Four smart contracts were deployed and verified live on-chain: WTPIX (wrapped TPIX, the ERC-20 form of the native coin used inside the DEX), USDT on TPIX Chain, the DEX Factory (registry of liquidity pools) and the DEX Router (swaps and adding/removing liquidity).',
             'For the first time, TPIX can be traded on-chain on its own network instead of only through the token sale or other chains.',
+            self::USDT_NOTE,
             'Trading on TPIX Chain has zero gas fees for users.',
             'It is non-custodial: users trade from their own wallet (TPIX Wallet or another EVM wallet), funds never sit with the exchange.',
         ];

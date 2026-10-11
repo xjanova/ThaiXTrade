@@ -159,6 +159,7 @@ class AutoNewsTest extends TestCase
         $this->assertStringContainsString('TPIX/USDT', $this->prompts[0]['message']);
         $this->assertStringContainsString('TPIX DEX (our own AMM exchange on TPIX Chain) is LIVE', $this->prompts[0]['system']);
         $this->assertStringContainsString('Never write a contract address', $this->prompts[0]['system']);
+        $this->assertStringContainsString('NOT issued by Tether', $this->prompts[0]['message']);
         $this->assertStringContainsString('ยังไม่เปิดขาย', $this->prompts[0]['system']);
         $this->assertStringContainsString('natural, modern Thai', $this->prompts[0]['system']);
     }
