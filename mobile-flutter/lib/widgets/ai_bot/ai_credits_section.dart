@@ -159,7 +159,9 @@ class _AiWalletSummaryCardState extends State<AiWalletSummaryCard> {
     }
 
     final credits = status.credits;
-    final showWelcome = credits <= 0 && widget.onClaimWelcome != null;
+    final showWelcome = credits <= 0 &&
+        !status.welcomeClaimed &&
+        widget.onClaimWelcome != null;
     final sub = status.subscription;
     // เช่าแบบเสียเงินอยู่จริงไหม — `isActive` ของเซิร์ฟเวอร์เป็น true แม้แพลนฟรี
     final paidActive = sub != null && !sub.isFree && sub.daysRemaining > 0;

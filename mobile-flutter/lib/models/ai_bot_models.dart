@@ -967,6 +967,10 @@ class AiBotStatus {
   final bool isAdmin;
   final List<AiBot> bots;
 
+  /// โบนัสต้อนรับรับไปแล้วหรือยัง (ต่อกระเป๋า) — ปุ่มรับต้องดูธงนี้ ไม่ใช่ "เครดิตเป็นศูนย์"
+  /// เดิมดูแค่เครดิต ใช้เครดิตหมดเมื่อไรปุ่มก็กลับมา กดแล้วขึ้นว่ารับสำเร็จทั้งที่ไม่ได้อะไร
+  final bool welcomeClaimed;
+
   const AiBotStatus({
     required this.walletAddress,
     required this.credits,
@@ -976,6 +980,7 @@ class AiBotStatus {
     required this.unlockedStrategies,
     required this.isAdmin,
     required this.bots,
+    this.welcomeClaimed = false,
   });
 
   factory AiBotStatus.fromJson(Map<String, dynamic> json) {
@@ -989,6 +994,7 @@ class AiBotStatus {
       unlockedStrategies: _strList(json['unlocked_strategies']),
       isAdmin: json['is_admin'] == true,
       bots: _mapList(json['bots']).map(AiBot.fromJson).toList(growable: false),
+      welcomeClaimed: json['welcome_claimed'] == true,
     );
   }
 
@@ -1025,6 +1031,7 @@ class AiBotStatus {
     bots: bots
         .map((b) => b.id == updated.id ? updated : b)
         .toList(growable: false),
+    welcomeClaimed: welcomeClaimed,
   );
 
   /// กลยุทธ์นี้ปลดล็อกตามแพลนไหม (ยังต้องเช็ค `strategy.available` ซ้ำ)

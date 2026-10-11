@@ -992,7 +992,9 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
                     packs: bot.catalog!.packs,
                     topupOpen: bot.topupEnabled,
                     working: bot.isWorking,
-                    showWelcome: ready && (bot.status?.credits ?? 0) <= 0,
+                    showWelcome: ready &&
+                        (bot.status?.credits ?? 0) <= 0 &&
+                        bot.status?.welcomeClaimed != true,
                     onWelcome: _claimWelcome,
                     onPick: _topup,
                   )),
