@@ -3,6 +3,7 @@
 namespace Tests\Feature\TokenFactory;
 
 use App\Models\FactoryToken;
+use App\Services\WalletSessionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use PHPUnit\Framework\Attributes\Test;
@@ -60,12 +61,26 @@ class TokenFactoryPublicViewTest extends TestCase
     }
 
     #[Test]
-    public function ผู้สร้างที่พิสูจน์กระเป๋าแล้วเห็นรายละเอียดของตัวเอง_ยกเว้นธุรกรรมดิบ(): void
+    public function แคชพิสูจน์กระเป๋าของเจ้าของไม่พอ_คนอื่นใส่เลขกระเป๋าแล้วอ่านไม่ได้(): void
     {
+        // แคชผูกกับกระเป๋า ไม่ได้ผูกกับคนถาม — ใครรู้เลขกระเป๋า (เห็นบนเชน) ก็ใส่ได้
         $token = $this->failedToken();
         Cache::put("wallet_verified:{$this->creator}", ['ip' => '127.0.0.1'], 3600);
 
         $response = $this->getJson("/api/v1/token-factory/{$token->id}?wallet_address={$this->creator}")->assertOk();
+
+        $this->assertArrayNotHasKey('metadata', $response->json('data'));
+    }
+
+    #[Test]
+    public function ผู้สร้างที่มีโทเคนเซสชันกระเป๋าเห็นรายละเอียดของตัวเอง_ยกเว้นธุรกรรมดิบ(): void
+    {
+        $token = $this->failedToken();
+        $session = app(WalletSessionService::class)->issue($this->creator, 4289)['token'];
+
+        $response = $this->withHeaders([WalletSessionService::HEADER => $session])
+            ->getJson("/api/v1/token-factory/{$token->id}?wallet_address={$this->creator}")
+            ->assertOk();
 
         $this->assertSame('สแปม', $response->json('data.reject_reason'));
         $this->assertArrayHasKey('deploy_error', $response->json('data.metadata'));

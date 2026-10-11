@@ -26,6 +26,12 @@ class Web3DeploymentService
     public const PROCESS_TIMEOUT = 150;
 
     /**
+     * โหมดตรวจผล: รอ receipt 20 วินาที + ต่อ RPC — ต้องน้อยกว่า CheckFactoryDeployReceiptJob::$timeout (90)
+     * ไม่งั้น worker ถูกฆ่าก่อน process แล้ว node ค้างเป็นกำพร้า
+     */
+    public const RECEIPT_PROCESS_TIMEOUT = 60;
+
+    /**
      * สคริปต์รอ receipt นานสุดเท่านี้ แล้วรายงาน pending (งานตรวจผลรับช่วงต่อ)
      * งบเวลา: ต่อ RPC ~15 + ค้นซ้ำบนเชน ~30 + เซ็น ~10 + รอ 75 = ~130 < PROCESS_TIMEOUT 150
      */
@@ -107,13 +113,13 @@ class Web3DeploymentService
             'waitSeconds' => $waitSeconds,
         ]);
 
-        return $this->runScript($input, $this->environment(withKey: false));
+        return $this->runScript($input, $this->environment(withKey: false), null, self::RECEIPT_PROCESS_TIMEOUT);
     }
 
     /**
      * รันสคริปต์แล้วอ่านผลทีละบรรทัด.
      */
-    private function runScript(string $input, array $env, ?callable $onSigned = null): array
+    private function runScript(string $input, array $env, ?callable $onSigned = null, int $timeout = self::PROCESS_TIMEOUT): array
     {
         $command = [config('blockchain.node_path', 'node'), base_path('scripts/blockchain/create-token.cjs')];
 
@@ -172,7 +178,7 @@ class Web3DeploymentService
         };
 
         try {
-            $process = Process::timeout(self::PROCESS_TIMEOUT)
+            $process = Process::timeout($timeout)
                 ->env($env)
                 ->input($input)
                 ->start($command, $handler);
@@ -250,7 +256,7 @@ class Web3DeploymentService
      */
     private function environment(bool $withKey = true): array
     {
-        return [
+        $env = [
             'DEPLOYER_PRIVATE_KEY' => $withKey ? (string) config('blockchain.deployer_private_key') : '',
             'TOKEN_FACTORY_ADDRESS' => $this->contracts->address('token_factory_v1') ?? '',
             'TOKEN_FACTORY_V2_ADDRESS' => $this->contracts->address('token_factory_v2') ?? '',
@@ -259,6 +265,14 @@ class Web3DeploymentService
             'TPIX_CHAIN_ID' => (string) config('blockchain.tpix_chain_id', 4289),
             'DEPLOY_WAIT_SECONDS' => (string) self::DEPLOY_WAIT_SECONDS,
         ];
+
+        // RPC สำรองต้องผ่าน config — หลัง config:cache ตัวแปรใน .env ไม่ถึงสคริปต์เอง
+        $fallbacks = config('blockchain.tpix_rpc_fallback_urls');
+        if ($fallbacks !== null) {
+            $env['TPIX_RPC_FALLBACK_URLS'] = (string) $fallbacks;
+        }
+
+        return $env;
     }
 
     /**

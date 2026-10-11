@@ -44,14 +44,17 @@ class CheckFactoryDeployReceiptJob implements ShouldQueue
             return;
         }
 
+        // จำ hash ที่ถามจริงไว้ — ระหว่างรอผล แถวอาจถูก retry ไปเป็นธุรกรรมใหม่แล้ว
+        $checkedTx = strtolower($token->tx_hash);
+
         $result = $deploymentService->checkDeployment(
-            $token->tx_hash,
+            $checkedTx,
             $token->getRawOriginal('deploy_raw_tx'),
             $token->token_type,
             $token->metadata['sub_options'] ?? [],
         );
 
-        $outcome = $finalizer->apply($token->id, $result, 'receipt');
+        $outcome = $finalizer->apply($token->id, $result, 'receipt', $checkedTx);
 
         if ($outcome !== 'pending' || $this->job === null) {
             return;

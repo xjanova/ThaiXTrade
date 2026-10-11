@@ -183,8 +183,12 @@ function unitsOf(sub, decimals, ...keys) {
     const raw = pick(sub, ...keys);
     if (raw === undefined) return 0n;
     const text = String(raw).trim();
-    if (!/^\d+(\.\d+)?$/.test(text)) return 0n;
-    if (Number(text) <= 0) return 0n;
+    // ค่าแปลก (เช่น "1e-7" จาก Number) ห้ามตีเป็น 0 เงียบ ๆ — ราคา mint จะกลายเป็นฟรี
+    // ฝั่ง PHP แปลงเป็นทศนิยมปกติให้แล้ว เจอแบบนี้ = มีอะไรผิด ให้ล้มก่อนเซ็น
+    if (!/^\d+(\.\d+)?$/.test(text)) {
+        throw new Error(`ค่า ${keys[0]} ต้องเป็นทศนิยมปกติ (ได้ "${text}")`);
+    }
+    if (!/[1-9]/.test(text)) return 0n;
     return ethers.parseUnits(text, decimals);
 }
 
@@ -482,7 +486,7 @@ async function deployNFTCollection(factory, input) {
         collectionMaxSupply,
         mintType,
         // แจกฟรีต้องราคา 0 เสมอ ไม่ว่าจะเผลอกรอกราคาไว้หรือไม่
-        mintType === 2 ? 0n : ethers.parseEther(String(num(sub, 0, 'mint_price'))),
+        mintType === 2 ? 0n : unitsOf(sub, 18, 'mint_price'),
         Math.round(num(sub, 0, 'max_per_wallet')),
         Math.round(num(sub, 0, 'max_per_tx')),
         Math.round(num(sub, 0, 'reserve_count')),
@@ -625,25 +629,45 @@ async function findExistingToken(provider, factoryAddress, iface, input) {
 
     const latest = await provider.getBlockNumber();
     const ownerTopic = ethers.zeroPadValue(String(input.tokenOwner).toLowerCase(), 32);
+    const fromBlock = Math.max(0, latest - lookback);
 
-    for (const span of [lookback, 5000]) {
-        try {
-            const logs = await provider.getLogs({
-                address: factoryAddress,
-                topics: [event.topicHash, null, ownerTopic],
-                fromBlock: Math.max(0, latest - span),
-                toBlock: latest,
-            });
-            for (const log of logs) {
-                const parsed = iface.parseLog({ topics: log.topics, data: log.data });
-                if (parsed && parsed.args.name === input.name && parsed.args.symbol === input.symbol) {
-                    return { tokenAddress: parsed.args[0], txHash: log.transactionHash, blockNumber: log.blockNumber };
-                }
+    const scan = async (from, to) => {
+        const logs = await provider.getLogs({
+            address: factoryAddress,
+            topics: [event.topicHash, null, ownerTopic],
+            fromBlock: from,
+            toBlock: to,
+        });
+        for (const log of logs) {
+            const parsed = iface.parseLog({ topics: log.topics, data: log.data });
+            if (parsed && parsed.args.name === input.name && parsed.args.symbol === input.symbol) {
+                return { tokenAddress: parsed.args[0], txHash: log.transactionHash, blockNumber: log.blockNumber };
             }
-            return null;
-        } catch (e) {
-            process.stderr.write(`dedupe getLogs (${span} blocks) ไม่สำเร็จ: ${errorText(e)}\n`);
         }
+        return null;
+    };
+
+    // ช่วงเดียวทั้งหมดก่อน — RPC บางตัวจำกัดช่วงบล็อก ถ้าโดนปฏิเสธให้ไล่ทีละ 5,000 บล็อกจนครบช่วง
+    // ⚠️ ห้ามย่อช่วงให้สั้นลงแล้วถือว่า "ไม่เจอ" — เหรียญที่สร้างไว้เก่ากว่าช่วงสั้นจะถูกสร้างซ้ำ
+    try {
+        return await scan(fromBlock, latest);
+    } catch (e) {
+        process.stderr.write(`dedupe getLogs ช่วงเดียวไม่สำเร็จ (${errorText(e)}) — ไล่ทีละช่วง\n`);
+    }
+
+    const CHUNK = 5000;
+    for (let to = latest; to >= fromBlock; to -= CHUNK) {
+        const from = Math.max(fromBlock, to - CHUNK + 1);
+        let found;
+        try {
+            found = await scan(from, to);
+        } catch (e) {
+            // ตรวจไม่ครบ = ไม่รู้ว่าเคยสร้างไปแล้วหรือยัง → ห้ามส่ง (fail closed)
+            const err = new Error(`ตรวจซ้ำบนเชนไม่ได้ (บล็อก ${from}-${to}): ${errorText(e)} — ไม่ส่งธุรกรรม`);
+            err.code = 'DEDUPE_UNAVAILABLE';
+            throw err;
+        }
+        if (found) return found;
     }
 
     return null;
@@ -853,12 +877,25 @@ async function deployMode(provider, input) {
     };
 
     // เคยสร้างให้คนนี้ไปแล้ว → รายงานตัวเดิม ไม่ส่งธุรกรรมใหม่
+    // ตรวจไม่ได้ = โยน (DEDUPE_UNAVAILABLE) ก่อนเซ็นอะไรทั้งนั้น
     const existing = await findExistingToken(provider, factoryAddress, iface, deployInput);
     if (existing) {
-        const receipt = await provider.getTransactionReceipt(existing.txHash);
-        if (receipt) {
-            return finishFromReceipt(provider, receipt, deployInput, { alreadyExisted: true });
+        let receipt = null;
+        try {
+            receipt = await provider.getTransactionReceipt(existing.txHash);
+        } catch (e) {
+            receipt = null;
         }
+        if (!receipt) {
+            // เจอเหรียญเดิมบนเชนแต่อ่าน receipt ไม่ได้ — ห้ามสร้างตัวใหม่ทับ (fail closed)
+            return finish({
+                success: false,
+                code: 'DEDUPE_RECEIPT_UNREADABLE',
+                existingTxHash: existing.txHash,
+                error: `พบเหรียญเดิมของเจ้าของนี้บนเชน (tx ${existing.txHash}) แต่อ่าน receipt ไม่ได้ — ไม่ส่งธุรกรรมใหม่`,
+            });
+        }
+        return finishFromReceipt(provider, receipt, deployInput, { alreadyExisted: true });
     }
 
     let callSpec;
@@ -928,5 +965,5 @@ async function main() {
 }
 
 main().catch((error) => {
-    finish({ success: false, error: errorText(error) });
+    finish({ success: false, code: error && typeof error.code === 'string' ? error.code : undefined, error: errorText(error) });
 });

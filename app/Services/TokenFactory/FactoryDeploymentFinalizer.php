@@ -23,37 +23,53 @@ class FactoryDeploymentFinalizer
     public function __construct(private readonly TokenFactoryPolicy $policy) {}
 
     /**
+     * @param  string|null  $expectedTx  ธุรกรรมที่ผลนี้เป็นของมัน (null = ยังไม่ได้เซ็นอะไร)
+     *                                   ผลของธุรกรรมเก่าห้ามไปปิดงานของธุรกรรมใหม่ — เช่นงานตรวจผล T1
+     *                                   ที่รายงาน "dropped" ช้ากว่าที่แอดมิน retry ไปเป็น T2 แล้ว
      * @return string ผลที่เกิด: deployed | failed | pending | ignored
      */
-    public function apply(int $tokenId, array $result, string $source): string
+    public function apply(int $tokenId, array $result, string $source, ?string $expectedTx = null): string
     {
+        $expectedTx = $expectedTx !== null ? strtolower($expectedTx) : null;
+
         $token = FactoryToken::find($tokenId);
         if (! $token || $token->status !== 'deploying') {
             return 'ignored';
         }
 
         // callback บันทึก hash ล้มเหลวระหว่างรัน — บันทึกซ้ำจากผลที่ได้ ก่อนตัดสินอะไรต่อ
-        if (! $token->tx_hash && is_array($result['signed'] ?? null) && is_string($result['signed']['txHash'] ?? null)) {
-            $this->recordSigned($tokenId, $result['signed']['txHash'], $result['signed']['nonce'] ?? null, $result['signed']['rawTx'] ?? null);
+        if (! $token->tx_hash && $expectedTx !== null) {
+            $signed = is_array($result['signed'] ?? null) ? $result['signed'] : [];
+            $this->recordSigned($tokenId, $expectedTx, $signed['nonce'] ?? null, $signed['rawTx'] ?? null);
             $token->refresh();
         }
 
-        if (($result['success'] ?? false) === true && ! empty($result['contractAddress'])) {
-            return $this->markDeployed($token, $result, $source) ? 'deployed' : 'ignored';
+        $rowTx = $token->tx_hash ? strtolower($token->tx_hash) : null;
+        if ($rowTx !== $expectedTx) {
+            Log::warning('ผลการ deploy ไม่ตรงกับธุรกรรมปัจจุบันของแถว — ไม่นำมาใช้', [
+                'token_id' => $tokenId,
+                'source' => $source,
+                'result_tx' => $expectedTx,
+                'row_tx' => $rowTx,
+            ]);
+
+            return 'ignored';
         }
 
-        $hasTx = (bool) $token->tx_hash;
+        if (($result['success'] ?? false) === true && ! empty($result['contractAddress'])) {
+            return $this->markDeployed($token, $result, $source, $expectedTx) ? 'deployed' : 'ignored';
+        }
 
         // รู้แน่ว่าธุรกรรมนั้นไม่มีวันสร้างเหรียญ → ล้มเหลว ส่งใหม่ได้อย่างปลอดภัย
-        if ($hasTx && (($result['reverted'] ?? false) || ($result['dropped'] ?? false))) {
-            $this->markFailed($tokenId, (string) ($result['error'] ?? 'ธุรกรรมไม่สำเร็จ'), clearTx: true);
+        if ($expectedTx !== null && (($result['reverted'] ?? false) || ($result['dropped'] ?? false))) {
+            $this->markFailed($tokenId, (string) ($result['error'] ?? 'ธุรกรรมไม่สำเร็จ'), clearTx: true, expectedTx: $expectedTx);
 
             return 'failed';
         }
 
         // มีธุรกรรมแล้วแต่ยังไม่รู้ผล → ห้ามล้มเหลว ห้ามส่งใหม่ — ให้งานตรวจผลวนถาม
-        if ($hasTx) {
-            $this->note($tokenId, ['deploy_pending_reason' => $result['error'] ?? 'รอผลธุรกรรม']);
+        if ($expectedTx !== null) {
+            $this->note($tokenId, ['deploy_pending_reason' => $result['error'] ?? 'รอผลธุรกรรม'], $expectedTx);
 
             return 'pending';
         }
@@ -78,10 +94,22 @@ class FactoryDeploymentFinalizer
             ]) === 1;
     }
 
-    public function markFailed(int $tokenId, string $error, bool $clearTx): void
+    /**
+     * @param  bool  $clearTx  true = ธุรกรรม $expectedTx ล้มแน่นอนแล้ว เคลียร์ให้ retry ได้ (ต้องระบุ $expectedTx)
+     *                         false = ล้มก่อนเซ็น (แถวต้องไม่มี tx_hash)
+     */
+    public function markFailed(int $tokenId, string $error, bool $clearTx, ?string $expectedTx = null): void
     {
         $token = FactoryToken::find($tokenId);
         if (! $token || $token->status !== 'deploying') {
+            return;
+        }
+
+        $expectedTx = $expectedTx !== null ? strtolower($expectedTx) : null;
+        $rowTx = $token->tx_hash ? strtolower($token->tx_hash) : null;
+
+        if ($clearTx ? ($expectedTx === null || $rowTx !== $expectedTx) : $rowTx !== null) {
+            // ไม่ตรงเงื่อนไข = มีธุรกรรมอื่นค้างอยู่ — ห้ามล้มเหลว (กันผลเก่าเคลียร์ธุรกรรมใหม่)
             return;
         }
 
@@ -91,27 +119,28 @@ class FactoryDeploymentFinalizer
 
         $changes = ['status' => 'failed', 'deploy_started_at' => null];
 
-        if ($clearTx && $token->tx_hash) {
+        if ($clearTx) {
             // เก็บประวัติไว้ตรวจย้อนหลัง แล้วเคลียร์ให้ retry เซ็นธุรกรรมใหม่ได้
             $metadata['previous_deploy_txs'] = array_values(array_merge(
                 $metadata['previous_deploy_txs'] ?? [],
-                [['tx_hash' => $token->tx_hash, 'nonce' => $token->deploy_nonce, 'reason' => mb_substr($error, 0, 300), 'at' => now()->toIso8601String()]]
+                [['tx_hash' => $rowTx, 'nonce' => $token->deploy_nonce, 'reason' => mb_substr($error, 0, 300), 'at' => now()->toIso8601String()]]
             ));
             $changes += ['tx_hash' => null, 'deploy_nonce' => null, 'deploy_raw_tx' => null];
-        } elseif ($token->tx_hash) {
-            // มีธุรกรรมค้างอยู่ — ห้ามล้มเหลว (กันเรียกผิดที่)
-            return;
         }
 
-        // where status = 'deploying' อีกชั้น เผื่อมีงานอื่นปิดงานไปก่อนระหว่างอ่าน
-        FactoryToken::whereKey($tokenId)->where('status', 'deploying')->update(
-            array_merge($changes, ['metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE), 'updated_at' => now()])
-        );
+        // where status/tx_hash อีกชั้น เผื่อมีงานอื่นเปลี่ยนแถวระหว่างอ่าน
+        $query = FactoryToken::whereKey($tokenId)->where('status', 'deploying');
+        $clearTx ? $query->where('tx_hash', $rowTx) : $query->whereNull('tx_hash');
 
-        Log::error('Token deployment failed', ['token_id' => $tokenId, 'error' => $error, 'cleared_tx' => $clearTx]);
+        $query->update(array_merge($changes, [
+            'metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE),
+            'updated_at' => now(),
+        ]));
+
+        Log::error('Token deployment failed', ['token_id' => $tokenId, 'error' => $error, 'cleared_tx' => $clearTx ? $rowTx : null]);
     }
 
-    private function markDeployed(FactoryToken $token, array $result, string $source): bool
+    private function markDeployed(FactoryToken $token, array $result, string $source, ?string $expectedTx): bool
     {
         $metadata = array_merge($token->metadata ?? [], [
             'block_number' => $result['blockNumber'] ?? null,
@@ -124,10 +153,13 @@ class FactoryDeploymentFinalizer
         ]);
         unset($metadata['deploy_error'], $metadata['deploy_pending_reason']);
 
-        $updated = FactoryToken::whereKey($token->id)->where('status', 'deploying')->update([
+        $query = FactoryToken::whereKey($token->id)->where('status', 'deploying');
+        $expectedTx === null ? $query->whereNull('tx_hash') : $query->where('tx_hash', $expectedTx);
+
+        $updated = $query->update([
             'status' => 'deployed',
             'contract_address' => strtolower((string) $result['contractAddress']),
-            'tx_hash' => strtolower((string) ($result['txHash'] ?? $token->tx_hash)),
+            'tx_hash' => strtolower((string) ($result['txHash'] ?? $expectedTx)),
             'deploy_raw_tx' => null,
             // ลิสต์ = ขึ้นหน้า Explore + เปิดคู่เทรดใน dex:sync — ค่าตั้งต้นให้แอดมินตัดสินเอง
             'is_listed' => (bool) $this->policy->effective()['auto_list_on_deploy'],
@@ -142,7 +174,7 @@ class FactoryDeploymentFinalizer
         Log::info("Token {$token->symbol} deployed", [
             'token_id' => $token->id,
             'contract' => $result['contractAddress'],
-            'tx' => $result['txHash'] ?? $token->tx_hash,
+            'tx' => $result['txHash'] ?? $expectedTx,
         ]);
 
         // ยืนยันซอร์สบน explorer เป็นงานแยก — ไม่ให้ sleep/HTTP ของ Blockscout กินเวลางาน deploy
@@ -151,17 +183,20 @@ class FactoryDeploymentFinalizer
         return true;
     }
 
-    private function note(int $tokenId, array $values): void
+    private function note(int $tokenId, array $values, string $expectedTx): void
     {
         $token = FactoryToken::find($tokenId);
         if (! $token || $token->status !== 'deploying') {
             return;
         }
 
-        FactoryToken::whereKey($tokenId)->where('status', 'deploying')->update([
-            'metadata' => json_encode(array_merge($token->metadata ?? [], $values), JSON_UNESCAPED_UNICODE),
-            'updated_at' => now(),
-        ]);
+        FactoryToken::whereKey($tokenId)
+            ->where('status', 'deploying')
+            ->where('tx_hash', $expectedTx)
+            ->update([
+                'metadata' => json_encode(array_merge($token->metadata ?? [], $values), JSON_UNESCAPED_UNICODE),
+                'updated_at' => now(),
+            ]);
     }
 
     /** ส่งต่อให้งานตรวจผล (ไม่ส่งธุรกรรมใหม่) */

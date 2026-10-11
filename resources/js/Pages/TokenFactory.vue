@@ -453,6 +453,9 @@ const currentTypes = computed(() =>
 
 const isNFT = computed(() => form.value.token_category === 'nft');
 
+/** ตัวเลือกที่เป็นจำนวนเงิน/เหรียญ — ส่งเป็นข้อความทศนิยม ไม่ผ่าน Number */
+const UNIT_OPTION_KEYS = ['mint_price', 'mint_cap', 'burn_floor', 'proposal_threshold', 'min_hold_for_reward'];
+
 // ===================== SUB-OPTIONS STATE =====================
 const subOptions = ref({});
 const riskAck = ref({});
@@ -1588,7 +1591,10 @@ function getTypeLabel(type) {
                                                 <p class="text-sm font-medium text-white">{{ opt.label }}</p>
                                                 <span class="text-[10px] text-gray-500">{{ opt.label_th }}</span>
                                             </div>
-                                            <input type="number" v-model.number="subOptions[opt.key]" :min="opt.min" :max="opt.max"
+                                            <!-- จำนวนเงิน/เหรียญเก็บเป็นข้อความ — Number ทำ 0.0000001 เป็น 1e-7 และเลขใหญ่เพี้ยน -->
+                                            <input v-if="UNIT_OPTION_KEYS.includes(opt.key)" type="text" inputmode="decimal" v-model.trim="subOptions[opt.key]"
+                                                :placeholder="opt.desc_en" class="trading-input w-full max-w-xs" :data-test="`unit-${opt.key}`" />
+                                            <input v-else type="number" v-model.number="subOptions[opt.key]" :min="opt.min" :max="opt.max"
                                                 :placeholder="opt.desc_en" class="trading-input w-full max-w-xs" />
                                             <p class="text-[10px] text-gray-500 mt-0.5">{{ opt.desc_th }}</p>
                                         </div>

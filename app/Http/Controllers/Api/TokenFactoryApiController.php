@@ -12,7 +12,6 @@ use App\Services\WalletSessionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 class TokenFactoryApiController extends Controller
@@ -327,12 +326,15 @@ class TokenFactoryApiController extends Controller
             return false;
         }
 
+        /*
+         * ต้องเป็นโทเคนเซสชันของกระเป๋าเท่านั้น
+         *
+         * ⚠️ ห้ามดูแคช wallet_verified: — แคชนั้นผูกกับกระเป๋า ไม่ได้ผูกกับคนที่ถาม
+         *    ใครรู้เลขกระเป๋าของผู้สร้าง (เห็นได้บนเชน) ก็ใส่ ?wallet_address= แล้วอ่าน metadata ได้
+         *    ตลอดช่วงที่แคชของเจ้าของยังไม่หมดอายุ — ผู้สร้างบนเว็บดูรายละเอียดเต็มที่ /my-tokens อยู่แล้ว
+         */
         $session = $request->headers->get(WalletSessionService::HEADER);
-        if ($session && app(WalletSessionService::class)->authorizes($session, $wallet)) {
-            return true;
-        }
 
-        // เงื่อนไขเดียวกับ GET ใน VerifyWalletOwnership — ต้องเคยเซ็นพิสูจน์กระเป๋าแล้ว
-        return is_array(Cache::get("wallet_verified:{$wallet}"));
+        return $session !== null && app(WalletSessionService::class)->authorizes($session, $wallet);
     }
 }
