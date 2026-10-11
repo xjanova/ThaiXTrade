@@ -221,11 +221,14 @@ class TpixChainPortfolio {
     return _pairs ?? const [];
   }
 
-  /// ราคา TPIX: เซิร์ฟเวอร์ก่อน → พูลบนเชน → ค่าล่าสุดที่เคยได้
+  /// ราคา TPIX: ราคาตลาดจากเซิร์ฟเวอร์ → พูลบนเชน → ค่าล่าสุดที่เคยได้
+  ///
+  /// ราคาที่เซิร์ฟเวอร์ตกไปใช้ค่าตั้งไว้ (source: admin / 0.18) ไม่นับ — มูลค่าพอร์ตต้องมาจาก
+  /// ราคาที่ขายได้จริง ไม่รู้ราคาตลาด = แสดง — ดีกว่าโชว์มูลค่าที่ไม่มีใครซื้อจริง
   Future<double?> _tpixPrice() async {
     try {
       final p = await _api.getTpixPrice();
-      if (p != null && p.price > 0) return _lastTpixUsd = p.price;
+      if (p != null && p.price > 0 && p.isMarket) return _lastTpixUsd = p.price;
     } catch (_) {}
     try {
       final pool = await _dex.tpixUsdtPoolPrice();

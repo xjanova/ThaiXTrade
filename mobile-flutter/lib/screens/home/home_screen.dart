@@ -334,10 +334,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // TPIX pinned first (native token)
     final tpix = market.tpixPrice;
     if (tpix != null) {
+      final th = context.read<LocaleProvider>().isThai;
       rows.add(_MarketRow(
         symbol: 'TPIX',
         name: 'TPIX',
-        pair: 'TPIX Chain',
+        // ราคาที่แอดมินตั้งไว้ (ยังไม่มีพูลให้อ่าน) ต้องบอกว่าเป็นราคาอ้างอิง ไม่ใช่ราคาตลาด
+        pair: market.tpixPriceIsIndicative
+            ? (th ? 'ราคาอ้างอิง · ยังไม่มีราคาตลาด' : 'Indicative · no market price')
+            : 'TPIX Chain',
         price: tpix.price,
         changePercent: tpix.change24h,
         showSparkline: false,

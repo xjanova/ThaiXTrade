@@ -10,10 +10,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/api_models.dart';
 import '../services/api_service.dart';
 import '../services/binance_ws.dart';
+import '../services/tpix_dex_service.dart';
 
 class MarketProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
   final BinanceWS _ws = BinanceWS();
+  final TpixDexService _dex = TpixDexService();
 
   // Tickers
   List<Ticker> _tickers = [];
@@ -46,6 +48,11 @@ class MarketProvider extends ChangeNotifier {
   OrderBook? get orderBook => _orderBook;
   List<Kline> get klines => _klines;
   TpixPrice? get tpixPrice => _tpixPrice;
+
+  /// ราคา TPIX ตอนนี้เป็นแค่ราคาอ้างอิง (แอดมินตั้ง/ค่าเริ่มต้น) ไม่ใช่ราคาที่ซื้อขายได้จริง
+  /// — หน้าจอต้องบอกผู้ใช้ตรง ๆ ไม่แสดงเหมือนราคาตลาด
+  bool get tpixPriceIsIndicative =>
+      _tpixPrice != null && !_tpixPrice!.isMarket;
 
   Ticker? get selectedTicker {
     try {
@@ -342,8 +349,20 @@ class MarketProvider extends ChangeNotifier {
   Future<void> _loadTpixPrice(int retries) async {
     for (var attempt = 0; attempt <= retries; attempt++) {
       try {
-        final price = await _api.getTpixPrice();
+        TpixPrice? price;
+        try {
+          price = await _api.getTpixPrice();
+        } catch (e) {
+          debugPrint('loadTpixPrice server: ${e.runtimeType}');
+        }
         if (_disposed) return;
+        // เซิร์ฟเวอร์ไม่มีราคาตลาด (source: admin = ค่าที่ตั้งไว้/0.18) หรือไม่ตอบ
+        // → อ่านราคากลางจากพูล WTPIX/USDT บนเชนเองก่อน ราคาตั้งไว้ใช้เมื่อไม่มีพูลจริง ๆ
+        if (price == null || price.price <= 0 || !price.isMarket) {
+          final pool = await _dex.tpixUsdtPoolPrice();
+          if (_disposed) return;
+          if (pool != null && pool > 0) price = TpixPrice.fromPool(pool);
+        }
         if (price != null && price.price > 0) {
           _tpixPrice = price;
           _patchTpixTicker();

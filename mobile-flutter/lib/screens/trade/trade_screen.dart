@@ -587,11 +587,18 @@ class _TradeScreenState extends State<TradeScreen>
                     const SizedBox(height: 1),
                     // คู่ major เทรดจริงบน BSC — คู่บนเชน TPIX เทรดผ่าน TPIX DEX เมื่อมีพูล
                     Text(
-                      _isBscTradableNow(market)
-                          ? 'BSC · PancakeSwap'
-                          : (_isDexTradableNow(market)
-                              ? 'TPIX Chain · TPIX DEX'
-                              : 'TPIX Chain · Coming soon'),
+                      (_isBscTradableNow(market)
+                              ? 'BSC · PancakeSwap'
+                              : (_isDexTradableNow(market)
+                                  ? 'TPIX Chain · TPIX DEX'
+                                  : 'TPIX Chain · Coming soon')) +
+                          // ราคา TPIX ที่เซิร์ฟเวอร์ตั้งไว้เอง (ไม่มีพูลให้อ่าน) — บอกตรง ๆ
+                          (_isTpixPairNow(market) &&
+                                  market.tpixPriceIsIndicative
+                              ? (locale.isThai
+                                  ? ' · ราคาอ้างอิง'
+                                  : ' · Indicative price')
+                              : ''),
                       style: GoogleFonts.inter(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
