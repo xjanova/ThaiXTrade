@@ -20,7 +20,7 @@ class Article extends Model
         'language', 'category', 'tags', 'status', 'published_at',
         'scheduled_at', 'is_ai_generated', 'ai_model', 'ai_tokens_used',
         'ai_image_prompt', 'views', 'likes', 'seo_title', 'seo_description',
-        'author_name',
+        'author_name', 'source_key',
     ];
 
     protected $casts = [

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Article;
 use App\Models\SiteSetting;
+use App\Services\News\NewsEventCollector;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -11,80 +12,229 @@ use Illuminate\Support\Str;
 
 /**
  * TPIX TRADE — Content Service
- * สร้างบทความด้วย AI (Groq) + สร้างภาพด้วย AI (หลาย provider)
+ * สร้างบทความด้วย AI (AiTextService: OpenAI → Groq) + สร้างภาพด้วย AI (หลาย provider)
+ * ข่าวจากเหตุการณ์จริงเขียนจากข้อเท็จจริงของ NewsEventCollector · ที่อยู่สัญญาระบบเติมเอง ไม่ผ่าน AI
  * Image providers: Pollinations (ฟรี), Together.ai (FLUX), HuggingFace, Google Gemini.
  */
 class ContentService
 {
+    /** เนื้อหาสั้นกว่านี้ (ตัวอักษร ไม่นับแท็ก) = AI ตอบไม่ครบ/โดนตัด ไม่ใช่บทความ */
+    private const MIN_CONTENT_CHARS = 300;
+
+    private const ADDRESS_PATTERN = '/0x[a-fA-F0-9]{40}/';
+
     public function __construct(
         private AiTextService $groq,
+        private NewsEventCollector $events,
     ) {}
 
     /**
-     * สร้างบทความด้วย AI — ส่ง topic + category + language.
+     * บทความความรู้ทั่วไป — หลังบ้านกดสร้าง และบอทตามตารางเวลา.
+     *
+     * @param  string|null  $sourceKey  "topic:…" จากบอทตามตารางเวลา (ใช้กันหัวข้อวนซ้ำ)
      */
-    public function generateArticle(string $topic, string $category = 'news', string $language = 'th', ?string $model = null): Article
+    public function generateArticle(string $topic, string $category = 'news', string $language = 'th', ?string $model = null, ?string $sourceKey = null): Article
     {
-        $langName = $language === 'th' ? 'Thai' : 'English';
+        $prompt = implode("\n", [
+            "Write a helpful, accurate article about: {$topic}",
+            "Category: {$category}",
+            'Explain it so a newcomer understands, and connect it to what TPIX Chain / TPIX TRADE offers TODAY according to LIVE STATUS.',
+            'Length: 600-1000 words. Use <h2>, <p>, <ul><li>, <strong>.',
+        ]);
 
-        $systemPrompt = <<<'PROMPT'
-        You are a professional crypto/blockchain content writer for TPIX TRADE — a decentralized exchange on TPIX Chain (Chain ID: 4289).
-        Write well-researched, SEO-optimized articles. Always mention TPIX TRADE and TPIX Chain where relevant.
+        return $this->write($prompt, [
+            'category' => $category,
+            'language' => $language,
+            'model' => $model,
+            'source_key' => $sourceKey,
+            'fallback_title' => $topic,
+            'image' => "Professional crypto blockchain article cover image about: {$topic}, dark theme, cyan blue accent, futuristic, minimalist, no text",
+        ]);
+    }
 
-        Key facts about TPIX:
-        - TPIX Chain: EVM blockchain, Chain ID 4289, Polygon Edge, IBFT consensus, 2s blocks, gasless
-        - Total Supply: 7 billion TPIX (fixed, no inflation)
-        - Use cases: DEX trading, FoodPassport, IoT Smart Farm, Carbon Credits, AI Bots, Staking
-        - Website: https://tpix.online
-        - Explorer: https://explorer.tpix.online
-        - Developer: Xman Studio
+    /**
+     * ข่าวจากเหตุการณ์จริง (NewsEventCollector) — เขียนจากข้อเท็จจริงที่ให้เท่านั้น โทนประกาศเปิดตัว.
+     *
+     * @param  array{key: string, headline: string, facts: list<string>, addresses: array<string, string>, links: array<string, string>, image: string}  $event
+     */
+    public function generateEventArticle(array $event, string $language): Article
+    {
+        $facts = implode("\n", array_map(fn (string $f) => "- {$f}", $event['facts']));
+        $links = implode("\n", array_map(fn ($label, $url) => "- {$label}: {$url}", array_keys($event['links']), $event['links']));
 
-        Format your response as valid JSON only (no markdown, no code fences):
-        {"title":"...","summary":"...","content":"<p>HTML content here</p>","tags":["tag1","tag2"],"seo_title":"...","seo_description":"..."}
+        $prompt = <<<PROMPT
+        BREAKING NEWS — write the announcement for something that just happened on TPIX Chain.
+        Working headline (rewrite it in the target language, keep it punchy): {$event['headline']}
+
+        EVENT FACTS — the only source for this article:
+        {$facts}
+
+        Links (already added under the article — you may mention them by name):
+        {$links}
+
+        Style: an exciting launch announcement — this is a real milestone for the TPIX community, so let it feel like one.
+        - Headline: strong and specific, at most one emoji.
+        - First paragraph: exactly what is live now and why it matters to TPIX holders.
+        - A short "how to try it now" section with numbered steps.
+        - End with a line inviting readers to try it and share feedback in the community.
+        - Energy comes from the facts. No price talk, no "to the moon", no promises of profit.
+        - 400-700 words. Use <h2>, <p>, <ol>/<ul>, <strong>.
         PROMPT;
 
-        $prompt = "Write a comprehensive article about: {$topic}\nCategory: {$category}\nLanguage: {$langName}\nLength: 800-1500 words";
+        return $this->write($prompt, [
+            'category' => 'news',
+            'language' => $language,
+            'source_key' => $event['key'],
+            'fallback_title' => $event['headline'],
+            'image' => $event['image'],
+            'addresses' => $event['addresses'],
+            'links' => $event['links'],
+            'tags' => ['TPIX Chain', 'announcement'],
+        ]);
+    }
 
+    /**
+     * @param  array{category: string, language: string, model?: ?string, source_key?: ?string, fallback_title: string, image: string, addresses?: array<string, string>, links?: array<string, string>, tags?: list<string>}  $brief
+     */
+    private function write(string $prompt, array $brief): Article
+    {
+        $language = $brief['language'];
         $options = ['temperature' => 0.7, 'max_tokens' => 4096];
-        if ($model) {
-            $options['model'] = $model;
+        if (! empty($brief['model'])) {
+            $options['model'] = $brief['model'];
         }
 
-        $result = $this->groq->chat($prompt, $systemPrompt, $options);
+        $result = $this->groq->chat($prompt, $this->systemPrompt($language), $options);
 
         if (! $result['success']) {
             throw new \RuntimeException('AI generation failed: '.($result['error'] ?? 'Unknown error'));
         }
 
         $parsed = $this->parseJsonResponse($result['content']);
+        $title = trim(strip_tags((string) ($parsed['title'] ?? '')));
+        $content = trim((string) ($parsed['content'] ?? ''));
 
-        // สร้าง cover image ด้วย AI
+        // เคยหลุดขึ้นเว็บเป็นบทความชื่อ "Untitled" (id 258, 2026-08-06) — JSON โดนตัดกลางทาง ระบบเก็บข้อความดิบไว้แล้ว publish
+        if ($title === '' || $title === 'Untitled' || mb_strlen(strip_tags($content)) < self::MIN_CONTENT_CHARS) {
+            throw new \RuntimeException('AI ตอบกลับไม่ครบ (ไม่มีหัวข้อ หรือเนื้อหาถูกตัดกลางทาง) — ไม่ได้บันทึกบทความ ลองใหม่อีกครั้ง');
+        }
+
+        $addresses = $brief['addresses'] ?? [];
+        $content = $this->scrubAddresses($content, $language).$this->officialBlock($addresses, $brief['links'] ?? [], $language);
+        $summary = $this->scrubAddresses(trim(strip_tags((string) ($parsed['summary'] ?? ''))), $language);
+
         $coverImage = null;
 
         try {
-            $imagePrompt = "Professional crypto blockchain article cover image about: {$topic}, dark theme, cyan blue accent, futuristic, minimalist, no text";
-            $coverImage = $this->generateImage($imagePrompt);
+            $coverImage = $this->generateImage($brief['image']);
         } catch (\Exception $e) {
             Log::warning('AI image generation failed', ['error' => $e->getMessage()]);
         }
 
+        $tags = array_values(array_unique(array_merge(
+            $brief['tags'] ?? [],
+            array_filter(array_map(fn ($t) => is_string($t) ? trim($t) : null, (array) ($parsed['tags'] ?? [$brief['category']]))),
+        )));
+
         return Article::create([
-            'title' => $parsed['title'] ?? $topic,
-            'summary' => $parsed['summary'] ?? '',
-            'content' => $parsed['content'] ?? '<p>Content generation failed.</p>',
+            'title' => mb_substr($title, 0, 250),
+            'summary' => $summary,
+            'content' => $content,
             'cover_image' => $coverImage,
             'language' => $language,
-            'category' => $category,
-            'tags' => $parsed['tags'] ?? [$category],
+            'category' => $brief['category'],
+            'tags' => array_slice($tags, 0, 8),
             'status' => 'draft',
             'is_ai_generated' => true,
-            'ai_model' => $result['model'] ?? 'llama-3.3-70b-versatile',
+            'ai_model' => $result['model'] ?? ($result['provider'] ?? null),
             'ai_tokens_used' => $result['tokens_used'] ?? 0,
-            'ai_image_prompt' => $coverImage ? ($imagePrompt ?? null) : null,
-            'seo_title' => $parsed['seo_title'] ?? ($parsed['title'] ?? $topic),
-            'seo_description' => $parsed['seo_description'] ?? ($parsed['summary'] ?? ''),
+            'ai_image_prompt' => $coverImage ? mb_substr($brief['image'], 0, 255) : null,
+            'seo_title' => mb_substr($this->scrubAddresses(trim(strip_tags((string) ($parsed['seo_title'] ?? $title))), $language), 0, 250),
+            'seo_description' => $this->scrubAddresses(trim(strip_tags((string) ($parsed['seo_description'] ?? $summary))), $language),
             'author_name' => 'TPIX AI Writer',
+            'source_key' => $brief['source_key'] ?? null,
         ]);
+    }
+
+    /**
+     * ข้อเท็จจริงคงที่ + สถานะสด + กติกา — เดิมมีแค่ข้อเท็จจริงคงที่ AI จึงเดาราคา/ข่าวตลาดเอาเอง
+     * และไม่รู้ว่า DEX เปิดแล้ว.
+     */
+    private function systemPrompt(string $language): string
+    {
+        $langRule = $language === 'th'
+            ? 'Write in natural, modern Thai like a Thai tech-news site. Keep product and token names in English (TPIX DEX, WTPIX, USDT, TPIX Wallet).'
+            : 'Write in clear, natural English.';
+
+        return implode("\n", [
+            'You are the newsroom writer for TPIX TRADE (https://tpix.online) — the exchange and ecosystem site of TPIX Chain.',
+            '',
+            '## STANDING FACTS',
+            '- TPIX Chain: EVM-compatible blockchain (Polygon Edge, IBFT consensus), chain ID 4289, ~2-second blocks, zero gas fees for users',
+            '- TPIX total supply: 7,000,000,000 (fixed, no inflation)',
+            '- Explorer: https://explorer.tpix.online · Developer: Xman Studio',
+            '',
+            $this->events->liveFacts(),
+            '',
+            '## RULES — an article that breaks any of these is thrown away',
+            '1. Use only facts given in this prompt. Never invent prices, percentages, TVL, volumes, user counts, dates, partners, exchange listings, audits or roadmap promises.',
+            '2. Never write a contract address or any 0x… hex string. Refer to contracts by name — the official addresses are appended under the article automatically.',
+            '3. No price predictions, no "buy now", no promises of profit. Where it fits, remind readers that crypto is high-risk.',
+            '4. If you would need a fact that is not given, leave that point out instead of guessing.',
+            '5. '.$langRule,
+            '',
+            'Respond with valid JSON only (no markdown, no code fences):',
+            '{"title":"...","summary":"1-2 sentences","content":"<p>HTML</p>","tags":["tag1","tag2"],"seo_title":"...","seo_description":"..."}',
+        ]);
+    }
+
+    /** ที่อยู่ที่ AI พิมพ์เองเชื่อไม่ได้ (ผิดตัวเดียว = เงินผู้ใช้หาย) — ลบทิ้งแล้วชี้ไปรายการทางการท้ายบทความ */
+    private function scrubAddresses(string $text, string $language): string
+    {
+        return (string) preg_replace(
+            self::ADDRESS_PATTERN,
+            $language === 'th' ? '(ดูที่อยู่ทางการท้ายบทความ)' : '(see the official addresses below)',
+            $text,
+        );
+    }
+
+    /**
+     * ที่อยู่สัญญาทางการ + ลิงก์ — ระบบเขียนเองจากทะเบียนสัญญา ไม่ผ่าน AI.
+     *
+     * @param  array<string, string>  $addresses
+     * @param  array<string, string>  $links
+     */
+    private function officialBlock(array $addresses, array $links, string $language): string
+    {
+        if ($addresses === [] && $links === []) {
+            return '';
+        }
+
+        $th = $language === 'th';
+        $explorer = rtrim((string) config('chains.chains.4289.explorer', 'https://explorer.tpix.online'), '/');
+        $html = "\n<hr>";
+
+        if ($addresses !== []) {
+            $html .= '<h3>'.($th ? 'ที่อยู่สัญญาทางการ (TPIX Chain · 4289)' : 'Official contract addresses (TPIX Chain · 4289)').'</h3>';
+            $html .= '<p>'.($th ? 'ตรวจที่อยู่ให้ตรงทุกครั้งก่อนโอนหรือสวอป — ใครก็สร้างเหรียญชื่อซ้ำได้' : 'Always check the address before you send or swap — anyone can create a token with the same name.').'</p><ul>';
+            foreach ($addresses as $label => $address) {
+                if (! preg_match('/^0x[a-fA-F0-9]{40}$/', $address)) {
+                    continue;
+                }
+                $html .= '<li><strong>'.e($label).'</strong>: <a href="'.e("{$explorer}/address/{$address}").'" rel="noopener">'.e($address).'</a></li>';
+            }
+            $html .= '</ul>';
+        }
+
+        if ($links !== []) {
+            $html .= '<h3>'.($th ? 'เริ่มใช้งาน' : 'Get started').'</h3><ul>';
+            foreach ($links as $label => $url) {
+                $html .= '<li><a href="'.e($url).'">'.e($label).'</a></li>';
+            }
+            $html .= '</ul>';
+        }
+
+        return $html;
     }
 
     // =========================================================================

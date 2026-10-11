@@ -235,6 +235,40 @@ class DiscordPublisherTest extends TestCase
         $this->assertSame(3, DiscordPost::where('kind', 'article')->count());
     }
 
+    public function test_event_news_goes_to_the_announcements_room_as_one_message_with_a_thai_button(): void
+    {
+        $announce = '222222222222222206';
+        config(['discord.videos' => []]);
+        app(DiscordSettings::class)->saveChannelMap([
+            'rules' => self::RULES, 'news' => self::NEWS, 'sale' => self::SALE,
+            'videos' => self::VIDEOS, 'whitepaper' => self::WHITEPAPER, 'announcements' => $announce,
+        ]);
+        // บทความความรู้ที่เผยแพร่ใกล้กันในหมวดเดียวกัน — ต้องไม่ถูกจับคู่กับข่าวเหตุการณ์
+        $this->article('บทความความรู้', now()->subMinutes(2)->toDateTimeString());
+        $at = now()->subMinute()->toDateTimeString();
+        foreach (['th' => 'TPIX DEX เปิดแล้ว!', 'en' => 'TPIX DEX is live!'] as $lang => $title) {
+            Article::create([
+                'title' => $title, 'summary' => 'สรุป', 'content' => '<p>เนื้อหา</p>', 'language' => $lang,
+                'category' => 'news', 'status' => 'published', 'published_at' => $at,
+                'source_key' => 'event:dex_live:0x8af94d36ea0c14c40cdaff5bdde017269a9ccc04',
+            ]);
+        }
+        $this->fakeDiscord();
+
+        $this->publisher()->sync();
+
+        $inRoom = fn (string $room) => collect($this->discordCalls('POST'))
+            ->filter(fn (Request $r) => str_contains($r->url(), "/channels/{$room}/messages"))
+            ->map(fn (Request $r) => $r['embeds'][0]['title'])->values()->all();
+
+        $this->assertSame(['TPIX DEX is live!'], $inRoom($announce));
+        $this->assertSame(['บทความความรู้'], $inRoom(self::NEWS));
+
+        $post = collect($this->discordCalls('POST'))->first(fn (Request $r) => str_contains($r->url(), "/channels/{$announce}/messages"));
+        $this->assertContains('อ่านภาษาไทย', array_column($post['components'][0]['components'], 'label'));
+        $this->assertSame(3, DiscordPost::where('kind', 'article')->count(), 'ข่าวไทยถูกจดว่าโพสต์แล้วในข้อความเดียวกัน');
+    }
+
     public function test_a_failed_post_is_retried_on_the_next_run_and_the_reason_is_kept(): void
     {
         config(['discord.videos' => []]);

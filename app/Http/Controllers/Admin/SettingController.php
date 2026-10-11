@@ -304,7 +304,11 @@ class SettingController extends Controller
          *   ผลคือกดบันทึกแท็บการชำระเงินแล้วเด้งกลับพร้อม "Invalid settings tab."
          *   — แก้คีย์ Stripe จากหลังบ้านไม่ได้เลยสักครั้ง
          */
-        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced', 'ai', 'factory', 'revenue', 'advisor', 'payment', 'map'];
+        /*
+         * ★ 'content' ก็ตกหล่นแบบเดียวกันมาตั้งแต่ 2026-03-24 — route settings/content ชี้มาที่นี่
+         *   แต่กดบันทึกแท็บ Auto Content แล้วได้ "Invalid settings tab." ทุกครั้ง เปิด/ปิดบอทเขียนบทความจากหลังบ้านไม่ได้เลย
+         */
+        $allowedTabs = ['trading', 'security', 'social', 'api', 'notifications', 'advanced', 'ai', 'factory', 'revenue', 'advisor', 'payment', 'map', 'content'];
         $tab = last(explode('/', $request->path()));
 
         if (! in_array($tab, $allowedTabs, true)) {
@@ -331,6 +335,9 @@ class SettingController extends Controller
                 'together_api_key', 'huggingface_api_key', 'gemini_api_key'],
             // ที่ปรึกษา AI ของบอทเทรด — คีย์ทั้งชุดสร้างได้ตอนบันทึกครั้งแรก
             'advisor' => AdvisorSettings::KEYS,
+            // บอทเขียนบทความ — content_event_enabled = ข่าวจากเหตุการณ์จริง (deploy สัญญา / คู่เทรดใหม่)
+            'content' => ['content_auto_enabled', 'content_event_enabled', 'content_max_per_day', 'content_time_slots',
+                'content_categories', 'content_language', 'content_auto_publish'],
             // ชั้นไทล์แผนที่ — เผื่อ migration ยังไม่ได้รันบนเครื่องนั้น
             'map' => ['map_tile_url', 'map_tile_key', 'map_tile_subdomains',
                 'map_tile_max_zoom', 'map_tile_attribution'],

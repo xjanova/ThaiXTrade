@@ -296,6 +296,8 @@ function advisorProvider(name) {
 // Content Schedule form (group: content)
 const contentForm = useForm({
     content_auto_enabled: props.settings.content_auto_enabled || false,
+    // ยังไม่เคยบันทึก = เปิด (ตรงกับค่าตั้งต้นฝั่งเซิร์ฟเวอร์)
+    content_event_enabled: props.settings.content_event_enabled ?? true,
     content_max_per_day: props.settings.content_max_per_day || 2,
     content_time_slots: props.settings.content_time_slots || '["09:00","18:00"]',
     content_categories: props.settings.content_categories || '["tpix_chain","defi","news"]',
@@ -1351,6 +1353,18 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         </button>
                     </div>
 
+                    <!-- ข่าวจากเหตุการณ์จริง — ทำงานแยกจาก Auto Content ตามเวลา -->
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <label class="text-sm font-medium text-white">ข่าวจากเหตุการณ์จริง</label>
+                            <p class="text-xs text-dark-500 mt-0.5">deploy สัญญา · DEX เปิด · คู่เทรดใหม่ → เขียนข่าวไทย+อังกฤษทันที ไม่รอช่วงเวลา (ใช้ค่า "Publish ทันที" ด้านล่าง)</p>
+                        </div>
+                        <button type="button" @click="contentForm.content_event_enabled = !contentForm.content_event_enabled"
+                            :class="['relative inline-flex h-6 w-11 items-center rounded-full transition-colors', contentForm.content_event_enabled ? 'bg-trading-green' : 'bg-dark-600']">
+                            <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', contentForm.content_event_enabled ? 'translate-x-6' : 'translate-x-1']"></span>
+                        </button>
+                    </div>
+
                     <div v-if="contentForm.content_auto_enabled" class="space-y-4 pl-4 border-l-2 border-trading-green/30">
                         <!-- Time Slots -->
                         <div>
@@ -1395,16 +1409,16 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                                 <option value="both">ทั้งสองภาษา</option>
                             </select>
                         </div>
+                    </div>
 
-                        <!-- Auto Publish -->
-                        <div class="flex items-center gap-3">
-                            <label class="text-sm text-dark-300">Publish ทันที</label>
-                            <button type="button" @click="contentForm.content_auto_publish = !contentForm.content_auto_publish"
-                                :class="['w-12 h-6 rounded-full transition-colors', contentForm.content_auto_publish ? 'bg-trading-green' : 'bg-dark-600']">
-                                <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', contentForm.content_auto_publish ? 'translate-x-6' : 'translate-x-0.5']"></div>
-                            </button>
-                            <span class="text-xs text-dark-500">{{ contentForm.content_auto_publish ? 'Publish ทันทีเมื่อสร้างเสร็จ' : 'บันทึกเป็น Draft (ตรวจก่อน publish)' }}</span>
-                        </div>
+                    <!-- Auto Publish — ใช้กับทั้งข่าวเหตุการณ์และบทความตามเวลา จึงต้องเห็นแม้ปิด Auto Content -->
+                    <div class="flex items-center gap-3">
+                        <label class="text-sm text-dark-300">Publish ทันที</label>
+                        <button type="button" @click="contentForm.content_auto_publish = !contentForm.content_auto_publish"
+                            :class="['w-12 h-6 rounded-full transition-colors', contentForm.content_auto_publish ? 'bg-trading-green' : 'bg-dark-600']">
+                            <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', contentForm.content_auto_publish ? 'translate-x-6' : 'translate-x-0.5']"></div>
+                        </button>
+                        <span class="text-xs text-dark-500">{{ contentForm.content_auto_publish ? 'Publish ทันทีเมื่อสร้างเสร็จ' : 'บันทึกเป็น Draft (ตรวจก่อน publish)' }}</span>
                     </div>
 
                     <div class="pt-2">

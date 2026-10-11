@@ -119,7 +119,7 @@ class DiscordPublisher
             if ($budget <= 0) {
                 break;
             }
-            $result = $this->postOnce('article', (string) $article->id, $map['news'] ?? null, fn () => $this->content->article($article, $thai), $dryRun);
+            $result = $this->postOnce('article', (string) $article->id, $this->articleChannel($article, $map), fn () => $this->content->article($article, $thai), $dryRun);
             $results[] = $result;
             $budget -= in_array($result['action'], ['created', 'would_create', 'error'], true) ? 1 : 0;
 
@@ -370,7 +370,7 @@ class DiscordPublisher
         }
 
         foreach (array_slice($this->pendingArticles(true), 0, $upcoming) as [$article, $thai]) {
-            $channel = $map['news'] ?? null;
+            $channel = $this->articleChannel($article, $map);
             $items[] = [
                 'kind' => 'article',
                 'ref' => (string) $article->id,
@@ -671,15 +671,30 @@ class DiscordPublisher
     }
 
     /**
+     * ข่าวจากเหตุการณ์จริง (DEX เปิด / deploy สัญญา / คู่เทรดใหม่) ขึ้นห้องประกาศ ไม่ใช่ห้องบทความ
+     * ไม่ได้เลือกห้องประกาศไว้ = ลงห้องบทความตามเดิม.
+     *
+     * @param  array<string, string>  $map
+     */
+    private function articleChannel(Article $article, array $map): ?string
+    {
+        return str_starts_with((string) $article->source_key, 'event:')
+            ? ($map['announcements'] ?? $map['news'] ?? null)
+            : ($map['news'] ?? null);
+    }
+
+    /**
      * บทความคู่ภาษา — เว็บสร้างแต่ละภาษาแยกกันจากหัวข้อเดียวในรอบเดียว (GenerateScheduledContent)
-     * ไม่มีคอลัมน์ผูกกัน จึงจับคู่จากหมวดเดียวกันที่เผยแพร่ห่างกันไม่เกิน 15 นาที.
+     * จับคู่ที่เผยแพร่ห่างกันไม่เกิน 15 นาที และมาจากที่มาเดียวกัน (source_key) — บทความเก่า/เขียนเองไม่มี
+     * source_key ใช้หมวดเดียวกันแทน · ยังต้องดูเวลาด้วยเพราะหัวข้อความรู้วนกลับมาได้หลัง 45 วัน (key ซ้ำ).
      *
      * @param  Collection<int, Article>  $pool
      */
     private function sibling(Article $article, string $language, Collection $pool): ?Article
     {
         return $pool->first(fn (Article $other) => $other->language === $language
-            && $other->category === $article->category
+            && $other->source_key === $article->source_key
+            && ($article->source_key !== null || $other->category === $article->category)
             && $other->published_at !== null && $article->published_at !== null
             && abs($other->published_at->diffInSeconds($article->published_at)) <= 900);
     }

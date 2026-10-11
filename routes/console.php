@@ -12,8 +12,17 @@ use Illuminate\Support\Facades\Schedule;
 |--------------------------------------------------------------------------
 */
 
-// Auto-generate AI content ทุก 30 นาที (command จะตรวจ time slot เอง)
-Schedule::command('content:generate-scheduled')->everyThirtyMinutes();
+/*
+ * บทความ AI ทุก 30 นาที — ข่าวจากเหตุการณ์จริง (deploy สัญญา / คู่เทรดใหม่) ออกภายในรอบเดียว
+ * ส่วนบทความความรู้ command ตรวจช่วงเวลา (content_time_slots) เอง
+ *
+ * รอบหนึ่งเรียก AI + สร้างภาพ 2 ภาษา ใช้หลายนาที → กันรอบซ้อน (ไม่งั้นได้ข่าวเดียวกันสองชุด)
+ */
+Schedule::command('content:generate-scheduled')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping(25)
+    ->onOneServer()
+    ->name('content:generate-scheduled');
 
 // Bridge: ตรวจ pending/processing tx ที่ค้าง > 2 นาที → re-dispatch job
 //
