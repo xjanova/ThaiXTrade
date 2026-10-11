@@ -82,6 +82,9 @@ class TokenSaleController extends Controller
             return [
                 'sale_id' => null,
                 'armed' => $launcher->autoLaunchArmed(),
+                'round_ends_at' => $launcher->roundEndsAt()?->toIso8601String(),
+                'tiered' => $launcher->roundEndsAt() !== null,
+                'blocked' => null,
                 'launched_at' => null,
                 'readiness' => $launcher->readiness(null),
                 'preview' => [],
@@ -94,6 +97,9 @@ class TokenSaleController extends Controller
             'sale_id' => $sale->id,
             'sale_name' => $sale->name,
             'armed' => $launcher->autoLaunchArmed(),
+            'round_ends_at' => $plan['until']?->toIso8601String(),
+            'tiered' => $plan['tiered'],
+            'blocked' => $plan['blocked'],
             'launched_at' => $sale->launched_at?->toIso8601String(),
             'readiness' => $launcher->readiness($sale),
             'preview' => collect($plan['rows'])->map(fn ($r) => [
@@ -165,6 +171,41 @@ class TokenSaleController extends Controller
                 ? 'เปิดขายอัตโนมัติแล้ว — ระบบจะเริ่มรอบขายเองภายใน 1 ชั่วโมงหลังพร้อมครบทุกข้อ'
                 : 'ปิดการเปิดขายอัตโนมัติแล้ว — ต้องกดเปิดเอง'
         );
+    }
+
+    /**
+     * ล็อก/ยกเลิกวันจบรอบขาย.
+     *
+     * ล็อกไว้ = รอบขายแบบขั้นบันได: ทุกเฟสเปิดช่วงเดียวกันจนถึงวันนี้ ราคาขยับ
+     * เมื่อขั้นก่อนขายหมด — และตัวเปิดอัตโนมัติจะจบรอบวันนี้เสมอไม่ว่าจะพร้อมช้าแค่ไหน
+     * เว้นว่าง = กลับไปแบบต่อกันตามเวลา (เฟสละช่วงตาม duration_days)
+     *
+     * มีผลกับการ "เปิดครั้งถัดไป" เท่านั้น ไม่แตะตารางของรอบที่เปิดอยู่
+     */
+    public function roundEnd(Request $request, SaleLaunchService $launcher)
+    {
+        $validated = $request->validate([
+            // วันในอดีต = เปิดไปก็ปิดทันที ไม่มีประโยชน์ให้บันทึก
+            'round_ends_at' => 'nullable|date|after:now',
+        ]);
+
+        $raw = $validated['round_ends_at'] ?? null;
+
+        if (blank($raw)) {
+            $launcher->setRoundEndsAt(null);
+
+            return redirect()->back()->with('success', 'ยกเลิกวันจบรอบแล้ว — กลับไปใช้เฟสต่อกันตามเวลา');
+        }
+
+        // เลือกแค่วันที่ (ช่อง date) = จบตอนสิ้นวันนั้น ไม่ใช่เที่ยงคืนต้นวัน
+        $at = Carbon::parse($raw);
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $raw)) {
+            $at = $at->endOfDay();
+        }
+
+        $launcher->setRoundEndsAt($at);
+
+        return redirect()->back()->with('success', 'ล็อกวันจบรอบ '.$at->format('Y-m-d H:i').' แล้ว — ราคาขั้นบันได ขยับเมื่อขั้นก่อนขายหมด');
     }
 
     /**

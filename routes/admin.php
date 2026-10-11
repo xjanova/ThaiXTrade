@@ -236,6 +236,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
              */
             Route::post('/launch', [TokenSaleController::class, 'launch'])->name('launch');
             Route::post('/auto-launch', [TokenSaleController::class, 'autoLaunch'])->name('auto-launch');
+            // ล็อกวันจบรอบ = รอบขายแบบขั้นบันได (ราคาขยับเมื่อขั้นก่อนขายหมด)
+            Route::post('/round-end', [TokenSaleController::class, 'roundEnd'])->name('round-end');
 
             // Whitelist management
             Route::get('/whitelist/{phaseId}', [TokenSaleController::class, 'whitelist'])->name('whitelist');

@@ -8,7 +8,9 @@ use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
 use App\Support\Wei;
+use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -110,6 +112,156 @@ class TokenSaleService
                 'vesting_duration_days' => $p->vesting_duration_days,
             ])->all(),
         ];
+    }
+
+    // =========================================================================
+    // Public Methods — เลื่อนเฟสตามความจริง
+    // =========================================================================
+
+    /**
+     * ปิดเฟสที่หมดเวลาหรือขายหมดโควตา แล้วเปิดเฟสถัดไปที่ถึงกำหนด.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * ที่เดียวที่ตัดสินว่า "เฟสไหนควรเปิดอยู่ตอนนี้"
+     * ═══════════════════════════════════════════════════════════════════════
+     * เรียกจากสองทาง:
+     *   - `sale:advance-phases` ทุกชั่วโมง (ทางสำรอง)
+     *   - rollOverIfExhausted() ทันทีหลังขายได้ ทั้งทางคริปโต บัตร และโอนเงิน
+     *
+     * รอบขายแบบขั้นบันได (ทุกเฟสใช้ช่วงเวลาเดียวกัน — ดู SaleLaunchService::plan())
+     * อาศัยตัวนี้ล้วน ๆ: ขั้นแรกขายหมด → ปิด → ขั้นถัดไปอยู่ในช่วงเวลาแล้วจึงเปิดทันที
+     *
+     * เดิมทางคริปโตปิดเฟสเองแล้ว "ปิดทั้งรอบขาย" ทันทีที่ไม่มีเฟส active เหลือ
+     * ส่วนทางบัตร/โอนเงินไม่ปิดอะไรเลย — ขายหมดเฟสแรกเมื่อไหร่ เฟสถัดไปไม่มีวันได้เปิด
+     *
+     * ⚠️ ไม่เปิดทรานแซกชันเอง — ผู้เรียกต้องห่อไว้ (คำสั่งรายชั่วโมงต้องม้วนกลับได้ตอน --dry-run)
+     *
+     * @return array<int, array{0:string, 1:string, 2:string, 3:string, 4:string}> [รอบขาย, เฟส, จาก, เป็น, เหตุผล]
+     */
+    public function advancePhases(TokenSale $sale, ?CarbonInterface $now = null): array
+    {
+        $now = $now !== null ? Carbon::parse($now) : now();
+        $changes = [];
+
+        $phases = $sale->phases()->orderBy('phase_order')->lockForUpdate()->get();
+
+        // ── 1) ปิดเฟสที่เลยวันปิดหรือขายหมดโควตาแล้ว ───────────────────────
+        foreach ($phases as $phase) {
+            if ($phase->status !== 'active') {
+                continue;
+            }
+
+            $reason = match (true) {
+                $phase->ends_at !== null && $phase->ends_at->lt($now) => 'เลยวันปิด '.$phase->ends_at->format('Y-m-d H:i'),
+                $phase->isExhausted() => 'ขายหมดโควตา',
+                default => null,
+            };
+
+            if ($reason === null) {
+                continue;
+            }
+
+            $phase->status = 'completed';
+            $phase->save();
+
+            $changes[] = [$sale->name, $phase->name, 'active', 'completed', $reason];
+        }
+
+        // ── 2) ขายหมดทุกเฟสแล้ว = จบรอบขาย ─────────────────────────────────
+        if ($phases->isNotEmpty() && $phases->every(fn (SalePhase $p) => $p->isExhausted())) {
+            if ($sale->status === 'active') {
+                $sale->status = 'completed';
+                $sale->save();
+
+                $changes[] = [$sale->name, '—', 'active', 'completed', 'ขายหมดทุกเฟส'];
+            }
+
+            return $changes;
+        }
+
+        // ── 3) ยังมีเฟสที่ขายได้จริงอยู่ไหม ──────────────────────────────────
+        if ($phases->first(fn (SalePhase $p) => $this->isSellable($p, $now)) !== null) {
+            return $changes;
+        }
+
+        /*
+         * ── 4) เปิดเฟสถัดไปที่ถึงกำหนดแล้ว ─────────────────────────────────
+         *
+         * เปิดทีละเฟสเท่านั้น (เฟสลำดับต่ำสุดที่เข้าเงื่อนไข) เพราะถ้าหลายเฟส
+         * ถึงกำหนดพร้อมกัน (ซึ่งคือสภาพปกติของรอบขั้นบันได) การเปิดหมดทุกเฟส
+         * จะทำให้มีหลายราคาเปิดขายพร้อมกัน แล้ว getActivePhase() ที่ใช้ ->first()
+         * จะหยิบมาแบบที่ทายไม่ได้ — ลูกค้าอาจได้ราคาที่เราไม่ได้ตั้งใจขาย
+         */
+        $next = $phases
+            ->filter(fn (SalePhase $p) => $p->status === 'upcoming' && ! $p->isExhausted())
+            ->first(function (SalePhase $p) use ($now) {
+                $started = $p->starts_at === null || $p->starts_at->lte($now);
+                $notEnded = $p->ends_at === null || $p->ends_at->gte($now);
+
+                return $started && $notEnded;
+            });
+
+        if ($next !== null) {
+            $next->status = 'active';
+            $next->save();
+
+            $changes[] = [$sale->name, $next->name, 'upcoming', 'active', 'ถึงกำหนดเปิด '.($next->starts_at?->format('Y-m-d H:i') ?? 'ทันที')];
+        }
+
+        return $changes;
+    }
+
+    /**
+     * หลังขายได้แต่ละครั้ง — ถ้าเฟสนี้หมดแล้ว ให้ขั้นถัดไปเปิดทันที ไม่ต้องรอรอบชั่วโมง.
+     *
+     * เรียก "หลัง" ทรานแซกชันของการซื้อ commit แล้วเสมอ ไม่ใช่ข้างใน:
+     * การซื้อล็อกแค่เฟสของมัน ส่วนตัวนี้ล็อกทุกเฟสของรอบ — ถ้าทำในทรานแซกชันเดียวกัน
+     * จะล็อกสลับลำดับกับ `sale:advance-phases` จน deadlock แล้วการซื้อที่เก็บเงินมาแล้ว
+     * จะถูกม้วนทิ้ง ล้มที่นี่จึงแค่บันทึกไว้ — คำสั่งรายชั่วโมงจะตามเก็บให้เอง
+     */
+    public function rollOverIfExhausted(SalePhase $phase): void
+    {
+        try {
+            $phase = $phase->fresh();
+
+            if ($phase === null || ! $phase->isExhausted()) {
+                return;
+            }
+
+            $sale = $phase->tokenSale;
+            if ($sale === null) {
+                return;
+            }
+
+            $changes = DB::transaction(fn () => $this->advancePhases($sale));
+
+            Cache::forget('token_sale:active');
+
+            if ($changes !== []) {
+                Log::info('token-sale: เฟสขายหมด เลื่อนไปขั้นถัดไปแล้ว', ['changes' => $changes]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('token-sale: เลื่อนเฟสหลังขายหมดไม่สำเร็จ — รอ sale:advance-phases ตามเก็บ', [
+                'phase_id' => $phase->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * เฟสนี้รับคำสั่งซื้อได้จริงตอนนี้ไหม — ด่านเวลาเดียวกับ assertPhaseOpen() บวกต้องยังมีโควตา.
+     */
+    private function isSellable(SalePhase $phase, CarbonInterface $now): bool
+    {
+        if ($phase->status !== 'active' || $phase->isExhausted()) {
+            return false;
+        }
+
+        if ($phase->starts_at !== null && $phase->starts_at->gt($now)) {
+            return false;
+        }
+
+        return $phase->ends_at === null || $phase->ends_at->gte($now);
     }
 
     // =========================================================================
@@ -413,7 +565,7 @@ class TokenSaleService
         // ★ ATOMIC: ตรวจ allocation + บันทึก + อัปเดต counters ใน transaction เดียว
         // ป้องกัน race condition: สองคนซื้อพร้อมกันจะไม่ขายเกิน
         try {
-            return DB::transaction(function () use ($sale, $phase, $walletAddress, $paidCurrency, $paidAmount, $conversion, $tpixAmount, $txHash, $verification) {
+            $transaction = DB::transaction(function () use ($sale, $phase, $walletAddress, $paidCurrency, $paidAmount, $conversion, $tpixAmount, $txHash, $verification) {
                 // Pessimistic lock — ตรวจ allocation ภายใต้ lock
                 $lockedPhase = SalePhase::lockForUpdate()->find($phase->id);
                 if ($tpixAmount > $lockedPhase->remaining_allocation) {
@@ -466,28 +618,24 @@ class TokenSaleService
                 // อัปเดตยอดขายใน phase (ใช้ locked instance)
                 $lockedPhase->increment('sold', $tpixAmount);
 
-                // Auto-close phase ถ้าขายหมดแล้ว
-                if ($lockedPhase->fresh()->remaining_allocation <= 0) {
-                    $lockedPhase->update(['status' => 'completed']);
-                    Log::info('Phase sold out — auto-closed', ['phase_id' => $lockedPhase->id, 'name' => $lockedPhase->name]);
-                }
-
                 // อัปเดตยอดขายรวมใน sale
                 $sale->increment('total_sold', $tpixAmount);
                 $sale->increment('total_raised_usd', $conversion['usd_value']);
-
-                // Auto-close sale ถ้าทุก phase ปิดหมดแล้ว
-                $activePhases = SalePhase::where('token_sale_id', $sale->id)->where('status', 'active')->count();
-                if ($activePhases === 0) {
-                    $sale->update(['status' => 'completed']);
-                    Log::info('Token sale completed — all phases sold out', ['sale_id' => $sale->id]);
-                }
 
                 // เคลียร์ cache
                 Cache::forget('token_sale:active');
 
                 return $transaction;
             });
+
+            /*
+             * ขายหมดเฟสแล้วเลื่อนไปขั้นถัดไปหลัง commit — ดูเหตุผลที่ rollOverIfExhausted()
+             * (เดิมปิดเฟสในนี้แล้ว "ปิดทั้งรอบขาย" ถ้าไม่มีเฟส active เหลือ
+             *  เฟสถัดไปจึงไม่เคยได้เปิด แม้จะยังไม่ถึงวันจบ)
+             */
+            $this->rollOverIfExhausted($phase);
+
+            return $transaction;
         } catch (UniqueConstraintViolationException $e) {
             // ยิงขนานมาหลายคำขอด้วย tx เดียว — ใบแรกชนะ ที่เหลือถูกฐานข้อมูลปัด
             throw new PurchaseException('This transaction has already been processed.');

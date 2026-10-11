@@ -22,6 +22,9 @@ use Illuminate\Support\Facades\Log;
  *   sale:launch --auto             โหมดอัตโนมัติ — รันจากตารางเวลาทุกชั่วโมง
  *                                  เปิดให้เองทันทีที่ระบบพร้อมจริง ถ้าเจ้าของ
  *                                  ติดอาวุธไว้ที่ /admin/token-sales
+ *   sale:launch --until=2026-12-31 รอบขั้นบันไดจบวันนั้น (ทุกเฟสช่วงเดียวกัน
+ *                                  ราคาขยับเมื่อขั้นก่อนขายหมด) — ไม่ใส่ = ใช้
+ *                                  วันจบรอบที่ล็อกไว้ที่ /admin/token-sales (ถ้ามี)
  *
  * ⚠️ --force ใช้ได้เฉพาะคนกดเอง โหมด --auto ห้ามข้ามด่านความพร้อมเด็ดขาด
  *    เพราะการเปิดรับเงินทั้งที่ยังไม่มีเหรียญให้จ่าย = รับเงินแล้วไม่ได้ของ
@@ -34,6 +37,7 @@ class SaleLaunch extends Command
         {--start= : วันเริ่มเฟสแรก (ค่าเริ่มต้น: เดี๋ยวนี้) เช่น 2026-09-01}
         {--sale= : id ของรอบขาย (ค่าเริ่มต้น: รอบที่ active อยู่)}
         {--days= : บังคับให้ทุกเฟสยาวเท่ากันกี่วัน (ค่าเริ่มต้น: ใช้ความยาวของแต่ละเฟส)}
+        {--until= : วันจบรอบแบบขั้นบันได เช่น 2026-12-31 (ค่าเริ่มต้น: วันจบรอบที่ล็อกไว้ ถ้ามี)}
         {--auto : โหมดอัตโนมัติ — เปิดเมื่อติดอาวุธไว้ + ระบบพร้อม + ยังไม่เคยเปิด}
         {--force : ข้ามด่านความพร้อม (ใช้ไม่ได้กับ --auto)}
         {--dry-run : แสดงตารางที่จะได้โดยไม่บันทึกจริง}';
@@ -89,6 +93,26 @@ class SaleLaunch extends Command
 
         $flatDays = $this->option('days') !== null ? max(1, (int) $this->option('days')) : null;
 
+        /*
+         * วันจบรอบ — ใส่แค่วันที่ = สิ้นสุดตอน 23:59:59 ของวันนั้น (เวลาของแอป)
+         * โหมดอัตโนมัติไม่รับ --until: ต้องใช้ค่าที่ล็อกไว้บนหลังบ้านเท่านั้น
+         * จะได้มีที่เดียวที่บอกว่ารอบขายจบวันไหน
+         */
+        $until = null;
+        if ($this->option('until') && ! $auto) {
+            try {
+                $raw = (string) $this->option('until');
+                $until = Carbon::parse($raw);
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+                    $until = $until->endOfDay();
+                }
+            } catch (\Throwable) {
+                $this->error('รูปแบบวันที่ของ --until ไม่ถูกต้อง (ใช้เช่น 2026-12-31)');
+
+                return self::FAILURE;
+            }
+        }
+
         // ── ความพร้อม ────────────────────────────────────────────────────
         $readiness = $launcher->readiness($sale);
         $this->renderReadiness($readiness);
@@ -111,7 +135,14 @@ class SaleLaunch extends Command
         }
 
         // ── แผนตาราง ─────────────────────────────────────────────────────
-        $plan = $launcher->plan($sale, $start, $flatDays);
+        $plan = $launcher->plan($sale, $start, $flatDays, $until);
+
+        if ($plan['blocked'] !== null) {
+            // วันจบรอบผ่านไปแล้ว — โหมดอัตโนมัติแค่รอให้คนแก้ ไม่ใช่ความผิดพลาดของตารางเวลา
+            $auto ? $this->comment('ยังเปิดไม่ได้: '.$plan['blocked']) : $this->error('ยังเปิดไม่ได้: '.$plan['blocked']);
+
+            return $auto ? self::SUCCESS : self::FAILURE;
+        }
 
         if ($plan['rows'] === []) {
             $this->warn('ทุกเฟสขายไปแล้ว — ไม่มีอะไรให้ตั้งวันใหม่');
@@ -121,6 +152,9 @@ class SaleLaunch extends Command
 
         $this->newLine();
         $this->info("รอบขาย: {$sale->name}");
+        if ($plan['tiered']) {
+            $this->info('แบบขั้นบันได — จบรอบ '.$plan['until']->format('Y-m-d H:i').' · ราคาขยับเมื่อขั้นก่อนหน้าขายหมด');
+        }
         $this->table(
             ['ลำดับ', 'เฟส', 'ราคา (USD)', 'โควตา (TPIX)', 'ยาว (วัน)', 'สถานะใหม่', 'เริ่ม', 'สิ้นสุด'],
             collect($plan['rows'])->map(fn ($r) => [
@@ -153,7 +187,7 @@ class SaleLaunch extends Command
          * ถ้าสถานะเพิ่งพลิกไปไม่พร้อมระหว่างนี้ มันจะปฏิเสธเอง — fail-closed
          * ส่งแค่ $force ไปพอ ไม่ต้องบอกมันว่าเราตรวจผ่านมาแล้ว
          */
-        $result = $launcher->launch($sale, $start, $flatDays, $force);
+        $result = $launcher->launch($sale, $start, $flatDays, $force, $until);
 
         if (! $result['ok']) {
             $this->error($result['message'] ?? 'เปิดรอบขายไม่สำเร็จ');

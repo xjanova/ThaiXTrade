@@ -84,8 +84,23 @@ export function phaseDisplayStatus(phase) {
             : { key: 'completed', label: 'Closed' };
     }
 
+    if (phase.status === 'upcoming') {
+        const now = Date.now();
+
+        // รอคิวแต่เลยวันปิดไปแล้ว = ไม่มีวันได้เปิด — อย่าบอกผู้ใช้ว่า "เร็ว ๆ นี้"
+        if (phase.ends_at && Date.parse(phase.ends_at) < now) {
+            return { key: 'completed', label: 'Closed' };
+        }
+
+        // รอบขั้นบันได: ช่วงเวลาเริ่มแล้วแต่ยังรอคิว = เปิดทันทีที่ขั้นก่อนหน้าขายหมด
+        if (phase.starts_at && Date.parse(phase.starts_at) <= now) {
+            return { key: 'upcoming', label: 'Next Tier' };
+        }
+
+        return { key: 'upcoming', label: 'Coming Soon' };
+    }
+
     switch (phase.status) {
-        case 'upcoming': return { key: 'upcoming', label: 'Coming Soon' };
         case 'completed': return { key: 'completed', label: 'Completed' };
         case 'cancelled': return { key: 'completed', label: 'Cancelled' };
         case 'sold_out': return { key: 'sold_out', label: 'Sold Out' };

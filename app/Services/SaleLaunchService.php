@@ -45,6 +45,14 @@ class SaleLaunchService
 
     public const ARM_KEY = 'auto_launch';
 
+    /**
+     * วันจบรอบขายที่เจ้าของล็อกไว้ (group เดียวกับสวิตช์ด้านบน).
+     *
+     * ตั้งไว้ = รอบขายแบบขั้นบันได: ทุกเฟสเปิดในช่วงเวลาเดียวกันจนถึงวันนี้
+     * ราคาขยับขึ้นเมื่อขั้นก่อนหน้าขายหมด ไม่ใช่เมื่อถึงวันของเฟสถัดไป
+     */
+    public const ROUND_END_KEY = 'round_ends_at';
+
     private const USER_AGENT = 'TPIX-TRADE-SaleLaunch/1.0 (+https://tpix.online)';
 
     public function __construct(
@@ -279,12 +287,26 @@ class SaleLaunchService
      * เฟสที่ขายไปแล้ว (sold > 0) จะไม่ถูกแตะ เพราะการเลื่อนวันของรอบที่มีคนซื้อ
      * ไปแล้วเท่ากับเปลี่ยนเงื่อนไขย้อนหลังกับลูกค้าที่จ่ายเงินมาแล้ว
      *
-     * @param  int|null  $flatDays  บังคับให้ทุกเฟสยาวเท่ากัน (null = ใช้ duration_days ของแต่ละเฟส)
-     * @return array{sale:TokenSale, rows:array<int,array<string,mixed>>, skipped:array<int,array<string,mixed>>, ends_at:?Carbon}
+     * ═══════════════════════════════════════════════════════════════════════
+     * สองแบบ
+     * ═══════════════════════════════════════════════════════════════════════
+     *   ต่อกันตามเวลา (ค่าเริ่มต้น)  เฟสละช่วง ยาวตาม duration_days ไล่ต่อกันไป
+     *   ขั้นบันได (มีวันจบรอบ)       ทุกเฟสใช้ช่วงเดียวกัน [วันเริ่ม → วันจบรอบ]
+     *                               เปิดทีละขั้นตามลำดับ ขั้นถัดไปเปิดเมื่อขั้นก่อนขายหมด
+     *                               (TokenSaleService::advancePhases() เป็นคนเลื่อน)
+     *
+     * วันจบรอบอ่านจากที่เจ้าของล็อกไว้ใน site_settings ถ้าไม่ได้ส่งมา — ตัวเปิด
+     * อัตโนมัติจึงได้วันจบเดิมเสมอ ไม่ว่าระบบจะพร้อมช้าไปกี่วัน
+     *
+     * @param  int|null  $flatDays  บังคับให้ทุกเฟสยาวเท่ากัน (null = ใช้ duration_days ของแต่ละเฟส) — ไม่มีผลในแบบขั้นบันได
+     * @param  CarbonInterface|null  $until  วันจบรอบ (null = ใช้ค่าที่ล็อกไว้ ถ้ามี)
+     * @return array{sale:TokenSale, rows:array<int,array<string,mixed>>, skipped:array<int,array<string,mixed>>, ends_at:?Carbon, tiered:bool, until:?Carbon, blocked:?string}
      */
-    public function plan(TokenSale $sale, CarbonInterface $start, ?int $flatDays = null): array
+    public function plan(TokenSale $sale, CarbonInterface $start, ?int $flatDays = null, ?CarbonInterface $until = null): array
     {
         $phases = $sale->phases()->orderBy('phase_order')->get();
+        $until = $until !== null ? Carbon::parse($until) : $this->roundEndsAt();
+        $tiered = $until !== null;
 
         $rows = [];
         $skipped = [];
@@ -301,6 +323,22 @@ class SaleLaunchService
             }
         }
 
+        /*
+         * วันจบรอบต้องอยู่หลังวันเริ่มจริง (หลังเฟสที่ขายไปแล้วจบด้วย)
+         * ไม่งั้นเปิดไปก็ปิดทันที — หรือแย่กว่านั้นคือได้ช่วงเวลากลับหัว
+         */
+        if ($tiered && $until->lte($cursor)) {
+            return [
+                'sale' => $sale,
+                'rows' => [],
+                'skipped' => [],
+                'ends_at' => null,
+                'tiered' => true,
+                'until' => $until,
+                'blocked' => 'วันจบรอบขาย '.$until->format('Y-m-d H:i').' ต้องอยู่หลังวันเริ่ม '.$cursor->format('Y-m-d H:i'),
+            ];
+        }
+
         $isFirstMovable = true;
 
         foreach ($phases as $phase) {
@@ -313,11 +351,18 @@ class SaleLaunchService
                 continue;
             }
 
-            $days = $flatDays ?? (int) ($phase->duration_days ?: self::DEFAULT_DURATION_DAYS);
-            $days = max(1, $days);
+            if ($tiered) {
+                // ขั้นบันได: ทุกขั้นใช้ช่วงเดียวกัน — days มีไว้แสดงผลเท่านั้น ไม่บันทึกทับ duration_days
+                $startsAt = $cursor->copy();
+                $endsAt = $until->copy();
+                $days = max(1, (int) ceil($startsAt->diffInSeconds($endsAt) / 86400));
+            } else {
+                $days = $flatDays ?? (int) ($phase->duration_days ?: self::DEFAULT_DURATION_DAYS);
+                $days = max(1, $days);
 
-            $startsAt = $cursor->copy();
-            $endsAt = $cursor->copy()->addDays($days);
+                $startsAt = $cursor->copy();
+                $endsAt = $cursor->copy()->addDays($days);
+            }
 
             $rows[] = [
                 'phase' => $phase,
@@ -336,7 +381,10 @@ class SaleLaunchService
                 'status' => $isFirstMovable && $startsAt->lte(now()) ? 'active' : 'upcoming',
             ];
 
-            $cursor = $endsAt->copy();
+            // ขั้นบันไดไม่เลื่อนเคอร์เซอร์ — ขั้นถัดไปเริ่มพร้อมกัน แต่รอคิวจนขั้นก่อนหมด
+            if (! $tiered) {
+                $cursor = $endsAt->copy();
+            }
             $isFirstMovable = false;
         }
 
@@ -345,6 +393,9 @@ class SaleLaunchService
             'rows' => $rows,
             'skipped' => $skipped,
             'ends_at' => $rows === [] ? null : end($rows)['ends_at'],
+            'tiered' => $tiered,
+            'until' => $until,
+            'blocked' => null,
         ];
     }
 
@@ -354,7 +405,7 @@ class SaleLaunchService
      * @param  bool  $force  ข้ามด่านความพร้อม (ใช้ได้เฉพาะคนกดเอง ไม่ใช่ตัวเปิดอัตโนมัติ)
      * @return array{ok:bool, message:?string, plan:?array<string,mixed>, readiness:array<string,mixed>}
      */
-    public function launch(TokenSale $sale, ?CarbonInterface $start = null, ?int $flatDays = null, bool $force = false): array
+    public function launch(TokenSale $sale, ?CarbonInterface $start = null, ?int $flatDays = null, bool $force = false, ?CarbonInterface $until = null): array
     {
         $readiness = $this->readiness($sale);
 
@@ -368,7 +419,16 @@ class SaleLaunchService
         }
 
         $start = $start !== null ? Carbon::parse($start) : now();
-        $plan = $this->plan($sale, $start, $flatDays);
+        $plan = $this->plan($sale, $start, $flatDays, $until);
+
+        if ($plan['blocked'] !== null) {
+            return [
+                'ok' => false,
+                'message' => 'ยังเปิดขายไม่ได้: '.$plan['blocked'],
+                'plan' => $plan,
+                'readiness' => $readiness,
+            ];
+        }
 
         if ($plan['rows'] === []) {
             return [
@@ -384,6 +444,8 @@ class SaleLaunchService
         Log::info('SaleLaunchService: เปิดรอบขาย', [
             'sale_id' => $sale->id,
             'start' => $start->toIso8601String(),
+            'tiered' => $plan['tiered'],
+            'until' => $plan['until']?->toIso8601String(),
             'forced' => $force,
             'blocking_ignored' => $force ? $readiness['blocking'] : [],
             'phases' => collect($plan['rows'])->map(fn ($r) => [
@@ -418,12 +480,22 @@ class SaleLaunchService
 
         DB::transaction(function () use ($sale, $rows, $plan, $firstStart) {
             foreach ($rows as $row) {
-                SalePhase::whereKey($row['phase']->id)->update([
-                    'duration_days' => $row['days'],
+                $update = [
                     'starts_at' => $row['starts_at'],
                     'ends_at' => $row['ends_at'],
                     'status' => $row['status'],
-                ]);
+                ];
+
+                /*
+                 * duration_days คือแหล่งความจริงของ "แบบต่อกันตามเวลา"
+                 * แบบขั้นบันไดห้ามเขียนทับ ไม่งั้นวันหนึ่งที่กลับไปใช้แบบต่อกัน
+                 * ทุกเฟสจะยาวเท่าช่วงรอบขั้นบันไดเดิม (เช่น 81 วันต่อเฟส)
+                 */
+                if (! ($plan['tiered'] ?? false)) {
+                    $update['duration_days'] = $row['days'];
+                }
+
+                SalePhase::whereKey($row['phase']->id)->update($update);
             }
 
             $update = [];
@@ -481,6 +553,39 @@ class SaleLaunchService
     public function setAutoLaunch(bool $armed): void
     {
         SiteSetting::set(self::ARM_GROUP, self::ARM_KEY, $armed ? '1' : '0', 'boolean');
+    }
+
+    /**
+     * วันจบรอบที่เจ้าของล็อกไว้ — null = ไม่ได้ล็อก (ใช้แบบต่อกันตามเวลา).
+     *
+     * ค่าเสีย/อ่านไม่ออก = ถือว่าไม่ได้ล็อก แต่บันทึกเตือนไว้ ไม่ให้เงียบ
+     */
+    public function roundEndsAt(): ?Carbon
+    {
+        $raw = SiteSetting::get(self::ARM_GROUP, self::ROUND_END_KEY);
+
+        if (blank($raw)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse((string) $raw);
+        } catch (\Throwable) {
+            Log::warning('SaleLaunchService: วันจบรอบขายในตั้งค่าอ่านไม่ออก — ใช้แบบต่อกันตามเวลาแทน', ['value' => $raw]);
+
+            return null;
+        }
+    }
+
+    /** null = ยกเลิกวันจบรอบ กลับไปใช้แบบต่อกันตามเวลา */
+    public function setRoundEndsAt(?CarbonInterface $at): void
+    {
+        SiteSetting::set(
+            self::ARM_GROUP,
+            self::ROUND_END_KEY,
+            $at !== null ? Carbon::parse($at)->format('Y-m-d H:i:s') : '',
+            'string'
+        );
     }
 
     /**

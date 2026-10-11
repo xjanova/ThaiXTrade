@@ -658,6 +658,11 @@ class DiscordContent
             return $format($phase['starts_at']).' – '.$format($phase['ends_at']);
         }
 
+        // ล็อกวันจบรอบไว้ (ขั้นบันได) — บอกวันจบจริงแทนจำนวนวัน
+        if (! empty($phase['round_ends_at'])) {
+            return 'Until '.Carbon::parse($phase['round_ends_at'])->timezone('Asia/Bangkok')->format('M j, Y').' · price steps up when the tier before sells out';
+        }
+
         return (int) ($phase['duration_days'] ?? 0).' days · the countdown starts at launch';
     }
 

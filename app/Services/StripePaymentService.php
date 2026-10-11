@@ -404,6 +404,11 @@ class StripePaymentService
             return $tx;
         });
 
+        // ขายหมดขั้นนี้แล้ว → เปิดขั้นราคาถัดไปทันที (หลัง commit เท่านั้น — ดู rollOverIfExhausted)
+        if ($transaction->status === 'confirmed' && $transaction->phase) {
+            $this->saleService->rollOverIfExhausted($transaction->phase);
+        }
+
         Log::info('Stripe ICO purchase confirmed', [
             'session_id' => $session->id,
             'wallet' => $walletAddress,

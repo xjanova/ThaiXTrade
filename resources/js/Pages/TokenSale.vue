@@ -402,7 +402,7 @@ async function loadTradablePair() {
                     <p class="text-gray-400 mt-3 text-sm">
                         Each phase has its own vesting schedule. A percentage is unlocked at TGE (Token Generation Event),
                         followed by a cliff period, then linear daily vesting over the remaining duration.
-                        Private Sale: 10% TGE, 30-day cliff, 180-day vesting.
+                        The exact terms of each price tier are shown on its card above.
                     </p>
                 </details>
 

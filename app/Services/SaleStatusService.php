@@ -104,6 +104,9 @@ class SaleStatusService
         $ready = $this->ready($sale);
         $phases = $sale->phases->sortBy('phase_order')->values();
 
+        // ยังไม่เปิดแต่ล็อกวันจบรอบไว้ (ขั้นบันได) — บอกวันจบจริงแทน "ยาว N วัน"
+        $roundEndsAt = $launched ? null : $this->launcher->roundEndsAt();
+
         $sellableLeft = $phases->contains(fn (SalePhase $p) => (float) $p->allocation > (float) $p->sold
             && ($p->ends_at === null || ! $launched || $p->ends_at->isFuture()));
 
@@ -137,7 +140,7 @@ class SaleStatusService
                 'launched_at' => $sale->launched_at?->toIso8601String(),
             ],
             'current_phase' => $state === self::OPEN ? $active?->name : null,
-            'phases' => $phases->map(fn (SalePhase $p) => $this->phase($p, $launched, $state === self::OPEN ? $active : null))->all(),
+            'phases' => $phases->map(fn (SalePhase $p) => $this->phase($p, $launched, $state === self::OPEN ? $active : null, $roundEndsAt))->all(),
             'payment_methods' => $methods,
             'url' => $url,
         ];
@@ -189,14 +192,25 @@ class SaleStatusService
     }
 
     /** @return array<string, mixed> */
-    private function phase(SalePhase $phase, bool $launched, ?SalePhase $open): array
+    private function phase(SalePhase $phase, bool $launched, ?SalePhase $open, ?CarbonInterface $roundEndsAt = null): array
     {
         $days = (int) ($phase->duration_days ?: SaleLaunchService::DEFAULT_DURATION_DAYS);
-        $soldOut = (float) $phase->allocation > 0 && (float) $phase->sold >= (float) $phase->allocation;
+        // เกณฑ์เดียวกับตัวเลื่อนขั้น — เศษต่ำกว่ายอดซื้อขั้นต่ำนับว่าหมด (ดู SalePhase::isExhausted)
+        $soldOut = (float) $phase->allocation > 0 && $phase->isExhausted();
 
-        $window = $launched && $phase->starts_at && $phase->ends_at
-            ? $this->date($phase->starts_at).' – '.$this->date($phase->ends_at)
-            : "ยาว {$days} วัน · เริ่มนับเมื่อเปิดขายจริง";
+        $window = match (true) {
+            $launched && $phase->starts_at && $phase->ends_at => $this->date($phase->starts_at).' – '.$this->date($phase->ends_at),
+            $roundEndsAt !== null => 'ขายถึง '.$this->date($roundEndsAt).' · ราคาขยับเมื่อขั้นก่อนหน้าขายหมด',
+            default => "ยาว {$days} วัน · เริ่มนับเมื่อเปิดขายจริง",
+        };
+
+        /*
+         * รอบขั้นบันได: ช่วงเวลาของขั้นนี้เริ่มแล้วแต่ยังรอคิว — เปิดเมื่อขั้นก่อนหน้าขายหมด
+         * ไม่ใช่รอวันที่ (คำว่า "รอเปิด" เฉย ๆ ชวนให้ถามว่าเมื่อไหร่)
+         */
+        $tierWaiting = $launched && $phase->status === 'upcoming'
+            && $phase->starts_at !== null && $phase->starts_at->isPast()
+            && ($phase->ends_at === null || $phase->ends_at->isFuture());
 
         // ป้ายสถานะคิดจากของจริง ไม่ใช่ค่า status ในตาราง (ค้างได้ถึงชั่วโมงก่อน sale:advance-phases รัน)
         $status = match (true) {
@@ -210,7 +224,7 @@ class SaleStatusService
             'open' => '🟢 เปิดขายอยู่',
             'sold_out' => 'ขายหมดแล้ว',
             'ended' => 'จบเฟสแล้ว',
-            'waiting' => 'รอเปิด',
+            'waiting' => $tierWaiting ? 'รอขั้นก่อนหน้าขายหมด' : 'รอเปิด',
             'upcoming' => 'รอเปิดขาย',
         ][$status];
 
@@ -228,6 +242,7 @@ class SaleStatusService
             'status' => $status,
             'starts_at' => $launched ? $phase->starts_at?->toIso8601String() : null,
             'ends_at' => $launched ? $phase->ends_at?->toIso8601String() : null,
+            'round_ends_at' => $roundEndsAt?->toIso8601String(),
         ];
     }
 

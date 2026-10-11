@@ -150,4 +150,20 @@ class SalePhase extends Model
     {
         return $this->remaining_allocation <= 0;
     }
+
+    /**
+     * โควตาที่เหลือ "ขายต่อไม่ได้แล้ว" หรือยัง.
+     *
+     * ต่างจาก is_sold_out ตรงที่นับเศษที่ต่ำกว่ายอดซื้อขั้นต่ำว่าหมดด้วย
+     * เพราะในรอบขายแบบขั้นบันได ขั้นถัดไปจะเปิดก็ต่อเมื่อขั้นนี้หมด —
+     * ถ้าเหลือ 30 TPIX แต่ซื้อขั้นต่ำ 100 TPIX จะไม่มีใครซื้อเศษนั้นได้เลย
+     * แล้วรอบขายจะค้างอยู่ที่ขั้นนี้ไปจนวันจบรอบ
+     */
+    public function isExhausted(): bool
+    {
+        $remaining = $this->remaining_allocation;
+
+        return $remaining <= 0
+            || ((float) $this->min_purchase > 0 && $remaining < (float) $this->min_purchase);
+    }
 }

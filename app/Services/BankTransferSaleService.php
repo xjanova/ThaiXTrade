@@ -242,6 +242,11 @@ class BankTransferSaleService
             );
         }
 
+        // ขายหมดขั้นนี้แล้ว → เปิดขั้นราคาถัดไปทันที (หลัง commit เท่านั้น — ดู rollOverIfExhausted)
+        if ($outcome['tx']->phase) {
+            $this->saleService->rollOverIfExhausted($outcome['tx']->phase);
+        }
+
         return $outcome['tx'];
     }
 

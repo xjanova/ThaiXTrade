@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\SalePhase;
 use App\Models\TokenSale;
+use App\Services\TokenSaleService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -37,8 +37,11 @@ class SalePhaseAdvance extends Command
 
     protected $description = 'ปิดเฟสรอบขายที่หมดอายุ แล้วเปิดเฟสถัดไปที่ถึงกำหนด';
 
-    public function handle(): int
+    private TokenSaleService $sales;
+
+    public function handle(TokenSaleService $sales): int
     {
+        $this->sales = $sales;
         $dryRun = (bool) $this->option('dry-run');
         $now = now();
         $changes = [];
@@ -73,102 +76,32 @@ class SalePhaseAdvance extends Command
     /**
      * เลื่อนสถานะของรอบขายหนึ่งรอบ.
      *
+     * ตรรกะจริงอยู่ที่ TokenSaleService::advancePhases() ที่เดียว — ทางซื้อทั้งสามทาง
+     * เรียกตัวเดียวกันทันทีที่เฟสขายหมด ตัวนี้เป็นแค่ทางสำรองรายชั่วโมง
+     *
      * @return array<int, array<int, string>> รายการที่เปลี่ยน (สำหรับแสดงผล/บันทึก log)
      */
     private function advanceSale(TokenSale $sale, Carbon $now, bool $dryRun): array
     {
-        $changes = [];
-
         /*
          * ทำทั้งก้อนในทรานแซกชันเดียว + ล็อกแถวไว้
          *
          * ถ้าปิดเฟสเก่าสำเร็จแล้วเปิดเฟสใหม่ล้ม จะเหลือสภาพ "ไม่มีเฟสไหน active เลย"
          * = รอบขายดับสนิทโดยไม่มีใครสั่ง ซึ่งแย่กว่าปล่อยให้สถานะเดิมค้างไว้
          */
-        $runner = function () use ($sale, $now, &$changes) {
-            $phases = $sale->phases()->orderBy('phase_order')->lockForUpdate()->get();
-
-            // ── 1) ปิดเฟสที่เลยวันปิดไปแล้ว ─────────────────────────────────
-            foreach ($phases as $phase) {
-                if ($phase->status !== 'active') {
-                    continue;
-                }
-
-                if ($phase->ends_at !== null && $phase->ends_at->lt($now)) {
-                    $phase->status = 'completed';
-                    $phase->save();
-
-                    $changes[] = [$sale->name, $phase->name, 'active', 'completed', 'เลยวันปิด '.$phase->ends_at->format('Y-m-d H:i')];
-                }
-            }
-
-            // ── 2) ยังมีเฟสที่เปิดขายได้จริงอยู่ไหม ──────────────────────────
-            $stillOpen = $phases->first(fn (SalePhase $p) => $this->isOpen($p, $now));
-
-            if ($stillOpen !== null) {
-                return;
-            }
-
-            /*
-             * ── 3) เปิดเฟสถัดไปที่ถึงกำหนดแล้ว ─────────────────────────────
-             *
-             * เปิดทีละเฟสเท่านั้น (เฟสลำดับต่ำสุดที่เข้าเงื่อนไข) เพราะถ้าเว้นช่วง
-             * ไว้นานจนหลายเฟสถึงกำหนดพร้อมกัน การเปิดหมดทุกเฟสจะทำให้มีหลายราคา
-             * เปิดขายพร้อมกัน แล้ว getActivePhase() ที่ใช้ ->first() จะหยิบมาแบบ
-             * ที่ทายไม่ได้ — ลูกค้าอาจได้ราคาที่เราไม่ได้ตั้งใจขาย
-             */
-            $next = $phases
-                ->filter(fn (SalePhase $p) => $p->status === 'upcoming')
-                ->first(function (SalePhase $p) use ($now) {
-                    $started = $p->starts_at === null || $p->starts_at->lte($now);
-                    $notEnded = $p->ends_at === null || $p->ends_at->gte($now);
-
-                    return $started && $notEnded;
-                });
-
-            if ($next === null) {
-                return;
-            }
-
-            $next->status = 'active';
-            $next->save();
-
-            $changes[] = [$sale->name, $next->name, 'upcoming', 'active', 'ถึงกำหนดเปิด '.($next->starts_at?->format('Y-m-d H:i') ?? 'ทันที')];
-        };
+        $runner = fn () => $this->sales->advancePhases($sale, $now);
 
         if ($dryRun) {
             // อ่านอย่างเดียว — ม้วนกลับทุกอย่างเพื่อดูผลลัพธ์โดยไม่แตะข้อมูลจริง
             DB::beginTransaction();
 
             try {
-                $runner();
+                return $runner();
             } finally {
                 DB::rollBack();
             }
-
-            return $changes;
         }
 
-        DB::transaction($runner);
-
-        return $changes;
-    }
-
-    /** เงื่อนไขต้องตรงกับ TokenSaleService::assertPhaseOpen() เป๊ะ */
-    private function isOpen(SalePhase $phase, Carbon $now): bool
-    {
-        if ($phase->status !== 'active') {
-            return false;
-        }
-
-        if ($phase->starts_at !== null && $phase->starts_at->gt($now)) {
-            return false;
-        }
-
-        if ($phase->ends_at !== null && $phase->ends_at->lt($now)) {
-            return false;
-        }
-
-        return true;
+        return DB::transaction($runner);
     }
 }

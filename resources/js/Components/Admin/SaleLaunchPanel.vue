@@ -12,6 +12,7 @@
  *   1. บอกตรง ๆ ว่ายังขาดอะไรก่อนจะขายได้ (ถามของจริง ไม่ใช่ดูแค่คอนฟิก)
  *   2. โชว์ตารางที่จะได้ถ้ากดเปิดวันนี้ — คนกดต้องเห็นผลลัพธ์ก่อนกด
  *   3. สวิตช์ให้ระบบเปิดขายเองทันทีที่พร้อมครบ (ปิดไว้เป็นค่าเริ่มต้น)
+ *   4. ล็อกวันจบรอบ = แบบขั้นบันได ทุกเฟสช่วงเดียวกัน ราคาขยับเมื่อขั้นก่อนขายหมด
  *
  * Developed by Xman Studio
  */
@@ -28,6 +29,8 @@ const checks = computed(() => readiness.value.checks || []);
 const preview = computed(() => props.launch?.preview || []);
 const skipped = computed(() => props.launch?.skipped || []);
 const launchedAt = computed(() => props.launch?.launched_at || null);
+const tiered = computed(() => !!props.launch?.tiered);
+const blocked = computed(() => props.launch?.blocked || null);
 
 const passedCount = computed(() => checks.value.filter((c) => c.ok).length);
 
@@ -50,6 +53,25 @@ function submitLaunch(force = false) {
 
 function toggleAuto() {
     router.post('/admin/token-sales/auto-launch', { armed: !props.launch?.armed }, { preserveScroll: true });
+}
+
+/*
+ * วันจบรอบ — ช่อง date ส่งแค่ YYYY-MM-DD เซิร์ฟเวอร์ตีเป็นสิ้นวันนั้นเอง
+ * แปลงจาก ISO ด้วยเวลาท้องถิ่นของเครื่อง ไม่ใช่ slice(0,10) ของ ISO ที่เป็น UTC
+ * (23:59 เวลาไทย = 16:59Z วันเดียวกัน แต่ถ้าเซิร์ฟเวอร์ส่ง Z มา slice จะได้วันผิดในบางเขตเวลา)
+ */
+function toDateInput(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+const roundForm = useForm({ round_ends_at: toDateInput(props.launch?.round_ends_at) });
+
+function saveRoundEnd(clear = false) {
+    if (clear) roundForm.round_ends_at = '';
+    roundForm.post('/admin/token-sales/round-end', { preserveScroll: true });
 }
 
 function fmtDate(iso) {
@@ -108,9 +130,41 @@ function fmtDate(iso) {
             </div>
         </div>
 
+        <!-- วันจบรอบ — ล็อกไว้ = แบบขั้นบันได -->
+        <div class="mb-5 p-3 rounded-lg bg-white/[0.03] border border-white/10">
+            <div class="flex flex-wrap items-center gap-2">
+                <label class="text-sm font-medium text-gray-200">วันจบรอบขาย</label>
+                <input v-model="roundForm.round_ends_at" type="date" class="trading-input text-xs py-1.5" />
+                <button
+                    class="px-3 py-1.5 text-xs rounded-lg bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 disabled:opacity-40"
+                    :disabled="roundForm.processing || !roundForm.round_ends_at"
+                    @click="saveRoundEnd(false)"
+                >บันทึก</button>
+                <button
+                    v-if="launch.round_ends_at"
+                    class="px-3 py-1.5 text-xs rounded-lg text-gray-400 hover:text-white"
+                    :disabled="roundForm.processing"
+                    @click="saveRoundEnd(true)"
+                >ยกเลิกวันจบ</button>
+            </div>
+            <p class="text-xs text-gray-400 mt-1.5">
+                <template v-if="tiered">
+                    ล็อกไว้ {{ fmtDate(launch.round_ends_at) }} — ทุกเฟสเปิดช่วงเดียวกันถึงวันนี้
+                    ราคาขยับขึ้นเมื่อขั้นก่อนหน้าขายหมด (เปิดช้าแค่ไหนก็จบวันนี้)
+                </template>
+                <template v-else>
+                    ไม่ได้ล็อก — เฟสต่อกันตามเวลา ยาวเฟสละ duration_days
+                </template>
+            </p>
+            <p v-if="roundForm.errors.round_ends_at" class="text-xs text-red-400 mt-1">{{ roundForm.errors.round_ends_at }}</p>
+            <p v-if="blocked" class="text-xs text-yellow-400 mt-1">⛔ {{ blocked }}</p>
+        </div>
+
         <!-- ตารางที่จะได้ถ้ากดเปิดวันนี้ -->
         <div v-if="preview.length" class="mb-5">
-            <div class="text-sm font-semibold text-white mb-2">ตารางที่จะได้ถ้าเปิดวันนี้</div>
+            <div class="text-sm font-semibold text-white mb-2">
+                ตารางที่จะได้ถ้าเปิดวันนี้{{ tiered ? ' (ขั้นบันได — เปิดทีละขั้นตามลำดับ)' : '' }}
+            </div>
             <div class="overflow-x-auto rounded-lg border border-white/10">
                 <table class="w-full text-xs">
                     <thead class="bg-white/5 text-gray-400">
@@ -134,7 +188,7 @@ function fmtDate(iso) {
                                 <span
                                     class="px-2 py-0.5 rounded-full"
                                     :class="row.status === 'active' ? 'bg-green-500/15 text-green-400' : 'bg-gray-500/15 text-gray-400'"
-                                >{{ row.status === 'active' ? 'เปิดขาย' : 'รอคิว' }}</span>
+                                >{{ row.status === 'active' ? 'เปิดขาย' : (tiered ? 'รอขั้นก่อนหน้าหมด' : 'รอคิว') }}</span>
                             </td>
                         </tr>
                     </tbody>
