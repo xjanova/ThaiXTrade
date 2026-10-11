@@ -517,7 +517,7 @@ class WalletProvider extends ChangeNotifier {
     return hash;
   }
 
-  /// External wallet — เชนของ wallet ต้องเป็น BSC ก่อนส่ง (ขอสลับให้อัตโนมัติ)
+  /// External wallet — เชนของ wallet ต้องเป็นเชนเป้าหมายก่อนส่ง (ขอสลับ/เพิ่มเชนให้อัตโนมัติ)
   Future<String?> _sendViaWalletConnect({
     required String to,
     required int chainId,
@@ -525,12 +525,14 @@ class WalletProvider extends ChangeNotifier {
     BigInt? value,
   }) async {
     final svc = ExternalWalletService();
+    final from = _address!;
 
     if (svc.selectedChainId != chainId) {
-      await svc.switchChain(chainId);
-      if (svc.selectedChainId != chainId) {
-        final name = ChainConfig.byId(chainId).shortName;
-        _error = 'กรุณาสลับ wallet ไปเชน $name เพื่อเทรด';
+      // wallet ไม่รู้จักเชน TPIX → switchChain ขอเพิ่มเชนให้ (wallet_addEthereumChain)
+      final switched = await svc.switchChain(chainId);
+      if (!switched || svc.selectedChainId != chainId) {
+        final name = ChainConfig.byId(chainId).name;
+        _error = 'กรุณาสลับ wallet ไปเชน $name เพื่อเทรด (ถ้ากระเป๋าไม่มีเชนนี้ ให้กดอนุญาตเพิ่มเชน)';
         notifyListeners();
         return null;
       }
@@ -538,8 +540,17 @@ class WalletProvider extends ChangeNotifier {
       notifyListeners();
     }
 
+    // ผู้ใช้สลับบัญชีใน wallet ระหว่างทาง — อย่าส่งธุรกรรมจากบัญชีที่แอปไม่ได้ผูกไว้
+    final current = svc.currentAddress;
+    if (current != null && current.toLowerCase() != from.toLowerCase()) {
+      _error = 'บัญชีใน wallet ไม่ตรงกับที่เชื่อมไว้ — สลับกลับหรือเชื่อมใหม่';
+      notifyListeners();
+      return null;
+    }
+
     final hash = await svc.sendTransaction(
-      from: _address!,
+      chainId: chainId,
+      from: from,
       to: to,
       valueHex: value != null ? '0x${value.toRadixString(16)}' : null,
       dataHex: data != null ? '0x${HEX.encode(data)}' : null,
