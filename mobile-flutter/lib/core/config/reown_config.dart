@@ -21,12 +21,18 @@ class ReownConfig {
   /// แอปได้ตั้ง Project ID หรือยัง
   static bool get isConfigured => projectId.isNotEmpty;
 
+  /// โลโก้เหรียญ TPIX (ตราใหม่) — ใช้ทั้งไอคอนแอปใน wallet และไอคอนเชนตอนขอเพิ่มเชน
+  /// ?v=2 จำเป็น: รูปใน public_html ถูก Cloudflare แคช 1 ปี ชื่อไฟล์เดิมไม่มี ?v=
+  /// ผู้ใช้จะเห็นรูปเก่าค้างไปอีกนาน (ต้องบวกเลขทุกครั้งที่เปลี่ยนรูปชื่อเดิม)
+  static const String tpixCoinIcon =
+      'https://tpix.online/images/brand/tpix-coin.png?v=2';
+
   /// App metadata ส่งไปแสดงใน external wallet ตอนขออนุญาต
   static PairingMetadata get metadata => const PairingMetadata(
         name: 'TPIX TRADE',
         description: 'Decentralized Exchange — TPIX Chain',
         url: 'https://tpix.online',
-        icons: ['https://tpix.online/images/brand/tpix-coin.png'],
+        icons: [tpixCoinIcon],
         redirect: Redirect(
           native: 'tpixtrade://',
           universal: 'https://tpix.online/app',
