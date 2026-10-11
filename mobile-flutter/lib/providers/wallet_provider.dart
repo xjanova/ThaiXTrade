@@ -425,7 +425,10 @@ class WalletProvider extends ChangeNotifier {
         // Linked wallet — ไม่มี private key ในแอป
         // ส่ง deep-link ไป TPIX Wallet ขอลายเซ็น แล้วรอ callback กลับมา
         // (LinkedWalletSigner เปิดแอพ wallet → user confirm → callback → resolve)
-        return await LinkedWalletSigner().requestSignature(message);
+        // แนบบัญชีที่ผูกไว้ไปด้วยเสมอ — กระเป๋าจะไม่เซ็นด้วยบัญชีอื่นที่เปิดค้างไว้
+        if (_address == null) return null;
+        return await LinkedWalletSigner()
+            .requestSignature(message, address: _address!);
       }
 
       // Embedded wallet — sign locally ด้วย private key
@@ -504,6 +507,7 @@ class WalletProvider extends ChangeNotifier {
     String? summary,
   }) async {
     final hash = await LinkedWalletSigner().requestTransaction(
+      address: _address!,
       to: to,
       valueHex: value != null ? '0x${value.toRadixString(16)}' : null,
       dataHex: data != null ? '0x${HEX.encode(data)}' : null,
@@ -681,6 +685,7 @@ class WalletProvider extends ChangeNotifier {
       final signature = _kind == WalletKind.linked
           ? await LinkedWalletSigner().requestSignature(
               message,
+              address: _address!,
               tag: 'verify',
               meta: {'nonce': nonce, 'address': _address},
             )

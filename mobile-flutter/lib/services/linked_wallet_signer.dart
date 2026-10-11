@@ -7,7 +7,8 @@
 ///   1. Trade asks WalletProvider.signMessage for linked wallet
 ///   2. WalletProvider delegates here → requestSignature()
 ///   3. We generate a nonce, register a Completer, and launch
-///      `tpixwallet://sign?message=<msg>&nonce=<n>&callback=tpixtrade://sign-result`
+///      `tpixwallet://sign?message=<msg>&nonce=<n>&callback=tpixtrade://sign-result&from=trade&address=<linked 0x>`
+///      (`address` = บัญชีที่ผูกไว้ — กระเป๋าต้องปฏิเสธถ้าบัญชีที่เปิดอยู่ไม่ตรง)
 ///   4. User confirms in TPIX Wallet → wallet signs → opens
 ///      `tpixtrade://sign-result?nonce=<n>&signature=0x...`
 ///   5. DeepLinkService routes that back here → completeSignature()
@@ -91,18 +92,104 @@ class LinkedWalletSigner {
     }
   }
 
+  /// ที่อยู่กระเป๋าต้องเป็น 0x + 40 hex — ผิดรูป = ไม่ส่งคำขอเลย (fail-closed)
+  static bool isValidAddress(String? a) =>
+      a != null && RegExp(r'^0x[a-fA-F0-9]{40}$').hasMatch(a);
+
+  /// ลิงก์ขอลายเซ็นข้อความ — `tpixwallet://sign`
+  ///
+  /// พารามิเตอร์ `address` = บัญชีที่ TRADE ผูกไว้ ให้ TPIX Wallet เทียบกับบัญชีที่เปิดอยู่
+  /// แล้วปฏิเสธถ้าไม่ตรง (เดิมไม่ส่งไป → กระเป๋าเซ็นด้วยบัญชีไหนก็ได้ที่เปิดค้างไว้
+  /// ลายเซ็นผิดบัญชีไปโผล่ที่เซิร์ฟเวอร์/ธุรกรรมออกจากบัญชีที่ผู้ใช้ไม่ได้ตั้งใจ)
+  /// ⚠️ ไม่ใช้ชื่อ `from` เพราะ `from=trade` ใช้อยู่แล้วเป็นชื่อแอปต้นทาง
+  ///    (PeerSignService ของกระเป๋าอ่านเป็น fromHint) — ชื่อ `address` ตรงกับลิงก์ connect
+  static Uri buildSignUri({
+    required String message,
+    required String nonce,
+    required String address,
+  }) =>
+      Uri(
+        scheme: _walletScheme,
+        host: 'sign',
+        queryParameters: {
+          'message': message,
+          'nonce': nonce,
+          'callback': _callbackUrl,
+          'from': 'trade',
+          'address': address,
+        },
+      );
+
+  /// ลิงก์ขอเซ็น typed data — `tpixwallet://sign-typed` (มี `address` เหมือนกัน)
+  static Uri buildSignTypedUri({
+    required String typedJson,
+    required String nonce,
+    required String address,
+  }) =>
+      Uri(
+        scheme: _walletScheme,
+        host: 'sign-typed',
+        queryParameters: {
+          'typed': typedJson,
+          'nonce': nonce,
+          'callback': _callbackUrl,
+          'from': 'trade',
+          'address': address,
+        },
+      );
+
+  /// ลิงก์ขอเซ็น+ส่งธุรกรรม — `tpixwallet://sign-tx`
+  ///
+  /// บัญชีผู้ส่งอยู่สองที่: `address` ในลิงก์ (ชื่อเดียวกับคำขออื่น) และ `from` ใน JSON
+  /// ของ `tx` (ฟิลด์มาตรฐานของธุรกรรม Ethereum) — กระเป๋าเลือกอ่านตัวไหนก็ได้ค่าเดียวกัน
+  static Uri buildTxUri({
+    required String nonce,
+    required String address,
+    required String to,
+    required int chainId,
+    String? valueHex,
+    String? dataHex,
+    String? summary,
+  }) {
+    final txJson = jsonEncode({
+      'chainId': chainId,
+      'from': address,
+      'to': to,
+      'value': ?valueHex,
+      'data': ?dataHex,
+      'summary': ?summary,
+    });
+    return Uri(
+      scheme: _walletScheme,
+      host: 'sign-tx',
+      queryParameters: {
+        'tx': txJson,
+        'nonce': nonce,
+        'callback': _txCallbackUrl,
+        'from': 'trade',
+        'address': address,
+      },
+    );
+  }
+
   /// Ask the linked wallet app to sign a message.
   ///
   /// Returns the 0x-prefixed hex signature, or null if the user rejected,
   /// the wallet app didn't respond, or the request timed out.
   ///
+  /// [address] = บัญชีที่ TRADE ผูกไว้ — บังคับส่งทุกคำขอ (ดู [buildSignUri])
   /// [tag] + [meta] = จดคำขอไว้บนดิสก์ เพื่อให้แอปที่ถูกเปิดใหม่ทำงานต่อจาก
   /// callback ได้ (เช่น tag 'verify' + meta {nonce ฝั่งเซิร์ฟเวอร์, address})
   Future<String?> requestSignature(
     String message, {
+    required String address,
     String? tag,
     Map<String, dynamic>? meta,
   }) async {
+    if (!isValidAddress(address)) {
+      debugPrint('LinkedWalletSigner.requestSignature: invalid address');
+      return null;
+    }
     final nonce = _generateNonce();
     final completer = Completer<String?>();
     _pending[nonce] = completer;
@@ -112,16 +199,7 @@ class LinkedWalletSigner {
     BugReporter.I.breadcrumb('sign request → wallet tag=${tag ?? '-'}');
 
     // Build sign URL — message + callback are URL-encoded
-    final uri = Uri(
-      scheme: _walletScheme,
-      host: 'sign',
-      queryParameters: {
-        'message': message,
-        'nonce': nonce,
-        'callback': _callbackUrl,
-        'from': 'trade',
-      },
-    );
+    final uri = buildSignUri(message: message, nonce: nonce, address: address);
 
     try {
       final launched = await launchUrl(
@@ -248,22 +326,23 @@ class LinkedWalletSigner {
   /// simplified handler. Full EIP-712 struct hashing is a future upgrade.
   ///
   /// Returns the 0x-prefixed hex signature, or null on reject/timeout.
-  Future<String?> requestTypedSignature(Map<String, dynamic> typedData) async {
+  Future<String?> requestTypedSignature(
+    Map<String, dynamic> typedData, {
+    required String address,
+  }) async {
+    if (!isValidAddress(address)) {
+      debugPrint('LinkedWalletSigner.requestTypedSignature: invalid address');
+      return null;
+    }
     final nonce = _generateNonce();
     final completer = Completer<String?>();
     _pending[nonce] = completer;
     _updateCount();
 
-    final typedJson = jsonEncode(typedData);
-    final uri = Uri(
-      scheme: _walletScheme,
-      host: 'sign-typed',
-      queryParameters: {
-        'typed': typedJson,
-        'nonce': nonce,
-        'callback': _callbackUrl,
-        'from': 'trade',
-      },
+    final uri = buildSignTypedUri(
+      typedJson: jsonEncode(typedData),
+      nonce: nonce,
+      address: address,
     );
 
     try {
@@ -300,34 +379,30 @@ class LinkedWalletSigner {
   ///
   /// คืน tx hash (0x + 64 hex) หรือ null เมื่อผู้ใช้ปฏิเสธ/หมดเวลา/ส่งไม่ได้
   Future<String?> requestTransaction({
+    required String address, // บัญชีที่ TRADE ผูกไว้ — กระเป๋าต้องส่งจากบัญชีนี้เท่านั้น
     required String to,
     String? valueHex, // 0x... (wei)
     String? dataHex, // 0x... calldata
     int chainId = 56,
     String? summary, // ข้อความอธิบาย action ให้ผู้ใช้อ่านใน wallet
   }) async {
+    if (!isValidAddress(address)) {
+      debugPrint('LinkedWalletSigner.requestTransaction: invalid address');
+      return null;
+    }
     final nonce = _generateNonce();
     final completer = Completer<String?>();
     _pendingTx[nonce] = completer;
     _updateCount();
 
-    final txJson = jsonEncode({
-      'chainId': chainId,
-      'to': to,
-      if (valueHex != null) 'value': valueHex,
-      if (dataHex != null) 'data': dataHex,
-      if (summary != null) 'summary': summary,
-    });
-
-    final uri = Uri(
-      scheme: _walletScheme,
-      host: 'sign-tx',
-      queryParameters: {
-        'tx': txJson,
-        'nonce': nonce,
-        'callback': _txCallbackUrl,
-        'from': 'trade',
-      },
+    final uri = buildTxUri(
+      nonce: nonce,
+      address: address,
+      to: to,
+      chainId: chainId,
+      valueHex: valueHex,
+      dataHex: dataHex,
+      summary: summary,
     );
 
     try {
