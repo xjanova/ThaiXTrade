@@ -39,6 +39,11 @@ use Illuminate\Support\Facades\Log;
  */
 class DexSync extends Command
 {
+    /**
+     * ชื่อของสกุลหลักบนเชน — เหรียญอื่นห้ามใช้เป็นชื่อ (เหรียญปลอมชื่อ USDT/TPIX)
+     */
+    private const RESERVED_BASE_SYMBOLS = ['TPIX', 'WTPIX', 'USDT'];
+
     protected $signature = 'dex:sync
                             {--dry-run : ดูอย่างเดียว ไม่เขียนฐานข้อมูล}';
 
@@ -248,6 +253,26 @@ class DexSync extends Command
         $hasLiquidity = bccomp($reserveBase, '0', 0) > 0 && bccomp($reserveQuote, '0', 0) > 0;
 
         $symbol = strtoupper($base->symbol.'-'.$quote->symbol);
+
+        /*
+         * กันเหรียญหน้าเหมือน — factory ของ DEX ใครก็เปิดพูลได้ (ค่าแก๊ส 0)
+         *
+         * เดิมพูลไหนก็ได้คู่ active ทันทีถ้าไม่ใช่เหรียญโรงงานที่ยังไม่ลิสต์: deploy เหรียญชื่อ SUI
+         * แล้วเปิดพูล SUI/USDT = ได้ "SUI-USDT" ตัวที่สองบนเชน 4289 ข้างคู่ดัชนี SUI-USDT เดิม
+         * แอป/เว็บที่หาคู่ด้วยชื่อจะพาคนกดซื้อ SUI ไปซื้อเหรียญปลอม — หรือ "IDTC" ปลอมก่อนเปิดพูลจริง
+         * กติกา: ชื่อต้องเป็น A-Z/0-9 · ไม่ใช่ชื่อสกุลหลัก · ห้ามซ้ำกับคู่ใดในระบบ
+         *        ยกเว้นเหรียญโรงงานที่แอดมินลิสต์แล้ว ชนะคู่ onchain ที่ไม่ได้ลิสต์บนเชนเดียวกัน
+         */
+        if (! $this->dex->isWtpix($baseAddress) && ! $this->symbolAllowed($chain, $symbol, $base, $quote, $baseAddress)) {
+            // ไม่ log ทุกนาที (พูลปลอมค้างอยู่ตลอด) — บรรทัดคอนโซลพอ
+            $this->line("  {$pairAddress} ชื่อ {$symbol} สงวนไว้/ซ้ำกับคู่ที่มีอยู่ — ไม่เปิดคู่เทรด");
+            $this->deactivatePairFor($chain, $baseAddress, $quote);
+
+            return false;
+        }
+
+        $this->adoptFactoryLogo($base, $baseAddress);
+
         $price = TpixDexService::midPrice($reserveBase, $reserveQuote, (int) $base->decimals, (int) $quote->decimals);
 
         $this->line(sprintf(
@@ -303,6 +328,98 @@ class DexSync extends Command
         }
 
         return true;
+    }
+
+    /**
+     * ชื่อคู่นี้เปิดได้ไหม — ดูคำอธิบายที่จุดเรียกใน syncPool().
+     * เหรียญโรงงานที่ลิสต์แล้วชนะเฉพาะคู่ onchain บนเชนเดียวกันที่ไม่ได้ลิสต์ (ปิดคู่นั้นให้)
+     * ชนกับคู่ดัชนี/คู่เชนอื่น/เหรียญลิสต์อีกตัว = ไม่เปิด แอดมินต้องตัดสินเอง
+     */
+    private function symbolAllowed(Chain $chain, string $symbol, Token $base, Token $quote, string $baseAddress): bool
+    {
+        $baseSymbol = strtoupper((string) $base->symbol);
+        if (! preg_match('/^[A-Z0-9]{1,20}$/', $baseSymbol) || in_array($baseSymbol, self::RESERVED_BASE_SYMBOLS, true)) {
+            return false;
+        }
+
+        $others = TradingPair::query()
+            ->where('symbol', $symbol)
+            ->when(
+                $base->exists && $quote->exists,
+                fn ($q) => $q->where(fn ($w) => $w
+                    ->where('base_token_id', '!=', $base->id)
+                    ->orWhere('quote_token_id', '!=', $quote->id)
+                    ->orWhere('chain_id', '!=', $chain->id))
+            )
+            ->with('baseToken:id,contract_address')
+            ->get();
+
+        if ($others->isEmpty()) {
+            return true;
+        }
+
+        if (! $this->listedFactoryToken($baseAddress)) {
+            return false;
+        }
+
+        foreach ($others as $other) {
+            $otherListed = $other->baseToken !== null
+                && $this->listedFactoryToken((string) $other->baseToken->contract_address);
+            if ((int) $other->chain_id !== (int) $chain->id || $other->execution_mode !== 'onchain' || $otherListed) {
+                return false;
+            }
+        }
+
+        if (! $this->dryRun) {
+            foreach ($others as $other) {
+                if ($other->is_active) {
+                    $other->is_active = false;
+                    $other->save();
+                    Log::warning('dex:sync ปิดคู่ชื่อซ้ำที่ไม่ได้ลิสต์ — เหรียญโรงงานที่ลิสต์แล้วใช้ชื่อนี้', [
+                        'symbol' => $symbol,
+                        'pair_id' => $other->id,
+                    ]);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /** เหรียญโรงงานที่แอดมินลิสต์แล้ว */
+    private function listedFactoryToken(string $address): bool
+    {
+        return FactoryToken::query()
+            ->where('chain_id', (int) config('blockchain.tpix_chain_id', 4289))
+            ->whereRaw('LOWER(contract_address) = ?', [strtolower($address)])
+            ->where('is_listed', true)
+            ->exists();
+    }
+
+    /**
+     * โลโก้ของเหรียญโรงงานที่ลิสต์แล้ว → แถว tokens (ถ้ายังไม่มีโลโก้)
+     * /dex/pairs และ /market/pairs อ่านโลโก้จาก tokens — เดิมเหรียญอย่าง IDTC จึงไม่มีโลโก้ในแอปเลย
+     * ไม่ทับโลโก้ที่แอดมินตั้งไว้ที่ tokens แล้ว
+     */
+    private function adoptFactoryLogo(Token $base, string $baseAddress): void
+    {
+        if (! empty($base->logo)) {
+            return;
+        }
+
+        $logo = FactoryToken::query()
+            ->where('chain_id', (int) config('blockchain.tpix_chain_id', 4289))
+            ->whereRaw('LOWER(contract_address) = ?', [strtolower($baseAddress)])
+            ->where('is_listed', true)
+            ->value('logo_url');
+
+        if (is_string($logo) && $logo !== '') {
+            // บันทึกพร้อมแถวโทเคน (base->save() ด้านล่าง / isDirty) — dry-run ไม่เขียน
+            $base->logo = $logo;
+            if (! $this->dryRun && $base->exists) {
+                $base->save();
+            }
+        }
     }
 
     /** ที่อยู่นี้เป็นเหรียญจาก Token Factory ที่ยังไม่ได้ลิสต์หรือไม่ */

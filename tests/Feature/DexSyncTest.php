@@ -224,4 +224,106 @@ class DexSyncTest extends TestCase
 
         $this->assertFalse((bool) $pair->fresh()->is_active, 'เลิกลิสต์แล้วคู่เทรดต้องถูกปิด');
     }
+
+    // ═══════════════════════════════════════════════════════════
+    //  เหรียญหน้าเหมือน — factory ของ DEX ใครก็เปิดพูลได้ (ค่าแก๊ส 0)
+    // ═══════════════════════════════════════════════════════════
+
+    private string $fake = '0xfa4efa4efa4efa4efa4efa4efa4efa4efa4efa4e';
+
+    private string $pairFake = '0x7777777777777777777777777777777777777777';
+
+    public function test_a_lookalike_of_an_existing_pair_symbol_gets_no_tradable_pair(): void
+    {
+        // คู่ดัชนี XYZ-USDT บนเชน 4289 (แบบเดียวกับคู่ดัชนี 50 คู่บน prod)
+        $chain = $this->tpixChain();
+        $usdtRow = Token::firstOrCreate(
+            ['chain_id' => $chain->id, 'symbol' => 'USDT'],
+            ['name' => 'Tether USD', 'contract_address' => $this->usdt, 'decimals' => 6, 'is_active' => true],
+        );
+        $xyz = Token::create([
+            'chain_id' => $chain->id, 'symbol' => 'XYZ', 'name' => 'Xyz', 'decimals' => 18,
+            'contract_address' => '0x'.str_repeat('9', 40), 'is_active' => true,
+        ]);
+        TradingPair::create([
+            'base_token_id' => $xyz->id, 'quote_token_id' => $usdtRow->id, 'chain_id' => $chain->id,
+            'symbol' => 'XYZ-USDT', 'is_active' => true, 'execution_mode' => 'index',
+        ]);
+
+        $this->registerDex();
+        $this->fakeChain(
+            [$this->pairFake => [$this->fake, $this->usdt, self::units('1000'), self::units('1000', 6)]],
+            [$this->fake => ['XYZ', 'Totally XYZ', 18]],
+        );
+
+        $this->artisan('dex:sync')->assertSuccessful();
+
+        $pairs = TradingPair::where('symbol', 'XYZ-USDT')->get();
+        $this->assertCount(1, $pairs, 'เหรียญปลอมต้องไม่ได้คู่ชื่อเดียวกับคู่เดิม');
+        $this->assertSame('index', $pairs->first()->execution_mode);
+    }
+
+    public function test_reserved_and_malformed_symbols_get_no_pair(): void
+    {
+        $this->registerDex();
+        $this->fakeChain(
+            [
+                // เหรียญปลอมชื่อ USDT จับคู่กับ WTPIX
+                $this->pairFake => [$this->fake, $this->wtpix, self::units('1000'), self::units('1000')],
+                // ชื่อมีขีด/ช่องว่าง — ทำให้ชื่อคู่กำกวม
+                $this->pairAbcTpix => [$this->abc, $this->wtpix, self::units('1000'), self::units('500')],
+            ],
+            [
+                $this->fake => ['USDT', 'Tether USD', 18],
+                $this->abc => ['AB-C', 'Abc', 18],
+            ],
+        );
+
+        $this->artisan('dex:sync')->assertSuccessful();
+
+        $chainId = $this->tpixChain()->id;
+        $this->assertNull(TradingPair::where('chain_id', $chainId)->where('symbol', 'USDT-TPIX')->first());
+        $this->assertNull(TradingPair::where('chain_id', $chainId)->where('symbol', 'AB-C-TPIX')->first());
+    }
+
+    public function test_listed_factory_token_wins_over_an_earlier_lookalike_and_brings_its_logo(): void
+    {
+        $this->registerDex();
+        // คนอื่นเปิดพูล "ABC" ปลอมก่อน — ได้คู่ไปก่อนเพราะยังไม่มีใครใช้ชื่อนี้
+        $this->fakeChain(
+            [$this->pairFake => [$this->fake, $this->wtpix, self::units('1000'), self::units('1')]],
+            [$this->fake => ['ABC', 'Abc Coin', 18]],
+        );
+        $this->artisan('dex:sync')->assertSuccessful();
+        $fakePair = TradingPair::where('symbol', 'ABC-TPIX')->firstOrFail();
+        $this->assertTrue((bool) $fakePair->is_active);
+
+        // แอดมินลิสต์ ABC ตัวจริงจากโรงงาน แล้วพูลจริงเปิด
+        $this->factoryToken(listed: true)->update(['logo_url' => '/storage/token-logos/abc.png']);
+        Cache::flush();
+        $this->fakeChain(
+            [
+                $this->pairFake => [$this->fake, $this->wtpix, self::units('1000'), self::units('1')],
+                $this->pairAbcTpix => [$this->abc, $this->wtpix, self::units('1000'), self::units('500')],
+            ],
+            [$this->fake => ['ABC', 'Abc Coin', 18]],
+        );
+        $this->artisan('dex:sync')->assertSuccessful();
+
+        $this->assertFalse((bool) $fakePair->fresh()->is_active, 'คู่ปลอมต้องถูกปิด');
+        $real = TradingPair::where('symbol', 'ABC-TPIX')->where('dex_pair_address', $this->pairAbcTpix)->firstOrFail();
+        $this->assertTrue((bool) $real->is_active);
+        $this->assertSame('/storage/token-logos/abc.png', $real->baseToken->logo);
+
+        // รันซ้ำแล้วต้องนิ่ง — คู่ปลอมไม่กลับมา
+        Cache::flush();
+        $this->artisan('dex:sync')->assertSuccessful();
+        $this->assertFalse((bool) $fakePair->fresh()->is_active);
+        $this->assertTrue((bool) $real->fresh()->is_active);
+
+        // ปลายทางสาธารณะให้คู่ที่เปิดอยู่เสมอ
+        $this->getJson('/api/v1/dex/ticker/ABC-TPIX')
+            ->assertOk()
+            ->assertJsonPath('data.pair_address', $this->pairAbcTpix);
+    }
 }

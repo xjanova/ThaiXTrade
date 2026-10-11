@@ -177,11 +177,14 @@ class DexApiController extends Controller
 
         $normalized = strtoupper(str_replace(['/', '_'], '-', $symbol));
 
+        // ชื่อซ้ำได้ (คู่ที่ถูกปิดเพราะเหรียญหน้าเหมือน) — คู่ที่เปิดอยู่ต้องมาก่อนเสมอ
         return TradingPair::query()
             ->where('chain_id', $chain->id)
             ->where('execution_mode', 'onchain')
             ->where('symbol', $normalized)
             ->with(['baseToken', 'quoteToken'])
+            ->orderByDesc('is_active')
+            ->orderBy('id')
             ->first();
     }
 
