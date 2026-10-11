@@ -6,9 +6,11 @@
 ///    ที่อยู่ในแอปเด็ดขาด เพราะ deploy ใหม่แล้วแอปเก่าจะชี้ไปที่ตายทันที
 ///  - fail-closed: เซิร์ฟเวอร์ยังไม่ตอบว่า ready = ทุก action คืน error ไม่เดา address
 ///  - ราคา/ยอด/allowance อ่านจาก RPC ของเชน TPIX ตรง ไม่ขึ้นกับเชนที่กระเป๋าอยู่
+///    (ผ่าน [RpcPool] — rpc.tpix.online โดน Cloudflare บล็อกเมื่อไรก็สลับไป rpc1 เอง)
 ///  - ค่าธรรมเนียม 0.3% **อยู่ในพูล** (LP + feeTo) ไม่มีธุรกรรมโอนค่าธรรมเนียมแยก
 ///    ต่างจากฝั่ง BSC ที่ต้องโอนใบที่สอง — จึงไม่มี fee reserve ที่นี่
-///  - price impact คิดจากส่วนต่างระหว่างราคาที่ได้จริงกับราคากลางของพูล
+///  - price impact คิดจาก reserve ของพูลแบบเดียวกับเว็บเป๊ะ ๆ และใช้เพดาน 10% เท่ากัน
+///    (กติกาต้องเหมือนกันทุกแพลตฟอร์ม ไม่งั้นไม้เดียวกันผ่านในแอปแต่โดนบล็อกบนเว็บ)
 ///
 /// การเซ็น/ส่งธุรกรรมเป็นหน้าที่ของ caller (WalletProvider) ผ่าน [DexTxSender]
 /// — service นี้ไม่แตะ private key เด็ดขาด (กติกาเดียวกับ BscSwapService)
@@ -20,7 +22,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'package:web3dart/json_rpc.dart' show RPCError;
 import 'package:web3dart/web3dart.dart';
 
 import '../models/chain_config.dart';
@@ -28,9 +30,19 @@ import 'api_service.dart';
 // ใช้ชนิดข้อมูลร่วมกับฝั่ง BSC เพื่อให้หน้าจอถือผลลัพธ์แบบเดียวกันได้
 // (VerifiedToken = โทเคนที่ตรวจ decimals กับเชนแล้ว · SwapException = ข้อความ 2 ภาษา)
 import 'bsc_swap_service.dart' show SwapException, VerifiedToken;
+import 'rpc_failover.dart';
 
 /// ค่าธรรมเนียมของพูล UniV2 — เข้าพูลทั้งก้อน ไม่ได้หักเพิ่มจากผู้ใช้
 const double kTpixPoolFeePct = 0.3;
+
+/// เพดาน price impact ต่อไม้ — **ต้องเท่ากับเว็บ** (Trade.vue: `quote.priceImpact > 10` = ไม่ส่ง)
+const double kTpixMaxPriceImpactPct = 10;
+
+/// ข้อความเมื่อเชนติดต่อไม่ได้ (ทุก RPC ส่งไม่ถึง) — แยกจาก "ไม่มีสภาพคล่อง" ให้ชัด
+const SwapException kTpixChainUnreachable = SwapException(
+  'TPIX Chain is unreachable right now — please try again.',
+  'เชื่อมต่อเชน TPIX ไม่ได้ชั่วคราว ลองใหม่อีกครั้ง',
+);
 
 /// ที่อยู่สัญญาชุด DEX ที่เซิร์ฟเวอร์ยืนยันแล้วว่ามีโค้ดอยู่บนเชนจริง
 class TpixDexConfig {
@@ -91,6 +103,11 @@ class TpixDexQuote {
   final List<EthereumAddress> path;
   final String router;
 
+  /// reserve ของพูลฮอปแรก (ฝั่งที่จ่ายเข้า/ฝั่งที่ได้ออก) — null = อ่านไม่ได้หรือวิ่ง 2 ฮอป
+  /// ใช้คำนวณ "สั่งได้สูงสุดเท่าไร" ตอนไม้ใหญ่เกินเพดาน
+  final BigInt? reserveIn;
+  final BigInt? reserveOut;
+
   const TpixDexQuote({
     required this.fromToken,
     required this.toToken,
@@ -103,12 +120,35 @@ class TpixDexQuote {
     required this.rawAmountOut,
     required this.path,
     required this.router,
+    this.reserveIn,
+    this.reserveOut,
   });
 
   /// ค่าธรรมเนียมที่พูลกิน — แสดงให้ผู้ใช้เห็นเท่านั้น ไม่มีธุรกรรมแยก
   double get feeAmount => amountIn * (kTpixPoolFeePct / 100);
 
   double get feeRate => kTpixPoolFeePct;
+
+  /// ไม้นี้เกินเพดานเดียวกับเว็บ — ส่งไม่ได้
+  bool get exceedsImpactLimit => priceImpact > kTpixMaxPriceImpactPct;
+
+  /// จ่ายเข้าได้มากสุดเท่าไร (หน่วย fromToken) โดยไม่ดันราคาเกินเพดาน — null = ไม่รู้ reserve
+  double? get maxAmountInUnderLimit {
+    final rIn = reserveIn;
+    if (rIn == null) return null;
+    return TpixDexService.fromWei(
+        TpixDexService.maxAmountInForImpact(reserveIn: rIn), fromToken.decimals);
+  }
+
+  /// ได้ออกมากสุดเท่าไร (หน่วย toToken) โดยไม่ดันราคาเกินเพดาน — null = ไม่รู้ reserve
+  double? get maxAmountOutUnderLimit {
+    final rIn = reserveIn;
+    final rOut = reserveOut;
+    if (rIn == null || rOut == null) return null;
+    final maxIn = TpixDexService.maxAmountInForImpact(reserveIn: rIn);
+    return TpixDexService.fromWei(
+        TpixDexService.amountOutFor(maxIn, rIn, rOut), toToken.decimals);
+  }
 }
 
 class TpixDexSwapResult {
@@ -143,9 +183,23 @@ const String _erc20Abi = '''
 const String _routerAbi = '''
 [
   {"constant":true,"inputs":[{"name":"amountIn","type":"uint256"},{"name":"path","type":"address[]"}],"name":"getAmountsOut","outputs":[{"name":"amounts","type":"uint256[]"}],"type":"function"},
+  {"constant":true,"inputs":[{"name":"amountOut","type":"uint256"},{"name":"path","type":"address[]"}],"name":"getAmountsIn","outputs":[{"name":"amounts","type":"uint256[]"}],"type":"function"},
   {"constant":false,"inputs":[{"name":"amountOutMin","type":"uint256"},{"name":"path","type":"address[]"},{"name":"to","type":"address"},{"name":"deadline","type":"uint256"}],"name":"swapExactETHForTokens","outputs":[{"name":"amounts","type":"uint256[]"}],"payable":true,"type":"function"},
   {"constant":false,"inputs":[{"name":"amountIn","type":"uint256"},{"name":"amountOutMin","type":"uint256"},{"name":"path","type":"address[]"},{"name":"to","type":"address"},{"name":"deadline","type":"uint256"}],"name":"swapExactTokensForETH","outputs":[{"name":"amounts","type":"uint256[]"}],"type":"function"},
   {"constant":false,"inputs":[{"name":"amountIn","type":"uint256"},{"name":"amountOutMin","type":"uint256"},{"name":"path","type":"address[]"},{"name":"to","type":"address"},{"name":"deadline","type":"uint256"}],"name":"swapExactTokensForTokens","outputs":[{"name":"amounts","type":"uint256[]"}],"type":"function"}
+]
+''';
+
+const String _factoryAbi = '''
+[
+  {"constant":true,"inputs":[{"name":"","type":"address"},{"name":"","type":"address"}],"name":"getPair","outputs":[{"name":"","type":"address"}],"type":"function"}
+]
+''';
+
+const String _pairAbi = '''
+[
+  {"constant":true,"inputs":[],"name":"token0","outputs":[{"name":"","type":"address"}],"type":"function"},
+  {"constant":true,"inputs":[],"name":"getReserves","outputs":[{"name":"_reserve0","type":"uint112"},{"name":"_reserve1","type":"uint112"},{"name":"_blockTimestampLast","type":"uint32"}],"type":"function"}
 ]
 ''';
 
@@ -159,6 +213,8 @@ class TpixDexService {
 
   final _erc20 = ContractAbi.fromJson(_erc20Abi, 'ERC20');
   final _routerAbiParsed = ContractAbi.fromJson(_routerAbi, 'TPIXDEXRouter02');
+  final _factoryAbiParsed = ContractAbi.fromJson(_factoryAbi, 'TPIXDEXFactory');
+  final _pairAbiParsed = ContractAbi.fromJson(_pairAbi, 'TPIXDEXPair');
 
   TpixDexConfig _config = TpixDexConfig.notReady;
   DateTime? _configAt;
@@ -166,6 +222,9 @@ class TpixDexService {
 
   /// decimals ที่อ่านจากเชนแล้ว — ค่าคงที่ตลอดอายุสัญญา
   final Map<String, int> _decimalsCache = {};
+
+  /// ที่อยู่พูล + token0 ต่อคู่โทเคน — ค่าคงที่ (พูลของคู่หนึ่งมีได้ตัวเดียว)
+  final Map<String, ({String pair, String token0})> _pairCache = {};
 
   TpixDexConfig get lastConfig => _config;
 
@@ -205,28 +264,11 @@ class TpixDexService {
 
   // ── RPC ──
 
-  List<String> get _rpcUrls => {
-        _config.rpc,
-        ChainConfig.tpix.rpcUrl,
-        ...ChainConfig.tpix.fallbackRpcs,
-      }.where((u) => u.isNotEmpty).toList();
-
-  Future<T> _withClient<T>(Future<T> Function(Web3Client client) fn) async {
-    Object? lastError;
-    for (final url in _rpcUrls) {
-      final client = Web3Client(url, http.Client());
-      try {
-        return await fn(client).timeout(const Duration(seconds: 15));
-      } catch (e) {
-        lastError = e;
-      } finally {
-        client.dispose();
-      }
-    }
-    throw lastError ??
-        const SwapException(
-            'TPIX Chain unavailable.', 'เชื่อมต่อเชน TPIX ไม่ได้');
-  }
+  /// RPC จากทะเบียนบนเซิร์ฟเวอร์มาก่อน แล้วตามด้วยตัวหลัก/ตัวสำรองในแอป
+  /// สลับเฉพาะเมื่อส่งไม่ถึง (403/5xx/หมดเวลา) — revert จากสัญญาไม่สลับ
+  Future<T> _withClient<T>(Future<T> Function(Web3Client client) fn) =>
+      RpcPool.forChain(ChainConfig.tpix)
+          .withClient(fn, preferred: _config.rpc);
 
   DeployedContract _erc20At(String address) =>
       DeployedContract(_erc20, EthereumAddress.fromHex(address));
@@ -256,6 +298,64 @@ class TpixDexService {
     return a.isEmpty ||
         a == nativeAddress ||
         a == '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+  }
+
+  // ── คณิตของพูล (UniV2) — ฟังก์ชันล้วน ทดสอบได้โดยไม่แตะเชน ──
+
+  /// UniV2 getAmountOut: หักค่าธรรมเนียม 0.3% จากฝั่งที่จ่ายเข้าแล้วคิด x·y=k
+  static BigInt amountOutFor(BigInt amountIn, BigInt reserveIn, BigInt reserveOut) {
+    if (amountIn <= BigInt.zero ||
+        reserveIn <= BigInt.zero ||
+        reserveOut <= BigInt.zero) {
+      return BigInt.zero;
+    }
+    final inWithFee = amountIn * BigInt.from(997);
+    return (inWithFee * reserveOut) ~/
+        (reserveIn * BigInt.from(1000) + inWithFee);
+  }
+
+  /// price impact (%) แบบเดียวกับเว็บ (useTpixDex.js): 1 − (ราคาที่ได้จริง ÷ ราคากลางพูล)
+  ///
+  /// ราคากลาง = reserveOut/reserveIn · ราคาที่ได้ = amountOut/amountIn (หน่วย wei ทั้งคู่)
+  /// ค่านี้รวมค่าธรรมเนียม 0.3% ของพูลไว้ด้วย — ต้องคิดแบบนี้ให้ตรงกับเว็บ
+  /// ไม่งั้นไม้ที่ 9.8% ในแอปจะกลายเป็น 10.1% บนเว็บ
+  static double priceImpactPct({
+    required BigInt amountIn,
+    required BigInt amountOut,
+    required BigInt reserveIn,
+    required BigInt reserveOut,
+  }) {
+    if (amountIn <= BigInt.zero ||
+        reserveIn <= BigInt.zero ||
+        reserveOut <= BigInt.zero) {
+      return 0;
+    }
+    final spot = reserveOut.toDouble() / reserveIn.toDouble();
+    final eff = amountOut.toDouble() / amountIn.toDouble();
+    if (spot <= 0) return 0;
+    return math.max(0, (1 - eff / spot) * 100).toDouble();
+  }
+
+  /// จ่ายเข้าได้มากสุดเท่าไร (wei) โดย price impact ไม่เกิน [limitPct]
+  ///
+  /// แก้สมการจากสูตรข้างบน: impact = 1 − 997·R / (1000·R + 997·x) ≤ L
+  ///   → x ≤ R · (997 − 1000·(1−L)) / (997·(1−L))
+  /// เพดาน 10% → x ≤ ~10.81% ของ reserve ฝั่งจ่ายเข้า
+  /// หักเผื่อ [safetyBps] (0.5%) — พูลอาจขยับเล็กน้อยระหว่างผู้ใช้กดเติมกับกดส่ง
+  static BigInt maxAmountInForImpact({
+    required BigInt reserveIn,
+    double limitPct = kTpixMaxPriceImpactPct,
+    int safetyBps = 50,
+  }) {
+    if (reserveIn <= BigInt.zero || limitPct <= 0) return BigInt.zero;
+    // คิดเป็นเศษส่วนจำนวนเต็มทั้งหมด — ไม่ให้ double ปัดเกินเพดานไปเอง
+    final limitBps = (limitPct * 100).floor(); // 10% = 1000 bps
+    final keepBps = BigInt.from(10000 - limitBps); // (1 − L) × 10000
+    final numer = BigInt.from(997 * 10000) - BigInt.from(1000) * keepBps;
+    if (numer <= BigInt.zero) return BigInt.zero;
+    final denom = BigInt.from(997) * keepBps;
+    final raw = reserveIn * numer ~/ denom;
+    return raw * BigInt.from(10000 - safetyBps) ~/ BigInt.from(10000);
   }
 
   // ── โทเคน ──
@@ -308,7 +408,9 @@ class TpixDexService {
       );
     } on SwapException {
       rethrow;
-    } catch (_) {
+    } catch (e) {
+      // เชนติดต่อไม่ได้ ≠ เหรียญมีปัญหา — บอกผู้ใช้ให้ตรงสาเหตุ
+      if (RpcFailover.shouldFailover(e)) throw kTpixChainUnreachable;
       // อ่านเชนไม่ได้ = ไม่ยอมให้เทรดด้วยค่าที่เดา (fail-closed เหมือนฝั่ง BSC)
       throw const SwapException(
         'Could not verify the token on TPIX Chain.',
@@ -317,8 +419,11 @@ class TpixDexService {
     }
   }
 
-  /// ยอดคงเหลือบนเชน TPIX — คืน 0 เมื่ออ่านไม่ได้ (ใช้แสดงผลเท่านั้น)
-  Future<double> getBalance({
+  /// ยอดคงเหลือบนเชน TPIX — **คืน null เมื่ออ่านไม่ได้** (ห้ามแปลเป็น 0)
+  ///
+  /// เดิมคืน 0 ทุกครั้งที่ RPC สะดุด → ผู้ใช้เห็นยอดหายเป็นศูนย์ทั้งที่เงินยังอยู่
+  /// ผู้เรียกต้องคงค่าที่อ่านได้ล่าสุดไว้แทน
+  Future<double?> getBalance({
     required String address,
     required String walletAddress,
     int decimals = 18,
@@ -337,17 +442,107 @@ class TpixDexService {
           ));
       final dec = _decimalsCache[address.toLowerCase()] ?? decimals;
       return fromWei(result.first as BigInt, dec);
+    } catch (e) {
+      debugPrint('TPIX DEX getBalance failed: ${e.runtimeType}');
+      return null;
+    }
+  }
+
+  // ── พูล ──
+
+  /// reserve ของพูล tokenIn/tokenOut เรียงตามทิศที่ถาม — null = ไม่มีพูลหรืออ่านไม่ได้
+  Future<({BigInt reserveIn, BigInt reserveOut})?> _reserves(
+      TpixDexConfig cfg, String tokenIn, String tokenOut) async {
+    final factory = cfg.factory;
+    if (factory == null) return null;
+    final a = tokenIn.toLowerCase();
+    final b = tokenOut.toLowerCase();
+    final key = a.compareTo(b) < 0 ? '$a|$b' : '$b|$a';
+
+    try {
+      var info = _pairCache[key];
+      if (info == null) {
+        final fc = DeployedContract(
+            _factoryAbiParsed, EthereumAddress.fromHex(factory));
+        final pairRes = await _withClient((client) => client.call(
+              contract: fc,
+              function: fc.function('getPair'),
+              params: [
+                EthereumAddress.fromHex(tokenIn),
+                EthereumAddress.fromHex(tokenOut),
+              ],
+            ));
+        final pair = (pairRes.first as EthereumAddress).hex;
+        if (isNative(pair)) return null; // ยังไม่มีพูลของคู่นี้
+        final pc =
+            DeployedContract(_pairAbiParsed, EthereumAddress.fromHex(pair));
+        final t0 = await _withClient((client) => client.call(
+              contract: pc,
+              function: pc.function('token0'),
+              params: const [],
+            ));
+        info = (
+          pair: pair,
+          token0: (t0.first as EthereumAddress).hex.toLowerCase(),
+        );
+        _pairCache[key] = info;
+      }
+
+      final pc =
+          DeployedContract(_pairAbiParsed, EthereumAddress.fromHex(info.pair));
+      final res = await _withClient((client) => client.call(
+            contract: pc,
+            function: pc.function('getReserves'),
+            params: const [],
+          ));
+      final r0 = res[0] as BigInt;
+      final r1 = res[1] as BigInt;
+      final inIs0 = info.token0 == a;
+      return (reserveIn: inIs0 ? r0 : r1, reserveOut: inIs0 ? r1 : r0);
+    } catch (e) {
+      debugPrint('TPIX DEX reserves failed: ${e.runtimeType}');
+      return null;
+    }
+  }
+
+  /// ราคา TPIX เป็น USDT จาก reserve ของพูล WTPIX/USDT — null = อ่านไม่ได้/ไม่มีพูล
+  /// ใช้เป็นตัวสำรองเมื่อ /tpix/price ของเซิร์ฟเวอร์ยังไม่ตอบ
+  Future<double?> tpixUsdtPoolPrice() async {
+    final cfg = await loadConfig();
+    final wtpix = cfg.wtpix;
+    final usdt = cfg.usdt;
+    if (!cfg.ready || wtpix == null || usdt == null) return null;
+    try {
+      final usdtTok =
+          await verifyToken(symbol: 'USDT', address: usdt, fallbackDecimals: 6);
+      final r = await _reserves(cfg, wtpix, usdt);
+      if (r == null || r.reserveIn <= BigInt.zero) return null;
+      final tpix = fromWei(r.reserveIn, 18);
+      final quote = fromWei(r.reserveOut, usdtTok.decimals);
+      return tpix > 0 ? quote / tpix : null;
     } catch (_) {
-      return 0;
+      return null;
     }
   }
 
   // ── Quote ──
 
-  /// ขอ quote จริงจาก router ของพูล
-  ///
-  /// [poolPrice] = ราคากลางของพูลจากเซิร์ฟเวอร์ (quote ต่อ 1 base) ใช้คิด price impact
-  /// ไม่ส่งมาก็ได้ — จะได้ priceImpact = 0 แล้วให้ผู้เรียกตัดสินใจเอง
+  List<EthereumAddress> _directPath(
+      TpixDexConfig cfg, VerifiedToken fromToken, VerifiedToken toToken) {
+    final fromAddr = fromToken.native ? cfg.wtpix! : fromToken.address;
+    final toAddr = toToken.native ? cfg.wtpix! : toToken.address;
+    if (fromAddr.toLowerCase() == toAddr.toLowerCase()) {
+      throw const SwapException(
+          'Choose two different tokens.', 'เลือกเหรียญคนละตัว');
+    }
+    return [EthereumAddress.fromHex(fromAddr), EthereumAddress.fromHex(toAddr)];
+  }
+
+  List<EthereumAddress> _viaWtpix(
+          TpixDexConfig cfg, List<EthereumAddress> direct) =>
+      [direct.first, EthereumAddress.fromHex(cfg.wtpix!), direct.last];
+
+  /// ขอ quote จริงจาก router — จ่าย [amount] ของ fromToken (exact-in)
   Future<TpixDexQuote> getQuote({
     required VerifiedToken fromToken,
     required VerifiedToken toToken,
@@ -359,15 +554,6 @@ class TpixDexService {
     }
 
     final cfg = await _requireReady();
-    final router = cfg.router!;
-    final wtpix = cfg.wtpix!;
-
-    final fromAddr = fromToken.native ? wtpix : fromToken.address;
-    final toAddr = toToken.native ? wtpix : toToken.address;
-    if (fromAddr.toLowerCase() == toAddr.toLowerCase()) {
-      throw const SwapException(
-          'Choose two different tokens.', 'เลือกเหรียญคนละตัว');
-    }
 
     final amountInWei = toWei(amount, fromToken.decimals);
     if (amountInWei <= BigInt.zero) {
@@ -375,21 +561,87 @@ class TpixDexService {
           'Amount is too small.', 'จำนวนน้อยเกินไป');
     }
 
-    var path = <EthereumAddress>[
-      EthereumAddress.fromHex(fromAddr),
-      EthereumAddress.fromHex(toAddr),
-    ];
+    return _quoteExactIn(cfg, fromToken, toToken, amountInWei, slippage);
+  }
 
-    var amounts = await _getAmountsOut(router, amountInWei, path);
+  /// quote แบบ "อยากได้ [amountOut] ของ toToken" — ใช้ตอนกดซื้อ TPIX ตามจำนวนที่กรอก
+  ///
+  /// เดิมแปลงจำนวนเป็นยอด USDT ด้วยราคาจาก ticker ซึ่งโหลดแข่งกับอย่างอื่นตอนเปิดแอป
+  /// ราคายังเป็น 0 อยู่ = กดซื้อไม่ได้นานถึง 30 วิ — ตอนนี้ให้ router (getAmountsIn)
+  /// บอกเองว่าต้องจ่ายเท่าไร แล้ว quote ยอดนั้นซ้ำด้วย getAmountsOut ให้ได้ตัวเลขที่จะส่งจริง
+  Future<TpixDexQuote> getQuoteForOutput({
+    required VerifiedToken fromToken,
+    required VerifiedToken toToken,
+    required double amountOut,
+    double slippage = 0.5,
+  }) async {
+    if (amountOut <= 0) {
+      throw const SwapException('Enter an amount.', 'กรุณาระบุจำนวน');
+    }
+
+    final cfg = await _requireReady();
+    final outWei = toWei(amountOut, toToken.decimals);
+    if (outWei <= BigInt.zero) {
+      throw const SwapException(
+          'Amount is too small.', 'จำนวนน้อยเกินไป');
+    }
+
+    final direct = _directPath(cfg, fromToken, toToken);
+    var path = direct;
+    var amounts = await _routerAmounts('getAmountsIn', cfg.router!, outWei, path);
+    if (amounts == null && !fromToken.native && !toToken.native) {
+      path = _viaWtpix(cfg, direct);
+      amounts =
+          await _routerAmounts('getAmountsIn', cfg.router!, outWei, path);
+    }
+
+    if (amounts == null || amounts.isEmpty || amounts.first <= BigInt.zero) {
+      // getAmountsIn revert = ขอเกินที่พูลมี — บอกจำนวนที่สั่งได้จริงแทนข้อความลอย ๆ
+      final r = await _reserves(cfg, direct.first.hex, direct.last.hex);
+      if (r != null) {
+        final maxOut = fromWei(
+            amountOutFor(maxAmountInForImpact(reserveIn: r.reserveIn),
+                r.reserveIn, r.reserveOut),
+            toToken.decimals);
+        if (maxOut > 0) {
+          final s = formatMaxAmount(maxOut);
+          throw SwapException(
+            'This order is larger than the pool can fill. Max ≈ $s ${toToken.symbol} per order.',
+            'ไม้นี้ใหญ่เกินกว่าที่พูลรับได้ — สั่งได้สูงสุดราว $s ${toToken.symbol} ต่อไม้',
+          );
+        }
+      }
+      throw const SwapException(
+        'No liquidity available for this pair yet.',
+        'คู่นี้ยังไม่มีสภาพคล่องบนเชน TPIX',
+      );
+    }
+
+    return _quoteExactIn(cfg, fromToken, toToken, amounts.first, slippage,
+        path: path);
+  }
+
+  Future<TpixDexQuote> _quoteExactIn(
+    TpixDexConfig cfg,
+    VerifiedToken fromToken,
+    VerifiedToken toToken,
+    BigInt amountInWei,
+    double slippage, {
+    List<EthereumAddress>? path,
+  }) async {
+    final router = cfg.router!;
+    final direct = _directPath(cfg, fromToken, toToken);
+
+    var usedPath = path ?? direct;
+    var amounts = await _routerAmounts('getAmountsOut', router, amountInWei, usedPath);
 
     // ไม่มีคู่ตรง → ลองวิ่งผ่าน WTPIX (เฉพาะ token ↔ token)
-    if (amounts == null && !fromToken.native && !toToken.native) {
-      path = [
-        EthereumAddress.fromHex(fromAddr),
-        EthereumAddress.fromHex(wtpix),
-        EthereumAddress.fromHex(toAddr),
-      ];
-      amounts = await _getAmountsOut(router, amountInWei, path);
+    if (amounts == null &&
+        path == null &&
+        !fromToken.native &&
+        !toToken.native) {
+      usedPath = _viaWtpix(cfg, direct);
+      amounts = await _routerAmounts('getAmountsOut', router, amountInWei, usedPath);
     }
 
     if (amounts == null || amounts.isEmpty || amounts.last <= BigInt.zero) {
@@ -404,17 +656,38 @@ class TpixDexService {
     final minReceived =
         math.max(netOutput * (1 - slippage / 100), 0).toDouble();
 
-    // price impact จากราคากลางของพูล — วัดด้วย quote ก้อนจิ๋ว (1/1000 ของไม้)
-    // เทียบกับราคาที่ไม้จริงได้ วิธีนี้ไม่ต้องอ่าน reserve เอง และตรงกับที่ผู้ใช้จ่ายจริง
-    double priceImpact = 0;
-    final probeWei = amountInWei ~/ BigInt.from(1000);
-    if (probeWei > BigInt.zero) {
-      final probe = await _getAmountsOut(router, probeWei, path);
-      if (probe != null && probe.isNotEmpty && probe.last > BigInt.zero) {
-        final spot = probe.last.toDouble() / probeWei.toDouble();
-        final effective = rawOut.toDouble() / amountInWei.toDouble();
-        if (spot > 0) {
-          priceImpact = math.max(0, (1 - effective / spot) * 100);
+    // price impact จาก reserve ของพูล — สูตรเดียวกับเว็บ ใช้ได้เมื่อวิ่งฮอปเดียว
+    BigInt? reserveIn;
+    BigInt? reserveOut;
+    double? priceImpact;
+    if (usedPath.length == 2) {
+      final r = await _reserves(cfg, usedPath[0].hex, usedPath[1].hex);
+      if (r != null) {
+        reserveIn = r.reserveIn;
+        reserveOut = r.reserveOut;
+        priceImpact = priceImpactPct(
+          amountIn: amountInWei,
+          amountOut: rawOut,
+          reserveIn: r.reserveIn,
+          reserveOut: r.reserveOut,
+        );
+      }
+    }
+
+    // อ่าน reserve ไม่ได้ / วิ่ง 2 ฮอป → วัดด้วย quote ก้อนจิ๋ว (1/1000 ของไม้) แทน
+    // ห้ามปล่อยเป็น 0 เพราะ 0 = ผ่านด่าน 10% ทุกไม้ ไม่ว่าจะใหญ่แค่ไหน
+    if (priceImpact == null) {
+      priceImpact = 0;
+      final probeWei = amountInWei ~/ BigInt.from(1000);
+      if (probeWei > BigInt.zero) {
+        final probe =
+            await _routerAmounts('getAmountsOut', router, probeWei, usedPath);
+        if (probe != null && probe.isNotEmpty && probe.last > BigInt.zero) {
+          final spot = probe.last.toDouble() / probeWei.toDouble();
+          final effective = rawOut.toDouble() / amountInWei.toDouble();
+          if (spot > 0) {
+            priceImpact = math.max(0, (1 - effective / spot) * 100).toDouble();
+          }
         }
       }
     }
@@ -422,32 +695,54 @@ class TpixDexService {
     return TpixDexQuote(
       fromToken: fromToken,
       toToken: toToken,
-      amountIn: amount,
+      amountIn: fromWei(amountInWei, fromToken.decimals),
       netOutput: netOutput,
       minReceived: minReceived,
       slippage: slippage,
       priceImpact: double.parse(priceImpact.toStringAsFixed(4)),
       amountInWei: amountInWei,
       rawAmountOut: rawOut,
-      path: path,
+      path: usedPath,
       router: router,
+      reserveIn: reserveIn,
+      reserveOut: reserveOut,
     );
   }
 
-  Future<List<BigInt>?> _getAmountsOut(
-      String router, BigInt amountIn, List<EthereumAddress> path) async {
+  /// เรียก getAmountsOut/getAmountsIn ของ router
+  ///
+  /// revert (ไม่มีพูล/สภาพคล่องไม่พอ) = null · ส่งไม่ถึงเชน = โยน [kTpixChainUnreachable]
+  /// แยกสองกรณีนี้ออกจากกัน — เดิมเหมาเป็น "ไม่มีสภาพคล่อง" ทั้งที่จริงคือ RPC ล่ม
+  Future<List<BigInt>?> _routerAmounts(String fn, String router,
+      BigInt amount, List<EthereumAddress> path) async {
     try {
       final contract = _routerAt(router);
       final result = await _withClient((client) => client.call(
             contract: contract,
-            function: contract.function('getAmountsOut'),
-            params: [amountIn, path],
+            function: contract.function(fn),
+            params: [amount, path],
           ));
       return (result.first as List).cast<BigInt>();
+    } on RPCError catch (e) {
+      debugPrint('TPIX DEX $fn reverted: ${e.errorCode}');
+      return null;
     } catch (e) {
-      debugPrint('TPIX DEX getAmountsOut failed: ${e.runtimeType}');
+      debugPrint('TPIX DEX $fn failed: ${e.runtimeType}');
+      if (RpcFailover.shouldFailover(e)) throw kTpixChainUnreachable;
       return null;
     }
+  }
+
+  /// จำนวนสูงสุดสำหรับแสดงผล — ปัดลงเสมอ (ปัดขึ้นแล้วกดตามจะเกินเพดาน)
+  static String formatMaxAmount(double v) {
+    final dp = v >= 1000 ? 2 : (v >= 1 ? 4 : 6);
+    final factor = math.pow(10, dp).toDouble();
+    final floored = (v * factor).floorToDouble() / factor;
+    var s = floored.toStringAsFixed(dp);
+    if (s.contains('.')) {
+      s = s.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+    }
+    return s;
   }
 
   // ── Allowance / Approve ──
@@ -467,7 +762,9 @@ class TpixDexService {
             ],
           ));
       return (result.first as BigInt) >= wei;
-    } catch (_) {
+    } catch (e) {
+      // ส่งไม่ถึงเชน = อย่าเพิ่งขอ approve (ส่งธุรกรรมก็ไม่ถึงเหมือนกัน) บอกผู้ใช้ตรง ๆ
+      if (RpcFailover.shouldFailover(e)) throw kTpixChainUnreachable;
       return false; // อ่านไม่ได้ = บังคับ approve (ปลอดภัยกว่าเดาว่าพอ)
     }
   }
@@ -494,6 +791,14 @@ class TpixDexService {
     required String walletAddress,
     required DexTxSender sendTx,
   }) async {
+    // ด่านสุดท้ายก่อนแตะเงิน — กติกาเดียวกับเว็บ ไม่ว่าหน้าจอจะเช็กมาแล้วหรือยัง
+    if (quote.exceedsImpactLimit) {
+      throw SwapException(
+        'This order moves the pool price by ${quote.priceImpact.toStringAsFixed(1)}% (limit ${kTpixMaxPriceImpactPct.toStringAsFixed(0)}%).',
+        'คำสั่งนี้ดันราคาพูลไป ${quote.priceImpact.toStringAsFixed(1)}% (เพดาน ${kTpixMaxPriceImpactPct.toStringAsFixed(0)}%)',
+      );
+    }
+
     final slipBps =
         BigInt.from(math.max(0, ((1 - quote.slippage / 100) * 10000).floor()));
     final minOut = (quote.rawAmountOut * slipBps) ~/ BigInt.from(10000);
