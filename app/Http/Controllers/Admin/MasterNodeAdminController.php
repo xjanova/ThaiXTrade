@@ -116,11 +116,18 @@ class MasterNodeAdminController extends Controller
                 'registry_address_set' => $address !== null,
                 'registry_code_missing' => $address !== null && ! $deployed,
                 'kyc_contract' => null,
+                // null = ไม่ทราบ (ยังไม่ deploy / RPC ล้ม / สัญญารุ่นเก่าที่ไม่มีสวิตช์นี้)
+                'registration_paused' => null,
+                // ค่าคอนฟิกแต่ละชั้นตามเชนจริง (รวมเพดาน APR) — ว่าง = อ่านไม่ได้ หน้าแอดมินใช้ค่าเริ่มต้นแทน
+                'tier_info' => [],
             ];
 
             if (! $deployed) {
                 return $base;
             }
+
+            // อ่านก่อนสถิติ — แอดมินต้องเห็นสถานะปิดรับแม้ getNetworkStats() จะล้ม
+            $base['registration_paused'] = $this->registry->registrationPaused();
 
             $stats = $this->registry->networkStats();
             if ($stats === null) {
@@ -148,6 +155,20 @@ class MasterNodeAdminController extends Controller
                 // ถ้าเป็น 0 ทั้งที่มีโหนดทำงานอยู่ = ยังไม่ได้เติมพูล ผู้ใช้กดรับรางวัลไม่ได้
                 'reward_pool_available' => Wei::format($this->registry->availableRewardFunds() ?? '0'),
                 'kyc_contract' => $this->registry->kycContract(),
+                // หน้าแอดมิน "อ่านอย่างเดียว" — ปิด/เปิดรับลงทะเบียนและปรับเพดาน APR ต้องเซ็นจาก
+                // กระเป๋าเจ้าของสัญญาเอง (setRegistrationPaused / setTierAprCap) ไม่มีการเซ็นฝั่งเซิร์ฟเวอร์
+                'tier_info' => array_values(array_map(fn (array $t) => [
+                    'tier' => $t['tier'],
+                    'name' => $t['name'],
+                    'min_stake' => $t['min_stake'],
+                    'max_nodes' => $t['max_nodes'],
+                    'active_nodes' => $t['active_nodes'],
+                    'lock_days' => $t['lock_days'],
+                    'reward_share' => $t['reward_share'],
+                    'apr_cap_bps' => $t['apr_cap_bps'] ?? null,
+                    'current_apr_bps' => $t['current_apr_bps'] ?? null,
+                    'projected_apr_bps' => $t['projected_apr_bps'] ?? null,
+                ], $this->registry->allTierInfo())),
             ]);
         });
     }

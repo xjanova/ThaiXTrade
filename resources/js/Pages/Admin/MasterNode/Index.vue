@@ -4,7 +4,7 @@
  * Monitor node network, manage registry, on-chain stats
  * Developed by Xman Studio
  */
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import axios from 'axios';
@@ -67,6 +67,32 @@ const tiers = [
     { name: 'Sentinel', index: 1, countKey: 'sentinel_nodes', max: 500, stake: '100,000 TPIX', reward: '30%', lock: '30 days', color: 'text-purple-400', bg: 'bg-purple-500/15 border-purple-500/30' },
     { name: 'Light', index: 2, countKey: 'light_nodes', max: 0, stake: '10,000 TPIX', reward: '15%', lock: '7 days', color: 'text-cyan-400', bg: 'bg-cyan-500/15 border-cyan-500/30' },
 ];
+
+/** bps → "12%" / "6.25%" */
+const fmtBps = (bps) => (bps === null || bps === undefined ? '—' : `${Number((bps / 100).toFixed(2))}%`);
+
+/**
+ * ค่าจากเชน (stats.tier_info) ทับค่าเริ่มต้นข้างบน — ถ้าอ่านเชนไม่ได้จะเห็นค่าเริ่มต้นพร้อมป้าย "default"
+ * เพดาน APR สำคัญกับแอดมินเพราะเป็นตัวกันพูลรางวัลไม่ให้ถูกโหนดชุดแรกดูดหมด
+ */
+const tierRows = computed(() => {
+    const fromChain = new Map((stats.value.tier_info || []).map(t => [Number(t.tier), t]));
+    return tiers.map(t => {
+        const c = fromChain.get(t.index);
+        if (!c) return { ...t, onChain: false, aprCap: null, projectedApr: null, currentApr: null };
+        return {
+            ...t,
+            onChain: true,
+            max: Number(c.max_nodes),
+            stake: `${fmt(c.min_stake)} TPIX`,
+            reward: `${Number(c.reward_share) / 100}%`,
+            lock: `${c.lock_days} days`,
+            aprCap: c.apr_cap_bps,
+            projectedApr: c.projected_apr_bps,
+            currentApr: c.current_apr_bps,
+        };
+    });
+});
 </script>
 
 <template>
@@ -108,6 +134,35 @@ const tiers = [
                     Registry: <span :class="stats.registry_deployed ? 'text-emerald-400' : 'text-yellow-400'">
                         {{ stats.registry_deployed ? 'Deployed' : 'Not Deployed' }}
                     </span>
+                </div>
+            </div>
+
+            <!-- สวิตช์ปิดรับลงทะเบียนใหม่ (registrationPaused บนสัญญา) — หน้านี้แค่แสดง
+                 การเปิด/ปิดต้องเซ็นจากกระเป๋าเจ้าของสัญญาเอง ไม่มีการเซ็นฝั่งเซิร์ฟเวอร์ -->
+            <div v-if="stats.registry_deployed"
+                 :class="['flex items-start gap-3 p-4 rounded-xl border',
+                     stats.registration_paused === true ? 'bg-red-500/5 border-red-500/30'
+                     : stats.registration_paused === false ? 'bg-emerald-500/5 border-emerald-500/20'
+                     : 'bg-white/5 border-white/10']">
+                <div :class="['w-3 h-3 rounded-full mt-1 shrink-0',
+                    stats.registration_paused === true ? 'bg-red-500'
+                    : stats.registration_paused === false ? 'bg-emerald-500' : 'bg-gray-500']" />
+                <div class="text-xs">
+                    <div class="font-bold"
+                         :class="stats.registration_paused === true ? 'text-red-400'
+                             : stats.registration_paused === false ? 'text-emerald-400' : 'text-gray-400'">
+                        New registrations:
+                        {{ stats.registration_paused === true ? 'PAUSED' : stats.registration_paused === false ? 'Open' : 'Unknown' }}
+                    </div>
+                    <div class="text-gray-400 mt-1">
+                        <template v-if="stats.registration_paused === null || stats.registration_paused === undefined">
+                            อ่านค่า registrationPaused() ไม่ได้ — สัญญาที่ deploy อาจเป็นรุ่นก่อนมีสวิตช์นี้ หรือ RPC ล้ม
+                        </template>
+                        <template v-else>
+                            ปิดได้เฉพาะการลงทะเบียนใหม่ — รับรางวัล/ปิดโหนด/ถอนเงินต้นทำได้เสมอ
+                            · สลับด้วย <code class="font-mono text-gray-300">setRegistrationPaused(bool)</code> จากกระเป๋าเจ้าของสัญญา
+                        </template>
+                    </div>
                 </div>
             </div>
 
@@ -160,7 +215,7 @@ const tiers = [
                 <div class="glass-card rounded-xl p-5">
                     <h3 class="text-sm font-bold text-white uppercase tracking-wide mb-4">Node Tiers</h3>
                     <div class="space-y-3">
-                        <div v-for="tier in tiers" :key="tier.name"
+                        <div v-for="tier in tierRows" :key="tier.name"
                              :class="['p-4 rounded-xl border', tier.bg]">
                             <div class="flex items-center justify-between mb-2">
                                 <span :class="['font-bold', tier.color]">
@@ -184,6 +239,19 @@ const tiers = [
                                         {{ fmt(stats[tier.countKey]) }}{{ tier.max ? ` / ${fmt(tier.max)}` : ' / ∞' }}
                                     </span>
                                 </div>
+                                <div>
+                                    <span class="text-gray-500">APR cap / node:</span>
+                                    <span class="text-white ml-1 font-mono">{{ fmtBps(tier.aprCap) }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-500">APR now:</span>
+                                    <span class="text-white ml-1 font-mono">{{ fmtBps(tier.currentApr) }}</span>
+                                    <span class="text-gray-500 ml-1">· new node:</span>
+                                    <span class="text-white ml-1 font-mono">{{ fmtBps(tier.projectedApr) }}</span>
+                                </div>
+                            </div>
+                            <div v-if="!tier.onChain" class="text-[10px] text-gray-600 mt-2">
+                                default values — not read from chain
                             </div>
                         </div>
                     </div>
