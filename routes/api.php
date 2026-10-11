@@ -471,8 +471,15 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     // Token Factory — สร้างเหรียญ (ต้อง verify wallet)
     Route::prefix('token-factory')->group(function () {
         Route::get('/my-tokens', [TokenFactoryApiController::class, 'myTokens']);
+        // ใบเสนอราคาค่าธรรมเนียม (ล็อกยอด) → ผู้ใช้โอน TPIX → ถามสถานะ → สร้าง
+        Route::post('/quote', [TokenFactoryApiController::class, 'quote'])
+            ->middleware(['throttle:20,60', 'kyc:token_factory']);
+        Route::post('/fee-status', [TokenFactoryApiController::class, 'feeStatus'])
+            ->middleware('throttle:60,1');
+        // จำนวนเหรียญจริงต่อวันคุมด้วยนโยบาย (daily_limit_per_wallet) — throttle นี้กันยิงถี่
+        // เผื่อผู้ใช้ที่จ่ายเงินแล้วต้องส่งซ้ำหลังแก้ฟอร์ม
         Route::post('/create', [TokenFactoryApiController::class, 'store'])
-            ->middleware(['throttle:5,60', 'kyc:token_factory']); // สร้างได้ 5 ครั้งต่อ 60 นาที
+            ->middleware(['throttle:10,60', 'kyc:token_factory']);
         // ด่านเดียวกับ /create — เดิมมีแค่ throttle ทำให้ใครมีกระเป๋าก็อัปไฟล์
         // ขึ้นโดเมนได้ ทั้งที่ "สร้างเหรียญ" ซึ่งเป็นปลายทางจริงต้องผ่าน KYC
         Route::post('/upload-logo', [TokenFactoryApiController::class, 'uploadLogo'])

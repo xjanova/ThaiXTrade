@@ -44,6 +44,27 @@ class VerifyWalletOwnership
              */
             ?? $request->input('creator_address');
 
+        /*
+         * ส่งมาทั้ง wallet_address และ creator_address แต่คนละกระเป๋า → ปฏิเสธ
+         *
+         * ⚠️ เดิมใช้ wallet_address พิสูจน์ตัว แล้ว controller เอา creator_address ไปเป็นเจ้าของเหรียญ
+         *    = เซ็นด้วยกระเป๋าตัวเอง แต่สร้างเหรียญที่ขึ้นชื่อเหยื่อเป็นผู้สร้างได้
+         *    กระเป๋าที่ผ่านด่านนี้คือ "ผู้สร้าง" เสมอ
+         */
+        $creatorAddress = $request->input('creator_address');
+        $claimedWallet = $request->input('wallet_address') ?? $request->query('wallet_address');
+        if (is_string($creatorAddress) && $creatorAddress !== ''
+            && is_string($claimedWallet) && $claimedWallet !== ''
+            && strtolower($creatorAddress) !== strtolower($claimedWallet)) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'WALLET_MISMATCH',
+                    'message' => 'กระเป๋าผู้สร้างต้องเป็นกระเป๋าเดียวกับที่ยืนยันตัวตน',
+                ],
+            ], 403);
+        }
+
         // If no wallet address in request, let the controller handle it
         if (! $walletAddress) {
             return $next($request);

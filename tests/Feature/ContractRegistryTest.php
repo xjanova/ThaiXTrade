@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\SiteSetting;
 use App\Services\ContractRegistry;
+use App\Services\TokenFactory\TokenFactoryChain;
 use App\Services\TokenFactoryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -202,8 +203,17 @@ class ContractRegistryTest extends TestCase
 
     public function test_token_factory_becomes_ready_once_the_factory_is_registered(): void
     {
-        $this->fakeChainWithCode();
         config(['blockchain.deployer_private_key' => '0x'.str_repeat('1', 64)]);
+
+        // create* ของแฟกทอรีเป็น onlyOwner — ต้องพร้อมเมื่อ owner() คือกระเป๋าที่เซิร์ฟเวอร์ใช้เซ็นเท่านั้น
+        $deployer = app(TokenFactoryChain::class)->deployerAddress();
+        Http::fake(fn ($request) => Http::response([
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'result' => $request['method'] === 'eth_call'
+                ? '0x'.str_pad(substr($deployer, 2), 64, '0', STR_PAD_LEFT)
+                : '0x60806040',
+        ]));
         SiteSetting::set('factory', 'fee_wallet', '0x'.str_repeat('9', 40));
 
         $this->register([

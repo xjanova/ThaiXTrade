@@ -3,12 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Chain;
 use App\Models\FactoryToken;
-use App\Models\SiteSetting;
+use App\Models\KycSubmission;
+use App\Services\Kyc\KycGate;
+use App\Services\TokenFactory\TokenFactoryException;
 use App\Services\TokenFactoryService;
+use App\Services\WalletSessionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 class TokenFactoryApiController extends Controller
@@ -18,19 +22,20 @@ class TokenFactoryApiController extends Controller
 
     public function __construct(
         private TokenFactoryService $tokenFactoryService,
+        private KycGate $kycGate,
     ) {}
 
     /**
-     * ดึง Token ที่ deployed (public listing).
+     * ดึง Token ที่ deployed และลิสต์แล้ว (public listing) — เฉพาะช่องที่เปิดเผยได้.
      */
     public function index(Request $request): JsonResponse
     {
         $search = $request->query('search');
-        $tokens = $this->tokenFactoryService->getDeployedTokens($search);
+        $tokens = $this->tokenFactoryService->getDeployedTokens(is_string($search) ? $search : null);
 
         return response()->json([
             'success' => true,
-            'data' => $tokens->items(),
+            'data' => array_map(fn (FactoryToken $t) => $t->toPublicArray(), $tokens->items()),
             'meta' => [
                 'current_page' => $tokens->currentPage(),
                 'per_page' => $tokens->perPage(),
@@ -41,7 +46,7 @@ class TokenFactoryApiController extends Controller
     }
 
     /**
-     * ดึง Token ของ creator.
+     * ดึง Token ของ creator (ผ่าน VerifyWalletOwnership แล้ว — เห็นข้อมูลของตัวเองครบ).
      */
     public function myTokens(Request $request): JsonResponse
     {
@@ -66,128 +71,117 @@ class TokenFactoryApiController extends Controller
     }
 
     /**
-     * สร้าง Token ใหม่.
+     * ขอใบเสนอราคาค่าธรรมเนียม — ตรวจฟอร์ม/นโยบายครบเหมือนตอนสร้างจริง แล้วล็อกยอด.
      *
-     * ตรวจสอบ: creation_enabled, fee_wallet, symbol uniqueness, max supply
+     * POST /api/v1/token-factory/quote
      */
-    public function store(Request $request): JsonResponse
+    public function quote(Request $request): JsonResponse
     {
-        // เช็คว่าระบบเปิดให้สร้างหรือไม่
-        if (! filter_var(SiteSetting::get('factory', 'creation_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'FACTORY_DISABLED', 'message' => 'Token creation is currently disabled.'],
-            ], 403);
+        $creator = $this->creator($request);
+        if ($creator === null) {
+            return $this->walletRequired();
         }
-
-        // ตรวจว่า factory พร้อมหรือไม่ (fee_wallet ตั้งค่าแล้ว)
-        $readiness = $this->tokenFactoryService->isFactoryReady();
-        if (! $readiness['ready']) {
-            return response()->json([
-                'success' => false,
-                'error' => [
-                    'code' => 'FACTORY_NOT_READY',
-                    'message' => 'Token Factory is not available yet. '.implode('. ', $readiness['issues']),
-                ],
-            ], 503);
-        }
-
-        $maxSupply = (float) SiteSetting::get('factory', 'max_supply_limit', 999999999999999);
-        $nftEnabled = filter_var(SiteSetting::get('factory', 'nft_enabled', true), FILTER_VALIDATE_BOOLEAN);
-
-        $allowedTypes = ['standard', 'mintable', 'burnable', 'mintable_burnable', 'utility', 'reward'];
-        if ($nftEnabled) {
-            $allowedTypes = array_merge($allowedTypes, ['nft', 'nft_collection']);
-        }
-        // governance & stablecoin ต้องผ่าน admin review เสมอ
-        $allowedTypes = array_merge($allowedTypes, ['governance', 'stablecoin']);
-
-        // รวม testnet chain IDs เข้ากับ chains table สำหรับ validation
-        $testnetChainIds = config('blockchain.testnet_chain_ids', [4290, 11155111, 97]);
-
-        $validated = $request->validate([
-            'name' => 'required|string|min:2|max:100',
-            'symbol' => [
-                'required', 'string', 'min:2', 'max:20', 'alpha_num',
-                function (string $attribute, mixed $value, \Closure $fail) {
-                    // Case-insensitive uniqueness check (ไม่นับ rejected/failed)
-                    $exists = FactoryToken::whereRaw('UPPER(symbol) = ?', [strtoupper($value)])
-                        ->whereNotIn('status', ['rejected', 'failed'])
-                        ->exists();
-                    if ($exists) {
-                        $fail("Token symbol {$value} already exists or is pending approval.");
-                    }
-                },
-            ],
-            'decimals' => 'integer|min:0|max:18',
-            'total_supply' => "required|numeric|min:1|max:{$maxSupply}",
-            'creator_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
-            'chain_id' => ['nullable', 'integer', function ($attr, $val, $fail) use ($testnetChainIds) {
-                // อนุญาต testnet chain IDs แม้ไม่อยู่ใน chains table
-                if ($val && ! in_array((int) $val, $testnetChainIds, true)) {
-                    $existsInDb = Chain::where('chain_id', $val)->exists();
-                    if (! $existsInDb) {
-                        $fail("Chain ID {$val} is not supported.");
-                    }
-                }
-            }],
-            'description' => 'nullable|string|max:1000',
-            'website' => 'nullable|url:https|max:255',
-            'logo_url' => ['nullable', 'string', 'max:500', function ($attr, $val, $fail) {
-                // อนุญาตทั้ง /storage/... path (จาก upload) และ https:// URL
-                if ($val && ! str_starts_with($val, '/storage/') && ! str_starts_with($val, 'https://')) {
-                    $fail('Logo must be an uploaded file or HTTPS URL.');
-                }
-            }],
-            'token_type' => 'required|in:'.implode(',', $allowedTypes),
-            'token_category' => 'nullable|in:fungible,nft,special',
-            'fee_tx_hash' => ['nullable', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
-
-            // Sub-options สำหรับ advanced token features (Phase 1: เก็บ data, Phase 2: deploy จริง)
-            'sub_options' => 'nullable|array',
-            'sub_options.*' => 'nullable',
-        ]);
 
         try {
-            $token = $this->tokenFactoryService->createToken($validated);
+            $prepared = $this->tokenFactoryService->prepare($request->all(), $creator);
+            $this->assertKyc($request, $prepared['decision']);
 
-            return response()->json([
-                'success' => true,
-                'data' => $token,
-                'message' => $token->status === 'deploying'
-                    ? 'Token auto-approved and deployment started!'
-                    : 'Token creation request submitted for review.',
-            ], 201);
-        } catch (\RuntimeException $e) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'FACTORY_ERROR', 'message' => $e->getMessage()],
-            ], 503);
+            $quote = $this->tokenFactoryService->quote($prepared, $creator);
+        } catch (TokenFactoryException $e) {
+            return response()->json($e->toResponseArray(), $e->status);
         }
+
+        return response()->json(['success' => true, 'data' => $quote->toApiArray()]);
     }
 
     /**
-     * ดึงรายละเอียด Token.
+     * ตรวจสถานะธุรกรรมค่าธรรมเนียม (หน้าเว็บถามซ้ำระหว่างรอบล็อกยืนยัน).
+     *
+     * POST /api/v1/token-factory/fee-status
      */
-    public function show(int $id): JsonResponse
+    public function feeStatus(Request $request): JsonResponse
+    {
+        $creator = $this->creator($request);
+        if ($creator === null) {
+            return $this->walletRequired();
+        }
+
+        $request->validate([
+            'quote_id' => ['required', 'uuid'],
+            'fee_tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
+        ], [
+            'quote_id.*' => 'รหัสใบเสนอราคาไม่ถูกต้อง',
+            'fee_tx_hash.*' => 'รูปแบบ tx hash ไม่ถูกต้อง',
+        ]);
+
+        try {
+            $status = $this->tokenFactoryService->feeStatus(
+                $request->input('quote_id'),
+                $request->input('fee_tx_hash'),
+                $creator,
+            );
+        } catch (TokenFactoryException $e) {
+            return response()->json($e->toResponseArray(), $e->status);
+        }
+
+        return response()->json(['success' => true, 'data' => array_merge(['confirmed' => true], $status)]);
+    }
+
+    /**
+     * สร้าง Token ใหม่ — ต้องมีใบเสนอราคา และ (ถ้าไม่ฟรี) ธุรกรรมค่าธรรมเนียมที่ยืนยันบนเชนแล้ว.
+     *
+     * POST /api/v1/token-factory/create
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $creator = $this->creator($request);
+        if ($creator === null) {
+            return $this->walletRequired();
+        }
+
+        try {
+            $prepared = $this->tokenFactoryService->prepare($request->all(), $creator, forCreate: true);
+            $this->assertKyc($request, $prepared['decision']);
+
+            $token = $this->tokenFactoryService->createToken($prepared, $creator);
+        } catch (TokenFactoryException $e) {
+            return response()->json($e->toResponseArray(), $e->status);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $token,
+            'message' => $token->status === 'deploying'
+                ? 'อนุมัติอัตโนมัติแล้ว กำลังสร้างเหรียญบนเชน'
+                : 'ส่งคำขอสร้างเหรียญแล้ว รอผู้ดูแลตรวจสอบ',
+        ], 201);
+    }
+
+    /**
+     * รายละเอียด Token.
+     *
+     * คนทั่วไปเห็นเฉพาะช่องที่เปิดเผยได้ — metadata (deploy_error/stderr, ตัวเลือกย่อย,
+     * เหตุผลที่ถูกปฏิเสธ, ข้อมูลค่าธรรมเนียม) เห็นได้เฉพาะเจ้าของคำขอ (กระเป๋าที่ยืนยันแล้ว) และแอดมิน
+     */
+    public function show(Request $request, int $id): JsonResponse
     {
         $token = FactoryToken::with('chain')->find($id);
 
         if (! $token) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'NOT_FOUND', 'message' => 'Token not found.'],
+                'error' => ['code' => 'NOT_FOUND', 'message' => 'ไม่พบเหรียญนี้'],
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'data' => $token,
+            'data' => $this->canSeeFullDetails($request, $token) ? $token : $token->toPublicArray(),
         ]);
     }
 
     /**
-     * ดึง factory config สำหรับ frontend.
+     * ดึง factory config สำหรับ frontend — นโยบายที่ใช้จริง (ประเภท/ตัวเลือกที่เปิด ค่าธรรมเนียม เพดาน คำเตือน).
      */
     public function config(): JsonResponse
     {
@@ -199,31 +193,26 @@ class TokenFactoryApiController extends Controller
             'data' => array_merge($config, [
                 'ready' => $readiness['ready'],
                 'issues' => $readiness['issues'],
+                'awaiting_deploy' => $readiness['awaiting_deploy'],
             ]),
         ]);
     }
 
     /**
-     * คำนวณค่าธรรมเนียมแบบ dynamic ตาม options ที่เลือก.
+     * คำนวณค่าธรรมเนียมตามนโยบาย (แหล่งเดียวกับใบเสนอราคา).
      *
      * POST /api/v1/token-factory/calculate-fee
      */
     public function calculateFee(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'token_category' => 'required|in:fungible,nft,special',
-            'token_type' => 'required|string',
-            'decimals' => 'nullable|integer|min:0|max:18',
-            'total_supply' => 'nullable|numeric|min:0',
-            'chain_id' => 'nullable|integer',
+            'token_type' => 'required|string|max:30',
             'sub_options' => 'nullable|array',
         ]);
 
-        $fee = $this->tokenFactoryService->calculateFee($validated);
-
         return response()->json([
             'success' => true,
-            'data' => $fee,
+            'data' => $this->tokenFactoryService->calculateFee($validated),
         ]);
     }
 
@@ -282,5 +271,68 @@ class TokenFactoryApiController extends Controller
                 'path' => $path,
             ],
         ]);
+    }
+
+    // =========================================================================
+    //  ภายใน
+    // =========================================================================
+
+    /**
+     * กระเป๋าที่พิสูจน์ความเป็นเจ้าของแล้ว = ผู้สร้างเหรียญ.
+     *
+     * VerifyWalletOwnership ใส่ wallet_address (ตัวพิมพ์เล็ก) ให้ทุกคำขอที่ผ่านด่าน
+     * และปฏิเสธเองถ้า wallet_address กับ creator_address ไม่ตรงกัน — ห้ามอ่าน creator_address ตรง ๆ
+     */
+    private function creator(Request $request): ?string
+    {
+        $wallet = $request->input('wallet_address');
+
+        return is_string($wallet) && preg_match('/^0x[a-f0-9]{40}$/', $wallet) ? $wallet : null;
+    }
+
+    private function walletRequired(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'error' => ['code' => 'WALLET_REQUIRED', 'message' => 'กรุณาเชื่อมต่อและยืนยันกระเป๋าก่อนสร้างเหรียญ'],
+        ], 422);
+    }
+
+    /**
+     * นโยบายสั่ง "ต้อง KYC" — บังคับเอง ไม่ขึ้นกับสวิตช์ใหญ่ของ /admin/kyc.
+     *
+     * @throws TokenFactoryException
+     */
+    private function assertKyc(Request $request, array $decision): void
+    {
+        if (! $decision['require_kyc']) {
+            return;
+        }
+
+        $user = $this->kycGate->resolveUser($request);
+
+        if (! $user || ! $this->kycGate->satisfiesLevel($user, KycSubmission::LEVEL_BASIC)) {
+            throw new TokenFactoryException('KYC_REQUIRED', 'ต้องยืนยันตัวตน (KYC) ก่อนสร้างเหรียญประเภทนี้', 403);
+        }
+    }
+
+    private function canSeeFullDetails(Request $request, FactoryToken $token): bool
+    {
+        if (Auth::guard('admin')->check()) {
+            return true;
+        }
+
+        $wallet = strtolower((string) $request->query('wallet_address', ''));
+        if (! preg_match('/^0x[a-f0-9]{40}$/', $wallet) || ! hash_equals((string) $token->creator_address, $wallet)) {
+            return false;
+        }
+
+        $session = $request->headers->get(WalletSessionService::HEADER);
+        if ($session && app(WalletSessionService::class)->authorizes($session, $wallet)) {
+            return true;
+        }
+
+        // เงื่อนไขเดียวกับ GET ใน VerifyWalletOwnership — ต้องเคยเซ็นพิสูจน์กระเป๋าแล้ว
+        return is_array(Cache::get("wallet_verified:{$wallet}"));
     }
 }

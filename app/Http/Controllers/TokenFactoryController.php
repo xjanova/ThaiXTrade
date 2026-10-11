@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FactoryToken;
 use App\Services\TokenFactoryService;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -14,7 +15,9 @@ class TokenFactoryController extends Controller
 
     public function index(): Response
     {
-        $tokens = $this->tokenFactoryService->getDeployedTokens();
+        // หน้าเว็บสาธารณะ — ส่งเฉพาะช่องที่เปิดเผยได้ (metadata มี deploy_error/ตัวเลือก/ค่าธรรมเนียม)
+        $tokens = $this->tokenFactoryService->getDeployedTokens()
+            ->through(fn (FactoryToken $token) => $token->toPublicArray());
         $config = $this->tokenFactoryService->getFactoryConfig();
         $readiness = $this->tokenFactoryService->isFactoryReady();
 

@@ -2,137 +2,310 @@
 
 namespace App\Services;
 
+use App\Jobs\CheckFactoryDeployReceiptJob;
 use App\Jobs\DeployTokenJob;
 use App\Models\FactoryToken;
-use App\Models\SiteSetting;
+use App\Models\TokenFactoryFeeQuote;
+use App\Services\TokenFactory\TokenFactoryChain;
+use App\Services\TokenFactory\TokenFactoryException;
+use App\Services\TokenFactory\TokenFactoryFeeVerifier;
+use App\Services\TokenFactory\TokenFactoryPolicy;
+use App\Support\Wei;
+use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
+/**
+ * TokenFactoryService — คำขอสร้างเหรียญ ตั้งแต่ใบเสนอราคาจนถึงสั่ง deploy.
+ *
+ * ลำดับที่ถูกต้อง (ทุกขั้นตรวจฝั่งเซิร์ฟเวอร์ ไม่เชื่อหน้าเว็บ):
+ *   1. prepare()    — ตรวจฟอร์ม + นโยบาย (ประเภท/ตัวเลือกที่เปิด, ยอมรับความเสี่ยง, สัญลักษณ์สงวน ...)
+ *   2. quote()      — ล็อกยอดค่าธรรมเนียม ผูกกับกระเป๋าและตัวเลือกที่คิดเงิน
+ *   3. ผู้ใช้โอน TPIX บนเชน 4289 ไปที่กระเป๋ารับค่าธรรมเนียม
+ *   4. createToken() — ตรวจธุรกรรมบนเชนจริง แล้วบันทึกคำขอ (hash ใช้ได้ครั้งเดียว)
+ *   5. approveToken() — แอดมินกด (หรืออนุมัติอัตโนมัติตามนโยบาย) → DeployTokenJob ตัวเดียว
+ *
+ * Developed by Xman Studio
+ */
 class TokenFactoryService
 {
+    /** สถานะที่ถือสัญลักษณ์ไว้ (ตรงกับคอลัมน์ generated active_symbol) */
+    public const ACTIVE_STATUSES = ['pending', 'deploying', 'deployed'];
+
+    public function __construct(
+        private readonly TokenFactoryPolicy $policy,
+        private readonly TokenFactoryFeeVerifier $feeVerifier,
+        private readonly TokenFactoryChain $chain,
+        private readonly ContractRegistry $contracts,
+    ) {}
+
+    // =========================================================================
+    //  คำขอจากผู้ใช้
+    // =========================================================================
+
     /**
-     * สร้างคำขอสร้าง Token ใหม่.
+     * ตรวจฟอร์มและนโยบายทั้งหมด — ใช้ร่วมกันระหว่างขอใบเสนอราคาและสร้างจริง.
      *
-     * ตรวจสอบ:
-     * - ระบบเปิดให้สร้างหรือไม่ (creation_enabled)
-     * - fee_wallet ตั้งค่าแล้วหรือไม่
-     * - fee payment record ถูกต้อง
-     * - auto_approve flag
+     * @return array{data: array, decision: array}
+     *
+     * @throws ValidationException ข้อความภาษาไทยรายช่อง
      */
-    public function createToken(array $data): FactoryToken
+    public function prepare(array $input, string $creator, bool $forCreate = false): array
     {
-        $chainId = (int) ($data['chain_id'] ?? 4289);
-        $onTestnet = $this->isTestnet($chainId);
+        $creator = strtolower($creator);
+        $uiTypes = array_merge(...array_column(TokenFactoryPolicy::TYPES, 'ui_types'));
 
-        // Guard: ต้องตั้ง fee_wallet ก่อน — fallback ใช้ revenue tpix_wallet → legacy wallet_address
-        // Testnet: ข้าม fee wallet guard — สร้างฟรี
-        $feeWallet = '';
-        if (! $onTestnet) {
-            $feeWallet = SiteSetting::get('factory', 'fee_wallet', '');
-            if (empty($feeWallet)) {
-                $feeWallet = SiteSetting::get('revenue', 'tpix_wallet', '');
-            }
-            if (empty($feeWallet)) {
-                $feeWallet = SiteSetting::get('revenue', 'wallet_address', '');
-            }
-            $feeMethod = SiteSetting::get('factory', 'fee_payment_method', 'tpix');
-            $feeTpix = (float) SiteSetting::get('factory', 'creation_fee_tpix', 100);
+        $rules = [
+            'name' => ['required', 'string', 'min:2', 'max:100'],
+            'symbol' => ['required', 'string', 'min:2', 'max:20'],
+            'decimals' => ['nullable', 'integer', 'min:0', 'max:18'],
+            'total_supply' => ['required', 'regex:/^[1-9][0-9]{0,35}$/'],
+            'token_type' => ['required', 'string', 'in:'.implode(',', $uiTypes)],
+            'token_category' => ['nullable', 'in:fungible,nft,special'],
+            // เชนเดียวที่ deploy ได้จริงคือ 4289 — เดิมรับ 4290 (testnet ฟรี) แต่สคริปต์ส่งขึ้น 4289 เสมอ
+            'chain_id' => ['nullable', 'integer', 'in:'.$this->policy->chainId()],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'website' => ['nullable', 'url:https', 'max:255'],
+            'logo_url' => ['nullable', 'string', 'max:500'],
+            'sub_options' => ['nullable', 'array'],
+            'risk_ack' => ['nullable', 'array'],
+            'risk_ack.*' => ['string', 'max:40'],
+        ];
 
-            // ถ้า fee ไม่ใช่ free → ต้องมี fee_wallet
-            if ($feeMethod !== 'free' && $feeTpix > 0 && empty($feeWallet)) {
-                throw new \RuntimeException(
-                    'Token Factory fee wallet is not configured. Please contact administrator.'
-                );
-            }
+        if ($forCreate) {
+            $rules['quote_id'] = ['required', 'uuid'];
+            $rules['fee_tx_hash'] = ['nullable', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'];
         }
 
-        $tokenType = $data['token_type'] ?? 'standard';
+        $messages = [
+            'required' => 'กรุณากรอก :attribute',
+            'total_supply.regex' => 'จำนวนเหรียญต้องเป็นจำนวนเต็มบวก',
+            'token_type.in' => 'ไม่รู้จักประเภทเหรียญนี้',
+            'chain_id.in' => 'สร้างเหรียญได้เฉพาะบนเชน TPIX ('.$this->policy->chainId().') เท่านั้น',
+            'website.url' => 'เว็บไซต์ต้องเป็นลิงก์ https://',
+            'quote_id.required' => 'ต้องขอใบเสนอราคาค่าธรรมเนียมก่อน',
+            'quote_id.uuid' => 'รหัสใบเสนอราคาไม่ถูกต้อง',
+            'fee_tx_hash.regex' => 'รูปแบบ tx hash ของค่าธรรมเนียมไม่ถูกต้อง',
+            'decimals.*' => 'ทศนิยมต้องอยู่ระหว่าง 0–18',
+            'name.*' => 'ชื่อเหรียญต้องยาว 2–100 ตัวอักษร',
+            'symbol.*' => 'สัญลักษณ์ต้องยาว 2–20 ตัวอักษร',
+        ];
 
-        // Auto-determine category from type
-        $nftTypes = ['nft', 'nft_collection'];
-        $specialTypes = ['governance', 'stablecoin'];
-        $category = $data['token_category']
-            ?? (in_array($tokenType, $nftTypes) ? 'nft'
-                : (in_array($tokenType, $specialTypes) ? 'special' : 'fungible'));
+        $data = Validator::make($input, $rules, $messages, [
+            'name' => 'ชื่อเหรียญ', 'symbol' => 'สัญลักษณ์', 'total_supply' => 'จำนวนเหรียญ', 'token_type' => 'ประเภทเหรียญ',
+        ])->validate();
 
-        // NFT ใช้ decimals = 0 เสมอ
-        $decimals = in_array($tokenType, $nftTypes) ? 0 : ($data['decimals'] ?? 18);
+        $data['symbol'] = strtoupper(trim($data['symbol']));
+        $data['name'] = trim($data['name']);
+        $data['total_supply'] = (string) $data['total_supply'];
+        $data['chain_id'] = $this->policy->chainId();
+        $data['sub_options'] = $data['sub_options'] ?? [];
 
-        // คำนวณ fee แบบ dynamic ตามออฟชั่นที่เลือก (testnet = FREE)
-        // รวม sub_options เพื่อคำนวณ sub-option fees ด้วย
-        $feeResult = $this->calculateFee([
-            'token_category' => $data['token_category'] ?? 'fungible',
-            'token_type' => $tokenType,
+        $decision = $this->policy->evaluate([
+            'token_type' => $data['token_type'],
+            'sub_options' => $data['sub_options'],
             'decimals' => $data['decimals'] ?? 18,
-            'total_supply' => $data['total_supply'] ?? 0,
-            'chain_id' => $chainId,
-            'sub_options' => $data['sub_options'] ?? [],
+            'total_supply' => $data['total_supply'],
+            'symbol' => $data['symbol'],
+            'name' => $data['name'],
+            'creator' => $creator,
+            'risk_ack' => $data['risk_ack'] ?? [],
         ]);
 
-        $feeAmount = $feeResult['total'];
+        $errors = $decision['errors'];
 
-        // สร้าง metadata พร้อม fee info (ป้องกัน metadata เป็น non-array)
-        $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
-        $metadata['fee_amount'] = $feeAmount;
-        $metadata['fee_currency'] = $feeResult['currency'];
-        $metadata['fee_breakdown'] = $feeResult['breakdown'];
-        $metadata['fee_wallet'] = $feeWallet;
-        $metadata['fee_tx_hash'] = $data['fee_tx_hash'] ?? null;
-        $metadata['is_testnet'] = $onTestnet;
+        $type = $decision['type'];
+        $category = $type !== null ? TokenFactoryPolicy::TYPES[$type]['category'] : 'fungible';
+        $data['token_category'] = $category;
+        $data['decimals'] = $category === 'nft' ? 0 : (int) ($data['decimals'] ?? 18);
 
-        // เก็บ sub-options ที่ user เลือก (Phase 1: data capture, Phase 2: deploy จริง)
-        if (! empty($data['sub_options']) && is_array($data['sub_options'])) {
-            $metadata['sub_options'] = $data['sub_options'];
+        // โลโก้ต้องเป็นไฟล์ที่กระเป๋านี้อัปโหลดเองผ่าน /upload-logo เท่านั้น
+        // เดิมรับ https:// อะไรก็ได้ = ฝังรูปจากโดเมนคนอื่น (ติดตาม IP ผู้ชม / เปลี่ยนรูปทีหลังได้)
+        if (! empty($data['logo_url']) && ! $this->isOwnUploadedLogo($data['logo_url'], $creator)) {
+            $errors['logo_url'] = 'โลโก้ต้องเป็นไฟล์ที่อัปโหลดผ่านหน้าสร้างเหรียญจากกระเป๋านี้เท่านั้น';
         }
 
-        // สร้าง token record
-        $token = FactoryToken::create([
-            'name' => $data['name'],
-            'symbol' => strtoupper($data['symbol']),
-            'decimals' => $decimals,
-            'total_supply' => $data['total_supply'],
-            'creator_address' => strtolower($data['creator_address']),
-            'chain_id' => $data['chain_id'] ?? 4289,
-            'logo_url' => $data['logo_url'] ?? null,
-            'description' => $data['description'] ?? null,
-            'website' => $data['website'] ?? null,
-            'token_type' => $tokenType,
-            'token_category' => $category,
-            'status' => 'pending',
-            'metadata' => $metadata,
+        if (! isset($errors['symbol']) && $this->symbolTaken($data['symbol'])) {
+            $errors['symbol'] = "สัญลักษณ์ {$data['symbol']} มีคนใช้แล้ว หรือกำลังรออนุมัติอยู่";
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        return ['data' => $data, 'decision' => $decision];
+    }
+
+    /**
+     * ออกใบเสนอราคาค่าธรรมเนียม (ล็อกยอดตามนโยบาย ณ ตอนนี้).
+     *
+     * @throws TokenFactoryException
+     */
+    public function quote(array $prepared, string $creator): TokenFactoryFeeQuote
+    {
+        $creator = strtolower($creator);
+        $this->assertCanCreate($prepared['data']['token_type'], $creator);
+
+        $fee = $prepared['decision']['fee'];
+        $amount = $this->decimalString($fee['total']);
+        $amountWei = Wei::toWei($amount);
+        $feeWallet = $this->policy->feeWallet();
+
+        if (bccomp($amountWei, '0', 0) > 0 && $feeWallet === '') {
+            throw new TokenFactoryException('FEE_WALLET_MISSING', 'ระบบยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม กรุณาติดต่อทีมงาน', 503);
+        }
+
+        return TokenFactoryFeeQuote::create([
+            'creator_address' => $creator,
+            'chain_id' => $this->policy->chainId(),
+            'token_type' => $prepared['data']['token_type'],
+            'params_hash' => $prepared['decision']['params_hash'],
+            'amount' => $amount,
+            'amount_wei' => $amountWei,
+            'fee_wallet' => $feeWallet !== '' ? $feeWallet : null,
+            'breakdown' => $fee['breakdown'],
+            'expires_at' => now()->addMinutes((int) $this->policy->effective()['quote_ttl_minutes']),
         ]);
+    }
+
+    /**
+     * ตรวจสถานะการชำระค่าธรรมเนียม (หน้าเว็บถามซ้ำระหว่างรอบล็อกยืนยัน).
+     *
+     * @throws TokenFactoryException FEE_PENDING เมื่อยังไม่ครบ
+     */
+    public function feeStatus(string $quoteId, string $txHash, string $creator): array
+    {
+        $quote = $this->findQuote($quoteId, $creator);
+
+        return $this->feeVerifier->verify($quote, $txHash, $creator);
+    }
+
+    /**
+     * บันทึกคำขอสร้างเหรียญ — หลังตรวจค่าธรรมเนียมบนเชนแล้วเท่านั้น.
+     *
+     * @throws TokenFactoryException
+     */
+    public function createToken(array $prepared, string $creator): FactoryToken
+    {
+        $creator = strtolower($creator);
+        $data = $prepared['data'];
+        $decision = $prepared['decision'];
+
+        $this->assertCanCreate($data['token_type'], $creator);
+
+        $quote = $this->findQuote($data['quote_id'], $creator);
+
+        if ($quote->used_at !== null) {
+            throw new TokenFactoryException('QUOTE_USED', 'ใบเสนอราคานี้ถูกใช้สร้างเหรียญไปแล้ว', 409);
+        }
+
+        if (! hash_equals($quote->params_hash, $decision['params_hash'])) {
+            throw new TokenFactoryException('QUOTE_MISMATCH', 'ประเภทหรือตัวเลือกไม่ตรงกับใบเสนอราคา กรุณาขอใบเสนอราคาใหม่');
+        }
+
+        $feeTxHash = null;
+        $verification = null;
+
+        if ($quote->isFree()) {
+            if ($quote->isExpired()) {
+                throw new TokenFactoryException('QUOTE_EXPIRED', 'ใบเสนอราคาหมดอายุแล้ว กรุณาขอใหม่');
+            }
+        } else {
+            $feeTxHash = strtolower(trim((string) ($data['fee_tx_hash'] ?? '')));
+            if ($feeTxHash === '') {
+                throw new TokenFactoryException('FEE_REQUIRED', 'ต้องชำระค่าธรรมเนียมก่อนส่งคำขอสร้างเหรียญ', 402);
+            }
+
+            // โยน FEE_PENDING (202) ถ้ายังยืนยันไม่ครบ — หน้าเว็บถามซ้ำได้
+            $verification = $this->feeVerifier->verify($quote, $feeTxHash, $creator);
+        }
+
+        $metadata = [
+            'policy_type' => $decision['type'],
+            'requested_options' => $decision['options'],
+            'risk_ack' => array_values(array_intersect($decision['required_acks'], (array) ($data['risk_ack'] ?? []))),
+            'sub_options' => $decision['sub_options'],
+            'fee_amount' => (float) $quote->amount,
+            'fee_currency' => 'TPIX',
+            'fee_breakdown' => $quote->breakdown ?? [],
+            'fee_wallet' => $quote->fee_wallet,
+            'fee_tx_hash' => $feeTxHash,
+            'fee_block' => $verification['block'] ?? null,
+            'fee_confirmations' => $verification['confirmations'] ?? null,
+        ];
+
+        try {
+            $token = DB::transaction(function () use ($quote, $data, $creator, $feeTxHash, $metadata) {
+                $locked = TokenFactoryFeeQuote::whereKey($quote->id)->lockForUpdate()->first();
+                if (! $locked || $locked->used_at !== null) {
+                    throw new TokenFactoryException('QUOTE_USED', 'ใบเสนอราคานี้ถูกใช้สร้างเหรียญไปแล้ว', 409);
+                }
+
+                $token = FactoryToken::create([
+                    'name' => $data['name'],
+                    'symbol' => $data['symbol'],
+                    'decimals' => $data['decimals'],
+                    'total_supply' => $data['total_supply'],
+                    'creator_address' => $creator,
+                    'chain_id' => $data['chain_id'],
+                    'logo_url' => $data['logo_url'] ?? null,
+                    'description' => $data['description'] ?? null,
+                    'website' => $data['website'] ?? null,
+                    'token_type' => $data['token_type'],
+                    'token_category' => $data['token_category'],
+                    'status' => 'pending',
+                    'fee_tx_hash' => $feeTxHash,
+                    'fee_quote_id' => $quote->id,
+                    'is_listed' => false,
+                    'is_verified' => false,
+                    'metadata' => $metadata,
+                ]);
+
+                $locked->update(['used_at' => now(), 'factory_token_id' => $token->id]);
+
+                return $token;
+            });
+        } catch (QueryException $e) {
+            if (! $this->isUniqueViolation($e)) {
+                throw $e;
+            }
+
+            if ($feeTxHash !== null && FactoryToken::where('fee_tx_hash', $feeTxHash)->exists()) {
+                throw new TokenFactoryException('FEE_TX_USED', 'ธุรกรรมค่าธรรมเนียมนี้ถูกใช้สร้างเหรียญไปแล้ว', 409);
+            }
+
+            throw new TokenFactoryException('SYMBOL_TAKEN', "สัญลักษณ์ {$data['symbol']} มีคนใช้แล้ว หรือกำลังรออนุมัติอยู่", 409);
+        }
 
         Log::info('Token creation request submitted', [
             'token_id' => $token->id,
             'symbol' => $token->symbol,
             'creator' => $token->creator_address,
-            'fee' => $feeAmount,
+            'fee' => $quote->amount,
+            'fee_tx' => $feeTxHash,
         ]);
 
-        // Auto-approve ถ้าเปิดไว้
-        // Phase 2: fungible tokens (basic + utility + reward) สามารถ auto-approve ได้
-        // governance + stablecoin + NFT ต้องผ่าน admin review เสมอ
-        $autoApprove = filter_var(
-            SiteSetting::get('factory', 'auto_approve', false),
-            FILTER_VALIDATE_BOOLEAN
-        );
-
-        $autoApprovableTypes = [
-            'standard', 'mintable', 'burnable', 'mintable_burnable',
-            'utility', 'reward',
-        ];
-
-        if ($autoApprove && $category === 'fungible' && in_array($tokenType, $autoApprovableTypes)) {
-            $this->approveToken($token);
-            Log::info("Token {$token->symbol} auto-approved", ['token_id' => $token->id]);
+        // อนุมัติอัตโนมัติเฉพาะประเภทที่แอดมินเปิดไว้ และคำขอไม่มีของเสี่ยงเลย
+        if ($decision['auto_approve']) {
+            try {
+                $this->approveToken($token);
+                Log::info("Token {$token->symbol} auto-approved", ['token_id' => $token->id]);
+            } catch (\InvalidArgumentException $e) {
+                Log::warning("Token {$token->symbol} auto-approve skipped", ['reason' => $e->getMessage()]);
+            }
         }
 
         return $token->fresh();
     }
 
-    /**
-     * ดึง Tokens ของ creator.
-     */
+    // =========================================================================
+    //  รายการ
+    // =========================================================================
+
     public function getTokensByCreator(string $address, int $perPage = 20): LengthAwarePaginator
     {
         return FactoryToken::byCreator(strtolower($address))
@@ -140,9 +313,6 @@ class TokenFactoryService
             ->paginate($perPage);
     }
 
-    /**
-     * ดึง Token ที่ deployed ทั้งหมด (public listing).
-     */
     public function getDeployedTokens(?string $search = null, int $perPage = 20): LengthAwarePaginator
     {
         $query = FactoryToken::deployed()
@@ -159,9 +329,6 @@ class TokenFactoryService
         return $query->paginate($perPage);
     }
 
-    /**
-     * Admin: ดึงทุก token พร้อม filter.
-     */
     public function getAllTokens(?string $status = null, ?string $search = null, int $perPage = 20): LengthAwarePaginator
     {
         $query = FactoryToken::query()->with('chain')->orderByDesc('created_at');
@@ -181,20 +348,59 @@ class TokenFactoryService
         return $query->paginate($perPage);
     }
 
+    // =========================================================================
+    //  แอดมิน
+    // =========================================================================
+
     /**
-     * Admin: อนุมัติ token → dispatch job เพื่อ deploy จริงบน TPIX Chain.
+     * อนุมัติ → สั่ง deploy **ครั้งเดียว**.
+     *
+     * เปลี่ยนสถานะด้วย UPDATE ... WHERE status IN (pending, failed) แถวเดียว
+     * กดซ้ำ/สองแอดมินกดพร้อมกัน คนที่สองได้ 0 แถว → ไม่ dispatch งานที่สอง
+     * (เดิม update แล้ว dispatch แยกกัน กดสองครั้ง = สองงาน = สองสัญญา supply เต็ม)
+     *
+     * @throws \InvalidArgumentException ข้อความภาษาไทยสำหรับแสดงแอดมิน
      */
     public function approveToken(FactoryToken $token): FactoryToken
     {
-        if (! in_array($token->status, ['pending', 'failed'])) {
+        if (! in_array($token->status, ['pending', 'failed'], true)) {
             throw new \InvalidArgumentException(
-                "Cannot approve token with status '{$token->status}'. Only pending or failed tokens can be approved."
+                "อนุมัติไม่ได้: สถานะตอนนี้คือ '{$token->status}' (อนุมัติได้เฉพาะ pending หรือ failed)"
             );
         }
 
-        $token->update(['status' => 'deploying']);
+        if ($token->tx_hash) {
+            throw new \InvalidArgumentException('มีธุรกรรมสร้างเหรียญเดิมค้างอยู่ — ต้องตรวจผลธุรกรรมก่อน ห้ามส่งซ้ำ');
+        }
 
-        DeployTokenJob::dispatch($token);
+        $violations = $this->policy->stateViolations($token->token_type, $token->metadata['sub_options'] ?? []);
+        if ($violations !== []) {
+            throw new \InvalidArgumentException('นโยบายตอนนี้ไม่อนุญาต: '.implode(', ', $violations));
+        }
+
+        $ready = $this->readyFor($token->token_type);
+        if (! $ready['ok']) {
+            throw new \InvalidArgumentException('ยัง deploy ไม่ได้: '.$ready['reason']);
+        }
+
+        try {
+            $claimed = FactoryToken::whereKey($token->id)
+                ->whereIn('status', ['pending', 'failed'])
+                ->whereNull('tx_hash')
+                ->update(['status' => 'deploying', 'deploy_started_at' => null, 'updated_at' => now()]);
+        } catch (QueryException $e) {
+            if ($this->isUniqueViolation($e)) {
+                throw new \InvalidArgumentException("สัญลักษณ์ {$token->symbol} ถูกเหรียญอื่นใช้ไปแล้ว");
+            }
+
+            throw $e;
+        }
+
+        if ($claimed !== 1) {
+            throw new \InvalidArgumentException('เหรียญนี้กำลังถูกดำเนินการอยู่แล้ว (มีการอนุมัติไปก่อนหน้า)');
+        }
+
+        DeployTokenJob::dispatch($token->id);
 
         Log::info("Token {$token->symbol} approved, deployment job dispatched", [
             'token_id' => $token->id,
@@ -205,39 +411,41 @@ class TokenFactoryService
         return $token->fresh();
     }
 
-    /**
-     * Admin: ปฏิเสธ token.
-     */
     public function rejectToken(FactoryToken $token, string $reason): FactoryToken
     {
-        if (! in_array($token->status, ['pending', 'failed'])) {
+        $updated = FactoryToken::whereKey($token->id)
+            ->whereIn('status', ['pending', 'failed'])
+            ->whereNull('tx_hash')
+            ->update(['status' => 'rejected', 'reject_reason' => $reason, 'updated_at' => now()]);
+
+        if ($updated !== 1) {
             throw new \InvalidArgumentException(
-                "Cannot reject token with status '{$token->status}'. Only pending or failed tokens can be rejected."
+                "ปฏิเสธไม่ได้: สถานะตอนนี้คือ '{$token->fresh()?->status}' (ปฏิเสธได้เฉพาะ pending หรือ failed)"
             );
         }
 
-        $token->update([
-            'status' => 'rejected',
-            'reject_reason' => $reason,
-        ]);
-
-        Log::info("Token {$token->symbol} rejected", [
-            'token_id' => $token->id,
-            'reason' => $reason,
-        ]);
+        Log::info("Token {$token->symbol} rejected", ['token_id' => $token->id, 'reason' => $reason]);
 
         return $token->fresh();
     }
 
+    /** สั่งตรวจผลธุรกรรมที่ส่งไปแล้วอีกรอบ (ไม่ส่งธุรกรรมใหม่) */
+    public function recheckDeployment(FactoryToken $token): void
+    {
+        if ($token->status !== 'deploying' || ! $token->tx_hash) {
+            throw new \InvalidArgumentException('ตรวจผลได้เฉพาะเหรียญที่กำลัง deploy และมีธุรกรรมแล้ว');
+        }
+
+        CheckFactoryDeployReceiptJob::dispatch($token->id);
+    }
+
     /**
-     * Admin: toggle verify (เฉพาะ deployed tokens).
+     * "Verified" เป็นการตัดสินของแอดมินเท่านั้น — ระบบไม่เคยตั้งให้เอง.
      */
     public function toggleVerified(FactoryToken $token): FactoryToken
     {
         if ($token->status !== 'deployed') {
-            throw new \InvalidArgumentException(
-                "Cannot verify token with status '{$token->status}'. Only deployed tokens can be verified."
-            );
+            throw new \InvalidArgumentException('ยืนยัน (verify) ได้เฉพาะเหรียญที่ deploy แล้ว');
         }
 
         $token->update(['is_verified' => ! $token->is_verified]);
@@ -246,14 +454,12 @@ class TokenFactoryService
     }
 
     /**
-     * Admin: toggle listed (เฉพาะ deployed tokens).
+     * ลิสต์/เลิกลิสต์ — มีผลกับหน้า Explore และ dex:sync (เปิด/ปิดคู่เทรดของเหรียญนี้).
      */
     public function toggleListed(FactoryToken $token): FactoryToken
     {
         if ($token->status !== 'deployed') {
-            throw new \InvalidArgumentException(
-                "Cannot toggle listing for token with status '{$token->status}'."
-            );
+            throw new \InvalidArgumentException('ลิสต์ได้เฉพาะเหรียญที่ deploy แล้ว');
         }
 
         $token->update(['is_listed' => ! $token->is_listed]);
@@ -261,54 +467,67 @@ class TokenFactoryService
         return $token->fresh();
     }
 
+    // =========================================================================
+    //  ความพร้อม
+    // =========================================================================
+
     /**
-     * ตรวจสอบว่าระบบพร้อมสร้าง token หรือไม่.
+     * ระบบพร้อมรับคำขอหรือไม่ (ภาพรวม — ใช้บนหน้าเว็บ).
+     *
+     * ต้องเช็กบนเชนจริง: มีโค้ดที่ที่อยู่แฟกทอรี (เชน TPIX เคย regenesis แล้วสัญญาหาย)
+     * และ owner() ของแฟกทอรีต้องเป็นกระเป๋าที่เซิร์ฟเวอร์ใช้เซ็น (create* เป็น onlyOwner)
      */
-    public function isFactoryReady(): array
+    public function isFactoryReady(bool $withDetails = false): array
     {
-        $creationEnabled = filter_var(
-            SiteSetting::get('factory', 'creation_enabled', true),
-            FILTER_VALIDATE_BOOLEAN
-        );
-        $feeWallet = SiteSetting::get('factory', 'fee_wallet', '');
-        // Fallback: ใช้ revenue tpix_wallet → legacy wallet_address
-        if (empty($feeWallet)) {
-            $feeWallet = SiteSetting::get('revenue', 'tpix_wallet', '');
-        }
-        if (empty($feeWallet)) {
-            $feeWallet = SiteSetting::get('revenue', 'wallet_address', '');
-        }
-        $feeMethod = SiteSetting::get('factory', 'fee_payment_method', 'tpix');
-        $feeTpix = (float) SiteSetting::get('factory', 'creation_fee_tpix', 100);
+        $creationEnabled = $this->policy->creationEnabled();
+        $feeWallet = $this->policy->feeWallet();
+        $needsWallet = $this->policy->anyFeeCharged();
+        $walletConfigured = $feeWallet !== '';
 
-        $needsWallet = $feeMethod !== 'free' && $feeTpix > 0;
-        $walletConfigured = ! empty($feeWallet);
+        $deployer = $this->chain->deployerAddress();
+        $deployerConfigured = $deployer !== null;
 
-        // ── แฟกทอรีบนเชนพร้อมหรือยัง ──────────────────────────────
-        //
-        // เดิมด่านนี้ไม่มีเลย — หน้าเว็บบอก "พร้อม" ทั้งที่ยังไม่มีแฟกทอรีบนเชนสักตัว
-        // ผู้ใช้กรอกฟอร์ม จ่ายค่าธรรมเนียม แล้วงานไป fail ตอน deploy โดยไม่มีใครบอกล่วงหน้า
-        //
-        // ต้องเช็ก eth_getCode ด้วย ไม่ใช่แค่ดูว่ามีที่อยู่ในคอนฟิกไหม
-        // เพราะเชน TPIX เคย regenesis (6 ส.ค. 2026) แล้วสัญญาหายเกลี้ยงทั้งที่ address ยังค้างอยู่
-        $contracts = app(ContractRegistry::class);
-        $erc20Ready = $contracts->isLive('token_factory_v2') || $contracts->isLive('token_factory_v1');
-        $nftReady = $contracts->isLive('nft_factory');
-        $chainReady = $erc20Ready || $nftReady;
+        // สคริปต์ deploy ใช้ V2 ถ้าตั้งไว้ ไม่งั้นตกไป V1 — ตรวจตัวเดียวกับที่จะใช้จริง
+        $erc20Key = $this->contracts->address('token_factory_v2') !== null ? 'token_factory_v2' : 'token_factory_v1';
+        $erc20Address = $this->contracts->address($erc20Key);
+        $erc20Live = $erc20Address !== null && $this->contracts->isLive($erc20Key);
 
-        $deployerConfigured = ! empty(config('blockchain.deployer_private_key'));
+        $nftAddress = $this->contracts->address('nft_factory');
+        $nftLive = $nftAddress !== null && $this->contracts->isLive('nft_factory');
 
-        return [
+        $erc20Owner = $erc20Live ? $this->chain->ownerOf($erc20Address) : null;
+        $nftOwner = $nftLive ? $this->chain->ownerOf($nftAddress) : null;
+        $erc20OwnerOk = $deployer !== null && $erc20Owner !== null && hash_equals($erc20Owner, $deployer);
+        $nftOwnerOk = $deployer !== null && $nftOwner !== null && hash_equals($nftOwner, $deployer);
+
+        $erc20Ready = $erc20Live && $erc20OwnerOk;
+        $nftReady = $nftLive && $nftOwnerOk;
+
+        $erc20Wanted = $this->policy->anyTypeEnabledFor('erc20');
+        $nftWanted = $this->policy->anyTypeEnabledFor('nft');
+        $chainReady = $erc20Live || $nftLive;
+        $usable = ($erc20Wanted && $erc20Ready) || ($nftWanted && $nftReady);
+
+        $ownerIssue = function (string $label, bool $live, ?string $owner, bool $ok, bool $wanted) use ($deployerConfigured): ?string {
+            if (! $wanted || ! $live || ! $deployerConfigured || $ok) {
+                return null;
+            }
+
+            return $owner === null
+                ? "อ่าน owner() ของแฟกทอรี {$label} ไม่ได้"
+                : "กระเป๋าที่เซิร์ฟเวอร์ใช้ส่งธุรกรรมไม่ใช่เจ้าของ (owner) ของแฟกทอรี {$label}";
+        };
+
+        $result = [
             'ready' => $creationEnabled
                 && (! $needsWallet || $walletConfigured)
-                && $chainReady
-                && $deployerConfigured,
+                && $deployerConfigured
+                && $usable,
             'creation_enabled' => $creationEnabled,
             'fee_wallet_configured' => $walletConfigured,
             'fee_wallet_needed' => $needsWallet,
 
             // แยกให้ชัดว่าติดที่ "รอ deploy" หรือติดที่ตั้งค่าอย่างอื่น
-            // หน้าเว็บใช้ตัวนี้ตัดสินว่าจะขึ้นป้าย "กำลังรอติดตั้งสัญญา" หรือป้ายอื่น
             'awaiting_deploy' => ! $chainReady,
             'erc20_factory_ready' => $erc20Ready,
             'nft_factory_ready' => $nftReady,
@@ -317,17 +536,56 @@ class TokenFactoryService
             'issues' => array_values(array_filter([
                 ! $creationEnabled ? 'ผู้ดูแลปิดระบบสร้างเหรียญไว้' : null,
                 $needsWallet && ! $walletConfigured ? 'ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม' : null,
+                ! $erc20Wanted && ! $nftWanted ? 'ผู้ดูแลยังไม่ได้เปิดประเภทเหรียญใดเลย' : null,
                 ! $chainReady ? 'ยังไม่ได้ติดตั้งสัญญาแฟกทอรีบนเชน' : null,
-                $chainReady && ! $erc20Ready ? 'แฟกทอรี ERC-20 ยังไม่พร้อม (สร้างได้เฉพาะ NFT)' : null,
-                $chainReady && ! $nftReady ? 'แฟกทอรี NFT ยังไม่พร้อม (สร้างได้เฉพาะเหรียญ ERC-20)' : null,
+                $chainReady && $erc20Wanted && ! $erc20Live ? 'แฟกทอรี ERC-20 ยังไม่พร้อม (สร้างได้เฉพาะ NFT)' : null,
+                $chainReady && $nftWanted && ! $nftLive ? 'แฟกทอรี NFT ยังไม่พร้อม (สร้างได้เฉพาะเหรียญ ERC-20)' : null,
+                $ownerIssue('ERC-20', $erc20Live, $erc20Owner, $erc20OwnerOk, $erc20Wanted),
+                $ownerIssue('NFT', $nftLive, $nftOwner, $nftOwnerOk, $nftWanted),
                 ! $deployerConfigured ? 'ยังไม่ได้ตั้งกระเป๋าที่ใช้ส่งธุรกรรม (DEPLOYER_PRIVATE_KEY)' : null,
             ])),
         ];
+
+        if ($withDetails) {
+            $result['details'] = [
+                'deployer_address' => $deployer,
+                'erc20_factory' => ['key' => $erc20Key, 'address' => $erc20Address, 'live' => $erc20Live, 'owner' => $erc20Owner],
+                'nft_factory' => ['address' => $nftAddress, 'live' => $nftLive, 'owner' => $nftOwner],
+            ];
+        }
+
+        return $result;
     }
 
     /**
-     * สถิติรวม
+     * พร้อมสร้าง "ประเภทนี้" หรือไม่ — ERC-20 ต้องมีแฟกทอรี ERC-20, NFT ต้องมีแฟกทอรี NFT.
+     *
+     * เดิมถือว่าพร้อมถ้ามีแฟกทอรีตัวใดตัวหนึ่ง — มีแค่ NFT factory ก็รับคำขอ ERC-20 แล้วไปพังตอน deploy
+     *
+     * @return array{ok: bool, reason: ?string}
      */
+    public function readyFor(string $tokenType): array
+    {
+        $type = TokenFactoryPolicy::policyTypeFor($tokenType);
+        if ($type === null) {
+            return ['ok' => false, 'reason' => 'ไม่รู้จักประเภทเหรียญนี้'];
+        }
+
+        $state = $this->isFactoryReady();
+        $factory = TokenFactoryPolicy::TYPES[$type]['factory'];
+
+        $reason = match (true) {
+            ! $state['creation_enabled'] => 'ผู้ดูแลปิดระบบสร้างเหรียญไว้',
+            $state['fee_wallet_needed'] && ! $state['fee_wallet_configured'] => 'ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม',
+            ! $state['deployer_configured'] => 'ยังไม่ได้ตั้งกระเป๋าที่ใช้ส่งธุรกรรม',
+            $factory === 'erc20' && ! $state['erc20_factory_ready'] => 'แฟกทอรี ERC-20 ยังไม่พร้อม (ยังไม่ได้ติดตั้ง หรือกระเป๋าของเซิร์ฟเวอร์ไม่ใช่เจ้าของ)',
+            $factory === 'nft' && ! $state['nft_factory_ready'] => 'แฟกทอรี NFT ยังไม่พร้อม (ยังไม่ได้ติดตั้ง หรือกระเป๋าของเซิร์ฟเวอร์ไม่ใช่เจ้าของ)',
+            default => null,
+        };
+
+        return ['ok' => $reason === null, 'reason' => $reason];
+    }
+
     public function getStats(): array
     {
         return [
@@ -343,234 +601,117 @@ class TokenFactoryService
     }
 
     /**
-     * ตรวจว่า chain_id เป็น testnet หรือไม่
-     * Testnet สร้าง token ฟรี — ไม่เสียค่าธรรมเนียม
-     */
-    public function isTestnet(int $chainId): bool
-    {
-        $testnetIds = config('blockchain.testnet_chain_ids', [4290, 11155111, 97]);
-
-        return in_array($chainId, $testnetIds, true);
-    }
-
-    /**
-     * คำนวณค่าธรรมเนียมแบบ dynamic ตามออฟชั่นที่เลือก.
-     *
-     * fee = base_fee + category_fee + type_fee + option_fees
-     * ถ้าเป็น testnet → fee = 0 (FREE) เสมอ
-     *
-     * @param  array  $options  ['token_category', 'token_type', 'decimals', 'total_supply', 'chain_id']
-     * @return array ['total' => float, 'breakdown' => [...]]
+     * ค่าธรรมเนียมตามนโยบาย (ปลายทาง /calculate-fee) — แหล่งเดียวกับใบเสนอราคา.
      */
     public function calculateFee(array $options): array
     {
-        // Testnet → สร้างฟรีเสมอ
-        $chainId = (int) ($options['chain_id'] ?? 4289);
-        if ($this->isTestnet($chainId)) {
-            return [
-                'total' => 0,
-                'currency' => 'FREE',
-                'breakdown' => [],
-                'is_free' => true,
-                'is_testnet' => true,
-            ];
-        }
-        $fees = config('blockchain.creation_fees', []);
+        $tokenType = (string) ($options['token_type'] ?? 'standard');
+        $type = TokenFactoryPolicy::policyTypeFor($tokenType);
 
-        // ดึง fee config จาก SiteSettings ก่อน (admin override) → fallback ไป config/blockchain.php
-        $baseFee = (float) SiteSetting::get('factory', 'base_fee', $fees['base_fee'] ?? 50);
-
-        $categoryFees = $fees['category_fees'] ?? [];
-        $typeFees = $fees['type_fees'] ?? [];
-        $optionFees = $fees['option_fees'] ?? [];
-
-        // Override จาก SiteSettings (ถ้า admin ตั้งค่าไว้)
-        $feeOverride = SiteSetting::get('factory', 'fee_override_json', '');
-        if (! empty($feeOverride)) {
-            $override = json_decode($feeOverride, true);
-            if (is_array($override)) {
-                $baseFee = (float) ($override['base_fee'] ?? $baseFee);
-                $categoryFees = array_merge($categoryFees, $override['category_fees'] ?? []);
-                $typeFees = array_merge($typeFees, $override['type_fees'] ?? []);
-                $optionFees = array_merge($optionFees, $override['option_fees'] ?? []);
-            }
+        if ($type === null) {
+            return ['total' => 0, 'currency' => 'TPIX', 'breakdown' => [], 'is_free' => true];
         }
 
-        $breakdown = [];
-        $total = 0;
-
-        // 1. Base fee
-        $breakdown[] = ['label' => 'Base Fee', 'label_th' => 'ค่าพื้นฐาน', 'amount' => $baseFee];
-        $total += $baseFee;
-
-        // 2. Category fee
-        $category = $options['token_category'] ?? 'fungible';
-        $catFee = (float) ($categoryFees[$category] ?? 0);
-        if ($catFee > 0) {
-            $catLabels = ['nft' => 'NFT Category', 'special' => 'Special Category'];
-            $catLabelsTh = ['nft' => 'ประเภท NFT', 'special' => 'ประเภทพิเศษ'];
-            $breakdown[] = [
-                'label' => $catLabels[$category] ?? ucfirst($category),
-                'label_th' => $catLabelsTh[$category] ?? ucfirst($category),
-                'amount' => $catFee,
-            ];
-            $total += $catFee;
-        }
-
-        // 3. Type fee
-        $tokenType = $options['token_type'] ?? 'standard';
-        $typFee = (float) ($typeFees[$tokenType] ?? 0);
-        if ($typFee > 0) {
-            $typeLabels = [
-                'mintable' => 'Mint Function',
-                'burnable' => 'Burn Function',
-                'mintable_burnable' => 'Mint + Burn Functions',
-                'utility' => 'Utility Features',
-                'reward' => 'Reward Features',
-                'nft_collection' => 'Collection Features',
-                'governance' => 'Governance Mechanism',
-                'stablecoin' => 'Stablecoin Mechanism',
-            ];
-            $typeLabelsTh = [
-                'mintable' => 'ฟังก์ชัน Mint',
-                'burnable' => 'ฟังก์ชัน Burn',
-                'mintable_burnable' => 'ฟังก์ชัน Mint + Burn',
-                'utility' => 'ฟีเจอร์ Utility',
-                'reward' => 'ฟีเจอร์ Reward',
-                'nft_collection' => 'ฟีเจอร์ Collection',
-                'governance' => 'ระบบ Governance',
-                'stablecoin' => 'ระบบ Stablecoin',
-            ];
-            $breakdown[] = [
-                'label' => $typeLabels[$tokenType] ?? ucfirst($tokenType),
-                'label_th' => $typeLabelsTh[$tokenType] ?? ucfirst($tokenType),
-                'amount' => $typFee,
-            ];
-            $total += $typFee;
-        }
-
-        // 4. Option fees
-        $decimals = (int) ($options['decimals'] ?? 18);
-        if ($decimals !== 18 && $decimals !== 0) {
-            $decFee = (float) ($optionFees['custom_decimals'] ?? 5);
-            if ($decFee > 0) {
-                $breakdown[] = ['label' => "Custom Decimals ({$decimals})", 'label_th' => "Decimals พิเศษ ({$decimals})", 'amount' => $decFee];
-                $total += $decFee;
-            }
-        }
-
-        // Supply size fee
-        $supply = (float) ($options['total_supply'] ?? 0);
-        $veryLargeThreshold = $fees['very_large_supply_threshold'] ?? 100000000000;
-        $largeThreshold = $fees['large_supply_threshold'] ?? 1000000000;
-
-        if ($supply > $veryLargeThreshold) {
-            $supFee = (float) ($optionFees['very_large_supply'] ?? 25);
-            if ($supFee > 0) {
-                $breakdown[] = ['label' => 'Very Large Supply (>100B)', 'label_th' => 'Supply ขนาดใหญ่มาก (>100B)', 'amount' => $supFee];
-                $total += $supFee;
-            }
-        } elseif ($supply > $largeThreshold) {
-            $supFee = (float) ($optionFees['large_supply'] ?? 10);
-            if ($supFee > 0) {
-                $breakdown[] = ['label' => 'Large Supply (>1B)', 'label_th' => 'Supply ขนาดใหญ่ (>1B)', 'amount' => $supFee];
-                $total += $supFee;
-            }
-        }
-
-        // 5. Sub-option fees — คิดค่าธรรมเนียมเพิ่มตาม sub-options ที่เลือก
-        $subOptions = $options['sub_options'] ?? [];
-        if (is_array($subOptions) && ! empty($subOptions)) {
-            // Sub-option fee labels (EN / TH)
-            $subOptionLabels = [
-                'pausable' => ['Pausable', 'หยุดชั่วคราวได้'],
-                'blacklist' => ['Blacklist', 'ระบบ Blacklist'],
-                'tax_system' => ['Tax System', 'ระบบภาษี'],
-                'anti_whale' => ['Anti-Whale', 'ป้องกันวาฬ'],
-                'anti_bot' => ['Anti-Bot', 'ป้องกันบอท'],
-                'auto_liquidity' => ['Auto Liquidity', 'สภาพคล่องอัตโนมัติ'],
-                'reflection' => ['Reflection/Rewards', 'ระบบ Reflection'],
-                'vesting' => ['Vesting Schedule', 'ตาราง Vesting'],
-                'royalty' => ['Royalty (ERC-2981)', 'ค่าลิขสิทธิ์'],
-                'delayed_reveal' => ['Delayed Reveal', 'เปิดเผยภายหลัง'],
-                'treasury' => ['Treasury', 'คลัง Treasury'],
-                'delegation' => ['Delegation', 'การมอบอำนาจ'],
-                'soulbound' => ['Soulbound (SBT)', 'โทเคนผูกตัว'],
-                'freeze' => ['Freeze/Compliance', 'อายัด/Compliance'],
-                'kyc' => ['KYC Required', 'ต้อง KYC'],
-                'auto_burn' => ['Auto Burn', 'เผาอัตโนมัติ'],
-            ];
-
-            foreach ($subOptions as $key => $value) {
-                // เช็คเฉพาะ boolean sub-options ที่เปิดใช้งาน
-                if ($value === true && isset($optionFees[$key])) {
-                    $subFee = (float) $optionFees[$key];
-                    if ($subFee > 0) {
-                        $labels = $subOptionLabels[$key] ?? [ucfirst(str_replace('_', ' ', $key)), ucfirst(str_replace('_', ' ', $key))];
-                        $breakdown[] = [
-                            'label' => $labels[0],
-                            'label_th' => $labels[1],
-                            'amount' => $subFee,
-                        ];
-                        $total += $subFee;
-                    }
-                }
-            }
-        }
-
-        // เช็คว่า fee method เป็น free หรือเปล่า
-        $feeMethod = SiteSetting::get('factory', 'fee_payment_method', 'tpix');
-        if ($feeMethod === 'free') {
-            return [
-                'total' => 0,
-                'currency' => 'FREE',
-                'breakdown' => [],
-                'is_free' => true,
-                'is_testnet' => false,
-            ];
-        }
+        $fee = $this->policy->fee($type, $this->policy->requestedOptions($tokenType, (array) ($options['sub_options'] ?? [])));
 
         return [
-            'total' => round($total, 2),
+            'total' => $fee['total'],
             'currency' => 'TPIX',
-            'breakdown' => $breakdown,
-            'is_free' => false,
-            'is_testnet' => false,
+            'breakdown' => $fee['breakdown'],
+            'is_free' => $fee['total'] <= 0,
         ];
     }
 
     /**
-     * Get factory configuration for frontend (รวม dynamic fee config).
+     * ค่าที่หน้าเว็บสร้างเหรียญต้องใช้ — นโยบายที่ใช้จริง (ไม่มีรายชื่อกระเป๋าใน allowlist).
      */
     public function getFactoryConfig(): array
     {
-        $fees = config('blockchain.creation_fees', []);
+        $public = $this->policy->publicConfig();
 
         return [
-            'fee_payment_method' => SiteSetting::get('factory', 'fee_payment_method', 'tpix'),
-            'fee_wallet' => SiteSetting::get('factory', 'fee_wallet', ''),
-            'nft_enabled' => filter_var(SiteSetting::get('factory', 'nft_enabled', true), FILTER_VALIDATE_BOOLEAN),
-            'max_supply_limit' => (float) SiteSetting::get('factory', 'max_supply_limit', 999999999999999),
-            'auto_approve' => filter_var(SiteSetting::get('factory', 'auto_approve', false), FILTER_VALIDATE_BOOLEAN),
-            'creation_enabled' => filter_var(SiteSetting::get('factory', 'creation_enabled', true), FILTER_VALIDATE_BOOLEAN),
-
-            // Dynamic fee config — ส่งให้ frontend คำนวณได้ real-time
-            'dynamic_fees' => [
-                'base_fee' => (float) SiteSetting::get('factory', 'base_fee', $fees['base_fee'] ?? 50),
-                'category_fees' => $fees['category_fees'] ?? ['fungible' => 0, 'nft' => 30, 'special' => 50],
-                'type_fees' => $fees['type_fees'] ?? [],
-                'option_fees' => $fees['option_fees'] ?? [],
-                'large_supply_threshold' => $fees['large_supply_threshold'] ?? 1000000000,
-                'very_large_supply_threshold' => $fees['very_large_supply_threshold'] ?? 100000000000,
-            ],
-
-            // Legacy (backward compat) — ค่า fee ของ standard token
-            'creation_fee_tpix' => (float) SiteSetting::get('factory', 'base_fee', $fees['base_fee'] ?? 50),
-            'creation_fee_usd' => (float) SiteSetting::get('factory', 'creation_fee_usd', 10),
-
-            // Testnet: สร้าง token ฟรี + reset ข้อมูลเป็นระยะ
-            'testnet_chain_ids' => config('blockchain.testnet_chain_ids', [4290, 11155111, 97]),
-            'testnet_reset_months' => config('blockchain.testnet_reset_months', 3),
+            'creation_enabled' => $this->policy->creationEnabled(),
+            'fee_wallet' => $public['fee_wallet'],
+            'nft_enabled' => $this->policy->typeEnabled('nft') || $this->policy->typeEnabled('nft_collection'),
+            'max_supply_limit' => $public['types']['erc20']['max_supply'],
+            'chain_id' => $public['chain_id'],
+            'policy' => $public,
         ];
+    }
+
+    // =========================================================================
+    //  ภายใน
+    // =========================================================================
+
+    /**
+     * ด่านที่ต้องผ่านก่อนออกใบเสนอราคาและก่อนสร้าง.
+     *
+     * @throws TokenFactoryException
+     */
+    private function assertCanCreate(string $tokenType, string $creator): void
+    {
+        if (! $this->policy->creationEnabled()) {
+            throw new TokenFactoryException('FACTORY_DISABLED', 'ขณะนี้ปิดระบบสร้างเหรียญชั่วคราว', 403);
+        }
+
+        $ready = $this->readyFor($tokenType);
+        if (! $ready['ok']) {
+            throw new TokenFactoryException('FACTORY_NOT_READY', 'ยังสร้างเหรียญประเภทนี้ไม่ได้: '.$ready['reason'], 503);
+        }
+
+        $limit = (int) $this->policy->effective()['daily_limit_per_wallet'];
+        $recent = FactoryToken::where('creator_address', $creator)
+            ->where('created_at', '>=', now()->subDay())
+            ->count();
+
+        if ($recent >= $limit) {
+            throw new TokenFactoryException('DAILY_LIMIT', "กระเป๋านี้สร้างเหรียญครบ {$limit} ครั้งใน 24 ชั่วโมงแล้ว", 429);
+        }
+    }
+
+    private function findQuote(string $quoteId, string $creator): TokenFactoryFeeQuote
+    {
+        $quote = TokenFactoryFeeQuote::find($quoteId);
+
+        if (! $quote || $quote->creator_address !== strtolower($creator)) {
+            throw new TokenFactoryException('QUOTE_NOT_FOUND', 'ไม่พบใบเสนอราคาของกระเป๋านี้ กรุณาขอใบเสนอราคาใหม่');
+        }
+
+        return $quote;
+    }
+
+    private function symbolTaken(string $symbol): bool
+    {
+        return FactoryToken::where('chain_id', $this->policy->chainId())
+            ->whereRaw('UPPER(symbol) = ?', [strtoupper($symbol)])
+            ->whereIn('status', self::ACTIVE_STATUSES)
+            ->exists();
+    }
+
+    private function isOwnUploadedLogo(string $url, string $creator): bool
+    {
+        $pattern = '#^/storage/(token-logos/'.preg_quote(strtolower($creator), '#').'/[A-Za-z0-9._-]+\.(png|jpe?g|webp))$#';
+
+        if (! preg_match($pattern, $url, $match)) {
+            return false;
+        }
+
+        return Storage::disk('public')->exists($match[1]);
+    }
+
+    private function isUniqueViolation(QueryException $e): bool
+    {
+        $state = $e->errorInfo[0] ?? $e->getCode();
+
+        return (string) $state === '23000' || (string) $state === '23505'
+            || str_contains(strtolower($e->getMessage()), 'unique');
+    }
+
+    /** float → ทศนิยมแบบ string (ไม่มี e-notation) สำหรับแปลงเป็น wei */
+    private function decimalString(float $amount): string
+    {
+        $text = rtrim(rtrim(sprintf('%.6F', max(0, $amount)), '0'), '.');
+
+        return $text === '' ? '0' : $text;
     }
 }
