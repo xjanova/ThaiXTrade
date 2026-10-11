@@ -33,6 +33,16 @@ class AppUpdateController extends Controller
 
     private ?string $githubToken;
 
+    /**
+     * นานแค่ไหนที่เก็บ URL ปลายทางที่ GitHub เซ็นให้ (ปุ่มดาวน์โหลดบนเว็บ).
+     *
+     * ลิงก์ release-assets.githubusercontent.com มี jwt ที่หมดอายุ 30 นาทีหลังออก
+     * (ตรวจสด 2026-10-11 — ลิงก์ objects.githubusercontent.com รุ่นก่อนอยู่ได้แค่ 5 นาที)
+     * เดิมแคชไว้ 1 ชั่วโมง → ครึ่งหลังของรอบแคช ทุกคนที่กดดาวน์โหลดถูกส่งไปลิงก์ที่หมดอายุแล้ว
+     * 4 นาทีสั้นกว่าอายุลิงก์ทั้งสองแบบ และยังพอกันคนกดรัวไม่ให้ยิง GitHub ทุกครั้ง
+     */
+    private const SIGNED_URL_TTL = 240;
+
     public function __construct()
     {
         $this->githubOwner = config('services.github.owner', 'xjanova');
@@ -170,38 +180,8 @@ class AppUpdateController extends Controller
         $fileName = "TPIX-TRADE-v{$releaseInfo['version']}.apk";
         $fileSize = $releaseInfo['file_size'] ?? null;
 
-        // Step 1: ดึง S3 redirect URL จาก GitHub API (แคช 1 ชั่วโมง)
-        $s3Url = Cache::remember('apk_s3_url', 3600, function () use ($githubUrl) {
-            $headers = [
-                'Accept' => 'application/octet-stream',
-                'User-Agent' => 'TPIX-TRADE-Server',
-            ];
-
-            if ($this->githubToken) {
-                $headers['Authorization'] = "Bearer {$this->githubToken}";
-            }
-
-            $ch = curl_init($githubUrl);
-            $curlHeaders = [];
-            foreach ($headers as $k => $v) {
-                $curlHeaders[] = "{$k}: {$v}";
-            }
-
-            curl_setopt_array($ch, [
-                CURLOPT_HTTPHEADER => $curlHeaders,
-                CURLOPT_FOLLOWLOCATION => false,
-                CURLOPT_NOBODY => true,
-                CURLOPT_HEADER => true,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 10,
-            ]);
-
-            $response = curl_exec($ch);
-            $redirectUrl = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
-            curl_close($ch);
-
-            return $redirectUrl ?: null;
-        });
+        // Step 1: ดึง URL ปลายทางที่ GitHub เซ็นให้ — แคชสั้นกว่าอายุลิงก์ (ดู SIGNED_URL_TTL)
+        $s3Url = Cache::remember('apk_s3_url', self::SIGNED_URL_TTL, fn () => $this->signedAssetUrl($githubUrl));
 
         if (! $s3Url) {
             Log::warning('APK download: failed to get S3 URL', ['github_url' => $githubUrl]);
@@ -654,32 +634,11 @@ class AppUpdateController extends Controller
         }
 
         $cacheKey = "chain_s3_url_{$type}";
-        $s3Url = Cache::remember($cacheKey, 3600, function () use ($asset) {
-            $headers = [
-                'Accept: application/octet-stream',
-                'User-Agent: TPIX-TRADE-Server',
-            ];
-
-            if ($this->githubToken) {
-                $headers[] = "Authorization: Bearer {$this->githubToken}";
-            }
-
-            $ch = curl_init($asset['download_url']);
-            curl_setopt_array($ch, [
-                CURLOPT_HTTPHEADER => $headers,
-                CURLOPT_FOLLOWLOCATION => false,
-                CURLOPT_NOBODY => true,
-                CURLOPT_HEADER => true,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 10,
-            ]);
-
-            curl_exec($ch);
-            $redirectUrl = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
-            curl_close($ch);
-
-            return $redirectUrl ?: null;
-        });
+        $s3Url = Cache::remember(
+            $cacheKey,
+            self::SIGNED_URL_TTL,
+            fn () => $this->signedAssetUrl($asset['download_url'])
+        );
 
         if (! $s3Url) {
             return response()->json([
@@ -1019,29 +978,30 @@ class AppUpdateController extends Controller
     private function signedAssetUrl(string $apiUrl): ?string
     {
         $headers = [
-            'Accept: application/octet-stream',
-            'User-Agent: TPIX-TRADE-Server',
+            'Accept' => 'application/octet-stream',
+            'User-Agent' => 'TPIX-TRADE-Server',
         ];
 
         if ($this->githubToken) {
-            $headers[] = "Authorization: Bearer {$this->githubToken}";
+            $headers['Authorization'] = "Bearer {$this->githubToken}";
         }
 
-        $ch = curl_init($apiUrl);
-        curl_setopt_array($ch, [
-            CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_NOBODY => true,
-            CURLOPT_HEADER => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 10,
-        ]);
+        // HEAD แบบไม่ตาม redirect — ต้องการแค่ Location ที่ GitHub ตอบกลับมา
+        // (ผ่าน Http facade แทน curl ดิบ จะได้ทดสอบด้วย Http::fake ได้)
+        try {
+            $response = Http::withHeaders($headers)
+                ->withOptions(['allow_redirects' => false])
+                ->timeout(10)
+                ->head($apiUrl);
+        } catch (\Throwable $e) {
+            Log::warning('GitHub signed asset URL failed', ['error' => $e->getMessage()]);
 
-        curl_exec($ch);
-        $redirectUrl = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
-        curl_close($ch);
+            return null;
+        }
 
-        return $redirectUrl ?: null;
+        $location = $response->redirect() ? trim((string) $response->header('Location')) : '';
+
+        return $location !== '' ? $location : null;
     }
 
     /**
