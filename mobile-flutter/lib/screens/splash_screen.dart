@@ -6,6 +6,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -61,15 +62,10 @@ class _SplashScreenState extends State<SplashScreen> {
 
     // Biometric auth ถ้าเปิดไว้ + มี wallet
     if (wallet.isConnected && wallet.biometricEnabled) {
-      final ok = await BiometricService().authenticate('Unlock TPIX TRADE');
-      if (!mounted) return;
-      if (!ok) {
-        // ล้มเหลว — ยังให้เข้าได้แต่ disconnect wallet เพื่อความปลอดภัย
-        await wallet.disconnect();
-      } else {
-        // โหลด portfolio data หลัง biometric ผ่าน
-        wallet.loadPortfolio();
-      }
+      final ok = await _unlockWithBiometrics();
+      if (!mounted || !ok) return; // ผู้ใช้เลือกปิดแอป
+      // โหลด portfolio data หลัง biometric ผ่าน
+      wallet.loadPortfolio();
     } else if (wallet.isConnected) {
       wallet.loadPortfolio();
     }
@@ -87,6 +83,49 @@ class _SplashScreenState extends State<SplashScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       DeepLinkService().init(rootNavigatorKey);
     });
+  }
+
+  /// ปลดล็อกด้วยลายนิ้วมือ/ใบหน้า — **ยืนยันไม่ผ่านห้ามลบกระเป๋าเด็ดขาด**
+  ///
+  /// ⚠️ เดิมเรียก wallet.disconnect() เมื่อไม่ผ่าน ซึ่งลบ private key + วลีกู้คืนในเครื่องทิ้ง
+  ///    กดยกเลิกสแกนนิ้วครั้งเดียว หรือเครื่องถอดล็อกหน้าจอออก = กระเป๋าในแอปหายถาวร
+  ///    (ถ้าไม่ได้จดวลีกู้คืนไว้ เงินหายตามไปด้วย)
+  /// ตอนนี้: ไม่ผ่าน = ถามให้ลองใหม่หรือปิดแอป กระเป๋าอยู่ครบเสมอ
+  /// คืน false เมื่อผู้ใช้เลือกปิดแอป
+  Future<bool> _unlockWithBiometrics() async {
+    final bio = BiometricService();
+    // เครื่องไม่มีล็อกหน้าจอ/ไบโอเมตริกแล้ว — ยืนยันไม่ได้ตลอดไป (การถอดล็อกต้องปลดล็อกเครื่องก่อน)
+    if (!await bio.isDeviceSupported()) return true;
+    while (mounted) {
+      if (await bio.authenticate('Unlock TPIX TRADE')) return true;
+      if (!mounted) return false;
+      final th = context.read<LocaleProvider>().isThai;
+      final retry = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: Text(th ? 'ยืนยันตัวตนไม่สำเร็จ' : 'Authentication failed'),
+          content: Text(th
+              ? 'สแกนลายนิ้วมือหรือใบหน้าเพื่อเปิด TPIX TRADE — กระเป๋าของคุณยังอยู่ครบ'
+              : 'Use your fingerprint or face to open TPIX TRADE. Your wallet is safe.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(th ? 'ปิดแอป' : 'Close app'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(th ? 'ลองอีกครั้ง' : 'Try again'),
+            ),
+          ],
+        ),
+      );
+      if (retry != true) {
+        await SystemNavigator.pop();
+        return false;
+      }
+    }
+    return false;
   }
 
   @override
