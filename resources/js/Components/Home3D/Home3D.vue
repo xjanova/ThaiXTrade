@@ -25,6 +25,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import BannerAd from '@/Components/BannerAd.vue';
 import TpixMascot from '@/Components/Home/TpixMascot.vue';
+import IntroVideoModal from '@/Components/Home/IntroVideoModal.vue';
 import { vTilt } from '@/Components/Home/directives';
 import { STATIONS, journeyF, panelVisibility } from './stations';
 import { createEngine } from './engine';
@@ -137,6 +138,25 @@ let detachUnlock = null;
 let lastHoverEl = null;
 const lastVis = new Map();
 // เลื่อน/ปัด 1 ครั้ง = 1 สถานี
+// ── คลิปแนะนำ (หน้าต่างเต็มจอ) ──
+// ระหว่างเปิด: พักฉาก 3D (กันตัววัดเฟรมเรตสั่งสลับไปหน้าธรรมดากลางคลิป), ระงับเสียงฉาก,
+// ถอดตัวเลื่อนสถานี (ไม่งั้น Space/ลูกศรไปเลื่อนสถานีแทนคุมวิดีโอ)
+const introOpen = ref(false);
+function openIntro() {
+    if (introOpen.value) return;
+    introOpen.value = true;
+    snap.detach();
+    engine?.park();
+    sfx.hold(true);
+}
+function closeIntro() {
+    if (!introOpen.value) return;
+    introOpen.value = false;
+    sfx.hold(false);
+    snap.attach();
+    if (engine && !loading.value) engine.start();
+}
+
 const snap = createSnapScroll({
     getCenters: () => centers,
     onSnap: (i) => sfx.swoosh(i >= Math.round(f) ? 1 : -1),
@@ -502,6 +522,8 @@ onBeforeUnmount(() => {
     document.removeEventListener('click', onUiClick, true);
     detachUnlock?.();
     snap.detach();
+    // ออกจากหน้าระหว่างเปิดคลิป: ปล่อยเสียงที่ระงับไว้ก่อน (สถานะอยู่ระดับโมดูล ไม่งั้นกลับมาหน้านี้แล้วเงียบถาวร)
+    if (introOpen.value) sfx.hold(false);
     sfx.pause();
     clearInterval(klineTimer);
     clearInterval(depthTimer);
@@ -585,6 +607,12 @@ function fmtTime(ms) {
                                     {{ t('home.tourWithMascot') }}
                                 </button>
                             </div>
+                            <button type="button" class="h3d-watch mb-6" @click="openIntro">
+                                <span class="h3d-watch__icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z" /></svg>
+                                </span>
+                                {{ t('introVideo.title') }}
+                            </button>
                             <div class="grid grid-cols-2 gap-2.5">
                                 <Link v-for="s in stats" :key="s.label" v-tilt="{ max: 10 }" :href="s.href" class="h3d-chip h3d-chip--link">
                                     <p class="text-base xl:text-lg font-bold text-white leading-tight">{{ s.value }}</p>
@@ -810,12 +838,46 @@ function fmtTime(ms) {
         </div>
 
         <TpixMascot :section="current" />
+
+        <IntroVideoModal v-if="introOpen" @close="closeIntro" />
     </AppLayout>
 </template>
 
 <style scoped>
 .h3d {
     position: relative;
+}
+
+/* ปุ่ม "ดูคลิปแนะนำ" ในแผงฮีโร่ */
+.h3d-watch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: rgb(var(--c-primary-300));
+    transition: color 0.2s ease;
+}
+
+.h3d-watch:hover {
+    color: rgb(var(--c-white));
+}
+
+.h3d-watch__icon {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    color: #fff;
+    background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+    box-shadow: 0 0 0 4px rgb(34 211 238 / 0.15);
+}
+
+.h3d-watch__icon svg {
+    width: 0.9rem;
+    height: 0.9rem;
+    margin-left: 2px;
 }
 
 .h3d-canvas {

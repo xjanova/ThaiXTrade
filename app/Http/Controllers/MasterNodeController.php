@@ -274,6 +274,9 @@ class MasterNodeController extends Controller
                 // อยู่ใน stats ด้วยเพราะหน้าเว็บ poll stats ทุก 30 วิอยู่แล้ว — แอดมินกดปิดรับเมื่อไหร่
                 // ปุ่มซื้อของคนที่เปิดหน้าค้างไว้ก็ปิดตามโดยไม่ต้องรีเฟรช
                 'registration_paused' => null,
+                // ที่อยู่สัญญา + Explorer — หน้าแรกทำลิงก์ให้ผู้ใช้กดตรวจสัญญาบนเชนเองได้
+                'registry_address' => $deployed ? $this->registry->address() : null,
+                'explorer_url' => rtrim((string) config('masternode.explorer_url', 'https://explorer.tpix.online'), '/'),
             ];
 
             if (! $deployed) {

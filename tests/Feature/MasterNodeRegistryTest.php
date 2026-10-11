@@ -155,6 +155,45 @@ class MasterNodeRegistryTest extends TestCase
         $this->assertSame(0, $stats['current_year_index']);
     }
 
+    public function test_stats_api_links_the_deployed_registry_for_the_homepage(): void
+    {
+        // หน้าแรกทำลิงก์ "ดูสัญญาบน Explorer" จากสองฟิลด์นี้ — ต้องเป็นที่อยู่จริงที่ deploy แล้ว
+        config(['masternode.explorer_url' => 'https://explorer.tpix.test/']);
+        Http::fake(function ($request) {
+            $body = json_decode($request->body(), true);
+
+            return match ($body['method']) {
+                'eth_blockNumber' => ['jsonrpc' => '2.0', 'id' => 1, 'result' => '0x2a'],
+                'eth_getCode' => ['jsonrpc' => '2.0', 'id' => 1, 'result' => '0x60806040'],
+                default => ['jsonrpc' => '2.0', 'id' => 1, 'result' => $this->words(array_fill(0, 12, '0'))],
+            };
+        });
+
+        $this->getJson('/api/v1/masternode/stats')
+            ->assertOk()
+            ->assertJsonPath('data.registry_deployed', true)
+            ->assertJsonPath('data.registry_address', self::REGISTRY)
+            ->assertJsonPath('data.explorer_url', 'https://explorer.tpix.test');
+    }
+
+    public function test_stats_api_hides_the_address_while_the_registry_is_not_deployed(): void
+    {
+        // .env มีที่อยู่ค้าง แต่บนเชนไม่มีโค้ด → ห้ามให้หน้าแรกชี้ไปที่สัญญาที่ไม่มีอยู่จริง
+        Http::fake(function ($request) {
+            $body = json_decode($request->body(), true);
+
+            return match ($body['method']) {
+                'eth_blockNumber' => ['jsonrpc' => '2.0', 'id' => 1, 'result' => '0x2a'],
+                default => ['jsonrpc' => '2.0', 'id' => 1, 'result' => '0x'],
+            };
+        });
+
+        $this->getJson('/api/v1/masternode/stats')
+            ->assertOk()
+            ->assertJsonPath('data.registry_deployed', false)
+            ->assertJsonPath('data.registry_address', null);
+    }
+
     public function test_allowlist_rejects_a_wallet_that_only_holds_tpix(): void
     {
         // สัญญา deploy แล้ว → ต้องยึดสัญญาเป็นคำตอบสุดท้าย

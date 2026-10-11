@@ -34,6 +34,9 @@ const enabled = ref(typeof window === 'undefined' ? false : readPref());
 
 let ctx = null;
 let master = null;
+// ระงับเสียงชั่วคราว (เช่นระหว่างเล่นคลิปแนะนำ) — ไม่แตะค่าเปิด/ปิดเสียงที่ผู้ใช้เลือก
+// ต้องกันไว้ที่ unlock() ด้วย ไม่งั้นแค่คลิกปุ่มคุมวิดีโอ เสียงฉากก็ถูกปลุกกลับมาเอง
+let held = false;
 let reverbIn = null;
 const last = {};
 
@@ -42,7 +45,7 @@ function AC() {
 }
 
 function live() {
-    return !!ctx && enabled.value && ctx.state === 'running';
+    return !!ctx && enabled.value && !held && ctx.state === 'running';
 }
 
 /** กันเสียงเดิมรัว (เช่นเลื่อนเมาส์ผ่านปุ่มเร็วๆ) */
@@ -88,7 +91,7 @@ function build() {
 
 /** เรียกจากการคลิก/แตะ/กดคีย์ของผู้ใช้เท่านั้น */
 function unlock() {
-    if (!enabled.value || !AC()) return;
+    if (!enabled.value || held || !AC()) return;
     if (!ctx) build();
     if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
 }
@@ -148,7 +151,15 @@ export const sfx = {
     },
 
     resume() {
-        if (ctx && enabled.value) ctx.resume().catch(() => {});
+        if (ctx && enabled.value && !held) ctx.resume().catch(() => {});
+    },
+
+    /** ระงับ/ปล่อยเสียงฉากชั่วคราว (คลิปแนะนำเล่นอยู่) — ปล่อยแล้วกลับไปตามค่าที่ผู้ใช้ตั้งไว้ */
+    hold(on) {
+        held = !!on;
+        if (!ctx) return;
+        if (held) ctx.suspend().catch(() => {});
+        else if (enabled.value) ctx.resume().catch(() => {});
     },
 
     /**

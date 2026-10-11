@@ -1,30 +1,39 @@
 <script setup>
 /**
  * TPIX TRADE - Home Page (Classic / Lite)
- * Landing page with real market data from Binance API
  *
- * หน้าแรกแบบเดิมทุกอย่าง — ใช้กับเครื่องที่แสดงหน้าแรก 3D ไม่ไหว
- * (Pages/Home.vue เลือกให้เอง) ห้ามใส่ของหนักเพิ่มในไฟล์นี้
+ * หน้าแรกแบบธรรมดา — ใช้กับเครื่องที่แสดงหน้าแรก 3D ไม่ไหว / ผู้ใช้เลือกเอง (Pages/Home.vue เลือกให้)
+ * ห้ามใส่ของหนักเพิ่มในไฟล์นี้: ภาพทุกใบเป็น WebP ขนาดเบา (ภาพนอกจอโหลดแบบ lazy) ไม่มีวิดีโอ ไม่มี WebGL
+ *
+ * ภาพประกอบทั้งหมดเจนจาก ChatGPT (ต้นฉบับ + คำสั่งเก็บนอก repo ที่ D:\Code\TPIX\home-art\)
+ * ตัวเลขทุกตัวบนหน้ามาจาก API จริงผ่าน useHomeLiveStats — ห้ามพิมพ์ราคา/สถิติตายตัวลงในหน้า
+ *
+ * แผงที่มีภาพพื้นหลังโทนมืด (.hc-island) ตรึงสีของธีมมืดไว้เสมอ
+ * ผู้ใช้ธีมสว่าง (xp-silver) จะเห็นแผงเหล่านี้เป็น "เกาะมืด" ที่ยังอ่านออก ไม่ใช่ตัวหนังสือเข้มบนภาพมืด
  *
  * Developed by Xman Studio
  */
 
-import { ref, onMounted, computed, watch, nextTick } from 'vue';
+import { computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
-import PageArt from '@/Components/PageArt.vue';
 import Sparkline from '@/Components/Trading/Sparkline.vue';
+import BannerAd from '@/Components/BannerAd.vue';
+import IntroVideo from '@/Components/Home/IntroVideo.vue';
 import { useMarketData } from '@/Composables/useMarketData';
 import { useSparklines } from '@/Composables/useSparklines';
-import BannerAd from '@/Components/BannerAd.vue';
+import { useHomeLiveStats } from '@/Composables/useHomeLiveStats';
 import { useTranslation } from '@/Composables/useTranslation';
 
 const { t } = useTranslation();
 
-const { topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
+// เปลี่ยนภาพชื่อเดิมเมื่อไหร่ต้องบวกเลขนี้ — Cloudflare แคชรูปใน public_html นาน 1 ปี
+const ART_V = 1;
+const art = (name) => `/images/home/${name}.webp?v=${ART_V}`;
 
-// เส้นกราฟย่อของการ์ด Top Gainers / Top Volume
+// ── ตลาดสด (Binance proxy) ─────────────────────────────────────
+const { topGainers, topVolume, isLoading, fetchTickers, startAutoRefresh } = useMarketData();
 const { series, load: loadSparklines } = useSparklines();
 
 watch([topGainers, topVolume], () => {
@@ -32,584 +41,590 @@ watch([topGainers, topVolume], () => {
     if (symbols.length) loadSparklines(symbols);
 }, { immediate: true });
 
-// Hero video slideshow: Netflix-style crossfade
-// All media stay in DOM, only opacity changes for seamless transitions
-const activeLayer = ref(0); // 0=video1, 1=video2, 2=image
-const video1Ready = ref(false);
-const video2Ready = ref(false);
-
-function onVideo1Ended() {
-    activeLayer.value = 1;
-}
-function onVideo2Ended() {
-    activeLayer.value = 2;
-}
-
-const video2Ref = ref(null);
-
-watch(activeLayer, (val) => {
-    if (val === 1 && video2Ref.value) {
-        video2Ref.value.play().catch(() => {});
-    }
-});
-
-const features = computed(() => [
-    {
-        icon: 'shield',
-        title: t('home.feature3'),
-        description: t('home.feature3Desc'),
-    },
-    {
-        icon: 'globe',
-        title: t('home.feature4'),
-        description: t('home.feature4Desc'),
-    },
-    {
-        icon: 'lightning',
-        title: t('home.feature2'),
-        description: t('home.feature2Desc'),
-    },
-    {
-        icon: 'robot',
-        title: t('home.feature1'),
-        description: t('home.feature1Desc'),
-    },
-]);
-
-const stats = computed(() => [
-    { label: t('home.supportedChains'), value: '9' },
-    { label: t('home.tradingPairs'), value: '100+' },
-    { label: t('home.dexProtocol'), value: 'PancakeSwap' },
-    { label: t('home.network'), value: 'TPIX Chain + BSC' },
-]);
-
+// เริ่มรีเฟรชหลังโหลดรอบแรกเสร็จ — ถ้าผู้ใช้เปลี่ยนหน้าไปก่อน ห้ามตั้ง interval ค้างไว้หลัง unmount
+let alive = true;
 onMounted(async () => {
     await fetchTickers();
-    startAutoRefresh();
+    if (alive) startAutoRefresh();
 });
+onBeforeUnmount(() => { alive = false; });
+
+const marketLists = computed(() => [
+    { key: 'gainers', title: t('home.topGainers'), coins: topGainers.value },
+    { key: 'volume', title: t('home.topVolume'), coins: topVolume.value },
+]);
+
+// ── ข้อมูลสดของ TPIX Chain / Masternode / รอบขาย ──────────────
+const { price, chain, node, tiers, sale, loaded, failed } = useHomeLiveStats();
+
+const DASH = '—';
+const fmtInt = (n) => Number(n).toLocaleString('en-US');
+
+function fmtUsd(n) {
+    const digits = n >= 1 ? 2 : 4;
+    return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: digits });
+}
+
+function fmtStake(n) {
+    if (n >= 1_000_000) return `${n / 1_000_000}M`;
+    if (n >= 1_000) return `${n / 1_000}K`;
+    return String(n);
+}
+
+const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
+
+const priceText = computed(() => (price.value && !failed.value.price ? fmtUsd(price.value.price) : DASH));
+const priceChange = computed(() => {
+    const c = price.value?.change_24h || 0;
+    return { text: `${c >= 0 ? '+' : ''}${c.toFixed(2)}%`, up: c >= 0 };
+});
+const priceSource = computed(() => {
+    const key = price.value?.source;
+    const known = ['dex', 'trades', 'admin', 'sale'].includes(key) ? key : 'default';
+    return t(`homeClassic.source.${known}`);
+});
+
+const chainOk = computed(() => !!chain.value && !failed.value.chain);
+const blockText = computed(() => (chainOk.value ? `#${fmtInt(chain.value.block_height)}` : DASH));
+const validatorText = computed(() => (
+    chainOk.value ? `${chain.value.active_validators} / ${chain.value.total_validators}` : DASH
+));
+const blockTime = computed(() => chain.value?.block_time || 2);
+
+const heroStats = computed(() => [
+    { key: 'price', label: t('homeClassic.statPrice'), value: priceText.value, live: !!price.value && !failed.value.price, loading: !loaded.value.price },
+    { key: 'block', label: t('homeClassic.statBlock'), value: blockText.value, live: chainOk.value, loading: !loaded.value.chain, mono: true },
+    { key: 'validators', label: t('homeClassic.statValidators'), value: validatorText.value, live: chainOk.value, loading: !loaded.value.chain },
+    { key: 'speed', label: t('homeClassic.statSpeed'), value: t('homeClassic.statSpeedValue', { s: blockTime.value }), live: false, loading: false },
+]);
+
+// ── Masternode ───────────────────────────────────────────────
+const registryLive = computed(() => !!node.value?.registry_deployed);
+const registryLink = computed(() => (
+    node.value?.registry_address ? `${node.value.explorer_url}/address/${node.value.registry_address}` : null
+));
+const tiersFromChain = computed(() => tiers.value.some(tier => tier.source === 'chain'));
+
+// สีและภาพประจำระดับ — ไล่จากฟ้า (เริ่มต้น) ไปม่วงชมพู (ผู้ผลิตบล็อก) ตามโทนโลโก้
+const TIER_STYLE = {
+    Light: { img: 'tier-light', accent: '34 211 238' },
+    Sentinel: { img: 'tier-sentinel', accent: '59 130 246' },
+    Guardian: { img: 'tier-guardian', accent: '139 92 246' },
+    Validator: { img: 'tier-validator', accent: '217 70 239' },
+};
+
+const tierCards = computed(() => tiers.value.map(tier => {
+    const style = TIER_STYLE[tier.name] || TIER_STYLE.Light;
+    const max = Number(tier.max_nodes) || 0;
+    return {
+        name: tier.name,
+        role: t(`homeClassic.tierRole.${tier.name}`),
+        img: art(style.img),
+        accent: style.accent,
+        stake: fmtStake(Number(tier.min_stake)),
+        lock: t('homeClassic.tierDays', { n: tier.lock_days }),
+        slots: max > 0 ? `${fmtInt(tier.active_nodes || 0)} / ${fmtInt(max)}` : t('homeClassic.tierUnlimited'),
+        apr: tier.apr_cap_bps ? `${Math.round(Number(tier.apr_cap_bps) / 100)}%` : DASH,
+        kyc: tier.name === 'Validator',
+    };
+}));
+
+const nodeTrust = computed(() => [
+    {
+        key: 'contract',
+        label: t('homeClassic.trustContract'),
+        value: node.value?.registry_address ? shortAddr(node.value.registry_address) : (registryLive.value ? 'NodeRegistry' : DASH),
+        href: registryLink.value,
+        mono: true,
+    },
+    { key: 'validators', label: t('homeClassic.trustValidators'), value: validatorText.value },
+    { key: 'block', label: t('homeClassic.trustBlock'), value: blockText.value, mono: true },
+    { key: 'schedule', label: t('homeClassic.trustSchedule'), value: t('homeClassic.trustScheduleValue') },
+]);
+
+const nodeSteps = computed(() => [1, 2, 3].map(n => ({
+    n,
+    title: t(`homeClassic.step${n}`),
+    desc: t(`homeClassic.step${n}Desc`),
+})));
+
+// ── TPIX Chain ───────────────────────────────────────────────
+const chainFacts = computed(() => [
+    { label: t('homeClassic.factChainId'), value: String(chain.value?.chain_id ?? 4289) },
+    { label: t('homeClassic.factConsensus'), value: 'IBFT · PoA' },
+    { label: t('homeClassic.factBlockTime'), value: `${blockTime.value}s` },
+    { label: t('homeClassic.factFinality'), value: t('homeClassic.factFinalityValue') },
+    { label: t('homeClassic.factGas'), value: t('homeClassic.factGasValue') },
+    { label: t('homeClassic.factSupply'), value: '7,000,000,000 TPIX' },
+]);
+const explorerUrl = computed(() => node.value?.explorer_url || 'https://explorer.tpix.online');
+
+// ── รอบขาย ───────────────────────────────────────────────────
+const salePhases = computed(() => (sale.value?.phases || []).filter(p => p.price_usd > 0));
+const salePay = computed(() => {
+    const methods = sale.value?.payment_methods || {};
+    const out = [];
+    if (methods.card) out.push(t('homeClassic.payCard'));
+    if (methods.bank) out.push(t('homeClassic.payBank'));
+    return out;
+});
+
+// ── ระบบนิเวศ + จุดเด่น ────────────────────────────────────────
+const ecosystem = computed(() => [
+    { key: 'trade', href: '/trade', img: art('eco-trade') },
+    { key: 'ai', href: '/ai-trade', img: art('eco-ai') },
+    { key: 'node', href: '/masternode', img: art('eco-node') },
+    { key: 'sale', href: '/token-sale', img: art('eco-sale') },
+    { key: 'explorer', href: '/explorer', img: art('eco-explorer') },
+    { key: 'apps', href: '/download', img: art('eco-apps') },
+].map(card => ({
+    ...card,
+    title: t(`homeClassic.eco.${card.key}`),
+    desc: t(`homeClassic.eco.${card.key}Desc`),
+})));
+
+// ไอคอน 3D ชุดเดียวกับหน้าแรก 3D (เจนจาก ChatGPT รอบ 2026-09-27)
+const whyItems = computed(() => [
+    { key: 'gas', img: '/images/home3d/feature-gas.webp' },
+    { key: 'speed', img: '/images/home3d/feature-speed.webp' },
+    { key: 'custody', img: '/images/home3d/feature-shield.webp' },
+    { key: 'chains', img: '/images/home3d/feature-network.webp' },
+].map(item => ({
+    ...item,
+    title: t(`homeClassic.why.${item.key}`),
+    desc: t(`homeClassic.why.${item.key}Desc`),
+})));
 </script>
 
 <template>
-    <Head title="Decentralized Trading Platform" />
+    <Head :title="t('homeClassic.metaTitle')" />
 
     <AppLayout :hide-sidebar="true">
-        <!-- Hero Section — Netflix-style cinematic video background -->
-        <section class="relative py-20 overflow-hidden min-h-[600px]">
-            <!-- Cinematic Video/Image Background — all layers in DOM, crossfade via opacity -->
-            <div class="absolute inset-0 pointer-events-none">
-                <!-- Video 1 -->
-                <video
-                    autoplay muted playsinline
-                    @ended="onVideo1Ended"
-                    @canplay="video1Ready = true"
-                    class="hero-media"
-                    :class="activeLayer === 0 && video1Ready ? 'opacity-50 scale-105' : 'opacity-0 scale-100'"
-                >
-                    <source src="/videos/1.mp4" type="video/mp4" />
-                </video>
-                <!-- Video 2 — preloads while video1 plays -->
-                <video
-                    preload="auto"
-                    :autoplay="false"
-                    muted playsinline
-                    ref="video2Ref"
-                    @ended="onVideo2Ended"
-                    @canplay="video2Ready = true"
-                    class="hero-media"
-                    :class="activeLayer === 1 ? 'opacity-50 scale-105' : 'opacity-0 scale-100'"
-                >
-                    <source src="/videos/2.mp4" type="video/mp4" />
-                </video>
-                <!-- Final image — Ken Burns slow zoom -->
-                <div
-                    class="hero-media bg-cover bg-center"
-                    :class="activeLayer === 2 ? 'opacity-40 hero-ken-burns' : 'opacity-0'"
-                    style="background-image: url('/images/art/hero-trade.webp')"
+        <!-- ═══ HERO — ภาพเต็มขอบจอ ข้อความฝั่งซ้าย ═══ -->
+        <section class="hc-island hc-hero -mx-4 -mt-4 lg:-mx-6 lg:-mt-6">
+            <img
+                :src="art('hero')"
+                :srcset="`${art('hero-960')} 960w, ${art('hero')} 1672w`"
+                sizes="100vw"
+                alt=""
+                fetchpriority="high"
+                decoding="async"
+                class="hc-hero__img"
+            />
+            <div class="hc-hero__shade" aria-hidden="true"></div>
+            <div class="hc-grid" aria-hidden="true"></div>
+            <div class="hc-sweep" aria-hidden="true"></div>
+
+            <div class="relative max-w-6xl mx-auto px-4 lg:px-6 pt-16 pb-10 md:pt-24 md:pb-14">
+                <div class="max-w-3xl">
+                    <div class="hc-eyebrow mb-6">
+                        <span class="hc-dot"></span>
+                        {{ t('homeClassic.heroEyebrow') }}
+                    </div>
+
+                    <h1 class="hc-balance text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold leading-[1.12] text-white mb-6">
+                        {{ t('homeClassic.heroTitle1') }}
+                        <span class="block hc-gradient-text">{{ t('homeClassic.heroTitle2') }}</span>
+                    </h1>
+
+                    <p class="text-base md:text-lg text-dark-300 leading-relaxed max-w-xl mb-9">
+                        {{ t('homeClassic.heroDesc') }}
+                    </p>
+
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <Link href="/trade" class="hc-btn hc-btn--primary">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                            </svg>
+                            {{ t('homeClassic.ctaTrade') }}
+                        </Link>
+                        <Link href="/masternode" class="hc-btn hc-btn--ghost">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                            </svg>
+                            {{ t('homeClassic.ctaNode') }}
+                        </Link>
+                    </div>
+                    <a href="#intro-video" class="hc-watch mt-5">
+                        <span class="hc-watch__icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z" /></svg>
+                        </span>
+                        {{ t('introVideo.title') }}
+                    </a>
+                </div>
+
+                <!-- สถิติสดของเชน — ทุกช่องดึงจาก API -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-14 md:mt-20">
+                    <div v-for="stat in heroStats" :key="stat.key" class="hc-stat">
+                        <div class="flex items-center justify-between gap-2 mb-2">
+                            <span class="text-[11px] uppercase tracking-wider text-dark-400">{{ stat.label }}</span>
+                            <span v-if="stat.live" class="hc-live">
+                                <span class="hc-dot hc-dot--sm"></span>{{ t('homeClassic.live') }}
+                            </span>
+                        </div>
+                        <div
+                            :class="['text-lg sm:text-xl md:text-2xl font-bold text-white truncate', stat.mono && 'font-mono tabular-nums']"
+                        >
+                            <span v-if="stat.loading" class="hc-skeleton"></span>
+                            <template v-else>{{ stat.value }}</template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ คลิปแนะนำ (น้อง TPIX พากย์อังกฤษ ซับไทย) — โหลดไฟล์เมื่อกดเล่นเท่านั้น ═══ -->
+        <section id="intro-video" class="max-w-6xl mx-auto pt-16 scroll-mt-24">
+            <div class="grid lg:grid-cols-5 gap-8 items-center">
+                <div class="lg:col-span-2">
+                    <p class="hc-kicker">{{ t('introVideo.eyebrow') }}</p>
+                    <h2 class="text-3xl md:text-4xl font-bold text-white leading-tight mb-4">{{ t('introVideo.title') }}</h2>
+                    <p class="text-dark-400 leading-relaxed">{{ t('introVideo.desc') }}</p>
+                </div>
+                <div class="lg:col-span-3">
+                    <IntroVideo />
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ ตลาดสด ═══ -->
+        <section class="max-w-6xl mx-auto pt-16">
+            <div class="flex flex-wrap items-end justify-between gap-4 mb-6">
+                <div>
+                    <p class="hc-kicker">{{ t('homeClassic.marketsEyebrow') }}</p>
+                    <h2 class="text-2xl md:text-3xl font-bold text-white">{{ t('homeClassic.marketsTitle') }}</h2>
+                    <p class="text-sm text-dark-400 mt-1">{{ t('homeClassic.marketsDesc') }}</p>
+                </div>
+                <Link href="/markets" class="text-sm font-semibold text-primary-400 hover:text-primary-300">
+                    {{ t('home.viewAll') }} →
+                </Link>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-5">
+                <div v-for="list in marketLists" :key="list.key" class="glass-dark rounded-2xl p-5 hc-edge">
+                    <h3 class="text-sm font-semibold text-dark-300 uppercase tracking-wider mb-3">{{ list.title }}</h3>
+                    <div v-if="isLoading" class="py-10 text-center text-dark-400 text-sm animate-pulse">
+                        {{ t('homeClassic.loading') }}
+                    </div>
+                    <div v-else-if="!list.coins.length" class="py-10 text-center text-dark-500 text-sm">{{ DASH }}</div>
+                    <div v-else class="divide-y divide-white/5">
+                        <div
+                            v-for="coin in list.coins"
+                            :key="coin.symbol"
+                            class="flex items-center justify-between gap-3 py-3"
+                        >
+                            <div class="flex items-center gap-3 min-w-0">
+                                <CoinIcon :symbol="coin.symbol" size="lg" />
+                                <div class="min-w-0">
+                                    <p class="font-semibold text-white">{{ coin.symbol }}</p>
+                                    <p class="text-xs text-dark-400 truncate">{{ coin.name }}</p>
+                                </div>
+                            </div>
+                            <Sparkline
+                                class="hidden sm:block"
+                                :points="series[`${coin.symbol}-USDT`] || []"
+                                :is-up="coin.isUp"
+                                :width="84"
+                                :height="28"
+                                :loading="series[`${coin.symbol}-USDT`] === undefined"
+                            />
+                            <div class="text-right">
+                                <p class="font-mono text-white tabular-nums">${{ coin.price }}</p>
+                                <p :class="['text-sm font-medium tabular-nums', coin.isUp ? 'text-trading-green' : 'text-trading-red']">
+                                    {{ coin.change }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ MASTERNODE — ภาพศูนย์ข้อมูล + ข้อมูลจากสัญญาจริง ═══ -->
+        <section id="masternode" class="max-w-6xl mx-auto pt-16">
+            <div class="hc-island hc-panel">
+                <img
+                    :src="art('masternode')"
+                    :srcset="`${art('masternode-960')} 960w, ${art('masternode')} 1672w`"
+                    sizes="(min-width: 1152px) 1152px, 100vw"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    class="hc-panel__img hc-panel__img--top"
                 />
+                <div class="hc-panel__shade hc-panel__shade--node" aria-hidden="true"></div>
 
-                <!-- Netflix-style cinematic overlays -->
-                <!-- Bottom: heavy gradient blending into page -->
-                <div class="absolute bottom-0 left-0 right-0 h-[60%] bg-gradient-to-t from-dark-950 via-dark-950/90 to-transparent" />
-                <!-- Top: subtle header blend -->
-                <div class="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-dark-950/80 to-transparent" />
-                <!-- Side vignettes -->
-                <div class="absolute inset-y-0 left-0 w-48 bg-gradient-to-r from-dark-950/70 to-transparent" />
-                <div class="absolute inset-y-0 right-0 w-48 bg-gradient-to-l from-dark-950/70 to-transparent" />
-                <!-- Radial vignette for depth -->
-                <div class="absolute inset-0" style="background: radial-gradient(ellipse at center, transparent 40%, rgb(var(--c-dark-950) / 0.6) 100%)" />
-            </div>
+                <div class="relative p-6 md:p-10 lg:p-12">
+                    <div class="max-w-xl">
+                        <div :class="['hc-eyebrow mb-5', !registryLive && 'hc-eyebrow--muted']">
+                            <span :class="['hc-dot', !registryLive && 'hc-dot--idle']"></span>
+                            {{ registryLive ? t('homeClassic.nodeLive') : t('homeClassic.nodeSoon') }}
+                        </div>
+                        <h2 class="text-3xl md:text-5xl font-bold text-white leading-tight mb-4">
+                            {{ t('homeClassic.nodeTitle1') }}
+                            <span class="block hc-gradient-text">{{ t('homeClassic.nodeTitle2') }}</span>
+                        </h2>
+                        <p class="text-dark-300 leading-relaxed">{{ t('homeClassic.nodeDesc') }}</p>
+                    </div>
 
-            <div class="relative max-w-6xl mx-auto text-center">
-                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-sm text-sm mb-8">
-                    <span class="w-2 h-2 rounded-full bg-trading-green animate-pulse"></span>
-                    <span class="text-dark-300">{{ t('home.liveOnBSC') }}</span>
-                </div>
+                    <!-- หลักฐานที่ตรวจเองได้ -->
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8">
+                        <component
+                            :is="item.href ? 'a' : 'div'"
+                            v-for="item in nodeTrust"
+                            :key="item.key"
+                            :href="item.href || undefined"
+                            :target="item.href ? '_blank' : undefined"
+                            :rel="item.href ? 'noopener noreferrer' : undefined"
+                            :class="['hc-chip', item.href && 'hc-chip--link']"
+                        >
+                            <span class="text-[11px] uppercase tracking-wider text-dark-400">{{ item.label }}</span>
+                            <span :class="['text-sm md:text-base font-semibold text-white truncate', item.mono && 'font-mono tabular-nums']">
+                                {{ item.value }}
+                            </span>
+                            <span v-if="item.href" class="text-[11px] text-primary-300">{{ t('homeClassic.viewOnExplorer') }} ↗</span>
+                        </component>
+                    </div>
 
-                <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">
-                    {{ t('home.heroTitle1') }} <span class="text-gradient">{{ t('home.heroTitle2') }}</span>
-                    <br />
-                    {{ t('home.heroTitle1') }} <span class="text-gradient-gold">{{ t('home.heroTitle3') }}</span>
-                </h1>
+                    <!-- 3 ขั้นตอน -->
+                    <ol class="grid md:grid-cols-3 gap-3 mt-3">
+                        <li v-for="step in nodeSteps" :key="step.n" class="hc-step">
+                            <span class="hc-step__n">{{ step.n }}</span>
+                            <div>
+                                <p class="font-semibold text-white">{{ step.title }}</p>
+                                <p class="text-sm text-dark-400 leading-relaxed mt-1">{{ step.desc }}</p>
+                            </div>
+                        </li>
+                    </ol>
 
-                <p class="text-xl text-dark-400 max-w-2xl mx-auto mb-10">
-                    {{ t('home.heroDesc') }}
-                </p>
+                    <!-- ระดับโหนด อ่านจากสัญญา -->
+                    <div class="flex items-center gap-2 mt-10 mb-4">
+                        <h3 class="text-lg font-semibold text-white">{{ t('homeClassic.tiersTitle') }}</h3>
+                        <span v-if="tiersFromChain" class="hc-live">
+                            <span class="hc-dot hc-dot--sm"></span>{{ t('homeClassic.fromChain') }}
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div
+                            v-for="tier in tierCards"
+                            :key="tier.name"
+                            class="hc-tier"
+                            :style="{ '--tier': tier.accent }"
+                        >
+                            <img :src="tier.img" :alt="`${tier.name} tier emblem`" loading="lazy" decoding="async" class="hc-tier__img" width="160" height="160" />
+                            <p class="text-lg font-bold text-white text-center">{{ tier.name }}</p>
+                            <p class="text-xs text-dark-400 text-center mb-4">{{ tier.role }}</p>
+                            <dl class="hc-tier__rows">
+                                <div><dt>{{ t('homeClassic.tierStake') }}</dt><dd>{{ tier.stake }} TPIX</dd></div>
+                                <div><dt>{{ t('homeClassic.tierLock') }}</dt><dd>{{ tier.lock }}</dd></div>
+                                <div><dt>{{ t('homeClassic.tierSlots') }}</dt><dd>{{ tier.slots }}</dd></div>
+                            </dl>
+                            <div class="hc-tier__apr">
+                                <span>{{ t('homeClassic.tierApr') }}</span>
+                                <strong>{{ tier.apr }}</strong>
+                            </div>
+                            <p v-if="tier.kyc" class="text-[11px] text-amber-300/90 text-center mt-2">{{ t('homeClassic.tierKyc') }}</p>
+                        </div>
+                    </div>
 
-                <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-                    <Link href="/trade" class="btn-primary px-8 py-4 text-lg">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
-                        </svg>
-                        {{ t('home.startTrading') }}
-                    </Link>
-                    <button class="btn-secondary px-8 py-4 text-lg">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        {{ t('home.watchDemo') }}
-                    </button>
-                </div>
+                    <p class="text-xs text-dark-400 leading-relaxed mt-4 max-w-3xl">{{ t('homeClassic.aprNote') }}</p>
 
-                <!-- Stats -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mt-20">
-                    <div v-for="stat in stats" :key="stat.label" class="glass-card text-center">
-                        <p class="text-3xl font-bold text-white mb-1">{{ stat.value }}</p>
-                        <p class="text-dark-400">{{ stat.label }}</p>
+                    <div class="flex flex-wrap gap-3 mt-8">
+                        <Link href="/masternode" class="hc-btn hc-btn--primary">{{ t('homeClassic.nodeStake') }}</Link>
+                        <Link href="/masternode/guide" class="hc-btn hc-btn--ghost">{{ t('homeClassic.nodeGuide') }}</Link>
+                        <Link href="/download" class="hc-btn hc-btn--ghost">{{ t('homeClassic.nodeDownload') }}</Link>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- Master Node Promo Banner -->
-        <section class="py-10">
-            <div class="max-w-6xl mx-auto">
-                <div class="relative overflow-hidden rounded-3xl border border-cyan-500/20">
-                    <!-- Animated gradient bg -->
-                    <div class="absolute inset-0 bg-gradient-to-br from-cyan-900/40 via-dark-900/80 to-purple-900/40" />
-                    <div class="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl" />
-                    <div class="absolute bottom-0 left-0 w-60 h-60 bg-purple-500/10 rounded-full blur-3xl" />
+        <!-- ═══ TPIX CHAIN + ราคา TPIX ═══ -->
+        <section class="max-w-6xl mx-auto pt-16">
+            <div class="hc-island hc-panel">
+                <img
+                    :src="art('chain')"
+                    :srcset="`${art('chain-960')} 960w, ${art('chain')} 1672w`"
+                    sizes="(min-width: 1152px) 1152px, 100vw"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    class="hc-panel__img"
+                />
+                <div class="hc-panel__shade" aria-hidden="true"></div>
 
-                    <div class="relative flex flex-col md:flex-row items-center gap-8 p-8 md:p-12">
-                        <!-- Left: Info -->
-                        <div class="flex-1 text-center md:text-left">
-                            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-400 font-semibold mb-4">
-                                <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                                {{ t('home.nodeNew') }}
+                <div class="relative grid lg:grid-cols-5 gap-8 p-6 md:p-10 lg:p-12">
+                    <div class="lg:col-span-3">
+                        <p class="hc-kicker">{{ t('homeClassic.chainEyebrow') }}</p>
+                        <h2 class="text-3xl md:text-4xl font-bold text-white leading-tight mb-4">{{ t('homeClassic.chainTitle') }}</h2>
+                        <p class="text-dark-300 leading-relaxed max-w-xl">{{ t('homeClassic.chainDesc') }}</p>
+
+                        <dl class="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-8">
+                            <div v-for="fact in chainFacts" :key="fact.label" class="hc-chip">
+                                <dt class="text-[11px] uppercase tracking-wider text-dark-400">{{ fact.label }}</dt>
+                                <dd class="text-sm md:text-base font-semibold text-white">{{ fact.value }}</dd>
                             </div>
-                            <h2 class="text-3xl md:text-4xl font-black text-white mb-3">
-                                {{ t('home.nodeTitle') }}
-                            </h2>
-                            <p class="text-gray-400 mb-6 max-w-lg">
-                                {{ t('home.nodeDesc') }}
+                        </dl>
+
+                        <div class="flex flex-wrap gap-3 mt-8">
+                            <a :href="explorerUrl" target="_blank" rel="noopener noreferrer" class="hc-btn hc-btn--ghost">
+                                {{ t('homeClassic.openExplorer') }} ↗
+                            </a>
+                            <Link href="/whitepaper" class="hc-btn hc-btn--ghost">{{ t('homeClassic.readWhitepaper') }}</Link>
+                        </div>
+                    </div>
+
+                    <!-- ราคา TPIX สด -->
+                    <div class="lg:col-span-2 lg:self-end">
+                        <div class="hc-price">
+                            <div class="flex items-center gap-3 mb-4">
+                                <img src="/images/brand/tpix-coin.webp" alt="TPIX" class="w-10 h-10" width="40" height="40" loading="lazy" />
+                                <div>
+                                    <p class="font-semibold text-white">{{ t('homeClassic.priceTitle') }}</p>
+                                    <p class="text-xs text-dark-400">TPIX · Chain {{ chain?.chain_id ?? 4289 }}</p>
+                                </div>
+                                <span v-if="price && !failed.price" class="hc-live ml-auto">
+                                    <span class="hc-dot hc-dot--sm"></span>{{ t('homeClassic.live') }}
+                                </span>
+                            </div>
+                            <div class="flex items-end gap-3">
+                                <span class="text-4xl font-bold text-white tabular-nums">
+                                    <span v-if="!loaded.price" class="hc-skeleton hc-skeleton--lg"></span>
+                                    <template v-else>{{ priceText }}</template>
+                                </span>
+                                <span
+                                    v-if="price && !failed.price"
+                                    :class="['text-sm font-semibold mb-1.5 tabular-nums', priceChange.up ? 'text-trading-green' : 'text-trading-red']"
+                                >{{ priceChange.text }}</span>
+                            </div>
+                            <p v-if="price && !failed.price" class="text-xs text-dark-400 mt-3">
+                                {{ t('homeClassic.priceSource', { source: priceSource }) }}
                             </p>
-
-                            <!-- Reward tiers mini -->
-                            <div class="grid grid-cols-3 gap-2 sm:gap-3 mb-6 max-w-md">
-                                <div class="bg-white/5 rounded-xl p-3 text-center border border-white/5">
-                                    <div class="text-xs text-gray-500">Light</div>
-                                    <div class="text-lg font-black text-cyan-400">10K</div>
-                                    <div class="text-xs text-trading-green">4-6% APY</div>
-                                </div>
-                                <div class="bg-white/5 rounded-xl p-3 text-center border border-purple-500/20">
-                                    <div class="text-xs text-gray-500">Sentinel</div>
-                                    <div class="text-lg font-black text-purple-400">100K</div>
-                                    <div class="text-xs text-trading-green">7-10% APY</div>
-                                </div>
-                                <div class="bg-white/5 rounded-xl p-3 text-center border border-red-500/20">
-                                    <div class="text-xs text-gray-500">Validator</div>
-                                    <div class="text-lg font-black text-red-400">10M</div>
-                                    <div class="text-xs text-trading-green">15-20% APY</div>
-                                </div>
-                            </div>
-
-                            <div class="flex flex-wrap items-center gap-3">
-                                <Link href="/masternode" class="btn-primary px-6 py-3 text-sm font-bold">
-                                    ⚡ {{ t('home.nodeStake') }}
-                                </Link>
-                                <Link href="/masternode/guide" class="px-6 py-3 text-sm font-semibold border border-cyan-500/30 text-cyan-400 rounded-xl hover:bg-cyan-500/10 transition">
-                                    📖 {{ t('home.nodeGuide') }}
-                                </Link>
-                                <Link href="/download"
-                                    class="px-6 py-3 text-sm font-semibold border border-white/10 text-gray-400 rounded-xl hover:bg-white/5 transition">
-                                    📥 {{ t('home.nodeDownload') }}
-                                </Link>
-                            </div>
-                        </div>
-
-                        <!-- Right: TPIX Hero Image with Glow -->
-                        <div class="relative w-72 h-72 shrink-0 hidden md:block">
-                            <!-- Ambient glow rings -->
-                            <div class="absolute inset-0 flex items-center justify-center">
-                                <div class="absolute w-64 h-64 border border-cyan-500/10 rounded-full animate-spin" style="animation-duration: 25s" />
-                                <div class="absolute w-52 h-52 border border-purple-500/10 rounded-full animate-spin" style="animation-duration: 18s; animation-direction: reverse" />
-                            </div>
-                            <!-- Glow behind image -->
-                            <div class="absolute inset-8 bg-gradient-to-br from-cyan-500/20 via-purple-500/10 to-amber-500/15 rounded-full blur-2xl animate-pulse" style="animation-duration: 3s" />
-                            <!-- TPIX image -->
-                            <img src="/tpix1.webp" alt="TPIX Master Node"
-                                class="relative w-full h-full object-contain drop-shadow-2xl"
-                                style="filter: drop-shadow(0 0 30px rgba(6,182,212,0.3)) drop-shadow(0 0 60px rgba(139,92,246,0.15))" />
-                            <!-- Orbiting dots -->
-                            <div class="absolute inset-0 flex items-center justify-center">
-                                <div class="absolute w-64 h-64 animate-spin" style="animation-duration: 8s">
-                                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-cyan-400 rounded-full shadow-lg shadow-cyan-400/50" />
-                                </div>
-                                <div class="absolute w-52 h-52 animate-spin" style="animation-duration: 6s; animation-direction: reverse">
-                                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2 bg-purple-400 rounded-full shadow-lg shadow-purple-400/50" />
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- TPIX Price Chart 3D -->
-        <section class="py-10">
-            <div class="max-w-6xl mx-auto">
-                <div class="glass-dark rounded-2xl p-6 border border-white/5">
-                    <div class="flex items-center justify-between mb-6">
-                        <div>
-                            <h3 class="text-lg font-semibold text-white">TPIX {{ t('home.priceChart') }}</h3>
-                            <p class="text-xs text-gray-500">{{ t('home.priceChartDesc') }}</p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-2xl font-black text-white">$0.18</span>
-                            <span class="text-sm text-trading-green">+0.00%</span>
-                        </div>
-                    </div>
-                    <!-- 3D-style chart with CSS perspective -->
-                    <div class="relative h-64 overflow-hidden rounded-xl" style="perspective: 800px">
-                        <div class="absolute inset-0 bg-gradient-to-t from-cyan-500/5 to-transparent" style="transform: rotateX(15deg); transform-origin: bottom" />
-                        <!-- SVG chart bars -->
-                        <svg class="w-full h-full" viewBox="0 0 800 250" preserveAspectRatio="none">
-                            <defs>
-                                <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stop-color="#00BCD4" stop-opacity="0.8"/>
-                                    <stop offset="100%" stop-color="#00BCD4" stop-opacity="0.1"/>
-                                </linearGradient>
-                                <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-                                    <stop offset="0%" stop-color="#06B6D4"/>
-                                    <stop offset="50%" stop-color="#8B5CF6"/>
-                                    <stop offset="100%" stop-color="#F59E0B"/>
-                                </linearGradient>
-                            </defs>
-                            <!-- Grid lines -->
-                            <line v-for="i in 5" :key="'g'+i" x1="0" :y1="i*50" x2="800" :y2="i*50" stroke="white" stroke-opacity="0.03" />
-                            <!-- 3D-effect bars -->
-                            <g v-for="(h, i) in [120,140,110,160,130,170,150,180,145,165,155,175,140,190,160,185,170,195,180,200,175,210,190,205,195,215,200,220,185,210]" :key="'b'+i">
-                                <rect :x="i * 26.6 + 4" :y="250 - h" width="20" :height="h" fill="url(#barGrad)" rx="2" opacity="0.4">
-                                    <animate attributeName="height" :from="0" :to="h" dur="1.5s" fill="freeze" :begin="i * 0.05 + 's'" />
-                                    <animate attributeName="y" :from="250" :to="250 - h" dur="1.5s" fill="freeze" :begin="i * 0.05 + 's'" />
-                                </rect>
-                            </g>
-                            <!-- Price line -->
-                            <polyline fill="none" stroke="url(#lineGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-                                points="15,130 41,110 68,140 94,90 121,120 147,80 174,100 200,70 227,105 253,85 280,95 306,75 333,110 359,60 386,90 412,65 439,80 465,55 492,70 518,50 545,75 571,40 598,60 624,45 651,55 677,35 704,50 730,30 757,65 784,40">
-                                <animate attributeName="stroke-dashoffset" from="2000" to="0" dur="2s" fill="freeze" />
-                                <animate attributeName="stroke-dasharray" from="2000" to="2000" dur="0.01s" fill="freeze" />
-                            </polyline>
-                            <!-- Glow dot at end -->
-                            <circle cx="784" cy="40" r="4" fill="#F59E0B">
-                                <animate attributeName="r" values="3;6;3" dur="2s" repeatCount="indefinite" />
-                                <animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite" />
-                            </circle>
-                        </svg>
-                        <!-- Price labels -->
-                        <div class="absolute top-2 left-3 text-[10px] text-gray-600">$0.25</div>
-                        <div class="absolute bottom-2 left-3 text-[10px] text-gray-600">$0.10</div>
-                    </div>
-                </div>
-            </div>
-        </section>
+        <!-- ═══ รอบขายเหรียญ ═══ -->
+        <section class="max-w-6xl mx-auto pt-16">
+            <div class="hc-island hc-panel hc-panel--sale">
+                <div class="relative grid md:grid-cols-5 gap-8 items-center p-6 md:p-10 lg:p-12">
+                    <div class="md:col-span-3 order-2 md:order-1">
+                        <p class="hc-kicker">{{ t('homeClassic.saleEyebrow') }}</p>
+                        <h2 class="text-3xl md:text-4xl font-bold text-white leading-tight mb-4">
+                            {{ t('homeClassic.saleTitle1') }}
+                            <span class="hc-gradient-text">{{ t('homeClassic.saleTitle2') }}</span>
+                        </h2>
+                        <p class="text-dark-300 leading-relaxed max-w-xl">{{ t('homeClassic.saleDesc') }}</p>
 
-        <!-- Markets Preview -->
-        <section class="relative py-16">
-            <PageArt art="section-markets" :opacity="55" fade="edges" />
-            <div class="relative max-w-6xl mx-auto">
-                <div class="grid md:grid-cols-2 gap-6">
-                    <!-- Top Gainers -->
-                    <div class="glass-dark rounded-2xl p-6">
-                        <div class="flex items-center justify-between mb-6">
-                            <h3 class="text-lg font-semibold text-white">{{ t('home.topGainers') }}</h3>
-                            <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">{{ t('home.viewAll') }}</Link>
-                        </div>
-                        <div v-if="isLoading" class="py-8 text-center text-dark-400">
-                            <div class="animate-pulse">Loading live data...</div>
-                        </div>
-                        <div v-else class="space-y-4">
+                        <div v-if="salePhases.length" class="grid grid-cols-3 gap-3 mt-7 max-w-lg">
                             <div
-                                v-for="coin in topGainers"
-                                :key="coin.symbol"
-                                class="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
+                                v-for="phase in salePhases"
+                                :key="phase.name"
+                                :class="['hc-chip text-center', phase.status === 'active' && 'hc-chip--active']"
                             >
-                                <div class="flex items-center gap-3">
-                                    <CoinIcon :symbol="coin.symbol" size="lg" />
-                                    <div>
-                                        <p class="font-semibold text-white">{{ coin.symbol }}</p>
-                                        <p class="text-sm text-dark-400">{{ coin.name }}</p>
-                                    </div>
-                                </div>
-                                <Sparkline
-                                    class="hidden sm:block"
-                                    :points="series[`${coin.symbol}-USDT`] || []"
-                                    is-up
-                                    :width="76"
-                                    :height="26"
-                                    :loading="series[`${coin.symbol}-USDT`] === undefined"
-                                />
-                                <div class="text-right">
-                                    <p class="font-mono text-white">${{ coin.price }}</p>
-                                    <p class="text-sm text-trading-green font-medium">{{ coin.change }}</p>
-                                </div>
+                                <span class="text-[11px] text-dark-400 truncate">{{ phase.name }}</span>
+                                <span class="text-lg font-bold text-white tabular-nums">{{ fmtUsd(phase.price_usd) }}</span>
                             </div>
                         </div>
+
+                        <div class="flex flex-wrap gap-2 mt-5">
+                            <span v-for="pay in salePay" :key="pay" class="hc-tag">{{ pay }}</span>
+                            <span class="hc-tag">{{ t('homeClassic.receiveOn') }}</span>
+                        </div>
+
+                        <div class="flex flex-wrap gap-3 mt-8">
+                            <Link href="/token-sale" class="hc-btn hc-btn--primary">{{ t('homeClassic.saleCta') }}</Link>
+                            <Link href="/whitepaper" class="hc-btn hc-btn--ghost">{{ t('homeClassic.readWhitepaper') }}</Link>
+                        </div>
+                        <p class="text-xs text-dark-500 mt-4">{{ t('homeClassic.saleRisk') }}</p>
                     </div>
 
-                    <!-- Top Volume -->
-                    <div class="glass-dark rounded-2xl p-6">
-                        <div class="flex items-center justify-between mb-6">
-                            <h3 class="text-lg font-semibold text-white">{{ t('home.topVolume') }}</h3>
-                            <Link href="/markets" class="text-primary-400 hover:text-primary-300 text-sm">{{ t('home.viewAll') }}</Link>
-                        </div>
-                        <div v-if="isLoading" class="py-8 text-center text-dark-400">
-                            <div class="animate-pulse">Loading live data...</div>
-                        </div>
-                        <div v-else class="space-y-4">
-                            <div
-                                v-for="coin in topVolume"
-                                :key="coin.symbol"
-                                class="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
-                            >
-                                <div class="flex items-center gap-3">
-                                    <CoinIcon :symbol="coin.symbol" size="lg" />
-                                    <div>
-                                        <p class="font-semibold text-white">{{ coin.symbol }}</p>
-                                        <p class="text-sm text-dark-400">{{ coin.name }}</p>
-                                    </div>
-                                </div>
-                                <Sparkline
-                                    class="hidden sm:block"
-                                    :points="series[`${coin.symbol}-USDT`] || []"
-                                    :is-up="coin.isUp"
-                                    :width="76"
-                                    :height="26"
-                                    :loading="series[`${coin.symbol}-USDT`] === undefined"
-                                />
-                                <div class="text-right">
-                                    <p class="font-mono text-white">${{ coin.price }}</p>
-                                    <p :class="['text-sm font-medium', coin.isUp ? 'text-trading-green' : 'text-trading-red']">
-                                        {{ coin.change }}
-                                    </p>
-                                </div>
-                            </div>
+                    <div class="md:col-span-2 order-1 md:order-2 flex justify-center">
+                        <div class="hc-coin">
+                            <span class="hc-coin__glow" aria-hidden="true"></span>
+                            <img :src="art('coin')" alt="TPIX coin" loading="lazy" decoding="async" width="560" height="560" class="hc-coin__img" />
                         </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- TPIX Token Sale Banner — โฆษณาการขายเหรียญ -->
-        <section class="py-16">
-            <div class="max-w-6xl mx-auto">
-                <div class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-accent-500/20 via-primary-500/15 to-warm-500/20 border border-primary-500/20 p-8 md:p-12">
-                    <!-- Glow Effect -->
-                    <div class="absolute top-0 right-0 w-80 h-80 bg-primary-500/10 rounded-full blur-3xl"></div>
-                    <div class="absolute bottom-0 left-0 w-60 h-60 bg-accent-500/10 rounded-full blur-3xl"></div>
+        <!-- ═══ ระบบนิเวศ ═══ -->
+        <section class="max-w-6xl mx-auto pt-20">
+            <div class="text-center mb-10">
+                <p class="hc-kicker">{{ t('homeClassic.ecoEyebrow') }}</p>
+                <h2 class="text-3xl md:text-4xl font-bold text-white mb-3">{{ t('homeClassic.ecoTitle') }}</h2>
+                <p class="text-dark-400 max-w-2xl mx-auto">{{ t('homeClassic.ecoDesc') }}</p>
+            </div>
 
-                    <div class="relative flex flex-col lg:flex-row items-center gap-8">
-                        <!-- Left: Text -->
-                        <div class="flex-1 text-center lg:text-left">
-                            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-trading-green/10 border border-trading-green/20 text-trading-green text-xs font-semibold mb-4">
-                                <span class="w-2 h-2 rounded-full bg-trading-green animate-pulse"></span>
-                                {{ t('tokenSale.title') }}
-                            </div>
-                            <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
-                                Buy <span class="text-gradient">TPIX</span> Token
-                            </h2>
-                            <p class="text-dark-300 mb-6 max-w-lg">
-                                Join the TPIX ecosystem. Buy TPIX tokens at the best price during our ICO.
-                                Pay with BNB or USDT on BSC Network.
-                            </p>
-                            <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3">
-                                <Link href="/token-sale" class="btn-primary px-6 py-3">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                    </svg>
-                                    Buy TPIX Now
-                                </Link>
-                                <Link href="/whitepaper" class="btn-secondary px-6 py-3">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                                    </svg>
-                                    Read Whitepaper
-                                </Link>
-                            </div>
-                        </div>
-
-                        <!-- Right: Price Cards -->
-                        <div class="flex-shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div class="glass-card text-center px-4 py-5 min-w-[100px]">
-                                <p class="text-xs text-dark-400 mb-1">Private</p>
-                                <p class="text-lg font-bold text-white">$0.05</p>
-                            </div>
-                            <div class="glass-card text-center px-4 py-5 min-w-[100px] border-primary-500/30">
-                                <p class="text-xs text-primary-400 mb-1">Pre-Sale</p>
-                                <p class="text-lg font-bold text-white">$0.08</p>
-                            </div>
-                            <div class="glass-card text-center px-4 py-5 min-w-[100px]">
-                                <p class="text-xs text-dark-400 mb-1">Public</p>
-                                <p class="text-lg font-bold text-white">$0.10</p>
-                            </div>
-                        </div>
+            <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                <Link v-for="card in ecosystem" :key="card.key" :href="card.href" class="eco-card group">
+                    <div class="eco-card__media">
+                        <img :src="card.img" alt="" loading="lazy" decoding="async" width="800" height="450" />
+                        <span class="eco-card__scrim"></span>
                     </div>
-                </div>
+                    <div class="relative p-5 pt-1">
+                        <h3 class="text-lg font-semibold text-white mb-1.5 flex items-center justify-between gap-2">
+                            {{ card.title }}
+                            <span class="text-primary-400 transition-transform group-hover:translate-x-1" aria-hidden="true">→</span>
+                        </h3>
+                        <p class="text-dark-400 text-sm leading-relaxed">{{ card.desc }}</p>
+                    </div>
+                </Link>
             </div>
         </section>
 
-        <!-- TPIX Ecosystem — ลิงก์เข้าถึงทุกส่วนของระบบ -->
-        <section class="py-16">
-            <div class="max-w-6xl mx-auto">
-                <div class="text-center mb-12">
-                    <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
-                        TPIX <span class="text-gradient">Ecosystem</span>
-                    </h2>
-                    <p class="text-dark-400 max-w-2xl mx-auto">
-                        Explore the complete TPIX ecosystem. From token sale to master node, everything in one place.
-                    </p>
-                </div>
-
-                <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <!-- Token Sale -->
-                    <Link href="/token-sale" class="eco-card group hover:border-primary-500/30">
-                        <div class="eco-card__media">
-                            <img src="/images/art/card-tokensale.webp" alt="" loading="lazy" decoding="async" />
-                            <span class="eco-card__scrim"></span>
-                        </div>
-                        <div class="relative p-6 pt-0 -mt-7">
-                            <div class="w-12 h-12 rounded-xl bg-primary-500/10 backdrop-blur-md border border-white/10 flex items-center justify-center mb-4 group-hover:bg-primary-500/20 transition-colors">
-                                <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                            </div>
-                            <h3 class="text-lg font-semibold text-white mb-2">Token Sale</h3>
-                            <p class="text-dark-400 text-sm">Buy TPIX at ICO price. Pay with BNB or USDT.</p>
-                        </div>
-                    </Link>
-
-                    <!-- Whitepaper -->
-                    <Link href="/whitepaper" class="eco-card group hover:border-accent-500/30">
-                        <div class="eco-card__media">
-                            <img src="/images/art/card-whitepaper.webp" alt="" loading="lazy" decoding="async" />
-                            <span class="eco-card__scrim"></span>
-                        </div>
-                        <div class="relative p-6 pt-0 -mt-7">
-                            <div class="w-12 h-12 rounded-xl bg-accent-500/10 backdrop-blur-md border border-white/10 flex items-center justify-center mb-4 group-hover:bg-accent-500/20 transition-colors">
-                                <svg class="w-6 h-6 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                                </svg>
-                            </div>
-                            <h3 class="text-lg font-semibold text-white mb-2">Whitepaper</h3>
-                            <p class="text-dark-400 text-sm">Learn about TPIX vision, tokenomics, and roadmap.</p>
-                        </div>
-                    </Link>
-
-                    <!-- Explorer -->
-                    <Link href="/explorer" class="eco-card group hover:border-trading-green/30">
-                        <div class="eco-card__media">
-                            <img src="/images/art/card-explorer.webp" alt="" loading="lazy" decoding="async" />
-                            <span class="eco-card__scrim"></span>
-                        </div>
-                        <div class="relative p-6 pt-0 -mt-7">
-                            <div class="w-12 h-12 rounded-xl bg-trading-green/10 backdrop-blur-md border border-white/10 flex items-center justify-center mb-4 group-hover:bg-trading-green/20 transition-colors">
-                                <svg class="w-6 h-6 text-trading-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                                </svg>
-                            </div>
-                            <h3 class="text-lg font-semibold text-white mb-2">Explorer</h3>
-                            <p class="text-dark-400 text-sm">Browse TPIX Chain blocks, transactions, and addresses.</p>
-                        </div>
-                    </Link>
-
-                    <!-- Master Node -->
-                    <Link href="/masternode" class="eco-card group hover:border-warm-500/30">
-                        <div class="eco-card__media">
-                            <img src="/images/art/card-masternode.webp" alt="" loading="lazy" decoding="async" />
-                            <span class="eco-card__scrim"></span>
-                        </div>
-                        <div class="relative p-6 pt-0 -mt-7">
-                            <div class="w-12 h-12 rounded-xl bg-warm-500/10 backdrop-blur-md border border-white/10 flex items-center justify-center mb-4 group-hover:bg-warm-500/20 transition-colors">
-                                <svg class="w-6 h-6 text-warm-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                                </svg>
-                            </div>
-                            <h3 class="text-lg font-semibold text-white mb-2">Master Node</h3>
-                            <p class="text-dark-400 text-sm">Run a TPIX Master Node and earn up to 15% APY rewards.</p>
-                        </div>
-                    </Link>
-                </div>
+        <!-- ═══ ทำไมต้อง TPIX TRADE ═══ -->
+        <section class="max-w-6xl mx-auto pt-20">
+            <div class="text-center mb-10">
+                <p class="hc-kicker">{{ t('homeClassic.whyEyebrow') }}</p>
+                <h2 class="text-3xl md:text-4xl font-bold text-white">{{ t('homeClassic.whyTitle') }}</h2>
             </div>
-        </section>
-
-        <!-- Features -->
-        <section class="relative py-16">
-            <PageArt art="section-features" :opacity="40" fade="radial" position="right center" />
-            <div class="relative max-w-6xl mx-auto">
-                <div class="text-center mb-12">
-                    <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
-                        Why Trade with TPIX TRADE?
-                    </h2>
-                    <p class="text-dark-400 max-w-2xl mx-auto">
-                        Built by traders, for traders. Experience the future of decentralized trading.
-                    </p>
-                </div>
-
-                <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div v-for="feature in features" :key="feature.title" class="glass-card group">
-                        <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-500/10 via-primary-500/15 to-warm-500/10 flex items-center justify-center mb-4 group-hover:from-accent-500/20 group-hover:via-primary-500/25 group-hover:to-warm-500/15 transition-colors">
-                            <svg v-if="feature.icon === 'shield'" class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-                            </svg>
-                            <svg v-else-if="feature.icon === 'globe'" class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                            <svg v-else-if="feature.icon === 'lightning'" class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                            </svg>
-                            <svg v-else class="w-7 h-7 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                            </svg>
-                        </div>
-                        <h3 class="text-lg font-semibold text-white mb-2">{{ feature.title }}</h3>
-                        <p class="text-dark-400">{{ feature.description }}</p>
-                    </div>
+            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                <div v-for="item in whyItems" :key="item.key" class="glass-card hc-edge text-center group">
+                    <img :src="item.img" alt="" loading="lazy" decoding="async" width="112" height="112" class="w-24 h-24 mx-auto mb-4 transition-transform duration-500 group-hover:scale-110" />
+                    <h3 class="text-lg font-semibold text-white mb-2">{{ item.title }}</h3>
+                    <p class="text-sm text-dark-400 leading-relaxed">{{ item.desc }}</p>
                 </div>
             </div>
         </section>
 
         <!-- ป้ายโฆษณาด้านล่าง Home -->
-        <BannerAd placement="home_bottom" class="py-4 max-w-6xl mx-auto" />
+        <BannerAd placement="home_bottom" class="pt-12 max-w-6xl mx-auto" />
 
-        <!-- CTA Section -->
-        <section class="py-16">
-            <div class="max-w-4xl mx-auto">
-                <div class="relative overflow-hidden glass-card text-center bg-brand-gradient-subtle border-primary-500/20">
-                    <PageArt art="section-cta" :opacity="45" fade="radial" rounded="rounded-2xl" />
-                    <div class="relative">
-                        <h2 class="text-3xl font-bold text-white mb-4">
-                            Ready to {{ t('home.startTrading') }}?
-                        </h2>
-                        <p class="text-dark-400 mb-8 max-w-xl mx-auto">
-                            Connect your wallet and start trading in seconds. No registration required.
-                        </p>
-                        <Link href="/trade" class="btn-primary px-8 py-4 text-lg inline-flex">
-                            Launch App
-                            <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <!-- ═══ CTA ═══ -->
+        <section class="max-w-6xl mx-auto pt-12 pb-6">
+            <div class="hc-island hc-panel">
+                <img
+                    :src="art('cta')"
+                    :srcset="`${art('cta-960')} 960w, ${art('cta')} 1672w`"
+                    sizes="(min-width: 1152px) 1152px, 100vw"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    class="hc-panel__img"
+                />
+                <div class="hc-panel__shade hc-panel__shade--cta" aria-hidden="true"></div>
+                <div class="relative grid md:grid-cols-3 items-end gap-6 px-6 md:px-12 pt-10 md:pt-12">
+                    <div class="md:col-span-2 pb-10 md:pb-12 text-center md:text-left">
+                        <h2 class="text-3xl md:text-5xl font-bold text-white mb-4">{{ t('homeClassic.ctaTitle') }}</h2>
+                        <p class="text-dark-300 mb-8 max-w-xl md:mx-0 mx-auto">{{ t('homeClassic.ctaDesc') }}</p>
+                        <Link href="/trade" class="hc-btn hc-btn--primary">
+                            {{ t('homeClassic.ctaButton') }}
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
                             </svg>
                         </Link>
+                        <p class="text-xs text-dark-500 mt-6">{{ t('homeClassic.riskNote') }}</p>
                     </div>
+                    <img
+                        src="/images/mascot/welcome.webp"
+                        alt="Nong TPIX"
+                        loading="lazy"
+                        decoding="async"
+                        class="hidden md:block w-full max-w-[260px] mx-auto self-end"
+                    />
                 </div>
             </div>
         </section>
@@ -619,48 +634,516 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* Netflix-style cinematic media layers */
-.hero-media {
+/* ── เกาะมืด: ตรึงตัวแปรสีของธีมมืดไว้ในแผงที่มีภาพพื้นมืด ──────────
+   tailwind ทุกคลาส (text-white, text-dark-300 ฯลฯ) อ่านจาก --c-* ผ่าน rgb(var())
+   ประกาศซ้ำที่นี่ = ลูกทุกตัวในแผงได้สีธีมมืด แม้ทั้งหน้าจะเป็น xp-silver   */
+.hc-island {
+    --c-white: 255 255 255;
+    --c-black: 0 0 0;
+    --c-dark-300: 203 213 225;
+    --c-dark-400: 148 163 184;
+    --c-dark-500: 100 116 139;
+    --c-dark-900: 15 23 42;
+    --c-dark-950: 2 6 23;
+    --c-primary-300: 103 232 249;
+    --c-primary-400: 34 211 238;
+    --c-primary-500: 6 182 212;
+    color: rgb(255 255 255);
+    color-scheme: dark;
+}
+
+/* ── HERO ─────────────────────────────────────────────── */
+.hc-hero {
+    position: relative;
+    overflow: hidden;
+    background: #050914;
+    min-height: 640px;
+}
+
+.hc-hero__img {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: opacity 1.5s cubic-bezier(0.4, 0, 0.2, 1), transform 8s cubic-bezier(0.4, 0, 0.2, 1);
-    will-change: opacity, transform;
+    object-position: 72% 50%;
 }
 
-/* Ken Burns slow zoom for final image */
-@keyframes ken-burns {
-    0%   { transform: scale(1); }
-    100% { transform: scale(1.12); }
-}
-.hero-ken-burns {
-    animation: ken-burns 30s ease-out forwards;
+/* เงาไล่จากซ้าย (ที่วางข้อความ) + ก้นภาพจมลงพื้นหน้า */
+.hc-hero__shade {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(90deg, #050914 0%, rgb(5 9 20 / 0.92) 28%, rgb(5 9 20 / 0.35) 58%, rgb(5 9 20 / 0.1) 100%),
+        linear-gradient(0deg, #050914 0%, rgb(5 9 20 / 0.6) 18%, transparent 45%);
 }
 
-/* การ์ด Ecosystem — แถบภาพเต็มขอบด้านบน ไอคอนคร่อมรอยต่อ
-   media เป็น element ใน flow (ไม่ใช่ absolute) จึงไม่มีปัญหาทับเนื้อหา */
+@media (max-width: 767px) {
+    .hc-hero { min-height: 0; }
+    .hc-hero__img { object-position: 78% 30%; }
+    .hc-hero__shade {
+        background: linear-gradient(180deg, rgb(5 9 20 / 0.55) 0%, rgb(5 9 20 / 0.85) 45%, #050914 100%);
+    }
+}
+
+/* ตารางเส้นบาง ๆ แบบจอเทรด — มาสก์ให้จางลงทางขวาและล่าง */
+.hc-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgb(34 211 238 / 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(34 211 238 / 0.06) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 70% 80% at 20% 40%, #000 0%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse 70% 80% at 20% 40%, #000 0%, transparent 75%);
+    pointer-events: none;
+}
+
+/* แสงกวาดช้า ๆ หนึ่งเส้น — transform อย่างเดียว ใช้ GPU ไม่ทำให้เครื่องอ่อนช้า */
+.hc-sweep {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -30%;
+    width: 30%;
+    background: linear-gradient(90deg, transparent, rgb(34 211 238 / 0.07), rgb(139 92 246 / 0.06), transparent);
+    transform: skewX(-18deg);
+    animation: hc-sweep 9s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes hc-sweep {
+    0% { transform: translateX(0) skewX(-18deg); }
+    60%, 100% { transform: translateX(480%) skewX(-18deg); }
+}
+
+/* ── ชิ้นส่วนร่วม ─────────────────────────────────────── */
+/* หัวข้อภาษาไทยยาว — แบ่งบรรทัดให้เท่ากัน ไม่ให้เหลือคำเดียวตกบรรทัดสุดท้าย */
+.hc-balance,
+.hc-balance > span {
+    text-wrap: balance;
+}
+
+.hc-gradient-text {
+    background-image: linear-gradient(90deg, #22d3ee 0%, #3b82f6 35%, #8b5cf6 65%, #d946ef 85%, #f59e0b 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.hc-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.9rem;
+    border-radius: 9999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: rgb(165 243 252);
+    background: rgb(34 211 238 / 0.08);
+    border: 1px solid rgb(34 211 238 / 0.25);
+    backdrop-filter: blur(8px);
+}
+
+.hc-eyebrow--muted {
+    color: rgb(203 213 225);
+    background: rgb(255 255 255 / 0.05);
+    border-color: rgb(255 255 255 / 0.12);
+}
+
+.hc-kicker {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(var(--c-primary-400));
+    margin-bottom: 0.5rem;
+}
+
+.hc-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: #00c853;
+    box-shadow: 0 0 0 0 rgb(0 200 83 / 0.6);
+    animation: hc-ping 2s ease-out infinite;
+    flex-shrink: 0;
+}
+
+.hc-dot--sm { width: 0.375rem; height: 0.375rem; }
+.hc-dot--idle { background: #94a3b8; animation: none; }
+
+@keyframes hc-ping {
+    0% { box-shadow: 0 0 0 0 rgb(0 200 83 / 0.55); }
+    80%, 100% { box-shadow: 0 0 0 6px rgb(0 200 83 / 0); }
+}
+
+.hc-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #69f0ae;
+}
+
+.hc-skeleton {
+    display: inline-block;
+    width: 6rem;
+    height: 1.25em;
+    border-radius: 0.375rem;
+    background: linear-gradient(90deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.06));
+    background-size: 200% 100%;
+    animation: hc-shimmer 1.4s linear infinite;
+    vertical-align: middle;
+}
+
+.hc-skeleton--lg { width: 8rem; }
+
+@keyframes hc-shimmer {
+    to { background-position: -200% 0; }
+}
+
+/* ปุ่มของหน้านี้เอง — ไม่ใช้ .btn-primary เพราะธีม xp-silver เปลี่ยนหน้าตาปุ่มนั้นเป็นแผ่นเงิน */
+.hc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.85rem 1.6rem;
+    border-radius: 0.875rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.hc-btn:focus-visible {
+    outline: 2px solid #22d3ee;
+    outline-offset: 3px;
+}
+
+.hc-btn--primary {
+    color: #fff;
+    background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #8b5cf6 100%);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.12) inset, 0 8px 28px -8px rgb(34 211 238 / 0.6);
+}
+
+.hc-btn--primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.2) inset, 0 12px 36px -8px rgb(139 92 246 / 0.7);
+}
+
+.hc-btn--ghost {
+    color: #e2e8f0;
+    background: rgb(255 255 255 / 0.05);
+    border: 1px solid rgb(255 255 255 / 0.14);
+    backdrop-filter: blur(10px);
+}
+
+.hc-btn--ghost:hover {
+    background: rgb(255 255 255 / 0.1);
+    border-color: rgb(34 211 238 / 0.45);
+}
+
+/* ลิงก์ "ดูคลิป" ใต้ปุ่มฮีโร่ */
+.hc-watch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #a5f3fc;
+    transition: color 0.2s ease;
+}
+
+.hc-watch:hover { color: #fff; }
+
+.hc-watch__icon {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    color: #fff;
+    background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+    box-shadow: 0 0 0 4px rgb(34 211 238 / 0.15);
+}
+
+.hc-watch__icon svg { width: 0.9rem; height: 0.9rem; margin-left: 2px; }
+
+/* การ์ดสถิติบนฮีโร่ — เส้นขอบไล่สีบาง ๆ ด้านบน
+   การ์ดเล็กที่ซ้อนบนภาพทั้งหน้าไม่ใช้ backdrop-filter: หลายสิบใบเบลอพร้อมกันหนักเกินสำหรับเครื่องอ่อน */
+.hc-stat {
+    position: relative;
+    padding: 1rem 1.1rem;
+    border-radius: 1rem;
+    background: rgb(8 13 28 / 0.78);
+    border: 1px solid rgb(255 255 255 / 0.08);
+    overflow: hidden;
+    min-width: 0;
+}
+
+.hc-stat::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgb(34 211 238 / 0.7), rgb(139 92 246 / 0.6), transparent);
+}
+
+/* ขอบเรืองแสงตอนชี้ สำหรับการ์ดที่ใช้สีตามธีม */
+.hc-edge {
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hc-edge:hover {
+    border-color: rgb(var(--c-primary-500) / 0.35);
+    box-shadow: 0 0 0 1px rgb(var(--c-primary-500) / 0.12), 0 18px 48px -20px rgb(var(--c-primary-500) / 0.45);
+}
+
+/* ── แผงภาพ (Masternode / Chain / Sale / CTA) ────────────── */
+.hc-panel {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1.75rem;
+    background: #050914;
+    border: 1px solid rgb(34 211 238 / 0.16);
+    box-shadow: 0 30px 80px -40px rgb(34 211 238 / 0.35);
+}
+
+.hc-panel__img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 75% 50%;
+}
+
+/* แผง Masternode สูงมาก — ภาพอยู่ส่วนบน แล้วจางลงพื้นมืดให้การ์ดระดับอ่านง่าย */
+.hc-panel__img--top {
+    height: 640px;
+    object-position: 75% 35%;
+}
+
+.hc-panel__shade {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(90deg, #050914 0%, rgb(5 9 20 / 0.9) 32%, rgb(5 9 20 / 0.35) 65%, rgb(5 9 20 / 0.15) 100%),
+        linear-gradient(0deg, rgb(5 9 20 / 0.7) 0%, transparent 40%);
+}
+
+.hc-panel__shade--node {
+    background:
+        linear-gradient(90deg, #050914 0%, rgb(5 9 20 / 0.88) 34%, rgb(5 9 20 / 0.3) 68%, rgb(5 9 20 / 0.1) 100%),
+        linear-gradient(180deg, transparent 0px, transparent 380px, #050914 640px);
+}
+
+.hc-panel__shade--cta {
+    background:
+        linear-gradient(90deg, rgb(5 9 20 / 0.92) 0%, rgb(5 9 20 / 0.6) 50%, rgb(5 9 20 / 0.35) 100%);
+}
+
+.hc-panel--sale {
+    background:
+        radial-gradient(ellipse 60% 70% at 78% 50%, rgb(139 92 246 / 0.22), transparent 70%),
+        radial-gradient(ellipse 50% 60% at 15% 100%, rgb(34 211 238 / 0.12), transparent 70%),
+        #050914;
+}
+
+@media (max-width: 767px) {
+    .hc-panel__img { object-position: 80% 30%; }
+    .hc-panel__shade,
+    .hc-panel__shade--cta {
+        background: linear-gradient(180deg, rgb(5 9 20 / 0.6) 0%, rgb(5 9 20 / 0.92) 50%, #050914 100%);
+    }
+    .hc-panel__img--top { height: 420px; }
+    .hc-panel__shade--node {
+        background: linear-gradient(180deg, rgb(5 9 20 / 0.55) 0px, rgb(5 9 20 / 0.92) 260px, #050914 420px);
+    }
+}
+
+.hc-chip {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    padding: 0.8rem 1rem;
+    border-radius: 0.875rem;
+    background: rgb(8 13 28 / 0.8);
+    border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.hc-chip--link {
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.hc-chip--link:hover {
+    border-color: rgb(34 211 238 / 0.5);
+    background: rgb(8 30 44 / 0.75);
+}
+
+.hc-chip--active {
+    border-color: rgb(34 211 238 / 0.55);
+    box-shadow: 0 0 24px -8px rgb(34 211 238 / 0.6);
+}
+
+.hc-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgb(203 213 225);
+    background: rgb(255 255 255 / 0.06);
+    border: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.hc-step {
+    display: flex;
+    gap: 0.9rem;
+    padding: 1rem 1.1rem;
+    border-radius: 0.875rem;
+    background: rgb(8 13 28 / 0.78);
+    border: 1px solid rgb(255 255 255 / 0.07);
+}
+
+.hc-step__n {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.6rem;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #fff;
+    background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+}
+
+/* การ์ดระดับโหนด — สีเน้นมาจาก --tier ของแต่ละระดับ */
+.hc-tier {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 1.1rem 1rem 1rem;
+    border-radius: 1.1rem;
+    background:
+        radial-gradient(ellipse 80% 45% at 50% 0%, rgb(var(--tier) / 0.18), transparent 70%),
+        rgb(10 15 30 / 0.85);
+    border: 1px solid rgb(var(--tier) / 0.28);
+    transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hc-tier:hover {
+    transform: translateY(-3px);
+    border-color: rgb(var(--tier) / 0.6);
+    box-shadow: 0 18px 44px -20px rgb(var(--tier) / 0.7);
+}
+
+.hc-tier__img {
+    width: 7.5rem;
+    height: 7.5rem;
+    margin: -0.25rem auto 0.5rem;
+    object-fit: contain;
+    filter: drop-shadow(0 8px 22px rgb(var(--tier) / 0.45));
+}
+
+.hc-tier__rows {
+    display: grid;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+}
+
+.hc-tier__rows > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.hc-tier__rows dt { color: rgb(148 163 184); }
+.hc-tier__rows dd { color: #fff; font-weight: 600; text-align: right; }
+
+.hc-tier__apr {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-top: 0.8rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid rgb(255 255 255 / 0.08);
+    font-size: 0.75rem;
+    color: rgb(148 163 184);
+}
+
+.hc-tier__apr strong {
+    font-size: 1.35rem;
+    color: rgb(var(--tier));
+}
+
+/* การ์ดราคา TPIX */
+.hc-price {
+    padding: 1.4rem;
+    border-radius: 1.25rem;
+    background: rgb(8 13 28 / 0.86);
+    border: 1px solid rgb(255 255 255 / 0.1);
+}
+
+/* เหรียญ TPIX ลอยช้า ๆ */
+.hc-coin {
+    position: relative;
+    width: min(100%, 320px);
+    aspect-ratio: 1;
+}
+
+.hc-coin__glow {
+    position: absolute;
+    inset: 12%;
+    border-radius: 9999px;
+    background: radial-gradient(circle, rgb(139 92 246 / 0.45), rgb(34 211 238 / 0.18) 50%, transparent 70%);
+    filter: blur(24px);
+}
+
+.hc-coin__img {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    animation: hc-float 6s ease-in-out infinite;
+}
+
+@keyframes hc-float {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    50% { transform: translateY(-12px) rotate(2deg); }
+}
+
+/* ── การ์ดระบบนิเวศ — แถบภาพเต็มขอบด้านบน ───────────────── */
 .eco-card {
     position: relative;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border-radius: 1rem;
-    background: rgb(255 255 255 / 0.05);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgb(255 255 255 / 0.1);
-    transition: background-color .3s ease, border-color .3s ease, box-shadow .3s ease;
+    border-radius: 1.1rem;
+    background: rgb(255 255 255 / 0.04);
+    border: 1px solid rgb(255 255 255 / 0.09);
+    transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
 }
 
 .eco-card:hover {
-    background: rgb(255 255 255 / 0.1);
-    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+    transform: translateY(-3px);
+    background: rgb(255 255 255 / 0.07);
+    border-color: rgb(var(--c-primary-500) / 0.4);
+    box-shadow: 0 20px 50px -24px rgb(var(--c-primary-500) / 0.55);
 }
 
 .eco-card__media {
     position: relative;
-    height: 9rem;
+    aspect-ratio: 16 / 8;
     overflow: hidden;
 }
 
@@ -668,25 +1151,37 @@ onMounted(async () => {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    opacity: .75;
-    transform: scale(1);
-    transition: opacity .5s ease, transform .7s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .eco-card:hover .eco-card__media img {
-    opacity: 1;
     transform: scale(1.06);
 }
 
-/* ไล่เฉดให้ภาพจมลงไปในพื้นการ์ด ไม่เป็นกล่องตัดขาด */
 .eco-card__scrim {
     position: absolute;
     inset: 0;
-    background: linear-gradient(to top, rgb(15 23 42) 0%, rgb(15 23 42 / 0.55) 45%, transparent 100%);
+    background: linear-gradient(to top, rgb(var(--c-dark-950) / 0.85) 0%, transparent 55%);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .eco-card__media img { transition: none; }
-    .eco-card:hover .eco-card__media img { transform: none; }
+    .hc-sweep,
+    .hc-dot,
+    .hc-skeleton,
+    .hc-coin__img {
+        animation: none;
+    }
+    .eco-card,
+    .eco-card__media img,
+    .hc-tier,
+    .hc-btn {
+        transition: none;
+    }
+    .eco-card:hover,
+    .hc-tier:hover,
+    .hc-btn--primary:hover,
+    .eco-card:hover .eco-card__media img {
+        transform: none;
+    }
 }
 </style>
