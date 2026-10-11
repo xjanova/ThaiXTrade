@@ -2,6 +2,9 @@
  * TPIX TRADE — Hardhat Configuration
  * Networks: BSC Mainnet, BSC Testnet, TPIX Chain, TPIX Testnet
  * ใช้สำหรับ compile, deploy, verify smart contracts
+ *
+ * ⚠️ สัญญาแฟกทอรีสร้างเหรียญไม่ได้อยู่ที่นี่แล้ว — อยู่ที่ repo TPIX-Coin
+ *    (contracts/src/token-factory) ห้ามเอาสำเนาเก่ากลับมาคอมไพล์/deploy จากที่นี่
  * Developed by Xman Studio
  */
 
@@ -16,7 +19,9 @@ module.exports = {
                 version: '0.8.24',
                 settings: {
                     optimizer: { enabled: true, runs: 200 },
-                    evmVersion: 'cancun',
+                    // เชน TPIX (4289) เป็น EVM รุ่น london — ไม่มี PUSH0/MCOPY/TSTORE
+                    // คอมไพล์ด้วย cancun แล้ว deploy ได้แต่สัญญาจะ revert ตอนเรียกใช้
+                    evmVersion: 'london',
                     viaIR: true,
                 },
             },
@@ -25,7 +30,7 @@ module.exports = {
                 version: '0.8.20',
                 settings: {
                     optimizer: { enabled: true, runs: 200 },
-                    evmVersion: 'paris',
+                    evmVersion: 'london',
                 },
             },
         ],

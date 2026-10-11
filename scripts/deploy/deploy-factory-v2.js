@@ -1,73 +1,20 @@
 #!/usr/bin/env node
 /**
- * Deploy TPIX Token Factory V2 + NFT Factory contracts
+ * ⛔ DEPRECATED — ห้ามใช้ deploy แฟกทอรีจาก repo นี้
  *
- * Usage:
- *   npx hardhat run scripts/deploy/deploy-factory-v2.js --network tpix
- *   npx hardhat run scripts/deploy/deploy-factory-v2.js --network tpixTestnet
+ * สัญญาแฟกทอรีสร้างเหรียญ (TPIXTokenFactoryV2 / TPIXNFTFactory) ย้ายไปอยู่ที่ repo
+ * TPIX-Coin (contracts/src/token-factory) แล้ว — คอมไพล์ด้วย solc 0.8.24, evmVersion
+ * london ให้ตรงกับเชน TPIX (4289) และ deploy ด้วยสคริปต์ของ repo นั้นเท่านั้น
  *
- * Output:
- *   Prints deployed contract addresses for .env configuration
+ * สำเนาเก่าที่เคยอยู่ใน ThaiXTrade (contracts/factory + สคริปต์ชุดนี้) คอมไพล์เป็น
+ * cancun และได้ bytecode 65,496 ไบต์ เกินเพดาน EIP-170 (24,576) — deploy จริงไม่ได้
+ * และถ้าใช้ได้ก็จะได้สัญญาคนละรุ่นกับ ABI ที่ scripts/blockchain/abi ใช้อยู่
  *
- * Developed by Xman Studio
+ * หลัง deploy จาก TPIX-Coin แล้ว ให้ลงทะเบียนที่อยู่ผ่าน /api/infra/contracts
+ * (ContractRegistry) — ไม่ต้องแก้ .env
  */
-
-const hre = require('hardhat');
-
-async function main() {
-    const [deployer] = await hre.ethers.getSigners();
-    const network = hre.network.name;
-    const chainId = (await hre.ethers.provider.getNetwork()).chainId;
-
-    console.log('═══════════════════════════════════════════');
-    console.log(' TPIX Token Factory V2 — Deployment');
-    console.log('═══════════════════════════════════════════');
-    console.log(`Network:  ${network} (Chain ID: ${chainId})`);
-    console.log(`Deployer: ${deployer.address}`);
-    console.log(`Balance:  ${hre.ethers.formatEther(await hre.ethers.provider.getBalance(deployer.address))} TPIX`);
-    console.log('');
-
-    // ──────────────────────────────────────────
-    //  1. Deploy TPIXTokenFactoryV2 (ERC-20 tokens)
-    // ──────────────────────────────────────────
-    console.log('[1/2] Deploying TPIXTokenFactoryV2...');
-    const TokenFactoryV2 = await hre.ethers.getContractFactory('TPIXTokenFactoryV2');
-    const tokenFactory = await TokenFactoryV2.deploy({ gasPrice: 0 });
-    await tokenFactory.waitForDeployment();
-    const tokenFactoryAddr = await tokenFactory.getAddress();
-    console.log(`  ✅ TPIXTokenFactoryV2: ${tokenFactoryAddr}`);
-
-    // ──────────────────────────────────────────
-    //  2. Deploy TPIXNFTFactory (NFT tokens)
-    // ──────────────────────────────────────────
-    console.log('[2/2] Deploying TPIXNFTFactory...');
-    const NFTFactory = await hre.ethers.getContractFactory('TPIXNFTFactory');
-    const nftFactory = await NFTFactory.deploy({ gasPrice: 0 });
-    await nftFactory.waitForDeployment();
-    const nftFactoryAddr = await nftFactory.getAddress();
-    console.log(`  ✅ TPIXNFTFactory:     ${nftFactoryAddr}`);
-
-    // ──────────────────────────────────────────
-    //  Summary
-    // ──────────────────────────────────────────
-    console.log('');
-    console.log('═══════════════════════════════════════════');
-    console.log(' Deployment Complete!');
-    console.log('═══════════════════════════════════════════');
-    console.log('');
-    console.log('Add to .env:');
-    console.log('');
-    console.log(`TOKEN_FACTORY_V2_ADDRESS=${tokenFactoryAddr}`);
-    console.log(`NFT_FACTORY_ADDRESS=${nftFactoryAddr}`);
-    console.log('');
-    console.log('Note: V1 factory (TOKEN_FACTORY_ADDRESS) remains');
-    console.log('active for backward compatibility.');
-    console.log('═══════════════════════════════════════════');
-}
-
-main()
-    .then(() => process.exit(0))
-    .catch((error) => {
-        console.error('Deployment failed:', error);
-        process.exit(1);
-    });
+console.error(
+    'deploy-factory-v2.js ถูกยกเลิกแล้ว — deploy แฟกทอรีจาก repo TPIX-Coin ' +
+    '(contracts/src/token-factory, evmVersion london) แล้วลงทะเบียนที่อยู่ผ่าน /api/infra/contracts'
+);
+process.exit(1);

@@ -1,175 +1,20 @@
-name: Deploy Token Factory V2 + NFT Factory
+name: Deploy Token Factory V2 + NFT Factory (DEPRECATED)
+
+# ⛔ ยกเลิกแล้ว — ห้าม deploy แฟกทอรีจาก repo นี้
+#
+# workflow เดิมคอมไพล์สำเนาสัญญาเก่าใน contracts/factory ด้วย evmVersion cancun
+# (bytecode เกินเพดาน EIP-170 และคนละรุ่นกับ ABI ที่เว็บใช้) แล้ว deploy ขึ้นเชนจริง
+#
+# สัญญาแฟกทอรีอยู่ที่ repo TPIX-Coin (contracts/src/token-factory, solc 0.8.24,
+# evmVersion london) — deploy จากที่นั่น แล้วลงทะเบียนที่อยู่ผ่าน /api/infra/contracts
 on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  deprecated:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-
-      - name: Compile contracts on runner
+      - name: Refuse to deploy from this repo
         run: |
-          npm init -y
-          npm pkg set type=module
-          npm install hardhat@2 '@nomicfoundation/hardhat-toolbox@hh2' '@openzeppelin/contracts@^5.0.0' ethers@6
-
-          cat > hardhat.config.cjs << 'EOF'
-          require("@nomicfoundation/hardhat-toolbox");
-          module.exports = {
-            solidity: {
-              compilers: [
-                { version: "0.8.24", settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true } },
-                { version: "0.8.20", settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "paris", viaIR: true } },
-              ],
-              overrides: {
-                "contracts/factory/TPIXTokenFactoryV2.sol": {
-                  version: "0.8.20",
-                  settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "paris", viaIR: true }
-                },
-                "contracts/factory/TPIXNFTFactory.sol": {
-                  version: "0.8.20",
-                  settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "paris", viaIR: true }
-                },
-                "contracts/factory/interfaces/ITokenCreators.sol": {
-                  version: "0.8.20",
-                  settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "paris", viaIR: true }
-                },
-                "contracts/factory/interfaces/INFTCreators.sol": {
-                  version: "0.8.20",
-                  settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "paris", viaIR: true }
-                }
-              },
-            },
-            paths: { sources: "./contracts", cache: "./cache", artifacts: "./artifacts" },
-          };
-          EOF
-
-          npx hardhat compile --config hardhat.config.cjs
-
-          # Extract minimal artifacts (ABI + bytecode only) into workspace
-          mkdir -p factory-artifacts
-          node -e "
-            const fs = require('fs');
-            const contracts = {
-              'ERC20V2Creator': 'artifacts/contracts/factory/creators/ERC20V2Creator.sol/ERC20V2Creator.json',
-              'UtilityTokenCreator': 'artifacts/contracts/factory/creators/UtilityTokenCreator.sol/UtilityTokenCreator.json',
-              'RewardTokenCreator': 'artifacts/contracts/factory/creators/RewardTokenCreator.sol/RewardTokenCreator.json',
-              'GovernanceTokenCreator': 'artifacts/contracts/factory/creators/GovernanceTokenCreator.sol/GovernanceTokenCreator.json',
-              'StablecoinTokenCreator': 'artifacts/contracts/factory/creators/StablecoinTokenCreator.sol/StablecoinTokenCreator.json',
-              'TPIXTokenFactoryV2': 'artifacts/contracts/factory/TPIXTokenFactoryV2.sol/TPIXTokenFactoryV2.json',
-              'FactoryERC721Creator': 'artifacts/contracts/factory/creators/FactoryERC721Creator.sol/FactoryERC721Creator.json',
-              'NFTCollectionCreator': 'artifacts/contracts/factory/creators/NFTCollectionCreator.sol/NFTCollectionCreator.json',
-              'TPIXNFTFactory': 'artifacts/contracts/factory/TPIXNFTFactory.sol/TPIXNFTFactory.json',
-            };
-            for (const [name, path] of Object.entries(contracts)) {
-              const art = JSON.parse(fs.readFileSync(path));
-              fs.writeFileSync('factory-artifacts/' + name + '.json', JSON.stringify({ abi: art.abi, bytecode: art.bytecode }));
-              console.log(name + ':', Math.round(art.bytecode.length / 2), 'bytes');
-            }
-          "
-          # Also copy deploy script into artifacts dir
-          cp scripts/deploy/deploy-factory-v2-remote.mjs factory-artifacts/deploy.mjs
-          ls -la factory-artifacts/
-          echo "✅ Contracts compiled and artifacts extracted"
-
-      - name: Upload artifacts to server
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          source: "factory-artifacts/*"
-          target: "/tmp/factory-deploy"
-          strip_components: 1
-
-      - name: Deploy to TPIX Chain via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          command_timeout: 15m
-          script: |
-            echo "=== Deploy Token Factory V2 + NFT Factory — $(date) ==="
-
-            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-            DEPLOY_PATH="${DEPLOY_PATH:-/home/admin/domains/tpix.online}"
-
-            # 1. Extract validator private key
-            echo "[1/3] Extracting deployer key..."
-            PRIVATE_KEY=$(docker exec tpix-validator-1 cat /data/consensus/validator.key 2>/dev/null || echo "")
-            if [ -z "$PRIVATE_KEY" ]; then
-              echo "ERROR: Cannot extract validator private key"
-              exit 1
-            fi
-            echo "✅ Deployer key loaded"
-
-            # Verify artifacts + deploy script were uploaded
-            ls -la /tmp/factory-deploy/
-            test -f /tmp/factory-deploy/TPIXTokenFactoryV2.json || { echo "ERROR: V2 artifact missing"; exit 1; }
-            test -f /tmp/factory-deploy/deploy.mjs || { echo "ERROR: deploy script missing"; exit 1; }
-
-            # 2. Deploy using Node.js on server with ethers from app
-            echo "[2/3] Deploying contracts (7 contracts)..."
-            echo "Node: $(node --version)"
-
-            # Symlink node_modules so ESM import resolves ethers
-            rm -rf /tmp/factory-deploy/node_modules
-            ln -s "$DEPLOY_PATH/node_modules" /tmp/factory-deploy/node_modules
-            echo '{"type":"module"}' > /tmp/factory-deploy/package.json
-
-            cd /tmp/factory-deploy
-            DEPLOYER_KEY="$PRIVATE_KEY" \
-              ARTIFACTS_DIR="/tmp/factory-deploy" \
-              node --max-old-space-size=4096 deploy.mjs > /tmp/factory-deploy-output.log 2>&1 || true
-            echo "=== Deploy script output ==="
-            cat /tmp/factory-deploy-output.log
-            echo "=== End output ==="
-
-            DEPLOY_OUTPUT=$(cat /tmp/factory-deploy-output.log)
-
-            V2_ADDR=$(echo "$DEPLOY_OUTPUT" | grep "^TOKEN_FACTORY_V2_ADDRESS=" | tail -1 | cut -d'=' -f2)
-            NFT_ADDR=$(echo "$DEPLOY_OUTPUT" | grep "^NFT_FACTORY_ADDRESS=" | tail -1 | cut -d'=' -f2)
-
-            if [ -z "$V2_ADDR" ] || [ -z "$NFT_ADDR" ]; then
-              echo "ERROR: Failed to extract deployed addresses"
-              exit 1
-            fi
-
-            # 3. Update .env
-            echo "[3/3] Updating .env..."
-            cd "$DEPLOY_PATH"
-            cp .env .env.backup.factory-v2.$(date +%Y%m%d_%H%M%S)
-
-            for VAR in TOKEN_FACTORY_V2_ADDRESS NFT_FACTORY_ADDRESS; do
-              VAL=$(eval echo \$$VAR)
-              if grep -q "^${VAR}=" .env; then
-                sed -i "s|^${VAR}=.*|${VAR}=$VAL|" .env
-              else
-                echo "${VAR}=$VAL" >> .env
-              fi
-            done
-
-            php artisan config:clear 2>/dev/null || true
-            php artisan config:cache 2>/dev/null || true
-
-            # Cleanup
-            rm -rf /tmp/factory-deploy
-
-            echo ""
-            echo "═══════════════════════════════════════════"
-            echo " Factory V2 Deployment Complete!"
-            echo "═══════════════════════════════════════════"
-            echo " TOKEN_FACTORY_V2_ADDRESS=$V2_ADDR"
-            echo " NFT_FACTORY_ADDRESS=$NFT_ADDR"
-            echo " Explorer: https://explorer.tpix.online/address/$V2_ADDR"
-            echo " Explorer: https://explorer.tpix.online/address/$NFT_ADDR"
-            echo "═══════════════════════════════════════════"
+          echo "::error::workflow นี้ถูกยกเลิก — deploy แฟกทอรีจาก repo TPIX-Coin แล้วลงทะเบียนที่อยู่ผ่าน /api/infra/contracts"
+          exit 1
