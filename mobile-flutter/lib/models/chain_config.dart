@@ -97,6 +97,9 @@ class ChainConfig {
     shortName: 'TPIX',
     symbol: 'TPIX',
     rpcUrl: 'https://rpc.tpix.online',
+    // rpc.tpix.online อยู่หลัง Cloudflare ซึ่งบางทีบล็อกไคลเอนต์ (403)
+    // rpc1 ต่อตรงเข้าโหนด — RpcPool สลับมาเองเมื่อตัวหลักส่งไม่ถึง
+    fallbackRpcs: ['https://rpc1.tpix.online'],
     explorerUrl: 'https://explorer.tpix.online',
     isGasless: true,
     color: Color(0xFF00D4FF),

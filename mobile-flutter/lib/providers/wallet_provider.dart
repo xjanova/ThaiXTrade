@@ -15,8 +15,8 @@ import 'package:bip32/bip32.dart' as bip32;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hex/hex.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:web3dart/json_rpc.dart' show RPCError;
 import 'package:web3dart/web3dart.dart';
 import '../models/api_models.dart';
 import '../models/chain_config.dart';
@@ -24,6 +24,7 @@ import '../services/api_service.dart';
 import '../services/external_wallet_service.dart';
 import '../services/bug_reporter.dart';
 import '../services/linked_wallet_signer.dart';
+import '../services/rpc_failover.dart';
 import '../services/wallet_session.dart';
 
 /// ประเภทของ wallet ที่ user เลือกเชื่อม
@@ -532,6 +533,11 @@ class WalletProvider extends ChangeNotifier {
 
   /// Embedded wallet — เซ็นเองในเครื่อง private key ไม่ออกจาก SecureStorage
   /// gas: estimate จากเชนจริง + buffer 30% (swap บน Pancake ~200k ประมาณเองไม่ได้)
+  ///
+  /// ลำดับ: (1) เตรียม gas/nonce จาก RPC ที่ตอบได้ (สลับตัวสำรองเองเมื่อ 403/ล่ม)
+  ///        (2) เซ็น **ครั้งเดียว** ด้วย nonce ตายตัว (3) กระจายไบต์เดิมไปทีละโหนด
+  /// เดิมวนเซ็น-ส่งใหม่ทุก RPC — ถ้าโหนดแรกรับไปแล้วแต่คำตอบหาย การลองโหนดสองจะได้
+  /// nonce ใหม่ = ซื้อซ้ำสองไม้ และ estimate ล้มเพราะ 403 ก็ถูกตีความว่า "ธุรกรรมจะล้ม"
   Future<String?> _sendViaEmbedded({
     required String to,
     required int chainId,
@@ -551,54 +557,79 @@ class WalletProvider extends ChangeNotifier {
         value != null ? EtherAmount.inWei(value) : null;
 
     final chain = ChainConfig.byId(chainId);
-    final rpcs = [chain.rpcUrl, ...chain.fallbackRpcs];
-    for (final rpc in rpcs) {
-      final client = Web3Client(rpc, http.Client());
-      try {
-        // Estimate ก่อนส่ง — ถ้า revert ตั้งแต่ estimate = tx จะ fail แน่ อย่าส่ง
-        BigInt gasEstimate;
-        try {
-          gasEstimate = await client.estimateGas(
-            sender: credentials.address,
-            to: toAddress,
-            data: data,
-            value: etherValue,
-          );
-        } catch (_) {
-          _error = chain.isGasless
-              ? 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือและค่า slippage'
-              : 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือ/ค่า gas (${chain.symbol})';
-          notifyListeners();
-          return null;
-        }
+    final pool = RpcPool.forChain(chain);
 
-        final gasPrice = await client.getGasPrice();
-        final maxGas =
-            (gasEstimate * BigInt.from(13) ~/ BigInt.from(10)).toInt();
-
-        final hash = await client.sendTransaction(
-          credentials,
-          Transaction(
-            to: toAddress,
-            data: data,
-            value: etherValue,
-            gasPrice: gasPrice,
-            maxGas: maxGas,
-          ),
-          chainId: chainId,
+    // 1) เตรียม — estimate ก่อนส่ง ถ้า revert ตั้งแต่ estimate = tx จะ fail แน่ อย่าส่ง
+    final ({BigInt gas, EtherAmount gasPrice, int nonce}) prep;
+    try {
+      prep = await pool.withClient((client) async {
+        final gas = await client.estimateGas(
+          sender: credentials.address,
+          to: toAddress,
+          data: data,
+          value: etherValue,
         );
-        return hash;
-      } catch (e) {
-        debugPrint('sendChainTransaction rpc failed: ${e.runtimeType}');
-        // RPC ตัวนี้ล่ม — ลองตัวถัดไป
-      } finally {
-        client.dispose();
-      }
+        // เชน TPIX ตอบ 0 (ค่าแก๊สตั้งใน genesis) — ใช้ค่าที่เชนบอก ไม่เดาเอง
+        final gasPrice = await client.getGasPrice();
+        final nonce = await client.getTransactionCount(
+          credentials.address,
+          atBlock: const BlockNum.pending(),
+        );
+        return (gas: gas, gasPrice: gasPrice, nonce: nonce);
+      });
+    } on RPCError catch (e) {
+      // โหนดตอบแล้วว่าธุรกรรมจะ revert / ยอดไม่พอ — ไม่ใช่ปัญหาเครือข่าย
+      debugPrint('sendChainTransaction estimate rejected: ${e.errorCode}');
+      _error = chain.isGasless
+          ? 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือและค่า slippage'
+          : 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือ/ค่า gas (${chain.symbol})';
+      notifyListeners();
+      return null;
+    } catch (e) {
+      debugPrint('sendChainTransaction prepare failed: ${e.runtimeType}');
+      _error = 'ส่งธุรกรรมไม่สำเร็จ — เครือข่าย ${chain.shortName} ขัดข้อง ลองใหม่';
+      notifyListeners();
+      return null;
     }
 
-    _error = 'ส่งธุรกรรมไม่สำเร็จ — เครือข่าย ${chain.shortName} ขัดข้อง ลองใหม่';
-    notifyListeners();
-    return null;
+    // 2) เซ็นครั้งเดียว — legacy tx (gasPrice) เสมอ เชน TPIX ไม่รองรับ EIP-1559
+    final signed = signTransactionRaw(
+      Transaction(
+        to: toAddress,
+        data: data ?? Uint8List(0),
+        value: etherValue ?? EtherAmount.zero(),
+        gasPrice: prep.gasPrice,
+        maxGas: (prep.gas * BigInt.from(13) ~/ BigInt.from(10)).toInt(),
+        nonce: prep.nonce,
+      ),
+      credentials,
+      chainId: chainId,
+    );
+
+    // 3) กระจาย — โหนดไหนรับก่อนก็จบ ไบต์เดิมทุกครั้ง จึงไม่มีทางซื้อซ้ำ
+    try {
+      return await pool.broadcastRaw(signed);
+    } on RPCError catch (e) {
+      debugPrint('sendChainTransaction broadcast rejected: ${e.errorCode}');
+      _error = 'เชนปฏิเสธธุรกรรม — ลองใหม่อีกครั้ง';
+      notifyListeners();
+      return null;
+    } catch (e) {
+      debugPrint('sendChainTransaction broadcast failed: ${e.runtimeType}');
+      // หมดเวลาทุกโหนดไม่ได้แปลว่าไม่ถึง — ถามเชนก่อนว่ารู้จัก hash นี้ไหม
+      // ถ้ารู้จักแล้วบอกว่า "ไม่สำเร็จ" ผู้ใช้จะกดซ้ำ = nonce ใหม่ = ซื้อซ้ำจริง
+      final localHash = RpcPool.signedTxHash(signed);
+      try {
+        final known = await pool.withClient(
+          (client) => client.getTransactionByHash(localHash),
+          timeout: const Duration(seconds: 8),
+        );
+        if (known != null) return localHash;
+      } catch (_) {}
+      _error = 'ส่งธุรกรรมไม่สำเร็จ — เครือข่าย ${chain.shortName} ขัดข้อง ลองใหม่';
+      notifyListeners();
+      return null;
+    }
   }
 
   // ── Verify with Backend ──
