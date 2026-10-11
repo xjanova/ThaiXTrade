@@ -119,7 +119,14 @@ function save() {
         reserved_symbols: data.reserved_symbols
             .filter(r => (r.symbol || '').trim() !== '')
             .map(r => ({ symbol: r.symbol.trim().toUpperCase(), wallets: r.wallets })),
-    })).put('/admin/token-factory/policy', { preserveScroll: true });
+    })).put('/admin/token-factory/policy', {
+        preserveScroll: true,
+        // ค่าที่บันทึกแล้วกลายเป็นฐานใหม่ — ไม่งั้นตัวนับ "ยังไม่บันทึก" ค้างหลังบันทึกสำเร็จ
+        onSuccess: () => {
+            form.defaults(initialForm());
+            form.reset();
+        },
+    });
 }
 
 function addReserved() {

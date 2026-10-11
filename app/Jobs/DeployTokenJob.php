@@ -8,9 +8,11 @@ use App\Services\TokenFactory\TokenFactoryChain;
 use App\Services\TokenFactory\TokenFactoryPolicy;
 use App\Services\Web3DeploymentService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Jobs\SyncJob;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -85,10 +87,22 @@ class DeployTokenJob implements ShouldQueue
         $lock = Cache::lock('token-factory:deploy:'.strtolower($deployer), self::LOCK_SECONDS);
 
         if (! $lock->get()) {
-            // อีกเหรียญกำลังส่งด้วยคีย์เดียวกันอยู่ — ต่อคิวใหม่ (ไม่ใช่ retry ของงานนี้)
-            self::dispatch($token->id)->delay(now()->addSeconds(20));
+            // คิวแบบ sync (เครื่องนักพัฒนา) รันงานที่ dispatch ทันที — ต่อคิวใหม่ตรงนี้จะวนเรียกตัวเองไม่จบ
+            // รอให้ล็อกว่างแทน ไม่ได้ก็ล้มแบบปลอดภัย (ยังไม่ได้ส่งอะไร แอดมินกด retry ได้)
+            if ($this->job instanceof SyncJob) {
+                try {
+                    $lock->block(Web3DeploymentService::PROCESS_TIMEOUT);
+                } catch (LockTimeoutException) {
+                    $finalizer->markFailed($token->id, 'มีการสร้างเหรียญอื่นใช้กระเป๋าเดียวกันอยู่ — ลองใหม่อีกครั้ง', clearTx: false);
 
-            return;
+                    return;
+                }
+            } else {
+                // อีกเหรียญกำลังส่งด้วยคีย์เดียวกันอยู่ — ต่อคิวใหม่ (ไม่ใช่ retry ของงานนี้)
+                self::dispatch($token->id)->delay(now()->addSeconds(20));
+
+                return;
+            }
         }
 
         try {

@@ -25,8 +25,11 @@ class Web3DeploymentService
     /** ต้องน้อยกว่า DeployTokenJob::$timeout และมากกว่า DEPLOY_WAIT_SECONDS + เวลาต่อ RPC */
     public const PROCESS_TIMEOUT = 150;
 
-    /** สคริปต์รอ receipt นานสุดเท่านี้ แล้วรายงาน pending (งานตรวจผลรับช่วงต่อ) */
-    public const DEPLOY_WAIT_SECONDS = 90;
+    /**
+     * สคริปต์รอ receipt นานสุดเท่านี้ แล้วรายงาน pending (งานตรวจผลรับช่วงต่อ)
+     * งบเวลา: ต่อ RPC ~15 + ค้นซ้ำบนเชน ~30 + เซ็น ~10 + รอ 75 = ~130 < PROCESS_TIMEOUT 150
+     */
+    public const DEPLOY_WAIT_SECONDS = 75;
 
     public function __construct(private ContractRegistry $contracts) {}
 

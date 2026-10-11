@@ -156,6 +156,24 @@ class TokenFactoryPolicyTest extends TestCase
     }
 
     #[Test]
+    public function ปลายทางตั้งค่ารวมเขียนนโยบายข้ามหน้าของมันไม่ได้(): void
+    {
+        $admin = AdminUser::create([
+            'name' => 'แอดมิน', 'email' => 'admin2@tpix.test', 'password' => bcrypt('x'),
+            'role' => 'admin', 'is_active' => true,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->put('/admin/settings', ['settings' => [
+                'token_factory_policy.policy' => json_encode(['options' => ['mintable' => ['state' => 'on']]]),
+            ]])
+            ->assertRedirect();
+
+        $this->assertNull(SiteSetting::where('group', TokenFactoryPolicy::GROUP)->first());
+        $this->assertSame('off', $this->policy()->effective()['options']['mintable']['state']);
+    }
+
+    #[Test]
     public function หน้านโยบายแสดงของที่ล็อกพร้อมเหตุผล(): void
     {
         $this->actingAs($this->superAdmin, 'admin')

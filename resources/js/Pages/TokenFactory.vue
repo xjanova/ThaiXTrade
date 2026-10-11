@@ -795,11 +795,19 @@ async function waitForFeeConfirmation(quoteId, feeTxHash) {
     for (let i = 0; i < FEE_POLL_MAX; i++) {
         if (disposed) throw new Error('ออกจากหน้าแล้ว — กลับมาส่งคำขอต่อได้ ไม่ต้องจ่ายซ้ำ');
 
-        const status = await factoryStore.checkFeeStatus({
-            wallet_address: walletStore.address,
-            quote_id: quoteId,
-            fee_tx_hash: feeTxHash,
-        });
+        let status;
+        try {
+            status = await factoryStore.checkFeeStatus({
+                wallet_address: walletStore.address,
+                quote_id: quoteId,
+                fee_tx_hash: feeTxHash,
+            });
+        } catch (e) {
+            // เน็ตหลุด / เชนตอบช้า (5xx) = ถามใหม่รอบหน้า · 4xx = เซิร์ฟเวอร์ปฏิเสธจริง ต้องบอกผู้ใช้
+            const httpStatus = e?.response?.status;
+            if (httpStatus && httpStatus < 500) throw e;
+            status = { confirmed: false, confirmations: payment.value.confirmations, required: payment.value.required };
+        }
         if (disposed) throw new Error('ออกจากหน้าแล้ว — กลับมาส่งคำขอต่อได้ ไม่ต้องจ่ายซ้ำ');
 
         payment.value.confirmations = status.confirmations || 0;

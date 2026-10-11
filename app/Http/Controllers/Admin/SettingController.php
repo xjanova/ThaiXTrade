@@ -8,6 +8,7 @@ use App\Models\AuditLog;
 use App\Models\SiteSetting;
 use App\Services\AiBot\Advisor\AdvisorFactory;
 use App\Services\AiBot\Advisor\AdvisorSettings;
+use App\Services\TokenFactory\TokenFactoryPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -188,6 +189,14 @@ class SettingController extends Controller
             if (str_contains($groupKey, '.')) {
                 [$group, $key] = explode('.', $groupKey, 2);
             } else {
+                continue;
+            }
+
+            /*
+             * นโยบาย Token Factory แก้ได้ทางเดียวคือหน้าของมันเอง (super_admin + ตรวจค่า + audit รายช่อง)
+             * ปลายทางรวมนี้เปิดให้แอดมินทุกระดับและเขียน group.key อะไรก็ได้ — ปล่อยไว้ = ข้ามด่านได้
+             */
+            if ($group === TokenFactoryPolicy::GROUP) {
                 continue;
             }
 
