@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'package:bip39/bip39.dart' as bip39;
 import 'package:bip32/bip32.dart' as bip32;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show BuildContext;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hex/hex.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -268,7 +269,7 @@ class WalletProvider extends ChangeNotifier {
   /// เชื่อมกับ external wallet (MetaMask, Trust, Rainbow, ...) ผ่าน Reown AppKit
   /// ต้อง pass BuildContext มาด้วยเพราะ modal ผูกกับ widget tree
   /// คืน true ถ้าเชื่อมสำเร็จ false ถ้า user cancel หรือเกิด error
-  Future<bool> connectExternalWallet(dynamic context) async {
+  Future<bool> connectExternalWallet(BuildContext context) async {
     _isConnecting = true;
     _error = null;
     notifyListeners();
@@ -285,7 +286,12 @@ class WalletProvider extends ChangeNotifier {
       }
 
       // Initialize AppKit (lazy, ครั้งเดียวต่อ app lifecycle)
-      await svc.init(context);
+      // init ของ Reown รอ relay ต่อติด — เน็ตช้าอย่าให้ปุ่มค้าง (modal ที่ยัง initializing เปิดได้)
+      try {
+        await svc.init(context).timeout(const Duration(seconds: 15));
+      } on TimeoutException {
+        if (svc.modal == null) rethrow;
+      }
 
       // Open modal — user เลือก wallet + อนุมัติ
       final session = await svc.connect();
@@ -923,25 +929,7 @@ class WalletProvider extends ChangeNotifier {
         }
       } else if (savedKind == WalletKind.walletConnect) {
         // External wallet — Reown AppKit เก็บ session เองใน storage
-        // เราต้อง resume session แล้วเช็คว่า address ตรงกับที่บันทึกไว้
-        final session = ExternalWalletService().resumeSession();
-        if (session != null &&
-            session.address.toLowerCase() == savedAddress.toLowerCase()) {
-          _kind = WalletKind.walletConnect;
-          _address = session.address;
-          _externalWalletName =
-              session.walletName ?? prefs.getString(_keyExternalWalletName);
-          _activeChainId = session.chainId;
-          notifyListeners();
-
-          // Auto re-verify กับ backend
-          _registerWithBackend(_address!);
-        } else {
-          // Session หมดอายุ/หาย — clear stored state
-          await prefs.remove(_keyWalletState);
-          await prefs.remove(_keyWalletKind);
-          await prefs.remove(_keyExternalWalletName);
-        }
+        await _resumeWalletConnect(prefs, savedAddress);
       } else {
         // Embedded wallet — derive address จาก private key
         final privateKey = await _storage.read(key: _keyPrivateKey);
@@ -971,6 +959,65 @@ class WalletProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('loadSavedWallet error: ${e.runtimeType}');
     }
+  }
+
+  /// เปิดแอปใหม่ด้วยกระเป๋า WalletConnect — สร้าง AppKit ก่อน แล้วค่อยถาม session
+  ///
+  /// ⚠️ เดิมถาม resumeSession() ทั้งที่ยังไม่มี modal (สร้างตอนกด "เชื่อมต่อ" เท่านั้น)
+  ///    → ได้ null ทุกครั้ง → ล้าง state ทิ้ง ผู้ใช้ MetaMask/Trust ต้องเชื่อมใหม่ทุกครั้ง
+  ///    ที่เปิดแอป ทั้งที่ Reown เก็บ session ไว้ให้แล้ว
+  /// ล้าง state เฉพาะเมื่อ AppKit พร้อมแล้วและยืนยันได้ว่า session หาย/เป็นบัญชีอื่นจริง
+  /// ต่อ relay ไม่ทัน/เน็ตหลุด = คงไว้ให้เปิดแอปรอบหน้าลองใหม่ ไม่โยนทิ้ง
+  Future<void> _resumeWalletConnect(
+      SharedPreferences prefs, String savedAddress) async {
+    final svc = ExternalWalletService();
+    Future<void> forget() async {
+      await prefs.remove(_keyWalletState);
+      await prefs.remove(_keyWalletKind);
+      await prefs.remove(_keyExternalWalletName);
+    }
+
+    // build นี้ไม่มี Project ID — resume ไม่ได้แน่นอน
+    if (!svc.isConfigured) {
+      await forget();
+      return;
+    }
+    final ctx = ExternalWalletService.hostContext?.call();
+    if (ctx == null) return; // ยังไม่มีต้นไม้ UI ให้ผูก modal — คงไว้ก่อน
+
+    var ready = false;
+    try {
+      await svc.init(ctx).timeout(const Duration(seconds: 6));
+      ready = true;
+    } on TimeoutException {
+      // relay ยังไม่ต่อ — session ที่เก็บไว้ถูกโหลดก่อนช่วงรอ relay ลองอ่านได้เลย
+    } catch (e) {
+      debugPrint('resume WalletConnect: ${e.runtimeType}');
+      return; // AppKit เปิดไม่ได้รอบนี้ — คง state ไว้
+    }
+
+    final session = svc.resumeSession();
+    if (session != null &&
+        session.address.toLowerCase() == savedAddress.toLowerCase()) {
+      // ระหว่างรอ AppKit ผู้ใช้อาจเชื่อมกระเป๋าอื่นไปแล้ว — อย่าเขียนทับ
+      if (_address != null &&
+          _address!.toLowerCase() != session.address.toLowerCase()) {
+        return;
+      }
+      _kind = WalletKind.walletConnect;
+      _address = session.address;
+      _externalWalletName =
+          session.walletName ?? prefs.getString(_keyExternalWalletName);
+      _activeChainId = session.chainId;
+      notifyListeners();
+
+      // Auto re-verify กับ backend
+      _registerWithBackend(_address!);
+      return;
+    }
+
+    // AppKit พร้อมแล้วแต่ไม่มี session ของบัญชีนี้ = หมดอายุ/ถูกตัดจาก wallet จริง
+    if (ready) await forget();
   }
 
   // ── Confirm Mnemonic Backup ──

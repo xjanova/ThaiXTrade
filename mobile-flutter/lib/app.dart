@@ -11,6 +11,7 @@ import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router.dart';
 import 'providers/theme_provider.dart';
+import 'services/external_wallet_service.dart';
 
 class TpixTradeApp extends StatelessWidget {
   const TpixTradeApp({super.key});
@@ -20,6 +21,11 @@ class TpixTradeApp extends StatelessWidget {
     // ต้อง watch ไม่ใช่ read — ไม่งั้นสลับชุดสีแล้วหน้าจอไม่ขยับ
     final themeProvider = context.watch<ThemeProvider>();
     final isDark = themeProvider.palette.isDark;
+
+    // modal ของ WalletConnect ต้องผูกกับ context ที่อยู่ตลอดอายุแอป (navigator ราก)
+    // ไม่ใช่ของหน้าจอ/ชีตที่ปิดไปแล้ว — ดู ExternalWalletService.hostContext
+    ExternalWalletService.hostContext ??=
+        () => rootNavigatorKey.currentContext;
 
     // สีแถบสถานะต้องตรงข้ามกับพื้น ไม่งั้นธีมสว่างจะได้ไอคอนขาวบนพื้นขาว
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(

@@ -22,7 +22,7 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:reown_appkit/reown_appkit.dart';
 import '../core/config/reown_config.dart';
 import '../models/chain_config.dart';
@@ -56,7 +56,16 @@ class ExternalWalletService {
   factory ExternalWalletService() => _instance;
 
   ReownAppKitModal? _modal;
-  bool _initializing = false;
+
+  /// init ที่กำลังวิ่ง/วิ่งเสร็จแล้ว — คำขอที่ซ้อนกันรอ future เดียวกัน
+  Future<void>? _initFuture;
+
+  /// context ที่อยู่ตลอดอายุแอป (navigator ราก) — ตั้งจาก app.dart
+  ///
+  /// ⚠️ Reown เก็บ context ที่ได้ตอนสร้าง modal ไว้ตลอด และ openModalView เงียบหาย
+  ///    (ไม่ขึ้น modal ไม่ error) ถ้า context นั้นถูกถอดจากต้นไม้แล้ว
+  ///    เดิมส่ง context ของ bottom sheet ที่ปิดไปแล้ว → กดเชื่อมรอบสองไม่มีอะไรเกิดขึ้น
+  static BuildContext? Function()? hostContext;
 
   /// ตรวจว่า service พร้อมใช้งาน — ถ้ายังไม่ตั้ง Project ID จะ false
   bool get isConfigured => ReownConfig.isConfigured;
@@ -133,28 +142,35 @@ class ExternalWalletService {
   }
 
   /// Initialize AppKit (lazy, ครั้งเดียวต่อ app lifecycle)
-  /// ต้อง pass BuildContext มาด้วยเพราะ modal ผูกกับ widget tree
-  Future<void> init(dynamic context) async {
-    if (_modal != null) return; // Already initialized
+  ///
+  /// เรียกซ้อนกันได้ — ทุกคนรอ init รอบเดียวกัน (เดิมตัวที่สองคืนทันทีก่อน modal พร้อม)
+  /// ใช้ [hostContext] ถ้ามี เพราะ context ที่ส่งมา (เช่นของ bottom sheet) ตายก่อน modal
+  /// ⚠️ init ของ Reown รอ relay ต่อติดก่อนจบ — ผู้เรียกควรใส่ timeout เอง
+  ///    (session ที่เก็บไว้ถูกโหลดก่อนช่วงรอ relay จึงอ่าน [resumeSession] ได้แม้ยังไม่จบ)
+  Future<void> init(BuildContext context) async {
     if (!isConfigured) throw WalletConnectNotConfigured();
-    if (_initializing) return; // ป้องกัน double-init จาก concurrent calls
+    await (_initFuture ??= _doInit(context));
+  }
 
-    _initializing = true;
+  Future<void> _doInit(BuildContext context) async {
+    final host = hostContext?.call();
+    final ctx = (host != null && host.mounted) ? host : context;
     try {
       // ก่อนสร้าง modal เสมอ — ไม่งั้น session ที่ขอไปจะไม่มี eip155:4289
       registerTpixNetwork();
-      _modal = ReownAppKitModal(
-        context: context,
+      final modal = ReownAppKitModal(
+        context: ctx,
         projectId: ReownConfig.projectId,
         metadata: ReownConfig.metadata,
       );
-      await _modal!.init();
+      // ตั้งก่อน init จบ — สถานะ initializing ของ Reown เปิด modal/อ่าน session ได้แล้ว
+      _modal = modal;
+      await modal.init();
     } catch (e) {
       _modal = null;
+      _initFuture = null; // ล้มแล้วให้ครั้งหน้าลองใหม่ได้ ไม่ค้างผลล้มไว้ตลอด
       debugPrint('ExternalWalletService init error: ${e.runtimeType}');
       rethrow;
-    } finally {
-      _initializing = false;
     }
   }
 
