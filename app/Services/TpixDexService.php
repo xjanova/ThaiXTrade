@@ -308,6 +308,70 @@ class TpixDexService
         return $raw === null ? null : Wei::hexToInt($raw);
     }
 
+    /** วงเงินที่ owner อนุญาตให้ spender ดึงโทเคนได้ (wei สตริงทศนิยม) — null = อ่านไม่ได้ */
+    public function allowance(string $token, string $owner, string $spender): ?string
+    {
+        $token = $this->onchainAddress($token);
+        $owner = strtolower($owner);
+        $spender = strtolower($spender);
+        if (! $token || ! preg_match('/^0x[a-f0-9]{40}$/', $owner) || ! preg_match('/^0x[a-f0-9]{40}$/', $spender)) {
+            return null;
+        }
+
+        $data = $this->selector('allowance(address,address)').self::encAddress($owner).self::encAddress($spender);
+        $raw = $this->call($token, $data);
+
+        return $raw === null ? null : Wei::hexToInt($raw);
+    }
+
+    /** ยอด TPIX native ของกระเป๋า (wei) ณ บล็อกล่าสุดที่ลงแล้ว — null = อ่านไม่ได้ */
+    public function nativeBalance(string $address): ?string
+    {
+        if (! preg_match('/^0x[a-fA-F0-9]{40}$/', $address)) {
+            return null;
+        }
+
+        $hex = $this->rpc('eth_getBalance', [strtolower($address), 'latest']);
+
+        return is_string($hex) && str_starts_with($hex, '0x') ? Wei::hexToInt($hex) : null;
+    }
+
+    /**
+     * จำนวนธุรกรรมของกระเป๋า (= nonce ถัดไป) — ใช้ 'latest' เป็นค่าปริยายโดยตั้งใจ
+     * เพราะผู้เรียกที่เซ็นเองต้องการ nonce ที่ "ลงบล็อกแล้ว" ไม่ใช่ที่ค้างใน mempool.
+     */
+    public function transactionCount(string $address, string $tag = 'latest'): ?int
+    {
+        if (! preg_match('/^0x[a-fA-F0-9]{40}$/', $address)) {
+            return null;
+        }
+
+        $hex = $this->rpc('eth_getTransactionCount', [strtolower($address), $tag]);
+
+        return is_string($hex) && str_starts_with($hex, '0x') ? (int) Wei::hexToInt($hex) : null;
+    }
+
+    /**
+     * บล็อกล่าสุด (เลข + เวลา) — ใช้ตรวจว่าเชนยังเดินอยู่จริง ไม่ใช่ RPC ตอบค่าค้าง.
+     *
+     * @return array{number:int, timestamp:int}|null
+     */
+    public function latestBlock(): ?array
+    {
+        $result = $this->rpc('eth_getBlockByNumber', ['latest', false]);
+        if (! is_array($result)) {
+            return null;
+        }
+
+        $number = $result['number'] ?? null;
+        $time = $result['timestamp'] ?? null;
+        if (! is_string($number) || ! is_string($time) || ! str_starts_with($number, '0x') || ! str_starts_with($time, '0x')) {
+            return null;
+        }
+
+        return ['number' => (int) Wei::hexToInt($number), 'timestamp' => (int) Wei::hexToInt($time)];
+    }
+
     // =========================================================================
     // ราคาอ้างอิงของ TPIX
     // =========================================================================

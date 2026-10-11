@@ -116,6 +116,27 @@ Schedule::command('tpix:treasury-payouts')
     ->name('treasury:payouts');
 
 /*
+ * TPIX Stability Reserve — กองทุนพยุงราคาแบบกฎตายตัว ทุก 5 นาที
+ *
+ * รันตามตารางเท่านั้น (ไม่ตอบสนองต่อธุรกรรมที่ผู้ใช้กำลังส่ง) และจบทันทีเมื่อ
+ * STABILIZER_ENABLED=false — ไม่มีต้นทุนตอนยังไม่เปิดใช้
+ * withoutOverlapping สำคัญ: สองรอบซ้อนกัน = แย่ง nonce (ตัว service ล็อกซ้ำอีกชั้น)
+ * ต้องเป็น CLI เพราะการเซ็นเรียก ethers ผ่าน Node (php-fpm ปิด proc_open)
+ */
+Schedule::command('stabilizer:run')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('stabilizer:run');
+
+// รายงานสาธารณะรายวันของเมื่อวาน — ตัวเลขจริงเสมอ + บทสรุปจาก AI ถ้ามีคีย์
+Schedule::command('stabilizer:report')
+    ->dailyAt('00:15')
+    ->withoutOverlapping(30)
+    ->onOneServer()
+    ->name('stabilizer:report');
+
+/*
  * รอบขายเหรียญ — เลื่อนสถานะเฟสตามเวลาจริง ทุกชั่วโมง
  *
  * ★ ก่อนหน้านี้ไม่มีอะไรทำหน้าที่นี้เลย ผลคือเฟส "Private Sale" ค้างสถานะ active

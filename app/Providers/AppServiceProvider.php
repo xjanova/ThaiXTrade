@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use App\Models\SiteSetting;
+use App\Services\Stabilizer\BridgeReserveSource;
+use App\Services\Stabilizer\NodeStabilizerSigner;
+use App\Services\Stabilizer\NullBridgeReserveSource;
+use App\Services\Stabilizer\StabilizerTxSigner;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -47,6 +51,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind('path.public', function () {
             return base_path('public_html');
         });
+
+        // TPIX Stability Reserve — ตัวเซ็นจริงเรียก ethers ผ่าน Node (เทสต์สลับเป็นตัวปลอม)
+        $this->app->bindIf(StabilizerTxSigner::class, NodeStabilizerSigner::class);
+        // หลักฐานทุนสำรองของสะพานยังไม่มี → ค่าปริยายตอบ "ไม่มีข้อมูล" (fail-closed)
+        // โมดูลสะพานเมื่อพร้อมให้ bind คลาสจริงทับตัวนี้ แล้วเปิด STABILIZER_BRIDGE_RESERVES=true
+        $this->app->bindIf(BridgeReserveSource::class, NullBridgeReserveSource::class);
     }
 
     /**
