@@ -142,7 +142,9 @@ async function fetchKlines(symbol, interval) {
   try {
     let url, data;
     if (isTpixPair) {
-      url = `${TPIX_API}/tpix/klines?interval=${interval}&limit=300`;
+      // คู่บนเชน TPIX: แท่งจากราคาพูลจริงที่ dex:sync บันทึกทุกนาที
+      // (ไม่ใช้ /tpix/klines — ช่วงที่ไม่มีแท่งจริง เซิร์ฟเวอร์สร้างแท่งตัวอย่างขึ้นมาเอง)
+      url = `${TPIX_API}/dex/klines/${encodeURIComponent(symbol)}?interval=${encodeURIComponent(interval)}&limit=300`;
       const res = await fetch(url);
       const json = await res.json();
       data = json.success ? json.data : [];
@@ -312,13 +314,23 @@ window.loadChart = async function(symbol, interval, isTpix) {
   currentInterval = interval;
   isTpixPair = isTpix === true || isTpix === 'true';
 
-  document.getElementById('loading').style.display = 'block';
+  const loading = document.getElementById('loading');
+  loading.textContent = 'Loading chart...';
+  loading.style.display = 'block';
   const candles = await fetchKlines(symbol, interval);
-  document.getElementById('loading').style.display = 'none';
+  // ผู้ใช้สลับคู่/ช่วงเวลาระหว่างรอ — ผลนี้เป็นของคำขอเก่า ทิ้งไป
+  if (symbol !== currentSymbol || interval !== currentInterval) return;
 
   if (candles.length) {
+    loading.style.display = 'none';
     applyData(candles);
     connectWebSocket(symbol, interval);
+  } else {
+    // ไม่มีแท่งของคู่นี้ — ล้างกราฟของคู่ก่อนหน้าทิ้ง ห้ามค้างโชว์เป็นของคู่ใหม่
+    disconnectWS();
+    [candleSeries, lineSeries, volumeSeries, maSeries, emaSeries].forEach(s => s && s.setData([]));
+    loading.textContent = 'No chart data yet';
+    loading.style.display = 'block';
   }
 };
 

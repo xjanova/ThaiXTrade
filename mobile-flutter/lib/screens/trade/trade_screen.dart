@@ -168,10 +168,15 @@ class _TradeScreenState extends State<TradeScreen>
   bool _isTpixPairNow(MarketProvider market) =>
       CryptoLogos.isTpix(_baseOf(market));
 
+  /// คู่บนเชน TPIX (TPIX-USDT หรือเหรียญลูกจาก Token Factory เช่น IDTC-USDT)
+  bool _isChainPairNow(MarketProvider market) =>
+      _isTpixPairNow(market) || market.isDexPair(market.selectedPair);
+
   /// คู่นี้ execute จริงบน BSC ได้ไหม — base+quote ต้องอยู่ใน registry
   /// (ตรรกะเดียวกับเว็บ: คู่แปลก = ยังไม่เปิด)
+  /// คู่บนเชน TPIX ไม่นับ แม้ชื่อจะบังเอิญตรงกับเหรียญบน BSC
   bool _isBscTradableNow(MarketProvider market) =>
-      !_isTpixPairNow(market) &&
+      !_isChainPairNow(market) &&
       isBscTradablePair(_baseOf(market), _quoteOf(market));
 
   /// คู่นี้อยู่บนเชน TPIX และส่งคำสั่งได้จริงไหม
@@ -190,6 +195,28 @@ class _TradeScreenState extends State<TradeScreen>
           p.isOnchain) {
         return p;
       }
+    }
+    // คู่ที่เพิ่งเปิดหลังแอปโหลดรายการคู่ (/market/pairs แคชไว้ตั้งแต่ splash)
+    // — ใช้ /dex/pairs ที่ตลาดเพิ่งโหลด (เฉพาะคู่ที่เปิดเทรด ชื่อ/ที่อยู่ผ่านการตรวจแล้ว)
+    final dex = market.dexPairInfo(symbol);
+    if (dex != null && dex.chainId == TpixDexService().lastConfig.chainId) {
+      return TradingPairInfo(
+        symbol: dex.symbol,
+        baseAsset: dex.baseAsset,
+        quoteAsset: dex.quoteAsset,
+        minTradeAmount: 0,
+        maxTradeAmount: 0,
+        pricePrecision: 8,
+        amountPrecision: 4,
+        baseLogo: dex.baseLogo,
+        networkChainId: dex.chainId,
+        executionMode: 'onchain',
+        baseAddress: dex.baseAddress,
+        quoteAddress: dex.quoteAddress,
+        baseDecimals: dex.baseDecimals,
+        quoteDecimals: dex.quoteDecimals,
+        dexPairAddress: dex.pairAddress,
+      );
     }
     return null;
   }
@@ -469,9 +496,8 @@ class _TradeScreenState extends State<TradeScreen>
     final market = context.watch<MarketProvider>();
     final wallet = context.watch<WalletProvider>();
     final ticker = market.selectedTicker;
-    final isTpix = CryptoLogos.isTpix(
-      CryptoLogos.baseSymbol(market.selectedPair),
-    );
+    // คู่บนเชน TPIX ทุกคู่ (รวมเหรียญลูก) ใช้กราฟจาก /dex/klines ไม่ใช่ Binance
+    final isTpix = _isChainPairNow(market);
 
     // คู่ major → โหลดยอดจาก BSC สำหรับฟอร์มเทรด (โหลดครั้งเดียวต่อ pair/wallet)
     _maybeReloadBscBalances(market, wallet);
@@ -594,6 +620,7 @@ class _TradeScreenState extends State<TradeScreen>
                                   : 'TPIX Chain · Coming soon')) +
                           // ราคา TPIX ที่เซิร์ฟเวอร์ตั้งไว้เอง (ไม่มีพูลให้อ่าน) — บอกตรง ๆ
                           (_isTpixPairNow(market) &&
+                                  market.selectedPair == 'TPIX-USDT' &&
                                   market.tpixPriceIsIndicative
                               ? (locale.isThai
                                   ? ' · ราคาอ้างอิง'
@@ -830,6 +857,22 @@ class _TradeScreenState extends State<TradeScreen>
                   color: AppColors.textPrimary,
                 ),
               ),
+              // คู่บนเชน TPIX เป็น AMM — ตัวเลขคำนวณจาก reserve ของพูล ไม่ใช่ออร์เดอร์ที่มีคนวาง
+              if (market.isDexPair(market.selectedPair)) ...[
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    locale.isThai
+                        ? '· ความลึกพูล (คำนวณจาก reserve)'
+                        : '· Pool depth (from reserves)',
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 10.5,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -943,9 +986,10 @@ class _TradeScreenState extends State<TradeScreen>
 
   Widget _buildTradeForm(
       LocaleProvider locale, WalletProvider wallet, MarketProvider market) {
-    final ticker = market.selectedTicker;
-    final baseAsset = ticker?.baseAsset ?? 'BTC';
-    final quoteAsset = ticker?.quoteAsset ?? 'USDT';
+    // ไม่มีแถว ticker (คู่เพิ่งเปิด/รายการยังโหลดไม่เสร็จ) = ใช้ชื่อจากคู่ที่เลือก
+    // เดิมตกไปเป็น 'BTC' → ปุ่มขึ้น "ซื้อ BTC" ทั้งที่เลือกคู่ IDTC อยู่
+    final baseAsset = _baseOf(market);
+    final quoteAsset = _quoteOf(market);
     final onDex = _isDexTradableNow(market);
     final tradable = _isBscTradableNow(market) || onDex;
 
@@ -955,7 +999,7 @@ class _TradeScreenState extends State<TradeScreen>
       // ยังไม่รู้ว่าเชนเราเปิดหรือยัง (ทะเบียนสัญญายังโหลดไม่เสร็จ) — อย่าเพิ่งตัดสิน
       // ไม่งั้นคนเปิดหน้ามาจะเห็น "ยังไม่เปิด" แว้บหนึ่งทั้งที่กระดานเปิดอยู่จริง
       return _buildComingSoonCard(locale, market,
-          checking: !_dexConfigLoaded && _isTpixPairNow(market));
+          checking: !_dexConfigLoaded && _isChainPairNow(market));
     }
 
     // Available balance — อ่านยอดจริงจากเชนที่ไม้จะลงจริง
@@ -1868,7 +1912,7 @@ class _TradeScreenState extends State<TradeScreen>
       return;
     }
 
-    if (_isTpixPairNow(market)) {
+    if (_isChainPairNow(market)) {
       // กันไว้อีกชั้น — ฟอร์มถูกแทนด้วย Coming Soon card อยู่แล้ว
       _showSnack(locale.isThai
           ? 'คู่นี้ยังไม่มีพูลบนเชน TPIX — เติมสภาพคล่องที่หน้าเว็บก่อน'

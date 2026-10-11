@@ -21,10 +21,15 @@ class ApiConstants {
   // config บอกที่อยู่สัญญา + ready — แอปต้อง fail-closed เมื่อ ready = false
   static const String dexConfig = '/dex/config';
   static const String dexPairs = '/dex/pairs';
-  static String dexTicker(String symbol) => '/dex/ticker/$symbol';
-  static String dexKlines(String symbol) => '/dex/klines/$symbol';
-  static String dexOrderbook(String symbol) => '/dex/orderbook/$symbol';
-  static String dexTrades(String symbol) => '/dex/trades/$symbol';
+  // ชื่อคู่มาจากข้อมูลบนเชน — encode เสมอ ห้ามต่อสตริงดิบเข้า path
+  static String dexTicker(String symbol) =>
+      '/dex/ticker/${Uri.encodeComponent(symbol)}';
+  static String dexKlines(String symbol) =>
+      '/dex/klines/${Uri.encodeComponent(symbol)}';
+  static String dexOrderbook(String symbol) =>
+      '/dex/orderbook/${Uri.encodeComponent(symbol)}';
+  static String dexTrades(String symbol) =>
+      '/dex/trades/${Uri.encodeComponent(symbol)}';
 
   // ── Wallet ──
   static const String walletConnect = '/wallet/connect';
@@ -51,13 +56,9 @@ class ApiConstants {
   static String marketOrderbook(String symbol) => '/market/orderbook/$symbol';
   static String marketKlines(String symbol) => '/market/klines/$symbol';
 
-  // ── TPIX Price + Internal Order Book ──
-  // ใช้สำหรับ TPIX-USDT pair เท่านั้น (ไม่ผ่าน Binance)
+  // ── TPIX Price ──
+  // ราคา/ความลึก/กราฟของคู่บนเชน TPIX มาจาก /dex/* (ดูด้านบน)
+  // /tpix/orderbook (สมุดภายในที่ว่างตลอด) และ /tpix/klines (สร้างแท่งตัวอย่างเองเมื่อไม่มีข้อมูล)
+  // เลิกใช้แล้ว · /app/check-update ไม่มีอยู่จริง (ตัวเช็กอัปเดตใช้ /app/update-check)
   static const String tpixPrice = '/tpix/price';
-  static const String tpixOrderbook = '/tpix/orderbook';
-  static const String tpixTrades = '/tpix/trades';
-  static const String tpixKlines = '/tpix/klines';
-
-  // ── Update ──
-  static const String updateCheck = '/app/check-update';
 }

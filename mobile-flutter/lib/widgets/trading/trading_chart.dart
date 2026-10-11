@@ -15,6 +15,8 @@ import '../../widgets/common/shimmer_loading.dart';
 class TradingChart extends StatefulWidget {
   final String symbol;
   final String interval;
+
+  /// คู่บนเชน TPIX (TPIX DEX) — แท่งเทียนมาจาก /dex/klines แทน Binance
   final bool isTpix;
   final double height;
   final ValueChanged<double>? onPriceUpdate;
@@ -34,6 +36,10 @@ class TradingChart extends StatefulWidget {
 
 class TradingChartState extends State<TradingChart> {
   late WebViewController _controller;
+
+  /// สร้าง controller แล้วหรือยัง — parent อาจเปลี่ยนคู่ก่อนไฟล์ HTML โหลดเสร็จ
+  /// (เรียก _controller ตอนนั้น = LateInitializationError)
+  bool _hasController = false;
   bool _isReady = false;
   bool _isLoading = true;
   String? _htmlContent;
@@ -57,6 +63,7 @@ class TradingChartState extends State<TradingChart> {
   }
 
   void _initWebView() {
+    _hasController = true;
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF0A0E1A))
@@ -66,7 +73,10 @@ class TradingChartState extends State<TradingChart> {
           _loadChartData();
         },
       ))
-      ..loadHtmlString(_htmlContent!);
+      // origin ของหน้าต้องเป็น tpix.online — loadHtmlString เฉย ๆ ได้ origin "null"
+      // แล้ว CORS ของ API (อนุญาตเฉพาะ https://tpix.online) บล็อกคำขอแท่งเทียน
+      // ของคู่บนเชน TPIX ทุกครั้ง กราฟคู่ TPIX จึงว่างเปล่า (คู่ Binance ผ่านเพราะส่ง *)
+      ..loadHtmlString(_htmlContent!, baseUrl: 'https://tpix.online/');
   }
 
   void _onMessage(JavaScriptMessage msg) {
@@ -85,29 +95,32 @@ class TradingChartState extends State<TradingChart> {
     } catch (_) {}
   }
 
+  /// ชื่อคู่ของเหรียญบนเชน TPIX มาจากข้อมูลบนเชน (ใครก็ตั้งชื่อเหรียญได้)
+  /// → ส่งเข้า JS เป็น JSON literal เสมอ ห้ามต่อสตริงดิบในเครื่องหมายคำพูด
+  String _loadChartJs(String interval) =>
+      'loadChart(${jsonEncode(widget.symbol)}, ${jsonEncode(interval)}, ${widget.isTpix})';
+
   void _loadChartData() {
-    final isTpix = widget.isTpix ? 'true' : 'false';
-    _controller.runJavaScript(
-      "loadChart('${widget.symbol}', '${widget.interval}', $isTpix)",
-    );
+    if (!_hasController) return;
+    _controller.runJavaScript(_loadChartJs(widget.interval));
     if (mounted) setState(() => _isLoading = false);
   }
 
   /// เปลี่ยน timeframe (เรียกจาก parent)
   void changeTimeframe(String interval) {
-    final isTpix = widget.isTpix ? 'true' : 'false';
-    _controller.runJavaScript(
-      "loadChart('${widget.symbol}', '$interval', $isTpix)",
-    );
+    if (!_hasController) return;
+    _controller.runJavaScript(_loadChartJs(interval));
   }
 
   /// เปลี่ยน chart type (candle / line)
   void setChartType(String type) {
+    if (!_hasController) return;
     _controller.runJavaScript("setChartType('$type')");
   }
 
   /// เปลี่ยน indicators
   void setIndicators(List<String> indicators) {
+    if (!_hasController) return;
     _controller.runJavaScript("setIndicators('${indicators.join(',')}')");
   }
 
@@ -145,7 +158,9 @@ class TradingChartState extends State<TradingChart> {
   @override
   void didUpdateWidget(TradingChart old) {
     super.didUpdateWidget(old);
-    if (old.symbol != widget.symbol || old.interval != widget.interval) {
+    if (old.symbol != widget.symbol ||
+        old.interval != widget.interval ||
+        old.isTpix != widget.isTpix) {
       _loadChartData();
     }
   }

@@ -54,11 +54,16 @@ class ApiService {
 
   // ── Generic request helpers ──
 
+  /// คำตอบที่ไม่ใช่ JSON object (หน้า HTML ของ Cloudflare/SPA fallback, list เปล่า)
+  /// = ไม่มีข้อมูล — เดิม cast ตรง ๆ แล้วโยน TypeError ทะลุไปถึงหน้าจอ
+  static Map<String, dynamic>? _asMap(dynamic data) =>
+      data is Map<String, dynamic> ? data : null;
+
   Future<Map<String, dynamic>?> _get(String path,
       {Map<String, dynamic>? queryParams}) async {
     try {
       final response = await _dio.get(path, queryParameters: queryParams);
-      return response.data as Map<String, dynamic>?;
+      return _asMap(response.data);
     } on DioException catch (e) {
       debugPrint('[API] GET $path: ${e.response?.statusCode ?? e.type.name}');
       return null;
@@ -69,7 +74,7 @@ class ApiService {
       {Map<String, dynamic>? data}) async {
     try {
       final response = await _dio.post(path, data: data);
-      return response.data as Map<String, dynamic>?;
+      return _asMap(response.data);
     } on DioException catch (e) {
       debugPrint('[API] POST $path: ${e.response?.statusCode ?? e.type.name}');
       return null;
@@ -80,7 +85,7 @@ class ApiService {
       {Map<String, dynamic>? data}) async {
     try {
       final response = await _dio.delete(path, data: data);
-      return response.data as Map<String, dynamic>?;
+      return _asMap(response.data);
     } on DioException catch (e) {
       debugPrint('[API] DELETE $path: ${e.response?.statusCode ?? e.type.name}');
       return null;
@@ -91,7 +96,7 @@ class ApiService {
       {Map<String, dynamic>? data}) async {
     try {
       final response = await _dio.put(path, data: data);
-      return response.data as Map<String, dynamic>?;
+      return _asMap(response.data);
     } on DioException catch (e) {
       debugPrint('[API] PUT $path: ${e.response?.statusCode ?? e.type.name}');
       return null;
@@ -178,51 +183,12 @@ class ApiService {
     }).toList();
   }
 
-  // ── TPIX Price + Internal Order Book ──
+  // ── TPIX Price ──
 
   Future<TpixPrice?> getTpixPrice() async {
     final res = await _get(ApiConstants.tpixPrice);
     if (res == null || res['success'] != true) return null;
     return TpixPrice.fromJson(res['data'] as Map<String, dynamic>);
-  }
-
-  /// TPIX OrderBook — ใช้ internal matching engine (ไม่ผ่าน Binance)
-  /// สำหรับ TPIX-USDT pair เท่านั้น
-  Future<OrderBook?> getTpixOrderbook({int limit = 20}) async {
-    final res = await _get(
-      ApiConstants.tpixOrderbook,
-      queryParams: {'limit': limit},
-    );
-    if (res == null || res['success'] != true) return null;
-    return OrderBook.fromJson(res['data'] as Map<String, dynamic>);
-  }
-
-  /// TPIX Klines (candlestick) — สร้างจาก internal trades
-  Future<List<Kline>> getTpixKlines({
-    String interval = '1h',
-    int limit = 100,
-  }) async {
-    final res = await _get(
-      ApiConstants.tpixKlines,
-      queryParams: {'interval': interval, 'limit': limit},
-    );
-    if (res == null || res['success'] != true) return [];
-    final list = res['data'] as List<dynamic>? ?? [];
-    return list.map((e) {
-      if (e is List) return Kline.fromList(e);
-      return Kline.fromJson(e as Map<String, dynamic>);
-    }).toList();
-  }
-
-  /// TPIX recent trades — สำหรับแสดงใน trade history feed
-  Future<List<Map<String, dynamic>>> getTpixTrades({int limit = 50}) async {
-    final res = await _get(
-      ApiConstants.tpixTrades,
-      queryParams: {'limit': limit},
-    );
-    if (res == null || res['success'] != true) return [];
-    return (res['data'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
   }
 
   // ── Wallet ──
@@ -348,6 +314,36 @@ class ApiService {
         .whereType<Map<String, dynamic>>()
         .map((e) => TokenBalance.fromJson(e, chainId: chainId))
         .toList();
+  }
+
+  /// ราคา/สถิติ 24 ชม. ของคู่บน TPIX DEX (ราคากลางสดจาก reserve) — null = ขอไม่สำเร็จ
+  Future<Map<String, dynamic>?> getDexTicker(String symbol) async {
+    final res = await _get(ApiConstants.dexTicker(symbol));
+    if (res == null || res['success'] != true) return null;
+    return _asMap(res['data']);
+  }
+
+  /// แท่งเทียนของคู่บน TPIX DEX — รวมจากแท่ง 1 นาทีที่ dex:sync บันทึกจากพูลจริง
+  Future<List<Kline>> getDexKlines(String symbol,
+      {String interval = '1h', int limit = 100}) async {
+    final res = await _get(
+      ApiConstants.dexKlines(symbol),
+      queryParams: {'interval': interval, 'limit': limit},
+    );
+    if (res == null || res['success'] != true) return [];
+    final list = res['data'] as List<dynamic>? ?? [];
+    return list.whereType<List<dynamic>>().map(Kline.fromList).toList();
+  }
+
+  /// ความลึกของพูล AMM (คำนวณจาก reserve จริง ไม่ใช่ออร์เดอร์ที่มีคนวาง)
+  Future<OrderBook?> getDexOrderbook(String symbol, {int limit = 12}) async {
+    final res = await _get(
+      ApiConstants.dexOrderbook(symbol),
+      queryParams: {'limit': limit},
+    );
+    if (res == null || res['success'] != true) return null;
+    final data = _asMap(res['data']);
+    return data == null ? null : OrderBook.fromJson(data);
   }
 
   /// คู่เทรดบนเชน TPIX ที่มีพูลจริง (/dex/pairs) — ใช้รู้ว่ามีโทเคนอะไรบนเชนให้อ่านยอด

@@ -77,6 +77,129 @@ class MarketProvider extends ChangeNotifier {
   List<Ticker> get favoriteTickers =>
       _tickers.where((t) => _favorites.contains(t.symbol)).toList();
 
+  /// รายการสำหรับหน้าแรก — ไม่ขึ้นกับคำค้นในหน้า Markets
+  /// (เดิมหน้าแรกใช้รายการที่กรองแล้ว พิมพ์ค้นในหน้า Markets หน้าแรกก็หายตาม)
+  List<Ticker> get homeTickers {
+    final list = List<Ticker>.from(_tickers)
+      ..sort((a, b) => b.quoteVolume24h.compareTo(a.quoteVolume24h));
+    return list;
+  }
+
+  // ── คู่บนเชน TPIX (TPIX DEX) ──
+  //
+  // เหรียญลูกจาก Token Factory (เช่น IDTC) ได้คู่ IDTC-USDT / IDTC-TPIX เมื่อมีพูลบน DEX
+  // และแอดมินลิสต์แล้ว (dex:sync สร้างให้) — tickers ของเซิร์ฟเวอร์มาจาก Binance
+  // จึงไม่มีคู่พวกนี้เลย ต้องเติมจาก /dex/pairs + /dex/ticker เอง
+  // ไม่งั้นผู้ใช้หาคู่ไม่เจอในตลาด/ค้นหา และหน้าเทรดไปดึงกราฟจาก Binance ที่ไม่มีคู่นี้
+
+  /// symbol → คู่บนเชน TPIX ที่เปิดเทรดอยู่ (รวม TPIX-USDT)
+  Map<String, DexPairInfo> _dexPairs = {};
+  final Map<String, Ticker> _dexTickers = {};
+  DateTime? _dexPairsAt;
+
+  /// คู่นี้ใช้ข้อมูลจาก TPIX DEX (ราคา/กราฟ/ความลึก) — TPIX-USDT นับเสมอแม้รายการยังโหลดไม่เสร็จ
+  bool isDexPair(String symbol) {
+    final s = symbol.toUpperCase();
+    return s == 'TPIX-USDT' || _dexPairs.containsKey(s);
+  }
+
+  DexPairInfo? dexPairInfo(String symbol) => _dexPairs[symbol.toUpperCase()];
+
+  /// โลโก้ของเหรียญฝั่ง base ในคู่บนเชน TPIX (https เท่านั้น) — null = ใช้ตัวอักษรแทน
+  String? dexBaseLogo(String symbol) =>
+      _dexPairs[symbol.toUpperCase()]?.baseLogo;
+
+  /// เหรียญนี้เป็นเหรียญบนเชน TPIX (ห้ามเดาโลโก้จากชื่อบน CDN — ชื่อซ้ำเหรียญดังได้)
+  bool isChainAsset(String baseAsset) {
+    final b = baseAsset.toUpperCase();
+    for (final p in _dexPairs.values) {
+      if (p.baseAsset == b) return true;
+    }
+    return false;
+  }
+
+  Future<void> _refreshDexMarkets() async {
+    try {
+      final fresh = _dexPairsAt != null &&
+          DateTime.now().difference(_dexPairsAt!) < const Duration(minutes: 1);
+      if (!fresh) {
+        final list = await _api.getDexPairs();
+        if (list != null) {
+          final next = <String, DexPairInfo>{};
+          for (final raw in list) {
+            final p = DexPairInfo.tryParse(raw);
+            // พูลว่าง/ถูกเลิกลิสต์ (is_active = false) ไม่ขึ้นตลาด — ชื่อซ้ำเอาตัวแรก
+            if (p == null || !p.isActive || p.chainId != 4289) continue;
+            next.putIfAbsent(p.symbol, () => p);
+          }
+          _dexPairs = next;
+          _dexPairsAt = DateTime.now();
+          _dexTickers.removeWhere((k, _) => !next.containsKey(k));
+        }
+      }
+
+      // TPIX-USDT มีราคาจาก /tpix/price แยกอยู่แล้ว (ดู _patchTpixTicker)
+      final symbols =
+          _dexPairs.keys.where((s) => s != 'TPIX-USDT').toList(growable: false);
+      final results = await Future.wait(symbols.map((s) => _api
+          .getDexTicker(s)
+          .then<Map<String, dynamic>?>((v) => v)
+          .catchError((Object _) => null)));
+      for (var i = 0; i < symbols.length; i++) {
+        final pair = _dexPairs[symbols[i]];
+        if (pair == null) continue;
+        final data = results[i];
+        if (data == null) {
+          // ขอไม่สำเร็จรอบนี้ — คงแถวเดิม ไม่มีแถวเดิมก็ขึ้นแถวไม่มีราคา (แสดง —)
+          _dexTickers.putIfAbsent(pair.symbol, () => _emptyDexTicker(pair));
+          continue;
+        }
+        final noLiquidity = data['has_liquidity'] == false;
+        _dexTickers[pair.symbol] = Ticker.fromJson({
+          ...data,
+          'symbol': pair.symbol,
+          'base_asset': pair.baseAsset,
+          'quote_asset': pair.quoteAsset,
+          // พูลว่าง = ไม่มีราคา (0 → แสดง —) ไม่ใช่ราคา 0 จริง
+          if (noLiquidity) 'price': 0,
+          if (noLiquidity) 'lastPrice': 0,
+        }).copyWith(isDex: true);
+      }
+    } catch (e) {
+      debugPrint('refreshDexMarkets error: ${e.runtimeType}');
+    }
+  }
+
+  static Ticker _emptyDexTicker(DexPairInfo p) => Ticker(
+        symbol: p.symbol,
+        baseAsset: p.baseAsset,
+        quoteAsset: p.quoteAsset,
+        lastPrice: 0,
+        priceChange: 0,
+        priceChangePercent: 0,
+        high24h: 0,
+        low24h: 0,
+        volume24h: 0,
+        quoteVolume24h: 0,
+        isDex: true,
+      );
+
+  /// ใส่แถวคู่บนเชน TPIX ลงรายการ — ชื่อชนกับคู่หลักเดิม (มีคนตั้งเหรียญชื่อ BTC) คู่เดิมชนะเสมอ
+  void _mergeDexTickers() {
+    _tickers.removeWhere((t) =>
+        t.isDex &&
+        t.symbol != 'TPIX-USDT' &&
+        !_dexTickers.containsKey(t.symbol));
+    for (final e in _dexTickers.entries) {
+      final idx = _tickers.indexWhere((t) => t.symbol == e.key);
+      if (idx < 0) {
+        _tickers.add(e.value);
+      } else if (_tickers[idx].isDex) {
+        _tickers[idx] = e.value;
+      }
+    }
+  }
+
   // ── Load Tickers ──
 
   Future<void> loadTickers({bool silent = false}) async {
@@ -86,7 +209,15 @@ class MarketProvider extends ChangeNotifier {
     }
 
     try {
-      _tickers = await _api.getTickers();
+      final serverFuture = _api.getTickers();
+      await _refreshDexMarkets();
+      final server = await serverFuture;
+      if (_disposed) return;
+      // ขอไม่สำเร็จ (ได้ [] กลับมา) ระหว่างรีเฟรช = คงรายการเดิม ไม่ล้างจอเป็นว่าง
+      if (server.isNotEmpty || _tickers.isEmpty) {
+        _tickers = server.where((t) => !t.isDex).toList();
+      }
+      _mergeDexTickers();
       _ensureTpixFirst();
       _applyFilter();
     } catch (e) {
@@ -115,6 +246,7 @@ class MarketProvider extends ChangeNotifier {
           low24h: 0,
           volume24h: 0,
           quoteVolume24h: _tpixPrice?.volume24h ?? 0,
+          isDex: true,
         ),
       );
     } else {
@@ -154,14 +286,20 @@ class MarketProvider extends ChangeNotifier {
 
     // หา matching ticker — Binance ส่ง "BTCUSDT" ต้อง match กับ "BTC-USDT"
     for (int i = 0; i < _tickers.length; i++) {
+      // คู่บนเชน TPIX ไม่ได้อยู่บน Binance — ชื่อบังเอิญตรงกันก็ห้ามเอาราคา Binance มาทับ
+      if (_tickers[i].isDex) continue;
       final binSymbol = _tickers[i].symbol.replaceAll('-', '');
       if (binSymbol == symbol) {
         final price = double.tryParse(data['c']?.toString() ?? '') ?? 0;
-        final volume = double.tryParse(data['v']?.toString() ?? '') ?? 0;
+        // miniTicker: v = ปริมาณเป็นเหรียญ base · q = ปริมาณเป็น quote (USDT)
+        // เดิมเอา v ไปใส่ quoteVolume24h → ปริมาณ/การเรียงตามปริมาณปนหน่วยกันหลังติ๊กแรก
+        final quoteVolume = double.tryParse(data['q']?.toString() ?? '');
+        final open = double.tryParse(data['o']?.toString() ?? '') ?? 0;
         if (price > 0) {
           _tickers[i] = _tickers[i].copyWith(
             lastPrice: price,
-            quoteVolume24h: volume,
+            quoteVolume24h: quoteVolume,
+            priceChangePercent: open > 0 ? (price - open) / open * 100 : null,
           );
           _applyFilter();
           notifyListeners();
@@ -261,17 +399,21 @@ class MarketProvider extends ChangeNotifier {
 
   // ── Select Pair ──
 
-  /// true ถ้า selected pair คือ TPIX — ต้องใช้ internal endpoints
-  bool get _isTpixPair => _selectedPair == 'TPIX-USDT';
+  /// คู่ที่เลือกอยู่บนเชน TPIX — ข้อมูลมาจาก /dex/* (ไม่ใช่ Binance)
+  bool get _isDexSelected => isDexPair(_selectedPair);
 
   Future<void> selectPair(String pair) async {
     _selectedPair = pair;
+    // ข้อมูลของคู่เก่าห้ามค้างโชว์เป็นของคู่ใหม่ระหว่างโหลด
+    _orderBook = null;
+    _klines = [];
     notifyListeners();
 
     // Subscribe Binance WebSocket depth — เฉพาะ pair ที่อยู่บน Binance
-    // TPIX ไม่ได้อยู่บน Binance ใช้ HTTP polling แทน (ผ่าน auto-refresh)
+    // คู่บนเชน TPIX ไม่ได้อยู่บน Binance ใช้ HTTP แทน
     _depthSub?.cancel();
-    if (!_isTpixPair) {
+    _depthSub = null;
+    if (!_isDexSelected) {
       _ws.subscribePair(pair);
       _depthSub = _ws.depthStream.listen(_onDepthUpdate);
     }
@@ -283,6 +425,8 @@ class MarketProvider extends ChangeNotifier {
   }
 
   void _onDepthUpdate(Map<String, dynamic> data) {
+    // ผู้ใช้สลับไปคู่บนเชน TPIX แล้ว — depth ของ Binance ที่ค้างในท่อห้ามมาทับ
+    if (_isDexSelected) return;
     // Binance depth20 format: { bids: [[price, qty], ...], asks: [[price, qty], ...] }
     try {
       final bids = (data['bids'] as List<dynamic>?)
@@ -302,12 +446,19 @@ class MarketProvider extends ChangeNotifier {
 
   // ── Order Book ──
 
+  /// ความลึกของคู่ที่เลือก
+  ///
+  /// คู่บนเชน TPIX ใช้ /dex/orderbook (ความลึกจาก reserve จริงของพูล)
+  /// เดิมคู่ TPIX ใช้ /tpix/orderbook = สมุดของ matching engine ภายในที่ไม่มีใครวางออร์เดอร์
+  /// (limit order ยังไม่เปิด) จึงว่างเปล่าตลอด
   Future<void> loadOrderBook() async {
+    final pair = _selectedPair;
     try {
-      // TPIX ใช้ internal matching engine — ไม่ใช่ Binance
-      _orderBook = _isTpixPair
-          ? await _api.getTpixOrderbook()
-          : await _api.getOrderBook(_selectedPair);
+      final book = isDexPair(pair)
+          ? await _api.getDexOrderbook(pair)
+          : await _api.getOrderBook(pair);
+      if (_disposed || pair != _selectedPair) return; // เปลี่ยนคู่ระหว่างรอ
+      _orderBook = book;
       notifyListeners();
     } catch (e) {
       debugPrint('loadOrderBook error: ${e.runtimeType}');
@@ -316,13 +467,16 @@ class MarketProvider extends ChangeNotifier {
 
   // ── Klines ──
 
+  /// แท่งเทียนของคู่ที่เลือก — คู่บนเชน TPIX ใช้ /dex/klines (แท่งจากราคาพูลจริงทุกนาที)
+  /// ไม่ใช้ /tpix/klines เพราะช่วงที่ไม่มีแท่งจริง เซิร์ฟเวอร์สร้างแท่งตัวอย่างขึ้นมาเอง
   Future<void> loadKlines({String interval = '1h', int limit = 100}) async {
+    final pair = _selectedPair;
     try {
-      // TPIX klines มาจาก internal trades (ไม่ใช่ Binance)
-      _klines = _isTpixPair
-          ? await _api.getTpixKlines(interval: interval, limit: limit)
-          : await _api.getKlines(_selectedPair,
-              interval: interval, limit: limit);
+      final klines = isDexPair(pair)
+          ? await _api.getDexKlines(pair, interval: interval, limit: limit)
+          : await _api.getKlines(pair, interval: interval, limit: limit);
+      if (_disposed || pair != _selectedPair) return;
+      _klines = klines;
       notifyListeners();
     } catch (e) {
       debugPrint('loadKlines error: ${e.runtimeType}');
@@ -400,6 +554,7 @@ class MarketProvider extends ChangeNotifier {
       low24h: t.low24h,
       volume24h: t.volume24h,
       quoteVolume24h: p.volume24h,
+      isDex: true,
     );
   }
 

@@ -17,6 +17,9 @@ class Ticker {
   final double volume24h;
   final double quoteVolume24h;
 
+  /// แถวนี้เป็นคู่บนเชน TPIX (TPIX DEX) — ราคา/กราฟ/ความลึกมาจาก /dex/* ไม่ใช่ Binance
+  final bool isDex;
+
   const Ticker({
     required this.symbol,
     required this.baseAsset,
@@ -28,6 +31,7 @@ class Ticker {
     required this.low24h,
     required this.volume24h,
     required this.quoteVolume24h,
+    this.isDex = false,
   });
 
   factory Ticker.fromJson(Map<String, dynamic> json) {
@@ -79,18 +83,111 @@ class Ticker {
   String get displaySymbol => '${baseAsset}/${quoteAsset}';
   bool get isPositive => priceChangePercent >= 0;
 
-  Ticker copyWith({double? lastPrice, double? quoteVolume24h}) => Ticker(
+  Ticker copyWith({
+    double? lastPrice,
+    double? quoteVolume24h,
+    double? priceChangePercent,
+    bool? isDex,
+  }) =>
+      Ticker(
         symbol: symbol,
         baseAsset: baseAsset,
         quoteAsset: quoteAsset,
         lastPrice: lastPrice ?? this.lastPrice,
         priceChange: priceChange,
-        priceChangePercent: priceChangePercent,
+        priceChangePercent: priceChangePercent ?? this.priceChangePercent,
         high24h: high24h,
         low24h: low24h,
         volume24h: volume24h,
         quoteVolume24h: quoteVolume24h ?? this.quoteVolume24h,
+        isDex: isDex ?? this.isDex,
       );
+}
+
+// ── คู่บนเชน TPIX จาก /dex/pairs ──
+
+/// คู่เทรดบน TPIX DEX (AMM เชน 4289) ที่เซิร์ฟเวอร์ซิงก์จากพูลจริง (dex:sync)
+///
+/// ข้อมูลนี้ไปโผล่ในรายการตลาด/ค้นหา และชื่อคู่ถูกใช้ประกอบ URL/สคริปต์กราฟ
+/// → ใครก็สร้างเหรียญบนเชนแล้วเปิดพูลได้ จึงรับเฉพาะแถวที่หน้าตาปลอดภัย:
+///   ชื่อเหรียญเป็นอักษร A-Z/ตัวเลข (กันชื่อหลอกด้วยอักษรคล้ายกัน/ช่องว่าง/โค้ด)
+///   ที่อยู่ 0x + 40 hex · decimals 0–36 · โลโก้ต้องเป็น https เท่านั้น
+class DexPairInfo {
+  final String symbol; // IDTC-USDT
+  final String baseAsset;
+  final String quoteAsset;
+  final String baseAddress; // 0x0 = TPIX เนทีฟ
+  final String quoteAddress;
+  final int baseDecimals;
+  final int quoteDecimals;
+  final String? baseLogo;
+  final String? quoteLogo;
+  final String? pairAddress;
+  final bool isActive;
+  final int chainId;
+
+  const DexPairInfo({
+    required this.symbol,
+    required this.baseAsset,
+    required this.quoteAsset,
+    required this.baseAddress,
+    required this.quoteAddress,
+    required this.baseDecimals,
+    required this.quoteDecimals,
+    this.baseLogo,
+    this.quoteLogo,
+    this.pairAddress,
+    this.isActive = true,
+    this.chainId = 4289,
+  });
+
+  static final _assetRe = RegExp(r'^[A-Z0-9]{1,20}$');
+  static final _addressRe = RegExp(r'^0x[0-9a-fA-F]{40}$');
+
+  /// ชื่อเหรียญที่ยอมให้ขึ้นหน้าจอ/ประกอบ URL ได้
+  static bool isSafeAsset(String? s) => s != null && _assetRe.hasMatch(s);
+
+  /// โลโก้ต้องเป็น https และไม่ยาวผิดปกติ — อย่างอื่นถือว่าไม่มีโลโก้ (ไปใช้ตัวอักษรแทน)
+  static String? safeLogo(dynamic raw) {
+    if (raw is! String) return null;
+    final s = raw.trim();
+    if (s.isEmpty || s.length > 512) return null;
+    final uri = Uri.tryParse(s);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+    return s;
+  }
+
+  /// null = แถวที่ไม่ปลอดภัยหรือข้อมูลไม่ครบ — ข้ามไป ไม่ทำให้ทั้งรายการล้ม
+  static DexPairInfo? tryParse(Map<String, dynamic> json) {
+    final base = (json['base_asset'] as String?)?.trim().toUpperCase();
+    final quote = (json['quote_asset'] as String?)?.trim().toUpperCase();
+    final baseAddr = (json['base_address'] as String?)?.trim();
+    final quoteAddr = (json['quote_address'] as String?)?.trim();
+    final bd = (json['base_decimals'] as num?)?.toInt();
+    final qd = (json['quote_decimals'] as num?)?.toInt();
+    if (!isSafeAsset(base) || !isSafeAsset(quote) || base == quote) return null;
+    if (baseAddr == null || !_addressRe.hasMatch(baseAddr)) return null;
+    if (quoteAddr == null || !_addressRe.hasMatch(quoteAddr)) return null;
+    if (bd == null || bd < 0 || bd > 36 || qd == null || qd < 0 || qd > 36) {
+      return null;
+    }
+    final pair = (json['pair_address'] as String?)?.trim();
+    return DexPairInfo(
+      symbol: '$base-$quote',
+      baseAsset: base!,
+      quoteAsset: quote!,
+      baseAddress: baseAddr,
+      quoteAddress: quoteAddr,
+      baseDecimals: bd,
+      quoteDecimals: qd,
+      baseLogo: safeLogo(json['base_logo']),
+      quoteLogo: safeLogo(json['quote_logo']),
+      pairAddress:
+          pair != null && _addressRe.hasMatch(pair) ? pair : null,
+      isActive: json['is_active'] != false,
+      chainId: (json['chain_id'] as num?)?.toInt() ?? 4289,
+    );
+  }
 }
 
 // ── Order Book ──
