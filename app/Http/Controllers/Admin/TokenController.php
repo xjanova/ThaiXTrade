@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Chain;
 use App\Models\Token;
+use App\Services\TokenList\TokenLogoStorage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -16,9 +18,18 @@ use Inertia\Response as InertiaResponse;
  *
  * Manages token/cryptocurrency configurations per blockchain chain.
  * Tokens are nested under their parent chain for organizational clarity.
+ *
+ * ⚠️ แถว tokens บนเชน TPIX ที่ is_verified เป็นแหล่งของ /tokenlist.json ซึ่ง explorer และ
+ *    TPIX Wallet ถือเป็นรายการ "ของจริง" — เพิ่ม/แก้/ลบได้เฉพาะ admin/super_admin (ดู routes/admin.php)
+ *    และทุกการเปลี่ยนแปลงลง AuditLog พร้อมค่าเดิม/ค่าใหม่
  */
 class TokenController extends Controller
 {
+    /** ฟิลด์ที่บันทึกค่าเดิม/ค่าใหม่ลง AuditLog */
+    private const AUDITED = ['chain_id', 'name', 'symbol', 'contract_address', 'decimals', 'logo', 'is_active', 'is_verified'];
+
+    public function __construct(private TokenLogoStorage $logos) {}
+
     /**
      * Display all tokens across all chains.
      */
@@ -34,6 +45,8 @@ class TokenController extends Controller
         return Inertia::render('Admin/Tokens/Index', [
             'tokens' => $tokens,
             'chains' => $chains,
+            'canManage' => $this->canManage(),
+            'logoRules' => $this->logoRules(),
         ]);
     }
 
@@ -52,6 +65,8 @@ class TokenController extends Controller
             'chain' => $chain,
             'tokens' => $tokens,
             'chains' => $chains,
+            'canManage' => $this->canManage(),
+            'logoRules' => $this->logoRules(),
         ]);
     }
 
@@ -61,9 +76,12 @@ class TokenController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $this->validatePayload($request);
-        $validated['logo'] = $this->resolveLogoInput($request);
+        unset($validated['logo_file']);
+        $validated['logo'] = $this->resolveLogoInput($request, $validated);
 
-        Token::create($validated);
+        $token = Token::create($validated);
+
+        $this->audit('token.create', $token, null, $token->only(self::AUDITED));
 
         return back()->with('success', 'Token created successfully.');
     }
@@ -74,9 +92,21 @@ class TokenController extends Controller
     public function update(Request $request, Token $token): RedirectResponse
     {
         $validated = $this->validatePayload($request);
-        $validated['logo'] = $this->resolveLogoInput($request, $token);
+        unset($validated['logo_file']);
+        $before = $token->only(self::AUDITED);
+        $validated['logo'] = $this->resolveLogoInput($request, $validated, $token);
 
         $token->update($validated);
+
+        $fields = array_values(array_intersect(self::AUDITED, array_keys($token->getChanges())));
+        if ($fields !== []) {
+            $this->audit(
+                in_array('logo', $fields, true) ? 'token.logo_update' : 'token.update',
+                $token,
+                array_intersect_key($before, array_flip($fields)),
+                $token->only($fields),
+            );
+        }
 
         return back()->with('success', 'Token updated successfully.');
     }
@@ -86,9 +116,13 @@ class TokenController extends Controller
      */
     public function destroy(Token $token): RedirectResponse
     {
-        // ลบ logo file ถ้าเป็น storage upload (ไม่ใช่ external URL)
-        $this->deleteStoredLogo($token->logo);
+        $before = $token->only(self::AUDITED);
+        $logo = $token->logo;
         $token->delete();
+
+        // ลบ logo file ถ้าเป็นไฟล์ที่หลังบ้านอัปโหลดเองและไม่มีแถวอื่นใช้อยู่
+        $this->logos->deleteIfUnused($logo);
+        $this->audit('token.delete', $token, $before, null);
 
         return back()->with('success', 'Token deleted successfully.');
     }
@@ -110,39 +144,53 @@ class TokenController extends Controller
             'contract_address' => ['required', 'string', 'max:255'],
             'decimals' => ['required', 'integer', 'min:0', 'max:36'],
             'logo' => ['nullable', 'string', 'max:500'],
-            // ไม่รับ svg — เหตุผลเดียวกับ TokenFactoryApiController::uploadLogo()
-            // แอดมินที่ถูกยึดบัญชี = ฝัง JS ลงโดเมนได้เหมือนกัน
-            'logo_file' => ['nullable', 'file', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
+            /*
+             * ไม่รับ svg — เหตุผลเดียวกับ TokenFactoryApiController::uploadLogo()
+             * แอดมินที่ถูกยึดบัญชี = ฝัง JS ลงโดเมนได้เหมือนกัน
+             * PNG/WebP สี่เหลี่ยมจัตุรัส ≥128px ≤512KB — โลโก้ชุดนี้ไปขึ้น explorer/wallet/CoinGecko
+             */
+            'logo_file' => TokenLogoStorage::rules(required: false),
             'coingecko_id' => ['nullable', 'string', 'max:100'],
             'is_active' => ['boolean'],
+            'is_verified' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],
-        ]);
+        ], TokenLogoStorage::messages('logo_file'));
     }
 
     /**
      * คืนค่า logo ที่ควรเก็บ:
-     * — ถ้ามี file upload → store ลง storage/app/public/tokens/ แล้วคืน relative path
+     * — ถ้ามี file upload → เก็บที่ token-logos/{chainId}/{address}-{hash}.{ext} (ชื่อผูกกับเนื้อไฟล์) แล้วคืน relative path
      * — ถ้าไม่มี file แต่มี URL string → คืน URL ตรงๆ (รองรับ external CDN เช่น trustwallet)
      * — ถ้าทั้งคู่ว่าง → คงค่าเดิมของ token (ไม่ทับเป็น null โดยไม่ตั้งใจ)
      *
-     * ลบ logo เก่าใน storage ทิ้งถ้าเปลี่ยนเป็น file ใหม่หรือ URL ใหม่
+     * ลบ logo เก่าใน storage ทิ้งถ้าเปลี่ยนเป็น file ใหม่หรือ URL ใหม่ (เฉพาะไฟล์ที่ไม่มีแถวอื่นใช้)
+     *
+     * @param  array<string, mixed>  $validated
      */
-    private function resolveLogoInput(Request $request, ?Token $existing = null): ?string
+    private function resolveLogoInput(Request $request, array $validated, ?Token $existing = null): ?string
     {
         // 1. มี file upload → ใช้ file ก่อน
         if ($request->hasFile('logo_file')) {
-            $this->deleteStoredLogo($existing?->logo);
-            $path = $request->file('logo_file')->store('tokens', 'public');
+            $chain = Chain::find($validated['chain_id']);
+            $path = $this->logos->store(
+                $request->file('logo_file'),
+                (int) ($chain?->chain_id ?? 0),
+                (string) $validated['contract_address'],
+            );
 
-            return $path; // e.g. "tokens/abc123.png"
+            if ($existing && $existing->logo !== $path) {
+                $this->logos->deleteIfUnused($existing->logo, $existing);
+            }
+
+            return $path; // e.g. "token-logos/4289/0xabc…-1a2b3c4d5e6f7a8b.png"
         }
 
         // 2. ไม่มี file แต่มี URL string → ใช้ URL
         $logoString = $request->input('logo');
         if (filled($logoString)) {
-            // ถ้า URL ใหม่ != เดิม → ลบ logo file เก่า (ถ้ามี)
+            // ถ้า URL ใหม่ != เดิม → ลบ logo file เก่า (ถ้ามีและไม่มีใครใช้)
             if ($existing && $existing->logo !== $logoString) {
-                $this->deleteStoredLogo($existing->logo);
+                $this->logos->deleteIfUnused($existing->logo, $existing);
             }
 
             return $logoString;
@@ -152,26 +200,34 @@ class TokenController extends Controller
         return $existing?->logo;
     }
 
-    /**
-     * ลบ logo file จาก storage ถ้าเป็น relative path (ไม่ใช่ external URL).
-     */
-    private function deleteStoredLogo(?string $logo): void
+    private function canManage(): bool
     {
-        if (! $logo) {
-            return;
-        }
-        if (str_starts_with($logo, 'http')) {
-            return; // external URL — ไม่แตะ
-        }
+        return in_array(Auth::guard('admin')->user()?->role, ['super_admin', 'admin'], true);
+    }
 
-        $path = ltrim($logo, '/');
-        // ลบ "storage/" prefix ถ้ามี เพื่อให้ disk('public') resolve ถูก
-        if (str_starts_with($path, 'storage/')) {
-            $path = substr($path, 8);
-        }
+    /** @return array{max_kb:int, min_px:int, types:string} */
+    private function logoRules(): array
+    {
+        return ['max_kb' => TokenLogoStorage::MAX_KB, 'min_px' => TokenLogoStorage::MIN_PX, 'types' => 'PNG, WebP'];
+    }
 
-        if (Storage::disk('public')->exists($path)) {
-            Storage::disk('public')->delete($path);
-        }
+    /**
+     * บันทึกด้วย guard admin — AuditLog::log() อ่าน auth()->id() ของ guard ปริยาย (web).
+     *
+     * @param  array<string, mixed>|null  $old
+     * @param  array<string, mixed>|null  $new
+     */
+    private function audit(string $action, Token $token, ?array $old, ?array $new): void
+    {
+        AuditLog::create([
+            'admin_id' => Auth::guard('admin')->id(),
+            'action' => $action,
+            'model_type' => Token::class,
+            'model_id' => $token->id,
+            'old_values' => $old,
+            'new_values' => $new,
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
     }
 }

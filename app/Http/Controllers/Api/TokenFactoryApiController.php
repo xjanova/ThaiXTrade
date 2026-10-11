@@ -253,7 +253,22 @@ class TokenFactoryApiController extends Controller
         $dir = 'token-logos/'.$wallet;
         $disk = Storage::disk('public');
 
+        /*
+         * ไฟล์ที่เหรียญซึ่ง deploy แล้วใช้อยู่ไม่นับ/ไม่ลบ — เดิมผู้สร้างอัปรูปใหม่ 3 ครั้ง
+         * (เช่นเตรียมเหรียญตัวถัดไป) โลโก้ของเหรียญที่ลิสต์แล้วก็หายไปเงียบ ๆ
+         * ทั้งหน้าเว็บและ /tokenlist.json ได้ลิงก์ 404 (ที่ deploy แล้วต้องผ่านแอดมินอนุมัติ
+         * + จ่ายค่าธรรมเนียม จึงใช้ช่องนี้ถมดิสก์ไม่ได้)
+         */
+        $inUse = FactoryToken::query()
+            ->where('creator_address', $wallet)
+            ->where('status', 'deployed')
+            ->whereNotNull('logo_url')
+            ->pluck('logo_url')
+            ->map(fn (string $url) => ltrim(preg_replace('#^/?storage/#', '', $url) ?? '', '/'))
+            ->flip();
+
         $stale = collect($disk->files($dir))
+            ->reject(fn (string $file) => $inUse->has($file))
             ->sortByDesc(fn (string $file) => $disk->lastModified($file))
             ->slice(self::LOGO_KEEP_PER_WALLET - 1);
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\FactoryToken;
 use App\Services\TokenFactoryService;
+use App\Services\TokenList\TokenLogoStorage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -16,6 +17,7 @@ class TokenFactoryController extends Controller
 {
     public function __construct(
         private TokenFactoryService $tokenFactoryService,
+        private TokenLogoStorage $logos,
     ) {}
 
     public function index(Request $request): Response
@@ -36,6 +38,7 @@ class TokenFactoryController extends Controller
             'factoryConfig' => $factoryConfig,
             'canManagePolicy' => Auth::guard('admin')->user()?->role === 'super_admin',
             'canModerate' => in_array(Auth::guard('admin')->user()?->role, ['super_admin', 'admin'], true),
+            'logoRules' => ['max_kb' => TokenLogoStorage::MAX_KB, 'min_px' => TokenLogoStorage::MIN_PX, 'types' => 'PNG, WebP'],
         ]);
     }
 
@@ -103,6 +106,37 @@ class TokenFactoryController extends Controller
         return back()->with('success', $token->is_listed
             ? "ลิสต์ {$token->symbol} แล้ว — คู่เทรดจะเปิดในรอบซิงก์ถัดไป (ถ้ามีพูลสภาพคล่อง)"
             : "เลิกลิสต์ {$token->symbol} แล้ว — คู่เทรดจะถูกปิดในรอบซิงก์ถัดไป");
+    }
+
+    /**
+     * ตั้ง/เปลี่ยนโลโก้ของเหรียญที่ deploy แล้ว — แอดมินแก้ให้ได้โดยไม่ต้องรอผู้สร้าง.
+     *
+     * ไฟล์ไปอยู่ token-logos/{chainId}/… (ชื่อผูกกับเนื้อไฟล์) ไม่ใช่โฟลเดอร์ของกระเป๋าผู้สร้าง
+     * ซึ่งถูกหมุนเก็บแค่ 3 ไฟล์ล่าสุด — โลโก้ของเหรียญที่ลิสต์แล้วต้องไม่หายเพราะผู้สร้างอัปรูปใหม่
+     */
+    public function updateLogo(Request $request, int $id): RedirectResponse
+    {
+        $token = FactoryToken::findOrFail($id);
+
+        $request->validate(['logo' => TokenLogoStorage::rules()], TokenLogoStorage::messages('logo'));
+
+        if ($token->status !== 'deployed' || ! $token->contract_address) {
+            return back()->with('error', 'ตั้งโลโก้ได้เฉพาะเหรียญที่ deploy แล้ว');
+        }
+
+        $before = $token->logo_url;
+        $path = $this->logos->store($request->file('logo'), (int) $token->chain_id, (string) $token->contract_address);
+        $url = '/storage/'.$path;
+
+        $token->update(['logo_url' => $url]);
+
+        if ($before !== $url) {
+            $this->logos->deleteIfUnused($before, null, $token);
+        }
+
+        $this->audit('token_factory.logo_update', $token, ['logo_url' => $before], ['logo_url' => $url]);
+
+        return back()->with('success', "เปลี่ยนโลโก้ {$token->symbol} แล้ว");
     }
 
     public function retry(int $id): RedirectResponse

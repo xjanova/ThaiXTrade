@@ -18,9 +18,71 @@ const props = defineProps({
     factoryConfig: Object,
     canManagePolicy: { type: Boolean, default: false },
     canModerate: { type: Boolean, default: false },
+    logoRules: { type: Object, default: () => ({ max_kb: 512, min_px: 128, types: 'PNG, WebP' }) },
 });
 
 const flash = computed(() => usePage().props.flash || {});
+const pageErrors = computed(() => usePage().props.errors || {});
+
+/*
+ * โลโก้ของเหรียญที่ deploy แล้ว — แอดมินตั้ง/เปลี่ยนแทนผู้สร้างได้ (ขึ้น tokenlist.json เมื่อลิสต์)
+ * ตรวจไฟล์ฝั่งหน้าเว็บก่อนส่ง เซิร์ฟเวอร์ตรวจซ้ำเสมอ
+ */
+const logoInput = ref(null);
+const logoTarget = ref(null);
+const logoError = ref('');
+const logoUploading = ref(false);
+
+function pickLogo(token) {
+    logoTarget.value = token;
+    logoError.value = '';
+    logoInput.value?.click();
+}
+
+function readImageSize(file) {
+    return new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => { resolve({ width: img.naturalWidth, height: img.naturalHeight }); URL.revokeObjectURL(url); };
+        img.onerror = () => { resolve(null); URL.revokeObjectURL(url); };
+        img.src = url;
+    });
+}
+
+async function onLogoPicked(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    const token = logoTarget.value;
+    if (!file || !token || logoUploading.value) return;
+
+    const { max_kb: maxKb, min_px: minPx } = props.logoRules;
+    if (!['image/png', 'image/webp'].includes(file.type)) {
+        logoError.value = `${token.symbol}: โลโก้ต้องเป็นไฟล์ PNG หรือ WebP เท่านั้น`;
+        return;
+    }
+    if (file.size > maxKb * 1024) {
+        logoError.value = `${token.symbol}: โลโก้ต้องมีขนาดไม่เกิน ${maxKb} KB`;
+        return;
+    }
+    const size = await readImageSize(file);
+    if (!size || size.width !== size.height || size.width < minPx) {
+        logoError.value = `${token.symbol}: โลโก้ต้องเป็นสี่เหลี่ยมจัตุรัส ขนาดอย่างน้อย ${minPx}×${minPx} พิกเซล`;
+        return;
+    }
+
+    // เขียนทับโลโก้เดิม (ของผู้สร้างหรือของแอดมิน) — ถามก่อน เพราะเปลี่ยนทั้งเว็บ explorer และ wallet
+    if (token.logo_url && !confirm(`เปลี่ยนโลโก้ของ ${token.symbol}?\n\nโลโก้เดิมจะถูกแทนที่ทั้งบนเว็บ, explorer และ TPIX Wallet (ผ่าน tokenlist.json)`)) {
+        return;
+    }
+
+    logoUploading.value = true;
+    router.post(`/admin/token-factory/${token.id}/logo`, { logo: file }, {
+        forceFormData: true,
+        preserveScroll: true,
+        onFinish: () => { logoUploading.value = false; },
+    });
+}
+
 const showRejectModal = ref(false);
 const rejectTokenId = ref(null);
 const rejectReason = ref('');
@@ -141,6 +203,10 @@ function goToPage(page) {
         <div v-if="flash.error" class="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
             {{ flash.error }}
         </div>
+        <div v-if="logoError || pageErrors.logo" class="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm" data-test="logo-error">
+            {{ logoError || pageErrors.logo }}
+        </div>
+        <input ref="logoInput" type="file" accept="image/png,image/webp" class="hidden" data-test="logo-input" @change="onLogoPicked" />
 
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
             <p class="text-xs text-dark-400">
@@ -360,6 +426,16 @@ function goToPage(page) {
                                         :class="token.is_listed ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-white/5 text-gray-400 hover:bg-white/10'"
                                     >
                                         {{ token.is_listed ? 'Delist' : 'List' }}
+                                    </button>
+                                    <button
+                                        v-if="token.status === 'deployed' && canModerate"
+                                        @click="pickLogo(token)"
+                                        :disabled="logoUploading"
+                                        class="px-2.5 py-1 rounded-lg bg-white/5 text-gray-300 text-xs font-medium hover:bg-white/10 disabled:opacity-50 transition-colors"
+                                        :title="`${logoRules.types} สี่เหลี่ยมจัตุรัส ≥ ${logoRules.min_px}px ไม่เกิน ${logoRules.max_kb} KB`"
+                                        data-test="logo-button"
+                                    >
+                                        {{ token.logo_url ? 'เปลี่ยนโลโก้' : 'ตั้งโลโก้' }}
                                     </button>
                                     <!-- Contract link -->
                                     <a

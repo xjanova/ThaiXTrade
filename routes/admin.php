@@ -152,9 +152,16 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Tokens (flat listing + nested under chains)
         Route::get('tokens', [TokenController::class, 'all'])->name('tokens.all');
         Route::get('chains/{chain}/tokens', [TokenController::class, 'index'])->name('tokens.index');
-        Route::post('tokens', [TokenController::class, 'store'])->name('tokens.store');
-        Route::put('tokens/{token}', [TokenController::class, 'update'])->name('tokens.update');
-        Route::delete('tokens/{token}', [TokenController::class, 'destroy'])->name('tokens.destroy');
+        /*
+         * แก้ได้เฉพาะ admin/super_admin — แถวที่รับรอง (is_verified) บนเชน TPIX ขึ้น /tokenlist.json
+         * ซึ่ง explorer และ TPIX Wallet ถือเป็นรายการ "ของจริง" (ชื่อ/ที่อยู่/โลโก้ปลอม = หลอกผู้ใช้ได้ทันที)
+         * มาตรฐานเดียวกับปุ่ม List/Verify ของ Token Factory
+         */
+        Route::middleware('admin.role:super_admin,admin')->group(function () {
+            Route::post('tokens', [TokenController::class, 'store'])->name('tokens.store');
+            Route::put('tokens/{token}', [TokenController::class, 'update'])->name('tokens.update');
+            Route::delete('tokens/{token}', [TokenController::class, 'destroy'])->name('tokens.destroy');
+        });
 
         // Trading Pairs
         Route::resource('trading-pairs', TradingPairController::class)->except(['create', 'show', 'edit']);
@@ -257,6 +264,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::post('/{id}/reset-stuck', [TokenFactoryController::class, 'resetStuck'])->name('reset-stuck')->whereNumber('id');
                 Route::patch('/{id}/verify', [TokenFactoryController::class, 'toggleVerified'])->name('verify')->whereNumber('id');
                 Route::patch('/{id}/list', [TokenFactoryController::class, 'toggleListed'])->name('list')->whereNumber('id');
+                // ตั้ง/เปลี่ยนโลโก้ของเหรียญที่ deploy แล้ว (โลโก้นี้ขึ้น /tokenlist.json เมื่อเหรียญถูกลิสต์)
+                Route::post('/{id}/logo', [TokenFactoryController::class, 'updateLogo'])->name('logo')->whereNumber('id')->middleware('throttle:30,1');
             });
 
             // นโยบาย (เปิด/ปิดประเภท/ตัวเลือก ค่าธรรมเนียม เพดาน) — super_admin เท่านั้น

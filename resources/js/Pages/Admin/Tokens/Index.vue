@@ -25,6 +25,15 @@ const props = defineProps({
         type: Object,
         default: null,
     },
+    // เพิ่ม/แก้/ลบได้เฉพาะ admin/super_admin — ฝั่งเซิร์ฟเวอร์กันไว้แล้ว ตรงนี้แค่ซ่อนปุ่ม
+    canManage: {
+        type: Boolean,
+        default: false,
+    },
+    logoRules: {
+        type: Object,
+        default: () => ({ max_kb: 512, min_px: 128, types: 'PNG, WebP' }),
+    },
 });
 
 const isChainView = computed(() => !!props.chain);
@@ -43,8 +52,11 @@ const columns = computed(() => {
         { key: 'decimals', label: 'Decimals', align: 'center' },
         { key: 'coingecko_id', label: 'CoinGecko ID' },
         { key: 'is_active', label: 'Active', align: 'center' },
-        { key: 'actions', label: 'Actions', align: 'right' },
+        { key: 'is_verified', label: 'Token list', align: 'center' },
     );
+    if (props.canManage) {
+        cols.push({ key: 'actions', label: 'Actions', align: 'right' });
+    }
     return cols;
 });
 
@@ -69,23 +81,60 @@ const form = useForm({
     logo_file: null,
     coingecko_id: '',
     is_active: true,
+    // รับรอง = ขึ้น /tokenlist.json (explorer + TPIX Wallet) ถ้าเป็นเหรียญบนเชน TPIX
+    is_verified: true,
     sort_order: 0,
 });
+
+// ตรวจไฟล์ฝั่งหน้าเว็บก่อนส่ง (เซิร์ฟเวอร์ตรวจซ้ำเสมอ) — บอกผู้ใช้ทันทีแทนการรอ 422
+const logoFileError = ref('');
 
 // URL ของ logo ที่ preview ตอน edit (รวม logo เก่าถ้ามี + file ที่เพิ่ง pick)
 const logoPreviewUrl = ref(null);
 
-const handleLogoFileChange = (e) => {
+const readImageSize = (url) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => resolve(null);
+    img.src = url;
+});
+
+const handleLogoFileChange = async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // เลือกไฟล์เดิมซ้ำได้หลังแก้ไฟล์
     if (!file) return;
+
+    logoFileError.value = '';
+    const { max_kb: maxKb, min_px: minPx } = props.logoRules;
+
+    if (!['image/png', 'image/webp'].includes(file.type)) {
+        logoFileError.value = 'โลโก้ต้องเป็นไฟล์ PNG หรือ WebP เท่านั้น';
+        return;
+    }
+    if (file.size > maxKb * 1024) {
+        logoFileError.value = `โลโก้ต้องมีขนาดไม่เกิน ${maxKb} KB`;
+        return;
+    }
+
+    const url = URL.createObjectURL(file);
+    const size = await readImageSize(url);
+    if (!size || size.width !== size.height || size.width < minPx) {
+        URL.revokeObjectURL(url);
+        logoFileError.value = `โลโก้ต้องเป็นสี่เหลี่ยมจัตุรัส ขนาดอย่างน้อย ${minPx}×${minPx} พิกเซล`;
+        return;
+    }
+
+    if (logoPreviewUrl.value) URL.revokeObjectURL(logoPreviewUrl.value);
     form.logo_file = file;
     form.logo = ''; // ล้าง URL — ใช้ file แทน
-    logoPreviewUrl.value = URL.createObjectURL(file);
+    logoPreviewUrl.value = url;
 };
 
 const clearLogoFile = () => {
+    if (logoPreviewUrl.value) URL.revokeObjectURL(logoPreviewUrl.value);
     form.logo_file = null;
     logoPreviewUrl.value = null;
+    logoFileError.value = '';
     // คงค่า form.logo URL เดิม (ถ้ามี)
 };
 
@@ -100,7 +149,7 @@ const openCreateModal = () => {
     editingToken.value = null;
     form.reset();
     form.clearErrors();
-    logoPreviewUrl.value = null;
+    clearLogoFile();
     if (isChainView.value) {
         form.chain_id = props.chain.id;
     }
@@ -119,9 +168,10 @@ const openEditModal = (token) => {
     form.logo_file = null;
     form.coingecko_id = token.coingecko_id || '';
     form.is_active = token.is_active;
+    form.is_verified = !!token.is_verified;
     form.sort_order = token.sort_order || 0;
     form.clearErrors();
-    logoPreviewUrl.value = null;
+    clearLogoFile();
     showModal.value = true;
 };
 
@@ -186,7 +236,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     <option value="">All Chains</option>
                     <option v-for="c in chains" :key="c.id" :value="c.id">{{ c.name }}</option>
                 </select>
-                <button @click="openCreateModal" class="btn-primary px-4 py-2.5 text-sm">
+                <button v-if="canManage" @click="openCreateModal" class="btn-primary px-4 py-2.5 text-sm">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                     </svg>
@@ -227,6 +277,10 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                 <span v-if="row.is_active" class="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"></span>
                 <span v-else class="w-2.5 h-2.5 rounded-full bg-dark-600 inline-block"></span>
             </template>
+            <template #cell-is_verified="{ row }">
+                <span v-if="row.is_verified" class="text-xs text-blue-400" title="รับรองแล้ว — ขึ้น tokenlist.json ถ้าอยู่บนเชน TPIX">✓</span>
+                <span v-else class="text-xs text-dark-500" title="ยังไม่รับรอง — ไม่ขึ้น tokenlist.json">-</span>
+            </template>
             <template #cell-actions="{ row }">
                 <div class="flex items-center justify-end gap-2" @click.stop>
                     <button @click="openEditModal(row)" class="p-1.5 rounded-lg text-dark-400 hover:text-white hover:bg-white/5 transition-colors">
@@ -249,7 +303,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p class="text-dark-400 text-sm">No tokens found</p>
-            <button @click="openCreateModal" class="mt-3 text-sm text-primary-400 hover:text-primary-300">Add your first token</button>
+            <button v-if="canManage" @click="openCreateModal" class="mt-3 text-sm text-primary-400 hover:text-primary-300">Add your first token</button>
         </div>
 
         <!-- Create/Edit Modal -->
@@ -312,7 +366,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                                     </svg>
                                     <span>{{ form.logo_file ? 'เปลี่ยนไฟล์' : 'อัปโหลดรูป' }}</span>
-                                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="handleLogoFileChange" />
+                                    <input type="file" accept="image/png,image/webp" class="hidden" @change="handleLogoFileChange" />
                                 </label>
                                 <button v-if="form.logo_file" type="button" @click="clearLogoFile" class="text-xs text-red-400 hover:text-red-300">
                                     ล้างไฟล์
@@ -324,7 +378,10 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                             <input v-model="form.logo" type="text" :class="inputClass" placeholder="หรือใส่ URL: https://example.com/logo.webp" :disabled="!!form.logo_file" />
                         </div>
                     </div>
-                    <p class="mt-2 text-xs text-dark-500">รองรับ PNG, JPG, WEBP, SVG (ไม่เกิน 2MB) — หรือใส่ URL ภายนอกก็ได้</p>
+                    <p class="mt-2 text-xs text-dark-500">
+                        {{ logoRules.types }} สี่เหลี่ยมจัตุรัส อย่างน้อย {{ logoRules.min_px }}×{{ logoRules.min_px }} px (แนะนำ 256×256 ขึ้นไป) ไม่เกิน {{ logoRules.max_kb }} KB — หรือใส่ URL https ภายนอกก็ได้
+                    </p>
+                    <p v-if="logoFileError" class="mt-1 text-sm text-red-400" data-test="logo-file-error">{{ logoFileError }}</p>
                     <p v-if="form.errors.logo_file" class="mt-1 text-sm text-red-400">{{ form.errors.logo_file }}</p>
                     <p v-if="form.errors.logo" class="mt-1 text-sm text-red-400">{{ form.errors.logo }}</p>
                 </div>
@@ -339,6 +396,18 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     <label class="text-sm font-medium text-dark-300">Active</label>
                     <button type="button" @click="form.is_active = !form.is_active" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="form.is_active ? 'bg-primary-500' : 'bg-dark-600'">
                         <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" :class="form.is_active ? 'translate-x-6' : 'translate-x-1'"></span>
+                    </button>
+                </div>
+
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <label class="text-sm font-medium text-dark-300">Verified (Token list)</label>
+                        <p class="mt-1 text-xs text-dark-500">
+                            รับรองว่าเป็นสัญญาจริงของเหรียญนี้ — เหรียญบนเชน TPIX จะขึ้น tokenlist.json ที่ explorer และ TPIX Wallet ถือเป็นรายการของจริง
+                        </p>
+                    </div>
+                    <button type="button" data-test="verified-toggle" @click="form.is_verified = !form.is_verified" class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors" :class="form.is_verified ? 'bg-primary-500' : 'bg-dark-600'">
+                        <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" :class="form.is_verified ? 'translate-x-6' : 'translate-x-1'"></span>
                     </button>
                 </div>
             </form>
