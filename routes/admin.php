@@ -38,6 +38,7 @@ use App\Http\Controllers\Admin\SwapController;
 use App\Http\Controllers\Admin\SystemAlertController;
 use App\Http\Controllers\Admin\TokenController;
 use App\Http\Controllers\Admin\TokenFactoryController;
+use App\Http\Controllers\Admin\TokenFactoryPolicyController;
 use App\Http\Controllers\Admin\TokenSaleController;
 use App\Http\Controllers\Admin\TradingFeeTierController;
 use App\Http\Controllers\Admin\TradingPairController;
@@ -244,11 +245,21 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Token Factory — จัดการ Token ที่สร้างจาก Factory
         Route::prefix('token-factory')->name('token-factory.')->group(function () {
             Route::get('/', [TokenFactoryController::class, 'index'])->name('index');
-            Route::post('/{id}/approve', [TokenFactoryController::class, 'approve'])->name('approve');
-            Route::post('/{id}/reject', [TokenFactoryController::class, 'reject'])->name('reject');
-            Route::post('/{id}/retry', [TokenFactoryController::class, 'retry'])->name('retry');
-            Route::patch('/{id}/verify', [TokenFactoryController::class, 'toggleVerified'])->name('verify');
-            Route::patch('/{id}/list', [TokenFactoryController::class, 'toggleListed'])->name('list');
+
+            // อนุมัติ = สั่งเซิร์ฟเวอร์ส่งธุรกรรมสร้างเหรียญบนเชนจริง — moderator/support ห้ามแตะ
+            Route::middleware('admin.role:super_admin,admin')->group(function () {
+                Route::post('/{id}/approve', [TokenFactoryController::class, 'approve'])->name('approve')->whereNumber('id');
+                Route::post('/{id}/reject', [TokenFactoryController::class, 'reject'])->name('reject')->whereNumber('id');
+                Route::post('/{id}/retry', [TokenFactoryController::class, 'retry'])->name('retry')->whereNumber('id');
+                Route::patch('/{id}/verify', [TokenFactoryController::class, 'toggleVerified'])->name('verify')->whereNumber('id');
+                Route::patch('/{id}/list', [TokenFactoryController::class, 'toggleListed'])->name('list')->whereNumber('id');
+            });
+
+            // นโยบาย (เปิด/ปิดประเภท/ตัวเลือก ค่าธรรมเนียม เพดาน) — super_admin เท่านั้น
+            Route::middleware('admin.role:super_admin')->group(function () {
+                Route::get('/policy', [TokenFactoryPolicyController::class, 'show'])->name('policy');
+                Route::put('/policy', [TokenFactoryPolicyController::class, 'update'])->name('policy.update');
+            });
         });
 
         // FoodPassport — จัดการระบบ Food Traceability

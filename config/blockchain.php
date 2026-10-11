@@ -192,6 +192,60 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | นโยบายโรงงานสร้างเหรียญ — ค่าตั้งต้น (แอดมินแก้ได้ที่ /admin/token-factory/policy)
+    |--------------------------------------------------------------------------
+    |
+    | เจ้าของสั่ง: ปิดทุกอย่างที่เสี่ยงไว้ก่อน แอดมินเปิด/ปิดเองทีละตัว
+    | ค่าที่แอดมินบันทึกเก็บใน site_settings (token_factory_policy.policy) และชนะค่าตรงนี้
+    | ของที่ "ล็อกถาวร" (utility, reward, stablecoin, auto_burn) อยู่ในโค้ด
+    | App\Services\TokenFactory\TokenFactoryPolicy::LOCKED — แก้ตรงนี้ให้เป็น on ก็ไม่มีผล
+    |
+    | state: on = เปิด · off = ปิด (ค่าตั้งต้นของของเสี่ยงทุกตัว)
+    | fee: TPIX (native บนเชน 4289) · ค่าธรรมเนียมรวม = ค่าประเภท + ค่าตัวเลือกที่เลือก
+    | max_supply: จำนวนเหรียญสูงสุด (หน่วยเต็ม ไม่ใช่ wei) เป็น string กันเลขใหญ่เพี้ยน
+    |
+    */
+
+    'token_factory_policy' => [
+        // null = ใช้สวิตช์เดิม factory.creation_enabled จนกว่าแอดมินจะบันทึกหน้านโยบาย
+        'creation_enabled' => null,
+        // ว่าง = ใช้ factory.fee_wallet → revenue.tpix_wallet → revenue.wallet_address
+        'fee_wallet' => '',
+        'required_confirmations' => (int) env('TOKEN_FACTORY_FEE_CONFIRMATIONS', 2),
+        'quote_ttl_minutes' => 30,
+        'daily_limit_per_wallet' => 3,
+        'name_max_length' => 50,
+        'symbol_max_length' => 11,
+        // ลิสต์ขึ้นหน้า Explore + เปิดคู่เทรดใน dex:sync ทันทีที่ deploy เสร็จหรือไม่ (ค่าตั้งต้น: แอดมินตัดสินเอง)
+        'auto_list_on_deploy' => false,
+        'require_kyc' => false,
+        // สัญลักษณ์สงวน => กระเป๋าที่อนุญาตให้ใช้ (ว่าง = ไม่มีใครใช้ได้)
+        'reserved_symbols' => [
+            'TPIX' => [], 'WTPIX' => [], 'USDT' => [], 'USDC' => [],
+            'BTC' => [], 'ETH' => [], 'BNB' => [], 'IDTC' => [],
+        ],
+        'types' => [
+            'erc20' => ['state' => 'on', 'fee' => 50, 'max_supply' => '1000000000000000', 'decimals_min' => 18, 'decimals_max' => 18, 'auto_approve' => false, 'require_kyc' => false],
+            'utility' => ['state' => 'off', 'fee' => 60, 'max_supply' => '1000000000000000', 'decimals_min' => 18, 'decimals_max' => 18, 'auto_approve' => false, 'require_kyc' => false],
+            'reward' => ['state' => 'off', 'fee' => 60, 'max_supply' => '1000000000000000', 'decimals_min' => 18, 'decimals_max' => 18, 'auto_approve' => false, 'require_kyc' => false],
+            'governance' => ['state' => 'off', 'fee' => 130, 'max_supply' => '1000000000000000', 'decimals_min' => 18, 'decimals_max' => 18, 'auto_approve' => false, 'require_kyc' => false],
+            'stablecoin' => ['state' => 'off', 'fee' => 150, 'max_supply' => '1000000000000000', 'decimals_min' => 6, 'decimals_max' => 18, 'auto_approve' => false, 'require_kyc' => false],
+            'nft' => ['state' => 'off', 'fee' => 80, 'max_supply' => '10000', 'decimals_min' => 0, 'decimals_max' => 0, 'auto_approve' => false, 'require_kyc' => false],
+            'nft_collection' => ['state' => 'off', 'fee' => 100, 'max_supply' => '100000', 'decimals_min' => 0, 'decimals_max' => 0, 'auto_approve' => false, 'require_kyc' => false],
+        ],
+        'options' => [
+            // ผู้ถือเผาเหรียญของตัวเอง — ไม่มีอำนาจเหนือคนอื่น จึงเปิดไว้
+            'burnable' => ['state' => 'on', 'fee' => 0],
+            'mintable' => ['state' => 'off', 'fee' => 20],
+            'mint_cap' => ['state' => 'off', 'fee' => 0],
+            'pausable' => ['state' => 'off', 'fee' => 5],
+            'blacklist' => ['state' => 'off', 'fee' => 5],
+            'auto_burn' => ['state' => 'off', 'fee' => 10],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Blockscout Explorer API (สำหรับ auto-verify contract)
     |--------------------------------------------------------------------------
     */
