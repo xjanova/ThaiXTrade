@@ -67,7 +67,14 @@ async function withChain(overrides, fn) {
         req.on('end', () => {
             const msg = JSON.parse(body);
             const list = Array.isArray(msg) ? msg : [msg];
-            const out = list.map((m) => ({ jsonrpc: '2.0', id: m.id, result: handle(m.method, m.params || []) }));
+            // override ที่โยน = เชนตอบ JSON-RPC error (ไม่ใช่ทิ้ง request ค้าง)
+            const out = list.map((m) => {
+                try {
+                    return { jsonrpc: '2.0', id: m.id, result: handle(m.method, m.params || []) };
+                } catch (e) {
+                    return { jsonrpc: '2.0', id: m.id, error: { code: -32000, message: e.message } };
+                }
+            });
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify(Array.isArray(msg) ? out : out[0]));
         });
@@ -188,6 +195,84 @@ describe('create-token.cjs', () => {
         await withChain({ eth_getTransactionReceipt: () => receipt(hash, '0x0') }, async (url) => {
             const { last } = await run({ mode: 'receipt', txHash: hash }, { TPIX_RPC_URL: url });
             expect(last.reverted).toBe(true);
+        });
+    }, 30000);
+
+    it('refuses to sign when the on-chain duplicate check cannot run (fail closed)', async () => {
+        await withChain({ eth_getLogs: () => { throw new Error('rpc down'); } }, async (url, state) => {
+            const { last, lines } = await run(deployInput, { TPIX_RPC_URL: url, DEPLOYER_PRIVATE_KEY: KEY, DEPLOY_WAIT_SECONDS: '1' });
+
+            expect(last.success).toBe(false);
+            expect(last.code).toBe('DEDUPE_UNAVAILABLE');
+            expect(lines.some((l) => l.event === 'signed')).toBe(false);
+            expect(state.sent).toEqual([]);
+        });
+    }, 30000);
+
+    it('refuses to sign when an existing token is found but its receipt cannot be read', async () => {
+        const iface = new ethers.Interface(require(path.join(ROOT, 'scripts/blockchain/abi/TPIXTokenFactoryV2.json')).abi);
+        const encoded = iface.encodeEventLog(iface.getEvent('TokenCreated'), ['0x' + 'cc'.repeat(20), 'Good', 'GOOD', OWNER, 0]);
+        const log = {
+            address: FACTORY, topics: encoded.topics, data: encoded.data, blockNumber: '0x50', transactionHash: '0x' + 'dd'.repeat(32),
+            transactionIndex: '0x0', blockHash: '0x' + 'ee'.repeat(32), logIndex: '0x0', removed: false,
+        };
+
+        await withChain({ eth_getLogs: () => [log], eth_getTransactionReceipt: () => null }, async (url, state) => {
+            const { last, lines } = await run(deployInput, { TPIX_RPC_URL: url, DEPLOYER_PRIVATE_KEY: KEY, DEPLOY_WAIT_SECONDS: '1' });
+
+            expect(last.success).toBe(false);
+            expect(last.code).toBe('DEDUPE_RECEIPT_UNREADABLE');
+            expect(lines.some((l) => l.event === 'signed')).toBe(false);
+            expect(state.sent).toEqual([]);
+        });
+    }, 30000);
+
+    it('scans the whole lookback in chunks when the RPC rejects a wide range, and still finds an old token', async () => {
+        const iface = new ethers.Interface(require(path.join(ROOT, 'scripts/blockchain/abi/TPIXTokenFactoryV2.json')).abi);
+        const tokenAddress = '0x' + 'ab'.repeat(20);
+        const txHash = '0x' + '9a'.repeat(32);
+        const encoded = iface.encodeEventLog(iface.getEvent('TokenCreated'), [tokenAddress, 'Good', 'GOOD', OWNER, 0]);
+        const log = {
+            address: FACTORY, topics: encoded.topics, data: encoded.data, blockNumber: '0xbb8', transactionHash: txHash,
+            transactionIndex: '0x0', blockHash: '0x' + 'ee'.repeat(32), logIndex: '0x0', removed: false,
+        };
+
+        await withChain({
+            eth_blockNumber: () => '0x4e20', // 20000 — เหรียญเดิมอยู่บล็อก 3000 เก่ากว่า 5,000 บล็อกล่าสุด
+            eth_getLogs: ([filter]) => {
+                const from = Number(BigInt(filter.fromBlock));
+                const to = Number(BigInt(filter.toBlock));
+                if (to - from > 5000) throw new Error('block range too wide');
+                return from <= 3000 && 3000 <= to ? [log] : [];
+            },
+            eth_getTransactionReceipt: () => receipt(txHash, '0x1', [log]),
+        }, async (url, state) => {
+            const { last, lines } = await run(deployInput, { TPIX_RPC_URL: url, DEPLOYER_PRIVATE_KEY: KEY, DEPLOY_WAIT_SECONDS: '1' });
+
+            expect(last.success).toBe(true);
+            expect(last.alreadyExisted).toBe(true);
+            expect(last.contractAddress.toLowerCase()).toBe(tokenAddress);
+            expect(lines.some((l) => l.event === 'signed')).toBe(false);
+            expect(state.sent).toEqual([]);
+        });
+    }, 30000);
+
+    it('encodes a tiny mint price exactly instead of failing on "1e-7"', async () => {
+        const nftIface = new ethers.Interface(require(path.join(ROOT, 'scripts/blockchain/abi/TPIXNFTFactory.json')).abi);
+
+        await withChain({}, async (url) => {
+            const { lines } = await run({
+                mode: 'deploy', name: 'Art', symbol: 'ART', decimals: 0, totalSupply: '100', tokenOwner: OWNER,
+                tokenType: 'nft_collection',
+                subOptions: { mint_type: 'public', mint_price: '0.0000001', max_per_wallet: 5, max_per_tx: 2, reserve_count: 0 },
+            }, { TPIX_RPC_URL: url, DEPLOYER_PRIVATE_KEY: KEY, NFT_FACTORY_ADDRESS: FACTORY, TOKEN_FACTORY_V2_ADDRESS: '', DEPLOY_WAIT_SECONDS: '1' });
+
+            const signed = lines.find((l) => l.event === 'signed');
+            expect(signed).toBeTruthy();
+
+            const call = nftIface.parseTransaction({ data: ethers.Transaction.from(signed.rawTx).data });
+            expect(call.name).toBe('createNFTCollection');
+            expect(call.args[5]).toBe(100000000000n); // 0.0000001 TPIX = 1e11 wei
         });
     }, 30000);
 });
