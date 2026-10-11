@@ -26,7 +26,8 @@ class MasterNodeController extends Controller
     public function index()
     {
         $stats = $this->getNetworkStats();
-        $live = $this->registry->isDeployed();
+        $state = $this->registry->deploymentState();
+        $live = $state === true;
 
         return Inertia::render('MasterNode/Index', [
             'stats' => $stats,
@@ -34,6 +35,8 @@ class MasterNodeController extends Controller
             'nodes' => [],
             'registryAddress' => $this->registry->address() ?? '',
             'registryLive' => $live,
+            // RPC ล้มตอนตรวจโค้ดสัญญา — ห้ามขึ้นป้าย "รอติดตั้งสัญญา" ทั้งที่อาจมีคนวางค้ำอยู่แล้ว
+            'registryUnknown' => $state === null,
             'kycContract' => $live ? $this->registry->kycContract() : null,
             // null = ไม่ทราบ (ยังไม่ deploy / RPC ล้ม / สัญญารุ่นเก่า) — ห้ามตีความว่า "เปิดรับอยู่"
             // ใช้ค่าจาก stats ที่ cache ไว้แล้ว ไม่ยิง RPC ซ้ำ และหน้าเว็บ poll stats อยู่แล้วทุก 30 วิ
@@ -89,11 +92,14 @@ class MasterNodeController extends Controller
     public function config(): JsonResponse
     {
         $data = cache()->remember('masternode:config:public', 30, function () {
-            $live = $this->registry->isDeployed();
+            // null = RPC ล้ม อ่านไม่ได้ว่ามีสัญญาหรือไม่ — ไม่ใช่ false ("ทราบแน่ว่ายังไม่ deploy")
+            // แอป PC / TPIX Wallet เช็ก registry_live === true อยู่แล้ว null จึงไม่เปลี่ยนพฤติกรรมของแอป
+            $state = $this->registry->deploymentState();
+            $live = $state === true;
 
             return [
                 'registry_address' => $this->registry->address(),
-                'registry_live' => $live,
+                'registry_live' => $state,
                 'kyc_contract' => $live ? $this->registry->kycContract() : null,
                 'registration_paused' => $live ? $this->registry->registrationPaused() : null,
                 'chain_id' => (int) config('blockchain.tpix_chain_id', 4289),
@@ -246,6 +252,11 @@ class MasterNodeController extends Controller
             $deployed = $this->registry->isDeployed();
 
             $base = [
+                // false = ตัวเลขด้านล่างเป็นค่าตั้งต้น ไม่ได้อ่านจากเชน (ยังไม่ deploy / RPC ล้ม)
+                // หน้าเว็บต้องโชว์ "—" ไม่ใช่ "0 โหนด" / "พูลว่าง" ราวกับอ่านเชนมาแล้ว
+                'stats_available' => false,
+                // อ่านยอดพูลรางวัลไม่ได้ ≠ พูลว่าง — แยกไว้ให้หน้าเว็บไม่ประกาศว่า "ยังไม่เติมเงิน" มั่ว ๆ
+                'reward_pool_known' => false,
                 'total_nodes' => 0,
                 'guardian_nodes' => 0,
                 'sentinel_nodes' => 0,
@@ -284,8 +295,11 @@ class MasterNodeController extends Controller
             }
 
             $pool = $this->registry->rewardPoolStatus();
+            $available = $this->registry->availableRewardFunds();
 
             return array_merge($base, $tierCounts, [
+                'stats_available' => true,
+                'reward_pool_known' => $available !== null,
                 'total_nodes' => $stats['total_active_nodes'],
                 'total_staked' => Wei::format($stats['total_staked_wei']),
                 'total_rewards_distributed' => Wei::format($stats['total_rewards_distributed_wei']),
@@ -295,7 +309,7 @@ class MasterNodeController extends Controller
                 'current_year' => min(3, $stats['current_year_index'] + 1),
                 'reward_year_ended' => $stats['current_year_index'] >= 3,
                 'reward_pool_funded' => $pool ? Wei::format($pool['total_funded_wei']) : '0',
-                'reward_pool_available' => Wei::format($this->registry->availableRewardFunds() ?? '0'),
+                'reward_pool_available' => Wei::format($available ?? '0'),
             ]);
         });
     }

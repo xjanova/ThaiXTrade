@@ -53,8 +53,20 @@ class NodeRegistryService
         }
 
         // 2. สัญญา deploy แล้ว → คำตอบสุดท้าย
-        if ($this->registry->isDeployed()) {
+        $deployed = $this->registry->deploymentState();
+        if ($deployed === true) {
             return $this->lookupFromRegistry($wallet);
+        }
+
+        // ตั้งที่อยู่สัญญาไว้แต่อ่านเชนไม่ได้ (RPC ล้ม) = ไม่รู้ว่าเป็นช่วงก่อนหรือหลัง deploy
+        // ต้องปฏิเสธ (fail closed) ห้ามไหลไปข้อ 3 — ไม่งั้น RPC สะดุดครั้งเดียว
+        // ใครถือเหรียญครบขั้นต่ำก็ได้ allowlist ทั้งที่สัญญาบอกว่าไม่ได้เป็นโหนด
+        if ($deployed === null) {
+            Log::warning('Masternode allowlist ปฏิเสธ — อ่านสถานะสัญญา NodeRegistry ไม่ได้', [
+                'wallet' => $wallet,
+            ]);
+
+            return null;
         }
 
         // 3. สัญญายังไม่ deploy → fallback ดู balance

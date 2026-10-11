@@ -79,6 +79,12 @@ class NodeRegistryContract
 
     private const USER_AGENT = 'TPIX-TRADE-Server/1.0 (+https://tpix.online)';
 
+    /** ค่าใน cache แทน "อ่านสถานะ deploy ไม่ได้" — แยกจาก false (ทราบแน่ว่าไม่มีสัญญา) */
+    private const STATE_UNKNOWN = 'unknown';
+
+    /** นานแค่ไหนที่จำว่า "ไม่ทราบ" — สั้นพอให้หายเองเมื่อ RPC กลับมา */
+    private const UNKNOWN_STATE_TTL = 15;
+
     /**
      * ที่อยู่สัญญา — ผ่าน ContractRegistry ที่เดียว.
      *
@@ -121,19 +127,54 @@ class NodeRegistryContract
      * สัญญาที่เคย deploy หายเกลี้ยงทั้งที่ address ยังค้างอยู่ใน .env
      * ถ้าไม่เช็ก ระบบจะยิง eth_call ไปที่ address ว่างเปล่าแล้วได้ '0x' กลับมา
      * แปลว่า "ไม่มีโหนด" แทนที่จะบอกว่า "สัญญาหาย"
+     *
+     * RPC ล้ม = false ที่นี่ (ไม่ทราบ ≠ deploy แล้ว) — ใครต้องแยก "ไม่ทราบ" ออกจาก
+     * "ทราบแน่ว่าไม่มีสัญญา" ให้ใช้ deploymentState()
      */
     public function isDeployed(): bool
+    {
+        return $this->deploymentState() === true;
+    }
+
+    /**
+     * สถานะการ deploy แบบสามค่า.
+     *
+     *   true  = ตั้งที่อยู่แล้วและมี bytecode ที่ที่อยู่นั้น
+     *   false = ทราบแน่ว่าไม่มี (ยังไม่ได้ตั้งที่อยู่ / eth_getCode ตอบ '0x')
+     *   null  = ไม่ทราบ (RPC ล้ม / ตอบ error) — ห้ามตีความเป็น "ยังไม่ deploy"
+     *
+     * เดิม cache ผล "RPC ล้ม" เป็น false ไว้ 5 นาที: RPC สะดุดครั้งเดียว หน้าเว็บขึ้น
+     * "สัญญายังไม่ติดตั้ง", /config ตอบ registry_live=false และที่แย่ที่สุดคือ
+     * NodeRegistryService ตกไป fallback เช็ก balance → ใครถือเหรียญครบก็ได้ allowlist
+     */
+    public function deploymentState(): ?bool
     {
         $address = $this->address();
         if ($address === null) {
             return false;
         }
 
-        return Cache::remember('masternode:registry:deployed:'.strtolower($address), 300, function () use ($address) {
-            $code = $this->rpc('eth_getCode', [$address, 'latest']);
+        $key = 'masternode:registry:deployed:'.strtolower($address);
+        $cached = Cache::get($key);
+        if (is_bool($cached)) {
+            return $cached;
+        }
+        if ($cached === self::STATE_UNKNOWN) {
+            return null;
+        }
 
-            return is_string($code) && strlen($code) > 2;
-        });
+        $code = $this->rpc('eth_getCode', [$address, 'latest']);
+        if (! is_string($code)) {
+            // จำ "ไม่ทราบ" ไว้สั้น ๆ พอ — RPC ที่ล่มอยู่จะได้ไม่โดนยิงซ้ำทุก request (timeout 8 วิ/ครั้ง)
+            Cache::put($key, self::STATE_UNKNOWN, self::UNKNOWN_STATE_TTL);
+
+            return null;
+        }
+
+        $deployed = strlen($code) > 2;
+        Cache::put($key, $deployed, 300);
+
+        return $deployed;
     }
 
     /**
