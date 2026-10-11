@@ -56,16 +56,15 @@ class RepoLocationNotExposedTest extends TestCase
     /**
      * ทุกพื้นผิวที่คนนอกเข้าถึงได้.
      *
-     * ไม่ใช่แค่หน้าเว็บ — โปรแกรมมาสเตอร์โหนดเป็นไฟล์ .exe ที่แจกให้คนนอกติดตั้ง
-     * ใครก็แกะ app.asar ออกมาอ่านได้ ส่วน public_html เสิร์ฟไฟล์คงที่ตรง ๆ
-     * (masternode-preview.html เคยตอบ 200 พร้อมลิงก์ repo สองอันเต็ม ๆ)
+     * public_html เสิร์ฟไฟล์คงที่ตรง ๆ (masternode-preview.html เคยตอบ 200 พร้อมลิงก์ repo สองอันเต็ม ๆ)
+     *
+     * โปรแกรมมาสเตอร์โหนด (.exe ที่แจกคนนอก) ย้ายไปอยู่ repo TPIX-Masternode ตั้งแต่ 2026-08-23
+     * สำเนา masternode-ui/ ที่ค้างใน repo นี้ (v1.0.0 ต่อเชนไม่ได้แล้ว) ถูกลบ 2026-10-11
      */
     private const USER_FACING_DIRS = [
         'resources/js',
         'resources/views',
         'public_html',
-        'masternode-ui/src',
-        'masternode-ui/electron',
     ];
 
     /**
@@ -73,7 +72,6 @@ class RepoLocationNotExposedTest extends TestCase
      */
     private const SKIP_PATHS = [
         'public_html/build',        // บันเดิลที่ vite เจน (มีโค้ดไลบรารีคนอื่นปนอยู่)
-        'masternode-ui/dist',       // ผลบิลด์ ไม่ได้ commit
         'node_modules',
     ];
 
@@ -137,10 +135,9 @@ class RepoLocationNotExposedTest extends TestCase
         $this->assertContains('resources/js/Pages/Home.vue', $files);
         $this->assertContains('resources/views/whitepaper/pdf.blade.php', $files);
         $this->assertContains('public_html/masternode-preview.html', $files);
-        $this->assertContains('masternode-ui/electron/auto-updater.js', $files);
 
         // ผลบิลด์ต้องไม่ถูกลากเข้ามา ไม่งั้นด่านนี้จะแดงจากโค้ดไลบรารีคนอื่น
-        $this->assertNotContains('masternode-ui/dist', $files);
+        $this->assertEmpty(array_filter($files, fn ($f) => str_starts_with($f, 'public_html/build/')));
     }
 
     public function test_no_user_facing_page_reveals_where_the_repo_lives(): void

@@ -20,14 +20,6 @@
       "port": 8001
     },
     {
-      "name": "masternode",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "masternode-ui/dev-server.js"
-      ],
-      "port": 3847
-    },
-    {
       "name": "mobile-web",
       "runtimeExecutable": "npx",
       "runtimeArgs": [
