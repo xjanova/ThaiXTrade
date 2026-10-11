@@ -193,11 +193,29 @@ class _TradeScreenState extends State<TradeScreen>
   TradingPairInfo? _dexPairFor(MarketProvider market) {
     if (!_dexService.ready) return null;
     final symbol = market.selectedPair.toUpperCase();
+    // ชื่อนี้ต้องเป็นคู่บนเชนจริง ๆ — ชื่อที่ชนกับคู่ตลาดหลัก (เหรียญปลอมชื่อ SUI บนเชน TPIX)
+    // ห้ามพาไปเทรดบน DEX เด็ดขาด แม้ /market/pairs จะมีคู่ onchain ชื่อเดียวกัน
+    if (!market.isDexPair(symbol)) return null;
     final config = context.read<ConfigProvider>();
+    // ที่อยู่ต้องตรงกับคู่ที่ตลาดตรวจแล้วจาก /dex/pairs (กันคู่ชื่อซ้ำที่เป็นเหรียญอื่น)
+    final verified = market.dexPairInfo(symbol);
+    bool sameLegs(TradingPairInfo p) {
+      if (verified == null) return symbol == 'TPIX-USDT';
+      return (p.baseAddress ?? '').toLowerCase() ==
+              verified.baseAddress.toLowerCase() &&
+          (p.quoteAddress ?? '').toLowerCase() ==
+              verified.quoteAddress.toLowerCase();
+    }
+
     for (final p in config.pairs) {
       if (p.symbol.toUpperCase() == symbol &&
           p.networkChainId == TpixDexService().lastConfig.chainId &&
-          p.isOnchain) {
+          p.isOnchain &&
+          sameLegs(p) &&
+          (symbol != 'TPIX-USDT' ||
+              (TpixDexService.isNative(p.baseAddress ?? '') &&
+                  (p.quoteAddress ?? '').toLowerCase() ==
+                      (_dexService.lastConfig.usdt ?? '').toLowerCase()))) {
         return p;
       }
     }

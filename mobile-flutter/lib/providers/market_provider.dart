@@ -98,13 +98,23 @@ class MarketProvider extends ChangeNotifier {
   final Map<String, Ticker> _dexTickers = {};
   DateTime? _dexPairsAt;
 
+  /// คู่บนเชน TPIX ที่ชื่อชนกับคู่ในตลาดหลัก (เช่นมีคนสร้างเหรียญชื่อ SUI แล้วเปิดพูล SUI-USDT)
+  ///
+  /// ⚠️ เดิมหน้าเทรดหาคู่บนเชนด้วยชื่ออย่างเดียว ผู้ใช้กดแถว SUI-USDT (ราคาจาก Binance)
+  ///    แล้วกดซื้อ = ได้เหรียญปลอมบนเชน TPIX แทน — ชื่อที่ชนจึงไม่นับเป็นคู่บนเชนเลย
+  Set<String> _shadowedDex = {};
+
   /// คู่นี้ใช้ข้อมูลจาก TPIX DEX (ราคา/กราฟ/ความลึก) — TPIX-USDT นับเสมอแม้รายการยังโหลดไม่เสร็จ
   bool isDexPair(String symbol) {
     final s = symbol.toUpperCase();
-    return s == 'TPIX-USDT' || _dexPairs.containsKey(s);
+    return s == 'TPIX-USDT' ||
+        (_dexPairs.containsKey(s) && !_shadowedDex.contains(s));
   }
 
-  DexPairInfo? dexPairInfo(String symbol) => _dexPairs[symbol.toUpperCase()];
+  DexPairInfo? dexPairInfo(String symbol) {
+    final s = symbol.toUpperCase();
+    return _shadowedDex.contains(s) ? null : _dexPairs[s];
+  }
 
   /// โลโก้ของเหรียญฝั่ง base ในคู่บนเชน TPIX (https เท่านั้น) — null = ใช้ตัวอักษรแทน
   ///
@@ -130,12 +140,14 @@ class MarketProvider extends ChangeNotifier {
           DateTime.now().difference(_dexPairsAt!) < const Duration(minutes: 1);
       if (!fresh) {
         final list = await _api.getDexPairs();
+        final cfg = await _dex.loadConfig();
         if (list != null) {
           final next = <String, DexPairInfo>{};
           for (final raw in list) {
             final p = DexPairInfo.tryParse(raw);
             // พูลว่าง/ถูกเลิกลิสต์ (is_active = false) ไม่ขึ้นตลาด — ชื่อซ้ำเอาตัวแรก
             if (p == null || !p.isActive || p.chainId != 4289) continue;
+            if (!genuineLegs(p, cfg.usdt)) continue;
             next.putIfAbsent(p.symbol, () => p);
           }
           _dexPairs = next;
@@ -176,6 +188,39 @@ class MarketProvider extends ChangeNotifier {
     }
   }
 
+  /// คู่บนเชนที่ชื่อชนกับแถวตลาดหลัก (ไม่ใช่ DEX) — ห้ามเทรด/ห้ามแสดงเป็นคู่บนเชน
+  @visibleForTesting
+  static Set<String> shadowedSymbols(
+      Iterable<String> dexSymbols, Iterable<Ticker> tickers) {
+    final majors = {
+      for (final t in tickers)
+        if (!t.isDex) t.symbol.toUpperCase(),
+    };
+    return {
+      for (final s in dexSymbols)
+        if (s != 'TPIX-USDT' && majors.contains(s)) s,
+    };
+  }
+
+  /// ชื่อสกุลหลักของเชน (TPIX/USDT) ต้องเป็นตัวจริงตามที่อยู่ — เหรียญปลอมชื่อ USDT/TPIX ไม่นับ
+  @visibleForTesting
+  static bool genuineLegs(DexPairInfo p, String? usdt) {
+    bool ok(String asset, String address) {
+      switch (asset) {
+        case 'TPIX':
+          return TpixDexService.isNative(address);
+        case 'WTPIX':
+          return false; // WTPIX ถูกแทนด้วย TPIX เนทีฟเสมอในคู่บนเชน
+        case 'USDT':
+          return usdt != null && address.toLowerCase() == usdt.toLowerCase();
+        default:
+          return !TpixDexService.isNative(address);
+      }
+    }
+
+    return ok(p.baseAsset, p.baseAddress) && ok(p.quoteAsset, p.quoteAddress);
+  }
+
   static Ticker _emptyDexTicker(DexPairInfo p) => Ticker(
         symbol: p.symbol,
         baseAsset: p.baseAsset,
@@ -191,12 +236,15 @@ class MarketProvider extends ChangeNotifier {
       );
 
   /// ใส่แถวคู่บนเชน TPIX ลงรายการ — ชื่อชนกับคู่หลักเดิม (มีคนตั้งเหรียญชื่อ BTC) คู่เดิมชนะเสมอ
+  /// และคู่บนเชนชื่อนั้นถูกตัดออกจากการเทรด/ข้อมูล DEX ทั้งหมด (ดู [_shadowedDex])
   void _mergeDexTickers() {
     _tickers.removeWhere((t) =>
         t.isDex &&
         t.symbol != 'TPIX-USDT' &&
         !_dexTickers.containsKey(t.symbol));
+    _shadowedDex = shadowedSymbols(_dexPairs.keys, _tickers);
     for (final e in _dexTickers.entries) {
+      if (_shadowedDex.contains(e.key)) continue;
       final idx = _tickers.indexWhere((t) => t.symbol == e.key);
       if (idx < 0) {
         _tickers.add(e.value);
