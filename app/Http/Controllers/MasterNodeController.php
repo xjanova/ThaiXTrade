@@ -25,16 +25,22 @@ class MasterNodeController extends Controller
      */
     public function index()
     {
+        $stats = $this->getNetworkStats();
+        $live = $this->registry->isDeployed();
+
         return Inertia::render('MasterNode/Index', [
-            'stats' => $this->getNetworkStats(),
+            'stats' => $stats,
             'tiers' => $this->getTiers(),
             'nodes' => [],
             'registryAddress' => $this->registry->address() ?? '',
-            'registryLive' => $this->registry->isDeployed(),
-            'kycContract' => $this->registry->isDeployed() ? $this->registry->kycContract() : null,
+            'registryLive' => $live,
+            'kycContract' => $live ? $this->registry->kycContract() : null,
+            // null = ไม่ทราบ (ยังไม่ deploy / RPC ล้ม / สัญญารุ่นเก่า) — ห้ามตีความว่า "เปิดรับอยู่"
+            // ใช้ค่าจาก stats ที่ cache ไว้แล้ว ไม่ยิง RPC ซ้ำ และหน้าเว็บ poll stats อยู่แล้วทุก 30 วิ
+            'registrationPaused' => $stats['registration_paused'] ?? null,
             'rpcUrl' => $this->registry->rpcUrl(),
-            'chainId' => config('blockchain.tpix_chain_id', 4289),
-            'explorerUrl' => rtrim((string) config('masternode.explorer_url', 'https://explorer.tpix.online'), '/'),
+            'chainId' => (int) config('blockchain.tpix_chain_id', 4289),
+            'explorerUrl' => $this->explorerUrl(),
         ]);
     }
 
@@ -67,6 +73,38 @@ class MasterNodeController extends Controller
         return response()->json([
             'success' => true,
             'data' => $this->getTiers(),
+        ]);
+    }
+
+    /**
+     * API: ที่อยู่สัญญา + เชน สำหรับแอปนอกเว็บ (public, read-only).
+     *
+     * โปรแกรมมาสเตอร์โหนดบน PC และ TPIX Wallet ใช้ endpoint นี้ "ค้นหา" สัญญาที่ deploy จริง
+     * แทนการ hardcode ที่อยู่ไว้ในแอป — เชนเคย regenesis แล้วสัญญาหาย ที่อยู่ในแอปที่ลงไปแล้ว
+     * แก้ไม่ได้จนกว่าผู้ใช้จะอัปเดต แต่ที่อยู่ที่นี่อัปเดตเองตอนสคริปต์ deploy ลงทะเบียน
+     *
+     * ⚠️ คีย์ทุกตัวในนี้เป็นสัญญากับแอปใน repo อื่น — เปลี่ยนชื่อ/ลบ = แอปที่แจกไปแล้วพัง
+     *    ค่า "ไม่ทราบ" ส่งเป็น null เสมอ (ไม่ใช่ false/0) ให้แอปแยกออกจาก "ทราบแล้วว่าไม่"
+     */
+    public function config(): JsonResponse
+    {
+        $data = cache()->remember('masternode:config:public', 30, function () {
+            $live = $this->registry->isDeployed();
+
+            return [
+                'registry_address' => $this->registry->address(),
+                'registry_live' => $live,
+                'kyc_contract' => $live ? $this->registry->kycContract() : null,
+                'registration_paused' => $live ? $this->registry->registrationPaused() : null,
+                'chain_id' => (int) config('blockchain.tpix_chain_id', 4289),
+                'rpc_url' => $this->registry->publicRpcUrl(),
+                'explorer_url' => $this->explorerUrl(),
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
         ]);
     }
 
@@ -167,6 +205,8 @@ class MasterNodeController extends Controller
         $locks = ['Guardian' => 90, 'Sentinel' => 30, 'Light' => 7, 'Validator' => 180];
         $maxNodes = ['Guardian' => 100, 'Sentinel' => 500, 'Light' => 0, 'Validator' => 21];
         $shares = ['Guardian' => 3500, 'Sentinel' => 3000, 'Light' => 1500, 'Validator' => 2000];
+        // เพดาน APR ค่าเริ่มต้นของสัญญา — โชว์ได้ว่า "สูงสุดเท่าไร" แต่คาดการณ์จริงต้องรอเชน
+        $aprCaps = config('masternode.apr_cap_bps', []);
 
         $out = [];
         foreach ($indexes as $name => $idx) {
@@ -180,6 +220,12 @@ class MasterNodeController extends Controller
                 'lock_days' => $locks[$name] ?? 0,
                 'slash_percent' => 0,
                 'reward_share' => $shares[$name] ?? 0,
+                'apr_cap_bps' => isset($aprCaps[$name]) ? (int) $aprCaps[$name] : null,
+                // ยังไม่มีสัญญา = ไม่มีอัตราจริงให้คำนวณ ส่ง null ไม่ใช่ 0 (0 แปลว่า "ไม่ได้อะไรเลย")
+                'reward_rate_per_node_wei' => null,
+                'reward_rate_if_join_wei' => null,
+                'current_apr_bps' => null,
+                'projected_apr_bps' => null,
                 'source' => 'config',
             ];
         }
@@ -214,11 +260,18 @@ class MasterNodeController extends Controller
                 'block_height' => $blockHeight,
                 'rpc_connected' => $blockHeight > 0,
                 'registry_deployed' => $deployed,
+                // อยู่ใน stats ด้วยเพราะหน้าเว็บ poll stats ทุก 30 วิอยู่แล้ว — แอดมินกดปิดรับเมื่อไหร่
+                // ปุ่มซื้อของคนที่เปิดหน้าค้างไว้ก็ปิดตามโดยไม่ต้องรีเฟรช
+                'registration_paused' => null,
             ];
 
             if (! $deployed) {
                 return $base;
             }
+
+            // อ่านแยกก่อน getNetworkStats() — สวิตช์นี้ต้องไปถึงหน้าเว็บแม้สถิติอ่านไม่สำเร็จ
+            // (ปุ่มซื้อต้องปิดตามทันทีที่แอดมินปิดรับ ไม่ใช่รอให้สถิติกลับมาก่อน)
+            $base['registration_paused'] = $this->registry->registrationPaused();
 
             $stats = $this->registry->networkStats();
             if ($stats === null) {
@@ -245,5 +298,10 @@ class MasterNodeController extends Controller
                 'reward_pool_available' => Wei::format($this->registry->availableRewardFunds() ?? '0'),
             ]);
         });
+    }
+
+    private function explorerUrl(): string
+    {
+        return rtrim((string) config('masternode.explorer_url', 'https://explorer.tpix.online'), '/');
     }
 }

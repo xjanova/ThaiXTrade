@@ -60,6 +60,10 @@ return [
         // คิดว่า "สัญญายังไม่ deploy" อยู่ดี
         'address' => env('MASTERNODE_REGISTRY_ADDRESS', env('NODE_REGISTRY_ADDRESS')),
         'rpc_url' => env('TPIX_RPC_URL', 'https://rpc.tpix.online'),
+        // RPC ที่ประกาศให้แอปนอกเบราว์เซอร์ใช้ผ่าน GET /api/v1/masternode/config
+        // (โปรแกรมมาสเตอร์โหนดบน PC + TPIX Wallet) — rpc.tpix.online ตอบ 403 ให้ client
+        // ที่ไม่ใช่เบราว์เซอร์ ส่วน rpc1 ไม่มีกฎนี้ จึงเป็นค่าเริ่มต้นของแอป
+        'public_rpc_url' => env('MASTERNODE_PUBLIC_RPC_URL', 'https://rpc1.tpix.online'),
         'chain_id' => 4289,
         'fallback_min_balance_tpix' => env('MASTERNODE_FALLBACK_MIN_BALANCE', 100000), // 100K TPIX (Sentinel tier)
     ],
@@ -88,6 +92,21 @@ return [
         'Guardian' => 1_000_000,    // 1M TPIX
         'Sentinel' => 100_000,      // 100K TPIX
         'Light' => 10_000,       // 10K TPIX
+    ],
+
+    /*
+    | เพดาน APR ต่อโหนด (basis points ของ minStake) — ค่าเริ่มต้นใน constructor ของ NodeRegistryV2
+    | ใช้แสดงผลตอนสัญญายังไม่ deploy เท่านั้น ถ้า deploy แล้วอ่าน tierAprCapBps() จากเชนเสมอ
+    | (เจ้าของสัญญาปรับได้ด้วย setTierAprCap() ช่วง 1..5000)
+    |
+    | ที่ต้องมีเพดาน: ถ้าไม่มี โหนด Light ตัวแรกตัวเดียวได้ 15% ของ emission ปีแรก 600M
+    | = ราว 900,000% APR ของเงินวางค้ำ 10K แล้วพูลหมดก่อนคนอื่นจะได้อะไร
+    */
+    'apr_cap_bps' => [
+        'Guardian' => 1200,  // 12%
+        'Sentinel' => 900,   // 9%
+        'Light' => 600,      // 6%
+        'Validator' => 2000, // 20%
     ],
 
     /*

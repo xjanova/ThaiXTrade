@@ -335,6 +335,7 @@ class ContractRegistry
         Cache::forget('masternode:stats');
         Cache::forget('admin:masternode:stats');
         Cache::forget('masternode:tiers:public');
+        Cache::forget('masternode:config:public');
         Cache::forget('masternode:registry:tiers');
     }
 

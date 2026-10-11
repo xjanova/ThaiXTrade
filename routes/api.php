@@ -299,6 +299,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/stats', [MasterNodeController::class, 'stats']);
         // ค่าคอนฟิกแต่ละชั้นตามที่อยู่บนเชนจริง — หน้าเว็บใช้เช็กโควตาก่อนให้กดซื้อ
         Route::get('/tiers', [MasterNodeController::class, 'tiers']);
+        // ที่อยู่สัญญา + เชน ให้โปรแกรมมาสเตอร์โหนดบน PC และ TPIX Wallet ค้นหาเอง (read-only)
+        Route::get('/config', [MasterNodeController::class, 'config']);
     });
 
     // Validators — network dashboard + applications (public)

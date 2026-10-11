@@ -42,6 +42,19 @@ class NodeRegistryContract
     private const SEL_KYC_CONTRACT = '0x6d3123eb';      // kycContract()
     private const SEL_IS_VALIDATOR = '0xfacd743b';      // isValidator(address)
 
+    // ── NodeRegistryV2 รุ่นแก้เพดาน APR (2026-10) ─────────────────────────────
+    // สัญญาที่ deploy ก่อนหน้านี้ไม่มีสามตัวนี้ → eth_call revert → อ่านได้ null
+    // ห้ามแปลง null เป็น "ไม่ได้ปิดรับ" หรือ "APR 0%" เอง — ปล่อยให้ผู้เรียกบอกว่า "ไม่ทราบ"
+    private const SEL_REGISTRATION_PAUSED = '0x9abbbd3b'; // registrationPaused()
+    private const SEL_TIER_APR_CAP_BPS = '0xf8bc005d';    // tierAprCapBps(uint8)
+    private const SEL_NODE_REWARD_RATE = '0x4dedaa7a';    // nodeRewardRate(uint8)
+
+    /** 365 วันเป็นวินาที — ตรงกับ `365 days` ที่สัญญาใช้คิดเพดาน APR */
+    private const SECONDS_PER_YEAR = '31536000';
+
+    /** setTierAprCap() รับได้ 1..5000 bps — ค่านอกช่วงนี้แปลว่าไม่ได้คุยกับสัญญาที่คิดว่าคุยอยู่ */
+    private const MAX_APR_CAP_BPS = 5000;
+
     /**
      * enum NodeTier { Guardian, Sentinel, Light, Validator }.
      *
@@ -88,6 +101,17 @@ class NodeRegistryContract
     public function rpcUrl(): string
     {
         return (string) config('masternode.registry.rpc_url', 'https://rpc.tpix.online');
+    }
+
+    /**
+     * RPC ที่ส่งให้ "แอปนอกเบราว์เซอร์" (โปรแกรมมาสเตอร์โหนดบน PC + TPIX Wallet) ใช้.
+     *
+     * แยกจาก rpcUrl() เพราะ rpc.tpix.online ตอบ 403 ให้ client ที่ไม่ใช่เบราว์เซอร์
+     * (ไม่มี UA / Go-http-client / curl) ส่วน rpc1.tpix.online ไม่มีกฎนี้
+     */
+    public function publicRpcUrl(): string
+    {
+        return (string) config('masternode.registry.public_rpc_url', 'https://rpc1.tpix.online');
     }
 
     /**
@@ -161,17 +185,128 @@ class NodeRegistryContract
             return null;
         }
 
+        $minStakeWei = Wei::hexToInt($w[0]);
+
+        // เพดาน APR + อัตรารางวัลต่อโหนดเป็นของสัญญารุ่นใหม่ — อ่านไม่ได้ = null (ไม่ทราบ)
+        // ไม่ทำให้ค่าคอนฟิกหลักของชั้นหายไปด้วย เพราะ minStake/โควตายังต้องใช้กันกด tx ที่ revert
+        $aprCap = $this->tierAprCapBps($tier);
+        $rate = $this->nodeRewardRate($tier);
+
         return [
             'tier' => $tier,
             'name' => self::TIERS[$tier],
-            'min_stake_wei' => Wei::hexToInt($w[0]),
+            // สัญญาบังคับ msg.value == minStake เป๊ะ — หน้าเว็บ/แอปต้องส่งตัวเลขนี้ตรง ๆ ห้ามปัด
+            'min_stake_wei' => $minStakeWei,
             'min_stake' => Wei::hexToWholeUnits('0x'.$w[0]),
             'max_nodes' => (int) Wei::hexToInt($w[1]),
             'active_nodes' => (int) Wei::hexToInt($w[2]),
             'lock_days' => (int) Wei::hexToInt($w[3]),
             'slash_percent' => (int) Wei::hexToInt($w[4]),   // basis points
             'reward_share' => (int) Wei::hexToInt($w[5]),    // basis points
+            'apr_cap_bps' => $aprCap,
+            'reward_rate_per_node_wei' => $rate['current_per_node_wei'] ?? null,
+            'reward_rate_if_join_wei' => $rate['if_one_more_joins_wei'] ?? null,
+            // APR ของโหนดที่อยู่แล้ว (ตอนนี้) กับของโหนดใหม่ถ้าเข้าตอนนี้ — ที่ uptime 100%
+            'current_apr_bps' => $rate ? $this->aprBps($rate['current_per_node_wei'], $minStakeWei) : null,
+            'projected_apr_bps' => $rate ? $this->aprBps($rate['if_one_more_joins_wei'], $minStakeWei) : null,
         ];
+    }
+
+    /**
+     * registrationPaused() — เจ้าของสัญญาปิดรับ "ลงทะเบียนใหม่" ชั่วคราว.
+     *
+     * ปิดแค่ registerNode เท่านั้น claim/deregister/withdraw ไม่เคยถูกบล็อก
+     * (เงินของคนที่อยู่ในระบบแล้วต้องออกได้เสมอ)
+     *
+     * @return bool|null null = ยังไม่ deploy / RPC ล้ม / สัญญารุ่นเก่าที่ไม่มีฟังก์ชันนี้
+     */
+    public function registrationPaused(): ?bool
+    {
+        $result = $this->ethCall(self::SEL_REGISTRATION_PAUSED);
+        if ($result === null) {
+            return null;
+        }
+
+        // bool ที่ ABI-encode ถูกต้องมีได้แค่ 0 กับ 1 — ค่าอื่นแปลว่าถอดผิดที่/ผิดสัญญา
+        return match (Wei::hexToInt($result)) {
+            '0' => false,
+            '1' => true,
+            default => null,
+        };
+    }
+
+    /**
+     * tierAprCapBps(tier) — APR สูงสุดที่ "หนึ่งโหนด" ของชั้นนี้จะได้ (bps ของ minStake).
+     *
+     * ที่มา: ก่อนมีเพดาน โหนด Light ตัวเดียว (วางค้ำ 10K) จะได้ 15% ของ emission ปีแรก 600M
+     * = ราว 900,000% APR แล้วดูดพูลจนหมด ตอนนี้ต่อโหนดได้
+     * min(emission ของชั้น / จำนวนโหนด, minStake × เพดาน / 365 วัน) แล้วคูณ uptime
+     */
+    public function tierAprCapBps(int $tier): ?int
+    {
+        if (! isset(self::TIERS[$tier])) {
+            return null;
+        }
+
+        $result = $this->ethCall(self::SEL_TIER_APR_CAP_BPS.$this->padUint($tier));
+        if ($result === null) {
+            return null;
+        }
+
+        $bps = Wei::hexToInt($result);
+        if (bccomp($bps, '1', 0) < 0 || bccomp($bps, (string) self::MAX_APR_CAP_BPS, 0) > 0) {
+            return null;
+        }
+
+        return (int) $bps;
+    }
+
+    /**
+     * nodeRewardRate(tier) → (currentPerNode, ifOneMoreJoins) เป็น wei ต่อวินาทีของ "หนึ่งโหนด"
+     * ที่ uptime 100% — ตอนนี้ กับ ถ้ามีโหนดเข้ามาเพิ่มอีกหนึ่งตัว (คือคนที่กำลังจะซื้อ).
+     *
+     * @return array{current_per_node_wei:string, if_one_more_joins_wei:string}|null
+     */
+    public function nodeRewardRate(int $tier): ?array
+    {
+        if (! isset(self::TIERS[$tier])) {
+            return null;
+        }
+
+        $result = $this->ethCall(self::SEL_NODE_REWARD_RATE.$this->padUint($tier));
+        if ($result === null) {
+            return null;
+        }
+
+        $w = $this->words($result);
+        if (count($w) < 2) {
+            return null;
+        }
+
+        return [
+            'current_per_node_wei' => Wei::hexToInt($w[0]),
+            'if_one_more_joins_wei' => Wei::hexToInt($w[1]),
+        ];
+    }
+
+    /**
+     * แปลงอัตรารางวัล (wei/วินาที) เป็น APR หน่วย bps ของเงินวางค้ำ — คิดด้วย bcmath ล้วน.
+     *
+     * rate × 31,536,000 × 10,000 / minStakeWei (ปัดลง)
+     * ห้ามใช้ float: wei ของ 10M TPIX = 1e25 เกินความแม่นของ double ไปไกล
+     * ปัดลงเสมอเพื่อไม่โฆษณาผลตอบแทนเกินจริงแม้แต่ 0.01%
+     */
+    private function aprBps(string $ratePerSecondWei, string $minStakeWei): ?int
+    {
+        if (bccomp($minStakeWei, '0', 0) <= 0) {
+            return null;
+        }
+
+        $yearly = bcmul($ratePerSecondWei, self::SECONDS_PER_YEAR, 0);
+        $bps = bcdiv(bcmul($yearly, '10000', 0), $minStakeWei, 0);
+
+        // อัตราผิดปกติจนเกิน int (ไม่ควรเกิดเพราะมีเพดาน) — บอกว่า "ไม่ทราบ" ดีกว่าโชว์เลขมั่ว
+        return strlen($bps) > 15 ? null : (int) $bps;
     }
 
     /**
