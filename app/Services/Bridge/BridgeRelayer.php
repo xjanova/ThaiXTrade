@@ -3,6 +3,7 @@
 namespace App\Services\Bridge;
 
 use App\Models\BridgeDeposit;
+use App\Models\SystemAlert;
 use App\Support\Wei;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -12,7 +13,8 @@ use Illuminate\Support\Facades\Log;
  *
  * ═══ ลำดับที่กัน mint ซ้ำ (ห้ามสลับ) ═══
  *
- *   ยังไม่มี mint_tx_hash → ถาม USDT_TPIX.processedTxHashes(depositId) ก่อน (เคย mint ไปแล้ว = จบ)
+ *   ยังไม่มี mint_tx_hash → ถาม USDT_TPIX.processedTxHashes(depositId) ก่อน
+ *                         (mint ไปแล้วโดยธุรกรรมที่เราไม่ได้ส่ง = needs_review + ปิดสวิตช์ ไม่นับเป็น minted)
  *                         → เซ็น → **บันทึก hash + raw ลงฐานข้อมูล** → ค่อย broadcast
  *   มี mint_tx_hash แล้ว  → ไม่เซ็นใหม่เด็ดขาด ไปตามผลของ hash เดิม (ไม่เจอบนเชน = ส่ง raw เดิมซ้ำ)
  *
@@ -50,7 +52,9 @@ class BridgeRelayer
 
         $checks[] = ['key' => 'installed', 'ok' => $this->config->installed(), 'hint' => 'BRIDGE_ENABLED=true ใน .env'];
         $checks[] = ['key' => 'site_switch', 'ok' => $this->config->siteSwitchOn(), 'hint' => 'เปิดสวิตช์ที่ /admin/bridge'];
-        $checks[] = ['key' => 'usdt_tpix', 'ok' => $usdt !== null, 'hint' => $usdt ?? 'ยังไม่ได้ลงทะเบียน usdt_tpix'];
+        $checks[] = ['key' => 'usdt_tpix', 'ok' => $usdt !== null && ! $this->config->usdtTpixRegistryMismatch(),
+            'hint' => $usdt === null ? 'ตั้ง BRIDGE_USDT_TPIX_ADDRESS'
+                : ($this->config->usdtTpixRegistryMismatch() ? 'ทะเบียนสัญญาชี้ usdt_tpix ไปที่อื่น — ตรวจก่อนเปิด' : $usdt)];
         $checks[] = ['key' => 'minter', 'ok' => $minter !== null, 'hint' => $minter ?? 'ยังไม่ได้ลงทะเบียน bridge_minter'];
         $checks[] = ['key' => 'relayer_keystore', 'ok' => $relayer !== null, 'hint' => $relayer ?? 'วางไฟล์ BRIDGE_RELAYER_KEYSTORE'];
         $checks[] = ['key' => 'relayer_passphrase', 'ok' => $this->config->hasPassphrase('relayer'), 'hint' => 'BRIDGE_RELAYER_PASS ใน .env'];
@@ -158,12 +162,10 @@ class BridgeRelayer
 
             $outcome = $this->mintOne($rpc, $deposit, $remaining, $maxPerTx);
 
-            if ($outcome === 'minted' || $outcome === 'already') {
+            if ($outcome === 'minted') {
                 $summary['minted']++;
-                if ($outcome === 'minted') {
-                    $summary['signed']++;
-                    $remaining = bcsub($remaining, (string) $deposit->mint_units, 0);
-                }
+                $summary['signed']++;
+                $remaining = bcsub($remaining, (string) $deposit->mint_units, 0);
 
                 continue;
             }
@@ -172,7 +174,7 @@ class BridgeRelayer
                 continue;
             }
 
-            // ส่งแล้วแต่ยังไม่ลงบล็อก / ติดเพดานวัน / เซ็นไม่ได้ — หยุดรอบนี้ รอบหน้าตามผลต่อ
+            // ส่งแล้วแต่ยังไม่ลงบล็อก / ติดเพดานวัน / เซ็นไม่ได้ / ถูก mint ตัดหน้า — หยุดรอบนี้ รอบหน้าตามผลต่อ
             if ($outcome === 'sent') {
                 $summary['signed']++;
             }
@@ -184,7 +186,7 @@ class BridgeRelayer
     }
 
     /**
-     * mint หนึ่งรายการ — คืน minted | already | sent | review | daily_cap | sign_failed | busy.
+     * mint หนึ่งรายการ — คืน minted | minted_elsewhere | sent | review | daily_cap | sign_failed | busy.
      */
     private function mintOne(EvmRpc $rpc, BridgeDeposit $candidate, string $remaining, string $maxPerTx): string
     {
@@ -201,20 +203,17 @@ class BridgeRelayer
 
         $units = (string) $deposit->mint_units;
 
-        // สัญญาบอกว่า depositId นี้ mint ไปแล้ว (เช่นธุรกรรมเก่าที่แอดมินสั่งลองใหม่ลงบล็อกทีหลัง
-        // หรือเจ้าของ mint ให้ด้วยมือ) — จบ ไม่เซ็นซ้ำ (ต่อให้เซ็น สัญญาก็ revert "txhash replayed" อยู่ดี)
+        // สัญญาบอกว่า depositId นี้ mint ไปแล้วทั้งที่ระบบยังไม่เคยส่ง — ไม่เซ็นซ้ำ (สัญญา revert อยู่ดี)
+        // และห้ามนับว่าส่งถึงผู้ฝาก: อาจเป็นคีย์ relayer ที่หลุด mint ตัดหน้าไปที่อื่น (ดู holdMintedElsewhere)
         $processed = $this->processedOnChain($rpc, $deposit->deposit_id);
         if ($processed === null) {
             return 'sign_failed';
         }
         if ($processed) {
-            $deposit->update([
-                'status' => BridgeDeposit::STATUS_MINTED,
-                'minted_at' => now(),
-                'last_error' => 'mint พบบนสัญญาแล้ว (processedTxHashes = true) — ไม่ได้เซ็นซ้ำ',
-            ]);
+            // ระบบไม่เคยส่งธุรกรรม mint ของรายการนี้ แต่สัญญาบอกว่า mint แล้ว — ไม่รู้ว่าไปถึงใคร
+            $this->holdMintedElsewhere($deposit, 'ก่อนเซ็น');
 
-            return 'already';
+            return 'minted_elsewhere';
         }
 
         if (bccomp($units, $maxPerTx, 0) > 0) {
@@ -395,7 +394,7 @@ class BridgeRelayer
         return false;
     }
 
-    /** ธุรกรรมของเราไม่สำเร็จ — ถ้าสัญญาบอกว่า mint แล้ว (ทางอื่น) ถือว่าสำเร็จ ไม่งั้นส่งให้คนดู */
+    /** ธุรกรรมของเราไม่สำเร็จ — ถ้าสัญญาบอกว่า mint แล้ว (ด้วยธุรกรรมอื่น) ห้ามนับว่าส่งถึงผู้ฝาก ส่งให้คนดูเสมอ */
     private function settleFailed(EvmRpc $rpc, BridgeDeposit $deposit, string $reason, string $note): bool
     {
         $processed = $this->processedOnChain($rpc, $deposit->deposit_id);
@@ -405,11 +404,7 @@ class BridgeRelayer
         }
 
         if ($processed) {
-            $deposit->update([
-                'status' => BridgeDeposit::STATUS_MINTED,
-                'minted_at' => now(),
-                'last_error' => "{$note} แต่สัญญาบันทึกว่า mint แล้ว",
-            ]);
+            $this->holdMintedElsewhere($deposit, $note);
 
             return true;
         }
@@ -422,5 +417,33 @@ class BridgeRelayer
         Log::warning('bridge: mint ไม่สำเร็จ — ส่งให้แอดมินดู', ['deposit' => $deposit->id, 'reason' => $reason]);
 
         return true;
+    }
+
+    /**
+     * depositId นี้ถูก mint บนสัญญาแล้ว แต่ไม่ใช่ด้วยธุรกรรมที่ระบบส่ง — ผู้รับและจำนวนอาจไม่ใช่ของผู้ฝาก.
+     *
+     * depositId = keccak(chainId, txHash, logIndex) คำนวณได้จาก log สาธารณะ คีย์ relayer ที่หลุดจึง mint
+     * ตัดหน้าเข้ากระเป๋าตัวเองได้ และยอดรวมยังตรงกับเงินหนุน — ถ้านับรายการนี้เป็น minted
+     * ตัวกระทบยอดจะไม่มีวันเห็น จึงไม่นับ (minter.totalMinted จะเกินยอดที่ระบบรับรู้ → guardian pause รอบถัดไป)
+     * ปิดสวิตช์ทันที และให้แอดมินตรวจ Minted(to, amount) บน explorer ก่อนอนุมัติ.
+     */
+    private function holdMintedElsewhere(BridgeDeposit $deposit, string $context): void
+    {
+        $deposit->update([
+            'status' => BridgeDeposit::STATUS_NEEDS_REVIEW,
+            'review_reason' => 'minted_elsewhere',
+            'last_error' => mb_substr("{$context}: depositId ถูก mint บนสัญญาแล้วโดยธุรกรรมที่ระบบไม่ได้ส่ง — "
+                .'ตรวจ Minted(to, amount) บน explorer ว่าตรงกับผู้ฝากก่อนอนุมัติ', 0, 300),
+        ]);
+
+        $message = "สะพาน USDT ถูกหยุดอัตโนมัติ: deposit #{$deposit->id} ถูก mint โดยธุรกรรมที่ระบบไม่ได้ส่ง — คีย์ relayer อาจหลุด";
+        $this->config->setSiteSwitch(false, "หยุดอัตโนมัติ (minted_elsewhere): deposit #{$deposit->id}");
+
+        Log::critical('bridge: '.$message, ['deposit' => $deposit->id, 'deposit_id' => $deposit->deposit_id]);
+        SystemAlert::raise(BridgeReconciler::ALERT_NODE, 'bridge_minted_elsewhere', 'critical', $message, [
+            'deposit' => $deposit->id,
+            'deposit_id' => $deposit->deposit_id,
+            'mint_units' => (string) $deposit->mint_units,
+        ]);
     }
 }

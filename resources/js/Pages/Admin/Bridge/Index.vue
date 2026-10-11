@@ -64,6 +64,7 @@ const reasonLabel = {
     mint_reverted: 'mint revert บนเชน',
     mint_estimate_failed: 'เชนบอกว่า mint จะ revert',
     nonce_consumed: 'nonce ถูกใช้โดยธุรกรรมอื่น',
+    minted_elsewhere: 'ถูก mint โดยธุรกรรมอื่น — ตรวจผู้รับก่อนอนุมัติ',
     unsupported_chain: 'เชนปลายทางไม่รองรับ',
     invalid_target_address: 'ที่อยู่ปลายทางผิด',
     suspicious_target: 'ปลายทางเป็นสัญญา/กระเป๋าของเราเอง',

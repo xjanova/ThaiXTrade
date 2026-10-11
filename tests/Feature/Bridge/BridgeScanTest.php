@@ -7,6 +7,8 @@ use App\Models\BridgeWithdrawal;
 use App\Models\SiteSetting;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\BridgeConfig;
+use App\Services\Bridge\BridgeRelayer;
+use App\Services\ContractRegistry;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
@@ -252,5 +254,30 @@ class BridgeScanTest extends TestCase
         $this->scan();
 
         $this->assertSame(BridgeDeposit::STATUS_CONFIRMED, BridgeDeposit::sole()->status);
+    }
+
+    #[Test]
+    public function withdrawals_are_read_only_from_the_pinned_usdt_tpix_even_if_the_contract_registry_is_repointed(): void
+    {
+        // a leaked CONTRACT_REGISTRY_TOKEN (force=true) could point usdt_tpix at a contract that emits Burned
+        // without burning anything — the payout wallet would then pay real USDT for nothing
+        $fake = '0x6666666666666666666666666666666666666666';
+        $this->fakeBurn($this->alice, '900000000', '56', $this->bob, 1950);
+        $last = count($this->chainState[4289]['logs']) - 1;
+        $this->chainState[4289]['logs'][$last]['address'] = $fake;
+        SiteSetting::set(ContractRegistry::GROUP, 'usdt_tpix', $fake);
+        Cache::flush();
+
+        $real = $this->fakeBurn($this->bob, '5000000', '56', $this->alice, 1951);
+
+        $this->scan();
+
+        $this->assertSame(1, BridgeWithdrawal::count());
+        $this->assertSame($real, BridgeWithdrawal::first()->tx_hash);
+        $this->assertSame($this->usdtTpix, app(BridgeConfig::class)->usdtTpixAddress());
+
+        // the mismatch itself is a tamper signal: minting stays blocked until someone looks
+        $checks = collect(app(BridgeRelayer::class)->readiness()['checks'])->keyBy('key');
+        $this->assertFalse($checks['usdt_tpix']['ok']);
     }
 }

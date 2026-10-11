@@ -3,6 +3,7 @@
 namespace Tests\Feature\Bridge;
 
 use App\Models\BridgeDeposit;
+use App\Models\SystemAlert;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\BridgeConfig;
 use PHPUnit\Framework\Attributes\Test;
@@ -99,15 +100,23 @@ class BridgeRelayTest extends TestCase
     }
 
     #[Test]
-    public function a_deposit_already_processed_on_chain_is_marked_minted_without_signing(): void
+    public function a_deposit_minted_on_chain_by_a_transaction_we_did_not_send_is_held_for_review_and_stops_the_bridge(): void
     {
+        // a leaked relayer key can compute depositId from the public source-chain log and mint it to itself first;
+        // counting that as "minted" would make the theft invisible to reconciliation (totals still match)
         $d = $this->deposit();
+        $other = $this->deposit();
         $this->chainState[4289]['processed'][$d->deposit_id] = true;
 
         $this->relay();
 
-        $this->assertSame(BridgeDeposit::STATUS_MINTED, $d->fresh()->status);
-        $this->assertSame([], $this->signCalls);
+        $d->refresh();
+        $this->assertSame(BridgeDeposit::STATUS_NEEDS_REVIEW, $d->status);
+        $this->assertSame('minted_elsewhere', $d->review_reason);
+        $this->assertSame([], $this->signCalls, 'nothing else is signed in the same run');
+        $this->assertSame(BridgeDeposit::STATUS_CONFIRMED, $other->fresh()->status);
+        $this->assertFalse(app(BridgeConfig::class)->siteSwitchOn(), 'the site switch is turned off at once');
+        $this->assertTrue(SystemAlert::where('alert_key', 'bridge_minted_elsewhere')->where('severity', 'critical')->exists());
     }
 
     #[Test]
@@ -160,20 +169,24 @@ class BridgeRelayTest extends TestCase
     }
 
     #[Test]
-    public function a_reverted_mint_whose_id_is_processed_on_chain_counts_as_minted(): void
+    public function a_reverted_mint_whose_id_was_minted_by_another_transaction_is_held_for_review(): void
     {
         $d = $this->deposit();
         $this->mineOnSend = false;
         $this->relay();
         $hash = $d->fresh()->mint_tx_hash;
 
-        // ธุรกรรมของเรา revert ("txhash replayed") เพราะมีธุรกรรมอื่น mint depositId นี้ไปก่อน
+        // our tx reverted ("txhash replayed") because a transaction we never sent minted this depositId first —
+        // the recipient of that mint is unknown, so it must not be counted as delivered
         $this->revertOnMine[$hash] = true;
         $this->mineHash($hash);
         $this->chainState[4289]['processed'][$d->deposit_id] = true;
         $this->relay();
 
-        $this->assertSame(BridgeDeposit::STATUS_MINTED, $d->fresh()->status);
+        $d->refresh();
+        $this->assertSame(BridgeDeposit::STATUS_NEEDS_REVIEW, $d->status);
+        $this->assertSame('minted_elsewhere', $d->review_reason);
+        $this->assertFalse(app(BridgeConfig::class)->siteSwitchOn());
     }
 
     #[Test]

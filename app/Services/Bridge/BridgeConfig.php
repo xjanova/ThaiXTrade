@@ -75,11 +75,23 @@ class BridgeConfig
         return strtolower((string) config('bridge.vault_address'));
     }
 
+    /**
+     * USDT_TPIX ที่สะพานเชื่อ — ตรึงใน config/bridge.php ไม่ใช่ทะเบียนสัญญา (ทะเบียนแก้ได้ด้วย bearer token
+     * และสะพานจ่ายเงินจริงตาม Burned ของที่อยู่นี้).
+     */
     public function usdtTpixAddress(): ?string
     {
-        $address = $this->registry->address('usdt_tpix');
+        $address = strtolower(trim((string) config('bridge.usdt_tpix_address', '')));
 
-        return $address ? strtolower($address) : null;
+        return preg_match('/^0x[0-9a-f]{40}$/', $address) ? $address : null;
+    }
+
+    /** ทะเบียนสัญญาของเว็บชี้ USDT_TPIX ไปที่อื่น (หน้า DEX ใช้ค่านั้น) — สัญญาณว่าทะเบียนถูกแก้ */
+    public function usdtTpixRegistryMismatch(): bool
+    {
+        $registered = $this->registry->address('usdt_tpix');
+
+        return $registered !== null && strtolower($registered) !== $this->usdtTpixAddress();
     }
 
     public function minterAddress(): ?string

@@ -59,6 +59,15 @@ return [
     'vault_address' => env('BRIDGE_VAULT_ADDRESS', '0xf46131C82819d7621163F482b3fe88a228A7807c'),
 
     /*
+    | USDT_TPIX บนเชน 4289 — ตรึงไว้ที่นี่ ไม่อ่านจากทะเบียนสัญญา (site_settings)
+    | ตัวสแกนเชื่อ Burned ของที่อยู่นี้แล้วจ่าย USDT จริง ถ้าอ่านจากทะเบียน คนที่ได้
+    | CONTRACT_REGISTRY_TOKEN ไป (force=true) ชี้ไปสัญญาปลอมที่ยิง Burned เปล่า ๆ แล้วถอนเงินจริงได้
+    | (ตรวจสด 2026-10-11: owner 0xD2eA…67d7 · decimals 6 · supply 19.99)
+    */
+
+    'usdt_tpix_address' => env('BRIDGE_USDT_TPIX_ADDRESS', '0x0A4Ee87551eF041f3EecFBBfdcfFC1B46a4878f1'),
+
+    /*
     | ค่าสำรองของที่อยู่ TPIXBridgeMinter เมื่อทะเบียนสัญญา (site_settings กลุ่ม contracts) ยังว่าง
     | ปกติไม่ต้องตั้ง — deploy-bridge-minter.js ลงทะเบียนผ่าน /api/infra/contracts ให้เอง
     */

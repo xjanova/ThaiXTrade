@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Bridge;
 
+use App\Models\BridgeDeposit;
 use App\Models\BridgeReserveSnapshot;
 use App\Models\BridgeWithdrawal;
 use App\Models\SystemAlert;
@@ -97,6 +98,35 @@ class BridgeReconcileTest extends TestCase
         $this->assertStringContainsString('minter_paused', $s->action);
         $this->assertFalse(app(BridgeConfig::class)->siteSwitchOn());
         $this->assertTrue(SystemAlert::where('alert_key', 'bridge_unexplained_mint')->exists());
+    }
+
+    #[Test]
+    public function a_leaked_relayer_key_front_running_a_real_deposit_is_caught_and_the_minter_paused(): void
+    {
+        // alice deposits 25 USDT on BSC; the vault really holds it, so supply == backing after any 25 USDT mint
+        $this->setTokenBalance(56, $this->usdtBsc, $this->vault, '44990000000000000000');
+        $tx = '0x'.hash('sha256', 'front-run');
+        $deposit = BridgeDeposit::create([
+            'source_chain_id' => 56, 'tx_hash' => $tx, 'log_index' => 0, 'block_number' => 950,
+            'from_address' => strtolower($this->alice), 'to_address' => $this->vault, 'token_address' => $this->usdtBsc,
+            'token_decimals' => 18, 'amount_raw' => '25000000000000000000', 'amount_units' => '25000000',
+            'mint_units' => '25000000', 'deposit_id' => Abi::depositId(56, $tx, 0), 'status' => BridgeDeposit::STATUS_CONFIRMED,
+        ]);
+
+        // the attacker mints that depositId to their own address through the minter before our relayer does
+        $s = &$this->chainState[4289];
+        $s['processed'][$deposit->deposit_id] = true;
+        $s['supply'] = bcadd($s['supply'], '25000000', 0);
+        $s['minter_total'] = bcadd($s['minter_total'], '25000000', 0);
+        unset($s);
+
+        $this->artisan('bridge:relay')->assertSuccessful();
+        $snapshot = $this->reconcile();
+
+        $this->assertNotSame(BridgeDeposit::STATUS_MINTED, $deposit->fresh()->status);
+        $this->assertSame('25000000', $snapshot->unexplained_mint_units);
+        $this->assertTrue($this->chainState[4289]['minter_paused'], 'the guardian pauses the minter');
+        $this->assertFalse(app(BridgeConfig::class)->siteSwitchOn());
     }
 
     #[Test]
