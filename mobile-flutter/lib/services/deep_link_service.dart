@@ -22,6 +22,7 @@ import 'bug_reporter.dart';
 import 'kyc_api.dart';
 import 'linked_wallet_signer.dart';
 import 'package:provider/provider.dart';
+import '../utils/evm_address.dart';
 
 class DeepLinkService {
   static final DeepLinkService _instance = DeepLinkService._();
@@ -439,8 +440,8 @@ class DeepLinkService {
   // ── Validators (security) ──
 
   bool _isValidAddress(String s) {
-    // Ethereum address: 0x + 40 hex chars
-    return RegExp(r'^0x[a-fA-F0-9]{40}$').hasMatch(s);
+    // Ethereum address: 0x + 40 hex chars + checksum EIP-55 เมื่อเขียนตัวพิมพ์ผสม
+    return isValidEvmAddress(s);
   }
 
   bool _isValidPair(String s) {

@@ -28,6 +28,7 @@ import '../services/linked_wallet_signer.dart';
 import '../services/rpc_failover.dart';
 import '../services/tpix_chain_portfolio.dart';
 import '../services/wallet_session.dart';
+import '../utils/evm_address.dart';
 
 /// ประเภทของ wallet ที่ user เลือกเชื่อม
 enum WalletKind {
@@ -347,8 +348,8 @@ class WalletProvider extends ChangeNotifier {
     String? nonce,
     String? signature,
   }) async {
-    // Defense in depth — validate address อีกครั้ง
-    if (!RegExp(r'^0x[a-fA-F0-9]{40}$').hasMatch(address)) {
+    // Defense in depth — validate address อีกครั้ง (รวม checksum EIP-55)
+    if (!isValidEvmAddress(address)) {
       _error = 'Invalid wallet address';
       notifyListeners();
       return false;
