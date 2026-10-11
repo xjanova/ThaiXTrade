@@ -259,10 +259,13 @@ Route::get('/explorer', function () {
     return Inertia::render('Explorer');
 })->name('explorer');
 
-// Bridge — สะพานเชื่อม TPIX Chain ↔ BSC (Coming Soon)
+// สะพาน USDT หลายเชน → TPIX Chain (ฝาก/ถอน) + หน้าพิสูจน์เงินหนุน (proof of reserves)
 Route::get('/bridge', function () {
     return Inertia::render('Bridge');
 })->name('bridge');
+Route::get('/bridge/reserves', function () {
+    return Inertia::render('BridgeReserves');
+})->name('bridge.reserves');
 
 // Master Node — ตั้งโหนด + Network Dashboard (แทนที่ Staking เดิม)
 Route::get('/masternode', [MasterNodeController::class, 'index'])->name('masternode');

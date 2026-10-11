@@ -75,6 +75,15 @@ class ContractRegistry
             'label' => 'TPIXDEXRouter02 (สวอป + เติม/ถอนสภาพคล่อง)',
             'config' => 'blockchain.dex.router',
         ],
+        /*
+         * ── สะพาน USDT หลายเชน → TPIX Chain ─────────────────────────────────────
+         * ด่าน mint ที่จำกัดเพดานต่อครั้ง/ต่อวัน — ต้องเป็นที่อยู่เดียวที่ USDT_TPIX ให้สิทธิ์ mint
+         * (contracts/scripts/deploy-bridge-minter.js ของ TPIX-Coin ลงทะเบียนให้เอง)
+         */
+        'bridge_minter' => [
+            'label' => 'TPIXBridgeMinter (ด่าน mint ของสะพาน USDT)',
+            'config' => 'bridge.minter_address',
+        ],
     ];
 
     /** คีย์ของสัญญาที่ประกอบกันเป็น DEX — ครบทุกตัวถึงเปิดเทรดบนเชน TPIX ได้ */

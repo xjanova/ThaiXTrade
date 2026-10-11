@@ -345,7 +345,7 @@ class SettingController extends Controller
 
         // Whitelist of allowed new keys per tab (keys that can be created on first save)
         $allowedNewKeys = [
-            'trading' => ['default_slippage', 'max_slippage', 'masternode_enabled', 'bridge_enabled',
+            'trading' => ['default_slippage', 'max_slippage', 'masternode_enabled',
                 'fee_collector_wallet', 'default_fee_rate', 'max_fee_rate', 'walletconnect_project_id',
                 'orderbook_enabled'],
             'factory' => ['creation_fee_tpix', 'creation_fee_usd', 'fee_payment_method', 'fee_wallet',

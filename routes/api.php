@@ -288,11 +288,17 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/stats', [CarbonCreditApiController::class, 'stats']);
     });
 
-    // Bridge — cross-chain TPIX Chain ↔ BSC (read-only public)
+    /*
+     * สะพาน USDT หลายเชน → TPIX Chain — อ่านอย่างเดียวทั้งหมด
+     * ไม่มี POST: ผู้ใช้โอน/เผาบนเชนเอง ตัวสแกนอ่านจากเชนจริง หน้าเว็บจึงปลอมยอดหรือผู้รับไม่ได้
+     * status ยิง RPC สดเมื่อยังสแกนไม่เจอ (แคช 15 วิ) — จำกัดถี่กว่ากลุ่มปกติอีกชั้น
+     */
     Route::prefix('bridge')->group(function () {
         Route::get('/info', [BridgeApiController::class, 'info']);
+        Route::get('/reserves', [BridgeApiController::class, 'reserves']);
         Route::get('/history/{wallet}', [BridgeApiController::class, 'history']);
-        Route::get('/status/{id}', [BridgeApiController::class, 'status']);
+        Route::get('/status/{chainId}/{txHash}', [BridgeApiController::class, 'status'])->middleware('throttle:30,1,bridge-status');
+        Route::get('/withdrawals/{txHash}', [BridgeApiController::class, 'withdrawal'])->middleware('throttle:30,1,bridge-status');
     });
 
     // Staking — read-only public endpoints (legacy)
@@ -513,12 +519,6 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::get('/my-credits/{walletAddress}', [CarbonCreditApiController::class, 'myCredits']);
         Route::get('/my-retirements/{walletAddress}', [CarbonCreditApiController::class, 'myRetirements']);
     });
-
-    // Bridge — write operations (ต้อง verify wallet)
-    Route::post('/bridge/initiate', [BridgeApiController::class, 'initiate'])->middleware('kyc:bridge');
-    Route::post('/bridge/retry/{id}', [BridgeApiController::class, 'retry']);
-    // แนบ tx hash เข้ารายการที่จองไว้ — ต้องจองก่อนโอนเหรียญเสมอ ดูเหตุผลใน attachTx()
-    Route::post('/bridge/{id}/tx', [BridgeApiController::class, 'attachTx'])->where('id', '[0-9]+');
 
     // Staking — write operations (ต้อง verify wallet)
     Route::prefix('staking')->group(function () {

@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\AppReleaseController;
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BannerController;
+use App\Http\Controllers\Admin\BridgeAdminController;
 use App\Http\Controllers\Admin\BugReportAdminController;
 use App\Http\Controllers\Admin\CarbonCreditController as AdminCarbonCreditController;
 use App\Http\Controllers\Admin\ChainController;
@@ -405,6 +406,23 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::post('/switch', [StabilizerController::class, 'toggle'])->middleware('throttle:10,1')->name('switch');
                 Route::post('/deposits', [StabilizerController::class, 'storeDeposit'])->middleware('throttle:10,1')->name('deposits.store');
                 Route::get('/preview', [StabilizerController::class, 'preview'])->middleware('throttle:20,1')->name('preview');
+            });
+
+        /*
+         * สะพาน USDT หลายเชน → TPIX Chain — เงินจริงของผู้ใช้ จึงเฉพาะ super_admin เหมือนชั้นคลัง
+         * หน้าเว็บแค่เปลี่ยนสถานะกลับเข้าคิว การเซ็นจริงอยู่ที่ bridge:relay / bridge:payout ฝั่ง CLI
+         */
+        Route::prefix('bridge')->name('bridge.')
+            ->middleware('admin.role:super_admin')
+            ->group(function () {
+                Route::get('/', [BridgeAdminController::class, 'index'])->name('index');
+                Route::get('/measure', [BridgeAdminController::class, 'measure'])->middleware('throttle:6,1')->name('measure');
+                Route::post('/toggle', [BridgeAdminController::class, 'toggle'])->name('toggle');
+                Route::put('/settings', [BridgeAdminController::class, 'updateSettings'])->name('settings');
+                Route::post('/deposits/{id}/approve', [BridgeAdminController::class, 'approveDeposit'])->whereNumber('id')->name('deposits.approve');
+                Route::post('/deposits/{id}/reject', [BridgeAdminController::class, 'rejectDeposit'])->whereNumber('id')->name('deposits.reject');
+                Route::post('/withdrawals/{id}/approve', [BridgeAdminController::class, 'approveWithdrawal'])->whereNumber('id')->name('withdrawals.approve');
+                Route::post('/withdrawals/{id}/reject', [BridgeAdminController::class, 'rejectWithdrawal'])->whereNumber('id')->name('withdrawals.reject');
             });
 
         // Audit Logs (super_admin only)

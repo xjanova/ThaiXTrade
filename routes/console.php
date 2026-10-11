@@ -1,7 +1,5 @@
 <?php
 
-use App\Jobs\ProcessBridgeJob;
-use App\Models\BridgeTransaction;
 use App\Services\SupplyService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
@@ -24,23 +22,41 @@ Schedule::command('content:generate-scheduled')
     ->onOneServer()
     ->name('content:generate-scheduled');
 
-// Bridge: ตรวจ pending/processing tx ที่ค้าง > 2 นาที → re-dispatch job
-//
-// withoutOverlapping ต้องเรียก "หลัง" name() เสมอสำหรับงานแบบ closure (CallbackEvent)
-// เพราะไม่มีชื่อคำสั่งให้ใช้ตั้งชื่อ mutex เอง สลับลำดับแล้ว Laravel โยน LogicException
-// ทันทีตอนโหลด schedule = artisan ทุกคำสั่งพังรวมถึง package:discover ตอน composer install
-Schedule::call(function () {
-    $stuck = BridgeTransaction::whereIn('status', ['processing', 'pending'])
-        ->whereNotNull('source_tx_hash')
-        ->where('updated_at', '<', now()->subMinutes(2))
-        ->where('retry_count', '<', 5)
-        ->get();
+/*
+ * สะพาน USDT หลายเชน → TPIX Chain (config/bridge.php)
+ *
+ * scan      ทุกนาที — บันทึกเงินฝากที่ finalized แล้ว + คำขอถอน (Burned) บนเชน 4289
+ * relay     ทุกนาที — mint USDT_TPIX ผ่าน TPIXBridgeMinter (กุญแจ relayer)
+ * payout    ทุกนาที — จ่าย USDT จริงบนเชนปลายทาง (กุญแจ payout)
+ * reconcile ทุก 5 นาที — supply เทียบเงินหนุนทุกเชน ขาดสองรอบติด = หยุดสะพานเอง
+ *
+ * ทุกตัวจบเองทันทีเมื่อ BRIDGE_ENABLED=false (ไม่มีต้นทุนตอนยังไม่เปิด)
+ * withoutOverlapping จำเป็นมากกับ relay/payout — สองรอบซ้อนกันจะแย่ง nonce ของกุญแจเดียวกัน
+ * (และข้างในแต่ละคำสั่งยังล็อกซ้ำอีกชั้นเผื่อมีคนรันมือซ้อนกับ cron)
+ */
+Schedule::command('bridge:scan')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('bridge:scan');
 
-    foreach ($stuck as $tx) {
-        ProcessBridgeJob::dispatch($tx);
-        Log::info('Bridge: re-dispatched stuck tx', ['id' => $tx->id]);
-    }
-})->everyMinute()->name('bridge:process-stuck')->withoutOverlapping(5);
+Schedule::command('bridge:relay')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('bridge:relay');
+
+Schedule::command('bridge:payout')
+    ->everyMinute()
+    ->withoutOverlapping(15)
+    ->onOneServer()
+    ->name('bridge:payout');
+
+Schedule::command('bridge:reconcile')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('bridge:reconcile');
 
 // Masternode allowlist: ลบ entries ที่หมดอายุ + cleanup CF rules ทุก 5 นาที
 Schedule::command('masternode:cleanup')

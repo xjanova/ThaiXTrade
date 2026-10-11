@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
-use App\Services\BridgeService;
+use App\Services\Bridge\BridgePublicInfo;
 use App\Services\FeeCalculationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,7 +23,7 @@ class FeeConfigController extends Controller
 {
     public function __construct(
         private FeeCalculationService $feeCalculationService,
-        private BridgeService $bridgeService,
+        private BridgePublicInfo $bridgeInfo,
     ) {}
 
     /**
@@ -45,8 +45,8 @@ class FeeConfigController extends Controller
             $swapFeeRate = $this->feeCalculationService->getEffectiveFeeRate('swap', $chainId);
             $feeCollectorWallet = SiteSetting::get('trading', 'fee_collector_wallet', '');
 
-            // Bridge fee config
-            $bridgeInfo = $this->bridgeService->getInfo();
+            // สะพาน USDT → TPIX Chain — ฝากไม่มีค่าธรรมเนียม ถอนคิดเป็นจำนวนคงที่ต่อเชน (ดู /api/v1/bridge/info)
+            $bridgeInfo = $this->bridgeInfo->info();
 
             return [
                 'swap' => [
@@ -55,14 +55,24 @@ class FeeConfigController extends Controller
                     'enabled' => ! empty($feeCollectorWallet),
                     'chainId' => $chainId,
                 ],
+                /*
+                 * รูปแบบเดิมที่แอปมือถือ (FeeConfig ใน api_models.dart) อ่านอยู่ — คงชื่อช่องไว้ครบ
+                 *
+                 * ⚠️ enabled ของแอปเป็น false เสมอ: หน้า Bridge ในแอปยังเป็นฟอร์มเปล่าที่กดแล้วขึ้น
+                 *    "coming soon" (ยังไม่ได้ port สะพาน USDT) ถ้าส่ง true แอปจะโชว์ฟอร์มให้กรอกแล้วไม่ทำอะไร
+                 *    สะพานบนเว็บดูที่ webEnabled · ปลดเป็นค่าจริงเมื่อแอปรองรับแล้ว
+                 */
                 'bridge' => [
-                    'feePercent' => $bridgeInfo['fee_percent'],
-                    'feeWallet' => $bridgeInfo['treasury_address'],
-                    'minAmount' => $bridgeInfo['min_amount'],
-                    'maxAmount' => $bridgeInfo['max_amount'],
-                    'minFee' => $bridgeInfo['min_fee'],
-                    'estimatedMinutes' => 5,
-                    'enabled' => $bridgeInfo['enabled'],
+                    'asset' => 'USDT',
+                    'feePercent' => 0,
+                    // สะพานไม่มีกระเป๋ารับค่าธรรมเนียมแยก — ว่างไว้กันโค้ดฝั่งแอปเผลอโอนเข้าที่อยู่ที่ไม่ใช่ vault
+                    'feeWallet' => '',
+                    'minAmount' => (float) $bridgeInfo['limits']['min_deposit'],
+                    'maxAmount' => (float) $bridgeInfo['limits']['max_deposit_per_tx'],
+                    'minFee' => 0,
+                    'estimatedMinutes' => 20,
+                    'enabled' => false,
+                    'webEnabled' => (bool) $bridgeInfo['enabled'],
                 ],
             ];
         });

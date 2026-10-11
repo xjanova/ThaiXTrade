@@ -3,230 +3,76 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\ProcessBridgeJob;
-use App\Models\BridgeTransaction;
-use App\Services\BridgeService;
+use App\Services\Bridge\BridgeConfig;
+use App\Services\Bridge\BridgePublicInfo;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 /**
- * TPIX TRADE — Bridge API Controller (Production)
- * API สำหรับ cross-chain bridge: TPIX Chain ↔ BSC.
+ * TPIX TRADE — API ของสะพาน USDT หลายเชน → TPIX Chain (อ่านอย่างเดียวทั้งหมด).
  *
- * Flow:
- * 1. Frontend: user sign tx (burn/transfer) → ได้ tx_hash
- * 2. POST /bridge/initiate with tx_hash → dispatch ProcessBridgeJob
- * 3. Job: verify on-chain → execute target transfer → complete
+ * ไม่มี endpoint ที่ "สั่งให้ mint/จ่าย" — ผู้ใช้โอน USDT เข้า vault หรือ burn บนเชนเอง
+ * แล้วตัวสแกนเห็นจากเชนจริง สิ่งที่หน้าเว็บส่งมาจึงปลอมยอดหรือปลอมผู้รับไม่ได้เลย
+ * (สะพานเดิมรับ tx hash + จำนวนจากหน้าเว็บแล้วไปตรวจทีหลัง — ทางนี้ไม่มีช่องนั้นแล้ว)
+ *
+ * รูปแบบตอบ: { success, data } หรือ { success: false, error: { code, message } }
  *
  * Developed by Xman Studio
  */
 class BridgeApiController extends Controller
 {
     public function __construct(
-        private BridgeService $bridgeService,
+        private BridgePublicInfo $info,
+        private BridgeConfig $config,
     ) {}
 
-    /**
-     * GET /api/v1/bridge/info — ข้อมูล bridge (fee, limits, chains, addresses).
-     */
+    /** GET /api/v1/bridge/info — เชน · ที่อยู่ vault/สัญญา · วงเงิน · ค่าธรรมเนียม · เปิดอยู่ไหม */
     public function info(): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'data' => $this->bridgeService->getInfo(),
-        ]);
+        return response()->json(['success' => true, 'data' => $this->info->info()]);
     }
 
-    /**
-     * POST /api/v1/bridge/initiate — เริ่ม bridge transaction.
-     *
-     * ถ้ามี tx_hash → dispatch ProcessBridgeJob ทันที
-     * ถ้าไม่มี tx_hash → สร้าง pending record (frontend จะ submit tx_hash ทีหลัง)
-     */
-    public function initiate(Request $request): JsonResponse
+    /** GET /api/v1/bridge/status/{chainId}/{txHash} — สถานะเงินฝากของธุรกรรมบนเชนต้นทาง */
+    public function status(string $chainId, string $txHash): JsonResponse
     {
-        if (! $this->bridgeService->isEnabled()) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'BRIDGE_DISABLED', 'message' => 'Bridge is currently disabled.'],
-            ], 503);
+        if (! ctype_digit($chainId) || $this->config->chain((int) $chainId) === null) {
+            return $this->error('UNSUPPORTED_CHAIN', 'This chain is not supported by the bridge', 422);
         }
 
-        $validated = $request->validate([
-            'wallet_address' => 'required|regex:/^0x[a-fA-F0-9]{40}$/',
-            'amount' => 'required|numeric|min:10',
-            'direction' => 'required|in:bsc_to_tpix,tpix_to_bsc',
-            'tx_hash' => 'nullable|regex:/^0x[a-fA-F0-9]{64}$/',
-        ]);
-
-        try {
-            $tx = $this->bridgeService->initiateBridge(
-                $validated['wallet_address'],
-                $validated['amount'],
-                $validated['direction'],
-                $validated['tx_hash'] ?? null,
-            );
-
-            // ถ้ามี tx_hash → dispatch job ให้ verify + execute ทันที
-            if ($tx->source_tx_hash) {
-                ProcessBridgeJob::dispatch($tx);
-                Log::info('Bridge job dispatched', [
-                    'bridge_id' => $tx->id,
-                    'direction' => $tx->direction,
-                    'amount' => $tx->amount,
-                ]);
-            }
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'id' => $tx->id,
-                    'direction' => $tx->direction,
-                    'amount' => $tx->amount,
-                    'fee' => $tx->fee,
-                    'receive_amount' => $tx->receive_amount,
-                    'status' => $tx->status,
-                    'source_tx_hash' => $tx->source_tx_hash,
-                    'estimated_time' => '2-5 minutes',
-                ],
-            ], 201);
-        } catch (\InvalidArgumentException $e) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'VALIDATION_ERROR', 'message' => $e->getMessage()],
-            ], 422);
+        if (! preg_match('/^0x[a-fA-F0-9]{64}$/', $txHash)) {
+            return $this->error('INVALID_TX_HASH', 'Transaction hash must be 0x followed by 64 hex characters', 422);
         }
+
+        return response()->json(['success' => true, 'data' => $this->info->depositStatus((int) $chainId, $txHash)]);
     }
 
-    /**
-     * POST /api/v1/bridge/retry/{id} — Retry failed bridge transaction.
-     */
-    public function retry(int $id, Request $request): JsonResponse
+    /** GET /api/v1/bridge/withdrawals/{txHash} — สถานะการถอน (ธุรกรรม burn บนเชน TPIX) */
+    public function withdrawal(string $txHash): JsonResponse
     {
-        $walletAddress = strtolower($request->input('wallet_address', ''));
-        $tx = BridgeTransaction::findOrFail($id);
-
-        // ตรวจว่าเป็นเจ้าของ
-        if ($tx->wallet_address !== $walletAddress) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'UNAUTHORIZED', 'message' => 'Not your transaction'],
-            ], 403);
+        if (! preg_match('/^0x[a-fA-F0-9]{64}$/', $txHash)) {
+            return $this->error('INVALID_TX_HASH', 'Transaction hash must be 0x followed by 64 hex characters', 422);
         }
 
-        if ($tx->status !== 'failed') {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'INVALID_STATUS', 'message' => 'Only failed transactions can be retried'],
-            ], 422);
-        }
-
-        if (! $tx->source_tx_hash) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'NO_TX_HASH', 'message' => 'No source transaction hash to verify'],
-            ], 422);
-        }
-
-        $tx->update(['status' => 'processing', 'error_message' => null]);
-        ProcessBridgeJob::dispatch($tx);
-
-        return response()->json([
-            'success' => true,
-            'data' => ['id' => $tx->id, 'status' => 'processing', 'message' => 'Retry dispatched'],
-        ]);
+        return response()->json(['success' => true, 'data' => $this->info->withdrawalStatus($txHash)]);
     }
 
-    /**
-     * POST /api/v1/bridge/{id}/tx — แนบ tx hash เข้ากับรายการที่จองไว้แล้ว.
-     *
-     * ⭐ หัวใจของลำดับที่ปลอดภัย
-     *
-     * ลำดับเดิมคือ "โอนเหรียญบนเชนก่อน แล้วค่อยบอก backend" ซึ่งอันตรายมาก:
-     * ถ้า backend ปฏิเสธตอนนั้น (ลายเซ็นหมดอายุ · IP เปลี่ยนเพราะสลับ WiFi ↔ 4G ·
-     * แอดมินเพิ่งปิดบริการ) เหรียญออกจากกระเป๋าไปแล้วโดยไม่มีรายการอยู่ในระบบเลย
-     * ผู้ใช้ไม่มีอะไรไปเคลมและกด retry ก็ไม่ได้เพราะไม่มี record
-     *
-     * ลำดับใหม่: จองรายการก่อน (ยังไม่มี tx_hash) → ถ้าถูกปฏิเสธก็หยุดตรงนั้น
-     * เหรียญยังอยู่ครบ → ค่อยเซ็นและส่งบนเชน → แล้วแนบ hash กลับมาที่รายการเดิม
-     */
-    public function attachTx(int $id, Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'wallet_address' => 'required|regex:/^0x[a-fA-F0-9]{40}$/',
-            'tx_hash' => 'required|regex:/^0x[a-fA-F0-9]{64}$/',
-        ]);
-
-        $tx = BridgeTransaction::findOrFail($id);
-
-        if ($tx->wallet_address !== strtolower($validated['wallet_address'])) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'UNAUTHORIZED', 'message' => 'Not your transaction'],
-            ], 403);
-        }
-
-        // แนบซ้ำได้ถ้าเป็น hash เดิม (หน้าเว็บอาจยิงซ้ำตอนเน็ตกระตุก)
-        // แต่ห้ามเปลี่ยนเป็น hash อื่น — รายการหนึ่งผูกกับธุรกรรมเดียวเท่านั้น
-        if ($tx->source_tx_hash && $tx->source_tx_hash !== $validated['tx_hash']) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'ALREADY_ATTACHED', 'message' => 'This bridge already has a different transaction'],
-            ], 422);
-        }
-
-        if (! $tx->source_tx_hash) {
-            $tx->update(['source_tx_hash' => $validated['tx_hash'], 'status' => 'processing']);
-            ProcessBridgeJob::dispatch($tx);
-
-            Log::info('Bridge tx attached', ['bridge_id' => $tx->id, 'tx_hash' => $validated['tx_hash']]);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => ['id' => $tx->id, 'status' => $tx->status, 'tx_hash' => $tx->source_tx_hash],
-        ]);
-    }
-
-    /**
-     * GET /api/v1/bridge/history/{wallet} — ประวัติ bridge ของ wallet.
-     */
+    /** GET /api/v1/bridge/history/{wallet} — ฝาก/ถอนล่าสุดของกระเป๋า (ข้อมูลบนเชนสาธารณะอยู่แล้ว) */
     public function history(string $wallet): JsonResponse
     {
         if (! preg_match('/^0x[a-fA-F0-9]{40}$/', $wallet)) {
-            return response()->json(['success' => false, 'error' => 'Invalid wallet address'], 400);
+            return $this->error('INVALID_ADDRESS', 'Wallet address must be 0x followed by 40 hex characters', 422);
         }
 
-        return response()->json([
-            'success' => true,
-            'data' => $this->bridgeService->getHistory($wallet),
-        ]);
+        return response()->json(['success' => true, 'data' => $this->info->history($wallet)]);
     }
 
-    /**
-     * GET /api/v1/bridge/status/{id} — สถานะ tx เดี่ยว.
-     */
-    public function status(int $id): JsonResponse
+    /** GET /api/v1/bridge/reserves — proof of reserves (ผลกระทบยอดล่าสุด) */
+    public function reserves(): JsonResponse
     {
-        $tx = BridgeTransaction::findOrFail($id);
+        return response()->json(['success' => true, 'data' => $this->info->reserves()]);
+    }
 
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'id' => $tx->id,
-                'direction' => $tx->direction,
-                'amount' => $tx->amount,
-                'fee' => $tx->fee,
-                'receive_amount' => $tx->receive_amount,
-                'status' => $tx->status,
-                'source_tx_hash' => $tx->source_tx_hash,
-                'target_tx_hash' => $tx->target_tx_hash,
-                'error_message' => $tx->error_message,
-                'verified_at' => $tx->verified_at?->toIso8601String(),
-                'completed_at' => $tx->completed_at?->toIso8601String(),
-                'created_at' => $tx->created_at->toIso8601String(),
-            ],
-        ]);
+    private function error(string $code, string $message, int $status): JsonResponse
+    {
+        return response()->json(['success' => false, 'error' => ['code' => $code, 'message' => $message]], $status);
     }
 }

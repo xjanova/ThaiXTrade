@@ -111,10 +111,13 @@ return [
         'stale_minutes' => env('TPIX_INFRA_STALE_MINUTES', 3),
     ],
 
-    // Bridge — cross-chain TPIX Chain ↔ BSC
+    /*
+     * wTPIX (BEP-20) บน BSC — ใช้แสดงข้อมูลเหรียญ (DiscordLiveData) เท่านั้น
+     *
+     * สะพาน TPIX⇄wTPIX เดิมที่อ่าน private key ดิบจาก BRIDGE_SIGNER_PRIVATE_KEY ถูกถอดออกแล้ว
+     * สะพานปัจจุบันคือ USDT หลายเชน → USDT_TPIX ดู config/bridge.php (กุญแจเป็น keystore เท่านั้น)
+     */
     'bridge' => [
-        'treasury_address' => env('BRIDGE_TREASURY_ADDRESS', ''),
-        'signer_private_key' => env('BRIDGE_SIGNER_PRIVATE_KEY', ''),
         'wtpix_bsc_address' => env('WTPIX_BSC_ADDRESS', ''),
     ],
 

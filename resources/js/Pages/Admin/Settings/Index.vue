@@ -117,7 +117,6 @@ const tradingForm = useForm({
     default_fee_rate: props.settings.default_fee_rate || 0.3,
     max_fee_rate: props.settings.max_fee_rate || 5.0,
     masternode_enabled: props.settings.masternode_enabled ?? true,
-    bridge_enabled: props.settings.bridge_enabled ?? true,
     walletconnect_project_id: props.settings.walletconnect_project_id || '',
 });
 
@@ -659,14 +658,10 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                             </button>
                             <span :class="['text-xs', tradingForm.masternode_enabled ? 'text-trading-green' : 'text-dark-500']">{{ tradingForm.masternode_enabled ? 'ON' : 'OFF' }}</span>
                         </div>
-                        <div class="flex items-center gap-3">
-                            <label class="text-sm text-dark-300">🌉 Bridge</label>
-                            <button type="button" @click="tradingForm.bridge_enabled = !tradingForm.bridge_enabled"
-                                :class="['w-12 h-6 rounded-full transition-colors', tradingForm.bridge_enabled ? 'bg-trading-green' : 'bg-dark-600']">
-                                <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', tradingForm.bridge_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
-                            </button>
-                            <span :class="['text-xs', tradingForm.bridge_enabled ? 'text-trading-green' : 'text-dark-500']">{{ tradingForm.bridge_enabled ? 'ON' : 'OFF' }}</span>
-                        </div>
+                        <!-- สะพาน USDT มีสวิตช์ ด่านความพร้อม และวงเงินของตัวเองที่ /admin/bridge (ที่เดียว ไม่ซ้ำสองที่) -->
+                        <a href="/admin/bridge" class="flex items-center gap-2 text-sm text-primary-400 hover:underline">
+                            🌉 Bridge → /admin/bridge
+                        </a>
                     </div>
                 </div>
 
