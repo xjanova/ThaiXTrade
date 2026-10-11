@@ -222,6 +222,12 @@ class TokenBalance {
   final double? usdValue;
   final String? logo; // โลโก้จริงจาก Token DB (ถ้ามี)
 
+  /// เชนจริงของยอดนี้ (56, 4289, ...) — null = ข้อมูลเก่าที่ไม่ได้บอกเชน
+  /// จำเป็นเพราะ USDT บน BSC กับ USDT บนเชน TPIX ชื่อเดียวกันแต่คนละเหรียญ
+  final int? chainId;
+  final int? decimals;
+  final bool isNative;
+
   const TokenBalance({
     required this.symbol,
     required this.name,
@@ -229,16 +235,54 @@ class TokenBalance {
     this.contractAddress,
     this.usdValue,
     this.logo,
+    this.chainId,
+    this.decimals,
+    this.isNative = false,
   });
 
-  factory TokenBalance.fromJson(Map<String, dynamic> json) => TokenBalance(
-        symbol: json['symbol'] as String? ?? '',
-        name: json['name'] as String? ?? '',
-        balance: _toDouble(json['balance']),
-        contractAddress: json['contract_address'] as String?,
-        usdValue:
-            json['usd_value'] != null ? _toDouble(json['usd_value']) : null,
-        logo: json['logo'] as String?,
+  /// [chainId] = เชนที่ขอยอดไป (เซิร์ฟเวอร์ไม่ได้ใส่เชนมาในแต่ละแถว)
+  ///
+  /// ⚠️ เซิร์ฟเวอร์ (Web3BalanceService) ส่งที่อยู่โทเคนมาในชื่อ `token_address`
+  ///    แต่แอปเคยอ่าน `contract_address` อย่างเดียว → ที่อยู่หายทุกแถว รวมยอดข้ามแหล่งไม่ได้
+  ///    รับทั้งสองชื่อ (token_address มาก่อน) เผื่อ endpoint อื่นที่ยังใช้ชื่อเดิม
+  factory TokenBalance.fromJson(Map<String, dynamic> json, {int? chainId}) {
+    final address =
+        (json['token_address'] ?? json['contract_address']) as String?;
+    final native = json['is_native'] == true ||
+        (address != null &&
+            (address.toLowerCase() ==
+                    '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' ||
+                address.toLowerCase() ==
+                    '0x0000000000000000000000000000000000000000'));
+    return TokenBalance(
+      symbol: json['symbol'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      balance: _toDouble(json['balance']),
+      contractAddress: address,
+      usdValue:
+          json['usd_value'] != null ? _toDouble(json['usd_value']) : null,
+      logo: json['logo'] as String?,
+      chainId: (json['chain_id'] as num?)?.toInt() ?? chainId,
+      decimals: (json['decimals'] as num?)?.toInt(),
+      isNative: native,
+    );
+  }
+
+  /// กุญแจไม่ซ้ำต่อเหรียญต่อเชน — native ใช้ 'native' (เซิร์ฟเวอร์ใช้ 0xEeee ส่วนแอปใช้ 0x0)
+  String get key =>
+      '${chainId ?? 0}:${isNative ? 'native' : (contractAddress ?? symbol).toLowerCase()}';
+
+  TokenBalance copyWith({double? balance, double? usdValue, String? logo}) =>
+      TokenBalance(
+        symbol: symbol,
+        name: name,
+        balance: balance ?? this.balance,
+        contractAddress: contractAddress,
+        usdValue: usdValue ?? this.usdValue,
+        logo: logo ?? this.logo,
+        chainId: chainId,
+        decimals: decimals,
+        isNative: isNative,
       );
 }
 

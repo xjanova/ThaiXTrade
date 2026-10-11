@@ -333,16 +333,30 @@ class ApiService {
     return UserProfile.fromJson(res['data'] as Map<String, dynamic>);
   }
 
-  Future<List<TokenBalance>> getWalletBalances(String walletAddress,
+  /// ยอดจากเซิร์ฟเวอร์ — **null = ขอไม่สำเร็จ** (403 ยังไม่ยืนยันกระเป๋า / เน็ตหลุด)
+  ///
+  /// แยกจาก [] (ขอสำเร็จแต่ไม่มีเหรียญ) — ผู้เรียกจะได้คงยอดเดิมไว้แทนที่จะล้างเป็นศูนย์
+  Future<List<TokenBalance>?> getWalletBalances(String walletAddress,
       {int chainId = 4289}) async {
     final res = await _get(ApiConstants.walletBalances, queryParams: {
       'wallet_address': walletAddress,
       'chain_id': chainId,
     });
-    if (res == null || res['success'] != true) return [];
+    if (res == null || res['success'] != true) return null;
     final list = res['data']?['balances'] as List<dynamic>? ?? [];
     return list
-        .map((e) => TokenBalance.fromJson(e as Map<String, dynamic>))
+        .whereType<Map<String, dynamic>>()
+        .map((e) => TokenBalance.fromJson(e, chainId: chainId))
+        .toList();
+  }
+
+  /// คู่เทรดบนเชน TPIX ที่มีพูลจริง (/dex/pairs) — ใช้รู้ว่ามีโทเคนอะไรบนเชนให้อ่านยอด
+  /// null = ขอไม่สำเร็จ
+  Future<List<Map<String, dynamic>>?> getDexPairs() async {
+    final res = await _get(ApiConstants.dexPairs);
+    if (res == null || res['success'] != true) return null;
+    return (res['data'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
         .toList();
   }
 

@@ -25,6 +25,7 @@ import '../services/external_wallet_service.dart';
 import '../services/bug_reporter.dart';
 import '../services/linked_wallet_signer.dart';
 import '../services/rpc_failover.dart';
+import '../services/tpix_chain_portfolio.dart';
 import '../services/wallet_session.dart';
 
 /// ประเภทของ wallet ที่ user เลือกเชื่อม
@@ -69,6 +70,21 @@ class WalletProvider extends ChangeNotifier {
   List<TradeOrder> _openOrders = [];
   List<TradeOrder> _tradeHistory = [];
   bool _isLoadingPortfolio = false;
+
+  /// ยอดบนเชน TPIX อ่านตรงจากเชน (คงค่าล่าสุดเมื่ออ่านพลาด) — ไม่ขึ้นกับเชนที่เลือก
+  final TpixChainPortfolio _tpixPortfolio = TpixChainPortfolio();
+  List<TokenBalance> _onchainBalances = [];
+
+  /// ยอดจากเซิร์ฟเวอร์ของเชนที่เลือก + กระเป๋า/เชนที่ขอไป (กันเอาของเก่าไปปนของใหม่)
+  List<TokenBalance> _serverBalances = [];
+  String? _serverBalancesKey;
+
+  /// โหลดพอร์ตที่กำลังวิ่งอยู่ — กดรีเฟรชซ้ำ/หลายหน้าจอขอพร้อมกันได้ผลเดียวกัน
+  Future<void>? _portfolioInFlight;
+  String? _portfolioInFlightKey;
+
+  /// กระเป๋าเจ้าของข้อมูลพอร์ตที่ถืออยู่ตอนนี้
+  String? _portfolioOwner;
 
   // User profile (sync จาก backend)
   UserProfile? _profile;
@@ -188,6 +204,8 @@ class WalletProvider extends ChangeNotifier {
 
       // Register with backend (non-blocking)
       _registerWithBackend(address);
+      // ยอดบนเชน TPIX อ่านได้ทันทีไม่ต้องรอยืนยัน — หน้า Home ไม่ต้องค้างของกระเป๋าเก่า
+      unawaited(loadPortfolio());
     } catch (e) {
       _error = 'Failed to create wallet';
       _isConnecting = false;
@@ -233,6 +251,7 @@ class WalletProvider extends ChangeNotifier {
 
       await _saveWalletState();
       _registerWithBackend(address);
+      unawaited(loadPortfolio());
 
       return true;
     } catch (e) {
@@ -291,6 +310,7 @@ class WalletProvider extends ChangeNotifier {
 
       // Register with backend (non-blocking) — backend จะออก auth token
       _registerWithBackend(session.address);
+      unawaited(loadPortfolio());
 
       return true;
     } catch (e) {
@@ -722,6 +742,8 @@ class WalletProvider extends ChangeNotifier {
     // เพื่อ sync settings/preferences จาก backend (cross-device)
     if (verified) {
       loadProfile().catchError((_) => false);
+      // เพิ่งได้สิทธิ์อ่านยอดจากเซิร์ฟเวอร์ (ก่อนหน้านี้ 403) — ดึงพอร์ตใหม่ให้ครบ
+      unawaited(loadPortfolio());
     }
 
     return verified;
@@ -976,6 +998,11 @@ class WalletProvider extends ChangeNotifier {
     _kind = WalletKind.embedded;
     _externalWalletName = null;
     _balances = [];
+    _onchainBalances = [];
+    _serverBalances = [];
+    _serverBalancesKey = null;
+    _portfolioOwner = null;
+    _tpixPortfolio.reset();
     _openOrders = [];
     _tradeHistory = [];
     _profile = null;
@@ -984,23 +1011,107 @@ class WalletProvider extends ChangeNotifier {
 
   // ── Portfolio Data ──
 
-  Future<void> loadPortfolio() async {
-    if (_address == null) return;
+  /// โหลดพอร์ต — ยอดบนเชน TPIX อ่านตรงจากเชนเสมอ + ยอดจากเซิร์ฟเวอร์ (ถ้ายืนยันแล้ว)
+  ///
+  /// เรียกซ้ำระหว่างที่ยังโหลดอยู่ (กดรีเฟรชรัว ๆ / หลายหน้าจอขอพร้อมกัน) = ได้ future เดิม
+  Future<void> loadPortfolio() {
+    final address = _address;
+    if (address == null) return Future.value();
+    final key = '${address.toLowerCase()}|$_activeChainId|$_isVerified';
+    final inFlight = _portfolioInFlight;
+    if (inFlight != null && _portfolioInFlightKey == key) return inFlight;
+
+    late final Future<void> run;
+    run = _loadPortfolio(address, _activeChainId, _isVerified).whenComplete(() {
+      if (identical(_portfolioInFlight, run)) {
+        _portfolioInFlight = null;
+        _portfolioInFlightKey = null;
+      }
+    });
+    _portfolioInFlight = run;
+    _portfolioInFlightKey = key;
+    return run;
+  }
+
+  Future<void> _loadPortfolio(String address, int chainId, bool verified) async {
+    // เปลี่ยนกระเป๋า = ล้างพอร์ตของกระเป๋าเก่าก่อน ไม่ให้ยอดคนเก่าโผล่ค้างระหว่างโหลด
+    if (_portfolioOwner?.toLowerCase() != address.toLowerCase()) {
+      _portfolioOwner = address;
+      _balances = [];
+      _onchainBalances = [];
+      _serverBalances = [];
+      _serverBalancesKey = null;
+      _openOrders = [];
+      _tradeHistory = [];
+    }
     _isLoadingPortfolio = true;
     notifyListeners();
 
+    // ยอดบนเชน TPIX — ไม่ติด 403 และไม่ขึ้นกับเชนที่เลือก (ผู้ใช้ส่วนใหญ่ถือเหรียญบน 4289)
+    final onchainFuture = _tpixPortfolio
+        .load(address)
+        .then<List<TokenBalance>?>((v) => v)
+        .catchError((Object e) {
+      debugPrint('loadPortfolio onchain: ${e.runtimeType}');
+      return null;
+    });
+
+    // ยอดจากเซิร์ฟเวอร์ต้องยืนยันกระเป๋าก่อน (ไม่งั้น 403 WALLET_NOT_VERIFIED ทุกครั้ง)
+    // null = ขอไม่สำเร็จ → คงของเดิม ไม่ล้างเป็นว่าง
+    final serverFuture = verified
+        ? ApiService()
+            .getWalletBalances(address, chainId: chainId)
+            .catchError((Object _) => null)
+        : Future<List<TokenBalance>?>.value(null);
+
+    List<TradeOrder>? orders;
+    List<TradeOrder>? history;
     try {
-      final results = await Future.wait([
-        ApiService().getWalletBalances(_address!, chainId: _activeChainId),
-        ApiService().getOpenOrders(_address!),
-        ApiService().getTradeHistory(_address!),
+      final r = await Future.wait([
+        ApiService().getOpenOrders(address),
+        ApiService().getTradeHistory(address),
       ]);
-      _balances = results[0] as List<TokenBalance>;
-      _openOrders = results[1] as List<TradeOrder>;
-      _tradeHistory = results[2] as List<TradeOrder>;
+      orders = r[0];
+      history = r[1];
     } catch (_) {
       // ใช้ค่าเดิม — ไม่ clear
     }
+    final onchain = await onchainFuture;
+    final server = await serverFuture;
+
+    // ผู้ใช้เปลี่ยนกระเป๋า/ตัดการเชื่อมต่อระหว่างรอ — ทิ้งผลทั้งหมดของกระเป๋าเก่า
+    if (_address == null || _address!.toLowerCase() != address.toLowerCase()) {
+      // มีรอบของกระเป๋าใหม่วิ่งอยู่ = ปล่อยให้รอบนั้นปิดสถานะโหลดเอง ไม่งั้นปิดเลย
+      // (ไม่ปิด = shimmer ค้างตลอดถ้าไม่มีใครสั่งโหลดของกระเป๋าใหม่)
+      final newer = _portfolioInFlightKey;
+      final otherRunning =
+          newer != null && !newer.startsWith(address.toLowerCase());
+      if (!otherRunning) {
+        _isLoadingPortfolio = false;
+        notifyListeners();
+      }
+      return;
+    }
+
+    if (onchain != null) _onchainBalances = onchain;
+
+    final serverKey = '${address.toLowerCase()}|$chainId';
+    if (server != null && _activeChainId == chainId) {
+      _serverBalances = server;
+      _serverBalancesKey = serverKey;
+    } else if (_serverBalancesKey != null &&
+        _serverBalancesKey != '${address.toLowerCase()}|$_activeChainId') {
+      // ของเดิมเป็นของเชน/กระเป๋าอื่น — ไม่เอามาปน
+      _serverBalances = [];
+      _serverBalancesKey = null;
+    }
+
+    _balances = TpixChainPortfolio.merge(
+      onchain: _onchainBalances,
+      server: _serverBalances,
+    );
+    if (orders != null) _openOrders = orders;
+    if (history != null) _tradeHistory = history;
 
     _isLoadingPortfolio = false;
     notifyListeners();
