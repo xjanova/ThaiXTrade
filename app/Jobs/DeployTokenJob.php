@@ -6,6 +6,7 @@ use App\Models\FactoryToken;
 use App\Services\TokenFactory\FactoryDeploymentFinalizer;
 use App\Services\TokenFactory\TokenFactoryChain;
 use App\Services\TokenFactory\TokenFactoryPolicy;
+use App\Services\TokenFactoryService;
 use App\Services\Web3DeploymentService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -52,7 +53,17 @@ class DeployTokenJob implements ShouldQueue
     /** ล็อกกระเป๋าผู้ส่งนานกว่าที่งานหนึ่งรันได้ */
     private const LOCK_SECONDS = 240;
 
-    public int $tokenId;
+    /** null ได้เพราะงานรุ่นเก่าในคิว (ก่อน hardening) ไม่มีช่องนี้ — ดู resolveTokenId() */
+    public ?int $tokenId = null;
+
+    /**
+     * ช่องของงานรุ่นเก่า (เคยเก็บทั้งโมเดล) — ประกาศไว้ให้ SerializesModels คืนค่าได้
+     * ไม่งั้นงานเก่าที่ค้างในคิวตอนอัปเกรดจะอ่าน $tokenId ที่ไม่ได้ตั้งค่า → Error ทั้งใน handle() และ failed()
+     */
+    public $token = null;
+
+    /** แถวถูกลบไปแล้ว = ทิ้งงานเงียบ ๆ ไม่ต้องโยนตอนคืนค่าโมเดล */
+    public bool $deleteWhenMissingModels = true;
 
     public function __construct(FactoryToken|int $token)
     {
@@ -64,12 +75,20 @@ class DeployTokenJob implements ShouldQueue
         FactoryDeploymentFinalizer $finalizer,
         TokenFactoryPolicy $policy,
         TokenFactoryChain $chain,
+        TokenFactoryService $service,
     ): void {
-        $token = FactoryToken::find($this->tokenId);
+        $tokenId = $this->resolveTokenId();
+        if ($tokenId === null) {
+            Log::error('DeployTokenJob: งานในคิวไม่มีรหัสเหรียญ (payload รุ่นเก่า/เสีย) — ทิ้งงาน ไม่ส่งอะไร');
+
+            return;
+        }
+
+        $token = FactoryToken::find($tokenId);
 
         if (! $token || $token->status !== 'deploying') {
             Log::info('DeployTokenJob: แถวไม่ได้อยู่ในสถานะ deploying — ไม่ทำอะไร', [
-                'token_id' => $this->tokenId,
+                'token_id' => $tokenId,
                 'status' => $token?->status,
             ]);
 
@@ -79,6 +98,15 @@ class DeployTokenJob implements ShouldQueue
         // มีธุรกรรมแล้ว = เคยส่งแล้ว ห้ามส่งใหม่เด็ดขาด
         if ($token->tx_hash) {
             $finalizer->scheduleReceiptCheck($token->id, 0);
+
+            return;
+        }
+
+        // ตรวจซ้ำตอนจะส่งจริง — นโยบายอาจถูกปิดระหว่างรอคิว และงานรุ่นเก่าอาจพาแถวที่ไม่ได้ตรวจค่าธรรมเนียมมา
+        $blocker = $service->deployBlocker($token);
+        if ($blocker !== null) {
+            Log::warning('DeployTokenJob: ไม่ส่งธุรกรรม — '.$blocker, ['token_id' => $token->id]);
+            $finalizer->markFailed($token->id, $blocker, clearTx: false);
 
             return;
         }
@@ -139,7 +167,9 @@ class DeployTokenJob implements ShouldQueue
                 $finalizer->recordSigned($token->id, $txHash, $nonce, $rawTx);
             });
 
-            $outcome = $finalizer->apply($token->id, $result, 'deploy');
+            // ผลนี้เป็นของธุรกรรมที่งานนี้เซ็นเท่านั้น (null = ยังไม่ได้เซ็นอะไร)
+            $signedTx = is_string($result['signed']['txHash'] ?? null) ? strtolower($result['signed']['txHash']) : null;
+            $outcome = $finalizer->apply($token->id, $result, 'deploy', $signedTx);
 
             if ($outcome === 'pending') {
                 $finalizer->scheduleReceiptCheck($token->id);
@@ -157,7 +187,14 @@ class DeployTokenJob implements ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
-        $token = FactoryToken::find($this->tokenId);
+        $tokenId = $this->resolveTokenId();
+        if ($tokenId === null) {
+            Log::error('DeployTokenJob failed: payload ไม่มีรหัสเหรียญ', ['error' => $exception->getMessage()]);
+
+            return;
+        }
+
+        $token = FactoryToken::find($tokenId);
 
         if (! $token || $token->status !== 'deploying') {
             return;
@@ -177,5 +214,15 @@ class DeployTokenJob implements ShouldQueue
         }
 
         $finalizer->markFailed($token->id, $exception->getMessage(), clearTx: false);
+    }
+
+    /** รหัสเหรียญจากงานรุ่นใหม่ ($tokenId) หรือรุ่นเก่า ($token เป็นโมเดล) */
+    private function resolveTokenId(): ?int
+    {
+        if ($this->tokenId !== null) {
+            return $this->tokenId;
+        }
+
+        return $this->token instanceof FactoryToken ? (int) $this->token->getKey() : null;
     }
 }

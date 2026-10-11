@@ -61,6 +61,13 @@ function recheckDeploy(id) {
     router.post(`/admin/token-factory/${id}/recheck`, {}, { preserveScroll: true });
 }
 
+function resetStuck(token) {
+    if (!confirm(`รีเซ็ต ${token.symbol} ที่ค้างสถานะ deploying เป็น failed?
+
+ใช้เมื่อค้างนานและยังไม่มีธุรกรรมเท่านั้น — retry ครั้งถัดไประบบจะตรวจบนเชนก่อนว่าเคยสร้างไปแล้วหรือยัง`)) return;
+    router.post(`/admin/token-factory/${token.id}/reset-stuck`, {}, { preserveScroll: true });
+}
+
 /** ข้อความผิดพลาดตอน deploy — งานเขียนไว้ที่ deploy_error (ของเก่าอ่าน error ซึ่งไม่เคยถูกเขียน) */
 function deployError(token) {
     return token.metadata?.deploy_error || token.metadata?.error || '';
@@ -308,6 +315,14 @@ function goToPage(page) {
                                         Reject
                                     </button>
                                     <!-- Failed actions -->
+                                    <button
+                                        v-if="token.status === 'deploying' && !token.tx_hash && canModerate"
+                                        @click="resetStuck(token)"
+                                        class="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 text-xs font-medium hover:bg-amber-500/20 transition-colors"
+                                        title="ใช้ได้เมื่อค้างเกิน 15 นาทีและยังไม่มีธุรกรรม"
+                                    >
+                                        รีเซ็ตแถวค้าง
+                                    </button>
                                     <button
                                         v-if="token.status === 'deploying' && token.tx_hash && canModerate"
                                         @click="recheckDeploy(token.id)"

@@ -120,6 +120,25 @@ class TokenFactoryController extends Controller
         return back()->with('success', "สั่ง deploy {$token->symbol} ใหม่แล้ว");
     }
 
+    /**
+     * แถวค้าง deploying โดยไม่มีธุรกรรม (คิวล่ม / งานรุ่นเก่า / worker ตายก่อนเซ็น) → failed.
+     * เงื่อนไขอยู่ใน service: ไม่มี tx_hash และค้างเกิน STUCK_MINUTES
+     */
+    public function resetStuck(int $id): RedirectResponse
+    {
+        $token = FactoryToken::findOrFail($id);
+
+        try {
+            $this->tokenFactoryService->resetStuckDeployment($token);
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        $this->audit('token_factory.reset_stuck', $token, ['status' => 'deploying'], ['status' => 'failed']);
+
+        return back()->with('success', "รีเซ็ต {$token->symbol} เป็น failed แล้ว — ตรวจสอบก่อนกด retry");
+    }
+
     /** ตรวจผลธุรกรรมที่ส่งไปแล้วอีกครั้ง — ไม่ส่งธุรกรรมใหม่ */
     public function recheck(int $id): RedirectResponse
     {

@@ -36,6 +36,9 @@ class TokenFactoryService
     /** สถานะที่ถือสัญลักษณ์ไว้ (ตรงกับคอลัมน์ generated active_symbol) */
     public const ACTIVE_STATUSES = ['pending', 'deploying', 'deployed'];
 
+    /** แถวที่ค้าง deploying นานเกินเท่านี้ (และยังไม่มีธุรกรรม) แอดมินรีเซ็ตได้ */
+    public const STUCK_MINUTES = 15;
+
     public function __construct(
         private readonly TokenFactoryPolicy $policy,
         private readonly TokenFactoryFeeVerifier $feeVerifier,
@@ -373,9 +376,10 @@ class TokenFactoryService
             throw new \InvalidArgumentException('มีธุรกรรมสร้างเหรียญเดิมค้างอยู่ — ต้องตรวจผลธุรกรรมก่อน ห้ามส่งซ้ำ');
         }
 
-        $violations = $this->policy->stateViolations($token->token_type, $token->metadata['sub_options'] ?? []);
-        if ($violations !== []) {
-            throw new \InvalidArgumentException('นโยบายตอนนี้ไม่อนุญาต: '.implode(', ', $violations));
+        // ใช้กับ retry ด้วย — คำขอเก่า (testnet ฟรี / ไม่มีการตรวจค่าธรรมเนียม) ห้ามหลุดไป deploy บน 4289
+        $blocker = $this->deployBlocker($token);
+        if ($blocker !== null) {
+            throw new \InvalidArgumentException($blocker);
         }
 
         $ready = $this->readyFor($token->token_type);
@@ -400,7 +404,23 @@ class TokenFactoryService
             throw new \InvalidArgumentException('เหรียญนี้กำลังถูกดำเนินการอยู่แล้ว (มีการอนุมัติไปก่อนหน้า)');
         }
 
-        DeployTokenJob::dispatch($token->id);
+        try {
+            DeployTokenJob::dispatch($token->id);
+        } catch (\Throwable $e) {
+            // ส่งงานเข้าคิวไม่ได้ (เช่น redis ล่ม) — คืนสถานะ ไม่งั้นแถวค้าง deploying ไม่มีงานไหนมารับ
+            // คืนได้เฉพาะเมื่อยังไม่มีงานไหนเริ่ม (คิว sync อาจรันงานไปแล้วในตัว dispatch)
+            $reverted = FactoryToken::whereKey($token->id)
+                ->where('status', 'deploying')
+                ->whereNull('tx_hash')
+                ->whereNull('deploy_started_at')
+                ->update(['status' => $token->status, 'updated_at' => now()]);
+
+            Log::error('สั่งงาน deploy ไม่สำเร็จ', ['token_id' => $token->id, 'reverted' => $reverted, 'error' => $e->getMessage()]);
+
+            throw new \InvalidArgumentException($reverted === 1
+                ? 'สั่งงาน deploy ไม่สำเร็จ (คิวมีปัญหา) — คืนสถานะเดิมแล้ว ลองใหม่อีกครั้ง'
+                : 'งาน deploy ล้มระหว่างทำงาน: '.mb_substr($e->getMessage(), 0, 200));
+        }
 
         Log::info("Token {$token->symbol} approved, deployment job dispatched", [
             'token_id' => $token->id,
@@ -425,6 +445,91 @@ class TokenFactoryService
         }
 
         Log::info("Token {$token->symbol} rejected", ['token_id' => $token->id, 'reason' => $reason]);
+
+        return $token->fresh();
+    }
+
+    /**
+     * เหตุที่แถวนี้ deploy ไม่ได้ — null = ได้.
+     *
+     * ใช้ทั้งตอนอนุมัติ/retry และในงาน deploy เอง (นโยบายอาจเปลี่ยนระหว่างรอคิว)
+     *   - ต้องเป็นเชน 4289 — คำขอเก่าที่เลือก testnet 4290 (ฟรี) เคยถูกส่งขึ้น mainnet
+     *     และหลุด unique index (chain_id, active_symbol) เพราะ chain_id ไม่ตรง
+     *   - ต้องมีใบเสนอราคาที่ถูกใช้กับแถวนี้จริง (และ tx ค่าธรรมเนียมที่ตรวจแล้วถ้าไม่ฟรี)
+     *   - ประเภท/ตัวเลือกที่ขอต้องยังเปิดอยู่ในนโยบาย ณ ตอนนี้
+     */
+    public function deployBlocker(FactoryToken $token): ?string
+    {
+        if ((int) $token->chain_id !== $this->policy->chainId()) {
+            return "คำขอนี้ระบุเชน {$token->chain_id} — สร้างได้เฉพาะเชน ".$this->policy->chainId()
+                .' (คำขอระบบเก่า ให้ปฏิเสธแล้วส่งใหม่)';
+        }
+
+        if (! $token->fee_quote_id) {
+            return 'คำขอนี้ไม่มีการตรวจค่าธรรมเนียมบนเชน (คำขอระบบเก่า) — ให้ปฏิเสธแล้วให้ผู้สร้างส่งคำขอใหม่';
+        }
+
+        $quote = TokenFactoryFeeQuote::find($token->fee_quote_id);
+        if (! $quote
+            || $quote->used_at === null
+            || (int) $quote->factory_token_id !== (int) $token->id
+            || $quote->creator_address !== strtolower((string) $token->creator_address)) {
+            return 'ใบเสนอราคาค่าธรรมเนียมของคำขอนี้ไม่ตรงกับคำขอ';
+        }
+
+        if (! $quote->isFree() && ! $token->fee_tx_hash) {
+            return 'คำขอนี้ไม่มีธุรกรรมค่าธรรมเนียมที่ตรวจแล้ว';
+        }
+
+        $violations = $this->policy->stateViolations($token->token_type, $token->metadata['sub_options'] ?? []);
+        if ($violations !== []) {
+            return 'นโยบายตอนนี้ไม่อนุญาต: '.implode(', ', $violations);
+        }
+
+        return null;
+    }
+
+    /**
+     * รีเซ็ตแถวที่ค้างสถานะ deploying โดยไม่มีธุรกรรม → failed (แล้วค่อย retry).
+     *
+     * เกิดได้จากคิวล่มหลังเปลี่ยนสถานะ, งานรุ่นเก่าที่อ่าน payload ไม่ได้, worker ตายก่อนเซ็น
+     * ปลอดภัยเพราะ: ไม่มี tx_hash = ไม่เคยบันทึกว่าส่งอะไร · ต้องค้างเกิน STUCK_MINUTES (หลายเท่าของ timeout งาน)
+     * · ตอน retry สคริปต์ค้นบนเชนก่อนเสมอว่าเคยสร้างเหรียญเจ้าของ+ชื่อ+สัญลักษณ์นี้แล้วหรือยัง
+     */
+    public function resetStuckDeployment(FactoryToken $token): FactoryToken
+    {
+        $cutoff = now()->subMinutes(self::STUCK_MINUTES);
+
+        $stuck = fn ($query) => $query
+            ->where('status', 'deploying')
+            ->whereNull('tx_hash')
+            ->where(function ($q) use ($cutoff) {
+                $q->where('deploy_started_at', '<', $cutoff)
+                    ->orWhere(fn ($q2) => $q2->whereNull('deploy_started_at')->where('updated_at', '<', $cutoff));
+            });
+
+        $row = $stuck(FactoryToken::whereKey($token->id))->first();
+        if (! $row) {
+            throw new \InvalidArgumentException(
+                'รีเซ็ตได้เฉพาะแถวที่ค้างสถานะ deploying เกิน '.self::STUCK_MINUTES.' นาทีและยังไม่มีธุรกรรม'
+            );
+        }
+
+        $metadata = array_merge($row->metadata ?? [], [
+            'deploy_error' => 'ผู้ดูแลรีเซ็ตแถวที่ค้างสถานะ deploying (ไม่มีธุรกรรม)',
+            'failed_at' => now()->toIso8601String(),
+        ]);
+
+        $updated = $stuck(FactoryToken::whereKey($token->id))->update([
+            'status' => 'failed',
+            'deploy_started_at' => null,
+            'metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE),
+            'updated_at' => now(),
+        ]);
+
+        if ($updated !== 1) {
+            throw new \InvalidArgumentException('สถานะเปลี่ยนไประหว่างรีเซ็ต — ลองโหลดหน้าใหม่');
+        }
 
         return $token->fresh();
     }
@@ -535,7 +640,7 @@ class TokenFactoryService
 
             'issues' => array_values(array_filter([
                 ! $creationEnabled ? 'ผู้ดูแลปิดระบบสร้างเหรียญไว้' : null,
-                $needsWallet && ! $walletConfigured ? 'ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม' : null,
+                $needsWallet && ! $walletConfigured ? 'ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม (ตั้งที่หน้า ตั้งค่า Token Factory)' : null,
                 ! $erc20Wanted && ! $nftWanted ? 'ผู้ดูแลยังไม่ได้เปิดประเภทเหรียญใดเลย' : null,
                 ! $chainReady ? 'ยังไม่ได้ติดตั้งสัญญาแฟกทอรีบนเชน' : null,
                 $chainReady && $erc20Wanted && ! $erc20Live ? 'แฟกทอรี ERC-20 ยังไม่พร้อม (สร้างได้เฉพาะ NFT)' : null,
@@ -576,7 +681,7 @@ class TokenFactoryService
 
         $reason = match (true) {
             ! $state['creation_enabled'] => 'ผู้ดูแลปิดระบบสร้างเหรียญไว้',
-            $state['fee_wallet_needed'] && ! $state['fee_wallet_configured'] => 'ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม',
+            $state['fee_wallet_needed'] && ! $state['fee_wallet_configured'] => 'ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม (ตั้งที่หน้า ตั้งค่า Token Factory)',
             ! $state['deployer_configured'] => 'ยังไม่ได้ตั้งกระเป๋าที่ใช้ส่งธุรกรรม',
             $factory === 'erc20' && ! $state['erc20_factory_ready'] => 'แฟกทอรี ERC-20 ยังไม่พร้อม (ยังไม่ได้ติดตั้ง หรือกระเป๋าของเซิร์ฟเวอร์ไม่ใช่เจ้าของ)',
             $factory === 'nft' && ! $state['nft_factory_ready'] => 'แฟกทอรี NFT ยังไม่พร้อม (ยังไม่ได้ติดตั้ง หรือกระเป๋าของเซิร์ฟเวอร์ไม่ใช่เจ้าของ)',

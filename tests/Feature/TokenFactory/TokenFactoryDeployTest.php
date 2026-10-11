@@ -7,6 +7,7 @@ use App\Jobs\DeployTokenJob;
 use App\Jobs\VerifyFactoryTokenOnExplorerJob;
 use App\Models\AdminUser;
 use App\Models\FactoryToken;
+use App\Models\TokenFactoryFeeQuote;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Process;
@@ -38,13 +39,25 @@ class TokenFactoryDeployTest extends TestCase
         ]);
     }
 
+    /** แถวที่ผ่านการตรวจค่าธรรมเนียมแล้ว (มีใบเสนอราคาที่ใช้กับแถวนี้จริง) */
     private function token(array $attributes = []): FactoryToken
     {
-        return FactoryToken::create(array_merge([
+        $token = FactoryToken::create(array_merge([
             'name' => 'Good Coin', 'symbol' => 'GOOD', 'decimals' => 18, 'total_supply' => '1000000',
             'creator_address' => $this->creator, 'chain_id' => 4289, 'token_type' => 'standard',
             'token_category' => 'fungible', 'status' => 'pending', 'metadata' => ['sub_options' => []],
         ], $attributes));
+
+        if (! array_key_exists('fee_quote_id', $attributes)) {
+            $quote = TokenFactoryFeeQuote::create([
+                'creator_address' => $this->creator, 'chain_id' => 4289, 'token_type' => $token->token_type,
+                'params_hash' => str_repeat('0', 64), 'amount' => '0', 'amount_wei' => '0',
+                'expires_at' => now()->addMinutes(30), 'used_at' => now(), 'factory_token_id' => $token->id,
+            ]);
+            $token->update(['fee_quote_id' => $quote->id]);
+        }
+
+        return $token->fresh();
     }
 
     /** รัน handle() ตรง ๆ — dispatch_sync ถูก Queue::fake() ดักไว้ ไม่ได้รันจริง */
@@ -115,12 +128,7 @@ class TokenFactoryDeployTest extends TestCase
         Process::fake();
         $token = $this->token(['status' => 'deploying', 'tx_hash' => '0x'.str_repeat('d', 64)]);
 
-        (new DeployTokenJob($token->id))->handle(
-            app(\App\Services\Web3DeploymentService::class),
-            app(\App\Services\TokenFactory\FactoryDeploymentFinalizer::class),
-            app(\App\Services\TokenFactory\TokenFactoryPolicy::class),
-            app(\App\Services\TokenFactory\TokenFactoryChain::class),
-        );
+        $this->runJob(new DeployTokenJob($token->id));
 
         Process::assertNothingRan();
         Queue::assertPushed(CheckFactoryDeployReceiptJob::class);
@@ -283,12 +291,7 @@ class TokenFactoryDeployTest extends TestCase
         $this->assertTrue($lock->get());
 
         $token = $this->token(['status' => 'deploying']);
-        (new DeployTokenJob($token->id))->handle(
-            app(\App\Services\Web3DeploymentService::class),
-            app(\App\Services\TokenFactory\FactoryDeploymentFinalizer::class),
-            app(\App\Services\TokenFactory\TokenFactoryPolicy::class),
-            app(\App\Services\TokenFactory\TokenFactoryChain::class),
-        );
+        $this->runJob(new DeployTokenJob($token->id));
 
         Process::assertNothingRan();
         Queue::assertPushed(DeployTokenJob::class, fn (DeployTokenJob $job) => $job->tokenId === $token->id);
