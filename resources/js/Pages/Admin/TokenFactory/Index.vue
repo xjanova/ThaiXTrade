@@ -16,6 +16,8 @@ const props = defineProps({
     currentSearch: String,
     factoryReady: Object,
     factoryConfig: Object,
+    canManagePolicy: { type: Boolean, default: false },
+    canModerate: { type: Boolean, default: false },
 });
 
 const flash = computed(() => usePage().props.flash || {});
@@ -47,10 +49,24 @@ function handleSearch() {
     router.get('/admin/token-factory', params, { preserveState: true });
 }
 
-function approveToken(id) {
-    if (!confirm('Approve this token for deployment?')) return;
-    router.post(`/admin/token-factory/${id}/approve`);
+function approveToken(token) {
+    const risks = (token.metadata?.risk_ack || []).length
+        ? `\n\n⚠️ คำขอนี้มีอำนาจเจ้าของที่เสี่ยงต่อผู้ซื้อ: ${token.metadata.risk_ack.join(', ')}`
+        : '';
+    if (!confirm(`อนุมัติและสร้าง ${token.symbol} บนเชนจริง?${risks}\n\nสร้างแล้วยกเลิกไม่ได้`)) return;
+    router.post(`/admin/token-factory/${token.id}/approve`, {}, { preserveScroll: true });
 }
+
+function recheckDeploy(id) {
+    router.post(`/admin/token-factory/${id}/recheck`, {}, { preserveScroll: true });
+}
+
+/** ข้อความผิดพลาดตอน deploy — งานเขียนไว้ที่ deploy_error (ของเก่าอ่าน error ซึ่งไม่เคยถูกเขียน) */
+function deployError(token) {
+    return token.metadata?.deploy_error || token.metadata?.error || '';
+}
+
+const explorerTx = (hash) => `https://explorer.tpix.online/tx/${hash}`;
 
 function openRejectModal(id) {
     rejectTokenId.value = id;
@@ -67,8 +83,8 @@ function submitReject() {
 }
 
 function retryDeploy(id) {
-    if (!confirm('Retry deployment for this token?')) return;
-    router.post(`/admin/token-factory/${id}/retry`);
+    if (!confirm('สั่ง deploy ใหม่? (ธุรกรรมเดิมล้มเหลวแน่นอนแล้วจึงส่งใหม่ได้)')) return;
+    router.post(`/admin/token-factory/${id}/retry`, {}, { preserveScroll: true });
 }
 
 function toggleVerified(id) {
@@ -119,6 +135,15 @@ function goToPage(page) {
             {{ flash.error }}
         </div>
 
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p class="text-xs text-dark-400">
+                ประเภทที่เปิด: {{ Object.entries(factoryConfig?.policy?.types || {}).filter(([, t]) => t.state === 'on').map(([, t]) => t.label_th).join(' · ') || 'ไม่มี' }}
+            </p>
+            <Link v-if="canManagePolicy" href="/admin/token-factory/policy" class="text-xs px-3 py-1.5 rounded-lg bg-primary-500/10 text-primary-300 hover:bg-primary-500/20" data-test="policy-link">
+                ⚙ ตั้งค่า Token Factory
+            </Link>
+        </div>
+
         <!-- Factory Readiness Warning -->
         <div v-if="factoryReady && !factoryReady.ready" class="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-3">
             <svg class="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -128,7 +153,11 @@ function goToPage(page) {
                 <h3 class="text-sm font-semibold text-red-400">Token Factory Not Ready</h3>
                 <p class="text-xs text-red-400/70 mt-1">
                     <span v-for="issue in factoryReady.issues" :key="issue">{{ issue }}. </span>
-                    Go to <Link href="/admin/settings" class="underline hover:text-red-300">Settings</Link> to configure.
+                </p>
+                <p v-if="factoryReady.details" class="text-[11px] text-red-300/70 mt-1 font-mono break-all">
+                    deployer: {{ factoryReady.details.deployer_address || '-' }}
+                    · ERC-20 owner: {{ factoryReady.details.erc20_factory?.owner || '-' }}
+                    · NFT owner: {{ factoryReady.details.nft_factory?.owner || '-' }}
                 </p>
             </div>
         </div>
@@ -248,7 +277,11 @@ function goToPage(page) {
                                     {{ token.status }}
                                 </span>
                                 <p v-if="token.reject_reason" class="text-[10px] text-red-400 mt-1 max-w-[150px] truncate" :title="token.reject_reason">{{ token.reject_reason }}</p>
-                                <p v-if="token.status === 'failed' && token.metadata?.error" class="text-[10px] text-red-400 mt-1 max-w-[150px] truncate" :title="token.metadata.error">{{ token.metadata.error }}</p>
+                                <p v-if="token.status === 'failed' && deployError(token)" class="text-[10px] text-red-400 mt-1 max-w-[220px] break-words" :title="deployError(token)" data-test="deploy-error">{{ deployError(token) }}</p>
+                                <p v-if="token.status === 'deploying' && token.metadata?.deploy_warning" class="text-[10px] text-amber-400 mt-1 max-w-[220px]">{{ token.metadata.deploy_warning }}</p>
+                                <a v-if="token.status === 'deploying' && token.tx_hash" :href="explorerTx(token.tx_hash)" target="_blank" rel="noopener" class="block text-[10px] text-blue-300 mt-1 font-mono">tx {{ shortAddr(token.tx_hash) }}</a>
+                                <p v-if="(token.metadata?.risk_ack || []).length" class="text-[10px] text-red-300 mt-1">⚠ {{ token.metadata.risk_ack.join(', ') }}</p>
+                                <a v-if="token.fee_tx_hash" :href="explorerTx(token.fee_tx_hash)" target="_blank" rel="noopener" class="block text-[10px] text-gray-500 mt-1">ค่าธรรมเนียม {{ token.metadata?.fee_amount }} TPIX</a>
                             </td>
                             <td class="p-4 hidden md:table-cell">
                                 <span v-if="token.status === 'deployed'" :class="['text-xs', token.is_listed ? 'text-green-400' : 'text-gray-500']">
@@ -261,14 +294,14 @@ function goToPage(page) {
                                 <div class="flex items-center justify-end gap-1.5 flex-wrap">
                                     <!-- Pending actions -->
                                     <button
-                                        v-if="token.status === 'pending'"
-                                        @click="approveToken(token.id)"
+                                        v-if="token.status === 'pending' && canModerate"
+                                        @click="approveToken(token)"
                                         class="px-2.5 py-1 rounded-lg bg-green-500/10 text-green-400 text-xs font-medium hover:bg-green-500/20 transition-colors"
                                     >
                                         Approve
                                     </button>
                                     <button
-                                        v-if="token.status === 'pending'"
+                                        v-if="token.status === 'pending' && canModerate"
                                         @click="openRejectModal(token.id)"
                                         class="px-2.5 py-1 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20 transition-colors"
                                     >
@@ -276,14 +309,21 @@ function goToPage(page) {
                                     </button>
                                     <!-- Failed actions -->
                                     <button
-                                        v-if="token.status === 'failed'"
+                                        v-if="token.status === 'deploying' && token.tx_hash && canModerate"
+                                        @click="recheckDeploy(token.id)"
+                                        class="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-300 text-xs font-medium hover:bg-blue-500/20 transition-colors"
+                                    >
+                                        ตรวจผลอีกครั้ง
+                                    </button>
+                                    <button
+                                        v-if="token.status === 'failed' && canModerate"
                                         @click="retryDeploy(token.id)"
                                         class="px-2.5 py-1 rounded-lg bg-yellow-500/10 text-yellow-400 text-xs font-medium hover:bg-yellow-500/20 transition-colors"
                                     >
                                         Retry
                                     </button>
                                     <button
-                                        v-if="token.status === 'failed'"
+                                        v-if="token.status === 'failed' && canModerate"
                                         @click="openRejectModal(token.id)"
                                         class="px-2.5 py-1 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20 transition-colors"
                                     >
@@ -291,7 +331,7 @@ function goToPage(page) {
                                     </button>
                                     <!-- Deployed actions -->
                                     <button
-                                        v-if="token.status === 'deployed'"
+                                        v-if="token.status === 'deployed' && canModerate"
                                         @click="toggleVerified(token.id)"
                                         class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
                                         :class="token.is_verified ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20' : 'bg-white/5 text-gray-400 hover:bg-white/10'"
@@ -299,7 +339,7 @@ function goToPage(page) {
                                         {{ token.is_verified ? 'Unverify' : 'Verify' }}
                                     </button>
                                     <button
-                                        v-if="token.status === 'deployed'"
+                                        v-if="token.status === 'deployed' && canModerate"
                                         @click="toggleListed(token.id)"
                                         class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
                                         :class="token.is_listed ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-white/5 text-gray-400 hover:bg-white/10'"

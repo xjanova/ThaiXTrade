@@ -9,10 +9,20 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import AwaitingDeployNotice from '@/Components/AwaitingDeployNotice.vue';
+import RiskAckBox from '@/Components/TokenFactory/RiskAckBox.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenFactoryStore } from '@/Stores/tokenFactoryStore';
 import { useTranslation } from '@/Composables/useTranslation';
 import { addTokenToWallet, switchToChain, TPIX_CHAIN_CONFIG } from '@/utils/web3';
+import {
+    allowedDecimals,
+    computeFee,
+    isUiOptionAllowed,
+    isUiTypeAllowed,
+    optionForUiKey,
+    requiredRiskAcks,
+    sanitizeSymbol,
+} from '@/utils/tokenFactoryPolicy';
 
 const props = defineProps({
     tokens: Object,
@@ -25,6 +35,7 @@ const props = defineProps({
             nft_enabled: true,
             max_supply_limit: 999999999999999,
             creation_enabled: true,
+            policy: null,
         }),
     },
 });
@@ -75,25 +86,18 @@ const logoFile = ref(null);
 const logoPreview = ref('');
 const isUploadingLogo = ref(false);
 
-// ===================== CHAIN / TESTNET =====================
-const selectedChainId = ref(4289);
+// ===================== CHAIN =====================
+// สร้างได้บนเชน TPIX (4289) เท่านั้น — เดิมมีปุ่ม Testnet (4290) ที่บอกว่า "ฟรี"
+// แต่สคริปต์ deploy ส่งขึ้น 4289 เสมอ = ได้เหรียญบน mainnet ฟรี และบันทึก chain_id ผิด
+const TPIX_CHAIN_ID = 4289;
+const selectedChainId = TPIX_CHAIN_ID;
+const selectedChainName = 'TPIX Chain';
 
-const chainOptions = [
-    { id: 4289, name: 'TPIX Chain', label: 'Mainnet', color: '#06B6D4', testnet: false },
-    { id: 4290, name: 'TPIX Testnet', label: 'Testnet', color: '#f59e0b', testnet: true },
-];
-
-const isTestnet = computed(() => {
-    const testnetIds = props.factoryConfig.testnet_chain_ids || [4290, 11155111, 97];
-    return testnetIds.includes(selectedChainId.value);
-});
-
-const testnetResetMonths = computed(() => props.factoryConfig.testnet_reset_months || 3);
-
-const selectedChainName = computed(() => {
-    const chain = chainOptions.find(c => c.id === selectedChainId.value);
-    return chain?.name || `Chain ${selectedChainId.value}`;
-});
+// ===================== POLICY =====================
+// นโยบายจากเซิร์ฟเวอร์ — ประเภท/ตัวเลือกที่ปิดจะไม่แสดง ของเสี่ยงที่เปิดต้องติ๊กยอมรับ
+// (เซิร์ฟเวอร์ตรวจซ้ำทุกครั้ง หน้านี้แค่ทำให้ผู้ใช้ไม่ต้องเจอคำขอที่ถูกปฏิเสธแน่ ๆ)
+const policy = computed(() => props.factoryConfig.policy || null);
+const limits = computed(() => policy.value?.limits || { name_max_length: 50, symbol_max_length: 11 });
 
 // ===================== TOKEN CATEGORIES =====================
 const tokenCategories = [
@@ -112,7 +116,6 @@ const tokenCategories = [
         desc_en: 'Unique digital asset for Art, Collectibles, Real Estate',
         icon: 'nft',
         color: 'from-purple-500 to-pink-500',
-        disabled: !props.factoryConfig.nft_enabled,
     },
     {
         id: 'special',
@@ -438,19 +441,31 @@ const subOptionsConfig = {
     ],
 };
 
-const currentTypes = computed(() => tokenTypesByCategory[form.value.token_category] || []);
+/** หมวดที่ไม่มีชนิดไหนเปิดเลย = กดไม่ได้ */
+const visibleCategories = computed(() => tokenCategories.map((cat) => ({
+    ...cat,
+    disabled: !(tokenTypesByCategory[cat.id] || []).some((t) => isUiTypeAllowed(policy.value, t.value)),
+})));
+
+const currentTypes = computed(() =>
+    (tokenTypesByCategory[form.value.token_category] || []).filter((t) => isUiTypeAllowed(policy.value, t.value))
+);
 
 const isNFT = computed(() => form.value.token_category === 'nft');
 
 // ===================== SUB-OPTIONS STATE =====================
 const subOptions = ref({});
+const riskAck = ref({});
 
 // ดึง config สำหรับ token type ปัจจุบัน (common + type-specific)
 const currentSubOptionsGroups = computed(() => {
     const tt = form.value.token_type || 'standard';
     const common = subOptionsConfig._common || [];
     const specific = subOptionsConfig[tt] || [];
-    return [...common, ...specific];
+    // ตัดตัวเลือกที่นโยบายปิด/ล็อก หรือไม่มีผลกับชนิดนี้ (เช่น pausable ของ NFT) ทิ้ง
+    return [...common, ...specific]
+        .map((group) => ({ ...group, options: group.options.filter((opt) => isUiOptionAllowed(policy.value, tt, opt.key)) }))
+        .filter((group) => group.options.length > 0);
 });
 
 // ตรวจว่า option ควรแสดงหรือไม่ (show_if dependency)
@@ -468,24 +483,21 @@ watch(() => form.value.token_type, () => {
         }
     }
     subOptions.value = defaults;
+    riskAck.value = {};
 }, { immediate: true });
 
-// คำนวณ fee เพิ่มจาก sub-options
-const subOptionsFee = computed(() => {
-    let fee = 0;
-    const items = [];
-    for (const group of currentSubOptionsGroups.value) {
-        for (const opt of group.options) {
-            if (opt.fee > 0 && opt.type === 'toggle' && subOptions.value[opt.key]) {
-                fee += opt.fee;
-                items.push({ label: opt.label, label_th: opt.label_th, amount: opt.fee });
-            } else if (opt.fee > 0 && opt.type === 'select' && subOptions.value[opt.key] && subOptions.value[opt.key] !== opt.default) {
-                // Select ที่เปลี่ยนจาก default (ถ้ามี fee)
-            }
-        }
-    }
-    return { total: fee, items };
-});
+// ===================== RISK ACKNOWLEDGEMENT =====================
+// ของเสี่ยงที่เปิดอยู่ต้องติ๊กยอมรับทีละรายการ — ส่งไปเป็น risk_ack ให้เซิร์ฟเวอร์ตรวจ
+const requiredAcks = computed(() => requiredRiskAcks(policy.value, form.value.token_type, subOptions.value));
+const typeAck = computed(() => requiredAcks.value.find((a) => a.kind === 'type') || null);
+const missingAcks = computed(() => requiredAcks.value.filter((a) => !riskAck.value[a.key]));
+
+/** กล่องเตือนของตัวเลือกนี้ (เฉพาะสวิตช์ที่เปิดอยู่และเป็นของเสี่ยง) */
+function ackForOption(opt) {
+    if (opt.type !== 'toggle' || !subOptions.value[opt.key]) return null;
+    const option = optionForUiKey(policy.value, opt.key);
+    return requiredAcks.value.find((a) => a.kind === 'option' && a.key === option) || null;
+}
 
 // สรุป sub-options ที่เลือกสำหรับ Review
 const selectedSubOptionsSummary = computed(() => {
@@ -539,8 +551,8 @@ const supplyPresets = computed(() => {
 const stepValid = computed(() => {
     switch (wizardStep.value) {
         case 1: return !!form.value.token_category;
-        case 2: return !!form.value.token_type;
-        case 3: return true; // Advanced options — always valid (all optional)
+        case 2: return !!form.value.token_type && (!typeAck.value || !!riskAck.value[typeAck.value.key]);
+        case 3: return missingAcks.value.filter((a) => a.kind === 'option').length === 0;
         case 4: return !!form.value.name && !!form.value.symbol && !!form.value.total_supply;
         case 5: return true; // Review step
         default: return false;
@@ -561,132 +573,39 @@ const canCreate = computed(() => {
         && form.value.total_supply
         && props.factoryConfig.creation_enabled
         && props.factoryConfig.ready !== false
+        && isUiTypeAllowed(policy.value, form.value.token_type)
+        && missingAcks.value.length === 0
         && !isSubmitting.value;
 });
 
-// ===================== DYNAMIC FEE CALCULATOR =====================
+// ===================== FEE =====================
+// แหล่งเดียวกับใบเสนอราคาของเซิร์ฟเวอร์ (นโยบาย) — ยอดที่ต้องจ่ายจริงคือยอดในใบเสนอราคา
 const dynamicFee = computed(() => {
-    // Testnet → สร้างฟรีเสมอ
-    if (isTestnet.value) {
-        return { total: 0, breakdown: [], is_free: true, is_testnet: true };
-    }
-
-    const fees = props.factoryConfig.dynamic_fees;
-    if (!fees) {
-        // Fallback ถ้า backend ยังไม่ส่ง dynamic_fees
-        return {
-            total: props.factoryConfig.creation_fee_tpix || 100,
-            breakdown: [{ label: 'Creation Fee', label_th: 'ค่าสร้างเหรียญ', amount: props.factoryConfig.creation_fee_tpix || 100 }],
-            is_free: false,
-            is_testnet: false,
-        };
-    }
-
-    const method = props.factoryConfig.fee_payment_method;
-    if (method === 'free') {
-        return { total: 0, breakdown: [], is_free: true, is_testnet: false };
-    }
-
-    const breakdown = [];
-    let total = 0;
-
-    // 1. Base fee
-    const baseFee = fees.base_fee || 50;
-    breakdown.push({ label: 'Base Fee', label_th: 'ค่าพื้นฐาน', amount: baseFee });
-    total += baseFee;
-
-    // 2. Category fee
-    const category = form.value.token_category || 'fungible';
-    const catFee = fees.category_fees?.[category] || 0;
-    if (catFee > 0) {
-        const catLabels = { nft: 'NFT Category', special: 'Special Category' };
-        const catLabelsTh = { nft: 'ประเภท NFT', special: 'ประเภทพิเศษ' };
-        breakdown.push({
-            label: catLabels[category] || category,
-            label_th: catLabelsTh[category] || category,
-            amount: catFee,
-        });
-        total += catFee;
-    }
-
-    // 3. Type fee
-    const tokenType = form.value.token_type || 'standard';
-    const typFee = fees.type_fees?.[tokenType] || 0;
-    if (typFee > 0) {
-        const typeLabels = {
-            mintable: 'Mint Function', burnable: 'Burn Function',
-            mintable_burnable: 'Mint + Burn', utility: 'Utility Features',
-            reward: 'Reward Features', nft_collection: 'Collection Features',
-            governance: 'Governance', stablecoin: 'Stablecoin Mechanism',
-        };
-        const typeLabelsTh = {
-            mintable: 'ฟังก์ชัน Mint', burnable: 'ฟังก์ชัน Burn',
-            mintable_burnable: 'Mint + Burn', utility: 'Utility',
-            reward: 'Reward', nft_collection: 'Collection',
-            governance: 'Governance', stablecoin: 'Stablecoin',
-        };
-        breakdown.push({
-            label: typeLabels[tokenType] || tokenType,
-            label_th: typeLabelsTh[tokenType] || tokenType,
-            amount: typFee,
-        });
-        total += typFee;
-    }
-
-    // 4. Custom decimals fee
-    const decimals = form.value.decimals;
-    if (decimals !== 18 && decimals !== 0) {
-        const decFee = fees.option_fees?.custom_decimals || 5;
-        if (decFee > 0) {
-            breakdown.push({ label: `Custom Decimals (${decimals})`, label_th: `Decimals พิเศษ (${decimals})`, amount: decFee });
-            total += decFee;
-        }
-    }
-
-    // 5. Large supply fee
-    const supply = parseFloat(form.value.total_supply) || 0;
-    const veryLargeThreshold = fees.very_large_supply_threshold || 100000000000;
-    const largeThreshold = fees.large_supply_threshold || 1000000000;
-
-    if (supply > veryLargeThreshold) {
-        const supFee = fees.option_fees?.very_large_supply || 25;
-        if (supFee > 0) {
-            breakdown.push({ label: 'Very Large Supply (>100B)', label_th: 'Supply ใหญ่มาก (>100B)', amount: supFee });
-            total += supFee;
-        }
-    } else if (supply > largeThreshold) {
-        const supFee = fees.option_fees?.large_supply || 10;
-        if (supFee > 0) {
-            breakdown.push({ label: 'Large Supply (>1B)', label_th: 'Supply ใหญ่ (>1B)', amount: supFee });
-            total += supFee;
-        }
-    }
-
-    // 6. Sub-options fees
-    for (const item of subOptionsFee.value.items) {
-        breakdown.push({ label: item.label, label_th: item.label_th, amount: item.amount });
-        total += item.amount;
-    }
-
-    return { total: Math.round(total * 100) / 100, breakdown, is_free: false, is_testnet: false };
+    const fee = computeFee(policy.value, form.value.token_type, subOptions.value);
+    return { total: fee.total, breakdown: fee.breakdown, is_free: fee.isFree };
 });
 
-const feeDisplay = computed(() => {
-    if (dynamicFee.value.is_free) {
-        return {
-            amount: 'FREE',
-            currency: dynamicFee.value.is_testnet ? '(Testnet)' : '',
-            isFree: true,
-            isTestnet: dynamicFee.value.is_testnet || false,
-        };
-    }
-    return {
-        amount: dynamicFee.value.total.toLocaleString(),
-        currency: 'TPIX',
-        isFree: false,
-        isTestnet: false,
-    };
+const feeDisplay = computed(() => (dynamicFee.value.is_free
+    ? { amount: 'ฟรี', currency: '', isFree: true }
+    : { amount: dynamicFee.value.total.toLocaleString(), currency: 'TPIX', isFree: false }));
+
+/** ทศนิยมที่เลือกได้ตามนโยบายของชนิดนี้ */
+const decimalChoices = computed(() => allowedDecimals(policy.value, form.value.token_type));
+
+const maxSupplyForType = computed(() => {
+    const erc20 = ['standard', 'mintable', 'burnable', 'mintable_burnable'];
+    const type = erc20.includes(form.value.token_type) ? 'erc20' : form.value.token_type;
+    return policy.value?.types?.[type]?.max_supply || props.factoryConfig.max_supply_limit;
 });
+
+const symbolIsReserved = computed(() =>
+    !!form.value.symbol && (policy.value?.reserved_symbols || []).includes(form.value.symbol.toUpperCase())
+);
+
+function onSymbolInput(event) {
+    form.value.symbol = sanitizeSymbol(event.target.value, limits.value.symbol_max_length);
+    event.target.value = form.value.symbol;
+}
 
 // ===================== WIZARD NAVIGATION =====================
 function nextStep() {
@@ -710,17 +629,17 @@ function goToStep(step) {
 
 function selectCategory(catId) {
     form.value.token_category = catId;
-    // Reset type when changing category
-    const types = tokenTypesByCategory[catId];
-    const recommended = types?.find(t => t.recommended);
-    form.value.token_type = recommended?.value || types?.[0]?.value || 'standard';
+    // Reset type when changing category — เลือกได้เฉพาะชนิดที่นโยบายเปิด
+    const types = (tokenTypesByCategory[catId] || []).filter((t) => isUiTypeAllowed(policy.value, t.value));
+    const recommended = types.find(t => t.recommended);
+    form.value.token_type = recommended?.value || types[0]?.value || '';
 
     // NFT defaults
     if (catId === 'nft') {
         form.value.decimals = 0;
         form.value.total_supply = '1';
     } else {
-        form.value.decimals = 18;
+        form.value.decimals = decimalChoices.value.includes(18) ? 18 : (decimalChoices.value[0] ?? 18);
         form.value.total_supply = '';
     }
 }
@@ -731,9 +650,10 @@ async function handleLogoSelect(event) {
     if (!file) return;
 
     // Validate file type & size (client-side)
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+    // ไม่รับ SVG — เซิร์ฟเวอร์ปฏิเสธอยู่แล้ว (SVG ฝังสคริปต์ได้)
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
-        formErrors.value.logo = 'Only PNG, JPG, WEBP, SVG files are allowed.';
+        formErrors.value.logo = 'รองรับเฉพาะไฟล์ PNG, JPG, WEBP';
         return;
     }
     if (file.size > 2 * 1024 * 1024) {
@@ -783,49 +703,224 @@ function removeLogo() {
     form.value.logo_url = '';
 }
 
-// ===================== SUBMIT =====================
+// ===================== SUBMIT + FEE PAYMENT =====================
+//
+// 1. ขอใบเสนอราคา (เซิร์ฟเวอร์ตรวจฟอร์ม/นโยบายครบ แล้วล็อกยอด)
+// 2. โอน TPIX บนเชน 4289 จากกระเป๋าที่เชื่อมอยู่ไปที่กระเป๋ารับค่าธรรมเนียม
+// 3. ถามสถานะจนครบบล็อกยืนยัน
+// 4. ส่งคำขอสร้างพร้อม tx hash (เซิร์ฟเวอร์ตรวจบนเชนซ้ำอีกรอบ)
+//
+// ⚠️ จ่ายแล้วแต่ส่งคำขอไม่สำเร็จ (ปิดหน้า/เน็ตหลุด/ฟอร์มผิด) ต้องส่งต่อได้โดยไม่ต้องจ่ายซ้ำ
+//    จึงจำใบเสนอราคา + tx hash + ฟอร์มไว้ในเครื่อง จนกว่าจะสร้างคำขอสำเร็จ
+const payment = ref({ stage: 'idle', txHash: '', confirmations: 0, required: 0, message: '' });
+const pendingPayment = ref(null);
+let disposed = false;
+
+const FEE_POLL_MS = 5000;
+const FEE_POLL_MAX = 72; // ~6 นาที
+
+function pendingKey(address) {
+    return `tpix_factory_pending_fee_${String(address || '').toLowerCase()}`;
+}
+
+function loadPendingPayment() {
+    pendingPayment.value = null;
+    if (!walletStore.address) return;
+    try {
+        const raw = localStorage.getItem(pendingKey(walletStore.address));
+        const saved = raw ? JSON.parse(raw) : null;
+        if (saved?.quote?.quote_id && saved?.feeTxHash && saved?.payload) pendingPayment.value = saved;
+    } catch {
+        pendingPayment.value = null;
+    }
+}
+
+function savePendingPayment(data) {
+    pendingPayment.value = data;
+    try {
+        // คีย์ตามกระเป๋าที่จ่ายจริง (ไม่ใช่กระเป๋าที่เชื่อมอยู่ตอนนี้ ซึ่งอาจถูกสลับไปแล้ว)
+        localStorage.setItem(pendingKey(data.payload.wallet_address), JSON.stringify(data));
+    } catch {
+        // โหมดส่วนตัว/ปิด storage — ยังทำงานต่อได้ แค่กลับมาส่งต่อภายหลังไม่ได้
+    }
+}
+
+function clearPendingPayment(address = walletStore.address) {
+    pendingPayment.value = null;
+    try {
+        localStorage.removeItem(pendingKey(address));
+    } catch {
+        // ไม่มีอะไรต้องทำ
+    }
+}
+
+function discardPendingPayment() {
+    const hash = pendingPayment.value?.feeTxHash;
+    if (!window.confirm(`ล้างรายการชำระที่ค้างอยู่?\n\nถ้าโอนค่าธรรมเนียมไปแล้ว ต้องติดต่อทีมงานพร้อม tx hash นี้:\n${hash}`)) return;
+    clearPendingPayment();
+}
+
+function buildPayload() {
+    return {
+        ...form.value,
+        symbol: sanitizeSymbol(form.value.symbol, limits.value.symbol_max_length),
+        sub_options: subOptions.value,
+        risk_ack: requiredAcks.value.map((a) => a.key),
+        creator_address: walletStore.address,
+        wallet_address: walletStore.address,
+        chain_id: TPIX_CHAIN_ID,
+    };
+}
+
+function apiErrorMessage(e) {
+    const data = e?.response?.data;
+    if (data?.errors) return Object.values(data.errors).flat().join(' · ');
+    if (data?.error?.message) return data.error.message;
+    if (e?.code === 4001 || e?.code === 'ACTION_REJECTED') return 'ยกเลิกการชำระค่าธรรมเนียมแล้ว';
+    if (/insufficient/i.test(e?.message || '')) return 'ยอด TPIX ในกระเป๋าไม่พอจ่ายค่าธรรมเนียม';
+    return e?.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่';
+}
+
+/** ค่าธรรมเนียมจ่ายบนเชน TPIX เท่านั้น — สลับเชนก่อน และยืนยันว่าสลับได้จริง */
+async function ensureTpixChain() {
+    if (walletStore.chainId === TPIX_CHAIN_ID) return;
+    await walletStore.switchChain(TPIX_CHAIN_ID);
+    if (walletStore.chainId !== TPIX_CHAIN_ID) {
+        throw new Error('กรุณาสลับกระเป๋าไปเครือข่าย TPIX Chain (4289) ก่อนชำระค่าธรรมเนียม');
+    }
+}
+
+/** ถามจนครบบล็อกยืนยัน — ออกเมื่อครบ หรือโยนข้อผิดพลาดที่ต้องแสดงผู้ใช้ */
+async function waitForFeeConfirmation(quoteId, feeTxHash) {
+    for (let i = 0; i < FEE_POLL_MAX; i++) {
+        if (disposed) throw new Error('ออกจากหน้าแล้ว — กลับมาส่งคำขอต่อได้ ไม่ต้องจ่ายซ้ำ');
+
+        const status = await factoryStore.checkFeeStatus({
+            wallet_address: walletStore.address,
+            quote_id: quoteId,
+            fee_tx_hash: feeTxHash,
+        });
+        if (disposed) throw new Error('ออกจากหน้าแล้ว — กลับมาส่งคำขอต่อได้ ไม่ต้องจ่ายซ้ำ');
+
+        payment.value.confirmations = status.confirmations || 0;
+        payment.value.required = status.required || 0;
+        if (status.confirmed) return;
+
+        payment.value.message = status.message || '';
+        await new Promise((resolve) => setTimeout(resolve, FEE_POLL_MS));
+    }
+    throw new Error('ธุรกรรมค่าธรรมเนียมยังยืนยันไม่ครบ — กด "ส่งคำขอต่อ" อีกครั้งภายหลังได้ ไม่ต้องจ่ายซ้ำ');
+}
+
+async function submitWithFee(payload, quote, feeTxHash) {
+    if (feeTxHash) {
+        payment.value = { stage: 'confirming', txHash: feeTxHash, confirmations: 0, required: 0, message: '' };
+        await waitForFeeConfirmation(quote.quote_id, feeTxHash);
+    }
+
+    payment.value.stage = 'submitting';
+    await factoryStore.createToken({ ...payload, quote_id: quote.quote_id, fee_tx_hash: feeTxHash || null });
+    if (disposed) return;
+
+    clearPendingPayment(payload.wallet_address);
+    payment.value = { stage: 'done', txHash: feeTxHash || '', confirmations: 0, required: 0, message: '' };
+    onCreated(payload.symbol);
+}
+
+function onCreated(symbol) {
+    successMessage.value = `ส่งคำขอสร้าง ${symbol} แล้ว — รอผู้ดูแลตรวจสอบ`;
+    showSuccess.value = true;
+
+    form.value = { name: '', symbol: '', decimals: 18, total_supply: '', description: '', website: '', logo_url: '', token_type: 'standard', token_category: 'fungible' };
+    logoFile.value = null;
+    logoPreview.value = '';
+    riskAck.value = {};
+    wizardStep.value = 1;
+    activeTab.value = 'my-tokens';
+
+    if (walletStore.address) factoryStore.fetchMyTokens(walletStore.address);
+    factoryStore.fetchTokens();
+    setTimeout(() => { showSuccess.value = false; }, 5000);
+}
+
 async function handleCreate() {
-    if (!canCreate.value) return;
+    if (!canCreate.value || isSubmitting.value) return;
+    if (pendingPayment.value) {
+        formErrors.value = { general: 'มีค่าธรรมเนียมที่ชำระแล้วรอส่งคำขออยู่ — กด "ส่งคำขอต่อ" ก่อน' };
+        return;
+    }
+
     formErrors.value = {};
     isSubmitting.value = true;
 
     try {
-        await factoryStore.createToken({
-            ...form.value,
-            sub_options: subOptions.value,
-            creator_address: walletStore.address,
-            chain_id: selectedChainId.value,
-        });
+        const payload = buildPayload();
+        payment.value = { stage: 'quoting', txHash: '', confirmations: 0, required: 0, message: '' };
+        const quote = await factoryStore.requestQuote(payload);
+        if (disposed) return;
 
-        successMessage.value = `Token ${form.value.symbol.toUpperCase()} submitted for review!`;
-        showSuccess.value = true;
+        let feeTxHash = null;
+        if (!quote.is_free) {
+            if (!quote.fee_wallet || quote.chain_id !== TPIX_CHAIN_ID) {
+                throw new Error('ระบบยังไม่พร้อมรับค่าธรรมเนียม กรุณาติดต่อทีมงาน');
+            }
+            if (!walletStore.signer) throw new Error('กรุณาเชื่อมต่อกระเป๋าใหม่อีกครั้ง');
 
-        // Reset
-        form.value = { name: '', symbol: '', decimals: 18, total_supply: '', description: '', website: '', logo_url: '', token_type: 'standard', token_category: 'fungible' };
-        logoFile.value = null;
-        logoPreview.value = '';
-        wizardStep.value = 1;
-        activeTab.value = 'my-tokens';
+            payment.value.stage = 'awaiting_wallet';
+            await ensureTpixChain();
 
-        // Refresh ทั้ง myTokens และ explore list
-        if (walletStore.address) {
-            factoryStore.fetchMyTokens(walletStore.address);
+            // gasPrice 0 ใช้ได้บนเชน TPIX — ensureTpixChain ยืนยันแล้วว่าอยู่เชนถูก
+            const tx = await walletStore.signer.sendTransaction({
+                to: quote.fee_wallet,
+                value: BigInt(quote.amount_wei),
+                gasPrice: 0,
+            });
+            feeTxHash = tx.hash;
+
+            // จ่ายแล้ว — จำไว้ก่อนทำอย่างอื่น กันต้องจ่ายซ้ำถ้าขั้นต่อไปพัง
+            savePendingPayment({ payload, quote, feeTxHash, savedAt: Date.now() });
         }
-        factoryStore.fetchTokens();
 
-        setTimeout(() => { showSuccess.value = false; }, 5000);
+        await submitWithFee(payload, quote, feeTxHash);
     } catch (e) {
-        const msg = e.response?.data?.errors
-            ? Object.values(e.response.data.errors).flat().join(', ')
-            : e.response?.data?.error?.message || e.message;
-        formErrors.value.general = msg;
+        if (disposed) return;
+        formErrors.value = { general: apiErrorMessage(e) };
+        payment.value.stage = pendingPayment.value ? 'paid_pending' : 'idle';
     } finally {
-        isSubmitting.value = false;
+        if (!disposed) isSubmitting.value = false;
     }
 }
 
+/** ส่งคำขอต่อจากการชำระที่ค้างไว้ — ไม่โอนเงินซ้ำ */
+async function resumePendingPayment() {
+    const saved = pendingPayment.value;
+    if (!saved || isSubmitting.value) return;
+
+    formErrors.value = {};
+    isSubmitting.value = true;
+    try {
+        await submitWithFee({ ...saved.payload, wallet_address: walletStore.address }, saved.quote, saved.feeTxHash);
+    } catch (e) {
+        if (disposed) return;
+        formErrors.value = { general: apiErrorMessage(e) };
+        payment.value.stage = 'paid_pending';
+    } finally {
+        if (!disposed) isSubmitting.value = false;
+    }
+}
+
+const paymentStageText = computed(() => ({
+    quoting: 'กำลังขอใบเสนอราคาค่าธรรมเนียม...',
+    awaiting_wallet: 'ยืนยันการโอนค่าธรรมเนียมในกระเป๋าของคุณ...',
+    confirming: payment.value.required
+        ? `รอการยืนยันบนเชน (${payment.value.confirmations}/${payment.value.required} บล็อก)`
+        : 'รอการยืนยันบนเชน...',
+    submitting: 'กำลังส่งคำขอสร้างเหรียญ...',
+}[payment.value.stage] || ''));
+
 // ===================== LIFECYCLE =====================
 onMounted(async () => {
+    loadPendingPayment();
     await factoryStore.fetchTokens();
     if (walletStore.address) {
         await factoryStore.fetchMyTokens(walletStore.address);
@@ -835,11 +930,15 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    disposed = true;
     stopPolling();
 });
 
 watch(() => walletStore.address, async (addr) => {
     stopPolling();
+    // สลับกระเป๋ากลางทาง — รายการชำระค้างเป็นของกระเป๋าเดิม ห้ามเอาไปส่งในนามกระเป๋าใหม่
+    loadPendingPayment();
+    payment.value = { stage: 'idle', txHash: '', confirmations: 0, required: 0, message: '' };
     if (addr) {
         await factoryStore.fetchMyTokens(addr);
         snapshotStatuses();
@@ -1032,9 +1131,8 @@ function getTypeLabel(type) {
                 <!-- Stats Row -->
                 <div class="flex flex-wrap items-center justify-center gap-3 sm:gap-6 mt-6 text-sm">
                     <div class="flex items-center gap-1.5 text-gray-400">
-                        <span class="w-2 h-2 rounded-full" :class="isTestnet ? 'bg-amber-400' : 'bg-green-400'"></span>
+                        <span class="w-2 h-2 rounded-full bg-green-400"></span>
                         {{ selectedChainName }}
-                        <span v-if="isTestnet" class="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] rounded-md font-bold">TESTNET</span>
                     </div>
                     <div class="text-gray-400">Gas: <span class="text-green-400 font-semibold">FREE</span></div>
                     <div class="text-gray-400">
@@ -1218,43 +1316,17 @@ function getTypeLabel(type) {
 
                 <!-- Wizard -->
                 <div v-else class="max-w-2xl mx-auto">
-                    <!-- Persistent Chain Selector Bar -->
-                    <div class="mb-4 p-3 rounded-xl glass-dark border border-white/10">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">Deploy Chain</span>
-                            <div class="flex items-center gap-2">
-                                <button
-                                    v-for="chain in chainOptions"
-                                    :key="chain.id"
-                                    type="button"
-                                    @click="selectedChainId = chain.id"
-                                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
-                                    :class="selectedChainId === chain.id
-                                        ? chain.testnet
-                                            ? 'bg-amber-500/15 border-amber-500/40 text-amber-400 ring-1 ring-amber-500/20'
-                                            : 'bg-primary-500/15 border-primary-500/40 text-primary-400 ring-1 ring-primary-500/20'
-                                        : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'"
-                                >
-                                    <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: chain.color }"></span>
-                                    {{ chain.name }}
-                                    <span v-if="chain.testnet && selectedChainId === chain.id" class="px-1 py-0.5 bg-green-500/20 text-green-400 text-[9px] rounded font-bold ml-0.5">FREE</span>
-                                    <span v-else-if="chain.testnet" class="px-1 py-0.5 bg-amber-500/20 text-amber-400 text-[9px] rounded font-bold ml-0.5">FREE</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Persistent Testnet Warning Banner -->
-                    <div v-if="isTestnet" class="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                        <div class="flex items-center gap-3">
-                            <div class="flex items-center gap-2">
-                                <span class="relative flex h-2.5 w-2.5">
-                                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400"></span>
-                                </span>
-                                <span class="text-sm font-bold text-amber-400">TESTNET</span>
-                            </div>
-                            <span class="text-xs text-amber-400/80">FREE tokens · No fees · Reset every {{ testnetResetMonths }} months · No real value / สร้างฟรี · รีเซ็ตทุก {{ testnetResetMonths }} เดือน</span>
+                    <!-- ค่าธรรมเนียมที่ชำระแล้วแต่ยังส่งคำขอไม่สำเร็จ — ส่งต่อได้โดยไม่ต้องจ่ายซ้ำ -->
+                    <div v-if="pendingPayment" class="mb-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30" data-test="pending-payment">
+                        <p class="text-sm font-semibold text-amber-300">มีค่าธรรมเนียมที่ชำระแล้ว รอส่งคำขอสร้าง {{ pendingPayment.payload?.symbol }}</p>
+                        <p class="text-[11px] text-amber-200/80 mt-1 break-all">tx: {{ pendingPayment.feeTxHash }}</p>
+                        <div class="flex flex-wrap gap-2 mt-3">
+                            <button type="button" class="px-4 py-2 rounded-lg bg-amber-500/20 text-amber-200 text-xs font-semibold hover:bg-amber-500/30 disabled:opacity-40" :disabled="isSubmitting" @click="resumePendingPayment">
+                                ส่งคำขอต่อ (ไม่ต้องจ่ายซ้ำ)
+                            </button>
+                            <button type="button" class="px-4 py-2 rounded-lg text-xs text-amber-300/70 hover:text-amber-200" :disabled="isSubmitting" @click="discardPendingPayment">
+                                ล้างรายการนี้
+                            </button>
                         </div>
                     </div>
 
@@ -1317,7 +1389,7 @@ function getTypeLabel(type) {
 
                             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <button
-                                    v-for="cat in tokenCategories"
+                                    v-for="cat in visibleCategories"
                                     :key="cat.id"
                                     type="button"
                                     @click="!cat.disabled && selectCategory(cat.id)"
@@ -1357,7 +1429,7 @@ function getTypeLabel(type) {
                                         </svg>
                                     </div>
 
-                                    <span v-if="cat.disabled" class="absolute top-3 right-3 text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded">Coming Soon</span>
+                                    <span v-if="cat.disabled" class="absolute top-3 right-3 text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded">ยังไม่เปิด</span>
                                 </button>
                             </div>
                         </div>
@@ -1408,6 +1480,17 @@ function getTypeLabel(type) {
                                     </div>
                                 </button>
                             </div>
+
+                            <p v-if="currentTypes.length === 0" class="text-center text-sm text-gray-400">หมวดนี้ยังไม่เปิดให้สร้าง</p>
+
+                            <!-- ประเภทที่ให้อำนาจเจ้าของเหนือผู้ถือ — ต้องติ๊กยอมรับก่อนไปต่อ -->
+                            <RiskAckBox
+                                v-if="typeAck"
+                                v-model="riskAck[typeAck.key]"
+                                :ack-key="typeAck.key"
+                                :title="typeAck.label"
+                                :warning="typeAck.warning"
+                            />
                         </div>
                     </Transition>
 
@@ -1427,9 +1510,8 @@ function getTypeLabel(type) {
                             </div>
 
                             <!-- No options message for standard -->
-                            <div v-if="currentSubOptionsGroups.length === 0 || (currentSubOptionsGroups.length === 2 && form.token_type === 'standard')" class="glass-dark p-8 rounded-2xl border border-white/10 text-center">
-                                <p class="text-gray-400 text-sm">Standard token ไม่มีออฟชั่นเพิ่มเติม</p>
-                                <p class="text-xs text-gray-500 mt-1">Standard token has no additional options. Click Next to continue.</p>
+                            <div v-if="currentSubOptionsGroups.length === 0" class="glass-dark p-8 rounded-2xl border border-white/10 text-center">
+                                <p class="text-gray-400 text-sm">เหรียญชนิดนี้ไม่มีตัวเลือกเพิ่มเติม — กด Next เพื่อไปต่อ</p>
                             </div>
 
                             <!-- Option Groups -->
@@ -1462,10 +1544,18 @@ function getTypeLabel(type) {
                                                 <p class="text-[10px] text-gray-500">{{ opt.desc_th || '' }}</p>
                                             </div>
                                             <button type="button" @click="subOptions[opt.key] = !subOptions[opt.key]"
+                                                :data-test="`opt-${opt.key}`"
                                                 :class="['w-11 h-6 rounded-full transition-colors flex-shrink-0', subOptions[opt.key] ? 'bg-primary-500' : 'bg-white/10']">
                                                 <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', subOptions[opt.key] ? 'translate-x-5' : 'translate-x-0.5']"></div>
                                             </button>
                                         </div>
+                                        <RiskAckBox
+                                            v-if="ackForOption(opt)"
+                                            v-model="riskAck[ackForOption(opt).key]"
+                                            :ack-key="ackForOption(opt).key"
+                                            :title="ackForOption(opt).label"
+                                            :warning="ackForOption(opt).warning"
+                                        />
 
                                         <!-- Range / Slider -->
                                         <div v-else-if="opt.type === 'range'" class="py-2">
@@ -1540,9 +1630,9 @@ function getTypeLabel(type) {
                             </div>
 
                             <!-- Fee Preview -->
-                            <div v-if="subOptionsFee.total > 0 && !isTestnet" class="p-3 rounded-xl bg-amber-500/5 border border-amber-500/10 flex items-center justify-between text-sm">
-                                <span class="text-gray-400">ค่าธรรมเนียม Options / Options Fee</span>
-                                <span class="text-amber-400 font-bold">+{{ subOptionsFee.total }} TPIX</span>
+                            <div v-if="!dynamicFee.is_free" class="p-3 rounded-xl bg-amber-500/5 border border-amber-500/10 flex items-center justify-between text-sm">
+                                <span class="text-gray-400">ค่าธรรมเนียมรวม (ตามตัวเลือกที่เลือก)</span>
+                                <span class="text-amber-400 font-bold">{{ dynamicFee.total.toLocaleString() }} TPIX</span>
                             </div>
                         </div>
                     </Transition>
@@ -1574,7 +1664,7 @@ function getTypeLabel(type) {
                                             type="text"
                                             :placeholder="isNFT ? 'e.g. TPIX Punks' : 'e.g. My Token'"
                                             class="trading-input w-full"
-                                            maxlength="100"
+                                            :maxlength="limits.name_max_length"
                                         />
                                     </div>
                                     <div>
@@ -1582,12 +1672,16 @@ function getTypeLabel(type) {
                                             Symbol <span class="text-red-400">*</span>
                                         </label>
                                         <input
-                                            v-model="form.symbol"
+                                            :value="form.symbol"
                                             type="text"
                                             :placeholder="isNFT ? 'e.g. TPUNK' : 'e.g. MTK'"
                                             class="trading-input w-full uppercase"
-                                            maxlength="20"
+                                            :maxlength="limits.symbol_max_length"
+                                            data-test="symbol-input"
+                                            @input="onSymbolInput"
                                         />
+                                        <p class="text-[10px] text-gray-500 mt-1">ตัวอักษรอังกฤษ A–Z และตัวเลขเท่านั้น</p>
+                                        <p v-if="symbolIsReserved" class="text-[11px] text-red-400 mt-1">สัญลักษณ์นี้สงวนไว้สำหรับโครงการทางการ</p>
                                     </div>
                                 </div>
 
@@ -1616,21 +1710,21 @@ function getTypeLabel(type) {
                                         type="number"
                                         :placeholder="isNFT ? 'e.g. 10000' : 'e.g. 1000000'"
                                         :min="1"
-                                        :max="factoryConfig.max_supply_limit"
+                                        :max="maxSupplyForType"
+                                        step="1"
                                         class="trading-input w-full"
                                     />
+                                    <p class="text-[10px] text-gray-500 mt-1">จำนวนเต็ม สูงสุด {{ Number(maxSupplyForType).toLocaleString() }}</p>
                                 </div>
 
                                 <!-- Decimals (hidden for NFT) -->
                                 <div v-if="!isNFT" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label class="block text-sm font-medium text-gray-300 mb-1.5">Decimals</label>
-                                        <select v-model.number="form.decimals" class="trading-input w-full">
-                                            <option :value="18">18 (Standard)</option>
-                                            <option :value="8">8 (Bitcoin-like)</option>
-                                            <option :value="6">6 (USDT-like)</option>
-                                            <option :value="0">0 (No decimals)</option>
+                                        <select v-if="decimalChoices.length > 1" v-model.number="form.decimals" class="trading-input w-full">
+                                            <option v-for="d in decimalChoices" :key="d" :value="d">{{ d }}{{ d === 18 ? ' (Standard)' : '' }}</option>
                                         </select>
+                                        <p v-else class="trading-input w-full text-gray-300">{{ decimalChoices[0] ?? 18 }}</p>
                                     </div>
                                     <div class="flex items-end">
                                         <p class="text-xs text-gray-500 pb-3">
@@ -1680,8 +1774,8 @@ function getTypeLabel(type) {
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                                         </svg>
                                         <span class="text-xs text-gray-400 group-hover:text-gray-300">Click to upload logo</span>
-                                        <span class="text-[10px] text-gray-500 mt-0.5">PNG, JPG, WEBP, SVG · Max 2MB</span>
-                                        <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="handleLogoSelect" />
+                                        <span class="text-[10px] text-gray-500 mt-0.5">PNG, JPG, WEBP · ไม่เกิน 2MB</span>
+                                        <input type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="handleLogoSelect" />
                                     </label>
                                     <p v-if="formErrors.logo" class="text-xs text-red-400 mt-1">{{ formErrors.logo }}</p>
                                 </div>
@@ -1717,7 +1811,6 @@ function getTypeLabel(type) {
                                         <h3 class="text-lg font-bold text-white">{{ form.name || 'Token Name' }}</h3>
                                         <p class="text-sm text-gray-400">
                                             {{ form.symbol?.toUpperCase() || 'SYMBOL' }} on {{ selectedChainName }}
-                                            <span v-if="isTestnet" class="ml-1 px-1.5 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] rounded-full font-bold">TESTNET</span>
                                         </p>
                                     </div>
                                 </div>
@@ -1747,7 +1840,6 @@ function getTypeLabel(type) {
                                             <p class="text-gray-500 text-xs">Chain</p>
                                             <p class="text-white font-medium">
                                                 {{ selectedChainName }} ({{ selectedChainId }})
-                                                <span v-if="isTestnet" class="ml-1 text-amber-400 text-[10px]">⚠ TESTNET</span>
                                             </p>
                                         </div>
                                         <div>
@@ -1811,8 +1903,8 @@ function getTypeLabel(type) {
                                 <!-- Total -->
                                 <div class="flex items-center justify-between pt-3 border-t border-white/10">
                                     <span class="text-sm font-medium text-gray-300">Total</span>
-                                    <span class="text-xl font-bold" :class="dynamicFee.is_free ? 'text-green-400' : 'text-white'">
-                                        {{ dynamicFee.is_free ? 'FREE' : `${dynamicFee.total.toLocaleString()} TPIX` }}
+                                    <span class="text-xl font-bold" :class="dynamicFee.is_free ? 'text-green-400' : 'text-white'" data-test="fee-total">
+                                        {{ dynamicFee.is_free ? 'ฟรี' : `${dynamicFee.total.toLocaleString()} TPIX` }}
                                     </span>
                                 </div>
 
@@ -1824,20 +1916,30 @@ function getTypeLabel(type) {
                                 </p>
                             </div>
 
-                            <!-- Testnet FREE highlight in fee area -->
-                            <div v-if="isTestnet" class="p-4 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center gap-3">
-                                <span class="text-2xl">🎉</span>
+                            <!-- ความเสี่ยงที่ยอมรับแล้ว — ยังขาดรายการไหนให้กลับไปติ๊ก -->
+                            <div v-if="requiredAcks.length" class="p-4 rounded-xl border" :class="missingAcks.length ? 'bg-red-500/10 border-red-500/40' : 'bg-red-500/5 border-red-500/20'" data-test="risk-summary">
+                                <p class="text-sm font-semibold text-red-400">อำนาจของเจ้าของเหรียญที่ผู้ซื้อต้องรู้</p>
+                                <ul class="mt-2 space-y-1 text-xs text-red-300">
+                                    <li v-for="ack in requiredAcks" :key="ack.key">
+                                        {{ riskAck[ack.key] ? '✓' : '✗' }} {{ ack.label }} — {{ ack.warning }}
+                                    </li>
+                                </ul>
+                                <p v-if="missingAcks.length" class="mt-2 text-xs text-red-400">ยังไม่ได้ติ๊กยอมรับ {{ missingAcks.length }} รายการ — ย้อนกลับไปขั้นก่อนหน้า</p>
+                            </div>
+
+                            <!-- สถานะการชำระค่าธรรมเนียม -->
+                            <div v-if="paymentStageText" class="p-4 rounded-xl bg-primary-500/10 border border-primary-500/30 text-sm text-primary-200 flex items-center gap-3" data-test="payment-status">
+                                <svg class="w-4 h-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
                                 <div>
-                                    <p class="text-sm font-bold text-green-400">Testnet — FREE / ไม่มีค่าธรรมเนียม!</p>
-                                    <p class="text-xs text-green-400/70">Your token will be deployed on {{ selectedChainName }} for free (testing only)</p>
-                                    <p class="text-[10px] text-green-400/60">Token จะถูก deploy บน {{ selectedChainName }} ฟรี สำหรับทดสอบเท่านั้น</p>
+                                    <p>{{ paymentStageText }}</p>
+                                    <p v-if="payment.txHash" class="text-[10px] text-primary-300/70 break-all mt-0.5">tx: {{ payment.txHash }}</p>
                                 </div>
                             </div>
 
                             <!-- Process Info -->
                             <div class="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10 text-xs space-y-1">
-                                <p class="text-blue-300/80">After submission, our team will review your token within 24 hours. Once approved, it will be deployed on <span class="font-semibold text-blue-300">{{ selectedChainName }}</span> automatically.</p>
-                                <p class="text-blue-300/50 text-[10px]">หลังจากส่ง ทีมงานจะรีวิวเหรียญของคุณภายใน 24 ชั่วโมง เมื่ออนุมัติจะ deploy บน {{ selectedChainName }} อัตโนมัติ</p>
+                                <p class="text-blue-300/80">กด "ชำระและสร้างเหรียญ" — ระบบจะขอให้ยืนยันการโอนค่าธรรมเนียม {{ feeDisplay.amount }} {{ feeDisplay.currency }} บนเชน {{ selectedChainName }} ในกระเป๋าของคุณ</p>
+                                <p class="text-blue-300/50 text-[10px]">หลังชำระ ทีมงานจะตรวจสอบคำขอ เมื่ออนุมัติแล้วระบบจะสร้างเหรียญบน {{ selectedChainName }} ให้อัตโนมัติ</p>
                             </div>
                         </div>
                     </Transition>
@@ -1875,8 +1977,8 @@ function getTypeLabel(type) {
                             class="flex items-center gap-2 px-8 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-primary-500 to-accent-500 text-white hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                         >
                             <svg v-if="isSubmitting" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                            <span v-if="isSubmitting">Creating...</span>
-                            <span v-else>Create Token</span>
+                            <span v-if="isSubmitting">กำลังดำเนินการ...</span>
+                            <span v-else>{{ dynamicFee.is_free ? 'สร้างเหรียญ' : 'ชำระและสร้างเหรียญ' }}</span>
                         </button>
                     </div>
                 </div>

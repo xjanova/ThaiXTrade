@@ -46,6 +46,36 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
         }
     }
 
+    /**
+     * ขอใบเสนอราคาค่าธรรมเนียม — เซิร์ฟเวอร์ตรวจฟอร์ม/นโยบายครบแล้วล็อกยอด
+     * @returns {Promise<{quote_id: string, amount: string, amount_wei: string, fee_wallet: string, chain_id: number, is_free: boolean, expires_at: string}>}
+     */
+    async function requestQuote(payload) {
+        const { data } = await axios.post('/api/v1/token-factory/quote', payload);
+        if (!data.success) throw new Error(data.error?.message || 'ขอใบเสนอราคาไม่สำเร็จ');
+        return data.data;
+    }
+
+    /**
+     * ถามสถานะธุรกรรมค่าธรรมเนียม — 202 = ยังรอบล็อกยืนยัน (ไม่ใช่ error)
+     * @returns {Promise<{confirmed: boolean, confirmations: number, required: number, message?: string}>}
+     */
+    async function checkFeeStatus(payload) {
+        const res = await axios.post('/api/v1/token-factory/fee-status', payload);
+        if (res.data?.success) {
+            return { confirmed: true, ...res.data.data };
+        }
+        if (res.data?.error?.code === 'FEE_PENDING') {
+            return {
+                confirmed: false,
+                confirmations: res.data.error.confirmations || 0,
+                required: res.data.error.required || 0,
+                message: res.data.error.message,
+            };
+        }
+        throw new Error(res.data?.error?.message || 'ตรวจสถานะค่าธรรมเนียมไม่สำเร็จ');
+    }
+
     async function createToken(tokenData) {
         isLoading.value = true;
         error.value = null;
@@ -55,7 +85,9 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
                 myTokens.value.unshift(data.data);
                 return data.data;
             }
-            throw new Error(data.error?.message || 'Failed to create token');
+            const err = new Error(data.error?.message || 'Failed to create token');
+            err.code = data.error?.code;
+            throw err;
         } catch (e) {
             error.value = e.response?.data?.error?.message || e.message;
             throw e;
@@ -71,6 +103,8 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
         error,
         fetchTokens,
         fetchMyTokens,
+        requestQuote,
+        checkFeeStatus,
         createToken,
     };
 });
