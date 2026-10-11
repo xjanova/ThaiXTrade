@@ -52,6 +52,9 @@ return [
     'tpix_chain_id' => 4289,
     // RPC ที่ส่งให้เบราว์เซอร์/แอปใช้อ่านราคา DEX (เบราว์เซอร์มี User-Agent อยู่แล้ว ผ่าน Cloudflare ได้)
     'tpix_public_rpc_url' => env('TPIX_PUBLIC_RPC_URL', 'https://rpc.tpix.online'),
+    // บล็อกแรกที่ตัวอ่าน event Swap เริ่มไล่ (DexSwapIndexer) — พูล TPIX/USDT มี log แรกที่บล็อก 2,732,419
+    // (เชนหลัง regenesis ไม่มีธุรกรรมก่อนบล็อก 2,730,941) จึงไม่ต้องไล่ตั้งแต่บล็อก 0
+    'tpix_dex_index_from_block' => (int) env('TPIX_DEX_INDEX_FROM_BLOCK', 2732000),
 
     /*
     |--------------------------------------------------------------------------

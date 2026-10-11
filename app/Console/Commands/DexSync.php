@@ -9,6 +9,7 @@ use App\Models\SiteSetting;
 use App\Models\Token;
 use App\Models\TradingPair;
 use App\Services\ChainResolver;
+use App\Services\DexSwapIndexer;
 use App\Services\TpixDexService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -29,6 +30,7 @@ use Illuminate\Support\Facades\Log;
  *      คู่เปิดใช้เมื่อพูลมีสภาพคล่อง ปิดเมื่อพูลว่าง (สวอปไม่ได้อยู่แล้ว)
  *   3. บันทึกราคากลางของแต่ละพูลเป็นแท่ง 1 นาที (กราฟบนหน้าเทรดใช้ต่อ)
  *   4. อัปเดต trading.tpix_price จากพูล WTPIX/USDT ถ้ามี
+ *   5. ไล่ event Swap บนเชน → รายการเทรดของคู่ + ปริมาณในแท่ง (DexSwapIndexer)
  *
  * ทำซ้ำได้ตลอด — ทุก upsert คีย์ตาม unique index จริง
  * (tokens: chain_id+contract_address · trading_pairs: base+quote+chain · klines: pair+interval+open_time)
@@ -47,6 +49,7 @@ class DexSync extends Command
     public function __construct(
         private TpixDexService $dex,
         private ChainResolver $chains,
+        private DexSwapIndexer $indexer,
     ) {
         parent::__construct();
     }
@@ -89,6 +92,7 @@ class DexSync extends Command
         if (! $this->dryRun) {
             Cache::forget('dex:pairs:public');
             Cache::forget('tpix_trading_pair');
+            $this->indexSwaps();
         }
 
         $this->info("ซิงก์คู่เทรดแล้ว {$synced}/".count($pairs).' พูล');
@@ -399,6 +403,22 @@ class DexSync extends Command
         }
 
         $candle->save();
+    }
+
+    /**
+     * ไม้สวอปจาก event บนเชน → รายการเทรด + ปริมาณในแท่ง (ดู DexSwapIndexer)
+     * ล้มแล้วต้องไม่ลากการซิงก์คู่/ราคาล้มตาม — รอบหน้าไล่ต่อจากเดิมเอง
+     */
+    private function indexSwaps(): void
+    {
+        try {
+            $recorded = $this->indexer->syncAll();
+            if ($recorded > 0) {
+                $this->line("บันทึกไม้สวอปจากเชน: {$recorded}");
+            }
+        } catch (\Throwable $e) {
+            Log::warning('dex:sync อ่าน event Swap ไม่สำเร็จ', ['error' => $e->getMessage()]);
+        }
     }
 
     /** ราคา TPIX อ้างอิงของทั้งระบบตามพูล WTPIX/USDT */

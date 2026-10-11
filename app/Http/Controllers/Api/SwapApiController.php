@@ -9,6 +9,7 @@ use App\Models\SwapConfig;
 use App\Models\Token;
 use App\Models\Transaction;
 use App\Services\ChainResolver;
+use App\Services\DexSwapIndexer;
 use App\Services\FeeCalculationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,6 +28,7 @@ class SwapApiController extends Controller
     public function __construct(
         private FeeCalculationService $feeCalculationService,
         private ChainResolver $chains,
+        private DexSwapIndexer $swapIndexer,
     ) {}
 
     // =========================================================================
@@ -162,13 +164,18 @@ class SwapApiController extends Controller
      */
     public function execute(Request $request): JsonResponse
     {
+        $onTpixChain = (int) $request->input('chain_id') === (int) config('blockchain.tpix_chain_id', 4289);
+
         $validator = Validator::make($request->all(), [
             'from_token' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'to_token' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'from_amount' => 'required|numeric|gt:0',
             'to_amount' => 'required|numeric|gte:0',
             'fee_amount' => 'required|numeric|gte:0',
-            'tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/', 'unique:transactions,tx_hash'],
+            // เชน TPIX: ตัวอ่าน event อาจบันทึกไม้นี้ไปก่อนหน้าเว็บแจ้ง — ซ้ำได้ ตอบสำเร็จพร้อมแถวเดิม
+            'tx_hash' => $onTpixChain
+                ? ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/']
+                : ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/', 'unique:transactions,tx_hash'],
             // chain_id = blockchain chainId (56, 4289) — แปลงเป็น DB PK ภายใน
             'chain_id' => 'required|integer|min:1',
             'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
@@ -197,6 +204,18 @@ class SwapApiController extends Controller
         }
 
         $validated = $validator->validated();
+
+        /*
+         * ⚠️ เชน TPIX: ห้ามเชื่อจำนวน/ราคาที่หน้าเว็บส่งมา
+         *
+         * เดิมบันทึก status=confirmed ตามตัวเลขในคำขอเลย — ใครที่เซ็นยืนยันกระเป๋าแล้ว
+         * ยิงไม้ปลอมเข้ารายการเทรดสาธารณะของคู่ DEX ได้ (จำนวน/ราคาอะไรก็ได้ + tx hash มั่ว)
+         * ตอนนี้ใช้แค่ tx hash ไปอ่านใบเสร็จ + event Swap ของพูลเราบนเชนเอง (DexSwapIndexer)
+         * BSC ยังเป็นทางเดิม (ค่าธรรมเนียมเป็นธุรกรรมแยก ต้องตรวจตามอัตรา)
+         */
+        if ($onTpixChain) {
+            return $this->recordTpixDexSwap($validated['tx_hash'], $validated['wallet_address']);
+        }
 
         // ต้องตั้ง fee_collector_wallet ก่อนถึงจะ swap ได้
         $feeCollector = SiteSetting::get('trading', 'fee_collector_wallet', '');
@@ -440,6 +459,61 @@ class SwapApiController extends Controller
     // =========================================================================
     // Helpers
     // =========================================================================
+
+    /**
+     * ไม้บนเชน TPIX — บันทึกจากใบเสร็จบนเชน (ดู DexSwapIndexer) ตอบหน้าเว็บตามผลจริง
+     * ยังไม่ลงบล็อก/เชนตอบไม่ได้ = 202 ไม่ใช่ error: ตัวอ่าน event ใน dex:sync จะบันทึกให้เองภายในนาที
+     */
+    private function recordTpixDexSwap(string $txHash, string $wallet): JsonResponse
+    {
+        try {
+            $result = $this->swapIndexer->recordTransaction($txHash, $wallet);
+        } catch (\Throwable $e) {
+            Log::error('TPIX DEX swap record error', ['exception' => get_class($e), 'tx_hash' => $txHash]);
+            $result = ['status' => 'pending', 'transactions' => []];
+        }
+
+        $errors = [
+            'wallet_mismatch' => ['WALLET_MISMATCH', 'This transaction was not sent by the connected wallet.'],
+            'not_swap' => ['NOT_A_DEX_SWAP', 'This transaction is not a swap on TPIX DEX.'],
+            'failed' => ['TX_FAILED', 'This transaction failed on-chain.'],
+            'unavailable' => ['INVALID_CHAIN', 'The specified chain is not active or does not exist.'],
+        ];
+        if (isset($errors[$result['status']])) {
+            [$code, $message] = $errors[$result['status']];
+
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => $code, 'message' => $message],
+            ], $result['status'] === 'unavailable' ? 404 : 422);
+        }
+
+        if ($result['status'] === 'pending') {
+            return response()->json([
+                'success' => true,
+                'data' => ['tx_hash' => strtolower($txHash), 'status' => 'pending'],
+            ], 202);
+        }
+
+        /** @var Transaction $first */
+        $first = $result['transactions'][0];
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'transaction_id' => $first->uuid,
+                'tx_hash' => $first->tx_hash,
+                'status' => $first->status,
+                'from_token' => $first->from_token,
+                'to_token' => $first->to_token,
+                'from_amount' => $first->from_amount,
+                'to_amount' => $first->to_amount,
+                'fee_amount' => $first->fee_amount,
+                'created_at' => $first->created_at?->toIso8601String(),
+                'source' => 'chain',
+            ],
+        ], $result['status'] === 'recorded' ? 201 : 200);
+    }
 
     /**
      * แปลง sentinel address ของ native coin (0xEeee...EEeE — convention ฝั่ง

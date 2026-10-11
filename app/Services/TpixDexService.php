@@ -437,6 +437,63 @@ class TpixDexService
         return is_string($result) && str_starts_with($result, '0x') ? $result : null;
     }
 
+    /** เลขบล็อกล่าสุด — null เมื่อเชนตอบไม่ได้ */
+    public function blockNumber(): ?int
+    {
+        $hex = $this->rpc('eth_blockNumber', []);
+
+        return is_string($hex) && str_starts_with($hex, '0x') ? (int) Wei::hexToInt($hex) : null;
+    }
+
+    /**
+     * eth_getLogs ของสัญญาเดียว
+     *
+     * ⚠️ polygon-edge ปฏิเสธช่วงที่เกิน 1000 บล็อก ("block range too high") — ผู้เรียกต้องหั่นช่วงเอง
+     *
+     * @return array<int, array>|null null = เชนตอบไม่ได้ (ต่างจาก [] = ช่วงนี้ไม่มี log)
+     */
+    public function logs(string $address, array $topics, int $fromBlock, int $toBlock): ?array
+    {
+        $result = $this->rpc('eth_getLogs', [[
+            'address' => $address,
+            'topics' => $topics,
+            'fromBlock' => '0x'.dechex($fromBlock),
+            'toBlock' => '0x'.dechex($toBlock),
+        ]]);
+
+        return is_array($result) ? $result : null;
+    }
+
+    /** ใบเสร็จธุรกรรม — null ทั้งตอนยังไม่ลงบล็อกและตอนเชนตอบไม่ได้ */
+    public function receipt(string $txHash): ?array
+    {
+        $result = $this->rpc('eth_getTransactionReceipt', [$txHash]);
+
+        return is_array($result) ? $result : null;
+    }
+
+    public function transaction(string $txHash): ?array
+    {
+        $result = $this->rpc('eth_getTransactionByHash', [$txHash]);
+
+        return is_array($result) ? $result : null;
+    }
+
+    /** เวลาของบล็อก (unix) — เวลาไม้จริงบนเชน ไม่ใช่เวลาที่เซิร์ฟเวอร์เห็น */
+    public function blockTimestamp(int $block): ?int
+    {
+        $result = $this->rpc('eth_getBlockByNumber', ['0x'.dechex($block), false]);
+        $hex = is_array($result) ? ($result['timestamp'] ?? null) : null;
+
+        return is_string($hex) && str_starts_with($hex, '0x') ? (int) Wei::hexToInt($hex) : null;
+    }
+
+    /** topic0 ของ event เช่น 'Swap(address,uint256,uint256,uint256,uint256,address)' */
+    public function eventTopic(string $signature): string
+    {
+        return '0x'.Keccak::hash($signature, 256);
+    }
+
     private function rpc(string $method, array $params): mixed
     {
         try {

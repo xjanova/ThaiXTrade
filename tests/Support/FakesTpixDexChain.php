@@ -4,6 +4,7 @@ namespace Tests\Support;
 
 use App\Models\SiteSetting;
 use App\Services\ContractRegistry;
+use App\Services\DexSwapIndexer;
 use App\Services\TpixDexService;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
@@ -52,6 +53,104 @@ trait FakesTpixDexChain
 
     private bool $fakeInstalled = false;
 
+    /** ไม้สวอปบนเชนจำลอง: txHash => [from, block, pair, amounts(a0In,a1In,a0Out,a1Out), success] */
+    private array $fakeSwaps = [];
+
+    private ?int $fakeLatestBlock = null;
+
+    /**
+     * สวอปหนึ่งไม้บนเชนจำลอง — มีใบเสร็จ + event Swap ให้ eth_getLogs/receipt เห็นเหมือนของจริง
+     *
+     * @param  array{0:string,1:string,2:string,3:string}  $amounts  wei ของ amount0In, amount1In, amount0Out, amount1Out
+     */
+    protected function fakeSwap(string $txHash, string $from, int $block, string $pair, array $amounts, bool $success = true): void
+    {
+        $this->fakeSwaps[strtolower($txHash)] = [
+            'from' => $from,
+            'block' => $block,
+            'pair' => strtolower($pair),
+            'amounts' => $amounts,
+            'success' => $success,
+        ];
+        $this->fakeLatestBlock = max($this->fakeLatestBlock ?? 0, $block + 5);
+    }
+
+    private function fakeSwapLog(string $txHash, array $swap): array
+    {
+        $dex = app(TpixDexService::class);
+
+        return [
+            'address' => $swap['pair'],
+            'topics' => [
+                $dex->eventTopic(DexSwapIndexer::SWAP_EVENT),
+                '0x'.TpixDexService::encAddress($this->router),
+                '0x'.TpixDexService::encAddress($swap['from']),
+            ],
+            'data' => '0x'.implode('', array_map(fn ($a) => TpixDexService::encUint((string) $a), $swap['amounts'])),
+            'blockNumber' => '0x'.dechex($swap['block']),
+            'transactionHash' => $txHash,
+            'logIndex' => '0x0',
+        ];
+    }
+
+    /** ตอบเมธอดที่ตัวอ่าน event ใช้ — null = ไม่ใช่เมธอดกลุ่มนี้ */
+    private function fakeSwapRpc(string $method, array $params): ?array
+    {
+        $ok = fn ($result) => ['jsonrpc' => '2.0', 'id' => 1, 'result' => $result];
+
+        switch ($method) {
+            case 'eth_blockNumber':
+                return $this->fakeLatestBlock === null ? null : $ok('0x'.dechex($this->fakeLatestBlock));
+
+            case 'eth_getLogs':
+                $filter = $params[0] ?? [];
+                $from = hexdec($filter['fromBlock'] ?? '0x0');
+                $to = hexdec($filter['toBlock'] ?? '0x0');
+                // polygon-edge จริงตอบแบบนี้เมื่อช่วงเกิน 1000 บล็อก — ตัวอ่านต้องหั่นช่วงเอง
+                if ($to - $from >= 1000) {
+                    return ['jsonrpc' => '2.0', 'id' => 1, 'error' => ['code' => -32600, 'message' => 'block range too high']];
+                }
+                $logs = [];
+                foreach ($this->fakeSwaps as $hash => $swap) {
+                    if ($swap['success'] && $swap['pair'] === strtolower($filter['address'] ?? '')
+                        && $swap['block'] >= $from && $swap['block'] <= $to) {
+                        $logs[] = $this->fakeSwapLog($hash, $swap);
+                    }
+                }
+
+                return $ok($logs);
+
+            case 'eth_getTransactionReceipt':
+                $hash = strtolower($params[0] ?? '');
+                $swap = $this->fakeSwaps[$hash] ?? null;
+
+                return $ok($swap === null ? null : [
+                    'transactionHash' => $hash,
+                    'status' => $swap['success'] ? '0x1' : '0x0',
+                    'from' => $swap['from'],
+                    'to' => $this->router,
+                    'blockNumber' => '0x'.dechex($swap['block']),
+                    'logs' => $swap['success'] ? [$this->fakeSwapLog($hash, $swap)] : [],
+                ]);
+
+            case 'eth_getTransactionByHash':
+                $hash = strtolower($params[0] ?? '');
+                $swap = $this->fakeSwaps[$hash] ?? null;
+
+                return $ok($swap === null ? null : ['hash' => $hash, 'from' => $swap['from'], 'blockNumber' => '0x'.dechex($swap['block'])]);
+
+            case 'eth_getBlockByNumber':
+                $block = hexdec($params[0] ?? '0x0');
+
+                return $ok(['number' => '0x'.dechex($block), 'timestamp' => '0x'.dechex(self::FAKE_GENESIS_TIME + $block * 2)]);
+        }
+
+        return null;
+    }
+
+    /** เวลาของบล็อก 0 บนเชนจำลอง (บล็อกละ 2 วินาที) */
+    protected const FAKE_GENESIS_TIME = 1760000000;
+
     /**
      * @param  array<string, array{0:string,1:string,2:string,3:string}>  $pools
      * @param  array<string, array{0:string,1:string,2:int}>  $tokens
@@ -83,6 +182,11 @@ trait FakesTpixDexChain
 
             if ($method === 'eth_getCode') {
                 return Http::response(['jsonrpc' => '2.0', 'id' => 1, 'result' => $this->fakeHasCode ? '0x6080604052' : '0x']);
+            }
+
+            $swapAnswer = $this->fakeSwapRpc($method, $body['params'] ?? []);
+            if ($swapAnswer !== null) {
+                return Http::response($swapAnswer);
             }
 
             if ($method !== 'eth_call') {

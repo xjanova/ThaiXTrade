@@ -244,8 +244,13 @@ class DexApiTest extends TestCase
 
     public function test_swap_records_on_tpix_chain_accept_in_pool_fee(): void
     {
+        config(['blockchain.tpix_dex_index_from_block' => 100]);
         $this->bootDex();
         SiteSetting::set('trading', 'fee_collector_wallet', '0x'.str_repeat('f', 40));
+
+        // จ่าย 50 TPIX ได้ 99.5 ABC ในพูล ABC/WTPIX (ABC เป็น token0) — ต้องมีจริงบนเชน (ดู DexSwapIndexerTest)
+        $hash = '0x'.str_repeat('9', 64);
+        $this->fakeSwap($hash, '0x'.str_repeat('a', 40), 150, $this->pairAbcTpix, ['0', self::units('50'), '99500000000000000000', '0']);
 
         // ด่านตรวจลายเซ็นกระเป๋ามีเทสต์ของตัวเองแล้ว — ที่นี่ทดสอบเฉพาะโมเดลค่าธรรมเนียม
         $this->withoutMiddleware(VerifyWalletOwnership::class)->postJson('/api/v1/swap/execute', [
@@ -254,12 +259,13 @@ class DexApiTest extends TestCase
             'from_amount' => 50,
             'to_amount' => 99.5,
             'fee_amount' => 0,
-            'tx_hash' => '0x'.str_repeat('9', 64),
+            'tx_hash' => $hash,
             'chain_id' => 4289,
             'wallet_address' => '0x'.str_repeat('a', 40),
         ])->assertStatus(201)->assertJsonPath('success', true);
 
-        $tx = Transaction::where('tx_hash', '0x'.str_repeat('9', 64))->firstOrFail();
+        $tx = Transaction::where('tx_hash', $hash)->firstOrFail();
         $this->assertSame('in_pool', $tx->metadata['fee_model']);
+        $this->assertSame('buy', $tx->metadata['side']); // ABC-TPIX: จ่าย TPIX (quote) ได้ ABC (base) = ซื้อ
     }
 }
