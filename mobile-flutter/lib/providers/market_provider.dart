@@ -116,6 +116,13 @@ class MarketProvider extends ChangeNotifier {
     return _shadowedDex.contains(s) ? null : _dexPairs[s];
   }
 
+  /// คู่บนเชน TPIX ที่ตรวจแล้วทั้งหมด (ไม่รวมชื่อที่ชนคู่ตลาดหลัก) — symbol → คู่
+  /// หน้าสลับเหรียญใช้สร้างรายการเหรียญโหมด TPIX ด้วยกติกาเดียวกับ [dexPairInfo]
+  Map<String, DexPairInfo> get verifiedDexPairs => Map.unmodifiable({
+        for (final e in _dexPairs.entries)
+          if (!_shadowedDex.contains(e.key)) e.key: e.value,
+      });
+
   /// โลโก้ของเหรียญฝั่ง base ในคู่บนเชน TPIX (https เท่านั้น) — null = ใช้ตัวอักษรแทน
   ///
   /// ลำดับ: token list ที่แอดมินรับรอง (logoURI) → โลโก้จากเซิร์ฟเวอร์ (/dex/pairs) → ตัวอักษร

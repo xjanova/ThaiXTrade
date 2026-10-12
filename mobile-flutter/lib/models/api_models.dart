@@ -593,6 +593,10 @@ class TradingPairInfo {
   /// ที่อยู่พูล AMM (เฉพาะคู่บนเชน TPIX)
   final String? dexPairAddress;
 
+  /// เปิดใช้งานอยู่ไหม — /market/pairs ส่งแต่คู่ที่เปิดอยู่ (ไม่มีฟิลด์ = ถือว่าเปิด)
+  /// แต่ถ้าเซิร์ฟเวอร์ส่ง false มา ห้ามนับเป็นคู่ที่เทรดได้
+  final bool isActive;
+
   bool get isOnchain => executionMode == 'onchain';
 
   const TradingPairInfo({
@@ -613,6 +617,7 @@ class TradingPairInfo {
     this.baseDecimals = 18,
     this.quoteDecimals = 18,
     this.dexPairAddress,
+    this.isActive = true,
   });
 
   factory TradingPairInfo.fromJson(Map<String, dynamic> json) {
@@ -639,6 +644,7 @@ class TradingPairInfo {
       baseDecimals: (json['base_decimals'] as num?)?.toInt() ?? 18,
       quoteDecimals: (json['quote_decimals'] as num?)?.toInt() ?? 18,
       dexPairAddress: json['dex_pair_address'] as String?,
+      isActive: json['is_active'] != false,
     );
   }
 }
