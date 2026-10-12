@@ -436,20 +436,29 @@ export async function getAmountsOut(amountIn, path, provider) {
 }
 
 /**
+ * explorer ของเชน — จากรายการเชนของเซิร์ฟเวอร์ก่อน แล้วค่อย config ในไฟล์นี้
+ *
+ * ⚠️ เดิมแคชยังไม่โหลด (หรือโหลดล้มจนเหลือแค่ BSC) แล้วตกไป BscScan ทุกเชน
+ *    ธุรกรรมบน TPIX Chain จึงได้ลิงก์ BscScan ที่หาธุรกรรมไม่เจอ — เชนที่รู้จักในไฟล์นี้ต้องได้ explorer ของตัวเอง
+ */
+function explorerFor(chainId) {
+    const id = Number(chainId);
+    if (id && _chainCache) {
+        const chain = _chainCache.find(c => Number(c.chainId) === id);
+        if (chain?.explorer) return chain.explorer;
+    }
+    if (id === TPIX_CHAIN_CONFIG.chainIdNum) return TPIX_CHAIN_CONFIG.blockExplorerUrls[0];
+    return BSC_CHAIN_CONFIG.blockExplorerUrls[0];
+}
+
+/**
  * Build block explorer transaction URL for any chain.
- * Falls back to BscScan if chain config not found.
+ * Falls back to BscScan if chain config not found (TPIX Chain uses its own explorer).
  * @param {string} txHash - Transaction hash
  * @param {number|null} chainId - Chain ID (defaults to BSC)
  */
 export function getTxUrl(txHash, chainId = null) {
-    // Synchronous lookup from cache; if no cache yet, fall back to BSC
-    if (chainId && _chainCache) {
-        const chain = _chainCache.find(c => c.chainId === chainId);
-        if (chain?.explorer) {
-            return `${chain.explorer}/tx/${txHash}`;
-        }
-    }
-    return `${BSC_CHAIN_CONFIG.blockExplorerUrls[0]}/tx/${txHash}`;
+    return `${explorerFor(chainId)}/tx/${txHash}`;
 }
 
 /**
@@ -458,13 +467,7 @@ export function getTxUrl(txHash, chainId = null) {
  * @param {number|null} chainId - Chain ID (defaults to BSC)
  */
 export function getAddressUrl(address, chainId = null) {
-    if (chainId && _chainCache) {
-        const chain = _chainCache.find(c => c.chainId === chainId);
-        if (chain?.explorer) {
-            return `${chain.explorer}/address/${address}`;
-        }
-    }
-    return `${BSC_CHAIN_CONFIG.blockExplorerUrls[0]}/address/${address}`;
+    return `${explorerFor(chainId)}/address/${address}`;
 }
 
 /**

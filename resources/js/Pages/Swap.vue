@@ -2,29 +2,50 @@
 /**
  * TPIX TRADE - Swap Page
  * DEX token swap with real Web3 integration
+ *
+ * สองเครือข่าย (ผู้ใช้เลือกได้ที่หัวการ์ด):
+ *  - TPIX Chain → พูล TPIX DEX ผ่าน useTpixDex (ทางเดียวกับ /trade) ค่าธรรมเนียม 0.3% อยู่ในพูล
+ *  - BSC        → PancakeSwap ผ่าน useSwap — ทางเดิมทุกอย่าง ผูก chain id 56 ตรง ๆ
+ * เปิดหน้ามาเป็น TPIX ก็ต่อเมื่อเซิร์ฟเวอร์ยืนยันว่า DEX พร้อม (fail-closed) ไม่งั้นเป็น BSC เหมือนเดิม
+ *
  * Developed by Xman Studio
  */
 
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Head, usePage, router } from '@inertiajs/vue3';
+import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useSwap } from '@/Composables/useSwap';
+import { useTpixDex } from '@/Composables/useTpixDex';
 import { usePlatformReadiness } from '@/Composables/usePlatformReadiness';
+import { TPIX_DEX, loadDexConfig, isDexConfigured } from '@/Config/dexContracts';
 import { getTxUrl, BSC_CHAIN_ID } from '@/utils/web3';
 import { preferredSlippage, parseSlippage, SLIPPAGE_MIN, SLIPPAGE_MAX } from '@/utils/tradeSettings';
+import {
+    SWAP_NETWORKS,
+    TPIX_CHAIN_ID,
+    PRICE_IMPACT_BLOCK_PCT,
+    chainIdForNetwork,
+    resolveSwapNetwork,
+    buildTpixTokenList,
+    defaultTokenPair,
+    sameToken,
+    isPriceImpactBlocked,
+    exceedsBalance,
+} from '@/utils/swapNetwork';
 import { useTranslation } from '@/Composables/useTranslation';
 import WalletModal from '@/Components/Wallet/WalletModal.vue';
 
 const walletStore = useWalletStore();
 const swap = useSwap();
+const dex = useTpixDex();
 const { t } = useTranslation();
 
-// swap ต้องมี fee_collector_wallet ที่แอดมินตั้งไว้ ไม่งั้น API ตอบ 503
+// swap บน BSC ต้องมี fee_collector_wallet ที่แอดมินตั้งไว้ ไม่งั้น API ตอบ 503
 // เช็กตั้งแต่ตอนเข้าหน้า ดีกว่าปล่อยให้กรอกจนจบแล้วค่อยเจอ error
 const readiness = usePlatformReadiness();
-const swapBlockedReason = computed(() => readiness.reasonFor('swap'));
 
 // Token lists (BSC mainnet addresses)
 const popularTokens = ref([
@@ -37,6 +58,42 @@ const popularTokens = ref([
     { symbol: 'DOGE', name: 'Dogecoin', address: '0xbA2aE424d960c26247Dd6c32edC70B295c744C43', decimals: 8, balance: '0.00' },
     { symbol: 'CAKE', name: 'PancakeSwap', address: '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', decimals: 18, balance: '0.00' },
 ]);
+
+// ── เครือข่าย (BSC / TPIX Chain) ────────────────────────────────────────────
+/*
+ * DEX บนเชน TPIX ใช้ได้ก็ต่อเมื่อเซิร์ฟเวอร์ยืนยันว่าสัญญามีโค้ดบนเชนจริง (isDexConfigured)
+ * ระหว่างรอคำตอบ / ไม่พร้อม = BSC เสมอ หน้านี้ทำงานแบบเดิมทุกอย่าง
+ */
+const dexChecked = computed(() => TPIX_DEX.loaded);
+const dexReady = computed(() => isDexConfigured());
+
+/** เหรียญของโหมด TPIX — สร้างจากคู่บน DEX ที่เปิดอยู่ (ที่อยู่ + decimals จากเซิร์ฟเวอร์ ตรวจซ้ำบนเชน) */
+const tpixTokens = ref([]);
+const tpixPairsLoading = ref(false);
+const tpixPairsFailed = ref(false);
+
+/** เครือข่ายที่ผู้ใช้เลือกเอง — null = ยังไม่เลือก ให้ระบบเลือกตามความพร้อมของ DEX */
+const requestedNetwork = ref(null);
+
+const network = computed(() => resolveSwapNetwork({
+    requested: requestedNetwork.value,
+    dexReady: dexReady.value,
+    tpixTokenCount: tpixTokens.value.length,
+}));
+const isTpixMode = computed(() => network.value === SWAP_NETWORKS.TPIX);
+// BSC = 56 ตรง ๆ เสมอ (chainIdForNetwork) — ห้ามใช้เชนปริยายของระบบแทน
+const activeChainId = computed(() => chainIdForNetwork(network.value));
+const activeTokens = computed(() => (isTpixMode.value ? tpixTokens.value : popularTokens.value));
+/** ตัวทำงานของเครือข่ายที่เลือก — ถือ error / txHash / สถานะกำลังทำงานของตัวเอง */
+const engine = computed(() => (isTpixMode.value ? dex : swap));
+/** เลือก TPIX แล้วแต่ยังไม่มีคู่ให้สวอป (หรือโหลดไม่สำเร็จ) — แสดงหน้าว่างแทนฟอร์ม */
+const tpixEmpty = computed(() => isTpixMode.value && tpixTokens.value.length < 2);
+
+/*
+ * ด่านกระเป๋าค่าธรรมเนียม (fee_collector_wallet) เป็นของ BSC เท่านั้น
+ * TPIX: ค่าธรรมเนียมอยู่ในพูล เซิร์ฟเวอร์บันทึกไม้จากใบเสร็จบนเชนโดยไม่ต้องใช้กระเป๋านี้ — ด่านของโหมดนี้คือ dexReady
+ */
+const swapBlockedReason = computed(() => (isTpixMode.value ? null : readiness.reasonFor('swap')));
 
 // Swap state
 const fromToken = ref(popularTokens.value[0]);
@@ -52,22 +109,31 @@ const isLoading = ref(false);
 const isSwapInFlight = ref(false); // guards the whole swap incl. the chain-switch await
 const isApproveInFlight = ref(false); // เหมือนกันสำหรับปุ่มอนุมัติ — ครอบช่วงรอสลับเชนด้วย
 const showWalletModal = ref(false);
-/** ข้อความจากการกระทำล่าสุดที่ไม่ได้มาจาก useSwap (สลับเชนไม่สำเร็จ / ราคาอัปเดต) */
+/** ข้อความจากการกระทำล่าสุดที่ไม่ได้มาจาก useSwap/useTpixDex (สลับเชนไม่สำเร็จ / ราคาอัปเดต) */
 const actionNotice = ref(null); // { type: 'error' | 'info', text }
 
 // Quote data
 const currentQuote = ref(null);
+/** เลขลำดับรอบอ่านยอดคงเหลือ (ดู refreshBalances) */
+let balanceSeq = 0;
 
 // Computed
 const isWalletConnected = computed(() => walletStore.isConnected);
 
-// ด่านยืนยันตัวตนของ "เทรด/สวอป" (แอดมินเปิด/ปิดได้) — สถานะมากับทุกหน้า
+// ด่านยืนยันตัวตนของ "เทรด/สวอป" (แอดมินเปิด/ปิดได้) — สถานะมากับทุกหน้า (ใช้กับทั้งสองเครือข่าย)
 const page = usePage();
 const kycBlocked = computed(() => {
     const gate = page.props.kyc?.features?.trading;
     return !!gate?.required && !gate?.passed;
 });
 const isOnBSC = computed(() => walletStore.isBSC);
+const isOnTpix = computed(() => Number(walletStore.chainId) === TPIX_CHAIN_ID);
+const isOnActiveNetwork = computed(() => (isTpixMode.value ? isOnTpix.value : isOnBSC.value));
+
+/** ระหว่างอนุมัติ/สวอป ห้ามสลับเครือข่าย — ธุรกรรมที่ค้างอยู่เป็นของเครือข่ายเดิม */
+const networkLocked = computed(() => isSwapInFlight.value || isApproveInFlight.value
+    || swap.isExecuting.value || swap.isApproving.value
+    || dex.isExecuting.value || dex.isApproving.value);
 
 // ── Slippage ────────────────────────────────────────────────────────────────
 /*
@@ -106,10 +172,37 @@ const feeAmount = computed(() => {
     return (amount * feeRate.value / 100).toFixed(6);
 });
 const exchangeRate = computed(() => currentQuote.value?.exchangeRate ?? null);
-const priceImpact = computed(() => currentQuote.value?.priceImpact?.toFixed(2) ?? '0');
+
+/*
+ * ผลกระทบต่อราคา — BSC แสดงแบบเดิม · TPIX ไม่รู้ค่า (อ่านพูลไม่ได้) แสดง "—" และถือว่าบล็อก
+ */
+const priceImpactKnown = computed(() => {
+    const v = currentQuote.value?.priceImpact;
+    return typeof v === 'number' && Number.isFinite(v);
+});
+const priceImpact = computed(() => {
+    if (isTpixMode.value && currentQuote.value && !priceImpactKnown.value) return '—';
+    return currentQuote.value?.priceImpact?.toFixed(2) ?? '0';
+});
+const priceImpactClass = computed(() => {
+    const v = parseFloat(priceImpact.value);
+    if (!Number.isFinite(v)) return 'text-trading-red';
+    return v > 3 ? 'text-trading-red' : v > 1 ? 'text-yellow-400' : 'text-trading-green';
+});
+/** TPIX: ไม้ที่ดันราคาพูลเกิน 10% (หรือไม่รู้ค่า) ห้ามส่ง — เพดานเดียวกับ /trade */
+const priceImpactBlocked = computed(() => isTpixMode.value
+    && !!currentQuote.value
+    && isPriceImpactBlocked(currentQuote.value.priceImpact));
+
+/** TPIX: จำนวนเกินยอดที่อ่านได้จากเชน — ปิดปุ่มก่อนเปิดป๊อปอัพกระเป๋าที่รู้อยู่แล้วว่าจะล้ม */
+const insufficientBalance = computed(() => isTpixMode.value
+    && isWalletConnected.value
+    && exceedsBalance(fromAmount.value, fromToken.value?.balanceRaw));
+
 /*
  * "ได้รับอย่างน้อย" คิดจาก slippage ที่ใช้จริงบนจอ — สูตรเดียวกับ minOut ที่ executeSwap ส่งเข้า router
  * (เดิมใช้ quote.minimumReceived ที่คิดจากค่าปริยายของ backend: เลือก 3% แต่จอบอก ×0.995)
+ * TPIX: minOut ผูกกับ amounts ของ quote บนจอเช่นกัน (useTpixDex.executeTradeSwap)
  */
 const minimumReceived = computed(() => {
     const slip = effectiveSlippage.value;
@@ -120,13 +213,54 @@ const minimumReceived = computed(() => {
 
 const needsApproval = ref(false);
 
+const swapDisabled = computed(() => !fromAmount.value || !toAmount.value || slippageInvalid.value
+    || isLoading.value || isSwapInFlight.value
+    || engine.value.isExecuting.value || engine.value.isLoadingQuote.value
+    || priceImpactBlocked.value || insufficientBalance.value);
+
+const swapButtonLabel = computed(() => {
+    if (engine.value.isExecuting.value || isSwapInFlight.value) return t('swapPage.swapping');
+    if (isLoading.value || engine.value.isLoadingQuote.value) return t('swapPage.fetchingQuote');
+    if (slippageInvalid.value) return t('swapPage.slippageInvalidShort');
+    if (insufficientBalance.value) return t('swapPage.insufficientBalance', { symbol: fromToken.value.symbol });
+    if (priceImpactBlocked.value) return t('swapPage.priceImpactTooHigh');
+    return t('swapPage.swap');
+});
+
+// ── ตรวจเหรียญบนเชน TPIX ────────────────────────────────────────────────────
+/*
+ * decimals จากเซิร์ฟเวอร์ต้องตรงกับสัญญาบนเชน — ผิดหลักเดียว = จำนวนผิดเป็นล้านเท่า
+ * ตรวจครั้งแรกตอนขอราคา แล้วจำไว้ (ที่อยู่ → decimals บนเชน) ตอนอนุมัติ/ส่งจึงไม่ต้องอ่านซ้ำ
+ * อ่านไม่ได้ = ไม่จำ (ลองใหม่ได้) และไม่ให้เดินต่อ
+ */
+const chainDecimals = new Map();
+
+/** @returns {Promise<true|string>} true = ผ่าน · string = คีย์ข้อความที่จะแสดง */
+async function verifyTpixToken(token) {
+    if (!token) return 'swapPage.tokenCheckFailed';
+    if (token.native) return true;
+
+    if (!chainDecimals.has(token.address)) {
+        const meta = await dex.readTokenMeta(token.address);
+        if (!meta || !Number.isInteger(Number(meta.decimals))) return 'swapPage.tokenCheckFailed';
+        chainDecimals.set(token.address, Number(meta.decimals));
+    }
+    return chainDecimals.get(token.address) === Number(token.decimals) ? true : 'swapPage.tokenMismatch';
+}
+
+async function verifyTpixTokens(from, to) {
+    const [a, b] = await Promise.all([verifyTpixToken(from), verifyTpixToken(to)]);
+    return a !== true ? a : b;
+}
+
 // ── Quote ───────────────────────────────────────────────────────────────────
 /*
  * ทุกคำขอราคามีเลขลำดับ (แบบ previewSeq ใน Trade.vue) — ผลที่กลับมาช้ากว่าคำขอใหม่ถูกทิ้ง
  * เดิมคำขอเก่าที่ตอบช้าทับผลของคำขอใหม่ได้ แล้ว executeSwap ใช้ quote.amountInSwapWei
  * → ผู้ใช้พิมพ์ 1 แต่ธุรกรรมส่ง 10 (หรือคนละเส้นทาง) จากราคาที่ไม่ได้อยู่บนจอ
  *
- * quote ทุกอันผูก key = เหรียญต้นทาง|ปลายทาง|จำนวน ไว้ด้วย ก่อนส่งธุรกรรมต้องตรงกับจอปัจจุบัน
+ * quote ทุกอันผูก key = เครือข่าย|เหรียญต้นทาง|ปลายทาง|จำนวน ไว้ด้วย ก่อนส่งธุรกรรมต้องตรงกับจอปัจจุบัน
+ * (ใส่เครือข่ายใน key — quote ของ BSC ต้องไม่มีวันถูกส่งเข้า router ของ TPIX และกลับกัน)
  */
 const QUOTE_DEBOUNCE_MS = 600;
 /** ราคาเก่ากว่านี้ขอใหม่ก่อนส่งธุรกรรม — ราคาบน DEX ขยับเร็ว minOut จากราคาเก่าป้องกันได้น้อยลง */
@@ -134,15 +268,16 @@ const QUOTE_MAX_AGE_MS = 30000;
 let quoteTimeout = null;
 let quoteSeq = 0;
 
-function quoteKeyFor(from, to, amount) {
+function quoteKeyFor(from, to, amount, net = network.value) {
     return [
+        net,
         String(from?.address || '').toLowerCase(),
         String(to?.address || '').toLowerCase(),
         String(amount ?? '').trim(),
     ].join('|');
 }
 
-/** quote ที่ถืออยู่เป็นของคู่/จำนวนที่อยู่บนจอตอนนี้จริงไหม */
+/** quote ที่ถืออยู่เป็นของเครือข่าย/คู่/จำนวนที่อยู่บนจอตอนนี้จริงไหม */
 function quoteMatchesScreen() {
     return !!currentQuote.value
         && currentQuote.value.key === quoteKeyFor(fromToken.value, toToken.value, fromAmount.value);
@@ -164,21 +299,52 @@ function invalidateQuotes() {
     isLoading.value = false;
 }
 
+/** เก็บยอดคงเหลือ (เต็มความละเอียดสำหรับ MAX + ตัวเลขแสดงผล) */
+function setBalance(token, balance) {
+    token.balanceRaw = balance;                     // full precision — used by MAX
+    token.balance = parseFloat(balance).toFixed(4); // display
+}
+
 async function runQuote(seq) {
+    // จับเครือข่ายไว้ตั้งแต่ต้น — ผลที่กลับมาหลังผู้ใช้สลับเครือข่ายถูกทิ้งด้วยเลขลำดับ
+    const net = network.value;
+    const tpix = net === SWAP_NETWORKS.TPIX;
+    const eng = tpix ? dex : swap;
     const from = fromToken.value;
     const to = toToken.value;
     const amountText = fromAmount.value;
-    const key = quoteKeyFor(from, to, amountText);
+    const key = quoteKeyFor(from, to, amountText, net);
 
     try {
-        // ส่ง slippage ของหน้านี้ไปด้วย — ไม่งั้น quote คิดจากค่าปริยายของ backend
-        const quote = await swap.getQuote(from, to, parseFloat(amountText), {
-            slippage: effectiveSlippage.value ?? undefined,
-        });
+        let quote;
+        if (tpix) {
+            // decimals ต้องตรงกับบนเชนก่อนจะเชื่อตัวเลขใด ๆ
+            const check = await verifyTpixTokens(from, to);
+            if (seq !== quoteSeq) return;
+            if (check !== true) {
+                actionNotice.value = { type: 'error', text: t(check) };
+                toAmount.value = '';
+                currentQuote.value = null;
+                return;
+            }
+
+            // ยอดของเหรียญต้นทางอ่านพร้อมราคา (RPC เดียวกัน) — ยอดที่ใช้ตัดสิน "ไม่พอ" สดเท่ากับราคาเสมอ
+            const [q, balance] = await Promise.all([
+                dex.getTradeQuote(from, to, parseFloat(amountText), effectiveSlippage.value ?? lastValidSlippage),
+                isWalletConnected.value ? dex.getBalance(from.address) : Promise.resolve(null),
+            ]);
+            quote = q;
+            if (seq === quoteSeq && balance !== null) setBalance(from, balance);
+        } else {
+            // ส่ง slippage ของหน้านี้ไปด้วย — ไม่งั้น quote คิดจากค่าปริยายของ backend
+            quote = await swap.getQuote(from, to, parseFloat(amountText), {
+                slippage: effectiveSlippage.value ?? undefined,
+            });
+        }
 
         if (seq !== quoteSeq) {
             // ผลเก่าที่ล้มเหลวอาจเขียน error ทับหลังคำขอใหม่สำเร็จไปแล้ว — ล้างให้ตรงกับจอ
-            if (!quote && quoteMatchesScreen()) swap.error.value = null;
+            if (!quote && quoteMatchesScreen()) eng.error.value = null;
             return;
         }
 
@@ -188,15 +354,17 @@ async function runQuote(seq) {
             return;
         }
 
-        swap.error.value = null;
+        eng.error.value = null;
         currentQuote.value = { ...quote, key, quotedAt: Date.now() };
         toAmount.value = quote.netOutput.toFixed(6);
 
         // Check if approval is needed (ของเหรียญ/จำนวนเดียวกับ quote นี้)
         if (isWalletConnected.value) {
-            const allowed = await swap.checkAllowance(from.address, amountText, from.decimals);
+            const needs = tpix
+                ? await dex.needsApproval(from.address, amountText, from.decimals)
+                : !(await swap.checkAllowance(from.address, amountText, from.decimals));
             if (seq !== quoteSeq) return;
-            needsApproval.value = !allowed;
+            needsApproval.value = needs;
         } else {
             needsApproval.value = false;
         }
@@ -216,7 +384,7 @@ function scheduleQuote(delay = QUOTE_DEBOUNCE_MS) {
     actionNotice.value = null;
 
     const amount = parseFloat(fromAmount.value);
-    if (!fromAmount.value || !(amount > 0)) {
+    if (!fromAmount.value || !(amount > 0) || tpixEmpty.value) {
         resetQuote();
         return;
     }
@@ -238,7 +406,18 @@ async function requoteNow() {
     return seq === quoteSeq && quoteMatchesScreen() ? currentQuote.value : null;
 }
 
-watch(fromAmount, () => scheduleQuote());
+/**
+ * ผู้ใช้เริ่มกรอก/เลือกเหรียญแล้ว — ตรึงเครือข่ายที่เห็นอยู่
+ * กันฟอร์มถูกล้างกลางทางเพราะคำตอบ DEX config มาถึงทีหลังแล้วสลับเครือข่ายให้เอง
+ */
+function pinNetwork() {
+    if (requestedNetwork.value === null) requestedNetwork.value = network.value;
+}
+
+watch(fromAmount, (value) => {
+    if (value) pinNetwork();
+    scheduleQuote();
+});
 
 // เปลี่ยน slippage → ขอราคาใหม่ (หน่วงเวลา) ให้ตัวเลขบนจอมาจากค่าเดียวกับที่จะส่งจริง
 watch(effectiveSlippage, (value, previous) => {
@@ -249,6 +428,7 @@ watch(effectiveSlippage, (value, previous) => {
 // Cleanup debounce timeout on unmount to prevent memory leak
 onUnmounted(() => {
     invalidateQuotes();
+    balanceSeq++;
 });
 
 // Watch wallet connection to refresh balances
@@ -256,15 +436,19 @@ watch(() => walletStore.isConnected, async (connected) => {
     if (connected) {
         await refreshBalances();
     } else {
-        popularTokens.value.forEach(token => { token.balance = '0.00'; token.balanceRaw = '0'; });
+        balanceSeq++;   // ยอดที่กำลังอ่านอยู่เป็นของกระเป๋าที่เพิ่งตัดการเชื่อม — ทิ้ง
+        [...popularTokens.value, ...tpixTokens.value].forEach((token) => {
+            token.balance = '0.00';
+            token.balanceRaw = '0';
+        });
     }
 });
 
-// สลับกระเป๋า → allowance ที่เช็กไว้เป็นของใบเก่า ต้องเช็กใหม่ (ไม่งั้นข้ามขั้นอนุมัติแล้ว revert)
+// สลับกระเป๋า → allowance/ยอดที่เช็กไว้เป็นของใบเก่า ต้องเช็กใหม่ (ไม่งั้นข้ามขั้นอนุมัติแล้ว revert)
 watch(() => walletStore.address, (address, previous) => {
-    if (address && address !== previous && fromAmount.value && parseFloat(fromAmount.value) > 0) {
-        scheduleQuote(0);
-    }
+    if (!address || address === previous) return;
+    if (previous) refreshBalances();
+    if (fromAmount.value && parseFloat(fromAmount.value) > 0) scheduleQuote(0);
 });
 
 // Watch token changes to refresh quote
@@ -274,7 +458,72 @@ watch([fromToken, toToken], () => {
     resetQuote();
 });
 
+/**
+ * เปลี่ยนเครือข่าย (ผู้ใช้กดเอง / DEX พร้อม / รายการเหรียญ TPIX โหลดใหม่)
+ * ล้างทุกอย่างของเครือข่ายเก่า: ราคาที่รออยู่ · จำนวน · ข้อความ error · ลิงก์ธุรกรรม
+ * แล้วตั้งคู่เริ่มต้นของเครือข่ายใหม่ (TPIX: TPIX → USDT · BSC: BNB → USDT เหมือนเดิม)
+ */
+function applyNetworkDefaults() {
+    invalidateQuotes();
+    actionNotice.value = null;
+    for (const eng of [swap, dex]) {
+        eng.error.value = null;
+        eng.txHash.value = null;
+        eng.txStatus.value = null;
+    }
+
+    if (isTpixMode.value) {
+        const pair = defaultTokenPair(tpixTokens.value);
+        if (pair) {
+            fromToken.value = pair.from;
+            toToken.value = pair.to;
+        }
+    } else {
+        fromToken.value = popularTokens.value[0];
+        toToken.value = popularTokens.value[1];
+    }
+
+    fromAmount.value = '';
+    resetQuote();
+    refreshBalances();
+}
+
+watch([network, tpixTokens], ([net], [previousNet]) => {
+    // รายการเหรียญ TPIX เปลี่ยนขณะอยู่บน BSC ไม่ต้องทำอะไร
+    if (net !== previousNet || net === SWAP_NETWORKS.TPIX) applyNetworkDefaults();
+});
+
+/** ผู้ใช้กดเลือกเครือข่าย — TPIX กดได้เมื่อ DEX พร้อมเท่านั้น */
+function selectNetwork(net) {
+    if (networkLocked.value) return;
+    if (net === SWAP_NETWORKS.TPIX && !dexReady.value) return;
+    requestedNetwork.value = net;
+    if (net === SWAP_NETWORKS.TPIX && tpixTokens.value.length < 2 && !tpixPairsLoading.value) {
+        loadTpixPairs();
+    }
+}
+
+/** คู่บน TPIX DEX → รายการเหรียญ (เรียกซ้ำได้จากปุ่มลองใหม่) */
+async function loadTpixPairs() {
+    if (!dexReady.value || tpixPairsLoading.value) return;
+    tpixPairsLoading.value = true;
+    tpixPairsFailed.value = false;
+    try {
+        const { data } = await axios.get('/api/v1/dex/pairs');
+        if (data?.success) {
+            tpixTokens.value = buildTpixTokenList(data.data);
+        } else {
+            tpixPairsFailed.value = true;
+        }
+    } catch {
+        tpixPairsFailed.value = true;
+    } finally {
+        tpixPairsLoading.value = false;
+    }
+}
+
 const swapTokens = () => {
+    pinNetwork();
     const temp = fromToken.value;
     fromToken.value = toToken.value;
     toToken.value = temp;
@@ -288,12 +537,14 @@ const openTokenSelector = (mode) => {
     showTokenSelector.value = true;
 };
 
+// เทียบด้วยที่อยู่ ไม่ใช่สัญลักษณ์ — บนเชน TPIX สัญลักษณ์ซ้ำกันได้
 const selectToken = (token) => {
+    pinNetwork();
     if (tokenSelectorMode.value === 'from') {
-        if (token.symbol === toToken.value.symbol) swapTokens();
+        if (sameToken(token, toToken.value)) swapTokens();
         else fromToken.value = token;
     } else {
-        if (token.symbol === fromToken.value.symbol) swapTokens();
+        if (sameToken(token, fromToken.value)) swapTokens();
         else toToken.value = token;
     }
     showTokenSelector.value = false;
@@ -304,15 +555,23 @@ const selectToken = (token) => {
 
 const slippageOptions = [0.1, 0.5, 1.0, 3.0];
 
-// Fetch real token balances (always read from BSC — swaps are BSC-only)
+/*
+ * ยอดคงเหลือของรายการเหรียญที่อยู่บนจอ
+ * BSC อ่านจาก BSC RPC (useSwap) · TPIX อ่านจาก RPC ของเชน TPIX (useTpixDex) — ถูกต้องไม่ว่ากระเป๋าอยู่เชนไหน
+ * balanceSeq กันผลของรอบเก่า (เครือข่าย/กระเป๋าเดิม) มาเขียนทับรอบใหม่
+ */
 async function refreshBalances() {
     if (!walletStore.isConnected) return;
-    for (const token of popularTokens.value) {
+    const seq = ++balanceSeq;
+    const tpix = isTpixMode.value;
+    const tokens = [...(tpix ? tpixTokens.value : popularTokens.value)];
+    for (const token of tokens) {
         try {
-            const balance = await swap.getBalance(token.address);
-            token.balanceRaw = balance;                     // full precision — used by MAX
-            token.balance = parseFloat(balance).toFixed(4); // display
+            const balance = await (tpix ? dex.getBalance(token.address) : swap.getBalance(token.address));
+            if (seq !== balanceSeq) return;
+            setBalance(token, balance);
         } catch {
+            if (seq !== balanceSeq) return;
             token.balanceRaw = '0';
             token.balance = '0.00';
         }
@@ -348,26 +607,80 @@ async function ensureOnBsc() {
     return true;
 }
 
+/**
+ * สลับกระเป๋าไป TPIX Chain (4289) ถ้ายังไม่อยู่ — คู่กับ ensureOnBsc
+ * กระเป๋าฝัง (TPIX Wallet) อยู่บน TPIX อยู่แล้ว ไม่มีป๊อปอัพ
+ */
+async function ensureOnTpix() {
+    if (isOnTpix.value) return true;
+
+    try {
+        await walletStore.switchChain(TPIX_CHAIN_ID);
+    } catch (err) {
+        const key = err?.code === 4001 || err?.code === 'ACTION_REJECTED'
+            ? 'swapPage.tpixSwitchCancelled'
+            : 'swapPage.tpixSwitchFailed';
+        actionNotice.value = { type: 'error', text: t(key) };
+        return false;
+    }
+
+    if (!isOnTpix.value) {
+        actionNotice.value = { type: 'error', text: t('swapPage.tpixSwitchFailed') };
+        return false;
+    }
+    return true;
+}
+
+/** สลับไปเครือข่ายที่เลือกบนจอ (ปุ่ม "สลับ" ในแถบเตือน) */
+function ensureOnActiveNetwork() {
+    return isTpixMode.value ? ensureOnTpix() : ensureOnBsc();
+}
+
 // Handle approval
 async function handleApprove() {
-    if (isApproveInFlight.value || swap.isApproving.value) return;   // กันกดรัวระหว่างรอสลับเชน/เซ็น
+    // กันกดรัวระหว่างรอสลับเชน/เซ็น
+    if (isApproveInFlight.value || swap.isApproving.value || dex.isApproving.value) return;
 
     if (!isWalletConnected.value) {
         showWalletModal.value = true;
         return;
     }
 
+    const tpix = isTpixMode.value;
     isApproveInFlight.value = true;
     actionNotice.value = null;
     try {
         /*
-         * ต้องอยู่บน BSC ก่อนอนุมัติ — เดิมปุ่มนี้ไม่สลับเชน (ปุ่มสวอปสลับ)
-         * อนุมัติเลยไปเกิดบนเชนที่กระเป๋าอยู่ (เช่น TPIX) → allowance บน BSC ยังเป็นศูนย์
+         * ต้องอยู่บนเชนของเครือข่ายที่เลือกก่อนอนุมัติ — เดิมปุ่มนี้ไม่สลับเชน (ปุ่มสวอปสลับ)
+         * อนุมัติเลยไปเกิดบนเชนที่กระเป๋าอยู่ → allowance บนเชนที่จะสวอปยังเป็นศูนย์
          * แล้วสวอป revert ทั้งที่ผู้ใช้เพิ่งกดอนุมัติไป
          */
-        if (!(await ensureOnBsc())) return;
+        if (!(await (tpix ? ensureOnTpix() : ensureOnBsc()))) return;
 
-        const approvedAddress = fromToken.value.address;
+        const token = fromToken.value;
+        const approvedAddress = token.address;
+
+        if (tpix) {
+            const check = await verifyTpixToken(token);
+            if (check !== true) {
+                actionNotice.value = { type: 'error', text: t(check) };
+                return;
+            }
+
+            // อนุมัติเท่าจำนวนที่จะสวอปพอดี (แบบเดียวกับ /trade) — ไม่เปิดวงเงินไม่จำกัดให้ router
+            const amountText = fromAmount.value;
+            const ok = await dex.approveToken(approvedAddress, amountText, token.decimals);
+            if (!ok) return;   // dex.error มีข้อความพร้อมแสดงแล้ว (รวมกรณีกดปฏิเสธในกระเป๋า)
+
+            // ผู้ใช้เปลี่ยนเหรียญ/จำนวนระหว่างรอเซ็น — วงเงินที่อนุมัติอาจไม่พอ ต้องเช็กใหม่
+            if (sameToken(fromToken.value, token) && fromAmount.value === amountText) {
+                needsApproval.value = false;
+            } else if (fromAmount.value && parseFloat(fromAmount.value) > 0) {
+                scheduleQuote(0);
+            }
+            return;
+        }
+
         await swap.approveToken(approvedAddress);
 
         // ผู้ใช้เปลี่ยนเหรียญระหว่างรอเซ็น/รอบล็อก — ผลนี้เป็นของเหรียญเก่า ห้ามไปปิดสถานะของเหรียญใหม่
@@ -387,7 +700,7 @@ async function handleApprove() {
 async function executeSwap() {
     // Re-entrancy / double-tap guard — covers the chain-switch await window too,
     // so a second tap during switchChain() can't fire a second transaction.
-    if (isSwapInFlight.value || swap.isExecuting.value || isLoading.value || swap.isLoadingQuote.value) return;
+    if (isSwapInFlight.value || engine.value.isExecuting.value || isLoading.value || engine.value.isLoadingQuote.value) return;
     if (!fromAmount.value || !toAmount.value || !currentQuote.value) return;
 
     if (!isWalletConnected.value) {
@@ -407,11 +720,17 @@ async function executeSwap() {
         return;
     }
 
+    // TPIX: ยอดไม่พอ / ราคาขยับแรงเกิน (ปุ่มถูกปิดอยู่แล้ว — กันอีกชั้น)
+    if (insufficientBalance.value || priceImpactBlocked.value) return;
+
+    const net = network.value;
+    const tpix = net === SWAP_NETWORKS.TPIX;
+
     isSwapInFlight.value = true;
     actionNotice.value = null;
     try {
-        // Swaps run on BSC — switch first.
-        if (!(await ensureOnBsc())) return;
+        // สลับเชนก่อนเสมอ — BSC = 56 · TPIX = 4289
+        if (!(await (tpix ? ensureOnTpix() : ensureOnBsc()))) return;
 
         /*
          * ราคาที่จะส่งเข้า router ต้องเป็นของจำนวน/คู่ที่อยู่บนจอ "ตอนนี้"
@@ -434,17 +753,43 @@ async function executeSwap() {
             }
         }
 
+        if (tpix) {
+            // decimals ตรวจไว้แล้วตอนขอราคา (จำไว้) — เรียกซ้ำกันกรณีเหรียญถูกเปลี่ยนระหว่างทาง
+            const check = await verifyTpixTokens(fromToken.value, toToken.value);
+            if (check !== true) {
+                actionNotice.value = { type: 'error', text: t(check) };
+                return;
+            }
+            if (needsApproval.value) return;   // ปุ่มเปลี่ยนเป็น "อนุมัติ" แล้ว
+        }
+
         // เช็กรอบสุดท้ายแบบไม่มี await คั่น — สิ่งที่ส่งต้องเป็นสิ่งที่อยู่บนจอเป๊ะ
         const slip = effectiveSlippage.value;
-        if (slip === null || !quoteMatchesScreen()) return;
+        if (slip === null || network.value !== net || !quoteMatchesScreen()) return;
 
-        await swap.executeSwap(
-            fromToken.value,
-            toToken.value,
-            parseFloat(fromAmount.value),
-            currentQuote.value,
-            slip,
-        );
+        if (tpix) {
+            const quote = currentQuote.value;
+            // ราคาใหม่ที่เพิ่งขอมาอาจดันพูลแรงขึ้น / ยอดอาจลดลง — ตัดสินจากตัวที่จะส่งจริง
+            if (isPriceImpactBlocked(quote.priceImpact)) return;
+            if (exceedsBalance(fromAmount.value, fromToken.value.balanceRaw)) return;
+
+            // minOut ผูกกับ amounts ของ quote บนจอ · บันทึกประวัติ (fee_amount 0 — ค่าธรรมเนียมอยู่ในพูล) ให้แล้ว
+            await dex.executeTradeSwap(
+                fromToken.value,
+                toToken.value,
+                parseFloat(fromAmount.value),
+                quote,
+                slip,
+            );
+        } else {
+            await swap.executeSwap(
+                fromToken.value,
+                toToken.value,
+                parseFloat(fromAmount.value),
+                currentQuote.value,
+                slip,
+            );
+        }
 
         // Refresh balances after swap, then reset the form
         await refreshBalances();
@@ -452,7 +797,7 @@ async function executeSwap() {
         fromAmount.value = '';
         resetQuote();
     } catch (err) {
-        // Error is already set in swap composable
+        // Error is already set in the swap composable (useSwap / useTpixDex)
     } finally {
         isSwapInFlight.value = false;
     }
@@ -470,7 +815,8 @@ function setMaxAmount() {
     const [intPart, fracPart = ''] = raw.split('.');
     const truncated = dec > 0 && fracPart ? `${intPart}.${fracPart.slice(0, dec)}` : intPart;
 
-    if (fromToken.value.symbol === 'BNB') {
+    // กันค่าแก๊สเฉพาะ BNB บน BSC — เชน TPIX ค่าแก๊สเป็นศูนย์ (gasPrice 0) ใช้ได้เต็มยอด
+    if (!isTpixMode.value && fromToken.value.symbol === 'BNB') {
         // Reserve a little BNB for gas (covers both the swap and the fee transfer).
         fromAmount.value = Math.max(parseFloat(truncated) - 0.005, 0).toString();
     } else {
@@ -478,10 +824,17 @@ function setMaxAmount() {
     }
 }
 
+/** DEX config → (ถ้าพร้อม) รายการเหรียญ TPIX — ผลของสองขั้นนี้ตัดสินว่าเปิดหน้ามาเป็นเครือข่ายไหน */
+async function initTpixNetwork() {
+    await loadDexConfig();
+    if (dexReady.value) await loadTpixPairs();
+}
+
 // Load balances on mount if wallet is connected
 onMounted(async () => {
     // ถามก่อนว่าบริการเปิดจริงไหม — ไม่รอผลนี้ก่อนโหลดยอด เพราะเป็นคนละเรื่องกัน
     readiness.load();
+    initTpixNetwork();
 
     if (walletStore.isConnected) {
         await refreshBalances();
@@ -497,13 +850,13 @@ onMounted(async () => {
             <div class="w-full max-w-md">
 
                 <!-- Network Warning -->
-                <div v-if="isWalletConnected && !isOnBSC" class="mb-4 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm flex items-center gap-3">
+                <div v-if="isWalletConnected && !isOnActiveNetwork && !tpixEmpty" data-test="network-warning" class="mb-4 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm flex items-center gap-3">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
                     </svg>
-                    <span>{{ t('swapPage.switchPrompt') }}</span>
-                    <!-- ผ่าน ensureOnBsc — ผู้ใช้กดยกเลิกในกระเป๋าต้องได้ข้อความ ไม่ใช่ promise reject เงียบๆ -->
-                    <button type="button" @click="ensureOnBsc" class="ml-auto px-3 py-1 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-medium transition-colors">
+                    <span>{{ isTpixMode ? t('swapPage.switchPromptTpix') : t('swapPage.switchPrompt') }}</span>
+                    <!-- ผ่าน ensureOnBsc/ensureOnTpix — ผู้ใช้กดยกเลิกในกระเป๋าต้องได้ข้อความ ไม่ใช่ promise reject เงียบๆ -->
+                    <button type="button" @click="ensureOnActiveNetwork" class="ml-auto px-3 py-1 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-medium transition-colors">
                         {{ t('swapPage.switch') }}
                     </button>
                 </div>
@@ -530,6 +883,38 @@ onMounted(async () => {
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                 </svg>
                             </button>
+                        </div>
+
+                        <!-- Network selector — TPIX กดได้เมื่อ DEX พร้อมเท่านั้น · ล็อกระหว่างอนุมัติ/สวอป -->
+                        <div class="mb-4" data-test="network-selector">
+                            <div class="flex items-center gap-1 p-1 rounded-xl bg-dark-800/60 border border-white/5" role="group" :aria-label="t('swapPage.network')">
+                                <button
+                                    type="button"
+                                    data-test="network-tpix"
+                                    :aria-pressed="isTpixMode"
+                                    :disabled="!dexReady || networkLocked"
+                                    @click="selectNetwork(SWAP_NETWORKS.TPIX)"
+                                    class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    :class="isTpixMode ? 'bg-primary-500/20 text-primary-300 border-primary-500/30' : 'text-dark-400 hover:text-white border-transparent'"
+                                >
+                                    <CoinIcon symbol="TPIX" size="xs" />
+                                    {{ t('swapPage.networkTpix') }}
+                                </button>
+                                <button
+                                    type="button"
+                                    data-test="network-bsc"
+                                    :aria-pressed="!isTpixMode"
+                                    :disabled="networkLocked"
+                                    @click="selectNetwork(SWAP_NETWORKS.BSC)"
+                                    class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    :class="!isTpixMode ? 'bg-primary-500/20 text-primary-300 border-primary-500/30' : 'text-dark-400 hover:text-white border-transparent'"
+                                >
+                                    <CoinIcon symbol="BNB" size="xs" />
+                                    {{ t('swapPage.networkBsc') }}
+                                </button>
+                            </div>
+                            <p v-if="!dexChecked" class="mt-1.5 text-[11px] text-dark-500" data-test="tpix-checking">{{ t('swapPage.tpixChecking') }}</p>
+                            <p v-else-if="!dexReady" class="mt-1.5 text-[11px] text-dark-400" data-test="tpix-coming-soon">{{ t('swapPage.tpixComingSoon') }}</p>
                         </div>
 
                         <!-- Slippage Settings -->
@@ -580,6 +965,23 @@ onMounted(async () => {
                             </div>
                         </Transition>
 
+                        <!-- TPIX เลือกแล้วแต่ยังไม่มีคู่ให้สวอป — บอกตรง ๆ + ลองโหลดใหม่ (ไม่โชว์ฟอร์มที่ใช้ไม่ได้) -->
+                        <div v-if="tpixEmpty" data-test="tpix-empty" class="rounded-xl bg-dark-800/40 border border-white/5 p-5 text-center">
+                            <p v-if="tpixPairsLoading" class="text-sm text-dark-400 animate-pulse">{{ t('common.loading') }}</p>
+                            <template v-else>
+                                <p class="text-sm text-dark-300">{{ tpixPairsFailed ? t('swapPage.tpixPairsFailed') : t('swapPage.tpixNoPairs') }}</p>
+                                <button
+                                    type="button"
+                                    data-test="tpix-retry"
+                                    @click="loadTpixPairs"
+                                    class="mt-3 px-3 py-1.5 text-xs rounded-lg bg-white/5 hover:bg-white/10 text-dark-200 transition-colors"
+                                >
+                                    {{ t('swapPage.retry') }}
+                                </button>
+                            </template>
+                        </div>
+
+                        <template v-else>
                         <!-- From Token -->
                         <div class="rounded-xl bg-dark-800/40 border border-white/5 p-4 hover:border-white/10 transition-colors">
                             <div class="flex items-center justify-between mb-2">
@@ -604,10 +1006,12 @@ onMounted(async () => {
                                     class="flex-1 bg-transparent text-2xl font-semibold text-white placeholder-dark-600 focus:outline-none min-w-0"
                                 />
                                 <button
+                                    type="button"
+                                    data-test="from-token"
                                     @click="openTokenSelector('from')"
                                     class="flex items-center gap-2 px-3 py-2 rounded-xl bg-dark-700/60 hover:bg-dark-600/60 border border-white/5 hover:border-white/10 transition-all flex-shrink-0"
                                 >
-                                    <CoinIcon :symbol="fromToken.symbol" size="sm" />
+                                    <CoinIcon :symbol="fromToken.symbol" :src="fromToken.logo || null" size="sm" />
                                     <span class="font-semibold text-white text-sm">{{ fromToken.symbol }}</span>
                                     <svg class="w-3.5 h-3.5 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -619,6 +1023,8 @@ onMounted(async () => {
                         <!-- Swap Direction Button -->
                         <div class="flex justify-center -my-2.5 relative z-10">
                             <button
+                                type="button"
+                                data-test="flip-tokens"
                                 @click="swapTokens"
                                 class="w-9 h-9 rounded-full bg-dark-800 border-4 border-dark-950/80 flex items-center justify-center text-dark-400 hover:text-primary-400 hover:border-primary-500/30 transition-all hover:rotate-180 duration-300"
                             >
@@ -635,14 +1041,16 @@ onMounted(async () => {
                                 <span class="text-xs text-dark-500">{{ t('swapPage.balance', { amount: toToken.balance }) }}</span>
                             </div>
                             <div class="flex items-center gap-3">
-                                <div class="flex-1 text-2xl font-semibold min-w-0 truncate" :class="isLoading || swap.isLoadingQuote.value ? 'text-dark-500 animate-pulse' : toAmount ? 'text-white' : 'text-dark-600'">
-                                    {{ (isLoading || swap.isLoadingQuote.value) ? t('common.loading') : (toAmount || '0.0') }}
+                                <div class="flex-1 text-2xl font-semibold min-w-0 truncate" :class="isLoading || engine.isLoadingQuote.value ? 'text-dark-500 animate-pulse' : toAmount ? 'text-white' : 'text-dark-600'">
+                                    {{ (isLoading || engine.isLoadingQuote.value) ? t('common.loading') : (toAmount || '0.0') }}
                                 </div>
                                 <button
+                                    type="button"
+                                    data-test="to-token"
                                     @click="openTokenSelector('to')"
                                     class="flex items-center gap-2 px-3 py-2 rounded-xl bg-dark-700/60 hover:bg-dark-600/60 border border-white/5 hover:border-white/10 transition-all flex-shrink-0"
                                 >
-                                    <CoinIcon :symbol="toToken.symbol" size="sm" />
+                                    <CoinIcon :symbol="toToken.symbol" :src="toToken.logo || null" size="sm" />
                                     <span class="font-semibold text-white text-sm">{{ toToken.symbol }}</span>
                                     <svg class="w-3.5 h-3.5 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -659,15 +1067,15 @@ onMounted(async () => {
                             1 {{ fromToken.symbol }} = {{ exchangeRate.toFixed(4) }} {{ toToken.symbol }}
                         </div>
 
-                        <!-- Error -->
-                        <div v-if="swap.error.value" class="mt-3 p-3 rounded-xl bg-trading-red/10 border border-trading-red/20 text-trading-red text-sm flex items-center gap-2">
+                        <!-- Error (จาก useSwap หรือ useTpixDex ตามเครือข่าย — ข้อความแปลแล้ว ไม่ใช่ error ดิบ) -->
+                        <div v-if="engine.error.value" data-test="swap-error" class="mt-3 p-3 rounded-xl bg-trading-red/10 border border-trading-red/20 text-trading-red text-sm flex items-center gap-2">
                             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
-                            {{ swap.error.value }}
+                            {{ engine.error.value }}
                         </div>
 
-                        <!-- สลับเชนไม่สำเร็จ / ราคาอัปเดตก่อนส่ง — ไม่ได้มาจาก useSwap จึงแยกช่อง -->
+                        <!-- สลับเชนไม่สำเร็จ / ราคาอัปเดตก่อนส่ง — ไม่ได้มาจาก composable จึงแยกช่อง -->
                         <div
                             v-if="actionNotice"
                             data-test="swap-action-notice"
@@ -682,16 +1090,16 @@ onMounted(async () => {
                             {{ actionNotice.text }}
                         </div>
 
-                        <!-- Success -->
-                        <div v-if="swap.txHash.value && swap.txStatus.value === 'confirmed'" class="mt-3 p-3 rounded-xl bg-trading-green/10 border border-trading-green/20 text-trading-green text-sm">
+                        <!-- Success — ลิงก์ explorer ของเชนที่สวอปจริง -->
+                        <div v-if="engine.txHash.value && engine.txStatus.value === 'confirmed'" data-test="swap-success" class="mt-3 p-3 rounded-xl bg-trading-green/10 border border-trading-green/20 text-trading-green text-sm">
                             <div class="flex items-center gap-2">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                                 </svg>
                                 <span class="font-medium">{{ t('swapPage.confirmed') }}</span>
                             </div>
-                            <a :href="getTxUrl(swap.txHash.value, BSC_CHAIN_ID)" target="_blank" rel="noopener" class="text-xs underline mt-1 block text-trading-green/70 hover:text-trading-green">
-                                {{ t('swapPage.viewOnBscScan') }}
+                            <a :href="getTxUrl(engine.txHash.value, activeChainId)" data-test="swap-tx-link" target="_blank" rel="noopener" class="text-xs underline mt-1 block text-trading-green/70 hover:text-trading-green">
+                                {{ isTpixMode ? t('swapPage.viewOnTpixExplorer') : t('swapPage.viewOnBscScan') }}
                             </a>
                         </div>
 
@@ -699,15 +1107,21 @@ onMounted(async () => {
                         <div v-if="fromAmount && parseFloat(fromAmount) > 0 && currentQuote" class="mt-3 rounded-xl bg-dark-800/30 border border-white/5 overflow-hidden">
                             <div class="p-3 space-y-2 text-xs">
                                 <div class="flex items-center justify-between">
-                                    <span class="text-dark-400">{{ t('swapPage.platformFee') }} <span class="text-accent-400">({{ feeRate }}%)</span></span>
+                                    <span class="text-dark-400">{{ isTpixMode ? t('swapPage.poolFee') : t('swapPage.platformFee') }} <span class="text-accent-400">({{ feeRate }}%)</span></span>
                                     <span class="text-dark-300 font-mono">{{ feeAmount }} {{ fromToken.symbol }}</span>
                                 </div>
                                 <div class="flex items-center justify-between">
                                     <span class="text-dark-400">{{ t('swap.priceImpact') }}</span>
-                                    <span :class="parseFloat(priceImpact) > 3 ? 'text-trading-red' : parseFloat(priceImpact) > 1 ? 'text-yellow-400' : 'text-trading-green'" class="font-mono">
+                                    <span :class="priceImpactClass" class="font-mono" data-test="price-impact">
                                         {{ priceImpact }}%
                                     </span>
                                 </div>
+                                <!-- TPIX: ไม้ใหญ่เกินพูล / ตรวจผลกระทบไม่ได้ — ปุ่มสวอปถูกปิด บอกเหตุผลตรงนี้ -->
+                                <p v-if="priceImpactBlocked" class="text-[11px] text-trading-red leading-relaxed" data-test="price-impact-blocked">
+                                    {{ priceImpactKnown
+                                        ? t('swapPage.priceImpactBlocked', { impact: currentQuote.priceImpact.toFixed(2), limit: PRICE_IMPACT_BLOCK_PCT })
+                                        : t('swapPage.priceImpactUnknown') }}
+                                </p>
                                 <div class="flex items-center justify-between">
                                     <span class="text-dark-400">{{ t('swapPage.slippage') }}</span>
                                     <span
@@ -773,56 +1187,56 @@ onMounted(async () => {
                             <p class="mt-2 text-xs text-amber-300/90 text-center">{{ t('trade.form.kycHint') }}</p>
                         </template>
 
-                        <button
-                            v-else-if="needsApproval && fromAmount && currentQuote"
-                            type="button"
-                            data-test="approve-button"
-                            :disabled="swap.isApproving.value || isApproveInFlight"
-                            class="w-full mt-4 py-3.5 text-base rounded-xl font-semibold transition-all disabled:opacity-40 bg-accent-500/20 text-accent-400 border border-accent-500/30 hover:bg-accent-500/30"
-                            @click="handleApprove"
-                        >
-                            {{ (swap.isApproving.value || isApproveInFlight) ? t('swapPage.approving') : t('swapPage.approve', { symbol: fromToken.symbol }) }}
-                        </button>
+                        <!-- ยอดไม่พอ / ราคาขยับเกินเพดาน (TPIX) — ไม่ชวนให้อนุมัติไม้ที่ส่งไม่ได้อยู่แล้ว ปุ่มสวอปบอกเหตุผลแทน -->
+                        <template v-else-if="needsApproval && fromAmount && currentQuote && !insufficientBalance && !priceImpactBlocked">
+                            <button
+                                type="button"
+                                data-test="approve-button"
+                                :disabled="engine.isApproving.value || isApproveInFlight"
+                                class="w-full mt-4 py-3.5 text-base rounded-xl font-semibold transition-all disabled:opacity-40 bg-accent-500/20 text-accent-400 border border-accent-500/30 hover:bg-accent-500/30"
+                                @click="handleApprove"
+                            >
+                                {{ (engine.isApproving.value || isApproveInFlight) ? t('swapPage.approving') : t('swapPage.approve', { symbol: fromToken.symbol }) }}
+                            </button>
+                            <p v-if="isTpixMode" class="mt-2 text-[11px] text-dark-400 text-center">{{ t('swapPage.approveExactHint') }}</p>
+                        </template>
 
                         <button
                             v-else
                             type="button"
                             data-test="swap-button"
-                            :disabled="!fromAmount || !toAmount || slippageInvalid || isLoading || isSwapInFlight || swap.isExecuting.value || swap.isLoadingQuote.value"
+                            :disabled="swapDisabled"
                             class="w-full mt-4 btn-primary py-3.5 text-base disabled:opacity-40"
                             @click="executeSwap"
                         >
-                            {{ (swap.isExecuting.value || isSwapInFlight)
-                                ? t('swapPage.swapping')
-                                : (isLoading || swap.isLoadingQuote.value)
-                                    ? t('swapPage.fetchingQuote')
-                                    : slippageInvalid ? t('swapPage.slippageInvalidShort') : t('swapPage.swap') }}
+                            {{ swapButtonLabel }}
                         </button>
+                        </template>
 
                         <!-- Powered by -->
                         <div class="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-dark-500">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                             </svg>
-                            {{ t('swapPage.poweredBy') }}
+                            {{ isTpixMode ? t('swapPage.poweredByTpix') : t('swapPage.poweredBy') }}
                         </div>
                     </div>
                 </div>
 
                 <!-- Route Info -->
-                <div class="mt-4 p-3 rounded-xl bg-dark-900/60 border border-white/5">
+                <div v-if="!tpixEmpty" class="mt-4 p-3 rounded-xl bg-dark-900/60 border border-white/5">
                     <div class="flex items-center gap-3 text-xs">
                         <div class="flex items-center gap-1.5">
-                            <CoinIcon :symbol="fromToken.symbol" size="xs" />
+                            <CoinIcon :symbol="fromToken.symbol" :src="fromToken.logo || null" size="xs" />
                             <span class="text-dark-300 font-medium">{{ fromToken.symbol }}</span>
                         </div>
                         <div class="flex-1 border-t border-dashed border-dark-700 relative">
                             <div class="absolute inset-x-0 -top-2 flex justify-center">
-                                <span class="px-1.5 bg-dark-950 text-[10px] text-primary-400/70">PancakeSwap V2</span>
+                                <span class="px-1.5 bg-dark-950 text-[10px] text-primary-400/70">{{ isTpixMode ? 'TPIX DEX' : 'PancakeSwap V2' }}</span>
                             </div>
                         </div>
                         <div class="flex items-center gap-1.5">
-                            <CoinIcon :symbol="toToken.symbol" size="xs" />
+                            <CoinIcon :symbol="toToken.symbol" :src="toToken.logo || null" size="xs" />
                             <span class="text-dark-300 font-medium">{{ toToken.symbol }}</span>
                         </div>
                     </div>
@@ -831,7 +1245,7 @@ onMounted(async () => {
                             <span class="w-1.5 h-1.5 rounded-full" :class="isWalletConnected ? 'bg-trading-green animate-pulse' : 'bg-dark-600'"></span>
                             {{ isWalletConnected ? t('swapPage.connected') : t('swapPage.notConnected') }}
                         </span>
-                        <span>BSC Mainnet</span>
+                        <span>{{ isTpixMode ? 'TPIX Chain' : 'BSC Mainnet' }}</span>
                         <span>{{ t('swapPage.feeShort', { rate: feeRate }) }}</span>
                     </div>
                 </div>
@@ -861,28 +1275,30 @@ onMounted(async () => {
                     <!-- Popular tags -->
                     <div class="flex flex-wrap gap-1.5 mb-3">
                         <button
-                            v-for="token in popularTokens.slice(0, 5)"
-                            :key="'tag-' + token.symbol"
+                            v-for="token in activeTokens.slice(0, 5)"
+                            :key="'tag-' + token.address"
+                            type="button"
                             @click="selectToken(token)"
                             class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-dark-800/50 border border-white/5 hover:border-white/10 text-xs text-dark-300 hover:text-white transition-all"
                         >
-                            <CoinIcon :symbol="token.symbol" size="xs" />
+                            <CoinIcon :symbol="token.symbol" :src="token.logo || null" size="xs" />
                             {{ token.symbol }}
                         </button>
                     </div>
 
                     <div class="border-t border-white/5 pt-3">
-                        <div class="space-y-0.5 max-h-[320px] overflow-y-auto">
+                        <div class="space-y-0.5 max-h-[320px] overflow-y-auto" data-test="token-list">
                             <button
-                                v-for="token in popularTokens"
-                                :key="token.symbol"
+                                v-for="token in activeTokens"
+                                :key="token.address"
+                                type="button"
                                 @click="selectToken(token)"
                                 class="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/5 transition-colors text-left"
                                 :class="{
-                                    'opacity-30 pointer-events-none': (tokenSelectorMode === 'from' && token.symbol === fromToken.symbol) || (tokenSelectorMode === 'to' && token.symbol === toToken.symbol),
+                                    'opacity-30 pointer-events-none': (tokenSelectorMode === 'from' && sameToken(token, fromToken)) || (tokenSelectorMode === 'to' && sameToken(token, toToken)),
                                 }"
                             >
-                                <CoinIcon :symbol="token.symbol" size="md" class="flex-shrink-0" />
+                                <CoinIcon :symbol="token.symbol" :src="token.logo || null" size="md" class="flex-shrink-0" />
                                 <div class="flex-1 min-w-0">
                                     <p class="font-semibold text-white text-sm">{{ token.symbol }}</p>
                                     <p class="text-xs text-dark-500 truncate">{{ token.name }}</p>

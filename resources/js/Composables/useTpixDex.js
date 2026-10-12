@@ -18,6 +18,7 @@ import { ref } from 'vue';
 import axios from 'axios';
 import { Contract, JsonRpcProvider, parseUnits, formatUnits } from 'ethers';
 import { useWalletStore } from '@/Stores/walletStore';
+import { t } from '@/Composables/useTranslation';
 import {
     TPIX_DEX,
     TPIX_DEX_ROUTER_ABI,
@@ -57,18 +58,21 @@ function toWei(value, decimals) {
     return parseUnits(Number(value).toFixed(prec), decimals);
 }
 
-/** map error ดิบเป็นข้อความ user-facing — ห้ามโชว์ raw exception (project rule) */
+/**
+ * map error ดิบเป็นข้อความ user-facing — ห้ามโชว์ raw exception (project rule)
+ * ข้อความมาจากไฟล์แปลภาษา (tpixDexError.*) — เดิมฝังอังกฤษไว้ ผู้ใช้ไทยเห็นอังกฤษตอนกดยกเลิกในกระเป๋า
+ */
 function friendlyError(err) {
-    if (err?.code === 4001 || err?.code === 'ACTION_REJECTED') return 'Transaction rejected by user.';
+    if (err?.code === 4001 || err?.code === 'ACTION_REJECTED') return t('tpixDexError.rejected');
     const msg = (err?.reason || err?.shortMessage || err?.message || '').toString().toLowerCase();
-    if (msg.includes('pair_not_found') || msg.includes('insufficient_liquidity')) return 'No liquidity available for this pair yet.';
-    if (msg.includes('insufficient_output_amount') || msg.includes('insufficient_a_amount') || msg.includes('insufficient_b_amount')) return 'Price moved too much — increase slippage and try again.';
-    if (msg.includes('expired')) return 'The transaction expired before confirming. Please try again.';
-    if (msg.includes('transfer_from_failed') || msg.includes('transferfrom')) return 'Token transfer failed — check your balance and approval.';
-    if (msg.includes('insufficient')) return 'Insufficient balance for this transaction.';
-    if (msg.includes('user rejected') || msg.includes('user denied')) return 'Transaction rejected by user.';
-    if (msg.includes('timeout') || msg.includes('timed out')) return 'Network timed out. Please try again.';
-    return 'Transaction failed. Please try again.';
+    if (msg.includes('pair_not_found') || msg.includes('insufficient_liquidity')) return t('tpixDexError.noLiquidity');
+    if (msg.includes('insufficient_output_amount') || msg.includes('insufficient_a_amount') || msg.includes('insufficient_b_amount')) return t('tpixDexError.priceMoved');
+    if (msg.includes('expired')) return t('tpixDexError.expired');
+    if (msg.includes('transfer_from_failed') || msg.includes('transferfrom')) return t('tpixDexError.transferFailed');
+    if (msg.includes('insufficient')) return t('tpixDexError.insufficient');
+    if (msg.includes('user rejected') || msg.includes('user denied')) return t('tpixDexError.rejected');
+    if (msg.includes('timeout') || msg.includes('timed out')) return t('tpixDexError.timeout');
+    return t('tpixDexError.failed');
 }
 
 /** สร้าง path จริงบนเชน — NATIVE ถูกแทนด้วย WTPIX */
@@ -109,7 +113,7 @@ export function useTpixDex() {
     async function getQuote(fromToken, toToken, amount, decimals = { from: 18, to: 18 }) {
         error.value = null;
         if (!(await ensureConfig())) {
-            error.value = 'TPIX DEX is not deployed yet.';
+            error.value = t('tpixDexError.notDeployed');
             return null;
         }
         if (!amount || Number(amount) <= 0) return null;
@@ -174,18 +178,22 @@ export function useTpixDex() {
         const slippage = Number.isFinite(Number(slippagePct)) ? Number(slippagePct) : 0.5;
         const rawAmountOut = q.amounts[q.amounts.length - 1];
 
-        // price impact จาก reserve ของฮอปแรก — บอกผู้ใช้ก่อนว่าไม้นี้ดันราคาแค่ไหน
-        let priceImpact = 0;
+        /*
+         * price impact จาก reserve ของฮอปแรก — บอกผู้ใช้ก่อนว่าไม้นี้ดันราคาแค่ไหน
+         * อ่านพูลไม่ได้ = null ("ไม่รู้") ไม่ใช่ 0 — เดิมตกเป็น 0 ซึ่งดูเหมือน "ไม่กระทบราคาเลย"
+         * (หน้า Swap บล็อกเมื่อไม่รู้ค่า · Trade.vue เทียบ `> 10` ซึ่ง null ผ่านเหมือนเดิม)
+         */
+        let priceImpact = null;
         try {
             const pool = await getPoolInfo(q.path[0], q.path[1]);
             if (pool && pool.reserveIn > 0n && pool.reserveOut > 0n) {
                 const amountInWei = toWei(amount, decimals.from);
                 const spot = Number(pool.reserveOut) / Number(pool.reserveIn);
                 const eff = Number(rawAmountOut) / Number(amountInWei);
-                priceImpact = spot > 0 ? Math.max(0, (1 - eff / spot) * 100) : 0;
+                priceImpact = spot > 0 ? Math.max(0, (1 - eff / spot) * 100) : null;
             }
         } catch {
-            priceImpact = 0;
+            priceImpact = null;
         }
 
         return {
@@ -198,7 +206,7 @@ export function useTpixDex() {
             feeRate: POOL_FEE_PCT,
             feeAmount: grossAmount * (POOL_FEE_PCT / 100),
             feeModel: 'in_pool',
-            priceImpact: Number(priceImpact.toFixed(4)),
+            priceImpact: priceImpact === null ? null : Number(priceImpact.toFixed(4)),
             slippage,
             minimumReceived: Math.max(netOutput * (1 - slippage / 100), 0),
             path: q.path,
@@ -230,7 +238,11 @@ export function useTpixDex() {
     /** approve token ให้ router */
     async function approveToken(tokenAddress, amount, decimals = 18) {
         const walletStore = useWalletStore();
-        if (!walletStore.signer) throw new Error('Wallet not connected');
+        // ไม่มีผู้เซ็น = แจ้งเป็นข้อความพร้อมแสดง ไม่โยน Error ดิบ (หน้าเว็บเคยโชว์ 'Wallet not connected' ตรง ๆ)
+        if (!walletStore.signer) {
+            error.value = t('tpixDexError.connectFirst');
+            return false;
+        }
 
         isApproving.value = true;
         error.value = null;
@@ -251,16 +263,16 @@ export function useTpixDex() {
     async function guardWrite() {
         const walletStore = useWalletStore();
         if (!(await ensureConfig())) {
-            error.value = 'TPIX DEX is not deployed yet.';
+            error.value = t('tpixDexError.notDeployed');
             return null;
         }
         if (!walletStore.signer || !walletStore.address) {
-            error.value = 'Please connect your wallet first.';
+            error.value = t('tpixDexError.connectFirst');
             return null;
         }
         // Wrong-chain guard — ธุรกรรมนี้อยู่บน TPIX chain เท่านั้น
         if (Number(walletStore.chainId) !== TPIX_DEX.CHAIN_ID) {
-            error.value = 'Please switch your wallet to TPIX Chain (4289).';
+            error.value = t('tpixDexError.switchTpix');
             return null;
         }
         return walletStore;
@@ -271,7 +283,9 @@ export function useTpixDex() {
      * @param fromToken 'native' | ERC-20 address
      * @param toToken   'native' | ERC-20 address
      * @param amount    จำนวนฝั่ง input (human units)
-     * @param options   { slippagePct = 0.5, decimals = {from:18,to:18}, path = null }
+     * @param options   { slippagePct = 0.5, decimals = {from:18,to:18}, path = null, amounts = null }
+     *                  amounts = ผลของ getAmountsOut ตอนเสนอราคา (คู่กับ path) — ถ้าส่งมา
+     *                  minOut คิดจากราคาที่ผู้ใช้เห็นบนจอ แบบเดียวกับ useSwap ฝั่ง BSC (quote.rawAmountOut)
      * @returns {txHash, amountOut} หรือ null ถ้าพลาด (อ่าน error.value)
      */
     async function executeSwap(fromToken, toToken, amount, options = {}) {
@@ -286,12 +300,16 @@ export function useTpixDex() {
 
         isExecuting.value = true;
         try {
-            // quote สดก่อนยิงจริง เพื่อคำนวณ minOut จาก slippage
+            /*
+             * minOut ต้องผูกกับราคาที่ผู้ใช้กดยืนยัน — ส่ง amounts มากับ path ใช้ตัวนั้นเลย
+             * (เดิมอ่านราคาใหม่ตอนส่ง minOut จึงเลื่อนตามราคาปัจจุบัน ไม่ใช่ "ได้รับอย่างน้อย" บนจอ)
+             * ไม่มี path = ขอราคาสดก่อนยิง
+             */
             const quote = options.path
-                ? { path: options.path, amounts: null }
+                ? { path: options.path, amounts: options.amounts ?? null }
                 : await getQuote(fromToken, toToken, amount, decimals);
             if (!quote) {
-                if (!error.value) error.value = 'No liquidity available for this pair yet.';
+                if (!error.value) error.value = t('tpixDexError.noLiquidity');
                 return null;
             }
 
@@ -304,7 +322,7 @@ export function useTpixDex() {
             const bps = BigInt(Math.round(slippagePct * 100));
             const minOut = (quotedOut * (10000n - bps)) / 10000n;
             if (minOut <= 0n) {
-                error.value = 'Slippage too high — please adjust and retry.';
+                error.value = t('tpixDexError.slippageTooHigh');
                 return null;
             }
             const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
@@ -331,7 +349,7 @@ export function useTpixDex() {
             txStatus.value = receipt.status === 1 ? 'confirmed' : 'failed';
 
             if (receipt.status !== 1) {
-                error.value = 'Swap failed on-chain.';
+                error.value = t('tpixDexError.swapFailedOnchain');
                 return null;
             }
 
@@ -363,10 +381,12 @@ export function useTpixDex() {
             slippagePct: slippage,
             decimals,
             path: quote?.path ?? null,
+            // ใช้ amounts ของ quote เฉพาะเมื่อมาพร้อม path ของมันเอง (ฮอปตรงกัน)
+            amounts: quote?.path && quote?.amounts ? quote.amounts : null,
         });
 
         if (!result) {
-            const err = new Error(error.value || 'Swap failed. Please try again.');
+            const err = new Error(error.value || t('tpixDexError.swapFailed'));
             err.isFriendly = true;
             throw err;
         }
@@ -488,7 +508,7 @@ export function useTpixDex() {
 
         const token = toDexAddress(tokenAddress);
         if (token === NATIVE) {
-            error.value = 'Choose a token to pair with TPIX.';
+            error.value = t('tpixDexError.chooseToken');
             return null;
         }
 
@@ -511,7 +531,7 @@ export function useTpixDex() {
             const receipt = await tx.wait();
             txStatus.value = receipt.status === 1 ? 'confirmed' : 'failed';
             if (receipt.status !== 1) {
-                error.value = 'Adding liquidity failed on-chain.';
+                error.value = t('tpixDexError.addFailedOnchain');
                 return null;
             }
             return { hash: tx.hash, url: explorerTxUrl(tx.hash) };
@@ -527,7 +547,11 @@ export function useTpixDex() {
     /** approve LP token ให้ router ก่อนถอน */
     async function approveLp(pairAddress, lpAmountWei) {
         const walletStore = useWalletStore();
-        if (!walletStore.signer) throw new Error('Wallet not connected');
+        // ไม่มีผู้เซ็น = แจ้งเป็นข้อความพร้อมแสดง ไม่โยน Error ดิบ (หน้าเว็บเคยโชว์ 'Wallet not connected' ตรง ๆ)
+        if (!walletStore.signer) {
+            error.value = t('tpixDexError.connectFirst');
+            return false;
+        }
         isApproving.value = true;
         try {
             const pair = new Contract(pairAddress, TPIX_DEX_PAIR_ABI, walletStore.signer);
@@ -557,7 +581,7 @@ export function useTpixDex() {
 
         const pct = Math.min(100, Math.max(0, Number(percent) || 0));
         if (pct <= 0) {
-            error.value = 'Choose how much to withdraw.';
+            error.value = t('tpixDexError.chooseAmount');
             return null;
         }
 
@@ -565,7 +589,7 @@ export function useTpixDex() {
         try {
             const position = await getMyPosition(tokenAddress, tokenDecimals);
             if (!position || position.lp === 0n) {
-                error.value = 'You have no liquidity in this pool.';
+                error.value = t('tpixDexError.noPosition');
                 return null;
             }
 
@@ -588,7 +612,7 @@ export function useTpixDex() {
             const receipt = await tx.wait();
             txStatus.value = receipt.status === 1 ? 'confirmed' : 'failed';
             if (receipt.status !== 1) {
-                error.value = 'Removing liquidity failed on-chain.';
+                error.value = t('tpixDexError.removeFailedOnchain');
                 return null;
             }
             return { hash: tx.hash, url: explorerTxUrl(tx.hash) };
