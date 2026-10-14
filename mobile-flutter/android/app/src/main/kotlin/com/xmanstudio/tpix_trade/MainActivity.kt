@@ -1,5 +1,7 @@
 package com.xmanstudio.tpix_trade
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// local_auth needs a FragmentActivity to show BiometricPrompt; with a plain
+// FlutterActivity every authenticate() call fails with no_fragment_activity.
+class MainActivity : FlutterFragmentActivity()

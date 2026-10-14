@@ -3,6 +3,8 @@
 ///
 /// Developed by Xman Studio
 
+import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -52,7 +54,11 @@ class BiometricService {
           stickyAuth: true,
         ),
       );
-    } catch (_) {
+    } on PlatformException catch (e) {
+      debugPrint('BiometricService.authenticate failed: ${e.code} ${e.message}');
+      return false;
+    } catch (e) {
+      debugPrint('BiometricService.authenticate failed: $e');
       return false;
     }
   }
