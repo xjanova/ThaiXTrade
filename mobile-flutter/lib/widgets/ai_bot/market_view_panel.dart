@@ -13,7 +13,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/locale/locale_provider.dart';
@@ -135,7 +135,7 @@ class AiMarketViewPanel extends StatelessWidget {
             ),
             child: Text(
               view.summary!,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 12,
                 height: 1.5,
                 color: AppColors.textSecondary,
@@ -198,7 +198,7 @@ class AiMarketViewPanel extends StatelessWidget {
                   Expanded(
                     child: Text(
                       h,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 11,
                         height: 1.4,
                         color: AppColors.textSecondary,
@@ -219,7 +219,7 @@ class AiMarketViewPanel extends StatelessWidget {
 
   Widget _blockLabel(String text) => Text(
         text,
-        style: GoogleFonts.inter(
+        style: AppFonts.ui(
           fontSize: 11,
           fontWeight: FontWeight.w700,
           color: AppColors.textTertiary,
@@ -290,7 +290,7 @@ class AiMarketViewPanel extends StatelessWidget {
           locale.tp('aiTrade.marketAssessedAgo', {
             'ago': locale.agoText(v.createdAt),
           }),
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 10.5,
             fontWeight: FontWeight.w600,
             // ใกล้หมดอายุ = ทองเตือน (ไม่ใช้แดง เพราะไม่ใช่ความเสียหาย)
@@ -349,7 +349,7 @@ class _CoinRow extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               c.why,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11,
                 height: 1.4,
                 color: AppColors.textSecondary,

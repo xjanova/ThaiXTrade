@@ -65,6 +65,9 @@ dependencies:
   share_plus: ^10.1.4
   qr_flutter: ^4.1.0
 
+  # พื้นหลังธีม Obsidian — คลิปวนลูปชุดเดียวกับ TPIX Wallet (ตัวเล่นเดียวใช้ร่วมทั้งแอป)
+  video_player: ^2.11.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -75,8 +78,10 @@ flutter_launcher_icons:
   android: true
   ios: false  # iOS folder ยังไม่มี — Android only
   image_path: "logotpixdextrade.png"
-  adaptive_icon_background: "#0A0E1A"
-  # ตราอยู่ในวงปลอดภัย 66% ของไอคอน adaptive — ใช้ไฟล์เดียวกับ image_path แล้วขอบวงแหวนโดนตัด
+  # โลโก้ Obsidian: พื้น = วงลูกศรสลับ + แท่งเทียน (ย่อ 82% ให้วงแหวน+แท่งเทียนอยู่ในวงปลอดภัย)
+  # ตรา = TP ทางการจากเวกเตอร์ (ไม่ให้ AI วาดตราเอง) ชั้นแยก ได้เอฟเฟกต์พารัลแลกซ์
+  # 🔴 ปลั๊กอินหดชั้นตรา inset 16% → ไฟล์ตราขยาย 0.82/0.68 ไว้ชดเชย ไม่งั้นตราเล็กกว่าวงในพื้น
+  adaptive_icon_background: "logotpix_adaptive_bg.png"
   adaptive_icon_foreground: "logotpix_adaptive_fg.png"
   min_sdk_android: 21
 
@@ -84,5 +89,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    # ธีม Obsidian — ภาพพื้นหลังเทค + ไอคอน 3D ชุดเดียวกับ TPIX Wallet
+    - assets/images/obsidian/
     - assets/sounds/
     - assets/html/

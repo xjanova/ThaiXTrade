@@ -13,8 +13,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tpix_trade/core/theme/app_colors.dart';
 import 'package:tpix_trade/core/theme/gradients.dart';
+import 'package:tpix_trade/providers/accent_provider.dart';
+import 'package:tpix_trade/providers/theme_provider.dart';
 
 /// อัตราส่วนคอนทราสต์ตามสูตร WCAG 2.x
 double _contrast(Color fg, Color bg) {
@@ -31,11 +34,19 @@ double _contrast(Color fg, Color bg) {
 }
 
 void main() {
-  tearDown(() => AppColors.apply(kClassicPalette));
+  tearDown(() => AppColors.apply(kDefaultPalette));
 
   group('ชุดสี', () {
-    test('ชุดปริยายคือของเดิม — คนที่ยังไม่เคยเลือก ต้องเห็นแอปเหมือนเดิม', () {
-      expect(AppColors.palette.id, kClassicPalette.id);
+    test('ชุดปริยายคือ Obsidian — คนที่ยังไม่เคยเลือก ได้หน้าตาเดียวกับ TPIX Wallet', () {
+      expect(AppColors.palette.id, kObsidianPalette.id);
+      expect(AppColors.palette.obsidian, isTrue);
+      expect(AppColors.bgPrimary, const Color(0xFF07080C));
+      expect(AppColors.textPrimary, const Color(0xFFF2F3F5));
+    });
+
+    test('ชุดทองเดิมยังเลือกได้ และค่าสีไม่เปลี่ยน — คนที่เลือกไว้ต้องเห็นเหมือนเดิม', () {
+      AppColors.apply(paletteFromId('classic'));
+      expect(AppColors.palette.obsidian, isFalse);
       expect(AppColors.bgPrimary, const Color(0xFF0C0D11));
       expect(AppColors.gold2, const Color(0xFFD4AF37));
       expect(AppColors.textPrimary, const Color(0xFFF3F1EA));
@@ -67,12 +78,12 @@ void main() {
       // จะอ่านไม่เจอ ตกกลับไปชุดปริยายเงียบ ๆ
       final ids = kTradePalettes.map((p) => p.id).toList();
       expect(ids.toSet().length, ids.length);
-      expect(ids, containsAll(['classic', 'xp_silver']));
+      expect(ids, containsAll(['obsidian', 'classic', 'xp_silver']));
     });
 
     test('คีย์ที่ไม่รู้จักหรือ null ตกกลับชุดปริยาย ไม่ crash', () {
-      expect(paletteFromId(null).id, kClassicPalette.id);
-      expect(paletteFromId('ไม่มีชุดนี้').id, kClassicPalette.id);
+      expect(paletteFromId(null).id, kDefaultPalette.id);
+      expect(paletteFromId('ไม่มีชุดนี้').id, kDefaultPalette.id);
       expect(paletteFromId('xp_silver').id, kXpSilverPalette.id);
     });
   });
@@ -98,5 +109,58 @@ void main() {
             reason: '${p.nameEn}: ตัวหนังสือบนปุ่มหลักอ่านไม่ออก');
       });
     }
+  });
+
+  group('Obsidian — ขอบทองทั้งแอปต้องกลายเป็นโครเมียม', () {
+    test('AccentProvider คืนโทนโครเมียมในธีม Obsidian แต่จำโทนที่ผู้ใช้เลือกไว้', () async {
+      SharedPreferences.setMockInitialValues({'accent_tone': 'rose_gold'});
+      final accent = AccentProvider();
+      await accent.ready;
+
+      AppColors.apply(kObsidianPalette);
+      expect(accent.palette.id, kObsidianChrome.id);
+      expect(accent.toneSelectable, isFalse);
+
+      // กลับไปธีมทอง → ได้โทนที่เลือกไว้คืน ไม่ใช่ทองปริยาย
+      AppColors.apply(kClassicPalette);
+      expect(accent.palette.id, 'rose_gold');
+      expect(accent.toneSelectable, isTrue);
+    });
+  });
+
+  group('Obsidian เป็นธีมหลัก — ย้ายคนที่ค้างธีมทองครั้งเดียว', () {
+    test('ไม่เคยเลือกธีม → Obsidian', () async {
+      SharedPreferences.setMockInitialValues({});
+      final p = ThemeProvider();
+      await p.init();
+      expect(p.id, 'obsidian');
+    });
+
+    test('ค้างธีมทองเดิม → ย้ายเป็น Obsidian และบันทึกลงเครื่อง', () async {
+      SharedPreferences.setMockInitialValues({'tpix_trade_palette_id': 'classic'});
+      final p = ThemeProvider();
+      await p.init();
+      expect(p.id, 'obsidian');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('tpix_trade_palette_id'), 'obsidian');
+    });
+
+    test('ย้ายแล้วผู้ใช้กดกลับธีมทองเอง → เปิดแอปครั้งต่อไปต้องไม่ถูกย้ายซ้ำ', () async {
+      SharedPreferences.setMockInitialValues({'tpix_trade_palette_id': 'classic'});
+      final first = ThemeProvider();
+      await first.init();
+      await first.setPalette('classic');
+
+      final again = ThemeProvider();
+      await again.init();
+      expect(again.id, 'classic');
+    });
+
+    test('XP Silver ไม่ถูกย้าย — คนเลือกธีมสว่างเพราะต้องการจริง', () async {
+      SharedPreferences.setMockInitialValues({'tpix_trade_palette_id': 'xp_silver'});
+      final p = ThemeProvider();
+      await p.init();
+      expect(p.id, 'xp_silver');
+    });
   });
 }

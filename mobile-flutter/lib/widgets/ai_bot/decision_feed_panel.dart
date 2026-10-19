@@ -12,7 +12,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/locale/locale_provider.dart';
@@ -188,7 +188,7 @@ class AiDecisionFeedPanel extends StatelessWidget {
           Center(
             child: Text(
               th ? 'ถึงจุดเริ่มต้นของประวัติแล้ว' : 'Start of history',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10.5,
                 color: AppColors.textTertiary,
               ),
@@ -250,7 +250,7 @@ class _ActedFilter extends StatelessWidget {
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
                       color: (i == 1) == actedOnly
@@ -296,7 +296,7 @@ class _BotFilterChip extends StatelessWidget {
           Expanded(
             child: Text(
               isThai ? 'ดูเฉพาะบอท “$name”' : 'Filtered to "$name"',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textPrimary,
@@ -313,7 +313,7 @@ class _BotFilterChip extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 8),
                 child: Text(
                   isThai ? 'ดูทั้งหมด' : 'Clear',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color: accent.g1,
@@ -367,7 +367,7 @@ class _LoadMoreButton extends StatelessWidget {
                   )
                 : Text(
                     isThai ? 'ดูย้อนหลังเพิ่ม' : 'Load older',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: disabled ? AppColors.textDisabled : accent.g1,
@@ -419,7 +419,7 @@ class _DecisionRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   Fmt.dayMonth(d.createdAt, _isThai),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 9.5,
                     color: AppColors.textTertiary,
                   ),
@@ -472,7 +472,7 @@ class _DecisionRow extends StatelessWidget {
                       : (_isThai
                           ? 'บอทไม่ได้บันทึกเหตุผลของรอบนี้'
                           : 'No reason recorded for this cycle'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12,
                     height: 1.45,
                     color: hasReason

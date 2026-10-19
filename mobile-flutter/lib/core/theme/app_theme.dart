@@ -1,6 +1,7 @@
 /// TPIX TRADE — App Theme
 /// ธีมหลักของแอป: Dark glass morphism
 /// ใช้ Inter สำหรับ UI, JetBrains Mono สำหรับตัวเลข
+/// (ชุด Obsidian: IBM Plex Sans Thai + Space Grotesk เหมือน TPIX Wallet)
 ///
 /// Developed by Xman Studio
 
@@ -8,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
+import 'app_fonts.dart';
 
 class AppTheme {
   AppTheme._();
@@ -39,7 +41,13 @@ class AppTheme {
   /// ทุกอย่างข้างในอ่านผ่าน getter จึงได้สีของชุดปัจจุบันทุกครั้งที่ build
   static ThemeData get darkTheme {
     final isDark = AppColors.palette.isDark;
-    final textTheme = GoogleFonts.interTextTheme(
+    final obsidian = AppColors.palette.obsidian;
+    // Obsidian ใช้ฟอนต์ชุดเดียวกับ TPIX Wallet — IBM Plex Sans Thai มีทั้งไทยและละติน
+    // ในตระกูลเดียว ตัวไทยจึงไม่ตกไปใช้ฟอนต์สำรองของเครื่องเหมือนตอนใช้ Inter
+    final makeTextTheme = obsidian
+        ? GoogleFonts.ibmPlexSansThaiTextTheme
+        : GoogleFonts.interTextTheme;
+    final textTheme = makeTextTheme(
       TextTheme(
         // Headings
         headlineLarge: TextStyle(
@@ -113,6 +121,27 @@ class AppTheme {
         onError: AppColors.white,
       ),
       textTheme: textTheme,
+      // พื้นทึบของชีต/ไดอะล็อก (ลอยทับเนื้อหา ต้องอ่านง่าย) — มนแบบ Wallet
+      canvasColor: obsidian ? AppColors.bgSecondary : null,
+      dialogTheme: obsidian
+          ? DialogThemeData(
+              backgroundColor: AppColors.bgSecondary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+                side: BorderSide(color: AppColors.bgCardBorder),
+              ),
+            )
+          : null,
+      bottomSheetTheme: obsidian
+          ? BottomSheetThemeData(
+              backgroundColor: AppColors.bgSecondary,
+              modalBackgroundColor: AppColors.bgSecondary,
+            )
+          : null,
+      progressIndicatorTheme: obsidian
+          ? const ProgressIndicatorThemeData(color: ObsidianBrand.cyan)
+          : null,
+      iconTheme: obsidian ? const IconThemeData(color: ObsidianBrand.chrome) : null,
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -159,7 +188,10 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusLg),
-          borderSide: BorderSide(color: AppColors.brandCyan, width: 1.5),
+          borderSide: BorderSide(
+            color: obsidian ? ObsidianBrand.cyan : AppColors.brandCyan,
+            width: 1.5,
+          ),
         ),
         hintStyle: TextStyle(color: AppColors.textDisabled, fontSize: 14),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -168,20 +200,22 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.gold2,
           foregroundColor: AppColors.goldTextOn,
-          elevation: 0,
+          // Obsidian: ปุ่มขาวนูนลอยด้วยเงาเรืองม่วง (สูตรเดียวกับปุ่มหลักของ Wallet)
+          elevation: obsidian ? 6 : 0,
+          shadowColor: obsidian ? AppColors.goldGlow : null,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           // ธีมโลหะใช้ทรงแคปซูลตามปุ่ม Start ของ XP — ลายเซ็นของปุ่มนั้น
           // คือรูปทรงกับผิวเจล ไม่ใช่สีเขียว สีจึงยังอิงโทนของเราเอง
           shape: AppColors.palette.metal
               ? const StadiumBorder()
               : RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(radiusLg),
+                  borderRadius: BorderRadius.circular(obsidian ? 19 : radiusLg),
                 ),
           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: AppColors.bgElevated,
+        backgroundColor: obsidian ? AppColors.bgTertiary : AppColors.bgElevated,
         contentTextStyle: TextStyle(color: AppColors.textPrimary, fontSize: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusMd),
@@ -197,14 +231,23 @@ class AppTheme {
     FontWeight fontWeight = FontWeight.w600,
     Color? color,
   }) {
-    return GoogleFonts.jetBrainsMono(
+    // ค่าปริยายย้ายมาอยู่ตรงนี้ เพราะพารามิเตอร์รับค่าที่ไม่ใช่ const ไม่ได้
+    // ปล่อย null ผ่านไปไม่ได้ — ตัวอักษร 107 จุดที่เรียก mono() โดยไม่ส่งสีจะเสียสี
+    return _numberFont(
       fontSize: fontSize,
       fontWeight: fontWeight,
-      // ค่าปริยายย้ายมาอยู่ตรงนี้ เพราะพารามิเตอร์รับค่าที่ไม่ใช่ const ไม่ได้
-      // ปล่อย null ผ่านไปไม่ได้ — ตัวอักษร 107 จุดที่เรียก mono() โดยไม่ส่งสีจะเสียสี
       color: color ?? AppColors.textPrimary,
     );
   }
+
+  /// ฟอนต์ตัวเลขของชุดสีปัจจุบัน (ดู [AppFonts.number])
+  static TextStyle _numberFont({
+    required double fontSize,
+    required FontWeight fontWeight,
+    required Color color,
+  }) =>
+      AppFonts.number(fontSize: fontSize, fontWeight: fontWeight, color: color);
+
 
   /// Price text style — สีตาม +/-
   static TextStyle priceChange({
@@ -213,10 +256,6 @@ class AppTheme {
     FontWeight fontWeight = FontWeight.w600,
   }) {
     final color = change >= 0 ? AppColors.tradingGreen : AppColors.tradingRed;
-    return GoogleFonts.jetBrainsMono(
-      fontSize: fontSize,
-      fontWeight: fontWeight,
-      color: color,
-    );
+    return _numberFont(fontSize: fontSize, fontWeight: fontWeight, color: color);
   }
 }

@@ -20,7 +20,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -42,6 +42,7 @@ import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
 import '../../widgets/common/shimmer_loading.dart';
 import '../../widgets/wallet/wallet_connect_sheet.dart';
+import '../../widgets/obsidian/obsidian_icons.dart';
 
 class AiBotScreen extends StatefulWidget {
   const AiBotScreen({super.key});
@@ -230,7 +231,7 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
         ),
         title: Text(
           title,
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             color: AppColors.textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w800,
@@ -268,7 +269,7 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
 
   Widget _dialogText(String text, {Color? color}) => Text(
         text,
-        style: GoogleFonts.inter(
+        style: AppFonts.ui(
           fontSize: 12.5,
           color: color ?? AppColors.textSecondary,
           height: 1.55,
@@ -1086,7 +1087,7 @@ class _Header extends StatelessWidget {
               const SizedBox(width: 10),
               Text(
                 'AI TRADE',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
@@ -1105,7 +1106,7 @@ class _Header extends StatelessWidget {
             th
                 ? 'บอทเดินบนคลาวด์ของ TPIX — ตั้งค่าที่แอพหรือเว็บก็เห็นเหมือนกัน เพราะผูกกับกระเป๋าใบเดียว'
                 : 'Bots run on TPIX cloud. Set them up in the app or on the web — one wallet, one view.',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 12,
               color: AppColors.textTertiary,
               height: 1.5,
@@ -1192,7 +1193,7 @@ class _NoticeCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -1201,7 +1202,7 @@ class _NoticeCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       body,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 11.5,
                         color: AppColors.textSecondary,
                         height: 1.55,
@@ -1255,7 +1256,7 @@ class _InfoCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -1264,7 +1265,7 @@ class _InfoCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   body,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11.5,
                     color: AppColors.textTertiary,
                     height: 1.5,
@@ -1321,7 +1322,7 @@ class _HeroSummary extends StatelessWidget {
                   th ? 'มูลค่าพอร์ตทดลอง' : 'DEMO PORTFOLIO VALUE',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textTertiary,
@@ -1381,7 +1382,7 @@ class _HeroSummary extends StatelessWidget {
                     th
                         ? 'บางไม้ยังตีราคาไม่ได้ — ตัวเลขกำไรลอยจึงยังไม่ครบทุกไม้'
                         : 'Some positions have no live price — the open P&L is incomplete',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 10.5,
                       color: AppColors.textTertiary,
                     ),
@@ -1433,7 +1434,7 @@ class _HeroSummary extends StatelessWidget {
                   _planLine(sub, th),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textSecondary,
@@ -1481,7 +1482,7 @@ class _BigMoney extends StatelessWidget {
           Text(
             '\$${_money(whole, digits: 0, th: th)}',
             maxLines: 1,
-            style: GoogleFonts.jetBrainsMono(
+            style: AppFonts.number(
               fontSize: 30,
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
@@ -1491,7 +1492,7 @@ class _BigMoney extends StatelessWidget {
           Text(
             '.$cents',
             maxLines: 1,
-            style: GoogleFonts.jetBrainsMono(
+            style: AppFonts.number(
               fontSize: 19,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -1534,7 +1535,7 @@ class _PnlChip extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 9.5,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -1598,7 +1599,7 @@ class _StatTile extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 10,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -1628,22 +1629,14 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(top: 6, bottom: 10),
       child: Row(
         children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              color: accent.goldTint,
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Icon(icon, color: accent.g2, size: 16),
-          ),
+          IconTile(icon: icon, size: 30, iconSize: 16, radius: 9, background: accent.goldTint, color: accent.g2),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 14.5,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
@@ -1692,7 +1685,7 @@ class _MiniAction extends StatelessWidget {
               const SizedBox(width: 5),
               Text(
                 label,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 10.5,
                   fontWeight: FontWeight.w700,
                   color: accent.g1,
@@ -1729,7 +1722,7 @@ class _GoldPill extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 9.5,
               fontWeight: FontWeight.w700,
               color: accent.g1,
@@ -1762,7 +1755,7 @@ class _RowNote extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11,
               fontWeight: FontWeight.w600,
               color: color,
@@ -1837,7 +1830,7 @@ class _BotRow extends StatelessWidget {
                       bot.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -1913,7 +1906,7 @@ class _BotRow extends StatelessWidget {
                   _reasonText(th),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     color: bot.awaitingConfirm
                         ? accent.g1
@@ -2135,7 +2128,7 @@ class _ModeChip extends StatelessWidget {
             ),
             child: Text(
               live ? (th ? 'จริง' : 'LIVE') : (th ? 'ทดลอง' : 'DEMO'),
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w800,
                 color: live ? AppColors.goldTextOn : AppColors.textSecondary,
@@ -2196,7 +2189,7 @@ class _RowButton extends StatelessWidget {
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: fg,
@@ -2297,7 +2290,7 @@ class _EmptyBots extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             th ? 'ยังไม่มีบอทสักตัว' : 'No bots yet',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 16,
               fontWeight: FontWeight.w800,
               color: AppColors.textPrimary,
@@ -2309,7 +2302,7 @@ class _EmptyBots extends StatelessWidget {
                 ? 'สร้างบอทตัวแรก เลือกกลยุทธ์กับกรอบความเสี่ยง แล้วปล่อยให้มันเทรดด้วยเครดิตทดลองที่ราคาจริงให้ดูก่อน'
                 : 'Create your first bot, pick a strategy and risk limits, and let it trade with demo credits at real market prices.',
             textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 12,
               color: AppColors.textTertiary,
               height: 1.6,
@@ -2334,7 +2327,7 @@ class _EmptyBots extends StatelessWidget {
                   ? 'กด "หยุด" บอทตัวเก่าก่อน — การ "พัก" ยังกินโควตาอยู่'
                   : 'Stop an old bot first — pausing still uses the quota',
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10.5,
                 color: AppColors.textTertiary,
               ),
@@ -2405,7 +2398,7 @@ class _AppLoopBanner extends StatelessWidget {
                           : (th
                               ? 'บอทตัวนี้ต้องเดินจากแอพเครื่องนี้'
                               : 'This bot has to be driven from the app')),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -2418,7 +2411,7 @@ class _AppLoopBanner extends StatelessWidget {
                       : (th
                           ? 'ปิดแอพหรือสลับไปแอพอื่น บอทจะหยุดทันที — อัปเกรดเป็นแพลนคลาวด์ถ้าอยากให้เดินตลอด 24 ชม.'
                           : 'Closing the app or switching away stops it — upgrade to a cloud plan to keep it running 24/7.'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     color: AppColors.textSecondary,
                     height: 1.5,
@@ -2535,7 +2528,7 @@ class _DemoCard extends StatelessWidget {
             const SizedBox(height: 14),
             Text(
               th ? 'ผลแยกรายกลยุทธ์' : 'By strategy',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textTertiary,
@@ -2554,7 +2547,7 @@ class _DemoCard extends StatelessWidget {
                             (th ? 'พอร์ตรวม (ของเก่า)' : 'Legacy pool'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w600,
                           color: AppColors.textSecondary,
@@ -2584,7 +2577,7 @@ class _DemoCard extends StatelessWidget {
             th
                 ? 'จำลองด้วยค่าธรรมเนียม ${a.feeRate}% และ slippage ${a.slippageBps} bps ทุกไม้ (ไปกลับ ${a.roundTripBps.toStringAsFixed(0)} bps) — ตั้งใจให้แย่กว่าจริงเล็กน้อย จะได้ไม่หลอกตัวเอง · ล้างได้อีก ${a.resetsLeft} ครั้งวันนี้'
                 : 'Simulated with ${a.feeRate}% fees and ${a.slippageBps} bps slippage per trade (${a.roundTripBps.toStringAsFixed(0)} bps round trip) — deliberately slightly worse than reality · ${a.resetsLeft} resets left today',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 10.5,
               color: AppColors.textTertiary,
               height: 1.55,
@@ -2615,7 +2608,7 @@ class _KeyValue extends StatelessWidget {
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 10,
             fontWeight: FontWeight.w600,
             color: AppColors.textTertiary,
@@ -2713,7 +2706,7 @@ class _MarketViewCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               view.summary!,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 12,
                 color: AppColors.textSecondary,
                 height: 1.6,
@@ -2749,7 +2742,7 @@ class _MarketViewCard extends StatelessWidget {
                             c.why,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
+                            style: AppFonts.ui(
                               fontSize: 11,
                               color: AppColors.textTertiary,
                             ),
@@ -2828,7 +2821,7 @@ class _StanceChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.inter(
+        style: AppFonts.ui(
           fontSize: 9.5,
           fontWeight: FontWeight.w700,
           color: AppColors.textSecondary,
@@ -2897,7 +2890,7 @@ class _PlansSectionState extends State<_PlansSection> {
           children: [
             Text(
               th ? 'จำนวนวัน' : 'Days',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textTertiary,
@@ -2936,7 +2929,7 @@ class _PlansSectionState extends State<_PlansSection> {
                               '${options[i]}',
                               textAlign: TextAlign.center,
                               maxLines: 1,
-                              style: GoogleFonts.inter(
+                              style: AppFonts.ui(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w700,
                                 color: options[i] == _days
@@ -2987,7 +2980,7 @@ class _PlansSectionState extends State<_PlansSection> {
                 padding: const EdgeInsets.all(10),
                 child: Text(
                   th ? 'ยกเลิกการเช่า' : 'Cancel rental',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppColors.tradingRed,
@@ -3039,7 +3032,7 @@ class _PlanCard extends StatelessWidget {
                     plan.label(th),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
                       color: AppColors.textPrimary,
@@ -3074,7 +3067,7 @@ class _PlanCard extends StatelessWidget {
                         : (th
                             ? 'เดินในแอพเครื่องนี้ — ปิดแอพแล้วบอทหยุดทันที'
                             : 'Runs inside this app — closing it stops the bot'),
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textSecondary,
@@ -3107,7 +3100,7 @@ class _PlanCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Text(
                     th ? 'TPIX/วัน' : 'TPIX/day',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11,
                       color: AppColors.textTertiary,
                     ),
@@ -3122,7 +3115,7 @@ class _PlanCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.end,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textTertiary,
@@ -3168,7 +3161,7 @@ class _PlanCard extends StatelessWidget {
                           Expanded(
                             child: Text(
                               f,
-                              style: GoogleFonts.inter(
+                              style: AppFonts.ui(
                                 fontSize: 11,
                                 color: AppColors.textSecondary,
                                 height: 1.45,
@@ -3200,7 +3193,7 @@ class _PlanCard extends StatelessWidget {
                 th
                     ? 'ยังไม่เปิดให้เช่าแพลนนี้ — ระหว่างนี้ใช้โหมดทดลองได้เต็มที่'
                     : 'This plan is not rentable yet — the demo mode is free meanwhile',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 10.5,
                   color: AppColors.textTertiary,
                   height: 1.5,
@@ -3229,7 +3222,7 @@ class _MicroTag extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: GoogleFonts.inter(
+        style: AppFonts.ui(
           fontSize: 10,
           fontWeight: FontWeight.w600,
           color: AppColors.textSecondary,
@@ -3364,7 +3357,7 @@ class _PackTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     th ? 'โบนัส ${pack.bonus}' : '${pack.bonus} bonus',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 10.5,
                       fontWeight: FontWeight.w700,
                       // โบนัสเครดิตเป็นของแถม ไม่ใช่กำไรจากการเทรด
@@ -3424,7 +3417,7 @@ class _AdvisorCard extends StatelessWidget {
             th
                 ? 'อ่านสถิติย้อนหลังของบอทคุณแล้วให้ความเห็นว่าควรปรับตรงไหน'
                 : "Reads your bots' track record and suggests what to adjust",
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 12,
               color: AppColors.textSecondary,
               height: 1.55,
@@ -3459,7 +3452,7 @@ class _AdvisorCard extends StatelessWidget {
                             (th
                                 ? 'ยังขอคำแนะนำไม่ได้ในตอนนี้'
                                 : 'Advice is not available right now')),
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 12,
                       color:
                           a.ok ? AppColors.textPrimary : AppColors.textTertiary,
@@ -3499,7 +3492,7 @@ class _AdvisorCard extends StatelessWidget {
             th
                 ? 'เป็นความเห็นประกอบการตัดสินใจ ไม่ใช่คำสั่งซื้อขาย — บอทยังเดินตามกฎที่คุณตั้งไว้เหมือนเดิม'
                 : 'An opinion to weigh, not a trade instruction — your bots still follow the rules you set.',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 10.5,
               color: AppColors.textTertiary,
               height: 1.55,
@@ -3996,7 +3989,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                         editing
                             ? (th ? 'แก้ไขบอท' : 'Edit bot')
                             : (th ? 'สร้างบอทใหม่' : 'New bot'),
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
                           color: AppColors.textPrimary,
@@ -4008,7 +4001,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                           th
                               ? 'บันทึกแล้วมีผลทันที แม้บอทกำลังทำงานอยู่'
                               : 'Changes take effect immediately, even while the bot runs',
-                          style: GoogleFonts.inter(
+                          style: AppFonts.ui(
                             fontSize: 11,
                             color: AppColors.textTertiary,
                           ),
@@ -4020,7 +4013,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                       TextField(
                         controller: _name,
                         maxLength: limits.maxNameLength,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           color: AppColors.textPrimary,
                           fontSize: 14,
                         ),
@@ -4033,7 +4026,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                           hintText: th
                               ? 'เช่น กริด BTC กลางคืน'
                               : 'e.g. BTC grid overnight',
-                          hintStyle: GoogleFonts.inter(
+                          hintStyle: AppFonts.ui(
                             color: AppColors.textDisabled,
                             fontSize: 14,
                           ),
@@ -4060,7 +4053,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                           th
                               ? 'บอทตัวนี้ยังถือของอยู่ — เปลี่ยนคู่ไม่ได้ เพราะไม้เดิมจะค้างบนคู่เก่าโดยไม่มีใครดูแล'
                               : 'This bot holds a position — changing the pair would orphan it.',
-                          style: GoogleFonts.inter(
+                          style: AppFonts.ui(
                             fontSize: 10.5,
                             color: AppColors.textTertiary,
                             height: 1.5,
@@ -4087,7 +4080,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                         const SizedBox(height: 8),
                         Text(
                           selected.blockedReason(th) ?? selected.describe(th),
-                          style: GoogleFonts.inter(
+                          style: AppFonts.ui(
                             fontSize: 11,
                             color: AppColors.textTertiary,
                             height: 1.5,
@@ -4131,7 +4124,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                               (th
                                   ? 'ตั้งค่าเอง — แก้ช่องไหนก็ได้ด้านล่าง'
                                   : 'Custom — tweak any field below'),
-                          style: GoogleFonts.inter(
+                          style: AppFonts.ui(
                             fontSize: 11,
                             color: AppColors.textTertiary,
                             height: 1.5,
@@ -4146,7 +4139,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                           Expanded(
                             child: Text(
                               th ? 'กรอบความเสี่ยง' : 'Risk limits',
-                              style: GoogleFonts.inter(
+                              style: AppFonts.ui(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: AppColors.textPrimary,
@@ -4161,7 +4154,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                               textAlign: TextAlign.end,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
+                              style: AppFonts.ui(
                                 fontSize: 10,
                                 color: AppColors.textTertiary,
                               ),
@@ -4222,7 +4215,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                       const SizedBox(height: 16),
                       Text(
                         th ? 'พารามิเตอร์กลยุทธ์' : 'Strategy parameters',
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: AppColors.textPrimary,
@@ -4248,7 +4241,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                               const SizedBox(width: 6),
                               Text(
                                 th ? 'ตั้งค่าขั้นสูง' : 'Advanced settings',
-                                style: GoogleFonts.inter(
+                                style: AppFonts.ui(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.textSecondary,
@@ -4303,7 +4296,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                             padding: const EdgeInsets.all(8),
                             child: Text(
                               th ? 'ยกเลิก' : 'Cancel',
-                              style: GoogleFonts.inter(
+                              style: AppFonts.ui(
                                 fontSize: 13,
                                 color: AppColors.textTertiary,
                               ),
@@ -4333,7 +4326,7 @@ class _FieldLabel extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 7),
       child: Text(
         text,
-        style: GoogleFonts.inter(
+        style: AppFonts.ui(
           fontSize: 11.5,
           fontWeight: FontWeight.w600,
           color: AppColors.textTertiary,
@@ -4434,7 +4427,7 @@ class _StrategyChip extends StatelessWidget {
             children: [
               Text(
                 strategy.label(th),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color:
@@ -4446,7 +4439,7 @@ class _StrategyChip extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   th ? 'ยังไม่เปิด' : 'NOT LIVE',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     // ข้อความนี้เปลี่ยนคำตอบว่า "เลือกอันนี้แล้วใช้ได้ไหม"
                     // เล็กและจางกว่าทุกอย่างรอบตัวจนอ่านไม่ทัน = เท่ากับไม่ได้บอก
                     fontSize: 10,
@@ -4533,7 +4526,7 @@ class _NumberField extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 12,
                 color: AppColors.textTertiary,
               ),
@@ -4564,7 +4557,7 @@ class _NumberField extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             suffix,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11.5,
               fontWeight: FontWeight.w700,
               color: AppColors.textSecondary,
@@ -4596,7 +4589,7 @@ class _SwitchRow extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textSecondary,

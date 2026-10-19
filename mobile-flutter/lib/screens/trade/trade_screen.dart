@@ -11,7 +11,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
@@ -36,6 +36,7 @@ import '../../widgets/common/gradient_button.dart';
 import '../../widgets/common/price_text.dart';
 import '../../widgets/trading/trading_chart.dart';
 import '../../widgets/trading/chart_type_toggle.dart';
+import '../../widgets/obsidian/obsidian_surface.dart';
 import '../../models/api_models.dart';
 
 class TradeScreen extends StatefulWidget {
@@ -564,6 +565,8 @@ class _TradeScreenState extends State<TradeScreen>
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: AppBackground(
+        // กราฟ WebView + ราคาสดวิ่งอยู่แล้ว — พื้นหลังนิ่ง ไม่แย่งเครื่องถอดรหัสวิดีโอ
+        animated: false,
         child: SafeArea(
           bottom: false,
           child: Column(
@@ -644,7 +647,7 @@ class _TradeScreenState extends State<TradeScreen>
                       children: [
                         Text(
                           ticker?.displaySymbol ?? market.selectedPair,
-                          style: GoogleFonts.inter(
+                          style: AppFonts.ui(
                             fontSize: 19,
                             fontWeight: FontWeight.w800,
                             color: AppColors.textPrimary,
@@ -672,7 +675,7 @@ class _TradeScreenState extends State<TradeScreen>
                                   ? ' · ราคาอ้างอิง'
                                   : ' · Indicative price')
                               : ''),
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
                         color: AppColors.textTertiary,
@@ -868,7 +871,7 @@ class _TradeScreenState extends State<TradeScreen>
               locale.isThai
                   ? '▲ บอทซื้อ · ▼ บอทขาย · เส้นประ = ต้นทุน / SL / TP'
                   : '▲ bot buy · ▼ bot sell · dashed = cost / SL / TP',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10,
                 color: AppColors.textTertiary,
               ),
@@ -897,7 +900,7 @@ class _TradeScreenState extends State<TradeScreen>
               const SizedBox(width: 7),
               Text(
                 locale.t('trade.orderbook'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -912,7 +915,7 @@ class _TradeScreenState extends State<TradeScreen>
                         ? '· ความลึกพูล (คำนวณจาก reserve)'
                         : '· Pool depth (from reserves)',
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 10.5,
                       color: AppColors.textTertiary,
                     ),
@@ -969,7 +972,7 @@ class _TradeScreenState extends State<TradeScreen>
                 children: [
                   Text(
                     locale.t('common.spread'),
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       color: AppColors.gold2,
@@ -1021,7 +1024,7 @@ class _TradeScreenState extends State<TradeScreen>
         .fold(0.0, (max, e) => e.quantity > max ? e.quantity : max);
   }
 
-  TextStyle get _obHeaderStyle => GoogleFonts.inter(
+  TextStyle get _obHeaderStyle => AppFonts.ui(
         fontSize: 10,
         fontWeight: FontWeight.w600,
         color: AppColors.textTertiary,
@@ -1129,9 +1132,9 @@ class _TradeScreenState extends State<TradeScreen>
               labelColor: AppColors.gold1,
               unselectedLabelColor: AppColors.textTertiary,
               labelStyle:
-                  GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+                  AppFonts.ui(fontSize: 12, fontWeight: FontWeight.w700),
               unselectedLabelStyle:
-                  GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500),
+                  AppFonts.ui(fontSize: 12, fontWeight: FontWeight.w500),
               dividerColor: Colors.transparent,
               tabs: [
                 Tab(height: 34, child: _soonTabLabel(locale.t('trade.limit'))),
@@ -1153,7 +1156,7 @@ class _TradeScreenState extends State<TradeScreen>
               const SizedBox(width: 6),
               Text(
                 locale.isThai ? 'ยอดที่ใช้ได้' : 'Available',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                     fontSize: 11.5, color: AppColors.textTertiary),
               ),
               const Spacer(),
@@ -1190,7 +1193,7 @@ class _TradeScreenState extends State<TradeScreen>
                     : (locale.isThai
                         ? 'ทริกเกอร์เมื่อราคาลงถึง (ขายตอนราคาหลุด)'
                         : 'Triggers when price falls to this level (sell stop)'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 10,
                   color: AppColors.textTertiary,
                   fontStyle: FontStyle.italic,
@@ -1282,7 +1285,7 @@ class _TradeScreenState extends State<TradeScreen>
                       : (locale.isThai
                           ? 'คำสั่ง Market ทำงานจริงบน BSC ผ่าน PancakeSwap'
                           : 'Market orders execute for real on BSC via PancakeSwap'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                       fontSize: 10, color: AppColors.textTertiary),
                   textAlign: TextAlign.center,
                 ),
@@ -1311,7 +1314,7 @@ class _TradeScreenState extends State<TradeScreen>
                       locale.isThai
                           ? 'จะเปิด TPIX Wallet ให้ยืนยันธุรกรรมทีละรายการ แล้วกลับมาที่นี่อัตโนมัติ'
                           : 'TPIX Wallet will open to confirm each transaction, then return here automatically.',
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 11,
                         color: AppColors.textSecondary,
                       ),
@@ -1326,7 +1329,7 @@ class _TradeScreenState extends State<TradeScreen>
             const SizedBox(height: 10),
             Text(
               locale.t('settings.connect_wallet'),
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                   fontSize: 12, color: AppColors.textTertiary),
             ),
           ],
@@ -1354,7 +1357,7 @@ class _TradeScreenState extends State<TradeScreen>
                       locale.isThai
                           ? 'ครั้งแรก: แอพจะเปิด TPIX Wallet ให้เซ็นยืนยันตัวตน'
                           : 'First time: TPIX Wallet will open to confirm your identity',
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 11,
                         color: AppColors.textSecondary,
                       ),
@@ -1483,7 +1486,7 @@ class _TradeScreenState extends State<TradeScreen>
           Expanded(
             child: Text(
               message,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11,
                 height: 1.4,
                 color: AppColors.textPrimary,
@@ -1511,7 +1514,7 @@ class _TradeScreenState extends State<TradeScreen>
           Expanded(
             child: Text(
               _impactBlockedMessage(q, th, baseSym),
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10.5,
                 height: 1.4,
                 color: AppColors.textPrimary,
@@ -1534,7 +1537,7 @@ class _TradeScreenState extends State<TradeScreen>
               ),
               child: Text(
                 th ? 'ใช้สูงสุด' : 'Use max',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                     fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
@@ -1596,7 +1599,7 @@ class _TradeScreenState extends State<TradeScreen>
             ),
             child: Text(
               'Soon',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 7,
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFFF59E0B),
@@ -1642,7 +1645,7 @@ class _TradeScreenState extends State<TradeScreen>
                     ? 'กำลังตรวจสอบกระดาน...'
                     : 'Checking market...')
                 : '$pair — Coming Soon',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 14,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
@@ -1658,7 +1661,7 @@ class _TradeScreenState extends State<TradeScreen>
                     ? 'คู่นี้ยังไม่มีสภาพคล่องให้เทรด\nระหว่างนี้เทรดคู่เหรียญหลักได้จริงบน BSC'
                     : 'This pair has no liquidity to trade yet.\nMeanwhile, trade major pairs live on BSC.'),
             textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11.5,
               height: 1.5,
               color: AppColors.textTertiary,
@@ -1673,7 +1676,7 @@ class _TradeScreenState extends State<TradeScreen>
             ),
             child: Text(
               checking ? 'TPIX Chain' : 'TPIX Chain — Coming Soon',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFFF59E0B),
@@ -1704,7 +1707,7 @@ class _TradeScreenState extends State<TradeScreen>
         child: Row(
           children: [
             Text(label,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                     fontSize: 11, color: AppColors.textTertiary)),
             const Spacer(),
             if (value == null)
@@ -1776,7 +1779,7 @@ class _TradeScreenState extends State<TradeScreen>
                     : (locale.isThai
                         ? 'ราคาจริงจาก PancakeSwap (BSC)'
                         : 'Live price from PancakeSwap (BSC)'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                     fontSize: 9, color: AppColors.textTertiary),
               ),
             ],
@@ -1838,7 +1841,7 @@ class _TradeScreenState extends State<TradeScreen>
               const SizedBox(width: 6),
               Text(
                 locale.isThai ? 'ค่าธรรมเนียม' : 'Fee',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 11,
                   color: AppColors.textTertiary,
                 ),
@@ -1871,7 +1874,7 @@ class _TradeScreenState extends State<TradeScreen>
                 const SizedBox(width: 6),
                 Text(
                   warning,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 10,
                     color: AppColors.tradingRed,
                     fontWeight: FontWeight.w600,
@@ -1908,7 +1911,7 @@ class _TradeScreenState extends State<TradeScreen>
               const SizedBox(width: 7),
               Text(
                 locale.t('trade.open_orders'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -2507,7 +2510,7 @@ class _SideTab extends StatelessWidget {
         child: Center(
           child: Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 14,
               fontWeight: FontWeight.w700,
               color: active ? AppColors.white : AppColors.textTertiary,
@@ -2552,7 +2555,7 @@ class _TimeframePill extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 11.5,
             fontWeight: active ? FontWeight.w800 : FontWeight.w500,
             color: active ? AppColors.goldTextOn : AppColors.textTertiary,
@@ -2573,6 +2576,29 @@ class _QuickChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Obsidian: ปุ่มเข้มนูน (สูตรปุ่ม 25% / 50% ของ Wallet) + ยุบตอนกด
+    if (AppColors.palette.obsidian) {
+      return ObsidianPressable(
+        onTap: onTap,
+        pressedScale: 0.95,
+        child: CustomPaint(
+          painter: const ObsidianSurfacePainter(ObsidianSurface.dark),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            child: Center(
+              child: Text(
+                label,
+                style: AppFonts.ui(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -2586,7 +2612,7 @@ class _QuickChip extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 11.5,
             fontWeight: FontWeight.w600,
             color: AppColors.textSecondary,
@@ -2613,17 +2639,34 @@ class _TradeInput extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = context.watch<AccentProvider>();
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: _row(accent),
+    );
+    // Obsidian: ช่องกรอก "ยุบลง" (เงาจมด้านใน) แบบ Wallet
+    if (AppColors.palette.obsidian) {
+      return CustomPaint(
+        painter: ObsidianSurfacePainter(
+          ObsidianSurface.field.copyWith(radius: 14),
+        ),
+        child: row,
+      );
+    }
     return Container(
       decoration: BoxDecoration(
         color: AppColors.bgInput,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.bgCardBorder),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Row(
+      child: row,
+    );
+  }
+
+  Widget _row(AccentProvider accent) {
+    return Row(
         children: [
           Text(label,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                   fontSize: 12, color: AppColors.textTertiary)),
           const SizedBox(width: 8),
           Expanded(
@@ -2634,8 +2677,12 @@ class _TradeInput extends StatelessWidget {
               style: AppTheme.mono(fontSize: 14),
               textAlign: TextAlign.right,
               cursorColor: accent.g2,
+              // ปิดกรอบ/พื้นของ InputDecorationTheme — ไม่งั้นเกิดกล่องซ้อนในกล่อง
               decoration: InputDecoration(
                 border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
                 isDense: true,
                 hintText: '0.00',
                 hintStyle: TextStyle(color: AppColors.textDisabled),
@@ -2645,12 +2692,11 @@ class _TradeInput extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(suffix,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textSecondary)),
         ],
-      ),
     );
   }
 }
@@ -2757,7 +2803,7 @@ class _OpenOrderRow extends StatelessWidget {
               children: [
                 Text(
                   '${order.side.toUpperCase()} ${order.type}',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color: isBuy
@@ -2785,7 +2831,7 @@ class _OpenOrderRow extends StatelessWidget {
               ),
               child: Text(
                 'Cancel',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                     color: AppColors.tradingRed),
@@ -2862,13 +2908,13 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                   child: TextField(
                     onChanged: (v) => setState(() => _search = v),
                     cursorColor: accent.g2,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                         fontSize: 14, color: AppColors.textPrimary),
                     decoration: InputDecoration(
                       hintText: context
                           .read<LocaleProvider>()
                           .t('common.search_pairs'),
-                      hintStyle: GoogleFonts.inter(
+                      hintStyle: AppFonts.ui(
                           fontSize: 14, color: AppColors.textDisabled),
                       prefixIcon: Icon(Icons.search_rounded,
                           color: AppColors.textTertiary, size: 20),
@@ -2906,7 +2952,7 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                       ),
                       title: Text(
                         t.displaySymbol,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 14,
                           fontWeight: isSelected
                               ? FontWeight.w700

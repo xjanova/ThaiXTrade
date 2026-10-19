@@ -8,7 +8,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -22,6 +22,7 @@ import '../../services/update_service.dart';
 import '../../widgets/common/app_background.dart';
 import '../../widgets/common/coin_chip.dart';
 import '../../widgets/common/glass_card.dart';
+import '../../widgets/obsidian/obsidian_icons.dart';
 import '../../widgets/common/mini_sparkline.dart';
 import '../../widgets/common/peer_app_card.dart';
 import '../../widgets/common/price_text.dart';
@@ -194,7 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Text(
                       'TPIX ',
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 19,
                         fontWeight: FontWeight.w800,
                         color: AppColors.textPrimary,
@@ -206,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           AppGradients.gold.createShader(b),
                       child: Text(
                         'TRADE',
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 19,
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
@@ -219,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 1),
                 Text(
                   '$greeting · $who',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textTertiary,
@@ -287,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Text(
                         locale.t('update.available'),
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: AppColors.textPrimary,
@@ -392,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 18),
         child: Text(
           'No market data',
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
               fontSize: 13, color: AppColors.textTertiary),
         ),
       );
@@ -409,11 +410,11 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: accent ?? AppColors.gold2),
+          ThemedIcon(icon, size: 18, color: accent ?? AppColors.gold2),
           const SizedBox(width: 8),
           Text(
             title,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 15,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
@@ -428,16 +429,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHorizontalTickers(List<Ticker> tickers) {
     if (tickers.isEmpty) {
       return SizedBox(
-        height: 92,
+        height: _tickerRowHeight,
         child: Center(
           child: Text('No data',
-              style: GoogleFonts.inter(color: AppColors.textTertiary)),
+              style: AppFonts.ui(color: AppColors.textTertiary)),
         ),
       );
     }
 
     return SizedBox(
-      height: 92,
+      height: _tickerRowHeight,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -539,7 +540,7 @@ class _BalanceHero extends StatelessWidget {
             children: [
               Text(
                 locale.isThai ? 'มูลค่ารวม' : 'TOTAL BALANCE',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textTertiary,
@@ -562,7 +563,7 @@ class _BalanceHero extends StatelessWidget {
                       const SizedBox(width: 3),
                       Text(
                         locale.isThai ? 'ไม่มีค่าแก๊ส' : 'ZERO GAS',
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 9.5,
                           fontWeight: FontWeight.w700,
                           color: accent.g1,
@@ -597,7 +598,7 @@ class _BalanceHero extends StatelessWidget {
               locale.isThai
                   ? 'เชื่อมกระเป๋าเพื่อดูยอดคงเหลือ'
                   : 'Connect wallet to view your balance',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textPrimary,
@@ -628,7 +629,7 @@ class _BalanceHero extends StatelessWidget {
                       const SizedBox(width: 8),
                       Text(
                         locale.t('settings.connect_wallet'),
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w700,
                           color: AppColors.goldTextOn,
@@ -663,7 +664,7 @@ class _BalanceAmount extends StatelessWidget {
       children: [
         Text(
           '\$$intPart',
-          style: GoogleFonts.jetBrainsMono(
+          style: AppFonts.number(
             fontSize: 34,
             fontWeight: FontWeight.w600,
             color: AppColors.textPrimary,
@@ -672,7 +673,7 @@ class _BalanceAmount extends StatelessWidget {
         ),
         Text(
           decPart,
-          style: GoogleFonts.jetBrainsMono(
+          style: AppFonts.number(
             fontSize: 22,
             fontWeight: FontWeight.w600,
             color: AppColors.textTertiary,
@@ -775,7 +776,8 @@ class _AdBannerSliderState extends State<_AdBannerSlider> {
     return Column(
       children: [
         SizedBox(
-          height: 104,
+          // ฟอนต์ไทยของ Obsidian บรรทัดสูงกว่า — คำอธิบาย 2 บรรทัดต้องไม่ล้นการ์ด
+          height: AppColors.palette.obsidian ? 114 : 104,
           child: PageView.builder(
             controller: _controller,
             itemCount: banners.length,
@@ -864,7 +866,7 @@ class _BannerCard extends StatelessWidget {
                       ),
                       child: Text(
                         data.tag,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 9,
                           fontWeight: FontWeight.w800,
                           color: accent.g1,
@@ -875,7 +877,7 @@ class _BannerCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       data.title,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
                         color: AppColors.textPrimary,
@@ -887,7 +889,7 @@ class _BannerCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       data.sub,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 11.5,
                         color: AppColors.textSecondary,
                       ),
@@ -960,7 +962,7 @@ class _MarketRow extends StatelessWidget {
             children: [
               Text(
                 name,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -969,7 +971,7 @@ class _MarketRow extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 pair,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 11,
                   color: AppColors.textTertiary,
                 ),
@@ -1029,7 +1031,7 @@ class _TickerMiniCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   ticker.baseAsset,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -1050,15 +1052,19 @@ class _TickerMiniCard extends StatelessWidget {
   }
 }
 
+/// ความสูงแถวการ์ดเหรียญแนวนอน (รวมโครงตอนโหลด ให้สูงเท่ากัน ไม่กระตุกตอนข้อมูลมา)
+/// IBM Plex Sans Thai (ธีม Obsidian) บรรทัดสูงกว่า Inter — เผื่อไว้ไม่ให้การ์ดล้น
+double get _tickerRowHeight => AppColors.palette.obsidian ? 104 : 92;
+
 // ── Shimmers ──
 
 class _StripShimmer extends StatelessWidget {
   const _StripShimmer();
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
-      height: 92,
-      child: Center(child: ShimmerBox(width: 200, height: 14)),
+    return SizedBox(
+      height: _tickerRowHeight,
+      child: const Center(child: ShimmerBox(width: 200, height: 14)),
     );
   }
 }
@@ -1152,7 +1158,7 @@ class _HomeUpdateDialogState extends State<_HomeUpdateDialog> {
               child: SingleChildScrollView(
                 child: Text(
                   widget.result.releaseNotes!,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                       fontSize: 11, color: AppColors.textTertiary),
                 ),
               ),
@@ -1171,7 +1177,7 @@ class _HomeUpdateDialogState extends State<_HomeUpdateDialog> {
             ),
             const SizedBox(height: 6),
             Text(_status,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                     fontSize: 11, color: AppColors.textTertiary)),
           ],
         ],

@@ -23,7 +23,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/locale/locale_provider.dart';
@@ -33,6 +33,7 @@ import '../../providers/accent_provider.dart';
 import '../common/glass_card.dart';
 import '../common/gradient_button.dart';
 import 'bot_json.dart';
+import '../obsidian/obsidian_icons.dart';
 
 // ─────────────────────────────────────────────────────────
 // สัญญาระหว่างฟอร์มกับหน้าจอที่เรียกใช้
@@ -668,7 +669,7 @@ class _BotBuilderSheetState extends State<BotBuilderSheet> {
                   _isEditing
                       ? (th ? 'แก้ไขบอท' : 'Edit bot')
                       : (th ? 'สร้างบอทใหม่' : 'New bot'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
@@ -680,7 +681,7 @@ class _BotBuilderSheetState extends State<BotBuilderSheet> {
                   th
                       ? 'ตั้งค่าเสร็จแล้วปรับเปลี่ยนทีหลังได้ตลอด'
                       : 'Everything here can be changed later',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     color: AppColors.textTertiary,
                   ),
@@ -724,7 +725,7 @@ class _BotBuilderSheetState extends State<BotBuilderSheet> {
           maxLength: _maxNameLength,
           textInputAction: TextInputAction.next,
           onChanged: (_) => setState(() {}),
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             color: AppColors.textPrimary,
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -1180,7 +1181,7 @@ class _BotBuilderSheetState extends State<BotBuilderSheet> {
                     th
                         ? 'บอทที่สร้างใหม่จะอยู่ในสถานะ "พัก" — กดเริ่มอีกครั้งถึงจะเดิน'
                         : 'A new bot starts paused — hit Start to run it',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 10.5,
                       height: 1.3,
                       color: AppColors.textTertiary,
@@ -1209,7 +1210,7 @@ class _BotBuilderSheetState extends State<BotBuilderSheet> {
                 padding: const EdgeInsets.all(8),
                 child: Text(
                   th ? 'ยกเลิก' : 'Cancel',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textTertiary,
@@ -1239,17 +1240,17 @@ class _BotBuilderSheetState extends State<BotBuilderSheet> {
       filled: true,
       fillColor: AppColors.bgInput,
       hintText: hint,
-      hintStyle: GoogleFonts.inter(
+      hintStyle: AppFonts.ui(
         color: AppColors.textDisabled,
         fontSize: 13.5,
       ),
       errorText: error,
-      errorStyle: GoogleFonts.inter(
+      errorStyle: AppFonts.ui(
         fontSize: 10.5,
         color: AppColors.tradingRed,
       ),
       counterText: counter ? null : '',
-      counterStyle: GoogleFonts.inter(
+      counterStyle: AppFonts.ui(
         fontSize: 10,
         color: AppColors.textTertiary,
       ),
@@ -1441,15 +1442,7 @@ class _Group extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: accent.goldTint,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Icon(icon, color: accent.g2, size: 16),
-              ),
+              IconTile(icon: icon, size: 30, iconSize: 16, radius: 9, background: accent.goldTint, color: accent.g2),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -1457,7 +1450,7 @@ class _Group extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 14.5,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -1467,7 +1460,7 @@ class _Group extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 10.5,
                         height: 1.3,
                         color: AppColors.textTertiary,
@@ -1500,7 +1493,7 @@ class _FieldLabel extends StatelessWidget {
       children: [
         Text(
           label,
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 12.5,
             fontWeight: FontWeight.w700,
             color: AppColors.textPrimary,
@@ -1510,7 +1503,7 @@ class _FieldLabel extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             help!,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 10.5,
               height: 1.3,
               color: AppColors.textTertiary,
@@ -1589,7 +1582,7 @@ class _NumberField extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   suffix!,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textSecondary,
@@ -1723,7 +1716,7 @@ class _ChoiceChip extends StatelessWidget {
                         ? AppColors.goldTextOn
                         : AppColors.textSecondary,
                   )
-                : GoogleFonts.inter(
+                : AppFonts.ui(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: selected
@@ -1771,7 +1764,7 @@ class _SwitchRow extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -1781,7 +1774,7 @@ class _SwitchRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     help!,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 10.5,
                       height: 1.3,
                       color: AppColors.textTertiary,
@@ -1868,7 +1861,7 @@ class _StrategyTile extends StatelessWidget {
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
                           color: AppColors.textPrimary,
@@ -1898,7 +1891,7 @@ class _StrategyTile extends StatelessWidget {
                     desc,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 10,
                       height: 1.32,
                       color: AppColors.textSecondary,
@@ -1907,7 +1900,7 @@ class _StrategyTile extends StatelessWidget {
                 ),
                 Text(
                   _riskLabel(riskLevel, th),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 9.5,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textTertiary,
@@ -1951,7 +1944,7 @@ class _TinyTag extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: GoogleFonts.inter(
+        style: AppFonts.ui(
           fontSize: 8.5,
           fontWeight: FontWeight.w700,
           color: color,
@@ -1988,7 +1981,7 @@ class _NoteLine extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10.5,
                 height: 1.35,
                 color: AppColors.textSecondary,
@@ -2018,7 +2011,7 @@ class _ErrorLine extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 10.5,
               height: 1.3,
               color: AppColors.tradingRed,
@@ -2058,7 +2051,7 @@ class _ErrorBanner extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11.5,
                 height: 1.35,
                 color: AppColors.textPrimary,
@@ -2147,7 +2140,7 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                     controller: _searchCtrl,
                     autofocus: false,
                     onChanged: (v) => setState(() => _query = v.trim()),
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       color: AppColors.textPrimary,
                       fontSize: 14,
                     ),
@@ -2157,7 +2150,7 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                       filled: true,
                       fillColor: AppColors.bgInput,
                       hintText: th ? 'ค้นหาคู่เทรด' : 'Search pairs',
-                      hintStyle: GoogleFonts.inter(
+                      hintStyle: AppFonts.ui(
                         color: AppColors.textTertiary,
                         fontSize: 14,
                       ),
@@ -2195,7 +2188,7 @@ class _PairPickerSheetState extends State<_PairPickerSheet> {
                                 th
                                     ? 'ไม่พบคู่เทรดที่ค้นหา'
                                     : 'No pair matches that search',
-                                style: GoogleFonts.inter(
+                                style: AppFonts.ui(
                                   fontSize: 13,
                                   color: AppColors.textTertiary,
                                 ),

@@ -11,7 +11,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -150,7 +150,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
               Expanded(
                 child: Text(
                   th ? 'กระเป๋าบอท' : 'Bot wallet',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
@@ -166,7 +166,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
                   ),
                   child: Text(
                     wallet.chainName,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
                       color: AppColors.textSecondary,
@@ -180,7 +180,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
             th
                 ? 'กระเป๋าแยกที่บอทใช้ในโหมดจริง — โอนทุนของบอทเข้ามาที่นี่ กระเป๋าที่คุณเทรดเองไม่ถูกแตะ และถอนกลับได้เฉพาะกระเป๋าของคุณเอง'
                 : 'A separate wallet the bot trades from in live mode — fund it here. Your own trading wallet is never touched, and withdrawals only go back to your wallet',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11,
               color: AppColors.textTertiary,
               height: 1.5,
@@ -193,7 +193,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
               bot.isLoadingBotWallet
                   ? (th ? 'กำลังโหลด…' : 'Loading…')
                   : (th ? 'เชื่อมและยืนยันกระเป๋าก่อนเพื่อดูกระเป๋าบอท' : 'Connect and verify your wallet to see the bot wallet'),
-              style: GoogleFonts.inter(fontSize: 11.5, color: AppColors.textSecondary),
+              style: AppFonts.ui(fontSize: 11.5, color: AppColors.textSecondary),
             ),
           ] else if (!state.enabled) ...[
             _note(
@@ -257,7 +257,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
               th
                   ? 'โอน USDT (BSC) เป็นทุนของบอท และ ${wallet.nativeSymbol} เล็กน้อยไว้จ่ายค่าแก๊ส — ส่งบนเชน BSC เท่านั้น'
                   : 'Send USDT (BSC) as the bot\'s capital plus a little ${wallet.nativeSymbol} for gas — BSC network only',
-              style: GoogleFonts.inter(fontSize: 10.5, color: AppColors.textTertiary, height: 1.5),
+              style: AppFonts.ui(fontSize: 10.5, color: AppColors.textTertiary, height: 1.5),
             ),
 
             // ── ยอดของบอท ──
@@ -277,7 +277,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
                         children: [
                           Text(
                             a.isNative ? '${a.symbol} · ${th ? 'แก๊ส' : 'gas'}' : a.symbol,
-                            style: GoogleFonts.inter(fontSize: 10, color: AppColors.textTertiary),
+                            style: AppFonts.ui(fontSize: 10, color: AppColors.textTertiary),
                           ),
                           const SizedBox(height: 2),
                           Text(
@@ -300,14 +300,14 @@ class _BotWalletCardState extends State<BotWalletCard> {
                     wallet.balancesAt == null
                         ? (th ? 'ยังไม่เคยอ่านยอด' : 'Balances not read yet')
                         : '${th ? 'ยอด ณ' : 'As of'} ${TimeOfDay.fromDateTime(wallet.balancesAt!.toLocal()).format(context)}',
-                    style: GoogleFonts.inter(fontSize: 10, color: AppColors.textTertiary),
+                    style: AppFonts.ui(fontSize: 10, color: AppColors.textTertiary),
                   ),
                 ),
                 GestureDetector(
                   onTap: busy ? null : () => _act(bot.refreshBotWallet),
                   child: Text(
                     th ? 'อ่านยอดใหม่' : 'Refresh',
-                    style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: accent.g2),
+                    style: AppFonts.ui(fontSize: 11, fontWeight: FontWeight.w700, color: accent.g2),
                   ),
                 ),
               ],
@@ -366,7 +366,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
                         ),
                         GestureDetector(
                           onTap: () => _useMax(wallet),
-                          child: Text('MAX', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textSecondary)),
+                          child: Text('MAX', style: AppFonts.ui(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textSecondary)),
                         ),
                       ],
                     ),
@@ -385,7 +385,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
               th
                   ? 'ถอนได้ปลายทางเดียวคือกระเป๋าที่คุณยืนยันไว้ · ระบบส่งให้ภายในไม่กี่นาที · ต้องเหลือ ${wallet.nativeSymbol} ไว้จ่ายแก๊ส'
                   : 'The only destination is your verified wallet · sent within minutes · keep some ${wallet.nativeSymbol} for gas',
-              style: GoogleFonts.inter(fontSize: 10, color: AppColors.textTertiary, height: 1.5),
+              style: AppFonts.ui(fontSize: 10, color: AppColors.textTertiary, height: 1.5),
             ),
 
             if (_message != null) ...[
@@ -398,7 +398,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
                 ),
                 child: Text(
                   _message!,
-                  style: GoogleFonts.inter(fontSize: 11, color: _messageOk ? AppColors.tradingGreen : AppColors.tradingRed),
+                  style: AppFonts.ui(fontSize: 11, color: _messageOk ? AppColors.tradingGreen : AppColors.tradingRed),
                 ),
               ),
             ],
@@ -425,7 +425,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
                         ),
                         child: Text(
                           tr.statusLabel(th),
-                          style: GoogleFonts.inter(fontSize: 9.5, fontWeight: FontWeight.w700, color: _statusColor(tr.status)),
+                          style: AppFonts.ui(fontSize: 9.5, fontWeight: FontWeight.w700, color: _statusColor(tr.status)),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -439,7 +439,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
                           tr.failureReason ?? (tr.createdAt == null ? '' : TimeOfDay.fromDateTime(tr.createdAt!.toLocal()).format(context)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(fontSize: 10, color: AppColors.textTertiary),
+                          style: AppFonts.ui(fontSize: 10, color: AppColors.textTertiary),
                         ),
                       ),
                       if (tr.txUrl != null)
@@ -457,7 +457,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
                             padding: const EdgeInsets.only(left: 8),
                             child: Text(
                               th ? 'ยกเลิก' : 'Cancel',
-                              style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.tradingRed),
+                              style: AppFonts.ui(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.tradingRed),
                             ),
                           ),
                         ),
@@ -475,7 +475,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
         padding: const EdgeInsets.only(bottom: 6),
         child: Text(
           text,
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 11,
             fontWeight: FontWeight.w600,
             color: AppColors.textTertiary,
@@ -492,7 +492,7 @@ class _BotWalletCardState extends State<BotWalletCard> {
         ),
         child: Text(
           text,
-          style: GoogleFonts.inter(fontSize: 11.5, color: AppColors.textSecondary, height: 1.5),
+          style: AppFonts.ui(fontSize: 11.5, color: AppColors.textSecondary, height: 1.5),
         ),
       );
 }

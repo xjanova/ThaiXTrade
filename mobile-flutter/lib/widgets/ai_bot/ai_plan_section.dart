@@ -14,7 +14,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -27,6 +27,7 @@ import '../../providers/accent_provider.dart';
 import '../common/glass_card.dart';
 import '../common/gradient_button.dart';
 import '../common/shimmer_loading.dart';
+import '../obsidian/obsidian_icons.dart';
 
 // ── ตัวช่วยจัดรูปตัวเลข (ใช้ร่วมกับโซนเครดิต) ────────────────
 
@@ -430,7 +431,7 @@ class _PlanCard extends StatelessWidget {
                   plan.label(th),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
@@ -461,7 +462,7 @@ class _PlanCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               desc,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11.5,
                 height: 1.45,
                 color: AppColors.textSecondary,
@@ -494,7 +495,7 @@ class _PlanCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         f,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 11.5,
                           height: 1.4,
                           color: AppColors.textSecondary,
@@ -580,7 +581,7 @@ class _PriceBlock extends StatelessWidget {
             Expanded(
               child: Text(
                 th ? 'ใช้ฟรี ไม่ต้องจ่ายเครดิต' : 'Free — no credits charged',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: accent.g1,
@@ -617,7 +618,7 @@ class _PriceBlock extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 th ? 'เครดิต/วัน' : 'credits/day',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textTertiary,
@@ -778,7 +779,7 @@ class _SpecTile extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 9.5,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -847,7 +848,7 @@ class _UpgradeDelta extends StatelessWidget {
       children: [
         Text(
           th ? 'เพิ่มจาก ${previous.label(th)}' : 'Added over ${previous.label(th)}',
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 10,
             fontWeight: FontWeight.w600,
             color: AppColors.textTertiary,
@@ -874,7 +875,7 @@ class _UpgradeDelta extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       item,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
                         color: accent.g1,
@@ -1080,7 +1081,7 @@ class _PlanCta extends StatelessWidget {
               Expanded(
                 child: Text(
                   reason,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 10.5,
                     height: 1.4,
                     fontWeight: warn || gold ? FontWeight.w600 : FontWeight.w400,
@@ -1146,7 +1147,7 @@ class _DaysPicker extends StatelessWidget {
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
                       color: options[i] == selected
@@ -1209,7 +1210,7 @@ class _ExecutionCompare extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary,
@@ -1218,7 +1219,7 @@ class _ExecutionCompare extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     body,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11,
                       height: 1.45,
                       color: AppColors.textSecondary,
@@ -1307,7 +1308,7 @@ class _CancelRentalRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   th ? 'ยกเลิกการเช่า' : 'Cancel the rental',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -1321,7 +1322,7 @@ class _CancelRentalRow extends StatelessWidget {
             th
                 ? 'บอททุกตัวจะถูกหยุด และคืนเครดิตของวันที่เหลืออีก $daysRemaining วันให้'
                 : 'Every bot stops and the credits for the remaining $daysRemaining days are refunded',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11,
               height: 1.45,
               color: AppColors.textSecondary,
@@ -1344,7 +1345,7 @@ class _CancelRentalRow extends StatelessWidget {
                   : const Icon(Icons.close_rounded, size: 15),
               label: Text(
                 th ? 'ยกเลิกและหยุดบอททั้งหมด' : 'Cancel and stop every bot',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -1395,7 +1396,7 @@ Future<bool?> showAiRentConfirmDialog(
       ),
       title: Text(
         th ? 'ยืนยันการเช่าบอท' : 'Confirm rental',
-        style: GoogleFonts.inter(
+        style: AppFonts.ui(
           color: AppColors.textPrimary,
           fontSize: 16,
           fontWeight: FontWeight.w800,
@@ -1423,7 +1424,7 @@ Future<bool?> showAiRentConfirmDialog(
                       '$currentDaysRemaining วันทันที และคืนเครดิตส่วนที่ยังไม่ได้ใช้'
                   : 'Switching ends your "$currentPlanLabel" plan right now '
                       '($currentDaysRemaining days left) and refunds the unused part.',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11,
                 height: 1.45,
                 color: AppColors.textSecondary,
@@ -1436,7 +1437,7 @@ Future<bool?> showAiRentConfirmDialog(
               th
                   ? 'กำลังใช้สิทธิ์ทีมงานข้ามด่านขาย — เครดิตยังถูกตัดตามจริง'
                   : 'Using team rights to bypass the sales gate — credits are still charged.',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10.5,
                 height: 1.4,
                 color: AppColors.gold1,
@@ -1448,7 +1449,7 @@ Future<bool?> showAiRentConfirmDialog(
             th
                 ? 'ค่าความเสี่ยงของบอททุกตัวจะถูกปรับให้อยู่ในเพดานของแพลนใหม่'
                 : 'Every bot risk limit is re-clamped to the new plan ceiling.',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 10.5,
               height: 1.4,
               color: AppColors.textTertiary,
@@ -1499,7 +1500,7 @@ Future<bool?> showAiCancelRentalDialog(
       ),
       title: Text(
         th ? 'ยกเลิกการเช่า?' : 'Cancel the rental?',
-        style: GoogleFonts.inter(
+        style: AppFonts.ui(
           color: AppColors.textPrimary,
           fontSize: 16,
           fontWeight: FontWeight.w800,
@@ -1525,7 +1526,7 @@ Future<bool?> showAiCancelRentalDialog(
                     'ยังไม่ได้ใช้จะถูกคืนเข้าบัญชี'
                 : 'Every running or paused bot stops immediately, and the credits for '
                     'the unused days are refunded to your balance.',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11,
               height: 1.45,
               color: AppColors.textSecondary,
@@ -1565,7 +1566,7 @@ Widget _dialogRow(String k, String v) => Padding(
           Flexible(
             child: Text(
               k,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 12,
                 color: AppColors.textSecondary,
               ),
@@ -1631,7 +1632,7 @@ class _AiNoticeBox extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -1640,7 +1641,7 @@ class _AiNoticeBox extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   body,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     height: 1.45,
                     color: AppColors.textSecondary,
@@ -1682,7 +1683,7 @@ class _MiniPill extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 9.5,
               fontWeight: FontWeight.w700,
               color: accent.g1,
@@ -1732,7 +1733,7 @@ class _ExecutionPill extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
                 color: runsInCloud ? accent.g1 : AppColors.textSecondary,
@@ -1765,20 +1766,12 @@ class _SectionTitle extends StatelessWidget {
       children: [
         Row(
           children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: accent.goldTint,
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Icon(icon, color: accent.g2, size: 16),
-            ),
+            IconTile(icon: icon, size: 30, iconSize: 16, radius: 9, background: accent.goldTint, color: accent.g2),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 title,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 14.5,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -1792,7 +1785,7 @@ class _SectionTitle extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             subtitle!,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11.5,
               height: 1.45,
               color: AppColors.textTertiary,
@@ -1856,7 +1849,7 @@ class _CatalogUnavailable extends StatelessWidget {
                   children: [
                     Text(
                       th ? 'ยังโหลดรายการแพลนไม่ได้' : 'Could not load the plans',
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -1869,7 +1862,7 @@ class _CatalogUnavailable extends StatelessWidget {
                               'ตรวจอินเทอร์เน็ตแล้วลองใหม่'
                           : 'Prices and limits come from the server, so nothing can be '
                               'shown yet. Check your connection and try again.',
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 11,
                         height: 1.45,
                         color: AppColors.textSecondary,
@@ -1886,7 +1879,7 @@ class _CatalogUnavailable extends StatelessWidget {
             icon: const Icon(Icons.refresh_rounded, size: 15),
             label: Text(
               th ? 'ลองใหม่' : 'Retry',
-              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+              style: AppFonts.ui(fontSize: 12, fontWeight: FontWeight.w700),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: accent.g2,

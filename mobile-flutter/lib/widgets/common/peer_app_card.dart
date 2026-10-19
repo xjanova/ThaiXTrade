@@ -6,7 +6,7 @@
 /// Developed by Xman Studio
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/gradients.dart';
@@ -14,6 +14,7 @@ import '../../core/locale/locale_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../utils/peer_app.dart';
 import 'glass_card.dart';
+import '../obsidian/obsidian_icons.dart';
 
 class PeerAppCard extends StatefulWidget {
   const PeerAppCard({super.key});
@@ -81,7 +82,7 @@ class _PeerAppCardState extends State<PeerAppCard>
       onTap: _open,
       child: Row(
         children: [
-          Container(
+          ObsidianIconSwap(icon: Icons.account_balance_wallet_rounded, size: 36, child: Container(
             width: 36,
             height: 36,
             decoration: BoxDecoration(
@@ -90,7 +91,7 @@ class _PeerAppCardState extends State<PeerAppCard>
             ),
             child: Icon(Icons.account_balance_wallet_rounded,
                 color: AppColors.goldTextOn, size: 18),
-          ),
+          )),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -98,7 +99,7 @@ class _PeerAppCardState extends State<PeerAppCard>
               children: [
                 Text(
                   locale.t('peer.open_wallet'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -106,7 +107,7 @@ class _PeerAppCardState extends State<PeerAppCard>
                 ),
                 Text(
                   locale.t('peer.wallet_desc'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     color: AppColors.textTertiary,
                   ),
@@ -156,7 +157,7 @@ class _PeerAppCardState extends State<PeerAppCard>
             padding: const EdgeInsets.all(14),
             child: Row(
               children: [
-                Container(
+                ObsidianIconSwap(icon: Icons.account_balance_wallet_rounded, size: 48, child: Container(
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
@@ -172,7 +173,7 @@ class _PeerAppCardState extends State<PeerAppCard>
                   ),
                   child: Icon(Icons.account_balance_wallet_rounded,
                       color: AppColors.goldTextOn, size: 24),
-                ),
+                )),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -180,7 +181,7 @@ class _PeerAppCardState extends State<PeerAppCard>
                     children: [
                       Text(
                         locale.t('peer.install_wallet'),
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
                           color: AppColors.textPrimary,
@@ -189,7 +190,7 @@ class _PeerAppCardState extends State<PeerAppCard>
                       const SizedBox(height: 2),
                       Text(
                         locale.t('peer.install_wallet_desc'),
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 11,
                           color: AppColors.textSecondary,
                         ),
@@ -213,7 +214,7 @@ class _PeerAppCardState extends State<PeerAppCard>
                       const SizedBox(width: 4),
                       Text(
                         locale.t('common.download'),
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: AppColors.goldTextOn,

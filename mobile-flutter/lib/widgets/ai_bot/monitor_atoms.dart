@@ -9,7 +9,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -18,6 +18,7 @@ import '../../core/theme/gradients.dart';
 import '../../providers/accent_provider.dart';
 import '../common/glass_card.dart';
 import '../common/shimmer_loading.dart';
+import '../obsidian/obsidian_icons.dart';
 
 /// โทนของชิป/แถบเตือน — ไล่ความเข้มด้วยทอง ไม่ใช่เปลี่ยนสี
 enum MonitorTone {
@@ -73,15 +74,7 @@ class MonitorSection extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: accent.goldTint,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Icon(icon, color: accent.g2, size: 16),
-              ),
+              IconTile(icon: icon, size: 30, iconSize: 16, radius: 9, background: accent.goldTint, color: accent.g2),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -89,7 +82,7 @@ class MonitorSection extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 14.5,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -102,7 +95,7 @@ class MonitorSection extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         subtitle!,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 11,
                           color: AppColors.textTertiary,
                           height: 1.35,
@@ -266,7 +259,7 @@ class MonitorPill extends StatelessWidget {
           ],
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: fontSize,
               fontWeight: FontWeight.w700,
               color: fg,
@@ -320,7 +313,7 @@ class MonitorStat extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textTertiary,
@@ -350,7 +343,7 @@ class MonitorStat extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               hint!,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 9.5,
                 color: AppColors.textTertiary,
               ),
@@ -389,7 +382,7 @@ class MonitorKv extends StatelessWidget {
           Flexible(
             child: Text(
               label,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: fontSize,
                 color: AppColors.textSecondary,
               ),
@@ -471,7 +464,7 @@ class MonitorNotice extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -482,7 +475,7 @@ class MonitorNotice extends StatelessWidget {
                       const SizedBox(height: 3),
                       Text(
                         body!,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 11,
                           color: AppColors.textSecondary,
                           height: 1.4,
@@ -514,7 +507,7 @@ class MonitorNotice extends StatelessWidget {
                       ),
                       child: Text(
                         secondaryLabel!,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: AppColors.textSecondary,
@@ -555,7 +548,7 @@ class MonitorNotice extends StatelessWidget {
                             )
                           : Text(
                               actionLabel!,
-                              style: GoogleFonts.inter(
+                              style: AppFonts.ui(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -599,7 +592,7 @@ class MonitorEmpty extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: AppColors.textSecondary,
@@ -610,7 +603,7 @@ class MonitorEmpty extends StatelessWidget {
             Text(
               body!,
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11,
                 color: AppColors.textTertiary,
                 height: 1.45,

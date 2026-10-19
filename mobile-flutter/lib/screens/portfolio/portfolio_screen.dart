@@ -8,7 +8,7 @@
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -23,6 +23,7 @@ import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
 import '../../widgets/common/shimmer_loading.dart';
 import '../../widgets/wallet/wallet_connect_sheet.dart';
+import '../../widgets/obsidian/obsidian_icons.dart';
 
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
@@ -130,7 +131,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
           const SizedBox(width: 8),
           Text(
             locale.t('portfolio.title'),
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 22,
               fontWeight: FontWeight.w800,
               color: AppColors.textPrimary,
@@ -169,9 +170,9 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         indicatorSize: TabBarIndicatorSize.tab,
         labelColor: AppColors.goldTextOn, // dark text on gold
         unselectedLabelColor: AppColors.textSecondary,
-        labelStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+        labelStyle: AppFonts.ui(fontSize: 13, fontWeight: FontWeight.w700),
         unselectedLabelStyle:
-            GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+            AppFonts.ui(fontSize: 13, fontWeight: FontWeight.w600),
         dividerColor: Colors.transparent,
         splashBorderRadius: BorderRadius.circular(10),
         tabs: [
@@ -244,7 +245,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
+            ObsidianIconSwap(icon: Icons.pie_chart_rounded, size: 80, child: Container(
               width: 80,
               height: 80,
               decoration: BoxDecoration(
@@ -260,11 +261,11 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               ),
               child: Icon(Icons.pie_chart_rounded,
                   color: AppColors.goldTextOn, size: 36),
-            ),
+            )),
             const SizedBox(height: 24),
             Text(
               locale.t('portfolio.title'),
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: AppColors.textPrimary,
@@ -276,7 +277,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                   ? 'เชื่อมกระเป๋าเพื่อดูสินทรัพย์ของคุณ'
                   : 'Connect your wallet to view your assets',
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 14,
                 color: AppColors.textTertiary,
               ),
@@ -332,7 +333,7 @@ class _NetWorthCard extends StatelessWidget {
             children: [
               Text(
                 (locale.isThai ? 'มูลค่าสุทธิ' : 'NET WORTH'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textTertiary,
@@ -383,7 +384,7 @@ class _NetWorthCard extends StatelessWidget {
                       children: [
                         Text(
                           '$assetCount',
-                          style: GoogleFonts.jetBrainsMono(
+                          style: AppFonts.number(
                             fontSize: 24,
                             fontWeight: FontWeight.w700,
                             color: AppColors.textPrimary,
@@ -393,7 +394,7 @@ class _NetWorthCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           locale.isThai ? 'สินทรัพย์' : 'assets',
-                          style: GoogleFonts.inter(
+                          style: AppFonts.ui(
                             fontSize: 9.5,
                             fontWeight: FontWeight.w600,
                             color: AppColors.textTertiary,
@@ -451,7 +452,7 @@ class _NetWorthCard extends StatelessWidget {
                           const SizedBox(width: 3),
                           Text(
                             locale.isThai ? 'ไม่มีค่าแก๊ส' : 'ZERO GAS',
-                            style: GoogleFonts.inter(
+                            style: AppFonts.ui(
                               fontSize: 9.5,
                               fontWeight: FontWeight.w700,
                               color: accent.g1,
@@ -492,7 +493,7 @@ class _NetWorthAmount extends StatelessWidget {
         children: [
           Text(
             '\$$intPart',
-            style: GoogleFonts.jetBrainsMono(
+            style: AppFonts.number(
               fontSize: 30,
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
@@ -501,7 +502,7 @@ class _NetWorthAmount extends StatelessWidget {
           ),
           Text(
             decPart,
-            style: GoogleFonts.jetBrainsMono(
+            style: AppFonts.number(
               fontSize: 19,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -548,7 +549,7 @@ class _GoldPill extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 9.5,
               fontWeight: FontWeight.w700,
               color: accent.g1,
@@ -605,7 +606,7 @@ class _AssetTile extends StatelessWidget {
                   children: [
                     Text(
                       token.symbol,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -614,7 +615,7 @@ class _AssetTile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       token.name,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 11,
                         color: AppColors.textTertiary,
                       ),
@@ -741,7 +742,7 @@ class _HistoryTile extends StatelessWidget {
               children: [
                 Text(
                   '${order.side.toString().toUpperCase()} ${order.pair}',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -750,7 +751,7 @@ class _HistoryTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   '${order.type} · ${order.status}',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     color: AppColors.textTertiary,
                   ),
@@ -802,7 +803,7 @@ class _EmptyState extends StatelessWidget {
         Center(
           child: Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
                 fontSize: 14, color: AppColors.textTertiary),
           ),
         ),

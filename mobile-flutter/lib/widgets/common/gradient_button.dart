@@ -11,8 +11,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_fonts.dart';
 import '../../core/theme/gradients.dart';
 import '../../providers/accent_provider.dart';
+import '../obsidian/obsidian_surface.dart';
 
 enum ButtonVariant { brand, gold, buy, sell, outline }
 
@@ -50,7 +52,9 @@ class GradientButton extends StatelessWidget {
     final textColor = _textColor(accent);
     final glow = _glowColor(accent);
 
-    Widget button = Container(
+    Widget button = AppColors.palette.obsidian
+        ? _buildObsidian(isDisabled, textColor)
+        : Container(
       height: height,
       width: fullWidth ? double.infinity : null,
       decoration: BoxDecoration(
@@ -120,6 +124,92 @@ class GradientButton extends StatelessWidget {
     }
 
     return button;
+  }
+
+  /// ธีม Obsidian — ปุ่มนูนสูตรเดียวกับ TPIX Wallet
+  ///   gold/brand → ขาวนูนเรืองม่วง · buy/sell → ไล่สีทิศราคา + ไฮไลต์บน
+  ///   outline → กระจกเข้มขอบเงิน · ปิดใช้งาน → แผ่นเข้มจาง
+  Widget _buildObsidian(bool isDisabled, Color textColor) {
+    final r = borderRadius < 19 ? 19.0 : borderRadius;
+    final ObsidianSurface surface;
+    var fg = textColor;
+    if (isDisabled && !isLoading) {
+      surface = ObsidianSurface.dark.copyWith(radius: r, shadows: const []);
+      fg = AppColors.textDisabled;
+    } else {
+      switch (variant) {
+        case ButtonVariant.buy:
+          surface = ObsidianSurface.trade(
+            light: AppColors.tradingGreenLight,
+            dark: AppColors.tradingGreenDark,
+            radius: r,
+          );
+          fg = const Color(0xFF04140D);
+        case ButtonVariant.sell:
+          surface = ObsidianSurface.trade(
+            light: AppColors.tradingRedLight,
+            dark: AppColors.tradingRedDark,
+            radius: r,
+          );
+          fg = AppColors.white;
+        case ButtonVariant.outline:
+          surface = ObsidianSurface.dark.copyWith(
+            radius: r,
+            ring: AppColors.goldBorder,
+          );
+          fg = AppColors.textPrimary;
+        case ButtonVariant.brand:
+        case ButtonVariant.gold:
+          surface = ObsidianSurface.primaryButton.copyWith(radius: r);
+          fg = AppColors.goldTextOn;
+      }
+    }
+
+    return ObsidianPressable(
+      onTap: isDisabled ? null : onPressed,
+      child: CustomPaint(
+        painter: ObsidianSurfacePainter(surface),
+        child: SizedBox(
+          height: height,
+          width: fullWidth ? double.infinity : null,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: fullWidth ? 0 : 20),
+            child: Center(
+              widthFactor: fullWidth ? null : 1,
+              child: isLoading
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: fg),
+                    )
+                  : Row(
+                      mainAxisSize:
+                          fullWidth ? MainAxisSize.max : MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (icon != null) ...[
+                          Icon(icon, color: fg, size: 18),
+                          const SizedBox(width: 8),
+                        ],
+                        Flexible(
+                          child: Text(
+                            text,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppFonts.ui(
+                              color: fg,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   LinearGradient? _gradient(AccentProvider accent) {

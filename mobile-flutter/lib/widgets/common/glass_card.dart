@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/gradients.dart';
 import '../../providers/accent_provider.dart';
+import '../obsidian/obsidian_surface.dart';
 
 enum GlassVariant { standard, elevated, brand, gold, hero }
 
@@ -49,6 +50,7 @@ class GlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = context.watch<AccentProvider>();
+    if (AppColors.palette.obsidian) return _buildObsidian();
     final decoration = _buildDecoration(accent);
 
     Widget content = child;
@@ -97,6 +99,73 @@ class GlassCard extends StatelessWidget {
 
     if (onTap != null) {
       return GestureDetector(onTap: onTap, child: card);
+    }
+    return card;
+  }
+
+  /// ธีม Obsidian — ผิวกระจกขอบนูนสูตรเดียวกับ TPIX Wallet
+  ///
+  /// ไม่เบลอฉากหลัง (แผงของ Wallet ก็ไม่เบลอ) — รายการยาว ๆ เลื่อนลื่นกว่า
+  /// และพื้นหลังเทคยังโผล่ผ่านแผงโปร่ง 6% ให้เห็นมิติ
+  Widget _buildObsidian() {
+    final surface = switch (variant) {
+      GlassVariant.standard => ObsidianSurface.panel,
+      GlassVariant.elevated => ObsidianSurface.raised,
+      // การ์ดเน้น: กระจกนูน + วงขอบเงินแทนขอบทอง
+      GlassVariant.brand ||
+      GlassVariant.gold =>
+        ObsidianSurface.raised.copyWith(
+          ring: AppColors.goldBorder,
+          shadows: const [
+            CssShadow(0, 18, 36, -18, Color(0x668B5CF6)), // violet .4
+            CssShadow(0, 10, 24, -10, Color(0xE6000000)),
+          ],
+        ),
+      GlassVariant.hero => ObsidianSurface.metal,
+    }
+        .copyWith(radius: borderRadius);
+
+    Widget content = child;
+    if (_hasSheen) {
+      // แสงวาวเฉียงบนหน้าบัตรโลหะ
+      content = Stack(
+        children: [
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: const Alignment(-1.0, -1.0),
+                    end: const Alignment(0.4, 0.6),
+                    colors: [AppColors.sheen, const Color(0x00FFFFFF)],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          child,
+        ],
+      );
+    }
+
+    Widget card = CustomPaint(
+      painter: ObsidianSurfacePainter(surface),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: Container(
+          width: width,
+          height: height,
+          padding: padding ?? const EdgeInsets.all(16),
+          child: content,
+        ),
+      ),
+    );
+
+    if (margin != null) {
+      card = Padding(padding: margin!, child: card);
+    }
+    if (onTap != null) {
+      return ObsidianPressable(onTap: onTap, pressedScale: 0.985, child: card);
     }
     return card;
   }

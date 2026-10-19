@@ -14,7 +14,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/locale/locale_provider.dart';
@@ -176,7 +176,7 @@ class _AiAnalyticsPanelState extends State<AiAnalyticsPanel> {
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                       color: i == _tab
@@ -344,7 +344,7 @@ class _AiAnalyticsPanelState extends State<AiAnalyticsPanel> {
           th
               ? 'ต้นทุนรวมคือส่วนที่กินกำไรจริง — กลยุทธ์ที่เข้าออกถี่ต้องมีเป้ากำไรต่อไม้สูงกว่าต้นทุนไปกลับ ไม่งั้นขาดทุนแม้ทายถูก'
               : 'Total cost is what actually eats the profit — fast strategies must target more than the round-trip cost, or they lose even when right.',
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 10.5,
             color: AppColors.textTertiary,
             height: 1.45,
@@ -386,7 +386,7 @@ class _AiAnalyticsPanelState extends State<AiAnalyticsPanel> {
                     Expanded(
                       child: Text(
                         _keyLabel(locale, r.key),
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
                           color: AppColors.textPrimary,

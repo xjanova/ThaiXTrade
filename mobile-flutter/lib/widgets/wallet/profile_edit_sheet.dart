@@ -7,7 +7,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -156,7 +156,7 @@ class _ProfileEditSheetState extends State<ProfileEditSheet> {
                 // Title
                 Text(
                   locale.t('profile.title'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -252,7 +252,7 @@ class _ProfileEditSheetState extends State<ProfileEditSheet> {
                         Expanded(
                           child: Text(
                             _localError!,
-                            style: GoogleFonts.inter(
+                            style: AppFonts.ui(
                               fontSize: 12,
                               color: AppColors.tradingRed,
                             ),
@@ -282,7 +282,7 @@ class _ProfileEditSheetState extends State<ProfileEditSheet> {
                     onPressed: _saving ? null : () => Navigator.pop(context),
                     child: Text(
                       locale.t('common.cancel'),
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         color: AppColors.textTertiary,
                       ),
                     ),
@@ -307,7 +307,7 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: GoogleFonts.inter(
+      style: AppFonts.ui(
         fontSize: 12,
         fontWeight: FontWeight.w600,
         color: AppColors.textSecondary,
@@ -335,13 +335,13 @@ class _TextField extends StatelessWidget {
       controller: controller,
       keyboardType: keyboardType,
       maxLength: maxLength,
-      style: GoogleFonts.inter(
+      style: AppFonts.ui(
         fontSize: 14,
         color: AppColors.textPrimary,
       ),
       decoration: InputDecoration(
         hintText: hintText,
-        hintStyle: GoogleFonts.inter(
+        hintStyle: AppFonts.ui(
           color: AppColors.textDisabled,
           fontSize: 14,
         ),
@@ -395,7 +395,7 @@ class _ReadOnlyRow extends StatelessWidget {
         children: [
           Text(
             '$label  ',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 12,
               color: AppColors.textTertiary,
             ),
@@ -405,7 +405,7 @@ class _ReadOnlyRow extends StatelessWidget {
               value,
               style: monospace
                   ? AppTheme.mono(fontSize: 13)
-                  : GoogleFonts.inter(
+                  : AppFonts.ui(
                       fontSize: 13, color: AppColors.textPrimary),
               overflow: TextOverflow.ellipsis,
             ),
@@ -458,7 +458,7 @@ class _StatChip extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 10,
                     color: AppColors.textTertiary,
                   ),

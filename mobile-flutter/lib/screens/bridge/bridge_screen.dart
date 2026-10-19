@@ -4,7 +4,7 @@
 /// Developed by Xman Studio
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -117,7 +117,7 @@ class _BridgeScreenState extends State<BridgeScreen> {
                         child: Row(
                           children: [
                             Text(locale.t('bridge.amount'),
-                                style: GoogleFonts.inter(
+                                style: AppFonts.ui(
                                     fontSize: 12,
                                     color: AppColors.textTertiary)),
                             const SizedBox(width: 8),
@@ -139,7 +139,7 @@ class _BridgeScreenState extends State<BridgeScreen> {
                             ),
                             const SizedBox(width: 8),
                             Text('TPIX',
-                                style: GoogleFonts.inter(
+                                style: AppFonts.ui(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                     color: AppColors.textSecondary)),
@@ -192,7 +192,7 @@ class _BridgeScreenState extends State<BridgeScreen> {
                                   locale.isThai
                                       ? 'กรุณาเลือกเชนต้นทางและปลายทางให้ต่างกัน'
                                       : 'From and To chains must differ',
-                                  style: GoogleFonts.inter(
+                                  style: AppFonts.ui(
                                     fontSize: 11,
                                     color: AppColors.tradingRed,
                                   ),
@@ -235,7 +235,7 @@ class _BridgeScreenState extends State<BridgeScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
                 fontSize: 11, color: AppColors.textTertiary)),
         const SizedBox(height: 6),
         Wrap(
@@ -270,7 +270,7 @@ class _BridgeScreenState extends State<BridgeScreen> {
                     ),
                     const SizedBox(width: 6),
                     Text(chain.shortName,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 12,
                           fontWeight:
                               isActive ? FontWeight.w600 : FontWeight.w400,
@@ -293,7 +293,7 @@ class _BridgeScreenState extends State<BridgeScreen> {
       child: Row(
         children: [
           Text(label,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                   fontSize: 11, color: AppColors.textTertiary)),
           const Spacer(),
           Text(value,
@@ -319,7 +319,7 @@ class _BridgeScreenState extends State<BridgeScreen> {
           Expanded(
             child: Text(
               locale.t('bridge.disabled'),
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                   fontSize: 12,
                   color: AppColors.tradingRed,
                   fontWeight: FontWeight.w600),

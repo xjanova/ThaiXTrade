@@ -16,7 +16,9 @@ import '../core/theme/app_colors.dart';
 class ThemeProvider extends ChangeNotifier {
   static const String _key = 'tpix_trade_palette_id';
 
-  TradePalette _palette = kClassicPalette;
+  // คนที่ไม่เคยกดเลือกธีม = ไม่มีค่าใน prefs (บันทึกเฉพาะตอนกดเลือก) → ได้ชุดปริยาย
+  // ใหม่ (Obsidian) เอง ส่วนคนที่เคยกดเลือกไว้ยังได้ชุดที่ตัวเองเลือก
+  TradePalette _palette = kDefaultPalette;
 
   TradePalette get palette => _palette;
   String get id => _palette.id;
@@ -31,9 +33,23 @@ class ThemeProvider extends ChangeNotifier {
   /// "ต้นไม้เดิมใช้ไม่ได้แล้ว สร้างใหม่ทั้งหมด" ซึ่งได้ผลแน่นอนที่สุด
   Key get appKey => ValueKey('palette-${_palette.id}');
 
+  /// ธงย้ายครั้งเดียว — Obsidian เป็นธีมหลักของแอปแล้ว (ตรงกับ TPIX Wallet)
+  /// คนที่ค้างอยู่บนธีมทองเดิมถูกย้ายมา Obsidian หนึ่งครั้ง หลังจากนั้นถ้าเขา
+  /// กดกลับไปธีมทองเอง เราเคารพตัวเลือกนั้น (ธงตั้งแล้ว ไม่ย้ายซ้ำ)
+  /// XP Silver ไม่ย้าย — เป็นธีมสว่างที่คนเลือกเพราะอยากได้พื้นสว่างจริง ๆ
+  static const String _migratedKey = 'tpix_trade_obsidian_migrated_v1';
+
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    _palette = paletteFromId(prefs.getString(_key));
+    var stored = prefs.getString(_key);
+    if (prefs.getBool(_migratedKey) != true) {
+      if (stored == kClassicPalette.id) {
+        stored = kObsidianPalette.id;
+        await prefs.setString(_key, stored);
+      }
+      await prefs.setBool(_migratedKey, true);
+    }
+    _palette = paletteFromId(stored);
     AppColors.apply(_palette);
     notifyListeners();
   }

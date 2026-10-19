@@ -15,7 +15,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/locale/locale_provider.dart';
@@ -201,7 +201,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
             'fee': Fmt.number(demo.account.feeRate, digits: 2),
             'slippage': demo.account.slippageBps,
           }),
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 10.5,
             color: AppColors.textTertiary,
             height: 1.45,
@@ -214,7 +214,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
                   'กลยุทธ์ที่เข้าออกถี่ต้องตั้งเป้ากำไรต่อไม้สูงกว่านี้ ไม่งั้นขาดทุนแม้ทายถูก'
               : 'About ${demo.account.roundTripBps.toStringAsFixed(0)} bps round trip — '
                   'fast strategies must target more than that, or they lose even when right.',
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 10.5,
             color: AppColors.textTertiary,
             height: 1.45,
@@ -255,7 +255,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
         children: [
           Text(
             locale.t('aiTrade.demoEquity'),
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 10.5,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -289,7 +289,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
                   children: [
                     Text(
                       locale.t('aiTrade.demoTotalPnl'),
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textSecondary,
@@ -300,7 +300,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
                       th
                           ? 'รวมไม้ที่ยังไม่ปิดแล้ว — ตัวเลขนี้คือของจริงที่ควรใช้ตัดสินใจ'
                           : 'Includes open positions — this is the number to judge by',
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 10,
                         color: AppColors.textTertiary,
                         height: 1.35,
@@ -428,7 +428,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
                     Expanded(
                       child: Text(
                         _strategyName(locale, b.strategy),
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
                           color: AppColors.textPrimary,
@@ -524,7 +524,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
                 left > 0
                     ? locale.tp('aiTrade.demoResetsLeft', {'count': left})
                     : locale.t('aiTrade.demoResetNone'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 10.5,
                   color: AppColors.textTertiary,
                   height: 1.4,
@@ -533,7 +533,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
               const SizedBox(height: 2),
               Text(
                 locale.t('aiTrade.demoResetWarnStats'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 10,
                   color: AppColors.textTertiary,
                   height: 1.4,
@@ -565,7 +565,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
                 )
               : Text(
                   locale.t('aiTrade.demoReset'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: canReset
@@ -586,7 +586,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
       children: [
         Text(
           title,
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 12.5,
             fontWeight: FontWeight.w700,
             color: AppColors.textPrimary,
@@ -605,7 +605,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
             child: Text(
               hint,
               textAlign: TextAlign.right,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10,
                 color: AppColors.textTertiary,
               ),
@@ -628,7 +628,7 @@ class _AiDemoPortfolioPanelState extends State<AiDemoPortfolioPanel> {
           child: Center(
             child: Text(
               label,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textSecondary,
@@ -671,7 +671,7 @@ class _BigAmount extends StatelessWidget {
         children: [
           Text(
             '\$$intPart',
-            style: GoogleFonts.jetBrainsMono(
+            style: AppFonts.number(
               fontSize: 28,
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
@@ -680,7 +680,7 @@ class _BigAmount extends StatelessWidget {
           ),
           Text(
             decPart,
-            style: GoogleFonts.jetBrainsMono(
+            style: AppFonts.number(
               fontSize: 18,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -793,7 +793,7 @@ class _PositionRow extends StatelessWidget {
                     if (p.botName != null && p.botName!.isNotEmpty) p.botName!,
                     '${locale.t('aiTrade.costBasis')} ${Fmt.usd(p.costBasis)}',
                   ].join(' · '),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 10,
                     color: AppColors.textTertiary,
                   ),
@@ -805,7 +805,7 @@ class _PositionRow extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   locale.agoText(p.openedAt),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 10,
                     color: AppColors.textTertiary,
                   ),
@@ -881,7 +881,7 @@ class _TradeRow extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               t.reason,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11,
                 height: 1.4,
                 color: AppColors.textSecondary,

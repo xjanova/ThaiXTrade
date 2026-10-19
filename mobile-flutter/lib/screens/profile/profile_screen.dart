@@ -9,7 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -94,7 +94,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           side: BorderSide(color: AppColors.tradingRed.withValues(alpha: 0.3)),
         ),
         title: Text(th ? 'ตัดการเชื่อมต่อ?' : 'Disconnect wallet?',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
                 color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
         content: Text(
           embedded
@@ -104,7 +104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               : (th
                   ? 'จะออกจากระบบกระเป๋านี้ในแอป (กุญแจอยู่ในแอปกระเป๋าของคุณ ไม่ถูกลบ)'
                   : 'You will be signed out of this wallet in the app (your keys stay in your wallet app).'),
-          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+          style: AppFonts.ui(fontSize: 13, color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
@@ -206,7 +206,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Expanded(
             child: Text(
               th ? 'โปรไฟล์' : 'Profile',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
                 color: AppColors.textPrimary,
@@ -319,7 +319,7 @@ class _ProfileCard extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             displayName,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 18,
               fontWeight: FontWeight.w800,
               color: AppColors.textPrimary,
@@ -334,7 +334,7 @@ class _ProfileCard extends StatelessWidget {
           else
             Text(
               locale.isThai ? 'ยังไม่ได้เชื่อมกระเป๋า' : 'No wallet connected',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w500,
                 color: AppColors.textSecondary,
@@ -502,7 +502,7 @@ class _StatusBadge extends StatelessWidget {
           const SizedBox(width: 7),
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11,
               fontWeight: FontWeight.w700,
               color: AppColors.textSecondary,
@@ -593,7 +593,7 @@ class _StatTile extends StatelessWidget {
           const SizedBox(height: 3),
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 10.5,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -655,7 +655,7 @@ class _MenuRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   item.label,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
@@ -809,7 +809,7 @@ class _AvatarPickerSheetState extends State<AvatarPickerSheet> {
             const SizedBox(height: 16),
             Text(
               th ? 'เปลี่ยนรูปโปรไฟล์' : 'Change picture',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
                 color: AppColors.textPrimary,
@@ -838,7 +838,7 @@ class _AvatarPickerSheetState extends State<AvatarPickerSheet> {
             const SizedBox(height: 16),
             Text(
               th ? 'หรือใส่ลิงก์รูปเอง' : 'Or paste an image URL',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                   fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 8),

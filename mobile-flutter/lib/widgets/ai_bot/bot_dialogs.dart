@@ -9,7 +9,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/locale/locale_provider.dart';
@@ -188,7 +188,7 @@ Future<bool> _confirm(
           Expanded(
             child: Text(
               title,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
                 color: AppColors.textPrimary,
@@ -214,7 +214,7 @@ Future<bool> _confirm(
               subject,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
@@ -243,7 +243,7 @@ Future<bool> _confirm(
                   Expanded(
                     child: Text(
                       line,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 12,
                         height: 1.4,
                         color: AppColors.textSecondary,
@@ -256,7 +256,7 @@ Future<bool> _confirm(
           const SizedBox(height: 2),
           Text(
             footnote,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 10.5,
               color: AppColors.textTertiary,
             ),
@@ -269,7 +269,7 @@ Future<bool> _confirm(
           onPressed: () => Navigator.pop(dialogContext, false),
           child: Text(
             cancelLabel,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -290,7 +290,7 @@ Future<bool> _confirm(
           ),
           child: Text(
             confirmLabel,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 13,
               fontWeight: FontWeight.w700,
             ),

@@ -34,6 +34,10 @@ void main() {
   });
 
   group('AppColors (Luxury Dark / Gilded Metal)', () {
+    // ชุดปริยายเปลี่ยนเป็น Obsidian แล้ว — กลุ่มนี้เฝ้าชุดทองเดิม (ยังเลือกได้ในตั้งค่า)
+    setUp(() => AppColors.apply(kClassicPalette));
+    tearDown(() => AppColors.apply(kDefaultPalette));
+
     test('champagne gold tokens are correct', () {
       expect(AppColors.gold1.toARGB32(), 0xFFFCEBB8);
       expect(AppColors.gold2.toARGB32(), 0xFFD4AF37);

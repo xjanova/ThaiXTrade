@@ -4,7 +4,7 @@
 /// Developed by Xman Studio
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import '../../core/theme/app_colors.dart';
 
 class TimeframeSelector extends StatelessWidget {
@@ -50,7 +50,7 @@ class TimeframeSelector extends StatelessWidget {
               child: Center(
                 child: Text(
                   labels[i],
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                     color: isActive ? AppColors.brandCyan : AppColors.textTertiary,

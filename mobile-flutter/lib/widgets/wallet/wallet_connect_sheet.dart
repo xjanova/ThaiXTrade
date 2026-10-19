@@ -11,7 +11,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/theme/app_colors.dart';
@@ -141,7 +141,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
                 context.read<AccentProvider>().goldGradient.createShader(b),
             child: Text(
               locale.t('settings.connect_wallet'),
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
@@ -156,7 +156,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
             th
                 ? 'เชื่อม TPIX Wallet (แนะนำ) หรือใช้กระเป๋าอื่น'
                 : 'Connect TPIX Wallet (recommended), or use another wallet',
-            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textTertiary),
+            style: AppFonts.ui(fontSize: 12, color: AppColors.textTertiary),
             textAlign: TextAlign.center,
           ),
         ),
@@ -179,7 +179,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
             th
                 ? 'หรือเปิด TPIX Wallet แล้วสแกนรหัสนี้'
                 : 'Or open TPIX Wallet and scan this code',
-            style: GoogleFonts.inter(fontSize: 11, color: AppColors.textTertiary),
+            style: AppFonts.ui(fontSize: 11, color: AppColors.textTertiary),
             textAlign: TextAlign.center,
           ),
         ),
@@ -278,7 +278,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
                 th
                     ? 'กุญแจถูกเข้ารหัสในเครื่อง ไม่เคยส่งออกจากอุปกรณ์'
                     : 'Keys are encrypted on-device, never transmitted',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 10.5,
                   color: AppColors.textTertiary,
                 ),
@@ -331,13 +331,13 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
           side: BorderSide(color: AppColors.bgCardBorder),
         ),
         title: Text(th ? 'ยังไม่ได้ติดตั้ง TPIX Wallet' : 'TPIX Wallet not installed',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
                 color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
         content: Text(
           th
               ? 'ติดตั้ง TPIX Wallet เพื่อเชื่อมต่อแบบแตะครั้งเดียว หรือใช้กระเป๋าอื่น/นำเข้าวลีกู้คืนด้านล่าง'
               : 'Install TPIX Wallet for one-tap connect, or use another wallet / import a recovery phrase below.',
-          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+          style: AppFonts.ui(fontSize: 13, color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
@@ -399,7 +399,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
             Expanded(
               child: Text(
                 locale.t('wallet.import'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
@@ -419,7 +419,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
             style: AppTheme.mono(fontSize: 14, color: AppColors.textPrimary),
             decoration: InputDecoration(
               hintText: locale.t('wallet.import_hint'),
-              hintStyle: GoogleFonts.inter(
+              hintStyle: AppFonts.ui(
                   fontSize: 14, color: AppColors.textDisabled),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.all(16),
@@ -459,7 +459,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
         Center(
           child: Text(
             locale.t('wallet.backup'),
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 20,
               fontWeight: FontWeight.w800,
               color: AppColors.textPrimary,
@@ -483,7 +483,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
               Expanded(
                 child: Text(
                   locale.t('wallet.backup_warning'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12,
                     color: AppColors.textSecondary,
                   ),
@@ -568,7 +568,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
           icon: Icon(Icons.copy_rounded, color: accent.g2, size: 16),
           label: Text(
             locale.isThai ? 'คัดลอก' : 'Copy',
-            style: GoogleFonts.inter(fontSize: 13, color: accent.g2),
+            style: AppFonts.ui(fontSize: 13, color: accent.g2),
           ),
         ),
 
@@ -842,7 +842,7 @@ class _ProviderChip extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 label,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 9.5,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textSecondary,
@@ -920,7 +920,7 @@ class _TpixWalletTile extends StatelessWidget {
                   children: [
                     Text(
                       th ? 'เชื่อม TPIX Wallet' : 'Connect TPIX Wallet',
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
                         color: AppColors.textPrimary,
@@ -936,7 +936,7 @@ class _TpixWalletTile extends StatelessWidget {
                       ),
                       child: Text(
                         th ? 'แนะนำ' : 'BEST',
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 8.5,
                           fontWeight: FontWeight.w800,
                           color: accent.g1,
@@ -949,7 +949,7 @@ class _TpixWalletTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   th ? 'แตะครั้งเดียว ปลอดภัย เชื่อมผ่านแอป' : 'One-tap secure link via the app',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11.5,
                     color: AppColors.textTertiary,
                   ),
@@ -979,7 +979,7 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text.toUpperCase(),
-      style: GoogleFonts.inter(
+      style: AppFonts.ui(
         fontSize: 10,
         fontWeight: FontWeight.w700,
         color: AppColors.textTertiary,
@@ -1017,7 +1017,7 @@ class _OrDivider extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
             text,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -1075,7 +1075,7 @@ class _ManualImportCard extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               th ? 'วลีกู้คืน (Recovery Phrase)' : 'Recovery Phrase',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
@@ -1110,7 +1110,7 @@ class _ManualImportCard extends StatelessWidget {
               hintText: th
                   ? 'พิมพ์ 12 คำที่คั่นด้วยช่องว่าง'
                   : 'Enter your 12-word phrase, space-separated',
-              hintStyle: GoogleFonts.inter(
+              hintStyle: AppFonts.ui(
                   fontSize: 12.5, color: AppColors.textDisabled),
               border: InputBorder.none,
               contentPadding:
@@ -1130,7 +1130,7 @@ class _ManualImportCard extends StatelessWidget {
                 th
                     ? 'อย่าแชร์วลีกู้คืนกับใคร — ใครก็ตามที่มีวลีนี้ ควบคุมกระเป๋าได้'
                     : 'Never share your phrase — anyone with it controls your wallet',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 10.5,
                   color: AppColors.textTertiary,
                 ),
@@ -1168,7 +1168,7 @@ class _PasteChip extends StatelessWidget {
             const SizedBox(width: 4),
             Text(
               label,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w700,
                 color: accent.g1,
@@ -1226,7 +1226,7 @@ class _ErrorBanner extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                   fontSize: 13, color: AppColors.tradingRed),
             ),
           ),

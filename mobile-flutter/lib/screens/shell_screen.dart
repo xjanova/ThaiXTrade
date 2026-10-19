@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import '../core/theme/app_colors.dart';
 import '../providers/accent_provider.dart';
 import '../core/locale/locale_provider.dart';
+import '../widgets/obsidian/obsidian_nav_bar.dart';
 import '../widgets/wallet/waiting_for_wallet_banner.dart';
 
 /// Inactive nav icon/label tint.
@@ -49,12 +50,52 @@ class ShellScreen extends StatelessWidget {
             right: 0,
             child: SafeArea(child: WaitingForWalletBanner()),
           ),
-          // Floating gilded nav bar
+          // Floating nav bar — Obsidian ใช้แถบรอยเว้าแบบ TPIX Wallet
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: _FloatingNavBar(
+            child: AppColors.palette.obsidian
+                ? SafeArea(
+                    top: false,
+                    bottom: false,
+                    child: ObsidianNavBar(
+                      // ช่องซ้าย/ขวา 4 ช่อง ↔ branch 0,1,3,4 (branch 2 = ตลาด = ปุ่มกลาง)
+                      currentIndex: switch (current) {
+                        0 => 0,
+                        1 => 1,
+                        3 => 2,
+                        4 => 3,
+                        _ => -1,
+                      },
+                      centerActive: current == 2,
+                      onCenterTap: () => _onTap(2),
+                      centerLabel: locale.t('nav.market'),
+                      items: [
+                        ObsidianNavItem(
+                          asset: ObsidianIcons.home,
+                          label: locale.t('nav.home'),
+                          onTap: () => _onTap(0),
+                        ),
+                        ObsidianNavItem(
+                          asset: ObsidianIcons.ai,
+                          label: locale.t('nav.ai'),
+                          onTap: () => _onTap(1),
+                        ),
+                        ObsidianNavItem(
+                          asset: ObsidianIcons.swap,
+                          label: locale.t('nav.swap'),
+                          onTap: () => _onTap(3),
+                        ),
+                        ObsidianNavItem(
+                          asset: ObsidianIcons.wallet,
+                          label: locale.t('nav.wallet'),
+                          onTap: () => _onTap(4),
+                        ),
+                      ],
+                    ),
+                  )
+                : _FloatingNavBar(
               currentIndex: current,
               onTap: _onTap,
               labels: [

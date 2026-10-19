@@ -6,7 +6,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import '../../core/theme/app_colors.dart';
 
 class PriceText extends StatelessWidget {
@@ -29,7 +29,7 @@ class PriceText extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       _formatPrice(price),
-      style: GoogleFonts.jetBrainsMono(
+      style: AppFonts.number(
         fontSize: fontSize,
         fontWeight: fontWeight,
         color: change != null
@@ -82,7 +82,7 @@ class ChangeBadge extends StatelessWidget {
       ),
       child: Text(
         '${isPositive ? '+' : ''}${changePercent.toStringAsFixed(2)}%',
-        style: GoogleFonts.jetBrainsMono(
+        style: AppFonts.number(
           fontSize: fontSize,
           fontWeight: FontWeight.w600,
           color: color,
@@ -107,7 +107,7 @@ class VolumeText extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       _formatVolume(volume),
-      style: GoogleFonts.jetBrainsMono(
+      style: AppFonts.number(
         fontSize: fontSize,
         fontWeight: FontWeight.w500,
         color: AppColors.textTertiary,

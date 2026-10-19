@@ -16,7 +16,7 @@ library;
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
@@ -1199,7 +1199,7 @@ class _SwapScreenState extends State<SwapScreen> {
           const SizedBox(width: 10),
           Text(
             locale.isThai ? 'สลับเหรียญ' : 'Swap',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 22,
               fontWeight: FontWeight.w800,
               color: AppColors.textPrimary,
@@ -1450,7 +1450,7 @@ class _SwapScreenState extends State<SwapScreen> {
               const SizedBox(width: 8),
               Text(
                 th ? 'รายละเอียด' : 'Details',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -1472,7 +1472,7 @@ class _SwapScreenState extends State<SwapScreen> {
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
                 _quoteError!,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                     fontSize: 11.5, color: AppColors.tradingRed),
               ),
             ),
@@ -1495,7 +1495,7 @@ class _SwapScreenState extends State<SwapScreen> {
               children: [
                 Text(
                   th ? 'เส้นทาง' : 'Route',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                       fontSize: 12, color: AppColors.textTertiary),
                 ),
                 const SizedBox(width: 12),
@@ -1569,7 +1569,7 @@ class _SwapScreenState extends State<SwapScreen> {
               : (th
                   ? 'ราคาจริงจาก PancakeSwap (BSC) • settle บนเชนจริง เหรียญเข้ากระเป๋าคุณ'
                   : 'Live price from PancakeSwap (BSC) • settles on-chain to your wallet'),
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 10.5,
             color: AppColors.textTertiary,
           ),
@@ -1595,7 +1595,7 @@ class _SwapScreenState extends State<SwapScreen> {
                     th
                         ? 'จะเปิด TPIX Wallet ให้ยืนยันธุรกรรมทีละรายการ แล้วกลับมาที่นี่อัตโนมัติ'
                         : 'TPIX Wallet will open to confirm each transaction, then return here automatically.',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11,
                       color: AppColors.textSecondary,
                     ),
@@ -1736,7 +1736,7 @@ class _NetworkSelector extends StatelessWidget {
                   : (th
                       ? 'สลับบนเชน TPIX: เร็ว ๆ นี้'
                       : 'TPIX Chain swaps: coming soon'),
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10.5,
                 color: AppColors.textTertiary,
               ),
@@ -1794,7 +1794,7 @@ class _NetworkOption extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color:
@@ -1805,7 +1805,7 @@ class _NetworkOption extends StatelessWidget {
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 10,
                         color: AppColors.textTertiary,
                       ),
@@ -1824,7 +1824,7 @@ class _NetworkOption extends StatelessWidget {
                   ),
                   child: Text(
                     badge!,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 8.5,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFFF59E0B),
@@ -1870,7 +1870,7 @@ class _ImpactBlockedBanner extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10.5,
                 height: 1.4,
                 color: AppColors.textPrimary,
@@ -1887,7 +1887,7 @@ class _ImpactBlockedBanner extends StatelessWidget {
               ),
               child: Text(
                 useMaxLabel,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                     fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
@@ -1985,7 +1985,7 @@ class _PayCard extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textTertiary,
@@ -2018,7 +2018,7 @@ class _PayCard extends StatelessWidget {
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                   ],
-                  style: GoogleFonts.jetBrainsMono(
+                  style: AppFonts.number(
                     fontSize: 28,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
@@ -2028,7 +2028,7 @@ class _PayCard extends StatelessWidget {
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
                     hintText: '0.0',
-                    hintStyle: GoogleFonts.jetBrainsMono(
+                    hintStyle: AppFonts.number(
                       fontSize: 28,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textDisabled,
@@ -2048,7 +2048,7 @@ class _PayCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             usdValue != null ? '≈ \$${_fmtUsd(usdValue!)}' : '≈ \$0.00',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 12,
               color: AppColors.textTertiary,
             ),
@@ -2105,7 +2105,7 @@ class _ReceiveCard extends StatelessWidget {
         children: [
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -2128,7 +2128,7 @@ class _ReceiveCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             usdValue != null ? '≈ \$${usdValue!.toStringAsFixed(2)}' : '≈ \$0.00',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 12,
               color: AppColors.textTertiary,
             ),
@@ -2142,7 +2142,7 @@ class _ReceiveCard extends StatelessWidget {
     if (quoting && amount == null) {
       return Text(
         '…',
-        style: GoogleFonts.jetBrainsMono(
+        style: AppFonts.number(
           fontSize: 28,
           fontWeight: FontWeight.w600,
           color: AppColors.textDisabled,
@@ -2157,7 +2157,7 @@ class _ReceiveCard extends StatelessWidget {
         text,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.jetBrainsMono(
+        style: AppFonts.number(
           fontSize: 28,
           fontWeight: FontWeight.w700,
           color: AppColors.white, // masked by gold gradient
@@ -2223,7 +2223,7 @@ class _TokenPill extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               symbol,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
@@ -2298,7 +2298,7 @@ class _DetailRow extends StatelessWidget {
         children: [
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
                 fontSize: 12, color: AppColors.textTertiary),
           ),
           const SizedBox(width: 12),
@@ -2398,7 +2398,7 @@ class _TokenPickerSheetState extends State<_TokenPickerSheet> {
               children: [
                 Text(
                   locale.isThai ? 'เลือกเหรียญ' : 'Select token',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -2430,7 +2430,7 @@ class _TokenPickerSheetState extends State<_TokenPickerSheet> {
                   Expanded(
                     child: TextField(
                       controller: _searchController,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                           fontSize: 14, color: AppColors.textPrimary),
                       decoration: InputDecoration(
                         border: InputBorder.none,
@@ -2439,7 +2439,7 @@ class _TokenPickerSheetState extends State<_TokenPickerSheet> {
                             const EdgeInsets.symmetric(vertical: 12),
                         hintText:
                             locale.isThai ? 'ค้นหาเหรียญ' : 'Search token',
-                        hintStyle: GoogleFonts.inter(
+                        hintStyle: AppFonts.ui(
                             fontSize: 14, color: AppColors.textDisabled),
                       ),
                     ),
@@ -2455,7 +2455,7 @@ class _TokenPickerSheetState extends State<_TokenPickerSheet> {
                     padding: const EdgeInsets.all(28),
                     child: Text(
                       locale.isThai ? 'ไม่พบเหรียญ' : 'No tokens found',
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                           fontSize: 13, color: AppColors.textTertiary),
                     ),
                   )
@@ -2483,7 +2483,7 @@ class _TokenPickerSheetState extends State<_TokenPickerSheet> {
                           ),
                           title: Text(
                             sym,
-                            style: GoogleFonts.inter(
+                            style: AppFonts.ui(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
                               color: AppColors.textPrimary,
@@ -2563,7 +2563,7 @@ class _SlippageDialogState extends State<_SlippageDialog> {
       ),
       title: Text(
         locale.isThai ? 'ตั้งค่าความคลาดเคลื่อน' : 'Slippage tolerance',
-        style: GoogleFonts.inter(
+        style: AppFonts.ui(
             fontSize: 16,
             fontWeight: FontWeight.w700,
             color: AppColors.textPrimary),
@@ -2619,7 +2619,7 @@ class _SlippageDialogState extends State<_SlippageDialog> {
               children: [
                 Text(
                   locale.isThai ? 'กำหนดเอง' : 'Custom',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                       fontSize: 12, color: AppColors.textTertiary),
                 ),
                 const SizedBox(width: 8),
@@ -2647,7 +2647,7 @@ class _SlippageDialogState extends State<_SlippageDialog> {
                 ),
                 const SizedBox(width: 4),
                 Text('%',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                         fontSize: 13, color: AppColors.textSecondary)),
               ],
             ),
@@ -2658,7 +2658,7 @@ class _SlippageDialogState extends State<_SlippageDialog> {
               locale.isThai
                   ? 'ค่าสูงอาจทำให้ถูกเทรดในราคาที่เสียเปรียบ'
                   : 'High slippage may result in an unfavorable rate',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                   fontSize: 11, color: AppColors.tradingRed),
             ),
           ],
@@ -2772,7 +2772,7 @@ class _ReviewSheet extends StatelessWidget {
                 const SizedBox(height: 16),
                 Text(
                   locale.isThai ? 'ตรวจสอบการสลับ' : 'Review swap',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
@@ -2859,7 +2859,7 @@ class _ReviewSheet extends StatelessWidget {
                       padding: const EdgeInsets.all(6),
                       child: Text(
                         locale.isThai ? 'ยกเลิก' : 'Cancel',
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 13,
                           color: AppColors.textTertiary,
                         ),
@@ -2882,7 +2882,7 @@ class _ReviewSheet extends StatelessWidget {
         const SizedBox(width: 12),
         Text(
           label,
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
               fontSize: 13, color: AppColors.textTertiary),
         ),
         const Spacer(),
@@ -2903,7 +2903,7 @@ class _ReviewSheet extends StatelessWidget {
         Text(
           label,
           style:
-              GoogleFonts.inter(fontSize: 11.5, color: AppColors.textTertiary),
+              AppFonts.ui(fontSize: 11.5, color: AppColors.textTertiary),
         ),
         const Spacer(),
         Text(

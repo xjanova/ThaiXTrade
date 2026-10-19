@@ -17,7 +17,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/locale/locale_provider.dart';
@@ -216,7 +216,7 @@ class _BotCardState extends State<BotCard> with SingleTickerProviderStateMixin {
             _name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 14.5,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
@@ -426,7 +426,7 @@ class _BotCardState extends State<BotCard> with SingleTickerProviderStateMixin {
               const SizedBox(width: 5),
               Text(
                 th ? 'การตัดสินใจล่าสุด' : 'Latest decision',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textTertiary,
@@ -445,7 +445,7 @@ class _BotCardState extends State<BotCard> with SingleTickerProviderStateMixin {
                   ),
                   child: Text(
                     th ? 'รอคุณยืนยัน' : 'Awaiting you',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 9,
                       fontWeight: FontWeight.w700,
                       color: accent.g1,
@@ -465,7 +465,7 @@ class _BotCardState extends State<BotCard> with SingleTickerProviderStateMixin {
                 : text,
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11.5,
               height: 1.35,
               color: AppColors.textSecondary,
@@ -710,7 +710,7 @@ class _ModeChip extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 isLive ? (th ? 'จริง' : 'Live') : (th ? 'ทดลอง' : 'Demo'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 9.5,
                   fontWeight: FontWeight.w700,
                   color: isLive ? accent.g1 : AppColors.textSecondary,
@@ -743,7 +743,7 @@ class _MiniChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.inter(
+        style: AppFonts.ui(
           fontSize: 9.5,
           fontWeight: FontWeight.w700,
           color: color,
@@ -777,7 +777,7 @@ class _VitalBlock extends StatelessWidget {
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 10,
             fontWeight: FontWeight.w600,
             color: AppColors.textTertiary,
@@ -798,7 +798,7 @@ class _VitalBlock extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: valueColor,
                   )
-                : GoogleFonts.inter(
+                : AppFonts.ui(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: valueColor,
@@ -852,7 +852,7 @@ class _AlertBox extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -861,7 +861,7 @@ class _AlertBox extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   detail,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 10.5,
                     height: 1.3,
                     color: AppColors.textSecondary,
@@ -926,7 +926,7 @@ class _ActionButton extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: fg,

@@ -7,7 +7,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../services/bug_reporter.dart';
@@ -94,14 +94,14 @@ class _BugReportSheetState extends State<_BugReportSheet> {
           const SizedBox(height: 16),
           Text(
             th ? 'รายงานปัญหา' : 'Report a problem',
-            style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+            style: AppFonts.ui(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
           ),
           const SizedBox(height: 6),
           Text(
             th
                 ? 'เล่าสั้นๆ ว่ากดอะไรแล้วเกิดอะไร ระบบจะแนบสภาพแอปตอนนี้และเหตุการณ์ ${crumbs.length} รายการล่าสุดไปให้ทีมงานเอง (ไม่มีข้อมูลลับ)'
                 : 'Briefly describe what you did and what happened. The app state and the last ${crumbs.length} events are attached automatically (no secrets).',
-            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textTertiary, height: 1.5),
+            style: AppFonts.ui(fontSize: 12, color: AppColors.textTertiary, height: 1.5),
           ),
           const SizedBox(height: 14),
           TextField(
@@ -109,13 +109,13 @@ class _BugReportSheetState extends State<_BugReportSheet> {
             maxLines: 5,
             minLines: 3,
             maxLength: 2000,
-            style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 14),
+            style: AppFonts.ui(color: AppColors.textPrimary, fontSize: 14),
             decoration: InputDecoration(
               filled: true,
               fillColor: AppColors.bgInput,
               counterText: '',
               hintText: th ? 'เช่น กดเชื่อม TPIX Wallet แล้วแอปเด้งกลับมาหน้าแรก' : 'e.g. Tapped Connect TPIX Wallet and the app jumped back to home',
-              hintStyle: GoogleFonts.inter(color: AppColors.textDisabled, fontSize: 13),
+              hintStyle: AppFonts.ui(color: AppColors.textDisabled, fontSize: 13),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: AppColors.bgCardBorder),
@@ -138,7 +138,7 @@ class _BugReportSheetState extends State<_BugReportSheet> {
               child: SingleChildScrollView(
                 child: Text(
                   crumbs.reversed.take(8).join('\n'),
-                  style: GoogleFonts.robotoMono(fontSize: 10, color: AppColors.textTertiary, height: 1.4),
+                  style: AppFonts.number(fontSize: 10, color: AppColors.textTertiary, height: 1.4),
                 ),
               ),
             ),

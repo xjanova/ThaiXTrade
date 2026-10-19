@@ -11,7 +11,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/locale/locale_provider.dart';
@@ -110,7 +110,7 @@ class _AiWalletSummaryCardState extends State<AiWalletSummaryCard> {
                 Expanded(
                   child: Text(
                     th ? 'เครดิตการทำงาน' : 'Work credits',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary,
@@ -133,7 +133,7 @@ class _AiWalletSummaryCardState extends State<AiWalletSummaryCard> {
                     : (th
                         ? 'เชื่อมกระเป๋าเพื่อดูเครดิต แพลนที่ใช้อยู่ และโควตาบอทของคุณ'
                         : 'Connect a wallet to see your credits, plan and bot quota.'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 11.5,
                   height: 1.45,
                   color: AppColors.textSecondary,
@@ -180,7 +180,7 @@ class _AiWalletSummaryCardState extends State<AiWalletSummaryCard> {
               Expanded(
                 child: Text(
                   th ? 'เครดิตการทำงาน' : 'WORK CREDITS',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textTertiary,
@@ -223,7 +223,7 @@ class _AiWalletSummaryCardState extends State<AiWalletSummaryCard> {
                 const SizedBox(width: 8),
                 Text(
                   th ? 'เครดิต' : 'credits',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textTertiary,
@@ -292,7 +292,7 @@ class _AiWalletSummaryCardState extends State<AiWalletSummaryCard> {
                         : (th
                             ? 'บอทเดินในแอพ — ต้องเปิดหน้านี้ค้างไว้ ปิดแอพแล้วบอทหยุด'
                             : 'Bots run inside the app — keep this page open or they stop'),
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 10.5,
                       height: 1.4,
                       fontWeight: FontWeight.w600,
@@ -312,7 +312,7 @@ class _AiWalletSummaryCardState extends State<AiWalletSummaryCard> {
               th
                   ? 'โควตาบอทเต็มแล้ว — กด "หยุด" บอทตัวเก่าเพื่อคืนโควตา (กด "พัก" ไม่คืน)'
                   : 'Bot quota is full — Stop an old bot to free a slot (Pause does not).',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10.5,
                 height: 1.4,
                 fontWeight: FontWeight.w600,
@@ -336,7 +336,7 @@ class _AiWalletSummaryCardState extends State<AiWalletSummaryCard> {
               th
                   ? 'รับได้ครั้งเดียวต่อกระเป๋า — ถ้าเคยรับไปแล้ว ยอดจะไม่เพิ่มขึ้นอีก'
                   : 'One claim per wallet — if you already claimed, the balance stays the same.',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10.5,
                 height: 1.4,
                 color: AppColors.textTertiary,
@@ -356,7 +356,7 @@ class _AiWalletSummaryCardState extends State<AiWalletSummaryCard> {
                   const SizedBox(width: 6),
                   Text(
                     th ? 'ดูประวัติเครดิต' : 'Credit history',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
                       color: accent.g1,
@@ -451,7 +451,7 @@ class _AiTopupSectionState extends State<AiTopupSection> {
             Expanded(
               child: Text(
                 th ? 'เติมเครดิตการทำงาน' : 'Top up work credits',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 14.5,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -466,7 +466,7 @@ class _AiTopupSectionState extends State<AiTopupSection> {
           th
               ? 'เลือกแพ็กเพื่อสร้างคำขอ — เครดิตจะเข้าบัญชีหลังทีมงานยืนยันการชำระเงิน'
               : 'Pick a pack to create a request — credits arrive once the team confirms payment',
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 11.5,
             height: 1.45,
             color: AppColors.textTertiary,
@@ -494,7 +494,7 @@ class _AiTopupSectionState extends State<AiTopupSection> {
                             'ระหว่างนี้ใช้เครดิตต้อนรับทดลองระบบได้เต็มที่'
                         : 'Credit top-up is not open yet — we will announce it when '
                             'payments go live. Until then the welcome credits are yours to test with.',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11,
                       height: 1.45,
                       color: AppColors.textSecondary,
@@ -546,7 +546,7 @@ class _AiTopupSectionState extends State<AiTopupSection> {
             th
                 ? 'เชื่อมกระเป๋าก่อนถึงจะสร้างคำขอเติมเครดิตได้'
                 : 'Connect a wallet before creating a top-up request',
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 10.5,
               fontWeight: FontWeight.w600,
               color: accent.g1,
@@ -634,7 +634,7 @@ class _PackTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   th ? 'เครดิต' : 'credits',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textTertiary,
@@ -655,7 +655,7 @@ class _PackTile extends StatelessWidget {
                       th
                           ? 'โบนัส +${aiFormatInt(pack.bonus, th)}'
                           : '+${aiFormatInt(pack.bonus, th)} bonus',
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 9.5,
                         fontWeight: FontWeight.w700,
                         color: accent.g1,
@@ -681,7 +681,7 @@ class _PackTile extends StatelessWidget {
                     blocked
                         ? (th ? 'ยังไม่เปิด' : 'Not open yet')
                         : (th ? 'ต้องเชื่อมกระเป๋า' : 'Wallet required'),
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 9.5,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textTertiary,
@@ -747,7 +747,7 @@ class _MiniStat extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 9.5,
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
@@ -787,7 +787,7 @@ class _Pill extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 9.5,
               fontWeight: FontWeight.w700,
               color: accent.g1,

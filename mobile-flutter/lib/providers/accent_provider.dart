@@ -11,6 +11,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/theme/app_colors.dart';
+
 /// The three "Metal Finish" tones from the design handoff.
 enum MetalTone { champagneGold, platinum, roseGold }
 
@@ -82,6 +84,21 @@ const Map<MetalTone, MetalPalette> kMetalPalettes = {
   ),
 };
 
+/// โทน "โครเมียม" ของธีม Obsidian — ขอบเงินบาง ๆ + ปุ่มขาวนูนเรืองม่วง
+///
+/// ธีม Obsidian ไม่มีทอง: ทุกจุดที่เคยอ่านโทนโลหะ (327 จุด) จึงได้ค่าชุดนี้แทน
+/// โดยไม่ต้องแก้จุดเรียกใช้ — โทนที่ผู้ใช้เลือกไว้ยังเก็บอยู่ กลับไปธีมเดิมก็ได้คืน
+const MetalPalette kObsidianChrome = MetalPalette(
+  id: 'obsidian_chrome',
+  label: 'Chrome',
+  labelTh: 'โครเมียม',
+  g1: Color(0xFFFFFFFF),
+  g2: Color(0xFFE4E6EB),
+  g3: Color(0xFFB4B9C4),
+  border: Color(0x24FFFFFF), // white .14
+  glow: Color(0xA68B5CF6), // violet .65 — เงาเรืองใต้ปุ่มหลักของ Wallet
+);
+
 class AccentProvider extends ChangeNotifier {
   static const String _kTone = 'accent_tone';
   static const String _kFireflies = 'accent_fireflies';
@@ -102,7 +119,11 @@ class AccentProvider extends ChangeNotifier {
 
   // ── Getters ────────────────────────────────────
   MetalTone get tone => _tone;
-  MetalPalette get palette => kMetalPalettes[_tone]!;
+  MetalPalette get palette =>
+      AppColors.palette.obsidian ? kObsidianChrome : kMetalPalettes[_tone]!;
+
+  /// ธีมปัจจุบันให้เลือกโทนโลหะได้ไหม (Obsidian ล็อกเป็นโครเมียม)
+  bool get toneSelectable => !AppColors.palette.obsidian;
   bool get showFireflies => _showFireflies;
   bool get reduceMotion => _reduceMotion;
   int get fireflyDensity => _fireflyDensity;

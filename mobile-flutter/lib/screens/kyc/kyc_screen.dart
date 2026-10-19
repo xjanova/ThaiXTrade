@@ -26,7 +26,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -798,7 +798,7 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
               Expanded(
                 child: Text(
                   locale.t('kyc.tp.title'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
@@ -859,7 +859,7 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
           const SizedBox(height: 10),
           Text(
             locale.t('kyc.tp.browserNote'),
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11,
               color: AppColors.textTertiary,
               height: 1.5,
@@ -899,7 +899,7 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
               Expanded(
                 child: Text(
                   locale.t('kyc.wait.title'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
@@ -963,7 +963,7 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
                 }),
               locale.t(_pollStopped ? 'kyc.wait.autoStopped' : 'kyc.wait.autoCheck'),
             ].join(' · '),
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11,
               color: AppColors.textTertiary,
               height: 1.5,
@@ -994,7 +994,7 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
               children: [
                 Text(
                   locale.t('kyc.fallback.title'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -1003,7 +1003,7 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
                 const SizedBox(height: 2),
                 Text(
                   locale.t('kyc.fallback.body'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     color: AppColors.textTertiary,
                     height: 1.45,
@@ -1017,7 +1017,7 @@ class _KycScreenState extends State<KycScreen> with WidgetsBindingObserver {
               onPressed: () => _openDownload(download),
               child: Text(
                 locale.t('kyc.fallback.button'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: accent.g2,
@@ -1086,7 +1086,7 @@ class _Header extends StatelessWidget {
                 children: [
                   Text(
                     locale.t('kyc.title'),
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                       color: AppColors.textPrimary,
@@ -1096,7 +1096,7 @@ class _Header extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     locale.t('kyc.subtitle'),
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11.5,
                       color: AppColors.textTertiary,
                       height: 1.45,
@@ -1165,7 +1165,7 @@ class _Notice extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -1175,7 +1175,7 @@ class _Notice extends StatelessWidget {
                       const SizedBox(height: 3),
                       Text(
                         body,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 11.5,
                           color: AppColors.textSecondary,
                           height: 1.55,
@@ -1228,7 +1228,7 @@ class _CompletingBanner extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textPrimary,
@@ -1286,7 +1286,7 @@ class _ApprovedCard extends StatelessWidget {
           Text(
             locale.t('kyc.approved.title'),
             textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 18,
               fontWeight: FontWeight.w800,
               color: AppColors.textPrimary,
@@ -1296,7 +1296,7 @@ class _ApprovedCard extends StatelessWidget {
           Text(
             '$via · $level',
             textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
               color: accent.g2,
@@ -1307,7 +1307,7 @@ class _ApprovedCard extends StatelessWidget {
             Text(
               _dateText(locale, date),
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11.5,
                 color: AppColors.textTertiary,
               ),
@@ -1347,7 +1347,7 @@ class _FeatureList extends StatelessWidget {
         children: [
           Text(
             locale.t(approved ? 'kyc.features.unlocked' : 'kyc.features.required'),
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
@@ -1359,7 +1359,7 @@ class _FeatureList extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
                 locale.t('kyc.features.none'),
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 11.5,
                   color: AppColors.textTertiary,
                 ),
@@ -1380,7 +1380,7 @@ class _FeatureList extends StatelessWidget {
                     Expanded(
                       child: Text(
                         locale.has(f.labelKey) ? locale.t(f.labelKey) : f.fallbackLabel,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 12.5,
                           color: f.passed
                               ? AppColors.textPrimary
@@ -1391,7 +1391,7 @@ class _FeatureList extends StatelessWidget {
                     if (!f.passed && f.needsEnhanced)
                       Text(
                         locale.t('kyc.features.needsEnhanced'),
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w600,
                           color: AppColors.textTertiary,
@@ -1436,7 +1436,7 @@ class _CaseRow extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -1445,7 +1445,7 @@ class _CaseRow extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 body,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 11.5,
                   color: AppColors.textSecondary,
                   height: 1.5,
@@ -1509,7 +1509,7 @@ class _ConsentRow extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     text,
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 11.5,
                       color: AppColors.textSecondary,
                       height: 1.55,
@@ -1551,7 +1551,7 @@ class _Step extends StatelessWidget {
             ),
             child: Text(
               '$n',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
                 color: accent.g2,
@@ -1564,7 +1564,7 @@ class _Step extends StatelessWidget {
               padding: const EdgeInsets.only(top: 2),
               child: Text(
                 text,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 12.5,
                   color: AppColors.textPrimary,
                   height: 1.45,
@@ -1607,7 +1607,7 @@ class _InlineNote extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 11.5,
                 color: problem ? AppColors.tradingRed : AppColors.textSecondary,
                 height: 1.5,
@@ -1635,7 +1635,7 @@ class _Pill extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.inter(
+        style: AppFonts.ui(
           fontSize: 10,
           fontWeight: FontWeight.w800,
           color: AppColors.goldTextOn,
@@ -1659,7 +1659,7 @@ class _PrivacyNote extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11,
               color: AppColors.textTertiary,
               height: 1.5,

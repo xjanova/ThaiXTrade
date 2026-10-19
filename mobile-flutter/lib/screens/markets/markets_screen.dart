@@ -8,7 +8,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/gradients.dart';
@@ -71,7 +71,7 @@ class _MarketsScreenState extends State<MarketsScreen>
                     const SizedBox(width: 10),
                     Text(
                       locale.t('nav.markets'),
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 24,
                         fontWeight: FontWeight.w800,
                         color: AppColors.textPrimary,
@@ -88,7 +88,7 @@ class _MarketsScreenState extends State<MarketsScreen>
                 child: TextField(
                   controller: _searchController,
                   onChanged: (v) => market.setSearchQuery(v),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                       color: AppColors.textPrimary, fontSize: 14),
                   cursorColor: accent.g2,
                   decoration: InputDecoration(
@@ -96,7 +96,7 @@ class _MarketsScreenState extends State<MarketsScreen>
                     filled: true,
                     fillColor: AppColors.bgInput,
                     hintText: locale.t('markets.search'),
-                    hintStyle: GoogleFonts.inter(
+                    hintStyle: AppFonts.ui(
                         color: AppColors.textTertiary, fontSize: 14),
                     prefixIcon: Icon(Icons.search_rounded,
                         color: accent.g2, size: 20),
@@ -149,9 +149,9 @@ class _MarketsScreenState extends State<MarketsScreen>
                   indicatorSize: TabBarIndicatorSize.tab,
                   labelColor: AppColors.goldTextOn,
                   unselectedLabelColor: AppColors.textTertiary,
-                  labelStyle: GoogleFonts.inter(
+                  labelStyle: AppFonts.ui(
                       fontSize: 13, fontWeight: FontWeight.w700),
-                  unselectedLabelStyle: GoogleFonts.inter(
+                  unselectedLabelStyle: AppFonts.ui(
                       fontSize: 13, fontWeight: FontWeight.w600),
                   dividerColor: Colors.transparent,
                   splashBorderRadius: BorderRadius.circular(9),
@@ -243,7 +243,7 @@ class _SortButton extends StatelessWidget {
         children: [
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 11.5,
               fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
               color: color,
@@ -291,7 +291,7 @@ class _TickerList extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               locale.t('common.no_data'),
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                   color: AppColors.textTertiary, fontSize: 14),
             ),
           ],
@@ -395,7 +395,7 @@ class _MarketRow extends StatelessWidget {
                     children: [
                       Text(
                         ticker.baseAsset,
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
                           color: AppColors.textPrimary,
@@ -408,7 +408,7 @@ class _MarketRow extends StatelessWidget {
                         children: [
                           Text(
                             ticker.displaySymbol,
-                            style: GoogleFonts.inter(
+                            style: AppFonts.ui(
                               fontSize: 11,
                               color: AppColors.textTertiary,
                             ),

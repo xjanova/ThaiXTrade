@@ -13,7 +13,7 @@
 ///
 /// Developed by Xman Studio
 
-import 'dart:ui';
+import 'package:flutter/painting.dart';
 
 /// ชุดสีหนึ่งชุด — ครบทุกโทเคนที่แอปใช้
 ///
@@ -38,6 +38,10 @@ class TradePalette {
   /// กระจกรับแสงเฉียง ๆ ทั้งแผ่น ส่วนโลหะรับแสงเป็นแถบตามแนวนอน
   /// แล้วตัดจบที่ขอบล่าง — สลับสีอย่างเดียวไม่มีทางได้ความรู้สึกนั้น
   final bool metal;
+
+  /// ภาษาออกแบบ Obsidian (ชุดเดียวกับ TPIX Wallet) — วิดเจ็ตกลางอย่าง GlassCard /
+  /// GradientButton / แถบเมนู วาดผิวคนละสูตร: แผงกระจกขอบนูน ปุ่มขาวนูน รอยเว้า
+  final bool obsidian;
 
   // ── พื้นหลัง ───────────────────────────────────
   final Color bgPrimary;
@@ -99,6 +103,7 @@ class TradePalette {
     required this.taglineEn,
     required this.isDark,
     this.metal = false,
+    this.obsidian = false,
     required this.bgPrimary,
     required this.bgSecondary,
     required this.bgTertiary,
@@ -258,22 +263,102 @@ const TradePalette kXpSilverPalette = TradePalette(
   divider: Color(0x1F000000),
 );
 
+/// ── ชุดใหม่: "Obsidian" — ภาษาออกแบบเดียวกับ TPIX Wallet ─────────
+/// ค่าทุกตัวลอกจาก `TPIX-Coin/wallet/lib/core/themes/obsidian_tokens.dart`
+/// (ต้นฉบับ = mock ที่เจ้าของอนุมัติ) ให้สองแอปดูเป็นครอบครัวเดียวกัน
+///
+/// พื้นดำ obsidian + แผงกระจกขาว 6%→2% ขอบบนสะท้อนแสง · ปุ่มหลักขาวนูน
+/// เรืองม่วง · โทนเน้นเป็นโครเมียมเงิน ส่วนสีแบรนด์ cyan→violet→orange
+/// ใช้เฉพาะจุดเรืองแสง (ดู [ObsidianBrand]) ไม่เอามาทาทั้งแอป
+const TradePalette kObsidianPalette = TradePalette(
+  id: 'obsidian',
+  nameTh: 'ออบซิเดียน',
+  nameEn: 'Obsidian',
+  taglineTh: 'ดำพรีเมียม · กระจกขอบนูน',
+  taglineEn: 'Premium black · Raised glass',
+  isDark: true,
+  obsidian: true,
+
+  bgPrimary: Color(0xFF07080C),
+  bgSecondary: Color(0xFF12141B),
+  bgTertiary: Color(0xFF1E2230),
+  bgGradMid: Color(0xFF07080C),
+  bgGradBottom: Color(0xFF07080C),
+  bgCard: Color(0x0DFFFFFF),
+  bgCardBorder: Color(0x14FFFFFF),
+  bgElevated: Color(0xFA12141B),
+  bgInput: Color(0xFF0B0C11),
+  bgInputStrong: Color(0xFF08090D),
+  bgOverlay: Color(0xB3000000),
+
+  cardBaseTop: Color(0x14FFFFFF),
+  cardBaseMid: Color(0x08FFFFFF),
+  cardBaseBottom: Color(0x05FFFFFF),
+  cardSubtleTop: Color(0x0FFFFFFF),
+  cardSubtleBottom: Color(0x05FFFFFF),
+  sheen: Color(0x14FFFFFF),
+  insetHighlight: Color(0x1AFFFFFF),
+
+  accentHi: Color(0xFFFFFFFF),
+  accentMid: Color(0xFFE4E6EB),
+  accentDeep: Color(0xFFA3A8B4),
+  accentBorder: Color(0x24FFFFFF),
+  accentGlow: Color(0xA68B5CF6),
+  accentTint: Color(0x14FFFFFF),
+  accentTextOn: Color(0xFF07080C),
+
+  tradingGreen: Color(0xFF34D399),
+  tradingGreenLight: Color(0xFF6EE7B7),
+  tradingGreenDark: Color(0xFF10B981),
+  tradingGreenBg: Color(0x1F34D399),
+  tradingRed: Color(0xFFF87171),
+  tradingRedLight: Color(0xFFFCA5A5),
+  tradingRedDark: Color(0xFFEF4444),
+  tradingRedBg: Color(0x1FF87171),
+
+  textPrimary: Color(0xFFF2F3F5),
+  textSecondary: Color(0xFFA3A8B4),
+  textTertiary: Color(0xFF8E94A2),
+  textDisabled: Color(0x66F2F3F5),
+
+  divider: Color(0x14FFFFFF),
+);
+
+/// สีแบรนด์ของ Obsidian (ไล่ตามโลโก้ TPIX) — ใช้กับเส้นเรือง วงแหวน และจุดโฟกัส
+abstract final class ObsidianBrand {
+  static const cyan = Color(0xFF22D3EE);
+  static const violet = Color(0xFF8B5CF6);
+  static const orange = Color(0xFFFB923C);
+  static const chrome = Color(0xFFC9CCD4);
+
+  static const gradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [cyan, violet, orange],
+    stops: [0.0, 0.55, 1.0],
+  );
+}
+
 /// ชุดสีทั้งหมดที่เลือกได้ — เพิ่มชุดใหม่ที่นี่แล้วหน้าตั้งค่าจะขึ้นเอง
 const List<TradePalette> kTradePalettes = [
+  kObsidianPalette,
   kClassicPalette,
   kXpSilverPalette,
 ];
 
+/// ชุดสำหรับคนที่ยังไม่เคยเลือก
+const TradePalette kDefaultPalette = kObsidianPalette;
+
 TradePalette paletteFromId(String? id) => kTradePalettes.firstWhere(
       (p) => p.id == id,
-      orElse: () => kClassicPalette,
+      orElse: () => kDefaultPalette,
     );
 
 /// จุดเดียวที่ทั้งแอปอ่านสี — ชื่อทุกตัวเหมือนตอนเป็น const ทุกประการ
 class AppColors {
   AppColors._();
 
-  static TradePalette _palette = kClassicPalette;
+  static TradePalette _palette = kDefaultPalette;
 
   /// ชุดสีที่ใช้อยู่ — อ่านได้ทั่วแอป (เช่นเช็ก isDark)
   static TradePalette get palette => _palette;
@@ -315,13 +400,21 @@ class AppColors {
   static Color get goldTextOn => _palette.accentTextOn;
 
   // ── นามแฝงเดิม → โทนเน้น ───────────────────────
-  static Color get brandCyan => _palette.accentMid;
-  static Color get brandCyanLight => _palette.accentHi;
-  static Color get brandCyanDark => _palette.accentDeep;
-  static Color get brandPurple => _palette.accentMid;
-  static Color get brandPurpleLight => _palette.accentHi;
-  static Color get brandPurpleDark => _palette.accentDeep;
-  static Color get brandWarm => _palette.accentMid;
+  // Obsidian: ชื่อเดิมกลับไปเป็นสีแบรนด์จริง (ฟ้า/ม่วง/ส้ม ตามโลโก้) เหมือน Wallet
+  // เพราะโทนเน้นของชุดนี้เป็นขาวโครเมียม จุดที่ตั้งใจให้ "มีสี" จะกลายเป็นขาวหมด
+  static bool get _obs => _palette.obsidian;
+  static Color get brandCyan => _obs ? ObsidianBrand.cyan : _palette.accentMid;
+  static Color get brandCyanLight =>
+      _obs ? const Color(0xFF67E8F9) : _palette.accentHi;
+  static Color get brandCyanDark =>
+      _obs ? const Color(0xFF0891B2) : _palette.accentDeep;
+  static Color get brandPurple =>
+      _obs ? ObsidianBrand.violet : _palette.accentMid;
+  static Color get brandPurpleLight =>
+      _obs ? const Color(0xFFA78BFA) : _palette.accentHi;
+  static Color get brandPurpleDark =>
+      _obs ? const Color(0xFF6D28D9) : _palette.accentDeep;
+  static Color get brandWarm => _obs ? ObsidianBrand.orange : _palette.accentMid;
 
   // ── ราคาขึ้น/ลง ────────────────────────────────
   static Color get tradingGreen => _palette.tradingGreen;

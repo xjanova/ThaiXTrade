@@ -8,7 +8,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
@@ -27,6 +27,7 @@ import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
 import '../../widgets/wallet/profile_edit_sheet.dart';
 import '../../widgets/wallet/wallet_connect_sheet.dart';
+import '../../widgets/obsidian/obsidian_icons.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -57,7 +58,7 @@ class SettingsScreen extends StatelessWidget {
                       ),
                       Text(
                         locale.t('settings.title'),
-                        style: GoogleFonts.inter(
+                        style: AppFonts.ui(
                           fontSize: 24,
                           fontWeight: FontWeight.w800,
                           color: AppColors.textPrimary,
@@ -140,19 +141,11 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(
-            color: AppColors.goldTint,
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: Icon(icon, color: AppColors.gold2, size: 16),
-        ),
+        IconTile(icon: icon, size: 30, iconSize: 16, radius: 9, background: AppColors.goldTint, color: AppColors.gold2),
         const SizedBox(width: 10),
         Text(
           title,
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 14.5,
             fontWeight: FontWeight.w700,
             color: AppColors.textPrimary,
@@ -208,43 +201,53 @@ class _AppearanceCard extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 20),
+          // Obsidian ล็อกโทนเป็นโครเมียม — ซ่อนตัวเลือกโลหะ ไม่ให้กดแล้วไม่มีอะไรเกิดขึ้น
+          if (accent.toneSelectable) ...[
+            const SizedBox(height: 20),
 
-          _SectionHeader(
-            icon: Icons.palette_rounded,
-            title: th ? 'พื้นผิวโลหะ' : 'Metal Finish',
-          ),
-          const SizedBox(height: 14),
+            _SectionHeader(
+              icon: Icons.palette_rounded,
+              title: th ? 'พื้นผิวโลหะ' : 'Metal Finish',
+            ),
+            const SizedBox(height: 14),
 
-          // Swatches — one per metal tone
-          Row(
-            children: [
-              for (final entry in kMetalPalettes.entries) ...[
-                Expanded(
-                  child: _MetalSwatch(
-                    tone: entry.key,
-                    palette: entry.value,
-                    selected: accent.tone == entry.key,
-                    isThai: th,
-                    onTap: () =>
-                        context.read<AccentProvider>().setTone(entry.key),
+            // Swatches — one per metal tone
+            Row(
+              children: [
+                for (final entry in kMetalPalettes.entries) ...[
+                  Expanded(
+                    child: _MetalSwatch(
+                      tone: entry.key,
+                      palette: entry.value,
+                      selected: accent.tone == entry.key,
+                      isThai: th,
+                      onTap: () =>
+                          context.read<AccentProvider>().setTone(entry.key),
+                    ),
                   ),
-                ),
-                if (entry.key != kMetalPalettes.keys.last)
-                  const SizedBox(width: 10),
+                  if (entry.key != kMetalPalettes.keys.last)
+                    const SizedBox(width: 10),
+                ],
               ],
-            ],
-          ),
+            ),
+          ],
 
           const SizedBox(height: 18),
 
           // Gold Fireflies toggle
           _ToggleRow(
             icon: Icons.auto_awesome_rounded,
-            title: th ? 'หิ่งห้อยทอง' : 'Gold Fireflies',
-            subtitle: th
-                ? 'อนุภาคทองลอยพื้นหลัง'
-                : 'Ambient gold particles in the background',
+            // Obsidian ไม่มีทอง — อนุภาคเป็นประกายขาว ชื่อต้องตรงกับที่เห็นจริง
+            title: AppColors.palette.obsidian
+                ? (th ? 'ประกายแสงพื้นหลัง' : 'Glow Particles')
+                : (th ? 'หิ่งห้อยทอง' : 'Gold Fireflies'),
+            subtitle: AppColors.palette.obsidian
+                ? (th
+                    ? 'จุดแสงลอยบนพื้นหลังเทค'
+                    : 'Floating sparks over the tech backdrop')
+                : (th
+                    ? 'อนุภาคทองลอยพื้นหลัง'
+                    : 'Ambient gold particles in the background'),
             value: accent.showFireflies,
             onChanged: (v) =>
                 context.read<AccentProvider>().setShowFireflies(v),
@@ -320,7 +323,9 @@ class _PaletteSwatch extends StatelessWidget {
                     height: 8,
                     width: 34,
                     decoration: BoxDecoration(
-                      color: palette.accentMid,
+                      // Obsidian: แถบไล่สีแบรนด์ — สีเน้นจริงเป็นขาวโครเมียม โชว์แล้วไม่สื่อ
+                      color: palette.obsidian ? null : palette.accentMid,
+                      gradient: palette.obsidian ? ObsidianBrand.gradient : null,
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
@@ -427,7 +432,7 @@ class _MetalSwatch extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 10.5,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
               color: selected
@@ -481,15 +486,7 @@ class _ToggleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: AppColors.goldTint,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: AppColors.gold2, size: 18),
-        ),
+        IconTile(icon: icon, size: 34, iconSize: 18, radius: 10, background: AppColors.goldTint, color: AppColors.gold2),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -497,7 +494,7 @@ class _ToggleRow extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textPrimary,
@@ -506,7 +503,7 @@ class _ToggleRow extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 11.5,
                   color: AppColors.textTertiary,
                 ),
@@ -546,7 +543,7 @@ class _WalletCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
+              ObsidianIconSwap(icon: Icons.account_balance_wallet_rounded, size: 40, child: Container(
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
@@ -555,7 +552,7 @@ class _WalletCard extends StatelessWidget {
                 ),
                 child: Icon(Icons.account_balance_wallet_rounded,
                     color: AppColors.goldTextOn, size: 20),
-              ),
+              )),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -566,7 +563,7 @@ class _WalletCard extends StatelessWidget {
                         Flexible(
                           child: Text(
                             _walletDisplayName(wallet),
-                            style: GoogleFonts.inter(
+                            style: AppFonts.ui(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
                               color: AppColors.textPrimary,
@@ -589,7 +586,7 @@ class _WalletCard extends StatelessWidget {
                             ),
                             child: Text(
                               locale.isThai ? 'ลิงก์' : 'LINKED',
-                              style: GoogleFonts.inter(
+                              style: AppFonts.ui(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w700,
                                 color: AppColors.gold2,
@@ -625,7 +622,7 @@ class _WalletCard extends StatelessWidget {
                   wallet.isVerified
                       ? locale.t('wallet.verified')
                       : locale.t('wallet.pending'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                     color: wallet.isVerified
@@ -740,7 +737,7 @@ class _ProfileCard extends StatelessWidget {
               children: [
                 Text(
                   hasName ? name : locale.t('profile.guest'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -749,7 +746,7 @@ class _ProfileCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   hasEmail ? email : locale.t('profile.set_email'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 12,
                     color: hasEmail
                         ? AppColors.textSecondary
@@ -822,7 +819,7 @@ class _ProfileAvatar extends StatelessWidget {
       child: Center(
         child: Text(
           fallbackChar.toUpperCase(),
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: 18,
             fontWeight: FontWeight.w800,
             color: AppColors.goldTextOn,
@@ -848,7 +845,7 @@ class _ConnectWalletCard extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          Container(
+          ObsidianIconSwap(icon: Icons.account_balance_wallet_rounded, size: 56, child: Container(
             width: 56,
             height: 56,
             decoration: BoxDecoration(
@@ -857,11 +854,11 @@ class _ConnectWalletCard extends StatelessWidget {
             ),
             child: Icon(Icons.account_balance_wallet_rounded,
                 color: AppColors.goldTextOn, size: 28),
-          ),
+          )),
           const SizedBox(height: 14),
           Text(
             locale.t('settings.connect_wallet'),
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 16,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
@@ -907,7 +904,7 @@ class _ChainSelector extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(
-            icon: Icons.hub_rounded,
+            icon: Icons.lan_rounded,
             title: locale.t('settings.chain'),
           ),
           const SizedBox(height: 12),
@@ -967,7 +964,7 @@ class _ChainSelector extends StatelessWidget {
                           const SizedBox(width: 6),
                           Text(
                             chain.shortName,
-                            style: GoogleFonts.inter(
+                            style: AppFonts.ui(
                               fontSize: 12,
                               fontWeight: isActive
                                   ? FontWeight.w600
@@ -993,7 +990,7 @@ class _ChainSelector extends StatelessWidget {
                             ),
                             child: Text(
                               chain.tradeLive ? 'Trade' : 'Soon',
-                              style: GoogleFonts.inter(
+                              style: AppFonts.ui(
                                 fontSize: 8,
                                 fontWeight: FontWeight.w700,
                                 color: chain.tradeLive
@@ -1045,7 +1042,7 @@ class _PreferencesCard extends StatelessWidget {
             title: locale.t('settings.language'),
             trailing: Text(
               locale.isThai ? 'ไทย' : 'English',
-              style: GoogleFonts.inter(fontSize: 13, color: AppColors.gold2),
+              style: AppFonts.ui(fontSize: 13, color: AppColors.gold2),
             ),
             onTap: () => locale.toggle(),
           ),
@@ -1058,7 +1055,7 @@ class _PreferencesCard extends StatelessWidget {
             title: locale.t('settings.currency'),
             trailing: Text(
               wallet.currency,
-              style: GoogleFonts.inter(fontSize: 13, color: AppColors.gold2),
+              style: AppFonts.ui(fontSize: 13, color: AppColors.gold2),
             ),
             onTap: () {
               final newCurrency = wallet.currency == 'USD' ? 'THB' : 'USD';
@@ -1144,7 +1141,8 @@ class _AboutCard extends StatelessWidget {
 
           // Bridge
           _SettingsTile(
-            icon: Icons.swap_horiz_rounded,
+            // hub = ไอคอนสะพานในธีม Obsidian (swap ใช้กับหน้าสลับเหรียญแล้ว)
+            icon: Icons.hub_rounded,
             title: locale.t('bridge.title'),
             trailing: Icon(Icons.chevron_right_rounded,
                 color: AppColors.textTertiary, size: 20),
@@ -1170,7 +1168,7 @@ class _AboutCard extends StatelessWidget {
               future: _packageInfoFuture,
               builder: (_, snap) => Text(
                 snap.hasData ? 'v${snap.data!.version}' : '...',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                     fontSize: 12, color: AppColors.textTertiary),
               ),
             ),
@@ -1183,7 +1181,7 @@ class _AboutCard extends StatelessWidget {
             title: 'Xman Studio',
             trailing: Text(
               'xmanstudio.com',
-              style: GoogleFonts.inter(fontSize: 12, color: AppColors.gold2),
+              style: AppFonts.ui(fontSize: 12, color: AppColors.gold2),
             ),
           ),
         ],
@@ -1261,20 +1259,12 @@ class _SettingsTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: AppColors.goldTint,
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Icon(icon, color: AppColors.gold2, size: 17),
-            ),
+            IconTile(icon: icon, size: 30, iconSize: 17, radius: 9, background: AppColors.goldTint, color: AppColors.gold2),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                   color: AppColors.textPrimary,
@@ -1346,7 +1336,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               child: SingleChildScrollView(
                 child: Text(
                   widget.result.releaseNotes!,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                       fontSize: 12, color: AppColors.textTertiary),
                 ),
               ),
@@ -1365,7 +1355,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
             ),
             const SizedBox(height: 6),
             Text(_statusText,
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                     fontSize: 11, color: AppColors.textTertiary)),
           ],
         ],

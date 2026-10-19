@@ -13,7 +13,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/locale/locale_provider.dart';
@@ -113,7 +113,7 @@ class AiAdvisorPanel extends StatelessWidget {
               Expanded(
                 child: Text(
                   locale.t('aiTrade.advisorDisclaimer'),
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 10.5,
                     color: AppColors.textTertiary,
                     height: 1.45,
@@ -171,7 +171,7 @@ class AiAdvisorPanel extends StatelessWidget {
           ),
           child: Text(
             a.text,
-            style: GoogleFonts.inter(
+            style: AppFonts.ui(
               fontSize: 12.5,
               height: 1.55,
               color: AppColors.textPrimary,
@@ -194,7 +194,7 @@ class AiAdvisorPanel extends StatelessWidget {
             const Spacer(),
             Text(
               th ? 'คำตอบถูกเก็บไว้ราว 15 นาที' : 'Cached for about 15 minutes',
-              style: GoogleFonts.inter(
+              style: AppFonts.ui(
                 fontSize: 10,
                 color: AppColors.textTertiary,
               ),
@@ -266,7 +266,7 @@ class _AskButton extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color:

@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/gradients.dart';
@@ -180,7 +180,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     AppGradients.brand.createShader(bounds),
                 child: Text(
                   'TPIX TRADE',
-                  style: GoogleFonts.inter(
+                  style: AppFonts.ui(
                     fontSize: 28,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
@@ -196,7 +196,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
               Text(
                 'Decentralized Exchange',
-                style: GoogleFonts.inter(
+                style: AppFonts.ui(
                   fontSize: 13,
                   fontWeight: FontWeight.w400,
                   color: AppColors.textTertiary,

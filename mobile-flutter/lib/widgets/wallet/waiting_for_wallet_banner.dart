@@ -11,7 +11,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/locale/locale_provider.dart';
@@ -77,7 +77,7 @@ class _Banner extends StatelessWidget {
                       locale.isThai
                           ? 'รอการยืนยันจาก TPIX Wallet'
                           : 'Waiting for TPIX Wallet',
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -88,7 +88,7 @@ class _Banner extends StatelessWidget {
                       locale.isThai
                           ? 'ไปที่แอพ TPIX Wallet แล้วกด "เซ็นชื่อ"'
                           : 'Open TPIX Wallet and tap "Sign"',
-                      style: GoogleFonts.inter(
+                      style: AppFonts.ui(
                         fontSize: 11,
                         color: AppColors.textSecondary,
                       ),
@@ -115,7 +115,7 @@ class _Banner extends StatelessWidget {
                   ),
                   child: Text(
                     locale.t('common.cancel'),
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textSecondary,
@@ -145,7 +145,7 @@ class _Banner extends StatelessWidget {
                   icon: const Icon(Icons.open_in_new_rounded, size: 14),
                   label: Text(
                     locale.isThai ? 'เปิด Wallet' : 'Open Wallet',
-                    style: GoogleFonts.inter(
+                    style: AppFonts.ui(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),

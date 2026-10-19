@@ -11,7 +11,7 @@
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_fonts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../services/token_list_service.dart';
 import '../../utils/crypto_logos.dart';
@@ -151,7 +151,7 @@ class _CoinLogoState extends State<CoinLogo> {
       child: Center(
         child: Text(
           letter,
-          style: GoogleFonts.inter(
+          style: AppFonts.ui(
             fontSize: widget.size * 0.4,
             fontWeight: FontWeight.w700,
             color: color,
