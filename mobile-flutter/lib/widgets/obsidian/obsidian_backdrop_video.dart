@@ -206,7 +206,10 @@ class _ObsidianBackdropLayerState extends State<ObsidianBackdropLayer> {
     final reduce = (MediaQuery.maybeDisableAnimationsOf(context) ?? false) ||
         (context.read<AccentProvider?>()?.reduceMotion ?? false);
     // TickerMode = false เมื่อหน้านี้อยู่หลังแท็บอื่นของ IndexedStack
-    final visible = TickerMode.valuesOf(context).enabled;
+    // TickerMode.of ใช้ได้ทั้ง Flutter ของ CI (3.38 ยังไม่มี valuesOf) และรุ่นใหม่
+    // ที่ประกาศ deprecated ไว้ — เปลี่ยนเป็น valuesOf เมื่อ CI ขยับรุ่นแล้ว
+    // ignore: deprecated_member_use
+    final visible = TickerMode.of(context);
     _video.setWantsPlay(this, widget.animated && visible && !reduce);
   }
 
