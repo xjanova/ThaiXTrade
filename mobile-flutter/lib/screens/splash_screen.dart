@@ -73,7 +73,8 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
 
     // Auto-check update ใน background — ไม่ block UI, แค่เก็บผลไว้ให้ Home แสดง banner
-    context.read<UpdateProvider>().checkInBackground();
+    // force: เปิดแอปใหม่ = เช็กเสมอ (เดิมเว้น 6 ชม. ทำให้ไม่เห็นรุ่นใหม่ที่เพิ่งปล่อย)
+    context.read<UpdateProvider>().checkInBackground(force: true);
 
     context.go('/home');
 
