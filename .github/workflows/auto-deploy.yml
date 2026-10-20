@@ -121,7 +121,9 @@ jobs:
             echo "🏗️ Building frontend assets..."
             rm -rf node_modules 2>/dev/null || true
             npm install --no-audit --no-fund 2>&1
-            node ./node_modules/vite/bin/vite.js build 2>&1
+            # build ลงโฟลเดอร์แยกแล้วค่อยสลับ — ห้าม build ทับ public_html/build ตรง ๆ
+            # (ช่วง build ไฟล์ CSS หาย → 404 ที่ Cloudflare ให้มือถือแคช 1 ปี → เว็บไม่มี CSS)
+            bash scripts/build-assets-atomic.sh 2>&1
 
             # Run migrations + seeders
             echo "🗃️ Running migrations..."

@@ -18,6 +18,10 @@
         --color-trading-green: 0 200 83;
         --color-trading-red: 255 23 68;
         --glass-blur: 20px;
+        /* เลขรุ่นไฟล์ CSS — ขยับเลขเมื่อต้องการบังคับชื่อไฟล์ app-*.css ใหม่
+           ใช้ครั้งแรก 2026-10-20: มือถือที่แคช 404 ของ app-CJXXWbPY.css ไว้ 1 ปี
+           (Cloudflare Browser Cache TTL) ต้องได้ชื่อไฟล์ใหม่ถึงจะโหลด CSS อีกครั้ง */
+        --tpix-css-rev: 2;
         --glass-opacity: 0.1;
 
         /* ── สีของธีมเดิม (Glass Dark) ─────────────────────────

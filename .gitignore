@@ -82,3 +82,5 @@ Thumbs.db
 
 # คลังแท่งเทียนของ backtester — ดึงใหม่ได้เสมอ ไม่ต้องเก็บใน git
 storage/app/aibot/
+/public_html/build.next
+/public_html/build.prev

@@ -777,7 +777,8 @@ build_assets() {
         print_info "Building production assets..."
 
         set +e
-        BUILD_OUTPUT=$(npm run build 2>&1)
+        # build แยกโฟลเดอร์แล้วสลับ — ดูเหตุผลใน scripts/build-assets-atomic.sh
+        BUILD_OUTPUT=$(bash scripts/build-assets-atomic.sh 2>&1)
         BUILD_EXIT=$?
         set -e
 
