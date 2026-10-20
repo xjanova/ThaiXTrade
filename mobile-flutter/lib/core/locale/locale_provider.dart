@@ -128,6 +128,15 @@ class LocaleProvider extends ChangeNotifier {
       'settings.update_available': 'มีอัปเดตใหม่',
       'settings.profile': 'โปรไฟล์',
       'settings.edit_profile': 'แก้ไขโปรไฟล์',
+      'settings.add_tpix': 'เพิ่ม TPIX ลงกระเป๋า',
+      'settings.add_tpix_hint': 'เพิ่มเครือข่าย TPIX Chain (RPC rpc1) และเหรียญบนเชน TPIX ลงกระเป๋าที่เชื่อมอยู่',
+      'settings.add_tpix_done': 'เพิ่ม TPIX Chain และ {tokens} ลงกระเป๋าแล้ว',
+      'settings.add_tpix_chain_only': 'เพิ่ม TPIX Chain ลงกระเป๋าแล้ว (ข้ามการเพิ่มเหรียญ)',
+      'settings.add_tpix_no_tokens': 'เพิ่ม TPIX Chain แล้ว แต่โหลดรายการเหรียญไม่ได้ — ลองกดอีกครั้งภายหลัง',
+      'settings.add_tpix_token_unsupported': 'เพิ่ม TPIX Chain แล้ว — กระเป๋านี้ไม่รองรับการเพิ่มเหรียญจากแอป ให้เพิ่มเหรียญเองในกระเป๋า',
+      'settings.add_tpix_token_failed': 'เพิ่ม TPIX Chain แล้ว แต่เพิ่มเหรียญไม่สำเร็จ — ลองอีกครั้ง',
+      'settings.add_tpix_account_changed': 'บัญชีในกระเป๋าเปลี่ยนระหว่างทาง — หยุดแล้ว สลับกลับบัญชีที่เชื่อมไว้แล้วลองใหม่',
+      'settings.add_tpix_failed': 'กระเป๋าไม่ได้สลับไป TPIX Chain — เปิดแอปกระเป๋าค้างไว้แล้วลองอีกครั้ง',
 
       // Profile
       'profile.title': 'โปรไฟล์ของฉัน',
@@ -893,6 +902,15 @@ class LocaleProvider extends ChangeNotifier {
       'settings.update_available': 'Update Available',
       'settings.profile': 'Profile',
       'settings.edit_profile': 'Edit Profile',
+      'settings.add_tpix': 'Add TPIX to wallet',
+      'settings.add_tpix_hint': 'Adds the TPIX Chain network (rpc1 RPC) and its tokens to your connected wallet',
+      'settings.add_tpix_done': 'TPIX Chain and {tokens} added to your wallet',
+      'settings.add_tpix_chain_only': 'TPIX Chain added to your wallet (token skipped)',
+      'settings.add_tpix_no_tokens': 'TPIX Chain added, but the token list could not be loaded — try again later',
+      'settings.add_tpix_token_unsupported': 'TPIX Chain added — this wallet does not let apps add tokens, please add it in the wallet',
+      'settings.add_tpix_token_failed': 'TPIX Chain added, but the token could not be added — try again',
+      'settings.add_tpix_account_changed': 'The wallet account changed midway — stopped. Switch back to the connected account and try again',
+      'settings.add_tpix_failed': 'The wallet did not switch to TPIX Chain — keep the wallet app open and try again',
 
       // Profile
       'profile.title': 'My Profile',

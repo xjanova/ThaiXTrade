@@ -25,7 +25,9 @@ void main() {
       expect(info.name, 'TPIX Chain');
       expect(info.currency, 'TPIX');
       expect(info.rpcUrl, 'https://rpc1.tpix.online');
-      expect(info.extraRpcUrls, contains('https://rpc.tpix.online'));
+      // modal ของ Reown ส่ง toRawJson() ให้กระเป๋าเอง — ห้ามมี rpc.tpix.online (Cloudflare 403)
+      expect(info.extraRpcUrls, isEmpty);
+      expect(info.toRawJson()['rpcUrls'], ['https://rpc1.tpix.online']);
       expect(info.explorerUrl, 'https://explorer.tpix.online');
       expect(info.chainIcon, ReownConfig.tpixCoinIcon);
       expect(info.isTestNetwork, isFalse);
@@ -99,6 +101,152 @@ void main() {
           ExternalWalletService.isUserRejected(const JsonRpcError(
               code: 4902, message: 'Unrecognized chain ID')),
           isFalse);
+    });
+  });
+
+  // ตรงกับ tests/js/stores/walletAssets.test.js ของเว็บ — ข้อมูลชุดเดียวกัน ผลต้องเหมือนกัน
+  group('เหรียญบนเชน TPIX จาก /dex/pairs (tpixChainTokens)', () {
+    const usdt = '0x0A4Ee87551eF041f3EecFBBfdcfFC1B46a4878f1';
+    const usdtLogo =
+        'https://assets-cdn.trustwallet.com/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png';
+    const pair = <String, dynamic>{
+      'symbol': 'TPIX-USDT',
+      'base_address': '0x0000000000000000000000000000000000000000',
+      'quote_address': usdt,
+      'quote_asset': 'USDT',
+      'quote_decimals': 6,
+      'quote_logo': usdtLogo,
+      'chain_id': 4289,
+    };
+    Map<String, dynamic> with_(Map<String, dynamic> patch) => {...pair, ...patch};
+
+    test('ได้ USDT บนเชน TPIX พร้อมทศนิยมและโลโก้จาก API คู่เทรด', () {
+      final tokens = ExternalWalletService.tpixChainTokens([pair]);
+      expect(tokens, hasLength(1));
+      expect(tokens.single.address, usdt);
+      expect(tokens.single.symbol, 'USDT');
+      expect(tokens.single.decimals, 6);
+      expect(tokens.single.image, usdtLogo);
+    });
+
+    test('ข้ามคู่เชนอื่น คู่ที่ base ไม่ใช่ TPIX และข้อมูลผิดรูป', () {
+      final tokens = ExternalWalletService.tpixChainTokens([
+        with_({'chain_id': 56}),
+        with_({'chain_id': null}),
+        with_({
+          'base_address': '0x1111111111111111111111111111111111111111'
+        }),
+        with_({'quote_address': '0x123'}),
+        with_({
+          'quote_address': '0x0000000000000000000000000000000000000000'
+        }),
+        with_({'quote_decimals': 'six'}),
+        with_({'quote_decimals': 6.5}),
+        with_({'quote_decimals': -1}),
+        with_({'quote_decimals': 37}),
+        with_({'quote_asset': 'WAYTOOLONGSYMBOL'}),
+        with_({'quote_asset': '   '}),
+      ]);
+      expect(tokens, isEmpty);
+    });
+
+    test('ตัวเลขที่มาเป็นสตริง/ทศนิยม .0 ใช้ได้ (แบบ Number() ของเว็บ)', () {
+      final tokens = ExternalWalletService.tpixChainTokens([
+        with_({'chain_id': '4289', 'quote_decimals': '6'}),
+      ]);
+      expect(tokens.single.decimals, 6);
+      expect(
+          ExternalWalletService.tpixChainTokens([
+            with_({'quote_decimals': 18.0})
+          ]).single.decimals,
+          18);
+    });
+
+    test('ขอบเขตทศนิยม 0 และ 36 ผ่าน · symbol 11 ตัวผ่าน', () {
+      expect(
+          ExternalWalletService.tpixChainTokens(
+              [with_({'quote_decimals': 0})]),
+          hasLength(1));
+      expect(
+          ExternalWalletService.tpixChainTokens(
+              [with_({'quote_decimals': 36})]),
+          hasLength(1));
+      expect(
+          ExternalWalletService.tpixChainTokens(
+              [with_({'quote_asset': 'ABCDEFGHIJK'})]),
+          hasLength(1));
+    });
+
+    test('ที่อยู่ซ้ำ (ต่างตัวพิมพ์) เสนอครั้งเดียว', () {
+      final tokens = ExternalWalletService.tpixChainTokens([
+        pair,
+        with_({'quote_address': usdt.toLowerCase()}),
+      ]);
+      expect(tokens, hasLength(1));
+    });
+
+    test('โลโก้ที่ไม่ใช่ https ไม่ถูกส่งให้กระเป๋า', () {
+      for (final logo in ['/storage/usdt.png', 'http://x.io/u.png', null]) {
+        final tokens =
+            ExternalWalletService.tpixChainTokens([with_({'quote_logo': logo})]);
+        expect(tokens.single.image, isNull, reason: '$logo');
+      }
+    });
+
+    test('API ล่ม/ว่าง = ไม่เสนออะไรเลย (ไม่เดาที่อยู่)', () {
+      expect(ExternalWalletService.tpixChainTokens(const []), isEmpty);
+    });
+  });
+
+  group('wallet_watchAsset (EIP-747)', () {
+    test('params เป็น object type ERC20 พร้อม address/symbol/decimals/image', () {
+      final p = ExternalWalletService.watchAssetParams(const WatchAssetToken(
+        address: '0x0A4Ee87551eF041f3EecFBBfdcfFC1B46a4878f1',
+        symbol: 'USDT',
+        decimals: 6,
+        image: 'https://tpix.online/images/usdt.png',
+      ));
+      expect(p, {
+        'type': 'ERC20',
+        'options': {
+          'address': '0x0A4Ee87551eF041f3EecFBBfdcfFC1B46a4878f1',
+          'symbol': 'USDT',
+          'decimals': 6,
+          'image': 'https://tpix.online/images/usdt.png',
+        },
+      });
+    });
+
+    test('ไม่มีโลโก้ = ไม่ส่งช่อง image · symbol คงตัวพิมพ์ตามสัญญา', () {
+      final p = ExternalWalletService.watchAssetParams(const WatchAssetToken(
+        address: '0x0A4Ee87551eF041f3EecFBBfdcfFC1B46a4878f1',
+        symbol: 'USDt',
+        decimals: 6,
+      ));
+      final options = p['options'] as Map<String, dynamic>;
+      expect(options.containsKey('image'), isFalse);
+      expect(options['symbol'], 'USDt');
+    });
+
+    test('ข้อมูลจาก /dex/pairs ไหลไปเป็น params ได้ตรงตัว', () {
+      final token = ExternalWalletService.tpixChainTokens([
+        {
+          'chain_id': 4289,
+          'base_address': '0x0000000000000000000000000000000000000000',
+          'quote_address': '0x0A4Ee87551eF041f3EecFBBfdcfFC1B46a4878f1',
+          'quote_asset': 'USDT',
+          'quote_decimals': 6,
+          'quote_logo': '/storage/usdt.png',
+        },
+      ]).single;
+      expect(ExternalWalletService.watchAssetParams(token), {
+        'type': 'ERC20',
+        'options': {
+          'address': '0x0A4Ee87551eF041f3EecFBBfdcfFC1B46a4878f1',
+          'symbol': 'USDT',
+          'decimals': 6,
+        },
+      });
     });
   });
 }

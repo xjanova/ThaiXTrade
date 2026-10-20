@@ -43,6 +43,45 @@ enum WalletKind {
   linked,
 }
 
+/// ผลของปุ่ม "เพิ่ม TPIX ลงกระเป๋า" (เฉพาะกระเป๋าภายนอกผ่าน WalletConnect)
+enum AddTpixOutcome {
+  /// เพิ่มเชน + เหรียญครบ
+  added,
+
+  /// เพิ่มเชนแล้ว ผู้ใช้กดไม่เพิ่มเหรียญ
+  tokenDeclined,
+
+  /// เพิ่มเชนแล้ว แต่โหลด /dex/pairs ไม่ได้หรือไม่มีเหรียญที่ผ่านการตรวจ
+  noTokens,
+
+  /// เพิ่มเชนแล้ว กระเป๋าไม่อนุญาต wallet_watchAsset
+  tokenUnsupported,
+
+  /// เพิ่มเชนแล้ว เพิ่มเหรียญไม่สำเร็จ
+  tokenFailed,
+
+  /// ผู้ใช้กดปฏิเสธการเพิ่ม/สลับเชน — ไม่ต้องขึ้นข้อความผิดพลาด
+  rejected,
+
+  /// บัญชีในกระเป๋า (หรือกระเป๋าในแอป) เปลี่ยนระหว่างทาง — หยุดกลางคัน
+  accountChanged,
+
+  /// กระเป๋าไม่สลับไปเชน TPIX / ไม่ตอบ
+  failed,
+
+  /// ไม่ใช่กระเป๋าภายนอก หรือกำลังทำอยู่แล้ว (กดซ้ำ)
+  unavailable,
+}
+
+class AddTpixResult {
+  final AddTpixOutcome outcome;
+
+  /// สัญลักษณ์เหรียญที่กระเป๋ารับไปแล้ว (เช่น ['USDT'])
+  final List<String> addedSymbols;
+
+  const AddTpixResult(this.outcome, [this.addedSymbols = const []]);
+}
+
 class WalletProvider extends ChangeNotifier {
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -1203,6 +1242,103 @@ class WalletProvider extends ChangeNotifier {
 
     // รีโหลด portfolio data ตาม chain ใหม่
     loadPortfolio();
+  }
+
+  // ── Add TPIX to external wallet ──
+
+  bool _addingTpix = false;
+
+  /// กำลังเพิ่ม TPIX ลงกระเป๋า — ปุ่มใช้ปิดตัวเองกันกดซ้ำ
+  bool get isAddingTpix => _addingTpix;
+
+  /// เพิ่มเชน TPIX (RPC rpc1) + เหรียญ ERC-20 บนเชน (USDT) ลงกระเป๋าภายนอก
+  ///
+  /// ลำดับ: โหลดรายการเหรียญจาก /dex/pairs (ไม่มีป๊อปอัพ) → [ExternalWalletService.ensureTpixChain]
+  ///        → wallet_watchAsset ทีละเหรียญ
+  /// ตรวจบัญชีทุกช่วงที่รอกระเป๋า — ผู้ใช้สลับบัญชีใน wallet หรือตัดการเชื่อมในแอป = หยุด
+  /// กระเป๋าในแอป/ลิงก์ = [AddTpixOutcome.unavailable] (ไม่มีกระเป๋าภายนอกให้เพิ่ม)
+  Future<AddTpixResult> addTpixToWallet() async {
+    final owner = _address;
+    if (_kind != WalletKind.walletConnect || owner == null || _addingTpix) {
+      return const AddTpixResult(AddTpixOutcome.unavailable);
+    }
+    final svc = ExternalWalletService();
+
+    bool sameAccount() {
+      if (_kind != WalletKind.walletConnect) return false;
+      if (_address?.toLowerCase() != owner.toLowerCase()) return false;
+      final current = svc.currentAddress;
+      return current == null || current.toLowerCase() == owner.toLowerCase();
+    }
+
+    _addingTpix = true;
+    notifyListeners();
+    try {
+      if (!sameAccount()) {
+        return const AddTpixResult(AddTpixOutcome.accountChanged);
+      }
+
+      List<Map<String, dynamic>>? pairs;
+      try {
+        pairs = await ApiService().getDexPairs();
+      } catch (e) {
+        debugPrint('addTpixToWallet pairs: ${e.runtimeType}');
+      }
+      final tokens = pairs == null
+          ? const <WatchAssetToken>[]
+          : ExternalWalletService.tpixChainTokens(pairs);
+      if (!sameAccount()) {
+        return const AddTpixResult(AddTpixOutcome.accountChanged);
+      }
+
+      final chain = await svc.ensureTpixChain();
+      if (!sameAccount()) {
+        return const AddTpixResult(AddTpixOutcome.accountChanged);
+      }
+      switch (chain) {
+        case TpixChainOutcome.rejected:
+          return const AddTpixResult(AddTpixOutcome.rejected);
+        case TpixChainOutcome.failed:
+          return const AddTpixResult(AddTpixOutcome.failed);
+        case TpixChainOutcome.ready:
+          break;
+      }
+      if (tokens.isEmpty) return const AddTpixResult(AddTpixOutcome.noTokens);
+
+      final added = <String>[];
+      for (final token in tokens) {
+        final r = await svc.watchAsset(token);
+        if (!sameAccount()) {
+          return AddTpixResult(AddTpixOutcome.accountChanged, added);
+        }
+        switch (r) {
+          case WatchAssetOutcome.added:
+            added.add(token.symbol);
+          case WatchAssetOutcome.rejected:
+            // ผู้ใช้ไม่เอา — ไม่ถามเหรียญถัดไปต่อ
+            return AddTpixResult(
+                added.isEmpty
+                    ? AddTpixOutcome.tokenDeclined
+                    : AddTpixOutcome.added,
+                added);
+          case WatchAssetOutcome.unsupported:
+            return AddTpixResult(
+                added.isEmpty
+                    ? AddTpixOutcome.tokenUnsupported
+                    : AddTpixOutcome.added,
+                added);
+          case WatchAssetOutcome.failed:
+            // ข้ามเหรียญนี้ ลองเหรียญถัดไป
+            continue;
+        }
+      }
+      return AddTpixResult(
+          added.isEmpty ? AddTpixOutcome.tokenFailed : AddTpixOutcome.added,
+          added);
+    } finally {
+      _addingTpix = false;
+      notifyListeners();
+    }
   }
 
   // ── Settings ──

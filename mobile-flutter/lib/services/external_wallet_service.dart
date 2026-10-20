@@ -8,6 +8,7 @@
 ///   2. connect() — เปิด modal/QR ให้ user เลือก wallet
 ///   3. signPersonalMessage() — ขอลายเซ็นจาก wallet
 ///   4. switchChain() — สลับเชนใน wallet (ไม่รู้จักเชน = ขอเพิ่มเชนให้)
+///      ensureTpixChain() + watchAsset() — ปุ่ม "เพิ่ม TPIX ลงกระเป๋า" (เชน + USDT)
 ///   5. disconnect() — ยกเลิก session
 ///
 /// ⚠️ เชน TPIX (4289) ไม่อยู่ในรายการเชนตั้งต้นของ Reown — ต้อง [registerTpixNetwork]
@@ -50,6 +51,36 @@ class ExternalWalletSession {
   });
 }
 
+/// โทเคน ERC-20 ที่เสนอให้กระเป๋าเพิ่มผ่าน wallet_watchAsset (EIP-747)
+class WatchAssetToken {
+  final String address;
+  final String symbol;
+  final int decimals;
+  final String? image; // https เท่านั้น — กระเป๋าดึงรูปเอง
+
+  const WatchAssetToken({
+    required this.address,
+    required this.symbol,
+    required this.decimals,
+    this.image,
+  });
+}
+
+/// ผลของการพากระเป๋าไปเชน TPIX
+enum TpixChainOutcome {
+  /// กระเป๋าอยู่บนเชน 4289 และได้รับข้อมูลเชน (RPC rpc1) แล้ว
+  ready,
+
+  /// ผู้ใช้กดปฏิเสธในกระเป๋า
+  rejected,
+
+  /// กระเป๋าไม่ตอบ/ไม่รองรับ/ไม่สลับเชน
+  failed,
+}
+
+/// ผลของ wallet_watchAsset
+enum WatchAssetOutcome { added, rejected, unsupported, failed }
+
 class ExternalWalletService {
   ExternalWalletService._();
   static final ExternalWalletService _instance = ExternalWalletService._();
@@ -83,7 +114,10 @@ class ExternalWalletService {
       chainId: '${c.chainId}',
       currency: c.symbol,
       rpcUrl: c.rpcUrl,
-      extraRpcUrls: c.fallbackRpcs,
+      // ว่างไว้: modal ของ Reown ส่ง toRawJson() (rpcUrl + extraRpcUrls) ให้กระเป๋าตอนผู้ใช้
+      // สลับเชนในหน้าต่างของมันเอง — rpc.tpix.online โดน Cloudflare 403 ฝั่งแอปกระเป๋า
+      // กระเป๋าต้องได้แค่ rpc1 (ตัวสำรองใช้ภายในแอปผ่าน RpcPool เท่านั้น)
+      extraRpcUrls: const [],
       explorerUrl: c.explorerUrl,
       chainIcon: ReownConfig.tpixCoinIcon,
     );
@@ -118,6 +152,68 @@ class ExternalWalletService {
         'blockExplorerUrls': [chain.explorerUrl],
         if (chain.chainId == ChainConfig.tpix.chainId)
           'iconUrls': [ReownConfig.tpixCoinIcon],
+      };
+
+  // ── เหรียญบนเชน TPIX (wallet_watchAsset) ──
+
+  static const _nativeAddress = '0x0000000000000000000000000000000000000000';
+  static final _addressRe = RegExp(r'^0x[0-9a-fA-F]{40}$');
+
+  /// เลขจาก JSON ที่อาจมาเป็น int / double / String (แบบ Number() ของเว็บ) — ไม่ใช่จำนวนเต็ม = null
+  static int? _asInt(dynamic v) {
+    if (v is int) return v;
+    if (v is double) return v.isFinite && v == v.truncateToDouble() ? v.toInt() : null;
+    if (v is String) return int.tryParse(v.trim());
+    return null;
+  }
+
+  /// โทเคน ERC-20 บนเชน TPIX ที่จับคู่กับ TPIX เนทีฟ (ฝั่ง quote) จาก /api/v1/dex/pairs
+  ///
+  /// ตรงกับ fetchTpixChainTokens() ของเว็บ (resources/js/utils/walletAssets.js) ทุกเงื่อนไข
+  /// ตอนนี้คือ USDT ตัวเดียว — ที่อยู่/ทศนิยม/โลโก้มาจากเซิร์ฟเวอร์เสมอ ห้าม hardcode
+  /// แถวผิดรูป = ข้าม (ทศนิยมผิด กระเป๋าจะโชว์ยอดผิด)
+  static List<WatchAssetToken> tpixChainTokens(
+      List<Map<String, dynamic>> pairs) {
+    final seen = <String>{};
+    final tokens = <WatchAssetToken>[];
+    for (final p in pairs) {
+      if (_asInt(p['chain_id']) != ChainConfig.tpix.chainId) continue;
+      if ('${p['base_address'] ?? ''}'.toLowerCase() != _nativeAddress) continue;
+
+      final address = '${p['quote_address'] ?? ''}';
+      final symbol = '${p['quote_asset'] ?? ''}'.trim();
+      final decimals = _asInt(p['quote_decimals']);
+
+      if (!_addressRe.hasMatch(address) ||
+          address.toLowerCase() == _nativeAddress) {
+        continue;
+      }
+      if (symbol.isEmpty || symbol.length > 11) continue;
+      if (decimals == null || decimals < 0 || decimals > 36) continue;
+      if (!seen.add(address.toLowerCase())) continue;
+
+      final logo = '${p['quote_logo'] ?? ''}';
+      tokens.add(WatchAssetToken(
+        address: address,
+        symbol: symbol,
+        decimals: decimals,
+        image: logo.startsWith('https://') ? logo : null,
+      ));
+    }
+    return tokens;
+  }
+
+  /// พารามิเตอร์ wallet_watchAsset (EIP-747) — params เป็น object ไม่ใช่ array
+  ///
+  /// symbol ใช้ตามที่สัญญาประกาศ (ไม่แปลงตัวใหญ่ — MetaMask เทียบกับ symbol() บนเชน)
+  static Map<String, dynamic> watchAssetParams(WatchAssetToken t) => {
+        'type': 'ERC20',
+        'options': {
+          'address': t.address,
+          'symbol': t.symbol,
+          'decimals': t.decimals,
+          if (t.image != null) 'image': t.image,
+        },
       };
 
   /// แปลง chain id จาก Reown เป็นตัวเลข — รองรับทั้ง 'eip155:4289' และ '4289'
@@ -296,20 +392,29 @@ class ExternalWalletService {
   ///        ยังไม่อนุญาต → wallet_switchEthereumChain → wallet ไม่รู้จักเชน
   ///        → wallet_addEthereumChain (มี iconUrls) → รอ wallet อัปเดต session
   /// ผู้ใช้กดปฏิเสธ = false ทันที ไม่ไปขอเพิ่มเชนต่อ
-  Future<bool> switchChain(int chainId) async {
+  Future<bool> switchChain(int chainId) async =>
+      (await _switchChain(chainId)).ok;
+
+  /// [switchChain] ที่บอกรายละเอียด — `rejected` ผู้ใช้กดปฏิเสธ · `sentAdd` ส่ง
+  /// wallet_addEthereumChain ไปแล้วในรอบนี้ (ผู้เรียกไม่ต้องส่งซ้ำ)
+  Future<({bool ok, bool rejected, bool sentAdd})> _switchChain(
+      int chainId) async {
+    const fail = (ok: false, rejected: false, sentAdd: false);
+    const rejected = (ok: false, rejected: true, sentAdd: false);
     final modal = _modal;
-    if (modal == null || !modal.isConnected) return false;
+    if (modal == null || !modal.isConnected) return fail;
     if (chainId == ChainConfig.tpix.chainId) registerTpixNetwork();
 
     final caip = 'eip155:$chainId';
+    var sentAdd = false;
     try {
       final chainInfo =
           ReownAppKitModalNetworks.getNetworkInfo('eip155', '$chainId');
-      if (chainInfo == null) return false;
+      if (chainInfo == null) return fail;
 
       if (_approvedEvmChains.contains(caip)) {
         await modal.selectChain(chainInfo);
-        return selectedChainId == chainId;
+        return (ok: selectedChainId == chainId, rejected: false, sentAdd: false);
       }
 
       final topic = modal.session?.topic;
@@ -319,13 +424,13 @@ class ExternalWalletService {
       final via = (current != null && approved.contains(current))
           ? current
           : (approved.isNotEmpty ? approved.first : null);
-      if (topic == null || via == null) return false;
+      if (topic == null || via == null) return fail;
 
       final config = ChainConfig.all.firstWhere(
         (c) => c.chainId == chainId,
         orElse: () => ChainConfig.tpix,
       );
-      if (config.chainId != chainId) return false;
+      if (config.chainId != chainId) return fail;
 
       try {
         await modal.request(
@@ -339,8 +444,9 @@ class ExternalWalletService {
           ),
         );
       } catch (e) {
-        if (isUserRejected(e)) return false;
+        if (isUserRejected(e)) return rejected;
         // 4902 = wallet ไม่รู้จักเชน (บาง wallet ส่งรหัสอื่น) — ขอเพิ่มเชนพร้อมสลับ
+        sentAdd = true;
         await modal.request(
           topic: topic,
           chainId: via,
@@ -358,13 +464,114 @@ class ExternalWalletService {
       }
       if (!_approvedEvmChains.contains(caip)) {
         debugPrint('switchChain: wallet did not add $caip to the session');
-        return false;
+        return fail;
       }
       await modal.selectChain(chainInfo);
-      return selectedChainId == chainId;
+      return (ok: selectedChainId == chainId, rejected: false, sentAdd: sentAdd);
     } catch (e) {
       debugPrint('switchChain error: ${e.runtimeType}');
-      return false;
+      return isUserRejected(e) ? rejected : fail;
+    }
+  }
+
+  /// พากระเป๋าไปเชน TPIX พร้อมให้ข้อมูลเชนชุดล่าสุด (RPC = rpc1 เท่านั้น)
+  ///
+  /// กระเป๋ารู้จักเชน 4289 อยู่แล้ว → ส่ง wallet_addEthereumChain ซ้ำ เพราะกระเป๋าที่เพิ่ม
+  /// ไว้สมัยยังใช้ rpc.tpix.online (โดน Cloudflare 403) จะได้อัปเดตเป็น rpc1
+  /// ยังไม่รู้จัก → [switchChain] (สลับ ไม่ได้ก็ขอเพิ่ม) แล้วส่งเพิ่มซ้ำถ้ารอบนั้นแค่สลับ
+  Future<TpixChainOutcome> ensureTpixChain() async {
+    final modal = _modal;
+    if (modal == null || !modal.isConnected) return TpixChainOutcome.failed;
+    registerTpixNetwork();
+    const tpix = ChainConfig.tpix;
+    final caip = 'eip155:${tpix.chainId}';
+
+    try {
+      if (_approvedEvmChains.contains(caip)) {
+        final info = ReownAppKitModalNetworks.getNetworkInfo(
+            'eip155', '${tpix.chainId}');
+        if (info == null) return TpixChainOutcome.failed;
+        await modal.selectChain(info);
+      } else {
+        final r = await _switchChain(tpix.chainId);
+        if (r.rejected) return TpixChainOutcome.rejected;
+        if (!r.ok) return TpixChainOutcome.failed;
+        if (r.sentAdd) return TpixChainOutcome.ready;
+      }
+
+      final topic = modal.session?.topic;
+      if (topic == null) return TpixChainOutcome.failed;
+      try {
+        await modal.request(
+          topic: topic,
+          chainId: caip,
+          request: SessionRequestParams(
+            method: 'wallet_addEthereumChain',
+            params: [addChainParams(tpix)],
+          ),
+        );
+      } catch (e) {
+        if (isUserRejected(e)) return TpixChainOutcome.rejected;
+        // บางกระเป๋าไม่ยอมให้เพิ่มเชนที่มีอยู่แล้วซ้ำ — เชนยังใช้ได้ ไปต่อ
+        debugPrint('ensureTpixChain re-add: ${e.runtimeType}');
+      }
+      return selectedChainId == tpix.chainId
+          ? TpixChainOutcome.ready
+          : TpixChainOutcome.failed;
+    } catch (e) {
+      debugPrint('ensureTpixChain error: ${e.runtimeType}');
+      return isUserRejected(e)
+          ? TpixChainOutcome.rejected
+          : TpixChainOutcome.failed;
+    }
+  }
+
+  /// ขอให้กระเป๋าเพิ่มโทเคน ERC-20 บนเชน TPIX (wallet_watchAsset / EIP-747)
+  ///
+  /// ต้อง [ensureTpixChain] ก่อน — คำขอผูกกับ eip155:4289 ตรง ๆ
+  /// กระเป๋าที่ไม่อนุญาตเมธอดนี้ใน session = [WatchAssetOutcome.unsupported]
+  Future<WatchAssetOutcome> watchAsset(WatchAssetToken token) async {
+    final modal = _modal;
+    final topic = modal?.session?.topic;
+    if (modal == null || !modal.isConnected || topic == null) {
+      return WatchAssetOutcome.failed;
+    }
+    final caip = 'eip155:${ChainConfig.tpix.chainId}';
+    if (!_approvedEvmChains.contains(caip)) return WatchAssetOutcome.failed;
+
+    // sign client ของ Reown ตีกลับเมธอดที่กระเป๋าไม่ได้อนุญาตก่อนถึงกระเป๋าอยู่แล้ว
+    final methods = modal.session?.getApprovedMethods(namespace: 'eip155');
+    if (methods != null && !methods.contains('wallet_watchAsset')) {
+      return WatchAssetOutcome.unsupported;
+    }
+
+    final params = watchAssetParams(token);
+    Future<dynamic> send(Object p) => modal.request(
+          topic: topic,
+          chainId: caip,
+          request: SessionRequestParams(method: 'wallet_watchAsset', params: p),
+        );
+
+    try {
+      dynamic result;
+      try {
+        result = await send(params);
+      } on JsonRpcError catch (e) {
+        // EIP-747 ใช้ object · กระเป๋าเก่าบางตัว (Trust/OKX รุ่นแรก) รับแค่ array — เหมือนเว็บ
+        if (e.code != -32602) rethrow;
+        result = await send([params]);
+      }
+      // EIP-747: false = ผู้ใช้ไม่เพิ่ม · บางกระเป๋าตอบ null ทั้งที่เพิ่มแล้ว
+      return result == false
+          ? WatchAssetOutcome.rejected
+          : WatchAssetOutcome.added;
+    } catch (e) {
+      debugPrint('watchAsset error: ${e.runtimeType}');
+      if (isUserRejected(e)) return WatchAssetOutcome.rejected;
+      if (e is JsonRpcError && (e.code == -32601 || e.code == 4200)) {
+        return WatchAssetOutcome.unsupported;
+      }
+      return WatchAssetOutcome.failed;
     }
   }
 

@@ -634,6 +634,32 @@ class _WalletCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
+          // กระเป๋าภายนอกเท่านั้น — กระเป๋าในแอปอ่านเชน TPIX/USDT เองอยู่แล้ว ไม่มีอะไรให้เพิ่ม
+          if (wallet.isExternalWallet) ...[
+            SizedBox(
+              width: double.infinity,
+              child: GradientButton(
+                text: locale.t('settings.add_tpix'),
+                icon: Icons.add_link_rounded,
+                variant: ButtonVariant.brand,
+                height: 40,
+                isLoading: wallet.isAddingTpix,
+                onPressed: wallet.isAddingTpix
+                    ? null
+                    : () => _addTpixToWallet(context),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              locale.t('settings.add_tpix_hint'),
+              textAlign: TextAlign.center,
+              style: AppFonts.ui(
+                fontSize: 11,
+                color: AppColors.textTertiary,
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           SizedBox(
             width: double.infinity,
             child: GradientButton(
@@ -645,6 +671,31 @@ class _WalletCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  /// เพิ่มเชน TPIX + เหรียญบนเชนลงกระเป๋าภายนอก แล้วแจ้งผลเป็นภาษาที่ผู้ใช้เลือก
+  /// ผู้ใช้กดปฏิเสธในกระเป๋า = เงียบ (ผู้ใช้ตั้งใจเอง ไม่ใช่ข้อผิดพลาด)
+  Future<void> _addTpixToWallet(BuildContext context) async {
+    final result = await wallet.addTpixToWallet();
+    if (!context.mounted) return;
+
+    final String? message = switch (result.outcome) {
+      AddTpixOutcome.added => locale.tp('settings.add_tpix_done',
+          {'tokens': result.addedSymbols.join(', ')}),
+      AddTpixOutcome.tokenDeclined => locale.t('settings.add_tpix_chain_only'),
+      AddTpixOutcome.noTokens => locale.t('settings.add_tpix_no_tokens'),
+      AddTpixOutcome.tokenUnsupported =>
+        locale.t('settings.add_tpix_token_unsupported'),
+      AddTpixOutcome.tokenFailed => locale.t('settings.add_tpix_token_failed'),
+      AddTpixOutcome.accountChanged =>
+        locale.t('settings.add_tpix_account_changed'),
+      AddTpixOutcome.failed => locale.t('settings.add_tpix_failed'),
+      AddTpixOutcome.rejected || AddTpixOutcome.unavailable => null,
+    };
+    if (message == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
     );
   }
 
