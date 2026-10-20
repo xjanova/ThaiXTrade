@@ -61,11 +61,21 @@ export const BSC_CHAIN_CONFIG = {
 export const TPIX_CHAIN_LOGO_URL = `https://tpix.online${TPIX_COIN_PNG}`;
 
 /**
+ * RPC สาธารณะของ TPIX Chain — rpc1 เข้าโหนดตรง
+ *
+ * ⚠️ ห้ามกลับไปใช้ rpc.tpix.online เป็นตัวหลักของกระเป๋า/เบราว์เซอร์
+ *    ตัวนั้นอยู่หลัง Cloudflare bot rule ที่ตอบ 403 ให้ client ที่ไม่ใช่เบราว์เซอร์
+ *    (แอปกระเป๋าบนมือถือหลายตัว) และตอบ 429 เมื่อยิงถี่ — กระเป๋าที่ได้ RPC นี้ไป
+ *    จะอ่านยอดไม่ขึ้น/ส่งธุรกรรมไม่ออกเป็นพัก ๆ (เจ้าของสั่ง 2026-10-20: "เราใช้ rpc1")
+ */
+export const TPIX_RPC_URL = 'https://rpc1.tpix.online';
+
+/**
  * TPIX Chain config — Polygon Edge, IBFT PoA, Chain ID 4289, gasless.
  * ใช้สำหรับ add chain เข้า wallet โดยตรง (ไม่ต้องรอ backend)
  */
 export const TPIX_CHAIN_CONFIG = {
-    chainId: '0x10C1', // 4289 in hex
+    chainId: '0x10c1', // 4289 in hex (ตัวเล็ก — บางกระเป๋าเทียบ chainId แบบตรงตัวอักษร)
     chainIdNum: 4289,
     chainName: 'TPIX Chain',
     nativeCurrency: {
@@ -73,10 +83,45 @@ export const TPIX_CHAIN_CONFIG = {
         symbol: 'TPIX',
         decimals: 18,
     },
-    rpcUrls: ['https://rpc.tpix.online'],
+    rpcUrls: [TPIX_RPC_URL],
     blockExplorerUrls: ['https://explorer.tpix.online'],
     iconUrls: [TPIX_CHAIN_LOGO_URL],
 };
+
+/** แปลง chainId ทุกรูปแบบ (4289 / '4289' / '0x10C1' / 4289n) เป็นตัวเลข — แปลงไม่ได้คืน NaN */
+export function toChainIdNumber(id) {
+    if (typeof id === 'bigint') return Number(id);
+    if (typeof id === 'number') return id;
+    if (typeof id === 'string') {
+        const s = id.trim();
+        return /^0x/i.test(s) ? parseInt(s, 16) : Number(s);
+    }
+    return NaN;
+}
+
+/** chainId ในรูป hex ตัวเล็กตาม EIP-3085/3326 */
+export function toChainIdHex(id) {
+    const n = toChainIdNumber(id);
+    if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`Invalid chain id: ${id}`);
+    return '0x' + n.toString(16);
+}
+
+/** กระเป๋าตอบว่า "ไม่รู้จักเชนนี้" — แต่ละเจ้าใช้รหัสต่างกัน */
+function isUnknownChainError(err) {
+    return err?.code === 4902
+        || err?.code === -32603
+        || err?.data?.originalError?.code === 4902
+        || /unrecognized chain|unknown chain|not added|wallet_addEthereumChain|try adding the chain/i.test(err?.message || '');
+}
+
+/** อ่าน chainId ที่กระเป๋าอยู่จริงตอนนี้ (ไม่เชื่อแค่ว่า request ไม่ error) */
+async function readWalletChainId(p) {
+    try {
+        return toChainIdNumber(await p.request({ method: 'eth_chainId' }));
+    } catch {
+        return NaN;
+    }
+}
 
 /**
  * Cached chain configs fetched from backend.
@@ -137,25 +182,19 @@ export async function addTPIXChainToWallet(providerOrWindow = null) {
     if (!p?.request) return false;
 
     try {
+        // ส่งแบบเดียวกับ switchToChain เสมอ (ผ่าน buildAddChainParams) — RPC = rpc1 ทุกทาง
         await p.request({
             method: 'wallet_addEthereumChain',
-            params: [{
-                chainId: TPIX_CHAIN_CONFIG.chainId,
-                chainName: TPIX_CHAIN_CONFIG.chainName,
-                nativeCurrency: TPIX_CHAIN_CONFIG.nativeCurrency,
-                rpcUrls: TPIX_CHAIN_CONFIG.rpcUrls,
-                blockExplorerUrls: TPIX_CHAIN_CONFIG.blockExplorerUrls,
-                iconUrls: TPIX_CHAIN_CONFIG.iconUrls,
-            }],
+            params: [buildAddChainParams(TPIX_CHAIN_CONFIG)],
         });
         console.log('[TPIX] ✅ TPIX Chain (4289) added to wallet');
         return true;
     } catch (err) {
-        // 4902 = chain ถูกเพิ่มแล้ว (ปกติ), 4001 = user ปฏิเสธ
-        if (err.code === 4001) {
+        // 4001 = ผู้ใช้กดปฏิเสธ · อื่น ๆ = กระเป๋าไม่รองรับ/มีเชนนี้แล้วแบบที่แก้ไม่ได้
+        if (err?.code === 4001) {
             console.warn('[TPIX] User declined to add TPIX Chain');
         } else {
-            console.warn('[TPIX] Could not add TPIX Chain:', err.message);
+            console.warn('[TPIX] Could not add TPIX Chain:', err?.message);
         }
         return false;
     }
@@ -173,34 +212,56 @@ export async function getChainConfig(chainId) {
  * Build EIP-3085 params for wallet_addEthereumChain from a backend chain config.
  */
 export function buildAddChainParams(chain) {
-    // Support both `rpc` (backend) and `rpcUrls` (frontend config) field names
+    /*
+     * รับได้ทั้ง config ฝั่งเว็บ (chainId '0x10c1', chainName, rpcUrls, blockExplorerUrls)
+     * และของ /api/v1/chains (chainId 4289, name, rpc, explorer, icon)
+     *
+     * ★ เดิมทำ '0x' + chain.chainId.toString(16) ตรง ๆ — พอส่ง TPIX_CHAIN_CONFIG เข้ามา
+     *   (chainId เป็น string hex อยู่แล้ว) ได้ '0x0x10C1' และ chainName เป็น undefined
+     *   หน้า TokenFactory จึงเพิ่มเชนให้ผู้ใช้ไม่ได้เลย
+     */
+    const chainIdNum = toChainIdNumber(chain.chainIdNum ?? chain.chainId);
+    const isTpix = chainIdNum === TPIX_CHAIN_CONFIG.chainIdNum;
+
+    // MetaMask รับเฉพาะ https:// — ตัด null/http ออก
     const raw = chain.rpcUrls || chain.rpc || [];
-    const rawRpc = Array.isArray(raw) ? raw : [raw];
-    // MetaMask requires valid HTTPS URLs only — filter out null/http
-    let rpcUrls = rawRpc.filter(url => typeof url === 'string' && url.startsWith('https://'));
-    // Fallback: use known RPC for common chains
-    if (rpcUrls.length === 0) {
-        if (chain.chainId === 56 || chain.chainId === '0x38') rpcUrls = ['https://bsc-dataseed1.binance.org'];
-        else if (chain.chainId === 4289 || chain.chainId === '0x10C1') rpcUrls = ['https://rpc.tpix.online'];
-        else throw new Error(`No valid HTTPS RPC URL for chain ${chain.name || chain.chainId}`);
+    let rpcUrls = (Array.isArray(raw) ? raw : [raw])
+        .filter(url => typeof url === 'string' && url.startsWith('https://'));
+
+    if (isTpix) {
+        // TPIX: rpc1 เป็นตัวแรกเสมอ (กระเป๋าส่วนใหญ่ใช้แค่ตัวแรก) ไม่ว่าแหล่งข้อมูลจะส่งอะไรมา
+        // ตัด rpc.tpix.online ออก — กระเป๋ามือถือโดน Cloudflare ตอบ 403
+        rpcUrls = [TPIX_RPC_URL];
+    } else if (rpcUrls.length === 0) {
+        if (chainIdNum === BSC_CHAIN_ID) rpcUrls = [...BSC_CHAIN_CONFIG.rpcUrls];
+        else throw new Error(`No valid HTTPS RPC URL for chain ${chain.chainName || chain.name || chainIdNum}`);
     }
-    const explorerUrls = chain.blockExplorerUrls || (chain.explorer ? [chain.explorer] : []);
+
+    const explorerRaw = chain.blockExplorerUrls || (chain.explorer ? [chain.explorer] : []);
+    let blockExplorerUrls = explorerRaw.filter(u => typeof u === 'string' && u.startsWith('https://'));
+    if (isTpix && blockExplorerUrls.length === 0) blockExplorerUrls = [...TPIX_CHAIN_CONFIG.blockExplorerUrls];
 
     // iconUrls: frontend config → backend config → known fallback for TPIX
     // /api/v1/chains ส่งชื่อฟิลด์ว่า `icon` — กระเป๋ารับเฉพาะที่อยู่เต็ม https:// ที่ดึงได้จากภายนอก
     const backendIcon = [chain.icon_url, chain.icon].find(u => typeof u === 'string' && u.startsWith('https://'));
     let iconUrls = chain.iconUrls || (backendIcon ? [backendIcon] : []);
-    if (iconUrls.length === 0 && (chain.chainId === 4289 || chain.chainId === '0x10C1')) {
-        iconUrls = [TPIX_CHAIN_LOGO_URL];
-    }
+    if (isTpix) iconUrls = [TPIX_CHAIN_LOGO_URL];
+
+    const nativeCurrency = isTpix
+        ? { ...TPIX_CHAIN_CONFIG.nativeCurrency }
+        : (chain.nativeCurrency || { name: 'ETH', symbol: 'ETH', decimals: 18 });
 
     const params = {
-        chainId: '0x' + chain.chainId.toString(16),
-        chainName: chain.name,
-        nativeCurrency: chain.nativeCurrency || { name: 'ETH', symbol: 'ETH', decimals: 18 },
+        chainId: toChainIdHex(chainIdNum),
+        chainName: isTpix ? TPIX_CHAIN_CONFIG.chainName : (chain.chainName || chain.name || `Chain ${chainIdNum}`),
+        nativeCurrency: {
+            name: String(nativeCurrency.name),
+            symbol: String(nativeCurrency.symbol),
+            decimals: Number(nativeCurrency.decimals ?? 18),
+        },
         rpcUrls,
-        blockExplorerUrls: explorerUrls,
     };
+    if (blockExplorerUrls.length > 0) params.blockExplorerUrls = blockExplorerUrls;
     if (iconUrls.length > 0) params.iconUrls = iconUrls;
     return params;
 }
@@ -223,24 +284,37 @@ export async function addTokenToWallet(token, providerOrWindow = null) {
         console.warn('[TPIX] No wallet provider detected');
         return false;
     }
-    if (!token?.address || !token?.symbol || token?.decimals == null) {
-        console.warn('[TPIX] addTokenToWallet: missing required fields (address/symbol/decimals)');
+    const decimals = Number(token?.decimals);
+    // EIP-747: symbol ≤ 11 ตัว · decimals 0–36 · ที่อยู่ต้องเป็น 20 ไบต์ — ผิดรูปกระเป๋าจะโชว์ยอดผิด
+    if (!/^0x[0-9a-fA-F]{40}$/.test(String(token?.address || ''))
+        || !String(token?.symbol || '').trim()
+        || !Number.isInteger(decimals) || decimals < 0 || decimals > 36) {
+        console.warn('[TPIX] addTokenToWallet: invalid token (address/symbol/decimals)');
         return false;
     }
 
+    // ใช้ symbol ตามที่สัญญาประกาศ — ตัดเกิน 11 ตัวเพราะ MetaMask ปฏิเสธทั้งคำขอ
+    // ไม่บังคับตัวใหญ่: MetaMask เทียบกับ symbol() บนเชนแล้วเตือนว่า "ไม่ตรง" ถ้าแปลงเอง
+    const options = {
+        address: token.address,
+        symbol: String(token.symbol).trim().slice(0, 11),
+        decimals,
+    };
+    // กระเป๋าดึงรูปเองจากภายนอก — ที่อยู่สัมพัทธ์ใช้ไม่ได้ เติมโดเมนให้
+    const image = typeof token.image === 'string' ? token.image.trim() : '';
+    if (image.startsWith('https://')) options.image = image;
+    else if (image.startsWith('/') && typeof window !== 'undefined') options.image = `${window.location.origin}${image}`;
+
     try {
-        const wasAdded = await p.request({
-            method: 'wallet_watchAsset',
-            params: {
-                type: 'ERC20',
-                options: {
-                    address: token.address,
-                    symbol: String(token.symbol).toUpperCase().slice(0, 11),
-                    decimals: Number(token.decimals),
-                    image: token.image || undefined,
-                },
-            },
-        });
+        // EIP-747 ใช้ params เป็น object · กระเป๋าเก่าบางตัว (Trust/OKX รุ่นแรก) รับแค่ array
+        let wasAdded;
+        try {
+            wasAdded = await p.request({ method: 'wallet_watchAsset', params: { type: 'ERC20', options } });
+        } catch (shapeErr) {
+            if (shapeErr?.code === 4001) throw shapeErr;
+            if (shapeErr?.code !== -32602) throw shapeErr;
+            wasAdded = await p.request({ method: 'wallet_watchAsset', params: [{ type: 'ERC20', options }] });
+        }
         if (wasAdded) {
             console.log(`[TPIX] ✅ Token ${token.symbol} added to wallet`);
         }
@@ -304,7 +378,11 @@ export const PANCAKE_ROUTER_ABI = [
 export async function switchToChain(injectedProvider, targetChainId, chainConfig = null) {
     if (!injectedProvider) throw new Error('No wallet detected');
 
-    const hexChainId = '0x' + targetChainId.toString(16);
+    const targetNum = toChainIdNumber(targetChainId);
+    const hexChainId = toChainIdHex(targetNum);
+
+    // อยู่เชนนั้นแล้ว — ไม่ต้องเด้งป๊อปอัพให้ผู้ใช้กดซ้ำ
+    if (await readWalletChainId(injectedProvider) === targetNum) return;
 
     try {
         await injectedProvider.request({
@@ -312,27 +390,44 @@ export async function switchToChain(injectedProvider, targetChainId, chainConfig
             params: [{ chainId: hexChainId }],
         });
     } catch (switchError) {
-        // Chain not added yet — MetaMask uses 4902, some wallets use -32603 or other codes
-        const needsAdd = switchError.code === 4902
-            || switchError.code === -32603
-            || switchError?.data?.originalError?.code === 4902
-            || /unrecognized chain|wallet_addEthereumChain/i.test(switchError.message);
-        if (needsAdd) {
-            // Fetch chain config if not provided
-            if (!chainConfig) {
-                chainConfig = await getChainConfig(targetChainId);
-            }
-            if (!chainConfig) {
-                throw new Error(`Chain ${targetChainId} is not supported.`);
-            }
+        if (!isUnknownChainError(switchError)) throw switchError;
 
-            await injectedProvider.request({
-                method: 'wallet_addEthereumChain',
-                params: [buildAddChainParams(chainConfig)],
-            });
-        } else {
-            throw switchError;
+        // กระเป๋ายังไม่มีเชนนี้ → เพิ่มให้ (TPIX ใช้ config ในเว็บได้เลย ไม่ต้องรอ API)
+        if (!chainConfig) {
+            chainConfig = targetNum === TPIX_CHAIN_CONFIG.chainIdNum
+                ? TPIX_CHAIN_CONFIG
+                : await getChainConfig(targetNum);
         }
+        if (!chainConfig) {
+            throw new Error(`Chain ${targetNum} is not supported.`);
+        }
+
+        await injectedProvider.request({
+            method: 'wallet_addEthereumChain',
+            params: [buildAddChainParams(chainConfig)],
+        });
+
+        // MetaMask สลับให้เองหลังเพิ่ม แต่ Trust/OKX/Coinbase บางรุ่น "เพิ่มอย่างเดียว"
+        // ต้องขอสลับซ้ำ ไม่งั้นผู้เรียกเดินต่อบนเชนเดิมโดยคิดว่าสลับแล้ว
+        if (await readWalletChainId(injectedProvider) !== targetNum) {
+            await injectedProvider.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: hexChainId }],
+            });
+        }
+    }
+
+    // ยืนยันกับกระเป๋าจริง — บางตัวตอบสำเร็จทั้งที่ผู้ใช้ปิดหน้าต่างไป
+    let now = await readWalletChainId(injectedProvider);
+    if (Number.isFinite(now) && now !== targetNum) {
+        // WalletConnect อัปเดต chainId ตาม event ที่มาช้ากว่าคำตอบเล็กน้อย — รอหนึ่งจังหวะก่อนตัดสิน
+        await new Promise(r => setTimeout(r, 800));
+        now = await readWalletChainId(injectedProvider);
+    }
+    if (Number.isFinite(now) && now !== targetNum) {
+        const err = new Error(`Wallet is still on chain ${now}, expected ${targetNum}`);
+        err.code = 'CHAIN_NOT_SWITCHED';
+        throw err;
     }
 }
 

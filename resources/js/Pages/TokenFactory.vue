@@ -13,7 +13,7 @@ import RiskAckBox from '@/Components/TokenFactory/RiskAckBox.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenFactoryStore } from '@/Stores/tokenFactoryStore';
 import { useTranslation } from '@/Composables/useTranslation';
-import { addTokenToWallet, switchToChain, TPIX_CHAIN_CONFIG } from '@/utils/web3';
+import { TPIX_CHAIN_CONFIG } from '@/utils/web3';
 import {
     allowedDecimals,
     computeFee,
@@ -984,36 +984,48 @@ async function handleAddToWallet(token) {
         return;
     }
 
+    // กระเป๋าฝัง (TPIX Wallet) ไม่มีรายการเหรียญให้เพิ่ม — บอกทางออกแทนการกดแล้วเงียบ
+    if (!walletStore.canAddTpixAssets) {
+        toastError(`กระเป๋านี้ไม่รองรับการเพิ่มเหรียญจากเว็บ — กด "คัดลอก" ที่อยู่สัญญา ${token.symbol} ไปเพิ่มเองในกระเป๋า`);
+        return;
+    }
+
     addingToken.value = token.contract_address;
-    let chainSwitchDeclined = false;
+    const owner = walletStore.address;
     try {
-        // ใช้ raw EIP-1193 provider (window.ethereum) สำหรับ .request() calls
-        // walletStore.provider เป็น ethers BrowserProvider wrapper ซึ่งไม่มี .request() โดยตรง
-        // WalletConnect จะใช้ window.ethereum ไม่ได้ — ข้าม chain-switch แล้วปล่อยให้ wallet จัดการเอง
-        const rawProvider = typeof window !== 'undefined' ? window.ethereum : null;
-        if (rawProvider && walletStore.chainId !== TPIX_CHAIN_CONFIG.chainIdNum) {
+        /*
+         * เหรียญจาก Token Factory อยู่บนเชน TPIX — ต้องอยู่เชนนี้ก่อน watchAsset
+         * (กระเป๋าผูกเหรียญกับเครือข่ายที่เลือกอยู่) สลับไม่ได้ = หยุด ไม่เพิ่มลงเชนผิด
+         *
+         * ★ เดิมใช้ window.ethereum ตรง ๆ: ผู้ใช้ที่เชื่อม OKX/Coinbase/WalletConnect
+         *   คำขอไปโผล่ที่ MetaMask (หรือไม่มีที่ไปเลย) และส่ง TPIX_CHAIN_CONFIG เข้า
+         *   buildAddChainParams ได้ chainId '0x0x10C1' → เพิ่มเชนไม่สำเร็จทุกครั้ง
+         */
+        if (Number(walletStore.chainId) !== TPIX_CHAIN_CONFIG.chainIdNum) {
             try {
-                await switchToChain(rawProvider, TPIX_CHAIN_CONFIG.chainIdNum, TPIX_CHAIN_CONFIG);
+                await walletStore.switchChain(TPIX_CHAIN_CONFIG.chainIdNum);
             } catch (switchErr) {
-                // ถ้าสลับ chain ไม่ได้ (user cancel, 4001) ให้ยังลองเพิ่ม token ต่อ
-                chainSwitchDeclined = switchErr?.code === 4001 || /user rejected|user denied/i.test(switchErr?.message || '');
-                console.warn('[TokenFactory] Chain switch failed, attempting watchAsset anyway:', switchErr.message);
+                const declined = switchErr?.code === 4001 || /user rejected|user denied/i.test(switchErr?.message || '');
+                toastError(declined
+                    ? `ต้องสลับไป TPIX Chain ก่อนจึงจะเพิ่ม ${token.symbol} ได้`
+                    : `สลับไป TPIX Chain ไม่สำเร็จ — ลองเพิ่มเครือข่ายจากเมนูกระเป๋าแล้วกดอีกครั้ง`);
+                return;
             }
         }
+        // ผู้ใช้สลับบัญชีระหว่างรอ — ไม่เพิ่มให้บัญชีที่ไม่ได้กด
+        if (walletStore.address !== owner) return;
 
-        const added = await addTokenToWallet({
+        const added = await walletStore.watchAsset({
             address: token.contract_address,
             symbol: token.symbol,
-            decimals: token.decimals || 18,
+            decimals: Number(token.decimals ?? 18),
             image: token.logo_url || undefined,
-        }, rawProvider);
+        });
 
         if (added) {
-            toastSuccess(`✅ ${token.symbol} added to wallet!`);
-        } else if (chainSwitchDeclined) {
-            toastError(`กรุณาสลับไป TPIX Chain ก่อนเพื่อเพิ่ม ${token.symbol}`);
+            toastSuccess(`✅ เพิ่ม ${token.symbol} ลงกระเป๋าแล้ว`);
         }
-        // else: user declined watchAsset itself — wallet already showed its own UI, no toast needed
+        // false = ผู้ใช้กดปฏิเสธในกระเป๋าเอง (กระเป๋าโชว์ UI ของมันแล้ว) — ไม่ต้องเตือนซ้ำ
     } finally {
         addingToken.value = null;
     }

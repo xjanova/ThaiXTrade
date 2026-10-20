@@ -248,12 +248,12 @@ void main() {
     });
   });
 
-  test('เชน TPIX มี rpc1 เป็นตัวสำรอง', () {
-    expect(ChainConfig.tpix.rpcUrl, _a);
-    expect(ChainConfig.tpix.fallbackRpcs, contains(_b));
-    expect(RpcPool.forChain(ChainConfig.tpix).orderedUrls(), [_a, _b]);
+  test('เชน TPIX ใช้ rpc1 เป็นตัวหลัก rpc.tpix.online เป็นตัวสำรอง', () {
+    expect(ChainConfig.tpix.rpcUrl, _b);
+    expect(ChainConfig.tpix.fallbackRpcs, contains(_a));
+    expect(RpcPool.forChain(ChainConfig.tpix).orderedUrls(), [_b, _a]);
     // RPC จากทะเบียนบนเซิร์ฟเวอร์มาก่อน แต่ไม่ซ้ำกับตัวในแอป
-    expect(RpcPool.forChain(ChainConfig.tpix).orderedUrls(preferred: _a),
-        [_a, _b]);
+    expect(RpcPool.forChain(ChainConfig.tpix).orderedUrls(preferred: _b),
+        [_b, _a]);
   });
 }

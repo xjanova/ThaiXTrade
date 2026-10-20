@@ -319,7 +319,7 @@ class ContractRegistry
         $out = [
             'ready' => true,
             'chainId' => (int) config('blockchain.tpix_chain_id', 4289),
-            'rpc' => (string) config('blockchain.tpix_public_rpc_url', config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online')),
+            'rpc' => (string) config('blockchain.tpix_public_rpc_url', config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online')),
             'missing' => [],
         ];
 
@@ -375,7 +375,7 @@ class ContractRegistry
             $response = Http::timeout(8)
                 ->withHeaders(['User-Agent' => self::USER_AGENT])
                 ->asJson()
-                ->post(config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online'), [
+                ->post(config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online'), [
                     'jsonrpc' => '2.0',
                     'method' => $method,
                     'params' => $params,

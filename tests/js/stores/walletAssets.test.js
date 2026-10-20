@@ -106,12 +106,20 @@ describe('โลโก้ที่ส่งให้กระเป๋า', () =
         expect(TPIX_CHAIN_LOGO_URL).not.toContain('tpix-logo-512');
     });
 
-    it('ใช้ฟิลด์ icon จาก /api/v1/chains เป็นโลโก้เครือข่าย', () => {
+    it('ใช้ฟิลด์ icon จาก /api/v1/chains เป็นโลโก้เครือข่าย (เชนอื่น)', () => {
+        const params = buildAddChainParams({
+            chainId: 56, name: 'BNB Smart Chain', rpc: ['https://bsc-dataseed.binance.org'],
+            icon: 'https://assets-cdn.trustwallet.com/blockchains/smartchain/info/logo.png',
+        });
+        expect(params.iconUrls).toEqual(['https://assets-cdn.trustwallet.com/blockchains/smartchain/info/logo.png']);
+    });
+
+    it('TPIX ใช้โลโก้ทางการ (มี ?v= กันแคช) เสมอ แม้ API ส่ง icon อื่นมา', () => {
         const params = buildAddChainParams({
             chainId: 4289, name: 'TPIX Chain', rpc: ['https://rpc.tpix.online'],
             icon: 'https://tpix.online/images/brand/tpix-coin.png',
         });
-        expect(params.iconUrls).toEqual(['https://tpix.online/images/brand/tpix-coin.png']);
+        expect(params.iconUrls).toEqual([TPIX_CHAIN_LOGO_URL]);
     });
 
     it('ไอคอนแบบที่อยู่สัมพัทธ์ใช้ไม่ได้ — ถอยไปโลโก้ทางการ', () => {

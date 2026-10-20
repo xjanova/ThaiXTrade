@@ -25,7 +25,7 @@ export const SUPPORTED_CHAINS: ChainConfig[] = [
     chainId: 4289,
     name: 'TPIX Chain',
     symbol: 'TPIX',
-    rpcUrl: 'https://rpc.tpix.online',
+    rpcUrl: 'https://rpc1.tpix.online',
     explorerUrl: 'https://explorer.tpix.online',
     iconColor: '#06B6D4',
     isDefault: true,

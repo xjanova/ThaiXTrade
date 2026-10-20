@@ -227,7 +227,7 @@ export default function SettingsScreen() {
             icon="link-outline"
             iconColor="#8B5CF6"
             title="RPC Endpoint"
-            subtitle={activeChain?.rpcUrl || 'https://rpc.tpix.online'}
+            subtitle={activeChain?.rpcUrl || 'https://rpc1.tpix.online'}
             showArrow={false}
           />
         </GlassCard>

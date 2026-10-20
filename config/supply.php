@@ -141,7 +141,7 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    'rpc_url' => env('TPIX_RPC_URL', 'https://rpc.tpix.online'),
+    'rpc_url' => env('TPIX_RPC_URL', 'https://rpc1.tpix.online'),
     'cache_ttl' => env('SUPPLY_CACHE_TTL', 60), // seconds — circulating rarely moves
 
     // ถามยอดทีละที่อยู่แบบ sequential — timeout ต้องคูณจำนวนที่อยู่เสมอ

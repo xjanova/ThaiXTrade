@@ -564,7 +564,7 @@ class TpixDexService
             $response = Http::timeout(8)
                 ->withHeaders(['User-Agent' => self::USER_AGENT])
                 ->asJson()
-                ->post(config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online'), [
+                ->post(config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online'), [
                     'jsonrpc' => '2.0',
                     'method' => $method,
                     'params' => $params,

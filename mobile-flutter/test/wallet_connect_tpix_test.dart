@@ -24,8 +24,8 @@ void main() {
       expect(info!.chainId, 'eip155:4289');
       expect(info.name, 'TPIX Chain');
       expect(info.currency, 'TPIX');
-      expect(info.rpcUrl, 'https://rpc.tpix.online');
-      expect(info.extraRpcUrls, contains('https://rpc1.tpix.online'));
+      expect(info.rpcUrl, 'https://rpc1.tpix.online');
+      expect(info.extraRpcUrls, contains('https://rpc.tpix.online'));
       expect(info.explorerUrl, 'https://explorer.tpix.online');
       expect(info.chainIcon, ReownConfig.tpixCoinIcon);
       expect(info.isTestNetwork, isFalse);
@@ -68,8 +68,8 @@ void main() {
       expect(p['chainName'], 'TPIX Chain');
       expect(p['nativeCurrency'],
           {'name': 'TPIX', 'symbol': 'TPIX', 'decimals': 18});
-      expect(p['rpcUrls'],
-          ['https://rpc.tpix.online', 'https://rpc1.tpix.online']);
+      // กระเป๋าได้แค่ rpc1 — rpc.tpix.online โดน Cloudflare 403 ฝั่งแอปกระเป๋า
+      expect(p['rpcUrls'], ['https://rpc1.tpix.online']);
       expect(p['blockExplorerUrls'], ['https://explorer.tpix.online']);
       expect(p['iconUrls'],
           ['https://tpix.online/images/brand/tpix-coin.png?v=2']);

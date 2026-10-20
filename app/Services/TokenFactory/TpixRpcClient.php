@@ -60,7 +60,7 @@ class TpixRpcClient
 
     public function url(): string
     {
-        return (string) config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online');
+        return (string) config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online');
     }
 
     /** เลขฐานสิบหกของเชน → int (บล็อก/nonce/chainId ไม่เกิน PHP_INT_MAX) */

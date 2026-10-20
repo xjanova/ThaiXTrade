@@ -48,7 +48,7 @@
             ['TPS Capacity','~1,500 transactions/second'],['VM','EVM — full Solidity support'],
             ['Native Coin','TPIX (18 decimals)'],['Total Supply','7,000,000,000 TPIX (pre-mined in genesis)'],
             ['Validators','4 IBFT nodes (BFT tolerates 1 faulty)'],
-            ['RPC URL','https://rpc.tpix.online'],['Explorer','https://explorer.tpix.online'],
+            ['RPC URL','https://rpc1.tpix.online'],['Explorer','https://explorer.tpix.online'],
         ],
         'tokenAlloc' => [['Master Node Rewards','20%','1,400,000,000'],['Ecosystem Development','25%','1,750,000,000'],['Community & Rewards','20%','1,400,000,000'],['Liquidity & Market Making','15%','1,050,000,000'],['Token Sale (ICO)','10%','700,000,000'],['Team & Advisors','10%','700,000,000']],
         'tokenNote' => 'Fixed supply of 7,000,000,000 TPIX with 18 decimals. No inflation or minting mechanism — total supply is pre-mined in the genesis block.',
@@ -133,7 +133,7 @@
             ['ความจุ TPS','~1,500 ธุรกรรม/วินาที'],['VM','EVM — รองรับ Solidity เต็มรูปแบบ'],
             ['Native Coin','TPIX (18 ทศนิยม)'],['จำนวนทั้งหมด','7,000,000,000 TPIX (pre-mined ใน genesis)'],
             ['Validator','4 โหนด IBFT (BFT ทนได้ 1 โหนดที่มีปัญหา)'],
-            ['RPC URL','https://rpc.tpix.online'],['Explorer','https://explorer.tpix.online'],
+            ['RPC URL','https://rpc1.tpix.online'],['Explorer','https://explorer.tpix.online'],
         ],
         'tokenAlloc' => [['รางวัล Master Node','20%','1,400,000,000'],['พัฒนาระบบนิเวศ','25%','1,750,000,000'],['ชุมชนและรางวัล','20%','1,400,000,000'],['สภาพคล่องและ Market Making','15%','1,050,000,000'],['ขายโทเคน (ICO)','10%','700,000,000'],['ทีมงานและที่ปรึกษา','10%','700,000,000']],
         'tokenNote' => 'จำนวนคงที่ 7,000,000,000 TPIX (18 ทศนิยม) ไม่มีเงินเฟ้อหรือกลไก mint — จำนวนทั้งหมด pre-mined ใน genesis block',
@@ -358,7 +358,7 @@
 <div style="text-align:center; color:#94a3b8; font-size:9pt;">
     <p>&copy; 2026 TPIX Chain — Xman Studio. {{ $isEn ? 'All rights reserved.' : 'สงวนลิขสิทธิ์' }}</p>
     <p>https://tpix.online | https://xmanstudio.com</p>
-    <p style="margin-top:8px; font-size:8pt;">Download: https://tpix.online/download | Explorer: https://explorer.tpix.online | RPC: https://rpc.tpix.online</p>
+    <p style="margin-top:8px; font-size:8pt;">Download: https://tpix.online/download | Explorer: https://explorer.tpix.online | RPC: https://rpc1.tpix.online</p>
 </div>
 </body>
 </html>

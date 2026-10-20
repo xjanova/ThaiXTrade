@@ -63,7 +63,7 @@ return new class() extends Migration
     private const CHAINS = [
         4289 => [
             'name' => 'TPIX Chain', 'symbol' => 'TPIX', 'short_name' => 'TPIX',
-            'rpc_url' => 'https://rpc.tpix.online', 'explorer_url' => 'https://explorer.tpix.online',
+            'rpc_url' => 'https://rpc1.tpix.online', 'explorer_url' => 'https://explorer.tpix.online',
             'currency' => ['TPIX', 'TPIX', 18], 'confirmations' => 3, 'sort_order' => 0,
             'color' => '#06B6D4', 'status' => 'coming_soon', 'icon' => '/tpixlogo.webp',
             'gasless' => true, 'block_time' => 2, 'consensus' => 'IBFT',

@@ -59,7 +59,7 @@ return [
         // MASTERNODE_REGISTRY_ADDRESS → ตั้งตัวไหนตัวเดียวก็มีอีกครึ่งระบบที่ยัง
         // คิดว่า "สัญญายังไม่ deploy" อยู่ดี
         'address' => env('MASTERNODE_REGISTRY_ADDRESS', env('NODE_REGISTRY_ADDRESS')),
-        'rpc_url' => env('TPIX_RPC_URL', 'https://rpc.tpix.online'),
+        'rpc_url' => env('TPIX_RPC_URL', 'https://rpc1.tpix.online'),
         // RPC ที่ประกาศให้แอปนอกเบราว์เซอร์ใช้ผ่าน GET /api/v1/masternode/config
         // (โปรแกรมมาสเตอร์โหนดบน PC + TPIX Wallet) — rpc.tpix.online ตอบ 403 ให้ client
         // ที่ไม่ใช่เบราว์เซอร์ ส่วน rpc1 ไม่มีกฎนี้ จึงเป็นค่าเริ่มต้นของแอป

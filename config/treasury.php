@@ -226,7 +226,7 @@ return [
     |
     */
 
-    'rpc_url' => env('TPIX_RPC_URL', 'https://rpc.tpix.online'),
+    'rpc_url' => env('TPIX_RPC_URL', 'https://rpc1.tpix.online'),
     'rpc_user_agent' => env('TPIX_RPC_USER_AGENT', 'TPIX-Treasury/1.0 (+https://tpix.online)'),
     'rpc_timeout' => 10,
     'balance_cache_seconds' => 15,

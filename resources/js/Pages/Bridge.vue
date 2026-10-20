@@ -16,6 +16,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import axios from 'axios';
 import { Contract, JsonRpcProvider } from 'ethers';
+import { TPIX_RPC_URL } from '@/utils/web3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import WtpixBridgePanel from '@/Components/Bridge/WtpixBridgePanel.vue';
 import { useWalletStore } from '@/Stores/walletStore';
@@ -198,8 +199,8 @@ const canWithdraw = computed(() => isOpen.value && targetChain.value?.enabled &&
 
 let tpixReader = null;
 function tpixProvider() {
-    // อ่านยอดจาก RPC ของเชน TPIX โดยตรง — ได้ยอดแม้กระเป๋าอยู่คนละเชน (เบราว์เซอร์มี UA ผ่าน Cloudflare ได้)
-    tpixReader ??= new JsonRpcProvider('https://rpc.tpix.online', 4289, { staticNetwork: true });
+    // อ่านยอดจาก RPC ของเชน TPIX โดยตรง (rpc1) — ได้ยอดแม้กระเป๋าอยู่คนละเชน
+    tpixReader ??= new JsonRpcProvider(TPIX_RPC_URL, 4289, { staticNetwork: true });
     return tpixReader;
 }
 

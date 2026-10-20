@@ -25,7 +25,6 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import AwaitingDeployNotice from '@/Components/AwaitingDeployNotice.vue';
 import { useWalletStore } from '@/Stores/walletStore';
-import { addTPIXChainToWallet } from '@/utils/web3';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const walletStore = useWalletStore();
@@ -41,7 +40,7 @@ const props = defineProps({
     kycContract: { type: String, default: null },
     // null = ไม่ทราบ (ยังไม่ deploy / RPC ล้ม / สัญญารุ่นเก่า) — ไม่ตีความว่า "เปิดรับ" หรือ "ปิดรับ"
     registrationPaused: { type: Boolean, default: null },
-    rpcUrl: { type: String, default: 'https://rpc.tpix.online' },
+    rpcUrl: { type: String, default: 'https://rpc1.tpix.online' },
     chainId: { type: Number, default: 4289 },
     explorerUrl: { type: String, default: 'https://explorer.tpix.online' },
 });
@@ -323,15 +322,10 @@ function connectWallet() { walletStore.showConnectModal = true; }
 
 async function ensureTPIXChain() {
     if (Number(walletStore.chainId) === props.chainId) return;
-    try {
-        await walletStore.switchChain(props.chainId);
-    } catch (e) {
-        // ผู้ใช้กดปฏิเสธเอง → ห้ามเด้งกล่อง "เพิ่มเครือข่าย" ซ้ำอีกรอบ
-        // ไม่มี provider → เดิมกลืน error แล้วเดินต่อบนเชนผิด ตอนนี้โยนต่อให้ผู้เรียกบอกผู้ใช้
-        if (isUserRejection(e) || !walletStore.provider) throw e;
-        await addTPIXChainToWallet(walletStore.provider);
-        await walletStore.switchChain(props.chainId);
-    }
+    // switchChain → switchToChain เพิ่มเชนให้เองเมื่อกระเป๋ายังไม่มี (rpc1 + โลโก้) แล้วตรวจว่าสลับจริง
+    // เดิม fallback ส่ง walletStore.provider (ethers BrowserProvider ไม่มี .request) เข้า
+    // addTPIXChainToWallet → คืน false เงียบ ๆ ทุกครั้ง แล้วสลับซ้ำให้ล้มอีกรอบ
+    await walletStore.switchChain(props.chainId);
 }
 
 /** ปุ่ม "สลับเครือข่าย" บนหน้า — ห้ามปล่อย promise reject ลอยเมื่อผู้ใช้กดยกเลิก */

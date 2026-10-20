@@ -87,7 +87,7 @@ class DiscordLiveData
             'last_block_at' => ! empty($validators['last_block_timestamp']) ? (int) $validators['last_block_timestamp'] : null,
             'masternodes' => is_array($nodes) && ! empty($nodes['registry_deployed']) ? $nodes : null,
             'chain_id' => (int) config('blockchain.tpix_chain_id', 4289),
-            'rpc' => (string) config('blockchain.tpix_public_rpc_url', 'https://rpc.tpix.online'),
+            'rpc' => (string) config('blockchain.tpix_public_rpc_url', 'https://rpc1.tpix.online'),
             'explorer' => $this->explorer(),
         ];
     }
@@ -131,7 +131,7 @@ class DiscordLiveData
             'contracts' => $contracts,
             'bsc_wtpix' => preg_match('/^0x[0-9a-fA-F]{40}$/', $bsc) ? $bsc : null,
             'chain_id' => (int) config('blockchain.tpix_chain_id', 4289),
-            'rpc' => (string) config('blockchain.tpix_public_rpc_url', 'https://rpc.tpix.online'),
+            'rpc' => (string) config('blockchain.tpix_public_rpc_url', 'https://rpc1.tpix.online'),
             'explorer' => $this->explorer(),
         ];
     }
@@ -207,7 +207,7 @@ class DiscordLiveData
     {
         return [
             'chain_id' => (int) config('blockchain.tpix_chain_id', 4289),
-            'rpc' => (string) config('blockchain.tpix_public_rpc_url', 'https://rpc.tpix.online'),
+            'rpc' => (string) config('blockchain.tpix_public_rpc_url', 'https://rpc1.tpix.online'),
             'explorer' => $this->explorer(),
         ];
     }

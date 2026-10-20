@@ -219,7 +219,7 @@ class SaleLaunchService
                 // rpc.tpix.online มี Cloudflare bot rule ตอบ 403 ให้ client ที่ไม่มี User-Agent
                 ->withHeaders(['User-Agent' => self::USER_AGENT])
                 ->asJson()
-                ->post(config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online'), [
+                ->post(config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online'), [
                     'jsonrpc' => '2.0',
                     'method' => 'eth_getBalance',
                     'params' => [$address, 'latest'],

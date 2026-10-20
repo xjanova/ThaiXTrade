@@ -77,11 +77,11 @@ return [
         'chain_id' => 4289,
         'name' => 'TPIX Chain',
         'rpc' => $rpc('WTPIX_BRIDGE_TPIX_RPC_URLS', [
-            env('TPIX_RPC_URL', 'https://rpc.tpix.online'),
-            'https://rpc1.tpix.online',
+            env('TPIX_RPC_URL', 'https://rpc1.tpix.online'),
+            'https://rpc.tpix.online',
         ]),
         // RPC ที่ส่งให้เบราว์เซอร์อ่านยอด (ต้องเป็นของสาธารณะ ไม่ใช่ RPC ภายใน)
-        'public_rpc' => env('WTPIX_BRIDGE_TPIX_PUBLIC_RPC', 'https://rpc.tpix.online'),
+        'public_rpc' => env('WTPIX_BRIDGE_TPIX_PUBLIC_RPC', 'https://rpc1.tpix.online'),
         'confirmations' => max(2, (int) env('WTPIX_BRIDGE_TPIX_CONFIRMATIONS', 2)),
         'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpix.online'),
         'log_chunk' => 900,

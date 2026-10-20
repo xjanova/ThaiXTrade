@@ -482,7 +482,7 @@ function statusBadge(s) {
                             </div>
                             <div>
                                 <p class="text-xs text-gray-500 mb-1">RPC URL</p>
-                                <p class="text-sm font-mono text-gray-400">{{ walletInfo.rpc_url || 'https://rpc.tpix.online' }}</p>
+                                <p class="text-sm font-mono text-gray-400">{{ walletInfo.rpc_url || 'https://rpc1.tpix.online' }}</p>
                             </div>
                         </div>
                     </div>
@@ -503,7 +503,7 @@ function statusBadge(s) {
                             <a href="https://explorer.tpix.online" target="_blank" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 hover:bg-white/10 text-primary-400 text-sm">
                                 🔍 TPIX Explorer
                             </a>
-                            <a href="https://rpc.tpix.online" target="_blank" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 hover:bg-white/10 text-primary-400 text-sm">
+                            <a href="https://rpc1.tpix.online" target="_blank" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 hover:bg-white/10 text-primary-400 text-sm">
                                 🌐 RPC Endpoint
                             </a>
                         </div>

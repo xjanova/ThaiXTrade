@@ -37,7 +37,7 @@ return [
             'chainId' => 4289,
             'networkId' => 4289,
             'rpc' => [
-                env('WEB3_RPC_TPIX', 'https://rpc.tpix.online'),
+                env('WEB3_RPC_TPIX', 'https://rpc1.tpix.online'),
             ],
             'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpix.online'),
             'nativeCurrency' => [

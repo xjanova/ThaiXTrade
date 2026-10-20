@@ -82,7 +82,7 @@ class TpixDexConfig {
   static const notReady = TpixDexConfig(
     ready: false,
     chainId: 4289,
-    rpc: 'https://rpc.tpix.online',
+    rpc: 'https://rpc1.tpix.online',
   );
 }
 

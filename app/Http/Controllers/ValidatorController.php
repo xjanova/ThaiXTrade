@@ -27,7 +27,7 @@ class ValidatorController extends Controller
         return Inertia::render('Validators/Index', [
             'stats' => $this->getValidatorStats(),
             'validators' => $this->getValidatorList(),
-            'rpcUrl' => config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online'),
+            'rpcUrl' => config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online'),
             'chainId' => config('blockchain.tpix_chain_id', 4289),
             'map' => $this->mapConfig(),
         ]);
@@ -92,7 +92,7 @@ class ValidatorController extends Controller
     public function apply()
     {
         return Inertia::render('Validators/Apply', [
-            'rpcUrl' => config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online'),
+            'rpcUrl' => config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online'),
             'chainId' => config('blockchain.tpix_chain_id', 4289),
         ]);
     }
@@ -211,7 +211,7 @@ class ValidatorController extends Controller
         }
 
         try {
-            $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online');
+            $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online');
 
             // Get current balance as proxy for accumulated rewards
             $balanceResponse = Http::timeout(5)->post($rpcUrl, [
@@ -279,7 +279,7 @@ class ValidatorController extends Controller
     {
         return cache()->remember('validator:stats', 60, function () {
             try {
-                $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online');
+                $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online');
 
                 // Get latest block
                 $blockResponse = Http::timeout(5)->post($rpcUrl, [
@@ -347,7 +347,7 @@ class ValidatorController extends Controller
     {
         return cache()->remember('validator:list', 30, function () {
             try {
-                $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online');
+                $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online');
 
                 // Get latest block to extract validator set from IBFT2 extraData
                 $blockResponse = Http::timeout(5)->post($rpcUrl, [

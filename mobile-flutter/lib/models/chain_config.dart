@@ -96,10 +96,11 @@ class ChainConfig {
     name: 'TPIX Chain',
     shortName: 'TPIX',
     symbol: 'TPIX',
-    rpcUrl: 'https://rpc.tpix.online',
-    // rpc.tpix.online อยู่หลัง Cloudflare ซึ่งบางทีบล็อกไคลเอนต์ (403)
-    // rpc1 ต่อตรงเข้าโหนด — RpcPool สลับมาเองเมื่อตัวหลักส่งไม่ถึง
-    fallbackRpcs: ['https://rpc1.tpix.online'],
+    // rpc1 ต่อตรงเข้าโหนด = ตัวหลัก (เจ้าของสั่ง 2026-10-20 "เราใช้ rpc1")
+    // rpc.tpix.online อยู่หลัง Cloudflare ซึ่งบล็อกไคลเอนต์ที่ไม่ใช่เบราว์เซอร์ (403) / ยิงถี่ (429)
+    // เหลือไว้เป็นตัวสำรองของ RpcPool ในแอปเท่านั้น — ไม่ส่งให้กระเป๋าภายนอก (ดู addChainParams)
+    rpcUrl: 'https://rpc1.tpix.online',
+    fallbackRpcs: ['https://rpc.tpix.online'],
     explorerUrl: 'https://explorer.tpix.online',
     isGasless: true,
     color: Color(0xFF00D4FF),

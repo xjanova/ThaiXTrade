@@ -110,7 +110,11 @@ class ExternalWalletService {
           'symbol': chain.symbol,
           'decimals': chain.decimals,
         },
-        'rpcUrls': [chain.rpcUrl, ...chain.fallbackRpcs],
+        // TPIX: ส่งแค่ rpc1 — กระเป๋าใช้ตัวแรก และบางตัวสุ่มเลือก ถ้าได้ rpc.tpix.online
+        // ไปจะโดน Cloudflare 403 อ่านยอดไม่ขึ้น · เชนอื่นส่งตัวสำรองไปด้วยตามเดิม
+        'rpcUrls': chain.chainId == ChainConfig.tpix.chainId
+            ? [chain.rpcUrl]
+            : [chain.rpcUrl, ...chain.fallbackRpcs],
         'blockExplorerUrls': [chain.explorerUrl],
         if (chain.chainId == ChainConfig.tpix.chainId)
           'iconUrls': [ReownConfig.tpixCoinIcon],

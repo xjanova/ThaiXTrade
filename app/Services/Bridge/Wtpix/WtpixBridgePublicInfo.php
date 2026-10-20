@@ -37,7 +37,7 @@ class WtpixBridgePublicInfo
                     'name' => (string) config('wtpix_bridge.tpix.name', 'TPIX Chain'),
                     'vault_address' => $this->config->vaultAddress(),
                     'explorer' => $this->config->explorer($this->config->tpixChainId()),
-                    'rpc' => (string) config('wtpix_bridge.tpix.public_rpc', 'https://rpc.tpix.online'),
+                    'rpc' => (string) config('wtpix_bridge.tpix.public_rpc', 'https://rpc1.tpix.online'),
                     'eta_minutes' => (int) config('wtpix_bridge.tpix.eta_minutes', 3),
                 ],
                 'bsc' => [

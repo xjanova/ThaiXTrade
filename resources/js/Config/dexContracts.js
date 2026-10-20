@@ -24,7 +24,8 @@ const ZERO = '0x0000000000000000000000000000000000000000';
  */
 export const TPIX_DEX = reactive({
     CHAIN_ID: deployed.chainId ?? 4289,
-    RPC: deployed.rpc ?? 'https://rpc.tpix.online',
+    // rpc.tpix.online ใน JSON เก่า = ข้ามไปใช้ rpc1 (ตัวนั้นโดน Cloudflare 403/429)
+    RPC: (deployed.rpc && !/\/\/rpc\.tpix\.online/.test(deployed.rpc)) ? deployed.rpc : 'https://rpc1.tpix.online',
     WTPIX: deployed.WTPIX ?? ZERO,
     USDT: deployed.USDT ?? ZERO,
     FACTORY: deployed.FACTORY ?? ZERO,

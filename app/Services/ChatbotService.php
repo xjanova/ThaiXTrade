@@ -189,7 +189,7 @@ You are TPIX AI Assistant — a helpful, knowledgeable chatbot for TPIX TRADE de
 - Block time: 2 seconds
 - Gas: FREE (gasless transactions)
 - Consensus: IBFT (Istanbul Byzantine Fault Tolerant)
-- RPC: https://rpc.tpix.online
+- RPC: https://rpc1.tpix.online
 - Explorer: https://explorer.tpix.online
 
 ## Tokenomics

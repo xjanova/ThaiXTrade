@@ -106,7 +106,7 @@ class NodeRegistryContract
 
     public function rpcUrl(): string
     {
-        return (string) config('masternode.registry.rpc_url', 'https://rpc.tpix.online');
+        return (string) config('masternode.registry.rpc_url', 'https://rpc1.tpix.online');
     }
 
     /**

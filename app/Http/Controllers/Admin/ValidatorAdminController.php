@@ -26,7 +26,7 @@ class ValidatorAdminController extends Controller
      */
     public function index(): InertiaResponse
     {
-        $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online');
+        $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online');
 
         $activeValidators = $this->getActiveValidators($rpcUrl);
         $pendingCount = ValidatorApplication::where('status', 'pending')->count();
@@ -183,7 +183,7 @@ class ValidatorAdminController extends Controller
         ]);
 
         // Generate CLI instructions for manual execution
-        $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online');
+        $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online');
         $authValue = $auth ? 'true' : 'false';
 
         return response()->json([
@@ -208,7 +208,7 @@ class ValidatorAdminController extends Controller
      */
     public function stats(): JsonResponse
     {
-        $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online');
+        $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online');
         $activeValidators = $this->getActiveValidators($rpcUrl);
 
         return response()->json([

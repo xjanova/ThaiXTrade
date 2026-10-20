@@ -187,6 +187,6 @@ class TradingTopupService
     private function rpcUrl(): string
     {
         return (string) (config('chains.chains.'.$this->chainId().'.rpc.0')
-            ?? env('WEB3_RPC_TPIX', 'https://rpc.tpix.online'));
+            ?? env('WEB3_RPC_TPIX', 'https://rpc1.tpix.online'));
     }
 }

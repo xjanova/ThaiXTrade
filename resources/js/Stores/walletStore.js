@@ -21,6 +21,7 @@ import {
     BSC_CHAIN_ID,
     getDefaultChainId,
     TPIX_CHAIN_CONFIG,
+    TPIX_RPC_URL,
     switchToChain,
     fetchSupportedChains,
     getAddressUrl,
@@ -50,10 +51,11 @@ import {
 const STORAGE_KEY = 'tpix_wallet';
 /*
  * กระเป๋าที่รับคำขอ wallet_addEthereumChain / wallet_watchAsset จากหน้าเว็บได้จริง
- * ไม่รวม tpix_wallet (กระเป๋าฝัง ไม่มีรายการเหรียญให้เพิ่ม) และ walletconnect
- * (แอปปลายทางแต่ละตัวรองรับไม่เท่ากัน — กดแล้วเงียบดีกว่าบอกว่าสำเร็จทั้งที่ไม่เกิดอะไร)
+ * ไม่รวม tpix_wallet (กระเป๋าฝัง ไม่มีรายการเหรียญให้เพิ่ม)
+ * walletconnect รวมด้วย: MetaMask/Trust/OKX มือถือรับทั้งสองคำสั่งผ่าน WalletConnect
+ * ตัวที่ไม่รับจะตอบ error → นับเป็น "ข้าม" ไม่ใช่ "สำเร็จ" (ไม่หลอกผู้ใช้)
  */
-const ASSET_CAPABLE_WALLETS = ['metamask', 'trustwallet', 'coinbase', 'okx'];
+const ASSET_CAPABLE_WALLETS = ['metamask', 'trustwallet', 'coinbase', 'okx', 'walletconnect'];
 const CONNECT_TIMEOUT_MS = 30000; // 30 วินาที timeout สำหรับ wallet connection
 const VERIFY_TIMEOUT_MS = 15000;  // 15 วินาที timeout สำหรับ signature verification
 
@@ -279,13 +281,17 @@ export const useWalletStore = defineStore('wallet', () => {
              *    ยังเพิ่มเชนเข้ากระเป๋าไว้ก่อนได้ (ไม่เสียหาย และพอเปิดจริงก็พร้อมใช้)
              */
             try {
+                /*
+                 * ส่ง wallet_addEthereumChain ทุกครั้งที่เชื่อม แม้กระเป๋ามีเชนนี้แล้ว
+                 * คนที่เคยเพิ่มไว้ได้ rpc.tpix.online ค้างอยู่ (โดน Cloudflare 403) — MetaMask
+                 * เห็น RPC ต่างจากเดิมจะถามครั้งเดียวว่าอัปเดตไหม ถ้าค่าเหมือนเดิมจะไม่เด้งอะไร
+                 */
                 await addTPIXChainToWallet(injected);
+                await _refreshProviderState(injected);
 
+                // สลับให้ด้วยเมื่อเชนเปิดจริง — switchToChain เพิ่มให้เองถ้ายังไม่มี และตรวจว่าสลับจริง
                 if (isTpixChainLive() && chainId.value !== TPIX_CHAIN_CONFIG.chainIdNum) {
-                    await injected.request({
-                        method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: TPIX_CHAIN_CONFIG.chainId }],
-                    });
+                    await switchToChain(injected, TPIX_CHAIN_CONFIG.chainIdNum, TPIX_CHAIN_CONFIG);
                     await _refreshProviderState(injected);
                 }
             } catch (tpixErr) {
@@ -598,8 +604,13 @@ export const useWalletStore = defineStore('wallet', () => {
             const wcProvider = await withTimeout(
                 EthereumProvider.init({
                     projectId,
-                    chains: [4289], // TPIX Chain เป็น chain หลัก
-                    optionalChains: [56, 137, 1], // BSC, Polygon, ETH
+                    /*
+                     * ★ 4289 อยู่ใน optionalChains ไม่ใช่ chains (บังคับ)
+                     *   กระเป๋าที่ยังไม่รู้จักเชน TPIX (MetaMask/Trust มือถือครั้งแรก) ปฏิเสธ
+                     *   ทั้ง session ถ้าเชนบังคับมีตัวที่มันไม่รองรับ → ผู้ใช้สแกน QR แล้วเชื่อมไม่ติด
+                     *   และไม่มีโอกาสได้เพิ่มเชน TPIX เลย · เชื่อมก่อน แล้วค่อยเพิ่ม/สลับเชนให้ด้านล่าง
+                     */
+                    optionalChains: [4289, 56, 137, 1], // TPIX, BSC, Polygon, ETH
                     showQrModal: true,
                     metadata: {
                         name: 'TPIX TRADE',
@@ -607,9 +618,9 @@ export const useWalletStore = defineStore('wallet', () => {
                         url: window.location.origin,
                         icons: [`${window.location.origin}${TPIX_COIN_PNG}`],
                     },
-                    // สั่ง wallet เพิ่ม TPIX Chain อัตโนมัติถ้ายังไม่มี (EIP-3085)
+                    // RPC ที่ provider ใช้อ่านเชนเอง — TPIX ต้องเป็น rpc1 (rpc.tpix.online โดน Cloudflare 403)
                     rpcMap: {
-                        4289: TPIX_CHAIN_CONFIG.rpcUrls[0],
+                        4289: TPIX_RPC_URL,
                         56: 'https://bsc-dataseed1.binance.org',
                         137: 'https://polygon-rpc.com',
                         1: 'https://eth.llamarpc.com',
@@ -659,9 +670,24 @@ export const useWalletStore = defineStore('wallet', () => {
 
             await loadSupportedChains();
 
-            // แจ้ง backend + ยืนยัน ownership
-            _registerWalletToBackend(accounts[0], chainId.value, 'walletconnect');
-            _verifyWalletOwnership(ethSigner, accounts[0]).catch(() => {});
+            // เพิ่ม/สลับไป TPIX Chain ให้เหมือนกระเป๋าแบบ injected (ไม่ block การเชื่อม)
+            // กระเป๋าปลายทางที่ไม่รองรับ wallet_addEthereumChain จะ error → ข้ามเงียบ ๆ
+            if (isTpixChainLive() && chainId.value !== TPIX_CHAIN_CONFIG.chainIdNum) {
+                try {
+                    await switchToChain(wcProvider, TPIX_CHAIN_CONFIG.chainIdNum, TPIX_CHAIN_CONFIG);
+                    await _refreshProviderState(wcProvider);
+                } catch (tpixErr) {
+                    console.warn('[TPIX] WalletConnect: ไม่สามารถเพิ่ม/สลับไป TPIX Chain:', tpixErr?.message);
+                }
+            }
+
+            // แจ้ง backend + ยืนยัน ownership แล้วค่อยเสนอเพิ่มเหรียญ (ต่อคิว ไม่ให้ป๊อปอัพชนกัน)
+            const owner = accounts[0];
+            _registerWalletToBackend(owner, chainId.value, 'walletconnect');
+            _verifyWalletOwnership(ethSigner, owner)
+                .catch(() => {})
+                .then(() => _autoSuggestTpixAssets(owner))
+                .catch(() => {});
 
             // ตั้งค่า event listeners (WalletConnect provider ก็รองรับ events เหมือน MetaMask)
             _setupListeners();
@@ -858,7 +884,11 @@ export const useWalletStore = defineStore('wallet', () => {
         const owner = address.value;
 
         // 1) เครือข่าย TPIX Chain — ยังไม่มีในกระเป๋าก็เพิ่มให้ในขั้นนี้ (พร้อมโลโก้ใหม่)
-        if (chainId.value !== TPIX_CHAIN_CONFIG.chainIdNum) {
+        if (chainId.value === TPIX_CHAIN_CONFIG.chainIdNum) {
+            // อยู่เชนแล้ว: ส่งค่าเชนล่าสุดซ้ำ ให้กระเป๋าที่ยังจำ rpc.tpix.online อัปเดตเป็น rpc1
+            // (ปฏิเสธก็ไม่เป็นไร — ยังเพิ่มเหรียญต่อได้ เพราะอยู่เชนถูกอยู่แล้ว)
+            await addTPIXChainToWallet(injected);
+        } else {
             try {
                 await switchChain(TPIX_CHAIN_CONFIG.chainIdNum);
             } catch {

@@ -370,7 +370,7 @@ class TokenSaleController extends Controller
     private function getMasterWalletInfo(): array
     {
         $address = config('services.tpix_chain.master_wallet', '');
-        $rpcUrl = config('services.tpix_chain.rpc_url', 'https://rpc.tpix.online');
+        $rpcUrl = config('services.tpix_chain.rpc_url', 'https://rpc1.tpix.online');
 
         if (empty($address)) {
             return [

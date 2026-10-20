@@ -101,8 +101,8 @@ return [
         'chain_id' => 4289,
         'name' => 'TPIX Chain',
         'rpc' => $rpc('BRIDGE_TPIX_RPC_URLS', [
-            env('TPIX_RPC_URL', 'https://rpc.tpix.online'),
-            'https://rpc1.tpix.online',
+            env('TPIX_RPC_URL', 'https://rpc1.tpix.online'),
+            'https://rpc.tpix.online',
         ]),
         'confirmations' => 2,
         'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpix.online'),

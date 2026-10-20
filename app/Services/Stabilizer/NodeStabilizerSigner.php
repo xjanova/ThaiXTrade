@@ -68,7 +68,7 @@ class NodeStabilizerSigner implements StabilizerTxSigner
         }
 
         $env += [
-            'STB_RPC_URL' => (string) config('blockchain.tpix_rpc_url', 'https://rpc.tpix.online'),
+            'STB_RPC_URL' => (string) config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online'),
             'STB_CHAIN_ID' => (string) config('blockchain.tpix_chain_id', 4289),
             'STB_USER_AGENT' => (string) config('stabilizer.rpc_user_agent'),
         ];
