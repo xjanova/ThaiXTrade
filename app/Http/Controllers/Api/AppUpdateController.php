@@ -181,7 +181,11 @@ class AppUpdateController extends Controller
         $fileSize = $releaseInfo['file_size'] ?? null;
 
         // Step 1: ดึง URL ปลายทางที่ GitHub เซ็นให้ — แคชสั้นกว่าอายุลิงก์ (ดู SIGNED_URL_TTL)
-        $s3Url = Cache::remember('apk_s3_url', self::SIGNED_URL_TTL, fn () => $this->signedAssetUrl($githubUrl));
+        $s3Url = Cache::remember(
+            self::signedUrlCacheKey('apk_s3_url', $githubUrl),
+            self::SIGNED_URL_TTL,
+            fn () => $this->signedAssetUrl($githubUrl)
+        );
 
         if (! $s3Url) {
             Log::warning('APK download: failed to get S3 URL', ['github_url' => $githubUrl]);
@@ -290,6 +294,18 @@ class AppUpdateController extends Controller
      * ล้างแคชที่เกี่ยวกับ release ทั้งหมด เพื่อให้เว็บเห็นรุ่นใหม่ทันทีที่ CI ปล่อยเสร็จ
      * ไม่ต้องรอ TTL 30 นาที.
      */
+    /**
+     * คีย์แคชของลิงก์ที่ GitHub เซ็นให้ — ผูกกับไฟล์ของรุ่นนั้น ๆ
+     *
+     * ★ เดิมใช้คีย์ตายตัว ('apk_s3_url') ทุกรุ่น: หลังออกรุ่นใหม่ ฟีดบอกแอปว่ามี v1.1.239
+     *   แต่ลิงก์ดาวน์โหลดยังเป็นของ v1.1.238 ที่แคชไว้ได้อีกถึง 4 นาที → แอปโหลด APK
+     *   รุ่นเก่ามาติดตั้ง (เจ้าของเจอจริง 2026-10-20) · ผูกกับที่อยู่ไฟล์ = รุ่นใหม่ได้คีย์ใหม่ทันที
+     */
+    private static function signedUrlCacheKey(string $prefix, string $assetUrl): string
+    {
+        return $prefix.'_'.md5($assetUrl);
+    }
+
     private function forgetReleaseCaches(): void
     {
         Cache::forget('app_update_android');
@@ -633,9 +649,8 @@ class AppUpdateController extends Controller
             ], 404);
         }
 
-        $cacheKey = "chain_s3_url_{$type}";
         $s3Url = Cache::remember(
-            $cacheKey,
+            self::signedUrlCacheKey("chain_s3_url_{$type}", $asset['download_url']),
             self::SIGNED_URL_TTL,
             fn () => $this->signedAssetUrl($asset['download_url'])
         );
