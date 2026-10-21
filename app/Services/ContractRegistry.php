@@ -252,26 +252,66 @@ class ContractRegistry
      */
     public function isLive(string $key): bool
     {
+        return $this->liveState($key) === true;
+    }
+
+    /**
+     * สถานะสัญญาแบบสามค่า — true มีโค้ด · false เชนยืนยันว่าไม่มีโค้ด (หรือไม่ได้ตั้งที่อยู่)
+     * · null ถามเชนไม่ได้และไม่เคยรู้คำตอบมาก่อน
+     *
+     * ⚠️ เดิม isLive() แคช "ถามไม่ได้" (RPC ล้ม/403/429) ว่า false ไว้ 5 นาที
+     *    → dexConfig().ready = false → dex:sync เขียนเชน 4289 เป็น coming_soon ทั้งที่สัญญายังอยู่
+     *    → ทั้งเว็บปิด DEX 5 นาที แล้วเปิดเอง แล้วปิดอีกเมื่อ rpc1 สะดุดรอบหน้า (flap)
+     *    ตอนนี้ RPC ล้ม = ใช้คำตอบล่าสุดที่เชนเคยยืนยัน (เก็บไว้ 7 วัน) และไม่แคชความล้มเหลว
+     *    ส่วน "ไม่มีโค้ดจริง" (เชน regenesis ตอบ 0x) ยังปิดทันทีเหมือนเดิม
+     */
+    public function liveState(string $key): ?bool
+    {
         $address = $this->address($key);
         if ($address === null) {
             return false;
         }
 
-        return Cache::remember(
-            "contracts:live:{$key}:".strtolower($address),
-            300,
-            fn () => $this->hasCode($address)
-        );
+        $suffix = "{$key}:".strtolower($address);
+        $cached = Cache::get("contracts:live:{$suffix}");
+        if (is_bool($cached)) {
+            return $cached;
+        }
+
+        $state = $this->codeState($address);
+        if ($state === null) {
+            $last = Cache::get("contracts:live-last:{$suffix}");
+
+            return is_bool($last) ? $last : null;
+        }
+
+        // มีโค้ด = จำ 5 นาที · ไม่มีโค้ด = จำสั้น ๆ ให้เปิดเองเร็วหลัง deploy
+        Cache::put("contracts:live:{$suffix}", $state, $state ? 300 : 60);
+        Cache::put("contracts:live-last:{$suffix}", $state, now()->addDays(7));
+
+        return $state;
     }
 
     /**
-     * ถามเชนตรง ๆ ว่ามีโค้ดที่อยู่นี้ไหม (ไม่ผ่าน cache).
+     * ถามเชนตรง ๆ ว่ามีโค้ดที่อยู่นี้ไหม (ไม่ผ่าน cache) — ถามไม่ได้ = false.
      */
     public function hasCode(string $address): bool
     {
-        $code = $this->rpc('eth_getCode', [$address, 'latest']);
+        return $this->codeState($address) === true;
+    }
 
-        return is_string($code) && strlen($code) > 2;
+    /**
+     * true มีโค้ด · false เชนตอบว่าว่าง (0x) · null เชนตอบไม่ได้ (timeout/403/429/JSON error)
+     * — ต้องแยกสองอย่างหลังออกจากกัน ไม่งั้น RPC สะดุดครั้งเดียวกลายเป็น "สัญญาหาย"
+     */
+    public function codeState(string $address): ?bool
+    {
+        $code = $this->rpc('eth_getCode', [$address, 'latest']);
+        if (! is_string($code) || ! str_starts_with($code, '0x')) {
+            return null;
+        }
+
+        return strlen($code) > 2;
     }
 
     /**
@@ -305,7 +345,10 @@ class ContractRegistry
      * ready = ทั้ง 4 ตัวมีที่อยู่ **และ** เชนยืนยันว่ามี bytecode อยู่จริง
      * (เชนเคย regenesis แล้วสัญญาหายทั้งที่ที่อยู่ยังค้างในคอนฟิก — ตั้งไว้เฉย ๆ ไม่พอ)
      *
-     * @return array{ready:bool, chainId:int, rpc:string, WTPIX:?string, USDT:?string, FACTORY:?string, ROUTER:?string, missing:string[]}
+     * missing    = ไม่ได้ตั้งที่อยู่ หรือเชนยืนยันว่าไม่มีโค้ด (ปิดเชนได้)
+     * unverified = ถามเชนไม่ได้และไม่เคยรู้คำตอบ (ยังไม่เปิด แต่ห้ามใช้เป็นเหตุ "ปิดเชน")
+     *
+     * @return array{ready:bool, chainId:int, rpc:string, WTPIX:?string, USDT:?string, FACTORY:?string, ROUTER:?string, missing:string[], unverified:string[]}
      */
     public function dexConfig(): array
     {
@@ -321,15 +364,20 @@ class ContractRegistry
             'chainId' => (int) config('blockchain.tpix_chain_id', 4289),
             'rpc' => (string) config('blockchain.tpix_public_rpc_url', config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online')),
             'missing' => [],
+            'unverified' => [],
         ];
 
         foreach ($map as $field => $key) {
             $address = $this->address($key);
             $out[$field] = $address;
 
-            if ($address === null || ! $this->isLive($key)) {
+            $state = $address === null ? false : $this->liveState($key);
+            if ($state === false) {
                 $out['ready'] = false;
                 $out['missing'][] = $key;
+            } elseif ($state === null) {
+                $out['ready'] = false;
+                $out['unverified'][] = $key;
             }
         }
 

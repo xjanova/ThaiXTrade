@@ -4,6 +4,7 @@ namespace App\Services\Bridge\Wtpix;
 
 use App\Models\User;
 use App\Models\WtpixBridgeTransfer;
+use App\Services\Bridge\EvmRpc;
 use App\Services\Kyc\KycGate;
 
 /**
@@ -24,9 +25,10 @@ class WtpixBridgePolicy
 
     /**
      * @param  array{from_address: string, amount_wei: string, payout_wei: string, sender_is_contract: bool, sender_mismatch: bool}  $facts
+     * @param  bool  $ignoreMinimum  แอดมินอนุมัติรายการที่ต่ำกว่าขั้นต่ำ — ข้ามเฉพาะกฎขั้นต่ำข้อเดียว กฎอื่นตรวจครบ
      * @return array{status: string, reason: ?string}
      */
-    public function evaluate(string $direction, array $facts, ?int $ignoreId = null): array
+    public function evaluate(string $direction, array $facts, ?int $ignoreId = null, bool $ignoreMinimum = false): array
     {
         $from = strtolower($facts['from_address']);
         $amount = $facts['amount_wei'];
@@ -45,7 +47,7 @@ class WtpixBridgePolicy
         }
 
         // ต่ำกว่าขั้นต่ำแต่ยังทำได้ = เก็บไว้ ให้แอดมินอนุมัติได้ภายหลัง
-        if (bccomp($amount, $this->config->limitWei($this->config->limitKey($direction, 'min')), 0) < 0) {
+        if (! $ignoreMinimum && bccomp($amount, $this->config->limitWei($this->config->limitKey($direction, 'min')), 0) < 0) {
             return ['status' => WtpixBridgeTransfer::STATUS_IGNORED, 'reason' => 'below_minimum'];
         }
 
@@ -73,6 +75,30 @@ class WtpixBridgePolicy
         }
 
         return ['status' => WtpixBridgeTransfer::STATUS_CONFIRMED, 'reason' => null];
+    }
+
+    /**
+     * ข้อมูลประกอบจากเชนต้นทาง — ผู้ส่งเป็นสัญญาไหม · คนกดส่งธุรกรรมเป็นเจ้าของเหรียญคนเดียวกันไหม.
+     *
+     * ที่เดียวที่คำนวณสองข้อนี้ — ตัวสแกนใช้ตอนบันทึก หลังบ้านใช้ตอนอนุมัติรายการที่ตัวสแกนไม่ได้ถาม
+     * (รายการ ignored ไม่ถูกถามเชนเพื่อประหยัด RPC จึงยังไม่มีสองข้อนี้)
+     *
+     * @return array{sender_is_contract: bool, sender_mismatch: bool}|null null = อ่านเชนไม่ได้ (ห้ามเดา)
+     */
+    public function senderFacts(EvmRpc $rpc, string $from, string $txHash): ?array
+    {
+        $code = $rpc->code($from);
+        $tx = $rpc->transaction($txHash);
+
+        if ($code === null || $tx === null) {
+            return null;
+        }
+
+        return [
+            // EIP-7702: EOA ที่มอบสิทธิ์ให้โค้ด (0xef0100…) ยังเป็นกระเป๋าที่เจ้าของถือคีย์
+            'sender_is_contract' => $code !== '0x' && ! str_starts_with($code, '0xef0100'),
+            'sender_mismatch' => strtolower((string) ($tx['from'] ?? '')) !== strtolower($from),
+        ];
     }
 
     /** ยอดที่ผ่านด่านแล้วของกระเป๋านี้ในทิศเดียวกันใน 24 ชม. ล่าสุด (wei) */

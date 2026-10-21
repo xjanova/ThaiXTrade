@@ -48,12 +48,16 @@ class BridgePublicInfo
             }
 
             $caps = $this->minterCaps();
+            $onchainMax = $caps['max_per_tx'] !== null ? Wei::toWei((string) $caps['max_per_tx'], 6) : null;
 
             return [
                 'enabled' => $this->open(),
                 'installed' => $this->config->installed(),
-                'paused_reason' => $this->config->siteSwitchOn() ? null : $this->config->switchReason(),
+                // รหัสกลาง ๆ เท่านั้น (maintenance / safety_hold) — ข้อความเต็มมีชื่อแอดมินและบันทึกเหตุการณ์
+                'paused_reason' => $this->config->publicPausedCode(),
                 'vault_address' => $this->config->vaultAddress(),
+                // ฝากต่อครั้งได้สูงสุดเท่านี้จริง = min(วงเงินของเว็บ, maxPerTx บนสัญญา) — เกินนี้ mint ไม่ได้เลย
+                'deposit_max_per_tx' => Wei::format($this->config->effectiveMaxDepositUnits($onchainMax), 6),
                 'tpix' => [
                     'chain_id' => $this->config->tpixChainId(),
                     'usdt_tpix' => $this->config->usdtTpixAddress(),
@@ -115,6 +119,16 @@ class BridgePublicInfo
             ])->all();
 
             return $base + ['state' => $this->depositState($records->pluck('status')->all()), 'deposits' => $deposits];
+        }
+
+        // เชนที่ปิดอยู่ไม่ถูกสแกน — เดิมตอบ "final แล้ว รอเข้าคิว ~1 นาที" ตลอดไปทั้งที่ไม่มีวันถูก mint
+        // ไม่ยิง RPC ด้วย (ไม่มีอะไรให้รอ และกันใช้ endpoint นี้ยิง RPC ของเชนที่ไม่ได้ใช้)
+        if (! $this->config->chainEnabled($chainId)) {
+            // เคยเปิดแล้วถูกหยุดชั่วคราว = เคอร์เซอร์ค้างอยู่ เปิดใหม่เมื่อไหร่ตัวสแกนไล่ต่อจากจุดเดิมและบันทึกให้เอง
+            // ไม่เคยเปิดเลย = เปิดทีหลังก็เริ่มที่หัวปัจจุบัน รายการนี้จะไม่ถูกสแกน ต้องขอคืนเงินจาก vault ด้วยมือ
+            $paused = $this->config->cursor("deposit_{$chainId}") !== null;
+
+            return $base + ['state' => $paused ? 'chain_paused' : 'chain_disabled', 'deposits' => [], 'refund' => ! $paused];
         }
 
         return $base + Cache::remember("bridge:live:deposit:{$chainId}:{$txHash}", 15, fn () => $this->liveDeposit($chainId, $txHash));
@@ -254,8 +268,10 @@ class BridgePublicInfo
     public function history(string $wallet): array
     {
         return [
+            // ต่ำกว่าขั้นต่ำต้องเห็นในประวัติด้วย (เงินเข้า vault แล้ว ผู้ใช้ต้องรู้ว่าต้องติดต่อขอคืน)
+            // ส่วน ignored อื่น (โอนภายใน / ฝุ่น) ไม่ใช่เงินฝากของผู้ใช้ ไม่โชว์
             'deposits' => BridgeDeposit::forWallet($wallet)
-                ->where('status', '!=', BridgeDeposit::STATUS_IGNORED)
+                ->where(fn ($q) => $q->where('status', '!=', BridgeDeposit::STATUS_IGNORED)->orWhere('review_reason', 'below_minimum'))
                 ->latest('id')->limit(25)->get()
                 ->map(fn (BridgeDeposit $d) => $d->toPublicArray())->all(),
             'withdrawals' => BridgeWithdrawal::forWallet($wallet)

@@ -125,6 +125,45 @@ describe('Bridge page — deposit', () => {
         expect(buttonByText(wrapper, 'Send USDT to the bridge').attributes('disabled')).toBeDefined();
     });
 
+    it('blocks amounts above the cap that can really be minted (not just a review warning)', async () => {
+        info = baseInfo({ deposit_max_per_tx: '1000', limits: { ...baseInfo().limits, max_deposit_per_tx: '1500' } });
+        const wrapper = await mountPage();
+        await wrapper.find('[data-test="ack-own-wallet"]').setValue(true);
+
+        await wrapper.find('input[inputmode="decimal"]').setValue('1200');
+
+        expect(wrapper.text()).toContain('Maximum is 1000 USDT per transfer');
+        expect(buttonByText(wrapper, 'Send USDT to the bridge').attributes('disabled')).toBeDefined();
+        expect(contractCalls).toEqual([]);
+    });
+
+    it('shows a configured deposit fee instead of "free" and nets it out of what you receive', async () => {
+        info = baseInfo({ limits: { ...baseInfo().limits, deposit_fee: '0.5' } });
+        const wrapper = await mountPage();
+
+        await wrapper.find('input[inputmode="decimal"]').setValue('25');
+
+        expect(wrapper.find('[data-test="deposit-fee"]').text()).toContain('0.5 USDT per deposit');
+        expect(wrapper.text()).toContain('24.5');
+    });
+
+    it('marks disabled chains in the tracking list and tells a wrong-chain depositor how to get a refund', async () => {
+        info = baseInfo({
+            chains: [
+                ...baseInfo().chains.slice(0, 1),
+                { ...baseInfo().chains[1], enabled: false },
+            ],
+        });
+        localStorage.setItem('tpix.bridge.tracked.v2', JSON.stringify([{ kind: 'deposit', chainId: 1, txHash: TX }]));
+        statusResponse = { state: 'chain_disabled', deposits: [], refund: true };
+
+        const wrapper = await mountPage();
+
+        expect(wrapper.findAll('option').map((o) => o.text())).toContain('Ethereum (Temporarily off)');
+        expect(wrapper.find('[data-test="refund-hint"]').exists()).toBe(true);
+        expect(wrapper.text()).toContain('Deposits on this chain are not open');
+    });
+
     it('asks to switch to the source chain first when the wallet is elsewhere', async () => {
         wallet.chainId = 4289;
         const wrapper = await mountPage();

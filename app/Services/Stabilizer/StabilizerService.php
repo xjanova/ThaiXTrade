@@ -474,6 +474,17 @@ class StabilizerService
             return ['ok' => false, 'error' => 'this transaction is already recorded'];
         }
 
+        /*
+         * ธุรกรรมของกองทุนเอง (ซื้อ/ขาย/approve ที่บอทเซ็น) ไม่ใช่เงินฝาก
+         *
+         * ⚠️ ไม้ขายมี Transfer USDT จากพูลเข้ากระเป๋ากองทุนจริงในใบเสร็จ — ถ้านับเป็นเงินฝาก
+         *    "งบที่มีที่มาชัด" จะพองขึ้นด้วย USDT_TPIX จากพูลที่ไม่มีใครพิสูจน์ว่ามีของหนุน
+         *    ซึ่งเป็นสิ่งที่งบเงินฝากตั้งใจกันไว้ตั้งแต่แรก (โหมด deposits_only)
+         */
+        if (StabilityTransaction::where('tx_hash', $txHash)->exists()) {
+            return ['ok' => false, 'error' => 'this is a transaction signed by the stabilizer itself, not a deposit'];
+        }
+
         $receipt = $this->dex->receipt($txHash);
         if ($receipt === null || ($receipt['status'] ?? '') !== '0x1') {
             return ['ok' => false, 'error' => 'transaction not found or not successful on chain'];
@@ -482,6 +493,13 @@ class StabilizerService
         $block = isset($receipt['blockNumber']) ? (int) Wei::hexToInt((string) $receipt['blockNumber']) : null;
         $amount = '0';
         $from = null;
+        $wallet = strtolower($wallet);
+
+        /*
+         * ผู้ส่งที่ไม่ใช่ "เงินใหม่จากข้างนอก" — กระเป๋ากองทุนเอง (โอนหาตัวเอง) · พูล (ผลของไม้ขาย
+         * ที่เซ็นนอกระบบ) · router (เงินทอน/ถอนสภาพคล่อง) — ข้ามทุก log ของผู้ส่งเหล่านี้
+         */
+        $notExternal = array_values(array_filter([$wallet, $contracts['pair'] ?? null, $contracts['router'] ?? null]));
 
         if ($token === StabilityDeposit::TOKEN_USDT) {
             $transferTopic = $this->dex->eventTopic('Transfer(address,address,uint256)');
@@ -491,17 +509,19 @@ class StabilizerService
                     continue;
                 }
                 $to = '0x'.substr(strtolower((string) $topics[2]), 26);
-                if ($to !== strtolower($wallet)) {
+                $sender = '0x'.substr(strtolower((string) $topics[1]), 26);
+                if ($to !== $wallet || in_array($sender, $notExternal, true)) {
                     continue;
                 }
                 $amount = bcadd($amount, Wei::hexToInt((string) ($log['data'] ?? '0x0')), 0);
-                $from = '0x'.substr(strtolower((string) $topics[1]), 26);
+                $from = $sender;
             }
         } else {
             $tx = $this->dex->transaction($txHash);
-            if (is_array($tx) && strtolower((string) ($tx['to'] ?? '')) === strtolower($wallet)) {
+            $sender = is_array($tx) ? strtolower((string) ($tx['from'] ?? '')) : '';
+            if (is_array($tx) && strtolower((string) ($tx['to'] ?? '')) === $wallet && ! in_array($sender, $notExternal, true)) {
                 $amount = Wei::hexToInt((string) ($tx['value'] ?? '0x0'));
-                $from = strtolower((string) ($tx['from'] ?? '')) ?: null;
+                $from = $sender ?: null;
             }
         }
 

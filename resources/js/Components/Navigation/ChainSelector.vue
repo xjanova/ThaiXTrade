@@ -11,15 +11,22 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import axios from 'axios';
 import { TPIX_COIN_ICON } from '@/utils/brand';
+import { getDefaultChainId } from '@/utils/web3';
+import { useTranslation } from '@/Composables/useTranslation';
 
 const walletStore = useWalletStore();
+const { t } = useTranslation();
 
 const showDropdown = ref(false);
 const supportedChains = ref([]);
 const isLoadingChains = ref(false);
 
-// Default chain ID from backend (BSC = 56)
-const DEFAULT_CHAIN_ID = 56;
+/*
+ * เชนปริยายมาจากเซิร์ฟเวอร์ (/api/v1/chains → meta.default_chain_id) — ไม่ใช่ 56 ตายตัว
+ * ⚠️ เดิมฝัง 56 ไว้: ทุกคนที่เชื่อมกระเป๋าถูกสลับไป TPIX (เชนปริยายจริง) แล้วเปิดเมนูนี้เจอ
+ *    "Switch to BSC (Recommended)" + ป้าย Main บน BSC — สวนทางกับที่ระบบพาไปเอง
+ */
+const defaultChainId = ref(getDefaultChainId());
 
 // Chain brand colors (fallback circle color)
 const chainColors = {
@@ -67,12 +74,21 @@ const currentChain = computed(() => {
     return supportedChains.value.find(c => c.chainId === currentChainId.value);
 });
 
-const isOnSupportedChain = computed(() => !!currentChain.value);
-const isOnDefaultChain = computed(() => currentChainId.value === DEFAULT_CHAIN_ID);
+// เชนที่อยู่ในรายการแต่ยังไม่เปิด (coming_soon) ไม่นับว่า "รองรับ" — เดิมขึ้นจุดเขียวทั้งที่เทรดไม่ได้
+const isOnSupportedChain = computed(() => !!currentChain.value && !isComingSoon(currentChain.value));
+const isOnComingSoonChain = computed(() => !!currentChain.value && isComingSoon(currentChain.value));
+const isOnDefaultChain = computed(() => currentChainId.value === defaultChainId.value);
+
+/** เชนปริยายที่เปิดอยู่จริง — ไม่มีในรายการ / ยังไม่เปิด = ไม่แนะนำให้สลับ */
+const defaultChain = computed(() => {
+    const chain = supportedChains.value.find(c => c.chainId === defaultChainId.value);
+    return chain && !isComingSoon(chain) ? chain : null;
+});
 
 const currentChainName = computed(() => {
     if (!isConnected.value) return 'Select Network';
     if (currentChain.value) return currentChain.value.shortName;
+    // (เชนยังไม่เปิดก็โชว์ชื่อ แต่ป้ายเป็นสีเหลืองตาม isOnSupportedChain)
     return 'Unsupported';
 });
 
@@ -113,6 +129,8 @@ async function fetchChains() {
         const { data } = await axios.get('/api/v1/chains');
         if (data.success) {
             supportedChains.value = data.data;
+            const fromServer = Number(data?.meta?.default_chain_id);
+            if (Number.isFinite(fromServer) && fromServer > 0) defaultChainId.value = fromServer;
         }
     } catch {
         // Fallback: at least show BSC
@@ -169,13 +187,13 @@ async function selectChain(chain) {
 }
 
 async function switchToDefault() {
-    if (!isConnected.value) return;
+    if (!isConnected.value || !defaultChain.value) return;
 
     switchError.value = null;
-    switchingTo.value = DEFAULT_CHAIN_ID;
+    switchingTo.value = defaultChain.value.chainId;
 
     try {
-        await walletStore.switchChain(DEFAULT_CHAIN_ID);
+        await walletStore.switchChain(defaultChain.value.chainId);
     } catch (err) {
         switchError.value = walletStore.error || err?.message || 'สลับเครือข่ายไม่สำเร็จ';
     } finally {
@@ -276,22 +294,23 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- Unsupported Chain Warning -->
-                <div v-if="isConnected && !isOnSupportedChain" class="mx-3 mt-2 mb-1 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                    <p class="text-xs text-yellow-400 font-medium">Unsupported Network</p>
-                    <p class="text-xs text-yellow-400/70 mt-0.5">Switch to a supported chain below.</p>
+                <!-- Unsupported Chain Warning — เชนที่ยังไม่เปิด (coming_soon) บอกให้ตรงว่า "ยังไม่เปิด" -->
+                <div v-if="isConnected && !isOnSupportedChain" data-test="chain-unsupported" class="mx-3 mt-2 mb-1 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                    <p class="text-xs text-yellow-400 font-medium">{{ isOnComingSoonChain ? t('chainSelector.notOpenTitle') : 'Unsupported Network' }}</p>
+                    <p class="text-xs text-yellow-400/70 mt-0.5">{{ isOnComingSoonChain ? t('chainSelector.notOpenBody') : 'Switch to a supported chain below.' }}</p>
                 </div>
 
-                <!-- Auto-switch suggestion -->
-                <div v-if="isConnected && !isOnDefaultChain && isOnSupportedChain" class="mx-3 mt-2 mb-1">
+                <!-- Auto-switch suggestion — ไปเชนปริยายตามเซิร์ฟเวอร์ (ไม่ใช่ BSC ตายตัว) -->
+                <div v-if="isConnected && !isOnDefaultChain && defaultChain" class="mx-3 mt-2 mb-1">
                     <button
+                        data-test="chain-recommend"
                         @click="switchToDefault"
                         class="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-primary-500/10 hover:bg-primary-500/20 border border-primary-500/20 transition-colors"
                     >
                         <svg class="w-4 h-4 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                         </svg>
-                        <span class="text-xs text-primary-400 font-medium">Switch to BSC (Recommended)</span>
+                        <span class="text-xs text-primary-400 font-medium">{{ t('chainSelector.recommend', { name: defaultChain.shortName || defaultChain.name }) }}</span>
                     </button>
                 </div>
 
@@ -343,7 +362,8 @@ onUnmounted(() => {
 
                         <!-- Default badge -->
                         <span
-                            v-else-if="chain.chainId === 56"
+                            v-else-if="chain.chainId === defaultChainId"
+                            data-test="chain-main-badge"
                             class="text-[10px] px-1.5 py-0.5 rounded bg-primary-500/20 text-primary-400 font-medium"
                         >
                             Main

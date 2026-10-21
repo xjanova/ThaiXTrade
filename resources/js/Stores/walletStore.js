@@ -134,6 +134,14 @@ export const useWalletStore = defineStore('wallet', () => {
     const walletType = ref(null); // 'metamask', 'trustwallet', 'coinbase', 'okx', 'tpix_wallet'
     const tpixBalance = ref(null); // TPIX balance สำหรับ embedded wallet
     const isEmbedded = computed(() => walletType.value === 'tpix_wallet');
+    /*
+     * กระเป๋าฝังที่ยังไม่ได้ปลดล็อก — มีที่อยู่ (จาก localStorage) แต่ยังไม่มีผู้เซ็น
+     *
+     * ⚠️ รีเฟรชหน้าแล้ว tryReconnect() คืนแค่ที่อยู่ → isConnected = true ปุ่ม "เชื่อมกระเป๋า" หายทุกที่
+     *    แต่ทุกธุรกรรมตอบ "กรุณาเชื่อมกระเป๋าก่อน" — ผู้ใช้ไม่มีปุ่มให้กดต่อ (ทางตัน)
+     *    หน้าที่จะส่งธุรกรรมต้องดูค่านี้แล้วเปิดหน้าต่างปลดล็อก (openConnectModal) แทน
+     */
+    const isLocked = computed(() => isEmbedded.value && !!address.value && !signer.value);
 
     // รายการ chain ที่รองรับ (ดึงจาก backend API)
     const supportedChains = ref([]);
@@ -986,25 +994,47 @@ export const useWalletStore = defineStore('wallet', () => {
     }
 
     // Private: event listeners
+    /** เลขลำดับรอบสลับบัญชี — ผู้เซ็นของรอบเก่าที่ตอบช้าห้ามมาทับรอบใหม่ */
+    let _accountSeq = 0;
+
     function _onAccountsChanged(accounts) {
         if (accounts.length === 0) {
             disconnect();
         } else {
-            address.value = accounts[0];
+            const next = accounts[0];
+            const changed = String(next).toLowerCase() !== String(address.value || '').toLowerCase();
+            const seq = ++_accountSeq;
+
+            /*
+             * ⚠️ บัญชีเปลี่ยน = ปลดผู้เซ็นเดิมทิ้งทันที จนกว่าผู้เซ็นของบัญชีใหม่จะพร้อม
+             *    เดิม address เปลี่ยนทันทีแต่ signer เปลี่ยนตามทีหลัง (async) — ธุรกรรมที่ส่งในช่วงนั้น
+             *    ถูกเซ็นด้วยบัญชีเก่าแต่ระบุผู้รับ/บันทึกเป็นบัญชีใหม่ · ไม่มีผู้เซ็น = ทุกด่านส่งธุรกรรมปฏิเสธเอง
+             *    (บางกระเป๋ายิง event ซ้ำด้วยบัญชีเดิม — ไม่ต้องปลด)
+             */
+            if (changed) signer.value = null;
+
+            address.value = next;
             localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                address: accounts[0],
+                address: next,
                 walletType: walletType.value,
             }));
             // Refresh provider/signer
             const injected = _rawProvider || _getProvider(walletType.value);
             if (injected) {
                 const ethProvider = new BrowserProvider(injected);
-                ethProvider.getSigner().then(s => {
+                // ลองซ้ำหนึ่งรอบ — ผู้เซ็นถูกปลดไปแล้ว ถ้าพลาดเงียบ ๆ ผู้ใช้จะส่งธุรกรรมไม่ได้จนกว่าจะเชื่อมใหม่
+                const attach = (retry) => ethProvider.getSigner().then(s => {
+                    if (seq !== _accountSeq) return;
                     provider.value = ethProvider;
                     signer.value = s;
                 }).catch(err => {
+                    if (retry && seq === _accountSeq) {
+                        setTimeout(() => attach(false), 500);
+                        return;
+                    }
                     console.warn('Failed to refresh signer after account change:', err.message);
                 });
+                attach(true);
             }
         }
     }
@@ -1082,6 +1112,7 @@ export const useWalletStore = defineStore('wallet', () => {
         hasStoredEmbeddedWallet,
         tpixBalance,
         isEmbedded,
+        isLocked,
         // WalletConnect v2
         connectWalletConnect,
         // Modal control

@@ -139,49 +139,87 @@ class BotWalletService
             throw new RuntimeException(self::ERR_AMOUNT);
         }
 
-        // กระเป๋าเดียวกันมีรายการค้างได้ทีละหนึ่ง — สองรายการแย่ง nonce กันแล้วพังทั้งคู่
+        // เช็คเร็วก่อนยิง RPC — ไม่มีผลต่อความถูกต้อง ด่านจริงอยู่ใต้ล็อกข้างล่าง
         if ($wallet->transfers()->withdrawals()->inFlight()->exists()) {
             throw new RuntimeException(self::ERR_IN_FLIGHT);
         }
 
+        // อ่านยอดจากเชน "นอก" transaction — RPC ช้าได้ ห้ามถือล็อกแถวไว้ระหว่างรอเชน
         $this->refreshBalances($wallet);
+        $balances = $wallet->balances ?? [];
 
-        if ($wallet->balanceOf($symbol) + 1e-12 < $amount) {
-            throw new RuntimeException(self::ERR_BALANCE);
-        }
+        /*
+         * ⚠️ ด่านทั้งหมดต้องอยู่ใต้ล็อกแถวกระเป๋าเดียวกับการสร้างรายการ
+         *
+         * เดิมเช็ค "มีรายการค้างไหม / ยอดพอไหม / เกินเพดานวันไหม" แล้วค่อยสร้างแยกกัน
+         * สองคำขอพร้อมกัน (สองแท็บ / ยิง API ซ้อน) ผ่านด่านทั้งคู่ → ได้สองรายการที่ต่างคน
+         * ต่างคิดว่ายอดเต็มเป็นของตัวเอง ตัวที่สองไป revert บนเชน (เสียแก๊ส) และเพดานรายวันถูกข้าม
+         * ล็อกแถว ai_bot_wallets = คำขอที่สองรอจนตัวแรกบันทึกเสร็จ แล้วเห็นรายการค้างของตัวแรก
+         */
+        return DB::transaction(function () use ($wallet, $owner, $symbol, $spec, $amount, $balances, $ip) {
+            $locked = AiBotWallet::whereKey($wallet->id)->lockForUpdate()->first();
 
-        $gasReserve = (float) config('aibot.bot_wallet.gas_reserve_bnb', 0.002);
-        $nativeSymbol = $this->nativeSymbol();
-        $nativeAfter = $wallet->balanceOf($nativeSymbol) - ($symbol === $nativeSymbol ? $amount : 0.0);
+            if (! $locked || ! $locked->isActive()) {
+                throw new RuntimeException(self::ERR_LOCKED);
+            }
 
-        if ($nativeAfter + 1e-12 < $gasReserve) {
-            throw new RuntimeException(self::ERR_GAS);
-        }
+            // กระเป๋าเดียวกันมีรายการค้างได้ทีละหนึ่ง — สองรายการแย่ง nonce กันแล้วพังทั้งคู่
+            if ($locked->transfers()->withdrawals()->inFlight()->exists()) {
+                throw new RuntimeException(self::ERR_IN_FLIGHT);
+            }
 
-        $cap = (float) config('aibot.bot_wallet.withdraw_daily_cap', 5000);
-        $today = (float) $wallet->transfers()
-            ->withdrawals()
-            ->where('asset', $symbol)
-            ->where('created_at', '>=', now()->startOfDay())
-            ->whereIn('status', array_merge(AiBotWalletTransfer::IN_FLIGHT, [AiBotWalletTransfer::STATUS_CONFIRMED]))
-            ->sum('amount');
+            $balanceOf = fn (string $s) => (float) ($balances[strtoupper($s)] ?? 0);
 
-        if ($cap > 0 && $today + $amount > $cap + 1e-9) {
-            throw new RuntimeException(self::ERR_DAILY_CAP);
-        }
+            if ($balanceOf($symbol) + 1e-12 < $amount) {
+                throw new RuntimeException(self::ERR_BALANCE);
+            }
 
-        return $wallet->transfers()->create([
-            'owner_address' => $owner,
-            'direction' => AiBotWalletTransfer::DIRECTION_WITHDRAW,
-            'asset' => $symbol,
-            'token_address' => ($spec['type'] ?? 'erc20') === 'native' ? null : strtolower((string) $spec['address']),
-            'amount' => $amount,
-            'amount_wei' => self::toWei($amount, (int) ($spec['decimals'] ?? 18)),
-            // ปลายทางเดียวที่เป็นไปได้ — เจ้าของที่ยืนยันแล้วเท่านั้น
-            'to_address' => $owner,
-            'status' => AiBotWalletTransfer::STATUS_QUEUED,
-            'requested_ip' => $ip,
-        ]);
+            $gasReserve = (float) config('aibot.bot_wallet.gas_reserve_bnb', 0.002);
+            $nativeSymbol = $this->nativeSymbol();
+            $nativeAfter = $balanceOf($nativeSymbol) - ($symbol === $nativeSymbol ? $amount : 0.0);
+
+            if ($nativeAfter + 1e-12 < $gasReserve) {
+                throw new RuntimeException(self::ERR_GAS);
+            }
+
+            $cap = $this->dailyCap($symbol);
+            $today = (float) $locked->transfers()
+                ->withdrawals()
+                ->where('asset', $symbol)
+                ->where('created_at', '>=', now()->startOfDay())
+                ->whereIn('status', array_merge(AiBotWalletTransfer::IN_FLIGHT, [AiBotWalletTransfer::STATUS_CONFIRMED]))
+                ->sum('amount');
+
+            if ($cap > 0 && $today + $amount > $cap + 1e-9) {
+                throw new RuntimeException(self::ERR_DAILY_CAP);
+            }
+
+            return $locked->transfers()->create([
+                'owner_address' => $owner,
+                'direction' => AiBotWalletTransfer::DIRECTION_WITHDRAW,
+                'asset' => $symbol,
+                'token_address' => ($spec['type'] ?? 'erc20') === 'native' ? null : strtolower((string) $spec['address']),
+                'amount' => $amount,
+                'amount_wei' => self::toWei($amount, (int) ($spec['decimals'] ?? 18)),
+                // ปลายทางเดียวที่เป็นไปได้ — เจ้าของที่ยืนยันแล้วเท่านั้น
+                'to_address' => $owner,
+                'status' => AiBotWalletTransfer::STATUS_QUEUED,
+                'requested_ip' => $ip,
+            ]);
+        });
+    }
+
+    /**
+     * เพดานถอนต่อวันของสินทรัพย์หนึ่ง (หน่วยของสินทรัพย์นั้น) — 0 = ไม่จำกัด.
+     *
+     * แต่ละสินทรัพย์ตั้งของตัวเองได้ (`assets.<SYMBOL>.daily_cap`) — ตัวเลขเดียวใช้ทุกเหรียญไม่มีความหมาย
+     * 5000 USDT กับ 5000 BNB ต่างกันหลายร้อยเท่า ไม่ตั้ง = ใช้ค่ากลาง withdraw_daily_cap (เพดานเดิมของ stablecoin)
+     */
+    public function dailyCap(string $symbol): float
+    {
+        $spec = $this->assets()[strtoupper($symbol)] ?? [];
+
+        return (float) ($spec['daily_cap'] ?? config('aibot.bot_wallet.withdraw_daily_cap', 5000));
     }
 
     public function cancelWithdraw(string $owner, int $id): AiBotWalletTransfer
@@ -194,9 +232,19 @@ class BotWalletService
             throw new RuntimeException(self::ERR_NOT_CANCELLABLE);
         }
 
-        $transfer->update(['status' => AiBotWalletTransfer::STATUS_CANCELLED]);
+        /*
+         * compare-and-set — ตัวส่งอาจเพิ่งหยิบรายการนี้ไปเซ็นระหว่างที่เราอ่าน
+         * เขียนทับเป็น cancelled ตรง ๆ = หน้าเว็บบอกยกเลิกแล้วทั้งที่ธุรกรรมกำลังจะออก
+         */
+        $cancelled = AiBotWalletTransfer::whereKey($transfer->id)
+            ->where('status', AiBotWalletTransfer::STATUS_QUEUED)
+            ->update(['status' => AiBotWalletTransfer::STATUS_CANCELLED]);
 
-        return $transfer;
+        if ($cancelled !== 1) {
+            throw new RuntimeException(self::ERR_NOT_CANCELLABLE);
+        }
+
+        return $transfer->refresh();
     }
 
     public function nativeSymbol(): string
@@ -222,6 +270,7 @@ class BotWalletService
                 'address' => $spec['address'] ?? null,
                 'decimals' => (int) ($spec['decimals'] ?? 18),
                 'min_withdraw' => (float) ($spec['min_withdraw'] ?? 0),
+                'daily_cap' => $this->dailyCap($symbol),
                 'balance' => $wallet->balanceOf($symbol),
             ];
         }
@@ -237,6 +286,7 @@ class BotWalletService
             'assets' => $assets,
             'native_symbol' => $this->nativeSymbol(),
             'gas_reserve' => (float) config('aibot.bot_wallet.gas_reserve_bnb', 0.002),
+            // ค่ากลางเดิม (แอปรุ่นเก่าอ่านช่องนี้) — เพดานจริงของแต่ละเหรียญอยู่ที่ assets[].daily_cap
             'withdraw_daily_cap' => (float) config('aibot.bot_wallet.withdraw_daily_cap', 5000),
             'has_pending_withdraw' => $wallet->transfers()->withdrawals()->inFlight()->exists(),
             'created_at' => $wallet->created_at?->toIso8601String(),
@@ -257,7 +307,9 @@ class BotWalletService
             'tx_hash' => $t->tx_hash,
             'tx_url' => $t->tx_hash && $explorer !== '' ? "{$explorer}/tx/{$t->tx_hash}" : null,
             'confirmations' => $t->confirmations,
-            'failure_reason' => $t->failure_reason,
+            // รหัสให้หน้าเว็บ/แอปแปลเอง + ข้อความไทยสำรอง — ไม่มีข้อความดิบจาก RPC/ระบบเข้ารหัส
+            'failure_code' => $t->failure_code,
+            'failure_reason' => $t->failureMessage(),
             'cancellable' => $t->isCancellable(),
             'created_at' => $t->created_at?->toIso8601String(),
             'confirmed_at' => $t->confirmed_at?->toIso8601String(),

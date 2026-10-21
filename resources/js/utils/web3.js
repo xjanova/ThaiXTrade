@@ -4,7 +4,7 @@
  * Developed by Xman Studio
  */
 
-import { Contract, formatUnits, parseUnits, MaxUint256, JsonRpcProvider } from 'ethers';
+import { Contract, formatUnits, parseUnits, MaxUint256, JsonRpcProvider, FetchRequest } from 'ethers';
 import axios from 'axios';
 import { TPIX_COIN_PNG } from '@/utils/brand';
 
@@ -511,13 +511,65 @@ export async function approveToken(tokenAddress, spenderAddress, signer) {
  * and token contracts don't exist). Using a dedicated BSC RPC means quotes and
  * balances are always real — never a fabricated/zero fallback.
  */
-let _bscReadProvider = null;
-export function getBscReadProvider() {
-    if (!_bscReadProvider) {
-        // staticNetwork avoids per-call eth_chainId round-trips for a fixed chain.
-        _bscReadProvider = new JsonRpcProvider(BSC_CHAIN_CONFIG.rpcUrls[0], 56, { staticNetwork: true });
+/*
+ * ⚠️ ต้องมี timeout สั้นของตัวเอง — ค่าปริยายของ ethers คือ 5 นาที
+ *    RPC ค้างเมื่อไหร่ ฟอร์มเทรดค้างที่ "กำลังเตรียม" 5 นาทีโดยไม่มีอะไรบอกผู้ใช้
+ */
+const BSC_READ_TIMEOUT_MS = 10000;
+let _bscReadProviders = null;
+
+function makeBscReadProvider(url) {
+    const request = new FetchRequest(url);
+    request.timeout = BSC_READ_TIMEOUT_MS;
+    // staticNetwork avoids per-call eth_chainId round-trips for a fixed chain.
+    return new JsonRpcProvider(request, 56, { staticNetwork: true });
+}
+
+/** โหนด BSC ทุกตัวที่ใช้อ่านได้ ตามลำดับ (ตัวแรก = ตัวหลัก ที่เหลือ = สำรอง) */
+export function getBscReadProviders() {
+    if (!_bscReadProviders) {
+        _bscReadProviders = BSC_CHAIN_CONFIG.rpcUrls.map(makeBscReadProvider);
     }
-    return _bscReadProvider;
+    return _bscReadProviders;
+}
+
+export function getBscReadProvider() {
+    return getBscReadProviders()[0];
+}
+
+/**
+ * error นี้แปลว่า "ติดต่อโหนดไม่ได้" (ควรลองโหนดสำรอง) ไหม
+ *
+ * revert / ข้อมูลผิดรูป = โหนดตอบแล้ว ผลคือของจริง — ลองโหนดอื่นก็ได้คำตอบเดิม
+ * และห้ามรายงานว่า "เชื่อมต่อไม่ได้" (เช่น คู่ไม่มีพูลจริง ต้องบอกว่าไม่มีสภาพคล่อง)
+ */
+export function isRpcUnreachable(err) {
+    const code = err?.code;
+    if (code === 'CALL_EXCEPTION' || code === 'BAD_DATA' || code === 'INVALID_ARGUMENT') return false;
+    return !code || ['NETWORK_ERROR', 'TIMEOUT', 'SERVER_ERROR', 'UNKNOWN_ERROR'].includes(code);
+}
+
+/**
+ * อ่านจาก BSC โดยสลับไปโหนดสำรองเมื่อโหนดหลักติดต่อไม่ได้
+ *
+ * เดิมมี RPC สำรองอยู่ใน config แต่ไม่เคยถูกใช้ — โหนดหลักล่มทีไร
+ * ทุกคู่ขึ้นว่า "ไม่มีสภาพคล่อง" ทั้งที่ PancakeSwap ปกติดี
+ *
+ * @template T
+ * @param {(provider: JsonRpcProvider) => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+export async function withBscReadFallback(fn) {
+    let lastErr = null;
+    for (const provider of getBscReadProviders()) {
+        try {
+            return await fn(provider);
+        } catch (err) {
+            lastErr = err;
+            if (!isRpcUnreachable(err)) throw err;
+        }
+    }
+    throw lastErr;
 }
 
 /**

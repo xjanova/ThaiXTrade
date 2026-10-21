@@ -40,6 +40,8 @@ class OrderTicketService
 
     public const ERR_FEE_TX_REQUIRED = 'FEE_TX_REQUIRED';
 
+    public const ERR_ONCHAIN_NOT_SUPPORTED = 'ONCHAIN_FEE_NOT_SUPPORTED';
+
     public function __construct(
         private readonly TradingCreditService $credits,
         private readonly TradingFeeQuoteService $quotes,
@@ -109,10 +111,22 @@ class OrderTicketService
     }
 
     /**
-     * ออกตั๋วโดยผู้ใช้จ่ายค่าบริการเป็นเหรียญบนเชนมาแล้ว.
+     * ออกตั๋วโดยผู้ใช้จ่ายค่าบริการเป็นเหรียญบนเชนมาแล้ว — ปิดไว้ ไม่ออกตั๋วให้.
      *
-     * ต้องมี tx hash ของการจ่ายจริง — ตั๋วที่ไม่มีหลักฐานการจ่ายคือตั๋วฟรี
-     * (unique index บน fee_tx_hash กันเอาธุรกรรมเดิมมาขอตั๋วซ้ำ)
+     * ═══════════════════════════════════════════════════════════════════════
+     * ⚠️ เดิมรับ fee_tx_hash กับ fee_amount ตามที่ client ส่งมาโดยไม่เคยดูบนเชน
+     * ═══════════════════════════════════════════════════════════════════════
+     * ใครก็สุ่ม hash 64 ตัวมาขอตั๋วฟรีได้ไม่จำกัด แล้วกด /refund ต่อ ระบบบันทึก
+     * "รอโอนคืน" ตามยอดที่เขาพิมพ์มาเอง (1,000,000 ก็ได้) — แอดมินที่เชื่อรายการนี้
+     * แล้วโอนคืนตามคือเสียเงินจริง
+     *
+     * ทางจ่ายบนเชนจริงไม่ต้องใช้ตั๋วอยู่แล้ว: หน้าเว็บหักค่าบริการ % จากเหรียญขาเข้า
+     * แล้วโอนเข้ากระเป๋าเก็บค่าธรรมเนียมในขั้นสวอปเอง (useSwap) และ /swap/execute
+     * ตรวจยอดนั้นซ้ำ ส่วนเชน 4289 ค่าธรรมเนียมอยู่ในพูล — ตั๋วจึงเหลือแค่ทางเครดิต TPIX
+     *
+     * ตั๋ว onchain ที่ออกไปก่อนหน้านี้ยังคืนเงินผ่าน refund() ได้ตามเดิม
+     *
+     * @throws RuntimeException ERR_ONCHAIN_NOT_SUPPORTED เสมอ
      */
     public function issueWithOnchainFee(
         string $wallet,
@@ -123,27 +137,13 @@ class OrderTicketService
         string $feeCurrency,
         string $feeTxHash,
     ): TradingOrderTicket {
-        if (! preg_match('/^0x[a-fA-F0-9]{64}$/', $feeTxHash)) {
-            throw new RuntimeException(self::ERR_FEE_TX_REQUIRED);
-        }
-
-        $existing = TradingOrderTicket::where('fee_tx_hash', strtolower($feeTxHash))->first();
-        if ($existing) {
-            return $existing;   // เรียกซ้ำจาก retry — คืนใบเดิม ไม่ออกใบใหม่
-        }
-
-        return TradingOrderTicket::create([
-            'wallet_address' => $this->credits->normalize($wallet),
+        Log::notice('ปฏิเสธคำขอตั๋วแบบจ่ายบนเชน (ไม่มีการยืนยันบนเชน)', [
+            'wallet' => $this->credits->normalize($wallet),
             'pair' => strtoupper($pair),
-            'side' => $side,
-            'order_value_usd' => $orderValueUsd,
-            'fee_method' => TradingOrderTicket::METHOD_ONCHAIN,
-            'fee_amount' => $feeAmount,
-            'fee_currency' => strtoupper($feeCurrency),
             'fee_tx_hash' => strtolower($feeTxHash),
-            'status' => TradingOrderTicket::STATUS_ISSUED,
-            'expires_at' => now()->addMinutes($this->ttlMinutes()),
         ]);
+
+        throw new RuntimeException(self::ERR_ONCHAIN_NOT_SUPPORTED);
     }
 
     /** ใช้ตั๋วแล้ว — ไม้ลงจริงบนเชน */

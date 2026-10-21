@@ -84,3 +84,7 @@ Thumbs.db
 storage/app/aibot/
 /public_html/build.next
 /public_html/build.prev
+
+# ของเหลือจากเครื่อง dev — โปรแกรม Master Node ย้ายไป repo TPIX-Coin แล้ว · ไฟล์ที่ dex:sync เขียนเองตอนรัน
+/masternode-ui/
+/storage/app/tpix/

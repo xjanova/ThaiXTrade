@@ -54,6 +54,12 @@ const props = defineProps({
      * (หลังเงินออกไปแล้ว) ไม้จริงจะหายจากประวัติ ผู้ใช้ต้องถูกพาไปยืนยันตัวตนก่อนวางไม้
      */
     kycBlocked: { type: Boolean, default: false },
+    /**
+     * เหตุที่คู่นี้ยังวางไม้ไม่ได้ (ว่าง = วางได้) — parent ตัดสินจากข้อมูลคู่ของเซิร์ฟเวอร์
+     * เช่น กำลังตรวจคู่ · คู่ถูกปิด · กระเป๋าฝังที่สลับไป BSC ไม่ได้
+     * ปุ่มถูกปิดพร้อมบอกเหตุผล ไม่ปล่อยให้กดแล้วไปล้มกลางทาง
+     */
+    unavailableReason: { type: String, default: '' },
 });
 
 const emit = defineEmits(['submit-order', 'connect-wallet', 'form-change', 'need-kyc']);
@@ -123,15 +129,24 @@ watch(() => props.mode, (m) => {
 
 // แจ้ง parent เมื่อค่าในฟอร์มเปลี่ยน — ใช้ขอ quote จริงจาก router (parent debounce เอง)
 // ส่ง slippage ด้วย: "ได้รับอย่างน้อย" ต้องคิดจากค่าที่เลือก ไม่ใช่ค่าปริยายของ backend
-watch([activeTab, orderType, amount, total, slippage], () => {
+// ส่งทางจ่ายค่าบริการด้วย: จ่ายด้วยเครดิต TPIX = ไม่หัก % จากเหรียญ ตัวเลขบนจอต้องตรงกับตอนส่งจริง
+function emitFormChange() {
     emit('form-change', {
         side: activeTab.value,
         type: orderType.value,
         amount: amount.value,
         total: total.value,
         slippage: slippage.value,
+        feeMethod: feeMethod.value,
     });
-});
+}
+watch([activeTab, orderType, amount, total, slippage], emitFormChange);
+
+/*
+ * ช่องไหนที่ผู้ใช้กรอกเองล่าสุด — อีกช่องคิดตามราคา
+ * โหมด market: ราคาตลาดขยับ ต้องคิด "ช่องที่ตามราคา" ใหม่ ไม่ใช่ช่องที่ผู้ใช้กรอกเอง
+ */
+const lastEdited = ref('amount');
 
 const sliderPercentages = [0, 25, 50, 75, 100];
 
@@ -180,17 +195,51 @@ const spendableBalance = computed(() => {
     return Math.max(0, (parseFloat(availableBalance.value) || 0) - reserve);
 });
 
-/** ราคาที่ใช้คำนวณ — โหมด market ใช้ราคาตลาดถ้าผู้ใช้ยังไม่ได้เลือกราคาเอง */
-const effectivePrice = computed(() => toNumber(price.value) || props.tickerPrice || 0);
+/** market order ที่ลงเชนจริง (PancakeSwap / TPIX DEX) — ราคาที่ใช้คิดคือราคาตลาดสด */
+const isMarketOnchain = computed(() => props.mode === 'onchain' && orderType.value === 'market');
+
+/**
+ * ราคาที่ใช้คำนวณ
+ *
+ * ⚠️ market order บนเชนใช้ราคาตลาด "สด" เสมอ
+ *    เดิมใช้ช่องราคาซึ่งถูกตั้งครั้งเดียวตอนเปิดหน้า (ช่องถูกปิดในโหมด market แก้ไม่ได้)
+ *    เปิดหน้าทิ้งไว้ตอน BTC 60k แล้ววันนี้ 63k: พิมพ์ซื้อ 0.1 → Total 6,000 → ได้จริง 0.095
+ *    เพราะฝั่งซื้อจ่ายตามช่อง Total
+ */
+const effectivePrice = computed(() => {
+    if (isMarketOnchain.value && props.tickerPrice > 0) return props.tickerPrice;
+    return toNumber(price.value) || props.tickerPrice || 0;
+});
+
+/** ยอดของเหรียญฝั่งที่ต้องจ่าย — null = ยังไม่รู้ยอด (ยังโหลดไม่เสร็จ) ไม่ใช่ยอดศูนย์ */
+const payBalance = computed(() => {
+    const tokenSymbol = (activeTab.value === 'buy' ? quoteSymbol.value : baseSymbol.value).toUpperCase();
+    const found = (props.balances || []).find(b => b.symbol?.toUpperCase() === tokenSymbol);
+    return found ? truncDecimals(found.balance, 6) : null;
+});
+
+const spendingAmount = computed(() => (activeTab.value === 'buy' ? toNumber(total.value) : toNumber(amount.value)));
 
 /** เตือนเมื่อยอดที่จะใช้เกินยอดคงเหลือ (เช็คฝั่งที่ต้องจ่ายจริง) */
 const exceedsBalance = computed(() => {
-    if (!isConnected.value) return false;
-    const balance = parseFloat(availableBalance.value) || 0;
-    if (balance <= 0) return false;
-    const spending = activeTab.value === 'buy' ? toNumber(total.value) : toNumber(amount.value);
-    return spending > balance;
+    if (!isConnected.value || payBalance.value === null) return false;
+    return spendingAmount.value > payBalance.value;
 });
+
+/** ไม่เกินยอด แต่กินค่าแก๊สที่ต้องกันไว้ (ขาย BNB เกือบหมด) — สวอปผ่านได้แต่ค่าธรรมเนียมจะล้ม */
+const gasReserveHit = computed(() => {
+    if (!isConnected.value || payBalance.value === null || exceedsBalance.value || props.mode !== 'onchain') return false;
+    const tokenSymbol = (activeTab.value === 'buy' ? quoteSymbol.value : baseSymbol.value).toUpperCase();
+    const reserve = GAS_RESERVE[tokenSymbol] || 0;
+    return reserve > 0 && spendingAmount.value > Math.max(0, payBalance.value - reserve) + 1e-12;
+});
+
+/*
+ * ยอดไม่พอ = ปิดปุ่ม (โหมดที่ลงเชนจริง)
+ * เดิมแค่ขึ้นตัวหนังสือเตือน แต่ยังกดได้ — พิมพ์เกินยอดนิดเดียว สวอปยังผ่าน (ใช้ 99.7%)
+ * แต่ธุรกรรมค่าธรรมเนียม revert เงียบๆ
+ */
+const balanceBlocked = computed(() => props.mode === 'onchain' && (exceedsBalance.value || gasReserveHit.value));
 
 // ── เติมราคาจากการคลิกในสมุดคำสั่ง / เทรดล่าสุด ──────────────────────────────
 /**
@@ -214,6 +263,7 @@ watch(() => props.selectedPrice, (val) => {
     const pickedAmount = Number(picked.amount);
     if (Number.isFinite(pickedAmount) && pickedAmount > 0) {
         amount.value = pickedAmount.toFixed(6);
+        lastEdited.value = 'amount';
     }
 
     calculateTotal();
@@ -254,19 +304,38 @@ const feeBase = computed(() => {
     return totalNum > 0 ? totalNum : toNumber(amount.value) * effectivePrice.value;
 });
 
-const feeAmount = computed(() => (feeKnown.value ? feeBase.value * (feeRate.value / 100) : 0));
+/*
+ * ค่าธรรมเนียม % ถูกยกเว้นไหม — ระบบเครดิต TPIX เปิดอยู่ และไม้นี้จ่ายผ่านใบอนุญาต
+ * (เลือกเครดิต หรือได้รับยกเว้นค่าบริการ) · ต้องตรงกับที่ Trade.vue ส่งเข้า useSwap
+ */
+const platformFeeWaived = computed(() => {
+    const q = tradingFee.currentQuote.value;
+    if (q?.enabled !== true) return false;
+    return q.waived === true || feeMethod.value !== 'onchain';
+});
+
+const feeAmount = computed(() => {
+    if (!feeKnown.value || platformFeeWaived.value) return 0;
+    return feeBase.value * (feeRate.value / 100);
+});
 
 /**
  * ยอดที่ต้องจ่ายจริง / ที่จะได้รับจริง — ตัวเลขที่ผู้ใช้ต้องใช้ตัดสินใจ
  *
  * ซื้อ: จ่ายมูลค่ารวม + ค่าธรรมเนียม · ขาย: ได้มูลค่ารวม − ค่าธรรมเนียม
  * โชว์แค่ค่าธรรมเนียมเฉยๆ ยังต้องให้ผู้ใช้บวกลบเองในหัวทุกครั้ง
+ *
+ * ⚠️ โหมด onchain ค่าธรรมเนียมหักจากเหรียญขาเข้า — ซื้อจ่ายเท่าช่อง Total พอดี
+ *    (ค่าธรรมเนียมอยู่ในนั้นแล้ว) เดิมบอกว่า "Total + ค่าธรรมเนียม" ซึ่งไม่ใช่ที่เกิดจริง
  */
 const netTotal = computed(() => {
     const gross = toNumber(total.value);
     if (gross <= 0) return 0;
 
-    return activeTab.value === 'buy' ? gross + feeAmount.value : gross - feeAmount.value;
+    if (activeTab.value === 'buy') {
+        return props.mode === 'onchain' ? gross : gross + feeAmount.value;
+    }
+    return gross - feeAmount.value;
 });
 
 /**
@@ -316,11 +385,31 @@ onUnmounted(() => {
     clearTimeout(flashTimer);
 });
 
+/*
+ * market order บนเชน: ราคาตลาดขยับเกินเกณฑ์นี้ → อัปเดตช่องราคาอ้างอิง + ช่องที่คิดตามราคา
+ * ไม่คิดใหม่ทุก tick — ทุกการเปลี่ยนตัวเลขทำให้หน้าเทรดขอราคาจาก router ใหม่ (/swap/quote มีโควตา)
+ */
+const MARKET_RESYNC_DRIFT = 0.002;
+
+/** คิดช่องที่ "ตามราคา" ใหม่ (ช่องที่ผู้ใช้กรอกเองไม่แตะ) */
+function recalcFromLastEdited() {
+    if (lastEdited.value === 'total' && toNumber(total.value) > 0) calculateAmountFromTotal();
+    else if (toNumber(amount.value) > 0) calculateTotal();
+}
+
 // Update price field when ticker changes (only if user hasn't typed yet)
 watch(() => props.tickerPrice, (newPrice) => {
-    if (newPrice > 0 && !price.value) {
+    if (!(newPrice > 0)) return;
+    if (!price.value) {
         price.value = formatPriceInput(newPrice);
+        return;
     }
+    if (!isMarketOnchain.value) return;
+
+    const shown = toNumber(price.value);
+    if (shown > 0 && Math.abs(newPrice - shown) / shown < MARKET_RESYNC_DRIFT) return;
+    price.value = formatPriceInput(newPrice);
+    recalcFromLastEdited();
 }, { immediate: true });
 
 // เปลี่ยนคู่เทรด → ราคา/จำนวนของคู่เดิมใช้ไม่ได้แล้ว ล้างทิ้งแล้วรับราคาใหม่จาก ticker
@@ -339,6 +428,18 @@ const calculateTotal = () => {
     total.value = amountNum > 0
         ? (priceNum * amountNum).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         : '';
+};
+
+/** ผู้ใช้พิมพ์ช่อง Amount เอง */
+const onAmountInput = () => {
+    lastEdited.value = 'amount';
+    calculateTotal();
+};
+
+/** ผู้ใช้พิมพ์ช่อง Total เอง */
+const onTotalInput = () => {
+    lastEdited.value = 'total';
+    calculateAmountFromTotal();
 };
 
 /** พิมพ์ Total เอง → ถอยกลับไปหาจำนวนเหรียญ (ซื้อด้วยงบที่ตั้งไว้) */
@@ -375,10 +476,12 @@ const setSliderValue = (percent) => {
         if (spend <= 0) return;
         total.value = spend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         amount.value = truncDecimals(spend / priceNum, 6).toFixed(6);
+        lastEdited.value = 'total';
         return;
     }
 
     amount.value = truncDecimals(balance * (percent / 100), 6).toFixed(6);
+    lastEdited.value = 'amount';
     calculateTotal();
 };
 
@@ -437,15 +540,25 @@ const feeBlocked = computed(() => {
 const feeBlockedReason = computed(() => {
     if (!feeBlocked.value) return '';
     const q = tradingFee.currentQuote.value?.tpix;
-    if (q?.available !== true) return q?.reason || 'ยังใช้ค่าบริการแบบ TPIX ไม่ได้';
+    if (q?.available !== true) return q?.reason || t('trade.form.creditUnavailable');
 
-    return `เครดิตไม่พอ — ขาดอีก ${tradingFee.creditShortfall.value} TPIX`;
+    return t('trade.form.creditShort', { amount: tradingFee.creditShortfall.value });
 });
 
 /** ระบบแนะนำทางไหน ก็ตั้งให้ตรงนั้นเป็นค่าเริ่มต้น (ผู้ใช้เปลี่ยนเองได้) */
 watch(() => tradingFee.recommended.value, (rec) => {
     if (rec) feeMethod.value = rec;
 });
+
+// เปลี่ยนทางจ่ายค่าบริการ → ตัวเลข preview (หัก % หรือไม่) ต้องคิดใหม่
+watch(feeMethod, emitFormChange);
+
+/**
+ * ปุ่มวางไม้ถูกปิด (เชื่อมกระเป๋าแล้ว) — คู่ยังเทรดไม่ได้ หรือยอดไม่พอ
+ * ด่าน KYC ยังกดได้ (ปุ่มพาไปยืนยันตัวตน) จึงไม่ปิดปุ่มเพราะยอดไม่พอระหว่างนั้น
+ */
+const submitBlocked = computed(() => isConnected.value
+    && (!!props.unavailableReason || (balanceBlocked.value && !props.kycBlocked)));
 
 const submitOrder = () => {
     if (props.isSubmitting) return;
@@ -455,11 +568,16 @@ const submitOrder = () => {
         return;
     }
 
+    // ปุ่มถูกปิดอยู่แล้ว — กันอีกชั้น (เช่น กด Enter ในช่องกรอก)
+    if (props.unavailableReason) return;
+
     // ยังไม่ผ่านด่านยืนยันตัวตนของการเทรด — พาไปยืนยันก่อน ไม่ปล่อยให้เงินออกแล้วบันทึกไม่ได้
     if (props.kycBlocked) {
         emit('need-kyc');
         return;
     }
+
+    if (balanceBlocked.value) return;
 
     // เครดิตไม่พอสำหรับทางที่เลือก — พาไปเติมแทนที่จะปล่อยให้กดแล้วพัง
     if (feeBlocked.value) {
@@ -468,6 +586,14 @@ const submitOrder = () => {
     }
 
     playClickSound();
+
+    /*
+     * market order บนเชน: คิดช่องที่ตามราคาใหม่จากราคาตลาด "ตอนกด" — ช่องที่ผู้ใช้กรอกเองคือความตั้งใจ
+     * ซื้อโดยกรอกจำนวนเหรียญ → Total (เงินที่จ่ายจริง) ต้องมาจากราคาตอนนี้ ไม่ใช่ราคาตอนพิมพ์
+     */
+    if (isMarketOnchain.value && props.tickerPrice > 0) {
+        recalcFromLastEdited();
+    }
 
     emit('submit-order', {
         side: activeTab.value,
@@ -492,11 +618,22 @@ const submitOrder = () => {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
             </div>
-            <p class="text-white font-semibold text-sm mb-1">{{ t('trade.form.comingSoon', { pair: symbol }) }}</p>
-            <p class="text-dark-400 text-xs leading-relaxed">{{ t('trade.form.comingSoonBody') }}</p>
-            <span class="inline-block mt-3 text-[10px] px-2 py-1 rounded bg-amber-500/15 text-amber-400 font-medium">
-                {{ t('trade.form.tpixChainSoon') }}
-            </span>
+            <!--
+                คู่ TPIX ที่ DEX ยังไม่พร้อม = "เร็วๆ นี้" (เปิดเองเมื่อสัญญาพร้อม)
+                คู่อื่นที่ส่งคำสั่งไม่ได้ (คู่ดัชนี/ไม่มีบน BSC) = ราคาอ้างอิงถาวร — เดิมบอกว่า "เปิดพร้อม TPIX Chain"
+                ทั้งที่เชนเปิดแล้วและคู่เหล่านี้จะไม่มีวันเทรดได้ ผู้ใช้รอไปเรื่อย ๆ
+            -->
+            <template v-if="String(symbol).toUpperCase().startsWith('TPIX')">
+                <p class="text-white font-semibold text-sm mb-1">{{ t('trade.form.comingSoon', { pair: symbol }) }}</p>
+                <p class="text-dark-400 text-xs leading-relaxed">{{ t('trade.form.comingSoonBody') }}</p>
+                <span class="inline-block mt-3 text-[10px] px-2 py-1 rounded bg-amber-500/15 text-amber-400 font-medium">
+                    {{ t('trade.form.tpixChainSoon') }}
+                </span>
+            </template>
+            <template v-else>
+                <p class="text-white font-semibold text-sm mb-1" data-test="index-only-title">{{ t('trade.form.indexOnlyTitle', { pair: symbol }) }}</p>
+                <p class="text-dark-400 text-xs leading-relaxed">{{ t('trade.form.indexOnlyBody') }}</p>
+            </template>
         </div>
 
         <template v-else>
@@ -595,7 +732,7 @@ const submitOrder = () => {
                             inputmode="decimal"
                             class="trading-input pr-14 font-mono text-sm"
                             placeholder="0.00"
-                            @input="calculateTotal"
+                            @input="onAmountInput"
                         >
                         <span class="input-suffix text-xs base-tint">{{ baseSymbol }}</span>
                     </div>
@@ -611,7 +748,7 @@ const submitOrder = () => {
                             inputmode="decimal"
                             class="trading-input pr-14 font-mono text-sm"
                             placeholder="0.00"
-                            @input="calculateAmountFromTotal"
+                            @input="onTotalInput"
                         >
                         <span class="input-suffix text-xs quote-tint">{{ quoteSymbol }}</span>
                     </div>
@@ -620,6 +757,9 @@ const submitOrder = () => {
 
             <p v-if="exceedsBalance" class="-mt-1 mb-2 text-[11px] text-trading-red">
                 {{ t('trade.form.exceeds', { balance: availableBalance, symbol: activeTab === 'buy' ? quoteSymbol : baseSymbol }) }}
+            </p>
+            <p v-else-if="gasReserveHit" class="-mt-1 mb-2 text-[11px] text-trading-red">
+                {{ t('trade.form.gasReserve', { amount: GAS_RESERVE[(activeTab === 'buy' ? quoteSymbol : baseSymbol).toUpperCase()], symbol: activeTab === 'buy' ? quoteSymbol : baseSymbol }) }}
             </p>
 
             <!-- เปอร์เซ็นต์ของยอดคงเหลือ -->
@@ -707,6 +847,8 @@ const submitOrder = () => {
                         </span>
                         <!-- ยังไม่รู้อัตราจริง = ขีดกลาง ไม่ใช่ 0 ที่อ่านว่า "ไม่เสียค่าธรรมเนียม" -->
                         <span v-if="!feeKnown" class="font-mono text-dark-500">—</span>
+                        <!-- จ่ายด้วยเครดิต TPIX แล้ว — ไม่หัก % จากเหรียญ บอกเหตุผลแทนเลข 0 เฉยๆ -->
+                        <span v-else-if="platformFeeWaived" class="font-mono text-dark-200">{{ t('trade.form.feePaidWithCredit') }}</span>
                         <span v-else class="font-mono text-dark-200">
                             {{ feeAmountText }} <span class="quote-tint">{{ quoteSymbol }}</span>
                         </span>
@@ -740,13 +882,14 @@ const submitOrder = () => {
 
             <button
                 type="button"
-                :disabled="isSubmitting"
+                :disabled="isSubmitting || submitBlocked"
+                data-test="submit-order"
                 :class="[
                     'w-full py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2',
-                    isSubmitting ? 'opacity-60 cursor-not-allowed' : '',
+                    (isSubmitting || submitBlocked) ? 'opacity-60 cursor-not-allowed' : '',
                     !isConnected
                         ? 'bg-primary-500 hover:bg-primary-600 text-white'
-                        : (kycBlocked || feeBlocked)
+                        : (kycBlocked || feeBlocked || submitBlocked)
                             ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
                             : activeTab === 'buy'
                                 ? 'btn-success'
@@ -758,15 +901,20 @@ const submitOrder = () => {
                 {{
                     isSubmitting ? t('trade.form.processing')
                     : !isConnected ? t('trade.form.connectWallet')
+                    : unavailableReason ? t('trade.form.unavailable')
                     : kycBlocked ? t('trade.form.verifyIdentity')
-                    : feeBlocked ? 'เติมเครดิต TPIX เพื่อวางไม้'
+                    : balanceBlocked ? t('swapPage.insufficientBalance', { symbol: activeTab === 'buy' ? quoteSymbol : baseSymbol })
+                    : feeBlocked ? t('trade.form.topupToTrade')
                     : activeTab === 'buy' ? t('trade.form.buySymbol', { symbol: baseSymbol })
                     : t('trade.form.sellSymbol', { symbol: baseSymbol })
                 }}
             </button>
 
             <!-- ปุ่มไม่ได้ตายเฉยๆ — บอกว่าขาดอะไรและกดแล้วไปไหนต่อ -->
-            <p v-if="isConnected && kycBlocked" class="mt-1.5 text-[11px] text-amber-300/90 text-center leading-relaxed">
+            <p v-if="isConnected && unavailableReason" data-test="unavailable-reason" class="mt-1.5 text-[11px] text-amber-300/90 text-center leading-relaxed">
+                {{ unavailableReason }}
+            </p>
+            <p v-else-if="isConnected && kycBlocked" class="mt-1.5 text-[11px] text-amber-300/90 text-center leading-relaxed">
                 {{ t('trade.form.kycHint') }}
             </p>
             <p v-else-if="feeBlocked" class="mt-1.5 text-[11px] text-amber-300/90 text-center leading-relaxed">

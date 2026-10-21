@@ -325,7 +325,14 @@ export function buildSale({ onCoinLand } = {}) {
 // ── ระบบนิเวศ: การ์ดลอยเป็นโค้ง — ภาพ + ชื่อ + คำอธิบาย + ปุ่มในตัวการ์ด ──
 
 const CARD_W = 512;
-const CARD_H = 704;
+const CARD_H = 768; // 2:3 เท่ากรอบการ์ด (ภาพ ChatGPT) — วาดกรอบทับได้โดยไม่ยืด
+// กรอบการ์ดแบบเกม (โลหะ + เส้นเรืองแสง + อัญมณีที่มุม) — โหลดครั้งเดียวใช้ทุกใบ
+const CARD_FRAME_URL = '/images/home3d/card-frame.webp?v=1';
+// เนื้อการ์ดเว้นจากขอบภาพเท่าความหนากรอบ · ข้อความเว้นมากกว่า เพราะลวดลายกลางขอบซ้าย/ขวาหนาราว 56 px
+const INSET = 30;
+const TEXT_X = 68;
+let framePromise = null;
+const loadCardFrame = () => (framePromise ??= loadImage(CARD_FRAME_URL));
 
 /** ตัดบรรทัดภาษาไทยตามคำ (Intl.Segmenter) ไม่ให้ขาดกลางคำ */
 function wrapLines(ctx, text, maxWidth, maxLines) {
@@ -360,49 +367,66 @@ function roundRectPath(ctx, x, y, w, h, r) {
     ctx.closePath();
 }
 
-function paintCard(ctx, card, img) {
+function paintCard(ctx, card, img, frame) {
     const W = CARD_W;
     const H = CARD_H;
     const font = 'ui-sans-serif, system-ui, "Noto Sans Thai", "Leelawadee UI", sans-serif';
+    const x0 = INSET;
+    const y0 = INSET;
+    const iw = W - INSET * 2;
     ctx.clearRect(0, 0, W, H);
     ctx.save();
-    roundRectPath(ctx, 6, 6, W - 12, H - 12, 34);
+    roundRectPath(ctx, x0 - 6, y0 - 6, iw + 12, H - (y0 - 6) * 2, 22);
     ctx.clip();
     const bg = ctx.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, '#0e1a36');
-    bg.addColorStop(1, '#070d1f');
+    bg.addColorStop(0, '#0d1834');
+    bg.addColorStop(1, '#050a1a');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
     // ภาพหัวการ์ด (ครอปแบบ cover)
-    const imgH = H * 0.54;
+    const imgTop = y0 - 6;
+    const imgH = H * 0.5;
     if (img) {
         const s = Math.max(W / img.width, imgH / img.height);
         const w = img.width * s;
         const h = img.height * s;
-        ctx.drawImage(img, (W - w) / 2, (imgH - h) / 2, w, h);
+        ctx.drawImage(img, (W - w) / 2, imgTop + (imgH - h) / 2, w, h);
     }
-    const fade = ctx.createLinearGradient(0, imgH * 0.45, 0, imgH + 4);
-    fade.addColorStop(0, 'rgba(7,13,31,0)');
-    fade.addColorStop(1, 'rgba(7,13,31,1)');
+    const fade = ctx.createLinearGradient(0, imgTop + imgH * 0.5, 0, imgTop + imgH + 4);
+    fade.addColorStop(0, 'rgba(5,10,26,0)');
+    fade.addColorStop(1, 'rgba(5,10,26,1)');
     ctx.fillStyle = fade;
-    ctx.fillRect(0, imgH * 0.45, W, imgH * 0.56);
-    // แถบสีประจำการ์ด
-    ctx.fillStyle = card.color;
-    ctx.fillRect(40, imgH + 18, 64, 6);
+    ctx.fillRect(0, imgTop + imgH * 0.5, W, imgH * 0.52);
+    // ประกายแสงสะท้อนเฉียงบนภาพ — ให้ดูเป็นการ์ดเคลือบเงา
+    const sheen = ctx.createLinearGradient(0, imgTop, W * 0.75, imgTop + imgH * 0.9);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.22)');
+    sheen.addColorStop(0.35, 'rgba(255,255,255,0.05)');
+    sheen.addColorStop(0.36, 'rgba(255,255,255,0)');
+    ctx.fillStyle = sheen;
+    ctx.fillRect(0, imgTop, W, imgH);
+    const ty = imgTop + imgH;
+    // เส้นแสงคั่นภาพกับเนื้อหา
+    const line = ctx.createLinearGradient(x0, 0, x0 + iw, 0);
+    line.addColorStop(0, 'rgba(34,211,238,0)');
+    line.addColorStop(0.5, card.color);
+    line.addColorStop(1, 'rgba(139,92,246,0)');
+    ctx.fillStyle = line;
+    ctx.fillRect(x0, ty + 2, iw, 3);
     // ชื่อ
     ctx.fillStyle = '#ffffff';
     ctx.font = `800 46px ${font}`;
     ctx.textBaseline = 'top';
-    wrapLines(ctx, card.title, W - 80, 1).forEach((l) => ctx.fillText(l, 40, imgH + 40));
+    const tw = W - TEXT_X * 2;
+    wrapLines(ctx, card.title, tw, 1).forEach((l) => ctx.fillText(l, TEXT_X, ty + 26));
     // คำอธิบาย
     ctx.fillStyle = '#b8c4d8';
     ctx.font = `500 27px ${font}`;
-    wrapLines(ctx, card.desc, W - 80, 2).forEach((l, i) => ctx.fillText(l, 40, imgH + 104 + i * 38));
+    wrapLines(ctx, card.desc, tw, 3).forEach((l, i) => ctx.fillText(l, TEXT_X, ty + 90 + i * 38));
     // ปุ่ม
     const bw = 230;
     const bh = 58;
-    const bx = 40;
-    const by = H - bh - 36;
+    const bx = TEXT_X;
+    const by = H - bh - INSET - 26;
     roundRectPath(ctx, bx, by, bw, bh, 29);
     const btn = ctx.createLinearGradient(bx, 0, bx + bw, 0);
     btn.addColorStop(0, card.color);
@@ -414,13 +438,17 @@ function paintCard(ctx, card, img) {
     ctx.textBaseline = 'middle';
     ctx.fillText(card.cta, bx + 26, by + bh / 2 + 1);
     ctx.restore();
-    // ขอบการ์ด
-    roundRectPath(ctx, 6, 6, W - 12, H - 12, 34);
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = card.color;
-    ctx.globalAlpha = 0.85;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+    // กรอบ — ยังโหลดไม่เสร็จ/ภาพหาย ใช้เส้นขอบสีประจำการ์ดแทน
+    if (frame) {
+        ctx.drawImage(frame, 0, 0, W, H);
+    } else {
+        roundRectPath(ctx, x0 - 6, y0 - 6, iw + 12, H - (y0 - 6) * 2, 22);
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = card.color;
+        ctx.globalAlpha = 0.85;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    }
 }
 
 /**
@@ -430,6 +458,7 @@ export function buildEcosystem(cards) {
     const group = new THREE.Group();
     const items = [];
     const geo = new THREE.PlaneGeometry(3.7, (3.7 * CARD_H) / CARD_W);
+    let frame = null;
     const glowTex = glowTexture();
     cards.forEach((card, i) => {
         const a = -0.66 + (i / Math.max(1, cards.length - 1)) * 1.32;
@@ -438,8 +467,8 @@ export function buildEcosystem(cards) {
         const t = canvasTexture(CARD_W, CARD_H);
         const mat = new THREE.MeshBasicMaterial({ map: t.tex, transparent: true, side: THREE.DoubleSide, toneMapped: false });
         const pivot = new THREE.Group();
-        pivot.position.set(x, 3.6, z);
-        pivot.lookAt(0, 3.6, 18);
+        pivot.position.set(x, 3.85, z);
+        pivot.lookAt(0, 3.85, 18);
         const mesh = new THREE.Mesh(geo, mat);
         pivot.add(mesh);
         const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: card.color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -451,14 +480,23 @@ export function buildEcosystem(cards) {
         const item = { card, pivot, mesh, glow, tex: t, img: null, hover: 0, tiltX: 0, tiltY: 0, tx: 0, ty: 0, i };
         items.push(item);
         tag(mesh, `eco:${card.key}`);
-        paintCard(t.ctx, card, null);
+        paintCard(t.ctx, card, null, frame);
         t.tex.needsUpdate = true;
         // ผ่าน loadImage → นับในหลอดดาวน์โหลดหน้าแรก · ภาพเสีย = การ์ดไม่มีรูป (ข้อความยังอยู่)
         loadImage(card.image).then((img) => {
             if (!img) return;
             item.img = img;
-            paintCard(t.ctx, item.card, img);
+            paintCard(t.ctx, item.card, img, frame);
             t.tex.needsUpdate = true;
+        });
+    });
+    // กรอบมาทีหลัง → วาดทุกใบใหม่พร้อมกรอบ
+    loadCardFrame().then((img) => {
+        if (!img) return;
+        frame = img;
+        items.forEach((it) => {
+            paintCard(it.tex.ctx, it.card, it.img, frame);
+            it.tex.tex.needsUpdate = true;
         });
     });
 
@@ -481,7 +519,7 @@ export function buildEcosystem(cards) {
                 const it = items.find((x) => x.card.key === c.key);
                 if (!it) return;
                 it.card = { ...it.card, ...c };
-                paintCard(it.tex.ctx, it.card, it.img);
+                paintCard(it.tex.ctx, it.card, it.img, frame);
                 it.tex.tex.needsUpdate = true;
             });
         },

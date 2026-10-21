@@ -43,15 +43,21 @@ const getQuote = vi.fn();
 const checkAllowance = vi.fn();
 const approveToken = vi.fn();
 const executeSwap = vi.fn();
+const ensureFeeCollector = vi.fn();
+// ยอดบน BSC ของทุกเหรียญในรายการ — หน้า Swap ปิดปุ่มเมื่อจำนวนเกินยอด (ทั้งสองเครือข่าย)
+const bscBalance = { value: '1000' };
+const swapStage = ref('idle');
 
 vi.mock('@/Composables/useSwap', () => ({
     useSwap: () => ({
         ...swapState,
+        stage: swapStage,
         getQuote: (...args) => getQuote(...args),
         checkAllowance: (...args) => checkAllowance(...args),
         approveToken: (...args) => approveToken(...args),
         executeSwap: (...args) => executeSwap(...args),
-        getBalance: () => Promise.resolve('0'),
+        ensureFeeCollector: (...args) => ensureFeeCollector(...args),
+        getBalance: () => Promise.resolve(bscBalance.value),
         reset: vi.fn(),
     }),
 }));
@@ -225,6 +231,9 @@ describe('Swap page', () => {
         checkAllowance.mockReset().mockResolvedValue(true);
         approveToken.mockReset().mockResolvedValue({ hash: '0xapprove' });
         executeSwap.mockReset().mockResolvedValue({ hash: '0xswap', status: 'confirmed' });
+        ensureFeeCollector.mockReset().mockResolvedValue(true);
+        bscBalance.value = '1000';
+        swapStage.value = 'idle';
 
         // TPIX DEX: ปริยาย = ยังไม่พร้อม (เทสต์ BSC เดิมต้องเห็นหน้าแบบเดิมทุกอย่าง)
         dexConfig.loaded = false;

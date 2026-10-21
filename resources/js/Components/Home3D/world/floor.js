@@ -1,16 +1,169 @@
 /**
- * TPIX TRADE — พื้นกระดานเทรด (กริดเรืองแสง) + เมืองแท่งกราฟสองข้างทาง
+ * TPIX TRADE — พื้นกระดานเทรด + เมืองแท่งกราฟสองข้างทาง
  *
- * พื้น: shader เส้นกริด 1 หน่วย/5 หน่วย จางตามระยะจากกล้อง + แสงสแกนวิ่งเหมือนจอรีเฟรช
+ * พื้น (เครื่องแรง): กระจกดำมันวาวสะท้อนฉาก (Reflector) — เงาเบลอนุ่มแบบพื้นขัดเงาในเกม ไม่ใช่กระจกใสแจ๋ว
+ *   จางลงตามระยะ + เส้นกริด 1/5 หน่วยและแสงสแกนเดิมวาดทับใน shader เดียวกัน (draw call เดียว)
+ *   ความละเอียดภาพสะท้อน = ครึ่งหนึ่งของจอ และลดตามขั้นคุณภาพของ engine อัตโนมัติ
+ * พื้น (มือถือ/เครื่องอ่อน): เส้นกริดโปร่งใสแบบเดิม — ภาพสะท้อนต้องวาดฉากซ้ำอีกรอบ หนักเกินไป
  * เมือง: แท่งกราฟเขียว/แดงหลายร้อยแท่ง (InstancedMesh ชุดเดียว = draw call เดียว)
  *
  * Developed by Xman Studio
  */
 
 import * as THREE from 'three';
+import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import { C, glowingStandard } from './common.js';
 
-export function buildFloor() {
+const FLOOR_W = 260;
+const FLOOR_D = 420;
+
+// ส่วน shader ที่ใช้ร่วม: เส้นกริด + แสงสแกน (เหมือนพื้นเดิมทุกอย่าง)
+const GRID_GLSL = /* glsl */ `
+    float grid(vec2 p, float w) {
+        vec2 g = abs(fract(p - 0.5) - 0.5) / fwidth(p);
+        return 1.0 - min(min(g.x, g.y) / w, 1.0);
+    }
+    float gridAlpha(vec3 world, float t, float dim, out float scan) {
+        vec2 p = world.xz;
+        float g1 = grid(p * 0.5, 1.0);
+        float g2 = grid(p * 0.1, 1.3);
+        float d = distance(world.xz, cameraPosition.xz);
+        float fade = smoothstep(70.0, 8.0, d);
+        scan = smoothstep(1.4, 0.0, abs(mod(p.y + t * 9.0, 60.0) - 30.0));
+        return (g1 * 0.35 + g2 * 0.8) * fade * (0.26 + scan * 0.5) * (1.0 - dim);
+    }
+`;
+
+const MIRROR_SHADER = {
+    name: 'TpixMirrorFloor',
+    uniforms: {
+        color: { value: null },
+        tDiffuse: { value: null },
+        textureMatrix: { value: null },
+        uTime: { value: 0 },
+        uDim: { value: 0 },
+        uGrid: { value: new THREE.Color('#22d3ee') },
+        uBase: { value: new THREE.Color('#03060f') },
+        // ปลายพื้นกลืนเข้าสีหมอกของฉาก (world/index.js · FOG_TINT)
+        uSky: { value: new THREE.Color('#0b1538') },
+        uTexel: { value: new THREE.Vector2(1 / 512, 1 / 512) },
+        uStrength: { value: 0.55 },
+    },
+    vertexShader: /* glsl */ `
+        uniform mat4 textureMatrix;
+        varying vec4 vUv;
+        varying vec3 vWorld;
+        void main() {
+            vUv = textureMatrix * vec4(position, 1.0);
+            vec4 w = modelMatrix * vec4(position, 1.0);
+            vWorld = w.xyz;
+            gl_Position = projectionMatrix * viewMatrix * w;
+        }
+    `,
+    fragmentShader: /* glsl */ `
+        uniform sampler2D tDiffuse;
+        uniform float uTime;
+        uniform float uDim;
+        uniform vec3 uGrid;
+        uniform vec3 uBase;
+        uniform vec3 uSky;
+        uniform vec2 uTexel;
+        uniform float uStrength;
+        varying vec4 vUv;
+        varying vec3 vWorld;
+        ${GRID_GLSL}
+        void main() {
+            vec2 uv = vUv.xy / vUv.w;
+            float d = distance(vWorld.xz, cameraPosition.xz);
+            // ยิ่งไกลยิ่งเบลอ = พื้นขัดเงา ไม่ใช่กระจก
+            float r = 1.5 + d * 0.06;
+            vec3 refl = texture2D(tDiffuse, uv).rgb * 0.2;
+            refl += texture2D(tDiffuse, uv + vec2( 1.0,  0.0) * uTexel * r).rgb * 0.1;
+            refl += texture2D(tDiffuse, uv + vec2(-1.0,  0.0) * uTexel * r).rgb * 0.1;
+            refl += texture2D(tDiffuse, uv + vec2( 0.0,  1.0) * uTexel * r).rgb * 0.1;
+            refl += texture2D(tDiffuse, uv + vec2( 0.0, -1.0) * uTexel * r).rgb * 0.1;
+            refl += texture2D(tDiffuse, uv + vec2( 0.7,  0.7) * uTexel * r * 1.6).rgb * 0.1;
+            refl += texture2D(tDiffuse, uv + vec2(-0.7,  0.7) * uTexel * r * 1.6).rgb * 0.1;
+            refl += texture2D(tDiffuse, uv + vec2( 0.7, -0.7) * uTexel * r * 1.6).rgb * 0.1;
+            refl += texture2D(tDiffuse, uv + vec2(-0.7, -0.7) * uTexel * r * 1.6).rgb * 0.1;
+            float nearK = smoothstep(120.0, 6.0, d);
+            vec3 col = uBase + refl * uStrength * (0.3 + 0.7 * nearK);
+            float scan;
+            float a = gridAlpha(vWorld, uTime, uDim, scan);
+            col += uGrid * (1.0 + scan) * a;
+            // ปลายพื้นกลืนเข้าหมอก/ขอบฟ้า
+            col = mix(uSky, col, smoothstep(170.0, 60.0, d));
+            col *= 1.0 - uDim * 0.6;
+            gl_FragColor = vec4(col, 1.0);
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
+        }
+    `,
+};
+
+/**
+ * @param {{ renderer?: THREE.WebGLRenderer, reflect?: boolean }} opts
+ */
+export function buildFloor({ renderer = null, reflect = false, quality = () => 0 } = {}) {
+    if (reflect && renderer) return buildMirrorFloor(renderer, quality);
+    return buildGridFloor();
+}
+
+// ขั้นคุณภาพของ engine ที่เริ่มงดวาดภาพสะท้อน (ขั้นต่ำสุด) — ปิดเงาก่อน ดีกว่าโดนสลับไปหน้าธรรมดา
+const MIRROR_OFF_LEVEL = 3;
+
+function buildMirrorFloor(renderer, quality) {
+    const size = new THREE.Vector2();
+    const rtSize = () => {
+        renderer.getDrawingBufferSize(size);
+        return [Math.max(256, Math.round(size.x * 0.5)), Math.max(256, Math.round(size.y * 0.5))];
+    };
+    const [w0, h0] = rtSize();
+    const mirror = new Reflector(new THREE.PlaneGeometry(FLOOR_W, FLOOR_D), {
+        textureWidth: w0,
+        textureHeight: h0,
+        clipBias: 0.003,
+        multisample: 0,
+        color: '#ffffff',
+        shader: MIRROR_SHADER,
+    });
+    mirror.rotation.x = -Math.PI / 2;
+    mirror.position.set(0, 0, -130);
+    mirror.renderOrder = -2;
+    mirror.raycast = () => {};
+    const u = mirror.material.uniforms;
+    u.uTexel.value.set(1 / w0, 1 / h0);
+    const renderReflection = mirror.onBeforeRender;
+    let mirrorOn = true;
+    mirror.onBeforeRender = function (...args) {
+        if (mirrorOn) renderReflection.apply(this, args);
+    };
+    let lastW = w0;
+    let lastH = h0;
+    return {
+        object: mirror,
+        reflective: true,
+        update(t, dim = 0) {
+            u.uTime.value = t;
+            u.uDim.value = dim;
+            mirrorOn = quality() < MIRROR_OFF_LEVEL;
+            u.uStrength.value = mirrorOn ? 0.55 : 0;
+            // engine ลด/เพิ่มคุณภาพ (pixel ratio) หรือหน้าต่างเปลี่ยนขนาด → ภาพสะท้อนตาม
+            const [w, h] = rtSize();
+            if (w !== lastW || h !== lastH) {
+                mirror.getRenderTarget().setSize(w, h);
+                u.uTexel.value.set(1 / w, 1 / h);
+                lastW = w;
+                lastH = h;
+            }
+        },
+        dispose() {
+            mirror.dispose();
+        },
+    };
+}
+
+function buildGridFloor() {
     const mat = new THREE.ShaderMaterial({
         transparent: true,
         depthWrite: false,

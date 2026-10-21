@@ -11,7 +11,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
@@ -51,33 +51,51 @@ const sections = computed(() => [
 // Section ที่กำลังดูอยู่
 const activeSection = ref('executive-summary');
 
+// สารบัญแบบพับได้บนจอเล็ก (จอ xl ขึ้นไปใช้ sidebar แทน)
+const tocOpen = ref(false);
+const activeTitle = computed(() => sections.value.find(s => s.id === activeSection.value)?.title ?? sections.value[0].title);
+
+// แถบความคืบหน้าการอ่าน 0–100
+const readProgress = ref(0);
+
+// section ที่กำลังอ่าน = ตัวสุดท้ายที่หัวเลื่อนผ่านเส้นใต้ NavBar + แถบสารบัญแล้ว
+// (IntersectionObserver แบบ threshold ใช้ไม่ได้กับ section ที่ยาวกว่าจอ — ไม่เคยถึงสัดส่วน)
+// เบราว์เซอร์ยิง scroll ไม่เกินเฟรมละครั้งอยู่แล้ว — อ่านตำแหน่ง 19 section ต่อครั้งถือว่าเบา
+const READ_LINE_PX = 150;
+function onScroll() {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    readProgress.value = max > 0 ? Math.min(100, Math.max(0, (window.scrollY / max) * 100)) : 0;
+
+    let current = sections.value[0].id;
+    for (const s of sections.value) {
+        const el = document.getElementById(s.id);
+        if (el && el.getBoundingClientRect().top <= READ_LINE_PX) current = s.id;
+        else break;
+    }
+    activeSection.value = current;
+}
+
 // Scroll ไปยัง section
 function scrollTo(id) {
     activeSection.value = id;
+    tocOpen.value = false;
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ติดตาม scroll เพื่ออัปเดต active section
-onMounted(() => {
-    const observer = new IntersectionObserver(
-        (entries) => {
-            entries.forEach((entry) => {
-                if (entry.isIntersecting) {
-                    activeSection.value = entry.target.id;
-                }
-            });
-        },
-        { threshold: 0.2, rootMargin: '-80px 0px -50% 0px' }
-    );
+// สีป้ายความเสี่ยงของกลยุทธ์ AI TRADE
+const riskClass = (risk) => ({
+    Low: 'bg-green-500/15 text-green-300', 'ต่ำ': 'bg-green-500/15 text-green-300',
+    Medium: 'bg-yellow-500/15 text-yellow-300', 'กลาง': 'bg-yellow-500/15 text-yellow-300',
+    High: 'bg-red-500/15 text-red-300', 'สูง': 'bg-red-500/15 text-red-300',
+}[risk] ?? 'bg-white/10 text-gray-300');
 
-    // observe ทั้ง 19 sections
-    const ids = ['executive-summary','problem-solution','tpix-chain','tokenomics','use-cases',
-        'dex-protocol','ai-trade','token-sale','masternode','living-identity','governance','bridge',
-        'ecosystem','integrations','roadmap','tech-stack','team','security','legal'];
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) observer.observe(el);
-    });
+// ติดตาม scroll เพื่ออัปเดต active section + แถบความคืบหน้า
+onMounted(() => {
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+});
+onBeforeUnmount(() => {
+    window.removeEventListener('scroll', onScroll);
 });
 
 // Download PDF — Dark Premium Theme (เหมือนหน้าเว็บ)
@@ -928,16 +946,16 @@ const content = {
 
     <AppLayout :hide-sidebar="true">
         <!-- Hero — หน้าปก (print: จะเป็นหน้าแรกของ PDF) -->
-        <section class="print-cover relative py-16 overflow-hidden">
+        <section class="print-cover relative py-8 sm:py-16 overflow-hidden">
             <div class="absolute inset-0 pointer-events-none print:hidden">
-                <div class="absolute top-0 left-1/4 w-96 h-96 rounded-full bg-primary-500/10 blur-[120px]" />
-                <div class="absolute bottom-0 right-1/3 w-80 h-80 rounded-full bg-accent-500/10 blur-[100px]" />
+                <div class="absolute top-0 left-1/4 w-64 h-64 sm:w-96 sm:h-96 rounded-full bg-primary-500/10 blur-[120px]" />
+                <div class="absolute bottom-0 right-1/3 w-56 h-56 sm:w-80 sm:h-80 rounded-full bg-accent-500/10 blur-[100px]" />
             </div>
 
-            <div class="relative max-w-4xl mx-auto px-4 text-center">
-                <BrandLogo variant="mark" alt="TPIX" class="w-28 h-28 mx-auto mb-6 rounded-full shadow-lg shadow-primary-500/20" />
-                <h1 class="text-4xl sm:text-5xl font-bold text-white mb-2">{{ t.pageTitle }}</h1>
-                <p class="text-lg text-primary-400 font-medium mb-1">{{ t.subtitle }}</p>
+            <div class="relative max-w-4xl mx-auto sm:px-4 text-center">
+                <BrandLogo variant="mark" alt="TPIX" class="w-20 h-20 sm:w-28 sm:h-28 mx-auto mb-5 sm:mb-6 rounded-full shadow-lg shadow-primary-500/20" />
+                <h1 class="text-3xl sm:text-5xl font-bold text-white mb-3 sm:mb-2 leading-tight">{{ t.pageTitle }}</h1>
+                <p class="text-base sm:text-lg text-primary-400 font-medium mb-2 sm:mb-1 max-w-2xl mx-auto">{{ t.subtitle }}</p>
                 <p class="text-sm text-gray-500 mb-6">{{ t.version }}</p>
 
                 <!-- Print-only: ข้อมูลเอกสารเพิ่มเติม -->
@@ -947,8 +965,8 @@ const content = {
                     <p class="mt-4 text-xs text-gray-400">{{ lang === 'en' ? 'This document is confidential. © 2026 TPIX Chain. All rights reserved.' : 'เอกสารนี้เป็นความลับ © 2026 TPIX Chain สงวนลิขสิทธิ์' }}</p>
                 </div>
 
-                <div class="flex flex-wrap items-center justify-center gap-3 print:hidden">
-                    <button @click="downloadPdf" class="btn-primary px-8 py-3 inline-flex items-center gap-2 font-semibold">
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 max-w-xs sm:max-w-none mx-auto print:hidden">
+                    <button @click="downloadPdf" class="btn-primary px-8 py-3 inline-flex items-center justify-center gap-2 font-semibold">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                         {{ t.downloadPdf }}
                     </button>
@@ -959,8 +977,39 @@ const content = {
             </div>
         </section>
 
+        <!-- สารบัญแบบพับได้ — ติดใต้ NavBar บนจอที่เล็กกว่า xl -->
+        <div class="xl:hidden sticky top-16 z-30 -mx-4 lg:-mx-6 mb-6 print:hidden">
+            <div class="glass-dark rounded-none border-b border-white/10 shadow-lg shadow-black/30">
+                <button
+                    type="button"
+                    class="w-full flex items-center gap-3 px-4 py-3 text-left"
+                    :aria-expanded="tocOpen"
+                    @click="tocOpen = !tocOpen"
+                >
+                    <svg class="w-4 h-4 flex-shrink-0 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h10" /></svg>
+                    <span class="hidden sm:inline text-xs font-bold uppercase tracking-wider text-gray-500 flex-shrink-0">{{ lang === 'en' ? 'Contents' : 'สารบัญ' }}</span>
+                    <span class="flex-1 min-w-0 truncate text-sm font-medium text-white">{{ activeTitle }}</span>
+                    <svg class="w-4 h-4 flex-shrink-0 text-gray-400 transition-transform" :class="{ 'rotate-180': tocOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                </button>
+                <div class="h-0.5 bg-white/5">
+                    <div class="h-full bg-gradient-to-r from-primary-500 to-accent-500 transition-[width] duration-150" :style="{ width: readProgress + '%' }" />
+                </div>
+                <nav v-show="tocOpen" class="max-h-[60vh] overflow-y-auto overscroll-contain p-2 grid sm:grid-cols-2 gap-0.5 border-t border-white/5">
+                    <button
+                        v-for="s in sections" :key="s.id"
+                        type="button"
+                        class="w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors"
+                        :class="activeSection === s.id
+                            ? 'text-primary-400 bg-primary-500/10 font-medium'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                        @click="scrollTo(s.id)"
+                    >{{ s.title }}</button>
+                </nav>
+            </div>
+        </div>
+
         <!-- Content: TOC + Sections -->
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
+        <div class="max-w-7xl mx-auto sm:px-2 lg:px-6 pb-20">
             <div class="flex gap-8">
                 <!-- Sidebar: Table of Contents (sticky) -->
                 <aside class="hidden xl:block w-64 flex-shrink-0">
@@ -1097,7 +1146,7 @@ const content = {
                         <div class="grid lg:grid-cols-2 gap-8 items-start">
                             <!-- Donut Chart — แผนภูมิโดนัท -->
                             <div class="flex flex-col items-center">
-                                <svg viewBox="0 0 200 200" class="w-64 h-64">
+                                <svg viewBox="0 0 200 200" class="w-56 h-56 sm:w-64 sm:h-64">
                                     <path v-for="seg in donutSegments" :key="seg.label" :d="seg.path" :fill="seg.color" class="opacity-90 hover:opacity-100 transition-opacity cursor-pointer" />
                                     <text x="100" y="95" text-anchor="middle" fill="white" font-size="14" font-weight="bold">7B</text>
                                     <text x="100" y="112" text-anchor="middle" fill="#9CA3AF" font-size="8">TPIX</text>
@@ -1124,9 +1173,11 @@ const content = {
                                         </tr></thead>
                                         <tbody>
                                             <tr v-for="(item, i) in tokenAllocation" :key="item.label" :class="i < tokenAllocation.length - 1 ? 'border-b border-white/5' : ''">
-                                                <td class="py-2 px-3 text-white flex items-center gap-2">
-                                                    <span class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: item.color }"></span>
-                                                    {{ lang === 'en' ? item.label : item.labelTh }}
+                                                <td class="py-2 px-3 text-white">
+                                                    <span class="inline-flex items-center gap-2">
+                                                        <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ backgroundColor: item.color }"></span>
+                                                        {{ lang === 'en' ? item.label : item.labelTh }}
+                                                    </span>
                                                 </td>
                                                 <td class="py-2 px-3 text-right font-medium" :style="{ color: item.color }">{{ item.pct }}%</td>
                                                 <td class="py-2 px-3 text-right text-gray-300">{{ item.amount }}</td>
@@ -1159,7 +1210,7 @@ const content = {
                         </p>
 
                         <div class="grid sm:grid-cols-2 gap-4">
-                            <div v-for="uc in t.useCases" :key="uc.title" class="p-5 rounded-xl bg-white/5 border border-white/10 hover:border-primary-500/30 transition-colors">
+                            <div v-for="uc in t.useCases" :key="uc.title" class="p-4 sm:p-5 rounded-xl bg-white/5 border border-white/10 hover:border-primary-500/30 transition-colors">
                                 <div class="flex items-start gap-3 mb-3">
                                     <span class="text-2xl">{{ uc.icon }}</span>
                                     <h4 class="font-semibold text-white">{{ uc.title }}</h4>
@@ -1242,7 +1293,23 @@ const content = {
                         <p class="wp-text">{{ t.aiTrade.principle }}</p>
 
                         <h3 class="wp-subheading">{{ lang === 'en' ? 'Eight Strategies' : 'แปดกลยุทธ์' }}</h3>
-                        <div class="wp-table mb-6">
+                        <!-- มือถือ: การ์ดแทนตาราง 4 คอลัมน์ -->
+                        <div class="md:hidden print:hidden grid gap-3 mb-6">
+                            <div v-for="s in t.aiTrade.strategies" :key="s.code" class="p-4 rounded-xl bg-white/5 border border-white/10">
+                                <div class="flex items-start justify-between gap-3 mb-2">
+                                    <div class="min-w-0">
+                                        <p class="text-white font-semibold">{{ s.name }}</p>
+                                        <p class="text-xs text-primary-400 font-mono">{{ s.code }}</p>
+                                    </div>
+                                    <div class="flex flex-shrink-0 items-center gap-1.5 text-xs font-medium">
+                                        <span class="px-2 py-0.5 rounded-full" :class="riskClass(s.risk)">{{ s.risk }}</span>
+                                        <span class="px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">{{ s.tier }}</span>
+                                    </div>
+                                </div>
+                                <p class="text-sm text-gray-300 leading-relaxed">{{ s.desc }}</p>
+                            </div>
+                        </div>
+                        <div class="wp-table hidden md:block mb-6">
                             <table class="w-full text-sm">
                                 <thead><tr class="border-b border-white/10">
                                     <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Strategy' : 'กลยุทธ์' }}</th>
@@ -1266,7 +1333,7 @@ const content = {
                         </div>
 
                         <h3 class="wp-subheading">{{ lang === 'en' ? 'TPIX AI Signal — The Ensemble' : 'TPIX AI Signal — โมเดลรวมสัญญาณ' }}</h3>
-                        <div class="grid md:grid-cols-4 gap-3 mb-4">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                             <div v-for="e in t.aiTrade.ensemble" :key="e.view"
                                  class="p-4 rounded-xl border border-primary-500/25 bg-primary-500/5">
                                 <div class="text-2xl font-bold text-primary-300">{{ e.weight }}</div>
@@ -1280,7 +1347,7 @@ const content = {
                         <p class="wp-text">{{ t.aiTrade.risk }}</p>
 
                         <h3 class="wp-subheading">{{ lang === 'en' ? 'Custody Model — The Part That Matters' : 'ใครถือเหรียญ — จุดที่สำคัญที่สุด' }}</h3>
-                        <div class="wp-table mb-4">
+                        <div class="wp-table wp-table-wide mb-4">
                             <table class="w-full text-sm">
                                 <thead><tr class="border-b border-white/10">
                                     <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Mode' : 'โหมด' }}</th>
@@ -1348,7 +1415,23 @@ const content = {
 
                         <!-- Master Node Tiers -->
                         <h3 class="text-lg font-semibold text-white mt-6 mb-3">{{ lang === 'en' ? 'Node Tiers' : 'ระดับโหนด' }}</h3>
-                        <div class="wp-table overflow-x-auto">
+                        <!-- มือถือ: การ์ดแทนตาราง 7 คอลัมน์ -->
+                        <div class="md:hidden print:hidden grid gap-3 my-4">
+                            <div v-for="n in t.masternodeTiers" :key="n.tier" class="p-4 rounded-xl bg-white/5 border border-white/10">
+                                <div class="flex items-baseline justify-between gap-3 mb-3 pb-2 border-b border-white/5">
+                                    <span class="text-white font-semibold">{{ n.tier }}</span>
+                                    <span class="text-trading-green font-bold">{{ n.apy }} <span class="text-xs font-normal text-gray-500">APY</span></span>
+                                </div>
+                                <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                    <div><dt class="text-xs text-gray-500">{{ lang === 'en' ? 'Min Stake' : 'Stake ขั้นต่ำ' }}</dt><dd class="text-cyan-400 font-bold">{{ n.stake }}</dd></div>
+                                    <div><dt class="text-xs text-gray-500">{{ lang === 'en' ? 'Lock' : 'ล็อค' }}</dt><dd class="text-gray-300">{{ n.lock }}</dd></div>
+                                    <div><dt class="text-xs text-gray-500">{{ lang === 'en' ? 'Max Nodes' : 'จำนวนสูงสุด' }}</dt><dd class="text-gray-300">{{ n.maxNodes }}</dd></div>
+                                    <div><dt class="text-xs text-gray-500">{{ lang === 'en' ? 'Reward Share' : 'ส่วนแบ่งรางวัล' }}</dt><dd class="text-purple-400">{{ n.reward }}</dd></div>
+                                    <div class="col-span-2"><dt class="text-xs text-gray-500">Hardware</dt><dd class="text-gray-400 text-xs">{{ n.hardware }}</dd></div>
+                                </dl>
+                            </div>
+                        </div>
+                        <div class="wp-table hidden md:block">
                             <table class="w-full text-sm">
                                 <thead><tr class="border-b border-white/10">
                                     <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Tier' : 'ระดับ' }}</th>
@@ -1381,7 +1464,7 @@ const content = {
 
                         <!-- Emission Schedule -->
                         <h3 class="text-lg font-semibold text-white mt-6 mb-3">{{ lang === 'en' ? 'Emission Schedule (3-Year Decreasing)' : 'ตารางการปล่อยรางวัล (3 ปี ลดลงเรื่อยๆ)' }}</h3>
-                        <div class="wp-table">
+                        <div class="wp-table wp-table-wide">
                             <table class="w-full text-sm">
                                 <thead><tr class="border-b border-white/10">
                                     <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Year' : 'ปี' }}</th>
@@ -1445,13 +1528,13 @@ const content = {
                     <section id="living-identity" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[9] }}</h2>
                         <SectionVideo file="ep07-living-identity.mp4" part="Part Seven — Living Identity" :start="8.1" :duration="273" :lang="lang" />
-                        <div class="glass-dark p-6 rounded-2xl border border-accent-500/20 mb-6">
+                        <div class="glass-dark p-4 sm:p-6 rounded-2xl border border-accent-500/20 mb-6">
                             <p class="text-lg font-bold text-accent-400 mb-2">{{ lang === 'en' ? "World's First On-Chain Seedless Wallet Recovery" : 'ระบบกู้คืนกระเป๋าแบบไม่ต้องใช้ Seed Phrase ตัวแรกของโลก' }}</p>
                             <p class="text-gray-300 text-sm">{{ lang === 'en' ? 'No more seed phrases. No more lost funds. Your identity is your key.' : 'ไม่ต้องจำ Seed Phrase อีกต่อไป ไม่มีเงินหาย ตัวตนของคุณคือกุญแจ' }}</p>
                         </div>
                         <p class="wp-text">{{ lang === 'en' ? 'Living Identity (TPIXIdentity smart contract) allows users to recover wallet access by combining three verification factors into a single on-chain proof — security questions, GPS locations, and a 6-digit recovery PIN. Only a 32-byte keccak256 hash is stored on-chain. Zero personal data is retrievable from the blockchain.' : 'Living Identity (TPIXIdentity smart contract) ช่วยให้ผู้ใช้กู้คืนกระเป๋าได้โดยรวม 3 ปัจจัยยืนยันเข้าด้วยกัน — คำถามความปลอดภัย, พิกัด GPS และ PIN กู้คืน 6 หลัก เก็บเฉพาะ hash 32 bytes บนเชน ไม่มีข้อมูลส่วนตัวใดดึงออกจากบล็อกเชนได้' }}</p>
 
-                        <div class="overflow-x-auto mt-4">
+                        <div class="wp-table wp-table-wide">
                             <table class="w-full text-sm">
                                 <thead><tr class="border-b border-white/10">
                                     <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Step' : 'ขั้นตอน' }}</th>
@@ -1510,7 +1593,7 @@ const content = {
                                 <p class="text-xs text-gray-400">Timelock</p>
                                 <p class="text-lg font-bold text-white">48h</p>
                             </div>
-                            <div class="glass-dark p-3 rounded-xl border border-white/10 text-center">
+                            <div class="col-span-2 sm:col-span-1 glass-dark p-3 rounded-xl border border-white/10 text-center">
                                 <p class="text-xs text-gray-400">KYC</p>
                                 <p class="text-lg font-bold text-accent-400">PDPA</p>
                             </div>
@@ -1554,7 +1637,7 @@ const content = {
                             </div>
                         </div>
 
-                        <div class="overflow-x-auto mt-4">
+                        <div class="wp-table">
                             <table class="w-full text-sm">
                                 <thead><tr class="border-b border-white/10">
                                     <th class="text-left py-2 px-3 text-gray-400">{{ lang === 'en' ? 'Feature' : 'คุณสมบัติ' }}</th>
@@ -1588,7 +1671,7 @@ const content = {
                             </h4>
                             <div class="flex flex-col items-center gap-2">
                                 <div class="px-6 py-3 rounded-xl bg-primary-500/20 border border-primary-500/30 text-primary-300 font-bold text-sm">TPIX Chain (ID: 4289)</div>
-                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full max-w-2xl">
+                                <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 w-full max-w-2xl">
                                     <div class="p-2 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-gray-400">
                                         <span class="block text-lg mb-1">🏦</span>DEX
                                     </div>
@@ -1630,18 +1713,18 @@ const content = {
                         </div>
 
                         <h3 class="wp-subheading">{{ lang === 'en' ? 'Affiliate Program' : 'โปรแกรม Affiliate' }}</h3>
-                        <div class="grid sm:grid-cols-3 gap-4 mb-6">
-                            <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
-                                <p class="text-2xl font-bold text-primary-400">5%</p>
-                                <p class="text-sm text-gray-400">{{ lang === 'en' ? 'Referrer Reward' : 'รางวัลผู้แนะนำ' }}</p>
+                        <div class="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
+                            <div class="p-3 sm:p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+                                <p class="text-xl sm:text-2xl font-bold text-primary-400">5%</p>
+                                <p class="text-xs sm:text-sm text-gray-400">{{ lang === 'en' ? 'Referrer Reward' : 'รางวัลผู้แนะนำ' }}</p>
                             </div>
-                            <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
-                                <p class="text-2xl font-bold text-accent-400">2%</p>
-                                <p class="text-sm text-gray-400">{{ lang === 'en' ? 'Referee Bonus' : 'โบนัสผู้ถูกแนะนำ' }}</p>
+                            <div class="p-3 sm:p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+                                <p class="text-xl sm:text-2xl font-bold text-accent-400">2%</p>
+                                <p class="text-xs sm:text-sm text-gray-400">{{ lang === 'en' ? 'Referee Bonus' : 'โบนัสผู้ถูกแนะนำ' }}</p>
                             </div>
-                            <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
-                                <p class="text-2xl font-bold text-warm-400">1,000</p>
-                                <p class="text-sm text-gray-400">{{ lang === 'en' ? 'Max TPIX/Referral' : 'TPIX สูงสุด/การแนะนำ' }}</p>
+                            <div class="p-3 sm:p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+                                <p class="text-xl sm:text-2xl font-bold text-warm-400">1,000</p>
+                                <p class="text-xs sm:text-sm text-gray-400">{{ lang === 'en' ? 'Max TPIX/Referral' : 'TPIX สูงสุด/การแนะนำ' }}</p>
                             </div>
                         </div>
                     </section>
@@ -1651,7 +1734,7 @@ const content = {
                         <h2 class="wp-heading">{{ t.toc[13] }}</h2>
                         <SectionVideo file="ep08-real-world.mp4" part="Part Eight — Real World" :start="209.7" :duration="272" :lang="lang" />
                         <div class="grid sm:grid-cols-2 gap-4">
-                            <div v-for="int in t.integrations" :key="int.name" class="p-5 rounded-xl bg-white/5 border border-white/10">
+                            <div v-for="int in t.integrations" :key="int.name" class="p-4 sm:p-5 rounded-xl bg-white/5 border border-white/10">
                                 <h4 class="font-semibold text-white mb-1">{{ int.name }}</h4>
                                 <p class="text-xs text-gray-500 mb-3">{{ int.desc }}</p>
                                 <ul class="space-y-1">
@@ -1669,15 +1752,15 @@ const content = {
                         <h2 class="wp-heading">{{ t.toc[14] }}</h2>
                         <SectionVideo file="ep09-the-road-ahead.mp4" part="Part Nine — The Road Ahead" :start="9.3" :duration="388" :lang="lang" />
                         <div class="space-y-4">
-                            <div v-for="r in t.roadmap" :key="r.q" class="flex gap-4">
-                                <div class="flex-shrink-0 w-28">
+                            <div v-for="r in t.roadmap" :key="r.q" class="flex flex-col sm:flex-row gap-1 sm:gap-4">
+                                <div class="flex-shrink-0 sm:w-28 flex sm:block items-center gap-2">
                                     <span class="text-sm font-bold" :class="{
                                         'text-trading-green': r.status === 'done',
                                         'text-yellow-400': r.status === 'progress',
                                         'text-primary-400': r.status === 'current',
                                         'text-gray-500': r.status === 'planned',
                                     }">{{ r.q }}</span>
-                                    <span class="block text-xs mt-0.5" :class="{
+                                    <span class="sm:block text-xs sm:mt-0.5" :class="{
                                         'text-trading-green': r.status === 'done',
                                         'text-yellow-400': r.status === 'progress',
                                         'text-primary-400': r.status === 'current',
@@ -1703,9 +1786,9 @@ const content = {
                         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             <div v-for="(items, category) in t.techStack" :key="category" class="p-4 rounded-xl bg-white/5 border border-white/10">
                                 <h4 class="font-semibold text-white mb-3 capitalize">{{ category === 'smartContracts' ? 'Smart Contracts' : category }}</h4>
-                                <div v-for="item in items" :key="item[0]" class="flex justify-between text-sm py-1 border-b border-white/5 last:border-0">
-                                    <span class="text-primary-400 font-medium">{{ item[0] }}</span>
-                                    <span class="text-gray-500 text-xs text-right">{{ item[1] }}</span>
+                                <div v-for="item in items" :key="item[0]" class="flex justify-between gap-3 text-sm py-1 border-b border-white/5 last:border-0">
+                                    <span class="text-primary-400 font-medium flex-shrink-0">{{ item[0] }}</span>
+                                    <span class="text-gray-500 text-xs text-right min-w-0">{{ item[1] }}</span>
                                 </div>
                             </div>
                         </div>
@@ -1743,7 +1826,7 @@ const content = {
                     <section id="legal" class="wp-section">
                         <h2 class="wp-heading">{{ t.toc[18] }}</h2>
                         <SectionVideo file="ep09-the-road-ahead.mp4" part="Part Nine — The Road Ahead" :start="326.6" :duration="388" :lang="lang" />
-                        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+                        <div class="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10">
                             <p class="text-sm text-gray-500 mb-3">
                                 {{ lang === 'en'
                                     ? 'This whitepaper is for informational purposes only and does not constitute investment advice, financial advice, trading advice, or any other sort of advice. TPIX tokens are utility tokens and are not intended to be securities. The purchase of TPIX tokens involves significant risk. Please conduct your own due diligence before participating in the token sale.'
@@ -1767,11 +1850,15 @@ const content = {
 
 <style scoped>
 /* สไตล์ whitepaper — ใช้ design system ของโปรเจค */
-.wp-section { @apply mb-16 scroll-mt-24; }
-.wp-heading { @apply text-2xl sm:text-3xl font-bold text-white mb-4 pb-3 border-b border-white/10; }
-.wp-subheading { @apply text-lg font-semibold text-white mt-6 mb-3; }
-.wp-text { @apply text-gray-300 leading-relaxed mb-4; }
-.wp-list { @apply list-disc list-inside space-y-2 text-gray-300 mb-4; }
-.wp-highlight { @apply p-6 rounded-xl bg-white/5 border border-white/10 my-6; }
-.wp-table { @apply rounded-xl bg-white/5 border border-white/10 overflow-x-auto my-6; }
+/* scroll-mt บนจอเล็กต้องเผื่อ NavBar (64px) + แถบสารบัญที่ติดอยู่ใต้มัน */
+.wp-section { @apply mb-12 sm:mb-16 scroll-mt-32 xl:scroll-mt-24; }
+.wp-heading { @apply text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-4 pb-3 border-b border-white/10 leading-snug; }
+.wp-subheading { @apply text-base sm:text-lg font-semibold text-white mt-6 mb-3; }
+.wp-text { @apply text-sm sm:text-base text-gray-300 leading-relaxed mb-4; }
+.wp-list { @apply list-disc pl-5 space-y-2 text-sm sm:text-base text-gray-300 mb-4; }
+.wp-highlight { @apply p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 my-6; }
+.wp-table { @apply rounded-xl bg-white/5 border border-white/10 overflow-x-auto overscroll-x-contain my-6; }
+/* ตารางหลายคอลัมน์ — เลื่อนแนวนอนบนมือถือแทนการบีบข้อความจนอ่านไม่ออก */
+.wp-table-wide table { min-width: 32rem; }
+.wp-table td { overflow-wrap: anywhere; }
 </style>

@@ -9,6 +9,7 @@ use App\Models\WtpixBridgeTransfer;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\BridgeConfig;
 use App\Services\Bridge\Wtpix\WtpixBridgeConfig;
+use App\Services\Bridge\Wtpix\WtpixBridgePolicy;
 use App\Services\Bridge\Wtpix\WtpixBridgeReconciler;
 use App\Services\Bridge\Wtpix\WtpixBridgeRelayer;
 use App\Support\Wei;
@@ -40,6 +41,7 @@ class WtpixBridgeAdminController extends Controller
         private WtpixBridgeRelayer $relayer,
         private WtpixBridgeReconciler $reconciler,
         private BridgeConfig $usdtConfig,
+        private WtpixBridgePolicy $policy,
     ) {}
 
     public function index(Request $request): InertiaResponse
@@ -353,6 +355,49 @@ class WtpixBridgeAdminController extends Controller
                 return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => $errors]];
             }
 
+            /*
+             * ต่ำกว่าขั้นต่ำ (ignored) = ตัวสแกนไม่เคยถามเชนว่าผู้ส่งเป็นสัญญา หรือคนกดส่งเป็นเจ้าของเหรียญไหม
+             * (รายการ ignored ไม่ยิง RPC เพิ่มเพื่อประหยัด) — ป้ายที่แอดมินเห็นจึงมีแค่ "below_minimum"
+             *
+             * ⚠️ อนุมัติตรงนี้ = ยอมข้าม "กฎขั้นต่ำ" ข้อเดียว ไม่ใช่ทุกข้อ
+             *    multisig/กระดานเทรดที่ล็อก 5 TPIX จะได้ wTPIX ที่ที่อยู่เดียวกันบน BSC ซึ่งอาจไม่มีใครคุม
+             *    → ถามเชนต้นทางเอง แล้วรันกฎครบชุด เจอข้อสงสัยอื่น = ย้ายไปรอตรวจด้วยเหตุผลจริง
+             *      ให้แอดมินรับรองข้อนั้นอย่างตั้งใจอีกครั้ง (อนุมัติแถว needs_review = รับรองข้อสงสัยของแถวนั้น)
+             */
+            if ($row->status === WtpixBridgeTransfer::STATUS_IGNORED) {
+                $sourceRpc = $this->config->rpc((int) $row->source_chain_id);
+                $sender = $sourceRpc ? $this->policy->senderFacts($sourceRpc, (string) $row->from_address, (string) $row->tx_hash) : null;
+
+                if ($sender === null) {
+                    return [503, ['success' => false, 'message' => 'อ่านข้อมูลผู้ส่งจากเชนต้นทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                }
+
+                $decision = $this->policy->evaluate($row->direction, [
+                    'from_address' => (string) $row->from_address,
+                    'amount_wei' => (string) $row->amount_wei,
+                    'payout_wei' => (string) $row->payout_wei,
+                ] + $sender, $row->id, ignoreMinimum: true);
+
+                if ($decision['status'] === WtpixBridgeTransfer::STATUS_IGNORED) {
+                    return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => ["รายการนี้ทำต่อไม่ได้ ({$decision['reason']})"]]];
+                }
+
+                if ($decision['status'] === WtpixBridgeTransfer::STATUS_NEEDS_REVIEW) {
+                    $row->update([
+                        'status' => WtpixBridgeTransfer::STATUS_NEEDS_REVIEW,
+                        'review_reason' => $decision['reason'],
+                        'last_error' => "ตรวจซ้ำตอนอนุมัติรายการต่ำกว่าขั้นต่ำ พบ {$decision['reason']} — ตรวจข้อนี้แล้วกดอนุมัติอีกครั้ง",
+                        'review_note' => $this->appendNote($row, 'ตรวจซ้ำตอนอนุมัติ (เหตุเดิม: below_minimum) พบ '.$decision['reason']),
+                    ]);
+
+                    return [409, [
+                        'success' => false,
+                        'message' => "ตรวจกับเชนแล้วพบข้อสงสัยอื่น ({$decision['reason']}) — ย้ายไปรอตรวจแล้ว ตรวจข้อนี้แล้วกดอนุมัติอีกครั้ง",
+                        'data' => $this->row($row->fresh()),
+                    ]];
+                }
+            }
+
             $rpc = $this->relayer->destRpc($row->direction);
             $processed = $this->relayer->processedOnChain($rpc, $route['dest_contract'], $row->deposit_id);
             $maxPerTx = $rpc->callUint($route['dest_contract'], 'maxPerTx()');
@@ -367,6 +412,8 @@ class WtpixBridgeAdminController extends Controller
             if ($processed && ! $elsewhere) {
                 // ทำบนเชนแล้วทั้งที่ระบบไม่เคยส่ง — อย่าปิดเงียบ ๆ (จะกลบรอยคีย์หลุดจากตัวกระทบยอด)
                 $row->update([
+                    // แถว ignored ต้องย้ายมารอตรวจด้วย ไม่งั้นป้ายเปลี่ยนแล้วกดอนุมัติรอบสองไม่ได้อีกเลย
+                    'status' => WtpixBridgeTransfer::STATUS_NEEDS_REVIEW,
                     'review_reason' => $row->direction === WtpixBridgeTransfer::TO_BSC ? 'minted_elsewhere' : 'released_elsewhere',
                     'last_error' => 'สัญญาปลายทางบันทึกว่าทำไปแล้วโดยธุรกรรมที่ระบบไม่ได้ส่ง — ตรวจผู้รับบน explorer แล้วกดอนุมัติอีกครั้ง',
                 ]);

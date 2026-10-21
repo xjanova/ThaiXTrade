@@ -51,19 +51,61 @@ class BridgeConfig
         return $this->installed() && $this->siteSwitchOn();
     }
 
-    public function setSiteSwitch(bool $on, ?string $reason = null): void
+    /**
+     * @param  string  $kind  manual = แอดมินกดเอง · auto = ระบบหยุดเองเพราะด่านความปลอดภัย (กระทบยอด / mint ที่ไม่ได้สั่ง)
+     */
+    public function setSiteSwitch(bool $on, ?string $reason = null, string $kind = 'manual'): void
     {
         SiteSetting::set(self::SETTINGS_GROUP, 'enabled', $on ? '1' : '0', 'boolean');
         SiteSetting::set(self::SETTINGS_GROUP, 'switch_reason', (string) ($reason ?? ''), 'string');
+        SiteSetting::set(self::SETTINGS_GROUP, 'switch_kind', $on ? '' : ($kind === 'auto' ? 'auto' : 'manual'), 'string');
         SiteSetting::set(self::SETTINGS_GROUP, 'switch_changed_at', now()->toIso8601String(), 'string');
         Cache::forget('bridge:info:public');
     }
 
+    /** เหตุผลเต็ม (มีชื่อแอดมิน / รายละเอียดเหตุการณ์) — หลังบ้านเท่านั้น ห้ามส่งออกหน้าเว็บสาธารณะ */
     public function switchReason(): ?string
     {
         $reason = trim((string) SiteSetting::get(self::SETTINGS_GROUP, 'switch_reason', ''));
 
         return $reason === '' ? null : $reason;
+    }
+
+    /**
+     * เหตุที่ปิดแบบรหัสกลาง ๆ สำหรับหน้าเว็บสาธารณะ — null เมื่อเปิดอยู่.
+     *
+     * ข้อความเต็มมีชื่อแอดมินและบันทึกเหตุการณ์ ("คีย์ relayer อาจหลุด" / ยอดขาด) ซึ่งไม่ควรอยู่ใน API สาธารณะ
+     */
+    public function publicPausedCode(): ?string
+    {
+        if ($this->siteSwitchOn()) {
+            return null;
+        }
+
+        return SiteSetting::get(self::SETTINGS_GROUP, 'switch_kind', '') === 'auto' ? 'safety_hold' : 'maintenance';
+    }
+
+    /** ธุรกรรมที่ส่งไปแล้วไม่ลงบล็อกนานเกินนี้ = ค้าง (แจ้งเตือน + ส่งให้คนดู) */
+    public function stuckAfterSeconds(): int
+    {
+        return max(5, (int) config('bridge.stuck_after_minutes', 30)) * 60;
+    }
+
+    /**
+     * วงเงินฝากต่อครั้งที่ใช้ได้จริง (หน่วย 6 ทศนิยม) = min(วงเงินของเว็บ, maxPerTx บนสัญญา).
+     *
+     * เกินวงเงินของเว็บ = รอแอดมินอนุมัติ แต่เกิน maxPerTx บนสัญญา = mint ไม่ได้เลยไม่ว่าใครอนุมัติ
+     * เงินจะค้างใน vault จนกว่าจะคืนด้วยมือ — หน้าเว็บจึงต้องห้ามส่งตั้งแต่แรก
+     */
+    public function effectiveMaxDepositUnits(?string $onchainMaxPerTx): string
+    {
+        $site = $this->limitUnits('max_deposit_per_tx');
+
+        if ($onchainMaxPerTx === null || ! ctype_digit($onchainMaxPerTx) || bccomp($onchainMaxPerTx, '0', 0) <= 0) {
+            return $site;
+        }
+
+        return bccomp($onchainMaxPerTx, $site, 0) < 0 ? $onchainMaxPerTx : $site;
     }
 
     // =========================================================================

@@ -66,6 +66,12 @@ trait FakesBridgeChains
     /** ใบเสร็จของธุรกรรมที่ลงบล็อกแล้ว revert (hash => true) */
     protected array $revertOnMine = [];
 
+    /**
+     * ความผิดปกติของ RPC รายตัว — "{host}|{method}" => 'null' (โหนดตามหัวไม่ทัน: ตอบ result null)
+     * หรือข้อความ error (เช่น 'rate limit exceeded') · ใช้จำลอง RPC ตัวแรกพลาดแต่ตัวที่สองตอบได้.
+     */
+    protected array $rpcFaults = [];
+
     private array $rawIndex = [];
 
     private array $fakeNonces = [];
@@ -233,6 +239,62 @@ trait FakesBridgeChains
         return $txHash;
     }
 
+    /** ใช้ RPC สองตัวต่อเชน (ตัวที่สองอ่านสถานะเชนเดียวกัน) — ไว้ทดสอบ "ตัวแรกพลาด ตัวที่สองตอบได้" */
+    protected function useTwoRpcs(): void
+    {
+        config([
+            'bridge.tpix.rpc' => ['https://rpc.tpix.test', 'https://rpc2.tpix.test'],
+            'bridge.chains.56.rpc' => ['https://rpc.bsc.test', 'https://rpc2.bsc.test'],
+        ]);
+    }
+
+    /**
+     * Minted(to, amount, depositId) บน USDT_TPIX แบบที่ "ธุรกรรมอื่น" ทำ (ไม่ผ่านสคริปต์เซ็นของเรา)
+     * — ตั้ง processedTxHashes + supply ด้วยเหมือนของจริง · คืน tx hash.
+     */
+    protected function fakeMinted(string $depositId, string $to, string $units, ?string $txHash = null): string
+    {
+        $s = &$this->chainState[4289];
+        $s['latest']++;
+        $txHash ??= '0x'.hash('sha256', "minted:{$depositId}:{$to}:{$units}:{$s['latest']}");
+        $log = $this->mintedLog($depositId, $to, $units, $s['latest'], $txHash);
+
+        $s['logs'][] = $log;
+        $s['receipts'][$txHash] = ['transactionHash' => $txHash, 'status' => '0x1', 'blockNumber' => '0x'.dechex($s['latest']), 'logs' => [$log]];
+        $s['processed'][strtolower($depositId)] = true;
+        $s['supply'] = bcadd($s['supply'], $units, 0);
+        $s['minter_total'] = bcadd($s['minter_total'], $units, 0);
+
+        return $txHash;
+    }
+
+    /**
+     * ธุรกรรม "ยกเลิก" ที่เจ้าของส่งเองจากกระเป๋า (0 มูลค่าถึงตัวเอง) ด้วย nonce ที่กำหนด — ลงบล็อกแล้ว · คืน tx hash.
+     */
+    protected function fakeCancelTx(int $chainId, string $from, int $nonce): string
+    {
+        $s = &$this->chainState[$chainId];
+        $s['latest']++;
+        $hash = '0x'.hash('sha256', "cancel:{$chainId}:{$from}:{$nonce}");
+        $s['txs'][$hash] = ['hash' => $hash, 'from' => strtolower($from), 'to' => strtolower($from), 'nonce' => '0x'.dechex($nonce), 'blockNumber' => '0x'.dechex($s['latest'])];
+        $s['receipts'][$hash] = ['transactionHash' => $hash, 'status' => '0x1', 'blockNumber' => '0x'.dechex($s['latest']), 'logs' => []];
+        $s['nonce'][strtolower($from)] = max($s['nonce'][strtolower($from)] ?? 0, $nonce + 1);
+
+        return $hash;
+    }
+
+    private function mintedLog(string $depositId, string $to, string $units, int $block, string $txHash): array
+    {
+        return [
+            'address' => $this->usdtTpix,
+            'topics' => [Abi::topic(Abi::MINTED_EVENT), '0x'.Abi::encAddress($to), strtolower($depositId)],
+            'data' => '0x'.Abi::encUint($units),
+            'blockNumber' => '0x'.dechex($block),
+            'transactionHash' => $txHash,
+            'logIndex' => '0x0',
+        ];
+    }
+
     /** sign ที่สคริปต์ได้รับ — กรองตามบทบาท (ดูจาก expect address) */
     protected function signCallsFor(string $address): array
     {
@@ -245,9 +307,9 @@ trait FakesBridgeChains
     {
         $host = parse_url($request->url(), PHP_URL_HOST);
         $chainId = match ($host) {
-            'rpc.bsc.test' => 56,
+            'rpc.bsc.test', 'rpc2.bsc.test' => 56,
             'rpc.eth.test' => 1,
-            'rpc.tpix.test' => 4289,
+            'rpc.tpix.test', 'rpc2.tpix.test' => 4289,
             default => null,
         };
 
@@ -257,6 +319,11 @@ trait FakesBridgeChains
 
         if ($chainId === null || $this->chainState[$chainId]['down']) {
             return $err('network unavailable rate limit');
+        }
+
+        $fault = $this->rpcFaults["{$host}|".($body['method'] ?? '')] ?? null;
+        if ($fault !== null) {
+            return $fault === 'null' ? $ok(null) : $err($fault);
         }
 
         $s = &$this->chainState[$chainId];
@@ -273,8 +340,13 @@ trait FakesBridgeChains
                 }
                 $n = $tag === 'latest' ? $s['latest'] : hexdec($tag);
 
-                // time_base ตั้งทับได้ต่อเชน — เทสต์ที่ตัดสินด้วย "เวลาบล็อก" ต้องให้บล็อกตรงกับนาฬิกาของเทสต์
-                return $ok(['number' => '0x'.dechex($n), 'timestamp' => '0x'.dechex(($s['time_base'] ?? 1760000000) + $n * 2)]);
+                // บล็อกล่าสุด = เวลาปัจจุบันของเทสต์ (ตาม travel()) · ย้อนบล็อกละ 2 วินาที
+                // time_base ตั้งทับได้ต่อเชน — ตรึงเวลาของแต่ละบล็อกไว้ ไม่ขยับตามหัวเชน
+                $timestamp = isset($s['time_base'])
+                    ? $s['time_base'] + $n * 2
+                    : max(0, now()->getTimestamp() - ($s['latest'] - $n) * 2);
+
+                return $ok(['number' => '0x'.dechex($n), 'timestamp' => '0x'.dechex($timestamp)]);
 
             case 'eth_getLogs':
                 if ($s['fail_logs']) {
@@ -428,7 +500,10 @@ trait FakesBridgeChains
         $reverted = ! empty($this->revertOnMine[$tx['hash']]);
 
         $s['receipts'][$tx['hash']] = ['transactionHash' => $tx['hash'], 'status' => $reverted ? '0x0' : '0x1', 'blockNumber' => '0x'.dechex($s['latest']), 'logs' => []];
-        $s['txs'][$tx['hash']] = ['hash' => $tx['hash'], 'from' => $tx['from']];
+        $s['txs'][$tx['hash']] = [
+            'hash' => $tx['hash'], 'from' => $tx['from'], 'to' => $tx['to'],
+            'nonce' => '0x'.dechex($tx['nonce']), 'blockNumber' => '0x'.dechex($s['latest']),
+        ];
         $s['nonce'][$tx['from']] = ($s['nonce'][$tx['from']] ?? 0) + 1;
 
         if ($reverted) {
@@ -444,12 +519,28 @@ trait FakesBridgeChains
             $s['supply'] = bcadd($s['supply'], $units, 0);
             $s['minter_total'] = bcadd($s['minter_total'], $units, 0);
             $s['remaining'] = bcsub($s['remaining'], $units, 0);
+
+            // USDT_TPIX.Minted(to, amount, depositId) — แบบเดียวกับสัญญาจริง
+            $log = $this->mintedLog('0x'.$args[2], '0x'.substr($args[0], 24), $units, $s['latest'], $tx['hash']);
+            $s['logs'][] = $log;
+            $s['receipts'][$tx['hash']]['logs'] = [$log];
         }
 
         if ($sel === Abi::selector('transfer(address,uint256)')) {
             $amount = Wei::hexToInt('0x'.$args[1]);
             $balance = $s['balances'][$tx['to']][$tx['from']] ?? '0';
             $s['balances'][$tx['to']][$tx['from']] = bcsub($balance, $amount, 0);
+
+            $log = [
+                'address' => $tx['to'],
+                'topics' => [Abi::topic(Abi::TRANSFER_EVENT), '0x'.Abi::encAddress($tx['from']), '0x'.$args[0]],
+                'data' => '0x'.$args[1],
+                'blockNumber' => '0x'.dechex($s['latest']),
+                'transactionHash' => $tx['hash'],
+                'logIndex' => '0x0',
+            ];
+            $s['logs'][] = $log;
+            $s['receipts'][$tx['hash']]['logs'] = [$log];
         }
 
         if ($sel === Abi::selector('pause()') && $tx['to'] === $this->minter) {
