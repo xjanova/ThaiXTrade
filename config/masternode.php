@@ -38,9 +38,74 @@ return [
     */
 
     'delegation' => [
-        'max_lifetime_seconds' => env('MASTERNODE_DELEGATION_LIFETIME', 30 * 24 * 3600), // 30 วัน
+        // 180 วัน: การมอบอำนาจผูกกระเป๋ากับกุญแจโหนดเพื่อ "รายงานว่ารันอยู่" เท่านั้น
+        // สั้นกว่านี้ผู้ใช้ต้องกลับมาใส่รหัสกระเป๋าบ่อย ลืมเมื่อไหร่ uptime = 0 = ไม่ได้รางวัล
+        'max_lifetime_seconds' => env('MASTERNODE_DELEGATION_LIFETIME', 180 * 24 * 3600),
         'message_prefix' => 'tpix-masternode-delegate',
         'heartbeat_message_prefix' => 'tpix-masternode-heartbeat',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Uptime Oracle — "รันโหนดจริงเท่านั้นถึงได้รางวัล"
+    |--------------------------------------------------------------------------
+    | heartbeat รุ่น 2 (กุญแจโหนดลงนาม + บล็อกที่โหนดเห็น) → ช่องเวลา slot_seconds
+    | ทุก period_minutes: uptime = ช่องที่ผ่าน / ช่องทั้งหมด → updateUptimeBatch บนเชน
+    |
+    | ช่องหนึ่ง "ผ่าน" เมื่อ heartbeat ผ่าน และ (ถ้า require_peer_seen) bootnode ของเรา
+    | เห็น peer ID นั้นต่ออยู่ในช่องเดียวกันหรือช่องติดกัน — แฮชบล็อกเป็นข้อมูลสาธารณะ
+    | การเห็น peer ที่ bootnode คือหลักฐานเดียวว่ามีโหนดรันอยู่จริง
+    |
+    | ค่าที่ตั้งตอนจบรอบ H มีผลกับรางวัลของรอบ H+1 (สัญญา settle ที่ค่าเก่าก่อนเปลี่ยน)
+    */
+
+    'uptime' => [
+        'slot_seconds' => 300,
+        'period_minutes' => (int) env('MASTERNODE_UPTIME_PERIOD_MINUTES', 60),
+        // บล็อกที่โหนดเห็นล้าหลังหัวเชนได้ไม่เกินเท่านี้ (บล็อก 2-6 วิ → 2-6 นาที)
+        'max_block_lag' => (int) env('MASTERNODE_UPTIME_MAX_BLOCK_LAG', 60),
+        'require_peer_seen' => (bool) env('MASTERNODE_UPTIME_REQUIRE_PEER', true),
+        // bootnode ต้องรายงานครบอย่างน้อยเท่านี้ของนาทีในรอบ ไม่งั้นถือว่าข้อมูลฝั่งเราขาด
+        // → รอบนั้นไม่ลด uptime ของใคร (ความผิดเรา ไม่ใช่ของผู้รันโหนด)
+        'peer_feed_min_coverage' => (float) env('MASTERNODE_UPTIME_FEED_COVERAGE', 0.8),
+        // NodeRegistryV2.MAX_UPTIME_BATCH = 100 (วัดจริง ~4.6M gas) — 50 เผื่อเพดานบล็อก 10M ไว้ครึ่งหนึ่ง
+        'batch_size' => (int) env('MASTERNODE_UPTIME_BATCH_SIZE', 50),
+        'retention_days' => (int) env('MASTERNODE_UPTIME_RETENTION_DAYS', 30),
+
+        // กุญแจ oracle — ตั้งได้แค่ uptime เท่านั้น ห้ามใช้กุญแจ owner/deployer/treasury
+        // keystore V3 (ethers) เซ็นผ่าน scripts/blockchain/uptime-oracle.cjs ฝั่ง CLI เท่านั้น
+        'oracle' => [
+            'keystore_path' => env('MASTERNODE_ORACLE_KEYSTORE_PATH'),
+            'passphrase' => env('MASTERNODE_ORACLE_KEYSTORE_PASS'),
+            // ที่อยู่ที่คาดว่าจะถอด keystore ได้ — ไม่ตรง = ไม่เซ็น
+            'address' => env('MASTERNODE_ORACLE_ADDRESS'),
+        ],
+    ],
+
+    /*
+    | bootnode สาธารณะที่แอปมาสเตอร์โหนดใช้ซิงก์เชน — คั่นด้วยจุลภาค
+    | รูปแบบ /ip4/<IPv4>/tcp/<port>/p2p/16Uiu2…  (polygon-edge 0.9 รับจาก genesis เท่านั้น)
+    | ส่งออกทาง GET /api/v1/masternode/config — เปิด bootnode แล้วไม่ต้องปล่อยแอปใหม่
+    */
+    'public_bootnodes' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('MASTERNODE_PUBLIC_BOOTNODES', ''))
+    ))),
+
+    /*
+    | bootnode รายงานรายชื่อ peer ที่ต่ออยู่ทุกนาที (POST /api/infra/node-peers)
+    | token แยกจาก TPIX_INFRA_ALERT_TOKEN — หลุดตัวเดียวไม่พาอีกระบบไปด้วย
+    */
+    'node_peers_token' => env('TPIX_NODE_PEERS_TOKEN'),
+
+    /*
+    | GeoLite2 — แปลง IP ของ heartbeat เป็นประเทศ/เมือง (แสดงสาธารณะแค่ระดับนั้น)
+    | โหลดด้วย `php artisan geoip:update` (ต้องสมัคร MaxMind ฟรี ได้ account id + license key)
+    */
+    'geoip' => [
+        'database_path' => env('GEOIP_DATABASE_PATH', storage_path('app/geoip/GeoLite2-City.mmdb')),
+        'account_id' => env('MAXMIND_ACCOUNT_ID'),
+        'license_key' => env('MAXMIND_LICENSE_KEY'),
     ],
 
     /*

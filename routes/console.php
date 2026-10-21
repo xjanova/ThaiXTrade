@@ -92,6 +92,24 @@ Schedule::command('masternode:cleanup')
     ->onOneServer()
     ->name('masternode:cleanup');
 
+// Masternode uptime oracle: ปิดรอบรายชั่วโมง → updateUptimeBatch บนเชน
+// นาทีที่ 2 = รอ heartbeat/รายชื่อ peer ของช่องสุดท้ายเข้ามาครบก่อน
+// ยังไม่ตั้งกุญแจของเราเป็น uptimeOracle บนเชน = โหมดเงา (คำนวณ + บันทึก ไม่ส่ง) — ตั้งไว้ได้เลย
+// ถ้าเปลี่ยน MASTERNODE_UPTIME_PERIOD_MINUTES ต้องแก้รอบตรงนี้ให้ตรงกันด้วย
+Schedule::command('masternode:uptime-oracle')
+    ->hourlyAt(2)
+    ->withoutOverlapping(55)
+    ->onOneServer()
+    ->name('masternode:uptime-oracle');
+
+// GeoLite2 (ประเทศ/เมืองบนแผนที่โหนด) — MaxMind ปล่อยฐานใหม่สัปดาห์ละ 2 ครั้ง
+// ยังไม่ตั้ง MAXMIND_LICENSE_KEY = จบเองทันที
+Schedule::command('geoip:update')
+    ->weeklyOn(3, '04:20')
+    ->withoutOverlapping(60)
+    ->onOneServer()
+    ->name('geoip:update');
+
 // ชั้นคลัง: เก็บรายการเคลื่อนไหวของกระเป๋าคลังจากเชนเข้าสมุดบัญชี ทุก 5 นาที
 //
 // ต้องมีตัวนี้ ไม่งั้นพอมีใครโอนเงินออกจากคลังผ่าน Masternode UI (ทางเดียวที่โอนได้

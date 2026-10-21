@@ -105,6 +105,14 @@ class MasterNodeController extends Controller
                 'chain_id' => (int) config('blockchain.tpix_chain_id', 4289),
                 'rpc_url' => $this->registry->publicRpcUrl(),
                 'explorer_url' => $this->explorerUrl(),
+                // bootnode สาธารณะ — แอปตรวจรูปแบบ /ip4/…/tcp/…/p2p/16Uiu2… เองก่อนใช้
+                // ว่าง = ยังไม่เปิด แอปอยู่โหมดเฝ้าดูเชนเหมือนเดิม
+                'bootnodes' => array_values(array_filter(
+                    (array) config('masternode.public_bootnodes', []),
+                    fn ($b) => is_string($b) && preg_match('#^/ip4/\d{1,3}(\.\d{1,3}){3}/tcp/\d{1,5}/p2p/16Uiu2[1-9A-HJ-NP-Za-km-z]+$#', $b),
+                )),
+                // แอปมอบอำนาจกุญแจโหนดไม่เกินนี้ — เกิน = heartbeat ถูกปฏิเสธ (422) ทุกครั้ง
+                'delegation_max_lifetime_seconds' => (int) config('masternode.delegation.max_lifetime_seconds'),
             ];
         });
 

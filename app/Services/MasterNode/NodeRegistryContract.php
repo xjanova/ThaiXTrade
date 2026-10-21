@@ -49,6 +49,10 @@ class NodeRegistryContract
     private const SEL_TIER_APR_CAP_BPS = '0xf8bc005d';    // tierAprCapBps(uint8)
     private const SEL_NODE_REWARD_RATE = '0x4dedaa7a';    // nodeRewardRate(uint8)
 
+    // ── รุ่น uptime oracle (2026-10-22) — สัญญาก่อนหน้านี้ไม่มี uptimeOracle() → null ─────
+    private const SEL_GET_ACTIVE_OPERATORS = '0x783286fb'; // getActiveOperators(uint256,uint256)
+    private const SEL_UPTIME_ORACLE = '0x841a41a8';        // uptimeOracle()
+
     /** 365 วันเป็นวินาที — ตรงกับ `365 days` ที่สัญญาใช้คิดเพดาน APR */
     private const SECONDS_PER_YEAR = '31536000';
 
@@ -529,6 +533,63 @@ class NodeRegistryContract
         }
 
         return Wei::hexToInt($result) !== '0';
+    }
+
+    /**
+     * uptimeOracle() — กุญแจที่สัญญายอมให้ตั้ง uptime (lowercase).
+     *
+     * @return string|null '0x000…0' = ยังไม่ได้ตั้ง · null = อ่านไม่ได้/สัญญารุ่นเก่าที่ไม่มีฟังก์ชันนี้
+     */
+    public function uptimeOracle(): ?string
+    {
+        $result = $this->ethCall(self::SEL_UPTIME_ORACLE);
+        $w = $result === null ? [] : $this->words($result);
+        if (count($w) !== 1 || ! str_starts_with($w[0], str_repeat('0', 24))) {
+            return null;
+        }
+
+        return '0x'.substr($w[0], 24);
+    }
+
+    /**
+     * getActiveOperators ทีละหน้า จนครบ — คืน null ถ้าหน้าไหนอ่านไม่ได้
+     * (รายชื่อครึ่ง ๆ กลาง ๆ อันตราย: โหนดที่ตกหล่นจะไม่ถูกตั้ง uptime ตามจริง).
+     *
+     * @return array<int,string>|null ที่อยู่ lowercase
+     */
+    public function activeOperators(int $pageSize = 100): ?array
+    {
+        $address = $this->address();
+        if ($address === null) {
+            return null;
+        }
+
+        $out = [];
+        for ($offset = 0; $offset < 100_000; $offset += $pageSize) {
+            // ไม่ผ่าน ethCall() เพราะหน้าว่าง (address[] ยาว 0) ก็ยังเป็นคำตอบที่ถูกต้อง
+            $result = $this->rpc('eth_call', [
+                ['to' => $address, 'data' => self::SEL_GET_ACTIVE_OPERATORS.$this->padUint($offset).$this->padUint($pageSize)],
+                'latest',
+            ]);
+            if (! is_string($result) || strlen($result) < 2 + 128) {
+                return null;
+            }
+
+            // address[] แบบ dynamic: word0 = offset (0x20), word1 = จำนวน, ถัดไปคือที่อยู่
+            $w = $this->words($result);
+            $count = (int) Wei::hexToInt($w[1] ?? '0');
+            if ($count > $pageSize || count($w) < 2 + $count) {
+                return null;
+            }
+            for ($i = 0; $i < $count; $i++) {
+                $out[] = '0x'.substr($w[2 + $i], 24);
+            }
+            if ($count < $pageSize) {
+                return $out;
+            }
+        }
+
+        return null;
     }
 
     /** eth_blockNumber — ใช้เช็กว่าเชนยังเดินอยู่ */
