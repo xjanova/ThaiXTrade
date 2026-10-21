@@ -43,6 +43,12 @@ class DexSwapIndexer
     /** ตำแหน่งที่ไล่ถึงแล้ว เก็บในฐานข้อมูล (แคชถูกล้างตอน deploy แล้วต้องไล่ใหม่ตั้งแต่ต้นทุกครั้ง) */
     private const CURSOR_GROUP = 'dex_indexer';
 
+    /**
+     * ผลของ recordLog เมื่อเชนตอบไม่ได้ระหว่างอ่านข้อมูลประกอบ (ผู้ส่ง/เวลาบล็อก/token0)
+     * ต่างจาก null ที่แปลว่า "ไม่ต้องบันทึก" (ซ้ำ / ไม่ใช่ไม้ซื้อขาย) — อันนี้ต้องกลับมาอ่านใหม่
+     */
+    private const RETRY = 'retry';
+
     /** @var array<string, string> tx hash → กระเป๋าผู้สวอป (จำในรอบเดียว) */
     private array $senders = [];
 
@@ -87,10 +93,26 @@ class DexSwapIndexer
                     break;
                 }
 
+                $retryAt = null;
                 foreach ($logs as $log) {
-                    if ($this->recordLog($chain, $pair, $log)) {
+                    $row = $this->recordLog($chain, $pair, $log);
+                    if ($row === self::RETRY) {
+                        /*
+                         * ⚠️ เดิมข้าม log นี้แล้วขยับเคอร์เซอร์ผ่านไป = ไม้หายถาวร (ประวัติ/ปริมาณไม่ครบ)
+                         * ตอนนี้หยุดพูลนี้ไว้ที่บล็อกของ log นี้ รอบหน้าอ่านบล็อกนี้ใหม่
+                         * log ก่อนหน้าในบล็อกเดียวกันที่บันทึกไปแล้วไม่ซ้ำ (ด่าน exists ใน recordLog)
+                         */
+                        $retryAt = max($from, (int) Wei::hexToInt((string) ($log['blockNumber'] ?? '0x0')));
+                        break;
+                    }
+                    if ($row instanceof Transaction) {
                         $recorded++;
                     }
+                }
+
+                if ($retryAt !== null) {
+                    $this->setCursor($pair, $retryAt);
+                    break;
                 }
 
                 $this->setCursor($pair, $to + 1);
@@ -142,6 +164,7 @@ class DexSwapIndexer
         $pairs = $this->onchainPairs($chain);
         $topic = $this->dex->eventTopic(self::SWAP_EVENT);
         $rows = [];
+        $retry = false;
 
         foreach ($receipt['logs'] ?? [] as $log) {
             $pair = $pairs->get(strtolower((string) ($log['address'] ?? '')));
@@ -154,9 +177,16 @@ class DexSwapIndexer
             $log['blockNumber'] = $log['blockNumber'] ?? ($receipt['blockNumber'] ?? null);
 
             $row = $this->recordLog($chain, $pair, $log);
-            if ($row) {
+            if ($row === self::RETRY) {
+                $retry = true;
+            } elseif ($row instanceof Transaction) {
                 $rows[] = $row;
             }
+        }
+
+        // อ่านข้อมูลประกอบไม่ได้ (เชนสะดุด) — ไม่ใช่ "ไม่ใช่สวอป" · dex:sync จะบันทึกให้เองในรอบนาที
+        if ($rows === [] && $retry) {
+            return ['status' => 'pending', 'transactions' => []];
         }
 
         if ($rows === []) {
@@ -175,7 +205,7 @@ class DexSwapIndexer
      * log Swap หนึ่งอัน → แถว transactions หนึ่งแถว (+ ปริมาณในแท่ง 1 นาที)
      * ซ้ำได้ปลอดภัย: คีย์คือ tx hash + เหรียญขาเข้า/ขาออก (สวอปหลายฮอปในธุรกรรมเดียวได้หลายแถว คนละคู่)
      */
-    private function recordLog(Chain $chain, TradingPair $pair, array $log): ?Transaction
+    private function recordLog(Chain $chain, TradingPair $pair, array $log): Transaction|string|null
     {
         $txHash = strtolower((string) ($log['transactionHash'] ?? ''));
         $blockNumber = (int) Wei::hexToInt((string) ($log['blockNumber'] ?? '0x0'));
@@ -183,12 +213,15 @@ class DexSwapIndexer
             return null;
         }
 
-        $trade = $this->decodeTrade($pair, (string) ($log['data'] ?? ''));
+        $trade = $this->decodeTradeOrRetry($pair, (string) ($log['data'] ?? ''));
+        if ($trade === self::RETRY) {
+            return $this->retryOrGiveUp($txHash, $log);
+        }
         if ($trade === null) {
             return null;
         }
 
-        return Cache::lock("dex:swap-index:{$txHash}", 15)->block(10, function () use ($chain, $pair, $log, $txHash, $blockNumber, $trade) {
+        $result = Cache::lock("dex:swap-index:{$txHash}", 15)->block(10, function () use ($chain, $pair, $log, $txHash, $blockNumber, $trade) {
             $exists = Transaction::where('chain_id', $chain->id)
                 ->where('type', 'swap')
                 ->where('tx_hash', $txHash)
@@ -202,10 +235,8 @@ class DexSwapIndexer
             $sender = $this->senderOf($txHash);
             $timestamp = $this->timeOf($blockNumber);
             if ($sender === null || $timestamp === null) {
-                // ข้อมูลไม่ครบ — ไม่บันทึกครึ่งๆ กลางๆ รอบหน้าก็ไม่ได้กลับมาที่ log นี้ จึงบอกใน log ไว้ไล่ตาม
-                Log::warning('DexSwapIndexer: อ่านผู้ส่ง/เวลาบล็อกไม่ได้ ข้ามไม้นี้', ['tx' => $txHash, 'block' => $blockNumber]);
-
-                return null;
+                // ข้อมูลไม่ครบ — ไม่บันทึกครึ่งๆ กลางๆ และให้ผู้เรียกกลับมาอ่าน log นี้ใหม่ (เดิมข้ามทิ้งถาวร)
+                return self::RETRY;
             }
 
             $time = Carbon::createFromTimestamp($timestamp, config('app.timezone'));
@@ -241,7 +272,31 @@ class DexSwapIndexer
 
             return $tx;
         });
+
+        return $result === self::RETRY ? $this->retryOrGiveUp($txHash, $log) : $result;
     }
+
+    /**
+     * นับรอบที่อ่าน log นี้ไม่สำเร็จ — เกินเพดาน (~30 นาทีของ dex:sync) ค่อยยอมข้าม
+     * กัน log ที่เสียถาวร (เช่นเชนไม่มีธุรกรรมนั้นแล้ว) ตรึงเคอร์เซอร์ของพูลไว้ตลอดกาล
+     */
+    private function retryOrGiveUp(string $txHash, array $log): ?string
+    {
+        $key = "dex:swap-index:retry:{$txHash}:".strtolower((string) ($log['logIndex'] ?? '0x0'));
+        $attempts = (int) Cache::get($key, 0) + 1;
+        Cache::put($key, $attempts, now()->addDay());
+
+        if ($attempts > self::MAX_LOG_RETRIES) {
+            Log::warning('DexSwapIndexer: อ่านข้อมูลประกอบของไม้นี้ไม่ได้ซ้ำหลายรอบ ข้ามไม้นี้', ['tx' => $txHash, 'attempts' => $attempts]);
+
+            return null;
+        }
+
+        return self::RETRY;
+    }
+
+    /** เพดานรอบที่ยอมอ่าน log เดิมซ้ำเมื่อเชนตอบไม่ได้ (dex:sync รันทุกนาที) */
+    private const MAX_LOG_RETRIES = 30;
 
     /**
      * ถอดจำนวนจาก data ของ Swap (amount0In, amount1In, amount0Out, amount1Out) แล้วจัดเป็นฝั่ง base/quote ของคู่
@@ -249,6 +304,21 @@ class DexSwapIndexer
      * @return array{side: string, from_token: string, to_token: string, from_amount: string, to_amount: string, price: string, base_amount: string, quote_amount: string}|null
      */
     public function decodeTrade(TradingPair $pair, string $data): ?array
+    {
+        $trade = $this->decodeTradeOrRetry($pair, $data);
+
+        return is_array($trade) ? $trade : null;
+    }
+
+    /**
+     * เหมือน decodeTrade แต่แยก "เชนตอบไม่ได้" (RETRY) ออกจาก "ไม่ใช่ไม้ซื้อขาย" (null)
+     *
+     * ใช้แค่ token0 ของพูล (แคช 1 ชม.) — เดิมเรียก pairInfo ซึ่งต้องอ่าน getReserves สดด้วย
+     * อ่าน reserve ไม่ได้ครั้งเดียว = ไม้นั้นหายถาวร ทั้งที่การถอด event ไม่ได้ใช้ reserve เลย
+     *
+     * @return array<string,string>|string|null
+     */
+    private function decodeTradeOrRetry(TradingPair $pair, string $data): array|string|null
     {
         $words = TpixDexService::words($data);
         if (count($words) < 4) {
@@ -258,9 +328,13 @@ class DexSwapIndexer
 
         $base = $pair->baseToken;
         $quote = $pair->quoteToken;
-        $info = $this->dex->pairInfo((string) $pair->dex_pair_address);
-        if (! $base || ! $quote || ! $info) {
+        if (! $base || ! $quote) {
             return null;
+        }
+
+        $info = $this->dex->pairTokens((string) $pair->dex_pair_address);
+        if (! $info) {
+            return self::RETRY;
         }
 
         $baseOnchain = $this->dex->onchainAddress((string) $base->contract_address);

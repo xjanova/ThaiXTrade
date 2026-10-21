@@ -7,6 +7,8 @@ use App\Models\Chain;
 use App\Models\SiteSetting;
 use App\Models\SwapConfig;
 use App\Models\Token;
+use App\Models\TradingOrderTicket;
+use App\Models\TradingPair;
 use App\Models\Transaction;
 use App\Services\ChainResolver;
 use App\Services\DexSwapIndexer;
@@ -101,6 +103,23 @@ class SwapApiController extends Controller
                 ], 404);
             }
 
+            /*
+             * แอดมินปิดคู่นี้ (ด่านฉุกเฉิน) = ไม่ให้ราคา
+             *
+             * หน้าเว็บถือว่าไม่มีราคาจาก endpoint นี้ = ห้ามส่งธุรกรรม (fail-closed)
+             * เดิมเช็กแค่เชน/เหรียญ ปิดคู่ BTC-USDT แล้วสวอปยังลงเชนได้ตามปกติ
+             * คู่ที่ไม่มีในทะเบียนเลย (หน้า Swap สวอปเหรียญอะไรก็ได้) ไม่ถือว่าถูกปิด
+             */
+            if ($this->pairDisabled($validated['from_token'], $validated['to_token'], (int) $validated['chain_id'])) {
+                return response()->json([
+                    'success' => false,
+                    'error' => [
+                        'code' => 'PAIR_DISABLED',
+                        'message' => 'This trading pair is currently disabled.',
+                    ],
+                ], 404);
+            }
+
             // Get swap quote from the fee calculation service
             $quote = $this->feeCalculationService->getSwapQuote(
                 (float) $validated['amount'],
@@ -191,6 +210,8 @@ class SwapApiController extends Controller
             'price' => 'nullable|numeric|gt:0',
             // ผู้ใช้ปฏิเสธ/โอนค่าธรรมเนียมไม่ผ่าน — สวอปสำเร็จไปแล้ว ต้องบันทึกไม้ไว้ ไม่ใช่ปัดตก
             'fee_collected' => 'nullable|boolean',
+            // ใบอนุญาตวางไม้ที่จ่ายค่าบริการด้วยเครดิต TPIX แล้ว — ไม้นี้ไม่ถูกหัก % จากเหรียญ (fee 0)
+            'fee_ticket' => ['nullable', 'string', 'uuid'],
         ]);
 
         if ($validator->fails()) {
@@ -269,14 +290,37 @@ class SwapApiController extends Controller
             // ⚠️ ห้าม (string) ตรงๆ — float เล็กกลายเป็น "3.0E-5" แล้ว bccomp โยน ValueError (500)
             $submittedFeeStr = FeeCalculationService::decimal($validated['fee_amount']);
             $expectedFeeStr = FeeCalculationService::decimal($expectedFee['fee_amount']);
+            $submittedIsZero = bccomp($submittedFeeStr, '0', 18) === 0;
+
+            $fromTokenMeta = $this->tokenMeta($validated['from_token'], (int) $validated['chain_id']);
+            $toTokenMeta = $this->tokenMeta($validated['to_token'], (int) $validated['chain_id']);
+
+            /*
+             * ไม้ที่จ่ายค่าบริการด้วยเครดิต TPIX (ใบอนุญาตวางไม้) — หน้าเว็บไม่หัก % จากเหรียญเลย
+             * เดิมไม่มีทางบอกเซิร์ฟเวอร์ → fee 0 โดน FEE_MISMATCH (422 = ปฏิเสธถาวร) ไม้หายจากประวัติ
+             * ตั๋วต้องเป็นของกระเป๋านี้ และยังไม่ถูกใช้กับไม้อื่น
+             */
+            $ticketUuid = $validated['fee_ticket'] ?? null;
+            $ticketCovers = $ticketUuid !== null && ! $inPoolFee
+                && $this->feeTicketCovers($ticketUuid, $validated['wallet_address'], $validated['tx_hash']);
+            $ticketInvalid = $ticketUuid !== null && ! $ticketCovers;
+
+            if ($ticketInvalid) {
+                Log::warning('Swap claimed a fee ticket that does not cover it', [
+                    'ticket' => $ticketUuid,
+                    'wallet' => $validated['wallet_address'],
+                    'tx_hash' => $validated['tx_hash'],
+                ]);
+            }
 
             /*
              * ผู้ใช้กดปฏิเสธธุรกรรมค่าธรรมเนียม (หรือโอนไม่ผ่าน) หลังสวอปสำเร็จแล้ว
              * เดิมโดน FEE_MISMATCH แล้วหน้าเว็บกลืน error เงียบ = ไม้จริงหายจากประวัติ
              * การปัดตกไม่ได้เงินค่าธรรมเนียมคืนมา — บันทึกไว้พร้อมธงให้แอดมินเห็นดีกว่า
+             * ตั๋วที่ใช้ไม่ได้ก็เช่นกัน: สวอปลงเชนไปแล้ว บันทึกเป็น "ไม่ได้เก็บ" ให้แอดมินตามต่อ
              */
-            $feeNotCollected = ($validated['fee_collected'] ?? null) === false
-                && bccomp($submittedFeeStr, '0', 18) === 0;
+            $feeNotCollected = ! $ticketCovers && $submittedIsZero
+                && (($validated['fee_collected'] ?? null) === false || $ticketInvalid);
 
             if ($feeNotCollected && bccomp($expectedFeeStr, '0', 18) > 0) {
                 Log::warning('Swap recorded without platform fee (user skipped the fee transfer)', [
@@ -287,8 +331,8 @@ class SwapApiController extends Controller
             }
 
             $feeMismatch = false;
-            if ($feeNotCollected) {
-                // บันทึกไว้แล้วด้านบน — ไม่ใช่การปลอมค่าธรรมเนียม
+            if ($feeNotCollected || $ticketCovers) {
+                // บันทึกไว้แล้วด้านบน / จ่ายด้วยเครดิต TPIX แล้ว — ไม่ใช่การปลอมค่าธรรมเนียม
             } elseif (bccomp($expectedFeeStr, '0', 18) > 0) {
                 $diff = bcsub($submittedFeeStr, $expectedFeeStr, 18);
                 if (bccomp($diff, '0', 18) < 0) {
@@ -298,6 +342,14 @@ class SwapApiController extends Controller
                 // ฝั่งเซิร์ฟเวอร์ปัดค่าธรรมเนียมที่ 8 ตำแหน่ง — ไม้จิ๋วระดับ 1e-8 จะต่างเกิน 1% เพราะการปัดล้วนๆ
                 if (bccomp($tolerance, '0.00000001', 18) < 0) {
                     $tolerance = '0.00000001';
+                }
+                /*
+                 * หน้าเว็บคิดค่าธรรมเนียมเป็นหน่วยเล็กสุดของเหรียญ (ปัดขึ้น 1 หน่วย)
+                 * เหรียญทศนิยมน้อย (TRX 6 ตำแหน่ง) ต่างจากค่าทศนิยมของเราได้เกือบ 1 หน่วยเสมอ
+                 */
+                $unit = $this->smallestUnit((int) ($fromTokenMeta?->decimals ?? 18));
+                if (bccomp($tolerance, $unit, 18) < 0) {
+                    $tolerance = $unit;
                 }
                 $feeMismatch = bccomp($diff, $tolerance, 18) > 0;
             } elseif (bccomp($submittedFeeStr, '0.00000001', 18) > 0) {
@@ -321,29 +373,54 @@ class SwapApiController extends Controller
                 ], 422);
             }
 
+            /*
+             * มูลค่าค่าธรรมเนียมเป็นดอลลาร์ — หน้ารายได้ของแอดมินรวมจากคอลัมน์นี้
+             * (fee_amount เป็นหน่วยของเหรียญขาเข้า บวกข้ามเหรียญกันไม่ได้)
+             * ไม่ได้เก็บ / จ่ายด้วยเครดิต TPIX = รายได้จากไม้นี้ทางนี้เป็น 0
+             */
+            $feeUsd = ($feeNotCollected || $ticketCovers)
+                ? 0.0
+                : FeeCalculationService::feeUsdFor(
+                    $fromTokenMeta?->symbol,
+                    $toTokenMeta?->symbol,
+                    (float) $validated['fee_amount'],
+                    (float) $validated['from_amount'],
+                    (float) $validated['to_amount'],
+                );
+
             // SECURITY FIX: wrap in DB transaction ป้องกัน orphaned records
-            $transaction = DB::transaction(fn () => Transaction::create([
-                'type' => 'swap',
-                'wallet_address' => strtolower($validated['wallet_address']),
-                'chain_id' => $validated['chain_id'],
-                'from_token' => strtolower($validated['from_token']),
-                'to_token' => strtolower($validated['to_token']),
-                'from_amount' => $validated['from_amount'],
-                'to_amount' => $validated['to_amount'],
-                'fee_amount' => $validated['fee_amount'],
-                'tx_hash' => $validated['tx_hash'],
-                'status' => 'confirmed', // Frontend already verified tx receipt before calling this endpoint
-                'metadata' => array_filter([
-                    'fee_rate' => $expectedFee['fee_rate'],
-                    'fee_model' => $inPoolFee ? 'in_pool' : 'transfer',
-                    'fee_collector' => $inPoolFee ? null : SiteSetting::get('trading', 'fee_collector_wallet', ''),
-                    'fee_collected' => ! $feeNotCollected,
-                    // คู่/ฝั่ง/ราคา จากกระดานเทรด — ประวัติและป้ายบนกราฟอ่านจากตรงนี้
-                    'pair' => isset($validated['pair']) ? strtoupper(str_replace('-', '/', $validated['pair'])) : null,
-                    'side' => $validated['side'] ?? null,
-                    'price' => isset($validated['price']) ? FeeCalculationService::decimal($validated['price']) : null,
-                ], fn ($value) => $value !== null),
-            ]));
+            // forceFill: fee_usd ไม่อยู่ใน $fillable ของโมเดล (ค่านี้มาจากเซิร์ฟเวอร์เท่านั้น ไม่ใช่จากคำขอ)
+            $transaction = DB::transaction(function () use ($validated, $expectedFee, $inPoolFee, $feeNotCollected, $ticketCovers, $ticketUuid, $ticketInvalid, $feeUsd) {
+                $tx = new Transaction();
+                $tx->forceFill([
+                    'type' => 'swap',
+                    'wallet_address' => strtolower($validated['wallet_address']),
+                    'chain_id' => $validated['chain_id'],
+                    'from_token' => strtolower($validated['from_token']),
+                    'to_token' => strtolower($validated['to_token']),
+                    'from_amount' => $validated['from_amount'],
+                    'to_amount' => $validated['to_amount'],
+                    'fee_amount' => $feeNotCollected ? 0 : $validated['fee_amount'],
+                    'fee_usd' => $feeUsd,
+                    'tx_hash' => $validated['tx_hash'],
+                    'status' => 'confirmed', // Frontend already verified tx receipt before calling this endpoint
+                    'metadata' => array_filter([
+                        'fee_rate' => $ticketCovers ? 0.0 : $expectedFee['fee_rate'],
+                        'fee_model' => $ticketCovers ? 'tpix_ticket' : ($inPoolFee ? 'in_pool' : 'transfer'),
+                        'fee_collector' => ($inPoolFee || $ticketCovers) ? null : SiteSetting::get('trading', 'fee_collector_wallet', ''),
+                        'fee_collected' => ! $feeNotCollected,
+                        'fee_ticket' => $ticketUuid,
+                        'fee_ticket_invalid' => $ticketInvalid ? true : null,
+                        // คู่/ฝั่ง/ราคา จากกระดานเทรด — ประวัติและป้ายบนกราฟอ่านจากตรงนี้
+                        'pair' => isset($validated['pair']) ? strtoupper(str_replace('-', '/', $validated['pair'])) : null,
+                        'side' => $validated['side'] ?? null,
+                        'price' => isset($validated['price']) ? FeeCalculationService::decimal($validated['price']) : null,
+                    ], fn ($value) => $value !== null),
+                ]);
+                $tx->save();
+
+                return $tx;
+            });
 
             return response()->json([
                 'success' => true,
@@ -513,6 +590,92 @@ class SwapApiController extends Controller
                 'source' => 'chain',
             ],
         ], $result['status'] === 'recorded' ? 201 : 200);
+    }
+
+    /**
+     * ที่อยู่ที่ใช้ค้นเหรียญนี้ในตาราง — พิมพ์เล็ก + รูป native ทั้งสองแบบ
+     * (BscMajorPairsSeeder เก็บ BNB เป็น 0xEeee… ส่วน BaseTokensSeeder เก็บเป็น 0x000…)
+     *
+     * @return list<string>
+     */
+    private function lookupAddresses(string $address): array
+    {
+        $lower = strtolower($address);
+        $native = ['0x0000000000000000000000000000000000000000', '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'];
+
+        return in_array($lower, $native, true) ? $native : [$lower];
+    }
+
+    /**
+     * แอดมินปิดคู่นี้บนเชนนี้ไหม — มีคู่ในทะเบียน (ทิศไหนก็ได้) และไม่มีตัวไหนเปิดอยู่เลย
+     * ไม่มีคู่ในทะเบียน = ไม่ถือว่าปิด (หน้า Swap สวอปเหรียญคู่ใดก็ได้ที่เหรียญทั้งสองเปิดอยู่)
+     */
+    private function pairDisabled(string $fromToken, string $toToken, int $chainPk): bool
+    {
+        $from = $this->lookupAddresses($fromToken);
+        $to = $this->lookupAddresses($toToken);
+        $column = DB::raw('LOWER(contract_address)');
+
+        $pairs = TradingPair::query()
+            ->where('chain_id', $chainPk)
+            ->where(function ($q) use ($from, $to, $column) {
+                $q->where(function ($w) use ($from, $to, $column) {
+                    $w->whereHas('baseToken', fn ($t) => $t->whereIn($column, $from))
+                        ->whereHas('quoteToken', fn ($t) => $t->whereIn($column, $to));
+                })->orWhere(function ($w) use ($from, $to, $column) {
+                    $w->whereHas('baseToken', fn ($t) => $t->whereIn($column, $to))
+                        ->whereHas('quoteToken', fn ($t) => $t->whereIn($column, $from));
+                });
+            })
+            ->get(['id', 'is_active']);
+
+        return $pairs->isNotEmpty() && $pairs->every(fn (TradingPair $p) => ! $p->is_active);
+    }
+
+    /** แถวเหรียญของที่อยู่นี้บนเชนนี้ (เพื่อรู้ symbol/decimals) — ไม่เจอ = null */
+    private function tokenMeta(string $address, int $chainPk): ?Token
+    {
+        return Token::query()
+            ->where('chain_id', $chainPk)
+            ->whereIn(DB::raw('LOWER(contract_address)'), $this->lookupAddresses($address))
+            ->orderByDesc('is_active')
+            ->first(['id', 'symbol', 'decimals']);
+    }
+
+    /**
+     * ใบอนุญาตวางไม้ใบนี้ครอบไม้นี้ได้ไหม
+     *  - เป็นของกระเป๋าเดียวกัน
+     *  - ออกแล้ว (issued) หรือใช้แล้ว (consumed) — คืนเงินแล้ว/หมดอายุ = ไม่ครอบ
+     *  - ตั๋วหนึ่งใบครอบได้ไม้เดียว: ใช้กับ tx อื่นไปแล้ว = ไม่ครอบ
+     */
+    private function feeTicketCovers(string $uuid, string $wallet, string $txHash): bool
+    {
+        $ticket = TradingOrderTicket::query()
+            ->where('uuid', $uuid)
+            ->where('wallet_address', strtolower(trim($wallet)))
+            ->first();
+
+        if (! $ticket || ! in_array($ticket->status, [TradingOrderTicket::STATUS_ISSUED, TradingOrderTicket::STATUS_CONSUMED], true)) {
+            return false;
+        }
+
+        if ($ticket->order_tx_hash && strtolower($ticket->order_tx_hash) !== strtolower($txHash)) {
+            return false;
+        }
+
+        return ! Transaction::query()
+            ->where('type', 'swap')
+            ->where('metadata->fee_ticket', $uuid)
+            ->where('tx_hash', '!=', $txHash)
+            ->exists();
+    }
+
+    /** หน่วยเล็กสุดของเหรียญเป็นสตริงทศนิยม (6 ตำแหน่ง → "0.000001") */
+    private function smallestUnit(int $decimals): string
+    {
+        $decimals = max(0, min(18, $decimals));
+
+        return $decimals === 0 ? '1' : '0.'.str_repeat('0', $decimals - 1).'1';
     }
 
     /**

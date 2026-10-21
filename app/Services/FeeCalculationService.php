@@ -143,6 +143,49 @@ class FeeCalculationService
     }
 
     /**
+     * เหรียญที่ถือว่า 1 หน่วย = 1 ดอลลาร์ — ใช้ตีมูลค่าค่าธรรมเนียมเป็น USD
+     * (ชุดเดียวกับที่ประวัติเทรดใช้ตัดสินว่าฝั่งไหนคือ quote)
+     */
+    public const USD_STABLES = ['USDT', 'USDC', 'BUSD', 'FDUSD', 'DAI', 'TUSD'];
+
+    /**
+     * มูลค่าค่าธรรมเนียมสวอปเป็นดอลลาร์ ณ ตอนที่บันทึกไม้.
+     *
+     * ⚠️ fee_amount เป็นหน่วยของ "เหรียญขาเข้า" — รวมกันตรงๆ ไม่ได้
+     *    ขาย PEPE 1,000,000,000 เหรียญ = ค่าธรรมเนียม 3,000,000 PEPE (~$30)
+     *    แต่หน้ารายได้ของแอดมินเคยบวกเป็น $3,000,000
+     *
+     *  - จ่ายด้วยสเตเบิล → ค่าธรรมเนียมคือดอลลาร์อยู่แล้ว
+     *  - ได้สเตเบิล → ราคาโดยนัยของไม้นี้ = ยอดที่ได้ ÷ ส่วนที่สวอปจริง (ขาเข้า − ค่าธรรมเนียม)
+     *  - ไม่มีฝั่งไหนเป็นสเตเบิล → ไม่รู้ (null) ดีกว่าเดา
+     */
+    public static function feeUsdFor(
+        ?string $fromSymbol,
+        ?string $toSymbol,
+        float $feeAmount,
+        float $fromAmount,
+        float $toAmount,
+    ): ?float {
+        if ($feeAmount <= 0) {
+            return 0.0;
+        }
+
+        $from = strtoupper((string) $fromSymbol);
+        $to = strtoupper((string) $toSymbol);
+
+        if (in_array($from, self::USD_STABLES, true)) {
+            return round($feeAmount, 8);
+        }
+
+        $swapped = $fromAmount - $feeAmount;
+        if (in_array($to, self::USD_STABLES, true) && $swapped > 0 && $toAmount > 0) {
+            return round($feeAmount * ($toAmount / $swapped), 8);
+        }
+
+        return null;
+    }
+
+    /**
      * ตัวเลขเป็นสตริงทศนิยมธรรมดาที่ bcmath รับได้เสมอ (ไม่มีรูป 1.0E-5)
      */
     public static function decimal(float|int|string $value, int $scale = 18): string
@@ -292,6 +335,9 @@ class FeeCalculationService
      *
      * Uses the FeeConfig min/max amount thresholds as reference points.
      * Larger amounts relative to the max threshold indicate higher price impact.
+     *
+     * ⚠️ ค่านี้ไม่ได้มาจากพูลจริง (ไม่รู้สภาพคล่องเลย) — หน้าเว็บไม่ใช้แล้ว
+     *    useSwap วัดผลกระทบจริงจาก router บนเชนเอง คงไว้เพื่อความเข้ากันได้ของ API เดิม
      */
     private function estimatePriceImpact(float $amount, int $chainId): float
     {

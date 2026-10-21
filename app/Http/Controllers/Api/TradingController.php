@@ -123,6 +123,25 @@ class TradingController extends Controller
                 ], 422);
             }
 
+            /*
+             * order book ภายในใช้ได้เฉพาะคู่บนเชน TPIX ที่ไม่ได้ลงเชนจริงผ่านพูล
+             *
+             * ⚠️ เดิมเช็กแค่ว่ามีคู่นี้ในทะเบียน — เปิด orderbook_enabled เพื่อ TPIX แล้ว
+             *    คู่ BSC อย่าง BTC-USDT (execution_mode = onchain → PancakeSwap) ก็ถูกจับคู่ใน DB
+             *    โดยไม่มีการ settle บนเชนเลย (ยิง API ตรงได้) = ไม้หลอกที่ดูเหมือนจริง
+             *    ตารางไม่มีค่า 'internal' ให้เลือก (มีแค่ onchain/index) จึงใช้ "เชน TPIX + ไม่ใช่ onchain"
+             */
+            $onTpixChain = (int) $chain->chain_id === (int) config('blockchain.tpix_chain_id', 4289);
+            if (! $onTpixChain || $tradingPair->execution_mode === 'onchain') {
+                return response()->json([
+                    'success' => false,
+                    'error' => [
+                        'code' => 'ORDERBOOK_NOT_FOR_PAIR',
+                        'message' => 'This pair trades on-chain through market orders, not the order book.',
+                    ],
+                ], 422);
+            }
+
             // ส่ง DB chain PK ไปให้ createInternalOrder ใช้
             $validated['chain_id'] = $chain->id;
 

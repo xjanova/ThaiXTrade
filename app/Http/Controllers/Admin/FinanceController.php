@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Stripe\Balance;
@@ -157,9 +158,20 @@ class FinanceController extends Controller
             // Disputes
             $totalDisputes = SaleTransaction::where('status', 'disputed')->count();
 
-            // Trading fees (from transactions table)
-            $tradingFeeRevenue = Transaction::whereIn('status', ['confirmed', 'completed'])
-                ->sum('fee_amount');
+            /*
+             * Trading fees (from transactions table)
+             *
+             * ⚠️ สวอปต้องรวมจาก fee_usd (มูลค่าดอลลาร์ ณ ตอนบันทึก) ไม่ใช่ fee_amount
+             *    fee_amount เป็นหน่วยของเหรียญขาเข้า — ขาย PEPE 1,000,000,000 เหรียญ
+             *    ได้ค่าธรรมเนียม 3,000,000 PEPE (~$30) แต่หน้านี้เคยบวกเป็น $3,000,000
+             *    ไม้ที่ตีมูลค่าไม่ได้ (ไม่มีฝั่งไหนเป็นสเตเบิล) มี fee_usd = null และไม่ถูกนับ
+             * ประเภทอื่นคงวิธีเดิม
+             */
+            $settled = ['confirmed', 'completed'];
+            $tradingFeeRevenue = Schema::hasColumn('transactions', 'fee_usd')
+                ? (float) Transaction::where('type', 'swap')->whereIn('status', $settled)->sum('fee_usd')
+                    + (float) Transaction::where('type', '!=', 'swap')->whereIn('status', $settled)->sum('fee_amount')
+                : (float) Transaction::whereIn('status', $settled)->sum('fee_amount');
 
             // Internal trades fees
             $internalTradeFees = DB::table('trades')

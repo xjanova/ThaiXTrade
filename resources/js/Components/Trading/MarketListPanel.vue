@@ -127,11 +127,22 @@ async function fetchTickers({ silent = false } = {}) {
             }));
         }
 
+        /*
+         * คู่บน TPIX DEX ไม่มีใน Binance — /market/tickers จึงไม่เคยส่งมา ต้องถามราคาจากพูลเอง
+         * ⚠️ เดิมใส่แถว TPIX/USDT ปลอม ราคาตายตัว 0.10 + ป้าย "เร็วๆ นี้" ให้คู่เดียวที่เทรดได้จริงบนเชน TPIX
+         *    (0.10 บังเอิญตรงพูลตอนนี้ — ไม้แรกที่ขยับราคาก็ผิดทันที)
+         */
+        const dexRows = pairRes.data?.success ? await fetchDexRows(pairRes.data.data) : [];
+        dexRows.forEach((row) => {
+            if (!tickers.value.find(t => t.pair === row.pair)) tickers.value.unshift(row);
+        });
+
         if (!tickers.value.find(t => t.base === 'TPIX')) {
+            // DEX ยังไม่ซิงก์คู่ให้ — แถวรอเปิด ไม่มีราคา (ไม่แต่งตัวเลขขึ้นมาเอง)
             tickers.value.unshift({
                 symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', quote: 'USDT',
                 logo: meta.TPIX?.logo || TPIX_COIN_ICON,
-                price: 0.10, change: 0, volume: 0, isTpix: true,
+                price: null, change: 0, volume: 0, isTpix: true, live: false,
             });
         }
 
@@ -149,13 +160,55 @@ async function fetchTickers({ silent = false } = {}) {
         // API ล่ม — คงรายการเดิมไว้ ถ้ายังไม่เคยโหลดเลยให้เหลือ TPIX ตัวเดียว
         if (tickers.value.length === 0) {
             tickers.value = [{
-                symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX',
-                logo: TPIX_COIN_ICON, price: 0.10, change: 0, volume: 0, isTpix: true,
+                symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', quote: 'USDT',
+                logo: TPIX_COIN_ICON, price: null, change: 0, volume: 0, isTpix: true, live: false,
             }];
         }
     } finally {
         isLoading.value = false;
     }
+}
+
+/** ถามราคาพูลได้ไม่เกินเท่านี้คู่ต่อรอบ — รายการรีเฟรชทุก 30 วิ ต้องไม่กินโควตา API ของผู้ใช้ */
+const MAX_DEX_ROWS = 5;
+
+/**
+ * แถวของคู่บน TPIX DEX (execution_mode onchain บนเชน 4289) — ราคา/เปลี่ยนแปลง/ปริมาณจาก /dex/ticker
+ * ถามราคาไม่สำเร็จ = แถวยังอยู่ (เทรดได้) แต่ราคาเป็น "—" ไม่เดาตัวเลข
+ */
+async function fetchDexRows(pairs) {
+    const dexPairs = (Array.isArray(pairs) ? pairs : [])
+        .filter(p => p?.execution_mode === 'onchain' && Number(p?.network_chain_id) === 4289 && p?.symbol)
+        .slice(0, MAX_DEX_ROWS);
+
+    return Promise.all(dexPairs.map(async (p) => {
+        const [base, quote] = String(p.symbol).toUpperCase().split('-');
+        const row = {
+            symbol: `${base}/${quote}`,
+            pair: `${base}-${quote}`,
+            base,
+            quote,
+            logo: p.base_logo || (base === 'TPIX' ? TPIX_COIN_ICON : null),
+            price: null,
+            change: 0,
+            volume: 0,
+            // isTpix = ไม่มีเส้นกราฟย่อจาก Binance · live = เทรดได้จริงบนเชน TPIX (ไม่ขึ้นป้าย "เร็วๆ นี้")
+            isTpix: true,
+            live: true,
+        };
+        try {
+            const { data } = await axios.get(`/api/v1/dex/ticker/${row.pair}`);
+            if (data?.success && data.data) {
+                const price = Number(data.data.price);
+                row.price = Number.isFinite(price) && price > 0 ? price : null;
+                row.change = Number(data.data.change_24h) || 0;
+                row.volume = Number(data.data.quote_volume_24h ?? data.data.volume_24h) || 0;
+            }
+        } catch {
+            // ราคาพูลอ่านไม่ได้รอบนี้ — โชว์ "—" รอบหน้าลองใหม่
+        }
+        return row;
+    }));
 }
 
 // ── กรอง + จัดเรียง ─────────────────────────────────────────────────────────
@@ -235,6 +288,8 @@ watch(filtered, (rows) => {
 
 // ── การแสดงผล ───────────────────────────────────────────────────────────────
 function formatPrice(p) {
+    // ไม่รู้ราคา (พูลอ่านไม่ได้ / ยังไม่เปิด) = "—" ไม่ใช่ตัวเลขที่แต่งขึ้น
+    if (p === null || p === undefined || !Number.isFinite(Number(p))) return '—';
     if (p >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (p >= 1) return p.toFixed(2);
     if (p >= 0.01) return p.toFixed(4);
@@ -408,7 +463,11 @@ onUnmounted(() => {
                                 <span class="text-white text-xs font-semibold whitespace-nowrap">{{ row.base }}</span>
                                 <!-- โชว์สกุลหลักต่อท้ายเฉพาะตอนดูรวมทุกสกุล ซึ่งชื่อเหรียญซ้ำกันได้ -->
                                 <span v-if="!activeQuote" class="text-dark-500 text-[9px] font-mono shrink-0">{{ row.quote }}</span>
-                                <span v-if="row.isTpix || row.isIndex" class="text-[8px] px-1 py-px rounded bg-amber-500/15 text-amber-400 font-medium shrink-0">
+                                <!-- คู่ดัชนี = ราคาอ้างอิง (เทรดไม่ได้) · คู่ TPIX ที่ DEX ยังไม่เปิด = เร็วๆ นี้ · คู่ DEX ที่เปิดแล้วไม่มีป้าย -->
+                                <span v-if="row.isIndex" data-test="badge-index" class="text-[8px] px-1 py-px rounded bg-dark-600/40 text-dark-300 font-medium shrink-0">
+                                    {{ t('trade.market.indexOnly') }}
+                                </span>
+                                <span v-else-if="row.isTpix && !row.live" data-test="badge-soon" class="text-[8px] px-1 py-px rounded bg-amber-500/15 text-amber-400 font-medium shrink-0">
                                     {{ t('trade.market.soon') }}
                                 </span>
                             </span>
