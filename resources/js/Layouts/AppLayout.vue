@@ -216,8 +216,8 @@ onMounted(async () => {
                 class="hidden lg:block"
             />
 
-            <!-- Main Content -->
-            <main class="flex-1 p-4 lg:p-6">
+            <!-- Main Content — min-w-0: ไม่งั้นตาราง/เนื้อหากว้างจะดัน flex item นี้จนหน้าเลื่อนแนวนอนบนมือถือ -->
+            <main class="flex-1 min-w-0 p-4 lg:p-6">
                 <slot />
             </main>
         </div>
