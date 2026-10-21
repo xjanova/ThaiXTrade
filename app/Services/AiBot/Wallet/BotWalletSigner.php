@@ -69,6 +69,33 @@ class BotWalletSigner
         return is_string($result) && str_starts_with($result, '0x') ? (int) hexdec($result) : null;
     }
 
+    /**
+     * โหนดรู้จักธุรกรรมนี้ไหม (อยู่ใน mempool หรือลงบล็อกแล้ว).
+     *
+     * ต้องแยก "ไม่รู้จัก" (false → ส่ง raw เดิมซ้ำได้) ออกจาก "อ่านไม่ได้" (null → รอเฉย ๆ)
+     * ไม่งั้น RPC สะดุดครั้งเดียวจะถูกตีความว่าธุรกรรมหาย
+     */
+    public function transactionKnown(string $txHash): ?bool
+    {
+        $answer = $this->rpcCall('eth_getTransactionByHash', [$txHash]);
+
+        return $answer['ok'] ? is_array($answer['result']) : null;
+    }
+
+    /**
+     * nonce ของกระเป๋า — 'latest' = จำนวนธุรกรรมที่ลงบล็อกแล้ว.
+     *
+     * latest > nonce ของรายการเรา = nonce นั้นถูกใช้ไปแล้ว (โดยธุรกรรมเราเองหรือตัวอื่น)
+     * ถ้าไม่มีใบเสร็จของ hash เรา แปลว่าตัวที่ลงบล็อกคือคนอื่น — ของเราไม่มีวันลงอีก
+     */
+    public function nonceOf(string $address, string $tag = 'latest'): ?int
+    {
+        $answer = $this->rpcCall('eth_getTransactionCount', [$address, $tag]);
+        $hex = $answer['result'] ?? null;
+
+        return $answer['ok'] && is_string($hex) && str_starts_with($hex, '0x') ? (int) hexdec($hex) : null;
+    }
+
     public function chainId(): int
     {
         return (int) config('aibot.bot_wallet.chain_id', 56);
@@ -83,10 +110,18 @@ class BotWalletSigner
 
     private function rpc(string $method, array $params): mixed
     {
+        return $this->rpcCall($method, $params)['result'];
+    }
+
+    /**
+     * @return array{ok: bool, result: mixed} ok = โหนดตอบสำเร็จ (result อาจเป็น null ได้ เช่นไม่รู้จัก tx)
+     */
+    private function rpcCall(string $method, array $params): array
+    {
         $url = $this->rpcUrl();
 
         if ($url === '') {
-            return null;
+            return ['ok' => false, 'result' => null];
         }
 
         try {
@@ -96,15 +131,15 @@ class BotWalletSigner
 
             $data = $response->json();
 
-            if (! $response->successful() || isset($data['error'])) {
-                return null;
+            if (! $response->successful() || ! is_array($data) || isset($data['error'])) {
+                return ['ok' => false, 'result' => null];
             }
 
-            return $data['result'] ?? null;
+            return ['ok' => true, 'result' => $data['result'] ?? null];
         } catch (\Throwable $e) {
             Log::warning('bot-wallet: rpc ล้มเหลว', ['method' => $method, 'error' => $e->getMessage()]);
 
-            return null;
+            return ['ok' => false, 'result' => null];
         }
     }
 

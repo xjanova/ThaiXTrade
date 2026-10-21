@@ -345,10 +345,15 @@ Schedule::command('aibot:health')
  * คิวถอนของกระเป๋าบอท — เซ็นได้เฉพาะ CLI จึงต้องเป็น cron ไม่ใช่ request
  * withoutOverlapping จำเป็น: สองรอบซ้อนกันจะเซ็น nonce เดียวกันสองครั้ง
  * (คำสั่งจบเองทันทีเมื่อ AIBOT_BOT_WALLET_ENABLED=false — ไม่มีต้นทุนตอนยังไม่เปิด)
+ *
+ * mutex 15 นาที ไม่ใช่ 5: หนึ่งรอบอาจเซ็น+ส่งได้ถึง 10 กระเป๋า × (120+120 วินาทีของ node ที่ช้าที่สุด)
+ * mutex ที่หมดก่อนรอบจบ = รอบใหม่เริ่มซ้อน — ตัวคำสั่งเปลี่ยนสถานะแบบ compare-and-set กันไว้อีกชั้นแล้ว
+ * (รอบที่แพ้ทิ้งธุรกรรมที่เซ็นไว้โดยไม่ส่ง) แต่ไม่ควรพึ่งชั้นนั้นเป็นเรื่องปกติ
+ * รายการที่ค้างจนระบบไม่ตัดสินเอง: php artisan aibot:wallet-transfer-resolve {id}
  */
 Schedule::command('aibot:wallet-transfers')
     ->everyMinute()
-    ->withoutOverlapping(5)
+    ->withoutOverlapping(15)
     ->onOneServer()
     ->name('aibot:wallet-transfers');
 

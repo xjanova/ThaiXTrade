@@ -1503,6 +1503,16 @@
                 "confirmed": "Confirmed",
                 "failed": "Failed",
                 "cancelled": "Cancelled"
+            },
+            "failure": {
+                "owner_mismatch": "Destination is not your wallet — nothing was sent, the funds are still in the bot wallet",
+                "key_unreadable": "The bot wallet key could not be opened — nothing was sent, the funds are still there and our team has been alerted",
+                "insufficient_funds": "Not enough balance or BNB for gas — nothing was sent, the funds are still in the bot wallet",
+                "sign_failed": "The transaction could not be prepared — nothing was sent, the funds are still in the bot wallet. You can request again",
+                "reverted": "The chain rejected the transaction — nothing was transferred (only gas was spent)",
+                "nonce_consumed": "This transaction was replaced by another one from the bot wallet — this request was not transferred",
+                "dropped": "The transaction left the network without being mined — nothing was transferred, the funds are still in the bot wallet. You can request again",
+                "resolved_by_admin": "Our team closed this request after checking on-chain that nothing was transferred"
             }
         }
     },
