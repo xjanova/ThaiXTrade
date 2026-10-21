@@ -197,6 +197,7 @@ const paymentForm = useForm({
     stripe_secret_key: props.settings.stripe_secret_key || '',
     stripe_webhook_secret: props.settings.stripe_webhook_secret || '',
     stripe_enabled: props.settings.stripe_enabled || false,
+    card_service_fee_percent: props.settings.card_service_fee_percent ?? 3,
 });
 
 const savePayment = () => {
@@ -970,6 +971,13 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <label :class="labelClass">Stripe Webhook Secret</label>
                     <input v-model="paymentForm.stripe_webhook_secret" type="password" :class="inputClass" placeholder="whsec_..." />
                     <p class="text-dark-500 text-xs mt-1">Webhook endpoint: {{ $page.props.appUrl || '' }}/api/v1/stripe/webhook</p>
+                </div>
+                <div>
+                    <label :class="labelClass">ค่าบริการชำระด้วยบัตร (%)</label>
+                    <input v-model="paymentForm.card_service_fee_percent" type="number" min="0" max="50" step="0.1" :class="inputClass" placeholder="3" />
+                    <p class="text-dark-500 text-xs mt-1">
+                        บวกเพิ่มจากค่าเหรียญ แสดงเป็นบรรทัดแยกในหน้าซื้อและหน้า Stripe — ไม่ลดจำนวนเหรียญที่ลูกค้าได้ · 0 = ไม่เก็บ
+                    </p>
                 </div>
                 <div class="pt-4">
                     <button type="submit" :disabled="paymentForm.processing" class="btn-primary px-6 py-2.5">

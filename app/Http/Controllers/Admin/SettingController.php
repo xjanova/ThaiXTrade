@@ -353,7 +353,8 @@ class SettingController extends Controller
             'revenue' => ['wallet_address', 'auto_collect_enabled',
                 'tpix_wallet', 'tpix_chain_id', 'wtpix_wallet', 'wtpix_chain_id'],
             // คีย์ Stripe + บัญชีรับโอนเงินของรอบขายเหรียญ
-            'payment' => ['stripe_enabled', 'stripe_public_key', 'stripe_secret_key', 'stripe_webhook_secret'],
+            'payment' => ['stripe_enabled', 'stripe_public_key', 'stripe_secret_key', 'stripe_webhook_secret',
+                'card_service_fee_percent'],
             'ai' => ['groq_api_key', 'groq_default_model', 'ai_chatbot_enabled', 'ai_content_enabled',
                 'cloudflare_image_url', 'cloudflare_image_key',
                 'together_api_key', 'huggingface_api_key', 'gemini_api_key'],
@@ -366,6 +367,14 @@ class SettingController extends Controller
             'map' => ['map_tile_url', 'map_tile_key', 'map_tile_subdomains',
                 'map_tile_max_zoom', 'map_tile_attribution'],
         ];
+
+        // ค่าบริการบัตรเป็นเงินที่เรียกเก็บจากลูกค้าจริง — ต้องเป็นตัวเลข 0–50 เท่านั้น
+        if ($tab === 'payment' && $request->has('card_service_fee_percent')) {
+            $fee = $request->input('card_service_fee_percent');
+            if (! is_numeric($fee) || (float) $fee < 0 || (float) $fee > 50) {
+                return back()->with('error', 'ค่าบริการบัตรต้องเป็นตัวเลข 0–50 (%)');
+            }
+        }
 
         foreach ($request->except('_method') as $key => $value) {
             $isAllowedNew = in_array($key, $allowedNewKeys[$tab] ?? [], true);

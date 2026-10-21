@@ -83,15 +83,15 @@ class StripePaymentService
     public const FEE_LINE_KIND = 'card_service_fee';
 
     /**
-     * ค่าบริการชำระด้วยบัตร (เปอร์เซ็นต์ของค่าเหรียญ) — เจ้าของกำหนด 15% (2026-10-21)
+     * ค่าบริการชำระด้วยบัตร (เปอร์เซ็นต์ของค่าเหรียญ) — เจ้าของกำหนด 3% (2026-10-21)
      *
      * บวกเพิ่มเป็นบรรทัดแยกในหน้า Stripe ไม่ได้ลดจำนวนเหรียญ ผู้ซื้อเห็นยอดก่อนจ่าย
-     * แก้ได้ที่ site_settings payment.card_service_fee_percent · จำกัด 0–50 กันพิมพ์ผิด
+     * แก้ได้ที่ /admin/settings แท็บ Payment (payment.card_service_fee_percent) · จำกัด 0–50 กันพิมพ์ผิด
      */
     public function cardFeePercent(): float
     {
-        $raw = $this->setting('card_service_fee_percent', 15);
-        $percent = is_numeric($raw) ? (float) $raw : 15.0;
+        $raw = $this->setting('card_service_fee_percent', 3);
+        $percent = is_numeric($raw) ? (float) $raw : 3.0;
 
         return max(0.0, min($percent, 50.0));
     }
@@ -392,7 +392,7 @@ class StripePaymentService
         /*
          * แยกค่าเหรียญออกจากค่าบริการบัตร — อ่านรายการสินค้าจาก Stripe เอง
          *
-         * amount_total รวมค่าบริการ 15% อยู่ด้วย ถ้าเอาไปหารราคาเหรียญตรงๆ
+         * amount_total รวมค่าบริการบัตรอยู่ด้วย ถ้าเอาไปหารราคาเหรียญตรงๆ
          * ผู้ซื้อจะได้เหรียญเกินไปเท่ากับค่าบริการ อ่านไม่ได้ = ไม่ออกเหรียญ
          * (Stripe ส่ง webhook ซ้ำให้เอง) ไม่ใช่เดาจากยอดรวม
          */
