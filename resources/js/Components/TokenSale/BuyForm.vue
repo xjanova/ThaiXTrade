@@ -75,6 +75,47 @@ const receiveChainId = computed(
 
 const isOnReceiveChain = computed(() => walletStore.chainId === receiveChainId.value);
 
+/**
+ * ยอดขั้นต่ำเป็นเงิน USD ของเฟสนี้ (ขั้นต่ำ TPIX × ราคา) ปัดขึ้นเป็นเซ็นต์
+ * เซิร์ฟเวอร์ตรวจขั้นต่ำเป็นจำนวน TPIX อยู่แล้ว ตรงนี้มีไว้บอกผู้ซื้อก่อนกด
+ * ไม่ใช่ให้เขากดแล้วเจอ "Minimum purchase is 100 TPIX." จากเซิร์ฟเวอร์
+ */
+const minUsd = computed(() => {
+    const phase = currentPhase.value;
+    if (!phase) return 0;
+    const raw = Number(phase.min_purchase || 0) * Number(phase.price_usd || 0);
+    return Math.ceil(raw * 100) / 100;
+});
+
+const amountNumber = computed(() => parseFloat(paymentAmount.value) || 0);
+
+const belowMin = computed(() => amountNumber.value > 0 && amountNumber.value < minUsd.value);
+
+/** ปุ่มเลือกยอดเร็ว — เริ่มที่ยอดขั้นต่ำ ไม่ต่ำกว่านั้น */
+const quickAmounts = computed(() => {
+    const base = [10, 50, 100, 500];
+    const list = minUsd.value > 0 ? [minUsd.value, ...base] : base;
+    return [...new Set(list.filter((v) => v >= minUsd.value))].sort((a, b) => a - b).slice(0, 5);
+});
+
+function setAmount(value) {
+    paymentAmount.value = String(value);
+}
+
+/**
+ * ค่าบริการชำระด้วยบัตร — บวกเพิ่มจากค่าเหรียญ ไม่ได้ลดจำนวนเหรียญ
+ * เซิร์ฟเวอร์คิดเป็นเซ็นต์แบบเดียวกัน (StripePaymentService::feeCents) และเป็นคนตัดสินยอดจริง
+ */
+const cardFeePercent = computed(() => Number(tokenSaleStore.sale?.card_fee_percent || 0));
+
+const feeUsd = computed(() => {
+    if (method.value !== 'card' || !amountNumber.value) return 0;
+    const baseCents = Math.round(amountNumber.value * 100);
+    return Math.round((baseCents * cardFeePercent.value) / 100) / 100;
+});
+
+const totalUsd = computed(() => Math.round((amountNumber.value + feeUsd.value) * 100) / 100);
+
 const canSubmit = computed(() => {
     return (
         walletStore.isConnected &&
@@ -83,12 +124,26 @@ const canSubmit = computed(() => {
         !isSoldOut.value &&
         !exceedsRemaining.value &&
         !phaseClosedReason.value &&
-        parseFloat(paymentAmount.value) > 0 &&
+        amountNumber.value > 0 &&
+        !belowMin.value &&
         preview.value &&
         !isSubmittingOrder.value &&
         methods.value[method.value]
     );
 });
+
+/** บอกเหตุผลที่ปุ่มยังกดไม่ได้ — ปุ่มสีจางเฉยๆ ทำให้คนไม่รู้ว่าต้องทำอะไรต่อ */
+const submitHint = computed(() => {
+    if (isSubmittingOrder.value) return '';
+    if (!amountNumber.value) return 'เลือกหรือพิมพ์จำนวนเงินด้านบนก่อน';
+    if (belowMin.value) return `ขั้นต่ำ $${formatMoney(minUsd.value)} ต่อการซื้อหนึ่งครั้ง`;
+    if (isLoadingPreview.value || !preview.value) return 'กำลังคำนวณจำนวนเหรียญ…';
+    return '';
+});
+
+function formatMoney(n) {
+    return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
 
 /** สลับกระเป๋าไปเชน TPIX (เพิ่มเครือข่ายให้อัตโนมัติถ้ายังไม่มี) */
 async function switchToReceiveChain() {
@@ -305,57 +360,131 @@ function formatNumber(n) {
             </div>
 
             <template v-else>
-                <!-- เลือกวิธีชำระเงิน -->
-                <div class="mb-4">
-                    <label class="block text-sm text-gray-400 mb-2">ชำระด้วย</label>
-                    <div class="grid grid-cols-2 gap-2">
+                <!-- ① เลือกวิธีชำระเงิน -->
+                <div class="mb-5">
+                    <p class="flex items-center gap-2 text-sm text-gray-300 mb-2">
+                        <span class="step-dot">1</span> เลือกวิธีชำระเงิน
+                    </p>
+                    <div class="grid gap-2" :class="methods.card && methods.bank ? 'sm:grid-cols-2' : ''">
                         <button
                             v-if="methods.card"
-                            class="px-4 py-3 rounded-lg border transition-all text-sm font-medium"
-                            :class="method === 'card'
-                                ? 'border-primary-500 bg-primary-500/10 text-primary-400'
-                                : 'border-white/10 bg-white/5 text-gray-300 hover:border-white/20'"
+                            type="button"
+                            class="method-card"
+                            :class="method === 'card' ? 'method-card--active' : ''"
+                            data-testid="method-card"
                             @click="method = 'card'"
                         >
-                            บัตรเครดิต / เดบิต
+                            <span class="flex items-center justify-between gap-3 w-full">
+                                <span class="text-left">
+                                    <span class="block text-white font-semibold">บัตรเครดิต / เดบิต</span>
+                                    <span class="block text-xs text-gray-400 mt-0.5">จ่ายทันที รับเหรียญอัตโนมัติ</span>
+                                </span>
+                                <span class="radio-dot" :class="method === 'card' ? 'radio-dot--on' : ''"></span>
+                            </span>
+                            <span class="flex items-center gap-1.5 mt-3" aria-label="Visa, Mastercard, JCB, American Express">
+                                <!-- Visa -->
+                                <svg class="card-logo" viewBox="0 0 48 30" aria-hidden="true">
+                                    <rect width="48" height="30" rx="4" fill="#fff" />
+                                    <text x="24" y="20.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="900" font-style="italic" fill="#1A1F71">VISA</text>
+                                </svg>
+                                <!-- Mastercard -->
+                                <svg class="card-logo" viewBox="0 0 48 30" aria-hidden="true">
+                                    <rect width="48" height="30" rx="4" fill="#fff" />
+                                    <circle cx="19.5" cy="15" r="8.5" fill="#EB001B" />
+                                    <circle cx="28.5" cy="15" r="8.5" fill="#F79E1B" />
+                                    <path d="M24 7.8a8.5 8.5 0 0 1 0 14.4a8.5 8.5 0 0 1 0-14.4z" fill="#FF5F00" />
+                                </svg>
+                                <!-- JCB -->
+                                <svg class="card-logo" viewBox="0 0 48 30" aria-hidden="true">
+                                    <rect width="48" height="30" rx="4" fill="#fff" />
+                                    <rect x="9" y="6" width="9" height="18" rx="3" fill="#0E4C96" />
+                                    <rect x="19.5" y="6" width="9" height="18" rx="3" fill="#E21836" />
+                                    <rect x="30" y="6" width="9" height="18" rx="3" fill="#007B40" />
+                                    <text x="24" y="18.3" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="900" fill="#fff">JCB</text>
+                                </svg>
+                                <!-- American Express -->
+                                <svg class="card-logo" viewBox="0 0 48 30" aria-hidden="true">
+                                    <rect width="48" height="30" rx="4" fill="#2E77BC" />
+                                    <text x="24" y="19" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="9" font-weight="900" fill="#fff">AMEX</text>
+                                </svg>
+                            </span>
                         </button>
                         <button
                             v-if="methods.bank"
-                            class="px-4 py-3 rounded-lg border transition-all text-sm font-medium"
-                            :class="method === 'bank'
-                                ? 'border-primary-500 bg-primary-500/10 text-primary-400'
-                                : 'border-white/10 bg-white/5 text-gray-300 hover:border-white/20'"
+                            type="button"
+                            class="method-card"
+                            :class="method === 'bank' ? 'method-card--active' : ''"
+                            data-testid="method-bank"
                             @click="method = 'bank'"
                         >
-                            โอนเงินเข้าบัญชี
+                            <span class="flex items-center justify-between gap-3 w-full">
+                                <span class="text-left">
+                                    <span class="block text-white font-semibold">โอนเงินเข้าบัญชี</span>
+                                    <span class="block text-xs text-gray-400 mt-0.5">ไม่มีค่าบริการ · ทีมงานยืนยันแล้วส่งเหรียญ</span>
+                                </span>
+                                <span class="radio-dot" :class="method === 'bank' ? 'radio-dot--on' : ''"></span>
+                            </span>
                         </button>
                     </div>
                 </div>
 
-                <!-- จำนวนเงิน -->
-                <div class="mb-4">
-                    <label class="block text-sm text-gray-400 mb-2">จำนวนเงิน (USD)</label>
+                <!-- ② จำนวนเงิน -->
+                <div class="mb-5">
+                    <p class="flex items-center gap-2 text-sm text-gray-300 mb-2">
+                        <span class="step-dot">2</span> ใส่จำนวนเงินที่ต้องการซื้อ (USD)
+                    </p>
+                    <div class="flex flex-wrap gap-2 mb-2">
+                        <button
+                            v-for="amt in quickAmounts"
+                            :key="amt"
+                            type="button"
+                            class="amount-chip"
+                            :class="amountNumber === amt ? 'amount-chip--active' : ''"
+                            @click="setAmount(amt)"
+                        >
+                            ${{ formatMoney(amt) }}
+                        </button>
+                    </div>
                     <div class="relative">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-gray-400">$</span>
                         <input
                             v-model="paymentAmount"
                             type="number"
+                            inputmode="decimal"
                             step="any"
-                            min="0"
-                            placeholder="0.00"
-                            class="trading-input w-full pr-16"
+                            :min="minUsd"
+                            :placeholder="minUsd ? formatMoney(minUsd) : '0.00'"
+                            class="trading-input w-full pl-9 pr-16 py-3 text-lg"
+                            data-testid="amount-input"
                         />
-                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">USD</span>
+                        <span class="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">USD</span>
                     </div>
+                    <p class="mt-1.5 text-xs" :class="belowMin ? 'text-yellow-400' : 'text-gray-500'">
+                        ขั้นต่ำ ${{ formatMoney(minUsd) }}
+                        <template v-if="currentPhase"> · ราคา ${{ currentPrice }} ต่อ TPIX</template>
+                    </p>
                 </div>
 
-                <!-- จำนวนเหรียญที่จะได้ -->
-                <div v-if="preview" class="mb-4 p-4 rounded-lg bg-white/5 border border-white/10">
-                    <div class="flex justify-between text-sm mb-1">
-                        <span class="text-gray-400">จะได้รับ</span>
-                        <span class="text-white font-semibold">{{ formatNumber(preview.tpix_amount) }} TPIX</span>
+                <!-- สรุปยอด -->
+                <div v-if="preview && !belowMin" class="mb-4 p-4 rounded-xl bg-white/5 border border-white/10 space-y-1.5 text-sm" data-testid="order-summary">
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">คุณจะได้รับ</span>
+                        <span class="text-white font-bold text-base">{{ formatNumber(preview.tpix_amount) }} TPIX</span>
                     </div>
-                    <div class="flex justify-between text-xs text-gray-500">
-                        <span>ส่งไปที่</span>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">ค่าเหรียญ</span>
+                        <span class="text-gray-200">${{ formatMoney(amountNumber) }}</span>
+                    </div>
+                    <div v-if="feeUsd > 0" class="flex justify-between" data-testid="fee-row">
+                        <span class="text-gray-400">ค่าบริการชำระด้วยบัตร ({{ formatMoney(cardFeePercent) }}%)</span>
+                        <span class="text-gray-200">${{ formatMoney(feeUsd) }}</span>
+                    </div>
+                    <div class="flex justify-between pt-2 mt-1 border-t border-white/10">
+                        <span class="text-white font-semibold">ยอดชำระทั้งหมด</span>
+                        <span class="text-primary-300 font-bold text-base" data-testid="total-usd">${{ formatMoney(totalUsd) }}</span>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-500 pt-1">
+                        <span>ส่งเหรียญไปที่</span>
                         <span class="font-mono">{{ walletStore.shortAddress }} · TPIX Chain</span>
                     </div>
                 </div>
@@ -368,20 +497,70 @@ function formatNumber(n) {
 
                 <p v-if="error" class="mb-3 text-sm text-trading-red">{{ error }}</p>
 
+                <!-- ③ ไปหน้ากรอกบัตร / รับเลขบัญชี -->
+                <p class="flex items-center gap-2 text-sm text-gray-300 mb-2">
+                    <span class="step-dot">3</span>
+                    {{ method === 'card' ? 'กดปุ่มด้านล่าง แล้วกรอกเลขบัตรในหน้าชำระเงินที่ปลอดภัย' : 'กดปุ่มด้านล่างเพื่อรับเลขบัญชีและรหัสอ้างอิง' }}
+                </p>
                 <button
-                    class="w-full py-3 rounded-xl font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-primary-500 to-accent-500 text-white hover:shadow-lg hover:shadow-primary-500/20"
+                    type="button"
+                    class="w-full py-3.5 rounded-xl font-semibold text-base transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-primary-500 to-accent-500 text-white hover:shadow-lg hover:shadow-primary-500/20 flex items-center justify-center gap-2"
                     :disabled="!canSubmit"
+                    data-testid="submit-order"
                     @click="submitOrder"
                 >
-                    <span v-if="isSubmittingOrder">กำลังดำเนินการ…</span>
-                    <span v-else-if="method === 'card'">ชำระด้วยบัตร</span>
+                    <svg v-if="method === 'card' && !isSubmittingOrder" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                    <span v-if="isSubmittingOrder">กำลังเปิดหน้าชำระเงิน…</span>
+                    <span v-else-if="method === 'card'">
+                        ไปกรอกบัตร<template v-if="canSubmit"> · ชำระ ${{ formatMoney(totalUsd) }}</template>
+                    </span>
                     <span v-else>รับเลขบัญชีเพื่อโอนเงิน</span>
                 </button>
 
-                <p class="mt-3 text-xs text-gray-500 text-center">
+                <p v-if="!canSubmit && submitHint" class="mt-2 text-xs text-center text-yellow-400/90" data-testid="submit-hint">
+                    {{ submitHint }}
+                </p>
+
+                <p v-if="method === 'card'" class="mt-3 flex items-center justify-center gap-1.5 text-xs text-gray-500">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                    </svg>
+                    ชำระผ่าน Stripe · เราไม่เห็นและไม่เก็บเลขบัตรของคุณ
+                </p>
+
+                <p class="mt-2 text-xs text-gray-500 text-center">
                     เหรียญจะถูกส่งเป็น TPIX เนทีฟบน TPIX Chain ตามตารางปลดล็อกของเฟสนี้
                 </p>
             </template>
         </div>
     </div>
 </template>
+
+<style scoped>
+.step-dot {
+    @apply inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary-500/20 text-primary-300 text-xs font-bold;
+}
+.method-card {
+    @apply w-full p-4 rounded-xl border border-white/10 bg-white/5 text-sm transition-all hover:border-white/25;
+}
+.method-card--active {
+    @apply border-primary-500 bg-primary-500/10 ring-1 ring-primary-500/40;
+}
+.radio-dot {
+    @apply w-4 h-4 rounded-full border-2 border-white/30 shrink-0;
+}
+.radio-dot--on {
+    @apply border-primary-400 bg-primary-400;
+}
+.card-logo {
+    @apply h-6 w-auto rounded shadow-sm;
+}
+.amount-chip {
+    @apply px-3.5 py-1.5 rounded-lg border border-white/10 bg-white/5 text-sm text-gray-200 transition-all hover:border-primary-500/50;
+}
+.amount-chip--active {
+    @apply border-primary-500 bg-primary-500/15 text-primary-300;
+}
+</style>
