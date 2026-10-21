@@ -262,11 +262,12 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
             if (err?.response?.status === 403) {
                 return {
                     ok: false,
+                    code: apiError?.code || 'FORBIDDEN',
                     message: apiError?.message || 'เซสชันกระเป๋าหมดอายุ กรุณาเชื่อมต่อกระเป๋าใหม่อีกครั้ง',
                 };
             }
 
-            return { ok: false, message: apiError?.message || 'สร้างคำสั่งซื้อไม่สำเร็จ กรุณาลองใหม่' };
+            return { ok: false, code: apiError?.code, message: apiError?.message || 'สร้างคำสั่งซื้อไม่สำเร็จ กรุณาลองใหม่' };
         }
     }
 
@@ -288,11 +289,12 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
             if (err?.response?.status === 403) {
                 return {
                     ok: false,
+                    code: apiError?.code || 'FORBIDDEN',
                     message: apiError?.message || 'เซสชันกระเป๋าหมดอายุ กรุณาเชื่อมต่อกระเป๋าใหม่อีกครั้ง',
                 };
             }
 
-            return { ok: false, message: apiError?.message || 'เริ่มการชำระเงินไม่สำเร็จ กรุณาลองใหม่' };
+            return { ok: false, code: apiError?.code, message: apiError?.message || 'เริ่มการชำระเงินไม่สำเร็จ กรุณาลองใหม่' };
         }
     }
 

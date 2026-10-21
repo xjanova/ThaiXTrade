@@ -42,19 +42,19 @@ const howToBuySteps = [
     {
         step: 1,
         title: 'Connect Wallet',
-        description: 'Connect your MetaMask, Trust Wallet, or other BSC-compatible wallet.',
+        description: 'Connect MetaMask, Trust Wallet or the TPIX Wallet app and switch to TPIX Chain — this is where your TPIX is sent.',
         icon: 'wallet',
     },
     {
         step: 2,
         title: 'Choose Amount',
-        description: 'Select your payment currency (BNB or USDT) and enter the amount.',
+        description: 'Pick a payment method (credit/debit card) and enter the amount in USD.',
         icon: 'calculator',
     },
     {
         step: 3,
         title: 'Confirm Transaction',
-        description: 'Review the details and confirm the transaction in your wallet.',
+        description: 'Check the total, then enter your card on the secure Stripe page. You may be asked to sign once to prove the wallet is yours (no gas).',
         icon: 'check',
     },
     {
@@ -262,10 +262,10 @@ async function loadTradablePair() {
                     <!-- Network info -->
                     <div class="mt-8 p-4 rounded-lg bg-white/5 border border-white/10">
                         <p class="text-sm text-gray-400">
-                            <span class="text-white font-semibold">Network:</span> BNB Smart Chain (BSC)
+                            <span class="text-white font-semibold">Network:</span> TPIX Chain (Chain ID 4289)
                         </p>
                         <p class="text-sm text-gray-400 mt-1">
-                            <span class="text-white font-semibold">Accepted:</span> BNB, USDT, BUSD
+                            <span class="text-white font-semibold">Payment:</span> Credit / debit card (Visa, Mastercard, JCB, AMEX)
                         </p>
                         <p class="text-sm text-gray-400 mt-1">
                             <span class="text-white font-semibold">Token:</span> TPIX (Native on TPIX Chain)
@@ -415,7 +415,7 @@ async function loadTradablePair() {
                     </summary>
                     <p class="text-gray-400 mt-3 text-sm">
                         We support MetaMask, Trust Wallet, Coinbase Wallet, and OKX Wallet.
-                        Make sure you're connected to BNB Smart Chain (BSC) before purchasing.
+                        Make sure your wallet is on TPIX Chain (Chain ID 4289) before purchasing — the buy form can add and switch the network for you.
                     </p>
                 </details>
 
