@@ -3,6 +3,7 @@
 namespace App\Services\MasterNode;
 
 use App\Models\MasternodeUptimePeriod;
+use App\Services\TokenFactory\TokenFactoryChain;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -33,14 +34,20 @@ class UptimeOracleService
     /** @var callable(int):void */
     private $sleeper;
 
+    /** @var callable():?string ที่อยู่ของ DEPLOYER_PRIVATE_KEY (lowercase) */
+    private $deployerAddress;
+
     public function __construct(
         private NodeRegistryContract $registry,
         private UptimeCalculator $calculator,
         private UptimeOracleSigner $signer,
         private ChainHeadService $chain,
         ?callable $sleeper = null,
+        ?callable $deployerAddress = null,
     ) {
         $this->sleeper = $sleeper ?? fn (int $s) => sleep($s);
+        $this->deployerAddress = $deployerAddress
+            ?? fn () => app(TokenFactoryChain::class)->deployerAddress();
     }
 
     /**
@@ -50,6 +57,18 @@ class UptimeOracleService
     {
         if (! $this->signer->configured()) {
             return 'oracle_key_not_configured';
+        }
+
+        // กุญแจ oracle ต้องเป็นกุญแจร้อนแยก — ห้ามเป็น owner ของสัญญา หรือกุญแจ deployer ของเซิร์ฟเวอร์
+        // (กุญแจ owner บนเครื่องเว็บ = ใครยึดเว็บได้ก็ slash / ปิดรับสมัครได้)
+        // อ่าน owner ไม่ได้ = ยืนยันไม่ได้ว่าแยกกุญแจจริง → ไม่ส่ง (fail closed)
+        $mine = $this->signer->expectedAddress();
+        $owner = $this->registry->owner();
+        if ($owner === null) {
+            return 'cannot_read_owner';
+        }
+        if ($mine === $owner || $mine === ($this->deployerAddress)()) {
+            return 'oracle_key_is_owner_or_deployer';
         }
 
         $onchain = $this->registry->uptimeOracle();
@@ -87,6 +106,14 @@ class UptimeOracleService
 
         if ($this->registry->deploymentState() !== true) {
             throw new RuntimeException('NodeRegistry ยังไม่ deploy หรืออ่านสถานะสัญญาไม่ได้');
+        }
+
+        // ที่อยู่มาจาก ContractRegistry (ตั้งในหลังบ้านได้) — ต้องเป็น build ที่ตรวจรับรองแล้วเท่านั้น
+        // ไม่ตรงแม้แต่โหมดเงาก็ไม่ทำ: ตัวเลขที่คิดจากสัญญาที่ไม่รู้จักใช้ตัดสินอะไรไม่ได้
+        $expected = (string) config('masternode.uptime.registry_code_hash');
+        $actual = $this->registry->runtimeCodeHash();
+        if ($actual === null || ! hash_equals($expected, $actual)) {
+            throw new RuntimeException('bytecode ของ NodeRegistry ไม่ตรงกับ build ที่ปักไว้ ('.($actual ?? 'อ่านไม่ได้').') — ไม่ทำรอบนี้');
         }
 
         $operators = $this->registry->activeOperators();

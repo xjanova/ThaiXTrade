@@ -6,6 +6,7 @@ use App\Services\MasterNode\NodeRegistryContract;
 use App\Services\MasterNode\UptimeCalculator;
 use App\Services\MasterNode\UptimeOracleService;
 use App\Services\MasterNode\UptimeOracleSigner;
+use App\Services\TokenFactory\TokenFactoryChain;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -120,6 +121,17 @@ class MasternodeUptimeOracle extends Command
         $this->line("กุญแจ oracle ในเว็บ : {$mine}");
         $this->line('uptimeOracle() บนเชน: '.($onchain ?? 'อ่านไม่ได้ (สัญญารุ่นเก่า/RPC ล่ม)'));
         $this->line('สัญญา NodeRegistry  : '.($registry->address() ?? '-'));
+        $owner = $registry->owner();
+        $this->line('owner() ของสัญญา   : '.($owner ?? 'อ่านไม่ได้'));
+        $codeHash = $registry->runtimeCodeHash();
+        $expectedHash = (string) config('masternode.uptime.registry_code_hash');
+        $this->line('bytecode keccak    : '.($codeHash ?? 'อ่านไม่ได้').($codeHash === $expectedHash ? ' (ตรงกับ build ที่ปักไว้)' : ' ⚠️ ไม่ตรงกับ '.$expectedHash));
+
+        if ($mine === $owner || $mine === app(TokenFactoryChain::class)->deployerAddress()) {
+            $this->error('กุญแจ oracle เป็นกุญแจเดียวกับ owner หรือ DEPLOYER_PRIVATE_KEY — สร้างกุญแจใหม่แยกเฉพาะงานนี้ ห้ามใช้ตัวนี้');
+
+            return self::FAILURE;
+        }
 
         if ($onchain === $mine) {
             $this->info('ตรงกัน — ระบบส่ง uptime ขึ้นเชนจริงตั้งแต่รอบถัดไป');

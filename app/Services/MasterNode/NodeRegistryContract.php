@@ -7,6 +7,7 @@ use App\Support\Wei;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use kornrunner\Keccak;
 
 /**
  * NodeRegistryContract — ตัวอ่าน NodeRegistryV2 บน TPIX Chain ตัวเดียวของทั้งระบบ.
@@ -52,6 +53,7 @@ class NodeRegistryContract
     // ── รุ่น uptime oracle (2026-10-22) — สัญญาก่อนหน้านี้ไม่มี uptimeOracle() → null ─────
     private const SEL_GET_ACTIVE_OPERATORS = '0x783286fb'; // getActiveOperators(uint256,uint256)
     private const SEL_UPTIME_ORACLE = '0x841a41a8';        // uptimeOracle()
+    private const SEL_OWNER = '0x8da5cb5b';                // owner()
 
     /** 365 วันเป็นวินาที — ตรงกับ `365 days` ที่สัญญาใช้คิดเพดาน APR */
     private const SECONDS_PER_YEAR = '31536000';
@@ -549,6 +551,35 @@ class NodeRegistryContract
         }
 
         return '0x'.substr($w[0], 24);
+    }
+
+    /** owner() ของสัญญา (lowercase) — null = อ่านไม่ได้ */
+    public function owner(): ?string
+    {
+        $result = $this->ethCall(self::SEL_OWNER);
+        $w = $result === null ? [] : $this->words($result);
+        if (count($w) !== 1 || ! str_starts_with($w[0], str_repeat('0', 24))) {
+            return null;
+        }
+
+        return '0x'.substr($w[0], 24);
+    }
+
+    /**
+     * keccak256 ของ runtime bytecode ที่อยู่สัญญา (0x… lowercase) — แบบเดียวกับที่แอป/กระเป๋าปักไว้.
+     *
+     * ใช้ตัดสินว่า "สัญญาที่ที่อยู่นี้คือ build ที่ตรวจรับรองแล้วจริง" ก่อนเซ็นอะไรเข้าไป
+     * ไม่ cache — เรียกรอบละครั้งในงาน oracle เท่านั้น
+     */
+    public function runtimeCodeHash(): ?string
+    {
+        $address = $this->address();
+        $code = $address === null ? null : $this->rpc('eth_getCode', [$address, 'latest']);
+        if (! is_string($code) || ! preg_match('/^0x[0-9a-fA-F]+$/', $code) || strlen($code) <= 2 || strlen($code) % 2 !== 0) {
+            return null;
+        }
+
+        return '0x'.Keccak::hash(hex2bin(substr($code, 2)), 256);
     }
 
     /**

@@ -55,7 +55,10 @@ php artisan migrate --force          # ตาราง masternode_nodes / _uptim
 
 **ห้ามเรียกจนกว่าครบทุกข้อ** — เรียกก่อน = โหนดใหม่ทุกตัวได้ 0 และโหนดที่ stake อยู่ถูกลดเป็น 0 ในรอบแรกที่ระบบส่งจริง
 
-1. สัญญาที่ใช้จริงคือ NodeRegistryV2 รุ่นที่มี `uptimeOracle()` (runtime hash `0x1c49f5e7…16fb`) และ `--show-address` อ่าน `uptimeOracle()` ได้ (ไม่ขึ้น "อ่านไม่ได้")
+1. สัญญาที่ใช้จริงคือ NodeRegistryV2 รุ่นที่มี `uptimeOracle()` — deploy แล้วที่ `0x44c497C67B4F756a7769F11c8BEc26439C31F70E`
+   (ตรวจ 2026-10-22: keccak ของ bytecode = `0x1c49f5e7…16fb` ตรงกับที่ปักไว้, owner `0xD2eA…67d7`, `uptimeOracle()` = 0x0)
+   `--show-address` ต้องขึ้น "ตรงกับ build ที่ปักไว้" — งานนี้ไม่ทำอะไรเลยถ้า bytecode ไม่ตรง (`MASTERNODE_REGISTRY_CODE_HASH`)
+   และไม่ส่งถ้ากุญแจ oracle เป็น owner ของสัญญาหรือ `DEPLOYER_PRIVATE_KEY`
 2. bootnode สาธารณะเปิดแล้ว: จากนอกเครื่อง `Test-NetConnection 123.253.62.252 -Port 30301` = True
 3. แอปรุ่นที่ส่ง heartbeat รุ่น 2 ปล่อยแล้ว **และมีไบนารี polygon-edge ที่รันได้บน OS ที่ผู้ใช้ใช้จริง** (upstream ไม่มี Windows)
 4. โหมดเงาเดินอย่างน้อย 48 ชม. แล้วดูตาราง `masternode_uptime_periods`:

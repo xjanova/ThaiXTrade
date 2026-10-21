@@ -30,6 +30,9 @@ class MasternodeUptimeOracleTest extends TestCase
 
     private const ORACLE = '0x1111111111111111111111111111111111111111';
     private const REGISTRY = '0x2222222222222222222222222222222222222222';
+    private const OWNER = '0x3333333333333333333333333333333333333333';
+    private const DEPLOYER = '0x4444444444444444444444444444444444444444';
+    private const CODE_HASH = '0x1c49f5e7661539977d5abfef5a268b66bcaf812735b67b20328af002a70816fb';
 
     private const A = '0x00000000000000000000000000000000000000aa';
     private const B = '0x00000000000000000000000000000000000000bb';
@@ -90,6 +93,8 @@ class MasternodeUptimeOracleTest extends TestCase
             'uptime' => $this->onchain[$w],
         ]);
         $this->registry->shouldReceive('uptimeOracle')->andReturn('0x'.str_repeat('0', 40))->byDefault();
+        $this->registry->shouldReceive('runtimeCodeHash')->andReturn(self::CODE_HASH)->byDefault();
+        $this->registry->shouldReceive('owner')->andReturn(self::OWNER)->byDefault();
 
         $this->signer = Mockery::mock(UptimeOracleSigner::class);
         $this->signer->shouldReceive('configured')->andReturn(true)->byDefault();
@@ -243,6 +248,50 @@ class MasternodeUptimeOracleTest extends TestCase
         $this->assertSame('oracle_key_not_configured', $this->service()->shadowReason());
     }
 
+    public function test_unknown_bytecode_aborts_even_a_dry_run(): void
+    {
+        // ที่อยู่ในหลังบ้านถูกชี้ไปสัญญาอื่น (หรือสัญญาเก่า 0x9c36…) — ห้ามคิด/ส่งอะไรจากมัน
+        $this->registry->shouldReceive('runtimeCodeHash')->andReturn('0x'.str_repeat('ab', 32));
+
+        try {
+            $this->service()->run($this->period, dryRun: true);
+            $this->fail('expected RuntimeException');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('bytecode', $e->getMessage());
+        }
+        $this->assertDatabaseCount('masternode_uptime_periods', 0);
+    }
+
+    public function test_oracle_key_must_not_be_the_owner_or_the_deployer_key(): void
+    {
+        $this->registry->shouldReceive('uptimeOracle')->andReturn(self::ORACLE);
+
+        $this->registry->shouldReceive('owner')->andReturn(self::ORACLE);
+        $this->assertSame('oracle_key_is_owner_or_deployer', $this->service()->shadowReason());
+
+        $sameAsDeployer = new UptimeOracleService(
+            $this->registry,
+            new UptimeCalculator(),
+            $this->signer,
+            $this->chain,
+            fn () => null,
+            fn () => self::ORACLE,
+        );
+        $this->assertSame('oracle_key_is_owner_or_deployer', $sameAsDeployer->shadowReason());
+    }
+
+    public function test_unreadable_owner_keeps_shadow_mode(): void
+    {
+        $this->registry->shouldReceive('uptimeOracle')->andReturn(self::ORACLE);
+        $this->registry->shouldReceive('owner')->andReturn(null);
+
+        $summary = $this->service()->run($this->period);
+
+        $this->assertSame('shadow', $summary['mode']);
+        $this->assertSame('cannot_read_owner', $summary['shadow_reason']);
+        $this->assertSame([], $this->signed);
+    }
+
     public function test_incomplete_operator_list_aborts_the_period(): void
     {
         $this->registry->shouldReceive('activeOperators')->andReturn(null);
@@ -279,7 +328,14 @@ class MasternodeUptimeOracleTest extends TestCase
 
     private function service(): UptimeOracleService
     {
-        return new UptimeOracleService($this->registry, new UptimeCalculator(), $this->signer, $this->chain, fn () => null);
+        return new UptimeOracleService(
+            $this->registry,
+            new UptimeCalculator(),
+            $this->signer,
+            $this->chain,
+            fn () => null,
+            fn () => self::DEPLOYER,
+        );
     }
 
     private function slot(string $wallet, int $slot, string $peer, ?bool $ok): void
