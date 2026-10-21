@@ -111,6 +111,17 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        /*
+         * ใบสมัคร validator — ตัวนับของตัวเอง ต่อ IP ต่อชั่วโมง
+         *
+         * ⚠️ เดิม /validators/apply ใช้ `throttle:5,60` แบบไม่มีชื่อ = ตัวนับเดียวกับ API สาธารณะ
+         *    ทั้งเว็บ (คีย์ โดเมน|IP) แถม throttleApi นับซ้ำอีกรอบ ผู้ใช้ที่เพิ่งเปิดหน้าอื่นมา
+         *    จึงโดน 429 ตอนกดส่งใบสมัคร ทั้งที่ยังไม่เคยส่งเลย
+         *    การสมัครหนึ่งครั้ง = 2 คำขอ (ขอข้อความให้เซ็น + ส่งใบ)
+         */
+        RateLimiter::for('validator-apply-challenge', fn (Request $request) => Limit::perHour(30)->by('challenge:'.$request->ip()));
+        RateLimiter::for('validator-apply', fn (Request $request) => Limit::perHour(10)->by('submit:'.$request->ip()));
+
         foreach (self::AI_BOT_RATE_LIMITS as $name => $perMinute) {
             RateLimiter::for($name, fn (Request $request) => $this->aiBotLimits($request, $perMinute));
         }

@@ -82,7 +82,7 @@ const stats = computed(() => {
     return [
         { label: t('homeClassic.statPrice'), value: p && !live.failed.value.price ? usd(p.price) : DASH, href: '/token-sale' },
         { label: t('homeClassic.statBlock'), value: chainOk ? `#${c.block_height.toLocaleString('en-US')}` : DASH, href: '/explorer' },
-        { label: t('homeClassic.statValidators'), value: chainOk ? `${c.active_validators} / ${c.total_validators}` : DASH, href: '/validators' },
+        { label: t('homeClassic.statValidators'), value: chainOk ? `${c.active_validators ?? DASH} / ${c.total_validators ?? DASH}` : DASH, href: '/validators' },
         { label: t('homeClassic.statSpeed'), value: t('homeClassic.statSpeedValue', { s: c?.block_time || 2 }), href: '/whitepaper' },
     ];
 });

@@ -87,7 +87,7 @@ const priceSource = computed(() => {
 const chainOk = computed(() => !!chain.value && !failed.value.chain);
 const blockText = computed(() => (chainOk.value ? `#${fmtInt(chain.value.block_height)}` : DASH));
 const validatorText = computed(() => (
-    chainOk.value ? `${chain.value.active_validators} / ${chain.value.total_validators}` : DASH
+    chainOk.value ? `${chain.value.active_validators ?? DASH} / ${chain.value.total_validators ?? DASH}` : DASH
 ));
 const blockTime = computed(() => chain.value?.block_time || 2);
 

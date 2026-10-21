@@ -5,16 +5,22 @@
  * ไทล์ล่มเมื่อไหร่ก็ถอดชั้นบนออกเอง เหลือแผนที่ในเครื่อง หน้าไม่เคยเป็นจอเปล่า
  * Developed by Xman Studio
  */
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
+/*
+ * ทุกตัวเลขบนหน้านี้มาจากเชน (บล็อก / NodeRegistryV2) — null = ไม่ทราบ ต้องโชว์ "—"
+ * ห้ามเติมค่าตั้งต้นเอง (เดิม: เมืองไทยตามลำดับ, Online ทุกตัว, uptime 99.5%, วางค้ำ 40M)
+ */
 const props = defineProps({
     validators: { type: Array, default: () => [] },
     stats: { type: Object, default: () => ({}) },
+    // ค่าชั้นจาก NodeRegistryV2 (ชื่อชั้นตัวเล็ก => min_stake / reward_share_bps / ...) — อ่านไม่ได้ = {}
+    tiers: { type: [Object, Array], default: () => ({}) },
     applications: { type: Array, default: () => [] },
     // ค่าตั้งชั้นไทล์จาก config/map.php — ว่างได้ ถ้าว่างจะใช้แผนที่ในโปรเจกต์อย่างเดียว
     map: { type: Object, default: () => ({}) },
@@ -84,6 +90,44 @@ const tierCounts = computed(() => {
     return counts;
 });
 
+const hasLocation = v => v.latitude != null && v.longitude != null;
+
+// โหนดที่รู้ตำแหน่งจริง — ยังไม่มีระบบรายงานตำแหน่งจากตัวโหนด จึงเป็น 0 ไปก่อน
+const locatedCount = computed(() => filteredValidators.value.filter(hasLocation).length);
+
+// เซ็นบล็อกอย่างน้อยหนึ่งบล็อกในช่วงล่าสุด (online === true) — null = ถอดลายเซ็นไม่ได้
+const signingCount = computed(() => validators.value.filter(v => v.online === true).length);
+const sealWindow = computed(() => networkStats.value.seal_window ?? validators.value[0]?.seal_window ?? null);
+
+// online: true = เซ็นบล็อกล่าสุด ๆ อยู่ · false = ไม่ได้เซ็นเลยในช่วงนั้น · null = ไม่ทราบ
+function statusText(v) {
+    if (v.online === true) return 'Signing';
+    if (v.online === false) return 'Not signing';
+    return 'Unknown';
+}
+
+function statusColor(v) {
+    if (v.online === true) return '#10b981';
+    if (v.online === false) return '#ef4444';
+    return '#6b7280';
+}
+
+function sealsText(v) {
+    return v.seals_signed != null && v.seal_window ? `${v.seals_signed}/${v.seal_window}` : '—';
+}
+
+// สัดส่วนรางวัลต่อชั้นตาม reward_share บนเชน (bps) — อ่านไม่ได้ = ไม่โชว์แถบ
+const shareBar = computed(() => ['validator', 'guardian', 'sentinel', 'light']
+    .map(id => ({ id, pct: props.tiers?.[id]?.reward_share_bps != null ? props.tiers[id].reward_share_bps / 100 : null }))
+    .filter(s => s.pct !== null && s.pct > 0));
+
+const shareBarClass = {
+    validator: 'from-red-500 to-rose-500 text-white',
+    guardian: 'from-yellow-500 to-amber-500 text-black',
+    sentinel: 'from-purple-500 to-violet-500 text-white',
+    light: 'from-cyan-500 to-blue-500 text-white',
+};
+
 // ============================================================
 //  Tier config
 // ============================================================
@@ -107,6 +151,11 @@ function shortAddr(addr) {
 
 function fmtNum(n) {
     return Number(n || 0).toLocaleString();
+}
+
+// null/undefined = ไม่ทราบ → "—" (ไม่ใช่ "0")
+function fmtMaybe(n, suffix = '') {
+    return n === null || n === undefined || n === '' ? '—' : fmtNum(n) + suffix;
 }
 
 // ============================================================
@@ -299,7 +348,8 @@ function addMarkers() {
     if (worldLayer) worldLayer.setStyle(countryStyle);
 
     filteredValidators.value.forEach(v => {
-        if (!v.latitude || !v.longitude) return;
+        // ไม่รู้ตำแหน่ง = ไม่ปักหมุด (เดิมแจกเมืองไทยให้ตามลำดับ)
+        if (!hasLocation(v)) return;
 
         const tc = tierConfig[v.tier] || tierConfig.light;
         const color = tc.dot;
@@ -338,13 +388,13 @@ function addMarkers() {
                 </div>
                 ${v.endpoint ? `<div style="font-size: 10px; color: #6b7280; margin-top: 6px;">Endpoint: <span style="color: #9ca3af;">${escHtml(v.endpoint)}</span></div>` : ''}
                 <div style="margin-top: 8px; display: flex; align-items: center; gap: 12px; font-size: 11px;">
-                    <span style="display: flex; align-items: center; gap: 4px; color: ${v.online ? '#10b981' : '#ef4444'};">
-                        <span style="width: 6px; height: 6px; border-radius: 50%; background: ${v.online ? '#10b981' : '#ef4444'}; ${v.online ? 'box-shadow: 0 0 6px #10b98180;' : ''}"></span>
-                        ${v.online ? 'Online' : 'Offline'}
+                    <span style="display: flex; align-items: center; gap: 4px; color: ${statusColor(v)};">
+                        <span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor(v)};"></span>
+                        ${statusText(v)}
                     </span>
-                    ${v.uptime ? `<span style="color: #9ca3af;">Uptime: <strong style="color: #fff;">${v.uptime}%</strong></span>` : ''}
+                    ${v.seals_signed != null ? `<span style="color: #9ca3af;">Recent seals: <strong style="color: #fff;">${escHtml(sealsText(v))}</strong></span>` : ''}
                 </div>
-                ${v.stake_amount ? `<div style="margin-top: 6px; font-size: 11px; color: #9ca3af;">Staked: <strong style="color: #fff;">${fmtNum(v.stake_amount)}</strong> TPIX</div>` : ''}
+                ${v.stake_amount != null ? `<div style="margin-top: 6px; font-size: 11px; color: #9ca3af;">Staked: <strong style="color: #fff;">${fmtNum(v.stake_amount)}</strong> TPIX</div>` : ''}
             </div>
         `, { className: 'validator-popup' });
 
@@ -354,7 +404,7 @@ function addMarkers() {
     // Center map on markers
     if (filteredValidators.value.length > 0) {
         const coords = filteredValidators.value
-            .filter(v => v.latitude && v.longitude)
+            .filter(hasLocation)
             .map(v => [v.latitude, v.longitude]);
         if (coords.length === 1 && leafletMap) {
             // Single marker — setView works better than fitBounds
@@ -373,8 +423,15 @@ function escHtml(str) {
 }
 
 function focusNode(v) {
-    if (!leafletMap || !v.latitude || !v.longitude) return;
+    if (!leafletMap || !hasLocation(v)) return;
     leafletMap.flyTo([v.latitude, v.longitude], focusZoom(), { duration: 1.5 });
+}
+
+// กดแถวในตาราง — สลับไปแผนที่เฉพาะโหนดที่รู้ตำแหน่ง ไม่งั้นได้แผนที่เปล่าแล้วงง
+function onRowClick(v) {
+    if (!hasLocation(v)) return;
+    activeTab.value = 'map';
+    nextTick(() => focusNode(v));
 }
 
 // Watch filter changes → update markers
@@ -493,24 +550,27 @@ onUnmounted(() => {
                             <span class="text-gradient-brand">Validator Network</span>
                         </h1>
                         <p class="text-sm md:text-base text-gray-400 max-w-2xl mx-auto mb-8">
-                            Real-time map of TPIX Chain validators, guardians, sentinels &amp; light nodes worldwide
+                            The live TPIX Chain validator set, read straight from the chain
                         </p>
 
                         <!-- Stats preview (MasterNode-style 3-tile grid) -->
                         <div class="grid grid-cols-3 gap-3 sm:gap-4 max-w-md mx-auto mb-8">
                             <div class="glass-sm rounded-xl p-3">
-                                <div class="text-xs text-gray-400">Nodes</div>
-                                <div class="text-xl font-black text-gradient">{{ fmtNum(validators.length) }}</div>
+                                <div class="text-xs text-gray-400">Validators</div>
+                                <div class="text-xl font-black text-gradient">{{ fmtMaybe(networkStats.total_validators) }}</div>
                             </div>
                             <div class="glass-sm rounded-xl p-3">
-                                <div class="text-xs text-gray-400">Countries</div>
-                                <div class="text-xl font-black text-cyan-400">{{ countries.length }}</div>
+                                <div class="text-xs text-gray-400">Signing</div>
+                                <div class="text-xl font-black text-cyan-400" data-test="hero-signing">{{ fmtMaybe(networkStats.active_validators) }}</div>
                             </div>
                             <div class="glass-sm rounded-xl p-3">
                                 <div class="text-xs text-gray-400">Block Height</div>
-                                <div class="text-xl font-black text-trading-green">{{ fmtNum(networkStats.block_height || 0) }}</div>
+                                <div class="text-xl font-black text-trading-green">{{ fmtMaybe(networkStats.block_height) }}</div>
                             </div>
                         </div>
+                        <p v-if="networkStats.chain_reachable === false" class="text-xs text-yellow-400/90 -mt-4 mb-6">
+                            Cannot reach TPIX Chain right now — figures show “—” until it responds.
+                        </p>
 
                         <!-- Primary actions -->
                         <div class="flex items-center justify-center gap-3 flex-wrap">
@@ -536,9 +596,10 @@ onUnmounted(() => {
                         { label: 'Guardians', value: tierCounts.guardian, color: 'text-yellow-400', glow: 'hover:shadow-[0_0_20px_rgba(245,158,11,0.1)]' },
                         { label: 'Sentinels', value: tierCounts.sentinel, color: 'text-purple-400', glow: 'hover:shadow-[0_0_20px_rgba(168,85,247,0.1)]' },
                         { label: 'Light Nodes', value: tierCounts.light, color: 'text-cyan-400', glow: 'hover:shadow-[0_0_20px_rgba(6,182,212,0.1)]' },
-                        { label: 'Countries', value: countries.length, color: 'text-emerald-400', glow: '' },
-                        { label: 'Block Height', value: fmtNum(networkStats.block_height || 0), color: 'text-white', glow: '' },
-                        { label: 'Total Staked', value: fmtNum(networkStats.total_staked || 0) + ' TPIX', color: 'text-trading-green', glow: 'hover:shadow-[0_0_20px_rgba(0,200,83,0.1)]' },
+                        { label: 'Countries', value: countries.length || '—', color: 'text-emerald-400', glow: '' },
+                        { label: 'Block Height', value: fmtMaybe(networkStats.block_height), color: 'text-white', glow: '' },
+                        // ยอดวางค้ำจริงใน NodeRegistryV2 — ไม่ใช่จำนวน validator × ขั้นต่ำของชั้น
+                        { label: 'Total Staked', value: fmtMaybe(networkStats.total_staked, ' TPIX'), color: 'text-trading-green', glow: 'hover:shadow-[0_0_20px_rgba(0,200,83,0.1)]' },
                     ]" :key="stat.label"
                        :class="['glass-card rounded-xl p-4 text-center group hover:scale-105 transition-all duration-300', stat.glow]">
                         <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{{ stat.label }}</div>
@@ -596,7 +657,10 @@ onUnmounted(() => {
                         </select>
                         <div class="flex items-center gap-2 ml-auto">
                             <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                            <span class="text-xs text-gray-400">{{ filteredValidators.length }} nodes live</span>
+                            <span class="text-xs text-gray-400" data-test="signing-summary">
+                                {{ signingCount }} / {{ validators.length }} signing
+                                <template v-if="sealWindow">in the last {{ sealWindow }} blocks</template>
+                            </span>
                         </div>
                     </div>
 
@@ -605,6 +669,15 @@ onUnmounted(() => {
                         <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/20 via-purple-500/10 to-yellow-500/20 rounded-2xl blur opacity-40 group-hover:opacity-70 transition-opacity duration-500" />
                         <div class="relative rounded-2xl overflow-hidden border border-white/10">
                             <div id="validator-map" class="w-full h-[500px] md:h-[600px] bg-[#0f1113]"></div>
+                            <!-- ไม่รู้ตำแหน่งก็บอกตรง ๆ — ไม่ปักหมุดเมืองที่เดาเอา -->
+                            <div v-if="filteredValidators.length && !locatedCount"
+                                 data-test="locations-unknown"
+                                 class="absolute inset-x-3 top-3 z-[500] mx-auto max-w-md px-4 py-3 rounded-xl text-xs text-center
+                                        bg-black/70 border border-white/10 text-gray-300 backdrop-blur-sm pointer-events-none">
+                                Node locations are not reported yet — {{ filteredValidators.length }}
+                                {{ filteredValidators.length === 1 ? 'node' : 'nodes' }} with unknown location.
+                                Locations will appear once nodes report them.
+                            </div>
                             <!-- ขึ้นเมื่อชั้นไทล์ใช้ไม่ได้ แผนที่ยังใช้งานได้แต่ซูมได้ตื้นกว่า -->
                             <div v-if="tilesDown"
                                  class="absolute bottom-3 left-3 z-[500] px-2.5 py-1 rounded-lg text-[10px] font-medium
@@ -657,17 +730,22 @@ onUnmounted(() => {
                                         <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">Address</th>
                                         <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden md:table-cell">Location</th>
                                         <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden lg:table-cell">Endpoint</th>
-                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden sm:table-cell">Uptime</th>
+                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden sm:table-cell"
+                                            title="Blocks this validator signed out of the most recent blocks">Recent seals</th>
                                         <th class="px-4 py-3.5 text-right text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden sm:table-cell">Staked</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr v-for="v in filteredValidators" :key="v.address"
-                                        @click="activeTab = 'map'; $nextTick(() => focusNode(v))"
-                                        class="border-b border-white/[0.03] hover:bg-white/[0.04] cursor-pointer transition-all duration-200 group/row">
+                                        @click="onRowClick(v)"
+                                        :class="['border-b border-white/[0.03] hover:bg-white/[0.04] transition-all duration-200 group/row',
+                                            hasLocation(v) ? 'cursor-pointer' : '']">
                                         <td class="px-4 py-3.5">
-                                            <span :class="['inline-block w-2.5 h-2.5 rounded-full transition-shadow',
-                                                v.online ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] group-hover/row:shadow-[0_0_12px_rgba(16,185,129,0.7)]' : 'bg-red-500']"></span>
+                                            <span :title="statusText(v)"
+                                                  :data-test="'status-' + v.address"
+                                                  :class="['inline-block w-2.5 h-2.5 rounded-full transition-shadow',
+                                                v.online === true ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] group-hover/row:shadow-[0_0_12px_rgba(16,185,129,0.7)]'
+                                                : v.online === false ? 'bg-red-500' : 'bg-gray-500']"></span>
                                         </td>
                                         <td class="px-4 py-3.5">
                                             <span :class="['text-[10px] font-bold px-2.5 py-1 rounded-lg border',
@@ -686,7 +764,7 @@ onUnmounted(() => {
                                         </td>
                                         <td class="px-4 py-3.5 hidden md:table-cell">
                                             <span class="text-xs text-gray-300">
-                                                {{ flag(v.country_code) }} {{ v.country_name || '—' }}
+                                                {{ flag(v.country_code) }} {{ v.country_name || 'Unknown' }}
                                             </span>
                                         </td>
                                         <td class="px-4 py-3.5 hidden lg:table-cell">
@@ -694,15 +772,15 @@ onUnmounted(() => {
                                         </td>
                                         <td class="px-4 py-3.5 hidden sm:table-cell">
                                             <span :class="['text-xs font-medium',
-                                                (v.uptime || 0) >= 95 ? 'text-emerald-400'
-                                                : (v.uptime || 0) >= 80 ? 'text-yellow-400'
-                                                : 'text-red-400']">
-                                                {{ v.uptime || '—' }}{{ v.uptime ? '%' : '' }}
+                                                v.online === true ? 'text-emerald-400' : v.online === false ? 'text-red-400' : 'text-gray-500']"
+                                                  :data-test="'seals-' + v.address">
+                                                {{ sealsText(v) }}
                                             </span>
                                         </td>
                                         <td class="px-4 py-3.5 text-right hidden sm:table-cell">
-                                            <span class="text-xs text-white font-semibold">{{ fmtNum(v.stake_amount || 0) }}</span>
-                                            <span class="text-[10px] text-gray-500 ml-1">TPIX</span>
+                                            <!-- เงินวางค้ำใน NodeRegistryV2 — IBFT validator ไม่ได้วางค้ำ จึงเป็น "—" -->
+                                            <span class="text-xs text-white font-semibold" :data-test="'stake-' + v.address">{{ fmtMaybe(v.stake_amount) }}</span>
+                                            <span v-if="v.stake_amount != null" class="text-[10px] text-gray-500 ml-1">TPIX</span>
                                         </td>
                                     </tr>
                                     <tr v-if="filteredValidators.length === 0">
@@ -743,8 +821,8 @@ onUnmounted(() => {
                                     </button>
                                 </div>
 
-                                <!-- Result -->
-                                <div v-if="rewardResult" class="space-y-4">
+                                <!-- Result — ทุกค่ามาจากเชน / NodeRegistryV2 ไม่ทราบ = "—" -->
+                                <div v-if="rewardResult" class="space-y-4" data-test="reward-result">
                                     <div v-if="rewardResult.error" class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
                                         {{ rewardResult.error }}
                                     </div>
@@ -761,6 +839,9 @@ onUnmounted(() => {
                                                 <div :class="['text-lg font-black', rewardResult.active ? 'text-emerald-400' : 'text-red-400']">
                                                     {{ rewardResult.active ? 'Active' : 'Inactive' }}
                                                 </div>
+                                                <div class="text-[10px] text-gray-500 mt-0.5">
+                                                    {{ rewardResult.in_validator_set ? 'In the block-signing validator set' : (rewardResult.registry_status ? 'NodeRegistry: ' + rewardResult.registry_status : 'Not registered as a node') }}
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="glass-sm rounded-xl p-5">
@@ -768,26 +849,38 @@ onUnmounted(() => {
                                                 <div>
                                                     <div class="text-[10px] text-gray-500 uppercase mb-1">Pending Rewards</div>
                                                     <div class="text-2xl font-black text-trading-green">
-                                                        {{ fmtNum(parseFloat(rewardResult.pending_rewards || 0).toFixed(4)) }}
-                                                        <span class="text-sm text-gray-400 ml-1">TPIX</span>
+                                                        {{ fmtMaybe(rewardResult.pending_rewards) }}
+                                                        <span v-if="rewardResult.pending_rewards != null" class="text-sm text-gray-400 ml-1">TPIX</span>
                                                     </div>
                                                 </div>
                                                 <div class="text-right">
                                                     <div class="text-[10px] text-gray-500 uppercase mb-1">Total Earned</div>
                                                     <div class="text-lg font-bold text-white">
-                                                        {{ fmtNum(parseFloat(rewardResult.total_earned || 0).toFixed(2)) }}
-                                                        <span class="text-xs text-gray-400 ml-1">TPIX</span>
+                                                        {{ fmtMaybe(rewardResult.total_earned) }}
+                                                        <span v-if="rewardResult.total_earned != null" class="text-xs text-gray-400 ml-1">TPIX</span>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="glass-sm rounded-xl p-4 text-center">
-                                            <div class="text-[10px] text-gray-500 uppercase mb-1">Staked Amount</div>
-                                            <div class="text-xl font-black text-white">
-                                                {{ fmtNum(parseFloat(rewardResult.stake_amount || 0)) }}
-                                                <span class="text-sm text-gray-400 ml-1">TPIX</span>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div class="glass-sm rounded-xl p-4 text-center">
+                                                <div class="text-[10px] text-gray-500 uppercase mb-1">Staked (NodeRegistry)</div>
+                                                <div class="text-xl font-black text-white">
+                                                    {{ fmtMaybe(rewardResult.stake_amount) }}
+                                                    <span v-if="rewardResult.stake_amount != null" class="text-sm text-gray-400 ml-1">TPIX</span>
+                                                </div>
+                                            </div>
+                                            <div class="glass-sm rounded-xl p-4 text-center">
+                                                <div class="text-[10px] text-gray-500 uppercase mb-1">Wallet Balance</div>
+                                                <div class="text-xl font-black text-white">
+                                                    {{ fmtMaybe(rewardResult.balance) }}
+                                                    <span v-if="rewardResult.balance != null" class="text-sm text-gray-400 ml-1">TPIX</span>
+                                                </div>
                                             </div>
                                         </div>
+                                        <p class="text-[11px] text-gray-500">
+                                            Rewards and stake are read from NodeRegistryV2. “—” means this wallet has no node registered there.
+                                        </p>
                                     </template>
                                 </div>
                             </div>
@@ -795,84 +888,42 @@ onUnmounted(() => {
                     </div>
 
                     <!-- ============================================================ -->
-                    <!--  Block Reward Split (copied from MasterNode)                 -->
+                    <!--  Reward share per tier — reward_share บน NodeRegistryV2     -->
                     <!-- ============================================================ -->
                     <div class="glass rounded-2xl p-6">
-                        <h3 class="text-sm font-bold text-white mb-4">Block Reward Split</h3>
-                        <div class="flex rounded-xl overflow-hidden h-8 sm:h-10 mb-3">
-                            <div class="bg-gradient-to-r from-red-500 to-rose-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white" style="width:20%">
-                                <span class="hidden sm:inline">20% Validator</span><span class="sm:hidden">20%</span>
-                            </div>
-                            <div class="bg-gradient-to-r from-yellow-500 to-amber-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-black" style="width:35%">
-                                <span class="hidden sm:inline">35% Guardian</span><span class="sm:hidden">35%</span>
-                            </div>
-                            <div class="bg-gradient-to-r from-purple-500 to-violet-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white" style="width:30%">
-                                <span class="hidden sm:inline">30% Sentinel</span><span class="sm:hidden">30%</span>
-                            </div>
-                            <div class="bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white" style="width:15%">
-                                <span class="hidden sm:inline">15% Light</span><span class="sm:hidden">15%</span>
+                        <h3 class="text-sm font-bold text-white mb-4">Reward Share by Tier</h3>
+                        <div v-if="shareBar.length" class="flex rounded-xl overflow-hidden h-8 sm:h-10 mb-3" data-test="share-bar">
+                            <div v-for="seg in shareBar" :key="seg.id"
+                                 :class="['bg-gradient-to-r flex items-center justify-center text-[8px] sm:text-[10px] font-bold', shareBarClass[seg.id]]"
+                                 :style="{ width: `${seg.pct}%` }">
+                                <span class="hidden sm:inline">{{ seg.pct }}% {{ tierConfig[seg.id].label }}</span><span class="sm:hidden">{{ seg.pct }}%</span>
                             </div>
                         </div>
+                        <p v-else class="text-xs text-gray-500 mb-3">Reward shares are unavailable right now (could not read NodeRegistryV2).</p>
                         <p class="text-xs text-gray-400">
-                            Each block (~2 seconds) distributes TPIX to node operators, weighted by tier and uptime score.
+                            Rewards accrue on NodeRegistryV2 to registered nodes, split by tier and capped per node.
+                            Emission schedule and reward-pool status:
+                            <Link href="/masternode" class="text-cyan-400 hover:text-cyan-300">Master Node</Link>.
                         </p>
                     </div>
 
                     <!-- ============================================================ -->
-                    <!--  Emission Schedule (copied from MasterNode)                  -->
-                    <!-- ============================================================ -->
-                    <div class="glass rounded-2xl p-6">
-                        <div class="flex items-center gap-3 mb-4">
-                            <BrandLogo variant="icon" alt="TPIX" class="w-8 h-8 rounded-full ring-1 ring-white/10" />
-                            <div>
-                                <h3 class="text-sm font-bold text-white">Emission Schedule</h3>
-                                <p class="text-xs text-gray-400">1,400,000,000 TPIX distributed over 5 years</p>
-                            </div>
-                            <span class="ml-auto text-sm font-bold text-cyan-400">Year {{ networkStats.current_year || 1 }}</span>
-                        </div>
-                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                            <div v-for="em in [
-                                { y: 1, amt: '400M', pb: '~25.5/block', pct: '28.6%' },
-                                { y: 2, amt: '350M', pb: '~22.3/block', pct: '25.0%' },
-                                { y: 3, amt: '300M', pb: '~19.1/block', pct: '21.4%' },
-                                { y: 4, amt: '200M', pb: '~12.7/block', pct: '14.3%' },
-                                { y: 5, amt: '150M', pb: '~9.6/block', pct: '10.7%' },
-                            ]" :key="em.y"
-                                 :class="[
-                                     'rounded-xl p-3 text-center border transition-all',
-                                     (networkStats.current_year || 1) === em.y
-                                         ? 'glass border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.15)] scale-105'
-                                         : 'glass-sm border-white/5 opacity-60'
-                                 ]">
-                                <div :class="['text-xs font-black', (networkStats.current_year || 1) === em.y ? 'text-cyan-400' : 'text-gray-500']">
-                                    Year {{ em.y }}
-                                </div>
-                                <div :class="['text-lg font-bold mt-1', (networkStats.current_year || 1) === em.y ? 'text-white' : 'text-gray-400']">
-                                    {{ em.amt }}
-                                </div>
-                                <div class="text-[10px] text-gray-500 mt-0.5">{{ em.pb }}</div>
-                                <div class="text-[10px] text-gray-600">{{ em.pct }}</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- ============================================================ -->
-                    <!--  How Rewards Work — Tier Info Cards (MasterNode style)       -->
+                    <!--  Tier Info Cards — ค่าจากเชน ไม่ใช่ตัวเลขเขียนตายตัว          -->
                     <!-- ============================================================ -->
                     <div class="glass rounded-2xl p-6 space-y-5">
                         <div class="flex items-center gap-3">
                             <BrandLogo variant="icon" alt="TPIX" class="w-8 h-8 rounded-full ring-1 ring-white/10" />
                             <div>
-                                <h3 class="text-sm font-bold text-white uppercase tracking-wide">How Rewards Work</h3>
-                                <p class="text-xs text-gray-400">Reward share by tier &amp; minimum stake</p>
+                                <h3 class="text-sm font-bold text-white uppercase tracking-wide">Node Tiers</h3>
+                                <p class="text-xs text-gray-400">Reward share &amp; minimum stake, as set on NodeRegistryV2</p>
                             </div>
                         </div>
                         <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div v-for="info in [
-                                { tier: 'validator', share: '20%', stake: '10,000,000 TPIX', desc: 'Real IBFT2 block sealers with governance power. Requires company KYC.' },
-                                { tier: 'guardian', share: '35%', stake: '1,000,000 TPIX', desc: 'Premium masternodes with high rewards.' },
-                                { tier: 'sentinel', share: '30%', stake: '100,000 TPIX', desc: 'Standard masternodes for network integrity.' },
-                                { tier: 'light', share: '15%', stake: '10,000 TPIX', desc: 'Easiest entry to support the network and earn rewards.' },
+                                { tier: 'validator', desc: 'IBFT block sealers with governance power. Requires company KYC.' },
+                                { tier: 'guardian', desc: 'Premium masternodes.' },
+                                { tier: 'sentinel', desc: 'Standard masternodes for network integrity.' },
+                                { tier: 'light', desc: 'Easiest entry to support the network.' },
                             ]" :key="info.tier"
                                  class="group relative rounded-2xl overflow-hidden transition-all duration-500 hover:scale-[1.03] hover:-translate-y-1">
                                 <!-- Glow backdrop on hover (per-tier color) -->
@@ -888,7 +939,9 @@ onUnmounted(() => {
                                             <BrandLogo variant="icon" alt="TPIX" class="relative w-10 h-10 rounded-full ring-1 ring-white/10" />
                                         </div>
                                         <div :class="['px-2 py-0.5 rounded-full text-[10px] font-black border', tierConfig[info.tier].bg]">
-                                            <span :class="tierConfig[info.tier].color">{{ info.share }}</span>
+                                            <span :class="tierConfig[info.tier].color">
+                                                {{ tiers?.[info.tier]?.reward_share_bps != null ? tiers[info.tier].reward_share_bps / 100 + '%' : '—' }}
+                                            </span>
                                         </div>
                                     </div>
                                     <h4 :class="['text-base font-bold mb-1', tierConfig[info.tier].color]">
@@ -898,13 +951,10 @@ onUnmounted(() => {
                                     <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-2" />
                                     <div class="flex items-center justify-between">
                                         <span class="text-[10px] text-gray-500">Min Stake</span>
-                                        <span :class="['text-xs font-bold', tierConfig[info.tier].color]">{{ info.stake }}</span>
+                                        <span :class="['text-xs font-bold', tierConfig[info.tier].color]">{{ fmtMaybe(tiers?.[info.tier]?.min_stake, ' TPIX') }}</span>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="p-4 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-gray-500">
-                            Rewards are distributed per block (~2 seconds). Uptime score affects reward share — keep your node online 24/7 for maximum returns.
                         </div>
                     </div>
                 </div>
