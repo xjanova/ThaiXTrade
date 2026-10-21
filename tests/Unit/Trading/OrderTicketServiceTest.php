@@ -208,15 +208,7 @@ class OrderTicketServiceTest extends TestCase
     {
         SiteSetting::set('trading', 'refund_gas_fee', '0.35');
 
-        $ticket = $this->tickets->issueWithOnchainFee(
-            self::WALLET,
-            'BTC/USDT',
-            'buy',
-            250,
-            3.0,
-            'USDT',
-            '0x'.str_repeat('c', 64),
-        );
+        $ticket = $this->legacyOnchainTicket(3.0, '0x'.str_repeat('c', 64));
 
         $refunded = $this->tickets->refund($ticket->uuid, self::WALLET, 'ผู้ใช้ยกเลิก');
 
@@ -230,15 +222,7 @@ class OrderTicketServiceTest extends TestCase
     {
         SiteSetting::set('trading', 'refund_gas_fee', '10');
 
-        $ticket = $this->tickets->issueWithOnchainFee(
-            self::WALLET,
-            'BTC/USDT',
-            'buy',
-            50,
-            1.0,
-            'USDT',
-            '0x'.str_repeat('d', 64),
-        );
+        $ticket = $this->legacyOnchainTicket(1.0, '0x'.str_repeat('d', 64), 50);
 
         $refunded = $this->tickets->refund($ticket->uuid, self::WALLET);
 
@@ -300,16 +284,39 @@ class OrderTicketServiceTest extends TestCase
         $this->assertSame(8.0, $this->credits->balanceFor(self::WALLET));
     }
 
-    /** ธุรกรรมจ่ายค่าบริการใบเดิมขอตั๋วซ้ำไม่ได้ — ไม่งั้นจ่ายครั้งเดียวได้หลายตั๋ว */
+    /**
+     * ⚠️ ขอตั๋วแบบจ่ายบนเชนไม่ได้แล้ว แม้ส่ง hash ที่หน้าตาถูกต้องมา.
+     *
+     * เดิมรับ hash สุ่มกับยอดที่พิมพ์มาเองได้ → ตั๋วฟรีไม่จำกัด แล้วขอคืน "ยอดที่รอโอน"
+     * ตามตัวเลขที่ปลอมขึ้น ค่าบริการบนเชนจริงเก็บในขั้นสวอปอยู่แล้ว ไม่ต้องใช้ตั๋ว
+     */
     #[Test]
-    public function ธุรกรรมจ่ายค่าบริการใบเดิมขอตั๋วซ้ำไม่ได้(): void
+    public function ขอตั๋วแบบจ่ายบนเชนถูกปฏิเสธเสมอ(): void
     {
-        $tx = '0x'.str_repeat('e', 64);
+        try {
+            $this->tickets->issueWithOnchainFee(self::WALLET, 'BTC/USDT', 'buy', 250, 1000000, 'USDT', '0x'.str_repeat('e', 64));
+            $this->fail('ต้องปฏิเสธตั๋วแบบจ่ายบนเชน');
+        } catch (RuntimeException $e) {
+            $this->assertSame(OrderTicketService::ERR_ONCHAIN_NOT_SUPPORTED, $e->getMessage());
+        }
 
-        $first = $this->tickets->issueWithOnchainFee(self::WALLET, 'BTC/USDT', 'buy', 250, 3.0, 'USDT', $tx);
-        $second = $this->tickets->issueWithOnchainFee(self::WALLET, 'BTC/USDT', 'buy', 250, 3.0, 'USDT', $tx);
+        $this->assertSame(0, TradingOrderTicket::count());
+    }
 
-        $this->assertSame($first->id, $second->id);
-        $this->assertSame(1, TradingOrderTicket::count());
+    /** ตั๋ว onchain ที่ออกไปก่อนปิดทางนี้ — ยังต้องคืนเงินได้ตามกติกาเดิม */
+    private function legacyOnchainTicket(float $fee, string $txHash, float $orderValueUsd = 250): TradingOrderTicket
+    {
+        return TradingOrderTicket::create([
+            'wallet_address' => self::WALLET,
+            'pair' => 'BTC/USDT',
+            'side' => 'buy',
+            'order_value_usd' => $orderValueUsd,
+            'fee_method' => TradingOrderTicket::METHOD_ONCHAIN,
+            'fee_amount' => $fee,
+            'fee_currency' => 'USDT',
+            'fee_tx_hash' => $txHash,
+            'status' => TradingOrderTicket::STATUS_ISSUED,
+            'expires_at' => now()->addMinutes(15),
+        ]);
     }
 }

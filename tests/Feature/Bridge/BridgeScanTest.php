@@ -116,6 +116,50 @@ class BridgeScanTest extends TestCase
     }
 
     #[Test]
+    public function a_log_a_lagging_node_left_out_is_picked_up_by_the_overlap_rescan(): void
+    {
+        $this->scan();
+        $this->assertSame(986, app(BridgeConfig::class)->cursor('deposit_56'));
+
+        // โหนดที่ตามหัวไม่ทันตอบ [] ให้บล็อก 950 ไปแล้ว (เคอร์เซอร์ผ่านไปแล้ว) — log จริงมีอยู่บนเชน
+        $tx = $this->fakeDeposit(56, $this->alice, '5000000000000000000', 950);
+        $this->setLatest(56, 1010, 1000);
+        $this->scan();
+
+        $this->assertSame($tx, BridgeDeposit::sole()->tx_hash, 'รอบถัดไปอ่านย้อนทับแล้วเจอ');
+        $this->assertSame(996, app(BridgeConfig::class)->cursor('deposit_56'), 'หัวปลอดภัย min(1000, 1010−15) = 995');
+    }
+
+    #[Test]
+    public function the_overlap_never_reads_below_the_first_scanned_block(): void
+    {
+        SiteSetting::where('group', BridgeConfig::CURSOR_GROUP)->delete();
+        Cache::flush();
+        $this->scan(); // รอบแรกเริ่มที่หัว (986) — floor = 986
+
+        // vault เคยรับเงินหนุนก่อนเปิดสะพาน (บล็อก 980 < floor) — การย้อนทับต้องไม่ไป mint ให้
+        $this->fakeDeposit(56, $this->alice, '19990000000000000000', 980);
+        $this->setLatest(56, 1100, 1050);
+        $this->scan();
+
+        $this->assertSame(0, BridgeDeposit::count());
+    }
+
+    #[Test]
+    public function a_pruned_history_error_from_the_first_rpc_falls_through_to_the_second(): void
+    {
+        // เดิม error แบบนี้ถูกถือเป็น "คำตอบจริงของเชน" → ไม่ลองตัวที่สอง → ตัวสแกนค้างที่ช่วงเดิมตลอดไป
+        $this->useTwoRpcs();
+        $this->rpcFaults['rpc.bsc.test|eth_getLogs'] = 'History has been pruned for this block';
+        $this->fakeDeposit(56, $this->alice, '5000000000000000000', 950);
+
+        $this->scan();
+
+        $this->assertSame(1, BridgeDeposit::count());
+        $this->assertSame(986, app(BridgeConfig::class)->cursor('deposit_56'));
+    }
+
+    #[Test]
     public function zero_value_dust_and_internal_transfers_are_ignored_without_extra_rpc_calls(): void
     {
         $this->fakeDeposit(56, $this->bob, '0', 940);                         // address poisoning

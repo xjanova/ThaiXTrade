@@ -3,7 +3,9 @@
 namespace App\Services\Bridge;
 
 use App\Models\BridgeWithdrawal;
+use App\Models\SystemAlert;
 use App\Support\Wei;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -19,12 +21,22 @@ use Illuminate\Support\Facades\Log;
  *
  * ทำทีละเชน ทีละรายการ และไม่เซ็นรายการใหม่ของเชนไหนระหว่างที่ยังมีรายการ sending ค้างอยู่
  * บนเชนนั้น (nonce ถาม pending — ตัวที่หลุดจาก mempool จะถูกตัวใหม่ทับ nonce)
+ *
+ * ธุรกรรมที่ไม่ลงบล็อกนานเกิน stuck_after_minutes → needs_review (stuck_pending) + แจ้งเตือน critical
+ * แต่ยังตามผลต่อ (ลงบล็อกเมื่อไหร่ก็ปิดเป็น paid เอง) และคิวของเชนนั้นยังหยุดรอ — เซ็นตัวใหม่ซ้อน nonce
+ * ที่ยังค้างไม่ช่วยอะไร (ตัวใหม่ต่อคิวหลัง nonce เดิม) ทางออกคือเจ้าของส่งธุรกรรมแทนที่ด้วย nonce เดิม
  */
 class BridgePayouter
 {
     public const MAX_SIGN_ATTEMPTS = 5;
 
     public const REBROADCAST_AFTER_SECONDS = 180;
+
+    public const REASON_STUCK = 'stuck_pending';
+
+    public const ALERT_STUCK = 'bridge_payout_stuck';
+
+    public const ALERT_LIQUIDITY = 'bridge_payout_liquidity';
 
     public function __construct(
         private BridgeConfig $config,
@@ -72,7 +84,21 @@ class BridgePayouter
             $summary['chains'][$chainId] = $this->payChain($chainId, $limitPerChain, $summary);
         }
 
+        // กระเป๋าจ่ายกลับมามีเงินพอแล้ว (ไม่มีรายการรอสภาพคล่อง) — ปิดคาดแดงเอง
+        if (! BridgeWithdrawal::where('status', BridgeWithdrawal::STATUS_AWAITING_LIQUIDITY)->exists()) {
+            SystemAlert::resolveKeys(BridgeReconciler::ALERT_NODE, [self::ALERT_LIQUIDITY]);
+        }
+
         return $summary;
+    }
+
+    /** รายการที่มีธุรกรรมจ่ายค้างอยู่บนเชน (กำลังส่ง หรือค้างจนส่งให้คนดูแล้วแต่ยังลงบล็อกได้) */
+    private function unresolvedSends(): Builder
+    {
+        return BridgeWithdrawal::query()
+            ->whereNotNull('payout_tx_hash')
+            ->where(fn ($q) => $q->where('status', BridgeWithdrawal::STATUS_SENDING)
+                ->orWhere(fn ($q) => $q->where('status', BridgeWithdrawal::STATUS_NEEDS_REVIEW)->where('review_reason', self::REASON_STUCK)));
     }
 
     /** คิวของเชนเดียว — คืนเหตุที่หยุด (null = คิวหมด) */
@@ -82,7 +108,7 @@ class BridgePayouter
             return 'chain_disabled';
         }
 
-        if (BridgeWithdrawal::where('target_chain_id', $chainId)->where('status', BridgeWithdrawal::STATUS_SENDING)->exists()) {
+        if ($this->unresolvedSends()->where('target_chain_id', $chainId)->exists()) {
             return 'awaiting_previous_payout';
         }
 
@@ -176,10 +202,9 @@ class BridgePayouter
         }
 
         if (bccomp($balance, $amountRaw, 0) < 0) {
-            $withdrawal->update([
-                'status' => BridgeWithdrawal::STATUS_AWAITING_LIQUIDITY,
-                'last_error' => 'USDT ในกระเป๋าจ่ายไม่พอ (มี '.Wei::format($balance, (int) $chain['usdt']['decimals']).')',
-            ]);
+            $note = 'USDT ในกระเป๋าจ่ายไม่พอ (มี '.Wei::format($balance, (int) $chain['usdt']['decimals']).')';
+            $withdrawal->update(['status' => BridgeWithdrawal::STATUS_AWAITING_LIQUIDITY, 'last_error' => $note]);
+            $this->alertLiquidity($chain, $withdrawal, $note);
 
             return 'no_liquidity';
         }
@@ -194,10 +219,9 @@ class BridgePayouter
             $code = (string) ($signed['code'] ?? 'error');
 
             if ($code === 'insufficient_gas') {
-                $withdrawal->update([
-                    'status' => BridgeWithdrawal::STATUS_AWAITING_LIQUIDITY,
-                    'last_error' => mb_substr('ค่าแก๊สในกระเป๋าจ่ายไม่พอ: '.($signed['error'] ?? ''), 0, 300),
-                ]);
+                $note = mb_substr('ค่าแก๊สในกระเป๋าจ่ายไม่พอ: '.($signed['error'] ?? ''), 0, 300);
+                $withdrawal->update(['status' => BridgeWithdrawal::STATUS_AWAITING_LIQUIDITY, 'last_error' => $note]);
+                $this->alertLiquidity($chain, $withdrawal, $note);
 
                 return 'no_liquidity';
             }
@@ -256,6 +280,18 @@ class BridgePayouter
         return $this->waitForReceipt($rpc, $withdrawal->fresh()) ? 'paid' : 'sent';
     }
 
+    /** กระเป๋าจ่ายมีเหรียญ/แก๊สไม่พอ — คิวของเชนนั้นหยุดจนกว่าจะเติม จึงต้องมีคนรู้ ไม่ใช่รอเงียบ ๆ */
+    private function alertLiquidity(array $chain, BridgeWithdrawal $withdrawal, string $note): void
+    {
+        SystemAlert::raise(
+            BridgeReconciler::ALERT_NODE,
+            self::ALERT_LIQUIDITY,
+            'warning',
+            "สะพาน USDT: กระเป๋าจ่ายบน {$chain['name']} ต้องเติมเงิน — รายการถอน #{$withdrawal->id} รอสภาพคล่อง ({$note})",
+            ['withdrawal' => $withdrawal->id, 'chain_id' => $withdrawal->target_chain_id, 'payout_units' => (string) $withdrawal->payout_units],
+        );
+    }
+
     private function waitForReceipt(EvmRpc $rpc, BridgeWithdrawal $withdrawal): bool
     {
         $deadline = microtime(true) + max(0, (int) config('bridge.receipt_wait_seconds', 30));
@@ -276,13 +312,12 @@ class BridgePayouter
         } while (true);
     }
 
-    /** ตามผลทุกรายการที่ส่งไปแล้ว — คืนจำนวนที่ได้ข้อสรุป */
+    /** ตามผลทุกรายการที่ส่งไปแล้ว (รวมรายการที่ค้างจนส่งให้คนดูแล้ว) — คืนจำนวนที่ได้ข้อสรุป */
     public function trackSending(): int
     {
         $settled = 0;
 
-        $rows = BridgeWithdrawal::where('status', BridgeWithdrawal::STATUS_SENDING)
-            ->orderBy('target_chain_id')->orderBy('payout_nonce')->get();
+        $rows = $this->unresolvedSends()->orderBy('target_chain_id')->orderBy('payout_nonce')->get();
 
         foreach ($rows as $withdrawal) {
             $rpc = $this->config->rpc((int) $withdrawal->target_chain_id);
@@ -292,47 +327,119 @@ class BridgePayouter
             }
         }
 
+        if (! $this->unresolvedSends()->where('review_reason', self::REASON_STUCK)->exists()) {
+            SystemAlert::resolveKeys(BridgeReconciler::ALERT_NODE, [self::ALERT_STUCK]);
+        }
+
         return $settled;
     }
 
     /**
-     * จ่ายรายการที่เคยมี payout_tx_hash ใหม่ได้อย่างปลอดภัยหรือยัง (ใช้ตอนแอดมินอนุมัติ).
+     * จ่ายรายการที่เคยมี payout_tx_hash ใหม่ได้อย่างปลอดภัยหรือยัง (ใช้ตอนแอดมินอนุมัติ/ปฏิเสธ).
      *
-     * ปลอดภัยเมื่อ: ไม่มีใบเสร็จสำเร็จของ hash เดิม **และ** nonce เดิมถูกใช้ไปแล้ว
-     * (= raw เดิมไม่มีทางลงบล็อกได้อีก) — ถ้า nonce ยังว่าง raw เดิมยังลงบล็อกได้ทุกเมื่อ
-     * อนุมัติจ่ายใหม่ตอนนั้นคือจ่ายสองรอบ
+     * ═══ "ไม่เจอใบเสร็จ" ไม่ใช่หลักฐานว่าเงินไม่ได้ออก ═══
+     * RPC ล่ม / ติด rate limit / โหนดตามหัวไม่ทัน / BSC ลบ tx index เก่า (~2.35M บล็อก ≈ 20 วัน) ตอบ null ได้
+     * ทั้งที่ธุรกรรมลงบล็อกและจ่ายเงินไปแล้ว — เดิมสรุปว่า "ไม่มีใบเสร็จ + nonce ถูกใช้ = ปลอดภัย" จึงจ่ายซ้ำได้
+     *
+     * ปลอดภัยเฉพาะเมื่อมี "หลักฐานเชิงบวก" ข้อใดข้อหนึ่ง:
+     *   (ก) ใบเสร็จของ hash เดิมบอกว่า revert (เงินไม่ได้ออก)
+     *   (ข) nonce เดิมถูกใช้โดย "ธุรกรรมอื่นที่ลงบล็อกแล้วจริง" (อ่านเจอทั้งตัวธุรกรรมและใบเสร็จ
+     *       from = กระเป๋าจ่าย · nonce ตรง · hash ไม่ใช่ของเดิม) — nonce หนึ่งลงบล็อกได้ธุรกรรมเดียว
+     *       จึงพิสูจน์ได้ว่า hash เดิมไม่มีวันลงบล็อก หาจากรายการถอนอื่นที่ใช้ nonce เดียวกัน
+     *       หรือ hash ที่แอดมินกรอก (เช่นธุรกรรมยกเลิกที่เจ้าของส่งเองด้วย nonce เดิม)
+     * พิสูจน์ไม่ได้ = ไม่ปลอดภัย เสมอ
      *
      * @return array{safe: bool, paid: bool, reason: string}
      */
-    public function retryCheck(BridgeWithdrawal $withdrawal): array
+    public function retryCheck(BridgeWithdrawal $withdrawal, ?string $nonceTxHash = null): array
     {
-        $hash = (string) $withdrawal->payout_tx_hash;
+        $hash = strtolower((string) $withdrawal->payout_tx_hash);
         if ($hash === '') {
             return ['safe' => true, 'paid' => false, 'reason' => 'ยังไม่เคยส่ง'];
         }
 
         $rpc = $this->config->rpc((int) $withdrawal->target_chain_id);
-        $receipt = $rpc?->receipt($hash);
-
-        if ($receipt !== null && strtolower((string) ($receipt['status'] ?? '')) === '0x1') {
-            return ['safe' => false, 'paid' => true, 'reason' => 'ธุรกรรมเดิมจ่ายสำเร็จแล้วบนเชน'];
+        if (! $rpc) {
+            return ['safe' => false, 'paid' => false, 'reason' => 'เชนปลายทางไม่อยู่ในค่าตั้งแล้ว — ตรวจด้วยมือบน explorer'];
         }
+
+        $receipt = $rpc->receiptAny($hash)['receipt'];
 
         if ($receipt !== null) {
-            return ['safe' => true, 'paid' => false, 'reason' => 'ธุรกรรมเดิม revert — เงินไม่ได้ออก'];
+            return strtolower((string) ($receipt['status'] ?? '')) === '0x1'
+                ? ['safe' => false, 'paid' => true, 'reason' => 'ธุรกรรมเดิมจ่ายสำเร็จแล้วบนเชน']
+                : ['safe' => true, 'paid' => false, 'reason' => 'ธุรกรรมเดิม revert — เงินไม่ได้ออก'];
         }
 
-        $from = (string) ($withdrawal->payout_from ?: $this->config->signerAddress('payout'));
-        $count = $rpc?->result('eth_getTransactionCount', [$from, 'latest']);
-        if (! is_string($count) || ! str_starts_with($count, '0x')) {
+        // ตัวธุรกรรมบอกว่าลงบล็อกแล้ว (มี blockNumber) แต่อ่านใบเสร็จไม่ได้ — อาจจ่ายไปแล้ว ห้ามเดา
+        $own = $rpc->transactionAny($hash);
+        if ($own !== null && ! empty($own['blockNumber'])) {
+            return ['safe' => false, 'paid' => false, 'reason' => 'ธุรกรรมเดิมลงบล็อกแล้วแต่อ่านใบเสร็จไม่ได้ — ลองใหม่ภายหลัง ห้ามจ่ายใหม่'];
+        }
+
+        if ($withdrawal->payout_nonce === null) {
+            return ['safe' => false, 'paid' => false, 'reason' => 'รายการนี้ไม่มี nonce ของธุรกรรมเดิม — พิสูจน์บนเชนไม่ได้ ตรวจด้วยมือบน explorer'];
+        }
+
+        $from = strtolower((string) ($withdrawal->payout_from ?: $this->config->signerAddress('payout')));
+        $nonce = (int) $withdrawal->payout_nonce;
+        $count = $from !== '' ? $rpc->nonceLatest($from) : null;
+
+        if ($count === null) {
             return ['safe' => false, 'paid' => false, 'reason' => 'อ่าน nonce ของกระเป๋าจ่ายไม่ได้ — ลองใหม่ภายหลัง'];
         }
 
-        if ((int) Wei::hexToInt($count) <= (int) $withdrawal->payout_nonce) {
-            return ['safe' => false, 'paid' => false, 'reason' => 'nonce เดิมยังว่าง ธุรกรรมเดิมยังลงบล็อกได้ — รอให้ระบบส่งซ้ำก่อน ห้ามจ่ายใหม่'];
+        if ($count <= $nonce) {
+            return ['safe' => false, 'paid' => false, 'reason' => "nonce {$nonce} ยังว่าง ธุรกรรมเดิมยังลงบล็อกได้ — รอให้ลงบล็อก หรือให้เจ้าของส่งธุรกรรมแทนที่ด้วย nonce {$nonce} จากกระเป๋าจ่าย ห้ามจ่ายใหม่"];
         }
 
-        return ['safe' => true, 'paid' => false, 'reason' => 'nonce เดิมถูกใช้ไปแล้วและไม่มีใบเสร็จของธุรกรรมเดิม'];
+        // nonce ถูกใช้แล้ว — ต้องเจอตัวที่ใช้มันจริง
+        $candidates = BridgeWithdrawal::query()
+            ->where('target_chain_id', $withdrawal->target_chain_id)
+            ->where('payout_nonce', $nonce)
+            ->whereNotNull('payout_tx_hash')
+            ->whereKeyNot($withdrawal->id)
+            ->pluck('payout_tx_hash')
+            ->map(fn ($h) => strtolower((string) $h))
+            ->all();
+
+        if ($nonceTxHash !== null && trim($nonceTxHash) !== '') {
+            $candidates[] = strtolower(trim($nonceTxHash));
+        }
+
+        foreach (array_unique($candidates) as $candidate) {
+            if ($candidate === $hash) {
+                continue; // hash เดิมเองพิสูจน์ "ไม่ได้จ่าย" ไม่ได้
+            }
+
+            if ($this->minedWithNonce($rpc, $candidate, $from, $nonce)) {
+                return ['safe' => true, 'paid' => false, 'reason' => "nonce {$nonce} ถูกใช้โดยธุรกรรม {$candidate} ที่ลงบล็อกแล้ว — ธุรกรรมเดิมไม่มีทางลงบล็อก เงินไม่ได้ออก"];
+            }
+        }
+
+        return ['safe' => false, 'paid' => false, 'reason' => "พิสูจน์ไม่ได้ว่าเงินไม่ได้ออก: ไม่เจอใบเสร็จของธุรกรรมเดิม (อาจเป็นเพราะ RPC) และไม่รู้ว่าธุรกรรมใดใช้ nonce {$nonce}"
+            ." — เปิดกระเป๋าจ่าย {$from} บน explorer หา nonce {$nonce} ถ้าเป็น {$hash} แปลว่าจ่ายไปแล้ว ถ้าเป็นธุรกรรมอื่นให้กรอก hash นั้นแล้วอนุมัติอีกครั้ง"];
+    }
+
+    /** ธุรกรรมนี้ลงบล็อกแล้วจริง และเป็นของกระเป๋านี้ที่ nonce นี้ — เชื่อเฉพาะสิ่งที่อ่านเจอ ไม่เชื่อ "ไม่เจอ" */
+    private function minedWithNonce(EvmRpc $rpc, string $txHash, string $from, int $nonce): bool
+    {
+        if (! preg_match('/^0x[0-9a-f]{64}$/', $txHash)) {
+            return false;
+        }
+
+        $tx = $rpc->transactionAny($txHash);
+
+        if ($tx === null
+            || strtolower((string) ($tx['hash'] ?? $txHash)) !== $txHash
+            || strtolower((string) ($tx['from'] ?? '')) !== $from
+            || ! isset($tx['nonce'])
+            || (int) Wei::hexToInt((string) $tx['nonce']) !== $nonce) {
+            return false;
+        }
+
+        // ยังอยู่ใน mempool = ยังถูกแทนที่ได้ — ต้องมีใบเสร็จ (ลงบล็อกแล้ว) เท่านั้น
+        return $rpc->receiptAny($txHash)['receipt'] !== null;
     }
 
     private function trackOne(EvmRpc $rpc, BridgeWithdrawal $withdrawal): bool
@@ -342,48 +449,97 @@ class BridgePayouter
             return false;
         }
 
-        $receipt = $rpc->receipt($hash);
+        // ถามทุก RPC — โหนดที่ตามหัวไม่ทันตอบ null ได้ทั้งที่ลงบล็อกแล้ว
+        $receipt = $rpc->receiptAny($hash)['receipt'];
 
         if ($receipt !== null) {
             return $this->settleReceipt($withdrawal, $receipt, $hash);
         }
 
         $known = $rpc->knowsTransaction($hash);
-        if ($known === null || $known) {
+        if ($known === null) {
             return false;
         }
 
-        $age = $withdrawal->payout_broadcast_at ? now()->diffInSeconds($withdrawal->payout_broadcast_at, true) : PHP_INT_MAX;
-        if ($age < self::REBROADCAST_AFTER_SECONDS || ! $withdrawal->payout_raw_tx || ! $this->signer->isAvailable()) {
-            return false;
-        }
+        if (! $known) {
+            // ระยะห่างการส่งซ้ำนับจากการเปลี่ยนแปลงล่าสุด (payout_broadcast_at = ครั้งแรกที่ส่ง ใช้วัด "ค้าง")
+            $sinceTouch = $withdrawal->updated_at ? now()->diffInSeconds($withdrawal->updated_at, true) : PHP_INT_MAX;
 
-        $sent = $this->signer->send($rpc, (string) $withdrawal->payout_raw_tx);
+            if ($sinceTouch >= self::REBROADCAST_AFTER_SECONDS && $withdrawal->payout_raw_tx && $this->signer->isAvailable()) {
+                $sent = $this->signer->send($rpc, (string) $withdrawal->payout_raw_tx);
 
-        if (($sent['code'] ?? null) === 'nonce_used') {
-            // nonce ถูกใช้แล้ว — อาจเป็นธุรกรรมของเราเองที่เพิ่งลงบล็อก (RPC ตัวที่ถามใบเสร็จช้ากว่า)
-            // ถามใบเสร็จอีกรอบก่อนตัดสิน ไม่งั้นรายการที่จ่ายแล้วจะไปโผล่ในคิวรออนุมัติจ่ายซ้ำ
-            $again = $rpc->receipt($hash);
-            if ($again !== null) {
-                return $this->settleReceipt($withdrawal, $again, $hash);
+                if (($sent['code'] ?? null) === 'nonce_used') {
+                    return $this->settleNonceUsed($rpc, $withdrawal, $hash);
+                }
+
+                $this->updateIfSameTx($withdrawal, $hash, [
+                    'last_error' => ($sent['ok'] ?? false) ? 'ส่ง raw เดิมซ้ำแล้ว' : mb_substr('ส่งซ้ำไม่ผ่าน: '.($sent['error'] ?? ''), 0, 300),
+                ]);
             }
-
-            // ไม่มีใบเสร็จของ hash เรา = เงินไม่ได้ออก ห้ามเซ็นใหม่เอง ให้คนตัดสิน
-            $withdrawal->update([
-                'status' => BridgeWithdrawal::STATUS_NEEDS_REVIEW,
-                'review_reason' => 'nonce_consumed',
-                'last_error' => "nonce {$withdrawal->payout_nonce} ถูกใช้โดยธุรกรรมอื่น — ตรวจกระเป๋าจ่ายก่อนอนุมัติจ่ายใหม่",
-            ]);
-
-            return true;
         }
 
-        $withdrawal->update([
-            'payout_broadcast_at' => now(),
-            'last_error' => ($sent['ok'] ?? false) ? 'ส่ง raw เดิมซ้ำแล้ว' : mb_substr('ส่งซ้ำไม่ผ่าน: '.($sent['error'] ?? ''), 0, 300),
+        return $this->flagIfStuck($withdrawal, $hash, (bool) $known);
+    }
+
+    /**
+     * ส่ง raw เดิมแล้วเชนบอกว่า nonce ถูกใช้ไปแล้ว — อาจเป็นธุรกรรมของเราเองที่เพิ่งลงบล็อก (RPC ที่ถามใบเสร็จช้ากว่า)
+     * ถามใบเสร็จจากทุก RPC อีกรอบก่อนตัดสิน ไม่งั้นรายการที่จ่ายแล้วจะไปโผล่ในคิวรออนุมัติ.
+     */
+    private function settleNonceUsed(EvmRpc $rpc, BridgeWithdrawal $withdrawal, string $hash): bool
+    {
+        $again = $rpc->receiptAny($hash)['receipt'];
+        if ($again !== null) {
+            return $this->settleReceipt($withdrawal, $again, $hash);
+        }
+
+        // ยังไม่เจอใบเสร็จ — ไม่ได้แปลว่าเงินไม่ได้ออก ห้ามเซ็นใหม่เอง ให้คนตัดสินด้วยหลักฐาน (ดู retryCheck)
+        $this->updateIfSameTx($withdrawal, $hash, [
+            'status' => BridgeWithdrawal::STATUS_NEEDS_REVIEW,
+            'review_reason' => 'nonce_consumed',
+            'last_error' => "nonce {$withdrawal->payout_nonce} ถูกใช้ไปแล้วแต่ยังไม่เจอใบเสร็จของ {$hash} — ตรวจกระเป๋าจ่ายก่อนอนุมัติจ่ายใหม่",
         ]);
 
-        return false;
+        return true;
+    }
+
+    /**
+     * ส่งไปนานเกิน stuck_after_minutes แล้วยังไม่ลงบล็อก → needs_review (stuck_pending) + แจ้งเตือน critical.
+     *
+     * ไม่เปลี่ยน hash/raw — ยังตามผลต่อทุกรอบ ลงบล็อกเมื่อไหร่ก็ปิดเป็น paid เอง (trackSending รวมรายการนี้ด้วย)
+     */
+    private function flagIfStuck(BridgeWithdrawal $withdrawal, string $hash, bool $known): bool
+    {
+        if ($withdrawal->status !== BridgeWithdrawal::STATUS_SENDING) {
+            return false; // ถูกส่งให้คนดูไปแล้ว — ไม่แจ้งซ้ำทุกนาที
+        }
+
+        $age = $withdrawal->payout_broadcast_at ? now()->diffInSeconds($withdrawal->payout_broadcast_at, true) : 0;
+        if ($age < $this->config->stuckAfterSeconds()) {
+            return false;
+        }
+
+        $minutes = (int) floor($age / 60);
+        $note = "ส่งไปแล้ว {$minutes} นาทีแต่ยังไม่ลงบล็อก (".($known ? 'ค้างใน mempool' : 'เชนไม่รู้จัก ส่งซ้ำแล้วก็ไม่ลง').') — '
+            ."คิวของเชนนี้หยุดรอ · ทางออก: รอให้ลงบล็อก หรือให้เจ้าของส่งธุรกรรมแทนที่ด้วย nonce {$withdrawal->payout_nonce} จากกระเป๋าจ่าย";
+
+        if (! $this->updateIfSameTx($withdrawal, $hash, [
+            'status' => BridgeWithdrawal::STATUS_NEEDS_REVIEW,
+            'review_reason' => self::REASON_STUCK,
+            'last_error' => mb_substr($note, 0, 300),
+        ])) {
+            return false;
+        }
+
+        Log::critical('bridge: ธุรกรรมจ่ายค้าง', ['withdrawal' => $withdrawal->id, 'tx' => $hash, 'nonce' => $withdrawal->payout_nonce]);
+        SystemAlert::raise(
+            BridgeReconciler::ALERT_NODE,
+            self::ALERT_STUCK,
+            'critical',
+            "สะพาน USDT: ธุรกรรมจ่ายของรายการถอน #{$withdrawal->id} ค้าง {$minutes} นาที (nonce {$withdrawal->payout_nonce}) — คิวจ่ายของเชนนี้หยุดรอ",
+            ['withdrawal' => $withdrawal->id, 'tx' => $hash, 'chain_id' => $withdrawal->target_chain_id, 'nonce' => $withdrawal->payout_nonce]
+        );
+
+        return true;
     }
 
     /** ได้ใบเสร็จแล้ว — สำเร็จ = paid · revert = needs_review (เงินไม่ได้ออก) */
@@ -392,7 +548,7 @@ class BridgePayouter
         $block = isset($receipt['blockNumber']) ? (int) Wei::hexToInt((string) $receipt['blockNumber']) : null;
 
         if (strtolower((string) ($receipt['status'] ?? '')) === '0x1') {
-            $withdrawal->update([
+            $done = $this->updateIfSameTx($withdrawal, $hash, [
                 'status' => BridgeWithdrawal::STATUS_PAID,
                 'payout_block_number' => $block,
                 'paid_at' => now(),
@@ -400,17 +556,30 @@ class BridgePayouter
             ]);
             Log::info('bridge: จ่ายเงินถอนสำเร็จ', ['withdrawal' => $withdrawal->id, 'tx' => $hash]);
 
-            return true;
+            return $done;
         }
 
         // revert บนเชน (เช่น Tether blacklist ปลายทาง) — เงินไม่ได้ออก แต่ต้องให้คนตัดสินว่าจะทำอย่างไรต่อ
-        $withdrawal->update([
+        return $this->updateIfSameTx($withdrawal, $hash, [
             'status' => BridgeWithdrawal::STATUS_NEEDS_REVIEW,
             'review_reason' => 'payout_reverted',
             'payout_block_number' => $block,
             'last_error' => "ธุรกรรม {$hash} revert บนเชน — เงินไม่ได้ออกจากกระเป๋าจ่าย",
         ]);
+    }
 
-        return true;
+    /**
+     * อัปเดตเฉพาะเมื่อแถวยังผูกกับธุรกรรมเดิม — แอดมินอาจอนุมัติ (ล้าง hash) ไปพร้อมกันพอดี
+     * ผลของ hash เก่าต้องไม่ไปเขียนทับรายการที่เข้าคิวใหม่แล้ว.
+     */
+    private function updateIfSameTx(BridgeWithdrawal $withdrawal, string $hash, array $values): bool
+    {
+        $changed = BridgeWithdrawal::whereKey($withdrawal->id)
+            ->where('payout_tx_hash', $hash)
+            ->update($values + ['updated_at' => now()]);
+
+        $withdrawal->refresh();
+
+        return $changed === 1;
     }
 }

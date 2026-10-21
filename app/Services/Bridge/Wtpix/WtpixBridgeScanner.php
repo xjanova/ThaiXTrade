@@ -382,17 +382,15 @@ class WtpixBridgeScanner
         // ข้อมูลประกอบต้องยิง RPC เพิ่ม — ถามเฉพาะรายการที่มีสิทธิ์ได้ทำจริง
         $decision = $this->policy->evaluate($direction, $facts);
 
+        // (รายการ ignored ไม่ถามเชน — ถ้าแอดมินอนุมัติทีหลัง หลังบ้านถามข้อมูลชุดเดียวกันนี้เองก่อนเข้าคิว)
         if ($decision['status'] !== WtpixBridgeTransfer::STATUS_IGNORED) {
-            $code = $rpc->code($from);
-            $tx = $rpc->transaction($parsed['tx']);
+            $sender = $this->policy->senderFacts($rpc, $from, $parsed['tx']);
 
-            if ($code === null || $tx === null) {
+            if ($sender === null) {
                 return null;
             }
 
-            // EIP-7702: EOA ที่มอบสิทธิ์ให้โค้ด (0xef0100…) ยังเป็นกระเป๋าที่เจ้าของถือคีย์
-            $facts['sender_is_contract'] = $code !== '0x' && ! str_starts_with($code, '0xef0100');
-            $facts['sender_mismatch'] = strtolower((string) ($tx['from'] ?? '')) !== $from;
+            $facts = $sender + $facts;
             $decision = $this->policy->evaluate($direction, $facts);
         }
 
@@ -498,8 +496,25 @@ class WtpixBridgeScanner
             return $cursor;
         }
 
-        $start = is_numeric($startBlock) && (int) $startBlock > 0 ? (int) $startBlock : $head + 1;
+        $explicit = is_numeric($startBlock) && (int) $startBlock > 0;
+        $start = $explicit ? (int) $startBlock : $head + 1;
         $this->config->setCursor($key, $start);
+
+        /*
+         * ไม่ได้ตั้ง START_BLOCK = เริ่มนับที่หัวปัจจุบัน → ทุกการล็อก/เผาก่อนบล็อกนี้ "ไม่มีวันถูกบันทึก"
+         *
+         * สัญญารับ lock()/burn() ได้ตั้งแต่วินาทีที่ deploy (หรือตั้งแต่เปลี่ยนที่อยู่สัญญาใน .env
+         * ซึ่งทำให้เคอร์เซอร์เริ่มใหม่) — ใครที่ทำรายการในช่วงนั้นเหรียญถูกล็อก/เผาไปแล้วแต่ไม่ได้อีกฝั่ง
+         * ไม่หยุดสแกน (ตัวเฝ้า mint/ปล่อยที่ระบบไม่ได้สั่งต้องเดินต่อ) แต่ต้องดังพอให้แอดมินเห็นแล้วตรวจย้อน
+         */
+        if (! $explicit) {
+            $chain = str_starts_with($key, 'lock_') ? 'TPIX (ล็อก)' : 'BSC (เผา)';
+            $message = "สะพาน TPIX⇄wTPIX: เริ่มสแกนฝั่ง {$chain} ที่บล็อก {$start} เพราะไม่ได้ตั้ง START_BLOCK — "
+                .'รายการที่เกิดก่อนบล็อกนี้จะไม่ถูกบันทึก ตรวจ explorer ย้อนไปถึงบล็อกที่ deploy สัญญา (หรือตั้ง '
+                .'WTPIX_BRIDGE_TPIX_START_BLOCK / WTPIX_BRIDGE_BSC_START_BLOCK แล้วลบเคอร์เซอร์ก่อนเปิดใช้)';
+            Log::warning('wtpix-bridge: '.$message, ['cursor' => $key, 'start' => $start]);
+            SystemAlert::raise(WtpixBridgeGuard::ALERT_NODE, 'wtpix_bridge_start_block_missing', 'warning', $message, ['cursor' => $key, 'start' => $start]);
+        }
 
         return $start;
     }

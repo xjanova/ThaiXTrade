@@ -76,6 +76,15 @@ async function submitWithdraw() {
     if (result.ok) amount.value = '';
 }
 
+/*
+ * เหตุผลที่ล้มแปลจากรหัสที่เซิร์ฟเวอร์ส่งมา — ข้อความดิบจากระบบไม่ถึงหน้าจออีก
+ * รหัสที่ไม่รู้จัก (เซิร์ฟเวอร์ใหม่กว่าหน้าเว็บ) ใช้ข้อความสำรองภาษาไทยที่เซิร์ฟเวอร์ส่งมาแทน
+ */
+const FAILURE_CODES = ['owner_mismatch', 'key_unreadable', 'insufficient_funds', 'sign_failed', 'reverted', 'nonce_consumed', 'dropped', 'resolved_by_admin'];
+const failureText = (tr) => (FAILURE_CODES.includes(tr.failure_code)
+    ? t(`aiTrade.botWallet.failure.${tr.failure_code}`)
+    : (tr.failure_reason || ''));
+
 const statusClass = (status) => ({
     queued: 'text-amber-300 bg-amber-400/10',
     signing: 'text-sky-300 bg-sky-400/10',
@@ -182,8 +191,8 @@ watch(assets, (list) => { if (list.length && !list.some(a => a.symbol === asset.
                 <div v-for="tr in transfers" :key="tr.id" class="flex items-center gap-2 text-[11px] rounded-lg bg-white/5 px-3 py-2">
                     <span :class="['px-1.5 py-px rounded text-[10px] font-medium shrink-0', statusClass(tr.status)]">{{ t(`aiTrade.botWallet.status.${tr.status}`) }}</span>
                     <span class="font-mono text-white">{{ fmt(tr.amount, 6) }} {{ tr.asset }}</span>
-                    <span class="text-dark-500 truncate flex-1" :title="tr.failure_reason || ''">
-                        {{ tr.failure_reason || new Date(tr.created_at).toLocaleString() }}
+                    <span class="text-dark-500 truncate flex-1" :title="failureText(tr)">
+                        {{ failureText(tr) || new Date(tr.created_at).toLocaleString() }}
                     </span>
                     <a v-if="tr.tx_url" :href="tr.tx_url" target="_blank" rel="noopener" class="text-primary-400 hover:underline shrink-0">tx</a>
                     <button

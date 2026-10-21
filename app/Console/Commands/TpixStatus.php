@@ -146,9 +146,11 @@ class TpixStatus extends Command
 
         foreach (['WTPIX' => 'wtpix', 'USDT' => 'usdt_tpix', 'FACTORY' => 'dex_factory', 'ROUTER' => 'dex_router'] as $field => $key) {
             $address = $cfg[$field];
+            // ถามเชนไม่ได้ (unverified) = ไม่รู้ ไม่ใช่ "ปกติ" — แสดงเป็นยังไม่ทราบ (null)
+            $unverified = in_array($key, $cfg['unverified'] ?? [], true);
             $rows[] = [
                 'label' => ContractRegistry::CONTRACTS[$key]['label'],
-                'ok' => $address !== null && ! in_array($key, $cfg['missing'], true),
+                'ok' => $unverified ? null : ($address !== null && ! in_array($key, $cfg['missing'], true)),
                 'value' => $address ?? 'ยังไม่ได้ลงทะเบียน',
             ];
         }

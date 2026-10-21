@@ -174,14 +174,16 @@ const feeAmount = computed(() => {
 const exchangeRate = computed(() => currentQuote.value?.exchangeRate ?? null);
 
 /*
- * ผลกระทบต่อราคา — BSC แสดงแบบเดิม · TPIX ไม่รู้ค่า (อ่านพูลไม่ได้) แสดง "—" และถือว่าบล็อก
+ * ผลกระทบต่อราคา — ไม่รู้ค่า (อ่านพูลไม่ได้) แสดง "—" และถือว่าบล็อก ทั้งสองเครือข่าย
+ * BSC: เดิมโชว์ตัวเลขจาก backend (จำนวน × 0.001) ซึ่งไม่เกี่ยวกับพูลเลย — ตอนนี้ useSwap
+ * วัดจริงจาก router (เทียบไม้จริงกับไม้จิ๋วบนเส้นทางเดียวกัน)
  */
 const priceImpactKnown = computed(() => {
     const v = currentQuote.value?.priceImpact;
     return typeof v === 'number' && Number.isFinite(v);
 });
 const priceImpact = computed(() => {
-    if (isTpixMode.value && currentQuote.value && !priceImpactKnown.value) return '—';
+    if (currentQuote.value && !priceImpactKnown.value) return '—';
     return currentQuote.value?.priceImpact?.toFixed(2) ?? '0';
 });
 const priceImpactClass = computed(() => {
@@ -189,15 +191,29 @@ const priceImpactClass = computed(() => {
     if (!Number.isFinite(v)) return 'text-trading-red';
     return v > 3 ? 'text-trading-red' : v > 1 ? 'text-yellow-400' : 'text-trading-green';
 });
-/** TPIX: ไม้ที่ดันราคาพูลเกิน 10% (หรือไม่รู้ค่า) ห้ามส่ง — เพดานเดียวกับ /trade */
-const priceImpactBlocked = computed(() => isTpixMode.value
-    && !!currentQuote.value
+/**
+ * ไม้ที่ดันราคาพูลเกิน 10% (หรือไม่รู้ค่า) ห้ามส่ง — เพดานเดียวกับ /trade
+ * BSC เดิมไม่มีด่านนี้เลย หน้า Swap จึงไม่มีอะไรกันพูลบางนอกจาก slippage
+ */
+const priceImpactBlocked = computed(() => !!currentQuote.value
     && isPriceImpactBlocked(currentQuote.value.priceImpact));
 
-/** TPIX: จำนวนเกินยอดที่อ่านได้จากเชน — ปิดปุ่มก่อนเปิดป๊อปอัพกระเป๋าที่รู้อยู่แล้วว่าจะล้ม */
-const insufficientBalance = computed(() => isTpixMode.value
-    && isWalletConnected.value
+/**
+ * จำนวนเกินยอดที่อ่านได้จากเชน — ปิดปุ่มก่อนเปิดป๊อปอัพกระเป๋าที่รู้อยู่แล้วว่าจะล้ม
+ * BSC เดิมไม่เช็ก: พิมพ์เกินยอดนิดเดียว สวอปยังผ่าน (ใช้ 99.7%) แต่ธุรกรรมค่าธรรมเนียม revert เงียบ
+ */
+const insufficientBalance = computed(() => isWalletConnected.value
     && exceedsBalance(fromAmount.value, fromToken.value?.balanceRaw));
+
+/** BSC: BNB ที่ต้องเหลือไว้จ่ายค่าแก๊ส (สวอป + โอนค่าธรรมเนียม) — ตัวเดียวกับปุ่ม MAX */
+const BSC_GAS_RESERVE_BNB = 0.005;
+const gasReserveShort = computed(() => {
+    if (isTpixMode.value || !isWalletConnected.value || insufficientBalance.value) return false;
+    if (fromToken.value?.symbol !== 'BNB') return false;
+    const raw = fromToken.value?.balanceRaw;
+    if (raw === null || raw === undefined || raw === '') return false;
+    return exceedsBalance(fromAmount.value, String(Math.max(0, parseFloat(raw) - BSC_GAS_RESERVE_BNB)));
+});
 
 /*
  * "ได้รับอย่างน้อย" คิดจาก slippage ที่ใช้จริงบนจอ — สูตรเดียวกับ minOut ที่ executeSwap ส่งเข้า router
@@ -216,13 +232,16 @@ const needsApproval = ref(false);
 const swapDisabled = computed(() => !fromAmount.value || !toAmount.value || slippageInvalid.value
     || isLoading.value || isSwapInFlight.value
     || engine.value.isExecuting.value || engine.value.isLoadingQuote.value
-    || priceImpactBlocked.value || insufficientBalance.value);
+    || priceImpactBlocked.value || insufficientBalance.value || gasReserveShort.value);
 
 const swapButtonLabel = computed(() => {
+    // BSC: สวอปลงเชนแล้ว ป๊อปอัพที่สองคือค่าธรรมเนียม — บอกให้ชัด ไม่งั้นผู้ใช้นึกว่าแปลกแล้วกดปฏิเสธ
+    if (!isTpixMode.value && swap.stage?.value === 'fee') return t('swapPage.confirmFee');
     if (engine.value.isExecuting.value || isSwapInFlight.value) return t('swapPage.swapping');
     if (isLoading.value || engine.value.isLoadingQuote.value) return t('swapPage.fetchingQuote');
     if (slippageInvalid.value) return t('swapPage.slippageInvalidShort');
     if (insufficientBalance.value) return t('swapPage.insufficientBalance', { symbol: fromToken.value.symbol });
+    if (gasReserveShort.value) return t('swapPage.keepGas', { amount: BSC_GAS_RESERVE_BNB });
     if (priceImpactBlocked.value) return t('swapPage.priceImpactTooHigh');
     return t('swapPage.swap');
 });
@@ -301,6 +320,12 @@ function invalidateQuotes() {
 
 /** เก็บยอดคงเหลือ (เต็มความละเอียดสำหรับ MAX + ตัวเลขแสดงผล) */
 function setBalance(token, balance) {
+    // TPIX: อ่านยอดไม่ได้ (null) = "ไม่รู้ยอด" — ไม่ตัดสินว่าไม่พอ และไม่โชว์ 0 ที่ดูเหมือนไม่มีเหรียญ
+    if (balance === null || balance === undefined) {
+        token.balanceRaw = null;
+        token.balance = '—';
+        return;
+    }
     token.balanceRaw = balance;                     // full precision — used by MAX
     token.balance = parseFloat(balance).toFixed(4); // display
 }
@@ -681,6 +706,19 @@ async function handleApprove() {
             return;
         }
 
+        /*
+         * BSC: กระเป๋าค่าธรรมเนียมต้องพร้อม "ก่อน" ให้ผู้ใช้จ่ายค่าแก๊ส approve
+         * เดิมรู้ตอนกดสวอป — approve ไปแล้ว (เสียค่าแก๊ส) ค่อยเจอ "ระบบสวอปปิดปรับปรุง"
+         */
+        if (currentQuote.value?.feeWei > 0n) {
+            try {
+                await swap.ensureFeeCollector();
+            } catch (feeErr) {
+                actionNotice.value = { type: 'error', text: feeErr?.isFriendly ? feeErr.message : t('swapError.unavailable') };
+                return;
+            }
+        }
+
         await swap.approveToken(approvedAddress);
 
         // ผู้ใช้เปลี่ยนเหรียญระหว่างรอเซ็น/รอบล็อก — ผลนี้เป็นของเหรียญเก่า ห้ามไปปิดสถานะของเหรียญใหม่
@@ -720,8 +758,8 @@ async function executeSwap() {
         return;
     }
 
-    // TPIX: ยอดไม่พอ / ราคาขยับแรงเกิน (ปุ่มถูกปิดอยู่แล้ว — กันอีกชั้น)
-    if (insufficientBalance.value || priceImpactBlocked.value) return;
+    // ยอดไม่พอ / ราคาขยับแรงเกิน / BNB ไม่พอค่าแก๊ส (ปุ่มถูกปิดอยู่แล้ว — กันอีกชั้น)
+    if (insufficientBalance.value || priceImpactBlocked.value || gasReserveShort.value) return;
 
     const net = network.value;
     const tpix = net === SWAP_NETWORKS.TPIX;
@@ -774,21 +812,53 @@ async function executeSwap() {
             if (exceedsBalance(fromAmount.value, fromToken.value.balanceRaw)) return;
 
             // minOut ผูกกับ amounts ของ quote บนจอ · บันทึกประวัติ (fee_amount 0 — ค่าธรรมเนียมอยู่ในพูล) ให้แล้ว
-            await dex.executeTradeSwap(
-                fromToken.value,
-                toToken.value,
-                parseFloat(fromAmount.value),
-                quote,
-                slip,
-            );
+            try {
+                await dex.executeTradeSwap(
+                    fromToken.value,
+                    toToken.value,
+                    parseFloat(fromAmount.value),
+                    quote,
+                    slip,
+                );
+            } catch (err) {
+                /*
+                 * ส่งออกไปแล้วแต่เชนยังไม่ยืนยัน — ไม้อาจลงไปแล้ว
+                 * ล้างฟอร์มเหมือนสำเร็จ (กดซ้ำทันที = สวอปสองรอบ) แล้วให้แถบ "รอยืนยัน" พาไปตรวจที่ explorer
+                 */
+                if (err?.txSent) {
+                    await refreshBalances();
+                    invalidateQuotes();
+                    fromAmount.value = '';
+                    resetQuote();
+                }
+                throw err;
+            }
         } else {
-            await swap.executeSwap(
-                fromToken.value,
-                toToken.value,
-                parseFloat(fromAmount.value),
-                currentQuote.value,
-                slip,
-            );
+            const quote = currentQuote.value;
+            // ราคาใหม่ที่เพิ่งขอมาอาจดันพูลแรงขึ้น / ยอดอาจลดลง — ตัดสินจากตัวที่จะส่งจริง
+            if (isPriceImpactBlocked(quote.priceImpact)) return;
+            if (exceedsBalance(fromAmount.value, fromToken.value.balanceRaw)) return;
+
+            // ส่งจำนวนตามที่อยู่ในช่อง (ไม่ parseFloat) — ยอด MAX เป็นสตริงเต็มความละเอียด
+            // useSwap แปลงเป็นหน่วยเล็กสุดเองโดยไม่ผ่าน float
+            try {
+                await swap.executeSwap(
+                    fromToken.value,
+                    toToken.value,
+                    fromAmount.value,
+                    quote,
+                    slip,
+                );
+            } catch (err) {
+                // ส่งไปแล้วแต่ยังยืนยันผลไม่ได้ — ล้างฟอร์มเหมือนสำเร็จ (กดซ้ำทันที = สวอปสองรอบ)
+                if (err?.txSent) {
+                    await refreshBalances();
+                    invalidateQuotes();
+                    fromAmount.value = '';
+                    resetQuote();
+                }
+                throw err;
+            }
         }
 
         // Refresh balances after swap, then reset the form
@@ -825,10 +895,36 @@ function setMaxAmount() {
 }
 
 /** DEX config → (ถ้าพร้อม) รายการเหรียญ TPIX — ผลของสองขั้นนี้ตัดสินว่าเปิดหน้ามาเป็นเครือข่ายไหน */
+/*
+ * DEX config ยังไม่พร้อมตอนเปิดหน้า → ถามใหม่อีกไม่กี่รอบ (5 / 15 / 45 วิ)
+ * ⚠️ เดิมถามครั้งเดียว — 429/เน็ตสะดุดตอนเปิดหน้า = ปุ่ม TPIX ปิดไปทั้งหน้าจนกว่าจะรีเฟรช
+ *    คำตอบ "ไม่พร้อม" ที่สำเร็จ loadDexConfig จำไว้ 60 วิอยู่แล้ว รอบที่ถามซ้ำจึงไม่ยิงเครือข่ายถ้าไม่จำเป็น
+ */
+const DEX_RETRY_DELAYS_MS = [5000, 15000, 45000];
+let dexRetryTimer = null;
+let dexRetryIndex = 0;
+let pageClosed = false;
+
 async function initTpixNetwork() {
     await loadDexConfig();
-    if (dexReady.value) await loadTpixPairs();
+    if (pageClosed) return;
+    if (dexReady.value) {
+        await loadTpixPairs();
+        return;
+    }
+    if (dexRetryIndex < DEX_RETRY_DELAYS_MS.length) {
+        const delay = DEX_RETRY_DELAYS_MS[dexRetryIndex++];
+        dexRetryTimer = setTimeout(() => {
+            dexRetryTimer = null;
+            initTpixNetwork();
+        }, delay);
+    }
 }
+
+onUnmounted(() => {
+    pageClosed = true;
+    if (dexRetryTimer) clearTimeout(dexRetryTimer);
+});
 
 // Load balances on mount if wallet is connected
 onMounted(async () => {
@@ -1068,7 +1164,8 @@ onMounted(async () => {
                         </div>
 
                         <!-- Error (จาก useSwap หรือ useTpixDex ตามเครือข่าย — ข้อความแปลแล้ว ไม่ใช่ error ดิบ) -->
-                        <div v-if="engine.error.value" data-test="swap-error" class="mt-3 p-3 rounded-xl bg-trading-red/10 border border-trading-red/20 text-trading-red text-sm flex items-center gap-2">
+                        <!-- TPIX รอยืนยัน: แถบสีเหลืองด้านล่างบอกแทน ไม่ซ้อนเป็น error สีแดง -->
+                        <div v-if="engine.error.value && !(isTpixMode && dex.txStatus.value === 'pending' && dex.txHash.value)" data-test="swap-error" class="mt-3 p-3 rounded-xl bg-trading-red/10 border border-trading-red/20 text-trading-red text-sm flex items-center gap-2">
                             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
@@ -1100,6 +1197,14 @@ onMounted(async () => {
                             </div>
                             <a :href="getTxUrl(engine.txHash.value, activeChainId)" data-test="swap-tx-link" target="_blank" rel="noopener" class="text-xs underline mt-1 block text-trading-green/70 hover:text-trading-green">
                                 {{ isTpixMode ? t('swapPage.viewOnTpixExplorer') : t('swapPage.viewOnBscScan') }}
+                            </a>
+                        </div>
+
+                        <!-- TPIX: ส่งออกไปแล้วแต่เชนยังไม่ยืนยัน — ห้ามบอกแค่ "ไม่สำเร็จ ลองใหม่" (กดซ้ำ = สวอปสองรอบ) -->
+                        <div v-if="isTpixMode && dex.txHash.value && dex.txStatus.value === 'pending' && !dex.isExecuting.value" data-test="swap-pending" class="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300 text-sm">
+                            <p>{{ t('swapPage.tpixPending') }}</p>
+                            <a :href="getTxUrl(dex.txHash.value, TPIX_CHAIN_ID)" data-test="swap-pending-link" target="_blank" rel="noopener" class="text-xs underline mt-1 block text-amber-300/80 hover:text-amber-200">
+                                {{ t('swapPage.viewOnTpixExplorer') }}
                             </a>
                         </div>
 

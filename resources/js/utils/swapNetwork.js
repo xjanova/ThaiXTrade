@@ -12,18 +12,18 @@
  */
 
 import { BSC_CHAIN_ID, TPIX_CHAIN_CONFIG } from '@/utils/web3';
-import { toDexAddress } from '@/Composables/useTpixDex';
+import { toDexAddress, validDecimals } from '@/Composables/useTpixDex';
+
+/*
+ * เพดานผลกระทบราคาอยู่ที่ useTpixDex ที่เดียว — /swap และ /trade ต้องตัดสินด้วยตัวเดียวกัน
+ * (เดิมมีสองชุด: ที่นี่ fail-closed แต่ Trade.vue เทียบ `> 10` เอง ไม่รู้ค่าจึงผ่าน)
+ */
+export { PRICE_IMPACT_BLOCK_PCT, isPriceImpactBlocked } from '@/Composables/useTpixDex';
 
 export const SWAP_NETWORKS = Object.freeze({ BSC: 'bsc', TPIX: 'tpix' });
 
 /** chain id ของ TPIX Chain (4289) — มาจาก config เชน ไม่ใช่เชนปริยายของระบบ */
 export const TPIX_CHAIN_ID = TPIX_CHAIN_CONFIG.chainIdNum;
-
-/** ไม้ที่ดันราคาพูลเกินเท่านี้ (%) ห้ามส่ง — ค่าเดียวกับ executeDexMarketOrder ใน Trade.vue */
-export const PRICE_IMPACT_BLOCK_PCT = 10;
-
-/** decimals ที่ยอมรับได้ของ ERC-20 — นอกช่วงนี้ถือว่าข้อมูลเสีย */
-const MAX_TOKEN_DECIMALS = 36;
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
@@ -52,13 +52,6 @@ export function resolveSwapNetwork({ requested = null, dexReady = false, tpixTok
     if (requested === SWAP_NETWORKS.BSC) return SWAP_NETWORKS.BSC;
     if (requested === SWAP_NETWORKS.TPIX) return SWAP_NETWORKS.TPIX;
     return Number(tpixTokenCount) >= 2 ? SWAP_NETWORKS.TPIX : SWAP_NETWORKS.BSC;
-}
-
-/** decimals ที่ใช้ได้ หรือ null — ห้ามเดา 18 ให้เอง */
-function validDecimals(value) {
-    if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
-    const n = Number(value);
-    return Number.isInteger(n) && n >= 0 && n <= MAX_TOKEN_DECIMALS ? n : null;
 }
 
 /**
@@ -144,6 +137,45 @@ export function buildTpixTokenList(pairs) {
     return tokens.map((t) => ({ ...t, balance: '0.00', balanceRaw: null }));
 }
 
+/**
+ * คู่บน DEX (/api/v1/dex/pairs) → พูล TOKEN/TPIX ในมุมของหน้าสภาพคล่อง (token = ฝั่งที่ไม่ใช่ TPIX)
+ * ไม่มี TPIX ฝั่งใดเลย (หรือมีทั้งสองฝั่ง) = null — หน้านั้นจัดการพูลกับ TPIX เท่านั้น
+ *
+ * ⚠️ เดิมหน้าสภาพคล่องรับเฉพาะคู่ที่ TPIX เป็นฝั่ง quote — แต่ dex:sync ตั้ง USDT เป็น quote เสมอ
+ *    พูลเดียวที่มีบน prod (TPIX-USDT: TPIX เป็นฝั่ง base) จึงไม่โผล่ หน้าขึ้น "ยังไม่มีพูล"
+ */
+export function liquidityPoolFromPair(pair) {
+    if (!pair || typeof pair !== 'object') return null;
+    const baseNative = toDexAddress(pair.base_address) === 'native' && ADDRESS_RE.test(String(pair.base_address || ''));
+    const quoteNative = toDexAddress(pair.quote_address) === 'native' && ADDRESS_RE.test(String(pair.quote_address || ''));
+    if (baseNative === quoteNative) return null;
+
+    const side = baseNative ? 'quote' : 'base';
+    const tokenAddress = pair[`${side}_address`];
+    if (typeof tokenAddress !== 'string' || !ADDRESS_RE.test(tokenAddress)) return null;
+
+    return {
+        ...pair,
+        tokenAddress,
+        tokenAsset: String(pair[`${side}_asset`] || '').trim(),
+        tokenLogo: pair[`${side}_logo`] || null,
+        tokenDecimals: validDecimals(pair[`${side}_decimals`]),
+    };
+}
+
+/**
+ * ชื่อคู่บนหน้าเทรดของพูล TOKEN/TPIX — ใช้ชื่อจริงที่ dex:sync ตั้ง (เช่น TPIX-USDT) ถ้ามีพูลนั้นในรายการ
+ * ไม่มี (พูลใหม่ที่ยังไม่ซิงก์) = {TOKEN}-TPIX ตามที่ dex:sync จะตั้งให้ (TPIX เป็นสกุลอ้างอิง)
+ */
+export function liquidityTradeSymbol(pools, token) {
+    if (!token) return null;
+    const address = String(token.address || '').toLowerCase();
+    const match = (Array.isArray(pools) ? pools : [])
+        .find((p) => String(p?.tokenAddress || '').toLowerCase() === address && p?.symbol);
+    if (match) return String(match.symbol).toUpperCase();
+    return `${String(token.symbol || '').toUpperCase()}-TPIX`;
+}
+
 /** เหรียญเดียวกันไหม — เทียบที่อยู่ ไม่ใช่สัญลักษณ์ (สัญลักษณ์ซ้ำกันได้) */
 export function sameToken(a, b) {
     if (!a || !b) return false;
@@ -163,17 +195,6 @@ export function defaultTokenPair(tokens) {
     const to = others.find((t) => String(t.symbol).toUpperCase() === 'USDT') || others[0];
 
     return to ? { from, to } : null;
-}
-
-/**
- * ไม้นี้ต้องถูกบล็อกเพราะผลกระทบราคาไหม — fail-closed
- * ไม่รู้ค่า (null/NaN) = บล็อก เพราะไม่รู้ว่าพูลรับไม้ขนาดนี้ได้หรือเปล่า
- */
-export function isPriceImpactBlocked(impact) {
-    if (impact === null || impact === undefined || impact === '') return true;
-    const n = Number(impact);
-    if (!Number.isFinite(n)) return true;
-    return n > PRICE_IMPACT_BLOCK_PCT;
 }
 
 /**

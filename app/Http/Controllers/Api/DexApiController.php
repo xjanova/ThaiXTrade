@@ -42,7 +42,15 @@ class DexApiController extends Controller
 
     public function config(): JsonResponse
     {
-        $cfg = Cache::remember('dex:config:public', 60, fn () => $this->dex->config());
+        /*
+         * พร้อม = จำ 60 วิ · ยังไม่พร้อม = จำแค่ 10 วิ
+         * คำตอบ "ไม่พร้อม" ส่วนใหญ่มาจากเชนสะดุดชั่วครู่ — จำนาน = ทุกหน้าที่เปิดในนาทีนั้นปิด DEX ทั้งที่เชนกลับมาแล้ว
+         */
+        $cfg = Cache::get('dex:config:public');
+        if (! is_array($cfg)) {
+            $cfg = $this->dex->config();
+            Cache::put('dex:config:public', $cfg, ($cfg['ready'] ?? false) ? 60 : 10);
+        }
 
         return response()->json(['success' => true, 'data' => $cfg]);
     }
@@ -125,6 +133,10 @@ class DexApiController extends Controller
         }
 
         $limit = max(1, min((int) $request->query('limit', 50), 200));
+        // โทเคนของคู่ถูกลบ/ปิดไปแล้ว — ตอบรายการว่าง ไม่ใช่ 500
+        if (! $pair->baseToken || ! $pair->quoteToken) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
         $base = strtolower($pair->baseToken->contract_address);
         $quote = strtolower($pair->quoteToken->contract_address);
 

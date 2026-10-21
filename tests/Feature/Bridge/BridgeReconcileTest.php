@@ -165,6 +165,63 @@ class BridgeReconcileTest extends TestCase
     }
 
     #[Test]
+    public function a_disabled_chain_with_no_history_is_not_measured_so_its_rpc_cannot_hide_a_deficit(): void
+    {
+        // Ethereum ปิดอยู่และไม่เคยมีรายการ — RPC ของมันล่มต้องไม่ทำให้ทั้งรอบกลายเป็น incomplete
+        config(['bridge.chains.1.enabled' => false]);
+        $this->chainState[1]['down'] = true;
+        $this->chainState[4289]['supply'] = '100000000';
+
+        $first = $this->reconcile();
+        $this->assertSame(BridgeReserveSnapshot::STATUS_DEFICIT, $first->status);
+        $this->assertNull(collect($first->chains)->firstWhere('chain_id', 1), 'ไม่วัดเชนที่ไม่เกี่ยว');
+
+        $second = $this->reconcile();
+        $this->assertStringContainsString('site_disabled', $second->action);
+        $this->assertFalse(app(BridgeConfig::class)->siteSwitchOn());
+    }
+
+    #[Test]
+    public function a_disabled_chain_that_still_holds_minted_deposits_keeps_being_measured(): void
+    {
+        config(['bridge.chains.1.enabled' => false]);
+        $this->setTokenBalance(1, $this->usdtEth, $this->vault, '5000000');
+        $this->chainState[4289]['supply'] = '24990000';
+        $tx = '0x'.hash('sha256', 'eth-history');
+        BridgeDeposit::create([
+            'source_chain_id' => 1, 'tx_hash' => $tx, 'log_index' => 0, 'block_number' => 4000,
+            'from_address' => strtolower($this->alice), 'to_address' => $this->vault, 'token_address' => $this->usdtEth,
+            'token_decimals' => 6, 'amount_raw' => '5000000', 'amount_units' => '5000000', 'mint_units' => '5000000',
+            'deposit_id' => Abi::depositId(1, $tx, 0), 'status' => BridgeDeposit::STATUS_MINTED,
+        ]);
+        $this->chainState[4289]['minter_total'] = '5000000';
+
+        $s = $this->reconcile();
+
+        $this->assertSame(BridgeReserveSnapshot::STATUS_OK, $s->status);
+        $this->assertSame('24990000', $s->vault_units, '19.99 บน BSC + 5 บน Ethereum ที่ยังหนุน supply อยู่');
+    }
+
+    #[Test]
+    public function an_unreadable_round_in_between_does_not_reset_the_two_round_rule(): void
+    {
+        $this->chainState[4289]['supply'] = '100000000';
+
+        $this->assertSame('deficit_warning', $this->reconcile()->action);
+
+        // RPC ล่มหนึ่งรอบ — เดิมรอบนี้ทำให้ "สองรอบติด" นับใหม่ สลับล่มทุกรอบก็ไม่มีวันหยุด
+        $this->chainState[56]['down'] = true;
+        $this->assertSame(BridgeReserveSnapshot::STATUS_INCOMPLETE, $this->reconcile()->status);
+        $this->assertTrue(app(BridgeConfig::class)->siteSwitchOn());
+
+        $this->chainState[56]['down'] = false;
+        $third = $this->reconcile();
+        $this->assertStringContainsString('site_disabled', $third->action);
+        $this->assertFalse(app(BridgeConfig::class)->siteSwitchOn());
+        $this->assertSame('safety_hold', app(BridgeConfig::class)->publicPausedCode());
+    }
+
+    #[Test]
     public function without_a_guardian_key_the_site_switch_is_still_turned_off(): void
     {
         config(['bridge.signers.guardian.keystore' => '', 'bridge.signers.guardian.passphrase' => null]);

@@ -5,8 +5,11 @@ namespace Tests\Feature\Bridge;
 use App\Models\BridgeDeposit;
 use App\Models\BridgeReserveSnapshot;
 use App\Models\BridgeWithdrawal;
+use App\Models\SiteSetting;
 use App\Services\Bridge\Abi;
+use App\Services\Bridge\BridgeConfig;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\FakesBridgeChains;
 use Tests\TestCase;
@@ -107,6 +110,81 @@ class BridgeApiTest extends TestCase
     }
 
     #[Test]
+    public function a_deposit_on_a_disabled_chain_gets_a_terminal_status_with_refund_guidance_not_a_forever_spinner(): void
+    {
+        // vault ที่อยู่เดียวกันทุกเชน — ผู้ใช้โอนบน Ethereum ที่ไม่เคยเปิด: เดิมตอบ "final แล้ว รอเข้าคิว" ตลอดไป
+        config(['bridge.chains.1.enabled' => false]);
+        Cache::flush();
+        $tx = $this->fakeDeposit(1, $this->alice, '7000000', 4800);
+
+        $this->getJson("/api/v1/bridge/status/1/{$tx}")
+            ->assertOk()
+            ->assertJsonPath('data.state', 'chain_disabled')
+            ->assertJsonPath('data.refund', true);
+
+        Http::assertNotSent(fn ($r) => parse_url($r->url(), PHP_URL_HOST) === 'rpc.eth.test');
+    }
+
+    #[Test]
+    public function a_deposit_on_a_temporarily_paused_chain_says_it_will_be_processed_on_reopening(): void
+    {
+        // เคยสแกนแล้ว (มีเคอร์เซอร์) แล้วแอดมินปิดชั่วคราว — เปิดใหม่ตัวสแกนไล่ต่อจากจุดเดิมเอง
+        app(BridgeConfig::class)->setCursor('deposit_56', 900);
+        SiteSetting::set(BridgeConfig::SETTINGS_GROUP, 'chain_enabled_56', '0', 'boolean');
+        $tx = $this->fakeDeposit(56, $this->alice, '7000000000000000000', 950);
+
+        $this->getJson("/api/v1/bridge/status/56/{$tx}")
+            ->assertOk()
+            ->assertJsonPath('data.state', 'chain_paused')
+            ->assertJsonPath('data.refund', false);
+    }
+
+    #[Test]
+    public function the_public_pause_reason_is_a_generic_code_without_admin_names_or_incident_notes(): void
+    {
+        app(BridgeConfig::class)->setSiteSwitch(false, 'ปิดโดย สมชาย: คีย์ relayer อาจหลุด', 'manual');
+
+        $response = $this->getJson('/api/v1/bridge/info')->assertOk()->assertJsonPath('data.paused_reason', 'maintenance');
+        $this->assertStringNotContainsString('สมชาย', $response->getContent());
+        $this->assertStringNotContainsString('relayer', $response->getContent());
+
+        app(BridgeConfig::class)->setSiteSwitch(false, 'หยุดอัตโนมัติ (reserve_deficit): supply เกินเงินหนุน 80 หน่วย', 'auto');
+        $this->getJson('/api/v1/bridge/info')->assertJsonPath('data.paused_reason', 'safety_hold');
+
+        app(BridgeConfig::class)->setSiteSwitch(true);
+        $this->getJson('/api/v1/bridge/info')->assertJsonPath('data.paused_reason', null);
+    }
+
+    #[Test]
+    public function info_reports_the_deposit_cap_that_can_really_be_minted(): void
+    {
+        // วงเงินเว็บสูงกว่า maxPerTx บนสัญญา (ตั้งไว้ก่อนมีด่านตรวจ) — หน้าเว็บต้องใช้ค่าที่ต่ำกว่า
+        SiteSetting::set(BridgeConfig::SETTINGS_GROUP, 'limit_max_deposit_per_tx', '1500', 'string');
+        Cache::flush();
+
+        $this->getJson('/api/v1/bridge/info')
+            ->assertJsonPath('data.limits.max_deposit_per_tx', '1500')
+            ->assertJsonPath('data.deposit_max_per_tx', '1000');
+    }
+
+    #[Test]
+    public function the_mobile_fee_config_follows_the_bridge_switch_at_once_and_reports_real_eta_and_fees(): void
+    {
+        $this->getJson('/api/v1/fees')
+            ->assertOk()
+            ->assertJsonPath('bridge.enabled', false)        // แอปมือถือยังไม่รองรับ — คงเดิม
+            ->assertJsonPath('bridge.webEnabled', true)
+            ->assertJsonPath('bridge.estimatedMinutes', 2)   // BSC เร็วที่สุดในเชนที่เปิด (เดิมตายตัว 20)
+            ->assertJsonPath('bridge.maxAmount', 1000)
+            ->assertJsonPath('bridge.chains.0.chainId', 56)
+            ->assertJsonPath('bridge.chains.0.withdrawFee', 0.3);
+
+        // หยุดสะพาน → เห็นผลทันที (เดิมค้างในแคช 5 นาที)
+        app(BridgeConfig::class)->setSiteSwitch(false, 'test', 'auto');
+        $this->getJson('/api/v1/fees')->assertJsonPath('bridge.webEnabled', false);
+    }
+
+    #[Test]
     public function withdrawal_status_and_history_validate_input_and_return_records(): void
     {
         $this->getJson('/api/v1/bridge/withdrawals/nothex')->assertStatus(422)->assertJsonPath('error.code', 'INVALID_TX_HASH');
@@ -130,6 +208,23 @@ class BridgeApiTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data.withdrawals')
             ->assertJsonCount(0, 'data.deposits');
+
+        // ต่ำกว่าขั้นต่ำ: เงินเข้า vault แล้ว ผู้ใช้ต้องเห็นในประวัติ (จะได้รู้ว่าต้องขอคืน) · โอนภายในไม่ใช่ของผู้ใช้
+        foreach (['below_minimum' => '1', 'internal_sender' => '2'] as $reason => $c) {
+            $tx = '0x'.str_repeat($c, 64);
+            BridgeDeposit::create([
+                'source_chain_id' => 56, 'tx_hash' => $tx, 'log_index' => 0, 'block_number' => 900,
+                'from_address' => strtolower($this->alice), 'to_address' => $this->vault, 'token_address' => $this->usdtBsc,
+                'token_decimals' => 18, 'amount_raw' => '500000000000000000', 'amount_units' => '500000',
+                'mint_units' => '500000', 'deposit_id' => Abi::depositId(56, $tx, 0),
+                'status' => BridgeDeposit::STATUS_IGNORED, 'review_reason' => $reason,
+            ]);
+        }
+
+        $this->getJson('/api/v1/bridge/history/'.$this->alice)
+            ->assertJsonCount(1, 'data.deposits')
+            ->assertJsonPath('data.deposits.0.status', 'ignored')
+            ->assertJsonPath('data.deposits.0.review_reason', 'below_minimum');
     }
 
     #[Test]

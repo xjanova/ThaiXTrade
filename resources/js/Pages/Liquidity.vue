@@ -17,6 +17,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTpixDex, toDexAddress } from '@/Composables/useTpixDex';
+import { liquidityPoolFromPair, liquidityTradeSymbol } from '@/utils/swapNetwork';
 import { TPIX_DEX, loadDexConfig, isDexConfigured } from '@/Config/dexContracts';
 import { useTranslation } from '@/Composables/useTranslation';
 import { showToast } from '@/Composables/useToasts';
@@ -34,11 +35,12 @@ const isOnTpix = computed(() => Number(walletStore.chainId) === TPIX_CHAIN_ID);
 
 // ── รายการโทเคนที่มีพูลอยู่แล้ว (จากเซิร์ฟเวอร์) ───────────────────────────
 const pools = ref([]);
+
 async function loadPools() {
     try {
         const { data } = await axios.get('/api/v1/dex/pairs');
-        // เฉพาะคู่ที่อ้างอิง TPIX (พูล TOKEN/WTPIX) — หน้านี้จัดการพูลชนิดนี้เท่านั้น
-        pools.value = (data?.data || []).filter((p) => toDexAddress(p.quote_address) === 'native');
+        // เฉพาะพูลที่มี TPIX ฝั่งใดฝั่งหนึ่ง (TOKEN/WTPIX) — ดู liquidityPoolFromPair ว่าทำไมต้องรับทั้งสองฝั่ง
+        pools.value = (data?.data || []).map(liquidityPoolFromPair).filter(Boolean);
     } catch {
         pools.value = [];
     }
@@ -51,15 +53,20 @@ const tokenError = ref('');
 const isResolvingToken = ref(false);
 
 function pickPool(pool) {
-    tokenInput.value = pool.base_address;
-    token.value = {
-        symbol: pool.base_asset,
-        name: pool.base_asset,
-        address: toDexAddress(pool.base_address),
-        decimals: Number(pool.base_decimals) || 18,
-        logo: pool.base_logo,
-    };
+    tokenInput.value = pool.tokenAddress;
     tokenError.value = '';
+    // decimals จากเซิร์ฟเวอร์ใช้ไม่ได้ → ปล่อยให้ตัวตรวจที่อยู่ (watch ด้านล่าง) อ่านจากเชนเอง ไม่เดา 18
+    if (pool.tokenDecimals === null) {
+        token.value = null;
+        return;
+    }
+    token.value = {
+        symbol: pool.tokenAsset,
+        name: pool.tokenAsset,
+        address: toDexAddress(pool.tokenAddress),
+        decimals: pool.tokenDecimals,
+        logo: pool.tokenLogo,
+    };
     refreshPool();
 }
 
@@ -160,6 +167,11 @@ const canAdd = computed(() =>
     && parseFloat(amountToken.value) > 0 && parseFloat(amountTpix.value) > 0 && !busy.value
 );
 
+/** ธุรกรรมที่ส่งออกไปแล้วแต่ยังยืนยันไม่ได้ — ต้องให้ลิงก์ไปตรวจ ไม่ใช่แค่ "ไม่สำเร็จ" */
+function pendingTxUrl() {
+    return dex.txStatus.value === 'pending' && dex.txHash.value ? dex.explorerTxUrl(dex.txHash.value) : null;
+}
+
 function setStatus(type, text, url = null) {
     status.value = { type, text, url };
     showToast({ text, type: type === 'success' ? 'success' : 'error' });
@@ -186,7 +198,12 @@ async function submitAdd() {
         await refreshPool();
         loadPools();
     } catch (err) {
-        setStatus('error', dex.error.value || err?.message || t('trade.status.failed'));
+        setStatus('error', dex.error.value || err?.message || t('trade.status.failed'), pendingTxUrl());
+        // ส่งออกไปแล้วแต่ยืนยันไม่ได้ — ล้างช่องกรอกไว้ กันกดเติมซ้ำโดยไม่ได้ตั้งใจ
+        if (pendingTxUrl()) {
+            amountToken.value = '';
+            amountTpix.value = '';
+        }
     } finally {
         busy.value = false;
     }
@@ -212,7 +229,7 @@ async function submitRemove() {
         await refreshPool();
         loadPools();
     } catch (err) {
-        setStatus('error', dex.error.value || err?.message || t('trade.status.failed'));
+        setStatus('error', dex.error.value || err?.message || t('trade.status.failed'), pendingTxUrl());
     } finally {
         busy.value = false;
     }
@@ -227,11 +244,19 @@ async function switchToTpix() {
 }
 
 function fmt(n, digits = 6) {
+    // อ่านยอดไม่ได้ (null) = "—" ไม่ใช่ 0 ที่ดูเหมือนไม่มีเหรียญ
+    if (n === null || n === undefined) return '—';
     const num = Number(n) || 0;
     return num.toLocaleString('en-US', { maximumFractionDigits: digits });
 }
 
-const tradeHref = computed(() => (token.value ? `/trade/${String(token.value.symbol).toUpperCase()}-TPIX` : '/trade'));
+/*
+ * ลิงก์ไปหน้าเทรดต้องชี้ชื่อคู่ที่มีอยู่จริง — dex:sync ตั้ง USDT เป็นฝั่ง quote เสมอ (TPIX-USDT ไม่ใช่ USDT-TPIX)
+ * เดิมต่อชื่อเป็น {TOKEN}-TPIX ตายตัว → เติม USDT แล้วกด "เทรด" ไปเจอหน้า "เร็วๆ นี้" ของคู่ที่ไม่มี
+ */
+const tradeSymbol = computed(() => (token.value ? liquidityTradeSymbol(pools.value, token.value) : null));
+const tradeHref = computed(() => (tradeSymbol.value ? `/trade/${tradeSymbol.value}` : '/trade'));
+const tradeLabel = computed(() => (tradeSymbol.value ? tradeSymbol.value.replace('-', '/') : ''));
 
 watch(() => walletStore.address, refreshPool);
 watch(() => walletStore.chainId, refreshPool);
@@ -270,12 +295,13 @@ onUnmounted(() => {
                             <li v-for="p in pools" :key="p.symbol">
                                 <button
                                     type="button"
+                                    data-test="pool-item"
                                     class="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-colors hover:bg-white/5"
-                                    :class="token && toDexAddress(p.base_address) === token.address ? 'bg-primary-500/10 ring-1 ring-primary-500/40' : ''"
+                                    :class="token && toDexAddress(p.tokenAddress) === token.address ? 'bg-primary-500/10 ring-1 ring-primary-500/40' : ''"
                                     @click="pickPool(p)"
                                 >
-                                    <CoinIcon :symbol="p.base_asset" :src="p.base_logo" size="sm" />
-                                    <span class="text-sm text-white font-medium">{{ p.base_asset }}</span>
+                                    <CoinIcon :symbol="p.tokenAsset" :src="p.tokenLogo" size="sm" />
+                                    <span class="text-sm text-white font-medium">{{ p.tokenAsset }}</span>
                                     <span class="text-xs text-dark-400">/ TPIX</span>
                                     <span v-if="!p.is_active" class="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-dark-700 text-dark-400">empty</span>
                                 </button>
@@ -394,7 +420,7 @@ onUnmounted(() => {
                         </div>
 
                         <div v-if="pool" class="mt-4 text-right">
-                            <Link :href="tradeHref" class="text-xs text-primary-400 hover:text-primary-300">{{ t('liquidity.tradeIt', { pair: `${token.symbol}/TPIX` }) }} →</Link>
+                            <Link :href="tradeHref" data-test="trade-link" class="text-xs text-primary-400 hover:text-primary-300">{{ t('liquidity.tradeIt', { pair: tradeLabel }) }} →</Link>
                         </div>
                     </div>
                 </section>

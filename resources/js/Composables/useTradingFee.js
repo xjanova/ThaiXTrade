@@ -13,6 +13,7 @@
 
 import { ref, computed } from 'vue';
 import axios from 'axios';
+import { t } from '@/Composables/useTranslation';
 
 // ตารางราคาไม่เปลี่ยนบ่อย — เก็บระดับโมดูลให้ทุกหน้าใช้ผลเดียวกัน
 const tiers = ref([]);
@@ -144,7 +145,8 @@ export function useTradingFee() {
 
             return null;
         } catch (err) {
-            error.value = readError(err, 'ขอใบอนุญาตวางไม้ไม่สำเร็จ');
+            // ข้อความสำรองผ่าน i18n — เดิมเป็นภาษาไทยตายตัว ผู้ใช้หน้าอังกฤษก็เห็นภาษาไทย
+            error.value = readError(err, t('trade.status.ticketFailed'));
             return null;
         } finally {
             isWorking.value = false;

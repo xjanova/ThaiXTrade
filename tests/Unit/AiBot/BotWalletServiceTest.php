@@ -39,9 +39,19 @@ class BotWalletServiceTest extends TestCase
 
         $this->partialMock(Web3BalanceService::class, function ($mock) {
             $mock->shouldReceive('getNativeBalance')->andReturnUsing(fn () => (string) $this->bnb);
-            $mock->shouldReceive('getTokenBalance')->andReturnUsing(fn () => (string) $this->usdt);
+            $mock->shouldReceive('getTokenBalance')->andReturnUsing(function () {
+                // จำลองคำขออีกใบที่บันทึกเสร็จ "ระหว่าง" ที่คำขอนี้รอยอดจากเชน
+                if ($this->duringChainRead) {
+                    ($this->duringChainRead)();
+                    $this->duringChainRead = null;
+                }
+
+                return (string) $this->usdt;
+            });
         });
     }
+
+    private ?\Closure $duringChainRead = null;
 
     private function service(): BotWalletService
     {
@@ -184,6 +194,69 @@ class BotWalletServiceTest extends TestCase
 
         $this->expectExceptionMessage(BotWalletService::ERR_DAILY_CAP);
         $this->service()->requestWithdraw(self::OWNER, 'USDT', 100.0);
+    }
+
+    #[Test]
+    public function คำขอที่บันทึกเสร็จระหว่างที่อีกคำขอรอยอดจากเชน_ต้องกันคำขอหลังไว้(): void
+    {
+        // สองแท็บกดถอนพร้อมกัน — ด่าน "มีรายการค้างไหม" ต้องตรวจหลังอ่านยอด ใต้ล็อกเดียวกับการสร้าง
+        $wallet = $this->service()->ensure(self::OWNER);
+
+        $this->duringChainRead = fn () => $wallet->transfers()->create([
+            'owner_address' => self::OWNER, 'direction' => 'withdraw', 'asset' => 'USDT',
+            'amount' => 200, 'amount_wei' => '200000000000000000000', 'to_address' => self::OWNER,
+            'status' => AiBotWalletTransfer::STATUS_QUEUED,
+        ]);
+
+        try {
+            $this->service()->requestWithdraw(self::OWNER, 'USDT', 200.0);
+            $this->fail('คำขอที่สองต้องถูกกัน');
+        } catch (RuntimeException $e) {
+            $this->assertSame(BotWalletService::ERR_IN_FLIGHT, $e->getMessage());
+        }
+
+        $this->assertSame(1, $wallet->transfers()->count(), 'ต้องมีรายการถอนแค่ใบเดียว');
+    }
+
+    #[Test]
+    public function เพดานถอนต่อวันแยกตามสินทรัพย์(): void
+    {
+        config(['aibot.bot_wallet.assets.BNB.daily_cap' => 0.03]);
+        $this->bnb = 1.0;
+        $wallet = $this->service()->ensure(self::OWNER);
+
+        $wallet->transfers()->create([
+            'owner_address' => self::OWNER, 'direction' => 'withdraw', 'asset' => 'BNB',
+            'amount' => 0.025, 'amount_wei' => '25000000000000000', 'to_address' => self::OWNER,
+            'status' => AiBotWalletTransfer::STATUS_CONFIRMED, 'confirmed_at' => now(),
+        ]);
+
+        try {
+            $this->service()->requestWithdraw(self::OWNER, 'BNB', 0.01);
+            $this->fail('BNB เกินเพดานของตัวเองต้องถูกปฏิเสธ');
+        } catch (RuntimeException $e) {
+            $this->assertSame(BotWalletService::ERR_DAILY_CAP, $e->getMessage());
+        }
+
+        // USDT ใช้เพดานของตัวเอง (ค่ากลางเดิม 1000 ในเทสต์นี้) ไม่ถูกเพดาน BNB ลากไปด้วย
+        $this->assertSame(AiBotWalletTransfer::STATUS_QUEUED, $this->service()->requestWithdraw(self::OWNER, 'USDT', 100.0)->status);
+
+        $assets = collect($this->service()->present($wallet->fresh())['assets'])->keyBy('symbol');
+        $this->assertSame(0.03, $assets['BNB']['daily_cap']);
+        $this->assertSame(1000.0, $assets['USDT']['daily_cap']);
+    }
+
+    #[Test]
+    public function ยกเลิกได้เฉพาะตอนที่ตัวส่งยังไม่หยิบไปเซ็น(): void
+    {
+        $this->service()->ensure(self::OWNER);
+        $transfer = $this->service()->requestWithdraw(self::OWNER, 'USDT', 10.0);
+
+        // ตัวส่งหยิบไปเซ็นแล้วหลังจากที่หน้าเว็บอ่านรายการมา — ห้ามเขียนทับเป็นยกเลิก
+        AiBotWalletTransfer::whereKey($transfer->id)->update(['status' => AiBotWalletTransfer::STATUS_SIGNING]);
+
+        $this->expectExceptionMessage(BotWalletService::ERR_NOT_CANCELLABLE);
+        $this->service()->cancelWithdraw(self::OWNER, $transfer->id);
     }
 
     #[Test]

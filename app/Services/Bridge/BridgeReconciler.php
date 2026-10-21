@@ -52,8 +52,13 @@ class BridgeReconciler
         $payoutSum = '0';
         $complete = $supply !== null;
         $rows = [];
+        $measured = $this->chainsToMeasure();
 
         foreach ($this->config->chains() as $chainId => $chain) {
+            if (! in_array($chainId, $measured, true)) {
+                continue;
+            }
+
             $rpc = $this->config->rpc($chainId);
             $token = (string) $chain['usdt']['address'];
             $decimals = (int) $chain['usdt']['decimals'];
@@ -123,11 +128,41 @@ class BridgeReconciler
     }
 
     /**
+     * เชนที่เงินหนุนอาจอยู่จริง = เชนที่เปิดอยู่ + เชนที่เคยมีเงินฝากผ่านด่าน/ค้างจ่ายถอน.
+     *
+     * เดิมวัดทุกเชนที่ตั้งไว้ (รวมเชนที่ไม่เคยเปิด) — RPC ฟรีของเชนที่ปิดอยู่ล่มเมื่อไหร่ ผลทั้งรอบเป็น incomplete
+     * แล้วไม่ตัดสินอะไรเลย ยอดขาดจริงบนเชนที่เปิดอยู่จึงถูกบังได้เรื่อย ๆ
+     * เชนที่ไม่เคยมีรายการไม่ได้หนุน supply ส่วนไหนเลย ตัดออกได้อย่างปลอดภัย (ทำให้เงินหนุนนับได้น้อยลงเท่านั้น
+     * ไม่มีทางทำให้ยอดขาดถูกซ่อน)
+     *
+     * @return array<int, int>
+     */
+    public function chainsToMeasure(): array
+    {
+        $ids = array_keys($this->config->enabledChains());
+
+        $withDeposits = BridgeDeposit::whereIn('status', [
+            BridgeDeposit::STATUS_CONFIRMED, BridgeDeposit::STATUS_MINTING, BridgeDeposit::STATUS_MINTED, BridgeDeposit::STATUS_NEEDS_REVIEW,
+        ])->distinct()->pluck('source_chain_id')->all();
+
+        $withWithdrawals = BridgeWithdrawal::whereNotNull('target_chain_id')
+            ->whereIn('status', [...BridgeWithdrawal::OWED, BridgeWithdrawal::STATUS_PAID])
+            ->distinct()->pluck('target_chain_id')->all();
+
+        $known = array_keys($this->config->chains());
+
+        return array_values(array_intersect($known, array_unique(array_map('intval', [...$ids, ...$withDeposits, ...$withWithdrawals]))));
+    }
+
+    /**
      * หนึ่งรอบ: วัด → ตัดสิน → (ถ้าต้อง) สั่งหยุด → เก็บผลไว้ให้หน้า proof of reserves.
+     *
+     * "ขาดสองรอบติด" เทียบกับรอบล่าสุดที่ "อ่านครบ" — รอบ incomplete ไม่ใช่หลักฐานว่าหายขาด
+     * (เดิมเทียบรอบก่อนหน้าตรง ๆ: RPC ล่มสลับรอบ = deficit/incomplete/deficit … ไม่มีวันหยุด)
      */
     public function run(): BridgeReserveSnapshot
     {
-        $previous = BridgeReserveSnapshot::latest('id')->first();
+        $previous = BridgeReserveSnapshot::where('status', '!=', BridgeReserveSnapshot::STATUS_INCOMPLETE)->latest('id')->first();
         $m = $this->measure();
         $action = null;
         $notes = [];
@@ -181,7 +216,7 @@ class BridgeReconciler
      */
     private function halt(string $reason, string $note, array $m): string
     {
-        $this->config->setSiteSwitch(false, "หยุดอัตโนมัติ ({$reason}): {$note}");
+        $this->config->setSiteSwitch(false, "หยุดอัตโนมัติ ({$reason}): {$note}", 'auto');
 
         $actions = ['site_disabled'];
         $minter = $this->config->minterAddress();

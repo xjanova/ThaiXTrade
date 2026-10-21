@@ -17,6 +17,7 @@
 
 import { ref, computed } from 'vue';
 import axios from 'axios';
+import { t } from '@/Composables/useTranslation';
 
 // สถานะระดับโมดูล — หลายหน้าที่เปิดพร้อมกันใช้ผลเดียวกัน
 const config = ref(null);
@@ -61,19 +62,22 @@ export function usePlatformReadiness() {
     const swapReady = computed(() => config.value?.swap?.enabled === true);
     const bridgeReady = computed(() => config.value?.bridge?.enabled === true);
 
-    /** ข้อความบอกเหตุผลที่ยังกดไม่ได้ — null แปลว่าพร้อมใช้ */
+    /**
+     * ข้อความบอกเหตุผลที่ยังกดไม่ได้ — null แปลว่าพร้อมใช้
+     * มาจากไฟล์แปลภาษา (platformReadiness.*) — เดิมฝังภาษาไทยไว้ ผู้ใช้ที่เลือกอังกฤษเห็นไทยกลางหน้า
+     */
     function reasonFor(feature) {
         if (isLoading.value || (!config.value && !loadFailed.value)) {
-            return 'กำลังตรวจสอบสถานะบริการ...';
+            return t('platformReadiness.checking');
         }
         if (loadFailed.value) {
-            return 'ตรวจสอบสถานะบริการไม่สำเร็จ — ลองใหม่อีกครั้ง';
+            return t('platformReadiness.checkFailed');
         }
         if (config.value?.[feature]?.enabled === true) {
             return null;
         }
 
-        return 'ยังไม่เปิดให้ใช้งาน — ผู้ดูแลระบบยังตั้งค่ากระเป๋าค่าธรรมเนียมไม่ครบ';
+        return t('platformReadiness.notConfigured');
     }
 
     return {

@@ -90,9 +90,16 @@ export function checkWtpixAmount(wei, direction, info) {
     const maxLock = direction === 'to_bsc' ? tpixTextToWei(info?.vault?.max_lock) : null;
     if (maxLock !== null && wei > maxLock) return { error: 'bridge.wtpix.errAboveContractMax', params: { max: formatTpix(maxLock) }, warning: null };
 
-    // เผาเกิน maxPerTx ของคลัง = ปล่อยครั้งเดียวไม่ได้ (depositId ใช้ได้ครั้งเดียว) → ต้องรอเจ้าของขยายเพดาน
-    const vaultMax = direction === 'to_tpix' ? tpixTextToWei(info?.vault?.max_per_tx) : null;
-    if (vaultMax !== null && wei > vaultMax) return { error: 'bridge.wtpix.errAboveContractMax', params: { max: formatTpix(vaultMax) }, warning: null };
+    /*
+     * ยอดที่สัญญาปลายทางต้องจ่ายเกิน maxPerTx = ทำครั้งเดียวไม่ได้ (depositId ใช้ได้ครั้งเดียว แบ่งจ่ายไม่ได้)
+     * → เหรียญถูกล็อก/เผาไปแล้วแต่ค้างรอเจ้าของขยายเพดาน จึงห้ามส่งตั้งแต่ต้น
+     *   ล็อก → minter บน BSC · เผา → คลังบนเชน TPIX
+     * เทียบ "ยอดที่ได้รับ" (หักค่าธรรมเนียมแล้ว) แบบเดียวกับเซิร์ฟเวอร์ — เพดานที่บอกผู้ใช้จึงบวกค่าธรรมเนียมกลับ
+     */
+    const destMax = tpixTextToWei(direction === 'to_bsc' ? info?.minter?.max_per_tx : info?.vault?.max_per_tx);
+    if (destMax !== null && wei - fee > destMax) {
+        return { error: 'bridge.wtpix.errAboveContractMax', params: { max: formatTpix(destMax + fee) }, warning: null };
+    }
 
     const maxWeb = tpixTextToWei(limits[`max_${side}_per_tx`]);
     if (maxWeb !== null && maxWeb > 0n && wei > maxWeb) {

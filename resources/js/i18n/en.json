@@ -332,7 +332,8 @@
             "empty": "No pairs found",
             "emptyFavorites": "No favorite pairs yet",
             "soon": "Soon",
-            "allQuotes": "All"
+            "allQuotes": "All",
+            "indexOnly": "Ref"
         },
         "book": {
             "step": "Step",
@@ -350,6 +351,16 @@
             "fillHint": "Fill {price} into the trade form"
         },
         "form": {
+            "pairChecking": "Checking this pair's status…",
+            "pairCheckFailed": "Couldn't check this pair's status — reload the page and try again.",
+            "pairUnavailable": "This pair isn't open for trading right now.",
+            "embeddedNoBsc": "TPIX Wallet trades on TPIX Chain only — connect MetaMask or another external wallet to trade this pair on BSC.",
+            "unavailable": "Trading unavailable",
+            "gasReserve": "Keep at least {amount} {symbol} for network fees",
+            "feePaidWithCredit": "Paid with TPIX credit",
+            "topupToTrade": "Top up TPIX credit to trade",
+            "creditUnavailable": "TPIX credit can't be used for this order yet",
+            "creditShort": "Not enough credit — {amount} TPIX short",
             "buy": "Buy",
             "sell": "Sell",
             "available": "Available",
@@ -382,6 +393,8 @@
             "advanced": "Advanced Options",
             "comingSoon": "{pair} — Coming Soon",
             "comingSoonBody": "Trading opens with the TPIX Chain launch. Meanwhile, trade major pairs live on BSC.",
+            "indexOnlyTitle": "{pair} — Price reference only",
+            "indexOnlyBody": "Live prices are shown for reference. Orders for this pair can't be placed on TPIX TRADE — TPIX/USDT trades on TPIX Chain and the major pairs trade on BSC.",
             "tpixChainSoon": "TPIX Chain — Coming Soon"
         },
         "recent": {
@@ -411,9 +424,14 @@
             "connectError": "Failed to connect to market data. Please refresh.",
             "onchainTpix": "Orders execute for real on TPIX Chain through the DEX pool — tokens settle in your wallet. The 0.3% pool fee is already in the price.",
             "tpixDexPending": "This pair trades on TPIX Chain once the DEX contracts are deployed — coming soon.",
-            "pairUnavailable": "This pair isn't listed on the market data feed, so there are no live prices for it."
+            "pairUnavailable": "This pair isn't listed on the market data feed, so there are no live prices for it.",
+            "indexOnly": "Price reference only — this pair can't be traded on TPIX TRADE. Prices and the chart come from global markets."
         },
         "status": {
+            "confirmFee": "Swap done — confirm the platform fee ({amount} {symbol}) in your wallet",
+            "recording": "Saving the trade to your history…",
+            "ticketFailed": "Couldn't get the order permit — please try again.",
+            "feeQuoteFailed": "Couldn't check the service fee for this order — please try again.",
             "viewTx": "View tx",
             "placing": "Placing order...",
             "preparing": "Preparing on-chain trade",
@@ -437,7 +455,11 @@
             "switchToTpix": "Please switch your wallet to TPIX Chain to trade.",
             "switchCancelledTpix": "Network switch was cancelled — this pair trades on TPIX Chain.",
             "boughtTpix": "Bought about {amount} {symbol} on TPIX Chain",
-            "priceImpact": "This order moves the pool price by {impact}%. Try a smaller amount."
+            "priceImpact": "This order moves the pool price by {impact}%. Try a smaller amount.",
+            "priceImpactUnknown": "Couldn't read the pool to check how far this order moves the price — try again in a moment.",
+            "dexPriceMoved": "The pool price moved: you'd now receive about {receive} {symbol} (at least {min}). Press again to confirm.",
+            "pendingTx": "Order sent — TPIX Chain hasn't confirmed it yet. Check the explorer before ordering again.",
+            "accountChanged": "Your wallet account changed during the order — nothing was sent. Please place the order again."
         },
         "chart": {
             "loading": "Loading…",
@@ -460,6 +482,8 @@
         "insufficientBalance": "Insufficient Balance"
     },
     "swapPage": {
+        "confirmFee": "Confirm platform fee in wallet…",
+        "keepGas": "Keep {amount} BNB for gas",
         "title": "Swap",
         "settings": "Slippage settings",
         "switchPrompt": "Please switch to BSC network.",
@@ -508,6 +532,7 @@
         "tokenCheckFailed": "Couldn't verify this token on TPIX Chain — please try again.",
         "tokenMismatch": "This token's details don't match TPIX Chain — swapping it is blocked for your safety.",
         "viewOnTpixExplorer": "View on TPIX Explorer",
+        "tpixPending": "Swap sent — waiting for TPIX Chain to confirm. Check the explorer before swapping again.",
         "poweredByTpix": "TPIX DEX on TPIX Chain",
         "approveExactHint": "Approves exactly this amount — nothing more."
     },
@@ -690,6 +715,9 @@
         "errAmountInvalid": "Enter a number with at most 6 decimals",
         "errBelowMin": "Minimum is {min} USDT — smaller amounts are not minted",
         "errAboveMax": "Above {max} USDT per transfer — it will wait for a manual review (slower)",
+        "errAboveMaxBlocked": "Maximum is {max} USDT per transfer — larger amounts cannot be bridged. Split it into several transfers.",
+        "feeFlat": "{fee} USDT per deposit (plus source-chain gas)",
+        "refundHint": "This USDT is in the bridge vault but will not be minted automatically — contact support with the tx hash to arrange a refund.",
         "errBelowMinWithdraw": "Minimum withdrawal is {min} USDT",
         "errInsufficient": "Insufficient balance",
         "errAddressInvalid": "Invalid recipient address (0x + 40 hex characters with a correct checksum)",
@@ -724,7 +752,9 @@
             "awaiting_liquidity": "Waiting for liquidity on the target chain",
             "sending": "Sending USDT on the target chain",
             "paid": "Done — USDT delivered",
-            "below_fee": "The amount did not exceed the withdrawal fee — nothing to pay out"
+            "below_fee": "The amount did not exceed the withdrawal fee — nothing to pay out",
+            "chain_disabled": "Deposits on this chain are not open — this transfer was not bridged",
+            "chain_paused": "Deposits on this chain are paused — it will be processed when the chain reopens"
         },
         "ackOwnWallet": "I am sending from my own wallet, not from an exchange, and I understand USDT_TPIX goes to the sending address",
         "confirmWithdrawTitle": "Confirm withdrawal",
@@ -967,6 +997,14 @@
         "send": "Send message"
     },
     "swapError": {
+        "pairDisabled": "This pair isn't open for trading right now.",
+        "feeConfigUnavailable": "Couldn't confirm the platform fee — please try again in a moment.",
+        "rpcUnavailable": "Couldn't reach the BSC network — please try again.",
+        "feeInfoUnavailable": "Couldn't reach the fee service — please try again.",
+        "tokenNotTradable": "{symbol} is not tradable on BSC yet.",
+        "tokenVerifyUnavailable": "Couldn't verify the token on BSC — please try again.",
+        "tokenVerifyFailed": "Token check failed for {symbol} — trading is blocked for your safety.",
+        "accountChanged": "Your wallet account changed — please check the account and try again.",
         "rejected": "Transaction rejected in your wallet.",
         "noLiquidity": "Not enough liquidity for this pair on PancakeSwap.",
         "priceMovedSlippage": "Price moved beyond your slippage — increase slippage and try again.",
@@ -989,6 +1027,16 @@
         "cancelledInWallet": "The transaction was cancelled in your wallet.",
         "unconfirmed": "Transaction sent but not confirmed yet — check BscScan before trying again."
     },
+    "platformReadiness": {
+        "checking": "Checking service status...",
+        "checkFailed": "Couldn't check the service status — please try again.",
+        "notConfigured": "Not available yet — the administrator hasn't finished setting up the fee wallet."
+    },
+    "chainSelector": {
+        "recommend": "Switch to {name} (Recommended)",
+        "notOpenTitle": "Network not open for trading yet",
+        "notOpenBody": "Switch to a live network below."
+    },
     "tpixDexError": {
         "notDeployed": "TPIX DEX is not deployed yet.",
         "connectFirst": "Please connect your wallet first.",
@@ -1008,7 +1056,12 @@
         "chooseAmount": "Choose how much to withdraw.",
         "noPosition": "You have no liquidity in this pool.",
         "addFailedOnchain": "Adding liquidity failed on-chain.",
-        "removeFailedOnchain": "Removing liquidity failed on-chain."
+        "removeFailedOnchain": "Removing liquidity failed on-chain.",
+        "unconfirmed": "Your transaction was sent but its confirmation hasn't arrived yet. Check it on the explorer before trying again.",
+        "replaced": "The transaction was replaced or cancelled in your wallet — nothing was swapped.",
+        "unlockWallet": "Unlock your TPIX Wallet to continue.",
+        "tokenMismatch": "This token's details don't match TPIX Chain — trading it is paused for your safety.",
+        "tokenCheckFailed": "Couldn't verify this token on TPIX Chain. Please try again."
     },
     "assistant": {
         "title": "AI Assistant",
@@ -1500,6 +1553,16 @@
                 "confirmed": "Confirmed",
                 "failed": "Failed",
                 "cancelled": "Cancelled"
+            },
+            "failure": {
+                "owner_mismatch": "Destination is not your wallet — nothing was sent, the funds are still in the bot wallet",
+                "key_unreadable": "The bot wallet key could not be opened — nothing was sent, the funds are still there and our team has been alerted",
+                "insufficient_funds": "Not enough balance or BNB for gas — nothing was sent, the funds are still in the bot wallet",
+                "sign_failed": "The transaction could not be prepared — nothing was sent, the funds are still in the bot wallet. You can request again",
+                "reverted": "The chain rejected the transaction — nothing was transferred (only gas was spent)",
+                "nonce_consumed": "This transaction was replaced by another one from the bot wallet — this request was not transferred",
+                "dropped": "The transaction left the network without being mined — nothing was transferred, the funds are still in the bot wallet. You can request again",
+                "resolved_by_admin": "Our team closed this request after checking on-chain that nothing was transferred"
             }
         }
     },

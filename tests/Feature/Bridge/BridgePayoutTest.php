@@ -4,6 +4,7 @@ namespace Tests\Feature\Bridge;
 
 use App\Models\BridgeWithdrawal;
 use App\Models\SiteSetting;
+use App\Models\SystemAlert;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\BridgeConfig;
 use App\Services\Bridge\BridgePayouter;
@@ -84,11 +85,14 @@ class BridgePayoutTest extends TestCase
         $w->refresh();
         $this->assertSame(BridgeWithdrawal::STATUS_AWAITING_LIQUIDITY, $w->status);
         $this->assertSame([], $this->signCalls);
+        // คิวหยุดรอเงิน — ต้องมีคนรู้ ไม่ใช่รอเงียบ ๆ
+        $this->assertTrue(SystemAlert::where('alert_key', BridgePayouter::ALERT_LIQUIDITY)->where('status', 'active')->exists());
 
-        // เติมเงินแล้วรอบถัดไปจ่ายเอง
+        // เติมเงินแล้วรอบถัดไปจ่ายเอง และปิดคาดแดงเอง
         $this->setTokenBalance(1, $this->usdtEth, $this->payoutAddr, '100000000');
         $this->payout();
         $this->assertSame(BridgeWithdrawal::STATUS_PAID, $w->fresh()->status);
+        $this->assertFalse(SystemAlert::where('alert_key', BridgePayouter::ALERT_LIQUIDITY)->where('status', 'active')->exists());
     }
 
     #[Test]
@@ -147,9 +151,13 @@ class BridgePayoutTest extends TestCase
         $this->assertFalse($check['safe']);
         $this->assertFalse($check['paid']);
 
-        // nonce ถูกใช้ไปแล้วจริง (ธุรกรรมอื่น) → จ่ายใหม่ได้อย่างปลอดภัย
+        // nonce ถูกใช้แล้ว แต่ไม่รู้ว่าธุรกรรมไหนใช้ — "ไม่เจอใบเสร็จ" ไม่ใช่หลักฐานว่าเงินไม่ได้ออก → ยังห้ามจ่าย
         $this->chainState[56]['nonce'][strtolower($this->payoutAddr)] = 1;
-        $this->assertTrue(app(BridgePayouter::class)->retryCheck($w)['safe']);
+        $this->assertFalse(app(BridgePayouter::class)->retryCheck($w)['safe']);
+
+        // เจอธุรกรรมที่ใช้ nonce นั้นจริง (ลงบล็อกแล้ว · from กระเป๋าจ่าย · คนละ hash) → พิสูจน์ได้ว่าเดิมไม่มีวันลงบล็อก
+        $cancel = $this->fakeCancelTx(56, $this->payoutAddr, (int) $w->payout_nonce);
+        $this->assertTrue(app(BridgePayouter::class)->retryCheck($w, $cancel)['safe']);
     }
 
     #[Test]
@@ -227,5 +235,152 @@ class BridgePayoutTest extends TestCase
         $this->assertSame(BridgeWithdrawal::STATUS_NEEDS_REVIEW, $w->fresh()->status);
         $this->assertSame('over_tx_limit', $w->fresh()->review_reason);
         $this->assertSame([], $this->signCalls);
+    }
+
+    // ── จ่ายซ้ำ: "ไม่เจอใบเสร็จ" ต้องไม่ถูกตีความว่า "เงินไม่ได้ออก" ─────────────────
+
+    #[Test]
+    public function a_mined_payout_whose_receipt_the_rpc_cannot_return_is_never_paid_a_second_time(): void
+    {
+        // ธุรกรรมจ่ายลงบล็อกจริง (เงินออกแล้ว) แต่ RPC ตอบใบเสร็จไม่ได้ และโหนดที่ถามตัวธุรกรรมตามหัวไม่ทัน
+        $this->rpcFaults['rpc.bsc.test|eth_getTransactionReceipt'] = 'header not found';
+        $this->rpcFaults['rpc.bsc.test|eth_getTransactionByHash'] = 'null';
+        $w = $this->withdrawal();
+
+        $this->payout();
+        $this->assertSame(BridgeWithdrawal::STATUS_SENDING, $w->fresh()->status);
+        $this->assertSame('1', (string) ($this->chainState[56]['nonce'][strtolower($this->payoutAddr)] ?? 0), 'ลงบล็อกแล้วจริง');
+
+        // ส่ง raw เดิมซ้ำ → เชนบอกว่า nonce ถูกใช้แล้ว (ก็ธุรกรรมของเราเอง) → ยังไม่เจอใบเสร็จ → ให้คนดู
+        $this->sendFailCode = 'nonce_used';
+        $this->travel(10)->minutes();
+        $this->payout();
+        $w->refresh();
+        $this->assertSame(BridgeWithdrawal::STATUS_NEEDS_REVIEW, $w->status);
+        $this->assertSame('nonce_consumed', $w->review_reason);
+
+        // แอดมินกดอนุมัติจ่ายใหม่ — เดิมระบบตอบ "ปลอดภัย" (ไม่มีใบเสร็จ + nonce ถูกใช้) = จ่ายสองรอบ
+        $check = app(BridgePayouter::class)->retryCheck($w);
+        $this->assertFalse($check['safe']);
+        $this->assertFalse($check['paid']);
+        $this->assertStringContainsString('พิสูจน์ไม่ได้', $check['reason']);
+
+        $this->sendFailCode = null;
+        $this->payout();
+        $this->assertCount(1, $this->signCalls, 'ไม่มีการเซ็นจ่ายครั้งที่สอง');
+
+        // RPC กลับมาตอบได้ → เห็นว่าจ่ายไปแล้ว ไม่ใช่จ่ายซ้ำ
+        $this->rpcFaults = [];
+        $this->assertTrue(app(BridgePayouter::class)->retryCheck($w)['paid']);
+    }
+
+    #[Test]
+    public function a_receipt_that_only_the_second_rpc_has_settles_the_payout(): void
+    {
+        $this->useTwoRpcs();
+        $this->rpcFaults['rpc.bsc.test|eth_getTransactionReceipt'] = 'null'; // โหนดแรกตามหัวไม่ทัน
+        $w = $this->withdrawal();
+
+        $this->payout();
+
+        $this->assertSame(BridgeWithdrawal::STATUS_PAID, $w->fresh()->status);
+    }
+
+    #[Test]
+    public function another_payout_that_reused_the_nonce_proves_the_old_one_never_landed(): void
+    {
+        $this->mineOnSend = false;
+        $a = $this->withdrawal();
+        $this->payout();
+        $a->refresh();
+        $this->assertSame(BridgeWithdrawal::STATUS_SENDING, $a->status);
+
+        // ธุรกรรมของอีกรายการถูกเซ็นด้วย nonce เดียวกันแล้วลงบล็อก (เช่นโหนดทิ้ง a ออกจาก mempool)
+        $other = $this->fakeCancelTx(56, $this->payoutAddr, (int) $a->payout_nonce);
+        $this->withdrawal(56, '9000000', [
+            'status' => BridgeWithdrawal::STATUS_PAID, 'payout_tx_hash' => $other,
+            'payout_nonce' => $a->payout_nonce, 'payout_from' => strtolower($this->payoutAddr),
+        ]);
+
+        $this->sendFailCode = 'nonce_used';
+        $this->travel(10)->minutes();
+        $this->payout();
+        $this->assertSame('nonce_consumed', $a->fresh()->review_reason);
+
+        // ระบบหาหลักฐานเองจากรายการที่ใช้ nonce เดียวกัน — ไม่ต้องกรอกอะไร
+        $check = app(BridgePayouter::class)->retryCheck($a->fresh());
+        $this->assertTrue($check['safe']);
+        $this->assertStringContainsString($other, $check['reason']);
+    }
+
+    #[Test]
+    public function a_claimed_nonce_proof_must_really_be_a_mined_tx_of_the_payout_wallet_at_that_nonce(): void
+    {
+        $this->mineOnSend = false;
+        $w = $this->withdrawal();
+        $this->payout();
+        $w->refresh();
+        $nonce = (int) $w->payout_nonce;
+        $this->chainState[56]['nonce'][strtolower($this->payoutAddr)] = $nonce + 1;
+
+        // ธุรกรรมของกระเป๋าอื่น
+        $foreign = $this->fakeCancelTx(56, $this->bob, $nonce);
+        $this->assertFalse(app(BridgePayouter::class)->retryCheck($w, $foreign)['safe']);
+
+        // กระเป๋าจ่ายแต่คนละ nonce
+        $wrongNonce = $this->fakeCancelTx(56, $this->payoutAddr, $nonce + 5);
+        $this->assertFalse(app(BridgePayouter::class)->retryCheck($w, $wrongNonce)['safe']);
+
+        // ยังไม่ลงบล็อก (อยู่ใน mempool ยังถูกแทนที่ได้)
+        $pending = '0x'.str_repeat('7', 64);
+        $this->chainState[56]['txs'][$pending] = ['hash' => $pending, 'from' => strtolower($this->payoutAddr), 'nonce' => '0x'.dechex($nonce), 'blockNumber' => null];
+        $this->assertFalse(app(BridgePayouter::class)->retryCheck($w, $pending)['safe']);
+
+        // hash เดิมเองพิสูจน์ "ไม่ได้จ่าย" ไม่ได้
+        $this->assertFalse(app(BridgePayouter::class)->retryCheck($w, $w->payout_tx_hash)['safe']);
+
+        // ของจริง: กระเป๋าจ่าย · nonce ตรง · ลงบล็อกแล้ว
+        $cancel = $this->fakeCancelTx(56, $this->payoutAddr, $nonce);
+        $this->assertTrue(app(BridgePayouter::class)->retryCheck($w, $cancel)['safe']);
+    }
+
+    // ── ธุรกรรมค้าง ─────────────────────────────────────────────────────────
+
+    #[Test]
+    public function a_payout_stuck_in_the_mempool_is_flagged_alerted_blocks_the_queue_and_still_settles_when_mined(): void
+    {
+        $this->mineOnSend = false;
+        $a = $this->withdrawal();
+        $this->payout();
+        $hash = $a->fresh()->payout_tx_hash;
+        // อยู่ใน mempool (เชนรู้จัก) แต่ไม่ลงบล็อก
+        $this->chainState[56]['txs'][$hash] = ['hash' => $hash, 'from' => strtolower($this->payoutAddr), 'nonce' => '0x0', 'blockNumber' => null];
+
+        $this->travel(31)->minutes();
+        $this->payout();
+
+        $a->refresh();
+        $this->assertSame(BridgeWithdrawal::STATUS_NEEDS_REVIEW, $a->status);
+        $this->assertSame(BridgePayouter::REASON_STUCK, $a->review_reason);
+        $this->assertSame($hash, $a->payout_tx_hash, 'ยังผูกกับธุรกรรมเดิม — ไม่เซ็นใหม่');
+        $this->assertTrue(SystemAlert::where('alert_key', BridgePayouter::ALERT_STUCK)->where('severity', 'critical')->where('status', 'active')->exists());
+
+        // คิวของเชนนี้หยุด — รายการถัดไปไม่ถูกเซ็นซ้อน nonce ที่ค้าง
+        $b = $this->withdrawal();
+        $this->payout();
+        $this->assertCount(1, $this->signCalls);
+        $this->assertSame(BridgeWithdrawal::STATUS_PENDING, $b->fresh()->status);
+
+        // แอดมินอนุมัติจ่ายใหม่ไม่ได้ — ธุรกรรมเดิมยังลงบล็อกได้ทุกเมื่อ
+        $this->assertFalse(app(BridgePayouter::class)->retryCheck($a)['safe']);
+
+        // ลงบล็อกทีหลัง → ปิดเป็นจ่ายแล้วเอง · คาดแดงหาย · คิวเดินต่อ
+        $this->mineHash($hash);
+        $this->mineOnSend = true;
+        $this->payout();
+
+        $this->assertSame(BridgeWithdrawal::STATUS_PAID, $a->fresh()->status);
+        $this->assertSame(BridgeWithdrawal::STATUS_PAID, $b->fresh()->status);
+        $this->assertFalse(SystemAlert::where('alert_key', BridgePayouter::ALERT_STUCK)->where('status', 'active')->exists());
     }
 }

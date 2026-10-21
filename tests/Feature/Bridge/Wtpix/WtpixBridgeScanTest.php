@@ -47,6 +47,23 @@ class WtpixBridgeScanTest extends TestCase
         $config = app(WtpixBridgeConfig::class);
         $this->assertSame(1999, $config->cursor($config->lockCursorKey()));
         $this->assertSame(4986, $config->cursor($config->burnCursorKey()));
+
+        // เริ่มที่หัวเพราะไม่ได้ตั้ง START_BLOCK = ประวัติก่อนหน้าไม่ถูกบันทึก — ต้องดังให้แอดมินเห็น ไม่เงียบ
+        $alert = SystemAlert::where('alert_key', 'wtpix_bridge_start_block_missing')->firstOrFail();
+        $this->assertSame('warning', $alert->severity);
+        $this->assertStringContainsString('START_BLOCK', $alert->message);
+    }
+
+    #[Test]
+    public function an_explicit_start_block_is_used_on_the_first_run_without_a_warning(): void
+    {
+        config(['wtpix_bridge.tpix.start_block' => 1400, 'wtpix_bridge.bsc.start_block' => 3900]);
+        $this->fakeLock($this->alice, $this->tpix('500'), 1500);
+
+        $this->scan();
+
+        $this->assertSame(1, WtpixBridgeTransfer::where('direction', WtpixBridgeTransfer::TO_BSC)->count());
+        $this->assertFalse(SystemAlert::where('alert_key', 'wtpix_bridge_start_block_missing')->exists());
     }
 
     #[Test]

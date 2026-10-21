@@ -8,6 +8,7 @@ use App\Services\Trading\TradingCreditService;
 use Database\Seeders\TradingFeeTierSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -181,28 +182,30 @@ class TradingFeeApiTest extends TestCase
         $this->assertEquals(10.0, $data['balance']);
     }
 
-    /** จ่ายบนเชนแล้วยกเลิก → คืนโดยหักค่าแก๊ส และต้องบอกยอดที่หักให้ชัด */
+    /**
+     * ⚠️ ขอใบอนุญาตแบบจ่ายบนเชนไม่ได้ — hash กับยอดมาจาก client ล้วนๆ ไม่เคยตรวจบนเชน
+     *    (เดิมได้ตั๋วฟรีแล้วขอคืน "รอโอนคืน 999,999.6" ได้จากยอดที่พิมพ์มาเอง)
+     */
     #[Test]
-    public function จ่ายบนเชนแล้วยกเลิกคืนโดยหักค่าแก๊ส(): void
+    public function ขอใบอนุญาตแบบจ่ายบนเชนถูกปฏิเสธพร้อมรหัสที่อ่านรู้เรื่อง(): void
     {
-        SiteSetting::set('trading', 'refund_gas_fee', '0.4');
-        SiteSetting::clearCache();
-
-        $uuid = $this->postJson('/api/v1/trading-fee/tickets', [
+        $this->postJson('/api/v1/trading-fee/tickets', [
             'wallet_address' => self::WALLET,
             'pair' => 'BTC/USDT', 'side' => 'buy',
             'order_value_usd' => 250, 'chain_id' => 56, 'method' => 'onchain',
             'fee_tx_hash' => '0x'.str_repeat('7', 64),
-            'fee_amount' => 3.0,
+            'fee_amount' => 1000000,
             'fee_currency' => 'USDT',
-        ])->assertStatus(201)->json('data.uuid');
+        ])->assertStatus(422)->assertJsonPath('error.code', 'ONCHAIN_FEE_NOT_SUPPORTED');
 
-        $data = $this->postJson("/api/v1/trading-fee/tickets/{$uuid}/refund", [
+        // client เก่าที่ไม่ส่ง hash มาก็ได้รหัสเดียวกัน ไม่ใช่ validation error ที่อ่านไม่ออก
+        $this->postJson('/api/v1/trading-fee/tickets', [
             'wallet_address' => self::WALLET,
-        ])->assertOk()->json('data');
+            'pair' => 'BTC/USDT', 'side' => 'buy',
+            'order_value_usd' => 250, 'chain_id' => 56, 'method' => 'onchain',
+        ])->assertStatus(422)->assertJsonPath('error.code', 'ONCHAIN_FEE_NOT_SUPPORTED');
 
-        $this->assertEquals(2.6, $data['refund_amount']);
-        $this->assertEquals(0.4, $data['gas_deducted']);
+        $this->assertSame(0, TradingOrderTicket::count());
     }
 
     /** ⚠️ ตั๋วของคนอื่นแตะไม่ได้ ไม่ว่าจะใช้หรือขอคืนเงิน */
@@ -271,5 +274,106 @@ class TradingFeeApiTest extends TestCase
             'wallet_address' => self::WALLET,
             'tx_hash' => '0x'.str_repeat('a', 64),
         ])->assertStatus(422)->assertJsonPath('error.code', 'TOPUP_WALLET_NOT_SET');
+    }
+
+    // ── เติมเครดิตจากธุรกรรมจริงบนเชน 4289 ──────────────────────────────────
+
+    private const TREASURY = '0x9999999999999999999999999999999999999999';
+
+    /** จำลอง RPC ของเชน 4289: ใบเสร็จ + ธุรกรรมโอน TPIX native */
+    private function fakeChainTransfer(string $from, string $to, string $valueWei, string $status = '0x1'): void
+    {
+        SiteSetting::set('trading', 'tpix_topup_wallet', self::TREASURY);
+        SiteSetting::clearCache();
+
+        Http::fake(function ($request) use ($from, $to, $valueWei, $status) {
+            $method = $request->data()['method'] ?? '';
+
+            if ($method === 'eth_getTransactionReceipt') {
+                return Http::response(['jsonrpc' => '2.0', 'id' => 1, 'result' => ['status' => $status, 'blockNumber' => '0x10']]);
+            }
+
+            return Http::response(['jsonrpc' => '2.0', 'id' => 2, 'result' => [
+                'from' => $from,
+                'to' => $to,
+                'value' => '0x'.$this->decToHex($valueWei),
+            ]]);
+        });
+    }
+
+    private function decToHex(string $dec): string
+    {
+        $hex = '';
+        while (bccomp($dec, '0') > 0) {
+            $hex = dechex((int) bcmod($dec, '16')).$hex;
+            $dec = bcdiv($dec, '16', 0);
+        }
+
+        return $hex === '' ? '0' : $hex;
+    }
+
+    /**
+     * ⭐ ทางหลักต้องลงเครดิตได้จริง — เดิม import คลาส Wei ผิด namespace
+     *    ทุกการเติมที่ผ่านด่านตรวจครบจึงตอบ 500 ผู้ใช้จ่ายแล้วไม่ได้เครดิต
+     */
+    #[Test]
+    public function โอน_tpix_เข้ากระเป๋ารับเงินแล้วลงเครดิตตามยอดบนเชน(): void
+    {
+        $this->fakeChainTransfer(self::WALLET, self::TREASURY, '25000000000000000000');
+        $tx = '0x'.str_repeat('1', 64);
+
+        $this->postJson('/api/v1/trading-fee/topup/confirm', [
+            'wallet_address' => self::WALLET, 'tx_hash' => $tx,
+        ])->assertOk()
+            ->assertJsonPath('data.credited', 25)
+            ->assertJsonPath('data.balance', 25);
+
+        // ยืนยันซ้ำ (client retry) ไม่ลงสองรอบ
+        $this->postJson('/api/v1/trading-fee/topup/confirm', [
+            'wallet_address' => self::WALLET, 'tx_hash' => $tx,
+        ])->assertOk()->assertJsonPath('data.balance', 25);
+    }
+
+    /** ⚠️ โอนต่ำกว่าขั้นต่ำ เงินออกไปแล้วจริง — ต้องลงเครดิตตามยอด ไม่ใช่เก็บไว้เฉยๆ */
+    #[Test]
+    public function โอนต่ำกว่าขั้นต่ำยังได้เครดิตตามยอดจริง(): void
+    {
+        SiteSetting::set('trading', 'tpix_min_topup', '10');
+        $this->fakeChainTransfer(self::WALLET, self::TREASURY, '2500000000000000000');
+
+        $this->postJson('/api/v1/trading-fee/topup/confirm', [
+            'wallet_address' => self::WALLET, 'tx_hash' => '0x'.str_repeat('2', 64),
+        ])->assertOk()->assertJsonPath('data.credited', 2.5);
+    }
+
+    #[Test]
+    public function ธุรกรรมที่ไม่ได้โอน_tpix_มาเลยลงเครดิตไม่ได้(): void
+    {
+        $this->fakeChainTransfer(self::WALLET, self::TREASURY, '0');
+
+        $this->postJson('/api/v1/trading-fee/topup/confirm', [
+            'wallet_address' => self::WALLET, 'tx_hash' => '0x'.str_repeat('3', 64),
+        ])->assertStatus(422)->assertJsonPath('error.code', 'BELOW_MINIMUM');
+    }
+
+    /** ⚠️ เอาธุรกรรมของคนอื่นมาขอเครดิตไม่ได้ */
+    #[Test]
+    public function ธุรกรรมที่โอนจากกระเป๋าอื่นลงเครดิตให้เราไม่ได้(): void
+    {
+        $this->fakeChainTransfer(self::OTHER, self::TREASURY, '25000000000000000000');
+
+        $this->postJson('/api/v1/trading-fee/topup/confirm', [
+            'wallet_address' => self::WALLET, 'tx_hash' => '0x'.str_repeat('4', 64),
+        ])->assertStatus(422)->assertJsonPath('error.code', 'WRONG_SENDER');
+    }
+
+    #[Test]
+    public function ธุรกรรมที่_revert_ลงเครดิตไม่ได้(): void
+    {
+        $this->fakeChainTransfer(self::WALLET, self::TREASURY, '25000000000000000000', '0x0');
+
+        $this->postJson('/api/v1/trading-fee/topup/confirm', [
+            'wallet_address' => self::WALLET, 'tx_hash' => '0x'.str_repeat('5', 64),
+        ])->assertStatus(422)->assertJsonPath('error.code', 'TX_FAILED');
     }
 }

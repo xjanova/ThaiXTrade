@@ -161,7 +161,7 @@ class BridgeAdminController extends Controller
         $reason = $validated['reason'] ?? null;
         $actor = $request->user()?->name ?? 'admin';
 
-        $this->config->setSiteSwitch($on, $on ? null : trim("ปิดโดย {$actor}".($reason ? ": {$reason}" : '')));
+        $this->config->setSiteSwitch($on, $on ? null : trim("ปิดโดย {$actor}".($reason ? ": {$reason}" : '')), 'manual');
         Cache::forget('bridge:admin:state');
 
         Log::warning('bridge: แอดมินเปลี่ยนสวิตช์', ['enabled' => $on, 'by' => $request->user()?->id, 'reason' => $reason]);
@@ -212,9 +212,31 @@ class BridgeAdminController extends Controller
                 $errors[] = "ค่าธรรมเนียมถอนของเชน {$chainId} ต้องน้อยกว่าขั้นต่ำการถอน ไม่งั้นผู้ใช้ได้ศูนย์";
             }
         }
+        // ค่าธรรมเนียมฝาก ≥ ขั้นต่ำ = ฝากยอดขั้นต่ำแล้ว mint ได้ศูนย์ → รายการถูกนับเป็นฝุ่น (อนุมัติก็ไม่ได้) ผู้ใช้เสียทั้งก้อน
+        if (bccomp(Wei::toWei($merged['deposit_fee'], 6), Wei::toWei($merged['min_deposit'], 6), 0) >= 0
+            && bccomp(Wei::toWei($merged['deposit_fee'], 6), '0', 0) > 0) {
+            $errors[] = 'ค่าธรรมเนียมฝากต้องน้อยกว่ายอดฝากขั้นต่ำ ไม่งั้นผู้ฝากยอดขั้นต่ำได้ศูนย์';
+        }
 
         if ($errors !== []) {
             return response()->json(['success' => false, 'message' => 'บันทึกไม่ได้', 'errors' => $errors], 422);
+        }
+
+        // วงเงินฝากต่อครั้งต้องไม่เกิน maxPerTx บนสัญญา — เกินกว่านั้นผ่านด่านเว็บได้แต่ mint ไม่ได้เลย (เงินค้าง vault)
+        // ตรวจเฉพาะตอนแก้ค่านี้ (อ่านเชนไม่ได้ตอนนั้น = ไม่ยอมบันทึก ห้ามเดา)
+        if (isset($limits['max_deposit_per_tx'])) {
+            $minter = $this->config->minterAddress();
+            $onchainMax = $minter ? $this->config->tpixRpc()->callUint($minter, 'maxPerTx()') : null;
+
+            if ($minter && $onchainMax === null) {
+                return response()->json(['success' => false, 'message' => 'อ่าน maxPerTx บนสัญญาไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง'], 503);
+            }
+
+            if ($onchainMax !== null && bccomp(Wei::toWei($limits['max_deposit_per_tx'], 6), $onchainMax, 0) > 0) {
+                return response()->json(['success' => false, 'message' => 'บันทึกไม่ได้', 'errors' => [
+                    'วงเงินฝากต่อครั้งเกิน maxPerTx บนสัญญา ('.Wei::format($onchainMax, 6).' USDT) — เงินฝากที่เกินจะ mint ไม่ได้ เจ้าของต้อง setMaxPerTx ก่อน',
+                ]], 422);
+            }
         }
 
         foreach ($limits as $key => $value) {
@@ -280,6 +302,20 @@ class BridgeAdminController extends Controller
             }
 
             $rpc = $this->config->tpixRpc();
+
+            // ธุรกรรม mint เดิมยังลงบล็อกได้ (ค้างใน mempool) — อนุมัติใหม่ตอนนี้ได้แค่ธุรกรรมที่ต่อคิวหลัง nonce เดิม
+            // ต้องรอให้เดิมลงบล็อก หรือเจ้าของส่งธุรกรรมแทนที่ด้วย nonce เดิมก่อน
+            if ($deposit->mint_tx_hash) {
+                $dead = $this->relayer->mintTxDead($rpc, $deposit);
+
+                if ($dead === null) {
+                    return [503, ['success' => false, 'message' => 'อ่านสถานะธุรกรรม mint เดิมจากเชน TPIX ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                }
+                if (! $dead) {
+                    return [409, ['success' => false, 'message' => "ธุรกรรม mint เดิม ({$deposit->mint_tx_hash}, nonce {$deposit->mint_nonce}) ยังลงบล็อกได้ — รอให้ลงบล็อก หรือให้เจ้าของส่งธุรกรรมแทนที่ด้วย nonce เดิมจากกระเป๋า relayer ก่อน"]];
+                }
+            }
+
             $processed = $this->relayer->processedOnChain($rpc, $deposit->deposit_id);
             $minter = $this->config->minterAddress();
             $maxPerTx = $minter ? $rpc->callUint($minter, 'maxPerTx()') : null;
@@ -289,15 +325,36 @@ class BridgeAdminController extends Controller
             }
 
             if ($processed) {
+                // สัญญาบอกว่า mint แล้ว — ปิดเป็นสำเร็จได้เฉพาะเมื่อ Minted บนเชนไปถึงผู้ฝากตามจำนวนจริง
+                // (คีย์ relayer ที่หลุด mint depositId นี้เข้ากระเป๋าตัวเองได้ ถ้าปิดเป็นสำเร็จ ผู้ฝากไม่ได้เงิน
+                //  และสัญญาณเตือน "mint ที่ระบบไม่ได้สั่ง" ของตัวกระทบยอดก็หายไปด้วย)
+                $mint = $this->relayer->findMint($rpc, $deposit);
+
+                if ($mint['state'] === 'unreadable') {
+                    return [503, ['success' => false, 'message' => 'อ่าน Minted จากเชน TPIX ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                }
+
+                if (! $this->relayer->mintMatches($deposit, $mint)) {
+                    $why = $mint['state'] === 'found'
+                        ? 'Minted บนเชนไปที่ '.$mint['to'].' จำนวน '.Wei::format($mint['units'], 6).' USDT (tx '.$mint['tx_hash'].') ไม่ตรงกับผู้ฝาก'
+                        : 'สัญญาบอกว่า mint แล้วแต่หา Minted ของ depositId นี้ไม่เจอ'.($mint['state'] === 'too_far' ? ' (ช่วงบล็อกไกลเกินกว่าจะไล่อัตโนมัติ)' : '');
+
+                    return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => [
+                        "{$why} — ห้ามปิดเป็นสำเร็จ: ผู้ฝากอาจยังไม่ได้เงิน ตรวจคีย์ relayer และคืนเงินจาก vault ด้วยมือ",
+                    ]]];
+                }
+
                 $deposit->update([
                     'status' => BridgeDeposit::STATUS_MINTED,
+                    'mint_tx_hash' => $mint['tx_hash'],
+                    'mint_block_number' => $mint['block'],
                     'minted_at' => now(),
                     'reviewed_by' => $request->user()?->id,
                     'reviewed_at' => now(),
-                    'last_error' => 'สัญญาบันทึกว่า mint ไปแล้ว — ไม่ต้อง mint ซ้ำ',
+                    'last_error' => 'ยืนยันจาก Minted บนเชน: ไปถึงผู้ฝากครบแล้ว — ไม่ต้อง mint ซ้ำ',
                 ]);
 
-                return [200, ['success' => true, 'message' => 'รายการนี้ถูก mint บนเชนไปแล้ว ปรับสถานะเป็นสำเร็จ', 'data' => $this->depositRow($deposit->fresh())]];
+                return [200, ['success' => true, 'message' => 'Minted บนเชนไปถึงผู้ฝากครบแล้ว — ปรับสถานะเป็นสำเร็จ', 'data' => $this->depositRow($deposit->fresh())]];
             }
 
             if (bccomp((string) $deposit->mint_units, $maxPerTx, 0) > 0) {
@@ -342,8 +399,27 @@ class BridgeAdminController extends Controller
                 return [404, ['success' => false, 'message' => 'ไม่พบรายการ']];
             }
 
-            if (! in_array($deposit->status, [BridgeDeposit::STATUS_NEEDS_REVIEW, BridgeDeposit::STATUS_CONFIRMED], true) || $deposit->mint_tx_hash) {
+            if (! in_array($deposit->status, [BridgeDeposit::STATUS_NEEDS_REVIEW, BridgeDeposit::STATUS_CONFIRMED], true)
+                || ($deposit->mint_tx_hash && $deposit->status !== BridgeDeposit::STATUS_NEEDS_REVIEW)) {
                 return [409, ['success' => false, 'message' => "รายการนี้ปฏิเสธไม่ได้ (สถานะ: {$deposit->status})"]];
+            }
+
+            // เคยส่งธุรกรรม mint แล้ว (revert / nonce ถูกใช้ / ค้าง): ปฏิเสธ = แอดมินจะคืนเงินจาก vault ด้วยมือ
+            // ต้องพิสูจน์บนเชนก่อนว่าไม่มีการ mint และธุรกรรมเดิมไม่มีทางลงบล็อกอีก ไม่งั้นผู้ใช้ได้ทั้งเหรียญและเงินคืน
+            if ($deposit->mint_tx_hash) {
+                $rpc = $this->config->tpixRpc();
+                $dead = $this->relayer->mintTxDead($rpc, $deposit);
+                $processed = $this->relayer->processedOnChain($rpc, $deposit->deposit_id);
+
+                if ($dead === null || $processed === null) {
+                    return [503, ['success' => false, 'message' => 'อ่านสถานะจากเชน TPIX ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                }
+                if ($processed) {
+                    return [409, ['success' => false, 'message' => 'สัญญาบอกว่า depositId นี้ mint ไปแล้ว — ปฏิเสธ (แล้วคืนเงิน) ไม่ได้ กดอนุมัติเพื่อให้ระบบตรวจผู้รับจาก Minted บนเชน']];
+                }
+                if (! $dead) {
+                    return [409, ['success' => false, 'message' => "ธุรกรรม mint เดิม (nonce {$deposit->mint_nonce}) ยังลงบล็อกได้ — ปฏิเสธตอนนี้แล้วคืนเงินอาจได้สองต่อ รอให้ลงบล็อกหรือถูกแทนที่ก่อน"]];
+                }
             }
 
             $deposit->update([
@@ -368,7 +444,10 @@ class BridgeAdminController extends Controller
      */
     public function approveWithdrawal(Request $request, int $id): JsonResponse
     {
-        $result = DB::transaction(function () use ($request, $id) {
+        // hash ของธุรกรรมที่ใช้ nonce เดิมไปแล้ว (แอดมินดูจาก explorer) — หลักฐานว่าธุรกรรมจ่ายเดิมไม่มีทางลงบล็อก
+        $nonceTx = $request->validate(['nonce_tx_hash' => ['nullable', 'string', 'regex:/^0x[0-9a-fA-F]{64}$/']])['nonce_tx_hash'] ?? null;
+
+        $result = DB::transaction(function () use ($request, $id, $nonceTx) {
             $withdrawal = BridgeWithdrawal::lockForUpdate()->find($id);
 
             if (! $withdrawal) {
@@ -393,7 +472,7 @@ class BridgeAdminController extends Controller
             }
 
             if ($withdrawal->payout_tx_hash) {
-                $retry = $this->payouter->retryCheck($withdrawal);
+                $retry = $this->payouter->retryCheck($withdrawal, $nonceTx);
 
                 if ($retry['paid']) {
                     $withdrawal->update([
@@ -408,7 +487,7 @@ class BridgeAdminController extends Controller
                 }
 
                 if (! $retry['safe']) {
-                    return [409, ['success' => false, 'message' => $retry['reason']]];
+                    return [409, ['success' => false, 'message' => $retry['reason'], 'needs_nonce_proof' => true]];
                 }
             }
 
@@ -435,7 +514,10 @@ class BridgeAdminController extends Controller
 
     public function rejectWithdrawal(Request $request, int $id): JsonResponse
     {
-        $validated = $request->validate(['reason' => ['required', 'string', 'max:500']]);
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+            'nonce_tx_hash' => ['nullable', 'string', 'regex:/^0x[0-9a-fA-F]{64}$/'],
+        ]);
 
         $result = DB::transaction(function () use ($request, $id, $validated) {
             $withdrawal = BridgeWithdrawal::lockForUpdate()->find($id);
@@ -452,9 +534,9 @@ class BridgeAdminController extends Controller
 
             // เคยส่งธุรกรรมแล้ว: ต้องแน่ใจว่าเงินไม่ได้ออก ก่อนจะปิดรายการว่า "ไม่จ่าย"
             if ($withdrawal->payout_tx_hash) {
-                $retry = $this->payouter->retryCheck($withdrawal);
+                $retry = $this->payouter->retryCheck($withdrawal, $validated['nonce_tx_hash'] ?? null);
                 if ($retry['paid'] || ! $retry['safe']) {
-                    return [409, ['success' => false, 'message' => $retry['reason']]];
+                    return [409, ['success' => false, 'message' => $retry['reason'], 'needs_nonce_proof' => ! $retry['paid']]];
                 }
             }
 
@@ -479,6 +561,7 @@ class BridgeAdminController extends Controller
         return $d->toPublicArray() + [
             'deposit_id' => $d->deposit_id,
             'mint_tx_hash' => $d->mint_tx_hash,
+            'mint_nonce' => $d->mint_nonce,
             'mint_attempts' => $d->mint_attempts,
             'limits_overridden' => $d->limits_overridden,
             'review_note' => $d->review_note,
@@ -493,6 +576,8 @@ class BridgeAdminController extends Controller
         return $w->toPublicArray() + [
             'target_chain_raw' => $w->target_chain_raw,
             'payout_tx_hash' => $w->payout_tx_hash,
+            'payout_nonce' => $w->payout_nonce,
+            'payout_from' => $w->payout_from,
             'payout_attempts' => $w->payout_attempts,
             'limits_overridden' => $w->limits_overridden,
             'review_note' => $w->review_note,

@@ -5,6 +5,7 @@ namespace App\Services\Bridge;
 use App\Models\BridgeDeposit;
 use App\Models\SystemAlert;
 use App\Support\Wei;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -23,6 +24,10 @@ use Illuminate\Support\Facades\Log;
  * ทำทีละรายการแบบเรียงลำดับ และไม่เซ็นรายการใหม่ระหว่างที่ยังมีรายการ minting ค้างไม่รู้ผล
  * เพราะ nonce ถูกถามแบบ pending — ถ้าธุรกรรมก่อนหน้าหลุดจาก mempool แล้วเราเซ็นต่อ
  * ตัวใหม่จะได้ nonce เดียวกันไปทับ แล้วตัวเก่าไม่มีวันลงบล็อก
+ *
+ * "สัญญาบอกว่า mint แล้ว" ไม่ได้แปลว่า "คนอื่น mint" เสมอไป — อาจเป็นธุรกรรมของเราเองที่ RPC ยังไม่เห็นใบเสร็จ
+ * หรือธุรกรรมเดิมก่อนแอดมินอนุมัติใหม่ ก่อนสั่งหยุดสะพานจึงอ่าน Minted(to, amount, depositId) ของ USDT_TPIX
+ * ว่าเหรียญไปถึงผู้ฝากตามจำนวนจริงหรือไม่ (ตรง = ปิดเป็น minted · ไม่ตรง/พิสูจน์ไม่ได้ = หยุดสะพาน)
  */
 class BridgeRelayer
 {
@@ -31,6 +36,15 @@ class BridgeRelayer
 
     /** broadcast แล้วเชนยังไม่รู้จักนานเกินนี้ → ส่ง raw เดิมซ้ำ */
     public const REBROADCAST_AFTER_SECONDS = 90;
+
+    public const REASON_STUCK = 'stuck_pending';
+
+    public const ALERT_STUCK = 'bridge_mint_stuck';
+
+    /** ขอบล่างของการไล่หา Minted เผื่อเวลาเครื่องคลาดกัน / RPC ต้นทางอ่านเวลาบล็อกไม่ได้ */
+    private const MINT_SEARCH_MARGIN_SECONDS = 600;
+
+    private const MINT_SEARCH_FALLBACK_SECONDS = 86400;
 
     public function __construct(
         private BridgeConfig $config,
@@ -115,7 +129,8 @@ class BridgeRelayer
         // ── ระยะที่ 1: ตามผลก่อนเสมอ (ทำแม้สวิตช์ปิด — ของที่ส่งไปแล้วต้องรู้ผล) ─────────
         $summary['tracked'] = $this->trackMinting($rpc);
 
-        if (BridgeDeposit::where('status', BridgeDeposit::STATUS_MINTING)->exists()) {
+        // รวมรายการที่ค้างจนส่งให้คนดูแล้ว — ธุรกรรมเดิมยังลงบล็อกได้ เซ็นตัวใหม่ก็ต่อคิวหลัง nonce เดิมอยู่ดี
+        if ($this->unresolvedMints()->exists()) {
             $summary['blocked'] = 'awaiting_previous_mint';
 
             return $summary;
@@ -170,7 +185,9 @@ class BridgeRelayer
                 continue;
             }
 
-            if ($outcome === 'review') {
+            // review = ส่งให้คนดูแล้ว · already_minted = สัญญาบอกว่า mint แล้วและ Minted ตรงกับผู้ฝาก
+            // (โควตาวันนี้ที่อ่านมาหักยอดนั้นไปแล้ว ไม่ต้องหักซ้ำ)
+            if ($outcome === 'review' || $outcome === 'already_minted') {
                 continue;
             }
 
@@ -203,17 +220,18 @@ class BridgeRelayer
 
         $units = (string) $deposit->mint_units;
 
-        // สัญญาบอกว่า depositId นี้ mint ไปแล้วทั้งที่ระบบยังไม่เคยส่ง — ไม่เซ็นซ้ำ (สัญญา revert อยู่ดี)
-        // และห้ามนับว่าส่งถึงผู้ฝาก: อาจเป็นคีย์ relayer ที่หลุด mint ตัดหน้าไปที่อื่น (ดู holdMintedElsewhere)
+        // สัญญาบอกว่า depositId นี้ mint ไปแล้วทั้งที่รายการยังไม่มีธุรกรรมของเรา — ไม่เซ็นซ้ำ (สัญญา revert อยู่ดี)
+        // และห้ามนับว่าส่งถึงผู้ฝากจนกว่าจะเห็น Minted ที่ตรงกับผู้ฝาก: อาจเป็นคีย์ relayer ที่หลุด mint ตัดหน้าไปที่อื่น
         $processed = $this->processedOnChain($rpc, $deposit->deposit_id);
         if ($processed === null) {
             return 'sign_failed';
         }
         if ($processed) {
-            // ระบบไม่เคยส่งธุรกรรม mint ของรายการนี้ แต่สัญญาบอกว่า mint แล้ว — ไม่รู้ว่าไปถึงใคร
-            $this->holdMintedElsewhere($deposit, 'ก่อนเซ็น');
-
-            return 'minted_elsewhere';
+            return match ($this->resolveProcessed($rpc, $deposit, 'ก่อนเซ็น')) {
+                'minted' => 'already_minted',
+                'held' => 'minted_elsewhere',
+                default => 'sign_failed', // อ่าน log ไม่ได้ตอนนี้ — รอบหน้าลองใหม่
+            };
         }
 
         if (bccomp($units, $maxPerTx, 0) > 0) {
@@ -315,15 +333,28 @@ class BridgeRelayer
         } while (true);
     }
 
-    /** ตามผลทุกรายการที่อยู่ระหว่าง minting — คืนจำนวนที่ได้ข้อสรุป */
+    /** รายการที่มีธุรกรรม mint ค้างอยู่บนเชน (กำลัง mint หรือค้างจนส่งให้คนดูแล้วแต่ยังลงบล็อกได้) */
+    private function unresolvedMints(): Builder
+    {
+        return BridgeDeposit::query()
+            ->whereNotNull('mint_tx_hash')
+            ->where(fn ($q) => $q->where('status', BridgeDeposit::STATUS_MINTING)
+                ->orWhere(fn ($q) => $q->where('status', BridgeDeposit::STATUS_NEEDS_REVIEW)->where('review_reason', self::REASON_STUCK)));
+    }
+
+    /** ตามผลทุกรายการที่อยู่ระหว่าง minting (รวมที่ค้างจนส่งให้คนดูแล้ว) — คืนจำนวนที่ได้ข้อสรุป */
     public function trackMinting(EvmRpc $rpc): int
     {
         $settled = 0;
 
-        foreach (BridgeDeposit::where('status', BridgeDeposit::STATUS_MINTING)->orderBy('mint_nonce')->get() as $deposit) {
+        foreach ($this->unresolvedMints()->orderBy('mint_nonce')->get() as $deposit) {
             if ($this->trackOne($rpc, $deposit)) {
                 $settled++;
             }
+        }
+
+        if (! $this->unresolvedMints()->where('review_reason', self::REASON_STUCK)->exists()) {
+            SystemAlert::resolveKeys(BridgeReconciler::ALERT_NODE, [self::ALERT_STUCK]);
         }
 
         return $settled;
@@ -339,25 +370,11 @@ class BridgeRelayer
             return false;
         }
 
-        $receipt = $rpc->receipt($hash);
+        // ถามทุก RPC — โหนดที่ตามหัวไม่ทันตอบ null ได้ทั้งที่ลงบล็อกแล้ว
+        $receipt = $rpc->receiptAny($hash)['receipt'];
 
         if ($receipt !== null) {
-            $block = isset($receipt['blockNumber']) ? (int) Wei::hexToInt((string) $receipt['blockNumber']) : null;
-
-            if (strtolower((string) ($receipt['status'] ?? '')) === '0x1') {
-                $deposit->update([
-                    'status' => BridgeDeposit::STATUS_MINTED,
-                    'mint_block_number' => $block,
-                    'minted_at' => now(),
-                    'last_error' => null,
-                ]);
-                Log::info('bridge: mint สำเร็จ', ['deposit' => $deposit->id, 'tx' => $hash, 'block' => $block]);
-
-                return true;
-            }
-
-            // revert — ดูที่สัญญาว่า depositId นี้ถูก mint ไปแล้วด้วยธุรกรรมอื่นหรือเปล่า
-            return $this->settleFailed($rpc, $deposit, 'mint_reverted', "ธุรกรรม {$hash} revert บนเชน");
+            return $this->settleReceipt($rpc, $deposit, $receipt, $hash);
         }
 
         $known = $rpc->knowsTransaction($hash);
@@ -365,36 +382,94 @@ class BridgeRelayer
             return false; // อ่านไม่ได้ — รอรอบหน้า ห้ามตัดสินอะไร
         }
 
-        if ($known) {
-            return false; // อยู่ใน mempool รอลงบล็อก
+        if (! $known) {
+            // เชนไม่รู้จัก — ถ้าเงียบไปนานพอแล้วให้ยิง raw เดิมซ้ำ (nonce เดิม รับได้ครั้งเดียว)
+            // ระยะห่างนับจากการเปลี่ยนแปลงล่าสุด · mint_broadcast_at = ครั้งแรกที่ส่ง ใช้วัด "ค้าง"
+            $sinceTouch = $deposit->updated_at ? now()->diffInSeconds($deposit->updated_at, true) : PHP_INT_MAX;
+
+            if ($sinceTouch >= self::REBROADCAST_AFTER_SECONDS && $deposit->mint_raw_tx && $this->signer->isAvailable()) {
+                $sent = $this->signer->send($rpc, (string) $deposit->mint_raw_tx);
+
+                if (($sent['code'] ?? null) === 'nonce_used') {
+                    // nonce ถูกใช้แล้ว — อาจเป็นธุรกรรมของเราเองที่เพิ่งลงบล็อก (RPC ที่ถามใบเสร็จช้ากว่า)
+                    // ถามใบเสร็จจากทุก RPC อีกรอบก่อน ไม่งั้นจะไปตัดสินว่า "คนอื่น mint" แล้วหยุดสะพานเปล่า ๆ
+                    $again = $rpc->receiptAny($hash)['receipt'];
+
+                    return $again !== null
+                        ? $this->settleReceipt($rpc, $deposit, $again, $hash)
+                        : $this->settleFailed($rpc, $deposit, 'nonce_consumed', "nonce {$deposit->mint_nonce} ถูกใช้ไปแล้วแต่ไม่เจอใบเสร็จของ {$hash}");
+                }
+
+                $this->updateIfUnchanged($deposit, [
+                    'last_error' => ($sent['ok'] ?? false) ? 'ส่ง raw เดิมซ้ำแล้ว' : mb_substr('ส่งซ้ำไม่ผ่าน: '.($sent['error'] ?? ''), 0, 300),
+                ]);
+            }
         }
 
-        // เชนไม่รู้จัก — ถ้าส่งไปนานพอแล้วให้ยิง raw เดิมซ้ำ (nonce เดิม รับได้ครั้งเดียว)
-        $age = $deposit->mint_broadcast_at ? now()->diffInSeconds($deposit->mint_broadcast_at, true) : PHP_INT_MAX;
-        if ($age < self::REBROADCAST_AFTER_SECONDS || ! $deposit->mint_raw_tx) {
-            return false;
-        }
-
-        if (! $this->signer->isAvailable()) {
-            return false;
-        }
-
-        $sent = $this->signer->send($rpc, (string) $deposit->mint_raw_tx);
-
-        if (($sent['code'] ?? null) === 'nonce_used') {
-            // nonce ถูกธุรกรรมอื่นใช้ไปแล้ว ธุรกรรมของเราจะไม่มีวันลงบล็อก — ดูที่สัญญาเป็นตัวตัดสิน
-            return $this->settleFailed($rpc, $deposit, 'nonce_consumed', "nonce {$deposit->mint_nonce} ถูกใช้โดยธุรกรรมอื่น");
-        }
-
-        $deposit->update([
-            'mint_broadcast_at' => now(),
-            'last_error' => ($sent['ok'] ?? false) ? 'ส่ง raw เดิมซ้ำแล้ว' : mb_substr('ส่งซ้ำไม่ผ่าน: '.($sent['error'] ?? ''), 0, 300),
-        ]);
-
-        return false;
+        return $this->flagIfStuck($deposit, $hash, (bool) $known);
     }
 
-    /** ธุรกรรมของเราไม่สำเร็จ — ถ้าสัญญาบอกว่า mint แล้ว (ด้วยธุรกรรมอื่น) ห้ามนับว่าส่งถึงผู้ฝาก ส่งให้คนดูเสมอ */
+    private function settleReceipt(EvmRpc $rpc, BridgeDeposit $deposit, array $receipt, string $hash): bool
+    {
+        $block = isset($receipt['blockNumber']) ? (int) Wei::hexToInt((string) $receipt['blockNumber']) : null;
+
+        if (strtolower((string) ($receipt['status'] ?? '')) === '0x1') {
+            $done = $this->updateIfUnchanged($deposit, [
+                'status' => BridgeDeposit::STATUS_MINTED,
+                'mint_block_number' => $block,
+                'minted_at' => now(),
+                'last_error' => null,
+            ]);
+            Log::info('bridge: mint สำเร็จ', ['deposit' => $deposit->id, 'tx' => $hash, 'block' => $block]);
+
+            return $done;
+        }
+
+        // revert — ดูที่สัญญาว่า depositId นี้ถูก mint ไปแล้วด้วยธุรกรรมอื่นหรือเปล่า
+        return $this->settleFailed($rpc, $deposit, 'mint_reverted', "ธุรกรรม {$hash} revert บนเชน");
+    }
+
+    /**
+     * ส่งไปนานเกิน stuck_after_minutes แล้วยังไม่ลงบล็อก → needs_review (stuck_pending) + แจ้งเตือน critical.
+     *
+     * ไม่เปลี่ยน hash/raw — ยังตามผลต่อทุกรอบ ลงบล็อกเมื่อไหร่ก็ปิดเป็น minted เอง และคิว mint ยังหยุดรอ
+     */
+    private function flagIfStuck(BridgeDeposit $deposit, string $hash, bool $known): bool
+    {
+        if ($deposit->status !== BridgeDeposit::STATUS_MINTING) {
+            return false; // ส่งให้คนดูไปแล้ว — ไม่แจ้งซ้ำทุกนาที
+        }
+
+        $age = $deposit->mint_broadcast_at ? now()->diffInSeconds($deposit->mint_broadcast_at, true) : 0;
+        if ($age < $this->config->stuckAfterSeconds()) {
+            return false;
+        }
+
+        $minutes = (int) floor($age / 60);
+        $note = "ส่งไปแล้ว {$minutes} นาทีแต่ยังไม่ลงบล็อก (".($known ? 'ค้างใน mempool' : 'เชนไม่รู้จัก ส่งซ้ำแล้วก็ไม่ลง').') — '
+            ."คิว mint หยุดรอ · ทางออก: รอให้ลงบล็อก หรือให้เจ้าของส่งธุรกรรมแทนที่ด้วย nonce {$deposit->mint_nonce} จากกระเป๋า relayer";
+
+        if (! $this->updateIfUnchanged($deposit, [
+            'status' => BridgeDeposit::STATUS_NEEDS_REVIEW,
+            'review_reason' => self::REASON_STUCK,
+            'last_error' => mb_substr($note, 0, 300),
+        ])) {
+            return false;
+        }
+
+        Log::critical('bridge: ธุรกรรม mint ค้าง', ['deposit' => $deposit->id, 'tx' => $hash, 'nonce' => $deposit->mint_nonce]);
+        SystemAlert::raise(
+            BridgeReconciler::ALERT_NODE,
+            self::ALERT_STUCK,
+            'critical',
+            "สะพาน USDT: ธุรกรรม mint ของเงินฝาก #{$deposit->id} ค้าง {$minutes} นาที (nonce {$deposit->mint_nonce}) — คิว mint หยุดรอ",
+            ['deposit' => $deposit->id, 'tx' => $hash, 'nonce' => $deposit->mint_nonce]
+        );
+
+        return true;
+    }
+
+    /** ธุรกรรมของเราไม่สำเร็จ — ถ้าสัญญาบอกว่า mint แล้ว ต้องพิสูจน์ด้วย Minted ก่อนว่าไปถึงผู้ฝาก */
     private function settleFailed(EvmRpc $rpc, BridgeDeposit $deposit, string $reason, string $note): bool
     {
         $processed = $this->processedOnChain($rpc, $deposit->deposit_id);
@@ -404,46 +479,215 @@ class BridgeRelayer
         }
 
         if ($processed) {
-            $this->holdMintedElsewhere($deposit, $note);
-
-            return true;
+            return $this->resolveProcessed($rpc, $deposit, $note) !== 'unreadable';
         }
 
-        $deposit->update([
+        $done = $this->updateIfUnchanged($deposit, [
             'status' => BridgeDeposit::STATUS_NEEDS_REVIEW,
             'review_reason' => $reason,
             'last_error' => mb_substr($note, 0, 300),
         ]);
         Log::warning('bridge: mint ไม่สำเร็จ — ส่งให้แอดมินดู', ['deposit' => $deposit->id, 'reason' => $reason]);
 
-        return true;
+        return $done;
     }
 
     /**
-     * depositId นี้ถูก mint บนสัญญาแล้ว แต่ไม่ใช่ด้วยธุรกรรมที่ระบบส่ง — ผู้รับและจำนวนอาจไม่ใช่ของผู้ฝาก.
+     * สัญญาบอกว่า depositId นี้ mint แล้ว — ดู Minted ว่าไปถึงใคร เท่าไร แล้วตัดสิน.
+     *
+     *   ตรงกับผู้ฝาก (to = from_address · amount = mint_units) → minted (เช่นธุรกรรมของเราเองที่ RPC ยังไม่เห็นใบเสร็จ
+     *                                                            หรือธุรกรรมเดิมก่อนแอดมินอนุมัติใหม่)
+     *   ไม่ตรง / หาไม่เจอทั้งช่วง                              → held (minted_elsewhere + หยุดสะพาน)
+     *   อ่าน log ไม่ได้                                        → unreadable (ไม่ตัดสิน รอบหน้าลองใหม่)
+     *
+     * @return 'minted'|'held'|'unreadable'
+     */
+    private function resolveProcessed(EvmRpc $rpc, BridgeDeposit $deposit, string $context): string
+    {
+        $mint = $this->findMint($rpc, $deposit);
+
+        if ($mint['state'] === 'unreadable') {
+            return 'unreadable';
+        }
+
+        if ($mint['state'] === 'found' && $this->mintMatches($deposit, $mint)) {
+            $previous = $deposit->mint_tx_hash && strtolower((string) $deposit->mint_tx_hash) !== $mint['tx_hash']
+                ? " (ธุรกรรมที่ระบบส่ง {$deposit->mint_tx_hash} ไม่ได้เป็นตัวที่ลง)" : '';
+
+            $done = $this->updateIfUnchanged($deposit, [
+                'status' => BridgeDeposit::STATUS_MINTED,
+                'mint_tx_hash' => $mint['tx_hash'],
+                'mint_block_number' => $mint['block'],
+                'minted_at' => now(),
+                'last_error' => mb_substr("{$context}: ยืนยันจาก Minted บนเชน — ไปถึงผู้ฝากครบ{$previous}", 0, 300),
+            ]);
+            Log::info('bridge: ยืนยัน mint จาก Minted บนเชน', ['deposit' => $deposit->id, 'tx' => $mint['tx_hash']]);
+
+            return $done ? 'minted' : 'unreadable';
+        }
+
+        $detail = $mint['state'] === 'found'
+            ? 'Minted ไปที่ '.$mint['to'].' จำนวน '.Wei::format($mint['units'], 6).' USDT (tx '.$mint['tx_hash'].') ไม่ตรงกับผู้ฝาก'
+            : ($mint['state'] === 'too_far' ? 'ช่วงบล็อกไกลเกินกว่าจะไล่หา Minted อัตโนมัติ' : 'ไม่เจอ Minted ของ depositId นี้');
+
+        $this->holdMintedElsewhere($deposit, "{$context}: {$detail}");
+
+        return 'held';
+    }
+
+    public function mintMatches(BridgeDeposit $deposit, array $mint): bool
+    {
+        return ($mint['state'] ?? null) === 'found'
+            && strtolower((string) $mint['to']) === strtolower((string) $deposit->from_address)
+            && bccomp((string) $mint['units'], (string) $deposit->mint_units, 0) === 0;
+    }
+
+    /**
+     * หา Minted(to, amount, sourceTxHash = depositId) ของ USDT_TPIX — หลักฐานว่า depositId นี้ไปถึงใคร เท่าไร.
+     *
+     * ไล่ไปข้างหน้าจากเวลาที่ธุรกรรมฝากเกิดบนเชนต้นทาง (ก่อนหน้านั้นไม่มีใคร mint ได้ เพราะ depositId ยังไม่มี)
+     * เผื่อเวลาเครื่องคลาด 10 นาที · อ่านเวลาบล็อกต้นทางไม่ได้ = ถอยจากเวลาบันทึกรายการไป 1 วัน
+     * เจอแล้วหยุดทันที (ปกติอยู่ใกล้จุดเริ่ม) · ไกลเกิน verify_max_blocks = too_far (ไม่เดา)
+     *
+     * @return array{state: 'found', to: string, units: string, tx_hash: string, block: int}|array{state: 'not_found'|'unreadable'|'too_far'}
+     */
+    public function findMint(EvmRpc $rpc, BridgeDeposit $deposit): array
+    {
+        $token = $this->config->usdtTpixAddress();
+        $depositId = strtolower((string) $deposit->deposit_id);
+
+        if ($token === null || ! preg_match('/^0x[0-9a-f]{64}$/', $depositId)) {
+            return ['state' => 'unreadable'];
+        }
+
+        $created = $deposit->created_at?->getTimestamp() ?? now()->getTimestamp();
+        $sourceTs = $this->config->rpc((int) $deposit->source_chain_id)?->blockTimestamp((int) $deposit->block_number);
+        $since = $sourceTs !== null
+            ? min($sourceTs, $created) - self::MINT_SEARCH_MARGIN_SECONDS
+            : $created - self::MINT_SEARCH_FALLBACK_SECONDS;
+
+        $latest = $rpc->blockNumber();
+        $start = $rpc->blockAtOrBefore($since, (float) config('bridge.tpix.block_seconds', 2));
+
+        if ($latest === null || $start === null) {
+            return ['state' => 'unreadable'];
+        }
+
+        if ($latest - $start > max(1000, (int) config('bridge.tpix.verify_max_blocks', 200000))) {
+            return ['state' => 'too_far'];
+        }
+
+        $topic = Abi::topic(Abi::MINTED_EVENT);
+        $matches = fn (array $log) => strtolower((string) ($log['address'] ?? '')) === $token
+            && ($log['removed'] ?? false) !== true
+            && strtolower((string) ($log['topics'][0] ?? '')) === $topic
+            && strtolower((string) ($log['topics'][2] ?? '')) === $depositId;
+
+        $logs = $rpc->logsBetween(
+            $token,
+            [$topic, null, $depositId],
+            $start,
+            $latest,
+            min(900, max(1, (int) config('bridge.tpix.log_chunk', 900))),
+            $matches
+        );
+
+        if ($logs === null) {
+            return ['state' => 'unreadable'];
+        }
+
+        foreach ($logs as $log) {
+            if ($matches($log)) {
+                $to = Abi::topicAddress($log['topics'][1] ?? null);
+
+                return $to === null ? ['state' => 'unreadable'] : [
+                    'state' => 'found',
+                    'to' => $to,
+                    'units' => Wei::hexToInt((string) ($log['data'] ?? '0x0')),
+                    'tx_hash' => strtolower((string) ($log['transactionHash'] ?? '')),
+                    'block' => (int) Wei::hexToInt((string) ($log['blockNumber'] ?? '0x0')),
+                ];
+            }
+        }
+
+        return ['state' => 'not_found'];
+    }
+
+    /**
+     * ธุรกรรม mint ที่รายการนี้ถืออยู่ "ตายแล้ว" (ไม่มีทางลงบล็อกได้อีก) ไหม — ใช้ก่อนแอดมินอนุมัติใหม่/ปฏิเสธ.
+     *
+     * ตาย = ลงบล็อกแล้ว (มีใบเสร็จ / มี blockNumber) หรือ nonce ของ relayer ถูกใช้ไปแล้ว
+     * ยังไม่ตาย = ยังอยู่ใน mempool ลงบล็อกได้ทุกเมื่อ (ปฏิเสธแล้วคืนเงินด้วยมือตอนนั้น = ผู้ใช้ได้สองต่อ)
+     * null = อ่านไม่ได้
+     */
+    public function mintTxDead(EvmRpc $rpc, BridgeDeposit $deposit): ?bool
+    {
+        $hash = strtolower((string) $deposit->mint_tx_hash);
+        if ($hash === '') {
+            return true;
+        }
+
+        if ($rpc->receiptAny($hash)['receipt'] !== null) {
+            return true;
+        }
+
+        $tx = $rpc->transactionAny($hash);
+        if ($tx !== null && ! empty($tx['blockNumber'])) {
+            return true;
+        }
+
+        $relayer = $this->config->signerAddress('relayer');
+        $count = $relayer ? $rpc->nonceLatest($relayer) : null;
+
+        if ($count === null || $deposit->mint_nonce === null) {
+            return null;
+        }
+
+        return $count > (int) $deposit->mint_nonce;
+    }
+
+    /**
+     * depositId นี้ถูก mint บนสัญญาแล้ว แต่ไม่ตรงกับผู้ฝาก (หรือพิสูจน์ไม่ได้) — ผู้รับและจำนวนอาจไม่ใช่ของผู้ฝาก.
      *
      * depositId = keccak(chainId, txHash, logIndex) คำนวณได้จาก log สาธารณะ คีย์ relayer ที่หลุดจึง mint
      * ตัดหน้าเข้ากระเป๋าตัวเองได้ และยอดรวมยังตรงกับเงินหนุน — ถ้านับรายการนี้เป็น minted
      * ตัวกระทบยอดจะไม่มีวันเห็น จึงไม่นับ (minter.totalMinted จะเกินยอดที่ระบบรับรู้ → guardian pause รอบถัดไป)
-     * ปิดสวิตช์ทันที และให้แอดมินตรวจ Minted(to, amount) บน explorer ก่อนอนุมัติ.
+     * ปิดสวิตช์ทันที — แอดมินอนุมัติได้เฉพาะเมื่อ Minted บนเชนตรงกับผู้ฝาก (ระบบตรวจให้ตอนกดอนุมัติ)
      */
     private function holdMintedElsewhere(BridgeDeposit $deposit, string $context): void
     {
-        $deposit->update([
+        $this->updateIfUnchanged($deposit, [
             'status' => BridgeDeposit::STATUS_NEEDS_REVIEW,
             'review_reason' => 'minted_elsewhere',
-            'last_error' => mb_substr("{$context}: depositId ถูก mint บนสัญญาแล้วโดยธุรกรรมที่ระบบไม่ได้ส่ง — "
-                .'ตรวจ Minted(to, amount) บน explorer ว่าตรงกับผู้ฝากก่อนอนุมัติ', 0, 300),
+            'last_error' => mb_substr("{$context} — depositId ถูก mint บนสัญญาโดยที่ระบบยืนยันไม่ได้ว่าไปถึงผู้ฝาก", 0, 300),
         ]);
 
-        $message = "สะพาน USDT ถูกหยุดอัตโนมัติ: deposit #{$deposit->id} ถูก mint โดยธุรกรรมที่ระบบไม่ได้ส่ง — คีย์ relayer อาจหลุด";
-        $this->config->setSiteSwitch(false, "หยุดอัตโนมัติ (minted_elsewhere): deposit #{$deposit->id}");
+        $message = "สะพาน USDT ถูกหยุดอัตโนมัติ: deposit #{$deposit->id} ถูก mint โดยที่ Minted บนเชนไม่ตรงกับผู้ฝาก — คีย์ relayer อาจหลุด";
+        $this->config->setSiteSwitch(false, "หยุดอัตโนมัติ (minted_elsewhere): deposit #{$deposit->id}", 'auto');
 
-        Log::critical('bridge: '.$message, ['deposit' => $deposit->id, 'deposit_id' => $deposit->deposit_id]);
+        Log::critical('bridge: '.$message, ['deposit' => $deposit->id, 'deposit_id' => $deposit->deposit_id, 'context' => $context]);
         SystemAlert::raise(BridgeReconciler::ALERT_NODE, 'bridge_minted_elsewhere', 'critical', $message, [
             'deposit' => $deposit->id,
             'deposit_id' => $deposit->deposit_id,
             'mint_units' => (string) $deposit->mint_units,
+            'context' => mb_substr($context, 0, 300),
         ]);
+    }
+
+    /**
+     * อัปเดตเฉพาะเมื่อแถวยังอยู่ในสถานะและธุรกรรมเดียวกับที่อ่านมา — แอดมินอาจอนุมัติ/ปฏิเสธไปพร้อมกันพอดี
+     * ผลของธุรกรรมเก่าต้องไม่ไปเขียนทับรายการที่ถูกเปลี่ยนแล้ว.
+     */
+    private function updateIfUnchanged(BridgeDeposit $deposit, array $values): bool
+    {
+        $query = BridgeDeposit::whereKey($deposit->id)->where('status', $deposit->status);
+        $deposit->mint_tx_hash === null
+            ? $query->whereNull('mint_tx_hash')
+            : $query->where('mint_tx_hash', $deposit->mint_tx_hash);
+
+        $changed = $query->update($values + ['updated_at' => now()]);
+        $deposit->refresh();
+
+        return $changed === 1;
     }
 }

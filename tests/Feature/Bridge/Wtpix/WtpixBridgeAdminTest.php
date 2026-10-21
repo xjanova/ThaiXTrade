@@ -182,6 +182,75 @@ class WtpixBridgeAdminTest extends TestCase
         $this->assertSame(WtpixBridgeTransfer::STATUS_NEEDS_REVIEW, $row->fresh()->status);
     }
 
+    /** ล็อกต่ำกว่าขั้นต่ำจริงบนเชน แล้วให้ตัวสแกนบันทึกเป็น ignored/below_minimum (ตัวสแกนไม่ถามเชนเรื่องผู้ส่ง) */
+    private function belowMinimumLock(string $from): WtpixBridgeTransfer
+    {
+        $this->artisan('bridge:wtpix-scan')->assertSuccessful(); // รอบแรกตั้งเคอร์เซอร์ที่หัว
+        $this->fakeLock($from, $this->tpix('5'), 2001);
+        $this->chain[4289]['latest'] = 2005;
+        $this->artisan('bridge:wtpix-scan')->assertSuccessful();
+
+        $row = WtpixBridgeTransfer::firstOrFail();
+        $this->assertSame([WtpixBridgeTransfer::STATUS_IGNORED, 'below_minimum'], [$row->status, $row->review_reason]);
+
+        return $row;
+    }
+
+    #[Test]
+    public function approving_a_below_minimum_lock_from_a_wallet_rechecks_the_chain_then_queues_it(): void
+    {
+        $row = $this->belowMinimumLock($this->alice);
+
+        $this->asAdmin()->postJson("/admin/bridge/wtpix/transfers/{$row->id}/approve")->assertOk()->assertJsonPath('success', true);
+
+        $row->refresh();
+        $this->assertSame(WtpixBridgeTransfer::STATUS_CONFIRMED, $row->status);
+        $this->assertTrue($row->limits_overridden);
+    }
+
+    #[Test]
+    public function approving_a_below_minimum_lock_from_a_contract_moves_it_to_review_instead_of_minting(): void
+    {
+        $multisig = '0x5afe00000000000000000000000000000000a5fe';
+        $this->chain[4289]['codes'][$multisig] = '0x6080';
+        $row = $this->belowMinimumLock($multisig);
+
+        // อนุมัติครั้งแรก = ข้ามแค่ขั้นต่ำ — เจอผู้ส่งเป็นสัญญาต้องหยุด ไม่เข้าคิว mint
+        $this->asAdmin()->postJson("/admin/bridge/wtpix/transfers/{$row->id}/approve")
+            ->assertStatus(409)->assertJsonPath('data.review_reason', 'sender_is_contract');
+
+        $row->refresh();
+        $this->assertSame([WtpixBridgeTransfer::STATUS_NEEDS_REVIEW, 'sender_is_contract'], [$row->status, $row->review_reason]);
+
+        // แอดมินตรวจแล้วรับรองข้อสงสัยนี้อย่างตั้งใจ = อนุมัติแถว needs_review ตามปกติ
+        $this->asAdmin()->postJson("/admin/bridge/wtpix/transfers/{$row->id}/approve")->assertOk();
+        $this->assertSame(WtpixBridgeTransfer::STATUS_CONFIRMED, $row->fresh()->status);
+    }
+
+    #[Test]
+    public function approving_a_below_minimum_lock_burned_through_someone_else_is_sent_to_review(): void
+    {
+        // คนกดส่งธุรกรรมไม่ใช่เจ้าของเหรียญ (สัญญาตัวกลางล็อกแทน) — ผู้รับอาจไม่ใช่คนที่ตั้งใจ
+        $this->artisan('bridge:wtpix-scan')->assertSuccessful();
+        $this->fakeLock($this->alice, $this->tpix('5'), 2001, txFrom: $this->bob);
+        $this->chain[4289]['latest'] = 2005;
+        $this->artisan('bridge:wtpix-scan')->assertSuccessful();
+        $row = WtpixBridgeTransfer::firstOrFail();
+
+        $this->asAdmin()->postJson("/admin/bridge/wtpix/transfers/{$row->id}/approve")->assertStatus(409);
+        $this->assertSame('sender_mismatch', $row->fresh()->review_reason);
+    }
+
+    #[Test]
+    public function approving_a_below_minimum_lock_answers_503_when_the_source_chain_is_unreadable(): void
+    {
+        $row = $this->belowMinimumLock($this->alice);
+        $this->chain[4289]['down'] = true;
+
+        $this->asAdmin()->postJson("/admin/bridge/wtpix/transfers/{$row->id}/approve")->assertStatus(503);
+        $this->assertSame(WtpixBridgeTransfer::STATUS_IGNORED, $row->fresh()->status);
+    }
+
     #[Test]
     public function the_switch_toggles_and_settings_reject_inverted_limits(): void
     {

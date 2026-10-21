@@ -15,7 +15,18 @@
  */
 
 import { Contract } from 'ethers';
-import { NATIVE_TOKEN_ADDRESS, getBscReadProvider } from '@/utils/web3';
+import { NATIVE_TOKEN_ADDRESS, withBscReadFallback } from '@/utils/web3';
+import { t } from '@/Composables/useTranslation';
+
+/*
+ * ข้อความ error ที่ติดธง isFriendly ถูกแสดงตรงๆ บนฟอร์มเทรด
+ * เดิมเป็นอังกฤษล้วน ผู้ใช้หน้าไทยเห็น "Unable to verify token on BSC" กลางหน้าไทย
+ */
+function friendly(key, params) {
+    const err = new Error(t(key, params));
+    err.isFriendly = true;
+    return err;
+}
 
 // Binance-Peg / canonical token addresses บน BSC mainnet (chain 56)
 // onchainSymbols = symbol() ที่ยอมรับได้จาก contract จริง (บางตัวไม่ตรงชื่อที่โชว์
@@ -71,9 +82,7 @@ export async function getVerifiedTradeToken(symbol) {
     const entry = BSC_TRADE_TOKENS[key];
 
     if (!entry) {
-        const err = new Error(`${key} is not tradable on BSC yet.`);
-        err.isFriendly = true;
-        throw err;
+        throw friendly('swapError.tokenNotTradable', { symbol: key });
     }
 
     // เหรียญ native (BNB) ไม่มี contract ให้ตรวจ
@@ -86,23 +95,19 @@ export async function getVerifiedTradeToken(symbol) {
     let onchainSymbol;
     let onchainDecimals;
     try {
-        const contract = new Contract(entry.address, VERIFY_ABI, getBscReadProvider());
-        [onchainSymbol, onchainDecimals] = await Promise.all([
-            contract.symbol(),
-            contract.decimals(),
-        ]);
+        // โหนดหลักล่ม → ลองโหนดสำรอง (ยังเป็นการอ่านจากเชนจริง ไม่ใช่ค่า static)
+        [onchainSymbol, onchainDecimals] = await withBscReadFallback((provider) => {
+            const contract = new Contract(entry.address, VERIFY_ABI, provider);
+            return Promise.all([contract.symbol(), contract.decimals()]);
+        });
     } catch {
         // อ่านจากเชนไม่ได้ = ตรวจไม่ได้ = ไม่ให้เทรด (อย่า fallback ไปค่า static)
-        const err = new Error('Unable to verify token on BSC. Please try again.');
-        err.isFriendly = true;
-        throw err;
+        throw friendly('swapError.tokenVerifyUnavailable');
     }
 
     const accepted = (entry.onchainSymbols || [key]).map(s => s.toUpperCase());
     if (!accepted.includes(String(onchainSymbol).toUpperCase())) {
-        const err = new Error(`Token verification failed for ${key}. Trading blocked for safety.`);
-        err.isFriendly = true;
-        throw err;
+        throw friendly('swapError.tokenVerifyFailed', { symbol: key });
     }
 
     const verified = {

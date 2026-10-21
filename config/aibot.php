@@ -185,15 +185,37 @@ return [
         'encryption_key' => env('AIBOT_BOT_WALLET_KEY'),
         'rpc_user_agent' => env('AIBOT_BOT_WALLET_UA', 'TPIX-BotWallet/1.0'),
         'confirmations' => (int) env('AIBOT_BOT_WALLET_CONFIRMATIONS', 3),
-        // เพดานถอนต่อวันต่อกระเป๋า (หน่วยของสินทรัพย์) — กันคำสั่งหลุดวนถอนซ้ำ
+        /*
+         * เพดานถอนต่อวันต่อกระเป๋า (หน่วยของสินทรัพย์) — กันคำสั่งหลุดวนถอนซ้ำ
+         *
+         * ค่ากลางนี้คือเพดานของ stablecoin (ค่าเดิม 5000) — สินทรัพย์ที่ราคาต่อหน่วยต่างกันมาก
+         * ต้องตั้ง `daily_cap` ของตัวเองใน assets ข้างล่าง (5000 BNB ≈ หลายล้านบาท = ไม่ได้กันอะไรเลย)
+         */
         'withdraw_daily_cap' => (float) env('AIBOT_BOT_WALLET_DAILY_CAP', 5000),
         // สินทรัพย์ที่กระเป๋าบอทรู้จักบน BSC — BNB ไว้จ่ายแก๊ส USDT คือเงินที่บอทใช้เทรด
         'assets' => [
-            'BNB' => ['type' => 'native', 'decimals' => 18, 'min_withdraw' => 0.001],
+            'BNB' => ['type' => 'native', 'decimals' => 18, 'min_withdraw' => 0.001, 'daily_cap' => (float) env('AIBOT_BOT_WALLET_DAILY_CAP_BNB', 10)],
+            // ไม่ตั้ง daily_cap = ใช้ withdraw_daily_cap (เพดาน stablecoin เดิม)
             'USDT' => ['type' => 'erc20', 'address' => '0x55d398326f99059fF775485246999027B3197955', 'decimals' => 18, 'min_withdraw' => 1],
         ],
         // แก๊สขั้นต่ำที่ต้องเหลือไว้ (BNB) ไม่งั้นถอน USDT/เทรดครั้งถัดไปไม่ได้
         'gas_reserve_bnb' => (float) env('AIBOT_BOT_WALLET_GAS_RESERVE', 0.002),
+
+        /*
+         * รายการถอนที่ค้าง — ตัวส่งต้องตัดสินให้จบเอง ไม่ใช่ค้างตลอดกาล (เงินในกระเป๋าบอทถอนต่อไม่ได้
+         * จนกว่ารายการค้างจะจบ และผู้ใช้ไม่มีกุญแจของกระเป๋าบอท)
+         *
+         * stuck_after_minutes    ส่งไปแล้วแต่เชนไม่รู้จัก/ไม่มีใบเสร็จนานเท่านี้ → ตัดสินว่าไม่ได้โอน
+         *                        (nonce ถูกตัวอื่นใช้ = nonce_consumed · nonce ยังว่าง = dropped)
+         * signing_stale_minutes  ค้าง "กำลังเซ็น" โดยยังไม่มี hash นานเท่านี้ = โปรเซสตายกลางคัน
+         *                        ยังไม่มีอะไรออกจากเครื่อง → คืนเข้าคิวให้เซ็นใหม่ได้
+         *                        (ต้องนานกว่าเวลาเซ็นที่ช้าที่สุด — ตัวเซ็นมี timeout 120 วินาที)
+         * recheck_failed_hours   รายการที่ตัดสินว่าไม่ได้โอนจากการ "ไม่เห็น" ยังตามใบเสร็จต่ออีกเท่านี้
+         *                        เผื่อโหนดอื่นเอาไปลงบล็อกทีหลัง — เจอ = แก้กลับเป็นสำเร็จ
+         */
+        'stuck_after_minutes' => (int) env('AIBOT_BOT_WALLET_STUCK_MINUTES', 30),
+        'signing_stale_minutes' => (int) env('AIBOT_BOT_WALLET_SIGNING_STALE_MINUTES', 10),
+        'recheck_failed_hours' => (int) env('AIBOT_BOT_WALLET_RECHECK_HOURS', 24),
     ],
 
     'strategies' => [

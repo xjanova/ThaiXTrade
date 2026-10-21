@@ -74,7 +74,7 @@ class DexSync extends Command
         $this->syncChainStatus($chain, $cfg);
 
         if (! $cfg['ready']) {
-            $this->line('DEX ยังไม่พร้อม (ขาด: '.implode(', ', $cfg['missing']).') — ข้ามการซิงก์พูล');
+            $this->line('DEX ยังไม่พร้อม (ขาด: '.implode(', ', array_merge($cfg['missing'], $cfg['unverified'] ?? [])).') — ข้ามการซิงก์พูล');
 
             return self::SUCCESS;
         }
@@ -110,6 +110,19 @@ class DexSync extends Command
      */
     private function syncChainStatus(Chain $chain, array $cfg): void
     {
+        /*
+         * ถามเชนไม่ได้ ≠ สัญญาหาย — ห้ามเปลี่ยนสถานะเชนจากความไม่รู้
+         *
+         * เดิม rpc1 สะดุดครั้งเดียว (timeout/403/429) = ready เป็นเท็จ = เชนถูกเขียนเป็น coming_soon
+         * ทั้งเว็บ: เชนปริยายกลับเป็น BSC · ตัวเลือกเชนขึ้น "Soon" · หน้าเทรด/สวอปปิด DEX — แล้วเปิดเองใน 5 นาที
+         * ตอนนี้ลดสถานะเฉพาะเมื่อเชน "ตอบว่าไม่มีโค้ด" หรือไม่ได้ตั้งที่อยู่ (missing) เท่านั้น
+         */
+        if (! $cfg['ready'] && ($cfg['missing'] ?? []) === [] && ($cfg['unverified'] ?? []) !== []) {
+            $this->line('ถามเชนไม่ได้ (ยืนยันไม่ได้: '.implode(', ', $cfg['unverified']).') — คงสถานะเชนเดิมไว้');
+
+            return;
+        }
+
         $target = $cfg['ready'] ? Chain::STATUS_LIVE : Chain::STATUS_COMING_SOON;
 
         if ($chain->status === Chain::STATUS_MAINTENANCE || $chain->status === $target) {

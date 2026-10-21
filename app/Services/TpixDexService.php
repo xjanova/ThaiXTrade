@@ -155,18 +155,7 @@ class TpixDexService
     public function pairInfo(string $pair): ?array
     {
         $pair = strtolower($pair);
-        if (! preg_match('/^0x[a-f0-9]{40}$/', $pair)) {
-            return null;
-        }
-
-        // token0/token1 ไม่เปลี่ยนตลอดอายุพูล — จำได้นาน; reserve เปลี่ยนทุกสวอป อ่านสด
-        $tokens = Cache::remember("dex:pair:tokens:{$pair}", 3600, function () use ($pair) {
-            $t0 = self::decAddress($this->call($pair, $this->selector('token0()')));
-            $t1 = self::decAddress($this->call($pair, $this->selector('token1()')));
-
-            return ($t0 && $t1) ? ['token0' => $t0, 'token1' => $t1] : null;
-        });
-
+        $tokens = $this->pairTokens($pair);
         if ($tokens === null) {
             return null;
         }
@@ -191,6 +180,40 @@ class TpixDexService
             'reserve1' => Wei::hexToInt('0x'.$words[1]),
             'totalSupply' => Wei::hexToInt($supply ?? '0x0'),
         ];
+    }
+
+    /**
+     * token0/token1 ของพูล — ไม่เปลี่ยนตลอดอายุพูล จึงจำได้นาน (1 ชม.) · null = อ่านไม่ได้.
+     *
+     * แยกออกจาก pairInfo เพราะตัวถอด event Swap ต้องรู้แค่ว่าใครเป็น token0
+     * ไม่ต้องอ่าน reserve สด — เดิมอ่าน getReserves ไม่ได้ครั้งเดียวไม้นั้นหายถาวร
+     *
+     * @return array{token0:string, token1:string}|null
+     */
+    public function pairTokens(string $pair): ?array
+    {
+        $pair = strtolower($pair);
+        if (! preg_match('/^0x[a-f0-9]{40}$/', $pair)) {
+            return null;
+        }
+
+        $key = "dex:pair:tokens:{$pair}";
+        $cached = Cache::get($key);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $t0 = self::decAddress($this->call($pair, $this->selector('token0()')));
+        $t1 = self::decAddress($this->call($pair, $this->selector('token1()')));
+        if (! $t0 || ! $t1) {
+            // อ่านไม่ได้ไม่จำ — รอบหน้าถามใหม่
+            return null;
+        }
+
+        $tokens = ['token0' => $t0, 'token1' => $t1];
+        Cache::put($key, $tokens, 3600);
+
+        return $tokens;
     }
 
     /**
