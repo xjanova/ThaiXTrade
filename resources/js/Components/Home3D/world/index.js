@@ -14,8 +14,11 @@ import * as THREE from 'three';
 import { STATIONS, cameraFor, pathParam } from '../stations.js';
 import { smoothstep } from './common.js';
 import { buildFloor, buildCity } from './floor.js';
+import { buildBackdrop } from './backdrop.js';
 import { buildCandleWall } from './candleWall.js';
 import { buildCoin, buildNodes, buildTickers, buildSale, buildEcosystem, buildFeatures, buildGate } from './stationsWorld.js';
+
+const FOG_TINT = '#0b1538';
 
 const at = (st, dx = 0, dy = 0, dz = 0) => new THREE.Vector3(st.pos[0] + dx, st.pos[1] + dy, st.pos[2] + dz);
 
@@ -28,7 +31,14 @@ export function buildWorld(engine, opts) {
     const { scene, camera } = engine;
     const byKey = Object.fromEntries(STATIONS.map((st, i) => [st.key, { st, i }]));
 
-    const floor = buildFloor();
+    // ฉากหลังไกล (ท้องฟ้า + พาโนรามาเมือง) ตามกล้องไปตลอด
+    const backdrop = buildBackdrop();
+    scene.add(backdrop.object);
+    // หมอกสีน้ำเงินอมม่วงเข้มเท่าแสงขอบฟ้าของฉากหลัง — แท่งกราฟไกล ๆ จะกลืนเป็นไอหมอก ไม่ใช่เงาดำทึบตัดกับเมือง
+    scene.fog.color.set(FOG_TINT);
+    // พื้นสะท้อนเงาต้องวาดฉากซ้ำอีกรอบ → เปิดเฉพาะจอที่ไม่ใช่มือถือ (มือถือใช้พื้นกริดเดิม)
+    const reflect = Math.min(window.innerWidth, window.innerHeight) >= 700;
+    const floor = buildFloor({ renderer: engine.renderer, reflect, quality: () => engine.level });
     scene.add(floor.object);
     const city = buildCity(STATIONS);
     scene.add(city.object);
@@ -155,6 +165,7 @@ export function buildWorld(engine, opts) {
         const dim = smoothstep(n - 1 + 0.2, n - 1 + 0.9, f);
         scene.fog.density = fogBase + dim * 0.05;
         floor.update(t, dim);
+        backdrop.update(camera, dt, dim);
 
         for (const { piece, i } of pieces) {
             if (Math.abs(f - i) > 2.2) continue;
@@ -189,6 +200,7 @@ export function buildWorld(engine, opts) {
         },
         dispose() {
             pieces.forEach(({ piece }) => piece.dispose?.());
+            floor.dispose?.();
         },
     };
 }

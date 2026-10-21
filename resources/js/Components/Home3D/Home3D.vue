@@ -34,6 +34,7 @@ import { sfx, useHomeSound } from './sound';
 import { createSnapScroll } from './snapScroll';
 import { hooks, keep, takeKept, discard, hasKept } from './keeper';
 import { useMarketData } from '@/Composables/useMarketData';
+import { useHomeLiveStats } from '@/Composables/useHomeLiveStats';
 import { useTranslation } from '@/Composables/useTranslation';
 import { useMascot } from '@/Composables/useMascot';
 import { useHomeSplash } from '@/Composables/useHomeSplash';
@@ -70,21 +71,38 @@ const setRef = (bag, key) => (el) => {
 };
 
 // สถิติบนฮีโร่ — กดแล้วไปหน้าที่เกี่ยวข้อง
-const stats = computed(() => [
-    { label: t('home.supportedChains'), value: '9', href: '/bridge' },
-    { label: t('home.tradingPairs'), value: '100+', href: '/markets' },
-    { label: t('home.dexProtocol'), value: 'PancakeSwap', href: '/swap' },
-    { label: t('home.network'), value: 'TPIX Chain + BSC', href: '/explorer' },
-]);
+// สถิติสดของเชน — ชุดเดียวกับหน้าแรกแบบธรรมดา (เดิมเป็นตัวเลขพิมพ์ตายตัว "9 เชน / 100+ คู่" ที่ไม่มีที่มา)
+const live = useHomeLiveStats();
+const DASH = '—';
+const stats = computed(() => {
+    const p = live.price.value;
+    const c = live.chain.value;
+    const chainOk = !!c && !live.failed.value.chain;
+    const usd = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: n >= 1 ? 2 : 4 });
+    return [
+        { label: t('homeClassic.statPrice'), value: p && !live.failed.value.price ? usd(p.price) : DASH, href: '/token-sale' },
+        { label: t('homeClassic.statBlock'), value: chainOk ? `#${c.block_height.toLocaleString('en-US')}` : DASH, href: '/explorer' },
+        { label: t('homeClassic.statValidators'), value: chainOk ? `${c.active_validators} / ${c.total_validators}` : DASH, href: '/validators' },
+        { label: t('homeClassic.statSpeed'), value: t('homeClassic.statSpeedValue', { s: c?.block_time || 2 }), href: '/whitepaper' },
+    ];
+});
 
 // การ์ดระบบนิเวศ: ใช้ทั้งในฉาก 3D (คลิกได้) และในแผง HTML
 const ECO = [
-    { key: 'tokenSale', href: '/token-sale', image: '/images/art/card-tokensale.webp', color: '#22d3ee' },
-    { key: 'whitepaper', href: '/whitepaper', image: '/images/art/card-whitepaper.webp', color: '#a78bfa' },
-    { key: 'explorer', href: '/explorer', image: '/images/art/card-explorer.webp', color: '#00c853' },
-    { key: 'masternode', href: '/masternode', image: '/images/art/card-masternode.webp', color: '#f6bd35' },
+    { key: 'tokenSale', href: '/token-sale', image: '/images/home/eco-sale.webp?v=1', color: '#22d3ee' },
+    { key: 'whitepaper', href: '/whitepaper', image: '/images/home3d/eco-whitepaper.webp?v=1', color: '#a78bfa' },
+    { key: 'explorer', href: '/explorer', image: '/images/home/eco-explorer.webp?v=1', color: '#00c853' },
+    { key: 'masternode', href: '/masternode', image: '/images/home/eco-node.webp?v=1', color: '#f6bd35' },
 ];
 // ข้อความบนการ์ด 3D ตามภาษาปัจจุบัน
+// ระดับโหนด + เพดาน APR ตามสัญญา (ตรงกับ /api/v1/masternode/tiers apr_cap_bps)
+const NODE_TIERS = [
+    { name: 'Light', stake: '10K', apr: 6, cls: 'text-cyan-400' },
+    { name: 'Sentinel', stake: '100K', apr: 9, cls: 'text-blue-400' },
+    { name: 'Guardian', stake: '1M', apr: 12, cls: 'text-purple-400' },
+    { name: 'Validator', stake: '10M', apr: 20, cls: 'text-fuchsia-400' },
+];
+
 const ecoCards = () => ECO.map((c) => ({ ...c, title: t(`home.eco.${c.key}`), desc: t(`home.eco.${c.key}Desc`), cta: t('home3d.go.openShort') }));
 
 // จุดเด่น: ไอคอน 3D เจนจาก ChatGPT (ไม่มีไฟล์ = ฉากใช้ทรงเรขาคณิตแทน) — กดได้ทุกอัน
@@ -633,23 +651,15 @@ function fmtTime(ms) {
                             </div>
                             <h2 class="text-3xl lg:text-4xl font-black text-white mb-3">{{ t('home.nodeTitle') }}</h2>
                             <p class="text-dark-300 mb-5">{{ t('home.nodeDesc') }}</p>
-                            <div class="grid grid-cols-3 gap-2 mb-5">
-                                <Link v-tilt href="/masternode" class="h3d-chip h3d-chip--link text-center">
-                                    <div class="text-[11px] text-dark-400">Light</div>
-                                    <div class="text-lg font-black text-cyan-400">10K</div>
-                                    <div class="text-[11px] text-trading-green">4-6% APY</div>
-                                </Link>
-                                <Link v-tilt href="/masternode" class="h3d-chip h3d-chip--link text-center !border-purple-500/30">
-                                    <div class="text-[11px] text-dark-400">Sentinel</div>
-                                    <div class="text-lg font-black text-purple-400">100K</div>
-                                    <div class="text-[11px] text-trading-green">7-10% APY</div>
-                                </Link>
-                                <Link v-tilt href="/masternode" class="h3d-chip h3d-chip--link text-center !border-red-500/30">
-                                    <div class="text-[11px] text-dark-400">Validator</div>
-                                    <div class="text-lg font-black text-red-400">10M</div>
-                                    <div class="text-[11px] text-trading-green">15-20% APY</div>
+                            <!-- เพดาน APR ตามสัญญา NodeRegistryV2 (apr_cap_bps 600/900/1200/2000) — ไม่ใช่ผลตอบแทนที่รับประกัน -->
+                            <div class="grid grid-cols-4 gap-2 mb-2">
+                                <Link v-for="tier in NODE_TIERS" :key="tier.name" v-tilt href="/masternode" class="h3d-chip h3d-chip--link text-center">
+                                    <div class="text-[11px] text-dark-400">{{ tier.name }}</div>
+                                    <div class="text-base font-black" :class="tier.cls">{{ tier.stake }}</div>
+                                    <div class="text-[10px] text-trading-green">{{ t('home3d.aprUpTo', { pct: tier.apr }) }}</div>
                                 </Link>
                             </div>
+                            <p class="text-[11px] text-dark-400 mb-5">{{ t('home3d.aprNote') }}</p>
                             <div class="flex flex-wrap gap-2">
                                 <Link href="/masternode" class="btn-primary px-5 py-2.5 text-sm font-bold">⚡ {{ t('home.nodeStake') }}</Link>
                                 <Link href="/masternode/guide" class="px-5 py-2.5 text-sm font-semibold border border-cyan-500/30 text-cyan-400 rounded-xl hover:bg-cyan-500/10 transition">📖 {{ t('home.nodeGuide') }}</Link>
@@ -968,21 +978,53 @@ function fmtTime(ms) {
     width: min(500px, 40vw);
     max-height: calc(100% - 40px);
     overflow-y: auto;
-    padding: 26px 28px;
-    border-radius: 22px;
-    background: rgb(var(--c-dark-900) / 0.72);
-    border: 1px solid rgb(255 255 255 / 0.08);
-    box-shadow: 0 30px 80px rgb(0 0 0 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.06);
+    padding: 34px 32px 28px;
+    /* มุมโค้งน้อย — มุมกรอบอัญมณี (background) จะได้ไม่ถูกขอบโค้งตัดทิ้ง */
+    border-radius: 6px;
+    /*
+     * แผงแบบเกม: ภาพประกอบประจำสถานี (ภาพ ChatGPT ชุดหน้าแรก) + ชั้นมืดให้อ่านง่าย + ประกายแสงสะท้อนเฉียงแบบกระจก
+     * ขอบไล่สี (ชั้นล่างสุด clip border-box) + มุมกรอบ/หัวกรอบตัดจากกรอบการ์ด ChatGPT
+     * ทุกชั้นเป็น background ของตัวแผงเอง (ไม่ใช่ pseudo-element) — แผงเลื่อนข้อความได้ (overflow: auto)
+     * pseudo-element จะเลื่อนตามเนื้อหา แต่ background ติดขอบกล่องเสมอ
+     */
+    border: 1.5px solid transparent;
+    background-image:
+        url('/images/home3d/frame-tl.webp?v=1'),
+        url('/images/home3d/frame-tr.webp?v=1'),
+        url('/images/home3d/frame-bl.webp?v=1'),
+        url('/images/home3d/frame-br.webp?v=1'),
+        url('/images/home3d/frame-crest.webp?v=1'),
+        linear-gradient(118deg, rgb(255 255 255 / 0.13) 0%, rgb(255 255 255 / 0.03) 26%, transparent 26.5%),
+        linear-gradient(180deg, rgb(3 7 18 / 0.66) 0%, rgb(3 7 18 / 0.86) 45%, rgb(3 7 18 / 0.94) 100%),
+        var(--panel-art, linear-gradient(transparent, transparent)),
+        linear-gradient(#060b1a, #060b1a),
+        linear-gradient(135deg, #22d3ee, #3b82f6 35%, #8b5cf6 68%, #f59e0b);
+    background-position: left top, right top, left bottom, right bottom, center top, 0 0, 0 0, center, 0 0, 0 0;
+    background-size: 46px 46px, 46px 46px, 46px 46px, 46px 46px, 70px 48px, 100% 100%, 100% 100%, cover, 100% 100%, 100% 100%;
+    background-repeat: no-repeat;
+    background-origin: border-box, border-box, border-box, border-box, border-box, padding-box, padding-box, padding-box, padding-box, border-box;
+    background-clip: border-box, border-box, border-box, border-box, border-box, padding-box, padding-box, padding-box, padding-box, border-box;
+    box-shadow: 0 30px 80px rgb(0 0 0 / 0.55), 0 0 46px -12px rgb(34 211 238 / 0.45);
     backdrop-filter: blur(14px);
     opacity: 0;
     visibility: hidden;
     will-change: opacity, transform;
+    /* ฉาก 3D มืดเสมอ → แผงเป็นเกาะมืดแม้ผู้ใช้ใช้ธีมสว่าง xp-silver (ตัวหนังสือขาวบนภาพมืด) */
+    --c-white: 255 255 255;
+    --c-dark-300: 203 213 225;
+    --c-dark-400: 148 163 184;
+    --c-dark-500: 100 116 139;
+    --c-dark-900: 15 23 42;
 }
 
-.h3d-panel--hero {
-    width: min(560px, 44vw);
-    background: rgb(var(--c-dark-900) / 0.55);
-}
+/* ภาพประกอบประจำแต่ละสถานี */
+.h3d-panel--hero { --panel-art: url('/images/home/hero-960.webp?v=1'); width: min(560px, 44vw); }
+.h3d-panel--node { --panel-art: url('/images/home/masternode-960.webp?v=1'); }
+.h3d-panel--markets { --panel-art: url('/images/home/eco-trade.webp?v=1'); }
+.h3d-panel--sale { --panel-art: url('/images/home/eco-sale.webp?v=1'); }
+.h3d-panel--ecosystem { --panel-art: url('/images/home/chain-960.webp?v=1'); }
+.h3d-panel--features { --panel-art: url('/images/home3d/eco-whitepaper.webp?v=1'); }
+.h3d-panel--cta { --panel-art: url('/images/home/cta-960.webp?v=1'); }
 
 .is-left .h3d-panel {
     left: max(24px, 4vw);
@@ -1005,9 +1047,14 @@ function fmtTime(ms) {
 
 .h3d-chip {
     padding: 10px 12px;
-    border-radius: 14px;
-    background: rgb(255 255 255 / 0.05);
-    border: 1px solid rgb(255 255 255 / 0.1);
+    border-radius: 12px;
+    /* การ์ดย่อย: ขอบไล่สีบาง + ประกายแสงมุมบน + พื้นกระจกมืด */
+    border: 1px solid transparent;
+    background:
+        linear-gradient(125deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.02) 34%, transparent 35%) padding-box,
+        linear-gradient(rgb(6 12 28 / 0.78), rgb(6 12 28 / 0.78)) padding-box,
+        linear-gradient(135deg, rgb(34 211 238 / 0.65), rgb(139 92 246 / 0.45) 55%, rgb(245 158 11 / 0.5)) border-box;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 8px 22px -12px rgb(0 0 0 / 0.8);
 }
 
 .h3d-hint {
@@ -1214,8 +1261,11 @@ function fmtTime(ms) {
 }
 
 .h3d-chip--link:hover {
-    border-color: rgb(var(--c-primary-400) / 0.6);
-    background: rgb(var(--c-primary-500) / 0.1);
+    background:
+        linear-gradient(125deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.03) 34%, transparent 35%) padding-box,
+        linear-gradient(rgb(8 30 48 / 0.85), rgb(8 30 48 / 0.85)) padding-box,
+        linear-gradient(135deg, #22d3ee, #8b5cf6 55%, #f59e0b) border-box;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 10px 28px -10px rgb(34 211 238 / 0.55);
 }
 
 .h3d-chip__go {

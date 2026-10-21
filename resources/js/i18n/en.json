@@ -48,7 +48,7 @@
         "poweredBy": "Powered by",
         "nodeNew": "NEW — Earn Passive Income",
         "nodeTitle": "Run a Master Node",
-        "nodeDesc": "Stake TPIX and run a node to secure the blockchain. Earn up to 15% APY rewards automatically deposited to your wallet.",
+        "nodeDesc": "Stake TPIX and run a node to help secure TPIX Chain. Each tier has a reward cap set in the smart contract, and you claim rewards to your own wallet.",
         "nodeStake": "Stake Now",
         "nodeGuide": "Setup Guide",
         "nodeDownload": "Download for PC",
@@ -221,6 +221,8 @@
         "riskNote": "Crypto assets are high risk. Only trade what you can afford to lose."
     },
     "home3d": {
+        "aprUpTo": "APR up to {pct}%",
+        "aprNote": "Caps set in the contract, not guaranteed returns.",
         "switchTo3d": "Open the 3D home page",
         "switchToLite": "Lite mode",
         "loading": "Building the 3D world...",
@@ -1032,7 +1034,7 @@
         "chatGreeting": "Hi, I'm Nong TPIX 💙 Ask me about trading, the TPIX coin or any feature on this site!",
         "lines": {
             "hero": "Hi there! I'm Nong TPIX ✨ Welcome to TPIX TRADE — trade straight from your own wallet. Want to start trading, or shall I give you a quick tour first?",
-            "node": "Looking for passive income? Run a Master Node, stake TPIX to help secure the network, and rewards land in your wallet automatically.",
+            "node": "Looking for passive income? Run a Master Node and stake TPIX to help secure the network. Rewards build up in the smart contract and you claim them to your own wallet.",
             "markets": "These are the top gainers and the most traded coins right now, refreshed live every 15 seconds. Open the full market or jump into the trading board!",
             "sale": "Want to hold TPIX early? Check the latest sale status and read the whitepaper before you decide 💛",
             "ecosystem": "The whole TPIX ecosystem in one place — track every on-chain transaction in the Explorer, swap tokens, and plenty more.",
