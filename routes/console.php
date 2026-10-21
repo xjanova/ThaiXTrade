@@ -146,6 +146,16 @@ Schedule::command('infra:check-heartbeats')
     ->onOneServer()
     ->name('infra:check-heartbeats');
 
+// validator รายตัว: ใครเสนอ/เซ็นรับรองบล็อก ใครพลาดคิว — ตัวที่เงียบเกิน 5 นาทีขึ้นคาดแดง
+//
+// เชนยังเดินได้ทั้งที่ validator หายไปตัวหนึ่ง (เหตุ 5 ส.ค.: วิ่ง 3/4 นานโดยไม่มีใครรู้)
+// อ่านผ่าน RPC ~30 บล็อก/นาที · ตามไม่ทันจะกระโดดไปข้างหน้าเอง ไม่ทับรอบกัน
+Schedule::command('validators:seal-monitor')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer()
+    ->name('validators:seal-monitor');
+
 // ชั้นคลัง: เซ็น ส่ง และตามผลรายการจ่ายเงินจากกระเป๋าร้อน ทุกนาที
 //
 // ต้องอยู่ฝั่ง CLI เพราะการเซ็นเรียก ethers ผ่าน Node ซึ่ง php-fpm ทำไม่ได้

@@ -47,6 +47,7 @@ use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
 use App\Http\Controllers\Admin\TreasuryController;
 use App\Http\Controllers\Admin\ValidatorAdminController;
+use App\Http\Controllers\Admin\ValidatorKycAdminController;
 use App\Http\Controllers\Admin\WtpixBridgeAdminController;
 use App\Http\Controllers\KycDocumentController;
 use App\Models\WalletConnection;
@@ -379,6 +380,20 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/applications/{id}/approve', [ValidatorAdminController::class, 'approveApplication'])->name('approve');
             Route::post('/applications/{id}/reject', [ValidatorAdminController::class, 'rejectApplication'])->name('reject');
             Route::post('/propose-vote', [ValidatorAdminController::class, 'proposeVote'])->name('propose-vote');
+
+            /*
+             * KYC ผู้สมัคร Validator (สัญญา ValidatorKYC) — กระเป๋า owner ในเบราว์เซอร์เป็นคนเซ็น
+             * เซิร์ฟเวอร์แค่อ่านสถานะจริงจากเชน และตรวจ tx ที่ส่งไปแล้วก่อนบันทึกเป็นประวัติ
+             * ห้าม role อื่นเห็น: หน้านี้โยงกระเป๋ากับใบ KYC ของสมาชิก
+             */
+            Route::middleware('admin.role:super_admin,admin')->group(function () {
+                Route::get('/kyc', [ValidatorKycAdminController::class, 'index'])->name('kyc.index');
+                Route::get('/kyc/applicants', [ValidatorKycAdminController::class, 'applicants'])->name('kyc.applicants');
+                Route::post('/kyc/{address}/confirm', [ValidatorKycAdminController::class, 'confirm'])
+                    ->where('address', '0x[0-9a-fA-F]{40}')
+                    ->middleware('throttle:30,1')
+                    ->name('kyc.confirm');
+            });
         });
 
         // ชั้นคลัง TPIX — กระเป๋าคลัง 6 ใบ (ดูอย่างเดียว) + กระเป๋าร้อน
