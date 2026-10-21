@@ -79,6 +79,56 @@ class StripePaymentService
         return (bool) $this->setting('stripe_enabled', true);
     }
 
+    /** product metadata ที่ใช้แยกบรรทัดค่าบริการออกจากบรรทัดค่าเหรียญตอน webhook */
+    public const FEE_LINE_KIND = 'card_service_fee';
+
+    /**
+     * ค่าบริการชำระด้วยบัตร (เปอร์เซ็นต์ของค่าเหรียญ) — เจ้าของกำหนด 15% (2026-10-21)
+     *
+     * บวกเพิ่มเป็นบรรทัดแยกในหน้า Stripe ไม่ได้ลดจำนวนเหรียญ ผู้ซื้อเห็นยอดก่อนจ่าย
+     * แก้ได้ที่ site_settings payment.card_service_fee_percent · จำกัด 0–50 กันพิมพ์ผิด
+     */
+    public function cardFeePercent(): float
+    {
+        $raw = $this->setting('card_service_fee_percent', 15);
+        $percent = is_numeric($raw) ? (float) $raw : 15.0;
+
+        return max(0.0, min($percent, 50.0));
+    }
+
+    public static function feeCents(int $baseCents, float $percent): int
+    {
+        return (int) round($baseCents * $percent / 100);
+    }
+
+    /**
+     * ยอดค่าเหรียญ (เซ็นต์) จากรายการสินค้าของ session — ทุกบรรทัดยกเว้นค่าบริการ
+     *
+     * ต้องใช้ตัวนี้แทน amount_total ตอนออกเหรียญ: amount_total รวมค่าบริการอยู่ด้วย
+     * ถ้าเอาไปหารราคาเหรียญ ผู้ซื้อจะได้เหรียญเกินไปเท่ากับค่าบริการ
+     * session เก่าก่อนมีค่าบริการไม่มีบรรทัดค่าบริการ → ได้ยอดเต็มเหมือนเดิม
+     *
+     * @param  iterable<object|array<string, mixed>>  $lineItems  ผลของ Session::allLineItems (expand data.price.product)
+     */
+    public static function tokenCentsFromLineItems(iterable $lineItems): int
+    {
+        $cents = 0;
+
+        foreach ($lineItems as $item) {
+            $item = json_decode(json_encode($item), true) ?: [];
+            $product = $item['price']['product'] ?? null;
+            $kind = is_array($product) ? ($product['metadata']['kind'] ?? null) : null;
+
+            if ($kind === self::FEE_LINE_KIND) {
+                continue;
+            }
+
+            $cents += (int) ($item['amount_total'] ?? 0);
+        }
+
+        return $cents;
+    }
+
     /**
      * สร้าง Stripe Checkout Session สำหรับซื้อ TPIX.
      */
@@ -127,20 +177,41 @@ class StripePaymentService
             throw new RuntimeException("Maximum purchase is {$phase->max_purchase} TPIX.");
         }
 
-        // สร้าง Stripe Checkout Session
-        $session = Session::create([
-            'payment_method_types' => ['card'],
-            'line_items' => [[
+        $baseCents = (int) round($amountUsd * 100); // Stripe ใช้ cents
+        $feePercent = $this->cardFeePercent();
+        $feeCents = self::feeCents($baseCents, $feePercent);
+
+        $lineItems = [[
+            'price_data' => [
+                'currency' => 'usd',
+                'product_data' => [
+                    'name' => "TPIX Token - {$phase->name}",
+                    'description' => number_format($tpixAmount, 2).' TPIX @ $'.$phase->price_usd.'/token',
+                    'metadata' => ['kind' => 'tpix_token'],
+                ],
+                'unit_amount' => $baseCents,
+            ],
+            'quantity' => 1,
+        ]];
+
+        if ($feeCents > 0) {
+            $lineItems[] = [
                 'price_data' => [
                     'currency' => 'usd',
                     'product_data' => [
-                        'name' => "TPIX Token - {$phase->name}",
-                        'description' => number_format($tpixAmount, 2).' TPIX @ $'.$phase->price_usd.'/token',
+                        'name' => 'Card service fee ('.rtrim(rtrim(number_format($feePercent, 2), '0'), '.').'%)',
+                        'metadata' => ['kind' => self::FEE_LINE_KIND],
                     ],
-                    'unit_amount' => (int) round($amountUsd * 100), // Stripe ใช้ cents
+                    'unit_amount' => $feeCents,
                 ],
                 'quantity' => 1,
-            ]],
+            ];
+        }
+
+        // สร้าง Stripe Checkout Session
+        $session = Session::create([
+            'payment_method_types' => ['card'],
+            'line_items' => $lineItems,
             'mode' => 'payment',
             'success_url' => url('/token-sale?payment=success&session_id={CHECKOUT_SESSION_ID}'),
             'cancel_url' => url('/token-sale?payment=cancelled'),
@@ -150,12 +221,16 @@ class StripePaymentService
                 'sale_id' => $sale->id,
                 'tpix_amount' => $tpixAmount,
                 'price_per_tpix' => $phase->price_usd,
+                'service_fee_percent' => $feePercent,
             ],
         ]);
 
         return [
             'session_id' => $session->id,
             'url' => $session->url,
+            'token_usd' => $baseCents / 100,
+            'service_fee_usd' => $feeCents / 100,
+            'total_usd' => ($baseCents + $feeCents) / 100,
         ];
     }
 
@@ -315,13 +390,39 @@ class StripePaymentService
         $amountPaid = ((float) ($session->amount_total ?? 0)) / 100;
 
         /*
-         * คำนวณจำนวนเหรียญใหม่จากยอดที่ Stripe บอกว่าจ่ายจริง หารด้วยราคาของเฟส
+         * แยกค่าเหรียญออกจากค่าบริการบัตร — อ่านรายการสินค้าจาก Stripe เอง
+         *
+         * amount_total รวมค่าบริการ 15% อยู่ด้วย ถ้าเอาไปหารราคาเหรียญตรงๆ
+         * ผู้ซื้อจะได้เหรียญเกินไปเท่ากับค่าบริการ อ่านไม่ได้ = ไม่ออกเหรียญ
+         * (Stripe ส่ง webhook ซ้ำให้เอง) ไม่ใช่เดาจากยอดรวม
+         */
+        try {
+            $lineItems = Session::allLineItems($session->id, [
+                'limit' => 20,
+                'expand' => ['data.price.product'],
+            ]);
+            $tokenUsd = self::tokenCentsFromLineItems($lineItems->data ?? []) / 100;
+        } catch (\Throwable $e) {
+            Log::error('stripe: อ่านรายการสินค้าของ session ไม่สำเร็จ — ยังไม่ออกเหรียญ', [
+                'session_id' => $session->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['status' => 'verification_failed', 'session_id' => $session->id];
+        }
+
+        // กันค่าแปลก: ค่าเหรียญต้องไม่เกินยอดที่จ่ายจริง
+        $tokenUsd = min($tokenUsd, $amountPaid);
+        $serviceFeeUsd = round($amountPaid - $tokenUsd, 2);
+
+        /*
+         * คำนวณจำนวนเหรียญใหม่จากค่าเหรียญที่ Stripe บอกว่าจ่ายจริง หารด้วยราคาของเฟส
          * ไม่ใช้ tpix_amount ที่ฝากมาใน metadata — ค่านั้นเป็นแค่ตัวเลขที่เคย
          * คำนวณตอนสร้าง session และแก้ได้จากภายนอก
          */
         $phaseForPricing = SalePhase::find($phaseId);
         $unitPrice = $phaseForPricing ? (float) $phaseForPricing->price_usd : $pricePerTpix;
-        $tpixAmount = $unitPrice > 0 ? round($amountPaid / $unitPrice, 8) : 0.0;
+        $tpixAmount = $unitPrice > 0 ? round($tokenUsd / $unitPrice, 8) : 0.0;
         $pricePerTpix = $unitPrice;
 
         // Validate metadata — ป้องกัน corrupted webhook
@@ -346,6 +447,8 @@ class StripePaymentService
             $phaseId,
             $walletAddress,
             $amountPaid,
+            $tokenUsd,
+            $serviceFeeUsd,
             $tpixAmount,
             $pricePerTpix,
             $session
@@ -366,12 +469,12 @@ class StripePaymentService
                     'wallet_address' => $walletAddress,
                     'payment_currency' => 'USD_STRIPE',
                     'payment_amount' => $amountPaid,
-                    'payment_usd_value' => $amountPaid,
+                    'payment_usd_value' => $tokenUsd,
                     'tpix_amount' => $tpixAmount,
                     'price_per_tpix' => $pricePerTpix,
                     'tx_hash' => 'stripe_'.$session->id,
                     'status' => 'pending',
-                    'metadata' => ['needs_refund' => true, 'reason' => 'insufficient_allocation'],
+                    'metadata' => ['needs_refund' => true, 'reason' => 'insufficient_allocation', 'service_fee_usd' => $serviceFeeUsd],
                 ]);
             }
 
@@ -385,12 +488,13 @@ class StripePaymentService
                 'wallet_address' => $walletAddress,
                 'payment_currency' => 'USD_STRIPE',
                 'payment_amount' => $amountPaid,
-                'payment_usd_value' => $amountPaid,
+                'payment_usd_value' => $tokenUsd,
                 'tpix_amount' => $tpixAmount,
                 'price_per_tpix' => $pricePerTpix,
                 'tx_hash' => 'stripe_'.$session->id,
                 'status' => 'confirmed',
                 'vesting_start_at' => $vestingStart,
+                'metadata' => ['service_fee_usd' => $serviceFeeUsd],
             ]);
 
             // อัปเดต counters atomically (ใช้ locked phase)
@@ -398,7 +502,7 @@ class StripePaymentService
 
             if ($sale) {
                 $sale->increment('total_sold', $tpixAmount);
-                $sale->increment('total_raised_usd', $amountPaid);
+                $sale->increment('total_raised_usd', $tokenUsd);
             }
 
             return $tx;

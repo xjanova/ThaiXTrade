@@ -95,6 +95,9 @@ class TokenSaleApiController extends Controller
                  */
                 'payment_methods' => $status->paymentMethods($sale),
 
+                // ค่าบริการชำระด้วยบัตร (%) — หน้าซื้อแสดงยอดรวมก่อนพาไป Stripe
+                'card_fee_percent' => $this->stripe->cardFeePercent(),
+
                 'sale_wallet_address' => $sale->sale_wallet_address,
                 'starts_at' => $sale->starts_at?->toIso8601String(),
                 'ends_at' => $sale->ends_at?->toIso8601String(),
