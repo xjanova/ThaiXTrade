@@ -363,6 +363,11 @@ class LocaleProvider extends ChangeNotifier {
       'bridge.state.below_fee': 'ยอดไม่เกินค่าธรรมเนียมถอน — ไม่มียอดให้จ่าย',
       'bridge.state.other': 'สถานะอื่น — ดูรายละเอียดบนเว็บ',
 
+      // ซื้อ TPIX ด้วยบัตร (หน้า token sale บนเว็บ — จ่ายผ่าน Stripe)
+      'buyTpix.title': 'ซื้อ TPIX',
+      'buyTpix.subtitle': 'ซื้อด้วยบัตรเครดิต/เดบิตผ่าน Stripe บน tpix.online',
+      'buyTpix.short': 'ซื้อด้วยบัตร',
+      'buyTpix.openFailed': 'เปิดเบราว์เซอร์ไม่ได้ — เข้า tpix.online/token-sale เองได้',
 
       // Peer app (cross-app discovery)
       'peer.open_wallet': 'เปิด TPIX Wallet',
@@ -1275,6 +1280,11 @@ class LocaleProvider extends ChangeNotifier {
       'bridge.state.below_fee': 'The amount did not exceed the withdrawal fee — nothing to pay out',
       'bridge.state.other': 'Other status — see details on the website',
 
+      // Buy TPIX with a card (token sale page on the web — paid via Stripe)
+      'buyTpix.title': 'Buy TPIX',
+      'buyTpix.subtitle': 'Pay by credit/debit card via Stripe on tpix.online',
+      'buyTpix.short': 'Pay by card',
+      'buyTpix.openFailed': 'Could not open the browser — visit tpix.online/token-sale yourself',
 
       // Peer app (cross-app discovery)
       'peer.open_wallet': 'Open TPIX Wallet',

@@ -20,6 +20,7 @@ import '../../providers/update_provider.dart';
 import '../../providers/accent_provider.dart';
 import '../../services/update_service.dart';
 import '../../widgets/common/app_background.dart';
+import '../../widgets/common/buy_tpix_button.dart';
 import '../../widgets/common/coin_chip.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/obsidian/obsidian_icons.dart';
@@ -108,6 +109,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       locale: locale,
                       onConnect: _openWalletSheet,
                     ),
+                  ),
+                ),
+
+                // ซื้อ TPIX ด้วยบัตร (หน้า token sale บนเว็บ · Stripe)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(18, 8, 18, 4),
+                    child: BuyTpixCard(),
                   ),
                 ),
 

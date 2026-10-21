@@ -8,6 +8,7 @@
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/theme/app_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
@@ -18,6 +19,7 @@ import '../../providers/wallet_provider.dart';
 import '../../providers/accent_provider.dart';
 import '../../services/token_list_service.dart';
 import '../../widgets/common/app_background.dart';
+import '../../widgets/common/buy_tpix_button.dart';
 import '../../widgets/common/coin_chip.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
@@ -98,6 +100,20 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
               child: _NetWorthCard(wallet: wallet, locale: locale),
+            ),
+          ),
+
+          // ซื้อ TPIX ด้วยบัตร + ทางลัดสะพาน USDT
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+              child: Row(
+                children: [
+                  const Expanded(child: BuyTpixCard(compact: true)),
+                  const SizedBox(width: 10),
+                  _BridgeShortcut(locale: locale),
+                ],
+              ),
             ),
           ),
 
@@ -299,8 +315,45 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                 },
               ),
             ),
+            const SizedBox(height: 20),
+            const BuyTpixCard(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── ทางลัดสะพาน USDT (BSC ⇄ TPIX Chain) ──
+
+class _BridgeShortcut extends StatelessWidget {
+  final LocaleProvider locale;
+
+  const _BridgeShortcut({required this.locale});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.watch<AccentProvider>();
+    return GlassCard(
+      key: const ValueKey('portfolio-bridge'),
+      variant: GlassVariant.standard,
+      borderRadius: 14,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      onTap: () => context.push('/bridge'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.hub_rounded, size: 22, color: accent.g2),
+          const SizedBox(height: 4),
+          Text(
+            locale.isThai ? 'สะพาน USDT' : 'USDT Bridge',
+            style: AppFonts.ui(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }

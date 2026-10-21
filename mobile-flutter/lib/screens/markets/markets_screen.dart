@@ -17,6 +17,7 @@ import '../../providers/accent_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../providers/market_provider.dart';
 import '../../widgets/common/app_background.dart';
+import '../../widgets/common/buy_tpix_button.dart';
 import '../../widgets/common/coin_chip.dart';
 import '../../widgets/common/mini_sparkline.dart';
 import '../../widgets/common/price_text.dart';
@@ -80,6 +81,12 @@ class _MarketsScreenState extends State<MarketsScreen>
                     ),
                   ],
                 ),
+              ),
+
+              // ── ซื้อ TPIX ด้วยบัตร (หน้า token sale บนเว็บ) ──
+              const Padding(
+                padding: EdgeInsets.fromLTRB(18, 0, 18, 8),
+                child: BuyTpixCard(compact: true),
               ),
 
               // ── Search bar ──
