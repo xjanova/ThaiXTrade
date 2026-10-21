@@ -116,21 +116,15 @@ class UptimeOracleService
             throw new RuntimeException('bytecode ของ NodeRegistry ไม่ตรงกับ build ที่ปักไว้ ('.($actual ?? 'อ่านไม่ได้').') — ไม่ทำรอบนี้');
         }
 
-        $operators = $this->registry->activeOperators();
-        if ($operators === null) {
+        // ไล่ operators(i) ทีละ index — ไม่ใช่ getActiveOperators() ที่พังเมื่อเกิน ~1,100 กระเป๋า
+        $nodes = $this->registry->activeNodes();
+        if ($nodes === null) {
             throw new RuntimeException('อ่านรายชื่อโหนดจากสัญญาไม่ครบ — ไม่ตั้งค่าจากข้อมูลครึ่งเดียว');
         }
 
         $registeredAt = [];
         $onchain = [];
-        foreach ($operators as $wallet) {
-            $info = $this->registry->nodeInfo($wallet);
-            if ($info === null) {
-                throw new RuntimeException("อ่านข้อมูลโหนด {$wallet} ไม่ได้ — ยกเลิกทั้งรอบ");
-            }
-            if ($info['status'] !== 'active') {
-                continue;
-            }
+        foreach ($nodes as $wallet => $info) {
             $registeredAt[$wallet] = (int) $info['registered_at'];
             $onchain[$wallet] = (int) $info['uptime'];
         }

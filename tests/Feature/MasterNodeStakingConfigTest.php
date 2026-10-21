@@ -35,9 +35,11 @@ class MasterNodeStakingConfigTest extends TestCase
 
     private const SEL_KYC = '0x6d3123eb';       // kycContract()
 
+    // bootnodes + delegation_max_lifetime_seconds: เพิ่มพร้อมกับแอปมาสเตอร์โหนด (TPIX-Masternode#1)
+    // ที่อ่านสองคีย์นี้ — TPIX Wallet อ่านแค่คีย์เดิม คีย์ที่เพิ่มไม่กระทบ
     private const CONFIG_KEYS = [
-        'chain_id', 'explorer_url', 'kyc_contract', 'registration_paused',
-        'registry_address', 'registry_live', 'rpc_url',
+        'bootnodes', 'chain_id', 'delegation_max_lifetime_seconds', 'explorer_url', 'kyc_contract',
+        'registration_paused', 'registry_address', 'registry_live', 'rpc_url',
     ];
 
     protected function setUp(): void

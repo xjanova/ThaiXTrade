@@ -86,12 +86,12 @@ class MasternodeUptimeOracleTest extends TestCase
         $this->registry = Mockery::mock(NodeRegistryContract::class);
         $this->registry->shouldReceive('deploymentState')->andReturn(true)->byDefault();
         $this->registry->shouldReceive('address')->andReturn(self::REGISTRY);
-        $this->registry->shouldReceive('activeOperators')->andReturn(array_keys($registered))->byDefault();
-        $this->registry->shouldReceive('nodeInfo')->andReturnUsing(fn ($w) => [
-            'status' => 'active',
-            'registered_at' => $registered[$w],
-            'uptime' => $this->onchain[$w],
-        ]);
+        // งานต้องไม่พึ่ง getActiveOperators() (พังเมื่อเกิน ~1,100 กระเป๋า) — เรียกเมื่อไหร่เทสต์ล้ม
+        $this->registry->shouldNotReceive('activeOperators');
+        $this->registry->shouldReceive('activeNodes')->andReturnUsing(fn () => array_map(
+            fn ($w) => ['status' => 'active', 'registered_at' => $registered[$w], 'uptime' => $this->onchain[$w]],
+            array_combine(array_keys($registered), array_keys($registered)),
+        ))->byDefault();
         $this->registry->shouldReceive('uptimeOracle')->andReturn('0x'.str_repeat('0', 40))->byDefault();
         $this->registry->shouldReceive('runtimeCodeHash')->andReturn(self::CODE_HASH)->byDefault();
         $this->registry->shouldReceive('owner')->andReturn(self::OWNER)->byDefault();
@@ -294,7 +294,7 @@ class MasternodeUptimeOracleTest extends TestCase
 
     public function test_incomplete_operator_list_aborts_the_period(): void
     {
-        $this->registry->shouldReceive('activeOperators')->andReturn(null);
+        $this->registry->shouldReceive('activeNodes')->andReturn(null);
 
         $this->expectException(RuntimeException::class);
         $this->service()->run($this->period);
