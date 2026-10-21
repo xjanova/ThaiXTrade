@@ -252,6 +252,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // การโอนเงินเข้าบัญชี — ทีมงานยืนยันเองหลังเปิดดูรายการเดินบัญชีจริง
             Route::post('/bank/{id}/confirm', [TokenSaleController::class, 'confirmBankTransfer'])->name('bank.confirm');
             Route::post('/bank/{id}/reject', [TokenSaleController::class, 'rejectBankTransfer'])->name('bank.reject');
+            // USDT ที่เข้ามาแต่ระบบออกเหรียญเองไม่ได้ (ยอดไม่ตรง/ช้า/ซ้ำ/ผิดเหรียญ/หาคำสั่งซื้อไม่เจอ)
+            Route::post('/crypto/{id}/credit', [TokenSaleController::class, 'creditCryptoPayment'])->name('crypto.credit');
+            Route::post('/crypto/{id}/resolve', [TokenSaleController::class, 'resolveCryptoPayment'])->name('crypto.resolve');
         });
 
         // Token Factory — จัดการ Token ที่สร้างจาก Factory

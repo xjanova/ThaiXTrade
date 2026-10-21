@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\SalePhase;
 use App\Models\TokenSale;
+use App\Services\SaleCrypto\SaleCryptoConfig;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -50,13 +51,17 @@ class SaleStatusService
         private readonly SaleLaunchService $launcher,
         private readonly StripePaymentService $stripe,
         private readonly BankTransferSaleService $bank,
+        private readonly SaleCryptoConfig $crypto,
     ) {}
 
     /**
      * ช่องทางจ่ายเงินที่ "ใช้ได้จริงตอนนี้" — ต้องผ่านสองด่าน: รอบขายประกาศรับ + ตั้งค่าครบ
      * (ตรรกะเดียวกับที่หน้าซื้อเหรียญใช้ ห้ามแยกเขียนสองที่).
      *
-     * @return array{card: bool, bank: bool}
+     * crypto = USDT จากเชนอื่น — ด่านความพร้อมทั้งหมดอยู่ใน SaleCryptoConfig::openChains
+     * (ติดตั้ง · ประกาศรับ CRYPTO · กระเป๋ารับเงินพิสูจน์คีย์แล้ว · ตัวสแกนของเชนนั้นทำงานอยู่)
+     *
+     * @return array{card: bool, bank: bool, crypto: bool}
      */
     public function paymentMethods(TokenSale $sale): array
     {
@@ -65,6 +70,7 @@ class SaleStatusService
         return [
             'card' => in_array('CARD', $accepted, true) && $this->stripe->isEnabled(),
             'bank' => in_array('BANK', $accepted, true) && $this->bank->isConfigured(),
+            'crypto' => $this->crypto->isAvailable($sale),
         ];
     }
 
@@ -76,7 +82,7 @@ class SaleStatusService
      *     sale: ?array<string, mixed>,
      *     current_phase: ?string,
      *     phases: list<array<string, mixed>>,
-     *     payment_methods: array{card: bool, bank: bool},
+     *     payment_methods: array{card: bool, bank: bool, crypto: bool},
      *     url: string,
      * }
      */
@@ -93,7 +99,7 @@ class SaleStatusService
                 'sale' => null,
                 'current_phase' => null,
                 'phases' => [],
-                'payment_methods' => ['card' => false, 'bank' => false],
+                'payment_methods' => ['card' => false, 'bank' => false, 'crypto' => false],
                 'url' => $url,
             ];
         }
@@ -111,7 +117,7 @@ class SaleStatusService
             && ($p->ends_at === null || ! $launched || $p->ends_at->isFuture()));
 
         $state = match (true) {
-            $active !== null && ($methods['card'] || $methods['bank']) && $ready => self::OPEN,
+            $active !== null && ($methods['card'] || $methods['bank'] || $methods['crypto']) && $ready => self::OPEN,
             $launched && ! $sellableLeft => self::CLOSED,
             default => self::PREPARING,
         };
@@ -248,7 +254,11 @@ class SaleStatusService
 
     private function methodsText(array $methods): string
     {
-        $names = array_keys(array_filter(['บัตรเครดิต/เดบิต' => $methods['card'] ?? false, 'โอนผ่านธนาคาร' => $methods['bank'] ?? false]));
+        $names = array_keys(array_filter([
+            'บัตรเครดิต/เดบิต' => $methods['card'] ?? false,
+            'โอนผ่านธนาคาร' => $methods['bank'] ?? false,
+            'USDT (คริปโต)' => $methods['crypto'] ?? false,
+        ]));
 
         return $names === [] ? '—' : implode(', ', $names);
     }

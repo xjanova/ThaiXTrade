@@ -2,7 +2,7 @@
 /**
  * TPIX TRADE - Admin Token Sales + Token Control
  * จัดการรอบขายเหรียญ TPIX + ดู master wallet + transactions
- * รองรับ: Stripe + USDT payment | ไม่มีการถอนเป็นเงินสด
+ * รองรับ: Stripe + โอนเงิน + USDT (ตรวจเงินเข้าเองจากเชน) | ไม่มีการถอนเป็นเงินสด
  * Developed by Xman Studio
  */
 
@@ -10,6 +10,7 @@ import { ref, computed } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import SaleLaunchPanel from '@/Components/Admin/SaleLaunchPanel.vue';
+import SaleCryptoPanel from '@/Components/Admin/SaleCryptoPanel.vue';
 
 const props = defineProps({
     sales: { type: Array, default: () => [] },
@@ -18,6 +19,8 @@ const props = defineProps({
     stats: { type: Object, default: () => ({}) },
     // ความพร้อม + ตารางที่จะได้ถ้ากดเปิดรอบขายวันนี้
     launch: { type: Object, default: () => ({}) },
+    // ทาง USDT — สถานะการเปิดรับ + เงินเข้าที่รอทีมงานตัดสิน
+    crypto: { type: Object, default: () => ({}) },
 });
 
 // Tab ปัจจุบัน
@@ -319,6 +322,8 @@ function statusBadge(s) {
             <div v-if="activeTab === 'sales'">
                 <!-- เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด ไม่ใช่วันที่ตั้งไว้ล่วงหน้า -->
                 <SaleLaunchPanel :launch="launch" />
+
+                <SaleCryptoPanel :crypto="crypto" />
 
                 <div class="flex justify-end mb-4">
                     <button class="btn-primary px-4 py-2 text-sm font-semibold" @click="openCreateSale">+ New Sale</button>

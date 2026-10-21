@@ -177,15 +177,23 @@ trait FakesBridgeChains
     /** Transfer(from → vault) ของ USDT บนเชนต้นทาง — คืน tx hash */
     protected function fakeDeposit(int $chainId, string $from, string $raw, int $block, ?string $txFrom = null, int $logIndex = 0, ?string $token = null, ?string $txHash = null): string
     {
-        $token ??= $chainId === 56 ? $this->usdtBsc : $this->usdtEth;
         $txHash ??= '0x'.hash('sha256', "dep:{$chainId}:{$from}:{$raw}:{$block}:{$logIndex}:".count($this->chainState[$chainId]['logs']));
+
+        return $this->fakeTransfer($chainId, $from, $this->vault, $raw, $block, $txFrom, $logIndex, $token, $txHash);
+    }
+
+    /** Transfer(from → to) ของเหรียญ ERC-20 บนเชนต้นทาง (ปริยาย = USDT ของเชนนั้น) — คืน tx hash */
+    protected function fakeTransfer(int $chainId, string $from, string $to, string $raw, int $block, ?string $txFrom = null, int $logIndex = 0, ?string $token = null, ?string $txHash = null): string
+    {
+        $token ??= $chainId === 56 ? $this->usdtBsc : $this->usdtEth;
+        $txHash ??= '0x'.hash('sha256', "xfer:{$chainId}:{$from}:{$to}:{$raw}:{$block}:{$logIndex}:".count($this->chainState[$chainId]['logs']));
 
         $log = [
             'address' => strtolower($token),
             'topics' => [
                 Abi::topic(Abi::TRANSFER_EVENT),
                 '0x'.Abi::encAddress($from),
-                '0x'.Abi::encAddress($this->vault),
+                '0x'.Abi::encAddress($to),
             ],
             'data' => '0x'.Abi::encUint($raw),
             'blockNumber' => '0x'.dechex($block),
@@ -265,7 +273,8 @@ trait FakesBridgeChains
                 }
                 $n = $tag === 'latest' ? $s['latest'] : hexdec($tag);
 
-                return $ok(['number' => '0x'.dechex($n), 'timestamp' => '0x'.dechex(1760000000 + $n * 2)]);
+                // time_base ตั้งทับได้ต่อเชน — เทสต์ที่ตัดสินด้วย "เวลาบล็อก" ต้องให้บล็อกตรงกับนาฬิกาของเทสต์
+                return $ok(['number' => '0x'.dechex($n), 'timestamp' => '0x'.dechex(($s['time_base'] ?? 1760000000) + $n * 2)]);
 
             case 'eth_getLogs':
                 if ($s['fail_logs']) {
