@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\AuditLog;
 use App\Models\SiteSetting;
 use App\Models\StabilityDeposit;
+use App\Models\StabilityTransaction;
 use App\Services\TpixDexService;
 use App\Support\Wei;
 use Tests\Support\FakesStabilizerChain;
@@ -168,6 +169,72 @@ class StabilizerAdminTest extends TestCase
             ->assertSessionHasErrors('tx_hash');
 
         $this->assertSame(0, StabilityDeposit::count());
+    }
+
+    /** ไม้ขายของกองทุนเองมี USDT จากพูลเข้ากระเป๋า — ต้องไม่กลายเป็น "เงินฝากที่มีที่มาชัด" */
+    public function test_a_transaction_signed_by_the_stabilizer_itself_is_not_a_deposit(): void
+    {
+        $hash = '0x'.str_repeat('d', 64);
+        $this->receiptFor($hash);
+        $this->chainReceipts[$hash]['logs'] = [$this->usdtTransferLog($this->sPair, $this->sWallet, '300')];
+
+        StabilityTransaction::create([
+            'purpose' => 'swap', 'side' => 'sell', 'token_in' => 'tpix', 'amount_in_wei' => Wei::toWei('3000', 18),
+            'nonce' => 0, 'tx_hash' => $hash, 'raw_tx' => '0xraw', 'status' => 'confirmed', 'signed_at' => now(),
+        ]);
+
+        $this->actingAs($this->owner, 'admin')
+            ->post('/admin/stabilizer/deposits', ['token' => 'usdt', 'tx_hash' => $hash])
+            ->assertSessionHasErrors('tx_hash');
+
+        $this->assertSame(0, StabilityDeposit::count());
+    }
+
+    /** USDT จากพูล/router/กระเป๋ากองทุนเองไม่ใช่เงินใหม่ — นับเฉพาะผู้ส่งจากข้างนอก */
+    public function test_transfers_from_the_pool_router_or_the_reserve_wallet_itself_are_not_counted(): void
+    {
+        $only = '0x'.str_repeat('f', 64);
+        $this->receiptFor($only);
+        $this->chainReceipts[$only]['logs'] = [
+            $this->usdtTransferLog($this->sPair, $this->sWallet, '300'),
+            $this->usdtTransferLog($this->sRouter, $this->sWallet, '20'),
+            $this->usdtTransferLog($this->sWallet, $this->sWallet, '50'),
+        ];
+
+        $this->actingAs($this->owner, 'admin')
+            ->post('/admin/stabilizer/deposits', ['token' => 'usdt', 'tx_hash' => $only])
+            ->assertSessionHasErrors('tx_hash');
+        $this->assertSame(0, StabilityDeposit::count());
+
+        // ธุรกรรมเดียวกันที่มีเงินจากข้างนอกปนอยู่ด้วย — นับเฉพาะส่วนของข้างนอก
+        $mixed = '0x'.str_repeat('a', 63).'b';
+        $outsider = '0x'.str_repeat('9', 40);
+        $this->receiptFor($mixed);
+        $this->chainReceipts[$mixed]['logs'] = [
+            $this->usdtTransferLog($this->sPair, $this->sWallet, '300'),
+            $this->usdtTransferLog($outsider, $this->sWallet, '125'),
+        ];
+
+        $this->actingAs($this->owner, 'admin')
+            ->post('/admin/stabilizer/deposits', ['token' => 'usdt', 'tx_hash' => $mixed])
+            ->assertSessionHasNoErrors();
+
+        $deposit = StabilityDeposit::firstOrFail();
+        $this->assertSame(Wei::toWei('125', 6), $deposit->amount_wei);
+        $this->assertSame($outsider, $deposit->from_address);
+    }
+
+    private function usdtTransferLog(string $from, string $to, string $amount): array
+    {
+        return [
+            'address' => $this->sUsdt,
+            'topics' => [
+                app(TpixDexService::class)->eventTopic('Transfer(address,address,uint256)'),
+                '0x'.TpixDexService::encAddress($from),
+                '0x'.TpixDexService::encAddress($to),
+            ],
+            'data' => '0x'.TpixDexService::encUint(Wei::toWei($amount, 6)),
+        ];
     }
 
     public function test_preview_evaluates_without_recording(): void
