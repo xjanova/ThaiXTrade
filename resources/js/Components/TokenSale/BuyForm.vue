@@ -176,7 +176,7 @@ async function submitOrder() {
 
     try {
         if (method.value === 'card') {
-            const res = await tokenSaleStore.createStripeCheckout(payload);
+            const res = await withVerifiedWallet(() => tokenSaleStore.createStripeCheckout(payload));
 
             if (!res.ok) {
                 error.value = res.message;
@@ -189,7 +189,7 @@ async function submitOrder() {
             return;
         }
 
-        const res = await tokenSaleStore.createBankOrder(payload);
+        const res = await withVerifiedWallet(() => tokenSaleStore.createBankOrder(payload));
 
         if (!res.ok) {
             error.value = res.message;
@@ -201,6 +201,31 @@ async function submitOrder() {
     } finally {
         isSubmittingOrder.value = false;
     }
+}
+
+/**
+ * ยิงคำสั่งซื้อ — ถ้าเซิร์ฟเวอร์ลืมการยืนยันกระเป๋าไปแล้ว ให้ขอลายเซ็นใหม่แล้วลองอีกครั้งเดียว
+ *
+ * การยืนยันกระเป๋าฝั่งเซิร์ฟเวอร์อยู่ได้ 4 ชั่วโมงและถูกล้างทุกครั้งที่ deploy แต่หน้าเว็บ
+ * ยังโชว์ว่า "เชื่อมกระเป๋าแล้ว" — เดิมผู้ซื้อกดจ่ายแล้วเจอ error เฉยๆ ซื้อไม่ได้เลย
+ * (เจอจริง 2026-10-21 หลัง deploy หน้าซื้อด้วยบัตร) ตอนนี้กดครั้งเดียวจบ: เซ็นแล้วไปต่อ
+ */
+async function withVerifiedWallet(request) {
+    const res = await request();
+    if (res.ok || !['WALLET_NOT_VERIFIED', 'WALLET_IP_MISMATCH', 'FORBIDDEN'].includes(res.code)) {
+        return res;
+    }
+
+    try {
+        const signed = await walletStore.verifyOwnership();
+        if (!signed) {
+            return { ok: false, message: 'กรุณาปลดล็อกกระเป๋า แล้วกดซื้ออีกครั้ง' };
+        }
+    } catch {
+        return { ok: false, message: 'ต้องเซ็นยืนยันว่าเป็นเจ้าของกระเป๋าก่อนซื้อ (ไม่เสียค่าแก๊ส) — กดซื้ออีกครั้งแล้วกดยืนยันในกระเป๋า' };
+    }
+
+    return request();
 }
 
 function resetBankOrder() {

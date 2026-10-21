@@ -110,6 +110,35 @@ describe('BuyForm — card payment', () => {
         expect(window.location.href).toContain('checkout.stripe.com');
     });
 
+    it('asks the wallet to sign again and retries when the server forgot the verification', async () => {
+        saleStore.createStripeCheckout
+            .mockResolvedValueOnce({ ok: false, code: 'WALLET_NOT_VERIFIED', message: 'Wallet ownership not verified.' })
+            .mockResolvedValueOnce({ ok: true, url: 'https://checkout.stripe.com/c/pay/cs_retry' });
+        wallet.verifyOwnership = vi.fn(async () => true);
+
+        const wrapper = mount(BuyForm);
+        await typeAmount(wrapper, 5);
+        await wrapper.find('[data-testid="submit-order"]').trigger('click');
+        await flushPromises();
+
+        expect(wallet.verifyOwnership).toHaveBeenCalledTimes(1);
+        expect(saleStore.createStripeCheckout).toHaveBeenCalledTimes(2);
+        expect(window.location.href).toContain('cs_retry');
+    });
+
+    it('tells the buyer to sign when they refuse the signature', async () => {
+        saleStore.createStripeCheckout.mockResolvedValueOnce({ ok: false, code: 'WALLET_NOT_VERIFIED', message: 'x' });
+        wallet.verifyOwnership = vi.fn(async () => { throw new Error('User rejected'); });
+
+        const wrapper = mount(BuyForm);
+        await typeAmount(wrapper, 5);
+        await wrapper.find('[data-testid="submit-order"]').trigger('click');
+        await flushPromises();
+
+        expect(saleStore.createStripeCheckout).toHaveBeenCalledTimes(1);
+        expect(wrapper.text()).toContain('ต้องเซ็นยืนยันว่าเป็นเจ้าของกระเป๋าก่อนซื้อ');
+    });
+
     it('blocks amounts below the minimum and says why', async () => {
         const wrapper = mount(BuyForm);
         await typeAmount(wrapper, 2);
