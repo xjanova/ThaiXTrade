@@ -31,6 +31,7 @@ class TradingFeeController extends Controller
         OrderTicketService::ERR_TICKET_USED => 'ใบอนุญาตนี้ถูกใช้ไปแล้ว',
         OrderTicketService::ERR_TICKET_EXPIRED => 'ใบอนุญาตหมดอายุแล้ว กรุณาขอใหม่',
         OrderTicketService::ERR_FEE_TX_REQUIRED => 'ต้องมีธุรกรรมการจ่ายค่าบริการก่อนถึงวางไม้ได้',
+        OrderTicketService::ERR_ONCHAIN_NOT_SUPPORTED => 'จ่ายค่าบริการบนเชนไม่ต้องขอใบอนุญาต — ระบบหักให้ตอนสวอป',
         TradingTopupService::ERR_NO_TREASURY => 'ยังไม่เปิดให้เติมเครดิต — ผู้ดูแลระบบยังไม่ได้ตั้งกระเป๋ารับเงิน',
         TradingTopupService::ERR_TX_NOT_FOUND => 'หาธุรกรรมนี้บนเชนไม่เจอ — รอสักครู่แล้วลองใหม่',
         TradingTopupService::ERR_TX_FAILED => 'ธุรกรรมนี้ไม่สำเร็จบนเชน จึงลงเครดิตให้ไม่ได้',
@@ -136,9 +137,10 @@ class TradingFeeController extends Controller
             'order_value_usd' => ['required', 'numeric', 'gt:0'],
             'chain_id' => ['required', 'integer', 'min:1'],
             'method' => ['required', 'string', 'in:tpix_credit,onchain'],
-            // เฉพาะทาง onchain — ต้องจ่ายมาก่อนถึงขอใบอนุญาตได้
-            'fee_tx_hash' => ['required_if:method,onchain', 'nullable', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
-            'fee_amount' => ['required_if:method,onchain', 'nullable', 'numeric', 'gt:0'],
+            // ทาง onchain ไม่ออกตั๋วแล้ว (ดู OrderTicketService::issueWithOnchainFee) —
+            // ไม่บังคับช่องเหล่านี้ เพื่อให้ client เก่าได้รหัส ONCHAIN_FEE_NOT_SUPPORTED ที่อ่านรู้เรื่อง
+            'fee_tx_hash' => ['nullable', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
+            'fee_amount' => ['nullable', 'numeric', 'gt:0'],
             'fee_currency' => ['nullable', 'string', 'max:20'],
         ]);
 
@@ -158,9 +160,9 @@ class TradingFeeController extends Controller
                     $validated['pair'],
                     $validated['side'],
                     (float) $validated['order_value_usd'],
-                    (float) $validated['fee_amount'],
+                    (float) ($validated['fee_amount'] ?? 0),
                     $validated['fee_currency'] ?? 'USDT',
-                    $validated['fee_tx_hash'],
+                    (string) ($validated['fee_tx_hash'] ?? ''),
                 );
         } catch (RuntimeException $e) {
             return $this->failure($e->getMessage(), 422);

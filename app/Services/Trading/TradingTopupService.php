@@ -4,7 +4,7 @@ namespace App\Services\Trading;
 
 use App\Models\SiteSetting;
 use App\Models\TradingCredit;
-use App\Services\Wei;
+use App\Support\Wei;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -112,10 +112,20 @@ class TradingTopupService
         }
 
         $amount = (float) $tx['value'];
-        $minimum = $this->credits->minimumTopup();
 
-        if ($amount < $minimum) {
+        /*
+         * ⚠️ ยอดต่ำกว่าขั้นต่ำก็ต้องลงเครดิตให้ — เงินออกจากกระเป๋าผู้ใช้ไปแล้วจริง
+         *
+         * เดิมตอบ BELOW_MINIMUM แล้วจบ = แพลตฟอร์มเก็บ TPIX ไว้โดยไม่มีทางคืน
+         * ผู้ใช้โอนจากแอปกระเป๋าเองจึงไม่มีหน้าเว็บคอยกันให้ ขั้นต่ำมีไว้แนะนำบนหน้าจอเท่านั้น
+         * ที่ปฏิเสธจริงมีแค่ธุรกรรมที่ไม่ได้โอน TPIX มาเลย (value = 0)
+         */
+        if ($amount <= 0) {
             throw new RuntimeException(self::ERR_BELOW_MINIMUM);
+        }
+
+        if ($amount < $this->credits->minimumTopup()) {
+            Log::info('เติมเครดิตต่ำกว่าขั้นต่ำ — ลงให้ตามยอดจริง', ['wallet' => $wallet, 'tx' => $txHash, 'amount' => $amount]);
         }
 
         $this->credits->topup($wallet, $amount, $txHash, [
