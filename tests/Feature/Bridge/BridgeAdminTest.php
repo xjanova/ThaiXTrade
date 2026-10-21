@@ -116,17 +116,84 @@ class BridgeAdminTest extends TestCase
             ->assertJsonPath('success', false);
         $this->assertSame(BridgeDeposit::STATUS_NEEDS_REVIEW, $big->fresh()->status);
 
-        // mint ไปแล้วบนสัญญา → ปรับเป็นสำเร็จ ไม่ส่งกลับเข้าคิว
+        // mint ไปแล้วบนสัญญา และ Minted ไปถึงผู้ฝากครบ → ปรับเป็นสำเร็จ ไม่ส่งกลับเข้าคิว
         $done = $this->reviewDeposit('500000000', 'sender_mismatch');
-        $this->chainState[4289]['processed'][$done->deposit_id] = true;
+        $mintTx = $this->fakeMinted($done->deposit_id, $this->alice, '500000000');
         $this->asAdmin()->postJson("/admin/bridge/deposits/{$done->id}/approve")->assertOk();
         $this->assertSame(BridgeDeposit::STATUS_MINTED, $done->fresh()->status);
+        $this->assertSame($mintTx, $done->fresh()->mint_tx_hash, 'ลิงก์ไปธุรกรรมที่ mint จริง');
 
         // อ่านเชนไม่ได้ → ไม่เดา
         $other = $this->reviewDeposit('400000000', 'kyc_required');
         $this->chainState[4289]['down'] = true;
         $this->asAdmin()->postJson("/admin/bridge/deposits/{$other->id}/approve")->assertStatus(503);
         $this->assertSame(BridgeDeposit::STATUS_NEEDS_REVIEW, $other->fresh()->status);
+    }
+
+    #[Test]
+    public function a_minted_elsewhere_deposit_can_only_be_closed_when_minted_reached_the_depositor(): void
+    {
+        // คีย์ relayer ที่หลุด mint depositId นี้เข้ากระเป๋าตัวเอง — เดิมกดอนุมัติแล้วกลายเป็น "สำเร็จ" ผู้ฝากไม่ได้เงิน
+        $stolen = $this->reviewDeposit('500000000', 'minted_elsewhere');
+        $this->fakeMinted($stolen->deposit_id, $this->bob, '500000000');
+
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$stolen->id}/approve")
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+        $this->assertSame(BridgeDeposit::STATUS_NEEDS_REVIEW, $stolen->fresh()->status);
+
+        // สัญญาบอกว่า mint แล้วแต่หา Minted ไม่เจอ = พิสูจน์ไม่ได้ → ไม่ปิดเป็นสำเร็จ
+        $unknown = $this->reviewDeposit('400000000', 'minted_elsewhere');
+        $this->chainState[4289]['processed'][$unknown->deposit_id] = true;
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$unknown->id}/approve")->assertStatus(422);
+        $this->assertSame(BridgeDeposit::STATUS_NEEDS_REVIEW, $unknown->fresh()->status);
+    }
+
+    #[Test]
+    public function a_deposit_whose_old_mint_tx_can_still_land_is_neither_reapproved_nor_rejected(): void
+    {
+        $hash = '0x'.str_repeat('5', 64);
+        $d = $this->reviewDeposit('300000000', 'stuck_pending');
+        $d->update(['mint_tx_hash' => $hash, 'mint_nonce' => 0, 'mint_raw_tx' => '0xf86c00']);
+        // ยังอยู่ใน mempool · nonce ของ relayer บนเชนยังเป็น 0
+        $this->chainState[4289]['txs'][$hash] = ['hash' => $hash, 'from' => strtolower($this->relayerAddr), 'nonce' => '0x0', 'blockNumber' => null];
+
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$d->id}/approve")->assertStatus(409);
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$d->id}/reject", ['reason' => 'คืนเงินแล้ว'])->assertStatus(409);
+        $this->assertSame(BridgeDeposit::STATUS_NEEDS_REVIEW, $d->fresh()->status);
+
+        // nonce ถูกใช้ไปแล้ว (เจ้าของส่งธุรกรรมแทนที่) และสัญญายังไม่เคย mint → ปฏิเสธแล้วคืนเงินด้วยมือได้
+        $this->chainState[4289]['nonce'][strtolower($this->relayerAddr)] = 1;
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$d->id}/reject", ['reason' => 'คืนเงินจาก vault แล้ว'])->assertOk();
+        $this->assertSame(BridgeDeposit::STATUS_REJECTED, $d->fresh()->status);
+    }
+
+    #[Test]
+    public function a_withdrawal_with_a_dead_payout_tx_is_re_paid_only_with_on_chain_proof_of_the_nonce(): void
+    {
+        $w = $this->reviewWithdrawal(strtolower($this->bob), 56, 'nonce_consumed');
+        $w->update([
+            'payout_tx_hash' => '0x'.str_repeat('6', 64), 'payout_nonce' => 3,
+            'payout_from' => strtolower($this->payoutAddr), 'payout_raw_tx' => '0xf86c03',
+        ]);
+        $this->chainState[56]['nonce'][strtolower($this->payoutAddr)] = 4;
+
+        // ไม่มีใบเสร็จ + nonce ถูกใช้ แต่ไม่รู้ว่าใครใช้ → ยังห้ามจ่าย
+        $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/approve")
+            ->assertStatus(409)
+            ->assertJsonPath('needs_nonce_proof', true);
+
+        // หลักฐานปลอม (ธุรกรรมของกระเป๋าอื่น) → ยังห้าม
+        $foreign = $this->fakeCancelTx(56, $this->alice, 3);
+        $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/approve", ['nonce_tx_hash' => $foreign])->assertStatus(409);
+        $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/approve", ['nonce_tx_hash' => 'not-a-hash'])->assertStatus(422);
+        $this->assertSame(BridgeWithdrawal::STATUS_NEEDS_REVIEW, $w->fresh()->status);
+
+        // ธุรกรรมยกเลิกที่เจ้าของส่งเองด้วย nonce 3 → พิสูจน์ได้ → เข้าคิวจ่ายใหม่
+        $cancel = $this->fakeCancelTx(56, $this->payoutAddr, 3);
+        $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/approve", ['nonce_tx_hash' => $cancel])->assertOk();
+        $this->assertSame(BridgeWithdrawal::STATUS_PENDING, $w->fresh()->status);
+        $this->assertNull($w->fresh()->payout_tx_hash);
     }
 
     #[Test]
@@ -181,15 +248,21 @@ class BridgeAdminTest extends TestCase
         $this->asAdmin()->putJson('/admin/bridge/settings', ['fees' => [1 => '2']])->assertStatus(422);
         // รูปแบบผิด
         $this->asAdmin()->putJson('/admin/bridge/settings', ['limits' => ['min_deposit' => '1.1234567']])->assertStatus(422);
+        // วงเงินฝากต่อครั้งเกิน maxPerTx บนสัญญา (1,000) → ผ่านด่านเว็บได้แต่ mint ไม่ได้ เงินค้าง vault → ปฏิเสธ
+        $this->asAdmin()->putJson('/admin/bridge/settings', ['limits' => ['max_deposit_per_tx' => '1500', 'max_deposit_per_address_daily' => '3000']])
+            ->assertStatus(422);
+        // ค่าธรรมเนียมฝาก ≥ ขั้นต่ำ → ฝากขั้นต่ำแล้วได้ศูนย์ → ปฏิเสธ
+        $this->asAdmin()->putJson('/admin/bridge/settings', ['limits' => ['deposit_fee' => '1']])->assertStatus(422);
+        $this->assertSame('1000', app(BridgeConfig::class)->limit('max_deposit_per_tx'));
 
         $this->asAdmin()->putJson('/admin/bridge/settings', [
-            'limits' => ['max_deposit_per_tx' => '1500', 'max_deposit_per_address_daily' => '3000'],
+            'limits' => ['max_deposit_per_tx' => '900', 'max_deposit_per_address_daily' => '3000'],
             'fees' => [1 => '1.5'],
             'chains' => [1 => false],
         ])->assertOk();
 
         $config = app(BridgeConfig::class);
-        $this->assertSame('1500', $config->limit('max_deposit_per_tx'));
+        $this->assertSame('900', $config->limit('max_deposit_per_tx'));
         $this->assertSame('1.5', $config->withdrawFee(1));
         $this->assertFalse($config->chainEnabled(1));
         $this->assertTrue($config->chainEnabled(56));

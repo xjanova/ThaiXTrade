@@ -86,6 +86,10 @@ return [
     // รอใบเสร็จหลัง broadcast สูงสุดกี่วินาทีในรอบเดียว (ได้ใบเสร็จเร็ว = ทำรายการถัดไปต่อได้ในรอบเดียวกัน)
     'receipt_wait_seconds' => (int) env('BRIDGE_RECEIPT_WAIT_SECONDS', 30),
 
+    // ธุรกรรม mint/จ่ายที่ส่งแล้วไม่ลงบล็อกนานเกินนี้ (นาที) = ค้าง → แจ้งเตือน critical + needs_review (stuck_pending)
+    // คิวของเชนนั้นหยุดรอจนกว่าธุรกรรมเดิมจะลงบล็อกหรือถูกแทนที่ด้วย nonce เดิม (ไม่เซ็นซ้อน nonce)
+    'stuck_after_minutes' => (int) env('BRIDGE_STUCK_AFTER_MINUTES', 30),
+
     /*
     |--------------------------------------------------------------------------
     | เชน TPIX (4289) — ฝั่ง mint / burn
@@ -108,6 +112,13 @@ return [
         'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpix.online'),
         'log_chunk' => 900,
         'max_blocks_per_run' => 18000,
+        // อ่านย้อนทับช่วงที่อ่านไปแล้วทุกรอบ — โหนดที่ตามหัวไม่ทันตอบ log ไม่ครบได้โดยไม่ error
+        // (อ่านซ้ำปลอดภัย: unique (tx, log) กันบันทึกซ้ำ) · ไม่ย้อนต่ำกว่าบล็อกแรกที่เคยสแกน
+        'rescan_blocks' => 150,
+        // ใช้เดาบล็อกจากเวลา (ยืนยันด้วย timestamp จริงเสมอ) ตอนไล่หา Minted ของ depositId
+        'block_seconds' => 2,
+        // ไล่หา Minted ได้ไกลสุดกี่บล็อกต่อครั้ง (~4.6 วันที่ 2 วิ/บล็อก) — เกินนี้ = พิสูจน์ไม่ได้ ไม่เดา
+        'verify_max_blocks' => (int) env('BRIDGE_TPIX_VERIFY_MAX_BLOCKS', 200000),
         // ว่าง = เริ่มที่บล็อกปัจจุบันตอนรันครั้งแรก (ไม่ไล่ย้อนหลัง)
         'start_block' => env('BRIDGE_TPIX_START_BLOCK'),
     ],
@@ -193,6 +204,11 @@ return [
     |
     | rpc: ตั้งทับได้ด้วย BRIDGE_RPC_<chainId> (คั่นด้วย ,) — ตัวแรกที่ตอบได้ถูกใช้
     |
+    | enabled: ค่าปริยาย "ปิด" ทุกเชนยกเว้น BSC (fail-closed) — ลืมตั้ง .env ต้องไม่ทำให้เชนที่ยังไม่ได้ทดสอบ
+    |          (RPC / แก๊สในกระเป๋าจ่าย) เปิดรับเงินเอง · เปิดด้วย BRIDGE_CHAIN_<chainId>_ENABLED=true
+    | rescan_blocks: อ่านย้อนทับช่วงที่อ่านแล้วทุกรอบ (กันโหนดที่ตามหัวไม่ทันตอบ log ไม่ครบแบบเงียบ ๆ)
+    |                ตั้งให้ช่วงย้อน + บล็อกใหม่ต่อนาทียังอยู่ในท่อนเดียว (log_chunk) จะได้ไม่เพิ่มจำนวนครั้งที่ยิง RPC
+    |
     */
 
     'chains' => [
@@ -211,10 +227,11 @@ return [
             'min_confirmations' => 12,
             'fallback_confirmations' => 64,
             'explorer' => 'https://etherscan.io',
-            'enabled' => (bool) env('BRIDGE_CHAIN_1_ENABLED', true),
+            'enabled' => (bool) env('BRIDGE_CHAIN_1_ENABLED', false),
             'withdraw_fee' => '1',
             'eta_minutes' => 20,
             'log_chunk' => 1000,
+            'rescan_blocks' => 64,
             'max_blocks_per_run' => 20000,
             'start_block' => env('BRIDGE_START_BLOCK_1'),
             'gas_price_multiplier_bps' => 12500,
@@ -241,6 +258,8 @@ return [
             'withdraw_fee' => '0.3',
             'eta_minutes' => 2,
             'log_chunk' => 1000,
+            // ~0.75 วิ/บล็อก: ย้อนทับ 600 บล็อก (~7.5 นาที) + ~80 บล็อกใหม่ต่อนาที ยังอยู่ในท่อนเดียว
+            'rescan_blocks' => 600,
             'max_blocks_per_run' => 20000,
             'start_block' => env('BRIDGE_START_BLOCK_56'),
             'gas_price_multiplier_bps' => 12000,
@@ -262,11 +281,12 @@ return [
             'min_confirmations' => 32,
             'fallback_confirmations' => 256,
             'explorer' => 'https://polygonscan.com',
-            'enabled' => (bool) env('BRIDGE_CHAIN_137_ENABLED', true),
+            'enabled' => (bool) env('BRIDGE_CHAIN_137_ENABLED', false),
             'withdraw_fee' => '0.3',
             'eta_minutes' => 3,
             // RPC ฟรีของ Polygon รับ getLogs ได้แค่ช่วงละ ~100 บล็อก (drpc ตอบ "ranges over 10000…" ตั้งแต่ 300)
             'log_chunk' => 100,
+            'rescan_blocks' => 50,
             'max_blocks_per_run' => 3000,
             'start_block' => env('BRIDGE_START_BLOCK_137'),
             'gas_price_multiplier_bps' => 13000,
@@ -289,10 +309,11 @@ return [
             'min_confirmations' => 20,
             'fallback_confirmations' => 5000,
             'explorer' => 'https://arbiscan.io',
-            'enabled' => (bool) env('BRIDGE_CHAIN_42161_ENABLED', true),
+            'enabled' => (bool) env('BRIDGE_CHAIN_42161_ENABLED', false),
             'withdraw_fee' => '0.3',
             'eta_minutes' => 20,
             'log_chunk' => 1000,
+            'rescan_blocks' => 600,
             'max_blocks_per_run' => 50000,
             'start_block' => env('BRIDGE_START_BLOCK_42161'),
             'gas_price_multiplier_bps' => 15000,
@@ -316,10 +337,11 @@ return [
             'min_confirmations' => 20,
             'fallback_confirmations' => 1800,
             'explorer' => 'https://optimistic.etherscan.io',
-            'enabled' => (bool) env('BRIDGE_CHAIN_10_ENABLED', true),
+            'enabled' => (bool) env('BRIDGE_CHAIN_10_ENABLED', false),
             'withdraw_fee' => '0.3',
             'eta_minutes' => 25,
             'log_chunk' => 1000,
+            'rescan_blocks' => 150,
             'max_blocks_per_run' => 20000,
             'start_block' => env('BRIDGE_START_BLOCK_10'),
             'gas_price_multiplier_bps' => 15000,
@@ -341,10 +363,11 @@ return [
             'min_confirmations' => 10,
             'fallback_confirmations' => 30,
             'explorer' => 'https://snowtrace.io',
-            'enabled' => (bool) env('BRIDGE_CHAIN_43114_ENABLED', true),
+            'enabled' => (bool) env('BRIDGE_CHAIN_43114_ENABLED', false),
             'withdraw_fee' => '0.3',
             'eta_minutes' => 2,
             'log_chunk' => 1000,
+            'rescan_blocks' => 150,
             'max_blocks_per_run' => 20000,
             'start_block' => env('BRIDGE_START_BLOCK_43114'),
             'gas_price_multiplier_bps' => 12500,

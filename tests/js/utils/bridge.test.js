@@ -12,6 +12,7 @@ import {
     formatUnitsPlain,
     withdrawReceiveUnits,
     checkDepositAmount,
+    depositReceiveUnits,
     isValidEvmAddress,
     stateBadge,
     explorerTx,
@@ -76,14 +77,28 @@ describe('checkDepositAmount', () => {
         expect(checkDepositAmount(null, limits).error).toBe('bridge.errAmountInvalid');
     });
 
-    it('allows but warns above the per-transfer limit (manual review)', () => {
+    it('blocks amounts above the per-transfer cap (they can never be minted — the money would be stuck in the vault)', () => {
         const result = checkDepositAmount(1500000000n, limits);
-        expect(result.error).toBeNull();
-        expect(result.warning).toBe('bridge.errAboveMax');
+        expect(result).toMatchObject({ error: 'bridge.errAboveMaxBlocked', params: { max: '1000' } });
+    });
+
+    it('uses the effective cap from the server (min of site limit and on-chain maxPerTx) when given', () => {
+        const loose = { min_deposit: '1', max_deposit_per_tx: '1500' };
+        expect(checkDepositAmount(1200000000n, loose, '1000')).toMatchObject({ error: 'bridge.errAboveMaxBlocked', params: { max: '1000' } });
+        expect(checkDepositAmount(1000000000n, loose, '1000').error).toBeNull();
     });
 
     it('passes a normal deposit', () => {
         expect(checkDepositAmount(25000000n, limits)).toEqual({ error: null, warning: null });
+    });
+});
+
+describe('depositReceiveUnits', () => {
+    it('subtracts a configured flat deposit fee and never goes negative', () => {
+        expect(depositReceiveUnits(25000000n, '0')).toBe(25000000n);
+        expect(depositReceiveUnits(25000000n, '0.5')).toBe(24500000n);
+        expect(depositReceiveUnits(300000n, '0.5')).toBe(0n);
+        expect(depositReceiveUnits(25000000n, undefined)).toBe(25000000n);
     });
 });
 
@@ -107,6 +122,11 @@ describe('stateBadge', () => {
         expect(stateBadge('paid').done).toBe(true);
         expect(stateBadge('confirming').done).toBe(false);
         expect(stateBadge('review')).toMatchObject({ tone: 'warning', done: false });
+    });
+
+    it('treats a deposit on a never-opened chain as final, but keeps polling a paused one', () => {
+        expect(stateBadge('chain_disabled')).toMatchObject({ tone: 'danger', done: true });
+        expect(stateBadge('chain_paused')).toMatchObject({ tone: 'warning', done: false });
     });
 });
 

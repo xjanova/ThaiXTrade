@@ -23,8 +23,11 @@ export const USDT_TPIX_ABI = [
     'function bridgeBurn(uint256 amount, uint256 targetChainId, string targetAddress)',
 ];
 
-/** สถานะที่จบแล้ว — เลิกถามเซิร์ฟเวอร์ */
-export const TERMINAL_STATES = ['minted', 'paid', 'rejected', 'failed', 'not_a_deposit', 'not_a_withdrawal', 'ignored', 'below_fee', 'unsupported_chain'];
+/** สถานะที่จบแล้ว — เลิกถามเซิร์ฟเวอร์ (chain_paused ไม่จบ: เปิดเชนใหม่เมื่อไหร่ตัวสแกนไล่ต่อให้เอง) */
+export const TERMINAL_STATES = ['minted', 'paid', 'rejected', 'failed', 'not_a_deposit', 'not_a_withdrawal', 'ignored', 'below_fee', 'unsupported_chain', 'chain_disabled'];
+
+/** สถานะที่เงินอยู่ใน vault แล้วแต่จะไม่ถูก mint อัตโนมัติ — ต้องบอกผู้ใช้ว่าติดต่อขอคืนได้ */
+export const REFUND_STATES = ['chain_disabled', 'ignored'];
 
 /**
  * ข้อความจากช่องกรอก → BigInt หน่วยเล็กสุดของเหรียญ — null ถ้าไม่ใช่ตัวเลขที่รับได้.
@@ -74,23 +77,35 @@ export function withdrawReceiveUnits(amountUnits, feeText) {
 /**
  * ตรวจยอดฝากกับวงเงินจากเซิร์ฟเวอร์ (หน่วย 6 ทศนิยม).
  *
+ * @param {bigint|null} units
+ * @param {object} limits  limits จาก /api/v1/bridge/info
+ * @param {string|null} effectiveMax  deposit_max_per_tx จาก info = min(วงเงินเว็บ, maxPerTx บนสัญญา)
  * @returns {{ error: string|null, params?: object, warning: string|null, warningParams?: object }}
- *   error   = ห้ามกดส่ง (ต่ำกว่าขั้นต่ำ = ไม่ถูก mint)
- *   warning = ส่งได้ แต่จะรอทีมงานตรวจ (เกินวงเงินต่อครั้ง)
+ *   error = ห้ามกดส่ง: ต่ำกว่าขั้นต่ำ (ไม่ถูก mint) · เกินต่อครั้ง (mint ไม่ได้เลยไม่ว่าใครอนุมัติ — เงินค้าง vault)
  */
-export function checkDepositAmount(units, limits) {
+export function checkDepositAmount(units, limits, effectiveMax = null) {
     if (units === null || units === undefined) return { error: 'bridge.errAmountInvalid', warning: null };
     if (units <= 0n) return { error: 'bridge.errAmountInvalid', warning: null };
 
     const min = usdtToUnits(limits?.min_deposit ?? '1');
     if (units < min) return { error: 'bridge.errBelowMin', params: { min: limits?.min_deposit ?? '1' }, warning: null };
 
-    const max = usdtToUnits(limits?.max_deposit_per_tx ?? '0');
+    // เดิมเป็นแค่คำเตือน "รอตรวจ" — แต่ยอดที่เกิน maxPerTx บนสัญญา mint ไม่ได้แม้แอดมินอนุมัติ ต้องห้ามตั้งแต่หน้าจอ
+    const maxText = effectiveMax ?? limits?.max_deposit_per_tx ?? '0';
+    const max = usdtToUnits(maxText);
     if (max > 0n && units > max) {
-        return { error: null, warning: 'bridge.errAboveMax', warningParams: { max: limits.max_deposit_per_tx } };
+        return { error: 'bridge.errAboveMaxBlocked', params: { max: maxText }, warning: null };
     }
 
     return { error: null, warning: null };
+}
+
+/** ยอดที่ได้รับจริงเมื่อฝาก = จำนวน − ค่าธรรมเนียมฝาก (หน่วย 6 ทศนิยม) — ไม่ติดลบ */
+export function depositReceiveUnits(units6, feeText) {
+    const fee = usdtToUnits(feeText ?? '0');
+    const amount = BigInt(units6 ?? 0n);
+
+    return amount > fee ? amount - fee : 0n;
 }
 
 /**
@@ -120,6 +135,7 @@ export function stateBadge(state) {
         review: 'warning', awaiting_liquidity: 'warning', unknown: 'warning',
         rejected: 'danger', failed: 'danger', not_found: 'danger', not_a_deposit: 'danger',
         not_a_withdrawal: 'danger', unsupported_chain: 'danger', ignored: 'muted', below_fee: 'muted',
+        chain_disabled: 'danger', chain_paused: 'warning',
     }[state] ?? 'muted';
 
     return { labelKey: `bridge.state.${state}`, tone, done: TERMINAL_STATES.includes(state) };

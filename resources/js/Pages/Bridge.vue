@@ -30,6 +30,8 @@ import {
     usdtToUnits,
     withdrawReceiveUnits,
     checkDepositAmount,
+    depositReceiveUnits,
+    REFUND_STATES,
     isValidEvmAddress,
     stateBadge,
     explorerTx,
@@ -78,6 +80,11 @@ const enabledChains = computed(() => chains.value.filter((c) => c.enabled));
 const isOpen = computed(() => info.value?.enabled === true);
 const tpixChainId = computed(() => info.value?.tpix?.chain_id ?? 4289);
 const limits = computed(() => info.value?.limits ?? {});
+// ฝากต่อครั้งได้จริง = min(วงเงินเว็บ, maxPerTx บนสัญญา) — เซิร์ฟเวอร์คำนวณให้ (เกินนี้ mint ไม่ได้เลย)
+const depositMax = computed(() => info.value?.deposit_max_per_tx ?? limits.value.max_deposit_per_tx ?? null);
+// ค่าธรรมเนียมฝากแบบคงที่ (หน่วย USDT) — ปกติเป็นศูนย์ แต่แอดมินตั้งได้ จึงห้ามเขียน "ฟรี" ตายตัว
+const depositFeeText = computed(() => String(limits.value.deposit_fee ?? '0'));
+const hasDepositFee = computed(() => usdtToUnits(depositFeeText.value) > 0n);
 
 async function fetchInfo() {
     try {
@@ -107,7 +114,8 @@ const depositUnits6 = computed(() => {
     const diff = sourceChain.value.usdt_decimals - USDT_TPIX_DECIMALS;
     return diff >= 0 ? depositUnits.value / 10n ** BigInt(diff) : depositUnits.value * 10n ** BigInt(-diff);
 });
-const depositCheck = computed(() => (depositAmount.value === '' ? { error: null, warning: null } : checkDepositAmount(depositUnits6.value, limits.value)));
+const depositCheck = computed(() => (depositAmount.value === '' ? { error: null, warning: null } : checkDepositAmount(depositUnits6.value, limits.value, depositMax.value)));
+const depositReceive = computed(() => (depositUnits6.value === null ? null : depositReceiveUnits(depositUnits6.value, depositFeeText.value)));
 const onSourceChain = computed(() => walletStore.chainId === selectedChainId.value);
 const insufficientSource = computed(() => sourceBalance.value !== null && depositUnits.value !== null && depositUnits.value > sourceBalance.value);
 const canDeposit = computed(() => isOpen.value && sourceChain.value?.enabled && walletStore.isConnected && !busy.value && ackOwnWallet.value
@@ -474,10 +482,10 @@ watch(selectedChainId, () => {
                     </div>
 
                     <div class="rounded-xl bg-dark-800/40 p-3 space-y-1 text-xs">
-                        <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.depositFee') }}</span><span class="text-white">{{ t('bridge.free') }}</span></div>
-                        <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.youReceive') }}</span><span class="text-trading-green font-semibold">{{ depositUnits6 !== null && !depositCheck.error ? fmt6(depositUnits6) : '—' }} {{ t('bridge.receiveOnTpix') }}</span></div>
+                        <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.depositFee') }}</span><span class="text-white" data-test="deposit-fee">{{ hasDepositFee ? t('bridge.feeFlat', { fee: depositFeeText }) : t('bridge.free') }}</span></div>
+                        <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.youReceive') }}</span><span class="text-trading-green font-semibold">{{ depositReceive !== null && !depositCheck.error ? fmt6(depositReceive) : '—' }} {{ t('bridge.receiveOnTpix') }}</span></div>
                         <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.eta') }}</span><span class="text-white">{{ t('bridge.etaMinutes', { minutes: sourceChain?.eta_minutes ?? '—' }) }}</span></div>
-                        <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.minDeposit') }} / {{ t('bridge.maxPerTx') }}</span><span class="text-white">{{ limits.min_deposit }} / {{ limits.max_deposit_per_tx }} USDT</span></div>
+                        <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.minDeposit') }} / {{ t('bridge.maxPerTx') }}</span><span class="text-white">{{ limits.min_deposit }} / {{ depositMax }} USDT</span></div>
                         <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.dailyPerAddress') }}</span><span class="text-white">{{ limits.max_deposit_per_address_daily }} USDT</span></div>
                     </div>
 
@@ -586,7 +594,8 @@ watch(selectedChainId, () => {
                         <option value="withdraw">{{ t('bridge.trackWithdrawal') }}</option>
                     </select>
                     <select v-if="manualKind === 'deposit'" v-model="manualChainId" class="bg-dark-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white">
-                        <option v-for="c in chains" :key="c.chain_id" :value="c.chain_id">{{ c.name }}</option>
+                        <!-- เชนที่ปิดยังให้เลือกได้ (คนที่โอนผิดเชนต้องเห็นคำแนะนำขอคืนเงิน) แต่บอกชัดว่าปิดอยู่ -->
+                        <option v-for="c in chains" :key="c.chain_id" :value="c.chain_id">{{ c.enabled ? c.name : `${c.name} (${t('bridge.chainDisabled')})` }}</option>
                     </select>
                     <input v-model.trim="manualHash" type="text" :placeholder="t('bridge.trackTxHash')" spellcheck="false"
                         class="flex-1 min-w-0 bg-dark-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white font-mono" />
@@ -619,6 +628,7 @@ watch(selectedChainId, () => {
                         </div>
 
                         <template v-if="statuses[trackKey(entry)]">
+                            <p v-if="REFUND_STATES.includes(statuses[trackKey(entry)].state)" class="text-amber-300" data-test="refund-hint">{{ t('bridge.refundHint') }}</p>
                             <p v-if="statuses[trackKey(entry)].state === 'confirming' && statuses[trackKey(entry)].confirmations !== undefined" class="text-dark-400">
                                 {{ statuses[trackKey(entry)].final ? t('bridge.finalSoon') : t('bridge.confirmations', { n: statuses[trackKey(entry)].confirmations ?? 0 }) }}
                                 · {{ statuses[trackKey(entry)].amount }} USDT
@@ -645,8 +655,11 @@ watch(selectedChainId, () => {
                 <h3 class="text-sm font-semibold text-white mb-3">{{ t('bridge.history') }}</h3>
                 <p v-if="!history.deposits.length && !history.withdrawals.length" class="text-xs text-dark-500">{{ t('bridge.historyEmpty') }}</p>
                 <div v-else class="space-y-1.5 text-xs">
-                    <div v-for="d in history.deposits" :key="`d${d.id}`" class="flex justify-between gap-2 bg-dark-800/40 rounded-lg px-3 py-2">
-                        <span class="text-white">{{ t('bridge.deposits') }} · {{ chainName(d.source_chain_id) }} · {{ d.amount }} USDT</span>
+                    <div v-for="d in history.deposits" :key="`d${d.id}`" class="flex flex-wrap justify-between gap-2 bg-dark-800/40 rounded-lg px-3 py-2">
+                        <span class="text-white">
+                            {{ t('bridge.deposits') }} · {{ chainName(d.source_chain_id) }} · {{ d.amount }} USDT
+                            <span v-if="d.status === 'ignored'" class="block text-[11px] text-amber-300">{{ t('bridge.state.ignored') }} — {{ t('bridge.refundHint') }}</span>
+                        </span>
                         <span :class="['px-2 py-0.5 rounded-md border', toneClass[stateBadge(d.status === 'needs_review' ? 'review' : d.status === 'confirmed' ? 'queued' : d.status).tone]]">
                             {{ t(stateBadge(d.status === 'needs_review' ? 'review' : d.status === 'confirmed' ? 'queued' : d.status).labelKey) }}
                         </span>

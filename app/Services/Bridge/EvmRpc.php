@@ -42,43 +42,71 @@ class EvmRpc
     public function request(string $method, array $params = []): ?array
     {
         foreach ($this->urls as $url) {
-            try {
-                $response = Http::withHeaders(['User-Agent' => $this->userAgent])
-                    ->timeout($this->timeout)
-                    ->asJson()
-                    ->post($url, ['jsonrpc' => '2.0', 'id' => 1, 'method' => $method, 'params' => $params]);
-            } catch (\Throwable $e) {
-                Log::warning('bridge rpc: เรียกไม่สำเร็จ', ['chain' => $this->chainId, 'method' => $method, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+            $answer = $this->requestUrl($url, $method, $params);
 
-                continue;
-            }
-
-            if (! $response->successful()) {
-                continue;
-            }
-
-            $data = $response->json();
-            if (! is_array($data)) {
-                continue;
-            }
-
-            if (isset($data['error'])) {
-                $message = (string) ($data['error']['message'] ?? '');
-
-                // ปัญหาของตัว RPC (ช่วงยาวเกิน / โควตาหมด / ไม่รองรับ) — ตัวอื่นอาจตอบได้
-                if (preg_match('/rate|limit|too many|range|exceed|unsupported|not supported|timeout|capacity/i', $message)) {
-                    continue;
-                }
-
-                return ['error' => $data['error']];
-            }
-
-            if (array_key_exists('result', $data)) {
-                return ['result' => $data['result']];
+            if ($answer !== null) {
+                return $answer;
             }
         }
 
         return null;
+    }
+
+    /**
+     * เรียก RPC ตัวเดียว — null = ตัวนี้ตอบไม่ได้ (ล่ม / ไม่ใช่ JSON / ปัญหาของตัว RPC เอง) ให้ลองตัวถัดไป.
+     */
+    private function requestUrl(string $url, string $method, array $params): ?array
+    {
+        try {
+            $response = Http::withHeaders(['User-Agent' => $this->userAgent])
+                ->timeout($this->timeout)
+                ->asJson()
+                ->post($url, ['jsonrpc' => '2.0', 'id' => 1, 'method' => $method, 'params' => $params]);
+        } catch (\Throwable $e) {
+            Log::warning('bridge rpc: เรียกไม่สำเร็จ', ['chain' => $this->chainId, 'method' => $method, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $data = $response->json();
+        if (! is_array($data)) {
+            return null;
+        }
+
+        if (isset($data['error'])) {
+            return self::isProviderProblem($data['error']) ? null : ['error' => $data['error']];
+        }
+
+        return array_key_exists('result', $data) ? ['result' => $data['result']] : null;
+    }
+
+    /**
+     * error นี้เป็นปัญหาของ "ตัว RPC" (ตัวอื่นอาจตอบได้) หรือเป็นคำตอบจริงของเชน (เช่น execution reverted).
+     *
+     * โหนดที่ลบประวัติแล้ว (pruned / history / header not found / missing trie node) หรือโหนดที่ตามหัวไม่ทัน
+     * ตอบ error แบบนี้ได้ทั้งที่อีกตัวตอบได้ — เดิมถือเป็นคำตอบจริงแล้วหยุดทันที ตัวสแกนจึงค้างอยู่ที่ช่วงเดิม
+     * ทุกรอบตลอดไป ทั้งที่ RPC ตัวที่สองมีข้อมูลครบ (เกิดได้จริงหลังเซิร์ฟเวอร์ดับนานเกินหน้าต่างของ publicnode)
+     */
+    private static function isProviderProblem(mixed $error): bool
+    {
+        $message = is_array($error) ? (string) ($error['message'] ?? '') : (string) $error;
+        $code = is_array($error) ? (int) ($error['code'] ?? 0) : 0;
+
+        // -32005 = limit exceeded · -32603 = internal error ของตัวโหนด
+        if (in_array($code, [-32005, -32603], true)) {
+            return true;
+        }
+
+        return (bool) preg_match(
+            '/rate|limit|too many|range|exceed|unsupported|not supported|timeout|timed out|capacity'
+            .'|prun|history|archive|header not found|missing trie|unknown block|not available|unavailable'
+            .'|try again|overload|busy|temporar|syncing/i',
+            $message,
+        );
     }
 
     /** ผลลัพธ์อย่างเดียว — null ทั้งเมื่อ error และอ่านไม่ได้ */
@@ -145,6 +173,37 @@ class EvmRpc
         return is_array($result) ? $result : null;
     }
 
+    /**
+     * logs ทั้งช่วงแบบหั่นเป็นท่อน — null ถ้าท่อนไหนอ่านไม่ได้ (ได้ไม่ครบ = ห้ามสรุปว่า "ไม่มี").
+     *
+     * $stop คืน true เมื่อเจอสิ่งที่ตามหาแล้ว — หยุดอ่านท่อนที่เหลือ (ไม่ต้องไล่ทั้งช่วงเมื่อเจอแล้ว)
+     *
+     * @return array<int, array>|null
+     */
+    public function logsBetween(string $address, array $topics, int $fromBlock, int $toBlock, int $chunk, ?callable $stop = null): ?array
+    {
+        $chunk = max(1, $chunk);
+        $found = [];
+
+        for ($start = max(0, $fromBlock); $start <= $toBlock; $start += $chunk) {
+            $logs = $this->logs($address, $topics, $start, min($toBlock, $start + $chunk - 1));
+
+            if ($logs === null) {
+                return null;
+            }
+
+            foreach ($logs as $log) {
+                $found[] = $log;
+
+                if ($stop !== null && $stop($log)) {
+                    return $found;
+                }
+            }
+        }
+
+        return $found;
+    }
+
     public function receipt(string $txHash): ?array
     {
         $result = $this->result('eth_getTransactionReceipt', [$txHash]);
@@ -152,11 +211,106 @@ class EvmRpc
         return is_array($result) ? $result : null;
     }
 
+    /**
+     * ใบเสร็จจาก RPC "ทุกตัว" จนกว่าจะเจอ — ใช้ตอนที่คำว่า "ไม่มีใบเสร็จ" จะนำไปสู่การตัดสินใจเรื่องเงิน.
+     *
+     * receipt() หยุดที่ตัวแรกที่ตอบ แม้จะตอบ null เพราะโหนดตามหัวไม่ทัน/ลบ index เก่าไปแล้ว
+     * ที่นี่ถามต่อทุกตัว และแยกนับ "ตอบว่าไม่มี" กับ "อ่านไม่ได้" ไว้ให้ผู้เรียกดู
+     * ⚠️ แม้ทุกตัวตอบ null ก็ยังไม่ใช่หลักฐานว่าธุรกรรมไม่เคยลงบล็อก (BSC ลบ tx index เกิน ~2.35M บล็อก)
+     *
+     * @return array{receipt: ?array, nulls: int, errors: int}
+     */
+    public function receiptAny(string $txHash): array
+    {
+        $nulls = 0;
+        $errors = 0;
+
+        foreach ($this->urls as $url) {
+            $answer = $this->requestUrl($url, 'eth_getTransactionReceipt', [$txHash]);
+
+            if ($answer === null || isset($answer['error'])) {
+                $errors++;
+
+                continue;
+            }
+
+            if (is_array($answer['result'] ?? null)) {
+                return ['receipt' => $answer['result'], 'nulls' => $nulls, 'errors' => $errors];
+            }
+
+            $nulls++;
+        }
+
+        return ['receipt' => null, 'nulls' => $nulls, 'errors' => $errors];
+    }
+
     public function transaction(string $txHash): ?array
     {
         $result = $this->result('eth_getTransactionByHash', [$txHash]);
 
         return is_array($result) ? $result : null;
+    }
+
+    /** ธุรกรรมจาก RPC ทุกตัวจนกว่าจะเจอ (เหตุผลเดียวกับ receiptAny) — null = ไม่มีตัวไหนเจอ */
+    public function transactionAny(string $txHash): ?array
+    {
+        foreach ($this->urls as $url) {
+            $answer = $this->requestUrl($url, 'eth_getTransactionByHash', [$txHash]);
+
+            if (is_array($answer['result'] ?? null)) {
+                return $answer['result'];
+            }
+        }
+
+        return null;
+    }
+
+    /** nonce ที่ลงบล็อกแล้วของที่อยู่ (นับธุรกรรมที่ลงบล็อกแล้วเท่านั้น) — null = อ่านไม่ได้ */
+    public function nonceLatest(string $address): ?int
+    {
+        $hex = $this->result('eth_getTransactionCount', [$address, 'latest']);
+
+        return is_string($hex) && str_starts_with($hex, '0x') ? (int) Wei::hexToInt($hex) : null;
+    }
+
+    /**
+     * บล็อกที่ "เก่ากว่าหรือเท่ากับ" เวลานี้แน่นอน (ขอบล่างที่ปลอดภัยสำหรับไล่ log) — null = อ่านไม่ได้.
+     *
+     * เดาจากเวลาต่อบล็อกก่อน แล้วยืนยันด้วย timestamp จริงของบล็อกนั้น ถ้ายังใหม่เกินก็ถอยไกลขึ้นเป็นเท่าตัว
+     * (บล็อกจริงช้ากว่าที่เดา = ได้ขอบล่างเก่ากว่าที่จำเป็น ซึ่งปลอดภัย · เร็วกว่า = ถูกจับได้ด้วย timestamp)
+     */
+    public function blockAtOrBefore(int $timestamp, float $blockSeconds): ?int
+    {
+        $latest = $this->blockNumber();
+        $latestTs = $latest !== null ? $this->blockTimestamp($latest) : null;
+
+        if ($latest === null || $latestTs === null) {
+            return null;
+        }
+
+        if ($timestamp >= $latestTs) {
+            return $latest;
+        }
+
+        $perBlock = max(0.05, $blockSeconds);
+        $guess = $latest - (int) ceil(($latestTs - $timestamp) / $perBlock);
+
+        for ($i = 0; $i < 16; $i++) {
+            $block = max(0, $guess);
+            $ts = $this->blockTimestamp($block);
+
+            if ($ts === null) {
+                return null;
+            }
+
+            if ($ts <= $timestamp || $block === 0) {
+                return $block;
+            }
+
+            $guess = $block - 2 * max(1, (int) ceil(($ts - $timestamp) / $perBlock));
+        }
+
+        return null;
     }
 
     /**

@@ -62,8 +62,10 @@ class BridgeScanner
         }
 
         $cursorKey = "deposit_{$chainId}";
-        $from = $this->startCursor($cursorKey, $chain['start_block'] ?? null, $head);
-        $end = min($head, $from + max(1, (int) ($chain['max_blocks_per_run'] ?? 20000)) - 1);
+        $cursor = $this->startCursor($cursorKey, $chain['start_block'] ?? null, $head);
+        $from = $this->rescanFrom($cursorKey, $cursor, (int) ($chain['rescan_blocks'] ?? 0));
+        // งบบล็อกต่อรอบนับจากเคอร์เซอร์ (บล็อกใหม่) — ช่วงย้อนทับไม่กินงบ
+        $end = min($head, $cursor + max(1, (int) ($chain['max_blocks_per_run'] ?? 20000)) - 1);
         $chunk = max(1, (int) ($chain['log_chunk'] ?? 1000));
         $summary['from'] = $from;
 
@@ -96,7 +98,7 @@ class BridgeScanner
                 }
             }
 
-            $this->config->setCursor($cursorKey, $to + 1);
+            $cursor = $this->advanceCursor($cursorKey, $cursor, $to + 1);
             $summary['to'] = $to;
             $from = $to + 1;
         }
@@ -242,8 +244,9 @@ class BridgeScanner
         $summary['head'] = $head;
 
         $cursorKey = "burn_{$chainId}";
-        $from = $this->startCursor($cursorKey, config('bridge.tpix.start_block'), $head);
-        $end = min($head, $from + max(1, (int) config('bridge.tpix.max_blocks_per_run', 18000)) - 1);
+        $cursor = $this->startCursor($cursorKey, config('bridge.tpix.start_block'), $head);
+        $from = $this->rescanFrom($cursorKey, $cursor, (int) config('bridge.tpix.rescan_blocks', 0));
+        $end = min($head, $cursor + max(1, (int) config('bridge.tpix.max_blocks_per_run', 18000)) - 1);
         // polygon-edge ปฏิเสธ eth_getLogs ช่วงเกิน 1000 บล็อก
         $chunk = min(900, max(1, (int) config('bridge.tpix.log_chunk', 900)));
         $summary['from'] = $from;
@@ -263,7 +266,7 @@ class BridgeScanner
                 }
             }
 
-            $this->config->setCursor($cursorKey, $to + 1);
+            $cursor = $this->advanceCursor($cursorKey, $cursor, $to + 1);
             $summary['to'] = $to;
             $from = $to + 1;
         }
@@ -388,7 +391,43 @@ class BridgeScanner
 
         $start = is_numeric($startBlock) && (int) $startBlock > 0 ? (int) $startBlock : $head + 1;
         $this->config->setCursor($key, $start);
+        $this->config->setCursor("{$key}_floor", $start);
 
         return $start;
+    }
+
+    /**
+     * จุดเริ่มอ่านของรอบนี้ = ย้อนจากเคอร์เซอร์ไป N บล็อก แต่ไม่ต่ำกว่า "บล็อกแรกที่เคยสแกน" (floor).
+     *
+     * ทำไมต้องย้อนทับ: RPC สาธารณะกระจายคำขอไปหลายโหนด — หัวที่ปลอดภัยอาจมาจากโหนด A ส่วน eth_getLogs
+     * ไปตกที่โหนด B ที่ตามหัวไม่ทัน ซึ่งตอบ [] สำหรับบล็อกที่ตัวเองยังไม่มีโดยไม่ error เคอร์เซอร์จึงขยับผ่าน
+     * แล้วเงินฝากในช่วงนั้นหายเงียบ ๆ การอ่านช่วงล่าสุดซ้ำทุกรอบให้โอกาสโหนดอื่นตอบครบในรอบถัดไป
+     * (อ่านซ้ำปลอดภัยเสมอ เพราะ unique (เชน, tx, log) กันบันทึกซ้ำ)
+     *
+     * ทำไมต้องมี floor: รอบแรกเริ่มที่หัวปัจจุบันโดยตั้งใจ (vault มีเงินหนุนเดิมที่ห้าม mint ซ้ำ)
+     * การย้อนทับต้องไม่พาไปอ่านก่อนจุดนั้น — เคอร์เซอร์เก่าที่ไม่มี floor ใช้ตำแหน่งปัจจุบันเป็น floor
+     */
+    private function rescanFrom(string $key, int $cursor, int $overlap): int
+    {
+        $floor = $this->config->cursor("{$key}_floor");
+
+        if ($floor === null) {
+            $floor = $cursor;
+            $this->config->setCursor("{$key}_floor", $floor);
+        }
+
+        return max($floor, $cursor - max(0, $overlap));
+    }
+
+    /** เคอร์เซอร์ขยับไปข้างหน้าอย่างเดียว — รอบที่อ่านแค่ช่วงย้อนทับต้องไม่ดึงเคอร์เซอร์ถอยหลัง */
+    private function advanceCursor(string $key, int $cursor, int $next): int
+    {
+        if ($next > $cursor) {
+            $this->config->setCursor($key, $next);
+
+            return $next;
+        }
+
+        return $cursor;
     }
 }

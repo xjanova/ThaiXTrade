@@ -17,6 +17,12 @@ final class Abi
 
     public const BURNED_EVENT = 'Burned(address,uint256,uint256,string)';
 
+    /**
+     * USDT_TPIX.Minted(address indexed to, uint256 amount, bytes32 indexed sourceTxHash) — ยิงทุกครั้งที่
+     * bridgeMint สำเร็จ (ทางเดียวที่ตั้ง processedTxHashes) จึงเป็นหลักฐานว่า depositId หนึ่ง "ไปถึงใคร เท่าไร".
+     */
+    public const MINTED_EVENT = 'Minted(address,uint256,bytes32)';
+
     public const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
     /** @var array<string, string> */

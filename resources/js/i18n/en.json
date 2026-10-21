@@ -688,6 +688,9 @@
         "errAmountInvalid": "Enter a number with at most 6 decimals",
         "errBelowMin": "Minimum is {min} USDT — smaller amounts are not minted",
         "errAboveMax": "Above {max} USDT per transfer — it will wait for a manual review (slower)",
+        "errAboveMaxBlocked": "Maximum is {max} USDT per transfer — larger amounts cannot be bridged. Split it into several transfers.",
+        "feeFlat": "{fee} USDT per deposit (plus source-chain gas)",
+        "refundHint": "This USDT is in the bridge vault but will not be minted automatically — contact support with the tx hash to arrange a refund.",
         "errBelowMinWithdraw": "Minimum withdrawal is {min} USDT",
         "errInsufficient": "Insufficient balance",
         "errAddressInvalid": "Invalid recipient address (0x + 40 hex characters with a correct checksum)",
@@ -722,7 +725,9 @@
             "awaiting_liquidity": "Waiting for liquidity on the target chain",
             "sending": "Sending USDT on the target chain",
             "paid": "Done — USDT delivered",
-            "below_fee": "The amount did not exceed the withdrawal fee — nothing to pay out"
+            "below_fee": "The amount did not exceed the withdrawal fee — nothing to pay out",
+            "chain_disabled": "Deposits on this chain are not open — this transfer was not bridged",
+            "chain_paused": "Deposits on this chain are paused — it will be processed when the chain reopens"
         },
         "ackOwnWallet": "I am sending from my own wallet, not from an exchange, and I understand USDT_TPIX goes to the sending address",
         "confirmWithdrawTitle": "Confirm withdrawal",

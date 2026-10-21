@@ -6,6 +6,7 @@ use App\Models\BridgeDeposit;
 use App\Models\SystemAlert;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\BridgeConfig;
+use App\Services\Bridge\BridgeRelayer;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\FakesBridgeChains;
 use Tests\TestCase;
@@ -276,5 +277,119 @@ class BridgeRelayTest extends TestCase
         $this->assertSame(BridgeDeposit::STATUS_NEEDS_REVIEW, $d->status);
         $this->assertSame('nonce_consumed', $d->review_reason);
         $this->assertCount(1, $this->signCalls);
+    }
+
+    // ── "สัญญาบอกว่า mint แล้ว" ต้องดู Minted ก่อนสรุปว่าคีย์หลุด ────────────────────
+
+    #[Test]
+    public function our_own_mint_that_the_rpc_has_not_shown_yet_is_settled_without_halting_the_bridge(): void
+    {
+        // ธุรกรรมของเราลงบล็อกแล้ว แต่ RPC ตอบใบเสร็จไม่ได้และโหนดที่ถามตัวธุรกรรมตามหัวไม่ทัน
+        $this->rpcFaults['rpc.tpix.test|eth_getTransactionReceipt'] = 'rate limit exceeded';
+        $this->rpcFaults['rpc.tpix.test|eth_getTransactionByHash'] = 'null';
+        $d = $this->deposit();
+        $this->relay();
+        $this->assertSame(BridgeDeposit::STATUS_MINTING, $d->fresh()->status);
+
+        // ส่ง raw ซ้ำ → nonce ถูกใช้ (ก็ของเราเอง) → สัญญาบอก processed — เดิมตรงนี้ = "คีย์ relayer หลุด" หยุดสะพาน
+        $this->sendFailCode = 'nonce_used';
+        $this->travel(5)->minutes();
+        $this->relay();
+
+        $d->refresh();
+        $this->assertSame(BridgeDeposit::STATUS_MINTED, $d->status, 'Minted บนเชนไปถึงผู้ฝากครบ = ของเราเอง');
+        $this->assertTrue(app(BridgeConfig::class)->siteSwitchOn(), 'ต้องไม่หยุดสะพานเพราะ RPC ช้า');
+        $this->assertFalse(SystemAlert::where('alert_key', 'bridge_minted_elsewhere')->exists());
+        $this->assertCount(1, $this->signCalls);
+    }
+
+    #[Test]
+    public function a_receipt_that_only_the_second_rpc_has_settles_the_mint(): void
+    {
+        $this->useTwoRpcs();
+        $this->rpcFaults['rpc.tpix.test|eth_getTransactionReceipt'] = 'null';
+        $d = $this->deposit();
+
+        $this->relay();
+
+        $this->assertSame(BridgeDeposit::STATUS_MINTED, $d->fresh()->status);
+    }
+
+    #[Test]
+    public function a_deposit_already_minted_to_the_depositor_is_closed_as_minted_and_the_queue_moves_on(): void
+    {
+        // เช่นธุรกรรม mint เดิมก่อนแอดมินอนุมัติใหม่ ลงบล็อกทีหลัง — สัญญาบอก processed แต่ Minted ตรงกับผู้ฝาก
+        $d = $this->deposit('25000000');
+        $next = $this->deposit('7000000');
+        $mintTx = $this->fakeMinted($d->deposit_id, $this->alice, '25000000');
+
+        $this->relay();
+
+        $this->assertSame(BridgeDeposit::STATUS_MINTED, $d->fresh()->status);
+        $this->assertSame($mintTx, $d->fresh()->mint_tx_hash);
+        $this->assertSame(BridgeDeposit::STATUS_MINTED, $next->fresh()->status, 'รายการถัดไปยัง mint ต่อในรอบเดียวกัน');
+        $this->assertTrue(app(BridgeConfig::class)->siteSwitchOn());
+        $this->assertCount(1, $this->signCalls, 'ไม่เซ็น mint ซ้ำให้รายการที่ mint แล้ว');
+    }
+
+    #[Test]
+    public function a_deposit_minted_to_someone_else_is_held_and_halts_the_bridge(): void
+    {
+        $d = $this->deposit('25000000');
+        $this->fakeMinted($d->deposit_id, $this->bob, '25000000'); // คีย์ relayer ที่หลุด mint เข้ากระเป๋าตัวเอง
+
+        $this->relay();
+
+        $d->refresh();
+        $this->assertSame(BridgeDeposit::STATUS_NEEDS_REVIEW, $d->status);
+        $this->assertSame('minted_elsewhere', $d->review_reason);
+        $this->assertStringContainsString(strtolower($this->bob), $d->last_error);
+        $this->assertFalse(app(BridgeConfig::class)->siteSwitchOn());
+        $this->assertSame('safety_hold', app(BridgeConfig::class)->publicPausedCode());
+    }
+
+    #[Test]
+    public function a_wrong_amount_minted_for_the_deposit_is_also_held(): void
+    {
+        $d = $this->deposit('25000000');
+        $this->fakeMinted($d->deposit_id, $this->alice, '2500000000'); // ผู้รับถูกแต่ยอดเกินจริง
+
+        $this->relay();
+
+        $this->assertSame('minted_elsewhere', $d->fresh()->review_reason);
+        $this->assertFalse(app(BridgeConfig::class)->siteSwitchOn());
+    }
+
+    // ── ธุรกรรมค้าง ─────────────────────────────────────────────────────────
+
+    #[Test]
+    public function a_mint_stuck_in_the_mempool_is_flagged_blocks_new_mints_and_settles_when_it_lands(): void
+    {
+        $this->mineOnSend = false;
+        $a = $this->deposit();
+        $this->relay();
+        $hash = $a->fresh()->mint_tx_hash;
+        $this->chainState[4289]['txs'][$hash] = ['hash' => $hash, 'from' => strtolower($this->relayerAddr), 'nonce' => '0x0', 'blockNumber' => null];
+
+        $this->travel(31)->minutes();
+        $this->relay();
+
+        $a->refresh();
+        $this->assertSame(BridgeDeposit::STATUS_NEEDS_REVIEW, $a->status);
+        $this->assertSame(BridgeRelayer::REASON_STUCK, $a->review_reason);
+        $this->assertTrue(SystemAlert::where('alert_key', BridgeRelayer::ALERT_STUCK)->where('severity', 'critical')->where('status', 'active')->exists());
+
+        $b = $this->deposit();
+        $this->relay();
+        $this->assertCount(1, $this->signCalls, 'ไม่เซ็นตัวใหม่ต่อคิวหลัง nonce ที่ค้าง');
+        $this->assertSame(BridgeDeposit::STATUS_CONFIRMED, $b->fresh()->status);
+
+        $this->mineHash($hash);
+        $this->mineOnSend = true;
+        $this->relay();
+
+        $this->assertSame(BridgeDeposit::STATUS_MINTED, $a->fresh()->status);
+        $this->assertSame(BridgeDeposit::STATUS_MINTED, $b->fresh()->status);
+        $this->assertFalse(SystemAlert::where('alert_key', BridgeRelayer::ALERT_STUCK)->where('status', 'active')->exists());
     }
 }

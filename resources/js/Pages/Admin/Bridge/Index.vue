@@ -63,8 +63,9 @@ const reasonLabel = {
     exceeds_onchain_max: 'เกิน maxPerTx บนสัญญา',
     mint_reverted: 'mint revert บนเชน',
     mint_estimate_failed: 'เชนบอกว่า mint จะ revert',
-    nonce_consumed: 'nonce ถูกใช้โดยธุรกรรมอื่น',
-    minted_elsewhere: 'ถูก mint โดยธุรกรรมอื่น — ตรวจผู้รับก่อนอนุมัติ',
+    nonce_consumed: 'nonce ถูกใช้ไปแล้ว — ต้องมีหลักฐานว่าธุรกรรมเดิมไม่ได้ลงบล็อกก่อนทำซ้ำ',
+    minted_elsewhere: 'สัญญาบอกว่า mint แล้วแต่ยืนยันไม่ได้ว่าไปถึงผู้ฝาก — อนุมัติได้เฉพาะเมื่อ Minted ตรงกับผู้ฝาก',
+    stuck_pending: 'ธุรกรรมค้างไม่ลงบล็อก — คิวหยุดรอ (ต้องลงบล็อกหรือถูกแทนที่ด้วย nonce เดิมก่อน)',
     unsupported_chain: 'เชนปลายทางไม่รองรับ',
     invalid_target_address: 'ที่อยู่ปลายทางผิด',
     suspicious_target: 'ปลายทางเป็นสัญญา/กระเป๋าของเราเอง',
@@ -122,35 +123,53 @@ const fmtNative = (wei) => (wei === null || wei === undefined ? '—' : Number(f
 // ── อนุมัติ / ปฏิเสธ ─────────────────────────────────────────────────────
 const pending = ref(null); // { kind, action, row }
 const rejectReason = ref('');
+// hash ของธุรกรรมที่ใช้ nonce ของการจ่ายเดิมไปแล้ว (ดูจาก explorer) — หลักฐานว่าการจ่ายเดิมไม่มีทางลงบล็อก
+const nonceTxHash = ref('');
+const nonceTxValid = computed(() => nonceTxHash.value.trim() === '' || /^0x[0-9a-fA-F]{64}$/.test(nonceTxHash.value.trim()));
 
 function ask(kind, action, row) {
     pending.value = { kind, action, row };
     rejectReason.value = '';
+    nonceTxHash.value = '';
 }
+
+/** รายการถอนที่เคยส่งธุรกรรมจ่ายแล้ว — อนุมัติ/ปฏิเสธต้องผ่านการพิสูจน์บนเชนว่าเงินไม่ได้ออก */
+const needsPayoutProof = computed(() => pending.value?.kind === 'withdrawal' && !!pending.value?.row?.payout_tx_hash);
 
 const confirmMessage = computed(() => {
     const p = pending.value;
     if (!p) return '';
     const row = p.row;
     if (p.kind === 'deposit') {
-        return p.action === 'approve'
-            ? `อนุมัติ mint ${row.mint_amount} USDT ให้ ${row.from_address} (จาก ${chainName(row.source_chain_id)})? ระบบจะตรวจบนเชนซ้ำก่อน mint จริง`
-            : `ปฏิเสธเงินฝาก ${row.amount} USDT จาก ${row.from_address}? เงินจะค้างอยู่ใน vault จนกว่าจะคืนด้วยมือ`;
+        if (p.action === 'approve') {
+            return row.review_reason === 'minted_elsewhere'
+                ? `สัญญาบอกว่า depositId นี้ mint แล้ว — ระบบจะอ่าน Minted บนเชน: ไปถึง ${row.from_address} ครบ ${row.mint_amount} USDT = ปิดเป็นสำเร็จ · ไม่ตรง/หาไม่เจอ = อนุมัติไม่ได้`
+                : `อนุมัติ mint ${row.mint_amount} USDT ให้ ${row.from_address} (จาก ${chainName(row.source_chain_id)})? ระบบตรวจบนเชนก่อน: mint ไปแล้วหรือยัง (ถ้าแล้วต้องไปถึงผู้ฝาก) · ไม่เกิน maxPerTx · ธุรกรรมเดิม (ถ้ามี) ต้องไม่ค้างอยู่`;
+        }
+        return `ปฏิเสธเงินฝาก ${row.amount} USDT จาก ${row.from_address}? เงินจะค้างอยู่ใน vault จนกว่าจะคืนด้วยมือ`
+            + (row.mint_tx_hash ? ' · ระบบจะตรวจก่อนว่าไม่มีการ mint และธุรกรรมเดิมลงบล็อกไม่ได้แล้ว' : '');
     }
-    return p.action === 'approve'
+    const proof = row.payout_tx_hash
+        ? ` · เคยส่งธุรกรรมจ่ายแล้ว (${short(row.payout_tx_hash)}, nonce ${row.payout_nonce ?? '?'}) — ระบบต้องพิสูจน์บนเชนว่าเงินไม่ได้ออกก่อน`
+        : '';
+    return (p.action === 'approve'
         ? `อนุมัติจ่าย ${row.payout_amount} USDT ไป ${row.target_address} บน ${chainName(row.target_chain_id)}? เงินจริงจะออกจากกระเป๋าจ่าย`
-        : `ปฏิเสธการถอน ${row.amount} USDT ของ ${row.from_address}? ผู้ใช้เผาเหรียญไปแล้ว ต้องคืนด้วยมือ (mint คืนบน TPIX)`;
+        : `ปฏิเสธการถอน ${row.amount} USDT ของ ${row.from_address}? ผู้ใช้เผาเหรียญไปแล้ว ต้องคืนด้วยมือ (mint คืนบน TPIX)`) + proof;
 });
 
 async function runPending() {
     const p = pending.value;
     if (!p || busy.value) return;
     if (p.action === 'reject' && !rejectReason.value.trim()) return;
+    if (!nonceTxValid.value) return;
 
     busy.value = true;
     try {
         const base = p.kind === 'deposit' ? '/admin/bridge/deposits' : '/admin/bridge/withdrawals';
-        const { data } = await axios.post(`${base}/${p.row.id}/${p.action}`, p.action === 'reject' ? { reason: rejectReason.value.trim() } : {});
+        const body = p.action === 'reject' ? { reason: rejectReason.value.trim() } : {};
+        if (needsPayoutProof.value && nonceTxHash.value.trim() !== '') body.nonce_tx_hash = nonceTxHash.value.trim();
+
+        const { data } = await axios.post(`${base}/${p.row.id}/${p.action}`, body);
         notice.value = { type: 'success', text: data.message ?? 'ดำเนินการแล้ว' };
         pending.value = null;
         router.reload({ only: ['deposits', 'withdrawals', 'counts', 'state'] });
@@ -166,7 +185,7 @@ async function runPending() {
 // ── ตั้งค่า ──────────────────────────────────────────────────────────────
 const limitLabels = {
     min_deposit: 'ฝากขั้นต่ำ',
-    max_deposit_per_tx: 'ฝากสูงสุดต่อครั้ง (เกิน = รอตรวจ)',
+    max_deposit_per_tx: 'ฝากสูงสุดต่อครั้ง (ต้องไม่เกิน maxPerTx บนสัญญา)',
     max_deposit_per_address_daily: 'ฝากสูงสุดต่อกระเป๋าต่อวัน',
     deposit_fee: 'ค่าธรรมเนียมฝาก',
     min_withdraw: 'ถอนขั้นต่ำ',
@@ -362,7 +381,8 @@ const readinessLabel = {
                                     <template v-if="d.status === 'needs_review' || (d.status === 'ignored' && d.review_reason === 'below_minimum')">
                                         <button @click="ask('deposit', 'approve', d)" :disabled="busy" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 disabled:opacity-40">อนุมัติ</button>
                                     </template>
-                                    <button v-if="(d.status === 'needs_review' || d.status === 'confirmed') && !d.mint_tx_hash" @click="ask('deposit', 'reject', d)" :disabled="busy"
+                                    <!-- needs_review ที่เคยส่ง mint แล้ว ปฏิเสธได้ — เซิร์ฟเวอร์พิสูจน์บนเชนก่อนว่าไม่มีการ mint -->
+                                    <button v-if="d.status === 'needs_review' || (d.status === 'confirmed' && !d.mint_tx_hash)" @click="ask('deposit', 'reject', d)" :disabled="busy"
                                         class="ml-1 px-2.5 py-1 rounded-lg bg-white/5 text-gray-400 border border-white/10 disabled:opacity-40">ปฏิเสธ</button>
                                 </td>
                             </tr>
@@ -461,9 +481,28 @@ const readinessLabel = {
             :confirm-text="state.site_switch ? 'หยุด' : 'เปิด'" cancel-text="ยกเลิก"
             @confirm="doToggle" @cancel="confirmToggle = false" />
 
-        <ConfirmDialog :show="!!pending && pending.action === 'approve'" :loading="busy" title="ยืนยันการอนุมัติ"
+        <ConfirmDialog :show="!!pending && pending.action === 'approve' && !needsPayoutProof" :loading="busy" title="ยืนยันการอนุมัติ"
             :message="confirmMessage" confirm-text="อนุมัติ" cancel-text="ยกเลิก"
             @confirm="runPending" @cancel="pending = null" />
+
+        <!-- อนุมัติจ่ายซ้ำรายการที่เคยส่งธุรกรรมแล้ว — เปิดช่องกรอกหลักฐาน nonce (ไม่บังคับ: ระบบหาเองจากรายการอื่นก่อน) -->
+        <div v-if="pending && pending.action === 'approve' && needsPayoutProof" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" @click.self="!busy && (pending = null)">
+            <div class="w-full max-w-md glass-card rounded-2xl p-6 space-y-4">
+                <h3 class="text-lg font-bold text-white">ยืนยันการอนุมัติจ่าย</h3>
+                <p class="text-sm text-gray-300 break-words">{{ confirmMessage }}</p>
+                <div class="space-y-1">
+                    <label class="text-xs text-gray-400">hash ของธุรกรรมที่ใช้ nonce {{ pending.row.payout_nonce ?? '?' }} ของกระเป๋าจ่ายไปแล้ว (ดูจาก explorer · เว้นว่างได้)</label>
+                    <input v-model.trim="nonceTxHash" type="text" placeholder="0x…" spellcheck="false" data-test="nonce-tx-hash"
+                        class="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-mono" />
+                    <p v-if="!nonceTxValid" class="text-xs text-red-300">ต้องเป็น 0x + 64 ตัวอักษร hex</p>
+                    <p class="text-[11px] text-gray-500">ถ้า nonce นั้นเป็นธุรกรรมจ่ายเดิมเอง แปลว่าจ่ายไปแล้ว — ห้ามอนุมัติ</p>
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button @click="pending = null" :disabled="busy" class="px-4 py-2 text-sm rounded-xl bg-white/5 text-gray-300 border border-white/10">ยกเลิก</button>
+                    <button @click="runPending" :disabled="busy || !nonceTxValid" class="px-4 py-2 text-sm rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 disabled:opacity-40">อนุมัติ</button>
+                </div>
+            </div>
+        </div>
 
         <ConfirmDialog :show="confirmSettings" :loading="busy" title="บันทึกวงเงิน/ค่าธรรมเนียม?"
             message="มีผลกับรายการที่เข้ามาใหม่และรายการในคิวที่ยังไม่ได้จ่ายทันที" confirm-text="บันทึก" cancel-text="ยกเลิก"
@@ -476,9 +515,15 @@ const readinessLabel = {
                 <p class="text-sm text-gray-300">{{ confirmMessage }}</p>
                 <textarea v-model="rejectReason" rows="3" maxlength="500" placeholder="เหตุผล (จำเป็น)"
                     class="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm"></textarea>
+                <div v-if="needsPayoutProof" class="space-y-1">
+                    <label class="text-xs text-gray-400">hash ของธุรกรรมที่ใช้ nonce {{ pending.row.payout_nonce ?? '?' }} ไปแล้ว (เว้นว่างได้)</label>
+                    <input v-model.trim="nonceTxHash" type="text" placeholder="0x…" spellcheck="false"
+                        class="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-mono" />
+                    <p v-if="!nonceTxValid" class="text-xs text-red-300">ต้องเป็น 0x + 64 ตัวอักษร hex</p>
+                </div>
                 <div class="flex justify-end gap-3">
                     <button @click="pending = null" :disabled="busy" class="px-4 py-2 text-sm rounded-xl bg-white/5 text-gray-300 border border-white/10">ยกเลิก</button>
-                    <button @click="runPending" :disabled="busy || !rejectReason.trim()" class="px-4 py-2 text-sm rounded-xl bg-red-500/20 text-red-300 border border-red-500/30 disabled:opacity-40">ปฏิเสธ</button>
+                    <button @click="runPending" :disabled="busy || !rejectReason.trim() || !nonceTxValid" class="px-4 py-2 text-sm rounded-xl bg-red-500/20 text-red-300 border border-red-500/30 disabled:opacity-40">ปฏิเสธ</button>
                 </div>
             </div>
         </div>
