@@ -4,6 +4,7 @@
  * ง่ายเหมือนกดตู้น้ำ: กรอก → กด → ได้ Product ID
  */
 import { ref, computed } from 'vue';
+import { useFoodPassportWrite } from '@/Composables/useFoodPassportWrite';
 
 const props = defineProps({
     categories: { type: Object, required: true },
@@ -32,41 +33,37 @@ const isValid = computed(() => {
     return form.value.name && form.value.category && form.value.origin && props.isConnected;
 });
 
+// ผู้ผลิต = กระเป๋าที่เซ็นยืนยันแล้ว (ส่งเป็น wallet_address) — ดู useFoodPassportWrite
+const { post, verifyWallet, needsVerification, isVerifying } = useFoodPassportWrite();
+
 async function submitForm() {
-    if (!isValid.value) return;
+    if (!isValid.value || loading.value) return;
     loading.value = true;
     error.value = null;
     success.value = null;
 
-    try {
-        const res = await fetch('/api/v1/food-passport/register', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Wallet-Address': props.walletAddress,
-            },
-            body: JSON.stringify({
-                ...form.value,
-                producer_address: props.walletAddress,
-                weight_kg: form.value.weight_kg ? parseFloat(form.value.weight_kg) : null,
-            }),
-        });
-
-        const json = await res.json();
-
-        if (json.success) {
-            success.value = `ลงทะเบียนสำเร็จ! Product ID: ${json.data.id} | Batch: ${json.data.batch_number}`;
-            emit('registered', json.data);
-            // Reset form
-            form.value = { name: '', category: '', origin: '', producer_name: '', description: '', weight_kg: '', harvest_date: '', expiry_date: '' };
-        } else {
-            error.value = json.error?.message || 'ลงทะเบียนไม่สำเร็จ';
-        }
-    } catch (e) {
-        error.value = e.message || 'Network error';
-    }
+    const result = await post('/api/v1/food-passport/register', props.walletAddress, {
+        ...form.value,
+        weight_kg: form.value.weight_kg ? parseFloat(form.value.weight_kg) : null,
+    },'ลงทะเบียนไม่สำเร็จ กรุณาลองใหม่');
 
     loading.value = false;
+
+    // สลับกระเป๋าระหว่างรอ — สินค้านั้นเป็นของกระเป๋าเดิม ห้ามไปโผล่ในรายการของใบใหม่
+    if (result.stale) return;
+
+    if (result.ok) {
+        success.value = `ลงทะเบียนสำเร็จ! Product ID: ${result.data.id} | Batch: ${result.data.batch_number}`;
+        emit('registered', result.data);
+        form.value = { name: '', category: '', origin: '', producer_name: '', description: '', weight_kg: '', harvest_date: '', expiry_date: '' };
+    } else {
+        error.value = result.message;
+    }
+}
+
+/** เซ็นยืนยันแล้วส่งฟอร์มเดิมต่อทันที — ข้อมูลที่กรอกไว้ยังอยู่ */
+async function verifyAndSubmit() {
+    if (await verifyWallet()) await submitForm();
 }
 </script>
 
@@ -100,6 +97,11 @@ async function submitForm() {
             <!-- Error -->
             <div v-if="error" class="p-4 rounded-xl bg-trading-red/10 border border-trading-red/30 text-trading-red text-sm">
                 {{ error }}
+                <button v-if="needsVerification" type="button" data-test="verify-wallet"
+                    @click="verifyAndSubmit" :disabled="isVerifying || loading"
+                    class="mt-3 block w-full py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-medium disabled:opacity-60">
+                    {{ isVerifying ? 'กำลังรอลายเซ็น...' : 'เซ็นยืนยันกระเป๋า แล้วลงทะเบียน' }}
+                </button>
             </div>
 
             <!-- Name -->

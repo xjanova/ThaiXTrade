@@ -92,15 +92,19 @@ class FoodPassportApiController extends Controller
     // ═══════════════════════════════════════════
 
     /**
-     * ลงทะเบียนสินค้าใหม่.
+     * ลงทะเบียนสินค้าใหม่ — ผู้ผลิตคือกระเป๋าที่ VerifyWalletOwnership ตรวจแล้วเท่านั้น.
+     *
+     * ⚠️ เดิมรับ producer_address ตรงๆ ซึ่งด่านมองไม่เห็น ด่านจึงปล่อยผ่านโดยไม่ตรวจอะไร —
+     *    ใครก็ลงทะเบียนสินค้าในชื่อผู้ผลิตคนอื่นได้ (prod มีสินค้าที่ผู้ผลิตเป็น 0x000…0 อยู่แล้ว)
      */
     public function register(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'wallet_address' => 'required|string',
             'name' => 'required|string|max:255',
             'category' => 'required|string|in:fruit,vegetable,meat,dairy,seafood,grain,processed,beverage',
             'origin' => 'required|string|max:255',
-            'producer_address' => 'required|string|size:42',
+            'producer_address' => 'nullable|string|size:42',
             'producer_name' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:1000',
             'weight_kg' => 'nullable|numeric|min:0',
@@ -108,18 +112,32 @@ class FoodPassportApiController extends Controller
             'expiry_date' => 'nullable|date|after:harvest_date',
         ]);
 
+        $producer = $validated['wallet_address'];
+
+        if ($mismatch = $this->rejectOtherWallet($validated['producer_address'] ?? null, $producer, 'producer_address')) {
+            return $mismatch;
+        }
+
+        $validated['producer_address'] = $producer;
+        unset($validated['wallet_address']);
+
         $product = $this->foodPassportService->registerProduct($validated);
 
         return response()->json(['success' => true, 'data' => $product], 201);
     }
 
     /**
-     * เพิ่ม trace record (manual).
+     * เพิ่ม trace record (manual) — ผู้ผลิตของสินค้าชิ้นนั้นเท่านั้น.
+     *
+     * ผู้บันทึกคือกระเป๋าที่ด่านตรวจแล้ว ⚠️ เดิมรับ recorder_address ที่ด่านมองไม่เห็น —
+     * ใครก็เติมเส้นทางปลอมให้สินค้าของใครก็ได้ และเปลี่ยนสถานะสินค้าตาม stage ที่ใส่มา
+     * (คนกลางในห่วงโซ่ที่ไม่ใช่ผู้ผลิต ส่งข้อมูลผ่านอุปกรณ์ IoT ที่มีกุญแจของตัวเองแทน)
      */
     public function addTrace(Request $request, int $productId): JsonResponse
     {
         $validated = $request->validate([
-            'recorder_address' => 'required|string|size:42',
+            'wallet_address' => 'required|string',
+            'recorder_address' => 'nullable|string|size:42',
             'stage' => 'required|string|in:farm,processing,storage,transport,retail',
             'location' => 'nullable|string|max:255',
             'temperature' => 'nullable|numeric',
@@ -129,27 +147,57 @@ class FoodPassportApiController extends Controller
             'notes' => 'nullable|string|max:500',
         ]);
 
-        $product = FoodProduct::findOrFail($productId);
+        $recorder = $validated['wallet_address'];
+
+        if ($mismatch = $this->rejectOtherWallet($validated['recorder_address'] ?? null, $recorder, 'recorder_address')) {
+            return $mismatch;
+        }
+
+        $product = $this->producersProduct($productId, $recorder);
+        if ($product instanceof JsonResponse) {
+            return $product;
+        }
+
+        $validated['recorder_address'] = $recorder;
+        unset($validated['wallet_address']);
+
         $trace = $this->foodPassportService->addTrace($product, $validated);
 
         return response()->json(['success' => true, 'data' => $trace], 201);
     }
 
     /**
-     * Mint ใบรับรอง NFT.
+     * Mint ใบรับรอง NFT — ผู้ผลิตของสินค้าชิ้นนั้นเท่านั้น และใบรับรองออกในชื่อผู้ผลิตเอง.
+     *
+     * ⚠️ เดิมรับ owner_address ที่ด่านมองไม่เห็น — ใครก็ออกใบรับรองให้สินค้าของคนอื่น
+     *    (สินค้าขึ้นสถานะ certified) และใส่กระเป๋าไหนเป็นเจ้าของใบก็ได้
      */
     public function mint(Request $request, int $productId): JsonResponse
     {
         $validated = $request->validate([
-            'owner_address' => 'required|string|size:42',
+            'wallet_address' => 'required|string',
+            'owner_address' => 'nullable|string|size:42',
             'token_id' => 'required|integer|min:1',
             'contract_address' => 'required|string|size:42',
             'token_uri' => 'nullable|string|max:500',
             'tx_hash' => 'nullable|string|size:66',
         ]);
 
+        $owner = $validated['wallet_address'];
+
+        if ($mismatch = $this->rejectOtherWallet($validated['owner_address'] ?? null, $owner, 'owner_address')) {
+            return $mismatch;
+        }
+
+        $product = $this->producersProduct($productId, $owner);
+        if ($product instanceof JsonResponse) {
+            return $product;
+        }
+
+        $validated['owner_address'] = $owner;
+        unset($validated['wallet_address']);
+
         try {
-            $product = FoodProduct::findOrFail($productId);
             $certificate = $this->foodPassportService->mintCertificate($product, $validated);
 
             return response()->json(['success' => true, 'data' => $certificate], 201);
@@ -515,5 +563,47 @@ class FoodPassportApiController extends Controller
             'success' => false,
             'error' => ['code' => 'INVALID_ADDRESS', 'message' => 'Valid wallet_address required'],
         ], 400);
+    }
+
+    /**
+     * ฟิลด์ที่อยู่กระเป๋าแบบเดิม (producer_address ฯลฯ) ยังส่งมาได้ แต่ต้องเป็นกระเป๋าที่ยืนยันตัวแล้ว.
+     */
+    private function rejectOtherWallet(?string $claimed, string $verified, string $field): ?JsonResponse
+    {
+        if ($claimed === null || strtolower($claimed) === $verified) {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'error' => [
+                'code' => 'WALLET_MISMATCH',
+                'message' => "{$field} must be the wallet you verified.",
+            ],
+        ], 403);
+    }
+
+    /**
+     * สินค้าที่ $wallet เป็นผู้ผลิต — ของคนอื่นตอบ 403 (เลขสินค้าเปิดเผยอยู่แล้วในหน้า /verify สาธารณะ).
+     */
+    private function producersProduct(int $productId, string $wallet): FoodProduct|JsonResponse
+    {
+        $product = FoodProduct::find($productId);
+
+        if (! $product) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NOT_FOUND', 'message' => 'Product not found'],
+            ], 404);
+        }
+
+        if (strtolower((string) $product->producer_address) !== $wallet) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NOT_PRODUCER', 'message' => "Only the product's producer can do this."],
+            ], 403);
+        }
+
+        return $product;
     }
 }
