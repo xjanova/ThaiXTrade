@@ -7,7 +7,6 @@
 
 use App\Http\Controllers\Api\AiBotController;
 use App\Http\Controllers\Api\AiBotWalletController;
-use App\Http\Controllers\Api\KycApiController;
 use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Api\ArticleController;
@@ -24,6 +23,7 @@ use App\Http\Controllers\Api\DiscordInteractionController;
 use App\Http\Controllers\Api\FeeConfigController;
 use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\InfraAlertController;
+use App\Http\Controllers\Api\KycApiController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\NodeHeartbeatController;
 use App\Http\Controllers\Api\StabilityController;
@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TpixPriceController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\TradingFeeController;
+use App\Http\Controllers\Api\ValidatorKeyBindingController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\MasterNodeController;
 use App\Http\Controllers\ValidatorController;
@@ -332,6 +333,13 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         // ค่าตั้งชั้นไทล์แผนที่ — โปรแกรมมาสเตอร์โหนดบนเดสก์ท็อปอ่านตอนเปิดหน้าแผนที่
         // แยกไว้ที่นี่เพื่อหมุนคีย์/เปลี่ยนผู้ให้บริการได้โดยไม่ต้องปล่อยโปรแกรมรุ่นใหม่
         Route::get('/map-config', [ValidatorController::class, 'mapSettings']);
+
+        // ผูกกุญแจที่ปิดบล็อก (ที่อยู่ IBFT + BLS) กับกระเป๋าที่ stake ชั้น Validator
+        // แอปมาสเตอร์โหนดเซ็น 2 ใบ (กระเป๋า + กุญแจ validator) — ไม่ต้องล็อกอิน ลายเซ็นคือตัวตน
+        Route::post('/key-binding', [ValidatorKeyBindingController::class, 'store'])->middleware('throttle:10,1');
+        Route::get('/key-binding/{wallet}', [ValidatorKeyBindingController::class, 'show'])
+            ->where('wallet', '0x[0-9a-fA-F]{40}')
+            ->middleware('throttle:60,1');
     });
 
     // Articles / Blog — บทความ (public)

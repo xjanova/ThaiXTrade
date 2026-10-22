@@ -4,10 +4,17 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
+use App\Models\SystemAlert;
 use App\Models\ValidatorApplication;
+use App\Models\ValidatorKeyBinding;
+use App\Models\ValidatorSealStat;
+use App\Services\MasterNode\NodeRegistryContract;
+use App\Services\Validator\IbftValidatorSet;
+use App\Services\Validator\SealMonitor;
+use App\Services\Validator\ValidatorKeyBindingService;
+use App\Services\Validator\ValidatorVoteCommands;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -16,31 +23,27 @@ use Inertia\Response as InertiaResponse;
 /**
  * ValidatorAdminController — Admin dashboard สำหรับจัดการ IBFT2 Validators.
  *
- * แสดงสถานะ validator จาก IBFT2 extraData และจัดการ applications.
+ * แสดงสถานะ validator จาก IBFT extraData (ชุดจริง + ผลเฝ้าดูการปิดบล็อกรายตัว)
+ * รายการผูกกุญแจที่รอโหวต/ต้องถอด และคำสั่งโหวตที่ถูกต้องสำหรับเครื่องเชน
+ *
+ * เว็บไม่สั่งโหวตเอง (ตั้งใจ): ช่อง gRPC ของ validator เปิดแค่ 127.0.0.1 ในเครื่องเชน
+ * ใครต่อถึงก็สั่งเพิ่ม/ถอด validator ได้ — เจ้าของ ssh เข้าไปรันสคริปต์เอง
+ *
  * Developed by Xman Studio.
  */
 class ValidatorAdminController extends Controller
 {
+    public function __construct(
+        private readonly IbftValidatorSet $validatorSet,
+        private readonly NodeRegistryContract $registry,
+    ) {}
+
     /**
      * Validator admin dashboard page.
      */
     public function index(): InertiaResponse
     {
-        $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online');
-
-        $activeValidators = $this->getActiveValidators($rpcUrl);
-        $pendingCount = ValidatorApplication::where('status', 'pending')->count();
-
-        return Inertia::render('Admin/Validators/Index', [
-            'validators' => collect($activeValidators)->map(fn ($addr) => [
-                'address' => $addr,
-                'active' => true,
-                'last_sealed_block' => null,
-                'blocks_sealed' => 0,
-            ])->values()->all(),
-            'applications' => ValidatorApplication::latest()->limit(50)->get(),
-            'stats' => $this->getValidatorStats($rpcUrl, $activeValidators),
-        ]);
+        return Inertia::render('Admin/Validators/Index', $this->dashboard());
     }
 
     /**
@@ -151,27 +154,29 @@ class ValidatorAdminController extends Controller
     }
 
     /**
-     * Propose an IBFT2 validator vote.
+     * บันทึกความตั้งใจโหวต + คืนคำสั่งที่ต้องรันบนเครื่องเชน.
      *
-     * Records the intent and returns CLI instructions for manual execution.
-     * The actual ibft.proposeValidatorVote requires the admin's private key
-     * which should never be stored in the web application.
+     * เดิมคำแนะนำผิด 3 จุด: เมธอด RPC `ibft_proposeValidatorVote` ไม่มีจริงใน polygon-edge 0.9,
+     * พอร์ต 9632 ไม่ใช่ (จริงคือ 10000 ในคอนเทนเนอร์) และไม่มี --bls ทั้งที่ genesis เป็น bls
+     * → คำสั่งที่ copy ไปรันล้มทุกครั้ง
      */
     public function proposeVote(Request $request): JsonResponse
     {
         $request->validate([
             'address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'action' => ['required', 'string', 'in:add,remove'],
+            'bls' => ['required_if:action,add', 'nullable', 'string', 'regex:/^0x[a-fA-F0-9]{96}$/'],
+            'node_id' => ['nullable', 'string', 'regex:/^16Uiu2HA[1-9A-HJ-NP-Za-km-z]{40,60}$/'],
         ]);
 
-        $validatorAddress = $request->input('address');
+        $validatorAddress = strtolower($request->input('address'));
         $vote = $request->input('action');
-        $auth = $vote === 'add';
 
         // Record the vote intent in the database
         SiteSetting::set('validators', "pending_vote_{$validatorAddress}", json_encode([
             'address' => $validatorAddress,
             'vote' => $vote,
+            'bls' => $request->input('bls'),
             'proposed_by' => $request->user()->id,
             'proposed_at' => now()->toIso8601String(),
         ]));
@@ -182,23 +187,23 @@ class ValidatorAdminController extends Controller
             'admin_id' => $request->user()->id,
         ]);
 
-        // Generate CLI instructions for manual execution
-        $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online');
-        $authValue = $auth ? 'true' : 'false';
+        $set = $this->validatorSet->current();
+        $setSize = $set === null ? null : count($set['validators']);
+        $commands = $vote === 'add'
+            ? ValidatorVoteCommands::auth($validatorAddress, strtolower((string) $request->input('bls')), $request->input('node_id'))
+            : ValidatorVoteCommands::drop($validatorAddress);
 
         return response()->json([
             'success' => true,
-            'message' => 'Vote intent recorded. Execute the following on each validator node to complete the vote.',
+            'message' => 'บันทึกแล้ว — รันคำสั่งด้านล่างบนเครื่องเชนเพื่อโหวตจริง',
             'data' => [
                 'validator_address' => $validatorAddress,
                 'vote' => $vote,
-                'cli_instructions' => [
-                    "# Run this on each validator node's JSON-RPC:",
-                    "curl -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"ibft_proposeValidatorVote\",\"params\":[\"{$validatorAddress}\", {$authValue}],\"id\":1}' -H 'Content-Type: application/json' {$rpcUrl}",
-                    '',
-                    '# Or via Polygon Edge CLI:',
-                    "polygon-edge ibft propose --addr {$validatorAddress} --vote ".($auth ? 'auth' : 'drop').' --grpc-address 127.0.0.1:9632',
-                ],
+                'cli_command' => $commands['script'],
+                'cli_instructions' => $commands['lines'],
+                'total_validators' => $setSize,
+                'votes_needed' => $setSize === null ? null : IbftValidatorSet::votesNeeded($setSize),
+                'warnings' => $vote === 'add' && $setSize !== null ? ValidatorVoteCommands::addWarnings($setSize) : [],
             ],
         ]);
     }
@@ -208,22 +213,7 @@ class ValidatorAdminController extends Controller
      */
     public function stats(): JsonResponse
     {
-        $rpcUrl = config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online');
-        $activeValidators = $this->getActiveValidators($rpcUrl);
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'stats' => $this->getValidatorStats($rpcUrl, $activeValidators),
-                'validators' => collect($activeValidators)->map(fn ($addr) => [
-                    'address' => $addr,
-                    'active' => true,
-                    'last_sealed_block' => null,
-                    'blocks_sealed' => 0,
-                ])->values()->all(),
-                'applications' => ValidatorApplication::latest()->limit(50)->get(),
-            ],
-        ]);
+        return response()->json(['success' => true, 'data' => $this->dashboard()]);
     }
 
     // =========================================================================
@@ -231,175 +221,84 @@ class ValidatorAdminController extends Controller
     // =========================================================================
 
     /**
-     * Get active validators by extracting from IBFT2 extraData in latest block.
-     *
-     * IBFT2 extraData format:
-     * - 32 bytes vanity
-     * - RLP-encoded list of validator addresses
-     * - Remaining IBFT2 seal data
-     *
-     * @return array<int, string> List of validator addresses
+     * @return array{validators:list<array<string,mixed>>,onboarding:list<array<string,mixed>>,applications:mixed,stats:array<string,mixed>}
      */
-    private function getActiveValidators(string $rpcUrl): array
+    private function dashboard(): array
     {
-        return Cache::remember('admin:validators:active', 30, function () use ($rpcUrl) {
-            try {
-                $response = Http::timeout(5)->post($rpcUrl, [
-                    'jsonrpc' => '2.0',
-                    'method' => 'eth_getBlockByNumber',
-                    'params' => ['latest', false],
-                    'id' => 1,
-                ]);
+        $set = $this->validatorSet->current();
+        $validators = $set['validators'] ?? [];
+        $setAddresses = array_column($validators, 'address');
+        $sealStats = ValidatorSealStat::all()->keyBy('address');
+        $bindings = ValidatorKeyBinding::active()->get();
+        $boundBy = $bindings->keyBy('validator_address');
+        $silentKeys = SystemAlert::active()->where('node', SealMonitor::ALERT_NODE)
+            ->where('alert_key', 'like', 'validator_silent_%')->pluck('alert_key')->all();
 
-                if (! $response->successful()) {
-                    return [];
-                }
-
-                $block = $response->json('result');
-                if (! $block || empty($block['extraData'])) {
-                    return [];
-                }
-
-                return $this->parseIbft2ExtraData($block['extraData']);
-            } catch (\Throwable $e) {
-                Log::error('Failed to fetch active validators', ['error' => $e->getMessage()]);
-
-                return [];
-            }
-        });
-    }
-
-    /**
-     * Parse IBFT2 extraData to extract validator addresses.
-     *
-     * IBFT2 extra data structure:
-     * - Bytes 0-31: Vanity (32 bytes)
-     * - Bytes 32+: RLP-encoded [validators, seal, committedSeals]
-     *
-     * @return array<int, string>
-     */
-    private function parseIbft2ExtraData(string $extraData): array
-    {
-        $validators = [];
-
-        try {
-            // Remove 0x prefix
-            $hex = substr($extraData, 2);
-
-            // Skip 32 bytes vanity (64 hex chars)
-            if (strlen($hex) <= 64) {
-                return [];
-            }
-
-            $rlpHex = substr($hex, 64);
-
-            // Simple RLP decode for the validator list
-            // The first byte(s) tell us the list structure
-            $validators = $this->decodeRlpAddressList($rlpHex);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to parse IBFT2 extraData', ['error' => $e->getMessage()]);
-        }
-
-        return $validators;
-    }
-
-    /**
-     * Decode RLP-encoded address list from IBFT2 extra data.
-     *
-     * Handles the RLP structure where validators are the first element
-     * of a top-level list: [[addr1, addr2, ...], seal, [committedSeals]]
-     *
-     * @return array<int, string>
-     */
-    private function decodeRlpAddressList(string $hex): array
-    {
-        $addresses = [];
-
-        if (strlen($hex) < 2) {
-            return [];
-        }
-
-        $firstByte = hexdec(substr($hex, 0, 2));
-        $offset = 0;
-
-        // RLP list prefix: 0xf8+ = long list
-        if ($firstByte >= 0xF8) {
-            $lengthOfLength = $firstByte - 0xF7;
-            $offset = 2 + ($lengthOfLength * 2);
-        } elseif ($firstByte >= 0xC0) {
-            // Short list (0xc0 - 0xf7)
-            $offset = 2;
-        } else {
-            return [];
-        }
-
-        // Now we should be at the inner list (validators list)
-        $innerHex = substr($hex, $offset);
-        $innerFirstByte = hexdec(substr($innerHex, 0, 2));
-        $innerOffset = 0;
-
-        if ($innerFirstByte >= 0xF8) {
-            $lengthOfLength = $innerFirstByte - 0xF7;
-            $listLength = hexdec(substr($innerHex, 2, $lengthOfLength * 2));
-            $innerOffset = 2 + ($lengthOfLength * 2);
-        } elseif ($innerFirstByte >= 0xC0) {
-            $listLength = $innerFirstByte - 0xC0;
-            $innerOffset = 2;
-        } else {
-            return [];
-        }
-
-        // Parse addresses from the validator list
-        $pos = $innerOffset;
-        $endPos = $innerOffset + ($listLength * 2);
-
-        while ($pos < $endPos && $pos < strlen($innerHex)) {
-            $byte = hexdec(substr($innerHex, $pos, 2));
-
-            // Each address is 20 bytes, RLP-encoded as 0x94 + 20 bytes
-            if ($byte === 0x94) {
-                // 0x94 = 0x80 + 20, meaning a 20-byte string
-                $pos += 2;
-                $addrHex = substr($innerHex, $pos, 40);
-                if (strlen($addrHex) === 40) {
-                    $addresses[] = '0x'.$addrHex;
-                }
-                $pos += 40;
-            } else {
-                // Unexpected byte, skip
-                $pos += 2;
-            }
-        }
-
-        return $addresses;
-    }
-
-    /**
-     * Build comprehensive validator stats.
-     *
-     * @param  array<int, string>  $activeValidators
-     */
-    private function getValidatorStats(string $rpcUrl, array $activeValidators): array
-    {
-        return Cache::remember('admin:validators:stats', 30, function () use ($rpcUrl, $activeValidators) {
-            $blockHeight = $this->getBlockHeight($rpcUrl);
-            $pendingCount = ValidatorApplication::where('status', 'pending')->count();
-            $approvedCount = ValidatorApplication::where('status', 'approved')->count();
-            $rejectedCount = ValidatorApplication::where('status', 'rejected')->count();
-
-            return [
-                'active_validators' => count($activeValidators),
-                'validator_addresses' => $activeValidators,
-                'pending_applications' => $pendingCount,
-                'approved_applications' => $approvedCount,
-                'rejected_applications' => $rejectedCount,
-                'block_height' => $blockHeight,
-                'block_time' => 2, // TPIX Chain 2-second blocks
-                'consensus' => 'IBFT2',
-                'chain_id' => config('blockchain.tpix_chain_id', 4289),
-                'rpc_connected' => $blockHeight > 0,
+        $rows = [];
+        foreach ($validators as $i => $v) {
+            $stat = $sealStats->get($v['address']);
+            $rows[] = [
+                'address' => $v['address'],
+                'bls' => $v['bls'],
+                'index' => $i,
+                'active' => true,
+                'last_sealed_block' => $stat?->last_proposed_block,
+                'last_signed_block' => $stat?->last_signed_block,
+                'blocks_sealed' => $stat?->window_proposed ?? 0,
+                'sign_rate' => $stat?->signRate(),
+                'missed_turns' => $stat?->window_missed_turns ?? 0,
+                'window_blocks' => $stat?->window_blocks ?? 0,
+                'silent' => in_array(SealMonitor::silentKey($v['address']), $silentKeys, true),
+                'staking_wallet' => $boundBy->get($v['address'])?->staking_wallet,
             ];
-        });
+        }
+
+        $onboarding = [];
+        foreach ($bindings as $binding) {
+            $inSet = $set === null ? null : in_array($binding->validator_address, $setAddresses, true);
+            $stage = ValidatorKeyBindingService::stage(true, $this->registry->isValidator($binding->staking_wallet), $inSet);
+            $onboarding[] = [
+                'staking_wallet' => $binding->staking_wallet,
+                'validator_address' => $binding->validator_address,
+                'bls_public_key' => $binding->bls_public_key,
+                'node_id' => $binding->node_id,
+                'signed_at' => $binding->signed_at,
+                'voted_in_at' => $binding->voted_in_at?->toIso8601String(),
+                'stage' => $stage,
+                'commands' => match ($stage) {
+                    'awaiting_vote' => ValidatorVoteCommands::auth($binding->validator_address, $binding->bls_public_key, $binding->node_id),
+                    'drop_needed' => ValidatorVoteCommands::drop($binding->validator_address),
+                    default => null,
+                },
+            ];
+        }
+
+        $setSize = count($validators);
+
+        return [
+            'validators' => $rows,
+            'onboarding' => $onboarding,
+            'applications' => ValidatorApplication::latest()->limit(50)->get(),
+            'stats' => [
+                'active_validators' => $setSize,
+                'validator_addresses' => $setAddresses,
+                'quorum' => IbftValidatorSet::quorum($setSize),
+                'fault_tolerance' => IbftValidatorSet::faultTolerance($setSize),
+                'votes_needed' => IbftValidatorSet::votesNeeded($setSize),
+                'silent_validators' => count(array_filter($rows, fn ($r) => $r['silent'])),
+                'awaiting_vote' => count(array_filter($onboarding, fn ($o) => $o['stage'] === 'awaiting_vote')),
+                'drop_needed' => count(array_filter($onboarding, fn ($o) => $o['stage'] === 'drop_needed')),
+                'monitor_block' => $sealStats->max('scanned_to_block'),
+                'pending_applications' => ValidatorApplication::where('status', 'pending')->count(),
+                'approved_applications' => ValidatorApplication::where('status', 'approved')->count(),
+                'rejected_applications' => ValidatorApplication::where('status', 'rejected')->count(),
+                'block_height' => $set['block'] ?? $this->getBlockHeight(config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online')),
+                'block_time' => 2, // TPIX Chain 2-second blocks
+                'consensus' => 'IBFT',
+                'chain_id' => config('blockchain.tpix_chain_id', 4289),
+                'rpc_connected' => $set !== null,
+            ],
+        ];
     }
 
     /**
