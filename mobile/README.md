@@ -1,4 +1,12 @@
-# TPIX TRADE - Mobile App
+# TPIX TRADE - Mobile App (React Native, deprecated)
+
+> [!WARNING]
+> **Deprecated since 2026-04-13. Nothing in this folder ships.**
+> The TPIX TRADE app is the Flutter app in [`mobile-flutter/`](../mobile-flutter/) (package `com.xmanstudio.tpix_trade`).
+> This React Native app (package `com.xmanstudio.tpixtrade`) is kept for reference only. Its last real release was v1.1.35.
+>
+> - Make app changes in `mobile-flutter/`, not here. That includes repo-wide sweeps.
+> - Never attach an APK built from here to a GitHub release. Both apps name the file `TPIX-TRADE-v<version>.apk`, and the update feed (`/api/v1/app/update-check`) serves the APK on the newest release. The package differs, so phones install it as a second "TPIX TRADE" app instead of updating. CI did this by accident on v1.1.72 (2026-04-19) and v1.1.238 (2026-10-20).
 
 Native mobile trading app for iOS and Android, built with React Native + Expo.
 
@@ -125,5 +133,7 @@ mobile/
 
 ## CI/CD
 
-GitHub Actions automatically builds the APK when changes are pushed to `mobile/`.
-Download the APK from the Actions artifacts or GitHub Releases.
+Nothing builds or publishes this app automatically any more.
+`.github/workflows/build-apk.yml` ("Legacy RN APK") runs only when started by hand from the Actions tab.
+It builds `TPIX-TRADE-RN-legacy-v<version>.apk` from the version in `app.json` and keeps it as a workflow artifact for 7 days.
+It has a read-only token, so it cannot bump `version.json`, push, or touch a GitHub release.
