@@ -8,11 +8,12 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import EmbeddedWalletSetup from './EmbeddedWalletSetup.vue';
+import WalletConnectPanel from './WalletConnectPanel.vue';
 import { isWalletStored, getStoredAddress } from '@/utils/embeddedWallet';
-import { playClickSound, playErrorSound } from '@/Composables/useSounds';
+import { playClickSound, playErrorSound } from '@/Composables/useSounds';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 import {
     isMobile,
@@ -74,6 +75,16 @@ const allWallets = (() => {
             color: '#06B6D4',
             embedded: true,
         },
+        /*
+         * TPIX Wallet App — คอมพิวเตอร์: สแกน QR ด้วยแอป · มือถือ: เปิดแอปให้อนุมัติแล้วกลับมาที่นี่
+         * (ผ่าน WalletConnect ทั้งสองทาง — ดู WalletConnectPanel)
+         * อยู่ถัดจากกระเป๋าในตัวเว็บ: เป็นทางเข้าสู่ระบบหลักของคนที่ใช้แอปของเราอยู่แล้ว
+         */
+        {
+            id: 'tpix_wallet_app', name: 'TPIX Wallet App',
+            description: mobile ? 'เปิดแอพ TPIX Wallet' : 'สแกน QR ด้วยแอพ TPIX Wallet',
+            popular: true, color: '#8B5CF6', isNativeApp: true,
+        },
         { id: 'metamask', name: 'MetaMask', description: mobile ? 'Open in MetaMask' : 'Browser extension', popular: true, color: '#E2761B' },
         { id: 'trustwallet', name: 'Trust Wallet', description: mobile ? 'Open in Trust Wallet' : 'Mobile & Extension', popular: true, color: '#3375BB' },
         { id: 'coinbase', name: 'Coinbase Wallet', description: mobile ? 'Open in Coinbase' : 'Browser & Mobile', popular: true, color: '#0052FF' },
@@ -86,15 +97,6 @@ const allWallets = (() => {
         id: 'walletconnect', name: 'WalletConnect',
         description: mobile ? 'เชื่อมต่อแอพกระเป๋า' : 'Scan QR code จากแอพมือถือ',
         popular: false, color: '#3B99FC',
-    });
-
-    // TPIX Wallet App — deep link สำหรับมือถือ, สแกน QR สำหรับ desktop
-    // (desktop จะเปิด WalletConnect QR modal → ผู้ใช้เปิดแอพ TPIX Wallet
-    //  กด Connect → สแกน → ยืนยันธุรกรรมจากมือถือได้เลย)
-    baseWallets.push({
-        id: 'tpix_wallet_app', name: 'TPIX Wallet App',
-        description: mobile ? 'เปิดแอพ TPIX Wallet' : 'สแกน QR ด้วยแอพ TPIX Wallet',
-        popular: true, color: '#8B5CF6', isNativeApp: true,
     });
 
     return baseWallets;
@@ -118,6 +120,92 @@ const hasExternalWallet = computed(() => {
 // Timeout สำหรับ connect — ป้องกันค้าง
 const connectTimeout = ref(null);
 
+/*
+ * กระเป๋าที่เชื่อมผ่าน WalletConnect ได้ (คีย์ของ WalletConnectPanel / utils/walletConnect)
+ * มือถือ: MetaMask/Trust/OKX/TokenPocket ที่ไม่ได้เปิดเว็บจากในแอปของมัน ก็มาทางนี้ด้วย
+ *
+ * ⚠️ เดิมบนมือถือกดแล้วพาไปเปิดเว็บนี้ "ในเบราว์เซอร์ของแอปกระเป๋า" — การเชื่อมต่อไปอยู่ในแอปนั้น
+ *    พอผู้ใช้กลับมาที่ Chrome/Safari ก็ไม่ได้เชื่อมอะไร (อาการ "เชื่อมแล้วหลุด" ที่เจ้าของเจอ)
+ *    ทางนี้คือเปิดแอปให้อนุมัติแล้วกลับมาที่เบราว์เซอร์เดิม — ยังเปิดในแอปกระเป๋าได้จากลิงก์ใต้แผง
+ */
+const WC_WALLET_IDS = {
+    tpix_wallet_app: 'tpix',
+    walletconnect: 'generic',
+    metamask: 'metamask',
+    trustwallet: 'trustwallet',
+    okx: 'okx',
+    tokenpocket: 'tokenpocket',
+};
+
+/** แอปที่กำลังเชื่อมผ่าน WalletConnect — null = หน้ารายการกระเป๋า */
+const wcChoice = ref(null);
+/** id ในรายการกระเป๋า (ใช้หาลิงก์ "เปิดในเบราว์เซอร์ของแอป") */
+const wcSourceId = ref(null);
+
+/*
+ * โชว์แผง WalletConnect เมื่อเลือกเชื่อมเอง หรือเมื่อสโตร์กำลังรอลายเซ็นอยู่
+ * (รีโหลดหน้าระหว่างรอเซ็น / หน้าอื่นขอยืนยันกระเป๋า — สโตร์เปิดหน้าต่างนี้ให้เอง)
+ */
+const showWcPanel = computed(() => wcChoice.value !== null
+    || ['signing', 'verify_failed'].includes(walletStore.wcStatus));
+
+/** ทางสำรองบนมือถือ: เปิดเว็บนี้ในเบราว์เซอร์ของแอปกระเป๋า (แบบเดิม) */
+const dappBrowserProvider = computed(() => (mobile && wcSourceId.value
+    ? WALLET_PROVIDERS.find(p => p.id === wcSourceId.value) || null
+    : null));
+
+async function startWalletConnect(walletId, sourceId = null) {
+    wcChoice.value = walletId;
+    wcSourceId.value = sourceId;
+    error.value = null;
+    try {
+        await walletStore.connectWalletConnect({ wallet: walletId });
+        // ไม่ปิดหน้าต่างตรงนี้ — แผงบอกว่าเสร็จเอง (done) · เซ็นไม่ผ่านเปิดค้างไว้ให้ลองใหม่
+    } catch (err) {
+        if (err?.code === 'WC_CANCELLED') return;
+        playErrorSound();
+        // แผงโชว์ข้อความของมันเอง (wcStatus = error) — ไม่โชว์ข้อความดิบซ้ำ
+    }
+}
+
+function backFromWalletConnect() {
+    walletStore.cancelWalletConnect();
+    wcChoice.value = null;
+    wcSourceId.value = null;
+}
+
+function onWalletConnectDone() {
+    const address = walletStore.address;
+    walletStore.cancelWalletConnect(); // done → idle ครั้งหน้าเปิดหน้าต่างเจอรายการกระเป๋าตามปกติ
+    wcChoice.value = null;
+    emit('connected', { address, wallet: 'walletconnect', chainId: walletStore.chainId });
+    emit('close');
+}
+
+function openInWalletBrowser() {
+    const provider = dappBrowserProvider.value;
+    if (!provider) return;
+    walletStore.cancelWalletConnect();
+    openWalletApp(provider, window.location.href);
+}
+
+/** ปิดหน้าต่าง — กำลังรอจับคู่ = ยกเลิก · กำลังรอลายเซ็น = รอต่อเบื้องหลัง (ไปกดในแอปทีหลังได้) */
+function closeModal() {
+    walletStore.cancelWalletConnect();
+    emit('close');
+}
+
+onMounted(() => {
+    // ผลของรอบก่อนที่จบไปแล้ว (เสร็จ/ล้ม) ไม่ต้องโชว์ซ้ำเมื่อผู้ใช้เปิดหน้าต่างใหม่เอง
+    if (['done', 'error'].includes(walletStore.wcStatus)) walletStore.cancelWalletConnect();
+});
+
+onBeforeUnmount(() => {
+    // หน้าต่างหายไปทั้งที่ QR ยังรอสแกน (เปลี่ยนหน้า) — ไม่มีใครเห็น QR แล้ว เลิกรอ
+    // (กำลังรอลายเซ็น = ไม่ยุ่ง — layout เปิดหน้าต่างกลางให้ต่อเอง)
+    if (walletStore.wcStatus === 'pairing') walletStore.cancelWalletConnect();
+});
+
 const connectWallet = async (wallet) => {
     playClickSound();
 
@@ -139,52 +227,22 @@ const connectWallet = async (wallet) => {
     selectedWallet.value = wallet.id;
     error.value = null;
 
-    // === WalletConnect v2 — QR code modal ===
-    if (wallet.id === 'walletconnect') {
-        isConnecting.value = true;
-        try {
-            const address = await walletStore.connectWalletConnect();
-            emit('connected', { address, wallet: 'walletconnect', chainId: walletStore.chainId });
-            emit('close');
-        } catch (err) {
-            playErrorSound();
-            error.value = walletStore.error || err.message || 'WalletConnect failed.';
-        } finally {
-            isConnecting.value = false;
-        }
+    /*
+     * === WalletConnect v2 — QR (คอม) / เปิดแอป (มือถือ) ในแผงของเราเอง ===
+     * TPIX Wallet App: เดิมบนมือถือเปิด tpixwallet:// เฉย ๆ — แอปเปิดขึ้นมาแต่ไม่ได้เชื่อมอะไรเลย
+     */
+    if (wallet.id === 'walletconnect' || wallet.id === 'tpix_wallet_app') {
+        startWalletConnect(WC_WALLET_IDS[wallet.id]);
         return;
     }
 
-    // === TPIX Wallet App — mobile deep link หรือ desktop WalletConnect ===
-    if (wallet.id === 'tpix_wallet_app') {
-        if (mobile) {
-            // มือถือ: เปิดแอพผ่าน deep link (ถ้ามีก็เปิด ถ้าไม่มีก็ redirect ไปดาวน์โหลด)
-            window.location.href = 'tpixwallet://';
-            // Fallback: ถ้าแอพไม่เปิดภายใน 2 วินาที → แสดงตัวเลือกดาวน์โหลด
-            setTimeout(() => {
-                if (document.visibilityState !== 'hidden') {
-                    error.value = 'ไม่พบแอพ TPIX Wallet — กรุณาดาวน์โหลดจาก Google Play หรือ App Store';
-                }
-            }, 2000);
+    // === Mobile: ไม่มี injected provider → เปิดแอปให้อนุมัติผ่าน WalletConnect แล้วกลับมาที่เบราว์เซอร์นี้ ===
+    if (mobile && !isWalletDetected(wallet.id)) {
+        if (WC_WALLET_IDS[wallet.id]) {
+            startWalletConnect(WC_WALLET_IDS[wallet.id], wallet.id);
             return;
         }
-        // Desktop: ใช้ WalletConnect เหมือนกัน
-        isConnecting.value = true;
-        try {
-            const address = await walletStore.connectWalletConnect();
-            emit('connected', { address, wallet: 'tpix_wallet_app', chainId: walletStore.chainId });
-            emit('close');
-        } catch (err) {
-            playErrorSound();
-            error.value = walletStore.error || err.message || 'WalletConnect failed.';
-        } finally {
-            isConnecting.value = false;
-        }
-        return;
-    }
-
-    // === Mobile: ถ้าไม่มี injected provider → เปิดแอปผ่าน deep link ===
-    if (mobile && !isWalletDetected(wallet.id)) {
+        // แอปที่ไม่รับลิงก์ WalletConnect (Coinbase) — เปิดเว็บในเบราว์เซอร์ของแอปแบบเดิม
         const provider = WALLET_PROVIDERS.find(p => p.id === wallet.id);
         if (provider) {
             openWalletApp(provider, window.location.href);
@@ -275,13 +333,13 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
 </script>
 
 <template>
-    <div class="modal-overlay" @click.self="$emit('close')">
+    <div class="modal-overlay" @click.self="closeModal">
         <div class="modal-content max-w-md">
             <!-- Header -->
             <div class="flex items-center justify-between mb-5">
                 <h2 class="text-xl font-bold text-white">Connect Wallet</h2>
                 <button
-                    @click="$emit('close')"
+                    @click="closeModal"
                     class="p-2 rounded-xl text-dark-400 hover:text-white hover:bg-white/10 transition-all"
                 >
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -320,7 +378,7 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                 </p>
             </div>
 
-            <p v-if="!isInWalletBrowser" class="text-dark-400 text-sm mb-5">
+            <p v-if="!isInWalletBrowser && !showWcPanel" class="text-dark-400 text-sm mb-5">
                 <template v-if="mobile">
                     Select a wallet app to connect. It will open automatically.
                 </template>
@@ -358,6 +416,25 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                         สร้าง Wallet ใหม่ หรือ Import
                     </button>
                 </div>
+            </template>
+
+            <!-- WalletConnect: QR (คอม) / เปิดแอปกระเป๋า (มือถือ) → ยืนยันเข้าสู่ระบบในแอป -->
+            <template v-else-if="showWcPanel">
+                <WalletConnectPanel
+                    :wallet="wcChoice || walletStore.wcWallet || 'generic'"
+                    @back="backFromWalletConnect"
+                    @retry="startWalletConnect(wcChoice || 'generic', wcSourceId)"
+                    @done="onWalletConnectDone"
+                    @close="closeModal"
+                />
+                <button
+                    v-if="dappBrowserProvider && walletStore.wcStatus === 'pairing'"
+                    type="button"
+                    class="w-full mt-3 text-center text-dark-500 hover:text-dark-300 text-xs"
+                    @click="openInWalletBrowser"
+                >
+                    เปิดเว็บนี้ในเบราว์เซอร์ของแอป {{ dappBrowserProvider.name }} แทน
+                </button>
             </template>
 
             <!-- Normal wallet selection -->
