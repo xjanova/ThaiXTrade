@@ -82,8 +82,9 @@ export function useHomeLiveStats() {
             const d = await getJson('/api/v1/validators/stats', signal);
             chain.value = {
                 block_height: Number(d.block_height) || 0,
-                active_validators: Number(d.active_validators) || 0,
-                total_validators: Number(d.total_validators) || 0,
+                // null = เชนไม่ได้บอก (ถอดลายเซ็นไม่ได้) — หน้าแรกต้องโชว์ "—" ไม่ใช่ "0 / 4"
+                active_validators: d.active_validators == null ? null : Number(d.active_validators),
+                total_validators: d.total_validators == null ? null : Number(d.total_validators),
                 block_time: Number(d.block_time) || 2,
                 chain_id: d.chain_id ?? 4289,
                 consensus: d.consensus || 'IBFT',

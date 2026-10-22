@@ -325,7 +325,10 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/stats', [ValidatorController::class, 'stats']);
         Route::get('/list', [ValidatorController::class, 'list']);
         Route::get('/rewards', [ValidatorController::class, 'checkRewards']);
-        Route::post('/apply', [ValidatorController::class, 'submitApplication'])->middleware('throttle:5,60');
+        // ขอข้อความให้กระเป๋าเซ็นก่อน แล้วค่อยส่งใบสมัครพร้อมลายเซ็น (พิสูจน์ว่าเป็นเจ้าของกระเป๋าจริง)
+        // ตัวนับมีชื่อ (AppServiceProvider) — ไม่ปนกับตัวนับไม่มีชื่อที่ API สาธารณะใช้ร่วมกัน
+        Route::post('/apply/challenge', [ValidatorController::class, 'applicationChallenge'])->middleware('throttle:validator-apply-challenge');
+        Route::post('/apply', [ValidatorController::class, 'submitApplication'])->middleware('throttle:validator-apply');
         // ค่าตั้งชั้นไทล์แผนที่ — โปรแกรมมาสเตอร์โหนดบนเดสก์ท็อปอ่านตอนเปิดหน้าแผนที่
         // แยกไว้ที่นี่เพื่อหมุนคีย์/เปลี่ยนผู้ให้บริการได้โดยไม่ต้องปล่อยโปรแกรมรุ่นใหม่
         Route::get('/map-config', [ValidatorController::class, 'mapSettings']);
