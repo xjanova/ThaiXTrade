@@ -383,19 +383,29 @@ jobs:
             echo "| **Status** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
 
-      # ---- ลบ Release เก่าทิ้งเมื่อปล่อยตัวใหม่สำเร็จ เก็บไว้ตัวเดียว ----
+      # ---- ลบ Release เก่าเมื่อปล่อยตัวใหม่สำเร็จ เก็บไว้ 10 รุ่นล่าสุด ----
       #
       # ผู้ใช้โหลดผ่าน tpix.online แล้ว GitHub Release เหลือหน้าที่แค่เป็นที่เก็บไฟล์
-      # ไม่ต้องสะสมของเก่าไว้ให้ใครหยิบไปใช้ได้อีก
+      # เก็บ 10 รุ่นไว้ให้แอดมินย้อนรุ่นได้จากหน้า App Releases ที่เก่ากว่านั้นลบทิ้ง
+      # รวม release ยุค React Native ด้วย (เจ้าของเลือก 2026-10-22)
       #
-      # สั่งลบอัตโนมัติแล้วพลาด = กู้ไม่ได้ จึงมีด่านกัน 4 ชั้น
-      #   1. ยืนยันก่อนว่า Release ที่เพิ่งปล่อยมีไฟล์จริง ไม่มี = ไม่ลบอะไรเลย
+      # ★ ตั้งแต่เพิ่มขั้นนี้ 2026-08-23 ถึง 2026-10-22 ไม่เคยลบอะไรได้สักรอบ
+      #   ตัวกรองเดิม test("\.apk$") เป็น escape ที่ jq ไม่รับ แล้ว `|| echo 0` กลบ error
+      #   ทุกรอบจึงขึ้นแค่ "ไม่มีไฟล์ที่ตรงเงื่อนไข" ไม่มีใครรู้ว่าพัง
+      #   ตอนนี้ใช้ endswith(".apk") ไม่มี backslash ให้พลาด และอ่านไม่ได้ต้องบอกว่าอ่านไม่ได้
+      #
+      # สั่งลบอัตโนมัติแล้วพลาด = กู้ไม่ได้ จึงมีด่านกัน
+      #   1. Release ที่เพิ่งปล่อยต้องมีไฟล์ .apk จริง ไม่มีหรืออ่านไม่ได้ = ไม่ลบอะไรเลย
       #      กันเคสบิลด์เพี้ยนแล้วลบของเก่าจนไม่เหลืออะไรให้โหลดสักตัว
-      #   2. คัดเฉพาะ Release ที่มีไฟล์ชนิดของผลิตภัณฑ์นี้ — repo มีหลายผลิตภัณฑ์
-      #      ใช้ tag ชุดเดียวกัน ลบตามอายุเฉย ๆ จะไปโดนของผลิตภัณฑ์อื่น
-      #   3. ลบเฉพาะตัว Release ไม่แตะ tag — ย้อนสร้างใหม่จาก source ได้เสมอ
-      #   4. continue-on-error — ลบพลาดต้องไม่ทำให้รอบที่ปล่อยรุ่นสำเร็จกลายเป็นล้มเหลว
-      - name: Prune old releases (keep newest only)
+      #   2. คัดเฉพาะ Release ที่มี .apk — release ของเว็บ (ci.yml) ใช้ tag ชุดเดียวกัน
+      #      แต่ไม่มีไฟล์แนบ ต้องไม่โดนลบ
+      #   3. อ่านรายการครบทุกหน้าก่อน (repo มี release หลายร้อยตัว) อ่านไม่ครบ = ไม่ลบอะไรเลย
+      #   4. ไม่ลบรุ่นที่เพิ่งแนบไฟล์รอบนี้ แม้จะเก่ากว่า 10 อันดับ (target_tag ย้อนแนบรุ่นเก่า)
+      #   5. พิมพ์รายการที่จะลบทั้งหมดลง log และ Summary ก่อนลบตัวแรก
+      #   6. ลบเฉพาะตัว Release ไม่แตะ tag — ย้อนสร้างใหม่จาก source ได้เสมอ
+      #   7. continue-on-error — ลบพลาดต้องไม่ทำให้รอบที่ปล่อยรุ่นสำเร็จกลายเป็นล้มเหลว
+      # อยากเห็นก่อนว่าจะลบอะไร: ตั้ง DRY_RUN: 'true' = พิมพ์รายการอย่างเดียว ไม่ลบ
+      - name: Prune old releases (keep newest 10)
         continue-on-error: true
         if: >-
           (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
@@ -404,33 +414,72 @@ jobs:
           github.event.inputs.target_tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          KEEP: '1'
-          PATTERN: '\.apk$'
+          KEEP: '10'
+          DRY_RUN: 'false'
           CURRENT_TAG: v${{ steps.version.outputs.version }}
         shell: bash
         run: |
-          have=$(gh release view "$CURRENT_TAG" --repo "$GITHUB_REPOSITORY" --json assets -q "[.assets[].name | select(test(\"$PATTERN\"))] | length" 2>/dev/null || echo 0)
+          # KEEP ว่างหรือเพี้ยน = tail -n +1 = ลบทุกตัว ต้องหยุดตรงนี้
+          case "$KEEP" in
+            '' | *[!0-9]* | 0) echo "::error::KEEP ต้องเป็นจำนวนเต็มบวก ได้ '$KEEP'"; exit 1 ;;
+          esac
 
-          if [ "${have:-0}" -lt 1 ]; then
-            echo "::warning::$CURRENT_TAG ไม่มีไฟล์ที่ตรงเงื่อนไข จึงไม่ลบอะไรทั้งสิ้น"
+          # error ของ gh/jq ต้องโผล่ใน log ห้ามกลบ (บทเรียนจากตัวกรองเดิม)
+          if ! have=$(gh release view "$CURRENT_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+                --jq '[.assets[].name | ascii_downcase | select(endswith(".apk"))] | length'); then
+            echo "::warning::อ่าน release $CURRENT_TAG ไม่ได้ จึงไม่ลบอะไรทั้งสิ้น"
             exit 0
           fi
-          echo "$CURRENT_TAG มีไฟล์ $have ชิ้น เริ่มลบของเก่า"
+          if ! [ "$have" -ge 1 ] 2>/dev/null; then
+            echo "::warning::$CURRENT_TAG ไม่มีไฟล์ .apk จึงไม่ลบอะไรทั้งสิ้น"
+            exit 0
+          fi
+          echo "$CURRENT_TAG มีไฟล์ .apk $have ชิ้น"
 
-          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > all.json || exit 0
+          # release ที่มี .apk ทุกหน้า → created_at <tab> id <tab> tag เรียงใหม่ไปเก่า
+          if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+                --jq '.[] | select(.draft | not) | select([.assets[].name | ascii_downcase | endswith(".apk")] | any) | [.created_at, .id, .tag_name] | @tsv' \
+                > apk-releases.tsv; then
+            echo "::warning::อ่านรายการ release ไม่ครบ จึงไม่ลบอะไรทั้งสิ้น"
+            exit 0
+          fi
+          LC_ALL=C sort -r -o apk-releases.tsv apk-releases.tsv
 
-          jq -r --arg pat "$PATTERN" --argjson keep "$KEEP" '[ .[] | select(.draft | not) | select([.assets[].name | test($pat)] | any) ] | sort_by(.created_at) | reverse | .[$keep:] | .[] | "\(.id) \(.tag_name)"' all.json > old.txt || exit 0
+          tail -n +"$((KEEP + 1))" apk-releases.tsv | awk -F'\t' -v cur="$CURRENT_TAG" '$3 != cur' > old.tsv
+          total=$(wc -l < apk-releases.tsv)
+          count=$(wc -l < old.tsv)
 
-          count=$(grep -c . old.txt || true)
-          if [ "${count:-0}" -eq 0 ]; then
+          echo "release ที่มี .apk $total ตัว เก็บ $KEEP ตัวล่าสุด จะลบ $count ตัว (ไม่แตะ tag):"
+          awk -F'\t' '{ printf "  %s  created %s  id=%s\n", $3, $1, $2 }' old.tsv
+          {
+            echo "### Prune old releases"
+            echo "release ที่มี .apk $total ตัว · เก็บ $KEEP ตัวล่าสุด · จะลบ $count ตัว (DRY_RUN=$DRY_RUN)"
+            if [ "$count" -gt 0 ]; then
+              echo
+              cut -f3 old.tsv | paste -sd ' ' -
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$count" -eq 0 ]; then
             echo "ไม่มีของเก่าให้ลบ"
             exit 0
           fi
+          if [ "$DRY_RUN" = 'true' ]; then
+            echo "DRY_RUN — แสดงรายการอย่างเดียว ไม่ได้ลบ"
+            exit 0
+          fi
 
-          while read -r id tag; do
-            [ -n "$id" ] || continue
-            echo "  ลบ release $tag (id=$id) โดยไม่แตะ tag"
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" || echo "::warning::ลบ $tag ไม่สำเร็จ"
-          done < old.txt
+          deleted=0
+          while IFS=$'\t' read -r _ id tag; do
+            if gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" --silent; then
+              echo "  ลบ $tag แล้ว"
+              deleted=$((deleted + 1))
+            else
+              echo "::warning::ลบ $tag (id=$id) ไม่สำเร็จ"
+            fi
+            # GitHub ขอให้เว้นอย่างน้อย 1 วิระหว่างคำสั่งที่แก้ข้อมูล รอบแรกลบหลายสิบตัว
+            sleep 1
+          done < old.tsv
 
-          echo "ลบไปทั้งหมด $count รายการ เหลือรุ่นล่าสุดตัวเดียว"
+          echo "ลบไป $deleted จาก $count รายการ"
+          echo "ลบสำเร็จ $deleted จาก $count" >> "$GITHUB_STEP_SUMMARY"
