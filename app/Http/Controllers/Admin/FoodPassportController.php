@@ -165,18 +165,18 @@ class FoodPassportController extends Controller
     }
 
     /**
-     * Devices — Regenerate API key.
+     * Devices — Regenerate API key (กุญแจเดิมใช้ไม่ได้ทันที).
+     *
+     * เก็บแค่ hash — กุญแจตัวจริงอยู่ในข้อความแจ้งผลรอบนี้รอบเดียว ให้แอดมินคัดลอกส่งเจ้าของเครื่อง
+     * ⚠️ เดิมเก็บกุญแจตัวจริงใน config ซึ่งออกไปกับอุปกรณ์ในหน้า /verify สาธารณะ
+     *    ขณะที่หน้านี้เองไม่เคยแสดงกุญแจให้แอดมินเห็นเลย
      */
     public function regenerateDeviceKey(int $id): RedirectResponse
     {
         $device = IoTDevice::findOrFail($id);
-        $newKey = 'fpk_'.bin2hex(random_bytes(16));
+        $apiKey = $this->ioTService->issueApiKey($device);
 
-        $device->update([
-            'config' => array_merge($device->config ?? [], ['api_key' => $newKey]),
-        ]);
-
-        return back()->with('success', "New API key generated for {$device->device_id}.");
+        return back()->with('success', "New API key for {$device->device_id} (copy it now — it will not be shown again): {$apiKey}");
     }
 
     /**

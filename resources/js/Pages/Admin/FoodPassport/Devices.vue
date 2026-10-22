@@ -167,6 +167,8 @@ function isOffline(device) {
                                     <div>
                                         <p class="font-medium text-white font-mono text-xs">{{ device.device_id }}</p>
                                         <p class="text-xs text-gray-400">{{ device.name || '—' }}</p>
+                                        <!-- ส่งข้อมูลไม่ได้จนกว่าจะออกกุญแจ (ปุ่ม Key) -->
+                                        <p v-if="!device.has_api_key" class="text-[10px] text-yellow-400">No API key</p>
                                     </div>
                                 </div>
                             </td>

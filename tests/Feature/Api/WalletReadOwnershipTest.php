@@ -49,7 +49,7 @@ class WalletReadOwnershipTest extends TestCase
      * GET ทุกเส้นที่อยู่หลัง VerifyWalletOwnership → URL ที่ใช้ยิง ({wallet} = กระเป๋าที่ถูกขอ).
      *
      * เพิ่ม GET ใหม่ในกลุ่มต้องเพิ่มที่นี่ด้วย — ทุก_get_หลังด่านกระเป๋าอยู่ในรายการนี้ จับให้
-     * food-passport อ่านเลขกระเป๋าจาก ?address= ซึ่งด่านนี้มองไม่เห็น — ที่นี่ทดสอบเฉพาะเมื่อส่ง wallet_address
+     * food-passport เคยอ่าน ?address= ที่ด่านมองไม่เห็น — ทางนั้นทดสอบไว้ใน FoodPassportIoTAuthTest
      */
     private const PROTECTED_GETS = [
         'api/v1/token-sale/purchases/{walletAddress}' => '/api/v1/token-sale/purchases/{wallet}',

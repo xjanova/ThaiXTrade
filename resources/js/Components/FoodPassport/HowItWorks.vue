@@ -46,8 +46,9 @@ contract.registerProduct(
             'ข้อมูลถูกบันทึกทั้งใน Database และ Blockchain',
             'ตรวจสอบ cold chain — แจ้งเตือนเมื่ออุณหภูมิผิดปกติ',
         ],
-        code: `// IoT Device ส่ง HTTP POST
+        code: `// IoT Device ส่ง HTTP POST พร้อม API key ของเครื่อง (ได้ตอนลงทะเบียน)
 POST /api/v1/food-passport/iot/ingest
+Authorization: Bearer fpk_...
 {
   "device_id": "TPIX-IOT-001",
   "product_id": 42,

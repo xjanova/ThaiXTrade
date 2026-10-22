@@ -9,6 +9,7 @@ use App\Services\FoodPassportService;
 use App\Services\IoTService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 class FoodPassportApiController extends Controller
 {
@@ -162,15 +163,16 @@ class FoodPassportApiController extends Controller
 
     /**
      * ดูสินค้าของฉัน (producer).
+     *
+     * เลขกระเป๋ามาจาก wallet_address ที่ VerifyWalletOwnership ตรวจแล้วเท่านั้น
+     * ⚠️ เดิมอ่าน ?address= ซึ่งด่านมองไม่เห็น ด่านจึงปล่อยผ่านโดยไม่ตรวจอะไร —
+     *    ใครก็ใส่เลขกระเป๋าคนอื่นแล้วดูสินค้า/อุปกรณ์ IoT (พร้อม device_id) ของเขาได้
      */
     public function myProducts(Request $request): JsonResponse
     {
-        $address = $request->query('address');
-        if (! $address || strlen($address) !== 42) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'INVALID_ADDRESS', 'message' => 'Valid wallet address required'],
-            ], 400);
+        $address = $this->verifiedWallet($request);
+        if (! $address) {
+            return $this->walletRequired();
         }
 
         $products = $this->foodPassportService->getProductsByProducer($address);
@@ -183,12 +185,20 @@ class FoodPassportApiController extends Controller
     // ═══════════════════════════════════════════
 
     /**
-     * IoT device ส่งข้อมูลเข้าระบบ.
+     * IoT device ส่งข้อมูลเข้าระบบ — ต้องส่ง API key ของเครื่องนี้มาใน Authorization: Bearer.
      */
     public function iotIngest(Request $request): JsonResponse
     {
+        // ตรวจกุญแจก่อน validate ที่เหลือ — คนไม่มีกุญแจไม่ควรใช้ข้อความ validation ส่องได้ว่ามีสินค้าเลขไหน
+        $request->validate(['device_id' => 'required|string|max:100']);
+
+        $device = $this->authenticateDevice($request, $request->input('device_id'));
+        if ($device instanceof JsonResponse) {
+            return $device;
+        }
+
         $validated = $request->validate([
-            'device_id' => 'required|string|exists:iot_devices,device_id',
+            'device_id' => 'required|string|max:100',
             'product_id' => 'required|integer|exists:food_products,id',
             'stage' => 'required|string|in:farm,processing,storage,transport,retail',
             'location' => 'nullable|string',
@@ -200,10 +210,8 @@ class FoodPassportApiController extends Controller
             'image_url' => 'nullable|string|max:500',
         ]);
 
-        // Verify IoT API key
-        $authError = $this->verifyDeviceApiKey($request, $validated['device_id']);
-        if ($authError) {
-            return $authError;
+        if ($inactive = $this->rejectInactiveDevice($device)) {
+            return $inactive;
         }
 
         try {
@@ -219,24 +227,55 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * IoT batch ingest — หลาย records พร้อมกัน.
+     * IoT batch ingest — หลาย records พร้อมกัน (เครื่องที่เก็บข้อมูลไว้แล้วส่งทีเดียว).
+     *
+     * กุญแจหนึ่งดอก = อุปกรณ์หนึ่งเครื่อง ทุกแถวในชุดต้องเป็นของเครื่องที่ยืนยันตัวแล้ว
+     * ⚠️ เดิมตรวจกุญแจแค่ของแถวแรก — ลงทะเบียนอุปกรณ์ของตัวเอง (ได้กุญแจทันที) ใส่เป็นแถวแรก
+     *    แล้วแถวที่เหลือใส่ device_id ของคนอื่น = ส่งข้อมูลปลอมในนามอุปกรณ์ใครก็ได้
      */
     public function iotBatchIngest(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'records' => 'required|array|min:1|max:100',
-            'records.*.device_id' => 'required|string',
-            'records.*.product_id' => 'required|integer',
-            'records.*.stage' => 'required|string',
+        $request->validate([
+            'records' => 'required|array|list|min:1|max:100',
+            'records.*.device_id' => 'required|string|max:100',
         ]);
 
-        // Verify API key against first device in batch
-        $firstDeviceId = $validated['records'][0]['device_id'] ?? null;
-        if ($firstDeviceId) {
-            $authError = $this->verifyDeviceApiKey($request, $firstDeviceId);
-            if ($authError) {
-                return $authError;
+        $deviceId = $request->input('records.0.device_id');
+        $device = $this->authenticateDevice($request, $deviceId);
+        if ($device instanceof JsonResponse) {
+            return $device;
+        }
+
+        // กฎเดียวกับ ingest ทีละแถว — เดิมระบุแค่ 3 ฟิลด์ validated() เลยตัดค่า sensor ทิ้งหมด
+        // (อุณหภูมิ/ความชื้นที่ส่งมาเป็นชุดไม่เคยถูกบันทึก)
+        $validated = $request->validate([
+            'records' => 'required|array|list|min:1|max:100',
+            'records.*.device_id' => 'required|string|max:100',
+            'records.*.product_id' => 'required|integer',
+            'records.*.stage' => 'required|string|in:farm,processing,storage,transport,retail',
+            'records.*.location' => 'nullable|string',
+            'records.*.temperature' => 'nullable|numeric',
+            'records.*.humidity' => 'nullable|numeric',
+            'records.*.weight_kg' => 'nullable|numeric',
+            'records.*.ph_level' => 'nullable|numeric',
+            'records.*.data' => 'nullable|array',
+            'records.*.image_url' => 'nullable|string|max:500',
+        ]);
+
+        foreach ($validated['records'] as $record) {
+            if ($record['device_id'] !== $deviceId) {
+                return response()->json([
+                    'success' => false,
+                    'error' => [
+                        'code' => 'DEVICE_MISMATCH',
+                        'message' => 'Every record in a batch must come from the device that owns the API key.',
+                    ],
+                ], 403);
             }
+        }
+
+        if ($inactive = $this->rejectInactiveDevice($device)) {
+            return $inactive;
         }
 
         $results = $this->ioTService->batchIngest($validated['records']);
@@ -245,34 +284,62 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * ลงทะเบียน IoT device ใหม่.
+     * ลงทะเบียน IoT device ใหม่ — ได้ API key กลับไปครั้งเดียว.
+     *
+     * เจ้าของอุปกรณ์คือกระเป๋าที่ VerifyWalletOwnership ตรวจแล้วเท่านั้น
+     * ⚠️ เดิมรับ owner_address ตรงๆ ซึ่งด่านมองไม่เห็น — ใครก็ลงทะเบียนอุปกรณ์ในชื่อกระเป๋าคนอื่น
+     *    แล้วถือกุญแจของเครื่องที่บันทึกข้อมูลโดยขึ้นชื่อเหยื่อเป็นผู้บันทึกได้
      */
     public function registerDevice(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'wallet_address' => 'required|string',
             'name' => 'required|string|max:255',
             'type' => 'required|string|in:temperature,humidity,gps,camera,weight,ph,multi',
-            'owner_address' => 'required|string|size:42',
+            'owner_address' => 'nullable|string|size:42',
             'location' => 'nullable|string|max:255',
             'config' => 'nullable|array',
         ]);
 
-        $device = $this->ioTService->registerDevice($validated);
+        $owner = $validated['wallet_address'];
 
-        return response()->json(['success' => true, 'data' => $device], 201);
+        if (isset($validated['owner_address']) && strtolower($validated['owner_address']) !== $owner) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'WALLET_MISMATCH',
+                    'message' => 'owner_address must be the wallet you verified.',
+                ],
+            ], 403);
+        }
+
+        // ไม่ส่ง wallet_address ของคำขอต่อ — ใน IoTService ฟิลด์ชื่อเดียวกันหมายถึง "กระเป๋าของตัวเครื่อง"
+        $device = $this->ioTService->registerDevice([
+            'name' => $validated['name'],
+            'type' => $validated['type'],
+            'owner_address' => $owner,
+            'location' => $validated['location'] ?? null,
+            // กุญแจห้ามอยู่ใน config — config ออกไปพร้อมอุปกรณ์ในหน้า /verify สาธารณะ
+            'config' => Arr::except($validated['config'] ?? [], ['api_key']) ?: null,
+        ]);
+
+        $apiKey = $this->ioTService->issueApiKey($device);
+
+        // กุญแจตัวจริงออกจากเซิร์ฟเวอร์ครั้งนี้ครั้งเดียว — หายแล้วออกใหม่ได้ที่ rotate-key
+        return response()->json([
+            'success' => true,
+            'data' => array_merge($device->toArray(), ['api_key' => $apiKey]),
+        ], 201);
     }
 
     /**
-     * ดูอุปกรณ์ IoT ของฉัน.
+     * ดูอุปกรณ์ IoT ของฉัน (เลขกระเป๋าจาก wallet_address ที่ด่านตรวจแล้ว — ดู myProducts).
      */
     public function myDevices(Request $request): JsonResponse
     {
-        $address = $request->query('address');
-        if (! $address || strlen($address) !== 42) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'INVALID_ADDRESS', 'message' => 'Valid wallet address required'],
-            ], 400);
+        $address = $this->verifiedWallet($request);
+        if (! $address) {
+            return $this->walletRequired();
         }
 
         $devices = $this->ioTService->getDevices($address);
@@ -281,10 +348,48 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * ทดสอบ connection ของ device.
+     * ออก API key ใหม่ให้อุปกรณ์ของฉัน — กุญแจเดิมใช้ไม่ได้ทันที.
+     *
+     * ทางย้ายของอุปกรณ์ที่ลงทะเบียนก่อนมีระบบกุญแจ (ไม่มีกุญแจเลย ส่งข้อมูลไม่ได้)
+     * และทางแก้เมื่อกุญแจหายหรือหลุด
      */
-    public function testDevice(string $deviceId): JsonResponse
+    public function rotateDeviceKey(Request $request, string $deviceId): JsonResponse
     {
+        $owner = $this->verifiedWallet($request);
+        if (! $owner) {
+            return $this->walletRequired();
+        }
+
+        $device = IoTDevice::where('device_id', $deviceId)->first();
+
+        // อุปกรณ์ของคนอื่นตอบเหมือนไม่มีอยู่ — ไม่บอกว่าเลขนี้มีเจ้าของ
+        if (! $device || strtolower($device->owner_address) !== $owner) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'DEVICE_NOT_FOUND', 'message' => 'Device not found.'],
+            ], 404);
+        }
+
+        $apiKey = $this->ioTService->issueApiKey($device);
+
+        return response()->json([
+            'success' => true,
+            'data' => ['device_id' => $device->device_id, 'api_key' => $apiKey],
+        ]);
+    }
+
+    /**
+     * ทดสอบ connection ของ device — ตัวเครื่องเรียกพร้อมกุญแจเพื่อเช็คว่ากุญแจใช้ได้.
+     *
+     * ping นับเป็น "อุปกรณ์ยังออนไลน์" (last_ping_at) — ต้องเป็นตัวเครื่องจริง ไม่ใช่ใครก็ยิงได้
+     */
+    public function testDevice(Request $request, string $deviceId): JsonResponse
+    {
+        $device = $this->authenticateDevice($request, $deviceId);
+        if ($device instanceof JsonResponse) {
+            return $device;
+        }
+
         $result = $this->ioTService->testConnection($deviceId);
 
         return response()->json([
@@ -295,16 +400,14 @@ class FoodPassportApiController extends Controller
 
     /**
      * Generate config สำหรับ device (API endpoint, payload template).
+     *
+     * ให้เฉพาะตัวเครื่อง (มีกุญแจ) — ค่าตั้งมีตำแหน่งติดตั้ง ซึ่งมักเป็นพิกัดฟาร์ม
      */
-    public function deviceConfig(string $deviceId): JsonResponse
+    public function deviceConfig(Request $request, string $deviceId): JsonResponse
     {
-        $device = IoTDevice::where('device_id', $deviceId)->first();
-
-        if (! $device) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'NOT_FOUND', 'message' => 'Device not found'],
-            ], 404);
+        $device = $this->authenticateDevice($request, $deviceId);
+        if ($device instanceof JsonResponse) {
+            return $device;
         }
 
         return response()->json([
@@ -351,34 +454,66 @@ class FoodPassportApiController extends Controller
     }
 
     /**
-     * ตรวจสอบ API key ของ IoT device.
+     * อุปกรณ์ที่ส่ง API key ของตัวเองมาใน Authorization: Bearer — หรือคำตอบปฏิเสธ.
+     *
+     * ไม่มีอุปกรณ์เลขนี้ · ยังไม่เคยออกกุญแจ · กุญแจผิด ตอบเหมือนกันหมด
+     * ⚠️ เดิมเทียบกับ config.api_key ตัวจริงที่หลุดออกหน้า /verify สาธารณะ และตอบ 404
+     *    แยกจาก 403 ทำให้ใช้ส่องได้ว่า device_id ไหนมีอยู่จริง
      */
-    private function verifyDeviceApiKey(Request $request, string $deviceId): ?JsonResponse
+    private function authenticateDevice(Request $request, mixed $deviceId): IoTDevice|JsonResponse
     {
-        $bearerToken = $request->bearerToken();
-        if (! $bearerToken) {
+        $apiKey = $request->bearerToken();
+        if (! $apiKey) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'AUTH_REQUIRED', 'message' => 'Bearer API key is required.'],
+                'error' => ['code' => 'AUTH_REQUIRED', 'message' => 'Device API key is required (Authorization: Bearer <api_key>).'],
             ], 401);
         }
 
-        $device = IoTDevice::where('device_id', $deviceId)->first();
+        $device = is_string($deviceId) ? $this->ioTService->authenticateDevice($deviceId, $apiKey) : null;
         if (! $device) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'DEVICE_NOT_FOUND', 'message' => 'Device not found.'],
-            ], 404);
-        }
-
-        $storedKey = $device->config['api_key'] ?? null;
-        if (! $storedKey || ! hash_equals($storedKey, $bearerToken)) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'INVALID_API_KEY', 'message' => 'Invalid API key for this device.'],
+                'error' => [
+                    'code' => 'INVALID_API_KEY',
+                    'message' => 'Invalid API key for this device. The owner can issue a new key from FoodPassport → IoT Devices.',
+                ],
             ], 403);
         }
 
-        return null;
+        return $device;
+    }
+
+    /** เครื่องที่แอดมิน/เจ้าของปิดไว้ (inactive, maintenance) ห้ามส่งข้อมูลเข้า */
+    private function rejectInactiveDevice(IoTDevice $device): ?JsonResponse
+    {
+        if ($device->status === 'active') {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'error' => ['code' => 'DEVICE_INACTIVE', 'message' => 'This device is not active.'],
+        ], 422);
+    }
+
+    /**
+     * กระเป๋าที่ VerifyWalletOwnership ตรวจและแปลงเป็นตัวเล็กแล้ว.
+     *
+     * null = คำขอไม่ได้ส่ง wallet_address มา — กรณีนี้ด่านปล่อยผ่านโดยไม่ตรวจ จึงห้ามทำงานต่อ
+     */
+    private function verifiedWallet(Request $request): ?string
+    {
+        $wallet = $request->input('wallet_address');
+
+        return is_string($wallet) && $wallet !== '' ? $wallet : null;
+    }
+
+    private function walletRequired(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'error' => ['code' => 'INVALID_ADDRESS', 'message' => 'Valid wallet_address required'],
+        ], 400);
     }
 }

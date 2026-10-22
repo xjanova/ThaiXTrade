@@ -368,7 +368,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/sensor-data/{productId}', [FoodPassportApiController::class, 'sensorData']);
         Route::get('/fdp-token', [FoodPassportApiController::class, 'fdpTokenInfo']);
 
-        // IoT — Ingestion + test + config
+        // IoT — Ingestion + test + config: ตัวเครื่องยืนยันตัวด้วย API key ของตัวเองทุกเส้น
+        // (Authorization: Bearer fpk_...) กุญแจออกที่ register-device / rotate-key ในกลุ่มด้านล่าง
         Route::post('/iot/ingest', [FoodPassportApiController::class, 'iotIngest'])
             ->middleware('throttle:120,1');
         Route::post('/iot/batch-ingest', [FoodPassportApiController::class, 'iotBatchIngest'])
@@ -532,9 +533,11 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::post('/register', [FoodPassportApiController::class, 'register']);
         Route::post('/trace/{productId}', [FoodPassportApiController::class, 'addTrace']);
         Route::post('/mint/{productId}', [FoodPassportApiController::class, 'mint']);
+        // อ่าน/เขียนด้วย wallet_address ที่ด่านตรวจแล้วเท่านั้น (?address= ด่านมองไม่เห็น)
         Route::get('/my-products', [FoodPassportApiController::class, 'myProducts']);
         Route::post('/iot/register-device', [FoodPassportApiController::class, 'registerDevice']);
         Route::get('/iot/my-devices', [FoodPassportApiController::class, 'myDevices']);
+        Route::post('/iot/rotate-key/{deviceId}', [FoodPassportApiController::class, 'rotateDeviceKey']);
     });
 
     // Carbon Credits — ซื้อ/retire (ต้อง verify wallet)
