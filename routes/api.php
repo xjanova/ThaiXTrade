@@ -25,7 +25,9 @@ use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\InfraAlertController;
 use App\Http\Controllers\Api\KycApiController;
 use App\Http\Controllers\Api\MarketController;
+use App\Http\Controllers\Api\MasternodeLiveNodesController;
 use App\Http\Controllers\Api\NodeHeartbeatController;
+use App\Http\Controllers\Api\NodePeerReportController;
 use App\Http\Controllers\Api\StabilityController;
 use App\Http\Controllers\Api\StakingApiController;
 use App\Http\Controllers\Api\StripeWebhookController;
@@ -132,6 +134,13 @@ Route::prefix('infra')->middleware(['throttle:30,1'])->group(function () {
      */
     Route::get('contracts', [ContractRegistryController::class, 'show'])->name('infra.contracts.show');
     Route::post('contracts', [ContractRegistryController::class, 'store'])->name('infra.contracts.store');
+
+    /*
+     * รายชื่อ peer ที่ต่อ bootnode สาธารณะอยู่ — cron tpix-node-peers บนเครื่องเชนยิงทุก 1 นาที
+     * หลักฐานชั้นเครือข่ายว่ามาสเตอร์โหนดรันจริง (ป้อน uptime oracle)
+     * Auth: Bearer token = TPIX_NODE_PEERS_TOKEN (.env) เทียบ hash_equals ใน controller
+     */
+    Route::post('node-peers', [NodePeerReportController::class, 'store'])->name('infra.node-peers');
 });
 
 // Public Routes (No Auth Required) — rate limited
@@ -319,6 +328,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/tiers', [MasterNodeController::class, 'tiers']);
         // ที่อยู่สัญญา + เชน ให้โปรแกรมมาสเตอร์โหนดบน PC และ TPIX Wallet ค้นหาเอง (read-only)
         Route::get('/config', [MasterNodeController::class, 'config']);
+        // โหนดที่รันอยู่จริง (heartbeat รุ่น 2) ระดับประเทศ/เมือง — ไม่มี IP ไม่มีกระเป๋า
+        Route::get('/live-nodes', [MasternodeLiveNodesController::class, 'index']);
     });
 
     // Validators — network dashboard + applications (public)

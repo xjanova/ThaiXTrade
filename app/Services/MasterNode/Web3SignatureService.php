@@ -115,4 +115,31 @@ class Web3SignatureService
             $timestamp
         );
     }
+
+    /**
+     * Heartbeat รุ่น 2 — กุญแจโหนด (กุญแจ libp2p ของ polygon-edge) ลงนามทุกรอบ
+     *   "tpix-masternode-heartbeat:v2:<wallet>:<timestamp>:<peerId>:<blockNumber>:<blockHash>".
+     *
+     * ผูกเลข + แฮชบล็อกไว้ในข้อความ — แก้ตัวเลขทีหลังโดยไม่ลงนามใหม่ไม่ได้
+     * peer ID คงตัวพิมพ์เดิม (base58 แยกตัวเล็ก/ใหญ่) ส่วนแฮชเป็นตัวเล็กเสมอ
+     */
+    public function buildHeartbeatMessageV2(
+        string $walletAddress,
+        int $timestamp,
+        string $peerId,
+        int $blockNumber,
+        string $blockHash,
+    ): string {
+        $prefix = config('masternode.delegation.heartbeat_message_prefix');
+
+        return sprintf(
+            '%s:v2:%s:%d:%s:%d:%s',
+            $prefix,
+            strtolower($walletAddress),
+            $timestamp,
+            $peerId,
+            $blockNumber,
+            strtolower($blockHash)
+        );
+    }
 }
