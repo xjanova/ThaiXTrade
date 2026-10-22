@@ -137,6 +137,15 @@ watch(() => walletStore.showConnectModal, (val) => {
     }
 });
 
+/*
+ * เชื่อมผ่าน WalletConnect แล้ว กำลังรอลายเซ็นเข้าสู่ระบบในแอป → ต้องมีหน้าต่างบอกผู้ใช้
+ * หน้าที่มีหน้าต่างเชื่อมกระเป๋าของตัวเอง (เช่น Swap) ปิดมันทันทีที่เชื่อมติด ขั้นยืนยันจึงไม่มีใครวาด
+ * บนมือถือผู้ใช้ไม่รู้ว่าต้องกลับไปกดในแอปอีกรอบ — เปิดหน้าต่างกลางของ layout ให้แทน
+ */
+watch(() => walletStore.wcStatus, (status) => {
+    if (status === 'signing') showWalletModal.value = true;
+});
+
 const closeWalletModal = () => {
     showWalletModal.value = false;
 };

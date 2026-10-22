@@ -6,9 +6,13 @@
  */
 
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import SocialLoginButtons from '@/Components/Auth/SocialLoginButtons.vue';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
+import TpixWalletAppCard from '@/Components/Wallet/TpixWalletAppCard.vue';
+import WalletModal from '@/Components/Wallet/WalletModal.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+import { isMobile } from '@/utils/mobileWallet';
 
 const props = defineProps({
     turnstileEnabled: {
@@ -26,6 +30,33 @@ const props = defineProps({
 });
 
 const showPassword = ref(false);
+
+/*
+ * เข้าสู่ระบบด้วยแอป TPIX Wallet — ทางเข้าอันดับ 1 (เจ้าของสั่ง 2026-10-22)
+ * กดแล้วเปิดหน้าต่างเชื่อมกระเป๋าและเริ่มจับคู่ทันที (คอม = QR · มือถือ = เปิดแอป)
+ * เซ็นผ่าน = เซิร์ฟเวอร์เปิด session ให้ (WalletController::verifySignature) แล้วพากลับหน้าที่มา
+ */
+const { t } = useTranslation();
+const mobile = isMobile();
+const showWalletLogin = ref(false);
+
+/** หน้าที่จะไปหลังเข้าสู่ระบบด้วยกระเป๋า — หน้าในเว็บเราที่พามาที่นี่ ไม่งั้นหน้าแรก */
+function walletLoginTarget() {
+    try {
+        const from = document.referrer ? new URL(document.referrer) : null;
+        if (from && from.origin === window.location.origin && !/^\/(login|register)(\/|$)/.test(from.pathname)) {
+            return from.pathname + from.search;
+        }
+    } catch {
+        // referrer เพี้ยน — ไปหน้าแรก
+    }
+    return '/';
+}
+
+function onWalletLoggedIn() {
+    showWalletLogin.value = false;
+    router.visit(walletLoginTarget());
+}
 
 const form = useForm({
     email: '',
@@ -175,6 +206,14 @@ const submit = () => {
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-glass">
                 <h2 class="text-lg font-semibold text-white mb-6">Sign in to your account</h2>
 
+                <!-- อันดับ 1: เข้าสู่ระบบด้วยแอป TPIX Wallet -->
+                <TpixWalletAppCard :mobile="mobile" sign-in @connect="showWalletLogin = true" />
+                <div class="flex items-center gap-3 my-6">
+                    <div class="flex-1 h-px bg-white/10"></div>
+                    <span class="text-xs text-dark-500">{{ t('wallet.app.orEmail') }}</span>
+                    <div class="flex-1 h-px bg-white/10"></div>
+                </div>
+
                 <!-- Error Messages -->
                 <div v-if="form.errors.email || form.errors.password || form.errors.turnstile" class="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
                     <div class="flex items-start gap-3">
@@ -300,5 +339,12 @@ const submit = () => {
                 TPIX TRADE &middot; by Xman Studio
             </p>
         </div>
+
+        <WalletModal
+            v-if="showWalletLogin"
+            auto-start="tpix"
+            @close="showWalletLogin = false"
+            @connected="onWalletLoggedIn"
+        />
     </div>
 </template>

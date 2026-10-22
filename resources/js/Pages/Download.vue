@@ -9,6 +9,7 @@ import { ref, computed, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTranslation } from '@/Composables/useTranslation';
+import { TPIX_WALLET_APP_ICON } from '@/utils/brand';
 
 const { t, locale } = useTranslation();
 
@@ -139,7 +140,8 @@ function formatDate(iso) {
                         <!-- TPIX Wallet -->
                         <div class="glass-card p-6 border border-purple-500/20">
                             <div class="flex items-center gap-3 mb-4">
-                                <img src="/images/logowallet.webp" class="w-14 h-14 object-contain" alt="TPIX Wallet" />
+                                <!-- ไอคอนแอปตัวจริง (ตัวเดียวกับปุ่ม "เชื่อมด้วย TPIX Wallet") — logowallet.webp เป็นตราทองรุ่นเก่า 600KB -->
+                                <img :src="TPIX_WALLET_APP_ICON" class="w-14 h-14 rounded-2xl ring-1 ring-white/15" alt="TPIX Wallet" />
                                 <div>
                                     <h2 class="text-lg font-bold text-white">TPIX Wallet</h2>
                                     <p class="text-dark-400 text-xs" v-if="chainData?.wallet">v{{ chainData.wallet.version }} &middot; {{ formatDate(chainData.wallet.published_at) }}</p>

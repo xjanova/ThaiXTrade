@@ -23,6 +23,7 @@ import '../../providers/wallet_provider.dart';
 import '../../utils/peer_app.dart';
 import '../common/glass_card.dart';
 import '../common/gradient_button.dart';
+import 'tpix_wallet_app_tile.dart';
 
 class WalletConnectSheet extends StatefulWidget {
   const WalletConnectSheet({super.key});
@@ -163,7 +164,7 @@ class _WalletConnectSheetState extends State<WalletConnectSheet> {
         const SizedBox(height: 18),
 
         // ── PRIMARY: Connect TPIX Wallet (one-tap link to the TPIX Wallet app) ──
-        _TpixWalletTile(
+        TpixWalletAppTile(
           locale: locale,
           connecting: _connectingTpix,
           onTap: _connectingTpix ? null : _connectTpixWallet,
@@ -853,119 +854,6 @@ class _ProviderChip extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ── Primary: Connect TPIX Wallet tile ──
-
-class _TpixWalletTile extends StatelessWidget {
-  final LocaleProvider locale;
-  final bool connecting;
-  final VoidCallback? onTap;
-
-  const _TpixWalletTile({
-    required this.locale,
-    required this.connecting,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = context.watch<AccentProvider>();
-    final th = locale.isThai;
-    return GlassCard(
-      variant: GlassVariant.hero,
-      borderRadius: 18,
-      padding: const EdgeInsets.all(16),
-      onTap: onTap,
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: accent.goldGradient,
-              boxShadow: [
-                BoxShadow(
-                  color: accent.goldGlow.withValues(alpha: 0.4),
-                  blurRadius: 16,
-                  spreadRadius: -4,
-                ),
-              ],
-            ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.bgGradBottom,
-              ),
-              child: Padding(
-                padding: EdgeInsets.all(7),
-                child: Image(
-                  image: AssetImage('assets/images/logo.webp'),
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      th ? 'เชื่อม TPIX Wallet' : 'Connect TPIX Wallet',
-                      style: AppFonts.ui(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
-                        color: accent.goldTint,
-                        border: Border.all(color: accent.goldBorder, width: 1),
-                      ),
-                      child: Text(
-                        th ? 'แนะนำ' : 'BEST',
-                        style: AppFonts.ui(
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w800,
-                          color: accent.g1,
-                          letterSpacing: 0.6,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  th ? 'แตะครั้งเดียว ปลอดภัย เชื่อมผ่านแอป' : 'One-tap secure link via the app',
-                  style: AppFonts.ui(
-                    fontSize: 11.5,
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (connecting)
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: accent.g2),
-            )
-          else
-            Icon(Icons.arrow_forward_ios_rounded, color: accent.g2, size: 15),
-        ],
       ),
     );
   }

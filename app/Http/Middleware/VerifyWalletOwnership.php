@@ -11,15 +11,10 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * VerifyWalletOwnership Middleware.
  *
- * GET requests: validate wallet address format only.
- * Write requests (POST/PUT/DELETE): require wallet_signature + wallet_nonce
- * that proves the requester actually controls the private key.
- *
- * Flow:
- * 1. Frontend calls GET /api/v1/wallet/nonce?wallet_address=0x... → receives nonce
- * 2. Frontend signs nonce with wallet private key → gets signature
- * 3. Frontend sends POST with wallet_address + wallet_signature + wallet_nonce
- * 4. Middleware verifies signature matches wallet_address → allows request
+ * ผ่านได้ 3 ทาง (ทุกทางเริ่มจากลายเซ็นที่ WalletController::verifySignature ตรวจด้วย ecrecover แล้ว):
+ * 1. แอปมือถือ: โทเคน X-Wallet-Session ของกระเป๋าใบนี้ (WalletSessionService, 30 วัน)
+ * 2. เว็บ: session ของผู้ใช้ที่ผูกกระเป๋าใบนี้ไว้ (ผูกได้เฉพาะหลังเซ็นผ่าน)
+ * 3. แคช `wallet_verified:{address}` 4 ชั่วโมง — คำขอเขียนต้องมาจาก IP เดียวกับตอนเซ็น
  */
 class VerifyWalletOwnership
 {
@@ -97,6 +92,25 @@ class VerifyWalletOwnership
         $sessionToken = $request->headers->get(\App\Services\WalletSessionService::HEADER);
 
         if ($sessionToken && app(\App\Services\WalletSessionService::class)->authorizes($sessionToken, $normalizedAddress)) {
+            return $next($request);
+        }
+
+        /*
+         * เว็บ: เข้าสู่ระบบอยู่ (session หรือคุกกี้จำฉันไว้) และกระเป๋าที่ขอคือกระเป๋าที่ผูกกับบัญชีนั้น
+         *
+         * กระเป๋าผูกเข้าบัญชีได้ทางเดียวคือหลัง ecrecover ผ่าน (WalletIdentityService::linkVerified)
+         * session จึงเป็นหลักฐานที่ผูกกับ "คนที่ถาม" จริง ๆ — ดีกว่าแคช 4 ชั่วโมงที่ผูกกับเลขกระเป๋า
+         * คำขอเขียนผ่าน CSRF ของ Sanctum อยู่แล้ว (session มาจาก EnsureFrontendRequestsAreStateful)
+         *
+         * ⚠️ เดิมเว็บพึ่งแคช + IP อย่างเดียว — มือถือเปลี่ยน IP ตลอด (สลับ Wi-Fi/4G, CGNAT ของค่ายมือถือ)
+         *    กดอะไรก็โดน WALLET_IP_MISMATCH และพ้น 4 ชั่วโมงก็ WALLET_NOT_VERIFIED ทั้งที่ยังเข้าสู่ระบบอยู่
+         *    ผู้ใช้เห็นว่า "เชื่อมกระเป๋าแล้ว" แต่ทำอะไรไม่ได้ ต้องสลับไปเซ็นในแอปกระเป๋าซ้ำแล้วซ้ำอีก
+         */
+        $sessionUser = $request->user();
+
+        if ($sessionUser
+            && $sessionUser->wallet_address === $normalizedAddress
+            && ! $sessionUser->is_banned) {
             return $next($request);
         }
 
