@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\WalletSessionService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -15,29 +16,14 @@ use Symfony\Component\HttpFoundation\Response;
  * 1. แอปมือถือ: โทเคน X-Wallet-Session ของกระเป๋าใบนี้ (WalletSessionService, 30 วัน)
  * 2. เว็บ: session ของผู้ใช้ที่ผูกกระเป๋าใบนี้ไว้ (ผูกได้เฉพาะหลังเซ็นผ่าน)
  * 3. แคช `wallet_verified:{address}` 4 ชั่วโมง — ทั้งอ่านและเขียนต้องมาจาก IP เดียวกับตอนเซ็น
+ *
+ * ตัวนับ throttle:trading (AppServiceProvider::tradingLimit) ใช้ requestedWallet() + proves() ชุดเดียวกันนี้
  */
 class VerifyWalletOwnership
 {
     public function handle(Request $request, Closure $next): Response
     {
-        /*
-         * ที่อยู่กระเป๋าอาจมาได้ 3 ทาง: body, query string หรือ route parameter
-         *
-         * ⚠️ เดิมอ่านแค่ body/query ทำให้ route แบบ /purchases/{walletAddress}
-         *    ที่ย้ายมาอยู่หลัง middleware นี้ "ไม่ถูกป้องกันเลย" — middleware
-         *    มองไม่เห็นค่า จึงตกไปเส้นทาง fail-open ด้านล่างทุกครั้ง
-         */
-        $walletAddress = $request->input('wallet_address')
-            ?? $request->query('wallet_address')
-            ?? $request->route('walletAddress')
-            ?? $request->route('wallet_address')
-            /*
-             * ⚠️ token factory ตั้งชื่อฟิลด์ว่า creator_address ไม่ใช่ wallet_address
-             *    middleware จึงหาไม่เจอ แล้วตกเส้นทาง fail-open ด้านล่างทุกครั้ง
-             *    ผลคือ POST /api/v1/token-factory/create ยิงได้โดยไม่ต้องพิสูจน์อะไร
-             *    และใส่กระเป๋าของคนอื่นเป็นเจ้าของเหรียญได้ด้วย
-             */
-            ?? $request->input('creator_address');
+        $walletAddress = self::requestedWallet($request);
 
         /*
          * ส่งมาทั้ง wallet_address และ creator_address แต่คนละกระเป๋า → ปฏิเสธ
@@ -81,6 +67,50 @@ class VerifyWalletOwnership
         $normalizedAddress = strtolower($walletAddress);
         $request->merge(['wallet_address' => $normalizedAddress]);
 
+        if (self::proves($request, $normalizedAddress)) {
+            return $next($request);
+        }
+
+        return $this->reject($request, $normalizedAddress);
+    }
+
+    /**
+     * กระเป๋าที่คำขออ้างถึง — ค่าดิบ ยังไม่ตรวจรูปแบบ (อาจเป็น null หรือ array ก็ได้).
+     *
+     * ที่อยู่กระเป๋าอาจมาได้ 3 ทาง: body, query string หรือ route parameter
+     *
+     * ⚠️ เดิมอ่านแค่ body/query ทำให้ route แบบ /purchases/{walletAddress}
+     *    ที่ย้ายมาอยู่หลัง middleware นี้ "ไม่ถูกป้องกันเลย" — middleware
+     *    มองไม่เห็นค่า จึงตกไปเส้นทาง fail-open ใน handle() ทุกครั้ง
+     *
+     * ตัวนับ throttle:trading หากระเป๋าด้วยลำดับนี้ด้วย — ถ้าหาคนละแบบ คำขอของเจ้าของจะไปลงถังผิดใบ
+     */
+    public static function requestedWallet(Request $request): mixed
+    {
+        return $request->input('wallet_address')
+            ?? $request->query('wallet_address')
+            ?? $request->route('walletAddress')
+            ?? $request->route('wallet_address')
+            /*
+             * ⚠️ token factory ตั้งชื่อฟิลด์ว่า creator_address ไม่ใช่ wallet_address
+             *    middleware จึงหาไม่เจอ แล้วตกเส้นทาง fail-open ใน handle() ทุกครั้ง
+             *    ผลคือ POST /api/v1/token-factory/create ยิงได้โดยไม่ต้องพิสูจน์อะไร
+             *    และใส่กระเป๋าของคนอื่นเป็นเจ้าของเหรียญได้ด้วย
+             */
+            ?? $request->input('creator_address');
+    }
+
+    /**
+     * คำขอนี้พิสูจน์ได้ไหมว่าเป็นเจ้าของ $wallet — 3 ทางตามหัวไฟล์ ไม่บันทึกล็อก ไม่ตอบอะไร.
+     *
+     * ⚠️ ตัวนับ throttle:trading เรียกตัวนี้ก่อนด่านจะทำงาน (throttle รันก่อนเสมอ) เพื่อเลือกถังที่นับ
+     *    กฎความเป็นเจ้าของต้องมีที่เดียว — ถ้าตัวนับกับด่านตัดสินต่างกัน คนที่ไม่ใช่เจ้าของจะกลับมา
+     *    กินโควตาของเจ้าของได้อีก
+     */
+    public static function proves(Request $request, string $wallet): bool
+    {
+        $wallet = strtolower($wallet);
+
         /*
          * แอปมือถือ: โทเคนเซสชันแบบยาว (ออกให้หลังเซ็นผ่าน ดู WalletSessionService)
          *
@@ -89,10 +119,10 @@ class VerifyWalletOwnership
          * TPIX Wallet ใหม่ทุกครั้ง โทเคนต้องเป็นของกระเป๋าเดียวกับที่ขอเท่านั้น
          * โทเคนผิด/หมดอายุไม่ปฏิเสธทันที — ตกไปตรวจแคชตามปกติ (แล้วค่อย 403 ที่นั่น)
          */
-        $sessionToken = $request->headers->get(\App\Services\WalletSessionService::HEADER);
+        $sessionToken = $request->headers->get(WalletSessionService::HEADER);
 
-        if ($sessionToken && app(\App\Services\WalletSessionService::class)->authorizes($sessionToken, $normalizedAddress)) {
-            return $next($request);
+        if ($sessionToken && app(WalletSessionService::class)->authorizes($sessionToken, $wallet)) {
+            return true;
         }
 
         /*
@@ -109,9 +139,9 @@ class VerifyWalletOwnership
         $sessionUser = $request->user();
 
         if ($sessionUser
-            && $sessionUser->wallet_address === $normalizedAddress
+            && $sessionUser->wallet_address === $wallet
             && ! $sessionUser->is_banned) {
-            return $next($request);
+            return true;
         }
 
         /*
@@ -124,8 +154,18 @@ class VerifyWalletOwnership
          *    (แอปรุ่นก่อนมีโทเคน, เว็บที่ session ไม่ติด) — เงื่อนไขเดียวกับที่ใช้เขียนอยู่แล้ว
          *    KycGate::resolveUser() ใช้เงื่อนไขเดียวกัน แก้ที่นี่ต้องแก้ที่นั่นด้วย
          */
-        $cacheKey = "wallet_verified:{$normalizedAddress}";
-        $verifiedData = Cache::get($cacheKey);
+        $verifiedData = Cache::get("wallet_verified:{$wallet}");
+
+        // IP must match the one used during verification (prevent session hijacking)
+        return is_array($verifiedData) && ($verifiedData['ip'] ?? null) === $request->ip();
+    }
+
+    /**
+     * ไม่ผ่านทุกทาง — บอกเหตุผลตามแถวแคชลายเซ็น (ไม่เคยเซ็น/หมดอายุ หรือเซ็นมาจาก IP อื่น).
+     */
+    private function reject(Request $request, string $wallet): Response
+    {
+        $verifiedData = Cache::get("wallet_verified:{$wallet}");
 
         // บันทึกเฉพาะคำขอเขียนเหมือนเดิม — หน้าเว็บยิง GET ตามรอบ (บางหน้าทุก 15 วินาที)
         // และยิงตั้งแต่เชื่อมกระเป๋าก่อนเซ็น ถ้าบันทึกด้วย ล็อกจะท่วมด้วยเรื่องปกติ
@@ -134,7 +174,7 @@ class VerifyWalletOwnership
         if (! $verifiedData || ! is_array($verifiedData)) {
             if ($isWrite) {
                 Log::warning('Wallet ownership not verified for write operation.', [
-                    'wallet' => $normalizedAddress,
+                    'wallet' => $wallet,
                     'ip' => $request->ip(),
                     'path' => $request->path(),
                 ]);
@@ -149,25 +189,21 @@ class VerifyWalletOwnership
             ], 403);
         }
 
-        // IP must match the one used during verification (prevent session hijacking)
-        if (($verifiedData['ip'] ?? null) !== $request->ip()) {
-            if ($isWrite) {
-                Log::warning('Wallet verification IP mismatch.', [
-                    'wallet' => $normalizedAddress,
-                    'verified_ip' => $verifiedData['ip'] ?? 'unknown',
-                    'request_ip' => $request->ip(),
-                ]);
-            }
-
-            return response()->json([
-                'success' => false,
-                'error' => [
-                    'code' => 'WALLET_IP_MISMATCH',
-                    'message' => 'Wallet verification session invalid. Please reconnect.',
-                ],
-            ], 403);
+        // มีแถวแคชแต่ proves() ไม่ผ่าน = เซ็นมาจาก IP อื่น
+        if ($isWrite) {
+            Log::warning('Wallet verification IP mismatch.', [
+                'wallet' => $wallet,
+                'verified_ip' => $verifiedData['ip'] ?? 'unknown',
+                'request_ip' => $request->ip(),
+            ]);
         }
 
-        return $next($request);
+        return response()->json([
+            'success' => false,
+            'error' => [
+                'code' => 'WALLET_IP_MISMATCH',
+                'message' => 'Wallet verification session invalid. Please reconnect.',
+            ],
+        ], 403);
     }
 }

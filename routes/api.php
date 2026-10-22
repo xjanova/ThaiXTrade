@@ -446,6 +446,7 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
 });
 
 // Protected Routes (Wallet Ownership Verified)
+// throttle:trading รันก่อนด่านกระเป๋าเสมอ แต่เลือกถังจากหลักฐานความเป็นเจ้าของเอง — ดู AppServiceProvider::tradingLimit()
 Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::class])->group(function () {
     // Trading Operations
     Route::prefix('trading')->group(function () {
