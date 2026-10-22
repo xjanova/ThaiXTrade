@@ -72,7 +72,9 @@ class FoodPassportService
             'retail' => 'at_retail',
         ];
 
-        if (isset($statusMap[$data['stage']])) {
+        // ⚠️ สินค้าที่ได้ใบรับรองแล้วคง certified ไว้ — เดิม trace ถัดไป (เช่น เข้าร้านค้าปลีก)
+        //    เปลี่ยนสถานะทับ หน้า /verify ที่ดู is_certified จากสถานะเลยบอกว่าสินค้าไม่ผ่านการรับรอง
+        if (isset($statusMap[$data['stage']]) && $product->status !== 'certified') {
             $product->update(['status' => $statusMap[$data['stage']]]);
         }
 
