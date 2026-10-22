@@ -6,7 +6,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
@@ -70,6 +70,9 @@ const loading = ref(false);
 const products = ref([]);
 const myProducts = ref([]);
 const iotDevices = ref([]);
+// เซิร์ฟเวอร์ตอบ 403 = ยังไม่ได้เซ็นยืนยันกระเป๋า — ต้องไม่ดูเหมือน "ยังไม่มีสินค้า/อุปกรณ์"
+const needsVerification = ref(false);
+const isVerifying = ref(false);
 
 async function fetchProducts() {
     loading.value = true;
@@ -81,22 +84,62 @@ async function fetchProducts() {
     loading.value = false;
 }
 
-async function fetchMyProducts() {
-    if (!walletStore.address) return;
+/*
+ * รายการ "ของฉัน" — ส่งเลขกระเป๋าในชื่อ wallet_address ซึ่งด่าน VerifyWalletOwnership ตรวจ
+ *
+ * ⚠️ เดิมส่ง ?address= ที่ด่านมองไม่เห็น เซิร์ฟเวอร์เลยคืนรายการของกระเป๋าไหนก็ได้ให้ทุกคน
+ *    ยิงแบบ same-origin เพื่อให้คุกกี้ session ไปด้วย (ด่านรับ session ของบัญชีที่ผูกกระเป๋านี้)
+ *    คืน null เมื่อไม่ได้ผล — รวมถึงกรณีสลับกระเป๋าระหว่างรอ (คำตอบนั้นเป็นของกระเป๋าเดิม)
+ */
+async function fetchMine(path) {
+    const address = walletStore.address;
+    if (!address) return null;
     try {
-        const res = await fetch(`/api/v1/food-passport/my-products?address=${walletStore.address}`);
+        const res = await fetch(`/api/v1/food-passport/${path}?wallet_address=${address}`);
         const json = await res.json();
-        if (json.success) myProducts.value = json.data.data || [];
-    } catch (e) { console.error(e); }
+        if (walletStore.address !== address) return null;
+        needsVerification.value = res.status === 403;
+        return json.success ? json.data.data || [] : null;
+    } catch (e) {
+        console.error(e);
+        return null;
+    }
+}
+
+async function fetchMyProducts() {
+    const list = await fetchMine('my-products');
+    if (list) myProducts.value = list;
 }
 
 async function fetchDevices() {
-    if (!walletStore.address) return;
+    const list = await fetchMine('iot/my-devices');
+    if (list) iotDevices.value = list;
+}
+
+// แท็บรายการของกระเป๋าที่ยังไม่เซ็นยืนยัน — แสดงการ์ดให้เซ็นแทนรายการว่าง
+const showVerifyCard = computed(() =>
+    walletStore.isConnected && needsVerification.value && ['my-products', 'iot'].includes(activeTab.value));
+
+/** เซ็นยืนยันกระเป๋าแล้วโหลดใหม่ — แบบเดียวกับ OpenOrders.verifyWallet() */
+async function verifyWallet() {
+    if (isVerifying.value) return;   // ป๊อปอัพขอลายเซ็นซ้อนกันไม่ได้
+
+    isVerifying.value = true;
     try {
-        const res = await fetch(`/api/v1/food-passport/iot/my-devices?address=${walletStore.address}`);
-        const json = await res.json();
-        if (json.success) iotDevices.value = json.data.data || [];
-    } catch (e) { console.error(e); }
+        const hasSigner = await walletStore.verifyOwnership();
+
+        // กระเป๋าฝังที่ยังไม่ปลดล็อกไม่มี signer — ต้องใส่รหัสผ่านที่หน้าต่างเชื่อมกระเป๋า
+        if (!hasSigner) {
+            walletStore.openConnectModal();
+            return;
+        }
+
+        await Promise.all([fetchMyProducts(), fetchDevices()]);
+    } catch {
+        // verifyOwnership จัดการ error ของตัวเองแล้ว — ปุ่มยืนยันยังอยู่ให้กดใหม่ได้
+    } finally {
+        isVerifying.value = false;
+    }
 }
 
 function selectProduct(product) {
@@ -106,7 +149,25 @@ function selectProduct(product) {
 
 onMounted(() => {
     fetchProducts();
-    if (walletStore.address) {
+});
+
+/*
+ * รายการผูกกับกระเป๋า: สลับ/ตัดกระเป๋า → ล้างของเดิมทันทีแล้วโหลดของใบใหม่
+ * เพิ่งเซ็นผ่าน (verifiedAt) → โหลดใหม่ เพราะก่อนเซ็นเซิร์ฟเวอร์ตอบ 403
+ *
+ * immediate แทนการโหลดใน onMounted — AppLayout (ลูก) mount ก่อนและกู้กระเป๋าทันที
+ * ถ้าโหลดทั้งสองที่ จะยิงซ้ำคู่ทุกครั้งที่เปิดหน้า
+ */
+watch(() => walletStore.address, () => {
+    myProducts.value = [];
+    iotDevices.value = [];
+    needsVerification.value = false;
+    fetchMyProducts();
+    fetchDevices();
+}, { immediate: true });
+
+watch(() => walletStore.verifiedAt, (at) => {
+    if (at) {
         fetchMyProducts();
         fetchDevices();
     }
@@ -240,8 +301,19 @@ onMounted(() => {
                     />
                 </template>
 
+                <!-- ยังไม่ได้เซ็นยืนยันกระเป๋า (เซิร์ฟเวอร์ตอบ 403) — ต้องไม่ดูเหมือน "ยังไม่มีสินค้า/อุปกรณ์" -->
+                <div v-if="showVerifyCard" class="glass-card rounded-2xl p-12 text-center" data-test="food-passport-verify">
+                    <p class="text-4xl mb-3">✍️</p>
+                    <p class="text-white font-medium">ยืนยันว่าเป็นเจ้าของกระเป๋าก่อน</p>
+                    <p class="text-dark-400 text-sm mt-1">เซ็นข้อความในกระเป๋า (ไม่เสียค่าแก๊ส) เพื่อดูสินค้าและอุปกรณ์ของคุณ</p>
+                    <button @click="verifyWallet" :disabled="isVerifying"
+                        class="btn-primary text-sm px-5 py-2.5 rounded-xl mt-4 disabled:opacity-50">
+                        {{ isVerifying ? 'กำลังรอลายเซ็น...' : 'ยืนยันกระเป๋า' }}
+                    </button>
+                </div>
+
                 <!-- My Products -->
-                <template v-if="activeTab === 'my-products'">
+                <template v-if="activeTab === 'my-products' && !showVerifyCard">
                     <div v-if="!walletStore.isConnected" class="glass-card rounded-2xl p-12 text-center">
                         <p class="text-4xl mb-3">🔒</p>
                         <p class="text-white font-medium">กรุณาเชื่อมต่อ Wallet</p>
@@ -281,12 +353,13 @@ onMounted(() => {
                 </template>
 
                 <!-- IoT Dashboard -->
-                <template v-if="activeTab === 'iot'">
+                <template v-if="activeTab === 'iot' && !showVerifyCard">
                     <IoTDashboard
                         :devices="iotDevices"
                         :wallet-address="walletStore.address"
                         :is-connected="walletStore.isConnected"
                         @device-registered="(d) => iotDevices.unshift(d)"
+                        @devices-updated="(list) => { iotDevices = list; }"
                     />
                 </template>
 

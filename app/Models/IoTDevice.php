@@ -29,6 +29,24 @@ class IoTDevice extends Model
         'last_ping_at' => 'datetime',
     ];
 
+    /*
+     * hash ของ API key ห้ามออกไปไหน — อุปกรณ์ถูกโหลดมากับ trace ในหน้า /verify สาธารณะด้วย
+     * ไม่อยู่ใน $fillable เช่นกัน ตั้งได้ทางเดียวคือ IoTService::issueApiKey()
+     */
+    protected $hidden = [
+        'api_key_hash',
+    ];
+
+    /** ให้หน้าเว็บรู้ว่าเครื่องไหนยังไม่มีกุญแจ (ลงทะเบียนก่อนมีระบบกุญแจ) โดยไม่ต้องเห็น hash */
+    protected $appends = [
+        'has_api_key',
+    ];
+
+    public function getHasApiKeyAttribute(): bool
+    {
+        return $this->api_key_hash !== null;
+    }
+
     public function traces()
     {
         return $this->hasMany(FoodTrace::class, 'iot_device_id');

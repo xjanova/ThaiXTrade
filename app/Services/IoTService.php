@@ -5,14 +5,15 @@ namespace App\Services;
 use App\Models\FoodProduct;
 use App\Models\FoodTrace;
 use App\Models\IoTDevice;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
 
 /**
  * IoTService — จัดการอุปกรณ์ IoT ที่ส่งข้อมูลเข้าระบบ FoodPassport.
  *
  * IoT Device Flow:
- * 1. registerDevice()    → ลงทะเบียนอุปกรณ์ (ได้ device_id + wallet)
- * 2. ingestData()        → รับข้อมูลจาก sensor (HTTP/MQTT → API)
+ * 1. registerDevice()    → ลงทะเบียนอุปกรณ์ (ได้ device_id) + issueApiKey() → API key ที่เห็นครั้งเดียว
+ * 2. ingestData()        → รับข้อมูลจาก sensor (HTTP → API พร้อม Authorization: Bearer <API key>)
  * 3. Data → FoodTrace    → บันทึกลง DB + chain
  *
  * อุปกรณ์ที่รองรับ:
@@ -26,6 +27,9 @@ use Illuminate\Pagination\LengthAwarePaginator;
  */
 class IoTService
 {
+    /** คำนำหน้า API key ของอุปกรณ์ (FoodPassport key) — เห็นแล้วรู้ทันทีว่าเป็นกุญแจอะไร */
+    public const API_KEY_PREFIX = 'fpk_';
+
     public function __construct(
         private FoodPassportService $foodPassportService,
     ) {}
@@ -65,14 +69,52 @@ class IoTService
     }
 
     // ═══════════════════════════════════════════
+    //  DEVICE API KEY
+    // ═══════════════════════════════════════════
+
+    /**
+     * ออก API key ใหม่ให้อุปกรณ์ — คืนกุญแจตัวจริงครั้งเดียว เก็บแค่ hash.
+     *
+     * กุญแจเดิม (ถ้ามี) ใช้ไม่ได้ทันที · กุญแจสุ่ม 256 บิต จึงใช้ sha256 ได้
+     * (แบบเดียวกับโทเคนของ WalletSessionService) ไม่ต้องใช้ hash ช้าแบบรหัสผ่าน
+     * ซึ่งจะหน่วงทุกคำขอ ingest
+     */
+    public function issueApiKey(IoTDevice $device): string
+    {
+        $apiKey = self::API_KEY_PREFIX.bin2hex(random_bytes(32));
+
+        $device->forceFill(['api_key_hash' => $this->fingerprint($apiKey)])->save();
+
+        return $apiKey;
+    }
+
+    /** อุปกรณ์ที่กุญแจนี้เป็นของมันจริง — null ถ้าไม่มีอุปกรณ์ ยังไม่เคยออกกุญแจ หรือกุญแจผิด */
+    public function authenticateDevice(string $deviceId, string $apiKey): ?IoTDevice
+    {
+        $device = IoTDevice::where('device_id', $deviceId)->first();
+
+        if (! $device || $device->api_key_hash === null) {
+            return null;
+        }
+
+        return hash_equals($device->api_key_hash, $this->fingerprint($apiKey)) ? $device : null;
+    }
+
+    private function fingerprint(string $apiKey): string
+    {
+        return hash('sha256', $apiKey);
+    }
+
+    // ═══════════════════════════════════════════
     //  DATA INGESTION (จาก IoT sensor)
     // ═══════════════════════════════════════════
 
     /**
      * รับข้อมูลจาก IoT device และบันทึกเป็น FoodTrace.
      *
-     * IoT device ส่ง HTTP POST มาที่ API:
+     * IoT device ส่ง HTTP POST มาที่ API (controller ตรวจกุญแจของ device_id นี้ก่อนถึงตรงนี้):
      * POST /api/v1/food-passport/iot/ingest
+     * Authorization: Bearer fpk_...
      * {
      *   "device_id": "TPIX-IOT-001",
      *   "product_id": 42,
@@ -135,7 +177,10 @@ class IoTService
             } catch (\Throwable $e) {
                 $results[] = [
                     'success' => false,
-                    'error' => $e->getMessage(),
+                    // ข้อความดิบของ exception มีชื่อคลาส/คำสั่ง SQL ภายใน — ส่งออกแค่รหัส
+                    'error' => $e instanceof ModelNotFoundException && $e->getModel() === FoodProduct::class
+                        ? 'PRODUCT_NOT_FOUND'
+                        : 'INGEST_FAILED',
                     'device_id' => $record['device_id'] ?? 'unknown',
                 ];
             }
@@ -266,6 +311,8 @@ class IoTService
             'batch_endpoint' => url('/api/v1/food-passport/iot/batch-ingest'),
             'headers' => [
                 'Content-Type' => 'application/json',
+                // ที่ว่างให้ใส่กุญแจเอง — กุญแจตัวจริงไม่มีเก็บไว้ที่ไหนให้คืนได้
+                'Authorization' => 'Bearer <<YOUR_API_KEY>>',
             ],
             'payload_template' => [
                 'device_id' => $device->device_id,

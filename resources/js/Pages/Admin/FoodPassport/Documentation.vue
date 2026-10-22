@@ -295,13 +295,15 @@ IOT_TEMP_ALERT_MAX=40</pre>
                                 <h3 class="text-lg font-semibold text-white">Test ระบบ</h3>
                             </div>
                             <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
-                                <pre># ทดสอบ IoT device registration
+                                <pre># ทดสอบ IoT device registration (ต้องยืนยันกระเป๋าก่อน — session เว็บ หรือ X-Wallet-Session ของแอป)
 curl -X POST /api/v1/food-passport/iot/register-device \
-  -d '{"device_id":"SENSOR-001","type":"temperature","owner_address":"0x..."}'
+  -d '{"wallet_address":"0x...","name":"Sensor ทดสอบ","type":"temperature"}'
+# → data.device_id + data.api_key (fpk_...) — api_key แสดงครั้งเดียว
 
-# ทดสอบ data ingestion
+# ทดสอบ data ingestion (ต้องมี API key ของเครื่องนั้น)
 curl -X POST /api/v1/food-passport/iot/ingest \
-  -d '{"device_id":"SENSOR-001","product_id":1,"temperature":4.5,"humidity":80}'
+  -H "Authorization: Bearer fpk_..." \
+  -d '{"device_id":"TPIX-IOT-1A2B3C4D","product_id":1,"stage":"farm","temperature":4.5,"humidity":80}'
 
 # ดู Admin dashboard
 # เปิด /admin/food-passport ในเบราว์เซอร์</pre>
@@ -341,13 +343,14 @@ curl -X POST /api/v1/food-passport/iot/ingest \
                     <h3 class="text-lg font-bold text-white mb-4">1. ลงทะเบียน Device</h3>
                     <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
                         <pre>POST /api/v1/food-passport/iot/register-device
+// ต้องยืนยันกระเป๋า: session ของเว็บ หรือ X-Wallet-Session ของแอป
 
 {
-  "device_id": "SENSOR-FARM-001",     // รหัส unique ของอุปกรณ์
-  "type": "temperature",               // ประเภท: temperature, humidity, gps, weight, multi
-  "name": "ฟาร์มสุรินทร์ Sensor #1",   // ชื่อเรียก (optional)
-  "owner_address": "0xAbC...123",      // Wallet address เจ้าของ
-  "location": "สุรินทร์, ประเทศไทย"     // ที่ตั้ง (optional)
+  "wallet_address": "0xAbC...123",     // กระเป๋าเจ้าของ — ต้องเป็นกระเป๋าที่ยืนยันแล้ว
+  "type": "temperature",               // ประเภท: temperature, humidity, gps, camera, weight, ph, multi
+  "name": "ฟาร์มสุรินทร์ Sensor #1",   // ชื่อเรียก
+  "location": "สุรินทร์, ประเทศไทย",    // ที่ตั้ง (optional)
+  "config": { "protocol": "http", "interval_minutes": 15 }
 }
 
 // Response:
@@ -355,14 +358,16 @@ curl -X POST /api/v1/food-passport/iot/ingest \
   "success": true,
   "data": {
     "id": 1,
-    "device_id": "SENSOR-FARM-001",
-    "config": {
-      "api_key": "fpk_a1b2c3d4e5f6...",   // ← ใช้ key นี้ในการส่งข้อมูล
-      "endpoint": "/api/v1/food-passport/iot/ingest",
-      "interval_seconds": 900
-    }
+    "device_id": "TPIX-IOT-1A2B3C4D",   // ระบบออกให้
+    "owner_address": "0xabc...123",
+    "has_api_key": true,
+    "api_key": "fpk_a1b2c3d4e5f6..."      // ← แสดงครั้งเดียว ระบบเก็บแค่ hash
   }
-}</pre>
+}
+
+// กุญแจหาย/หลุด หรือเครื่องที่ลงทะเบียนก่อนมีระบบกุญแจ → ออกใหม่ (กุญแจเดิมใช้ไม่ได้ทันที)
+POST /api/v1/food-passport/iot/rotate-key/{deviceId}
+{ "wallet_address": "0xAbC...123" }   // → data.api_key</pre>
                     </div>
                 </div>
 
@@ -374,15 +379,15 @@ curl -X POST /api/v1/food-passport/iot/ingest \
 Authorization: Bearer fpk_a1b2c3d4e5f6...
 
 {
-  "device_id": "SENSOR-FARM-001",
+  "device_id": "TPIX-IOT-1A2B3C4D",    // ต้องเป็นเครื่องเจ้าของ API key
   "product_id": 42,                    // สินค้าที่ track
-  "stage": "at_storage",               // ขั้นตอน: registered, in_transit, at_storage, at_retail
+  "stage": "storage",                  // ขั้นตอน: farm, processing, storage, transport, retail
   "location": "คลังสินค้า บางนา",
   "temperature": 4.5,                  // °C (optional)
   "humidity": 78.2,                    // % (optional)
-  "weight": 25.3,                      // kg (optional)
+  "weight_kg": 25.3,                   // kg (optional)
   "ph_level": 6.8,                     // (optional)
-  "sensor_data": {                     // ข้อมูลเพิ่มเติม (optional)
+  "data": {                            // ข้อมูลเพิ่มเติม (optional)
     "battery": 85,
     "signal_strength": -42,
     "gps": { "lat": 13.7563, "lng": 100.5018 }
@@ -393,15 +398,17 @@ Authorization: Bearer fpk_a1b2c3d4e5f6...
                     <h4 class="text-white font-semibold mb-2">Batch Ingestion (ส่งหลายรายการพร้อมกัน)</h4>
                     <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
                         <pre>POST /api/v1/food-passport/iot/batch-ingest
+Authorization: Bearer fpk_a1b2c3d4e5f6...
 
 {
-  "readings": [
-    { "device_id": "SENSOR-001", "product_id": 42, "temperature": 4.5, "humidity": 78 },
-    { "device_id": "SENSOR-002", "product_id": 43, "temperature": 3.8, "humidity": 80 },
-    { "device_id": "SENSOR-003", "product_id": 42, "temperature": 5.1, "humidity": 76 }
+  "records": [
+    { "device_id": "TPIX-IOT-1A2B3C4D", "product_id": 42, "stage": "storage", "temperature": 4.5, "humidity": 78 },
+    { "device_id": "TPIX-IOT-1A2B3C4D", "product_id": 43, "stage": "storage", "temperature": 3.8, "humidity": 80 },
+    { "device_id": "TPIX-IOT-1A2B3C4D", "product_id": 42, "stage": "storage", "temperature": 5.1, "humidity": 76 }
   ]
 }
-// สูงสุด 100 readings ต่อ request</pre>
+// สูงสุด 100 แถวต่อคำขอ · ทุกแถวต้องเป็นเครื่องเจ้าของ API key (กุญแจหนึ่งดอก = เครื่องเดียว)
+// มีแถวของเครื่องอื่นปน → 403 DEVICE_MISMATCH ทั้งชุด</pre>
                     </div>
                 </div>
 
@@ -420,7 +427,7 @@ DHT dht(DHTPIN, DHTTYPE);
 
 const char* serverUrl = "https://yourdomain.com/api/v1/food-passport/iot/ingest";
 const char* apiKey = "fpk_a1b2c3d4e5f6...";
-const char* deviceId = "SENSOR-FARM-001";
+const char* deviceId = "TPIX-IOT-1A2B3C4D";
 const int productId = 42;
 
 void sendData() {
@@ -437,6 +444,7 @@ void sendData() {
   String payload = "{";
   payload += "\"device_id\":\"" + String(deviceId) + "\",";
   payload += "\"product_id\":" + String(productId) + ",";
+  payload += "\"stage\":\"storage\",";
   payload += "\"temperature\":" + String(temp, 1) + ",";
   payload += "\"humidity\":" + String(hum, 1);
   payload += "}";
@@ -463,7 +471,7 @@ void loop() {
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div v-for="action in [
                             { title: 'เปลี่ยนสถานะ', desc: 'Active / Inactive / Maintenance — inactive device จะถูกปฏิเสธข้อมูล', color: 'green' },
-                            { title: 'Regenerate API Key', desc: 'สร้าง key ใหม่ — key เดิมใช้งานไม่ได้ทันที ต้องอัพเดท device', color: 'yellow' },
+                            { title: 'Regenerate API Key', desc: 'สร้าง key ใหม่ — key เดิมใช้งานไม่ได้ทันที ต้องอัพเดท device · key ใหม่แสดงในแถบแจ้งผลครั้งเดียว (ระบบเก็บแค่ hash) คัดลอกส่งเจ้าของเครื่อง', color: 'yellow' },
                             { title: 'ดู Trace Count', desc: 'จำนวน traces ที่ device ส่งมา ดูว่ายังทำงานอยู่หรือไม่', color: 'blue' },
                             { title: 'ลบ Device', desc: 'ลบ device ออกจากระบบ — traces ที่บันทึกไว้แล้วยังคงอยู่', color: 'red' },
                         ]" :key="action.title" class="p-4 rounded-xl bg-white/5">
@@ -492,13 +500,14 @@ void loop() {
                             { method: 'POST', path: '/api/v1/food-passport/register', desc: 'ลงทะเบียนสินค้าใหม่' },
                             { method: 'POST', path: '/api/v1/food-passport/trace', desc: 'เพิ่ม trace (manual)' },
                             { method: 'POST', path: '/api/v1/food-passport/mint', desc: 'Mint NFT certificate' },
-                            { method: 'GET', path: '/api/v1/food-passport/my-products', desc: 'สินค้าของ wallet address' },
-                            { method: 'POST', path: '/api/v1/food-passport/iot/ingest', desc: 'IoT data ingestion (single)' },
-                            { method: 'POST', path: '/api/v1/food-passport/iot/batch-ingest', desc: 'IoT batch ingestion (max 100)' },
-                            { method: 'POST', path: '/api/v1/food-passport/iot/register-device', desc: 'ลงทะเบียน IoT device' },
-                            { method: 'GET', path: '/api/v1/food-passport/iot/my-devices', desc: 'Devices ของเจ้าของ' },
-                            { method: 'POST', path: '/api/v1/food-passport/iot/test-device/{id}', desc: 'ทดสอบ device connection' },
-                            { method: 'GET', path: '/api/v1/food-passport/iot/device-config/{id}', desc: 'ดึง config ของ device' },
+                            { method: 'GET', path: '/api/v1/food-passport/my-products?wallet_address=0x...', desc: 'สินค้าของกระเป๋าที่ยืนยันแล้ว' },
+                            { method: 'POST', path: '/api/v1/food-passport/iot/ingest', desc: 'IoT data ingestion (single) — Authorization: Bearer <API key ของเครื่อง>' },
+                            { method: 'POST', path: '/api/v1/food-passport/iot/batch-ingest', desc: 'IoT batch ingestion (max 100, เครื่องเดียวต่อคำขอ) — Bearer API key' },
+                            { method: 'POST', path: '/api/v1/food-passport/iot/register-device', desc: 'ลงทะเบียน IoT device (กระเป๋าที่ยืนยันแล้ว) — ได้ API key ครั้งเดียว' },
+                            { method: 'POST', path: '/api/v1/food-passport/iot/rotate-key/{deviceId}', desc: 'ออก API key ใหม่ให้เครื่องของฉัน — กุญแจเดิมใช้ไม่ได้ทันที' },
+                            { method: 'GET', path: '/api/v1/food-passport/iot/my-devices?wallet_address=0x...', desc: 'Devices ของกระเป๋าที่ยืนยันแล้ว' },
+                            { method: 'GET', path: '/api/v1/food-passport/iot/test/{deviceId}', desc: 'เครื่องเช็คว่า API key ใช้ได้ (ping) — Bearer API key' },
+                            { method: 'GET', path: '/api/v1/food-passport/iot/config/{deviceId}', desc: 'ดึง config ของ device — Bearer API key' },
                             { method: 'GET', path: '/api/v1/food-passport/fdp-token-info', desc: 'ข้อมูล FDP Token' },
                         ]" :key="ep.path + ep.method" class="flex items-start gap-3 p-3 rounded-lg bg-white/5">
                             <span
