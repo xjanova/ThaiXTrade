@@ -14,7 +14,7 @@ use Symfony\Component\HttpFoundation\Response;
  * ผ่านได้ 3 ทาง (ทุกทางเริ่มจากลายเซ็นที่ WalletController::verifySignature ตรวจด้วย ecrecover แล้ว):
  * 1. แอปมือถือ: โทเคน X-Wallet-Session ของกระเป๋าใบนี้ (WalletSessionService, 30 วัน)
  * 2. เว็บ: session ของผู้ใช้ที่ผูกกระเป๋าใบนี้ไว้ (ผูกได้เฉพาะหลังเซ็นผ่าน)
- * 3. แคช `wallet_verified:{address}` 4 ชั่วโมง — คำขอเขียนต้องมาจาก IP เดียวกับตอนเซ็น
+ * 3. แคช `wallet_verified:{address}` 4 ชั่วโมง — ทั้งอ่านและเขียนต้องมาจาก IP เดียวกับตอนเซ็น
  */
 class VerifyWalletOwnership
 {
@@ -114,37 +114,31 @@ class VerifyWalletOwnership
             return $next($request);
         }
 
-        // SECURITY FIX: GET requests ก็ต้องตรวจ verified session
-        // เพราะ route group นี้มีข้อมูลส่วนตัว (orders, balances, transactions)
-        // ป้องกัน attacker query wallet_address ของคนอื่น
-        // GET requests ไม่ต้อง check IP (เพราะเป็น read-only)
-        if ($request->isMethod('GET')) {
-            $cacheKey = "wallet_verified:{$normalizedAddress}";
-            $verifiedData = Cache::get($cacheKey);
-            if (! $verifiedData || ! is_array($verifiedData)) {
-                return response()->json([
-                    'success' => false,
-                    'error' => [
-                        'code' => 'WALLET_NOT_VERIFIED',
-                        'message' => 'Wallet ownership not verified.',
-                    ],
-                ], 403);
-            }
-
-            return $next($request);
-        }
-
-        // Write requests (POST/PUT/DELETE): require signature verification
-        // Check 1: Must have a verified session from WalletController::verifySignature()
+        /*
+         * ที่เหลือคือแคชลายเซ็น 4 ชั่วโมง — ใช้ได้เฉพาะจาก IP เดียวกับตอนเซ็น ทั้งอ่านและเขียน
+         *
+         * ⚠️ เดิม GET ผ่านแค่มีแถวแคช — แถวนั้นผูกกับเลขกระเป๋า ไม่ได้ผูกกับคนที่ถาม
+         *    เลขกระเป๋าเห็นได้บนเชน ใครก็ใส่ ?wallet_address= ของคนอื่นแล้วอ่านอีเมล สถานะ KYC
+         *    ประวัติเทรด ยอดเงินของเขาได้ตลอด 4 ชั่วโมงหลังเจ้าของเซ็น (ข้อมูลส่วนบุคคล — PDPA)
+         *    เว็บผ่านด้วย session ข้างบน แอปผ่านด้วยโทเคน ทางนี้เหลือไว้ให้ผู้เรียกที่มีแค่ลายเซ็น
+         *    (แอปรุ่นก่อนมีโทเคน, เว็บที่ session ไม่ติด) — เงื่อนไขเดียวกับที่ใช้เขียนอยู่แล้ว
+         *    KycGate::resolveUser() ใช้เงื่อนไขเดียวกัน แก้ที่นี่ต้องแก้ที่นั่นด้วย
+         */
         $cacheKey = "wallet_verified:{$normalizedAddress}";
         $verifiedData = Cache::get($cacheKey);
 
+        // บันทึกเฉพาะคำขอเขียนเหมือนเดิม — หน้าเว็บยิง GET ตามรอบ (บางหน้าทุก 15 วินาที)
+        // และยิงตั้งแต่เชื่อมกระเป๋าก่อนเซ็น ถ้าบันทึกด้วย ล็อกจะท่วมด้วยเรื่องปกติ
+        $isWrite = ! $request->isMethodSafe();
+
         if (! $verifiedData || ! is_array($verifiedData)) {
-            Log::warning('Wallet ownership not verified for write operation.', [
-                'wallet' => $normalizedAddress,
-                'ip' => $request->ip(),
-                'path' => $request->path(),
-            ]);
+            if ($isWrite) {
+                Log::warning('Wallet ownership not verified for write operation.', [
+                    'wallet' => $normalizedAddress,
+                    'ip' => $request->ip(),
+                    'path' => $request->path(),
+                ]);
+            }
 
             return response()->json([
                 'success' => false,
@@ -155,13 +149,15 @@ class VerifyWalletOwnership
             ], 403);
         }
 
-        // Check 2: IP must match the one used during verification (prevent session hijacking)
+        // IP must match the one used during verification (prevent session hijacking)
         if (($verifiedData['ip'] ?? null) !== $request->ip()) {
-            Log::warning('Wallet verification IP mismatch.', [
-                'wallet' => $normalizedAddress,
-                'verified_ip' => $verifiedData['ip'] ?? 'unknown',
-                'request_ip' => $request->ip(),
-            ]);
+            if ($isWrite) {
+                Log::warning('Wallet verification IP mismatch.', [
+                    'wallet' => $normalizedAddress,
+                    'verified_ip' => $verifiedData['ip'] ?? 'unknown',
+                    'request_ip' => $request->ip(),
+                ]);
+            }
 
             return response()->json([
                 'success' => false,
