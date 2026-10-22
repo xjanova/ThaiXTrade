@@ -1,39 +1,28 @@
-name: Build Android APK
+name: Legacy RN APK (manual build only)
+
+# The React Native app in mobile/ was replaced by the Flutter app in mobile-flutter/ on 2026-04-13.
+# แอป React Native ใน mobile/ เลิกใช้แล้ว แอปจริงคือ Flutter ใน mobile-flutter/ ตั้งแต่ 2026-04-13
+#
+# This workflow used to run on every push to main that touched mobile/**, bump version.json and
+# attach its APK to that version's GitHub release. Both apps name the file TPIX-TRADE-v<version>.apk,
+# so the RN build replaced the Flutter APK on v1.1.72 (2026-04-19) and v1.1.238 (2026-10-20), and
+# /api/v1/app/update-check offered it as the update. Its package is com.xmanstudio.tpixtrade, not
+# com.xmanstudio.tpix_trade, so phones installed it as a second "TPIX TRADE" app instead.
+#
+# It now runs only by hand, with a read-only token, and only leaves a workflow artifact:
+# no version bump, no push, no release, no backend notify. App releases come from build-flutter-apk.yml.
+# ตอนนี้รันได้แค่กดเอง token อ่านอย่างเดียว ได้แค่ artifact — ไม่ bump เวอร์ชัน ไม่ push ไม่แตะ release
+# ไม่แจ้ง backend · release ของแอปมาจาก build-flutter-apk.yml ที่เดียว
 
 on:
-  push:
-    branches: ['main', 'develop', 'claude/**']
-    paths:
-      - 'mobile/**'
-      - '.github/workflows/build-apk.yml'
-  pull_request:
-    branches: ['main']
-    paths:
-      - 'mobile/**'
   workflow_dispatch:
-    inputs:
-      create_release:
-        description: 'Create a GitHub Release with APK'
-        required: false
-        default: 'true'
-        type: boolean
-      bump_version:
-        description: 'Bump version (patch/minor/major/none)'
-        required: false
-        default: 'patch'
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
-          - none
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-apk:
-    name: Build APK
+    name: Build legacy RN APK
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -43,7 +32,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -75,81 +64,17 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('mobile/android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
 
-      # Auto-bump version on main branch or manual trigger
-      # เพิ่มเวอร์ชันอัตโนมัติบน main branch หรือ trigger แบบ manual
-      - name: Bump version
-        id: bump
-        if: github.ref == 'refs/heads/main' || github.event.inputs.bump_version != 'none'
-        working-directory: .
-        run: |
-          BUMP_TYPE="${{ github.event.inputs.bump_version || 'patch' }}"
-
-          # Read current version from version.json
-          CURRENT=$(node -e "console.log(require('./version.json').version)")
-          BUILD=$(node -e "console.log(require('./version.json').build || 1)")
-
-          # Calculate new version
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-          case "$BUMP_TYPE" in
-            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
-            patch) PATCH=$((PATCH + 1)) ;;
-          esac
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-          NEW_BUILD=$((BUILD + 1))
-
-          echo "Bumping version: $CURRENT -> $NEW_VERSION (build $NEW_BUILD)"
-
-          # Update version.json
-          node -e "
-            const fs = require('fs');
-            const v = JSON.parse(fs.readFileSync('./version.json', 'utf8'));
-            v.version = '$NEW_VERSION';
-            v.build = $NEW_BUILD;
-            v.releaseDate = new Date().toISOString().split('T')[0];
-            fs.writeFileSync('./version.json', JSON.stringify(v, null, 2) + '\n');
-          "
-
-          # Update mobile/app.json version
-          node -e "
-            const fs = require('fs');
-            const app = JSON.parse(fs.readFileSync('./mobile/app.json', 'utf8'));
-            app.expo.version = '$NEW_VERSION';
-            app.expo.android.versionCode = $NEW_BUILD;
-            app.expo.ios.buildNumber = '$NEW_BUILD';
-            fs.writeFileSync('./mobile/app.json', JSON.stringify(app, null, 2) + '\n');
-          "
-
-          # Update mobile/package.json version
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('./mobile/package.json', 'utf8'));
-            pkg.version = '$NEW_VERSION';
-            fs.writeFileSync('./mobile/package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "build=$NEW_BUILD" >> $GITHUB_OUTPUT
-          echo "bumped=true" >> $GITHUB_OUTPUT
-
-      - name: Get version info (no bump)
+      # The RN app's own version from mobile/app.json. version.json belongs to the Flutter app now,
+      # and naming an RN file after it is how the two apps got mixed up on the release page.
+      # ใช้เวอร์ชันของแอป RN เอง (mobile/app.json) ไม่ใช่ version.json ซึ่งเป็นของแอป Flutter แล้ว
+      - name: Get version info
         id: version
         run: |
-          if [ "${{ steps.bump.outputs.bumped }}" = "true" ]; then
-            echo "version=${{ steps.bump.outputs.version }}" >> $GITHUB_OUTPUT
-            echo "build=${{ steps.bump.outputs.build }}" >> $GITHUB_OUTPUT
-          else
-            if [ -f ../version.json ]; then
-              VERSION=$(node -e "console.log(require('../version.json').version)")
-              BUILD=$(node -e "console.log(require('../version.json').build || 1)")
-            else
-              VERSION="1.0.0"
-              BUILD="1"
-            fi
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "build=$BUILD" >> $GITHUB_OUTPUT
-          fi
-          echo "Version: $(cat $GITHUB_OUTPUT | grep version | head -1)"
+          VERSION=$(node -e "console.log(require('./app.json').expo.version)")
+          BUILD=$(node -e "console.log(require('./app.json').expo.android.versionCode)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build=$BUILD" >> $GITHUB_OUTPUT
+          echo "Legacy RN app v$VERSION (build $BUILD)"
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
@@ -163,23 +88,6 @@ jobs:
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
-
-      # Decode signing keystore if available
-      - name: Setup release signing
-        if: env.KEYSTORE_BASE64 != ''
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
-          cat >> android/gradle.properties << EOF
-          RELEASE_STORE_FILE=release.keystore
-          RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD
-          RELEASE_KEY_ALIAS=$KEY_ALIAS
-          RELEASE_KEY_PASSWORD=$KEY_PASSWORD
-          EOF
 
       # Workaround: foojay-resolver plugin download fails intermittently (403 from CDN)
       # Since Java is already provided by setup-java action, we don't need auto-download
@@ -240,7 +148,7 @@ jobs:
             echo "ERROR: No APK file found!"
             exit 1
           fi
-          APK_NAME="TPIX-TRADE-v${{ steps.version.outputs.version }}.apk"
+          APK_NAME="TPIX-TRADE-RN-legacy-v${{ steps.version.outputs.version }}.apk"
           cp "$APK_PATH" "$APK_NAME"
           echo "apk_path=$APK_NAME" >> $GITHUB_OUTPUT
           echo "apk_name=$APK_NAME" >> $GITHUB_OUTPUT
@@ -249,63 +157,16 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
-          name: TPIX-TRADE-v${{ steps.version.outputs.version }}
+          name: TPIX-TRADE-RN-legacy-v${{ steps.version.outputs.version }}
           path: mobile/${{ steps.find-apk.outputs.apk_path }}
-          retention-days: 90
-
-      # Commit version bump back to repo
-      # Commit การเพิ่มเวอร์ชันกลับไปที่ repo
-      - name: Commit version bump
-        if: steps.bump.outputs.bumped == 'true'
-        working-directory: .
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json mobile/app.json mobile/package.json
-          git diff --staged --quiet || git commit -m "chore: bump version to v${{ steps.version.outputs.version }} (build ${{ steps.version.outputs.build }})"
-          git push || echo "Push failed - may need permissions"
-
-      # Attach APK to existing release (same version tag from ci.yml)
-      - name: Attach APK to Release
-        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event.inputs.create_release == 'true')
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: 'v${{ steps.version.outputs.version }}'
-          append_body: true
-          body: |
-
-            ---
-            ### 📱 Android APK (Build #${{ steps.version.outputs.build }})
-            - **TPIX-TRADE-v${{ steps.version.outputs.version }}.apk** — Install on Android 7.0+
-            - New app icon & splash screen
-          files: mobile/${{ steps.find-apk.outputs.apk_path }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Auto-set active release on backend (clears cache + sets active_tag)
-      - name: Notify backend of new release
-        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event.inputs.create_release == 'true')
-        env:
-          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
-        run: |
-          if [ -n "$DEPLOY_SECRET" ]; then
-            curl -s -X POST \
-              "https://tpix.online/api/v1/app/notify-release?secret=${DEPLOY_SECRET}&tag=v${{ steps.version.outputs.version }}" \
-              -H "User-Agent: GitHub-Actions" \
-              -H "Accept: application/json" || echo "Backend notify failed (non-critical)"
-          else
-            echo "DEPLOY_SECRET not set — skipping backend notify"
-          fi
+          retention-days: 7
 
       - name: Build Summary
         if: always()
         run: |
-          echo "## Build Android APK" >> $GITHUB_STEP_SUMMARY
+          echo "## Legacy RN APK (artifact only, not released)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** v${{ steps.version.outputs.version }} (mobile/app.json)" >> $GITHUB_STEP_SUMMARY
           echo "**Build:** #${{ steps.version.outputs.build }}" >> $GITHUB_STEP_SUMMARY
           if [ -f "${{ steps.find-apk.outputs.apk_path }}" ]; then
             SIZE=$(du -h "${{ steps.find-apk.outputs.apk_path }}" | cut -f1)
