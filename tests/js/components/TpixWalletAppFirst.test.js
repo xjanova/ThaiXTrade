@@ -117,11 +117,32 @@ describe('หน้าต่างเชื่อมกระเป๋า — TP
         expect(web.text()).not.toContain('Recommended');
     });
 
-    it('เปิดเว็บในเบราว์เซอร์ของ MetaMask → ไม่โชว์การ์ดแอป (ใช้กระเป๋าของแอปนั้น)', () => {
+    it('เปิดเว็บในเบราว์เซอร์ของแอป MetaMask บนมือถือ → ไม่โชว์การ์ดแอป (ใช้กระเป๋าของแอปนั้น)', () => {
+        const ua = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+            'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 MetaMaskMobile',
+        );
         window.ethereum = { isMetaMask: true, request: vi.fn(), on: vi.fn(), removeListener: vi.fn() };
         const wrapper = mount(WalletModal);
 
         expect(wrapper.find('[data-testid="tpix-app-card"]').exists()).toBe(false);
+        delete window.ethereum;
+        ua.mockRestore();
+    });
+
+    it('คอมที่ติดตั้งส่วนขยาย MetaMask → ยังเห็นการ์ด TPIX Wallet อันดับ 1 และกระเป๋าอื่นครบ', () => {
+        // เจ้าของเจอจริง 2026-10-22: "บนหน้าเว็บทำไมเห็นแต่ metamask"
+        // ส่วนขยายใส่ window.ethereum.isMetaMask เหมือนแอป MetaMask — เดิมเลยถูกนับว่าอยู่ในแอป
+        window.ethereum = { isMetaMask: true, request: vi.fn(), on: vi.fn(), removeListener: vi.fn() };
+        const wrapper = mount(WalletModal);
+
+        const card = wrapper.find('[data-testid="tpix-app-card"]');
+        expect(card.exists()).toBe(true);
+        for (const id of ['metamask', 'trustwallet', 'coinbase', 'tpix_wallet']) {
+            const option = wrapper.find(`[data-testid="wallet-option-${id}"]`);
+            expect(option.exists(), id).toBe(true);
+            expect(isBefore(card, option), id).toBe(true);
+        }
+        expect(wrapper.text()).not.toContain('Wallet detected!');
         delete window.ethereum;
     });
 
