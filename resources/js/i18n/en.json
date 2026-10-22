@@ -1215,6 +1215,20 @@
             "close": "Close",
             "pairFailed": "Could not connect to the wallet app. Please try again.",
             "back": "Back"
+        },
+        "app": {
+            "recommended": "Recommended",
+            "tagline": "The official TPIX wallet app — sign in by scan, keys stay on your phone",
+            "scanQr": "Scan QR with TPIX Wallet",
+            "openApp": "Open the TPIX Wallet app",
+            "signInTitle": "Sign in with the TPIX Wallet app",
+            "noApp": "No app yet?",
+            "download": "Download",
+            "orOther": "Or connect another wallet",
+            "orEmail": "or sign in with email",
+            "webWallet": "TPIX Web Wallet",
+            "webWalletDesc": "Wallet inside the website — no app needed",
+            "webWalletCta": "Don't want to install an app? Use the web wallet"
         }
     },
     "common": {

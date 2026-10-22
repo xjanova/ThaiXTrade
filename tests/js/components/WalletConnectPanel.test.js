@@ -2,7 +2,7 @@
  * TPIX TRADE — หน้าต่างเชื่อมกระเป๋า: สแกน QR ด้วยแอป TPIX Wallet / เปิดแอปจากมือถือ
  *
  * จุดที่ชุดนี้คุม:
- *  - คอมพิวเตอร์: กด "TPIX Wallet App" แล้วได้ QR ในหน้าต่างของเราเอง (ไม่ใช่หน้าต่างของ Reown
+ *  - คอมพิวเตอร์: กดการ์ด TPIX Wallet แล้วได้ QR ในหน้าต่างของเราเอง (ไม่ใช่หน้าต่างของ Reown
  *    ที่ไม่รู้จักแอปเรา) พร้อมขั้นตอนสแกน
  *  - มือถือ: ได้ปุ่มเปิดแอป TPIX Wallet ที่พาลิงก์จับคู่ไปด้วย (เดิมเปิด tpixwallet:// เฉย ๆ = เชื่อมไม่ได้)
  *  - MetaMask บนมือถือ: เชื่อมผ่าน WalletConnect อยู่เบราว์เซอร์เดิม (เดิมพาไปเปิดในเบราว์เซอร์ของ MetaMask
@@ -83,10 +83,10 @@ afterEach(() => {
 });
 
 describe('คอมพิวเตอร์ — สแกน QR ด้วยแอป TPIX Wallet', () => {
-    it('กด TPIX Wallet App → แผง QR ของเรา + ขั้นตอนสแกน (ไม่ปิดหน้าต่างจนกว่าจะเข้าสู่ระบบ)', async () => {
+    it('กดการ์ด TPIX Wallet (อันดับ 1) → แผง QR ของเรา + ขั้นตอนสแกน (ไม่ปิดหน้าต่างจนกว่าจะเข้าสู่ระบบ)', async () => {
         const wrapper = mount(WalletModal);
 
-        await buttonByText(wrapper, 'TPIX Wallet App').trigger('click');
+        await wrapper.find('[data-testid="tpix-app-connect"]').trigger('click');
         expect(store.connectWalletConnect).toHaveBeenCalledWith({ wallet: 'tpix' });
         expect(wrapper.find('[data-testid="wc-preparing"]').exists()).toBe(true);
 
@@ -103,7 +103,7 @@ describe('คอมพิวเตอร์ — สแกน QR ด้วยแ�
     it('เชื่อมแล้ว → ขั้นยืนยันในแอป → เข้าสู่ระบบแล้วปิดหน้าต่างเอง', async () => {
         vi.useFakeTimers();
         const wrapper = mount(WalletModal);
-        await buttonByText(wrapper, 'TPIX Wallet App').trigger('click');
+        await wrapper.find('[data-testid="tpix-app-connect"]').trigger('click');
 
         store.address = OWNER;
         store.wcStatus = 'signing';
@@ -124,7 +124,7 @@ describe('คอมพิวเตอร์ — สแกน QR ด้วยแ�
 
     it('ปิดหน้าต่างระหว่างรอสแกน = ยกเลิกการจับคู่', async () => {
         const wrapper = mount(WalletModal);
-        await buttonByText(wrapper, 'TPIX Wallet App').trigger('click');
+        await wrapper.find('[data-testid="tpix-app-connect"]').trigger('click');
 
         await wrapper.find('.modal-overlay').trigger('click');
 
@@ -138,9 +138,9 @@ describe('มือถือ — เปิดแอปกระเป๋าแ�
         vi.mocked(isMobile).mockReturnValue(true);
     });
 
-    it('TPIX Wallet App → ปุ่มเปิดแอปพาลิงก์จับคู่ไปด้วย (ไม่ใช่ tpixwallet:// เฉย ๆ)', async () => {
+    it('การ์ด TPIX Wallet → ปุ่มเปิดแอปพาลิงก์จับคู่ไปด้วย (ไม่ใช่ tpixwallet:// เฉย ๆ)', async () => {
         const wrapper = mount(WalletModal);
-        await buttonByText(wrapper, 'TPIX Wallet App').trigger('click');
+        await wrapper.find('[data-testid="tpix-app-connect"]').trigger('click');
         store.wcUri = URI;
         await flushPromises();
 

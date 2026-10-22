@@ -23,7 +23,7 @@ import {
     rememberDeepLinkChoice,
 } from '@/utils/walletConnect';
 import { formatAddress } from '@/utils/web3';
-import BrandLogo from '@/Components/Brand/BrandLogo.vue';
+import { TPIX_WALLET_APP_ICON } from '@/utils/brand';
 
 const props = defineProps({
     /** แอปที่ผู้ใช้เลือก: tpix | metamask | trustwallet | okx | tokenpocket | generic */
@@ -172,9 +172,10 @@ function retryVerification() {
     <div class="space-y-4" data-testid="wc-panel">
         <!-- หัว: แอปที่เลือก + ขั้นตอน -->
         <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-primary-500/15 flex items-center justify-center flex-shrink-0">
-                <BrandLogo v-if="isTpix" variant="icon" alt="TPIX Wallet" class="w-7 h-7" />
-                <svg v-else class="w-6 h-6" viewBox="0 0 40 40" aria-hidden="true">
+            <!-- TPIX Wallet = ไอคอนแอปตัวจริง (ตัวเดียวกับการ์ดอันดับ 1) -->
+            <img v-if="isTpix" :src="TPIX_WALLET_APP_ICON" alt="TPIX Wallet" class="w-10 h-10 rounded-xl ring-1 ring-white/15 flex-shrink-0" />
+            <div v-else class="w-10 h-10 rounded-xl bg-primary-500/15 flex items-center justify-center flex-shrink-0">
+                <svg class="w-6 h-6" viewBox="0 0 40 40" aria-hidden="true">
                     <circle cx="20" cy="20" r="18" fill="#3B99FC" />
                     <path d="M12.5 16.5C16.6 12.5 23.4 12.5 27.5 16.5L28 17C28.2 17.2 28.2 17.5 28 17.7L26.5 19.1C26.4 19.2 26.2 19.2 26.1 19.1L25.4 18.5C22.5 15.7 17.5 15.7 14.6 18.5L13.8 19.2C13.7 19.3 13.5 19.3 13.4 19.2L11.9 17.8C11.7 17.6 11.7 17.3 11.9 17.1L12.5 16.5Z" fill="white" />
                 </svg>
@@ -213,7 +214,7 @@ function retryVerification() {
                             :data-testid="`wc-pick-${w.id}`"
                             @click="pickWallet(w.id)"
                         >
-                            <BrandLogo v-if="w.id === 'tpix'" variant="icon" alt="TPIX Wallet" class="w-6 h-6" />
+                            <img v-if="w.id === 'tpix'" :src="TPIX_WALLET_APP_ICON" alt="TPIX Wallet" class="w-6 h-6 rounded-md" />
                             <span v-else class="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center text-[10px] text-white font-bold">{{ w.name.slice(0, 2) }}</span>
                             <span class="text-sm text-white">{{ w.name }}</span>
                         </button>

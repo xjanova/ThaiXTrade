@@ -1215,6 +1215,20 @@
             "close": "ปิด",
             "pairFailed": "เชื่อมต่อแอปกระเป๋าไม่สำเร็จ กรุณาลองใหม่",
             "back": "กลับ"
+        },
+        "app": {
+            "recommended": "แนะนำ",
+            "tagline": "แอปกระเป๋าทางการของ TPIX — สแกนเข้าสู่ระบบ กุญแจอยู่ในมือถือคุณ",
+            "scanQr": "สแกน QR ด้วย TPIX Wallet",
+            "openApp": "เปิดแอป TPIX Wallet",
+            "signInTitle": "เข้าสู่ระบบด้วยแอป TPIX Wallet",
+            "noApp": "ยังไม่มีแอป?",
+            "download": "ดาวน์โหลด",
+            "orOther": "หรือเชื่อมด้วยกระเป๋าอื่น",
+            "orEmail": "หรือเข้าสู่ระบบด้วยอีเมล",
+            "webWallet": "TPIX Web Wallet",
+            "webWalletDesc": "กระเป๋าในเว็บ — ไม่ต้องติดตั้งแอป",
+            "webWalletCta": "ไม่อยากติดตั้งแอป? ใช้กระเป๋าในเว็บแทน"
         }
     },
     "common": {
