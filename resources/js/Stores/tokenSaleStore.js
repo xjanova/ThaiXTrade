@@ -299,6 +299,51 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
     }
 
     /**
+     * สั่งซื้อด้วย USDT — เซิร์ฟเวอร์ล็อกราคาและออก "ยอดเฉพาะ" ที่ต้องโอนเป๊ะ
+     *
+     * ไม่มีการยื่น tx_hash ภายหลัง: ตัวสแกนฝั่งเซิร์ฟเวอร์เห็นเงินเข้าแล้วออกเหรียญเอง
+     *
+     * @param {{wallet_address: string, phase_id: number, amount_usd: number, chain_id: number}} payload
+     * @returns {{ok: true, data: object} | {ok: false, code?: string, message: string}}
+     */
+    async function createCryptoOrder(payload) {
+        try {
+            const { data } = await axios.post('/api/v1/token-sale/crypto-order', payload);
+
+            return data.success
+                ? { ok: true, data: data.data }
+                : { ok: false, message: data.error?.message || 'สร้างคำสั่งซื้อไม่สำเร็จ' };
+        } catch (err) {
+            const apiError = err?.response?.data?.error;
+
+            if (err?.response?.status === 403) {
+                return {
+                    ok: false,
+                    code: apiError?.code || 'FORBIDDEN',
+                    message: apiError?.message || 'เซสชันกระเป๋าหมดอายุ กรุณาเชื่อมต่อกระเป๋าใหม่อีกครั้ง',
+                };
+            }
+
+            return { ok: false, code: apiError?.code, message: apiError?.message || 'สร้างคำสั่งซื้อไม่สำเร็จ กรุณาลองใหม่' };
+        }
+    }
+
+    /**
+     * สถานะคำสั่งซื้อ USDT (เฉพาะเจ้าของกระเป๋า) — null เมื่ออ่านไม่ได้ (ไม่ใช่ "ยังไม่จ่าย")
+     */
+    async function fetchCryptoOrder(orderId, walletAddress) {
+        try {
+            const { data } = await axios.get(`/api/v1/token-sale/crypto-order/${orderId}`, {
+                params: { wallet_address: walletAddress },
+            });
+
+            return data.success ? data.data : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
      * ส่งคำสั่งซื้อเหรียญ TPIX
      * ผู้ใช้ต้องจ่ายเงินบน BSC ก่อน แล้วส่ง tx_hash มาให้ verify
      * @param {object} purchaseData - { wallet_address, phase_id, currency, amount, tx_hash }
@@ -385,6 +430,8 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
         precheckPurchase,
         createBankOrder,
         createStripeCheckout,
+        createCryptoOrder,
+        fetchCryptoOrder,
         submitPurchase,
         loadAll,
         reset,

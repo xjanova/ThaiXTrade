@@ -498,15 +498,27 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::post('/token-sale/purchase', [TokenSaleApiController::class, 'purchase'])->middleware('kyc:token_sale');
 
         /*
-         * ทางรับเงินจริงสองทาง — ต้องอยู่ในกลุ่มนี้ทั้งคู่
+         * ทางรับเงินจริง (บัตร · โอนเงิน · USDT) — ต้องอยู่ในกลุ่มนี้ทุกทาง
          *
-         * ทั้ง Stripe และการโอนเงินผูก "กระเป๋าปลายทางที่จะได้รับเหรียญ" เข้ากับ
+         * ทุกทางผูก "กระเป๋าปลายทางที่จะได้รับเหรียญ" เข้ากับ
          * คำสั่งซื้อ ถ้าปลายทางเหล่านี้เปิดสาธารณะ ใครก็ยิงคำสั่งซื้อโดยใส่
          * กระเป๋าของคนอื่นได้ และเราจะไม่มีทางรู้เลยว่าคนสั่งคือเจ้าของกระเป๋าจริง
          */
         Route::post('/token-sale/bank-order', [TokenSaleApiController::class, 'bankOrder'])->middleware('kyc:token_sale');
         Route::post('/token-sale/stripe/checkout', [TokenSaleApiController::class, 'stripeCheckout'])->middleware('kyc:token_sale');
+
+        /*
+         * ทาง USDT — สร้างคำสั่งซื้อ (ล็อกราคา + ยอดเฉพาะ) ผ่านด่านเดียวกับบัตรทุกชั้น
+         * สถานะอ่านได้เฉพาะเจ้าของกระเป๋า (GET ก็ต้องยืนยันเจ้าของ — VerifyWalletOwnership)
+         * หน้าซื้อถามสถานะทุกไม่กี่วินาทีระหว่างรอเงินเข้า จึงแยก throttle ให้หลวมกว่าการสั่งซื้อ
+         */
+        Route::post('/token-sale/crypto-order', [TokenSaleApiController::class, 'cryptoOrder'])->middleware('kyc:token_sale');
         Route::post('/token-sale/claim', [TokenSaleApiController::class, 'claim'])->middleware('kyc:token_sale');
+    });
+
+    Route::middleware('throttle:60,1')->group(function () {
+        Route::get('/token-sale/crypto-order/{orderId}', [TokenSaleApiController::class, 'cryptoOrderStatus'])
+            ->where('orderId', '[0-9a-fA-F-]{36}');
     });
 
     // Token Factory — สร้างเหรียญ (ต้อง verify wallet)

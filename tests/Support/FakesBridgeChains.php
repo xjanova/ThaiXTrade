@@ -183,15 +183,23 @@ trait FakesBridgeChains
     /** Transfer(from → vault) ของ USDT บนเชนต้นทาง — คืน tx hash */
     protected function fakeDeposit(int $chainId, string $from, string $raw, int $block, ?string $txFrom = null, int $logIndex = 0, ?string $token = null, ?string $txHash = null): string
     {
-        $token ??= $chainId === 56 ? $this->usdtBsc : $this->usdtEth;
         $txHash ??= '0x'.hash('sha256', "dep:{$chainId}:{$from}:{$raw}:{$block}:{$logIndex}:".count($this->chainState[$chainId]['logs']));
+
+        return $this->fakeTransfer($chainId, $from, $this->vault, $raw, $block, $txFrom, $logIndex, $token, $txHash);
+    }
+
+    /** Transfer(from → to) ของเหรียญ ERC-20 บนเชนต้นทาง (ปริยาย = USDT ของเชนนั้น) — คืน tx hash */
+    protected function fakeTransfer(int $chainId, string $from, string $to, string $raw, int $block, ?string $txFrom = null, int $logIndex = 0, ?string $token = null, ?string $txHash = null): string
+    {
+        $token ??= $chainId === 56 ? $this->usdtBsc : $this->usdtEth;
+        $txHash ??= '0x'.hash('sha256', "xfer:{$chainId}:{$from}:{$to}:{$raw}:{$block}:{$logIndex}:".count($this->chainState[$chainId]['logs']));
 
         $log = [
             'address' => strtolower($token),
             'topics' => [
                 Abi::topic(Abi::TRANSFER_EVENT),
                 '0x'.Abi::encAddress($from),
-                '0x'.Abi::encAddress($this->vault),
+                '0x'.Abi::encAddress($to),
             ],
             'data' => '0x'.Abi::encUint($raw),
             'blockNumber' => '0x'.dechex($block),
@@ -333,7 +341,12 @@ trait FakesBridgeChains
                 $n = $tag === 'latest' ? $s['latest'] : hexdec($tag);
 
                 // บล็อกล่าสุด = เวลาปัจจุบันของเทสต์ (ตาม travel()) · ย้อนบล็อกละ 2 วินาที
-                return $ok(['number' => '0x'.dechex($n), 'timestamp' => '0x'.dechex(max(0, now()->getTimestamp() - ($s['latest'] - $n) * 2))]);
+                // time_base ตั้งทับได้ต่อเชน — ตรึงเวลาของแต่ละบล็อกไว้ ไม่ขยับตามหัวเชน
+                $timestamp = isset($s['time_base'])
+                    ? $s['time_base'] + $n * 2
+                    : max(0, now()->getTimestamp() - ($s['latest'] - $n) * 2);
+
+                return $ok(['number' => '0x'.dechex($n), 'timestamp' => '0x'.dechex($timestamp)]);
 
             case 'eth_getLogs':
                 if ($s['fail_logs']) {

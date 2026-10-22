@@ -225,6 +225,18 @@ Schedule::command('sale:advance-phases')
     ->name('sale:advance-phases');
 
 /*
+ * ซื้อ TPIX ด้วย USDT — ตรวจเงินเข้ากระเป๋ารับเงินแล้วออกเหรียญเอง ทุกนาที (ดู config/sale_crypto.php)
+ *
+ * ทุกนาทีเพราะคำสั่งซื้อล็อกราคาไว้ 30 นาที และผู้ซื้อรอดูหน้าจออยู่ · จบเองเมื่อ SALE_CRYPTO_ENABLED=false
+ * ตัวนี้ล้ม/ค้างนาน = คำสั่งซื้อใหม่ปิดเอง (SaleCryptoConfig::scanHealthy) ไม่รับเงินที่ตรวจไม่ได้
+ */
+Schedule::command('sale:scan-crypto')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('sale:scan-crypto');
+
+/*
  * รอบขายเหรียญ — เปิดขายเองทันทีที่ระบบพร้อมจริง ทุกชั่วโมง
  *
  * เจ้าของกำหนด: "พร้อมจำหน่ายเมื่อไหร่ ก็เริ่มเฟสการขายใหม่แต่แรกวันนั้น"

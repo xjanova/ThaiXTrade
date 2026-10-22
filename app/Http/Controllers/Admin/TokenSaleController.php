@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\PurchaseException;
 use App\Http\Controllers\Controller;
+use App\Models\SaleCryptoPayment;
 use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
 use App\Services\BankTransferSaleService;
+use App\Services\SaleCrypto\CryptoPaymentCrediter;
+use App\Services\SaleCrypto\SaleCryptoConfig;
 use App\Services\SaleLaunchService;
 use App\Support\Wei;
 use Carbon\Carbon;
@@ -63,7 +66,94 @@ class TokenSaleController extends Controller
             'walletInfo' => $walletInfo,
             'stats' => $stats,
             'launch' => $this->launchPanel(app(SaleLaunchService::class)),
+            'crypto' => $this->cryptoPanel(app(SaleCryptoConfig::class)),
         ]);
+    }
+
+    /**
+     * กล่อง "ชำระด้วย USDT" — สถานะการเปิดรับ + เงินเข้าที่ระบบออกเหรียญเองไม่ได้ (รอทีมงานตัดสิน).
+     *
+     * @return array<string,mixed>
+     */
+    private function cryptoPanel(SaleCryptoConfig $config): array
+    {
+        $sale = TokenSale::active()->latest('id')->first();
+
+        $review = SaleCryptoPayment::with('order')
+            ->where('status', SaleCryptoPayment::STATUS_NEEDS_REVIEW)
+            ->orderBy('id')
+            ->limit(100)
+            ->get()
+            ->map(fn (SaleCryptoPayment $p) => [
+                'id' => $p->id,
+                'chain' => $config->chain($p->chain_id)['short'] ?? (string) $p->chain_id,
+                'explorer' => $config->chain($p->chain_id)['explorer'] ?? '',
+                'tx_hash' => $p->tx_hash,
+                'from' => $p->from_address,
+                'amount' => $p->amountDisplay(),
+                'token_symbol' => $p->token_symbol,
+                'reason' => $p->review_reason,
+                'detected_at' => $p->created_at?->toIso8601String(),
+                'order' => $p->order ? [
+                    'reference' => $p->order->reference,
+                    'wallet' => $p->order->wallet_address,
+                    'pay_amount' => $p->order->payAmountDisplay(),
+                    'amount_usd' => (float) $p->order->amount_usd,
+                    'tpix_amount' => (float) $p->order->tpix_amount,
+                    'price_per_tpix' => (float) $p->order->price_per_tpix,
+                    'expires_at' => $p->order->expires_at->toIso8601String(),
+                ] : null,
+            ])->all();
+
+        return [
+            'installed' => $config->installed(),
+            'accepted' => $sale ? $config->accepted($sale) : false,
+            'receive_address' => $config->receiveAddress($sale),
+            // ยังไม่ติดตั้ง = ไม่ยิง RPC ไปถาม nonce (หน้านี้เปิดบ่อย)
+            'receive_problem' => ! $config->installed() ? 'not_installed' : ($sale ? $config->receiveAddressProblem($sale) : 'not_set'),
+            'chains' => array_values(array_map(fn ($c) => [
+                'chain_id' => $c['chain_id'],
+                'name' => $c['name'],
+                'scan_ok' => $sale && $config->receiveAddress($sale) ? $config->scanHealthy($c['chain_id'], $config->receiveAddress($sale)) : false,
+            ], $config->chains())),
+            'review' => $review,
+        ];
+    }
+
+    /**
+     * ออกเหรียญตามยอด USDT ที่ได้รับจริง (ราคาที่คำสั่งซื้อล็อกไว้) — ใช้กับโอนขาด/เกิน/ช้า/จ่ายซ้ำ.
+     */
+    public function creditCryptoPayment(int $id, CryptoPaymentCrediter $crediter)
+    {
+        $payment = SaleCryptoPayment::findOrFail($id);
+
+        try {
+            $tx = $crediter->creditReceived($payment, auth('admin')->user()?->email);
+        } catch (PurchaseException $e) {
+            return redirect()->back()->withErrors(['crypto' => $e->getMessage()]);
+        }
+
+        $this->forgetSaleCache();
+
+        return redirect()->back()->with('success', 'ออกเหรียญ '.number_format((float) $tx->tpix_amount, 2).' TPIX ตามยอดที่ได้รับแล้ว');
+    }
+
+    /**
+     * บันทึกว่าคืนเงิน/จัดการนอกระบบแล้ว — ไม่ออกเหรียญ.
+     */
+    public function resolveCryptoPayment(Request $request, int $id, CryptoPaymentCrediter $crediter)
+    {
+        $validated = $request->validate([
+            'note' => 'required|string|max:1000',
+        ]);
+
+        try {
+            $crediter->markResolved(SaleCryptoPayment::findOrFail($id), $validated['note'], auth('admin')->user()?->email);
+        } catch (PurchaseException $e) {
+            return redirect()->back()->withErrors(['crypto' => $e->getMessage()]);
+        }
+
+        return redirect()->back()->with('success', 'บันทึกการจัดการแล้ว');
     }
 
     /**
