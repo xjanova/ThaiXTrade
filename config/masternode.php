@@ -72,12 +72,12 @@ return [
         'batch_size' => (int) env('MASTERNODE_UPTIME_BATCH_SIZE', 50),
         'retention_days' => (int) env('MASTERNODE_UPTIME_RETENTION_DAYS', 30),
 
-        // keccak256 ของ runtime bytecode NodeRegistryV2 รุ่นที่มี uptimeOracle — ตัวเดียวกับที่
-        // TPIX Wallet 1.13.43 / Master Node 1.14.10 ปักไว้ · ไม่ตรง = งาน oracle ไม่ทำอะไรเลย (fail closed)
+        // Reviewed calendar-reward / signed-registration release, deployed 2026-10-26.
+        // Same runtime pin as Wallet and PC; mismatches stop the oracle (fail closed).
         // ห้ามแก้เองเพื่อให้ "ผ่าน" — สัญญาใหม่ต้องผ่านการตรวจแล้วปักใหม่ทั้งแอป กระเป๋า และที่นี่
         'registry_code_hash' => strtolower((string) env(
             'MASTERNODE_REGISTRY_CODE_HASH',
-            '0x1c49f5e7661539977d5abfef5a268b66bcaf812735b67b20328af002a70816fb'
+            '0xd7e2e84e40b4abe29cb54e3ee0cba2cd1077a4d6b26f62a25b6f8e713c49ebd9'
         )),
 
         // กุญแจ oracle — ตั้งได้แค่ uptime เท่านั้น ห้ามใช้กุญแจ owner/deployer/treasury
