@@ -548,9 +548,13 @@ describe('MasterNode — ส่งธุรกรรม', () => {
         await vm.stakeAndRegister(light);
         await settle();
 
-        expect(chain.staticCall).toHaveBeenCalledWith(2, EP, { value: BigInt(odd) });
+        expect(chain.staticCall).toHaveBeenCalledWith(2, EP, 7, 0, expect.any(Number), { value: BigInt(odd) });
         expect(chain.registerNode).toHaveBeenCalledTimes(1);
-        const [tierArg, epArg, overrides] = chain.registerNode.mock.calls[0];
+        const [tierArg, epArg, maxLock, maxSlash, deadline, overrides] = chain.registerNode.mock.calls[0];
+        expect(maxLock).toBe(7);
+        expect(maxSlash).toBe(0);
+        expect(deadline).toBe(chain.staticCall.mock.calls[0][4]);
+        expect(deadline).toBeGreaterThan(Math.floor(Date.now() / 1000));
         expect(tierArg).toBe(2);
         expect(epArg).toBe(EP);
         expect(typeof overrides.value).toBe('bigint');
@@ -558,6 +562,16 @@ describe('MasterNode — ส่งธุรกรรม', () => {
         expect(overrides.gasPrice).toBe(0);
         expect(vm.stakeTxHash).toBe('0xstake');
         expect(vm.stakeError).toBe('');
+    });
+
+    it('keeps the displayed limits when tier data changes while awaiting the signer', async () => {
+        const { vm, light } = await readyToStake();
+        const pending = vm.stakeAndRegister(light);
+        light.lockDays = 180;
+        light.slashBps = 1500;
+        await pending;
+        expect(chain.registerNode.mock.calls[0].slice(2, 4)).toEqual([7, 0]);
+        expect(chain.registerNode.mock.calls[0][4]).toBe(chain.staticCall.mock.calls[0][4]);
     });
 
     it('ดับเบิลคลิกปุ่มวางค้ำ = ส่งรายการเดียว', async () => {

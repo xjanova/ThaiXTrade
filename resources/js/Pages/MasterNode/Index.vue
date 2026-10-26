@@ -185,7 +185,7 @@ const isRegistrationPaused = computed(() => (networkStats.value.registration_pau
 //  ABI — ชื่อและลำดับพารามิเตอร์ต้องตรงกับ NodeRegistryV2 เป๊ะ ๆ
 // ============================================================
 const NODE_REGISTRY_ABI = [
-    'function registerNode(uint8 _tier, string _endpoint) payable',
+    'function registerNode(uint8 _tier, string _endpoint, uint256 _maxLockDays, uint256 _maxSlashBps, uint256 _deadline) payable',
     'function claimRewards()',
     'function deregisterNode()',
     'function withdrawSlashedStake()',
@@ -583,6 +583,7 @@ const tierCards = computed(() => {
             rewardShareBps: Number(chain.reward_share ?? 0),
             rewardShare: `${(Number(chain.reward_share ?? 0) / 100).toFixed(0)}%`,
             slashPercent: Number(chain.slash_percent ?? 0) / 100,
+            slashBps: Number(chain.slash_percent ?? 0),
             aprCapBps,
             projectedAprBps,
             projectedText,
@@ -699,6 +700,9 @@ const REVERT_MAP = {
     'Registration paused': 'ผู้ดูแลระบบปิดรับลงทะเบียนโหนดใหม่ชั่วคราว — ยังไม่มีการโอนเงิน',
     // สองข้อความนี้มาจากกติกา msg.value == minStake เป๊ะ (ส่งเกิน / ส่งขาด)
     'Stake must equal tier minimum': 'ต้องวางค้ำเท่ากับขั้นต่ำของชั้นนี้พอดี (รางวัลแบ่งเท่ากันทุกโหนด วางเกินไม่ได้อะไรเพิ่ม) — ระบบโหลดขั้นต่ำล่าสุดให้แล้ว ลองอีกครั้ง',
+    'Registration expired': 'การยืนยันหมดอายุ กรุณาโหลดข้อมูลและยืนยันสมัครใหม่',
+    'Lock terms changed': 'ระยะเวลาล็อกเปลี่ยนไป กรุณาโหลดข้อมูลและตรวจเงื่อนไขใหม่',
+    'Slash terms changed': 'เพดานค่าปรับเปลี่ยนไป กรุณาโหลดข้อมูลและตรวจเงื่อนไขใหม่',
     'Insufficient stake': 'จำนวน TPIX ที่ส่งไปน้อยกว่าขั้นต่ำของชั้นนี้ — ระบบโหลดขั้นต่ำล่าสุดให้แล้ว ลองอีกครั้ง',
     'Endpoint required': 'ต้องกรอกที่อยู่โหนด',
     'Endpoint too long': `ที่อยู่โหนดยาวเกิน ${MAX_ENDPOINT_LEN} ตัวอักษร`,
@@ -873,6 +877,7 @@ async function stakeAndRegister(tier) {
     // และส่ง minStake เป็น wei ตรง ๆ — สัญญาบังคับ msg.value == minStake เป๊ะ
     const value = tier.minStakeWei;
     const ep = endpoint.value.trim();
+    const args = [tier.id, ep, tier.lockDays, tier.slashBps, Math.floor(Date.now() / 1000) + 600];
     try {
         const signer = await signerFor(guard);
         const { Contract } = await loadEthers();
@@ -880,12 +885,12 @@ async function stakeAndRegister(tier) {
         const registry = new Contract(props.registryAddress, NODE_REGISTRY_ABI, signer);
 
         // ลองยิงแห้งก่อน — จับ revert (ปิดรับ / ชั้นเต็ม / ขั้นต่ำเปลี่ยน) ตั้งแต่ยังไม่เสียเวลาผู้ใช้เซ็น
-        await registry.registerNode.staticCall(tier.id, ep, { value });
+        await registry.registerNode.staticCall(...args, { value });
         guard.check();
 
         // เชนนี้ค่าแก๊สเป็น 0 (ตั้งใน genesis) จึงต้องบังคับ gasPrice = 0
         // ไม่งั้นกระเป๋าจะประเมินราคาแก๊สเองแล้วฟ้องว่ายอดไม่พอ
-        const result = await sendAndWait(guard, 'stake', () => registry.registerNode(tier.id, ep, { value, gasPrice: 0 }));
+        const result = await sendAndWait(guard, 'stake', () => registry.registerNode(...args, { value, gasPrice: 0 }));
         if (result.status === 'pending') return; // การ์ด "รอการยืนยัน" ดูแลต่อ
         await afterConfirmed(guard, 'stake', result.hash);
     } catch (e) {
