@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\FactoryToken;
+use App\Services\TokenFactory\TokenFactoryException;
+use App\Services\TokenFactory\TokenFactoryPolicy;
+use App\Services\TokenFactory\TokenFactoryRefunds;
 use App\Services\TokenFactoryService;
 use App\Services\TokenList\TokenLogoStorage;
 use Illuminate\Http\RedirectResponse;
@@ -18,6 +21,8 @@ class TokenFactoryController extends Controller
     public function __construct(
         private TokenFactoryService $tokenFactoryService,
         private TokenLogoStorage $logos,
+        private TokenFactoryRefunds $refunds,
+        private TokenFactoryPolicy $policy,
     ) {}
 
     public function index(Request $request): Response
@@ -39,6 +44,7 @@ class TokenFactoryController extends Controller
             'canManagePolicy' => Auth::guard('admin')->user()?->role === 'super_admin',
             'canModerate' => in_array(Auth::guard('admin')->user()?->role, ['super_admin', 'admin'], true),
             'logoRules' => ['max_kb' => TokenLogoStorage::MAX_KB, 'min_px' => TokenLogoStorage::MIN_PX, 'types' => 'PNG, WebP'],
+            'refundMode' => $this->policy->refundMode(),
         ]);
     }
 
@@ -156,7 +162,7 @@ class TokenFactoryController extends Controller
 
     /**
      * แถวค้าง deploying โดยไม่มีธุรกรรม (คิวล่ม / งานรุ่นเก่า / worker ตายก่อนเซ็น) → failed.
-     * เงื่อนไขอยู่ใน service: ไม่มี tx_hash และค้างเกิน STUCK_MINUTES
+     * เงื่อนไขอยู่ใน service: ไม่มี tx_hash และค้างเกิน STUCK_MINUTES.
      */
     public function resetStuck(int $id): RedirectResponse
     {
@@ -190,8 +196,55 @@ class TokenFactoryController extends Controller
     }
 
     /**
+     * แอดมินโอนคืนเองแล้ว — วาง tx hash ให้ระบบตรวจบนเชน (ผู้รับ / ผู้โอน / ยอด / สถานะ) ก่อนปิดรายการ.
+     */
+    public function refundManual(Request $request, int $id): RedirectResponse
+    {
+        $request->validate(['tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/']], [
+            'tx_hash.regex' => 'tx hash ต้องขึ้นต้นด้วย 0x ตามด้วยตัวอักษรฐานสิบหก 64 ตัว',
+        ]);
+
+        $token = FactoryToken::findOrFail($id);
+
+        try {
+            $token = $this->refunds->confirmManual($token, (string) $request->input('tx_hash'));
+        } catch (TokenFactoryException $e) {
+            // รวม REFUND_TX_PENDING (ยังยืนยันไม่ครบ) — ข้อความบอกให้กดซ้ำ
+            return back()->with('error', $e->getMessage());
+        }
+
+        $this->audit('token_factory.refund_manual', $token, null, [
+            'refund_tx_hash' => $token->refund_tx_hash,
+            'refund_amount_wei' => $token->refund_amount_wei,
+        ]);
+
+        return back()->with('success', "ยืนยันการคืนค่าธรรมเนียม {$token->symbol} แล้ว");
+    }
+
+    /**
+     * สั่งจ่ายคืนจากกระเป๋าร้อนของคลัง (ครั้งแรกในโหมด manual หรือสั่งใหม่หลังล้มเหลว).
+     */
+    public function refundAuto(int $id): RedirectResponse
+    {
+        $token = FactoryToken::findOrFail($id);
+
+        try {
+            $payout = $this->refunds->queueAuto($token);
+        } catch (TokenFactoryException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        $this->audit('token_factory.refund_auto', $token, null, [
+            'payout_id' => $payout->id,
+            'refund_amount_wei' => $payout->amount_wei,
+        ]);
+
+        return back()->with('success', "เข้าคิวจ่ายคืน {$token->symbol} แล้ว (คิว #{$payout->id}) — ระบบจะส่งในรอบถัดไป");
+    }
+
+    /**
      * บันทึกด้วย guard admin — AuditLog::log() อ่าน auth()->id() ของ guard ปริยาย (web)
-     * และเดิมส่ง $token->id (int) เข้าช่องที่รับ Model = TypeError หลังอนุมัติไปแล้ว (500)
+     * และเดิมส่ง $token->id (int) เข้าช่องที่รับ Model = TypeError หลังอนุมัติไปแล้ว (500).
      */
     private function audit(string $action, FactoryToken $token, ?array $old = null, ?array $new = null): void
     {

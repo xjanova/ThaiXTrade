@@ -41,6 +41,11 @@ class VerifyFactoryTokenOnExplorerJob implements ShouldQueue
             return;
         }
 
+        // บริการเสียเงิน — ไม่จ่าย ไม่ส่ง (กันงานค้างในคิวจากก่อนมีค่าธรรมเนียมนี้)
+        if (! $token->sourceVerifyPaid()) {
+            return;
+        }
+
         $state = $token->metadata['explorer_verification']['status'] ?? null;
         if (in_array($state, ['verified', 'skipped'], true)) {
             return;

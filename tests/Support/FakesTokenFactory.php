@@ -107,7 +107,7 @@ trait FakesTokenFactory
 
         $snapshot = array_intersect_key($effective, array_flip([
             'creation_enabled', 'fee_wallet', 'required_confirmations', 'quote_ttl_minutes', 'daily_limit_per_wallet',
-            'name_max_length', 'symbol_max_length', 'auto_list_on_deploy', 'require_kyc', 'reserved_symbols',
+            'name_max_length', 'symbol_max_length', 'auto_list_on_deploy', 'require_kyc', 'refund_mode', 'reserved_symbols',
         ]));
         foreach ($effective['types'] as $key => $type) {
             $snapshot['types'][$key] = array_intersect_key($type, array_flip(['state', 'fee', 'max_supply', 'decimals_min', 'decimals_max', 'auto_approve', 'require_kyc']));

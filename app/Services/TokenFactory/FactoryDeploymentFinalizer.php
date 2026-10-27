@@ -182,8 +182,12 @@ class FactoryDeploymentFinalizer
             'tx' => $result['txHash'] ?? $expectedTx,
         ]);
 
-        // ยืนยันซอร์สบน explorer เป็นงานแยก — ไม่ให้ sleep/HTTP ของ Blockscout กินเวลางาน deploy
-        VerifyFactoryTokenOnExplorerJob::dispatch($token->id)->delay(now()->addSeconds(15));
+        // ยืนยันซอร์สบน explorer เป็นบริการเสียเงิน — ส่งเฉพาะเหรียญที่จ่ายแล้ว (ติ๊กตอนสร้าง)
+        // ที่ไม่ได้จ่าย ซื้อทีหลังได้ในหน้าเหรียญของฉัน (SourceVerifyPurchases)
+        // เป็นงานแยก — ไม่ให้ sleep/HTTP ของ Blockscout กินเวลางาน deploy
+        if ($token->sourceVerifyPaid()) {
+            VerifyFactoryTokenOnExplorerJob::dispatch($token->id)->delay(now()->addSeconds(15));
+        }
 
         return true;
     }

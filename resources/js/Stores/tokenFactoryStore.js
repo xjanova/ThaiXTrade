@@ -76,6 +76,26 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
         throw new Error(res.data?.error?.message || 'ตรวจสถานะค่าธรรมเนียมไม่สำเร็จ');
     }
 
+    /** ใบเสนอราคาค่ายืนยันซอร์สของเหรียญที่ deploy แล้ว (ผูกกับเหรียญและกระเป๋าเจ้าของ) */
+    async function requestSourceVerifyQuote(tokenId, walletAddress) {
+        const { data } = await axios.post(`/api/v1/token-factory/${tokenId}/source-verify/quote`, { wallet_address: walletAddress });
+        if (!data.success) throw new Error(data.error?.message || 'ขอใบเสนอราคาไม่สำเร็จ');
+        return data.data;
+    }
+
+    /** ส่ง tx ค่ายืนยันซอร์ส — เซิร์ฟเวอร์ตรวจบนเชนแล้วสั่ง explorer ยืนยัน */
+    async function purchaseSourceVerify(tokenId, payload) {
+        const res = await axios.post(`/api/v1/token-factory/${tokenId}/source-verify`, payload);
+        if (!res.data?.success) {
+            const err = new Error(res.data?.error?.message || 'ชำระค่ายืนยันซอร์สไม่สำเร็จ');
+            err.code = res.data?.error?.code;
+            throw err;
+        }
+        const i = myTokens.value.findIndex((t) => t.id === res.data.data?.id);
+        if (i >= 0) myTokens.value[i] = res.data.data;
+        return res.data.data;
+    }
+
     async function createToken(tokenData) {
         isLoading.value = true;
         error.value = null;
@@ -105,6 +125,8 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
         fetchMyTokens,
         requestQuote,
         checkFeeStatus,
+        requestSourceVerifyQuote,
+        purchaseSourceVerify,
         createToken,
     };
 });

@@ -160,3 +160,79 @@ describe('Admin/TokenFactory/Index — ปุ่มตั้งโลโก้',
         expect(routerPost).not.toHaveBeenCalled();
     });
 });
+
+describe('Admin/TokenFactory/Index — คืนค่าธรรมเนียมคำขอที่ถูกปฏิเสธ', () => {
+    const CREATOR = '0x' + '9'.repeat(40);
+    const rejected = (overrides = {}) => ({
+        id: 5, name: 'Rejected Coin', symbol: 'REJ', status: 'rejected', reject_reason: 'ชื่อซ้ำ',
+        is_listed: false, is_verified: false, logo_url: null, contract_address: null, creator_address: CREATOR,
+        total_supply: '1', created_at: '2026-10-27T00:00:00Z', metadata: {},
+        refund_status: 'pending', refund_mode: 'manual', refund_amount_wei: '50000000000000000000', ...overrides,
+    });
+
+    const mountPage = (tokens, canModerate = true) => mount(AdminTokenFactory, {
+        props: {
+            tokens: { data: tokens, last_page: 1 },
+            stats: {},
+            factoryReady: { ready: true },
+            factoryConfig: { policy: { types: {} } },
+            canModerate,
+            refundMode: 'manual',
+        },
+        global: { stubs: { teleport: true } },
+    });
+
+    beforeEach(() => routerPost.mockReset());
+
+    it('แสดงสถานะ/ยอดคืน และปุ่มเฉพาะรายการที่ยังเปิดอยู่ของคนที่มีสิทธิ์', () => {
+        const page = mountPage([
+            rejected(),
+            rejected({ id: 6, symbol: 'OK', refund_status: 'refunded', refund_tx_hash: '0x' + '6'.repeat(64) }),
+            rejected({ id: 7, symbol: 'Q', refund_status: 'sending', refund_mode: 'auto', refund_payout_id: 3 }),
+        ]);
+
+        const statuses = page.findAll('[data-test="refund-status"]');
+        expect(statuses[0].text()).toContain('รอคืนค่าธรรมเนียม · 50 TPIX');
+        expect(statuses[1].text()).toContain('คืนค่าธรรมเนียมแล้ว');
+        expect(statuses[2].text()).toContain('คิวจ่าย #3');
+        expect(page.findAll('[data-test="refund-manual-button"]')).toHaveLength(1);
+        expect(page.findAll('[data-test="refund-auto-button"]')).toHaveLength(1);
+
+        expect(mountPage([rejected()], false).find('[data-test="refund-manual-button"]').exists()).toBe(false);
+    });
+
+    it('ยืนยันโอนเอง: ส่ง tx hash ที่ถูกรูปแบบเท่านั้น', async () => {
+        const page = mountPage([rejected()]);
+        await page.find('[data-test="refund-manual-button"]').trigger('click');
+
+        const modal = page.find('[data-test="refund-modal"]');
+        expect(modal.text()).toContain(CREATOR);
+        expect(modal.text()).toContain('50 TPIX');
+
+        await page.find('[data-test="refund-tx-input"]').setValue('0x1234');
+        expect(page.find('[data-test="refund-submit"]').attributes('disabled')).toBeDefined();
+
+        const hash = '0x' + 'a'.repeat(64);
+        await page.find('[data-test="refund-tx-input"]').setValue(hash);
+        await page.find('[data-test="refund-submit"]').trigger('click');
+
+        expect(routerPost).toHaveBeenCalledWith('/admin/token-factory/5/refund/manual', { tx_hash: hash }, expect.any(Object));
+    });
+
+    it('จ่ายคืนอัตโนมัติต้องยืนยันก่อน', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+        const page = mountPage([rejected({ refund_status: 'failed', metadata: { refund_error: 'เกินวงเงิน' } })]);
+
+        expect(page.text()).toContain('เกินวงเงิน');
+        expect(page.find('[data-test="refund-auto-button"]').text()).toBe('สั่งจ่ายคืนอีกครั้ง');
+
+        await page.find('[data-test="refund-auto-button"]').trigger('click');
+        expect(routerPost).not.toHaveBeenCalled();
+
+        await page.find('[data-test="refund-auto-button"]').trigger('click');
+        expect(routerPost).toHaveBeenCalledWith('/admin/token-factory/5/refund/auto', {}, expect.any(Object));
+        expect(confirmSpy.mock.calls[0][0]).toContain(CREATOR);
+        confirmSpy.mockRestore();
+    });
+});
+

@@ -139,6 +139,9 @@ return [
         // ลิสต์ขึ้นหน้า Explore + เปิดคู่เทรดใน dex:sync ทันทีที่ deploy เสร็จหรือไม่ (ค่าตั้งต้น: แอดมินตัดสินเอง)
         'auto_list_on_deploy' => false,
         'require_kyc' => false,
+        // ปฏิเสธคำขอที่จ่ายแล้ว = คืนเต็มจำนวน · manual = แอดมินโอนเองแล้ววาง tx hash ให้ระบบตรวจบนเชน
+        // auto = ระบบจ่ายจากกระเป๋าร้อนผ่านคิว treasury_payouts (ต้องเปิดระบบจ่ายเงินของคลังก่อน)
+        'refund_mode' => 'manual',
         // สัญลักษณ์สงวน => กระเป๋าที่อนุญาตให้ใช้ (ว่าง = ไม่มีใครใช้ได้)
         'reserved_symbols' => [
             'TPIX' => [], 'WTPIX' => [], 'USDT' => [], 'USDC' => [],
@@ -154,13 +157,16 @@ return [
             'nft_collection' => ['state' => 'off', 'fee' => 100, 'max_supply' => '100000', 'decimals_min' => 0, 'decimals_max' => 0, 'auto_approve' => false, 'require_kyc' => false],
         ],
         'options' => [
+            // ทุกตัวเลือกต้องมีราคา (> 0) — TokenFactoryPolicy ไม่รับ 0
             // ผู้ถือเผาเหรียญของตัวเอง — ไม่มีอำนาจเหนือคนอื่น จึงเปิดไว้
-            'burnable' => ['state' => 'on', 'fee' => 0],
+            'burnable' => ['state' => 'on', 'fee' => 10],
             'mintable' => ['state' => 'off', 'fee' => 20],
-            'mint_cap' => ['state' => 'off', 'fee' => 0],
+            'mint_cap' => ['state' => 'off', 'fee' => 10],
             'pausable' => ['state' => 'off', 'fee' => 5],
             'blacklist' => ['state' => 'off', 'fee' => 5],
             'auto_burn' => ['state' => 'off', 'fee' => 10],
+            // ยืนยันซอร์สโค้ดบน explorer — explorer ปิดช่องยืนยันสาธารณะ รับเฉพาะคำขอจากระบบนี้ (explorer_verify_key)
+            'source_verify' => ['state' => 'on', 'fee' => 1000],
         ],
     ],
 
@@ -172,6 +178,9 @@ return [
 
     'explorer_api_url' => env('BLOCKSCOUT_API_URL', 'https://explorer.tpix.online/api'),
     'explorer_verify_enabled' => env('BLOCKSCOUT_VERIFY_ENABLED', true),
+    // กุญแจลับที่ nginx หน้า explorer ใช้แยกคำขอยืนยันซอร์สของระบบนี้ออกจากคนทั่วไป
+    // (ส่งเป็น header X-TPIX-Verify-Key) — การยืนยันซอร์สผูกกับค่าธรรมเนียม ห้ามเปิดให้ใครก็ยืนยันฟรี
+    'explorer_verify_key' => env('BLOCKSCOUT_VERIFY_KEY'),
     // standard JSON input ของสัญญาเหรียญ (generate จาก TPIX-Coin) — ดู README ในโฟลเดอร์
     'explorer_standard_input_dir' => resource_path('contracts/verify'),
 ];

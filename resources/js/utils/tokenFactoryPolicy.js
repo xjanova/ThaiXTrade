@@ -94,6 +94,7 @@ export function requestedOptions(policy, uiType, subOptions = {}) {
     if (truthy(sub.blacklist_enabled) || truthy(sub.blacklist)) requested.push('blacklist');
     if (truthy(sub.mint_cap_enabled)) requested.push('mint_cap');
     if (truthy(sub.auto_burn_enabled) || truthy(sub.auto_burn)) requested.push('auto_burn');
+    if (truthy(sub.source_verify)) requested.push('source_verify');
 
     return [...new Set(requested)].filter(
         (option) => (policy?.options?.[option]?.applies_to || []).includes(type),
