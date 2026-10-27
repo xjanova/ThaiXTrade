@@ -215,6 +215,65 @@ class TokenFactoryPolicyTest extends TestCase
         $this->assertArrayHasKey('symbol', $tpix['errors']);
     }
 
+    /**
+     * เคยเกิดบน production (2026-10-27): ส่งรูปแบบเดียวกับ effective()['reserved_symbols']
+     * (สัญลักษณ์ => รายชื่อกระเป๋า) แล้วทุกแถวถูกข้ามเงียบ ๆ — รายการสงวนว่างหมด ใครก็สร้าง TPIX/USDT ได้.
+     */
+    #[Test]
+    public function ส่งสัญลักษณ์สงวนแบบ_map_แล้วรายการไม่หาย(): void
+    {
+        $owner = '0x'.str_repeat('a', 40);
+        $reserved = $this->policy()->effective()['reserved_symbols'];
+        $reserved['IDTC'] = [$owner];
+
+        $prepared = $this->policy()->prepareUpdate(['reserved_symbols' => $reserved]);
+
+        $this->assertSame([], $prepared['errors']);
+        $this->assertSame([$owner], $prepared['policy']['reserved_symbols']['IDTC']);
+        foreach (['TPIX', 'WTPIX', 'USDT', 'USDC', 'BTC', 'ETH', 'BNB'] as $symbol) {
+            $this->assertSame([], $prepared['policy']['reserved_symbols'][$symbol] ?? null, "{$symbol} ต้องยังสงวนอยู่");
+        }
+    }
+
+    #[Test]
+    public function ส่งสัญลักษณ์สงวนแบบรายชื่อล้วน_ได้สงวนโดยไม่มีใครใช้(): void
+    {
+        $prepared = $this->policy()->prepareUpdate(['reserved_symbols' => ['TPIX', 'usdt']]);
+
+        $this->assertSame([], $prepared['errors']);
+        $this->assertSame(['TPIX' => [], 'USDT' => []], $prepared['policy']['reserved_symbols']);
+    }
+
+    #[Test]
+    public function แถวสัญลักษณ์สงวนที่อ่านไม่ออกต้องเป็น_error_ไม่ใช่ล้างรายการ(): void
+    {
+        $before = $this->policy()->effective()['reserved_symbols'];
+
+        // มีกระเป๋าแต่ไม่มีสัญลักษณ์ / รูปแบบที่ไม่รู้จัก
+        foreach ([
+            [['wallets' => '0x'.str_repeat('a', 40)]],
+            [['sym' => 'IDTC', 'addr' => '0x'.str_repeat('a', 40)]],
+            [123 => null],
+        ] as $input) {
+            $prepared = $this->policy()->prepareUpdate(['reserved_symbols' => $input]);
+            $this->assertNotSame([], $prepared['errors'], 'ต้องปฏิเสธ: '.json_encode($input));
+        }
+
+        $this->assertSame($before, $this->policy()->effective()['reserved_symbols']);
+    }
+
+    #[Test]
+    public function แอดมินลบแถวว่างที่เพิ่มไว้ได้โดยไม่ติด_error(): void
+    {
+        $prepared = $this->policy()->prepareUpdate(['reserved_symbols' => [
+            ['symbol' => 'TPIX', 'wallets' => ''],
+            ['symbol' => '', 'wallets' => ''],
+        ]]);
+
+        $this->assertSame([], $prepared['errors']);
+        $this->assertSame(['TPIX' => []], $prepared['policy']['reserved_symbols']);
+    }
+
     #[Test]
     public function ตัวเลือกเสี่ยงที่เปิดอยู่ต้องติ๊กยอมรับ_และค่าธรรมเนียมมาจากนโยบายที่เดียว(): void
     {

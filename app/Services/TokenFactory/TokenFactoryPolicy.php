@@ -924,13 +924,37 @@ class TokenFactoryPolicy
         if (array_key_exists('reserved_symbols', $input)) {
             $reserved = [];
             foreach ((array) $input['reserved_symbols'] as $index => $row) {
-                $symbol = strtoupper(trim((string) (is_array($row) ? ($row['symbol'] ?? '') : $index)));
-                $wallets = is_array($row) ? ($row['wallets'] ?? []) : (array) $row;
+                /*
+                 * รับ 3 รูปแบบ — รูปแบบที่ไม่รู้จักต้องเป็น error เสมอ ห้ามข้ามเงียบ ๆ
+                 * เพราะผลคือรายการสงวนว่าง แล้วใครก็สร้าง TPIX/USDT ได้ (เกิดจริง 2026-10-27):
+                 *   [['symbol' => 'IDTC', 'wallets' => '0x..']]  ← หน้าแอดมิน
+                 *   ['IDTC' => ['0x..'], 'TPIX' => []]          ← รูปแบบเดียวกับ effective()
+                 *   ['TPIX', 'USDT']                             ← สงวนไว้ ไม่มีใครใช้
+                 */
+                if (is_array($row) && (array_key_exists('symbol', $row) || array_key_exists('wallets', $row))) {
+                    $symbol = $row['symbol'] ?? '';
+                    $wallets = $row['wallets'] ?? [];
+                } elseif (is_string($index) && (is_array($row) || is_string($row) || $row === null)) {
+                    [$symbol, $wallets] = [$index, $row ?? []];
+                } elseif (is_int($index) && is_string($row)) {
+                    [$symbol, $wallets] = [$row, []];
+                } else {
+                    $errors["reserved_symbols.{$index}"] = 'รูปแบบสัญลักษณ์สงวนไม่ถูกต้อง';
+
+                    continue;
+                }
+
+                $symbol = strtoupper(trim((string) $symbol));
                 if (is_string($wallets)) {
                     $wallets = preg_split('/[\s,]+/', $wallets, -1, PREG_SPLIT_NO_EMPTY);
                 }
 
                 if ($symbol === '') {
+                    // แถวว่างที่แอดมินกดเพิ่มไว้ข้ามได้ — แต่มีกระเป๋าโดยไม่มีสัญลักษณ์แปลว่าข้อมูลหาย
+                    if ((array) $wallets !== []) {
+                        $errors["reserved_symbols.{$index}"] = 'ใส่กระเป๋าแล้วแต่ไม่ได้ใส่สัญลักษณ์';
+                    }
+
                     continue;
                 }
                 if (! preg_match('/^[A-Z0-9]{1,20}$/', $symbol)) {
