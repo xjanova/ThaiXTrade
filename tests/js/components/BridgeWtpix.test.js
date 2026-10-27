@@ -171,6 +171,22 @@ describe('Bridge page — TPIX → wTPIX', () => {
         expect(wrapper.text()).toContain('Waiting for confirmations');
     });
 
+    it('re-reads the announced fee before the confirmation so the shown amount is what is charged', async () => {
+        const wrapper = await mountOnTpix();
+        await byTest(wrapper, 'wtpix-lock-amount').setValue('500');
+        await byTest(wrapper, 'wtpix-ack-lock').setValue(true);
+        expect(byTest(wrapper, 'wtpix-lock-receive').text()).toContain('499 wTPIX');
+
+        // ประกาศราคาใหม่ระหว่างที่หน้าเปิดค้างไว้
+        tpixInfo = baseTpixInfo({ limits: { ...baseTpixInfo().limits, lock_fee: '2.5' } });
+        await byTest(wrapper, 'wtpix-lock-button').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.text()).toContain('Confirm lock');
+        expect(byTest(wrapper, 'wtpix-lock-receive').text()).toContain('497.5 wTPIX');
+        expect(wrapper.text()).toContain('497.5');
+    });
+
     it('blocks amounts below the minimum and above the on-chain maximum', async () => {
         const wrapper = await mountOnTpix();
         await byTest(wrapper, 'wtpix-ack-lock').setValue(true);
@@ -182,6 +198,30 @@ describe('Bridge page — TPIX → wTPIX', () => {
         await byTest(wrapper, 'wtpix-lock-amount').setValue('100001');
         expect(wrapper.text()).toContain('on-chain maximum of 100000');
         expect(byTest(wrapper, 'wtpix-lock-button').attributes('disabled')).toBeDefined();
+    });
+
+    it('shows the announced floating fee, what it is made of, and the amount received after it', async () => {
+        tpixInfo = baseTpixInfo({
+            limits: { ...baseTpixInfo().limits, lock_fee: '1.188' },
+            fee_quote: { fee: '1.188', floor: '0.5', ceiling: '5', markup_pct: '10', grace_minutes: 15, source: 'market' },
+        });
+        const wrapper = await mountOnTpix();
+        await byTest(wrapper, 'wtpix-lock-amount').setValue('500');
+
+        expect(byTest(wrapper, 'wtpix-lock-fee').text()).toBe('1.188 TPIX');
+        expect(byTest(wrapper, 'wtpix-fee-basis').text()).toContain('+ 10% (min 0.5 · max 5 TPIX)');
+        expect(byTest(wrapper, 'wtpix-fee-basis').text()).toContain('within 15 minutes');
+        expect(byTest(wrapper, 'wtpix-lock-receive').text()).toContain('498.812 wTPIX');
+    });
+
+    it('says plainly when the maximum rate applies because market prices are missing', async () => {
+        tpixInfo = baseTpixInfo({
+            limits: { ...baseTpixInfo().limits, lock_fee: '5' },
+            fee_quote: { fee: '5', floor: '0.5', ceiling: '5', markup_pct: '10', grace_minutes: 15, source: 'fallback' },
+        });
+        const wrapper = await mountOnTpix();
+
+        expect(byTest(wrapper, 'wtpix-fee-basis').text()).toContain('maximum rate of 5 TPIX');
     });
 
     it('shows the bridge as closed and offers no working button while it is off', async () => {

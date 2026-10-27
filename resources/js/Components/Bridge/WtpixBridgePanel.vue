@@ -45,6 +45,7 @@ const tpixChainId = computed(() => info.value?.tpix?.chain_id ?? 4289);
 const bscChainId = computed(() => info.value?.bsc?.chain_id ?? 56);
 const bscName = computed(() => info.value?.bsc?.name ?? 'BNB Smart Chain');
 const limits = computed(() => info.value?.limits ?? {});
+const feeQuote = computed(() => info.value?.fee_quote ?? null);
 // เพดานของ "สัญญาปลายทาง" ของทิศที่เลือก — ล็อก = minter บน BSC · เผา = คลังบนเชน TPIX
 const destCaps = computed(() => (tab.value === 'to_tpix' ? info.value?.vault : info.value?.minter) ?? {});
 
@@ -97,7 +98,10 @@ async function refreshTpixBalance() {
     }
 }
 
-function askLock() {
+// ค่าธรรมเนียมขาออกประกาศใหม่ทุก 5 นาที — ดึงล่าสุดก่อนเปิดหน้ายืนยัน ให้ยอดที่โชว์ตรงกับที่ถูกเก็บจริง
+async function askLock() {
+    if (!canLock.value) return;
+    await fetchInfo();
     if (canLock.value) confirmingLock.value = true;
 }
 
@@ -215,6 +219,7 @@ const statuses = ref({});
 const manualDirection = ref('to_bsc');
 const manualHash = ref('');
 let pollTimer = null;
+let infoTimer = null;
 let polling = false;
 
 const trackKey = (e) => `${e.direction}:${e.chainId}:${e.txHash}`;
@@ -288,10 +293,12 @@ onMounted(async () => {
     refreshTpixBalance();
     refreshWtpixBalance();
     pollTimer = setInterval(pollOnce, 10_000);
+    infoTimer = setInterval(fetchInfo, 120_000);
 });
 
 onUnmounted(() => {
     if (pollTimer) clearInterval(pollTimer);
+    if (infoTimer) clearInterval(infoTimer);
 });
 
 // สลับบัญชีในกระเป๋า — ยอด/ประวัติต้องตามคนใหม่ ไม่ค้างของคนเก่า และต้องติ๊กยอมรับใหม่
@@ -360,7 +367,12 @@ watch(() => walletStore.address, () => {
             </div>
 
             <div class="rounded-xl bg-dark-800/40 p-3 space-y-1 text-xs">
-                <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.wtpix.fee') }}</span><span class="text-white">{{ limits.lock_fee ?? '—' }} TPIX</span></div>
+                <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.wtpix.fee') }}</span><span class="text-white" data-test="wtpix-lock-fee">{{ limits.lock_fee ?? '—' }} TPIX</span></div>
+                <p v-if="feeQuote" class="text-[11px] text-dark-500 leading-snug" data-test="wtpix-fee-basis">
+                    {{ feeQuote.source === 'fallback'
+                        ? t('bridge.wtpix.feeFallback', { ceiling: feeQuote.ceiling })
+                        : t('bridge.wtpix.feeDynamic', { markup: feeQuote.markup_pct, floor: feeQuote.floor, ceiling: feeQuote.ceiling, grace: feeQuote.grace_minutes }) }}
+                </p>
                 <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.youReceive') }}</span><span class="text-trading-green font-semibold" data-test="wtpix-lock-receive">{{ lockWei !== null && !lockCheck.error ? fmt(lockReceive) : '—' }} wTPIX · {{ bscName }}</span></div>
                 <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.eta') }}</span><span class="text-white">{{ t('bridge.etaMinutes', { minutes: info?.bsc?.eta_minutes ?? 2 }) }}</span></div>
                 <div class="flex justify-between"><span class="text-dark-400">{{ t('bridge.minDeposit') }} / {{ t('bridge.maxPerTx') }}</span><span class="text-white">{{ limits.min_lock ?? '—' }} / {{ limits.max_lock_per_tx ?? '—' }} TPIX</span></div>

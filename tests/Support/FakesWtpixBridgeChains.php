@@ -67,6 +67,9 @@ trait FakesWtpixBridgeChains
 
     private int $txSeq = 0;
 
+    /** gasUsed ในใบเสร็จของธุรกรรมที่ขุด */
+    protected int $gasUsedOnMine = 90000;
+
     protected function setUpWtpixBridge(bool $siteSwitch = true): void
     {
         config([
@@ -85,6 +88,9 @@ trait FakesWtpixBridgeChains
             'wtpix_bridge.bsc.explorer' => 'https://bscscan.com',
             'wtpix_bridge.bsc.start_block' => null,
             'wtpix_bridge.reconcile.auto_pause' => true,
+            // ค่าธรรมเนียมขาออกคงที่ 1 TPIX (ขั้นต่ำ = เพดาน) — เทสต์ค่าธรรมเนียมลอยตัวอยู่ใน WtpixBridgeFeeQuoteTest
+            'wtpix_bridge.limits.lock_fee' => '1',
+            'wtpix_bridge.limits.lock_fee_max' => '1',
         ]);
 
         foreach (['relayer' => $this->wRelayer, 'guardian' => $this->wGuardian] as $role => $address) {
@@ -538,7 +544,8 @@ trait FakesWtpixBridgeChains
         $reverted = ! empty($this->revertOnMine[$tx['hash']]);
         $block = '0x'.dechex($s['latest']);
 
-        $s['receipts'][$tx['hash']] = ['transactionHash' => $tx['hash'], 'status' => $reverted ? '0x0' : '0x1', 'blockNumber' => $block, 'logs' => []];
+        $s['receipts'][$tx['hash']] = ['transactionHash' => $tx['hash'], 'status' => $reverted ? '0x0' : '0x1', 'blockNumber' => $block, 'logs' => [],
+            'gasUsed' => '0x'.dechex($this->gasUsedOnMine), 'effectiveGasPrice' => $s['gas_price']];
         $s['txs'][$tx['hash']] = ['hash' => $tx['hash'], 'from' => $tx['from'], 'to' => $tx['to']];
         $s['nonce'][$tx['from']] = ($s['nonce'][$tx['from']] ?? 0) + 1;
 

@@ -44,6 +44,8 @@ use Illuminate\Support\Carbon;
  * @property int $attempts
  * @property Carbon|null $broadcast_at
  * @property Carbon|null $completed_at
+ * @property int|null $dest_gas_used
+ * @property string|null $dest_gas_price_wei
  */
 class WtpixBridgeTransfer extends Model
 {
@@ -82,6 +84,7 @@ class WtpixBridgeTransfer extends Model
         'status', 'review_reason', 'review_note', 'limits_overridden', 'reviewed_by', 'reviewed_at',
         'dest_chain_id', 'dest_contract', 'dest_tx_hash', 'dest_raw_tx', 'dest_nonce', 'dest_from',
         'attempts', 'broadcast_at', 'dest_block_number', 'completed_at', 'last_error',
+        'dest_gas_used', 'dest_gas_price_wei',
     ];
 
     /** raw tx ไม่จำเป็นต่อหน้าจอ และยาว — ไม่ส่งออกไปกับ JSON */
@@ -100,6 +103,7 @@ class WtpixBridgeTransfer extends Model
             'attempts' => 'integer',
             'broadcast_at' => 'datetime',
             'dest_block_number' => 'integer',
+            'dest_gas_used' => 'integer',
             'completed_at' => 'datetime',
         ];
     }

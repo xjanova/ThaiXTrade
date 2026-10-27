@@ -807,6 +807,8 @@
             "amountTpix": "TPIX amount",
             "amountWtpix": "wTPIX amount",
             "fee": "Bridge fee (stays in the vault)",
+            "feeDynamic": "= the gas the bridge actually pays on BSC + {markup}% (min {floor} · max {ceiling} TPIX) — lock within {grace} minutes of seeing this price and you never pay more than shown",
+            "feeFallback": "Market prices are unavailable right now — the maximum rate of {ceiling} TPIX applies for the moment",
             "remainingToday": "Bridge quota left today (UTC)",
             "ackLock": "I am locking from my own wallet (not an exchange) and understand wTPIX is minted to this same address on BSC",
             "ackBurn": "I am burning from my own wallet (not an exchange) and understand TPIX is released to this same address on TPIX Chain — a burn cannot be undone",

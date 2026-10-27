@@ -40,6 +40,7 @@ class WtpixBridgeScanner
         private WtpixBridgeConfig $config,
         private WtpixBridgePolicy $policy,
         private WtpixBridgeGuard $guard,
+        private WtpixBridgeFeeQuoter $fees,
     ) {}
 
     // =========================================================================
@@ -368,7 +369,16 @@ class WtpixBridgeScanner
             return false;
         }
 
-        $fee = $this->config->limitWei($this->config->limitKey($direction, 'fee'));
+        // ขาออกคิดจากราคาที่ประกาศ ณ เวลาบล็อกที่ล็อก (ไม่ใช่ตอนสแกน) — ดู WtpixBridgeFeeQuoter::feeForLockAt
+        if ($direction === WtpixBridgeTransfer::TO_BSC) {
+            $lockedAt = $rpc->blockTimestamp($parsed['block']);
+            if ($lockedAt === null) {
+                return null;
+            }
+            $fee = $this->fees->feeForLockAt($lockedAt);
+        } else {
+            $fee = $this->config->limitWei($this->config->limitKey($direction, 'fee'));
+        }
         $payout = bccomp($amount, $fee, 0) > 0 ? bcsub($amount, $fee, 0) : '0';
 
         $facts = [

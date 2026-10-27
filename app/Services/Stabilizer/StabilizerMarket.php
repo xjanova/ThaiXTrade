@@ -96,15 +96,29 @@ class StabilizerMarket
      */
     public function reference(string $pairAddress, int $lookbackDays, ?CarbonInterface $now = null): array
     {
+        $twap = $this->twap($pairAddress, $lookbackDays * 1440, $now);
+        unset($twap['minutes']);
+
+        return $twap + ['lookback_days' => $lookbackDays];
+    }
+
+    /**
+     * TWAP ย้อนหลัง N นาที — ตัวเดียวกับ reference() แต่หน่วยเป็นนาที (สะพาน wTPIX ใช้ 60 นาที / 24 ชม.).
+     *
+     * @return array{price: ?string, samples: int, coverage_pct: float, latest_at: ?CarbonInterface, minutes: int}
+     */
+    public function twap(string $pairAddress, int $minutes, ?CarbonInterface $now = null): array
+    {
         $now ??= now();
-        $empty = ['price' => null, 'samples' => 0, 'coverage_pct' => 0.0, 'latest_at' => null, 'lookback_days' => $lookbackDays];
+        $minutes = max(1, $minutes);
+        $empty = ['price' => null, 'samples' => 0, 'coverage_pct' => 0.0, 'latest_at' => null, 'minutes' => $minutes];
 
         $pair = TradingPair::whereRaw('LOWER(dex_pair_address) = ?', [strtolower($pairAddress)])->first();
         if ($pair === null) {
             return $empty;
         }
 
-        $since = $now->copy()->subDays($lookbackDays);
+        $since = $now->copy()->subMinutes($minutes);
         $sum = '0';
         $count = 0;
         $latest = null;
@@ -131,14 +145,12 @@ class StabilizerMarket
             return $empty;
         }
 
-        $minutes = max(1, $lookbackDays * 1440);
-
         return [
             'price' => bcdiv($sum, (string) $count, 18),
             'samples' => $count,
             'coverage_pct' => round(min(100, $count * 100 / $minutes), 2),
             'latest_at' => $latest instanceof CarbonInterface ? $latest : ($latest ? Carbon::parse($latest) : null),
-            'lookback_days' => $lookbackDays,
+            'minutes' => $minutes,
         ];
     }
 

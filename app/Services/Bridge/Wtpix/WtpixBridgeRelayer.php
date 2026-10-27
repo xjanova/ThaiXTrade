@@ -595,6 +595,12 @@ class WtpixBridgeRelayer
     {
         $block = isset($receipt['blockNumber']) ? (int) Wei::hexToInt((string) $receipt['blockNumber']) : null;
 
+        // ค่าแก๊สที่จ่ายจริง (สำเร็จหรือ revert ก็จ่าย) — ตัวคิดค่าธรรมเนียมขาออกใช้หาแก๊สกลางของ mint
+        $gasPaid = $this->gasPaid($receipt);
+        if ($gasPaid !== []) {
+            $row->update($gasPaid);
+        }
+
         if (strtolower((string) ($receipt['status'] ?? '')) === '0x1') {
             $row->update([
                 'status' => WtpixBridgeTransfer::STATUS_COMPLETED,
@@ -610,6 +616,19 @@ class WtpixBridgeRelayer
         $reason = $row->direction === WtpixBridgeTransfer::TO_BSC ? 'mint_reverted' : 'release_reverted';
 
         return $this->settleFailed($rpc, $row, $reason, "ธุรกรรม {$hash} revert บนเชน");
+    }
+
+    /** @return array{dest_gas_used?: int, dest_gas_price_wei?: string} ว่าง = ใบเสร็จไม่มีข้อมูลแก๊ส */
+    private function gasPaid(array $receipt): array
+    {
+        $used = $receipt['gasUsed'] ?? null;
+        $price = $receipt['effectiveGasPrice'] ?? null;
+
+        if (! is_string($used) || ! is_string($price) || ! str_starts_with($used, '0x') || ! str_starts_with($price, '0x')) {
+            return [];
+        }
+
+        return ['dest_gas_used' => (int) Wei::hexToInt($used), 'dest_gas_price_wei' => Wei::hexToInt($price)];
     }
 
     /** ธุรกรรมของเราไม่สำเร็จ — สัญญาบอกว่าทำแล้ว (ด้วยธุรกรรมอื่น) = ห้ามนับว่าถึงผู้ใช้ ให้คนดูเสมอ */

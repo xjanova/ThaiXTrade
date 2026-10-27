@@ -9,6 +9,7 @@ use App\Models\WtpixBridgeTransfer;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\BridgeConfig;
 use App\Services\Bridge\Wtpix\WtpixBridgeConfig;
+use App\Services\Bridge\Wtpix\WtpixBridgeFeeQuoter;
 use App\Services\Bridge\Wtpix\WtpixBridgePolicy;
 use App\Services\Bridge\Wtpix\WtpixBridgeReconciler;
 use App\Services\Bridge\Wtpix\WtpixBridgeRelayer;
@@ -42,6 +43,7 @@ class WtpixBridgeAdminController extends Controller
         private WtpixBridgeReconciler $reconciler,
         private BridgeConfig $usdtConfig,
         private WtpixBridgePolicy $policy,
+        private WtpixBridgeFeeQuoter $fees,
     ) {}
 
     public function index(Request $request): InertiaResponse
@@ -275,6 +277,8 @@ class WtpixBridgeAdminController extends Controller
         foreach (WtpixBridgeConfig::LIMIT_KEYS as $key) {
             $rules["limits.{$key}"] = ['nullable', 'string', 'regex:/^\d{1,12}(\.\d{1,18})?$/'];
         }
+        // ส่วนเพิ่มบนค่าแก๊สของค่าธรรมเนียมขาออก (%) — ทศนิยม 2 ตำแหน่ง (เก็บเป็น basis points)
+        $rules['fee_markup_pct'] = ['nullable', 'string', 'regex:/^\d{1,3}(\.\d{1,2})?$/'];
 
         $validated = $request->validate($rules);
         $limits = array_filter((array) ($validated['limits'] ?? []), fn ($v) => $v !== null && $v !== '');
@@ -290,8 +294,22 @@ class WtpixBridgeAdminController extends Controller
             if (bccomp($wei("max_{$side}_per_address_daily"), $wei("max_{$side}_per_tx"), 0) < 0) {
                 $errors[] = "{$label}: วงเงินต่อกระเป๋าต่อวันต้องไม่น้อยกว่าวงเงินต่อครั้ง";
             }
-            if (bccomp($wei("{$side}_fee"), $wei("min_{$side}"), 0) >= 0) {
-                $errors[] = "{$label}: ค่าธรรมเนียมต้องน้อยกว่าขั้นต่ำ ไม่งั้นผู้ใช้ได้ศูนย์";
+            // ขาออกลอยตัวได้ถึงเพดาน — ตัวที่ต้องน้อยกว่าขั้นต่ำคือเพดาน
+            $feeKey = $side === 'lock' ? 'lock_fee_max' : "{$side}_fee";
+            if (bccomp($wei($feeKey), $wei("min_{$side}"), 0) >= 0) {
+                $errors[] = "{$label}: ค่าธรรมเนียม".($side === 'lock' ? 'สูงสุด' : '').'ต้องน้อยกว่าขั้นต่ำ ไม่งั้นผู้ใช้ได้ศูนย์';
+            }
+        }
+
+        if (bccomp($wei('lock_fee_max'), $wei('lock_fee'), 0) < 0) {
+            $errors[] = 'ล็อก (TPIX → BSC): ค่าธรรมเนียมสูงสุดต้องไม่น้อยกว่าค่าธรรมเนียมขั้นต่ำ (ตั้งเท่ากัน = ค่าคงที่)';
+        }
+
+        $markupBps = null;
+        if (filled($validated['fee_markup_pct'] ?? null)) {
+            $markupBps = (int) bcmul((string) $validated['fee_markup_pct'], '100', 0);
+            if ($markupBps > 10000) {
+                $errors[] = 'ส่วนเพิ่มบนค่าแก๊สต้องไม่เกิน 100%';
             }
         }
 
@@ -301,6 +319,14 @@ class WtpixBridgeAdminController extends Controller
 
         foreach ($limits as $key => $value) {
             SiteSetting::set(WtpixBridgeConfig::SETTINGS_GROUP, "limit_{$key}", $value, 'string');
+        }
+        if ($markupBps !== null) {
+            $this->config->setFeeMarkupBps($markupBps);
+        }
+
+        // ประกาศราคาใหม่ทันทีตามค่าตั้งใหม่ — ไม่ต้องรอรอบ 5 นาที (ผู้ใช้ที่เห็นราคาเดิมยังได้ค่าที่ต่ำกว่าในช่วง grace)
+        if ($this->config->installed()) {
+            $this->fees->refresh();
         }
 
         Cache::forget(WtpixBridgeConfig::PUBLIC_CACHE_KEY);
@@ -546,11 +572,26 @@ class WtpixBridgeAdminController extends Controller
         ];
     }
 
+    private function feeQuotePayload(): array
+    {
+        $current = $this->fees->current();
+
+        return [
+            'fee' => Wei::format($current['fee_wei'], 18),
+            'fresh' => $current['fresh'],
+            'quote' => $current['quote'] ? $current['quote']->toPublicArray() + ['note' => $current['quote']->note] : null,
+            'gas_units' => $this->fees->gasUnits(),
+        ];
+    }
+
     private function settingsPayload(): array
     {
         return [
             'limits' => $this->config->limits(),
             'defaults' => (array) config('wtpix_bridge.limits', []),
+            'fee_markup_pct' => $this->config->feeMarkupPct(),
+            'fee_quote' => $this->feeQuotePayload(),
+            'fee_ledger' => $this->fees->ledger(),
             'tolerance' => (string) config('wtpix_bridge.reconcile.tolerance', '1'),
             'min_gas_balance' => (string) config('wtpix_bridge.bsc.min_gas_balance', '0.002'),
         ];
