@@ -3,7 +3,9 @@
 namespace Tests\Feature\TokenFactory;
 
 use App\Models\FactoryToken;
+use App\Models\SiteSetting;
 use App\Models\TokenFactoryFeeQuote;
+use App\Services\ContractRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -162,7 +164,7 @@ class TokenFactoryCreateTest extends TestCase
     {
         // เปิด NFT ในนโยบาย แต่ไม่มีแฟกทอรี NFT — เดิมผ่านเพราะ "มีแฟกทอรีสักตัว" ก็ถือว่าพร้อม
         $this->setPolicy(['types' => ['nft' => ['state' => 'on']]]);
-        \App\Models\SiteSetting::set(\App\Services\ContractRegistry::GROUP, 'nft_factory', '');
+        SiteSetting::set(ContractRegistry::GROUP, 'nft_factory', '');
 
         $this->quote($this->tokenForm(['token_type' => 'nft', 'decimals' => 0, 'total_supply' => '1', 'risk_ack' => ['nft']]))
             ->assertStatus(503)
@@ -170,21 +172,19 @@ class TokenFactoryCreateTest extends TestCase
     }
 
     #[Test]
-    public function เหรียญฟรีสร้างได้โดยไม่ต้องมีธุรกรรมค่าธรรมเนียม(): void
+    public function ไม่มีเหรียญฟรี_ค่า_0_ที่ค้างในฐานข้อมูลกลับไปใช้ค่าตั้งต้น(): void
     {
+        // เจ้าของสั่ง: ทุกประเภท/ตัวเลือกต้องมีราคา — 0 จากนโยบายเก่าห้ามกลายเป็นเหรียญฟรี
         $this->setPolicy(['types' => ['erc20' => ['fee' => 0]]]);
 
-        $quoteId = $this->quote($this->tokenForm())->assertOk()->assertJsonPath('data.is_free', true)->json('data.quote_id');
+        $this->quote($this->tokenForm())
+            ->assertOk()
+            ->assertJsonPath('data.is_free', false)
+            ->assertJsonPath('data.amount', '50');
 
-        $this->postJson('/api/v1/token-factory/create', $this->tokenForm(['quote_id' => $quoteId]))
-            ->assertCreated()
-            ->assertJsonPath('data.status', 'pending')
-            ->assertJsonPath('data.is_verified', false)
-            ->assertJsonPath('data.chain_id', 4289);
-
-        // ใบเสนอราคาใช้ได้ครั้งเดียว
-        $this->postJson('/api/v1/token-factory/create', $this->tokenForm(['quote_id' => $quoteId, 'symbol' => 'GOOD2']))
-            ->assertStatus(409);
+        $this->postJson('/api/v1/token-factory/create', $this->tokenForm(['quote_id' => $this->quote($this->tokenForm(['symbol' => 'GOOD2']))->json('data.quote_id'), 'symbol' => 'GOOD2']))
+            ->assertStatus(402)
+            ->assertJsonPath('error.code', 'FEE_REQUIRED');
     }
 
     #[Test]

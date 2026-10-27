@@ -530,6 +530,11 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         // ขึ้นโดเมนได้ ทั้งที่ "สร้างเหรียญ" ซึ่งเป็นปลายทางจริงต้องผ่าน KYC
         Route::post('/upload-logo', [TokenFactoryApiController::class, 'uploadLogo'])
             ->middleware(['throttle:token-factory-logo', 'kyc:token_factory']);
+        // ซื้อการยืนยันซอร์สโค้ดบน explorer ให้เหรียญที่ deploy แล้ว (ใบเสนอราคา → โอน → ส่ง hash)
+        Route::post('/{id}/source-verify/quote', [TokenFactoryApiController::class, 'sourceVerifyQuote'])
+            ->whereNumber('id')->middleware('throttle:token-factory-quote');
+        Route::post('/{id}/source-verify', [TokenFactoryApiController::class, 'sourceVerifyPurchase'])
+            ->whereNumber('id')->middleware('throttle:token-factory-create');
     });
 
     // FoodPassport — จัดการสินค้า/IoT (ต้อง verify wallet)

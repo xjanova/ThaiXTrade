@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FactoryToken;
 use App\Models\KycSubmission;
 use App\Services\Kyc\KycGate;
+use App\Services\TokenFactory\SourceVerifyPurchases;
 use App\Services\TokenFactory\TokenFactoryException;
 use App\Services\TokenFactoryService;
 use App\Services\WalletSessionService;
@@ -154,6 +155,66 @@ class TokenFactoryApiController extends Controller
                 ? 'อนุมัติอัตโนมัติแล้ว กำลังสร้างเหรียญบนเชน'
                 : 'ส่งคำขอสร้างเหรียญแล้ว รอผู้ดูแลตรวจสอบ',
         ], 201);
+    }
+
+    /**
+     * ใบเสนอราคาค่ายืนยันซอร์สโค้ดบน explorer ของเหรียญที่ deploy แล้ว (เจ้าของเท่านั้น).
+     *
+     * POST /api/v1/token-factory/{id}/source-verify/quote
+     */
+    public function sourceVerifyQuote(Request $request, SourceVerifyPurchases $purchases, int $id): JsonResponse
+    {
+        $creator = $this->creator($request);
+        if ($creator === null) {
+            return $this->walletRequired();
+        }
+
+        try {
+            $quote = $purchases->quote(FactoryToken::findOrFail($id), $creator);
+        } catch (TokenFactoryException $e) {
+            return response()->json($e->toResponseArray(), $e->status);
+        }
+
+        return response()->json(['success' => true, 'data' => $quote->toApiArray()]);
+    }
+
+    /**
+     * ส่งธุรกรรมค่ายืนยันซอร์ส — ตรวจบนเชนแล้วสั่ง explorer ยืนยัน.
+     *
+     * POST /api/v1/token-factory/{id}/source-verify
+     * ยืนยันไม่ครบบล็อก → 202 FEE_PENDING ให้หน้าเว็บถามซ้ำ (หรือถาม /fee-status ด้วยใบเสนอราคาเดียวกัน)
+     */
+    public function sourceVerifyPurchase(Request $request, SourceVerifyPurchases $purchases, int $id): JsonResponse
+    {
+        $creator = $this->creator($request);
+        if ($creator === null) {
+            return $this->walletRequired();
+        }
+
+        $request->validate([
+            'quote_id' => ['required', 'uuid'],
+            'fee_tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
+        ], [
+            'quote_id.*' => 'รหัสใบเสนอราคาไม่ถูกต้อง',
+            'fee_tx_hash.*' => 'รูปแบบ tx hash ไม่ถูกต้อง',
+        ]);
+
+        try {
+            $token = $purchases->purchase(
+                FactoryToken::findOrFail($id),
+                $request->input('quote_id'),
+                $request->input('fee_tx_hash'),
+                $creator,
+            );
+        } catch (TokenFactoryException $e) {
+            return response()->json($e->toResponseArray(), $e->status);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $token,
+            'message' => 'ชำระค่ายืนยันซอร์สแล้ว — ระบบกำลังส่งซอร์สโค้ดให้ explorer ตรวจ (ใช้เวลาไม่กี่นาที)',
+        ]);
     }
 
     /**

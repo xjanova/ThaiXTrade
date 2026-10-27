@@ -61,6 +61,7 @@ function initialForm() {
         symbol_max_length: props.policy.limits.symbol_max_length,
         auto_list_on_deploy: !!props.policy.auto_list_on_deploy,
         require_kyc: !!props.policy.require_kyc,
+        refund_mode: props.policy.refund_mode === 'auto' ? 'auto' : 'manual',
         reserved_symbols: reserved,
         types,
         options,
@@ -188,6 +189,26 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
                         </span>
                         <input v-model="form.auto_list_on_deploy" type="checkbox" class="rounded" />
                     </label>
+                    <div class="p-3 rounded-xl bg-dark-800/50 border border-white/5 sm:col-span-2" data-test="refund-mode">
+                        <span class="text-sm text-dark-200">คืนค่าธรรมเนียมเมื่อปฏิเสธคำขอ (คืนเต็มจำนวนที่โอนมา)</span>
+                        <div class="mt-2 grid sm:grid-cols-2 gap-2">
+                            <label class="flex items-start gap-2 p-2 rounded-lg cursor-pointer" :class="form.refund_mode === 'manual' ? 'bg-primary-500/10 border border-primary-500/30' : 'border border-white/5'">
+                                <input v-model="form.refund_mode" type="radio" value="manual" class="mt-1" />
+                                <span class="text-xs text-dark-200">
+                                    แอดมินโอนเอง
+                                    <span class="block text-[11px] text-dark-500">โอนจากกระเป๋ารับค่าธรรมเนียม/กระเป๋าร้อน แล้ววาง tx hash ในหน้ารายการ — ระบบตรวจบนเชนก่อนปิดรายการ</span>
+                                </span>
+                            </label>
+                            <label class="flex items-start gap-2 p-2 rounded-lg cursor-pointer" :class="form.refund_mode === 'auto' ? 'bg-primary-500/10 border border-primary-500/30' : 'border border-white/5'">
+                                <input v-model="form.refund_mode" type="radio" value="auto" class="mt-1" />
+                                <span class="text-xs text-dark-200">
+                                    จ่ายคืนอัตโนมัติ
+                                    <span class="block text-[11px] text-dark-500">ปฏิเสธแล้วระบบเข้าคิวจ่ายจากกระเป๋าร้อนของคลังทันที (อยู่ใต้วงเงินต่อครั้ง/ต่อวันของคลัง) — กระเป๋าร้อนต้องมี TPIX พอ</span>
+                                </span>
+                            </label>
+                        </div>
+                        <p v-if="errors.refund_mode" class="text-xs text-red-400 mt-1">{{ errors.refund_mode }}</p>
+                    </div>
                 </div>
 
                 <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -260,7 +281,7 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
                     <div v-if="!isLocked('types', key)" class="mt-3 grid grid-cols-2 sm:grid-cols-6 gap-3">
                         <div>
                             <label :class="labelClass">ค่าธรรมเนียม (TPIX)</label>
-                            <input v-model="form.types[key].fee" type="number" min="0" step="any" :class="inputClass" />
+                            <input v-model="form.types[key].fee" type="number" min="0.000001" step="any" :class="inputClass" />
                         </div>
                         <div class="sm:col-span-2">
                             <label :class="labelClass">จำนวนสูงสุด</label>
@@ -308,7 +329,7 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
                         </div>
                         <div class="flex items-center gap-3">
                             <div v-if="!isLocked('options', key)" class="w-28">
-                                <input v-model="form.options[key].fee" type="number" min="0" step="any" :class="inputClass" title="ค่าธรรมเนียม (TPIX)" />
+                                <input v-model="form.options[key].fee" type="number" min="0.000001" step="any" :class="inputClass" title="ค่าธรรมเนียม (TPIX)" />
                             </div>
                             <span v-if="isLocked('options', key)" class="text-xs px-2 py-1 rounded-lg bg-dark-700 text-dark-300" data-test="locked-badge">🔒 ล็อก</span>
                             <div v-else class="inline-flex rounded-lg border border-white/10 overflow-hidden">

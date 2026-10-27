@@ -10,6 +10,7 @@ use App\Services\TokenFactory\TokenFactoryChain;
 use App\Services\TokenFactory\TokenFactoryException;
 use App\Services\TokenFactory\TokenFactoryFeeVerifier;
 use App\Services\TokenFactory\TokenFactoryPolicy;
+use App\Services\TokenFactory\TokenFactoryRefunds;
 use App\Support\Wei;
 use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -57,6 +58,7 @@ class TokenFactoryService
         private readonly TokenFactoryFeeVerifier $feeVerifier,
         private readonly TokenFactoryChain $chain,
         private readonly ContractRegistry $contracts,
+        private readonly TokenFactoryRefunds $refunds,
     ) {}
 
     // =========================================================================
@@ -216,7 +218,7 @@ class TokenFactoryService
 
         $this->assertCanCreate($data['token_type'], $creator);
 
-        $quote = $this->findQuote($data['quote_id'], $creator);
+        $quote = $this->findQuote($data['quote_id'], $creator, TokenFactoryFeeQuote::PURPOSE_CREATE);
 
         if ($quote->used_at !== null) {
             throw new TokenFactoryException('QUOTE_USED', 'ใบเสนอราคานี้ถูกใช้สร้างเหรียญไปแล้ว', 409);
@@ -255,10 +257,22 @@ class TokenFactoryService
             'fee_tx_hash' => $feeTxHash,
             'fee_block' => $verification['block'] ?? null,
             'fee_confirmations' => $verification['confirmations'] ?? null,
+            // ยอดที่โอนมาจริง (wei) — ถูกปฏิเสธแล้วคืน "เต็มจำนวน" ตามนี้ ไม่ใช่ตามยอดในใบเสนอราคา
+            'fee_value_wei' => $verification['value_wei'] ?? null,
         ];
 
+        // ติ๊กยืนยันซอร์สมาด้วย = จ่ายรวมในใบเสนอราคานี้แล้ว — deploy เสร็จระบบส่งซอร์สให้ explorer เอง
+        if (in_array('source_verify', $decision['options'], true)) {
+            $metadata['source_verify'] = [
+                'paid' => true,
+                'via' => 'create',
+                'fee_tx_hash' => $feeTxHash,
+                'paid_at' => now()->toIso8601String(),
+            ];
+        }
+
         try {
-            $token = DB::transaction(function () use ($quote, $data, $creator, $feeTxHash, $metadata) {
+            $write = fn () => DB::transaction(function () use ($quote, $data, $creator, $feeTxHash, $metadata) {
                 $locked = TokenFactoryFeeQuote::whereKey($quote->id)->lockForUpdate()->first();
                 if (! $locked || $locked->used_at !== null) {
                     throw new TokenFactoryException('QUOTE_USED', 'ใบเสนอราคานี้ถูกใช้สร้างเหรียญไปแล้ว', 409);
@@ -288,6 +302,9 @@ class TokenFactoryService
 
                 return $token;
             });
+
+            // จ่ายจริง = ล็อกที่ hash กันเอาธุรกรรมเดียวไปจ่ายค่ายืนยันซอร์สพร้อมกัน
+            $token = $feeTxHash !== null ? TokenFactoryFeeVerifier::claimTx($feeTxHash, $write) : $write();
         } catch (QueryException $e) {
             if (! $this->isUniqueViolation($e)) {
                 throw $e;
@@ -461,6 +478,9 @@ class TokenFactoryService
         }
 
         Log::info("Token {$token->symbol} rejected", ['token_id' => $token->id, 'reason' => $reason]);
+
+        // จ่ายค่าธรรมเนียมมาแล้ว = ต้องคืนเต็มจำนวน (แอดมินโอนเอง หรือระบบจ่ายอัตโนมัติ ตามนโยบาย)
+        $this->refunds->openForRejected($token->fresh());
 
         return $token->fresh();
     }
@@ -790,11 +810,15 @@ class TokenFactoryService
         }
     }
 
-    private function findQuote(string $quoteId, string $creator): TokenFactoryFeeQuote
+    /**
+     * ใบเสนอราคาของกระเป๋านี้ — ระบุ purpose เมื่อใช้ชำระจริง (ใบค่ายืนยันซอร์สใช้สร้างเหรียญไม่ได้ และกลับกัน).
+     */
+    private function findQuote(string $quoteId, string $creator, ?string $purpose = null): TokenFactoryFeeQuote
     {
         $quote = TokenFactoryFeeQuote::find($quoteId);
 
-        if (! $quote || $quote->creator_address !== strtolower($creator)) {
+        if (! $quote || $quote->creator_address !== strtolower($creator)
+            || ($purpose !== null && $quote->purpose !== $purpose)) {
             throw new TokenFactoryException('QUOTE_NOT_FOUND', 'ไม่พบใบเสนอราคาของกระเป๋านี้ กรุณาขอใบเสนอราคาใหม่');
         }
 

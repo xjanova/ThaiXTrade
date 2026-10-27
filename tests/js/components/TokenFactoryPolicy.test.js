@@ -30,6 +30,8 @@ const store = reactive({
     requestQuote: vi.fn(),
     checkFeeStatus: vi.fn(),
     createToken: vi.fn(),
+    requestSourceVerifyQuote: vi.fn(),
+    purchaseSourceVerify: vi.fn(),
 });
 
 vi.mock('@inertiajs/vue3', () => ({
@@ -83,6 +85,7 @@ function makePolicy() {
             pausable: option('on', { label_th: 'หยุดการโอนได้ (Pausable)', warning_th: PAUSABLE_WARNING, ui_keys: ['pausable'] }),
             blacklist: option('off', { label_th: 'บัญชีดำ (Blacklist)', ui_keys: ['blacklist_enabled'] }),
             auto_burn: option('locked', { label_th: 'Auto Burn', applies_to: ['erc20'], ui_keys: ['auto_burn_enabled', 'auto_burn_rate', 'burn_floor'] }),
+            source_verify: option('on', { label_th: 'ยืนยันซอร์สโค้ดบน Explorer', risky: false, fee: 1000, ui_keys: ['source_verify'] }),
         },
         limits: { name_max_length: 50, symbol_max_length: 11, daily_limit_per_wallet: 3, required_confirmations: 2, quote_ttl_minutes: 30 },
         reserved_symbols: ['TPIX', 'USDT', 'IDTC'],
@@ -119,6 +122,9 @@ beforeEach(() => {
     store.requestQuote.mockReset();
     store.createToken.mockReset();
     store.checkFeeStatus.mockReset();
+    store.requestSourceVerifyQuote.mockReset();
+    store.purchaseSourceVerify.mockReset();
+    store.myTokens = [];
 });
 
 afterEach(() => {
@@ -293,3 +299,120 @@ describe('TokenFactory — policy-driven form', () => {
         wallet.signer = null;
     });
 });
+
+describe('TokenFactory — My Tokens: ยืนยันซอร์สโค้ด (เสียเงิน) และสถานะคืนเงิน', () => {
+    const FEE_WALLET = '0x9999999999999999999999999999999999999999';
+    const pendingKey = () => 'tpix_factory_pending_verify_' + wallet.address.toLowerCase();
+    const deployed = (overrides = {}) => ({
+        id: 7, name: 'Good Coin', symbol: 'GOOD', status: 'deployed', total_supply: '1000', decimals: 18,
+        token_type: 'standard', contract_address: '0x' + 'c'.repeat(40), metadata: {}, ...overrides,
+    });
+
+    async function openMyTokens(tokens) {
+        store.myTokens = tokens;
+        const w = mountPage();
+        await flushPromises();
+        await buttonWithText(w, 'My Tokens').trigger('click');
+        return w;
+    }
+
+    it('เหรียญที่ยังไม่จ่ายเห็นปุ่มพร้อมราคา ส่วนที่จ่าย/ยืนยันแล้วเห็นสถานะแทน', async () => {
+        const w = await openMyTokens([
+            deployed(),
+            deployed({ id: 8, symbol: 'PAID', metadata: { source_verify: { paid: true }, explorer_verification: { status: 'submitted' } } }),
+            deployed({ id: 9, symbol: 'DONE', metadata: { explorer_verification: { status: 'verified' } } }),
+        ]);
+
+        const buttons = w.findAll('[data-test="source-verify-button"]');
+        expect(buttons).toHaveLength(1);
+        expect(buttons[0].text()).toContain('1,000 TPIX');
+        expect(w.text()).toContain('explorer กำลังตรวจซอร์สโค้ด');
+        expect(w.text()).toContain('ซอร์สโค้ดยืนยันบน explorer แล้ว');
+    });
+
+    it('จ่ายบนเชน 4289 รอยืนยัน แล้วส่ง tx ให้เซิร์ฟเวอร์ — สำเร็จแล้วไม่เหลือรายการค้าง', async () => {
+        const feeHash = '0x' + 'ef'.repeat(32);
+        const sendTransaction = vi.fn(async () => ({ hash: feeHash }));
+        wallet.signer = { sendTransaction };
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        store.requestSourceVerifyQuote.mockResolvedValue({
+            quote_id: 'sv-1', amount: '1000', amount_wei: '1000000000000000000000',
+            fee_wallet: FEE_WALLET, chain_id: 4289, is_free: false,
+        });
+        store.checkFeeStatus.mockResolvedValue({ confirmed: true, confirmations: 2, required: 2 });
+        store.purchaseSourceVerify.mockResolvedValue(deployed({ metadata: { source_verify: { paid: true } } }));
+
+        const w = await openMyTokens([deployed()]);
+        await w.find('[data-test="source-verify-button"]').trigger('click');
+        await flushPromises();
+
+        expect(store.requestSourceVerifyQuote).toHaveBeenCalledWith(7, wallet.address);
+        expect(confirmSpy.mock.calls[0][0]).toContain('1000 TPIX');
+        expect(sendTransaction).toHaveBeenCalledWith({ to: FEE_WALLET, value: 1000000000000000000000n, gasPrice: 0 });
+        expect(store.purchaseSourceVerify).toHaveBeenCalledWith(7, { wallet_address: wallet.address.toLowerCase(), quote_id: 'sv-1', fee_tx_hash: feeHash });
+        expect(localStorage.getItem(pendingKey())).toBeNull();
+
+        confirmSpy.mockRestore();
+        wallet.signer = null;
+    });
+
+    it('ยกเลิกในกล่องยืนยัน = ไม่โอนเงิน', async () => {
+        const sendTransaction = vi.fn();
+        wallet.signer = { sendTransaction };
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        store.requestSourceVerifyQuote.mockResolvedValue({ quote_id: 'sv-2', amount: '1000', amount_wei: '1', fee_wallet: FEE_WALLET, chain_id: 4289 });
+
+        const w = await openMyTokens([deployed()]);
+        await w.find('[data-test="source-verify-button"]').trigger('click');
+        await flushPromises();
+
+        expect(sendTransaction).not.toHaveBeenCalled();
+        confirmSpy.mockRestore();
+        wallet.signer = null;
+    });
+
+    it('จ่ายแล้วแต่ส่งไม่สำเร็จ — กดส่งต่อได้โดยไม่โอนซ้ำ', async () => {
+        const feeHash = '0x' + '12'.repeat(32);
+        const sendTransaction = vi.fn(async () => ({ hash: feeHash }));
+        wallet.signer = { sendTransaction };
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        store.requestSourceVerifyQuote.mockResolvedValue({ quote_id: 'sv-3', amount: '1000', amount_wei: '1000', fee_wallet: FEE_WALLET, chain_id: 4289 });
+        store.checkFeeStatus.mockResolvedValue({ confirmed: true, confirmations: 2, required: 2 });
+        store.purchaseSourceVerify
+            .mockRejectedValueOnce({ response: { status: 503, data: { error: { code: 'CHAIN_UNAVAILABLE', message: 'ติดต่อเชนไม่ได้' } } } })
+            .mockResolvedValueOnce(deployed());
+
+        const w = await openMyTokens([deployed()]);
+        await w.find('[data-test="source-verify-button"]').trigger('click');
+        await flushPromises();
+
+        expect(localStorage.getItem(pendingKey())).toContain(feeHash);
+        expect(w.find('[data-test="source-verify-button"]').text()).toContain('ไม่ต้องจ่ายซ้ำ');
+
+        await w.find('[data-test="source-verify-button"]').trigger('click');
+        await flushPromises();
+
+        expect(sendTransaction).toHaveBeenCalledTimes(1);
+        expect(store.purchaseSourceVerify).toHaveBeenCalledTimes(2);
+        expect(store.purchaseSourceVerify.mock.calls[1][1].fee_tx_hash).toBe(feeHash);
+        expect(localStorage.getItem(pendingKey())).toBeNull();
+        confirmSpy.mockRestore();
+        wallet.signer = null;
+    });
+
+    it('คำขอที่ถูกปฏิเสธแสดงสถานะคืนค่าธรรมเนียม', async () => {
+        const w = await openMyTokens([
+            deployed({ id: 11, status: 'rejected', contract_address: null, reject_reason: 'x', refund_status: 'pending', refund_amount_wei: '50000000000000000000' }),
+            deployed({ id: 12, symbol: 'R2', status: 'rejected', contract_address: null, refund_status: 'refunded', refund_amount_wei: '50000000000000000000', refund_tx_hash: '0x' + '6'.repeat(64) }),
+        ]);
+
+        const notes = w.findAll('[data-test="refund-note"]');
+        expect(notes).toHaveLength(2);
+        expect(notes[0].text()).toContain('รอคืนค่าธรรมเนียม');
+        expect(notes[0].text()).toContain('50 TPIX');
+        expect(notes[1].text()).toContain('คืนค่าธรรมเนียมแล้ว');
+        expect(notes[1].find('a').attributes('href')).toContain('/tx/0x6666');
+        expect(w.find('[data-test="source-verify-button"]').exists()).toBe(false);
+    });
+});
+
