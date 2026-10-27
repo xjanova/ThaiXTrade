@@ -37,6 +37,17 @@ class TokenFactoryPolicy
     /** ช่วงที่แอดมินตั้งได้ — กันพิมพ์ผิดจนระบบเพี้ยน */
     public const MAX_FEE = 1000000;
 
+    /**
+     * ทุกประเภทและทุกตัวเลือกต้องมีราคา (เจ้าของสั่ง) — ค่า 0 ที่เคยบันทึกไว้ถูกแทนด้วยค่าตั้งต้นใน config
+     * ถ้าค่าตั้งต้นก็เป็น 0 ใช้ค่านี้.
+     */
+    public const MIN_FEE_FALLBACK = 1.0;
+
+    /** วิธีคืนค่าธรรมเนียมเมื่อปฏิเสธคำขอ */
+    public const REFUND_MANUAL = 'manual';
+
+    public const REFUND_AUTO = 'auto';
+
     public const MAX_SUPPLY_CEILING = '1000000000000000000000000000000'; // 10^30
 
     /**
@@ -199,6 +210,20 @@ class TokenFactoryPolicy
             'requires' => null,
             'ui_keys' => ['auto_burn_enabled', 'auto_burn_rate', 'burn_floor'],
         ],
+        /*
+         * ไม่ใช่ความสามารถของสัญญา แต่เป็นบริการเสียเงิน — หลัง deploy ระบบส่งซอร์สให้ explorer ยืนยัน
+         * explorer ปิดช่องยืนยันสาธารณะไว้ (nginx รับเฉพาะคำขอที่มี explorer_verify_key)
+         * จึงยืนยันได้ทางเดียวคือจ่ายค่าธรรมเนียมนี้ (ติ๊กตอนสร้าง หรือซื้อทีหลังในหน้าเหรียญของฉัน)
+         */
+        'source_verify' => [
+            'label_th' => 'ยืนยันซอร์สโค้ดบน Explorer',
+            'desc_th' => 'เผยแพร่ซอร์สโค้ดสัญญาบน explorer.tpix.online ให้ทุกคนตรวจได้ (ป้าย Contract verified)',
+            'risky' => false,
+            'warning_th' => null,
+            'applies_to' => ['erc20', 'utility', 'reward', 'governance', 'stablecoin', 'nft', 'nft_collection'],
+            'requires' => null,
+            'ui_keys' => ['source_verify'],
+        ],
     ];
 
     /**
@@ -209,23 +234,25 @@ class TokenFactoryPolicy
      */
     public const SUB_OPTION_KEYS = [
         'erc20' => ['pausable', 'blacklist_enabled', 'mint_cap_enabled', 'mint_cap',
-            'auto_burn_enabled', 'auto_burn_rate', 'burn_floor', 'ownership_type'],
+            'auto_burn_enabled', 'auto_burn_rate', 'burn_floor', 'ownership_type', 'source_verify'],
         'governance' => ['mintable', 'burnable', 'pausable', 'blacklist_enabled', 'mint_cap_enabled', 'mint_cap',
             'delegation_enabled', 'proposal_threshold', 'quorum_percent', 'voting_period_days', 'voting_type',
-            'treasury_enabled', 'treasury_wallet', 'ownership_type'],
+            'treasury_enabled', 'treasury_wallet', 'ownership_type', 'source_verify'],
         'nft' => ['metadata_storage', 'metadata_uri', 'royalty_enabled', 'royalty_rate', 'royalty_wallet',
-            'soulbound', 'ownership_type'],
+            'soulbound', 'ownership_type', 'source_verify'],
         'nft_collection' => ['mint_type', 'mint_price', 'max_per_wallet', 'max_per_tx', 'reserve_count',
             'delayed_reveal', 'placeholder_uri', 'metadata_uri', 'base_uri',
-            'royalty_enabled', 'royalty_rate', 'royalty_wallet', 'ownership_type'],
+            'royalty_enabled', 'royalty_rate', 'royalty_wallet', 'ownership_type', 'source_verify'],
         'utility' => ['mintable', 'burnable', 'pausable', 'blacklist_enabled', 'tax_enabled', 'buy_tax_rate',
             'sell_tax_rate', 'transfer_tax_rate', 'tax_wallet', 'marketing_wallet', 'marketing_share',
             'anti_whale_enabled', 'max_wallet_percent', 'max_tx_percent', 'anti_bot_enabled',
-            'anti_bot_duration', 'trading_cooldown', 'auto_lp_enabled', 'auto_lp_rate', 'lp_lock_days', 'ownership_type'],
+            'anti_bot_duration', 'trading_cooldown', 'auto_lp_enabled', 'auto_lp_rate', 'lp_lock_days', 'ownership_type',
+            'source_verify'],
         'reward' => ['mintable', 'burnable', 'pausable', 'blacklist_enabled', 'reward_type', 'reflection_rate',
-            'min_hold_for_reward', 'vesting_enabled', 'vesting_cliff_days', 'vesting_duration_days', 'ownership_type'],
+            'min_hold_for_reward', 'vesting_enabled', 'vesting_cliff_days', 'vesting_duration_days', 'ownership_type',
+            'source_verify'],
         'stablecoin' => ['pausable', 'freeze_enabled', 'kyc_required', 'reserve_wallet', 'peg_currency',
-            'peg_ratio', 'reserve_type', 'ownership_type'],
+            'peg_ratio', 'reserve_type', 'ownership_type', 'source_verify'],
     ];
 
     /** ค่าที่เป็นสวิตช์เปิด/ปิด — แปลงเป็น bool ก่อนส่งต่อ */
@@ -233,7 +260,7 @@ class TokenFactoryPolicy
         'pausable', 'blacklist_enabled', 'mint_cap_enabled', 'auto_burn_enabled', 'mintable', 'burnable',
         'delegation_enabled', 'treasury_enabled', 'royalty_enabled', 'soulbound', 'delayed_reveal',
         'tax_enabled', 'anti_whale_enabled', 'anti_bot_enabled', 'auto_lp_enabled', 'vesting_enabled',
-        'freeze_enabled', 'kyc_required',
+        'freeze_enabled', 'kyc_required', 'source_verify',
     ];
 
     /** ช่วงตัวเลขที่ยอมรับ [min, max] — นอกช่วงคือพิมพ์ผิดหรือจงใจทำร้ายผู้ซื้อ */
@@ -254,7 +281,7 @@ class TokenFactoryPolicy
 
     /**
      * จำนวนเงิน/เหรียญที่สคริปต์แปลงด้วย parseUnits — ต้องเป็นทศนิยมปกติ (ไม่มี e-notation)
-     * ค่า = จำนวนทศนิยมสูงสุด (null = ใช้ทศนิยมของเหรียญ)
+     * ค่า = จำนวนทศนิยมสูงสุด (null = ใช้ทศนิยมของเหรียญ).
      *
      * ⚠️ เดิมสคริปต์ทำ String(Number(x)) — ราคา mint 0.0000001 กลายเป็น "1e-7" แล้ว parseEther โยน
      *    หลังผู้ใช้จ่ายค่าธรรมเนียมไปแล้ว
@@ -335,6 +362,20 @@ class TokenFactoryPolicy
         $wallet = strtolower(trim((string) ($this->effective()['fee_wallet'] ?? '')));
 
         return preg_match('/^0x[a-f0-9]{40}$/', $wallet) ? $wallet : '';
+    }
+
+    /** วิธีคืนค่าธรรมเนียมเมื่อปฏิเสธคำขอ — manual | auto */
+    public function refundMode(): string
+    {
+        return $this->effective()['refund_mode'];
+    }
+
+    /** ค่ายืนยันซอร์สบน explorer (TPIX) — null = แอดมินปิดบริการนี้ */
+    public function sourceVerifyFee(): ?float
+    {
+        $option = $this->effective()['options']['source_verify'];
+
+        return $option['state'] === self::STATE_ON ? (float) $option['fee'] : null;
     }
 
     public function chainId(): int
@@ -449,6 +490,9 @@ class TokenFactoryPolicy
         }
         if ($on('auto_burn_enabled', 'auto_burn')) {
             $requested[] = 'auto_burn';
+        }
+        if ($on('source_verify')) {
+            $requested[] = 'source_verify';
         }
 
         $applicable = array_filter(
@@ -809,6 +853,7 @@ class TokenFactoryPolicy
             'fee_wallet_override' => (string) $policy['fee_wallet'],
             'require_kyc' => (bool) $policy['require_kyc'],
             'auto_list_on_deploy' => (bool) $policy['auto_list_on_deploy'],
+            'refund_mode' => $policy['refund_mode'],
             'reserved_symbols' => $policy['reserved_symbols'],
         ]);
     }
@@ -835,6 +880,15 @@ class TokenFactoryPolicy
         foreach (['require_kyc', 'auto_list_on_deploy'] as $key) {
             if (array_key_exists($key, $input)) {
                 $next[$key] = filter_var($input[$key], FILTER_VALIDATE_BOOLEAN);
+            }
+        }
+
+        if (array_key_exists('refund_mode', $input)) {
+            $mode = (string) $input['refund_mode'];
+            if (! in_array($mode, [self::REFUND_MANUAL, self::REFUND_AUTO], true)) {
+                $errors['refund_mode'] = 'วิธีคืนค่าธรรมเนียมต้องเป็น "แอดมินโอนเอง" หรือ "จ่ายอัตโนมัติ"';
+            } else {
+                $next['refund_mode'] = $mode;
             }
         }
 
@@ -946,8 +1000,8 @@ class TokenFactoryPolicy
 
             if (array_key_exists('fee', $row)) {
                 $fee = filter_var($row['fee'], FILTER_VALIDATE_FLOAT);
-                if ($fee === false || $fee < 0 || $fee > self::MAX_FEE) {
-                    $errors["types.{$key}.fee"] = "ค่าธรรมเนียม{$label}ต้องอยู่ระหว่าง 0–".number_format(self::MAX_FEE);
+                if ($fee === false || $fee <= 0 || $fee > self::MAX_FEE) {
+                    $errors["types.{$key}.fee"] = "ค่าธรรมเนียม{$label}ต้องมากกว่า 0 และไม่เกิน ".number_format(self::MAX_FEE).' TPIX';
                 } else {
                     $next['types'][$key]['fee'] = round($fee, 6);
                 }
@@ -998,8 +1052,8 @@ class TokenFactoryPolicy
 
             if (array_key_exists('fee', $row)) {
                 $fee = filter_var($row['fee'], FILTER_VALIDATE_FLOAT);
-                if ($fee === false || $fee < 0 || $fee > self::MAX_FEE) {
-                    $errors["options.{$key}.fee"] = "ค่าธรรมเนียมตัวเลือก {$label} ต้องอยู่ระหว่าง 0–".number_format(self::MAX_FEE);
+                if ($fee === false || $fee <= 0 || $fee > self::MAX_FEE) {
+                    $errors["options.{$key}.fee"] = "ค่าธรรมเนียมตัวเลือก {$label} ต้องมากกว่า 0 และไม่เกิน ".number_format(self::MAX_FEE).' TPIX';
                 } else {
                     $next['options'][$key]['fee'] = round($fee, 6);
                 }
@@ -1046,7 +1100,7 @@ class TokenFactoryPolicy
         $snapshot = Arr::only($policy, [
             'creation_enabled', 'fee_wallet', 'required_confirmations', 'quote_ttl_minutes',
             'daily_limit_per_wallet', 'name_max_length', 'symbol_max_length', 'auto_list_on_deploy',
-            'require_kyc', 'reserved_symbols',
+            'require_kyc', 'refund_mode', 'reserved_symbols',
         ]);
 
         foreach ($policy['types'] as $key => $type) {
@@ -1072,7 +1126,7 @@ class TokenFactoryPolicy
 
         foreach (['creation_enabled', 'fee_wallet', 'required_confirmations', 'quote_ttl_minutes',
             'daily_limit_per_wallet', 'name_max_length', 'symbol_max_length', 'auto_list_on_deploy',
-            'require_kyc', 'reserved_symbols'] as $key) {
+            'require_kyc', 'refund_mode', 'reserved_symbols'] as $key) {
             if (array_key_exists($key, $overrides)) {
                 $merged[$key] = $overrides[$key];
             }
@@ -1104,6 +1158,7 @@ class TokenFactoryPolicy
             'symbol_max_length' => min(20, max(2, (int) ($policy['symbol_max_length'] ?? 11))),
             'auto_list_on_deploy' => (bool) ($policy['auto_list_on_deploy'] ?? false),
             'require_kyc' => (bool) ($policy['require_kyc'] ?? false),
+            'refund_mode' => ($policy['refund_mode'] ?? null) === self::REFUND_AUTO ? self::REFUND_AUTO : self::REFUND_MANUAL,
             'reserved_symbols' => [],
             'types' => [],
             'options' => [],
@@ -1130,7 +1185,7 @@ class TokenFactoryPolicy
             $max = (int) ($row['decimals_max'] ?? 18);
             $out['types'][$key] = [
                 'state' => in_array($row['state'] ?? null, [self::STATE_ON, self::STATE_OFF], true) ? $row['state'] : self::STATE_OFF,
-                'fee' => max(0.0, (float) ($row['fee'] ?? 0)),
+                'fee' => $this->chargedFee($row['fee'] ?? null, "types.{$key}.fee"),
                 'max_supply' => preg_match('/^[1-9][0-9]*$/', (string) ($row['max_supply'] ?? '')) ? (string) $row['max_supply'] : '1000000000000000',
                 'decimals_min' => max(0, min(18, $min)),
                 'decimals_max' => max(0, min(18, max($min, $max))),
@@ -1144,12 +1199,29 @@ class TokenFactoryPolicy
             $row = (array) ($policy['options'][$key] ?? []);
             $out['options'][$key] = [
                 'state' => in_array($row['state'] ?? null, [self::STATE_ON, self::STATE_OFF], true) ? $row['state'] : self::STATE_OFF,
-                'fee' => max(0.0, (float) ($row['fee'] ?? 0)),
+                'fee' => $this->chargedFee($row['fee'] ?? null, "options.{$key}.fee"),
                 'locked_reason' => null,
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * ค่าธรรมเนียมที่ใช้จริง — ทุกประเภทและทุกตัวเลือกต้องมีราคา.
+     *
+     * ค่า 0 ที่แอดมินเคยบันทึกไว้ก่อนมีกฎนี้ (เช่น "เผาเหรียญได้" บน production) ถูกแทนด้วยค่าตั้งต้นใน config
+     */
+    private function chargedFee(mixed $fee, string $path): float
+    {
+        $fee = (float) $fee;
+        if ($fee > 0) {
+            return $fee;
+        }
+
+        $default = (float) config("blockchain.token_factory_policy.{$path}", 0);
+
+        return $default > 0 ? $default : self::MIN_FEE_FALLBACK;
     }
 
     /**

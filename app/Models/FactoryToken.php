@@ -10,6 +10,15 @@ class FactoryToken extends Model
 {
     use HasFactory;
 
+    /** ปฏิเสธคำขอที่จ่ายเงินแล้ว → รอคืน → (กำลังส่ง) → คืนแล้ว · ล้มเหลว = แอดมินต้องทำต่อ */
+    public const REFUND_PENDING = 'pending';
+
+    public const REFUND_SENDING = 'sending';
+
+    public const REFUND_REFUNDED = 'refunded';
+
+    public const REFUND_FAILED = 'failed';
+
     protected $fillable = [
         'name',
         'symbol',
@@ -20,6 +29,7 @@ class FactoryToken extends Model
         'tx_hash',
         'fee_tx_hash',
         'fee_quote_id',
+        'source_verify_tx_hash',
         'deploy_nonce',
         'deploy_raw_tx',
         'deploy_started_at',
@@ -31,6 +41,12 @@ class FactoryToken extends Model
         'token_category',
         'status',
         'reject_reason',
+        'refund_status',
+        'refund_mode',
+        'refund_amount_wei',
+        'refund_tx_hash',
+        'refund_payout_id',
+        'refunded_at',
         'is_verified',
         'is_listed',
         'metadata',
@@ -38,7 +54,7 @@ class FactoryToken extends Model
 
     /**
      * ธุรกรรมดิบที่เซ็นแล้ว — ไม่ใช่ความลับ (สุดท้ายก็ขึ้นเชน) แต่ไม่มีใครต้องเห็นนอกงาน deploy
-     * active_symbol เป็นคอลัมน์ generated ที่มีไว้ให้ unique index เท่านั้น
+     * active_symbol เป็นคอลัมน์ generated ที่มีไว้ให้ unique index เท่านั้น.
      */
     protected $hidden = [
         'deploy_raw_tx',
@@ -51,16 +67,27 @@ class FactoryToken extends Model
         'is_listed' => 'boolean',
         'metadata' => 'array',
         'deploy_started_at' => 'datetime',
+        'refunded_at' => 'datetime',
     ];
 
     /**
      * เหรียญที่ลิสต์แล้วอยู่ใน /tokenlist.json — ลิสต์/เลิกลิสต์/เปลี่ยนโลโก้ ต้องล้างแคชรายการทันที.
-     * (ทางที่อัปเดตด้วย query builder ตรง ๆ เช่น FactoryDeploymentFinalizer::markDeployed ล้างเอง)
+     * (ทางที่อัปเดตด้วย query builder ตรง ๆ เช่น FactoryDeploymentFinalizer::markDeployed ล้างเอง).
      */
     protected static function booted(): void
     {
         static::saved(fn () => TokenListService::forget());
         static::deleted(fn () => TokenListService::forget());
+    }
+
+    /**
+     * จ่ายค่ายืนยันซอร์สบน explorer แล้วหรือยัง (ติ๊กตอนสร้าง หรือซื้อทีหลัง).
+     *
+     * ระบบส่งซอร์สให้ explorer เฉพาะเหรียญที่จ่ายแล้วเท่านั้น
+     */
+    public function sourceVerifyPaid(): bool
+    {
+        return ($this->metadata['source_verify']['paid'] ?? false) === true;
     }
 
     public function chain()

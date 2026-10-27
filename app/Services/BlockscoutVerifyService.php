@@ -78,11 +78,19 @@ class BlockscoutVerifyService
         return rtrim($dir, '/\\').DIRECTORY_SEPARATOR.$contractName.'.json';
     }
 
+    /** ยืนยันซอร์สของเหรียญนี้ได้ไหม (รู้จักชนิดสัญญา + มีไฟล์ standard input) — ใช้ก่อนรับเงินค่ายืนยัน */
+    public function supports(FactoryToken $token): bool
+    {
+        $name = $this->contractNameFor($token);
+
+        return $name !== null && is_file($this->standardInputPath($name));
+    }
+
     /**
      * ส่งคำขอยืนยันซอร์ส.
      *
      * @return array{status: string, message: ?string, contract_name: ?string}
-     *               status: submitted | already_verified | skipped | error
+     *                                                                         status: submitted | already_verified | skipped | error
      */
     public function submit(FactoryToken $token): array
     {
@@ -115,14 +123,30 @@ class BlockscoutVerifyService
 
         $url = "{$this->apiUrl}/v2/smart-contracts/{$address}/verification/via/standard-input";
 
+        /*
+         * Blockscout v6 รับ contract_name เป็นชื่อสัญญาเปล่า ๆ ("FactoryERC20V2") ไม่ใช่ "<path>:<ชื่อ>"
+         * ส่งแบบมี path ไป ตัวยืนยันเทียบ bytecode ผ่าน แต่ Blockscout หยิบสัญญาตัวแรกในไฟล์ (Ownable)
+         * มาบันทึกแล้วพังที่ contract_code_md5 → เหรียญไม่เคยถูกยืนยันสักเหรียญ (เจอกับ IDTC 2026-10-27)
+         */
+        $shortName = str_contains((string) $spec['contract_name'], ':')
+            ? substr((string) $spec['contract_name'], strrpos((string) $spec['contract_name'], ':') + 1)
+            : (string) $spec['contract_name'];
+
+        // explorer ปิดช่องยืนยันสาธารณะ — รับเฉพาะคำขอที่มีกุญแจของระบบนี้ (ผูกกับค่าธรรมเนียม)
+        $headers = ['User-Agent' => TpixRpcClient::USER_AGENT, 'Accept' => 'application/json'];
+        $key = (string) config('blockchain.explorer_verify_key', '');
+        if ($key !== '') {
+            $headers['X-TPIX-Verify-Key'] = $key;
+        }
+
         try {
             $response = Http::timeout(60)
-                ->withHeaders(['User-Agent' => TpixRpcClient::USER_AGENT, 'Accept' => 'application/json'])
+                ->withHeaders($headers)
                 ->asMultipart()
                 ->attach('files[0]', json_encode($spec['input'], JSON_UNESCAPED_SLASHES), $contractName.'.json', ['Content-Type' => 'application/json'])
                 ->post($url, [
                     'compiler_version' => (string) $spec['compiler_version'],
-                    'contract_name' => (string) $spec['contract_name'],
+                    'contract_name' => $shortName,
                     'autodetect_constructor_args' => 'true',
                     'license_type' => 'mit',
                 ]);

@@ -270,6 +270,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::patch('/{id}/list', [TokenFactoryController::class, 'toggleListed'])->name('list')->whereNumber('id');
                 // ตั้ง/เปลี่ยนโลโก้ของเหรียญที่ deploy แล้ว (โลโก้นี้ขึ้น /tokenlist.json เมื่อเหรียญถูกลิสต์)
                 Route::post('/{id}/logo', [TokenFactoryController::class, 'updateLogo'])->name('logo')->whereNumber('id')->middleware('throttle:30,1');
+                // คืนค่าธรรมเนียมของคำขอที่ถูกปฏิเสธ — โอนเองแล้ววาง tx / สั่งจ่ายจากกระเป๋าร้อน
+                Route::post('/{id}/refund/manual', [TokenFactoryController::class, 'refundManual'])->name('refund.manual')->whereNumber('id')->middleware('throttle:30,1');
+                Route::post('/{id}/refund/auto', [TokenFactoryController::class, 'refundAuto'])->name('refund.auto')->whereNumber('id')->middleware('throttle:10,1');
             });
 
             // นโยบาย (เปิด/ปิดประเภท/ตัวเลือก ค่าธรรมเนียม เพดาน) — super_admin เท่านั้น

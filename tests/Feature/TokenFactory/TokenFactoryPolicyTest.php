@@ -179,12 +179,13 @@ class TokenFactoryPolicyTest extends TestCase
         $this->actingAs($this->superAdmin, 'admin')
             ->get('/admin/token-factory/policy')
             ->assertOk()
-            ->assertInertia(fn ($page) => $page
-                ->component('Admin/TokenFactory/Policy')
-                ->where('policy.types.utility.state', 'locked')
-                ->where('policy.options.auto_burn.state', 'locked')
-                ->where('policy.options.pausable.state', 'off')
-                ->has('policy.types.reward.locked_reason')
+            ->assertInertia(
+                fn ($page) => $page
+                    ->component('Admin/TokenFactory/Policy')
+                    ->where('policy.types.utility.state', 'locked')
+                    ->where('policy.options.auto_burn.state', 'locked')
+                    ->where('policy.options.pausable.state', 'off')
+                    ->has('policy.types.reward.locked_reason')
             );
     }
 
@@ -291,7 +292,7 @@ class TokenFactoryPolicyTest extends TestCase
         $missing = app(TokenFactoryPolicy::class)->evaluate($request);
         $this->assertSame(['pausable', 'blacklist'], $missing['required_acks']);
         $this->assertArrayHasKey('risk_ack', $missing['errors']);
-        $this->assertEquals(60, $missing['fee']['total']); // 50 + 0 (burnable) + 5 + 5
+        $this->assertEquals(70, $missing['fee']['total']); // 50 + 10 (burnable) + 5 + 5
 
         $acked = app(TokenFactoryPolicy::class)->evaluate($request + ['risk_ack' => ['pausable', 'blacklist']]);
         $this->assertSame([], $acked['errors']);

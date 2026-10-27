@@ -172,6 +172,14 @@ const subOptionsConfig = {
                 },
             ],
         },
+        {
+            // บริการเสียเงิน — ราคาจริงมาจากนโยบาย (ค่าตั้งต้น 1,000 TPIX) ไม่ใช่จากช่อง fee ตรงนี้
+            group: 'explorer', label: 'Explorer', label_th: 'Explorer',
+            icon: '🔍', fee: 0,
+            options: [
+                { key: 'source_verify', type: 'toggle', label: 'Verify source code', label_th: 'ยืนยันซอร์สโค้ดบน Explorer', desc_en: 'Publish the contract source on explorer.tpix.online so anyone can audit it', desc_th: 'เผยแพร่ซอร์สโค้ดสัญญาบน explorer.tpix.online ให้ทุกคนตรวจได้ (ซื้อทีหลังได้ในแท็บเหรียญของฉัน)', fee: 1000, default: false },
+            ],
+        },
     ],
 
     // ─── Standard: แค่ common options ───
@@ -495,6 +503,13 @@ const requiredAcks = computed(() => requiredRiskAcks(policy.value, form.value.to
 const typeAck = computed(() => requiredAcks.value.find((a) => a.kind === 'type') || null);
 const missingAcks = computed(() => requiredAcks.value.filter((a) => !riskAck.value[a.key]));
 
+/** ราคาของสวิตช์นี้ตามนโยบาย (แหล่งเดียวกับใบเสนอราคา) — ช่อง fee ใน subOptionsConfig เป็นแค่ค่าเก่าที่ไม่ใช้แล้ว */
+function uiOptionFee(opt) {
+    if (opt.type !== 'toggle') return 0;
+    const option = optionForUiKey(policy.value, opt.key);
+    return option ? Number(policy.value?.options?.[option]?.fee) || 0 : 0;
+}
+
 /** กล่องเตือนของตัวเลือกนี้ (เฉพาะสวิตช์ที่เปิดอยู่และเป็นของเสี่ยง) */
 function ackForOption(opt) {
     if (opt.type !== 'toggle' || !subOptions.value[opt.key]) return null;
@@ -569,8 +584,20 @@ const factoryIssues = computed(() => {
     return Object.values(raw || {}).filter(Boolean);
 });
 
+/**
+ * คำขอที่ยังไม่จบของกระเป๋านี้ — ข้อความชุดเดียวกับ TokenFactoryService::IN_PROGRESS_STAGE_TH
+ * failed นับว่ายังไม่จบ: ทีมงานสั่งสร้างใหม่ได้ ค่าธรรมเนียมที่จ่ายแล้วไม่หาย
+ */
+const IN_PROGRESS_STAGE = {
+    pending: 'รอผู้ดูแลตรวจสอบและอนุมัติ',
+    deploying: 'กำลังสร้างเหรียญบนเชน',
+    failed: 'สร้างบนเชนไม่สำเร็จ — ทีมงานกำลังตรวจสอบและสั่งสร้างใหม่ (ค่าธรรมเนียมที่จ่ายแล้วไม่หาย)',
+};
+const openRequest = computed(() => factoryStore.myTokens.find((t) => IN_PROGRESS_STAGE[t?.status]) || null);
+
 const canCreate = computed(() => {
     return walletStore.isConnected
+        && !openRequest.value
         && form.value.name
         && form.value.symbol
         && form.value.total_supply
@@ -781,6 +808,11 @@ function apiErrorMessage(e) {
     if (data?.error?.message) return data.error.message;
     if (e?.code === 4001 || e?.code === 'ACTION_REJECTED') return 'ยกเลิกการชำระค่าธรรมเนียมแล้ว';
     if (/insufficient/i.test(e?.message || '')) return 'ยอด TPIX ในกระเป๋าไม่พอจ่ายค่าธรรมเนียม';
+    if (e?.response?.status === 429) {
+        return pendingPayment.value
+            ? 'ส่งคำขอถี่เกินไป — รอสักครู่แล้วกด "ส่งคำขอต่อ" อีกครั้ง (ไม่ต้องจ่ายซ้ำ)'
+            : 'ส่งคำขอถี่เกินไป — รอสักครู่แล้วลองใหม่';
+    }
     return e?.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่';
 }
 
@@ -855,6 +887,10 @@ function onCreated(symbol) {
 }
 
 async function handleCreate() {
+    if (openRequest.value) {
+        formErrors.value = { general: `มีคำขอสร้าง ${openRequest.value.symbol} อยู่ระหว่างดำเนินการ — สร้างเหรียญใหม่ได้เมื่อคำขอนี้เสร็จหรือถูกปฏิเสธ` };
+        return;
+    }
     if (!canCreate.value || isSubmitting.value) return;
     if (pendingPayment.value) {
         formErrors.value = { general: 'มีค่าธรรมเนียมที่ชำระแล้วรอส่งคำขออยู่ — กด "ส่งคำขอต่อ" ก่อน' };
@@ -920,6 +956,181 @@ async function resumePendingPayment() {
     }
 }
 
+// ===================== SOURCE VERIFY (ซื้อทีหลัง) =====================
+// ยืนยันซอร์สโค้ดบน explorer เป็นบริการเสียเงิน — ติ๊กตอนสร้าง หรือซื้อทีหลังจากการ์ดเหรียญที่ deploy แล้ว
+// ลำดับเดียวกับค่าสร้าง: ใบเสนอราคา → โอน → รอยืนยันบนเชน → ส่ง tx ให้เซิร์ฟเวอร์ตรวจซ้ำ
+// จ่ายแล้วจำไว้ในเครื่อง (แยกต่อเหรียญ) — ส่งไม่สำเร็จกดส่งต่อได้ ไม่ต้องจ่ายซ้ำ
+const verifyJobs = ref({}); // tokenId → { stage, confirmations, required }
+const verifyPending = ref({}); // tokenId → { quote, feeTxHash, wallet, savedAt }
+
+const sourceVerifyOption = computed(() => policy.value?.options?.source_verify || null);
+const sourceVerifyOn = computed(() => sourceVerifyOption.value?.state === 'on');
+
+function verifyKey(address) {
+    return `tpix_factory_pending_verify_${String(address || '').toLowerCase()}`;
+}
+
+function loadVerifyPending() {
+    verifyPending.value = {};
+    if (!walletStore.address) return;
+    try {
+        const saved = JSON.parse(localStorage.getItem(verifyKey(walletStore.address)) || '{}');
+        for (const [id, item] of Object.entries(saved || {})) {
+            if (item?.quote?.quote_id && /^0x[a-fA-F0-9]{64}$/.test(item?.feeTxHash || '')
+                && item.wallet === String(walletStore.address).toLowerCase()) verifyPending.value[id] = item;
+        }
+    } catch {
+        verifyPending.value = {};
+    }
+}
+
+function persistVerifyPending(address) {
+    try {
+        const own = Object.fromEntries(Object.entries(verifyPending.value).filter(([, v]) => v.wallet === String(address).toLowerCase()));
+        if (Object.keys(own).length) localStorage.setItem(verifyKey(address), JSON.stringify(own));
+        else localStorage.removeItem(verifyKey(address));
+    } catch {
+        // storage ใช้ไม่ได้ — ยังจ่ายและส่งได้ในรอบนี้ แค่กลับมาส่งต่อภายหลังไม่ได้
+    }
+}
+
+/** verified | submitted | queued | error | unpaid */
+function explorerVerifyState(token) {
+    const status = token?.metadata?.explorer_verification?.status;
+    if (status === 'verified') return 'verified';
+    if (token?.metadata?.source_verify?.paid !== true) return 'unpaid';
+    if (status === 'submitted') return 'submitted';
+    if (status === 'error' || status === 'skipped') return 'error';
+    return 'queued';
+}
+
+const VERIFY_STATE_TEXT = {
+    verified: { text: '✓ ซอร์สโค้ดยืนยันบน explorer แล้ว', cls: 'text-green-400' },
+    submitted: { text: 'explorer กำลังตรวจซอร์สโค้ด...', cls: 'text-blue-300' },
+    queued: { text: 'ชำระแล้ว — รอส่งซอร์สโค้ดให้ explorer', cls: 'text-blue-300' },
+    error: { text: 'ยืนยันซอร์สยังไม่ผ่าน — ทีมงานกำลังตรวจสอบ', cls: 'text-amber-300' },
+};
+
+const verifyStageText = (job) => ({
+    quoting: 'กำลังขอใบเสนอราคา...',
+    awaiting_wallet: 'ยืนยันการโอนในกระเป๋าของคุณ...',
+    confirming: job.required ? `รอการยืนยันบนเชน (${job.confirmations}/${job.required} บล็อก)` : 'รอการยืนยันบนเชน...',
+    submitting: 'กำลังส่งให้ระบบตรวจ...',
+}[job.stage] || '');
+
+function assertSameWallet(wallet) {
+    if (String(walletStore.address || '').toLowerCase() !== wallet) {
+        throw new Error('สลับกระเป๋าระหว่างทาง — กลับไปกระเป๋าที่จ่ายแล้วกด "ส่งต่อ" ได้ ไม่ต้องจ่ายซ้ำ');
+    }
+}
+
+async function waitForVerifyFee(tokenId, saved) {
+    for (let i = 0; i < FEE_POLL_MAX; i++) {
+        if (disposed) throw new Error('ออกจากหน้าแล้ว — กลับมากด "ส่งต่อ" ได้ ไม่ต้องจ่ายซ้ำ');
+        assertSameWallet(saved.wallet);
+        let status;
+        try {
+            status = await factoryStore.checkFeeStatus({ wallet_address: saved.wallet, quote_id: saved.quote.quote_id, fee_tx_hash: saved.feeTxHash });
+        } catch (e) {
+            const httpStatus = e?.response?.status;
+            if (httpStatus && httpStatus < 500) throw e;
+            status = { confirmed: false };
+        }
+        if (status.confirmed) return;
+        verifyJobs.value[tokenId] = { stage: 'confirming', confirmations: status.confirmations || 0, required: status.required || 0 };
+        await new Promise((resolve) => setTimeout(resolve, FEE_POLL_MS));
+    }
+    throw new Error('ธุรกรรมยังยืนยันไม่ครบ — กด "ส่งต่อ" อีกครั้งภายหลังได้ ไม่ต้องจ่ายซ้ำ');
+}
+
+async function finishVerifyPurchase(token, saved) {
+    const wallet = saved.wallet;
+    verifyJobs.value[token.id] = { stage: 'confirming', confirmations: 0, required: 0 };
+    await waitForVerifyFee(token.id, saved);
+
+    assertSameWallet(wallet);
+    verifyJobs.value[token.id] = { stage: 'submitting' };
+    await factoryStore.purchaseSourceVerify(token.id, { wallet_address: wallet, quote_id: saved.quote.quote_id, fee_tx_hash: saved.feeTxHash });
+
+    delete verifyPending.value[token.id];
+    persistVerifyPending(wallet);
+    if (disposed) return;
+    toastSuccess(`ชำระค่ายืนยันซอร์สของ ${token.symbol} แล้ว — explorer จะตรวจภายในไม่กี่นาที`, 5000);
+    if (walletStore.address) factoryStore.fetchMyTokens(walletStore.address);
+}
+
+async function buySourceVerify(token) {
+    if (!token?.id || verifyJobs.value[token.id]) return;
+    if (!walletStore.isConnected) { walletStore.openConnectModal(); return; }
+
+    const saved = verifyPending.value[token.id];
+    try {
+        if (saved) {
+            await finishVerifyPurchase(token, saved);
+            return;
+        }
+
+        verifyJobs.value[token.id] = { stage: 'quoting' };
+        const quote = await factoryStore.requestSourceVerifyQuote(token.id, walletStore.address);
+        if (disposed) return;
+        if (!quote.fee_wallet || quote.chain_id !== TPIX_CHAIN_ID) throw new Error('ระบบยังไม่พร้อมรับค่าธรรมเนียม กรุณาติดต่อทีมงาน');
+        if (!window.confirm(`ยืนยันซอร์สโค้ดของ ${token.symbol} บน explorer\n\nค่าบริการ ${quote.amount} TPIX (จ่ายครั้งเดียว ไม่คืนเงินเมื่อยืนยันแล้ว)\nผ่านแล้วหน้าสัญญาบน explorer จะแสดง "Contract verified" ให้ผู้ซื้อเห็นซอร์สโค้ด`)) {
+            return;
+        }
+        if (!walletStore.signer) throw new Error('กรุณาเชื่อมต่อกระเป๋าใหม่อีกครั้ง');
+
+        verifyJobs.value[token.id] = { stage: 'awaiting_wallet' };
+        await ensureTpixChain();
+        const tx = await walletStore.signer.sendTransaction({ to: quote.fee_wallet, value: BigInt(quote.amount_wei), gasPrice: 0 });
+
+        // จ่ายแล้ว — จำไว้ก่อนทำอย่างอื่น
+        const wallet = String(walletStore.address).toLowerCase();
+        verifyPending.value[token.id] = { quote, feeTxHash: tx.hash, wallet, savedAt: Date.now() };
+        persistVerifyPending(wallet);
+
+        await finishVerifyPurchase(token, verifyPending.value[token.id]);
+    } catch (e) {
+        if (disposed) return;
+        const code = e?.response?.data?.error?.code;
+        // เซิร์ฟเวอร์บอกว่าจ่าย/ยืนยันไปแล้ว — รายการในเครื่องหมดประโยชน์
+        if (['SOURCE_VERIFY_ALREADY_PAID', 'SOURCE_VERIFY_ALREADY_VERIFIED'].includes(code)) {
+            delete verifyPending.value[token.id];
+            persistVerifyPending(walletStore.address);
+            factoryStore.fetchMyTokens(walletStore.address);
+        }
+        toastError(apiErrorMessage(e), 6000);
+    } finally {
+        if (!disposed) delete verifyJobs.value[token.id];
+    }
+}
+
+// รายการค้างของเหรียญที่ระบบบันทึกว่าจ่ายแล้ว (ส่งสำเร็จแต่คำตอบไม่ถึงหน้าเว็บ) — ล้างทิ้ง
+watch(() => factoryStore.myTokens, (list) => {
+    let changed = false;
+    for (const t of list || []) {
+        if (verifyPending.value[t.id] && explorerVerifyState(t) !== 'unpaid') {
+            delete verifyPending.value[t.id];
+            changed = true;
+        }
+    }
+    if (changed && walletStore.address) persistVerifyPending(walletStore.address);
+});
+
+const REFUND_TEXT = {
+    pending: { text: 'รอคืนค่าธรรมเนียม — ทีมงานจะโอนคืนเต็มจำนวน', cls: 'bg-amber-500/10 text-amber-300' },
+    sending: { text: 'กำลังโอนคืนค่าธรรมเนียม...', cls: 'bg-blue-500/10 text-blue-300' },
+    refunded: { text: 'คืนค่าธรรมเนียมแล้ว', cls: 'bg-green-500/10 text-green-400' },
+    failed: { text: 'คืนค่าธรรมเนียมยังไม่สำเร็จ — ทีมงานกำลังดำเนินการ', cls: 'bg-amber-500/10 text-amber-300' },
+};
+
+function weiToTpix(wei) {
+    if (!wei || !/^[0-9]+$/.test(String(wei))) return '';
+    const v = BigInt(wei);
+    const unit = 10n ** 18n;
+    const frac = (v % unit).toString().padStart(18, '0').slice(0, 6).replace(/0+$/, '');
+    return `${(v / unit).toLocaleString('en-US')}${frac ? '.' + frac : ''}`;
+}
+
 const paymentStageText = computed(() => ({
     quoting: 'กำลังขอใบเสนอราคาค่าธรรมเนียม...',
     awaiting_wallet: 'ยืนยันการโอนค่าธรรมเนียมในกระเป๋าของคุณ...',
@@ -932,6 +1143,7 @@ const paymentStageText = computed(() => ({
 // ===================== LIFECYCLE =====================
 onMounted(async () => {
     loadPendingPayment();
+    loadVerifyPending();
     await factoryStore.fetchTokens();
     if (walletStore.address) {
         await factoryStore.fetchMyTokens(walletStore.address);
@@ -945,10 +1157,21 @@ onUnmounted(() => {
     stopPolling();
 });
 
+// คำขอเข้าระบบแล้วแต่คำตอบไม่ถึงหน้าเว็บ (เน็ตหลุดหลังเซิร์ฟเวอร์บันทึก) — ถ้าไม่ล้าง
+// ป้าย "ส่งคำขอต่อ" จะค้าง และกดส่งซ้ำก็ได้แค่ "ธุรกรรมนี้ถูกใช้แล้ว"
+watch([openRequest, pendingPayment], ([open, paid]) => {
+    if (open && paid && open.fee_tx_hash && open.fee_tx_hash.toLowerCase() === String(paid.feeTxHash).toLowerCase()) {
+        clearPendingPayment();
+        payment.value = { stage: 'idle', txHash: '', confirmations: 0, required: 0, message: '' };
+        formErrors.value = {};
+    }
+});
+
 watch(() => walletStore.address, async (addr) => {
     stopPolling();
     // สลับกระเป๋ากลางทาง — รายการชำระค้างเป็นของกระเป๋าเดิม ห้ามเอาไปส่งในนามกระเป๋าใหม่
     loadPendingPayment();
+    loadVerifyPending();
     payment.value = { stage: 'idle', txHash: '', confirmations: 0, required: 0, message: '' };
     if (addr) {
         await factoryStore.fetchMyTokens(addr);
@@ -1353,6 +1576,21 @@ function getTypeLabel(type) {
                         </div>
                     </div>
 
+                    <!-- คำขอที่ยังไม่จบ — กระเป๋าหนึ่งมีคำขอค้างได้ทีละคำขอ (เซิร์ฟเวอร์บังคับซ้ำตอนออกใบเสนอราคา) -->
+                    <div v-if="openRequest && !pendingPayment" class="mb-4 p-4 rounded-xl border" :class="openRequest.status === 'failed' ? 'bg-red-500/10 border-red-500/30' : 'bg-blue-500/10 border-blue-500/30'" data-test="request-in-progress">
+                        <p class="text-sm font-semibold" :class="openRequest.status === 'failed' ? 'text-red-300' : 'text-blue-200'">
+                            อยู่ในขั้นตอนขอสร้างเหรียญ {{ openRequest.symbol }}
+                        </p>
+                        <p class="text-xs mt-1" :class="openRequest.status === 'failed' ? 'text-red-200/90' : 'text-blue-100/90'">
+                            ขั้นตอนตอนนี้: {{ IN_PROGRESS_STAGE[openRequest.status] }}
+                        </p>
+                        <p class="text-[11px] text-gray-400 mt-1">สร้างเหรียญใหม่ได้เมื่อคำขอนี้สร้างเสร็จหรือถูกปฏิเสธ</p>
+                        <button type="button" class="mt-3 px-4 py-2 rounded-lg bg-white/5 text-xs font-semibold text-white hover:bg-white/10" @click="activeTab = 'my-tokens'">
+                            ดูสถานะคำขอ
+                        </button>
+                    </div>
+
+                    <template v-if="!openRequest || pendingPayment">
                     <!-- Step Indicator -->
                     <div class="flex items-center justify-between mb-8 px-2">
                         <button
@@ -1561,7 +1799,7 @@ function getTypeLabel(type) {
                                                 <div class="flex items-center gap-2">
                                                     <p class="text-sm font-medium text-white">{{ opt.label }}</p>
                                                     <span class="text-[10px] text-gray-500">{{ opt.label_th }}</span>
-                                                    <span v-if="opt.fee > 0 && subOptions[opt.key]" class="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[9px] font-medium">+{{ opt.fee }} TPIX</span>
+                                                    <span v-if="uiOptionFee(opt) > 0" :class="['px-1.5 py-0.5 rounded text-[9px] font-medium', subOptions[opt.key] ? 'bg-amber-500/10 text-amber-400' : 'bg-white/5 text-gray-500']" :data-test="`opt-fee-${opt.key}`">+{{ uiOptionFee(opt).toLocaleString() }} TPIX</span>
                                                 </div>
                                                 <p class="text-xs text-gray-400 mt-0.5">{{ opt.desc_en || '' }}</p>
                                                 <p class="text-[10px] text-gray-500">{{ opt.desc_th || '' }}</p>
@@ -2007,6 +2245,7 @@ function getTypeLabel(type) {
                             <span v-else>{{ dynamicFee.is_free ? 'สร้างเหรียญ' : 'ชำระและสร้างเหรียญ' }}</span>
                         </button>
                     </div>
+                    </template>
                 </div>
             </div>
 
@@ -2076,13 +2315,45 @@ function getTypeLabel(type) {
                             Reason: {{ token.reject_reason }}
                         </div>
 
-                        <div v-if="token.status === 'failed'" class="mt-3 p-2 rounded-lg bg-red-500/10 text-xs text-red-400">
-                            Deployment failed. Our team will retry automatically or contact you.
+                        <div v-if="token.status === 'rejected' && REFUND_TEXT[token.refund_status]" :class="['mt-2 p-2 rounded-lg text-xs', REFUND_TEXT[token.refund_status].cls]" data-test="refund-note">
+                            {{ REFUND_TEXT[token.refund_status].text }}
+                            <span v-if="weiToTpix(token.refund_amount_wei)"> ({{ weiToTpix(token.refund_amount_wei) }} TPIX)</span>
+                            <a v-if="token.refund_tx_hash" :href="`https://explorer.tpix.online/tx/${token.refund_tx_hash}`" target="_blank" rel="noopener" class="block mt-1 font-mono underline">
+                                tx {{ token.refund_tx_hash.slice(0, 10) }}...{{ token.refund_tx_hash.slice(-6) }}
+                            </a>
                         </div>
 
-                        <div v-if="token.status === 'deploying'" class="mt-3 p-2 rounded-lg bg-blue-500/10 text-xs text-blue-400 flex items-center gap-2">
+                        <!-- ยืนยันซอร์สโค้ดบน explorer (บริการเสียเงิน) -->
+                        <div v-if="token.contract_address && token.status === 'deployed'" class="mt-3 text-xs" data-test="source-verify">
+                            <p v-if="VERIFY_STATE_TEXT[explorerVerifyState(token)]" :class="VERIFY_STATE_TEXT[explorerVerifyState(token)].cls">
+                                {{ VERIFY_STATE_TEXT[explorerVerifyState(token)].text }}
+                            </p>
+                            <template v-else-if="sourceVerifyOn || verifyPending[token.id]">
+                                <button
+                                    type="button"
+                                    @click="buySourceVerify(token)"
+                                    :disabled="!!verifyJobs[token.id]"
+                                    class="w-full px-3 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-300 font-medium transition-all disabled:opacity-60"
+                                    data-test="source-verify-button"
+                                >
+                                    <template v-if="verifyJobs[token.id]">{{ verifyStageText(verifyJobs[token.id]) }}</template>
+                                    <template v-else-if="verifyPending[token.id]">ส่งต่อการยืนยันซอร์ส (ชำระแล้ว ไม่ต้องจ่ายซ้ำ)</template>
+                                    <template v-else>🔍 ยืนยันซอร์สโค้ดบน Explorer ({{ Number(sourceVerifyOption.fee).toLocaleString() }} TPIX)</template>
+                                </button>
+                            </template>
+                        </div>
+
+                        <div v-if="token.status === 'pending'" class="mt-3 p-2 rounded-lg bg-yellow-500/10 text-xs text-yellow-300" data-test="status-note">
+                            อยู่ในขั้นตอนขอสร้างเหรียญ: {{ IN_PROGRESS_STAGE.pending }}
+                        </div>
+
+                        <div v-if="token.status === 'failed'" class="mt-3 p-2 rounded-lg bg-red-500/10 text-xs text-red-400" data-test="status-note">
+                            {{ IN_PROGRESS_STAGE.failed }}
+                        </div>
+
+                        <div v-if="token.status === 'deploying'" class="mt-3 p-2 rounded-lg bg-blue-500/10 text-xs text-blue-400 flex items-center gap-2" data-test="status-note">
                             <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                            Deploying to TPIX Chain...
+                            {{ IN_PROGRESS_STAGE.deploying }}...
                         </div>
 
                         <div v-if="token.contract_address && token.status === 'deployed'" class="mt-3 flex gap-2">

@@ -42,13 +42,24 @@ class BlockscoutStandardInputTest extends TestCase
         parent::tearDown();
     }
 
-    private function deployedToken(string $type = 'standard'): FactoryToken
+    private const PAID = ['paid' => true, 'via' => 'create'];
+
+    private function deployedToken(string $type = 'standard', bool $paid = true): FactoryToken
     {
         return FactoryToken::create([
             'name' => 'Good', 'symbol' => 'GOOD', 'total_supply' => '1000', 'creator_address' => '0x'.str_repeat('1', 40),
             'chain_id' => 4289, 'token_type' => $type, 'status' => 'deployed', 'contract_address' => $this->address,
-            'metadata' => ['factory_version' => 'v2'],
+            'metadata' => array_filter(['factory_version' => 'v2', 'source_verify' => $paid ? self::PAID : null]),
         ]);
+    }
+
+    private function putStandardInput(): void
+    {
+        File::put($this->dir.'/FactoryERC20V2.json', json_encode([
+            'compiler_version' => 'v0.8.24+commit.e11b9ed9',
+            'contract_name' => 'src/token-factory/FactoryERC20V2.sol:FactoryERC20V2',
+            'input' => ['language' => 'Solidity', 'sources' => ['src/token-factory/FactoryERC20V2.sol' => ['content' => '// x']], 'settings' => ['evmVersion' => 'london', 'viaIR' => true]],
+        ]));
     }
 
     #[Test]
@@ -78,7 +89,8 @@ class BlockscoutStandardInputTest extends TestCase
             return $request->isMultipart()
                 && $request->method() === 'POST'
                 && $parts['compiler_version']['contents'] === 'v0.8.24+commit.e11b9ed9'
-                && $parts['contract_name']['contents'] === 'src/token-factory/FactoryERC20V2.sol:FactoryERC20V2'
+                // ชื่อเปล่า ๆ — แบบ "<path>:<ชื่อ>" ทำให้ Blockscout บันทึกสัญญาผิดตัว (Ownable) แล้วพัง
+                && $parts['contract_name']['contents'] === 'FactoryERC20V2'
                 && $parts['autodetect_constructor_args']['contents'] === 'true'
                 && $parts['license_type']['contents'] === 'mit'
                 && str_contains((string) $parts['files[0]']['contents'], '"evmVersion":"london"');
@@ -114,10 +126,41 @@ class BlockscoutStandardInputTest extends TestCase
         ]);
 
         $token = $this->deployedToken();
-        $token->update(['metadata' => ['explorer_verification' => ['status' => 'submitted']]]);
+        $token->update(['metadata' => ['source_verify' => self::PAID, 'explorer_verification' => ['status' => 'submitted']]]);
 
         app()->call([new VerifyFactoryTokenOnExplorerJob($token->id), 'handle']);
 
         $this->assertSame('verified', $token->fresh()->metadata['explorer_verification']['status']);
+    }
+
+    #[Test]
+    public function ยังไม่จ่ายค่ายืนยัน_ไม่ส่งอะไรให้_explorer(): void
+    {
+        $this->putStandardInput();
+        Http::fake();
+
+        $token = $this->deployedToken(paid: false);
+        app()->call([new VerifyFactoryTokenOnExplorerJob($token->id), 'handle']);
+
+        Http::assertNothingSent();
+        $this->assertArrayNotHasKey('explorer_verification', $token->fresh()->metadata);
+    }
+
+    #[Test]
+    public function ส่งกุญแจของระบบไปกับคำขอ_เพราะ_explorer_ปิดช่องสาธารณะ(): void
+    {
+        $this->putStandardInput();
+        config(['blockchain.explorer_verify_key' => 'secret-key-123']);
+        Http::fake([
+            "explorer.tpix.test/api/v2/smart-contracts/{$this->address}/verification/via/standard-input" => Http::response(['message' => 'ok']),
+            "explorer.tpix.test/api/v2/smart-contracts/{$this->address}" => Http::response(['is_verified' => false]),
+        ]);
+
+        app()->call([new VerifyFactoryTokenOnExplorerJob($this->deployedToken()->id), 'handle']);
+
+        Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/verification/via/standard-input')
+            && $request->header('X-TPIX-Verify-Key') === ['secret-key-123']);
+        // คำถามสถานะเป็นของสาธารณะ — ไม่ต้องแนบกุญแจ
+        Http::assertNotSent(fn (Request $request) => $request->method() === 'GET' && $request->hasHeader('X-TPIX-Verify-Key'));
     }
 }

@@ -19,6 +19,7 @@ const props = defineProps({
     canManagePolicy: { type: Boolean, default: false },
     canModerate: { type: Boolean, default: false },
     logoRules: { type: Object, default: () => ({ max_kb: 512, min_px: 128, types: 'PNG, WebP' }) },
+    refundMode: { type: String, default: 'manual' },
 });
 
 const flash = computed(() => usePage().props.flash || {});
@@ -149,6 +150,62 @@ function submitReject() {
         reason: rejectReason.value,
     });
     showRejectModal.value = false;
+}
+
+/*
+ * คืนค่าธรรมเนียมของคำขอที่ถูกปฏิเสธ (เต็มจำนวนที่โอนมา)
+ *   manual — แอดมินโอน TPIX คืนจากกระเป๋ารับค่าธรรมเนียม/กระเป๋าร้อน แล้ววาง tx hash ให้ระบบตรวจบนเชน
+ *   auto   — ระบบเข้าคิวจ่ายจากกระเป๋าร้อนของคลัง (กดสั่งใหม่ได้เมื่อรอบก่อนล้มเหลว)
+ */
+const REFUND_LABELS = {
+    pending: { text: 'รอคืนค่าธรรมเนียม', cls: 'text-amber-300' },
+    sending: { text: 'กำลังจ่ายคืน', cls: 'text-blue-300' },
+    refunded: { text: 'คืนค่าธรรมเนียมแล้ว', cls: 'text-green-400' },
+    failed: { text: 'คืนไม่สำเร็จ', cls: 'text-red-400' },
+};
+
+const refundTarget = ref(null);
+const refundTxHash = ref('');
+const refundSubmitting = ref(false);
+const refundTxValid = computed(() => /^0x[a-fA-F0-9]{64}$/.test(refundTxHash.value.trim()));
+
+function weiToTpix(wei) {
+    if (!wei || !/^[0-9]+$/.test(String(wei))) return '-';
+    const v = BigInt(wei);
+    const unit = 10n ** 18n;
+    const frac = (v % unit).toString().padStart(18, '0').slice(0, 6).replace(/0+$/, '');
+    return `${(v / unit).toLocaleString('en-US')}${frac ? '.' + frac : ''}`;
+}
+
+const canRefund = (token) => props.canModerate && token.status === 'rejected'
+    && ['pending', 'failed'].includes(token.refund_status);
+
+function openRefundModal(token) {
+    refundTarget.value = token;
+    refundTxHash.value = '';
+}
+
+function submitManualRefund() {
+    const token = refundTarget.value;
+    if (!token || !refundTxValid.value || refundSubmitting.value) return;
+    refundSubmitting.value = true;
+    router.post(`/admin/token-factory/${token.id}/refund/manual`, { tx_hash: refundTxHash.value.trim() }, {
+        preserveScroll: true,
+        onSuccess: (page) => {
+            // ปิดเฉพาะเมื่อปิดรายการได้จริง — ยังยืนยันไม่ครบ/ผิดเงื่อนไข แก้แล้วกดซ้ำได้โดยไม่ต้องวางใหม่
+            if (!page.props.flash?.error) refundTarget.value = null;
+        },
+        onFinish: () => { refundSubmitting.value = false; },
+    });
+}
+
+function queueAutoRefund(token) {
+    if (!confirm(`สั่งจ่ายคืน ${weiToTpix(token.refund_amount_wei)} TPIX ให้ ${token.creator_address}\nจากกระเป๋าร้อนของคลัง?\n\nระบบจะเซ็นและส่งในรอบคิวถัดไป (ภายใน ~1 นาที) — ห้ามโอนเองซ้ำระหว่างนี้`)) return;
+    router.post(`/admin/token-factory/${token.id}/refund/auto`, {}, { preserveScroll: true });
+}
+
+function copyText(text) {
+    navigator.clipboard?.writeText(text).catch(() => {});
 }
 
 function retryDeploy(id) {
@@ -355,6 +412,15 @@ function goToPage(page) {
                                 <a v-if="token.status === 'deploying' && token.tx_hash" :href="explorerTx(token.tx_hash)" target="_blank" rel="noopener" class="block text-[10px] text-blue-300 mt-1 font-mono">tx {{ shortAddr(token.tx_hash) }}</a>
                                 <p v-if="(token.metadata?.risk_ack || []).length" class="text-[10px] text-red-300 mt-1">⚠ {{ token.metadata.risk_ack.join(', ') }}</p>
                                 <a v-if="token.fee_tx_hash" :href="explorerTx(token.fee_tx_hash)" target="_blank" rel="noopener" class="block text-[10px] text-gray-500 mt-1">ค่าธรรมเนียม {{ token.metadata?.fee_amount }} TPIX</a>
+                                <div v-if="token.refund_status" class="mt-1 text-[10px]" data-test="refund-status">
+                                    <span :class="REFUND_LABELS[token.refund_status]?.cls">
+                                        {{ REFUND_LABELS[token.refund_status]?.text || token.refund_status }} · {{ weiToTpix(token.refund_amount_wei) }} TPIX
+                                        <span v-if="token.refund_mode" class="text-gray-500">({{ token.refund_mode === 'auto' ? 'อัตโนมัติ' : 'โอนเอง' }})</span>
+                                    </span>
+                                    <a v-if="token.refund_tx_hash" :href="explorerTx(token.refund_tx_hash)" target="_blank" rel="noopener" class="block text-green-300 font-mono">tx คืน {{ shortAddr(token.refund_tx_hash) }}</a>
+                                    <span v-else-if="token.refund_status === 'sending' && token.refund_payout_id" class="block text-gray-500">คิวจ่าย #{{ token.refund_payout_id }}</span>
+                                    <p v-if="token.refund_status === 'failed' && token.metadata?.refund_error" class="text-red-400 max-w-[220px] break-words">{{ token.metadata.refund_error }}</p>
+                                </div>
                             </td>
                             <td class="p-4 hidden md:table-cell">
                                 <span v-if="token.status === 'deployed'" :class="['text-xs', token.is_listed ? 'text-green-400' : 'text-gray-500']">
@@ -409,6 +475,23 @@ function goToPage(page) {
                                         class="px-2.5 py-1 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20 transition-colors"
                                     >
                                         Reject
+                                    </button>
+                                    <!-- Rejected: คืนค่าธรรมเนียม -->
+                                    <button
+                                        v-if="canRefund(token)"
+                                        @click="openRefundModal(token)"
+                                        class="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 text-xs font-medium hover:bg-amber-500/20 transition-colors"
+                                        data-test="refund-manual-button"
+                                    >
+                                        ยืนยันโอนคืนแล้ว
+                                    </button>
+                                    <button
+                                        v-if="canRefund(token)"
+                                        @click="queueAutoRefund(token)"
+                                        class="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-300 text-xs font-medium hover:bg-blue-500/20 transition-colors"
+                                        data-test="refund-auto-button"
+                                    >
+                                        {{ token.refund_status === 'failed' ? 'สั่งจ่ายคืนอีกครั้ง' : 'จ่ายคืนอัตโนมัติ' }}
                                     </button>
                                     <!-- Deployed actions -->
                                     <button
@@ -495,6 +578,10 @@ function goToPage(page) {
                             <label class="block text-sm text-gray-300 mb-1.5">Reason <span class="text-red-400">*</span></label>
                             <textarea v-model="rejectReason" rows="3" class="trading-input w-full resize-none" placeholder="Explain why this token is rejected..."></textarea>
                         </div>
+                        <p class="mb-4 text-xs text-amber-300/90" data-test="reject-refund-note">
+                            ค่าธรรมเนียมที่ผู้ขอจ่ายมาต้องคืนเต็มจำนวน —
+                            {{ refundMode === 'auto' ? 'ระบบจะจ่ายคืนจากกระเป๋าร้อนอัตโนมัติ' : 'โอนคืนเองแล้ววาง tx hash ที่แถวนี้ (หรือกดจ่ายคืนอัตโนมัติ)' }}
+                        </p>
                         <div class="flex gap-3">
                             <button @click="showRejectModal = false" class="flex-1 btn-secondary py-2">Cancel</button>
                             <button @click="submitReject" :disabled="!rejectReason.trim()" class="flex-1 py-2 rounded-lg bg-red-500/20 text-red-400 font-medium hover:bg-red-500/30 disabled:opacity-50 transition-colors">Reject</button>
@@ -502,6 +589,42 @@ function goToPage(page) {
                     </div>
                 </div>
             </Transition>
+        </Teleport>
+
+        <!-- Manual refund modal -->
+        <Teleport to="body">
+            <div v-if="refundTarget" class="fixed inset-0 z-50 flex items-center justify-center p-4" data-test="refund-modal">
+                <div class="absolute inset-0 bg-dark-950/80 backdrop-blur-sm" @click="refundTarget = null"></div>
+                <div class="relative glass-dark p-6 rounded-2xl border border-white/10 max-w-lg w-full">
+                    <h3 class="text-lg font-bold text-white mb-1">คืนค่าธรรมเนียม {{ refundTarget.symbol }}</h3>
+                    <p class="text-xs text-gray-400 mb-4">โอน TPIX บนเชน TPIX จากกระเป๋ารับค่าธรรมเนียมหรือกระเป๋าร้อนของระบบ แล้ววาง tx hash — ระบบตรวจผู้รับ ผู้โอน ยอด และสถานะบนเชนก่อนปิดรายการ</p>
+                    <div class="space-y-2 mb-4 text-sm">
+                        <div class="flex items-center justify-between gap-2 p-3 rounded-lg bg-white/5">
+                            <span class="text-gray-400 shrink-0">ผู้รับ</span>
+                            <span class="font-mono text-xs text-white break-all text-right">{{ refundTarget.creator_address }}</span>
+                            <button type="button" class="text-xs text-primary-400 shrink-0" @click="copyText(refundTarget.creator_address)">คัดลอก</button>
+                        </div>
+                        <div class="flex items-center justify-between gap-2 p-3 rounded-lg bg-white/5">
+                            <span class="text-gray-400">ยอดขั้นต่ำ</span>
+                            <span class="font-mono text-white">{{ weiToTpix(refundTarget.refund_amount_wei) }} TPIX</span>
+                        </div>
+                    </div>
+                    <label class="block text-sm text-gray-300 mb-1.5">Tx hash ของการโอนคืน</label>
+                    <input v-model="refundTxHash" type="text" class="trading-input w-full font-mono text-xs" placeholder="0x…" data-test="refund-tx-input" />
+                    <p v-if="refundTxHash && !refundTxValid" class="text-xs text-red-400 mt-1">tx hash ต้องเป็น 0x ตามด้วยตัวอักษรฐานสิบหก 64 ตัว</p>
+                    <div class="flex gap-3 mt-5">
+                        <button @click="refundTarget = null" class="flex-1 btn-secondary py-2">ยกเลิก</button>
+                        <button
+                            @click="submitManualRefund"
+                            :disabled="!refundTxValid || refundSubmitting"
+                            class="flex-1 py-2 rounded-lg bg-amber-500/20 text-amber-300 font-medium hover:bg-amber-500/30 disabled:opacity-50 transition-colors"
+                            data-test="refund-submit"
+                        >
+                            {{ refundSubmitting ? 'กำลังตรวจบนเชน…' : 'ตรวจและปิดรายการ' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
         </Teleport>
     </AdminLayout>
 </template>

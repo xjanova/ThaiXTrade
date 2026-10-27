@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\TokenFactory\TokenFactoryRefunds;
 use App\Support\Wei;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -61,6 +62,19 @@ class TreasuryPayout extends Model
     ];
 
     protected $appends = ['amount_tpix'];
+
+    /**
+     * คืนค่าธรรมเนียมสร้างเหรียญจ่ายผ่านคิวนี้ — ผลของคิว (สำเร็จ/ล้มเหลว) ต้องไหลกลับไปที่แถวเหรียญ
+     * ไม่ว่าสถานะจะเปลี่ยนจากที่ไหน (tpix:treasury-payouts หรือแอดมินปฏิเสธในหน้าคลัง).
+     */
+    protected static function booted(): void
+    {
+        static::updated(function (self $payout) {
+            if ($payout->wasChanged('status') && $payout->purpose === TokenFactoryRefunds::PAYOUT_PURPOSE) {
+                app(TokenFactoryRefunds::class)->syncFromPayout($payout);
+            }
+        });
+    }
 
     public function setToAddressAttribute(?string $value): void
     {
