@@ -36,6 +36,19 @@ class TokenFactoryService
     /** สถานะที่ถือสัญลักษณ์ไว้ (ตรงกับคอลัมน์ generated active_symbol) */
     public const ACTIVE_STATUSES = ['pending', 'deploying', 'deployed'];
 
+    /**
+     * คำขอที่ "ยังไม่จบ" — failed นับด้วยเพราะทีมงานยังสั่งสร้างใหม่ได้ (ค่าธรรมเนียมจ่ายแล้ว)
+     * จบจริงคือ deployed หรือ rejected เท่านั้น.
+     */
+    public const IN_PROGRESS_STATUSES = ['pending', 'deploying', 'failed'];
+
+    /** ข้อความขั้นตอนของคำขอที่ยังไม่จบ — หน้าเว็บใช้ชุดเดียวกัน. */
+    public const IN_PROGRESS_STAGE_TH = [
+        'pending' => 'รอผู้ดูแลตรวจสอบและอนุมัติ',
+        'deploying' => 'กำลังสร้างเหรียญบนเชน',
+        'failed' => 'สร้างบนเชนไม่สำเร็จ — ทีมงานกำลังตรวจสอบและสั่งสร้างใหม่ (ค่าธรรมเนียมที่จ่ายแล้วไม่หาย)',
+    ];
+
     /** แถวที่ค้าง deploying นานเกินเท่านี้ (และยังไม่มีธุรกรรม) แอดมินรีเซ็ตได้ */
     public const STUCK_MINUTES = 15;
 
@@ -152,6 +165,9 @@ class TokenFactoryService
     {
         $creator = strtolower($creator);
         $this->assertCanCreate($prepared['data']['token_type'], $creator);
+        // เฉพาะตอนออกใบเสนอราคา (ก่อนจ่ายเงิน) — ตอน /create ห้ามตรวจข้อนี้
+        // ไม่งั้นผู้ใช้ที่จ่ายแล้วกด "ส่งคำขอต่อ" หลังคำขอเข้าไปแล้วจะติดค้างตลอด
+        $this->assertNoRequestInProgress($creator);
 
         $fee = $prepared['decision']['fee'];
         $amount = $this->decimalString($fee['total']);
@@ -785,11 +801,35 @@ class TokenFactoryService
         return $quote;
     }
 
+    /**
+     * กระเป๋าหนึ่งมีคำขอค้างได้ทีละคำขอ — ค้างอยู่ = ห้ามจ่ายค่าธรรมเนียมใบใหม่.
+     *
+     * @throws TokenFactoryException
+     */
+    private function assertNoRequestInProgress(string $creator): void
+    {
+        $open = FactoryToken::where('creator_address', $creator)
+            ->whereIn('status', self::IN_PROGRESS_STATUSES)
+            ->latest('id')
+            ->first(['id', 'symbol', 'status']);
+
+        if ($open) {
+            $stage = self::IN_PROGRESS_STAGE_TH[$open->status];
+
+            throw new TokenFactoryException(
+                'REQUEST_IN_PROGRESS',
+                "กระเป๋านี้มีคำขอสร้างเหรียญ {$open->symbol} อยู่ระหว่างดำเนินการ ({$stage}) — สร้างเหรียญใหม่ได้เมื่อคำขอนี้เสร็จหรือถูกปฏิเสธ ดูสถานะได้ที่แท็บ My Tokens",
+                409
+            );
+        }
+    }
+
+    /** failed นับเป็นจองแล้ว — ทีมงานยังสั่งสร้างใหม่ได้ ถ้าปล่อยให้คนอื่นจองซ้ำ สองคำขอจะชนกันตอน retry. */
     private function symbolTaken(string $symbol): bool
     {
         return FactoryToken::where('chain_id', $this->policy->chainId())
             ->whereRaw('UPPER(symbol) = ?', [strtoupper($symbol)])
-            ->whereIn('status', self::ACTIVE_STATUSES)
+            ->whereIn('status', [...self::ACTIVE_STATUSES, 'failed'])
             ->exists();
     }
 

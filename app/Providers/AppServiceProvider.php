@@ -45,6 +45,18 @@ class AppServiceProvider extends ServiceProvider
     ];
 
     /**
+     * Token Factory — ชื่อตัวนับ => [ต่อกระเป๋า, ต่อ IP, นับรายชั่วโมงไหม (false = รายนาที)].
+     *
+     * ต่อกระเป๋าเท่าของเดิมใน routes/api.php · ต่อ IP สูงกว่าเพราะผู้ใช้มือถือหลายคนใช้ IP เดียวกัน (NAT)
+     */
+    private const TOKEN_FACTORY_RATE_LIMITS = [
+        'token-factory-quote' => [20, 60, true],
+        'token-factory-fee-status' => [60, 120, false],
+        'token-factory-create' => [10, 30, true],
+        'token-factory-logo' => [10, 30, true],
+    ];
+
+    /**
      * Register any application services.
      */
     public function register(): void
@@ -120,6 +132,25 @@ class AppServiceProvider extends ServiceProvider
          */
         RateLimiter::for('validator-apply-challenge', fn (Request $request) => Limit::perHour(30)->by('challenge:'.$request->ip()));
         RateLimiter::for('validator-apply', fn (Request $request) => Limit::perHour(10)->by('submit:'.$request->ip()));
+
+        /*
+         * Token Factory — ตัวนับของตัวเอง ต่อกระเป๋า (ด่าน VerifyWalletOwnership รันก่อนแล้ว) + ต่อ IP
+         *
+         * ⚠️ เดิมใช้ `throttle:10,60` แบบไม่มีชื่อ — บั๊กเดียวกับ validator-apply ข้างบน
+         *    ผู้ใช้ที่จ่ายค่าธรรมเนียมแล้วโดน 429 ตอนส่งคำขอสร้าง เพราะหน้าเว็บถาม fee-status
+         *    ระหว่างรอยืนยันจนตัวนับรวมทั้งเว็บเกิน 10
+         */
+        foreach (self::TOKEN_FACTORY_RATE_LIMITS as $name => [$perWallet, $perIp, $perHour]) {
+            RateLimiter::for($name, function (Request $request) use ($name, $perWallet, $perIp, $perHour) {
+                $wallet = strtolower((string) $request->input('wallet_address', ''));
+                $limit = fn (int $n) => $perHour ? Limit::perHour($n) : Limit::perMinute($n);
+
+                return [
+                    $limit($perWallet)->by($name.':wallet:'.($wallet ?: $request->ip())),
+                    $limit($perIp)->by($name.':ip:'.$request->ip()),
+                ];
+            });
+        }
 
         foreach (self::AI_BOT_RATE_LIMITS as $name => $perMinute) {
             RateLimiter::for($name, fn (Request $request) => $this->aiBotLimits($request, $perMinute));

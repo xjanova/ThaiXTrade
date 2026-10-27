@@ -227,7 +227,7 @@ describe('create-token.cjs', () => {
         });
     }, 30000);
 
-    it('scans the whole lookback in chunks when the RPC rejects a wide range, and still finds an old token', async () => {
+    it('scans the whole lookback within the polygon-edge 1,000-block getLogs cap, and still finds an old token', async () => {
         const iface = new ethers.Interface(require(path.join(ROOT, 'scripts/blockchain/abi/TPIXTokenFactoryV2.json')).abi);
         const tokenAddress = '0x' + 'ab'.repeat(20);
         const txHash = '0x' + '9a'.repeat(32);
@@ -236,13 +236,17 @@ describe('create-token.cjs', () => {
             address: FACTORY, topics: encoded.topics, data: encoded.data, blockNumber: '0xbb8', transactionHash: txHash,
             transactionIndex: '0x0', blockHash: '0x' + 'ee'.repeat(32), logIndex: '0x0', removed: false,
         };
+        const ranges = [];
 
         await withChain({
-            eth_blockNumber: () => '0x4e20', // 20000 — เหรียญเดิมอยู่บล็อก 3000 เก่ากว่า 5,000 บล็อกล่าสุด
+            eth_blockNumber: () => '0x4e20', // 20000 — เหรียญเดิมอยู่บล็อก 3000 เก่ากว่า 1,000 บล็อกล่าสุดมาก
+            // เพดานจริงของ polygon-edge บนเชน TPIX: to - from > 1000 → "block range too high"
+            // (เดิมเทสต์จำลองเพดาน 5,000 ซึ่งไม่ตรงของจริง สคริปต์จึงผ่านเทสต์แต่ล้มบนเชน)
             eth_getLogs: ([filter]) => {
                 const from = Number(BigInt(filter.fromBlock));
                 const to = Number(BigInt(filter.toBlock));
-                if (to - from > 5000) throw new Error('block range too wide');
+                ranges.push(to - from);
+                if (to - from > 1000) throw new Error('block range too high');
                 return from <= 3000 && 3000 <= to ? [log] : [];
             },
             eth_getTransactionReceipt: () => receipt(txHash, '0x1', [log]),
@@ -254,6 +258,7 @@ describe('create-token.cjs', () => {
             expect(last.contractAddress.toLowerCase()).toBe(tokenAddress);
             expect(lines.some((l) => l.event === 'signed')).toBe(false);
             expect(state.sent).toEqual([]);
+            expect(Math.max(...ranges)).toBeLessThanOrEqual(1000);
         });
     }, 30000);
 

@@ -29,6 +29,7 @@
  *   TPIX_CHAIN_ID              - เชนที่ต้องเป็น (ค่าตั้งต้น 4289) — RPC ชี้ผิดเชน = ไม่ส่งอะไรเลย
  *   DEPLOY_WAIT_SECONDS        - รอ receipt นานสุดกี่วินาที (ค่าตั้งต้น 90) ต้องน้อยกว่า timeout ของ PHP
  *   DEDUPE_LOOKBACK_BLOCKS     - ย้อนหา TokenCreated ของเจ้าของ+ชื่อ+สัญลักษณ์เดียวกันกี่บล็อกก่อนส่ง (ค่าตั้งต้น 43200)
+ *   DEDUPE_CHUNK_BLOCKS        - ช่วงบล็อกต่อหนึ่ง eth_getLogs (ค่าตั้งต้น 1000 = เพดานของ polygon-edge)
  *
  * CLI: node create-token.cjs '{"name":"My Token","symbol":"MTK",...}'
  *
@@ -647,15 +648,18 @@ async function findExistingToken(provider, factoryAddress, iface, input) {
         return null;
     };
 
-    // ช่วงเดียวทั้งหมดก่อน — RPC บางตัวจำกัดช่วงบล็อก ถ้าโดนปฏิเสธให้ไล่ทีละ 5,000 บล็อกจนครบช่วง
-    // ⚠️ ห้ามย่อช่วงให้สั้นลงแล้วถือว่า "ไม่เจอ" — เหรียญที่สร้างไว้เก่ากว่าช่วงสั้นจะถูกสร้างซ้ำ
-    try {
-        return await scan(fromBlock, latest);
-    } catch (e) {
-        process.stderr.write(`dedupe getLogs ช่วงเดียวไม่สำเร็จ (${errorText(e)}) — ไล่ทีละช่วง\n`);
+    // polygon-edge ของเชน TPIX ตอบ "block range too high" เมื่อช่วงเกิน 1,000 บล็อก (ยืนยันสด 2026-10-27)
+    // เดิมไล่ทีละ 5,000 → ล้มทุกครั้ง ทุกคำขอสร้างเหรียญจบที่ DEDUPE_UNAVAILABLE ทั้งที่ไม่มีอะไรผิด
+    // ⚠️ ห้ามย่อช่วงย้อนหลังให้สั้นลงแล้วถือว่า "ไม่เจอ" — เหรียญที่สร้างไว้เก่ากว่าช่วงสั้นจะถูกสร้างซ้ำ
+    const CHUNK = Math.max(1, Number(process.env.DEDUPE_CHUNK_BLOCKS || 1000));
+    if (latest - fromBlock + 1 <= CHUNK) {
+        try {
+            return await scan(fromBlock, latest);
+        } catch (e) {
+            process.stderr.write(`dedupe getLogs ช่วงเดียวไม่สำเร็จ (${errorText(e)}) — ไล่ทีละช่วง\n`);
+        }
     }
 
-    const CHUNK = 5000;
     for (let to = latest; to >= fromBlock; to -= CHUNK) {
         const from = Math.max(fromBlock, to - CHUNK + 1);
         let found;

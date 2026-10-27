@@ -569,8 +569,20 @@ const factoryIssues = computed(() => {
     return Object.values(raw || {}).filter(Boolean);
 });
 
+/**
+ * คำขอที่ยังไม่จบของกระเป๋านี้ — ข้อความชุดเดียวกับ TokenFactoryService::IN_PROGRESS_STAGE_TH
+ * failed นับว่ายังไม่จบ: ทีมงานสั่งสร้างใหม่ได้ ค่าธรรมเนียมที่จ่ายแล้วไม่หาย
+ */
+const IN_PROGRESS_STAGE = {
+    pending: 'รอผู้ดูแลตรวจสอบและอนุมัติ',
+    deploying: 'กำลังสร้างเหรียญบนเชน',
+    failed: 'สร้างบนเชนไม่สำเร็จ — ทีมงานกำลังตรวจสอบและสั่งสร้างใหม่ (ค่าธรรมเนียมที่จ่ายแล้วไม่หาย)',
+};
+const openRequest = computed(() => factoryStore.myTokens.find((t) => IN_PROGRESS_STAGE[t?.status]) || null);
+
 const canCreate = computed(() => {
     return walletStore.isConnected
+        && !openRequest.value
         && form.value.name
         && form.value.symbol
         && form.value.total_supply
@@ -781,6 +793,11 @@ function apiErrorMessage(e) {
     if (data?.error?.message) return data.error.message;
     if (e?.code === 4001 || e?.code === 'ACTION_REJECTED') return 'ยกเลิกการชำระค่าธรรมเนียมแล้ว';
     if (/insufficient/i.test(e?.message || '')) return 'ยอด TPIX ในกระเป๋าไม่พอจ่ายค่าธรรมเนียม';
+    if (e?.response?.status === 429) {
+        return pendingPayment.value
+            ? 'ส่งคำขอถี่เกินไป — รอสักครู่แล้วกด "ส่งคำขอต่อ" อีกครั้ง (ไม่ต้องจ่ายซ้ำ)'
+            : 'ส่งคำขอถี่เกินไป — รอสักครู่แล้วลองใหม่';
+    }
     return e?.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่';
 }
 
@@ -855,6 +872,10 @@ function onCreated(symbol) {
 }
 
 async function handleCreate() {
+    if (openRequest.value) {
+        formErrors.value = { general: `มีคำขอสร้าง ${openRequest.value.symbol} อยู่ระหว่างดำเนินการ — สร้างเหรียญใหม่ได้เมื่อคำขอนี้เสร็จหรือถูกปฏิเสธ` };
+        return;
+    }
     if (!canCreate.value || isSubmitting.value) return;
     if (pendingPayment.value) {
         formErrors.value = { general: 'มีค่าธรรมเนียมที่ชำระแล้วรอส่งคำขออยู่ — กด "ส่งคำขอต่อ" ก่อน' };
@@ -943,6 +964,16 @@ onMounted(async () => {
 onUnmounted(() => {
     disposed = true;
     stopPolling();
+});
+
+// คำขอเข้าระบบแล้วแต่คำตอบไม่ถึงหน้าเว็บ (เน็ตหลุดหลังเซิร์ฟเวอร์บันทึก) — ถ้าไม่ล้าง
+// ป้าย "ส่งคำขอต่อ" จะค้าง และกดส่งซ้ำก็ได้แค่ "ธุรกรรมนี้ถูกใช้แล้ว"
+watch([openRequest, pendingPayment], ([open, paid]) => {
+    if (open && paid && open.fee_tx_hash && open.fee_tx_hash.toLowerCase() === String(paid.feeTxHash).toLowerCase()) {
+        clearPendingPayment();
+        payment.value = { stage: 'idle', txHash: '', confirmations: 0, required: 0, message: '' };
+        formErrors.value = {};
+    }
 });
 
 watch(() => walletStore.address, async (addr) => {
@@ -1353,6 +1384,21 @@ function getTypeLabel(type) {
                         </div>
                     </div>
 
+                    <!-- คำขอที่ยังไม่จบ — กระเป๋าหนึ่งมีคำขอค้างได้ทีละคำขอ (เซิร์ฟเวอร์บังคับซ้ำตอนออกใบเสนอราคา) -->
+                    <div v-if="openRequest && !pendingPayment" class="mb-4 p-4 rounded-xl border" :class="openRequest.status === 'failed' ? 'bg-red-500/10 border-red-500/30' : 'bg-blue-500/10 border-blue-500/30'" data-test="request-in-progress">
+                        <p class="text-sm font-semibold" :class="openRequest.status === 'failed' ? 'text-red-300' : 'text-blue-200'">
+                            อยู่ในขั้นตอนขอสร้างเหรียญ {{ openRequest.symbol }}
+                        </p>
+                        <p class="text-xs mt-1" :class="openRequest.status === 'failed' ? 'text-red-200/90' : 'text-blue-100/90'">
+                            ขั้นตอนตอนนี้: {{ IN_PROGRESS_STAGE[openRequest.status] }}
+                        </p>
+                        <p class="text-[11px] text-gray-400 mt-1">สร้างเหรียญใหม่ได้เมื่อคำขอนี้สร้างเสร็จหรือถูกปฏิเสธ</p>
+                        <button type="button" class="mt-3 px-4 py-2 rounded-lg bg-white/5 text-xs font-semibold text-white hover:bg-white/10" @click="activeTab = 'my-tokens'">
+                            ดูสถานะคำขอ
+                        </button>
+                    </div>
+
+                    <template v-if="!openRequest || pendingPayment">
                     <!-- Step Indicator -->
                     <div class="flex items-center justify-between mb-8 px-2">
                         <button
@@ -2007,6 +2053,7 @@ function getTypeLabel(type) {
                             <span v-else>{{ dynamicFee.is_free ? 'สร้างเหรียญ' : 'ชำระและสร้างเหรียญ' }}</span>
                         </button>
                     </div>
+                    </template>
                 </div>
             </div>
 
@@ -2076,13 +2123,17 @@ function getTypeLabel(type) {
                             Reason: {{ token.reject_reason }}
                         </div>
 
-                        <div v-if="token.status === 'failed'" class="mt-3 p-2 rounded-lg bg-red-500/10 text-xs text-red-400">
-                            Deployment failed. Our team will retry automatically or contact you.
+                        <div v-if="token.status === 'pending'" class="mt-3 p-2 rounded-lg bg-yellow-500/10 text-xs text-yellow-300" data-test="status-note">
+                            อยู่ในขั้นตอนขอสร้างเหรียญ: {{ IN_PROGRESS_STAGE.pending }}
                         </div>
 
-                        <div v-if="token.status === 'deploying'" class="mt-3 p-2 rounded-lg bg-blue-500/10 text-xs text-blue-400 flex items-center gap-2">
+                        <div v-if="token.status === 'failed'" class="mt-3 p-2 rounded-lg bg-red-500/10 text-xs text-red-400" data-test="status-note">
+                            {{ IN_PROGRESS_STAGE.failed }}
+                        </div>
+
+                        <div v-if="token.status === 'deploying'" class="mt-3 p-2 rounded-lg bg-blue-500/10 text-xs text-blue-400 flex items-center gap-2" data-test="status-note">
                             <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                            Deploying to TPIX Chain...
+                            {{ IN_PROGRESS_STAGE.deploying }}...
                         </div>
 
                         <div v-if="token.contract_address && token.status === 'deployed'" class="mt-3 flex gap-2">

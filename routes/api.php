@@ -515,18 +515,21 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     Route::prefix('token-factory')->group(function () {
         Route::get('/my-tokens', [TokenFactoryApiController::class, 'myTokens']);
         // ใบเสนอราคาค่าธรรมเนียม (ล็อกยอด) → ผู้ใช้โอน TPIX → ถามสถานะ → สร้าง
+        // ⚠️ ทุกเส้นใช้ตัวนับที่มีชื่อ (AppServiceProvider) — `throttle:10,60` แบบไม่มีชื่อใช้คีย์
+        //    เดียวกับ API ทั้งเว็บ (โดเมน|IP): ระหว่างรอค่าธรรมเนียมยืนยัน หน้าเว็บถาม fee-status ถี่ ๆ
+        //    พอถึง /create ตัวนับเกิน 10 แล้ว → 429 ทั้งที่ผู้ใช้จ่ายเงินไปแล้ว (เกิดจริงกับ IDTC 2026-10-27)
         Route::post('/quote', [TokenFactoryApiController::class, 'quote'])
-            ->middleware(['throttle:20,60', 'kyc:token_factory']);
+            ->middleware(['throttle:token-factory-quote', 'kyc:token_factory']);
         Route::post('/fee-status', [TokenFactoryApiController::class, 'feeStatus'])
-            ->middleware('throttle:60,1');
+            ->middleware('throttle:token-factory-fee-status');
         // จำนวนเหรียญจริงต่อวันคุมด้วยนโยบาย (daily_limit_per_wallet) — throttle นี้กันยิงถี่
         // เผื่อผู้ใช้ที่จ่ายเงินแล้วต้องส่งซ้ำหลังแก้ฟอร์ม
         Route::post('/create', [TokenFactoryApiController::class, 'store'])
-            ->middleware(['throttle:10,60', 'kyc:token_factory']);
+            ->middleware(['throttle:token-factory-create', 'kyc:token_factory']);
         // ด่านเดียวกับ /create — เดิมมีแค่ throttle ทำให้ใครมีกระเป๋าก็อัปไฟล์
         // ขึ้นโดเมนได้ ทั้งที่ "สร้างเหรียญ" ซึ่งเป็นปลายทางจริงต้องผ่าน KYC
         Route::post('/upload-logo', [TokenFactoryApiController::class, 'uploadLogo'])
-            ->middleware(['throttle:10,60', 'kyc:token_factory']);
+            ->middleware(['throttle:token-factory-logo', 'kyc:token_factory']);
     });
 
     // FoodPassport — จัดการสินค้า/IoT (ต้อง verify wallet)
