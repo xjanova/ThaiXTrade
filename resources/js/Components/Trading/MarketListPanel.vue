@@ -199,8 +199,20 @@ async function fetchTickers({ silent = false } = {}) {
             }));
         }
 
+        /*
+         * ประกอบรายการให้ครบในตัวแปรนี้ก่อน แล้วค่อยใส่ลง tickers ครั้งเดียวตอนท้าย
+         *
+         * ⚠️ เดิมใส่ราคา Binance ลง tickers ก่อน แล้วค่อยรอราคาพูลจาก /dex/ticker (~2.2 วิ บน prod)
+         *    ระหว่างรอ ลิสต์ไม่มีแถว TPIX/USDT — แถวที่ปักหมุดบนสุดหายวูบทุกรอบรีเฟรช 30 วิ
+         *    (สุ่มดูเว็บจริง 70 ครั้ง หาย 3 ครั้ง) ตอนนี้ระหว่างรอ ลิสต์เดิมพร้อมราคาเดิมยังอยู่ครบ
+         *
+         * ราคา Binance ไม่มาในรอบนี้ = ใช้แถวเดิมไปก่อน แต่ทิ้งแถว DEX (isTpix) ไว้สร้างใหม่ให้ราคาสด
+         * — ไม่งั้นแถวรอเปิดรอบก่อนจะบังแถวพูลจริงที่ชื่อคู่เดียวกันไว้ตลอด
+         */
+        let rows = tickers.value.filter(t => !t.isTpix);
+
         if (tickerRes.data?.success) {
-            tickers.value = tickerRes.data.data.map(t => {
+            rows = tickerRes.data.data.map(t => {
                 const pair = `${t.baseAsset}-${t.quoteAsset}`;
                 return {
                     symbol: `${t.baseAsset}/${t.quoteAsset}`,
@@ -225,17 +237,19 @@ async function fetchTickers({ silent = false } = {}) {
          */
         const dexRows = pairRes.data?.success ? await fetchDexRows(pairRes.data.data) : [];
         dexRows.forEach((row) => {
-            if (!tickers.value.find(t => t.pair === row.pair)) tickers.value.unshift(row);
+            if (!rows.find(t => t.pair === row.pair)) rows.unshift(row);
         });
 
-        if (!tickers.value.find(t => t.base === 'TPIX')) {
+        if (!rows.find(t => t.base === 'TPIX')) {
             // DEX ยังไม่ซิงก์คู่ให้ — แถวรอเปิด ไม่มีราคา (ไม่แต่งตัวเลขขึ้นมาเอง)
-            tickers.value.unshift({
+            rows.unshift({
                 symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', quote: 'USDT',
                 logo: logos.TPIX || TPIX_COIN_ICON, chainId: TPIX_CHAIN_ID,
                 price: null, change: 0, volume: 0, isTpix: true, live: false,
             });
         }
+
+        tickers.value = rows;
     } catch {
         // API ล่ม — คงรายการเดิมไว้ ถ้ายังไม่เคยโหลดเลยให้เหลือ TPIX ตัวเดียว
         if (tickers.value.length === 0) {

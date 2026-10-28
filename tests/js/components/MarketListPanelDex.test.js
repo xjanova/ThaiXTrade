@@ -5,6 +5,8 @@
  *  - /market/tickers มาจาก Binance ล้วน TPIX จึงไม่เคยมี → ใส่แถวปลอมราคาตายตัว 0.10 + ป้าย "เร็วๆ นี้"
  *    ให้คู่เดียวที่เทรดได้จริงบนเชน TPIX
  *  - คู่ดัชนี (ดูราคาอย่างเดียว) ขึ้นป้าย "เร็วๆ นี้" เหมือนจะเปิดเทรดในอนาคต
+ *  - รอบรีเฟรช 30 วิ ใส่ราคา Binance ลงลิสต์ก่อนแล้วค่อยรอราคาพูล — แถว TPIX/USDT หายวูบระหว่างรอ
+ *    (/dex/ticker ใช้ ~2.2 วิ บน prod สุ่มดูเว็บจริง 70 ครั้ง หาย 3 ครั้ง)
  *
  * Developed by Xman Studio
  */
@@ -67,6 +69,7 @@ describe('MarketListPanel with TPIX DEX pairs', () => {
 
     afterEach(() => {
         mounted.splice(0).forEach(w => w.unmount());
+        vi.useRealTimers();
     });
 
     it('shows the live pool price for TPIX/USDT without a "Soon" badge', async () => {
@@ -107,6 +110,28 @@ describe('MarketListPanel with TPIX DEX pairs', () => {
         const tpix = rowFor(wrapper, 'TPIX');
         expect(tpix.find('[data-test="badge-soon"]').exists()).toBe(true);
         expect(tpix.text()).toContain('—');
+    });
+
+    it('keeps the TPIX/USDT row with its last price while a refresh waits for the pool price', async () => {
+        // ปลอมแค่ interval — flushPromises ยังใช้ setImmediate/setTimeout จริงได้
+        vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+        const wrapper = await mountPanel();
+        expect(rowFor(wrapper, 'TPIX').text()).toContain('0.1234');
+
+        // รอบรีเฟรชถัดไป ราคาพูลตอบช้า — ค้างไว้จนกว่าจะปล่อยเอง
+        let release;
+        dexTicker = vi.fn(() => new Promise((resolve) => { release = resolve; }));
+        vi.advanceTimersByTime(30000);
+        await flushPromises();
+
+        expect(dexTicker).toHaveBeenCalled();
+        const waiting = rowFor(wrapper, 'TPIX');
+        expect(waiting).toBeTruthy();
+        expect(waiting.text()).toContain('0.1234');
+
+        release({ data: { success: true, data: { price: 0.2345, change_24h: 1, quote_volume_24h: 10 } } });
+        await flushPromises();
+        expect(rowFor(wrapper, 'TPIX').text()).toContain('0.2345');
     });
 });
 
