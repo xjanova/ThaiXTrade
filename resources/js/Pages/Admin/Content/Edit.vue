@@ -46,9 +46,11 @@ const categories = [
     { value: 'tpix_chain', label: 'TPIX Chain', icon: '⛓️' },
     { value: 'defi', label: 'DeFi', icon: '💰' },
     { value: 'technology', label: 'เทคโนโลยี', icon: '🔬' },
+    // บทเรียนวิดีโอ — สร้างจาก config/learn.php (LearnLessonsSeeder) แก้ที่นี่จะถูกทับรอบ deploy ถัดไป
+    { value: 'learn', label: 'เรียนรู้ (วิดีโอ)', icon: '🎓' },
 ];
 
-const categoryEnglish = { news: 'news', analysis: 'market analysis', tutorial: 'tutorial', tpix_chain: 'TPIX blockchain', defi: 'DeFi', technology: 'technology' };
+const categoryEnglish = { news: 'news', analysis: 'market analysis', tutorial: 'tutorial', tpix_chain: 'TPIX blockchain', defi: 'DeFi', technology: 'technology', learn: 'tutorial video' };
 
 // Auto-generate English prompt from title + category
 function buildAutoPrompt() {

@@ -6,6 +6,7 @@ use App\Models\Article;
 use App\Models\DiscordPost;
 use App\Services\Discord\DiscordPublisher;
 use App\Services\Discord\DiscordSettings;
+use Database\Seeders\LearnLessonsSeeder;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Log\Events\MessageLogged;
@@ -335,5 +336,75 @@ class DiscordPublisherTest extends TestCase
             $this->assertStringNotContainsString(self::TOKEN, $line);
         }
         $this->assertStringNotContainsString(self::TOKEN, (string) DiscordPost::pluck('last_error')->implode(' '));
+    }
+
+    // ── ห้องเรียนรู้ (เจ้าของ: "ให้ discord อัพเดทคลิปในห้องเรียนรู้") ──
+
+    /** @return list<Request> */
+    private function postsIn(string $room): array
+    {
+        return collect($this->discordCalls('POST'))
+            ->filter(fn (Request $r) => str_contains($r->url(), '/channels/'.$room.'/messages'))
+            ->values()
+            ->all();
+    }
+
+    public function test_each_lesson_video_is_posted_once_into_the_learning_room_and_not_again_as_an_article(): void
+    {
+        $learn = '222222222222222207';
+        config(['discord.videos' => [], 'discord.max_new_posts_per_run' => 10]);
+        app(DiscordSettings::class)->saveChannelMap([
+            'rules' => self::RULES, 'news' => self::NEWS, 'sale' => self::SALE,
+            'videos' => self::VIDEOS, 'whitepaper' => self::WHITEPAPER, 'learn' => $learn,
+        ]);
+        $this->seed(LearnLessonsSeeder::class);
+        $this->fakeDiscord();
+
+        $this->publisher()->sync();
+        $this->publisher()->sync();
+
+        $posts = $this->postsIn($learn);
+        $this->assertCount(3, $posts);
+        $first = $posts[0];
+        $this->assertStringContainsString('/videos/learn/install-android.mp4', $first['content']);
+        // อังกฤษก่อน แล้วค่อยไทย (เจ้าของ 2026-09-15) · ลิงก์คลิปอยู่ท้ายสุดให้ Discord ทำตัวเล่น
+        $this->assertLessThan(strpos($first['content'], '🇹🇭'), strpos($first['content'], 'How to install'));
+        $this->assertStringEndsWith('/videos/learn/install-android.mp4', $first['content']);
+        $this->assertArrayNotHasKey('embeds', $first->data());
+        $buttons = array_column($first['components'][0]['components'], 'url');
+        $this->assertContains(rtrim(config('app.url'), '/').'/blog/learn-install-tpix-apps-android', $buttons);
+        $this->assertContains(rtrim(config('app.url'), '/').'/blog/learn-install-tpix-apps-android-en', $buttons);
+
+        // บทความหมวดเรียนรู้ไม่ออกซ้ำในห้องข่าว
+        $this->assertSame(0, DiscordPost::where('kind', 'article')->count());
+        $this->assertSame([], $this->postsIn(self::NEWS));
+    }
+
+    public function test_a_room_map_made_before_the_learning_role_existed_uses_the_news_room(): void
+    {
+        config(['discord.videos' => [], 'discord.max_new_posts_per_run' => 10]);
+        $this->seed(LearnLessonsSeeder::class);
+        $this->fakeDiscord();
+
+        $this->publisher()->sync();
+
+        $this->assertCount(3, $this->postsIn(self::NEWS));
+        $this->assertSame(3, DiscordPost::where('kind', 'lesson')->whereNotNull('message_id')->count());
+    }
+
+    public function test_a_lesson_waits_until_its_article_is_published(): void
+    {
+        config(['discord.videos' => [], 'discord.max_new_posts_per_run' => 10]);
+        $this->seed(LearnLessonsSeeder::class);
+        Article::where('source_key', 'learn:trade-basics')->where('language', 'th')->update(['status' => 'draft']);
+        // ซ่อนแค่ฝั่งอังกฤษ ก็ต้องรอ — ปุ่มในข้อความพาไปบทความอังกฤษด้วย
+        Article::where('source_key', 'learn:wallet-basics')->where('language', 'en')->update(['status' => 'draft']);
+        $this->fakeDiscord();
+
+        $this->publisher()->sync();
+
+        $this->assertSame(['install-android'], DiscordPost::where('kind', 'lesson')->orderBy('id')->pluck('ref_key')->all());
+        $preview = collect($this->publisher()->preview())->where('kind', 'lesson');
+        $this->assertSame([], $preview->pluck('ref')->all());
     }
 }
