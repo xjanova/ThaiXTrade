@@ -632,7 +632,7 @@ class DiscordPublisher
     }
 
     /**
-     * บทเรียนที่ยังไม่เคยโพสต์ ตามลำดับใน config/learn.php — รอจนบทความภาษาไทยเผยแพร่แล้ว
+     * บทเรียนที่ยังไม่เคยโพสต์ ตามลำดับใน config/learn.php — รอจนบทความทั้งไทยและอังกฤษเผยแพร่แล้ว
      * (seeder สร้างตอน deploy) ปุ่มในข้อความจะได้ไม่พาไปหน้าว่าง · แอดมินซ่อนบทความ = ไม่โพสต์.
      *
      * @return list<array<string, mixed>>
@@ -645,9 +645,13 @@ class DiscordPublisher
             return [];
         }
 
-        $live = Article::published()->where('language', 'th')
+        // ข้อความมีปุ่มไปทั้งบทความไทยและอังกฤษ — ต้องเผยแพร่ครบทุกภาษา (บทเรียนไม่อยู่ในฟีดบทความ ไม่มีทางอื่นให้กดไปถึง)
+        $live = Article::published()->whereIn('language', LearnCatalog::LANGUAGES)
             ->whereIn('source_key', array_map(fn (array $l) => $this->learn->sourceKey($l), $lessons))
-            ->pluck('source_key')->all();
+            ->get(['source_key', 'language'])
+            ->groupBy('source_key')
+            ->filter(fn (Collection $group) => $group->pluck('language')->unique()->count() === count(LearnCatalog::LANGUAGES))
+            ->keys()->all();
 
         return array_values(array_filter($lessons, fn (array $l) => in_array($this->learn->sourceKey($l), $live, true)));
     }

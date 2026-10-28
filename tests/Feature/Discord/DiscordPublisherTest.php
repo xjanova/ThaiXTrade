@@ -396,12 +396,14 @@ class DiscordPublisherTest extends TestCase
     {
         config(['discord.videos' => [], 'discord.max_new_posts_per_run' => 10]);
         $this->seed(LearnLessonsSeeder::class);
-        Article::where('source_key', 'learn:trade-basics')->update(['status' => 'draft']);
+        Article::where('source_key', 'learn:trade-basics')->where('language', 'th')->update(['status' => 'draft']);
+        // ซ่อนแค่ฝั่งอังกฤษ ก็ต้องรอ — ปุ่มในข้อความพาไปบทความอังกฤษด้วย
+        Article::where('source_key', 'learn:wallet-basics')->where('language', 'en')->update(['status' => 'draft']);
         $this->fakeDiscord();
 
         $this->publisher()->sync();
 
-        $this->assertSame(['install-android', 'wallet-basics'], DiscordPost::where('kind', 'lesson')->orderBy('id')->pluck('ref_key')->all());
+        $this->assertSame(['install-android'], DiscordPost::where('kind', 'lesson')->orderBy('id')->pluck('ref_key')->all());
         $preview = collect($this->publisher()->preview())->where('kind', 'lesson');
         $this->assertSame([], $preview->pluck('ref')->all());
     }

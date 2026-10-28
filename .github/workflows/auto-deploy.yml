@@ -163,8 +163,6 @@ jobs:
 
             echo "🌱 Running ecosystem seeder..."
             run_seeder TpixEcosystemSeeder
-            # บทความหมวดเรียนรู้ (วิดีโอสอนใช้งาน) ตาม config/learn.php — สร้าง/อัปเดต ไม่ปลุกบทความที่แอดมินลบ
-            run_seeder LearnLessonsSeeder
 
             # Clear and rebuild caches
             echo "⚡ Optimizing application..."
@@ -175,6 +173,10 @@ jobs:
             php artisan route:cache
             php artisan view:cache
             php artisan event:cache 2>/dev/null || true
+
+            # บทความหมวดเรียนรู้ (วิดีโอสอนใช้งาน) ตาม config/learn.php — สร้าง/อัปเดต ไม่ปลุกบทความที่แอดมินลบ
+            # ต้องรันหลัง config:cache — ก่อนหน้านั้นแคชคอนฟิกของรอบก่อนยังไม่มี learn.lessons (seeder จะเห็นว่าว่างแล้วจบเงียบ)
+            run_seeder LearnLessonsSeeder
 
             # Storage symlink สำหรับ file uploads (logo, banners, etc.)
             # Laravel ใช้ public_html (ไม่ใช่ public) — สร้าง symlink ถูกที่
