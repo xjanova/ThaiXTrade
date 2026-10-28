@@ -48,7 +48,7 @@ import { playTradeSound, playErrorSound } from '@/Composables/useSounds';
 import { getBscTradeToken, getVerifiedTradeToken } from '@/Config/bscTradeTokens';
 import axios from 'axios';
 import { useTranslation } from '@/Composables/useTranslation';
-import { showToast } from '@/Composables/useToasts';
+import { showToast, dismissToast } from '@/Composables/useToasts';
 
 // การเทรดจริงทั้งหมดรันบน BSC (PancakeSwap) จนกว่า DEX บน TPIX Chain จะพร้อม
 const BSC_CHAIN_ID = 56;
@@ -96,11 +96,13 @@ const pairMeta = ref(null);
 const pairMetaLoaded = ref(false);
 // โหลดทะเบียนคู่ไม่สำเร็จ (ต่างจาก "ไม่มีคู่นี้") — ยังตัดสินไม่ได้ว่าเทรดได้ไหม
 const pairMetaFailed = ref(false);
+// ข้อมูลข้างบนเป็นของคู่ไหน — สลับคู่แล้วระหว่างโหลด pairMeta ยังเป็นของคู่เก่า
+const pairMetaFor = ref('');
 
 async function loadPairMeta() {
+    const wanted = props.pair.toUpperCase();
     try {
         const { data } = await axios.get('/api/v1/market/pairs');
-        const wanted = props.pair.toUpperCase();
         pairMeta.value = (data?.data || []).find((p) => String(p.symbol).toUpperCase() === wanted) || null;
         pairMetaFailed.value = !data?.success;
     } catch {
@@ -108,6 +110,7 @@ async function loadPairMeta() {
         pairMetaFailed.value = true;
     } finally {
         pairMetaLoaded.value = true;
+        pairMetaFor.value = wanted;
     }
 }
 
@@ -173,6 +176,25 @@ const kycBlocked = computed(() => {
 //  disabled = คู่บนเชน TPIX ที่ DEX ยังไม่ deploy หรือคู่ที่ไม่มี token บน BSC — เห็นไว้ก่อน กดไม่ได้
 // ระหว่างรอทะเบียนคู่ของคู่ BSC = onchain แต่ปุ่มปิด (tradeUnavailableReason) ไม่ให้ฟอร์มกระพริบเป็น "เร็วๆ นี้"
 const tradeFormMode = computed(() => ((isBscTradable.value || isDexPair.value || bscPairPending.value) ? 'onchain' : 'disabled'));
+
+/*
+ * ป้ายบอกโหมดเทรดของคู่นี้ (เทรดบน BSC / บนเชน TPIX / ราคาอ้างอิง / รอ DEX)
+ *
+ * เจ้าของสั่ง (2026-10-28): ป้ายเตือนด้านบนต้องเป็นบอลลูนลอย หายเองหรือกดปิดได้
+ * เดิมเป็นแถบในผัง กินความสูงกระดานตลอดเวลา — ตอนนี้ลอยผ่าน showToast 10 วิ
+ * ฟอร์มเทรดยังบอกเหตุผลเองตอนกดไม่ได้ (tradeUnavailableReason) ป้ายหายไปก็ไม่เสียข้อมูล
+ */
+const pairNotice = computed(() => {
+    if (!pairMetaLoaded.value || pairMetaFor.value !== props.pair.toUpperCase()) return null;
+    if (tradeFormMode.value === 'onchain') {
+        return { key: isDexPair.value ? 'trade.notice.onchainTpix' : 'trade.notice.onchain', type: 'info' };
+    }
+    if (isTpixChainPair.value) {
+        // คู่ดัชนี (execution_mode = index) เป็นราคาอ้างอิงถาวร ไม่ใช่ "รอ DEX"
+        return { key: pairMeta.value?.execution_mode === 'index' ? 'trade.notice.indexOnly' : 'trade.notice.tpixDexPending', type: 'warning' };
+    }
+    return null;
+});
 
 /**
  * โทเคนของคู่บน TPIX DEX ในรูปที่ useTpixDex ใช้ — สร้างจากข้อมูลเซิร์ฟเวอร์ ไม่เดา
@@ -1851,8 +1873,23 @@ watch(currentPair, async () => {
     bot.loadTrades(currentPair.value);
 });
 
+/*
+ * โชว์ป้ายใหม่ทุกครั้งที่คู่หรือโหมดเปลี่ยน — ป้ายของคู่ก่อนต้องปิดทิ้ง ไม่ซ้อนค้าง
+ * คีย์รวมชื่อคู่ด้วย: สลับระหว่างสองคู่บน BSC ข้อความเดิมก็ต้องโผล่ให้คู่ใหม่
+ */
+let pairNoticeToast = null;
+watch(
+    () => (pairNotice.value ? `${props.pair}|${pairNotice.value.key}` : ''),
+    (key) => {
+        if (pairNoticeToast) dismissToast(pairNoticeToast);
+        pairNoticeToast = key ? showToast({ text: t(pairNotice.value.key), type: pairNotice.value.type }) : null;
+    },
+);
+
 onUnmounted(() => {
     disposed = true;
+    // ป้ายลอยอยู่ใน AppLayout ทุกหน้า — ออกจากหน้าเทรดแล้วต้องไม่ตามไปหน้าอื่น
+    if (pairNoticeToast) dismissToast(pairNoticeToast);
     stopFeeds();
     clearTimeout(previewTimer);
     clearTimeout(toastTimer);
@@ -1919,20 +1956,7 @@ onUnmounted(() => {
                 </div>
             </Transition>
 
-            <!-- แถบบอกโหมดเทรด: on-chain จริงบน BSC หรือรอ TPIX Chain -->
-            <div v-if="tradeFormMode === 'onchain'" class="relative mb-3 px-3 py-2 rounded-xl bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs flex items-center gap-2">
-                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                <span>{{ t(isDexPair ? 'trade.notice.onchainTpix' : 'trade.notice.onchain') }}</span>
-            </div>
-            <div v-else-if="isTpixChainPair && pairMetaLoaded" class="relative mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
-                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <!-- คู่ดัชนี (execution_mode = index) เป็นราคาอ้างอิงถาวร ไม่ใช่ "รอ DEX" — เดิมบอกว่ารอติดตั้งสัญญาทั้งที่ DEX เปิดแล้ว -->
-                <span data-test="pair-notice">{{ t(pairMeta?.execution_mode === 'index' ? 'trade.notice.indexOnly' : 'trade.notice.tpixDexPending') }}</span>
-            </div>
+            <!-- ป้ายบอกโหมดเทรดลอยเป็นบอลลูนแล้ว (pairNotice → showToast) ไม่กินพื้นที่กระดาน -->
 
             <!-- ── ผัง 4 คอลัมน์ ────────────────────────────────────────────────
                  การ์ดทุกใบเขียนครั้งเดียวใน loop ของคอลัมน์ — ย้ายไปคอลัมน์ไหน
