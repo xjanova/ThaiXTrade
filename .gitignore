@@ -79,6 +79,8 @@ Thumbs.db
 /public_html/videos/whitepaper/*.mp4
 # คลิปแนะนำเว็บบนหน้าแรก (น้อง TPIX) — อัปขึ้นเซิร์ฟเวอร์ด้วย scp แบบเดียวกัน
 /public_html/videos/intro/*.mp4
+# วิดีโอสอนใช้งานหมวดเรียนรู้ (config/learn.php) — อัปด้วย scp เช่นกัน · โปสเตอร์ .jpg เก็บใน git
+/public_html/videos/learn/*.mp4
 
 # คลังแท่งเทียนของ backtester — ดึงใหม่ได้เสมอ ไม่ต้องเก็บใน git
 storage/app/aibot/

@@ -163,6 +163,8 @@ jobs:
 
             echo "🌱 Running ecosystem seeder..."
             run_seeder TpixEcosystemSeeder
+            # บทความหมวดเรียนรู้ (วิดีโอสอนใช้งาน) ตาม config/learn.php — สร้าง/อัปเดต ไม่ปลุกบทความที่แอดมินลบ
+            run_seeder LearnLessonsSeeder
 
             # Clear and rebuild caches
             echo "⚡ Optimizing application..."

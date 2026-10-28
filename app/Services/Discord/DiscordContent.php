@@ -3,6 +3,7 @@
 namespace App\Services\Discord;
 
 use App\Models\Article;
+use App\Services\Learn\LearnCatalog;
 use App\Services\SaleStatusService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -56,6 +57,7 @@ class DiscordContent
         private readonly SaleStatusService $sale,
         private readonly DiscordSettings $settings,
         private readonly DiscordLiveData $live,
+        private readonly LearnCatalog $learn,
     ) {}
 
     /**
@@ -135,6 +137,30 @@ class DiscordContent
         return $this->message(
             content: "🎬 **{$video['part']}**\n_{$video['title']}_ — TPIX Whitepaper video series · ซีรีส์วิดีโอ Whitepaper\n{$file}",
             button: ['Watch with notes · ดูพร้อมเนื้อหาประกอบ', $this->url('/whitepaper')],
+        );
+    }
+
+    /**
+     * บทเรียนวิดีโอ (หมวดเรียนรู้) — อังกฤษก่อน ตามด้วยไทย · ลิงก์ mp4 ไว้ท้ายสุดให้ Discord ทำตัวเล่นในห้อง
+     * ปุ่มพาไปบทความประกอบของแต่ละภาษา (มีบทในคลิปให้กดข้าม + ขั้นตอนเป็นตัวหนังสือ).
+     *
+     * @param  array<string, mixed>  $lesson  จาก config/learn.php
+     */
+    public function lesson(array $lesson): array
+    {
+        $duration = (int) $lesson['duration'];
+        $length = sprintf('%d:%02d', intdiv($duration, 60), $duration % 60);
+
+        $text = "🎓 **{$lesson['title']['en']}** · {$length}\n{$lesson['summary']['en']}"
+            .self::THAI."**{$lesson['title']['th']}**\n{$lesson['summary']['th']}";
+
+        return $this->message(
+            content: Str::limit($text, 1700)."\n".$this->url($this->learn->videoUrl($lesson)),
+            buttons: [
+                ['Step-by-step guide', $this->url($this->learn->articlePath($lesson, 'en'))],
+                ['อ่านขั้นตอน (ไทย)', $this->url($this->learn->articlePath($lesson, 'th'))],
+                ['All lessons · บทเรียนทั้งหมด', $this->url('/blog?category=learn')],
+            ],
         );
     }
 

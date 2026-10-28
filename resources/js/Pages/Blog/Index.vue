@@ -20,6 +20,7 @@ const activeLanguage = ref('th');
 
 const categories = [
     { id: 'all', label: 'ทั้งหมด' },
+    { id: 'learn', label: '🎓 เรียนรู้' },
     { id: 'news', label: '📰 ข่าว' },
     { id: 'analysis', label: '📊 วิเคราะห์' },
     { id: 'tutorial', label: '📖 สอนใช้งาน' },
@@ -46,11 +47,19 @@ function setCategory(cat) {
     fetchArticles();
 }
 
+const categoryLabel = (id) => categories.find((c) => c.id === id)?.label ?? id;
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
 function formatDate(d) {
     return new Date(d).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-onMounted(fetchArticles);
+// ลิงก์ตรงเข้าหมวด เช่น /blog?category=learn (จากหน้าดาวน์โหลด / Discord) — รับเฉพาะหมวดที่มีจริง
+onMounted(() => {
+    const wanted = new URLSearchParams(window.location.search).get('category');
+    if (wanted && categories.some((c) => c.id === wanted)) activeCategory.value = wanted;
+    fetchArticles();
+});
 </script>
 
 <template>
@@ -87,15 +96,23 @@ onMounted(fetchArticles);
             <div v-else-if="articles.length" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 <Link v-for="article in articles" :key="article.id" :href="`/blog/${article.slug}`"
                     class="glass-card group hover:border-primary-500/30 transition-all">
-                    <div class="h-48 rounded-xl overflow-hidden mb-4 bg-dark-700">
+                    <div class="relative h-48 rounded-xl overflow-hidden mb-4 bg-dark-700">
                         <img v-if="article.cover_image" :src="article.cover_image" :alt="article.title"
                             class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                         <div v-else class="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary-500/10 to-accent-500/10">
                             <span class="text-4xl">📝</span>
                         </div>
+                        <template v-if="article.video_duration">
+                            <span class="absolute inset-0 flex items-center justify-center">
+                                <span class="w-14 h-14 rounded-full bg-black/55 ring-1 ring-white/30 flex items-center justify-center text-white group-hover:bg-primary-500/80 transition-colors">
+                                    <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                                </span>
+                            </span>
+                            <span class="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/70 text-white text-xs font-mono">▶ {{ mmss(article.video_duration) }}</span>
+                        </template>
                     </div>
                     <div class="flex items-center gap-2 mb-2">
-                        <span class="px-2 py-0.5 bg-primary-500/20 text-primary-400 text-xs rounded-lg">{{ article.category }}</span>
+                        <span class="px-2 py-0.5 bg-primary-500/20 text-primary-400 text-xs rounded-lg">{{ categoryLabel(article.category) }}</span>
                         <span class="text-dark-500 text-xs">{{ formatDate(article.published_at) }}</span>
                     </div>
                     <h3 class="text-white font-semibold mb-2 group-hover:text-primary-400 transition-colors line-clamp-2">{{ article.title }}</h3>

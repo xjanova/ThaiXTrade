@@ -23,6 +23,7 @@ use App\Http\Controllers\TokenSaleController;
 use App\Http\Controllers\ValidatorController;
 use App\Http\Controllers\WalletProfileController;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Services\Learn\LearnCatalog;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -343,6 +344,8 @@ Route::get('/download', function () {
 
     return Inertia::render('Download', [
         'latestRelease' => $release,
+        // วิดีโอสอนติดตั้ง/ใช้งาน (config/learn.php) — ลิงก์ไปบทความหมวดเรียนรู้
+        'lessons' => app(LearnCatalog::class)->cards(),
     ]);
 })->name('download');
 
