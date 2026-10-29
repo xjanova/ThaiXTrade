@@ -145,6 +145,24 @@ generate_error_report() {
     echo "═══════════════════════════════════════════════════════════" >> "$ERROR_LOG"
 }
 
+# เก็บไฟล์สำรอง .env ไว้แค่ ENV_BACKUP_KEEP ไฟล์ล่าสุด และบีบสิทธิ์ที่เหลือเป็น 600
+#
+# แตะเฉพาะชื่อ .env.backup.YYYYMMDD_HHMMSS ที่สคริปต์ deploy สร้างเอง —
+# ไฟล์สำรองที่ทำมือ (เช่น .env.bak-bridge-*) ไม่ถูกลบ
+# ใช้ร่วมกับ .github/workflows/auto-deploy.yml (ทาง deploy หลัก) ซึ่งทำแบบเดียวกัน
+prune_env_backups() {
+    local keep="${ENV_BACKUP_KEEP:-5}"
+    local backups
+    backups=$(ls -1A | grep -E '^\.env\.backup\.[0-9]{8}_[0-9]{6}$' | sort -r || true)
+
+    if [ -z "$backups" ]; then
+        return 0
+    fi
+
+    echo "$backups" | while IFS= read -r f; do chmod 600 "$f" 2>/dev/null || true; done
+    echo "$backups" | tail -n +$((keep + 1)) | while IFS= read -r f; do rm -f -- "$f" 2>/dev/null || true; done
+}
+
 # Sanitize .env file to fix common issues
 sanitize_env_file() {
     print_step "Sanitizing Environment File"
@@ -154,9 +172,13 @@ sanitize_env_file() {
         return 0
     fi
 
-    # Create a backup
-    cp .env .env.backup.${TIMESTAMP}
+    # Create a backup — สิทธิ์ 600 ตั้งแต่ตอนสร้าง (umask 077 ใน subshell)
+    # .env มีรหัส keystore กระเป๋าร้อนและคีย์ทุกตัว ของเดิม cp ด้วย umask ปกติได้ 664
+    # ทุกเว็บที่รันเป็น user เดียวกันอ่านได้ และไม่เคยถูกลบ (prod สะสม 603 ไฟล์ — ออดิท 2026-10-29 C3)
+    (umask 077 && cp .env ".env.backup.${TIMESTAMP}")
+    chmod 600 ".env.backup.${TIMESTAMP}"
     print_info "Created backup: .env.backup.${TIMESTAMP}"
+    prune_env_backups
 
     # Fix common .env issues using awk
     awk '

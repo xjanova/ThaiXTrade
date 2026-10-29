@@ -81,8 +81,19 @@ jobs:
             echo "🚀 Starting deployment to ${DEPLOY_PATH}"
             cd "${DEPLOY_PATH}"
 
-            # Backup .env
-            cp .env .env.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
+            # Backup .env — สิทธิ์ 600 ตั้งแต่ตอนสร้าง แล้วเก็บไว้แค่ 5 ไฟล์ล่าสุด
+            #
+            # .env มีรหัส keystore กระเป๋าร้อนและคีย์ทุกตัว ของเดิม cp ด้วย umask ปกติ (664)
+            # ทุกรอบ deploy และไม่เคยลบ — prod สะสม 603 ไฟล์ 551 ไฟล์อ่านได้ทั้งกลุ่ม (ออดิท 2026-10-29 C3)
+            # แตะเฉพาะชื่อ .env.backup.YYYYMMDD_HHMMSS ที่ตรงนี้สร้าง — ไฟล์สำรองที่ทำมือไม่ถูกลบ
+            ENV_BACKUP=".env.backup.$(date +%Y%m%d_%H%M%S)"
+            (umask 077 && cp .env "$ENV_BACKUP") 2>/dev/null && chmod 600 "$ENV_BACKUP" 2>/dev/null || true
+            ENV_BACKUPS=$(ls -1A | grep -E '^\.env\.backup\.[0-9]{8}_[0-9]{6}$' | sort -r || true)
+            if [ -n "$ENV_BACKUPS" ]; then
+              echo "$ENV_BACKUPS" | while IFS= read -r f; do chmod 600 "$f" 2>/dev/null || true; done
+              echo "$ENV_BACKUPS" | tail -n +6 | while IFS= read -r f; do rm -f -- "$f" 2>/dev/null || true; done
+              echo "✓ .env backups: kept $(echo "$ENV_BACKUPS" | head -5 | wc -l) newest (mode 600)"
+            fi
 
             # Pull latest code — ผ่าน SSH ไม่ใช่ PAT
             #

@@ -114,9 +114,12 @@ class TokenFactoryRefunds
             $this->assertRefundOpen($row);
 
             // มีรายการจ่ายที่ยังไม่จบอยู่แล้ว = ห้ามสร้างซ้ำ (กดสองครั้ง / สองแอดมินพร้อมกัน)
+            // นับว่าจบเฉพาะเมื่อพิสูจน์ได้ว่าเงินไม่ได้ออก — failed แบบเก่าที่มี hash แต่ไม่มีใบเสร็จ
+            // อาจโอนไปแล้ว สร้างรอบใหม่ = คืนเงินซ้ำ (ออดิท 2026-10-29 C5)
             $open = $this->payoutsFor($row->id)
-                ->whereNotIn('status', [TreasuryPayout::STATUS_FAILED, TreasuryPayout::STATUS_REJECTED])
-                ->first();
+                ->orderBy('id')
+                ->get()
+                ->first(fn (TreasuryPayout $p) => ! $p->endedWithoutPayment());
             if ($open) {
                 $this->linkPayout($row, $open);
 
@@ -124,7 +127,7 @@ class TokenFactoryRefunds
             }
 
             $amount = (string) $row->refund_amount_wei;
-            $check = $this->treasury->validatePayout($row->creator_address, $amount, null, self::PAYOUT_PURPOSE);
+            $check = $this->treasury->validatePayout($row->creator_address, $amount, null, TreasuryPayout::ORIGIN_FACTORY_REFUND);
             if (! $check['ok']) {
                 throw new TokenFactoryException('REFUND_AUTO_BLOCKED', 'จ่ายคืนอัตโนมัติไม่ได้: '.implode(' / ', $check['errors']));
             }
@@ -135,6 +138,7 @@ class TokenFactoryRefunds
                 'to_address' => $row->creator_address,
                 'amount_wei' => $amount,
                 'purpose' => self::PAYOUT_PURPOSE,
+                'origin' => TreasuryPayout::ORIGIN_FACTORY_REFUND,
                 'memo' => "คืนค่าธรรมเนียมสร้างเหรียญ {$row->symbol} (คำขอ #{$row->id} ถูกปฏิเสธ)",
                 // อนุมัติแล้วโดยนโยบาย (refund_mode = auto) — คิวเซ็นและส่งในรอบ tpix:treasury-payouts ถัดไป
                 'status' => TreasuryPayout::STATUS_BROADCASTING,
@@ -163,7 +167,7 @@ class TokenFactoryRefunds
         $this->assertRefundOpen($token);
 
         $sending = $token->refund_payout_id ? TreasuryPayout::find($token->refund_payout_id) : null;
-        if ($sending && ! in_array($sending->status, [TreasuryPayout::STATUS_FAILED, TreasuryPayout::STATUS_REJECTED], true)) {
+        if ($sending && ! $sending->endedWithoutPayment()) {
             throw new TokenFactoryException('REFUND_AUTO_IN_PROGRESS', "ระบบกำลังจ่ายคืนอัตโนมัติอยู่ (คิว #{$sending->id}) — รอผลก่อน ไม่งั้นจะคืนซ้ำ", 409);
         }
 
