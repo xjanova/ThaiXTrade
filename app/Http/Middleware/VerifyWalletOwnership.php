@@ -46,6 +46,29 @@ class VerifyWalletOwnership
             ], 403);
         }
 
+        /*
+         * มีเลขกระเป๋าใน path แล้วยังส่ง wallet_address มาเป็นอีกใบ → ปฏิเสธ
+         *
+         * ⚠️ เดิม requestedWallet() เลือก body/query ก่อน path และไม่เคยเทียบสองค่านี้ แต่ controller อ่านจาก path
+         *    = เซ็นกระเป๋าตัวเอง A แล้วยิง GET /token-sale/purchases/{เหยื่อ}?wallet_address={A}
+         *    ด่านตรวจ A (ผ่าน) ส่วน controller ส่งยอดซื้อ tx hash uuid เลขอ้างอิงโอนธนาคาร
+         *    และชื่อผู้รับประโยชน์ของเหยื่อกลับมา (ข้อมูลส่วนบุคคล — PDPA)
+         *    ตอนนี้กระเป๋าใน path คือกระเป๋าที่ต้องพิสูจน์ ค่าอื่นที่ส่งมาต้องเป็นใบเดียวกัน
+         *    (array หรือค่าแปลกๆ ก็ถือว่าไม่ตรง — ห้ามเดาว่าตั้งใจหมายถึงใบไหน)
+         */
+        $routeWallet = self::routeWallet($request);
+        if (is_string($routeWallet) && $routeWallet !== ''
+            && $claimedWallet !== null && $claimedWallet !== ''
+            && ! (is_string($claimedWallet) && strtolower($claimedWallet) === strtolower($routeWallet))) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'WALLET_MISMATCH',
+                    'message' => 'กระเป๋าในลิงก์ต้องเป็นกระเป๋าเดียวกับที่ยืนยันตัวตน',
+                ],
+            ], 403);
+        }
+
         // If no wallet address in request, let the controller handle it
         if (! $walletAddress) {
             return $next($request);
@@ -83,14 +106,19 @@ class VerifyWalletOwnership
      *    ที่ย้ายมาอยู่หลัง middleware นี้ "ไม่ถูกป้องกันเลย" — middleware
      *    มองไม่เห็นค่า จึงตกไปเส้นทาง fail-open ใน handle() ทุกครั้ง
      *
+     * ลำดับ: path ก่อน body/query — controller ของ route แบบนี้อ่านกระเป๋าจาก path เสมอ
+     * กระเป๋าที่ต้องพิสูจน์จึงต้องเป็นใบใน path (handle() ปฏิเสธเมื่อ body/query ส่งมาคนละใบ)
+     *
+     * ⚠️ เดิมเลือก body/query ก่อน path — ส่ง ?wallet_address= ของตัวเองแนบ path ของเหยื่อ
+     *    ด่านก็ตรวจกระเป๋าเรา แต่ controller ส่งข้อมูลของเหยื่อกลับมา (IDOR)
+     *
      * ตัวนับ throttle:trading หากระเป๋าด้วยลำดับนี้ด้วย — ถ้าหาคนละแบบ คำขอของเจ้าของจะไปลงถังผิดใบ
      */
     public static function requestedWallet(Request $request): mixed
     {
-        return $request->input('wallet_address')
+        return self::routeWallet($request)
+            ?? $request->input('wallet_address')
             ?? $request->query('wallet_address')
-            ?? $request->route('walletAddress')
-            ?? $request->route('wallet_address')
             /*
              * ⚠️ token factory ตั้งชื่อฟิลด์ว่า creator_address ไม่ใช่ wallet_address
              *    middleware จึงหาไม่เจอ แล้วตกเส้นทาง fail-open ใน handle() ทุกครั้ง
@@ -98,6 +126,14 @@ class VerifyWalletOwnership
              *    และใส่กระเป๋าของคนอื่นเป็นเจ้าของเหรียญได้ด้วย
              */
             ?? $request->input('creator_address');
+    }
+
+    /**
+     * เลขกระเป๋าใน path ของ route (/purchases/{walletAddress} ฯลฯ) — null ถ้า route ไม่มี.
+     */
+    private static function routeWallet(Request $request): mixed
+    {
+        return $request->route('walletAddress') ?? $request->route('wallet_address');
     }
 
     /**

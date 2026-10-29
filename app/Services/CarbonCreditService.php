@@ -12,6 +12,17 @@ use Illuminate\Support\Str;
 
 class CarbonCreditService
 {
+    /** ปิดรับซื้ออยู่ — controller แปลงเป็นข้อความที่ผู้ใช้อ่านได้ */
+    public const ERR_PURCHASE_CLOSED = 'CARBON_PURCHASE_CLOSED';
+
+    /**
+     * เปิดให้ซื้อหรือยัง — ต้องเป็น true จริงๆ เท่านั้น ค่าอื่นทุกแบบ = ปิด (ดู config/carbon.php).
+     */
+    public function purchaseOpen(): bool
+    {
+        return config('carbon.purchase_enabled') === true;
+    }
+
     /**
      * ดึงโปรเจกต์ที่เปิดขาย.
      */
@@ -33,9 +44,17 @@ class CarbonCreditService
 
     /**
      * ซื้อ Carbon Credits (with transaction + locking).
+     *
+     * ⚠️ ยังไม่ตรวจการจ่ายเงินเลย (payment_amount / tx_hash เป็นค่าที่ผู้ซื้อส่งมาเอง)
+     *    จึงต้องปิดไว้ด้วย purchaseOpen() — เช็คที่นี่ด้วย ไม่ใช่แค่ใน controller
+     *    ทางอื่นที่เรียกตัวนี้ในอนาคตจะได้ไม่ออกเครดิตฟรีโดยไม่รู้ตัว
      */
     public function purchaseCredits(array $data): CarbonCredit
     {
+        if (! $this->purchaseOpen()) {
+            throw new \RuntimeException(self::ERR_PURCHASE_CLOSED);
+        }
+
         return DB::transaction(function () use ($data) {
             $project = CarbonProject::lockForUpdate()->findOrFail($data['project_id']);
 

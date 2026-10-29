@@ -951,7 +951,9 @@
         "totalCredits": "Total Credits",
         "buyCredits": "Buy Credits",
         "retire": "Retire Credits",
-        "verified": "Verified"
+        "verified": "Verified",
+        "purchaseClosed": "Carbon credit purchases are not open yet. Payments will open after an announcement. Meanwhile you can browse projects and retire credits you already hold.",
+        "purchaseUnavailable": "Not on sale yet"
     },
     "explorer": {
         "title": "Explore TPIX Chain",
