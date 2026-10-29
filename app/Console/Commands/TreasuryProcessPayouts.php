@@ -426,6 +426,15 @@ class TreasuryProcessPayouts extends Command
         $latestNonce = (int) Wei::hexToInt($count['result']);
 
         if ($latestNonce <= $payout->nonce) {
+            // สวิตช์จ่ายปิด = ห้ามมีเงินออก ระยะตามผลยังอ่านเชนต่อได้ แต่ส่ง raw ซ้ำคือการจ่ายจริง
+            // (เช่นรอบก่อนบันทึก raw แล้วดับก่อนส่ง) — รอจนเปิดสวิตช์อีกครั้ง
+            if (! (bool) config('treasury.payouts_enabled', false)) {
+                $this->recordNote($payout, $hash, 'โหนดไม่รู้จักธุรกรรม และสวิตช์จ่ายปิดอยู่ — ยังไม่ส่ง raw เดิมซ้ำ');
+                $this->line("  #{$payout->id} สวิตช์จ่ายปิดอยู่ — ยังไม่ส่ง raw เดิมซ้ำ");
+
+                return self::IN_FLIGHT;
+            }
+
             // nonce ยังว่าง — ส่ง raw เดิมซ้ำ ไม่เซ็นใหม่ (hash เดิม nonce เดิม เชนรับได้ครั้งเดียว)
             $sent = $this->signer->send((string) $payout->raw_tx);
 

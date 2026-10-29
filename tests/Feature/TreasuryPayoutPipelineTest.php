@@ -251,6 +251,42 @@ class TreasuryPayoutPipelineTest extends TestCase
     }
 
     #[Test]
+    public function ปิดสวิตช์จ่ายแล้ว_ไม่ส่ง_raw_เดิมซ้ำ_แต่ยังตามผลรายการที่ลงบล็อกแล้ว(): void
+    {
+        // รอบก่อนบันทึก raw แล้วดับก่อนส่ง — โหนดไม่รู้จัก hash และ nonce 0 ยังว่าง
+        $pending = $this->queued([
+            'tx_hash' => FakeHotWalletSigner::hashOf('0xfeed'),
+            'raw_tx' => '0xfeed',
+            'nonce' => 0,
+            'from_address' => self::HOT,
+            'broadcast_at' => now(),
+        ]);
+        // อีกรายการที่ส่งไปแล้วและเพิ่งลงบล็อก
+        $landed = $this->queued([
+            'tx_hash' => FakeHotWalletSigner::hashOf('0xbeef'),
+            'raw_tx' => '0xbeef',
+            'nonce' => 1,
+            'from_address' => self::HOT,
+            'broadcast_at' => now(),
+        ]);
+        $this->mined($landed->tx_hash);
+
+        config(['treasury.payouts_enabled' => false]);
+        $this->payoutRound();
+
+        $this->assertSame([], $this->signer->sent, 'สวิตช์ปิด = ห้ามมีธุรกรรมออกจากกระเป๋าร้อน');
+        $this->assertSame(TreasuryPayout::STATUS_BROADCASTING, $pending->fresh()->status);
+        $this->assertStringContainsString('สวิตช์จ่ายปิดอยู่', (string) $pending->fresh()->last_error);
+        $this->assertSame(TreasuryPayout::STATUS_CONFIRMED, $landed->fresh()->status, 'ตามผลยังทำงานแม้สวิตช์ปิด');
+
+        config(['treasury.payouts_enabled' => true]);
+        $this->payoutRound();
+
+        $this->assertSame(['0xfeed'], $this->signer->sent);
+        $this->assertSame([], $this->signer->signed);
+    }
+
+    #[Test]
     public function nonce_ถูกใช้แล้วแต่ไม่เจอใบเสร็จ_ไม่ตัดสินเอง_แจ้งเตือนทันที(): void
     {
         $this->signer->sendResult = 'broadcast_failed';
