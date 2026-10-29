@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\SupplyService;
+use App\Support\DeployWindow;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
@@ -453,3 +454,15 @@ Schedule::command('queue:work --stop-when-empty --max-time=55 --timeout=280 --tr
     ->withoutOverlapping(10)
     ->runInBackground()
     ->name('queue:work-default');
+
+/*
+ * หยุดทุกงานระหว่าง deploy — ต้องอยู่ท้ายไฟล์เสมอ (งานที่ประกาศหลังบรรทัดนี้จะไม่ถูกหยุด)
+ *
+ * ช่วง git reset → migrate → config:cache โค้ดใหม่ยังไม่มี schema/แคชที่ตรงกัน
+ * 2026-10-29 tpix:treasury-payouts ล้ม Unknown column 'nonce' สองรอบในช่วงนี้
+ * รายละเอียดและเหตุผลที่ไม่ใช้ `artisan down` อยู่ที่ App\Support\DeployWindow
+ * (DeployWindowTest ฟ้องถ้ามีงานไหนหลุด)
+ */
+foreach (Schedule::events() as $event) {
+    $event->skip(fn () => DeployWindow::holdsBack($event));
+}

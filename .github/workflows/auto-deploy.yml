@@ -66,7 +66,9 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          command_timeout: 5m
+          # 7 นาที: ปกติ ~100 วินาที + รองานตามตารางที่ค้างได้ถึง 90 วินาที (ดูหน้าต่าง deploy ข้างล่าง)
+          # ต้องสั้นกว่า DeployWindow::MAX_AGE_SECONDS (15 นาที) เสมอ ไม่งั้นธงหมดอายุกลาง deploy
+          command_timeout: 7m
           # ⚠️ ค่าเริ่มต้นของ action นี้คือ false = ผลลัพธ์ทุกอย่างที่เซิร์ฟเวอร์พิมพ์
           #    ไม่ถูกส่งกลับมาที่ Actions เลย เห็นแต่ตัวสคริปต์ที่ส่งไป
           #    ที่ผ่านมา migration ล้มเหลวจึงเงียบสนิท: deploy เขียว แต่ตารางไม่ขึ้น
@@ -95,6 +97,71 @@ jobs:
               echo "✓ .env backups: kept $(echo "$ENV_BACKUPS" | head -5 | wc -l) newest (mode 600)"
             fi
 
+            # ── หน้าต่าง deploy: หยุดงานตามตารางจนโค้ด schema และแคชตรงกัน ──────────
+            #
+            # cron เรียก schedule:run ทุกนาทีตลอด deploy — ระหว่าง git reset → migrate →
+            # config:cache โค้ดใหม่วิ่งบน schema เก่าและแคชคอนฟิกของรอบก่อน
+            # เกิดจริง 2026-10-29 deploy v1.1.263: tpix:treasury-payouts ล้ม 15:08 และ 15:09
+            # (Unknown column 'nonce') · 2026-10-22: validators:seal-monitor รันก่อนตารางถูกสร้าง
+            #
+            # routes/console.php ผูก skip() ให้ทุกงาน: มีไฟล์นี้ = ข้ามรอบ (App\Support\DeployWindow)
+            # ธงที่เก่ากว่า 15 นาทีถูกมองข้าม — กัน scheduler หยุดถาวรถ้า trap ไม่ได้ทำงาน
+            # ไม่ใช้ `php artisan down` เพราะเว็บและ API จะตอบ 503 ตลอดช่วงนี้ทั้งที่ปัญหาอยู่ฝั่ง scheduler
+            #
+            # ⚠️ trap ต้องลบธงเสมอ — set -e ตัดสคริปต์กลางทางได้ทุกบรรทัด และ SSH หลุดได้
+            DEPLOY_FLAG="$(pwd)/storage/framework/deploy-in-progress"
+            DRAIN_MAX_SECONDS=90
+
+            end_deploy_window() {
+              [ -e "$DEPLOY_FLAG" ] || [ -e "$DEPLOY_FLAG.skipped" ] || return 0
+              SKIPPED_TASKS=$(cat "$DEPLOY_FLAG.skipped" 2>/dev/null || true)
+              # ลบก่อนพิมพ์ — ถ้า SSH หลุดไปแล้ว echo จะล้ม แต่ธงต้องหายไปก่อนแล้ว
+              rm -f "$DEPLOY_FLAG" "$DEPLOY_FLAG.skipped"
+              echo "🔓 Scheduler released" || true
+              if [ -n "$SKIPPED_TASKS" ]; then
+                echo "::warning::งานตามตารางที่รอบถัดไปอีกนานถูกข้ามระหว่าง deploy — รันเองถ้ารอรอบหน้าไม่ได้:" || true
+                echo "$SKIPPED_TASKS" || true
+              fi
+            }
+            trap end_deploy_window EXIT
+            trap 'exit 1' HUP INT PIPE TERM
+
+            # งานที่เริ่มก่อนวางธงยังวิ่งด้วยโค้ดเดิม — git reset ตอนมันยังไม่จบ = autoload คลาสใหม่กลางรอบ
+            # (เช่นส่งธุรกรรมไปแล้วแต่บันทึกผลด้วยโค้ดที่ schema ยังไม่รองรับ) จึงรอให้จบก่อน
+            # นับเฉพาะโปรเซส "php … artisan" ที่ cwd เป็นแอปนี้ — user นี้มีหลายแอปบนเครื่องเดียวกัน
+            # ต้องมีเพดาน: php83 ไม่มี pcntl = --timeout ของคิวไม่ทำงาน งานค้างได้นานจริง
+            wait_for_running_tasks() {
+              if ! command -v pgrep >/dev/null 2>&1 || [ ! -d /proc ]; then
+                echo "::warning::ไม่มี pgrep หรือ /proc — ไม่ได้รองานตามตารางที่วิ่งอยู่ให้จบก่อน git reset"
+                return 0
+              fi
+              APP_REAL="$(pwd -P)"
+              WAITED=0
+              while :; do
+                BUSY=""
+                for PID in $(pgrep -u "$(id -u)" -f '^[^ ]*php[^ ]* ([^ ]*/)?artisan( |$)' || true); do
+                  if [ "$(readlink "/proc/$PID/cwd" 2>/dev/null)" = "$APP_REAL" ]; then
+                    BUSY="$BUSY $PID"
+                  fi
+                done
+                if [ -z "$BUSY" ]; then
+                  echo "✓ No scheduled task still running (waited ${WAITED}s)"
+                  return 0
+                fi
+                if [ "$WAITED" -ge "$DRAIN_MAX_SECONDS" ]; then
+                  echo "::warning::งานตามตารางยังไม่จบหลังรอ ${WAITED} วินาที — deploy ต่อเลย งานเหล่านี้อาจเจอโค้ดใหม่กลางรอบ:"
+                  ps -o pid=,etime=,args= -p "$(echo $BUSY | tr ' ' ',')" 2>/dev/null || true
+                  return 0
+                fi
+                sleep 3
+                WAITED=$((WAITED + 3))
+              done
+            }
+
+            # เขียนธงไม่ได้ = set -e หยุดตรงนี้ ก่อนแตะโค้ด (ไม่ deploy ดีกว่า deploy โดยไม่มีด่าน)
+            echo "deploy ${{ github.sha }} $(date -u +%FT%TZ)" > "$DEPLOY_FLAG"
+            echo "🔒 Scheduler held until code, schema and caches match"
+
             # Pull latest code — ผ่าน SSH ไม่ใช่ PAT
             #
             # ★ ห้ามกลับไปใช้ `git remote set-url` ที่ฝัง token ใน URL อีก
@@ -109,6 +176,7 @@ jobs:
             echo "📥 Pulling latest code..."
             git remote set-url origin "git@github.com:xjanova/ThaiXTrade.git"
             git fetch origin main
+            wait_for_running_tasks
             git reset --hard origin/main
 
             # Set GITHUB_TOKEN in .env for GitHub API access (App Releases)
@@ -248,6 +316,10 @@ jobs:
 
             # Restart queue workers if running
             php artisan queue:restart 2>/dev/null || true
+
+            # โค้ด schema แคชคอนฟิก/route และ seeder ตรงกันแล้ว — ปล่อย scheduler
+            # (trap เรียกซ้ำตอนจบสคริปต์ได้ ไม่มีผลเพราะธงหายไปแล้ว)
+            end_deploy_window
 
             # ── ตัวจับเวลาของ Laravel (บอท AI TRADE พึ่งตัวนี้ทั้งหมด) ──────────
             #
