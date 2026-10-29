@@ -94,6 +94,22 @@ describe('useTpixDex on-chain execution', () => {
         }));
     });
 
+    it('tells the caller the hash as soon as the swap leaves the wallet, before it is mined', async () => {
+        // หน้าเทรดผูกใบอนุญาตวางไม้กับ hash ตรงนี้ — ปิดแท็บระหว่างรอ เซิร์ฟเวอร์ก็ตัดสินตั๋วจากเชนได้
+        const events = [];
+        contracts[ADDR.ROUTER] = {
+            swapExactETHForTokens: async () => ({
+                hash: TX_HASH,
+                wait: async () => { events.push('mined'); return { status: 1 }; },
+            }),
+        };
+        const quote = { path: [ADDR.WTPIX, ADDR.USDT], amounts: [10n ** 18n, 1_000_000n], decimals: { from: 18, to: 6 } };
+
+        await useTpixDex().executeTradeSwap(TPIX, USDT, 1, quote, 1, { onSent: hash => events.push(hash) });
+
+        expect(events).toEqual([TX_HASH, 'mined']);
+    });
+
     it('turns a wallet rejection into a translated message (never raw ethers text)', async () => {
         contracts[ADDR.ROUTER] = {
             swapExactETHForTokens: async () => {

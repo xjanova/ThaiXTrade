@@ -14,6 +14,7 @@ use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Testing\TestResponse;
 use ReflectionMethod;
+use Tests\Support\FakesBscSwapChain;
 use Tests\TestCase;
 
 /**
@@ -26,10 +27,17 @@ use Tests\TestCase;
  *   4. หน้ารายได้รวม fee_amount ข้ามเหรียญ (3,000,000 PEPE กลายเป็น $3,000,000)
  *   5. เปิด order book ภายในแล้วคู่ BSC ถูกจับคู่ใน DB โดยไม่มีการ settle บนเชน
  *
+ * ตั้งแต่ออดิท 2026-10-28 (C2) ยอดและค่าธรรมเนียมมาจากใบเสร็จบนเชน — record() สร้างไม้และธุรกรรม
+ * ค่าธรรมเนียมบน BSC จำลองให้ตรงกับคำขอ (FakesBscSwapChain) แล้วเซิร์ฟเวอร์อ่านจากตรงนั้น
+ *
  * Developed by Xman Studio
  */
 class SwapFeeIntegrityTest extends TestCase
 {
+    use FakesBscSwapChain;
+
+    private const COLLECTOR = '0xffffffffffffffffffffffffffffffffffffffff';
+
     private const WALLET = '0x1234567890abcdef1234567890abcdef12345678';
 
     private const OTHER_WALLET = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
@@ -56,7 +64,8 @@ class SwapFeeIntegrityTest extends TestCase
 
         $this->withoutMiddleware([VerifyWalletOwnership::class, ThrottleRequests::class]);
 
-        SiteSetting::set('trading', 'fee_collector_wallet', '0x'.str_repeat('f', 40));
+        SiteSetting::set('trading', 'fee_collector_wallet', self::COLLECTOR);
+        $this->fakeBscChain();
 
         $this->bsc = Chain::where('chain_id', 56)->firstOrFail();
         foreach ([
@@ -77,9 +86,13 @@ class SwapFeeIntegrityTest extends TestCase
         return '0x'.str_pad(dechex(++$this->hash), 64, 'b', STR_PAD_LEFT);
     }
 
+    /**
+     * แจ้งไม้หนึ่งไม้ — ไม้และการโอนค่าธรรมเนียมเกิดบนเชนจำลองตามตัวเลขในคำขอ
+     * (ส่วนที่สวอป = from_amount − fee_amount · fee_amount > 0 = มีธุรกรรมโอนเข้ากระเป๋าค่าธรรมเนียม)
+     */
     private function record(array $overrides = []): TestResponse
     {
-        return $this->postJson('/api/v1/swap/execute', array_merge([
+        $payload = array_merge([
             'from_token' => self::USDT,
             'to_token' => self::BTCB,
             'from_amount' => 100,
@@ -88,7 +101,29 @@ class SwapFeeIntegrityTest extends TestCase
             'tx_hash' => $this->nextHash(),
             'chain_id' => 56,
             'wallet_address' => self::WALLET,
-        ], $overrides));
+        ], $overrides);
+
+        $decimals = fn (string $address) => (int) Token::where('chain_id', $this->bsc->id)
+            ->where('contract_address', $address)->value('decimals');
+        $fromDecimals = $decimals($payload['from_token']);
+        $gross = self::wei($payload['from_amount'], $fromDecimals);
+        $fee = self::wei($payload['fee_amount'], $fromDecimals);
+
+        $this->bscSwap(
+            $payload['tx_hash'],
+            $payload['wallet_address'],
+            $payload['from_token'],
+            $payload['to_token'],
+            bcsub($gross, $fee, 0),
+            self::wei($payload['to_amount'], $decimals($payload['to_token'])),
+        );
+
+        if ($fee !== '0' && ! array_key_exists('fee_tx_hash', $payload)) {
+            $payload['fee_tx_hash'] = $this->nextHash();
+            $this->bscFeeTransfer($payload['fee_tx_hash'], $payload['wallet_address'], self::COLLECTOR, $payload['from_token'], $fee);
+        }
+
+        return $this->postJson('/api/v1/swap/execute', $payload);
     }
 
     private function pair(string $base, string $quote, bool $active, string $mode = 'onchain'): TradingPair
@@ -164,8 +199,14 @@ class SwapFeeIntegrityTest extends TestCase
         $tx = Transaction::where('tx_hash', $hash)->firstOrFail();
         $this->assertSame('tpix_ticket', $tx->metadata['fee_model']);
         $this->assertTrue($tx->metadata['fee_collected']);
+        $this->assertSame('not_required', $tx->metadata['fee_status']);
         $this->assertSame($ticket->uuid, $tx->metadata['fee_ticket']);
         $this->assertEquals(0, (float) $tx->fee_usd);
+
+        // ⚠️ ออดิท C1: ตั๋วถูกปิดพร้อมการบันทึกไม้ — เดิมค้าง issued แล้วขอคืนเงินหลังเทรดได้
+        $ticket->refresh();
+        $this->assertSame(TradingOrderTicket::STATUS_CONSUMED, $ticket->status);
+        $this->assertSame($hash, $ticket->order_tx_hash);
     }
 
     public function test_someone_elses_ticket_does_not_waive_the_fee(): void
@@ -178,8 +219,10 @@ class SwapFeeIntegrityTest extends TestCase
 
         $tx = Transaction::where('tx_hash', $hash)->firstOrFail();
         $this->assertFalse($tx->metadata['fee_collected']);
-        $this->assertTrue($tx->metadata['fee_ticket_invalid']);
+        $this->assertSame('not_found', $tx->metadata['fee_ticket_invalid']);
         $this->assertSame('transfer', $tx->metadata['fee_model']);
+        $this->assertSame('missing', $tx->metadata['fee_status']);
+        $this->assertSame(TradingOrderTicket::STATUS_ISSUED, $ticket->fresh()->status);
     }
 
     public function test_one_ticket_covers_only_one_trade(): void
@@ -192,7 +235,7 @@ class SwapFeeIntegrityTest extends TestCase
 
         $tx = Transaction::where('tx_hash', $second)->firstOrFail();
         $this->assertFalse($tx->metadata['fee_collected']);
-        $this->assertTrue($tx->metadata['fee_ticket_invalid']);
+        $this->assertSame('bound_elsewhere', $tx->metadata['fee_ticket_invalid']);
     }
 
     public function test_a_refunded_ticket_does_not_waive_the_fee(): void
@@ -202,7 +245,9 @@ class SwapFeeIntegrityTest extends TestCase
 
         $this->record(['fee_amount' => 0, 'fee_ticket' => $ticket->uuid, 'tx_hash' => $hash])->assertStatus(201);
 
-        $this->assertFalse(Transaction::where('tx_hash', $hash)->firstOrFail()->metadata['fee_collected']);
+        $tx = Transaction::where('tx_hash', $hash)->firstOrFail();
+        $this->assertFalse($tx->metadata['fee_collected']);
+        $this->assertSame(TradingOrderTicket::STATUS_REFUNDED, $tx->metadata['fee_ticket_invalid']);
     }
 
     public function test_a_malformed_ticket_is_rejected_by_validation(): void
@@ -224,11 +269,17 @@ class SwapFeeIntegrityTest extends TestCase
         ])->assertStatus(201);
     }
 
-    public function test_an_understated_fee_on_an_eighteen_decimal_token_is_still_rejected(): void
+    public function test_an_understated_fee_is_recorded_as_short_and_only_the_paid_part_counts(): void
     {
-        $this->record(['fee_amount' => 0.29])
-            ->assertStatus(422)
-            ->assertJsonPath('error.code', 'FEE_MISMATCH');
+        // เดิมปัดตก FEE_MISMATCH = ไม้จริงหายจากประวัติ ทั้งที่สวอปลงเชนแล้ว
+        // ตอนนี้บันทึกไม้ + นับเฉพาะยอดที่โอนเข้าจริงบนเชน แล้วติดธงว่าจ่ายขาด
+        $hash = $this->nextHash();
+        $this->record(['fee_amount' => 0.29, 'tx_hash' => $hash])->assertStatus(201);
+
+        $tx = Transaction::where('tx_hash', $hash)->firstOrFail();
+        $this->assertSame('short', $tx->metadata['fee_status']);
+        $this->assertFalse($tx->metadata['fee_collected']);
+        $this->assertEqualsWithDelta(0.29, (float) $tx->fee_usd, 1e-9);
     }
 
     // ── มูลค่าค่าธรรมเนียมเป็นดอลลาร์ ──────────────────────────────────────

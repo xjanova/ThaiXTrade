@@ -54,4 +54,45 @@ describe('flushPendingSwapRecords', () => {
         await flushPendingSwapRecords(ME);
         expect(queue()).toHaveLength(0);
     });
+
+    it('drops a swap that belongs to another wallet (409)', async () => {
+        localStorage.setItem(PENDING_RECORDS_KEY, JSON.stringify([record(ME, '0x1')]));
+        axios.post.mockRejectedValue({ response: { status: 409 } });
+
+        await flushPendingSwapRecords(ME);
+        expect(queue()).toHaveLength(0);
+    });
+
+    it('keeps a record the chain has not shown yet (202 without a row)', async () => {
+        localStorage.setItem(PENDING_RECORDS_KEY, JSON.stringify([{ ...record(ME, '0x1'), _queuedAt: Date.now() }]));
+        axios.post.mockResolvedValue({ status: 202, data: { success: true, data: { recorded: false } } });
+
+        expect(await flushPendingSwapRecords(ME)).toBe(0);
+        expect(queue()).toHaveLength(1);
+    });
+
+    it('treats a pending row on the server as delivered (202 with a row)', async () => {
+        localStorage.setItem(PENDING_RECORDS_KEY, JSON.stringify([record(ME, '0x1')]));
+        axios.post.mockResolvedValue({ status: 202, data: { success: true, data: { recorded: true } } });
+
+        expect(await flushPendingSwapRecords(ME)).toBe(1);
+        expect(queue()).toHaveLength(0);
+    });
+
+    it('gives up on a transaction the chain still has not seen after a day', async () => {
+        const dayAndMinute = 24 * 60 * 60 * 1000 + 60000;
+        localStorage.setItem(PENDING_RECORDS_KEY, JSON.stringify([{ ...record(ME, '0x1'), _queuedAt: Date.now() - dayAndMinute }]));
+        axios.post.mockRejectedValue({ response: { status: 503 } });
+
+        await flushPendingSwapRecords(ME);
+        expect(queue()).toHaveLength(0);
+    });
+
+    it('never sends the local queue timestamp to the server', async () => {
+        localStorage.setItem(PENDING_RECORDS_KEY, JSON.stringify([{ ...record(ME, '0x1'), _queuedAt: Date.now() }]));
+        axios.post.mockResolvedValue({ data: { success: true } });
+
+        await flushPendingSwapRecords(ME);
+        expect(axios.post.mock.calls[0][1]).not.toHaveProperty('_queuedAt');
+    });
 });

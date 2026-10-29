@@ -34,6 +34,7 @@ class TradingOrderTicket extends Model
         'uuid',
         'wallet_address',
         'pair',
+        'chain_id',
         'side',
         'order_value_usd',
         'fee_method',
@@ -53,6 +54,7 @@ class TradingOrderTicket extends Model
     protected function casts(): array
     {
         return [
+            'chain_id' => 'integer',
             'order_value_usd' => 'decimal:8',
             'fee_amount' => 'decimal:8',
             'refund_amount' => 'decimal:8',

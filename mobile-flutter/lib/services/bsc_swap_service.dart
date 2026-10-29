@@ -548,10 +548,11 @@ class BscSwapService {
 
     // โอน fee ที่กันไว้ — ผู้ใช้ยังถือครบเพราะ swap แค่ (amount - fee)
     // Best-effort เหมือนเว็บ: fee พลาดไม่ block ผล swap ที่สำเร็จแล้ว
+    // hash ของธุรกรรม fee ส่งให้เซิร์ฟเวอร์ตรวจบนเชนเอง — รอผลไม่ทันก็ยังตรวจย้อนหลังได้
     var feeCollected = false;
+    String? feeTxHash;
     if (confirmed && quote.feeWei > BigInt.zero && feeCollector != null) {
       try {
-        String? feeTxHash;
         if (quote.fromToken.native) {
           feeTxHash = await sendTx(to: feeCollector, value: quote.feeWei);
         } else {
@@ -565,6 +566,8 @@ class BscSwapService {
         if (feeTxHash != null && feeTxHash.isNotEmpty) {
           final feeReceipt = await _waitReceipt(feeTxHash, attempts: 20);
           feeCollected = feeReceipt?.status == true;
+        } else {
+          feeTxHash = null;
         }
       } catch (e) {
         debugPrint('fee collection skipped: ${e.runtimeType}');
@@ -578,10 +581,12 @@ class BscSwapService {
         toToken: quote.toToken.address,
         fromAmount: quote.amountIn,
         toAmount: quote.netOutput,
-        feeAmount: feeCollected ? quote.feeAmount : 0,
+        feeAmount: feeTxHash != null ? quote.feeAmount : 0,
         txHash: txHash,
         chainId: chainId,
         walletAddress: walletAddress,
+        feeCollected: quote.feeWei > BigInt.zero ? feeCollected : true,
+        feeTxHash: feeTxHash,
       );
     } catch (e) {
       debugPrint('recordSwapExecution failed: ${e.runtimeType}');

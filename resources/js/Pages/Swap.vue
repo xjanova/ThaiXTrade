@@ -19,6 +19,7 @@ import CoinIcon from '@/Components/CoinIcon.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useSwap } from '@/Composables/useSwap';
 import { useTpixDex } from '@/Composables/useTpixDex';
+import { useTradingFee } from '@/Composables/useTradingFee';
 import { usePlatformReadiness } from '@/Composables/usePlatformReadiness';
 import { TPIX_DEX, loadDexConfig, isDexConfigured } from '@/Config/dexContracts';
 import { getTxUrl, BSC_CHAIN_ID } from '@/utils/web3';
@@ -41,6 +42,26 @@ import WalletModal from '@/Components/Wallet/WalletModal.vue';
 const walletStore = useWalletStore();
 const swap = useSwap();
 const dex = useTpixDex();
+const tradingFee = useTradingFee();
+
+/*
+ * เช่าบอทคลาวด์อยู่ = ค่าวางไม้รวมในค่าเช่าแล้ว — ห้ามหักค่าธรรมเนียม % จากเหรียญอีก (ออดิท 2026-10-28 L9)
+ * เดิมหน้านี้หักทุกคน ขณะที่กระดานเทรดยกเว้นให้ และเซิร์ฟเวอร์บันทึกไม้ของคนกลุ่มนี้เป็น "ไม่ต้องจ่าย"
+ * = ผู้เช่าจ่ายเกินโดยไม่มีใครเห็น · จำผลต่อกระเป๋า (ถามไม่สำเร็จไม่จำ — ครั้งหน้าถามใหม่)
+ */
+let feeWaiver = { wallet: null, promise: null };
+function feeWaivedFor(wallet) {
+    const key = String(wallet || '').toLowerCase();
+    if (!key) return Promise.resolve(false);
+    if (feeWaiver.wallet !== key) {
+        const promise = tradingFee.waiverFor(key, BSC_CHAIN_ID).then((waived) => {
+            if (waived === null && feeWaiver.promise === promise) feeWaiver = { wallet: null, promise: null };
+            return waived === true;
+        });
+        feeWaiver = { wallet: key, promise };
+    }
+    return feeWaiver.promise;
+}
 const { t } = useTranslation();
 
 // swap บน BSC ต้องมี fee_collector_wallet ที่แอดมินตั้งไว้ ไม่งั้น API ตอบ 503
@@ -361,9 +382,12 @@ async function runQuote(seq) {
             quote = q;
             if (seq === quoteSeq && balance !== null) setBalance(from, balance);
         } else {
+            const waiveFee = isWalletConnected.value ? await feeWaivedFor(walletStore.address) : false;
+            if (seq !== quoteSeq) return;
             // ส่ง slippage ของหน้านี้ไปด้วย — ไม่งั้น quote คิดจากค่าปริยายของ backend
             quote = await swap.getQuote(from, to, parseFloat(amountText), {
                 slippage: effectiveSlippage.value ?? undefined,
+                waiveFee,
             });
         }
 
@@ -1215,6 +1239,9 @@ onMounted(async () => {
                                     <span class="text-dark-400">{{ isTpixMode ? t('swapPage.poolFee') : t('swapPage.platformFee') }} <span class="text-accent-400">({{ feeRate }}%)</span></span>
                                     <span class="text-dark-300 font-mono">{{ feeAmount }} {{ fromToken.symbol }}</span>
                                 </div>
+                                <p v-if="!isTpixMode && currentQuote.waived" class="text-[11px] text-trading-green leading-relaxed" data-test="fee-waived">
+                                    {{ t('swapPage.platformFeeWaived') }}
+                                </p>
                                 <div class="flex items-center justify-between">
                                     <span class="text-dark-400">{{ t('swap.priceImpact') }}</span>
                                     <span :class="priceImpactClass" class="font-mono" data-test="price-impact">

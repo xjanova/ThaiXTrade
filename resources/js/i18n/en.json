@@ -495,6 +495,7 @@
         "balance": "Balance: {amount}",
         "max": "MAX",
         "platformFee": "Platform Fee",
+        "platformFeeWaived": "No platform fee — your AI bot rental already covers trading fees.",
         "slippage": "Slippage",
         "minReceived": "Min. Received",
         "slippageInvalid": "Enter a slippage between {min}% and {max}%.",

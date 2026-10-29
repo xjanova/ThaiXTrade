@@ -110,7 +110,8 @@ vi.mock('@/Composables/useTpixDex', async (importOriginal) => ({
 }));
 
 const axiosGet = vi.fn();
-vi.mock('axios', () => ({ default: { get: (...a) => axiosGet(...a), post: vi.fn() } }));
+const axiosPost = vi.fn();
+vi.mock('axios', () => ({ default: { get: (...a) => axiosGet(...a), post: (...a) => axiosPost(...a) } }));
 
 vi.mock('@/Composables/usePlatformReadiness', () => ({
     usePlatformReadiness: () => ({
@@ -228,6 +229,8 @@ describe('Swap page', () => {
 
         Object.values(swapState).forEach((r) => { r.value = r === swapState.error || r === swapState.txHash || r === swapState.txStatus ? null : false; });
         getQuote.mockReset().mockImplementation(async (_from, _to, amount, opts = {}) => quoteFor(amount, opts.slippage ?? 0.5));
+        // ค่าบริการวางไม้: ปริยาย = ไม่ได้เช่าบอท (หักค่าธรรมเนียม % ตามปกติ)
+        axiosPost.mockReset().mockResolvedValue({ data: { success: true, data: { waived: false } } });
         checkAllowance.mockReset().mockResolvedValue(true);
         approveToken.mockReset().mockResolvedValue({ hash: '0xapprove' });
         executeSwap.mockReset().mockResolvedValue({ hash: '0xswap', status: 'confirmed' });
@@ -321,12 +324,46 @@ describe('Swap page', () => {
         });
     });
 
+    describe('bot rental fee waiver', () => {
+        // ออดิท 2026-10-28 L9: กระดานเทรดยกเว้นให้ผู้เช่าบอทคลาวด์ แต่หน้านี้หัก 0.3% ทุกคน
+        it('does not charge the platform fee to a cloud bot renter', async () => {
+            axiosPost.mockImplementation(async url => (url === '/api/v1/trading-fee/quote'
+                ? { data: { success: true, data: { waived: true } } }
+                : { data: { success: true } }));
+            getQuote.mockImplementation(async (_from, _to, amount, opts = {}) => ({
+                ...quoteFor(amount, opts.slippage ?? 0.5),
+                ...(opts.waiveFee ? { waived: true, feeRate: 0, feeAmount: 0, feeWei: 0n } : {}),
+            }));
+
+            const wrapper = await mountSwap();
+            await typeAmount(wrapper, '1');
+
+            expect(getQuote.mock.calls.at(-1)[3]).toEqual({ slippage: 0.5, waiveFee: true });
+            expect(wrapper.find('[data-test="fee-waived"]').exists()).toBe(true);
+            // ถามครั้งเดียวต่อกระเป๋า — ไม่ยิงทุกครั้งที่พิมพ์
+            await typeAmount(wrapper, '2');
+            expect(axiosPost.mock.calls.filter(([url]) => url === '/api/v1/trading-fee/quote')).toHaveLength(1);
+        });
+
+        it('charges the fee normally when the waiver cannot be checked, and asks again next time', async () => {
+            axiosPost.mockRejectedValue({ response: { status: 503 } });
+
+            const wrapper = await mountSwap();
+            await typeAmount(wrapper, '1');
+
+            expect(getQuote.mock.calls.at(-1)[3]).toEqual({ slippage: 0.5, waiveFee: false });
+            expect(wrapper.find('[data-test="fee-waived"]').exists()).toBe(false);
+            await typeAmount(wrapper, '2');
+            expect(axiosPost.mock.calls.filter(([url]) => url === '/api/v1/trading-fee/quote')).toHaveLength(2);
+        });
+    });
+
     describe('slippage', () => {
         it('quotes with the page slippage and re-quotes when it changes', async () => {
             const wrapper = await mountSwap();
             await typeAmount(wrapper, '1');
 
-            expect(getQuote.mock.calls.at(-1)[3]).toEqual({ slippage: 0.5 });
+            expect(getQuote.mock.calls.at(-1)[3]).toEqual({ slippage: 0.5, waiveFee: false });
             expect(wrapper.find('[data-test="min-received"]').text()).toContain('1.990000');
 
             await openSettings(wrapper);
@@ -335,7 +372,7 @@ describe('Swap page', () => {
             await vi.advanceTimersByTimeAsync(600);
             await flushPromises();
 
-            expect(getQuote.mock.calls.at(-1)[3]).toEqual({ slippage: 3 });
+            expect(getQuote.mock.calls.at(-1)[3]).toEqual({ slippage: 3, waiveFee: false });
             // 2 × (1 − 3%) — ตรงกับ minOut ที่จะส่งเข้า router
             expect(wrapper.find('[data-test="min-received"]').text()).toContain('1.940000');
         });

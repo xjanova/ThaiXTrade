@@ -460,6 +460,7 @@ export function useTpixDex() {
      *                  amounts = ผลของ getAmountsOut ตอนเสนอราคา (คู่กับ path) — ถ้าส่งมา
      *                  minOut คิดจากราคาที่ผู้ใช้เห็นบนจอ แบบเดียวกับ useSwap ฝั่ง BSC (quote.rawAmountOut)
      *                  minOutFloor = minOut ขั้นต่ำ (wei) ที่ผู้ใช้เห็นบนจอก่อนหน้า — minOut จริงไม่ต่ำกว่านี้
+     *                  onSent(hash) = ธุรกรรมออกจากกระเป๋าแล้ว (ก่อนรอลงบล็อก) — ผู้เรียกผูกใบอนุญาตวางไม้ตรงนี้
      * @returns {txHash, amountOut} หรือ null ถ้าพลาด (อ่าน error.value)
      *          ส่งออกไปแล้วแต่ยืนยันไม่ได้ = null + txStatus 'pending' + txHash (ห้ามบอกผู้ใช้ให้ลองใหม่)
      */
@@ -533,6 +534,7 @@ export function useTpixDex() {
 
             txHash.value = tx.hash;
             txStatus.value = 'pending';
+            try { options.onSent?.(tx.hash); } catch { /* หน้าจอพังต้องไม่ทำให้ธุรกรรมพัง */ }
 
             let receipt;
             try {
@@ -607,6 +609,7 @@ export function useTpixDex() {
             // ใช้ amounts ของ quote เฉพาะเมื่อมาพร้อม path ของมันเอง (ฮอปตรงกัน)
             amounts: quote?.path && quote?.amounts ? quote.amounts : null,
             minOutFloor: extra.minOutFloor ?? null,
+            onSent: extra.onSent ?? null,
         });
 
         if (!result) {
