@@ -23,7 +23,8 @@ class DeployWindowScriptTest extends TestCase
 {
     private string $root;
 
-    private string $app;
+    /** โฟลเดอร์แอปปลอม (DEPLOY_PATH) — ห้ามชื่อ $app เพราะชนกับแอป Laravel ของ TestCase */
+    private string $appDir;
 
     /** @var array<int, Process> */
     private array $background = [];
@@ -37,20 +38,20 @@ class DeployWindowScriptTest extends TestCase
         }
 
         $this->root = sys_get_temp_dir().'/deploy-window-'.bin2hex(random_bytes(4));
-        $this->app = $this->root.'/app';
+        $this->appDir = $this->root.'/app';
 
         foreach (['storage/framework', 'bootstrap/cache', 'public_html', 'scripts'] as $dir) {
-            File::ensureDirectoryExists("{$this->app}/{$dir}");
+            File::ensureDirectoryExists("{$this->appDir}/{$dir}");
         }
         File::ensureDirectoryExists("{$this->root}/bin");
         File::ensureDirectoryExists("{$this->root}/other-app");
 
-        File::put("{$this->app}/.env", "APP_ENV=testing\n");
-        File::put("{$this->app}/scripts/build-assets-atomic.sh", "exit 0\n");
+        File::put("{$this->appDir}/.env", "APP_ENV=testing\n");
+        File::put("{$this->appDir}/scripts/build-assets-atomic.sh", "exit 0\n");
         // artisan ปลอมสำหรับโปรเซส "งานตามตารางที่ยังวิ่งอยู่" — รันด้วย PHP จริงให้ชื่อโปรเซสเหมือน prod
         // จดไฟล์ตอนจบแทนการถาม kill -0 เพราะโปรเซสที่จบแล้วยังเป็น zombie จนกว่า PHPUnit จะเก็บ
         $busyArtisan = '<?php sleep((int) ($argv[2] ?? 1)); touch(getcwd()."/busy-done");';
-        File::put("{$this->app}/artisan", $busyArtisan);
+        File::put("{$this->appDir}/artisan", $busyArtisan);
         File::put("{$this->root}/other-app/artisan", $busyArtisan);
 
         $flagState = 'flag=down; [ -e "$DEPLOY_FLAG_UNDER_TEST" ] && flag=up';
@@ -103,7 +104,7 @@ class DeployWindowScriptTest extends TestCase
 
     private function flagPath(): string
     {
-        return "{$this->app}/storage/framework/deploy-in-progress";
+        return "{$this->appDir}/storage/framework/deploy-in-progress";
     }
 
     private function busyTask(string $cwd, int $seconds): void
@@ -127,7 +128,7 @@ class DeployWindowScriptTest extends TestCase
             ->first(fn (array $s) => str_starts_with($s['uses'] ?? '', 'appleboy/ssh-action'));
 
         $script = strtr($step['with']['script'], [
-            '${{ secrets.DEPLOY_PATH }}' => $this->app,
+            '${{ secrets.DEPLOY_PATH }}' => $this->appDir,
             '${{ secrets.GH_PAT }}' => '',
             '${{ github.sha }}' => 'test-sha',
             'DRAIN_MAX_SECONDS=90' => "DRAIN_MAX_SECONDS={$drainMaxSeconds}",
@@ -182,7 +183,7 @@ class DeployWindowScriptTest extends TestCase
     }
 
     #[Test]
-    public function งานรายวันที่ถูกข้ามขึ้นเป็นคำเตือนใน_Actions(): void
+    public function งานรายวันที่ถูกข้ามขึ้นเป็นคำเตือนใน_actions(): void
     {
         $run = $this->deploy(['SIMULATE_SKIPPED' => 'php artisan stabilizer:report']);
 
@@ -195,10 +196,10 @@ class DeployWindowScriptTest extends TestCase
     #[Test]
     public function รองานของแอปนี้ที่ยังวิ่งอยู่ให้จบก่อน_git_reset_แต่ไม่รองานของแอปอื่น(): void
     {
-        $this->busyTask($this->app, 4);
+        $this->busyTask($this->appDir, 4);
         $this->busyTask("{$this->root}/other-app", 60);
 
-        $run = $this->deploy(['BUSY_MARKER' => "{$this->app}/busy-done"]);
+        $run = $this->deploy(['BUSY_MARKER' => "{$this->appDir}/busy-done"]);
 
         $this->assertSame(0, $run['exit'], $run['output']);
         $this->assertStringContainsString('git reset --hard origin/main flag=up busy=done', $run['calls']);
@@ -208,9 +209,9 @@ class DeployWindowScriptTest extends TestCase
     #[Test]
     public function งานค้างนานเกินเพดาน_deploy_ไปต่อพร้อมคำเตือน(): void
     {
-        $this->busyTask($this->app, 60);
+        $this->busyTask($this->appDir, 60);
 
-        $run = $this->deploy(['BUSY_MARKER' => "{$this->app}/busy-done"], drainMaxSeconds: 3);
+        $run = $this->deploy(['BUSY_MARKER' => "{$this->appDir}/busy-done"], drainMaxSeconds: 3);
 
         $this->assertSame(0, $run['exit'], $run['output']);
         $this->assertStringContainsString('git reset --hard origin/main flag=up busy=alive', $run['calls']);
