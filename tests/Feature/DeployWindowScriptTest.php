@@ -141,6 +141,7 @@ class DeployWindowScriptTest extends TestCase
         $script = strtr($step['with']['script'], [
             '${{ secrets.DEPLOY_PATH }}' => $this->appDir,
             '${{ secrets.GH_PAT }}' => '',
+            '${{ secrets.APP_URL }}' => '',
             '${{ github.sha }}' => 'test-sha',
             'DRAIN_MAX_SECONDS=90' => "DRAIN_MAX_SECONDS={$drainMaxSeconds}",
         ]);
