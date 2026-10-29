@@ -201,6 +201,35 @@ class TradingRateLimitTest extends TestCase
         $this->assertSame(2, $this->attempts(self::OWNER));
     }
 
+    /**
+     * path กับ query คนละใบ — ตัวนับต้องเลือกกระเป๋าใน path แบบเดียวกับด่าน.
+     *
+     * ถ้าตัวนับยังเลือก query ก่อน มันจะนับเข้าถังของกระเป๋าที่คนยิงพิสูจน์ได้ ขณะที่ด่านตรวจกระเป๋าใน path
+     * = สองตัวตัดสินคนละใบ (กฎความเป็นเจ้าของต้องมีที่เดียว ดู VerifyWalletOwnership::proves)
+     */
+    #[Test]
+    public function path_กับ_query_คนละใบนับถังของกระเป๋าใน_path(): void
+    {
+        $stranger = '0x2222222222222222222222222222222222222222';
+
+        $this->ownerSignedFrom(self::OWNER_IP);
+        Cache::put('wallet_verified:'.$stranger, [
+            'chain_id' => 4289,
+            'ip' => self::STRANGER_IP,
+            'verified_at' => now()->toIso8601String(),
+            'signature_verified' => true,
+        ], 14400);
+
+        $this->fromIp(self::STRANGER_IP)
+            ->getJson('/api/v1/carbon-credits/my-credits/'.self::OWNER.'?wallet_address='.$stranger)
+            ->assertStatus(403)
+            ->assertJsonPath('error.code', 'WALLET_MISMATCH');
+
+        $this->assertSame(1, $this->attempts(self::OWNER.'|'.self::STRANGER_IP));
+        $this->assertSame(0, $this->attempts(self::OWNER), 'คนแปลกหน้าต้องไม่กินโควตาของเจ้าของ');
+        $this->assertSame(0, $this->attempts($stranger));
+    }
+
     // ── คำขอที่ไม่ระบุกระเป๋า ──────────────────────────────────────────
 
     /** ไม่ระบุกระเป๋า = นับต่อ IP เหมือนเดิม (ด่านกระเป๋าปล่อยให้ controller จัดการ) */

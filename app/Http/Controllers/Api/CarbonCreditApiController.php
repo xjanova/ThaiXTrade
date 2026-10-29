@@ -64,9 +64,16 @@ class CarbonCreditApiController extends Controller
 
     /**
      * ซื้อ Carbon Credits.
+     *
+     * ปิดอยู่จนกว่าจะมีขั้นจ่ายเงินที่ตรวจบนเชน (config/carbon.php) — เช็คก่อน validate
+     * ไม่ว่าส่งอะไรมาก็ได้คำตอบเดียวกัน
      */
     public function purchase(Request $request): JsonResponse
     {
+        if (! $this->carbonCreditService->purchaseOpen()) {
+            return $this->purchaseClosed();
+        }
+
         $validated = $request->validate([
             'project_id' => 'required|integer|exists:carbon_projects,id',
             'amount' => 'required|numeric|min:0.01',
@@ -85,11 +92,27 @@ class CarbonCreditApiController extends Controller
                 'message' => 'Carbon credits purchased successfully.',
             ], 201);
         } catch (\RuntimeException $e) {
+            // สวิตช์ถูกปิดระหว่างทาง — ตอบแบบเดียวกับปิดตั้งแต่แรก
+            if ($e->getMessage() === CarbonCreditService::ERR_PURCHASE_CLOSED) {
+                return $this->purchaseClosed();
+            }
+
             return response()->json([
                 'success' => false,
                 'error' => ['code' => 'PURCHASE_FAILED', 'message' => 'Operation failed. Please try again.'],
             ], 422);
         }
+    }
+
+    private function purchaseClosed(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'error' => [
+                'code' => CarbonCreditService::ERR_PURCHASE_CLOSED,
+                'message' => 'ยังไม่เปิดให้ซื้อคาร์บอนเครดิต — รอประกาศเปิดระบบชำระเงินก่อน ระหว่างนี้ดูรายละเอียดโครงการได้ตามปกติ',
+            ],
+        ], 403);
     }
 
     /**

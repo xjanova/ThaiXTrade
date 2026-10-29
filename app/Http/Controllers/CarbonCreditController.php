@@ -22,6 +22,8 @@ class CarbonCreditController extends Controller
         return Inertia::render('CarbonCredit', [
             'projects' => $projects,
             'stats' => $stats,
+            // หน้าเว็บซ่อนปุ่มซื้อเมื่อปิด — ด่านจริงอยู่ที่ API (CarbonCreditApiController::purchase)
+            'purchaseEnabled' => $this->carbonCreditService->purchaseOpen(),
         ]);
     }
 
