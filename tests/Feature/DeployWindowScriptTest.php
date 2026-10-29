@@ -48,6 +48,8 @@ class DeployWindowScriptTest extends TestCase
 
         File::put("{$this->appDir}/.env", "APP_ENV=testing\n");
         File::put("{$this->appDir}/scripts/build-assets-atomic.sh", "exit 0\n");
+        // health check ท้ายสคริปต์ต้องเห็น version ตรงกับไฟล์นี้ (curl ปลอมข้างล่างตอบค่าเดียวกัน)
+        File::put("{$this->appDir}/version.json", '{"version":"9.9.9-test"}');
         // artisan ปลอมสำหรับโปรเซส "งานตามตารางที่ยังวิ่งอยู่" — รันด้วย PHP จริงให้ชื่อโปรเซสเหมือน prod
         // จดไฟล์ตอนจบแทนการถาม kill -0 เพราะโปรเซสที่จบแล้วยังเป็น zombie จนกว่า PHPUnit จะเก็บ
         $busyArtisan = '<?php sleep((int) ($argv[2] ?? 1)); touch(getcwd()."/busy-done");';
@@ -67,6 +69,8 @@ class DeployWindowScriptTest extends TestCase
             SH);
         $this->stub('npm', 'echo "npm $*" >> "$CALLS_LOG"');
         $this->stub('php', <<<SH
+            # php -r ของ health check (อ่าน version.json / แยก JSON) ให้ PHP จริงทำ
+            [ "\$1" = "-r" ] && exec "\$REAL_PHP" "\$@"
             {$flagState}
             echo "php \$* \$flag" >> "\$CALLS_LOG"
             # งานรายวันที่ PHP จดไว้ตอนถูกข้าม (DeployWindow::holdsBack)
@@ -74,6 +78,13 @@ class DeployWindowScriptTest extends TestCase
               echo "\$SIMULATE_SKIPPED" >> "\$DEPLOY_FLAG_UNDER_TEST.skipped"
             fi
             exit 0
+            SH);
+        $this->stub('curl', <<<'SH'
+            # /health ของแอปที่เพิ่ง deploy — เขียน body ลงไฟล์ -o แล้วพิมพ์ HTTP code เหมือน -w
+            out=/dev/null
+            while [ $# -gt 0 ]; do [ "$1" = "-o" ] && { out="$2"; shift; }; shift; done
+            printf '{"status":"healthy","version":"9.9.9-test"}' > "$out"
+            printf 200
             SH);
         $this->stub('crontab', <<<'SH'
             [ "$1" = "-l" ] && { cat "$CRONTAB_FILE" 2>/dev/null; exit 0; }
@@ -142,6 +153,7 @@ class DeployWindowScriptTest extends TestCase
             'CALLS_LOG' => "{$this->root}/calls.log",
             'CRONTAB_FILE' => "{$this->root}/crontab",
             'DEPLOY_FLAG_UNDER_TEST' => $this->flagPath(),
+            'REAL_PHP' => PHP_BINARY,
         ]);
         $process->setTimeout(120);
 
@@ -168,6 +180,7 @@ class DeployWindowScriptTest extends TestCase
         $this->assertStringContainsString('php artisan queue:restart flag=up', $run['calls']);
         $this->assertFileDoesNotExist($this->flagPath());
         $this->assertStringContainsString('Scheduler released', $run['output']);
+        $this->assertStringContainsString('Health check ผ่าน', $run['output']);
     }
 
     #[Test]
