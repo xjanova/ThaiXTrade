@@ -61,7 +61,7 @@ class DeployWindowScriptTest extends TestCase
         $this->stub('git', <<<SH
             {$flagState}
             busy=none; [ -n "\$BUSY_MARKER" ] && { [ -e "\$BUSY_MARKER" ] && busy=done || busy=alive; }
-            echo "git \$* \$flag busy=\$busy" >> "\$CALLS_LOG"
+            echo "git \$* flag=\$flag busy=\$busy" >> "\$CALLS_LOG"
             SH);
         $this->stub('composer', <<<'SH'
             echo "composer $*" >> "$CALLS_LOG"
@@ -72,7 +72,7 @@ class DeployWindowScriptTest extends TestCase
             # php -r ของ health check (อ่าน version.json / แยก JSON) ให้ PHP จริงทำ
             [ "\$1" = "-r" ] && exec "\$REAL_PHP" "\$@"
             {$flagState}
-            echo "php \$* \$flag" >> "\$CALLS_LOG"
+            echo "php \$* flag=\$flag" >> "\$CALLS_LOG"
             # งานรายวันที่ PHP จดไว้ตอนถูกข้าม (DeployWindow::holdsBack)
             if [ "\$2" = "migrate" ] && [ -n "\$SIMULATE_SKIPPED" ]; then
               echo "\$SIMULATE_SKIPPED" >> "\$DEPLOY_FLAG_UNDER_TEST.skipped"
