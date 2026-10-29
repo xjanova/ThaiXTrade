@@ -175,12 +175,31 @@ jobs:
             echo "🌱 Running ecosystem seeder..."
             run_seeder TpixEcosystemSeeder
 
+            # bootstrap/cache/config.php เก็บค่า config ทุกตัวเป็นข้อความธรรมดา (รหัส keystore กระเป๋าร้อน,
+            # DEPLOYER_PRIVATE_KEY ฯลฯ) — config:cache เขียนเป็น 664 ตาม umask เครื่อง และ chmod -R 775 ข้างล่าง
+            # ทำให้เป็น 775 ทุกรอบ (ออดิท 2026-10-29 C3) · php-fpm รันเป็น user เดียวกับที่ deploy
+            # (เจ้าของไฟล์) จึงอ่านได้ที่ 640 — ถ้า deploy เป็น root ข้ามไป ไม่งั้นไฟล์เป็นของ root แล้ว php-fpm อ่านไม่ได้ เว็บล่ม
+            lock_config_cache() {
+              CONFIG_CACHE="bootstrap/cache/config.php"
+              if [ -f "$CONFIG_CACHE" ] && [ "$(id -u)" -ne 0 ] && [ -O "$CONFIG_CACHE" ]; then
+                # set -e อยู่ — chmod พลาดต้องไม่ทำให้ deploy ล้มกลางคัน (เว็บยังใช้ไฟล์เดิมได้)
+                if chmod 640 "$CONFIG_CACHE"; then
+                  echo "✓ $CONFIG_CACHE mode 640"
+                else
+                  echo "::warning::chmod 640 $CONFIG_CACHE ไม่สำเร็จ"
+                fi
+              else
+                echo "::warning::ไม่ได้ล็อกสิทธิ์ $CONFIG_CACHE (ไม่มีไฟล์ / deploy เป็น root / ไม่ใช่เจ้าของไฟล์)"
+              fi
+            }
+
             # Clear and rebuild caches
             echo "⚡ Optimizing application..."
             php artisan config:clear
             php artisan route:clear
             php artisan view:clear
             php artisan config:cache
+            lock_config_cache
             php artisan route:cache
             php artisan view:cache
             php artisan event:cache 2>/dev/null || true
@@ -223,8 +242,9 @@ jobs:
               echo "✅ seeders ทั้งหมดผ่าน"
             fi
 
-            # Fix permissions
+            # Fix permissions — แล้วล็อก config.php กลับ เพราะ -R 775 เพิ่งเปิดให้ทั้งกลุ่มอ่าน/เขียน
             chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+            lock_config_cache
 
             # Restart queue workers if running
             php artisan queue:restart 2>/dev/null || true
