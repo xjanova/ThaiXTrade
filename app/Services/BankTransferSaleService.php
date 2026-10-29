@@ -295,6 +295,7 @@ class BankTransferSaleService
                 'to_address' => strtolower($tx->wallet_address),
                 'amount_wei' => Wei::toWei(number_format($claimable, 18, '.', '')),
                 'purpose' => 'token_sale',
+                'origin' => TreasuryPayout::ORIGIN_SALE_BANK,
                 'memo' => 'จ่ายส่วนที่ปลดล็อกแล้วจากการโอนเงิน '.($tx->metadata['reference'] ?? $tx->uuid),
                 'status' => TreasuryPayout::STATUS_PENDING,
             ],

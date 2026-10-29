@@ -63,6 +63,10 @@ async function main() {
     const fetchReq = new FetchRequest(rpcUrl);
     fetchReq.setHeader('User-Agent', process.env.TPIX_USER_AGENT || 'TPIX-Treasury/1.0');
     fetchReq.setHeader('Content-Type', 'application/json');
+    // ค่าเริ่มต้นของ ethers คือ 300 วิ แต่ฝั่ง PHP ตัด process ที่ 120 วิ — ให้สคริปต์ยอมแพ้เองก่อน
+    // จะได้คืน JSON ที่บอกเหตุได้ แทนที่จะถูกฆ่ากลางคันแล้ว PHP ไม่รู้ว่าเกิดอะไร
+    // (ส่งแล้วหมดเวลาก็ยังไม่ใช่ "ล้มเหลว" — ฝั่ง PHP คง broadcasting ไว้ แล้วตรวจบนเชนรอบหน้า)
+    fetchReq.timeout = 30000;
 
     const provider = new JsonRpcProvider(fetchReq, chainId, { staticNetwork: true });
 

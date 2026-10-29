@@ -401,26 +401,18 @@ class TreasuryService
     }
 
     /**
-     * วัตถุประสงค์ที่ยกเว้นการบังคับ whitelist.
-     *
-     * `token_sale` คือการส่งเหรียญให้ผู้ซื้อที่ claim vesting ปลายทางเป็นกระเป๋า
-     * ของลูกค้าซึ่งเป็นคนละใบทุกครั้ง จะเอาเข้า whitelist ล่วงหน้าไม่ได้
-     *
-     * ที่ยกเว้นได้เพราะปลายทางไม่ได้มาจากคนกรอก — มันถูกผูกกับ
-     * `sale_transactions.wallet_address` ของรายการซื้อที่ยืนยันแล้ว ซึ่งต้องผ่าน
-     * การตรวจการชำระเงินบน BSC มาก่อน และวงเงินต่อครั้ง/ต่อวันยังบังคับอยู่ครบ
-     *
-     * `token_factory_refund` คืนค่าธรรมเนียมสร้างเหรียญที่ถูกปฏิเสธ — ปลายทางคือ creator_address
-     * ของคำขอ ซึ่งต้องเป็นกระเป๋าเดียวกับที่โอนค่าธรรมเนียมเข้ามา (ตรวจบนเชนตอนสร้างคำขอ)
-     * ยอดไม่เกินที่โอนมาจริง และวงเงินต่อครั้ง/ต่อวันยังบังคับอยู่ครบ
-     */
-    private const WHITELIST_EXEMPT_PURPOSES = ['token_sale', 'token_factory_refund'];
-
-    /**
      * ตรวจว่ารายการจ่ายเงินนี้ผ่านกฎทุกข้อไหม.
      *
      * เรียกทั้งตอนสร้างรายการและตอนก่อนเซ็น — เพราะวงเงินหรือ whitelist
      * อาจถูกแก้ระหว่างที่รายการรออนุมัติอยู่
+     *
+     * ═══ whitelist ยกเว้นตาม "ใครสร้างรายการ" ไม่ใช่ตาม purpose ═══
+     * เดิมยกเว้นตาม purpose `token_sale` ซึ่งแอดมินเลือกเองได้ในฟอร์ม — รหัสแอดมินหลุดหนึ่งครั้ง
+     * = สร้าง อนุมัติ และส่งไปกระเป๋าไหนก็ได้ (ออดิท 2026-10-29 C3)
+     * ตอนนี้ยกเว้นเฉพาะ origin ที่ระบบสร้างเอง (TreasuryPayout::WHITELIST_EXEMPT_ORIGINS):
+     * claim vesting / ออเดอร์โอนธนาคาร ปลายทางผูกกับกระเป๋าของรายการซื้อที่ยืนยันแล้ว
+     * และการคืนค่าธรรมเนียมสร้างเหรียญ ปลายทางคือกระเป๋าที่โอนค่าธรรมเนียมเข้ามา (ตรวจบนเชนแล้ว)
+     * origin อื่นหรือ null = ต้องอยู่ใน whitelist (fail-closed) และวงเงินต่อครั้ง/ต่อวันบังคับทุกกรณี
      *
      * @return array{ok: bool, errors: array<int, string>}
      */
@@ -428,7 +420,7 @@ class TreasuryService
         string $toAddress,
         string $amountWei,
         ?int $ignorePayoutId = null,
-        ?string $purpose = null,
+        ?string $origin = null,
     ): array {
         $errors = [];
 
@@ -443,7 +435,7 @@ class TreasuryService
         // whitelist
         $entry = TreasuryWhitelist::findActiveByAddress($toAddress);
         $needsWhitelist = config('treasury.limits.require_whitelist', true)
-            && ! in_array($purpose, self::WHITELIST_EXEMPT_PURPOSES, true);
+            && ! in_array($origin, TreasuryPayout::WHITELIST_EXEMPT_ORIGINS, true);
 
         if ($needsWhitelist && ! $entry) {
             $errors[] = 'ปลายทางนี้ไม่อยู่ใน whitelist';

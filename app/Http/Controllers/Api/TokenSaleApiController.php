@@ -506,6 +506,21 @@ class TokenSaleApiController extends Controller
         $data = $validator->validated();
 
         try {
+            // ด่านวงเงินต่อครั้งของกระเป๋าร้อน — claim ที่ใหญ่กว่านี้กลายเป็นรายการจ่ายที่ไม่มีวันผ่าน
+            // validatePayout (อนุมัติไม่ได้ ส่งไม่ได้) ทั้งที่ claimed_amount ถูกบวกไปแล้ว ผู้ซื้อรอเหรียญไม่รู้จบ
+            // จึงปฏิเสธตั้งแต่ตรงนี้ ให้แบ่ง claim เป็นหลายครั้งแทน (ออดิท 2026-10-29 L7)
+            $maxPerTxWei = Wei::toWei((string) config('treasury.limits.per_transaction', '0'));
+            if (bccomp($maxPerTxWei, '0', 0) > 0
+                && bccomp(Wei::toWei((string) (float) $data['amount']), $maxPerTxWei, 0) > 0) {
+                return response()->json([
+                    'success' => false,
+                    'error' => [
+                        'code' => 'EXCEEDS_PAYOUT_LIMIT',
+                        'message' => 'A single claim can be at most '.Wei::format($maxPerTxWei).' TPIX. Please claim in smaller parts.',
+                    ],
+                ], 400);
+            }
+
             // ทั้งก้อนอยู่ใน transaction + ล็อกแถว เพราะเดิมอ่าน claimable แล้วค่อย
             // increment โดยไม่ล็อก สองคำขอที่มาพร้อมกันจะผ่านด่านตรวจได้ทั้งคู่
             // แล้ว claim เกินสิทธิ์ (TOCTOU)
@@ -552,6 +567,8 @@ class TokenSaleApiController extends Controller
                         'to_address' => strtolower($data['wallet_address']),
                         'amount_wei' => Wei::toWei((string) $requestedAmount),
                         'purpose' => 'token_sale',
+                        // ระบบสร้างจาก claim จริง — ยกเว้น whitelist ได้เพราะปลายทางผูกกับรายการซื้อ
+                        'origin' => TreasuryPayout::ORIGIN_SALE_CLAIM,
                         'memo' => 'claim vesting จากรายการซื้อ '.$tx->uuid,
                         'status' => TreasuryPayout::STATUS_PENDING,
                     ],

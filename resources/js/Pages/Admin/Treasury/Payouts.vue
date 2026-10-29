@@ -255,6 +255,10 @@ function filterStatus(status) {
                                     <div v-if="p.failure_reason" class="text-xs text-gray-600 mt-1 max-w-[220px]">
                                         {{ p.failure_reason }}
                                     </div>
+                                    <!-- ยังไม่ล้มเหลว: ส่งไม่ยืนยันผล / ค้าง / nonce ถูกใช้ — เงินอาจออกไปแล้ว ห้ามสร้างรายการใหม่แทน -->
+                                    <div v-if="p.status === 'broadcasting' && p.last_error" class="text-xs text-amber-400 mt-1 max-w-[220px]">
+                                        {{ p.last_error }}
+                                    </div>
                                 </td>
                                 <td class="px-4 py-3 text-xs text-gray-500">
                                     <div>{{ p.requester?.name ?? '—' }}</div>
