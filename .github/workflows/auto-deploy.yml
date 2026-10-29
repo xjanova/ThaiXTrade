@@ -66,7 +66,8 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          command_timeout: 5m
+          # health check ท้ายสคริปต์ใช้ได้ถึง ~1 นาทีถ้าแอปค้าง (5 รอบ × 8 วิ + รอ 24 วิ)
+          command_timeout: 7m
           # ⚠️ ค่าเริ่มต้นของ action นี้คือ false = ผลลัพธ์ทุกอย่างที่เซิร์ฟเวอร์พิมพ์
           #    ไม่ถูกส่งกลับมาที่ Actions เลย เห็นแต่ตัวสคริปต์ที่ส่งไป
           #    ที่ผ่านมา migration ล้มเหลวจึงเงียบสนิท: deploy เขียว แต่ตารางไม่ขึ้น
@@ -287,21 +288,58 @@ jobs:
               exit 1
             fi
 
-            echo "✅ Deployment completed successfully!"
+            # ── Health check จากบนเครื่องเอง ─────────────────────────────────
+            #
+            # ของเดิมยิง APP_URL จาก runner ของ GitHub → Cloudflare ตอบ 403 ทุกรอบ
+            # (อย่างน้อยตั้งแต่ run 40700292223) แล้วพิมพ์แค่ ⚠️ → deploy ที่ทำเว็บล่ม
+            # ก็ยังเขียว ห้ามแก้ด้วยการลดการป้องกันของ Cloudflare ให้ runner ผ่าน
+            #
+            # ยิงตรงเข้า Apache บนเครื่องนี้แทน ไม่ผ่าน Cloudflare:
+            # - 127.0.0.1 ใช้ไม่ได้ — vhost ของ DirectAdmin ผูกกับ IP สาธารณะ ได้ 404 ของ Apache
+            # - --resolve ชื่อโดเมนเข้า IP ของเครื่องเอง ลองทุก IPv4 ของ `hostname -I`
+            #   (IP ที่ไม่ใช่ vhost นี้ตอบ 404 ทันที ไม่กินเวลา)
+            # - -k เพราะต่อเข้า IP ของตัวเอง ไม่มีทางโดนดักกลางทาง และเราตรวจแอป ไม่ได้ตรวจใบรับรอง
+            #   (ใบ Let's Encrypt หมดอายุไม่ควรทำให้ deploy ล้ม)
+            # /health ผ่าน Laravel เต็มตัวและอ่าน version.json ทุกครั้ง → จับได้ทั้ง 500
+            # (เช่น php-fpm อ่าน bootstrap/cache/config.php ไม่ได้) และ docroot ชี้ผิดที่ (version ไม่ตรง)
+            HEALTH_URL_BASE="${{ secrets.APP_URL }}"
+            HEALTH_HOST=$(printf '%s' "${HEALTH_URL_BASE:-https://tpix.online}" | sed -E 's#^[A-Za-z]+://##; s#[/:].*$##')
+            DEPLOYED_VERSION=$(php -r '$v = json_decode(@file_get_contents("version.json"), true); echo is_array($v) ? ($v["version"] ?? "") : "";')
+            HEALTH_IPS="$( (hostname -I 2>/dev/null || true) | tr ' ' '\n' | grep -E '^[0-9]+(\.[0-9]+){3}$' || true) 127.0.0.1"
+            HEALTH_BODY=$(mktemp)
+            HEALTH_OK=0
+            HEALTH_LAST=""
+            echo "🔍 Health check: https://${HEALTH_HOST}/health ผ่าน IP ของเครื่อง (คาด version ${DEPLOYED_VERSION:-?})"
+            for attempt in 1 2 3 4 5; do
+              HEALTH_LAST=""
+              for ip in $HEALTH_IPS; do
+                # set -e อยู่ — curl ล้มต้องไม่ทำให้สคริปต์หลุดก่อนรายงาน
+                code=$(curl -sk --connect-timeout 3 -m 8 -o "$HEALTH_BODY" -w '%{http_code}' \
+                  --resolve "${HEALTH_HOST}:443:${ip}" "https://${HEALTH_HOST}/health" 2>/dev/null) || code="000"
+                if [ "$code" = "404" ]; then continue; fi   # IP นี้ไม่ใช่ vhost ของเรา
+                parsed=$(php -r '$j = json_decode(@file_get_contents($argv[1]), true); echo is_array($j) ? (($j["status"] ?? "")."|".($j["version"] ?? "")) : "|";' "$HEALTH_BODY" 2>/dev/null) || parsed="|"
+                HEALTH_LAST="ip=${ip} HTTP ${code} status=${parsed%%|*} version=${parsed#*|}"
+                if [ "$code" = "200" ] && [ "${parsed%%|*}" = "healthy" ] && [ -n "$DEPLOYED_VERSION" ] && [ "${parsed#*|}" = "$DEPLOYED_VERSION" ]; then
+                  HEALTH_OK=1
+                  break 2
+                fi
+              done
+              echo "  ⏳ รอบ ${attempt}/5: ${HEALTH_LAST:-ทุก IP ตอบ 404 / ต่อไม่ได้}"
+              if [ "$attempt" -lt 5 ]; then sleep 6; fi
+            done
+            rm -f "$HEALTH_BODY"
 
-      - name: Health Check
-        env:
-          APP_URL: ${{ secrets.APP_URL }}
-        run: |
-          URL="${APP_URL:-https://tpix.online}"
-          echo "🔍 Checking health at: ${URL}"
-          sleep 5
-          HTTP_CODE=$(curl -s -o /tmp/health_response.txt -w "%{http_code}" "${URL}" || echo "000")
-          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 302 ]; then
-            echo "✅ Application is healthy (HTTP $HTTP_CODE)"
-          else
-            echo "⚠️ Health check returned HTTP $HTTP_CODE (may still be starting up)"
-          fi
+            if [ "$HEALTH_OK" -eq 1 ]; then
+              echo "✅ Health check ผ่าน (${HEALTH_LAST})"
+            else
+              # ไม่พิมพ์ body — ถ้า APP_DEBUG เปิด หน้า error ของ Laravel มีค่า config ปนอยู่
+              echo "::error::HEALTH CHECK FAILED — ${HEALTH_LAST:-ไม่มี IP ไหนตอบ /health ของ ${HEALTH_HOST}} (คาด HTTP 200 status=healthy version=${DEPLOYED_VERSION:-?})"
+              echo "ดู storage/logs/laravel-$(date +%F).log และ log ของ Apache/php-fpm บนเซิร์ฟเวอร์"
+              ls -l bootstrap/cache/config.php 2>/dev/null || true
+              exit 1
+            fi
+
+            echo "✅ Deployment completed successfully!"
 
       - name: Deployment Summary
         if: always()
