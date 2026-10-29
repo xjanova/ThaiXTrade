@@ -101,6 +101,10 @@ return [
             'enabled' => true,
             // เชนเดียวที่เปิดเทรดจริงตอนนี้ — swap/market order ผ่าน PancakeSwap
             'status' => 'live',
+            // PancakeSwap V2 — ตัวเดียวกับ PANCAKE_ROUTER_ADDRESS / WBNB_ADDRESS ใน resources/js/utils/web3.js
+            // ตัวตรวจไม้ฝั่งเซิร์ฟเวอร์ (BscSwapVerifier) รับเฉพาะธุรกรรมที่ส่งเข้า router นี้
+            'swap_router' => '0x10ED43C718714eb63d5aA57B78B54704E256024E',
+            'wrapped_native' => '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
         ],
 
         // Polygon

@@ -661,13 +661,20 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
      * เหรียญไม่ผ่านเราเลย
      *
      * quote ถูกเรียกทุกครั้งที่ผู้ใช้พิมพ์จำนวน จึงให้โควตาสูงกว่าตัวที่เขียนข้อมูล
+     *
+     * ⚠️ throttle ทุกตัวในกลุ่มนี้ต้องมีชื่อถัง (อาร์กิวเมนต์ที่สาม) — ออดิท 2026-10-28 L4
+     *    throttle:30,1 แบบไม่มีชื่อใช้คีย์เดียวกับ throttleApi('60,1') ของทั้ง API (โดเมน|IP)
+     *    คำขอหนึ่งครั้งถูกนับสองรอบในถังเดียว = ได้จริงแค่ ~15 ครั้ง/นาที แล้ว 429 กลางไม้
+     *    (ขอตั๋ว → ผูก tx → ปิด/คืน) ทั้งที่ผู้ใช้ไม่ได้ยิงรัว
      */
     Route::prefix('trading-fee')->group(function () {
-        Route::post('/quote', [TradingFeeController::class, 'quote'])->middleware('throttle:120,1');
-        Route::get('/balance', [TradingFeeController::class, 'balance'])->middleware('throttle:60,1');
+        Route::post('/quote', [TradingFeeController::class, 'quote'])->middleware('throttle:120,1,trading-fee-quote');
+        Route::get('/balance', [TradingFeeController::class, 'balance'])->middleware('throttle:60,1,trading-fee-balance');
 
-        Route::middleware('throttle:30,1')->group(function () {
+        Route::middleware('throttle:30,1,trading-fee-tickets')->group(function () {
             Route::post('/tickets', [TradingFeeController::class, 'issueTicket']);
+            // ไม้ส่งเข้าเชนแล้ว — ผูกตั๋วกับธุรกรรม ผลบนเชนเป็นตัวตัดสินว่าปิดหรือคืน
+            Route::post('/tickets/{uuid}/bind', [TradingFeeController::class, 'bindTicket']);
             Route::post('/tickets/{uuid}/consume', [TradingFeeController::class, 'consumeTicket']);
             Route::post('/tickets/{uuid}/refund', [TradingFeeController::class, 'refundTicket']);
             Route::post('/topup/confirm', [TradingFeeController::class, 'confirmTopup']);

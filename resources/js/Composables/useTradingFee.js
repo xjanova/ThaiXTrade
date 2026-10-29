@@ -153,6 +153,45 @@ export function useTradingFee() {
         }
     }
 
+    /**
+     * ไม้นี้ได้รับยกเว้นค่าบริการไหม (เช่าบอทคลาวด์อยู่) — สำหรับหน้าที่ไม่ได้ใช้ใบเสนอราคาของฟอร์มเทรด
+     *
+     * ไม่แตะ currentQuote: ค่านั้นเป็นของฟอร์มบนหน้าเทรด หน้า Swap เขียนทับแล้วฟอร์มจะเห็นตัวเลขผิดไม้
+     * @returns {Promise<boolean|null>} null = ถามไม่สำเร็จ — ผู้เรียกถือว่าไม่ยกเว้น (หักตามปกติ) ไม่ใช่เดาว่าฟรี
+     */
+    async function waiverFor(wallet, chainId) {
+        if (!wallet) return false;
+        try {
+            const { data } = await axios.post('/api/v1/trading-fee/quote', {
+                wallet_address: wallet,
+                order_value_usd: 1,
+                chain_id: chainId,
+            });
+            return data?.success === true ? data.data?.waived === true : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * ไม้ส่งเข้าเชนแล้ว — ผูกใบอนุญาตกับธุรกรรมของไม้ (เรียกทันทีที่กระเป๋าส่งธุรกรรมออก)
+     *
+     * ผูกแล้ว ใบนี้คืนเงินได้เมื่อเชนยืนยันว่าไม้ไม่ลงเท่านั้น และถูกปิดเองเมื่อไม้ลง
+     * แม้ผู้ใช้ปิดแท็บก่อนรู้ผล (ออดิท 2026-10-28 C1)
+     */
+    async function bindTicket(wallet, uuid, orderTxHash) {
+        try {
+            const { data } = await axios.post('/api/v1/trading-fee/tickets/' + uuid + '/bind', {
+                wallet_address: wallet,
+                order_tx_hash: orderTxHash,
+            });
+            return data?.success ? data.data : null;
+        } catch (err) {
+            console.warn('[TPIX] ผูกใบอนุญาตกับธุรกรรมไม่สำเร็จ:', readError(err, ''));
+            return null;
+        }
+    }
+
     /** ไม้ลงจริงแล้ว — ปิดใบอนุญาต */
     async function consumeTicket(wallet, uuid, orderTxHash = null) {
         try {
@@ -177,6 +216,9 @@ export function useTradingFee() {
      *
      * ⚠️ ต้องเรียกทุกครั้งที่ขอใบอนุญาตแล้วไม่ได้วางไม้ รวมถึงตอนผู้ใช้กดยกเลิก
      *    ในกระเป๋า ซึ่งเป็นเคสที่เกิดบ่อยที่สุด
+     *
+     * ใบที่ผูกธุรกรรมแล้วแต่เชนยังไม่รู้ผล → { pending: true } (เซิร์ฟเวอร์ตอบ 409 TICKET_TRADE_PENDING)
+     * ผู้เรียกลองใหม่ได้ · ไม่ลองก็ไม่เสียเงิน ตัวเก็บกวาดคืนให้เมื่อเชนยืนยันว่าไม้ไม่ลง
      */
     async function refundTicket(wallet, uuid, reason = '') {
         try {
@@ -190,6 +232,7 @@ export function useTradingFee() {
             }
             return data?.data ?? null;
         } catch (err) {
+            if (err?.response?.data?.error?.code === 'TICKET_TRADE_PENDING') return { pending: true };
             console.warn('[TPIX] คืนค่าบริการไม่สำเร็จ:', readError(err, ''));
             return null;
         }
@@ -250,7 +293,7 @@ export function useTradingFee() {
         // derived
         recommended, canPayWithCredit, creditShortfall, feeWaived,
         // actions
-        loadTiers, loadBalance, quote,
-        issueTicket, consumeTicket, refundTicket, confirmTopup,
+        loadTiers, loadBalance, quote, waiverFor,
+        issueTicket, bindTicket, consumeTicket, refundTicket, confirmTopup,
     };
 }

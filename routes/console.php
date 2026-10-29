@@ -393,12 +393,25 @@ Schedule::command('aibot:wallet-transfers')
  *    และไม่มีทางรู้ตัว เพราะยอดหายทีละนิดโดยไม่มีอะไรแจ้ง
  *
  * ทุกนาที เพราะตั๋วอายุสั้น (ปริยาย 15 นาที) และการคืนช้าคือเงินของคนอื่นค้างอยู่กับเรา
+ * ตั๋วที่ผูกธุรกรรมของไม้แล้วถามผลบนเชนก่อน — ไม้ลง = ปิด ไม่คืน (ดู TicketSettlementService)
  */
 Schedule::command('trading:expire-tickets')
     ->everyMinute()
     ->withoutOverlapping(5)
     ->onOneServer()
     ->name('trading:expire-tickets');
+
+/*
+ * ตรวจไม้ BSC ที่ยังไม่จบย้อนหลัง — แถวที่รอลงบล็อก และค่าธรรมเนียมที่ยังไม่ได้ผล
+ *
+ * ผู้ใช้ปิดแท็บหลังส่งไม้ = ไม่มีใครกลับมาถามเชนให้ แถวจะค้าง pending ตลอดไป
+ * และไม้ที่ยืนยันแล้วจะไม่ได้ปิดตั๋ว / ไม่ได้นับค่าธรรมเนียมที่จ่ายจริง
+ */
+Schedule::command('trading:reconcile-swaps')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer()
+    ->name('trading:reconcile-swaps');
 
 /*
  * ล้างเอกสารยืนยันตัวตนที่ครบกำหนดเก็บแล้ว — ทุกวันตี 3
