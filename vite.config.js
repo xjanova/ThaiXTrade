@@ -41,7 +41,7 @@ export default defineConfig({
                     if (id.includes('node_modules/lightweight-charts/') || id.includes('node_modules/apexcharts/')) {
                         return 'charts';
                     }
-                    if (id.includes('node_modules/ethers/') || id.includes('node_modules/web3/')) {
+                    if (id.includes('node_modules/ethers/')) {
                         return 'web3';
                     }
                     // three.js (~170 KB gzip) แยกก้อนของตัวเอง: แก้โค้ดหน้าแรก 3D แล้ว deploy
