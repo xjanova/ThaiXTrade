@@ -138,18 +138,24 @@ class DeployWindowScriptTest extends TestCase
         $step = collect($workflow['jobs']['deploy']['steps'])
             ->first(fn (array $s) => str_starts_with($s['uses'] ?? '', 'appleboy/ssh-action'));
 
+        // ค่าลับ/พาธมาทาง env ของ step (appleboy/ssh-action export ให้ก่อนสคริปต์) — ไม่มี ${{ }} ให้แทนแล้ว
+        $this->assertStringNotContainsString('${{', $step['with']['script'], 'script ของ ssh-action ต้องไม่มี expression (เพดาน 21000 ไบต์)');
+        $this->assertSame(
+            ['DEPLOY_IN_PATH', 'DEPLOY_IN_GH_PAT', 'DEPLOY_IN_APP_URL', 'DEPLOY_IN_SHA'],
+            array_map('trim', explode(',', $step['with']['envs'])),
+        );
+
         $script = strtr($step['with']['script'], [
-            '${{ secrets.DEPLOY_PATH }}' => $this->appDir,
-            '${{ secrets.GH_PAT }}' => '',
-            '${{ secrets.APP_URL }}' => '',
-            '${{ github.sha }}' => 'test-sha',
             'DRAIN_MAX_SECONDS=90' => "DRAIN_MAX_SECONDS={$drainMaxSeconds}",
         ]);
-        $this->assertStringNotContainsString('${{', $script, 'มี expression ของ Actions ที่ dry-run ยังไม่แทนค่า');
 
         File::put("{$this->root}/deploy.sh", $script);
 
         $process = new Process(['bash', "{$this->root}/deploy.sh"], $this->root, $env + [
+            'DEPLOY_IN_PATH' => $this->appDir,
+            'DEPLOY_IN_GH_PAT' => '',
+            'DEPLOY_IN_APP_URL' => '',
+            'DEPLOY_IN_SHA' => 'test-sha',
             'PATH' => "{$this->root}/bin:".getenv('PATH'),
             'CALLS_LOG' => "{$this->root}/calls.log",
             'CRONTAB_FILE' => "{$this->root}/crontab",
