@@ -281,6 +281,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 // เข้าคิวจ่ายใหม่ = สร้างรายการจ่ายจากกระเป๋าร้อน สิทธิ์จึงเท่ากับหน้าคลัง
                 Route::post('/bank/{id}/requeue', [TokenSaleController::class, 'requeueBankPayout'])->name('bank.requeue');
                 Route::post('/claims/{id}/requeue', [TokenSaleController::class, 'requeueClaimPayouts'])->name('claims.requeue');
+
+                // กู้ออเดอร์หลังชนะ chargeback = นับยอดขายกลับและเปิดทางออกเหรียญ
+                Route::post('/dispute/{id}/restore', [TokenSaleController::class, 'restoreDisputedOrder'])->name('dispute.restore');
             });
         });
 

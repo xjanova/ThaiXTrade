@@ -9,10 +9,12 @@ use App\Models\SiteSetting;
 use App\Models\SystemAlert;
 use App\Models\TokenSale;
 use App\Support\Wei;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Stripe\Checkout\Session;
+use Stripe\Dispute;
 use Stripe\Refund;
 use Stripe\Stripe;
 use Stripe\Webhook;
@@ -36,6 +38,9 @@ class StripePaymentService
     private const MAX_CARD_HOLD_DAYS = 180;
 
     private const ALERT_NODE = 'token-sale';
+
+    /** ผลที่ร้านยังถือเงินอยู่ — warning_closed คือ inquiry ที่จบโดยเงินไม่เคยถูกดึง แต่ created ปิดออเดอร์ไปแล้วเหมือนกัน */
+    private const DISPUTE_KEPT_STATUSES = [Dispute::STATUS_WON, Dispute::STATUS_WARNING_CLOSED];
 
     public function __construct(
         private readonly TokenSaleService $saleService,
@@ -307,6 +312,7 @@ class StripePaymentService
             'checkout.session.expired' => $this->handleCheckoutExpired($event->data->object),
             'charge.refunded' => $this->handleChargeRefunded($event->data->object),
             'charge.dispute.created' => $this->handleDisputeCreated($event->data->object),
+            'charge.dispute.closed' => $this->handleDisputeClosed($event->data->object),
             'payment_intent.payment_failed' => $this->handlePaymentFailed($event->data->object),
             default => ['status' => 'ignored', 'event_type' => $event->type],
         };
@@ -412,6 +418,9 @@ class StripePaymentService
      * ตัวนับย้อนเฉพาะแถวที่เคยนับ และแถวที่คืนเงินแล้วคงสถานะ refunded แม้ dispute จะตามมา
      * เหรียญออกไปแล้วไม่คืนโควตา ไม่งั้นขายเหรียญก้อนเดียวกันซ้ำ
      *
+     * closed_from กับ counters_reversed จำไว้เฉพาะรอบที่ปิดแถวที่ยังนับอยู่: แถว failed มีทั้งที่ย้อนยอดแล้วและยังไม่ย้อน
+     * การกู้ต้องรู้ว่าเป็นแบบไหน ส่วน dispute รอบสองบนแถวที่ปิดแล้วต้องไม่ทับสิ่งที่รอบแรกจำไว้
+     *
      * @return string ยอด wei ที่หยุดไม่ทัน
      */
     private function closeOrder(SaleTransaction $transaction, string $status, array $metadata, string $reason): string
@@ -420,18 +429,146 @@ class StripePaymentService
             $locked = SaleTransaction::whereKey($transaction->id)->lockForUpdate()->firstOrFail();
 
             $tokensLeftWei = $this->payouts->haltPayouts($locked, "{$reason} ของรายการซื้อ {$locked->uuid}");
+            $reverses = bccomp($tokensLeftWei, '0', 0) === 0;
 
-            if (bccomp($tokensLeftWei, '0', 0) === 0) {
+            $closure = $this->saleService->isCounted($locked)
+                ? ['closed_from' => $locked->status, 'counters_reversed' => $reverses]
+                : [];
+
+            if ($reverses) {
                 $this->saleService->reverseCounters($locked);
             }
 
             $locked->update([
                 'status' => $locked->status === 'refunded' ? 'refunded' : $status,
-                'metadata' => array_merge($locked->metadata ?? [], $metadata),
+                'metadata' => array_merge($locked->metadata ?? [], $metadata, $closure),
             ]);
 
             return $tokensLeftWei;
         });
+    }
+
+    /**
+     * เหตุที่กู้ออเดอร์นี้ไม่ได้ — null = กู้ได้ หน้าแอดมินกับตอนกดจริงถามที่เดียวกัน.
+     *
+     * ยังไม่รวมโควตาและเพดานกระเป๋า: สองอย่างนั้นตัดสินได้ใต้ล็อกเท่านั้น
+     */
+    public function disputeRestoreRefusal(SaleTransaction $transaction): ?string
+    {
+        return match (true) {
+            ! $this->isAwaitingRestore($transaction) => 'ออเดอร์นี้ไม่ได้รอกู้จาก chargeback',
+            ! isset($transaction->metadata['closed_from']) => 'ออเดอร์นี้ไม่เคยนับเป็นยอดขาย จึงไม่มีอะไรให้กู้ — ต้องคืนเงินใน Stripe',
+            default => null,
+        };
+    }
+
+    /** @return Collection<int, SaleTransaction> ออเดอร์ที่ร้านถือเงินอยู่แต่ผู้ซื้อยังไม่ได้เหรียญ พร้อมเหตุถ้ากู้ไม่ได้ */
+    public function ordersAwaitingRestore(): Collection
+    {
+        return SaleTransaction::where('status', 'failed')
+            ->whereIn('metadata->dispute_closed_status', self::DISPUTE_KEPT_STATUSES)
+            ->latest()
+            ->get()
+            ->each(fn (SaleTransaction $tx) => $tx->setAttribute('restore_refusal', $this->disputeRestoreRefusal($tx)));
+    }
+
+    /**
+     * กู้ออเดอร์ที่ร้านยังถือเงินอยู่กลับเป็นยอดขาย — ทางเดียวที่แถว failed กลับมานับได้.
+     *
+     * webhook ทำแทนไม่ได้: โควตาอาจขายต่อไปแล้วและเพดานกระเป๋าอาจเปลี่ยน ต้องมีคนตัดสินว่าจะกู้หรือคืนเงิน
+     *
+     * @throws PurchaseException ปฏิเสธ — ข้อความบอกเหตุและออเดอร์ยังเหมือนเดิมทุกอย่าง
+     */
+    public function restoreDisputedOrder(SaleTransaction $transaction, ?string $restoredBy): SaleTransaction
+    {
+        $refusal = $this->disputeRestoreRefusal($transaction);
+
+        if ($refusal !== null) {
+            throw new PurchaseException($refusal);
+        }
+
+        $disputeId = (string) ($transaction->metadata['dispute_id'] ?? '');
+
+        // ถาม Stripe นอกล็อก ไม่งั้น webhook ของออเดอร์เดียวกันต้องรอเน็ตไปด้วย
+        $this->assertPaymentKept($disputeId);
+
+        $order = DB::transaction(function () use ($transaction, $disputeId, $restoredBy) {
+            $locked = SaleTransaction::whereKey($transaction->id)->lockForUpdate()->firstOrFail();
+
+            // กดซ้ำ คืนเงิน และ dispute ใหม่แทรกระหว่างถาม Stripe ได้ทั้งหมด จึงตัดสินซ้ำใต้ล็อก
+            $refusal = $this->disputeRestoreRefusal($locked)
+                ?? (($locked->metadata['dispute_id'] ?? null) === $disputeId ? null : 'มี dispute ใหม่เข้ามาระหว่างตรวจ — ออเดอร์ยังเหมือนเดิม');
+
+            if ($refusal !== null) {
+                throw new PurchaseException($refusal);
+            }
+
+            $this->saleService->restoreCounters($locked, (bool) ($locked->metadata['counters_reversed'] ?? false));
+
+            $locked->update([
+                'status' => $locked->metadata['closed_from'],
+                'metadata' => array_merge($locked->metadata, [
+                    'dispute_restored_at' => now()->toIso8601String(),
+                    'dispute_restored_by' => $restoredBy,
+                ]),
+            ]);
+
+            return $locked;
+        });
+
+        SystemAlert::resolveKeys(
+            self::ALERT_NODE,
+            [$this->restoreAlertKey($order), 'sale_card_tokens_left_'.$order->id],
+            $restoredBy ?? 'admin',
+        );
+
+        // กู้แล้วเฟสอาจหมดพอดี → เปิดขั้นถัดไปหลัง commit เหมือนการซื้อ
+        if ($order->phase) {
+            $this->saleService->rollOverIfExhausted($order->phase);
+        }
+
+        Log::warning('Stripe dispute: order restored', [
+            'transaction_id' => $order->uuid,
+            'dispute_id' => $disputeId,
+            'restored_by' => $restoredBy,
+        ]);
+
+        return $order;
+    }
+
+    /**
+     * ถาม Stripe ซ้ำก่อนคืนเหรียญ — ถามไม่ได้ถือว่าไม่ผ่าน.
+     *
+     * ระหว่างรอคนกด ผลอาจพลิกหรือถูกคืนเงินใน dashboard ไปแล้ว ถ้าเชื่อที่จำไว้ผู้ซื้อจะได้ทั้งเงินคืนและเหรียญ
+     */
+    private function assertPaymentKept(string $disputeId): void
+    {
+        try {
+            $dispute = Dispute::retrieve(['id' => $disputeId, 'expand' => ['charge']]);
+        } catch (\Throwable $e) {
+            Log::error('stripe: ตรวจผล dispute กับ Stripe ไม่สำเร็จ', ['dispute_id' => $disputeId, 'error' => $e->getMessage()]);
+
+            throw new PurchaseException('ตรวจผล dispute กับ Stripe ไม่สำเร็จ — ออเดอร์ยังเหมือนเดิม ลองใหม่อีกครั้ง', 0, $e);
+        }
+
+        if (! in_array($dispute->status, self::DISPUTE_KEPT_STATUSES, true)) {
+            throw new PurchaseException('Stripe แจ้งว่าผล dispute ตอนนี้คือ '.$dispute->status.' — กู้ไม่ได้');
+        }
+
+        if ((int) ($dispute->charge->amount_refunded ?? -1) !== 0) {
+            throw new PurchaseException('รายการนี้ถูกคืนเงินใน Stripe แล้วทั้งหมดหรือบางส่วน — กู้ไม่ได้');
+        }
+    }
+
+    private function isAwaitingRestore(SaleTransaction $transaction): bool
+    {
+        return $transaction->status === 'failed'
+            && in_array($transaction->metadata['dispute_closed_status'] ?? null, self::DISPUTE_KEPT_STATUSES, true);
+    }
+
+    private function restoreAlertKey(SaleTransaction $transaction): string
+    {
+        return 'sale_card_dispute_won_'.$transaction->id;
     }
 
     /** เงินกลับไปแล้วแต่เหรียญออกไปด้วย — เสียทั้งคู่ ระบบแก้เองไม่ได้ ต้องให้คนเห็นทันที */
@@ -740,6 +877,14 @@ class StripePaymentService
 
         $transaction = $this->orderForSession($sessions->data[0]);
 
+        // ร้านชนะ dispute แล้วเลือกคืนเงินแทนการกู้ — ต้องปิดทางกู้และเหตุที่รออยู่ด้วย
+        if ($transaction && ($charge->refunded ?? false) === true && $this->isAwaitingRestore($transaction)) {
+            $this->alertIfTokensLeft($transaction, $this->closeOrder($transaction, 'refunded', [], 'คืนเงินหลังปิด dispute'), 'charge.refunded');
+            SystemAlert::resolveKeys(self::ALERT_NODE, [$this->restoreAlertKey($transaction)]);
+
+            return ['status' => 'refund_processed', 'transaction_id' => $transaction->uuid];
+        }
+
         if (! $transaction || in_array($transaction->status, ['refunded', 'failed'])) {
             return ['status' => 'already_refunded_or_not_found'];
         }
@@ -813,7 +958,12 @@ class StripePaymentService
                     'dispute_reason' => $dispute->reason ?? 'unknown',
                     'dispute_amount' => ($dispute->amount ?? 0) / 100,
                     'disputed_at' => now()->toIso8601String(),
+                    'dispute_closed_status' => null,
+                    'dispute_closed_at' => null,
                 ], 'chargeback'), 'charge.dispute.created');
+
+                // ผลของ dispute เก่าใช้กับรอบนี้ไม่ได้ — เหตุเดิมบอกให้กดกู้ซึ่งกดไม่ได้แล้ว
+                SystemAlert::resolveKeys(self::ALERT_NODE, [$this->restoreAlertKey($transaction)]);
 
                 Log::critical('Stripe DISPUTE created — allocation reversed, requires immediate action', [
                     'transaction_id' => $transaction->uuid,
@@ -826,6 +976,71 @@ class StripePaymentService
         }
 
         return ['status' => 'dispute_flagged', 'dispute_id' => $dispute->id];
+    }
+
+    /**
+     * Dispute closed — ร้านเสียเงินถาวร หรือยังถือเงินอยู่แต่ผู้ซื้อไม่มีเหรียญ.
+     *
+     * กรณีหลังออเดอร์ยัง failed และตัวนับไม่ขยับ: ต้องมีคนเห็นเหตุแล้วตัดสิน ดู restoreDisputedOrder
+     */
+    private function handleDisputeClosed(object $dispute): array
+    {
+        $sessions = Session::all([
+            'payment_intent' => $dispute->payment_intent,
+            'limit' => 1,
+        ]);
+
+        $transaction = empty($sessions->data) ? null : $this->orderForSession($sessions->data[0]);
+
+        if (! $transaction) {
+            return ['status' => 'no_matching_order', 'dispute_id' => $dispute->id];
+        }
+
+        $outcome = (string) ($dispute->status ?? '');
+
+        $order = DB::transaction(function () use ($transaction, $dispute, $outcome) {
+            $locked = SaleTransaction::whereKey($transaction->id)->lockForUpdate()->firstOrFail();
+            $current = $locked->metadata['dispute_id'] ?? null;
+
+            // ผลมาถึงก่อน created: ปล่อยผ่านแล้ว created จะปิดออเดอร์ตามมาโดยไม่มีใครรู้ว่าร้านชนะแล้ว
+            if ($current === null) {
+                throw new RuntimeException('Stripe dispute is not recorded yet.');
+            }
+
+            if ($current !== $dispute->id) {
+                return null;
+            }
+
+            $locked->update(['metadata' => array_merge($locked->metadata, [
+                'dispute_closed_status' => $outcome,
+                'dispute_closed_at' => now()->toIso8601String(),
+            ])]);
+
+            return $locked;
+        });
+
+        Log::warning('Stripe dispute closed', [
+            'transaction_id' => $transaction->uuid,
+            'dispute_id' => $dispute->id,
+            'outcome' => $outcome,
+            'current' => $order !== null,
+        ]);
+
+        if ($order === null || ! $this->isAwaitingRestore($order)) {
+            return ['status' => 'dispute_closed', 'dispute_id' => $dispute->id, 'outcome' => $outcome];
+        }
+
+        SystemAlert::raise(
+            self::ALERT_NODE,
+            $this->restoreAlertKey($order),
+            'critical',
+            'ร้านถือเงินของรายการซื้อ '.$order->uuid.' ต่อแล้ว (dispute '.$outcome.') แต่ผู้ซื้อยังไม่ได้เหรียญ '
+                .number_format((float) $order->tpix_amount, 2).' TPIX — '
+                .($this->disputeRestoreRefusal($order) ?? 'super_admin ต้องกดกู้ออเดอร์ที่หน้า Token Sales หรือคืนเงินใน Stripe'),
+            ['transaction_id' => $order->id, 'wallet' => $order->wallet_address, 'dispute_id' => $dispute->id],
+        );
+
+        return ['status' => 'dispute_restore_required', 'transaction_id' => $order->uuid];
     }
 
     /**

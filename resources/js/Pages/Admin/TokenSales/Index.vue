@@ -20,6 +20,8 @@ const props = defineProps({
     launch: { type: Object, default: () => ({}) },
     // ทุกคำสั่งของหน้านี้ขยับเงินจริง — ใช้ได้เฉพาะ super_admin ระดับอื่นเปิดดูได้อย่างเดียว
     canManageMoney: { type: Boolean, default: false },
+    // ออเดอร์บัตรที่ร้านยังถือเงินอยู่หลัง chargeback — เซิร์ฟเวอร์ส่งให้เฉพาะ super_admin
+    disputesAwaitingRestore: { type: Array, default: () => [] },
 });
 
 // Tab ปัจจุบัน
@@ -258,6 +260,25 @@ function requeuePayout(tx) {
 }
 
 /**
+ * กู้ออเดอร์หลัง chargeback — หน้านี้ไม่รู้โควตาล่าสุด เซิร์ฟเวอร์ตรวจ Stripe โควตา และเพดานกระเป๋าใหม่ตอนกดจริง
+ * ถ้าถูกปฏิเสธ เหตุผลขึ้นที่แถบแจ้งเตือนของ layout และออเดอร์ยังอยู่ในกล่องเดิม
+ */
+function restoreDispute(tx) {
+    if (confirmingId.value) return;
+
+    const amount = Number(tx.tpix_amount).toLocaleString('en-US');
+    if (!window.confirm(`กู้ออเดอร์ ${tx.uuid} กลับเป็นยอดขายหรือไม่?\n\nผู้ซื้อจะกลับมามีสิทธิ์ ${amount} TPIX และยอดขายจะถูกนับเพิ่ม — ถ้าตั้งใจคืนเงินแทน ให้คืนใน Stripe`)) {
+        return;
+    }
+
+    confirmingId.value = tx.id;
+    router.post(`/admin/token-sales/dispute/${tx.id}/restore`, {}, {
+        preserveScroll: true,
+        onFinish: () => { confirmingId.value = null; },
+    });
+}
+
+/**
  * กู้ยอด claim — เซิร์ฟเวอร์ส่งยอดมาเฉพาะแถวที่พิสูจน์ได้ว่าเงินไม่ออกและยังไม่เคยกู้
  * ส่วนที่เกินวงเงินต่อครั้งของปลายทางจะคืนเป็นสิทธิ์ claim แอดมินต้องเห็นก่อนกด
  */
@@ -322,6 +343,30 @@ function statusBadge(s) {
                 <p class="text-sm text-yellow-400 font-medium">
                     ⚠️ <strong>สำคัญ:</strong> TPIX เป็น utility token แลกเปลี่ยนได้กับ USDT เท่านั้น ไม่สามารถถอนเป็นเงินสดได้ ข้อความนี้แสดงให้ผู้ซื้อทราบทุกจุด
                 </p>
+            </div>
+
+            <!-- ร้านยังถือเงินอยู่หลัง chargeback แต่ผู้ซื้อไม่มีเหรียญ — อยู่นอกแท็บเพราะต้องมีคนตัดสินทุกแถว -->
+            <div v-if="disputesAwaitingRestore.length" class="mb-6 glass-dark rounded-xl border border-trading-red/30 p-4">
+                <h2 class="text-sm font-semibold text-trading-red">ออเดอร์บัตรที่ร้านถือเงินอยู่แต่ผู้ซื้อยังไม่ได้เหรียญ</h2>
+                <p class="text-xs text-gray-400 mt-1 mb-3">กู้ได้ถ้า Stripe ยืนยัน และโควตากับเพดานกระเป๋ายังพอ ถ้ากู้ไม่ได้ต้องคืนเงินใน Stripe</p>
+                <div
+                    v-for="tx in disputesAwaitingRestore" :key="tx.id"
+                    class="flex flex-wrap items-center justify-between gap-2 py-2 border-t border-white/5 text-xs"
+                >
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span class="text-gray-400 font-mono">{{ tx.uuid?.slice(0, 8) }}...</span>
+                        <span class="text-primary-400 font-mono">{{ tx.wallet_address?.slice(0, 10) }}...</span>
+                        <span class="text-trading-green font-medium">{{ fmt(tx.tpix_amount) }} TPIX</span>
+                        <span class="text-white">${{ Number(tx.payment_usd_value).toFixed(2) }}</span>
+                    </div>
+                    <span v-if="tx.restore_refusal" class="text-gray-500">{{ tx.restore_refusal }}</span>
+                    <button
+                        v-else
+                        class="px-2 py-1 rounded-lg bg-trading-green/20 text-trading-green hover:bg-trading-green/30 transition disabled:opacity-40"
+                        :disabled="confirmingId === tx.id"
+                        @click="restoreDispute(tx)"
+                    >กู้ออเดอร์</button>
+                </div>
             </div>
 
             <!-- Tabs -->
