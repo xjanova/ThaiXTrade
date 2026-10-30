@@ -515,6 +515,18 @@ class BankTransferSaleTest extends TestCase
         $this->assertEquals(200, (float) $confirmed->fresh()->claimed_amount);
     }
 
+    /** ★ แอดมินกรอก idempotency_key เองได้ แถวที่ตั้งคีย์เลียนแบบต้องไม่ถูกหักจากสิทธิ์ของผู้ซื้อ */
+    public function test_backfill_ignores_an_admin_row_with_a_bank_shaped_key(): void
+    {
+        $confirmed = $this->confirmedOrder();
+        $this->legacyPayout($confirmed, '200', ['origin' => TreasuryPayout::ORIGIN_ADMIN]);
+
+        $this->runBackfill();
+
+        $this->assertEquals(0, (float) $confirmed->fresh()->claimed_amount);
+        $this->assertArrayNotHasKey('initial_payout_wei', $confirmed->fresh()->metadata);
+    }
+
     /** แถวเก่าที่จบโดยเงินไม่ออกไม่เคยกินสิทธิ์ claim — ห้ามหัก และเข้าคิวใหม่ได้ตามยอดจริง */
     public function test_backfill_ignores_a_legacy_payout_that_sent_nothing(): void
     {

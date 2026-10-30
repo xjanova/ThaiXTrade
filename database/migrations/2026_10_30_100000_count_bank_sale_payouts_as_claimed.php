@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\Log;
  * แถวที่ยังไม่จบ (รวม failed ที่อาจโอนไปแล้ว) ต้องนับเข้า claimed_amount ไม่งั้น /token-sale/claim
  * จ่ายยอดเดียวกันซ้ำได้ ส่วนแถวที่จบโดยเงินไม่ออกไม่เคยกินสิทธิ์ใคร จึงไม่แตะ
  *
+ * กรอง origin ด้วยเพราะแอดมินเคยกรอก idempotency_key เองได้ แถวที่ตั้งคีย์เลียนแบบต้องไม่ถูกหักจากผู้ซื้อ
+ * แถวจริงไม่หลุดตัวกรองนี้: prod ไม่มีแถวเลยตอนเพิ่มคอลัมน์ origin (2026_10_29_120000) จึงไม่มีแถวเก่าค้างเป็น admin
+ *
  * initial_payout_wei เก็บยอดของแถวแรก ถ้าแถวนั้นจบโดยเงินไม่ออกทีหลัง กดจ่ายใหม่จะได้ยอดเดิมโดยไม่หักซ้ำ
  *
  * ออเดอร์ที่มีหลายแถวคือเหรียญถูกตั้งจ่ายซ้ำจริง: หักทุกแถว (ไม่เกินยอดซื้อ) เพื่อปิดทาง claim
@@ -33,6 +36,7 @@ return new class() extends Migration
     public function up(): void
     {
         TreasuryPayout::where('idempotency_key', 'like', self::KEY_PREFIX.'%')
+            ->where('origin', TreasuryPayout::ORIGIN_SALE_BANK)
             ->orderBy('id')
             ->get()
             ->reject(fn (TreasuryPayout $payout) => $payout->endedWithoutPayment())

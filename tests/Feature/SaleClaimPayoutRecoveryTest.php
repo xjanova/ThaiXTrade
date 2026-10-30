@@ -532,6 +532,36 @@ class SaleClaimPayoutRecoveryTest extends TestCase
         $this->assertSame(1, TreasuryPayout::count());
     }
 
+    public static function systemKeys(): array
+    {
+        return [
+            'claim' => ['sale-claim-b2f3c1de-0000-4000-8000-000000000007-2'],
+            'แถวแทน' => ['sale-claim-b2f3c1de-0000-4000-8000-000000000007-retry-9'],
+            'ออเดอร์โอน' => ['sale-bank-b2f3c1de-0000-4000-8000-000000000007-tge-1'],
+            'คืนค่าธรรมเนียมสร้างเหรียญ' => ['token_factory_refund:1:1'],
+            'ตัวพิมพ์ใหญ่ — MySQL เทียบคีย์แบบไม่สนตัวพิมพ์' => ['SALE-CLAIM-b2f3c1de-0000-4000-8000-000000000007-2'],
+        ];
+    }
+
+    /**
+     * ★ รายการกรอกมือที่ใช้คีย์ของระบบจะชนกับแถวที่ระบบกำลังจะสร้าง
+     * claim หรือการกู้ยอดของออเดอร์นั้นล้มด้วย unique index ซ้ำไปเรื่อย ๆ จนกว่าจะมีคนแก้แถวนั้น.
+     */
+    #[DataProvider('systemKeys')]
+    public function test_a_manual_payout_cannot_take_a_system_key(string $key): void
+    {
+        $this->actingAsAdmin();
+
+        $this->postJson('/admin/treasury/payouts', [
+            'to_address' => self::BUYER,
+            'amount' => '100',
+            'purpose' => 'other',
+            'idempotency_key' => $key,
+        ])->assertStatus(422)->assertJsonValidationErrors('idempotency_key');
+
+        $this->assertSame(0, TreasuryPayout::count());
+    }
+
     /** รายการจ่ายครั้งแรกของออเดอร์โอนมีปุ่มของมันเอง — ปุ่มนี้ต้องไม่ไปแตะ */
     public function test_requeue_leaves_bank_payouts_to_their_own_button(): void
     {
