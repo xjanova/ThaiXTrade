@@ -16,6 +16,8 @@ const props = defineProps({
     salesSummary: { type: Array, default: () => [] },
     dailyRevenue: { type: Array, default: () => [] },
     stripeEnabled: { type: Boolean, default: false },
+    // คืนเงินจริงผ่าน Stripe — สั่งได้เฉพาะ super_admin ระดับอื่นเปิดดูได้อย่างเดียว
+    canManageMoney: { type: Boolean, default: false },
 });
 
 const balance = ref(props.stripeBalance);
@@ -235,7 +237,7 @@ const statusColor = (status) => ({
                                     </span>
                                 </td>
                                 <td class="p-3 text-center">
-                                    <button v-if="tx.status === 'confirmed'"
+                                    <button v-if="canManageMoney && tx.status === 'confirmed'"
                                         @click="refundPayment(tx.id)"
                                         :disabled="refundingId === tx.id"
                                         class="text-xs text-orange-400 hover:text-orange-300 disabled:opacity-50">

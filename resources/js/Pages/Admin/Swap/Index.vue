@@ -21,14 +21,16 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    // ที่อยู่เราเตอร์ถูกส่งให้ client ใช้ — แก้ได้เฉพาะ super_admin ระดับอื่นเปิดดูได้อย่างเดียว
+    canManageMoney: { type: Boolean, default: false },
 });
 
 const protocols = [
-    'UniswapV2',
-    'UniswapV3',
-    'PancakeSwap',
-    'SushiSwap',
-    'Custom',
+    { value: 'uniswap_v2', label: 'UniswapV2' },
+    { value: 'uniswap_v3', label: 'UniswapV3' },
+    { value: 'pancakeswap', label: 'PancakeSwap' },
+    { value: 'sushiswap', label: 'SushiSwap' },
+    { value: 'custom', label: 'Custom' },
 ];
 
 const columns = [
@@ -36,7 +38,7 @@ const columns = [
     { key: 'chain', label: 'Chain' },
     { key: 'protocol', label: 'Protocol', sortable: true },
     { key: 'router_address', label: 'Router Address' },
-    { key: 'default_slippage', label: 'Slippage %', align: 'right' },
+    { key: 'slippage_tolerance', label: 'Slippage %', align: 'right' },
     { key: 'is_active', label: 'Active', align: 'center' },
     { key: 'actions', label: 'Actions', align: 'right' },
 ];
@@ -49,10 +51,10 @@ const deletingConfig = ref(null);
 const form = useForm({
     name: '',
     chain_id: '',
-    protocol: 'UniswapV2',
+    protocol: 'uniswap_v2',
     router_address: '',
     factory_address: '',
-    default_slippage: 0.5,
+    slippage_tolerance: 0.5,
     is_active: true,
 });
 
@@ -70,7 +72,7 @@ const openEditModal = (config) => {
     form.protocol = config.protocol;
     form.router_address = config.router_address;
     form.factory_address = config.factory_address || '';
-    form.default_slippage = config.default_slippage;
+    form.slippage_tolerance = Number(config.slippage_tolerance);
     form.is_active = config.is_active;
     form.clearErrors();
     showModal.value = true;
@@ -119,7 +121,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                 <h2 class="text-xl font-semibold text-white">Swap Configuration</h2>
                 <p class="text-sm text-dark-400 mt-1">Manage DEX swap router settings</p>
             </div>
-            <button @click="openCreateModal" class="btn-primary px-4 py-2.5 text-sm">
+            <button v-if="canManageMoney" @click="openCreateModal" class="btn-primary px-4 py-2.5 text-sm">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                 </svg>
@@ -143,17 +145,17 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
             <template #cell-router_address="{ value }">
                 <span class="font-mono text-xs text-dark-300">{{ value ? `${value.substring(0, 6)}...${value.slice(-4)}` : '-' }}</span>
             </template>
-            <template #cell-default_slippage="{ value }">
+            <template #cell-slippage_tolerance="{ value }">
                 <span class="font-mono">{{ value }}%</span>
             </template>
             <template #cell-is_active="{ row }">
-                <button @click.stop="toggleActive(row)" class="flex items-center justify-center">
+                <button @click.stop="toggleActive(row)" :disabled="!canManageMoney" class="flex items-center justify-center">
                     <span v-if="row.is_active" class="w-2.5 h-2.5 rounded-full bg-green-400"></span>
                     <span v-else class="w-2.5 h-2.5 rounded-full bg-dark-600"></span>
                 </button>
             </template>
             <template #cell-actions="{ row }">
-                <div class="flex items-center justify-end gap-2" @click.stop>
+                <div v-if="canManageMoney" class="flex items-center justify-end gap-2" @click.stop>
                     <button @click="openEditModal(row)" class="p-1.5 rounded-lg text-dark-400 hover:text-white hover:bg-white/5 transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -189,8 +191,9 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     <div>
                         <label class="block text-sm font-medium text-dark-300 mb-2">Protocol</label>
                         <select v-model="form.protocol" :class="inputClass">
-                            <option v-for="p in protocols" :key="p" :value="p">{{ p }}</option>
+                            <option v-for="p in protocols" :key="p.value" :value="p.value">{{ p.label }}</option>
                         </select>
+                        <p v-if="form.errors.protocol" class="mt-1 text-sm text-red-400">{{ form.errors.protocol }}</p>
                     </div>
                 </div>
 
@@ -203,11 +206,13 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                 <div>
                     <label class="block text-sm font-medium text-dark-300 mb-2">Factory Address (Optional)</label>
                     <input v-model="form.factory_address" type="text" :class="inputClass" placeholder="0x..." />
+                    <p v-if="form.errors.factory_address" class="mt-1 text-sm text-red-400">{{ form.errors.factory_address }}</p>
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-dark-300 mb-2">Default Slippage (%)</label>
-                    <input v-model.number="form.default_slippage" type="number" step="0.1" min="0" :class="inputClass" />
+                    <input v-model.number="form.slippage_tolerance" type="number" step="0.1" min="0" :class="inputClass" />
+                    <p v-if="form.errors.slippage_tolerance" class="mt-1 text-sm text-red-400">{{ form.errors.slippage_tolerance }}</p>
                 </div>
 
                 <div class="flex items-center justify-between">
