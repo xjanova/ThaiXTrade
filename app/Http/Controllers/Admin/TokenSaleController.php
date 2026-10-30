@@ -10,6 +10,7 @@ use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
 use App\Rules\SalePaymentChannels;
 use App\Services\BankTransferSaleService;
+use App\Services\SaleClaimPayoutService;
 use App\Services\SaleLaunchService;
 use App\Support\MoneySettings;
 use App\Support\Wei;
@@ -36,7 +37,7 @@ class TokenSaleController extends Controller
     /**
      * หน้าหลัก Token Sales + Control — ส่งข้อมูลทั้งหมดไป Vue.
      */
-    public function index(): Response
+    public function index(BankTransferSaleService $bank, SaleClaimPayoutService $claims): Response
     {
         $sales = TokenSale::with(['phases' => function ($q) {
             $q->orderBy('phase_order');
@@ -45,6 +46,17 @@ class TokenSaleController extends Controller
         $transactions = SaleTransaction::with(['tokenSale', 'phase'])
             ->latest()
             ->paginate(20);
+
+        // ยอดของปุ่มเข้าคิวจ่ายใหม่ — ส่งเฉพาะคนที่กดได้จริง (route จำกัด super_admin)
+        $canRequeue = auth('admin')->user()?->isSuperAdmin() ?? false;
+        $transactions->getCollection()->each(function (SaleTransaction $tx) use ($bank, $claims, $canRequeue) {
+            $amountWei = $canRequeue ? $bank->requeueableAmountWei($tx) : null;
+            $tx->setAttribute('requeue_payout_tpix', $amountWei === null ? null : Wei::format($amountWei));
+
+            $claimOffer = $canRequeue ? $claims->requeueOffer($tx) : null;
+            $tx->setAttribute('requeue_claim_tpix', $claimOffer['amount_tpix'] ?? null);
+            $tx->setAttribute('requeue_claim_returned_tpix', $claimOffer['returned_tpix'] ?? null);
+        });
 
         // ดึง master wallet balance จาก TPIX Chain RPC
         $walletInfo = $this->getMasterWalletInfo();
@@ -343,6 +355,9 @@ class TokenSaleController extends Controller
 
         $this->forgetSaleCache();
 
+        // ห้ามครอบ confirm() ด้วยธุรกรรมชั้นนอก — มันตั้งใจ commit เครื่องหมาย needs_refund ก่อนโยน exception
+        $this->recordTransactionChange('token_sale.bank_confirm', $confirmed, 'pending');
+
         $reference = $confirmed->metadata['reference'] ?? $confirmed->uuid;
 
         return redirect()->back()->with(
@@ -360,15 +375,69 @@ class TokenSaleController extends Controller
             'reason' => 'required|string|max:255',
         ]);
 
-        $tx = SaleTransaction::findOrFail($id);
-
         try {
-            $bank->reject($tx, $validated['reason'], auth('admin')->user()?->email);
+            // สถานะกับบันทึกเปลี่ยนพร้อมกัน ล็อกแถวไว้กันกดชนกับการยืนยันรายการเดียวกัน
+            DB::transaction(function () use ($id, $validated, $bank): void {
+                $tx = SaleTransaction::lockForUpdate()->findOrFail($id);
+                $rejected = $bank->reject($tx, $validated['reason'], auth('admin')->user()?->email);
+
+                $this->recordTransactionChange('token_sale.bank_reject', $rejected, 'pending');
+            });
         } catch (PurchaseException $e) {
             return redirect()->back()->withErrors(['bank' => $e->getMessage()]);
         }
 
         return redirect()->back()->with('success', 'ปฏิเสธคำสั่งซื้อแล้ว');
+    }
+
+    /** ลงบันทึกพร้อมกระเป๋าและยอด — audit_logs ตอบได้เองว่าเงินก้อนไหนไปถึงใคร ไม่ต้องตามไปดูแถวรายการ */
+    private function recordTransactionChange(string $action, SaleTransaction $tx, string $oldStatus): void
+    {
+        MoneySettings::record($action, ['status' => $oldStatus], $tx->only([
+            'id', 'status', 'wallet_address', 'tpix_amount', 'payment_usd_value',
+        ]));
+    }
+
+    /**
+     * เข้าคิวจ่ายส่วนที่ปลดล็อกแล้วใหม่ — ใช้เมื่อคิวล้มตอนยืนยัน หรือรายการเดิมจบโดยเงินไม่ออก.
+     *
+     * ปุ่มยืนยันหายไปหลังยืนยันแล้ว ถ้าไม่มีทางนี้เหรียญจะค้างอยู่ใน claimed_amount
+     * รายการใหม่ยังต้องผ่านการอนุมัติที่หน้าคลังตามปกติ
+     */
+    public function requeueBankPayout(int $id, BankTransferSaleService $bank)
+    {
+        $payout = $bank->queueInitialPayout(SaleTransaction::findOrFail($id), auth('admin')->id());
+
+        if (! $payout) {
+            return redirect()->back()->withErrors(['bank' => 'ออเดอร์นี้ไม่มียอดให้เข้าคิวจ่าย']);
+        }
+
+        if (! $payout->wasRecentlyCreated) {
+            return redirect()->back()->withErrors([
+                'bank' => "ออเดอร์นี้มีรายการจ่าย #{$payout->id} ที่ยังไม่จบอยู่แล้ว (สถานะ: {$payout->status})",
+            ]);
+        }
+
+        return redirect()->back()->with('success', "เข้าคิวจ่ายใหม่แล้ว {$payout->amount_tpix} TPIX — รออนุมัติที่หน้าคลัง");
+    }
+
+    /**
+     * กู้ยอด claim ของแถวที่จบโดยเงินไม่ออก — ใช้เมื่อรายการจ่ายถูกปฏิเสธ ตกกฎ หรือ revert.
+     *
+     * ไม่มีทางนี้เหรียญจะค้างอยู่ใน claimed_amount: ผู้ซื้อ claim ซ้ำไม่ได้ และไม่มีอะไรจ่ายออก
+     * รายการใหม่ยังต้องผ่านการอนุมัติที่หน้าคลังตามปกติ
+     */
+    public function requeueClaimPayouts(int $id, SaleClaimPayoutService $claims)
+    {
+        $payouts = $claims->requeueDeadPayouts(SaleTransaction::findOrFail($id), auth('admin')->id());
+
+        if ($payouts->isEmpty()) {
+            return redirect()->back()->withErrors(['claim' => 'ออเดอร์นี้ไม่มียอด claim ที่กู้ได้ — รายการที่ยังไม่จบหรืออาจโอนไปแล้วกู้ไม่ได้']);
+        }
+
+        $amount = Wei::format(Wei::sum($payouts->pluck('amount_wei')->all()));
+
+        return redirect()->back()->with('success', "เข้าคิว claim ใหม่แล้ว {$amount} TPIX — รออนุมัติที่หน้าคลัง");
     }
 
     /**
@@ -543,20 +612,32 @@ class TokenSaleController extends Controller
      */
     public function refundTransaction(int $id)
     {
-        $tx = SaleTransaction::with('phase.tokenSale')->findOrFail($id);
+        // ยอดขาย สถานะ และบันทึกต้องเปลี่ยนพร้อมกัน ล็อกแถวไว้เพื่อไม่ให้กดซ้ำแล้วหักยอดสองรอบ
+        $tx = DB::transaction(function () use ($id): ?SaleTransaction {
+            $tx = SaleTransaction::with('phase.tokenSale')->lockForUpdate()->findOrFail($id);
+            $oldStatus = $tx->status;
 
-        if ($tx->status === 'refunded') {
+            if ($oldStatus === 'refunded') {
+                return null;
+            }
+
+            // คืนยอดขายกลับไป phase + sale
+            if ($oldStatus === 'confirmed') {
+                $tx->phase?->decrement('sold', (float) $tx->tpix_amount);
+                $tx->phase?->tokenSale?->decrement('total_sold', (float) $tx->tpix_amount);
+                $tx->phase?->tokenSale?->decrement('total_raised_usd', (float) $tx->payment_usd_value);
+            }
+
+            $tx->update(['status' => 'refunded']);
+
+            $this->recordTransactionChange('token_sale.refund', $tx, $oldStatus);
+
+            return $tx;
+        });
+
+        if ($tx === null) {
             return redirect()->back()->with('error', 'This transaction is already refunded.');
         }
-
-        // คืนยอดขายกลับไป phase + sale
-        if ($tx->status === 'confirmed') {
-            $tx->phase?->decrement('sold', (float) $tx->tpix_amount);
-            $tx->phase?->tokenSale?->decrement('total_sold', (float) $tx->tpix_amount);
-            $tx->phase?->tokenSale?->decrement('total_raised_usd', (float) $tx->payment_usd_value);
-        }
-
-        $tx->update(['status' => 'refunded']);
 
         return redirect()->back()->with('success', "Transaction #{$tx->id} refunded. Allocation returned.");
     }

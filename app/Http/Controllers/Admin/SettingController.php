@@ -36,6 +36,9 @@ class SettingController extends Controller
      */
     private const BULK_WRITABLE_GROUPS = ['general', 'seo', 'social', 'content'];
 
+    /** ค่า Turnstile/การล็อกบัญชี — แก้ได้เฉพาะ super_admin (route settings/security) จึงไม่ส่งค่าให้ระดับอื่นเลย */
+    private const SECURITY_GROUP = 'security';
+
     /**
      * แสดงหน้า Settings — แปลง settings เป็น flat format สำหรับ Vue.
      */
@@ -54,6 +57,8 @@ class SettingController extends Controller
             'together_api_key',
             'huggingface_api_key',
             'gemini_api_key',
+            // X-API-Key ของ Worker สร้างรูป (ContentService) — ช่องกรอกเป็น password แต่ props ส่งค่าจริงอยู่ดีถ้าไม่ mask
+            'cloudflare_image_key',
             /*
              * คีย์ OpenAI ที่ดึงมาจากพูลของ Thaiprompt (ai:pull-pool-key)
              *
@@ -69,13 +74,13 @@ class SettingController extends Controller
 
         /*
          * หน้านี้ยังเปิดให้ทุกระดับเพราะแท็บอื่นเป็นงานของแอดมินทั่วไป (ทั่วไป/SEO/โซเชียล/เนื้อหา)
-         * แต่ค่ากลุ่มเงินไม่ส่งลงเบราว์เซอร์เลย แม้แต่แบบ mask — ไม่ใช่แค่ซ่อนแท็บฝั่ง Vue
+         * แต่ค่ากลุ่มเงินและกลุ่มความปลอดภัยไม่ส่งลงเบราว์เซอร์เลย แม้แต่แบบ mask — ไม่ใช่แค่ซ่อนแท็บฝั่ง Vue
          */
-        $canManageMoney = MoneySettings::canManage();
+        $isSuperAdmin = MoneySettings::canManage();
 
         // ดึง settings แล้วแปลงเป็น flat key-value (cast ตาม type)
         $allSettings = SiteSetting::query()
-            ->when(! $canManageMoney, fn ($query) => $query->whereNotIn('group', MoneySettings::HIDDEN_GROUPS))
+            ->when(! $isSuperAdmin, fn ($query) => $query->whereNotIn('group', [...MoneySettings::HIDDEN_GROUPS, self::SECURITY_GROUP]))
             ->get();
         $flat = [];
         foreach ($allSettings as $setting) {
@@ -97,7 +102,8 @@ class SettingController extends Controller
 
         return Inertia::render('Admin/Settings/Index', [
             'settings' => $flat,
-            'canManageMoney' => $canManageMoney,
+            'canManageMoney' => $isSuperAdmin,
+            'canManageSecurity' => $isSuperAdmin,
             // สถานะจริงของที่ปรึกษา AI — หน้าเว็บใช้บอกว่า "พร้อมใช้" หรือ "ยังไม่ได้ตั้งคีย์"
             // คำนวณฝั่งเซิร์ฟเวอร์เพราะค่าที่ส่งไปถูก mask แล้ว ดูจาก frontend ไม่ออก
             'advisorStatus' => $this->advisorStatus(app(AdvisorSettings::class)),

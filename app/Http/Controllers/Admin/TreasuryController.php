@@ -108,7 +108,9 @@ class TreasuryController extends Controller
             'amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,18})?$/'],
             'purpose' => ['required', 'string', Rule::in(['masternode', 'token_sale', 'refund', 'other'])],
             'memo' => ['nullable', 'string', 'max:500'],
-            'idempotency_key' => ['required', 'string', 'max:100'],
+            'idempotency_key' => ['required', 'string', 'max:100', 'not_regex:'.TreasuryPayout::SYSTEM_KEY_PATTERN],
+        ], [
+            'idempotency_key.not_regex' => 'คีย์นี้สงวนไว้ให้รายการที่ระบบสร้าง',
         ]);
 
         $amountWei = Wei::toWei($validated['amount']);

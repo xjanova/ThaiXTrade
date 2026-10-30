@@ -75,7 +75,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('settings/logo', [SettingController::class, 'updateLogo'])->name('settings.logo');
         Route::post('settings/general', [SettingController::class, 'updateGeneral'])->name('settings.general');
         Route::post('settings/seo', [SettingController::class, 'updateSeo'])->name('settings.seo');
-        Route::put('settings/security', [SettingController::class, 'updateTab'])->name('settings.security');
+        // ด่านกันบอทหน้าล็อกอิน — ระดับล่างปิด Turnstile ได้เท่ากับเปิดทางยิงรหัสผ่านใส่ทุกบัญชีรวมถึงของตัว super_admin เอง
+        Route::put('settings/security', [SettingController::class, 'updateTab'])
+            ->middleware('admin.role:super_admin')
+            ->name('settings.security');
         Route::put('settings/social', [SettingController::class, 'updateTab'])->name('settings.social');
         Route::put('settings/ai', [SettingController::class, 'updateTab'])->name('settings.ai');
         // แท็บที่กำหนดว่าเงินไปไหน (กระเป๋ารับรายได้ คีย์ Stripe ค่าธรรมเนียม) — ต้องตรงกับ MoneySettings::GROUPS
@@ -193,9 +196,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('languages/{language}/translations', [LanguageController::class, 'translations'])->name('languages.translations');
         Route::put('languages/{language}/translations', [LanguageController::class, 'updateTranslations'])->name('languages.translations.update');
 
-        // Swap Configurations
-        Route::resource('swap', SwapController::class)->except(['create', 'show', 'edit']);
-        Route::patch('swap/{swap}/toggle', [SwapController::class, 'toggleActive'])->name('swap.toggle');
+        // Swap Configurations — ทุกระดับดูได้ แต่ที่อยู่เราเตอร์ถูกส่งให้ client ใช้ จึงแก้ได้เฉพาะ super_admin
+        Route::get('swap', [SwapController::class, 'index'])->name('swap.index');
+        Route::middleware('admin.role:super_admin')->group(function () {
+            Route::resource('swap', SwapController::class)->only(['store', 'update', 'destroy']);
+            Route::patch('swap/{swap}/toggle', [SwapController::class, 'toggleActive'])->name('swap.toggle');
+        });
 
         // AI System
         Route::prefix('ai')->name('ai.')->group(function () {
@@ -235,31 +241,39 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Token Sales — จัดการรอบขายเหรียญ TPIX (ICO/IDO) + Token Control
         Route::prefix('token-sales')->name('token-sales.')->group(function () {
             Route::get('/', [TokenSaleController::class, 'index'])->name('index');
-            // รอบขายถือ sale_wallet_address — เงินคริปโตของผู้ซื้อวิ่งเข้ากระเป๋านี้ จึงเฉพาะ super_admin
-            Route::post('/', [TokenSaleController::class, 'store'])->middleware('admin.role:super_admin')->name('store');
-            Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
-
-            /*
-             * เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด
-             * "พร้อมจำหน่ายเมื่อไหร่ ก็เริ่มเฟสการขายใหม่แต่แรกวันนั้น"
-             */
-            Route::post('/launch', [TokenSaleController::class, 'launch'])->name('launch');
-            Route::post('/auto-launch', [TokenSaleController::class, 'autoLaunch'])->name('auto-launch');
-            // ล็อกวันจบรอบ = รอบขายแบบขั้นบันได (ราคาขยับเมื่อขั้นก่อนขายหมด)
-            Route::post('/round-end', [TokenSaleController::class, 'roundEnd'])->name('round-end');
-
-            // Whitelist management
             Route::get('/whitelist/{phaseId}', [TokenSaleController::class, 'whitelist'])->name('whitelist');
-            Route::post('/whitelist', [TokenSaleController::class, 'whitelistAdd'])->name('whitelist.add');
-            Route::post('/whitelist/import', [TokenSaleController::class, 'whitelistImport'])->name('whitelist.import');
-            Route::delete('/whitelist/{id}', [TokenSaleController::class, 'whitelistRemove'])->name('whitelist.remove');
 
-            // Refund
-            Route::post('/refund/{id}', [TokenSaleController::class, 'refundTransaction'])->name('refund');
+            // ทุกคำสั่งในกลุ่มนี้กำหนดราคา ปลายทางเงิน หรือการรับเงินจริง จึงเฉพาะ super_admin
+            Route::middleware('admin.role:super_admin')->group(function () {
+                // รอบขายถือ sale_wallet_address — เงินคริปโตของผู้ซื้อวิ่งเข้ากระเป๋านี้
+                Route::post('/', [TokenSaleController::class, 'store'])->name('store');
+                Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
 
-            // การโอนเงินเข้าบัญชี — ทีมงานยืนยันเองหลังเปิดดูรายการเดินบัญชีจริง
-            Route::post('/bank/{id}/confirm', [TokenSaleController::class, 'confirmBankTransfer'])->name('bank.confirm');
-            Route::post('/bank/{id}/reject', [TokenSaleController::class, 'rejectBankTransfer'])->name('bank.reject');
+                /*
+                 * เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด
+                 * "พร้อมจำหน่ายเมื่อไหร่ ก็เริ่มเฟสการขายใหม่แต่แรกวันนั้น"
+                 */
+                Route::post('/launch', [TokenSaleController::class, 'launch'])->name('launch');
+                Route::post('/auto-launch', [TokenSaleController::class, 'autoLaunch'])->name('auto-launch');
+                // ล็อกวันจบรอบ = รอบขายแบบขั้นบันได (ราคาขยับเมื่อขั้นก่อนขายหมด)
+                Route::post('/round-end', [TokenSaleController::class, 'roundEnd'])->name('round-end');
+
+                // Whitelist management
+                Route::post('/whitelist', [TokenSaleController::class, 'whitelistAdd'])->name('whitelist.add');
+                Route::post('/whitelist/import', [TokenSaleController::class, 'whitelistImport'])->name('whitelist.import');
+                Route::delete('/whitelist/{id}', [TokenSaleController::class, 'whitelistRemove'])->name('whitelist.remove');
+
+                // Refund
+                Route::post('/refund/{id}', [TokenSaleController::class, 'refundTransaction'])->name('refund');
+
+                // การโอนเงินเข้าบัญชี — ทีมงานยืนยันเองหลังเปิดดูรายการเดินบัญชีจริง
+                Route::post('/bank/{id}/confirm', [TokenSaleController::class, 'confirmBankTransfer'])->name('bank.confirm');
+                Route::post('/bank/{id}/reject', [TokenSaleController::class, 'rejectBankTransfer'])->name('bank.reject');
+
+                // เข้าคิวจ่ายใหม่ = สร้างรายการจ่ายจากกระเป๋าร้อน สิทธิ์จึงเท่ากับหน้าคลัง
+                Route::post('/bank/{id}/requeue', [TokenSaleController::class, 'requeueBankPayout'])->name('bank.requeue');
+                Route::post('/claims/{id}/requeue', [TokenSaleController::class, 'requeueClaimPayouts'])->name('claims.requeue');
+            });
         });
 
         // Token Factory — จัดการ Token ที่สร้างจาก Factory
@@ -366,7 +380,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/stripe-balance', [FinanceController::class, 'stripeBalance'])->name('stripe-balance');
             Route::get('/recent-payments', [FinanceController::class, 'recentPayments'])->name('recent-payments');
             Route::get('/revenue-chart', [FinanceController::class, 'revenueChart'])->name('revenue-chart');
-            Route::post('/refund', [FinanceController::class, 'refund'])->name('refund');
+            // คืนเงินจริงผ่าน Stripe — ย้อนไม่ได้ จึงเฉพาะ super_admin
+            Route::post('/refund', [FinanceController::class, 'refund'])->middleware('admin.role:super_admin')->name('refund');
         });
 
         // MasterNode Admin — จัดการ node network

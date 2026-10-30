@@ -5,12 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\PurchaseException;
 use App\Http\Controllers\Controller;
 use App\Models\SaleTransaction;
-use App\Models\TreasuryPayout;
 use App\Services\BankTransferSaleService;
 use App\Services\PriceFeedService;
+use App\Services\SaleClaimPayoutService;
 use App\Services\SaleStatusService;
 use App\Services\StripePaymentService;
 use App\Services\TokenSaleService;
+use App\Services\TreasuryService;
 use App\Support\Wei;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,8 @@ class TokenSaleApiController extends Controller
         private TokenSaleService $saleService,
         private PriceFeedService $priceFeed,
         private StripePaymentService $stripe,
+        private TreasuryService $treasury,
+        private SaleClaimPayoutService $claimPayouts,
     ) {
         //
     }
@@ -506,10 +509,11 @@ class TokenSaleApiController extends Controller
         $data = $validator->validated();
 
         try {
-            // ด่านวงเงินต่อครั้งของกระเป๋าร้อน — claim ที่ใหญ่กว่านี้กลายเป็นรายการจ่ายที่ไม่มีวันผ่าน
+            // ด่านวงเงินต่อครั้งของปลายทางนี้ — claim ที่ใหญ่กว่านี้กลายเป็นรายการจ่ายที่ไม่มีวันผ่าน
             // validatePayout (อนุมัติไม่ได้ ส่งไม่ได้) ทั้งที่ claimed_amount ถูกบวกไปแล้ว ผู้ซื้อรอเหรียญไม่รู้จบ
             // จึงปฏิเสธตั้งแต่ตรงนี้ ให้แบ่ง claim เป็นหลายครั้งแทน (ออดิท 2026-10-29 L7)
-            $maxPerTxWei = Wei::toWei((string) config('treasury.limits.per_transaction', '0'));
+            // ใช้ตัวเดียวกับ validatePayout — ปลายทางใน whitelist อาจมีวงเงินของตัวเองแทนค่ากลาง
+            $maxPerTxWei = $this->treasury->maxPerTxWei($data['wallet_address']);
             if (bccomp($maxPerTxWei, '0', 0) > 0
                 && bccomp(Wei::toWei((string) (float) $data['amount']), $maxPerTxWei, 0) > 0) {
                 return response()->json([
@@ -557,22 +561,7 @@ class TokenSaleApiController extends Controller
                 $tx->refresh();
 
                 // เข้าคิวจ่ายเงินจากกระเป๋าร้อน แทนที่จะรอแอดมินส่งเหรียญเอง
-                //
-                // idempotency key ผูกกับยอดสะสมหลัง claim ครั้งนี้ ทำให้การกดซ้ำ
-                // ที่ให้ผลลัพธ์เดียวกันได้รายการเดิม ส่วนการ claim ครั้งถัดไป
-                // (ยอดสะสมต่างออกไป) ได้รายการใหม่ตามที่ควร
-                $payout = TreasuryPayout::firstOrCreate(
-                    ['idempotency_key' => 'sale-claim-'.$tx->uuid.'-'.$tx->claimed_amount],
-                    [
-                        'to_address' => strtolower($data['wallet_address']),
-                        'amount_wei' => Wei::toWei((string) $requestedAmount),
-                        'purpose' => 'token_sale',
-                        // ระบบสร้างจาก claim จริง — ยกเว้น whitelist ได้เพราะปลายทางผูกกับรายการซื้อ
-                        'origin' => TreasuryPayout::ORIGIN_SALE_CLAIM,
-                        'memo' => 'claim vesting จากรายการซื้อ '.$tx->uuid,
-                        'status' => TreasuryPayout::STATUS_PENDING,
-                    ],
-                );
+                $payout = $this->claimPayouts->queueClaim($tx, Wei::toWei((string) $requestedAmount));
 
                 return ['tx' => $tx, 'payout' => $payout, 'claimed' => $requestedAmount];
             });
