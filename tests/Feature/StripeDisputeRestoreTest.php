@@ -20,6 +20,7 @@ use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
+use Stripe\Exception\ApiErrorException;
 use Tests\Support\FakesStripeApi;
 use Tests\TestCase;
 
@@ -86,8 +87,18 @@ class StripeDisputeRestoreTest extends TestCase
 
         $this->fakeStripe([
             'GET /v1/checkout/sessions' => ['object' => 'list', 'data' => [$session], 'has_more' => false],
-            'GET /v1/disputes/'.self::DISPUTE => $this->stripeDispute('won'),
+            'GET /v1/disputes' => fn () => [
+                'object' => 'list',
+                'has_more' => false,
+                'data' => collect($this->stripeRoutes)
+                    ->filter(fn ($answer, string $route) => str_starts_with($route, 'GET /v1/disputes/'))
+                    ->map(fn (callable $answer) => $answer([]))
+                    ->values()
+                    ->all(),
+            ],
         ]);
+
+        $this->atStripe('needs_response');
     }
 
     protected function tearDown(): void
@@ -115,6 +126,12 @@ class StripeDisputeRestoreTest extends TestCase
         ];
     }
 
+    /** ผลที่ Stripe ถืออยู่จริงตอนนี้ — โค้ดอ่านจากตรงนี้ ไม่เชื่อ payload ของ event */
+    private function atStripe(string $status, int $refundedCents = 0, string $id = self::DISPUTE): void
+    {
+        $this->stripeRoutes['GET /v1/disputes/'.$id] = $this->stripeDispute($status, $refundedCents, $id);
+    }
+
     private function dispute(string $status, string $id = self::DISPUTE): array
     {
         return ['id' => $id, 'object' => 'dispute', 'payment_intent' => 'pi_1', 'amount' => 51500, 'reason' => 'fraudulent', 'status' => $status];
@@ -123,6 +140,18 @@ class StripeDisputeRestoreTest extends TestCase
     private function deliver(string $type, array $object, string $eventId): array
     {
         return $this->stripe()->handleWebhook(...$this->signedStripeEvent($eventId, $type, $object));
+    }
+
+    private function close(string $outcome, string $eventId = 'evt_closed', string $id = self::DISPUTE): array
+    {
+        $this->atStripe($outcome, 0, $id);
+
+        return $this->deliver('charge.dispute.closed', $this->dispute($outcome, $id), $eventId);
+    }
+
+    private function fullRefund(string $eventId): array
+    {
+        return $this->deliver('charge.refunded', ['id' => 'ch_1', 'object' => 'charge', 'payment_intent' => 'pi_1', 'refunded' => true, 'amount_refunded' => 51500], $eventId);
     }
 
     /** ออเดอร์บัตรที่นับยอดแล้ว — ยอดตั้งต้นของเฟสรวมแถวนี้อยู่แล้ว (5,000 TPIX ที่ $0.10) */
@@ -148,7 +177,18 @@ class StripeDisputeRestoreTest extends TestCase
         $order = $this->confirmedOrder($overrides);
 
         $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created');
-        $this->deliver('charge.dispute.closed', $this->dispute($outcome), 'evt_closed');
+        $this->close($outcome);
+
+        return $order->fresh();
+    }
+
+    /** ออเดอร์ที่ชนะ dispute แล้ว super_admin กดกู้สำเร็จ */
+    private function restoredOrder(array $overrides = []): SaleTransaction
+    {
+        $order = $this->closedDisputeOrder('won', $overrides);
+
+        $this->signIn();
+        $this->restore($order)->assertSessionHas('success');
 
         return $order->fresh();
     }
@@ -217,7 +257,6 @@ class StripeDisputeRestoreTest extends TestCase
     #[Test]
     public function an_inquiry_that_closes_without_a_chargeback_gets_the_same_way_back(): void
     {
-        $this->stripeRoutes['GET /v1/disputes/'.self::DISPUTE] = $this->stripeDispute('warning_closed');
         $order = $this->closedDisputeOrder('warning_closed');
 
         $this->assertSame('active', $this->restoreAlert($order)->status);
@@ -244,9 +283,48 @@ class StripeDisputeRestoreTest extends TestCase
     {
         $order = $this->closedDisputeOrder('lost');
 
-        $this->deliver('charge.dispute.closed', $this->dispute('won'), 'evt_late_win');
+        $this->close('won', 'evt_late_win');
 
         $this->assertSame('active', $this->restoreAlert($order)->status);
+
+        $this->signIn();
+        $this->restore($order)->assertSessionHas('success');
+
+        $this->assertSame('confirmed', $order->fresh()->status);
+    }
+
+    #[Test]
+    public function a_late_win_reported_only_by_funds_reinstated_opens_the_way_back(): void
+    {
+        $order = $this->closedDisputeOrder('lost');
+
+        $this->atStripe('won');
+        $this->deliver('charge.dispute.funds_reinstated', $this->dispute('won'), 'evt_reinstated');
+
+        $this->assertSame('active', $this->restoreAlert($order)->status);
+        $this->assertSame('won', $order->fresh()->metadata['dispute_closed_status']);
+    }
+
+    #[Test]
+    public function a_stale_loss_after_a_late_win_keeps_the_way_back(): void
+    {
+        $order = $this->closedDisputeOrder('won');
+
+        $this->deliver('charge.dispute.closed', $this->dispute('lost'), 'evt_stale_lost');
+
+        $this->assertSame('won', $order->fresh()->metadata['dispute_closed_status']);
+        $this->assertSame('active', $this->restoreAlert($order)->status);
+    }
+
+    #[Test]
+    public function a_real_flip_to_lost_withdraws_the_offer(): void
+    {
+        $order = $this->closedDisputeOrder('won');
+
+        $this->close('lost', 'evt_lost');
+
+        $this->assertSame('resolved', $this->restoreAlert($order)->status, 'เหตุเดิมบอกให้กดปุ่มที่ไม่มีแล้ว');
+        $this->assertCount(0, $this->stripe()->ordersAwaitingRestore());
     }
 
     #[Test]
@@ -255,7 +333,7 @@ class StripeDisputeRestoreTest extends TestCase
         $order = $this->confirmedOrder();
 
         try {
-            $this->deliver('charge.dispute.closed', $this->dispute('won'), 'evt_closed');
+            $this->close('won');
             $this->fail('ต้องล้มให้ Stripe ส่งซ้ำ');
         } catch (RuntimeException $e) {
             $this->assertSame('Stripe dispute is not recorded yet.', $e->getMessage());
@@ -264,9 +342,48 @@ class StripeDisputeRestoreTest extends TestCase
         $this->assertSame(0, DB::table('stripe_webhook_events')->where('event_id', 'evt_closed')->count());
 
         $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created');
-        $this->deliver('charge.dispute.closed', $this->dispute('won'), 'evt_closed');
+        $this->close('won');
 
         $this->assertSame('active', $this->restoreAlert($order)->status, 'ส่งซ้ำรอบที่สองต้องจบเหมือนมาตามลำดับ');
+    }
+
+    #[Test]
+    public function a_closed_event_fails_when_stripe_cannot_confirm_the_outcome(): void
+    {
+        $order = $this->confirmedOrder();
+        $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created');
+        unset($this->stripeRoutes['GET /v1/disputes/'.self::DISPUTE]);
+
+        try {
+            $this->deliver('charge.dispute.closed', $this->dispute('won'), 'evt_closed');
+            $this->fail('อ่านผลจริงไม่ได้ต้องล้มให้ Stripe ส่งซ้ำ ไม่ใช่เชื่อ payload');
+        } catch (ApiErrorException) {
+            $this->assertSame(0, DB::table('stripe_webhook_events')->where('event_id', 'evt_closed')->count());
+        }
+
+        $this->assertNull($this->restoreAlert($order));
+    }
+
+    #[Test]
+    public function a_redelivered_created_keeps_the_outcome(): void
+    {
+        $order = $this->closedDisputeOrder();
+
+        $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created_again');
+
+        $this->assertSame('won', $order->fresh()->metadata['dispute_closed_status']);
+        $this->assertSame('active', $this->restoreAlert($order)->status);
+    }
+
+    #[Test]
+    public function a_redelivered_created_does_not_undo_a_restore(): void
+    {
+        $order = $this->restoredOrder();
+
+        $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created_again');
+
+        $this->assertSame('confirmed', $order->fresh()->status);
+        $this->assertCounters(5000, 500);
     }
 
     #[Test]
@@ -276,7 +393,7 @@ class StripeDisputeRestoreTest extends TestCase
         $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created');
         $this->deliver('charge.dispute.created', $this->dispute('needs_response', 'dp_2'), 'evt_created_2');
 
-        $this->deliver('charge.dispute.closed', $this->dispute('won'), 'evt_closed');
+        $this->close('won');
 
         $this->assertArrayNotHasKey('dispute_closed_status', array_filter($order->fresh()->metadata));
         $this->assertNull($this->restoreAlert($order));
@@ -303,10 +420,45 @@ class StripeDisputeRestoreTest extends TestCase
         $order = $this->confirmedOrder(['status' => 'refunded']);
 
         $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created');
-        $this->deliver('charge.dispute.closed', $this->dispute('won'), 'evt_closed');
+        $this->close('won');
 
         $this->assertSame('refunded', $order->fresh()->status);
         $this->assertNull($this->restoreAlert($order));
+
+        $this->signIn();
+        $this->restore($order)->assertSessionHas('error');
+
+        $this->assertSame('refunded', $order->fresh()->status);
+    }
+
+    #[Test]
+    public function an_inquiry_ended_by_a_full_refund_leaves_nothing_to_restore(): void
+    {
+        $order = $this->confirmedOrder();
+
+        $this->deliver('charge.dispute.created', $this->dispute('warning_needs_response'), 'evt_created');
+        $this->fullRefund('evt_refund');
+        $this->close('warning_closed');
+
+        $this->assertSame('refunded', $order->fresh()->status);
+        $this->assertNull($this->restoreAlert($order), 'เงินกลับไปแล้ว ร้านไม่ได้ถือเงิน');
+        $this->assertCount(0, $this->stripe()->ordersAwaitingRestore());
+        $this->assertCounters(0, 0);
+    }
+
+    #[Test]
+    public function a_partly_refunded_order_says_how_to_close_it(): void
+    {
+        $order = $this->closedDisputeOrder();
+        $this->atStripe('won', 100);
+
+        $this->signIn();
+        $this->restore($order)->assertSessionHas('error', fn (string $why) => str_contains($why, 'ส่วนที่เหลือ'));
+
+        $this->fullRefund('evt_rest_of_it');
+
+        $this->assertSame('refunded', $order->fresh()->status);
+        $this->assertSame('resolved', $this->restoreAlert($order)->status);
     }
 
     #[Test]
@@ -314,7 +466,7 @@ class StripeDisputeRestoreTest extends TestCase
     {
         $order = $this->closedDisputeOrder();
 
-        $this->deliver('charge.refunded', ['id' => 'ch_1', 'object' => 'charge', 'payment_intent' => 'pi_1', 'refunded' => true, 'amount_refunded' => 51500], 'evt_refund');
+        $this->fullRefund('evt_refund');
 
         $this->assertSame('refunded', $order->fresh()->status);
         $this->assertSame('resolved', $this->restoreAlert($order)->status);
@@ -348,7 +500,7 @@ class StripeDisputeRestoreTest extends TestCase
     }
 
     #[Test]
-    public function the_buyer_can_claim_again_once_restored(): void
+    public function halted_payouts_can_be_requeued_once_restored(): void
     {
         $order = $this->confirmedOrder(['claimed_amount' => 1000]);
         TreasuryPayout::create([
@@ -360,13 +512,18 @@ class StripeDisputeRestoreTest extends TestCase
             'status' => TreasuryPayout::STATUS_PENDING,
         ]);
         $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created');
-        $this->deliver('charge.dispute.closed', $this->dispute('won'), 'evt_closed');
+        $this->close('won');
 
         $this->signIn();
         $this->restore($order)->assertSessionHas('success');
 
-        $offer = app(SaleClaimPayoutService::class)->requeueOffer($order->fresh());
-        $this->assertSame('1000', $offer['amount_tpix'], 'แถวจ่ายที่ถูกหยุดต้องกู้ต่อได้จากปุ่มเดิม');
+        $claims = app(SaleClaimPayoutService::class);
+        $this->assertSame('1000', $claims->requeueOffer($order->fresh())['amount_tpix'], 'แถวจ่ายที่ถูกหยุดต้องกู้ต่อได้จากปุ่มเดิม');
+
+        $requeued = $claims->requeueDeadPayouts($order->fresh());
+
+        $this->assertCount(1, $requeued);
+        $this->assertSame(Wei::toWei('1000'), (string) $requeued->first()->amount_wei);
     }
 
     #[Test]
@@ -439,7 +596,7 @@ class StripeDisputeRestoreTest extends TestCase
         $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created');
         $this->assertCounters(5000, 500); // เหรียญออกไปแล้ว โควตาจึงไม่ถูกคืนตอนปิด
 
-        $this->deliver('charge.dispute.closed', $this->dispute('won'), 'evt_closed');
+        $this->close('won');
 
         // โควตาเต็มแล้ว แต่แถวนี้ยังกินโควตาของตัวเองอยู่ ต้องกู้ได้โดยไม่บวกซ้ำ
         $this->phase->update(['allocation' => 5000]);
@@ -525,10 +682,26 @@ class StripeDisputeRestoreTest extends TestCase
     public function refused_when_stripe_no_longer_agrees(string $status, int $refundedCents): void
     {
         $order = $this->closedDisputeOrder();
-        $this->stripeRoutes['GET /v1/disputes/'.self::DISPUTE] = $this->stripeDispute($status, $refundedCents);
+        $this->atStripe($status, $refundedCents);
 
         $this->signIn();
         $this->restore($order)->assertSessionHas('error');
+
+        $this->assertLeftAsItWas($order, 0, 0);
+    }
+
+    #[Test]
+    public function refused_when_another_dispute_on_the_charge_took_the_money(): void
+    {
+        $order = $this->confirmedOrder();
+        $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created');
+        $this->deliver('charge.dispute.created', $this->dispute('needs_response', 'dp_2'), 'evt_created_2');
+        $this->close('lost', 'evt_closed_1');
+        $this->close('won', 'evt_closed_2', 'dp_2');
+        $order = $order->fresh();
+
+        $this->signIn();
+        $this->restore($order)->assertSessionHas('error', fn (string $why) => str_contains($why, self::DISPUTE));
 
         $this->assertLeftAsItWas($order, 0, 0);
     }
@@ -553,7 +726,7 @@ class StripeDisputeRestoreTest extends TestCase
         $this->sale->update(['total_sold' => 0, 'total_raised_usd' => 0]);
 
         $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created');
-        $this->deliver('charge.dispute.closed', $this->dispute('won'), 'evt_closed');
+        $this->close('won');
 
         $this->signIn();
         $this->restore($order)->assertSessionHas('error', fn (string $why) => str_contains($why, 'Stripe'));
@@ -589,15 +762,49 @@ class StripeDisputeRestoreTest extends TestCase
         $this->assertCounters(5000, 500);
     }
 
+    /** @return array<string, array{array}> */
+    public static function landsBeforeTheLock(): array
+    {
+        return [
+            'คืนเงินครบ' => [['status' => 'refunded']],
+            'ผลกลายเป็นแพ้' => [['metadata' => ['dispute_closed_status' => 'lost']]],
+            'dispute ใหม่' => [['metadata' => ['dispute_id' => 'dp_2']]],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('landsBeforeTheLock')]
+    public function refused_when_a_webhook_lands_between_the_stripe_check_and_the_lock(array $change): void
+    {
+        $order = $this->closedDisputeOrder();
+        $list = $this->stripeRoutes['GET /v1/disputes'];
+
+        // ถาม Stripe ผ่านแล้ว แต่ยังไม่ได้ล็อก — เรียกนี้คือเรียกสุดท้ายก่อนเข้าธุรกรรม
+        $this->stripeRoutes['GET /v1/disputes'] = function (array $params) use ($order, $change, $list) {
+            $order->fresh()->update([
+                'status' => $change['status'] ?? 'failed',
+                'metadata' => array_merge($order->metadata, $change['metadata'] ?? []),
+            ]);
+
+            return $list($params);
+        };
+
+        $this->signIn();
+        $this->restore($order)->assertSessionHas('error');
+
+        $this->assertNotSame('confirmed', $order->fresh()->status);
+        $this->assertCounters(0, 0);
+    }
+
     #[Test]
     public function a_second_dispute_on_a_closed_order_keeps_what_the_first_one_remembered(): void
     {
         $order = $this->confirmedOrder();
-        $this->stripeRoutes['GET /v1/disputes/dp_2'] = $this->stripeDispute('won', 0, 'dp_2');
 
         $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created');
         $this->deliver('charge.dispute.created', $this->dispute('needs_response', 'dp_2'), 'evt_created_2');
-        $this->deliver('charge.dispute.closed', $this->dispute('won', 'dp_2'), 'evt_closed');
+        $this->close('won', 'evt_closed_1');
+        $this->close('won', 'evt_closed_2', 'dp_2');
 
         $this->signIn();
         $this->restore($order)->assertSessionHas('success');
@@ -609,9 +816,7 @@ class StripeDisputeRestoreTest extends TestCase
     #[Test]
     public function a_restored_order_can_be_disputed_again(): void
     {
-        $order = $this->closedDisputeOrder();
-        $this->signIn();
-        $this->restore($order)->assertSessionHas('success');
+        $order = $this->restoredOrder();
 
         $this->deliver('charge.dispute.created', $this->dispute('needs_response', 'dp_2'), 'evt_created_2');
 
@@ -621,6 +826,86 @@ class StripeDisputeRestoreTest extends TestCase
         $this->restore($order)->assertSessionHas('error');
 
         $this->assertCounters(0, 0);
+    }
+
+    #[Test]
+    public function a_loss_after_the_restore_closes_the_order_again(): void
+    {
+        $order = $this->restoredOrder();
+
+        $this->close('lost', 'evt_lost');
+
+        $fresh = $order->fresh();
+        $this->assertSame('failed', $fresh->status, 'ไม่งั้นผู้ซื้อได้ทั้งเงินและเหรียญ');
+        $this->assertSame('lost', $fresh->metadata['dispute_closed_status']);
+        $this->assertCounters(0, 0);
+        $this->assertCount(0, $this->stripe()->ordersAwaitingRestore());
+    }
+
+    #[Test]
+    public function a_loss_after_the_restore_raises_the_alarm_when_tokens_already_left(): void
+    {
+        $order = $this->restoredOrder();
+        TreasuryPayout::create([
+            'idempotency_key' => "sale-claim-{$order->uuid}-1",
+            'to_address' => self::BUYER,
+            'amount_wei' => Wei::toWei('1000'),
+            'purpose' => 'token_sale',
+            'origin' => TreasuryPayout::ORIGIN_SALE_CLAIM,
+            'status' => TreasuryPayout::STATUS_CONFIRMED,
+            'tx_hash' => '0x'.str_repeat('a', 64),
+            'block_number' => 10,
+        ]);
+
+        $this->close('lost', 'evt_lost');
+
+        $this->assertSame('failed', $order->fresh()->status);
+        $this->assertSame('critical', SystemAlert::where('alert_key', 'sale_card_tokens_left_'.$order->id)->where('status', 'active')->first()->severity);
+        $this->assertCounters(5000, 500);
+    }
+
+    #[Test]
+    public function an_older_dispute_lost_after_the_restore_closes_the_order(): void
+    {
+        $order = $this->confirmedOrder();
+        $this->deliver('charge.dispute.created', $this->dispute('needs_response'), 'evt_created');
+        $this->deliver('charge.dispute.created', $this->dispute('needs_response', 'dp_2'), 'evt_created_2');
+        $this->close('won', 'evt_closed_1');
+        $this->close('won', 'evt_closed_2', 'dp_2');
+
+        $this->signIn();
+        $this->restore($order)->assertSessionHas('success');
+
+        $this->close('lost', 'evt_lost');
+
+        $this->assertSame('failed', $order->fresh()->status);
+        $this->assertSame(self::DISPUTE, $order->fresh()->metadata['dispute_id']);
+        $this->assertCounters(0, 0);
+    }
+
+    #[Test]
+    public function a_stale_loss_cannot_close_a_restored_order(): void
+    {
+        $order = $this->restoredOrder();
+
+        $this->deliver('charge.dispute.closed', $this->dispute('lost'), 'evt_stale_lost');
+
+        $this->assertSame('confirmed', $order->fresh()->status);
+        $this->assertCounters(5000, 500);
+    }
+
+    #[Test]
+    public function an_order_lost_after_a_restore_can_come_back_after_a_late_win(): void
+    {
+        $order = $this->restoredOrder();
+
+        $this->close('lost', 'evt_lost');
+        $this->close('won', 'evt_late_win');
+
+        $this->restore($order)->assertSessionHas('success');
+
+        $this->assertSame('confirmed', $order->fresh()->status);
+        $this->assertCounters(5000, 500);
     }
 
     // ── หน้าแอดมิน ───────────────────────────────────────────────────────────

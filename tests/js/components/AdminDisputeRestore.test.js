@@ -94,7 +94,10 @@ describe('Admin/TokenSales/Index — กู้ออเดอร์หลัง 
         const button = restoreButton(wrapper);
 
         await button.trigger('click');
-        await button.trigger('click');
+        expect(button.attributes('disabled')).toBeDefined();
+
+        // test-utils ไม่ปล่อย click จากปุ่ม disabled จึงเรียกตรง ๆ เพื่อพิสูจน์ด่านในฟังก์ชัน
+        wrapper.vm.restoreDispute(order());
 
         expect(routerPost).toHaveBeenCalledTimes(1);
 

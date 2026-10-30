@@ -312,7 +312,7 @@ class StripePaymentService
             'checkout.session.expired' => $this->handleCheckoutExpired($event->data->object),
             'charge.refunded' => $this->handleChargeRefunded($event->data->object),
             'charge.dispute.created' => $this->handleDisputeCreated($event->data->object),
-            'charge.dispute.closed' => $this->handleDisputeClosed($event->data->object),
+            'charge.dispute.closed', 'charge.dispute.funds_reinstated' => $this->handleDisputeClosed($event->data->object),
             'payment_intent.payment_failed' => $this->handlePaymentFailed($event->data->object),
             default => ['status' => 'ignored', 'event_type' => $event->type],
         };
@@ -457,7 +457,7 @@ class StripePaymentService
     {
         return match (true) {
             ! $this->isAwaitingRestore($transaction) => 'ออเดอร์นี้ไม่ได้รอกู้จาก chargeback',
-            ! isset($transaction->metadata['closed_from']) => 'ออเดอร์นี้ไม่เคยนับเป็นยอดขาย จึงไม่มีอะไรให้กู้ — ต้องคืนเงินใน Stripe',
+            ! isset($transaction->metadata['closed_from']) => 'ไม่มีบันทึกว่าออเดอร์นี้เคยนับเป็นยอดขาย จึงกู้ไม่ได้ — ต้องคืนเงินใน Stripe',
             default => null,
         };
     }
@@ -540,23 +540,27 @@ class StripePaymentService
      * ถาม Stripe ซ้ำก่อนคืนเหรียญ — ถามไม่ได้ถือว่าไม่ผ่าน.
      *
      * ระหว่างรอคนกด ผลอาจพลิกหรือถูกคืนเงินใน dashboard ไปแล้ว ถ้าเชื่อที่จำไว้ผู้ซื้อจะได้ทั้งเงินคืนและเหรียญ
+     * รายการเดียวมีได้หลาย dispute จึงถามทุกตัว: ตัวล่าสุดชนะไม่ได้แปลว่าตัวก่อนหน้าไม่ได้ดึงเงินไปแล้ว
      */
     private function assertPaymentKept(string $disputeId): void
     {
         try {
             $dispute = Dispute::retrieve(['id' => $disputeId, 'expand' => ['charge']]);
+            $onCharge = Dispute::all(['charge' => $dispute->charge->id, 'limit' => 100]);
         } catch (\Throwable $e) {
             Log::error('stripe: ตรวจผล dispute กับ Stripe ไม่สำเร็จ', ['dispute_id' => $disputeId, 'error' => $e->getMessage()]);
 
             throw new PurchaseException('ตรวจผล dispute กับ Stripe ไม่สำเร็จ — ออเดอร์ยังเหมือนเดิม ลองใหม่อีกครั้ง', 0, $e);
         }
 
-        if (! in_array($dispute->status, self::DISPUTE_KEPT_STATUSES, true)) {
-            throw new PurchaseException('Stripe แจ้งว่าผล dispute ตอนนี้คือ '.$dispute->status.' — กู้ไม่ได้');
+        foreach ([$dispute, ...$onCharge->data] as $each) {
+            if (! in_array($each->status, self::DISPUTE_KEPT_STATUSES, true)) {
+                throw new PurchaseException('Stripe แจ้งว่าผลของ dispute '.$each->id.' ตอนนี้คือ '.$each->status.' — กู้ไม่ได้');
+            }
         }
 
         if ((int) ($dispute->charge->amount_refunded ?? -1) !== 0) {
-            throw new PurchaseException('รายการนี้ถูกคืนเงินใน Stripe แล้วทั้งหมดหรือบางส่วน — กู้ไม่ได้');
+            throw new PurchaseException('รายการนี้ถูกคืนเงินใน Stripe แล้ว — กู้ไม่ได้ ถ้ายังคืนไม่ครบให้คืนส่วนที่เหลือใน Stripe เพื่อปิดออเดอร์');
         }
     }
 
@@ -564,6 +568,12 @@ class StripePaymentService
     {
         return $transaction->status === 'failed'
             && in_array($transaction->metadata['dispute_closed_status'] ?? null, self::DISPUTE_KEPT_STATUSES, true);
+    }
+
+    /** กู้กลับมานับยอดแล้ว — ถ้าเงินหายทีหลัง ไม่มีใครปิดออเดอร์นี้ให้นอกจาก webhook */
+    private function wasRestored(SaleTransaction $transaction): bool
+    {
+        return $this->saleService->isCounted($transaction) && isset($transaction->metadata['dispute_restored_at']);
     }
 
     private function restoreAlertKey(SaleTransaction $transaction): string
@@ -877,8 +887,8 @@ class StripePaymentService
 
         $transaction = $this->orderForSession($sessions->data[0]);
 
-        // ร้านชนะ dispute แล้วเลือกคืนเงินแทนการกู้ — ต้องปิดทางกู้และเหตุที่รออยู่ด้วย
-        if ($transaction && ($charge->refunded ?? false) === true && $this->isAwaitingRestore($transaction)) {
+        // ออเดอร์ที่ dispute ปิดไปแล้วแต่เงินคืนครบ: inquiry จบได้ด้วยการคืนเงิน และร้านที่ชนะก็เลือกคืนแทนการกู้ได้ — ต้องปิดทางกู้และเหตุที่รออยู่ด้วย
+        if ($transaction && ($charge->refunded ?? false) === true && $transaction->status === 'failed' && isset($transaction->metadata['dispute_id'])) {
             $this->alertIfTokensLeft($transaction, $this->closeOrder($transaction, 'refunded', [], 'คืนเงินหลังปิด dispute'), 'charge.refunded');
             SystemAlert::resolveKeys(self::ALERT_NODE, [$this->restoreAlertKey($transaction)]);
 
@@ -951,6 +961,13 @@ class StripePaymentService
             $transaction = $this->orderForSession($sessions->data[0]);
 
             if ($transaction) {
+                $seen = $transaction->metadata ?? [];
+
+                // created ส่งซ้ำหลังรู้ผลแล้ว: รอบก่อนปิดออเดอร์แล้วล้มก่อนบันทึก event ถ้าทำซ้ำจะลบผลและย้อนออเดอร์ที่กู้ไปแล้ว
+                if (($seen['dispute_id'] ?? null) === $dispute->id && ($seen['dispute_closed_status'] ?? null) !== null) {
+                    return ['status' => 'dispute_flagged', 'dispute_id' => $dispute->id];
+                }
+
                 // ใช้ 'failed' เพราะ 'disputed' ไม่อยู่ใน DB enum — dispute = เสียเงินแน่ จึงย้อนยอดและหยุดเหรียญ
                 // บันทึก dispute info ลง metadata
                 $this->alertIfTokensLeft($transaction, $this->closeOrder($transaction, 'failed', [
@@ -982,6 +999,10 @@ class StripePaymentService
      * Dispute closed — ร้านเสียเงินถาวร หรือยังถือเงินอยู่แต่ผู้ซื้อไม่มีเหรียญ.
      *
      * กรณีหลังออเดอร์ยัง failed และตัวนับไม่ขยับ: ต้องมีคนเห็นเหตุแล้วตัดสิน ดู restoreDisputedOrder
+     * กู้ไปแล้วแต่เงินหายทีหลังต้องปิดออเดอร์กลับ ไม่งั้นผู้ซื้อได้ทั้งเงินและเหรียญ
+     *
+     * ผลอ่านจาก Stripe ทุกครั้ง: event ไม่เรียงลำดับและส่งซ้ำได้ ตัวที่มาทีหลังอาจเก่ากว่าความจริง อ่านไม่ได้ให้ล้มเพื่อให้ Stripe ส่งซ้ำ
+     * funds_reinstated ลงที่นี่ด้วย: late win พลิก lost เป็น won ได้ และไม่มีใครรับประกันว่า closed จะมาอีกรอบ
      */
     private function handleDisputeClosed(object $dispute): array
     {
@@ -996,9 +1017,10 @@ class StripePaymentService
             return ['status' => 'no_matching_order', 'dispute_id' => $dispute->id];
         }
 
-        $outcome = (string) ($dispute->status ?? '');
+        $outcome = (string) Dispute::retrieve($dispute->id)->status;
+        $kept = in_array($outcome, self::DISPUTE_KEPT_STATUSES, true);
 
-        $order = DB::transaction(function () use ($transaction, $dispute, $outcome) {
+        $order = DB::transaction(function () use ($transaction, $dispute, $outcome, $kept) {
             $locked = SaleTransaction::whereKey($transaction->id)->lockForUpdate()->firstOrFail();
             $current = $locked->metadata['dispute_id'] ?? null;
 
@@ -1007,11 +1029,13 @@ class StripePaymentService
                 throw new RuntimeException('Stripe dispute is not recorded yet.');
             }
 
-            if ($current !== $dispute->id) {
+            // dispute อื่นของรายการเดียวกันไม่แตะรอบปัจจุบัน เว้นแต่ทำให้ออเดอร์ที่กู้แล้วเสียเงิน
+            if ($current !== $dispute->id && ($kept || ! $this->wasRestored($locked))) {
                 return null;
             }
 
             $locked->update(['metadata' => array_merge($locked->metadata, [
+                'dispute_id' => $dispute->id,
                 'dispute_closed_status' => $outcome,
                 'dispute_closed_at' => now()->toIso8601String(),
             ])]);
@@ -1026,8 +1050,27 @@ class StripePaymentService
             'current' => $order !== null,
         ]);
 
-        if ($order === null || ! $this->isAwaitingRestore($order)) {
-            return ['status' => 'dispute_closed', 'dispute_id' => $dispute->id, 'outcome' => $outcome];
+        $closed = ['status' => 'dispute_closed', 'dispute_id' => $dispute->id, 'outcome' => $outcome];
+
+        if ($order === null) {
+            return $closed;
+        }
+
+        if (! $kept && $this->wasRestored($order)) {
+            $this->alertIfTokensLeft($order, $this->closeOrder($order, 'failed', [], 'chargeback หลังกู้ออเดอร์'), 'charge.dispute.closed');
+
+            Log::critical('Stripe dispute lost after restore — order closed again', [
+                'transaction_id' => $order->uuid,
+                'dispute_id' => $dispute->id,
+                'outcome' => $outcome,
+            ]);
+        }
+
+        if (! $this->isAwaitingRestore($order)) {
+            // ผลอาจเพิ่งพลิกจากที่ร้านถือเงินอยู่ — เหตุเดิมบอกให้กดปุ่มที่ไม่มีแล้ว
+            SystemAlert::resolveKeys(self::ALERT_NODE, [$this->restoreAlertKey($order)]);
+
+            return $closed;
         }
 
         SystemAlert::raise(
