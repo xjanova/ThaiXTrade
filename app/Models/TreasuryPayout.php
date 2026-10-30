@@ -52,6 +52,12 @@ class TreasuryPayout extends Model
         self::ORIGIN_FACTORY_REFUND,
     ];
 
+    /**
+     * คีย์ที่จองไว้ให้แถวที่ระบบสร้าง — รายการกรอกมือที่ใช้คีย์เหล่านี้จะชน unique index ตอน claim หรือกู้ยอด
+     * ไม่สนตัวพิมพ์เพราะ collation ของ MySQL ก็ไม่สน.
+     */
+    public const SYSTEM_KEY_PATTERN = '/^(sale-claim-|sale-bank-|token_factory_refund:)/i';
+
     /** สถานะที่ถือว่า "ยังกินวงเงินอยู่" ตอนคำนวณยอดใช้ไปต่อวัน */
     public const COUNTS_TOWARD_LIMIT = [
         self::STATUS_PENDING,

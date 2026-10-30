@@ -93,7 +93,7 @@ class MoneySettingsAccessTest extends TestCase
     }
 
     /**
-     * ทดสอบบนรอบขายเดิม — store() สร้างรอบใหม่ไม่ได้อยู่แล้วเพราะฟอร์มไม่ส่ง slug (NOT NULL).
+     * ทดสอบบนรอบขายเดิม — การสร้างรอบใหม่อยู่ใน TokenSaleCreateTest.
      *
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
