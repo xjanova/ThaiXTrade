@@ -133,7 +133,6 @@ class AdminWriteRoutesGuardTest extends TestCase
         'admin.settings.general',
         'admin.settings.logo',
         'admin.settings.map',
-        'admin.settings.security',
         'admin.settings.seo',
         'admin.settings.social',
         'admin.settings.update',
@@ -154,7 +153,7 @@ class AdminWriteRoutesGuardTest extends TestCase
     ];
 
     /** ตรงกับจำนวนแถวเสมอ รายการนี้จึงโตเงียบ ๆ ไม่ได้: ย้ายออกแล้วลดเลขนี้ตาม ห้ามเพิ่ม */
-    private const AWAITING_OWNER_COUNT = 83;
+    private const AWAITING_OWNER_COUNT = 82;
 
     /** @return array<int, AppRoute> */
     private function writeRoutes(): array

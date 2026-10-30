@@ -22,6 +22,11 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    // แท็บ Security แก้ได้เฉพาะ super_admin เช่นกัน — ระดับอื่นไม่ได้รับค่า Turnstile มาด้วย
+    canManageSecurity: {
+        type: Boolean,
+        default: false,
+    },
     // สถานะที่ปรึกษา AI ที่คำนวณจากฝั่งเซิร์ฟเวอร์ — คีย์ถูก mask แล้ว ดูจากตรงนี้ไม่ออก
     advisorStatus: {
         type: Object,
@@ -52,7 +57,11 @@ const tabs = [
 
 // ต้องตรงกับ MoneySettings::GROUPS ฝั่งเซิร์ฟเวอร์
 const moneyTabs = ['revenue', 'trading', 'factory', 'payment'];
-const visibleTabs = computed(() => tabs.filter((tab) => props.canManageMoney || !moneyTabs.includes(tab.key)));
+const visibleTabs = computed(() => tabs.filter((tab) => {
+    if (tab.key === 'security') return props.canManageSecurity;
+
+    return props.canManageMoney || !moneyTabs.includes(tab.key);
+}));
 
 // General form
 const generalForm = useForm({

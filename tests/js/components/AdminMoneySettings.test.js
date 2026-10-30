@@ -49,7 +49,7 @@ describe('หน้าตั้งค่า — แท็บเงิน', () =>
         const labels = tabLabels(mountSettings({ canManageMoney: false }));
 
         MONEY_TABS.forEach((tab) => expect(labels).not.toContain(tab));
-        ['General', 'SEO', 'Security', 'Social'].forEach((tab) => expect(labels).toContain(tab));
+        ['General', 'SEO', 'Social'].forEach((tab) => expect(labels).toContain(tab));
     });
 
     it('ไม่ส่ง prop มาต้องถือว่าไม่มีสิทธิ์', () => {
