@@ -138,6 +138,7 @@ class SaleTransaction extends Model
      *
      * claimed_amount นับทุกยอดที่เข้าคิวจ่ายแล้ว ทั้งจาก /token-sale/claim และ
      * BankTransferSaleService::queueInitialPayout — ไม่ใช่แค่ที่ผู้ซื้อกดเอง
+     * แถวจ่ายที่จบโดยเงินไม่ออกยังกินยอดนี้อยู่ จนกว่าแอดมินจะกู้ (SaleClaimPayoutService)
      *
      * ⚠️ กับดักที่เคยเกิดจริง: เดิมมีทางออก 4 ทางในเมธอดนี้ แต่มีแค่ทางสุดท้าย
      *    ทางเดียวที่หัก claimed_amount อีกสามทาง (ไม่มี phase / TGE 100% /

@@ -258,6 +258,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/bank/{id}/requeue', [TokenSaleController::class, 'requeueBankPayout'])
                 ->name('bank.requeue')
                 ->middleware('admin.role:super_admin');
+            Route::post('/claims/{id}/requeue', [TokenSaleController::class, 'requeueClaimPayouts'])
+                ->name('claims.requeue')
+                ->middleware('admin.role:super_admin');
         });
 
         // Token Factory — จัดการ Token ที่สร้างจาก Factory
