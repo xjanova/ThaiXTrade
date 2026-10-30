@@ -49,6 +49,7 @@ class AiBotController extends Controller
         AiBotService::ERR_BOT_LIMIT => 'จำนวนบอทเต็มโควตาของแพลนนี้แล้ว',
         AiBotService::ERR_STRATEGY_LOCKED => 'กลยุทธ์นี้ต้องใช้แพลนระดับสูงกว่า',
         AiBotService::ERR_SUBSCRIBE_BUSY => 'กำลังทำรายการเช่าของกระเป๋านี้อยู่ กรุณารอสักครู่แล้วลองใหม่',
+        AiBotService::ERR_IDEMPOTENCY_CONFLICT => 'คำขอนี้ไม่ตรงกับรายการเช่าที่ส่งไปก่อนหน้า กรุณาโหลดหน้าใหม่แล้วเลือกแพลนอีกครั้ง',
         AiBotService::ERR_TOPUP_CLOSED => 'ยังไม่เปิดให้เติมเครดิต — รอประกาศเปิดระบบชำระเงินก่อน ระหว่างนี้ใช้เครดิตต้อนรับทดลองได้',
         AiBotService::ERR_SALES_CLOSED => 'AI TRADE ยังอยู่ระหว่างทดสอบ ยังไม่เปิดให้เช่า — ระหว่างนี้ทดลองใช้โหมดทดลองได้เต็มที่ ไม่มีค่าใช้จ่าย',
         // เดิมไม่มีข้อความ — ผู้ใช้เห็นแค่ "ทำรายการไม่สำเร็จ" แล้วไม่รู้ว่าต้องเปลี่ยนกลยุทธ์
@@ -463,6 +464,11 @@ class AiBotController extends Controller
         $validated = $request->validate([
             'plan_code' => ['required', 'string', 'max:40'],
             'days' => ['required', 'integer', 'min:1', 'max:365'],
+            /*
+             * หนึ่ง key ต่อการกดหนึ่งครั้ง (client ใช้ key เดิมตอน retry จนกว่าจะสำเร็จ)
+             * ไม่บังคับ เพราะแอพมือถือรุ่นที่ออกไปแล้วยังไม่ส่ง — ทางนั้นเซิร์ฟเวอร์กันเองแบบหยาบกว่า
+             */
+            'idempotency_key' => ['nullable', 'string', 'min:16', 'max:64', 'regex:/^[A-Za-z0-9-]+$/'],
         ]);
 
         $plan = AiBotPlan::active()->where('code', $validated['plan_code'])->first();
@@ -472,7 +478,12 @@ class AiBotController extends Controller
         }
 
         try {
-            $this->bots->subscribe($this->wallet($request), $plan, (int) $validated['days']);
+            $this->bots->subscribe(
+                $this->wallet($request),
+                $plan,
+                (int) $validated['days'],
+                $validated['idempotency_key'] ?? null,
+            );
         } catch (RuntimeException $e) {
             /*
              * 402 (ต้องชำระเงิน) ใช้ได้เฉพาะ "เครดิตไม่พอ" เท่านั้น
@@ -481,7 +492,11 @@ class AiBotController extends Controller
              * ทั้งฝั่งแอพมือถือและใครก็ตามที่เขียนโค้ดคุยกับ API — เขาจะพาผู้ใช้ไป
              * หน้าเติมเงินทั้งที่เติมไปก็ยังเช่าไม่ได้อยู่ดี
              */
-            $status = $e->getMessage() === AiBotService::ERR_INSUFFICIENT_CREDITS ? 402 : 422;
+            $status = match ($e->getMessage()) {
+                AiBotService::ERR_INSUFFICIENT_CREDITS => 402,
+                AiBotService::ERR_IDEMPOTENCY_CONFLICT => 409,
+                default => 422,
+            };
 
             return $this->failure($e->getMessage(), null, $status);
         }
@@ -492,7 +507,17 @@ class AiBotController extends Controller
     /** ยกเลิกการเช่า — คืนเครดิตวันที่เหลือ แล้วหยุดบอททั้งหมด */
     public function cancel(Request $request): JsonResponse
     {
-        $this->bots->cancel($this->wallet($request));
+        try {
+            $this->bots->cancel($this->wallet($request));
+        } catch (RuntimeException $e) {
+            // QueryException ก็เป็น RuntimeException — ห้ามส่งข้อความดิบ (มี SQL) ออกไป
+            if ($e->getMessage() !== AiBotService::ERR_SUBSCRIBE_BUSY) {
+                throw $e;
+            }
+
+            // ชนล็อกกับคำขอเช่าที่กำลังทำงาน — ยังไม่ได้แตะอะไร ลองใหม่ได้ทันที
+            return $this->failure(AiBotService::ERR_SUBSCRIBE_BUSY);
+        }
 
         return $this->status($request);
     }

@@ -34,6 +34,7 @@ vi.mock('axios', () => ({
 
 const { useAiBot } = await import('@/Composables/useAiBot');
 
+const PENDING_SUBSCRIBE_KEY = 'tpix.aiBot.pendingSubscribe';
 const WALLET_A = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const WALLET_B = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
@@ -313,6 +314,61 @@ describe('useAiBot', () => {
         expect(result.ok).toBe(true);
         expect(get).toHaveBeenCalledWith('/api/v1/ai-bot/wallet', { params: { wallet_address: WALLET_A } });
         expect(bot.botWallet.value.wallet.has_pending_withdraw).toBe(true);
+    });
+
+    // ── การเช่า: idempotency key ────────────────────────────────────────────
+
+    it('retries a lost subscribe with the same key and starts a fresh key after success', async () => {
+        localStorage.removeItem(PENDING_SUBSCRIBE_KEY);
+        wallet.address = WALLET_A;
+        const lost = new Error('Network Error');
+        lost.request = {};
+        post.mockRejectedValueOnce(lost)
+            .mockResolvedValueOnce(statusPayload())
+            .mockResolvedValueOnce(statusPayload());
+
+        expect((await bot.subscribe('starter', 7)).ok).toBe(false);
+        expect((await bot.subscribe('starter', 7)).ok).toBe(true);
+        expect((await bot.subscribe('starter', 7)).ok).toBe(true);
+
+        const keys = post.mock.calls.map(([, body]) => body.idempotency_key);
+        expect(keys[0]).toMatch(/^[A-Za-z0-9-]{16,64}$/);
+        // เน็ตหลุดแล้วกดใหม่ = คำขอเดิม → เซิร์ฟเวอร์ไม่ตัดซ้ำ
+        expect(keys[1]).toBe(keys[0]);
+        // สำเร็จแล้วกดอีก = ตั้งใจต่ออายุจริง → ต้องเป็นการซื้อใหม่
+        expect(keys[2]).not.toBe(keys[1]);
+    });
+
+    it('does not reuse a pending key for a different plan', async () => {
+        wallet.address = WALLET_A;
+        const lost = new Error('Network Error');
+        lost.request = {};
+        post.mockRejectedValueOnce(lost).mockResolvedValueOnce(statusPayload());
+
+        await bot.subscribe('starter', 7);
+        await bot.subscribe('pro', 7);
+
+        const [first, second] = post.mock.calls.map(([, body]) => body.idempotency_key);
+        expect(second).not.toBe(first);
+    });
+
+    it('keeps an unresolved subscribe key across a page reload', async () => {
+        // คำขอก่อนรีโหลดตัดเงินไปแล้วแต่คำตอบหาย — key ต้องรอดมาให้กดใหม่ได้โดยไม่ตัดซ้ำ
+        localStorage.setItem(PENDING_SUBSCRIBE_KEY, JSON.stringify({
+            address: WALLET_A,
+            planCode: 'starter',
+            days: 7,
+            key: 'key-from-before-the-reload',
+            createdAt: Date.now() - 60 * 60 * 1000,
+        }));
+        wallet.address = WALLET_A;
+        post.mockResolvedValueOnce(statusPayload());
+
+        expect((await bot.subscribe('starter', 7)).ok).toBe(true);
+
+        expect(post.mock.calls[0][1].idempotency_key).toBe('key-from-before-the-reload');
+        // สำเร็จแล้วต้องล้าง ไม่งั้นการต่ออายุครั้งหน้าจะถูกมองเป็นคำขอเดิม
+        expect(localStorage.getItem(PENDING_SUBSCRIBE_KEY)).toBeNull();
     });
 
     it('offers the welcome bonus only until it has been claimed', async () => {
