@@ -9,6 +9,7 @@ use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
 use App\Services\BankTransferSaleService;
+use App\Services\SaleClaimPayoutService;
 use App\Services\SaleLaunchService;
 use App\Support\MoneySettings;
 use App\Support\Wei;
@@ -35,7 +36,7 @@ class TokenSaleController extends Controller
     /**
      * หน้าหลัก Token Sales + Control — ส่งข้อมูลทั้งหมดไป Vue.
      */
-    public function index(): Response
+    public function index(BankTransferSaleService $bank, SaleClaimPayoutService $claims): Response
     {
         $sales = TokenSale::with(['phases' => function ($q) {
             $q->orderBy('phase_order');
@@ -44,6 +45,17 @@ class TokenSaleController extends Controller
         $transactions = SaleTransaction::with(['tokenSale', 'phase'])
             ->latest()
             ->paginate(20);
+
+        // ยอดของปุ่มเข้าคิวจ่ายใหม่ — ส่งเฉพาะคนที่กดได้จริง (route จำกัด super_admin)
+        $canRequeue = auth('admin')->user()?->isSuperAdmin() ?? false;
+        $transactions->getCollection()->each(function (SaleTransaction $tx) use ($bank, $claims, $canRequeue) {
+            $amountWei = $canRequeue ? $bank->requeueableAmountWei($tx) : null;
+            $tx->setAttribute('requeue_payout_tpix', $amountWei === null ? null : Wei::format($amountWei));
+
+            $claimOffer = $canRequeue ? $claims->requeueOffer($tx) : null;
+            $tx->setAttribute('requeue_claim_tpix', $claimOffer['amount_tpix'] ?? null);
+            $tx->setAttribute('requeue_claim_returned_tpix', $claimOffer['returned_tpix'] ?? null);
+        });
 
         // ดึง master wallet balance จาก TPIX Chain RPC
         $walletInfo = $this->getMasterWalletInfo();
@@ -377,6 +389,48 @@ class TokenSaleController extends Controller
         MoneySettings::record($action, ['status' => $oldStatus], $tx->only([
             'id', 'status', 'wallet_address', 'tpix_amount', 'payment_usd_value',
         ]));
+    }
+
+    /**
+     * เข้าคิวจ่ายส่วนที่ปลดล็อกแล้วใหม่ — ใช้เมื่อคิวล้มตอนยืนยัน หรือรายการเดิมจบโดยเงินไม่ออก.
+     *
+     * ปุ่มยืนยันหายไปหลังยืนยันแล้ว ถ้าไม่มีทางนี้เหรียญจะค้างอยู่ใน claimed_amount
+     * รายการใหม่ยังต้องผ่านการอนุมัติที่หน้าคลังตามปกติ
+     */
+    public function requeueBankPayout(int $id, BankTransferSaleService $bank)
+    {
+        $payout = $bank->queueInitialPayout(SaleTransaction::findOrFail($id), auth('admin')->id());
+
+        if (! $payout) {
+            return redirect()->back()->withErrors(['bank' => 'ออเดอร์นี้ไม่มียอดให้เข้าคิวจ่าย']);
+        }
+
+        if (! $payout->wasRecentlyCreated) {
+            return redirect()->back()->withErrors([
+                'bank' => "ออเดอร์นี้มีรายการจ่าย #{$payout->id} ที่ยังไม่จบอยู่แล้ว (สถานะ: {$payout->status})",
+            ]);
+        }
+
+        return redirect()->back()->with('success', "เข้าคิวจ่ายใหม่แล้ว {$payout->amount_tpix} TPIX — รออนุมัติที่หน้าคลัง");
+    }
+
+    /**
+     * กู้ยอด claim ของแถวที่จบโดยเงินไม่ออก — ใช้เมื่อรายการจ่ายถูกปฏิเสธ ตกกฎ หรือ revert.
+     *
+     * ไม่มีทางนี้เหรียญจะค้างอยู่ใน claimed_amount: ผู้ซื้อ claim ซ้ำไม่ได้ และไม่มีอะไรจ่ายออก
+     * รายการใหม่ยังต้องผ่านการอนุมัติที่หน้าคลังตามปกติ
+     */
+    public function requeueClaimPayouts(int $id, SaleClaimPayoutService $claims)
+    {
+        $payouts = $claims->requeueDeadPayouts(SaleTransaction::findOrFail($id), auth('admin')->id());
+
+        if ($payouts->isEmpty()) {
+            return redirect()->back()->withErrors(['claim' => 'ออเดอร์นี้ไม่มียอด claim ที่กู้ได้ — รายการที่ยังไม่จบหรืออาจโอนไปแล้วกู้ไม่ได้']);
+        }
+
+        $amount = Wei::format(Wei::sum($payouts->pluck('amount_wei')->all()));
+
+        return redirect()->back()->with('success', "เข้าคิว claim ใหม่แล้ว {$amount} TPIX — รออนุมัติที่หน้าคลัง");
     }
 
     /**
