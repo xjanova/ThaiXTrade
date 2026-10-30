@@ -8,6 +8,7 @@ use App\Models\SaleTransaction;
 use App\Models\SiteSetting;
 use App\Models\TokenSale;
 use App\Models\TreasuryPayout;
+use App\Models\TreasuryWhitelist;
 use App\Services\BankTransferSaleService;
 use App\Services\StripePaymentService;
 use App\Services\TokenSaleService;
@@ -461,6 +462,30 @@ class BankTransferSaleTest extends TestCase
 
         $this->claim($fresh, 50)->assertOk();
         $this->assertQueuedTpix('200');
+    }
+
+    /** ปลายทางที่ตั้งวงเงินไว้ต่ำกว่าค่ากลาง validatePayout ใช้ค่าของปลายทาง — ทางนี้ต้องใช้เกณฑ์เดียวกัน */
+    public function test_initial_payout_stops_at_the_recipient_limit(): void
+    {
+        TreasuryWhitelist::create(['address' => self::BUYER, 'label' => 'Buyer', 'max_per_tx_wei' => Wei::toWei('150')]);
+        $confirmed = $this->confirmedOrder();
+
+        $this->bank()->queueInitialPayout($confirmed);
+
+        $this->assertQueuedTpix('150');
+        $this->assertEquals(50, $confirmed->fresh()->claimable_amount);
+    }
+
+    /** วงเงินของปลายทางแทนที่ค่ากลาง ไม่ใช่ซ้อนกัน — ตั้งไว้สูงกว่าก็จ่ายได้เต็มวงเงินนั้น */
+    public function test_recipient_limit_replaces_the_global_limit(): void
+    {
+        config(['treasury.limits.per_transaction' => '100']);
+        TreasuryWhitelist::create(['address' => self::BUYER, 'label' => 'Buyer', 'max_per_tx_wei' => Wei::toWei('150')]);
+        $confirmed = $this->confirmedOrder();
+
+        $this->bank()->queueInitialPayout($confirmed);
+
+        $this->assertQueuedTpix('150');
     }
 
     /** ★ แถวเก่าที่ยังไม่จบไม่เคยถูกหักสิทธิ์ claim — migration ต้องหักให้ ไม่งั้น /claim จ่ายซ้ำได้ */

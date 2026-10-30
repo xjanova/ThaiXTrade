@@ -48,6 +48,7 @@ class BankTransferSaleService
 
     public function __construct(
         private readonly TokenSaleService $saleService,
+        private readonly TreasuryService $treasury,
     ) {}
 
     // =========================================================================
@@ -343,7 +344,7 @@ class BankTransferSaleService
     }
 
     /**
-     * ยอดจ่ายครั้งแรกเป็น wei — ส่วนที่ปลดล็อกแล้ว แต่ไม่เกินวงเงินต่อครั้งของกระเป๋าร้อน.
+     * ยอดจ่ายครั้งแรกเป็น wei — ส่วนที่ปลดล็อกแล้ว แต่ไม่เกินวงเงินต่อครั้งของปลายทางนี้.
      *
      * ยอดเกินวงเงินคือรายการที่ validatePayout ไม่มีวันผ่าน และเมื่อหักสิทธิ์ claim ไปแล้ว
      * ผู้ซื้อจะติดอยู่ตรงนั้น จึงจ่ายเต็มวงเงิน ส่วนที่เหลือคงเป็นสิทธิ์ให้แบ่ง claim เอง
@@ -351,7 +352,7 @@ class BankTransferSaleService
     private function initialPayoutWei(SaleTransaction $tx): string
     {
         $claimableWei = Wei::toWei(number_format((float) $tx->claimable_amount, 18, '.', ''));
-        $maxPerTxWei = Wei::toWei((string) config('treasury.limits.per_transaction', '0'));
+        $maxPerTxWei = $this->treasury->maxPerTxWei($tx->wallet_address);
 
         return bccomp($maxPerTxWei, '0', 0) > 0 && bccomp($claimableWei, $maxPerTxWei, 0) > 0
             ? $maxPerTxWei
