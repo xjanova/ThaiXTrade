@@ -10,8 +10,10 @@ use App\Models\SaleTransaction;
 use App\Models\SiteSetting;
 use App\Models\SwapConfig;
 use App\Models\TokenSale;
+use App\Models\TreasuryPayout;
 use App\Models\WhitelistEntry;
 use App\Services\StripePaymentService;
+use App\Support\Wei;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -54,6 +56,8 @@ class MoneyRoutesAccessTest extends TestCase
     private SaleTransaction $bankOrder;
 
     private SaleTransaction $cardPayment;
+
+    private SaleTransaction $paidBankOrder;
 
     private WhitelistEntry $whitelisted;
 
@@ -123,6 +127,24 @@ class MoneyRoutesAccessTest extends TestCase
         ]);
         $this->cardPayment = $this->saleTransaction('confirmed', 'stripe_cs_test_1');
 
+        // รับเงินแล้วแต่เหรียญค้าง — ยอด claim ก้อนก่อนถูกปฏิเสธที่หน้าคลัง ยังไม่มีอะไรจ่ายออก
+        $this->paidBankOrder = $this->saleTransaction('confirmed', 'TPIX-GHJ789', [
+            'metadata' => ['method' => 'bank_transfer', 'reference' => 'TPIX-GHJ789'],
+            'payment_currency' => 'THB_BANK',
+            'claimed_amount' => 100,
+            'vesting_start_at' => now(),
+        ]);
+
+        TreasuryPayout::create([
+            'idempotency_key' => "sale-claim-{$this->paidBankOrder->uuid}-1",
+            'to_address' => self::BUYER,
+            'amount_wei' => Wei::toWei('100'),
+            'purpose' => 'token_sale',
+            'origin' => TreasuryPayout::ORIGIN_SALE_CLAIM,
+            'status' => TreasuryPayout::STATUS_REJECTED,
+            'failure_reason' => 'wrong wallet',
+        ]);
+
         $this->whitelisted = WhitelistEntry::create([
             'sale_phase_id' => $this->phase->id,
             'wallet_address' => self::BUYER,
@@ -181,7 +203,7 @@ class MoneyRoutesAccessTest extends TestCase
     private const GATED = [
         'แก้เฟส', 'เปิดรอบขาย', 'สวิตช์เปิดขายอัตโนมัติ', 'ล็อกวันจบรอบ',
         'เพิ่ม whitelist', 'นำเข้า whitelist', 'ลบ whitelist',
-        'คืนเงินรอบขาย', 'ยืนยันเงินโอน', 'ปฏิเสธเงินโอน', 'คืนเงิน Stripe',
+        'คืนเงินรอบขาย', 'ยืนยันเงินโอน', 'ปฏิเสธเงินโอน', 'เข้าคิวจ่ายใหม่', 'เข้าคิว claim ใหม่', 'คืนเงิน Stripe',
         'สร้าง swap', 'แก้ swap', 'เปิดปิด swap', 'ลบ swap',
     ];
 
@@ -214,6 +236,8 @@ class MoneyRoutesAccessTest extends TestCase
             'คืนเงินรอบขาย' => $this->post("/admin/token-sales/refund/{$this->cardPayment->id}"),
             'ยืนยันเงินโอน' => $this->post("/admin/token-sales/bank/{$this->bankOrder->id}/confirm"),
             'ปฏิเสธเงินโอน' => $this->post("/admin/token-sales/bank/{$this->bankOrder->id}/reject", ['reason' => 'ไม่พบเงินเข้า']),
+            'เข้าคิวจ่ายใหม่' => $this->post("/admin/token-sales/bank/{$this->paidBankOrder->id}/requeue"),
+            'เข้าคิว claim ใหม่' => $this->post("/admin/token-sales/claims/{$this->paidBankOrder->id}/requeue"),
             'คืนเงิน Stripe' => $this->postJson('/admin/finance/refund', ['transaction_id' => $this->cardPayment->id]),
             'สร้าง swap' => $this->post('/admin/swap', $this->swapValues()),
             'แก้ swap' => $this->put("/admin/swap/{$this->swap->id}", $this->swapValues()),
@@ -229,6 +253,7 @@ class MoneyRoutesAccessTest extends TestCase
             SwapConfig::orderBy('id')->get()->toArray(),
             SalePhase::orderBy('id')->get()->toArray(),
             SaleTransaction::orderBy('id')->pluck('status', 'id')->all(),
+            TreasuryPayout::orderBy('id')->pluck('status', 'id')->all(),
             WhitelistEntry::orderBy('id')->pluck('wallet_address')->all(),
             SiteSetting::orderBy('id')->pluck('value', 'id')->all(),
         ];
