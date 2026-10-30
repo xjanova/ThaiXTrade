@@ -26,6 +26,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -55,6 +56,7 @@ class AiBotController extends Controller
         // เดิมไม่มีข้อความ — ผู้ใช้เห็นแค่ "ทำรายการไม่สำเร็จ" แล้วไม่รู้ว่าต้องเปลี่ยนกลยุทธ์
         AiBotService::ERR_STRATEGY_RETIRED => 'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว — สร้างหรือเริ่มบอทด้วยกลยุทธ์นี้ไม่ได้ (บอทเดิมยังแก้ชื่อ ลดความเสี่ยง หรือลบได้)',
         'INVALID_PACK' => 'ไม่พบแพ็กเกจเครดิตที่เลือก',
+        'REQUEST_FAILED' => 'ทำรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
     ];
 
     /**
@@ -452,7 +454,7 @@ class AiBotController extends Controller
         try {
             $intent = $this->bots->createTopupIntent($this->wallet($request), $validated['pack']);
         } catch (RuntimeException $e) {
-            return $this->failure($e->getMessage());
+            return $this->serviceFailure($e);
         }
 
         return response()->json(['success' => true, 'data' => $intent]);
@@ -498,7 +500,7 @@ class AiBotController extends Controller
                 default => 422,
             };
 
-            return $this->failure($e->getMessage(), null, $status);
+            return $this->serviceFailure($e, $status);
         }
 
         return $this->status($request);
@@ -542,7 +544,7 @@ class AiBotController extends Controller
         try {
             $subscription = $this->bots->assertCanRunBot($wallet, $validated['strategy']);
         } catch (RuntimeException $e) {
-            return $this->failure($e->getMessage(), null, 403);
+            return $this->serviceFailure($e, 403);
         }
 
         if (! $this->pairHasCandles($validated['pair'], $validated['timeframe'])) {
@@ -585,7 +587,7 @@ class AiBotController extends Controller
             // editingOnly: แก้ชื่อ/ลดความเสี่ยงของบอทกลยุทธ์ที่ถูกถอดแล้วได้ (ตามที่ validateBot ตั้งใจ)
             $subscription = $this->bots->assertCanRunBot($wallet, $validated['strategy'], $bot, editingOnly: true);
         } catch (RuntimeException $e) {
-            return $this->failure($e->getMessage(), null, 403);
+            return $this->serviceFailure($e, 403);
         }
 
         [$params, $riskInput] = $this->applyTemplate($validated, $request);
@@ -680,7 +682,7 @@ class AiBotController extends Controller
             try {
                 $this->bots->assertCanRunBot($wallet, $bot->strategy, $bot);
             } catch (RuntimeException $e) {
-                return $this->failure($e->getMessage(), null, 403);
+                return $this->serviceFailure($e, 403);
             }
         }
 
@@ -776,7 +778,7 @@ class AiBotController extends Controller
                 $bot->pauseBecause($pause[0], $pause[1]);
             }
 
-            return $this->failure($e->getMessage(), null, 403);
+            return $this->serviceFailure($e, 403);
         }
 
         // กันหน้าเว็บยิงรัวเกินจำเป็น — คิดหนึ่งรอบต่อช่วงเวลาที่กำหนดก็พอ
@@ -1536,6 +1538,28 @@ class AiBotController extends Controller
         );
 
         return $wallet;
+    }
+
+    /**
+     * คำตอบเมื่อบริการโยน RuntimeException — ส่งออกได้เฉพาะรหัสที่ตั้งใจไว้.
+     *
+     * QueryException และความผิดพลาดของ RPC ก็เป็น RuntimeException ข้อความมี SQL ค่าที่ bind
+     * หรือ URL ของผู้ให้บริการ จึงเก็บไว้ใน log ฝั่งเซิร์ฟเวอร์เท่านั้น
+     * ตอบ 500 ให้ฝั่งเว็บรู้ว่ายังไม่รู้ผล และคง idempotency key เดิมไว้ลองซ้ำ
+     */
+    private function serviceFailure(RuntimeException $e, int $status = 422): JsonResponse
+    {
+        if (array_key_exists($e->getMessage(), self::ERROR_MESSAGES)) {
+            return $this->failure($e->getMessage(), null, $status);
+        }
+
+        Log::error('aibot: ทำรายการล้มเหลวจากสาเหตุที่ไม่ได้ตั้งใจ', [
+            'error' => $e->getMessage(),
+            'exception' => $e::class,
+            'path' => request()->path(),
+        ]);
+
+        return $this->failure('REQUEST_FAILED', null, 500);
     }
 
     private function failure(string $code, ?string $message = null, int $status = 422): JsonResponse

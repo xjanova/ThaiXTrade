@@ -382,7 +382,7 @@ class SettingController extends Controller
                 'tpix_wallet', 'tpix_chain_id', 'wtpix_wallet', 'wtpix_chain_id'],
             // คีย์ Stripe + บัญชีรับโอนเงินของรอบขายเหรียญ
             'payment' => ['stripe_enabled', 'stripe_public_key', 'stripe_secret_key', 'stripe_webhook_secret',
-                'card_service_fee_percent'],
+                'card_service_fee_percent', 'card_claim_hold_days'],
             'ai' => ['groq_api_key', 'groq_default_model', 'ai_chatbot_enabled', 'ai_content_enabled',
                 'cloudflare_image_url', 'cloudflare_image_key',
                 'together_api_key', 'huggingface_api_key', 'gemini_api_key'],
@@ -401,6 +401,14 @@ class SettingController extends Controller
             $fee = $request->input('card_service_fee_percent');
             if (! is_numeric($fee) || (float) $fee < 0 || (float) $fee > 50) {
                 return back()->with('error', 'ค่าบริการบัตรต้องเป็นตัวเลข 0–50 (%)');
+            }
+        }
+
+        // ค่าว่างหรือไม่ใช่ตัวเลขจะตกไปใช้ค่าเริ่มต้นเงียบ ๆ ทั้งที่แอดมินตั้งใจเปลี่ยน
+        if ($tab === 'payment' && $request->has('card_claim_hold_days')) {
+            $days = $request->input('card_claim_hold_days');
+            if (! is_numeric($days) || (int) $days < 0 || (int) $days > 180) {
+                return back()->with('error', 'วันพัก claim ของบัตรต้องเป็นตัวเลข 0–180');
             }
         }
 

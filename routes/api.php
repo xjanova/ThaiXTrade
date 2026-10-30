@@ -559,7 +559,7 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
 
     // Staking — write operations (ต้อง verify wallet)
     Route::prefix('staking')->group(function () {
-        Route::post('/stake', [StakingApiController::class, 'stake'])->middleware('kyc:masternode');
+        Route::post('/stake', [StakingApiController::class, 'stake']);
         Route::post('/claim/{id}', [StakingApiController::class, 'claim']);
         Route::post('/unstake/{id}', [StakingApiController::class, 'unstake']);
     });
@@ -643,13 +643,14 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         /*
          * กระเป๋าบอท — กระเป๋าแยกที่บอทใช้ในโหมดจริง (ผู้ใช้โอนเข้า / ถอนกลับหาตัวเองเท่านั้น)
          *
-         * สร้าง/ถอนอยู่หลังด่าน KYC เหมือนของที่ "ได้ของ" ตัวอื่น — กระเป๋าที่ถือเงินจริง
-         * ต้องรู้ว่าเป็นของใคร · ถอนจำกัด 5 ครั้ง/นาที เพราะทุกครั้งอ่านยอดจากเชน
+         * สร้างอยู่หลังด่าน KYC เหมือนของที่ "ได้ของ" ตัวอื่น — กระเป๋าที่ถือเงินจริงต้องรู้ว่าเป็นของใคร
+         * ถอนไม่อยู่หลังด่าน: ปลายทางถูกล็อกเป็นกระเป๋าเจ้าของ เปิดด่านทีหลังแล้วเงินต้องไม่ติดอยู่ในบอท
+         * ถอนจำกัด 5 ครั้ง/นาที เพราะทุกครั้งอ่านยอดจากเชน
          */
         Route::get('/wallet', [AiBotWalletController::class, 'show']);
         Route::post('/wallet', [AiBotWalletController::class, 'store'])->middleware('kyc:ai_bot');
         Route::post('/wallet/refresh', [AiBotWalletController::class, 'refresh'])->middleware('throttle:ai-bot-wallet-sync');
-        Route::post('/wallet/withdraw', [AiBotWalletController::class, 'withdraw'])->middleware(['kyc:ai_bot', 'throttle:ai-bot-withdraw']);
+        Route::post('/wallet/withdraw', [AiBotWalletController::class, 'withdraw'])->middleware('throttle:ai-bot-withdraw');
         Route::post('/wallet/withdraw/{id}/cancel', [AiBotWalletController::class, 'cancel'])->where('id', '[0-9]+');
     });
 

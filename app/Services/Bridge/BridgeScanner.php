@@ -166,16 +166,13 @@ class BridgeScanner
         $decision = $cheap;
 
         if ($cheap['status'] !== BridgeDeposit::STATUS_IGNORED) {
-            $code = $rpc->code($from);
-            $tx = $rpc->transaction($txHash);
+            $sender = $this->policy->senderFacts($rpc, $from, $txHash);
 
-            if ($code === null || $tx === null) {
+            if ($sender === null) {
                 return null;
             }
 
-            // EIP-7702: EOA ที่มอบสิทธิ์ให้โค้ดยังเป็นกระเป๋าที่เจ้าของถือคีย์ (โค้ดขึ้นต้น 0xef0100)
-            $facts['sender_is_contract'] = $code !== '0x' && ! str_starts_with($code, '0xef0100');
-            $facts['sender_mismatch'] = strtolower((string) ($tx['from'] ?? '')) !== $from;
+            $facts = $sender + $facts;
             $decision = $this->policy->evaluateDeposit($facts);
         }
 

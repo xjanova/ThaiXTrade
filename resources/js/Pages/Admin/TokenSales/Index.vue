@@ -187,6 +187,18 @@ function bankReference(tx) {
 
 const confirmingId = ref(null);
 
+/** ตรงกับ BankTransferSaleService::ORDER_TTL_HOURS */
+const BANK_ORDER_TTL_MS = 48 * 60 * 60 * 1000;
+
+/** ออเดอร์เก่าไม่มี expires_at — คิดจากวันที่สร้างแบบเดียวกับหลังบ้าน ไม่งั้นส่ง honor_expired ไม่ได้ทั้งที่หมดอายุแล้ว */
+function isBankOrderExpired(tx) {
+    const expiresAt = tx.metadata?.expires_at
+        ? new Date(tx.metadata.expires_at).getTime()
+        : new Date(tx.created_at).getTime() + BANK_ORDER_TTL_MS;
+
+    return expiresAt < Date.now();
+}
+
 /**
  * ยืนยันว่าเงินเข้าบัญชีจริง
  *
@@ -197,12 +209,16 @@ function confirmBank(tx) {
     if (confirmingId.value) return;
 
     const ref = bankReference(tx) || tx.uuid;
-    if (!window.confirm(`ยืนยันว่าได้รับเงินโอนของรายการ ${ref} แล้วจริงหรือไม่?\n\nกดยืนยันแล้วระบบจะนับเป็นยอดขายและเข้าคิวจ่ายเหรียญทันที`)) {
+    const expired = isBankOrderExpired(tx);
+    const warning = expired
+        ? '\n\nออเดอร์นี้หมดอายุแล้ว กดยืนยันเฉพาะเมื่อเงินเข้าก่อนเวลาหมดอายุจริงเท่านั้น ระบบจะรับราคาเดิมและบันทึกชื่อคุณไว้'
+        : '';
+    if (!window.confirm(`ยืนยันว่าได้รับเงินโอนของรายการ ${ref} แล้วจริงหรือไม่?\n\nกดยืนยันแล้วระบบจะนับเป็นยอดขายและเข้าคิวจ่ายเหรียญทันที${warning}`)) {
         return;
     }
 
     confirmingId.value = tx.id;
-    router.post(`/admin/token-sales/bank/${tx.id}/confirm`, {}, {
+    router.post(`/admin/token-sales/bank/${tx.id}/confirm`, { honor_expired: expired }, {
         preserveScroll: true,
         onFinish: () => { confirmingId.value = null; },
     });

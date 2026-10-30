@@ -70,6 +70,8 @@ describe('BuyForm — card payment', () => {
     beforeEach(() => {
         paymentAmount.value = '';
         preview.value = null;
+        saleStore.sale.payment_methods = { card: true, bank: false };
+        saleStore.sale.card_claim_hold_days = 0;
         saleStore.createStripeCheckout.mockClear();
         delete window.location;
         window.location = { href: '' };
@@ -98,6 +100,38 @@ describe('BuyForm — card payment', () => {
         expect(wrapper.find('[data-testid="total-usd"]').text()).toBe('$115');
         expect(wrapper.find('[data-testid="submit-order"]').text()).toContain('$115');
         expect(wrapper.text()).toContain('2,000 TPIX');
+    });
+
+    it('tells the buyer about the claim hold before they pay by card', async () => {
+        saleStore.sale.card_claim_hold_days = 60;
+        const wrapper = mount(BuyForm);
+        await typeAmount(wrapper, 5);
+
+        expect(wrapper.find('[data-testid="card-hold-note"]').text()).toContain('60 วัน');
+    });
+
+    it('does not mention a hold when it is turned off', async () => {
+        const wrapper = mount(BuyForm);
+        await typeAmount(wrapper, 5);
+
+        expect(wrapper.find('[data-testid="card-hold-note"]').exists()).toBe(false);
+    });
+
+    it('tells the buyer when a bank order stops holding its price', async () => {
+        saleStore.sale.payment_methods = { card: false, bank: true };
+        saleStore.createBankOrder.mockResolvedValueOnce({
+            ok: true,
+            data: { reference: 'TPIX-ABC234', amount_usd: 5, tpix_amount: 100, expires_at: '2026-11-01T00:00:00Z', bank: {} },
+        });
+
+        const wrapper = mount(BuyForm);
+        await wrapper.find('[data-testid="method-bank"]').trigger('click');
+        await typeAmount(wrapper, 5);
+        await wrapper.find('[data-testid="submit-order"]').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.text()).toContain('TPIX-ABC234');
+        expect(wrapper.find('[data-testid="bank-expiry-note"]').text()).toContain('ราคาอาจเปลี่ยน');
     });
 
     it('sends the token amount (not the total) to create the checkout', async () => {

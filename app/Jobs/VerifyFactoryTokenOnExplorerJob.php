@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Carbon;
 
 /**
  * ยืนยันซอร์สของเหรียญบน Blockscout — งานแยกจาก deploy.
@@ -29,6 +30,9 @@ class VerifyFactoryTokenOnExplorerJob implements ShouldQueue
 
     public int $tokenId;
 
+    /** ส่งไปนานเท่านี้แล้วยังไม่ขึ้น ถือว่าคำขอหาย (explorer รีสตาร์ต) ต้องส่งใหม่ */
+    public const SUBMISSION_LOST_MINUTES = 60;
+
     public function __construct(FactoryToken|int $token)
     {
         $this->tokenId = $token instanceof FactoryToken ? (int) $token->id : $token;
@@ -46,12 +50,13 @@ class VerifyFactoryTokenOnExplorerJob implements ShouldQueue
             return;
         }
 
+        // skipped ไม่ใช่จุดจบ — ผู้ใช้จ่ายแล้ว พอเปิดบริการหรือเติมไฟล์ซอร์สต้องส่งได้
         $state = $token->metadata['explorer_verification']['status'] ?? null;
-        if (in_array($state, ['verified', 'skipped'], true)) {
+        if ($state === 'verified') {
             return;
         }
 
-        if ($state !== 'submitted') {
+        if ($state !== 'submitted' || $this->submissionLost($token)) {
             $result = $explorer->submit($token);
 
             $status = match ($result['status']) {
@@ -80,6 +85,14 @@ class VerifyFactoryTokenOnExplorerJob implements ShouldQueue
         }
 
         $this->retryLater(30);
+    }
+
+    private function submissionLost(FactoryToken $token): bool
+    {
+        $submittedAt = $token->metadata['explorer_verification']['updated_at'] ?? null;
+
+        return $submittedAt !== null
+            && Carbon::parse($submittedAt)->lt(now()->subMinutes(self::SUBMISSION_LOST_MINUTES));
     }
 
     private function retryLater(int $seconds): void

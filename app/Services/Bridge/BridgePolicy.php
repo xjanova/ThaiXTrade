@@ -26,7 +26,7 @@ class BridgePolicy
      * @param  array{from_address: string, amount_units: string, mint_units: string, sender_is_contract: bool, sender_mismatch: bool}  $facts
      * @return array{status: string, reason: ?string}
      */
-    public function evaluateDeposit(array $facts, ?int $ignoreId = null): array
+    public function evaluateDeposit(array $facts, ?int $ignoreId = null, bool $ignoreMinimum = false): array
     {
         $from = strtolower($facts['from_address']);
         $amount = $facts['amount_units'];
@@ -41,7 +41,7 @@ class BridgePolicy
             return ['status' => BridgeDeposit::STATUS_IGNORED, 'reason' => 'internal_sender'];
         }
 
-        if (bccomp($amount, $this->config->limitUnits('min_deposit'), 0) < 0) {
+        if (! $ignoreMinimum && bccomp($amount, $this->config->limitUnits('min_deposit'), 0) < 0) {
             return ['status' => BridgeDeposit::STATUS_IGNORED, 'reason' => 'below_minimum'];
         }
 
@@ -69,6 +69,27 @@ class BridgePolicy
         }
 
         return ['status' => BridgeDeposit::STATUS_CONFIRMED, 'reason' => null];
+    }
+
+    /**
+     * ข้อมูลประกอบจากเชนต้นทาง — ผู้ส่งเป็นสัญญาไหม · คนกดส่งธุรกรรมเป็นเจ้าของเหรียญคนเดียวกันไหม.
+     *
+     * @return array{sender_is_contract: bool, sender_mismatch: bool}|null null = อ่านเชนไม่ได้ (ห้ามเดา)
+     */
+    public function senderFacts(EvmRpc $rpc, string $from, string $txHash): ?array
+    {
+        $code = $rpc->code($from);
+        $tx = $rpc->transaction($txHash);
+
+        if ($code === null || $tx === null) {
+            return null;
+        }
+
+        return [
+            // EIP-7702: EOA ที่มอบสิทธิ์ให้โค้ด (0xef0100…) ยังเป็นกระเป๋าที่เจ้าของถือคีย์
+            'sender_is_contract' => $code !== '0x' && ! str_starts_with($code, '0xef0100'),
+            'sender_mismatch' => strtolower((string) ($tx['from'] ?? '')) !== strtolower($from),
+        ];
     }
 
     /** ยอดที่ผ่านด่านแล้วของกระเป๋านี้ใน 24 ชม. ล่าสุด (หน่วย 6 ทศนิยม) */

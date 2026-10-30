@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\SiteSetting;
 use App\Services\StripePaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -62,5 +63,29 @@ class CardServiceFeeSettingTest extends TestCase
         }
 
         $this->assertNull(SiteSetting::get('payment', 'card_service_fee_percent'));
+    }
+
+    #[Test]
+    public function วันพัก_claim_ของบัตรปริยายคือหกสิบวันและแอดมินเปลี่ยนได้(): void
+    {
+        $this->assertSame(60, app(StripePaymentService::class)->cardClaimHoldDays());
+
+        $this->withSession([Auth::guard('admin')->getName() => $this->admin->id])
+            ->put('/admin/settings/payment', ['card_claim_hold_days' => '90'])
+            ->assertRedirect();
+
+        $this->assertSame(90, app(StripePaymentService::class)->cardClaimHoldDays());
+    }
+
+    #[Test]
+    public function วันพักที่ไม่ใช่ตัวเลขหรือนอกช่วงถูกปฏิเสธ(): void
+    {
+        $this->withSession([Auth::guard('admin')->getName() => $this->admin->id]);
+
+        foreach (['', 'abc', '-1', '181'] as $bad) {
+            $this->put('/admin/settings/payment', ['card_claim_hold_days' => $bad])->assertSessionHas('error');
+        }
+
+        $this->assertNull(SiteSetting::get('payment', 'card_claim_hold_days'));
     }
 }

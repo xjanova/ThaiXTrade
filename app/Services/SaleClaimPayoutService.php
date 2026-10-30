@@ -40,6 +40,48 @@ class SaleClaimPayoutService
     }
 
     /**
+     * หยุดแถวจ่ายของออเดอร์ที่เงินถูกดึงกลับ — ผู้เรียกต้องถือล็อกแถว sale_transactions นี้อยู่.
+     *
+     * หยุดได้เฉพาะแถวที่ยังไม่มีใครเริ่มเซ็น: CAS เงื่อนไขเดียวกับตัวจองของ tpix:treasury-payouts
+     * แถวที่จองแล้ว มี hash หรือจบแล้วแต่พิสูจน์ไม่ได้ว่าเงินไม่ออก นับเป็นออกไปแล้วเสมอ
+     * แถวจ่ายเรียกกลับไม่ได้ ถ้าเดาผิดข้างนี้จะได้คืนเงินทั้งที่เหรียญออกไปแล้ว
+     *
+     * @return string ยอด wei ที่ออกไปแล้วหรือกำลังออก — หยุดไม่ทัน
+     */
+    public function haltPayouts(SaleTransaction $tx, string $reason): string
+    {
+        $tokensLeftWei = '0';
+
+        $payouts = TreasuryPayout::where(fn (Builder $q) => $q
+            ->where('idempotency_key', 'like', self::KEY_PREFIX.$tx->uuid.'-%')
+            ->orWhere('idempotency_key', 'like', BankTransferSaleService::PAYOUT_KEY_PREFIX.$tx->uuid.'-%'))
+            ->whereIn('origin', [TreasuryPayout::ORIGIN_SALE_CLAIM, TreasuryPayout::ORIGIN_SALE_BANK])
+            ->get();
+
+        foreach ($payouts as $payout) {
+            if ($payout->endedWithoutPayment()) {
+                continue;
+            }
+
+            $halted = TreasuryPayout::whereKey($payout->id)
+                ->whereIn('status', [TreasuryPayout::STATUS_PENDING, TreasuryPayout::STATUS_APPROVED, TreasuryPayout::STATUS_BROADCASTING])
+                ->whereNull('tx_hash')
+                ->whereNull('claimed_at')
+                ->update([
+                    'status' => TreasuryPayout::STATUS_REJECTED,
+                    'failure_reason' => $reason,
+                    'updated_at' => now(),
+                ]);
+
+            if ($halted !== 1) {
+                $tokensLeftWei = bcadd($tokensLeftWei, (string) $payout->amount_wei, 0);
+            }
+        }
+
+        return $tokensLeftWei;
+    }
+
+    /**
      * กู้ยอดของแถวที่จบโดยเงินไม่ออก — ได้แถวแทนแถวละหนึ่งแถว ยังต้องรออนุมัติที่หน้าคลังตามปกติ.
      *
      * ยอดยังอยู่ใน claimed_amount จึงไม่บวกซ้ำ และผู้ซื้อ claim ก้อนเดิมซ้ำไม่ได้ระหว่างรอ

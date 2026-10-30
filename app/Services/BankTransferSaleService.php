@@ -10,6 +10,7 @@ use App\Models\TokenSale;
 use App\Models\TreasuryPayout;
 use App\Support\Wei;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -45,7 +46,10 @@ class BankTransferSaleService
     private const HASH_PREFIX = 'bank_';
 
     /** คำนำหน้า idempotency key ของคิวจ่าย ต่อด้วย uuid ของออเดอร์ แล้วตามด้วย -tge-รอบที่ */
-    private const PAYOUT_KEY_PREFIX = 'sale-bank-';
+    public const PAYOUT_KEY_PREFIX = 'sale-bank-';
+
+    /** ออเดอร์ล็อกราคาได้นานเท่านี้ — ไม่จองโควตาจึงไม่มีอะไรมาบังคับให้จบเอง */
+    private const ORDER_TTL_HOURS = 48;
 
     public function __construct(
         private readonly TokenSaleService $saleService,
@@ -113,6 +117,7 @@ class BankTransferSaleService
          * ใช้ตัวพิมพ์ใหญ่ล้วนและตัดอักษรที่สับสนกับตัวเลขออก (I, O)
          */
         $reference = $this->generateReference();
+        $expiresAt = now()->addHours(self::ORDER_TTL_HOURS)->toIso8601String();
 
         $tx = SaleTransaction::create([
             'token_sale_id' => $phase->token_sale_id,
@@ -129,6 +134,7 @@ class BankTransferSaleService
                 'method' => 'bank_transfer',
                 'reference' => $reference,
                 'requested_at' => now()->toIso8601String(),
+                'expires_at' => $expiresAt,
             ],
         ]);
 
@@ -146,6 +152,7 @@ class BankTransferSaleService
             'tpix_amount' => (float) $tx->tpix_amount,
             'bank' => $this->bankDetails(),
             'status' => 'pending',
+            'expires_at' => $expiresAt,
         ];
     }
 
@@ -159,9 +166,12 @@ class BankTransferSaleService
      * ⚠️ จุดเดียวในระบบที่ทำให้เหรียญออกจากคำสั่งซื้อทางโอนเงิน
      *    ทีมงานต้องเปิดดูรายการเดินบัญชีจริงก่อนกดเสมอ ระบบตรวจแทนไม่ได้
      *
+     * ออเดอร์ที่หมดอายุแล้วและราคาเปลี่ยนไปจะยืนยันไม่ได้ เว้นแต่ทีมงานเห็นว่าเงินเข้าทันเวลาจริง
+     * แล้วส่ง $honorExpired ซึ่งถูกบันทึกชื่อคนกดไว้ในออเดอร์
+     *
      * @throws PurchaseException
      */
-    public function confirm(SaleTransaction $tx, ?string $confirmedBy = null): SaleTransaction
+    public function confirm(SaleTransaction $tx, ?string $confirmedBy = null, bool $honorExpired = false): SaleTransaction
     {
         if ($tx->status !== 'pending') {
             throw new PurchaseException('This order is no longer pending.');
@@ -183,7 +193,7 @@ class BankTransferSaleService
          *
          * จึงคืนค่าออกมาแบบปกติให้ทรานแซกชัน commit ก่อน แล้วค่อยโยนข้างนอก
          */
-        $outcome = DB::transaction(function () use ($tx, $confirmedBy) {
+        $outcome = DB::transaction(function () use ($tx, $confirmedBy, $honorExpired) {
             // ล็อกทั้งรายการและเฟส — กันกดยืนยันซ้อนกันสองหน้าต่าง
             $locked = SaleTransaction::whereKey($tx->id)->lockForUpdate()->firstOrFail();
 
@@ -194,22 +204,33 @@ class BankTransferSaleService
             $phase = SalePhase::whereKey($locked->sale_phase_id)->lockForUpdate()->firstOrFail();
             $tpixAmount = (float) $locked->tpix_amount;
 
+            if (! $honorExpired && $this->priceLapsed($locked, $phase)) {
+                return ['ok' => false, 'reason' => 'price_lapsed'];
+            }
+
             /*
              * โควตาอาจหมดไประหว่างรอโอนเงิน (เพราะเราไม่จองไว้ล่วงหน้าโดยตั้งใจ)
              * กรณีนี้ห้ามออกเหรียญ ต้องคืนเงิน — ทำเครื่องหมายไว้ให้ชัด
+             * เพดานต่อกระเป๋าก็เหมือนกัน: ออเดอร์ที่ค้างอยู่ผ่านด่านตอนสั่งซื้อได้ทุกใบ
              */
-            if ($tpixAmount > $phase->remaining_allocation) {
+            $refusal = match (true) {
+                $tpixAmount > $phase->remaining_allocation => 'insufficient_allocation',
+                $this->saleService->exceedsWalletCap($phase, $locked->wallet_address, $tpixAmount) => 'wallet_cap_exceeded',
+                default => null,
+            };
+
+            if ($refusal !== null) {
                 $locked->update([
                     'status' => 'failed',
                     'metadata' => array_merge($locked->metadata ?? [], [
                         'needs_refund' => true,
-                        'reason' => 'insufficient_allocation',
+                        'reason' => $refusal,
                         'failed_at' => now()->toIso8601String(),
                     ]),
                 ]);
 
                 // คืนค่าออกไปเฉยๆ เพื่อให้เครื่องหมายด้านบน commit จริง
-                return ['ok' => false, 'remaining' => (float) $phase->remaining_allocation];
+                return ['ok' => false, 'reason' => $refusal, 'remaining' => (float) $phase->remaining_allocation];
             }
 
             $sale = TokenSale::find($locked->token_sale_id);
@@ -220,7 +241,7 @@ class BankTransferSaleService
                 'metadata' => array_merge($locked->metadata ?? [], [
                     'confirmed_by' => $confirmedBy,
                     'confirmed_at' => now()->toIso8601String(),
-                ]),
+                ], $honorExpired ? ['honored_expired_by' => $confirmedBy] : []),
             ]);
 
             $phase->increment('sold', $tpixAmount);
@@ -241,10 +262,12 @@ class BankTransferSaleService
         });
 
         if (! $outcome['ok']) {
-            throw new PurchaseException(
-                'โควตาของเฟสนี้ไม่พอแล้ว (เหลือ '.number_format($outcome['remaining'], 2)
-                .' TPIX) — รายการถูกทำเครื่องหมายว่าต้องคืนเงินแล้ว'
-            );
+            throw new PurchaseException(match ($outcome['reason']) {
+                'price_lapsed' => 'ออเดอร์นี้หมดอายุแล้วและราคาเปลี่ยนไปแล้ว — ถ้าเงินเข้าทันเวลาจริงให้กดยืนยันแบบรับราคาเดิม ไม่อย่างนั้นปฏิเสธแล้วให้ผู้ซื้อสั่งใหม่',
+                'wallet_cap_exceeded' => 'ยอดนี้เกินเพดานของกระเป๋าในเฟสนี้ — รายการถูกทำเครื่องหมายว่าต้องคืนเงินแล้ว',
+                default => 'โควตาของเฟสนี้ไม่พอแล้ว (เหลือ '.number_format($outcome['remaining'], 2)
+                    .' TPIX) — รายการถูกทำเครื่องหมายว่าต้องคืนเงินแล้ว',
+            });
         }
 
         // ขายหมดขั้นนี้แล้ว → เปิดขั้นราคาถัดไปทันที (หลัง commit เท่านั้น — ดู rollOverIfExhausted)
@@ -253,6 +276,27 @@ class BankTransferSaleService
         }
 
         return $outcome['tx'];
+    }
+
+    /**
+     * ออเดอร์หมดอายุและราคาที่ล็อกไว้ไม่ใช่ราคาปัจจุบันแล้ว.
+     *
+     * ออเดอร์เปิดฟรีและไม่จองโควตา ถ้าไม่มีวันหมดอายุ ใครก็เปิดทิ้งไว้ตอนราคาต่ำ
+     * แล้วค่อยโอนหลังราคาขึ้น หมดอายุแล้วแต่ราคายังเท่าเดิมยังยืนยันได้เพราะไม่มีใครได้เปรียบ
+     */
+    private function priceLapsed(SaleTransaction $order, SalePhase $phase): bool
+    {
+        $expiresAt = isset($order->metadata['expires_at'])
+            ? Carbon::parse($order->metadata['expires_at'])
+            : $order->created_at->copy()->addHours(self::ORDER_TTL_HOURS);
+
+        if ($expiresAt->isFuture()) {
+            return false;
+        }
+
+        return $phase->status !== 'active'
+            || ($phase->ends_at !== null && $phase->ends_at->isPast())
+            || bccomp((string) $phase->price_usd, (string) $order->price_per_tpix, 8) !== 0;
     }
 
     /**

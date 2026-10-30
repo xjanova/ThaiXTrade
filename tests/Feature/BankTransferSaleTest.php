@@ -10,12 +10,14 @@ use App\Models\SiteSetting;
 use App\Models\TokenSale;
 use App\Models\TreasuryPayout;
 use App\Models\TreasuryWhitelist;
+use App\Models\WhitelistEntry;
 use App\Services\BankTransferSaleService;
 use App\Services\StripePaymentService;
 use App\Services\TokenSaleService;
 use App\Support\TreasuryWallet;
 use App\Support\Wei;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\TestResponse;
@@ -94,6 +96,152 @@ class BankTransferSaleTest extends TestCase
     // =========================================================================
     // สร้างคำสั่งซื้อ
     // =========================================================================
+
+    // ── ออดิท 2026-10-29 L5: เพดานต่อกระเป๋า ──────────────────────────────
+
+    private function capWallet(SalePhase $phase, float $cap): void
+    {
+        $phase->update(['whitelist_only' => true]);
+        WhitelistEntry::create(['sale_phase_id' => $phase->id, 'wallet_address' => self::BUYER, 'max_allocation' => $cap]);
+    }
+
+    public function test_order_over_the_wallet_allocation_is_refused_up_front(): void
+    {
+        $phase = $this->makeOpenPhase();
+        $this->capWallet($phase, 500);
+
+        $this->expectException(PurchaseException::class);
+        $this->expectExceptionMessage('exceeds your allocation');
+
+        $this->bank()->createOrder(self::BUYER, $phase->id, 100.0); // 1,000 TPIX
+    }
+
+    /** ออเดอร์ที่ค้างพร้อมกันผ่านด่านตอนสั่งซื้อได้ทุกใบ ด่านจริงอยู่ตอนยืนยัน */
+    public function test_confirm_over_the_wallet_allocation_marks_the_order_for_refund(): void
+    {
+        $phase = $this->makeOpenPhase();
+        $this->capWallet($phase, 1500);
+
+        $first = $this->bank()->createOrder(self::BUYER, $phase->id, 100.0);
+        $second = $this->bank()->createOrder(self::BUYER, $phase->id, 100.0);
+
+        $this->bank()->confirm(SaleTransaction::where('uuid', $first['transaction_id'])->firstOrFail());
+
+        $tx = SaleTransaction::where('uuid', $second['transaction_id'])->firstOrFail();
+
+        try {
+            $this->bank()->confirm($tx);
+            $this->fail('ออเดอร์ที่สองเกินเพดาน ต้องยืนยันไม่ผ่าน');
+        } catch (PurchaseException $e) {
+            $this->assertStringContainsString('เพดาน', $e->getMessage());
+        }
+
+        $tx->refresh();
+        $this->assertSame('failed', $tx->status);
+        $this->assertTrue($tx->metadata['needs_refund']);
+        $this->assertSame('wallet_cap_exceeded', $tx->metadata['reason']);
+        $this->assertSame(1000.0, (float) $phase->fresh()->sold);
+    }
+
+    // ── ออดิท 2026-10-29 L6: ล็อกราคาเก่า ─────────────────────────────────
+
+    public function test_order_tells_the_buyer_when_it_expires(): void
+    {
+        $phase = $this->makeOpenPhase();
+
+        $order = $this->bank()->createOrder(self::BUYER, $phase->id, 100.0);
+
+        $this->assertTrue(now()->addHours(48)->isSameMinute($order['expires_at']));
+    }
+
+    public function test_expired_order_cannot_lock_an_old_price(): void
+    {
+        $phase = $this->makeOpenPhase();
+        $order = $this->bank()->createOrder(self::BUYER, $phase->id, 100.0);
+        $tx = SaleTransaction::where('uuid', $order['transaction_id'])->firstOrFail();
+
+        $phase->update(['price_usd' => 0.20]);
+        $this->travel(49)->hours();
+
+        try {
+            $this->bank()->confirm($tx);
+            $this->fail('ออเดอร์หมดอายุและราคาขึ้นแล้ว ห้ามยืนยันราคาเก่า');
+        } catch (PurchaseException $e) {
+            $this->assertStringContainsString('หมดอายุ', $e->getMessage());
+        }
+
+        $this->assertSame('pending', $tx->fresh()->status);
+        $this->assertSame(0.0, (float) $phase->fresh()->sold);
+    }
+
+    public function test_expired_order_of_a_closed_phase_cannot_be_confirmed(): void
+    {
+        $phase = $this->makeOpenPhase();
+        $order = $this->bank()->createOrder(self::BUYER, $phase->id, 100.0);
+        $tx = SaleTransaction::where('uuid', $order['transaction_id'])->firstOrFail();
+
+        $phase->update(['status' => 'completed']);
+        $this->travel(49)->hours();
+
+        $this->assertThrows(fn () => $this->bank()->confirm($tx), PurchaseException::class);
+        $this->assertSame('pending', $tx->fresh()->status);
+    }
+
+    /** ราคาเท่าเดิมไม่มีใครได้เปรียบ — ไม่ควรบังคับให้ผู้ซื้อที่โอนช้าสั่งใหม่ */
+    public function test_expired_order_at_the_same_price_can_still_be_confirmed(): void
+    {
+        $phase = $this->makeOpenPhase();
+        $order = $this->bank()->createOrder(self::BUYER, $phase->id, 100.0);
+
+        $this->travel(49)->hours();
+
+        $confirmed = $this->bank()->confirm(SaleTransaction::where('uuid', $order['transaction_id'])->firstOrFail());
+
+        $this->assertSame('confirmed', $confirmed->status);
+    }
+
+    /** เงินเข้าทันเวลาแต่ทีมงานมาเห็นช้า — ทางออกต้องมีและต้องทิ้งชื่อคนกด */
+    public function test_staff_can_honor_an_expired_order_and_the_choice_is_recorded(): void
+    {
+        $phase = $this->makeOpenPhase();
+        $order = $this->bank()->createOrder(self::BUYER, $phase->id, 100.0);
+
+        $phase->update(['price_usd' => 0.20]);
+        $this->travel(49)->hours();
+
+        $confirmed = $this->bank()->confirm(SaleTransaction::where('uuid', $order['transaction_id'])->firstOrFail(), 'staff@example.test', true);
+
+        $this->assertSame('confirmed', $confirmed->status);
+        $this->assertSame('staff@example.test', $confirmed->metadata['honored_expired_by']);
+        $this->assertSame(1000.0, (float) $phase->fresh()->sold);
+    }
+
+    /** ราคาเปลี่ยนแล้ว ปุ่มแอดมินต้องไม่ยืนยันเงียบ ๆ และต้องส่งการตัดสินใจของคนกดถึงบริการจริง */
+    public function test_admin_route_needs_an_explicit_choice_to_honor_an_expired_order(): void
+    {
+        $phase = $this->makeOpenPhase();
+        $order = $this->bank()->createOrder(self::BUYER, $phase->id, 100.0);
+        $tx = SaleTransaction::where('uuid', $order['transaction_id'])->firstOrFail();
+
+        $phase->update(['price_usd' => 0.20]);
+        $this->travel(49)->hours();
+
+        $admin = AdminUser::create([
+            'name' => 'ผู้ดูแลระบบ',
+            'email' => 'staff@tpix.test',
+            'password' => bcrypt('secret-password'),
+            'role' => 'super_admin',
+            'is_active' => true,
+        ]);
+        $this->withSession([Auth::guard('admin')->getName() => $admin->id]);
+
+        $this->post("/admin/token-sales/bank/{$tx->id}/confirm")->assertSessionHasErrors('bank');
+        $this->assertSame('pending', $tx->fresh()->status);
+
+        $this->post("/admin/token-sales/bank/{$tx->id}/confirm", ['honor_expired' => true])->assertSessionHas('success');
+        $this->assertSame('confirmed', $tx->fresh()->status);
+        $this->assertSame('staff@tpix.test', $tx->fresh()->metadata['honored_expired_by']);
+    }
 
     /** สั่งซื้อแล้วต้องได้รหัสอ้างอิง + เลขบัญชี และรายการเป็น pending */
     public function test_creating_an_order_does_not_count_as_a_sale_yet(): void

@@ -169,6 +169,39 @@ class TokenFactorySourceVerifyTest extends TestCase
     }
 
     #[Test]
+    public function ติ๊กตอนสร้างแต่ยังไม่มีไฟล์ซอร์ส_ไม่ออกใบเสนอราคา(): void
+    {
+        File::delete($this->dir.'/FactoryERC20V2.json');
+
+        $this->postJson('/api/v1/token-factory/quote', $this->tokenForm(['sub_options' => ['source_verify' => true]]))
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'SOURCE_VERIFY_UNSUPPORTED');
+
+        $this->assertSame(0, TokenFactoryFeeQuote::count());
+    }
+
+    #[Test]
+    public function ไม่ติ๊กยืนยันซอร์ส_ไม่ต้องมีไฟล์ก็สร้างเหรียญได้(): void
+    {
+        File::delete($this->dir.'/FactoryERC20V2.json');
+
+        $this->postJson('/api/v1/token-factory/quote', $this->tokenForm())->assertOk();
+    }
+
+    #[Test]
+    public function ปิดการส่งให้_explorer_อยู่_ไม่รับเงินทั้งตอนสร้างและซื้อทีหลัง(): void
+    {
+        config(['blockchain.explorer_verify_enabled' => false]);
+
+        $this->postJson('/api/v1/token-factory/quote', $this->tokenForm(['sub_options' => ['source_verify' => true]]))
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'SOURCE_VERIFY_UNSUPPORTED');
+        $this->quote($this->deployed())->assertStatus(422)->assertJsonPath('error.code', 'SOURCE_VERIFY_UNSUPPORTED');
+
+        $this->assertSame(0, TokenFactoryFeeQuote::count());
+    }
+
+    #[Test]
     public function ติ๊กตอนสร้าง_ใบเสนอราคารวม_1000_และบันทึกว่าจ่ายแล้ว(): void
     {
         $form = $this->tokenForm(['sub_options' => ['source_verify' => true]]);

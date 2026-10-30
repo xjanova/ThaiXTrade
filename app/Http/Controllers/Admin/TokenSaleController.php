@@ -12,6 +12,7 @@ use App\Rules\SalePaymentChannels;
 use App\Services\BankTransferSaleService;
 use App\Services\SaleClaimPayoutService;
 use App\Services\SaleLaunchService;
+use App\Services\TokenSaleService;
 use App\Support\MoneySettings;
 use App\Support\Wei;
 use Carbon\Carbon;
@@ -346,12 +347,12 @@ class TokenSaleController extends Controller
      * ⚠️ จุดเดียวที่ทำให้เหรียญออกจากคำสั่งซื้อทางโอนเงิน
      *    ทีมงานต้องเปิดดูรายการเดินบัญชีจริงก่อนกดเสมอ ระบบตรวจแทนไม่ได้
      */
-    public function confirmBankTransfer(int $id, BankTransferSaleService $bank)
+    public function confirmBankTransfer(Request $request, int $id, BankTransferSaleService $bank)
     {
         $tx = SaleTransaction::findOrFail($id);
 
         try {
-            $confirmed = $bank->confirm($tx, auth('admin')->user()?->email);
+            $confirmed = $bank->confirm($tx, auth('admin')->user()?->email, $request->boolean('honor_expired'));
             $bank->queueInitialPayout($confirmed);
         } catch (PurchaseException $e) {
             return redirect()->back()->withErrors(['bank' => $e->getMessage()]);
@@ -614,33 +615,38 @@ class TokenSaleController extends Controller
     /**
      * ยกเลิก/คืนเงิน transaction (admin only).
      */
-    public function refundTransaction(int $id)
+    public function refundTransaction(int $id, SaleClaimPayoutService $payouts, TokenSaleService $sales)
     {
         // ยอดขาย สถานะ และบันทึกต้องเปลี่ยนพร้อมกัน ล็อกแถวไว้เพื่อไม่ให้กดซ้ำแล้วหักยอดสองรอบ
-        $tx = DB::transaction(function () use ($id): ?SaleTransaction {
-            $tx = SaleTransaction::with('phase.tokenSale')->lockForUpdate()->findOrFail($id);
-            $oldStatus = $tx->status;
+        try {
+            $tx = DB::transaction(function () use ($id, $payouts, $sales) {
+                $tx = SaleTransaction::lockForUpdate()->findOrFail($id);
+                $oldStatus = $tx->status;
 
-            if ($oldStatus === 'refunded') {
-                return null;
-            }
+                if ($oldStatus === 'refunded') {
+                    throw new PurchaseException('This transaction is already refunded.');
+                }
 
-            // คืนยอดขายกลับไป phase + sale
-            if ($oldStatus === 'confirmed') {
-                $tx->phase?->decrement('sold', (float) $tx->tpix_amount);
-                $tx->phase?->tokenSale?->decrement('total_sold', (float) $tx->tpix_amount);
-                $tx->phase?->tokenSale?->decrement('total_raised_usd', (float) $tx->payment_usd_value);
-            }
+                // แถวจ่ายที่ค้างอยู่ต้องหยุดก่อน ไม่งั้นอนุมัติทีหลังแล้วผู้ซื้อได้ทั้งเงินคืนและเหรียญ
+                $tokensLeftWei = $payouts->haltPayouts($tx, "คืนเงินรายการซื้อ {$tx->uuid}");
 
-            $tx->update(['status' => 'refunded']);
+                // หยุดไม่ทัน = เหรียญออกไปแล้ว คืนโควตาไม่ได้ ไม่งั้นขายเหรียญก้อนเดียวกันซ้ำ
+                // โยนใต้ธุรกรรมเพื่อย้อนแถวที่เพิ่งหยุด ปฏิเสธแล้วต้องไม่มีอะไรเปลี่ยน
+                if (bccomp($tokensLeftWei, '0', 0) > 0) {
+                    throw new PurchaseException('เหรียญของรายการนี้ออกจากคลังแล้ว '.Wei::format($tokensLeftWei).' TPIX — บันทึกคืนเงินไม่ได้');
+                }
 
-            $this->recordTransactionChange('token_sale.refund', $tx, $oldStatus);
+                // คืนยอดขายกลับไป phase + sale
+                $sales->reverseCounters($tx);
 
-            return $tx;
-        });
+                $tx->update(['status' => 'refunded']);
 
-        if ($tx === null) {
-            return redirect()->back()->with('error', 'This transaction is already refunded.');
+                $this->recordTransactionChange('token_sale.refund', $tx, $oldStatus);
+
+                return $tx;
+            });
+        } catch (PurchaseException $e) {
+            return redirect()->back()->with('error', $e->getMessage());
         }
 
         return redirect()->back()->with('success', "Transaction #{$tx->id} refunded. Allocation returned.");

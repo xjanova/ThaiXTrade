@@ -295,10 +295,10 @@ class ContractRegistryTest extends TestCase
         });
     }
 
-    private function registerWithForce(array $contracts)
+    private function registerWithForce(array $contracts, mixed $force = true)
     {
         return $this->withHeaders(['Authorization' => 'Bearer '.self::TOKEN])
-            ->postJson('/api/infra/contracts', ['contracts' => $contracts, 'force' => true]);
+            ->postJson('/api/infra/contracts', ['contracts' => $contracts, 'force' => $force]);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -365,8 +365,59 @@ class ContractRegistryTest extends TestCase
             self::ADDRESS => '0x6080aaaa',
             $upgraded => '0x6080cccc',
         ]);
-        $this->registerWithForce(['masternode_registry' => $upgraded])->assertOk();
+        $this->artisan('tpix:contract-registry-set', ['key' => 'masternode_registry', 'address' => $upgraded, '--force' => true])
+            ->expectsConfirmation('ย้าย masternode_registry ไป '.$upgraded.' โดยข้ามลายนิ้วมือ bytecode?', 'yes')
+            ->assertSuccessful();
 
         $this->assertSame($upgraded, app(ContractRegistry::class)->address('masternode_registry'));
+    }
+
+    public function test_the_api_cannot_skip_the_bytecode_pin_even_with_a_valid_token(): void
+    {
+        $fake = '0xDDDD567890abcdef1234567890ABCDEF12345678';
+
+        $this->fakeChainCodePerAddress([self::ADDRESS => '0x6080aaaa']);
+        $this->register(['masternode_registry' => self::ADDRESS])->assertOk();
+
+        $this->fakeChainCodePerAddress([self::ADDRESS => '0x6080aaaa', $fake => '0x6080dddd']);
+        $this->registerWithForce(['masternode_registry' => $fake])->assertForbidden();
+
+        $this->assertSame(self::ADDRESS, app(ContractRegistry::class)->address('masternode_registry'));
+    }
+
+    public function test_the_api_still_accepts_an_explicit_force_false(): void
+    {
+        $this->fakeChainCodePerAddress([self::ADDRESS => '0x6080aaaa']);
+
+        $this->registerWithForce(['masternode_registry' => self::ADDRESS], false)->assertOk();
+    }
+
+    public function test_the_cli_keeps_the_pin_without_the_force_flag(): void
+    {
+        $fake = '0xDDDD567890abcdef1234567890ABCDEF12345678';
+
+        $this->fakeChainCodePerAddress([self::ADDRESS => '0x6080aaaa']);
+        $this->register(['masternode_registry' => self::ADDRESS])->assertOk();
+
+        $this->fakeChainCodePerAddress([self::ADDRESS => '0x6080aaaa', $fake => '0x6080dddd']);
+        $this->artisan('tpix:contract-registry-set', ['key' => 'masternode_registry', 'address' => $fake])
+            ->assertFailed();
+
+        $this->assertSame(self::ADDRESS, app(ContractRegistry::class)->address('masternode_registry'));
+    }
+
+    public function test_the_cli_stops_when_the_operator_declines(): void
+    {
+        $fake = '0xDDDD567890abcdef1234567890ABCDEF12345678';
+
+        $this->fakeChainCodePerAddress([self::ADDRESS => '0x6080aaaa']);
+        $this->register(['masternode_registry' => self::ADDRESS])->assertOk();
+
+        $this->fakeChainCodePerAddress([self::ADDRESS => '0x6080aaaa', $fake => '0x6080dddd']);
+        $this->artisan('tpix:contract-registry-set', ['key' => 'masternode_registry', 'address' => $fake, '--force' => true])
+            ->expectsConfirmation('ย้าย masternode_registry ไป '.$fake.' โดยข้ามลายนิ้วมือ bytecode?', 'no')
+            ->assertFailed();
+
+        $this->assertSame(self::ADDRESS, app(ContractRegistry::class)->address('masternode_registry'));
     }
 }

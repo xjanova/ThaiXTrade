@@ -49,30 +49,12 @@ class StakingApiController extends Controller
     /**
      * POST /api/v1/staking/stake — stake TPIX เข้า pool.
      */
-    public function stake(Request $request): JsonResponse
+    public function stake(): JsonResponse
     {
-        $validated = $request->validate([
-            'wallet_address' => 'required|regex:/^0x[a-fA-F0-9]{40}$/',
-            'pool_id' => 'required|integer|exists:staking_pools,id',
-            'amount' => 'required|numeric|min:10',
-            'tx_hash' => 'nullable|regex:/^0x[a-fA-F0-9]{64}$/',
-        ]);
-
-        try {
-            $position = $this->stakingService->stake(
-                $validated['wallet_address'],
-                $validated['pool_id'],
-                $validated['amount'],
-                $validated['tx_hash'] ?? null,
-            );
-
-            return response()->json(['success' => true, 'data' => $position]);
-        } catch (\InvalidArgumentException $e) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Operation failed. Please try again.'],
-            ], 422);
-        }
+        return response()->json([
+            'success' => false,
+            'error' => ['code' => 'STAKING_RETIRED', 'message' => 'ปิดรับ stake ใหม่แล้ว ตำแหน่งเดิมยังถอนได้ตามปกติ'],
+        ], 410);
     }
 
     /**

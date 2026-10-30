@@ -56,6 +56,19 @@ class BridgeAdminTest extends TestCase
         ]);
     }
 
+    /** เงินฝากต่ำกว่าขั้นต่ำแบบที่ตัวสแกนบันทึก: ignored และไม่เคยถามเชนเรื่องผู้ส่ง */
+    private function belowMinimumDeposit(?string $txFrom = null): BridgeDeposit
+    {
+        $tx = $this->fakeDeposit(1, $this->alice, '5000000', 4800, $txFrom);
+
+        return BridgeDeposit::create([
+            'source_chain_id' => 1, 'tx_hash' => $tx, 'log_index' => 0, 'block_number' => 4800,
+            'from_address' => strtolower($this->alice), 'to_address' => $this->vault, 'token_address' => $this->usdtEth,
+            'token_decimals' => 6, 'amount_raw' => '5000000', 'amount_units' => '5000000', 'mint_units' => '4000000',
+            'deposit_id' => Abi::depositId(1, $tx, 0), 'status' => BridgeDeposit::STATUS_IGNORED, 'review_reason' => 'below_minimum',
+        ]);
+    }
+
     private function reviewWithdrawal(string $target, ?int $chainId = 56, string $reason = 'over_tx_limit'): BridgeWithdrawal
     {
         return BridgeWithdrawal::create([
@@ -94,6 +107,55 @@ class BridgeAdminTest extends TestCase
                 ->where('state.mint_ready', true)
                 ->has('deposits.data', 1)
                 ->where('deposits.data.0.review_reason', 'over_tx_limit'));
+    }
+
+    #[Test]
+    public function a_below_minimum_deposit_from_a_contract_moves_to_review_instead_of_minting(): void
+    {
+        $d = $this->belowMinimumDeposit();
+        $this->chainState[1]['codes'][strtolower($this->alice)] = '0x6080604052';
+
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$d->id}/approve")->assertStatus(409);
+
+        $d->refresh();
+        $this->assertSame([BridgeDeposit::STATUS_NEEDS_REVIEW, 'sender_is_contract'], [$d->status, $d->review_reason]);
+        $this->assertFalse((bool) $d->limits_overridden);
+        $this->assertStringContainsString('below_minimum', (string) $d->review_note);
+
+        // แอดมินตรวจข้อสงสัยจริงแล้วรับรองอย่างตั้งใจอีกครั้ง
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$d->id}/approve")->assertOk();
+        $this->assertSame(BridgeDeposit::STATUS_CONFIRMED, $d->fresh()->status);
+    }
+
+    #[Test]
+    public function a_below_minimum_deposit_sent_through_a_third_party_moves_to_review(): void
+    {
+        $d = $this->belowMinimumDeposit(txFrom: $this->bob);
+
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$d->id}/approve")->assertStatus(409);
+
+        $this->assertSame('sender_mismatch', $d->fresh()->review_reason);
+    }
+
+    #[Test]
+    public function a_clean_below_minimum_deposit_is_approved_on_the_first_click(): void
+    {
+        $d = $this->belowMinimumDeposit();
+
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$d->id}/approve")->assertOk();
+
+        $this->assertSame(BridgeDeposit::STATUS_CONFIRMED, $d->fresh()->status);
+    }
+
+    #[Test]
+    public function an_unreadable_source_chain_blocks_a_below_minimum_approval(): void
+    {
+        $d = $this->belowMinimumDeposit();
+        $this->chainState[1]['down'] = true;
+
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$d->id}/approve")->assertStatus(503);
+
+        $this->assertSame(BridgeDeposit::STATUS_IGNORED, $d->fresh()->status);
     }
 
     #[Test]

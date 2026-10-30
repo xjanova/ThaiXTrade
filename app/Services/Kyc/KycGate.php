@@ -191,17 +191,24 @@ class KycGate
      * ⚠️ ทางที่สองต้องเช็ค cache `wallet_verified:` ด้วยตัวเอง ห้ามเชื่อ wallet_address
      *    ที่ติดมากับคำขอเฉยๆ — ไม่งั้นใครก็ผ่านด่านได้ด้วยการพิมพ์เลขกระเป๋าของคนที่ KYC แล้ว
      *    นี่คือ cache ตัวเดียวกับที่ VerifyWalletOwnership ใช้ ไม่ได้ผ่อนเงื่อนไขใหม่
+     *
+     * ⚠️ KYC เป็นของบัญชี แต่คำขอทำงานในนามกระเป๋า — ล็อกอินอยู่แล้วส่งกระเป๋าอีกใบมา
+     *    ต้องตัดสินจากเจ้าของกระเป๋านั้น ไม่งั้น KYC ใบเดียวพากระเป๋าที่พิสูจน์แล้วทุกใบผ่านด่าน
+     *    เทียบกับ users.wallet_address เท่านั้น เพราะเป็นการผูกเดียวที่ผ่านลายเซ็น
+     *    (WalletConnection เป็นแค่ประวัติการเชื่อม สร้างได้โดยไม่พิสูจน์อะไร)
      */
     public function resolveUser(Request $request): ?User
     {
-        if ($user = $request->user()) {
-            return $user;
-        }
-
         $wallet = $request->input('wallet_address')
             ?? $request->query('wallet_address')
             ?? $request->route('walletAddress')
             ?? $request->route('wallet_address');
+
+        $user = $request->user();
+
+        if ($user && (blank($wallet) || (is_string($wallet) && strcasecmp($wallet, (string) $user->wallet_address) === 0))) {
+            return $user;
+        }
 
         if (! is_string($wallet) || ! preg_match('/^0x[a-fA-F0-9]{40}$/', $wallet)) {
             return null;

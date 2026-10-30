@@ -73,6 +73,9 @@ return [
     | เชน TPIX — polygon-edge (IBFT) ปิดบล็อกแล้วจบ แต่ไม่มีแท็ก "finalized" → นับ confirmation
     | eth_getLogs ช่วงเกิน 1000 บล็อกถูกปฏิเสธ — หั่นละ 900
     */
+    // ธุรกรรมปลายทางค้างนานเท่านี้ (นาที) แจ้งแอดมิน — ทิศนั้นหยุดรอจนกว่าจะลงบล็อกหรือถูกแทนที่
+    'stuck_after_minutes' => (int) env('WTPIX_BRIDGE_STUCK_AFTER_MINUTES', 30),
+
     'tpix' => [
         'chain_id' => 4289,
         'name' => 'TPIX Chain',
@@ -86,6 +89,8 @@ return [
         'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpix.online'),
         'log_chunk' => 900,
         'max_blocks_per_run' => 18000,
+        // ไล่หา event ของ depositId ไปข้างหน้าจากธุรกรรมต้นทางได้ไกลสุดกี่บล็อก (~4.6 วัน) — เกินนี้ = พิสูจน์ไม่ได้ ไม่เดา
+        'verify_max_blocks' => (int) env('WTPIX_BRIDGE_TPIX_VERIFY_MAX_BLOCKS', 200000),
         // ว่าง = เริ่มที่บล็อกปัจจุบันตอนรันครั้งแรก (ไม่ไล่ย้อนหลัง — ไม่ mint ให้ประวัติเก่า)
         'start_block' => env('WTPIX_BRIDGE_TPIX_START_BLOCK'),
         'eta_minutes' => 3,
@@ -105,6 +110,7 @@ return [
         'fallback_confirmations' => 30,
         'log_chunk' => 1000,
         'max_blocks_per_run' => 20000,
+        'verify_max_blocks' => (int) env('WTPIX_BRIDGE_BSC_VERIFY_MAX_BLOCKS', 900000),
         'start_block' => env('WTPIX_BRIDGE_BSC_START_BLOCK'),
         'gas_price_multiplier_bps' => 12000,
         'max_gas_price_gwei' => env('WTPIX_BRIDGE_BSC_MAX_GAS_GWEI', '20'),

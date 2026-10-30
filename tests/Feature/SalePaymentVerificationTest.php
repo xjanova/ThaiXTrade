@@ -100,19 +100,20 @@ class SalePaymentVerificationTest extends TestCase
      * @param  array<string,mixed>  $receipt
      * @param  array<string,mixed>  $tx
      */
-    private function fakeRpc(array $receipt, array $tx, int $confirmations = 30, ?int $blockAgeSeconds = 0): void
+    private function fakeRpc(array $receipt, array $tx, int $confirmations = 30, ?int $blockAgeSeconds = 0, string $chainId = '0x38'): void
     {
         $block = 1000;
         $receipt['blockNumber'] = '0x'.dechex($block);
         $receipt['status'] ??= '0x1';
 
-        Http::fake(function ($request) use ($receipt, $tx, $block, $confirmations, $blockAgeSeconds) {
+        Http::fake(function ($request) use ($receipt, $tx, $block, $confirmations, $blockAgeSeconds, $chainId) {
             $method = $request->data()['method'] ?? '';
 
             return Http::response([
                 'jsonrpc' => '2.0',
                 'id' => 1,
                 'result' => match ($method) {
+                    'eth_chainId' => $chainId,
                     'eth_getTransactionReceipt' => $receipt,
                     'eth_getTransactionByHash' => $tx,
                     'eth_blockNumber' => '0x'.dechex($block + $confirmations - 1),
@@ -279,6 +280,27 @@ class SalePaymentVerificationTest extends TestCase
 
         $this->expectExceptionMessage('That transaction failed on-chain.');
         $this->buy('BNB', 1);
+    }
+
+    // ── RPC ผิดเชน ─────────────────────────────────────────────────────────
+
+    public function test_a_receipt_from_an_rpc_on_another_chain_is_not_a_payment(): void
+    {
+        // BSC_RPC_URL ชี้ผิดเชน (เช่น testnet) — ใบเสร็จสวยแค่ไหนก็ไม่ใช่เงินจริง
+        $this->fakeRpc(
+            $this->erc20Receipt(self::USDT, '500'),
+            ['from' => self::BUYER, 'to' => self::USDT, 'value' => '0x0'],
+            chainId: '0x61',
+        );
+
+        try {
+            $this->buy('USDT', 500);
+            $this->fail('ต้องไม่ยืนยันการซื้อ');
+        } catch (\Exception $e) {
+            $this->assertStringContainsString('Could not reach BSC', $e->getMessage());
+        }
+
+        $this->assertDatabaseCount('sale_transactions', 0);
     }
 
     // ── ใช้ tx เดิมซ้ำ ─────────────────────────────────────────────────────

@@ -39,6 +39,10 @@ class BridgeRelayer
 
     public const REASON_STUCK = 'stuck_pending';
 
+    public const REASON_RPC_DISAGREEMENT = 'rpc_disagreement';
+
+    public const REASON_SOURCE_UNCONFIRMED = 'source_unconfirmed';
+
     public const ALERT_STUCK = 'bridge_mint_stuck';
 
     /** ขอบล่างของการไล่หา Minted เผื่อเวลาเครื่องคลาดกัน / RPC ต้นทางอ่านเวลาบล็อกไม่ได้ */
@@ -49,6 +53,7 @@ class BridgeRelayer
     public function __construct(
         private BridgeConfig $config,
         private BridgeSigner $signer,
+        private BridgeDepositCrossCheck $crossCheck,
     ) {}
 
     /**
@@ -203,7 +208,60 @@ class BridgeRelayer
     }
 
     /**
-     * mint หนึ่งรายการ — คืน minted | minted_elsewhere | sent | review | daily_cap | sign_failed | busy.
+     * ก่อนเซ็นต้องมี provider อื่นเห็นเงินฝากเดียวกัน — คืน outcome เมื่อยังเซ็นไม่ได้.
+     *
+     * แอดมินอนุมัติเหตุเรื่องแหล่งข้อมูลแล้ว = ตรวจบน explorer แล้ว ไม่ถามซ้ำ
+     * ไม่งั้นรายการที่ provider ตัวหนึ่งไม่เคยเห็นจะวนกลับมารอตรวจไม่รู้จบ
+     * ⚠️ อนุมัติเหตุอื่น (เช่นเกินวงเงิน) ไม่นับ — คนรับรองแค่ยอด ไม่ได้ตรวจว่าเงินฝากมีจริง
+     */
+    private function crossCheckHold(BridgeDeposit $deposit): ?string
+    {
+        if ($deposit->limits_overridden
+            && in_array($deposit->review_reason, [self::REASON_RPC_DISAGREEMENT, self::REASON_SOURCE_UNCONFIRMED], true)) {
+            return null;
+        }
+
+        $verdict = $this->crossCheck->check($deposit);
+
+        if ($verdict === BridgeDepositCrossCheck::MISMATCH) {
+            if (! $this->updateIfUnchanged($deposit, [
+                'status' => BridgeDeposit::STATUS_NEEDS_REVIEW,
+                'review_reason' => self::REASON_RPC_DISAGREEMENT,
+                'last_error' => 'RPC ของเชนต้นทางเห็นเงินฝากนี้ไม่ตรงกัน — ตรวจบน explorer ก่อนอนุมัติ',
+            ])) {
+                return 'busy';
+            }
+
+            SystemAlert::raise(
+                BridgeReconciler::ALERT_NODE,
+                'bridge_rpc_disagreement',
+                'critical',
+                "สะพาน USDT: RPC ของเชน {$deposit->source_chain_id} เห็นเงินฝาก #{$deposit->id} ไม่ตรงกัน — หยุด mint รายการนี้แล้ว RPC อาจถูกเจาะ",
+                ['deposit' => $deposit->id, 'tx' => $deposit->tx_hash],
+            );
+
+            return 'review';
+        }
+
+        if ($verdict !== BridgeDepositCrossCheck::PENDING) {
+            return null;
+        }
+
+        if ($deposit->created_at->diffInSeconds(now()) < $this->config->stuckAfterSeconds()) {
+            $this->updateIfUnchanged($deposit, ['last_error' => 'รอ RPC อีกตัวยืนยันเงินฝาก']);
+
+            return 'awaiting_source_confirmation';
+        }
+
+        return $this->updateIfUnchanged($deposit, [
+            'status' => BridgeDeposit::STATUS_NEEDS_REVIEW,
+            'review_reason' => self::REASON_SOURCE_UNCONFIRMED,
+            'last_error' => 'ไม่มี RPC ตัวที่สองยืนยันเงินฝากนี้ — ตรวจบน explorer ก่อนอนุมัติ',
+        ]) ? 'review' : 'busy';
+    }
+
+    /**
+     * mint หนึ่งรายการ — คืน minted | minted_elsewhere | sent | review | daily_cap | sign_failed | busy | awaiting_source_confirmation.
      */
     private function mintOne(EvmRpc $rpc, BridgeDeposit $candidate, string $remaining, string $maxPerTx): string
     {
@@ -245,6 +303,10 @@ class BridgeRelayer
             $deposit->update(['last_error' => 'รอโควตา dailyCap ของวันถัดไป']);
 
             return 'daily_cap';
+        }
+
+        if (($held = $this->crossCheckHold($deposit)) !== null) {
+            return $held;
         }
 
         $signed = $this->signer->sign(

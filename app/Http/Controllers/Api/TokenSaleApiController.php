@@ -100,6 +100,7 @@ class TokenSaleApiController extends Controller
 
                 // ค่าบริการชำระด้วยบัตร (%) — หน้าซื้อแสดงยอดรวมก่อนพาไป Stripe
                 'card_fee_percent' => $this->stripe->cardFeePercent(),
+                'card_claim_hold_days' => $this->stripe->cardClaimHoldDays(),
 
                 'sale_wallet_address' => $sale->sale_wallet_address,
                 'starts_at' => $sale->starts_at?->toIso8601String(),
@@ -443,6 +444,11 @@ class TokenSaleApiController extends Controller
             );
 
             return response()->json(['success' => true, 'data' => $result]);
+        } catch (PurchaseException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NOT_PURCHASABLE', 'message' => $e->getMessage()],
+            ], 409);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

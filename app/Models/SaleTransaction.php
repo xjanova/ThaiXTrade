@@ -158,11 +158,24 @@ class SaleTransaction extends Model
         return max(0, min($unlocked, $totalTpix) - (float) $this->claimed_amount);
     }
 
+    /** วันสิ้นสุดการพัก claim ของการซื้อด้วยบัตร — ล็อกไว้ตอนซื้อ ดู StripePaymentService::cardClaimHoldDays */
+    public function claimHoldUntil(): ?Carbon
+    {
+        $until = $this->metadata['claim_hold_until'] ?? null;
+
+        return is_string($until) ? Carbon::parse($until) : null;
+    }
+
     /**
      * ยอดที่ปลดล็อคแล้วตามตาราง vesting (ยังไม่หักส่วนที่เคลมไปแล้ว).
      */
     private function unlockedAmount(?SalePhase $phase, float $totalTpix): float
     {
+        // เงินบัตรถูกดึงกลับได้หลังรูด เหรียญจึงรอจนพ้นช่วงพักทั้งก้อน รวมส่วน TGE
+        if ($this->claimHoldUntil()?->isFuture()) {
+            return 0.0;
+        }
+
         // ไม่มีข้อมูลเฟส → ถือว่าปลดล็อคหมด (ข้อมูลเก่าก่อนมีระบบ vesting)
         if (! $phase) {
             return $totalTpix;

@@ -218,6 +218,7 @@ const paymentForm = useForm({
     stripe_webhook_secret: props.settings.stripe_webhook_secret || '',
     stripe_enabled: props.settings.stripe_enabled || false,
     card_service_fee_percent: props.settings.card_service_fee_percent ?? 3,
+    card_claim_hold_days: props.settings.card_claim_hold_days ?? 60,
 });
 
 const savePayment = () => {
@@ -1002,6 +1003,13 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <input v-model="paymentForm.card_service_fee_percent" type="number" min="0" max="50" step="0.1" :class="inputClass" placeholder="3" />
                     <p class="text-dark-500 text-xs mt-1">
                         บวกเพิ่มจากค่าเหรียญ แสดงเป็นบรรทัดแยกในหน้าซื้อและหน้า Stripe — ไม่ลดจำนวนเหรียญที่ลูกค้าได้ · 0 = ไม่เก็บ
+                    </p>
+                </div>
+                <div>
+                    <label :class="labelClass">พักการ claim ของการซื้อด้วยบัตร (วัน)</label>
+                    <input v-model="paymentForm.card_claim_hold_days" type="number" min="0" max="180" step="1" :class="inputClass" placeholder="60" />
+                    <p class="text-dark-500 text-xs mt-1">
+                        ผู้ถือบัตรดึงเงินคืนได้หลังรูด เหรียญของออเดอร์บัตรจึงรอจนครบจำนวนวันนี้ก่อน · มีผลกับออเดอร์ใหม่เท่านั้น · 0 = ไม่พัก
                     </p>
                 </div>
                 <div class="pt-4">

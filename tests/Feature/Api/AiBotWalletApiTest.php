@@ -7,6 +7,8 @@ use App\Models\AiBotPlan;
 use App\Models\AiBotSubscription;
 use App\Models\AiBotWallet;
 use App\Models\AiBotWalletTransfer;
+use App\Models\SiteSetting;
+use App\Services\Kyc\KycGate;
 use App\Services\Web3BalanceService;
 use Database\Seeders\AiBotPlanSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -114,6 +116,28 @@ class AiBotWalletApiTest extends TestCase
         $this->getJson('/api/v1/ai-bot/wallet?wallet_address='.$this->wallet)
             ->assertJsonCount(1, 'data.transfers')
             ->assertJsonPath('data.wallet.has_pending_withdraw', true);
+    }
+
+    #[Test]
+    public function เปิดด่าน_kyc_ทีหลังเจ้าของยังถอนเงินกลับหาตัวเองได้(): void
+    {
+        $this->postJson('/api/v1/ai-bot/wallet', ['wallet_address' => $this->wallet])->assertStatus(201);
+
+        SiteSetting::set(KycGate::SETTING_GROUP, KycGate::KEY_ENABLED, '1', 'boolean');
+        SiteSetting::set(KycGate::SETTING_GROUP, KycGate::KEY_GATE_PREFIX.'ai_bot', '1', 'boolean');
+        SiteSetting::set(KycGate::SETTING_GROUP, KycGate::KEY_LEVEL_PREFIX.'ai_bot', 'basic', 'string');
+        Cache::flush();
+        Cache::put('wallet_verified:'.$this->wallet, ['ip' => '127.0.0.1', 'verified_at' => now()->toIso8601String()], now()->addHours(4));
+
+        // ปลายทางถูกล็อกเป็นกระเป๋าเจ้าของ ด่าน KYC จึงกันได้อย่างเดียวคือกักเงินของเจ้าของเอง
+        $this->postJson('/api/v1/ai-bot/wallet/withdraw', ['wallet_address' => $this->wallet, 'asset' => 'USDT', 'amount' => 50])
+            ->assertStatus(201)
+            ->assertJsonPath('data.transfer.to_address', $this->wallet);
+
+        // ของใหม่ที่ "ได้ของ" ยังอยู่หลังด่าน
+        $this->postJson('/api/v1/ai-bot/wallet', ['wallet_address' => $this->wallet])
+            ->assertStatus(403)
+            ->assertJsonPath('error.code', 'KYC_REQUIRED');
     }
 
     #[Test]

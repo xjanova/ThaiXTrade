@@ -173,6 +173,29 @@ class TokenFactoryRefundTest extends TestCase
     }
 
     #[Test]
+    public function รายการจ่ายอื่นของคลังนับเป็นการคืนเงินไม่ได้(): void
+    {
+        $token = $this->rejectedPaidToken();
+        $this->putRefundTx(['from' => $this->hotWallet]);
+
+        // ผู้สร้างเหรียญบังเอิญเป็นผู้ซื้อเหรียญด้วย ธุรกรรมนี้คือเงินขายเหรียญที่ควรได้อยู่แล้ว
+        TreasuryPayout::create([
+            'idempotency_key' => 'sale-claim-test-1',
+            'to_address' => $this->creator,
+            'amount_wei' => '50000000000000000000',
+            'purpose' => 'token_sale',
+            'origin' => TreasuryPayout::ORIGIN_SALE_CLAIM,
+            'status' => TreasuryPayout::STATUS_CONFIRMED,
+            'tx_hash' => $this->refundHash,
+        ]);
+
+        $this->assertRefundError('REFUND_TX_USED', fn () => $this->confirm($token));
+
+        $this->assertSame(FactoryToken::REFUND_PENDING, $token->fresh()->refund_status);
+        $this->assertNull($token->fresh()->refund_tx_hash);
+    }
+
+    #[Test]
     public function โหมดอัตโนมัติ_ปฏิเสธแล้วเข้าคิวจ่ายจากกระเป๋าร้อนทันที_ผลคิวไหลกลับมาที่เหรียญ(): void
     {
         $this->setPolicy(['refund_mode' => 'auto']);

@@ -134,6 +134,12 @@ class WtpixBridgeConfig
         return (int) config('wtpix_bridge.tpix.chain_id', 4289);
     }
 
+    /** ส่งไปนานเท่านี้แล้วยังไม่ลงบล็อก = ค้าง ต้องบอกแอดมิน */
+    public function stuckAfterSeconds(): int
+    {
+        return max(5, (int) config('wtpix_bridge.stuck_after_minutes', 30)) * 60;
+    }
+
     public function bscChainId(): int
     {
         return (int) config('wtpix_bridge.bsc.chain_id', 56);

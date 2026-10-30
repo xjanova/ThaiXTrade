@@ -37,53 +37,6 @@ class StakingService
     }
 
     /**
-     * Stake TPIX เข้า pool.
-     */
-    public function stake(string $wallet, int $poolId, string $amount, ?string $txHash = null): StakingPosition
-    {
-        $pool = StakingPool::active()->findOrFail($poolId);
-
-        // ตรวจ min/max
-        if (bccomp($amount, $pool->min_stake, 18) < 0) {
-            throw new \InvalidArgumentException("Minimum stake is {$pool->min_stake} TPIX");
-        }
-
-        if (bccomp($amount, $pool->max_stake, 18) > 0) {
-            throw new \InvalidArgumentException('Maximum stake is '.number_format((float) $pool->max_stake).' TPIX');
-        }
-
-        // ตรวจ capacity
-        if ($pool->is_full) {
-            throw new \InvalidArgumentException('Pool is full');
-        }
-
-        return DB::transaction(function () use ($pool, $wallet, $amount, $txHash) {
-            $unlockAt = $pool->lock_days > 0
-                ? now()->addDays($pool->lock_days)
-                : null;
-
-            $position = StakingPosition::create([
-                'staking_pool_id' => $pool->id,
-                'wallet_address' => strtolower($wallet),
-                'amount' => $amount,
-                'staked_at' => now(),
-                'unlock_at' => $unlockAt,
-                'last_reward_at' => now(),
-                'status' => 'active',
-                'tx_hash' => $txHash,
-            ]);
-
-            // อัปเดต pool total
-            $pool->increment('total_staked', (float) $amount);
-
-            Cache::forget('staking:pools');
-            Cache::forget('staking:stats');
-
-            return $position->load('pool');
-        });
-    }
-
-    /**
      * Claim rewards — คำนวณ pending reward + บันทึก.
      */
     public function claimRewards(int $positionId, string $wallet): StakingPosition
