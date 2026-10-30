@@ -5,11 +5,12 @@
  * รับ (QR) และโอนออก (เซ็นในเบราว์เซอร์แอดมิน — เซิร์ฟเวอร์ไม่มีคีย์คลัง)
  * Developed by Xman Studio
  */
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import ColdSendModal from '@/Components/Admin/Treasury/ColdSendModal.vue';
 import ReceiveModal from '@/Components/Admin/Treasury/ReceiveModal.vue';
+import { useAdminPolling } from '@/Composables/useAdminPolling';
 import axios from 'axios';
 
 const props = defineProps({
@@ -109,9 +110,7 @@ async function refresh() {
     finally { isRefreshing.value = false; }
 }
 
-let pollInterval;
-onMounted(() => { pollInterval = setInterval(refresh, 30000); });
-onUnmounted(() => clearInterval(pollInterval));
+useAdminPolling(refresh, 30000);
 </script>
 
 <template>

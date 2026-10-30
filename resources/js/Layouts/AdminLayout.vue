@@ -5,8 +5,9 @@
  * Developed by Xman Studio
  */
 
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
+import { useAdminPolling } from '@/Composables/useAdminPolling';
 import { useTranslation } from '@/Composables/useTranslation';
 import LanguageSwitcher from '@/Components/Navigation/LanguageSwitcher.vue';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
@@ -58,7 +59,6 @@ const currentUrl = computed(() => page.url);
 
 // Notification bell
 const unreadCount = ref(0);
-let pollInterval = null;
 
 const fetchUnreadCount = async () => {
     try {
@@ -118,15 +118,12 @@ const alertTime = (a) => {
 onMounted(() => {
     fetchUnreadCount();
     fetchSystemAlerts();
-    pollInterval = setInterval(() => {
-        fetchUnreadCount();
-        fetchSystemAlerts();
-    }, 30000);
 });
 
-onUnmounted(() => {
-    if (pollInterval) clearInterval(pollInterval);
-});
+useAdminPolling(() => {
+    fetchUnreadCount();
+    fetchSystemAlerts();
+}, 30000);
 
 const isActive = (path) => {
     if (path === '/admin') {
