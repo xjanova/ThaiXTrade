@@ -344,6 +344,218 @@ class BridgePayoutTest extends TestCase
         $this->assertTrue(app(BridgePayouter::class)->retryCheck($w, $cancel)['safe']);
     }
 
+    // ── จ่ายซ้ำ: nonce ถูกใช้แล้วพิสูจน์แค่ว่า "hash เดิมตาย" ไม่ได้พิสูจน์ว่า "เงินไม่ได้ออก" ───────
+
+    /** ธุรกรรมจ่ายที่ส่งแล้วแต่ยังไม่ลงบล็อก — รอให้ธุรกรรมอื่นมาใช้ nonce เดียวกัน */
+    private function unminedPayout(): BridgeWithdrawal
+    {
+        $this->mineOnSend = false;
+        $w = $this->withdrawal();
+        $this->payout();
+
+        return $w->fresh();
+    }
+
+    #[Test]
+    public function a_replacement_that_really_paid_the_recipient_is_reported_paid_and_never_safe(): void
+    {
+        $w = $this->unminedPayout();
+
+        // เจ้าของกด speed up ตามที่ระบบแนะนำ — hash ใหม่ nonce เดิม ผู้รับกับยอดเดิม เงินออกจริง
+        $replacement = $this->fakeTransferTx(56, $this->payoutAddr, (int) $w->payout_nonce, $w->target_address, (string) $w->payout_amount_raw);
+
+        $check = app(BridgePayouter::class)->retryCheck($w, $replacement);
+
+        $this->assertTrue($check['paid']);
+        $this->assertFalse($check['safe']);
+        $this->assertSame($replacement, $check['paid_tx']);
+        $this->assertNotNull($check['paid_block']);
+        $this->assertStringContainsString($replacement, $check['reason']);
+    }
+
+    #[Test]
+    public function a_replacement_of_another_amount_to_the_recipient_is_never_safe_and_never_paid(): void
+    {
+        $w = $this->unminedPayout();
+        $nonce = (int) $w->payout_nonce;
+
+        // เจ้าของพิมพ์ยอดเอง: เข้าผู้รับจริงแต่ไม่ตรงยอด — ตรวจแค่ "ยอดตรงเป๊ะ" จะปล่อยให้จ่ายทับ
+        foreach ([bcsub((string) $w->payout_amount_raw, '1', 0), bcadd((string) $w->payout_amount_raw, '1', 0)] as $raw) {
+            $replacement = $this->fakeTransferTx(56, $this->payoutAddr, $nonce, $w->target_address, $raw);
+
+            $check = app(BridgePayouter::class)->retryCheck($w, $replacement);
+
+            $this->assertFalse($check['safe'], "ยอด {$raw}");
+            $this->assertFalse($check['paid'], "ยอด {$raw}");
+        }
+    }
+
+    #[Test]
+    public function every_transfer_to_the_recipient_in_the_candidate_is_added_up(): void
+    {
+        $w = $this->unminedPayout();
+        $amount = (string) $w->payout_amount_raw;
+        $half = bcdiv($amount, '2', 0);
+        $split = function (string $hash) {
+            $logs = &$this->chainState[56]['receipts'][$hash]['logs'];
+            $logs[] = $logs[0];
+        };
+
+        // แบ่งโอนสองก้อนรวมกันเท่ายอดจ่าย = จ่ายครบ
+        $two = $this->fakeTransferTx(56, $this->payoutAddr, (int) $w->payout_nonce, $w->target_address, $half);
+        $split($two);
+        $this->assertTrue(app(BridgePayouter::class)->retryCheck($w, $two)['paid']);
+
+        // ก้อนหนึ่งตรงยอดพอดีแต่รวมแล้วเกิน — ไม่ใช่การจ่ายรายการนี้ตามปกติ ให้คนดู
+        $over = $this->fakeTransferTx(56, $this->payoutAddr, (int) $w->payout_nonce, $w->target_address, $amount);
+        $split($over);
+        $check = app(BridgePayouter::class)->retryCheck($w, $over);
+        $this->assertFalse($check['safe']);
+        $this->assertFalse($check['paid']);
+    }
+
+    #[Test]
+    public function a_transfer_that_reached_the_recipient_through_a_contract_still_counts(): void
+    {
+        $w = $this->unminedPayout();
+
+        // โอนผ่านสัญญา multisend: from ใน log ไม่ใช่กระเป๋าจ่าย แต่ผู้รับได้เงินจริง
+        $replacement = $this->fakeTransferTx(56, $this->payoutAddr, (int) $w->payout_nonce, $w->target_address, (string) $w->payout_amount_raw, logFrom: $this->vault);
+
+        $this->assertTrue(app(BridgePayouter::class)->retryCheck($w, $replacement)['paid']);
+    }
+
+    #[Test]
+    public function the_token_recorded_at_scan_time_counts_even_if_the_config_moved_on(): void
+    {
+        $w = $this->unminedPayout();
+        $old = '0x4000000000000000000000000000000000000004';
+        $w->update(['payout_token' => $old]);
+
+        $replacement = $this->fakeTransferTx(56, $this->payoutAddr, (int) $w->payout_nonce, $w->target_address, (string) $w->payout_amount_raw, token: $old);
+
+        $this->assertTrue(app(BridgePayouter::class)->retryCheck($w, $replacement)['paid']);
+    }
+
+    #[Test]
+    public function an_unrelated_transaction_at_the_nonce_is_safe_and_not_paid(): void
+    {
+        $w = $this->unminedPayout();
+        $nonce = (int) $w->payout_nonce;
+
+        // ไม่มี log เลย (ยกเลิกด้วย 0 มูลค่า)
+        $cancel = $this->fakeCancelTx(56, $this->payoutAddr, $nonce);
+        $this->assertSame(['safe' => true, 'paid' => false], array_intersect_key(app(BridgePayouter::class)->retryCheck($w, $cancel), ['safe' => 1, 'paid' => 1]));
+
+        // โอน USDT ให้คนอื่น
+        $otherRecipient = $this->fakeTransferTx(56, $this->payoutAddr, $nonce, $this->alice, (string) $w->payout_amount_raw);
+        $this->assertSame(['safe' => true, 'paid' => false], array_intersect_key(app(BridgePayouter::class)->retryCheck($w, $otherRecipient), ['safe' => 1, 'paid' => 1]));
+
+        // เหรียญอื่นเข้าผู้รับคนเดิม — ไม่ใช่ USDT ไม่ใช่เงินของรายการนี้
+        $otherToken = $this->fakeTransferTx(56, $this->payoutAddr, $nonce, $w->target_address, (string) $w->payout_amount_raw, token: $this->usdtEth);
+        $this->assertSame(['safe' => true, 'paid' => false], array_intersect_key(app(BridgePayouter::class)->retryCheck($w, $otherToken), ['safe' => 1, 'paid' => 1]));
+    }
+
+    #[Test]
+    public function a_replacement_that_reverted_moved_nothing_so_it_is_safe(): void
+    {
+        $w = $this->unminedPayout();
+        $cancel = $this->fakeCancelTx(56, $this->payoutAddr, (int) $w->payout_nonce);
+        $this->chainState[56]['receipts'][$cancel]['status'] = '0x0';
+
+        $check = app(BridgePayouter::class)->retryCheck($w, $cancel);
+
+        $this->assertTrue($check['safe']);
+        $this->assertFalse($check['paid']);
+
+        // ใบเสร็จขัดกันเอง (revert แต่มี Transfer) — ห้ามสรุปทั้ง "จ่ายแล้ว" และ "ปลอดภัย"
+        $odd = $this->fakeTransferTx(56, $this->payoutAddr, (int) $w->payout_nonce, $w->target_address, (string) $w->payout_amount_raw);
+        $this->chainState[56]['receipts'][$odd]['status'] = '0x0';
+        $check = app(BridgePayouter::class)->retryCheck($w, $odd);
+        $this->assertFalse($check['safe']);
+        $this->assertFalse($check['paid']);
+    }
+
+    #[Test]
+    public function an_rpc_failure_while_reading_the_candidate_is_never_safe(): void
+    {
+        $w = $this->unminedPayout();
+        $cancel = $this->fakeCancelTx(56, $this->payoutAddr, (int) $w->payout_nonce);
+        $this->assertTrue(app(BridgePayouter::class)->retryCheck($w, $cancel)['safe'], 'ตัวธุรกรรมเป็นหลักฐานที่ใช้ได้เมื่อ RPC ปกติ');
+
+        foreach (['eth_getTransactionReceipt', 'eth_getTransactionByHash'] as $method) {
+            foreach (['rate limit exceeded', 'null'] as $fault) {
+                $this->rpcFaults = ["rpc.bsc.test|{$method}" => $fault];
+
+                $check = app(BridgePayouter::class)->retryCheck($w, $cancel);
+
+                $this->assertFalse($check['safe'], "{$method} → {$fault}");
+                $this->assertFalse($check['paid'], "{$method} → {$fault}");
+            }
+        }
+
+        $this->rpcFaults = [];
+        $this->chainState[56]['down'] = true;
+        $this->assertFalse(app(BridgePayouter::class)->retryCheck($w, $cancel)['safe']);
+    }
+
+    #[Test]
+    public function a_candidate_whose_logs_cannot_be_read_is_never_safe(): void
+    {
+        $w = $this->unminedPayout();
+        $nonce = (int) $w->payout_nonce;
+        $mine = fn (string $amount, ?\Closure $mutate = null) => $this->fakeTransferTx(
+            56, $this->payoutAddr, $nonce, $w->target_address, $amount, mutateLog: $mutate,
+        );
+
+        // ใบเสร็จไม่มีฟิลด์ logs — "อ่านไม่ได้" ต้องไม่ถูกตีความว่า "ไม่มีการโอน"
+        $noLogs = $this->fakeCancelTx(56, $this->payoutAddr, $nonce);
+        unset($this->chainState[56]['receipts'][$noLogs]['logs']);
+
+        $broken = [
+            'ไม่มี logs' => $noLogs,
+            'log ไม่มี topics' => $mine('1', function (array $log) {
+                unset($log['topics']);
+
+                return $log;
+            }),
+            'log ไม่มี address' => $mine('2', function (array $log) {
+                unset($log['address']);
+
+                return $log;
+            }),
+            'Transfer ไม่มีผู้รับ' => $mine('3', fn (array $log) => ['topics' => array_slice($log['topics'], 0, 2)] + $log),
+            'Transfer ไม่มียอด' => $mine('4', fn (array $log) => ['data' => '0x'] + $log),
+            'ยอดไม่ใช่ hex' => $mine('5', fn (array $log) => ['data' => '0x'.str_repeat('z', 64)] + $log),
+        ];
+
+        foreach ($broken as $case => $candidate) {
+            $check = app(BridgePayouter::class)->retryCheck($w, $candidate);
+
+            $this->assertFalse($check['safe'], $case);
+            $this->assertFalse($check['paid'], $case);
+        }
+    }
+
+    #[Test]
+    public function another_withdrawals_payout_to_the_same_recipient_is_never_taken_for_this_one(): void
+    {
+        $w = $this->unminedPayout();
+
+        // รายการอื่นที่ผู้รับกับยอดเดียวกันใช้ nonce นี้ไป — ถ้านับเป็น "จ่ายแล้ว" ผู้รับจะได้เงินไม่ครบ
+        $other = $this->fakeTransferTx(56, $this->payoutAddr, (int) $w->payout_nonce, $w->target_address, (string) $w->payout_amount_raw);
+        $this->withdrawal(56, '25000000', [
+            'status' => BridgeWithdrawal::STATUS_PAID, 'payout_tx_hash' => $other,
+            'payout_nonce' => $w->payout_nonce, 'payout_from' => strtolower($this->payoutAddr),
+        ]);
+
+        $check = app(BridgePayouter::class)->retryCheck($w);
+
+        $this->assertFalse($check['safe']);
+        $this->assertFalse($check['paid']);
+        $this->assertArrayNotHasKey('paid_tx', $check);
+    }
+
     // ── ธุรกรรมค้าง ─────────────────────────────────────────────────────────
 
     #[Test]

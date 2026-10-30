@@ -7,6 +7,7 @@ use App\Models\BridgeDeposit;
 use App\Models\BridgeWithdrawal;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\BridgeConfig;
+use App\Services\Bridge\BridgePayouter;
 use Inertia\Testing\AssertableInertia;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\FakesBridgeChains;
@@ -194,6 +195,44 @@ class BridgeAdminTest extends TestCase
         $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/approve", ['nonce_tx_hash' => $cancel])->assertOk();
         $this->assertSame(BridgeWithdrawal::STATUS_PENDING, $w->fresh()->status);
         $this->assertNull($w->fresh()->payout_tx_hash);
+    }
+
+    #[Test]
+    public function a_stuck_payout_replaced_by_a_real_transfer_is_closed_as_paid_and_never_signed_again(): void
+    {
+        $dead = '0x'.str_repeat('6', 64);
+        $w = $this->reviewWithdrawal(strtolower($this->bob), 56, BridgePayouter::REASON_STUCK);
+        $w->update([
+            'payout_tx_hash' => $dead, 'payout_nonce' => 3,
+            'payout_from' => strtolower($this->payoutAddr), 'payout_raw_tx' => '0xf86c03',
+        ]);
+
+        // เจ้าของส่งโอนเดิมแทนที่ด้วย nonce 3 แล้วลงบล็อก — ผู้รับได้เงินแล้ว
+        $replacement = $this->fakeTransferTx(56, $this->payoutAddr, 3, $this->bob, (string) $w->payout_amount_raw);
+
+        // ปฏิเสธไม่ได้ (เงินออกแล้ว) และไม่ต้องขอหลักฐานเพิ่ม
+        $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/reject", ['reason' => 'คืนเงินด้วยมือ', 'nonce_tx_hash' => $replacement])
+            ->assertStatus(409)
+            ->assertJsonPath('needs_nonce_proof', false);
+        $this->assertSame(BridgeWithdrawal::STATUS_NEEDS_REVIEW, $w->fresh()->status);
+
+        // เดิม: รายการกลับเข้าคิวแล้วจ่ายรอบสอง · ตอนนี้ต้องปิดเป็นจ่ายแล้ว ผูกกับธุรกรรมที่เงินออกจริง
+        $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/approve", ['nonce_tx_hash' => $replacement])->assertOk();
+
+        $w->refresh();
+        $this->assertSame(BridgeWithdrawal::STATUS_PAID, $w->status);
+        $this->assertSame($replacement, $w->payout_tx_hash);
+        $this->assertNotNull($w->payout_block_number);
+        $this->assertNotNull($w->paid_at);
+        $this->assertStringContainsString($dead, $w->last_error, 'ยังตามรอย hash เดิมได้ (คอลัมน์ยาว 300 ตัด hash ทิ้งไม่ได้)');
+
+        // กดเบิ้ล: ปิดไปแล้ว ไม่เปลี่ยนอะไร
+        $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/approve", ['nonce_tx_hash' => $replacement])->assertStatus(409);
+
+        // แถวนี้เลิกบล็อกคิวของเชน และไม่มีการเซ็นจ่ายซ้ำ
+        $this->artisan('bridge:payout')->assertSuccessful();
+        $this->assertSame([], $this->signCalls);
+        $this->assertSame(BridgeWithdrawal::STATUS_PAID, $w->fresh()->status);
     }
 
     #[Test]
