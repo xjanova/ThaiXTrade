@@ -18,6 +18,8 @@ const props = defineProps({
     stats: { type: Object, default: () => ({}) },
     // ความพร้อม + ตารางที่จะได้ถ้ากดเปิดรอบขายวันนี้
     launch: { type: Object, default: () => ({}) },
+    // รอบขายถือกระเป๋ารับเงิน — สร้าง/แก้ได้เฉพาะ super_admin ระดับอื่นเปิดดูได้อย่างเดียว
+    canManageMoney: { type: Boolean, default: false },
 });
 
 // Tab ปัจจุบัน
@@ -362,7 +364,7 @@ function statusBadge(s) {
                 <SaleLaunchPanel :launch="launch" />
 
                 <div class="flex justify-end mb-4">
-                    <button class="btn-primary px-4 py-2 text-sm font-semibold" @click="openCreateSale">+ New Sale</button>
+                    <button v-if="canManageMoney" class="btn-primary px-4 py-2 text-sm font-semibold" @click="openCreateSale">+ New Sale</button>
                 </div>
 
                 <div class="space-y-4">
@@ -441,7 +443,7 @@ function statusBadge(s) {
 
                     <div v-if="!sales.length" class="text-center py-16 text-gray-500">
                         <p class="text-lg mb-2">No token sales yet</p>
-                        <button class="btn-primary px-6 py-2 mt-2" @click="openCreateSale">Create First Sale</button>
+                        <button v-if="canManageMoney" class="btn-primary px-6 py-2 mt-2" @click="openCreateSale">Create First Sale</button>
                     </div>
                 </div>
             </div>
@@ -611,7 +613,8 @@ function statusBadge(s) {
                                 </div>
                             </div>
                             <div class="flex gap-3 pt-2">
-                                <button type="submit" class="btn-primary px-6 py-2 font-semibold" :disabled="saleForm.processing">{{ editingSale ? 'Update' : 'Create' }}</button>
+                                <button v-if="canManageMoney" type="submit" class="btn-primary px-6 py-2 font-semibold" :disabled="saleForm.processing">{{ editingSale ? 'Update' : 'Create' }}</button>
+                                <p v-else class="text-xs text-amber-300 self-center">รอบขายมีกระเป๋ารับเงิน แก้ได้เฉพาะ Super Admin</p>
                                 <button type="button" class="btn-secondary px-6 py-2" @click="showSaleModal = false">Cancel</button>
                             </div>
                         </form>

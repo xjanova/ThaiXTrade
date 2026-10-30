@@ -6,8 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Mail\TestMail;
 use App\Models\AuditLog;
 use App\Models\SiteSetting;
+use App\Rules\EvmAddress;
 use App\Services\AiBot\Advisor\AdvisorFactory;
 use App\Services\AiBot\Advisor\AdvisorSettings;
+use App\Services\StripePaymentService;
+use App\Support\MoneySettings;
+use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -63,8 +67,16 @@ class SettingController extends Controller
             ...AdvisorSettings::SECRET_KEYS,
         ];
 
-        // ดึง settings ทั้งหมดแล้วแปลงเป็น flat key-value (cast ตาม type)
-        $allSettings = SiteSetting::all();
+        /*
+         * หน้านี้ยังเปิดให้ทุกระดับเพราะแท็บอื่นเป็นงานของแอดมินทั่วไป (ทั่วไป/SEO/โซเชียล/เนื้อหา)
+         * แต่ค่ากลุ่มเงินไม่ส่งลงเบราว์เซอร์เลย แม้แต่แบบ mask — ไม่ใช่แค่ซ่อนแท็บฝั่ง Vue
+         */
+        $canManageMoney = MoneySettings::canManage();
+
+        // ดึง settings แล้วแปลงเป็น flat key-value (cast ตาม type)
+        $allSettings = SiteSetting::query()
+            ->when(! $canManageMoney, fn ($query) => $query->whereNotIn('group', MoneySettings::HIDDEN_GROUPS))
+            ->get();
         $flat = [];
         foreach ($allSettings as $setting) {
             // Mask secret keys — แสดงแค่ 4 ตัวสุดท้าย
@@ -85,6 +97,7 @@ class SettingController extends Controller
 
         return Inertia::render('Admin/Settings/Index', [
             'settings' => $flat,
+            'canManageMoney' => $canManageMoney,
             // สถานะจริงของที่ปรึกษา AI — หน้าเว็บใช้บอกว่า "พร้อมใช้" หรือ "ยังไม่ได้ตั้งคีย์"
             // คำนวณฝั่งเซิร์ฟเวอร์เพราะค่าที่ส่งไปถูก mask แล้ว ดูจาก frontend ไม่ออก
             'advisorStatus' => $this->advisorStatus(app(AdvisorSettings::class)),
@@ -339,6 +352,8 @@ class SettingController extends Controller
             return back()->with('error', 'Invalid settings tab.');
         }
 
+        $request->validate($this->moneyRules($tab));
+
         // Only allow keys that already exist in this group (prevent arbitrary key injection)
         // Exception: AI tab allows new keys (API keys get created on first save)
         $existingKeys = SiteSetting::where('group', $tab)->pluck('key')->toArray();
@@ -376,47 +391,85 @@ class SettingController extends Controller
             }
         }
 
-        foreach ($request->except('_method') as $key => $value) {
-            $isAllowedNew = in_array($key, $allowedNewKeys[$tab] ?? [], true);
-            if (! in_array($key, $existingKeys, true) && ! $isAllowedNew) {
-                continue;
+        $save = function () use ($request, $tab, $existingKeys, $allowedNewKeys): void {
+            foreach ($request->except('_method') as $key => $value) {
+                $isAllowedNew = in_array($key, $allowedNewKeys[$tab] ?? [], true);
+                if (! in_array($key, $existingKeys, true) && ! $isAllowedNew) {
+                    continue;
+                }
+                // ดึง type เดิมจาก DB เพื่อไม่ให้ boolean ถูก overwrite เป็น string
+                $existing = SiteSetting::where('group', $tab)
+                    ->where('key', $key)
+                    ->first();
+
+                $type = $existing?->type ?? 'string';
+
+                // แก้ type ที่ถูก corrupt: key ลงท้ายด้วย _enabled ควรเป็น boolean เสมอ
+                if (str_ends_with($key, '_enabled') && ! in_array($type, ['boolean', 'bool'])) {
+                    $type = 'boolean';
+                }
+
+                // แปลง boolean values ให้ถูกต้องก่อนบันทึก
+                if ($type === 'boolean' || $type === 'bool') {
+                    $value = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
+                }
+
+                // trim string values เพื่อป้องกัน whitespace จากการ copy-paste (เช่น API keys)
+                if (is_string($value) && $type === 'string') {
+                    $value = trim($value);
+                }
+
+                // ข้าม masked values — ถ้า admin ไม่ได้เปลี่ยน secret key จะส่งค่า masked กลับมา
+                if (is_string($value) && str_starts_with($value, '********************')) {
+                    continue;
+                }
+
+                // กระเป๋าฝั่งเทรดเก็บพิมพ์เล็กเสมอ เหตุผลเดียวกับ propagateRevenueWallets()
+                if ($tab === 'trading' && is_string($value) && in_array($key, MoneySettings::WALLET_KEYS['trading'], true)) {
+                    $value = strtolower($value);
+                }
+
+                SiteSetting::set($tab, $key, $value, $type);
             }
-            // ดึง type เดิมจาก DB เพื่อไม่ให้ boolean ถูก overwrite เป็น string
-            $existing = SiteSetting::where('group', $tab)
-                ->where('key', $key)
-                ->first();
 
-            $type = $existing?->type ?? 'string';
+            $this->propagateRevenueWallets($tab);
+        };
 
-            // แก้ type ที่ถูก corrupt: key ลงท้ายด้วย _enabled ควรเป็น boolean เสมอ
-            if (str_ends_with($key, '_enabled') && ! in_array($type, ['boolean', 'bool'])) {
-                $type = 'boolean';
-            }
-
-            // แปลง boolean values ให้ถูกต้องก่อนบันทึก
-            if ($type === 'boolean' || $type === 'bool') {
-                $value = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
-            }
-
-            // trim string values เพื่อป้องกัน whitespace จากการ copy-paste (เช่น API keys)
-            if (is_string($value) && $type === 'string') {
-                $value = trim($value);
-            }
-
-            // ข้าม masked values — ถ้า admin ไม่ได้เปลี่ยน secret key จะส่งค่า masked กลับมา
-            if (is_string($value) && str_starts_with($value, '********************')) {
-                continue;
-            }
-
-            SiteSetting::set($tab, $key, $value, $type);
+        if (in_array($tab, MoneySettings::GROUPS, true)) {
+            MoneySettings::change("settings.{$tab}.update", $save);
+        } else {
+            $save();
+            SiteSetting::clearCache();
+            AuditLog::log("settings.{$tab}.update");
         }
 
-        $this->propagateRevenueWallets($tab);
-
-        SiteSetting::clearCache();
-        AuditLog::log("settings.{$tab}.update");
-
         return back()->with('success', "บันทึก {$tab} settings สำเร็จ");
+    }
+
+    /**
+     * กฎของช่องที่กำหนดปลายทางเงิน — ตรวจก่อนเขียนค่าแรก เพื่อไม่ให้เกิดการบันทึกครึ่งเดียว.
+     *
+     * ใช้ validate แทน flash error เพราะ Inertia นับ flash เป็นสำเร็จ — ฟอร์มรายได้จะคัดลอก
+     * กระเป๋าที่ถูกปฏิเสธไปลงฟอร์มเทรดต่อทันที
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private function moneyRules(string $tab): array
+    {
+        $rules = array_fill_keys(MoneySettings::WALLET_KEYS[$tab] ?? [], ['nullable', new EvmAddress()]);
+
+        if ($tab === 'payment') {
+            $liveKeyOnly = function (string $attribute, mixed $value, Closure $fail): void {
+                if (app()->isProduction() && is_string($value) && StripePaymentService::isTestKey($value)) {
+                    $fail('เว็บจริงห้ามใช้คีย์ทดสอบของ Stripe — ต้องใช้คีย์ที่ขึ้นต้นด้วย pk_live_ / sk_live_');
+                }
+            };
+
+            $rules['stripe_public_key'] = ['nullable', $liveKeyOnly];
+            $rules['stripe_secret_key'] = ['nullable', $liveKeyOnly];
+        }
+
+        return $rules;
     }
 
     /**

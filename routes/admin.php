@@ -75,13 +75,16 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('settings/logo', [SettingController::class, 'updateLogo'])->name('settings.logo');
         Route::post('settings/general', [SettingController::class, 'updateGeneral'])->name('settings.general');
         Route::post('settings/seo', [SettingController::class, 'updateSeo'])->name('settings.seo');
-        Route::put('settings/trading', [SettingController::class, 'updateTab'])->name('settings.trading');
         Route::put('settings/security', [SettingController::class, 'updateTab'])->name('settings.security');
         Route::put('settings/social', [SettingController::class, 'updateTab'])->name('settings.social');
-        Route::put('settings/payment', [SettingController::class, 'updateTab'])->name('settings.payment');
         Route::put('settings/ai', [SettingController::class, 'updateTab'])->name('settings.ai');
-        Route::put('settings/factory', [SettingController::class, 'updateTab'])->name('settings.factory');
-        Route::put('settings/revenue', [SettingController::class, 'updateTab'])->name('settings.revenue');
+        // แท็บที่กำหนดว่าเงินไปไหน (กระเป๋ารับรายได้ คีย์ Stripe ค่าธรรมเนียม) — ต้องตรงกับ MoneySettings::GROUPS
+        Route::middleware('admin.role:super_admin')->group(function () {
+            Route::put('settings/trading', [SettingController::class, 'updateTab'])->name('settings.trading');
+            Route::put('settings/payment', [SettingController::class, 'updateTab'])->name('settings.payment');
+            Route::put('settings/factory', [SettingController::class, 'updateTab'])->name('settings.factory');
+            Route::put('settings/revenue', [SettingController::class, 'updateTab'])->name('settings.revenue');
+        });
         // ชั้นไทล์แผนที่หน้า /validators — โปรแกรมมาสเตอร์โหนดดึงค่านี้ไปใช้ด้วย
         Route::put('settings/map', [SettingController::class, 'updateTab'])->name('settings.map');
         Route::put('settings/content', [SettingController::class, 'updateTab'])->name('settings.content');
@@ -116,7 +119,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         Route::get('trading-fees', [TradingFeeTierController::class, 'index'])->name('trading-fees.index');
         Route::post('trading-fees', [TradingFeeTierController::class, 'store'])->name('trading-fees.store');
-        Route::put('trading-fees/settings', [TradingFeeTierController::class, 'updateSettings'])->name('trading-fees.settings');
+        // ค่าตั้งรวมมีกระเป๋ารับเงินเติมเครดิต — ขั้นบันไดแก้ได้ทุกระดับ แต่ปลายทางเงินต้อง super_admin
+        Route::put('trading-fees/settings', [TradingFeeTierController::class, 'updateSettings'])
+            ->middleware('admin.role:super_admin')
+            ->name('trading-fees.settings');
         Route::put('trading-fees/{tier}', [TradingFeeTierController::class, 'update'])->name('trading-fees.update');
         Route::delete('trading-fees/{tier}', [TradingFeeTierController::class, 'destroy'])->name('trading-fees.destroy');
 
@@ -229,7 +235,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Token Sales — จัดการรอบขายเหรียญ TPIX (ICO/IDO) + Token Control
         Route::prefix('token-sales')->name('token-sales.')->group(function () {
             Route::get('/', [TokenSaleController::class, 'index'])->name('index');
-            Route::post('/', [TokenSaleController::class, 'store'])->name('store');
+            // รอบขายถือ sale_wallet_address — เงินคริปโตของผู้ซื้อวิ่งเข้ากระเป๋านี้ จึงเฉพาะ super_admin
+            Route::post('/', [TokenSaleController::class, 'store'])->middleware('admin.role:super_admin')->name('store');
             Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
 
             /*
