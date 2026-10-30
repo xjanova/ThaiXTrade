@@ -168,6 +168,49 @@ jobs:
           fi
           echo "✓ Build completed successfully"
 
+  # (2026-10-30) prod เป็น MariaDB 10.6 ซึ่ง explicit_defaults_for_timestamp ปิดเป็นค่าเริ่มต้น
+  # engine จึงเติม ON UPDATE ให้ TIMESTAMP NOT NULL คอลัมน์แรกเอง — SQLite ของ job tests มองไม่เห็น
+  mariadb-migrations:
+    name: Migrations on MariaDB 10.6
+    runs-on: ubuntu-latest
+
+    services:
+      mariadb:
+        image: mariadb:10.6
+        env:
+          MARIADB_ROOT_PASSWORD: ci-only
+          MARIADB_DATABASE: tpix_real_engine_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, pdo_mysql, bcmath, soap, intl, gd, exif, iconv
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run all migrations on MariaDB and check business times
+        env:
+          REAL_DB_HOST: 127.0.0.1
+          REAL_DB_PORT: 3306
+          REAL_DB_USERNAME: root
+          REAL_DB_PASSWORD: ci-only
+          REAL_DB_DATABASE: tpix_real_engine_test
+        run: ./vendor/bin/phpunit --no-coverage --fail-on-skipped --filter BusinessTimeColumnsTest
+
   auto-release:
     name: Auto Release
     runs-on: ubuntu-latest
