@@ -527,6 +527,11 @@ class BridgePayoutTest extends TestCase
             'Transfer ไม่มีผู้รับ' => $mine('3', fn (array $log) => ['topics' => array_slice($log['topics'], 0, 2)] + $log),
             'Transfer ไม่มียอด' => $mine('4', fn (array $log) => ['data' => '0x'] + $log),
             'ยอดไม่ใช่ hex' => $mine('5', fn (array $log) => ['data' => '0x'.str_repeat('z', 64)] + $log),
+            // log ของ USDT ที่อ่านไม่ออกอาจเป็น Transfer ก็ได้ — ข้ามไปเท่ากับนับเป็น "ไม่มีการโอน"
+            'topics ว่าง' => $mine('6', fn (array $log) => ['topics' => []] + $log),
+            'topic 0 ขาด' => $mine('7', fn (array $log) => ['topics' => ['0x1234', $log['topics'][1], $log['topics'][2]]] + $log),
+            'ผู้รับไม่ใช่ hex' => $mine('8', fn (array $log) => ['topics' => [$log['topics'][0], $log['topics'][1], '0x'.str_repeat('z', 64)]] + $log),
+            'address ขาด' => $mine('9', fn (array $log) => ['address' => substr($log['address'], 0, 20)] + $log),
         ];
 
         foreach ($broken as $case => $candidate) {

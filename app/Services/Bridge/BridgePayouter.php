@@ -509,28 +509,46 @@ class BridgePayouter
         $total = '0';
 
         foreach ($receipt['logs'] as $log) {
-            if (! is_array($log) || ! isset($log['address']) || ! is_array($log['topics'] ?? null)) {
+            $address = is_array($log) ? ($log['address'] ?? null) : null;
+
+            if (! is_string($address) || ! preg_match('/^0x[0-9a-fA-F]{40}$/', $address) || ! is_array($log['topics'] ?? null)) {
                 return null;
             }
 
-            if (! in_array(strtolower((string) $log['address']), $tokens, true)
-                || strtolower((string) ($log['topics'][0] ?? '')) !== Abi::topic(Abi::TRANSFER_EVENT)) {
+            if (! in_array(strtolower($address), $tokens, true)) {
                 continue;
             }
 
-            $to = Abi::topicAddress($log['topics'][2] ?? null);
-            $data = (string) ($log['data'] ?? '');
+            // log ของ USDT ที่อ่านไม่ออกอาจเป็น Transfer ก็ได้ — ข้ามไปเท่ากับนับเป็น "ไม่มีการโอน"
+            $event = $log['topics'][0] ?? null;
 
-            if ($to === null || ! preg_match('/^0x[0-9a-fA-F]{64}$/', $data)) {
+            if (! $this->isWord($event)) {
                 return null;
             }
 
-            if ($to === $recipient) {
+            if (strtolower($event) !== Abi::topic(Abi::TRANSFER_EVENT)) {
+                continue;
+            }
+
+            $to = $log['topics'][2] ?? null;
+            $data = $log['data'] ?? null;
+
+            if (! $this->isWord($to) || ! $this->isWord($data)) {
+                return null;
+            }
+
+            if (Abi::topicAddress($to) === $recipient) {
                 $total = bcadd($total, Wei::hexToInt($data), 0);
             }
         }
 
         return $total;
+    }
+
+    /** ค่า 32 ไบต์ที่อ่านได้ครบ (topic หรือ data คำเดียว) */
+    private function isWord(mixed $value): bool
+    {
+        return is_string($value) && preg_match('/^0x[0-9a-fA-F]{64}$/', $value) === 1;
     }
 
     private function trackOne(EvmRpc $rpc, BridgeWithdrawal $withdrawal): bool
