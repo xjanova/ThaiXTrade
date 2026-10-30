@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ThaipromptKycLink;
 use App\Services\Kyc\KycGate;
+use App\Services\Kyc\ThaipromptKycException;
 use App\Services\Kyc\ThaipromptKycService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -36,8 +38,12 @@ class ThaipromptKycController extends Controller
 
         try {
             $url = $this->thaiprompt->beginAuthorization($request->user(), $request->session(), $request->ip());
-        } catch (RuntimeException $e) {
+        } catch (ThaipromptKycException $e) {
             return back()->withErrors(['kyc' => $e->getMessage()]);
+        } catch (RuntimeException $e) {
+            $this->thaiprompt->logUnexpected($e, $request->user());
+
+            return back()->withErrors(['kyc' => ThaipromptKycService::ERR_UNEXPECTED]);
         }
 
         // ออกนอกโดเมน — Inertia ต้องใช้ location() (409 + X-Inertia-Location) ไม่ใช่ redirect ธรรมดา
@@ -78,8 +84,12 @@ class ThaipromptKycController extends Controller
                 $request->session(),
                 $request->query(),
             );
-        } catch (RuntimeException $e) {
+        } catch (ThaipromptKycException $e) {
             return redirect()->route('kyc.index')->withErrors(['kyc' => $e->getMessage()]);
+        } catch (RuntimeException $e) {
+            $this->thaiprompt->logUnexpected($e, $request->user());
+
+            return redirect()->route('kyc.index')->withErrors(['kyc' => ThaipromptKycService::ERR_UNEXPECTED]);
         }
 
         return redirect()->route('kyc.index')->with(
@@ -101,12 +111,12 @@ class ThaipromptKycController extends Controller
 
         try {
             $link = $this->thaiprompt->refresh($link);
+        } catch (ThaipromptKycException $e) {
+            return $this->refreshFailed($link, $e->getMessage(), 422);
         } catch (RuntimeException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-                'thaiprompt' => $link->fresh()?->toOwnerArray(),
-            ], 422);
+            $this->thaiprompt->logUnexpected($e, $user);
+
+            return $this->refreshFailed($link, ThaipromptKycService::ERR_UNEXPECTED, 500);
         }
 
         return response()->json([
@@ -114,5 +124,17 @@ class ThaipromptKycController extends Controller
             'thaiprompt' => $link->toOwnerArray(),
             'gate' => $this->gate->statusFor($user),
         ]);
+    }
+
+    /**
+     * ถามผลซ้ำไม่สำเร็จ — แนบสถานะล่าสุดไปด้วย หน้าเว็บจะได้ไม่ต้องยิงอีกคำขอ.
+     */
+    private function refreshFailed(ThaipromptKycLink $link, string $message, int $status): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+            'thaiprompt' => $link->fresh()?->toOwnerArray(),
+        ], $status);
     }
 }

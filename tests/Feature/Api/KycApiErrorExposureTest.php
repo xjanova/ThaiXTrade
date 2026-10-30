@@ -192,7 +192,7 @@ class KycApiErrorExposureTest extends TestCase
             ->assertJsonPath('error.code', $code)
             ->assertJsonPath('error.message', $message);
 
-        $this->assertStringNotContainsString('kyc-api:', $this->logged, 'ความล้มเหลวที่ตั้งใจไว้ไม่ใช่เหตุผิดปกติ');
+        $this->assertStringNotContainsString('สาเหตุที่ไม่ได้ตั้งใจ', $this->logged, 'ความล้มเหลวที่ตั้งใจไว้ไม่ใช่เหตุผิดปกติ');
     }
 
     /** @return array<string, array{string, string, string}> */
