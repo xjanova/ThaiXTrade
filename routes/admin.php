@@ -284,6 +284,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
                 // กู้ออเดอร์หลังชนะ chargeback = นับยอดขายกลับและเปิดทางออกเหรียญ
                 Route::post('/dispute/{id}/restore', [TokenSaleController::class, 'restoreDisputedOrder'])->name('dispute.restore');
+
+                // USDT ที่เข้ามาแต่ระบบออกเหรียญเองไม่ได้ (ยอดไม่ตรง/ช้า/ซ้ำ/ผิดเหรียญ/หาคำสั่งซื้อไม่เจอ)
+                Route::post('/crypto/{id}/credit', [TokenSaleController::class, 'creditCryptoPayment'])->name('crypto.credit');
+                Route::post('/crypto/{id}/resolve', [TokenSaleController::class, 'resolveCryptoPayment'])->name('crypto.resolve');
             });
         });
 

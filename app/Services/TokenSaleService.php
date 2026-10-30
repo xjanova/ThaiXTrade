@@ -304,7 +304,8 @@ class TokenSaleService
      * มีใครถือกุญแจ (nonce 0 ยอด 0) = เงินลูกค้าอาจล็อกถาวร
      *
      * อ่านจาก `accept_currencies` ของรอบขาย ไม่ฝังไว้ในโค้ด
-     * เจ้าของจึงเปิดทางคริปโตกลับมาได้เองจากหลังบ้านถ้าวันหนึ่งพร้อม
+     * ทางคริปโตที่เจ้าของเปิดจากหลังบ้านได้คือ CRYPTO (USDT ที่ตรวจเงินเข้าบนเชน ดู SaleCryptoConfig)
+     * ส่วน USDT/BNB คือสวิตช์ทางยื่น tx_hash แบบเก่า ซึ่ง TokenSale::PAYMENT_CHANNELS ไม่รับ
      *
      * @throws PurchaseException
      */
@@ -322,7 +323,8 @@ class TokenSaleService
         $currency = strtoupper($currency);
 
         // ไม่ได้ตั้งไว้ = ไม่จำกัด (ข้อมูลเก่าก่อนมีระบบนี้)
-        if ($accepted === []) {
+        // ยกเว้นคริปโต เงินเข้ากระเป๋าตรง ๆ จึงต้องประกาศรับเอง ค่าว่างเปิดทางให้ไม่ได้
+        if ($accepted === [] && ! $this->isCryptoCurrency($currency)) {
             return;
         }
 
@@ -514,15 +516,19 @@ class TokenSaleService
      * ตัวนี้จึงอยู่ในกลุ่มที่ผ่าน VerifyWalletOwnership + KYC เหมือน purchase
      * เพื่อให้ด่านทั้งหมดถูกตรวจ "ก่อน" เงินออกจากกระเป๋า
      *
+     * $channel — ช่องทางที่รอบขายต้องประกาศรับ ถ้าต่างจากสกุลที่ใช้ตีราคา
+     *   ทาง USDT ใหม่ตีราคาเป็น USD (1:1) แต่ต้องตรวจช่องทาง "CRYPTO" ไม่ใช่ "USDT"
+     *   — "USDT" คือสวิตช์ของทางยื่น tx_hash แบบเก่า ซึ่งต้องปิดต่อไปแม้จะเปิดทางใหม่แล้ว
+     *
      * @throws PurchaseException ข้อความปลอดภัยพอที่จะแสดงให้ผู้ซื้ออ่านตรงๆ
      */
-    public function assertPurchasable(string $walletAddress, int $phaseId, string $currency, float $amount): array
+    public function assertPurchasable(string $walletAddress, int $phaseId, string $currency, float $amount, ?string $channel = null): array
     {
         $phase = SalePhase::with('tokenSale')->findOrFail($phaseId);
         $sale = $phase->tokenSale;
 
         $this->assertPhaseOpen($phase);
-        $this->assertCurrencyAccepted($sale, $currency);
+        $this->assertCurrencyAccepted($sale, $channel ?? $currency);
 
         /*
          * กระเป๋ารับเงินจำเป็นเฉพาะ "ทางคริปโต" เท่านั้น
@@ -534,7 +540,7 @@ class TokenSaleService
          * และนี่คือเหตุผลที่โมเดลใหม่ปลอดภัยกว่า: ไม่ต้องมีกระเป๋ารับคริปโต
          * จึงไม่ต้องพิสูจน์ว่าใครถือกุญแจของมัน
          */
-        if ($this->isCryptoCurrency($currency) && blank($sale->sale_wallet_address)) {
+        if ($this->isCryptoCurrency($channel ?? $currency) && blank($sale->sale_wallet_address)) {
             throw new PurchaseException('The sale is not accepting payments right now. Please try again later.');
         }
 

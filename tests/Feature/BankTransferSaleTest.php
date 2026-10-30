@@ -918,18 +918,19 @@ class BankTransferSaleTest extends TestCase
         $this->assertSame(1000.0, $result['tpix_amount']);
     }
 
-    /** รอบขายเก่าที่ไม่ได้ระบุช่องทางไว้ ต้องไม่ถูกกระทบ */
-    public function test_sales_without_declared_currencies_stay_unrestricted(): void
+    /** รอบขายเก่าที่ไม่ได้ระบุช่องทางไว้ยังรับเงินสด แต่ไม่เปิดทางคริปโต เงินก้อนนั้นเข้ากระเป๋าตรง ๆ */
+    public function test_sales_without_declared_currencies_take_cash_but_not_crypto(): void
     {
-        // ทางคริปโตยังต้องมีกระเป๋ารับเงินตามเดิม — ตั้งให้ครบก่อน
         $phase = $this->makeOpenPhase([
             'accept_currencies' => [],
             'sale_wallet_address' => '0x'.str_repeat('ab', 20),
         ]);
+        $sales = app(TokenSaleService::class);
 
-        $result = app(TokenSaleService::class)->assertPurchasable(self::BUYER, $phase->id, 'USDT', 100.0);
+        $this->assertSame(1000.0, $sales->assertPurchasable(self::BUYER, $phase->id, 'USD', 100.0)['tpix_amount']);
 
-        $this->assertSame(1000.0, $result['tpix_amount']);
+        $this->expectException(PurchaseException::class);
+        $sales->assertPurchasable(self::BUYER, $phase->id, 'USDT', 100.0);
     }
 
     // =========================================================================

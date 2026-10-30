@@ -5,7 +5,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * โมเดลการขาย (เจ้าของกำหนด 21 ส.ค. 2026)
  * ═══════════════════════════════════════════════════════════════════════════
- *   รับเงิน : บัตรเครดิต (Stripe) หรือโอนเงินเข้าบัญชีธนาคาร
+ *   รับเงิน : บัตรเครดิต (Stripe) · โอนเงินเข้าบัญชีธนาคาร · USDT จากเชนอื่น (2026-10-21)
  *   ส่งมอบ  : TPIX เนทีฟบนเชน 4289 เท่านั้น
  *   ผู้ซื้อ  : ต้องต่อกระเป๋าอยู่บนเชน 4289 ถึงจะกดซื้อได้
  *
@@ -13,11 +13,13 @@
  * ถ้าปล่อยให้ซื้อจากเชนอื่น ผู้ซื้อจะจ่ายเงินแล้วเปิดกระเป๋าไม่เห็นอะไรเลย
  * แล้วสรุปเองว่าโดนโกง — ความเชื่อมั่นที่เสียไปตรงนั้นเรียกคืนยากกว่าเงิน
  *
- * ไม่มีทางจ่ายด้วยคริปโตแล้ว (ด่านจริงอยู่ที่ TokenSaleService::assertCurrencyAccepted)
+ * ทาง USDT (ไม่ใช่ทางยื่น tx_hash แบบเดิมที่ถูกถอดไป): สร้างคำสั่งซื้อก่อน → เซิร์ฟเวอร์ล็อกราคา
+ * และออก "ยอดเฉพาะ" → ผู้ซื้อโอนยอดนั้นเป๊ะ → ตัวสแกนฝั่งเซิร์ฟเวอร์เห็นเงินเข้าแล้วออกเหรียญเอง
+ * หน้านี้แค่ถามสถานะซ้ำ ไม่มีอะไรต้องยื่นหลังจ่าย (ด่านทั้งหมดอยู่ก่อนเงินออก)
  *
  * Developed by Xman Studio
  */
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onBeforeUnmount } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenSaleStore } from '@/Stores/tokenSaleStore';
 import { useTokenSale } from '@/Composables/useTokenSale';
@@ -48,7 +50,7 @@ const emit = defineEmits(['purchase-complete']);
 // รอบขายนี้คิดเป็นเงินสดเสมอ — ช่องกรอกจึงเป็น USD ไม่ใช่สกุลคริปโต
 selectedCurrency.value = 'USD';
 
-/** วิธีชำระเงินที่เลือกอยู่: 'card' | 'bank' */
+/** วิธีชำระเงินที่เลือกอยู่: 'card' | 'bank' | 'crypto' */
 const method = ref('card');
 
 const isSubmittingOrder = ref(false);
@@ -64,9 +66,27 @@ watch(paymentAmount, () => {
 });
 
 /** ช่องทางที่เปิดใช้ได้จริงตอนนี้ (หลังบ้านเป็นคนบอก) */
-const methods = computed(() => tokenSaleStore.sale?.payment_methods || { card: false, bank: false });
+const methods = computed(() => tokenSaleStore.sale?.payment_methods || { card: false, bank: false, crypto: false });
 
-const hasAnyMethod = computed(() => methods.value.card || methods.value.bank);
+const hasAnyMethod = computed(() => methods.value.card || methods.value.bank || methods.value.crypto);
+
+const methodCount = computed(() => ['card', 'bank', 'crypto'].filter((m) => methods.value[m]).length);
+
+// ช่องทางที่เลือกไว้ถูกปิด (หรือบัตรไม่เปิดตั้งแต่แรก) → เลือกทางแรกที่ใช้ได้ให้เอง
+watch(methods, (m) => {
+    if (!m[method.value]) {
+        method.value = ['card', 'crypto', 'bank'].find((k) => m[k]) || 'card';
+    }
+}, { immediate: true });
+
+/** เชนที่รับ USDT ได้จริงตอนนี้ — ตัวสแกนของเชนนั้นทำงานอยู่ */
+const cryptoChains = computed(() => tokenSaleStore.sale?.crypto_chains || []);
+const cryptoChainId = ref(null);
+watch(cryptoChains, (list) => {
+    if (!list.some((c) => c.chain_id === cryptoChainId.value)) {
+        cryptoChainId.value = list[0]?.chain_id ?? null;
+    }
+}, { immediate: true });
 
 /** เชนที่ผู้ซื้อต้องอยู่เพื่อรับเหรียญ — ปกติคือ 4289 */
 const receiveChainId = computed(
@@ -130,7 +150,8 @@ const canSubmit = computed(() => {
         !belowMin.value &&
         preview.value &&
         !isSubmittingOrder.value &&
-        methods.value[method.value]
+        methods.value[method.value] &&
+        (method.value !== 'crypto' || cryptoChainId.value !== null)
     );
 });
 
@@ -191,6 +212,19 @@ async function submitOrder() {
             return;
         }
 
+        if (method.value === 'crypto') {
+            const res = await withVerifiedWallet(() => tokenSaleStore.createCryptoOrder({ ...payload, chain_id: cryptoChainId.value }));
+
+            if (!res.ok) {
+                error.value = res.message;
+                return;
+            }
+
+            showCryptoOrder(res.data);
+
+            return;
+        }
+
         const res = await withVerifiedWallet(() => tokenSaleStore.createBankOrder(payload));
 
         if (!res.ok) {
@@ -229,6 +263,165 @@ async function withVerifiedWallet(request) {
 
     return request();
 }
+
+// ===== คำสั่งซื้อ USDT =====
+
+/** คำสั่งซื้อที่กำลังรอเงินเข้า (ยอดเฉพาะ · ที่อยู่ · เวลาหมดอายุ · สถานะล่าสุดจากเซิร์ฟเวอร์) */
+const cryptoOrder = ref(null);
+const isPaying = ref(false);
+const sentTxHash = ref(null);
+const nowMs = ref(Date.now());
+let pollTimer = null;
+let clockTimer = null;
+let completedOnce = false;
+
+/** ยังต้องถามสถานะต่อไหม — expired ก็ยังถาม เพราะเงินที่โอนทันเวลาอาจถูกตัวสแกนเห็นทีหลังได้ */
+const POLLING_STATES = ['awaiting_payment', 'expired'];
+
+const secondsLeft = computed(() => {
+    if (!cryptoOrder.value) return 0;
+    return Math.max(0, Math.floor((Date.parse(cryptoOrder.value.expires_at) - nowMs.value) / 1000));
+});
+
+const countdown = computed(() => {
+    const s = secondsLeft.value;
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+});
+
+function stopCryptoTimers() {
+    if (pollTimer) clearInterval(pollTimer);
+    if (clockTimer) clearInterval(clockTimer);
+    pollTimer = null;
+    clockTimer = null;
+}
+
+/** จำคำสั่งซื้อล่าสุดต่อกระเป๋า — รีเฟรช/ปิดหน้าระหว่างรอเงินเข้าแล้วกลับมาเห็นยอดเดิมและสถานะต่อได้ */
+const orderKey = (address) => `tpix_crypto_order:${String(address || '').toLowerCase()}`;
+
+function rememberOrder(order) {
+    try { localStorage.setItem(orderKey(walletStore.address), order.id); } catch { /* โหมดส่วนตัว/ถูกบล็อก — แค่จำไม่ได้ */ }
+}
+
+function forgetOrder() {
+    try { localStorage.removeItem(orderKey(walletStore.address)); } catch { /* เหมือนด้านบน */ }
+}
+
+async function restoreOrder() {
+    if (cryptoOrder.value || !walletStore.address) return;
+
+    let id = null;
+    try { id = localStorage.getItem(orderKey(walletStore.address)); } catch { id = null; }
+    if (!id) return;
+
+    const address = walletStore.address;
+    const order = await tokenSaleStore.fetchCryptoOrder(id, address);
+    if (!order || walletStore.address !== address || cryptoOrder.value) return;
+
+    showCryptoOrder(order);
+    refreshCryptoOrder();
+}
+
+function showCryptoOrder(order) {
+    stopCryptoTimers();
+    rememberOrder(order);
+    cryptoOrder.value = order;
+    sentTxHash.value = null;
+    completedOnce = false;
+    clockTimer = setInterval(() => { nowMs.value = Date.now(); }, 1000);
+    pollTimer = setInterval(refreshCryptoOrder, 6000);
+}
+
+async function refreshCryptoOrder() {
+    const current = cryptoOrder.value;
+    if (!current || !POLLING_STATES.includes(current.status)) return;
+
+    const fresh = await tokenSaleStore.fetchCryptoOrder(current.id, walletStore.address);
+    // ผู้ใช้กดสั่งใหม่ / สลับกระเป๋าระหว่างรอคำตอบ — คำตอบนี้ไม่ใช่ของคำสั่งซื้อที่แสดงอยู่แล้ว
+    if (!fresh || cryptoOrder.value?.id !== current.id) return;
+
+    cryptoOrder.value = fresh;
+
+    if (!POLLING_STATES.includes(fresh.status)) {
+        stopCryptoTimers();
+    }
+
+    if (fresh.status === 'paid' && !completedOnce) {
+        completedOnce = true;
+        emit('purchase-complete');
+    }
+}
+
+/**
+ * จ่ายจากกระเป๋าที่เชื่อมอยู่ — สลับไปเชนของคำสั่งซื้อแล้วโอน USDT ยอดเฉพาะเป๊ะ
+ * (หน่วยดิบจากเซิร์ฟเวอร์ตรง ๆ ไม่ผ่านทศนิยม/float) · ส่งได้ครั้งเดียวต่อคำสั่งซื้อ กันกดซ้ำแล้วจ่ายสองรอบ
+ */
+async function payFromWallet() {
+    const order = cryptoOrder.value;
+    if (!order || isPaying.value || sentTxHash.value) return;
+
+    isPaying.value = true;
+    error.value = null;
+
+    try {
+        if (walletStore.chainId !== order.chain_id) {
+            await walletStore.switchChain(order.chain_id);
+            if (walletStore.chainId !== order.chain_id) throw new Error('SWITCH_FAILED');
+        }
+
+        const { Contract } = await import('ethers');
+        const token = new Contract(order.token_address, ['function transfer(address to, uint256 amount) returns (bool)'], walletStore.signer);
+        const tx = await token.transfer(order.pay_to_address, BigInt(order.pay_amount_raw));
+
+        if (cryptoOrder.value?.id === order.id) {
+            sentTxHash.value = tx.hash;
+        }
+        refreshCryptoOrder();
+    } catch (e) {
+        error.value = walletErrorMessage(e, order);
+    } finally {
+        isPaying.value = false;
+    }
+}
+
+/** ข้อความที่ผู้ซื้ออ่านแล้วรู้ว่าเงินออกหรือยัง — ห้ามโชว์ error ดิบของกระเป๋า */
+function walletErrorMessage(e, order) {
+    const code = e?.code ?? e?.info?.error?.code;
+    const msg = String(e?.shortMessage || e?.reason || e?.message || '').toLowerCase();
+
+    if (e?.message === 'SWITCH_FAILED') return `สลับไปเครือข่าย ${order.chain_name} ไม่สำเร็จ กรุณาสลับในแอปกระเป๋าเอง`;
+    if (code === 4001 || code === 'ACTION_REJECTED' || msg.includes('user rejected') || msg.includes('user denied')) {
+        return 'ยกเลิกการโอนในกระเป๋าแล้ว — ยังไม่มีเงินออก';
+    }
+    if (msg.includes('insufficient') || msg.includes('exceeds balance')) {
+        return `ยอด USDT หรือค่าแก๊ส (${order.native_symbol || 'เหรียญหลักของเครือข่าย'}) ไม่พอ`;
+    }
+
+    return 'ส่งธุรกรรมไม่สำเร็จ — ยังไม่มีเงินออก ลองใหม่หรือโอนเองตามยอดด้านบน';
+}
+
+function resetCryptoOrder() {
+    stopCryptoTimers();
+    forgetOrder();
+    cryptoOrder.value = null;
+    sentTxHash.value = null;
+    paymentAmount.value = '';
+    preview.value = null;
+}
+
+// คำสั่งซื้อผูกกับกระเป๋าที่สั่ง — สลับกระเป๋าแล้วต้องไม่แสดง/ถามสถานะของกระเป๋าเดิมต่อ
+watch(() => walletStore.address, (next, prev) => {
+    if (prev && next !== prev && cryptoOrder.value) {
+        stopCryptoTimers();
+        cryptoOrder.value = null;
+        sentTxHash.value = null;
+    }
+    restoreOrder();
+}, { immediate: true });
+
+onBeforeUnmount(() => {
+    stopCryptoTimers();
+    if (debounceTimer) clearTimeout(debounceTimer);
+});
 
 function resetBankOrder() {
     bankOrder.value = null;
@@ -283,6 +476,95 @@ function formatNumber(n) {
                 class="w-full py-2.5 rounded-xl font-medium text-sm bg-accent-500/10 border border-accent-500/20 text-accent-300 hover:bg-accent-500/20 transition-all"
             >
                 ดาวน์โหลดแอป TPIX
+            </button>
+        </div>
+
+        <!--
+            คำสั่งซื้อ USDT ที่รอเงินเข้า — อยู่ก่อนด่านเชนโดยตั้งใจ:
+            ผู้ซื้อต้องสลับไปเชนที่จ่าย (เช่น BSC) ตอนโอน ถ้าด่านเชน 4289 อยู่ก่อน แผงนี้จะหายไปกลางการจ่าย
+        -->
+        <div v-else-if="cryptoOrder" class="space-y-4" data-testid="crypto-order">
+            <!-- ได้รับเงินแล้ว -->
+            <div v-if="cryptoOrder.status === 'paid'" class="p-4 rounded-xl bg-trading-green/10 border border-trading-green/30" data-testid="crypto-paid">
+                <p class="text-trading-green font-semibold mb-1">ได้รับเงินแล้ว — ซื้อสำเร็จ</p>
+                <p class="text-sm text-gray-300">
+                    <span class="text-white font-semibold">{{ formatNumber(cryptoOrder.tpix_amount) }} TPIX</span>
+                    เป็นของกระเป๋า {{ walletStore.shortAddress }} บน TPIX Chain แล้ว — เคลมส่วนที่ปลดล็อกได้ในแผงด้านล่างตามตารางของเฟสนี้
+                </p>
+            </div>
+
+            <!-- เงินเข้าแต่ออกเหรียญเองไม่ได้ -->
+            <div v-else-if="cryptoOrder.status === 'needs_review'" class="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30" data-testid="crypto-review">
+                <p class="text-yellow-300 font-semibold mb-1">ได้รับเงินแล้ว แต่ยอดหรือเวลาไม่ตรงกับคำสั่งซื้อ</p>
+                <p class="text-sm text-gray-300">
+                    เงินของคุณถูกบันทึกไว้แล้ว ไม่หาย — ทีมงานจะตรวจแล้วออกเหรียญตามยอดที่ได้รับหรือคืนเงินให้
+                    แจ้งรหัส <code class="text-primary-300">{{ cryptoOrder.reference }}</code> เมื่อติดต่อทีมงาน
+                </p>
+            </div>
+
+            <template v-else>
+                <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <p class="text-sm text-gray-300">
+                            โอน <span class="text-white font-semibold">USDT</span> บนเครือข่าย
+                            <span class="text-white font-semibold">{{ cryptoOrder.chain_name }}</span> ยอดนี้เป๊ะ
+                        </p>
+                        <span v-if="cryptoOrder.status === 'awaiting_payment' && secondsLeft > 0" class="text-xs font-mono px-2 py-1 rounded bg-primary-500/15 text-primary-300" data-testid="crypto-countdown">
+                            {{ countdown }}
+                        </span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <code class="text-2xl font-bold text-primary-300 break-all" data-testid="crypto-amount">{{ cryptoOrder.pay_amount }} USDT</code>
+                        <button class="text-xs px-3 py-1.5 rounded-lg bg-white/10 text-gray-200 hover:bg-white/20 shrink-0"
+                            @click="copyText(cryptoOrder.pay_amount)">คัดลอกยอด</button>
+                    </div>
+                    <p class="text-xs text-yellow-400/80 mt-2">
+                        ต้องตรงทุกหลัก (เศษท้ายคือรหัสของคำสั่งซื้อนี้) · ถ้าโอนจากกระดานเทรด ให้ยอดที่ "ได้รับ" ตรงกับยอดนี้หลังหักค่าธรรมเนียมแล้ว
+                    </p>
+                </div>
+
+                <div class="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2 text-sm">
+                    <p class="text-xs text-gray-400">โอนเข้ากระเป๋ารับเงินของรอบขาย</p>
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="font-mono text-white text-xs break-all" data-testid="crypto-pay-to">{{ cryptoOrder.pay_to_address }}</span>
+                        <button class="text-xs px-2 py-1 rounded bg-white/10 text-gray-200 hover:bg-white/20 shrink-0"
+                            @click="copyText(cryptoOrder.pay_to_address)">คัดลอก</button>
+                    </div>
+                    <p class="text-xs text-gray-500 pt-2 border-t border-white/5">
+                        รับเฉพาะ USDT บน {{ cryptoOrder.chain_name }} — ห้ามส่งเหรียญอื่นหรือข้ามเครือข่าย ·
+                        ราคาที่ล็อกไว้ ${{ cryptoOrder.price_per_tpix }} ต่อ TPIX = {{ formatNumber(cryptoOrder.tpix_amount) }} TPIX
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    class="w-full py-3.5 rounded-xl font-semibold text-base transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-primary-500 to-accent-500 text-white hover:shadow-lg hover:shadow-primary-500/20"
+                    :disabled="isPaying || !!sentTxHash || cryptoOrder.status !== 'awaiting_payment' || secondsLeft <= 0"
+                    data-testid="crypto-pay-wallet"
+                    @click="payFromWallet"
+                >
+                    <span v-if="isPaying">ยืนยันการโอนในกระเป๋า…</span>
+                    <span v-else-if="sentTxHash">ส่งแล้ว — รอยืนยันบนเชน</span>
+                    <span v-else>จ่ายจากกระเป๋าที่เชื่อมอยู่ ({{ cryptoOrder.chain_short || cryptoOrder.chain_name }})</span>
+                </button>
+
+                <p v-if="sentTxHash" class="text-xs text-center text-gray-400" data-testid="crypto-sent">
+                    ระบบจะเห็นเงินเข้าเองเมื่อบล็อกยืนยันแล้ว (ปกติไม่กี่นาที) — ปิดหน้านี้ได้ เหรียญไม่หาย
+                    <a v-if="cryptoOrder.explorer" :href="`${cryptoOrder.explorer}/tx/${sentTxHash}`" target="_blank" rel="noopener" class="text-primary-300 hover:underline">ดูธุรกรรม</a>
+                </p>
+                <p v-else-if="cryptoOrder.status === 'expired' || secondsLeft <= 0" class="text-xs text-center text-yellow-400/90" data-testid="crypto-expired">
+                    ราคาที่ล็อกไว้หมดเวลาแล้ว — ถ้าโอนไปก่อนหมดเวลา ระบบยังออกเหรียญให้ตามปกติ ถ้ายังไม่ได้โอน กรุณาสั่งซื้อใหม่
+                </p>
+                <p v-else class="text-xs text-center text-gray-500">
+                    ไม่ต้องส่งหลักฐานใด ๆ — ระบบตรวจเงินเข้าจากเชนเองแล้วอัปเดตหน้านี้ให้
+                </p>
+            </template>
+
+            <p v-if="error" class="text-sm text-trading-red">{{ error }}</p>
+
+            <button class="w-full py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10"
+                data-testid="crypto-new-order" @click="resetCryptoOrder">
+                สั่งซื้อรายการใหม่
             </button>
         </div>
 
@@ -395,7 +677,7 @@ function formatNumber(n) {
                     <p class="flex items-center gap-2 text-sm text-gray-300 mb-2">
                         <span class="step-dot">1</span> เลือกวิธีชำระเงิน
                     </p>
-                    <div class="grid gap-2" :class="methods.card && methods.bank ? 'sm:grid-cols-2' : ''">
+                    <div class="grid gap-2" :class="methodCount > 1 ? 'sm:grid-cols-2' : ''">
                         <button
                             v-if="methods.card"
                             type="button"
@@ -455,6 +737,40 @@ function formatNumber(n) {
                                 <span class="radio-dot" :class="method === 'bank' ? 'radio-dot--on' : ''"></span>
                             </span>
                         </button>
+                        <button
+                            v-if="methods.crypto"
+                            type="button"
+                            class="method-card"
+                            :class="method === 'crypto' ? 'method-card--active' : ''"
+                            data-testid="method-crypto"
+                            @click="method = 'crypto'"
+                        >
+                            <span class="flex items-center justify-between gap-3 w-full">
+                                <span class="text-left">
+                                    <span class="block text-white font-semibold">USDT (คริปโต)</span>
+                                    <span class="block text-xs text-gray-400 mt-0.5">ไม่มีค่าบริการ · ระบบเห็นเงินเข้าแล้วส่งเหรียญเอง</span>
+                                </span>
+                                <span class="radio-dot" :class="method === 'crypto' ? 'radio-dot--on' : ''"></span>
+                            </span>
+                        </button>
+                    </div>
+
+                    <!-- เครือข่ายที่จะโอน USDT -->
+                    <div v-if="method === 'crypto' && cryptoChains.length" class="mt-3" data-testid="crypto-chains">
+                        <p class="text-xs text-gray-400 mb-1.5">โอน USDT จากเครือข่าย</p>
+                        <div class="flex flex-wrap gap-2">
+                            <button
+                                v-for="c in cryptoChains"
+                                :key="c.chain_id"
+                                type="button"
+                                class="amount-chip"
+                                :class="cryptoChainId === c.chain_id ? 'amount-chip--active' : ''"
+                                :data-testid="`crypto-chain-${c.chain_id}`"
+                                @click="cryptoChainId = c.chain_id"
+                            >
+                                {{ c.name }}
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -505,6 +821,10 @@ function formatNumber(n) {
                         <span class="text-gray-400">ค่าเหรียญ</span>
                         <span class="text-gray-200">${{ formatMoney(amountNumber) }}</span>
                     </div>
+                    <div v-if="method === 'crypto'" class="flex justify-between" data-testid="crypto-fee-row">
+                        <span class="text-gray-400">ค่าบริการ</span>
+                        <span class="text-gray-200">ไม่มี (จ่ายค่าแก๊สของเครือข่ายเอง)</span>
+                    </div>
                     <div v-if="feeUsd > 0" class="flex justify-between" data-testid="fee-row">
                         <span class="text-gray-400">ค่าบริการชำระด้วยบัตร ({{ formatMoney(cardFeePercent) }}%)</span>
                         <span class="text-gray-200">${{ formatMoney(feeUsd) }}</span>
@@ -533,7 +853,11 @@ function formatNumber(n) {
                 <!-- ③ ไปหน้ากรอกบัตร / รับเลขบัญชี -->
                 <p class="flex items-center gap-2 text-sm text-gray-300 mb-2">
                     <span class="step-dot">3</span>
-                    {{ method === 'card' ? 'กดปุ่มด้านล่าง แล้วกรอกเลขบัตรในหน้าชำระเงินที่ปลอดภัย' : 'กดปุ่มด้านล่างเพื่อรับเลขบัญชีและรหัสอ้างอิง' }}
+                    {{ method === 'card'
+                        ? 'กดปุ่มด้านล่าง แล้วกรอกเลขบัตรในหน้าชำระเงินที่ปลอดภัย'
+                        : method === 'crypto'
+                            ? 'กดปุ่มด้านล่างเพื่อรับยอดโอน USDT (ล็อกราคาไว้ให้ชั่วคราว)'
+                            : 'กดปุ่มด้านล่างเพื่อรับเลขบัญชีและรหัสอ้างอิง' }}
                 </p>
                 <button
                     type="button"
@@ -545,10 +869,11 @@ function formatNumber(n) {
                     <svg v-if="method === 'card' && !isSubmittingOrder" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                     </svg>
-                    <span v-if="isSubmittingOrder">กำลังเปิดหน้าชำระเงิน…</span>
+                    <span v-if="isSubmittingOrder">{{ method === 'crypto' ? 'กำลังล็อกราคา…' : 'กำลังเปิดหน้าชำระเงิน…' }}</span>
                     <span v-else-if="method === 'card'">
                         ไปกรอกบัตร<template v-if="canSubmit"> · ชำระ ${{ formatMoney(totalUsd) }}</template>
                     </span>
+                    <span v-else-if="method === 'crypto'">รับยอดโอน USDT</span>
                     <span v-else>รับเลขบัญชีเพื่อโอนเงิน</span>
                 </button>
 

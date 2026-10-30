@@ -183,6 +183,7 @@
         "salePrice": "Price",
         "payCard": "Pay by card",
         "payBank": "Bank transfer",
+        "payCrypto": "USDT (on-chain)",
         "receiveOn": "Delivered on TPIX Chain",
         "saleCta": "Go to token sale",
         "saleRisk": "Crypto prices go up and down. Read the whitepaper before you decide.",

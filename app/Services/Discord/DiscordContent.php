@@ -698,6 +698,7 @@ class DiscordContent
         $names = array_keys(array_filter([
             $thai ? 'Credit/debit card · บัตรเครดิต/เดบิต' : 'credit/debit card' => $methods['card'] ?? false,
             $thai ? 'Bank transfer · โอนผ่านธนาคาร' : 'bank transfer' => $methods['bank'] ?? false,
+            $thai ? 'USDT (crypto) · โอน USDT' : 'USDT (crypto)' => $methods['crypto'] ?? false,
         ]));
 
         return $names === [] ? '—' : implode($thai ? "\n" : ', ', $names);

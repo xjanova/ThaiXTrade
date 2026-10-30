@@ -8,6 +8,8 @@ use App\Models\SaleTransaction;
 use App\Services\BankTransferSaleService;
 use App\Services\PriceFeedService;
 use App\Services\SaleClaimPayoutService;
+use App\Services\SaleCrypto\CryptoOrderService;
+use App\Services\SaleCrypto\SaleCryptoConfig;
 use App\Services\SaleStatusService;
 use App\Services\StripePaymentService;
 use App\Services\TokenSaleService;
@@ -45,7 +47,7 @@ class TokenSaleApiController extends Controller
     /**
      * ดึงข้อมูลรอบขายที่ active พร้อม phases.
      */
-    public function index(SaleStatusService $status): JsonResponse
+    public function index(SaleStatusService $status, SaleCryptoConfig $crypto): JsonResponse
     {
         $sale = $this->saleService->getActiveSale();
 
@@ -59,6 +61,7 @@ class TokenSaleApiController extends Controller
 
         // ช่องทางที่รอบขายนี้ประกาศรับ — เป็นตัวตัดสินนโยบาย ไม่ใช่การตั้งค่าปลีกย่อย
         $accepted = array_map('strtoupper', (array) ($sale->accept_currencies ?? []));
+        $methods = $status->paymentMethods($sale);
 
         return response()->json([
             'success' => true,
@@ -96,7 +99,22 @@ class TokenSaleApiController extends Controller
                  *
                  * ตรรกะอยู่ใน SaleStatusService ที่เดียว — บอท Discord กับผู้ช่วย AI ใช้ตัวเดียวกัน
                  */
-                'payment_methods' => $status->paymentMethods($sale),
+                'payment_methods' => $methods,
+
+                /*
+                 * เชนที่รับ USDT ได้จริงตอนนี้ (ตัวสแกนของเชนนั้นทำงานอยู่) — ว่างเมื่อทางคริปโตปิด
+                 * ไม่มีที่อยู่กระเป๋ารับเงินในนี้: ผู้ซื้อเห็นที่อยู่หลังสร้างคำสั่งซื้อเท่านั้น
+                 * (กันคนโอนตรงโดยไม่มีคำสั่งซื้อ ซึ่งจับคู่ไม่ได้และต้องรอทีมงานคืนเงิน)
+                 */
+                'crypto_chains' => $methods['crypto']
+                    ? array_values(array_map(fn ($c) => [
+                        'chain_id' => $c['chain_id'],
+                        'name' => $c['name'],
+                        'short' => $c['short'],
+                        'native' => $c['native'],
+                        'token_symbol' => $c['symbol'],
+                    ], $crypto->openChains($sale)))
+                    : [],
 
                 // ค่าบริการชำระด้วยบัตร (%) — หน้าซื้อแสดงยอดรวมก่อนพาไป Stripe
                 'card_fee_percent' => $this->stripe->cardFeePercent(),
@@ -313,6 +331,78 @@ class TokenSaleApiController extends Controller
                 'error' => ['code' => 'ORDER_ERROR', 'message' => 'Unable to create the order right now.'],
             ], 400);
         }
+    }
+
+    /**
+     * สั่งซื้อด้วย USDT — ล็อกราคา + ออกยอดเฉพาะที่ต้องโอน (ไม่มีค่าบริการบัตร).
+     *
+     * ด่านเดียวกับบัตรทุกข้อ ก่อนเงินออกจากกระเป๋า — ตัวสแกนเห็นเงินเข้าแล้วออกเหรียญเอง
+     * ผู้ซื้อไม่ต้องยื่น tx_hash (ดูเหตุผลใน SaleCryptoConfig / CryptoOrderService)
+     *
+     * POST /api/v1/token-sale/crypto-order
+     */
+    public function cryptoOrder(Request $request, CryptoOrderService $orders): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'phase_id' => ['required', 'integer', 'exists:sale_phases,id'],
+            'amount_usd' => ['required', 'numeric', 'min:1', 'max:50000'],
+            'chain_id' => ['required', 'integer'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'VALIDATION_ERROR', 'message' => $validator->errors()->first()],
+            ], 422);
+        }
+
+        $data = $validator->validated();
+
+        try {
+            $order = $orders->createOrder(
+                $data['wallet_address'],
+                (int) $data['phase_id'],
+                (float) $data['amount_usd'],
+                (int) $data['chain_id'],
+            );
+
+            return response()->json(['success' => true, 'data' => $orders->present($order)], 201);
+        } catch (PurchaseException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NOT_PURCHASABLE', 'message' => $e->getMessage()],
+            ], 409);
+        } catch (\Exception $e) {
+            Log::warning('token-sale: สร้างคำสั่งซื้อคริปโตไม่สำเร็จ', [
+                'wallet' => $data['wallet_address'],
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'ORDER_ERROR', 'message' => 'Unable to create the order right now.'],
+            ], 400);
+        }
+    }
+
+    /**
+     * สถานะคำสั่งซื้อ USDT — หน้าซื้อถามซ้ำระหว่างรอเงินเข้า (เฉพาะเจ้าของกระเป๋า).
+     *
+     * GET /api/v1/token-sale/crypto-order/{orderId}?wallet_address=0x…
+     */
+    public function cryptoOrderStatus(Request $request, string $orderId, CryptoOrderService $orders): JsonResponse
+    {
+        $order = $orders->findForWallet($orderId, (string) $request->input('wallet_address', ''));
+
+        if ($order === null) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NOT_FOUND', 'message' => 'Order not found.'],
+            ], 404);
+        }
+
+        return response()->json(['success' => true, 'data' => $orders->present($order)]);
     }
 
     /**
