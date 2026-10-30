@@ -9,6 +9,7 @@ use App\Models\SiteSetting;
 use App\Rules\EvmAddress;
 use App\Services\AiBot\Advisor\AdvisorFactory;
 use App\Services\AiBot\Advisor\AdvisorSettings;
+use App\Services\Discord\DiscordSettings;
 use App\Services\StripePaymentService;
 use App\Support\MoneySettings;
 use Closure;
@@ -36,8 +37,12 @@ class SettingController extends Controller
      */
     private const BULK_WRITABLE_GROUPS = ['general', 'seo', 'social', 'content'];
 
-    /** ค่า Turnstile/การล็อกบัญชี — แก้ได้เฉพาะ super_admin (route settings/security) จึงไม่ส่งค่าให้ระดับอื่นเลย */
-    private const SECURITY_GROUP = 'security';
+    /**
+     * กลุ่มที่แก้ได้เฉพาะ super_admin จึงไม่ส่งค่าให้ระดับอื่นเลย — ต้องตรงกับ route ใน routes/admin.php.
+     *
+     * security คือ Turnstile/การล็อกบัญชี ส่วน ai, advisor, map คือคีย์ของบริการภายนอก
+     */
+    private const SUPER_ADMIN_GROUPS = ['security', 'ai', 'advisor', 'map'];
 
     /**
      * แสดงหน้า Settings — แปลง settings เป็น flat format สำหรับ Vue.
@@ -74,13 +79,15 @@ class SettingController extends Controller
 
         /*
          * หน้านี้ยังเปิดให้ทุกระดับเพราะแท็บอื่นเป็นงานของแอดมินทั่วไป (ทั่วไป/SEO/โซเชียล/เนื้อหา)
-         * แต่ค่ากลุ่มเงินและกลุ่มความปลอดภัยไม่ส่งลงเบราว์เซอร์เลย แม้แต่แบบ mask — ไม่ใช่แค่ซ่อนแท็บฝั่ง Vue
+         * แต่ค่ากลุ่มเงินและกลุ่มที่แก้ได้เฉพาะ super_admin ไม่ส่งลงเบราว์เซอร์เลย แม้แต่แบบ mask — ไม่ใช่แค่ซ่อนแท็บฝั่ง Vue
          */
         $isSuperAdmin = MoneySettings::canManage();
 
         // ดึง settings แล้วแปลงเป็น flat key-value (cast ตาม type)
         $allSettings = SiteSetting::query()
-            ->when(! $isSuperAdmin, fn ($query) => $query->whereNotIn('group', [...MoneySettings::HIDDEN_GROUPS, self::SECURITY_GROUP]))
+            // discord_bot_token ต้องไม่ออกจากเซิร์ฟเวอร์แม้เป็น ciphertext — กลุ่มนี้มีหน้า /admin/discord ของมันเอง หน้านี้ไม่ใช้สักค่า
+            ->where('group', '!=', DiscordSettings::GROUP)
+            ->when(! $isSuperAdmin, fn ($query) => $query->whereNotIn('group', [...MoneySettings::HIDDEN_GROUPS, ...self::SUPER_ADMIN_GROUPS]))
             ->get();
         $flat = [];
         foreach ($allSettings as $setting) {
@@ -441,13 +448,10 @@ class SettingController extends Controller
             $this->propagateRevenueWallets($tab);
         };
 
-        if (in_array($tab, MoneySettings::GROUPS, true)) {
-            MoneySettings::change("settings.{$tab}.update", $save);
-        } else {
-            $save();
-            SiteSetting::clearCache();
-            AuditLog::log("settings.{$tab}.update");
-        }
+        // แท็บเงินต้องเทียบทุกกลุ่มเงิน เพราะแท็บ revenue กระจายค่าไปกลุ่มอื่นด้วย
+        $groups = in_array($tab, MoneySettings::GROUPS, true) ? MoneySettings::GROUPS : [$tab];
+
+        MoneySettings::change("settings.{$tab}.update", $save, $groups);
 
         return back()->with('success', "บันทึก {$tab} settings สำเร็จ");
     }
@@ -554,21 +558,20 @@ class SettingController extends Controller
             'mail_from_name' => ['nullable', 'string', 'max:255'],
         ]);
 
-        if (! empty($validated['resend_api_key']) && ! str_starts_with($validated['resend_api_key'], '****')) {
-            SiteSetting::set('email', 'resend_api_key', $validated['resend_api_key'], 'string');
-            config(['services.resend.key' => $validated['resend_api_key']]);
-        }
+        MoneySettings::change('settings.email.update', function () use ($validated): void {
+            if (! empty($validated['resend_api_key']) && ! str_starts_with($validated['resend_api_key'], '****')) {
+                SiteSetting::set('email', 'resend_api_key', $validated['resend_api_key'], 'string');
+                config(['services.resend.key' => $validated['resend_api_key']]);
+            }
 
-        if (! empty($validated['mail_from_address'])) {
-            SiteSetting::set('email', 'mail_from_address', $validated['mail_from_address'], 'string');
-        }
+            if (! empty($validated['mail_from_address'])) {
+                SiteSetting::set('email', 'mail_from_address', $validated['mail_from_address'], 'string');
+            }
 
-        if (! empty($validated['mail_from_name'])) {
-            SiteSetting::set('email', 'mail_from_name', $validated['mail_from_name'], 'string');
-        }
-
-        SiteSetting::clearCache();
-        AuditLog::log('settings.email.update');
+            if (! empty($validated['mail_from_name'])) {
+                SiteSetting::set('email', 'mail_from_name', $validated['mail_from_name'], 'string');
+            }
+        }, ['email']);
 
         return back()->with('success', 'บันทึกการตั้งค่าอีเมลเรียบร้อยแล้ว');
     }

@@ -22,7 +22,7 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
-    // แท็บ Security แก้ได้เฉพาะ super_admin เช่นกัน — ระดับอื่นไม่ได้รับค่า Turnstile มาด้วย
+    // แท็บ Security, แผนที่ และฟอร์มคีย์ในแท็บ AI แก้ได้เฉพาะ super_admin เช่นกัน — ระดับอื่นไม่ได้รับค่าพวกนี้มาด้วย
     canManageSecurity: {
         type: Boolean,
         default: false,
@@ -57,8 +57,10 @@ const tabs = [
 
 // ต้องตรงกับ MoneySettings::GROUPS ฝั่งเซิร์ฟเวอร์
 const moneyTabs = ['revenue', 'trading', 'factory', 'payment'];
+// แท็บ AI ยังเปิดให้ทุกระดับเพราะมีตารางเวลา Auto Content — ซ่อนเฉพาะฟอร์มคีย์ข้างใน
+const superAdminTabs = ['security', 'map'];
 const visibleTabs = computed(() => tabs.filter((tab) => {
-    if (tab.key === 'security') return props.canManageSecurity;
+    if (superAdminTabs.includes(tab.key)) return props.canManageSecurity;
 
     return props.canManageMoney || !moneyTabs.includes(tab.key);
 }));
@@ -1085,7 +1087,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
         <!-- AI Tab -->
         <div v-show="activeTab === 'ai'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-            <h3 class="text-lg font-semibold text-white mb-6">🤖 AI Settings (Groq)</h3>
+            <h3 v-if="canManageSecurity" class="text-lg font-semibold text-white mb-6">🤖 AI Settings (Groq)</h3>
 
             <!-- ผลการทดสอบคีย์กลับมาเป็น flash — ต้องมีที่แสดงในแท็บนี้ ไม่งั้นกดแล้วเหมือนไม่มีอะไรเกิดขึ้น -->
             <div v-if="flash.success" class="mb-6 p-4 rounded-xl bg-trading-green/10 border border-trading-green/30 text-trading-green text-sm flex items-start gap-2">
@@ -1096,7 +1098,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 <svg class="w-5 h-5 shrink-0 mt-px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 <span class="break-words">{{ flash.error }}</span>
             </div>
-            <form @submit.prevent="saveAi" class="space-y-6 max-w-2xl">
+            <form v-if="canManageSecurity" @submit.prevent="saveAi" class="space-y-6 max-w-2xl">
                 <div>
                     <label :class="labelClass">Groq API Key</label>
                     <input v-model="aiForm.groq_api_key" type="password" :class="inputClass" placeholder="gsk_..." />
@@ -1174,7 +1176,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
             </form>
 
             <!-- ที่ปรึกษา AI ของบอทเทรด — ตั้งคีย์ที่นี่แทนการ ssh ไปแก้ .env -->
-            <div class="mt-6 p-5 rounded-xl bg-gradient-to-br from-primary-500/5 via-accent-500/5 to-trading-green/5 border border-primary-500/10">
+            <div v-if="canManageSecurity" class="mt-6 p-5 rounded-xl bg-gradient-to-br from-primary-500/5 via-accent-500/5 to-trading-green/5 border border-primary-500/10">
                 <div class="flex items-start justify-between gap-4 mb-1">
                     <h4 class="text-base font-semibold text-white flex items-center gap-2">
                         <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>

@@ -80,7 +80,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->middleware('admin.role:super_admin')
             ->name('settings.security');
         Route::put('settings/social', [SettingController::class, 'updateTab'])->name('settings.social');
-        Route::put('settings/ai', [SettingController::class, 'updateTab'])->name('settings.ai');
         // แท็บที่กำหนดว่าเงินไปไหน (กระเป๋ารับรายได้ คีย์ Stripe ค่าธรรมเนียม) — ต้องตรงกับ MoneySettings::GROUPS
         Route::middleware('admin.role:super_admin')->group(function () {
             Route::put('settings/trading', [SettingController::class, 'updateTab'])->name('settings.trading');
@@ -88,17 +87,26 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::put('settings/factory', [SettingController::class, 'updateTab'])->name('settings.factory');
             Route::put('settings/revenue', [SettingController::class, 'updateTab'])->name('settings.revenue');
         });
-        // ชั้นไทล์แผนที่หน้า /validators — โปรแกรมมาสเตอร์โหนดดึงค่านี้ไปใช้ด้วย
-        Route::put('settings/map', [SettingController::class, 'updateTab'])->name('settings.map');
+        /*
+         * แท็บที่เก็บคีย์ของบริการภายนอก — ต้องตรงกับ SettingController::SUPER_ADMIN_GROUPS
+         *
+         * ไม่ใช่แค่กันแก้คีย์: ContentService ส่ง X-API-Key ไปยัง cloudflare_image_url ที่อยู่กลุ่มเดียวกัน
+         * ระดับล่างที่แก้ URL ได้จะรับคีย์ตัวจริงได้ในการสร้างรูปครั้งถัดไป แม้หน้าเว็บ mask คีย์ไว้แล้วก็ตาม
+         */
+        Route::middleware('admin.role:super_admin')->group(function () {
+            Route::put('settings/ai', [SettingController::class, 'updateTab'])->name('settings.ai');
+            // ชั้นไทล์แผนที่หน้า /validators — โปรแกรมมาสเตอร์โหนดดึงค่านี้ไปใช้ด้วย
+            Route::put('settings/map', [SettingController::class, 'updateTab'])->name('settings.map');
+            // ที่ปรึกษา AI ของบอทเทรด — กรอกคีย์ที่นี่แทนการแก้ .env บนเซิร์ฟเวอร์
+            Route::put('settings/advisor', [SettingController::class, 'updateTab'])->name('settings.advisor');
+            // จำกัดการยิงทดสอบ — แต่ละครั้งกินโควตาจริงของผู้ให้บริการ
+            Route::post('settings/advisor/test', [SettingController::class, 'testAdvisor'])
+                ->middleware('throttle:10,1')
+                ->name('settings.advisor.test');
+        });
         Route::put('settings/content', [SettingController::class, 'updateTab'])->name('settings.content');
         Route::put('settings/email', [SettingController::class, 'updateEmail'])->name('settings.email');
         Route::post('settings/email/test', [SettingController::class, 'sendTestEmail'])->name('settings.email.test');
-        // ที่ปรึกษา AI ของบอทเทรด — กรอกคีย์ที่นี่แทนการแก้ .env บนเซิร์ฟเวอร์
-        Route::put('settings/advisor', [SettingController::class, 'updateTab'])->name('settings.advisor');
-        // จำกัดการยิงทดสอบ — แต่ละครั้งกินโควตาจริงของผู้ให้บริการ
-        Route::post('settings/advisor/test', [SettingController::class, 'testAdvisor'])
-            ->middleware('throttle:10,1')
-            ->name('settings.advisor.test');
 
         /*
          * ค่าบริการวางไม้ (เครดิต TPIX)

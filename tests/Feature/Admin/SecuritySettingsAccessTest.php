@@ -87,14 +87,6 @@ class SecuritySettingsAccessTest extends TestCase
         ];
     }
 
-    /**
-     * @return array<string, array{string}>
-     */
-    public static function allRoles(): array
-    {
-        return ['super_admin' => ['super_admin']] + self::lowerRoles();
-    }
-
     // ── ด่านสิทธิ์ ───────────────────────────────────────────────────────────
 
     #[Test]
@@ -204,13 +196,13 @@ class SecuritySettingsAccessTest extends TestCase
 
     // ── คีย์ Worker สร้างรูป ─────────────────────────────────────────────────
 
+    /** ระดับล่างไม่ได้รับกลุ่ม ai เลย — ดู SecretSettingsAccessTest */
     #[Test]
-    #[DataProvider('allRoles')]
-    public function คีย์_workerสร้างรูปไม่หลุดลงหน้าตั้งค่า(string $role): void
+    public function คีย์_workerสร้างรูปไม่หลุดลงหน้าตั้งค่า(): void
     {
         SiteSetting::set('ai', 'cloudflare_image_key', self::IMAGE_KEY);
 
-        $response = $this->asRole($role)->get('/admin/settings')->assertOk();
+        $response = $this->asRole('super_admin')->get('/admin/settings')->assertOk();
 
         $this->assertSame($this->masked(self::IMAGE_KEY), $response->inertiaProps('settings')['cloudflare_image_key']);
         $this->assertStringNotContainsString(self::IMAGE_KEY, $response->getContent());
