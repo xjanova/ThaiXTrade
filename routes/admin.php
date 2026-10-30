@@ -75,7 +75,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('settings/logo', [SettingController::class, 'updateLogo'])->name('settings.logo');
         Route::post('settings/general', [SettingController::class, 'updateGeneral'])->name('settings.general');
         Route::post('settings/seo', [SettingController::class, 'updateSeo'])->name('settings.seo');
-        Route::put('settings/security', [SettingController::class, 'updateTab'])->name('settings.security');
+        // ด่านกันบอทหน้าล็อกอิน — ระดับล่างปิด Turnstile ได้เท่ากับเปิดทางยิงรหัสผ่านใส่ทุกบัญชีรวมถึงของตัว super_admin เอง
+        Route::put('settings/security', [SettingController::class, 'updateTab'])
+            ->middleware('admin.role:super_admin')
+            ->name('settings.security');
         Route::put('settings/social', [SettingController::class, 'updateTab'])->name('settings.social');
         Route::put('settings/ai', [SettingController::class, 'updateTab'])->name('settings.ai');
         // แท็บที่กำหนดว่าเงินไปไหน (กระเป๋ารับรายได้ คีย์ Stripe ค่าธรรมเนียม) — ต้องตรงกับ MoneySettings::GROUPS
