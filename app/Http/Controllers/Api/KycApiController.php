@@ -6,10 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\KycSubmission;
 use App\Models\User;
 use App\Services\Kyc\KycGate;
+use App\Services\Kyc\ThaipromptKycException;
 use App\Services\Kyc\ThaipromptKycService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Throwable;
 
 /**
  * TPIX TRADE — ยืนยันตัวตนจากแอปมือถือ.
@@ -26,6 +30,9 @@ use RuntimeException;
  */
 class KycApiController extends Controller
 {
+    /** ข้อความเดียวของความล้มเหลวที่ไม่ได้ตั้งใจ — รายละเอียดอยู่ใน log เท่านั้น */
+    private const UNEXPECTED_FAILURE = 'ทำรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
+
     public function __construct(
         private readonly KycGate $gate,
         private readonly ThaipromptKycService $thaiprompt,
@@ -52,8 +59,12 @@ class KycApiController extends Controller
 
         try {
             $url = $this->thaiprompt->beginAppAuthorization($user);
-        } catch (RuntimeException $e) {
+        } catch (ThaipromptKycException $e) {
             return $this->fail('THAIPROMPT_UNAVAILABLE', $e->getMessage(), 422);
+        } catch (RuntimeException $e) {
+            $this->logUnexpected($e, $user);
+
+            return $this->fail('REQUEST_FAILED', self::UNEXPECTED_FAILURE, 500);
         }
 
         return response()->json(['success' => true, 'data' => ['authorize_url' => $url]]);
@@ -72,10 +83,15 @@ class KycApiController extends Controller
 
         try {
             $this->thaiprompt->completeAppAuthorization($user, $validated['completion']);
-        } catch (RuntimeException $e) {
+        } catch (ThaipromptKycException $e) {
             $code = $e->getMessage() === ThaipromptKycService::ERR_TAKEN ? 'THAIPROMPT_TAKEN' : 'THAIPROMPT_LINK_FAILED';
 
             return $this->fail($code, $e->getMessage(), 422);
+        } catch (RuntimeException $e) {
+            $this->logUnexpected($e, $user);
+
+            // รหัสรับผลถูกดึงออกจากแคชตั้งแต่บรรทัดแรก แลกซ้ำไม่ได้แล้ว — รหัสนี้สั่งแอปเลิกเก็บไว้แลกต่อ
+            return $this->fail('THAIPROMPT_LINK_FAILED', self::UNEXPECTED_FAILURE, 500);
         }
 
         return response()->json(['success' => true, 'data' => $this->payload($user->fresh())]);
@@ -95,21 +111,59 @@ class KycApiController extends Controller
 
         try {
             $this->thaiprompt->refresh($link);
+        } catch (ThaipromptKycException $e) {
+            $code = $e->getMessage() === ThaipromptKycService::ERR_RECONNECT ? 'THAIPROMPT_RECONNECT' : 'THAIPROMPT_UNAVAILABLE';
+
+            return $this->refreshFailed($user, $code, $e->getMessage(), 422);
         } catch (RuntimeException $e) {
-            return response()->json([
-                'success' => false,
-                'error' => [
-                    'code' => $e->getMessage() === ThaipromptKycService::ERR_RECONNECT ? 'THAIPROMPT_RECONNECT' : 'THAIPROMPT_UNAVAILABLE',
-                    'message' => $e->getMessage(),
-                ],
-                'data' => $this->payload($user->fresh()),
-            ], 422);
+            $this->logUnexpected($e, $user);
+
+            return $this->refreshFailed($user, 'REQUEST_FAILED', self::UNEXPECTED_FAILURE, 500);
         }
 
         return response()->json(['success' => true, 'data' => $this->payload($user->fresh())]);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * ถามผลซ้ำไม่สำเร็จ — แนบสถานะล่าสุดไปด้วย แอปจะได้ไม่ต้องยิงอีกคำขอ.
+     */
+    private function refreshFailed(User $user, string $code, string $message, int $status): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'error' => ['code' => $code, 'message' => $message],
+            'data' => $this->payload($user->fresh()),
+        ], $status);
+    }
+
+    private function logUnexpected(RuntimeException $e, User $user): void
+    {
+        Log::error('kyc-api: ทำรายการล้มเหลวจากสาเหตุที่ไม่ได้ตั้งใจ', $this->logDetail($e) + [
+            'exception' => $e::class,
+            'path' => request()->path(),
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
+     * รายละเอียดที่ลง log ได้ — ข้อความของ QueryException มีค่าที่ bind ซึ่งตอนผูกบัญชีคือ token ของลูกค้า
+     * DeadlockException ไม่ใช่ QueryException แต่ลอกข้อความของมันมาทั้งก้อน
+     * จึงต้องไล่หาตัวจริงตามสาย exception ไม่ใช่เช็คแค่ชั้นนอกสุด.
+     *
+     * @return array{error: ?string, sql?: string}
+     */
+    private function logDetail(Throwable $e): array
+    {
+        for ($cause = $e; $cause !== null; $cause = $cause->getPrevious()) {
+            if ($cause instanceof QueryException) {
+                return ['error' => $cause->getPrevious()?->getMessage(), 'sql' => $cause->getSql()];
+            }
+        }
+
+        return ['error' => $e->getMessage()];
+    }
 
     /**
      * บัญชีของกระเป๋าที่ยิงมา — ใช้ตัวหาเดียวกับด่าน KYC (รู้จักทั้งแคชลายเซ็นและโทเคนของแอป).

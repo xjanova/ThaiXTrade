@@ -15,7 +15,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use RuntimeException;
 
 /**
  * TPIX TRADE — ยืนยันตัวตนด้วยผล KYC ของ Thaiprompt.
@@ -97,12 +96,12 @@ class ThaipromptKycService
      * state ผูกกับ "บัญชีที่กด" ไว้ใน session — callback ที่กลับมาในบัญชีอื่น (ล็อกอินสลับระหว่างทาง)
      * จะถูกปฏิเสธ ไม่ใช่เอาผล KYC ของคนหนึ่งไปติดอีกบัญชี
      *
-     * @throws RuntimeException
+     * @throws ThaipromptKycException
      */
     public function beginAuthorization(User $user, Session $session, ?string $ip = null): string
     {
         if (! $this->isConfigured()) {
-            throw new RuntimeException(self::ERR_NOT_CONFIGURED);
+            throw new ThaipromptKycException(self::ERR_NOT_CONFIGURED);
         }
 
         $state = Str::random(40);
@@ -142,7 +141,7 @@ class ThaipromptKycService
      *
      * @param  array<string, mixed>  $query  query string ของ callback
      *
-     * @throws RuntimeException ข้อความพร้อมแสดงผู้ใช้
+     * @throws ThaipromptKycException ข้อความพร้อมแสดงผู้ใช้
      */
     public function completeAuthorization(User $user, Session $session, array $query): ThaipromptKycLink
     {
@@ -150,7 +149,7 @@ class ThaipromptKycService
         $pending = $session->pull(self::SESSION_KEY);
 
         if (($query['error'] ?? null) === 'access_denied') {
-            throw new RuntimeException(self::ERR_DENIED);
+            throw new ThaipromptKycException(self::ERR_DENIED);
         }
 
         $state = $query['state'] ?? null;
@@ -162,7 +161,7 @@ class ThaipromptKycService
             || (int) ($pending['user_id'] ?? 0) !== (int) $user->id
             || (int) ($pending['expires_at'] ?? 0) < now()->getTimestamp()
         ) {
-            throw new RuntimeException(self::ERR_STATE);
+            throw new ThaipromptKycException(self::ERR_STATE);
         }
 
         return $this->finishAuthorization($user, $code, (string) $pending['verifier'], $pending['ip'] ?? null);
@@ -171,7 +170,7 @@ class ThaipromptKycService
     /**
      * ขั้นสุดท้ายร่วมของทางเว็บและทางแอป: แลก code → ถามสถานะ → ผูก → ลงผล.
      *
-     * @throws RuntimeException
+     * @throws ThaipromptKycException
      */
     private function finishAuthorization(User $user, string $code, string $verifier, ?string $consentIp = null): ThaipromptKycLink
     {
@@ -181,7 +180,7 @@ class ThaipromptKycService
             $status = $this->fetchStatus($tokens['access_token']);
         } catch (ThaipromptUnauthorized) {
             // token เพิ่งได้มาแต่อ่านผลไม่ได้ = ไม่ได้รับสิทธิ์ kyc (กดอนุญาตไม่ครบ) — ให้เริ่มใหม่
-            throw new RuntimeException(self::ERR_STATE);
+            throw new ThaipromptKycException(self::ERR_STATE);
         }
 
         $link = $this->bind($user, $status['sub'], $tokens);
@@ -206,12 +205,12 @@ class ThaipromptKycService
     /**
      * เริ่มจากแอป — state ผูกกับบัญชีไว้ในแคช (แอปไม่มี session เว็บให้ผูก).
      *
-     * @throws RuntimeException
+     * @throws ThaipromptKycException
      */
     public function beginAppAuthorization(User $user): string
     {
         if (! $this->isConfigured()) {
-            throw new RuntimeException(self::ERR_NOT_CONFIGURED);
+            throw new ThaipromptKycException(self::ERR_NOT_CONFIGURED);
         }
 
         $state = self::APP_STATE_MARK.Str::random(40);
@@ -277,7 +276,7 @@ class ThaipromptKycService
     /**
      * แอปเอารหัสรับผลมาแลก — ต้องเป็นบัญชีเดียวกับที่เริ่มคำขอ.
      *
-     * @throws RuntimeException
+     * @throws ThaipromptKycException
      */
     public function completeAppAuthorization(User $user, string $completion): ThaipromptKycLink
     {
@@ -285,7 +284,7 @@ class ThaipromptKycService
         $pending = Cache::pull(self::APP_COMPLETION_CACHE.hash('sha256', $completion));
 
         if (! is_array($pending) || (int) ($pending['user_id'] ?? 0) !== (int) $user->id) {
-            throw new RuntimeException(self::ERR_STATE);
+            throw new ThaipromptKycException(self::ERR_STATE);
         }
 
         return $this->finishAuthorization($user, (string) $pending['code'], (string) $pending['verifier']);
@@ -298,16 +297,16 @@ class ThaipromptKycService
     /**
      * @param  bool  $force  ข้ามการกันถามถี่ (ใช้จากคำสั่งตั้งเวลา)
      *
-     * @throws RuntimeException
+     * @throws ThaipromptKycException
      */
     public function refresh(ThaipromptKycLink $link, bool $force = false): ThaipromptKycLink
     {
         if (! $this->isConfigured()) {
-            throw new RuntimeException(self::ERR_NOT_CONFIGURED);
+            throw new ThaipromptKycException(self::ERR_NOT_CONFIGURED);
         }
 
         if ($link->needs_reconnect) {
-            throw new RuntimeException(self::ERR_RECONNECT);
+            throw new ThaipromptKycException(self::ERR_RECONNECT);
         }
 
         if (! $force && $link->last_checked_at?->gt(now()->subSeconds(self::MIN_RECHECK_SECONDS))) {
@@ -330,7 +329,7 @@ class ThaipromptKycService
         } catch (ThaipromptUnauthorized) {
             $this->markReconnect($link, 'unauthorized');
 
-            throw new RuntimeException(self::ERR_RECONNECT);
+            throw new ThaipromptKycException(self::ERR_RECONNECT);
         }
 
         if ($status['sub'] !== $link->thaiprompt_user_id) {
@@ -338,7 +337,7 @@ class ThaipromptKycService
             Log::warning('Thaiprompt KYC: sub mismatch on refresh', ['link_id' => $link->id]);
             $this->markReconnect($link, 'sub_mismatch');
 
-            throw new RuntimeException(self::ERR_RECONNECT);
+            throw new ThaipromptKycException(self::ERR_RECONNECT);
         }
 
         return $this->apply($link, $status);
@@ -353,7 +352,7 @@ class ThaipromptKycService
      *
      * @param  array{access_token: string, refresh_token: ?string, expires_at: Carbon}  $tokens
      *
-     * @throws RuntimeException
+     * @throws ThaipromptKycException
      */
     private function bind(User $user, string $sub, array $tokens): ThaipromptKycLink
     {
@@ -363,7 +362,7 @@ class ThaipromptKycService
             ->exists();
 
         if ($taken) {
-            throw new RuntimeException(self::ERR_TAKEN);
+            throw new ThaipromptKycException(self::ERR_TAKEN);
         }
 
         try {
@@ -394,7 +393,7 @@ class ThaipromptKycService
             if (str_contains(strtolower($e->getMessage()), 'unique')
                 || str_contains($e->getMessage(), '1062')
                 || str_contains($e->getMessage(), '23000')) {
-                throw new RuntimeException(self::ERR_TAKEN);
+                throw new ThaipromptKycException(self::ERR_TAKEN);
             }
 
             throw $e;
@@ -516,7 +515,7 @@ class ThaipromptKycService
     /**
      * @return array{access_token: string, refresh_token: ?string, expires_at: Carbon}
      *
-     * @throws RuntimeException
+     * @throws ThaipromptKycException
      */
     private function exchangeCode(string $code, string $verifier): array
     {
@@ -531,7 +530,7 @@ class ThaipromptKycService
             // code ใช้ไปแล้ว/หมดอายุ/redirect ไม่ตรง — ลูกค้าแก้ได้ด้วยการกดเชื่อมใหม่
             Log::warning('Thaiprompt KYC: code exchange failed', ['status' => $response->status(), 'error' => $response->json('error')]);
 
-            throw new RuntimeException($response->serverError() ? self::ERR_UNAVAILABLE : self::ERR_STATE);
+            throw new ThaipromptKycException($response->serverError() ? self::ERR_UNAVAILABLE : self::ERR_STATE);
         }
 
         return $this->tokensFrom($response);
@@ -539,7 +538,7 @@ class ThaipromptKycService
 
     /**
      * @throws ThaipromptUnauthorized refresh token ใช้ไม่ได้แล้ว
-     * @throws RuntimeException
+     * @throws ThaipromptKycException
      */
     private function renewTokens(ThaipromptKycLink $link): void
     {
@@ -558,7 +557,7 @@ class ThaipromptKycService
         }
 
         if (! $response->successful()) {
-            throw new RuntimeException(self::ERR_UNAVAILABLE);
+            throw new ThaipromptKycException(self::ERR_UNAVAILABLE);
         }
 
         $tokens = $this->tokensFrom($response);
@@ -575,7 +574,7 @@ class ThaipromptKycService
      * @return array{sub: string, kyc_status: string, verified: bool, verified_at: ?Carbon, method: ?string}
      *
      * @throws ThaipromptUnauthorized
-     * @throws RuntimeException
+     * @throws ThaipromptKycException
      */
     private function fetchStatus(string $accessToken): array
     {
@@ -585,7 +584,7 @@ class ThaipromptKycService
                 ->withToken($accessToken)
                 ->get($this->baseUrl().'/api/oauth/kyc');
         } catch (ConnectionException) {
-            throw new RuntimeException(self::ERR_UNAVAILABLE);
+            throw new ThaipromptKycException(self::ERR_UNAVAILABLE);
         }
 
         if (in_array($response->status(), [401, 403], true)) {
@@ -593,7 +592,7 @@ class ThaipromptKycService
         }
 
         if (! $response->successful()) {
-            throw new RuntimeException(self::ERR_UNAVAILABLE);
+            throw new ThaipromptKycException(self::ERR_UNAVAILABLE);
         }
 
         $sub = $response->json('sub');
@@ -603,7 +602,7 @@ class ThaipromptKycService
         if (! is_scalar($sub) || (string) $sub === '' || ! in_array($status, self::STATUSES, true)) {
             Log::warning('Thaiprompt KYC: malformed status payload');
 
-            throw new RuntimeException(self::ERR_UNAVAILABLE);
+            throw new ThaipromptKycException(self::ERR_UNAVAILABLE);
         }
 
         $verified = $response->json('verified') === true && $status === 'approved';
@@ -628,7 +627,7 @@ class ThaipromptKycService
         ];
     }
 
-    /** @throws RuntimeException */
+    /** @throws ThaipromptKycException */
     private function tokenRequest(array $params): Response
     {
         try {
@@ -640,21 +639,21 @@ class ThaipromptKycService
                     'client_secret' => (string) config('services.thaiprompt.oauth_client_secret'),
                 ]);
         } catch (ConnectionException) {
-            throw new RuntimeException(self::ERR_UNAVAILABLE);
+            throw new ThaipromptKycException(self::ERR_UNAVAILABLE);
         }
     }
 
     /**
      * @return array{access_token: string, refresh_token: ?string, expires_at: Carbon}
      *
-     * @throws RuntimeException
+     * @throws ThaipromptKycException
      */
     private function tokensFrom(Response $response): array
     {
         $access = $response->json('access_token');
 
         if (! is_string($access) || $access === '') {
-            throw new RuntimeException(self::ERR_UNAVAILABLE);
+            throw new ThaipromptKycException(self::ERR_UNAVAILABLE);
         }
 
         $refresh = $response->json('refresh_token');
