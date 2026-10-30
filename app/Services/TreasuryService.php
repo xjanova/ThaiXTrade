@@ -442,7 +442,7 @@ class TreasuryService
         }
 
         // วงเงินต่อครั้ง — ของปลายทางนี้ก่อน ถ้าไม่ตั้งไว้ใช้ค่ากลาง
-        $maxPerTx = $entry?->max_per_tx_wei ?: Wei::toWei((string) config('treasury.limits.per_transaction', '0'));
+        $maxPerTx = $this->maxPerTxWei($toAddress);
         if (bccomp($maxPerTx, '0', 0) > 0 && bccomp($amountWei, $maxPerTx, 0) > 0) {
             $errors[] = 'เกินวงเงินต่อครั้ง ('.Wei::format($maxPerTx).' TPIX)';
         }
@@ -471,6 +471,15 @@ class TreasuryService
         }
 
         return ['ok' => $errors === [], 'errors' => $errors];
+    }
+
+    /**
+     * วงเงินต่อครั้งของปลายทางนี้เป็น wei — ปลายทางตั้งไว้ใช้ค่านั้นแทนค่ากลาง, '0' = ไม่จำกัด.
+     */
+    public function maxPerTxWei(string $toAddress): string
+    {
+        return TreasuryWhitelist::findActiveByAddress($toAddress)?->max_per_tx_wei
+            ?: Wei::toWei((string) config('treasury.limits.per_transaction', '0'));
     }
 
     /**

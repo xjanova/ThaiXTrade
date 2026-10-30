@@ -211,6 +211,47 @@ function rejectBank(tx) {
     });
 }
 
+/**
+ * เข้าคิวจ่ายใหม่ — เซิร์ฟเวอร์ส่งยอดมาเฉพาะออเดอร์ที่ไม่มีรายการจ่ายที่อาจจ่ายออกอยู่
+ * เช่น รายการเดิมถูกปฏิเสธหรือ revert หรือคิวล้มตอนกดยืนยัน
+ */
+function requeuePayout(tx) {
+    if (confirmingId.value) return;
+
+    const reference = bankReference(tx) || tx.uuid;
+    if (!window.confirm(`เข้าคิวจ่าย ${tx.requeue_payout_tpix} TPIX ของรายการ ${reference} ใหม่หรือไม่?\n\nรายการใหม่จะไปรออนุมัติที่หน้าคลัง — ตรวจก่อนว่ารอบก่อนจบเพราะอะไร`)) {
+        return;
+    }
+
+    confirmingId.value = tx.id;
+    router.post(`/admin/token-sales/bank/${tx.id}/requeue`, {}, {
+        preserveScroll: true,
+        onFinish: () => { confirmingId.value = null; },
+    });
+}
+
+/**
+ * กู้ยอด claim — เซิร์ฟเวอร์ส่งยอดมาเฉพาะแถวที่พิสูจน์ได้ว่าเงินไม่ออกและยังไม่เคยกู้
+ * ส่วนที่เกินวงเงินต่อครั้งของปลายทางจะคืนเป็นสิทธิ์ claim แอดมินต้องเห็นก่อนกด
+ */
+function requeueClaim(tx) {
+    if (confirmingId.value) return;
+
+    const reference = bankReference(tx) || tx.uuid;
+    const returned = tx.requeue_claim_returned_tpix
+        ? `\n\nส่วนที่เกินวงเงินต่อครั้ง ${tx.requeue_claim_returned_tpix} TPIX จะคืนเป็นสิทธิ์ให้ผู้ซื้อ claim เอง`
+        : '';
+    if (!window.confirm(`เข้าคิวจ่าย claim ${tx.requeue_claim_tpix} TPIX ของรายการ ${reference} ใหม่หรือไม่?${returned}\n\nรายการใหม่จะไปรออนุมัติที่หน้าคลัง — ตรวจก่อนว่ารอบก่อนจบเพราะอะไร`)) {
+        return;
+    }
+
+    confirmingId.value = tx.id;
+    router.post(`/admin/token-sales/claims/${tx.id}/requeue`, {}, {
+        preserveScroll: true,
+        onFinish: () => { confirmingId.value = null; },
+    });
+}
+
 // ===== Helpers =====
 function fmt(n) {
     if (!n) return '0';
@@ -451,6 +492,20 @@ function statusBadge(s) {
                                             :disabled="confirmingId === tx.id"
                                             @click="rejectBank(tx)"
                                         >ปฏิเสธ</button>
+                                    </template>
+                                    <template v-else-if="tx.requeue_payout_tpix || tx.requeue_claim_tpix">
+                                        <button
+                                            v-if="tx.requeue_payout_tpix"
+                                            class="px-2 py-1 text-xs rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition disabled:opacity-40"
+                                            :disabled="confirmingId === tx.id"
+                                            @click="requeuePayout(tx)"
+                                        >เข้าคิวจ่ายใหม่</button>
+                                        <button
+                                            v-if="tx.requeue_claim_tpix"
+                                            class="ml-1 px-2 py-1 text-xs rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition disabled:opacity-40"
+                                            :disabled="confirmingId === tx.id"
+                                            @click="requeueClaim(tx)"
+                                        >เข้าคิว claim ใหม่</button>
                                     </template>
                                     <span v-else class="text-gray-600 text-xs">—</span>
                                 </td>
