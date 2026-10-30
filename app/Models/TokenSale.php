@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
  * TokenSale Model — รอบการขายเหรียญ TPIX (ICO/IDO).
  *
  * แต่ละรอบมีหลาย phase (Private, Pre-Sale, Public)
- * รับชำระบน BSC ด้วย BNB/USDT แล้ว allocate TPIX ให้ผู้ซื้อ
+ * รับชำระตามช่องทางใน accept_currencies แล้ว allocate TPIX ให้ผู้ซื้อบนเชน TPIX
  *
  * @property int $id
  * @property string $name
@@ -38,6 +38,17 @@ use Illuminate\Support\Str;
 class TokenSale extends Model
 {
     use HasFactory, SoftDeletes;
+
+    /** ทุกรอบขายรับบัตร — ช่องทางอื่นเลือกเพิ่มทีละรอบ */
+    public const REQUIRED_CHANNEL = 'CARD';
+
+    /**
+     * ค่าที่ accept_currencies ตั้งจากหลังบ้านได้.
+     *
+     * CRYPTO คือทาง USDT ที่ตรวจเงินเข้าบนเชน ห้ามเพิ่ม USDT หรือ BNB ลงลิสต์นี้
+     * เพราะสองค่านั้นเปิดทางยื่น tx_hash แบบเก่าเข้า sale_wallet_address
+     */
+    public const PAYMENT_CHANNELS = [self::REQUIRED_CHANNEL, 'BANK', 'CRYPTO'];
 
     /** คอลัมน์ slug ยาวได้ 255 ตัว — เหลือที่ไว้ให้เลขต่อท้ายเมื่อชื่อซ้ำ */
     private const SLUG_BASE_LENGTH = 240;

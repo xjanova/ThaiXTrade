@@ -8,6 +8,7 @@ use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
+use App\Rules\SalePaymentChannels;
 use App\Services\BankTransferSaleService;
 use App\Services\SaleLaunchService;
 use App\Support\MoneySettings;
@@ -221,7 +222,7 @@ class TokenSaleController extends Controller
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'total_supply_for_sale' => 'required|numeric|min:0',
-            'accept_currencies' => 'nullable|array',
+            'accept_currencies' => ['required', 'array', new SalePaymentChannels()],
             'sale_wallet_address' => [
                 $status === 'active' ? 'required' : 'nullable',
                 'string',
@@ -232,10 +233,16 @@ class TokenSaleController extends Controller
             'ends_at' => 'nullable|date|after:starts_at',
         ]);
 
+        // เรียงตามลำดับเดียวกันเสมอ บันทึกประวัติจะได้ไม่ขึ้นว่าเปลี่ยนทั้งที่ค่าเดิม
+        $validated['accept_currencies'] = array_values(array_intersect(TokenSale::PAYMENT_CHANNELS, $validated['accept_currencies']));
+
+        // เชนที่ผู้ซื้อต้องต่อกระเป๋าเพื่อรับเหรียญ ไม่รับจากฟอร์ม เพราะ default ของคอลัมน์ยังเป็น 56 (BSC) จากโมเดลเก่า
+        $validated['accept_chain_id'] = (int) config('blockchain.tpix_chain_id', 4289);
+
         // เงินคริปโตของผู้ซื้อวิ่งเข้า sale_wallet_address — ต้องตอบได้ว่าใครเปลี่ยนจากใบไหนเป็นใบไหน
         // จึงเขียนรอบขายกับบันทึกในธุรกรรมเดียวกัน บันทึกไม่สำเร็จเท่ากับกระเป๋าไม่เปลี่ยน
         DB::transaction(function () use ($request, $validated): void {
-            $audited = ['sale_wallet_address', 'accept_currencies', 'status'];
+            $audited = ['sale_wallet_address', 'accept_currencies', 'accept_chain_id', 'status'];
             $old = [];
 
             $id = $request->input('id');
