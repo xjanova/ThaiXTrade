@@ -8,6 +8,7 @@ use App\Models\SiteSetting;
 use App\Models\TokenSale;
 use App\Models\Transaction;
 use App\Services\StripePaymentService;
+use App\Support\MoneySettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +47,7 @@ class FinanceController extends Controller
             'salesSummary' => $this->getSalesSummary(),
             'dailyRevenue' => $this->getDailyRevenue(30),
             'stripeEnabled' => $this->stripe->isEnabled(),
+            'canManageMoney' => MoneySettings::canManage(),
         ]);
     }
 
@@ -111,8 +113,15 @@ class FinanceController extends Controller
             ], 422);
         }
 
+        $oldStatus = $transaction->status;
+
         try {
             $result = $this->stripe->refundTransaction($transaction);
+
+            // เงินออกจาก Stripe แล้วย้อนไม่ได้ จึงบันทึกหลังคืนสำเร็จ ไม่ใช่ครอบในธุรกรรมเดียวกัน
+            MoneySettings::record('finance.refund', ['status' => $oldStatus], $transaction->only([
+                'id', 'status', 'wallet_address', 'tpix_amount', 'payment_usd_value',
+            ]) + ['refund_id' => $result['refund_id']]);
 
             return response()->json([
                 'success' => true,

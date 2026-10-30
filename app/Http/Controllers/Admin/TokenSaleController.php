@@ -348,6 +348,9 @@ class TokenSaleController extends Controller
 
         $this->forgetSaleCache();
 
+        // ห้ามครอบ confirm() ด้วยธุรกรรมชั้นนอก — มันตั้งใจ commit เครื่องหมาย needs_refund ก่อนโยน exception
+        $this->recordTransactionChange('token_sale.bank_confirm', $confirmed, 'pending');
+
         $reference = $confirmed->metadata['reference'] ?? $confirmed->uuid;
 
         return redirect()->back()->with(
@@ -365,15 +368,27 @@ class TokenSaleController extends Controller
             'reason' => 'required|string|max:255',
         ]);
 
-        $tx = SaleTransaction::findOrFail($id);
-
         try {
-            $bank->reject($tx, $validated['reason'], auth('admin')->user()?->email);
+            // สถานะกับบันทึกเปลี่ยนพร้อมกัน ล็อกแถวไว้กันกดชนกับการยืนยันรายการเดียวกัน
+            DB::transaction(function () use ($id, $validated, $bank): void {
+                $tx = SaleTransaction::lockForUpdate()->findOrFail($id);
+                $rejected = $bank->reject($tx, $validated['reason'], auth('admin')->user()?->email);
+
+                $this->recordTransactionChange('token_sale.bank_reject', $rejected, 'pending');
+            });
         } catch (PurchaseException $e) {
             return redirect()->back()->withErrors(['bank' => $e->getMessage()]);
         }
 
         return redirect()->back()->with('success', 'ปฏิเสธคำสั่งซื้อแล้ว');
+    }
+
+    /** ลงบันทึกพร้อมกระเป๋าและยอด — audit_logs ตอบได้เองว่าเงินก้อนไหนไปถึงใคร ไม่ต้องตามไปดูแถวรายการ */
+    private function recordTransactionChange(string $action, SaleTransaction $tx, string $oldStatus): void
+    {
+        MoneySettings::record($action, ['status' => $oldStatus], $tx->only([
+            'id', 'status', 'wallet_address', 'tpix_amount', 'payment_usd_value',
+        ]));
     }
 
     /**
@@ -590,20 +605,32 @@ class TokenSaleController extends Controller
      */
     public function refundTransaction(int $id)
     {
-        $tx = SaleTransaction::with('phase.tokenSale')->findOrFail($id);
+        // ยอดขาย สถานะ และบันทึกต้องเปลี่ยนพร้อมกัน ล็อกแถวไว้เพื่อไม่ให้กดซ้ำแล้วหักยอดสองรอบ
+        $tx = DB::transaction(function () use ($id): ?SaleTransaction {
+            $tx = SaleTransaction::with('phase.tokenSale')->lockForUpdate()->findOrFail($id);
+            $oldStatus = $tx->status;
 
-        if ($tx->status === 'refunded') {
+            if ($oldStatus === 'refunded') {
+                return null;
+            }
+
+            // คืนยอดขายกลับไป phase + sale
+            if ($oldStatus === 'confirmed') {
+                $tx->phase?->decrement('sold', (float) $tx->tpix_amount);
+                $tx->phase?->tokenSale?->decrement('total_sold', (float) $tx->tpix_amount);
+                $tx->phase?->tokenSale?->decrement('total_raised_usd', (float) $tx->payment_usd_value);
+            }
+
+            $tx->update(['status' => 'refunded']);
+
+            $this->recordTransactionChange('token_sale.refund', $tx, $oldStatus);
+
+            return $tx;
+        });
+
+        if ($tx === null) {
             return redirect()->back()->with('error', 'This transaction is already refunded.');
         }
-
-        // คืนยอดขายกลับไป phase + sale
-        if ($tx->status === 'confirmed') {
-            $tx->phase?->decrement('sold', (float) $tx->tpix_amount);
-            $tx->phase?->tokenSale?->decrement('total_sold', (float) $tx->tpix_amount);
-            $tx->phase?->tokenSale?->decrement('total_raised_usd', (float) $tx->payment_usd_value);
-        }
-
-        $tx->update(['status' => 'refunded']);
 
         return redirect()->back()->with('success', "Transaction #{$tx->id} refunded. Allocation returned.");
     }

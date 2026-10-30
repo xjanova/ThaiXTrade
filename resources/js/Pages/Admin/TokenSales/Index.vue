@@ -18,7 +18,7 @@ const props = defineProps({
     stats: { type: Object, default: () => ({}) },
     // ความพร้อม + ตารางที่จะได้ถ้ากดเปิดรอบขายวันนี้
     launch: { type: Object, default: () => ({}) },
-    // รอบขายถือกระเป๋ารับเงิน — สร้าง/แก้ได้เฉพาะ super_admin ระดับอื่นเปิดดูได้อย่างเดียว
+    // ทุกคำสั่งของหน้านี้ขยับเงินจริง — ใช้ได้เฉพาะ super_admin ระดับอื่นเปิดดูได้อย่างเดียว
     canManageMoney: { type: Boolean, default: false },
 });
 
@@ -361,7 +361,7 @@ function statusBadge(s) {
             <!-- ==================== TAB: Sales & Phases ==================== -->
             <div v-if="activeTab === 'sales'">
                 <!-- เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด ไม่ใช่วันที่ตั้งไว้ล่วงหน้า -->
-                <SaleLaunchPanel :launch="launch" />
+                <SaleLaunchPanel :launch="launch" :can-manage="canManageMoney" />
 
                 <div class="flex justify-end mb-4">
                     <button v-if="canManageMoney" class="btn-primary px-4 py-2 text-sm font-semibold" @click="openCreateSale">+ New Sale</button>
@@ -375,7 +375,7 @@ function statusBadge(s) {
                                 <span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(sale.status)">{{ sale.status }}</span>
                             </div>
                             <div class="flex gap-2">
-                                <button class="btn-secondary px-3 py-1 text-xs" @click="openAddPhase(sale)">+ Phase</button>
+                                <button v-if="canManageMoney" class="btn-secondary px-3 py-1 text-xs" @click="openAddPhase(sale)">+ Phase</button>
                                 <button class="btn-secondary px-3 py-1 text-xs" @click="openEditSale(sale)">Edit</button>
                             </div>
                         </div>
@@ -430,6 +430,7 @@ function statusBadge(s) {
                                         </td>
                                         <td class="py-1.5 px-2 text-right">
                                             <button
+                                                v-if="canManageMoney"
                                                 type="button"
                                                 class="px-2 py-1 text-xs rounded-lg bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"
                                                 @click="openEditPhase(sale, p)"
@@ -481,7 +482,7 @@ function statusBadge(s) {
                                         ปุ่มโผล่เฉพาะรายการโอนเงินที่ยังรอยืนยัน
                                         รายการทางบัตรยืนยันเองอัตโนมัติผ่าน webhook ของ Stripe
                                     -->
-                                    <template v-if="isPendingBankTransfer(tx)">
+                                    <template v-if="canManageMoney && isPendingBankTransfer(tx)">
                                         <button
                                             class="px-2 py-1 text-xs rounded-lg bg-trading-green/20 text-trading-green hover:bg-trading-green/30 transition disabled:opacity-40"
                                             :disabled="confirmingId === tx.id"

@@ -22,6 +22,8 @@ import { router, useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
     launch: { type: Object, default: () => ({}) },
+    // เปิดรอบขาย = เริ่มรับเงินจริง สั่งได้เฉพาะ super_admin ระดับอื่นเห็นแค่สถานะ
+    canManage: { type: Boolean, default: false },
 });
 
 const readiness = computed(() => props.launch?.readiness || { ready: false, checks: [], blocking: [] });
@@ -134,18 +136,20 @@ function fmtDate(iso) {
         <div class="mb-5 p-3 rounded-lg bg-white/[0.03] border border-white/10">
             <div class="flex flex-wrap items-center gap-2">
                 <label class="text-sm font-medium text-gray-200">วันจบรอบขาย</label>
-                <input v-model="roundForm.round_ends_at" type="date" class="trading-input text-xs py-1.5" />
-                <button
-                    class="px-3 py-1.5 text-xs rounded-lg bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 disabled:opacity-40"
-                    :disabled="roundForm.processing || !roundForm.round_ends_at"
-                    @click="saveRoundEnd(false)"
-                >บันทึก</button>
-                <button
-                    v-if="launch.round_ends_at"
-                    class="px-3 py-1.5 text-xs rounded-lg text-gray-400 hover:text-white"
-                    :disabled="roundForm.processing"
-                    @click="saveRoundEnd(true)"
-                >ยกเลิกวันจบ</button>
+                <template v-if="canManage">
+                    <input v-model="roundForm.round_ends_at" type="date" class="trading-input text-xs py-1.5" />
+                    <button
+                        class="px-3 py-1.5 text-xs rounded-lg bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 disabled:opacity-40"
+                        :disabled="roundForm.processing || !roundForm.round_ends_at"
+                        @click="saveRoundEnd(false)"
+                    >บันทึก</button>
+                    <button
+                        v-if="launch.round_ends_at"
+                        class="px-3 py-1.5 text-xs rounded-lg text-gray-400 hover:text-white"
+                        :disabled="roundForm.processing"
+                        @click="saveRoundEnd(true)"
+                    >ยกเลิกวันจบ</button>
+                </template>
             </div>
             <p class="text-xs text-gray-400 mt-1.5">
                 <template v-if="tiered">
@@ -205,7 +209,10 @@ function fmtDate(iso) {
         </p>
 
         <!-- ปุ่มลงมือ -->
-        <div class="flex flex-wrap items-center gap-3 pt-4 border-t border-white/10">
+        <p v-if="!canManage" class="pt-4 border-t border-white/10 text-xs text-amber-300">
+            เปิดรอบขายคือเริ่มรับเงินจริง สั่งได้เฉพาะ Super Admin
+        </p>
+        <div v-else class="flex flex-wrap items-center gap-3 pt-4 border-t border-white/10">
             <div class="flex items-center gap-2">
                 <label class="text-xs text-gray-400">เริ่มวันที่</label>
                 <input
@@ -258,7 +265,8 @@ function fmtDate(iso) {
                 type="button"
                 role="switch"
                 :aria-checked="!!launch.armed"
-                class="relative w-11 h-6 rounded-full transition-colors shrink-0 mt-0.5"
+                :disabled="!canManage"
+                class="relative w-11 h-6 rounded-full transition-colors shrink-0 mt-0.5 disabled:cursor-not-allowed"
                 :class="launch.armed ? 'bg-green-500/70' : 'bg-white/15'"
                 @click="toggleAuto"
             >
