@@ -41,13 +41,18 @@ const editingSale = ref(null);
 
 // ช่องทางรับเงินที่เลือกเพิ่มจากบัตรได้ — ต้องตรงกับ TokenSale::PAYMENT_CHANNELS ที่เซิร์ฟเวอร์ตรวจซ้ำตอนบันทึก
 const OPTIONAL_CHANNELS = [
-    { id: 'BANK', label: 'โอนเข้าบัญชีธนาคาร', hint: 'ใช้ได้เมื่อกรอกเลขบัญชีแล้ว' },
-    { id: 'CRYPTO', label: 'USDT ตรวจเงินเข้าบนเชน', hint: 'ใช้ได้เมื่อเปิดระบบรับ USDT แล้ว' },
+    { id: 'BANK', label: 'โอนเข้าบัญชีธนาคาร', short: 'โอนเงิน', hint: 'ใช้ได้เมื่อกรอกเลขบัญชีแล้ว' },
+    { id: 'CRYPTO', label: 'USDT ตรวจเงินเข้าบนเชน', short: 'USDT', hint: 'ใช้ได้เมื่อเปิดระบบรับ USDT แล้ว' },
 ];
 
 /** บัตรเปิดเสมอ และตัดค่าที่เลิกรับแล้ว (USDT, BNB, STRIPE) ทิ้ง ฟอร์มจะได้ไม่ส่งค่าที่เซิร์ฟเวอร์ปฏิเสธ */
 function saleChannels(saved) {
     return ['CARD', ...OPTIONAL_CHANNELS.map((channel) => channel.id).filter((id) => saved?.includes(id))];
+}
+
+/** ป้ายบนการ์ดรอบขาย ตามช่องทางที่รอบนั้นรับจริง */
+function saleChannelsLabel(saved) {
+    return ['Stripe', ...OPTIONAL_CHANNELS.filter((channel) => saved?.includes(channel.id)).map((channel) => channel.short)].join(' + ');
 }
 
 // ฟอร์ม Token Sale
@@ -400,7 +405,7 @@ function statusBadge(s) {
                             <div><span class="text-gray-500">Supply</span><p class="text-white font-medium">{{ fmt(sale.total_supply_for_sale) }}</p></div>
                             <div><span class="text-gray-500">Sold</span><p class="text-trading-green font-medium">{{ fmt(sale.total_sold) }}</p></div>
                             <div><span class="text-gray-500">Raised</span><p class="text-primary-400 font-medium">${{ fmt(sale.total_raised_usd) }}</p></div>
-                            <div><span class="text-gray-500">Payment</span><p class="text-white">Stripe + USDT</p></div>
+                            <div><span class="text-gray-500">Payment</span><p class="text-white">{{ saleChannelsLabel(sale.accept_currencies) }}</p></div>
                         </div>
 
                         <!-- Phases Table -->
