@@ -5,9 +5,11 @@ namespace Tests\Feature\Bridge;
 use App\Models\AdminUser;
 use App\Models\BridgeDeposit;
 use App\Models\BridgeWithdrawal;
+use App\Models\User;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\BridgeConfig;
 use App\Services\Bridge\BridgePayouter;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Testing\AssertableInertia;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\FakesBridgeChains;
@@ -36,9 +38,10 @@ class BridgeAdminTest extends TestCase
         ]);
     }
 
+    /** ล็อกอินผ่าน session แบบเบราว์เซอร์ — actingAs($admin, 'admin') สลับ guard ปริยายให้เองจนเทสต์ reviewed_by พิสูจน์อะไรไม่ได้ */
     private function asAdmin(): self
     {
-        return $this->actingAs($this->admin, 'admin');
+        return $this->withSession([Auth::guard('admin')->getName() => $this->admin->id]);
     }
 
     private function reviewDeposit(string $units = '1500000000', string $reason = 'over_tx_limit'): BridgeDeposit
@@ -105,6 +108,32 @@ class BridgeAdminTest extends TestCase
         $this->assertSame(BridgeDeposit::STATUS_CONFIRMED, $d->status);
         $this->assertTrue($d->limits_overridden);
         $this->assertSame($this->admin->id, $d->reviewed_by);
+        $this->assertStringContainsString('อนุมัติโดย ผู้ดูแลระบบ', $d->review_note);
+    }
+
+    /** bridge ไม่มี foreign key ที่ reviewed_by — รหัสสมาชิกลงได้เงียบๆ แล้วบันทึกชี้ไปผิดคน */
+    #[Test]
+    public function a_review_is_signed_by_the_admin_even_with_a_member_in_the_same_browser(): void
+    {
+        User::create(['wallet_address' => strtolower($this->bob), 'email' => 'first@tpix.test', 'password' => 'secret-password']);
+        $member = User::create(['wallet_address' => strtolower($this->alice), 'name' => 'สมาชิก', 'email' => 'member@tpix.test', 'password' => 'secret-password']);
+        $this->withSession([Auth::guard('web')->getName() => $member->id]);
+        $this->assertNotSame($this->admin->id, $member->id);
+
+        $d = $this->reviewDeposit();
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$d->id}/reject", ['reason' => 'คืนเงินแล้ว'])->assertOk();
+
+        $d->refresh();
+        $this->assertSame($this->admin->id, $d->reviewed_by);
+        $this->assertStringContainsString('ปฏิเสธโดย ผู้ดูแลระบบ: คืนเงินแล้ว', $d->review_note);
+    }
+
+    #[Test]
+    public function the_kill_switch_records_who_turned_it_off(): void
+    {
+        $this->asAdmin()->postJson('/admin/bridge/toggle', ['enabled' => false, 'reason' => 'ตรวจกระทบยอด'])->assertOk();
+
+        $this->assertSame('ปิดโดย ผู้ดูแลระบบ: ตรวจกระทบยอด', app(BridgeConfig::class)->switchReason());
     }
 
     #[Test]

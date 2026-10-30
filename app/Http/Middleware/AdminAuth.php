@@ -14,6 +14,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Ensures the current user is authenticated via the 'admin' guard.
  * Additionally verifies that the authenticated admin account is active.
  * Inactive accounts are logged out and redirected with an error message.
+ * Makes 'admin' the default guard for the rest of the request, like auth:admin.
  */
 class AdminAuth
 {
@@ -44,6 +45,13 @@ class AdminAuth
             return redirect()->route('admin.login')
                 ->with('error', 'Your account has been deactivated. Please contact a super administrator.');
         }
+
+        // guard ปริยายของเว็บคือ web (สมาชิก) — ถ้าไม่สลับ $request->user() ในหลังบ้านจะอ่านสมาชิก
+        // ได้ null หรือรหัสสมาชิกที่ล็อกอินอยู่ในเบราว์เซอร์เดียวกัน แล้วไปลงชื่อในรายการอนุมัติ
+        //
+        // ⚠️ ต้องอยู่หลังตรวจ is_active และรันหลัง ThrottleRequests เสมอ
+        //    ตัวจำกัดอัตราใช้รหัสผู้ใช้เป็นคีย์ ถ้ารันหลังบรรทัดนี้แอดมินจะใช้โควตาก้อนเดียวกับสมาชิกรหัสเดียวกัน
+        Auth::shouldUse('admin');
 
         return $next($request);
     }

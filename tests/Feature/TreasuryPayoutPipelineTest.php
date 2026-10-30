@@ -19,6 +19,7 @@ use App\Support\Wei;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -619,6 +620,33 @@ class TreasuryPayoutPipelineTest extends TestCase
         $this->actingAs($admin, 'admin')->postJson("/admin/treasury/payouts/{$fromClaim->id}/approve")->assertOk();
         $this->actingAs($admin, 'admin')->postJson("/admin/treasury/payouts/{$byAdmin->id}/approve")->assertStatus(422);
         $this->assertSame(TreasuryPayout::STATUS_PENDING, $byAdmin->fresh()->status);
+    }
+
+    /** ล็อกอินผ่าน session แบบเบราว์เซอร์ — actingAs($admin, 'admin') สลับ guard ปริยายให้เองจนบังบั๊กที่ production เก็บค่าว่าง */
+    #[Test]
+    public function รายการจ่ายและ_whitelist_ระบุแอดมินที่ล็อกอินผ่าน_session(): void
+    {
+        $admin = AdminUser::create([
+            'name' => 'Owner', 'email' => 'owner@tpix.test', 'password' => bcrypt('x'),
+            'role' => 'super_admin', 'is_active' => true,
+        ]);
+        $this->withSession([Auth::guard('admin')->getName() => $admin->id]);
+        $this->assertSame('web', Auth::getDefaultDriver());
+
+        $this->postJson('/admin/treasury/payouts', [
+            'to_address' => self::LISTED, 'amount' => '1000', 'purpose' => 'other', 'idempotency_key' => 'session-1',
+        ])->assertOk();
+
+        $payout = TreasuryPayout::sole();
+        $this->assertSame($admin->id, $payout->requested_by);
+
+        $this->postJson("/admin/treasury/payouts/{$payout->id}/approve")->assertOk();
+        $this->assertSame($admin->id, $payout->fresh()->approved_by);
+
+        $this->postJson('/admin/treasury/whitelist', [
+            'address' => self::BUYER, 'label' => 'ปลายทางใหม่', 'purpose' => 'other',
+        ])->assertOk();
+        $this->assertSame($admin->id, TreasuryWhitelist::where('address', self::BUYER)->sole()->created_by);
     }
 
     #[Test]
