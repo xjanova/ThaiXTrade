@@ -15,6 +15,7 @@ use App\Support\Wei;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -231,20 +232,23 @@ class TokenSaleController extends Controller
             'ends_at' => 'nullable|date|after:starts_at',
         ]);
 
-        $audited = ['sale_wallet_address', 'accept_currencies', 'status'];
-        $old = [];
-
-        $id = $request->input('id');
-        if ($id) {
-            $sale = TokenSale::findOrFail($id);
-            $old = $sale->only($audited);
-            $sale->update($validated);
-        } else {
-            $sale = TokenSale::create($validated);
-        }
-
         // เงินคริปโตของผู้ซื้อวิ่งเข้า sale_wallet_address — ต้องตอบได้ว่าใครเปลี่ยนจากใบไหนเป็นใบไหน
-        MoneySettings::record('token_sale.save', $old, $sale->only($audited));
+        // จึงเขียนรอบขายกับบันทึกในธุรกรรมเดียวกัน บันทึกไม่สำเร็จเท่ากับกระเป๋าไม่เปลี่ยน
+        DB::transaction(function () use ($request, $validated): void {
+            $audited = ['sale_wallet_address', 'accept_currencies', 'status'];
+            $old = [];
+
+            $id = $request->input('id');
+            if ($id) {
+                $sale = TokenSale::lockForUpdate()->findOrFail($id);
+                $old = $sale->only($audited);
+                $sale->update($validated);
+            } else {
+                $sale = TokenSale::create($validated);
+            }
+
+            MoneySettings::record('token_sale.save', $old, $sale->only($audited));
+        });
 
         $this->forgetSaleCache();
 

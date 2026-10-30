@@ -450,6 +450,22 @@ class MoneySettingsAccessTest extends TestCase
         $this->assertSame(self::OLD_WALLET, SiteSetting::get('revenue', 'tpix_wallet'));
     }
 
+    #[Test]
+    public function บันทึกร่องรอยไม่ได้ต้องไม่เปลี่ยนกระเป๋ารอบขาย(): void
+    {
+        $sale = TokenSale::create(['sale_wallet_address' => self::OLD_WALLET] + self::SALE);
+
+        AuditLog::creating(function (): void {
+            throw new RuntimeException('audit store down');
+        });
+
+        $this->asRole('super_admin')
+            ->post('/admin/token-sales', ['id' => $sale->id] + self::SALE)
+            ->assertServerError();
+
+        $this->assertSame(self::OLD_WALLET, $sale->fresh()->sale_wallet_address);
+    }
+
     // ── คีย์ทดสอบของ Stripe ──────────────────────────────────────────────────
 
     #[Test]
