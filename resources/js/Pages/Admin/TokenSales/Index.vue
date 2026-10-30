@@ -613,6 +613,7 @@ function statusBadge(s) {
                             <div>
                                 <label class="block text-sm text-gray-400 mb-1">Sale Wallet Address</label>
                                 <input v-model="saleForm.sale_wallet_address" class="trading-input w-full font-mono text-sm" placeholder="0x..." />
+                                <p class="mt-1 text-xs text-gray-500">ใช้กับทาง USDT เท่านั้น ถ้าไม่เปิดรับ USDT เว้นว่างได้</p>
                                 <p v-if="saleForm.errors.sale_wallet_address" class="mt-1 text-sm text-red-400">{{ saleForm.errors.sale_wallet_address }}</p>
                             </div>
                             <div>

@@ -5,6 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Exceptions\PurchaseException;
 use App\Models\AdminUser;
 use App\Models\AuditLog;
+use App\Models\SalePhase;
 use App\Models\SiteSetting;
 use App\Models\TokenSale;
 use App\Services\SaleStatusService;
@@ -366,6 +367,119 @@ class TokenSaleCreateTest extends TestCase
 
         $this->assertSame(56, $log->old_values['accept_chain_id']);
         $this->assertSame(4289, $log->new_values['accept_chain_id']);
+    }
+
+    /**
+     * @return array<string, array{list<string>}>
+     */
+    public static function channelsWithoutCrypto(): array
+    {
+        return [
+            'บัตร' => [['CARD']],
+            'บัตรกับโอนเงิน' => [['CARD', 'BANK']],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('channelsWithoutCrypto')]
+    public function รอบที่ไม่รับ_usdt_ตั้ง_active_ได้โดยไม่มีกระเป๋า(array $channels): void
+    {
+        $this->signIn();
+
+        $sale = $this->submit(['status' => 'active', 'accept_currencies' => $channels]);
+
+        $this->assertSame('active', $sale->status);
+        $this->assertNull($sale->sale_wallet_address);
+    }
+
+    #[Test]
+    public function เปิดรับ_usdt_แล้วตั้ง_active_ต้องมีกระเป๋า(): void
+    {
+        $this->signIn();
+
+        $this->post('/admin/token-sales', ['status' => 'active', 'accept_currencies' => ['CARD', 'CRYPTO']] + self::FORM)
+            ->assertSessionHasErrors(['sale_wallet_address' => 'เปิดรับ USDT แล้วต้องกรอกกระเป๋ารับเงินก่อนตั้งเป็น Active']);
+
+        $this->assertSame(0, TokenSale::count());
+    }
+
+    #[Test]
+    public function เปิดรับ_usdt_พร้อมกระเป๋าตั้ง_active_ได้(): void
+    {
+        $this->signIn();
+        $wallet = '0x'.str_repeat('ab', 20);
+
+        $sale = $this->submit([
+            'status' => 'active',
+            'accept_currencies' => ['CARD', 'CRYPTO'],
+            'sale_wallet_address' => $wallet,
+        ]);
+
+        $this->assertSame('active', $sale->status);
+        $this->assertSame($wallet, $sale->sale_wallet_address);
+    }
+
+    #[Test]
+    public function รอบร่างเปิดรับ_usdt_ก่อนมีกระเป๋าได้แต่ตั้ง_active_ไม่ได้(): void
+    {
+        $this->signIn();
+        $sale = $this->submit(['accept_currencies' => ['CARD', 'CRYPTO']]);
+
+        $this->post('/admin/token-sales', ['id' => $sale->id, 'status' => 'active', 'accept_currencies' => ['CARD', 'CRYPTO']] + self::FORM)
+            ->assertSessionHasErrors('sale_wallet_address');
+
+        $this->assertSame('draft', $sale->fresh()->status);
+    }
+
+    /** รอบที่เปิดขายอยู่โดยไม่มีกระเป๋า ห้ามรับเงิน USDT ทั้งที่ไม่มีที่ให้เงินเข้า */
+    #[Test]
+    public function ติ๊ก_usdt_ให้รอบ_active_ที่ไม่มีกระเป๋าไม่ได้(): void
+    {
+        $this->signIn();
+        $sale = $this->existingSale(['status' => 'active', 'accept_currencies' => ['CARD']]);
+
+        $this->post('/admin/token-sales', ['id' => $sale->id, 'status' => 'active', 'accept_currencies' => ['CARD', 'CRYPTO']] + self::FORM)
+            ->assertSessionHasErrors('sale_wallet_address');
+
+        $this->assertSame(['CARD'], $sale->fresh()->accept_currencies);
+    }
+
+    #[Test]
+    public function กรอกกระเป๋าผิดรูปแบบยังถูกปฏิเสธแม้รอบไม่รับ_usdt(): void
+    {
+        $this->signIn();
+
+        $this->post('/admin/token-sales', ['status' => 'active', 'sale_wallet_address' => '0x1234'] + self::FORM)
+            ->assertSessionHasErrors('sale_wallet_address');
+
+        $this->assertSame(0, TokenSale::count());
+    }
+
+    #[Test]
+    public function รอบบัตรที่ไม่มีกระเป๋าซื้อด้วยบัตรได้แต่ทางคริปโตยังปิด(): void
+    {
+        $this->signIn();
+        $sale = $this->submit(['status' => 'active']);
+        $phase = SalePhase::create([
+            'token_sale_id' => $sale->id,
+            'name' => 'Private Sale',
+            'slug' => 'private-sale',
+            'phase_order' => 1,
+            'price_usd' => 0.05,
+            'allocation' => 1000000,
+            'min_purchase' => 100,
+            'max_purchase' => 500000,
+            'status' => 'active',
+            'starts_at' => now()->subDay(),
+            'ends_at' => now()->addDay(),
+        ]);
+        $wallet = '0x'.str_repeat('cd', 20);
+        $sales = app(TokenSaleService::class);
+
+        $this->assertNull($sales->assertPurchasable($wallet, $phase->id, 'USD', 100)['sale_wallet_address']);
+
+        $this->expectException(PurchaseException::class);
+        $sales->assertPurchasable($wallet, $phase->id, 'USDT', 100);
     }
 
     /** @param  array<string, mixed>  $attributes */

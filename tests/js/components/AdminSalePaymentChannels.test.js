@@ -147,6 +147,10 @@ describe('ฟอร์มรอบขาย — ช่องทางรับ�
         expect(await submittedChannels(wrapper)).toEqual(['CARD']);
     });
 
+    it('บอกว่าไม่รับ USDT แล้วเว้นกระเป๋าว่างได้', async () => {
+        expect((await openCreate()).text()).toContain('ถ้าไม่เปิดรับ USDT เว้นว่างได้');
+    });
+
     it('เซิร์ฟเวอร์ปฏิเสธแล้วผู้ใช้เห็นข้อความในฟอร์ม', async () => {
         const wrapper = await openCreate();
 

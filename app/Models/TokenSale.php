@@ -42,13 +42,15 @@ class TokenSale extends Model
     /** ทุกรอบขายรับบัตร — ช่องทางอื่นเลือกเพิ่มทีละรอบ */
     public const REQUIRED_CHANNEL = 'CARD';
 
+    /** ทาง USDT ที่ตรวจเงินเข้าบนเชน — ช่องทางเดียวที่เงินเข้า sale_wallet_address */
+    public const CRYPTO_CHANNEL = 'CRYPTO';
+
     /**
      * ค่าที่ accept_currencies ตั้งจากหลังบ้านได้.
      *
-     * CRYPTO คือทาง USDT ที่ตรวจเงินเข้าบนเชน ห้ามเพิ่ม USDT หรือ BNB ลงลิสต์นี้
-     * เพราะสองค่านั้นเปิดทางยื่น tx_hash แบบเก่าเข้า sale_wallet_address
+     * ห้ามเพิ่ม USDT หรือ BNB ลงลิสต์นี้ เพราะสองค่านั้นเปิดทางยื่น tx_hash แบบเก่าเข้า sale_wallet_address
      */
-    public const PAYMENT_CHANNELS = [self::REQUIRED_CHANNEL, 'BANK', 'CRYPTO'];
+    public const PAYMENT_CHANNELS = [self::REQUIRED_CHANNEL, 'BANK', self::CRYPTO_CHANNEL];
 
     /** คอลัมน์ slug ยาวได้ 255 ตัว — เหลือที่ไว้ให้เลขต่อท้ายเมื่อชื่อซ้ำ */
     private const SLUG_BASE_LENGTH = 240;

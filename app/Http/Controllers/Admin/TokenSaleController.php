@@ -230,19 +230,23 @@ class TokenSaleController extends Controller
     public function store(Request $request)
     {
         $status = $request->input('status', 'draft');
+        // กระเป๋านี้รับเงินเฉพาะทาง USDT — บัตรกับโอนเงินไม่มีเงินเข้ากระเป๋า รอบที่ไม่รับ USDT จึงเปิดขายได้โดยไม่ต้องมี
+        $needsWallet = $status === 'active' && in_array(TokenSale::CRYPTO_CHANNEL, (array) $request->input('accept_currencies'), true);
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'total_supply_for_sale' => 'required|numeric|min:0',
             'accept_currencies' => ['required', 'array', new SalePaymentChannels()],
             'sale_wallet_address' => [
-                $status === 'active' ? 'required' : 'nullable',
+                $needsWallet ? 'required' : 'nullable',
                 'string',
                 'regex:/^0x[a-fA-F0-9]{40}$/',
             ],
             'status' => 'required|string|in:draft,upcoming,active,paused,completed',
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date|after:starts_at',
+        ], [
+            'sale_wallet_address.required' => 'เปิดรับ USDT แล้วต้องกรอกกระเป๋ารับเงินก่อนตั้งเป็น Active',
         ]);
 
         // เรียงตามลำดับเดียวกันเสมอ บันทึกประวัติจะได้ไม่ขึ้นว่าเปลี่ยนทั้งที่ค่าเดิม
