@@ -90,6 +90,16 @@ const BROWSER_TICK_SECONDS = 30;
 
 let catalogPromise = null;
 
+/*
+ * idempotency key ของคำขอเช่าที่ยังไม่รู้ผล { address, planCode, days, key, createdAt }
+ *
+ * หนึ่ง key ต่อ "ความตั้งใจเช่าหนึ่งครั้ง" — เน็ตหลุด/หมดเวลาแล้วกดใหม่ด้วยแพลนเดิม ได้ key เดิม
+ * เซิร์ฟเวอร์จึงรู้ว่าเป็นคำขอเดิม ไม่ตัดเครดิตและไม่ต่ออายุซ้ำ ล้างทิ้งเมื่อรู้แน่ว่าสำเร็จ
+ * การเช่ารอบถัดไปจึงเป็นการซื้อใหม่จริง (คำขอที่ถูกปฏิเสธใช้ key เดิมต่อได้ — เซิร์ฟเวอร์ไม่ได้เขียนอะไร)
+ */
+let pendingSubscribe = null;
+const SUBSCRIBE_KEY_TTL_MS = 10 * 60 * 1000;
+
 // ── ค่าที่ตัวเดินบอทใช้ร่วม — ต้องอยู่ระดับโมดูล ไม่ผูกกับคอมโพเนนต์ตัวไหน ───────────
 const bots = computed(() => status.value?.bots ?? []);
 
@@ -341,6 +351,26 @@ function loadBotWallet({ force = false } = {}) {
             if (isLatest()) isLoadingBotWallet.value = false;
         }
     }, { force });
+}
+
+function newRequestKey() {
+    const cryptoApi = globalThis.crypto;
+    if (cryptoApi?.randomUUID) return cryptoApi.randomUUID();
+    if (cryptoApi?.getRandomValues) {
+        return Array.from(cryptoApi.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function subscribeKeyFor(address, planCode, days) {
+    const pending = pendingSubscribe;
+    if (pending && pending.address === address && pending.planCode === planCode && pending.days === days
+        && Date.now() - pending.createdAt < SUBSCRIBE_KEY_TTL_MS) {
+        return pending.key;
+    }
+
+    pendingSubscribe = { address, planCode, days, key: newRequestKey(), createdAt: Date.now() };
+    return pendingSubscribe.key;
 }
 
 /** ยิง action ที่เขียนข้อมูล แล้ว sync status กลับมา */
@@ -626,9 +656,18 @@ export function useAiBot() {
         return catalogPromise;
     }
 
-    const subscribe = (planCode, days) => mutate(address =>
-        axios.post('/api/v1/ai-bot/subscribe', { wallet_address: address, plan_code: planCode, days })
-    );
+    const subscribe = async (planCode, days) => {
+        const result = await mutate(address => axios.post('/api/v1/ai-bot/subscribe', {
+            wallet_address: address,
+            plan_code: planCode,
+            days,
+            idempotency_key: subscribeKeyFor(address, planCode, days),
+        }));
+
+        // WALLET_CHANGED = เซิร์ฟเวอร์ตอบสำเร็จแล้ว แค่ผลไม่ได้วาดเพราะสลับกระเป๋าไป
+        if (result.ok || result.error?.code === 'WALLET_CHANGED') pendingSubscribe = null;
+        return result;
+    };
 
     const cancel = () => mutate(address =>
         axios.post('/api/v1/ai-bot/cancel', { wallet_address: address })

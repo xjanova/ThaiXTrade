@@ -15,6 +15,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' show Random;
 
 import 'package:flutter/foundation.dart';
 
@@ -844,6 +845,41 @@ class AiBotProvider extends ChangeNotifier {
     }
   }
 
+  /// idempotency key ของคำขอเช่าที่ยังไม่รู้ผล
+  ///
+  /// หนึ่ง key ต่อ "ความตั้งใจเช่าหนึ่งครั้ง": เน็ตหลุด/timeout แล้วกดใหม่ด้วยแพลน
+  /// และจำนวนวันเดิมได้ key เดิม เซิร์ฟเวอร์จึงไม่ตัดเครดิตและไม่ต่ออายุซ้ำ
+  /// ล้างเมื่อสำเร็จ → การเช่ารอบถัดไปเป็นการซื้อใหม่จริง (คำขอที่ถูกปฏิเสธใช้ key
+  /// เดิมต่อได้ เพราะเซิร์ฟเวอร์ไม่ได้เขียนอะไรไว้)
+  ({String wallet, String planCode, int days, String key, DateTime at})?
+      _pendingSubscribe;
+
+  static const Duration _subscribeKeyTtl = Duration(minutes: 10);
+
+  String _subscribeRequestKey(String wallet, String planCode, int days) {
+    final pending = _pendingSubscribe;
+    if (pending != null &&
+        pending.wallet == wallet &&
+        pending.planCode == planCode &&
+        pending.days == days &&
+        DateTime.now().difference(pending.at) < _subscribeKeyTtl) {
+      return pending.key;
+    }
+
+    final rng = Random.secure();
+    final key = List<int>.generate(16, (_) => rng.nextInt(256))
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join();
+    _pendingSubscribe = (
+      wallet: wallet,
+      planCode: planCode,
+      days: days,
+      key: key,
+      at: DateTime.now(),
+    );
+    return key;
+  }
+
   /// เช่า/ต่ออายุแพลน
   ///
   /// [days] ต้องเป็นค่าจาก `catalog.rentalDays` — ค่าอื่นเซิร์ฟเวอร์บีบเหลือ
@@ -857,18 +893,22 @@ class AiBotProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-    // กันกดรัว: เซิร์ฟเวอร์ล็อกไว้ 15 วิ แต่ถ้าปล่อยให้ยิงซ้ำในนาทีเดียวกัน
-    // `expires_at` จะถูกบวกซ้ำทั้งที่ตัดเครดิตครั้งเดียว
+    // กันกดรัวฝั่งแอพ — ตัวกันซ้ำจริงคือ idempotency key ด้านล่าง
     if (!_beginTask(subscribeKey)) return false;
 
     final res = await _run(
-      (wallet) =>
-          _api.subscribe(wallet: wallet, planCode: planCode, days: days),
+      (wallet) => _api.subscribe(
+        wallet: wallet,
+        planCode: planCode,
+        days: days,
+        idempotencyKey: _subscribeRequestKey(wallet, planCode, days),
+      ),
     );
     _endTask(subscribeKey);
 
     switch (res) {
       case ApiOk(:final data):
+        _pendingSubscribe = null;
         // คืน payload ของ /status เต็มก้อน — ไม่ต้องยิงซ้ำ และ "ต้องใช้" ก้อนนี้
         // เพราะการเปลี่ยนแพลนเขียนทับกรอบความเสี่ยงของบอททุกตัว
         // ค่าเก่าที่ค้างใน memory ใช้ไม่ได้แล้ว

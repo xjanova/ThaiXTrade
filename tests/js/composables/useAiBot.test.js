@@ -315,6 +315,41 @@ describe('useAiBot', () => {
         expect(bot.botWallet.value.wallet.has_pending_withdraw).toBe(true);
     });
 
+    // ── การเช่า: idempotency key ────────────────────────────────────────────
+
+    it('retries a lost subscribe with the same key and starts a fresh key after success', async () => {
+        wallet.address = WALLET_A;
+        const lost = new Error('Network Error');
+        lost.request = {};
+        post.mockRejectedValueOnce(lost)
+            .mockResolvedValueOnce(statusPayload())
+            .mockResolvedValueOnce(statusPayload());
+
+        expect((await bot.subscribe('starter', 7)).ok).toBe(false);
+        expect((await bot.subscribe('starter', 7)).ok).toBe(true);
+        expect((await bot.subscribe('starter', 7)).ok).toBe(true);
+
+        const keys = post.mock.calls.map(([, body]) => body.idempotency_key);
+        expect(keys[0]).toMatch(/^[A-Za-z0-9-]{16,64}$/);
+        // เน็ตหลุดแล้วกดใหม่ = คำขอเดิม → เซิร์ฟเวอร์ไม่ตัดซ้ำ
+        expect(keys[1]).toBe(keys[0]);
+        // สำเร็จแล้วกดอีก = ตั้งใจต่ออายุจริง → ต้องเป็นการซื้อใหม่
+        expect(keys[2]).not.toBe(keys[1]);
+    });
+
+    it('does not reuse a pending key for a different plan', async () => {
+        wallet.address = WALLET_A;
+        const lost = new Error('Network Error');
+        lost.request = {};
+        post.mockRejectedValueOnce(lost).mockResolvedValueOnce(statusPayload());
+
+        await bot.subscribe('starter', 7);
+        await bot.subscribe('pro', 7);
+
+        const [first, second] = post.mock.calls.map(([, body]) => body.idempotency_key);
+        expect(second).not.toBe(first);
+    });
+
     it('offers the welcome bonus only until it has been claimed', async () => {
         wallet.address = WALLET_A;
         get.mockResolvedValueOnce(statusPayload([], { welcome_bonus: 100, welcome_claimed: false }));

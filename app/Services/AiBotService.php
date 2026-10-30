@@ -35,6 +35,9 @@ class AiBotService
     /** มีคำขอเช่าของกระเป๋านี้กำลังทำงานอยู่ — กันกดรัวจนตัดเครดิตซ้อน */
     public const ERR_SUBSCRIBE_BUSY = 'SUBSCRIBE_IN_PROGRESS';
 
+    /** idempotency key เดิมถูกส่งมากับแพลน/จำนวนวันที่ไม่ตรงกับครั้งแรก */
+    public const ERR_IDEMPOTENCY_CONFLICT = 'IDEMPOTENCY_KEY_REUSED';
+
     /** ยังไม่เปิดให้เติมเครดิต (ยังไม่มีรางรับเงินจริง) */
     public const ERR_TOPUP_CLOSED = 'TOPUP_UNAVAILABLE';
 
@@ -46,6 +49,12 @@ class AiBotService
 
     /** reference คงที่ของโบนัสต้อนรับ — unique ต่อ wallet จึงรับได้ครั้งเดียวเสมอ */
     private const WELCOME_REFERENCE = 'welcome';
+
+    /**
+     * client ที่ไม่ส่ง idempotency key มา (แอพรุ่นเก่า/ยิง API ตรง) — คำขอเช่าเดิมที่ซ้ำ
+     * ภายในกี่วินาทีถึงถือว่าเป็นการยิงซ้ำ ดู findReplayedCharge().
+     */
+    private const LEGACY_REPLAY_SECONDS = 60;
 
     // =========================================================================
     // เครดิต
@@ -319,12 +328,17 @@ class AiBotService
      *
      * แพลนเดิม → ต่ออายุจาก expires_at เดิม (ไม่เสียวันที่จ่ายไปแล้ว)
      * แพลนใหม่ → คืนเครดิตวันที่เหลือของแพลนเดิมก่อน แล้วเริ่มรอบใหม่
+     *
+     * @param  string|null  $requestKey  idempotency key ของ "การกดหนึ่งครั้ง" จาก client —
+     *                                   ส่งซ้ำด้วย key เดิม = ไม่ตัดซ้ำและไม่ต่ออายุซ้ำ
+     * @return AiBotSubscription|null null เฉพาะคำขอซ้ำที่การเช่าเดิมหายไปแล้ว
      */
-    public function subscribe(string $wallet, AiBotPlan $plan, int $days): AiBotSubscription
+    public function subscribe(string $wallet, AiBotPlan $plan, int $days, ?string $requestKey = null): ?AiBotSubscription
     {
         $wallet = $this->normalize($wallet);
         $days = $this->clampRentalDays($days);
         $cost = round($plan->credits_per_day * $days, 4);
+        $requestKey = $requestKey === '' ? null : $requestKey;
 
         /*
          * ด่านสุดท้ายก่อนมีใครเสียเงิน
@@ -355,16 +369,32 @@ class AiBotService
         }
 
         try {
-            return $this->commitSubscription($wallet, $plan, $days, $cost);
+            return $this->commitSubscription($wallet, $plan, $days, $cost, $requestKey);
         } finally {
             $lock->release();
         }
     }
 
     /** ตัวเนื้อของ subscribe() — เรียกได้เฉพาะตอนถือล็อกของกระเป๋านั้นแล้ว */
-    private function commitSubscription(string $wallet, AiBotPlan $plan, int $days, float $cost): AiBotSubscription
+    private function commitSubscription(string $wallet, AiBotPlan $plan, int $days, float $cost, ?string $requestKey): ?AiBotSubscription
     {
-        return DB::transaction(function () use ($wallet, $plan, $days, $cost) {
+        return DB::transaction(function () use ($wallet, $plan, $days, $cost, $requestKey) {
+            /*
+             * คำขอเดิมที่ถูกส่งซ้ำ = ไม่ทำอะไรเลย ต้องเช็คก่อนแตะอะไรทั้งสิ้น
+             *
+             * เดิมปล่อยให้ record() เป็นตัวกันซ้ำตอนท้าย — record() คืนแถวเดิมโดยไม่ตัด
+             * แต่ทุกอย่างก่อนหน้านั้นเกิดไปแล้ว: วันถูกบวกเพิ่ม credits_spent ถูกนับเพิ่ม
+             * และการเปลี่ยนแพลนคืนเงินแพลนเดิมให้ด้วย ผลคือเสกเครดิตได้ภายในนาทีเดียว
+             * (เช่า Pro → เปลี่ยนเป็น Starter ได้เงิน Pro คืน → กลับมา Pro ไม่ถูกตัดเพราะ
+             * reference ระดับนาทีซ้ำ แล้วยกเลิกรับคืนตาม credits_spent อีกรอบ)
+             */
+            $replayed = $this->findReplayedCharge($wallet, $plan, $days, $requestKey);
+
+            if ($replayed) {
+                return AiBotSubscription::with('plan')->find($replayed->meta['subscription_id'] ?? 0)
+                    ?? $this->activeSubscription($wallet);
+            }
+
             $current = $this->activeSubscription($wallet);
             $planChanged = $current && $current->ai_bot_plan_id !== $plan->id;
 
@@ -403,28 +433,26 @@ class AiBotService
 
             $subscription->save();
 
-            /*
-             * reference ต้องซ้ำได้เองเมื่อเป็น "คำขอเดิมที่ถูกส่งซ้ำ"
-             *
-             * เดิมใช้ subscription->id ซึ่งเปลี่ยนทุกครั้งที่สร้างแถวใหม่ (การอัปเกรด
-             * จากแพลนฟรีเข้าเส้นทางนี้ทุกคน) → retry ของคำขอเดิมได้ reference ใหม่
-             * → unique index ไม่ทำงาน → ตัดเครดิตครบสองรอบ
-             * คอมเมนต์เดิมอ้างว่ามี hash ของ payload อยู่แล้ว ซึ่งไม่เคยมี — อันตราย
-             * กว่าไม่มีคอมเมนต์ เพราะคนอ่านรอบหน้าจะเชื่อว่ากันซ้ำไว้แล้ว
-             *
-             * หน้าต่าง 1 นาที: กดปุ่มรัวหรือเน็ตหลุดแล้วยิงซ้ำ = ตัดครั้งเดียว
-             * ส่วนการตั้งใจต่ออายุอีกรอบจริงๆ รอข้ามนาทีแล้วทำได้ตามปกติ
-             */
-            $window = now()->format('YmdHi');
-            $this->record(
+            $charge = $this->record(
                 $wallet,
                 'charge',
                 -$cost,
-                sprintf('subscribe:%s:%d:%s', $plan->code, $days, $window),
-                ['plan' => $plan->code, 'days' => $days]
+                $this->chargeReference($wallet, $plan, $days, $requestKey),
+                ['plan' => $plan->code, 'days' => $days, 'subscription_id' => $subscription->id]
             );
 
-            $subscription->credits_spent = round((float) $subscription->credits_spent + $cost, 4);
+            /*
+             * แถวตัดเครดิตต้องเพิ่งถูกสร้างโดยคำขอนี้เท่านั้น
+             *
+             * ได้แถวเดิมกลับมา = มีคำขออื่นใช้ reference นี้ตัดไปแล้ว (ล็อกหมดอายุกลางทาง
+             * หรือคำขอซ้ำที่หลุดด่านข้างบน) — ห้ามต่ออายุหรือนับ credits_spent จากเงินที่
+             * ไม่ได้ตัดจริง เพราะ refundRemaining() คืนเงินตาม credits_spent ย้อนทั้ง transaction
+             */
+            if (! $charge->wasRecentlyCreated) {
+                throw new RuntimeException(self::ERR_SUBSCRIBE_BUSY);
+            }
+
+            $subscription->credits_spent = round((float) $subscription->credits_spent + abs((float) $charge->amount), 4);
             $subscription->save();
 
             $subscription = $subscription->fresh('plan');
@@ -446,6 +474,67 @@ class AiBotService
 
             return $subscription;
         });
+    }
+
+    /**
+     * แถวตัดเครดิตของ "คำขอเดิม" ถ้าคำขอนี้คือการยิงซ้ำ — null = คำขอใหม่จริง ต้องตัดเงิน.
+     *
+     * มี key → ซ้ำก็ต่อเมื่อ key นี้เคยตัดสำเร็จแล้ว (key เดิมแต่แพลน/วันต่าง = client ใช้ key
+     * ผิด ปฏิเสธไปเลย ไม่เดาว่าตั้งใจอะไร)
+     *
+     * ไม่มี key (แอพรุ่นเก่า) → แยก "retry" กับ "ตั้งใจเช่าอีกรอบ" จากตัวคำขอไม่ได้ จึงถือว่าซ้ำ
+     * เฉพาะเมื่อแถวล่าสุดของกระเป๋าคือการตัดค่าเช่าแพลน/วันเดียวกันภายใน 60 วินาที และการเช่า
+     * ที่ใช้อยู่ยังเป็นใบที่แถวนั้นตัดให้ — มีการคืนเงิน/เปลี่ยนแพลน/ยกเลิกคั่นเมื่อไหร่ก็ไม่ใช่การยิงซ้ำ
+     * ทางนี้ปลอดภัยเพราะ "ซ้ำ" แปลว่าไม่ทำอะไรเลย ไม่ได้แปลว่าต่ออายุฟรี
+     */
+    private function findReplayedCharge(string $wallet, AiBotPlan $plan, int $days, ?string $requestKey): ?AiBotCredit
+    {
+        if ($requestKey !== null) {
+            $row = AiBotCredit::where('wallet_address', $wallet)
+                ->where('reference', 'subscribe:req:'.$requestKey)
+                ->first();
+
+            if ($row && (($row->meta['plan'] ?? null) !== $plan->code || (int) ($row->meta['days'] ?? 0) !== $days)) {
+                throw new RuntimeException(self::ERR_IDEMPOTENCY_CONFLICT);
+            }
+
+            return $row;
+        }
+
+        $latest = AiBotCredit::where('wallet_address', $wallet)->latest('id')->first();
+
+        if (! $latest
+            || $latest->type !== 'charge'
+            || ($latest->meta['plan'] ?? null) !== $plan->code
+            || (int) ($latest->meta['days'] ?? 0) !== $days
+            || ! $latest->created_at->gt(now()->subSeconds(self::LEGACY_REPLAY_SECONDS))) {
+            return null;
+        }
+
+        $active = $this->activeSubscription($wallet);
+
+        return $active && $active->id === (int) ($latest->meta['subscription_id'] ?? 0) ? $latest : null;
+    }
+
+    /**
+     * reference ของการตัดค่าเช่า — ห้ามซ้ำกับการตัดครั้งก่อนที่เป็นคนละคำขอเด็ดขาด.
+     *
+     * เดิมเป็น subscribe:{แพลน}:{วัน}:{นาที} → คำขอคนละใบในนาทีเดียวกันได้ reference เดียวกัน
+     * แล้ว record() คืนแถวเดิมโดยไม่ตัดเงิน (ต้นเหตุของการเสกเครดิต)
+     *
+     * มี key → ผูกกับ key: ส่งซ้ำด้วย key เดิมได้ reference เดิม unique index กันซ้ำให้
+     * ไม่มี key → ผูกกับ id แถวล่าสุดของ ledger กระเป๋านี้ ซึ่งขยับทุกครั้งที่มีการตัด/คืน
+     * จึงไม่มีทางได้ reference ของการตัดครั้งก่อนกลับมา ไม่ว่าจะสลับแพลนไปมากี่รอบในนาทีเดียว
+     */
+    private function chargeReference(string $wallet, AiBotPlan $plan, int $days, ?string $requestKey): string
+    {
+        if ($requestKey !== null) {
+            return 'subscribe:req:'.$requestKey;
+        }
+
+        $latestId = (int) AiBotCredit::where('wallet_address', $wallet)->max('id');
+
+        return sprintf('subscribe:%s:%d:after:%d', $plan->code, $days, $latestId);
     }
 
     /**
@@ -471,21 +560,40 @@ class AiBotService
     /** ยกเลิกการเช่า + คืนเครดิตของวันที่เหลือ แล้วหยุดบอททั้งหมด */
     public function cancel(string $wallet): ?AiBotSubscription
     {
-        $subscription = $this->activeSubscription($wallet);
+        $wallet = $this->normalize($wallet);
 
-        if (! $subscription) {
-            return null;
+        /*
+         * ล็อกเดียวกับ subscribe() และอ่านการเช่า "หลัง" ได้ล็อก
+         *
+         * เดิมอ่านนอกล็อกแล้วคืนเงินจากค่าที่อ่านไว้ — ถ้าการต่ออายุเข้ามาคั่นพอดี
+         * ยกเลิกจะคืนเงินจากจำนวนวันก่อนต่ออายุ หรือการต่ออายุไปบวกวันให้ใบที่เพิ่งถูกปิด
+         * ทั้งสองทางผู้ใช้จ่ายค่าวันที่ไม่ได้ใช้และไม่ได้คืน
+         */
+        $lock = Cache::lock("aibot:subscribe:{$wallet}", 15);
+
+        if (! $lock->get()) {
+            throw new RuntimeException(self::ERR_SUBSCRIBE_BUSY);
         }
 
-        return DB::transaction(function () use ($subscription, $wallet) {
-            $this->refundRemaining($subscription);
+        try {
+            return DB::transaction(function () use ($wallet) {
+                $subscription = $this->activeSubscription($wallet);
 
-            AiBotConfig::forWallet($wallet)
-                ->whereIn('status', ['running', 'paused'])
-                ->update(['status' => 'stopped']);
+                if (! $subscription) {
+                    return null;
+                }
 
-            return $subscription->fresh('plan');
-        });
+                $this->refundRemaining($subscription);
+
+                AiBotConfig::forWallet($wallet)
+                    ->whereIn('status', ['running', 'paused'])
+                    ->update(['status' => 'stopped']);
+
+                return $subscription->fresh('plan');
+            });
+        } finally {
+            $lock->release();
+        }
     }
 
     /** คืนเครดิตตามจำนวนวันเต็มที่ยังไม่ได้ใช้ แล้วปิดการเช่า */
