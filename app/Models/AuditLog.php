@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * AuditLog Model.
@@ -88,6 +89,9 @@ class AuditLog extends Model
      * Automatically captures the authenticated admin's ID,
      * the client IP address, and user agent from the current request.
      *
+     * Reads the admin guard explicitly: the default guard is web, whose IDs
+     * belong to the users table while admin_id references admin_users.
+     *
      * @param  string  $action  Description of the action performed
      * @param  Model|null  $model  The model that was acted upon
      * @param  array|null  $oldValues  The original values before the change
@@ -100,7 +104,7 @@ class AuditLog extends Model
         ?array $newValues = null,
     ): static {
         return static::create([
-            'admin_id' => auth()->id(),
+            'admin_id' => Auth::guard('admin')->user()?->id,
             'action' => $action,
             'model_type' => $model ? get_class($model) : null,
             'model_id' => $model?->getKey(),
