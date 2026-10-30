@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\AiBotWalletTransfer;
 use App\Services\AiBot\Wallet\BotWalletService;
 use App\Services\AiBotService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Throwable;
 
 /**
  * TPIX TRADE — กระเป๋าบอท (API ใช้ร่วมกันระหว่างเว็บและแอพ).
@@ -31,6 +34,7 @@ class AiBotWalletController extends Controller
         BotWalletService::ERR_IN_FLIGHT => 'มีรายการถอนที่ยังไม่เสร็จอยู่ — รอให้รายการเดิมสำเร็จก่อน',
         BotWalletService::ERR_DAILY_CAP => 'เกินเพดานถอนต่อวันของกระเป๋าบอท',
         BotWalletService::ERR_NOT_CANCELLABLE => 'รายการนี้ถูกส่งไปแล้ว ยกเลิกไม่ได้ — รอผลจากเชน',
+        'REQUEST_FAILED' => 'ทำรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
     ];
 
     public function __construct(
@@ -62,7 +66,7 @@ class AiBotWalletController extends Controller
         try {
             $wallet = $this->wallets->ensure($owner);
         } catch (RuntimeException $e) {
-            return $this->failure($e->getMessage(), $e->getMessage() === BotWalletService::ERR_DISABLED ? 503 : 422);
+            return $this->serviceFailure($e, $e->getMessage() === BotWalletService::ERR_DISABLED ? 503 : 422);
         }
 
         return response()->json([
@@ -99,7 +103,7 @@ class AiBotWalletController extends Controller
         try {
             $transfer = $this->wallets->requestWithdraw($owner, $validated['asset'], (float) $validated['amount'], $request->ip());
         } catch (RuntimeException $e) {
-            return $this->failure($e->getMessage(), match ($e->getMessage()) {
+            return $this->serviceFailure($e, match ($e->getMessage()) {
                 BotWalletService::ERR_DISABLED => 503,
                 BotWalletService::ERR_NOT_FOUND => 404,
                 default => 422,
@@ -119,7 +123,7 @@ class AiBotWalletController extends Controller
         try {
             $transfer = $this->wallets->cancelWithdraw($owner, $id);
         } catch (RuntimeException $e) {
-            return $this->failure($e->getMessage(), $e->getMessage() === BotWalletService::ERR_NOT_FOUND ? 404 : 422);
+            return $this->serviceFailure($e, $e->getMessage() === BotWalletService::ERR_NOT_FOUND ? 404 : 422);
         }
 
         return response()->json([
@@ -149,6 +153,44 @@ class AiBotWalletController extends Controller
         );
 
         return $wallet;
+    }
+
+    /**
+     * คำตอบเมื่อบริการโยน RuntimeException — ส่งออกได้เฉพาะรหัสที่ตั้งใจไว้.
+     *
+     * QueryException ก็เป็น RuntimeException ข้อความมี SQL พร้อมค่าที่ bind ซึ่งตอนสร้างกระเป๋าคือ
+     * key_ciphertext จึงห้ามออกทั้ง response และ log — log เก็บแค่ SQL ที่ยังไม่แทนค่า
+     * ตอบ 500 ให้ฝั่งเว็บรู้ว่ายังไม่รู้ผล ถ้าคำขอถอนบันทึกไปแล้ว ลองซ้ำจะติด ERR_IN_FLIGHT
+     */
+    private function serviceFailure(RuntimeException $e, int $status): JsonResponse
+    {
+        if (array_key_exists($e->getMessage(), self::ERROR_MESSAGES)) {
+            return $this->failure($e->getMessage(), $status);
+        }
+
+        Log::error('bot-wallet: ทำรายการล้มเหลวจากสาเหตุที่ไม่ได้ตั้งใจ', $this->logDetail($e) + [
+            'exception' => $e::class,
+            'path' => request()->path(),
+        ]);
+
+        return $this->failure('REQUEST_FAILED', 500);
+    }
+
+    /**
+     * รายละเอียดที่ลง log ได้ — DeadlockException ไม่ใช่ QueryException แต่ลอกข้อความของมันมาทั้งก้อน
+     * จึงต้องไล่หาตัวจริงตามสาย exception ไม่ใช่เช็คแค่ชั้นนอกสุด.
+     *
+     * @return array{error: ?string, sql?: string}
+     */
+    private function logDetail(Throwable $e): array
+    {
+        for ($cause = $e; $cause !== null; $cause = $cause->getPrevious()) {
+            if ($cause instanceof QueryException) {
+                return ['error' => $cause->getPrevious()?->getMessage(), 'sql' => $cause->getSql()];
+            }
+        }
+
+        return ['error' => $e->getMessage()];
     }
 
     private function failure(string $code, int $status): JsonResponse
