@@ -61,7 +61,21 @@ jobs:
 
       - name: Deploy via SSH (git pull + optimize)
         uses: appleboy/ssh-action@v1
+        # ⚠️⚠️ ห้ามใส่ ${{ }} ใน script ข้างล่างเด็ดขาด — ส่งค่าผ่าน env + envs แทน
+        #
+        # สตริงที่มี ${{ }} อยู่ข้างในถูก GitHub นับทั้งก้อนเป็น expression เดียว เพดาน 21,000 ไบต์
+        # (คอมเมนต์ภาษาไทย = 3 ไบต์ต่อตัวอักษร) เกินแล้วไฟล์ทั้งไฟล์ใช้ไม่ได้ ไม่มี deploy เลย
+        # เกิดจริง 2026-10-30 หลัง merge #186: script 23,479 ไบต์ → "Exceeded max expression length 21000"
+        # v1.1.266 ไม่ได้ขึ้น prod จนกว่าจะแก้ (DeployWorkflowLimitsTest ฟ้องถ้าย้อนกลับไปแบบเดิม)
+        #
+        # ชื่อขึ้นต้น DEPLOY_IN_ กันชนตัวแปรของ Laravel — APP_URL ที่ export ไว้จะทับ .env ตอน config:cache
+        env:
+          DEPLOY_IN_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_IN_GH_PAT: ${{ secrets.GH_PAT }}
+          DEPLOY_IN_APP_URL: ${{ secrets.APP_URL }}
+          DEPLOY_IN_SHA: ${{ github.sha }}
         with:
+          envs: DEPLOY_IN_PATH,DEPLOY_IN_GH_PAT,DEPLOY_IN_APP_URL,DEPLOY_IN_SHA
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -78,8 +92,13 @@ jobs:
           script: |
             set -e
 
-            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-            DEPLOY_PATH="${DEPLOY_PATH:-/home/admin/domains/tpix.online}"
+            # ค่าจาก env ของ step (ดูหัวข้อ env ด้านบน) — ย้ายเข้าตัวแปร shell แล้ว unset ทันที
+            # ตัวที่ export ไว้ส่งต่อให้ทุกโปรเซสลูก (composer/npm script, artisan) — GH_PAT ไม่ควรไปถึงพวกนั้น
+            DEPLOY_PATH="${DEPLOY_IN_PATH:-/home/admin/domains/tpix.online}"
+            DEPLOY_GH_PAT="${DEPLOY_IN_GH_PAT:-}"
+            DEPLOY_APP_URL="${DEPLOY_IN_APP_URL:-}"
+            DEPLOY_SHA="${DEPLOY_IN_SHA:-unknown}"
+            unset DEPLOY_IN_PATH DEPLOY_IN_GH_PAT DEPLOY_IN_APP_URL DEPLOY_IN_SHA
 
             echo "🚀 Starting deployment to ${DEPLOY_PATH}"
             cd "${DEPLOY_PATH}"
@@ -160,7 +179,7 @@ jobs:
             }
 
             # เขียนธงไม่ได้ = set -e หยุดตรงนี้ ก่อนแตะโค้ด (ไม่ deploy ดีกว่า deploy โดยไม่มีด่าน)
-            echo "deploy ${{ github.sha }} $(date -u +%FT%TZ)" > "$DEPLOY_FLAG"
+            echo "deploy ${DEPLOY_SHA} $(date -u +%FT%TZ)" > "$DEPLOY_FLAG"
             echo "🔒 Scheduler held until code, schema and caches match"
 
             # Pull latest code — ผ่าน SSH ไม่ใช่ PAT
@@ -181,11 +200,11 @@ jobs:
             git reset --hard origin/main
 
             # Set GITHUB_TOKEN in .env for GitHub API access (App Releases)
-            if [ -n "${{ secrets.GH_PAT }}" ]; then
+            if [ -n "$DEPLOY_GH_PAT" ]; then
               if grep -q '^GITHUB_TOKEN=' .env 2>/dev/null; then
-                sed -i "s|^GITHUB_TOKEN=.*|GITHUB_TOKEN=${{ secrets.GH_PAT }}|" .env
+                sed -i "s|^GITHUB_TOKEN=.*|GITHUB_TOKEN=${DEPLOY_GH_PAT}|" .env
               else
-                echo "GITHUB_TOKEN=${{ secrets.GH_PAT }}" >> .env
+                echo "GITHUB_TOKEN=${DEPLOY_GH_PAT}" >> .env
               fi
               echo "✓ GITHUB_TOKEN set in .env"
             fi
@@ -374,7 +393,7 @@ jobs:
             #   (ใบ Let's Encrypt หมดอายุไม่ควรทำให้ deploy ล้ม)
             # /health ผ่าน Laravel เต็มตัวและอ่าน version.json ทุกครั้ง → จับได้ทั้ง 500
             # (เช่น php-fpm อ่าน bootstrap/cache/config.php ไม่ได้) และ docroot ชี้ผิดที่ (version ไม่ตรง)
-            HEALTH_URL_BASE="${{ secrets.APP_URL }}"
+            HEALTH_URL_BASE="$DEPLOY_APP_URL"
             HEALTH_HOST=$(printf '%s' "${HEALTH_URL_BASE:-https://tpix.online}" | sed -E 's#^[A-Za-z]+://##; s#[/:].*$##')
             DEPLOYED_VERSION=$(php -r '$v = json_decode(@file_get_contents("version.json"), true); echo is_array($v) ? ($v["version"] ?? "") : "";')
             HEALTH_IPS="$( (hostname -I 2>/dev/null || true) | tr ' ' '\n' | grep -E '^[0-9]+(\.[0-9]+){3}$' || true) 127.0.0.1"
