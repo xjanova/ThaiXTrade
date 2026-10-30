@@ -58,7 +58,7 @@ class TokenFactoryController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        $this->audit('token_factory.approve', $token);
+        AuditLog::log('token_factory.approve', $token);
 
         return back()->with('success', "อนุมัติ {$token->symbol} แล้ว — กำลังสร้างเหรียญบนเชน");
     }
@@ -75,7 +75,7 @@ class TokenFactoryController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        $this->audit('token_factory.reject', $token, null, ['reason' => $request->input('reason')]);
+        AuditLog::log('token_factory.reject', $token, null, ['reason' => $request->input('reason')]);
 
         return back()->with('success', "ปฏิเสธ {$token->symbol} แล้ว");
     }
@@ -91,7 +91,7 @@ class TokenFactoryController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        $this->audit('token_factory.verify_toggle', $token, ['is_verified' => $before], ['is_verified' => (bool) $token->is_verified]);
+        AuditLog::log('token_factory.verify_toggle', $token, ['is_verified' => $before], ['is_verified' => (bool) $token->is_verified]);
 
         return back()->with('success', $token->is_verified ? "{$token->symbol} ได้ป้าย Verified แล้ว" : "ถอดป้าย Verified ของ {$token->symbol} แล้ว");
     }
@@ -107,7 +107,7 @@ class TokenFactoryController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        $this->audit('token_factory.list_toggle', $token, ['is_listed' => $before], ['is_listed' => (bool) $token->is_listed]);
+        AuditLog::log('token_factory.list_toggle', $token, ['is_listed' => $before], ['is_listed' => (bool) $token->is_listed]);
 
         return back()->with('success', $token->is_listed
             ? "ลิสต์ {$token->symbol} แล้ว — คู่เทรดจะเปิดในรอบซิงก์ถัดไป (ถ้ามีพูลสภาพคล่อง)"
@@ -140,7 +140,7 @@ class TokenFactoryController extends Controller
             $this->logos->deleteIfUnused($before, null, $token);
         }
 
-        $this->audit('token_factory.logo_update', $token, ['logo_url' => $before], ['logo_url' => $url]);
+        AuditLog::log('token_factory.logo_update', $token, ['logo_url' => $before], ['logo_url' => $url]);
 
         return back()->with('success', "เปลี่ยนโลโก้ {$token->symbol} แล้ว");
     }
@@ -155,7 +155,7 @@ class TokenFactoryController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        $this->audit('token_factory.retry', $token);
+        AuditLog::log('token_factory.retry', $token);
 
         return back()->with('success', "สั่ง deploy {$token->symbol} ใหม่แล้ว");
     }
@@ -174,7 +174,7 @@ class TokenFactoryController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        $this->audit('token_factory.reset_stuck', $token, ['status' => 'deploying'], ['status' => 'failed']);
+        AuditLog::log('token_factory.reset_stuck', $token, ['status' => 'deploying'], ['status' => 'failed']);
 
         return back()->with('success', "รีเซ็ต {$token->symbol} เป็น failed แล้ว — ตรวจสอบก่อนกด retry");
     }
@@ -190,7 +190,7 @@ class TokenFactoryController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        $this->audit('token_factory.recheck', $token);
+        AuditLog::log('token_factory.recheck', $token);
 
         return back()->with('success', "สั่งตรวจผลธุรกรรมของ {$token->symbol} แล้ว");
     }
@@ -213,7 +213,7 @@ class TokenFactoryController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        $this->audit('token_factory.refund_manual', $token, null, [
+        AuditLog::log('token_factory.refund_manual', $token, null, [
             'refund_tx_hash' => $token->refund_tx_hash,
             'refund_amount_wei' => $token->refund_amount_wei,
         ]);
@@ -234,29 +234,11 @@ class TokenFactoryController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        $this->audit('token_factory.refund_auto', $token, null, [
+        AuditLog::log('token_factory.refund_auto', $token, null, [
             'payout_id' => $payout->id,
             'refund_amount_wei' => $payout->amount_wei,
         ]);
 
         return back()->with('success', "เข้าคิวจ่ายคืน {$token->symbol} แล้ว (คิว #{$payout->id}) — ระบบจะส่งในรอบถัดไป");
-    }
-
-    /**
-     * บันทึกด้วย guard admin — AuditLog::log() อ่าน auth()->id() ของ guard ปริยาย (web)
-     * และเดิมส่ง $token->id (int) เข้าช่องที่รับ Model = TypeError หลังอนุมัติไปแล้ว (500).
-     */
-    private function audit(string $action, FactoryToken $token, ?array $old = null, ?array $new = null): void
-    {
-        AuditLog::create([
-            'admin_id' => Auth::guard('admin')->id(),
-            'action' => $action,
-            'model_type' => FactoryToken::class,
-            'model_id' => $token->id,
-            'old_values' => $old,
-            'new_values' => $new,
-            'ip_address' => request()->ip(),
-            'user_agent' => request()->userAgent(),
-        ]);
     }
 }

@@ -73,20 +73,10 @@ class MoneySettings
         }
     }
 
-    /**
-     * ลง audit_logs ด้วย guard admin — AuditLog::log() อ่าน guard ปริยาย (web)
-     * ซึ่งเป็น null สำหรับแอดมิน ทำให้ไม่รู้ว่าใครเปลี่ยน.
-     */
+    /** บันทึกค่าเก่า/ค่าใหม่ของการเปลี่ยนแปลงเรื่องเงินที่ไม่ได้อยู่ใน site_settings */
     public static function record(string $action, array $old, array $new): void
     {
-        AuditLog::create([
-            'admin_id' => Auth::guard('admin')->id(),
-            'action' => $action,
-            'old_values' => $old,
-            'new_values' => $new,
-            'ip_address' => request()->ip(),
-            'user_agent' => request()->userAgent(),
-        ]);
+        AuditLog::log($action, null, $old, $new);
     }
 
     /**

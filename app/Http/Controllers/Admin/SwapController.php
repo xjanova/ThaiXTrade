@@ -5,8 +5,12 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Chain;
 use App\Models\SwapConfig;
+use App\Rules\EvmAddress;
+use App\Support\MoneySettings;
+use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -18,6 +22,9 @@ use Inertia\Response as InertiaResponse;
  */
 class SwapController extends Controller
 {
+    /** ช่องที่กำหนดว่าเงินของผู้ใช้วิ่งผ่านสัญญาไหน — ต้องตอบได้ว่าใครเปลี่ยนจากอะไรเป็นอะไร */
+    private const AUDITED = ['id', 'chain_id', 'router_address', 'factory_address', 'protocol', 'slippage_tolerance', 'is_active'];
+
     /**
      * Display a listing of swap configurations with their chains.
      */
@@ -31,8 +38,9 @@ class SwapController extends Controller
         $chains = Chain::active()->ordered()->get();
 
         return Inertia::render('Admin/Swap/Index', [
-            'swapConfigs' => $swapConfigs,
+            'configs' => $swapConfigs,
             'chains' => $chains,
+            'canManageMoney' => MoneySettings::canManage(),
         ]);
     }
 
@@ -43,8 +51,8 @@ class SwapController extends Controller
     {
         $validated = $request->validate([
             'chain_id' => ['required', 'integer', 'exists:chains,id'],
-            'router_address' => ['required', 'string', 'max:255'],
-            'factory_address' => ['nullable', 'string', 'max:255'],
+            'router_address' => ['required', 'string', new EvmAddress],
+            'factory_address' => ['nullable', 'string', new EvmAddress],
             'protocol' => ['required', 'string', 'in:uniswap_v2,uniswap_v3,pancakeswap,sushiswap,custom'],
             'name' => ['required', 'string', 'max:255'],
             'slippage_tolerance' => ['required', 'numeric', 'min:0.01', 'max:50'],
@@ -52,7 +60,11 @@ class SwapController extends Controller
             'metadata' => ['nullable', 'array'],
         ]);
 
-        SwapConfig::create($validated);
+        DB::transaction(function () use ($validated): void {
+            $swap = SwapConfig::create($validated);
+
+            MoneySettings::record('swap_config.create', [], $swap->only(self::AUDITED));
+        });
 
         return back()->with('success', 'Swap configuration created successfully.');
     }
@@ -64,8 +76,8 @@ class SwapController extends Controller
     {
         $validated = $request->validate([
             'chain_id' => ['required', 'integer', 'exists:chains,id'],
-            'router_address' => ['required', 'string', 'max:255'],
-            'factory_address' => ['nullable', 'string', 'max:255'],
+            'router_address' => ['required', 'string', new EvmAddress],
+            'factory_address' => ['nullable', 'string', new EvmAddress],
             'protocol' => ['required', 'string', 'in:uniswap_v2,uniswap_v3,pancakeswap,sushiswap,custom'],
             'name' => ['required', 'string', 'max:255'],
             'slippage_tolerance' => ['required', 'numeric', 'min:0.01', 'max:50'],
@@ -73,7 +85,7 @@ class SwapController extends Controller
             'metadata' => ['nullable', 'array'],
         ]);
 
-        $swap->update($validated);
+        $this->change($swap, 'swap_config.update', fn (SwapConfig $locked) => $locked->update($validated));
 
         return back()->with('success', 'Swap configuration updated successfully.');
     }
@@ -83,11 +95,11 @@ class SwapController extends Controller
      */
     public function toggleActive(SwapConfig $swap): RedirectResponse
     {
-        $swap->update([
-            'is_active' => ! $swap->is_active,
-        ]);
+        $this->change($swap, 'swap_config.toggle', fn (SwapConfig $locked) => $locked->update([
+            'is_active' => ! $locked->is_active,
+        ]));
 
-        $status = $swap->is_active ? 'activated' : 'deactivated';
+        $status = $swap->refresh()->is_active ? 'activated' : 'deactivated';
 
         return back()->with('success', "Swap configuration {$status} successfully.");
     }
@@ -97,8 +109,21 @@ class SwapController extends Controller
      */
     public function destroy(SwapConfig $swap): RedirectResponse
     {
-        $swap->delete();
+        $this->change($swap, 'swap_config.delete', fn (SwapConfig $locked) => $locked->delete());
 
         return back()->with('success', 'Swap configuration deleted successfully.');
+    }
+
+    /** เขียนแถวกับบันทึกในธุรกรรมเดียวกัน — บันทึกไม่สำเร็จเท่ากับเราเตอร์ไม่เปลี่ยน */
+    private function change(SwapConfig $swap, string $action, Closure $write): void
+    {
+        DB::transaction(function () use ($swap, $action, $write): void {
+            $locked = SwapConfig::lockForUpdate()->findOrFail($swap->id);
+            $old = $locked->only(self::AUDITED);
+
+            $write($locked);
+
+            MoneySettings::record($action, $old, $locked->exists ? $locked->only(self::AUDITED) : []);
+        });
     }
 }

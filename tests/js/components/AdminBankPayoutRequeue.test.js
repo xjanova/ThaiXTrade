@@ -45,7 +45,7 @@ const order = (overrides = {}) => ({
 });
 
 async function openTransactions(rows) {
-    const wrapper = mount(TokenSalesIndex, { props: { transactions: { data: rows } } });
+    const wrapper = mount(TokenSalesIndex, { props: { transactions: { data: rows }, canManageMoney: true } });
     await wrapper.findAll('button').find((b) => b.text().includes('Transactions')).trigger('click');
 
     return wrapper;
