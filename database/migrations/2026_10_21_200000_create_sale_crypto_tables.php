@@ -47,7 +47,10 @@ return new class() extends Migration
                 $table->string('amount_lock', 200)->nullable()->unique();
                 // awaiting_payment → paid | expired | needs_review
                 $table->string('status', 24)->index();
-                $table->timestamp('expires_at')->index();
+                // DATETIME ไม่ใช่ TIMESTAMP โดยตั้งใจ — MariaDB ของโปรดักชัน (explicit_defaults_for_timestamp=0) เติม
+                // ON UPDATE current_timestamp() ให้ TIMESTAMP NOT NULL คอลัมน์แรก เวลาหมดอายุจะขยับทุกครั้งที่อัปเดตแถว
+                // แล้วยอดที่โอนสายกลายเป็นทันเวลา — SQLite ตอนเทสต์ไม่แสดงอาการนี้
+                $table->dateTime('expires_at')->index();
                 $table->timestamp('paid_at')->nullable();
                 $table->unsignedBigInteger('sale_transaction_id')->nullable()->index();
                 $table->json('metadata')->nullable();

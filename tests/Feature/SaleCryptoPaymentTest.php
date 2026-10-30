@@ -648,4 +648,14 @@ class SaleCryptoPaymentTest extends TestCase
         $this->assertSame(SaleCryptoPayment::STATUS_RESOLVED, $unmatched->fresh()->status);
         $this->assertSame(1, SaleTransaction::count());
     }
+
+    /** SQLite แสดงอาการนี้ไม่ได้ จึงตรวจที่ตัว migration — MariaDB เติม ON UPDATE ให้ TIMESTAMP NOT NULL คอลัมน์แรก */
+    #[Test]
+    public function the_order_expiry_is_not_a_column_the_database_rewrites_on_update(): void
+    {
+        $migration = file_get_contents(database_path('migrations/2026_10_21_200000_create_sale_crypto_tables.php'));
+
+        $this->assertStringContainsString("->dateTime('expires_at')", $migration);
+        $this->assertStringNotContainsString("->timestamp('expires_at')", $migration);
+    }
 }
