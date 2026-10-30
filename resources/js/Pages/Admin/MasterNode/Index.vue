@@ -4,9 +4,10 @@
  * Monitor node network, manage registry, on-chain stats
  * Developed by Xman Studio
  */
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useAdminPolling } from '@/Composables/useAdminPolling';
 import axios from 'axios';
 
 const props = defineProps({
@@ -53,11 +54,7 @@ async function saveConfig() {
     } catch {}
 }
 
-let pollInterval;
-onMounted(() => {
-    pollInterval = setInterval(refreshStats, 30000);
-});
-onUnmounted(() => clearInterval(pollInterval));
+useAdminPolling(refreshStats, 30000);
 
 // index = ตัวเลข enum NodeTier บนสัญญา { Guardian=0, Sentinel=1, Light=2, Validator=3 }
 // countKey = คีย์ใน stats ที่ backend นับ activeNodes มาจาก getTierInfo() จริง

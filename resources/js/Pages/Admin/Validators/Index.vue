@@ -4,9 +4,10 @@
  * Review applications, monitor active validators, trigger votes
  * Developed by Xman Studio
  */
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useAdminPolling } from '@/Composables/useAdminPolling';
 import axios from 'axios';
 
 const props = defineProps({
@@ -160,9 +161,7 @@ async function proposeVote() {
     }
 }
 
-let pollInterval;
-onMounted(() => { pollInterval = setInterval(refreshAll, 30000); });
-onUnmounted(() => clearInterval(pollInterval));
+useAdminPolling(refreshAll, 30000);
 </script>
 
 <template>

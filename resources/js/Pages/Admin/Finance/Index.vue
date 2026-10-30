@@ -4,9 +4,10 @@
  * Real-time Stripe balance, payment history, revenue reports
  * Developed by Xman Studio
  */
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useAdminPolling } from '@/Composables/useAdminPolling';
 import axios from 'axios';
 
 const props = defineProps({
@@ -57,14 +58,10 @@ async function refundPayment(txId) {
     } finally { refundingId.value = null; }
 }
 
-let pollInterval;
-onMounted(() => {
-    pollInterval = setInterval(() => {
-        refreshBalance();
-        refreshPayments();
-    }, 30000);
-});
-onUnmounted(() => clearInterval(pollInterval));
+useAdminPolling(() => {
+    refreshBalance();
+    refreshPayments();
+}, 30000);
 
 const statusColor = (status) => ({
     confirmed: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
