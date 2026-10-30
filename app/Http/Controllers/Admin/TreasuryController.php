@@ -108,7 +108,9 @@ class TreasuryController extends Controller
             'amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,18})?$/'],
             'purpose' => ['required', 'string', Rule::in(['masternode', 'token_sale', 'refund', 'other'])],
             'memo' => ['nullable', 'string', 'max:500'],
-            'idempotency_key' => ['required', 'string', 'max:100'],
+            'idempotency_key' => ['required', 'string', 'max:100', 'not_regex:'.TreasuryPayout::SYSTEM_KEY_PATTERN],
+        ], [
+            'idempotency_key.not_regex' => 'คีย์นี้สงวนไว้ให้รายการที่ระบบสร้าง',
         ]);
 
         $amountWei = Wei::toWei($validated['amount']);
@@ -124,11 +126,13 @@ class TreasuryController extends Controller
             ]);
         }
 
+        // รายการที่กรอกมือต้องผ่าน whitelist เสมอ แม้จะเลือก purpose "ส่งเหรียญให้ผู้ซื้อ"
+        // (การยกเว้นมีไว้ให้รายการที่ระบบสร้างจาก claim/คืนเงินจริงเท่านั้น — ดู validatePayout)
         $check = $this->treasury->validatePayout(
             $validated['to_address'],
             $amountWei,
             null,
-            $validated['purpose'],
+            TreasuryPayout::ORIGIN_ADMIN,
         );
         if (! $check['ok']) {
             return response()->json([
@@ -144,6 +148,7 @@ class TreasuryController extends Controller
                 'to_address' => $validated['to_address'],
                 'amount_wei' => $amountWei,
                 'purpose' => $validated['purpose'],
+                'origin' => TreasuryPayout::ORIGIN_ADMIN,
                 'memo' => $validated['memo'] ?? null,
                 'status' => TreasuryPayout::STATUS_PENDING,
                 'requested_by' => $request->user()?->id,
@@ -193,7 +198,7 @@ class TreasuryController extends Controller
                 $payout->to_address,
                 (string) $payout->amount_wei,
                 $payout->id,
-                $payout->purpose,
+                $payout->origin,
             );
 
             if (! $check['ok']) {
@@ -297,7 +302,7 @@ class TreasuryController extends Controller
                 $payout->to_address,
                 (string) $payout->amount_wei,
                 $payout->id,
-                $payout->purpose,
+                $payout->origin,
             );
 
             if (! $check['ok']) {

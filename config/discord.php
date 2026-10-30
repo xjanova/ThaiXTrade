@@ -42,6 +42,11 @@ return [
             'label' => 'วิดีโอ',
             'keywords' => ['วิดีโอ', 'วีดีโอ', 'วิดิโอ', 'video', 'youtube', 'คลิป', 'media'],
         ],
+        'learn' => [
+            // คลิปสอนติดตั้ง/ใช้งานแอป (config/learn.php) — ห้อง #tutorials ของเซิร์ฟเวอร์ TPIX
+            'label' => 'ห้องเรียนรู้ (วิดีโอสอนใช้งาน)',
+            'keywords' => ['เรียนรู้', 'learn', 'tutorial', 'how-to', 'howto', 'สอนใช้', 'academy'],
+        ],
         'whitepaper' => [
             'label' => 'Whitepaper / ข้อมูลโปรเจกต์',
             'keywords' => ['whitepaper', 'ไวท์เปเปอร์', 'เอกสาร', 'docs', 'document', 'roadmap', 'โรดแมพ', 'ข้อมูล', 'about', 'info'],
@@ -102,6 +107,7 @@ return [
         'sale' => ['announcements'],
         'whitepaper' => ['announcements'],
         'videos' => ['news', 'announcements'],
+        'learn' => ['news', 'videos', 'announcements'],
     ],
 
     /* ครั้งแรกที่เปิดบอท โพสต์บทความย้อนหลังกี่ชิ้น (ที่เว็บมีเกือบ 300 ชิ้น — ห้ามเทลงห้องทั้งหมด) */

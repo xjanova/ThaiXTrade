@@ -480,7 +480,10 @@ class BridgeAdminController extends Controller
                         'paid_at' => now(),
                         'reviewed_by' => $request->user()?->id,
                         'reviewed_at' => now(),
-                        'last_error' => $retry['reason'],
+                        'last_error' => mb_substr($retry['reason'], 0, 300),
+                        // จ่ายด้วยธุรกรรมแทนที่ — ผูกกับ hash ที่เงินออกจริง ลิงก์ explorer ของผู้ใช้จะได้ไม่ชี้ไปธุรกรรมที่ตายแล้ว (hash เดิมอยู่ใน last_error)
+                        'payout_tx_hash' => $retry['paid_tx'] ?? $withdrawal->payout_tx_hash,
+                        'payout_block_number' => $retry['paid_block'] ?? $withdrawal->payout_block_number,
                     ]);
 
                     return [200, ['success' => true, 'message' => $retry['reason'].' — ปรับสถานะเป็นจ่ายแล้ว', 'data' => $this->withdrawalRow($withdrawal->fresh())]];

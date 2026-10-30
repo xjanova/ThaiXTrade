@@ -27,7 +27,7 @@ class TokenFactoryPolicyController extends Controller
         return Inertia::render('Admin/TokenFactory/Policy', [
             'policy' => $policy->adminConfig(),
             'resolvedFeeWallet' => $policy->feeWallet(),
-            // ไว้ให้กดคัดลอกมาใส่ได้เท่านั้น — ระบบไม่ใช้ค่านี้เองแล้ว (แอดมินทุกระดับแก้แท็บรายได้ได้)
+            // ไว้ให้กดคัดลอกมาใส่ได้เท่านั้น — ระบบไม่ใช้ค่านี้เองแล้ว
             'revenueTpixWallet' => strtolower(trim((string) SiteSetting::get('revenue', 'tpix_wallet', ''))),
         ]);
     }
@@ -51,20 +51,9 @@ class TokenFactoryPolicyController extends Controller
         $diff = $policy->save($prepared['policy']);
 
         if ($diff['new'] !== []) {
-            /*
-             * บันทึกตรงด้วย guard admin — AuditLog::log() อ่าน auth()->id() ของ guard ปริยาย (web)
-             * ซึ่งเป็น null สำหรับแอดมิน ทำให้ไม่รู้ว่าใครเปลี่ยนนโยบาย
-             */
-            $admin = Auth::guard('admin')->user();
-
-            AuditLog::create([
-                'admin_id' => $admin?->id,
-                'action' => 'token_factory.policy.update',
-                'old_values' => $diff['old'],
-                'new_values' => array_merge($diff['new'], ['_by' => $admin?->email]),
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
-            ]);
+            AuditLog::log('token_factory.policy.update', null, $diff['old'], array_merge($diff['new'], [
+                '_by' => Auth::guard('admin')->user()?->email,
+            ]));
         }
 
         return back()->with('success', $diff['new'] === []

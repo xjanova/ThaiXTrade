@@ -4,6 +4,7 @@ namespace App\Services\Trading;
 
 use App\Models\SiteSetting;
 use App\Models\TradingOrderTicket;
+use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -42,6 +43,12 @@ class OrderTicketService
 
     public const ERR_ONCHAIN_NOT_SUPPORTED = 'ONCHAIN_FEE_NOT_SUPPORTED';
 
+    /** ตั๋วผูกกับธุรกรรมที่ส่งเข้าเชนแล้ว — ผลบนเชนเป็นตัวตัดสินว่าคืนหรือปิด ไม่ใช่คำขอของหน้าเว็บ */
+    public const ERR_TICKET_PENDING = 'TICKET_TRADE_PENDING';
+
+    /** ตั๋วผูกกับธุรกรรมอื่นไปแล้ว */
+    public const ERR_TICKET_BOUND = 'TICKET_BOUND_ELSEWHERE';
+
     public function __construct(
         private readonly TradingCreditService $credits,
         private readonly TradingFeeQuoteService $quotes,
@@ -56,6 +63,9 @@ class OrderTicketService
     /**
      * ออกตั๋วโดยหักจากคลัง TPIX.
      *
+     * $chainId = PK ของตาราง chains (ใช้คิดอัตรารายเชน) · $network = chain id ของบล็อกเชน (56, 4289)
+     * ที่ตั๋วจดไว้ให้ตัวเก็บกวาดรู้ว่าจะไปถามผลของธุรกรรมที่ผูกไว้ที่เชนไหน
+     *
      * @throws RuntimeException ERR_INSUFFICIENT เมื่อเครดิตไม่พอ
      */
     public function issueWithCredit(
@@ -65,6 +75,7 @@ class OrderTicketService
         float $orderValueUsd,
         int $chainId,
         ?int $tradingPairId = null,
+        ?int $network = null,
     ): TradingOrderTicket {
         $wallet = $this->credits->normalize($wallet);
         $quote = $this->quotes->quote($wallet, $orderValueUsd, $chainId, $tradingPairId);
@@ -75,10 +86,11 @@ class OrderTicketService
 
         $fee = (float) $quote['tpix']['fee_tpix'];
 
-        return DB::transaction(function () use ($wallet, $pair, $side, $orderValueUsd, $fee, $quote) {
+        return DB::transaction(function () use ($wallet, $pair, $side, $orderValueUsd, $fee, $quote, $network) {
             $ticket = TradingOrderTicket::create([
                 'wallet_address' => $wallet,
                 'pair' => strtoupper($pair),
+                'chain_id' => $network,
                 'side' => $side,
                 'order_value_usd' => $orderValueUsd,
                 'fee_method' => TradingOrderTicket::METHOD_CREDIT,
@@ -162,10 +174,105 @@ class OrderTicketService
 
             $ticket->update([
                 'status' => TradingOrderTicket::STATUS_CONSUMED,
-                'order_tx_hash' => $orderTxHash ? strtolower($orderTxHash) : null,
+                // ไม่ส่ง hash มา = คงธุรกรรมที่ผูกไว้ตอนส่งเข้าเชน (ห้ามล้างเป็น null)
+                'order_tx_hash' => $orderTxHash ? strtolower($orderTxHash) : $ticket->order_tx_hash,
             ]);
 
             return $ticket->fresh();
+        });
+    }
+
+    /**
+     * ผูกตั๋วกับธุรกรรมของไม้ทันทีที่ส่งเข้าเชน — ยังไม่ปิดตั๋ว รอผลบนเชนก่อน.
+     *
+     * ⚠️ เดิมตั๋วไม่รู้จักธุรกรรมของตัวเองจนกว่าหน้าเว็บจะ consume (ออดิท 2026-10-28 C1/L8)
+     *    - ปิดแท็บ/เน็ตหลุดก่อน consume = ตัวเก็บกวาดคืนเงินทั้งที่ไม้ลงเชนแล้ว (เทรดฟรี)
+     *    - ทางรอยืนยันไม่ทัน consume ไปก่อน = ไม้ไม่ลงแต่ผู้ใช้เสียค่าบริการ
+     *    ตั๋วที่ผูกแล้วถูกตัดสินจากผลบนเชน (TicketSettlementService) ไม่ใช่จากคำขอของหน้าเว็บ
+     *
+     * @throws RuntimeException ERR_TICKET_BOUND เมื่อผูกกับธุรกรรมอื่นไปแล้ว
+     */
+    public function bind(string $uuid, string $wallet, string $orderTxHash): TradingOrderTicket
+    {
+        $orderTxHash = strtolower($orderTxHash);
+
+        return DB::transaction(function () use ($uuid, $wallet, $orderTxHash) {
+            $ticket = $this->lockTicket($uuid, $wallet);
+
+            if ($ticket->order_tx_hash !== null && strtolower($ticket->order_tx_hash) !== $orderTxHash) {
+                throw new RuntimeException(self::ERR_TICKET_BOUND);
+            }
+
+            if ($ticket->status === TradingOrderTicket::STATUS_CONSUMED) {
+                return $ticket;   // ปิดไปแล้ว (บันทึกไม้มาถึงก่อน) — เรียกซ้ำได้
+            }
+
+            if ($ticket->status !== TradingOrderTicket::STATUS_ISSUED) {
+                throw new RuntimeException(self::ERR_TICKET_USED);
+            }
+
+            if ($ticket->order_tx_hash === null) {
+                $ticket->update(['order_tx_hash' => $orderTxHash]);
+            }
+
+            return $ticket->fresh();
+        });
+    }
+
+    /**
+     * ไม้ที่ยืนยันบนเชนแล้วอ้างตั๋วใบนี้ — ปิดตั๋วพร้อม tx hash ในจังหวะเดียวกับที่บันทึกไม้.
+     *
+     * $allowRebind = ผู้เรียกตรวจบนเชนแล้วว่าธุรกรรมที่ผูกไว้เดิมไม่ได้ลง (ถูกแทนที่ด้วย speed up)
+     *
+     * @return array{0: ?TradingOrderTicket, 1: ?string} [ตั๋วที่ปิดแล้ว, เหตุผลเมื่อใช้ไม่ได้]
+     */
+    public function claimForTrade(string $uuid, string $wallet, string $orderTxHash, bool $allowRebind = false): array
+    {
+        $orderTxHash = strtolower($orderTxHash);
+
+        return DB::transaction(function () use ($uuid, $wallet, $orderTxHash, $allowRebind) {
+            $ticket = TradingOrderTicket::where('uuid', $uuid)
+                ->where('wallet_address', $this->credits->normalize($wallet))
+                ->lockForUpdate()
+                ->first();
+
+            if (! $ticket) {
+                return [null, 'not_found'];
+            }
+
+            $bound = $ticket->order_tx_hash === null ? null : strtolower($ticket->order_tx_hash);
+            if ($bound !== null && $bound !== $orderTxHash
+                && ! ($allowRebind && $ticket->status === TradingOrderTicket::STATUS_ISSUED)) {
+                return [null, 'bound_elsewhere'];
+            }
+
+            if ($ticket->status === TradingOrderTicket::STATUS_CONSUMED) {
+                // ปิดไปแล้วด้วยไม้นี้ (เรียกซ้ำ) หรือปิดแบบไม่มี hash จากหน้าเว็บรุ่นเก่า — ใบเดียวใช้ได้ไม้เดียว
+                if ($bound === null) {
+                    $usedElsewhere = Transaction::query()
+                        ->where('type', 'swap')
+                        ->where('metadata->fee_ticket', $ticket->uuid)
+                        ->where('tx_hash', '!=', $orderTxHash)
+                        ->exists();
+                    if ($usedElsewhere) {
+                        return [null, 'bound_elsewhere'];
+                    }
+                    $ticket->update(['order_tx_hash' => $orderTxHash]);
+                }
+
+                return [$ticket, null];
+            }
+
+            if ($ticket->status !== TradingOrderTicket::STATUS_ISSUED) {
+                return [null, $ticket->status];   // refunded / expired
+            }
+
+            $ticket->update([
+                'status' => TradingOrderTicket::STATUS_CONSUMED,
+                'order_tx_hash' => $orderTxHash,
+            ]);
+
+            return [$ticket, null];
         });
     }
 
@@ -175,10 +282,14 @@ class OrderTicketService
      * จ่ายด้วยคลัง TPIX → คืนเข้าคลังเต็มจำนวนทันที (บัญชีในระบบเรา ไม่มีค่าแก๊ส)
      * จ่ายเป็นเหรียญบนเชน → บันทึกยอดที่ต้องคืนหลังหักค่าแก๊ส แล้วรอโอนคืนจริง
      *   (การโอนคืนเป็นธุรกรรมที่เราจ่ายแก๊สเอง จึงหักออกจากยอดคืนตามที่แจ้งไว้)
+     *
+     * $settled = ผู้เรียกตรวจบนเชนแล้วว่าธุรกรรมที่ผูกกับตั๋วไม่ได้ลง (TicketSettlementService)
+     *
+     * @throws RuntimeException ERR_TICKET_PENDING เมื่อตั๋วผูกกับธุรกรรมที่ยังไม่รู้ผล
      */
-    public function refund(string $uuid, string $wallet, string $reason = ''): TradingOrderTicket
+    public function refund(string $uuid, string $wallet, string $reason = '', bool $settled = false): TradingOrderTicket
     {
-        return DB::transaction(function () use ($uuid, $wallet, $reason) {
+        return DB::transaction(function () use ($uuid, $wallet, $reason, $settled) {
             $ticket = $this->lockTicket($uuid, $wallet);
 
             if ($ticket->status === TradingOrderTicket::STATUS_REFUNDED) {
@@ -187,6 +298,14 @@ class OrderTicketService
 
             if ($ticket->status === TradingOrderTicket::STATUS_CONSUMED) {
                 throw new RuntimeException(self::ERR_TICKET_USED);
+            }
+
+            /*
+             * ⚠️ ตั๋วที่ผูกธุรกรรมแล้วห้ามคืนตามคำขอของหน้าเว็บ (ออดิท 2026-10-28 C1)
+             *    เดิมขอคืนหลังไม้ลงเชนแล้วได้เสมอ = เทรดฟรีโดยไม่ต้องทำอะไรพิเศษ
+             */
+            if ($ticket->order_tx_hash !== null && ! $settled) {
+                throw new RuntimeException(self::ERR_TICKET_PENDING);
             }
 
             $fee = (float) $ticket->fee_amount;
@@ -231,17 +350,22 @@ class OrderTicketService
     }
 
     /**
-     * ปิดตั๋วที่หมดอายุแล้วคืนเงิน.
+     * ปิดตั๋วที่หมดอายุแล้วคืนเงิน — เฉพาะตั๋วที่ไม่เคยผูกธุรกรรม.
      *
      * ตั๋วค้างสถานะ issued คือเงินที่ถูกหักไปแล้วแต่ไม่มีใครได้อะไรเลย —
      * ต้องมีตัวเก็บกวาด ไม่ใช่รอให้ผู้ใช้มาทวง
      *
+     * ตั๋วที่ผูกธุรกรรมแล้วไม่แตะที่นี่ — ต้องถามผลบนเชนก่อน (TicketSettlementService::sweep)
+     * $graceMinutes = รอหลังหมดอายุอีกเท่านี้ ให้คำขอผูกธุรกรรมที่มาช้า (เน็ตสะดุด) มาถึงก่อน
+     *
      * @return int จำนวนตั๋วที่ปิด
      */
-    public function expireStale(int $limit = 200): int
+    public function expireStale(int $limit = 200, int $graceMinutes = 0): int
     {
         $stale = TradingOrderTicket::issued()
-            ->where('expires_at', '<', now())
+            ->whereNull('order_tx_hash')
+            ->where('expires_at', '<', now()->subMinutes(max(0, $graceMinutes)))
+            ->orderBy('expires_at')
             ->limit($limit)
             ->get();
 

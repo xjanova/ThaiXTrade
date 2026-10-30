@@ -47,6 +47,7 @@ use App\Http\Controllers\Admin\TradingPairController;
 use App\Http\Controllers\Admin\TransactionController;
 use App\Http\Controllers\Admin\TreasuryController;
 use App\Http\Controllers\Admin\ValidatorAdminController;
+use App\Http\Controllers\Admin\ValidatorKycAdminController;
 use App\Http\Controllers\Admin\WtpixBridgeAdminController;
 use App\Http\Controllers\KycDocumentController;
 use App\Models\WalletConnection;
@@ -74,24 +75,38 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('settings/logo', [SettingController::class, 'updateLogo'])->name('settings.logo');
         Route::post('settings/general', [SettingController::class, 'updateGeneral'])->name('settings.general');
         Route::post('settings/seo', [SettingController::class, 'updateSeo'])->name('settings.seo');
-        Route::put('settings/trading', [SettingController::class, 'updateTab'])->name('settings.trading');
-        Route::put('settings/security', [SettingController::class, 'updateTab'])->name('settings.security');
+        // ด่านกันบอทหน้าล็อกอิน — ระดับล่างปิด Turnstile ได้เท่ากับเปิดทางยิงรหัสผ่านใส่ทุกบัญชีรวมถึงของตัว super_admin เอง
+        Route::put('settings/security', [SettingController::class, 'updateTab'])
+            ->middleware('admin.role:super_admin')
+            ->name('settings.security');
         Route::put('settings/social', [SettingController::class, 'updateTab'])->name('settings.social');
-        Route::put('settings/payment', [SettingController::class, 'updateTab'])->name('settings.payment');
-        Route::put('settings/ai', [SettingController::class, 'updateTab'])->name('settings.ai');
-        Route::put('settings/factory', [SettingController::class, 'updateTab'])->name('settings.factory');
-        Route::put('settings/revenue', [SettingController::class, 'updateTab'])->name('settings.revenue');
-        // ชั้นไทล์แผนที่หน้า /validators — โปรแกรมมาสเตอร์โหนดดึงค่านี้ไปใช้ด้วย
-        Route::put('settings/map', [SettingController::class, 'updateTab'])->name('settings.map');
+        // แท็บที่กำหนดว่าเงินไปไหน (กระเป๋ารับรายได้ คีย์ Stripe ค่าธรรมเนียม) — ต้องตรงกับ MoneySettings::GROUPS
+        Route::middleware('admin.role:super_admin')->group(function () {
+            Route::put('settings/trading', [SettingController::class, 'updateTab'])->name('settings.trading');
+            Route::put('settings/payment', [SettingController::class, 'updateTab'])->name('settings.payment');
+            Route::put('settings/factory', [SettingController::class, 'updateTab'])->name('settings.factory');
+            Route::put('settings/revenue', [SettingController::class, 'updateTab'])->name('settings.revenue');
+        });
+        /*
+         * แท็บที่เก็บคีย์ของบริการภายนอก — ต้องตรงกับ SettingController::SUPER_ADMIN_GROUPS
+         *
+         * ไม่ใช่แค่กันแก้คีย์: ContentService ส่ง X-API-Key ไปยัง cloudflare_image_url ที่อยู่กลุ่มเดียวกัน
+         * ระดับล่างที่แก้ URL ได้จะรับคีย์ตัวจริงได้ในการสร้างรูปครั้งถัดไป แม้หน้าเว็บ mask คีย์ไว้แล้วก็ตาม
+         */
+        Route::middleware('admin.role:super_admin')->group(function () {
+            Route::put('settings/ai', [SettingController::class, 'updateTab'])->name('settings.ai');
+            // ชั้นไทล์แผนที่หน้า /validators — โปรแกรมมาสเตอร์โหนดดึงค่านี้ไปใช้ด้วย
+            Route::put('settings/map', [SettingController::class, 'updateTab'])->name('settings.map');
+            // ที่ปรึกษา AI ของบอทเทรด — กรอกคีย์ที่นี่แทนการแก้ .env บนเซิร์ฟเวอร์
+            Route::put('settings/advisor', [SettingController::class, 'updateTab'])->name('settings.advisor');
+            // จำกัดการยิงทดสอบ — แต่ละครั้งกินโควตาจริงของผู้ให้บริการ
+            Route::post('settings/advisor/test', [SettingController::class, 'testAdvisor'])
+                ->middleware('throttle:10,1')
+                ->name('settings.advisor.test');
+        });
         Route::put('settings/content', [SettingController::class, 'updateTab'])->name('settings.content');
         Route::put('settings/email', [SettingController::class, 'updateEmail'])->name('settings.email');
         Route::post('settings/email/test', [SettingController::class, 'sendTestEmail'])->name('settings.email.test');
-        // ที่ปรึกษา AI ของบอทเทรด — กรอกคีย์ที่นี่แทนการแก้ .env บนเซิร์ฟเวอร์
-        Route::put('settings/advisor', [SettingController::class, 'updateTab'])->name('settings.advisor');
-        // จำกัดการยิงทดสอบ — แต่ละครั้งกินโควตาจริงของผู้ให้บริการ
-        Route::post('settings/advisor/test', [SettingController::class, 'testAdvisor'])
-            ->middleware('throttle:10,1')
-            ->name('settings.advisor.test');
 
         /*
          * ค่าบริการวางไม้ (เครดิต TPIX)
@@ -115,7 +130,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         Route::get('trading-fees', [TradingFeeTierController::class, 'index'])->name('trading-fees.index');
         Route::post('trading-fees', [TradingFeeTierController::class, 'store'])->name('trading-fees.store');
-        Route::put('trading-fees/settings', [TradingFeeTierController::class, 'updateSettings'])->name('trading-fees.settings');
+        // ค่าตั้งรวมมีกระเป๋ารับเงินเติมเครดิต — ขั้นบันไดแก้ได้ทุกระดับ แต่ปลายทางเงินต้อง super_admin
+        Route::put('trading-fees/settings', [TradingFeeTierController::class, 'updateSettings'])
+            ->middleware('admin.role:super_admin')
+            ->name('trading-fees.settings');
         Route::put('trading-fees/{tier}', [TradingFeeTierController::class, 'update'])->name('trading-fees.update');
         Route::delete('trading-fees/{tier}', [TradingFeeTierController::class, 'destroy'])->name('trading-fees.destroy');
 
@@ -186,9 +204,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('languages/{language}/translations', [LanguageController::class, 'translations'])->name('languages.translations');
         Route::put('languages/{language}/translations', [LanguageController::class, 'updateTranslations'])->name('languages.translations.update');
 
-        // Swap Configurations
-        Route::resource('swap', SwapController::class)->except(['create', 'show', 'edit']);
-        Route::patch('swap/{swap}/toggle', [SwapController::class, 'toggleActive'])->name('swap.toggle');
+        // Swap Configurations — ทุกระดับดูได้ แต่ที่อยู่เราเตอร์ถูกส่งให้ client ใช้ จึงแก้ได้เฉพาะ super_admin
+        Route::get('swap', [SwapController::class, 'index'])->name('swap.index');
+        Route::middleware('admin.role:super_admin')->group(function () {
+            Route::resource('swap', SwapController::class)->only(['store', 'update', 'destroy']);
+            Route::patch('swap/{swap}/toggle', [SwapController::class, 'toggleActive'])->name('swap.toggle');
+        });
 
         // AI System
         Route::prefix('ai')->name('ai.')->group(function () {
@@ -228,33 +249,43 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Token Sales — จัดการรอบขายเหรียญ TPIX (ICO/IDO) + Token Control
         Route::prefix('token-sales')->name('token-sales.')->group(function () {
             Route::get('/', [TokenSaleController::class, 'index'])->name('index');
-            Route::post('/', [TokenSaleController::class, 'store'])->name('store');
-            Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
-
-            /*
-             * เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด
-             * "พร้อมจำหน่ายเมื่อไหร่ ก็เริ่มเฟสการขายใหม่แต่แรกวันนั้น"
-             */
-            Route::post('/launch', [TokenSaleController::class, 'launch'])->name('launch');
-            Route::post('/auto-launch', [TokenSaleController::class, 'autoLaunch'])->name('auto-launch');
-            // ล็อกวันจบรอบ = รอบขายแบบขั้นบันได (ราคาขยับเมื่อขั้นก่อนขายหมด)
-            Route::post('/round-end', [TokenSaleController::class, 'roundEnd'])->name('round-end');
-
-            // Whitelist management
             Route::get('/whitelist/{phaseId}', [TokenSaleController::class, 'whitelist'])->name('whitelist');
-            Route::post('/whitelist', [TokenSaleController::class, 'whitelistAdd'])->name('whitelist.add');
-            Route::post('/whitelist/import', [TokenSaleController::class, 'whitelistImport'])->name('whitelist.import');
-            Route::delete('/whitelist/{id}', [TokenSaleController::class, 'whitelistRemove'])->name('whitelist.remove');
 
-            // Refund
-            Route::post('/refund/{id}', [TokenSaleController::class, 'refundTransaction'])->name('refund');
+            // ทุกคำสั่งในกลุ่มนี้กำหนดราคา ปลายทางเงิน หรือการรับเงินจริง จึงเฉพาะ super_admin
+            Route::middleware('admin.role:super_admin')->group(function () {
+                // รอบขายถือ sale_wallet_address — เงินคริปโตของผู้ซื้อวิ่งเข้ากระเป๋านี้
+                Route::post('/', [TokenSaleController::class, 'store'])->name('store');
+                Route::post('/phase', [TokenSaleController::class, 'updatePhase'])->name('phase.update');
 
-            // การโอนเงินเข้าบัญชี — ทีมงานยืนยันเองหลังเปิดดูรายการเดินบัญชีจริง
-            Route::post('/bank/{id}/confirm', [TokenSaleController::class, 'confirmBankTransfer'])->name('bank.confirm');
-            Route::post('/bank/{id}/reject', [TokenSaleController::class, 'rejectBankTransfer'])->name('bank.reject');
-            // USDT ที่เข้ามาแต่ระบบออกเหรียญเองไม่ได้ (ยอดไม่ตรง/ช้า/ซ้ำ/ผิดเหรียญ/หาคำสั่งซื้อไม่เจอ)
-            Route::post('/crypto/{id}/credit', [TokenSaleController::class, 'creditCryptoPayment'])->name('crypto.credit');
-            Route::post('/crypto/{id}/resolve', [TokenSaleController::class, 'resolveCryptoPayment'])->name('crypto.resolve');
+                /*
+                 * เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด
+                 * "พร้อมจำหน่ายเมื่อไหร่ ก็เริ่มเฟสการขายใหม่แต่แรกวันนั้น"
+                 */
+                Route::post('/launch', [TokenSaleController::class, 'launch'])->name('launch');
+                Route::post('/auto-launch', [TokenSaleController::class, 'autoLaunch'])->name('auto-launch');
+                // ล็อกวันจบรอบ = รอบขายแบบขั้นบันได (ราคาขยับเมื่อขั้นก่อนขายหมด)
+                Route::post('/round-end', [TokenSaleController::class, 'roundEnd'])->name('round-end');
+
+                // Whitelist management
+                Route::post('/whitelist', [TokenSaleController::class, 'whitelistAdd'])->name('whitelist.add');
+                Route::post('/whitelist/import', [TokenSaleController::class, 'whitelistImport'])->name('whitelist.import');
+                Route::delete('/whitelist/{id}', [TokenSaleController::class, 'whitelistRemove'])->name('whitelist.remove');
+
+                // Refund
+                Route::post('/refund/{id}', [TokenSaleController::class, 'refundTransaction'])->name('refund');
+
+                // การโอนเงินเข้าบัญชี — ทีมงานยืนยันเองหลังเปิดดูรายการเดินบัญชีจริง
+                Route::post('/bank/{id}/confirm', [TokenSaleController::class, 'confirmBankTransfer'])->name('bank.confirm');
+                Route::post('/bank/{id}/reject', [TokenSaleController::class, 'rejectBankTransfer'])->name('bank.reject');
+
+                // เข้าคิวจ่ายใหม่ = สร้างรายการจ่ายจากกระเป๋าร้อน สิทธิ์จึงเท่ากับหน้าคลัง
+                Route::post('/bank/{id}/requeue', [TokenSaleController::class, 'requeueBankPayout'])->name('bank.requeue');
+                Route::post('/claims/{id}/requeue', [TokenSaleController::class, 'requeueClaimPayouts'])->name('claims.requeue');
+
+                // USDT ที่เข้ามาแต่ระบบออกเหรียญเองไม่ได้ (ยอดไม่ตรง/ช้า/ซ้ำ/ผิดเหรียญ/หาคำสั่งซื้อไม่เจอ)
+                Route::post('/crypto/{id}/credit', [TokenSaleController::class, 'creditCryptoPayment'])->name('crypto.credit');
+                Route::post('/crypto/{id}/resolve', [TokenSaleController::class, 'resolveCryptoPayment'])->name('crypto.resolve');
+            });
         });
 
         // Token Factory — จัดการ Token ที่สร้างจาก Factory
@@ -272,6 +303,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::patch('/{id}/list', [TokenFactoryController::class, 'toggleListed'])->name('list')->whereNumber('id');
                 // ตั้ง/เปลี่ยนโลโก้ของเหรียญที่ deploy แล้ว (โลโก้นี้ขึ้น /tokenlist.json เมื่อเหรียญถูกลิสต์)
                 Route::post('/{id}/logo', [TokenFactoryController::class, 'updateLogo'])->name('logo')->whereNumber('id')->middleware('throttle:30,1');
+                // คืนค่าธรรมเนียมของคำขอที่ถูกปฏิเสธ — โอนเองแล้ววาง tx / สั่งจ่ายจากกระเป๋าร้อน
+                Route::post('/{id}/refund/manual', [TokenFactoryController::class, 'refundManual'])->name('refund.manual')->whereNumber('id')->middleware('throttle:30,1');
+                Route::post('/{id}/refund/auto', [TokenFactoryController::class, 'refundAuto'])->name('refund.auto')->whereNumber('id')->middleware('throttle:10,1');
             });
 
             // นโยบาย (เปิด/ปิดประเภท/ตัวเลือก ค่าธรรมเนียม เพดาน) — super_admin เท่านั้น
@@ -358,7 +392,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/stripe-balance', [FinanceController::class, 'stripeBalance'])->name('stripe-balance');
             Route::get('/recent-payments', [FinanceController::class, 'recentPayments'])->name('recent-payments');
             Route::get('/revenue-chart', [FinanceController::class, 'revenueChart'])->name('revenue-chart');
-            Route::post('/refund', [FinanceController::class, 'refund'])->name('refund');
+            // คืนเงินจริงผ่าน Stripe — ย้อนไม่ได้ จึงเฉพาะ super_admin
+            Route::post('/refund', [FinanceController::class, 'refund'])->middleware('admin.role:super_admin')->name('refund');
         });
 
         // MasterNode Admin — จัดการ node network
@@ -382,6 +417,20 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/applications/{id}/approve', [ValidatorAdminController::class, 'approveApplication'])->name('approve');
             Route::post('/applications/{id}/reject', [ValidatorAdminController::class, 'rejectApplication'])->name('reject');
             Route::post('/propose-vote', [ValidatorAdminController::class, 'proposeVote'])->name('propose-vote');
+
+            /*
+             * KYC ผู้สมัคร Validator (สัญญา ValidatorKYC) — กระเป๋า owner ในเบราว์เซอร์เป็นคนเซ็น
+             * เซิร์ฟเวอร์แค่อ่านสถานะจริงจากเชน และตรวจ tx ที่ส่งไปแล้วก่อนบันทึกเป็นประวัติ
+             * ห้าม role อื่นเห็น: หน้านี้โยงกระเป๋ากับใบ KYC ของสมาชิก
+             */
+            Route::middleware('admin.role:super_admin,admin')->group(function () {
+                Route::get('/kyc', [ValidatorKycAdminController::class, 'index'])->name('kyc.index');
+                Route::get('/kyc/applicants', [ValidatorKycAdminController::class, 'applicants'])->name('kyc.applicants');
+                Route::post('/kyc/{address}/confirm', [ValidatorKycAdminController::class, 'confirm'])
+                    ->where('address', '0x[0-9a-fA-F]{40}')
+                    ->middleware('throttle:30,1')
+                    ->name('kyc.confirm');
+            });
         });
 
         // ชั้นคลัง TPIX — กระเป๋าคลัง 6 ใบ (ดูอย่างเดียว) + กระเป๋าร้อน

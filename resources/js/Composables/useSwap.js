@@ -17,6 +17,12 @@
  *  - signer ถูกจับไว้ตั้งแต่ต้น ขั้นค่าธรรมเนียมต้องเป็นบัญชีเดียวกับที่สวอป
  *  - บันทึกไม้เข้าคิวในเครื่องทันทีที่สวอปลงเชน ก่อนขั้นค่าธรรมเนียม
  *
+ * เพิ่มเติม (ออดิท 2026-10-28):
+ *  - เซิร์ฟเวอร์อ่านยอดและค่าธรรมเนียมจากใบเสร็จบนเชนเอง — หน้าเว็บส่ง fee_tx_hash ให้ตรวจ
+ *    ("โอนแล้ว" ตามคำบอกโดยไม่มี hash ไม่นับเป็นรายได้อีกต่อไป)
+ *  - เข้าคิวบันทึกตั้งแต่ธุรกรรมออกจากกระเป๋า (ก่อนรอลงบล็อก) · รอผลไม่สำเร็จก็ยังส่งบันทึก
+ *  - minOut ไม่ต่ำกว่า "ได้รับอย่างน้อย" ที่ผู้ใช้เห็น · deadline ไม่เกินอายุใบอนุญาตวางไม้
+ *
  * Developed by Xman Studio
  */
 
@@ -194,10 +200,12 @@ export function receivedFromReceipt(receipt, toToken, owner) {
  *
  * เดิม console.warn แล้วจบ = ไม้จริงหายจากประวัติถาวร ทั้งที่ผู้ใช้เห็น "สำเร็จ"
  * เก็บไว้ในเครื่องแล้วลองใหม่ตอนโหลดประวัติครั้งถัดไป (useMyTrades เรียก flushPendingSwapRecords)
- * 422 ไม่เก็บ — ข้อมูลผิดรูป/ซ้ำ ลองกี่ครั้งก็ไม่ผ่าน
+ * 409/422 ไม่เก็บ — เป็นไม้ของกระเป๋าอื่น / ไม้ไม่ลง / ข้อมูลผิดรูป ลองกี่ครั้งก็ไม่ผ่าน
+ * 202 ที่ยังไม่มีแถว (เชนยังไม่เห็นธุรกรรม) = เก็บไว้ส่งใหม่ · เกิน 1 วันแล้วยังไม่ลง = ทิ้ง
  */
 export const PENDING_RECORDS_KEY = 'tpix.pendingSwapRecords';
 const MAX_PENDING_RECORDS = 20;
+const PENDING_RECORD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function readPendingRecords() {
     try {
@@ -219,9 +227,11 @@ function writePendingRecords(list) {
 
 const sameHash = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
 
-/** เขียน/แทนที่บันทึกของ tx นี้ในคิว (หนึ่ง tx = หนึ่งแถวเสมอ) */
+/** เขียน/แทนที่บันทึกของ tx นี้ในคิว (หนึ่ง tx = หนึ่งแถวเสมอ) — จำเวลาที่เข้าคิวครั้งแรกไว้ */
 function upsertPendingRecord(record) {
-    writePendingRecords([...readPendingRecords().filter(r => !sameHash(r.tx_hash, record.tx_hash)), record]);
+    const list = readPendingRecords();
+    const queuedAt = list.find(r => sameHash(r.tx_hash, record.tx_hash))?._queuedAt ?? Date.now();
+    writePendingRecords([...list.filter(r => !sameHash(r.tx_hash, record.tx_hash)), { ...record, _queuedAt: queuedAt }]);
 }
 
 function removePendingRecord(txHash) {
@@ -235,13 +245,21 @@ function removePendingRecord(txHash) {
  */
 const inflightHashes = new Set();
 
-/** ส่งบันทึกหนึ่งรายการ — true = เซิร์ฟเวอร์รับแล้ว (หรือปฏิเสธถาวร ไม่ต้องลองอีก) */
-async function postSwapRecord(payload) {
+/**
+ * ส่งบันทึกหนึ่งรายการ
+ * @returns {Promise<{done: boolean, recorded: boolean}>}
+ *   done = เอาออกจากคิวได้ (เซิร์ฟเวอร์มีแถวแล้ว หรือปฏิเสธถาวร) · recorded = เซิร์ฟเวอร์มีแถวของไม้นี้แล้ว
+ */
+async function postSwapRecord(record) {
+    const { _queuedAt, ...payload } = record;
     try {
-        await axios.post('/api/v1/swap/execute', payload);
-        return true;
+        const { status, data } = await axios.post('/api/v1/swap/execute', payload);
+        // 202 + recorded:false = เชนยังไม่เห็นธุรกรรม / RPC ล่ม / มีคำขออื่นกำลังบันทึก — ส่งใหม่ภายหลัง
+        const recorded = !(status === 202 && data?.data?.recorded === false);
+        return { done: recorded, recorded };
     } catch (err) {
-        return err?.response?.status === 422;
+        const status = err?.response?.status;
+        return { done: status === 409 || status === 422, recorded: false };
     }
 }
 
@@ -261,8 +279,10 @@ export async function flushPendingSwapRecords(walletAddress) {
             keep.push(record);
             continue;
         }
-        if (await postSwapRecord(record)) sent += 1;
-        else keep.push(record);
+        const { done } = await postSwapRecord(record);
+        if (done) sent += 1;
+        // ธุรกรรมที่เชนไม่เห็นเลยเกินหนึ่งวัน = หลุดไปแล้ว ไม่ต้องถามต่อ
+        else if (!(Date.now() - Number(record._queuedAt) > PENDING_RECORD_MAX_AGE_MS)) keep.push(record);
     }
     writePendingRecords(keep);
 
@@ -362,6 +382,19 @@ async function readRawBalance(tokenAddress, owner) {
  * คำตอบของ /swap/quote ล้ม → ข้อความที่ตรงกับเหตุ
  * 404 = เชน/เหรียญ/คู่ถูกปิด (ด่านฉุกเฉินของแอดมิน) · อื่นๆ = ตรวจค่าธรรมเนียมไม่ได้ชั่วคราว
  */
+/** กุญแจของไม้หนึ่งไม้ (คู่ · ยอด · slippage ที่เลือก · ยกเว้นค่าธรรมเนียมไหม) — ใช้หาราคาที่หน้าจอแสดงอยู่ */
+function quoteKey(fromToken, toToken, grossWei, opts = {}) {
+    const chosen = Number(opts.slippage);
+    const slippage = opts.slippage != null && Number.isFinite(chosen) && chosen > 0 ? chosen : 'auto';
+    return [
+        String(fromToken?.address || '').toLowerCase(),
+        String(toToken?.address || '').toLowerCase(),
+        String(grossWei),
+        slippage,
+        opts.waiveFee === true,
+    ].join('|');
+}
+
 function backendQuoteError(err) {
     const status = err?.response?.status;
     const code = err?.response?.data?.error?.code;
@@ -381,6 +414,25 @@ export function useSwap() {
     // ขั้นที่กำลังรอผู้ใช้ใน executeSwap — 'idle' | 'swapping' | 'fee' | 'recording'
     // (ขั้น 'fee' คือป๊อปอัพที่สองในกระเป๋า ผู้ใช้ต้องรู้ว่าคืออะไร ไม่งั้นกดปฏิเสธเพราะนึกว่าแปลก)
     const stage = ref('idle');
+
+    /** ราคาล่าสุดที่ getQuote คืน (คือราคาที่หน้าจอแสดงอยู่) — ผูก minOut ของไม้กับสิ่งที่ผู้ใช้เห็น */
+    let lastQuote = null;
+
+    /**
+     * ราคาที่หน้าจอแสดงอยู่สำหรับไม้นี้ (คู่/จำนวน/slippage/การยกเว้นตรงกัน) — null ถ้าไม่มีหรือเก่าเกิน
+     * ⚠️ ต้องอ่าน "ก่อน" ขอราคาใหม่ตอนกดส่ง เพราะ getQuote จะจำตัวใหม่ทับ (ออดิท 2026-10-28 L7)
+     */
+    function recentQuote(fromToken, toToken, amount, opts = {}, maxAgeMs = 10 * 60_000) {
+        if (!lastQuote) return null;
+        let grossWei;
+        try {
+            grossWei = toUnits(amount, fromToken?.decimals || 18);
+        } catch {
+            return null;
+        }
+        if (grossWei === null || lastQuote.key !== quoteKey(fromToken, toToken, grossWei, opts)) return null;
+        return Date.now() - lastQuote.at > maxAgeMs ? null : lastQuote.quote;
+    }
 
     /**
      * Get a swap quote: real on-chain price from PancakeSwap (read via a BSC RPC)
@@ -517,8 +569,10 @@ export function useSwap() {
             const netOutput = rawOutputAmount;
             const minimumReceived = netOutput * (1 - slippage / 100);
             const exchangeRate = netOutput / grossAmount; // effective rate per total token paid
+            // minOut ที่จะส่งเข้า router ถ้าใช้ quote นี้ — สูตรเดียวกับ executeSwap
+            const minOutWei = (amountOut * BigInt(Math.max(0, Math.floor((1 - slippage / 100) * 10000)))) / 10000n;
 
-            return {
+            const result = {
                 amountIn: grossAmount,        // total the user pays (swap + fee)
                 swapInput,                    // amount actually routed through PancakeSwap
                 amountOut: rawOutputAmount,
@@ -533,11 +587,14 @@ export function useSwap() {
                 route: path.length === 3 ? 'wbnb' : 'direct',
                 waived,
                 rawAmountOut: amountOut,       // BigInt — router output for the swapped amount
+                minOutWei,                    // BigInt — minOut at this quote's slippage
                 grossWei,                     // BigInt — exact wei the user pays (swap + fee)
                 amountInSwapWei,              // BigInt — exact wei routed through the swap
                 feeWei,                       // BigInt — reserved platform fee (input token)
                 decimals: { from: fromDecimals, to: toDecimals },
             };
+            lastQuote = { key: quoteKey(fromToken, toToken, grossWei, opts), quote: result, at: Date.now() };
+            return result;
         } catch (err) {
             error.value = err?.isFriendly ? err.message : friendlyError(err);
             return null;
@@ -617,10 +674,14 @@ export function useSwap() {
      * the wallet to BSC. Swaps (amount - fee), then transfers the reserved fee.
      *
      * @param {object} [meta] ไม้จากกระดานเทรด:
-     *   { pair: 'BTC/USDT', side: 'buy'|'sell', price, feeTicket?: uuid, onStage?: (stage, info) => void }
+     *   { pair: 'BTC/USDT', side: 'buy'|'sell', price, feeTicket?: uuid, expectedOwner?, minOutFloor?, deadlineCap?,
+     *     onStage?: (stage, info) => void }
      *   pair/side/price ส่งต่อไปบันทึก ให้ประวัติและป้ายบนกราฟรู้ว่าเป็นคู่/ฝั่งไหน (หน้า Swap ไม่ต้องส่ง)
      *   feeTicket = ใบอนุญาตวางไม้ที่จ่ายค่าบริการด้วยเครดิต TPIX แล้ว (quote ต้องขอแบบ waiveFee)
-     *   onStage = บอกหน้าจอว่าอยู่ขั้นไหน ('swapping' | 'fee' | 'recording')
+     *   expectedOwner = กระเป๋าที่ผู้เรียกตรวจยอด/ขอใบอนุญาตไว้ — บัญชีในกระเป๋าเปลี่ยนไปแล้ว = ไม่ส่ง
+     *   minOutFloor = minOut (wei) ของราคาที่ผู้ใช้เห็นบนจอ — minOut จริงไม่ต่ำกว่านี้ (recentQuote().minOutWei)
+     *   deadlineCap = วินาที unix ที่ไม้ต้องหมดอายุก่อน (ใบอนุญาตหมดอายุ) — ลงบล็อกช้ากว่านี้ = revert
+     *   onStage = บอกหน้าจอว่าอยู่ขั้นไหน ('swapping' | 'sent' {hash} | 'fee' | 'recording')
      */
     async function executeSwap(fromToken, toToken, amount, quote, slippage = 0.5, meta = {}) {
         const walletStore = useWalletStore();
@@ -646,6 +707,14 @@ export function useSwap() {
         // Defensive: swaps must run on BSC (caller switches before calling).
         if (walletStore.chainId !== SWAP_CHAIN_ID) {
             error.value = t('swapError.switchBsc');
+            throw friendlyThrow(error.value);
+        }
+        /*
+         * ⚠️ บัญชีเปลี่ยนหลังผู้เรียกขอใบอนุญาต/ตรวจยอดไว้ (ออดิท 2026-10-28 L6)
+         *    ส่งต่อ = ไม้ของบัญชีใหม่อ้างใบอนุญาตของบัญชีเดิม · เซิร์ฟเวอร์ไม่รับตั๋วข้ามกระเป๋า → โดนค่าธรรมเนียมซ้ำ
+         */
+        if (meta?.expectedOwner && !sameHash(meta.expectedOwner, owner)) {
+            error.value = t('swapError.accountChanged');
             throw friendlyThrow(error.value);
         }
 
@@ -714,15 +783,32 @@ export function useSwap() {
 
             // minOut from SLIPPAGE ONLY — the fee never reduces the router output.
             const slipFactorBps = BigInt(Math.max(0, Math.floor((1 - slippage / 100) * 10000)));
-            const minOut = (rawAmountOut * slipFactorBps) / 10000n;
+            let minOut = (rawAmountOut * slipFactorBps) / 10000n;
+            /*
+             * ขั้นต่ำที่ผู้ใช้เห็นบนจอก่อนกด (ออดิท 2026-10-28 L7) — ราคาใหม่ตอนส่งต้องไม่ทำให้
+             * "ได้รับอย่างน้อย" ต่ำกว่าที่เขากดยืนยัน (เดิมมีแค่ด่าน 10% เทียบราคาตลาด)
+             */
+            if (typeof meta?.minOutFloor === 'bigint' && meta.minOutFloor > minOut && meta.minOutFloor <= rawAmountOut) {
+                minOut = meta.minOutFloor;
+            }
             if (minOut <= 0n) {
                 error.value = t('swapError.slippageTooHigh');
                 throw friendlyThrow(error.value);
             }
 
             const path = quote.path;
-            // ระยะเวลาจำกัดจากหน้าตั้งค่า (ไม่เคยตั้ง = 20 นาที)
-            const deadline = Math.floor(Date.now() / 1000) + txDeadlineSeconds();
+            /*
+             * ระยะเวลาจำกัดจากหน้าตั้งค่า (ไม่เคยตั้ง = 20 นาที) แต่ไม่เกินอายุใบอนุญาตวางไม้
+             * ⚠️ ใบอนุญาตหมดอายุ 15 นาที — เดิมไม้ลงบล็อกได้ถึงนาทีที่ 20 หลังตั๋วถูกคืนเงินไปแล้ว
+             */
+            const nowSec = Math.floor(Date.now() / 1000);
+            let deadline = nowSec + txDeadlineSeconds();
+            const deadlineCap = Math.floor(Number(meta?.deadlineCap));
+            if (Number.isFinite(deadlineCap) && deadlineCap > 0 && deadlineCap < deadline) deadline = deadlineCap;
+            if (deadline - nowSec < 30) {
+                error.value = t('swapError.expired');
+                throw friendlyThrow(error.value);
+            }
             const router = new Contract(PANCAKE_ROUTER_ADDRESS, PANCAKE_ROUTER_ABI, signer);
 
             notify('swapping');
@@ -747,115 +833,153 @@ export function useSwap() {
 
             txHash.value = tx.hash;
             let finalHash = tx.hash;
-            let receipt;
-            try {
-                receipt = await tx.wait(1, SWAP_WAIT_TIMEOUT_MS);
-            } catch (waitErr) {
-                /*
-                 * ⚠️ กด "Speed up" ใน MetaMask = ธุรกรรมใหม่มาแทนตัวเดิม
-                 *    ethers v6 โยน TRANSACTION_REPLACED แม้แค่เปลี่ยนค่าแก๊ส (repriced)
-                 *    เดิมหน้าจอขึ้น "สวอปล้มเหลว" ทั้งที่สวอปลงเชนแล้ว → ไม่เก็บค่าธรรมเนียม
-                 *    ไม่บันทึกประวัติ และผู้ใช้กดซ้ำจนเทรดสองรอบ
-                 */
-                if (waitErr?.code === 'TRANSACTION_REPLACED' && !waitErr.cancelled && waitErr.receipt) {
-                    receipt = waitErr.receipt;
-                    finalHash = waitErr.replacement?.hash || waitErr.receipt.hash || tx.hash;
-                    txHash.value = finalHash;
-                } else if (waitErr?.code === 'TRANSACTION_REPLACED' && waitErr.cancelled) {
-                    throw friendlyThrow(t('swapError.cancelledInWallet'));
-                } else if (waitErr?.code === 'CALL_EXCEPTION') {
-                    throw waitErr;   // revert จริงบนเชน — friendlyError แปลให้
-                } else {
-                    /*
-                     * ส่งธุรกรรมไปแล้วแต่รอผลไม่สำเร็จ (RPC สะดุด/เน็ตหลุด) — อาจสำเร็จอยู่ก็ได้
-                     * ห้ามบอกว่า "ล้มเหลว ลองใหม่" เฉยๆ ผู้ใช้จะกดซ้ำแล้วเทรดสองรอบ
-                     * ให้ไปดูผลที่ BscScan ก่อน (ผู้เรียกแนบลิงก์จาก txUrl)
-                     */
-                    const pendingErr = friendlyThrow(t('swapError.unconfirmed'));
-                    pendingErr.txUrl = getTxUrl(tx.hash, SWAP_CHAIN_ID);
-                    pendingErr.txHash = tx.hash;
-                    pendingErr.txSent = true;
-                    throw pendingErr;
-                }
-            }
-            if (receipt?.status !== 1) {
-                throw friendlyThrow(t('swapError.onchainFailed'));
-            }
-            txStatus.value = 'confirmed';
-
-            // ยอดที่ได้รับจริงจาก log ของใบเสร็จ — ต่างจาก quote ได้ถึงเท่า slippage
-            const received = receivedFromReceipt(receipt, toToken, owner);
-            const amountOut = received !== null ? Number(formatUnits(received, toDecimals)) : quote.netOutput;
 
             const record = {
                 from_token: fromToken.address,
                 to_token: toToken.address,
                 from_amount: amountIn,
-                to_amount: amountOut,
+                // ตัวเลขของ quote ระหว่างรอลงบล็อก — เซิร์ฟเวอร์ใช้ยอดจากใบเสร็จเองตอนยืนยัน
+                to_amount: quote.netOutput,
                 fee_amount: 0,
-                // บอกตรงๆ ว่ายังไม่ได้โอนค่าธรรมเนียม — เดิมส่ง 0 เฉยๆ แล้วโดน FEE_MISMATCH ไม้หายจากประวัติ
+                // ยังไม่ได้โอนค่าธรรมเนียม — เซิร์ฟเวอร์นับเฉพาะธุรกรรมโอนที่อ่านเจอบนเชน (fee_tx_hash)
                 fee_collected: !(feeWei > 0n),
                 tx_hash: finalHash,
                 chain_id: SWAP_CHAIN_ID,
                 wallet_address: owner,
             };
             if (meta?.pair) record.pair = String(meta.pair).replace('-', '/');
-            if (meta?.side === 'buy' || meta?.side === 'sell') {
-                record.side = meta.side;
-                // ราคาที่ได้จริง (quote ต่อ base) จากยอดจริง — ให้ป้ายบนกราฟวางตรงจุดที่เกิดจริง
-                const fill = meta.side === 'buy' ? amountIn / amountOut : amountOut / amountIn;
-                if (Number.isFinite(fill) && fill > 0) record.price = fill;
-            }
-            if (!record.price && Number(meta?.price) > 0) record.price = Number(meta.price);
+            const setFillPrice = (outAmount) => {
+                delete record.price;
+                if (meta?.side === 'buy' || meta?.side === 'sell') {
+                    record.side = meta.side;
+                    // ราคาที่ได้จริง (quote ต่อ base) จากยอดจริง — ให้ป้ายบนกราฟวางตรงจุดที่เกิดจริง
+                    const fill = meta.side === 'buy' ? amountIn / outAmount : outAmount / amountIn;
+                    if (Number.isFinite(fill) && fill > 0) record.price = fill;
+                }
+                if (!record.price && Number(meta?.price) > 0) record.price = Number(meta.price);
+            };
+            setFillPrice(quote.netOutput);
             if (meta?.feeTicket) record.fee_ticket = String(meta.feeTicket);
 
             /*
-             * ⚠️ เก็บบันทึกลงคิวในเครื่อง "ทันที" ที่สวอปลงเชน — ก่อนขั้นค่าธรรมเนียม
-             *    เดิมบันทึกหลังขั้นค่าธรรมเนียมจบเท่านั้น: ผู้ใช้ปิดแท็บ/รีเฟรชระหว่างป๊อปอัพ
-             *    ค่าธรรมเนียมยังเปิดอยู่ (หรือ WalletConnect ทำคำขอหาย) = ไม้จริงหายจากประวัติถาวร
-             *    ตอนนี้แถวชั่วคราว (fee_collected:false) รออยู่ แล้วถูกแทนที่ด้วยผลจริงด้านล่าง
+             * ⚠️ เก็บบันทึกลงคิวในเครื่อง "ทันที" ที่ธุรกรรมออกจากกระเป๋า — ก่อนรอลงบล็อก (ออดิท 2026-10-28 L5)
+             *    เดิมเข้าคิวหลังลงบล็อก: รอผลไม่สำเร็จ / ปิดแท็บ / รีเฟรชระหว่างรอ = ไม้จริงหายจากประวัติถาวร
+             *    คิวส่งซ้ำได้ปลอดภัย — เซิร์ฟเวอร์สร้างแถวเมื่อเชนเห็นธุรกรรมของกระเป๋านี้เท่านั้น
              */
-            const hashKey = String(finalHash).toLowerCase();
+            let hashKey = String(finalHash).toLowerCase();
             inflightHashes.add(hashKey);
             upsertPendingRecord(record);
+            // ผู้เรียกผูกใบอนุญาตกับธุรกรรมนี้ทันที — ปิดแท็บหลังจากนี้ เซิร์ฟเวอร์ก็ตัดสินตั๋วจากผลบนเชนได้
+            notify('sent', { hash: finalHash });
 
             let feeCollected = false;
+            let feeTxHash = null;
             let recorded = false;
             try {
+                let receipt;
+                try {
+                    receipt = await tx.wait(1, SWAP_WAIT_TIMEOUT_MS);
+                } catch (waitErr) {
+                    /*
+                     * ⚠️ กด "Speed up" ใน MetaMask = ธุรกรรมใหม่มาแทนตัวเดิม
+                     *    ethers v6 โยน TRANSACTION_REPLACED แม้แค่เปลี่ยนค่าแก๊ส (repriced)
+                     *    เดิมหน้าจอขึ้น "สวอปล้มเหลว" ทั้งที่สวอปลงเชนแล้ว → ไม่เก็บค่าธรรมเนียม
+                     *    ไม่บันทึกประวัติ และผู้ใช้กดซ้ำจนเทรดสองรอบ
+                     */
+                    if (waitErr?.code === 'TRANSACTION_REPLACED' && !waitErr.cancelled && waitErr.receipt) {
+                        receipt = waitErr.receipt;
+                        const replacedBy = waitErr.replacement?.hash || waitErr.receipt.hash || tx.hash;
+                        if (!sameHash(replacedBy, finalHash)) {
+                            // คิวต้องถือ hash ที่ลงจริง — hash เดิมไม่มีวันลงแล้ว
+                            removePendingRecord(finalHash);
+                            inflightHashes.delete(hashKey);
+                            finalHash = replacedBy;
+                            hashKey = String(finalHash).toLowerCase();
+                            inflightHashes.add(hashKey);
+                            record.tx_hash = finalHash;
+                            upsertPendingRecord(record);
+                        }
+                        txHash.value = finalHash;
+                    } else if (waitErr?.code === 'TRANSACTION_REPLACED' && waitErr.cancelled) {
+                        removePendingRecord(finalHash);
+                        throw friendlyThrow(t('swapError.cancelledInWallet'));
+                    } else if (waitErr?.code === 'CALL_EXCEPTION') {
+                        removePendingRecord(finalHash);
+                        throw waitErr;   // revert จริงบนเชน — friendlyError แปลให้
+                    } else {
+                        /*
+                         * ส่งธุรกรรมไปแล้วแต่รอผลไม่สำเร็จ (RPC สะดุด/เน็ตหลุด) — อาจสำเร็จอยู่ก็ได้
+                         * ห้ามบอกว่า "ล้มเหลว ลองใหม่" เฉยๆ ผู้ใช้จะกดซ้ำแล้วเทรดสองรอบ
+                         * ให้ไปดูผลที่ BscScan ก่อน (ผู้เรียกแนบลิงก์จาก txUrl)
+                         *
+                         * ส่งบันทึกไว้ก่อน (ออดิท L5) — เซิร์ฟเวอร์เก็บเป็นแถว pending แล้วตรวจย้อนหลังจนได้ผล
+                         * ส่งไม่ได้ก็ยังอยู่ในคิว ไม่ต้องรอผู้ใช้กลับมาหน้านี้
+                         */
+                        const sent = await postSwapRecord(record);
+                        if (sent.done) removePendingRecord(finalHash);
+                        const pendingErr = friendlyThrow(t('swapError.unconfirmed'));
+                        pendingErr.txUrl = getTxUrl(tx.hash, SWAP_CHAIN_ID);
+                        pendingErr.txHash = tx.hash;
+                        pendingErr.txSent = true;
+                        pendingErr.recorded = sent.recorded;
+                        throw pendingErr;
+                    }
+                }
+                if (receipt?.status !== 1) {
+                    removePendingRecord(finalHash);
+                    throw friendlyThrow(t('swapError.onchainFailed'));
+                }
+                txStatus.value = 'confirmed';
+
+                // ยอดที่ได้รับจริงจาก log ของใบเสร็จ — ต่างจาก quote ได้ถึงเท่า slippage
+                const received = receivedFromReceipt(receipt, toToken, owner);
+                const amountOut = received !== null ? Number(formatUnits(received, toDecimals)) : quote.netOutput;
+                record.to_amount = amountOut;
+                setFillPrice(amountOut);
+                upsertPendingRecord(record);
+
                 // Collect the RESERVED platform fee — the user still holds it because
                 // we only swapped (amount - fee), so this transfer cannot run dry.
                 if (feeWei > 0n && feeCollectorAddress) {
-                    feeCollected = await collectPlatformFee({
+                    const fee = await collectPlatformFee({
                         walletStore, signer, signerIsOwner, notify,
                         token: fromToken, feeWei, feeAmount, collector: feeCollectorAddress,
                     });
+                    feeCollected = fee.confirmed;
+                    feeTxHash = fee.txHash;
                 }
-                if (feeCollected) {
+                if (feeTxHash) {
+                    // เซิร์ฟเวอร์อ่านธุรกรรมนี้บนเชนเอง — ยังไม่ลงบล็อกก็ตรวจย้อนหลังให้
+                    record.fee_tx_hash = feeTxHash;
                     record.fee_amount = feeAmount;
-                    record.fee_collected = true;
+                    record.fee_collected = feeCollected;
                     upsertPendingRecord(record);
                 }
 
                 // Record on backend — ล้มแล้วค้างในคิวไว้ลองใหม่ (ดู flushPendingSwapRecords)
                 notify('recording');
-                recorded = await postSwapRecord(record);
-                if (recorded) removePendingRecord(finalHash);
+                const sent = await postSwapRecord(record);
+                if (sent.done) removePendingRecord(finalHash);
+                recorded = sent.recorded;
+
+                return {
+                    hash: finalHash,
+                    status: txStatus.value,
+                    url: getTxUrl(finalHash, SWAP_CHAIN_ID),
+                    recorded,
+                    amountIn,
+                    amountOut,
+                    feeCollected,
+                    // ส่งธุรกรรมค่าธรรมเนียมแล้วแต่ยังไม่รู้ผล — เซิร์ฟเวอร์ตรวจย้อนหลังให้
+                    feePending: !!feeTxHash && !feeCollected,
+                    feeTxHash,
+                    feeAmount: feeCollected ? feeAmount : 0,
+                };
             } finally {
                 inflightHashes.delete(hashKey);
             }
-
-            return {
-                hash: finalHash,
-                status: txStatus.value,
-                url: getTxUrl(finalHash, SWAP_CHAIN_ID),
-                recorded,
-                amountIn,
-                amountOut,
-                feeCollected,
-                feeAmount: feeCollected ? feeAmount : 0,
-            };
         } catch (err) {
-            txStatus.value = 'failed';
+            txStatus.value = err?.txSent ? 'pending' : 'failed';
             // error ที่เรา throw เองมีข้อความ user-facing อยู่แล้ว — ไม่ต้อง map ซ้ำ
             error.value = err.isFriendly ? err.message : friendlyError(err);
             throw err;
@@ -866,16 +990,20 @@ export function useSwap() {
     }
 
     /**
-     * โอนค่าธรรมเนียมที่กันไว้ — คืน true ถ้าโอนออกไปแล้ว (ไม่ throw เด็ดขาด: สวอปสำเร็จไปแล้ว)
+     * โอนค่าธรรมเนียมที่กันไว้ — ไม่ throw เด็ดขาด (สวอปสำเร็จไปแล้ว)
      *
-     * ส่งไปแล้วแต่รอผลไม่ได้ (RPC สะดุด/หมดเวลา/กด Speed up) = นับว่าเก็บแล้ว
-     * เดิมนับเป็น "ไม่ได้เก็บ" ทั้งที่เงินออกจากกระเป๋าไปแล้ว แอดมินเห็นธงผิด
+     * @returns {Promise<{txHash: string|null, confirmed: boolean}>}
+     *   txHash = ธุรกรรมค่าธรรมเนียมที่ส่งออกไปแล้ว (เซิร์ฟเวอร์อ่านบนเชนเอง) · confirmed = เห็นลงบล็อกสำเร็จ
+     *
+     * ⚠️ เดิมคืน true เมื่อรอผลไม่ได้ (หมดเวลา/RPC สะดุด) แล้วหน้าเว็บบอกเซิร์ฟเวอร์ว่า "เก็บแล้ว"
+     *    = รายได้ในบัญชีโดยไม่มีใครเห็นธุรกรรม (ออดิท 2026-10-28 C2) · ตอนนี้ส่ง hash ให้ตรวจ ไม่เดาผล
      */
     async function collectPlatformFee({ walletStore, signer, signerIsOwner, notify, token, feeWei, feeAmount, collector }) {
+        const notSent = { txHash: null, confirmed: false };
         // ผู้ใช้สลับเชนระหว่างรอสวอป — signer ผูกกับ BSC ส่งต่อไม่ได้ (ไม่ใช่เหตุให้เก็บจากเชนอื่น)
-        if (Number(walletStore.chainId) !== SWAP_CHAIN_ID) return false;
+        if (Number(walletStore.chainId) !== SWAP_CHAIN_ID) return notSent;
         // ตรวจซ้ำก่อนเงินออก: ต้องเป็นบัญชีเดียวกับที่สวอป
-        if (!(await signerIsOwner())) return false;
+        if (!(await signerIsOwner())) return notSent;
 
         notify('fee', { amount: feeAmount, symbol: token.symbol || '' });
 
@@ -887,16 +1015,20 @@ export function useSwap() {
         } catch (feeErr) {
             // ผู้ใช้ปฏิเสธ / ยอดไม่พอ / ไม่มีใครกดจนหมดเวลา — สวอปสำเร็จไปแล้ว ไม่บล็อก
             console.warn('Fee collection skipped (swap still succeeded):', feeErr?.code || feeErr?.message);
-            return false;
+            return notSent;
         }
 
         try {
             const feeReceipt = await feeTx.wait(1, FEE_WAIT_TIMEOUT_MS);
-            return feeReceipt?.status === 1;
+            return { txHash: feeTx.hash, confirmed: feeReceipt?.status === 1 };
         } catch (waitErr) {
-            if (waitErr?.code === 'TRANSACTION_REPLACED') return !waitErr.cancelled;
-            if (waitErr?.code === 'CALL_EXCEPTION') return false;
-            return true;
+            if (waitErr?.code === 'TRANSACTION_REPLACED') {
+                return waitErr.cancelled
+                    ? notSent
+                    : { txHash: waitErr.replacement?.hash || feeTx.hash, confirmed: waitErr.receipt?.status === 1 };
+            }
+            // revert / รอผลไม่ได้ — ส่ง hash ไปให้เซิร์ฟเวอร์ตัดสินจากเชน
+            return { txHash: feeTx.hash, confirmed: false };
         }
     }
 
@@ -935,6 +1067,7 @@ export function useSwap() {
         txStatus,
         stage,
         getQuote,
+        recentQuote,
         checkAllowance,
         ensureFeeCollector,
         approveToken,

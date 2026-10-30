@@ -17,13 +17,18 @@ const tone = {
     success: 'bg-trading-green/90 text-white',
     error: 'bg-trading-red/90 text-white',
     pending: 'bg-primary-500/90 text-white',
+    warning: 'bg-amber-500/95 text-dark-950',
     info: 'bg-dark-800/95 text-white ring-1 ring-white/10',
 };
 </script>
 
 <template>
-    <!-- z สูงกว่าโมดัลกระเป๋า เพื่อให้ข้อความผลลัพธ์ไม่โดนบัง -->
-    <div class="fixed top-4 right-4 z-[80] flex flex-col gap-2 max-w-[92vw] pointer-events-none">
+    <!--
+        z สูงกว่าโมดัลกระเป๋า เพื่อให้ข้อความผลลัพธ์ไม่โดนบัง
+        top-20 = ใต้แถบเมนู (h-16) — เดิม top-4 ลอยทับปุ่มเชื่อมกระเป๋า/เลือกเครือข่ายอยู่ 10 วิ
+        กว้างไม่เกิน max-w-md ข้อความยาวจึงตัดบรรทัดเป็นบอลลูน ไม่ยืดเป็นแถบยาวข้ามจอ
+    -->
+    <div class="fixed top-20 right-4 z-[80] flex flex-col items-end gap-2 max-w-[92vw] sm:max-w-md pointer-events-none">
         <TransitionGroup
             enter-active-class="transition-all duration-300 ease-out"
             enter-from-class="opacity-0 translate-x-4"
@@ -43,7 +48,7 @@ const tone = {
                 <svg v-else-if="toast.type === 'success'" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                 </svg>
-                <svg v-else-if="toast.type === 'error'" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg v-else-if="toast.type === 'error' || toast.type === 'warning'" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
 

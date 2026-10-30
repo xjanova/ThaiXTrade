@@ -73,6 +73,45 @@ enum AddTpixOutcome {
   unavailable,
 }
 
+/// เหตุที่ [WalletProvider.sendChainTransaction] คืน null — ให้หน้าจอแปลเป็นข้อความ 2 ภาษาเองได้
+/// ([WalletProvider.error] เป็นข้อความไทยสำเร็จรูป ใช้แทนกันไม่ได้ในหน้าที่ต้องรองรับอังกฤษ)
+enum ChainSendFailure {
+  /// ยังไม่ได้เชื่อมกระเป๋า
+  notConnected,
+
+  /// กระเป๋าที่เชื่อมอยู่ไม่ใช่ใบที่ผู้ใช้กดส่ง (สลับบัญชีระหว่างทาง)
+  walletChanged,
+
+  /// ผู้ใช้ปฏิเสธในกระเป๋า หรือกระเป๋าไม่ตอบจนหมดเวลา — ไม่มีอะไรถูกส่งจากแอป
+  rejected,
+
+  /// กระเป๋าภายนอกไม่ยอมสลับไปเชนที่ต้องส่ง — ยังไม่ได้ส่งอะไร
+  switchFailed,
+
+  /// RPC ตอบ chain id ไม่ตรงกับเชนที่จะส่ง — ยกเลิกก่อนเซ็น
+  wrongChain,
+
+  /// โหนดจำลองแล้วบอกว่าธุรกรรมจะล้ม (ยอดไม่พอ/สัญญาปฏิเสธ) — ยังไม่ได้ส่ง
+  wouldRevert,
+
+  /// ต่อเครือข่ายไม่ได้ตอนเตรียมธุรกรรม — ยังไม่ได้ส่ง
+  network,
+
+  /// เชนปฏิเสธไบต์ที่เซ็นแล้ว
+  rejectedByChain,
+
+  /// กระจายธุรกรรมไม่สำเร็จและไม่แน่ใจว่าถึงเชนไหม — ต้องเช็กประวัติก่อนส่งซ้ำ
+  unknownOutcome,
+
+  /// ไม่พบกุญแจของกระเป๋าในเครื่อง
+  keyMissing,
+}
+
+/// RPC ตอบ chain id ไม่ตรง — แยกจาก error เครือข่าย (ไม่สลับไป RPC ตัวอื่นแล้วส่งต่อ)
+class _RpcWrongChain implements Exception {
+  const _RpcWrongChain();
+}
+
 class AddTpixResult {
   final AddTpixOutcome outcome;
 
@@ -513,20 +552,42 @@ class WalletProvider extends ChangeNotifier {
       sendChainTransaction(
           chainId: 56, to: to, data: data, value: value, summary: summary);
 
+  /// เหตุที่การส่งครั้งล่าสุดคืน null (null = ครั้งล่าสุดสำเร็จ/ยังไม่เคยส่ง)
+  ChainSendFailure? _lastSendFailure;
+  ChainSendFailure? get lastSendFailure => _lastSendFailure;
+
+  void _sendFailed(ChainSendFailure reason, String message) {
+    _lastSendFailure = reason;
+    _error = message;
+    notifyListeners();
+  }
+
   /// ส่งธุรกรรมบนเชนที่ระบุ — รองรับทั้งกระเป๋าฝัง, WalletConnect และ TPIX Wallet
   ///
   /// เดิมทุกเส้นทาง hardcode 56 ไว้ ทำให้เทรดบนเชน TPIX ไม่ได้เลยแม้สัญญาจะพร้อม
   /// (เชน TPIX ค่าแก๊สเป็น 0 — ตัวเซ็นต้องไม่ไปคาดว่าต้องมีเหรียญจ่ายแก๊ส)
+  ///
+  /// [expectedFrom] = กระเป๋าที่ผู้ใช้กดส่ง — ไม่ตรงกับที่เชื่อมอยู่ตอนนี้ = ไม่ส่ง
+  /// [verifyChainId] = กระเป๋าในแอปถาม eth_chainId ของ RPC ก่อนเซ็น (ไม่ตรง = ไม่ส่ง)
+  /// เหตุที่ล้มดูได้ที่ [lastSendFailure]
   Future<String?> sendChainTransaction({
     required int chainId,
     required String to,
     Uint8List? data,
     BigInt? value,
     String? summary,
+    String? expectedFrom,
+    bool verifyChainId = false,
   }) async {
+    _lastSendFailure = null;
     if (_address == null) {
-      _error = 'Wallet not connected';
-      notifyListeners();
+      _sendFailed(ChainSendFailure.notConnected, 'Wallet not connected');
+      return null;
+    }
+    if (expectedFrom != null &&
+        expectedFrom.toLowerCase() != _address!.toLowerCase()) {
+      _sendFailed(ChainSendFailure.walletChanged,
+          'กระเป๋าที่เชื่อมอยู่เปลี่ยนไประหว่างทำรายการ — ยังไม่ได้ส่งอะไร');
       return null;
     }
 
@@ -545,7 +606,11 @@ class WalletProvider extends ChangeNotifier {
     }
 
     return _sendViaEmbedded(
-        chainId: chainId, to: to, data: data, value: value);
+        chainId: chainId,
+        to: to,
+        data: data,
+        value: value,
+        verifyChainId: verifyChainId);
   }
 
   /// Linked wallet (TPIX Wallet) — ส่งคำขอธุรกรรมข้ามแอพ ผู้ใช้ยืนยันใน
@@ -566,8 +631,8 @@ class WalletProvider extends ChangeNotifier {
       summary: summary,
     );
     if (hash == null) {
-      _error = 'ธุรกรรมถูกปฏิเสธใน TPIX Wallet หรือหมดเวลา';
-      notifyListeners();
+      _sendFailed(ChainSendFailure.rejected,
+          'ธุรกรรมถูกปฏิเสธใน TPIX Wallet หรือหมดเวลา');
     }
     return hash;
   }
@@ -587,8 +652,8 @@ class WalletProvider extends ChangeNotifier {
       final switched = await svc.switchChain(chainId);
       if (!switched || svc.selectedChainId != chainId) {
         final name = ChainConfig.byId(chainId).name;
-        _error = 'กรุณาสลับ wallet ไปเชน $name เพื่อเทรด (ถ้ากระเป๋าไม่มีเชนนี้ ให้กดอนุญาตเพิ่มเชน)';
-        notifyListeners();
+        _sendFailed(ChainSendFailure.switchFailed,
+            'กรุณาสลับ wallet ไปเชน $name เพื่อเทรด (ถ้ากระเป๋าไม่มีเชนนี้ ให้กดอนุญาตเพิ่มเชน)');
         return null;
       }
       _activeChainId = chainId;
@@ -598,8 +663,8 @@ class WalletProvider extends ChangeNotifier {
     // ผู้ใช้สลับบัญชีใน wallet ระหว่างทาง — อย่าส่งธุรกรรมจากบัญชีที่แอปไม่ได้ผูกไว้
     final current = svc.currentAddress;
     if (current != null && current.toLowerCase() != from.toLowerCase()) {
-      _error = 'บัญชีใน wallet ไม่ตรงกับที่เชื่อมไว้ — สลับกลับหรือเชื่อมใหม่';
-      notifyListeners();
+      _sendFailed(ChainSendFailure.walletChanged,
+          'บัญชีใน wallet ไม่ตรงกับที่เชื่อมไว้ — สลับกลับหรือเชื่อมใหม่');
       return null;
     }
 
@@ -611,8 +676,7 @@ class WalletProvider extends ChangeNotifier {
       dataHex: data != null ? '0x${HEX.encode(data)}' : null,
     );
     if (hash == null) {
-      _error = 'ธุรกรรมถูกปฏิเสธจาก wallet';
-      notifyListeners();
+      _sendFailed(ChainSendFailure.rejected, 'ธุรกรรมถูกปฏิเสธจาก wallet');
     }
     return hash;
   }
@@ -629,15 +693,23 @@ class WalletProvider extends ChangeNotifier {
     required int chainId,
     Uint8List? data,
     BigInt? value,
+    bool verifyChainId = false,
   }) async {
+    final from = _address;
     final privateKey = await _storage.read(key: _keyPrivateKey);
     if (privateKey == null) {
-      _error = 'Wallet key not found';
-      notifyListeners();
+      _sendFailed(ChainSendFailure.keyMissing, 'Wallet key not found');
       return null;
     }
 
     final credentials = EthPrivateKey.fromHex(privateKey);
+    // กุญแจในเครื่องต้องเป็นของกระเป๋าที่หน้าจอแสดงอยู่ (นำเข้ากระเป๋าใหม่ระหว่างทาง = ไม่ส่ง)
+    if (from == null ||
+        credentials.address.hex.toLowerCase() != from.toLowerCase()) {
+      _sendFailed(ChainSendFailure.walletChanged,
+          'กระเป๋าที่เชื่อมอยู่เปลี่ยนไประหว่างทำรายการ — ยังไม่ได้ส่งอะไร');
+      return null;
+    }
     final toAddress = EthereumAddress.fromHex(to);
     final etherValue =
         value != null ? EtherAmount.inWei(value) : null;
@@ -649,6 +721,11 @@ class WalletProvider extends ChangeNotifier {
     final ({BigInt gas, EtherAmount gasPrice, int nonce}) prep;
     try {
       prep = await pool.withClient((client) async {
+        // RPC ต้องเป็นเชนที่จะเซ็นจริง — ไม่ตรง = ไม่ส่ง (nonce/แก๊สที่อ่านมาผิดเชนทั้งหมด)
+        if (verifyChainId &&
+            await client.getChainId() != BigInt.from(chainId)) {
+          throw const _RpcWrongChain();
+        }
         final gas = await client.estimateGas(
           sender: credentials.address,
           to: toAddress,
@@ -663,18 +740,23 @@ class WalletProvider extends ChangeNotifier {
         );
         return (gas: gas, gasPrice: gasPrice, nonce: nonce);
       });
+    } on _RpcWrongChain {
+      _sendFailed(ChainSendFailure.wrongChain,
+          'เครือข่ายที่ตอบกลับไม่ใช่เชน ${chain.shortName} — ยกเลิกเพื่อความปลอดภัย ยังไม่ได้ส่งอะไร');
+      return null;
     } on RPCError catch (e) {
       // โหนดตอบแล้วว่าธุรกรรมจะ revert / ยอดไม่พอ — ไม่ใช่ปัญหาเครือข่าย
       debugPrint('sendChainTransaction estimate rejected: ${e.errorCode}');
-      _error = chain.isGasless
-          ? 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือและค่า slippage'
-          : 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือ/ค่า gas (${chain.symbol})';
-      notifyListeners();
+      _sendFailed(
+          ChainSendFailure.wouldRevert,
+          chain.isGasless
+              ? 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือและค่า slippage'
+              : 'ธุรกรรมจะล้มเหลวบนเชน — เช็คยอดคงเหลือ/ค่า gas (${chain.symbol})');
       return null;
     } catch (e) {
       debugPrint('sendChainTransaction prepare failed: ${e.runtimeType}');
-      _error = 'ส่งธุรกรรมไม่สำเร็จ — เครือข่าย ${chain.shortName} ขัดข้อง ลองใหม่';
-      notifyListeners();
+      _sendFailed(ChainSendFailure.network,
+          'ส่งธุรกรรมไม่สำเร็จ — เครือข่าย ${chain.shortName} ขัดข้อง ลองใหม่');
       return null;
     }
 
@@ -697,8 +779,8 @@ class WalletProvider extends ChangeNotifier {
       return await pool.broadcastRaw(signed);
     } on RPCError catch (e) {
       debugPrint('sendChainTransaction broadcast rejected: ${e.errorCode}');
-      _error = 'เชนปฏิเสธธุรกรรม — ลองใหม่อีกครั้ง';
-      notifyListeners();
+      _sendFailed(
+          ChainSendFailure.rejectedByChain, 'เชนปฏิเสธธุรกรรม — ลองใหม่อีกครั้ง');
       return null;
     } catch (e) {
       debugPrint('sendChainTransaction broadcast failed: ${e.runtimeType}');
@@ -712,8 +794,8 @@ class WalletProvider extends ChangeNotifier {
         );
         if (known != null) return localHash;
       } catch (_) {}
-      _error = 'ส่งธุรกรรมไม่สำเร็จ — เครือข่าย ${chain.shortName} ขัดข้อง ลองใหม่';
-      notifyListeners();
+      _sendFailed(ChainSendFailure.unknownOutcome,
+          'ส่งธุรกรรมไม่สำเร็จ — เครือข่าย ${chain.shortName} ขัดข้อง ลองใหม่');
       return null;
     }
   }

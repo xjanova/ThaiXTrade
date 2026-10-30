@@ -401,22 +401,18 @@ class TreasuryService
     }
 
     /**
-     * วัตถุประสงค์ที่ยกเว้นการบังคับ whitelist.
-     *
-     * `token_sale` คือการส่งเหรียญให้ผู้ซื้อที่ claim vesting ปลายทางเป็นกระเป๋า
-     * ของลูกค้าซึ่งเป็นคนละใบทุกครั้ง จะเอาเข้า whitelist ล่วงหน้าไม่ได้
-     *
-     * ที่ยกเว้นได้เพราะปลายทางไม่ได้มาจากคนกรอก — มันถูกผูกกับ
-     * `sale_transactions.wallet_address` ของรายการซื้อที่ยืนยันแล้ว ซึ่งต้องผ่าน
-     * การตรวจการชำระเงินบน BSC มาก่อน และวงเงินต่อครั้ง/ต่อวันยังบังคับอยู่ครบ
-     */
-    private const WHITELIST_EXEMPT_PURPOSES = ['token_sale'];
-
-    /**
      * ตรวจว่ารายการจ่ายเงินนี้ผ่านกฎทุกข้อไหม.
      *
      * เรียกทั้งตอนสร้างรายการและตอนก่อนเซ็น — เพราะวงเงินหรือ whitelist
      * อาจถูกแก้ระหว่างที่รายการรออนุมัติอยู่
+     *
+     * ═══ whitelist ยกเว้นตาม "ใครสร้างรายการ" ไม่ใช่ตาม purpose ═══
+     * เดิมยกเว้นตาม purpose `token_sale` ซึ่งแอดมินเลือกเองได้ในฟอร์ม — รหัสแอดมินหลุดหนึ่งครั้ง
+     * = สร้าง อนุมัติ และส่งไปกระเป๋าไหนก็ได้ (ออดิท 2026-10-29 C3)
+     * ตอนนี้ยกเว้นเฉพาะ origin ที่ระบบสร้างเอง (TreasuryPayout::WHITELIST_EXEMPT_ORIGINS):
+     * claim vesting / ออเดอร์โอนธนาคาร ปลายทางผูกกับกระเป๋าของรายการซื้อที่ยืนยันแล้ว
+     * และการคืนค่าธรรมเนียมสร้างเหรียญ ปลายทางคือกระเป๋าที่โอนค่าธรรมเนียมเข้ามา (ตรวจบนเชนแล้ว)
+     * origin อื่นหรือ null = ต้องอยู่ใน whitelist (fail-closed) และวงเงินต่อครั้ง/ต่อวันบังคับทุกกรณี
      *
      * @return array{ok: bool, errors: array<int, string>}
      */
@@ -424,7 +420,7 @@ class TreasuryService
         string $toAddress,
         string $amountWei,
         ?int $ignorePayoutId = null,
-        ?string $purpose = null,
+        ?string $origin = null,
     ): array {
         $errors = [];
 
@@ -439,14 +435,14 @@ class TreasuryService
         // whitelist
         $entry = TreasuryWhitelist::findActiveByAddress($toAddress);
         $needsWhitelist = config('treasury.limits.require_whitelist', true)
-            && ! in_array($purpose, self::WHITELIST_EXEMPT_PURPOSES, true);
+            && ! in_array($origin, TreasuryPayout::WHITELIST_EXEMPT_ORIGINS, true);
 
         if ($needsWhitelist && ! $entry) {
             $errors[] = 'ปลายทางนี้ไม่อยู่ใน whitelist';
         }
 
         // วงเงินต่อครั้ง — ของปลายทางนี้ก่อน ถ้าไม่ตั้งไว้ใช้ค่ากลาง
-        $maxPerTx = $entry?->max_per_tx_wei ?: Wei::toWei((string) config('treasury.limits.per_transaction', '0'));
+        $maxPerTx = $this->maxPerTxWei($toAddress);
         if (bccomp($maxPerTx, '0', 0) > 0 && bccomp($amountWei, $maxPerTx, 0) > 0) {
             $errors[] = 'เกินวงเงินต่อครั้ง ('.Wei::format($maxPerTx).' TPIX)';
         }
@@ -475,6 +471,15 @@ class TreasuryService
         }
 
         return ['ok' => $errors === [], 'errors' => $errors];
+    }
+
+    /**
+     * วงเงินต่อครั้งของปลายทางนี้เป็น wei — ปลายทางตั้งไว้ใช้ค่านั้นแทนค่ากลาง, '0' = ไม่จำกัด.
+     */
+    public function maxPerTxWei(string $toAddress): string
+    {
+        return TreasuryWhitelist::findActiveByAddress($toAddress)?->max_per_tx_wei
+            ?: Wei::toWei((string) config('treasury.limits.per_transaction', '0'));
     }
 
     /**

@@ -8,12 +8,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * TokenSale Model — รอบการขายเหรียญ TPIX (ICO/IDO).
  *
  * แต่ละรอบมีหลาย phase (Private, Pre-Sale, Public)
- * รับชำระบน BSC ด้วย BNB/USDT แล้ว allocate TPIX ให้ผู้ซื้อ
+ * รับชำระตามช่องทางใน accept_currencies แล้ว allocate TPIX ให้ผู้ซื้อบนเชน TPIX
  *
  * @property int $id
  * @property string $name
@@ -37,6 +38,22 @@ use Illuminate\Support\Carbon;
 class TokenSale extends Model
 {
     use HasFactory, SoftDeletes;
+
+    /** ทุกรอบขายรับบัตร — ช่องทางอื่นเลือกเพิ่มทีละรอบ */
+    public const REQUIRED_CHANNEL = 'CARD';
+
+    /** ทาง USDT ที่ตรวจเงินเข้าบนเชน — ช่องทางเดียวที่เงินเข้า sale_wallet_address */
+    public const CRYPTO_CHANNEL = 'CRYPTO';
+
+    /**
+     * ค่าที่ accept_currencies ตั้งจากหลังบ้านได้.
+     *
+     * ห้ามเพิ่ม USDT หรือ BNB ลงลิสต์นี้ เพราะสองค่านั้นเปิดทางยื่น tx_hash แบบเก่าเข้า sale_wallet_address
+     */
+    public const PAYMENT_CHANNELS = [self::REQUIRED_CHANNEL, 'BANK', self::CRYPTO_CHANNEL];
+
+    /** คอลัมน์ slug ยาวได้ 255 ตัว — เหลือที่ไว้ให้เลขต่อท้ายเมื่อชื่อซ้ำ */
+    private const SLUG_BASE_LENGTH = 240;
 
     protected $table = 'token_sales';
 
@@ -70,6 +87,42 @@ class TokenSale extends Model
             'ends_at' => 'datetime',
             'launched_at' => 'datetime',
         ];
+    }
+
+    // =========================================================================
+    // Boot
+    // =========================================================================
+
+    /**
+     * ตั้ง slug ตอนสร้างเท่านั้น — รอบที่มีอยู่แล้วต้องคงเดิมแม้เปลี่ยนชื่อ เพราะ URL สาธารณะอาจอ้างถึง.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (TokenSale $sale) {
+            if (empty($sale->slug)) {
+                $sale->slug = static::generateUniqueSlug($sale->name);
+            }
+        });
+    }
+
+    /**
+     * สร้าง slug ไม่ซ้ำจากชื่อ.
+     *
+     * นับรวมรอบที่ลบแบบ soft delete เพราะ unique index ของคอลัมน์ยังเห็นแถวเหล่านั้น
+     */
+    protected static function generateUniqueSlug(string $name): string
+    {
+        // ชื่อภาษาไทยล้วนอาจแปลงแล้วว่าง และ slug ยาวกว่าชื่อได้ ('@' กลายเป็น 'at')
+        $base = rtrim(substr(Str::slug($name), 0, self::SLUG_BASE_LENGTH), '-') ?: 'token-sale';
+        $slug = $base;
+        $counter = 1;
+
+        while (static::withTrashed()->where('slug', $slug)->exists()) {
+            $slug = "{$base}-{$counter}";
+            $counter++;
+        }
+
+        return $slug;
     }
 
     // =========================================================================

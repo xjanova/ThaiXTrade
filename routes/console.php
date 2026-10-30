@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\SupplyService;
+use App\Support\DeployWindow;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
@@ -92,6 +93,24 @@ Schedule::command('masternode:cleanup')
     ->onOneServer()
     ->name('masternode:cleanup');
 
+// Masternode uptime oracle: ปิดรอบรายชั่วโมง → updateUptimeBatch บนเชน
+// นาทีที่ 2 = รอ heartbeat/รายชื่อ peer ของช่องสุดท้ายเข้ามาครบก่อน
+// ยังไม่ตั้งกุญแจของเราเป็น uptimeOracle บนเชน = โหมดเงา (คำนวณ + บันทึก ไม่ส่ง) — ตั้งไว้ได้เลย
+// ถ้าเปลี่ยน MASTERNODE_UPTIME_PERIOD_MINUTES ต้องแก้รอบตรงนี้ให้ตรงกันด้วย
+Schedule::command('masternode:uptime-oracle')
+    ->hourlyAt(2)
+    ->withoutOverlapping(55)
+    ->onOneServer()
+    ->name('masternode:uptime-oracle');
+
+// GeoLite2 (ประเทศ/เมืองบนแผนที่โหนด) — MaxMind ปล่อยฐานใหม่สัปดาห์ละ 2 ครั้ง
+// ยังไม่ตั้ง MAXMIND_LICENSE_KEY = จบเองทันที
+Schedule::command('geoip:update')
+    ->weeklyOn(3, '04:20')
+    ->withoutOverlapping(60)
+    ->onOneServer()
+    ->name('geoip:update');
+
 // ชั้นคลัง: เก็บรายการเคลื่อนไหวของกระเป๋าคลังจากเชนเข้าสมุดบัญชี ทุก 5 นาที
 //
 // ต้องมีตัวนี้ ไม่งั้นพอมีใครโอนเงินออกจากคลังผ่าน Masternode UI (ทางเดียวที่โอนได้
@@ -145,6 +164,16 @@ Schedule::command('infra:check-heartbeats')
     ->everyMinute()
     ->onOneServer()
     ->name('infra:check-heartbeats');
+
+// validator รายตัว: ใครเสนอ/เซ็นรับรองบล็อก ใครพลาดคิว — ตัวที่เงียบเกิน 5 นาทีขึ้นคาดแดง
+//
+// เชนยังเดินได้ทั้งที่ validator หายไปตัวหนึ่ง (เหตุ 5 ส.ค.: วิ่ง 3/4 นานโดยไม่มีใครรู้)
+// อ่านผ่าน RPC ~30 บล็อก/นาที · ตามไม่ทันจะกระโดดไปข้างหน้าเอง ไม่ทับรอบกัน
+Schedule::command('validators:seal-monitor')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer()
+    ->name('validators:seal-monitor');
 
 // ชั้นคลัง: เซ็น ส่ง และตามผลรายการจ่ายเงินจากกระเป๋าร้อน ทุกนาที
 //
@@ -377,12 +406,25 @@ Schedule::command('aibot:wallet-transfers')
  *    และไม่มีทางรู้ตัว เพราะยอดหายทีละนิดโดยไม่มีอะไรแจ้ง
  *
  * ทุกนาที เพราะตั๋วอายุสั้น (ปริยาย 15 นาที) และการคืนช้าคือเงินของคนอื่นค้างอยู่กับเรา
+ * ตั๋วที่ผูกธุรกรรมของไม้แล้วถามผลบนเชนก่อน — ไม้ลง = ปิด ไม่คืน (ดู TicketSettlementService)
  */
 Schedule::command('trading:expire-tickets')
     ->everyMinute()
     ->withoutOverlapping(5)
     ->onOneServer()
     ->name('trading:expire-tickets');
+
+/*
+ * ตรวจไม้ BSC ที่ยังไม่จบย้อนหลัง — แถวที่รอลงบล็อก และค่าธรรมเนียมที่ยังไม่ได้ผล
+ *
+ * ผู้ใช้ปิดแท็บหลังส่งไม้ = ไม่มีใครกลับมาถามเชนให้ แถวจะค้าง pending ตลอดไป
+ * และไม้ที่ยืนยันแล้วจะไม่ได้ปิดตั๋ว / ไม่ได้นับค่าธรรมเนียมที่จ่ายจริง
+ */
+Schedule::command('trading:reconcile-swaps')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer()
+    ->name('trading:reconcile-swaps');
 
 /*
  * ล้างเอกสารยืนยันตัวตนที่ครบกำหนดเก็บแล้ว — ทุกวันตี 3
@@ -437,3 +479,15 @@ Schedule::command('queue:work --stop-when-empty --max-time=55 --timeout=280 --tr
     ->withoutOverlapping(10)
     ->runInBackground()
     ->name('queue:work-default');
+
+/*
+ * หยุดทุกงานระหว่าง deploy — ต้องอยู่ท้ายไฟล์เสมอ (งานที่ประกาศหลังบรรทัดนี้จะไม่ถูกหยุด)
+ *
+ * ช่วง git reset → migrate → config:cache โค้ดใหม่ยังไม่มี schema/แคชที่ตรงกัน
+ * 2026-10-29 tpix:treasury-payouts ล้ม Unknown column 'nonce' สองรอบในช่วงนี้
+ * รายละเอียดและเหตุผลที่ไม่ใช้ `artisan down` อยู่ที่ App\Support\DeployWindow
+ * (DeployWindowTest ฟ้องถ้ามีงานไหนหลุด)
+ */
+foreach (Schedule::events() as $event) {
+    $event->skip(fn () => DeployWindow::holdsBack($event));
+}

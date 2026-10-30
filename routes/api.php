@@ -7,7 +7,6 @@
 
 use App\Http\Controllers\Api\AiBotController;
 use App\Http\Controllers\Api\AiBotWalletController;
-use App\Http\Controllers\Api\KycApiController;
 use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Api\ArticleController;
@@ -24,8 +23,11 @@ use App\Http\Controllers\Api\DiscordInteractionController;
 use App\Http\Controllers\Api\FeeConfigController;
 use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\InfraAlertController;
+use App\Http\Controllers\Api\KycApiController;
 use App\Http\Controllers\Api\MarketController;
+use App\Http\Controllers\Api\MasternodeLiveNodesController;
 use App\Http\Controllers\Api\NodeHeartbeatController;
+use App\Http\Controllers\Api\NodePeerReportController;
 use App\Http\Controllers\Api\StabilityController;
 use App\Http\Controllers\Api\StakingApiController;
 use App\Http\Controllers\Api\StripeWebhookController;
@@ -37,6 +39,7 @@ use App\Http\Controllers\Api\TokenSaleApiController;
 use App\Http\Controllers\Api\TpixPriceController;
 use App\Http\Controllers\Api\TradingController;
 use App\Http\Controllers\Api\TradingFeeController;
+use App\Http\Controllers\Api\ValidatorKeyBindingController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\MasterNodeController;
 use App\Http\Controllers\ValidatorController;
@@ -131,6 +134,13 @@ Route::prefix('infra')->middleware(['throttle:30,1'])->group(function () {
      */
     Route::get('contracts', [ContractRegistryController::class, 'show'])->name('infra.contracts.show');
     Route::post('contracts', [ContractRegistryController::class, 'store'])->name('infra.contracts.store');
+
+    /*
+     * รายชื่อ peer ที่ต่อ bootnode สาธารณะอยู่ — cron tpix-node-peers บนเครื่องเชนยิงทุก 1 นาที
+     * หลักฐานชั้นเครือข่ายว่ามาสเตอร์โหนดรันจริง (ป้อน uptime oracle)
+     * Auth: Bearer token = TPIX_NODE_PEERS_TOKEN (.env) เทียบ hash_equals ใน controller
+     */
+    Route::post('node-peers', [NodePeerReportController::class, 'store'])->name('infra.node-peers');
 });
 
 // Public Routes (No Auth Required) — rate limited
@@ -318,6 +328,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/tiers', [MasterNodeController::class, 'tiers']);
         // ที่อยู่สัญญา + เชน ให้โปรแกรมมาสเตอร์โหนดบน PC และ TPIX Wallet ค้นหาเอง (read-only)
         Route::get('/config', [MasterNodeController::class, 'config']);
+        // โหนดที่รันอยู่จริง (heartbeat รุ่น 2) ระดับประเทศ/เมือง — ไม่มี IP ไม่มีกระเป๋า
+        Route::get('/live-nodes', [MasternodeLiveNodesController::class, 'index']);
     });
 
     // Validators — network dashboard + applications (public)
@@ -325,10 +337,20 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/stats', [ValidatorController::class, 'stats']);
         Route::get('/list', [ValidatorController::class, 'list']);
         Route::get('/rewards', [ValidatorController::class, 'checkRewards']);
-        Route::post('/apply', [ValidatorController::class, 'submitApplication'])->middleware('throttle:5,60');
+        // ขอข้อความให้กระเป๋าเซ็นก่อน แล้วค่อยส่งใบสมัครพร้อมลายเซ็น (พิสูจน์ว่าเป็นเจ้าของกระเป๋าจริง)
+        // ตัวนับมีชื่อ (AppServiceProvider) — ไม่ปนกับตัวนับไม่มีชื่อที่ API สาธารณะใช้ร่วมกัน
+        Route::post('/apply/challenge', [ValidatorController::class, 'applicationChallenge'])->middleware('throttle:validator-apply-challenge');
+        Route::post('/apply', [ValidatorController::class, 'submitApplication'])->middleware('throttle:validator-apply');
         // ค่าตั้งชั้นไทล์แผนที่ — โปรแกรมมาสเตอร์โหนดบนเดสก์ท็อปอ่านตอนเปิดหน้าแผนที่
         // แยกไว้ที่นี่เพื่อหมุนคีย์/เปลี่ยนผู้ให้บริการได้โดยไม่ต้องปล่อยโปรแกรมรุ่นใหม่
         Route::get('/map-config', [ValidatorController::class, 'mapSettings']);
+
+        // ผูกกุญแจที่ปิดบล็อก (ที่อยู่ IBFT + BLS) กับกระเป๋าที่ stake ชั้น Validator
+        // แอปมาสเตอร์โหนดเซ็น 2 ใบ (กระเป๋า + กุญแจ validator) — ไม่ต้องล็อกอิน ลายเซ็นคือตัวตน
+        Route::post('/key-binding', [ValidatorKeyBindingController::class, 'store'])->middleware('throttle:10,1');
+        Route::get('/key-binding/{wallet}', [ValidatorKeyBindingController::class, 'show'])
+            ->where('wallet', '0x[0-9a-fA-F]{40}')
+            ->middleware('throttle:60,1');
     });
 
     // Articles / Blog — บทความ (public)
@@ -346,7 +368,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/sensor-data/{productId}', [FoodPassportApiController::class, 'sensorData']);
         Route::get('/fdp-token', [FoodPassportApiController::class, 'fdpTokenInfo']);
 
-        // IoT — Ingestion + test + config
+        // IoT — Ingestion + test + config: ตัวเครื่องยืนยันตัวด้วย API key ของตัวเองทุกเส้น
+        // (Authorization: Bearer fpk_...) กุญแจออกที่ register-device / rotate-key ในกลุ่มด้านล่าง
         Route::post('/iot/ingest', [FoodPassportApiController::class, 'iotIngest'])
             ->middleware('throttle:120,1');
         Route::post('/iot/batch-ingest', [FoodPassportApiController::class, 'iotBatchIngest'])
@@ -424,6 +447,7 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
 });
 
 // Protected Routes (Wallet Ownership Verified)
+// throttle:trading รันก่อนด่านกระเป๋าเสมอ แต่เลือกถังจากหลักฐานความเป็นเจ้าของเอง — ดู AppServiceProvider::tradingLimit()
 Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::class])->group(function () {
     // Trading Operations
     Route::prefix('trading')->group(function () {
@@ -503,18 +527,26 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
     Route::prefix('token-factory')->group(function () {
         Route::get('/my-tokens', [TokenFactoryApiController::class, 'myTokens']);
         // ใบเสนอราคาค่าธรรมเนียม (ล็อกยอด) → ผู้ใช้โอน TPIX → ถามสถานะ → สร้าง
+        // ⚠️ ทุกเส้นใช้ตัวนับที่มีชื่อ (AppServiceProvider) — `throttle:10,60` แบบไม่มีชื่อใช้คีย์
+        //    เดียวกับ API ทั้งเว็บ (โดเมน|IP): ระหว่างรอค่าธรรมเนียมยืนยัน หน้าเว็บถาม fee-status ถี่ ๆ
+        //    พอถึง /create ตัวนับเกิน 10 แล้ว → 429 ทั้งที่ผู้ใช้จ่ายเงินไปแล้ว (เกิดจริงกับ IDTC 2026-10-27)
         Route::post('/quote', [TokenFactoryApiController::class, 'quote'])
-            ->middleware(['throttle:20,60', 'kyc:token_factory']);
+            ->middleware(['throttle:token-factory-quote', 'kyc:token_factory']);
         Route::post('/fee-status', [TokenFactoryApiController::class, 'feeStatus'])
-            ->middleware('throttle:60,1');
+            ->middleware('throttle:token-factory-fee-status');
         // จำนวนเหรียญจริงต่อวันคุมด้วยนโยบาย (daily_limit_per_wallet) — throttle นี้กันยิงถี่
         // เผื่อผู้ใช้ที่จ่ายเงินแล้วต้องส่งซ้ำหลังแก้ฟอร์ม
         Route::post('/create', [TokenFactoryApiController::class, 'store'])
-            ->middleware(['throttle:10,60', 'kyc:token_factory']);
+            ->middleware(['throttle:token-factory-create', 'kyc:token_factory']);
         // ด่านเดียวกับ /create — เดิมมีแค่ throttle ทำให้ใครมีกระเป๋าก็อัปไฟล์
         // ขึ้นโดเมนได้ ทั้งที่ "สร้างเหรียญ" ซึ่งเป็นปลายทางจริงต้องผ่าน KYC
         Route::post('/upload-logo', [TokenFactoryApiController::class, 'uploadLogo'])
-            ->middleware(['throttle:10,60', 'kyc:token_factory']);
+            ->middleware(['throttle:token-factory-logo', 'kyc:token_factory']);
+        // ซื้อการยืนยันซอร์สโค้ดบน explorer ให้เหรียญที่ deploy แล้ว (ใบเสนอราคา → โอน → ส่ง hash)
+        Route::post('/{id}/source-verify/quote', [TokenFactoryApiController::class, 'sourceVerifyQuote'])
+            ->whereNumber('id')->middleware('throttle:token-factory-quote');
+        Route::post('/{id}/source-verify', [TokenFactoryApiController::class, 'sourceVerifyPurchase'])
+            ->whereNumber('id')->middleware('throttle:token-factory-create');
     });
 
     // FoodPassport — จัดการสินค้า/IoT (ต้อง verify wallet)
@@ -522,9 +554,11 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::post('/register', [FoodPassportApiController::class, 'register']);
         Route::post('/trace/{productId}', [FoodPassportApiController::class, 'addTrace']);
         Route::post('/mint/{productId}', [FoodPassportApiController::class, 'mint']);
+        // อ่าน/เขียนด้วย wallet_address ที่ด่านตรวจแล้วเท่านั้น (?address= ด่านมองไม่เห็น)
         Route::get('/my-products', [FoodPassportApiController::class, 'myProducts']);
         Route::post('/iot/register-device', [FoodPassportApiController::class, 'registerDevice']);
         Route::get('/iot/my-devices', [FoodPassportApiController::class, 'myDevices']);
+        Route::post('/iot/rotate-key/{deviceId}', [FoodPassportApiController::class, 'rotateDeviceKey']);
     });
 
     // Carbon Credits — ซื้อ/retire (ต้อง verify wallet)
@@ -639,13 +673,20 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
      * เหรียญไม่ผ่านเราเลย
      *
      * quote ถูกเรียกทุกครั้งที่ผู้ใช้พิมพ์จำนวน จึงให้โควตาสูงกว่าตัวที่เขียนข้อมูล
+     *
+     * ⚠️ throttle ทุกตัวในกลุ่มนี้ต้องมีชื่อถัง (อาร์กิวเมนต์ที่สาม) — ออดิท 2026-10-28 L4
+     *    throttle:30,1 แบบไม่มีชื่อใช้คีย์เดียวกับ throttleApi('60,1') ของทั้ง API (โดเมน|IP)
+     *    คำขอหนึ่งครั้งถูกนับสองรอบในถังเดียว = ได้จริงแค่ ~15 ครั้ง/นาที แล้ว 429 กลางไม้
+     *    (ขอตั๋ว → ผูก tx → ปิด/คืน) ทั้งที่ผู้ใช้ไม่ได้ยิงรัว
      */
     Route::prefix('trading-fee')->group(function () {
-        Route::post('/quote', [TradingFeeController::class, 'quote'])->middleware('throttle:120,1');
-        Route::get('/balance', [TradingFeeController::class, 'balance'])->middleware('throttle:60,1');
+        Route::post('/quote', [TradingFeeController::class, 'quote'])->middleware('throttle:120,1,trading-fee-quote');
+        Route::get('/balance', [TradingFeeController::class, 'balance'])->middleware('throttle:60,1,trading-fee-balance');
 
-        Route::middleware('throttle:30,1')->group(function () {
+        Route::middleware('throttle:30,1,trading-fee-tickets')->group(function () {
             Route::post('/tickets', [TradingFeeController::class, 'issueTicket']);
+            // ไม้ส่งเข้าเชนแล้ว — ผูกตั๋วกับธุรกรรม ผลบนเชนเป็นตัวตัดสินว่าปิดหรือคืน
+            Route::post('/tickets/{uuid}/bind', [TradingFeeController::class, 'bindTicket']);
             Route::post('/tickets/{uuid}/consume', [TradingFeeController::class, 'consumeTicket']);
             Route::post('/tickets/{uuid}/refund', [TradingFeeController::class, 'refundTicket']);
             Route::post('/topup/confirm', [TradingFeeController::class, 'confirmTopup']);

@@ -24,3 +24,10 @@ export const TPIX_COIN_PNG = brandAsset('tpix-coin.png');
 
 /** ตราเต็มแบบภาพ — วาดลงหน้าเหรียญในฉาก 3D (canvas ต้องรู้ขนาดภาพแน่นอน) */
 export const TPIX_MARK_PNG = brandAsset('tpix-trade-mark.png');
+
+/**
+ * ไอคอนแอป TPIX Wallet — รูปเดียวกับที่อยู่บนหน้าจอมือถือของผู้ใช้ (วงแหวนไล่สี + ตรา TP)
+ * ต้นฉบับ TPIX-Coin `wallet/assets/icon/tpix_icon_1024.png` ย่อเป็น 256px · แอปเปลี่ยนไอคอน = สร้างไฟล์นี้ใหม่
+ * (ไม่ใช่ /images/logowallet.webp — ตัวนั้นเป็นตราทองรุ่นเก่าก่อนแอปเปลี่ยนไอคอน)
+ */
+export const TPIX_WALLET_APP_ICON = brandAsset('tpix-wallet-app.webp');

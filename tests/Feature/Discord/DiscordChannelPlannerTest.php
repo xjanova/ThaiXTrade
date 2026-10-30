@@ -39,6 +39,8 @@ class DiscordChannelPlannerTest extends TestCase
             'whitepaper' => '100000000000000005',
             'sale' => '100000000000000006',
             'ask' => '100000000000000007',
+            // ไม่มีห้องเรียนรู้ → คลิปสอนใช้งานลงห้องข่าว (discord.fallbacks)
+            'learn' => '100000000000000003',
         ];
         $map = $plan['map'];
         ksort($expected);
@@ -70,6 +72,19 @@ class DiscordChannelPlannerTest extends TestCase
         ]);
 
         $this->assertSame('300000000000000002', $plan['map']['sale']);
+    }
+
+    public function test_the_tutorials_room_becomes_the_learning_room(): void
+    {
+        // ผังเซิร์ฟเวอร์ TPIX จริง: #tutorials อยู่ในหมวด SUPPORT
+        $plan = app(DiscordChannelPlanner::class)->plan([
+            $this->channel('500000000000000001', 'news', position: 1),
+            $this->channel('500000000000000009', 'SUPPORT', 4, position: 2),
+            $this->channel('500000000000000002', 'tutorials', 0, '500000000000000009', position: 3),
+        ]);
+
+        $this->assertSame('500000000000000002', $plan['map']['learn']);
+        $this->assertSame('500000000000000001', $plan['map']['news']);
     }
 
     public function test_missing_rooms_fall_back_to_announcements_but_never_to_general_chat(): void

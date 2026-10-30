@@ -120,11 +120,12 @@ class TokenFactoryFeeVerificationTest extends TestCase
     #[Test]
     public function ใช้_hash_เดิมซ้ำไม่ได้(): void
     {
+        // ขอใบที่สองไว้ก่อน — หลังคำขอแรกเข้าไป กระเป๋านี้ขอใบเสนอราคาใหม่ไม่ได้จนกว่าคำขอแรกจะจบ
         $first = $this->newQuote();
+        $second = $this->newQuote(['symbol' => 'AGAIN']);
         $this->putFeeTx($this->hash);
         $this->create($first)->assertCreated();
 
-        $second = $this->newQuote(['symbol' => 'AGAIN']);
         $this->create($second, ['symbol' => 'AGAIN'])
             ->assertStatus(409)
             ->assertJsonPath('error.code', 'FEE_TX_USED');

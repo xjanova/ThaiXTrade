@@ -7,11 +7,14 @@ use App\Models\TradingOrderTicket;
 use App\Models\TradingPair;
 use App\Services\ChainResolver;
 use App\Services\Trading\OrderTicketService;
+use App\Services\Trading\TicketSettlementService;
 use App\Services\Trading\TradingCreditService;
 use App\Services\Trading\TradingFeeQuoteService;
 use App\Services\Trading\TradingTopupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use PDOException;
 use RuntimeException;
 
 /**
@@ -32,6 +35,8 @@ class TradingFeeController extends Controller
         OrderTicketService::ERR_TICKET_EXPIRED => 'ใบอนุญาตหมดอายุแล้ว กรุณาขอใหม่',
         OrderTicketService::ERR_FEE_TX_REQUIRED => 'ต้องมีธุรกรรมการจ่ายค่าบริการก่อนถึงวางไม้ได้',
         OrderTicketService::ERR_ONCHAIN_NOT_SUPPORTED => 'จ่ายค่าบริการบนเชนไม่ต้องขอใบอนุญาต — ระบบหักให้ตอนสวอป',
+        OrderTicketService::ERR_TICKET_PENDING => 'ไม้ของใบอนุญาตนี้ส่งเข้าเชนแล้ว กำลังรอผล — ถ้าไม้ไม่ลง ระบบคืนค่าบริการให้เอง',
+        OrderTicketService::ERR_TICKET_BOUND => 'ใบอนุญาตนี้ผูกกับไม้อื่นไปแล้ว',
         TradingTopupService::ERR_NO_TREASURY => 'ยังไม่เปิดให้เติมเครดิต — ผู้ดูแลระบบยังไม่ได้ตั้งกระเป๋ารับเงิน',
         TradingTopupService::ERR_TX_NOT_FOUND => 'หาธุรกรรมนี้บนเชนไม่เจอ — รอสักครู่แล้วลองใหม่',
         TradingTopupService::ERR_TX_FAILED => 'ธุรกรรมนี้ไม่สำเร็จบนเชน จึงลงเครดิตให้ไม่ได้',
@@ -46,6 +51,7 @@ class TradingFeeController extends Controller
         private readonly OrderTicketService $tickets,
         private readonly TradingTopupService $topups,
         private readonly ChainResolver $chains,
+        private readonly TicketSettlementService $settlement,
     ) {}
 
     /**
@@ -154,6 +160,7 @@ class TradingFeeController extends Controller
                     $validated['side'],
                     (float) $validated['order_value_usd'],
                     $this->chainRowId((int) $validated['chain_id']),
+                    network: (int) $validated['chain_id'],
                 )
                 : $this->tickets->issueWithOnchainFee(
                     $wallet,
@@ -165,10 +172,32 @@ class TradingFeeController extends Controller
                     (string) ($validated['fee_tx_hash'] ?? ''),
                 );
         } catch (RuntimeException $e) {
-            return $this->failure($e->getMessage(), 422);
+            return $this->failure($e, 422);
         }
 
         return response()->json(['success' => true, 'data' => $this->present($ticket)], 201);
+    }
+
+    /**
+     * ไม้ส่งเข้าเชนแล้ว — ผูกใบอนุญาตกับธุรกรรมของไม้.
+     *
+     * หน้าเว็บเรียกทันทีที่กระเป๋าส่งธุรกรรมออก (ก่อนรอลงบล็อก) — ปิดแท็บ/เน็ตหลุดหลังจากนี้
+     * ตั๋วก็ไม่ถูกคืนเงินทั้งที่ไม้ลงแล้ว และไม่ถูกปิดทั้งที่ไม้ไม่ลง (ดู TicketSettlementService)
+     */
+    public function bindTicket(Request $request, string $uuid): JsonResponse
+    {
+        $validated = $request->validate([
+            'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'order_tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
+        ]);
+
+        try {
+            $ticket = $this->tickets->bind($uuid, $this->wallet($request), $validated['order_tx_hash']);
+        } catch (RuntimeException $e) {
+            return $this->failure($e, 422);
+        }
+
+        return response()->json(['success' => true, 'data' => $this->present($ticket)]);
     }
 
     /** ไม้ลงจริงแล้ว — ปิดใบอนุญาต */
@@ -182,7 +211,7 @@ class TradingFeeController extends Controller
         try {
             $ticket = $this->tickets->consume($uuid, $this->wallet($request), $validated['order_tx_hash'] ?? null);
         } catch (RuntimeException $e) {
-            return $this->failure($e->getMessage(), 422);
+            return $this->failure($e, 422);
         }
 
         return response()->json(['success' => true, 'data' => $this->present($ticket)]);
@@ -193,6 +222,9 @@ class TradingFeeController extends Controller
      *
      * เรียกเมื่อผู้ใช้กดยกเลิกในกระเป๋า ธุรกรรมล้มเหลว หรือยกเลิกไม้ที่ตั้งไว้
      * จ่ายด้วยเครดิตคืนเต็ม · จ่ายบนเชนคืนโดยหักค่าแก๊สตามที่แจ้งไว้ล่วงหน้า
+     *
+     * ⚠️ ตั๋วที่ผูกธุรกรรมแล้วคืนได้เมื่อเชนยืนยันว่าไม้ไม่ลงเท่านั้น (ออดิท 2026-10-28 C1)
+     *    ยังไม่รู้ผล = 409 TICKET_TRADE_PENDING ให้หน้าเว็บถามใหม่ · ไม้ลงแล้ว = ปิดตั๋วแล้วตอบ TICKET_ALREADY_USED
      */
     public function refundTicket(Request $request, string $uuid): JsonResponse
     {
@@ -202,13 +234,13 @@ class TradingFeeController extends Controller
         ]);
 
         try {
-            $ticket = $this->tickets->refund(
+            $ticket = $this->settlement->requestRefund(
                 $uuid,
                 $this->wallet($request),
                 (string) $request->input('reason', 'ไม่ได้วางไม้'),
             );
         } catch (RuntimeException $e) {
-            return $this->failure($e->getMessage(), 422);
+            return $this->failure($e, $e->getMessage() === OrderTicketService::ERR_TICKET_PENDING ? 409 : 422);
         }
 
         return response()->json(['success' => true, 'data' => $this->present($ticket)]);
@@ -225,7 +257,7 @@ class TradingFeeController extends Controller
         try {
             $result = $this->topups->credit($this->wallet($request), $validated['tx_hash']);
         } catch (RuntimeException $e) {
-            return $this->failure($e->getMessage(), 422);
+            return $this->failure($e, 422);
         }
 
         return response()->json(['success' => true, 'data' => $result]);
@@ -251,8 +283,24 @@ class TradingFeeController extends Controller
         ];
     }
 
-    private function failure(string $code, int $status): JsonResponse
+    /**
+     * ⚠️ QueryException สืบทอดจาก PDOException ← RuntimeException — เดิม catch (RuntimeException)
+     *    แล้วส่ง getMessage() กลับไปเป็นรหัส error = คำสั่ง SQL + ชื่อตาราง/คอลัมน์ไปถึงหน้าเว็บ
+     *    ส่งกลับได้เฉพาะรหัสที่เราตั้งเอง (ตัวพิมพ์ใหญ่ล้วน) อย่างอื่นเป็นข้อผิดพลาดภายในทั้งหมด
+     */
+    private function failure(RuntimeException $e, int $status): JsonResponse
     {
+        $code = $e->getMessage();
+
+        if ($e instanceof PDOException || preg_match('/^[A-Z][A-Z_]{2,63}$/', $code) !== 1) {
+            Log::error('trading-fee request failed', ['exception' => get_class($e)]);
+
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'SERVER_ERROR', 'message' => 'ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง'],
+            ], 500);
+        }
+
         return response()->json([
             'success' => false,
             'error' => [

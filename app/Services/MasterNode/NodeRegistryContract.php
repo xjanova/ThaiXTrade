@@ -7,6 +7,7 @@ use App\Support\Wei;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use kornrunner\Keccak;
 
 /**
  * NodeRegistryContract — ตัวอ่าน NodeRegistryV2 บน TPIX Chain ตัวเดียวของทั้งระบบ.
@@ -48,6 +49,22 @@ class NodeRegistryContract
     private const SEL_REGISTRATION_PAUSED = '0x9abbbd3b'; // registrationPaused()
     private const SEL_TIER_APR_CAP_BPS = '0xf8bc005d';    // tierAprCapBps(uint8)
     private const SEL_NODE_REWARD_RATE = '0x4dedaa7a';    // nodeRewardRate(uint8)
+
+    // ── รุ่น uptime oracle (2026-10-22) — สัญญาก่อนหน้านี้ไม่มี uptimeOracle() → null ─────
+    private const SEL_GET_ACTIVE_OPERATORS = '0x783286fb'; // getActiveOperators(uint256,uint256)
+    private const SEL_UPTIME_ORACLE = '0x841a41a8';        // uptimeOracle()
+    private const SEL_OWNER = '0x8da5cb5b';                // owner()
+    private const SEL_OPERATOR_COUNT = '0x1a4a7c61';       // getOperatorCount()
+    private const SEL_OPERATORS = '0xe28d4906';            // operators(uint256)
+
+    /** njs gate ของ rpc1 รับ batch ไม่เกิน 20 คำสั่งต่อ request (MAX_BATCH) */
+    private const RPC_BATCH = 20;
+
+    /** พักระหว่าง batch — อ่านผ่าน limit_req 30 r/s ของ rpc1 แบบไม่เบียดคนอื่น */
+    private const RPC_BATCH_PAUSE_US = 100_000;
+
+    /** ไล่ตรวจกับ getActiveOperators เฉพาะตอนจำนวนยังน้อย (ตัวนั้นวนทั้ง array ทุกครั้ง) */
+    private const CROSS_CHECK_MAX = 200;
 
     /** 365 วันเป็นวินาที — ตรงกับ `365 days` ที่สัญญาใช้คิดเพดาน APR */
     private const SECONDS_PER_YEAR = '31536000';
@@ -396,6 +413,16 @@ class NodeRegistryContract
             return null;
         }
 
+        return $this->decodeNodeInfo($result);
+    }
+
+    /**
+     * ผลดิบของ getNodeInfo → array — ใช้ร่วมกันระหว่าง nodeInfo() กับ activeNodes() (ถามทีละชุด).
+     *
+     * @return array<string,mixed>|null
+     */
+    private function decodeNodeInfo(string $result): ?array
+    {
         $w = $this->words($result);
         if (count($w) < 14) {
             return null;
@@ -531,6 +558,206 @@ class NodeRegistryContract
         return Wei::hexToInt($result) !== '0';
     }
 
+    /**
+     * uptimeOracle() — กุญแจที่สัญญายอมให้ตั้ง uptime (lowercase).
+     *
+     * @return string|null '0x000…0' = ยังไม่ได้ตั้ง · null = อ่านไม่ได้/สัญญารุ่นเก่าที่ไม่มีฟังก์ชันนี้
+     */
+    public function uptimeOracle(): ?string
+    {
+        $result = $this->ethCall(self::SEL_UPTIME_ORACLE);
+        $w = $result === null ? [] : $this->words($result);
+        if (count($w) !== 1 || ! str_starts_with($w[0], str_repeat('0', 24))) {
+            return null;
+        }
+
+        return '0x'.substr($w[0], 24);
+    }
+
+    /** owner() ของสัญญา (lowercase) — null = อ่านไม่ได้ */
+    public function owner(): ?string
+    {
+        $result = $this->ethCall(self::SEL_OWNER);
+        $w = $result === null ? [] : $this->words($result);
+        if (count($w) !== 1 || ! str_starts_with($w[0], str_repeat('0', 24))) {
+            return null;
+        }
+
+        return '0x'.substr($w[0], 24);
+    }
+
+    /**
+     * keccak256 ของ runtime bytecode ที่อยู่สัญญา (0x… lowercase) — แบบเดียวกับที่แอป/กระเป๋าปักไว้.
+     *
+     * ใช้ตัดสินว่า "สัญญาที่ที่อยู่นี้คือ build ที่ตรวจรับรองแล้วจริง" ก่อนเซ็นอะไรเข้าไป
+     * ไม่ cache — เรียกรอบละครั้งในงาน oracle เท่านั้น
+     */
+    public function runtimeCodeHash(): ?string
+    {
+        $address = $this->address();
+        $code = $address === null ? null : $this->rpc('eth_getCode', [$address, 'latest']);
+        if (! is_string($code) || ! preg_match('/^0x[0-9a-fA-F]+$/', $code) || strlen($code) <= 2 || strlen($code) % 2 !== 0) {
+            return null;
+        }
+
+        return '0x'.Keccak::hash(hex2bin(substr($code, 2)), 256);
+    }
+
+    /**
+     * getActiveOperators ทีละหน้า จนครบ — คืน null ถ้าหน้าไหนอ่านไม่ได้
+     * (รายชื่อครึ่ง ๆ กลาง ๆ อันตราย: โหนดที่ตกหล่นจะไม่ถูกตั้ง uptime ตามจริง).
+     *
+     * @return array<int,string>|null ที่อยู่ lowercase
+     */
+    public function activeOperators(int $pageSize = 100): ?array
+    {
+        $address = $this->address();
+        if ($address === null) {
+            return null;
+        }
+
+        $out = [];
+        for ($offset = 0; $offset < 100_000; $offset += $pageSize) {
+            // ไม่ผ่าน ethCall() เพราะหน้าว่าง (address[] ยาว 0) ก็ยังเป็นคำตอบที่ถูกต้อง
+            $result = $this->rpc('eth_call', [
+                ['to' => $address, 'data' => self::SEL_GET_ACTIVE_OPERATORS.$this->padUint($offset).$this->padUint($pageSize)],
+                'latest',
+            ]);
+            if (! is_string($result) || strlen($result) < 2 + 128) {
+                return null;
+            }
+
+            // address[] แบบ dynamic: word0 = offset (0x20), word1 = จำนวน, ถัดไปคือที่อยู่
+            $w = $this->words($result);
+            $count = (int) Wei::hexToInt($w[1] ?? '0');
+            if ($count > $pageSize || count($w) < 2 + $count) {
+                return null;
+            }
+            for ($i = 0; $i < $count; $i++) {
+                $out[] = '0x'.substr($w[2 + $i], 24);
+            }
+            if ($count < $pageSize) {
+                return $out;
+            }
+        }
+
+        return null;
+    }
+
+    /** getOperatorCount() — จำนวนกระเป๋าที่ "เคย" ลงทะเบียน (รวมที่ออกไปแล้ว ไม่เคยลดลง) */
+    public function operatorCount(): ?int
+    {
+        $result = $this->ethCall(self::SEL_OPERATOR_COUNT);
+        if ($result === null) {
+            return null;
+        }
+        $n = Wei::hexToInt($result);
+
+        return strlen($n) <= 9 ? (int) $n : null;
+    }
+
+    /**
+     * โหนดที่ status = Active ทั้งหมด พร้อม getNodeInfo ของแต่ละตัว — null ถ้าอ่านไม่ครบ.
+     *
+     * ไม่ใช้ getActiveOperators(): ตัวนั้นวน array `operators` ทั้งก้อนสองรอบทุกครั้งที่เรียก
+     * (~9k gas ต่อกระเป๋า) และ eth_call ถูกจำกัดราว 10M gas → พังที่ราว 1,100 กระเป๋า
+     * แล้วงาน uptime จะอ่านใครไม่ได้เลย: โหนดใหม่ค้าง 0% · โหนดที่ดับไม่ถูกลด
+     *
+     * ที่นี่ไล่ operators(i) ทีละ index (O(1) ต่อตัว) — array นี้เพิ่มอย่างเดียว จึง cache รายชื่อไว้
+     * แล้วถามเฉพาะ index ใหม่ · getNodeInfo ทีละชุด ≤ 20 ต่อ request
+     *
+     * @return array<string, array<string,mixed>>|null wallet (lowercase) => nodeInfo
+     */
+    public function activeNodes(): ?array
+    {
+        $operators = $this->operatorAddresses();
+        $address = $this->address();
+        if ($operators === null || $address === null) {
+            return null;
+        }
+
+        $active = [];
+        foreach (array_chunk($operators, self::RPC_BATCH) as $chunk) {
+            $results = $this->rpcBatch(array_map(fn ($op) => ['eth_call', [
+                ['to' => $address, 'data' => self::SEL_GET_NODE_INFO.$this->padAddress($op)],
+                'latest',
+            ]], $chunk));
+            if ($results === null) {
+                return null;
+            }
+            foreach ($chunk as $i => $op) {
+                $info = is_string($results[$i]) ? $this->decodeNodeInfo($results[$i]) : null;
+                if ($info === null) {
+                    return null; // กระเป๋าใน operators ต้องถอดได้เสมอ — ถอดไม่ได้คือข้อมูลไม่ครบ
+                }
+                if ($info['status'] === 'active') {
+                    $active[$op] = $info;
+                }
+            }
+            usleep(self::RPC_BATCH_PAUSE_US);
+        }
+
+        // ตรวจไขว้กับ getActiveOperators ตอนยังเล็ก — ไม่ตรง = มีบั๊กฝั่งใดฝั่งหนึ่ง ต้องมีคนดู
+        if (count($operators) <= self::CROSS_CHECK_MAX) {
+            $other = $this->activeOperators();
+            if ($other !== null) {
+                $mine = array_keys($active);
+                sort($mine);
+                sort($other);
+                if ($mine !== $other) {
+                    Log::warning('NodeRegistry: รายชื่อโหนด active จาก operators(i) ไม่ตรงกับ getActiveOperators', [
+                        'by_index' => count($mine),
+                        'by_contract' => count($other),
+                    ]);
+                }
+            }
+        }
+
+        return $active;
+    }
+
+    /**
+     * ทุกกระเป๋าที่เคยลงทะเบียน (lowercase) ตามลำดับใน array `operators` — cache แบบเพิ่มทีละส่วน.
+     *
+     * @return array<int,string>|null
+     */
+    public function operatorAddresses(): ?array
+    {
+        $address = $this->address();
+        $count = $address === null ? null : $this->operatorCount();
+        if ($count === null) {
+            return null;
+        }
+
+        $key = 'masternode:registry:operators:'.strtolower($address);
+        $cached = Cache::get($key);
+        // เชนมีน้อยกว่าที่จำไว้ = คนละสัญญา/regenesis — เริ่มใหม่
+        $list = is_array($cached) && count($cached) <= $count ? array_values($cached) : [];
+
+        for ($from = count($list); $from < $count; $from += self::RPC_BATCH) {
+            $indexes = range($from, min($count, $from + self::RPC_BATCH) - 1);
+            $results = $this->rpcBatch(array_map(fn ($i) => ['eth_call', [
+                ['to' => $address, 'data' => self::SEL_OPERATORS.$this->padUint($i)],
+                'latest',
+            ]], $indexes));
+            if ($results === null) {
+                return null;
+            }
+            foreach ($results as $r) {
+                $w = is_string($r) ? $this->words($r) : [];
+                if (count($w) !== 1 || ! str_starts_with($w[0], str_repeat('0', 24))) {
+                    return null;
+                }
+                $list[] = '0x'.substr($w[0], 24);
+            }
+            // จำไว้ทีละชุด — รอบหน้าถามต่อจากตรงนี้แม้รอบนี้จะล้มกลางทาง
+            Cache::forever($key, $list);
+            usleep(self::RPC_BATCH_PAUSE_US);
+        }
+
+        return $list;
+    }
+
     /** eth_blockNumber — ใช้เช็กว่าเชนยังเดินอยู่ */
     public function blockNumber(): int
     {
@@ -616,6 +843,57 @@ class NodeRegistryContract
 
             return null;
         }
+    }
+
+    /**
+     * JSON-RPC แบบ batch (≤ RPC_BATCH คำสั่ง) — ผลเรียงตามคำสั่งที่ส่ง · ตัวไหน error = null ทั้งชุด.
+     *
+     * ใช้กับงานที่ต้องอ่าน "ครบทุกตัว" เท่านั้น (ได้ครึ่งเดียวอันตรายกว่าไม่ได้เลย)
+     *
+     * @param  array<int, array{0:string, 1:array}>  $calls
+     * @return array<int,mixed>|null
+     */
+    private function rpcBatch(array $calls): ?array
+    {
+        if ($calls === [] || count($calls) > self::RPC_BATCH) {
+            return $calls === [] ? [] : null;
+        }
+
+        $body = [];
+        foreach (array_values($calls) as $i => [$method, $params]) {
+            $body[] = ['jsonrpc' => '2.0', 'id' => $i + 1, 'method' => $method, 'params' => $params];
+        }
+
+        try {
+            $response = Http::timeout(15)
+                ->withHeaders(['User-Agent' => self::USER_AGENT])
+                ->asJson()
+                ->post($this->rpcUrl(), $body);
+        } catch (\Throwable $e) {
+            Log::warning('NodeRegistry RPC batch failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        $items = $response->successful() ? $response->json() : null;
+        if (! is_array($items) || count($items) !== count($body)) {
+            Log::warning('NodeRegistry RPC batch bad response', ['status' => $response->status()]);
+
+            return null;
+        }
+
+        // คำตอบของ batch ไม่รับประกันลำดับ — เรียงด้วย id
+        $out = [];
+        foreach ($items as $item) {
+            $id = is_array($item) ? (int) ($item['id'] ?? 0) : 0;
+            if ($id < 1 || $id > count($body) || isset($item['error']) || ! array_key_exists('result', $item)) {
+                return null;
+            }
+            $out[$id - 1] = $item['result'];
+        }
+        ksort($out);
+
+        return count($out) === count($body) ? array_values($out) : null;
     }
 
     /**

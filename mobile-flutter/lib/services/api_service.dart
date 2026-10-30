@@ -444,6 +444,11 @@ class ApiService {
 
   /// บันทึกผล swap ที่ execute บนเชนแล้วให้ backend (best-effort)
   /// — payload ต้องตรงกับที่เว็บส่ง (useSwap.js → POST /swap/execute)
+  /// บันทึกไม้ — เซิร์ฟเวอร์อ่านยอดจริงจากใบเสร็จบนเชนเอง (BSC)
+  ///
+  /// [feeTxHash] = ธุรกรรมโอนค่าธรรมเนียม ให้เซิร์ฟเวอร์ตรวจบนเชน (ไม่มี hash = ไม่นับเป็นรายได้)
+  /// [feeCollected] = บอกตรงๆ ว่าโอนค่าธรรมเนียมแล้วหรือยัง — เดิมไม่ส่ง แล้วไม้ที่ค่าธรรมเนียมพลาด
+  /// โดน 422 FEE_MISMATCH หายจากประวัติ (ออดิท 2026-10-28 L10)
   Future<bool> recordSwapExecution({
     required String fromToken,
     required String toToken,
@@ -453,6 +458,8 @@ class ApiService {
     required String txHash,
     required int chainId,
     required String walletAddress,
+    bool? feeCollected,
+    String? feeTxHash,
   }) async {
     final res = await _post(ApiConstants.swapExecute, data: {
       'from_token': fromToken,
@@ -463,6 +470,8 @@ class ApiService {
       'tx_hash': txHash,
       'chain_id': chainId,
       'wallet_address': walletAddress,
+      if (feeCollected != null) 'fee_collected': feeCollected,
+      if (feeTxHash != null) 'fee_tx_hash': feeTxHash,
     });
     return res?['success'] == true;
   }

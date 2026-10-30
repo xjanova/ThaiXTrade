@@ -5,6 +5,8 @@ namespace App\Services\TokenFactory;
 use App\Models\FactoryToken;
 use App\Models\TokenFactoryFeeQuote;
 use App\Support\Wei;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
 /**
@@ -14,7 +16,8 @@ use RuntimeException;
  * ก็ได้เหรียญบน mainnet ฟรีไม่จำกัด (เปิด auto_approve ไว้ด้วยก็ได้ทันที)
  *
  * เงื่อนไขที่ต้องผ่านครบ:
- *   - hash นี้ไม่เคยใช้สร้างเหรียญมาก่อน (ฐานข้อมูลมี unique index กันซ้ำอีกชั้น)
+ *   - hash นี้ไม่เคยใช้ชำระค่าธรรมเนียมมาก่อน — ทั้งค่าสร้างเหรียญ (fee_tx_hash) และค่ายืนยันซอร์ส
+ *     (source_verify_tx_hash) ฐานข้อมูลมี unique index กันซ้ำอีกชั้นทั้งสองคอลัมน์
  *   - to = กระเป๋ารับค่าธรรมเนียมในใบเสนอราคา · from = กระเป๋าผู้สร้าง · chainId = 4289
  *   - value ≥ ยอดในใบเสนอราคา (เทียบเป็น wei ด้วย bcmath ไม่ผ่าน float)
  *   - receipt.status = 1 · ยืนยันแล้วอย่างน้อย N บล็อก (ตั้งในนโยบาย)
@@ -50,8 +53,8 @@ class TokenFactoryFeeVerifier
             throw new TokenFactoryException('FEE_TX_INVALID', 'รูปแบบ tx hash ของค่าธรรมเนียมไม่ถูกต้อง');
         }
 
-        if (FactoryToken::where('fee_tx_hash', $txHash)->exists()) {
-            throw new TokenFactoryException('FEE_TX_USED', 'ธุรกรรมค่าธรรมเนียมนี้ถูกใช้สร้างเหรียญไปแล้ว', 409);
+        if (self::txAlreadyUsed($txHash)) {
+            throw new TokenFactoryException('FEE_TX_USED', 'ธุรกรรมนี้ถูกใช้ชำระค่าธรรมเนียมไปแล้ว', 409);
         }
 
         if ($feeWallet === '') {
@@ -135,6 +138,46 @@ class TokenFactoryFeeVerifier
             'block' => $block,
             'value_wei' => $valueWei,
         ];
+    }
+
+    /** ธุรกรรมนี้เคยใช้ชำระค่าธรรมเนียมใด ๆ ของโรงงานไปแล้วหรือยัง */
+    public static function txAlreadyUsed(string $txHash): bool
+    {
+        $txHash = strtolower(trim($txHash));
+
+        return FactoryToken::where('fee_tx_hash', $txHash)
+            ->orWhere('source_verify_tx_hash', $txHash)
+            ->exists();
+    }
+
+    /**
+     * บันทึกการใช้ธุรกรรมแบบกันชนกัน — hash เดียวห้ามจ่ายได้ทั้งค่าสร้างและค่ายืนยันซอร์ส.
+     *
+     * unique index กันได้ทีละคอลัมน์ (fee_tx_hash / source_verify_tx_hash) แต่ไม่กันข้ามคอลัมน์
+     * สองคำขอที่มาพร้อมกันจึงต้องล็อกที่ hash แล้วถามซ้ำข้างในก่อนเขียน
+     *
+     * @template T
+     *
+     * @param  callable(): T  $write
+     * @return T
+     *
+     * @throws TokenFactoryException
+     */
+    public static function claimTx(string $txHash, callable $write): mixed
+    {
+        $txHash = strtolower(trim($txHash));
+
+        try {
+            return Cache::lock('token_factory:fee_tx:'.$txHash, 30)->block(10, function () use ($txHash, $write) {
+                if (self::txAlreadyUsed($txHash)) {
+                    throw new TokenFactoryException('FEE_TX_USED', 'ธุรกรรมนี้ถูกใช้ชำระค่าธรรมเนียมไปแล้ว', 409);
+                }
+
+                return $write();
+            });
+        } catch (LockTimeoutException) {
+            throw new TokenFactoryException('FEE_TX_BUSY', 'ธุรกรรมนี้กำลังถูกตรวจอยู่ กรุณาลองใหม่อีกครั้ง', 409);
+        }
     }
 
     private function ask(string $method, array $params): mixed

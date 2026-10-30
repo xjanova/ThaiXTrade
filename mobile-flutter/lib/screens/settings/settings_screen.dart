@@ -23,6 +23,7 @@ import '../../services/biometric_service.dart';
 import '../../services/update_service.dart';
 import '../../widgets/common/app_background.dart';
 import '../../widgets/common/bug_report_sheet.dart';
+import '../../widgets/common/buy_tpix_button.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
 import '../../widgets/wallet/profile_edit_sheet.dart';
@@ -1198,6 +1199,17 @@ class _AboutCard extends StatelessWidget {
             trailing: Icon(Icons.chevron_right_rounded,
                 color: AppColors.textTertiary, size: 20),
             onTap: () => context.push('/bridge'),
+          ),
+
+          Divider(color: AppColors.divider, height: 1, indent: 52),
+
+          // ซื้อ TPIX ด้วยบัตร — เปิดหน้า token sale บนเว็บ (จ่ายผ่าน Stripe)
+          _SettingsTile(
+            icon: Icons.credit_card_rounded,
+            title: locale.t('buyTpix.title'),
+            trailing: Icon(Icons.open_in_new_rounded,
+                color: AppColors.textTertiary, size: 18),
+            onTap: () => openTokenSale(context),
           ),
 
           Divider(color: AppColors.divider, height: 1, indent: 52),

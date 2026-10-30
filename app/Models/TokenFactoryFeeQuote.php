@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
  * @property string $id
  * @property string $creator_address
  * @property int $chain_id
+ * @property string $purpose
  * @property string $token_type
  * @property string $params_hash
  * @property string $amount
@@ -31,11 +32,22 @@ class TokenFactoryFeeQuote extends Model
 {
     use HasUuids;
 
+    /** ค่าสร้างเหรียญ */
+    public const PURPOSE_CREATE = 'create';
+
+    /** ค่ายืนยันซอร์สโค้ดบน explorer ที่ซื้อหลังเหรียญ deploy แล้ว (factory_token_id ผูกตั้งแต่ออกใบ) */
+    public const PURPOSE_SOURCE_VERIFY = 'source_verify';
+
     protected $table = 'token_factory_fee_quotes';
+
+    protected $attributes = [
+        'purpose' => self::PURPOSE_CREATE,
+    ];
 
     protected $fillable = [
         'creator_address',
         'chain_id',
+        'purpose',
         'token_type',
         'params_hash',
         'amount',

@@ -4,6 +4,7 @@ namespace App\Services\Discord;
 
 use App\Models\Article;
 use App\Models\DiscordPost;
+use App\Services\Learn\LearnCatalog;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -58,6 +59,7 @@ class DiscordPublisher
         private readonly DiscordContent $content,
         private readonly DiscordChannelPlanner $planner,
         private readonly DiscordLiveData $live,
+        private readonly LearnCatalog $learn,
     ) {}
 
     /**
@@ -133,6 +135,16 @@ class DiscordPublisher
             }
         }
 
+        // บทเรียนวิดีโอใหม่ก่อนซีรีส์ whitepaper — คนเพิ่งเข้ามาต้องการคลิปสอนติดตั้ง/ใช้งานก่อน
+        foreach ($this->pendingLessons() as $lesson) {
+            if ($budget <= 0) {
+                break;
+            }
+            $result = $this->postOnce('lesson', $lesson['code'], $this->lessonChannel($map), fn () => $this->content->lesson($lesson), $dryRun);
+            $results[] = $result;
+            $budget -= in_array($result['action'], ['created', 'would_create', 'error'], true) ? 1 : 0;
+        }
+
         foreach ($this->pendingVideos() as $video) {
             if ($budget <= 0) {
                 break;
@@ -202,6 +214,13 @@ class DiscordPublisher
             if (isset($videos[$post->ref_key])) {
                 $video = $videos[$post->ref_key];
                 $jobs[] = [$post, fn () => $this->content->video($video), collect([$post])];
+            }
+        }
+
+        foreach (DiscordPost::where('kind', 'lesson')->whereNotNull('message_id')->get() as $post) {
+            $lesson = $this->learn->find($post->ref_key);
+            if ($lesson !== null) {
+                $jobs[] = [$post, fn () => $this->content->lesson($lesson), collect([$post])];
             }
         }
 
@@ -379,6 +398,19 @@ class DiscordPublisher
                 'status' => $status('article', (string) $article->id, $channel, null),
                 'error' => $posted['article:'.$article->id]->last_error ?? null,
                 'payload' => $this->content->article($article, $thai),
+            ];
+        }
+
+        foreach (array_slice($this->pendingLessons(), 0, $upcoming) as $lesson) {
+            $channel = $this->lessonChannel($map);
+            $items[] = [
+                'kind' => 'lesson',
+                'ref' => $lesson['code'],
+                'role' => 'learn',
+                'channel_id' => $channel,
+                'status' => $status('lesson', $lesson['code'], $channel, null),
+                'error' => $posted['lesson:'.$lesson['code']]->last_error ?? null,
+                'payload' => $this->content->lesson($lesson),
             ];
         }
 
@@ -600,6 +632,42 @@ class DiscordPublisher
     }
 
     /**
+     * บทเรียนที่ยังไม่เคยโพสต์ ตามลำดับใน config/learn.php — รอจนบทความทั้งไทยและอังกฤษเผยแพร่แล้ว
+     * (seeder สร้างตอน deploy) ปุ่มในข้อความจะได้ไม่พาไปหน้าว่าง · แอดมินซ่อนบทความ = ไม่โพสต์.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function pendingLessons(): array
+    {
+        $posted = DiscordPost::where('kind', 'lesson')->whereNotNull('message_id')->pluck('ref_key')->all();
+        $lessons = array_filter($this->learn->all(), fn (array $l) => ! in_array($l['code'], $posted, true));
+        if ($lessons === []) {
+            return [];
+        }
+
+        // ข้อความมีปุ่มไปทั้งบทความไทยและอังกฤษ — ต้องเผยแพร่ครบทุกภาษา (บทเรียนไม่อยู่ในฟีดบทความ ไม่มีทางอื่นให้กดไปถึง)
+        $live = Article::published()->whereIn('language', LearnCatalog::LANGUAGES)
+            ->whereIn('source_key', array_map(fn (array $l) => $this->learn->sourceKey($l), $lessons))
+            ->get(['source_key', 'language'])
+            ->groupBy('source_key')
+            ->filter(fn (Collection $group) => $group->pluck('language')->unique()->count() === count(LearnCatalog::LANGUAGES))
+            ->keys()->all();
+
+        return array_values(array_filter($lessons, fn (array $l) => in_array($this->learn->sourceKey($l), $live, true)));
+    }
+
+    /**
+     * ห้องเรียนรู้ — ผังห้องที่วางไว้ก่อนมีบทบาท learn ไม่มีคีย์นี้ (ผังเดิมไม่ถูกวางใหม่เอง)
+     * จึงถอยไปห้องข่าวแบบเดียวกับ discord.fallbacks · แอดมินเลือกห้องเองได้ที่หลังบ้าน.
+     *
+     * @param  array<string, string>  $map
+     */
+    private function lessonChannel(array $map): ?string
+    {
+        return $map['learn'] ?? $map['news'] ?? $map['videos'] ?? null;
+    }
+
+    /**
      * บทความที่ยังไม่เคยโพสต์ เรียงเก่า → ใหม่.
      *
      * "เส้นเริ่ม" ปักครั้งเดียวตอนรันครั้งแรก = เวลาเผยแพร่ของบทความลำดับที่ article_backfill นับจากล่าสุด
@@ -613,12 +681,15 @@ class DiscordPublisher
         $languages = (array) config('discord.article_languages', ['en', 'th']);
         $floor = $this->settings->state()['articles_floor'] ?? null;
 
+        // บทความหมวดเรียนรู้ออกเป็นข้อความบทเรียน (มีตัวเล่นวิดีโอ) ในห้องเรียนรู้แล้ว — ไม่ออกซ้ำในฟีดบทความ
+        $feed = fn () => Article::published()->whereIn('language', $languages)->where('category', '!=', LearnCatalog::CATEGORY);
+
         if ($floor === null) {
             $backfill = max(0, (int) config('discord.article_backfill', 5));
             $nth = $backfill > 0
-                ? Article::published()->whereIn('language', $languages)->orderByDesc('published_at')->skip($backfill - 1)->value('published_at')
+                ? $feed()->orderByDesc('published_at')->skip($backfill - 1)->value('published_at')
                 : null;
-            $oldest = Article::published()->whereIn('language', $languages)->min('published_at');
+            $oldest = $feed()->min('published_at');
 
             $floor = (string) ($nth ?? ($backfill > 0 && $oldest ? $oldest : now()->toDateTimeString()));
 
@@ -627,8 +698,7 @@ class DiscordPublisher
             }
         }
 
-        $candidates = Article::published()
-            ->whereIn('language', $languages)
+        $candidates = $feed()
             ->where('published_at', '>=', $floor)
             ->orderBy('published_at')
             ->orderBy('id')

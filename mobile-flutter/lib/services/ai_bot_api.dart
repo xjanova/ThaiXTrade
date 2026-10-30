@@ -417,10 +417,14 @@ class AiBotApi {
   /// เปลี่ยนแพลนไม่ใช่การต่ออายุ — เซิร์ฟเวอร์คืนเงินวันที่เหลือ เริ่มรอบใหม่
   /// และเขียนทับกรอบความเสี่ยงของบอททุกตัว → ต้องใช้สถานะที่คืนมาเป็นความจริง
   /// ห้ามใช้ค่าเก่าที่ค้างในหน่วยความจำ
+  ///
+  /// [idempotencyKey] หนึ่ง key ต่อการกดเช่าหนึ่งครั้ง — retry ต้องส่ง key เดิม
+  /// เซิร์ฟเวอร์จึงไม่ตัดเครดิตและไม่ต่ออายุซ้ำ (16–64 ตัว, a-z A-Z 0-9 -)
   Future<ApiResult<AiBotStatus>> subscribe({
     required String wallet,
     required String planCode,
     required int days,
+    String? idempotencyKey,
   }) async {
     final guard = _wallet<AiBotStatus>(wallet);
     if (guard != null) return guard;
@@ -431,6 +435,7 @@ class AiBotApi {
         'wallet_address': _normalize(wallet),
         'plan_code': planCode,
         'days': days,
+        'idempotency_key': ?idempotencyKey,
       },
     );
     return _asMap(res, AiBotStatus.fromJson);

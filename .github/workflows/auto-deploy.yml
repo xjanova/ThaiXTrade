@@ -61,12 +61,29 @@ jobs:
 
       - name: Deploy via SSH (git pull + optimize)
         uses: appleboy/ssh-action@v1
+        # ⚠️⚠️ ห้ามใส่ ${{ }} ใน script ข้างล่างเด็ดขาด — ส่งค่าผ่าน env + envs แทน
+        #
+        # สตริงที่มี ${{ }} อยู่ข้างในถูก GitHub นับทั้งก้อนเป็น expression เดียว เพดาน 21,000 ไบต์
+        # (คอมเมนต์ภาษาไทย = 3 ไบต์ต่อตัวอักษร) เกินแล้วไฟล์ทั้งไฟล์ใช้ไม่ได้ ไม่มี deploy เลย
+        # เกิดจริง 2026-10-30 หลัง merge #186: script 23,479 ไบต์ → "Exceeded max expression length 21000"
+        # v1.1.266 ไม่ได้ขึ้น prod จนกว่าจะแก้ (DeployWorkflowLimitsTest ฟ้องถ้าย้อนกลับไปแบบเดิม)
+        #
+        # ชื่อขึ้นต้น DEPLOY_IN_ กันชนตัวแปรของ Laravel — APP_URL ที่ export ไว้จะทับ .env ตอน config:cache
+        env:
+          DEPLOY_IN_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_IN_GH_PAT: ${{ secrets.GH_PAT }}
+          DEPLOY_IN_APP_URL: ${{ secrets.APP_URL }}
+          DEPLOY_IN_SHA: ${{ github.sha }}
         with:
+          envs: DEPLOY_IN_PATH,DEPLOY_IN_GH_PAT,DEPLOY_IN_APP_URL,DEPLOY_IN_SHA
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          command_timeout: 5m
+          # 7 นาที: ปกติ ~100 วินาที + รองานตามตารางที่ค้างได้ถึง 90 วินาที (ดูหน้าต่าง deploy ข้างล่าง)
+          # + health check ท้ายสคริปต์ใช้ได้ถึง ~1 นาทีถ้าแอปค้าง (5 รอบ × 8 วิ + รอ 24 วิ)
+          # ต้องสั้นกว่า DeployWindow::MAX_AGE_SECONDS (15 นาที) เสมอ ไม่งั้นธงหมดอายุกลาง deploy
+          command_timeout: 7m
           # ⚠️ ค่าเริ่มต้นของ action นี้คือ false = ผลลัพธ์ทุกอย่างที่เซิร์ฟเวอร์พิมพ์
           #    ไม่ถูกส่งกลับมาที่ Actions เลย เห็นแต่ตัวสคริปต์ที่ส่งไป
           #    ที่ผ่านมา migration ล้มเหลวจึงเงียบสนิท: deploy เขียว แต่ตารางไม่ขึ้น
@@ -75,14 +92,95 @@ jobs:
           script: |
             set -e
 
-            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-            DEPLOY_PATH="${DEPLOY_PATH:-/home/admin/domains/tpix.online}"
+            # ค่าจาก env ของ step (ดูหัวข้อ env ด้านบน) — ย้ายเข้าตัวแปร shell แล้ว unset ทันที
+            # ตัวที่ export ไว้ส่งต่อให้ทุกโปรเซสลูก (composer/npm script, artisan) — GH_PAT ไม่ควรไปถึงพวกนั้น
+            DEPLOY_PATH="${DEPLOY_IN_PATH:-/home/admin/domains/tpix.online}"
+            DEPLOY_GH_PAT="${DEPLOY_IN_GH_PAT:-}"
+            DEPLOY_APP_URL="${DEPLOY_IN_APP_URL:-}"
+            DEPLOY_SHA="${DEPLOY_IN_SHA:-unknown}"
+            unset DEPLOY_IN_PATH DEPLOY_IN_GH_PAT DEPLOY_IN_APP_URL DEPLOY_IN_SHA
 
             echo "🚀 Starting deployment to ${DEPLOY_PATH}"
             cd "${DEPLOY_PATH}"
 
-            # Backup .env
-            cp .env .env.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
+            # Backup .env — สิทธิ์ 600 ตั้งแต่ตอนสร้าง แล้วเก็บไว้แค่ 5 ไฟล์ล่าสุด
+            #
+            # .env มีรหัส keystore กระเป๋าร้อนและคีย์ทุกตัว ของเดิม cp ด้วย umask ปกติ (664)
+            # ทุกรอบ deploy และไม่เคยลบ — prod สะสม 603 ไฟล์ 551 ไฟล์อ่านได้ทั้งกลุ่ม (ออดิท 2026-10-29 C3)
+            # แตะเฉพาะชื่อ .env.backup.YYYYMMDD_HHMMSS ที่ตรงนี้สร้าง — ไฟล์สำรองที่ทำมือไม่ถูกลบ
+            ENV_BACKUP=".env.backup.$(date +%Y%m%d_%H%M%S)"
+            (umask 077 && cp .env "$ENV_BACKUP") 2>/dev/null && chmod 600 "$ENV_BACKUP" 2>/dev/null || true
+            ENV_BACKUPS=$(ls -1A | grep -E '^\.env\.backup\.[0-9]{8}_[0-9]{6}$' | sort -r || true)
+            if [ -n "$ENV_BACKUPS" ]; then
+              echo "$ENV_BACKUPS" | while IFS= read -r f; do chmod 600 "$f" 2>/dev/null || true; done
+              echo "$ENV_BACKUPS" | tail -n +6 | while IFS= read -r f; do rm -f -- "$f" 2>/dev/null || true; done
+              echo "✓ .env backups: kept $(echo "$ENV_BACKUPS" | head -5 | wc -l) newest (mode 600)"
+            fi
+
+            # ── หน้าต่าง deploy: หยุดงานตามตารางจนโค้ด schema และแคชตรงกัน ──────────
+            #
+            # cron เรียก schedule:run ทุกนาทีตลอด deploy — ระหว่าง git reset → migrate →
+            # config:cache โค้ดใหม่วิ่งบน schema เก่าและแคชคอนฟิกของรอบก่อน
+            # เกิดจริง 2026-10-29 deploy v1.1.263: tpix:treasury-payouts ล้ม 15:08 และ 15:09
+            # (Unknown column 'nonce') · 2026-10-22: validators:seal-monitor รันก่อนตารางถูกสร้าง
+            #
+            # routes/console.php ผูก skip() ให้ทุกงาน: มีไฟล์นี้ = ข้ามรอบ (App\Support\DeployWindow)
+            # ธงที่เก่ากว่า 15 นาทีถูกมองข้าม — กัน scheduler หยุดถาวรถ้า trap ไม่ได้ทำงาน
+            # ไม่ใช้ `php artisan down` เพราะเว็บและ API จะตอบ 503 ตลอดช่วงนี้ทั้งที่ปัญหาอยู่ฝั่ง scheduler
+            #
+            # ⚠️ trap ต้องลบธงเสมอ — set -e ตัดสคริปต์กลางทางได้ทุกบรรทัด และ SSH หลุดได้
+            DEPLOY_FLAG="$(pwd)/storage/framework/deploy-in-progress"
+            DRAIN_MAX_SECONDS=90
+
+            end_deploy_window() {
+              [ -e "$DEPLOY_FLAG" ] || [ -e "$DEPLOY_FLAG.skipped" ] || return 0
+              SKIPPED_TASKS=$(cat "$DEPLOY_FLAG.skipped" 2>/dev/null || true)
+              # ลบก่อนพิมพ์ — ถ้า SSH หลุดไปแล้ว echo จะล้ม แต่ธงต้องหายไปก่อนแล้ว
+              rm -f "$DEPLOY_FLAG" "$DEPLOY_FLAG.skipped"
+              echo "🔓 Scheduler released" || true
+              if [ -n "$SKIPPED_TASKS" ]; then
+                echo "::warning::งานตามตารางที่รอบถัดไปอีกนานถูกข้ามระหว่าง deploy — รันเองถ้ารอรอบหน้าไม่ได้:" || true
+                echo "$SKIPPED_TASKS" || true
+              fi
+            }
+            trap end_deploy_window EXIT
+            trap 'exit 1' HUP INT PIPE TERM
+
+            # งานที่เริ่มก่อนวางธงยังวิ่งด้วยโค้ดเดิม — git reset ตอนมันยังไม่จบ = autoload คลาสใหม่กลางรอบ
+            # (เช่นส่งธุรกรรมไปแล้วแต่บันทึกผลด้วยโค้ดที่ schema ยังไม่รองรับ) จึงรอให้จบก่อน
+            # นับเฉพาะโปรเซส "php … artisan" ที่ cwd เป็นแอปนี้ — user นี้มีหลายแอปบนเครื่องเดียวกัน
+            # ต้องมีเพดาน: php83 ไม่มี pcntl = --timeout ของคิวไม่ทำงาน งานค้างได้นานจริง
+            wait_for_running_tasks() {
+              if ! command -v pgrep >/dev/null 2>&1 || [ ! -d /proc ]; then
+                echo "::warning::ไม่มี pgrep หรือ /proc — ไม่ได้รองานตามตารางที่วิ่งอยู่ให้จบก่อน git reset"
+                return 0
+              fi
+              APP_REAL="$(pwd -P)"
+              WAITED=0
+              while :; do
+                BUSY=""
+                for PID in $(pgrep -u "$(id -u)" -f '^[^ ]*php[^ ]* ([^ ]*/)?artisan( |$)' || true); do
+                  if [ "$(readlink "/proc/$PID/cwd" 2>/dev/null)" = "$APP_REAL" ]; then
+                    BUSY="$BUSY $PID"
+                  fi
+                done
+                if [ -z "$BUSY" ]; then
+                  echo "✓ No scheduled task still running (waited ${WAITED}s)"
+                  return 0
+                fi
+                if [ "$WAITED" -ge "$DRAIN_MAX_SECONDS" ]; then
+                  echo "::warning::งานตามตารางยังไม่จบหลังรอ ${WAITED} วินาที — deploy ต่อเลย งานเหล่านี้อาจเจอโค้ดใหม่กลางรอบ:"
+                  ps -o pid=,etime=,args= -p "$(echo $BUSY | tr ' ' ',')" 2>/dev/null || true
+                  return 0
+                fi
+                sleep 3
+                WAITED=$((WAITED + 3))
+              done
+            }
+
+            # เขียนธงไม่ได้ = set -e หยุดตรงนี้ ก่อนแตะโค้ด (ไม่ deploy ดีกว่า deploy โดยไม่มีด่าน)
+            echo "deploy ${DEPLOY_SHA} $(date -u +%FT%TZ)" > "$DEPLOY_FLAG"
+            echo "🔒 Scheduler held until code, schema and caches match"
 
             # Pull latest code — ผ่าน SSH ไม่ใช่ PAT
             #
@@ -98,14 +196,15 @@ jobs:
             echo "📥 Pulling latest code..."
             git remote set-url origin "git@github.com:xjanova/ThaiXTrade.git"
             git fetch origin main
+            wait_for_running_tasks
             git reset --hard origin/main
 
             # Set GITHUB_TOKEN in .env for GitHub API access (App Releases)
-            if [ -n "${{ secrets.GH_PAT }}" ]; then
+            if [ -n "$DEPLOY_GH_PAT" ]; then
               if grep -q '^GITHUB_TOKEN=' .env 2>/dev/null; then
-                sed -i "s|^GITHUB_TOKEN=.*|GITHUB_TOKEN=${{ secrets.GH_PAT }}|" .env
+                sed -i "s|^GITHUB_TOKEN=.*|GITHUB_TOKEN=${DEPLOY_GH_PAT}|" .env
               else
-                echo "GITHUB_TOKEN=${{ secrets.GH_PAT }}" >> .env
+                echo "GITHUB_TOKEN=${DEPLOY_GH_PAT}" >> .env
               fi
               echo "✓ GITHUB_TOKEN set in .env"
             fi
@@ -164,15 +263,38 @@ jobs:
             echo "🌱 Running ecosystem seeder..."
             run_seeder TpixEcosystemSeeder
 
+            # bootstrap/cache/config.php เก็บค่า config ทุกตัวเป็นข้อความธรรมดา (รหัส keystore กระเป๋าร้อน,
+            # DEPLOYER_PRIVATE_KEY ฯลฯ) — config:cache เขียนเป็น 664 ตาม umask เครื่อง และ chmod -R 775 ข้างล่าง
+            # ทำให้เป็น 775 ทุกรอบ (ออดิท 2026-10-29 C3) · php-fpm รันเป็น user เดียวกับที่ deploy
+            # (เจ้าของไฟล์) จึงอ่านได้ที่ 640 — ถ้า deploy เป็น root ข้ามไป ไม่งั้นไฟล์เป็นของ root แล้ว php-fpm อ่านไม่ได้ เว็บล่ม
+            lock_config_cache() {
+              CONFIG_CACHE="bootstrap/cache/config.php"
+              if [ -f "$CONFIG_CACHE" ] && [ "$(id -u)" -ne 0 ] && [ -O "$CONFIG_CACHE" ]; then
+                # set -e อยู่ — chmod พลาดต้องไม่ทำให้ deploy ล้มกลางคัน (เว็บยังใช้ไฟล์เดิมได้)
+                if chmod 640 "$CONFIG_CACHE"; then
+                  echo "✓ $CONFIG_CACHE mode 640"
+                else
+                  echo "::warning::chmod 640 $CONFIG_CACHE ไม่สำเร็จ"
+                fi
+              else
+                echo "::warning::ไม่ได้ล็อกสิทธิ์ $CONFIG_CACHE (ไม่มีไฟล์ / deploy เป็น root / ไม่ใช่เจ้าของไฟล์)"
+              fi
+            }
+
             # Clear and rebuild caches
             echo "⚡ Optimizing application..."
             php artisan config:clear
             php artisan route:clear
             php artisan view:clear
             php artisan config:cache
+            lock_config_cache
             php artisan route:cache
             php artisan view:cache
             php artisan event:cache 2>/dev/null || true
+
+            # บทความหมวดเรียนรู้ (วิดีโอสอนใช้งาน) ตาม config/learn.php — สร้าง/อัปเดต ไม่ปลุกบทความที่แอดมินลบ
+            # ต้องรันหลัง config:cache — ก่อนหน้านั้นแคชคอนฟิกของรอบก่อนยังไม่มี learn.lessons (seeder จะเห็นว่าว่างแล้วจบเงียบ)
+            run_seeder LearnLessonsSeeder
 
             # Storage symlink สำหรับ file uploads (logo, banners, etc.)
             # Laravel ใช้ public_html (ไม่ใช่ public) — สร้าง symlink ถูกที่
@@ -208,11 +330,16 @@ jobs:
               echo "✅ seeders ทั้งหมดผ่าน"
             fi
 
-            # Fix permissions
+            # Fix permissions — แล้วล็อก config.php กลับ เพราะ -R 775 เพิ่งเปิดให้ทั้งกลุ่มอ่าน/เขียน
             chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+            lock_config_cache
 
             # Restart queue workers if running
             php artisan queue:restart 2>/dev/null || true
+
+            # โค้ด schema แคชคอนฟิก/route และ seeder ตรงกันแล้ว — ปล่อย scheduler
+            # (trap เรียกซ้ำตอนจบสคริปต์ได้ ไม่มีผลเพราะธงหายไปแล้ว)
+            end_deploy_window
 
             # ── ตัวจับเวลาของ Laravel (บอท AI TRADE พึ่งตัวนี้ทั้งหมด) ──────────
             #
@@ -252,21 +379,58 @@ jobs:
               exit 1
             fi
 
-            echo "✅ Deployment completed successfully!"
+            # ── Health check จากบนเครื่องเอง ─────────────────────────────────
+            #
+            # ของเดิมยิง APP_URL จาก runner ของ GitHub → Cloudflare ตอบ 403 ทุกรอบ
+            # (อย่างน้อยตั้งแต่ run 40700292223) แล้วพิมพ์แค่ ⚠️ → deploy ที่ทำเว็บล่ม
+            # ก็ยังเขียว ห้ามแก้ด้วยการลดการป้องกันของ Cloudflare ให้ runner ผ่าน
+            #
+            # ยิงตรงเข้า Apache บนเครื่องนี้แทน ไม่ผ่าน Cloudflare:
+            # - 127.0.0.1 ใช้ไม่ได้ — vhost ของ DirectAdmin ผูกกับ IP สาธารณะ ได้ 404 ของ Apache
+            # - --resolve ชื่อโดเมนเข้า IP ของเครื่องเอง ลองทุก IPv4 ของ `hostname -I`
+            #   (IP ที่ไม่ใช่ vhost นี้ตอบ 404 ทันที ไม่กินเวลา)
+            # - -k เพราะต่อเข้า IP ของตัวเอง ไม่มีทางโดนดักกลางทาง และเราตรวจแอป ไม่ได้ตรวจใบรับรอง
+            #   (ใบ Let's Encrypt หมดอายุไม่ควรทำให้ deploy ล้ม)
+            # /health ผ่าน Laravel เต็มตัวและอ่าน version.json ทุกครั้ง → จับได้ทั้ง 500
+            # (เช่น php-fpm อ่าน bootstrap/cache/config.php ไม่ได้) และ docroot ชี้ผิดที่ (version ไม่ตรง)
+            HEALTH_URL_BASE="$DEPLOY_APP_URL"
+            HEALTH_HOST=$(printf '%s' "${HEALTH_URL_BASE:-https://tpix.online}" | sed -E 's#^[A-Za-z]+://##; s#[/:].*$##')
+            DEPLOYED_VERSION=$(php -r '$v = json_decode(@file_get_contents("version.json"), true); echo is_array($v) ? ($v["version"] ?? "") : "";')
+            HEALTH_IPS="$( (hostname -I 2>/dev/null || true) | tr ' ' '\n' | grep -E '^[0-9]+(\.[0-9]+){3}$' || true) 127.0.0.1"
+            HEALTH_BODY=$(mktemp)
+            HEALTH_OK=0
+            HEALTH_LAST=""
+            echo "🔍 Health check: https://${HEALTH_HOST}/health ผ่าน IP ของเครื่อง (คาด version ${DEPLOYED_VERSION:-?})"
+            for attempt in 1 2 3 4 5; do
+              HEALTH_LAST=""
+              for ip in $HEALTH_IPS; do
+                # set -e อยู่ — curl ล้มต้องไม่ทำให้สคริปต์หลุดก่อนรายงาน
+                code=$(curl -sk --connect-timeout 3 -m 8 -o "$HEALTH_BODY" -w '%{http_code}' \
+                  --resolve "${HEALTH_HOST}:443:${ip}" "https://${HEALTH_HOST}/health" 2>/dev/null) || code="000"
+                if [ "$code" = "404" ]; then continue; fi   # IP นี้ไม่ใช่ vhost ของเรา
+                parsed=$(php -r '$j = json_decode(@file_get_contents($argv[1]), true); echo is_array($j) ? (($j["status"] ?? "")."|".($j["version"] ?? "")) : "|";' "$HEALTH_BODY" 2>/dev/null) || parsed="|"
+                HEALTH_LAST="ip=${ip} HTTP ${code} status=${parsed%%|*} version=${parsed#*|}"
+                if [ "$code" = "200" ] && [ "${parsed%%|*}" = "healthy" ] && [ -n "$DEPLOYED_VERSION" ] && [ "${parsed#*|}" = "$DEPLOYED_VERSION" ]; then
+                  HEALTH_OK=1
+                  break 2
+                fi
+              done
+              echo "  ⏳ รอบ ${attempt}/5: ${HEALTH_LAST:-ทุก IP ตอบ 404 / ต่อไม่ได้}"
+              if [ "$attempt" -lt 5 ]; then sleep 6; fi
+            done
+            rm -f "$HEALTH_BODY"
 
-      - name: Health Check
-        env:
-          APP_URL: ${{ secrets.APP_URL }}
-        run: |
-          URL="${APP_URL:-https://tpix.online}"
-          echo "🔍 Checking health at: ${URL}"
-          sleep 5
-          HTTP_CODE=$(curl -s -o /tmp/health_response.txt -w "%{http_code}" "${URL}" || echo "000")
-          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 302 ]; then
-            echo "✅ Application is healthy (HTTP $HTTP_CODE)"
-          else
-            echo "⚠️ Health check returned HTTP $HTTP_CODE (may still be starting up)"
-          fi
+            if [ "$HEALTH_OK" -eq 1 ]; then
+              echo "✅ Health check ผ่าน (${HEALTH_LAST})"
+            else
+              # ไม่พิมพ์ body — ถ้า APP_DEBUG เปิด หน้า error ของ Laravel มีค่า config ปนอยู่
+              echo "::error::HEALTH CHECK FAILED — ${HEALTH_LAST:-ไม่มี IP ไหนตอบ /health ของ ${HEALTH_HOST}} (คาด HTTP 200 status=healthy version=${DEPLOYED_VERSION:-?})"
+              echo "ดู storage/logs/laravel-$(date +%F).log และ log ของ Apache/php-fpm บนเซิร์ฟเวอร์"
+              ls -l bootstrap/cache/config.php 2>/dev/null || true
+              exit 1
+            fi
+
+            echo "✅ Deployment completed successfully!"
 
       - name: Deployment Summary
         if: always()

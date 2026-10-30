@@ -10,6 +10,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import axios from 'axios';
 import { useTranslation } from '@/Composables/useTranslation';
 import { sanitizeHtml } from '@/utils/sanitize';
+import LearnVideoPlayer from '@/Components/Learn/LearnVideoPlayer.vue';
 
 const { t } = useTranslation();
 const props = defineProps({ slug: String });
@@ -48,7 +49,8 @@ onMounted(fetchArticle);
                 <div class="flex items-center gap-2 text-sm text-dark-400">
                     <Link href="/blog" class="hover:text-primary-400 transition-colors">Blog</Link>
                     <span>/</span>
-                    <span class="text-dark-300">{{ article.category }}</span>
+                    <Link v-if="article.category === 'learn'" href="/blog?category=learn" class="text-dark-300 hover:text-primary-400 transition-colors">🎓 {{ article.language === 'en' ? 'Learn' : 'เรียนรู้' }}</Link>
+                    <span v-else class="text-dark-300">{{ article.category }}</span>
                 </div>
 
                 <!-- Title -->
@@ -65,8 +67,13 @@ onMounted(fetchArticle);
                         class="px-2 py-0.5 bg-accent-500/20 text-accent-400 rounded-lg text-xs">🤖 AI Generated</span>
                 </div>
 
+                <!-- บทเรียนวิดีโอ: ตัวเล่น + บท แทนรูปปก (รูปปกคือเฟรมแรกของคลิปอยู่แล้ว) -->
+                <div v-if="article.lesson" class="glass-card p-4 sm:p-6">
+                    <LearnVideoPlayer :lesson="article.lesson" :lang="article.language" />
+                </div>
+
                 <!-- Cover Image -->
-                <div v-if="article.cover_image" class="rounded-2xl overflow-hidden">
+                <div v-else-if="article.cover_image" class="rounded-2xl overflow-hidden">
                     <img :src="article.cover_image" :alt="article.title" class="w-full h-auto" />
                 </div>
 

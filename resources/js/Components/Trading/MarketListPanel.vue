@@ -9,6 +9,9 @@
  * ใช้ localStorage key `tpix.favPairs` ร่วมกับ PairSelector และหน้า Markets
  * → ติดดาวที่ไหนก็เห็นเหมือนกันทุกที่
  *
+ * กรองตามเชนที่กระเป๋าอยู่ (เจ้าของสั่ง 2026-10-28) — ไม่เชื่อมกระเป๋า = เห็นทุกเชน
+ * เชนของคู่มาจากทะเบียนคู่เทรด (network_chain_id) ไม่ใช่เดาจากชื่อเหรียญ
+ *
  * Developed by Xman Studio
  */
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
@@ -18,6 +21,7 @@ import CoinIcon from '@/Components/CoinIcon.vue';
 import Sparkline from '@/Components/Trading/Sparkline.vue';
 import { useSparklines } from '@/Composables/useSparklines';
 import { useTranslation } from '@/Composables/useTranslation';
+import { useWalletStore } from '@/Stores/walletStore';
 import { TPIX_COIN_ICON } from '@/utils/brand';
 
 const props = defineProps({
@@ -26,11 +30,27 @@ const props = defineProps({
 });
 
 const { t } = useTranslation();
+const walletStore = useWalletStore();
 
 const FAV_KEY = 'tpix.favPairs';
 const REFRESH_MS = 30000;
 
 const QUOTE_KEY = 'tpix.marketQuote';
+
+const TPIX_CHAIN_ID = 4289;
+
+/*
+ * หมวด TPIX = คู่ที่ตั้งราคาเป็น TPIX (เช่น XXX/TPIX) — โชว์ปุ่มไว้เสมอแม้ยังไม่มีคู่
+ * เจ้าของสั่ง: ตลาดหลักของเชนเราต้องมีที่ของมันบนกระดาน ไม่ใช่รอให้แอดมินเพิ่มคู่แรกก่อนถึงจะโผล่
+ */
+const TPIX_QUOTE = 'TPIX';
+
+/*
+ * มาตรฐานเหรียญของแต่ละเชน — ต่อท้ายปุ่มหมวดให้รู้ว่า USDT ตัวไหน
+ * USDT บน BSC (BEP20) กับ USDT บนเชน TPIX เป็นคนละเหรียญ โอนข้ามกันตรงๆ ไม่ได้
+ */
+const TOKEN_STANDARD = { 1: 'ERC20', 56: 'BEP20', 96: 'KAP20', 137: 'Polygon', [TPIX_CHAIN_ID]: 'TPIX Chain' };
+const CHAIN_SHORT = { 1: 'ETH', 56: 'BSC', 96: 'KUB', 137: 'POL', [TPIX_CHAIN_ID]: 'TPIX' };
 
 const tickers = ref([]);
 const isLoading = ref(true);
@@ -40,8 +60,73 @@ const sortKey = ref('volume');   // volume | change | name
 const favorites = ref([]);
 /** สกุลหลักที่กำลังดูอยู่ — '' = ทุกสกุล */
 const activeQuote = ref('');
-/** สกุลหลักทั้งหมดที่แอดมินเปิดไว้ (มาจากทะเบียนคู่เทรด ไม่ได้ hardcode) */
-const quoteAssets = ref([]);
+/** ทะเบียนคู่เทรดที่แอดมินเปิดไว้ { pair, quote, chainId, isIndex } — ต้นทางของปุ่มหมวด */
+const registry = ref([]);
+
+// ── เชน ────────────────────────────────────────────────────────────────────
+/** เชนที่กระเป๋าอยู่ — null = ยังไม่เชื่อม (เห็นทุกเชน) */
+const activeChainId = computed(() =>
+    (walletStore.isConnected && Number(walletStore.chainId) > 0 ? Number(walletStore.chainId) : null)
+);
+
+function chainShortName(chainId) {
+    const chain = (walletStore.supportedChains || []).find(c => Number(c.chainId) === Number(chainId));
+    return chain?.shortName || CHAIN_SHORT[chainId] || String(chainId);
+}
+
+const activeChainName = computed(() => (activeChainId.value ? chainShortName(activeChainId.value) : ''));
+
+/**
+ * แถวนี้อยู่บนเชนที่กำลังดูไหม
+ * ทะเบียนว่าง (fallback ราคา Binance ล้วน) ไม่มีใครรู้เชน — ไม่กรอง ดีกว่าลิสต์ว่างทั้งกระดาน
+ */
+function onActiveChain(row, hasChainInfo) {
+    if (!activeChainId.value || !hasChainInfo) return true;
+    return row.chainId === activeChainId.value;
+}
+
+const tickersHaveChain = computed(() => tickers.value.some(t => t.chainId));
+const chainRows = computed(() => tickers.value.filter(t => onActiveChain(t, tickersHaveChain.value)));
+
+/** ที่มาของปุ่มหมวด: ทะเบียนคู่เทรดของเชนนี้ (ทะเบียนว่าง = ใช้แถวราคาแทน) */
+const quoteSource = computed(() => {
+    if (registry.value.length === 0) return chainRows.value;
+    const hasChain = registry.value.some(p => p.chainId);
+    return registry.value.filter(p => onActiveChain(p, hasChain));
+});
+
+/*
+ * สกุลหลักทั้งหมดของเชนนี้ — มาจากคู่ที่แอดมินเปิดจริง ไม่ได้เขียนตายไว้
+ * แอดมินเพิ่มคู่ THB เมื่อไหร่ ปุ่มหมวด THB ก็โผล่เอง เรียงตามจำนวนคู่ สกุลที่ใช้เยอะสุดอยู่ซ้ายสุด
+ * TPIX ต่อท้ายเสมอถ้ายังไม่มีคู่ไหนใช้
+ */
+const quoteAssets = computed(() => {
+    const counts = {};
+    quoteSource.value.forEach(p => {
+        if (p.quote) counts[p.quote] = (counts[p.quote] || 0) + 1;
+    });
+    const quotes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    return quotes.includes(TPIX_QUOTE) ? quotes : [...quotes, TPIX_QUOTE];
+});
+
+/**
+ * มาตรฐานเหรียญของสกุลหลักนี้ เช่น USDT → BEP20
+ * นับเฉพาะคู่ที่เทรดได้จริง (คู่ดัชนีเป็นราคาตลาดโลก ไม่ได้อยู่บนเชนไหน)
+ * สกุลเดียวกันอยู่หลายเชน (ไม่ได้เชื่อมกระเป๋า) = ไม่บอก เพราะบอกตัวเดียวก็ผิดอีกตัว — แต่ละแถวมีป้ายเชนแทน
+ */
+function quoteNetwork(quote) {
+    const chains = new Set(
+        quoteSource.value.filter(p => p.quote === quote && !p.isIndex && p.chainId).map(p => p.chainId)
+    );
+    if (chains.size !== 1) return '';
+    const [chainId] = chains;
+    return TOKEN_STANDARD[chainId] || chainShortName(chainId);
+}
+
+/** ลิสต์มีคู่เทรดได้จากหลายเชนปนกันไหม — ถ้าใช่ ทุกแถวต้องบอกเชนของตัวเอง */
+const showRowChain = computed(() =>
+    new Set(chainRows.value.filter(t => !t.isIndex && t.chainId).map(t => t.chainId)).size > 1
+);
 
 const { series, load: loadSparklines } = useSparklines();
 
@@ -92,39 +177,57 @@ async function fetchTickers({ silent = false } = {}) {
             axios.get('/api/v1/market/pairs'),
         ]);
 
-        // เก็บทั้งโลโก้และโหมดการทำงานจากทะเบียนคู่เทรดของแอดมิน
+        /*
+         * โหมดและเชนผูกกับ "คู่" ไม่ใช่เหรียญ — BTC/USDT บน BSC กับ BTC/TPIX บนเชน TPIX คนละคู่
+         * ⚠️ เดิมเก็บตาม base_asset คู่หลังทับคู่แรก เชน/โหมดของแถวจึงสุ่มตามลำดับทะเบียน
+         *    โลโก้เป็นของเหรียญ ยังหาตาม base ได้
+         */
         const meta = {};
+        const logos = {};
         if (pairRes.data?.success) {
             pairRes.data.data.forEach(p => {
-                meta[p.base_asset] = { logo: p.base_logo, mode: p.execution_mode };
+                const pair = String(p.symbol || '').toUpperCase();
+                meta[pair] = { mode: p.execution_mode, chainId: Number(p.network_chain_id) || null };
+                if (p.base_logo && !logos[p.base_asset]) logos[p.base_asset] = p.base_logo;
             });
 
-            /*
-             * รายการสกุลหลักมาจากคู่เทรดที่แอดมินเปิดจริง ไม่ได้เขียนตายไว้
-             *
-             * แอดมินเพิ่มคู่ THB เมื่อไหร่ ปุ่มหมวด THB ก็โผล่เอง ไม่ต้องแก้โค้ด
-             * เรียงตามจำนวนคู่ที่มี — สกุลที่ใช้เยอะที่สุดอยู่ซ้ายสุด
-             */
-            const counts = {};
-            pairRes.data.data.forEach(p => {
-                if (p.quote_asset) counts[p.quote_asset] = (counts[p.quote_asset] || 0) + 1;
-            });
-            quoteAssets.value = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+            registry.value = pairRes.data.data.map(p => ({
+                pair: String(p.symbol || '').toUpperCase(),
+                quote: p.quote_asset,
+                chainId: Number(p.network_chain_id) || null,
+                isIndex: p.execution_mode === 'index',
+            }));
         }
 
+        /*
+         * ประกอบรายการให้ครบในตัวแปรนี้ก่อน แล้วค่อยใส่ลง tickers ครั้งเดียวตอนท้าย
+         *
+         * ⚠️ เดิมใส่ราคา Binance ลง tickers ก่อน แล้วค่อยรอราคาพูลจาก /dex/ticker (~2.2 วิ บน prod)
+         *    ระหว่างรอ ลิสต์ไม่มีแถว TPIX/USDT — แถวที่ปักหมุดบนสุดหายวูบทุกรอบรีเฟรช 30 วิ
+         *    (สุ่มดูเว็บจริง 70 ครั้ง หาย 3 ครั้ง) ตอนนี้ระหว่างรอ ลิสต์เดิมพร้อมราคาเดิมยังอยู่ครบ
+         *
+         * ราคา Binance ไม่มาในรอบนี้ = ใช้แถวเดิมไปก่อน แต่ทิ้งแถว DEX (isTpix) ไว้สร้างใหม่ให้ราคาสด
+         * — ไม่งั้นแถวรอเปิดรอบก่อนจะบังแถวพูลจริงที่ชื่อคู่เดียวกันไว้ตลอด
+         */
+        let rows = tickers.value.filter(t => !t.isTpix);
+
         if (tickerRes.data?.success) {
-            tickers.value = tickerRes.data.data.map(t => ({
-                symbol: `${t.baseAsset}/${t.quoteAsset}`,
-                pair: `${t.baseAsset}-${t.quoteAsset}`,
-                base: t.baseAsset,
-                quote: t.quoteAsset,
-                logo: meta[t.baseAsset]?.logo || null,
-                // index = ดูราคา/กราฟได้ แต่ยังส่งคำสั่งไม่ได้
-                isIndex: meta[t.baseAsset]?.mode === 'index',
-                price: parseFloat(t.price) || 0,
-                change: parseFloat(t.priceChangePercent) || 0,
-                volume: parseFloat(t.quoteVolume || 0),
-            }));
+            rows = tickerRes.data.data.map(t => {
+                const pair = `${t.baseAsset}-${t.quoteAsset}`;
+                return {
+                    symbol: `${t.baseAsset}/${t.quoteAsset}`,
+                    pair,
+                    base: t.baseAsset,
+                    quote: t.quoteAsset,
+                    logo: logos[t.baseAsset] || null,
+                    // index = ดูราคา/กราฟได้ แต่ยังส่งคำสั่งไม่ได้
+                    isIndex: meta[pair.toUpperCase()]?.mode === 'index',
+                    chainId: meta[pair.toUpperCase()]?.chainId || null,
+                    price: parseFloat(t.price) || 0,
+                    change: parseFloat(t.priceChangePercent) || 0,
+                    volume: parseFloat(t.quoteVolume || 0),
+                };
+            });
         }
 
         /*
@@ -134,33 +237,24 @@ async function fetchTickers({ silent = false } = {}) {
          */
         const dexRows = pairRes.data?.success ? await fetchDexRows(pairRes.data.data) : [];
         dexRows.forEach((row) => {
-            if (!tickers.value.find(t => t.pair === row.pair)) tickers.value.unshift(row);
+            if (!rows.find(t => t.pair === row.pair)) rows.unshift(row);
         });
 
-        if (!tickers.value.find(t => t.base === 'TPIX')) {
+        if (!rows.find(t => t.base === 'TPIX')) {
             // DEX ยังไม่ซิงก์คู่ให้ — แถวรอเปิด ไม่มีราคา (ไม่แต่งตัวเลขขึ้นมาเอง)
-            tickers.value.unshift({
+            rows.unshift({
                 symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', quote: 'USDT',
-                logo: meta.TPIX?.logo || TPIX_COIN_ICON,
+                logo: logos.TPIX || TPIX_COIN_ICON, chainId: TPIX_CHAIN_ID,
                 price: null, change: 0, volume: 0, isTpix: true, live: false,
             });
         }
 
-        // ยังไม่มีทะเบียนคู่เทรด (DB ว่าง) — เอาสกุลหลักจากราคาที่ได้มาแทน
-        if (quoteAssets.value.length === 0) {
-            quoteAssets.value = [...new Set(tickers.value.map(t => t.quote).filter(Boolean))];
-        }
-
-        // สกุลที่เคยเลือกไว้หายไปจากระบบแล้ว (แอดมินปิดคู่นั้น) — กลับไปดูทุกสกุล
-        // ไม่งั้นผู้ใช้จะเจอลิสต์ว่างเปล่าโดยไม่รู้ว่าทำไม
-        if (activeQuote.value && !quoteAssets.value.includes(activeQuote.value)) {
-            activeQuote.value = '';
-        }
+        tickers.value = rows;
     } catch {
         // API ล่ม — คงรายการเดิมไว้ ถ้ายังไม่เคยโหลดเลยให้เหลือ TPIX ตัวเดียว
         if (tickers.value.length === 0) {
             tickers.value = [{
-                symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', quote: 'USDT',
+                symbol: 'TPIX/USDT', pair: 'TPIX-USDT', base: 'TPIX', quote: 'USDT', chainId: TPIX_CHAIN_ID,
                 logo: TPIX_COIN_ICON, price: null, change: 0, volume: 0, isTpix: true, live: false,
             }];
         }
@@ -189,6 +283,7 @@ async function fetchDexRows(pairs) {
             base,
             quote,
             logo: p.base_logo || (base === 'TPIX' ? TPIX_COIN_ICON : null),
+            chainId: TPIX_CHAIN_ID,
             price: null,
             change: 0,
             volume: 0,
@@ -215,7 +310,8 @@ async function fetchDexRows(pairs) {
 const filtered = computed(() => {
     const q = search.value.trim().toUpperCase();
 
-    let list = tickers.value.filter(t => {
+    // เชนกรองก่อนทุกอย่าง แม้ตอนค้นหา — คู่ของเชนอื่นกดเข้าไปแล้วระบบก็จะสลับกระเป๋าออกไปเชนนั้นอยู่ดี
+    let list = chainRows.value.filter(t => {
         // หมวดสกุลหลักกรองก่อนเสมอ — ยกเว้นตอนค้นหา เพราะคนพิมพ์ชื่อเหรียญ
         // คาดว่าจะเจอมัน ไม่ว่าจะอยู่หมวดไหน
         if (!q && activeQuote.value && t.quote !== activeQuote.value) return false;
@@ -260,6 +356,24 @@ const firstNonFavoritePair = computed(() => {
     if (!hasFav) return null;
 
     return rows.find(t => t.base !== 'TPIX' && !favorites.value.includes(t.pair))?.pair ?? null;
+});
+
+/** ลิสต์ว่างเพราะอะไร — บอกให้ตรง ไม่ใช่ "ไม่พบคู่เทรด" ทุกกรณี */
+const emptyMessage = computed(() => {
+    if (activeFilter.value === 'favorites') return t('trade.market.emptyFavorites');
+    if (!search.value.trim() && activeQuote.value === TPIX_QUOTE) return t('trade.market.emptyTpixQuote');
+    if (activeChainId.value) return t('trade.market.emptyChain', { chain: activeChainName.value });
+    return t('trade.market.empty');
+});
+
+/*
+ * สกุลที่เคยเลือกไว้ไม่มีบนเชนนี้แล้ว (แอดมินปิดคู่ / สลับเชน) — กลับไปดูทุกสกุล
+ * ไม่งั้นผู้ใช้จะเจอลิสต์ว่างเปล่าโดยไม่รู้ว่าทำไม · รอโหลดเสร็จก่อน ระหว่างโหลดมีแค่ปุ่ม TPIX
+ */
+watch([quoteAssets, isLoading], () => {
+    if (!isLoading.value && activeQuote.value && !quoteAssets.value.includes(activeQuote.value)) {
+        activeQuote.value = '';
+    }
 });
 
 function selectQuote(quote) {
@@ -362,15 +476,24 @@ onUnmounted(() => {
                     :class="['quote-tab', activeQuote === '' && 'quote-tab--active']"
                     @click="selectQuote('')"
                 >{{ t('trade.market.allQuotes') }}</button>
+                <!-- มาตรฐานเหรียญต่อท้าย (USDT · BEP20) — USDT ของแต่ละเชนเป็นคนละเหรียญกัน -->
                 <button
                     v-for="quote in quoteAssets"
                     :key="quote"
                     type="button"
+                    :data-test="`quote-tab-${quote}`"
+                    :title="quoteNetwork(quote) ? `${quote} (${quoteNetwork(quote)})` : quote"
                     :class="['quote-tab',
                         (activeQuote === quote || (quoteAssets.length === 1 && !activeQuote)) && 'quote-tab--active']"
                     @click="selectQuote(quote)"
-                >{{ quote }}</button>
+                >
+                    {{ quote }}<span v-if="quoteNetwork(quote)" data-test="quote-network" class="quote-tab__net">{{ quoteNetwork(quote) }}</span>
+                </button>
             </div>
+            <!-- บอกว่ากำลังดูคู่ของเชนไหน — ลิสต์สั้นลงเพราะกรองเชน ไม่ใช่เพราะคู่หาย -->
+            <p data-test="chain-scope" class="mt-1.5 text-[10px] text-dark-500 truncate">
+                {{ activeChainId ? t('trade.market.onChain', { chain: activeChainName }) : t('trade.market.allChains') }}
+            </p>
         </div>
 
         <!-- ตัวกรอง -->
@@ -463,6 +586,10 @@ onUnmounted(() => {
                                 <span class="text-white text-xs font-semibold whitespace-nowrap">{{ row.base }}</span>
                                 <!-- โชว์สกุลหลักต่อท้ายเฉพาะตอนดูรวมทุกสกุล ซึ่งชื่อเหรียญซ้ำกันได้ -->
                                 <span v-if="!activeQuote" class="text-dark-500 text-[9px] font-mono shrink-0">{{ row.quote }}</span>
+                                <!-- ไม่ได้เชื่อมกระเป๋า = หลายเชนปนกัน แต่ละแถวต้องบอกเชนของตัวเอง -->
+                                <span v-if="showRowChain && !row.isIndex && row.chainId" data-test="badge-chain" class="text-[8px] px-1 py-px rounded bg-white/5 text-dark-300 font-medium shrink-0">
+                                    {{ chainShortName(row.chainId) }}
+                                </span>
                                 <!-- คู่ดัชนี = ราคาอ้างอิง (เทรดไม่ได้) · คู่ TPIX ที่ DEX ยังไม่เปิด = เร็วๆ นี้ · คู่ DEX ที่เปิดแล้วไม่มีป้าย -->
                                 <span v-if="row.isIndex" data-test="badge-index" class="text-[8px] px-1 py-px rounded bg-dark-600/40 text-dark-300 font-medium shrink-0">
                                     {{ t('trade.market.indexOnly') }}
@@ -492,8 +619,8 @@ onUnmounted(() => {
                     </button>
                 </div>
 
-                <p v-if="filtered.length === 0" class="text-dark-500 text-xs text-center py-10">
-                    {{ activeFilter === 'favorites' ? t('trade.market.emptyFavorites') : t('trade.market.empty') }}
+                <p v-if="filtered.length === 0" data-test="market-empty" class="text-dark-500 text-xs text-center py-10 px-4">
+                    {{ emptyMessage }}
                 </p>
             </template>
         </div>
@@ -527,6 +654,11 @@ onUnmounted(() => {
 .quote-tab--active {
     @apply bg-primary-500 text-white ring-primary-400/60;
     box-shadow: 0 0 12px rgb(var(--c-primary-500) / 0.35);
+}
+
+/* มาตรฐานเหรียญต่อท้ายชื่อสกุล — เล็กกว่าแต่ยังอ่านออกบนพื้นทึบของปุ่มที่เลือก */
+.quote-tab__net {
+    @apply ml-1 px-1 py-px rounded text-[9px] font-medium bg-black/20 opacity-80;
 }
 
 .scrollbar-none::-webkit-scrollbar { display: none; }

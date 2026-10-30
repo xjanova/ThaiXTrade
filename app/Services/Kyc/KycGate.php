@@ -221,9 +221,17 @@ class KycGate
         $bySession = $sessionToken !== null
             && app(WalletSessionService::class)->authorizes($sessionToken, $normalized);
 
+        /*
+         * แคชลายเซ็นใช้ได้เฉพาะจาก IP เดียวกับตอนเซ็น — เงื่อนไขเดียวกับ VerifyWalletOwnership
+         *
+         * ⚠️ เดิมดูแค่ว่ามีแถวแคช — แถวนั้นผูกกับเลขกระเป๋า ไม่ได้ผูกกับคนที่ถาม
+         *    ช่วง 4 ชั่วโมงหลังเจ้าของเซ็น ใครใส่เลขกระเป๋าของเขาก็ได้บัญชีของเขากลับไป
+         *    (เช่น GET /kyc/status คืนสถานะ KYC ของเจ้าของให้คนแปลกหน้า)
+         */
         $verified = Cache::get("wallet_verified:{$normalized}");
+        $bySignature = is_array($verified) && ($verified['ip'] ?? null) === $request->ip();
 
-        if (! $bySession && (! $verified || ! is_array($verified))) {
+        if (! $bySession && ! $bySignature) {
             return null;
         }
 

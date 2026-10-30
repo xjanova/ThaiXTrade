@@ -12,6 +12,15 @@ import { useWalletStore } from '@/Stores/walletStore';
 import { useCarbonCreditStore } from '@/Stores/carbonCreditStore';
 import { useTranslation } from '@/Composables/useTranslation';
 
+/*
+ * purchaseEnabled มาจาก CarbonCreditController — ค่าเริ่มต้น false
+ * ถ้าเซิร์ฟเวอร์ไม่ได้ส่งมา หน้านี้ต้องถือว่าปิดขาย ไม่ใช่เปิดปุ่มซื้อ
+ * (ด่านจริงอยู่ที่ API — ปุ่มนี้แค่ไม่ให้ผู้ใช้กดแล้วเจอ error)
+ */
+const props = defineProps({
+    purchaseEnabled: { type: Boolean, default: false },
+});
+
 const { t } = useTranslation();
 const walletStore = useWalletStore();
 const carbonStore = useCarbonCreditStore();
@@ -57,6 +66,7 @@ watch(() => walletStore.address, async (addr) => {
 });
 
 function openBuyModal(project) {
+    if (!props.purchaseEnabled) return;
     selectedProject.value = project;
     buyForm.value = { amount: '', payment_currency: 'TPIX' };
     showBuyModal.value = true;
@@ -69,7 +79,7 @@ function openRetireModal(credit) {
 }
 
 async function handleBuy() {
-    if (!selectedProject.value || !buyForm.value.amount) return;
+    if (!props.purchaseEnabled || !selectedProject.value || !buyForm.value.amount) return;
     buyLoading.value = true;
     try {
         await carbonStore.purchaseCredits({
@@ -179,6 +189,15 @@ function formatNumber(val) {
 
             <!-- Marketplace Tab -->
             <div v-if="activeTab === 'marketplace'" class="pb-16">
+                <!-- ยังไม่เปิดขาย — บอกก่อนผู้ใช้เลื่อนไปดูราคา -->
+                <div
+                    v-if="!purchaseEnabled"
+                    data-testid="carbon-purchase-closed"
+                    class="mb-6 p-4 rounded-xl glass-dark border border-amber-500/25 text-sm text-amber-200/90"
+                >
+                    {{ t('carbonCredit.purchaseClosed') }}
+                </div>
+
                 <div v-if="carbonStore.projects.length === 0 && !carbonStore.isLoading" class="text-center py-16">
                     <p class="text-gray-400">No carbon credit projects available yet.</p>
                 </div>
@@ -233,11 +252,12 @@ function formatNumber(val) {
                                     <p class="text-lg font-bold text-green-400">${{ project.price_per_credit_usd }}</p>
                                 </div>
                                 <button
+                                    data-testid="carbon-buy"
                                     @click="walletStore.isConnected ? openBuyModal(project) : walletStore.openConnectModal()"
-                                    :disabled="project.available_credits <= 0"
+                                    :disabled="!purchaseEnabled || project.available_credits <= 0"
                                     class="btn-primary px-4 py-2 text-sm disabled:opacity-50"
                                 >
-                                    {{ project.available_credits <= 0 ? 'Sold Out' : walletStore.isConnected ? 'Buy Credits' : 'Connect Wallet' }}
+                                    {{ !purchaseEnabled ? t('carbonCredit.purchaseUnavailable') : project.available_credits <= 0 ? 'Sold Out' : walletStore.isConnected ? 'Buy Credits' : 'Connect Wallet' }}
                                 </button>
                             </div>
 

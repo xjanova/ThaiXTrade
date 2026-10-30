@@ -8,6 +8,11 @@
  *  - บังคับเส้นทางผ่าน WBNB เสมอ (ค่า LP สองต่อ) · ผลกระทบราคาเป็นเลขแต่ง
  *  - บันทึกไม้หลังขั้นค่าธรรมเนียมเท่านั้น → ปิดแท็บระหว่างป๊อปอัพ = ไม้หาย
  *
+ * ออดิท 2026-10-28:
+ *  - รอผลค่าธรรมเนียมไม่ได้แล้วบอกเซิร์ฟเวอร์ว่า "เก็บแล้ว" → ต้องส่ง fee_tx_hash ให้ตรวจบนเชนแทน (C2)
+ *  - รอผลสวอปไม่ได้ = ไม่มีบันทึกเลย (L5) · สลับบัญชีหลังขอใบอนุญาต (L6)
+ *  - minOut ไม่ผูกกับราคาที่ผู้ใช้เห็น (L7) · deadline เกินอายุใบอนุญาต (C1)
+ *
  * Developed by Xman Studio
  */
 
@@ -269,6 +274,8 @@ describe('useSwap on BSC', () => {
                 wallet_address: OWNER,
                 fee_collected: true,
                 fee_amount: 0.3,
+                // เซิร์ฟเวอร์นับรายได้จากธุรกรรมนี้บนเชน ไม่ใช่จาก fee_collected
+                fee_tx_hash: FEE_HASH,
             }));
         });
 
@@ -283,8 +290,14 @@ describe('useSwap on BSC', () => {
             expect(calls.some(c => c.name === 'swapExactTokensForTokens')).toBe(false);
         });
 
-        it('queues the record right after the swap lands, before the fee prompt', async () => {
-            setupChain();
+        it('queues the record as soon as the swap is sent, before it is mined', async () => {
+            let queuedWhileMining = null;
+            setupChain({
+                swapWait: async () => {
+                    queuedWhileMining = queue();
+                    return swapReceipt(15n * 10n ** 14n);
+                },
+            });
             let queuedDuringFee = null;
             contracts[USDT.address.toLowerCase()].transfer = async () => {
                 queuedDuringFee = queue();
@@ -294,14 +307,27 @@ describe('useSwap on BSC', () => {
             const swap = useSwap();
             const quote = await swap.getQuote(USDT, BTCB, '100');
 
-            await swap.executeSwap(USDT, BTCB, '100', quote, 0.5, { onStage: s => stages.push(s) });
+            await swap.executeSwap(USDT, BTCB, '100', quote, 0.5, { onStage: (s, info) => stages.push([s, info?.hash]) });
 
-            // ปิดแท็บตอนป๊อปอัพค่าธรรมเนียม = ยังมีแถวชั่วคราวรอส่งในเครื่อง
-            expect(queuedDuringFee).toHaveLength(1);
-            expect(queuedDuringFee[0]).toMatchObject({ tx_hash: SWAP_HASH, fee_collected: false, fee_amount: 0 });
-            expect(stages).toEqual(['swapping', 'fee', 'recording']);
+            // ปิดแท็บระหว่างรอลงบล็อก / ตอนป๊อปอัพค่าธรรมเนียม = ยังมีแถวรอส่งในเครื่อง
+            expect(queuedWhileMining).toHaveLength(1);
+            expect(queuedWhileMining[0]).toMatchObject({ tx_hash: SWAP_HASH, fee_collected: false, fee_amount: 0 });
+            expect(queuedDuringFee[0].to_amount).toBeCloseTo(0.0015, 10);   // ยอดจากใบเสร็จแล้ว
+            expect(stages.map(([s]) => s)).toEqual(['swapping', 'sent', 'fee', 'recording']);
+            // หน้าเทรดผูกใบอนุญาตกับ hash นี้ตอน 'sent'
+            expect(stages[1][1]).toBe(SWAP_HASH);
             // ส่งสำเร็จ → ลบออกจากคิว
             expect(queue()).toHaveLength(0);
+        });
+
+        it('drops the queued record when the swap reverts on-chain', async () => {
+            setupChain({ swapWait: async () => { throw Object.assign(new Error('reverted'), { code: 'CALL_EXCEPTION' }); } });
+            const swap = useSwap();
+            const quote = await swap.getQuote(USDT, BTCB, '100');
+
+            await expect(swap.executeSwap(USDT, BTCB, '100', quote, 0.5)).rejects.toBeTruthy();
+            expect(queue()).toHaveLength(0);
+            expect(post).not.toHaveBeenCalled();
         });
 
         it('keeps the final record in the queue when the server is unreachable', async () => {
@@ -352,17 +378,57 @@ describe('useSwap on BSC', () => {
             expect(calls.some(c => c.name === 'swapExactTokensForTokens')).toBe(false);
         });
 
-        it('counts a sped-up fee transaction as collected', async () => {
+        it('sends the hash of a sped-up fee transaction (the one that landed)', async () => {
+            const SPED_UP = `0x${'3'.repeat(64)}`;
             setupChain();
             contracts[USDT.address.toLowerCase()].transfer = async () => ({
                 hash: FEE_HASH,
-                wait: async () => { throw Object.assign(new Error('replaced'), { code: 'TRANSACTION_REPLACED', cancelled: false }); },
+                wait: async () => {
+                    throw Object.assign(new Error('replaced'), {
+                        code: 'TRANSACTION_REPLACED', cancelled: false, replacement: { hash: SPED_UP }, receipt: { status: 1 },
+                    });
+                },
             });
             const swap = useSwap();
             const quote = await swap.getQuote(USDT, BTCB, '100');
 
             const result = await swap.executeSwap(USDT, BTCB, '100', quote, 0.5);
             expect(result.feeCollected).toBe(true);
+            expect(post.mock.calls[0][1]).toMatchObject({ fee_tx_hash: SPED_UP, fee_collected: true });
+        });
+
+        it('never claims an unconfirmed fee as collected — the server checks the hash instead', async () => {
+            // ⚠️ เดิมรอผลไม่ทัน = "เก็บแล้ว" → รายได้ในหน้าการเงินโดยไม่มีใครเห็นธุรกรรม (ออดิท C2)
+            setupChain();
+            contracts[USDT.address.toLowerCase()].transfer = async () => ({
+                hash: FEE_HASH,
+                wait: async () => { throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' }); },
+            });
+            const swap = useSwap();
+            const quote = await swap.getQuote(USDT, BTCB, '100');
+
+            const result = await swap.executeSwap(USDT, BTCB, '100', quote, 0.5);
+
+            expect(result.feeCollected).toBe(false);
+            expect(result.feePending).toBe(true);
+            expect(post.mock.calls[0][1]).toMatchObject({ fee_tx_hash: FEE_HASH, fee_collected: false, fee_amount: 0.3 });
+        });
+
+        it('sends no fee hash when the user rejects the fee transfer', async () => {
+            setupChain();
+            contracts[USDT.address.toLowerCase()].transfer = async () => {
+                throw Object.assign(new Error('rejected'), { code: 'ACTION_REJECTED' });
+            };
+            const swap = useSwap();
+            const quote = await swap.getQuote(USDT, BTCB, '100');
+
+            const result = await swap.executeSwap(USDT, BTCB, '100', quote, 0.5);
+
+            expect(result.feeCollected).toBe(false);
+            expect(result.feePending).toBe(false);
+            const sent = post.mock.calls[0][1];
+            expect(sent).toMatchObject({ fee_collected: false, fee_amount: 0 });
+            expect(sent).not.toHaveProperty('fee_tx_hash');
         });
 
         it('sends the fee ticket and no fee transfer for a waived (TPIX credit) trade', async () => {
@@ -380,14 +446,88 @@ describe('useSwap on BSC', () => {
             }));
         });
 
-        it('reports a timed-out swap as sent-but-unconfirmed with its hash', async () => {
+        it('reports a timed-out swap as sent-but-unconfirmed and still records it', async () => {
+            // ออดิท L5: เดิมโยนก่อนบันทึก = ไม้ที่สุดท้ายลงเชนหายจากประวัติ
             setupChain({ swapWait: async () => { throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' }); } });
+            post.mockResolvedValue({ status: 202, data: { success: true, data: { status: 'pending', recorded: true } } });
             const swap = useSwap();
             const quote = await swap.getQuote(USDT, BTCB, '100');
 
             await expect(swap.executeSwap(USDT, BTCB, '100', quote, 0.5))
-                .rejects.toMatchObject({ txSent: true, txHash: SWAP_HASH });
-            expect(post).not.toHaveBeenCalled();
+                .rejects.toMatchObject({ txSent: true, txHash: SWAP_HASH, recorded: true });
+            expect(post).toHaveBeenCalledWith('/api/v1/swap/execute', expect.objectContaining({ tx_hash: SWAP_HASH, fee_collected: false }));
+            expect(queue()).toHaveLength(0);   // เซิร์ฟเวอร์มีแถว pending แล้ว — ตรวจย้อนหลังเอง
+            expect(swap.txStatus.value).toBe('pending');
+        });
+
+        it('keeps the record queued when the server has not seen the transaction yet', async () => {
+            setupChain({ swapWait: async () => { throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' }); } });
+            post.mockResolvedValue({ status: 202, data: { success: true, data: { status: 'pending', recorded: false } } });
+            const swap = useSwap();
+            const quote = await swap.getQuote(USDT, BTCB, '100');
+
+            await expect(swap.executeSwap(USDT, BTCB, '100', quote, 0.5)).rejects.toMatchObject({ recorded: false });
+            expect(queue()).toHaveLength(1);
+            expect(queue()[0].tx_hash).toBe(SWAP_HASH);
+        });
+
+        it('refuses to send when the account changed after the caller checked it', async () => {
+            setupChain();
+            const swap = useSwap();
+            const quote = await swap.getQuote(USDT, BTCB, '100');
+
+            await expect(swap.executeSwap(USDT, BTCB, '100', quote, 0.5, { expectedOwner: OTHER }))
+                .rejects.toMatchObject({ isFriendly: true });
+            expect(swap.error.value).toContain('account changed');
+            expect(calls.some(c => c.name === 'swapExactTokensForTokens')).toBe(false);
+        });
+
+        it('never lets minOut fall below what the user saw on screen', async () => {
+            setupChain();
+            const swap = useSwap();
+            const quote = await swap.getQuote(USDT, BTCB, '100');
+            const floor = quote.minOutWei + 1000n;
+
+            await swap.executeSwap(USDT, BTCB, '100', quote, 0.5, { minOutFloor: floor });
+
+            expect(calls.find(c => c.name === 'swapExactTokensForTokens').args[1]).toBe(floor);
+        });
+
+        it('ends the swap before the fee ticket expires', async () => {
+            setupChain();
+            const swap = useSwap();
+            const quote = await swap.getQuote(USDT, BTCB, '100');
+            const cap = Math.floor(Date.now() / 1000) + 600;
+
+            await swap.executeSwap(USDT, BTCB, '100', quote, 0.5, { deadlineCap: cap });
+
+            expect(Number(calls.find(c => c.name === 'swapExactTokensForTokens').args[4])).toBe(cap);
+        });
+
+        it('does not send when the fee ticket is about to expire', async () => {
+            setupChain();
+            const swap = useSwap();
+            const quote = await swap.getQuote(USDT, BTCB, '100');
+
+            await expect(swap.executeSwap(USDT, BTCB, '100', quote, 0.5, { deadlineCap: Math.floor(Date.now() / 1000) + 5 }))
+                .rejects.toMatchObject({ isFriendly: true });
+            expect(calls.some(c => c.name === 'swapExactTokensForTokens')).toBe(false);
+        });
+    });
+
+    describe('recentQuote', () => {
+        it('returns the quote on screen only for the same order', async () => {
+            contracts[ROUTER] = { getAmountsOut: async amountIn => [amountIn, amountIn / 66000n] };
+            const swap = useSwap();
+            const quote = await swap.getQuote(USDT, BTCB, '100', { slippage: 1 });
+
+            expect(quote.minOutWei).toBe((quote.rawAmountOut * 9900n) / 10000n);
+            expect(swap.recentQuote(USDT, BTCB, '100', { slippage: 1 })).toBe(quote);
+            expect(swap.recentQuote(USDT, BTCB, '100.0', { slippage: 1 })).toBe(quote);   // จำนวนเดียวกัน
+            expect(swap.recentQuote(USDT, BTCB, '101', { slippage: 1 })).toBeNull();
+            expect(swap.recentQuote(USDT, BTCB, '100', { slippage: 2 })).toBeNull();
+            expect(swap.recentQuote(USDT, BTCB, '100', { slippage: 1, waiveFee: true })).toBeNull();
+            expect(swap.recentQuote(BTCB, USDT, '100', { slippage: 1 })).toBeNull();
         });
     });
 

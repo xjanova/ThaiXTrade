@@ -5,8 +5,11 @@ namespace Tests\Feature\Bridge;
 use App\Models\AdminUser;
 use App\Models\BridgeDeposit;
 use App\Models\BridgeWithdrawal;
+use App\Models\User;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\BridgeConfig;
+use App\Services\Bridge\BridgePayouter;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Testing\AssertableInertia;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\FakesBridgeChains;
@@ -35,9 +38,10 @@ class BridgeAdminTest extends TestCase
         ]);
     }
 
+    /** ล็อกอินผ่าน session แบบเบราว์เซอร์ — actingAs($admin, 'admin') สลับ guard ปริยายให้เองจนเทสต์ reviewed_by พิสูจน์อะไรไม่ได้ */
     private function asAdmin(): self
     {
-        return $this->actingAs($this->admin, 'admin');
+        return $this->withSession([Auth::guard('admin')->getName() => $this->admin->id]);
     }
 
     private function reviewDeposit(string $units = '1500000000', string $reason = 'over_tx_limit'): BridgeDeposit
@@ -104,6 +108,32 @@ class BridgeAdminTest extends TestCase
         $this->assertSame(BridgeDeposit::STATUS_CONFIRMED, $d->status);
         $this->assertTrue($d->limits_overridden);
         $this->assertSame($this->admin->id, $d->reviewed_by);
+        $this->assertStringContainsString('อนุมัติโดย ผู้ดูแลระบบ', $d->review_note);
+    }
+
+    /** bridge ไม่มี foreign key ที่ reviewed_by — รหัสสมาชิกลงได้เงียบๆ แล้วบันทึกชี้ไปผิดคน */
+    #[Test]
+    public function a_review_is_signed_by_the_admin_even_with_a_member_in_the_same_browser(): void
+    {
+        User::create(['wallet_address' => strtolower($this->bob), 'email' => 'first@tpix.test', 'password' => 'secret-password']);
+        $member = User::create(['wallet_address' => strtolower($this->alice), 'name' => 'สมาชิก', 'email' => 'member@tpix.test', 'password' => 'secret-password']);
+        $this->withSession([Auth::guard('web')->getName() => $member->id]);
+        $this->assertNotSame($this->admin->id, $member->id);
+
+        $d = $this->reviewDeposit();
+        $this->asAdmin()->postJson("/admin/bridge/deposits/{$d->id}/reject", ['reason' => 'คืนเงินแล้ว'])->assertOk();
+
+        $d->refresh();
+        $this->assertSame($this->admin->id, $d->reviewed_by);
+        $this->assertStringContainsString('ปฏิเสธโดย ผู้ดูแลระบบ: คืนเงินแล้ว', $d->review_note);
+    }
+
+    #[Test]
+    public function the_kill_switch_records_who_turned_it_off(): void
+    {
+        $this->asAdmin()->postJson('/admin/bridge/toggle', ['enabled' => false, 'reason' => 'ตรวจกระทบยอด'])->assertOk();
+
+        $this->assertSame('ปิดโดย ผู้ดูแลระบบ: ตรวจกระทบยอด', app(BridgeConfig::class)->switchReason());
     }
 
     #[Test]
@@ -194,6 +224,44 @@ class BridgeAdminTest extends TestCase
         $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/approve", ['nonce_tx_hash' => $cancel])->assertOk();
         $this->assertSame(BridgeWithdrawal::STATUS_PENDING, $w->fresh()->status);
         $this->assertNull($w->fresh()->payout_tx_hash);
+    }
+
+    #[Test]
+    public function a_stuck_payout_replaced_by_a_real_transfer_is_closed_as_paid_and_never_signed_again(): void
+    {
+        $dead = '0x'.str_repeat('6', 64);
+        $w = $this->reviewWithdrawal(strtolower($this->bob), 56, BridgePayouter::REASON_STUCK);
+        $w->update([
+            'payout_tx_hash' => $dead, 'payout_nonce' => 3,
+            'payout_from' => strtolower($this->payoutAddr), 'payout_raw_tx' => '0xf86c03',
+        ]);
+
+        // เจ้าของส่งโอนเดิมแทนที่ด้วย nonce 3 แล้วลงบล็อก — ผู้รับได้เงินแล้ว
+        $replacement = $this->fakeTransferTx(56, $this->payoutAddr, 3, $this->bob, (string) $w->payout_amount_raw);
+
+        // ปฏิเสธไม่ได้ (เงินออกแล้ว) และไม่ต้องขอหลักฐานเพิ่ม
+        $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/reject", ['reason' => 'คืนเงินด้วยมือ', 'nonce_tx_hash' => $replacement])
+            ->assertStatus(409)
+            ->assertJsonPath('needs_nonce_proof', false);
+        $this->assertSame(BridgeWithdrawal::STATUS_NEEDS_REVIEW, $w->fresh()->status);
+
+        // เดิม: รายการกลับเข้าคิวแล้วจ่ายรอบสอง · ตอนนี้ต้องปิดเป็นจ่ายแล้ว ผูกกับธุรกรรมที่เงินออกจริง
+        $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/approve", ['nonce_tx_hash' => $replacement])->assertOk();
+
+        $w->refresh();
+        $this->assertSame(BridgeWithdrawal::STATUS_PAID, $w->status);
+        $this->assertSame($replacement, $w->payout_tx_hash);
+        $this->assertNotNull($w->payout_block_number);
+        $this->assertNotNull($w->paid_at);
+        $this->assertStringContainsString($dead, $w->last_error, 'ยังตามรอย hash เดิมได้ (คอลัมน์ยาว 300 ตัด hash ทิ้งไม่ได้)');
+
+        // กดเบิ้ล: ปิดไปแล้ว ไม่เปลี่ยนอะไร
+        $this->asAdmin()->postJson("/admin/bridge/withdrawals/{$w->id}/approve", ['nonce_tx_hash' => $replacement])->assertStatus(409);
+
+        // แถวนี้เลิกบล็อกคิวของเชน และไม่มีการเซ็นจ่ายซ้ำ
+        $this->artisan('bridge:payout')->assertSuccessful();
+        $this->assertSame([], $this->signCalls);
+        $this->assertSame(BridgeWithdrawal::STATUS_PAID, $w->fresh()->status);
     }
 
     #[Test]

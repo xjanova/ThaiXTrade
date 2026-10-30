@@ -21,6 +21,8 @@ const props = defineProps({
     launch: { type: Object, default: () => ({}) },
     // ทาง USDT — สถานะการเปิดรับ + เงินเข้าที่รอทีมงานตัดสิน
     crypto: { type: Object, default: () => ({}) },
+    // ทุกคำสั่งของหน้านี้ขยับเงินจริง — ใช้ได้เฉพาะ super_admin ระดับอื่นเปิดดูได้อย่างเดียว
+    canManageMoney: { type: Boolean, default: false },
 });
 
 // Tab ปัจจุบัน
@@ -37,13 +39,24 @@ const showSaleModal = ref(false);
 const showPhaseModal = ref(false);
 const editingSale = ref(null);
 
+// ช่องทางรับเงินที่เลือกเพิ่มจากบัตรได้ — ต้องตรงกับ TokenSale::PAYMENT_CHANNELS ที่เซิร์ฟเวอร์ตรวจซ้ำตอนบันทึก
+const OPTIONAL_CHANNELS = [
+    { id: 'BANK', label: 'โอนเข้าบัญชีธนาคาร', hint: 'ใช้ได้เมื่อกรอกเลขบัญชีแล้ว' },
+    { id: 'CRYPTO', label: 'USDT ตรวจเงินเข้าบนเชน', hint: 'ใช้ได้เมื่อเปิดระบบรับ USDT แล้ว' },
+];
+
+/** บัตรเปิดเสมอ และตัดค่าที่เลิกรับแล้ว (USDT, BNB, STRIPE) ทิ้ง ฟอร์มจะได้ไม่ส่งค่าที่เซิร์ฟเวอร์ปฏิเสธ */
+function saleChannels(saved) {
+    return ['CARD', ...OPTIONAL_CHANNELS.map((channel) => channel.id).filter((id) => saved?.includes(id))];
+}
+
 // ฟอร์ม Token Sale
 const saleForm = useForm({
     id: null,
     name: '',
     description: '',
     total_supply_for_sale: 700000000,
-    accept_currencies: ['USDT', 'STRIPE'],
+    accept_currencies: saleChannels(),
     sale_wallet_address: '',
     starts_at: '',
     ends_at: '',
@@ -74,7 +87,7 @@ const phaseForm = useForm({
 function openCreateSale() {
     editingSale.value = null;
     saleForm.reset();
-    saleForm.accept_currencies = ['USDT', 'STRIPE'];
+    saleForm.accept_currencies = saleChannels();
     saleForm.total_supply_for_sale = 700000000;
     showSaleModal.value = true;
 }
@@ -86,7 +99,7 @@ function openEditSale(sale) {
         name: sale.name,
         description: sale.description || '',
         total_supply_for_sale: sale.total_supply_for_sale,
-        accept_currencies: sale.accept_currencies || ['USDT', 'STRIPE'],
+        accept_currencies: saleChannels(sale.accept_currencies),
         sale_wallet_address: sale.sale_wallet_address || '',
         starts_at: sale.starts_at?.slice(0, 16) || '',
         ends_at: sale.ends_at?.slice(0, 16) || '',
@@ -212,6 +225,47 @@ function rejectBank(tx) {
     });
 }
 
+/**
+ * เข้าคิวจ่ายใหม่ — เซิร์ฟเวอร์ส่งยอดมาเฉพาะออเดอร์ที่ไม่มีรายการจ่ายที่อาจจ่ายออกอยู่
+ * เช่น รายการเดิมถูกปฏิเสธหรือ revert หรือคิวล้มตอนกดยืนยัน
+ */
+function requeuePayout(tx) {
+    if (confirmingId.value) return;
+
+    const reference = bankReference(tx) || tx.uuid;
+    if (!window.confirm(`เข้าคิวจ่าย ${tx.requeue_payout_tpix} TPIX ของรายการ ${reference} ใหม่หรือไม่?\n\nรายการใหม่จะไปรออนุมัติที่หน้าคลัง — ตรวจก่อนว่ารอบก่อนจบเพราะอะไร`)) {
+        return;
+    }
+
+    confirmingId.value = tx.id;
+    router.post(`/admin/token-sales/bank/${tx.id}/requeue`, {}, {
+        preserveScroll: true,
+        onFinish: () => { confirmingId.value = null; },
+    });
+}
+
+/**
+ * กู้ยอด claim — เซิร์ฟเวอร์ส่งยอดมาเฉพาะแถวที่พิสูจน์ได้ว่าเงินไม่ออกและยังไม่เคยกู้
+ * ส่วนที่เกินวงเงินต่อครั้งของปลายทางจะคืนเป็นสิทธิ์ claim แอดมินต้องเห็นก่อนกด
+ */
+function requeueClaim(tx) {
+    if (confirmingId.value) return;
+
+    const reference = bankReference(tx) || tx.uuid;
+    const returned = tx.requeue_claim_returned_tpix
+        ? `\n\nส่วนที่เกินวงเงินต่อครั้ง ${tx.requeue_claim_returned_tpix} TPIX จะคืนเป็นสิทธิ์ให้ผู้ซื้อ claim เอง`
+        : '';
+    if (!window.confirm(`เข้าคิวจ่าย claim ${tx.requeue_claim_tpix} TPIX ของรายการ ${reference} ใหม่หรือไม่?${returned}\n\nรายการใหม่จะไปรออนุมัติที่หน้าคลัง — ตรวจก่อนว่ารอบก่อนจบเพราะอะไร`)) {
+        return;
+    }
+
+    confirmingId.value = tx.id;
+    router.post(`/admin/token-sales/claims/${tx.id}/requeue`, {}, {
+        preserveScroll: true,
+        onFinish: () => { confirmingId.value = null; },
+    });
+}
+
 // ===== Helpers =====
 function fmt(n) {
     if (!n) return '0';
@@ -321,12 +375,12 @@ function statusBadge(s) {
             <!-- ==================== TAB: Sales & Phases ==================== -->
             <div v-if="activeTab === 'sales'">
                 <!-- เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด ไม่ใช่วันที่ตั้งไว้ล่วงหน้า -->
-                <SaleLaunchPanel :launch="launch" />
+                <SaleLaunchPanel :launch="launch" :can-manage="canManageMoney" />
 
                 <SaleCryptoPanel :crypto="crypto" />
 
                 <div class="flex justify-end mb-4">
-                    <button class="btn-primary px-4 py-2 text-sm font-semibold" @click="openCreateSale">+ New Sale</button>
+                    <button v-if="canManageMoney" class="btn-primary px-4 py-2 text-sm font-semibold" @click="openCreateSale">+ New Sale</button>
                 </div>
 
                 <div class="space-y-4">
@@ -337,7 +391,7 @@ function statusBadge(s) {
                                 <span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(sale.status)">{{ sale.status }}</span>
                             </div>
                             <div class="flex gap-2">
-                                <button class="btn-secondary px-3 py-1 text-xs" @click="openAddPhase(sale)">+ Phase</button>
+                                <button v-if="canManageMoney" class="btn-secondary px-3 py-1 text-xs" @click="openAddPhase(sale)">+ Phase</button>
                                 <button class="btn-secondary px-3 py-1 text-xs" @click="openEditSale(sale)">Edit</button>
                             </div>
                         </div>
@@ -392,6 +446,7 @@ function statusBadge(s) {
                                         </td>
                                         <td class="py-1.5 px-2 text-right">
                                             <button
+                                                v-if="canManageMoney"
                                                 type="button"
                                                 class="px-2 py-1 text-xs rounded-lg bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"
                                                 @click="openEditPhase(sale, p)"
@@ -405,7 +460,7 @@ function statusBadge(s) {
 
                     <div v-if="!sales.length" class="text-center py-16 text-gray-500">
                         <p class="text-lg mb-2">No token sales yet</p>
-                        <button class="btn-primary px-6 py-2 mt-2" @click="openCreateSale">Create First Sale</button>
+                        <button v-if="canManageMoney" class="btn-primary px-6 py-2 mt-2" @click="openCreateSale">Create First Sale</button>
                     </div>
                 </div>
             </div>
@@ -443,7 +498,7 @@ function statusBadge(s) {
                                         ปุ่มโผล่เฉพาะรายการโอนเงินที่ยังรอยืนยัน
                                         รายการทางบัตรยืนยันเองอัตโนมัติผ่าน webhook ของ Stripe
                                     -->
-                                    <template v-if="isPendingBankTransfer(tx)">
+                                    <template v-if="canManageMoney && isPendingBankTransfer(tx)">
                                         <button
                                             class="px-2 py-1 text-xs rounded-lg bg-trading-green/20 text-trading-green hover:bg-trading-green/30 transition disabled:opacity-40"
                                             :disabled="confirmingId === tx.id"
@@ -454,6 +509,20 @@ function statusBadge(s) {
                                             :disabled="confirmingId === tx.id"
                                             @click="rejectBank(tx)"
                                         >ปฏิเสธ</button>
+                                    </template>
+                                    <template v-else-if="tx.requeue_payout_tpix || tx.requeue_claim_tpix">
+                                        <button
+                                            v-if="tx.requeue_payout_tpix"
+                                            class="px-2 py-1 text-xs rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition disabled:opacity-40"
+                                            :disabled="confirmingId === tx.id"
+                                            @click="requeuePayout(tx)"
+                                        >เข้าคิวจ่ายใหม่</button>
+                                        <button
+                                            v-if="tx.requeue_claim_tpix"
+                                            class="ml-1 px-2 py-1 text-xs rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition disabled:opacity-40"
+                                            :disabled="confirmingId === tx.id"
+                                            @click="requeueClaim(tx)"
+                                        >เข้าคิว claim ใหม่</button>
                                     </template>
                                     <span v-else class="text-gray-600 text-xs">—</span>
                                 </td>
@@ -549,6 +618,24 @@ function statusBadge(s) {
                             <div>
                                 <label class="block text-sm text-gray-400 mb-1">Sale Wallet Address</label>
                                 <input v-model="saleForm.sale_wallet_address" class="trading-input w-full font-mono text-sm" placeholder="0x..." />
+                                <p class="mt-1 text-xs text-gray-500">ใช้กับทาง USDT เท่านั้น ถ้าไม่เปิดรับ USDT เว้นว่างได้</p>
+                                <p v-if="saleForm.errors.sale_wallet_address" class="mt-1 text-sm text-red-400">{{ saleForm.errors.sale_wallet_address }}</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">ช่องทางรับเงิน</label>
+                                <div class="space-y-2">
+                                    <label class="flex items-center gap-2 text-sm text-gray-300">
+                                        <input type="checkbox" checked disabled class="w-4 h-4 rounded bg-dark-800 border-white/20" />
+                                        <span>บัตรเครดิต/เดบิต</span>
+                                        <span class="text-xs text-gray-500">เปิดเสมอ</span>
+                                    </label>
+                                    <label v-for="channel in OPTIONAL_CHANNELS" :key="channel.id" class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                                        <input v-model="saleForm.accept_currencies" type="checkbox" :value="channel.id" class="w-4 h-4 rounded bg-dark-800 border-white/20" />
+                                        <span>{{ channel.label }}</span>
+                                        <span class="text-xs text-gray-500">{{ channel.hint }}</span>
+                                    </label>
+                                </div>
+                                <p v-if="saleForm.errors.accept_currencies" class="mt-1 text-sm text-red-400">{{ saleForm.errors.accept_currencies }}</p>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
@@ -561,7 +648,8 @@ function statusBadge(s) {
                                 </div>
                             </div>
                             <div class="flex gap-3 pt-2">
-                                <button type="submit" class="btn-primary px-6 py-2 font-semibold" :disabled="saleForm.processing">{{ editingSale ? 'Update' : 'Create' }}</button>
+                                <button v-if="canManageMoney" type="submit" class="btn-primary px-6 py-2 font-semibold" :disabled="saleForm.processing">{{ editingSale ? 'Update' : 'Create' }}</button>
+                                <p v-else class="text-xs text-amber-300 self-center">รอบขายมีกระเป๋ารับเงิน แก้ได้เฉพาะ Super Admin</p>
                                 <button type="button" class="btn-secondary px-6 py-2" @click="showSaleModal = false">Cancel</button>
                             </div>
                         </form>

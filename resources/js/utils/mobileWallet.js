@@ -49,21 +49,35 @@ export function detectInAppBrowser() {
 }
 
 /**
- * ตรวจจับว่าอยู่ใน wallet in-app browser หรือไม่
+ * ตรวจจับว่าเปิดเว็บอยู่ "ในแอปกระเป๋า" (dapp browser ของแอปบนมือถือ) หรือไม่
+ *
+ * นับเฉพาะบนมือถือ — บนคอม ส่วนขยายกระเป๋า (MetaMask, Brave, Rabby …) ก็ใส่
+ * window.ethereum.isMetaMask = true เหมือนกัน ถ้านับด้วย หน้าต่างเชื่อมกระเป๋าจะคิดว่าอยู่ในแอป MetaMask
+ * แล้วซ่อนการ์ด TPIX Wallet กับกระเป๋าอื่นทั้งหมด (เจ้าของเจอจริง 2026-10-22: "ทำไมเห็นแต่ metamask")
  */
 export function detectWalletBrowser() {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') return null;
+    if (!isMobile()) return null;
     const ua = navigator.userAgent.toLowerCase();
+    const eth = window.ethereum;
 
-    // ตรวจจาก user agent + injected provider
-    if (ua.includes('metamask') || window.ethereum?.isMetaMask) return 'metamask';
-    if (ua.includes('trust') || window.ethereum?.isTrust || window.trustwallet) return 'trustwallet';
-    if (ua.includes('coinbasebrowser') || window.ethereum?.isCoinbaseWallet) return 'coinbase';
-    if (ua.includes('tokenpocket') || window.ethereum?.isTokenPocket) return 'tokenpocket';
-    if (ua.includes('okex') || ua.includes('okapp') || window.okxwallet) return 'okx';
+    // 1) user agent ของแอปกระเป๋า — แม่นที่สุด
+    if (ua.includes('metamask')) return 'metamask';
+    if (ua.includes('trust')) return 'trustwallet';
+    if (ua.includes('coinbasebrowser')) return 'coinbase';
+    if (ua.includes('tokenpocket')) return 'tokenpocket';
+    if (ua.includes('okex') || ua.includes('okapp')) return 'okx';
     if (ua.includes('phantom')) return 'phantom';
     if (ua.includes('safepal')) return 'safepal';
     if (ua.includes('bitkeep') || ua.includes('bitget')) return 'bitget';
+
+    // 2) provider ที่แอปฉีดเข้ามา — ธงเฉพาะก่อน isMetaMask เพราะหลายแอปตั้ง isMetaMask = true ด้วย
+    //    เพื่อให้เข้ากันได้ (Trust, และกระเป๋าในตัวของ Brave มือถือซึ่งไม่ใช่แอปกระเป๋า)
+    if (eth?.isTrust || window.trustwallet) return 'trustwallet';
+    if (eth?.isCoinbaseWallet) return 'coinbase';
+    if (eth?.isTokenPocket) return 'tokenpocket';
+    if (window.okxwallet) return 'okx';
+    if (eth?.isMetaMask && !eth?.isBraveWallet) return 'metamask';
 
     return null;
 }

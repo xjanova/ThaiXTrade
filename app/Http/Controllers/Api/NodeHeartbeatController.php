@@ -5,8 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\NodeHeartbeatRequest;
 use App\Models\MasternodeAllowlist;
+use App\Models\MasternodeNode;
+use App\Services\MasterNode\ChainHeadService;
 use App\Services\MasterNode\CloudflareWafService;
 use App\Services\MasterNode\NodeRegistryService;
+use App\Services\MasterNode\NodeUptimeRecorder;
+use App\Services\MasterNode\PeerId;
 use App\Services\MasterNode\Web3SignatureService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +30,12 @@ use Illuminate\Support\Facades\Log;
  *   7. Add Cloudflare rule + persist row (idempotent — update CF rule ถ้ามีอยู่แล้ว)
  *   8. Return ttl + cf_rule_id
  *
+ * รุ่น 2 (มี peer_id) — ใช้วัด uptime ป้อน uptimeOracle:
+ *   - delegate key = กุญแจ libp2p ของ peer ID นั้น (ถอดจาก peer ID เอง ไม่เชื่อที่ผู้ส่งบอก)
+ *   - ข้อความที่ลงนามมีเลข + แฮชบล็อก → ตรวจกับเชนจริง (ChainHeadService)
+ *   - กุญแจโหนดหนึ่งตัวผูกได้กระเป๋าเดียว (NodeUptimeRecorder::bindingConflict)
+ *   - บันทึกช่องเวลา 5 นาที + ประเทศ/เมือง — การนับ uptime จริงทำตอนปิดรอบ (UptimeCalculator)
+ *
  * Developed by Xman Studio
  */
 class NodeHeartbeatController extends Controller
@@ -34,6 +44,8 @@ class NodeHeartbeatController extends Controller
         private Web3SignatureService $sigService,
         private NodeRegistryService $registryService,
         private CloudflareWafService $cfService,
+        private ChainHeadService $chainHead,
+        private NodeUptimeRecorder $uptimeRecorder,
     ) {}
 
     public function heartbeat(NodeHeartbeatRequest $request): JsonResponse
@@ -80,8 +92,26 @@ class NodeHeartbeatController extends Controller
             ], 401);
         }
 
+        // รุ่น 2: delegate key ต้องเป็นกุญแจ libp2p ของ peer ID ที่อ้าง
+        // ไม่งั้นใครก็พิมพ์ peer ID ของโหนดคนอื่นมาแอบอ้างว่า "เครื่องนั้นคือของฉัน" ได้
+        $isV2 = ! empty($data['peer_id']);
+        if ($isV2 && PeerId::nodeAddress($data['peer_id']) !== $delegateAddress) {
+            return response()->json([
+                'error' => 'node_key_mismatch',
+                'message' => 'delegate_address must be the address of the peer_id key',
+            ], 401);
+        }
+
         // 3. Verify heartbeat signature (delegate-key ลงนาม heartbeat)
-        $heartbeatMessage = $this->sigService->buildHeartbeatMessage($wallet, (int) $data['timestamp']);
+        $heartbeatMessage = $isV2
+            ? $this->sigService->buildHeartbeatMessageV2(
+                $wallet,
+                (int) $data['timestamp'],
+                $data['peer_id'],
+                (int) $data['block_number'],
+                $data['block_hash'],
+            )
+            : $this->sigService->buildHeartbeatMessage($wallet, (int) $data['timestamp']);
         if (! $this->sigService->verify($heartbeatMessage, $data['signature'], $delegateAddress)) {
             return response()->json([
                 'error' => 'invalid_heartbeat_signature',
@@ -103,13 +133,36 @@ class NodeHeartbeatController extends Controller
         // 5. Anti-spam: ห้าม renew บ่อยเกิน
         $minRenew = (int) config('masternode.heartbeat.min_renew_interval_seconds', 60);
         $existing = MasternodeAllowlist::where('wallet_address', $wallet)->first();
+        // ⚠️ Carbon 3: now()->diffInSeconds(<อดีต>) ได้ค่า "ติดลบ" — ของเดิมจึงน้อยกว่า $minRenew
+        // เสมอ heartbeat ครั้งที่ 2 เป็นต้นไปโดน 429 ตลอดกาล เทียบเวลาตรง ๆ แทน
         if ($existing && $existing->last_heartbeat &&
-            now()->diffInSeconds($existing->last_heartbeat) < $minRenew) {
+            $existing->last_heartbeat->gt(now()->subSeconds($minRenew))) {
             return response()->json([
                 'error' => 'renew_too_soon',
                 'message' => "Wait at least {$minRenew}s between heartbeats",
                 'next_allowed_at' => $existing->last_heartbeat->addSeconds($minRenew)->timestamp,
             ], 429);
+        }
+
+        // 5b. รุ่น 2: กุญแจโหนดหนึ่งตัวต่อกระเป๋าเดียว แล้วค่อยตรวจบล็อกกับเชน
+        // (ตรวจเชนหลังผ่านลายเซ็น + ทะเบียนแล้วเท่านั้น — คนนอกจะใช้ endpoint นี้ยิง RPC เราไม่ได้)
+        $chainCheck = null;
+        if ($isV2) {
+            $conflict = $this->uptimeRecorder->bindingConflict(
+                $wallet,
+                $data['peer_id'],
+                (int) $data['delegation_expires_at'],
+            );
+            if ($conflict !== null) {
+                return response()->json([
+                    'error' => $conflict,
+                    'message' => $conflict === 'stale_delegation'
+                        ? 'This wallet now reports from a newer node key'
+                        : 'This node key already reports for another wallet',
+                ], 409);
+            }
+
+            $chainCheck = $this->chainHead->verify((int) $data['block_number'], $data['block_hash']);
         }
 
         // 6. Get client IP — ไว้ใจ CF-Connecting-IP เฉพาะเมื่อ request มาจาก Cloudflare จริงๆ
@@ -141,7 +194,7 @@ class NodeHeartbeatController extends Controller
         $allowedUntil = now()->addSeconds($ttl);
 
         // 7. Add CF rule + persist (transaction)
-        return DB::transaction(function () use (
+        $result = DB::transaction(function () use (
             $wallet,
             $delegateAddress,
             $data,
@@ -192,7 +245,7 @@ class NodeHeartbeatController extends Controller
                 'heartbeat_count' => $row->heartbeat_count,
             ]);
 
-            return response()->json([
+            return [
                 'ok' => true,
                 'wallet' => $wallet,
                 'tier' => $tier,
@@ -200,8 +253,43 @@ class NodeHeartbeatController extends Controller
                 'cf_rule_id' => $cfRuleId,
                 'allowed_until' => $allowedUntil->timestamp,
                 'next_renew_at' => now()->addSeconds(min(1800, (int) ($ttl / 2)))->timestamp,
-            ]);
+            ];
         });
+
+        // 8. รุ่น 2: บันทึกช่องเวลา uptime — heartbeat ผ่านแล้วแม้บล็อกจะล้า (allowlist ยังได้)
+        // แต่ช่องนั้นจะไม่นับเป็น "รันจริง" แอปอ่าน uptime.check ไปบอกผู้ใช้ว่าทำไม
+        if ($isV2) {
+            $recorded = $this->uptimeRecorder->record([
+                'wallet' => $wallet,
+                'peer_id' => $data['peer_id'],
+                'node_address' => $delegateAddress,
+                'delegation_expires_at' => (int) $data['delegation_expires_at'],
+                'block_number' => (int) $data['block_number'],
+                'tier' => $tier,
+                'app_version' => $data['app_version'] ?? null,
+                'peer_count' => isset($data['peer_count']) ? (int) $data['peer_count'] : null,
+            ], $chainCheck, $ip);
+
+            $result['uptime'] = [
+                'slot' => $recorded['slot'],
+                'check' => $chainCheck['status'],
+                'block_lag' => $chainCheck['lag'],
+                // null = เว็บตรวจเชนไม่ได้ตอนนี้ (ฝั่งเรา) ไม่ใช่ความผิดโหนด
+                'block_ok' => $recorded['block_ok'],
+                'requires_bootnode_peer' => (bool) config('masternode.uptime.require_peer_seen', true),
+            ];
+
+            // ตำแหน่งของโหนดตัวเอง (ผู้ส่งพิสูจน์ความเป็นเจ้าของแล้ว) — API สาธารณะไม่บอกว่าโหนดไหนของใคร
+            $node = MasternodeNode::where('wallet_address', $wallet)->first();
+            $result['location'] = $node ? [
+                'id' => $node->toPublicArray(null)['id'],
+                'country_code' => $node->country_code,
+                'country' => $node->country_name,
+                'city' => $node->city,
+            ] : null;
+        }
+
+        return response()->json($result);
     }
 
     /**

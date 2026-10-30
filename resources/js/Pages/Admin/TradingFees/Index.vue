@@ -18,6 +18,8 @@ import AdminLayout from '@/Layouts/AdminLayout.vue';
 const props = defineProps({
     tiers: { type: Array, default: () => [] },
     settings: { type: Object, default: () => ({}) },
+    // ค่าตั้งรวมมีกระเป๋ารับเงิน — แก้ได้เฉพาะ super_admin ระดับอื่นเห็นอย่างเดียว
+    canManageMoney: { type: Boolean, default: false },
     coverageGaps: { type: Array, default: () => [] },
     stats: { type: Object, default: () => ({}) },
 });
@@ -121,7 +123,7 @@ const inputClass = 'w-full bg-dark-800/70 border border-dark-700 rounded-lg px-2
             <section class="rounded-2xl border border-white/10 bg-white/5 p-5">
                 <h2 class="text-base font-semibold text-white mb-4">การตั้งค่าระบบ</h2>
 
-                <form @submit.prevent="saveSettings" class="space-y-4">
+                <form @submit.prevent="saveSettings" class="space-y-4" :inert="canManageMoney ? undefined : true">
                     <label class="flex items-start gap-2.5 cursor-pointer">
                         <input v-model="settingsForm.tpix_fee_enabled" type="checkbox" class="mt-0.5 rounded border-dark-600 bg-dark-800 text-primary-500" />
                         <span>
@@ -161,10 +163,11 @@ const inputClass = 'w-full bg-dark-800/70 border border-dark-700 rounded-lg px-2
                         </div>
                     </div>
 
-                    <button type="submit" :disabled="settingsForm.processing" class="btn-primary px-5 py-2 text-sm">
+                    <button v-if="canManageMoney" type="submit" :disabled="settingsForm.processing" class="btn-primary px-5 py-2 text-sm">
                         {{ settingsForm.processing ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า' }}
                     </button>
                 </form>
+                <p v-if="!canManageMoney" class="text-xs text-amber-300 mt-4">ค่าชุดนี้มีกระเป๋ารับเงิน แก้ได้เฉพาะ Super Admin</p>
             </section>
 
             <!-- ขั้นบันได -->

@@ -8,6 +8,7 @@ use App\Jobs\VerifyFactoryTokenOnExplorerJob;
 use App\Models\AdminUser;
 use App\Models\FactoryToken;
 use App\Models\TokenFactoryFeeQuote;
+use App\Services\TokenFactoryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Process;
@@ -94,10 +95,10 @@ class TokenFactoryDeployTest extends TestCase
         $token = $this->token();
         $stale = FactoryToken::find($token->id); // อ่านค้างไว้เหมือนอีก request ที่มาพร้อมกัน
 
-        app(\App\Services\TokenFactoryService::class)->approveToken($token);
+        app(TokenFactoryService::class)->approveToken($token);
 
         try {
-            app(\App\Services\TokenFactoryService::class)->approveToken($stale);
+            app(TokenFactoryService::class)->approveToken($stale);
             $this->fail('การอนุมัติครั้งที่สองต้องถูกปฏิเสธ');
         } catch (\InvalidArgumentException) {
             // ถูกต้อง
@@ -198,6 +199,24 @@ class TokenFactoryDeployTest extends TestCase
         $this->assertFalse($fresh->is_verified, '"Verified" ต้องเป็นการตัดสินของแอดมิน');
         $this->assertFalse($fresh->is_listed);
         $this->assertNull($fresh->getRawOriginal('deploy_raw_tx'));
+        // ไม่ได้จ่ายค่ายืนยันซอร์ส = ไม่ส่งให้ explorer (ซื้อทีหลังได้)
+        Queue::assertNotPushed(VerifyFactoryTokenOnExplorerJob::class);
+    }
+
+    #[Test]
+    public function จ่ายค่ายืนยันซอร์สมาตอนสร้าง_deploy_เสร็จส่งให้_explorer_เอง(): void
+    {
+        Queue::fake();
+        $hash = '0x'.str_repeat('d', 64);
+        $this->fakeScript([
+            ['event' => 'signed', 'txHash' => $hash, 'nonce' => 1, 'rawTx' => '0x02'],
+            ['success' => true, 'contractAddress' => '0x'.str_repeat('D', 40), 'txHash' => $hash, 'blockNumber' => 123, 'factoryVersion' => 'v2'],
+        ]);
+
+        $token = $this->token(['status' => 'deploying', 'metadata' => ['sub_options' => [], 'source_verify' => ['paid' => true, 'via' => 'create']]]);
+        $this->runJob(new DeployTokenJob($token->id));
+
+        $this->assertSame('deployed', $token->fresh()->status);
         Queue::assertPushed(VerifyFactoryTokenOnExplorerJob::class);
     }
 
@@ -258,7 +277,7 @@ class TokenFactoryDeployTest extends TestCase
     }
 
     #[Test]
-    public function งานตรวจผลส่ง_rawTx_เดิม_ไม่ใช่เซ็นใหม่(): void
+    public function งานตรวจผลส่ง_raw_tx_เดิม_ไม่ใช่เซ็นใหม่(): void
     {
         Queue::fake();
         $hash = '0x'.str_repeat('8', 64);

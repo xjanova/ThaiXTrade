@@ -4,6 +4,7 @@
  * กดปุ่มเดียว → ได้ NFT บน TPIX Chain
  */
 import { ref, computed } from 'vue';
+import { useFoodPassportWrite } from '@/Composables/useFoodPassportWrite';
 
 const props = defineProps({
     product: { type: Object, required: true },
@@ -20,45 +21,45 @@ const mintedCertificate = ref(null);
 
 const CONTRACT_ADDRESS = props.contractAddress || import.meta.env.VITE_FOOD_PASSPORT_NFT_ADDRESS || '';
 
+// เจ้าของใบรับรอง = กระเป๋าผู้ผลิตที่เซ็นยืนยันแล้ว (ส่งเป็น wallet_address) — ดู useFoodPassportWrite
+const { post, verifyWallet, needsVerification, isVerifying } = useFoodPassportWrite();
+
 async function mintNFT() {
+    if (loading.value) return;
     step.value = 2;
     loading.value = true;
     error.value = null;
 
-    try {
-        // Simulate token ID (in production: call smart contract first)
-        const tokenId = Math.floor(Math.random() * 100000) + 1;
+    // Simulate token ID (in production: call smart contract first)
+    const tokenId = Math.floor(Math.random() * 100000) + 1;
 
-        const res = await fetch(`/api/v1/food-passport/mint/${props.product.id}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Wallet-Address': props.walletAddress,
-            },
-            body: JSON.stringify({
-                owner_address: props.walletAddress,
-                token_id: tokenId,
-                contract_address: CONTRACT_ADDRESS,
-                token_uri: `https://api.tpixtrade.com/food-passport/metadata/${props.product.id}`,
-            }),
-        });
-
-        const json = await res.json();
-
-        if (json.success) {
-            mintedCertificate.value = json.data;
-            step.value = 3;
-            emit('minted', json.data);
-        } else {
-            error.value = json.error?.message || 'Mint ไม่สำเร็จ';
-            step.value = 1;
-        }
-    } catch (e) {
-        error.value = e.message;
-        step.value = 1;
-    }
+    const result = await post(`/api/v1/food-passport/mint/${props.product.id}`, props.walletAddress, {
+        token_id: tokenId,
+        contract_address: CONTRACT_ADDRESS,
+        token_uri: `https://api.tpixtrade.com/food-passport/metadata/${props.product.id}`,
+    }, 'Mint ไม่สำเร็จ กรุณาลองใหม่');
 
     loading.value = false;
+
+    // สลับกระเป๋าระหว่างรอ — ใบรับรองนั้นเป็นของกระเป๋าเดิม ปิดหน้าต่างแทนการแสดงผล
+    if (result.stale) {
+        emit('close');
+        return;
+    }
+
+    if (result.ok) {
+        mintedCertificate.value = result.data;
+        step.value = 3;
+        emit('minted', result.data);
+    } else {
+        error.value = result.message;
+        step.value = 1;
+    }
+}
+
+/** เซ็นยืนยันแล้ว mint ต่อทันที */
+async function verifyAndMint() {
+    if (await verifyWallet()) await mintNFT();
 }
 </script>
 
@@ -106,7 +107,14 @@ async function mintNFT() {
                 <p class="text-green-400 text-sm">Gas FREE — ไม่มีค่าธรรมเนียม บน TPIX Chain</p>
             </div>
 
-            <div v-if="error" class="p-3 rounded-xl bg-trading-red/10 text-trading-red text-sm mb-4">{{ error }}</div>
+            <div v-if="error" class="p-3 rounded-xl bg-trading-red/10 text-trading-red text-sm mb-4">
+                {{ error }}
+                <button v-if="needsVerification" type="button" data-test="verify-wallet"
+                    @click="verifyAndMint" :disabled="isVerifying"
+                    class="mt-3 block w-full py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-medium disabled:opacity-60">
+                    {{ isVerifying ? 'กำลังรอลายเซ็น...' : 'เซ็นยืนยันกระเป๋า แล้ว Mint' }}
+                </button>
+            </div>
 
             <!-- Actions -->
             <div class="flex gap-3">

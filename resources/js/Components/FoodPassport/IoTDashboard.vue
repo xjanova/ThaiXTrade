@@ -4,8 +4,12 @@
  * เชื่อมต่อ IoT sensor ง่ายที่สุด 3 ขั้นตอน:
  * 1. เลือกประเภท sensor → 2. ตั้งชื่อ + ตำแหน่ง → 3. ได้ API Key + Config สำเร็จรูป
  * รองรับ: ESP32, Arduino, Raspberry Pi, HTTP API, MQTT
+ *
+ * API key ของเครื่องเห็นได้ครั้งเดียว (เซิร์ฟเวอร์เก็บแค่ hash) — ตอนลงทะเบียน หรือตอนกด "ออก API key"
+ * เครื่องต้องส่ง `Authorization: Bearer <API key>` ทุกคำขอ ไม่มีกุญแจ = ส่งข้อมูลเข้าไม่ได้
  */
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
+import axios from 'axios';
 
 const props = defineProps({
     devices: { type: Array, default: () => [] },
@@ -13,15 +17,20 @@ const props = defineProps({
     isConnected: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['device-registered']);
+const emit = defineEmits(['device-registered', 'devices-updated']);
 
 // Wizard state
 const wizardStep = ref(0); // 0=closed, 1=type, 2=info, 3=done
 const loading = ref(false);
 const error = ref(null);
 const registeredDevice = ref(null);
+// กุญแจที่เพิ่งออก — อยู่แค่ในหน่วยความจำของหน้านี้ ปิดแผงหรือสลับกระเป๋าแล้วหายไป
+const issuedKey = ref(null); // { deviceId, apiKey, mode: 'registered' | 'issued' | 'rotated' }
+const keyCopied = ref(false);
+const rotatingId = ref(null);
+const keyError = ref(null); // { deviceId, message }
 const selectedDeviceForTest = ref(null);
-const testResult = ref(null);
+const testResult = ref(null); // { ok, message }
 const testLoading = ref(false);
 const activeCodeTab = ref('esp32');
 
@@ -56,69 +65,174 @@ function startWizard() {
     wizardStep.value = 1;
     error.value = null;
     registeredDevice.value = null;
+    issuedKey.value = null;
     form.value = { name: '', type: 'multi', protocol: 'http', location: '', interval: '15' };
 }
 
-async function registerDevice() {
-    loading.value = true;
-    error.value = null;
-
-    try {
-        const res = await fetch('/api/v1/food-passport/iot/register-device', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Wallet-Address': props.walletAddress },
-            body: JSON.stringify({
-                name: form.value.name,
-                type: form.value.type,
-                owner_address: props.walletAddress,
-                location: form.value.location || null,
-                config: {
-                    protocol: form.value.protocol,
-                    interval_minutes: parseInt(form.value.interval),
-                },
-            }),
-        });
-        const json = await res.json();
-        if (json.success) {
-            registeredDevice.value = json.data;
-            wizardStep.value = 3;
-            emit('device-registered', json.data);
-        } else {
-            error.value = json.error?.message || 'ลงทะเบียนไม่สำเร็จ';
-        }
-    } catch (e) { error.value = e.message; }
-    loading.value = false;
+function closeWizard() {
+    wizardStep.value = 0;
+    issuedKey.value = null;
 }
 
-async function testConnection(device) {
+// สลับ/ตัดกระเป๋า → ปิดแผงที่โชว์กุญแจของเครื่องในกระเป๋าเดิม (เช่น เครื่องคอมใช้ร่วมกัน)
+watch(() => props.walletAddress, () => {
+    closeWizard();
+    keyError.value = null;
+    testResult.value = null;
+});
+
+/** ข้อความภาษาไทยจากคำตอบที่ไม่สำเร็จ — ไม่โชว์ข้อความดิบของ axios ("Request failed with status code 419") */
+function errorMessage(e, fallback) {
+    const code = e.response?.data?.error?.code;
+    if (code === 'WALLET_NOT_VERIFIED' || code === 'WALLET_IP_MISMATCH') {
+        return 'ยืนยันกระเป๋าก่อน (เซ็นข้อความในกระเป๋า) แล้วลองใหม่';
+    }
+    if (e.response?.status === 419) return 'หน้าเว็บหมดอายุ — รีเฟรชหน้าแล้วลองใหม่';
+    return e.response?.data?.error?.message || fallback;
+}
+
+/*
+ * ส่งด้วย axios — แนบ X-XSRF-TOKEN จากคุกกี้ให้เอง (เว็บได้ session แบบ Sanctum จึงโดนตรวจ CSRF)
+ * ⚠️ เดิมใช้ fetch ที่ไม่แนบ CSRF — บน production ที่ session ติด คำขอนี้ได้ 419 ตลอด
+ */
+async function registerDevice() {
+    if (loading.value) return;
+    loading.value = true;
+    error.value = null;
+    const wallet = props.walletAddress;
+
+    try {
+        const { data: json } = await axios.post('/api/v1/food-passport/iot/register-device', {
+            // ด่าน VerifyWalletOwnership ตรวจ wallet_address — เครื่องจะเป็นของกระเป๋าที่ยืนยันแล้วนี้
+            wallet_address: wallet,
+            name: form.value.name,
+            type: form.value.type,
+            location: form.value.location || null,
+            config: {
+                protocol: form.value.protocol,
+                interval_minutes: parseInt(form.value.interval),
+            },
+        });
+        if (props.walletAddress !== wallet) return; // สลับกระเป๋าระหว่างรอ — แผงถูกปิดไปแล้ว
+
+        // กุญแจไม่ไปกับรายการอุปกรณ์ — เก็บไว้โชว์ในแผงนี้ครั้งเดียว
+        const { api_key: apiKey, ...device } = json.data;
+        registeredDevice.value = device;
+        issuedKey.value = { deviceId: device.device_id, apiKey, mode: 'registered' };
+        activeCodeTab.value = 'esp32';
+        keyCopied.value = false;
+        wizardStep.value = 3;
+        emit('device-registered', device);
+    } catch (e) {
+        error.value = errorMessage(e, 'ลงทะเบียนไม่สำเร็จ');
+    } finally {
+        loading.value = false;
+    }
+}
+
+/**
+ * ออก API key ให้เครื่อง (เครื่องที่ลงทะเบียนก่อนมีระบบกุญแจ) หรือออกใหม่แทนดอกที่หาย/หลุด.
+ * มีกุญแจอยู่แล้ว = ทับของเดิม เครื่องที่ใช้กุญแจเดิมจะส่งไม่ได้ทันที — ต้องยืนยันก่อน
+ */
+async function rotateKey(device) {
+    if (rotatingId.value) return;
+    if (device.has_api_key && !confirm(
+        `ออก API key ใหม่ให้ ${device.device_id}?\n\nกุญแจเดิมจะใช้ไม่ได้ทันที — อุปกรณ์จะส่งข้อมูลไม่ได้จนกว่าจะใส่กุญแจใหม่`
+    )) return;
+
+    rotatingId.value = device.device_id;
+    keyError.value = null;
+    const wallet = props.walletAddress;
+
+    try {
+        const { data: json } = await axios.post(
+            `/api/v1/food-passport/iot/rotate-key/${encodeURIComponent(device.device_id)}`,
+            { wallet_address: wallet },
+        );
+        if (props.walletAddress !== wallet) return;
+
+        registeredDevice.value = { ...device, has_api_key: true };
+        issuedKey.value = {
+            deviceId: device.device_id,
+            apiKey: json.data.api_key,
+            mode: device.has_api_key ? 'rotated' : 'issued',
+        };
+        keyCopied.value = false;
+        activeCodeTab.value = 'esp32';
+        wizardStep.value = 3;
+        emit('devices-updated', props.devices.map((d) => (
+            d.device_id === device.device_id ? { ...d, has_api_key: true } : d
+        )));
+    } catch (e) {
+        keyError.value = { deviceId: device.device_id, message: errorMessage(e, 'ออก API key ไม่สำเร็จ') };
+    } finally {
+        rotatingId.value = null;
+    }
+}
+
+function copyKey() {
+    if (!issuedKey.value) return;
+    navigator.clipboard?.writeText(issuedKey.value.apiKey);
+    keyCopied.value = true;
+}
+
+/*
+ * ตรวจสถานะ = ถามเซิร์ฟเวอร์ว่าได้ยินจากเครื่องล่าสุดเมื่อไร
+ *
+ * ⚠️ เดิมปุ่มนี้ยิงข้อมูลปลอม (product_id 0) เข้า /iot/ingest จากเบราว์เซอร์ ซึ่งไม่มีวันสำเร็จ
+ *    และตอนเน็ตหลุดกลับขึ้นว่า "Connection OK" — เบราว์เซอร์ไม่มีกุญแจของเครื่อง (และไม่ควรมี)
+ */
+async function checkStatus(device) {
+    if (testLoading.value) return;
     selectedDeviceForTest.value = device.device_id;
     testLoading.value = true;
     testResult.value = null;
+    const wallet = props.walletAddress;
+
     try {
-        const res = await fetch('/api/v1/food-passport/iot/ingest', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                device_id: device.device_id,
-                product_id: 0,
-                stage: 'farm',
-                temperature: 25.0,
-                humidity: 60.0,
-                location: device.location || '0,0',
-                data: { test: true },
-            }),
-        });
+        const res = await fetch(`/api/v1/food-passport/iot/my-devices?wallet_address=${wallet}`);
         const json = await res.json();
-        testResult.value = json.success ? 'ok' : json.error?.message || 'failed';
-    } catch (e) {
-        testResult.value = 'connection_ok';
+        if (props.walletAddress !== wallet) return;
+
+        const list = json.success ? json.data.data || [] : null;
+        const fresh = list?.find((d) => d.device_id === device.device_id);
+        if (!fresh) {
+            testResult.value = { ok: false, message: res.status === 403
+                ? 'ยืนยันกระเป๋าก่อน (เซ็นข้อความในกระเป๋า) แล้วลองใหม่'
+                : 'ตรวจสถานะไม่สำเร็จ — ลองใหม่อีกครั้ง' };
+            return;
+        }
+
+        emit('devices-updated', list);
+        testResult.value = describeLastPing(fresh);
+    } catch {
+        testResult.value = { ok: false, message: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ลองใหม่อีกครั้ง' };
+    } finally {
+        testLoading.value = false;
     }
-    testLoading.value = false;
 }
 
-// Generate config code for different platforms
-function getConfigCode(deviceId, platform) {
+function describeLastPing(device) {
+    if (!device.has_api_key) {
+        return { ok: false, message: 'ยังไม่มี API key — กด "ออก API key" แล้วใส่กุญแจในอุปกรณ์' };
+    }
+    if (!device.last_ping_at) {
+        return { ok: false, message: 'ยังไม่เคยได้รับข้อมูลจากอุปกรณ์นี้ — ตรวจว่าใส่ Device ID และ API key ถูกต้อง' };
+    }
+    const minutes = Math.max(0, Math.round((Date.now() - new Date(device.last_ping_at).getTime()) / 60000));
+    const interval = device.config?.interval_minutes || 15;
+    return minutes <= interval * 2
+        ? { ok: true, message: `อุปกรณ์ส่งข้อมูลล่าสุดเมื่อ ${minutes} นาทีที่แล้ว` }
+        : { ok: false, message: `ไม่ได้รับข้อมูลมา ${minutes} นาทีแล้ว (ตั้งไว้ส่งทุก ${interval} นาที)` };
+}
+
+// Generate config code for different platforms — ใส่ API key จริงได้เฉพาะตอนเพิ่งออกกุญแจ
+function getConfigCode(device, apiKey, platform) {
     const baseUrl = window.location.origin;
+    const deviceId = device.device_id;
+    const interval = parseInt(device.config?.interval_minutes) || 15;
+    const location = device.location || '0,0';
+    const key = apiKey || '<<YOUR_API_KEY>>';
     const configs = {
         esp32: `// ESP32 — FoodPassport IoT Sensor
 // ติดตั้ง: Arduino IDE → Library Manager → ArduinoJson + HTTPClient
@@ -131,9 +245,10 @@ const char* WIFI_SSID     = "YOUR_WIFI";
 const char* WIFI_PASSWORD  = "YOUR_PASSWORD";
 const char* API_URL        = "${baseUrl}/api/v1/food-passport/iot/ingest";
 const char* DEVICE_ID      = "${deviceId}";
+const char* API_KEY        = "${key}";  // ← กุญแจของเครื่องนี้ — เก็บเป็นความลับ
 const int   PRODUCT_ID     = 1;        // ← เปลี่ยนเป็น Product ID ของคุณ
 const char* STAGE          = "farm";   // farm / processing / storage / transport / retail
-const int   INTERVAL_MS    = ${parseInt(form.value.interval) * 60000};
+const int   INTERVAL_MS    = ${interval * 60000};
 
 void setup() {
   Serial.begin(115200);
@@ -147,6 +262,7 @@ void loop() {
     HTTPClient http;
     http.begin(API_URL);
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", String("Bearer ") + API_KEY);
 
     // อ่านค่า sensor (ตัวอย่าง — เปลี่ยนเป็น sensor จริงของคุณ)
     float temperature = analogRead(34) * 0.1;  // ← เปลี่ยนเป็น pin จริง
@@ -158,7 +274,7 @@ void loop() {
     doc["stage"]       = STAGE;
     doc["temperature"] = temperature;
     doc["humidity"]    = humidity;
-    doc["location"]    = "${form.value.location || '0,0'}";
+    doc["location"]    = "${location}";
 
     String json;
     serializeJson(doc, json);
@@ -179,9 +295,10 @@ import json
 
 API_URL    = "${baseUrl}/api/v1/food-passport/iot/ingest"
 DEVICE_ID  = "${deviceId}"
+API_KEY    = "${key}"  # ← กุญแจของเครื่องนี้ — เก็บเป็นความลับ
 PRODUCT_ID = 1        # ← เปลี่ยนเป็น Product ID ของคุณ
 STAGE      = "farm"   # farm / processing / storage / transport / retail
-INTERVAL   = ${parseInt(form.value.interval) * 60}  # วินาที
+INTERVAL   = ${interval * 60}  # วินาที
 
 def read_sensor():
     """อ่านค่า sensor — เปลี่ยนเป็น sensor จริงของคุณ"""
@@ -199,9 +316,9 @@ while True:
             "stage":       STAGE,
             "temperature": data["temperature"],
             "humidity":    data["humidity"],
-            "location":   "${form.value.location || '0,0'}",
+            "location":   "${location}",
         }
-        r = requests.post(API_URL, json=payload, timeout=10)
+        r = requests.post(API_URL, json=payload, headers={"Authorization": "Bearer " + API_KEY}, timeout=10)
         print(f"Sent! Status: {r.status_code}")
     except Exception as e:
         print(f"Error: {e}")
@@ -209,15 +326,21 @@ while True:
     time.sleep(INTERVAL)`,
         curl: `# ทดสอบด้วย cURL — คัดลอกแล้วรันใน Terminal ได้เลย
 
+# 1) เช็คว่า API key ใช้ได้ (ยังไม่บันทึกข้อมูล)
+curl ${baseUrl}/api/v1/food-passport/iot/test/${deviceId} \\
+  -H "Authorization: Bearer ${key}"
+
+# 2) ส่งข้อมูลจริง
 curl -X POST ${baseUrl}/api/v1/food-passport/iot/ingest \\
   -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer ${key}" \\
   -d '{
     "device_id": "${deviceId}",
     "product_id": 1,
     "stage": "farm",
     "temperature": 25.5,
     "humidity": 65.0,
-    "location": "${form.value.location || '13.7563,100.5018'}",
+    "location": "${device.location || '13.7563,100.5018'}",
     "data": { "battery": 100, "signal": "good" }
   }'`,
         node: `// Node.js / JavaScript — FoodPassport IoT
@@ -225,9 +348,10 @@ curl -X POST ${baseUrl}/api/v1/food-passport/iot/ingest \\
 
 const API_URL    = "${baseUrl}/api/v1/food-passport/iot/ingest";
 const DEVICE_ID  = "${deviceId}";
+const API_KEY    = "${key}"; // ← กุญแจของเครื่องนี้ — เก็บเป็นความลับ
 const PRODUCT_ID = 1;        // ← เปลี่ยนเป็น Product ID
 const STAGE      = "farm";
-const INTERVAL   = ${parseInt(form.value.interval) * 60} * 1000; // ms
+const INTERVAL   = ${interval * 60} * 1000; // ms
 
 async function sendData() {
   const payload = {
@@ -236,13 +360,13 @@ async function sendData() {
     stage:       STAGE,
     temperature: 25.0,  // ← ค่าจาก sensor จริง
     humidity:    60.0,
-    location:    "${form.value.location || '0,0'}",
+    location:    "${location}",
   };
 
   try {
     const res = await fetch(API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + API_KEY },
       body: JSON.stringify(payload),
     });
     // IoT data sent
@@ -251,7 +375,7 @@ async function sendData() {
   }
 }
 
-// ส่งทุก ${form.value.interval} นาที
+// ส่งทุก ${interval} นาที
 setInterval(sendData, INTERVAL);
 sendData(); // ส่งครั้งแรกทันที`,
     };
@@ -340,7 +464,7 @@ function copyCode(text) {
                         </div>
 
                         <div class="flex justify-between">
-                            <button @click="wizardStep = 0" class="text-dark-400 hover:text-white text-sm">ยกเลิก</button>
+                            <button @click="closeWizard" class="text-dark-400 hover:text-white text-sm">ยกเลิก</button>
                             <button @click="wizardStep = 2" class="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-xl text-sm font-medium">
                                 ถัดไป →
                             </button>
@@ -417,10 +541,28 @@ function copyCode(text) {
                     <template v-if="wizardStep === 3 && registeredDevice">
                         <div class="text-center mb-6">
                             <div class="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-green-500/20 to-cyan-500/20 flex items-center justify-center mb-3">
-                                <span class="text-4xl">✅</span>
+                                <span class="text-4xl">{{ issuedKey?.mode === 'registered' ? '✅' : '🔑' }}</span>
                             </div>
-                            <h3 class="text-xl font-bold text-white">ลงทะเบียนสำเร็จ!</h3>
-                            <p class="text-dark-400 text-sm mt-1">คัดลอก Config ด้านล่างไปใส่ในอุปกรณ์ของคุณ</p>
+                            <h3 class="text-xl font-bold text-white">
+                                {{ issuedKey?.mode === 'rotated' ? 'ออก API key ใหม่แล้ว' : issuedKey?.mode === 'issued' ? 'ออก API key แล้ว' : 'ลงทะเบียนสำเร็จ!' }}
+                            </h3>
+                            <p class="text-dark-400 text-sm mt-1">คัดลอก API key และ Config ด้านล่างไปใส่ในอุปกรณ์ของคุณ</p>
+                        </div>
+
+                        <!-- API key — เห็นได้ครั้งนี้ครั้งเดียว (เซิร์ฟเวอร์เก็บแค่ hash) -->
+                        <div v-if="issuedKey" class="p-4 rounded-xl bg-amber-500/5 border border-amber-500/20 mb-5" data-test="iot-api-key">
+                            <div class="flex items-center justify-between gap-3 mb-2">
+                                <p class="text-amber-300 text-sm font-medium">🔑 API key ของ {{ issuedKey.deviceId }}</p>
+                                <button @click="copyKey"
+                                    class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-dark-300 hover:text-white text-xs transition-all whitespace-nowrap">
+                                    {{ keyCopied ? '✓ คัดลอกแล้ว' : '📋 คัดลอก' }}
+                                </button>
+                            </div>
+                            <p class="text-white font-mono text-xs break-all bg-dark-900 rounded-lg px-3 py-2">{{ issuedKey.apiKey }}</p>
+                            <p class="text-dark-400 text-xs mt-2">
+                                แสดงครั้งเดียว — ระบบไม่ได้เก็บกุญแจตัวจริงไว้ ถ้าหายหรือหลุดให้กด "ออก API key ใหม่" ที่รายการอุปกรณ์
+                                <span v-if="issuedKey.mode === 'rotated'" class="text-amber-400">· กุญแจเดิมใช้ไม่ได้แล้ว</span>
+                            </p>
                         </div>
 
                         <!-- Device Info -->
@@ -436,11 +578,11 @@ function copyCode(text) {
                                 </div>
                                 <div>
                                     <span class="text-dark-500">โปรโตคอล:</span>
-                                    <p class="text-primary-400">{{ form.protocol.toUpperCase() }}</p>
+                                    <p class="text-primary-400">{{ (registeredDevice.config?.protocol || 'http').toUpperCase() }}</p>
                                 </div>
                                 <div>
                                     <span class="text-dark-500">ส่งข้อมูลทุก:</span>
-                                    <p class="text-white">{{ form.interval }} นาที</p>
+                                    <p class="text-white">{{ registeredDevice.config?.interval_minutes || 15 }} นาที</p>
                                 </div>
                             </div>
                         </div>
@@ -466,20 +608,20 @@ function copyCode(text) {
 
                         <!-- Code Block -->
                         <div class="relative bg-dark-900 rounded-xl border border-white/5 mb-5">
-                            <button @click="copyCode(getConfigCode(registeredDevice.device_id, activeCodeTab))"
+                            <button @click="copyCode(getConfigCode(registeredDevice, issuedKey?.apiKey, activeCodeTab))"
                                 class="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-dark-400 hover:text-white text-xs transition-all">
                                 📋 Copy
                             </button>
-                            <pre class="p-4 text-xs text-green-400 font-mono whitespace-pre-wrap overflow-x-auto max-h-80 overflow-y-auto">{{ getConfigCode(registeredDevice.device_id, activeCodeTab) }}</pre>
+                            <pre class="p-4 text-xs text-green-400 font-mono whitespace-pre-wrap overflow-x-auto max-h-80 overflow-y-auto">{{ getConfigCode(registeredDevice, issuedKey?.apiKey, activeCodeTab) }}</pre>
                         </div>
 
                         <!-- Quick Steps -->
                         <div class="p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/10 mb-5">
                             <p class="text-cyan-300 text-sm font-medium mb-2">ขั้นตอนต่อไป (3 ขั้นตอน):</p>
                             <div class="space-y-1.5 text-xs text-dark-300">
-                                <p>1. คัดลอก code ด้านบน → ใส่ในอุปกรณ์ของคุณ</p>
+                                <p>1. คัดลอก code ด้านบน (มี API key ใส่ไว้แล้ว) → ใส่ในอุปกรณ์ของคุณ</p>
                                 <p>2. เปลี่ยน <code class="text-cyan-400 bg-dark-800 px-1 rounded">PRODUCT_ID</code> เป็น ID ของสินค้าที่ลงทะเบียนไว้</p>
-                                <p>3. รัน — ข้อมูลจะถูกส่งเข้าระบบ FoodPassport อัตโนมัติ</p>
+                                <p>3. รัน — ข้อมูลจะถูกส่งเข้าระบบ FoodPassport อัตโนมัติ (ไม่มี API key = ระบบไม่รับข้อมูล)</p>
                             </div>
                         </div>
 
@@ -492,7 +634,7 @@ function copyCode(text) {
                             <p class="text-dark-400 text-xs">IoT sensor ของคุณจะได้รับ <strong class="text-amber-400">1 FDP</strong> ต่อทุก trace ที่ส่งสำเร็จ</p>
                         </div>
 
-                        <button @click="wizardStep = 0" class="w-full py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-medium text-sm">
+                        <button @click="closeWizard" class="w-full py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-medium text-sm">
                             เสร็จสิ้น
                         </button>
                     </template>
@@ -521,6 +663,9 @@ function copyCode(text) {
                                     device.status === 'maintenance' ? 'bg-amber-500/10 text-amber-400' :
                                     'bg-dark-700 text-dark-500'
                                 ]">{{ device.status }}</span>
+                                <!-- ลงทะเบียนก่อนมีระบบกุญแจ — ส่งข้อมูลไม่ได้จนกว่าจะออกกุญแจ -->
+                                <span v-if="!device.has_api_key"
+                                    class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400">ยังไม่มี API key</span>
                             </div>
                             <p v-if="device.last_ping_at" class="text-dark-600 text-[10px] mt-0.5">
                                 Last ping: {{ new Date(device.last_ping_at).toLocaleString('th-TH') }}
@@ -528,21 +673,28 @@ function copyCode(text) {
                         </div>
                         <div class="flex items-center gap-2">
                             <span v-if="device.traces_count" class="text-dark-500 text-xs">{{ device.traces_count }} traces</span>
-                            <button @click="testConnection(device)"
+                            <button @click="rotateKey(device)"
+                                :disabled="rotatingId === device.device_id"
+                                :class="['px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-50',
+                                    device.has_api_key ? 'bg-white/5 text-dark-300 hover:bg-white/10' : 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20']">
+                                {{ rotatingId === device.device_id ? '...' : device.has_api_key ? '🔑 ออกใหม่' : '🔑 ออก API key' }}
+                            </button>
+                            <button @click="checkStatus(device)"
                                 :disabled="testLoading && selectedDeviceForTest === device.device_id"
                                 class="px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 text-xs hover:bg-cyan-500/20 transition-all disabled:opacity-50">
-                                {{ testLoading && selectedDeviceForTest === device.device_id ? '...' : '🔄 Test' }}
+                                {{ testLoading && selectedDeviceForTest === device.device_id ? '...' : '🔄 ตรวจสถานะ' }}
                             </button>
                         </div>
                     </div>
-                    <!-- Test Result -->
+                    <!-- ออกกุญแจไม่สำเร็จ -->
+                    <div v-if="keyError && keyError.deviceId === device.device_id"
+                        class="mt-3 pt-3 border-t border-white/5 flex items-center gap-2 text-trading-red text-sm">
+                        <span>⚠️</span> {{ keyError.message }}
+                    </div>
+                    <!-- ผลตรวจสถานะ: เซิร์ฟเวอร์ได้ยินจากเครื่องล่าสุดเมื่อไร -->
                     <div v-if="selectedDeviceForTest === device.device_id && testResult" class="mt-3 pt-3 border-t border-white/5">
-                        <div v-if="testResult === 'ok' || testResult === 'connection_ok'"
-                            class="flex items-center gap-2 text-trading-green text-sm">
-                            <span>✅</span> Connection OK — Device ส่งข้อมูลได้ปกติ
-                        </div>
-                        <div v-else class="flex items-center gap-2 text-amber-400 text-sm">
-                            <span>⚠️</span> {{ testResult }}
+                        <div :class="['flex items-center gap-2 text-sm', testResult.ok ? 'text-trading-green' : 'text-amber-400']">
+                            <span>{{ testResult.ok ? '✅' : '⚠️' }}</span> {{ testResult.message }}
                         </div>
                     </div>
                 </div>

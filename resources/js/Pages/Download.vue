@@ -9,12 +9,20 @@ import { ref, computed, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTranslation } from '@/Composables/useTranslation';
+import { TPIX_WALLET_APP_ICON } from '@/utils/brand';
+import LearnVideoPlayer from '@/Components/Learn/LearnVideoPlayer.vue';
 
 const { t, locale } = useTranslation();
 
 const props = defineProps({
     latestRelease: { type: Object, default: null },
+    /** วิดีโอสอนติดตั้ง/ใช้งาน จาก config/learn.php — { code, video, poster, duration, title: {th,en}, url: {th,en} } */
+    lessons: { type: Array, default: () => [] },
 });
+
+const lang = computed(() => (locale.value === 'th' ? 'th' : 'en'));
+const lesson = (code) => props.lessons.find((l) => l.code === code) || null;
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 const release = ref(props.latestRelease);
 const chainData = ref(null);
@@ -92,6 +100,10 @@ function formatDate(iso) {
                 <div class="text-center mb-10">
                     <h1 class="text-3xl font-bold text-white mb-2">{{ t('download.title') }}</h1>
                     <p class="text-dark-400">{{ locale === 'th' ? 'ดาวน์โหลดแอปจากระบบของเราโดยตรง — ปลอดภัย เร็ว' : 'Download apps directly from our server — safe and fast' }}</p>
+                    <a v-if="lesson('install-android')" href="#install-guide"
+                        class="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-full bg-primary-500/15 border border-primary-500/30 text-primary-300 text-sm hover:bg-primary-500/25 transition-colors">
+                        ▶ {{ lang === 'th' ? `ติดตั้งครั้งแรก? ดูวิดีโอสอนทีละขั้น (${mmss(lesson('install-android').duration)})` : `First time? Watch the install video (${mmss(lesson('install-android').duration)})` }}
+                    </a>
                 </div>
 
                 <!-- Loading -->
@@ -134,12 +146,18 @@ function formatDate(iso) {
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🔐</span> {{ t('download.wallet') }}</div>
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🌐</span> {{ t('download.multiChain') }}</div>
                             </div>
+                            <a v-if="lesson('trade-basics')" :href="lesson('trade-basics').url[lang]"
+                                class="mt-3 flex items-center justify-center gap-2 py-2 rounded-xl border border-primary-500/20 text-primary-300 text-sm hover:bg-primary-500/10 transition-colors">
+                                ▶ {{ lang === 'th' ? 'วิดีโอสอนใช้ TPIX TRADE' : 'Watch: TPIX TRADE basics' }}
+                                <span class="text-xs text-dark-500">{{ mmss(lesson('trade-basics').duration) }}</span>
+                            </a>
                         </div>
 
                         <!-- TPIX Wallet -->
                         <div class="glass-card p-6 border border-purple-500/20">
                             <div class="flex items-center gap-3 mb-4">
-                                <img src="/images/logowallet.webp" class="w-14 h-14 object-contain" alt="TPIX Wallet" />
+                                <!-- ไอคอนแอปตัวจริง (ตัวเดียวกับปุ่ม "เชื่อมด้วย TPIX Wallet") — logowallet.webp เป็นตราทองรุ่นเก่า 600KB -->
+                                <img :src="TPIX_WALLET_APP_ICON" class="w-14 h-14 rounded-2xl ring-1 ring-white/15" alt="TPIX Wallet" />
                                 <div>
                                     <h2 class="text-lg font-bold text-white">TPIX Wallet</h2>
                                     <p class="text-dark-400 text-xs" v-if="chainData?.wallet">v{{ chainData.wallet.version }} &middot; {{ formatDate(chainData.wallet.published_at) }}</p>
@@ -167,6 +185,11 @@ function formatDate(iso) {
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>📱</span> {{ locale === 'th' ? 'QR รับเงิน' : 'QR receive' }}</div>
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🎨</span> {{ locale === 'th' ? '3D อนิเมชัน' : '3D animation' }}</div>
                             </div>
+                            <a v-if="lesson('wallet-basics')" :href="lesson('wallet-basics').url[lang]"
+                                class="mt-3 flex items-center justify-center gap-2 py-2 rounded-xl border border-purple-500/20 text-purple-300 text-sm hover:bg-purple-500/10 transition-colors">
+                                ▶ {{ lang === 'th' ? 'วิดีโอสอนใช้ TPIX Wallet' : 'Watch: TPIX Wallet basics' }}
+                                <span class="text-xs text-dark-500">{{ mmss(lesson('wallet-basics').duration) }}</span>
+                            </a>
                         </div>
                     </div>
 
@@ -236,23 +259,36 @@ function formatDate(iso) {
                     </div>
                 </div>
 
-                <!-- Install Instructions -->
-                <div class="mt-8 glass-card p-6">
+                <!-- Install Instructions (+ วิดีโอสอนติดตั้งทีละขั้น) -->
+                <div id="install-guide" class="mt-8 glass-card p-6 scroll-mt-24">
                     <h3 class="text-white font-semibold mb-4">{{ t('download.installTitle') }}</h3>
-                    <ol class="space-y-3 text-sm text-dark-300">
-                        <li class="flex items-start gap-3">
-                            <span class="w-6 h-6 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">1</span>
-                            <span>{{ t('download.step1') }}</span>
-                        </li>
-                        <li class="flex items-start gap-3">
-                            <span class="w-6 h-6 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">2</span>
-                            <span>{{ t('download.step2Open') }} <strong class="text-white">{{ t('download.step2Settings') }}</strong> > <strong class="text-white">{{ t('download.step2Install') }}</strong> > {{ t('download.step2Allow') }}</span>
-                        </li>
-                        <li class="flex items-start gap-3">
-                            <span class="w-6 h-6 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">3</span>
-                            <span>{{ t('download.step3') }} <strong class="text-white">{{ t('download.step3Install') }}</strong></span>
-                        </li>
-                    </ol>
+                    <div :class="lesson('install-android') ? 'flex flex-col md:flex-row gap-6' : ''">
+                        <LearnVideoPlayer v-if="lesson('install-android')" :lesson="lesson('install-android')" :lang="lang" :show-chapters="false" />
+                        <div class="flex-1 min-w-0">
+                            <ol class="space-y-3 text-sm text-dark-300">
+                                <li class="flex items-start gap-3">
+                                    <span class="w-6 h-6 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">1</span>
+                                    <span>{{ t('download.step1') }}</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="w-6 h-6 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">2</span>
+                                    <span>{{ t('download.step2Open') }} <strong class="text-white">{{ t('download.step2Settings') }}</strong> > <strong class="text-white">{{ t('download.step2Install') }}</strong> > {{ t('download.step2Allow') }}</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="w-6 h-6 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">3</span>
+                                    <span>{{ t('download.step3') }} <strong class="text-white">{{ t('download.step3Install') }}</strong></span>
+                                </li>
+                            </ol>
+                            <div v-if="lesson('install-android')" class="mt-5 space-y-2">
+                                <a :href="lesson('install-android').url[lang]" class="block text-sm text-primary-400 hover:text-primary-300">
+                                    📖 {{ lang === 'th' ? 'อ่านขั้นตอนเต็ม + วิธีแก้ปัญหาที่เจอบ่อย' : 'Full steps + fixes for common problems' }}
+                                </a>
+                                <a href="/blog?category=learn" class="block text-sm text-primary-400 hover:text-primary-300">
+                                    🎓 {{ lang === 'th' ? 'ดูวิดีโอสอนใช้งานทั้งหมด' : 'All tutorial videos' }}
+                                </a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Download Stats -->

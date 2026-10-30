@@ -81,7 +81,7 @@ class TokenController extends Controller
 
         $token = Token::create($validated);
 
-        $this->audit('token.create', $token, null, $token->only(self::AUDITED));
+        AuditLog::log('token.create', $token, null, $token->only(self::AUDITED));
 
         return back()->with('success', 'Token created successfully.');
     }
@@ -100,7 +100,7 @@ class TokenController extends Controller
 
         $fields = array_values(array_intersect(self::AUDITED, array_keys($token->getChanges())));
         if ($fields !== []) {
-            $this->audit(
+            AuditLog::log(
                 in_array('logo', $fields, true) ? 'token.logo_update' : 'token.update',
                 $token,
                 array_intersect_key($before, array_flip($fields)),
@@ -122,7 +122,7 @@ class TokenController extends Controller
 
         // ลบ logo file ถ้าเป็นไฟล์ที่หลังบ้านอัปโหลดเองและไม่มีแถวอื่นใช้อยู่
         $this->logos->deleteIfUnused($logo);
-        $this->audit('token.delete', $token, $before, null);
+        AuditLog::log('token.delete', $token, $before, null);
 
         return back()->with('success', 'Token deleted successfully.');
     }
@@ -209,25 +209,5 @@ class TokenController extends Controller
     private function logoRules(): array
     {
         return ['max_kb' => TokenLogoStorage::MAX_KB, 'min_px' => TokenLogoStorage::MIN_PX, 'types' => 'PNG, WebP'];
-    }
-
-    /**
-     * บันทึกด้วย guard admin — AuditLog::log() อ่าน auth()->id() ของ guard ปริยาย (web).
-     *
-     * @param  array<string, mixed>|null  $old
-     * @param  array<string, mixed>|null  $new
-     */
-    private function audit(string $action, Token $token, ?array $old, ?array $new): void
-    {
-        AuditLog::create([
-            'admin_id' => Auth::guard('admin')->id(),
-            'action' => $action,
-            'model_type' => Token::class,
-            'model_id' => $token->id,
-            'old_values' => $old,
-            'new_values' => $new,
-            'ip_address' => request()->ip(),
-            'user_agent' => request()->userAgent(),
-        ]);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Http\Middleware\VerifyWalletOwnership;
 use App\Models\SiteSetting;
 use App\Services\Stabilizer\BridgeReserveSource;
 use App\Services\Stabilizer\NodeStabilizerSigner;
@@ -44,6 +45,18 @@ class AppServiceProvider extends ServiceProvider
     ];
 
     /**
+     * Token Factory — ชื่อตัวนับ => [ต่อกระเป๋า, ต่อ IP, นับรายชั่วโมงไหม (false = รายนาที)].
+     *
+     * ต่อกระเป๋าเท่าของเดิมใน routes/api.php · ต่อ IP สูงกว่าเพราะผู้ใช้มือถือหลายคนใช้ IP เดียวกัน (NAT)
+     */
+    private const TOKEN_FACTORY_RATE_LIMITS = [
+        'token-factory-quote' => [20, 60, true],
+        'token-factory-fee-status' => [60, 120, false],
+        'token-factory-create' => [10, 30, true],
+        'token-factory-logo' => [10, 30, true],
+    ];
+
+    /**
      * Register any application services.
      */
     public function register(): void
@@ -81,9 +94,7 @@ class AppServiceProvider extends ServiceProvider
         HandleCors::skipWhen(fn (Request $request) => $request->is('api/v1/tokens/list'));
 
         // Rate limiters for API routes
-        RateLimiter::for('trading', function (Request $request) {
-            return Limit::perMinute(30)->by($request->input('wallet_address') ?? $request->ip());
-        });
+        RateLimiter::for('trading', fn (Request $request) => $this->tradingLimit($request));
 
         /*
          * เชื่อมกระเป๋า / ขอข้อความ / ยืนยันลายเซ็น
@@ -111,12 +122,80 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        /*
+         * ใบสมัคร validator — ตัวนับของตัวเอง ต่อ IP ต่อชั่วโมง
+         *
+         * ⚠️ เดิม /validators/apply ใช้ `throttle:5,60` แบบไม่มีชื่อ = ตัวนับเดียวกับ API สาธารณะ
+         *    ทั้งเว็บ (คีย์ โดเมน|IP) แถม throttleApi นับซ้ำอีกรอบ ผู้ใช้ที่เพิ่งเปิดหน้าอื่นมา
+         *    จึงโดน 429 ตอนกดส่งใบสมัคร ทั้งที่ยังไม่เคยส่งเลย
+         *    การสมัครหนึ่งครั้ง = 2 คำขอ (ขอข้อความให้เซ็น + ส่งใบ)
+         */
+        RateLimiter::for('validator-apply-challenge', fn (Request $request) => Limit::perHour(30)->by('challenge:'.$request->ip()));
+        RateLimiter::for('validator-apply', fn (Request $request) => Limit::perHour(10)->by('submit:'.$request->ip()));
+
+        /*
+         * Token Factory — ตัวนับของตัวเอง ต่อกระเป๋า (ด่าน VerifyWalletOwnership รันก่อนแล้ว) + ต่อ IP
+         *
+         * ⚠️ เดิมใช้ `throttle:10,60` แบบไม่มีชื่อ — บั๊กเดียวกับ validator-apply ข้างบน
+         *    ผู้ใช้ที่จ่ายค่าธรรมเนียมแล้วโดน 429 ตอนส่งคำขอสร้าง เพราะหน้าเว็บถาม fee-status
+         *    ระหว่างรอยืนยันจนตัวนับรวมทั้งเว็บเกิน 10
+         */
+        foreach (self::TOKEN_FACTORY_RATE_LIMITS as $name => [$perWallet, $perIp, $perHour]) {
+            RateLimiter::for($name, function (Request $request) use ($name, $perWallet, $perIp, $perHour) {
+                $wallet = strtolower((string) $request->input('wallet_address', ''));
+                $limit = fn (int $n) => $perHour ? Limit::perHour($n) : Limit::perMinute($n);
+
+                return [
+                    $limit($perWallet)->by($name.':wallet:'.($wallet ?: $request->ip())),
+                    $limit($perIp)->by($name.':ip:'.$request->ip()),
+                ];
+            });
+        }
+
         foreach (self::AI_BOT_RATE_LIMITS as $name => $perMinute) {
             RateLimiter::for($name, fn (Request $request) => $this->aiBotLimits($request, $perMinute));
         }
 
         // Configure mail from database settings
         $this->configureMailFromDatabase();
+    }
+
+    /**
+     * โควตาของกลุ่มที่ต้องยืนยันกระเป๋า (throttle:trading) — 30 ครั้ง/นาที เลือกถังตามหลักฐานความเป็นเจ้าของ.
+     *
+     * ⚠️ เดิมนับ by(wallet_address ที่ส่งมา) ทุกคำขอ ก่อนรู้ว่าใครเป็นเจ้าของ (throttle รันก่อนด่านกระเป๋า)
+     *    เลขกระเป๋าเห็นได้บนเชน ใครก็ยิง 30 ครั้ง/นาทีใส่เลขกระเป๋าของเหยื่อ — โดน 403 ทุกครั้งแต่ถูกนับ
+     *    เจ้าของตัวจริงโดน 429 ทั้งสั่งซื้อขาย swap ซื้อเหรียญ stake KYC ค่าธรรมเนียม โดยคนยิงไม่ต้องพิสูจน์อะไร
+     *    และ X-RateLimit-Remaining ที่คนแปลกหน้าได้กลับไปก็บอกว่าเจ้าของใช้ไปเท่าไร (เฝ้าดูกระเป๋าคนอื่นได้)
+     *
+     * ถังที่นับ — ตัดสินด้วย VerifyWalletOwnership::proves() ตัวเดียวกับด่าน:
+     *   พิสูจน์ได้ว่าเป็นเจ้าของ   → ถังของกระเป๋า (ทุก IP รวมกัน) — สลับ Wi-Fi/4G ไม่ได้โควตาใหม่
+     *                                และคนอื่นแตะถังนี้ไม่ได้เลย แม้ออกเน็ต IP เดียวกัน (CGNAT)
+     *   อ้างกระเป๋าแต่พิสูจน์ไม่ได้ → ถัง "กระเป๋า + IP" แบบ aiBotLimits() — มีเพดานของตัวเอง
+     *                                (รวมถึงหน้าเว็บที่ยิง GET ก่อนเซ็น — ไม่กินโควตาหลังเซ็น)
+     *   ไม่ระบุกระเป๋า/รูปแบบผิด   → ถังของ IP เหมือนเดิม
+     *
+     * ⚠️ ห้ามแก้ด้วยการย้าย throttle:trading ไปไว้หลัง VerifyWalletOwnership ใน routes/api.php
+     *    Laravel เรียง ThrottleRequests ขึ้นก่อน SubstituteBindings ของกลุ่ม api เสมอ (middleware priority)
+     *    เขียนลำดับไว้แบบไหน throttle ก็รันก่อนด่านกระเป๋า
+     * ⚠️ ห้ามเพิ่มเพดานต่อ IP ให้คำขอของเจ้าของ — ทุก Limit ถูกตรวจก่อนเข้า ถังที่คนแปลกหน้าเติมได้
+     *    คือถังที่ขวางเจ้าของได้ การยิงรัวมี throttleApi (60/นาที ต่อ IP หรือต่อบัญชี) ของทั้ง API กันอยู่แล้ว
+     */
+    private function tradingLimit(Request $request): Limit
+    {
+        $limit = Limit::perMinute(30);
+        $ip = (string) $request->ip();
+
+        // ส่ง array มา/รูปแบบผิด = ถือว่าไม่ได้ระบุกระเป๋า — ห้าม cast ตรงๆ จะกลายเป็น 500 (ด่านตอบ 422 เอง)
+        $claimed = VerifyWalletOwnership::requestedWallet($request);
+
+        if (! is_string($claimed) || ! preg_match('/^0x[a-fA-F0-9]{40}$/', $claimed)) {
+            return $limit->by('ip|'.$ip);
+        }
+
+        $wallet = strtolower($claimed);
+
+        return $limit->by(VerifyWalletOwnership::proves($request, $wallet) ? $wallet : $wallet.'|'.$ip);
     }
 
     /**

@@ -48,7 +48,7 @@ import { playTradeSound, playErrorSound } from '@/Composables/useSounds';
 import { getBscTradeToken, getVerifiedTradeToken } from '@/Config/bscTradeTokens';
 import axios from 'axios';
 import { useTranslation } from '@/Composables/useTranslation';
-import { showToast } from '@/Composables/useToasts';
+import { showToast, dismissToast } from '@/Composables/useToasts';
 
 // การเทรดจริงทั้งหมดรันบน BSC (PancakeSwap) จนกว่า DEX บน TPIX Chain จะพร้อม
 const BSC_CHAIN_ID = 56;
@@ -96,11 +96,13 @@ const pairMeta = ref(null);
 const pairMetaLoaded = ref(false);
 // โหลดทะเบียนคู่ไม่สำเร็จ (ต่างจาก "ไม่มีคู่นี้") — ยังตัดสินไม่ได้ว่าเทรดได้ไหม
 const pairMetaFailed = ref(false);
+// ข้อมูลข้างบนเป็นของคู่ไหน — สลับคู่แล้วระหว่างโหลด pairMeta ยังเป็นของคู่เก่า
+const pairMetaFor = ref('');
 
 async function loadPairMeta() {
+    const wanted = props.pair.toUpperCase();
     try {
         const { data } = await axios.get('/api/v1/market/pairs');
-        const wanted = props.pair.toUpperCase();
         pairMeta.value = (data?.data || []).find((p) => String(p.symbol).toUpperCase() === wanted) || null;
         pairMetaFailed.value = !data?.success;
     } catch {
@@ -108,6 +110,7 @@ async function loadPairMeta() {
         pairMetaFailed.value = true;
     } finally {
         pairMetaLoaded.value = true;
+        pairMetaFor.value = wanted;
     }
 }
 
@@ -173,6 +176,25 @@ const kycBlocked = computed(() => {
 //  disabled = คู่บนเชน TPIX ที่ DEX ยังไม่ deploy หรือคู่ที่ไม่มี token บน BSC — เห็นไว้ก่อน กดไม่ได้
 // ระหว่างรอทะเบียนคู่ของคู่ BSC = onchain แต่ปุ่มปิด (tradeUnavailableReason) ไม่ให้ฟอร์มกระพริบเป็น "เร็วๆ นี้"
 const tradeFormMode = computed(() => ((isBscTradable.value || isDexPair.value || bscPairPending.value) ? 'onchain' : 'disabled'));
+
+/*
+ * ป้ายบอกโหมดเทรดของคู่นี้ (เทรดบน BSC / บนเชน TPIX / ราคาอ้างอิง / รอ DEX)
+ *
+ * เจ้าของสั่ง (2026-10-28): ป้ายเตือนด้านบนต้องเป็นบอลลูนลอย หายเองหรือกดปิดได้
+ * เดิมเป็นแถบในผัง กินความสูงกระดานตลอดเวลา — ตอนนี้ลอยผ่าน showToast 10 วิ
+ * ฟอร์มเทรดยังบอกเหตุผลเองตอนกดไม่ได้ (tradeUnavailableReason) ป้ายหายไปก็ไม่เสียข้อมูล
+ */
+const pairNotice = computed(() => {
+    if (!pairMetaLoaded.value || pairMetaFor.value !== props.pair.toUpperCase()) return null;
+    if (tradeFormMode.value === 'onchain') {
+        return { key: isDexPair.value ? 'trade.notice.onchainTpix' : 'trade.notice.onchain', type: 'info' };
+    }
+    if (isTpixChainPair.value) {
+        // คู่ดัชนี (execution_mode = index) เป็นราคาอ้างอิงถาวร ไม่ใช่ "รอ DEX"
+        return { key: pairMeta.value?.execution_mode === 'index' ? 'trade.notice.indexOnly' : 'trade.notice.tpixDexPending', type: 'warning' };
+    }
+    return null;
+});
 
 /**
  * โทเคนของคู่บน TPIX DEX ในรูปที่ useTpixDex ใช้ — สร้างจากข้อมูลเซิร์ฟเวอร์ ไม่เดา
@@ -1144,8 +1166,9 @@ function showOrderError(message) {
  *
  * ⚠️ FAIL-CLOSED: ระบบเปิดอยู่แต่ยังไม่มีใบเสนอราคา (ผู้ใช้กดเร็วกว่า debounce ของฟอร์ม)
  *    ต้องขอใหม่ก่อนตัดสิน — เดิมถือว่า "ปิด" แล้ววางไม้โดยไม่มีใบอนุญาต
+ *    ใช้ทั้งไม้ BSC และไม้บนพูล TPIX (เดิมฝั่ง TPIX อ่าน currentQuote ตรงๆ = ไม่มีใบเสนอราคาก็วางไม้ฟรี · ออดิท L2)
  */
-async function resolveFeePlan(order, owner, orderValueUsd) {
+async function resolveFeePlan(order, owner, orderValueUsd, chainId = BSC_CHAIN_ID) {
     let feeQuote = tradingFee.currentQuote.value;
 
     if (!feeQuote) {
@@ -1154,7 +1177,7 @@ async function resolveFeePlan(order, owner, orderValueUsd) {
             feeQuote = await tradingFee.quote({
                 wallet: owner,
                 orderValueUsd,
-                chainId: BSC_CHAIN_ID,
+                chainId,
                 pair: currentPair.value,
             });
             if (!feeQuote) throw friendly(t('trade.status.feeQuoteFailed'));
@@ -1167,7 +1190,7 @@ async function resolveFeePlan(order, owner, orderValueUsd) {
 
 /**
  * ปิดใบอนุญาตพร้อม tx hash — ลองซ้ำหนึ่งครั้งถ้าครั้งแรกล้ม (เน็ตสะดุด)
- * ปิดไม่ได้เลย = ตัวเก็บกวาดฝั่งเซิร์ฟเวอร์ตัดสินจาก order_tx_hash ภายหลัง
+ * ปิดไม่ได้เลยก็ไม่เสียหาย: ใบที่ผูกธุรกรรมไว้แล้ว ตัวเก็บกวาดฝั่งเซิร์ฟเวอร์ถามผลบนเชนแล้วปิดให้เอง
  */
 async function consumeTicketWithRetry(owner, uuid, txHash) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -1175,6 +1198,38 @@ async function consumeTicketWithRetry(owner, uuid, txHash) {
         if (done) return done;
     }
     return null;
+}
+
+/**
+ * ผูกใบอนุญาตกับธุรกรรมของไม้ — เรียกทันทีที่กระเป๋าส่งธุรกรรมออก (ลองซ้ำหนึ่งครั้ง)
+ * ผูกแล้ว เซิร์ฟเวอร์ตัดสินตั๋วจากผลบนเชน: ไม้ลง = ปิด · ไม้ไม่ลง = คืน — แม้ผู้ใช้ปิดแท็บไปก่อน
+ */
+async function bindTicketWithRetry(owner, uuid, txHash) {
+    if (!txHash) return null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const bound = await tradingFee.bindTicket(owner, uuid, txHash);
+        if (bound) return bound;
+    }
+    return null;
+}
+
+/**
+ * คืนค่าบริการของไม้ที่ไม่ได้ลง
+ * ใบที่ผูกธุรกรรมแล้วคืนได้เมื่อเซิร์ฟเวอร์เห็นผล revert บนเชน — โหนดของเซิร์ฟเวอร์ตามหัวช้ากว่ากระเป๋าได้
+ * จึงถามซ้ำสั้นๆ · ไม่ทันก็ไม่เสียเงิน ตัวเก็บกวาดคืนให้เมื่อเชนยืนยัน
+ */
+async function refundTicketWhenSettled(owner, uuid) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 3000));
+        const result = await tradingFee.refundTicket(owner, uuid, 'ไม้ไม่ได้ลง');
+        if (!result?.pending) return result;
+    }
+    return null;
+}
+
+/** บัญชีในกระเป๋ายังเป็นบัญชีที่เริ่มไม้นี้ไหม */
+function isSameWallet(owner) {
+    return String(walletStore.address || '').toLowerCase() === String(owner || '').toLowerCase();
 }
 
 /**
@@ -1217,6 +1272,8 @@ async function executeBscMarketOrder(order) {
 
     // ใบอนุญาตวางไม้ที่ขอไว้ — ต้องคืนเงินถ้าไม้ไม่ได้ลง (ดู finally)
     let ticket = null;
+    // คำขอผูกใบอนุญาตกับธุรกรรม (ยิงตอนกระเป๋าส่งธุรกรรมออก) — ต้องจบก่อนปิด/คืนตั๋ว
+    let bindPromise = null;
 
     try {
         // 1) ตรวจ token address กับ on-chain (symbol + decimals) — ไม่ผ่าน = ไม่เทรด
@@ -1254,10 +1311,10 @@ async function executeBscMarketOrder(order) {
         const feePlan = await resolveFeePlan(order, owner, orderValueUsd);
 
         // 4) Quote จริงจาก PancakeSwap router (รวมค่าธรรมเนียมแพลตฟอร์มแล้ว ถ้าไม่ได้ยกเว้น)
-        const quote = await swap.getQuote(fromTok, toTok, inputText, {
-            slippage: order.slippage,
-            waiveFee: feePlan.mode === 'ticket',
-        });
+        const quoteOpts = { slippage: order.slippage, waiveFee: feePlan.mode === 'ticket' };
+        // ราคาที่พรีวิวในฟอร์มอยู่ (ถ้าตรงไม้นี้) — อ่านก่อนขอราคาใหม่ เพราะ getQuote จะจำตัวใหม่ทับ
+        const seen = swap.recentQuote(fromTok, toTok, inputText, quoteOpts);
+        const quote = await swap.getQuote(fromTok, toTok, inputText, quoteOpts);
         if (!quote) {
             throw friendly(swap.error.value || t('trade.status.noLiquidity'));
         }
@@ -1279,6 +1336,18 @@ async function executeBscMarketOrder(order) {
         }
         if (!Number.isFinite(quote.priceImpact) && !(marketPrice > 0)) {
             throw friendly(t('swapPage.priceImpactUnknown'));
+        }
+        /*
+         * ราคาใหม่ต้องไม่แย่กว่า "ได้รับอย่างน้อย" ที่ผู้ใช้เห็นในฟอร์ม (ออดิท 2026-10-28 L7)
+         * ⚠️ เดิมด่านเดียวคือ 10% เทียบราคาตลาด — พูลขยับระหว่างพรีวิวกับกดส่ง ผู้ใช้ได้น้อยกว่าที่จอบอกโดยไม่รู้ตัว
+         *    ตอนนี้แย่กว่าที่เห็น = หยุด บอกตัวเลขใหม่ ให้กดยืนยันอีกครั้ง (แบบเดียวกับไม้บนพูล TPIX)
+         */
+        if (seen && quote.netOutput < seen.minimumReceived) {
+            throw friendly(t('trade.status.dexPriceMoved', {
+                receive: fmtQty(quote.netOutput),
+                min: fmtQty(quote.minimumReceived),
+                symbol: toSym,
+            }));
         }
 
         /*
@@ -1311,7 +1380,14 @@ async function executeBscMarketOrder(order) {
          *
          * เลือกจ่ายเป็นเหรียญ (onchain) = ไม่ขอใบ — ค่าธรรมเนียม % ถูกโอนโดย useSwap อยู่แล้ว
          * (เซิร์ฟเวอร์ปฏิเสธตั๋วแบบ onchain แล้ว: ONCHAIN_FEE_NOT_SUPPORTED)
+         *
+         * ⚠️ บัญชีในกระเป๋าเปลี่ยนระหว่างสลับเชน/approve = ห้ามเก็บค่าบริการให้บัญชีเดิม
+         *    แล้วไปส่งไม้จากบัญชีใหม่ (ออดิท 2026-10-28 L6 — ฝั่งพูล TPIX กันไว้แล้ว ฝั่งนี้ไม่มี)
          */
+        if (!isSameWallet(owner)) {
+            throw friendly(t('trade.status.accountChanged'));
+        }
+        let deadlineCap = null;
         if (feePlan.mode === 'ticket') {
             orderMessage.value = t('trade.status.preparing');
             ticket = await tradingFee.issueTicket({
@@ -1327,6 +1403,10 @@ async function executeBscMarketOrder(order) {
             if (!ticket) {
                 throw friendly(tradingFee.error.value || t('trade.status.ticketFailed'));
             }
+
+            // ไม้ต้องหมดอายุก่อนใบอนุญาต (เผื่อ 60 วิ) — เดิม deadline 20 นาทีเกินอายุตั๋ว 15 นาที
+            const expiresAt = Math.floor(Date.parse(ticket.expires_at) / 1000);
+            if (Number.isFinite(expiresAt)) deadlineCap = expiresAt - 60;
         }
 
         // 9) ส่ง swap จริง — executeSwap เก็บ platform fee + บันทึก backend ให้แล้ว
@@ -1346,9 +1426,14 @@ async function executeBscMarketOrder(order) {
             side: order.side,
             price: quotedPrice,
             feeTicket: ticket?.uuid || null,
+            expectedOwner: owner,
+            minOutFloor: seen?.minOutWei ?? null,
+            deadlineCap,
             // ป๊อปอัพที่สองในกระเป๋าคือค่าธรรมเนียม — ต้องบอก ไม่งั้นผู้ใช้กดปฏิเสธเพราะนึกว่าแปลก
             onStage: (stage, info) => {
-                if (stage === 'fee') {
+                if (stage === 'sent') {
+                    if (ticket) bindPromise = bindTicketWithRetry(owner, ticket.uuid, info?.hash);
+                } else if (stage === 'fee') {
                     orderMessage.value = t('trade.status.confirmFee', { amount: fmtQty(info?.amount), symbol: info?.symbol || fromSym });
                 } else if (stage === 'recording') {
                     orderMessage.value = t('trade.status.recording');
@@ -1356,9 +1441,13 @@ async function executeBscMarketOrder(order) {
             },
         });
 
-        // ไม้ลงจริงแล้ว — ปิดใบอนุญาต (ตั้งค่า null กัน finally คืนเงินซ้ำ)
+        /*
+         * ไม้ลงจริงแล้ว (ตั้งค่า null กัน finally คืนเงินซ้ำ)
+         * บันทึกไม้ผ่าน = เซิร์ฟเวอร์ปิดตั๋วในจังหวะเดียวกับที่ยืนยันไม้แล้ว · บันทึกไม่ผ่าน = ปิดเองพร้อม hash
+         */
         if (ticket) {
-            await consumeTicketWithRetry(owner, ticket.uuid, result?.hash || null);
+            await bindPromise;
+            if (!result?.recorded) await consumeTicketWithRetry(owner, ticket.uuid, result?.hash || null);
             ticket = null;
         }
 
@@ -1382,12 +1471,13 @@ async function executeBscMarketOrder(order) {
         // ส่งธุรกรรมไปแล้วแต่ยืนยันผลไม่ได้ — แนบลิงก์ BscScan ให้ตรวจก่อนสั่งซ้ำ
         if (err?.txUrl) orderTxUrl.value = err.txUrl;
         /*
-         * ธุรกรรมอาจลงเชนแล้ว — ห้ามคืนค่าบริการ
-         * เดิมแค่ปล่อยตั๋วค้าง แล้วตัวเก็บกวาดคืนเงินให้เมื่อหมดอายุ ทั้งที่ไม้ลงเชนจริง
-         * (= เทรดฟรี) ตอนนี้ปิดตั๋วพร้อม tx hash ให้เซิร์ฟเวอร์ตรวจย้อนหลังได้
+         * ธุรกรรมอาจลงเชนแล้ว — ห้ามคืนค่าบริการ และห้ามปิดตั๋วเองด้วย (ออดิท 2026-10-28 L8)
+         * เดิมปิดตั๋วทันที = ไม้ที่สุดท้ายไม่ลง ผู้ใช้เสียค่าบริการฟรีๆ
+         * ตอนนี้ผูกตั๋วกับ hash ไว้ แล้วเซิร์ฟเวอร์ตัดสินจากเชน: ลง = ปิด · ไม่ลง = คืน
          */
         if (err?.txSent && ticket) {
-            await consumeTicketWithRetry(owner, ticket.uuid, err.txHash || null);
+            const bound = await bindPromise;
+            if (!bound) await bindTicketWithRetry(owner, ticket.uuid, err.txHash || null);
             ticket = null;
         }
         playErrorSound();
@@ -1398,11 +1488,12 @@ async function executeBscMarketOrder(order) {
          * อยู่ใน finally ไม่ใช่ catch เพราะทางที่ออกจาก try ได้มีมากกว่าการ throw
          * (ผู้ใช้กดยกเลิกในกระเป๋าเป็นเคสที่เกิดบ่อยที่สุด และมาถึงตรงนี้เสมอ)
          *
-         * ตัวเก็บกวาดฝั่งเซิร์ฟเวอร์คืนให้อยู่แล้วเมื่อตั๋วหมดอายุ — ตรงนี้คือคืนทันที
-         * ไม่ให้ผู้ใช้ต้องรอเห็นยอดหายไป 15 นาทีแล้วค่อยกลับมา
+         * ตัวเก็บกวาดฝั่งเซิร์ฟเวอร์คืนให้อยู่แล้วเมื่อตั๋วหมดอายุ (ตั๋วที่ผูกธุรกรรมไว้ = ถามผลบนเชนก่อน)
+         * ตรงนี้คือคืนทันที ไม่ให้ผู้ใช้ต้องรอเห็นยอดหายไป 15 นาทีแล้วค่อยกลับมา
          */
         if (ticket) {
-            await tradingFee.refundTicket(owner, ticket.uuid, 'ไม้ไม่ได้ลง');
+            await bindPromise;
+            await refundTicketWhenSettled(owner, ticket.uuid);
             ticket = null;
         }
 
@@ -1464,6 +1555,7 @@ async function executeDexMarketOrder(order) {
     // จำกระเป๋าไว้ตั้งแต่ต้น — สลับบัญชีกลางทางแล้ว consume/refund ต้องยังหาใบอนุญาตเจอ (แบบเดียวกับฝั่ง BSC)
     const owner = walletStore.address;
     let ticket = null;
+    let bindPromise = null;
 
     try {
         // 1) กระเป๋าต้องอยู่บนเชน TPIX — สลับให้ (ผู้ใช้กดยืนยันในกระเป๋า)
@@ -1486,6 +1578,10 @@ async function executeDexMarketOrder(order) {
         ]);
         const tokenCheck = fromCheck !== true ? fromCheck : toCheck;
         if (tokenCheck !== true) throw friendly(t(tokenCheck));
+
+        // ทางจ่ายค่าบริการ — FAIL-CLOSED ก่อนขอให้ผู้ใช้ approve (ออดิท 2026-10-28 L2)
+        const orderValueUsd = Number(order.orderValueUsd) > 0 ? Number(order.orderValueUsd) : totalVal;
+        const feePlan = await resolveFeePlan(order, owner, orderValueUsd, TPIX_CHAIN_ID);
 
         // 3) Quote จริงจาก router ของพูล
         const slippage = Number.isFinite(Number(order.slippage)) && order.slippage !== null
@@ -1536,9 +1632,10 @@ async function executeDexMarketOrder(order) {
          * พูลบนเชน 4289 เก็บค่าธรรมเนียมในตัวอยู่แล้ว ทาง "จ่ายเป็นเหรียญ" ไม่มีธุรกรรมแยกให้เก็บ
          * (เซิร์ฟเวอร์ปฏิเสธตั๋ว method=onchain ด้วย 422 ONCHAIN_FEE_NOT_SUPPORTED)
          */
-        const feeQuoteEnabled = tradingFee.currentQuote.value?.enabled === true;
-        const orderValueUsd = Number(order.orderValueUsd) > 0 ? Number(order.orderValueUsd) : totalVal;
-        if (feeQuoteEnabled && orderValueUsd > 0 && order.feeMethod !== 'onchain') {
+        if (!isSameWallet(owner)) {
+            throw friendly(t('trade.status.accountChanged'));
+        }
+        if (feePlan.mode === 'ticket') {
             orderMessage.value = t('trade.status.preparing');
             ticket = await tradingFee.issueTicket({
                 wallet: owner,
@@ -1554,7 +1651,7 @@ async function executeDexMarketOrder(order) {
         }
 
         // บัญชีในกระเป๋าเปลี่ยนระหว่างทาง — ผู้เซ็นตอนนี้ไม่ใช่เจ้าของใบอนุญาต/ยอดที่ตรวจมา ห้ามส่ง
-        if (String(walletStore.address || '').toLowerCase() !== String(owner || '').toLowerCase()) {
+        if (!isSameWallet(owner)) {
             throw friendly(t('trade.status.accountChanged'));
         }
 
@@ -1562,9 +1659,13 @@ async function executeDexMarketOrder(order) {
         orderMessage.value = order.side === 'buy' ? t('trade.status.confirmBuy') : t('trade.status.confirmSell');
         const result = await dex.executeTradeSwap(fromTok, toTok, inputAmount, quote, slippage, {
             minOutFloor: seen?.minOutWei ?? null,
+            onSent: (hash) => {
+                if (ticket) bindPromise = bindTicketWithRetry(owner, ticket.uuid, hash);
+            },
         });
 
         if (ticket) {
+            await bindPromise;
             await consumeTicketWithRetry(owner, ticket.uuid, result?.hash || null);
             ticket = null;
         }
@@ -1586,12 +1687,14 @@ async function executeDexMarketOrder(order) {
             /*
              * ส่งออกไปแล้วแต่เชนยังไม่ยืนยัน — ไม้อาจลงแล้ว
              * ⚠️ เดิมบอก "ไม่สำเร็จ ลองใหม่" + คืนค่าบริการ → ผู้ใช้กดซ้ำ = สวอปสองรอบ (และได้ค่าบริการคืน)
-             *    ตอนนี้: บอกว่ารอยืนยัน + ลิงก์ explorer · ปิดใบอนุญาตพร้อม hash ให้เซิร์ฟเวอร์ตรวจย้อนหลัง
+             *    ตอนนี้: บอกว่ารอยืนยัน + ลิงก์ explorer · ผูกใบอนุญาตกับ hash ให้เซิร์ฟเวอร์ตัดสินจากเชน
+             *    (ไม่ปิดตั๋วเอง — ไม้ที่สุดท้ายไม่ลงต้องได้ค่าบริการคืน · ออดิท L8)
              */
             orderMessage.value = t('trade.status.pendingTx');
             orderTxUrl.value = err.txUrl || null;
             if (ticket) {
-                await consumeTicketWithRetry(owner, ticket.uuid, err.txHash || null);
+                const bound = await bindPromise;
+                if (!bound) await bindTicketWithRetry(owner, ticket.uuid, err.txHash || null);
                 ticket = null;
             }
             fetchDexFormBalances();
@@ -1602,7 +1705,8 @@ async function executeDexMarketOrder(order) {
         playErrorSound();
     } finally {
         if (ticket) {
-            await tradingFee.refundTicket(owner, ticket.uuid, 'ไม้ไม่ได้ลง');
+            await bindPromise;
+            await refundTicketWhenSettled(owner, ticket.uuid);
             ticket = null;
         }
 
@@ -1851,8 +1955,23 @@ watch(currentPair, async () => {
     bot.loadTrades(currentPair.value);
 });
 
+/*
+ * โชว์ป้ายใหม่ทุกครั้งที่คู่หรือโหมดเปลี่ยน — ป้ายของคู่ก่อนต้องปิดทิ้ง ไม่ซ้อนค้าง
+ * คีย์รวมชื่อคู่ด้วย: สลับระหว่างสองคู่บน BSC ข้อความเดิมก็ต้องโผล่ให้คู่ใหม่
+ */
+let pairNoticeToast = null;
+watch(
+    () => (pairNotice.value ? `${props.pair}|${pairNotice.value.key}` : ''),
+    (key) => {
+        if (pairNoticeToast) dismissToast(pairNoticeToast);
+        pairNoticeToast = key ? showToast({ text: t(pairNotice.value.key), type: pairNotice.value.type }) : null;
+    },
+);
+
 onUnmounted(() => {
     disposed = true;
+    // ป้ายลอยอยู่ใน AppLayout ทุกหน้า — ออกจากหน้าเทรดแล้วต้องไม่ตามไปหน้าอื่น
+    if (pairNoticeToast) dismissToast(pairNoticeToast);
     stopFeeds();
     clearTimeout(previewTimer);
     clearTimeout(toastTimer);
@@ -1919,20 +2038,7 @@ onUnmounted(() => {
                 </div>
             </Transition>
 
-            <!-- แถบบอกโหมดเทรด: on-chain จริงบน BSC หรือรอ TPIX Chain -->
-            <div v-if="tradeFormMode === 'onchain'" class="relative mb-3 px-3 py-2 rounded-xl bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs flex items-center gap-2">
-                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                <span>{{ t(isDexPair ? 'trade.notice.onchainTpix' : 'trade.notice.onchain') }}</span>
-            </div>
-            <div v-else-if="isTpixChainPair && pairMetaLoaded" class="relative mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
-                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <!-- คู่ดัชนี (execution_mode = index) เป็นราคาอ้างอิงถาวร ไม่ใช่ "รอ DEX" — เดิมบอกว่ารอติดตั้งสัญญาทั้งที่ DEX เปิดแล้ว -->
-                <span data-test="pair-notice">{{ t(pairMeta?.execution_mode === 'index' ? 'trade.notice.indexOnly' : 'trade.notice.tpixDexPending') }}</span>
-            </div>
+            <!-- ป้ายบอกโหมดเทรดลอยเป็นบอลลูนแล้ว (pairNotice → showToast) ไม่กินพื้นที่กระดาน -->
 
             <!-- ── ผัง 4 คอลัมน์ ────────────────────────────────────────────────
                  การ์ดทุกใบเขียนครั้งเดียวใน loop ของคอลัมน์ — ย้ายไปคอลัมน์ไหน

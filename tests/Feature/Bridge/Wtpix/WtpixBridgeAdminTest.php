@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\WtpixBridgeTransfer;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\Wtpix\WtpixBridgeConfig;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Testing\AssertableInertia;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\FakesWtpixBridgeChains;
@@ -32,9 +33,10 @@ class WtpixBridgeAdminTest extends TestCase
         ]);
     }
 
+    /** ล็อกอินผ่าน session แบบเบราว์เซอร์ — actingAs($admin, 'admin') สลับ guard ปริยายให้เองจนเทสต์ reviewed_by พิสูจน์อะไรไม่ได้ */
     private function asAdmin(): self
     {
-        return $this->actingAs($this->admin, 'admin');
+        return $this->withSession([Auth::guard('admin')->getName() => $this->admin->id]);
     }
 
     private function reviewRow(string $direction = WtpixBridgeTransfer::TO_BSC, string $amount = '150000', string $reason = 'over_tx_limit', array $extra = []): WtpixBridgeTransfer
@@ -112,6 +114,7 @@ class WtpixBridgeAdminTest extends TestCase
         $this->assertSame(WtpixBridgeTransfer::STATUS_CONFIRMED, $row->status);
         $this->assertTrue($row->limits_overridden);
         $this->assertSame($this->admin->id, $row->reviewed_by);
+        $this->assertStringContainsString('อนุมัติโดย ผู้ดูแลระบบ', $row->review_note);
         $this->assertSame([], $this->signCalls, 'the web never signs — the CLI relay does');
     }
 

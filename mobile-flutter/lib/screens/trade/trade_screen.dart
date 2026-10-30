@@ -29,6 +29,7 @@ import '../../services/tpix_dex_service.dart';
 import '../../models/bsc_trade_tokens.dart';
 import '../../utils/crypto_logos.dart';
 import '../../widgets/common/app_background.dart';
+import '../../widgets/common/buy_tpix_button.dart';
 import '../../widgets/common/coin_chip.dart';
 import '../../widgets/common/coin_logo.dart';
 import '../../widgets/common/glass_card.dart';
@@ -592,6 +593,13 @@ class _TradeScreenState extends State<TradeScreen>
                       ),
 
                       const SizedBox(height: 16),
+
+                      // คู่ TPIX-USDT — ทางลัดซื้อ TPIX ด้วยบัตร (หน้า token sale บนเว็บ)
+                      if (market.selectedPair == 'TPIX-USDT')
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: BuyTpixCard(compact: true),
+                        ),
 
                       // Trade form
                       Padding(

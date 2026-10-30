@@ -20,8 +20,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $endpoint
  * @property string $country_code
  * @property string $country_name
- * @property float $latitude
- * @property float $longitude
+ * @property float|null $latitude เลิกเก็บแล้ว (2026-10) — ใบเก่าอาจมีจุดกึ่งกลางประเทศที่ฟอร์มเติมให้
+ * @property float|null $longitude
  * @property string|null $contact_email
  * @property string|null $contact_telegram
  * @property string|null $hardware_specs

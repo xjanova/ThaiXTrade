@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\AiBotConfig;
+use App\Models\AiBotCredit;
 use App\Models\AiBotPlan;
 use App\Models\AiBotSubscription;
 use App\Services\AiBotService;
@@ -592,6 +593,188 @@ class AiBotApiTest extends TestCase
         $this->postJson('/api/v1/ai-bot/subscribe', $payload)->assertStatus(200);
 
         $this->assertSame($afterFirst, $this->service->balanceFor($this->wallet));
+    }
+
+    // ── การเสกเครดิตผ่าน reference ของการตัดค่าเช่า (audit C8) ──────────────────
+
+    /**
+     * เช่าแพลนเดิมซ้ำในนาทีเดียวกัน (ไม่มี key) ต้องไม่ได้วันเพิ่มฟรี และยกเลิกแล้วต้องไม่ได้เงินเกินที่จ่าย.
+     *
+     * เดิม reference เป็นระดับนาที ครั้งที่สองไม่ถูกตัด แต่ทั้ง days และ credits_spent ถูกบวกเพิ่ม
+     * → ยกเลิกแล้วได้คืนตาม credits_spent สองเท่า = กำไร 1 รอบค่าเช่าต่อคู่ ทำวนได้ไม่จำกัด
+     */
+    public function test_renting_the_same_plan_twice_in_one_minute_never_adds_unpaid_days(): void
+    {
+        $this->freezeSecond();
+        $this->service->record($this->wallet, 'topup', 5000, 'test:topup');
+        $pro = AiBotPlan::where('code', 'pro')->firstOrFail();
+
+        $this->service->subscribe($this->wallet, $pro, 30);
+        $this->service->subscribe($this->wallet, $pro, 30);
+
+        $subscription = $this->service->activeSubscription($this->wallet);
+        $this->assertSame(30, $subscription->days);
+        $this->assertSame(2700.0, (float) $subscription->credits_spent);
+        $this->assertSame(2300.0, $this->service->balanceFor($this->wallet));
+
+        $this->postJson('/api/v1/ai-bot/cancel', ['wallet_address' => $this->wallet])->assertOk();
+
+        $this->assertSame(5000.0, $this->service->balanceFor($this->wallet));
+    }
+
+    /** สองการกดจริง (key คนละตัว) ในวินาทีเดียวกัน = ซื้อสองครั้ง ต้องตัดสองครั้งและได้วันครบ */
+    public function test_two_real_purchases_in_the_same_second_are_both_charged(): void
+    {
+        $this->freezeSecond();
+        $this->service->record($this->wallet, 'topup', 6000, 'test:topup');
+        $pro = AiBotPlan::where('code', 'pro')->firstOrFail();
+
+        $this->service->subscribe($this->wallet, $pro, 30, 'click-aaaaaaaaaaaaaaaa');
+        $this->service->subscribe($this->wallet, $pro, 30, 'click-bbbbbbbbbbbbbbbb');
+
+        $subscription = $this->service->activeSubscription($this->wallet);
+        $this->assertSame(60, $subscription->days);
+        $this->assertSame(5400.0, (float) $subscription->credits_spent);
+        $this->assertSame(600.0, $this->service->balanceFor($this->wallet));
+
+        $this->service->cancel($this->wallet);
+
+        $this->assertSame(6000.0, $this->service->balanceFor($this->wallet));
+    }
+
+    /**
+     * Pro → Starter → Pro ในนาทีเดียวกันต้องตัดค่า Pro รอบสองจริง.
+     *
+     * เดิมการกลับมา Pro ได้ reference ซ้ำกับรอบแรก จึงไม่ถูกตัด ทั้งที่การเปลี่ยนเป็น
+     * Starter คืนมูลค่า Pro ให้ไปแล้ว → ได้ Pro ฟรี แล้วยกเลิกรับคืนอีกรอบ = เครดิตงอก
+     */
+    public function test_switching_plans_back_and_forth_in_one_minute_cannot_mint_credits(): void
+    {
+        $this->freezeSecond();
+        $this->service->record($this->wallet, 'topup', 5000, 'test:topup');
+
+        foreach (['pro', 'starter', 'pro'] as $code) {
+            $this->postJson('/api/v1/ai-bot/subscribe', [
+                'wallet_address' => $this->wallet,
+                'plan_code' => $code,
+                'days' => 30,
+            ])->assertOk()->assertJsonPath('data.subscription.plan_code', $code);
+        }
+
+        // Pro 30 วัน = 2,700 ต้องถูกตัดจริงในรอบที่สาม
+        $this->assertSame(2300.0, $this->service->balanceFor($this->wallet));
+        $this->assertSame(2700.0, (float) $this->service->activeSubscription($this->wallet)->credits_spent);
+
+        $this->postJson('/api/v1/ai-bot/cancel', ['wallet_address' => $this->wallet])->assertOk();
+
+        $this->assertSame(5000.0, $this->service->balanceFor($this->wallet));
+    }
+
+    /** ส่ง key ของการเช่า Pro รอบแรกซ้ำหลังเปลี่ยนเป็น Starter แล้ว = ไม่มีอะไรเปลี่ยน ไม่ได้ Pro ฟรี */
+    public function test_replaying_an_old_key_after_a_plan_switch_changes_nothing(): void
+    {
+        $this->freezeSecond();
+        $this->service->record($this->wallet, 'topup', 5000, 'test:topup');
+        $pro = AiBotPlan::where('code', 'pro')->firstOrFail();
+        $starter = AiBotPlan::where('code', 'starter')->firstOrFail();
+
+        $this->service->subscribe($this->wallet, $pro, 30, 'pro-key-aaaaaaaaaaaa');
+        $this->service->subscribe($this->wallet, $starter, 30, 'starter-key-bbbbbbbb');
+        $this->service->subscribe($this->wallet, $pro, 30, 'pro-key-aaaaaaaaaaaa');
+
+        $this->assertSame('starter', $this->service->activeSubscription($this->wallet)->plan->code);
+        $this->assertSame(4100.0, $this->service->balanceFor($this->wallet));
+
+        $this->service->cancel($this->wallet);
+
+        $this->assertSame(5000.0, $this->service->balanceFor($this->wallet));
+    }
+
+    /** กดรัว/เน็ตหลุดแล้ว retry ด้วย key เดิม = ตัดครั้งเดียว ได้วันครั้งเดียว และตอบสถานะเดิมกลับไป */
+    public function test_a_retried_request_with_the_same_key_charges_and_extends_once(): void
+    {
+        $this->service->record($this->wallet, 'topup', 5000, 'test:topup');
+
+        $payload = [
+            'wallet_address' => $this->wallet,
+            'plan_code' => 'starter',
+            'days' => 7,
+            'idempotency_key' => '4f1c2b7e-1d2a-4c55-9b0e-7a3d5e6f8a90',
+        ];
+
+        $this->postJson('/api/v1/ai-bot/subscribe', $payload)->assertOk();
+
+        $this->travel(5)->minutes();
+        $this->verifyWallet($this->wallet);
+
+        $this->postJson('/api/v1/ai-bot/subscribe', $payload)
+            ->assertOk()
+            ->assertJsonPath('data.subscription.plan_code', 'starter');
+
+        $this->assertSame(4790.0, $this->service->balanceFor($this->wallet));
+        $this->assertSame(7, $this->service->activeSubscription($this->wallet)->days);
+        $this->assertSame(1, AiBotCredit::where('wallet_address', $this->wallet)->where('type', 'charge')->count());
+    }
+
+    /** key เดิมแต่แพลนต่างไป = client ใช้ key ผิด ต้องปฏิเสธ ไม่ใช่ตอบสำเร็จด้วยผลของคำขอเก่า */
+    public function test_reusing_a_key_for_a_different_plan_is_refused(): void
+    {
+        $this->service->record($this->wallet, 'topup', 5000, 'test:topup');
+        $key = '4f1c2b7e-1d2a-4c55-9b0e-7a3d5e6f8a90';
+
+        $this->postJson('/api/v1/ai-bot/subscribe', [
+            'wallet_address' => $this->wallet, 'plan_code' => 'starter', 'days' => 7, 'idempotency_key' => $key,
+        ])->assertOk();
+
+        $this->postJson('/api/v1/ai-bot/subscribe', [
+            'wallet_address' => $this->wallet, 'plan_code' => 'pro', 'days' => 7, 'idempotency_key' => $key,
+        ])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', AiBotService::ERR_IDEMPOTENCY_CONFLICT);
+
+        $this->assertSame('starter', $this->service->activeSubscription($this->wallet)->plan->code);
+        $this->assertSame(4790.0, $this->service->balanceFor($this->wallet));
+    }
+
+    /** ต่ออายุจริงห่างกันหนึ่งนาที (แอพรุ่นเก่าที่ไม่ส่ง key) ต้องตัดใหม่และได้วันเพิ่ม */
+    public function test_a_real_renewal_a_minute_later_is_charged_again(): void
+    {
+        $this->freezeSecond();
+        $this->service->record($this->wallet, 'topup', 5000, 'test:topup');
+        $payload = ['wallet_address' => $this->wallet, 'plan_code' => 'starter', 'days' => 7];
+
+        $this->postJson('/api/v1/ai-bot/subscribe', $payload)->assertOk();
+
+        $this->travel(1)->minute();
+
+        $this->postJson('/api/v1/ai-bot/subscribe', $payload)->assertOk();
+
+        $this->assertSame(4580.0, $this->service->balanceFor($this->wallet));
+        $subscription = $this->service->activeSubscription($this->wallet);
+        $this->assertSame(14, $subscription->days);
+        $this->assertSame(420.0, (float) $subscription->credits_spent);
+    }
+
+    /** ยกเลิกระหว่างที่คำขอเช่าของกระเป๋าเดียวกันถือล็อกอยู่ = ปฏิเสธ ไม่คืนเงินจากค่าที่กำลังถูกเปลี่ยน */
+    public function test_cancelling_while_a_rent_request_is_in_flight_is_refused(): void
+    {
+        $this->service->record($this->wallet, 'topup', 5000, 'test:topup');
+        $this->service->subscribe($this->wallet, AiBotPlan::where('code', 'starter')->firstOrFail(), 7);
+        $afterRent = $this->service->balanceFor($this->wallet);
+
+        $lock = Cache::lock('aibot:subscribe:'.$this->wallet, 15);
+        $this->assertTrue($lock->get());
+
+        try {
+            $this->postJson('/api/v1/ai-bot/cancel', ['wallet_address' => $this->wallet])
+                ->assertStatus(422)
+                ->assertJsonPath('error.code', AiBotService::ERR_SUBSCRIBE_BUSY);
+        } finally {
+            $lock->release();
+        }
+
+        $this->assertSame($afterRent, $this->service->balanceFor($this->wallet));
+        $this->assertSame('starter', $this->service->activeSubscription($this->wallet)->plan->code);
     }
 
     /**
