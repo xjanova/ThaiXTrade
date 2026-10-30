@@ -301,7 +301,8 @@ class TokenSaleService
      * มีใครถือกุญแจ (nonce 0 ยอด 0) = เงินลูกค้าอาจล็อกถาวร
      *
      * อ่านจาก `accept_currencies` ของรอบขาย ไม่ฝังไว้ในโค้ด
-     * เจ้าของจึงเปิดทางคริปโตกลับมาได้เองจากหลังบ้านถ้าวันหนึ่งพร้อม
+     * ทางคริปโตที่เจ้าของเปิดจากหลังบ้านได้คือ CRYPTO (USDT ที่ตรวจเงินเข้าบนเชน ดู SaleCryptoConfig)
+     * ส่วน USDT/BNB คือสวิตช์ทางยื่น tx_hash แบบเก่า ซึ่ง TokenSale::PAYMENT_CHANNELS ไม่รับ
      *
      * @throws PurchaseException
      */
@@ -319,7 +320,8 @@ class TokenSaleService
         $currency = strtoupper($currency);
 
         // ไม่ได้ตั้งไว้ = ไม่จำกัด (ข้อมูลเก่าก่อนมีระบบนี้)
-        if ($accepted === []) {
+        // ยกเว้นคริปโต เงินเข้ากระเป๋าตรง ๆ จึงต้องประกาศรับเอง ค่าว่างเปิดทางให้ไม่ได้
+        if ($accepted === [] && ! $this->isCryptoCurrency($currency)) {
             return;
         }
 

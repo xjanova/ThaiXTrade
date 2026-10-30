@@ -15,6 +15,8 @@ import { router } from '@inertiajs/vue3';
 
 const props = defineProps({
     crypto: { type: Object, default: () => ({}) },
+    // ปุ่มทั้งสองขยับเงินจริง route รับเฉพาะ super_admin ระดับอื่นเปิดดูรายการได้อย่างเดียว
+    canManage: { type: Boolean, default: false },
 });
 
 const review = computed(() => props.crypto?.review || []);
@@ -88,7 +90,7 @@ function short(addr) {
             <div class="p-3 rounded-lg bg-white/5">
                 <p class="text-gray-400 text-xs mb-1">สถานะ</p>
                 <p v-if="crypto.receive_problem" class="text-yellow-300">{{ PROBLEMS[crypto.receive_problem] || crypto.receive_problem }}</p>
-                <p v-else-if="!crypto.accepted" class="text-yellow-300">รอบขายยังไม่ประกาศรับ "CRYPTO" (accept_currencies)</p>
+                <p v-else-if="!crypto.accepted" class="text-yellow-300">รอบขายยังไม่เปิดรับ — แก้รอบขายแล้วติ๊ก "USDT ตรวจเงินเข้าบนเชน"</p>
                 <p v-else class="text-trading-green">เปิดรับอยู่</p>
             </div>
             <div class="p-3 rounded-lg bg-white/5">
@@ -105,6 +107,7 @@ function short(addr) {
         <p v-if="!review.length" class="text-sm text-gray-500">ไม่มีรายการรอตัดสิน</p>
 
         <div v-else class="space-y-2">
+            <p v-if="!canManage" class="text-xs text-amber-300">ออกเหรียญหรือปิดรายการได้เฉพาะ Super Admin</p>
             <div v-for="p in review" :key="p.id" class="p-3 rounded-lg bg-yellow-500/5 border border-yellow-500/20 text-sm" data-testid="crypto-review-row">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <span class="text-yellow-300 font-semibold">{{ REASONS[p.reason] || p.reason }}</span>
@@ -119,7 +122,7 @@ function short(addr) {
                     · ต้องโอน {{ p.order.pay_amount }} · ${{ p.order.amount_usd }} = {{ p.order.tpix_amount }} TPIX
                     · กระเป๋า <span class="font-mono">{{ short(p.order.wallet) }}</span>
                 </div>
-                <div class="flex gap-2 mt-2">
+                <div v-if="canManage" class="flex gap-2 mt-2">
                     <button v-if="canCredit(p)" class="text-xs px-3 py-1.5 rounded-lg bg-trading-green/20 text-trading-green hover:bg-trading-green/30 disabled:opacity-40"
                         :disabled="busyId === p.id" @click="credit(p)">ออกเหรียญตามยอดที่ได้รับ</button>
                     <button class="text-xs px-3 py-1.5 rounded-lg bg-white/10 text-gray-200 hover:bg-white/20 disabled:opacity-40"

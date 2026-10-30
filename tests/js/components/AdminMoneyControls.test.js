@@ -39,6 +39,7 @@ import SwapIndex from '@/Pages/Admin/Swap/Index.vue';
 import FinanceIndex from '@/Pages/Admin/Finance/Index.vue';
 import TokenSalesIndex from '@/Pages/Admin/TokenSales/Index.vue';
 import SaleLaunchPanel from '@/Components/Admin/SaleLaunchPanel.vue';
+import SaleCryptoPanel from '@/Components/Admin/SaleCryptoPanel.vue';
 
 const global = { stubs: { teleport: true } };
 
@@ -238,5 +239,51 @@ describe('กล่องเปิดรอบขาย', () => {
 
         ['เปิดรอบขาย', 'บันทึก', 'ยกเลิกวันจบ'].forEach((label) => expect(labels).toContain(label));
         expect(wrapper.find('[role="switch"]').attributes('disabled')).toBeUndefined();
+    });
+});
+
+describe('กล่องชำระด้วย USDT', () => {
+    const payment = (overrides = {}) => ({
+        id: 1,
+        reason: 'underpaid',
+        amount: '9.000000',
+        token_symbol: 'USDT',
+        chain: 'BSC',
+        from: '0xbbbb00000000000000000000000000000000bbbb',
+        tx_hash: '0x' + 'ab'.repeat(32),
+        explorer: 'https://bscscan.com',
+        order: { reference: 'TPX-ABCDEFG', wallet: '0xbbbb00000000000000000000000000000000bbbb', pay_amount: '10.000100', amount_usd: 10, tpix_amount: 200, price_per_tpix: 0.05 },
+        ...overrides,
+    });
+    const crypto = { accepted: true, receive_problem: null, receive_address: '0x5a1e', chains: [], review: [payment()] };
+
+    it('แอดมินระดับล่างเห็นรายการแต่ไม่มีปุ่มสั่ง', () => {
+        const wrapper = mount(SaleCryptoPanel, { props: { crypto, canManage: false } });
+
+        expect(wrapper.find('[data-testid="crypto-review-row"]').text()).toContain('TPX-ABCDEFG');
+        expect(buttons(wrapper)).toEqual([]);
+        expect(wrapper.text()).toContain('เฉพาะ Super Admin');
+    });
+
+    it('ไม่ส่ง prop = ถือว่าไม่มีสิทธิ์', () => {
+        expect(buttons(mount(SaleCryptoPanel, { props: { crypto } }))).toEqual([]);
+    });
+
+    it('super_admin สั่งได้ครบ แต่โอนผิดเหรียญมีแค่ปิดรายการ', () => {
+        const wrapper = mount(SaleCryptoPanel, {
+            props: { crypto: { ...crypto, review: [payment(), payment({ id: 2, reason: 'wrong_token' })] }, canManage: true },
+        });
+
+        expect(buttons(wrapper)).toEqual(['ออกเหรียญตามยอดที่ได้รับ', 'บันทึกว่าคืนเงิน/จัดการแล้ว', 'บันทึกว่าคืนเงิน/จัดการแล้ว']);
+        expect(wrapper.text()).not.toContain('เฉพาะ Super Admin');
+    });
+
+    it('หน้า Token Sales ส่งสิทธิ์ลงกล่องนี้', async () => {
+        for (const [canManageMoney, count] of [[false, 0], [true, 2]]) {
+            const wrapper = mount(TokenSalesIndex, { props: { crypto, canManageMoney }, global });
+            await wrapper.findAll('button').find((button) => button.text().includes('Sales & Phases')).trigger('click');
+
+            expect(wrapper.findComponent(SaleCryptoPanel).findAll('button')).toHaveLength(count);
+        }
     });
 });

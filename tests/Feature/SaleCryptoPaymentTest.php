@@ -10,8 +10,12 @@ use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\TreasuryPayout;
 use App\Services\SaleCrypto\CryptoPaymentCrediter;
+use App\Services\SaleCrypto\CryptoPaymentScanner;
+use App\Services\SaleCrypto\SaleCryptoConfig;
+use App\Services\TokenSaleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\FakesBridgeChains;
 use Tests\TestCase;
@@ -317,6 +321,143 @@ class SaleCryptoPaymentTest extends TestCase
         ])->assertStatus(422)->assertJsonPath('error.code', 'PURCHASE_REJECTED');
 
         $this->assertSame(0, SaleTransaction::count());
+    }
+
+    /** @return array<string, array{mixed, string, bool}> */
+    public static function acceptedChannels(): array
+    {
+        return [
+            'เปิด CRYPTO รับทางใหม่' => [['CARD', 'CRYPTO'], 'CRYPTO', true],
+            'เปิด CRYPTO ยังรับบัตร' => [['CARD', 'CRYPTO'], 'USD', true],
+            'เปิด CRYPTO แล้ว USDT ยังปิด' => [['CARD', 'CRYPTO'], 'USDT', false],
+            'เปิด CRYPTO แล้ว BNB ยังปิด' => [['CARD', 'CRYPTO'], 'BNB', false],
+            'รับบัตรอย่างเดียว ปิด CRYPTO' => [['CARD'], 'CRYPTO', false],
+            'รับบัตรอย่างเดียว ปิด USDT' => [['CARD'], 'USDT', false],
+            'ค่าว่างไม่เปิด CRYPTO' => [[], 'CRYPTO', false],
+            'ค่าว่างไม่เปิด USDT' => [[], 'USDT', false],
+            'null ไม่เปิด BNB' => [null, 'BNB', false],
+            'ค่าว่างยังรับเงินสดของข้อมูลเก่า' => [[], 'USD', true],
+            'ประกาศ USDT เองก็ไม่เปิด CRYPTO' => [['USDT'], 'CRYPTO', false],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('acceptedChannels')]
+    public function the_sale_policy_decides_which_channels_are_accepted(mixed $accepted, string $channel, bool $allowed): void
+    {
+        $this->sale->update(['accept_currencies' => $accepted]);
+
+        if (! $allowed) {
+            $this->expectException(PurchaseException::class);
+        }
+
+        app(TokenSaleService::class)->assertCurrencyAccepted($this->sale->fresh(), $channel);
+
+        $this->assertTrue($allowed);
+    }
+
+    #[Test]
+    public function precheck_refuses_the_legacy_currencies_before_any_money_moves(): void
+    {
+        foreach (['USDT', 'BNB'] as $currency) {
+            $this->postJson('/api/v1/token-sale/precheck', [
+                'wallet_address' => $this->buyer,
+                'phase_id' => $this->phase->id,
+                'currency' => $currency,
+                'amount' => 10,
+            ])->assertStatus(409)->assertJsonPath('error.code', 'NOT_PURCHASABLE');
+        }
+    }
+
+    #[Test]
+    public function an_order_is_refused_when_the_sale_has_no_receive_wallet(): void
+    {
+        $this->sale->update(['sale_wallet_address' => null]);
+        Cache::forget('token_sale:active');
+
+        $this->postJson('/api/v1/token-sale/crypto-order', [
+            'wallet_address' => $this->buyer, 'phase_id' => $this->phase->id, 'amount_usd' => 10, 'chain_id' => 56,
+        ])->assertStatus(409);
+
+        $this->assertSame(0, SaleCryptoOrder::count());
+        $this->assertFalse($this->getJson('/api/v1/token-sale')->json('data.payment_methods.crypto'));
+    }
+
+    #[Test]
+    public function a_card_only_sale_without_a_wallet_keeps_the_scanner_idle(): void
+    {
+        $this->sale->update(['accept_currencies' => ['CARD'], 'sale_wallet_address' => null]);
+        Cache::forget('token_sale:active');
+
+        $this->scan();
+
+        $this->assertSame(0, SaleCryptoPayment::count());
+        $this->assertSame([], app(CryptoPaymentScanner::class)->watchedAddresses(56));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function serverHeldConfig(): array
+    {
+        return [
+            'กองทุนเสถียรราคา' => ['stabilizer.wallet.address'],
+            'oracle มาสเตอร์โหนด' => ['masternode.uptime.oracle.address'],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('serverHeldConfig')]
+    public function a_wallet_the_server_holds_the_key_for_cannot_receive_sale_money(string $configKey): void
+    {
+        config([$configKey => $this->saleWallet]);
+
+        $this->assertSame('internal_address', app(SaleCryptoConfig::class)->receiveAddressProblem($this->sale));
+    }
+
+    #[Test]
+    public function the_wtpix_bridge_relayer_cannot_receive_sale_money(): void
+    {
+        $keystore = tempnam(sys_get_temp_dir(), 'ks');
+        file_put_contents($keystore, json_encode(['address' => substr($this->saleWallet, 2)]));
+        config(['wtpix_bridge.signers.relayer.keystore' => $keystore]);
+
+        try {
+            $this->assertSame('internal_address', app(SaleCryptoConfig::class)->receiveAddressProblem($this->sale));
+        } finally {
+            unlink($keystore);
+        }
+    }
+
+    #[Test]
+    public function only_the_order_wallet_can_read_the_order(): void
+    {
+        $order = $this->order();
+        $url = "/api/v1/token-sale/crypto-order/{$order['id']}";
+
+        $this->getJson("{$url}?wallet_address={$this->buyer}")->assertOk()->assertJsonPath('data.reference', $order['reference']);
+        $this->getJson($url)->assertNotFound();
+
+        $this->getJson("{$url}?wallet_address={$this->exchange}")->assertForbidden();
+
+        $this->verifyWallet($this->exchange);
+        $this->getJson("{$url}?wallet_address={$this->exchange}")->assertNotFound();
+    }
+
+    #[Test]
+    public function polling_the_order_does_not_use_up_the_purchase_rate_limit(): void
+    {
+        $order = $this->order();
+
+        // หน้าซื้อถามทุก 6 วินาที — หนึ่งนาทีเกินเพดาน 10 ครั้งของกลุ่มซื้อ
+        for ($i = 0; $i < 11; $i++) {
+            $this->getJson("/api/v1/token-sale/crypto-order/{$order['id']}?wallet_address={$this->buyer}")->assertOk();
+        }
+
+        $this->assertNotSame(429, $this->postJson('/api/v1/token-sale/precheck', [
+            'wallet_address' => $this->buyer,
+            'phase_id' => $this->phase->id,
+            'currency' => 'USD',
+            'amount' => 10,
+        ])->getStatusCode());
     }
 
     // ── เงินเข้าแต่ออกเหรียญเองไม่ได้ → needs_review เสมอ ──────────────────

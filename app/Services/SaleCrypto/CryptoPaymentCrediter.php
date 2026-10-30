@@ -10,6 +10,7 @@ use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
 use App\Services\TokenSaleService;
+use App\Support\MoneySettings;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -175,8 +176,25 @@ class CryptoPaymentCrediter
                 throw new PurchaseException('The received amount is too small to credit.');
             }
 
+            $before = $locked->only(['status', 'review_reason']);
+
             // โควตาไม่พอ → credit() เขียนเหตุผลใหม่ลงแถวแล้วคืนค่าปกติ ให้ commit ก่อนแล้วค่อยแจ้งข้างนอก
-            return $this->credit($locked, $order, $tpix, $usd, $by);
+            $outcome = $this->credit($locked, $order, $tpix, $usd, $by);
+
+            // บันทึกอยู่ในธุรกรรมเดียวกับการออกเหรียญ บันทึกไม่สำเร็จเท่ากับยังไม่ออก
+            if ($outcome['status'] === SaleCryptoPayment::STATUS_CREDITED) {
+                MoneySettings::record('token_sale.crypto_credit', $before, [
+                    'id' => $locked->id,
+                    'status' => $locked->status,
+                    'order' => $order->reference,
+                    'sale_transaction_id' => $outcome['sale_transaction_id'],
+                    'wallet_address' => $order->wallet_address,
+                    'tpix_amount' => $tpix,
+                    'payment_usd_value' => $usd,
+                ]);
+            }
+
+            return $outcome;
         });
 
         if ($outcome['status'] !== SaleCryptoPayment::STATUS_CREDITED) {
@@ -198,12 +216,16 @@ class CryptoPaymentCrediter
                 throw new PurchaseException('This payment is not waiting for review.');
             }
 
+            $before = $locked->only(['status', 'review_reason']);
+
             $locked->update([
                 'status' => SaleCryptoPayment::STATUS_RESOLVED,
                 'review_note' => mb_substr($note, 0, 2000),
                 'resolved_by' => $by,
                 'resolved_at' => now(),
             ]);
+
+            MoneySettings::record('token_sale.crypto_resolve', $before, $locked->only(['id', 'status', 'tx_hash', 'review_note']));
 
             return $locked->refresh();
         });

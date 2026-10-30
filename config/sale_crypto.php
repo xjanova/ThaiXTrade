@@ -28,6 +28,7 @@ return [
     /*
     | สวิตช์ติดตั้ง (ชั้นนอกสุด) — ค่าปริยายปิด
     | false = ไม่สแกน ไม่รับคำสั่งซื้อ · true = ยังต้องเพิ่ม "CRYPTO" ใน accept_currencies ของรอบขายด้วย
+    | ห้ามใช้ "USDT" หรือ "BNB" แทน สองค่านั้นคือทางยื่น tx_hash แบบเก่า (ดู TokenSale::PAYMENT_CHANNELS)
     */
     'enabled' => (bool) env('SALE_CRYPTO_ENABLED', false),
 

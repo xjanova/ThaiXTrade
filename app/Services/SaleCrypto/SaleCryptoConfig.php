@@ -6,6 +6,7 @@ use App\Models\SiteSetting;
 use App\Models\TokenSale;
 use App\Services\Bridge\BridgeConfig;
 use App\Services\Bridge\EvmRpc;
+use App\Services\Bridge\Wtpix\WtpixBridgeConfig;
 use App\Support\TreasuryWallet;
 use App\Support\Wei;
 use Illuminate\Support\Carbon;
@@ -30,11 +31,14 @@ use Illuminate\Support\Facades\Cache;
  */
 class SaleCryptoConfig
 {
-    public const CHANNEL = 'CRYPTO';
+    public const CHANNEL = TokenSale::CRYPTO_CHANNEL;
 
     public const CURSOR_GROUP = 'sale_crypto_cursor';
 
-    public function __construct(private BridgeConfig $bridge) {}
+    public function __construct(
+        private BridgeConfig $bridge,
+        private WtpixBridgeConfig $wtpix,
+    ) {}
 
     public function installed(): bool
     {
@@ -140,28 +144,35 @@ class SaleCryptoConfig
      *         ผู้ซื้อจะได้ทั้ง TPIX และ USDT_TPIX (เครดิตซ้ำ) และตัวกระทบยอดนับรายได้ขายเป็นเงินหนุน
      *         พอเจ้าของถอนรายได้ออก supply จะดูเกินเงินหนุนแล้วสะพานหยุดตัวเอง
      * payout/relayer/guardian/กระเป๋าจ่ายเหรียญ — เซิร์ฟเวอร์ถือคีย์ ถ้าเซิร์ฟเวอร์ถูกเจาะ รายได้ทั้งหมดหายด้วย
+     * สะพาน wTPIX · กองทุนเสถียรราคา · oracle มาสเตอร์โหนด — เซิร์ฟเวอร์ถือคีย์เหมือนกัน
      *
      * @return array<int, string>
      */
     public function internalAddresses(): array
     {
-        $list = [$this->bridge->vaultAddress()];
+        $list = [$this->bridge->vaultAddress(), $this->wtpix->vaultAddress()];
 
         foreach (['payout', 'relayer', 'guardian'] as $role) {
-            if ($address = $this->bridge->signerAddress($role)) {
-                $list[] = $address;
-            }
+            $list[] = $this->bridge->signerAddress($role);
         }
 
-        $list[] = strtolower((string) config('treasury.hot_wallet.address', ''));
+        foreach (['relayer', 'guardian'] as $role) {
+            $list[] = $this->wtpix->signerAddress($role);
+        }
+
+        $list[] = config('treasury.hot_wallet.address');
+        $list[] = config('stabilizer.wallet.address');
+        $list[] = config('masternode.uptime.oracle.address');
 
         try {
-            $list[] = strtolower(TreasuryWallet::address());
+            $list[] = TreasuryWallet::address();
         } catch (\Throwable) {
             // ยังไม่ได้ตั้งกระเป๋าจ่ายเหรียญ — ไม่ใช่ปัญหาของด่านนี้
         }
 
-        return array_values(array_unique(array_filter($list, fn ($a) => preg_match('/^0x[0-9a-f]{40}$/', (string) $a))));
+        $list = array_map(fn ($a) => strtolower((string) $a), $list);
+
+        return array_values(array_unique(array_filter($list, fn ($a) => preg_match('/^0x[0-9a-f]{40}$/', $a))));
     }
 
     /**

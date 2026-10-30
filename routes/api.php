@@ -512,16 +512,19 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         /*
          * ทาง USDT — สร้างคำสั่งซื้อ (ล็อกราคา + ยอดเฉพาะ) ผ่านด่านเดียวกับบัตรทุกชั้น
          * สถานะอ่านได้เฉพาะเจ้าของกระเป๋า (GET ก็ต้องยืนยันเจ้าของ — VerifyWalletOwnership)
-         * หน้าซื้อถามสถานะทุกไม่กี่วินาทีระหว่างรอเงินเข้า จึงแยก throttle ให้หลวมกว่าการสั่งซื้อ
          */
         Route::post('/token-sale/crypto-order', [TokenSaleApiController::class, 'cryptoOrder'])->middleware('kyc:token_sale');
         Route::post('/token-sale/claim', [TokenSaleApiController::class, 'claim'])->middleware('kyc:token_sale');
     });
 
-    Route::middleware('throttle:60,1')->group(function () {
-        Route::get('/token-sale/crypto-order/{orderId}', [TokenSaleApiController::class, 'cryptoOrderStatus'])
-            ->where('orderId', '[0-9a-fA-F-]{36}');
-    });
+    /*
+     * หน้าซื้อถามทุก 6 วินาทีระหว่างรอเงินเข้า จึงถอด throttle:60,1 ของทั้ง API ออกแล้วใช้ตัวนับมีชื่อแทน
+     * ตัวนับไม่มีชื่อใช้คีย์เดียวกับ throttle:10,1 ของกลุ่มซื้อ นับรวมกันแล้วผู้ซื้อที่รอเงินเข้าจะกด claim ไม่ได้
+     */
+    Route::get('/token-sale/crypto-order/{orderId}', [TokenSaleApiController::class, 'cryptoOrderStatus'])
+        ->where('orderId', '[0-9a-fA-F-]{36}')
+        ->withoutMiddleware('throttle:60,1')
+        ->middleware('throttle:60,1,sale-crypto-status');
 
     // Token Factory — สร้างเหรียญ (ต้อง verify wallet)
     Route::prefix('token-factory')->group(function () {

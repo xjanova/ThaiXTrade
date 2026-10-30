@@ -377,7 +377,7 @@ function statusBadge(s) {
                 <!-- เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด ไม่ใช่วันที่ตั้งไว้ล่วงหน้า -->
                 <SaleLaunchPanel :launch="launch" :can-manage="canManageMoney" />
 
-                <SaleCryptoPanel :crypto="crypto" />
+                <SaleCryptoPanel :crypto="crypto" :can-manage="canManageMoney" />
 
                 <div class="flex justify-end mb-4">
                     <button v-if="canManageMoney" class="btn-primary px-4 py-2 text-sm font-semibold" @click="openCreateSale">+ New Sale</button>
