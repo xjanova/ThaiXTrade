@@ -43,6 +43,9 @@ class BankTransferSaleService
     /** คำนำหน้า tx_hash — ใช้เป็นกุญแจกันบันทึกซ้ำเหมือนที่ Stripe ใช้ 'stripe_' */
     private const HASH_PREFIX = 'bank_';
 
+    /** คำนำหน้า idempotency key ของคิวจ่าย ต่อด้วย uuid ของออเดอร์ แล้วตามด้วย -tge-รอบที่ */
+    private const PAYOUT_KEY_PREFIX = 'sale-bank-';
+
     public function __construct(
         private readonly TokenSaleService $saleService,
     ) {}
@@ -280,26 +283,79 @@ class BankTransferSaleService
      *
      * แยกจาก confirm() เพื่อให้การยืนยันยอดขายไม่ล้มเพราะคิวจ่ายมีปัญหา
      * — ยอดขายที่ยืนยันแล้วต้องนิ่ง ส่วนการจ่ายเหรียญกดซ้ำได้ภายหลัง
+     *
+     * ═══ ออเดอร์หนึ่งมีรายการจ่ายครั้งแรกที่ยังไม่จบได้แถวเดียว (ออดิท 2026-10-29 C6) ═══
+     * เดิมคีย์กันซ้ำมียอด claimable ปนอยู่ และไม่แตะ claimed_amount ผลคือ
+     *   - vesting ปลดเพิ่มหรือผู้ซื้อ claim → ยอดเปลี่ยน → คีย์เปลี่ยน → ได้แถวที่สองจากเหรียญก้อนเดิม
+     *   - ยอดที่เข้าคิวแล้วยังนับเป็น claimable → /token-sale/claim จ่ายยอดเดิมอีกรอบ
+     *
+     * ตอนนี้ยอดที่เข้าคิวถูกบวก claimed_amount ในทรานแซกชันเดียวกับการสร้างแถว
+     * ส่วนที่ปลดเพิ่มทีหลังเป็นสิทธิ์ claim ของผู้ซื้อ ไม่ใช่ของทางนี้
+     *
+     * กดซ้ำหลังคิวล้มกลางทาง: ทรานแซกชันม้วนกลับหมด เริ่มใหม่ได้เลย
+     * กดซ้ำหลังแถวเดิมจบโดยเงินไม่ออก: ได้แถวใหม่ยอดเดิม เพราะยอดนั้นยังกันอยู่ใน claimed_amount
      */
     public function queueInitialPayout(SaleTransaction $tx): ?TreasuryPayout
     {
-        $claimable = (float) $tx->claimable_amount;
+        return DB::transaction(function () use ($tx) {
+            // ล็อกแถวเดียวกับ /token-sale/claim — สองทางหักสิทธิ์จากยอดเดียวกัน ต้องเข้าทีละทาง
+            $locked = SaleTransaction::whereKey($tx->id)->lockForUpdate()->firstOrFail();
 
-        if ($claimable <= 0) {
-            return null;
-        }
+            if ($locked->status !== 'confirmed') {
+                return null;
+            }
 
-        return TreasuryPayout::firstOrCreate(
-            ['idempotency_key' => 'sale-bank-'.$tx->uuid.'-'.$claimable],
-            [
-                'to_address' => strtolower($tx->wallet_address),
-                'amount_wei' => Wei::toWei(number_format($claimable, 18, '.', '')),
+            $payouts = TreasuryPayout::where('idempotency_key', 'like', self::PAYOUT_KEY_PREFIX.$locked->uuid.'-%')
+                ->orderBy('id')
+                ->get();
+
+            // นับว่าจบเฉพาะเมื่อพิสูจน์ได้ว่าเงินไม่ออก — failed ที่มี hash แต่ไม่มีใบเสร็จอาจโอนไปแล้ว
+            $open = $payouts->first(fn (TreasuryPayout $p) => ! $p->endedWithoutPayment());
+            if ($open) {
+                return $open;
+            }
+
+            $amountWei = $locked->metadata['initial_payout_wei'] ?? null;
+
+            if ($amountWei === null) {
+                $amountWei = $this->initialPayoutWei($locked);
+
+                if (bccomp($amountWei, '0', 0) <= 0) {
+                    return null;
+                }
+
+                $locked->update([
+                    'claimed_amount' => bcadd((string) $locked->claimed_amount, Wei::format($amountWei), 18),
+                    'metadata' => array_merge($locked->metadata ?? [], ['initial_payout_wei' => $amountWei]),
+                ]);
+            }
+
+            return TreasuryPayout::create([
+                'idempotency_key' => self::PAYOUT_KEY_PREFIX.$locked->uuid.'-tge-'.($payouts->count() + 1),
+                'to_address' => strtolower($locked->wallet_address),
+                'amount_wei' => $amountWei,
                 'purpose' => 'token_sale',
                 'origin' => TreasuryPayout::ORIGIN_SALE_BANK,
-                'memo' => 'จ่ายส่วนที่ปลดล็อกแล้วจากการโอนเงิน '.($tx->metadata['reference'] ?? $tx->uuid),
+                'memo' => 'จ่ายส่วนที่ปลดล็อกแล้วจากการโอนเงิน '.($locked->metadata['reference'] ?? $locked->uuid),
                 'status' => TreasuryPayout::STATUS_PENDING,
-            ],
-        );
+            ]);
+        });
+    }
+
+    /**
+     * ยอดจ่ายครั้งแรกเป็น wei — ส่วนที่ปลดล็อกแล้ว แต่ไม่เกินวงเงินต่อครั้งของกระเป๋าร้อน.
+     *
+     * ยอดเกินวงเงินคือรายการที่ validatePayout ไม่มีวันผ่าน และเมื่อหักสิทธิ์ claim ไปแล้ว
+     * ผู้ซื้อจะติดอยู่ตรงนั้น จึงจ่ายเต็มวงเงิน ส่วนที่เหลือคงเป็นสิทธิ์ให้แบ่ง claim เอง
+     */
+    private function initialPayoutWei(SaleTransaction $tx): string
+    {
+        $claimableWei = Wei::toWei(number_format((float) $tx->claimable_amount, 18, '.', ''));
+        $maxPerTxWei = Wei::toWei((string) config('treasury.limits.per_transaction', '0'));
+
+        return bccomp($maxPerTxWei, '0', 0) > 0 && bccomp($claimableWei, $maxPerTxWei, 0) > 0
+            ? $maxPerTxWei
+            : $claimableWei;
     }
 
     /**

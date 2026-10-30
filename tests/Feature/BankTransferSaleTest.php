@@ -12,7 +12,11 @@ use App\Services\BankTransferSaleService;
 use App\Services\StripePaymentService;
 use App\Services\TokenSaleService;
 use App\Support\TreasuryWallet;
+use App\Support\Wei;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Testing\TestResponse;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -224,6 +228,294 @@ class BankTransferSaleTest extends TestCase
         $this->bank()->queueInitialPayout($confirmed->fresh());
 
         $this->assertSame(1, TreasuryPayout::where('to_address', strtolower(self::BUYER))->count());
+    }
+
+    // =========================================================================
+    // จ่ายครั้งแรกจากออเดอร์โอน — ห้ามจ่ายซ้ำ (ออดิท 2026-10-29 C6)
+    // =========================================================================
+
+    /** ยอดรวมของทุกแถวในคิว = เหรียญที่จะออกจากกระเป๋าร้อนจริงถ้าอนุมัติครบ */
+    private function assertQueuedTpix(string $expected): void
+    {
+        $this->assertSame(Wei::toWei($expected), Wei::sum(TreasuryPayout::pluck('amount_wei')->all()));
+    }
+
+    private function confirmedOrder(): SaleTransaction
+    {
+        $phase = $this->makeOpenPhase();
+        $order = $this->bank()->createOrder(self::BUYER, $phase->id, 100.0);
+
+        return $this->bank()->confirm(SaleTransaction::where('uuid', $order['transaction_id'])->firstOrFail());
+    }
+
+    private function claim(SaleTransaction $tx, float $amount): TestResponse
+    {
+        $this->withoutMiddleware();
+
+        return $this->postJson('/api/v1/token-sale/claim', [
+            'wallet_address' => self::BUYER,
+            'transaction_id' => $tx->uuid,
+            'amount' => $amount,
+        ]);
+    }
+
+    private function runBackfill(): void
+    {
+        (require database_path('migrations/2026_10_30_100000_count_bank_sale_payouts_as_claimed.php'))->up();
+    }
+
+    private function legacyPayout(SaleTransaction $tx, string $tpix, array $overrides = []): TreasuryPayout
+    {
+        return TreasuryPayout::create(array_merge([
+            'idempotency_key' => 'sale-bank-'.$tx->uuid.'-'.$tpix,
+            'to_address' => self::BUYER,
+            'amount_wei' => Wei::toWei($tpix),
+            'purpose' => 'token_sale',
+            'origin' => TreasuryPayout::ORIGIN_SALE_BANK,
+            'status' => TreasuryPayout::STATUS_PENDING,
+        ], $overrides));
+    }
+
+    /**
+     * ★ คีย์เดิมมียอด claimable ปนอยู่ พอ vesting ปลดเพิ่มยอดก็เปลี่ยน คีย์ก็เปลี่ยน
+     * กดซ้ำจึงได้แถวใหม่ทั้งที่ส่วน TGE เข้าคิวไปแล้ว = จ่าย 200 แรกซ้ำ.
+     */
+    public function test_requeue_after_more_vesting_unlocked_does_not_queue_a_second_payout(): void
+    {
+        $confirmed = $this->confirmedOrder();
+        $first = $this->bank()->queueInitialPayout($confirmed);
+
+        // ปิดเฟส +30 วัน + cliff 30 วัน = ปลดเพิ่มหลังวันที่ 60
+        $this->travel(100)->days();
+        $this->assertGreaterThan(0, $confirmed->fresh()->claimable_amount);
+
+        $again = $this->bank()->queueInitialPayout($confirmed->fresh());
+
+        $this->assertSame($first->id, $again->id);
+        $this->assertQueuedTpix('200');
+    }
+
+    /** ★ ยอดที่เข้าคิวแล้วต้องหักออกจากสิทธิ์ claim ไม่งั้นผู้ซื้อเรียก /claim ได้ยอดเดิมอีกรอบ */
+    public function test_buyer_cannot_claim_what_the_bank_path_already_queued(): void
+    {
+        $confirmed = $this->confirmedOrder();
+        $this->bank()->queueInitialPayout($confirmed);
+
+        $fresh = $confirmed->fresh();
+        $this->assertEquals(200, (float) $fresh->claimed_amount);
+        $this->assertEquals(0, $fresh->claimable_amount);
+
+        $this->claim($fresh, 200)->assertStatus(400)->assertJsonPath('error.code', 'INSUFFICIENT_CLAIMABLE');
+
+        $this->bank()->queueInitialPayout($fresh);
+        $this->assertSame(1, TreasuryPayout::count());
+        $this->assertQueuedTpix('200');
+    }
+
+    /** ★ ผู้ซื้อ claim ไปก่อนบางส่วน → คิวจ่ายเฉพาะส่วนที่เหลือ และกดซ้ำก็ไม่เพิ่ม */
+    public function test_claim_then_requeue_cannot_pay_the_same_tokens_twice(): void
+    {
+        $confirmed = $this->confirmedOrder();
+
+        $this->claim($confirmed, 50)->assertOk();
+
+        $this->bank()->queueInitialPayout($confirmed->fresh());
+        $this->bank()->queueInitialPayout($confirmed->fresh());
+
+        $fresh = $confirmed->fresh();
+        $this->assertEquals(200, (float) $fresh->claimed_amount);
+        $this->claim($fresh, 150)->assertStatus(400)->assertJsonPath('error.code', 'INSUFFICIENT_CLAIMABLE');
+
+        $this->assertSame(2, TreasuryPayout::count());
+        $this->assertQueuedTpix('200');
+    }
+
+    /** claim ครบก่อนแอดมินกดเข้าคิว = ไม่มีอะไรเหลือให้จ่าย */
+    public function test_requeue_after_the_buyer_claimed_everything_queues_nothing(): void
+    {
+        $confirmed = $this->confirmedOrder();
+
+        $this->claim($confirmed, 200)->assertOk();
+
+        $this->assertNull($this->bank()->queueInitialPayout($confirmed->fresh()));
+        $this->assertQueuedTpix('200');
+    }
+
+    /** ได้ model ค้างมาจากก่อนหน้าก็ต้องอ่านยอดจริงใต้ล็อก ไม่ใช่เชื่อค่าที่ถือมา */
+    public function test_requeue_with_a_stale_model_uses_the_locked_row(): void
+    {
+        $stale = $this->confirmedOrder();
+
+        $this->claim($stale, 200)->assertOk();
+
+        $this->assertNull($this->bank()->queueInitialPayout($stale));
+        $this->assertQueuedTpix('200');
+    }
+
+    /** ★ คิวล้มกลางทาง → ยอดกันไว้ต้องม้วนกลับ และกดใหม่ต้องได้แถวเดียวตามปกติ */
+    public function test_requeue_works_after_the_queue_attempt_failed(): void
+    {
+        $confirmed = $this->confirmedOrder();
+
+        $broken = true;
+        TreasuryPayout::creating(function () use (&$broken) {
+            if ($broken) {
+                throw new RuntimeException('connection lost');
+            }
+        });
+
+        try {
+            $this->bank()->queueInitialPayout($confirmed);
+            $this->fail('ต้องโยน exception ต่อไปให้ผู้เรียกเห็น');
+        } catch (RuntimeException $e) {
+            $this->assertSame('connection lost', $e->getMessage());
+        }
+
+        $this->assertSame(0, TreasuryPayout::count());
+        $this->assertEquals(0, (float) $confirmed->fresh()->claimed_amount);
+
+        $broken = false;
+        $this->bank()->queueInitialPayout($confirmed->fresh());
+
+        $this->assertSame(1, TreasuryPayout::count());
+        $this->assertQueuedTpix('200');
+        $this->assertEquals(200, (float) $confirmed->fresh()->claimed_amount);
+    }
+
+    /**
+     * ★ รายการที่จบโดยพิสูจน์ได้ว่าเงินไม่ออก → กดใหม่ได้แถวใหม่ยอดเดิม
+     * และยอดกันไว้ต้องไม่ถูกบวกซ้ำ ไม่งั้นผู้ซื้อเสียสิทธิ์สองเท่า.
+     */
+    public function test_requeue_replaces_a_payout_that_provably_sent_nothing(): void
+    {
+        $confirmed = $this->confirmedOrder();
+        $first = $this->bank()->queueInitialPayout($confirmed);
+        $first->update(['status' => TreasuryPayout::STATUS_REJECTED, 'failure_reason' => 'wrong wallet']);
+
+        // ระหว่างรอ vesting ปลดเพิ่ม — รอบใหม่ต้องยังเป็นยอดเดิม ส่วนที่ปลดเพิ่มเป็นสิทธิ์ claim
+        $this->travel(100)->days();
+        $second = $this->bank()->queueInitialPayout($confirmed->fresh());
+
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame((string) $first->amount_wei, (string) $second->amount_wei);
+        $this->assertSame(TreasuryPayout::STATUS_PENDING, $second->status);
+        $this->assertEquals(200, (float) $confirmed->fresh()->claimed_amount);
+
+        // กดซ้ำอีกรอบ → มีแถวที่ยังไม่จบอยู่แล้ว ต้องคืนแถวเดิม
+        $this->assertSame($second->id, $this->bank()->queueInitialPayout($confirmed->fresh())->id);
+        $this->assertSame(2, TreasuryPayout::count());
+    }
+
+    /** ธุรกรรมที่ revert ลงบล็อกแล้วนับว่าเงินไม่ออก จ่ายรอบใหม่ได้ */
+    public function test_requeue_replaces_a_payout_that_reverted_on_chain(): void
+    {
+        $confirmed = $this->confirmedOrder();
+        $first = $this->bank()->queueInitialPayout($confirmed);
+        $first->update(['status' => TreasuryPayout::STATUS_FAILED, 'tx_hash' => '0x'.str_repeat('a', 64), 'block_number' => 10]);
+
+        $second = $this->bank()->queueInitialPayout($confirmed->fresh());
+
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertEquals(200, (float) $confirmed->fresh()->claimed_amount);
+    }
+
+    /** failed ที่มี hash แต่ไม่มีใบเสร็จ อาจลงบล็อกไปแล้ว — จ่ายรอบใหม่ = จ่ายซ้ำ */
+    public function test_requeue_refuses_when_the_earlier_payout_may_have_gone_out(): void
+    {
+        $confirmed = $this->confirmedOrder();
+        $first = $this->bank()->queueInitialPayout($confirmed);
+        $first->update(['status' => TreasuryPayout::STATUS_FAILED, 'tx_hash' => '0x'.str_repeat('a', 64)]);
+
+        $again = $this->bank()->queueInitialPayout($confirmed->fresh());
+
+        $this->assertSame($first->id, $again->id);
+        $this->assertSame(1, TreasuryPayout::count());
+    }
+
+    /** ออเดอร์ที่ไม่ได้อยู่ในสถานะ confirmed ต้องไม่ออกเหรียญ ไม่ว่าใครเรียกมา */
+    public function test_only_confirmed_orders_can_be_queued(): void
+    {
+        $confirmed = $this->confirmedOrder();
+        $confirmed->update(['status' => 'refunded']);
+
+        $this->assertNull($this->bank()->queueInitialPayout($confirmed->fresh()));
+        $this->assertSame(0, TreasuryPayout::count());
+        $this->assertEquals(0, (float) $confirmed->fresh()->claimed_amount);
+    }
+
+    /**
+     * ยอดที่เกินวงเงินต่อครั้งเป็นรายการที่ validatePayout ไม่มีวันผ่าน
+     * พอหักสิทธิ์ claim ไปแล้วผู้ซื้อจะติดอยู่ตรงนั้น จึงจ่ายเต็มวงเงินแล้วให้ claim ส่วนที่เหลือเอง.
+     */
+    public function test_initial_payout_stops_at_the_per_transaction_limit(): void
+    {
+        config(['treasury.limits.per_transaction' => '150']);
+        $confirmed = $this->confirmedOrder();
+
+        $this->bank()->queueInitialPayout($confirmed);
+
+        $this->assertQueuedTpix('150');
+        $fresh = $confirmed->fresh();
+        $this->assertEquals(150, (float) $fresh->claimed_amount);
+        $this->assertEquals(50, $fresh->claimable_amount);
+
+        $this->claim($fresh, 50)->assertOk();
+        $this->assertQueuedTpix('200');
+    }
+
+    /** ★ แถวเก่าที่ยังไม่จบไม่เคยถูกหักสิทธิ์ claim — migration ต้องหักให้ ไม่งั้น /claim จ่ายซ้ำได้ */
+    public function test_backfill_counts_a_live_legacy_payout_against_claimable(): void
+    {
+        $confirmed = $this->confirmedOrder();
+        $legacy = $this->legacyPayout($confirmed, '200');
+
+        $this->runBackfill();
+
+        $this->assertEquals(200, (float) $confirmed->fresh()->claimed_amount);
+        $this->claim($confirmed->fresh(), 200)->assertStatus(400)->assertJsonPath('error.code', 'INSUFFICIENT_CLAIMABLE');
+
+        // กดเข้าคิวซ้ำต้องเห็นแถวเก่าด้วย แม้รูปคีย์จะต่างจากแถวใหม่
+        $this->assertSame($legacy->id, $this->bank()->queueInitialPayout($confirmed->fresh())->id);
+        $this->assertSame(1, TreasuryPayout::count());
+
+        // แถวเก่าจบโดยเงินไม่ออกทีหลัง → จ่ายใหม่ยอดเดิมโดยไม่หักสิทธิ์ซ้ำ
+        $legacy->update(['status' => TreasuryPayout::STATUS_REJECTED]);
+        $retry = $this->bank()->queueInitialPayout($confirmed->fresh());
+
+        $this->assertNotSame($legacy->id, $retry->id);
+        $this->assertSame((string) $legacy->amount_wei, (string) $retry->amount_wei);
+        $this->assertEquals(200, (float) $confirmed->fresh()->claimed_amount);
+    }
+
+    /** แถวเก่าที่จบโดยเงินไม่ออกไม่เคยกินสิทธิ์ claim — ห้ามหัก และเข้าคิวใหม่ได้ตามยอดจริง */
+    public function test_backfill_ignores_a_legacy_payout_that_sent_nothing(): void
+    {
+        $confirmed = $this->confirmedOrder();
+        $this->legacyPayout($confirmed, '200', ['status' => TreasuryPayout::STATUS_REJECTED]);
+
+        $this->runBackfill();
+
+        $this->assertEquals(0, (float) $confirmed->fresh()->claimed_amount);
+
+        $retry = $this->bank()->queueInitialPayout($confirmed->fresh());
+
+        $this->assertSame(Wei::toWei('200'), (string) $retry->amount_wei);
+        $this->assertEquals(200, (float) $confirmed->fresh()->claimed_amount);
+    }
+
+    /** แถวเก่าซ้ำกันอยู่แล้ว → หักทุกแถวแต่ไม่เกินยอดซื้อ และเตือนให้คนตัดสินว่าจะปฏิเสธแถวไหน */
+    public function test_backfill_caps_claimed_at_the_purchase_and_flags_duplicates(): void
+    {
+        Log::spy();
+        $confirmed = $this->confirmedOrder();
+        $this->legacyPayout($confirmed, '800');
+        $this->legacyPayout($confirmed, '300');
+
+        $this->runBackfill();
+
+        $this->assertEquals(1000, (float) $confirmed->fresh()->claimed_amount);
+        $this->assertSame(2, TreasuryPayout::where('status', TreasuryPayout::STATUS_PENDING)->count());
+        Log::shouldHaveReceived('warning')->once();
     }
 
     /**

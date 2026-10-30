@@ -136,6 +136,9 @@ class SaleTransaction extends Model
     /**
      * จำนวน TPIX ที่ยังเคลมได้ตอนนี้ (ปลดล็อคแล้ว − ที่เคลมไปแล้ว).
      *
+     * claimed_amount นับทุกยอดที่เข้าคิวจ่ายแล้ว ทั้งจาก /token-sale/claim และ
+     * BankTransferSaleService::queueInitialPayout — ไม่ใช่แค่ที่ผู้ซื้อกดเอง
+     *
      * ⚠️ กับดักที่เคยเกิดจริง: เดิมมีทางออก 4 ทางในเมธอดนี้ แต่มีแค่ทางสุดท้าย
      *    ทางเดียวที่หัก claimed_amount อีกสามทาง (ไม่มี phase / TGE 100% /
      *    ยังไม่ถึง vesting start / อยู่ในช่วง cliff) คืนยอดเต็มทุกครั้งที่เรียก
