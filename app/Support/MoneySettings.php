@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\DB;
  * และต้องเขียนผ่าน change() เพื่อให้ audit_logs ตอบได้ว่าใครเปลี่ยนจากอะไรเป็นอะไร
  * (middleware admin.audit เก็บแค่ชื่อ route — สลับกระเป๋ารับเงินแล้วไม่เหลือร่องรอยว่าสลับเป็นใบไหน)
  *
+ * change() ใช้กับกลุ่มอื่นในหน้าตั้งค่าด้วย (security, ai, map ...) — ปิด Turnstile หรือสลับ URL ปลายทางของคีย์
+ * ต้องตามร่องรอยได้เหมือนกัน แต่ด่านสิทธิ์ของกลุ่มเหล่านั้นอยู่ที่ route ของแต่ละกลุ่ม ไม่ได้อยู่ในคลาสนี้
+ *
  * Developed by Xman Studio.
  */
 class MoneySettings
@@ -32,8 +35,12 @@ class MoneySettings
         'revenue' => ['wallet_address', 'tpix_wallet', 'wtpix_wallet'],
     ];
 
-    /** ชื่อคีย์ที่ถือเป็นความลับ — เทียบแบบกว้างไว้ก่อน คีย์ใหม่ที่ไม่มีใครนึกถึงจะได้ไม่หลุดลง log */
-    private const SECRET_PATTERN = '/secret|private|password|passphrase|mnemonic|token|api_key/i';
+    /**
+     * ชื่อคีย์ที่ถือเป็นความลับ — เทียบแบบกว้างไว้ก่อน คีย์ใหม่ที่ไม่มีใครนึกถึงจะได้ไม่หลุดลง log.
+     *
+     * ลงท้าย _key นับเป็นความลับทั้งหมด (cloudflare_image_key, map_tile_key) ยกเว้นคีย์สาธารณะที่แสดงบนหน้าเว็บอยู่แล้ว
+     */
+    private const SECRET_PATTERN = '/secret|private|password|passphrase|mnemonic|token|api_key|(?<!public|site)_key$/i';
 
     private const REDACTED = '[redacted]';
 
@@ -44,19 +51,21 @@ class MoneySettings
     }
 
     /**
-     * เขียนค่าเงินแล้วลงบันทึกในธุรกรรมเดียวกัน — บันทึกไม่สำเร็จเท่ากับค่าไม่เปลี่ยน.
+     * เขียนค่าแล้วลงบันทึกในธุรกรรมเดียวกัน — บันทึกไม่สำเร็จเท่ากับค่าไม่เปลี่ยน.
      *
      * ล้างแคชใน finally เพราะระหว่างทาง SiteSetting::get() อาจแคชค่าที่ยังไม่ commit ไว้แล้ว
+     *
+     * @param  array<int, string>  $groups  กลุ่มที่เทียบก่อน/หลัง — ต้องครอบทุกกลุ่มที่ $write เขียน
      */
-    public static function change(string $action, Closure $write): void
+    public static function change(string $action, Closure $write, array $groups = self::GROUPS): void
     {
         try {
-            DB::transaction(function () use ($action, $write): void {
-                $before = self::snapshot();
+            DB::transaction(function () use ($action, $write, $groups): void {
+                $before = self::snapshot($groups);
 
                 $write();
 
-                [$old, $new] = self::diff($before, self::snapshot());
+                [$old, $new] = self::diff($before, self::snapshot($groups));
                 self::record($action, $old, $new);
             });
         } finally {
@@ -84,11 +93,12 @@ class MoneySettings
      * อ่านจากฐานข้อมูลตรง ไม่ผ่านแคช — เทียบก่อน/หลังทั้งกลุ่มจึงเห็นค่าที่ถูกกระจายต่อด้วย
      * (เช่น revenue.* ที่ถูกคัดลอกไป trading.fee_collector_wallet).
      *
+     * @param  array<int, string>  $groups
      * @return array<string, string>
      */
-    private static function snapshot(): array
+    private static function snapshot(array $groups): array
     {
-        return SiteSetting::whereIn('group', self::GROUPS)
+        return SiteSetting::whereIn('group', $groups)
             ->get()
             ->mapWithKeys(fn (SiteSetting $setting) => ["{$setting->group}.{$setting->key}" => (string) $setting->value])
             ->all();
