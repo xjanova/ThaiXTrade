@@ -96,9 +96,15 @@ let catalogPromise = null;
  * หนึ่ง key ต่อ "ความตั้งใจเช่าหนึ่งครั้ง" — เน็ตหลุด/หมดเวลาแล้วกดใหม่ด้วยแพลนเดิม ได้ key เดิม
  * เซิร์ฟเวอร์จึงรู้ว่าเป็นคำขอเดิม ไม่ตัดเครดิตและไม่ต่ออายุซ้ำ ล้างทิ้งเมื่อรู้แน่ว่าสำเร็จ
  * การเช่ารอบถัดไปจึงเป็นการซื้อใหม่จริง (คำขอที่ถูกปฏิเสธใช้ key เดิมต่อได้ — เซิร์ฟเวอร์ไม่ได้เขียนอะไร)
+ *
+ * เก็บลง localStorage ไม่ใช่แค่ในหน่วยความจำ: คำขอที่ตัดเงินสำเร็จแต่คำตอบหาย แล้วผู้ใช้กดรีโหลดหน้า
+ * ก่อนกดใหม่ จะได้ key ใหม่ = เซิร์ฟเวอร์เห็นเป็นการซื้อครั้งที่สอง ตัดเงินซ้ำ
+ * อายุยาว (24 ชม.) ได้โดยไม่กันการต่ออายุจริง เพราะการกดซ้ำครั้งแรกที่เป็นคำขอเดิม เซิร์ฟเวอร์ตอบสำเร็จ
+ * → key ถูกล้าง → กดครั้งถัดไปเป็นการซื้อใหม่ตามปกติ
  */
-let pendingSubscribe = null;
-const SUBSCRIBE_KEY_TTL_MS = 10 * 60 * 1000;
+const SUBSCRIBE_KEY_STORAGE = 'tpix.aiBot.pendingSubscribe';
+const SUBSCRIBE_KEY_TTL_MS = 24 * 60 * 60 * 1000;
+let pendingSubscribe = null;   // สำรองเมื่อ localStorage ใช้ไม่ได้ (โหมดส่วนตัว)
 
 // ── ค่าที่ตัวเดินบอทใช้ร่วม — ต้องอยู่ระดับโมดูล ไม่ผูกกับคอมโพเนนต์ตัวไหน ───────────
 const bots = computed(() => status.value?.bots ?? []);
@@ -362,15 +368,36 @@ function newRequestKey() {
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 }
 
+function readPendingSubscribe() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(SUBSCRIBE_KEY_STORAGE) || 'null');
+        // ว่าง = อาจเขียนไม่ลง (พื้นที่เต็ม) — ใช้ค่าในหน่วยความจำ เอียงไปทาง "ไม่ตัดซ้ำ"
+        return typeof stored?.key === 'string' ? stored : pendingSubscribe;
+    } catch {
+        return pendingSubscribe;
+    }
+}
+
+function writePendingSubscribe(value) {
+    pendingSubscribe = value;
+    try {
+        if (value) localStorage.setItem(SUBSCRIBE_KEY_STORAGE, JSON.stringify(value));
+        else localStorage.removeItem(SUBSCRIBE_KEY_STORAGE);
+    } catch {
+        // เก็บไม่ได้ (โหมดส่วนตัว/พื้นที่เต็ม) — ใช้ในหน่วยความจำอย่างเดียว กันได้จนกว่าจะรีโหลดหน้า
+    }
+}
+
 function subscribeKeyFor(address, planCode, days) {
-    const pending = pendingSubscribe;
+    const pending = readPendingSubscribe();
     if (pending && pending.address === address && pending.planCode === planCode && pending.days === days
         && Date.now() - pending.createdAt < SUBSCRIBE_KEY_TTL_MS) {
         return pending.key;
     }
 
-    pendingSubscribe = { address, planCode, days, key: newRequestKey(), createdAt: Date.now() };
-    return pendingSubscribe.key;
+    const next = { address, planCode, days, key: newRequestKey(), createdAt: Date.now() };
+    writePendingSubscribe(next);
+    return next.key;
 }
 
 /** ยิง action ที่เขียนข้อมูล แล้ว sync status กลับมา */
@@ -665,7 +692,7 @@ export function useAiBot() {
         }));
 
         // WALLET_CHANGED = เซิร์ฟเวอร์ตอบสำเร็จแล้ว แค่ผลไม่ได้วาดเพราะสลับกระเป๋าไป
-        if (result.ok || result.error?.code === 'WALLET_CHANGED') pendingSubscribe = null;
+        if (result.ok || result.error?.code === 'WALLET_CHANGED') writePendingSubscribe(null);
         return result;
     };
 

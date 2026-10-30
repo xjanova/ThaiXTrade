@@ -15,9 +15,11 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' show Random;
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/ai_bot_models.dart';
 import '../services/ai_bot_api.dart';
@@ -29,6 +31,15 @@ import 'wallet_provider.dart';
 /// เซิร์ฟเวอร์ตอบ success ทั้งตอนให้จริงและตอนเคยรับไปแล้ว (idempotent)
 /// ถ้าไม่แยกสองกรณีนี้ จอจะขึ้น "รับ 100 เครดิตแล้ว!" ทุกครั้งที่กด
 enum WelcomeOutcome { granted, alreadyClaimed, failed }
+
+/// คำขอเช่าที่ยังไม่รู้ผล — ดู `AiBotProvider._pendingSubscribe`
+typedef _PendingSubscribe = ({
+  String wallet,
+  String planCode,
+  int days,
+  String key,
+  DateTime at,
+});
 
 class AiBotProvider extends ChangeNotifier {
   AiBotProvider({AiBotApi? api}) : _api = api ?? AiBotApi();
@@ -851,13 +862,22 @@ class AiBotProvider extends ChangeNotifier {
   /// และจำนวนวันเดิมได้ key เดิม เซิร์ฟเวอร์จึงไม่ตัดเครดิตและไม่ต่ออายุซ้ำ
   /// ล้างเมื่อสำเร็จ → การเช่ารอบถัดไปเป็นการซื้อใหม่จริง (คำขอที่ถูกปฏิเสธใช้ key
   /// เดิมต่อได้ เพราะเซิร์ฟเวอร์ไม่ได้เขียนอะไรไว้)
-  ({String wallet, String planCode, int days, String key, DateTime at})?
-      _pendingSubscribe;
+  ///
+  /// เก็บลง SharedPreferences ไม่ใช่แค่ในหน่วยความจำ: ตัดเงินสำเร็จแต่คำตอบหาย
+  /// แล้วผู้ใช้ปิดแอพก่อนกดใหม่ จะได้ key ใหม่ = เซิร์ฟเวอร์เห็นเป็นการซื้อครั้งที่สอง
+  /// อายุยาว 24 ชม. ได้โดยไม่กันการต่ออายุจริง เพราะการกดซ้ำครั้งแรกที่เป็นคำขอเดิม
+  /// เซิร์ฟเวอร์ตอบสำเร็จ → key ถูกล้าง → กดครั้งถัดไปเป็นการซื้อใหม่ตามปกติ
+  _PendingSubscribe? _pendingSubscribe; // สำรองเมื่อ SharedPreferences ใช้ไม่ได้
 
-  static const Duration _subscribeKeyTtl = Duration(minutes: 10);
+  static const String _pendingSubscribePrefsKey = 'ai_bot_pending_subscribe';
+  static const Duration _subscribeKeyTtl = Duration(hours: 24);
 
-  String _subscribeRequestKey(String wallet, String planCode, int days) {
-    final pending = _pendingSubscribe;
+  Future<String> _subscribeRequestKey(
+    String wallet,
+    String planCode,
+    int days,
+  ) async {
+    final pending = await _readPendingSubscribe();
     if (pending != null &&
         pending.wallet == wallet &&
         pending.planCode == planCode &&
@@ -870,14 +890,56 @@ class AiBotProvider extends ChangeNotifier {
     final key = List<int>.generate(16, (_) => rng.nextInt(256))
         .map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join();
-    _pendingSubscribe = (
+    await _writePendingSubscribe((
       wallet: wallet,
       planCode: planCode,
       days: days,
       key: key,
       at: DateTime.now(),
-    );
+    ));
     return key;
+  }
+
+  Future<_PendingSubscribe?> _readPendingSubscribe() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_pendingSubscribePrefsKey);
+      // ว่าง = อาจเขียนไม่ลง — ใช้ค่าในหน่วยความจำ เอียงไปทาง "ไม่ตัดซ้ำ"
+      if (raw == null) return _pendingSubscribe;
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      return (
+        wallet: map['wallet'] as String,
+        planCode: map['plan_code'] as String,
+        days: map['days'] as int,
+        key: map['key'] as String,
+        at: DateTime.parse(map['at'] as String),
+      );
+    } catch (_) {
+      return _pendingSubscribe;
+    }
+  }
+
+  Future<void> _writePendingSubscribe(_PendingSubscribe? value) async {
+    _pendingSubscribe = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (value == null) {
+        await prefs.remove(_pendingSubscribePrefsKey);
+      } else {
+        await prefs.setString(
+          _pendingSubscribePrefsKey,
+          jsonEncode({
+            'wallet': value.wallet,
+            'plan_code': value.planCode,
+            'days': value.days,
+            'key': value.key,
+            'at': value.at.toIso8601String(),
+          }),
+        );
+      }
+    } catch (_) {
+      // เก็บไม่ได้ — ใช้ในหน่วยความจำอย่างเดียว กันได้จนกว่าจะปิดแอพ
+    }
   }
 
   /// เช่า/ต่ออายุแพลน
@@ -897,18 +959,18 @@ class AiBotProvider extends ChangeNotifier {
     if (!_beginTask(subscribeKey)) return false;
 
     final res = await _run(
-      (wallet) => _api.subscribe(
+      (wallet) async => _api.subscribe(
         wallet: wallet,
         planCode: planCode,
         days: days,
-        idempotencyKey: _subscribeRequestKey(wallet, planCode, days),
+        idempotencyKey: await _subscribeRequestKey(wallet, planCode, days),
       ),
     );
     _endTask(subscribeKey);
 
     switch (res) {
       case ApiOk(:final data):
-        _pendingSubscribe = null;
+        unawaited(_writePendingSubscribe(null));
         // คืน payload ของ /status เต็มก้อน — ไม่ต้องยิงซ้ำ และ "ต้องใช้" ก้อนนี้
         // เพราะการเปลี่ยนแพลนเขียนทับกรอบความเสี่ยงของบอททุกตัว
         // ค่าเก่าที่ค้างใน memory ใช้ไม่ได้แล้ว
