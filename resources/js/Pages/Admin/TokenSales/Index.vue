@@ -2,7 +2,7 @@
 /**
  * TPIX TRADE - Admin Token Sales + Token Control
  * จัดการรอบขายเหรียญ TPIX + ดู master wallet + transactions
- * รองรับ: Stripe + USDT payment | ไม่มีการถอนเป็นเงินสด
+ * รองรับ: Stripe + โอนเงิน + USDT (ตรวจเงินเข้าเองจากเชน) | ไม่มีการถอนเป็นเงินสด
  * Developed by Xman Studio
  */
 
@@ -10,6 +10,7 @@ import { ref, computed } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import SaleLaunchPanel from '@/Components/Admin/SaleLaunchPanel.vue';
+import SaleCryptoPanel from '@/Components/Admin/SaleCryptoPanel.vue';
 
 const props = defineProps({
     sales: { type: Array, default: () => [] },
@@ -18,6 +19,8 @@ const props = defineProps({
     stats: { type: Object, default: () => ({}) },
     // ความพร้อม + ตารางที่จะได้ถ้ากดเปิดรอบขายวันนี้
     launch: { type: Object, default: () => ({}) },
+    // ทาง USDT — สถานะการเปิดรับ + เงินเข้าที่รอทีมงานตัดสิน
+    crypto: { type: Object, default: () => ({}) },
     // ทุกคำสั่งของหน้านี้ขยับเงินจริง — ใช้ได้เฉพาะ super_admin ระดับอื่นเปิดดูได้อย่างเดียว
     canManageMoney: { type: Boolean, default: false },
 });
@@ -38,13 +41,18 @@ const editingSale = ref(null);
 
 // ช่องทางรับเงินที่เลือกเพิ่มจากบัตรได้ — ต้องตรงกับ TokenSale::PAYMENT_CHANNELS ที่เซิร์ฟเวอร์ตรวจซ้ำตอนบันทึก
 const OPTIONAL_CHANNELS = [
-    { id: 'BANK', label: 'โอนเข้าบัญชีธนาคาร', hint: 'ใช้ได้เมื่อกรอกเลขบัญชีแล้ว' },
-    { id: 'CRYPTO', label: 'USDT ตรวจเงินเข้าบนเชน', hint: 'ใช้ได้เมื่อเปิดระบบรับ USDT แล้ว' },
+    { id: 'BANK', label: 'โอนเข้าบัญชีธนาคาร', short: 'โอนเงิน', hint: 'ใช้ได้เมื่อกรอกเลขบัญชีแล้ว' },
+    { id: 'CRYPTO', label: 'USDT ตรวจเงินเข้าบนเชน', short: 'USDT', hint: 'ใช้ได้เมื่อเปิดระบบรับ USDT แล้ว' },
 ];
 
 /** บัตรเปิดเสมอ และตัดค่าที่เลิกรับแล้ว (USDT, BNB, STRIPE) ทิ้ง ฟอร์มจะได้ไม่ส่งค่าที่เซิร์ฟเวอร์ปฏิเสธ */
 function saleChannels(saved) {
     return ['CARD', ...OPTIONAL_CHANNELS.map((channel) => channel.id).filter((id) => saved?.includes(id))];
+}
+
+/** ป้ายบนการ์ดรอบขาย ตามช่องทางที่รอบนั้นรับจริง */
+function saleChannelsLabel(saved) {
+    return ['Stripe', ...OPTIONAL_CHANNELS.filter((channel) => saved?.includes(channel.id)).map((channel) => channel.short)].join(' + ');
 }
 
 // ฟอร์ม Token Sale
@@ -390,6 +398,8 @@ function statusBadge(s) {
                 <!-- เปิดรอบขาย — เฟสแรกเริ่มนับจากวันที่กด ไม่ใช่วันที่ตั้งไว้ล่วงหน้า -->
                 <SaleLaunchPanel :launch="launch" :can-manage="canManageMoney" />
 
+                <SaleCryptoPanel :crypto="crypto" :can-manage="canManageMoney" />
+
                 <div class="flex justify-end mb-4">
                     <button v-if="canManageMoney" class="btn-primary px-4 py-2 text-sm font-semibold" @click="openCreateSale">+ New Sale</button>
                 </div>
@@ -411,7 +421,7 @@ function statusBadge(s) {
                             <div><span class="text-gray-500">Supply</span><p class="text-white font-medium">{{ fmt(sale.total_supply_for_sale) }}</p></div>
                             <div><span class="text-gray-500">Sold</span><p class="text-trading-green font-medium">{{ fmt(sale.total_sold) }}</p></div>
                             <div><span class="text-gray-500">Raised</span><p class="text-primary-400 font-medium">${{ fmt(sale.total_raised_usd) }}</p></div>
-                            <div><span class="text-gray-500">Payment</span><p class="text-white">Stripe + USDT</p></div>
+                            <div><span class="text-gray-500">Payment</span><p class="text-white">{{ saleChannelsLabel(sale.accept_currencies) }}</p></div>
                         </div>
 
                         <!-- Phases Table -->

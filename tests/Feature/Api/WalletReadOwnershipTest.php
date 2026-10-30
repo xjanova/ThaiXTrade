@@ -70,6 +70,7 @@ class WalletReadOwnershipTest extends TestCase
     private const PROTECTED_GETS = [
         'api/v1/token-sale/purchases/{walletAddress}' => '/api/v1/token-sale/purchases/{wallet}',
         'api/v1/token-sale/vesting/{walletAddress}' => '/api/v1/token-sale/vesting/{wallet}',
+        'api/v1/token-sale/crypto-order/{orderId}' => '/api/v1/token-sale/crypto-order/6c1f0b7e-6a2a-4a51-9a3b-0d6d4cbf1a10?wallet_address={wallet}',
         'api/v1/trading/orders' => '/api/v1/trading/orders?wallet_address={wallet}',
         'api/v1/trading/order/{orderId}' => '/api/v1/trading/order/1?wallet_address={wallet}',
         'api/v1/trading/history' => '/api/v1/trading/history?wallet_address={wallet}',

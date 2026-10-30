@@ -147,6 +147,18 @@ describe('ฟอร์มรอบขาย — ช่องทางรับ�
         expect(await submittedChannels(wrapper)).toEqual(['CARD']);
     });
 
+    it.each([
+        [['CARD'], 'Stripe'],
+        [['CARD', 'CRYPTO'], 'Stripe + USDT'],
+        [['CARD', 'BANK', 'CRYPTO'], 'Stripe + โอนเงิน + USDT'],
+        [['USDT', 'BNB'], 'Stripe'],
+        [null, 'Stripe'],
+    ])('การ์ดรอบขายบอกช่องทางตามจริง %j', async (saved, label) => {
+        const wrapper = await openSales([{ ...existingSale, accept_currencies: saved }]);
+
+        expect(wrapper.findAll('p').map((p) => p.text())).toContain(label);
+    });
+
     it('บอกว่าไม่รับ USDT แล้วเว้นกระเป๋าว่างได้', async () => {
         expect((await openCreate()).text()).toContain('ถ้าไม่เปิดรับ USDT เว้นว่างได้');
     });

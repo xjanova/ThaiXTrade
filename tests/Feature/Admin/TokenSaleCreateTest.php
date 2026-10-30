@@ -226,7 +226,7 @@ class TokenSaleCreateTest extends TestCase
 
         $sale = $this->submit();
 
-        $this->assertSame(['card' => true, 'bank' => false], app(SaleStatusService::class)->paymentMethods($sale));
+        $this->assertSame(['card' => true, 'bank' => false, 'crypto' => false], app(SaleStatusService::class)->paymentMethods($sale));
 
         $sales = app(TokenSaleService::class);
         $sales->assertCurrencyAccepted($sale, 'USD');

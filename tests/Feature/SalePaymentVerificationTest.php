@@ -45,6 +45,7 @@ class SalePaymentVerificationTest extends TestCase
             'slug' => 'tpix-public-sale',
             'status' => 'active',
             'total_supply_for_sale' => 700000000,
+            'accept_currencies' => ['BNB', 'USDT'],
             'sale_wallet_address' => self::SALE_WALLET,
         ]);
 

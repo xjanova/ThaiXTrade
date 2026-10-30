@@ -169,6 +169,7 @@ const salePay = computed(() => {
     const out = [];
     if (methods.card) out.push(t('homeClassic.payCard'));
     if (methods.bank) out.push(t('homeClassic.payBank'));
+    if (methods.crypto) out.push(t('homeClassic.payCrypto'));
     return out;
 });
 

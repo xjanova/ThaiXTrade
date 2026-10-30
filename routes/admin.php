@@ -281,6 +281,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 // เข้าคิวจ่ายใหม่ = สร้างรายการจ่ายจากกระเป๋าร้อน สิทธิ์จึงเท่ากับหน้าคลัง
                 Route::post('/bank/{id}/requeue', [TokenSaleController::class, 'requeueBankPayout'])->name('bank.requeue');
                 Route::post('/claims/{id}/requeue', [TokenSaleController::class, 'requeueClaimPayouts'])->name('claims.requeue');
+
+                // USDT ที่เข้ามาแต่ระบบออกเหรียญเองไม่ได้ (ยอดไม่ตรง/ช้า/ซ้ำ/ผิดเหรียญ/หาคำสั่งซื้อไม่เจอ)
+                Route::post('/crypto/{id}/credit', [TokenSaleController::class, 'creditCryptoPayment'])->name('crypto.credit');
+                Route::post('/crypto/{id}/resolve', [TokenSaleController::class, 'resolveCryptoPayment'])->name('crypto.resolve');
             });
         });
 

@@ -5,6 +5,8 @@ namespace Tests\Feature\Admin;
 use App\Models\AdminUser;
 use App\Models\AuditLog;
 use App\Models\Chain;
+use App\Models\SaleCryptoOrder;
+use App\Models\SaleCryptoPayment;
 use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\SiteSetting;
@@ -47,6 +49,10 @@ class MoneyRoutesAccessTest extends TestCase
 
     private const BUYER = '0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd';
 
+    private const SALE_WALLET = '0x5a1e000000000000000000000000000000005a1e';
+
+    private const USDT_BSC = '0x55d398326f99059ff775485246999027b3197955';
+
     private Chain $chain;
 
     private SalePhase $phase;
@@ -60,6 +66,8 @@ class MoneyRoutesAccessTest extends TestCase
     private SaleTransaction $paidBankOrder;
 
     private WhitelistEntry $whitelisted;
+
+    private SaleCryptoPayment $cryptoPayment;
 
     protected function setUp(): void
     {
@@ -149,6 +157,42 @@ class MoneyRoutesAccessTest extends TestCase
             'sale_phase_id' => $this->phase->id,
             'wallet_address' => self::BUYER,
         ]);
+
+        $cryptoOrder = SaleCryptoOrder::create([
+            'reference' => 'TPX-ABCDEFG',
+            'token_sale_id' => $sale->id,
+            'sale_phase_id' => $this->phase->id,
+            'wallet_address' => self::BUYER,
+            'chain_id' => 56,
+            'token_address' => self::USDT_BSC,
+            'token_symbol' => 'USDT',
+            'token_decimals' => 18,
+            'pay_to_address' => self::SALE_WALLET,
+            'amount_usd' => 10,
+            'tpix_amount' => 100,
+            'price_per_tpix' => 0.10,
+            'pay_amount_raw' => '10000100000000000000',
+            'tag_micro' => 100,
+            'status' => SaleCryptoOrder::STATUS_NEEDS_REVIEW,
+            'expires_at' => now()->addMinutes(30),
+        ]);
+
+        $this->cryptoPayment = SaleCryptoPayment::create([
+            'chain_id' => 56,
+            'tx_hash' => '0x'.str_repeat('ab', 32),
+            'log_index' => 0,
+            'block_number' => 1000,
+            'block_timestamp' => now()->timestamp,
+            'from_address' => self::BUYER,
+            'to_address' => self::SALE_WALLET,
+            'token_address' => self::USDT_BSC,
+            'token_symbol' => 'USDT',
+            'token_decimals' => 18,
+            'amount_raw' => '5000000000000000000',
+            'order_id' => $cryptoOrder->id,
+            'status' => SaleCryptoPayment::STATUS_NEEDS_REVIEW,
+            'review_reason' => SaleCryptoPayment::REASON_UNDERPAID,
+        ]);
     }
 
     /** @return array<string, mixed> */
@@ -204,6 +248,7 @@ class MoneyRoutesAccessTest extends TestCase
         'แก้เฟส', 'เปิดรอบขาย', 'สวิตช์เปิดขายอัตโนมัติ', 'ล็อกวันจบรอบ',
         'เพิ่ม whitelist', 'นำเข้า whitelist', 'ลบ whitelist',
         'คืนเงินรอบขาย', 'ยืนยันเงินโอน', 'ปฏิเสธเงินโอน', 'เข้าคิวจ่ายใหม่', 'เข้าคิว claim ใหม่', 'คืนเงิน Stripe',
+        'ออกเหรียญ USDT', 'ปิดรายการ USDT',
         'สร้าง swap', 'แก้ swap', 'เปิดปิด swap', 'ลบ swap',
     ];
 
@@ -238,6 +283,8 @@ class MoneyRoutesAccessTest extends TestCase
             'ปฏิเสธเงินโอน' => $this->post("/admin/token-sales/bank/{$this->bankOrder->id}/reject", ['reason' => 'ไม่พบเงินเข้า']),
             'เข้าคิวจ่ายใหม่' => $this->post("/admin/token-sales/bank/{$this->paidBankOrder->id}/requeue"),
             'เข้าคิว claim ใหม่' => $this->post("/admin/token-sales/claims/{$this->paidBankOrder->id}/requeue"),
+            'ออกเหรียญ USDT' => $this->post("/admin/token-sales/crypto/{$this->cryptoPayment->id}/credit"),
+            'ปิดรายการ USDT' => $this->post("/admin/token-sales/crypto/{$this->cryptoPayment->id}/resolve", ['note' => 'คืนเงินแล้ว']),
             'คืนเงิน Stripe' => $this->postJson('/admin/finance/refund', ['transaction_id' => $this->cardPayment->id]),
             'สร้าง swap' => $this->post('/admin/swap', $this->swapValues()),
             'แก้ swap' => $this->put("/admin/swap/{$this->swap->id}", $this->swapValues()),
@@ -255,6 +302,7 @@ class MoneyRoutesAccessTest extends TestCase
             SaleTransaction::orderBy('id')->pluck('status', 'id')->all(),
             TreasuryPayout::orderBy('id')->pluck('status', 'id')->all(),
             WhitelistEntry::orderBy('id')->pluck('wallet_address')->all(),
+            SaleCryptoPayment::orderBy('id')->pluck('status', 'id')->all(),
             SiteSetting::orderBy('id')->pluck('value', 'id')->all(),
         ];
     }
