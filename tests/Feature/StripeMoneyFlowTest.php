@@ -246,6 +246,66 @@ class StripeMoneyFlowTest extends TestCase
     }
 
     #[Test]
+    public function a_refund_that_beats_the_order_is_retried_so_tokens_never_outlive_the_money(): void
+    {
+        $charge = ['id' => 'ch_1', 'object' => 'charge', 'payment_intent' => 'pi_1', 'amount' => 1030, 'amount_refunded' => 1030, 'refunded' => true];
+
+        // completed ล้มรอบแรก แล้วซัพพอร์ตคืนเงินไปก่อน — event นี้ต้องไม่ถูกจดว่าเสร็จ
+        $this->assertThrows(fn () => $this->deliver('charge.refunded', $charge, 'evt_early'), RuntimeException::class);
+
+        $this->deliver('checkout.session.completed', $this->paidSession(), 'evt_completed');
+        $this->assertSame('refund_processed', $this->deliver('charge.refunded', $charge, 'evt_early')['status']);
+
+        $this->assertSame('refunded', SaleTransaction::sole()->status);
+        $this->assertCounters(5000, 500);
+    }
+
+    #[Test]
+    public function a_dispute_that_beats_the_order_is_retried_too(): void
+    {
+        $dispute = ['id' => 'dp_1', 'object' => 'dispute', 'payment_intent' => 'pi_1', 'amount' => 1030];
+
+        $this->assertThrows(fn () => $this->deliver('charge.dispute.created', $dispute, 'evt_early'), RuntimeException::class);
+
+        $this->deliver('checkout.session.completed', $this->paidSession(), 'evt_completed');
+        $this->deliver('charge.dispute.created', $dispute, 'evt_early');
+
+        $this->assertSame('failed', SaleTransaction::sole()->status);
+        $this->assertCounters(5000, 500);
+    }
+
+    #[Test]
+    public function a_refund_of_a_session_that_is_not_a_token_sale_stays_a_no_op(): void
+    {
+        $this->stripeRoutes['GET /v1/checkout/sessions'] = ['object' => 'list', 'data' => [$this->paidSession(['metadata' => []])], 'has_more' => false];
+
+        $result = $this->deliver('charge.refunded', ['id' => 'ch_1', 'object' => 'charge', 'payment_intent' => 'pi_1', 'amount' => 1030, 'amount_refunded' => 1030, 'refunded' => true]);
+
+        $this->assertSame('already_refunded_or_not_found', $result['status']);
+    }
+
+    #[Test]
+    public function a_failed_auto_refund_alerts_and_the_stripe_retry_finishes_it(): void
+    {
+        $this->phase->update(['allocation' => 5000]);
+        $refund = $this->stripeRoutes['POST /v1/refunds'];
+        unset($this->stripeRoutes['POST /v1/refunds']);
+
+        $this->assertThrows(fn () => $this->deliver('checkout.session.completed', $this->paidSession(), 'evt_paid'), RuntimeException::class);
+
+        $order = SaleTransaction::sole();
+        $this->assertSame('pending', $order->status);
+        $alert = fn () => SystemAlert::where('alert_key', 'sale_card_refund_failed_'.$order->id)->where('status', 'active');
+        $this->assertSame('critical', $alert()->first()?->severity);
+
+        $this->stripeRoutes['POST /v1/refunds'] = $refund;
+
+        $this->assertSame('auto_refunded', $this->deliver('checkout.session.completed', $this->paidSession(), 'evt_paid')['status']);
+        $this->assertSame('refunded', $order->fresh()->status);
+        $this->assertFalse($alert()->exists());
+    }
+
+    #[Test]
     public function a_failed_read_from_stripe_stays_retryable(): void
     {
         unset($this->stripeRoutes['GET /v1/checkout/sessions/'.self::SESSION]);
@@ -349,6 +409,19 @@ class StripeMoneyFlowTest extends TestCase
     }
 
     #[Test]
+    public function a_refused_admin_refund_leaves_the_remaining_payouts_alone(): void
+    {
+        $this->signInAdmin();
+        $order = $this->confirmedOrder();
+        $this->payout($order, ['status' => TreasuryPayout::STATUS_CONFIRMED, 'tx_hash' => '0x'.str_repeat('a', 64), 'block_number' => 10]);
+        $pending = $this->payout($order, [], '2');
+
+        $this->post("/admin/token-sales/refund/{$order->id}")->assertSessionHas('error');
+
+        $this->assertSame(TreasuryPayout::STATUS_PENDING, $pending->fresh()->status);
+    }
+
+    #[Test]
     public function finance_refund_says_why_when_tokens_already_left(): void
     {
         $this->signInAdmin();
@@ -361,6 +434,30 @@ class StripeMoneyFlowTest extends TestCase
 
         $this->assertSame([], $this->stripeCallsTo('POST /v1/refunds'));
         $this->assertSame('confirmed', $order->fresh()->status);
+    }
+
+    #[Test]
+    public function a_refused_refund_leaves_the_remaining_payouts_alone(): void
+    {
+        $order = $this->confirmedOrder();
+        $this->payout($order, ['status' => TreasuryPayout::STATUS_CONFIRMED, 'tx_hash' => '0x'.str_repeat('a', 64), 'block_number' => 10]);
+        $pending = $this->payout($order, [], '2');
+
+        $this->assertThrows(fn () => $this->stripe()->refundTransaction($order), PurchaseException::class);
+
+        $this->assertSame(TreasuryPayout::STATUS_PENDING, $pending->fresh()->status);
+    }
+
+    #[Test]
+    public function quota_stays_sold_when_the_money_came_back_after_the_tokens_left(): void
+    {
+        $order = $this->confirmedOrder();
+        $this->payout($order, ['status' => TreasuryPayout::STATUS_CONFIRMED, 'tx_hash' => '0x'.str_repeat('a', 64), 'block_number' => 10]);
+
+        $this->deliver('charge.refunded', ['id' => 'ch_1', 'object' => 'charge', 'payment_intent' => 'pi_1', 'amount' => 1030, 'amount_refunded' => 1030, 'refunded' => true]);
+
+        $this->assertSame('refunded', $order->fresh()->status);
+        $this->assertCounters(5000, 500);
     }
 
     #[Test]

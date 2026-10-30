@@ -140,6 +140,7 @@ class WtpixBridgeRelayTest extends TestCase
         $this->rpcFaults['rpc.bsc.test|eth_getTransactionReceipt'] = 'null';
         $this->rpcFaults['rpc.bsc.test|eth_getTransactionByHash'] = 'null';
         $this->sendFailCode = 'nonce_used';
+        $this->travel(2)->minutes(); // ส่งซ้ำเว้นช่วงตามการแตะแถวล่าสุด
 
         $this->relay();
 
@@ -160,11 +161,50 @@ class WtpixBridgeRelayTest extends TestCase
         $this->rpcFaults['rpc.bsc.test|eth_getTransactionByHash'] = 'null';
         $this->rpcFaults['rpc2.bsc.test|eth_getTransactionReceipt'] = 'upstream error';
         $this->sendFailCode = 'nonce_used';
+        $this->travel(2)->minutes(); // ส่งซ้ำเว้นช่วงตามการแตะแถวล่าสุด
 
         $this->relay();
 
         $this->assertSame(WtpixBridgeTransfer::STATUS_SENDING, $row->fresh()->status);
         $this->assertTrue(app(WtpixBridgeConfig::class)->siteSwitchOn());
+    }
+
+    #[Test]
+    public function a_consumed_nonce_that_stays_unprovable_still_raises_the_alert(): void
+    {
+        $this->useTwoRpcs();
+        $row = $this->lockRow();
+        $this->relay();
+
+        $row->update(['status' => WtpixBridgeTransfer::STATUS_SENDING, 'completed_at' => null, 'broadcast_at' => now()->subMinutes(31)]);
+        $this->rpcFaults['rpc.bsc.test|eth_getTransactionReceipt'] = 'null';
+        $this->rpcFaults['rpc.bsc.test|eth_getTransactionByHash'] = 'null';
+        $this->rpcFaults['rpc2.bsc.test|eth_getTransactionReceipt'] = 'upstream error';
+        $this->sendFailCode = 'nonce_used';
+        $this->travel(2)->minutes(); // ส่งซ้ำเว้นช่วงตามการแตะแถวล่าสุด
+
+        $this->relay();
+
+        $this->assertSame(WtpixBridgeTransfer::STATUS_SENDING, $row->fresh()->status);
+        $this->assertTrue(SystemAlert::where('alert_key', 'wtpix_bridge_tx_stuck_to_bsc')->where('status', 'active')->exists());
+    }
+
+    #[Test]
+    public function a_transaction_the_chain_forgot_raises_the_alert_despite_rebroadcasts(): void
+    {
+        $this->mineOnSend = false;
+        $row = $this->lockRow();
+        $this->relay();
+        $firstSend = $row->fresh()->broadcast_at;
+
+        // เชนไม่รู้จักธุรกรรมนี้เลย ระบบจึงส่ง raw เดิมซ้ำทุกรอบ — การส่งซ้ำต้องไม่รีเซ็ตเวลาที่ใช้วัดว่าค้าง
+        foreach ([10, 20, 31] as $minutes) {
+            $this->travelTo($firstSend->copy()->addMinutes($minutes));
+            $this->relay();
+        }
+
+        $this->assertSame((string) $firstSend, (string) $row->fresh()->broadcast_at);
+        $this->assertTrue(SystemAlert::where('alert_key', 'wtpix_bridge_tx_stuck_to_bsc')->where('status', 'active')->exists());
     }
 
     #[Test]

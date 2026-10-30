@@ -350,23 +350,26 @@ class StripePaymentService
      */
     public function refundTransaction(SaleTransaction $transaction): array
     {
-        $tokensLeftWei = DB::transaction(function () use ($transaction) {
+        $halted = DB::transaction(function () use ($transaction) {
             $locked = SaleTransaction::whereKey($transaction->id)->lockForUpdate()->firstOrFail();
 
             // ป้องกัน double refund — failed คือออเดอร์ที่ถูก chargeback ไปแล้ว Stripe คืนซ้ำไม่ได้
             if (in_array($locked->status, ['refunded', 'failed'], true)) {
-                return null;
+                return false;
             }
 
-            return $this->payouts->haltPayouts($locked, "คืนเงินบัตรของรายการซื้อ {$locked->uuid}");
+            $tokensLeftWei = $this->payouts->haltPayouts($locked, "คืนเงินบัตรของรายการซื้อ {$locked->uuid}");
+
+            // ปฏิเสธ = ไม่มีอะไรเปลี่ยน โยนใต้ธุรกรรมเพื่อย้อนแถวที่เพิ่งหยุด ไม่งั้นเหรียญส่วนที่เหลือของผู้ซื้อหายเงียบ ๆ
+            if (bccomp($tokensLeftWei, '0', 0) > 0) {
+                throw new PurchaseException('เหรียญของรายการนี้ออกจากคลังแล้ว '.Wei::format($tokensLeftWei).' TPIX — ระบบไม่คืนเงินให้ ต้องตรวจเหรียญก่อนคืนใน Stripe เอง');
+            }
+
+            return true;
         });
 
-        if ($tokensLeftWei === null) {
+        if (! $halted) {
             throw new RuntimeException('This transaction has already been refunded.');
-        }
-
-        if (bccomp($tokensLeftWei, '0', 0) > 0) {
-            throw new PurchaseException('เหรียญของรายการนี้ออกจากคลังแล้ว '.Wei::format($tokensLeftWei).' TPIX — ระบบไม่คืนเงินให้ ต้องตรวจเหรียญก่อนคืนใน Stripe เอง');
         }
 
         $stripeSessionId = str_replace('stripe_', '', $transaction->tx_hash);
@@ -407,6 +410,7 @@ class StripePaymentService
      *
      * ทั้งสี่ทางชนกันได้ เช่น webhook มาถึงก่อน Refund API ตอบ ทุกอย่างจึงตัดสินใต้ล็อกแถว
      * ตัวนับย้อนเฉพาะแถวที่เคยนับ และแถวที่คืนเงินแล้วคงสถานะ refunded แม้ dispute จะตามมา
+     * เหรียญออกไปแล้วไม่คืนโควตา ไม่งั้นขายเหรียญก้อนเดียวกันซ้ำ
      *
      * @return string ยอด wei ที่หยุดไม่ทัน
      */
@@ -415,14 +419,18 @@ class StripePaymentService
         return DB::transaction(function () use ($transaction, $status, $metadata, $reason) {
             $locked = SaleTransaction::whereKey($transaction->id)->lockForUpdate()->firstOrFail();
 
-            $this->saleService->reverseCounters($locked);
+            $tokensLeftWei = $this->payouts->haltPayouts($locked, "{$reason} ของรายการซื้อ {$locked->uuid}");
+
+            if (bccomp($tokensLeftWei, '0', 0) === 0) {
+                $this->saleService->reverseCounters($locked);
+            }
 
             $locked->update([
                 'status' => $locked->status === 'refunded' ? 'refunded' : $status,
                 'metadata' => array_merge($locked->metadata ?? [], $metadata),
             ]);
 
-            return $this->payouts->haltPayouts($locked, "{$reason} ของรายการซื้อ {$locked->uuid}");
+            return $tokensLeftWei;
         });
     }
 
@@ -537,7 +545,10 @@ class StripePaymentService
         // ตรวจซ้ำ — idempotency check
         $existing = SaleTransaction::where('tx_hash', 'stripe_'.$session->id)->first();
         if ($existing) {
-            return ['status' => 'duplicate', 'transaction_id' => $existing->uuid];
+            // คืนเงินรอบก่อนล้ม — รอบส่งซ้ำของ Stripe คือโอกาสเดียวที่จะลองใหม่เอง
+            return $existing->status === 'pending' && ($existing->metadata['needs_refund'] ?? false)
+                ? $this->autoRefund($existing)
+                : ['status' => 'duplicate', 'transaction_id' => $existing->uuid];
         }
 
         $holdDays = $this->cardClaimHoldDays();
@@ -636,23 +647,59 @@ class StripePaymentService
 
         // ★ Auto-refund ถ้า allocation หมดตอน confirm (ผู้ใช้จ่ายแล้วแต่ได้ไม่ได้เหรียญ)
         if ($transaction->status === 'pending' && ($transaction->metadata['needs_refund'] ?? false)) {
-            try {
-                $this->refundTransaction($transaction);
-                Log::warning('Auto-refund issued — allocation exhausted at confirm time', [
-                    'transaction_id' => $transaction->uuid,
-                    'session_id' => $session->id,
-                ]);
-
-                return ['status' => 'auto_refunded', 'transaction_id' => $transaction->uuid];
-            } catch (\Throwable $e) {
-                Log::critical('Auto-refund FAILED — manual intervention required', [
-                    'transaction_id' => $transaction->uuid,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            return $this->autoRefund($transaction);
         }
 
         return ['status' => $transaction->status === 'confirmed' ? 'success' : 'pending_refund', 'transaction_id' => $transaction->uuid];
+    }
+
+    /**
+     * คืนเงินออเดอร์ที่ออกเหรียญไม่ได้ — ล้มต้องตอบ 500 ไม่งั้นผู้ซื้อไม่ได้ทั้งเหรียญและเงิน โดยไม่มีใครรู้.
+     */
+    private function autoRefund(SaleTransaction $transaction): array
+    {
+        $alertKey = 'sale_card_refund_failed_'.$transaction->id;
+
+        try {
+            $this->refundTransaction($transaction);
+        } catch (\Throwable $e) {
+            Log::critical('Auto-refund FAILED — manual intervention required', [
+                'transaction_id' => $transaction->uuid,
+                'error' => $e->getMessage(),
+            ]);
+            SystemAlert::raise(
+                self::ALERT_NODE,
+                $alertKey,
+                'critical',
+                'คืนเงินอัตโนมัติของรายการซื้อ '.$transaction->uuid.' ไม่สำเร็จ ผู้ซื้อจ่ายแล้วแต่ไม่ได้เหรียญ — ระบบลองใหม่เมื่อ Stripe ส่งซ้ำ ถ้ายังไม่หายต้องคืนใน Stripe เอง',
+                ['transaction_id' => $transaction->id, 'wallet' => $transaction->wallet_address],
+            );
+
+            throw new RuntimeException('Stripe auto-refund failed.', 0, $e);
+        }
+
+        SystemAlert::resolveKeys(self::ALERT_NODE, [$alertKey]);
+        Log::warning('Auto-refund issued — allocation exhausted at confirm time', ['transaction_id' => $transaction->uuid]);
+
+        return ['status' => 'auto_refunded', 'transaction_id' => $transaction->uuid];
+    }
+
+    /**
+     * ออเดอร์ของ session นี้ — session ของรอบขายที่ยังไม่มีออเดอร์ต้องล้มให้ Stripe ส่ง event นี้ซ้ำ.
+     *
+     * เงินถูกดึงกลับก่อน checkout.session.completed ทำสำเร็จได้ (completed ล้มแล้วรอส่งซ้ำ)
+     * ถ้าจบตรงนี้ event จะถูกจดว่าเสร็จ แล้ว completed รอบถัดไปสร้างออเดอร์ confirmed
+     * ผู้ซื้อได้ทั้งเงินคืนและเหรียญ เพราะ payment_status ยังเป็น paid หลังคืนเงิน
+     */
+    private function orderForSession(object $session): ?SaleTransaction
+    {
+        $order = SaleTransaction::where('tx_hash', 'stripe_'.$session->id)->first();
+
+        if (! $order && ! empty($session->metadata->sale_id)) {
+            throw new RuntimeException('Stripe order is not recorded yet.');
+        }
+
+        return $order;
     }
 
     /**
@@ -691,8 +738,7 @@ class StripePaymentService
             return ['status' => 'no_matching_session'];
         }
 
-        $session = $sessions->data[0];
-        $transaction = SaleTransaction::where('tx_hash', 'stripe_'.$session->id)->first();
+        $transaction = $this->orderForSession($sessions->data[0]);
 
         if (! $transaction || in_array($transaction->status, ['refunded', 'failed'])) {
             return ['status' => 'already_refunded_or_not_found'];
@@ -757,8 +803,7 @@ class StripePaymentService
         ]);
 
         if (! empty($sessions->data)) {
-            $session = $sessions->data[0];
-            $transaction = SaleTransaction::where('tx_hash', 'stripe_'.$session->id)->first();
+            $transaction = $this->orderForSession($sessions->data[0]);
 
             if ($transaction) {
                 // ใช้ 'failed' เพราะ 'disputed' ไม่อยู่ใน DB enum — dispute = เสียเงินแน่ จึงย้อนยอดและหยุดเหรียญ

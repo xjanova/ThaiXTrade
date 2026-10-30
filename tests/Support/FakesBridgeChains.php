@@ -369,7 +369,9 @@ trait FakesBridgeChains
 
         switch ($body['method'] ?? '') {
             case 'eth_chainId':
-                return $ok('0x'.dechex($this->rpcChainIds[$host] ?? $chainId));
+                $answered = $this->rpcChainIds[$host] ?? $chainId;
+
+                return $ok(is_string($answered) ? $answered : '0x'.dechex($answered));
 
             case 'eth_blockNumber':
                 return $ok('0x'.dechex($s['latest']));

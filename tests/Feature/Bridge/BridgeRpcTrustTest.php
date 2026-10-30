@@ -117,12 +117,36 @@ class BridgeRpcTrustTest extends TestCase
     public function an_admin_approval_overrides_a_missing_second_provider(): void
     {
         $d = $this->deposit();
-        $d->update(['limits_overridden' => true]);
+        $d->update(['limits_overridden' => true, 'review_reason' => 'source_unconfirmed']);
         $this->rpcFaults['rpc2.bsc.test|eth_getTransactionReceipt'] = 'null';
 
         $this->relay();
 
         $this->assertSame(BridgeDeposit::STATUS_MINTED, $d->fresh()->status);
+    }
+
+    #[Test]
+    public function approving_a_limit_does_not_vouch_for_the_deposit_itself(): void
+    {
+        $tx = $this->fakeDeposit(56, $this->alice, '25000000000000000000', 900);
+        $d = $this->deposit($tx);
+        // แอดมินรับรองแค่ยอดเกินวงเงิน ไม่ได้ตรวจว่าเงินฝากมีจริง — ยอดสูงคือเหยื่อของ RPC ปลอมมากที่สุด
+        $d->update(['limits_overridden' => true, 'review_reason' => 'over_tx_limit']);
+        $this->rpcFaultReceipts['rpc2.bsc.test'][$tx] = ['transactionHash' => $tx, 'status' => '0x1', 'blockNumber' => '0x384', 'logs' => []];
+
+        $this->relay();
+
+        $d->refresh();
+        $this->assertSame([BridgeDeposit::STATUS_NEEDS_REVIEW, 'rpc_disagreement'], [$d->status, $d->review_reason]);
+        $this->assertSame([], $this->signCalls);
+    }
+
+    #[Test]
+    public function an_rpc_answering_garbage_for_the_chain_id_is_skipped(): void
+    {
+        $this->rpcChainIds['rpc.bsc.test'] = '0xzz';
+
+        $this->assertNotNull(app(BridgeConfig::class)->rpc(56)->blockNumber());
     }
 
     #[Test]

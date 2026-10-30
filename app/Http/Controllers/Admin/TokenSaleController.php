@@ -618,36 +618,37 @@ class TokenSaleController extends Controller
     public function refundTransaction(int $id, SaleClaimPayoutService $payouts, TokenSaleService $sales)
     {
         // ยอดขาย สถานะ และบันทึกต้องเปลี่ยนพร้อมกัน ล็อกแถวไว้เพื่อไม่ให้กดซ้ำแล้วหักยอดสองรอบ
-        $result = DB::transaction(function () use ($id, $payouts, $sales) {
-            $tx = SaleTransaction::lockForUpdate()->findOrFail($id);
-            $oldStatus = $tx->status;
+        try {
+            $tx = DB::transaction(function () use ($id, $payouts, $sales) {
+                $tx = SaleTransaction::lockForUpdate()->findOrFail($id);
+                $oldStatus = $tx->status;
 
-            if ($oldStatus === 'refunded') {
-                return ['error' => 'This transaction is already refunded.'];
-            }
+                if ($oldStatus === 'refunded') {
+                    throw new PurchaseException('This transaction is already refunded.');
+                }
 
-            // แถวจ่ายที่ค้างอยู่ต้องหยุดก่อน ไม่งั้นอนุมัติทีหลังแล้วผู้ซื้อได้ทั้งเงินคืนและเหรียญ
-            $tokensLeftWei = $payouts->haltPayouts($tx, "คืนเงินรายการซื้อ {$tx->uuid}");
+                // แถวจ่ายที่ค้างอยู่ต้องหยุดก่อน ไม่งั้นอนุมัติทีหลังแล้วผู้ซื้อได้ทั้งเงินคืนและเหรียญ
+                $tokensLeftWei = $payouts->haltPayouts($tx, "คืนเงินรายการซื้อ {$tx->uuid}");
 
-            // หยุดไม่ทัน = เหรียญออกไปแล้ว คืนโควตาไม่ได้ ไม่งั้นขายเหรียญก้อนเดียวกันซ้ำ
-            if (bccomp($tokensLeftWei, '0', 0) > 0) {
-                return ['error' => 'เหรียญของรายการนี้ออกจากคลังแล้ว '.Wei::format($tokensLeftWei).' TPIX — บันทึกคืนเงินไม่ได้'];
-            }
+                // หยุดไม่ทัน = เหรียญออกไปแล้ว คืนโควตาไม่ได้ ไม่งั้นขายเหรียญก้อนเดียวกันซ้ำ
+                // โยนใต้ธุรกรรมเพื่อย้อนแถวที่เพิ่งหยุด ปฏิเสธแล้วต้องไม่มีอะไรเปลี่ยน
+                if (bccomp($tokensLeftWei, '0', 0) > 0) {
+                    throw new PurchaseException('เหรียญของรายการนี้ออกจากคลังแล้ว '.Wei::format($tokensLeftWei).' TPIX — บันทึกคืนเงินไม่ได้');
+                }
 
-            // คืนยอดขายกลับไป phase + sale
-            $sales->reverseCounters($tx);
+                // คืนยอดขายกลับไป phase + sale
+                $sales->reverseCounters($tx);
 
-            $tx->update(['status' => 'refunded']);
+                $tx->update(['status' => 'refunded']);
 
-            $this->recordTransactionChange('token_sale.refund', $tx, $oldStatus);
+                $this->recordTransactionChange('token_sale.refund', $tx, $oldStatus);
 
-            return ['tx' => $tx];
-        });
-
-        if (isset($result['error'])) {
-            return redirect()->back()->with('error', $result['error']);
+                return $tx;
+            });
+        } catch (PurchaseException $e) {
+            return redirect()->back()->with('error', $e->getMessage());
         }
 
-        return redirect()->back()->with('success', "Transaction #{$result['tx']->id} refunded. Allocation returned.");
+        return redirect()->back()->with('success', "Transaction #{$tx->id} refunded. Allocation returned.");
     }
 }

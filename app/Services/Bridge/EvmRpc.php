@@ -112,7 +112,7 @@ class EvmRpc
         }
 
         $hex = $this->requestUrl($url, 'eth_chainId', [])['result'] ?? null;
-        if (! is_string($hex) || ! str_starts_with($hex, '0x')) {
+        if (! is_string($hex) || ! preg_match('/^0x[0-9a-f]+$/i', $hex)) {
             return false; // ตัวนี้ตอบไม่ได้ตอนนี้ — ลองตัวถัดไป ไม่จำผล
         }
 
