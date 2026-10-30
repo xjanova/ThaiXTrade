@@ -275,6 +275,33 @@ trait FakesBridgeChains
         return $hash;
     }
 
+    /**
+     * ธุรกรรมที่กระเป๋าส่งเองด้วย nonce ที่กำหนดแล้วโอนเหรียญจริง (เช่นเจ้าของกด speed up ธุรกรรมจ่ายที่ค้าง)
+     * — ลงบล็อกแล้ว · คืน tx hash · $logFrom = ผู้โอนใน log เมื่อเงินออกผ่านสัญญาอื่น · $mutateLog = ทำ log ให้เสีย.
+     */
+    protected function fakeTransferTx(int $chainId, string $from, int $nonce, string $to, string $raw, ?string $token = null, ?string $logFrom = null, ?\Closure $mutateLog = null): string
+    {
+        $s = &$this->chainState[$chainId];
+        $s['latest']++;
+        $token ??= $chainId === 56 ? $this->usdtBsc : $this->usdtEth;
+        $hash = '0x'.hash('sha256', "transfer:{$chainId}:{$from}:{$nonce}:{$to}:{$raw}:{$token}:{$logFrom}");
+
+        $log = [
+            'address' => strtolower($token),
+            'topics' => [Abi::topic(Abi::TRANSFER_EVENT), '0x'.Abi::encAddress($logFrom ?? $from), '0x'.Abi::encAddress($to)],
+            'data' => '0x'.Abi::encUint($raw),
+            'blockNumber' => '0x'.dechex($s['latest']),
+            'transactionHash' => $hash,
+            'logIndex' => '0x0',
+        ];
+
+        $s['txs'][$hash] = ['hash' => $hash, 'from' => strtolower($from), 'to' => strtolower($token), 'nonce' => '0x'.dechex($nonce), 'blockNumber' => '0x'.dechex($s['latest'])];
+        $s['receipts'][$hash] = ['transactionHash' => $hash, 'status' => '0x1', 'blockNumber' => '0x'.dechex($s['latest']), 'logs' => [$mutateLog ? $mutateLog($log) : $log]];
+        $s['nonce'][strtolower($from)] = max($s['nonce'][strtolower($from)] ?? 0, $nonce + 1);
+
+        return $hash;
+    }
+
     private function mintedLog(string $depositId, string $to, string $units, int $block, string $txHash): array
     {
         return [

@@ -347,9 +347,10 @@ class BridgePayouter
      *       from = กระเป๋าจ่าย · nonce ตรง · hash ไม่ใช่ของเดิม) — nonce หนึ่งลงบล็อกได้ธุรกรรมเดียว
      *       จึงพิสูจน์ได้ว่า hash เดิมไม่มีวันลงบล็อก หาจากรายการถอนอื่นที่ใช้ nonce เดียวกัน
      *       หรือ hash ที่แอดมินกรอก (เช่นธุรกรรมยกเลิกที่เจ้าของส่งเองด้วย nonce เดิม)
+     *       และธุรกรรมนั้นต้องไม่ได้โอน USDT ให้ผู้รับรายการนี้ — โอนครบยอด = จ่ายแล้ว ไม่ใช่ปลอดภัย (ดู judgeNonceTx)
      * พิสูจน์ไม่ได้ = ไม่ปลอดภัย เสมอ
      *
-     * @return array{safe: bool, paid: bool, reason: string}
+     * @return array{safe: bool, paid: bool, reason: string, paid_tx?: string, paid_block?: ?int}
      */
     public function retryCheck(BridgeWithdrawal $withdrawal, ?string $nonceTxHash = null): array
     {
@@ -394,7 +395,7 @@ class BridgePayouter
         }
 
         // nonce ถูกใช้แล้ว — ต้องเจอตัวที่ใช้มันจริง
-        $candidates = BridgeWithdrawal::query()
+        $otherPayouts = BridgeWithdrawal::query()
             ->where('target_chain_id', $withdrawal->target_chain_id)
             ->where('payout_nonce', $nonce)
             ->whereNotNull('payout_tx_hash')
@@ -402,6 +403,8 @@ class BridgePayouter
             ->pluck('payout_tx_hash')
             ->map(fn ($h) => strtolower((string) $h))
             ->all();
+
+        $candidates = $otherPayouts;
 
         if ($nonceTxHash !== null && trim($nonceTxHash) !== '') {
             $candidates[] = strtolower(trim($nonceTxHash));
@@ -412,8 +415,11 @@ class BridgePayouter
                 continue; // hash เดิมเองพิสูจน์ "ไม่ได้จ่าย" ไม่ได้
             }
 
-            if ($this->minedWithNonce($rpc, $candidate, $from, $nonce)) {
-                return ['safe' => true, 'paid' => false, 'reason' => "nonce {$nonce} ถูกใช้โดยธุรกรรม {$candidate} ที่ลงบล็อกแล้ว — ธุรกรรมเดิมไม่มีทางลงบล็อก เงินไม่ได้ออก"];
+            $receipt = $this->minedReceipt($rpc, $candidate, $from, $nonce);
+
+            // nonce หนึ่งลงบล็อกได้ธุรกรรมเดียว — เจอตัวจริงแล้ว คำตอบอยู่ที่ตัวนี้ ไม่ต้องดูตัวอื่น
+            if ($receipt !== null) {
+                return $this->judgeNonceTx($withdrawal, $candidate, $nonce, $receipt, in_array($candidate, $otherPayouts, true));
             }
         }
 
@@ -421,11 +427,11 @@ class BridgePayouter
             ." — เปิดกระเป๋าจ่าย {$from} บน explorer หา nonce {$nonce} ถ้าเป็น {$hash} แปลว่าจ่ายไปแล้ว ถ้าเป็นธุรกรรมอื่นให้กรอก hash นั้นแล้วอนุมัติอีกครั้ง"];
     }
 
-    /** ธุรกรรมนี้ลงบล็อกแล้วจริง และเป็นของกระเป๋านี้ที่ nonce นี้ — เชื่อเฉพาะสิ่งที่อ่านเจอ ไม่เชื่อ "ไม่เจอ" */
-    private function minedWithNonce(EvmRpc $rpc, string $txHash, string $from, int $nonce): bool
+    /** ใบเสร็จของธุรกรรมนี้ เมื่อลงบล็อกแล้วจริงและเป็นของกระเป๋านี้ที่ nonce นี้ — เชื่อเฉพาะสิ่งที่อ่านเจอ ไม่เชื่อ "ไม่เจอ" */
+    private function minedReceipt(EvmRpc $rpc, string $txHash, string $from, int $nonce): ?array
     {
         if (! preg_match('/^0x[0-9a-f]{64}$/', $txHash)) {
-            return false;
+            return null;
         }
 
         $tx = $rpc->transactionAny($txHash);
@@ -435,11 +441,114 @@ class BridgePayouter
             || strtolower((string) ($tx['from'] ?? '')) !== $from
             || ! isset($tx['nonce'])
             || (int) Wei::hexToInt((string) $tx['nonce']) !== $nonce) {
-            return false;
+            return null;
         }
 
         // ยังอยู่ใน mempool = ยังถูกแทนที่ได้ — ต้องมีใบเสร็จ (ลงบล็อกแล้ว) เท่านั้น
-        return $rpc->receiptAny($txHash)['receipt'] !== null;
+        return $rpc->receiptAny($txHash)['receipt'];
+    }
+
+    /**
+     * ธุรกรรมนี้ใช้ nonce ของรายการไปแล้วจริง = hash เดิมตาย แต่เงินของรายการนี้อาจออกไปกับตัวนี้เอง
+     * (เจ้าของกด speed up หรือส่งโอนเดิมซ้ำตามที่ flagIfStuck แนะนำ) จึงต้องดู Transfer ในใบเสร็จก่อนสรุปว่า "ไม่ได้จ่าย"
+     *
+     * นับทุก Transfer ของ USDT ที่เข้าผู้รับ ไม่กรองยอดและไม่กรองผู้โอน
+     * (กรองยอด = โอนไม่ตรงยอดแล้วจ่ายทับได้ · กรองผู้โอน = โอนผ่านสัญญาแล้วรอด):
+     *   ไม่มีเลย                             → ปลอดภัย
+     *   ครบยอดพอดี + สำเร็จ + ไม่ใช่ของรายการอื่น → จ่ายแล้ว (ต้องปิดได้ ไม่งั้นแถว stuck_pending หยุดคิวของเชนตลอดไป)
+     *   นอกนั้น หรืออ่าน log ไม่ได้              → ไม่ปลอดภัย ให้คนตัดสิน
+     *
+     * @return array{safe: bool, paid: bool, reason: string, paid_tx?: string, paid_block?: ?int}
+     */
+    private function judgeNonceTx(BridgeWithdrawal $withdrawal, string $txHash, int $nonce, array $receipt, bool $ofOtherWithdrawal): array
+    {
+        $received = $this->usdtReceived($receipt, $withdrawal);
+        $amountRaw = (string) $withdrawal->payout_amount_raw;
+
+        if ($received === null) {
+            return ['safe' => false, 'paid' => false, 'reason' => "อ่าน log ของธุรกรรม {$txHash} ที่ใช้ nonce {$nonce} ไม่ได้ — ลองใหม่ภายหลัง ห้ามจ่ายใหม่"];
+        }
+
+        if (bccomp($received, '0', 0) === 0) {
+            return ['safe' => true, 'paid' => false, 'reason' => "nonce {$nonce} ถูกใช้โดยธุรกรรม {$txHash} ที่ลงบล็อกแล้ว และไม่ได้โอน USDT ให้ผู้รับรายการนี้ — ธุรกรรมเดิมไม่มีทางลงบล็อก เงินไม่ได้ออก"];
+        }
+
+        // เงินก้อนนี้เป็นของรายการอื่น นับเป็นของรายการนี้ไม่ได้ (ผู้รับจะได้ไม่ครบ) แต่ก็ยืนยันไม่ได้ว่ารายการนี้ไม่ได้จ่าย
+        if ($ofOtherWithdrawal) {
+            return ['safe' => false, 'paid' => false, 'reason' => "ธุรกรรม {$txHash} ที่ใช้ nonce {$nonce} เป็นของรายการถอนอื่น และโอน USDT เข้าผู้รับคนเดียวกัน — แยกเองไม่ได้ว่าเป็นเงินของรายการไหน ตรวจด้วยมือบน explorer ห้ามจ่ายใหม่"];
+        }
+
+        if (strtolower((string) ($receipt['status'] ?? '')) === '0x1' && bccomp($received, $amountRaw, 0) === 0) {
+            $block = isset($receipt['blockNumber']) ? (int) Wei::hexToInt((string) $receipt['blockNumber']) : null;
+
+            return [
+                'safe' => false,
+                'paid' => true,
+                'reason' => "จ่ายแล้วด้วยธุรกรรมแทนที่ {$txHash} (nonce {$nonce}) ที่โอน USDT ครบยอดให้ผู้รับ — ธุรกรรมเดิม {$withdrawal->payout_tx_hash} ไม่มีทางลงบล็อก",
+                'paid_tx' => $txHash,
+                'paid_block' => $block,
+            ];
+        }
+
+        return ['safe' => false, 'paid' => false, 'reason' => "ธุรกรรม {$txHash} ที่ใช้ nonce {$nonce} โอน USDT เข้าผู้รับ {$received} หน่วยดิบ ไม่ตรงกับยอดจ่าย {$amountRaw} — มีเงินถึงผู้รับแล้ว ตรวจด้วยมือบน explorer ห้ามจ่ายใหม่"];
+    }
+
+    /** ยอด USDT รวมที่ใบเสร็จนี้โอนเข้าผู้รับของรายการ — null = อ่าน log ไม่ครบ ("อ่านไม่ได้" ต้องไม่กลายเป็น "ไม่มีการโอน") */
+    private function usdtReceived(array $receipt, BridgeWithdrawal $withdrawal): ?string
+    {
+        $chain = $this->config->chain((int) $withdrawal->target_chain_id);
+        $recipient = strtolower((string) $withdrawal->target_address);
+
+        // ตัวจ่ายเซ็นตาม config ตอนจ่าย ส่วน payout_token จดไว้ตอนสแกน — ถ้าเปลี่ยนระหว่างทางต้องนับทั้งคู่
+        $tokens = array_filter([strtolower((string) $withdrawal->payout_token), strtolower((string) ($chain['usdt']['address'] ?? ''))]);
+
+        if ($tokens === [] || ! is_array($receipt['logs'] ?? null)) {
+            return null;
+        }
+
+        $total = '0';
+
+        foreach ($receipt['logs'] as $log) {
+            $address = is_array($log) ? ($log['address'] ?? null) : null;
+
+            if (! is_string($address) || ! preg_match('/^0x[0-9a-fA-F]{40}$/', $address) || ! is_array($log['topics'] ?? null)) {
+                return null;
+            }
+
+            if (! in_array(strtolower($address), $tokens, true)) {
+                continue;
+            }
+
+            // log ของ USDT ที่อ่านไม่ออกอาจเป็น Transfer ก็ได้ — ข้ามไปเท่ากับนับเป็น "ไม่มีการโอน"
+            $event = $log['topics'][0] ?? null;
+
+            if (! $this->isWord($event)) {
+                return null;
+            }
+
+            if (strtolower($event) !== Abi::topic(Abi::TRANSFER_EVENT)) {
+                continue;
+            }
+
+            $to = $log['topics'][2] ?? null;
+            $data = $log['data'] ?? null;
+
+            if (! $this->isWord($to) || ! $this->isWord($data)) {
+                return null;
+            }
+
+            if (Abi::topicAddress($to) === $recipient) {
+                $total = bcadd($total, Wei::hexToInt($data), 0);
+            }
+        }
+
+        return $total;
+    }
+
+    /** ค่า 32 ไบต์ที่อ่านได้ครบ (topic หรือ data คำเดียว) */
+    private function isWord(mixed $value): bool
+    {
+        return is_string($value) && preg_match('/^0x[0-9a-fA-F]{64}$/', $value) === 1;
     }
 
     private function trackOne(EvmRpc $rpc, BridgeWithdrawal $withdrawal): bool
