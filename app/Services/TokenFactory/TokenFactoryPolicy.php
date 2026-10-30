@@ -342,8 +342,8 @@ class TokenFactoryPolicy
     /**
      * สวิตช์ใหญ่ของการสร้างเหรียญ — อยู่ในนโยบายที่เดียว (super_admin).
      *
-     * ⚠️ ห้ามกลับไปอ่าน factory.creation_enabled — คีย์นั้นแอดมินทุกระดับแก้ได้จากแท็บ factory
-     *    ของหน้าตั้งค่า ถ้าเอามาเป็น fallback = ข้ามด่าน super_admin ได้
+     * ⚠️ ห้ามกลับไปอ่าน factory.creation_enabled — คีย์นั้นอยู่นอกนโยบาย
+     *    ถ้าเอามาเป็น fallback = สวิตช์นี้มีสองที่และตรวจคนละกฎ
      */
     public function creationEnabled(): bool
     {

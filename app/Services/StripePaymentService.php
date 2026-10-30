@@ -76,7 +76,23 @@ class StripePaymentService
             return false;
         }
 
+        // เว็บจริงถือคีย์ทดสอบ = ปิด ตรวจตอนอ่านด้วยเพราะคีย์อาจไม่ได้มาจากหน้าตั้งค่า (.env, แก้ฐานข้อมูลตรง)
+        if (app()->isProduction() && self::isTestKey($this->secretKey())) {
+            return false;
+        }
+
         return (bool) $this->setting('stripe_enabled', true);
+    }
+
+    /**
+     * คีย์ของโหมดทดสอบหรือไม่.
+     *
+     * เว็บจริงที่ถือคีย์ทดสอบ = ใครก็ใช้บัตรทดสอบ 4242 ซื้อเหรียญจริงได้ฟรี
+     * โดยไม่มีเงินเข้าสักบาท และไม่มีอะไรฟ้องเพราะทุกขั้นตอนดูปกติหมด
+     */
+    public static function isTestKey(string $key): bool
+    {
+        return (bool) preg_match('/^(sk|rk|pk)_test_/', $key);
     }
 
     /** product metadata ที่ใช้แยกบรรทัดค่าบริการออกจากบรรทัดค่าเหรียญตอน webhook */
@@ -260,6 +276,13 @@ class StripePaymentService
         }
 
         $event = Webhook::constructEvent($payload, $signature, $webhookSecret);
+
+        // ด่านเดียวกับ isEnabled(): เหตุการณ์จากโหมดทดสอบห้ามออกเหรียญจริงบนเว็บจริง
+        if (app()->isProduction() && ! $event->livemode) {
+            Log::warning('stripe: ไม่ประมวลผล webhook โหมดทดสอบบนเว็บจริง', ['event_id' => $event->id]);
+
+            return ['status' => 'ignored', 'event_type' => $event->type];
+        }
 
         return match ($event->type) {
             'checkout.session.completed' => $this->handleCheckoutCompleted($event->data->object),

@@ -27,7 +27,7 @@ class TokenFactoryPolicyController extends Controller
         return Inertia::render('Admin/TokenFactory/Policy', [
             'policy' => $policy->adminConfig(),
             'resolvedFeeWallet' => $policy->feeWallet(),
-            // ไว้ให้กดคัดลอกมาใส่ได้เท่านั้น — ระบบไม่ใช้ค่านี้เองแล้ว (แอดมินทุกระดับแก้แท็บรายได้ได้)
+            // ไว้ให้กดคัดลอกมาใส่ได้เท่านั้น — ระบบไม่ใช้ค่านี้เองแล้ว
             'revenueTpixWallet' => strtolower(trim((string) SiteSetting::get('revenue', 'tpix_wallet', ''))),
         ]);
     }

@@ -17,6 +17,11 @@ const props = defineProps({
         type: Object,
         default: () => ({}),
     },
+    // แท็บเงินแก้ได้เฉพาะ super_admin — ระดับอื่นไม่ได้รับค่าพวกนี้มาด้วยซ้ำ
+    canManageMoney: {
+        type: Boolean,
+        default: false,
+    },
     // สถานะที่ปรึกษา AI ที่คำนวณจากฝั่งเซิร์ฟเวอร์ — คีย์ถูก mask แล้ว ดูจากตรงนี้ไม่ออก
     advisorStatus: {
         type: Object,
@@ -44,6 +49,10 @@ const tabs = [
     { key: 'social', label: 'Social', icon: 'share' },
     { key: 'map', label: 'แผนที่', icon: 'settings' },
 ];
+
+// ต้องตรงกับ MoneySettings::GROUPS ฝั่งเซิร์ฟเวอร์
+const moneyTabs = ['revenue', 'trading', 'factory', 'payment'];
+const visibleTabs = computed(() => tabs.filter((tab) => props.canManageMoney || !moneyTabs.includes(tab.key)));
 
 // General form
 const generalForm = useForm({
@@ -359,7 +368,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
         <!-- Tabs -->
         <div class="flex items-center gap-1 mb-6 bg-dark-800/30 p-1 rounded-xl border border-white/5 overflow-x-auto">
             <button
-                v-for="tab in tabs"
+                v-for="tab in visibleTabs"
                 :key="tab.key"
                 @click="activeTab = tab.key"
                 class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap"
@@ -523,6 +532,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                                     <span v-else class="text-red-400 text-xs">Invalid</span>
                                 </div>
                             </div>
+                            <p v-if="revenueForm.errors.tpix_wallet" class="mt-1 text-sm text-red-400">{{ revenueForm.errors.tpix_wallet }}</p>
                             <p class="text-xs text-gray-500 mt-1.5">รายได้จาก Trading Fees และ Swap Fees จะเข้ากระเป๋านี้ (ค่าสร้างเหรียญตั้งกระเป๋าแยกที่หน้า ตั้งค่า Token Factory)</p>
                         </div>
 
@@ -589,6 +599,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                                     <span v-else class="text-red-400 text-xs">Invalid</span>
                                 </div>
                             </div>
+                            <p v-if="revenueForm.errors.wtpix_wallet" class="mt-1 text-sm text-red-400">{{ revenueForm.errors.wtpix_wallet }}</p>
                             <p class="text-xs text-gray-500 mt-1.5">รายได้จากการซื้อขาย wTPIX บน {{ wtpixChainOptions.find(c => c.id == revenueForm.wtpix_chain_id)?.name || 'เชนที่เลือก' }}</p>
                         </div>
 
@@ -679,6 +690,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         <div>
                             <label :class="labelClass">Fee Collector Wallet Address</label>
                             <input v-model="tradingForm.fee_collector_wallet" type="text" :class="inputClass" placeholder="0x..." />
+                            <p v-if="tradingForm.errors.fee_collector_wallet" class="mt-1 text-sm text-red-400">{{ tradingForm.errors.fee_collector_wallet }}</p>
                             <p class="mt-1 text-xs text-dark-500">EVM wallet address that receives all platform swap fees</p>
                         </div>
 
@@ -961,11 +973,13 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 <div>
                     <label :class="labelClass">Stripe Publishable Key</label>
                     <input v-model="paymentForm.stripe_public_key" type="text" :class="inputClass" placeholder="pk_live_..." />
+                    <p v-if="paymentForm.errors.stripe_public_key" class="mt-1 text-sm text-red-400">{{ paymentForm.errors.stripe_public_key }}</p>
                     <p class="text-dark-500 text-xs mt-1">ดูได้ที่ https://dashboard.stripe.com/apikeys</p>
                 </div>
                 <div>
                     <label :class="labelClass">Stripe Secret Key</label>
                     <input v-model="paymentForm.stripe_secret_key" type="password" :class="inputClass" placeholder="sk_live_..." />
+                    <p v-if="paymentForm.errors.stripe_secret_key" class="mt-1 text-sm text-red-400">{{ paymentForm.errors.stripe_secret_key }}</p>
                 </div>
                 <div>
                     <label :class="labelClass">Stripe Webhook Secret</label>

@@ -7,7 +7,9 @@ use App\Models\AuditLog;
 use App\Models\SiteSetting;
 use App\Models\TradingFeeTier;
 use App\Models\TradingOrderTicket;
+use App\Rules\EvmAddress;
 use App\Services\Trading\TradingFeeQuoteService;
+use App\Support\MoneySettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -47,6 +49,7 @@ class TradingFeeTierController extends Controller
                 'refund_gas_fee' => (float) SiteSetting::get('trading', 'refund_gas_fee', 0),
                 'ticket_ttl_minutes' => (int) SiteSetting::get('trading', 'ticket_ttl_minutes', 15),
             ],
+            'canManageMoney' => MoneySettings::canManage(),
             // ช่วงที่ไม่มีขั้นไหนครอบคลุม — ไม้ขนาดนั้นจะตกไปจ่ายแบบเดิมเงียบๆ
             'coverageGaps' => $this->coverageGaps($tiers),
             'stats' => [
@@ -128,7 +131,7 @@ class TradingFeeTierController extends Controller
         $validated = $request->validate([
             'tpix_fee_enabled' => ['required', 'boolean'],
             // กระเป๋ารับเงิน — ว่างได้ (= ยังไม่เปิดให้เติม) แต่ถ้าใส่ต้องเป็นที่อยู่จริง
-            'tpix_topup_wallet' => ['nullable', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
+            'tpix_topup_wallet' => ['nullable', 'string', new EvmAddress()],
             'tpix_topup_chain_id' => ['required', 'integer', 'min:1'],
             'tpix_min_topup' => ['required', 'numeric', 'gte:0'],
             'refund_gas_fee' => ['required', 'numeric', 'gte:0'],
@@ -140,15 +143,14 @@ class TradingFeeTierController extends Controller
          *    ใส่ค่านอกรายการนี้ = CHECK constraint ปฏิเสธทั้งคำขอ หน้าจอขึ้น error
          *    ที่อ่านไม่รู้เรื่อง (เคยพลาดใส่ 'integer' มาแล้ว — เทสต์จับได้)
          */
-        SiteSetting::set('trading', 'tpix_fee_enabled', $validated['tpix_fee_enabled'] ? '1' : '0', 'boolean');
-        SiteSetting::set('trading', 'tpix_topup_wallet', strtolower((string) ($validated['tpix_topup_wallet'] ?? '')));
-        SiteSetting::set('trading', 'tpix_topup_chain_id', (string) $validated['tpix_topup_chain_id'], 'number');
-        SiteSetting::set('trading', 'tpix_min_topup', (string) $validated['tpix_min_topup'], 'number');
-        SiteSetting::set('trading', 'refund_gas_fee', (string) $validated['refund_gas_fee'], 'number');
-        SiteSetting::set('trading', 'ticket_ttl_minutes', (string) $validated['ticket_ttl_minutes'], 'number');
-
-        SiteSetting::clearCache();
-        AuditLog::log('trading_fee.settings.update', null, null, $validated);
+        MoneySettings::change('trading_fee.settings.update', function () use ($validated): void {
+            SiteSetting::set('trading', 'tpix_fee_enabled', $validated['tpix_fee_enabled'] ? '1' : '0', 'boolean');
+            SiteSetting::set('trading', 'tpix_topup_wallet', strtolower((string) ($validated['tpix_topup_wallet'] ?? '')));
+            SiteSetting::set('trading', 'tpix_topup_chain_id', (string) $validated['tpix_topup_chain_id'], 'number');
+            SiteSetting::set('trading', 'tpix_min_topup', (string) $validated['tpix_min_topup'], 'number');
+            SiteSetting::set('trading', 'refund_gas_fee', (string) $validated['refund_gas_fee'], 'number');
+            SiteSetting::set('trading', 'ticket_ttl_minutes', (string) $validated['ticket_ttl_minutes'], 'number');
+        });
 
         return back()->with('success', 'บันทึกการตั้งค่าค่าบริการแล้ว');
     }
