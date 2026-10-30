@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
  * TPIX TRADE — ยืนยันตัวตนด้วยผล KYC ของ Thaiprompt.
@@ -60,6 +61,9 @@ class ThaipromptKycService
     public const ERR_UNAVAILABLE = 'ติดต่อ Thaiprompt ไม่ได้ชั่วคราว ลองใหม่อีกครั้งในอีกสักครู่';
 
     public const ERR_RECONNECT = 'สิทธิ์เชื่อมกับ Thaiprompt หมดอายุแล้ว กรุณากดเชื่อมใหม่อีกครั้ง';
+
+    /** ข้อความเดียวของความล้มเหลวที่ไม่ได้ตั้งใจ — รายละเอียดอยู่ใน log เท่านั้น */
+    public const ERR_UNEXPECTED = 'ทำรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
 
     private const STATUSES = ['none', 'pending', 'approved', 'rejected'];
 
@@ -341,6 +345,40 @@ class ThaipromptKycService
         }
 
         return $this->apply($link, $status);
+    }
+
+    // =========================================================================
+    // ความล้มเหลวที่ไม่ได้ตั้งใจ (ใช้ร่วมทั้งทางเว็บและทางแอป)
+    // =========================================================================
+
+    /**
+     * ลงรายละเอียดฝั่งเซิร์ฟเวอร์ — คอนโทรลเลอร์ตอบผู้ใช้ด้วย ERR_UNEXPECTED เท่านั้น.
+     */
+    public function logUnexpected(RuntimeException $e, User $user): void
+    {
+        Log::error('Thaiprompt KYC: ทำรายการล้มเหลวจากสาเหตุที่ไม่ได้ตั้งใจ', $this->logDetail($e) + [
+            'exception' => $e::class,
+            'path' => request()->path(),
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
+     * รายละเอียดที่ลง log ได้ — ข้อความของ QueryException มีค่าที่ bind ซึ่งตอนผูกบัญชีคือ token ของลูกค้า
+     * DeadlockException ไม่ใช่ QueryException แต่ลอกข้อความของมันมาทั้งก้อน
+     * จึงต้องไล่หาตัวจริงตามสาย exception ไม่ใช่เช็คแค่ชั้นนอกสุด.
+     *
+     * @return array{error: ?string, sql?: string}
+     */
+    private function logDetail(RuntimeException $e): array
+    {
+        for ($cause = $e; $cause !== null; $cause = $cause->getPrevious()) {
+            if ($cause instanceof QueryException) {
+                return ['error' => $cause->getPrevious()?->getMessage(), 'sql' => $cause->getSql()];
+            }
+        }
+
+        return ['error' => $e->getMessage()];
     }
 
     // =========================================================================
