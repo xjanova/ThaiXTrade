@@ -13,6 +13,7 @@ use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
 use App\Services\StripePaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -162,15 +163,18 @@ class MoneyRoutesAccessTest extends TestCase
 
     private function asRole(string $role): self
     {
-        $this->actingAs(AdminUser::create([
+        $admin = AdminUser::create([
             'name' => $role,
             'email' => "{$role}@tpix.test",
             'password' => bcrypt('secret-password'),
             'role' => $role,
             'is_active' => true,
-        ]), 'admin');
+        ]);
 
-        return $this;
+        // เข้าระบบแบบเบราว์เซอร์ — actingAs() สลับ guard เริ่มต้น จึงบังบั๊กอ่านผิด guard ที่พังจริงบนโปรดักชัน
+        Auth::forgetGuards();
+
+        return $this->withSession([Auth::guard('admin')->getName() => $admin->id]);
     }
 
     /** ชื่อเส้นทางเงินทุกเส้นใน routes/admin.php ที่ยังไม่ได้อยู่ใน MoneySettingsAccessTest */
@@ -456,6 +460,35 @@ class MoneyRoutesAccessTest extends TestCase
         $rejected = AuditLog::where('action', 'token_sale.bank_reject')->sole();
         $this->assertSame('pending', $rejected->old_values['status']);
         $this->assertSame('failed', $rejected->new_values['status']);
+    }
+
+    /** คำสั่งซื้อที่ถูกปฏิเสธโดยไม่มีร่องรอยคือเงินลูกค้าที่ตามไม่ได้ว่าใครตัดทิ้ง */
+    #[Test]
+    public function บันทึกร่องรอยไม่ได้ต้องไม่ปฏิเสธเงินโอน(): void
+    {
+        AuditLog::creating(function (): void {
+            throw new RuntimeException('audit store down');
+        });
+
+        $this->asRole('super_admin')
+            ->post("/admin/token-sales/bank/{$this->bankOrder->id}/reject", ['reason' => 'ไม่พบเงินเข้า'])
+            ->assertServerError();
+
+        $this->assertSame('pending', $this->bankOrder->fresh()->status);
+    }
+
+    #[Test]
+    public function ปฏิเสธรายการที่ยืนยันแล้วไม่ได้(): void
+    {
+        $this->asRole('super_admin')
+            ->post("/admin/token-sales/bank/{$this->bankOrder->id}/confirm")
+            ->assertSessionHas('success');
+
+        $this->post("/admin/token-sales/bank/{$this->bankOrder->id}/reject", ['reason' => 'ไม่พบเงินเข้า'])
+            ->assertSessionHasErrors('bank');
+
+        $this->assertSame('confirmed', $this->bankOrder->fresh()->status);
+        $this->assertFalse(AuditLog::where('action', 'token_sale.bank_reject')->exists());
     }
 
     /**

@@ -356,15 +356,17 @@ class TokenSaleController extends Controller
             'reason' => 'required|string|max:255',
         ]);
 
-        $tx = SaleTransaction::findOrFail($id);
-
         try {
-            $rejected = $bank->reject($tx, $validated['reason'], auth('admin')->user()?->email);
+            // สถานะกับบันทึกเปลี่ยนพร้อมกัน ล็อกแถวไว้กันกดชนกับการยืนยันรายการเดียวกัน
+            DB::transaction(function () use ($id, $validated, $bank): void {
+                $tx = SaleTransaction::lockForUpdate()->findOrFail($id);
+                $rejected = $bank->reject($tx, $validated['reason'], auth('admin')->user()?->email);
+
+                $this->recordTransactionChange('token_sale.bank_reject', $rejected, 'pending');
+            });
         } catch (PurchaseException $e) {
             return redirect()->back()->withErrors(['bank' => $e->getMessage()]);
         }
-
-        $this->recordTransactionChange('token_sale.bank_reject', $rejected, 'pending');
 
         return redirect()->back()->with('success', 'ปฏิเสธคำสั่งซื้อแล้ว');
     }
