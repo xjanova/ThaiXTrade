@@ -2,9 +2,14 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Exceptions\PurchaseException;
 use App\Models\AdminUser;
 use App\Models\AuditLog;
+use App\Models\SalePhase;
+use App\Models\SiteSetting;
 use App\Models\TokenSale;
+use App\Services\SaleStatusService;
+use App\Services\TokenSaleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -17,6 +22,9 @@ use Tests\TestCase;
  *
  * token_sales.slug เป็น NOT NULL แต่ฟอร์มไม่เคยส่งมา กด Create จึงตาย 500 ทุกครั้ง
  * ส่วน slug ของรอบที่มีอยู่แล้วต้องไม่ขยับ เพราะ URL สาธารณะอาจอ้างถึง
+ *
+ * ฟอร์มเดิมส่ง ['USDT', 'STRIPE'] และไม่ส่งเชน รอบใหม่จึงเปิดทางโอน USDT เข้า sale_wallet_address
+ * และอยู่บนเชน 56 ทั้งที่นโยบายคือบัตรเป็นหลัก ส่งมอบบนเชน 4289
  *
  * Developed by Xman Studio.
  */
@@ -32,7 +40,7 @@ class TokenSaleCreateTest extends TestCase
         'name' => 'TPIX ICO Round 1',
         'description' => '',
         'total_supply_for_sale' => 700000000,
-        'accept_currencies' => ['USDT', 'STRIPE'],
+        'accept_currencies' => ['CARD'],
         'sale_wallet_address' => '',
         'starts_at' => '',
         'ends_at' => '',
@@ -190,5 +198,298 @@ class TokenSaleCreateTest extends TestCase
         $this->post('/admin/token-sales', self::FORM)->assertForbidden();
 
         $this->assertSame(0, TokenSale::count());
+    }
+
+    #[Test]
+    public function รอบใหม่จากฟอร์มรับบัตรบนเชน_4289(): void
+    {
+        $this->signIn();
+
+        $sale = $this->submit();
+
+        $this->assertSame(['CARD'], $sale->accept_currencies);
+        $this->assertSame(4289, $sale->accept_chain_id);
+
+        $log = AuditLog::where('action', 'token_sale.save')->sole();
+
+        $this->assertSame(['CARD'], $log->new_values['accept_currencies']);
+        $this->assertSame(4289, $log->new_values['accept_chain_id']);
+    }
+
+    #[Test]
+    public function รอบใหม่จากฟอร์มซื้อด้วยบัตรได้แต่ปิดทางโอน_usdt(): void
+    {
+        $this->signIn();
+        SiteSetting::set('payment', 'stripe_enabled', '1');
+        SiteSetting::set('payment', 'stripe_secret_key', 'sk_test_x');
+        SiteSetting::set('payment', 'stripe_publishable_key', 'pk_test_x');
+
+        $sale = $this->submit();
+
+        $this->assertSame(['card' => true, 'bank' => false], app(SaleStatusService::class)->paymentMethods($sale));
+
+        $sales = app(TokenSaleService::class);
+        $sales->assertCurrencyAccepted($sale, 'USD');
+
+        $this->expectException(PurchaseException::class);
+        $sales->assertCurrencyAccepted($sale, 'USDT');
+    }
+
+    #[Test]
+    public function เลือกช่องทางเพิ่มได้และเก็บลำดับเดียวกันเสมอ(): void
+    {
+        $this->signIn();
+
+        $sale = $this->submit(['accept_currencies' => ['CRYPTO', 'BANK', 'CARD', 'BANK']]);
+
+        $this->assertSame(['CARD', 'BANK', 'CRYPTO'], $sale->accept_currencies);
+    }
+
+    /** ค่า CRYPTO คือทาง USDT ใหม่ ต้องไม่กลายเป็นการเปิดทางยื่น tx_hash แบบเก่าไปด้วย */
+    #[Test]
+    public function เปิด_crypto_แล้วทางโอน_usdt_แบบเก่ายังปิด(): void
+    {
+        $this->signIn();
+
+        $sale = $this->submit(['accept_currencies' => ['CARD', 'CRYPTO']]);
+
+        $this->expectException(PurchaseException::class);
+        app(TokenSaleService::class)->assertCurrencyAccepted($sale, 'USDT');
+    }
+
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function refusedChannels(): array
+    {
+        return [
+            'ค่าเก่าของฟอร์ม' => [['USDT', 'STRIPE']],
+            'โอนเหรียญตรง' => [['BNB', 'USDT']],
+            'แอบ USDT มากับบัตร' => [['CARD', 'USDT']],
+            'ไม่มีบัตร' => [['BANK']],
+            'ตัวพิมพ์เล็ก' => [['card']],
+            'ค่าซ้อนในอาร์เรย์' => [['CARD', ['USDT']]],
+            'ลิสต์ว่างคือไม่จำกัดสกุล' => [[]],
+            'ไม่ใช่อาร์เรย์' => ['CARD'],
+            'null คือไม่จำกัดสกุล' => [null],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('refusedChannels')]
+    public function รอบใหม่ปฏิเสธช่องทางนอกนโยบาย(mixed $channels): void
+    {
+        $this->signIn();
+
+        $this->post('/admin/token-sales', ['accept_currencies' => $channels] + self::FORM)
+            ->assertRedirect()
+            ->assertSessionHasErrors('accept_currencies');
+
+        $this->assertSame(0, TokenSale::count());
+    }
+
+    #[Test]
+    public function ไม่ส่งช่องทางมาเลยก็สร้างไม่ได้(): void
+    {
+        $this->signIn();
+        $form = self::FORM;
+        unset($form['accept_currencies']);
+
+        $this->post('/admin/token-sales', $form)->assertSessionHasErrors('accept_currencies');
+
+        $this->assertSame(0, TokenSale::count());
+    }
+
+    #[Test]
+    public function ฟอร์มกำหนดเชนของรอบขายเองไม่ได้(): void
+    {
+        $this->signIn();
+
+        $this->assertSame(4289, $this->submit(['accept_chain_id' => 56])->accept_chain_id);
+    }
+
+    #[Test]
+    public function แก้รอบเดิมเปิดทางโอน_usdt_กลับมาไม่ได้(): void
+    {
+        $this->signIn();
+        $sale = $this->existingSale(['accept_currencies' => ['CARD']]);
+
+        $this->post('/admin/token-sales', ['id' => $sale->id, 'accept_currencies' => ['CARD', 'USDT']] + self::FORM)
+            ->assertSessionHasErrors('accept_currencies');
+
+        $this->assertSame(['CARD'], $sale->fresh()->accept_currencies);
+    }
+
+    #[Test]
+    public function แก้รอบเดิมล้างช่องทางจนกลายเป็นไม่จำกัดสกุลไม่ได้(): void
+    {
+        $this->signIn();
+        $sale = $this->existingSale(['accept_currencies' => ['CARD']]);
+
+        $this->post('/admin/token-sales', ['id' => $sale->id, 'accept_currencies' => []] + self::FORM)
+            ->assertSessionHasErrors('accept_currencies');
+
+        $this->assertSame(['CARD'], $sale->fresh()->accept_currencies);
+    }
+
+    #[Test]
+    public function แก้รอบเดิมเพิ่มช่องทางได้และบันทึกค่าก่อนหน้าไว้(): void
+    {
+        $this->signIn();
+        $sale = $this->existingSale(['accept_currencies' => ['CARD']]);
+
+        $this->post('/admin/token-sales', ['id' => $sale->id, 'accept_currencies' => ['CARD', 'BANK']] + self::FORM)
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(['CARD', 'BANK'], $sale->fresh()->accept_currencies);
+
+        $log = AuditLog::where('action', 'token_sale.save')->sole();
+
+        $this->assertSame(['CARD'], $log->old_values['accept_currencies']);
+        $this->assertSame(['CARD', 'BANK'], $log->new_values['accept_currencies']);
+    }
+
+    /** แถวเก่าบนเชน 56 (เช่น จาก seeder) ต้องกลับเข้านโยบายทันทีที่บันทึกผ่านหลังบ้าน */
+    #[Test]
+    public function บันทึกรอบเก่าบนเชน_56_แล้วย้ายมาเชน_4289(): void
+    {
+        $this->signIn();
+        $sale = $this->existingSale(['accept_currencies' => ['BNB', 'USDT'], 'accept_chain_id' => 56]);
+
+        $this->post('/admin/token-sales', ['id' => $sale->id] + self::FORM)->assertSessionHasNoErrors();
+
+        $sale->refresh();
+
+        $this->assertSame(['CARD'], $sale->accept_currencies);
+        $this->assertSame(4289, $sale->accept_chain_id);
+
+        $log = AuditLog::where('action', 'token_sale.save')->sole();
+
+        $this->assertSame(56, $log->old_values['accept_chain_id']);
+        $this->assertSame(4289, $log->new_values['accept_chain_id']);
+    }
+
+    /**
+     * @return array<string, array{list<string>}>
+     */
+    public static function channelsWithoutCrypto(): array
+    {
+        return [
+            'บัตร' => [['CARD']],
+            'บัตรกับโอนเงิน' => [['CARD', 'BANK']],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('channelsWithoutCrypto')]
+    public function รอบที่ไม่รับ_usdt_ตั้ง_active_ได้โดยไม่มีกระเป๋า(array $channels): void
+    {
+        $this->signIn();
+
+        $sale = $this->submit(['status' => 'active', 'accept_currencies' => $channels]);
+
+        $this->assertSame('active', $sale->status);
+        $this->assertNull($sale->sale_wallet_address);
+    }
+
+    #[Test]
+    public function เปิดรับ_usdt_แล้วตั้ง_active_ต้องมีกระเป๋า(): void
+    {
+        $this->signIn();
+
+        $this->post('/admin/token-sales', ['status' => 'active', 'accept_currencies' => ['CARD', 'CRYPTO']] + self::FORM)
+            ->assertSessionHasErrors(['sale_wallet_address' => 'เปิดรับ USDT แล้วต้องกรอกกระเป๋ารับเงินก่อนตั้งเป็น Active']);
+
+        $this->assertSame(0, TokenSale::count());
+    }
+
+    #[Test]
+    public function เปิดรับ_usdt_พร้อมกระเป๋าตั้ง_active_ได้(): void
+    {
+        $this->signIn();
+        $wallet = '0x'.str_repeat('ab', 20);
+
+        $sale = $this->submit([
+            'status' => 'active',
+            'accept_currencies' => ['CARD', 'CRYPTO'],
+            'sale_wallet_address' => $wallet,
+        ]);
+
+        $this->assertSame('active', $sale->status);
+        $this->assertSame($wallet, $sale->sale_wallet_address);
+    }
+
+    #[Test]
+    public function รอบร่างเปิดรับ_usdt_ก่อนมีกระเป๋าได้แต่ตั้ง_active_ไม่ได้(): void
+    {
+        $this->signIn();
+        $sale = $this->submit(['accept_currencies' => ['CARD', 'CRYPTO']]);
+
+        $this->post('/admin/token-sales', ['id' => $sale->id, 'status' => 'active', 'accept_currencies' => ['CARD', 'CRYPTO']] + self::FORM)
+            ->assertSessionHasErrors('sale_wallet_address');
+
+        $this->assertSame('draft', $sale->fresh()->status);
+    }
+
+    /** รอบที่เปิดขายอยู่โดยไม่มีกระเป๋า ห้ามรับเงิน USDT ทั้งที่ไม่มีที่ให้เงินเข้า */
+    #[Test]
+    public function ติ๊ก_usdt_ให้รอบ_active_ที่ไม่มีกระเป๋าไม่ได้(): void
+    {
+        $this->signIn();
+        $sale = $this->existingSale(['status' => 'active', 'accept_currencies' => ['CARD']]);
+
+        $this->post('/admin/token-sales', ['id' => $sale->id, 'status' => 'active', 'accept_currencies' => ['CARD', 'CRYPTO']] + self::FORM)
+            ->assertSessionHasErrors('sale_wallet_address');
+
+        $this->assertSame(['CARD'], $sale->fresh()->accept_currencies);
+    }
+
+    #[Test]
+    public function กรอกกระเป๋าผิดรูปแบบยังถูกปฏิเสธแม้รอบไม่รับ_usdt(): void
+    {
+        $this->signIn();
+
+        $this->post('/admin/token-sales', ['status' => 'active', 'sale_wallet_address' => '0x1234'] + self::FORM)
+            ->assertSessionHasErrors('sale_wallet_address');
+
+        $this->assertSame(0, TokenSale::count());
+    }
+
+    #[Test]
+    public function รอบบัตรที่ไม่มีกระเป๋าซื้อด้วยบัตรได้แต่ทางคริปโตยังปิด(): void
+    {
+        $this->signIn();
+        $sale = $this->submit(['status' => 'active']);
+        $phase = SalePhase::create([
+            'token_sale_id' => $sale->id,
+            'name' => 'Private Sale',
+            'slug' => 'private-sale',
+            'phase_order' => 1,
+            'price_usd' => 0.05,
+            'allocation' => 1000000,
+            'min_purchase' => 100,
+            'max_purchase' => 500000,
+            'status' => 'active',
+            'starts_at' => now()->subDay(),
+            'ends_at' => now()->addDay(),
+        ]);
+        $wallet = '0x'.str_repeat('cd', 20);
+        $sales = app(TokenSaleService::class);
+
+        $this->assertNull($sales->assertPurchasable($wallet, $phase->id, 'USD', 100)['sale_wallet_address']);
+
+        $this->expectException(PurchaseException::class);
+        $sales->assertPurchasable($wallet, $phase->id, 'USDT', 100);
+    }
+
+    /** @param  array<string, mixed>  $attributes */
+    private function existingSale(array $attributes): TokenSale
+    {
+        return TokenSale::create($attributes + [
+            'name' => 'TPIX Public Sale',
+            'slug' => 'tpix-public-sale',
+            'total_supply_for_sale' => 1000,
+            'status' => 'draft',
+        ]);
     }
 }

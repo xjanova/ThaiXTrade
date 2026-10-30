@@ -8,6 +8,7 @@ use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\TokenSale;
 use App\Models\WhitelistEntry;
+use App\Rules\SalePaymentChannels;
 use App\Services\BankTransferSaleService;
 use App\Services\SaleClaimPayoutService;
 use App\Services\SaleLaunchService;
@@ -229,25 +230,35 @@ class TokenSaleController extends Controller
     public function store(Request $request)
     {
         $status = $request->input('status', 'draft');
+        // กระเป๋านี้รับเงินเฉพาะทาง USDT — บัตรกับโอนเงินไม่มีเงินเข้ากระเป๋า รอบที่ไม่รับ USDT จึงเปิดขายได้โดยไม่ต้องมี
+        $needsWallet = $status === 'active' && in_array(TokenSale::CRYPTO_CHANNEL, (array) $request->input('accept_currencies'), true);
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'total_supply_for_sale' => 'required|numeric|min:0',
-            'accept_currencies' => 'nullable|array',
+            'accept_currencies' => ['required', 'array', new SalePaymentChannels()],
             'sale_wallet_address' => [
-                $status === 'active' ? 'required' : 'nullable',
+                $needsWallet ? 'required' : 'nullable',
                 'string',
                 'regex:/^0x[a-fA-F0-9]{40}$/',
             ],
             'status' => 'required|string|in:draft,upcoming,active,paused,completed',
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date|after:starts_at',
+        ], [
+            'sale_wallet_address.required' => 'เปิดรับ USDT แล้วต้องกรอกกระเป๋ารับเงินก่อนตั้งเป็น Active',
         ]);
+
+        // เรียงตามลำดับเดียวกันเสมอ บันทึกประวัติจะได้ไม่ขึ้นว่าเปลี่ยนทั้งที่ค่าเดิม
+        $validated['accept_currencies'] = array_values(array_intersect(TokenSale::PAYMENT_CHANNELS, $validated['accept_currencies']));
+
+        // เชนที่ผู้ซื้อต้องต่อกระเป๋าเพื่อรับเหรียญ ไม่รับจากฟอร์ม เพราะ default ของคอลัมน์ยังเป็น 56 (BSC) จากโมเดลเก่า
+        $validated['accept_chain_id'] = (int) config('blockchain.tpix_chain_id', 4289);
 
         // เงินคริปโตของผู้ซื้อวิ่งเข้า sale_wallet_address — ต้องตอบได้ว่าใครเปลี่ยนจากใบไหนเป็นใบไหน
         // จึงเขียนรอบขายกับบันทึกในธุรกรรมเดียวกัน บันทึกไม่สำเร็จเท่ากับกระเป๋าไม่เปลี่ยน
         DB::transaction(function () use ($request, $validated): void {
-            $audited = ['sale_wallet_address', 'accept_currencies', 'status'];
+            $audited = ['sale_wallet_address', 'accept_currencies', 'accept_chain_id', 'status'];
             $old = [];
 
             $id = $request->input('id');

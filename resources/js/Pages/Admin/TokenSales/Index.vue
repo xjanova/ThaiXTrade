@@ -36,13 +36,24 @@ const showSaleModal = ref(false);
 const showPhaseModal = ref(false);
 const editingSale = ref(null);
 
+// ช่องทางรับเงินที่เลือกเพิ่มจากบัตรได้ — ต้องตรงกับ TokenSale::PAYMENT_CHANNELS ที่เซิร์ฟเวอร์ตรวจซ้ำตอนบันทึก
+const OPTIONAL_CHANNELS = [
+    { id: 'BANK', label: 'โอนเข้าบัญชีธนาคาร', hint: 'ใช้ได้เมื่อกรอกเลขบัญชีแล้ว' },
+    { id: 'CRYPTO', label: 'USDT ตรวจเงินเข้าบนเชน', hint: 'ใช้ได้เมื่อเปิดระบบรับ USDT แล้ว' },
+];
+
+/** บัตรเปิดเสมอ และตัดค่าที่เลิกรับแล้ว (USDT, BNB, STRIPE) ทิ้ง ฟอร์มจะได้ไม่ส่งค่าที่เซิร์ฟเวอร์ปฏิเสธ */
+function saleChannels(saved) {
+    return ['CARD', ...OPTIONAL_CHANNELS.map((channel) => channel.id).filter((id) => saved?.includes(id))];
+}
+
 // ฟอร์ม Token Sale
 const saleForm = useForm({
     id: null,
     name: '',
     description: '',
     total_supply_for_sale: 700000000,
-    accept_currencies: ['USDT', 'STRIPE'],
+    accept_currencies: saleChannels(),
     sale_wallet_address: '',
     starts_at: '',
     ends_at: '',
@@ -73,7 +84,7 @@ const phaseForm = useForm({
 function openCreateSale() {
     editingSale.value = null;
     saleForm.reset();
-    saleForm.accept_currencies = ['USDT', 'STRIPE'];
+    saleForm.accept_currencies = saleChannels();
     saleForm.total_supply_for_sale = 700000000;
     showSaleModal.value = true;
 }
@@ -85,7 +96,7 @@ function openEditSale(sale) {
         name: sale.name,
         description: sale.description || '',
         total_supply_for_sale: sale.total_supply_for_sale,
-        accept_currencies: sale.accept_currencies || ['USDT', 'STRIPE'],
+        accept_currencies: saleChannels(sale.accept_currencies),
         sale_wallet_address: sale.sale_wallet_address || '',
         starts_at: sale.starts_at?.slice(0, 16) || '',
         ends_at: sale.ends_at?.slice(0, 16) || '',
@@ -602,6 +613,24 @@ function statusBadge(s) {
                             <div>
                                 <label class="block text-sm text-gray-400 mb-1">Sale Wallet Address</label>
                                 <input v-model="saleForm.sale_wallet_address" class="trading-input w-full font-mono text-sm" placeholder="0x..." />
+                                <p class="mt-1 text-xs text-gray-500">ใช้กับทาง USDT เท่านั้น ถ้าไม่เปิดรับ USDT เว้นว่างได้</p>
+                                <p v-if="saleForm.errors.sale_wallet_address" class="mt-1 text-sm text-red-400">{{ saleForm.errors.sale_wallet_address }}</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">ช่องทางรับเงิน</label>
+                                <div class="space-y-2">
+                                    <label class="flex items-center gap-2 text-sm text-gray-300">
+                                        <input type="checkbox" checked disabled class="w-4 h-4 rounded bg-dark-800 border-white/20" />
+                                        <span>บัตรเครดิต/เดบิต</span>
+                                        <span class="text-xs text-gray-500">เปิดเสมอ</span>
+                                    </label>
+                                    <label v-for="channel in OPTIONAL_CHANNELS" :key="channel.id" class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                                        <input v-model="saleForm.accept_currencies" type="checkbox" :value="channel.id" class="w-4 h-4 rounded bg-dark-800 border-white/20" />
+                                        <span>{{ channel.label }}</span>
+                                        <span class="text-xs text-gray-500">{{ channel.hint }}</span>
+                                    </label>
+                                </div>
+                                <p v-if="saleForm.errors.accept_currencies" class="mt-1 text-sm text-red-400">{{ saleForm.errors.accept_currencies }}</p>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>

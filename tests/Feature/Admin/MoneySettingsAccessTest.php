@@ -65,6 +65,7 @@ class MoneySettingsAccessTest extends TestCase
         'slug' => 'test-round',
         'total_supply_for_sale' => 1000,
         'status' => 'draft',
+        'accept_currencies' => ['CARD'],
         'sale_wallet_address' => self::WALLET,
     ];
 
