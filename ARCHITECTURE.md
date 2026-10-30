@@ -443,8 +443,7 @@ Full API reference: [API.md](API.md)
 | Library | Version | Purpose |
 |---------|---------|---------|
 | **ethers** | 6.11 | Primary Web3 library -- wallet connection, contract interaction, transaction building |
-| **web3** | 4.5 | Secondary library -- used for specific utilities and compatibility |
-| **@walletconnect/web3-provider** | 1.8 | WalletConnect protocol support for mobile and hardware wallets |
+| **@walletconnect/ethereum-provider** | 2.23 | WalletConnect protocol support for mobile and hardware wallets |
 
 ### Wallet Connection Flow
 
