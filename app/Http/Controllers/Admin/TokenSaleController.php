@@ -33,7 +33,7 @@ class TokenSaleController extends Controller
     /**
      * หน้าหลัก Token Sales + Control — ส่งข้อมูลทั้งหมดไป Vue.
      */
-    public function index(): Response
+    public function index(BankTransferSaleService $bank): Response
     {
         $sales = TokenSale::with(['phases' => function ($q) {
             $q->orderBy('phase_order');
@@ -42,6 +42,13 @@ class TokenSaleController extends Controller
         $transactions = SaleTransaction::with(['tokenSale', 'phase'])
             ->latest()
             ->paginate(20);
+
+        // ยอดของปุ่มเข้าคิวจ่ายใหม่ — ส่งเฉพาะคนที่กดได้จริง (route จำกัด super_admin)
+        $canRequeue = auth('admin')->user()?->isSuperAdmin() ?? false;
+        $transactions->getCollection()->each(function (SaleTransaction $tx) use ($bank, $canRequeue) {
+            $amountWei = $canRequeue ? $bank->requeueableAmountWei($tx) : null;
+            $tx->setAttribute('requeue_payout_tpix', $amountWei === null ? null : Wei::format($amountWei));
+        });
 
         // ดึง master wallet balance จาก TPIX Chain RPC
         $walletInfo = $this->getMasterWalletInfo();
@@ -349,6 +356,29 @@ class TokenSaleController extends Controller
         }
 
         return redirect()->back()->with('success', 'ปฏิเสธคำสั่งซื้อแล้ว');
+    }
+
+    /**
+     * เข้าคิวจ่ายส่วนที่ปลดล็อกแล้วใหม่ — ใช้เมื่อคิวล้มตอนยืนยัน หรือรายการเดิมจบโดยเงินไม่ออก.
+     *
+     * ปุ่มยืนยันหายไปหลังยืนยันแล้ว ถ้าไม่มีทางนี้เหรียญจะค้างอยู่ใน claimed_amount
+     * รายการใหม่ยังต้องผ่านการอนุมัติที่หน้าคลังตามปกติ
+     */
+    public function requeueBankPayout(int $id, BankTransferSaleService $bank)
+    {
+        $payout = $bank->queueInitialPayout(SaleTransaction::findOrFail($id), auth('admin')->id());
+
+        if (! $payout) {
+            return redirect()->back()->withErrors(['bank' => 'ออเดอร์นี้ไม่มียอดให้เข้าคิวจ่าย']);
+        }
+
+        if (! $payout->wasRecentlyCreated) {
+            return redirect()->back()->withErrors([
+                'bank' => "ออเดอร์นี้มีรายการจ่าย #{$payout->id} ที่ยังไม่จบอยู่แล้ว (สถานะ: {$payout->status})",
+            ]);
+        }
+
+        return redirect()->back()->with('success', "เข้าคิวจ่ายใหม่แล้ว {$payout->amount_tpix} TPIX — รออนุมัติที่หน้าคลัง");
     }
 
     /**

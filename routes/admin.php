@@ -253,6 +253,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // การโอนเงินเข้าบัญชี — ทีมงานยืนยันเองหลังเปิดดูรายการเดินบัญชีจริง
             Route::post('/bank/{id}/confirm', [TokenSaleController::class, 'confirmBankTransfer'])->name('bank.confirm');
             Route::post('/bank/{id}/reject', [TokenSaleController::class, 'rejectBankTransfer'])->name('bank.reject');
+
+            // เข้าคิวจ่ายใหม่ = สร้างรายการจ่ายจากกระเป๋าร้อน สิทธิ์จึงเท่ากับหน้าคลัง
+            Route::post('/bank/{id}/requeue', [TokenSaleController::class, 'requeueBankPayout'])
+                ->name('bank.requeue')
+                ->middleware('admin.role:super_admin');
         });
 
         // Token Factory — จัดการ Token ที่สร้างจาก Factory

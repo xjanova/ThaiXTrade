@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Exceptions\PurchaseException;
+use App\Models\AdminUser;
 use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\SiteSetting;
@@ -15,8 +16,10 @@ use App\Services\TokenSaleService;
 use App\Support\TreasuryWallet;
 use App\Support\Wei;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\TestResponse;
+use Inertia\Testing\AssertableInertia;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -541,6 +544,146 @@ class BankTransferSaleTest extends TestCase
         $this->assertEquals(1000, (float) $confirmed->fresh()->claimed_amount);
         $this->assertSame(2, TreasuryPayout::where('status', TreasuryPayout::STATUS_PENDING)->count());
         Log::shouldHaveReceived('warning')->once();
+    }
+
+    // =========================================================================
+    // ปุ่มเข้าคิวจ่ายใหม่ในหน้าแอดมิน
+    // =========================================================================
+
+    private function actingAsAdmin(string $role = 'super_admin'): AdminUser
+    {
+        $admin = AdminUser::create([
+            'name' => 'ผู้ดูแลระบบ',
+            'email' => 'admin@tpix.test',
+            'password' => bcrypt('secret-password'),
+            'role' => $role,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($admin, 'admin');
+
+        return $admin;
+    }
+
+    private function requeue(SaleTransaction $tx): TestResponse
+    {
+        return $this->post("/admin/token-sales/bank/{$tx->id}/requeue");
+    }
+
+    /** ยอดที่หน้าแอดมินเสนอให้กด — null = ไม่มีปุ่ม */
+    private function assertRequeueOffer(?string $expected): void
+    {
+        Http::fake();
+        $this->withoutVite();
+
+        $this->get('/admin/token-sales')->assertOk()->assertInertia(
+            fn (AssertableInertia $page) => $page->where('transactions.data.0.requeue_payout_tpix', $expected)
+        );
+    }
+
+    /** ★ รายการที่ถูกปฏิเสธทำให้เหรียญค้างใน claimed_amount — ปุ่มนี้คือทางออกเดียวของแอดมิน */
+    public function test_admin_requeues_a_payout_that_sent_nothing(): void
+    {
+        $admin = $this->actingAsAdmin();
+        $confirmed = $this->confirmedOrder();
+        $first = $this->bank()->queueInitialPayout($confirmed);
+        $first->update(['status' => TreasuryPayout::STATUS_REJECTED, 'failure_reason' => 'wrong wallet']);
+
+        $this->requeue($confirmed)->assertRedirect()->assertSessionHas('success');
+
+        $retry = TreasuryPayout::latest('id')->first();
+        $this->assertNotSame($first->id, $retry->id);
+        $this->assertSame(TreasuryPayout::STATUS_PENDING, $retry->status);
+        $this->assertSame((string) $first->amount_wei, (string) $retry->amount_wei);
+        $this->assertSame($admin->id, $retry->requested_by);
+        $this->assertEquals(200, (float) $confirmed->fresh()->claimed_amount);
+    }
+
+    /** คิวล้มตอนกดยืนยัน = ไม่มีแถวเลย ออเดอร์ยืนยันแล้วกดยืนยันซ้ำไม่ได้ ต้องซ่อมจากปุ่มนี้ */
+    public function test_admin_repairs_an_order_whose_queue_attempt_failed(): void
+    {
+        $this->actingAsAdmin();
+        $confirmed = $this->confirmedOrder();
+
+        $this->requeue($confirmed)->assertRedirect()->assertSessionHas('success');
+
+        $this->assertQueuedTpix('200');
+        $this->assertEquals(200, (float) $confirmed->fresh()->claimed_amount);
+    }
+
+    /** ★ กดซ้ำหรือหน้าเก่าค้างจอ ขณะที่รายการเดิมยังอาจจ่ายออก ต้องไม่ได้แถวใหม่ */
+    public function test_requeue_route_refuses_while_a_payout_may_still_go_out(): void
+    {
+        $this->actingAsAdmin();
+        $confirmed = $this->confirmedOrder();
+        $this->bank()->queueInitialPayout($confirmed);
+
+        $this->requeue($confirmed)->assertRedirect()->assertSessionHasErrors('bank');
+
+        $this->assertSame(1, TreasuryPayout::count());
+    }
+
+    /** ไม่มียอดให้จ่ายต้องบอกตรง ๆ ไม่ใช่รายงานว่าสำเร็จ */
+    public function test_requeue_route_reports_when_there_is_nothing_to_pay(): void
+    {
+        $this->actingAsAdmin();
+        $confirmed = $this->confirmedOrder();
+        $this->claim($confirmed, 200)->assertOk();
+
+        $this->requeue($confirmed)->assertRedirect()->assertSessionHasErrors('bank');
+
+        $this->assertQueuedTpix('200');
+    }
+
+    /** ★ route นี้รับ id ใดก็ได้ — ออเดอร์บัตรที่ยืนยันแล้วต้องจ่ายผ่านทางนี้ไม่ได้ */
+    public function test_card_orders_cannot_be_paid_through_the_requeue(): void
+    {
+        $this->actingAsAdmin();
+        $confirmed = $this->confirmedOrder();
+        $confirmed->update(['payment_currency' => 'USD', 'metadata' => ['method' => 'stripe']]);
+
+        $this->requeue($confirmed)->assertRedirect()->assertSessionHasErrors('bank');
+
+        $this->assertSame(0, TreasuryPayout::count());
+        $this->assertEquals(0, (float) $confirmed->fresh()->claimed_amount);
+    }
+
+    /** สร้างรายการจ่ายจากกระเป๋าร้อนได้ — สิทธิ์ต้องเท่ากับหน้าคลัง */
+    public function test_requeue_route_needs_a_super_admin(): void
+    {
+        $this->actingAsAdmin('admin');
+        $confirmed = $this->confirmedOrder();
+
+        $this->requeue($confirmed)->assertForbidden();
+
+        $this->assertSame(0, TreasuryPayout::count());
+    }
+
+    /** หน้าแอดมินเสนอปุ่มเฉพาะตอนที่ไม่มีรายการไหนกำลังจะจ่าย และบอกยอดก่อนกด */
+    public function test_admin_page_offers_the_requeue_only_when_nothing_is_on_its_way(): void
+    {
+        $this->actingAsAdmin();
+        $confirmed = $this->confirmedOrder();
+        $payout = $this->bank()->queueInitialPayout($confirmed);
+
+        $this->assertRequeueOffer(null);
+
+        $payout->update(['status' => TreasuryPayout::STATUS_REJECTED]);
+        $this->assertRequeueOffer('200');
+
+        $this->requeue($confirmed);
+        $this->assertRequeueOffer(null);
+    }
+
+    /** แอดมินทั่วไปกดไม่ได้อยู่แล้ว (403) จึงไม่ควรเห็นปุ่มให้ล่อกด */
+    public function test_admin_page_hides_the_requeue_from_other_roles(): void
+    {
+        $this->actingAsAdmin('admin');
+        $confirmed = $this->confirmedOrder();
+        $payout = $this->bank()->queueInitialPayout($confirmed);
+        $payout->update(['status' => TreasuryPayout::STATUS_REJECTED]);
+
+        $this->assertRequeueOffer(null);
     }
 
     /**

@@ -9,6 +9,7 @@ use App\Models\SiteSetting;
 use App\Models\TokenSale;
 use App\Models\TreasuryPayout;
 use App\Support\Wei;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -296,22 +297,19 @@ class BankTransferSaleService
      * กดซ้ำหลังคิวล้มกลางทาง: ทรานแซกชันม้วนกลับหมด เริ่มใหม่ได้เลย
      * กดซ้ำหลังแถวเดิมจบโดยเงินไม่ออก: ได้แถวใหม่ยอดเดิม เพราะยอดนั้นยังกันอยู่ใน claimed_amount
      */
-    public function queueInitialPayout(SaleTransaction $tx): ?TreasuryPayout
+    public function queueInitialPayout(SaleTransaction $tx, ?int $requestedBy = null): ?TreasuryPayout
     {
-        return DB::transaction(function () use ($tx) {
+        return DB::transaction(function () use ($tx, $requestedBy) {
             // ล็อกแถวเดียวกับ /token-sale/claim — สองทางหักสิทธิ์จากยอดเดียวกัน ต้องเข้าทีละทาง
             $locked = SaleTransaction::whereKey($tx->id)->lockForUpdate()->firstOrFail();
 
-            if ($locked->status !== 'confirmed') {
+            if (! $this->isPayableOrder($locked)) {
                 return null;
             }
 
-            $payouts = TreasuryPayout::where('idempotency_key', 'like', self::PAYOUT_KEY_PREFIX.$locked->uuid.'-%')
-                ->orderBy('id')
-                ->get();
+            $payouts = $this->initialPayouts($locked);
 
-            // นับว่าจบเฉพาะเมื่อพิสูจน์ได้ว่าเงินไม่ออก — failed ที่มี hash แต่ไม่มีใบเสร็จอาจโอนไปแล้ว
-            $open = $payouts->first(fn (TreasuryPayout $p) => ! $p->endedWithoutPayment());
+            $open = $this->openPayout($payouts);
             if ($open) {
                 return $open;
             }
@@ -339,8 +337,51 @@ class BankTransferSaleService
                 'origin' => TreasuryPayout::ORIGIN_SALE_BANK,
                 'memo' => 'จ่ายส่วนที่ปลดล็อกแล้วจากการโอนเงิน '.($locked->metadata['reference'] ?? $locked->uuid),
                 'status' => TreasuryPayout::STATUS_PENDING,
+                'requested_by' => $requestedBy,
             ]);
         });
+    }
+
+    /**
+     * ยอดที่จะเข้าคิวถ้าแอดมินกดเข้าคิวจ่ายใหม่ตอนนี้ (wei) — null = ไม่มีอะไรให้กด.
+     *
+     * หน้าแอดมินใช้แสดงปุ่มและบอกยอดก่อนกดเท่านั้น การเข้าคิวจริงตัดสินใหม่ใต้ล็อกใน queueInitialPayout
+     */
+    public function requeueableAmountWei(SaleTransaction $tx): ?string
+    {
+        if (! $this->isPayableOrder($tx) || $this->openPayout($this->initialPayouts($tx))) {
+            return null;
+        }
+
+        $amountWei = $tx->metadata['initial_payout_wei'] ?? $this->initialPayoutWei($tx);
+
+        return bccomp($amountWei, '0', 0) > 0 ? $amountWei : null;
+    }
+
+    /** route เข้าคิวจ่ายใหม่รับ id ใดก็ได้ — ออเดอร์บัตรที่ยืนยันแล้วต้องไม่ผ่านด่านนี้ */
+    private function isPayableOrder(SaleTransaction $tx): bool
+    {
+        return $tx->status === 'confirmed' && ($tx->metadata['method'] ?? null) === 'bank_transfer';
+    }
+
+    /** @return Collection<int, TreasuryPayout> */
+    private function initialPayouts(SaleTransaction $tx): Collection
+    {
+        return TreasuryPayout::where('idempotency_key', 'like', self::PAYOUT_KEY_PREFIX.$tx->uuid.'-%')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * แถวที่อาจจ่ายออกอยู่ — นับว่าจบเฉพาะเมื่อพิสูจน์ได้ว่าเงินไม่ออก.
+     *
+     * failed ที่มี hash แต่ไม่มีใบเสร็จอาจโอนไปแล้ว จึงยังนับว่าไม่จบ
+     *
+     * @param  Collection<int, TreasuryPayout>  $payouts
+     */
+    private function openPayout(Collection $payouts): ?TreasuryPayout
+    {
+        return $payouts->first(fn (TreasuryPayout $p) => ! $p->endedWithoutPayment());
     }
 
     /**
