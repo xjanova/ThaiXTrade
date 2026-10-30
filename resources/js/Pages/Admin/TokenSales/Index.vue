@@ -187,11 +187,16 @@ function bankReference(tx) {
 
 const confirmingId = ref(null);
 
-/** ออเดอร์เก่าไม่มี expires_at — หลังบ้านคิดจากวันที่สร้างและเป็นคนตัดสินจริงเสมอ */
-function isBankOrderExpired(tx) {
-    const expiresAt = tx.metadata?.expires_at;
+/** ตรงกับ BankTransferSaleService::ORDER_TTL_HOURS */
+const BANK_ORDER_TTL_MS = 48 * 60 * 60 * 1000;
 
-    return Boolean(expiresAt) && new Date(expiresAt).getTime() < Date.now();
+/** ออเดอร์เก่าไม่มี expires_at — คิดจากวันที่สร้างแบบเดียวกับหลังบ้าน ไม่งั้นส่ง honor_expired ไม่ได้ทั้งที่หมดอายุแล้ว */
+function isBankOrderExpired(tx) {
+    const expiresAt = tx.metadata?.expires_at
+        ? new Date(tx.metadata.expires_at).getTime()
+        : new Date(tx.created_at).getTime() + BANK_ORDER_TTL_MS;
+
+    return expiresAt < Date.now();
 }
 
 /**

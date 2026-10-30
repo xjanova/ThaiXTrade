@@ -78,6 +78,20 @@ describe('Admin/TokenSales/Index — เข้าคิวจ่ายใหม�
         expect(requeueButton(wrapper)).toBeUndefined();
     });
 
+    it('ออเดอร์เก่าไม่มีเวลาหมดอายุ ต้องคิดจากวันที่สร้างแบบเดียวกับหลังบ้าน', async () => {
+        const hoursAgo = (h) => new Date(Date.now() - h * 3600 * 1000).toISOString();
+        const confirmOrder = async (created_at) => {
+            routerPost.mockReset();
+            const wrapper = await openTransactions([order({ status: 'pending', created_at })]);
+            await wrapper.findAll('button').find((b) => b.text().includes('ได้รับเงินแล้ว')).trigger('click');
+
+            return routerPost.mock.calls[0][1];
+        };
+
+        expect(await confirmOrder(hoursAgo(49))).toEqual({ honor_expired: true });
+        expect(await confirmOrder(hoursAgo(47))).toEqual({ honor_expired: false });
+    });
+
     it('บอกยอดและรหัสอ้างอิงก่อนส่ง แล้วยิงไปที่ออเดอร์นั้น', async () => {
         const wrapper = await openTransactions([order({ requeue_payout_tpix: '200' })]);
 
