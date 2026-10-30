@@ -26,6 +26,7 @@
 !/storage/framework/testing/.gitkeep
 /storage/framework/views/*
 !/storage/framework/views/.gitkeep
+/storage/framework/deploy-in-progress*
 .env
 .env.backup
 .env.production
