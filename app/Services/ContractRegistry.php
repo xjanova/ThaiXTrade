@@ -127,7 +127,7 @@ class ContractRegistry
     }
 
     /**
-     * ตั้งที่อยู่สัญญา (สคริปต์ deploy หรือแอดมินเรียก).
+     * ตั้งที่อยู่สัญญา ($force มาจาก tpix:contract-registry-set เท่านั้น ห้ามรับจากคำขอ HTTP).
      *
      * @return array{ok:bool, previous:?string, message:?string}
      */
@@ -160,7 +160,7 @@ class ContractRegistry
          *
          * กติกา: จดลายนิ้วมือตอนลงทะเบียนครั้งแรก หลังจากนั้นถ้าจะย้ายไปที่อยู่ใหม่
          * bytecode ต้องเหมือนเดิม (redeploy สัญญาตัวเดิม = hash เท่ากัน ผ่านได้)
-         * ถ้าต่างต้องส่ง force มาโดยตั้งใจ ซึ่งจะถูกบันทึกเป็น warning
+         * ถ้าต่างต้องใช้ force ผ่าน CLI บนเซิร์ฟเวอร์เท่านั้น ซึ่งจะถูกบันทึกเป็น warning
          */
         if (! $force && $previous !== null && $previousHash !== null) {
             if ($newHash === null) {
@@ -182,7 +182,7 @@ class ContractRegistry
                     'ok' => false,
                     'previous' => $previous,
                     'message' => 'bytecode ไม่ตรงกับสัญญาที่ลงทะเบียนไว้เดิม '
-                        .'ถ้าตั้งใจเปลี่ยนเป็นสัญญาคนละตัวจริง ให้ส่ง force=true',
+                        .'ถ้าตั้งใจเปลี่ยนเป็นสัญญาคนละตัวจริง ให้รัน tpix:contract-registry-set --force บนเซิร์ฟเวอร์',
                 ];
             }
         }

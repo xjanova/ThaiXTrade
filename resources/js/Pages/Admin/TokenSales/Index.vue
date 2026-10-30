@@ -187,6 +187,13 @@ function bankReference(tx) {
 
 const confirmingId = ref(null);
 
+/** ออเดอร์เก่าไม่มี expires_at — หลังบ้านคิดจากวันที่สร้างและเป็นคนตัดสินจริงเสมอ */
+function isBankOrderExpired(tx) {
+    const expiresAt = tx.metadata?.expires_at;
+
+    return Boolean(expiresAt) && new Date(expiresAt).getTime() < Date.now();
+}
+
 /**
  * ยืนยันว่าเงินเข้าบัญชีจริง
  *
@@ -197,12 +204,16 @@ function confirmBank(tx) {
     if (confirmingId.value) return;
 
     const ref = bankReference(tx) || tx.uuid;
-    if (!window.confirm(`ยืนยันว่าได้รับเงินโอนของรายการ ${ref} แล้วจริงหรือไม่?\n\nกดยืนยันแล้วระบบจะนับเป็นยอดขายและเข้าคิวจ่ายเหรียญทันที`)) {
+    const expired = isBankOrderExpired(tx);
+    const warning = expired
+        ? '\n\nออเดอร์นี้หมดอายุแล้ว กดยืนยันเฉพาะเมื่อเงินเข้าก่อนเวลาหมดอายุจริงเท่านั้น ระบบจะรับราคาเดิมและบันทึกชื่อคุณไว้'
+        : '';
+    if (!window.confirm(`ยืนยันว่าได้รับเงินโอนของรายการ ${ref} แล้วจริงหรือไม่?\n\nกดยืนยันแล้วระบบจะนับเป็นยอดขายและเข้าคิวจ่ายเหรียญทันที${warning}`)) {
         return;
     }
 
     confirmingId.value = tx.id;
-    router.post(`/admin/token-sales/bank/${tx.id}/confirm`, {}, {
+    router.post(`/admin/token-sales/bank/${tx.id}/confirm`, { honor_expired: expired }, {
         preserveScroll: true,
         onFinish: () => { confirmingId.value = null; },
     });

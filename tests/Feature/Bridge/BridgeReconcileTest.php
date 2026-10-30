@@ -8,6 +8,7 @@ use App\Models\BridgeWithdrawal;
 use App\Models\SystemAlert;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\BridgeConfig;
+use App\Services\Bridge\BridgeRelayer;
 use Illuminate\Support\Facades\Cache;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\FakesBridgeChains;
@@ -98,6 +99,48 @@ class BridgeReconcileTest extends TestCase
         $this->assertStringContainsString('minter_paused', $s->action);
         $this->assertFalse(app(BridgeConfig::class)->siteSwitchOn());
         $this->assertTrue(SystemAlert::where('alert_key', 'bridge_unexplained_mint')->exists());
+    }
+
+    private function reviewDeposit(string $reason, ?string $mintTx): BridgeDeposit
+    {
+        $tx = '0x'.hash('sha256', "reconcile-{$reason}");
+
+        return BridgeDeposit::create([
+            'source_chain_id' => 56, 'tx_hash' => $tx, 'log_index' => 0, 'block_number' => 950,
+            'from_address' => strtolower($this->alice), 'to_address' => $this->vault, 'token_address' => $this->usdtBsc,
+            'token_decimals' => 18, 'amount_raw' => '5000000000000000000', 'amount_units' => '5000000',
+            'mint_units' => '5000000', 'deposit_id' => Abi::depositId(56, $tx, 0),
+            'status' => BridgeDeposit::STATUS_NEEDS_REVIEW, 'review_reason' => $reason, 'mint_tx_hash' => $mintTx,
+        ]);
+    }
+
+    #[Test]
+    public function a_stuck_mint_that_lands_late_does_not_halt_the_bridge(): void
+    {
+        // relayer ส่ง mint ไปแล้วค้างจนถูกส่งให้คนดู จากนั้นธุรกรรมลงบล็อกก่อน bridge:relay รอบถัดไป
+        $this->reviewDeposit(BridgeRelayer::REASON_STUCK, '0x'.str_repeat('7', 64));
+        $this->setTokenBalance(56, $this->usdtBsc, $this->vault, '24990000000000000000');
+        $this->chainState[4289]['supply'] = '24990000';
+        $this->chainState[4289]['minter_total'] = '5000000';
+
+        $s = $this->reconcile();
+
+        $this->assertSame('0', $s->unexplained_mint_units);
+        $this->assertNull($s->action);
+        $this->assertTrue(app(BridgeConfig::class)->siteSwitchOn());
+        $this->assertFalse($this->chainState[4289]['minter_paused']);
+    }
+
+    #[Test]
+    public function a_review_row_that_never_sent_a_mint_explains_nothing(): void
+    {
+        $this->reviewDeposit('over_tx_limit', null);
+        $this->chainState[4289]['minter_total'] = '5000000';
+
+        $s = $this->reconcile();
+
+        $this->assertSame('5000000', $s->unexplained_mint_units);
+        $this->assertTrue($this->chainState[4289]['minter_paused']);
     }
 
     #[Test]

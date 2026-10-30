@@ -59,6 +59,7 @@ class TokenFactoryService
         private readonly TokenFactoryChain $chain,
         private readonly ContractRegistry $contracts,
         private readonly TokenFactoryRefunds $refunds,
+        private readonly BlockscoutVerifyService $explorer,
     ) {}
 
     // =========================================================================
@@ -170,6 +171,12 @@ class TokenFactoryService
         // เฉพาะตอนออกใบเสนอราคา (ก่อนจ่ายเงิน) — ตอน /create ห้ามตรวจข้อนี้
         // ไม่งั้นผู้ใช้ที่จ่ายแล้วกด "ส่งคำขอต่อ" หลังคำขอเข้าไปแล้วจะติดค้างตลอด
         $this->assertNoRequestInProgress($creator);
+
+        // ยืนยันไม่ได้ = ห้ามเก็บเงิน ต้องตรวจตอนนี้ ตอน /create ผู้ใช้จ่ายไปแล้ว
+        if (in_array('source_verify', $prepared['decision']['options'], true)
+            && ! $this->explorer->supports(new FactoryToken(['token_type' => $prepared['data']['token_type']]))) {
+            throw new TokenFactoryException('SOURCE_VERIFY_UNSUPPORTED', 'ยังยืนยันซอร์สของเหรียญชนิดนี้ไม่ได้ กรุณาติดต่อทีมงาน');
+        }
 
         $fee = $prepared['decision']['fee'];
         $amount = $this->decimalString($fee['total']);

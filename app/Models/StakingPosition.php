@@ -46,8 +46,10 @@ class StakingPosition extends Model
     // === Computed ===
 
     /**
-     * คำนวณ pending reward ตาม APY + วันที่ผ่านมา.
-     * formula: amount * (apy / 100) / 365 * elapsed_days.
+     * คำนวณ pending reward ตาม APY + เวลาที่ผ่านมา.
+     * formula: amount * apy * elapsed_seconds / (100 * 365 * 86400).
+     *
+     * ใช้จำนวนเต็มวินาที เพราะเศษวันเป็น float แปลงเป็นสตริงได้ 1.1E-5 ซึ่ง bcmath โยน ValueError
      */
     public function getPendingRewardAttribute(): string
     {
@@ -56,16 +58,13 @@ class StakingPosition extends Model
         }
 
         $from = $this->last_reward_at ?? $this->staked_at;
-        $daysElapsed = Carbon::parse($from)->diffInSeconds(now()) / 86400;
+        $seconds = (int) Carbon::parse($from)->diffInSeconds(now());
 
-        if ($daysElapsed <= 0) {
+        if ($seconds <= 0) {
             return '0';
         }
 
-        $dailyRate = bcdiv((string) $this->pool->apy_percent, '36500', 18);
-        $reward = bcmul(bcmul($this->amount, $dailyRate, 18), (string) $daysElapsed, 18);
-
-        return $reward;
+        return bcdiv(bcmul(bcmul($this->amount, (string) $this->pool->apy_percent, 18), (string) $seconds, 18), '3153600000', 18);
     }
 
     public function getIsUnlockedAttribute(): bool

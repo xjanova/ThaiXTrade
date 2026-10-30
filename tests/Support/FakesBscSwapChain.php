@@ -54,6 +54,7 @@ trait FakesBscSwapChain
             $ok = fn ($result) => Http::response(['jsonrpc' => '2.0', 'id' => 1, 'result' => $result]);
 
             return match ($body['method'] ?? '') {
+                'eth_chainId' => $ok('0x38'),
                 'eth_getTransactionReceipt' => $ok($this->bscReceipt(strtolower($params[0] ?? ''))),
                 'eth_getTransactionByHash' => $ok($this->bscTransaction(strtolower($params[0] ?? ''))),
                 'eth_call' => $ok($this->bscCall($params[0] ?? [])),

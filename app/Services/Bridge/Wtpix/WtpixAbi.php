@@ -16,6 +16,9 @@ final class WtpixAbi
     /** TPIXBridgeVault: event Released(address indexed relayer, address indexed to, uint256 amount, bytes32 indexed depositId, uint256 day, uint256 releasedThatDay) */
     public const RELEASED_EVENT = 'Released(address,address,uint256,bytes32,uint256,uint256)';
 
+    /** WTPIXBridgeMinter: event BridgeMinted(address indexed relayer, address indexed to, uint256 amount, bytes32 indexed depositId, uint256 day, uint256 mintedThatDay) */
+    public const BRIDGE_MINTED_EVENT = 'BridgeMinted(address,address,uint256,bytes32,uint256,uint256)';
+
     /** wTPIX: event MinterQueued(address indexed minter, uint256 executeAfter) */
     public const MINTER_QUEUED_EVENT = 'MinterQueued(address,uint256)';
 

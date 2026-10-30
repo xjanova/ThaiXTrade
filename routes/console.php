@@ -187,6 +187,13 @@ Schedule::command('tpix:treasury-payouts')
     ->onOneServer()
     ->name('treasury:payouts');
 
+// ค่ายืนยันซอร์สจ่ายแล้วซื้อซ้ำไม่ได้ — ลองส่งใหม่จนกว่า explorer จะยืนยัน ไม่คิดเงินเพิ่ม
+Schedule::command('tpix:token-factory-source-verify')
+    ->hourly()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('token-factory:source-verify');
+
 /*
  * TPIX Stability Reserve — กองทุนพยุงราคาแบบกฎตายตัว ทุก 5 นาที
  *

@@ -52,18 +52,22 @@ class ContractRegistryController extends Controller
             return $deny;
         }
 
+        /*
+         * ลายนิ้วมือ bytecode มีไว้กันกรณี token นี้รั่ว ถ้าข้ามผ่าน API ได้ด่านก็ไม่เหลือความหมาย
+         * ย้ายไปสัญญาคนละตัวจริง ๆ ต้องทำบนเซิร์ฟเวอร์ — สคริปต์ deploy ปกติไม่ต้องใช้
+         * เพราะ redeploy สัญญาตัวเดิมมี bytecode เท่าเดิม ผ่านได้เองอยู่แล้ว
+         */
+        if ($request->boolean('force')) {
+            return response()->json([
+                'error' => 'force is not available over the API',
+                'hint' => 'รัน php artisan tpix:contract-registry-set <key> <address> --force บนเซิร์ฟเวอร์',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'contracts' => ['required', 'array', 'min:1'],
             'contracts.*' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
-            /*
-             * ต้องส่งมาโดยตั้งใจเมื่อจะย้ายไปสัญญาที่ bytecode ต่างจากตัวที่ลงทะเบียนไว้
-             * (เช่นอัปเกรดเป็นสัญญาเวอร์ชันใหม่จริง ๆ) — สคริปต์ deploy ปกติไม่ต้องส่ง
-             * ตัวที่ redeploy สัญญาตัวเดิมจะมี bytecode เท่าเดิม จึงผ่านได้เองอยู่แล้ว
-             */
-            'force' => ['sometimes', 'boolean'],
         ]);
-
-        $force = (bool) ($validated['force'] ?? false);
 
         $applied = [];
         $rejected = [];
@@ -82,7 +86,7 @@ class ContractRegistryController extends Controller
                 continue;
             }
 
-            $result = $this->registry->set($key, $address, $force);
+            $result = $this->registry->set($key, $address);
 
             if ($result['ok']) {
                 $applied[$key] = ['address' => $address, 'previous' => $result['previous']];

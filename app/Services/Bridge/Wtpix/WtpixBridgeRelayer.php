@@ -2,6 +2,7 @@
 
 namespace App\Services\Bridge\Wtpix;
 
+use App\Models\SystemAlert;
 use App\Models\WtpixBridgeTransfer;
 use App\Services\Bridge\Abi;
 use App\Services\Bridge\BridgeSigner;
@@ -34,6 +35,17 @@ class WtpixBridgeRelayer
     public const MAX_SIGN_ATTEMPTS = 5;
 
     public const REBROADCAST_AFTER_SECONDS = 90;
+
+    /** ขอบล่างของการไล่หา event เผื่อเวลาเครื่องคลาดกัน / RPC ต้นทางอ่านเวลาบล็อกไม่ได้ */
+    private const SETTLEMENT_SEARCH_MARGIN_SECONDS = 600;
+
+    private const SETTLEMENT_SEARCH_FALLBACK_SECONDS = 86400;
+
+    /** ไกลเกินนี้ (~4.6 วัน) = พิสูจน์ไม่ได้ ไม่เดา · เจอ event แล้วหยุดทันที เพดานจึงมีผลแค่ตอนหาไม่เจอ */
+    private const SETTLEMENT_MAX_BLOCKS = [
+        WtpixBridgeTransfer::TO_BSC => 900000,
+        WtpixBridgeTransfer::TO_TPIX => 200000,
+    ];
 
     public function __construct(
         private WtpixBridgeConfig $config,
@@ -438,7 +450,100 @@ class WtpixBridgeRelayer
             }
         }
 
+        if (! WtpixBridgeTransfer::where('direction', $direction)->where('status', WtpixBridgeTransfer::STATUS_SENDING)->exists()) {
+            SystemAlert::resolveKeys(WtpixBridgeGuard::ALERT_NODE, ["wtpix_bridge_tx_stuck_{$direction}"]);
+        }
+
         return $settled;
+    }
+
+    /**
+     * ธุรกรรมค้างใน mempool — ทิศนี้หยุดเซ็นรอ (nonce ทับกันไม่ได้) จึงต้องมีคนรู้ ไม่ใช่รอเงียบ ๆ.
+     *
+     * ยังเป็น sending ต่อไป เพราะลงบล็อกได้ทุกเมื่อ · เจ้าของแทนที่ nonce เดิมแล้ว รอบถัดไปจะเห็น nonce_used เอง
+     */
+    private function flagStuck(WtpixBridgeTransfer $row, string $hash): void
+    {
+        $age = $row->broadcast_at ? now()->diffInSeconds($row->broadcast_at, true) : 0;
+        if ($age < $this->config->stuckAfterSeconds()) {
+            return;
+        }
+
+        $minutes = (int) floor($age / 60);
+        SystemAlert::raise(
+            WtpixBridgeGuard::ALERT_NODE,
+            "wtpix_bridge_tx_stuck_{$row->direction}",
+            'critical',
+            "สะพาน wTPIX: ธุรกรรมของรายการ #{$row->id} ค้าง {$minutes} นาที (nonce {$row->dest_nonce}) — ทิศนี้หยุดรอ ต้องรอให้ลงบล็อกหรือส่งธุรกรรมแทนที่ด้วย nonce เดิมจากกระเป๋า relayer",
+            ['transfer' => $row->id, 'tx' => $hash, 'nonce' => $row->dest_nonce],
+        );
+    }
+
+    /**
+     * หา event ของ depositId บนสัญญาปลายทาง — หลักฐานว่ารายการนี้ไปถึงใคร เท่าไร.
+     *
+     * ไล่ไปข้างหน้าจากเวลาที่ธุรกรรมเกิดบนเชนต้นทาง (ก่อนหน้านั้น depositId ยังไม่มี)
+     *
+     * @return array{state: 'found', to: string, wei: string, tx_hash: string, block: int}|array{state: 'not_found'|'unreadable'|'too_far'}
+     */
+    public function findSettlement(EvmRpc $rpc, WtpixBridgeTransfer $row, string $contract): array
+    {
+        $toBsc = $row->direction === WtpixBridgeTransfer::TO_BSC;
+        $depositId = strtolower((string) $row->deposit_id);
+        $created = $row->created_at?->getTimestamp() ?? now()->getTimestamp();
+        $sourceTs = $this->destRpc($toBsc ? WtpixBridgeTransfer::TO_TPIX : WtpixBridgeTransfer::TO_BSC)
+            ->blockTimestamp((int) $row->block_number);
+        $since = $sourceTs !== null
+            ? min($sourceTs, $created) - self::SETTLEMENT_SEARCH_MARGIN_SECONDS
+            : $created - self::SETTLEMENT_SEARCH_FALLBACK_SECONDS;
+
+        $latest = $rpc->blockNumber();
+        $start = $rpc->blockAtOrBefore($since, $toBsc ? 0.45 : 2.0);
+
+        if ($latest === null || $start === null) {
+            return ['state' => 'unreadable'];
+        }
+
+        if ($latest - $start > self::SETTLEMENT_MAX_BLOCKS[$row->direction]) {
+            return ['state' => 'too_far'];
+        }
+
+        $topic = Abi::topic($toBsc ? WtpixAbi::BRIDGE_MINTED_EVENT : WtpixAbi::RELEASED_EVENT);
+        $chunk = (int) config($toBsc ? 'wtpix_bridge.bsc.log_chunk' : 'wtpix_bridge.tpix.log_chunk', 900);
+        $matches = fn (array $log) => strtolower((string) ($log['address'] ?? '')) === strtolower($contract)
+            && ($log['removed'] ?? false) !== true
+            && strtolower((string) ($log['topics'][0] ?? '')) === $topic
+            && strtolower((string) ($log['topics'][3] ?? '')) === $depositId;
+
+        $logs = $rpc->logsBetween($contract, [$topic, null, null, $depositId], $start, $latest, $chunk, $matches);
+
+        if ($logs === null) {
+            return ['state' => 'unreadable'];
+        }
+
+        foreach ($logs as $log) {
+            if ($matches($log)) {
+                $to = Abi::topicAddress($log['topics'][2] ?? null);
+
+                return $to === null ? ['state' => 'unreadable'] : [
+                    'state' => 'found',
+                    'to' => $to,
+                    'wei' => Wei::hexToInt('0x'.substr((string) ($log['data'] ?? '0x'), 2, 64)),
+                    'tx_hash' => strtolower((string) ($log['transactionHash'] ?? '')),
+                    'block' => (int) Wei::hexToInt((string) ($log['blockNumber'] ?? '0x0')),
+                ];
+            }
+        }
+
+        return ['state' => 'not_found'];
+    }
+
+    /** event ต้องไปถึงผู้รับของรายการนี้ ตามจำนวนจริง */
+    public function settlementMatches(WtpixBridgeTransfer $row, array $settlement): bool
+    {
+        return ($settlement['state'] ?? null) === 'found'
+            && strtolower((string) $settlement['to']) === strtolower((string) $row->recipient)
+            && bccomp((string) $settlement['wei'], (string) $row->payout_wei, 0) === 0;
     }
 
     /** ตามผลรายการเดียว — true = ได้ข้อสรุปแล้ว (completed หรือ needs_review) */
@@ -455,8 +560,14 @@ class WtpixBridgeRelayer
         }
 
         $known = $rpc->knowsTransaction($hash);
-        if ($known === null || $known) {
-            return false; // อ่านไม่ได้ = รอ · อยู่ใน mempool = รอลงบล็อก
+        if ($known === null) {
+            return false; // อ่านไม่ได้ = รอ
+        }
+
+        if ($known) {
+            $this->flagStuck($row, $hash); // อยู่ใน mempool = รอลงบล็อก แต่ต้องมีคนรู้ถ้ารอนานเกิน
+
+            return false;
         }
 
         // เชนไม่รู้จัก — ส่งไปนานพอแล้วยิง raw เดิมซ้ำ (nonce เดิม รับได้ครั้งเดียว)
@@ -468,10 +579,15 @@ class WtpixBridgeRelayer
         $sent = $this->signer->send($rpc, (string) $row->dest_raw_tx);
 
         if (($sent['code'] ?? null) === 'nonce_used') {
-            // nonce ถูกใช้แล้ว — อาจเป็นธุรกรรมของเราเองที่เพิ่งลงบล็อก (RPC ตัวที่ถามใบเสร็จช้ากว่า) ถามอีกรอบก่อนตัดสิน
-            $again = $rpc->receipt($hash);
-            if ($again !== null) {
-                return $this->settleReceipt($rpc, $row, $again, $hash);
+            // nonce ถูกใช้แล้ว — อาจเป็นธุรกรรมของเราเองที่เพิ่งลงบล็อก (RPC ตัวที่ถามใบเสร็จช้ากว่า)
+            // ถ้าตัดสินจาก RPC ตัวเดียว ธุรกรรมของเราเองจะกลายเป็น "ทำโดยคนอื่น" แล้วสะพานหยุดทั้งเส้น
+            $again = $rpc->receiptAny($hash);
+            if ($again['receipt'] !== null) {
+                return $this->settleReceipt($rpc, $row, $again['receipt'], $hash);
+            }
+
+            if ($again['errors'] > 0 || $rpc->transactionAny($hash) !== null) {
+                return false; // ยังยืนยันไม่ได้ว่าไม่ใช่ของเรา — รอรอบหน้า
             }
 
             return $this->settleFailed($rpc, $row, 'nonce_consumed', "nonce {$row->dest_nonce} ถูกใช้โดยธุรกรรมอื่น");

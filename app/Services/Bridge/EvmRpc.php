@@ -2,7 +2,9 @@
 
 namespace App\Services\Bridge;
 
+use App\Models\SystemAlert;
 use App\Support\Wei;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -15,6 +17,7 @@ use Illuminate\Support\Facades\Log;
  *   - ส่ง User-Agent เสมอ — Cloudflare หน้า rpc.tpix.online ตอบ 403/429 เป็น HTML ให้ request ที่ไม่มี
  *   - RPC ตัวแรกล้ม (timeout / 5xx / ตอบไม่ใช่ JSON / rate limit) → ลองตัวถัดไปทันที
  *     แต่ error ระดับ JSON-RPC (เช่น execution reverted) คือคำตอบจริงของเชน ไม่ลองตัวอื่นซ้ำ
+ *   - ใช้ RPC ตัวไหนต้องตอบ eth_chainId ตรงกับเชนนี้ก่อน — URL ชี้ผิดเชน log ของเชนอื่นจะกลายเป็นเงินฝากปลอม
  */
 class EvmRpc
 {
@@ -34,6 +37,12 @@ class EvmRpc
     public function urls(): array
     {
         return $this->urls;
+    }
+
+    /** เฉพาะ RPC ตัวนี้ตัวเดียว — ไว้ถามไขว้ระหว่าง provider */
+    public function only(string $url): self
+    {
+        return new self($this->chainId, [$url], $this->userAgent, $this->timeout);
     }
 
     /**
@@ -57,6 +66,10 @@ class EvmRpc
      */
     private function requestUrl(string $url, string $method, array $params): ?array
     {
+        if ($method !== 'eth_chainId' && ! $this->servesChain($url)) {
+            return null;
+        }
+
         try {
             $response = Http::withHeaders(['User-Agent' => $this->userAgent])
                 ->timeout($this->timeout)
@@ -82,6 +95,43 @@ class EvmRpc
         }
 
         return array_key_exists('result', $data) ? ['result' => $data['result']] : null;
+    }
+
+    /**
+     * RPC ตัวนี้เป็นของเชนนี้จริงไหม — จำผลไว้ ไม่ถามซ้ำทุกคำขอ.
+     *
+     * ตอบผิดเชนจำแค่ไม่กี่นาที แก้ .env แล้วต้องกลับมาใช้ได้เอง
+     * ⚠️ แจ้งแค่ชื่อโฮสต์ — URL ของ provider เสียเงินมีคีย์ฝังอยู่
+     */
+    private function servesChain(string $url): bool
+    {
+        $key = "bridge:rpc-chain:{$this->chainId}:".md5($url);
+        $known = Cache::get($key);
+        if (is_bool($known)) {
+            return $known;
+        }
+
+        $hex = $this->requestUrl($url, 'eth_chainId', [])['result'] ?? null;
+        if (! is_string($hex) || ! str_starts_with($hex, '0x')) {
+            return false; // ตัวนี้ตอบไม่ได้ตอนนี้ — ลองตัวถัดไป ไม่จำผล
+        }
+
+        $matches = (int) Wei::hexToInt($hex) === $this->chainId;
+        Cache::put($key, $matches, $matches ? now()->addHour() : now()->addMinutes(5));
+
+        if (! $matches) {
+            $host = (string) parse_url($url, PHP_URL_HOST);
+            Log::critical('bridge rpc: RPC ตอบคนละเชน', ['chain' => $this->chainId, 'answered' => $hex, 'host' => $host]);
+            SystemAlert::raise(
+                BridgeReconciler::ALERT_NODE,
+                "bridge_rpc_wrong_chain_{$this->chainId}",
+                'critical',
+                "RPC {$host} ตั้งไว้สำหรับเชน {$this->chainId} แต่ตอบเป็นเชนอื่น — ระบบข้ามตัวนี้ ตรวจค่า RPC ใน .env",
+                ['host' => $host, 'answered' => $hex],
+            );
+        }
+
+        return $matches;
     }
 
     /**

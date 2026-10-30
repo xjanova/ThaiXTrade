@@ -134,6 +134,7 @@ class WtpixBridgeAdminTest extends TestCase
     {
         $row = $this->reviewRow(WtpixBridgeTransfer::TO_TPIX, '500');
         $this->chain[4289]['vault']['processed'][$row->deposit_id] = true;
+        $tx = $this->fakeForeignRelease($row->recipient, (string) $row->payout_wei, 1950, $row->deposit_id);
 
         $this->asAdmin()->postJson("/admin/bridge/wtpix/transfers/{$row->id}/approve")->assertStatus(409);
         $this->assertSame('released_elsewhere', $row->fresh()->review_reason);
@@ -142,6 +143,69 @@ class WtpixBridgeAdminTest extends TestCase
         $row->refresh();
         $this->assertSame(WtpixBridgeTransfer::STATUS_COMPLETED, $row->status);
         $this->assertSame($this->wVault, $row->dest_contract);
+        $this->assertSame($tx, $row->dest_tx_hash);
+    }
+
+    #[Test]
+    public function an_elsewhere_row_with_no_event_on_chain_cannot_be_closed(): void
+    {
+        $row = $this->reviewRow(WtpixBridgeTransfer::TO_TPIX, '500', 'released_elsewhere');
+        $this->chain[4289]['vault']['processed'][$row->deposit_id] = true;
+
+        $this->asAdmin()->postJson("/admin/bridge/wtpix/transfers/{$row->id}/approve")->assertStatus(422);
+
+        $this->assertSame(WtpixBridgeTransfer::STATUS_NEEDS_REVIEW, $row->fresh()->status);
+    }
+
+    #[Test]
+    public function an_elsewhere_row_paid_to_someone_else_cannot_be_closed(): void
+    {
+        // คีย์ relayer หลุดและปล่อย depositId นี้เข้ากระเป๋าคนร้าย
+        $row = $this->reviewRow(WtpixBridgeTransfer::TO_TPIX, '500', 'released_elsewhere');
+        $this->chain[4289]['vault']['processed'][$row->deposit_id] = true;
+        $this->fakeForeignRelease($this->bob, (string) $row->payout_wei, 1950, $row->deposit_id);
+
+        $this->asAdmin()->postJson("/admin/bridge/wtpix/transfers/{$row->id}/approve")->assertStatus(422);
+
+        $this->assertSame(WtpixBridgeTransfer::STATUS_NEEDS_REVIEW, $row->fresh()->status);
+    }
+
+    #[Test]
+    public function an_elsewhere_row_with_the_wrong_amount_cannot_be_closed(): void
+    {
+        $row = $this->reviewRow(WtpixBridgeTransfer::TO_TPIX, '500', 'released_elsewhere');
+        $this->chain[4289]['vault']['processed'][$row->deposit_id] = true;
+        $this->fakeForeignRelease($row->recipient, '1', 1950, $row->deposit_id);
+
+        $this->asAdmin()->postJson("/admin/bridge/wtpix/transfers/{$row->id}/approve")->assertStatus(422);
+
+        $this->assertSame(WtpixBridgeTransfer::STATUS_NEEDS_REVIEW, $row->fresh()->status);
+    }
+
+    #[Test]
+    public function a_minted_elsewhere_row_is_closed_from_the_bridge_minted_event(): void
+    {
+        $row = $this->reviewRow(WtpixBridgeTransfer::TO_BSC, '500', 'minted_elsewhere');
+        $this->chain[56]['minter']['processed'][$row->deposit_id] = true;
+        $tx = $this->fakeForeignBridgeMint($row->recipient, (string) $row->payout_wei, $row->deposit_id, 950);
+
+        $this->asAdmin()->postJson("/admin/bridge/wtpix/transfers/{$row->id}/approve")->assertOk();
+
+        $row->refresh();
+        $this->assertSame(WtpixBridgeTransfer::STATUS_COMPLETED, $row->status);
+        $this->assertSame($tx, $row->dest_tx_hash);
+    }
+
+    #[Test]
+    public function unreadable_event_logs_leave_the_row_open(): void
+    {
+        $row = $this->reviewRow(WtpixBridgeTransfer::TO_TPIX, '500', 'released_elsewhere');
+        $this->chain[4289]['vault']['processed'][$row->deposit_id] = true;
+        $this->chain[4289]['fail_logs'] = true;
+
+        $this->asAdmin()->postJson("/admin/bridge/wtpix/transfers/{$row->id}/approve")->assertStatus(503);
+
+        $this->assertSame(WtpixBridgeTransfer::STATUS_NEEDS_REVIEW, $row->fresh()->status);
     }
 
     #[Test]

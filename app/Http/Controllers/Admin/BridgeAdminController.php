@@ -301,6 +301,49 @@ class BridgeAdminController extends Controller
                 return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => $errors]];
             }
 
+            /*
+             * ต่ำกว่าขั้นต่ำ (ignored) = ตัวสแกนไม่เคยถามเชนว่าผู้ส่งเป็นสัญญา หรือคนกดส่งเป็นเจ้าของเหรียญไหม
+             *
+             * ⚠️ อนุมัติตรงนี้ = ยอมข้าม "กฎขั้นต่ำ" ข้อเดียว ไม่ใช่ทุกข้อ
+             *    exchange/Safe ที่ฝาก 5 USDT จะได้เหรียญที่ที่อยู่เดียวกันบนเชน 4289 ซึ่งไม่มีใครถือคีย์
+             *    → ถามเชนต้นทางเอง แล้วรันกฎครบชุด เจอข้อสงสัยอื่น = ย้ายไปรอตรวจด้วยเหตุผลจริง
+             *      ให้แอดมินรับรองข้อนั้นอย่างตั้งใจอีกครั้ง
+             */
+            if ($deposit->status === BridgeDeposit::STATUS_IGNORED) {
+                $sourceRpc = $this->config->rpc((int) $deposit->source_chain_id);
+                $sender = $sourceRpc ? $this->policy->senderFacts($sourceRpc, (string) $deposit->from_address, (string) $deposit->tx_hash) : null;
+
+                if ($sender === null) {
+                    return [503, ['success' => false, 'message' => 'อ่านข้อมูลผู้ส่งจากเชนต้นทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                }
+
+                $decision = $this->policy->evaluateDeposit([
+                    'from_address' => (string) $deposit->from_address,
+                    'amount_units' => (string) $deposit->amount_units,
+                    'mint_units' => (string) $deposit->mint_units,
+                ] + $sender, $deposit->id, ignoreMinimum: true);
+
+                if ($decision['status'] === BridgeDeposit::STATUS_IGNORED) {
+                    return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => ["รายการนี้ทำต่อไม่ได้ ({$decision['reason']})"]]];
+                }
+
+                if ($decision['status'] === BridgeDeposit::STATUS_NEEDS_REVIEW) {
+                    $deposit->update([
+                        'status' => BridgeDeposit::STATUS_NEEDS_REVIEW,
+                        'review_reason' => $decision['reason'],
+                        'last_error' => "ตรวจซ้ำตอนอนุมัติรายการต่ำกว่าขั้นต่ำ พบ {$decision['reason']} — ตรวจข้อนี้แล้วกดอนุมัติอีกครั้ง",
+                        'review_note' => trim(($deposit->review_note ? $deposit->review_note."\n" : '')
+                            .now()->toDateTimeString()." ตรวจซ้ำตอนอนุมัติ (เหตุเดิม: below_minimum) พบ {$decision['reason']}"),
+                    ]);
+
+                    return [409, [
+                        'success' => false,
+                        'message' => "ตรวจกับเชนแล้วพบข้อสงสัยอื่น ({$decision['reason']}) — ย้ายไปรอตรวจแล้ว ตรวจข้อนี้แล้วกดอนุมัติอีกครั้ง",
+                        'data' => $this->depositRow($deposit->fresh()),
+                    ]];
+                }
+            }
+
             $rpc = $this->config->tpixRpc();
 
             // ธุรกรรม mint เดิมยังลงบล็อกได้ (ค้างใน mempool) — อนุมัติใหม่ตอนนี้ได้แค่ธุรกรรมที่ต่อคิวหลัง nonce เดิม

@@ -422,11 +422,29 @@ class WtpixBridgeAdminController extends Controller
             }
 
             if ($processed) {
-                // แอดมินตรวจ event บน explorer แล้วว่าถึงผู้ใช้ถูกคน — นับเป็นของระบบ (ตัวกระทบยอดเลิกนับเป็น "ไม่ได้สั่ง")
+                // ปิดเป็นสำเร็จ = ตัวกระทบยอดเลิกนับเป็น "ไม่ได้สั่ง" ถ้าไม่ดู event คีย์ relayer ที่หลุดจะถูกกลบรอยด้วยปุ่มเดียว
+                $settled = $this->relayer->findSettlement($rpc, $row, $route['dest_contract']);
+
+                if ($settled['state'] === 'unreadable') {
+                    return [503, ['success' => false, 'message' => 'อ่าน event จากเชนปลายทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                }
+
+                if (! $this->relayer->settlementMatches($row, $settled)) {
+                    $why = $settled['state'] === 'found'
+                        ? 'event บนเชนไปที่ '.$settled['to'].' จำนวน '.Wei::format($settled['wei'], 18).' (tx '.$settled['tx_hash'].') ไม่ตรงกับรายการนี้'
+                        : 'สัญญาบอกว่าทำแล้วแต่หา event ของ depositId นี้ไม่เจอ'.($settled['state'] === 'too_far' ? ' (ช่วงบล็อกไกลเกินกว่าจะไล่อัตโนมัติ)' : '');
+
+                    return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => [
+                        "{$why} — ห้ามปิดเป็นสำเร็จ: ผู้ใช้อาจยังไม่ได้เงิน ตรวจคีย์ relayer ก่อน",
+                    ]]];
+                }
+
                 $row->update([
                     'status' => WtpixBridgeTransfer::STATUS_COMPLETED,
                     'dest_contract' => $route['dest_contract'],
                     'dest_chain_id' => $rpc->chainId,
+                    'dest_tx_hash' => $settled['tx_hash'],
+                    'dest_block_number' => $settled['block'],
                     'completed_at' => now(),
                     'reviewed_by' => $request->user()?->id,
                     'reviewed_at' => now(),

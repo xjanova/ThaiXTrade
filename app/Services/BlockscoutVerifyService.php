@@ -81,6 +81,10 @@ class BlockscoutVerifyService
     /** ยืนยันซอร์สของเหรียญนี้ได้ไหม (รู้จักชนิดสัญญา + มีไฟล์ standard input) — ใช้ก่อนรับเงินค่ายืนยัน */
     public function supports(FactoryToken $token): bool
     {
+        if (! $this->enabled) {
+            return false;
+        }
+
         $name = $this->contractNameFor($token);
 
         return $name !== null && is_file($this->standardInputPath($name));

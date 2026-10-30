@@ -73,6 +73,9 @@ return [
     | เชน TPIX — polygon-edge (IBFT) ปิดบล็อกแล้วจบ แต่ไม่มีแท็ก "finalized" → นับ confirmation
     | eth_getLogs ช่วงเกิน 1000 บล็อกถูกปฏิเสธ — หั่นละ 900
     */
+    // ธุรกรรมปลายทางค้างนานเท่านี้ (นาที) แจ้งแอดมิน — ทิศนั้นหยุดรอจนกว่าจะลงบล็อกหรือถูกแทนที่
+    'stuck_after_minutes' => (int) env('WTPIX_BRIDGE_STUCK_AFTER_MINUTES', 30),
+
     'tpix' => [
         'chain_id' => 4289,
         'name' => 'TPIX Chain',

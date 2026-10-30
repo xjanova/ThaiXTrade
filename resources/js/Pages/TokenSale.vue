@@ -346,6 +346,9 @@ async function loadTradablePair() {
                                         p.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' :
                                         'bg-gray-500/10 text-gray-400'
                                     ]">{{ p.status }}</span>
+                                    <p v-if="p.status === 'confirmed' && p.claim_hold_until && new Date(p.claim_hold_until) > new Date()" class="text-xs text-yellow-400/80 mt-1">
+                                        Claim opens {{ new Date(p.claim_hold_until).toLocaleDateString() }}
+                                    </p>
                                 </td>
                                 <td class="py-3">
                                     <!-- Stripe transactions ไม่ใช่ BSC tx_hash -->
@@ -427,7 +430,9 @@ async function loadTradablePair() {
                         </svg>
                     </summary>
                     <p class="text-gray-400 mt-3 text-sm">
-                        TGE tokens are available immediately after the sale ends. Remaining tokens vest
+                        The TGE share of a bank transfer purchase is queued once the transfer is confirmed.
+                        Card purchases wait out a holding period first, because a card payment can still be
+                        charged back, and the date is shown next to your purchase. Remaining tokens vest
                         according to the schedule. You can also receive wTPIX (Wrapped TPIX) on BSC as an
                         interim tradeable token before the TPIX Chain bridge is live.
                     </p>

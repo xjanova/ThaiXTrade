@@ -2,10 +2,13 @@
 
 namespace App\Services;
 
+use App\Exceptions\PurchaseException;
 use App\Models\SalePhase;
 use App\Models\SaleTransaction;
 use App\Models\SiteSetting;
+use App\Models\SystemAlert;
 use App\Models\TokenSale;
+use App\Support\Wei;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -24,8 +27,19 @@ use Stripe\Webhook;
  */
 class StripePaymentService
 {
+    /** อายุ Checkout Session — Stripe ปฏิเสธถ้าสั้นกว่า 30 นาที จึงเผื่อเวลาเดินทางของคำขอไว้ 1 นาที */
+    private const CHECKOUT_TTL_MINUTES = 31;
+
+    /** พักการ claim ของบัตรเป็นค่าเริ่มต้น — แก้ได้ที่ /admin/settings แท็บ Payment */
+    private const DEFAULT_CARD_HOLD_DAYS = 60;
+
+    private const MAX_CARD_HOLD_DAYS = 180;
+
+    private const ALERT_NODE = 'token-sale';
+
     public function __construct(
         private readonly TokenSaleService $saleService,
+        private readonly SaleClaimPayoutService $payouts,
     ) {
         // ใช้ key จาก admin SiteSetting ก่อน, fallback เป็น .env
         Stripe::setApiKey($this->secretKey());
@@ -118,6 +132,20 @@ class StripePaymentService
     }
 
     /**
+     * จำนวนวันที่พัก claim ของการซื้อด้วยบัตร (ออดิท 2026-10-29 L3).
+     *
+     * ผู้ถือบัตรดึงเงินคืนได้หลังรูด ถ้าเหรียญออกไปก่อนจะเสียทั้งเงินและเหรียญ
+     * ค่านี้ถูกล็อกลงออเดอร์ตอนซื้อ (metadata.claim_hold_until) แก้ทีหลังไม่กระทบออเดอร์เก่า
+     */
+    public function cardClaimHoldDays(): int
+    {
+        $raw = $this->setting('card_claim_hold_days', self::DEFAULT_CARD_HOLD_DAYS);
+        $days = is_numeric($raw) ? (int) $raw : self::DEFAULT_CARD_HOLD_DAYS;
+
+        return max(0, min($days, self::MAX_CARD_HOLD_DAYS));
+    }
+
+    /**
      * ยอดค่าเหรียญ (เซ็นต์) จากรายการสินค้าของ session — ทุกบรรทัดยกเว้นค่าบริการ
      *
      * ต้องใช้ตัวนี้แทน amount_total ตอนออกเหรียญ: amount_total รวมค่าบริการอยู่ด้วย
@@ -167,31 +195,14 @@ class StripePaymentService
          *
          * ที่ต้องกันตรงนี้ ไม่ใช่ตอน webhook เพราะ webhook มาหลังลูกค้ารูดบัตรแล้ว
          * ปฏิเสธตอนนั้นเท่ากับรับเงินไปโดยไม่ให้เหรียญ
+         *
+         * assertPurchasable ครอบเฟส, whitelist, เพดานต่อกระเป๋า, ขั้นต่ำ/สูงสุด และโควตา
+         * 'USD' ผ่านถ้ารอบขายรับ CARD หรือ BANK อย่างใดอย่างหนึ่ง จึงต้องถาม CARD ซ้ำเอง
          */
-        $this->saleService->assertPhaseOpen($phase);
+        $check = $this->saleService->assertPurchasable($walletAddress, $phaseId, 'USD', $amountUsd);
+        $this->saleService->assertCurrencyAccepted($sale, 'CARD');
 
-        // คำนวณจำนวน TPIX ที่จะได้รับ
-        $tpixAmount = $amountUsd / $phase->price_usd;
-
-        // ใช้ pessimistic lock เพื่อป้องกัน race condition
-        $remaining = DB::transaction(function () use ($phase, $tpixAmount) {
-            $lockedPhase = SalePhase::lockForUpdate()->find($phase->id);
-            $remaining = $lockedPhase->allocation - $lockedPhase->sold;
-
-            if ($tpixAmount > $remaining) {
-                throw new RuntimeException('Insufficient allocation remaining in this phase.');
-            }
-
-            return $remaining;
-        });
-
-        // ตรวจสอบ min/max purchase
-        if ($tpixAmount < $phase->min_purchase) {
-            throw new RuntimeException("Minimum purchase is {$phase->min_purchase} TPIX.");
-        }
-        if ($phase->max_purchase > 0 && $tpixAmount > $phase->max_purchase) {
-            throw new RuntimeException("Maximum purchase is {$phase->max_purchase} TPIX.");
-        }
+        $tpixAmount = (float) $check['tpix_amount'];
 
         $baseCents = (int) round($amountUsd * 100); // Stripe ใช้ cents
         $feePercent = $this->cardFeePercent();
@@ -229,6 +240,8 @@ class StripePaymentService
             'payment_method_types' => ['card'],
             'line_items' => $lineItems,
             'mode' => 'payment',
+            // ค่าเริ่มต้นของ Stripe คือ 24 ชั่วโมง = เปิดค้างไว้ได้เกือบวันแล้วจ่ายราคาเฟสเก่าหลังราคาขึ้น
+            'expires_at' => now()->addMinutes(self::CHECKOUT_TTL_MINUTES)->timestamp,
             'success_url' => url('/token-sale?payment=success&session_id={CHECKOUT_SESSION_ID}'),
             'cancel_url' => url('/token-sale?payment=cancelled'),
             'metadata' => [
@@ -284,7 +297,12 @@ class StripePaymentService
             return ['status' => 'ignored', 'event_type' => $event->type];
         }
 
-        return match ($event->type) {
+        // Stripe ส่งซ้ำได้ตามสัญญาของมัน — ตัวจัดการทุกตัวกันซ้ำด้วยสถานะอยู่แล้ว ด่านนี้แค่ตัดงานซ้ำทิ้งก่อนถาม Stripe
+        if (DB::table('stripe_webhook_events')->where('event_id', $event->id)->exists()) {
+            return ['status' => 'duplicate_event', 'event_type' => $event->type];
+        }
+
+        $result = match ($event->type) {
             'checkout.session.completed' => $this->handleCheckoutCompleted($event->data->object),
             'checkout.session.expired' => $this->handleCheckoutExpired($event->data->object),
             'charge.refunded' => $this->handleChargeRefunded($event->data->object),
@@ -292,6 +310,15 @@ class StripePaymentService
             'payment_intent.payment_failed' => $this->handlePaymentFailed($event->data->object),
             default => ['status' => 'ignored', 'event_type' => $event->type],
         };
+
+        // บันทึกหลังทำสำเร็จเท่านั้น — ตัวจัดการที่ล้มต้องเหลือทางให้ Stripe ส่งซ้ำแล้วทำใหม่ได้
+        DB::table('stripe_webhook_events')->insertOrIgnore([
+            'event_id' => $event->id,
+            'type' => $event->type,
+            'processed_at' => now(),
+        ]);
+
+        return $result;
     }
 
     /**
@@ -315,12 +342,31 @@ class StripePaymentService
     /**
      * Issue a real Stripe refund for a transaction.
      * Reverse TPIX allocation ทันที + เรียก Stripe Refund API.
+     *
+     * ต้องหยุดแถวจ่ายและยืนยันว่าเหรียญยังไม่ออก "ก่อน" เงินเคลื่อน: เงินที่คืนไปแล้วเรียกกลับไม่ได้
+     * ถ้า Stripe ล้มหลังขั้นนี้ แถวจ่ายที่ถูกหยุดกู้คืนได้ด้วยปุ่มเข้าคิวใหม่ของแอดมิน
+     *
+     * @throws PurchaseException เหรียญออกไปแล้ว — ต้องเรียกเหรียญคืนหรือตัดสินใจเอง ระบบคืนเงินให้ไม่ได้
      */
     public function refundTransaction(SaleTransaction $transaction): array
     {
-        // ป้องกัน double refund
-        if ($transaction->status === 'refunded') {
+        $tokensLeftWei = DB::transaction(function () use ($transaction) {
+            $locked = SaleTransaction::whereKey($transaction->id)->lockForUpdate()->firstOrFail();
+
+            // ป้องกัน double refund — failed คือออเดอร์ที่ถูก chargeback ไปแล้ว Stripe คืนซ้ำไม่ได้
+            if (in_array($locked->status, ['refunded', 'failed'], true)) {
+                return null;
+            }
+
+            return $this->payouts->haltPayouts($locked, "คืนเงินบัตรของรายการซื้อ {$locked->uuid}");
+        });
+
+        if ($tokensLeftWei === null) {
             throw new RuntimeException('This transaction has already been refunded.');
+        }
+
+        if (bccomp($tokensLeftWei, '0', 0) > 0) {
+            throw new PurchaseException('เหรียญของรายการนี้ออกจากคลังแล้ว '.Wei::format($tokensLeftWei).' TPIX — ระบบไม่คืนเงินให้ ต้องตรวจเหรียญก่อนคืนใน Stripe เอง');
         }
 
         $stripeSessionId = str_replace('stripe_', '', $transaction->tx_hash);
@@ -338,20 +384,9 @@ class StripePaymentService
             'reason' => 'requested_by_customer',
         ]);
 
-        // ★ Reverse TPIX allocation ทันที (ไม่รอ webhook)
-        DB::transaction(function () use ($transaction) {
-            $transaction->update(['status' => 'refunded']);
-
-            $phase = SalePhase::find($transaction->sale_phase_id);
-            if ($phase) {
-                $phase->decrement('sold', $transaction->tpix_amount);
-            }
-            $sale = TokenSale::find($transaction->token_sale_id);
-            if ($sale) {
-                $sale->decrement('total_sold', $transaction->tpix_amount);
-                $sale->decrement('total_raised_usd', $transaction->payment_usd_value);
-            }
-        });
+        // ★ Reverse TPIX allocation ทันที (ไม่รอ webhook) — webhook อาจมาถึงก่อนบรรทัดนี้ด้วยซ้ำ
+        $this->alertIfTokensLeft($transaction, $this->closeOrder($transaction, 'refunded', [], 'คืนเงินบัตร'), 'refund');
+        $transaction->refresh();
 
         Log::info('Stripe refund issued + allocation reversed', [
             'transaction_id' => $transaction->uuid,
@@ -365,6 +400,46 @@ class StripePaymentService
             'status' => $refund->status,
             'amount' => $refund->amount / 100,
         ];
+    }
+
+    /**
+     * ปิดออเดอร์ที่เงินกลับไปหาผู้จ่ายแล้ว — คืนเงิน, คืนอัตโนมัติ, webhook และ dispute ต้องจบที่นี่ทางเดียว.
+     *
+     * ทั้งสี่ทางชนกันได้ เช่น webhook มาถึงก่อน Refund API ตอบ ทุกอย่างจึงตัดสินใต้ล็อกแถว
+     * ตัวนับย้อนเฉพาะแถวที่เคยนับ และแถวที่คืนเงินแล้วคงสถานะ refunded แม้ dispute จะตามมา
+     *
+     * @return string ยอด wei ที่หยุดไม่ทัน
+     */
+    private function closeOrder(SaleTransaction $transaction, string $status, array $metadata, string $reason): string
+    {
+        return DB::transaction(function () use ($transaction, $status, $metadata, $reason) {
+            $locked = SaleTransaction::whereKey($transaction->id)->lockForUpdate()->firstOrFail();
+
+            $this->saleService->reverseCounters($locked);
+
+            $locked->update([
+                'status' => $locked->status === 'refunded' ? 'refunded' : $status,
+                'metadata' => array_merge($locked->metadata ?? [], $metadata),
+            ]);
+
+            return $this->payouts->haltPayouts($locked, "{$reason} ของรายการซื้อ {$locked->uuid}");
+        });
+    }
+
+    /** เงินกลับไปแล้วแต่เหรียญออกไปด้วย — เสียทั้งคู่ ระบบแก้เองไม่ได้ ต้องให้คนเห็นทันที */
+    private function alertIfTokensLeft(SaleTransaction $transaction, string $tokensLeftWei, string $cause): void
+    {
+        if (bccomp($tokensLeftWei, '0', 0) <= 0) {
+            return;
+        }
+
+        SystemAlert::raise(
+            self::ALERT_NODE,
+            'sale_card_tokens_left_'.$transaction->id,
+            'critical',
+            'เงินบัตรของรายการซื้อ '.$transaction->uuid.' ถูกดึงกลับ ('.$cause.') แต่เหรียญออกไปแล้ว '.Wei::format($tokensLeftWei).' TPIX',
+            ['transaction_id' => $transaction->id, 'wallet' => $transaction->wallet_address, 'cause' => $cause],
+        );
     }
 
     // =========================================================================
@@ -391,7 +466,8 @@ class StripePaymentService
                 'error' => $e->getMessage(),
             ]);
 
-            return ['status' => 'verification_failed', 'session_id' => $session->id];
+            // ต้องล้มเป็น 500: ตอบ 200 แล้ว Stripe จะไม่ส่งซ้ำ ผู้ซื้อจ่ายเงินแล้วแต่ไม่ได้เหรียญ
+            throw new RuntimeException('Stripe session verification failed.', 0, $e);
         }
 
         // ต้องจ่ายเงินสำเร็จจริงเท่านั้น
@@ -417,7 +493,7 @@ class StripePaymentService
          *
          * amount_total รวมค่าบริการบัตรอยู่ด้วย ถ้าเอาไปหารราคาเหรียญตรงๆ
          * ผู้ซื้อจะได้เหรียญเกินไปเท่ากับค่าบริการ อ่านไม่ได้ = ไม่ออกเหรียญ
-         * (Stripe ส่ง webhook ซ้ำให้เอง) ไม่ใช่เดาจากยอดรวม
+         * (ล้มเป็น 500 เพื่อให้ Stripe ส่ง webhook ซ้ำ) ไม่ใช่เดาจากยอดรวม
          */
         try {
             $lineItems = Session::allLineItems($session->id, [
@@ -431,7 +507,7 @@ class StripePaymentService
                 'error' => $e->getMessage(),
             ]);
 
-            return ['status' => 'verification_failed', 'session_id' => $session->id];
+            throw new RuntimeException('Stripe line items could not be read.', 0, $e);
         }
 
         // กันค่าแปลก: ค่าเหรียญต้องไม่เกินยอดที่จ่ายจริง
@@ -464,6 +540,8 @@ class StripePaymentService
             return ['status' => 'duplicate', 'transaction_id' => $existing->uuid];
         }
 
+        $holdDays = $this->cardClaimHoldDays();
+
         // ใช้ DB::transaction() + pessimistic lock ป้องกัน oversell
         $transaction = DB::transaction(function () use (
             $saleId,
@@ -474,13 +552,23 @@ class StripePaymentService
             $serviceFeeUsd,
             $tpixAmount,
             $pricePerTpix,
-            $session
+            $session,
+            $holdDays
         ) {
             // ล็อค phase เพื่อตรวจ allocation
             $phase = SalePhase::lockForUpdate()->find($phaseId);
-            if (! $phase || $tpixAmount > $phase->remaining_allocation) {
-                Log::error('Stripe checkout: insufficient allocation at confirm time', [
+
+            // ด่านตอนสร้าง session ไม่พอ: หลาย session ที่เปิดพร้อมกันผ่านด่านนั้นได้ทุกใบ ต้องตัดสินซ้ำใต้ล็อก
+            $refusal = match (true) {
+                ! $phase, $tpixAmount > $phase->remaining_allocation => 'insufficient_allocation',
+                $this->saleService->exceedsWalletCap($phase, $walletAddress, $tpixAmount) => 'wallet_cap_exceeded',
+                default => null,
+            };
+
+            if ($refusal !== null) {
+                Log::error('Stripe checkout: refused at confirm time', [
                     'session_id' => $session->id,
+                    'reason' => $refusal,
                     'requested' => $tpixAmount,
                     'remaining' => $phase?->remaining_allocation ?? 0,
                 ]);
@@ -497,7 +585,7 @@ class StripePaymentService
                     'price_per_tpix' => $pricePerTpix,
                     'tx_hash' => 'stripe_'.$session->id,
                     'status' => 'pending',
-                    'metadata' => ['needs_refund' => true, 'reason' => 'insufficient_allocation', 'service_fee_usd' => $serviceFeeUsd],
+                    'metadata' => ['needs_refund' => true, 'reason' => $refusal, 'service_fee_usd' => $serviceFeeUsd],
                 ]);
             }
 
@@ -517,7 +605,9 @@ class StripePaymentService
                 'tx_hash' => 'stripe_'.$session->id,
                 'status' => 'confirmed',
                 'vesting_start_at' => $vestingStart,
-                'metadata' => ['service_fee_usd' => $serviceFeeUsd],
+                'metadata' => ['service_fee_usd' => $serviceFeeUsd] + ($holdDays > 0
+                    ? ['claim_hold_until' => now()->addDays($holdDays)->toIso8601String()]
+                    : []),
             ]);
 
             // อัปเดต counters atomically (ใช้ locked phase)
@@ -608,25 +698,21 @@ class StripePaymentService
             return ['status' => 'already_refunded_or_not_found'];
         }
 
-        // Reverse allocation ใน DB::transaction() — ใช้ pessimistic lock ป้องกัน double-reverse
-        DB::transaction(function () use ($transaction) {
-            $lockedTx = SaleTransaction::lockForUpdate()->find($transaction->id);
-            if (in_array($lockedTx->status, ['refunded', 'failed'])) {
-                return; // Already processed (admin refund + webhook racing)
-            }
+        /*
+         * event นี้มาทุกครั้งที่มีการคืน รวมถึงคืนบางส่วนจาก dashboard
+         * ออเดอร์ยังถือเหรียญเต็มจำนวน จะตัดกี่เหรียญเป็นการตัดสินของคน
+         * อ่านไม่ได้ว่าคืนครบไหมก็ลงทางนี้: เตือนคนเสียเวลาน้อยกว่าย้อนยอดผิด
+         */
+        if (($charge->refunded ?? false) !== true) {
+            return $this->recordPartialRefund($transaction, (int) ($charge->amount_refunded ?? 0));
+        }
 
-            $lockedTx->update(['status' => 'refunded']);
-
-            $phase = SalePhase::find($lockedTx->sale_phase_id);
-            if ($phase) {
-                $phase->decrement('sold', $lockedTx->tpix_amount);
-            }
-            $sale = TokenSale::find($lockedTx->token_sale_id);
-            if ($sale) {
-                $sale->decrement('total_sold', $lockedTx->tpix_amount);
-                $sale->decrement('total_raised_usd', $lockedTx->payment_usd_value);
-            }
-        });
+        // Reverse allocation ใต้ pessimistic lock ป้องกัน double-reverse (admin refund + webhook racing)
+        $this->alertIfTokensLeft(
+            $transaction,
+            $this->closeOrder($transaction, 'refunded', [], 'คืนเงินจาก Stripe'),
+            'charge.refunded',
+        );
 
         Log::warning('Stripe refund processed — TPIX allocation reversed', [
             'transaction_id' => $transaction->uuid,
@@ -635,6 +721,26 @@ class StripePaymentService
         ]);
 
         return ['status' => 'refund_processed', 'transaction_id' => $transaction->uuid];
+    }
+
+    /** ยอดที่ Stripe ส่งมาเป็นยอดสะสมของ charge จึงเขียนทับได้ ส่งซ้ำก็ได้ค่าเดิม */
+    private function recordPartialRefund(SaleTransaction $transaction, int $refundedCents): array
+    {
+        DB::transaction(function () use ($transaction, $refundedCents) {
+            $locked = SaleTransaction::whereKey($transaction->id)->lockForUpdate()->firstOrFail();
+
+            $locked->update(['metadata' => array_merge($locked->metadata ?? [], ['refunded_cents' => $refundedCents])]);
+        });
+
+        SystemAlert::raise(
+            self::ALERT_NODE,
+            'sale_card_partial_refund_'.$transaction->id,
+            'warning',
+            'รายการซื้อ '.$transaction->uuid.' ถูกคืนเงินบางส่วน $'.number_format($refundedCents / 100, 2).' แต่ยังถือเหรียญเต็มจำนวน',
+            ['transaction_id' => $transaction->id, 'wallet' => $transaction->wallet_address],
+        );
+
+        return ['status' => 'partial_refund', 'transaction_id' => $transaction->uuid];
     }
 
     /**
@@ -655,28 +761,14 @@ class StripePaymentService
             $transaction = SaleTransaction::where('tx_hash', 'stripe_'.$session->id)->first();
 
             if ($transaction) {
-                // ใช้ 'failed' เพราะ 'disputed' ไม่อยู่ใน DB enum
+                // ใช้ 'failed' เพราะ 'disputed' ไม่อยู่ใน DB enum — dispute = เสียเงินแน่ จึงย้อนยอดและหยุดเหรียญ
                 // บันทึก dispute info ลง metadata
-                $transaction->update([
-                    'status' => 'failed',
-                    'metadata' => array_merge($transaction->metadata ?? [], [
-                        'dispute_id' => $dispute->id,
-                        'dispute_reason' => $dispute->reason ?? 'unknown',
-                        'dispute_amount' => ($dispute->amount ?? 0) / 100,
-                        'disputed_at' => now()->toIso8601String(),
-                    ]),
-                ]);
-
-                // Reverse allocation เพราะ dispute = เสียเงินแน่
-                $phase = SalePhase::find($transaction->sale_phase_id);
-                if ($phase) {
-                    $phase->decrement('sold', $transaction->tpix_amount);
-                }
-                $sale = TokenSale::find($transaction->token_sale_id);
-                if ($sale) {
-                    $sale->decrement('total_sold', $transaction->tpix_amount);
-                    $sale->decrement('total_raised_usd', $transaction->payment_usd_value);
-                }
+                $this->alertIfTokensLeft($transaction, $this->closeOrder($transaction, 'failed', [
+                    'dispute_id' => $dispute->id,
+                    'dispute_reason' => $dispute->reason ?? 'unknown',
+                    'dispute_amount' => ($dispute->amount ?? 0) / 100,
+                    'disputed_at' => now()->toIso8601String(),
+                ], 'chargeback'), 'charge.dispute.created');
 
                 Log::critical('Stripe DISPUTE created — allocation reversed, requires immediate action', [
                     'transaction_id' => $transaction->uuid,

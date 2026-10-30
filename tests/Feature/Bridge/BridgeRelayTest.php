@@ -307,6 +307,7 @@ class BridgeRelayTest extends TestCase
     public function a_receipt_that_only_the_second_rpc_has_settles_the_mint(): void
     {
         $this->useTwoRpcs();
+        config(['bridge.chains.56.rpc' => ['https://rpc.bsc.test']]); // เทสต์นี้ดูฝั่งเชน TPIX ฝั่งต้นทางไม่เกี่ยว
         $this->rpcFaults['rpc.tpix.test|eth_getTransactionReceipt'] = 'null';
         $d = $this->deposit();
 

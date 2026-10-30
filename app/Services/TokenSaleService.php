@@ -27,6 +27,9 @@ use Illuminate\Support\Facades\Log;
  */
 class TokenSaleService
 {
+    /** สถานะที่นับเป็นยอดขายจริง — แถวรอจ่าย ล้มเหลว หรือคืนเงินแล้วไม่กินโควตาและเพดานของใคร */
+    private const COUNTED_STATUSES = ['confirmed', 'claimed'];
+
     public function __construct(
         private PriceFeedService $priceFeed,
     ) {}
@@ -360,6 +363,60 @@ class TokenSaleService
     }
 
     /**
+     * ยอดนี้เกินเพดานสะสมของกระเป๋าในเฟส whitelist ไหม.
+     *
+     * ทุกทางที่นับยอดขายต้องถามที่นี่ และถามซ้ำใต้ล็อกเฟสก่อนนับ: ด่านก่อนจ่ายเงินผ่านได้ทุกใบ
+     * ถ้าเปิดหลายออเดอร์พร้อมกัน ล็อกแถว whitelist ไว้ด้วยกันแก้เพดานระหว่างนับ
+     */
+    public function exceedsWalletCap(SalePhase $phase, string $walletAddress, float $tpixAmount): bool
+    {
+        if (! $phase->whitelist_only) {
+            return false;
+        }
+
+        $wallet = strtolower($walletAddress);
+
+        $entry = WhitelistEntry::where('sale_phase_id', $phase->id)
+            ->where('wallet_address', $wallet)
+            ->lockForUpdate()
+            ->first();
+
+        $cap = (float) ($entry->max_allocation ?? 0);
+
+        if ($cap <= 0) {
+            return false;
+        }
+
+        $already = (float) SaleTransaction::where('sale_phase_id', $phase->id)
+            ->where('wallet_address', $wallet)
+            ->whereIn('status', self::COUNTED_STATUSES)
+            ->sum('tpix_amount');
+
+        return $already + $tpixAmount > $cap;
+    }
+
+    /**
+     * ย้อนยอดขายของออเดอร์ — เรียกใต้ล็อกแถวนี้ และก่อนเปลี่ยนสถานะเท่านั้น.
+     *
+     * แถวที่ไม่เคยนับ (รอจ่าย, ถูกคืนหรือ chargeback ไปแล้ว) ไม่แตะ ตัวนับที่ลดเกินทำให้เฟสแสดงโควตา
+     * เหลือมากกว่าจริง แล้วขายเกินโควตาได้
+     */
+    public function reverseCounters(SaleTransaction $locked): void
+    {
+        if (! in_array($locked->status, self::COUNTED_STATUSES, true)) {
+            return;
+        }
+
+        $tpixAmount = (float) $locked->tpix_amount;
+
+        SalePhase::whereKey($locked->sale_phase_id)->lockForUpdate()->first()?->decrement('sold', $tpixAmount);
+
+        $sale = TokenSale::whereKey($locked->token_sale_id)->lockForUpdate()->first();
+        $sale?->decrement('total_sold', $tpixAmount);
+        $sale?->decrement('total_raised_usd', (float) $locked->payment_usd_value);
+    }
+
+    /**
      * คำนวณ preview ก่อนซื้อ (จำนวน TPIX ที่จะได้).
      *
      * ★ ต้องผ่านด่านเดียวกับตอนซื้อจริง — preview ที่ตอบสำเร็จคือคำสัญญากับลูกค้า
@@ -453,6 +510,10 @@ class TokenSaleService
                 'Insufficient allocation in this phase. Only '
                 .number_format($phase->remaining_allocation, 2).' TPIX remaining.'
             );
+        }
+
+        if ($this->exceedsWalletCap($phase, $walletAddress, $tpixAmount)) {
+            throw new PurchaseException('This purchase exceeds your allocation for this phase.');
         }
 
         return [
@@ -572,23 +633,8 @@ class TokenSaleService
                     throw new PurchaseException('Insufficient allocation in this phase. Only '.number_format($lockedPhase->remaining_allocation, 2).' TPIX remaining.');
                 }
 
-                // เพดานสะสมต่อกระเป๋าในเฟส whitelist — เดิมตั้งค่าไว้แต่ไม่เคยบังคับใช้
-                if ($lockedPhase->whitelist_only) {
-                    $entry = WhitelistEntry::where('sale_phase_id', $lockedPhase->id)
-                        ->where('wallet_address', strtolower($walletAddress))
-                        ->lockForUpdate()
-                        ->first();
-
-                    $cap = (float) ($entry->max_allocation ?? 0);
-                    if ($cap > 0) {
-                        $already = (float) SaleTransaction::where('sale_phase_id', $lockedPhase->id)
-                            ->where('wallet_address', strtolower($walletAddress))
-                            ->sum('tpix_amount');
-
-                        if ($already + $tpixAmount > $cap) {
-                            throw new PurchaseException('This purchase exceeds your allocation for this phase.');
-                        }
-                    }
+                if ($this->exceedsWalletCap($lockedPhase, $walletAddress, $tpixAmount)) {
+                    throw new PurchaseException('This purchase exceeds your allocation for this phase.');
                 }
 
                 $transaction = SaleTransaction::create([
@@ -731,7 +777,7 @@ class TokenSaleService
         return match ($verification['reason']) {
             'insufficient_confirmations' => 'Payment found but not confirmed yet. Please wait about a minute and submit again.',
             'tx_not_found_or_pending', 'tx_detail_not_found' => 'Transaction not found on BSC yet. Please wait for it to confirm and submit again.',
-            'rpc_request_failed', 'verification_error', 'block_time_unavailable' => 'Could not reach BSC right now. Please try again shortly — your payment is safe.',
+            'rpc_request_failed', 'wrong_rpc_chain', 'verification_error', 'block_time_unavailable' => 'Could not reach BSC right now. Please try again shortly — your payment is safe.',
             'from_address_mismatch' => 'This transaction was not sent from your connected wallet.',
             'currency_mismatch_native' => 'This transaction paid in BNB. Please select BNB as the payment currency.',
             'currency_mismatch_erc20' => 'The token in this transaction does not match the currency you selected.',
@@ -768,6 +814,7 @@ class TokenSaleService
                 'status' => $tx->status,
                 'claimable' => $tx->claimable_amount,
                 'claimed' => (float) $tx->claimed_amount,
+                'claim_hold_until' => $tx->claimHoldUntil()?->toIso8601String(),
                 'tx_hash' => $tx->tx_hash,
                 'created_at' => $tx->created_at?->toIso8601String(),
             ])
@@ -860,6 +907,24 @@ class TokenSaleService
         $claimedCurrency = strtoupper($claimedCurrency);
 
         try {
+            $chainHex = $this->rpcCall($rpcUrl, 'eth_chainId', []);
+            if ($chainHex === false || ! is_string($chainHex)) {
+                $result['reason'] = 'rpc_request_failed';
+                $result['retryable'] = true;
+
+                return $result;
+            }
+
+            $expectedChain = (int) config('services.bsc.chain_id', 56);
+            if ((int) hexdec($chainHex) !== $expectedChain) {
+                // ตั้งค่าผิดฝั่งเรา ไม่ใช่ความผิดผู้ซื้อ — ยื่นซ้ำได้หลังแก้ และห้ามนับว่าจ่ายแล้ว
+                Log::critical('Token sale: BSC RPC ตอบคนละเชน', ['expected' => $expectedChain, 'answered' => $chainHex]);
+                $result['reason'] = 'wrong_rpc_chain';
+                $result['retryable'] = true;
+
+                return $result;
+            }
+
             $receipt = $this->rpcCall($rpcUrl, 'eth_getTransactionReceipt', [$txHash]);
             if ($receipt === false) {
                 $result['reason'] = 'rpc_request_failed';

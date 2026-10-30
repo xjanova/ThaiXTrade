@@ -175,6 +175,14 @@ class TokenFactoryRefunds
             throw new TokenFactoryException('REFUND_TX_USED', 'ธุรกรรมนี้ถูกใช้ยืนยันรายการอื่นไปแล้ว', 409);
         }
 
+        // เงินที่คลังจ่ายด้วยเหตุอื่น (เช่นขายเหรียญให้ผู้สร้างคนนี้) ไม่ใช่การคืนค่าธรรมเนียม
+        $otherPayout = TreasuryPayout::where('tx_hash', $txHash)
+            ->whereNotIn('id', $this->payoutsFor($token->id)->pluck('id'))
+            ->first();
+        if ($otherPayout) {
+            throw new TokenFactoryException('REFUND_TX_USED', "ธุรกรรมนี้เป็นรายการจ่ายอื่นของคลัง (คิว #{$otherPayout->id}) นับเป็นการคืนเงินไม่ได้", 409);
+        }
+
         $tx = $this->ask('eth_getTransactionByHash', [$txHash]);
         if (! is_array($tx)) {
             throw new TokenFactoryException('REFUND_TX_NOT_FOUND', 'ยังไม่พบธุรกรรมนี้บนเชน TPIX — รอสักครู่แล้วลองใหม่');

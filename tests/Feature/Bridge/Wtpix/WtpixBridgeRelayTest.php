@@ -129,6 +129,71 @@ class WtpixBridgeRelayTest extends TestCase
     }
 
     #[Test]
+    public function a_receipt_only_the_second_rpc_can_see_settles_without_a_false_halt(): void
+    {
+        $this->useTwoRpcs();
+        $row = $this->lockRow();
+        $this->relay();
+        $this->assertSame(WtpixBridgeTransfer::STATUS_COMPLETED, $row->fresh()->status);
+
+        $row->update(['status' => WtpixBridgeTransfer::STATUS_SENDING, 'completed_at' => null, 'broadcast_at' => now()->subMinutes(10)]);
+        $this->rpcFaults['rpc.bsc.test|eth_getTransactionReceipt'] = 'null';
+        $this->rpcFaults['rpc.bsc.test|eth_getTransactionByHash'] = 'null';
+        $this->sendFailCode = 'nonce_used';
+
+        $this->relay();
+
+        $this->assertSame(WtpixBridgeTransfer::STATUS_COMPLETED, $row->fresh()->status);
+        $this->assertTrue(app(WtpixBridgeConfig::class)->siteSwitchOn());
+        $this->assertFalse($this->chain[56]['minter']['paused']);
+    }
+
+    #[Test]
+    public function a_nonce_consumed_while_some_rpc_is_unreadable_waits_instead_of_halting(): void
+    {
+        $this->useTwoRpcs();
+        $row = $this->lockRow();
+        $this->relay();
+
+        $row->update(['status' => WtpixBridgeTransfer::STATUS_SENDING, 'completed_at' => null, 'broadcast_at' => now()->subMinutes(10)]);
+        $this->rpcFaults['rpc.bsc.test|eth_getTransactionReceipt'] = 'null';
+        $this->rpcFaults['rpc.bsc.test|eth_getTransactionByHash'] = 'null';
+        $this->rpcFaults['rpc2.bsc.test|eth_getTransactionReceipt'] = 'upstream error';
+        $this->sendFailCode = 'nonce_used';
+
+        $this->relay();
+
+        $this->assertSame(WtpixBridgeTransfer::STATUS_SENDING, $row->fresh()->status);
+        $this->assertTrue(app(WtpixBridgeConfig::class)->siteSwitchOn());
+    }
+
+    #[Test]
+    public function a_transaction_stuck_in_the_mempool_raises_an_alert_and_clears_when_it_lands(): void
+    {
+        $this->mineOnSend = false;
+        $row = $this->lockRow();
+        $this->relay();
+        $row->refresh();
+        $hash = $row->dest_tx_hash;
+        $this->chain[56]['txs'][$hash] = ['hash' => $hash, 'from' => strtolower($this->wRelayer), 'nonce' => '0x0', 'blockNumber' => null];
+
+        $this->relay();
+        $this->assertFalse(SystemAlert::where('alert_key', 'wtpix_bridge_tx_stuck_to_bsc')->exists(), 'ยังไม่ค้างนานพอ');
+
+        $this->travel(31)->minutes();
+        $this->relay();
+
+        $this->assertSame(WtpixBridgeTransfer::STATUS_SENDING, $row->fresh()->status, 'ยังลงบล็อกได้ ต้องตามผลต่อ');
+        $this->assertTrue(SystemAlert::where('alert_key', 'wtpix_bridge_tx_stuck_to_bsc')->where('severity', 'critical')->where('status', 'active')->exists());
+
+        $this->mineHash($hash);
+        $this->relay();
+
+        $this->assertSame(WtpixBridgeTransfer::STATUS_COMPLETED, $row->fresh()->status);
+        $this->assertFalse(SystemAlert::where('alert_key', 'wtpix_bridge_tx_stuck_to_bsc')->where('status', 'active')->exists());
+    }
+
+    #[Test]
     public function a_deposit_id_minted_by_someone_else_is_held_and_the_bridge_is_halted(): void
     {
         $row = $this->lockRow();

@@ -78,6 +78,19 @@ trait FakesBridgeChains
 
     private array $keystoreFiles = [];
 
+    /** host => chain id ที่ RPC ตัวนั้นอ้าง — ไว้จำลอง RPC ที่ชี้ผิดเชน */
+    protected array $rpcChainIds = [];
+
+    /** host => [tx hash => ใบเสร็จ] — RPC ตัวนั้นเห็นธุรกรรมต่างจากเชนจริง */
+    protected array $rpcFaultReceipts = [];
+
+    private array $rpcCalls = [];
+
+    protected function rpcCallCount(string $host, string $method): int
+    {
+        return $this->rpcCalls["{$host}|{$method}"] ?? 0;
+    }
+
     protected function setUpBridge(bool $siteSwitch = true): void
     {
         config([
@@ -340,15 +353,24 @@ trait FakesBridgeChains
             return $err('network unavailable rate limit');
         }
 
+        $this->rpcCalls["{$host}|".($body['method'] ?? '')] = ($this->rpcCalls["{$host}|".($body['method'] ?? '')] ?? 0) + 1;
+
         $fault = $this->rpcFaults["{$host}|".($body['method'] ?? '')] ?? null;
         if ($fault !== null) {
             return $fault === 'null' ? $ok(null) : $err($fault);
+        }
+
+        if (($body['method'] ?? '') === 'eth_getTransactionReceipt' && isset($this->rpcFaultReceipts[$host][strtolower($body['params'][0] ?? '')])) {
+            return $ok($this->rpcFaultReceipts[$host][strtolower($body['params'][0])]);
         }
 
         $s = &$this->chainState[$chainId];
         $params = $body['params'] ?? [];
 
         switch ($body['method'] ?? '') {
+            case 'eth_chainId':
+                return $ok('0x'.dechex($this->rpcChainIds[$host] ?? $chainId));
+
             case 'eth_blockNumber':
                 return $ok('0x'.dechex($s['latest']));
 

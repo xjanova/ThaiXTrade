@@ -98,7 +98,13 @@ class BridgeReconciler
         }
 
         $owed = $this->sum(BridgeWithdrawal::whereIn('status', BridgeWithdrawal::OWED)->pluck('payout_units')->all());
-        $minted = $this->sum(BridgeDeposit::whereIn('status', [BridgeDeposit::STATUS_MINTED, BridgeDeposit::STATUS_MINTING])->pluck('mint_units')->all());
+        // ธุรกรรมที่ค้างจนส่งให้คนดูแล้วยังลงบล็อกได้ — ลงทีหลังต้องไม่ถูกอ่านว่าเป็น mint ที่ระบบไม่ได้สั่ง
+        $minted = $this->sum(BridgeDeposit::query()
+            ->whereIn('status', [BridgeDeposit::STATUS_MINTED, BridgeDeposit::STATUS_MINTING])
+            ->orWhere(fn ($q) => $q->where('status', BridgeDeposit::STATUS_NEEDS_REVIEW)
+                ->where('review_reason', BridgeRelayer::REASON_STUCK)
+                ->whereNotNull('mint_tx_hash'))
+            ->pluck('mint_units')->all());
 
         $backing = bcsub(bcadd($vaultSum, $payoutSum, 0), $owed, 0);
         $deficit = $supply !== null ? bcsub($supply, $backing, 0) : '0';

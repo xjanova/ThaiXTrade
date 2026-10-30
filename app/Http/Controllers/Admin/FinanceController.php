@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\PurchaseException;
 use App\Http\Controllers\Controller;
 use App\Models\SaleTransaction;
 use App\Models\SiteSetting;
@@ -127,6 +128,11 @@ class FinanceController extends Controller
                 'success' => true,
                 'data' => $result,
             ]);
+        } catch (PurchaseException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => ['message' => $e->getMessage()],
+            ], 409);
         } catch (\Throwable $e) {
             Log::error('Admin refund failed', [
                 'transaction_id' => $transaction->id,

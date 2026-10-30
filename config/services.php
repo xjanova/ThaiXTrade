@@ -148,6 +148,9 @@ return [
     'bsc' => [
         'rpc_url' => env('BSC_RPC_URL', 'https://bsc-dataseed.binance.org'),
 
+        // ตรวจกับ RPC ก่อนเชื่อใบเสร็จ — URL ที่ชี้ผิดเชน ธุรกรรมของเชนอื่นจะกลายเป็นเงินเข้า
+        'chain_id' => (int) env('BSC_CHAIN_ID', 56),
+
         /*
          * จำนวนบล็อกที่ต้องรอก่อนถือว่าการชำระเงินนิ่งพอ
          *

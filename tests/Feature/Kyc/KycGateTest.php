@@ -238,6 +238,103 @@ class KycGateTest extends TestCase
     }
 
     // =========================================================================
+    // resolveUser — ล็อกอินเว็บอยู่ แต่คำขอถือกระเป๋าอีกใบ
+    // =========================================================================
+
+    private function sessionRequest(array $input, ?User $user = null): Request
+    {
+        $request = Request::create('/x', 'POST', $input);
+        $request->setUserResolver(fn () => $user ?? $this->user);
+
+        return $request;
+    }
+
+    private function otherAccount(): User
+    {
+        return User::create([
+            'email' => 'other@tpix.test',
+            'password' => bcrypt('secret-password'),
+            'wallet_address' => '0x2222222222222222222222222222222222222222',
+        ]);
+    }
+
+    #[Test]
+    public function เซสชันที่ไม่ได้ระบุกระเป๋าคือเจ้าของบัญชี(): void
+    {
+        $this->assertSame($this->user->id, $this->gate->resolveUser($this->sessionRequest([]))?->id);
+    }
+
+    #[Test]
+    public function เซสชันกับกระเป๋าที่ผูกกับบัญชีตัวเองไม่ต้องเซ็นซ้ำ(): void
+    {
+        $this->user->update(['wallet_address' => '0x'.str_repeat('a', 40)]);
+
+        $request = $this->sessionRequest(['wallet_address' => '0x'.str_repeat('A', 40)]);
+
+        $this->assertSame($this->user->id, $this->gate->resolveUser($request)?->id);
+    }
+
+    #[Test]
+    public function kyc_ของเซสชันใช้กับกระเป๋าคนอื่นที่ยังไม่พิสูจน์ไม่ได้(): void
+    {
+        $this->enableSystem();
+        $this->enableGate('ai_bot');
+        $this->approveKyc($this->user);
+        $other = $this->otherAccount();
+
+        $resolved = $this->gate->resolveUser($this->sessionRequest(['wallet_address' => $other->wallet_address]));
+
+        $this->assertNull($resolved);
+        $this->assertFalse($this->gate->passes($resolved, 'ai_bot'));
+    }
+
+    #[Test]
+    public function กระเป๋าที่พิสูจน์แล้วคือเจ้าของบัญชีของกระเป๋า_ไม่ใช่บัญชีในเซสชัน(): void
+    {
+        $this->enableSystem();
+        $this->enableGate('ai_bot');
+        $this->approveKyc($this->user);
+        $other = $this->otherAccount();
+        Cache::put("wallet_verified:{$other->wallet_address}", ['ip' => '127.0.0.1'], 3600);
+
+        $resolved = $this->gate->resolveUser($this->sessionRequest(['wallet_address' => $other->wallet_address]));
+
+        $this->assertSame($other->id, $resolved?->id);
+        $this->assertFalse($this->gate->passes($resolved, 'ai_bot'));
+    }
+
+    #[Test]
+    public function บัญชีอีเมลที่ยังไม่ผูกกระเป๋าเอา_kyc_ไปใช้กับกระเป๋าใดไม่ได้(): void
+    {
+        $this->enableSystem();
+        $this->enableGate('ai_bot');
+        $emailOnly = User::create(['email' => 'email-only@tpix.test', 'password' => bcrypt('secret-password')]);
+        $this->approveKyc($emailOnly);
+
+        $wallet = '0x3333333333333333333333333333333333333333';
+        Cache::put("wallet_verified:{$wallet}", ['ip' => '127.0.0.1'], 3600);
+
+        $this->assertNull($this->gate->resolveUser($this->sessionRequest(['wallet_address' => $wallet], $emailOnly)));
+        $this->assertSame($emailOnly->id, $this->gate->resolveUser($this->sessionRequest([], $emailOnly))?->id);
+    }
+
+    #[Test]
+    public function ปลายทางกันเซสชันที่ยิงด้วยกระเป๋าของคนอื่น(): void
+    {
+        $this->enableSystem();
+        $this->enableGate('token_factory');
+        $this->approveKyc($this->user);
+        $other = $this->otherAccount();
+        Cache::put("wallet_verified:{$other->wallet_address}", ['ip' => '127.0.0.1'], 3600);
+
+        // ด่านลายเซ็นผ่านเพราะกระเป๋านี้พิสูจน์แล้ว เหลือด่าน KYC ที่ต้องดูเจ้าของกระเป๋า ไม่ใช่เซสชัน
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/token-factory/create', ['wallet_address' => $other->wallet_address])
+            ->assertStatus(403)
+            ->assertJsonPath('error.code', 'KYC_REQUIRED');
+    }
+
+    // =========================================================================
     // กันจริงที่ปลายทาง ไม่ใช่แค่ซ่อนปุ่ม
     // =========================================================================
 

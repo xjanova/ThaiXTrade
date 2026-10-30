@@ -107,6 +107,8 @@ function setAmount(value) {
  * เซิร์ฟเวอร์คิดเป็นเซ็นต์แบบเดียวกัน (StripePaymentService::feeCents) และเป็นคนตัดสินยอดจริง
  */
 const cardFeePercent = computed(() => Number(tokenSaleStore.sale?.card_fee_percent || 0));
+const cardHoldDays = computed(() => Number(tokenSaleStore.sale?.card_claim_hold_days || 0));
+const bankExpiresAt = computed(() => (bankOrder.value?.expires_at ? new Date(bankOrder.value.expires_at).toLocaleString() : ''));
 
 const feeUsd = computed(() => {
     if (method.value !== 'card' || !amountNumber.value) return 0;
@@ -346,6 +348,9 @@ function formatNumber(n) {
                 <p class="text-xs text-yellow-400/80 mt-2">
                     ไม่ใส่รหัสนี้ ทีมงานจะจับคู่รายการโอนของคุณไม่ได้
                 </p>
+                <p v-if="bankExpiresAt" class="text-xs text-yellow-400/80 mt-1" data-testid="bank-expiry-note">
+                    โอนภายใน {{ bankExpiresAt }} หลังจากนี้ราคาอาจเปลี่ยนและต้องสั่งซื้อใหม่
+                </p>
             </div>
 
             <!-- บัญชีปลายทาง -->
@@ -512,6 +517,9 @@ function formatNumber(n) {
                         <span>ส่งเหรียญไปที่</span>
                         <span class="font-mono">{{ walletStore.shortAddress }} · TPIX Chain</span>
                     </div>
+                    <p v-if="method === 'card' && cardHoldDays > 0" class="text-xs text-yellow-400/80 pt-1" data-testid="card-hold-note">
+                        ซื้อด้วยบัตรเริ่ม claim ได้หลังชำระ {{ cardHoldDays }} วัน เพราะการชำระด้วยบัตรยังถูกเรียกคืนได้ในช่วงนี้
+                    </p>
                 </div>
 
                 <div v-else-if="isLoadingPreview" class="mb-4 text-sm text-gray-400">กำลังคำนวณ…</div>

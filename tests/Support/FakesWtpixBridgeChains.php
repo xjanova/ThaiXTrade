@@ -56,6 +56,9 @@ trait FakesWtpixBridgeChains
 
     protected array $revertOnMine = [];
 
+    /** "{host}|{method}" => ข้อความ error หรือ 'null' — RPC ตัวนั้นตอบเมธอดนั้นผิดปกติ */
+    protected array $rpcFaults = [];
+
     private array $rawIndex = [];
 
     private array $fakeNonces = [];
@@ -259,13 +262,38 @@ trait FakesWtpixBridgeChains
         return $tx;
     }
 
+    /** RPC ตัวที่สองของแต่ละเชน (อ่านสถานะเชนเดียวกัน) */
+    protected function useTwoRpcs(): void
+    {
+        config([
+            'wtpix_bridge.tpix.rpc' => ['https://rpc.tpix.test', 'https://rpc2.tpix.test'],
+            'wtpix_bridge.bsc.rpc' => ['https://rpc.bsc.test', 'https://rpc2.bsc.test'],
+        ]);
+    }
+
+    /** BridgeMinted(relayer, to, amount, depositId, day, mintedThatDay) บน minter ที่ระบบไม่ได้ส่ง */
+    protected function fakeForeignBridgeMint(string $to, string $wei, string $depositId, int $block): string
+    {
+        $tx = $this->nextHash("foreign-bridge-mint:{$to}:{$wei}:{$depositId}");
+        $this->addLog(56, $tx, [
+            'address' => $this->wMinter,
+            'topics' => [Abi::topic(WtpixAbi::BRIDGE_MINTED_EVENT), '0x'.Abi::encAddress($this->wRelayer), '0x'.Abi::encAddress($to), $depositId],
+            'data' => '0x'.Abi::encUint($wei).Abi::encUint('20000').Abi::encUint($wei),
+            'blockNumber' => '0x'.dechex($block),
+            'transactionHash' => $tx,
+            'logIndex' => '0x0',
+        ], $this->wRelayer, $this->wMinter);
+
+        return $tx;
+    }
+
     /** คลังปล่อย TPIX ในธุรกรรมที่ระบบไม่ได้ส่ง (คีย์ relayer หลุด) */
-    protected function fakeForeignRelease(string $to, string $wei, int $block): string
+    protected function fakeForeignRelease(string $to, string $wei, int $block, ?string $depositId = null): string
     {
         $tx = $this->nextHash("foreign-release:{$to}:{$wei}");
         $this->addLog(4289, $tx, [
             'address' => $this->wVault,
-            'topics' => [Abi::topic(WtpixAbi::RELEASED_EVENT), '0x'.Abi::encAddress($this->wRelayer), '0x'.Abi::encAddress($to), '0x'.str_repeat('ab', 32)],
+            'topics' => [Abi::topic(WtpixAbi::RELEASED_EVENT), '0x'.Abi::encAddress($this->wRelayer), '0x'.Abi::encAddress($to), $depositId ?? '0x'.str_repeat('ab', 32)],
             'data' => '0x'.Abi::encUint($wei).Abi::encUint('20000').Abi::encUint($wei),
             'blockNumber' => '0x'.dechex($block),
             'transactionHash' => $tx,
@@ -289,9 +317,10 @@ trait FakesWtpixBridgeChains
 
     private function answerRpc(Request $request): array
     {
-        $chainId = match (parse_url($request->url(), PHP_URL_HOST)) {
-            'rpc.tpix.test' => 4289,
-            'rpc.bsc.test' => 56,
+        $host = parse_url($request->url(), PHP_URL_HOST);
+        $chainId = match ($host) {
+            'rpc.tpix.test', 'rpc2.tpix.test' => 4289,
+            'rpc.bsc.test', 'rpc2.bsc.test' => 56,
             default => null,
         };
 
@@ -301,6 +330,11 @@ trait FakesWtpixBridgeChains
 
         if ($chainId === null || $this->chain[$chainId]['down']) {
             return $err('network unavailable rate limit');
+        }
+
+        $fault = $this->rpcFaults["{$host}|".($body['method'] ?? '')] ?? null;
+        if ($fault !== null) {
+            return $fault === 'null' ? $ok(null) : $err($fault);
         }
 
         $s = $this->chain[$chainId];
@@ -320,7 +354,8 @@ trait FakesWtpixBridgeChains
                 }
                 $n = $tag === 'latest' ? $s['latest'] : hexdec($tag);
 
-                return $ok(['number' => '0x'.dechex($n), 'timestamp' => '0x'.dechex(1760000000 + $n * 2)]);
+                // บล็อกล่าสุด = เวลาปัจจุบันของเทสต์ · ย้อนบล็อกละ 2 วินาที
+                return $ok(['number' => '0x'.dechex($n), 'timestamp' => '0x'.dechex(max(0, now()->getTimestamp() - ($s['latest'] - $n) * 2))]);
 
             case 'eth_getLogs':
                 if ($s['fail_logs']) {
