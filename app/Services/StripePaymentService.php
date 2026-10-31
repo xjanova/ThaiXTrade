@@ -10,6 +10,7 @@ use App\Models\SystemAlert;
 use App\Models\TokenSale;
 use App\Support\Wei;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -37,7 +38,7 @@ class StripePaymentService
 
     private const MAX_CARD_HOLD_DAYS = 180;
 
-    private const ALERT_NODE = 'token-sale';
+    public const ALERT_NODE = 'token-sale';
 
     /** ผลที่ร้านยังถือเงินอยู่ — warning_closed คือ inquiry ที่จบโดยเงินไม่เคยถูกดึง แต่ created ปิดออเดอร์ไปแล้วเหมือนกัน */
     private const DISPUTE_KEPT_STATUSES = [Dispute::STATUS_WON, Dispute::STATUS_WARNING_CLOSED];
@@ -417,6 +418,7 @@ class StripePaymentService
      * ทั้งสี่ทางชนกันได้ เช่น webhook มาถึงก่อน Refund API ตอบ ทุกอย่างจึงตัดสินใต้ล็อกแถว
      * ตัวนับย้อนเฉพาะแถวที่เคยนับ และแถวที่คืนเงินแล้วคงสถานะ refunded แม้ dispute จะตามมา
      * เหรียญออกไปแล้วไม่คืนโควตา ไม่งั้นขายเหรียญก้อนเดียวกันซ้ำ
+     * ถ้าภายหลังพิสูจน์ได้ว่าเหรียญไม่ออก โควตาคืนที่ SaleClaimPayoutService::releaseKeptQuota
      *
      * closed_from กับ counters_reversed จำไว้เฉพาะรอบที่ปิดแถวที่ยังนับอยู่: แถว failed มีทั้งที่ย้อนยอดแล้วและยังไม่ย้อน
      * การกู้ต้องรู้ว่าเป็นแบบไหน ส่วน dispute รอบสองบนแถวที่ปิดแล้วต้องไม่ทับสิ่งที่รอบแรกจำไว้
@@ -505,9 +507,10 @@ class StripePaymentService
 
             $this->saleService->restoreCounters($locked, (bool) ($locked->metadata['counters_reversed'] ?? false));
 
+            // ค่านี้เล่าการปิดรอบที่เพิ่งกู้ ถ้าค้างไว้ ปิดรอบหน้าด้วยทางอื่นแล้วจะคืนโควตาซ้ำ
             $locked->update([
                 'status' => $locked->metadata['closed_from'],
-                'metadata' => array_merge($locked->metadata, [
+                'metadata' => array_merge(Arr::except($locked->metadata, 'counters_reversed'), [
                     'dispute_restored_at' => now()->toIso8601String(),
                     'dispute_restored_by' => $restoredBy,
                 ]),
@@ -518,7 +521,7 @@ class StripePaymentService
 
         SystemAlert::resolveKeys(
             self::ALERT_NODE,
-            [$this->restoreAlertKey($order), 'sale_card_tokens_left_'.$order->id],
+            [$this->restoreAlertKey($order), self::tokensLeftAlertKey($order)],
             $restoredBy ?? 'admin',
         );
 
@@ -581,6 +584,11 @@ class StripePaymentService
         return 'sale_card_dispute_won_'.$transaction->id;
     }
 
+    public static function tokensLeftAlertKey(SaleTransaction $transaction): string
+    {
+        return 'sale_card_tokens_left_'.$transaction->id;
+    }
+
     /** เงินกลับไปแล้วแต่เหรียญออกไปด้วย — เสียทั้งคู่ ระบบแก้เองไม่ได้ ต้องให้คนเห็นทันที */
     private function alertIfTokensLeft(SaleTransaction $transaction, string $tokensLeftWei, string $cause): void
     {
@@ -590,7 +598,7 @@ class StripePaymentService
 
         SystemAlert::raise(
             self::ALERT_NODE,
-            'sale_card_tokens_left_'.$transaction->id,
+            self::tokensLeftAlertKey($transaction),
             'critical',
             'เงินบัตรของรายการซื้อ '.$transaction->uuid.' ถูกดึงกลับ ('.$cause.') แต่เหรียญออกไปแล้ว '.Wei::format($tokensLeftWei).' TPIX',
             ['transaction_id' => $transaction->id, 'wallet' => $transaction->wallet_address, 'cause' => $cause],

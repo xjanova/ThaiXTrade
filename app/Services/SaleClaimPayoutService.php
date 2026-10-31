@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use App\Models\SaleTransaction;
+use App\Models\SystemAlert;
 use App\Models\TreasuryPayout;
 use App\Support\Wei;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * คิวจ่ายของ /token-sale/claim และการกู้ยอดของแถวที่จบโดยเงินไม่ออก.
@@ -23,7 +25,10 @@ class SaleClaimPayoutService
     /** คำนำหน้า idempotency key ต่อด้วย uuid ของออเดอร์ แล้วตามด้วยลำดับ claim หรือ -retry-id ของแถวที่แทน */
     private const KEY_PREFIX = 'sale-claim-';
 
-    public function __construct(private readonly TreasuryService $treasury) {}
+    public function __construct(
+        private readonly TreasuryService $treasury,
+        private readonly TokenSaleService $saleService,
+    ) {}
 
     /**
      * เข้าคิวจ่ายของ claim หนึ่งครั้ง — ผู้เรียกต้องถือล็อกแถวนี้และบวก claimed_amount ไว้แล้ว.
@@ -52,13 +57,7 @@ class SaleClaimPayoutService
     {
         $tokensLeftWei = '0';
 
-        $payouts = TreasuryPayout::where(fn (Builder $q) => $q
-            ->where('idempotency_key', 'like', self::KEY_PREFIX.$tx->uuid.'-%')
-            ->orWhere('idempotency_key', 'like', BankTransferSaleService::PAYOUT_KEY_PREFIX.$tx->uuid.'-%'))
-            ->whereIn('origin', [TreasuryPayout::ORIGIN_SALE_CLAIM, TreasuryPayout::ORIGIN_SALE_BANK])
-            ->get();
-
-        foreach ($payouts as $payout) {
+        foreach ($this->orderPayouts($tx)->get() as $payout) {
             if ($payout->endedWithoutPayment()) {
                 continue;
             }
@@ -79,6 +78,47 @@ class SaleClaimPayoutService
         }
 
         return $tokensLeftWei;
+    }
+
+    /**
+     * คืนโควตาที่ตอนปิดออเดอร์เก็บไว้ เมื่อไม่เหลือแถวไหนที่อาจทำให้เหรียญออก — เรียกจาก TreasuryPayout::updated หลัง commit.
+     *
+     * closeOrder เก็บโควตาทั้งก้อนแม้หยุดไม่ทันแค่แถวเดียว และเหรียญที่ออกไปบางส่วนก็ยังนับทั้งก้อน
+     * จึงคืนได้ก็ต่อเมื่อทุกแถวจบโดยเงินไม่ออก ไม่ใช่แค่แถวที่เพิ่งตาย
+     *
+     * ต้องอ่านแถวจ่ายหลังได้ล็อกออเดอร์: closeOrder ที่อ่านแถวไปก่อนจะเขียนค่าที่จำไว้เสร็จก่อนเราได้ล็อก
+     *
+     * @return bool true = คืนรอบนี้
+     */
+    public function releaseKeptQuota(TreasuryPayout $payout): bool
+    {
+        $order = $this->orderOf($payout);
+
+        if (! $order) {
+            return false;
+        }
+
+        $released = DB::transaction(function () use ($order) {
+            $locked = SaleTransaction::whereKey($order->id)->lockForUpdate()->firstOrFail();
+
+            return $this->orderPayouts($locked)->get()->every(fn (TreasuryPayout $p) => $p->endedWithoutPayment())
+                && $this->saleService->releaseKeptCounters($locked);
+        });
+
+        if (! $released) {
+            return false;
+        }
+
+        // เตือนว่าเหรียญออกไปแล้ว — ตอนนี้พิสูจน์ได้ว่าไม่ออก
+        SystemAlert::resolveKeys(StripePaymentService::ALERT_NODE, [StripePaymentService::tokensLeftAlertKey($order)]);
+
+        Log::warning('token-sale: คืนโควตาของออเดอร์ที่ปิดแล้ว เพราะแถวจ่ายจบโดยเงินไม่ออก', [
+            'transaction_id' => $order->uuid,
+            'payout_id' => $payout->id,
+            'tpix' => $order->tpix_amount,
+        ]);
+
+        return true;
     }
 
     /**
@@ -192,6 +232,31 @@ class SaleClaimPayoutService
     private function payouts(SaleTransaction $tx): Builder
     {
         return TreasuryPayout::where('idempotency_key', 'like', self::KEY_PREFIX.$tx->uuid.'-%');
+    }
+
+    /**
+     * ทุกแถวที่จ่ายเหรียญของออเดอร์นี้ รวมการจ่ายครั้งแรกของออเดอร์โอนธนาคาร.
+     *
+     * @return Builder<TreasuryPayout>
+     */
+    private function orderPayouts(SaleTransaction $tx): Builder
+    {
+        return TreasuryPayout::where(fn (Builder $q) => $q
+            ->where('idempotency_key', 'like', self::KEY_PREFIX.$tx->uuid.'-%')
+            ->orWhere('idempotency_key', 'like', BankTransferSaleService::PAYOUT_KEY_PREFIX.$tx->uuid.'-%'))
+            ->whereIn('origin', TreasuryPayout::SALE_ORDER_ORIGINS);
+    }
+
+    /** แถวจ่ายไม่มี foreign key ไปหาออเดอร์ — uuid 36 ตัวอยู่ถัดจากคำนำหน้าของคีย์เสมอ */
+    private function orderOf(TreasuryPayout $payout): ?SaleTransaction
+    {
+        foreach ([self::KEY_PREFIX, BankTransferSaleService::PAYOUT_KEY_PREFIX] as $prefix) {
+            if (str_starts_with($payout->idempotency_key, $prefix)) {
+                return SaleTransaction::where('uuid', substr($payout->idempotency_key, strlen($prefix), 36))->first();
+            }
+        }
+
+        return null;
     }
 
     private function createPayout(SaleTransaction $tx, string $key, string $amountWei, string $memo, ?int $requestedBy = null): TreasuryPayout
