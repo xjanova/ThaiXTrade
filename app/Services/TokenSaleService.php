@@ -405,10 +405,38 @@ class TokenSaleService
      */
     public function reverseCounters(SaleTransaction $locked): void
     {
-        if (! $this->isCounted($locked)) {
-            return;
+        if ($this->isCounted($locked)) {
+            $this->decrementCounters($locked);
+        }
+    }
+
+    /**
+     * คืนโควตาที่ตอนปิดออเดอร์เก็บไว้ — เรียกใต้ล็อกแถวนี้ หลังพิสูจน์แล้วว่าไม่มีเหรียญออกไป.
+     *
+     * reverseCounters ข้ามแถวนี้เพราะสถานะไม่นับแล้ว ทั้งที่ตัวนับยังรวมแถวนี้อยู่
+     * คืนได้เฉพาะ counters_reversed ที่เป็น false ชัดเจน: แถวที่ไม่มีค่านี้ไม่เคยถูกเก็บโควตาไว้
+     * การตั้งเป็น true กันการลดซ้ำ และบอก restoreCounters ว่าต้องตรวจโควตาแล้วบวกกลับ
+     *
+     * @return bool true = คืนรอบนี้
+     */
+    public function releaseKeptCounters(SaleTransaction $locked): bool
+    {
+        if ($this->isCounted($locked) || ($locked->metadata['counters_reversed'] ?? null) !== false) {
+            return false;
         }
 
+        $this->decrementCounters($locked);
+
+        $locked->update(['metadata' => array_merge($locked->metadata, [
+            'counters_reversed' => true,
+            'quota_released_at' => now()->toIso8601String(),
+        ])]);
+
+        return true;
+    }
+
+    private function decrementCounters(SaleTransaction $locked): void
+    {
         $tpixAmount = (float) $locked->tpix_amount;
 
         SalePhase::whereKey($locked->sale_phase_id)->lockForUpdate()->first()?->decrement('sold', $tpixAmount);

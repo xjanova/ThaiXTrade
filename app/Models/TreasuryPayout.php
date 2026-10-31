@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Services\SaleClaimPayoutService;
 use App\Services\TokenFactory\TokenFactoryRefunds;
 use App\Support\Wei;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
 
 /**
  * รายการจ่ายเงินจากกระเป๋าร้อน.
@@ -50,6 +52,12 @@ class TreasuryPayout extends Model
         self::ORIGIN_SALE_CLAIM,
         self::ORIGIN_SALE_BANK,
         self::ORIGIN_FACTORY_REFUND,
+    ];
+
+    /** แถวที่จ่ายเหรียญของรายการซื้อ — ดู SaleClaimPayoutService */
+    public const SALE_ORDER_ORIGINS = [
+        self::ORIGIN_SALE_CLAIM,
+        self::ORIGIN_SALE_BANK,
     ];
 
     /**
@@ -107,14 +115,27 @@ class TreasuryPayout extends Model
     protected $appends = ['amount_tpix'];
 
     /**
-     * คืนค่าธรรมเนียมสร้างเหรียญจ่ายผ่านคิวนี้ — ผลของคิว (สำเร็จ/ล้มเหลว) ต้องไหลกลับไปที่แถวเหรียญ
-     * ไม่ว่าสถานะจะเปลี่ยนจากที่ไหน (tpix:treasury-payouts หรือแอดมินปฏิเสธในหน้าคลัง).
+     * ผลของคิวต้องไหลกลับไปที่เจ้าของรายการ ไม่ว่าสถานะจะเปลี่ยนจากที่ไหน (tpix:treasury-payouts หรือแอดมินปฏิเสธในหน้าคลัง).
+     *
+     * คืนค่าธรรมเนียมสร้างเหรียญจ่ายผ่านคิวนี้ ผลของคิว (สำเร็จ/ล้มเหลว) จึงไปที่แถวเหรียญ
+     * แถวจ่ายของรายการซื้อที่จบโดยเงินไม่ออกอาจปลดโควตาที่ตอนปิดออเดอร์เก็บไว้
+     *
+     * การคืนโควตาต้องรอ commit: ผู้เรียกถือล็อกแถวนี้อยู่ ส่วน closeOrder ล็อกออเดอร์ก่อนแถวจ่าย ล็อกออเดอร์ตรงนี้จะ deadlock
+     * rescue เพราะตัวนับที่ค้างทำให้เฟสขายได้น้อยลงเท่านั้น ส่วนรอบจ่ายที่ล้มกระทบแถวอื่นที่รอผลอยู่
      */
     protected static function booted(): void
     {
         static::updated(function (self $payout) {
-            if ($payout->wasChanged('status') && $payout->purpose === TokenFactoryRefunds::PAYOUT_PURPOSE) {
+            if (! $payout->wasChanged('status')) {
+                return;
+            }
+
+            if ($payout->purpose === TokenFactoryRefunds::PAYOUT_PURPOSE) {
                 app(TokenFactoryRefunds::class)->syncFromPayout($payout);
+            }
+
+            if ($payout->endedWithoutPayment() && in_array($payout->origin, self::SALE_ORDER_ORIGINS, true)) {
+                DB::afterCommit(fn () => rescue(fn () => app(SaleClaimPayoutService::class)->releaseKeptQuota($payout)));
             }
         });
     }
