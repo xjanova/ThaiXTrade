@@ -129,9 +129,26 @@ class SaleTransaction extends Model
         return $query->where('status', 'confirmed');
     }
 
+    /**
+     * รายการที่มี dispute ซึ่ง Stripe ยังไม่ตัดสินผล — status ไม่มีค่า disputed จึงต้องดูจาก metadata.
+     *
+     * ไม่กรอง status: dispute ที่ตามมาหลังคืนเงินทำให้แถวคง refunded แต่ยังเปิดอยู่ และร้านเสียเงินซ้ำได้
+     * ร้านชนะแล้วรอกู้ไม่อยู่ในนี้เพราะผลออกแล้ว ดู StripePaymentService::ordersAwaitingRestore
+     */
+    public function scopeDisputeOpen(Builder $query): Builder
+    {
+        return $query->whereNotNull('metadata->dispute_id')->whereNull('metadata->dispute_closed_status');
+    }
+
     // =========================================================================
     // Computed — คำนวณ vesting
     // =========================================================================
+
+    /** เงื่อนไขเดียวกับ scopeDisputeOpen สำหรับแถวที่อ่านมาแล้ว */
+    public function isDisputeOpen(): bool
+    {
+        return isset($this->metadata['dispute_id']) && ! isset($this->metadata['dispute_closed_status']);
+    }
 
     /**
      * จำนวน TPIX ที่ยังเคลมได้ตอนนี้ (ปลดล็อคแล้ว − ที่เคลมไปแล้ว).

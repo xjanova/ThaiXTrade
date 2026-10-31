@@ -170,8 +170,8 @@ class FinanceController extends Controller
             $refundAmount = SaleTransaction::where('status', 'refunded')
                 ->sum('payment_usd_value');
 
-            // Disputes
-            $totalDisputes = SaleTransaction::where('status', 'disputed')->count();
+            // Disputes — นับเฉพาะที่ยังเปิดอยู่ ป้ายบนหน้าส่งคนไปส่งหลักฐานใน Stripe Dashboard
+            $totalDisputes = SaleTransaction::disputeOpen()->count();
 
             /*
              * Trading fees (from transactions table)
@@ -256,6 +256,7 @@ class FinanceController extends Controller
                 'tpix_amount' => round((float) $tx->tpix_amount, 2),
                 'price_per_tpix' => round((float) $tx->price_per_tpix, 4),
                 'status' => $tx->status,
+                'dispute_open' => $tx->isDisputeOpen(),
                 'tx_hash' => $tx->tx_hash,
                 'created_at' => $tx->created_at->toIso8601String(),
             ])

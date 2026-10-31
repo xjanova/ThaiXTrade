@@ -69,6 +69,9 @@ const statusColor = (status) => ({
     disputed: 'bg-red-500/15 text-red-400 border-red-500/30',
     pending: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
 }[status] || 'bg-gray-500/15 text-gray-400 border-gray-500/30');
+
+// disputed เป็นแค่ป้าย ไม่ใช่ค่าใน status — ปุ่ม Refund ต้องดู tx.status จริงต่อไป
+const badgeStatus = (tx) => (tx.dispute_open ? 'disputed' : tx.status);
 </script>
 
 <template>
@@ -229,8 +232,8 @@ const statusColor = (status) => ({
                                 <td class="p-3 text-right text-gray-300 font-mono hidden sm:table-cell">{{ fmt(tx.tpix_amount) }}</td>
                                 <td class="p-3 text-right text-gray-400 font-mono hidden md:table-cell">${{ tx.price_per_tpix }}</td>
                                 <td class="p-3 text-center">
-                                    <span :class="['text-[10px] font-bold px-2 py-1 rounded-lg border', statusColor(tx.status)]">
-                                        {{ tx.status.toUpperCase() }}
+                                    <span :class="['text-[10px] font-bold px-2 py-1 rounded-lg border', statusColor(badgeStatus(tx))]">
+                                        {{ badgeStatus(tx).toUpperCase() }}
                                     </span>
                                 </td>
                                 <td class="p-3 text-center">
