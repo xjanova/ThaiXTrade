@@ -405,7 +405,7 @@ class TokenSaleService
      */
     public function reverseCounters(SaleTransaction $locked): void
     {
-        if (! in_array($locked->status, self::COUNTED_STATUSES, true)) {
+        if (! $this->isCounted($locked)) {
             return;
         }
 
@@ -416,6 +416,61 @@ class TokenSaleService
         $sale = TokenSale::whereKey($locked->token_sale_id)->lockForUpdate()->first();
         $sale?->decrement('total_sold', $tpixAmount);
         $sale?->decrement('total_raised_usd', (float) $locked->payment_usd_value);
+    }
+
+    public function isCounted(SaleTransaction $transaction): bool
+    {
+        return in_array($transaction->status, self::COUNTED_STATUSES, true);
+    }
+
+    /**
+     * นับออเดอร์ที่ถูกปิดไปแล้วกลับเข้ายอดขาย — เรียกใต้ล็อกแถวนี้ และก่อนเปลี่ยนสถานะเท่านั้น.
+     *
+     * ก่อนเปลี่ยนสถานะ exceedsWalletCap ยังไม่นับแถวนี้ จึงได้ยอดรวมหลังกู้พอดี
+     * $wasReversed = false คือปิดตอนเหรียญออกไปแล้ว แถวนี้ยังกินโควตาอยู่ บวกซ้ำจะขายเกินบนตัวนับ
+     *
+     * @throws PurchaseException โควตาหรือเพดานไม่พอ — ผู้เรียกต้องปล่อยให้ธุรกรรมย้อน
+     */
+    public function restoreCounters(SaleTransaction $locked, bool $wasReversed): void
+    {
+        $phase = SalePhase::whereKey($locked->sale_phase_id)->lockForUpdate()->first();
+
+        if (! $phase) {
+            throw new PurchaseException('ไม่พบเฟสของออเดอร์นี้แล้ว — ต้องคืนเงินใน Stripe');
+        }
+
+        $tpixAmount = (float) $locked->tpix_amount;
+        $wallet = $locked->wallet_address;
+
+        $whitelisted = ! $phase->whitelist_only
+            || WhitelistEntry::where('sale_phase_id', $phase->id)->where('wallet_address', $wallet)->exists();
+
+        if (! $whitelisted) {
+            throw new PurchaseException('กระเป๋านี้ไม่อยู่ใน whitelist ของเฟสแล้ว — เพิ่มกลับก่อน หรือคืนเงินใน Stripe');
+        }
+
+        if ($this->exceedsWalletCap($phase, $wallet, $tpixAmount)) {
+            throw new PurchaseException('เกินเพดานต่อกระเป๋าของเฟสนี้ — ปรับเพดานก่อน หรือคืนเงินใน Stripe');
+        }
+
+        if (! $wasReversed) {
+            return;
+        }
+
+        $remaining = $phase->remaining_allocation;
+
+        $phase->increment('sold', $tpixAmount);
+
+        // เทียบหลังบวกด้วยเลขจากฐานข้อมูล: float ก่อนบวกปฏิเสธออเดอร์ที่พอดีโควตาเป๊ะ · จำนวนเหรียญบัตรละเอียดถึง 8 ตำแหน่ง
+        if (bccomp((string) $phase->refresh()->sold, (string) $phase->allocation, 8) > 0) {
+            throw new PurchaseException(
+                'โควตาเฟสนี้เหลือ '.number_format($remaining, 2).' TPIX ไม่พอคืน '.number_format($tpixAmount, 2).' TPIX — ต้องคืนเงินใน Stripe'
+            );
+        }
+
+        $sale = TokenSale::whereKey($locked->token_sale_id)->lockForUpdate()->first();
+        $sale?->increment('total_sold', $tpixAmount);
+        $sale?->increment('total_raised_usd', (float) $locked->payment_usd_value);
     }
 
     /**
