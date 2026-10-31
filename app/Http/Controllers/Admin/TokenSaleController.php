@@ -15,6 +15,7 @@ use App\Services\SaleClaimPayoutService;
 use App\Services\SaleCrypto\CryptoPaymentCrediter;
 use App\Services\SaleCrypto\SaleCryptoConfig;
 use App\Services\SaleLaunchService;
+use App\Services\StripePaymentService;
 use App\Services\TokenSaleService;
 use App\Support\MoneySettings;
 use App\Support\Wei;
@@ -41,7 +42,7 @@ class TokenSaleController extends Controller
     /**
      * หน้าหลัก Token Sales + Control — ส่งข้อมูลทั้งหมดไป Vue.
      */
-    public function index(BankTransferSaleService $bank, SaleClaimPayoutService $claims): Response
+    public function index(BankTransferSaleService $bank, SaleClaimPayoutService $claims, StripePaymentService $stripe): Response
     {
         $sales = TokenSale::with(['phases' => function ($q) {
             $q->orderBy('phase_order');
@@ -84,6 +85,8 @@ class TokenSaleController extends Controller
             'launch' => $this->launchPanel(app(SaleLaunchService::class)),
             'crypto' => $this->cryptoPanel(app(SaleCryptoConfig::class)),
             'canManageMoney' => MoneySettings::canManage(),
+            // แยกจากตารางรายการ: ออเดอร์เก่าตกหน้าไปแล้วแต่ยังรอคนตัดสิน
+            'disputesAwaitingRestore' => $canRequeue ? $stripe->ordersAwaitingRestore() : [],
         ]);
     }
 
@@ -533,6 +536,29 @@ class TokenSaleController extends Controller
         $amount = Wei::format(Wei::sum($payouts->pluck('amount_wei')->all()));
 
         return redirect()->back()->with('success', "เข้าคิว claim ใหม่แล้ว {$amount} TPIX — รออนุมัติที่หน้าคลัง");
+    }
+
+    /**
+     * กู้ออเดอร์บัตรที่ร้านยังถือเงินอยู่หลัง chargeback — ตรวจ Stripe โควตา และเพดานกระเป๋าใหม่ก่อนนับยอด.
+     *
+     * ปฏิเสธแล้วออเดอร์เหมือนเดิมและเหตุยังค้าง: เจ้าของยังต้องเลือกแก้สาเหตุหรือคืนเงินใน Stripe
+     */
+    public function restoreDisputedOrder(int $id, StripePaymentService $stripe, SaleClaimPayoutService $claims)
+    {
+        try {
+            $order = $stripe->restoreDisputedOrder(SaleTransaction::findOrFail($id), auth('admin')->user()?->email);
+        } catch (PurchaseException $e) {
+            return redirect()->back()->with('error', $e->getMessage());
+        }
+
+        $this->forgetSaleCache();
+        $this->recordTransactionChange('token_sale.dispute_restore', $order, 'failed');
+
+        // แถวจ่ายที่ chargeback หยุดไว้ไม่กลับมาเอง ต้องผ่านอนุมัติที่หน้าคลังเหมือนการกู้ claim ทุกครั้ง
+        $claimOffer = $claims->requeueOffer($order);
+        $note = $claimOffer ? " · ยอด claim ที่ถูกหยุดไว้ {$claimOffer['amount_tpix']} TPIX กด 'เข้าคิว claim ใหม่' ได้" : '';
+
+        return redirect()->back()->with('success', "กู้ออเดอร์ #{$order->id} แล้ว".$note);
     }
 
     /**

@@ -36,7 +36,9 @@ trait FakesStripeApi
 
             public function request($method, $absUrl, $headers, $params, $hasFile, $apiMode = 'v1', $maxNetworkRetries = null)
             {
-                return $this->test->answerStripe(strtoupper($method), (string) parse_url($absUrl, PHP_URL_PATH), (array) $params);
+                parse_str((string) parse_url($absUrl, PHP_URL_QUERY), $query);
+
+                return $this->test->answerStripe(strtoupper($method), (string) parse_url($absUrl, PHP_URL_PATH), (array) $params + $query);
             }
         });
     }

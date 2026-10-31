@@ -247,7 +247,7 @@ class MoneyRoutesAccessTest extends TestCase
     private const GATED = [
         'แก้เฟส', 'เปิดรอบขาย', 'สวิตช์เปิดขายอัตโนมัติ', 'ล็อกวันจบรอบ',
         'เพิ่ม whitelist', 'นำเข้า whitelist', 'ลบ whitelist',
-        'คืนเงินรอบขาย', 'ยืนยันเงินโอน', 'ปฏิเสธเงินโอน', 'เข้าคิวจ่ายใหม่', 'เข้าคิว claim ใหม่', 'คืนเงิน Stripe',
+        'คืนเงินรอบขาย', 'ยืนยันเงินโอน', 'ปฏิเสธเงินโอน', 'เข้าคิวจ่ายใหม่', 'เข้าคิว claim ใหม่', 'กู้ออเดอร์ chargeback', 'คืนเงิน Stripe',
         'ออกเหรียญ USDT', 'ปิดรายการ USDT',
         'สร้าง swap', 'แก้ swap', 'เปิดปิด swap', 'ลบ swap',
     ];
@@ -283,6 +283,7 @@ class MoneyRoutesAccessTest extends TestCase
             'ปฏิเสธเงินโอน' => $this->post("/admin/token-sales/bank/{$this->bankOrder->id}/reject", ['reason' => 'ไม่พบเงินเข้า']),
             'เข้าคิวจ่ายใหม่' => $this->post("/admin/token-sales/bank/{$this->paidBankOrder->id}/requeue"),
             'เข้าคิว claim ใหม่' => $this->post("/admin/token-sales/claims/{$this->paidBankOrder->id}/requeue"),
+            'กู้ออเดอร์ chargeback' => $this->post("/admin/token-sales/dispute/{$this->cardPayment->id}/restore"),
             'ออกเหรียญ USDT' => $this->post("/admin/token-sales/crypto/{$this->cryptoPayment->id}/credit"),
             'ปิดรายการ USDT' => $this->post("/admin/token-sales/crypto/{$this->cryptoPayment->id}/resolve", ['note' => 'คืนเงินแล้ว']),
             'คืนเงิน Stripe' => $this->postJson('/admin/finance/refund', ['transaction_id' => $this->cardPayment->id]),
@@ -315,6 +316,11 @@ class MoneyRoutesAccessTest extends TestCase
                 $tx->update(['status' => 'refunded']);
 
                 return ['refund_id' => 're_test_1', 'status' => 'succeeded', 'amount' => 100.0];
+            });
+            $stripe->shouldReceive('restoreDisputedOrder')->andReturnUsing(function (SaleTransaction $tx): SaleTransaction {
+                $tx->update(['status' => 'claimed']);
+
+                return $tx;
             });
         });
     }
