@@ -12,14 +12,18 @@ use App\Services\BankTransferSaleService;
 use App\Services\HotWalletSigner;
 use App\Services\SaleClaimPayoutService;
 use App\Services\StripePaymentService;
+use App\Services\TokenSaleService;
 use App\Support\Wei;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
@@ -571,6 +575,7 @@ class SaleQuotaReleaseTest extends TestCase
 
         $this->assertSame('confirmed', $order->fresh()->status);
         $this->assertCounters(5000, 500);
+        $this->assertArrayNotHasKey('quota_released_at', $order->fresh()->metadata);
     }
 
     #[Test]
@@ -736,5 +741,255 @@ class SaleQuotaReleaseTest extends TestCase
         $this->assertSame(TreasuryPayout::STATUS_FAILED, $reverted->fresh()->status);
         $this->assertSame(TreasuryPayout::STATUS_CONFIRMED, $paid->fresh()->status);
         Exceptions::assertReported(RuntimeException::class);
+    }
+
+    // ── รอบกวาด ─────────────────────────────────────────────────────────────
+
+    /** สถานะหลัง hook คืนไม่สำเร็จ: ออเดอร์ปิดแล้ว เก็บโควตาไว้ และแถวจ่ายตายแล้ว แถวที่ create ไม่ปลุก hook */
+    private function strandedOrder(int $n = 1, float $tpix = 5000, float $usd = 500, bool $withPayout = true): SaleTransaction
+    {
+        $order = $this->confirmedOrder(['tx_hash' => "stripe_stranded_{$n}", 'tpix_amount' => $tpix, 'payment_usd_value' => $usd]);
+        $order->update(['status' => 'failed', 'metadata' => ['closed_from' => 'confirmed', 'counters_reversed' => false]]);
+
+        if ($withPayout) {
+            $this->payout($order, $n, ['status' => TreasuryPayout::STATUS_FAILED, 'block_number' => 10]);
+        }
+
+        return $order;
+    }
+
+    private function sweep(): int
+    {
+        return Artisan::call('sale:release-kept-quota');
+    }
+
+    private function activeAlert(string $key): bool
+    {
+        return SystemAlert::where('alert_key', $key)->where('status', 'active')->exists();
+    }
+
+    #[Test]
+    public function the_sweep_recovers_a_release_that_failed(): void
+    {
+        Exceptions::fake();
+
+        $order = $this->confirmedOrder();
+        $payout = $this->payout($order);
+
+        $this->disputed();
+
+        $this->mock(SaleClaimPayoutService::class)
+            ->shouldReceive('releaseKeptQuota')
+            ->andThrow(new RuntimeException('deadlock'));
+
+        $this->revert($payout);
+        $this->assertKept($order);
+
+        $this->app->forgetInstance(SaleClaimPayoutService::class);
+
+        $this->assertSame(0, $this->sweep());
+        $this->assertReleased($order);
+        $this->assertFalse($this->activeAlert('sale_card_tokens_left_'.$order->id));
+    }
+
+    #[Test]
+    public function the_sweep_keeps_the_quota_of_a_payout_that_may_have_gone_out(): void
+    {
+        $order = $this->confirmedOrder();
+        $reverted = $this->payout($order);
+        $inFlight = $this->payout($order, 2);
+
+        $this->disputed();
+        $this->revert($reverted);
+
+        $this->assertSame(0, $this->sweep());
+        $this->assertKept($order);
+
+        $this->mined($inFlight, true);
+        $this->payoutRound();
+
+        $this->assertSame(0, $this->sweep());
+        $this->assertKept($order);
+    }
+
+    #[Test]
+    public function the_sweep_does_not_release_twice(): void
+    {
+        $order = $this->confirmedOrder();
+        $payout = $this->payout($order);
+
+        $this->disputed();
+        $this->revert($payout);
+        $this->assertReleased($order);
+
+        $this->assertSame(0, $this->sweep());
+        $this->assertSame(0, $this->sweep());
+        $this->assertReleased($order);
+    }
+
+    /** ไม่เจอแถวจ่ายอาจแปลว่าหาไม่เจอ ไม่ได้แปลว่าไม่มีเหรียญออก */
+    #[Test]
+    public function the_sweep_needs_a_payout_to_prove_anything(): void
+    {
+        $order = $this->strandedOrder(withPayout: false);
+
+        $this->assertSame(0, $this->sweep());
+        $this->assertKept($order);
+    }
+
+    #[Test]
+    public function the_sweep_leaves_a_restored_order_alone(): void
+    {
+        $order = $this->confirmedOrder();
+        $payout = $this->payout($order);
+
+        $this->disputed();
+        $this->closeDispute('won');
+        $this->signIn();
+        $this->restore($order)->assertSessionHas('success');
+        $this->revert($payout);
+
+        $this->assertSame(0, $this->sweep());
+        $this->assertSame('confirmed', $order->fresh()->status);
+        $this->assertCounters(5000, 500);
+    }
+
+    #[Test]
+    public function one_failing_order_does_not_stop_the_sweep_and_is_tried_again(): void
+    {
+        Exceptions::fake();
+
+        $this->strandedOrder(1, 2500, 250);
+        $this->strandedOrder(2, 2500, 250);
+
+        $calls = 0;
+        $this->mock(TokenSaleService::class)
+            ->shouldReceive('releaseKeptCounters')
+            ->twice()
+            ->andReturnUsing(function () use (&$calls) {
+                if (++$calls === 1) {
+                    throw new RuntimeException('deadlock');
+                }
+
+                return true;
+            });
+
+        $this->assertSame(1, $this->sweep());
+        Exceptions::assertReported(RuntimeException::class);
+        $this->assertTrue($this->activeAlert('sale_quota_release_failed'));
+
+        $this->app->forgetInstance(TokenSaleService::class);
+
+        $this->assertSame(0, $this->sweep());
+        $this->assertCounters(0, 0);
+        $this->assertFalse($this->activeAlert('sale_quota_release_failed'));
+    }
+
+    #[Test]
+    public function the_sweep_runs_on_the_scheduler(): void
+    {
+        $commands = collect(app(Schedule::class)->events())->map(fn ($event) => (string) $event->command);
+
+        $this->assertTrue($commands->contains(fn (string $command) => str_contains($command, 'sale:release-kept-quota')));
+    }
+
+    // ── ผลข้างเคียงของการคืน ──────────────────────────────────────────────────
+
+    /** แถวตายหลัง closeOrder commit ก่อนเตือนถูกตั้ง: ตัวคืนปิดเตือนที่ยังไม่มี แล้วเตือนเท็จจะค้างถาวร */
+    #[Test]
+    public function a_release_right_after_the_close_leaves_no_false_alert(): void
+    {
+        $order = $this->confirmedOrder();
+        $payout = $this->payout($order);
+
+        $fired = false;
+        SaleTransaction::updated(function () use (&$fired, $payout) {
+            if ($fired) {
+                return;
+            }
+
+            $fired = true;
+            DB::afterCommit(fn () => $payout->fresh()->update(['status' => TreasuryPayout::STATUS_FAILED, 'block_number' => 10]));
+        });
+
+        $this->disputed();
+
+        $this->assertReleased($order);
+        $this->assertFalse($this->activeAlert('sale_card_tokens_left_'.$order->id));
+    }
+
+    /** ค่าเวลาคืนจากรอบก่อนต้องไม่ปิดเตือนของรอบใหม่ที่เหรียญกำลังออกจริง */
+    #[Test]
+    public function a_close_after_a_restore_keeps_its_own_alert(): void
+    {
+        $order = $this->confirmedOrder();
+        $payout = $this->payout($order);
+
+        $this->disputed();
+        $this->revert($payout);
+        $this->closeDispute('won');
+        $this->signIn();
+        $this->restore($order)->assertSessionHas('success');
+
+        $this->payout($order, 2);
+        $this->closeDispute('lost', 'evt_lost');
+
+        $this->assertTrue($this->activeAlert('sale_card_tokens_left_'.$order->id));
+    }
+
+    #[Test]
+    public function a_release_clears_the_cached_sale(): void
+    {
+        $order = $this->confirmedOrder();
+        $payout = $this->payout($order);
+
+        $this->disputed();
+        Cache::put('token_sale:active', 'ตัวเลขก่อนคืนโควตา', 30);
+
+        $this->revert($payout);
+
+        $this->assertReleased($order);
+        $this->assertNull(Cache::get('token_sale:active'));
+    }
+
+    #[Test]
+    public function a_release_to_an_open_phase_raises_no_phase_alert(): void
+    {
+        $order = $this->confirmedOrder();
+        $payout = $this->payout($order);
+
+        $this->disputed();
+        $this->revert($payout);
+
+        $this->assertReleased($order);
+        $this->assertFalse($this->activeAlert('sale_quota_closed_phase_'.$this->phase->id));
+    }
+
+    /** เฟสไม่เปิดเอง: ถ้าเปิดย้อนหลัง ราคาจะถอยกลับ */
+    #[Test]
+    public function a_release_to_a_closed_phase_tells_the_admin(): void
+    {
+        $order = $this->confirmedOrder();
+        $payout = $this->payout($order);
+
+        $this->disputed();
+        $this->phase->update(['status' => 'completed']);
+
+        $this->revert($payout);
+
+        $this->assertReleased($order);
+        $this->assertSame('completed', $this->phase->fresh()->status);
+        $this->assertTrue($this->activeAlert('sale_quota_closed_phase_'.$this->phase->id));
+    }
+
+    #[Test]
+    public function a_payout_without_an_order_is_logged(): void
+    {
+        $payout = $this->payout($this->confirmedOrder(), 1, ['idempotency_key' => 'sale-claim-00000000-0000-0000-0000-000000000000-1']);
+
+        Log::spy();
+
+        $this->assertFalse($this->release($payout));
+        Log::shouldHaveReceived('warning')->once();
     }
 }

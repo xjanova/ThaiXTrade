@@ -8,8 +8,10 @@ use App\Models\TreasuryPayout;
 use App\Support\Wei;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * คิวจ่ายของ /token-sale/claim และการกู้ยอดของแถวที่จบโดยเงินไม่ออก.
@@ -24,6 +26,8 @@ class SaleClaimPayoutService
 {
     /** คำนำหน้า idempotency key ต่อด้วย uuid ของออเดอร์ แล้วตามด้วยลำดับ claim หรือ -retry-id ของแถวที่แทน */
     private const KEY_PREFIX = 'sale-claim-';
+
+    private const RELEASE_FAILED_ALERT = 'sale_quota_release_failed';
 
     public function __construct(
         private readonly TreasuryService $treasury,
@@ -95,13 +99,68 @@ class SaleClaimPayoutService
         $order = $this->orderOf($payout);
 
         if (! $order) {
+            Log::warning('token-sale: หาออเดอร์ของแถวจ่ายไม่เจอ จึงไม่คืนโควตา', [
+                'payout_id' => $payout->id,
+                'idempotency_key' => $payout->idempotency_key,
+            ]);
+
             return false;
         }
 
+        return $this->releaseOrder($order, $payout->id);
+    }
+
+    /**
+     * รอบกวาดของ sale:release-kept-quota — hook ของแถวจ่ายทำงานครั้งเดียวและกลืน error จึงต้องมีตัวตามเก็บ.
+     *
+     * กรอง counters_reversed ใน PHP: where('metadata->counters_reversed', false) บน MariaDB นับ true เป็น 0 ด้วย
+     *
+     * @return array{released: int, failed: int}
+     */
+    public function releaseStrandedQuotas(): array
+    {
+        $result = ['released' => 0, 'failed' => 0];
+
+        $orders = SaleTransaction::whereIn('status', ['failed', 'refunded'])
+            ->whereNotNull('metadata->closed_from')
+            ->get()
+            ->filter(fn (SaleTransaction $tx) => ($tx->metadata['counters_reversed'] ?? null) === false);
+
+        foreach ($orders as $order) {
+            try {
+                if ($this->releaseOrder($order)) {
+                    $result['released']++;
+                }
+            } catch (Throwable $e) {
+                report($e);
+                $result['failed']++;
+            }
+        }
+
+        if ($result['failed'] > 0) {
+            SystemAlert::raise(
+                StripePaymentService::ALERT_NODE,
+                self::RELEASE_FAILED_ALERT,
+                'warning',
+                "คืนโควตาของออเดอร์ที่ปิดแล้วไม่สำเร็จ {$result['failed']} รายการ — ระบบจะลองใหม่รอบถัดไป ถ้าเตือนซ้ำให้ดูสาเหตุใน log",
+            );
+        } else {
+            SystemAlert::resolveKeys(StripePaymentService::ALERT_NODE, [self::RELEASE_FAILED_ALERT]);
+        }
+
+        return $result;
+    }
+
+    /** ต้องอ่านแถวจ่ายใต้ล็อกเสมอ อย่าเช็กก่อนล็อกเพื่อประหยัด: closeOrder ที่ค้างอยู่ยังไม่ได้เขียน counters_reversed */
+    private function releaseOrder(SaleTransaction $order, ?int $payoutId = null): bool
+    {
         $released = DB::transaction(function () use ($order) {
             $locked = SaleTransaction::whereKey($order->id)->lockForUpdate()->firstOrFail();
+            $payouts = $this->orderPayouts($locked)->get();
 
-            return $this->orderPayouts($locked)->get()->every(fn (TreasuryPayout $p) => $p->endedWithoutPayment())
+            // every ของชุดว่างเป็น true แต่ไม่เจอแถวจ่ายไม่ได้พิสูจน์ว่าเหรียญไม่ออก
+            return $payouts->isNotEmpty()
+                && $payouts->every(fn (TreasuryPayout $p) => $p->endedWithoutPayment())
                 && $this->saleService->releaseKeptCounters($locked);
         });
 
@@ -109,16 +168,39 @@ class SaleClaimPayoutService
             return false;
         }
 
+        // ล้างหลัง commit: ล้างก่อนนั้นคนที่อ่านระหว่างทางจะแคชตัวเลขเก่ากลับมา
+        Cache::forget('token_sale:active');
+
         // เตือนว่าเหรียญออกไปแล้ว — ตอนนี้พิสูจน์ได้ว่าไม่ออก
         SystemAlert::resolveKeys(StripePaymentService::ALERT_NODE, [StripePaymentService::tokensLeftAlertKey($order)]);
 
+        $this->alertIfPhaseClosed($order);
+
         Log::warning('token-sale: คืนโควตาของออเดอร์ที่ปิดแล้ว เพราะแถวจ่ายจบโดยเงินไม่ออก', [
             'transaction_id' => $order->uuid,
-            'payout_id' => $payout->id,
+            'payout_id' => $payoutId,
             'tpix' => $order->tpix_amount,
         ]);
 
         return true;
+    }
+
+    /** เฟสที่จบแล้วไม่เปิดเอง: เปิดย้อนหลังทำให้ราคาถอยกลับ จึงต้องให้เจ้าของตัดสินว่าจะขายโควตาก้อนนี้ไหม */
+    private function alertIfPhaseClosed(SaleTransaction $order): void
+    {
+        $phase = $order->phase;
+
+        if (! $phase || $phase->status === 'active') {
+            return;
+        }
+
+        SystemAlert::raise(
+            StripePaymentService::ALERT_NODE,
+            'sale_quota_closed_phase_'.$phase->id,
+            'warning',
+            'คืนโควตา '.number_format((float) $order->tpix_amount, 2)." TPIX ให้เฟส {$phase->name} แล้ว แต่เฟสนี้จบไปแล้ว โควตาก้อนนี้จึงยังไม่กลับมาขาย",
+            ['phase_id' => $phase->id, 'phase_status' => $phase->status, 'transaction_id' => $order->id],
+        );
     }
 
     /**

@@ -233,6 +233,16 @@ Schedule::command('sale:advance-phases')
     ->name('sale:advance-phases');
 
 /*
+ * ตามเก็บโควตาที่ตอนแถวจ่ายจบคืนไม่สำเร็จ — ปกติโควตาคืนทันทีตอนแถวสุดท้ายจบ
+ * รายชั่วโมงพอ เพราะโควตาที่ค้างทำให้ขายได้น้อยลงเท่านั้น ไม่ทำให้ขายเกิน
+ */
+Schedule::command('sale:release-kept-quota')
+    ->hourly()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('sale:release-kept-quota');
+
+/*
  * ซื้อ TPIX ด้วย USDT — ตรวจเงินเข้ากระเป๋ารับเงินแล้วออกเหรียญเอง ทุกนาที (ดู config/sale_crypto.php)
  *
  * ทุกนาทีเพราะคำสั่งซื้อล็อกราคาไว้ 30 นาที และผู้ซื้อรอดูหน้าจออยู่ · จบเองเมื่อ SALE_CRYPTO_ENABLED=false

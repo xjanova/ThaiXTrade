@@ -510,7 +510,7 @@ class StripePaymentService
             // ค่านี้เล่าการปิดรอบที่เพิ่งกู้ ถ้าค้างไว้ ปิดรอบหน้าด้วยทางอื่นแล้วจะคืนโควตาซ้ำ
             $locked->update([
                 'status' => $locked->metadata['closed_from'],
-                'metadata' => array_merge(Arr::except($locked->metadata, 'counters_reversed'), [
+                'metadata' => array_merge(Arr::except($locked->metadata, ['counters_reversed', 'quota_released_at']), [
                     'dispute_restored_at' => now()->toIso8601String(),
                     'dispute_restored_by' => $restoredBy,
                 ]),
@@ -603,6 +603,12 @@ class StripePaymentService
             'เงินบัตรของรายการซื้อ '.$transaction->uuid.' ถูกดึงกลับ ('.$cause.') แต่เหรียญออกไปแล้ว '.Wei::format($tokensLeftWei).' TPIX',
             ['transaction_id' => $transaction->id, 'wallet' => $transaction->wallet_address, 'cause' => $cause],
         );
+
+        // แถวสุดท้ายอาจตายหลังปิดออเดอร์ก่อนถึงตรงนี้ ตัวคืนโควตาจึงปิดเตือนที่ยังไม่มี
+        // เช็กหลัง raise เสมอ: คืนก่อนจุดนี้เราเห็นค่านี้ คืนหลังจุดนี้ตัวคืนปิดเตือนให้เอง
+        if (isset($transaction->fresh()->metadata['quota_released_at'])) {
+            SystemAlert::resolveKeys(self::ALERT_NODE, [self::tokensLeftAlertKey($transaction)]);
+        }
     }
 
     // =========================================================================
