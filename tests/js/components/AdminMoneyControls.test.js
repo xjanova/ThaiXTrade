@@ -145,6 +145,27 @@ describe('หน้า Finance', () => {
 
         expect(buttons(wrapper)).toContain('Refund');
     });
+
+    const badge = (rows) => {
+        wrapper = mount(FinanceIndex, { props: { recentPayments: rows, canManageMoney: true } });
+
+        return wrapper.find('tbody span.rounded-lg');
+    };
+
+    it('แถวที่ dispute ยังเปิดอยู่ขึ้นป้ายสีแดง และยังคืนเงินจากปุ่มไม่ได้', () => {
+        const row = badge([{ ...payment, status: 'failed', dispute_open: true }]);
+
+        expect(row.text()).toBe('DISPUTED');
+        expect(row.classes()).toContain('text-red-400');
+        expect(buttons(wrapper)).not.toContain('Refund');
+    });
+
+    it('dispute ที่ปิดแล้วกลับไปแสดงสถานะจริงของแถว', () => {
+        const row = badge([{ ...payment, status: 'failed', dispute_open: false }]);
+
+        expect(row.text()).toBe('FAILED');
+        expect(row.classes()).not.toContain('text-red-400');
+    });
 });
 
 describe('หน้า Token Sales', () => {
