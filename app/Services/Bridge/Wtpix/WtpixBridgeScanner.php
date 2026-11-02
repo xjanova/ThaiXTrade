@@ -69,8 +69,9 @@ class WtpixBridgeScanner
         $head = $latest - $this->config->tpixConfirmations();
         $summary['head'] = $head;
         $cursorKey = $this->config->lockCursorKey();
-        $from = $this->startCursor($cursorKey, config('wtpix_bridge.tpix.start_block'), $head);
-        $end = min($head, $from + max(1, (int) config('wtpix_bridge.tpix.max_blocks_per_run', 18000)) - 1);
+        $cursor = $this->startCursor($cursorKey, config('wtpix_bridge.tpix.start_block'), $head);
+        $from = $this->rescanFrom($cursorKey, $cursor, (int) config('wtpix_bridge.tpix.rescan_blocks', 150));
+        $end = min($head, $cursor + max(1, (int) config('wtpix_bridge.tpix.max_blocks_per_run', 18000)) - 1);
         // polygon-edge ปฏิเสธ eth_getLogs ช่วงเกิน 1000 บล็อก
         $chunk = min(900, max(1, (int) config('wtpix_bridge.tpix.log_chunk', 900)));
         $summary['from'] = $from;
@@ -109,7 +110,7 @@ class WtpixBridgeScanner
                 }
             }
 
-            $this->config->setCursor($cursorKey, $to + 1);
+            $cursor = $this->advanceCursor($cursorKey, $cursor, $to + 1);
             $summary['to'] = $to;
             $from = $to + 1;
         }
@@ -196,8 +197,9 @@ class WtpixBridgeScanner
         }
 
         $cursorKey = $this->config->burnCursorKey();
-        $from = $this->startCursor($cursorKey, $bsc['start_block'] ?? null, $head);
-        $end = min($head, $from + max(1, (int) ($bsc['max_blocks_per_run'] ?? 20000)) - 1);
+        $cursor = $this->startCursor($cursorKey, $bsc['start_block'] ?? null, $head);
+        $from = $this->rescanFrom($cursorKey, $cursor, (int) ($bsc['rescan_blocks'] ?? 300));
+        $end = min($head, $cursor + max(1, (int) ($bsc['max_blocks_per_run'] ?? 20000)) - 1);
         $chunk = max(1, (int) ($bsc['log_chunk'] ?? 1000));
         $summary['from'] = $from;
 
@@ -237,7 +239,7 @@ class WtpixBridgeScanner
                 }
             }
 
-            $this->config->setCursor($cursorKey, $to + 1);
+            $cursor = $this->advanceCursor($cursorKey, $cursor, $to + 1);
             $summary['to'] = $to;
             $from = $to + 1;
         }
@@ -509,6 +511,7 @@ class WtpixBridgeScanner
         $explicit = is_numeric($startBlock) && (int) $startBlock > 0;
         $start = $explicit ? (int) $startBlock : $head + 1;
         $this->config->setCursor($key, $start);
+        $this->config->setCursor("{$key}_floor", $start);
 
         /*
          * ไม่ได้ตั้ง START_BLOCK = เริ่มนับที่หัวปัจจุบัน → ทุกการล็อก/เผาก่อนบล็อกนี้ "ไม่มีวันถูกบันทึก"
@@ -527,5 +530,30 @@ class WtpixBridgeScanner
         }
 
         return $start;
+    }
+
+    /** Re-read recent safe blocks: a lagging RPC can return an incomplete log list without an error. */
+    private function rescanFrom(string $key, int $cursor, int $overlap): int
+    {
+        $floor = $this->config->cursor("{$key}_floor");
+        if ($floor === null) {
+            // Existing cursors keep their original history exclusion boundary on upgrade.
+            $floor = $cursor;
+            $this->config->setCursor("{$key}_floor", $floor);
+        }
+
+        return max($floor, $cursor - max(0, $overlap));
+    }
+
+    /** An overlap-only scan or a regressed RPC head must never move the cursor backwards. */
+    private function advanceCursor(string $key, int $cursor, int $next): int
+    {
+        if ($next > $cursor) {
+            $this->config->setCursor($key, $next);
+
+            return $next;
+        }
+
+        return $cursor;
     }
 }

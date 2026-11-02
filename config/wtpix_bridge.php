@@ -89,6 +89,8 @@ return [
         'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpix.online'),
         'log_chunk' => 900,
         'max_blocks_per_run' => 18000,
+        // Re-read recent safe blocks to recover logs omitted by a lagging RPC node.
+        'rescan_blocks' => 150,
         // ไล่หา event ของ depositId ไปข้างหน้าจากธุรกรรมต้นทางได้ไกลสุดกี่บล็อก (~4.6 วัน) — เกินนี้ = พิสูจน์ไม่ได้ ไม่เดา
         'verify_max_blocks' => (int) env('WTPIX_BRIDGE_TPIX_VERIFY_MAX_BLOCKS', 200000),
         // ว่าง = เริ่มที่บล็อกปัจจุบันตอนรันครั้งแรก (ไม่ไล่ย้อนหลัง — ไม่ mint ให้ประวัติเก่า)
@@ -110,6 +112,7 @@ return [
         'fallback_confirmations' => 30,
         'log_chunk' => 1000,
         'max_blocks_per_run' => 20000,
+        'rescan_blocks' => 300,
         'verify_max_blocks' => (int) env('WTPIX_BRIDGE_BSC_VERIFY_MAX_BLOCKS', 900000),
         'start_block' => env('WTPIX_BRIDGE_BSC_START_BLOCK'),
         'gas_price_multiplier_bps' => 12000,
