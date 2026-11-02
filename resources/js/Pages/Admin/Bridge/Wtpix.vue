@@ -65,6 +65,7 @@ const reasonLabel = {
     kyc_required: 'ยังไม่ผ่าน KYC',
     over_tx_limit: 'เกินวงเงินต่อครั้ง',
     over_daily_address_limit: 'เกินวงเงินต่อกระเป๋าต่อวัน',
+    test_mode: 'โหมดทดสอบ — กระเป๋านี้ไม่อยู่ในรายชื่อทดสอบ',
     exceeds_onchain_max: 'เกิน maxPerTx บนสัญญา',
     mint_reverted: 'mint revert บน BSC',
     release_reverted: 'release revert บนเชน TPIX',
@@ -104,6 +105,34 @@ async function doToggle() {
     } catch (e) {
         notice.value = { type: 'error', text: e.response?.data?.message ?? 'เปลี่ยนสวิตช์ไม่สำเร็จ' };
     } finally {
+        busy.value = false;
+    }
+}
+
+// ── โหมดทดสอบ ───────────────────────────────────────────────────────────
+const testWalletsText = ref((props.settings.test_wallets ?? []).join('\n'));
+const testWalletsErrors = ref([]);
+const confirmTestWallets = ref(false);
+const testWalletsDraft = computed(() => [...new Set(testWalletsText.value.split(/[\s,]+/).map((a) => a.trim().toLowerCase()).filter(Boolean))]);
+const testWalletsMessage = computed(() => (testWalletsDraft.value.length
+    ? `สะพานจะทำให้เองเฉพาะ ${testWalletsDraft.value.length} กระเป๋านี้ — กระเป๋าอื่นที่ล็อก/เผาจะถูกพักไว้รอตรวจ`
+    : 'รายชื่อว่าง = ปิดโหมดทดสอบ เปิดสะพานให้ทุกคนใช้ได้ทันที'));
+
+async function saveTestWallets() {
+    if (busy.value) return;
+    busy.value = true;
+    testWalletsErrors.value = [];
+    try {
+        const { data } = await axios.put('/admin/bridge/wtpix/test-wallets', { wallets: testWalletsDraft.value });
+        testWalletsText.value = (data.data.test_wallets ?? []).join('\n');
+        notice.value = { type: 'success', text: data.data.test_wallets?.length ? 'เปิดโหมดทดสอบแล้ว' : 'ปิดโหมดทดสอบแล้ว — ทุกคนใช้สะพานได้' };
+        router.reload({ only: ['settings', 'state'] });
+    } catch (e) {
+        testWalletsErrors.value = e.response?.data?.errors
+            ? [...new Set(Object.values(e.response.data.errors).flat())]
+            : [e.response?.data?.message ?? 'บันทึกไม่สำเร็จ'];
+    } finally {
+        confirmTestWallets.value = false;
         busy.value = false;
     }
 }
@@ -266,6 +295,25 @@ const blockingFailed = computed(() => (props.state.checks || []).filter((c) => !
                             {{ state.site_switch ? 'หยุดสะพาน (mint + ปล่อย)' : 'เปิดสะพาน' }}
                         </button>
                         <p class="text-[11px] text-gray-500">หยุดแล้วตัวสแกนยังบันทึกรายการ และตัวเฝ้าเหตุ (mint/ปล่อยที่ระบบไม่ได้สั่ง · เพิ่ม minter) ยังเดิน · pause บนสัญญาปลดได้เฉพาะกระเป๋าเจ้าของ</p>
+
+                        <div class="pt-3 border-t border-white/10 space-y-2" data-test="test-wallets">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-sm font-semibold text-white">โหมดทดสอบ</h4>
+                                <span :class="['px-2 py-1 text-xs rounded-md border', state.test_mode ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-white/5 text-gray-400 border-white/10']">
+                                    {{ state.test_mode ? `เปิด · ${settings.test_wallets?.length ?? 0} กระเป๋า` : 'ปิด · ทุกคนใช้ได้' }}
+                                </span>
+                            </div>
+                            <p class="text-[11px] text-gray-500">มีรายชื่อ = สะพานทำให้เองเฉพาะกระเป๋าเหล่านี้ · กระเป๋าอื่นที่ล็อก/เผาตรงบนสัญญาถูกพักไว้ "รอตรวจ" ไม่หาย · ล้างให้ว่าง = เปิดให้ทุกคน</p>
+                            <textarea v-model="testWalletsText" rows="3" placeholder="0x… หนึ่งบรรทัดต่อหนึ่งกระเป๋า"
+                                class="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-mono"></textarea>
+                            <div v-if="testWalletsErrors.length" class="text-xs text-red-300">
+                                <div v-for="(e, i) in testWalletsErrors" :key="i">{{ e }}</div>
+                            </div>
+                            <button @click="confirmTestWallets = true" :disabled="busy"
+                                class="w-full py-2 rounded-xl text-sm font-semibold border bg-amber-500/10 text-amber-300 border-amber-500/30 disabled:opacity-40">
+                                บันทึกรายชื่อทดสอบ
+                            </button>
+                        </div>
                     </div>
 
                     <div class="glass-card rounded-xl p-5">
@@ -439,6 +487,10 @@ const blockingFailed = computed(() => (props.state.checks || []).filter((c) => !
         <ConfirmDialog :show="!!pending && pending.action === 'approve'" :loading="busy" title="ยืนยันการอนุมัติ"
             :message="confirmMessage" confirm-text="อนุมัติ" cancel-text="ยกเลิก"
             @confirm="runPending" @cancel="pending = null" />
+
+        <ConfirmDialog :show="confirmTestWallets" :loading="busy" title="บันทึกรายชื่อกระเป๋าทดสอบ?"
+            :message="testWalletsMessage" confirm-text="บันทึก" cancel-text="ยกเลิก"
+            @confirm="saveTestWallets" @cancel="confirmTestWallets = false" />
 
         <ConfirmDialog :show="confirmSettings" :loading="busy" title="บันทึกวงเงิน/ค่าธรรมเนียม?"
             message="มีผลกับรายการที่เข้ามาใหม่ทันที" confirm-text="บันทึก" cancel-text="ยกเลิก"

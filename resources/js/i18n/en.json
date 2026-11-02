@@ -795,6 +795,8 @@
             "notReady": "The TPIX ⇄ wTPIX bridge is not open yet",
             "notReadyBody": "The team is still deploying and checking the contracts — do not send anything yet.",
             "pausedBody": "The bridge is paused. Locks and burns already made are recorded and processed when it reopens.",
+            "testing": "The TPIX ⇄ wTPIX bridge is in testing",
+            "testingBody": "It is open only to the team's test wallets right now — do not send anything yet. Watch for the launch announcement.",
             "tabToBsc": "TPIX → wTPIX",
             "tabToTpix": "wTPIX → TPIX",
             "from": "From",

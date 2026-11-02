@@ -500,6 +500,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
                     Route::get('/measure', [WtpixBridgeAdminController::class, 'measure'])->middleware('throttle:6,1')->name('measure');
                     Route::post('/toggle', [WtpixBridgeAdminController::class, 'toggle'])->middleware('throttle:20,1')->name('toggle');
                     Route::put('/settings', [WtpixBridgeAdminController::class, 'updateSettings'])->middleware('throttle:20,1')->name('settings');
+                    Route::put('/test-wallets', [WtpixBridgeAdminController::class, 'updateTestWallets'])->middleware('throttle:20,1')->name('test-wallets');
                     Route::post('/transfers/{id}/approve', [WtpixBridgeAdminController::class, 'approve'])->whereNumber('id')->middleware('throttle:30,1')->name('transfers.approve');
                     Route::post('/transfers/{id}/reject', [WtpixBridgeAdminController::class, 'reject'])->whereNumber('id')->middleware('throttle:30,1')->name('transfers.reject');
                 });

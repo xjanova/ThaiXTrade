@@ -35,6 +35,9 @@ class WtpixBridgePublicInfo
                 'enabled' => $open,
                 'installed' => $this->config->installed(),
                 'paused_reason' => $this->config->siteSwitchOn() ? null : $this->config->switchReason(),
+                // โหมดทดสอบ — หน้าเว็บเปิดปุ่มเฉพาะกระเป๋าที่ sha256(ที่อยู่ตัวเล็ก) ตรง · ไม่ประกาศที่อยู่จริง
+                'test_mode' => $this->config->testMode(),
+                'test_wallet_hashes' => array_map(fn ($a) => hash('sha256', $a), $this->config->testWallets()),
                 'tpix' => [
                     'chain_id' => $this->config->tpixChainId(),
                     'name' => (string) config('wtpix_bridge.tpix.name', 'TPIX Chain'),

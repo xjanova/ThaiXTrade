@@ -40,7 +40,22 @@ const notice = ref(null);
 const busy = ref(false);
 const busyLabel = ref('');
 
-const isOpen = computed(() => info.value?.enabled === true);
+// โหมดทดสอบ — เทียบ sha256(ที่อยู่ตัวเล็ก) กับรายชื่อที่ประกาศ (API ไม่ประกาศที่อยู่จริง)
+// ไม่มี crypto.subtle (หน้า http) = ถือว่าไม่อยู่ในรายชื่อ · ฝั่งเซิร์ฟเวอร์พักรายการนอกรายชื่อไว้อยู่แล้ว
+const walletHash = ref(null);
+async function hashWallet() {
+    const address = walletStore.address?.toLowerCase() ?? null;
+    let hash = null;
+    if (address && globalThis.crypto?.subtle) {
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(address));
+        hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    }
+    if ((walletStore.address?.toLowerCase() ?? null) === address) walletHash.value = hash;
+}
+watch(() => walletStore.address, hashWallet, { immediate: true });
+
+const testBlocked = computed(() => info.value?.test_mode === true && !(info.value.test_wallet_hashes ?? []).includes(walletHash.value));
+const isOpen = computed(() => info.value?.enabled === true && !testBlocked.value);
 const tpixChainId = computed(() => info.value?.tpix?.chain_id ?? 4289);
 const bscChainId = computed(() => info.value?.bsc?.chain_id ?? 56);
 const bscName = computed(() => info.value?.bsc?.name ?? 'BNB Smart Chain');
@@ -319,8 +334,8 @@ watch(() => walletStore.address, () => {
         <div v-if="info && !isOpen" class="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4 flex gap-3" data-test="wtpix-closed">
             <span class="text-lg shrink-0">🚧</span>
             <div>
-                <p class="text-sm font-semibold text-amber-300">{{ t('bridge.wtpix.notReady') }}</p>
-                <p class="text-xs text-dark-300 leading-relaxed mt-1">{{ info.installed ? t('bridge.wtpix.pausedBody') : t('bridge.wtpix.notReadyBody') }}</p>
+                <p class="text-sm font-semibold text-amber-300">{{ info.enabled && testBlocked ? t('bridge.wtpix.testing') : t('bridge.wtpix.notReady') }}</p>
+                <p class="text-xs text-dark-300 leading-relaxed mt-1">{{ info.enabled && testBlocked ? t('bridge.wtpix.testingBody') : info.installed ? t('bridge.wtpix.pausedBody') : t('bridge.wtpix.notReadyBody') }}</p>
             </div>
         </div>
 

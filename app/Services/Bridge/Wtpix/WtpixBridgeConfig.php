@@ -73,6 +73,36 @@ class WtpixBridgeConfig
     }
 
     // =========================================================================
+    // โหมดทดสอบ — มีรายชื่อกระเป๋า = ทำเองเฉพาะกระเป๋าในรายชื่อ ที่เหลือรอแอดมินตรวจ
+    // =========================================================================
+
+    /** กระเป๋าทดสอบ (ตัวเล็ก) — ว่าง = เปิดให้ทุกคน */
+    public function testWallets(): array
+    {
+        $raw = SiteSetting::get(self::SETTINGS_GROUP, 'test_wallets', []);
+        $list = array_map(fn ($a) => strtolower(trim((string) $a)), is_array($raw) ? $raw : []);
+
+        return array_values(array_unique(array_filter($list, fn ($a) => preg_match('/^0x[0-9a-f]{40}$/', $a))));
+    }
+
+    public function testMode(): bool
+    {
+        return $this->testWallets() !== [];
+    }
+
+    public function isTestWallet(string $address): bool
+    {
+        return in_array(strtolower($address), $this->testWallets(), true);
+    }
+
+    public function setTestWallets(array $addresses): void
+    {
+        $clean = array_values(array_unique(array_map(fn ($a) => strtolower(trim((string) $a)), $addresses)));
+        SiteSetting::set(self::SETTINGS_GROUP, 'test_wallets', json_encode($clean), 'json');
+        Cache::forget(self::PUBLIC_CACHE_KEY);
+    }
+
+    // =========================================================================
     // ที่อยู่สัญญา (ตรึงใน .env)
     // =========================================================================
 

@@ -5,6 +5,7 @@ namespace Tests\Feature\Bridge\Wtpix;
 use App\Models\SiteSetting;
 use App\Models\WtpixBridgeTransfer;
 use App\Services\Bridge\Abi;
+use App\Services\Bridge\Wtpix\WtpixBridgeConfig;
 use Illuminate\Support\Facades\Cache;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\FakesWtpixBridgeChains;
@@ -57,6 +58,22 @@ class WtpixBridgeApiTest extends TestCase
         config(['wtpix_bridge.enabled' => false]);
         Cache::flush();
         $this->getJson('/api/v1/bridge/info?asset=tpix')->assertJsonPath('data.enabled', false)->assertJsonPath('data.installed', false);
+    }
+
+    #[Test]
+    public function info_announces_test_mode_with_hashes_never_the_wallet_addresses(): void
+    {
+        $this->getJson('/api/v1/bridge/info?asset=tpix')
+            ->assertJsonPath('data.test_mode', false)
+            ->assertJsonPath('data.test_wallet_hashes', []);
+
+        app(WtpixBridgeConfig::class)->setTestWallets([$this->alice]);
+
+        $response = $this->getJson('/api/v1/bridge/info?asset=tpix')
+            ->assertJsonPath('data.enabled', true)
+            ->assertJsonPath('data.test_mode', true)
+            ->assertJsonPath('data.test_wallet_hashes', [hash('sha256', $this->alice)]);
+        $this->assertStringNotContainsString(substr($this->alice, 2), $response->getContent());
     }
 
     #[Test]

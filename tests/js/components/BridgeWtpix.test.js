@@ -234,6 +234,26 @@ describe('Bridge page — TPIX → wTPIX', () => {
         expect(byTest(wrapper, 'wtpix-lock-button').attributes('disabled')).toBeDefined();
     });
 
+    it('in test mode opens only for a wallet whose hash is on the announced list', async () => {
+        const sha256 = async (text) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))]
+            .map((b) => b.toString(16).padStart(2, '0')).join('');
+
+        tpixInfo = baseTpixInfo({ test_mode: true, test_wallet_hashes: [await sha256('0x2222222222222222222222222222222222222222')] });
+        let wrapper = await mountOnTpix();
+        expect(byTest(wrapper, 'wtpix-closed').text()).toContain('The TPIX ⇄ wTPIX bridge is in testing');
+        await byTest(wrapper, 'wtpix-lock-amount').setValue('500');
+        await byTest(wrapper, 'wtpix-ack-lock').setValue(true);
+        expect(byTest(wrapper, 'wtpix-lock-button').attributes('disabled')).toBeDefined();
+        wrapper.unmount();
+
+        tpixInfo = baseTpixInfo({ test_mode: true, test_wallet_hashes: [await sha256(wallet.address.toLowerCase())] });
+        wrapper = await mountOnTpix();
+        expect(byTest(wrapper, 'wtpix-closed').exists()).toBe(false);
+        await byTest(wrapper, 'wtpix-lock-amount').setValue('500');
+        await byTest(wrapper, 'wtpix-ack-lock').setValue(true);
+        expect(byTest(wrapper, 'wtpix-lock-button').attributes('disabled')).toBeUndefined();
+    });
+
     it('links the BSC mint and adds wTPIX to the wallet on BSC with the coin logo once minted', async () => {
         localStorage.setItem('tpix.wtpix-bridge.tracked.v1', JSON.stringify([{ direction: 'to_bsc', chainId: 4289, txHash: TX }]));
         statusResponse = {

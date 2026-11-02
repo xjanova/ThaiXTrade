@@ -74,6 +74,15 @@ class WtpixBridgePolicy
             return ['status' => WtpixBridgeTransfer::STATUS_NEEDS_REVIEW, 'reason' => 'over_daily_address_limit'];
         }
 
+        /*
+         * โหมดทดสอบ — กระเป๋านอกรายชื่อยังล็อก/เผาตรงบนสัญญาได้ (หน้าเว็บปิดได้แค่ปุ่ม) จึงพักไว้ให้แอดมินตัดสิน
+         * ⚠️ ต้องเป็นข้อสุดท้าย: อนุมัติแถว needs_review = รับรองเหตุของแถวนั้นข้อเดียว
+         *    ถ้ามาก่อน แอดมินที่อนุมัติ "test_mode" จะข้ามผู้ส่งเป็นสัญญา / KYC / วงเงินไปโดยไม่รู้ตัว
+         */
+        if ($this->config->testMode() && ! $this->config->isTestWallet($from)) {
+            return ['status' => WtpixBridgeTransfer::STATUS_NEEDS_REVIEW, 'reason' => 'test_mode'];
+        }
+
         return ['status' => WtpixBridgeTransfer::STATUS_CONFIRMED, 'reason' => null];
     }
 
