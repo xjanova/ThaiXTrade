@@ -15,7 +15,10 @@ use Illuminate\Support\Facades\Cache;
  */
 class WtpixBridgePublicInfo
 {
-    public function __construct(private WtpixBridgeConfig $config) {}
+    public function __construct(
+        private WtpixBridgeConfig $config,
+        private WtpixBridgeFeeQuoter $fees,
+    ) {}
 
     public function info(): array
     {
@@ -54,11 +57,34 @@ class WtpixBridgePublicInfo
                     'decimals' => 18,
                     'logo' => (string) config('wtpix_bridge.token_logo'),
                 ],
-                'limits' => $this->config->limits(),
+                // lock_fee = ราคาที่ประกาศอยู่ตอนนี้ (ตัวที่ถูกเก็บจริง) ไม่ใช่ขั้นต่ำในค่าตั้ง
+                'limits' => ['lock_fee' => Wei::format($this->fees->current()['fee_wei'], 18)] + $this->config->limits(),
+                'fee_quote' => $this->feeQuote(),
                 'vault' => $caps['vault'],
                 'minter' => $caps['minter'],
             ];
         });
+    }
+
+    /** ที่มาของค่าธรรมเนียมขาออก — หน้าเว็บโชว์ให้ผู้ใช้ตรวจได้ว่าคิดจากอะไร */
+    private function feeQuote(): array
+    {
+        $current = $this->fees->current();
+        $quote = $current['fresh'] ? $current['quote']?->toPublicArray() : null;
+
+        return [
+            'fee' => Wei::format($current['fee_wei'], 18),
+            'floor' => Wei::format($this->fees->floorWei(), 18),
+            'ceiling' => Wei::format($this->fees->ceilingWei(), 18),
+            'markup_pct' => $this->config->feeMarkupPct(),
+            'grace_minutes' => $this->config->feeSetting('grace_minutes', 15),
+            // ไม่มีราคาสด = กำลังเก็บเพดาน
+            'source' => $quote['source'] ?? 'fallback',
+            'gas_gwei' => $quote['gas_gwei'] ?? null,
+            'bnb_usd' => $quote['bnb_usd'] ?? null,
+            'tpix_usd' => $quote['tpix_usd'] ?? null,
+            'updated_at' => $quote['updated_at'] ?? null,
+        ];
     }
 
     /** เพดานบนสัญญาทั้งสองฝั่ง (อ่านสด แคช 60 วิ) — null ทุกช่องถ้ายังไม่ตั้งหรืออ่านไม่ได้ */

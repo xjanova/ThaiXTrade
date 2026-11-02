@@ -371,4 +371,24 @@ class WtpixBridgeAdminTest extends TestCase
             ->assertOk()->assertJsonPath('data.limits.max_lock_per_tx', '50000');
         $this->assertSame('0.5', app(WtpixBridgeConfig::class)->limit('burn_fee'));
     }
+
+    #[Test]
+    public function the_floating_lock_fee_settings_are_validated_and_requote_at_once(): void
+    {
+        // เพดานต่ำกว่าขั้นต่ำ · เพดานไม่ต่ำกว่ายอดล็อกขั้นต่ำ (ผู้ใช้ได้ศูนย์) · ส่วนเพิ่มเกิน 100%
+        $this->asAdmin()->putJson('/admin/bridge/wtpix/settings', ['limits' => ['lock_fee' => '2', 'lock_fee_max' => '1']])->assertStatus(422);
+        $this->asAdmin()->putJson('/admin/bridge/wtpix/settings', ['limits' => ['lock_fee_max' => '10']])->assertStatus(422);
+        $this->asAdmin()->putJson('/admin/bridge/wtpix/settings', ['fee_markup_pct' => '150'])->assertStatus(422);
+        $this->asAdmin()->putJson('/admin/bridge/wtpix/settings', ['fee_markup_pct' => '-1'])->assertStatus(422);
+
+        $this->asAdmin()->putJson('/admin/bridge/wtpix/settings', ['limits' => ['lock_fee' => '0.5', 'lock_fee_max' => '3'], 'fee_markup_pct' => '12.5'])
+            ->assertOk()
+            ->assertJsonPath('data.fee_markup_pct', '12.5')
+            ->assertJsonPath('data.limits.lock_fee_max', '3')
+            // ไม่มีราคาตลาดในเทสต์ = ประกาศเพดานใหม่ทันที ไม่ต้องรอรอบ 5 นาที
+            ->assertJsonPath('data.fee_quote.fee', '3')
+            ->assertJsonPath('data.fee_quote.quote.source', 'fallback');
+
+        $this->assertSame(1250, app(WtpixBridgeConfig::class)->feeMarkupBps());
+    }
 }

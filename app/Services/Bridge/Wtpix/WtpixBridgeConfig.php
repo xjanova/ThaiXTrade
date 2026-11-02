@@ -28,7 +28,7 @@ class WtpixBridgeConfig
 
     /** คีย์วงเงินที่แอดมินแก้ได้ (หน่วย TPIX เต็ม) */
     public const LIMIT_KEYS = [
-        'min_lock', 'max_lock_per_tx', 'max_lock_per_address_daily', 'lock_fee',
+        'min_lock', 'max_lock_per_tx', 'max_lock_per_address_daily', 'lock_fee', 'lock_fee_max',
         'min_burn', 'max_burn_per_tx', 'max_burn_per_address_daily', 'burn_fee',
     ];
 
@@ -251,6 +251,31 @@ class WtpixBridgeConfig
             'daily' => "max_{$side}_per_address_daily",
             'fee' => "{$side}_fee",
         };
+    }
+
+    /** ส่วนเพิ่มบนค่าแก๊สของค่าธรรมเนียมขาออก (basis points · 1000 = 10%) — แอดมินแก้ได้ 0–10000 */
+    public function feeMarkupBps(): int
+    {
+        $fromSetting = SiteSetting::get(self::SETTINGS_GROUP, 'fee_markup_bps');
+        $bps = is_numeric($fromSetting) ? (int) $fromSetting : (int) config('wtpix_bridge.fee.markup_bps', 1000);
+
+        return max(0, min(10000, $bps));
+    }
+
+    /** ส่วนเพิ่มเป็น % สำหรับแสดงผล ('10' · '12.5') */
+    public function feeMarkupPct(): string
+    {
+        return rtrim(rtrim(number_format($this->feeMarkupBps() / 100, 2, '.', ''), '0'), '.');
+    }
+
+    public function setFeeMarkupBps(int $bps): void
+    {
+        SiteSetting::set(self::SETTINGS_GROUP, 'fee_markup_bps', (string) max(0, min(10000, $bps)), 'number');
+    }
+
+    public function feeSetting(string $key, int $default): int
+    {
+        return (int) config("wtpix_bridge.fee.{$key}", $default);
     }
 
     public function minGasBalanceWei(): string

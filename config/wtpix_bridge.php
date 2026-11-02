@@ -89,6 +89,8 @@ return [
         'explorer' => env('TPIX_EXPLORER_URL', 'https://explorer.tpix.online'),
         'log_chunk' => 900,
         'max_blocks_per_run' => 18000,
+        // Re-read recent safe blocks to recover logs omitted by a lagging RPC node.
+        'rescan_blocks' => 150,
         // ไล่หา event ของ depositId ไปข้างหน้าจากธุรกรรมต้นทางได้ไกลสุดกี่บล็อก (~4.6 วัน) — เกินนี้ = พิสูจน์ไม่ได้ ไม่เดา
         'verify_max_blocks' => (int) env('WTPIX_BRIDGE_TPIX_VERIFY_MAX_BLOCKS', 200000),
         // ว่าง = เริ่มที่บล็อกปัจจุบันตอนรันครั้งแรก (ไม่ไล่ย้อนหลัง — ไม่ mint ให้ประวัติเก่า)
@@ -110,6 +112,7 @@ return [
         'fallback_confirmations' => 30,
         'log_chunk' => 1000,
         'max_blocks_per_run' => 20000,
+        'rescan_blocks' => 300,
         'verify_max_blocks' => (int) env('WTPIX_BRIDGE_BSC_VERIFY_MAX_BLOCKS', 900000),
         'start_block' => env('WTPIX_BRIDGE_BSC_START_BLOCK'),
         'gas_price_multiplier_bps' => 12000,
@@ -150,13 +153,40 @@ return [
         'min_lock' => '10',
         'max_lock_per_tx' => '100000',
         'max_lock_per_address_daily' => '200000',
-        // ชดเชยค่า BNB ที่ relayer จ่ายตอน mint บน BSC
+        // ขาออกลอยตัว (ดู 'fee' ด้านล่าง) — lock_fee = ขั้นต่ำ · lock_fee_max = เพดาน (ตั้งเท่ากัน = คงที่)
         'lock_fee' => '1',
+        'lock_fee_max' => '5',
         'min_burn' => '10',
         'max_burn_per_tx' => '100000',
         'max_burn_per_address_daily' => '200000',
         // ปล่อยบนเชน 4289 แก๊สเป็นศูนย์ — ผู้ใช้จ่าย BNB ตอนเผาเองอยู่แล้ว
         'burn_fee' => '0',
+    ],
+
+    /*
+    | ค่าธรรมเนียมขาออก (TPIX → BSC) = ค่าแก๊ส mint ที่ relayer จ่ายจริง × (1 + ส่วนเพิ่ม) แปลงเป็น TPIX
+    | หนีบด้วย lock_fee (ขั้นต่ำ) / lock_fee_max (เพดาน) — ประกาศใหม่ทุก 5 นาที (bridge:wtpix-fee-quote)
+    |
+    | กันปั่น: ราคา TPIX = ค่าที่ต่ำกว่าระหว่าง TWAP 1 ชม. กับ TWAP 24 ชม. ของพูล TPIX-USDT (ไม่ใช้ราคาสด)
+    |          ปั่นราคาขึ้นเพื่อให้ค่าธรรมเนียมถูกต้องยืนราคาไว้ทั้งวัน · ราคา BNB จาก PriceFeedService (มีด่านกระโดด 35%)
+    |          ข้อมูลไม่พอ/อ่านไม่ได้ = ใช้เพดาน (ไม่เดา) · ค่าแก๊สจริงเกินเพดาน = ใช้เพดาน + แจ้งแอดมิน
+    | เป็นธรรม: คิดจากราคาที่ประกาศ ณ เวลาบล็อกที่ล็อก ไม่ใช่ตอนสแกน และเอาค่าที่ "ต่ำสุด" ที่ประกาศไว้
+    |          ในช่วง grace_minutes ก่อนบล็อกนั้น — ผู้ใช้ที่เห็นราคาแล้วกดภายในช่วงนี้ไม่มีทางจ่ายเกินที่เห็น
+    */
+    'fee' => [
+        'markup_bps' => (int) env('WTPIX_BRIDGE_FEE_MARKUP_BPS', 1000),
+        // ใช้เมื่อยังมีใบเสร็จ mint ไม่ถึง min_gas_samples — ค่าเผื่อสูงกว่าจริงเล็กน้อย
+        'mint_gas_units' => (int) env('WTPIX_BRIDGE_MINT_GAS_UNITS', 150000),
+        'gas_samples' => 20,
+        'min_gas_samples' => 5,
+        'twap_short_minutes' => 60,
+        'twap_long_minutes' => 1440,
+        // แท่ง 1 นาทีต้องครอบคลุมอย่างน้อยเท่านี้ ไม่งั้นถือว่าไม่มีราคา
+        'min_twap_coverage_pct' => 50,
+        'grace_minutes' => 15,
+        // ไม่ได้ประกาศใหม่นานเกินนี้ = ใช้เพดาน (ตัวตั้งเวลาตาย ราคาเก่าอาจไม่พอค่าแก๊ส)
+        'stale_minutes' => 30,
+        'keep_days' => 30,
     ],
 
     /*

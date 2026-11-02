@@ -202,6 +202,83 @@ class WtpixBridgeScanTest extends TestCase
     }
 
     #[Test]
+    public function a_lock_omitted_by_a_lagging_rpc_is_recovered_without_a_new_block_or_duplicate(): void
+    {
+        $this->prime();
+        $tx = $this->fakeLock($this->alice, $this->tpix('100'), 2001);
+        $logs = $this->chain[4289]['logs'];
+        $this->chain[4289]['logs'] = [];
+        $this->chain[4289]['latest'] = 2005;
+        $this->scan();
+        $this->assertSame(0, WtpixBridgeTransfer::count());
+
+        $this->chain[4289]['logs'] = $logs;
+        $this->scan();
+        $this->scan();
+
+        $this->assertSame(1, WtpixBridgeTransfer::where('tx_hash', $tx)->count());
+        $config = app(WtpixBridgeConfig::class);
+        $this->assertSame(2004, $config->cursor($config->lockCursorKey()));
+    }
+
+    #[Test]
+    public function a_burn_omitted_by_a_lagging_rpc_is_recovered_without_a_new_block_or_duplicate(): void
+    {
+        $this->prime();
+        $tx = $this->fakeBurnWtpix($this->alice, $this->tpix('100'), 4986);
+        $logs = $this->chain[56]['logs'];
+        $this->chain[56]['logs'] = [];
+        $this->chain[56]['latest'] = 5010;
+        $this->chain[56]['finalized'] = 5005;
+        $this->scan();
+        $this->assertSame(0, WtpixBridgeTransfer::count());
+
+        $this->chain[56]['logs'] = $logs;
+        $this->scan();
+        $this->scan();
+
+        $this->assertSame(1, WtpixBridgeTransfer::where('tx_hash', $tx)->count());
+        $config = app(WtpixBridgeConfig::class);
+        $this->assertSame(4996, $config->cursor($config->burnCursorKey()));
+    }
+
+    #[Test]
+    public function rescanning_preserves_the_initial_history_boundary_and_the_forward_budget(): void
+    {
+        config(['wtpix_bridge.tpix.max_blocks_per_run' => 2]);
+        $this->fakeLock($this->alice, $this->tpix('100'), 1998);
+        $this->prime(); // No START_BLOCK: history through 1998 stays excluded.
+        $this->fakeLock($this->bob, $this->tpix('100'), 2002);
+        $this->chain[4289]['latest'] = 2005;
+        $this->scan(); // 1999..2000
+        $this->scan(); // overlap plus new blocks 2001..2002
+
+        $this->assertSame([$this->bob], WtpixBridgeTransfer::pluck('recipient')->all());
+        $config = app(WtpixBridgeConfig::class);
+        $this->assertSame(1999, $config->cursor($config->lockCursorKey().'_floor'));
+        $this->assertSame(2003, $config->cursor($config->lockCursorKey()));
+
+        $this->chain[4289]['latest'] = 2003; // A later request reaches an older RPC node.
+        $this->scan();
+        $this->assertSame(2003, $config->cursor($config->lockCursorKey()));
+    }
+
+    #[Test]
+    public function an_existing_cursor_without_a_floor_does_not_replay_older_history(): void
+    {
+        $config = app(WtpixBridgeConfig::class);
+        $config->setCursor($config->lockCursorKey(), 2001);
+        $this->fakeLock($this->alice, $this->tpix('100'), 2000);
+        $this->fakeLock($this->bob, $this->tpix('100'), 2001);
+        $this->chain[4289]['latest'] = 2005;
+        $this->scan();
+        $this->scan();
+
+        $this->assertSame([$this->bob], WtpixBridgeTransfer::pluck('recipient')->all());
+        $this->assertSame(2001, $config->cursor($config->lockCursorKey().'_floor'));
+    }
+
+    #[Test]
     public function locks_are_still_recorded_while_the_site_switch_is_off(): void
     {
         app(WtpixBridgeConfig::class)->setSiteSwitch(false, 'test');

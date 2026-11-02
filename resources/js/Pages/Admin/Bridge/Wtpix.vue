@@ -178,13 +178,18 @@ const limitLabels = {
     min_lock: 'ล็อกขั้นต่ำ (TPIX → BSC)',
     max_lock_per_tx: 'ล็อกสูงสุดต่อครั้ง (เกิน = รอตรวจ)',
     max_lock_per_address_daily: 'ล็อกสูงสุดต่อกระเป๋าต่อ 24 ชม.',
-    lock_fee: 'ค่าธรรมเนียมล็อก (ชดเชย BNB ตอน mint)',
+    lock_fee: 'ค่าธรรมเนียมล็อก ขั้นต่ำ (ค่าแก๊สจริงต่ำกว่านี้ = เก็บเท่านี้)',
+    lock_fee_max: 'ค่าธรรมเนียมล็อก สูงสุด (ตั้งเท่าขั้นต่ำ = ค่าคงที่)',
     min_burn: 'เผาขั้นต่ำ (BSC → TPIX)',
     max_burn_per_tx: 'เผาสูงสุดต่อครั้ง (เกิน = รอตรวจ)',
     max_burn_per_address_daily: 'เผาสูงสุดต่อกระเป๋าต่อ 24 ชม.',
     burn_fee: 'ค่าธรรมเนียมเผา',
 };
 const limitsForm = ref({ ...props.settings.limits });
+const markupForm = ref(props.settings.fee_markup_pct ?? '10');
+const feeQuote = computed(() => props.settings.fee_quote ?? null);
+const feeLedger = computed(() => props.settings.fee_ledger ?? null);
+const feeSourceLabel = { market: 'จากตลาด', capped: 'ชนเพดาน (สะพานออกส่วนต่าง)', fallback: 'ไม่มีราคาตลาด → เพดาน' };
 const settingsErrors = ref([]);
 const confirmSettings = ref(false);
 
@@ -193,7 +198,7 @@ async function saveSettings() {
     busy.value = true;
     settingsErrors.value = [];
     try {
-        await axios.put('/admin/bridge/wtpix/settings', { limits: limitsForm.value });
+        await axios.put('/admin/bridge/wtpix/settings', { limits: limitsForm.value, fee_markup_pct: String(markupForm.value ?? '').trim() });
         notice.value = { type: 'success', text: 'บันทึกวงเงินแล้ว' };
         confirmSettings.value = false;
         router.reload({ only: ['settings', 'state'] });
@@ -396,6 +401,28 @@ const blockingFailed = computed(() => (props.state.checks || []).filter((c) => !
                     <label class="text-xs text-gray-300">{{ label }}</label>
                     <input v-model.trim="limitsForm[key]" type="text" inputmode="decimal" class="w-40 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-sm font-mono text-right" />
                 </div>
+                <div class="flex items-center justify-between gap-3">
+                    <label class="text-xs text-gray-300">ส่วนเพิ่มบนค่าแก๊สจริงของ mint (%)</label>
+                    <input v-model.trim="markupForm" type="text" inputmode="decimal" class="w-40 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-sm font-mono text-right" />
+                </div>
+
+                <div class="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1 text-xs text-gray-300">
+                    <div class="font-semibold text-white">ค่าธรรมเนียมขาออกที่ประกาศอยู่: {{ feeQuote?.fee ?? '—' }} TPIX
+                        <span v-if="feeQuote && !feeQuote.fresh" class="text-amber-300">(ไม่มีราคาสดเกิน 30 นาที → ใช้เพดาน)</span>
+                    </div>
+                    <template v-if="feeQuote?.quote">
+                        <div>ที่มา: {{ feeSourceLabel[feeQuote.quote.source] ?? feeQuote.quote.source }}<span v-if="feeQuote.quote.note"> · {{ feeQuote.quote.note }}</span></div>
+                        <div>ค่าแก๊สจริง + ส่วนเพิ่ม: {{ feeQuote.quote.raw_fee ?? '—' }} TPIX
+                            · แก๊ส {{ feeQuote.quote.gas_units }} × {{ feeQuote.quote.gas_gwei ?? '—' }} gwei
+                            · BNB ${{ feeQuote.quote.bnb_usd ?? '—' }} · TPIX ${{ feeQuote.quote.tpix_usd ?? '—' }} (TWAP ต่ำกว่าระหว่าง 1 ชม./24 ชม.)</div>
+                        <div class="text-gray-500">ประกาศเมื่อ {{ feeQuote.quote.updated_at }} · ประกาศใหม่ทุก 5 นาทีและทุกครั้งที่บันทึก</div>
+                    </template>
+                    <div v-if="feeLedger" class="pt-1 border-t border-white/5">
+                        เก็บค่าธรรมเนียมแล้ว {{ feeLedger.fees_tpix }} TPIX จาก {{ feeLedger.mints }} mint · relayer จ่ายแก๊สไป {{ feeLedger.gas_bnb }} BNB
+                        <span v-if="feeLedger.unmetered" class="text-gray-500">({{ feeLedger.unmetered }} รายการก่อนเริ่มบันทึกค่าแก๊ส ไม่นับ)</span>
+                    </div>
+                </div>
+
                 <div v-if="settingsErrors.length" class="rounded-xl border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-300">
                     <div v-for="(e, i) in settingsErrors" :key="i">{{ e }}</div>
                 </div>
