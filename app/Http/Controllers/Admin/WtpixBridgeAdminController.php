@@ -190,6 +190,7 @@ class WtpixBridgeAdminController extends Controller
                 'site_switch' => $this->config->siteSwitchOn(),
                 'switch_reason' => $this->config->switchReason(),
                 'operational' => $this->config->operational(),
+                'test_mode' => $this->config->testMode(),
                 'mint_ready' => $mint['ready'],
                 'release_ready' => $release['ready'],
                 'checks' => $checks,
@@ -331,6 +332,27 @@ class WtpixBridgeAdminController extends Controller
 
         Cache::forget(WtpixBridgeConfig::PUBLIC_CACHE_KEY);
         Cache::forget(self::CACHE_STATE);
+
+        return response()->json(['success' => true, 'data' => $this->settingsPayload()]);
+    }
+
+    /**
+     * โหมดทดสอบ — ตั้งรายชื่อกระเป๋าที่สะพานทำให้เอง (ว่าง = เปิดให้ทุกคน).
+     *
+     * มีผลกับรายการที่ตัวสแกนบันทึกหลังจากนี้ — รายการเก่าที่พักไว้ด้วยเหตุ test_mode ยังรอแอดมินอนุมัติทีละรายการ
+     */
+    public function updateTestWallets(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'wallets' => ['present', 'array', 'max:20'],
+            'wallets.*' => ['string', 'regex:/^0x[0-9a-fA-F]{40}$/'],
+        ], [
+            'wallets.*.regex' => 'ที่อยู่กระเป๋าต้องเป็น 0x ตามด้วยตัวอักษร 40 ตัว',
+        ]);
+
+        $this->config->setTestWallets($validated['wallets']);
+        Cache::forget(self::CACHE_STATE);
+        Log::warning('wtpix-bridge: แอดมินเปลี่ยนโหมดทดสอบ', ['wallets' => count($validated['wallets']), 'by' => $request->user()?->id]);
 
         return response()->json(['success' => true, 'data' => $this->settingsPayload()]);
     }
@@ -592,6 +614,7 @@ class WtpixBridgeAdminController extends Controller
             'fee_markup_pct' => $this->config->feeMarkupPct(),
             'fee_quote' => $this->feeQuotePayload(),
             'fee_ledger' => $this->fees->ledger(),
+            'test_wallets' => $this->config->testWallets(),
             'tolerance' => (string) config('wtpix_bridge.reconcile.tolerance', '1'),
             'min_gas_balance' => (string) config('wtpix_bridge.bsc.min_gas_balance', '0.002'),
         ];

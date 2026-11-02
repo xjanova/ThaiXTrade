@@ -391,4 +391,40 @@ class WtpixBridgeAdminTest extends TestCase
 
         $this->assertSame(1250, app(WtpixBridgeConfig::class)->feeMarkupBps());
     }
+
+    #[Test]
+    public function the_test_wallet_list_is_validated_saved_lowercase_and_cleared_to_open_for_everyone(): void
+    {
+        $this->asAdmin()->putJson('/admin/bridge/wtpix/test-wallets', ['wallets' => ['not-a-wallet']])->assertStatus(422);
+        $this->asAdmin()->putJson('/admin/bridge/wtpix/test-wallets', [])->assertStatus(422);
+
+        $checksum = '0x'.strtoupper(substr($this->alice, 2));
+        $this->asAdmin()->putJson('/admin/bridge/wtpix/test-wallets', ['wallets' => [$checksum, $this->alice]])
+            ->assertOk()
+            ->assertJsonPath('data.test_wallets', [$this->alice]);
+        $this->assertTrue(app(WtpixBridgeConfig::class)->testMode());
+
+        $this->asAdmin()->get('/admin/bridge/wtpix')
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('state.test_mode', true)
+                ->where('settings.test_wallets', [$this->alice]));
+
+        $this->asAdmin()->putJson('/admin/bridge/wtpix/test-wallets', ['wallets' => []])
+            ->assertOk()
+            ->assertJsonPath('data.test_wallets', []);
+        $this->assertFalse(app(WtpixBridgeConfig::class)->testMode());
+    }
+
+    #[Test]
+    public function only_super_admins_change_the_test_wallets(): void
+    {
+        $this->put('/admin/bridge/wtpix/test-wallets', ['wallets' => []])->assertRedirect();
+        $this->assertFalse(app(WtpixBridgeConfig::class)->testMode());
+
+        $support = AdminUser::create([
+            'name' => 'ซัพพอร์ต', 'email' => 'support2@tpix.test', 'password' => bcrypt('secret-password'), 'role' => 'support', 'is_active' => true,
+        ]);
+        $this->withSession([Auth::guard('admin')->getName() => $support->id])
+            ->putJson('/admin/bridge/wtpix/test-wallets', ['wallets' => []])->assertForbidden();
+    }
 }

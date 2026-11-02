@@ -165,6 +165,52 @@ class WtpixBridgeScanTest extends TestCase
     }
 
     #[Test]
+    public function test_mode_holds_every_wallet_outside_the_list_and_keeps_the_stronger_reason_first(): void
+    {
+        // ตัวพิมพ์ใหญ่แบบ checksum ที่แอดมินวางมาจากกระเป๋า — ต้องเทียบได้
+        app(WtpixBridgeConfig::class)->setTestWallets(['0x'.strtoupper(substr($this->alice, 2))]);
+        $this->prime();
+
+        $this->fakeLock($this->alice, $this->tpix('100'), 2001);              // อยู่ในรายชื่อ — ทำต่อเอง
+        $this->fakeLock($this->bob, $this->tpix('100'), 2001, logIndex: 1);   // นอกรายชื่อ — พักไว้
+        $this->fakeBurnWtpix($this->bob, $this->tpix('100'), 4986);           // ขาเผาก็ใช้กฎเดียวกัน
+        $this->chain[4289]['latest'] = 2005;
+        $this->chain[56]['latest'] = 5010;
+        $this->chain[56]['finalized'] = 5005;
+
+        $this->scan();
+
+        $rows = WtpixBridgeTransfer::orderBy('id')->get(['direction', 'status', 'review_reason'])
+            ->map(fn ($r) => [$r->direction, $r->status, $r->review_reason])->all();
+        $this->assertEqualsCanonicalizing([
+            ['to_bsc', 'confirmed', null],
+            ['to_bsc', 'needs_review', 'test_mode'],
+            ['to_tpix', 'needs_review', 'test_mode'],
+        ], $rows);
+
+        // เหตุที่หนักกว่ามาก่อน — อนุมัติ test_mode ต้องไม่กลายเป็นการข้ามด่านผู้ส่งเป็นสัญญา
+        $this->chain[4289]['codes'][$this->bob] = '0x6080604052';
+        $this->fakeLock($this->bob, $this->tpix('100'), 2006);
+        $this->chain[4289]['latest'] = 2010;
+        $this->scan();
+
+        $this->assertSame('sender_is_contract', WtpixBridgeTransfer::latest('id')->value('review_reason'));
+    }
+
+    #[Test]
+    public function an_empty_test_list_lets_every_wallet_through(): void
+    {
+        app(WtpixBridgeConfig::class)->setTestWallets([]);
+        $this->prime();
+        $this->fakeLock($this->bob, $this->tpix('100'), 2001);
+        $this->chain[4289]['latest'] = 2005;
+
+        $this->scan();
+
+        $this->assertSame(WtpixBridgeTransfer::STATUS_CONFIRMED, WtpixBridgeTransfer::firstOrFail()->status);
+    }
+
+    #[Test]
     public function an_unreadable_chain_never_moves_its_cursor_and_does_not_stop_the_other_chain(): void
     {
         $this->prime();
