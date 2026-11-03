@@ -52,6 +52,27 @@ export const BSC_TRADE_TOKENS = {
     NEAR: { name: 'NEAR Protocol', address: '0x1Fa4a73a3F0133f0025378af00236f3aBDEE5D63', decimals: 18, onchainSymbols: ['NEAR'] },
     SHIB: { name: 'Shiba Inu', address: '0x2859e4544C4bB03966803b044A93563Bd2D0DD4D', decimals: 18, onchainSymbols: ['SHIB'] },
     PEPE: { name: 'Pepe', address: '0x25d887Ce7a35172C62FeBFD67a1856F20FaEbB00', decimals: 18, onchainSymbols: ['PEPE'] },
+    // เพิ่ม 2026-11-03 — ผ่านการตรวจ symbol() + ราคาพูลเทียบ Binance แล้ว (ดู config/bsc_trade_tokens.php)
+    CAKE: { name: 'PancakeSwap', address: '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', decimals: 18, onchainSymbols: ['Cake', 'CAKE'] },
+    INJ: { name: 'Injective', address: '0xa2B726B1145A4773F68593CF171187d8EBe4d495', decimals: 18, onchainSymbols: ['INJ'] },
+    FIL: { name: 'Filecoin', address: '0x0D8Ce2A99Bb6e3B7Db580eD848240e4a0F9aE153', decimals: 18, onchainSymbols: ['FIL'] },
+    AXS: { name: 'Axie Infinity', address: '0x715D400F88C167884bbCc41C5FeA407ed4D2f8A0', decimals: 18, onchainSymbols: ['AXS'] },
+    EGLD: { name: 'MultiversX', address: '0xbF7c81FFF98BbE61B40Ed186e4AfD6DDd01337fe', decimals: 18, onchainSymbols: ['EGLD'] },
+    ZIL: { name: 'Zilliqa', address: '0xb86AbCb37C3A4B64f74f59301AFF131a1BEcC787', decimals: 12, onchainSymbols: ['ZIL'] },
+    FLOKI: { name: 'FLOKI', address: '0xfb5B838b6cfEEdC2873aB27866079AC55363D37E', decimals: 9, onchainSymbols: ['FLOKI'] },
+    TWT: { name: 'Trust Wallet Token', address: '0x4B0F1812e5Df2A09796481Ff14017e6005508003', decimals: 18, onchainSymbols: ['TWT'] },
+    XVS: { name: 'Venus', address: '0xcF6BB5389c92Bdda8a3747Ddb454cB7a64626C63', decimals: 18, onchainSymbols: ['XVS'] },
+    ASTER: { name: 'Aster', address: '0x000Ae314E2A2172a039B26378814C252734f556A', decimals: 18, onchainSymbols: ['ASTER'] },
+    BAND: { name: 'Band Protocol', address: '0xAD6cAEb32CD2c308980a548bD0Bc5AA4306c6c18', decimals: 18, onchainSymbols: ['BAND'] },
+    C98: { name: 'Coin98', address: '0xaEC945e04baF28b135Fa7c640f624f8D90F1C3a6', decimals: 18, onchainSymbols: ['C98'] },
+    SFP: { name: 'SafePal', address: '0xD41FDb03Ba84762dD66a0af1a6C8540FF1ba5dfb', decimals: 18, onchainSymbols: ['SFP'] },
+    DODO: { name: 'DODO', address: '0x67ee3Cb086F8a16f34beE3ca72FAD36F7Db929e2', decimals: 18, onchainSymbols: ['DODO'] },
+    ALICE: { name: 'My Neighbor Alice', address: '0xAC51066d7bEC65Dc4589368da368b212745d63E8', decimals: 6, onchainSymbols: ['ALICE'] },
+    TKO: { name: 'Toko Token', address: '0x9f589e3eabe42ebC94A44727b3f3531C0c877809', decimals: 18, onchainSymbols: ['TKO'] },
+    SANTOS: { name: 'Santos FC Fan Token', address: '0xA64455a4553C9034236734FadDAddbb64aCE4Cc7', decimals: 8, onchainSymbols: ['SANTOS'] },
+    TST: { name: 'Test', address: '0x86Bb94DdD16Efc8bc58e6b056e8df71D9e666429', decimals: 18, onchainSymbols: ['TST'] },
+    BROCCOLI714: { name: 'Broccoli', address: '0x6d5AD1592ed9D6D1dF9b93c793AB759573Ed6714', decimals: 18, onchainSymbols: ['Broccoli', 'BROCCOLI'] },
+    USD1: { name: 'World Liberty Financial USD', address: '0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d', decimals: 18, onchainSymbols: ['USD1'] },
 };
 
 // ABI ขั้นต่ำสำหรับตรวจ token ก่อนเทรด

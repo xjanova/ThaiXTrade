@@ -7,6 +7,7 @@ use App\Models\Token;
 use App\Models\TradingPair;
 use Database\Seeders\AllChainsSeeder;
 use Database\Seeders\BscMajorPairsSeeder;
+use Database\Seeders\PopularMarketPairsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -136,5 +137,27 @@ class BscTokenRegistrySyncTest extends TestCase
         $this->seed(BscMajorPairsSeeder::class);
 
         $this->assertSame($before, TradingPair::count());
+    }
+
+    public function test_a_coin_moved_to_bsc_leaves_one_active_pair_not_two(): void
+    {
+        // INJ เคยเป็นคู่ดูราคาบนเชน TPIX — deploy เดิมสร้างไว้แล้วก่อนเหรียญขึ้นทะเบียน BSC
+        $this->seed(AllChainsSeeder::class);
+        $tpix = Chain::where('symbol', 'TPIX')->firstOrFail();
+        $usdt = Token::create(['chain_id' => $tpix->id, 'symbol' => 'USDT', 'name' => 'Tether USD', 'contract_address' => 'index:USDT', 'decimals' => 18, 'is_active' => true]);
+        $inj = Token::create(['chain_id' => $tpix->id, 'symbol' => 'INJ', 'name' => 'Injective', 'contract_address' => 'index:INJ', 'decimals' => 18, 'is_active' => true]);
+        TradingPair::create(['base_token_id' => $inj->id, 'quote_token_id' => $usdt->id, 'chain_id' => $tpix->id, 'symbol' => 'INJ-USDT', 'is_active' => true, 'execution_mode' => 'index']);
+
+        // ลำดับเดียวกับ auto-deploy.yml
+        $this->seed(BscMajorPairsSeeder::class);
+        $this->seed(PopularMarketPairsSeeder::class);
+
+        $active = TradingPair::active()->where('symbol', 'INJ-USDT')->with('chain')->get();
+        $this->assertCount(1, $active, 'INJ-USDT ต้องเหลือแถวเดียว — สองแถวชื่อเดียวกันหน้าเว็บผูกโหมดผิดแถว');
+        $this->assertSame('onchain', $active->first()->execution_mode);
+        $this->assertSame(56, (int) $active->first()->chain->chain_id);
+
+        // เหรียญที่ยังไม่มีบน BSC ยังเป็นคู่ดูราคาเหมือนเดิม
+        $this->assertDatabaseHas('trading_pairs', ['symbol' => 'SUI-USDT', 'execution_mode' => 'index', 'is_active' => true]);
     }
 }

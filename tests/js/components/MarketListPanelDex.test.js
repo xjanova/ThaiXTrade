@@ -47,8 +47,8 @@ function rowFor(wrapper, base) {
 }
 
 const mounted = [];
-async function mountPanel() {
-    const wrapper = mount(MarketListPanel, { props: { currentPair: 'BTC/USDT' } });
+async function mountPanel(currentPair = 'BTC/USDT') {
+    const wrapper = mount(MarketListPanel, { props: { currentPair } });
     mounted.push(wrapper);
     await flushPromises();
     return wrapper;
@@ -56,7 +56,6 @@ async function mountPanel() {
 
 describe('MarketListPanel with TPIX DEX pairs', () => {
     beforeEach(() => {
-        localStorage.removeItem('tpix.marketQuote');
         Object.assign(wallet, { isConnected: false, chainId: null, supportedChains: [] });
         dexTicker = vi.fn(async () => ({ data: { success: true, data: { price: 0.1234, change_24h: 2.5, quote_volume_24h: 42 } } }));
         axiosGet.mockReset().mockImplementation(async (url) => {
@@ -73,7 +72,7 @@ describe('MarketListPanel with TPIX DEX pairs', () => {
     });
 
     it('shows the live pool price for TPIX/USDT without a "Soon" badge', async () => {
-        const wrapper = await mountPanel();
+        const wrapper = await mountPanel('TPIX/USDT');
 
         expect(axiosGet).toHaveBeenCalledWith('/api/v1/dex/ticker/TPIX-USDT');
         expect(wrapper.text()).toContain('0.1234');
@@ -84,6 +83,7 @@ describe('MarketListPanel with TPIX DEX pairs', () => {
 
     it('marks index pairs as price reference, not "coming soon"', async () => {
         const wrapper = await mountPanel();
+        await wrapper.find('[data-test="market-tab-index"]').trigger('click');
 
         const sui = rowFor(wrapper, 'SUI');
         expect(sui.find('[data-test="badge-index"]').text()).toBe('Ref');
@@ -92,7 +92,7 @@ describe('MarketListPanel with TPIX DEX pairs', () => {
 
     it('shows "—" instead of a made-up price when the pool cannot be read', async () => {
         dexTicker = vi.fn(async () => { throw new Error('429'); });
-        const wrapper = await mountPanel();
+        const wrapper = await mountPanel('TPIX/USDT');
 
         const tpix = rowFor(wrapper, 'TPIX');
         expect(tpix.text()).toContain('—');
@@ -105,7 +105,7 @@ describe('MarketListPanel with TPIX DEX pairs', () => {
             if (url === '/api/v1/market/pairs') return { data: { success: true, data: PAIRS.slice(1) } };
             throw new Error(`unexpected GET ${url}`);
         });
-        const wrapper = await mountPanel();
+        const wrapper = await mountPanel('TPIX/USDT');
 
         const tpix = rowFor(wrapper, 'TPIX');
         expect(tpix.find('[data-test="badge-soon"]').exists()).toBe(true);
@@ -115,7 +115,7 @@ describe('MarketListPanel with TPIX DEX pairs', () => {
     it('keeps the TPIX/USDT row with its last price while a refresh waits for the pool price', async () => {
         // ปลอมแค่ interval — flushPromises ยังใช้ setImmediate/setTimeout จริงได้
         vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-        const wrapper = await mountPanel();
+        const wrapper = await mountPanel('TPIX/USDT');
         expect(rowFor(wrapper, 'TPIX').text()).toContain('0.1234');
 
         // รอบรีเฟรชถัดไป ราคาพูลตอบช้า — ค้างไว้จนกว่าจะปล่อยเอง
@@ -136,16 +136,16 @@ describe('MarketListPanel with TPIX DEX pairs', () => {
 });
 
 /*
- * กรองคู่ตามเชนที่กระเป๋าอยู่ + หมวด TPIX + บอกมาตรฐานเหรียญที่ปุ่มหมวด (เจ้าของสั่ง 2026-10-28)
+ * แท็บตลาดตามเชนที่เทรดได้จริง: USDT · BSC Chain / TPIX Chain / ราคาอ้างอิง (เจ้าของสั่ง 2026-11-03)
  *
  * บั๊กที่ห้ามกลับมา:
- *  - กระเป๋าอยู่เชน TPIX แต่ลิสต์โชว์คู่ BSC กดแล้วระบบสลับกระเป๋าออกไป BSC เอง
- *  - ปุ่มหมวดบอกแค่ "USDT" ทั้งที่เป็น USDT ของ BSC (BEP20) ผู้ใช้โอน USDT เชนอื่นมาแล้วเทรดไม่ได้
+ *  - กรองลิสต์ตามเชนของกระเป๋า — กระเป๋าอยู่เชน TPIX คู่ BSC ที่เทรดได้จริงหายจากกระดานทั้งหมด
+ *  - แท็บบอกแค่ "USDT" ทั้งที่เป็น USDT ของ BSC (BEP20) ผู้ใช้โอน USDT เชนอื่นมาแล้วเทรดไม่ได้
+ *  - คู่ดัชนี (ดูราคาอย่างเดียว) ปนอยู่ในแท็บเดียวกับคู่ที่เทรดได้จริง
  *  - เชน/โหมดของแถวเก็บตามเหรียญ ไม่ใช่ตามคู่ — คู่หลังในทะเบียนทับคู่แรก
  */
-describe('MarketListPanel chain filter and quote tabs', () => {
+describe('MarketListPanel market tabs', () => {
     beforeEach(() => {
-        localStorage.removeItem('tpix.marketQuote');
         Object.assign(wallet, { isConnected: false, chainId: null, supportedChains: [] });
         axiosGet.mockReset().mockImplementation(async (url) => {
             if (url === '/api/v1/market/tickers') return { data: { success: true, data: TICKERS } };
@@ -160,60 +160,82 @@ describe('MarketListPanel chain filter and quote tabs', () => {
     });
 
     const bases = (wrapper) => wrapper.findAll('.market-row').map(r => r.text());
+    const has = (wrapper, base) => bases(wrapper).some(r => r.includes(base));
+    const tab = (wrapper, id) => wrapper.find(`[data-test="market-tab-${id}"]`);
 
-    it('shows only BSC pairs while the wallet is on BSC, labelling USDT as BEP20', async () => {
-        Object.assign(wallet, { isConnected: true, chainId: 56 });
+    it('labels the first tab "USDT · BSC Chain" and lists only pairs that really trade on BSC', async () => {
         const wrapper = await mountPanel();
 
-        const rows = bases(wrapper);
-        expect(rows.some(r => r.includes('BTC'))).toBe(true);
-        expect(rows.some(r => r.includes('TPIX'))).toBe(false);
-        expect(rows.some(r => r.includes('SUI'))).toBe(false);
-        expect(wrapper.find('[data-test="quote-tab-USDT"] [data-test="quote-network"]').text()).toBe('BEP20');
-        expect(wrapper.find('[data-test="chain-scope"]').text()).toContain('BSC');
+        const tabs = wrapper.findAll('[data-test^="market-tab-"]').map(b => b.attributes('data-test'));
+        expect(tabs).toEqual(['market-tab-56', 'market-tab-4289', 'market-tab-index']);
+        expect(tab(wrapper, 56).text()).toContain('USDT');
+        expect(tab(wrapper, 56).find('[data-test="market-network"]').text()).toBe('BSC Chain');
+        expect(tab(wrapper, 56).attributes('title')).toContain('BEP20');
+        expect(tab(wrapper, 56).attributes('aria-pressed')).toBe('true');
+
+        expect(has(wrapper, 'BTC')).toBe(true);
+        expect(has(wrapper, 'TPIX')).toBe(false);
+        expect(has(wrapper, 'SUI')).toBe(false);
     });
 
-    it('shows only TPIX Chain pairs while the wallet is on TPIX Chain', async () => {
+    it('keeps BSC pairs one click away while the wallet is on TPIX Chain', async () => {
         Object.assign(wallet, { isConnected: true, chainId: 4289 });
         const wrapper = await mountPanel();
 
-        const rows = bases(wrapper);
-        expect(rows.some(r => r.includes('TPIX'))).toBe(true);
-        expect(rows.some(r => r.includes('SUI'))).toBe(true);
-        expect(rows.some(r => r.includes('BTC'))).toBe(false);
-        expect(wrapper.find('[data-test="quote-tab-USDT"] [data-test="quote-network"]').text()).toBe('TPIX Chain');
+        await tab(wrapper, 56).trigger('click');
+        expect(has(wrapper, 'BTC')).toBe(true);
     });
 
-    it('re-filters when the wallet switches chain', async () => {
+    it('gives TPIX Chain the brand-coloured tab with its tradable pairs', async () => {
+        const wrapper = await mountPanel();
+        expect(tab(wrapper, 4289).classes()).toContain('quote-tab--brand');
+
+        await tab(wrapper, 4289).trigger('click');
+        expect(tab(wrapper, 4289).classes()).toContain('quote-tab--brand-active');
+        expect(has(wrapper, 'TPIX')).toBe(true);
+        expect(has(wrapper, 'BTC')).toBe(false);
+        expect(has(wrapper, 'SUI')).toBe(false);
+    });
+
+    it('moves price-reference pairs to their own tab', async () => {
+        const wrapper = await mountPanel();
+
+        await tab(wrapper, 'index').trigger('click');
+        expect(has(wrapper, 'SUI')).toBe(true);
+        expect(has(wrapper, 'BTC')).toBe(false);
+    });
+
+    it('opens on the tab that holds the pair being traded', async () => {
+        const wrapper = mount(MarketListPanel, { props: { currentPair: 'TPIX/USDT' } });
+        mounted.push(wrapper);
+        await flushPromises();
+
+        expect(tab(wrapper, 4289).attributes('aria-pressed')).toBe('true');
+        expect(has(wrapper, 'TPIX')).toBe(true);
+    });
+
+    it('follows the wallet to its chain tab when it switches network', async () => {
         Object.assign(wallet, { isConnected: true, chainId: 56 });
         const wrapper = await mountPanel();
-        expect(bases(wrapper).some(r => r.includes('BTC'))).toBe(true);
+        expect(has(wrapper, 'BTC')).toBe(true);
 
         wallet.chainId = 4289;
         await nextTick();
-        expect(bases(wrapper).some(r => r.includes('BTC'))).toBe(false);
-        expect(bases(wrapper).some(r => r.includes('TPIX'))).toBe(true);
+        expect(has(wrapper, 'TPIX')).toBe(true);
+        expect(has(wrapper, 'BTC')).toBe(false);
     });
 
-    it('shows every chain with a per-row chain badge when no wallet is connected', async () => {
+    it('searches every market and badges each row with its chain', async () => {
         const wrapper = await mountPanel();
 
+        await wrapper.find('input').setValue('U');
+        expect(has(wrapper, 'SUI')).toBe(true);
+        expect(has(wrapper, 'BTC')).toBe(true);
         const btc = wrapper.findAll('.market-row').find(r => r.text().includes('BTC'));
         expect(btc.find('[data-test="badge-chain"]').text()).toBe('BSC');
-        // USDT อยู่สองเชน — บอกมาตรฐานเดียวที่ปุ่มก็ผิดอีกเชน
-        expect(wrapper.find('[data-test="quote-tab-USDT"] [data-test="quote-network"]').exists()).toBe(false);
     });
 
-    it('always offers a TPIX tab and explains why it is empty', async () => {
-        Object.assign(wallet, { isConnected: true, chainId: 4289 });
-        const wrapper = await mountPanel();
-
-        await wrapper.find('[data-test="quote-tab-TPIX"]').trigger('click');
-        expect(wrapper.findAll('.market-row')).toHaveLength(0);
-        expect(wrapper.find('[data-test="market-empty"]').text()).toContain('TPIX');
-    });
-
-    it('lists pairs priced in TPIX under the TPIX tab', async () => {
+    it('lists pairs priced in TPIX under TPIX Chain with their quote shown', async () => {
         axiosGet.mockImplementation(async (url) => {
             if (url === '/api/v1/market/tickers') return { data: { success: true, data: TICKERS } };
             if (url === '/api/v1/market/pairs') {
@@ -224,21 +246,27 @@ describe('MarketListPanel chain filter and quote tabs', () => {
             if (url.startsWith('/api/v1/dex/ticker/')) return { data: { success: true, data: { price: 2 } } };
             throw new Error(`unexpected GET ${url}`);
         });
-        Object.assign(wallet, { isConnected: true, chainId: 4289 });
         const wrapper = await mountPanel();
 
-        await wrapper.find('[data-test="quote-tab-TPIX"]').trigger('click');
+        await tab(wrapper, 4289).trigger('click');
         const rows = bases(wrapper);
-        expect(rows).toHaveLength(1);
-        expect(rows[0]).toContain('IDTC');
+        expect(rows).toHaveLength(2);
+        expect(rows.find(r => r.includes('IDTC'))).toContain('TPIX');
     });
 
-    it('tells the user when the wallet chain has no pairs at all', async () => {
-        Object.assign(wallet, { isConnected: true, chainId: 137 });
+    it('explains an empty TPIX Chain tab instead of showing a blank list', async () => {
+        axiosGet.mockImplementation(async (url) => {
+            if (url === '/api/v1/market/tickers') return { data: { success: true, data: TICKERS } };
+            if (url === '/api/v1/market/pairs') return { data: { success: true, data: PAIRS } };
+            if (url === '/api/v1/dex/ticker/TPIX-USDT') return { data: { success: true, data: { price: 0.12 } } };
+            throw new Error(`unexpected GET ${url}`);
+        });
         const wrapper = await mountPanel();
 
+        await tab(wrapper, 4289).trigger('click');
+        await wrapper.findAll('button').find(b => b.text().includes('Fav') || b.text().includes('โปรด')).trigger('click');
         expect(wrapper.findAll('.market-row')).toHaveLength(0);
-        expect(wrapper.find('[data-test="market-empty"]').text()).toContain('POL');
+        expect(wrapper.find('[data-test="market-empty"]').exists()).toBe(true);
     });
 });
 

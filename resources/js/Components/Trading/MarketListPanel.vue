@@ -9,7 +9,9 @@
  * ใช้ localStorage key `tpix.favPairs` ร่วมกับ PairSelector และหน้า Markets
  * → ติดดาวที่ไหนก็เห็นเหมือนกันทุกที่
  *
- * กรองตามเชนที่กระเป๋าอยู่ (เจ้าของสั่ง 2026-10-28) — ไม่เชื่อมกระเป๋า = เห็นทุกเชน
+ * แท็บตลาดแยกตามเชนที่เทรดได้จริง (เจ้าของสั่ง 2026-11-03): USDT · BSC Chain → TPIX Chain → ราคาอ้างอิง
+ * กระเป๋าอยู่เชนไหนเปิดแท็บเชนนั้นให้ แต่ไม่ซ่อนเชนอื่น — เดิม (2026-10-28) กรองตามกระเป๋า
+ * คู่ BSC จึงหายทั้งกระดานเมื่อกระเป๋าอยู่เชน TPIX
  * เชนของคู่มาจากทะเบียนคู่เทรด (network_chain_id) ไม่ใช่เดาจากชื่อเหรียญ
  *
  * Developed by Xman Studio
@@ -35,22 +37,18 @@ const walletStore = useWalletStore();
 const FAV_KEY = 'tpix.favPairs';
 const REFRESH_MS = 30000;
 
-const QUOTE_KEY = 'tpix.marketQuote';
-
 const TPIX_CHAIN_ID = 4289;
+const BSC_CHAIN_ID = 56;
 
 /*
- * หมวด TPIX = คู่ที่ตั้งราคาเป็น TPIX (เช่น XXX/TPIX) — โชว์ปุ่มไว้เสมอแม้ยังไม่มีคู่
- * เจ้าของสั่ง: ตลาดหลักของเชนเราต้องมีที่ของมันบนกระดาน ไม่ใช่รอให้แอดมินเพิ่มคู่แรกก่อนถึงจะโผล่
- */
-const TPIX_QUOTE = 'TPIX';
-
-/*
- * มาตรฐานเหรียญของแต่ละเชน — ต่อท้ายปุ่มหมวดให้รู้ว่า USDT ตัวไหน
+ * มาตรฐานเหรียญของแต่ละเชน — ให้รู้ว่า USDT ตัวไหน
  * USDT บน BSC (BEP20) กับ USDT บนเชน TPIX เป็นคนละเหรียญ โอนข้ามกันตรงๆ ไม่ได้
  */
 const TOKEN_STANDARD = { 1: 'ERC20', 56: 'BEP20', 96: 'KAP20', 137: 'Polygon', [TPIX_CHAIN_ID]: 'TPIX Chain' };
 const CHAIN_SHORT = { 1: 'ETH', 56: 'BSC', 96: 'KUB', 137: 'POL', [TPIX_CHAIN_ID]: 'TPIX' };
+
+/** แท็บคู่ดัชนี — ราคาตลาดโลก ดูกราฟได้ ส่งคำสั่งไม่ได้ */
+const INDEX_MARKET = 'index';
 
 const tickers = ref([]);
 const isLoading = ref(true);
@@ -58,14 +56,14 @@ const search = ref('');
 const activeFilter = ref('all'); // all | favorites | gainers | losers
 const sortKey = ref('volume');   // volume | change | name
 const favorites = ref([]);
-/** สกุลหลักที่กำลังดูอยู่ — '' = ทุกสกุล */
-const activeQuote = ref('');
-/** ทะเบียนคู่เทรดที่แอดมินเปิดไว้ { pair, quote, chainId, isIndex } — ต้นทางของปุ่มหมวด */
+/** ทะเบียนคู่เทรดที่แอดมินเปิดไว้ { pair, quote, chainId, isIndex } — ต้นทางของแท็บตลาด */
 const registry = ref([]);
+/** ตลาดที่กำลังดู: 'chain:56' · 'chain:4289' · 'index' — '' = ยังไม่ได้เลือก (ใช้ตลาดของคู่ปัจจุบัน) */
+const activeMarket = ref('');
 
-// ── เชน ────────────────────────────────────────────────────────────────────
-/** เชนที่กระเป๋าอยู่ — null = ยังไม่เชื่อม (เห็นทุกเชน) */
-const activeChainId = computed(() =>
+// ── ตลาด (แท็บด้านบน) ──────────────────────────────────────────────────────
+/** เชนที่กระเป๋าอยู่ — null = ยังไม่เชื่อม */
+const walletChainId = computed(() =>
     (walletStore.isConnected && Number(walletStore.chainId) > 0 ? Number(walletStore.chainId) : null)
 );
 
@@ -74,59 +72,90 @@ function chainShortName(chainId) {
     return chain?.shortName || CHAIN_SHORT[chainId] || String(chainId);
 }
 
-const activeChainName = computed(() => (activeChainId.value ? chainShortName(activeChainId.value) : ''));
+const chainMarket = chainId => `chain:${chainId}`;
 
 /**
- * แถวนี้อยู่บนเชนที่กำลังดูไหม
- * ทะเบียนว่าง (fallback ราคา Binance ล้วน) ไม่มีใครรู้เชน — ไม่กรอง ดีกว่าลิสต์ว่างทั้งกระดาน
+ * แถวนี้อยู่ตลาดไหน — แยกตาม "เทรดได้จริงบนเชนไหน" ไม่ใช่ตามสกุลหลัก
+ * ⚠️ เดิมแยกตามสกุล (ทุกสกุล / USDT / TPIX) คู่ดัชนี คู่ BSC และคู่เชน TPIX ปนกันในหมวด USDT
+ *    แล้วกรองเชนตามกระเป๋าอีกชั้น — กระเป๋าอยู่เชน TPIX คู่ BSC ที่เทรดได้จริงหายจากกระดานทั้งหมด
+ *    (เจ้าของถาม 2026-11-03 "หน้ากระดานเทรด bsc chain หายไปไหน")
  */
-function onActiveChain(row, hasChainInfo) {
-    if (!activeChainId.value || !hasChainInfo) return true;
-    return row.chainId === activeChainId.value;
+function marketOf(row) {
+    if (row.isIndex) return INDEX_MARKET;
+    return row.chainId ? chainMarket(row.chainId) : null;
 }
 
-const tickersHaveChain = computed(() => tickers.value.some(t => t.chainId));
-const chainRows = computed(() => tickers.value.filter(t => onActiveChain(t, tickersHaveChain.value)));
+/**
+ * แท็บตลาด: BSC ก่อน (กระดานที่เทรดได้มากที่สุด) → เชนอื่นที่แอดมินเปิด → TPIX Chain → ราคาอ้างอิง
+ * TPIX Chain มีเสมอแม้ยังไม่มีคู่ — เจ้าของสั่ง: ตลาดของเชนเราต้องมีที่ของมันบนกระดาน
+ * ทะเบียนว่าง (fallback ราคา Binance ล้วน) ไม่มีใครรู้เชน → ไม่มีแท็บ ไม่กรอง ดีกว่าลิสต์ว่าง
+ */
+const markets = computed(() => {
+    const source = registry.value.length ? registry.value : tickers.value;
+    if (!source.some(p => p.chainId)) return [];
 
-/** ที่มาของปุ่มหมวด: ทะเบียนคู่เทรดของเชนนี้ (ทะเบียนว่าง = ใช้แถวราคาแทน) */
-const quoteSource = computed(() => {
-    if (registry.value.length === 0) return chainRows.value;
-    const hasChain = registry.value.some(p => p.chainId);
-    return registry.value.filter(p => onActiveChain(p, hasChain));
+    const chains = new Set(source.filter(p => !p.isIndex && p.chainId).map(p => p.chainId));
+    chains.delete(TPIX_CHAIN_ID);
+    const ordered = [...chains].sort((a, b) => (a === BSC_CHAIN_ID ? -1 : b === BSC_CHAIN_ID ? 1 : a - b));
+
+    const list = ordered.map(chainId => {
+        const quotes = [...new Set(source.filter(p => !p.isIndex && p.chainId === chainId).map(p => p.quote))];
+        return {
+            id: chainMarket(chainId),
+            chainId,
+            // สกุลเดียวทั้งเชน (USDT) — บอกสกุลบนปุ่มเลย ผู้ใช้จะได้รู้ว่าราคาทั้งลิสต์เป็น USDT ของเชนนี้
+            label: quotes.length === 1 ? quotes[0] : chainShortName(chainId),
+            net: `${chainShortName(chainId)} Chain`,
+            standard: TOKEN_STANDARD[chainId] || '',
+        };
+    });
+    list.push({ id: chainMarket(TPIX_CHAIN_ID), chainId: TPIX_CHAIN_ID, label: 'TPIX Chain', net: '', standard: '', brand: true });
+    if (source.some(p => p.isIndex)) list.push({ id: INDEX_MARKET, chainId: null, label: '', net: '', standard: '' });
+    return list;
 });
+
+/** ตลาดของคู่ที่เปิดอยู่ — เปิดหน้ามาต้องเห็นคู่ตัวเองในลิสต์ */
+const currentMarket = computed(() => {
+    const row = tickers.value.find(t => t.symbol === props.currentPair);
+    return row ? marketOf(row) : null;
+});
+
+/** ตลาดที่แสดงจริง — เลือกเองแล้วใช้ตัวนั้น · ยังไม่เลือก = ตลาดของคู่ปัจจุบัน → แท็บแรก */
+const shownMarket = computed(() => {
+    const ids = markets.value.map(m => m.id);
+    if (ids.length === 0) return null;
+    if (ids.includes(activeMarket.value)) return activeMarket.value;
+    if (ids.includes(currentMarket.value)) return currentMarket.value;
+    return ids[0];
+});
+
+const shownMarketInfo = computed(() => markets.value.find(m => m.id === shownMarket.value) || null);
+
+function selectMarket(id) {
+    activeMarket.value = id;
+}
 
 /*
- * สกุลหลักทั้งหมดของเชนนี้ — มาจากคู่ที่แอดมินเปิดจริง ไม่ได้เขียนตายไว้
- * แอดมินเพิ่มคู่ THB เมื่อไหร่ ปุ่มหมวด THB ก็โผล่เอง เรียงตามจำนวนคู่ สกุลที่ใช้เยอะสุดอยู่ซ้ายสุด
- * TPIX ต่อท้ายเสมอถ้ายังไม่มีคู่ไหนใช้
+ * กระเป๋าสลับเชน → ไปแท็บของเชนนั้น (ถ้ามี) แต่ไม่ซ่อนเชนอื่นอีกแล้ว
+ * กดคู่ของเชนอื่นได้เสมอ ตอนส่งคำสั่งหน้าเทรดจะขอสลับเครือข่ายกระเป๋าให้เอง
  */
-const quoteAssets = computed(() => {
-    const counts = {};
-    quoteSource.value.forEach(p => {
-        if (p.quote) counts[p.quote] = (counts[p.quote] || 0) + 1;
-    });
-    const quotes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-    return quotes.includes(TPIX_QUOTE) ? quotes : [...quotes, TPIX_QUOTE];
+watch(walletChainId, (chainId) => {
+    if (chainId && markets.value.some(m => m.id === chainMarket(chainId))) {
+        activeMarket.value = chainMarket(chainId);
+    }
 });
 
-/**
- * มาตรฐานเหรียญของสกุลหลักนี้ เช่น USDT → BEP20
- * นับเฉพาะคู่ที่เทรดได้จริง (คู่ดัชนีเป็นราคาตลาดโลก ไม่ได้อยู่บนเชนไหน)
- * สกุลเดียวกันอยู่หลายเชน (ไม่ได้เชื่อมกระเป๋า) = ไม่บอก เพราะบอกตัวเดียวก็ผิดอีกตัว — แต่ละแถวมีป้ายเชนแทน
- */
-function quoteNetwork(quote) {
-    const chains = new Set(
-        quoteSource.value.filter(p => p.quote === quote && !p.isIndex && p.chainId).map(p => p.chainId)
-    );
-    if (chains.size !== 1) return '';
-    const [chainId] = chains;
-    return TOKEN_STANDARD[chainId] || chainShortName(chainId);
-}
+// เปลี่ยนคู่ (กดจากลิสต์/ลิงก์) → ตามไปตลาดของคู่นั้น
+watch(() => props.currentPair, () => {
+    activeMarket.value = '';
+});
 
-/** ลิสต์มีคู่เทรดได้จากหลายเชนปนกันไหม — ถ้าใช่ ทุกแถวต้องบอกเชนของตัวเอง */
-const showRowChain = computed(() =>
-    new Set(chainRows.value.filter(t => !t.isIndex && t.chainId).map(t => t.chainId)).size > 1
-);
+const marketRows = computed(() => (
+    shownMarket.value ? tickers.value.filter(t => marketOf(t) === shownMarket.value) : tickers.value
+));
+
+/** ตลาดนี้มีหลายสกุลหลักปนกันไหม (เช่น TPIX/USDT กับ IDTC/TPIX) — ใช่ = ทุกแถวต้องบอกสกุลของตัวเอง */
+const showRowQuote = computed(() => new Set(marketRows.value.map(t => t.quote)).size > 1);
 
 const { series, load: loadSparklines } = useSparklines();
 
@@ -310,11 +339,8 @@ async function fetchDexRows(pairs) {
 const filtered = computed(() => {
     const q = search.value.trim().toUpperCase();
 
-    // เชนกรองก่อนทุกอย่าง แม้ตอนค้นหา — คู่ของเชนอื่นกดเข้าไปแล้วระบบก็จะสลับกระเป๋าออกไปเชนนั้นอยู่ดี
-    let list = chainRows.value.filter(t => {
-        // หมวดสกุลหลักกรองก่อนเสมอ — ยกเว้นตอนค้นหา เพราะคนพิมพ์ชื่อเหรียญ
-        // คาดว่าจะเจอมัน ไม่ว่าจะอยู่หมวดไหน
-        if (!q && activeQuote.value && t.quote !== activeQuote.value) return false;
+    // ค้นหา = ทุกตลาด — คนพิมพ์ชื่อเหรียญคาดว่าจะเจอมัน ไม่ว่าจะอยู่แท็บไหน (แต่ละแถวมีป้ายเชนบอก)
+    let list = (q ? tickers.value : marketRows.value).filter(t => {
         if (q && !t.symbol.includes(q) && !t.base.includes(q)) return false;
         if (activeFilter.value === 'favorites') return favorites.value.includes(t.pair);
         if (activeFilter.value === 'gainers') return t.change > 0;
@@ -361,29 +387,13 @@ const firstNonFavoritePair = computed(() => {
 /** ลิสต์ว่างเพราะอะไร — บอกให้ตรง ไม่ใช่ "ไม่พบคู่เทรด" ทุกกรณี */
 const emptyMessage = computed(() => {
     if (activeFilter.value === 'favorites') return t('trade.market.emptyFavorites');
-    if (!search.value.trim() && activeQuote.value === TPIX_QUOTE) return t('trade.market.emptyTpixQuote');
-    if (activeChainId.value) return t('trade.market.emptyChain', { chain: activeChainName.value });
+    const chainId = shownMarketInfo.value?.chainId;
+    if (!search.value.trim() && chainId) return t('trade.market.emptyChain', { chain: `${chainShortName(chainId)} Chain` });
     return t('trade.market.empty');
 });
 
-/*
- * สกุลที่เคยเลือกไว้ไม่มีบนเชนนี้แล้ว (แอดมินปิดคู่ / สลับเชน) — กลับไปดูทุกสกุล
- * ไม่งั้นผู้ใช้จะเจอลิสต์ว่างเปล่าโดยไม่รู้ว่าทำไม · รอโหลดเสร็จก่อน ระหว่างโหลดมีแค่ปุ่ม TPIX
- */
-watch([quoteAssets, isLoading], () => {
-    if (!isLoading.value && activeQuote.value && !quoteAssets.value.includes(activeQuote.value)) {
-        activeQuote.value = '';
-    }
-});
-
-function selectQuote(quote) {
-    activeQuote.value = quote;
-    try {
-        localStorage.setItem(QUOTE_KEY, quote);
-    } catch {
-        // โหมดส่วนตัว/โควตาเต็ม — ใช้งานต่อได้ แค่ไม่ถูกจำไว้รอบหน้า
-    }
-}
+/** ป้ายเชนต่อแถว — ตอนค้นหา (หลายตลาดปนกัน) หรือไม่มีแท็บให้รู้ว่าดูเชนไหนอยู่ */
+const showRowChain = computed(() => Boolean(search.value.trim()) || !shownMarket.value);
 
 /*
  * โหลดเส้นกราฟของทุกแถวที่แสดงอยู่ — ไม่ตัดทิ้ง
@@ -424,11 +434,6 @@ function selectPair(t) {
 
 onMounted(() => {
     readFavorites();
-    try {
-        activeQuote.value = localStorage.getItem(QUOTE_KEY) || '';
-    } catch {
-        activeQuote.value = '';
-    }
     fetchTickers();
     refreshTimer = setInterval(() => fetchTickers({ silent: true }), REFRESH_MS);
 });
@@ -458,41 +463,40 @@ onUnmounted(() => {
         </div>
 
         <!--
-            หมวดสกุลหลัก — ต้องเด่นที่สุดในแผงนี้
+            แท็บตลาด — ต้องเด่นที่สุดในแผงนี้
 
-            เมื่อชื่อคู่ไม่มี "/USDT" ต่อท้ายแล้ว ปุ่มหมวดคือสิ่งเดียวที่บอกว่ากำลังดู
-            ราคาเทียบกับสกุลไหนอยู่ ถ้ามันจางเท่าปุ่มอื่น ผู้ใช้จะอ่านราคา BTC 0.0341
-            แล้วเข้าใจว่าเป็นดอลลาร์ — ตัวเลขเดียวกันคนละความหมายโดยสิ้นเชิง
+            แต่ละแท็บคือ "เทรดได้จริงบนเชนไหน" ราคาทั้งลิสต์เป็นสกุลของเชนนั้น
+            (USDT · BSC Chain = USDT แบบ BEP20) ถ้าแท็บจางเท่าปุ่มอื่น ผู้ใช้จะไม่รู้ว่า
+            กำลังดูกระดานไหน และไม่รู้ว่ามีอีกกระดานให้กด
         -->
-        <div v-if="quoteAssets.length" class="px-2.5 pt-2.5">
+        <div v-if="markets.length" class="px-2.5 pt-2.5">
             <div class="flex items-center gap-1 overflow-x-auto scrollbar-none">
-                <!--
-                    ปุ่ม "ทุกสกุล" มีความหมายเมื่อมีสกุลให้เลือกมากกว่าหนึ่งเท่านั้น
-                    มีสกุลเดียวแล้วยังใส่ = ปุ่มสองอันที่ให้ผลเหมือนกันเป๊ะ
-                -->
                 <button
-                    v-if="quoteAssets.length > 1"
+                    v-for="m in markets"
+                    :key="m.id"
                     type="button"
-                    :class="['quote-tab', activeQuote === '' && 'quote-tab--active']"
-                    @click="selectQuote('')"
-                >{{ t('trade.market.allQuotes') }}</button>
-                <!-- มาตรฐานเหรียญต่อท้าย (USDT · BEP20) — USDT ของแต่ละเชนเป็นคนละเหรียญกัน -->
-                <button
-                    v-for="quote in quoteAssets"
-                    :key="quote"
-                    type="button"
-                    :data-test="`quote-tab-${quote}`"
-                    :title="quoteNetwork(quote) ? `${quote} (${quoteNetwork(quote)})` : quote"
+                    :data-test="`market-tab-${m.id === 'index' ? 'index' : m.chainId}`"
+                    :aria-pressed="shownMarket === m.id"
+                    :title="m.standard ? `${m.label} (${m.standard}) · ${m.net}` : undefined"
                     :class="['quote-tab',
-                        (activeQuote === quote || (quoteAssets.length === 1 && !activeQuote)) && 'quote-tab--active']"
-                    @click="selectQuote(quote)"
+                        m.brand && 'quote-tab--brand',
+                        shownMarket === m.id && (m.brand ? 'quote-tab--brand-active' : 'quote-tab--active')]"
+                    @click="selectMarket(m.id)"
                 >
-                    {{ quote }}<span v-if="quoteNetwork(quote)" data-test="quote-network" class="quote-tab__net">{{ quoteNetwork(quote) }}</span>
+                    <!-- TPIX Chain ใช้ตราเหรียญ + สีไล่แบบโลโก้หัวเว็บ (เจ้าของสั่ง 2026-11-03: ให้โดดเด่น) -->
+                    <img v-if="m.brand" :src="TPIX_COIN_ICON" alt="" class="w-3.5 h-3.5 rounded-full shrink-0" />
+                    <template v-if="m.id === 'index'">{{ t('trade.market.indexTab') }}</template>
+                    <template v-else>{{ m.label }}</template>
+                    <span v-if="m.net" data-test="market-network" class="quote-tab__net">{{ m.net }}</span>
                 </button>
             </div>
-            <!-- บอกว่ากำลังดูคู่ของเชนไหน — ลิสต์สั้นลงเพราะกรองเชน ไม่ใช่เพราะคู่หาย -->
+            <!-- บอกว่าแท็บนี้เทรดได้จริงไหม และกดคู่ของเชนอื่นได้ — ระบบสลับเครือข่ายกระเป๋าให้ตอนส่งคำสั่ง -->
             <p data-test="chain-scope" class="mt-1.5 text-[10px] text-dark-500 truncate">
-                {{ activeChainId ? t('trade.market.onChain', { chain: activeChainName }) : t('trade.market.allChains') }}
+                {{ !shownMarketInfo
+                    ? t('trade.market.allChains')
+                    : shownMarketInfo.chainId
+                        ? t('trade.market.onChain', { chain: `${chainShortName(shownMarketInfo.chainId)} Chain` })
+                        : t('trade.market.indexScope') }}
             </p>
         </div>
 
@@ -584,9 +588,9 @@ onUnmounted(() => {
                         <span class="min-w-0 flex-1">
                             <span class="flex items-center gap-1">
                                 <span class="text-white text-xs font-semibold whitespace-nowrap">{{ row.base }}</span>
-                                <!-- โชว์สกุลหลักต่อท้ายเฉพาะตอนดูรวมทุกสกุล ซึ่งชื่อเหรียญซ้ำกันได้ -->
-                                <span v-if="!activeQuote" class="text-dark-500 text-[9px] font-mono shrink-0">{{ row.quote }}</span>
-                                <!-- ไม่ได้เชื่อมกระเป๋า = หลายเชนปนกัน แต่ละแถวต้องบอกเชนของตัวเอง -->
+                                <!-- โชว์สกุลหลักต่อท้ายเมื่อแถวในลิสต์มีหลายสกุลปนกัน ซึ่งชื่อเหรียญซ้ำกันได้ -->
+                                <span v-if="showRowQuote || showRowChain" class="text-dark-500 text-[9px] font-mono shrink-0">{{ row.quote }}</span>
+                                <!-- ผลค้นหา = หลายเชนปนกัน แต่ละแถวต้องบอกเชนของตัวเอง -->
                                 <span v-if="showRowChain && !row.isIndex && row.chainId" data-test="badge-chain" class="text-[8px] px-1 py-px rounded bg-white/5 text-dark-300 font-medium shrink-0">
                                     {{ chainShortName(row.chainId) }}
                                 </span>
@@ -654,6 +658,33 @@ onUnmounted(() => {
 .quote-tab--active {
     @apply bg-primary-500 text-white ring-primary-400/60;
     box-shadow: 0 0 12px rgb(var(--c-primary-500) / 0.35);
+}
+
+/*
+ * TPIX Chain — สีไล่ม่วง → ฟ้า → ส้ม แบบโลโก้หัวเว็บ (theme.extend.backgroundImage.brand-gradient)
+ * ยังไม่เลือก = พื้นไล่สีอ่อน + ขอบไล่สีเต็ม ให้เด่นกว่าแท็บอื่นตลอดเวลา · เลือกแล้ว = พื้นไล่สีเต็มปุ่ม + เรือง
+ */
+.quote-tab--brand {
+    @apply inline-flex items-center gap-1 text-white;
+    background:
+        linear-gradient(135deg, rgba(139, 92, 246, 0.4) 0%, rgba(6, 182, 212, 0.32) 50%, rgba(249, 115, 22, 0.32) 100%) padding-box,
+        linear-gradient(135deg, #8b5cf6 0%, #06b6d4 50%, #f97316 100%) border-box;
+    border: 1px solid transparent;
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+}
+
+.quote-tab--brand:hover {
+    background:
+        linear-gradient(135deg, rgba(139, 92, 246, 0.6) 0%, rgba(6, 182, 212, 0.5) 50%, rgba(249, 115, 22, 0.5) 100%) padding-box,
+        linear-gradient(135deg, #8b5cf6 0%, #06b6d4 50%, #f97316 100%) border-box;
+}
+
+.quote-tab--brand-active,
+.quote-tab--brand-active:hover {
+    @apply text-white;
+    background: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 50%, #f97316 100%);
+    box-shadow: 0 0 14px rgba(6, 182, 212, 0.45), 0 0 22px rgba(139, 92, 246, 0.3);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
 }
 
 /* มาตรฐานเหรียญต่อท้ายชื่อสกุล — เล็กกว่าแต่ยังอ่านออกบนพื้นทึบของปุ่มที่เลือก */
